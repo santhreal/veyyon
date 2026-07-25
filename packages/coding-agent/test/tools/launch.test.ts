@@ -2,29 +2,27 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../../utils/test/helpers/isolated-config-root";
 import { createDaemonBrokerClient, type DaemonBrokerClient } from "../../src/launch/client";
 import { registerDaemonProjectPresence } from "../../src/launch/presence";
 import type { DaemonSpec } from "../../src/launch/protocol";
 
 const cleanupDirs: string[] = [];
 
-// The broker worker is the veyyon CLI (inherits this process's env) and runs
-// the legacy-layout migration gate at startup; a real ~/.veyyon in the
-// both-layouts conflict state kills it before broker.sock exists. Isolate via
-// the live-read VEYYON_CONFIG_DIR name (bun's os.homedir() ignores runtime
-// HOME mutation).
-const BROKER_CONFIG_DIR_NAME = `.veyyon-launch-test-${crypto.randomUUID()}`;
-let previousConfigDir: string | undefined;
+// The broker worker is the veyyon CLI (inherits this process's env) and runs the
+// legacy-layout migration gate at startup; a real ~/.veyyon in the both-layouts conflict
+// state kills it before broker.sock exists. Isolate via the live-read VEYYON_CONFIG_DIR,
+// which is the only lever available because bun's os.homedir() ignores a runtime HOME
+// mutation, pointed at a temp root rather than a new directory name under the real home.
+let isolatedConfigRoot: IsolatedConfigRoot | undefined;
 
 beforeAll(() => {
-	previousConfigDir = process.env.VEYYON_CONFIG_DIR;
-	process.env.VEYYON_CONFIG_DIR = BROKER_CONFIG_DIR_NAME;
+	isolatedConfigRoot = enterIsolatedConfigRoot("launch-broker");
 });
 
-afterAll(async () => {
-	if (previousConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
-	else process.env.VEYYON_CONFIG_DIR = previousConfigDir;
-	await fs.rm(path.join(os.homedir(), BROKER_CONFIG_DIR_NAME), { recursive: true, force: true });
+afterAll(() => {
+	isolatedConfigRoot?.restore();
+	isolatedConfigRoot = undefined;
 });
 
 async function tempDir(prefix: string): Promise<string> {

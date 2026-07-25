@@ -36,6 +36,19 @@ export interface SelectItem {
 	 * renders when at least one of its items survived the query.
 	 */
 	group?: string;
+	/**
+	 * What the filter matches this row against, when the visible text is the
+	 * wrong thing to search.
+	 *
+	 * By default a row is matched on everything it shows, which is right for a
+	 * list of prose settings and wrong for a list whose description carries data
+	 * of the same shape as the value. A version picker is the case that forced
+	 * this: rows read `1.5.0` / `2026-06-24 · previously run`, and typing `1.1`
+	 * matched every row whose DATE happened to contain a `1`, so the list looked
+	 * like the filter did nothing. Set this to the part of the row a query is
+	 * actually about.
+	 */
+	filterText?: string;
 }
 
 export interface SelectListTheme {
@@ -601,7 +614,16 @@ export class SelectList implements Component, MouseRoutable {
 	}
 
 	#getFilterText(item: SelectItem): string {
-		let text = `${item.label} ${item.value}`;
+		// An explicit filter text replaces the row's visible text outright rather
+		// than adding to it: the point is to EXCLUDE what the row also shows.
+		if (item.filterText !== undefined) return sanitizeSingleLine(item.filterText);
+		// The label and the value are often the SAME string (a version picker's
+		// rows are `{ value: "1.3.0", label: "1.3.0" }`). Concatenating both then
+		// fed the fuzzy matcher "1.3.0 1.3.0", where the query "1.1" matches as a
+		// subsequence across the join — the `1` from the first copy and the `1`
+		// from the second. The result is a filter that keeps rows the user can see
+		// do not match, which reads as a filter that does not work.
+		let text = item.value === item.label ? item.label : `${item.label} ${item.value}`;
 		if (item.description) {
 			text += ` ${item.description}`;
 		}

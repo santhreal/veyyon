@@ -16,7 +16,7 @@ import { removeManagedMcpOAuthCredential } from "@veyyon/coding-agent/mcp/oauth-
 import * as oauthFlow from "@veyyon/coding-agent/mcp/oauth-flow";
 import { mcpOAuthCredentialId } from "@veyyon/coding-agent/mcp/oauth-flow";
 import type { MCPServerConfig } from "@veyyon/coding-agent/mcp/types";
-import { getActiveProfile, setProfile } from "@veyyon/utils/dirs";
+import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides, setProfile } from "@veyyon/utils/dirs";
 
 const SERVER_URL = "https://mcp.example.com/mcp";
 const URL_KEY_ID = mcpOAuthCredentialId(SERVER_URL);
@@ -29,10 +29,13 @@ function authorizationHeader(config: MCPServerConfig): string | undefined {
 describe("per-profile MCP OAuth binding", () => {
 	let manager: MCPManager;
 	let authStorage: AuthStorage;
-	let originalProfile: string | undefined;
+	// `setProfile` EXPORTS `VEYYON_PROFILE` and the profile's agent dir, so restoring the
+	// profile THROUGH it left both variables set for every later file and every child
+	// process they spawn. The snapshot puts the variables back as well as the profile.
+	let dirOverrides: DirOverridesSnapshot;
 
 	beforeEach(async () => {
-		originalProfile = getActiveProfile();
+		dirOverrides = captureDirOverrides();
 		const store = new SqliteAuthCredentialStore(new Database(":memory:"));
 		authStorage = new AuthStorage(store);
 		await authStorage.reload();
@@ -42,7 +45,7 @@ describe("per-profile MCP OAuth binding", () => {
 
 	afterEach(() => {
 		authStorage.close();
-		setProfile(originalProfile);
+		restoreDirOverrides(dirOverrides);
 		vi.restoreAllMocks();
 	});
 

@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { isEexist, isEnoent, postmortem } from "@veyyon/utils";
 import { resolveWorkerSpawnCmd, workerEnvFromParent } from "../subprocess/worker-client";
-import { daemonBrokerEndpoint, daemonRuntimeDir } from "./paths";
+import { canonicalProjectDir, daemonBrokerEndpoint, daemonRuntimeDir } from "./paths";
 import {
 	DAEMON_BROKER_WORKER_ARG,
 	DAEMON_IDLE_GRACE_ENV,
@@ -17,7 +17,10 @@ import {
 	parseDaemonWireResponse,
 } from "./protocol";
 
-const CONNECT_TIMEOUT_MS = 10_000;
+// How long a client waits to reach the LOCAL broker over its unix socket,
+// including spawning one if none is live. A loopback budget, unrelated to the
+// relay connect timeout in collab/host.ts, which crosses the network.
+const BROKER_CONNECT_TIMEOUT_MS = 10_000;
 const CONNECT_RETRY_MS = 50;
 const TOKEN_FILE = "broker.token";
 
@@ -42,16 +45,6 @@ export interface DaemonBrokerClient {
 	readonly projectDir: string;
 	request(operation: DaemonOperation, signal?: AbortSignal): Promise<DaemonRpcResult>;
 	close(): void;
-}
-
-async function canonicalProjectDir(projectDir: string): Promise<string> {
-	const resolved = path.resolve(projectDir);
-	try {
-		return await fs.realpath(resolved);
-	} catch (error) {
-		if (isEnoent(error)) return resolved;
-		throw error;
-	}
 }
 
 async function readOrCreateToken(runtimeDir: string): Promise<string> {
@@ -86,7 +79,7 @@ async function readOrCreateToken(runtimeDir: string): Promise<string> {
 function requestTimeoutMs(operation: DaemonOperation): number {
 	switch (operation.op) {
 		case "start":
-			return (operation.spec.ready?.timeoutMs ?? CONNECT_TIMEOUT_MS) + 5_000;
+			return (operation.spec.ready?.timeoutMs ?? BROKER_CONNECT_TIMEOUT_MS) + 5_000;
 		case "wait":
 		case "logs":
 		case "stop":
@@ -201,7 +194,7 @@ class SocketDaemonClient implements DaemonBrokerClient {
 			// lease selects one winner before any candidate touches the socket.
 		}
 		this.#spawnBroker();
-		const deadline = Date.now() + CONNECT_TIMEOUT_MS;
+		const deadline = Date.now() + BROKER_CONNECT_TIMEOUT_MS;
 		let lastError: Error | undefined;
 		while (Date.now() < deadline) {
 			try {

@@ -489,7 +489,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 				}
 			}
 
-			if (options.signal?.aborted) throw new AIError.AbortError();
+			if (options.signal?.aborted) throw new AIError.RequestAbortError();
 
 			if (output.stopReason === "error" || output.stopReason === "aborted") {
 				throw new AIError.BedrockApiError(output.errorMessage ?? "An unknown error occurred", 0);
@@ -544,6 +544,9 @@ function safeParsePayload(payload: Uint8Array): unknown {
 	try {
 		return JSON.parse(new TextDecoder().decode(payload));
 	} catch {
+		// Undefined is DISTINCT from the `{}` an empty payload returns, and the caller relies on that: an
+		// unparseable event frame is skipped rather than treated as an empty event, so a malformed frame
+		// cannot look like a legitimate no-op in the stream.
 		return undefined;
 	}
 }

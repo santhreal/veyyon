@@ -1002,6 +1002,8 @@ function safeJsonStringify(value: unknown): string | undefined {
 	try {
 		return JSON.stringify(value);
 	} catch {
+		// A value with a cycle in it has no JSON form. Undefined means the optional field is omitted from
+		// the ACP event, which the protocol allows; the event itself still goes out.
 		return undefined;
 	}
 }

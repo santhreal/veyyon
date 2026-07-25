@@ -14,7 +14,7 @@ import type { ToolExample } from "@veyyon/ai";
 import { errorMessage, formatDuration, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import { IrcBus, type IrcDeliveryReceipt, type IrcMessage } from "../irc/bus";
-import ircDescription from "../prompts/tools/irc.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { type AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 import type { ToolSession } from ".";
 
@@ -117,7 +117,7 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 	];
 	readonly loadMode = "discoverable";
 	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(ircDescription);
+		this.description = prompt.render(PROMPTS["tools/irc"].text);
 	}
 
 	static createIf(session: ToolSession): IrcTool | null {

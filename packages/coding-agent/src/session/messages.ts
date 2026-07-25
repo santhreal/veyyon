@@ -15,8 +15,8 @@ import type { AssistantMessage, ImageContent, Message, MessageAttribution, TextC
 import * as AIError from "@veyyon/ai/error";
 import { isRecord, prompt } from "@veyyon/utils";
 import { formatExitCodeNotice } from "../exec/exit-notice";
-import { ToolAbortError } from "../tools/tool-errors";
 import { PROMPTS } from "../prompts/registry";
+import { ToolAbortError } from "../tools/tool-errors";
 import { contentText } from "./content-text";
 
 export {

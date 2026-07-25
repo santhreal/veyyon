@@ -344,6 +344,29 @@ function prepareQuery(query: string): PreparedQuery | null {
 	return { normalized, tokens: normalized.split(" "), compact: normalized.replaceAll(" ", "") };
 }
 
+/**
+ * Do repeated query tokens have enough distinct words to land on?
+ *
+ * Only tokens the query repeats are checked: a query with all-distinct tokens
+ * (the overwhelmingly common case) costs one map build and returns immediately,
+ * so the hot filter path is unchanged.
+ */
+function hasDistinctWordsForRepeatedTokens(tokens: readonly string[], index: SearchIndex): boolean {
+	if (tokens.length < 2) return true;
+	const needed = new Map<string, number>();
+	for (const token of tokens) needed.set(token, (needed.get(token) ?? 0) + 1);
+	for (const [token, count] of needed) {
+		if (count < 2) continue;
+		let available = 0;
+		for (const word of index.words) {
+			if (scoreTokenAgainstWord(token, word) !== null) available++;
+			if (available >= count) break;
+		}
+		if (available < count) return false;
+	}
+	return true;
+}
+
 function fuzzyMatchCore(pq: PreparedQuery | null, index: SearchIndex): FuzzyMatch {
 	if (pq === null) {
 		return { matches: true, score: 0 };
@@ -372,6 +395,18 @@ function fuzzyMatchCore(pq: PreparedQuery | null, index: SearchIndex): FuzzyMatc
 			return { matches: false, score: 0 };
 		}
 		totalScore += match.score;
+	}
+
+	// A token typed TWICE needs two places to match, not one place twice.
+	//
+	// Normalization strips punctuation, so a version query "1.1" becomes the two
+	// tokens "1" "1". Scored independently, both are satisfied by the single "1"
+	// in "1.3.0", and filtering a version list by "1.1" kept every 1.x release —
+	// a filter the user can see is not filtering. Requiring as many distinct
+	// matching words as the query repeats the token fixes it in general: typing
+	// the same word twice asks for two of them.
+	if (!hasDistinctWordsForRepeatedTokens(pq.tokens, index)) {
+		return { matches: false, score: 0 };
 	}
 
 	return { matches: true, score: totalScore };

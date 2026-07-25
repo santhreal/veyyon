@@ -40,9 +40,11 @@ import {
 } from "../../tools/render-utils";
 import { type FirstResultViewportRepaint, toolRenderers } from "../../tools/renderers";
 import { TODO_STRIKE_TOTAL_FRAMES, type TodoToolDetails } from "../../tools/todo";
-import { isFramedBlockComponent, renderStatusLine, WidthAwareText } from "../../tui";
+import { renderStatusLine, WidthAwareText } from "../../tui";
 import { sanitizeWithOptionalSixelPassthrough } from "../../utils/sixel";
+import { COMPOSER_INSET_COLS } from "./composer-chrome";
 import { renderDiff } from "./diff";
+import { reportRendererFailure } from "./renderer-failure";
 
 /**
  * Drop trailing removal/hunk-header lines that appear in a streaming diff
@@ -331,7 +333,11 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		// generic fallback) get top/bottom breathing room. TranscriptContainer
 		// strips PLAIN-blank edges, so framed/minimal blocks (no bg set) drop these
 		// lines and keep their tight spacing — only tinted lines survive.
-		this.#contentBox = new Box(0, 1);
+		// The transcript's one left rail: the card's frame starts where the composer
+		// gutter and every other block start. A card at column 0 beside inset blocks
+		// reads as a misalignment, which is why the design language says nothing sits
+		// at column 0 (docs/internal/tui-design-language.md).
+		this.#contentBox = new Box(COMPOSER_INSET_COLS, 1);
 		this.#contentText = new WidthAwareText(contentWidth => this.#formatToolExecution(contentWidth), 1, 1);
 
 		// Use Box for custom tools or built-in tools that have renderers
@@ -913,8 +919,9 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 						const callComponent = tool.renderCall(callArgs, this.#renderState, theme);
 						if (callComponent) this.#contentBox.addChild(callComponent as Component);
 					} catch (err) {
-						logger.warn("Tool renderer failed", { tool: this.#toolName, error: String(err) });
-						// Fall back to default on error
+						this.#contentBox.addChild(
+							reportRendererFailure(this.#rendererSubject("call"), err, "showing the tool name only"),
+						);
 						this.#contentBox.addChild(new Text(theme.fg("toolTitle", theme.bold(this.#toolLabel)), 0, 0));
 					}
 				} else {
@@ -944,9 +951,14 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 					);
 					if (resultComponent) this.#contentBox.addChild(resultComponent);
 				} catch (err) {
-					logger.warn("Tool renderer failed", { tool: this.#toolName, error: String(err) });
-					// Fall back to showing raw output on error
 					const output = this.#getTextOutput();
+					this.#contentBox.addChild(
+						reportRendererFailure(
+							this.#rendererSubject("result"),
+							err,
+							output ? "showing raw output" : "there is no raw output to show instead",
+						),
+					);
 					if (output) {
 						this.#contentBox.addChild(new Text(theme.fg("toolOutput", replaceTabs(output)), 0, 0));
 					}
@@ -961,8 +973,11 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			// Custom tools that draw their own frame (task) render flush; plain
 			// extension renderers keep the padded block. No background is painted
 			// either way: the terminal's own ground is the ground (slab class fix).
-			const customFramed = this.#contentBox.children.some(isFramedBlockComponent);
-			this.#contentBox.setPaddingX(customFramed ? 0 : 1);
+			// Self-framing custom renderers used to render flush at column 0 while
+			// everything around them sat on the rail. Both cases take the rail now; the
+			// frame is what makes a card a card, and where it starts is not the frame's
+			// business.
+			this.#contentBox.setPaddingX(COMPOSER_INSET_COLS);
 			this.#contentBox.setBgFn(undefined);
 		} else if (this.#toolName in toolRenderers) {
 			// Built-in tools with renderers
@@ -993,7 +1008,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 						this.#multiFileBoxes.push(spacer);
 						this.addChild(spacer);
 					}
-					const fileBox = new Box(0, 0);
+					const fileBox = new Box(COMPOSER_INSET_COLS, 0);
 					try {
 						const resultComponent = renderer.renderResult(
 							{ content: [], details: fileResult, isError: fileResult.isError },
@@ -1002,7 +1017,15 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 						);
 						if (resultComponent) fileBox.addChild(resultComponent);
 					} catch (err) {
-						logger.warn("Tool renderer failed", { tool: this.#toolName, error: String(err) });
+						// Without this row the file's box renders empty, which reads as
+						// "this file produced no result" rather than "the renderer broke".
+						fileBox.addChild(
+							reportRendererFailure(
+								this.#rendererSubject("result"),
+								err,
+								`no result is shown for ${fileResult.path}`,
+							),
+						);
 					}
 					this.#multiFileBoxes.push(fileBox);
 					this.addChild(fileBox);
@@ -1016,7 +1039,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 					const pendingSpacer = new Spacer(1);
 					this.#multiFileBoxes.push(pendingSpacer);
 					this.addChild(pendingSpacer);
-					const pendingBox = new Box(0, 0);
+					const pendingBox = new Box(COMPOSER_INSET_COLS, 0);
 					const spinner =
 						this.#spinnerFrame !== undefined ? formatStatusIcon("running", theme, this.#spinnerFrame) : "";
 					const pendingText = renderStatusLine(
@@ -1048,8 +1071,9 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 						const callComponent = renderer.renderCall(callArgs, this.#renderState, theme);
 						if (callComponent) this.#contentBox.addChild(callComponent);
 					} catch (err) {
-						logger.warn("Tool renderer failed", { tool: this.#toolName, error: String(err) });
-						// Fall back to default on error
+						this.#contentBox.addChild(
+							reportRendererFailure(this.#rendererSubject("call"), err, "showing the tool name only"),
+						);
 						this.#contentBox.addChild(new Text(theme.fg("toolTitle", theme.bold(this.#toolLabel)), 0, 0));
 					}
 				}
@@ -1069,9 +1093,14 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 						);
 						if (resultComponent) this.#contentBox.addChild(resultComponent);
 					} catch (err) {
-						logger.warn("Tool renderer failed", { tool: this.#toolName, error: String(err) });
-						// Fall back to showing raw output on error
 						const output = this.#getTextOutput();
+						this.#contentBox.addChild(
+							reportRendererFailure(
+								this.#rendererSubject("result"),
+								err,
+								output ? "showing raw output" : "there is no raw output to show instead",
+							),
+						);
 						if (output) {
 							this.#contentBox.addChild(new Text(theme.fg("toolOutput", replaceTabs(output)), 0, 0));
 						}
@@ -1127,6 +1156,16 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			}
 		}
 		this.#renderedImageCount = this.#imageComponents.length;
+	}
+
+	/**
+	 * Reader-facing name for whichever half of this tool's renderer threw, so the
+	 * transcript notice says which tool and which phase rather than just "a
+	 * renderer". `renderCall` and `renderResult` fail independently and for
+	 * different reasons, and knowing which one is most of the debugging.
+	 */
+	#rendererSubject(phase: "call" | "result"): string {
+		return `tool "${this.#toolName}" ${phase}`;
 	}
 
 	#getCallArgsForRender(): unknown {

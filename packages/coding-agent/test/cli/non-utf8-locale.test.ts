@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { removeWithRetries } from "@veyyon/utils";
-import { hermeticSpawnEnv, type HermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
+import { type HermeticSpawnEnv, hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
 
 /**
  * The CLI under a non-UTF-8 locale (ENV-4).
@@ -70,10 +70,7 @@ describe("the CLI under LC_ALL=C", () => {
 			stderr: "pipe",
 			env,
 		});
-		const [stdout, exitCode] = await Promise.all([
-			new Response(proc.stdout as ReadableStream).text(),
-			proc.exited,
-		]);
+		const [stdout, exitCode] = await Promise.all([new Response(proc.stdout as ReadableStream).text(), proc.exited]);
 		return { stdout, exitCode };
 	}
 

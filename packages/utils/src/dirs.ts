@@ -18,9 +18,12 @@ import { YAML } from "bun";
 import { engines, version } from "../package.json" with { type: "json" };
 import { atomicWriteFileSync } from "./atomic-write";
 import { withFileLockSync } from "./file-lock";
+import { isMissingPath } from "./fs-error";
 import { isUuid } from "./regex";
+import { bareVersion } from "./semver";
 import { sleepSync } from "./sleep";
 import { errorMessage, isRecord } from "./type-guards";
+import { syncYamlTextToSettings } from "./yaml-sync";
 
 /** App name (e.g. "veyyon") */
 export const APP_NAME: string = "veyyon";
@@ -39,6 +42,27 @@ export const SITE_URL: string = "https://veyyon.dev";
 
 /** Public changelog/releases page. Where `/changelog` and the update notice point. */
 export const CHANGELOG_URL: string = "https://veyyon.dev/changelog";
+
+/**
+ * The changelog page, scrolled to one version's entry.
+ *
+ * Three surfaces want to link a specific version: the post-update hint ("here is
+ * what changed"), the rollback picker (per row, "what am I giving up"), and any
+ * release tooling that names a version. They must agree, so the anchor format
+ * lives here rather than being rebuilt at each call site.
+ *
+ * The format is the one `website/tools/gen-changelog.mjs` emits: it writes
+ * `<h2 id="v1-2-3">` for version `1.2.3`, replacing every dot with a dash
+ * because a dot in a fragment id is legal but awkward to select in CSS. A
+ * leading `v` in the argument is tolerated, since callers hold versions both
+ * ways (`ReleaseInfo.tag` is `v1.2.3`, `ReleaseInfo.version` is `1.2.3`), and
+ * silently producing `#vv1-2-3` would land the reader at the top of the page
+ * with no indication that the link missed.
+ */
+export function changelogUrlForVersion(version: string): string {
+	const bare = bareVersion(version);
+	return `${CHANGELOG_URL}#v${bare.replace(/\./g, "-")}`;
+}
 
 /** Config directory name (e.g. ".veyyon") */
 export const CONFIG_DIR_NAME: string = ".veyyon";
@@ -433,6 +457,10 @@ function mutateGlobalConfigKey(key: string, mutate: (current: Record<string, unk
 	return withFileLockSync(canonicalPath, () => {
 		let filePath = canonicalPath;
 		let existing: Record<string, unknown> = {};
+		// The file's own bytes, so the write can EDIT it rather than re-serialize it: this
+		// is a file people hand-edit, and a re-serialization discards their comments,
+		// blank lines and key order (see syncYamlTextToSettings).
+		let existingText = "";
 		for (const filename of MAIN_CONFIG_FILENAMES) {
 			const candidate = path.join(root, filename);
 			let text: string;
@@ -452,6 +480,7 @@ function mutateGlobalConfigKey(key: string, mutate: (current: Record<string, unk
 			}
 			if (isRecord(parsed)) {
 				existing = parsed as Record<string, unknown>;
+				existingText = text;
 			}
 			filePath = candidate;
 			break;
@@ -488,7 +517,7 @@ function mutateGlobalConfigKey(key: string, mutate: (current: Record<string, unk
 		}
 		// Atomic: an interrupted write here would corrupt cross-profile keys
 		// (the pointer to the active profile, credential-sharing posture).
-		atomicWriteFileSync(filePath, YAML.stringify(existing, null, 2));
+		atomicWriteFileSync(filePath, syncYamlTextToSettings(existingText, existing));
 		return filePath;
 	});
 }
@@ -637,6 +666,9 @@ export function readGlobalDefaultProfileSafe(): string | undefined {
 	try {
 		return resolveGlobalDefaultProfile();
 	} catch {
+		// Undefined means "no global default", so the caller uses the built-in default profile. Quiet on
+		// purpose and only here: this runs at module load, where there is no logger to report to yet, and
+		// the CLI re-reads the same config through the validating path that DOES report it.
 		return undefined;
 	}
 }
@@ -767,9 +799,71 @@ export async function directoryExists(dir: string): Promise<boolean> {
 	}
 }
 
-/** Get the config directory name relative to home (e.g. ".veyyon" or VEYYON_CONFIG_DIR override). */
+/**
+ * A `VEYYON_CONFIG_DIR` value written as an absolute path, on either platform.
+ *
+ * `path.isAbsolute` only knows the platform it runs on, and a value written for
+ * the other one is the same mistake: `C:\veyyon` on Linux is not "absolute" to
+ * `path`, so it would be joined and create a directory whose NAME contains a
+ * backslash. Both forms are caught so the message is the same wherever the value
+ * was authored.
+ */
+function looksAbsolute(value: string): boolean {
+	return path.isAbsolute(value) || /^[a-zA-Z]:[\\/]/.test(value) || value.startsWith("\\\\");
+}
+
+/**
+ * Get the config directory name relative to home (e.g. ".veyyon" or a
+ * `VEYYON_CONFIG_DIR` override), refusing values that cannot mean what they say.
+ *
+ * This is a NAME, not a path, and the two ways of getting that wrong both used to
+ * pass through silently because the caller only ever `path.join`s the result onto
+ * the home directory:
+ *
+ *  - An ABSOLUTE path. `path.join("/home/you", "/srv/veyyon")` is
+ *    `/home/you/srv/veyyon`, so somebody moving their config to another volume got
+ *    a brand new tree inside their home instead, with the old one still in place
+ *    and no message. That is the worst shape a config error can take: it appears to
+ *    work, and the data is not where the user believes it is.
+ *  - Whitespace only. `" "` would create a directory named with a space, invisible
+ *    in every listing. The EMPTY value still falls back to the default, because that
+ *    is how a shell passes a variable it exported without setting.
+ *
+ * A `..` segment is deliberately NOT refused. It leaves the home directory, which
+ * looks like the same class of mistake, but it is the sanctioned in-process isolation
+ * lever and behaves exactly as `path.join` says: `os.homedir()` is fixed for the life
+ * of a process under Bun, so a test that needs the config root in a temp directory
+ * has no other way to get there and passes `path.relative(os.homedir(), tempRoot)`.
+ * See `docs/internal/testing.md`. Nothing about it is silent: the value the user wrote
+ * is the path they get.
+ *
+ * This throws rather than warning-and-ignoring, unlike the relative-`XDG_*_HOME`
+ * case in {@link isUsableXdgBase}. The difference is which answer is safe: ignoring
+ * a bad XDG base leaves veyyon at its normal location, while ignoring a bad config
+ * dir would write the user's credentials somewhere they did not ask for. When the
+ * fix is one line and the failure is silent data placement, refuse.
+ */
 export function getConfigDirName(): string {
-	return pickProcessEnv(...CONFIG_DIR_ENV_KEYS) || CONFIG_DIR_NAME;
+	const override = pickProcessEnv(...CONFIG_DIR_ENV_KEYS);
+	if (override === undefined || override === "") return CONFIG_DIR_NAME;
+	const key = CONFIG_DIR_ENV_KEYS[0];
+	if (override.trim() === "") {
+		throw new Error(
+			`${key} is set to whitespace (${JSON.stringify(override)}). It names the config directory under your home ` +
+				`directory, so this would create a directory whose name you cannot see. Set it to a directory name ` +
+				`such as ".veyyon", or unset it to use the default.`,
+		);
+	}
+	if (looksAbsolute(override)) {
+		throw new Error(
+			`${key} is set to the absolute path "${override}", but it names the config directory under your home ` +
+				`directory rather than replacing it, so veyyon would have created ` +
+				`"${path.join(resolveHomeDirOrThrow(), override)}" instead of what you asked for. Set it to a name such ` +
+				`as ".veyyon", or to move the config root onto another volume use the XDG variables ` +
+				`(XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_STATE_HOME, XDG_CACHE_HOME), which do take absolute paths.`,
+		);
+	}
+	return override;
 }
 
 /** Get the config agent directory name relative to home (e.g. ".veyyon/profiles/default/agent"). */
@@ -1001,6 +1095,117 @@ export function getConfigRootDir(): string {
  */
 export function getGlobalConfigRootDir(): string {
 	return getBaseConfigRoot();
+}
+
+/**
+ * The process-global dir overrides: `VEYYON_CODING_AGENT_DIR`, `VEYYON_PROFILE`, and the
+ * in-memory active profile. Captured together so they can be put back exactly.
+ *
+ * Neither {@link setAgentDir} nor {@link setProfile} is its own inverse, which is why
+ * this exists rather than a "call it again with the old value" idiom:
+ *
+ * - `setAgentDir` always WRITES the environment variable, so it cannot express "the
+ *   variable was absent", and it CLEARS the active profile, so a suite that ran under
+ *   `work` hands the next file the default profile.
+ * - `setProfile` always WRITES `VEYYON_PROFILE`, so restoring a profile through it
+ *   leaves that variable exported even when it started out absent — which then wins for
+ *   every child process the next suite spawns.
+ *
+ * Suites that restored either way leaked the developer's real agent dir, or an
+ * unexpected profile, into every file that ran after them; `scripts/find-test-leaks.ts`
+ * found roughly thirty of them.
+ */
+export interface DirOverridesSnapshot {
+	agentDirEnv: string | undefined;
+	profileEnv: string | undefined;
+	profile: string | undefined;
+	/**
+	 * The pre-profile agent-dir baseline (see the field's own docs). It is module state
+	 * that `setAgentDir` OVERWRITES, and it cannot always be re-derived from the
+	 * environment: a process started with `VEYYON_CODING_AGENT_DIR=/custom` whose suite
+	 * then activated a profile leaves the environment pointing at the profile's dir, so a
+	 * re-derivation from that environment discards `/custom` and the next
+	 * `setProfile(undefined)` anywhere in the process resolves to the wrong place.
+	 */
+	preProfileAgentDir: string | undefined;
+}
+
+/**
+ * Capture the dir overrides so {@link restoreDirOverrides} can undo a `setAgentDir` or
+ * `setProfile` call completely.
+ *
+ * For suites outside `packages/coding-agent`. Inside it, prefer
+ * `beginSettingsTest()` / `restoreSettingsTestState()`, which capture this along
+ * with the Settings singleton, the keybindings singleton, the project dir and the
+ * whole environment.
+ */
+export function captureDirOverrides(): DirOverridesSnapshot {
+	return {
+		agentDirEnv: process.env[AGENT_DIR_ENV_KEYS[0]],
+		profileEnv: process.env.VEYYON_PROFILE,
+		profile: activeProfile,
+		preProfileAgentDir: preProfileAgentDirEnv,
+	};
+}
+
+/**
+ * Put the environment and the active profile back, then rebuild the resolver from
+ * them.
+ *
+ * The profile is recovered with `__resetDirsFromEnvForTests`, not
+ * `refreshDirsFromEnv`: the latter rebuilds paths AROUND the current in-memory
+ * profile, so a profile `setAgentDir` cleared would stay cleared and every later
+ * path would resolve under `profiles/default/` with the environment looking
+ * correct. `refreshDirsFromEnv` is then called LAST, once every input is back, so
+ * the resolver reflects the snapshot rather than the intermediate states the
+ * recovery passes through.
+ *
+ * Every step is a pure function of `snapshot`. That is the property to preserve:
+ * a restore that reads live module state can hand back a resolver the snapshot
+ * never described, and the resulting failure lands in whichever suite runs next.
+ * `dir-overrides-restore-is-pure.test.ts` pins it across both branches, with the
+ * global `defaultProfile` set and unset, since which branch runs depends on it.
+ */
+export function restoreDirOverrides(snapshot: DirOverridesSnapshot): void {
+	writeSnapshotEnv(snapshot);
+	// The reset's `__resetProfileSnapshotForTests` re-derives the pre-profile baseline from
+	// the environment written on the line above, which is why the profile switch below can
+	// safely build the resolver from that baseline: by then it is the snapshot's value and
+	// not whatever the test being undone left behind. Moving the env write after the reset
+	// would break that and resolve every path under the undone test's directory, with the
+	// environment and the module state both reading back correct.
+	__resetDirsFromEnvForTests();
+	// The environment does not always pin the profile: an active profile that was
+	// selected in-process (no `VEYYON_PROFILE`) is only in module state, so it is
+	// re-applied explicitly rather than inferred.
+	if (activeProfile !== snapshot.profile) setProfile(snapshot.profile);
+	// `setProfile` EXPORTS the profile's agent dir (so child processes inherit it), which
+	// is right in production and wrong here: it would leave a variable behind that the
+	// snapshot says was absent. The profile outranks the variable anyway, so re-pinning
+	// the environment after the switch restores the variables without moving any path.
+	writeSnapshotEnv(snapshot);
+	// Re-assigned because `setProfile`'s first activation overwrites the baseline from the
+	// live environment.
+	preProfileAgentDirEnv = snapshot.preProfileAgentDir;
+	// LAST, and deliberately unconditional: which of the steps above last touched `dirs`
+	// depends on whether the profile switch ran, and that depends on the machine's global
+	// `defaultProfile`. One rebuild from the now fully-restored inputs makes the resolver
+	// match the snapshot by construction instead of by every branch happening to leave it
+	// right, which is the difference between a bug here and a bug in whichever suite runs
+	// next.
+	refreshDirsFromEnv();
+}
+
+/** Test-only: read the pre-profile agent-dir baseline, so a leak tracer can watch it. */
+export function __preProfileAgentDirForTests(): string | undefined {
+	return preProfileAgentDirEnv;
+}
+
+function writeSnapshotEnv(snapshot: DirOverridesSnapshot): void {
+	if (snapshot.agentDirEnv === undefined) delete process.env[AGENT_DIR_ENV_KEYS[0]];
+	else process.env[AGENT_DIR_ENV_KEYS[0]] = snapshot.agentDirEnv;
+	if (snapshot.profileEnv === undefined) delete process.env.VEYYON_PROFILE;
+	else process.env.VEYYON_PROFILE = snapshot.profileEnv;
 }
 
 /** Set the coding agent directory. Creates a fresh resolver, invalidating all cached paths. */
@@ -1585,6 +1790,23 @@ export function getAutoUpdateStatePath(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "auto-update-state.json", "state");
 }
 
+/**
+ * Get the version-move history file (~/.veyyon/agent/update-history.json).
+ *
+ * Records each deliberate move between versions (from, to, when) so the rollback
+ * picker can annotate a row with "you were here before" and so a support
+ * question about "it worked last week" has an answer on disk.
+ *
+ * It is ANNOTATION ONLY and is never the source of the version list: that comes
+ * from the release source every time. A history file is trivially incomplete —
+ * it knows nothing about installs that happened through the shell installer, a
+ * package manager, or another machine — so treating it as the catalog would
+ * quietly hide most versions from the picker.
+ */
+export function getUpdateHistoryPath(agentDir?: string): string {
+	return dirs.agentSubdir(agentDir, "update-history.json", "state");
+}
+
 /** Get the path to history.db (SQLite database for session history). */
 export function getHistoryDbPath(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "history.db", "data");
@@ -1730,9 +1952,35 @@ export function getInstallId(): string {
 			cachedInstallId = existing;
 			return existing;
 		}
-		// File present but unparseable — fall through and overwrite below.
-		observedInvalid = existing.length > 0;
-	} catch {}
+		// File present and not an id — fall through and overwrite below. This is set for an
+		// EMPTY file too, which is what a crash between the create and the write leaves
+		// behind. It used to be `existing.length > 0`, so a zero-length file was never
+		// unlinked, the `O_EXCL` create below then failed with EEXIST forever, and the
+		// install generated a brand new id on every single launch with nothing to fix.
+		observedInvalid = true;
+		if (existing.length > 0) {
+			// Replacing this file changes the install's identity, which is what server-side
+			// dedup keys on: the same machine starts counting as a new one. Doing that in
+			// silence leaves nobody able to explain the discontinuity later.
+			process.emitWarning(
+				`${filePath} does not contain a UUID (${existing.length} bytes), so it is being replaced with a new ` +
+					`install id. Anything that identified this install by the old value will see it as a new install.`,
+				{ code: "VEYYON_INSTALL_ID_INVALID" },
+			);
+		}
+	} catch (err) {
+		// A missing file is the first run and says nothing. Anything else means the id IS
+		// on disk and unreadable, so a fresh one is generated below and the write almost
+		// certainly fails the same way, leaving a per-process identity (see the tail of
+		// this function). Announce the cause here while the errno is still in hand.
+		if (!isMissingPath(err)) {
+			process.emitWarning(
+				`${filePath} exists but could not be read (${errorMessage(err)}), so this install's identity could not be ` +
+					`recovered. A new id is being used; fix the file's permissions to keep one stable identity.`,
+				{ code: "VEYYON_INSTALL_ID_UNREADABLE" },
+			);
+		}
+	}
 
 	const next = crypto.randomUUID();
 	try {
@@ -1742,7 +1990,12 @@ export function getInstallId(): string {
 		if (observedInvalid) {
 			try {
 				fs.unlinkSync(filePath);
-			} catch {}
+			} catch {
+				// Losing this race is fine and expected: another process replaced the same
+				// garbage, and the O_EXCL open below then fails with EEXIST and re-reads its
+				// id. The unlink failing for any other reason surfaces as the persist warning
+				// at the end of this function, which is where it matters.
+			}
 		}
 		const fd = fs.openSync(filePath, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL, 0o600);
 		try {
@@ -1759,10 +2012,21 @@ export function getInstallId(): string {
 					cachedInstallId = existing;
 					return existing;
 				}
-			} catch {}
+			} catch {
+				// The winner's file cannot be read back. Falls through to the warning below,
+				// which is the right report: this process ends up with an id of its own.
+			}
 		}
-		// Any other failure: keep the generated id in-memory so the rest of
-		// this process has a stable value; future processes will retry.
+		// Keep the generated id in-memory so the rest of this process has a stable value.
+		// It is stable for THIS process only: nothing was persisted, so the next launch
+		// generates another one, and every run of veyyon on this machine looks like a
+		// different install. Server-side dedup keyed on the id then never dedups anything.
+		// That is a permanent, invisible degradation, so it is announced (Law 10).
+		process.emitWarning(
+			`Could not persist an install id to ${filePath} (${errorMessage(err)}). This run is using a temporary id, and ` +
+				`every future run will generate another one until the path is writable.`,
+			{ code: "VEYYON_INSTALL_ID_NOT_PERSISTED" },
+		);
 	}
 
 	cachedInstallId = next;

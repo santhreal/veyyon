@@ -42,30 +42,26 @@ interface VimeoVideoConfig {
  * Extract video ID from various Vimeo URL formats
  */
 function extractVideoId(url: string): string | null {
-	try {
-		const parsed = tryParseUrl(url);
-		if (!parsed) return null;
+	const parsed = tryParseUrl(url);
+	if (!parsed) return null;
 
-		// player.vimeo.com/video/{id}
-		if (parsed.hostname === "player.vimeo.com") {
-			const match = parsed.pathname.match(/^\/video\/(\d+)/);
-			return match?.[1] ?? null;
-		}
-
-		// vimeo.com/{id} or vimeo.com/{user}/{id}
-		if (parsed.hostname === "vimeo.com" || parsed.hostname === "www.vimeo.com") {
-			const parts = parsed.pathname.split("/").filter(Boolean);
-			// Last part should be the video ID
-			const lastPart = parts[parts.length - 1];
-			if (lastPart && /^\d+$/.test(lastPart)) {
-				return lastPart;
-			}
-		}
-
-		return null;
-	} catch {
-		return null;
+	// player.vimeo.com/video/{id}
+	if (parsed.hostname === "player.vimeo.com") {
+		const match = parsed.pathname.match(/^\/video\/(\d+)/);
+		return match?.[1] ?? null;
 	}
+
+	// vimeo.com/{id} or vimeo.com/{user}/{id}
+	if (parsed.hostname === "vimeo.com" || parsed.hostname === "www.vimeo.com") {
+		const parts = parsed.pathname.split("/").filter(Boolean);
+		// Last part should be the video ID
+		const lastPart = parts[parts.length - 1];
+		if (lastPart && /^\d+$/.test(lastPart)) {
+			return lastPart;
+		}
+	}
+
+	return null;
 }
 
 /**

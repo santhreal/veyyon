@@ -4297,8 +4297,13 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 		// A fresh workflow was created (not resumed on the old socket).
 		expect(createCount).toBe(2);
 		expect(sockets).toHaveLength(2);
-		// The dead first workflow was stopped server-side.
-		expect(patchedWorkflows.some(url => url.includes("workflow-1"))).toBe(true);
+		// The dead first workflow was stopped server-side, and ONLY it. The
+		// existence check that stood here could not tell whether the live
+		// workflow-2 had been stopped alongside it, which is the more damaging half
+		// of getting this wrong: the user's fresh turn dies server-side and the
+		// client keeps streaming into a workflow that is no longer running.
+		expect(patchedWorkflows.filter(url => url.includes("workflow-1"))).toHaveLength(1);
+		expect(patchedWorkflows.some(url => url.includes("workflow-2"))).toBe(false);
 		// The old socket never received an actionResponse — the steer was not dropped onto it.
 		expect(sent[0]?.some(data => data.includes("actionResponse"))).toBe(false);
 		// The fresh workflow's START request goal transcript carries the steer instruction

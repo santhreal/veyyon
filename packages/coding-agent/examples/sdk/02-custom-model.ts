@@ -4,15 +4,15 @@
  * Shows how to select a specific model and thinking level.
  */
 import { ThinkingLevel } from "@veyyon/agent-core";
-import { getModel } from "@veyyon/ai";
-import { createAgentSession, discoverAuthStorage, discoverModels } from "@veyyon/coding-agent";
+import { getBundledModel } from "@veyyon/catalog";
+import { createAgentSession, discoverAuthStorage, ModelRegistry } from "@veyyon/coding-agent";
 
 // Set up auth storage and model registry
 const authStorage = await discoverAuthStorage();
-const modelRegistry = await discoverModels(authStorage);
+const modelRegistry = new ModelRegistry(authStorage);
 
 // Option 1: Find a specific built-in model by provider/id
-const opus = getModel("anthropic", "claude-opus-4-5");
+const opus = getBundledModel("anthropic", "claude-opus-4-5");
 if (opus) {
 	console.log(`Found model: ${opus.provider}/${opus.id}`);
 }

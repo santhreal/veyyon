@@ -15,6 +15,7 @@ import { countTokens } from "../tokenizer";
 import type { AgentMessage, AgentToolCall } from "../types";
 import { estimateTokens } from "./compaction";
 import type { CustomMessageEntry, SessionEntry, SessionMessageEntry } from "./entries";
+import { getToolResultMessage } from "./entries";
 import {
 	collectToolCallsById,
 	isProtectedToolResult,
@@ -90,13 +91,6 @@ export type ShakeRegion = ToolResultShakeRegion | BlockShakeRegion;
 // conservative by design (uppercase / mixed-case tags are ignored).
 const OPENING_XML = /^<([a-z_-]+)(?:\s+[^>]*)?>$/;
 const CLOSING_XML = /^<\/([a-z_-]+)>$/;
-
-function getToolResultMessage(entry: SessionEntry): ToolResultMessage | undefined {
-	if (entry.type !== "message") return undefined;
-	const message = entry.message as AgentMessage;
-	if (message.role !== "toolResult") return undefined;
-	return message as ToolResultMessage;
-}
 
 function toolResultText(message: ToolResultMessage): string {
 	return message.content

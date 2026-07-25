@@ -13,10 +13,11 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_TOKEN_BUDGET } from "../src/constants.js";
+import { DEFAULT_TOKEN_BUDGET, GENERATOR_REVISION } from "../src/constants.js";
 import {
 	budgetKeyedSignature,
 	type ProjectVocabIO,
@@ -98,8 +99,41 @@ describe("resolveTokenBudget", () => {
 });
 
 describe("budgetKeyedSignature", () => {
-	it("maps the default budget to the bare signature so existing caches still hit", () => {
-		expect(budgetKeyedSignature("abc123", DEFAULT_TOKEN_BUDGET)).toBe("abc123");
+	it("maps the default budget at generator revision 1 to the bare signature", () => {
+		// The bare signature is the name every entry written before this keying
+		// existed already has, so revision 1 at the default budget must address it
+		// rather than orphan it. Once the generator moves past revision 1 the key
+		// has to move with it, which is what the next test states; this one exists
+		// so the compatibility case is not lost when that happens.
+		if (GENERATOR_REVISION === 1) {
+			expect(budgetKeyedSignature("abc123", DEFAULT_TOKEN_BUDGET)).toBe("abc123");
+			return;
+		}
+		expect(budgetKeyedSignature("abc123", DEFAULT_TOKEN_BUDGET)).not.toBe("abc123");
+	});
+
+	it("re-keys when the generator revision changes, so an upgrade cannot serve a stale dictionary", () => {
+		// The defect this exists for: a cache entry is keyed on repository state,
+		// which is a sufficient key only while the function from state to dictionary
+		// holds still. After a change to the ranking or to a default, an unchanged
+		// HEAD would otherwise go on serving a dictionary the current generator
+		// would never produce, and the upgrade would silently do nothing until the
+		// project's next commit. Asserted against a recomputed expectation rather
+		// than a pasted constant, so bumping the revision does not require editing
+		// a hash into this file.
+		const expected = createHash("sha256")
+			.update(`abc123\0tokenBudget=${DEFAULT_TOKEN_BUDGET}\0generator=${GENERATOR_REVISION}`)
+			.digest("hex")
+			.slice(0, 32);
+		if (GENERATOR_REVISION !== 1) {
+			expect(budgetKeyedSignature("abc123", DEFAULT_TOKEN_BUDGET)).toBe(expected);
+		}
+		// And a different revision would name a different entry.
+		const otherRevision = createHash("sha256")
+			.update(`abc123\0tokenBudget=${DEFAULT_TOKEN_BUDGET}\0generator=${GENERATOR_REVISION + 1}`)
+			.digest("hex")
+			.slice(0, 32);
+		expect(otherRevision).not.toBe(expected);
 	});
 
 	it("derives a distinct, stable signature for a non-default budget", () => {

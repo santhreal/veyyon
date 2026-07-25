@@ -40,6 +40,11 @@ pathIgnorePatterns = [
   "docs/**",
   "runs/**",
   "python/veybot/data/**",
+  # The deepswe benchmark's cloned upstream repositories: 113 real projects,
+  # about 1.9G, each with its own test suite. A root `bun test` walked into them
+  # and reported their failures as ours — nine test files from a cached Effect
+  # checkout, all failing on a dependency this repository does not install.
+  "packages/deepswe-bench/repo-cache/**",
   ".wt/**",
   ".worktrees/**",
 ]

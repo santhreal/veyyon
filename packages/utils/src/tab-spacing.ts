@@ -5,6 +5,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { isFsError } from "./fs-error";
+import * as logger from "./logger";
+import { errorMessage } from "./type-guards";
 
 export const MIN_TAB_WIDTH = 1;
 export const MAX_TAB_WIDTH = 16;
@@ -80,11 +82,32 @@ function buildGlobPattern(globStr: string, recursive: boolean): string {
 	return fixUnclosedBraces(pattern);
 }
 
+/** Patterns already reported as unusable, so each bad `.editorconfig` section is named once. */
+const reportedBadGlobs = new Set<string>();
+
+/**
+ * Match a path against an `.editorconfig`-derived glob.
+ *
+ * The `catch` is defence in depth, not a known failure path: `Bun.Glob` accepts every malformed pattern
+ * that was tried against it (unterminated classes and braces, reversed ranges, empty classes, and
+ * patterns hundreds of thousands of characters long), and the common typo of an unclosed brace is
+ * repaired by `fixUnclosedBraces` before it gets here. Should a pattern ever be refused, the answer has
+ * to stay "does not match", because one bad section must not discard the rest of the file and this runs
+ * on a format-on-write path that must not throw. That answer is indistinguishable from a valid pattern
+ * that does not apply, so the pattern is named once rather than dropped silently.
+ */
 function globMatches(pattern: string, relativePath: string): boolean {
 	try {
 		const g = new Bun.Glob(pattern);
 		return g.match(relativePath);
-	} catch {
+	} catch (error) {
+		if (!reportedBadGlobs.has(pattern)) {
+			reportedBadGlobs.add(pattern);
+			logger.warn("An .editorconfig section pattern could not be compiled; that section is being ignored", {
+				pattern,
+				error: errorMessage(error),
+			});
+		}
 		return false;
 	}
 }

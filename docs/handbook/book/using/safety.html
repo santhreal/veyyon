@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f3663b17.js";
+            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-de67d70d.js"></script>
+        <script src="../toc-578177b6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -197,7 +197,7 @@
                     <main>
                         <h1 id="safety"><a class="header" href="#safety">Safety</a></h1>
 <p>Commands and file writes go through <strong>approval mode</strong> (<code>tools.approvalMode</code>). There is no OS command sandbox (Landlock, seccomp, Seatbelt, bubblewrap). Policy details: <a href="../features/sandbox.html">Approvals</a>. Concepts: <a href="../concepts/permission-model.html">Permission model</a>. Summary: <a href="../benefits/safety-errors.html">Approvals and errors</a>.</p>
-<p>Task subagents can use <strong>filesystem isolation</strong> (CoW worktree backends via <code>task.isolation.*</code>) so their edits land in a private tree until merged. That is change-control for subagents, not an OS process sandbox. See task tool docs / <code>task.isolation</code> in settings.</p>
+<p>Task subagents can use <strong>filesystem isolation</strong> (CoW worktree backends via <code>subagent.isolation.*</code>) so their edits land in a private tree until merged. That is change-control for subagents, not an OS process sandbox. See the task tool docs, or the Isolation group in the Subagents settings tab.</p>
 <h2 id="operator-visible-cases"><a class="header" href="#operator-visible-cases">Operator-visible cases</a></h2>
 <div class="table-wrapper">
 <table>

@@ -5,6 +5,7 @@ import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/c
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { taskToolRenderer } from "@veyyon/coding-agent/task/renderer";
 import type { AgentProgress, SingleResult, TaskToolDetails } from "@veyyon/coding-agent/task/types";
+import { useFullColor } from "../helpers/theme-assertions";
 
 function runningProgress(overrides: Partial<AgentProgress> = {}): AgentProgress {
 	return {
@@ -58,6 +59,13 @@ function findRow(component: { render: (w: number) => readonly string[] }, needle
 }
 
 describe("task progress rendering", () => {
+	// The completed-row check asserts the label settles from accent to the
+	// plain foreground: `toContain(theme.fg("text", ...))` paired with
+	// `not.toContain(theme.fg("accent", ...))`. Both sides collapse to the same
+	// bare text unless the ANSI policy is `full`, which makes the pair
+	// self-contradictory, so the suite only held together by inheriting a
+	// colour-capable terminal. Declare the dependency instead of inheriting it.
+	useFullColor();
 	beforeEach(async () => {
 		resetSettingsForTest();
 		await Settings.init({ inMemory: true });
@@ -469,7 +477,7 @@ describe("task progress rendering", () => {
 	});
 
 	it("hides the resolved model badge when the setting is turned off", async () => {
-		settings.set("task.showResolvedModelBadge", false);
+		settings.set("subagent.showResolvedModelBadge", false);
 		const theme = (await getThemeByName("dark"))!;
 		const options: RenderResultOptions = { expanded: false, isPartial: true, spinnerFrame: 0 };
 		const progress = runningProgress({

@@ -26,7 +26,7 @@
     "check:types": "tsgo -p tsconfig.json --noEmit",
     "lint": "biome lint .",
     "test": "bun test --parallel",
-    "bench": "bun bench/lexpack-bench.ts",
+    "bench": "bun bench/argot-bench.ts",
     "fix": "biome check --write --unsafe .",
     "fmt": "biome format --write ."
   },

@@ -104,9 +104,12 @@ describe("tool-argument union over-coercion — properties", () => {
 
 	it("string|number keeps EVERY real number as that number", () => {
 		fc.assert(
-			fc.property(fc.oneof(fc.integer(), fc.float({ noNaN: true, noDefaultInfinity: true }).filter(Number.isFinite)), n => {
-				expect(validate(z.object({ f: z.union([z.string(), z.number()]) }), { f: n })).toEqual({ f: n });
-			}),
+			fc.property(
+				fc.oneof(fc.integer(), fc.float({ noNaN: true, noDefaultInfinity: true }).filter(Number.isFinite)),
+				n => {
+					expect(validate(z.object({ f: z.union([z.string(), z.number()]) }), { f: n })).toEqual({ f: n });
+				},
+			),
 			RUNS,
 		);
 	});
@@ -130,10 +133,13 @@ describe("tool-argument union over-coercion — properties", () => {
 	const fieldSpecArb: fc.Arbitrary<FieldSpec> = fc.oneof(
 		cleanStringArb.map(value => ({ zod: z.string() as z.ZodType, value })),
 		fc.integer().map(value => ({ zod: z.number().int() as z.ZodType, value })),
-		fc.float({ noNaN: true, noDefaultInfinity: true }).filter(Number.isFinite).map(value => ({
-			zod: z.number() as z.ZodType,
-			value,
-		})),
+		fc
+			.float({ noNaN: true, noDefaultInfinity: true })
+			.filter(Number.isFinite)
+			.map(value => ({
+				zod: z.number() as z.ZodType,
+				value,
+			})),
 		fc.boolean().map(value => ({ zod: z.boolean() as z.ZodType, value })),
 		// The fixed path, mixed into whole-object generation:
 		numericStringArb.map(value => ({ zod: z.union([z.string(), z.number()]) as z.ZodType, value })),

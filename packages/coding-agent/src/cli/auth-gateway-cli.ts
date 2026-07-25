@@ -12,9 +12,6 @@
  *   - `token` / `token --regenerate` — manages the gateway bearer token file.
  *   - `status` — prints the locally-stored gateway token and bind hint.
  */
-import * as crypto from "node:crypto";
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import {
 	type Api,
 	AuthStorage,
@@ -27,10 +24,11 @@ import {
 import { AuthBrokerClient, RemoteAuthCredentialStore, type SnapshotResponse } from "@veyyon/ai/auth-broker";
 import { DEFAULT_AUTH_GATEWAY_BIND, startAuthGateway } from "@veyyon/ai/auth-gateway";
 import { type GeneratedProvider, getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
-import { errorMessage, formatCount, getConfigRootDir, isEnoent, VERSION } from "@veyyon/utils";
+import { errorMessage, formatCount, VERSION } from "@veyyon/utils";
 import chalk from "chalk";
 import { type AuthBrokerClientConfig, resolveAuthBrokerConfig } from "../session/auth-broker-config";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
+import { AuthTokenFile, printToken } from "./auth-token-file";
 
 export type AuthGatewayAction = "serve" | "token" | "status" | "check";
 
@@ -59,72 +57,8 @@ export interface AuthGatewayCommandArgs {
 
 const ACTIONS: readonly AuthGatewayAction[] = ["serve", "token", "status", "check"];
 
-function getTokenFilePath(): string {
-	return path.join(getConfigRootDir(), "auth-gateway.token");
-}
-
-async function readToken(): Promise<string | null> {
-	try {
-		const raw = await Bun.file(getTokenFilePath()).text();
-		const trimmed = raw.trim();
-		return trimmed.length > 0 ? trimmed : null;
-	} catch (err) {
-		if (isEnoent(err)) return null;
-		throw err;
-	}
-}
-
-async function writeToken(token: string): Promise<void> {
-	const file = getTokenFilePath();
-	await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
-	await fs.writeFile(file, token, { mode: 0o600 });
-	try {
-		await fs.chmod(file, 0o600);
-	} catch {
-		// Best-effort (e.g. Windows).
-	}
-}
-
-/**
- * Atomically create the token file, refusing to clobber an existing one.
- * Returns `true` on success, `false` when the file already existed (so the
- * caller re-reads it instead of racing another concurrent `ensureToken`).
- */
-async function createTokenExclusive(token: string): Promise<boolean> {
-	const file = getTokenFilePath();
-	await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
-	try {
-		// `wx` = O_CREAT | O_EXCL — fails with EEXIST if the file is already there.
-		await fs.writeFile(file, token, { flag: "wx", mode: 0o600 });
-	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code === "EEXIST") return false;
-		throw err;
-	}
-	try {
-		await fs.chmod(file, 0o600);
-	} catch {
-		// Best-effort (e.g. Windows).
-	}
-	return true;
-}
-
-function generateToken(): string {
-	return crypto.randomBytes(32).toString("base64url");
-}
-
-async function ensureToken(): Promise<string> {
-	const existing = await readToken();
-	if (existing) return existing;
-	const token = generateToken();
-	if (await createTokenExclusive(token)) return token;
-	// Another concurrent invocation won the create race; read what they wrote.
-	const fromRace = await readToken();
-	if (fromRace) return fromRace;
-	// File existed-then-disappeared between EEXIST and read; last resort, write
-	// our generated token unconditionally so callers don't see an empty string.
-	await writeToken(token);
-	return token;
-}
+/** The gateway's bearer-token file. Behaviour is owned by {@link AuthTokenFile}. */
+const TOKEN_FILE = new AuthTokenFile("auth-gateway.token");
 
 function createBrokerClient(brokerConfig: AuthBrokerClientConfig): AuthBrokerClient {
 	return new AuthBrokerClient({ url: brokerConfig.url, token: brokerConfig.token });
@@ -144,7 +78,7 @@ async function runServe(flags: AuthGatewayCommandArgs["flags"]): Promise<void> {
 		);
 	}
 	const bind = flags.bind ?? DEFAULT_AUTH_GATEWAY_BIND;
-	const gatewayToken = flags.noAuth ? null : await ensureToken();
+	const gatewayToken = flags.noAuth ? null : await TOKEN_FILE.ensure();
 
 	// Build a broker-backed AuthStorage — same pattern as discoverAuthStorage()
 	// in sdk.ts. The gateway never touches local SQLite.
@@ -188,7 +122,7 @@ async function runServe(flags: AuthGatewayCommandArgs["flags"]): Promise<void> {
 	});
 	process.stdout.write(`auth-gateway listening on ${handle.url}\n`);
 	if (gatewayToken) {
-		process.stdout.write(`bearer token: ${getTokenFilePath()} (chmod 0600)\n`);
+		process.stdout.write(`bearer token: ${TOKEN_FILE.path()} (chmod 0600)\n`);
 	} else {
 		process.stdout.write(`auth: disabled (--no-auth) — any client can call this gateway\n`);
 	}
@@ -231,29 +165,10 @@ async function runServe(flags: AuthGatewayCommandArgs["flags"]): Promise<void> {
 	}
 }
 
-async function runToken(flags: AuthGatewayCommandArgs["flags"]): Promise<void> {
-	if (flags.regenerate) {
-		const next = generateToken();
-		await writeToken(next);
-		if (flags.json) {
-			process.stdout.write(`${JSON.stringify({ token: next, path: getTokenFilePath() })}\n`);
-		} else {
-			process.stdout.write(`${next}\n`);
-		}
-		return;
-	}
-	const token = await ensureToken();
-	if (flags.json) {
-		process.stdout.write(`${JSON.stringify({ token, path: getTokenFilePath() })}\n`);
-	} else {
-		process.stdout.write(`${token}\n`);
-	}
-}
-
 async function runStatus(flags: AuthGatewayCommandArgs["flags"]): Promise<void> {
-	const token = await readToken();
+	const token = await TOKEN_FILE.read();
 	const brokerConfig = await resolveAuthBrokerConfig();
-	const tokenFile = getTokenFilePath();
+	const tokenFile = TOKEN_FILE.path();
 	if (!brokerConfig) {
 		const status = {
 			ready: false,
@@ -334,7 +249,7 @@ export async function runAuthGatewayCommand(cmd: AuthGatewayCommandArgs): Promis
 			await runServe(cmd.flags);
 			return;
 		case "token":
-			await runToken(cmd.flags);
+			await printToken(TOKEN_FILE, cmd.flags);
 			return;
 		case "status":
 			await runStatus(cmd.flags);

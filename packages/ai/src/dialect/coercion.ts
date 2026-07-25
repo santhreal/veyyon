@@ -1,4 +1,4 @@
-import { getOwnProperty, isRecord, setSafeProperty } from "@veyyon/utils";
+import { errorMessage, getOwnProperty, isRecord, logger, parseJsonWithRepair, setSafeProperty } from "@veyyon/utils";
 import { toolWireSchema } from "../utils/schema";
 import type { InbandTool } from "./types";
 
@@ -140,6 +140,55 @@ export function normalizeKimiFunctionName(rawId: string): string {
  */
 export function recordOrEmpty(value: unknown): Record<string, unknown> {
 	return isRecord(value) ? value : {};
+}
+
+/** Enough of a tool payload to recognize its shape in a log, without putting the whole thing there. */
+function excerptArgs(text: string): string {
+	return text.length > 200 ? `${text.slice(0, 200)}…` : text;
+}
+
+/**
+ * Parse a tool call's raw `arguments` text into a record, reporting text that will not parse.
+ *
+ * Three streaming dialects (DeepSeek, Harmony, Kimi) and the GitLab Duo provider each had their own copy
+ * of this, and each copy
+ * caught the parse failure and returned `{}`. Empty is also what a call that legitimately takes no
+ * arguments produces, so a model that emitted arguments the repair pass could not salvage had them
+ * SILENTLY DROPPED: the tool then ran with no arguments at all, which is a different call from the one
+ * the model made, and nothing in the transcript said so.
+ *
+ * Empty is still returned, because a dialect parser cannot abort a stream mid-tool-call and the tool's
+ * own argument validation is the right place to refuse. What is new is that the loss is reported with
+ * the source, the tool name, and a bounded excerpt of the text that would not parse, so the dropped
+ * arguments can be told apart from a call that never had any.
+ */
+export function parseToolArgsText(raw: string, context: { source: string; tool?: string }): Record<string, unknown> {
+	const trimmed = raw.trim();
+	if (trimmed.length === 0) return {};
+	let parsed: unknown;
+	try {
+		parsed = parseJsonWithRepair<unknown>(trimmed);
+	} catch (error) {
+		logger.warn("Tool call arguments could not be parsed; the tool is being called with none", {
+			source: context.source,
+			tool: context.tool,
+			error: errorMessage(error),
+			excerpt: excerptArgs(trimmed),
+		});
+		return {};
+	}
+	if (!isRecord(parsed)) {
+		// Valid JSON that is not an object is the same silent loss by another route: a model that emitted a
+		// bare string or an array had it turned into `{}` by `recordOrEmpty` with nothing said.
+		logger.warn("Tool call arguments were not an object; the tool is being called with none", {
+			source: context.source,
+			tool: context.tool,
+			received: Array.isArray(parsed) ? "array" : typeof parsed,
+			excerpt: excerptArgs(trimmed),
+		});
+		return {};
+	}
+	return parsed;
 }
 
 /**

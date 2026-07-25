@@ -182,7 +182,9 @@ describe("loadPage keeps rotating user agents for the cases that need it", () =>
 	 * whole loop would be dead weight, so it is pinned alongside the limit on it.
 	 */
 	it("stops as soon as a user agent gets through the block", async () => {
-		const attempts = patchFetch(attempt => (attempt === 0 ? botBlocked() : html("<html><body>real page</body></html>")));
+		const attempts = patchFetch(attempt =>
+			attempt === 0 ? botBlocked() : html("<html><body>real page</body></html>"),
+		);
 
 		const result = await loadPage("https://guarded.example/page", { timeout: 5 });
 
@@ -232,9 +234,7 @@ describe("loadPage keeps rotating user agents for the cases that need it", () =>
 	 */
 	it("retries a 429 once with the same user agent", async () => {
 		const attempts = patchFetch(attempt =>
-			attempt === 0
-				? html("", 429, { "retry-after": "0" })
-				: html("<html><body>after the limit</body></html>"),
+			attempt === 0 ? html("", 429, { "retry-after": "0" }) : html("<html><body>after the limit</body></html>"),
 		);
 
 		const result = await loadPage("https://limited.example/page", { timeout: 5 });

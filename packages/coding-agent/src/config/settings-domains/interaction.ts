@@ -216,7 +216,11 @@ export const INTERACTION_SETTINGS = {
 			tab: "interaction",
 			group: "Startup & Updates",
 			label: "Automatic Updates",
-			description: "Install a newer version in the background; it takes effect on the next launch",
+			// The off state is spelled out because the setting reads as "updates
+			// on/off" otherwise, and somebody who wants to stop updates landing on
+			// their own needs to know they still get them on demand rather than
+			// being stranded on whatever version they are on.
+			description: "Install a newer version in the background; off means updates only when you run `veyyon update`",
 		},
 	},
 

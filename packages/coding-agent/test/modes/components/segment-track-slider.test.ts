@@ -19,6 +19,7 @@ import { renderSliderLines } from "@veyyon/coding-agent/modes/components/segment
 import type { ThemeJson } from "@veyyon/coding-agent/modes/theme/color";
 import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
 import { createTheme, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { useFullColor } from "../../helpers/theme-assertions";
 
 const titanium = defaultThemes.titanium as ThemeJson;
 
@@ -29,6 +30,11 @@ function useTheme(preset: "unicode" | "ascii"): void {
 const SEGMENTS = [{ label: "fast", detail: "haiku tier" }, { label: "base" }, { label: "max", detail: "opus tier" }];
 
 describe("renderSliderLines — one slider owner, preset-safe glyphs", () => {
+	// Lock 1 asserts a raw truecolor sequence, and `theme.fg` is the identity
+	// function unless the ANSI policy is `full`. Without this declaration the
+	// suite passed in a colour-capable terminal and failed in the gate, which is
+	// the ninth suite in this package to hit it; `useFullColor` exists for it.
+	useFullColor();
 	beforeAll(() => useTheme("unicode"));
 	afterAll(() => useTheme("unicode"));
 

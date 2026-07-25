@@ -8,7 +8,13 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { $env, $which, getPythonEnvDir } from "@veyyon/utils";
-import { BASE_ENV_ALLOWLIST, CASE_INSENSITIVE_ENV, createEnvFilter, SECRET_ENV_DENYLIST } from "../runtime-env";
+import {
+	BASE_ENV_ALLOW_PREFIXES,
+	BASE_ENV_ALLOWLIST,
+	CASE_INSENSITIVE_ENV,
+	createEnvFilter,
+	SECRET_ENV_DENYLIST,
+} from "../runtime-env";
 
 // Python-specific runtime-state vars not shared by the other language
 // sandboxes (venv/conda layout, import path).
@@ -43,7 +49,9 @@ const WINDOWS_ENV_ALLOWLIST = [
 	"WINDIR",
 ];
 
-const DEFAULT_ENV_ALLOW_PREFIXES = ["LC_", "XDG_", "VEYYON_"];
+// Python needs no prefixes beyond the shared base: its venv/conda layout is
+// carried by named variables in PYTHON_ENV_ALLOWLIST, not by a namespace.
+const PYTHON_ENV_ALLOW_PREFIXES = [...BASE_ENV_ALLOW_PREFIXES];
 
 function resolvePathKey(env: Record<string, string | undefined>): string {
 	if (!CASE_INSENSITIVE_ENV) return "PATH";
@@ -75,7 +83,7 @@ export const filterEnv = createEnvFilter({
 	allowList: [...BASE_ENV_ALLOWLIST, ...PYTHON_ENV_ALLOWLIST],
 	windowsAllowList: WINDOWS_ENV_ALLOWLIST,
 	denyList: SECRET_ENV_DENYLIST,
-	allowPrefixes: DEFAULT_ENV_ALLOW_PREFIXES,
+	allowPrefixes: PYTHON_ENV_ALLOW_PREFIXES,
 });
 
 /**

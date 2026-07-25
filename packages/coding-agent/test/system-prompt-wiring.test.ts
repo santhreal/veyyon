@@ -31,7 +31,7 @@ import { buildSystemPrompt } from "@veyyon/coding-agent/system-prompt";
 import {
 	OPTION_BACKED_RUNTIME_SECTIONS,
 	RUNTIME_SECTIONS,
-} from "@veyyon/coding-agent/system-prompt-builder/prompt-blocks";
+} from "@veyyon/coding-agent/system-prompt-builder/section-registry";
 
 /** The production entry point that builds the prompt for a real session. */
 const SDK_SOURCE = readFileSync(fileURLToPath(new URL("../src/sdk.ts", import.meta.url)), "utf8");
@@ -109,7 +109,7 @@ describe("an option-backed section renders exactly what its option carries", () 
 
 			expect(joined).toContain(marker);
 			// It must arrive under its own banner, not smuggled into another section.
-			const bannerLine = section.banner.split("\n")[0] as string;
+			const bannerLine = section.name;
 			expect(joined.indexOf(marker)).toBeGreaterThan(joined.indexOf(bannerLine));
 		});
 	}

@@ -1,5 +1,6 @@
 import { gunzipSync, gzipSync } from "node:zlib";
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
+import { normalizeDevinSessionToken } from "@veyyon/catalog/discovery/devin";
 import {
 	ChatMessageRequestType,
 	GetChatMessageRequestSchema,
@@ -68,7 +69,6 @@ export interface DevinOptions extends StreamOptions {
 const CHAT_MESSAGE_PATH = "/exa.api_server_pb.ApiServerService/GetChatMessage";
 const DEVIN_IDE_VERSION = "3.2.23";
 const DEVIN_EXTENSION_VERSION = "1.48.2";
-const DEVIN_SESSION_TOKEN_PREFIX = "devin-session-token$";
 const DEVIN_AUTH_PATH = "/exa.auth_pb.AuthService/GetUserJwt";
 const DEVIN_DEFAULT_STOP_PATTERNS = ["<|user|>", "<|bot|>", "<|context_request|>", "<|endoftext|>", "<|end_of_turn|>"];
 
@@ -366,11 +366,6 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 
 	return stream;
 };
-
-function normalizeDevinSessionToken(apiKey: string | undefined): string {
-	if (!apiKey) return "";
-	return apiKey.startsWith(DEVIN_SESSION_TOKEN_PREFIX) ? apiKey : `${DEVIN_SESSION_TOKEN_PREFIX}${apiKey}`;
-}
 
 async function fetchDevinAuthMetadata(
 	apiKey: string,

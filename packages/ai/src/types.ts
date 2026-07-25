@@ -123,7 +123,22 @@ export type CacheRetention = "none" | "short" | "long";
  * Per-family scoping is expressed by {@link ServiceTierByFamily}, not by
  * scoped sentinel values — see {@link serviceTierFamily}.
  */
-export type ServiceTier = "auto" | "default" | "flex" | "scale" | "priority";
+export const SERVICE_TIERS = ["auto", "default", "flex", "scale", "priority"] as const;
+
+export type ServiceTier = (typeof SERVICE_TIERS)[number];
+
+/**
+ * Is this a service tier?
+ *
+ * The type is derived from {@link SERVICE_TIERS} rather than declared beside it, so
+ * the values exist exactly once and this guard cannot fall behind them. Both
+ * OpenAI-compatible servers used to spell the five values again in a comparison
+ * chain, which meant a new tier was accepted by the type system and silently
+ * dropped from an incoming request.
+ */
+export function isServiceTier(value: unknown): value is ServiceTier {
+	return typeof value === "string" && (SERVICE_TIERS as readonly string[]).includes(value);
+}
 
 /** Provider families that expose an independent service-tier knob. */
 export type ServiceTierFamily = "openai" | "anthropic" | "google";
@@ -907,6 +922,43 @@ export interface Context {
 	systemPrompt?: string[];
 	messages: Message[];
 	tools?: Tool[];
+	/**
+	 * How many trailing assistant messages keep their Gemini `thoughtSignature`
+	 * verbatim. Older tool calls send Google's skip sentinel instead.
+	 *
+	 * Signatures are opaque and large, and every historical one is re-uploaded
+	 * on every request, so on a long session they become the biggest single
+	 * thing in the context. Leave this undefined to send them all, which is the
+	 * behaviour every non-Google provider and every caller that has not opted in
+	 * already has.
+	 */
+	thoughtSignatureRetention?: number;
+	/**
+	 * Longest Gemini `thoughtSignature` still worth re-uploading, in characters.
+	 * Anything longer sends Google's skip sentinel instead, at any age.
+	 *
+	 * This is a size rule, not a second recency rule, and it exists because
+	 * signature bytes are extremely concentrated: across twenty measured sessions
+	 * the largest tenth of signatures held 62.1% of all signature bytes, with a
+	 * median of 660 characters against a maximum of 91,960. A cap therefore removes
+	 * most of the mass while leaving the great majority of the reasoning chain
+	 * intact, which is the gentler trade if replaying old reasoning turns out to
+	 * matter. Composes with {@link thoughtSignatureRetention}: a signature is sent
+	 * only when it is both recent enough and small enough. Leave undefined, or set
+	 * a non-positive value, for no limit.
+	 */
+	thoughtSignatureMaxLength?: number;
+	/**
+	 * How many trailing assistant messages keep an UNSIGNED thinking block.
+	 * Older unsigned blocks are dropped from the request entirely.
+	 *
+	 * Gemini attaches its thought signature to the function call, not to the
+	 * thought summary, so an unsigned summary carries nothing the provider can
+	 * replay: it is transcript text, re-uploaded on every turn. A SIGNED block is
+	 * never dropped, whatever this says. Leave undefined to send them all, which
+	 * is the behaviour before this existed.
+	 */
+	thinkingRetention?: number;
 }
 
 export type AssistantMessageEvent =

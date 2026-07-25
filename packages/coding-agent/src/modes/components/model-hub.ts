@@ -5,7 +5,7 @@
  * one entry per provider — locked providers included, dimmed) beside a
  * {@link ModelBrowser} body. The Roles view manages assignments directly:
  * pick a role, pick a model, adjust thinking in an inline strip, or clear the
- * role back to auto-selection. Locked providers forward to the /login flow.
+ * role back to inheriting the main model. Locked providers forward to the /login flow.
  * Fully mouse-navigable (hover, wheel, click). Session-only switching lives
  * in the compact alt+p picker ({@link ./model-picker}).
  */
@@ -23,6 +23,7 @@ import {
 	matchesKey,
 	padding,
 	routeSgrMouseInput,
+	ScrollView,
 	type SgrMouseEvent,
 	type TUI,
 	truncateToWidth,
@@ -30,7 +31,7 @@ import {
 } from "@veyyon/tui";
 import { clampLow, errorMessage } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";
-import { getKnownRoleIds, getRoleInfo } from "../../config/model-roles";
+import { getKnownRoleIds, getRoleInfo, ROLE_INHERIT_LABEL } from "../../config/model-roles";
 import type { Settings } from "../../config/settings";
 import { AUTO_THINKING, type ConfiguredThinkingLevel, getConfiguredThinkingLevelMetadata } from "../../thinking";
 import { theme } from "../theme/theme";
@@ -43,6 +44,7 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
+	planModalChrome,
 	renderModalShell,
 	withCompact,
 } from "./modal-shell";
@@ -91,7 +93,7 @@ export interface ScopedModelItem {
 export interface ModelHubCallbacks {
 	/** Persist a role assignment. */
 	onAssign: (model: Model, role: string, thinkingLevel: ConfiguredThinkingLevel | undefined, selector: string) => void;
-	/** Clear a configured role back to auto-selection. */
+	/** Clear a configured role so it inherits the main model again. */
 	onUnassign: (role: string) => void;
 	/** Persist a `retry.fallbackChains` entry — keyed by a role, `provider/model-id`, or `provider/*`; an empty chain clears the key. */
 	onFallbackChainChange?: (role: string, chain: string[]) => void;
@@ -248,6 +250,8 @@ export class ModelHubComponent implements Component {
 	#chipRanges: ChipRange[] = [];
 	#lockedLoginLine: number | null = null;
 	#rolesRowStart = 1;
+	/** First roles row drawn: the window offset that keeps the selection on screen. */
+	#rolesScroll = 0;
 	/** One-shot open unfold (TOUCH-5); settles instantly with shimmer disabled. */
 	#reveal = new ModalRevealDriver();
 
@@ -328,10 +332,10 @@ export class ModelHubComponent implements Component {
 		return getKnownRoleIds(this.#settings).filter(role => !getRoleInfo(role, this.#settings).hidden);
 	}
 
-	/** Resolve every known role: configured values first, auto-selection for the rest. */
+	/** Resolve every role the operator has assigned; unset roles inherit the main model. */
 	#reloadRoles(autoCandidates: ReadonlyArray<Model>): void {
 		const allModels = this.#scopedModels.length > 0 ? autoCandidates : this.#registry.getAll();
-		this.#roles = resolveRoleAssignments(this.#settings, allModels, autoCandidates);
+		this.#roles = resolveRoleAssignments(this.#settings, allModels);
 	}
 
 	/** Rebuild items, roles, and the sidebar from the registry's in-memory state. */
@@ -431,8 +435,7 @@ export class ModelHubComponent implements Component {
 		const visibleRoles = this.#visibleRoleIds();
 		let assignedCount = 0;
 		for (const role of visibleRoles) {
-			const assignment = this.#roles[role];
-			if (assignment && !assignment.autoSelected) assignedCount++;
+			if (this.#roles[role]) assignedCount++;
 		}
 
 		// Roles leads the fixed section so downward hops from Recent head into
@@ -557,6 +560,9 @@ export class ModelHubComponent implements Component {
 			}
 			return sanitized;
 		} catch {
+			// No readable chains means none to show. `get` throws only when there is no settings context, in
+			// which case this panel is not on screen either; a chain that IS configured cannot arrive empty
+			// through this path, because a malformed value is sanitized above rather than thrown over.
 			return {};
 		}
 	}
@@ -791,7 +797,7 @@ export class ModelHubComponent implements Component {
 	#assignRole(item: ModelBrowserItem, role: string, returnToRoles: boolean): void {
 		const current = this.#roles[role];
 		let level: ConfiguredThinkingLevel = ThinkingLevel.Inherit;
-		if (current && !current.autoSelected) {
+		if (current) {
 			const supported = this.#thinkingOptionsFor(item.model);
 			level = supported.includes(current.thinkingLevel) ? current.thinkingLevel : ThinkingLevel.Inherit;
 		}
@@ -801,8 +807,7 @@ export class ModelHubComponent implements Component {
 	}
 
 	#unassignRole(role: string): void {
-		const assignment = this.#roles[role];
-		if (!assignment || assignment.autoSelected) return;
+		if (!this.#roles[role]) return;
 		this.#callbacks.onUnassign(role);
 		this.#refreshAfterMutation();
 	}
@@ -817,10 +822,7 @@ export class ModelHubComponent implements Component {
 			const info = getRoleInfo(role, this.#settings);
 			const assignment = this.#roles[role];
 			const assignedHere =
-				!!assignment &&
-				!assignment.autoSelected &&
-				assignment.model.provider === item.model.provider &&
-				assignment.model.id === item.model.id;
+				!!assignment && assignment.model.provider === item.model.provider && assignment.model.id === item.model.id;
 			const label = (info.tag ?? info.name ?? role).toLowerCase();
 			chips.push({
 				label,
@@ -1043,6 +1045,8 @@ export class ModelHubComponent implements Component {
 		try {
 			return [...this.#settings.get("cycleOrder")];
 		} catch {
+			// An empty cycle is what an unset `cycleOrder` means, and quick-switch simply has nothing to
+			// cycle through. Reachable only without a settings context, which is also without this panel.
 			return [];
 		}
 	}
@@ -1440,7 +1444,7 @@ export class ModelHubComponent implements Component {
 		if (event.motion) {
 			this.#sidebarHover = overSidebar ? this.#sidebarEntryIndexAt(contentLine) : null;
 			if (overBody && entry.kind === "roles" && this.#assigning === null) {
-				const roleLine = bodyLine - this.#rolesRowStart;
+				const roleLine = bodyLine - this.#rolesRowStart + this.#rolesScroll;
 				this.#roleHover = roleLine >= 0 && roleLine < this.#rolesRowCount ? roleLine : null;
 			} else {
 				this.#roleHover = null;
@@ -1476,7 +1480,7 @@ export class ModelHubComponent implements Component {
 		if (overBody) {
 			if (entry.kind === "roles" && this.#assigning === null) {
 				this.#focus = "list";
-				const roleLine = bodyLine - this.#rolesRowStart;
+				const roleLine = bodyLine - this.#rolesRowStart + this.#rolesScroll;
 				if (roleLine >= 0 && roleLine < this.#rolesRowCount) {
 					const rowDef = this.#rolesRows[roleLine];
 					if (rowDef && rowDef.kind !== "separator") {
@@ -1636,7 +1640,7 @@ export class ModelHubComponent implements Component {
 				text = `Recently used models${scopedSuffix}`;
 				break;
 			case "roles":
-				text = "Model roles — f adds a retry fallback, cleared roles fall back to auto-selection";
+				text = "Model roles — f adds a retry fallback, cleared roles follow the main model";
 				break;
 			case "provider":
 				if (entry.locked) {
@@ -1669,7 +1673,7 @@ export class ModelHubComponent implements Component {
 		return out;
 	}
 
-	#renderRolesView(width: number, rows: number): string[] {
+	#renderRolesView(fullWidth: number, rows: number): string[] {
 		const lines: string[] = [];
 		lines.push("");
 		// First row's offset in bodyLine coordinates: the mouse router's
@@ -1686,7 +1690,31 @@ export class ModelHubComponent implements Component {
 
 		const cycleOrder = this.#cycleOrder();
 		const listFocused = this.#focus === "list";
-		for (let i = 0; i < this.#rolesRows.length && lines.length < rows - 2; i++) {
+
+		// The roles list is taller than its pane once a role has a fallback chain
+		// (eight roles, + New role…, the separator, then a chain key, its
+		// selectors and + New fallback…), and it used to just stop drawing at the
+		// budget. Rows past the cut vanished with no cue, and arrowing onto one
+		// moved a cursor nobody could see, so the last row of the chains section
+		// was unreachable in practice. Window it around the selection instead.
+		const visibleRows = Math.max(1, rows - 2 - this.#rolesRowStart);
+		const maxScroll = Math.max(0, this.#rolesRows.length - visibleRows);
+		if (this.#rolesScroll > this.#roleIndex) this.#rolesScroll = this.#roleIndex;
+		if (this.#roleIndex >= this.#rolesScroll + visibleRows) this.#rolesScroll = this.#roleIndex - visibleRows + 1;
+		this.#rolesScroll = Math.min(Math.max(0, this.#rolesScroll), maxScroll);
+
+		// A window with no cue is the browser's old bug in a new pane: the rows are
+		// simply not there and nothing says so. `ScrollView` with `scrollbar: auto`
+		// is the one idiom this TUI uses for that (the model browser composes rows
+		// the same way), so the roles list borrows it rather than inventing a
+		// second convention. It reserves two columns when the list overflows, and
+		// rows are composed inside that band so nothing is truncated against it.
+		const overflows = this.#rolesRows.length > visibleRows;
+		const barCols = overflows ? 2 : 0;
+		const width = fullWidth - barCols;
+		const rowLines: string[] = [];
+
+		for (let i = this.#rolesScroll; i < this.#rolesRows.length && rowLines.length < visibleRows; i++) {
 			const rowDef = this.#rolesRows[i];
 			if (!rowDef) continue;
 			const selected = i === this.#roleIndex;
@@ -1695,7 +1723,7 @@ export class ModelHubComponent implements Component {
 			const cursor = selected && listFocused ? theme.fg("accent", theme.nav.cursor) : " ";
 
 			if (rowDef.kind === "separator") {
-				lines.push(`   ${theme.fg("borderAccent", "─".repeat(Math.max(1, width - 6)))}`);
+				rowLines.push(`   ${theme.fg("borderAccent", "─".repeat(Math.max(1, width - 6)))}`);
 				continue;
 			}
 
@@ -1703,7 +1731,7 @@ export class ModelHubComponent implements Component {
 				const label = rowDef.kind === "newRole" ? "+ New role…" : "+ New fallback…";
 				let line = ` ${cursor} ${theme.fg(selected ? "accent" : "dim", label)}`;
 				line = this.#finishRolesRow(line, width, hovered);
-				lines.push(line);
+				rowLines.push(line);
 				continue;
 			}
 
@@ -1714,7 +1742,7 @@ export class ModelHubComponent implements Component {
 				const keyStyled = theme.fg("dim", key.slice(0, slash + 1)) + (selected ? theme.fg("accent", tail) : tail);
 				let line = ` ${cursor} ${theme.fg("dim", theme.status.shadowed)} ${keyStyled}`;
 				line = this.#finishRolesRow(line, width, hovered);
-				lines.push(line);
+				rowLines.push(line);
 				continue;
 			}
 
@@ -1723,7 +1751,7 @@ export class ModelHubComponent implements Component {
 				const selector = selected ? theme.fg("accent", rowDef.selector) : theme.fg("muted", rowDef.selector);
 				let line = ` ${cursor} ${branch} ${selector}`;
 				line = this.#finishRolesRow(line, width, hovered);
-				lines.push(line);
+				rowLines.push(line);
 				continue;
 			}
 
@@ -1736,7 +1764,7 @@ export class ModelHubComponent implements Component {
 			let tagStyled: string;
 			let value: string;
 			let levelStyled = "";
-			if (assignment && !assignment.autoSelected) {
+			if (assignment) {
 				dot = theme.fg(info.color ?? "muted", theme.status.enabled);
 				tagStyled = theme.fg(info.color ?? "muted", tag);
 				value = `${theme.fg("dim", `${assignment.model.provider}/`)}${selected ? theme.fg("accent", assignment.model.id) : assignment.model.id}`;
@@ -1745,14 +1773,12 @@ export class ModelHubComponent implements Component {
 				if (assignment.thinkingLevel !== ThinkingLevel.Inherit) {
 					levelStyled = theme.fg("dim", glyph ? `${glyph} ${label}` : label);
 				}
-			} else if (assignment) {
-				dot = theme.fg("dim", theme.status.shadowed);
-				tagStyled = theme.fg("dim", tag);
-				value = theme.fg("dim", `auto → ${assignment.model.provider}/${assignment.model.id}`);
 			} else {
+				// Unset: the role follows the main model. Say so, rather than showing a
+				// dash (nothing happens) or an `auto →` model the operator never picked.
 				dot = theme.fg("dim", theme.status.shadowed);
 				tagStyled = theme.fg("dim", tag);
-				value = theme.fg("dim", "—");
+				value = theme.fg("dim", info.unsetLabel ?? ROLE_INHERIT_LABEL);
 			}
 
 			// Quick-cycle membership badge (`⟳2` = second stop of the ctrl+p cycle).
@@ -1767,7 +1793,20 @@ export class ModelHubComponent implements Component {
 				line = `${line}${" ".repeat(width - lineWidth - rightWidth - 1)}${right}`;
 			}
 			line = this.#finishRolesRow(line, width, hovered);
-			lines.push(line);
+			rowLines.push(line);
+		}
+
+		if (overflows) {
+			const scrollView = new ScrollView(rowLines, {
+				height: rowLines.length,
+				scrollbar: "auto",
+				totalRows: this.#rolesRows.length,
+				theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+			});
+			scrollView.setScrollOffset(this.#rolesScroll);
+			lines.push(...scrollView.render(fullWidth));
+		} else {
+			lines.push(...rowLines);
 		}
 
 		// Live preview of the quick-switch cycle, rendered with the exact
@@ -1784,11 +1823,11 @@ export class ModelHubComponent implements Component {
 					cycleOrder.map(role => ({ label: role })),
 					activeIndex,
 				);
-				lines[rows - 1] = truncateToWidth(`  ${theme.fg("dim", `${cycleKey} cycle:`)} ${track}`, width);
+				lines[rows - 1] = truncateToWidth(`  ${theme.fg("dim", `${cycleKey} cycle:`)} ${track}`, fullWidth);
 			} else {
 				lines[rows - 1] = truncateToWidth(
 					theme.fg("dim", `  ${cycleKey} cycle is empty — press c on a role to add it`),
-					width,
+					fullWidth,
 				);
 			}
 		}
@@ -2029,11 +2068,30 @@ export class ModelHubComponent implements Component {
 		const paneSep = theme.fg("dim", ` ${theme.boxSharp.vertical} `);
 		const bodyWidth = Math.max(1, contentWidth - sidebarWidth - 3);
 
-		// Mirrors ModalShell's internal body budget (no search chrome; the
-		// shortcut chips fit within `sizing.footerLines` rows) so the strip
-		// row reserved below is never truncated or padded away.
-		const bodyBudget = Math.max(1, dims.modalHeight - (3 + sizing.footerLines) - sizing.vPad);
-		const splitRows = Math.max(4, bodyBudget - 1);
+		// The strip row is the LAST body line, and the shell silently truncates a
+		// body that overruns its budget, so the split above the strip has to be
+		// sized against what the card will ACTUALLY show. This restated the
+		// arithmetic as `3 + footerLines + vPad`, charging vPad once where the
+		// shell charges it twice (above AND below the body); the body ran two rows
+		// long, the shell ate the tail, and the strip row — the hint line and every
+		// chip strip — never rendered at all on an ordinary 40-row terminal.
+		// `planModalChrome` is the one owner, and it accounts for wrapped chips and
+		// the short-card shrink order too, which a static minimum cannot.
+		const shortcuts = this.#shortcuts();
+		const chrome = planModalChrome({
+			sizing,
+			modalHeight: dims.modalHeight,
+			contentWidth,
+			shortcuts,
+			hoveredShortcutId: this.#hoveredShortcutId,
+		});
+		const bodyBudget = Math.max(1, chrome.maxBodyRows);
+		// The split gets everything the strip row does not. A `Math.max(4, …)`
+		// floor here meant a short card asked for five body rows when it could
+		// show one, and the shell dropped the strip again — the same silent
+		// truncation, one level up. A cramped split is recoverable (it scrolls);
+		// a missing strip row takes the key hints with it.
+		const splitRows = Math.max(0, bodyBudget - 1);
 
 		const entry = this.#activeEntry();
 		const paneLines: string[] = [this.#statusRow(bodyWidth)];
@@ -2042,7 +2100,7 @@ export class ModelHubComponent implements Component {
 		} else if (entry.kind === "provider" && entry.locked && this.#assigning === null) {
 			paneLines.push(...this.#renderLockedView(entry, bodyWidth, splitRows - 1));
 		} else {
-			this.#browser.setMaxVisible(splitRows - 1 - 5);
+			this.#browser.setMaxVisible(Math.max(1, splitRows - 1 - 5));
 			this.#browser.setFocused(this.#focus === "list");
 			paneLines.push(...this.#browser.render(bodyWidth));
 		}
@@ -2062,7 +2120,7 @@ export class ModelHubComponent implements Component {
 			areaWidth: width,
 			areaHeight: height,
 			body,
-			shortcuts: this.#shortcuts(),
+			shortcuts,
 			hoveredShortcutId: this.#hoveredShortcutId,
 			showClose: true,
 		});

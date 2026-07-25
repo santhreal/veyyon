@@ -140,6 +140,8 @@ function isValidBase64(payload: string): boolean {
 		Buffer.from(payload, "base64");
 		return true;
 	} catch {
+		// This asks whether a payload IS base64, so a decode failure is the answer: not base64. False keeps
+		// the content as text, which is the conservative direction for a sanitizer.
 		return false;
 	}
 }

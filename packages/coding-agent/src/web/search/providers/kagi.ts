@@ -7,14 +7,13 @@ import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import type { SearchResponse } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { KagiApiError, searchWithKagi } from "../../kagi";
-import { clampNumResults } from "../utils";
+import { clampNumResults, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { classifyProviderHttpError, toSearchSources } from "./utils";
 
 type SearchParamsWithFetch = SearchParams & { fetch?: FetchImpl };
 
-const DEFAULT_NUM_RESULTS = 10;
 const MAX_NUM_RESULTS = 40;
 
 /** Execute Kagi web search. */
@@ -27,7 +26,7 @@ export async function searchKagi(params: {
 	sessionId?: string;
 	fetch?: FetchImpl;
 }): Promise<SearchResponse> {
-	const numResults = clampNumResults(params.num_results, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
+	const numResults = clampNumResults(params.num_results, SEARCH_DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
 
 	try {
 		const result = await searchWithKagi(

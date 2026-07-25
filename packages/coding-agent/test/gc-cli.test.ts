@@ -7,6 +7,7 @@ import { gunzipSync } from "node:zlib";
 import { runGcCommand } from "@veyyon/coding-agent/cli/gc-cli";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getAgentDir, getBlobsDir, getHistoryDbPath, getSessionsDir, setAgentDir, setProjectDir } from "@veyyon/utils";
+import { enterIsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
 import { runCli } from "../src/cli";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 
@@ -692,14 +693,12 @@ describe("runGcCommand cold-session archive", () => {
 		await fs.mkdir(path.dirname(dbPath), { recursive: true });
 		await Bun.write(dbPath, "not sqlite");
 
-		// runCli's legacy-layout migration gate reads ~/<configDirName> before
-		// dispatching gc; a real ~/.veyyon in the both-layouts conflict state
-		// would exit 1 with the migration error instead of the GC error under
-		// test. Isolate via the live-read VEYYON_CONFIG_DIR name (bun's
-		// os.homedir() ignores runtime HOME mutation).
-		const configDirName = `.veyyon-gc-cli-test-${crypto.randomUUID()}`;
-		const previousConfigDir = process.env.VEYYON_CONFIG_DIR;
-		process.env.VEYYON_CONFIG_DIR = configDirName;
+		// runCli's legacy-layout migration gate reads the config root before dispatching
+		// gc; a real ~/.veyyon in the both-layouts conflict state would exit 1 with the
+		// migration error instead of the GC error under test. Isolate the root into a temp
+		// directory — `VEYYON_CONFIG_DIR` is live-read, which is the only lever available
+		// because bun's `os.homedir()` ignores a runtime HOME mutation.
+		const isolated = enterIsolatedConfigRoot("gc-cli");
 		await runCli([
 			"gc",
 			"--agent-dir",
@@ -713,9 +712,7 @@ describe("runGcCommand cold-session archive", () => {
 			"0",
 			"--apply",
 		]);
-		if (previousConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
-		else process.env.VEYYON_CONFIG_DIR = previousConfigDir;
-		await fs.rm(path.join(os.homedir(), configDirName), { recursive: true, force: true });
+		isolated.restore();
 
 		const stderr = stderrWrites.join("");
 		expect(process.exitCode).toBe(1);

@@ -24,6 +24,10 @@ export function AgentDrawer(props: {
 	const { agent, progress, client, readOnly, host, onClose } = props;
 	const [entries, setEntries] = useState<readonly SessionEntry[]>([]);
 	const [fetchError, setFetchError] = useState<string | null>(null);
+	// Transcript lines the poller could not parse. Counted rather than listed:
+	// the count is what tells you the transcript you are reading is incomplete,
+	// and a corrupt file can produce thousands of them.
+	const [droppedRows, setDroppedRows] = useState(0);
 	const [draft, setDraft] = useState("");
 
 	useEffect(() => {
@@ -42,6 +46,7 @@ export function AgentDrawer(props: {
 	useEffect(() => {
 		setEntries([]);
 		setFetchError(null);
+		setDroppedRows(0);
 		if (!agent.hasSessionFile) return;
 		let disposed = false;
 		let inFlight = false;
@@ -72,6 +77,14 @@ export function AgentDrawer(props: {
 					case "advance":
 						cursor = decision.newSize;
 						carry = decision.carry;
+						if (decision.skipped.length > 0) {
+							// Loud on purpose. Dropping a row silently renders a transcript
+							// with a hole in it that reads as "the agent said nothing here".
+							for (const skip of decision.skipped) {
+								console.warn(`transcript row dropped at offset ${skip.offset}: ${skip.snippet}`);
+							}
+							setDroppedRows(n => n + decision.skipped.length);
+						}
 						if (decision.fresh.length > 0) {
 							acc = [...acc, ...decision.fresh];
 							setEntries(acc);
@@ -183,6 +196,12 @@ export function AgentDrawer(props: {
 						{fetchError !== null ? (
 							<div className="ag-fetch-error" role="alert">
 								transcript unavailable: {fetchError}
+							</div>
+						) : null}
+						{droppedRows > 0 ? (
+							<div className="ag-transcript-dropped" role="status">
+								{droppedRows} unreadable {droppedRows === 1 ? "row" : "rows"} skipped: this transcript is
+								incomplete
 							</div>
 						) : null}
 					</>

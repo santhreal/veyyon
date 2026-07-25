@@ -508,6 +508,9 @@ export async function isSqliteFile(absolutePath: string): Promise<boolean> {
 	try {
 		return looksLikeSqlite(await Bun.file(absolutePath).slice(0, SQLITE_MAGIC.byteLength).bytes());
 	} catch {
+		// A file whose first bytes cannot be read is handled as an ordinary file, and the ordinary read
+		// path then reports why it could not be opened. Claiming it is a database we cannot open would
+		// replace that report with a worse one.
 		return false;
 	}
 }

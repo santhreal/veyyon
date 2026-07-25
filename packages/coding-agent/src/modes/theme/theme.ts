@@ -247,7 +247,11 @@ async function loadTheme(name: string, options: CreateThemeOptions = {}): Promis
 export async function getThemeByName(name: string): Promise<Theme | undefined> {
 	try {
 		return await loadTheme(name);
-	} catch {
+	} catch (error) {
+		// Undefined is also the answer for a theme that does not exist, and the caller (an extension
+		// asking for a theme by name) cannot tell a typo from a broken theme file. Naming the theme and
+		// the parse error is the difference between fixing your JSON and assuming the name was wrong.
+		logger.warn("Theme could not be loaded", { theme: name, error: errorMessage(error) });
 		return undefined;
 	}
 }
@@ -814,6 +818,9 @@ function isLightThemeJson(themeJson: ThemeJson): boolean {
 		const luminance = colorLuma(resolved);
 		return luminance !== undefined && luminance > 0.5;
 	} catch {
+		// A theme whose status-line background cannot be resolved gets classified as dark, which is the
+		// same answer an unreadable luminance gives above. Dark is the safe default because it is the
+		// shipped default, and the load path reports the malformed theme with its parse error.
 		return false;
 	}
 }
@@ -900,6 +907,9 @@ export function isLightTheme(themeName?: string): boolean {
 			const content = fs.readFileSync(customPath, "utf-8");
 			themeJson = JSON.parse(content) as ThemeJson;
 		} catch {
+			// Classified as dark rather than reported, deliberately: this is a synchronous classifier called
+			// on render paths, and the theme's LOAD reports the same broken file once with its error. A
+			// warning here would repeat it for every frame.
 			return false;
 		}
 	}
@@ -969,6 +979,23 @@ const HIGHLIGHT_CACHE_MAX = 256;
 const highlightCache = new LRUCache<string, string>({ max: HIGHLIGHT_CACHE_MAX });
 let highlightCacheTheme: Theme | undefined;
 
+/** Languages already reported as failing to highlight, so the warning below fires once each. */
+const reportedHighlightFailures = new Set<string>();
+
+/**
+ * Report a highlighter failure once per language.
+ *
+ * Highlighting failing and a language being unsupported both end as plain text, so without this the
+ * difference is invisible: a native highlighter that throws on every Rust block looks exactly like a
+ * build with Rust support missing. Bounded to one warning per language because this is a render path.
+ */
+function reportHighlightFailureOnce(lang: string | undefined, error: unknown): void {
+	const key = lang ?? "(no language)";
+	if (reportedHighlightFailures.has(key)) return;
+	reportedHighlightFailures.add(key);
+	logger.warn("Code could not be highlighted; rendering it plain", { lang: key, error: errorMessage(error) });
+}
+
 function highlightCached(code: string, validLang: string | undefined, highlightTheme: Theme): string | null {
 	if (highlightCacheTheme !== highlightTheme) {
 		highlightCache.clear();
@@ -982,7 +1009,11 @@ function highlightCached(code: string, validLang: string | undefined, highlightT
 	let highlighted: string;
 	try {
 		highlighted = nativeHighlightCode(code, validLang, getHighlightColors(highlightTheme));
-	} catch {
+	} catch (error) {
+		// Null means "render this code plain", which is also what an unsupported language gets, so a
+		// highlighter that is actually FAILING looked like a language nobody supports. Reported once per
+		// language: this runs per code block, and a warning per frame would be its own bug.
+		reportHighlightFailureOnce(validLang, error);
 		return null;
 	}
 	highlightCache.set(key, highlighted);

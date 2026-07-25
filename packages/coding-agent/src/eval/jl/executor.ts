@@ -1,28 +1,30 @@
-import * as path from "node:path";
 import { errorMessage, getProjectDir, logger } from "@veyyon/utils";
 import type { ToolSession } from "../../tools";
 import {
 	attachSessionOwner,
+	buildEvalSessionKey,
 	createCancelledKernelResult,
 	executeWithKernelBase,
 	getRemainingTimeoutMs,
 	isCancellationError as isCancellationErrorBase,
 	isTimedOutCancellation as isTimedOutCancellationBase,
+	type KernelMode,
+	normalizeSessionCwd,
 } from "../executor-base";
 import { ensureKernelToolBridge, type KernelToolBridgeInfo } from "../kernel-tool-bridge";
 import type { EvalDisplayOutput, EvalStatusEvent } from "../types";
-import {
-	checkJuliaKernelAvailability,
-	JuliaKernel,
-	type KernelExecuteOptions,
-	type KernelExecuteResult,
-} from "./kernel";
+import { checkJuliaKernelAvailability, JuliaKernel } from "./kernel";
 import { resolveExplicitJuliaRuntime } from "./runtime";
 
 const SHUTDOWN_GRACE_MS = 1_000;
 
 export interface JuliaExecutorOptions {
 	cwd?: string;
+	/**
+	 * Whether the kernel outlives this call (`julia.kernelMode`). Defaults to `session`, which is the
+	 * behaviour every Julia eval had before the setting existed.
+	 */
+	kernelMode?: KernelMode;
 	sessionId?: string;
 	sessionFile?: string;
 	artifactsDir?: string;
@@ -40,10 +42,6 @@ export interface JuliaExecutorOptions {
 	bridge?: KernelToolBridgeInfo;
 	bridgeSessionId?: string;
 	artifactId?: string;
-}
-
-export interface JuliaKernelExecutor {
-	execute: (code: string, options?: KernelExecuteOptions) => Promise<KernelExecuteResult>;
 }
 
 export interface JuliaResult {
@@ -86,26 +84,6 @@ class JuliaExecutionCancelledError extends Error {
 const sessions = new Map<string, JuliaSession>();
 const startingSessions = new Map<string, StartingJuliaSession>();
 const resettingSessions = new Map<string, Promise<void>>();
-
-function normalizeSessionCwd(cwd: string): string {
-	return path.resolve(cwd);
-}
-
-function normalizeExplicitInterpreter(cwd: string, interpreter: string | undefined): string {
-	if (interpreter === undefined) return "";
-	const resolved = resolveExplicitJuliaRuntime(interpreter, cwd, {}).juliaPath;
-	try {
-		return path.resolve(resolved);
-	} catch {
-		return resolved;
-	}
-}
-
-function buildSessionKey(sessionId: string, cwd: string, interpreter: string | undefined): string {
-	const normalizedCwd = normalizeSessionCwd(cwd);
-	const normalizedInterpreter = normalizeExplicitInterpreter(normalizedCwd, interpreter);
-	return `${sessionId}::${normalizedCwd}::${normalizedInterpreter}`;
-}
 
 // Cancellation classification is owned by executor-base; these bind the Julia
 // cancelled-error class and delegate. The shared versions handle a DOMException
@@ -458,9 +436,35 @@ async function ensureToolBridge(options: JuliaExecutorOptions): Promise<void> {
 	}
 }
 
+/**
+ * Run one cell on a kernel that exists only for it.
+ *
+ * Nothing carries over: no binding an earlier cell made, no package it brought into scope. Julia pays
+ * more for this than Ruby or Python do, because a fresh kernel recompiles what it loads, so `per-call` is
+ * a deliberate trade of speed for a clean slate rather than a default.
+ *
+ * The kernel is shut down in a `finally`, or the process would outlive the call it was created for. A
+ * shutdown failure is swallowed on purpose: the cell's result is what the caller asked for, and losing it
+ * to a shutdown hiccup would be worse than a stray process the session cleanup also sweeps.
+ */
+async function executePerCall(code: string, cwd: string, options: JuliaExecutorOptions): Promise<JuliaResult> {
+	const kernel = await startKernel(cwd, options);
+	try {
+		return await executeWithKernel(kernel, code, { ...options, cwd });
+	} finally {
+		await kernel.shutdown().catch(() => undefined);
+	}
+}
+
 async function executeOnSession(code: string, cwd: string, options: JuliaExecutorOptions): Promise<JuliaResult> {
 	const sessionId = options.sessionId ?? `session:${cwd}`;
-	const sessionKey = buildSessionKey(sessionId, cwd, options.interpreter);
+	const sessionKey = buildEvalSessionKey({
+		sessionId,
+		cwd,
+		interpreter: options.interpreter,
+		resolveInterpreterPath: (interpreter, resolvedCwd) =>
+			resolveExplicitJuliaRuntime(interpreter, resolvedCwd, {}).juliaPath,
+	});
 	if (options.bridge && !options.bridgeSessionId) {
 		options.bridgeSessionId = sessionId;
 	}
@@ -539,6 +543,9 @@ export async function executeJulia(code: string, options?: JuliaExecutorOptions)
 		}
 		await ensureKernelAvailable(cwd, executionOptions);
 		await ensureToolBridge(executionOptions);
+		if ((executionOptions.kernelMode ?? "session") === "per-call") {
+			return await executePerCall(code, cwd, executionOptions);
+		}
 		return await executeOnSession(code, cwd, executionOptions);
 	} catch (err) {
 		if (isCancellationError(err) || executionOptions.signal?.aborted) {

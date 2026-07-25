@@ -96,7 +96,7 @@ function makePreparation(overrides: Partial<CompactionPreparation> = {}): Compac
 		isSplitTurn: true,
 		tokensBefore: 12_345,
 		fileOps: createFileOps(),
-		settings: { ...DEFAULT_COMPACTION_SETTINGS, remoteEnabled: false },
+		settings: { ...DEFAULT_COMPACTION_SETTINGS },
 		...overrides,
 	};
 }

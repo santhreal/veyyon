@@ -92,7 +92,7 @@ Cancellation throws `Error("Handoff cancelled")`; a completed generation with no
 
 - caller signal aborts `#handoffAbortController`
 - `completeSimple(...)` receives the abort signal
-- aborted handoff signal or provider `AbortError` is normalized to `Error("Handoff cancelled")`
+- aborted handoff signal or the provider's `RequestAbortError` (whose `name` is still `AbortError`) is normalized to `Error("Handoff cancelled")`
 - empty generated text returns `undefined`
 
 `AgentSession.handoff()` always clears `#handoffAbortController` in `finally`.

@@ -20,6 +20,12 @@ export interface SSHExecutorOptions {
 	/** Artifact path/id for full output storage */
 	artifactPath?: string;
 	artifactId?: string;
+	/**
+	 * How many bytes of output may stay inline, from the caller's session. See
+	 * the same field on `BashExecutorOptions`: the executor has no session, so
+	 * the caller prices it through the one owner and passes the number down.
+	 */
+	spillThreshold?: number;
 }
 
 export interface SSHResult {
@@ -56,14 +62,14 @@ function sshErrorEvent(error: unknown): SSHExitEvent {
 function createAbortWaiter(
 	signal: AbortSignal | undefined,
 	streamAbort: AbortController,
-): { promise: Promise<ptree.AbortError> | undefined; cleanup: () => void } {
+): { promise: Promise<ptree.ProcessAbortError> | undefined; cleanup: () => void } {
 	if (!signal) {
 		return { promise: undefined, cleanup: () => {} };
 	}
 
-	const { promise, resolve } = Promise.withResolvers<ptree.AbortError>();
+	const { promise, resolve } = Promise.withResolvers<ptree.ProcessAbortError>();
 	const onAbort = () => {
-		const error = new ptree.AbortError(signal.reason, "<cancelled>");
+		const error = new ptree.ProcessAbortError(signal.reason, "<cancelled>");
 		if (!streamAbort.signal.aborted) {
 			streamAbort.abort(error);
 		}
@@ -115,6 +121,7 @@ export async function executeSSH(
 		onChunk: options?.onChunk,
 		artifactPath: options?.artifactPath,
 		artifactId: options?.artifactId,
+		...(options?.spillThreshold !== undefined ? { spillThreshold: options.spillThreshold } : {}),
 		headBytes: resolveOutputSinkHeadBytes(settings),
 		maxColumns: resolveOutputMaxColumns(settings),
 	});

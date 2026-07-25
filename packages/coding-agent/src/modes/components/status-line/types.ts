@@ -109,10 +109,27 @@ export interface SegmentContext {
 		cost: number;
 		tokensPerSecond: number | null;
 	};
-	/** Context usage percent, or null when unknown (e.g. right after compaction). */
+	/**
+	 * Percent of {@link contextLimit} used, or null when unknown (e.g. right
+	 * after compaction). Percent of the LIMIT, not of the window — with
+	 * auto-compaction on those differ.
+	 */
 	contextPercent: number | null;
 	contextTokens: number;
+	/** The model's real context window. Always the window, never the trigger. */
 	contextWindow: number;
+	/**
+	 * Where the context actually runs out: the auto-compaction fire point when
+	 * auto-compaction is on, otherwise {@link contextWindow}. This is what the
+	 * gauge measures against, and {@link contextLimitKind} says which it is.
+	 *
+	 * These were one field. The window was overwritten with the fire point
+	 * before the segments ran, so `context_total` — a segment whose only job is
+	 * to print the window — printed `170k` on a 200k model, and every other
+	 * consumer that asked for the window silently got the trigger.
+	 */
+	contextLimit: number;
+	contextLimitKind: "window" | "compaction";
 	autoCompactEnabled: boolean;
 	subagentCount: number;
 	/**

@@ -286,6 +286,9 @@ async function fetchOllamaNativeModels(
 			headers: { Accept: "application/json" },
 		});
 	} catch {
+		// Null is 'this resolver produced no catalog', which the caller distinguishes from the `[]` an endpoint
+		// with no models returns. The reason is not carried back yet: `fetchOpenAICompatibleModels` takes an
+		// `onFailure` channel and these callers do not pass one through yet, which is a tracked task.
 		return null;
 	}
 	if (!response.ok) {
@@ -1751,6 +1754,9 @@ async function fetchFireworksServerlessModels(options: {
 				headers: { Accept: "application/json", Authorization: `Bearer ${options.apiKey}` },
 			});
 		} catch {
+			// Null is 'this resolver produced no catalog', which the caller distinguishes from the `[]` an endpoint
+			// with no models returns. The reason is not carried back yet: `fetchOpenAICompatibleModels` takes an
+			// `onFailure` channel and these callers do not pass one through yet, which is a tracked task.
 			return null;
 		}
 		if (!response.ok) return null;
@@ -1758,6 +1764,9 @@ async function fetchFireworksServerlessModels(options: {
 		try {
 			payload = await response.json();
 		} catch {
+			// Null is 'this resolver produced no catalog', which the caller distinguishes from the `[]` an endpoint
+			// with no models returns. The reason is not carried back yet: `fetchOpenAICompatibleModels` takes an
+			// `onFailure` channel and these callers do not pass one through yet, which is a tracked task.
 			return null;
 		}
 		if (!isRecord(payload)) return null;
@@ -2638,6 +2647,9 @@ export async function fetchLmStudioNativeModelMetadata(
 			}
 			return metadata;
 		} catch {
+			// Null is 'this resolver produced no catalog', which the caller distinguishes from the `[]` an endpoint
+			// with no models returns. The reason is not carried back yet: `fetchOpenAICompatibleModels` takes an
+			// `onFailure` channel and these callers do not pass one through yet, which is a tracked task.
 			return null;
 		}
 	};
@@ -3495,6 +3507,9 @@ async function fetchLiteLLMRichEndpoint<TApi extends Api>(
 			signal,
 		});
 	} catch {
+		// Null is 'this resolver produced no catalog', which the caller distinguishes from the `[]` an endpoint
+		// with no models returns. The reason is not carried back yet: `fetchOpenAICompatibleModels` takes an
+		// `onFailure` channel and these callers do not pass one through yet, which is a tracked task.
 		return null;
 	}
 	if (!response.ok) {
@@ -3504,6 +3519,9 @@ async function fetchLiteLLMRichEndpoint<TApi extends Api>(
 	try {
 		payload = await response.json();
 	} catch {
+		// Null is 'this resolver produced no catalog', which the caller distinguishes from the `[]` an endpoint
+		// with no models returns. The reason is not carried back yet: `fetchOpenAICompatibleModels` takes an
+		// `onFailure` channel and these callers do not pass one through yet, which is a tracked task.
 		return null;
 	}
 	const entries = extractLiteLLMRichEntries(payload);

@@ -8,6 +8,7 @@
  * Registered by the lowest-priority `builtin-defaults` rule provider so any
  * user/project/tool rule with the same name overrides the bundled copy.
  */
+import argotLoadNudge from "./argot-load-nudge.md" with { type: "text" };
 import cwdReroot from "./cwd-reroot.md" with { type: "text" };
 import goAddCleanup from "./go-add-cleanup.md" with { type: "text" };
 import goBenchLoop from "./go-bench-loop.md" with { type: "text" };
@@ -44,6 +45,7 @@ export interface BuiltinRuleSource {
 
 /** All bundled default rules, ordered by name. */
 export const BUILTIN_RULE_SOURCES: readonly BuiltinRuleSource[] = [
+	{ name: "argot-load-nudge", content: argotLoadNudge },
 	{ name: "cwd-reroot", content: cwdReroot },
 	{ name: "go-add-cleanup", content: goAddCleanup },
 	{ name: "go-bench-loop", content: goBenchLoop },

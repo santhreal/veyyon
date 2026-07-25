@@ -166,16 +166,7 @@ describe("a submodule", () => {
 		superproject = newRepo("superproject");
 		// `protocol.file.allow` is passed per-command: git refuses file-transport
 		// clones by default (CVE-2022-39253), and a submodule add runs a clone.
-		gitBin(
-			superproject,
-			"-c",
-			"protocol.file.allow=always",
-			"submodule",
-			"--quiet",
-			"add",
-			dependency,
-			"vendor/lib",
-		);
+		gitBin(superproject, "-c", "protocol.file.allow=always", "submodule", "--quiet", "add", dependency, "vendor/lib");
 		gitBin(superproject, "commit", "-qm", "add submodule");
 		submodule = path.join(superproject, "vendor", "lib");
 	});

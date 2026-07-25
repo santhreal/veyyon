@@ -1,8 +1,8 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
-import { getStatsDbPath } from "@veyyon/utils";
 import { closeDb, getMessageCount, initDb, insertMessageStats } from "@veyyon/stats/db";
 import type { MessageStats } from "@veyyon/stats/types";
+import { getStatsDbPath } from "@veyyon/utils";
 import { installStatsTestIsolation } from "./helpers/temp-agent";
 
 /**
@@ -101,7 +101,9 @@ async function runWriters(dbPath: string, writers: number, rowsEach: number, bas
 	);
 	const codes = await Promise.all(procs.map(proc => proc.exited));
 	const failures = await Promise.all(
-		procs.map(async (proc, index) => (codes[index] === 0 ? null : `writer ${index}: ${await new Response(proc.stderr).text()}`)),
+		procs.map(async (proc, index) =>
+			codes[index] === 0 ? null : `writer ${index}: ${await new Response(proc.stderr).text()}`,
+		),
 	);
 	const failed = failures.filter(Boolean);
 	// Every writer must SUCCEED. A writer that died on SQLITE_BUSY would

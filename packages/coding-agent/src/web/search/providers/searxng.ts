@@ -31,12 +31,11 @@ import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import { settings } from "../../../config/settings";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
-import { clampNumResults, dateToAgeSeconds } from "../utils";
+import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
 
-const DEFAULT_NUM_RESULTS = 10;
 const MAX_NUM_RESULTS = 20;
 
 /** Map our recency filter to SearXNG time_range parameter.
@@ -243,7 +242,7 @@ export async function searchSearXNG(params: {
 	signal?: AbortSignal;
 	fetch?: FetchImpl;
 }): Promise<SearchResponse> {
-	const numResults = clampNumResults(params.num_results, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
+	const numResults = clampNumResults(params.num_results, SEARCH_DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
 
 	const endpoint = findEndpoint();
 	if (!endpoint) {
@@ -316,6 +315,10 @@ export class SearXNGProvider extends SearchProvider {
 		try {
 			return !!findEndpoint();
 		} catch {
+			// Defence in depth with no reachable trigger today: `findEndpoint` already catches the one thing
+			// that throws (a settings read before the context exists) and falls back to the environment
+			// variable, so nothing propagates here. Kept because false is the right answer if that ever
+			// changes -- a provider with no endpoint cannot be searched -- and it costs nothing.
 			return false;
 		}
 	}

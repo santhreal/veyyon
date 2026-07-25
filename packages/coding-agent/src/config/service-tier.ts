@@ -2,6 +2,20 @@ import type { ServiceTier, ServiceTierByFamily } from "@veyyon/ai";
 import type { SubmenuOption } from "./settings-schema";
 
 /**
+ * The word the priority tier is named by on every user-facing surface.
+ *
+ * The status-line chip and the `/fast` command described the same state in two
+ * vocabularies ("priority" in one, "fast mode" in the other), which is how a
+ * serving tier came to read as an effort level in the first place. Both import
+ * this, so the two surfaces cannot drift apart again. `/fast` keeps its name — it
+ * is the Anthropic wire term and what people type — but says what it changes.
+ */
+export const PRIORITY_TIER_LABEL = "priority";
+
+/** How `/fast` and its status messages name the state this tier puts you in. */
+export const PRIORITY_TIER_COMMAND_LABEL = `Priority tier (fast mode)`;
+
+/**
  * Per-family service-tier setting values. `"none"` is the omit-the-parameter
  * sentinel; the rest mirror the wire {@link ServiceTier} values each provider
  * family actually realizes. OpenAI accepts the full set; Anthropic realizes

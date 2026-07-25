@@ -12,7 +12,8 @@ import {
 } from "@veyyon/coding-agent/mnemopi/state";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { getAgentDir, removeWithRetries, setAgentDir, TempDir } from "@veyyon/utils";
+import { removeWithRetries, setAgentDir, TempDir } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 // Mnemopi state is loaded lazily; preload so `new MnemopiSessionState(...)` can
 // resolve the module synchronously in the fixtures below.
@@ -26,7 +27,7 @@ interface MemoryFixture {
 
 async function withMemoryFixture(fn: (fixture: MemoryFixture) => Promise<void>): Promise<void> {
 	const cleanupRoot = await fs.mkdtemp(path.join(os.tmpdir(), "memory-protocol-"));
-	const previousAgentDir = getAgentDir();
+	const dirOverrides = captureDirOverrides();
 	try {
 		const agentDir = path.join(cleanupRoot, "agent");
 		await fs.mkdir(agentDir, { recursive: true });
@@ -50,7 +51,7 @@ async function withMemoryFixture(fn: (fixture: MemoryFixture) => Promise<void>):
 		});
 		await fn({ cwd, memoryRoot, agentDir, cleanupRoot });
 	} finally {
-		setAgentDir(previousAgentDir);
+		restoreDirOverrides(dirOverrides);
 		await removeWithRetries(cleanupRoot);
 	}
 }
@@ -80,7 +81,7 @@ describe("MemoryProtocolHandler", () => {
 
 	it("resolves memory://root against the caller cwd when multiple sessions are live", async () => {
 		const cleanupRoot = await fs.mkdtemp(path.join(os.tmpdir(), "memory-protocol-isolation-"));
-		const previousAgentDir = getAgentDir();
+		const dirOverrides = captureDirOverrides();
 		try {
 			const agentDir = path.join(cleanupRoot, "agent");
 			setAgentDir(agentDir);
@@ -133,7 +134,7 @@ describe("MemoryProtocolHandler", () => {
 			expect(resource.content).toBe(secondSummary);
 			expect(resource.content).not.toBe(firstSummary);
 		} finally {
-			setAgentDir(previousAgentDir);
+			restoreDirOverrides(dirOverrides);
 			await removeWithRetries(cleanupRoot);
 		}
 	});
@@ -154,7 +155,7 @@ describe("MemoryProtocolHandler", () => {
 
 	it("prefers the caller cwd memory root over earlier registered sessions", async () => {
 		const cleanupRoot = await fs.mkdtemp(path.join(os.tmpdir(), "memory-protocol-"));
-		const previousAgentDir = getAgentDir();
+		const dirOverrides = captureDirOverrides();
 		try {
 			const agentDir = path.join(cleanupRoot, "agent");
 			await fs.mkdir(agentDir, { recursive: true });
@@ -208,7 +209,7 @@ describe("MemoryProtocolHandler", () => {
 			expect(resource.content).toBe("second session summary");
 			expect(resource.sourcePath).toBe(await fs.realpath(secondSummaryPath));
 		} finally {
-			setAgentDir(previousAgentDir);
+			restoreDirOverrides(dirOverrides);
 			await removeWithRetries(cleanupRoot);
 		}
 	});

@@ -70,6 +70,8 @@ export function normalizeGitHubCopilotApiEndpoint(input: string | undefined): st
 		if (url.protocol !== "https:" || !url.hostname) return undefined;
 		return trimTrailingSlashes(trimmed);
 	} catch {
+		// This asks whether a string is a usable https URL, so a parse failure IS the answer: not usable. The
+		// caller falls back to its documented default endpoint, exactly as for a value that was never set.
 		return undefined;
 	}
 }
@@ -102,6 +104,8 @@ export function normalizeDomain(input: string): string | null {
 		const url = trimmed.includes("://") ? new URL(trimmed) : new URL(`https://${trimmed}`);
 		return url.hostname;
 	} catch {
+		// This asks whether a string is a usable https URL, so a parse failure IS the answer: not usable. The
+		// caller falls back to its documented default endpoint, exactly as for a value that was never set.
 		return null;
 	}
 }

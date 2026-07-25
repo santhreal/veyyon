@@ -5,7 +5,7 @@
  * Uses the settings schema as the source of truth for available settings.
  */
 
-import { APP_NAME, clampLow, getAgentDir, isRecord, levenshteinDistance } from "@veyyon/utils";
+import { APP_NAME, getAgentDir, isRecord, nearestNames } from "@veyyon/utils";
 import chalk from "chalk";
 import {
 	getDefault,
@@ -18,7 +18,7 @@ import {
 	settings,
 	validateProviderMaxInFlightRequests,
 } from "../config/settings";
-import { SETTINGS_SCHEMA } from "../config/settings-schema";
+import { isSettingPath, retiredBy, SETTINGS_SCHEMA } from "../config/settings-schema";
 import { theme } from "../modes/theme/theme";
 import { initXdg } from "./commands/init-xdg";
 
@@ -45,20 +45,23 @@ type CliSettingDef = {
 	type: string;
 	description: string;
 	tab: string;
+	/** The key that replaced this one, when it is superseded. See `retiredBy`. */
+	retiredBy?: string;
 };
 
 const ALL_SETTING_PATHS = Object.keys(SETTINGS_SCHEMA) as SettingPath[];
 
 /** Find setting definition by path */
 function findSettingDef(path: string): CliSettingDef | undefined {
-	if (!(path in SETTINGS_SCHEMA)) return undefined;
-	const key = path as SettingPath;
+	if (!isSettingPath(path)) return undefined;
+	const key = path;
 	const ui = getUi(key);
 	return {
 		path: key,
 		type: getType(key),
 		description: ui?.description ?? "",
 		tab: ui?.tab ?? "internal",
+		retiredBy: retiredBy(key),
 	};
 }
 
@@ -77,33 +80,7 @@ function findSettingDef(path: string): CliSettingDef | undefined {
  * edits, which covers a typo.
  */
 export function suggestSettingPaths(key: string, limit = 3): string[] {
-	const all = Object.keys(SETTINGS_SCHEMA);
-	const typed = key.toLowerCase();
-	const seen = new Set<string>();
-	const out: string[] = [];
-	const take = (candidates: string[]): void => {
-		for (const candidate of candidates) {
-			if (out.length >= limit) return;
-			if (seen.has(candidate)) continue;
-			seen.add(candidate);
-			out.push(candidate);
-		}
-	};
-
-	take(all.filter(path => path.toLowerCase() === typed));
-	take(all.filter(path => path.toLowerCase().includes(typed)));
-	// Distance scaled to the input: one edit in a short key is a typo, whereas
-	// one edit in a long path could still be a different setting entirely, so
-	// allow a little more room as paths grow but never enough to suggest noise.
-	const budget = clampLow(Math.floor(typed.length / 4), 1, 3);
-	const near = all
-		.map(path => ({ path, distance: levenshteinDistance(typed, path.toLowerCase()) }))
-		.filter(entry => entry.distance <= budget)
-		.sort((a, b) => a.distance - b.distance || a.path.localeCompare(b.path))
-		.map(entry => entry.path);
-	take(near);
-
-	return out;
+	return nearestNames(key, Object.keys(SETTINGS_SCHEMA), limit);
 }
 
 /**
@@ -288,7 +265,13 @@ async function writeStdout(text: string): Promise<void> {
 }
 
 async function handleList(flags: { json?: boolean }): Promise<void> {
-	const defs = ALL_SETTING_PATHS.map(path => findSettingDef(path)).filter((def): def is CliSettingDef => !!def);
+	// A superseded key is still readable and settable, so an existing config keeps
+	// working, but it is not something to CHOOSE — listing it beside the key that
+	// replaced it is the confusion the supersession was meant to end. `config get`
+	// on one still works and names the replacement.
+	const defs = ALL_SETTING_PATHS.map(path => findSettingDef(path)).filter(
+		(def): def is CliSettingDef => !!def && !def.retiredBy,
+	);
 
 	if (flags.json) {
 		const result: Record<string, { value: unknown; type: string; description: string }> = {};
@@ -349,12 +332,44 @@ function handleGet(key: string | undefined, flags: { json?: boolean }): void {
 
 	if (flags.json) {
 		console.log(
-			JSON.stringify({ key: def.path, value: value ?? null, type: def.type, description: def.description }, null, 2),
+			JSON.stringify(
+				{
+					key: def.path,
+					value: value ?? null,
+					type: def.type,
+					description: def.description,
+					...(def.retiredBy ? { retiredBy: def.retiredBy } : {}),
+				},
+				null,
+				2,
+			),
 		);
 		return;
 	}
 
+	if (def.retiredBy) {
+		console.error(chalk.yellow(`${def.path} is retired; use ${def.retiredBy} instead.`));
+	}
 	console.log(formatValue(value));
+}
+
+/**
+ * Wait for the write and refuse to report success it did not achieve.
+ *
+ * `set` and `reset` used to print their green tick and exit 0 without ever waiting for the
+ * debounced save, so a config path that could not be written (a read-only home, a full disk,
+ * a directory left where `config.yml` belongs) produced a successful-looking command and a
+ * setting that was never persisted. A script checking the exit status was told the change
+ * landed. The first failure is the whole story here — a one-shot command has no retry future
+ * the way a live session does — so it reports and exits non-zero (Law 10).
+ */
+async function persistOrExit(): Promise<void> {
+	await settings.flush().catch(() => {});
+	const failed = settings.lastSaveError;
+	if (!failed) return;
+	console.error(chalk.red(`Could not save ${failed.path}: ${failed.reason}`));
+	console.error(chalk.dim("Check that the file and its directory are writable, then run the command again."));
+	process.exit(1);
 }
 
 async function handleSet(key: string | undefined, value: string | undefined, flags: { json?: boolean }): Promise<void> {
@@ -377,12 +392,21 @@ async function handleSet(key: string | undefined, value: string | undefined, fla
 		process.exit(1);
 	}
 
+	await persistOrExit();
 	const newValue = settings.get(def.path);
 
 	if (flags.json) {
-		console.log(JSON.stringify({ key: def.path, value: newValue }));
+		console.log(
+			JSON.stringify({ key: def.path, value: newValue, ...(def.retiredBy ? { retiredBy: def.retiredBy } : {}) }),
+		);
 	} else {
 		console.log(chalk.green(`${theme.status.success} Set ${def.path} = ${formatValue(newValue)}`));
+		if (def.retiredBy) {
+			// Written, because refusing would break a script that predates the
+			// supersession, but never silently: the value may be migrated away on the
+			// next load, so say where it belongs now.
+			console.error(chalk.yellow(`${def.path} is retired; ${def.retiredBy} is the setting that governs this now.`));
+		}
 	}
 }
 
@@ -400,13 +424,20 @@ async function handleReset(key: string | undefined, flags: { json?: boolean }): 
 	}
 
 	const path = def.path as SettingPath;
+	// Reset REMOVES the key rather than writing the default back into the file.
+	// Writing it made every reset value look explicitly configured — the config
+	// then pins a default that was meant to follow the app, and a setting whose
+	// default is "unset" (the sampling knobs, `compaction.modelContextWindow`)
+	// would have had a materialized `undefined` written for it.
+	settings.unset(path);
+	await persistOrExit();
 	const defaultValue = getDefault(path);
-	settings.set(path, defaultValue as SettingValue<typeof path>);
 
 	if (flags.json) {
-		console.log(JSON.stringify({ key: def.path, value: defaultValue }));
+		console.log(JSON.stringify({ key: def.path, value: defaultValue ?? null }));
 	} else {
-		console.log(chalk.green(`${theme.status.success} Reset ${def.path} to ${formatValue(defaultValue)}`));
+		const shown = defaultValue === undefined ? "unset" : formatValue(defaultValue);
+		console.log(chalk.green(`${theme.status.success} Reset ${def.path} to ${shown}`));
 	}
 }
 

@@ -1,78 +1,26 @@
+/**
+ * The collab client's theme, bound to React.
+ *
+ * The store itself is `createThemeStore` in `@veyyon/utils/theme-store`, shared with the
+ * stats dashboard: both pages resolve a preference against the browser's, write it onto
+ * `<html>`, and notify their readers, and each used to carry its own copy of that. Only
+ * the storage key and this React binding are local, and the binding stays here because
+ * `@veyyon/utils` has no UI dependency.
+ */
+
+import { createThemeStore, type SystemTheme, type ThemePreference } from "@veyyon/utils/theme-store";
 import { useSyncExternalStore } from "react";
 
-export type SystemTheme = "light" | "dark";
-export type ThemePreference = "system" | "light" | "dark";
+export type { SystemTheme, ThemePreference };
 
-const STORAGE_KEY = "veyyon-collab-theme";
-const DARK_SCHEME_QUERY = "(prefers-color-scheme: dark)";
+const store = createThemeStore({ storageKey: "veyyon-collab-theme" });
 
-function readStoredPreference(): ThemePreference {
-	try {
-		const stored = globalThis.localStorage.getItem(STORAGE_KEY);
-		return stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
-	} catch {
-		// Private-mode or blocked storage: fall back to following the system.
-		return "system";
-	}
-}
+/** Choose a preference. Applies it to the page and notifies every reader. */
+export const setThemePreference = store.setPreference;
 
-function getSystemTheme(): SystemTheme {
-	if (typeof window === "undefined") return "dark";
-	return window.matchMedia(DARK_SCHEME_QUERY).matches ? "dark" : "light";
-}
-
-// Module-level store shared by the toggle (writer) and any reader so an explicit
-// override and the system default resolve through one source.
-let preference: ThemePreference = readStoredPreference();
-let resolved: SystemTheme = preference === "system" ? getSystemTheme() : preference;
-const listeners = new Set<() => void>();
-
-function emit(): void {
-	for (const listener of listeners) listener();
-}
-
-function applyResolvedTheme(): void {
-	resolved = preference === "system" ? getSystemTheme() : preference;
-	if (typeof document !== "undefined") {
-		document.documentElement.dataset.theme = resolved;
-		document.documentElement.style.colorScheme = resolved;
-	}
-}
-
-if (typeof window !== "undefined") {
-	applyResolvedTheme();
-	window.matchMedia(DARK_SCHEME_QUERY).addEventListener("change", () => {
-		// System changes only move the needle while following the system.
-		if (preference === "system") {
-			applyResolvedTheme();
-			emit();
-		}
-	});
-}
-
-export function setThemePreference(next: ThemePreference): void {
-	preference = next;
-	try {
-		globalThis.localStorage.setItem(STORAGE_KEY, next);
-	} catch {
-		// Persistence is best-effort; still apply/emit the in-memory preference.
-	}
-	applyResolvedTheme();
-	emit();
-}
-
-function subscribe(callback: () => void): () => void {
-	listeners.add(callback);
-	return () => listeners.delete(callback);
-}
-
-/** Reader for the active resolved theme. Reflects system default and overrides. */
+/** Reader for the active resolved theme. Reflects the system default and any override. */
 export function useSystemTheme(): SystemTheme {
-	return useSyncExternalStore(
-		subscribe,
-		() => resolved,
-		() => "dark" as SystemTheme,
-	);
+	return useSyncExternalStore(store.subscribe, store.getResolved, () => "dark" as SystemTheme);
 }
 
 /** Reader + writer for the theme preference (powers the toggle). */
@@ -81,15 +29,7 @@ export function useThemePreference(): {
 	resolved: SystemTheme;
 	setPreference: (next: ThemePreference) => void;
 } {
-	const pref = useSyncExternalStore(
-		subscribe,
-		() => preference,
-		() => "system" as ThemePreference,
-	);
-	const res = useSyncExternalStore(
-		subscribe,
-		() => resolved,
-		() => "dark" as SystemTheme,
-	);
-	return { preference: pref, resolved: res, setPreference: setThemePreference };
+	const preference = useSyncExternalStore(store.subscribe, store.getPreference, () => "system" as ThemePreference);
+	const resolved = useSyncExternalStore(store.subscribe, store.getResolved, () => "dark" as SystemTheme);
+	return { preference, resolved, setPreference: store.setPreference };
 }

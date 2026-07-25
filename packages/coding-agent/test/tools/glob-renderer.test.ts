@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 import { sanitizeText } from "@veyyon/utils";
 import { globToolRenderer } from "../../src/tools/glob";
+import { expectNotAccented } from "../helpers/theme-assertions";
 
 describe("globToolRenderer", () => {
 	it("indents inline glob output and avoids accent-colored success headers", async () => {
@@ -22,8 +23,7 @@ describe("globToolRenderer", () => {
 		const plainLines = sanitizeText(renderedLines.join("\n")).split("\n");
 
 		expect(plainLines.every(line => line.startsWith(" "))).toBe(true);
-		expect(renderedLines[0]).not.toContain(uiTheme.fg("accent", uiTheme.symbol("icon.search")));
-		expect(renderedLines[0]).not.toContain(uiTheme.fg("accent", "Find"));
+		expectNotAccented(uiTheme, renderedLines[0]!, [uiTheme.symbol("icon.search"), "Find"]);
 	});
 
 	it("renders a timed-out empty scan as incomplete instead of a definitive no-files claim", async () => {

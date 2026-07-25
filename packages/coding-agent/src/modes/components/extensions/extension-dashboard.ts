@@ -35,10 +35,11 @@ import {
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
+	ModalRevealDriver,
 	type ModalShellGeometry,
+	planModalChrome,
 	renderModalShell,
 	withCompact,
-	ModalRevealDriver,
 } from "../modal-shell";
 import { ExtensionList } from "./extension-list";
 import { InspectorPanel } from "./inspector-panel";
@@ -181,9 +182,24 @@ export class ExtensionDashboard implements Component {
 		const contentWidth = dims.contentWidth;
 
 		const tabLines = this.#tabBar.render(contentWidth);
-		const contentRows = Math.max(5, dims.modalHeight - 8 - tabLines.length);
+		// Ask the shell for the body budget rather than subtracting a magic 8.
+		// The card reserves NINE rows at this sizing (top border, vPad above AND
+		// below the body, footer divider, two footer lines, bottom border), so
+		// the dashboard handed it one row too many and the shell silently dropped
+		// the last one — while `#bodyRowCount` below still counted it, so a click
+		// on the bottom row selected a row that was not on screen. The floor was
+		// the same trap: `Math.max(5, …)` asked for five content rows on a card
+		// that could show fewer, overrunning again.
+		const chrome = planModalChrome({
+			sizing,
+			modalHeight: dims.modalHeight,
+			contentWidth,
+			shortcuts: EXT_SHORTCUTS,
+			hoveredShortcutId: this.#hoveredShortcutId,
+		});
+		const contentRows = Math.max(0, chrome.maxBodyRows - tabLines.length);
 
-		this.#mainList.setMaxVisible(Math.max(3, contentRows - 2));
+		this.#mainList.setMaxVisible(Math.max(1, contentRows - 2));
 		this.#body.setMaxHeight(contentRows);
 		const bodyLines = this.#body.render(contentWidth);
 		const body: string[] = [...tabLines];

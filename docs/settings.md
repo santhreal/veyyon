@@ -33,6 +33,28 @@ The global `config.yml` is always YAML. The generic config loader used for other
 - `.json` and `.jsonc` configs are read as-is, with no migration.
 - A file whose top level is not a mapping (a bare array or scalar) is treated as empty for persistent settings, and is a hard error for `--config` overlays.
 
+### Nested and flat keys
+
+A setting can be written either way, and the two mean the same thing:
+
+```yaml
+subagent:
+  model: openai/gpt-5
+
+subagent.model: openai/gpt-5   # the same setting
+```
+
+The nested form is the one this documentation uses and the one every write from
+`/settings` and `veyyon config set` produces. A flat key is expanded into the nested
+form when the file is read, so you can type it either way.
+
+Two rules cover the corners:
+
+- If a setting is written **both** ways, the nested value wins, the flat key is
+  dropped from the file the next time it is written, and a warning names both values.
+- A key this build does not know is left exactly as written, whether or not it has
+  dots in it. That keeps a config usable across versions and alongside other tools.
+
 ## Reading and writing settings
 
 Use the interactive `/settings` panel inside a session, or the `veyyon config` command from a shell. Both operate on the merged effective settings, and every persistent write lands in the **global** profile file, with one exception: the machine-global values on the **Global** tab (`defaultProfile`, `profileSharing`) write to `~/.veyyon/config.yml` so they apply to every profile.
@@ -65,6 +87,8 @@ This only controls the startup splash animation. It does not rerun setup or chan
 | `veyyon config set <key> <value>` | Parse `<value>` against the key's schema type and write it to the global `config.yml`. |
 | `veyyon config reset <key>` | Write the key's schema **default** back to the global config (this persists the default, it does not delete the key). |
 | `veyyon config path` | Print the active agent directory (honors `VEYYON_CODING_AGENT_DIR`). |
+
+A setting that has been replaced by another is **retired**: it stays readable and settable so an existing config keeps working, and the migration on load can read it, but `veyyon config list` leaves it out and `veyyon config get`/`set` name the key that governs the behavior now. The retired keys today are `compaction.thresholdTokens` and `compaction.thresholdPercent` (replaced by `compaction.threshold`) and `defaultThinkingLevel` (replaced by `defaultEffort`).
 
 `veyyon config` with no subcommand, or `--help`, prints the help and lists settings. The `--json` flag is accepted by `list`, `get`, `set`, and `reset`.
 
@@ -200,7 +224,7 @@ tools:
 
 compaction:
   strategy: summary
-  thresholdTokens: 150000     # compact past 150k tokens, on any model
+  threshold: 150000     # compact past 150k tokens, on any model
 
 theme:
   dark: titanium
@@ -287,7 +311,7 @@ Every key below is defined in the settings schema; `veyyon config list` shows th
 
 In the settings model pickers (`/settings`, or `/model` for the interactive model), picking a model that supports thinking efforts opens a second step where you choose the effort. The choice is stored as the `:level` suffix on that slot's selector and persists with the active profile. A model with no thinking efforts skips the step and stores the bare selector. Choosing the first row, `(model default thinking)`, stores no suffix and lets the model use its own default. The settings rows show a stored effort as a readable ` · high` rather than the raw `:high` token. To change the effort of the model you are talking to, use the `/thinking` command (its alias is `/effort`), or cycle it with Shift+Tab and toggle it with Ctrl+T.
 
-The **interactive** model (main conversation) is persisted as **`modelRoles.default`**. That key is a legacy storage name: it is hidden from role pickers and stripped from `cycleOrder` on load. Selectable built-in roles: `smol`, `slow`, `vision`, `plan`, `designer`, `commit`, `tiny`, `task`, `advisor`.
+The model you are working with (the main conversation) is persisted as **`modelRoles.default`**. That slot is not a selectable role: it is hidden from role pickers and stripped from `cycleOrder` on load. In the code it has one name, `DEFAULT_MODEL_SLOT`, and `interactive` is accepted as an alias for it wherever a role is passed. Selectable built-in roles: `smol`, `slow`, `vision`, `plan`, `designer`, `commit`, `tiny`, `advisor`. There is no `task` role: the model your subagents run lives in [Subagents](#subagents), which is its one owner.
 
 ```yaml
 modelRoles:
@@ -296,7 +320,6 @@ modelRoles:
   slow: anthropic/claude-opus-4-5:high
   vision: gemini/gemini-3-pro-preview
   plan: anthropic/claude-opus-4-5
-  task: deepseek/deepseek-chat
   advisor: anthropic/claude-sonnet-4-5:medium
 
 cycleOrder:
@@ -304,10 +327,10 @@ cycleOrder:
   - slow
 
 subagent:
-  model: deepseek/deepseek-chat:high     # optional; overrides modelRoles.task when set; :effort optional
+  model: deepseek/deepseek-chat:high     # optional; unset means subagents inherit your model; :effort optional
 
 compaction:
-  model: openai/gpt-5-mini               # optional; else inherits interactive; may carry :effort
+  model: openai/gpt-5-mini               # optional; else inherits your current model; may carry :effort
 
 modelProviderOrder:
   - anthropic
@@ -319,12 +342,10 @@ enabledModels:
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `modelRoles` | record | `{}` | Role name → model id. Interactive model uses key `default` (hidden in UI). Selectable built-ins: `smol`, `slow`, `vision`, `plan`, `designer`, `commit`, `tiny`, `task`, `advisor`. `tiny` is used for lightweight background tasks when set, else `@smol`. Launch: `--model` (interactive), `--smol`, `--slow`, `--plan`; advisor via `modelRoles.advisor` + `advisor.enabled` / `--advisor`. |
+| `modelRoles` | record | `{}` | Role name → model id. Interactive model uses key `default` (hidden in UI). Selectable built-ins: `smol`, `slow`, `vision`, `plan`, `designer`, `commit`, `tiny`, `advisor`. `tiny` is used for lightweight background tasks when set, else `@smol`. Launch: `--model` (interactive), `--smol`, `--slow`, `--plan`; advisor via `modelRoles.advisor` + `advisor.enabled` / `--advisor`. |
 | `modelTags` | record | `{}` | Custom role/tag metadata; can introduce additional roles. |
 | `modelProviderOrder` | array | `[]` | Preferred provider order when a model id is ambiguous. |
 | `cycleOrder` | array | `["smol","slow"]` | Roles cycled by the model switcher (`app.model.cycleForward`, often Ctrl+P). The entry `default` is dropped on load. |
-| `subagent.model` | string | unset | Task subagent model; unset inherits interactive; when set overrides `modelRoles.task`. May carry a `:effort` suffix (an explicit suffix wins over the agent's own default). |
-| `compaction.model` | string | unset | Compaction model; unset inherits interactive. May carry a `:effort` suffix, applied on every compaction pass. |
 | `enabledModels` | array | `[]` | Allow-list of models; supports [path-scoped entries](#path-scoped-arrays). Empty means all available models. |
 | `disabledProviders` | array | `[]` | Disabled model/discovery providers; supports path-scoped entries. See [above](#provider-and-source-disabling). |
 | `includeModelInPrompt` | boolean | `true` | Include the active model name in the system prompt. |
@@ -389,22 +410,30 @@ thinkingBudgets:
 
 ### Sampling
 
-A value of `-1` means "use the provider/model default", `veyyon` does not send that parameter.
+These settings are unset by default, and unset means the key is absent from `config.yml`: `veyyon` then does not send that parameter and the provider uses its own default. Every number you write is sent as written, including negatives: `presencePenalty: -1` and `repetitionPenalty: -0.5` both reach the provider. In `/settings` the unset state is the row labelled `Default`, and choosing it removes the key rather than storing a value.
+
+Earlier versions stored `-1` to mean unset, which made `-1` itself impossible to configure. Your global config is migrated once: a `-1` on one of these keys is dropped, and the config records that the migration ran (`settingsMigrationVersion`), so a `-1` you set afterwards is kept. A project config or a `--config` overlay is never rewritten and is read as written, so a `-1` there is the value `-1`.
+
+Set a negative value from the command line the way you would any other:
+
+```bash
+veyyon config set presencePenalty -1
+```
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `temperature` | number | `-1` | Sampling temperature. |
-| `topP` | number | `-1` | Nucleus sampling. |
-| `topK` | number | `-1` | Top-K sampling. |
-| `minP` | number | `-1` | Minimum-probability cutoff. |
-| `presencePenalty` | number | `-1` | Presence penalty. |
-| `repetitionPenalty` | number | `-1` | Repetition penalty. |
+| `temperature` | number | _(unset)_ | Sampling temperature. `0` is deterministic. |
+| `topP` | number | _(unset)_ | Nucleus sampling. |
+| `topK` | number | _(unset)_ | Top-K sampling. |
+| `minP` | number | _(unset)_ | Minimum-probability cutoff. |
+| `presencePenalty` | number | _(unset)_ | Presence penalty. Negative values, including `-1`, are sent as written. |
+| `repetitionPenalty` | number | _(unset)_ | Repetition penalty. Values below `1` encourage repetition and are sent as written. |
 | `tier.openai` | enum | `none` | `none`, `auto`, `default`, `flex`, `scale`, `priority`. Sent as `service_tier` for OpenAI / OpenAI-Codex and OpenAI-family OpenRouter models. |
 | `tier.anthropic` | enum | `none` | `none`, `priority`. `priority` realizes fast mode on supported direct Claude models (ignored on Bedrock/Vertex and via OpenRouter). |
 | `tier.google` | enum | `none` | `none`, `flex`, `priority`. Gemini API sends it in the body; Vertex sends `priority` via header (`flex` is a no-op on Vertex). |
 | `tier.subagent` | enum | `inherit` | `inherit`, `none`, `auto`, `default`, `flex`, `scale`, `priority`. Applied to the spawned model's family; `inherit` tracks the main agent. |
 | `tier.advisor` | enum | `none` | `inherit`, `none`, `auto`, `default`, `flex`, `scale`, `priority`. Applied to the advisor model's family. |
-| `personality` | enum | `default` | `default`, `friendly`, `pragmatic`, `none`. |
+| `personality` | string | `default` | Communication style rendered into the system prompt. Built in: `default`, `friendly`, `pragmatic`, `none`. Not a closed set: add your own with `~/.veyyon/personalities/<name>.md`, or `.veyyon/personalities/<name>.md` in a project. |
 
 ### Retry and fallback
 
@@ -484,6 +513,118 @@ tools:
 
 Individual built-in tools are toggled by their own keys, e.g. `bash.enabled`, `launch.enabled`, `eval.py`, `eval.js`, `glob.enabled`, `grep.enabled`, `fetch.enabled`, `browser.enabled`, `astEdit.enabled`, `astGrep.enabled`, `web_search.enabled`, `inspect_image.enabled`.
 
+### Subagents
+
+Everything about spawned agents lives here, under `subagent.`: whether this session
+delegates at all, which agent types it may use, what model and effort they run, and
+the limits and isolation they run under. In `/settings` it is the **Subagents** tab.
+
+Out of the box you get one agent type, the general-purpose worker, and delegation is
+available but never pushed. The bundled specialists (`scout`, `reviewer`, `designer`,
+`librarian`, `sonic`) ship not offered: each one you enable adds its description to
+every request, so you pay for the ones you actually use and nothing else.
+
+```yaml
+subagent:
+  delegation: allowed          # off | allowed | preferred | required
+  model: openai/gpt-5:high     # optional; unset means inherit your model
+  thinkingLevel: medium        # optional; unset means inherit your effort
+  agents:
+    scout:
+      enabled: true            # offer the scout to the model
+    reviewer:
+      enabled: true
+      model: anthropic/claude-opus-4-5   # this agent only
+  maxConcurrency: 32
+  isolation:
+    mode: none
+```
+
+#### Delegation
+
+`subagent.delegation` sets how hard this session pushes work out to subagents:
+
+| Value | Behavior |
+|---|---|
+| `off` | No delegation. The `task` tool is not offered at all, and every delegation instruction leaves the prompt. |
+| `allowed` | The default. The tool is available and the model decides when to use it. |
+| `preferred` | The prompt asks the model to fan substantial work out rather than doing it alone. |
+| `required` | The same, plus a first-turn reminder that delegation is the default here. |
+
+The delegation instructions follow the agents you have enabled. With only the worker
+offered, the prompt says nothing about choosing an agent type, and nothing tells the
+model to send research to a `scout` it cannot spawn.
+
+#### Agents
+
+`subagent.agents` holds one row per agent, keyed by agent name. Two surfaces edit it
+rather than hand-written config: the **Agents** row in `/settings` → Subagents, which
+lists every discovered agent with the model it resolves to and opens one agent at a
+time to set its state, model and effort; and `/agents`, where `space` cycles a row's
+state next to the agent files themselves. Both read the same resolver, so they cannot
+disagree about a row.
+
+Three states this key can express:
+
+| `enabled` | Meaning |
+|---|---|
+| absent | The shipped default. The worker and every agent you wrote yourself are offered; the bundled specialists are not. |
+| `true` | Offered to the model: listed in the `task` tool description and choosable on the model's own initiative. |
+| `false` | Blocked. The agent is refused even when something names it outright, and the refusal says which setting to change. |
+
+An agent that is merely *not offered* still runs when a caller names it. That is what
+keeps the built-in flows working with the specialists off: `/review` asks for
+`agent: "reviewer"` by name, and so can you. Blocking is the stronger choice, and it
+is the only one that refuses a named spawn.
+
+A row may also carry `model` and `thinkingLevel` for that agent alone.
+
+#### Models
+
+Four things can name the model a subagent runs. The first one that names a model wins:
+
+1. `subagent.agents.<name>.model` — that agent's own row.
+2. `subagent.model` — the blanket model for every subagent.
+3. the agent definition's own `model:` frontmatter, for an agent you wrote.
+4. otherwise the subagent inherits the model you are working with.
+
+None of the bundled agents pin a model, so on a fresh install every subagent runs the
+model you are looking at. Change `subagent.model` and they all move together.
+
+A configured value that matches no available model does **not** fall through to the
+next layer. The spawn is refused and the message names the setting to fix, because a
+silent fall-through is indistinguishable from your setting having no effect.
+
+Effort works the same way. Both effort settings are picked from one list — `off`,
+`minimal` through `max`, `auto`, and `Inherit` — so a level you choose in the panel is
+always one that exists. A value that names no level (from a hand-written config) is
+reported with the setting and the accepted levels, then ignored, and the next layer
+decides. It is never rounded to a neighbouring effort: running at an effort you did not
+choose costs money and would not show up anywhere.
+
+Both agent surfaces show, for the selected agent, the pattern it will use, the model
+that resolves to, and the setting that decided — so an override that was outranked is
+visible instead of merely disappointing.
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `subagent.delegation` | enum | `allowed` | `off`, `allowed`, `preferred`, `required`. See above. |
+| `subagent.agents` | record | `{}` | One row per agent: `enabled`, `model`, `thinkingLevel`. Edit in the Agents row of the Subagents tab, or in `/agents`. |
+| `subagent.model` | string | unset | Model for every subagent that has no model of its own. Unset means inherit: subagents follow the model you are working with. May carry a `:effort` suffix, and an explicit suffix wins over the agent's own default. |
+| `subagent.thinkingLevel` | string | unset | Blanket subagent effort, picked from `off`, `minimal`..`max`, `auto`. Unset means inherit. |
+| `subagent.batch` | boolean | `true` | Batch shape for the `task` tool: one call, many items. |
+| `subagent.maxConcurrency` | number | `32` | Subagents running at once. |
+| `subagent.maxRecursionDepth` | number | `2` | How deep subagents may spawn their own subagents. |
+| `subagent.maxRuntimeMs` | number | `0` | Hard per-subagent wall-clock limit in ms; `0` disables it. |
+| `subagent.idleTtlMs` | number | `420000` | How long an idle subagent stays in memory before being parked to disk. |
+| `subagent.softRequestBudget` | number | `200` | Requests after which a subagent is asked to wrap up; `0` disables the guard. |
+| `subagent.softRequestBudgetNotice` | boolean | `true` | Inject that wrap-up notice once. |
+| `subagent.showResolvedModelBadge` | boolean | `true` | Show each subagent's resolved model, and what decided it, on the agent surfaces. |
+| `subagent.enableLsp` | boolean | `false` | Let subagents use the `lsp` tool. |
+| `subagent.isolation.mode` | enum | `none` | Filesystem isolation backend for subagents. See [Safety](./handbook/src/using/safety.md). |
+| `subagent.isolation.merge` | enum | `patch` | How isolated changes come back: `patch` or `branch`. |
+| `subagent.isolation.commits` | enum | `generic` | Commit message style for nested repo changes. |
+
 ### Shell, eval, and LSP
 
 ```yaml
@@ -504,6 +645,12 @@ python:
   kernelMode: session       # session, per-call
   interpreter: ""
 
+ruby:
+  kernelMode: session       # session, per-call
+
+julia:
+  kernelMode: session       # session, per-call
+
 lsp:
   enabled: true
   lazy: true
@@ -523,6 +670,8 @@ lsp:
 | `eval.py` | boolean | `true` | Python eval backend. `VEYYON_PY=0` disables for the process. |
 | `eval.js` | boolean | `true` | JavaScript eval backend. `VEYYON_JS=0` disables for the process. |
 | `python.kernelMode` | enum | `session` | `session` (persistent kernel) or `per-call`. |
+| `ruby.kernelMode` | enum | `session` | Same choice for Ruby cells: keep one kernel per session, or start and shut down a kernel for each cell. |
+| `julia.kernelMode` | enum | `session` | Same choice for Julia cells. A fresh Julia kernel recompiles, so `per-call` trades startup time for a clean slate. |
 | `python.interpreter` | string | `""` | Path to a Python interpreter; empty = auto-detect. |
 | `lsp.enabled` | boolean | `true` | Language-server integration. `--no-lsp` disables for the run. |
 | `lsp.lazy` | boolean | `true` | Start servers on demand. |
@@ -572,9 +721,7 @@ compaction:
   enabled: true
   strategy: summary           # summary | handoff (schema default: summary)
   midTurnEnabled: true        # check thresholds between tool-loop provider requests
-  thresholdTokens: -1         # absolute token trigger, model-independent (-1 = use the percent below)
-  thresholdPercent: -1        # legacy percent-of-window trigger (-1 = provider/reserve default)
-  remoteEnabled: true
+  threshold: auto             # auto | 85% (of the model's window) | 170000 (tokens, any model)
 
 memory:
   backend: off                # off, local, hindsight, mnemopi
@@ -586,10 +733,11 @@ memory:
 | `compaction.enabled` | boolean | `true` | Automatic conversation compaction. |
 | `compaction.midTurnEnabled` | boolean | `true` | Check thresholds at safe mid-turn tool-loop boundaries before the next provider request. |
 | `compaction.strategy` | enum | `summary` | `summary` (rewrite old history into an in-place LLM summary) or `handoff` (LLM handoff summary / new session transfer). |
-| `compaction.model` | string | unset | Model for handoff/LLM compaction; unset inherits interactive (`modelRoles.default`). |
-| `compaction.thresholdTokens` | number | `-1` | Absolute token trigger, model-independent: compact when context exceeds this many tokens. The primary knob (`/settings` -> Compaction Threshold). Wins over `thresholdPercent` when `> 0`. If it exceeds the current model's window it is honored up to `contextWindow - 1` and you get a one-time warning. `-1` = use the percent below. |
-| `compaction.thresholdPercent` | number | `-1` | Legacy percent-of-window trigger; ignored when `thresholdTokens > 0`. `-1` = reserve/provider default. |
-| `compaction.remoteEnabled` | boolean | `true` | Allow remote compaction service. |
+| `compaction.model` | string | unset | Model for handoff/LLM compaction; unset inherits the model you are working with (`modelRoles.default`). May carry a `:effort` suffix, applied on every compaction pass. |
+| `compaction.threshold` | string | `auto` | When auto-compaction triggers, with the unit in the value: `auto` uses `contextWindow - max(15% of contextWindow, reserveTokens)`; `85%` is a percent of the current model's window, so the trigger moves with the model; `170000` is an absolute token amount, the same trigger on every model. An absolute amount larger than the current model's window is honored up to `contextWindow - 1` and you get a one-time warning. Set it in `/settings` -> Model -> Auto-Compaction Threshold. |
+| `compaction.thresholdTokens` | number | `-1` | Retired, replaced by `compaction.threshold`. A value `> 0` in your global config is rewritten to `threshold: <amount>` on load and this key is dropped, so your trigger point does not change. Write an absolute amount as `threshold: 170000`. |
+| `compaction.thresholdPercent` | number | `-1` | Retired, replaced by `compaction.threshold`. A value `> 0` is rewritten to `threshold: <percent>%` on load (the token amount above wins when both are set) and this key is dropped. Write a percent as `threshold: 85%`. |
+| `compaction.remoteEndpoint` | string | unset | Optional summarizer endpoint for the `summary` strategy. It must return summary text, which is stored exactly like a locally generated summary. It is a transport, not a third strategy. |
 | `memory.backend` | enum | `off` | `off`, `local`, `hindsight`, `mnemopi`. Each backend has its own `hindsight.*` / `mnemopi.*` / `memories.*` tuning keys. |
 | `autolearn.enabled` | boolean | `false` | Experimental: after the agent stops, nudge it to capture lessons to memory and create/enhance isolated managed skills under `~/.veyyon/profiles/default/agent/managed-skills`. Enables the `manage_skill` tool (and `learn` when a memory backend is active). |
 | `autolearn.autoContinue` | boolean | `false` | When `autolearn.enabled`, auto-run one capture turn at stop (uses extra tokens). Off = a passive reminder rides your next turn. |
@@ -630,9 +778,9 @@ tui:
 | `colorBlindMode` | boolean | `false` | Use blue instead of green for diff additions. |
 | `showHardwareCursor` | boolean | `true` | Show the terminal hardware cursor. |
 | `statusLine.preset` | enum | `default` | `default`, `minimal`, `compact`, `full`, `nerd`, `ascii`, `custom`. |
-| `statusLine.separator` | enum | `powerline-thin` | `powerline`, `powerline-thin`, `slash`, `pipe`, `block`, `none`, `ascii`. |
+| `statusLine.separator` | enum | `pipe` | `powerline`, `powerline-thin`, `slash`, `pipe`, `block`, `none`, `ascii`. |
 | `statusLine.sessionAccent` | boolean | `true` | Tint the editor border with the session color. |
-| `statusLine.transparent` | boolean | `false` | Use the terminal background for the status line. |
+| `statusLine.transparent` | boolean | `true` | Use the terminal's own background for the status line instead of the theme's `statusLineBg`. Powerline end caps are dropped while transparent, because they need a contrasting fill to bridge into the surrounding terminal. |
 | `statusLine.showHookStatus` | boolean | `true` | Show hook status messages. |
 | `terminal.showImages` | boolean | `true` | Render images inline (when the terminal supports it). |
 | `images.autoResize` | boolean | `true` | Resize large images for model compatibility. |
@@ -714,16 +862,20 @@ Provider credentials and custom model definitions are configured separately, see
 
 These keys live in the machine-wide `~/.veyyon/config.yml`, not a profile's own config, and are edited on the **Global** tab of `/settings`. They are read live, so an external edit to that file takes effect without a restart.
 
-| Key | Type | Default | Values / notes |
-|---|---|---|---|
-| `defaultProfile` | string | `default` | Which profile a bare `vey` launches when `--profile` and `VEYYON_PROFILE` are unset. Also settable with `veyyon profile default [name]`; setting it back to `default` clears the override. |
-| `profileSharing` | boolean | `true` | When `true`, every profile reads one machine-wide provider credential store (`~/.veyyon/shared-auth/agent.db`). Set `false` to give each profile its own private credentials. See [Providers](./providers.md). |
-| `auth.broker.url` | string | _(unset)_ | Auth-broker base URL, shown as **Auth Broker URL** on the Global tab. Stored nested (`auth: { broker: { url } }`); the legacy flat `"auth.broker.url"` key is still read and is rewritten to the nested form on the next save. `VEYYON_AUTH_BROKER_URL` still wins over config. |
-| `auth.broker.token` | string | _(unset)_ | Auth-broker bearer token, shown as **Auth Broker Token**. Write-only in `/settings`: a stored token renders as a mask and is never echoed; enter a new value to replace it, leave the mask to keep it, or clear the field to delete it. `VEYYON_AUTH_BROKER_TOKEN` still wins over config. |
+Two of these have a different name depending on how you reach them: `config set` and `/settings` take the schema path, and the value is stored under a nested key in the file. Both names are given below.
 
-### Other groups
+| Setting key (`config set`) | Stored as | Type | Default | Values / notes |
+|---|---|---|---|---|
+| `defaultProfile` | `defaultProfile` | string | `default` | Which profile a bare `vey` launches when `--profile` and `VEYYON_PROFILE` are unset. Also settable with `veyyon profile default [name]`; setting it back to `default` clears the override. |
+| `profileSharing` | `profileSharing` | boolean | `true` | When `true`, every profile reads one machine-wide provider credential store (`~/.veyyon/shared-auth/agent.db`). Set `false` to give each profile its own private credentials. See [Providers](./providers.md). |
+| `authBrokerUrl` | `auth: { broker: { url } }` | string | _(empty)_ | Auth-broker base URL, shown as **Auth Broker URL** on the Global tab. The legacy flat `"auth.broker.url"` key is still read and is rewritten to the nested form on the next save. `VEYYON_AUTH_BROKER_URL` still wins over config. |
+| `authBrokerToken` | `auth: { broker: { token } }` | string | _(empty)_ | Auth-broker bearer token, shown as **Auth Broker Token**. Write-only in `/settings`: a stored token renders as a mask and is never echoed; enter a new value to replace it, leave the mask to keep it, or clear the field to delete it. `VEYYON_AUTH_BROKER_TOKEN` still wins over config. |
 
-`veyyon config list` exposes many more grouped settings, including: `task.*` (subagent concurrency, isolation, model overrides), `skills.*` and `commands.*` (discovery toggles), `mcp.*`, `github.*`, `async.*`, `goal.*`, `loop.*`, `todo.*`, `magicKeywords.*`, `ttsr.*` (time-traveling stream rules), `display.*`, `startup.*`, `share.*`, `collab.*`, `stt.*`/`tts.*`, `memories.*`/`hindsight.*`/`mnemopi.*` (memory backends), and `bashInterceptor.*`. Each follows the same type/default rules shown above.
+### Every other setting
+
+The sections above are the settings worth explaining at length. For the complete list, see the [settings reference](./settings-reference.md): every setting that appears in `/settings`, with its key, type, default, and what it does, grouped exactly as the tabs are. That page is generated from the schema, so it cannot fall behind the code; the narrative here is the part written by hand.
+
+`veyyon config list` shows the same set with your current values.
 
 ## Legacy migration
 
@@ -747,9 +899,15 @@ Applied whenever raw settings are loaded (global, project, overlays, and runtime
 | `queueMode` | `steeringMode` |
 | `ask.timeout` in milliseconds (value `> 1000`) | seconds (divided by 1000), and the rewrite is logged with both values |
 | flat `theme: "<name>"` string | `theme.dark` / `theme.light` (slot chosen by luminance; built-in `light`/`dark` are dropped to use defaults) |
-| `task.isolation.enabled: true/false` | `task.isolation.mode: auto/none` |
+| `task.isolation.enabled: true/false` | `subagent.isolation.mode: auto/none` |
 | `task.simple` | removed |
 | legacy `task.isolation.mode` (`worktree`, `fuse-overlay`, `fuse-projfs`) | `rcopy`, `overlayfs`, `projfs` |
+| `task.eager` (`default` / `preferred` / `always`, or a boolean) | `subagent.delegation` (`allowed` / `preferred` / `required`) |
+| `task.batch`, `task.maxConcurrency`, `task.maxRecursionDepth`, `task.maxRuntimeMs`, `task.softRequestBudget`, `task.softRequestBudgetNotice`, `task.showResolvedModelBadge`, `task.enableLsp` | the same names under `subagent.` |
+| `task.agentIdleTtlMs` | `subagent.idleTtlMs` |
+| `task.isolation.*` | `subagent.isolation.*` |
+| `task.disabledAgents` and `task.agentModelOverrides` | one row per agent in `subagent.agents` |
+| `modelRoles.task` | `subagent.model` (the `task` role is retired) |
 | `lastChangelogVersion` | moved to a marker file and stripped from `config.yml` |
 | `collapseChangelog` | removed; startup no longer prints release notes, so there is nothing to collapse. Use `startup.updateNotice` to control the one-line notice that replaced it. |
 

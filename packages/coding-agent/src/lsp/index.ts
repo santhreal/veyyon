@@ -13,13 +13,14 @@ import {
 	logger,
 	once,
 	prompt,
+	readPipeText,
 	trimTrailingSlashes,
 	truncate,
 	untilAborted,
 } from "@veyyon/utils";
 import type { BunFile } from "bun";
 import { type Theme, theme } from "../modes/theme/theme";
-import lspDescription from "../prompts/tools/lsp.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import type { ToolSession } from "../tools";
 import { truncateForPrompt } from "../tools/approval";
 import { formatPathRelativeToCwd, resolveToCwd } from "../tools/path-utils";
@@ -631,7 +632,7 @@ async function resolveGoWorkspaceDiagnosticsCommand(cwd: string, signal?: AbortS
 		}
 
 		try {
-			const [stdout] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+			const [stdout] = await Promise.all([readPipeText(proc.stdout), readPipeText(proc.stderr)]);
 			const exitCode = await proc.exited;
 			throwIfAborted(signal);
 			if (exitCode !== 0) return fallback;
@@ -710,10 +711,7 @@ async function runWorkspaceDiagnostics(
 		}
 
 		try {
-			const [stdout, stderr] = await Promise.all([
-				new Response(proc.stdout).text(),
-				new Response(proc.stderr).text(),
-			]);
+			const [stdout, stderr] = await Promise.all([readPipeText(proc.stdout), readPipeText(proc.stderr)]);
 			await proc.exited;
 			throwIfAborted(signal);
 			const combined = (stdout + stderr).trim();
@@ -1558,7 +1556,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 	readonly strict = true;
 
 	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(lspDescription);
+		this.description = prompt.render(PROMPTS["tools/lsp"].text);
 	}
 
 	static createIf(session: ToolSession): LspTool | null {

@@ -8,14 +8,13 @@ import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth }
 import { isRecord, trimmedString } from "@veyyon/utils";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
-import { clampNumResults, dateToAgeSeconds } from "../utils";
+import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
 
 const ZAI_MCP_URL = "https://api.z.ai/api/mcp/web_search_prime/mcp";
 const ZAI_TOOL_NAME = "web_search_prime";
-const DEFAULT_NUM_RESULTS = 10;
 // Cap the requested count like every other list provider (see clampNumResults /
 // the sibling providers). Without this, an explicit `limit` reached the Z.AI API
 // and the post-fetch slice unclamped, the lone list provider that did not bound
@@ -254,7 +253,7 @@ async function callZaiTool(
 }
 
 async function callZaiSearch(apiKey: string, params: ZaiSearchParams): Promise<unknown> {
-	const count = params.num_results ?? DEFAULT_NUM_RESULTS;
+	const count = params.num_results ?? SEARCH_DEFAULT_NUM_RESULTS;
 	const fetchImpl = params.fetch ?? fetch;
 	const attempts: Record<string, unknown>[] = [
 		{ query: params.query, count },
@@ -383,7 +382,7 @@ export async function searchZai(params: ZaiSearchParams): Promise<SearchResponse
 	// unclamped `limit` used to reach the Z.AI API and the slice). Clamping at this
 	// shared entry means a direct searchZai call is bounded too, not only the
 	// ZaiProvider wrapper.
-	const resultCap = clampNumResults(params.num_results, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
+	const resultCap = clampNumResults(params.num_results, SEARCH_DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
 	const cappedParams = { ...params, num_results: resultCap };
 
 	const rawResult = await withAuth(keyOrResolver, key => callZaiSearch(key, cappedParams), {

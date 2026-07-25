@@ -3,7 +3,7 @@
  * Uses Biome's CLI with JSON output instead of LSP (which has stale diagnostics issues).
  */
 import path from "node:path";
-import { logger } from "@veyyon/utils";
+import { logger, readPipeText } from "@veyyon/utils";
 import type { Diagnostic, DiagnosticSeverity, LinterClient, ServerConfig } from "../../lsp/types";
 
 // =============================================================================
@@ -102,7 +102,7 @@ async function runBiome(
 			windowsHide: true,
 		});
 
-		const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+		const [stdout, stderr] = await Promise.all([readPipeText(proc.stdout), readPipeText(proc.stderr)]);
 		const exitCode = await proc.exited;
 
 		return { stdout, stderr, success: exitCode === 0 };

@@ -12,12 +12,10 @@
  */
 import { logger } from "@veyyon/utils";
 import type { Settings } from "../config/settings";
-import autolearnGuidance from "../prompts/system/autolearn-guidance.md" with { type: "text" };
-import autolearnGuidanceLearn from "../prompts/system/autolearn-guidance-learn.md" with { type: "text" };
-import autolearnNudgeAutoContinue from "../prompts/system/autolearn-nudge-autocontinue.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import type { AgentSession, AgentSessionEvent } from "../session/agent-session";
 
-const AUTOLEARN_NUDGE_AUTOCONTINUE = autolearnNudgeAutoContinue.trim();
+const AUTOLEARN_NUDGE_AUTOCONTINUE = PROMPTS["autolearn/nudge-autocontinue"].text.trim();
 const DEFAULT_MIN_TOOL_CALLS = 5;
 
 /**
@@ -33,8 +31,8 @@ const DEFAULT_MIN_TOOL_CALLS = 5;
  */
 export function buildAutoLearnInstructions(available: { manageSkill: boolean; learn: boolean }): string | null {
 	if (!available.manageSkill) return null;
-	const parts = [autolearnGuidance.trim()];
-	if (available.learn) parts.push(autolearnGuidanceLearn.trim());
+	const parts = [PROMPTS["autolearn/guidance"].text.trim()];
+	if (available.learn) parts.push(PROMPTS["autolearn/guidance-learn"].text.trim());
 	return parts.join("\n\n");
 }
 

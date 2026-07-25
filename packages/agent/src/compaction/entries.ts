@@ -1,4 +1,4 @@
-import type { ImageContent, MessageAttribution, ServiceTierByFamily, TextContent } from "@veyyon/ai";
+import type { ImageContent, MessageAttribution, ServiceTierByFamily, TextContent, ToolResultMessage } from "@veyyon/ai";
 import type { AgentMessage } from "../types";
 
 export interface SessionEntryBase {
@@ -145,4 +145,20 @@ export type SessionEntry =
 export interface ReadonlySessionManager {
 	getBranch(leafId?: string | null): SessionEntry[];
 	getEntry(id: string): SessionEntry | undefined;
+}
+
+/**
+ * The tool result an entry carries, or undefined when it carries something else.
+ *
+ * Compaction walks a whole branch looking for tool output to prune or shake, so nearly every
+ * entry it sees is NOT a tool result and answering undefined is the ordinary case rather than a
+ * failure. The narrowing lives with the {@link SessionEntry} union it narrows: both compaction
+ * passes had their own copy, and a pass that recognised one message shape while its sibling
+ * recognised another would prune output the other still counted.
+ */
+export function getToolResultMessage(entry: SessionEntry): ToolResultMessage | undefined {
+	if (entry.type !== "message") return undefined;
+	const message = entry.message as AgentMessage;
+	if (message.role !== "toolResult") return undefined;
+	return message as ToolResultMessage;
 }

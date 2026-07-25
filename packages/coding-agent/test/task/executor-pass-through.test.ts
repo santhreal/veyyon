@@ -171,17 +171,23 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 		expect(forwarded?.parentTaskPrefix).toBe("ChildAgent");
 	});
 
-	it("resolves an explicit task-role effort suffix over the agent-definition default", async () => {
+	/**
+	 * An `:effort` suffix the operator typed into the subagent model is their
+	 * explicit choice and outranks the agent definition's own default level. The
+	 * executor receives the pattern already resolved (`modelOverride`) because
+	 * `resolveSubagentModel` is the one owner of that decision.
+	 */
+	it("resolves an explicit effort suffix on the subagent model over the agent-definition default", async () => {
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
 		if (!model) throw new Error("Expected claude-sonnet-4-5 model to exist");
 		const settings = Settings.isolated();
-		settings.setModelRole("task", `${model.provider}/${model.id}:high`);
 		const session = yieldEmittingSession();
 		const spy = vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
 
 		const result = await runSubprocess({
 			...baseOptions,
-			agent: { ...baseAgent, model: ["@task"] },
+			agent: baseAgent,
+			modelOverride: [`${model.provider}/${model.id}:high`],
 			id: "subagent-thinking-precedence",
 			settings,
 			modelRegistry: createModelRegistry(model),
@@ -190,22 +196,25 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 
 		expect(result.exitCode).toBe(0);
 		const forwarded = spy.mock.calls[0]?.[0];
-		// The user's explicit `:high` suffix on the resolved role pattern wins over
-		// the agent definition's default level (e.g. task's `auto`).
 		expect(forwarded?.thinkingLevel).toBe(ThinkingLevel.High);
 	});
 
+	/**
+	 * Without a suffix there is nothing explicit to honor, so the level the caller
+	 * passed (the agent definition's default, resolved by
+	 * `resolveSubagentThinkingLevel`) stands.
+	 */
 	it("falls back to the agent-definition thinking level without an explicit suffix", async () => {
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
 		if (!model) throw new Error("Expected claude-sonnet-4-5 model to exist");
 		const settings = Settings.isolated();
-		settings.setModelRole("task", `${model.provider}/${model.id}`);
 		const session = yieldEmittingSession();
 		const spy = vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
 
 		const result = await runSubprocess({
 			...baseOptions,
-			agent: { ...baseAgent, model: ["@task"] },
+			agent: baseAgent,
+			modelOverride: [`${model.provider}/${model.id}`],
 			id: "subagent-thinking-default",
 			settings,
 			modelRegistry: createModelRegistry(model),
@@ -214,6 +223,38 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 
 		expect(result.exitCode).toBe(0);
 		const forwarded = spy.mock.calls[0]?.[0];
+		expect(forwarded?.thinkingLevel).toBe(ThinkingLevel.Low);
+	});
+
+	/**
+	 * The executor must NOT resolve `agent.model` on its own.
+	 *
+	 * This is the defect the Subagents settings area exists to fix: the bundled
+	 * agents carried role aliases in their frontmatter, the executor resolved them
+	 * behind the caller's back, and the operator's subagent model never took
+	 * effect. Every caller now resolves through `resolveSubagentModel` and hands
+	 * the patterns down, so frontmatter reaching the executor unresolved is a bug
+	 * in the caller, not a model selection.
+	 */
+	it("ignores the agent definition's own model when the caller passed no resolved pattern", async () => {
+		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
+		if (!model) throw new Error("Expected claude-sonnet-4-5 model to exist");
+		const settings = Settings.isolated();
+		const session = yieldEmittingSession();
+		const spy = vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
+
+		const result = await runSubprocess({
+			...baseOptions,
+			agent: { ...baseAgent, model: [`${model.provider}/${model.id}:high`] },
+			id: "subagent-frontmatter-not-resolved-here",
+			settings,
+			modelRegistry: createModelRegistry(model),
+			thinkingLevel: ThinkingLevel.Low,
+		});
+
+		expect(result.exitCode).toBe(0);
+		const forwarded = spy.mock.calls[0]?.[0];
+		// The frontmatter's `:high` did not leak in: the caller-supplied level stands.
 		expect(forwarded?.thinkingLevel).toBe(ThinkingLevel.Low);
 	});
 });

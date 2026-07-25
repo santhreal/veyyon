@@ -135,7 +135,7 @@ describe("runSubprocess soft request budget", () => {
 			task: "inventory the api surface",
 			index: 0,
 			id,
-			settings: Settings.isolated({ "task.softRequestBudget": 2 }),
+			settings: Settings.isolated({ "subagent.softRequestBudget": 2 }),
 			modelRegistry: { refresh: async () => {} } as unknown as ModelRegistry,
 			enableLsp: false,
 			artifactsDir: tempDir.path(),

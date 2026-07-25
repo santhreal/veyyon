@@ -13,6 +13,7 @@ export * from "./components/markdown";
 export * from "./components/scroll-view";
 export * from "./components/select-list";
 export * from "./components/settings-list";
+export * from "./components/settings-search";
 export * from "./components/spacer";
 export * from "./components/tab-bar";
 export * from "./components/text";

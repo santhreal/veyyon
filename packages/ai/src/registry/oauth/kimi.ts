@@ -288,8 +288,20 @@ export async function refreshKimiToken(refreshToken: string): Promise<OAuthCrede
 
 	if (!response.ok) {
 		const payload = (await response.json().catch(() => undefined)) as TokenResponse | undefined;
-		const description = payload?.error_description ? `: ${payload.error_description}` : "";
-		throw new AIError.OAuthError(`Kimi token refresh failed: ${response.status}${description}`, {
+		// Carry the machine-readable `error` code, not only the prose
+		// `error_description`. `isDefinitiveOAuthFailure` keys on codes such as
+		// `invalid_grant` to decide whether a refresh failure means the grant is
+		// dead (disable the credential, tell the user to log in again) or merely
+		// transient (retry). Kimi returns 400 with `error: "invalid_grant"` and
+		// `error_description: "The provided authorization grant is invalid"`, and
+		// dropping the code left only prose that matched neither the definitive
+		// pattern nor the 401 fallback. Every dead kimi grant was therefore
+		// classified transient: the row was blocked for five minutes, never
+		// disabled, and the session reported "signed in, but could not get a
+		// usable token right now (for example a lapsed subscription)" on a loop
+		// instead of "your login expired, run /login".
+		const detail = [payload?.error, payload?.error_description].filter(Boolean).join(": ");
+		throw new AIError.OAuthError(`Kimi token refresh failed: ${response.status}${detail ? `: ${detail}` : ""}`, {
 			kind: "token-refresh",
 			provider: "kimi",
 			status: response.status,

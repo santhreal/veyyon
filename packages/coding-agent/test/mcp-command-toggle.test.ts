@@ -6,29 +6,22 @@ import type { SourceMeta } from "@veyyon/coding-agent/capability/types";
 import type { MCPServerConfig } from "@veyyon/coding-agent/mcp/types";
 import { MCPCommandController } from "@veyyon/coding-agent/modes/controllers/mcp-command-controller";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import {
-	getConfigRootDir,
-	getMCPConfigPath,
-	getProjectDir,
-	removeWithRetries,
-	setAgentDir,
-	setProjectDir,
-} from "@veyyon/utils";
+import { getMCPConfigPath, getProjectDir, removeWithRetries, setAgentDir, setProjectDir } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 const originalProjectDir = getProjectDir();
-const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
-const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
+// One owner for "undo a setAgentDir call": the hand-rolled version below could not
+// restore an ABSENT VEYYON_CODING_AGENT_DIR and left the active profile cleared,
+// which leaked into every file that ran after this one.
+const dirOverrides = captureDirOverrides();
 
 function restoreAgentDir(): void {
-	if (originalAgentDir) {
-		setAgentDir(originalAgentDir);
-		process.env.VEYYON_CODING_AGENT_DIR = originalAgentDir;
-		Bun.env.VEYYON_CODING_AGENT_DIR = originalAgentDir;
-		return;
-	}
-	setAgentDir(fallbackAgentDir);
-	delete process.env.VEYYON_CODING_AGENT_DIR;
-	delete Bun.env.VEYYON_CODING_AGENT_DIR;
+	restoreDirOverrides(dirOverrides);
+	// `Bun.env` and `process.env` are the same store under Bun, but this file wrote
+	// through both, so both are cleared when the snapshot says the override was
+	// absent. Reading the snapshot rather than deleting unconditionally: an override
+	// the developer actually set has to survive this suite.
+	if (dirOverrides.agentDirEnv === undefined) delete Bun.env.VEYYON_CODING_AGENT_DIR;
 }
 
 function createController() {

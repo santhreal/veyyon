@@ -343,7 +343,7 @@ describe("template expansion fallback", () => {
 describe("renderYieldSchema", () => {
 	// prompt-templates is imported for its Handlebars helper registration side-effect
 	// (jtdToTypeScript + renderYieldSchema); the render calls below rely on it.
-	const templatePath = path.resolve(import.meta.dir, "../src/prompts/system/subagent-system-prompt.md");
+	const templatePath = path.resolve(import.meta.dir, "../src/prompts/subagent/system-prompt.md");
 
 	async function renderSubagentPrompt(outputSchema: unknown): Promise<string> {
 		const templateSource = await fs.readFile(templatePath, "utf-8");

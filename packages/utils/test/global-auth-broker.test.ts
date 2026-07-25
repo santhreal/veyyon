@@ -7,30 +7,26 @@
  * empty-record pruning, and never-throw reads on a corrupt file.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
 import { readGlobalAuthBrokerSafe, writeGlobalAuthBrokerToken, writeGlobalAuthBrokerUrl } from "../src/dirs";
+import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "./helpers/isolated-config-root";
 
-let configDirName: string;
+let isolated: IsolatedConfigRoot | undefined;
 let configRoot: string;
-let originalConfigDir: string | undefined;
 
 beforeEach(() => {
-	// getBaseConfigRoot resolves homedir()/<VEYYON_CONFIG_DIR> per call, so a
-	// unique dir name sandboxes every write under the real home (the same
-	// pattern profiles.test.ts uses).
-	configDirName = `.veyyon-auth-broker-test-${process.pid}-${Math.random().toString(36).slice(2)}`;
-	configRoot = join(homedir(), configDirName);
-	originalConfigDir = process.env.VEYYON_CONFIG_DIR;
-	process.env.VEYYON_CONFIG_DIR = configDirName;
+	// A temp root. This used to be a unique dot-directory NAME, which sandboxed the
+	// writes from other suites and put them in the developer's real home; a token is
+	// written here, which is exactly the data that must never land there.
+	isolated = enterIsolatedConfigRoot("auth-broker");
+	configRoot = isolated.root;
 });
 
 afterEach(() => {
-	if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
-	else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
-	rmSync(configRoot, { recursive: true, force: true });
+	isolated?.restore();
+	isolated = undefined;
 });
 
 function readConfig(): Record<string, unknown> {

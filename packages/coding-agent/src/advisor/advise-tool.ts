@@ -8,7 +8,7 @@ import type {
 } from "@veyyon/agent-core";
 import { escapeXmlAttribute, escapeXmlText } from "@veyyon/utils";
 import { type } from "arktype";
-import adviseDescription from "../prompts/advisor/advise-tool.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 
 const adviseSchema = type({
 	note: type("string").describe(
@@ -175,7 +175,7 @@ function advisorSeverityRank(severity: AdvisorSeverity | undefined): number {
 export class AdviseTool implements AgentTool<typeof adviseSchema, AdviseDetails> {
 	readonly name = "advise";
 	readonly label = "Advise";
-	readonly description = adviseDescription;
+	readonly description = PROMPTS["advisor/advise-tool"].text;
 	readonly parameters = adviseSchema;
 	readonly intent = "omit" as const;
 	/** Highest delivered severity rank per normalized note. A new call passes

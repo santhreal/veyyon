@@ -13,7 +13,7 @@ import {
 	templateSectionNames,
 } from "@veyyon/coding-agent/system-prompt-builder/prompt-sections";
 
-const systemPromptTemplate = PROMPTS["system/system-prompt"].text;
+const systemPromptTemplate = PROMPTS["session/system-prompt"].text;
 
 // A miniature render with the same banner grammar as the real template.
 const RENDERED = [

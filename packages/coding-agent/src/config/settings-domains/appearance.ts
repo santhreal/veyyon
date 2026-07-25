@@ -390,6 +390,7 @@ export const APPEARANCE_SETTINGS = {
 			label: "Terminal Hyperlinks",
 			description:
 				"Wrap paths and URLs in OSC 8 hyperlinks for terminal-native click-to-open (auto: detect support; off: never; always: unconditional)",
+			keywords: ["links", "osc8", "clickable"],
 		},
 	},
 	"tui.paintGround": {
@@ -437,6 +438,7 @@ export const APPEARANCE_SETTINGS = {
 			description:
 				"Mouse wheel scrolls the transcript while the prompt stays pinned at the bottom of the window, with the position on the right edge. When off, the wheel drives the terminal's native scrollback and the whole window scrolls with it, prompt included. While on, the mouse is held once anything has scrolled off, so selecting with the mouse becomes shift+drag; veyyon says so the first time a drag comes back empty, and `/copy` picks text or code from the conversation without the mouse.",
 			advanced: true,
+			keywords: ["scroll", "wheel", "mouse", "copy", "paste", "select", "clipboard", "scrollback"],
 		},
 	},
 
@@ -483,14 +485,11 @@ export const APPEARANCE_SETTINGS = {
 		type: "boolean",
 		default: false,
 		ui: {
-			tab: "appearance",
+			tab: "experimental",
 			group: "Display",
-			label: "Subagent Inbox (experimental)",
+			label: "Subagent Inbox",
 			description:
-				"opencode-style split: a live per-agent sidebar plus the focused agent's detail pane, instead of the modal agent hub. Experimental; off by default while the layout is refined.",
-			// Experimental and off by default: lives in the Advanced fold so the
-			// simplified appearance view stays at its stable 12-row default.
-			advanced: true,
+				"opencode-style split: a live per-agent sidebar plus the focused agent's detail pane, instead of the modal agent hub. Off by default while the layout is refined.",
 		},
 	},
 
@@ -512,7 +511,7 @@ export const APPEARANCE_SETTINGS = {
 			tab: "appearance",
 			group: "Display",
 			label: "Show Token Usage",
-			description: "Show per-turn token usage on assistant messages",
+			description: "Show what each turn spent under the assistant message: tokens, how long it took, and its rate",
 		},
 	},
 
@@ -539,6 +538,30 @@ export const APPEARANCE_SETTINGS = {
 			label: "Collapse Compacted History",
 			description:
 				"Collapse pre-compaction history behind the summary divider on the live transcript; disable to keep the full transcript inline with dividers at each compaction point",
+		},
+	},
+
+	/**
+	 * Whether tool calls start expanded, showing their full input and output
+	 * rather than a short preview.
+	 *
+	 * The transcript collapses tool blocks by default because a single `go test`
+	 * run would otherwise push everything else off the screen. The keyboard toggle
+	 * has always existed, but it lived only in the running session, so anyone who
+	 * prefers to read the full form had to press it again in every new session.
+	 * This is that preference, remembered: the toggle writes here, and a new
+	 * session starts the way the last one was left.
+	 */
+	"display.toolOutputExpanded": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "appearance",
+			group: "Display",
+			label: "Expand Tool Output",
+			description:
+				"Start tool calls expanded, showing full input and output instead of a preview; the in-session toggle updates this",
+			advanced: true,
 		},
 	},
 

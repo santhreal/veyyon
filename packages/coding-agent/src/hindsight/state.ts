@@ -367,7 +367,7 @@ export class HindsightSessionState {
 		if (!context) return;
 
 		this.lastRecallSnippet = context;
-		await this.#refreshBaseSystemPromptAfter("recall");
+		await this.#publishVolatileContextAfter("recall");
 	}
 
 	async beforeAgentStartPrompt(promptText: string): Promise<string | undefined> {
@@ -425,7 +425,7 @@ export class HindsightSessionState {
 		}
 
 		await this.refreshMentalModelsSnippet();
-		await this.#refreshBaseSystemPromptAfter("MM load");
+		await this.#publishVolatileContextAfter("MM load");
 	}
 
 	async refreshMentalModelsSnippet(): Promise<void> {
@@ -443,7 +443,7 @@ export class HindsightSessionState {
 		if (this.aliasOf) return false;
 		if (!this.config.mentalModelsEnabled) return false;
 		await this.refreshMentalModelsSnippet();
-		await this.#refreshBaseSystemPromptAfter("MM reload");
+		await this.#publishVolatileContextAfter("MM reload");
 		return true;
 	}
 
@@ -466,7 +466,7 @@ export class HindsightSessionState {
 					Date.now() - this.mentalModelsLoadedAt >= this.config.mentalModelRefreshIntervalMs
 				) {
 					void this.refreshMentalModelsSnippet().then(async () => {
-						await this.#refreshBaseSystemPromptAfter("MM TTL reload");
+						await this.#publishVolatileContextAfter("MM TTL reload");
 					});
 				}
 			}
@@ -481,11 +481,20 @@ export class HindsightSessionState {
 		this.retainQueue.dispose();
 	}
 
-	async #refreshBaseSystemPromptAfter(reason: "recall" | "MM load" | "MM reload" | "MM TTL reload"): Promise<void> {
+	/**
+	 * Publish the new recall / mental-model text to the context tail.
+	 *
+	 * This used to rebuild the system prompt, which is the provider's cache prefix:
+	 * a recall or a mental-model reload made the next request re-read the whole
+	 * conversation as uncached input, and on a measured 66-turn trace those misses
+	 * were about 8% of the session bill. The model reads the same text in the same
+	 * place; only the cache consequence changed.
+	 */
+	async #publishVolatileContextAfter(reason: "recall" | "MM load" | "MM reload" | "MM TTL reload"): Promise<void> {
 		try {
-			await this.session.refreshBaseSystemPrompt(`hindsight:${reason}`);
+			await this.session.publishVolatileMemoryContext(`hindsight:${reason}`);
 		} catch (err) {
-			logger.debug(`Hindsight: refreshBaseSystemPrompt after ${reason} failed`, { error: String(err) });
+			logger.debug(`Hindsight: publishing memory context after ${reason} failed`, { error: String(err) });
 		}
 	}
 }

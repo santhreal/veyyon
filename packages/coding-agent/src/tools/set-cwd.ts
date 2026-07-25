@@ -15,7 +15,7 @@ import { errorMessage, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
-import setCwdDescription from "../prompts/tools/set-cwd.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { framedBlock, renderStatusLine } from "../tui";
 import type { ToolSession } from ".";
 import { resolveToCwd } from "./path-utils";
@@ -140,7 +140,7 @@ export class SetCwdTool implements AgentTool<typeof setCwdSchema, SetCwdToolDeta
 
 	constructor(session: ToolSession) {
 		this.#session = session;
-		this.description = prompt.render(setCwdDescription, {
+		this.description = prompt.render(PROMPTS["tools/set-cwd"].text, {
 			argot: session.settings.get("argot.enabled") === true,
 		});
 	}

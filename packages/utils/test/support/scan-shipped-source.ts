@@ -1,6 +1,6 @@
-import { Glob } from "bun";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { Glob } from "bun";
 
 /**
  * Scan every shipped (`packages/<pkg>/src/**`) TypeScript source line for a

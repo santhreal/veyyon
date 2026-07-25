@@ -5,11 +5,14 @@ import * as path from "node:path";
 import * as mcpClient from "@veyyon/coding-agent/mcp/client";
 import { MCPCommandController } from "@veyyon/coding-agent/modes/controllers/mcp-command-controller";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { getConfigRootDir, getProjectDir, removeWithRetries, setAgentDir, setProjectDir } from "@veyyon/utils";
+import { getProjectDir, removeWithRetries, setAgentDir, setProjectDir } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 const originalProjectDir = getProjectDir();
-const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
-const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
+// One owner for "undo a setAgentDir call": the hand-rolled version below could not
+// restore an ABSENT VEYYON_CODING_AGENT_DIR and left the active profile cleared,
+// which leaked into every file that ran after this one.
+const dirOverrides = captureDirOverrides();
 
 describe("issue #956: interactive /mcp test", () => {
 	let projectDir = "";
@@ -46,12 +49,7 @@ describe("issue #956: interactive /mcp test", () => {
 	afterEach(async () => {
 		vi.restoreAllMocks();
 		setProjectDir(originalProjectDir);
-		if (originalAgentDir) {
-			setAgentDir(originalAgentDir);
-		} else {
-			setAgentDir(fallbackAgentDir);
-			delete process.env.VEYYON_CODING_AGENT_DIR;
-		}
+		restoreDirOverrides(dirOverrides);
 		await removeWithRetries(projectDir);
 		await removeWithRetries(agentDir);
 	});

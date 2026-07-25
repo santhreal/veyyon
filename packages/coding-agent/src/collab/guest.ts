@@ -19,6 +19,7 @@ import * as path from "node:path";
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { ImageContent } from "@veyyon/ai";
 import { getConfigRootDir, logger } from "@veyyon/utils";
+import { SNAPSHOT_PROGRESS_TIMEOUT_MS, TRANSCRIPT_TIMEOUT_MS, WELCOME_TIMEOUT_MS } from "@veyyon/wire";
 import type { AgentHubRemote, AgentHubRemoteTranscript } from "../modes/components/agent-hub";
 import type { InteractiveModeContext } from "../modes/types";
 import { AgentRegistry } from "../registry/agent-registry";
@@ -52,21 +53,8 @@ export const COLLAB_GUEST_ALLOWED_COMMANDS: Record<string, true> = {
 	exit: true,
 	quit: true,
 };
-/**
- * How long the guest waits for the host's small `welcome` frame before giving
- * up on the join. The welcome carries metadata only (`entryCount`, header,
- * state, agents), so it lands well under one second on any working relay.
- */
-const WELCOME_TIMEOUT_MS = 30_000;
-/**
- * How long the guest waits between `snapshot-chunk` frames during the initial
- * sync. Resets on each chunk arrival, so a multi-MB snapshot only fails when
- * the relay genuinely stalls — not because the total wall-clock crossed the
- * welcome budget. The default relay sustains ~350 KB/s; a 512 KB chunk lands
- * in under two seconds with comfortable headroom.
- */
-const SNAPSHOT_PROGRESS_TIMEOUT_MS = 30_000;
-const TRANSCRIPT_TIMEOUT_MS = 20_000;
+// The three join budgets are protocol-level and shared with every other guest
+// implementation; see @veyyon/wire, which documents each one and owns its value.
 
 type WelcomeFrame = Extract<CollabFrame, { t: "welcome" }>;
 type SnapshotChunkFrame = Extract<CollabFrame, { t: "snapshot-chunk" }>;

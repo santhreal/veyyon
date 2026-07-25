@@ -4,6 +4,11 @@ import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { ResolveTool, resolveToolRenderer } from "@veyyon/coding-agent/tools/resolve";
 import { sanitizeText } from "@veyyon/utils";
+import { useFullColor } from "../helpers/theme-assertions";
+
+// Several cases below assert the exact painted bytes of a rendered block, which
+// `theme.fg` only produces when colour is on. See useFullColor.
+useFullColor();
 
 function createSession(handler?: (input: unknown) => Promise<unknown>, clearPendingInvokers?: () => void): ToolSession {
 	return {

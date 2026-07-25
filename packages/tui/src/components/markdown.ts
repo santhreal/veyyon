@@ -726,7 +726,40 @@ interface InlineStyleContext {
 
 type ListToken = Token & { items: Array<{ tokens?: Token[] }>; ordered: boolean; start?: number };
 type TableCellToken = { tokens?: Token[] };
-type TableToken = Token & { header: TableCellToken[]; rows: TableCellToken[][]; raw?: string };
+/**
+ * `align` carries one entry per column, from the delimiter row: `:---:` is
+ * `"center"`, `---:` is `"right"`, and both `:---` and a bare `---` are `null`,
+ * which GFM defines as the default (left). marked has always produced it; the
+ * renderer simply never read it.
+ */
+type TableAlign = "left" | "center" | "right" | null;
+type TableToken = Token & {
+	header: TableCellToken[];
+	rows: TableCellToken[][];
+	align?: TableAlign[];
+	raw?: string;
+};
+
+/**
+ * Pad `text` to `width` according to a column's alignment.
+ *
+ * The one place a table cell is fitted to its column, used by the header row
+ * and the body rows alike. It previously existed twice as an inline
+ * `text + padding(width - visibleWidth(text))`, which is the left-aligned case
+ * written out longhand, so `| :---: |` and `| ---: |` parsed correctly and then
+ * rendered identically to `| --- |`. A centre-aligned column with an odd amount
+ * of slack gets the extra column on the right, matching how browsers round it.
+ */
+function alignCellText(text: string, width: number, align: TableAlign): string {
+	const slack = Math.max(0, width - visibleWidth(text));
+	if (slack === 0) return text;
+	if (align === "right") return padding(slack) + text;
+	if (align === "center") {
+		const left = Math.floor(slack / 2);
+		return padding(left) + text + padding(slack - left);
+	}
+	return text + padding(slack);
+}
 
 function formatHyperlink(text: string, target: string): string {
 	if (!TERMINAL.hyperlinks || !target) {
@@ -2250,6 +2283,10 @@ export class Markdown implements Component {
 		const t = this.#theme.symbols.table;
 		const h = t.horizontal;
 		const v = t.vertical;
+		// A table whose delimiter row omits a column, or a token from a source that
+		// does not populate `align`, falls back to the GFM default rather than
+		// indexing past the end.
+		const align: TableAlign[] = Array.from({ length: numCols }, (_, i) => token.align?.[i] ?? null);
 
 		// Render top border
 		const topBorderCells = columnWidths.map(w => h.repeat(w));
@@ -2265,8 +2302,7 @@ export class Markdown implements Component {
 		for (let lineIdx = 0; lineIdx < headerLineCount; lineIdx++) {
 			const rowParts = headerCellLines.map((cellLines, colIdx) => {
 				const text = cellLines[lineIdx] || "";
-				const padded = text + padding(Math.max(0, columnWidths[colIdx] - visibleWidth(text)));
-				return this.#theme.bold(padded);
+				return this.#theme.bold(alignCellText(text, columnWidths[colIdx], align[colIdx]));
 			});
 			lines.push(`${v} ${rowParts.join(` ${v} `)} ${v}`);
 		}
@@ -2296,7 +2332,7 @@ export class Markdown implements Component {
 			for (let lineIdx = 0; lineIdx < rowLineCount; lineIdx++) {
 				const rowParts = rowCellLines.map((cellLines, colIdx) => {
 					const text = cellLines[lineIdx] || "";
-					return text + padding(Math.max(0, columnWidths[colIdx] - visibleWidth(text)));
+					return alignCellText(text, columnWidths[colIdx], align[colIdx]);
 				});
 				lines.push(`${v} ${rowParts.join(` ${v} `)} ${v}`);
 			}

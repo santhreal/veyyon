@@ -207,7 +207,7 @@
 						for (var gx = gx0; gx < gx1; gx++) {
 							var px = gx * cellW + cellW / 2;
 							var d = Math.hypot(px - cxPx, py - cyPx) / R;
-							var base = (1 - smooth(0.72, 1.02, d)) * gain;
+							var base = (1 - smooth(0.72, 1.02, d)) * (1 - 0.34 * Math.pow(d, 1.5)) * gain;
 							var corona = d > 1.0 && d < 1.26 ? smooth(1.26, 1.0, d) * 0.45 * gain : 0;
 							var rp = 0;
 							for (var i = 0; i < ripples.length; i++) {

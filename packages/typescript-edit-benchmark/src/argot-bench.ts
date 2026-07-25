@@ -17,14 +17,14 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { createAgentSession, discoverAuthStorage, ModelRegistry, SessionManager, Settings } from "@veyyon/coding-agent";
-import { loadArgotFolder } from "@veyyon/coding-agent/lexpack-cache";
+import { loadArgotFolder } from "@veyyon/coding-agent/argot-cache";
 import { ArgotSession, DEFAULT_SIGIL, makePromptFragment, measureDecode, renderPreamble, type Vocabulary } from "argot";
 import {
 	type ArgotCertification,
 	type ArgotRunMeasurement,
 	assembleRunMeasurement,
 	certifyArgot,
-} from "./lexpack-certify";
+} from "./argot-certify";
 import type { EditTask } from "./tasks";
 import { loadTasksFromDir } from "./tasks";
 import { verifyExpectedFileSubset } from "./verify";
@@ -273,6 +273,9 @@ async function verifyReproContains(cwd: string, task: ReproTask): Promise<boolea
 	try {
 		content = await fs.readFile(abs, "utf8");
 	} catch {
+		// Fail CLOSED: this is the benchmark's verdict on whether the agent produced the required text, and a
+		// file we cannot read is a task we cannot call passed. False means the trial FAILS, which is the
+		// direction that keeps a broken harness from inflating a score.
 		return false;
 	}
 	return task.required.every(s => content.includes(s));

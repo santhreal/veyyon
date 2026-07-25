@@ -1,6 +1,6 @@
 import type { AssistantMessage } from "@veyyon/ai";
 import { errorMessage, prompt } from "@veyyon/utils";
-import btwUserPrompt from "../../prompts/system/btw-user.md" with { type: "text" };
+import { PROMPTS } from "../../prompts/registry";
 import { copyToClipboard } from "../../utils/clipboard";
 import { BtwPanelComponent } from "../components/btw-panel";
 import type { InteractiveModeContext } from "../types";
@@ -145,7 +145,7 @@ export class BtwController {
 
 	async #runRequest(request: BtwRequest): Promise<void> {
 		try {
-			const promptText = prompt.render(btwUserPrompt, { question: request.question });
+			const promptText = prompt.render(PROMPTS["side-channel/btw-user"].text, { question: request.question });
 			const { replyText, assistantMessage } = await this.ctx.session.runEphemeralTurn({
 				promptText,
 				onTextDelta: delta => {

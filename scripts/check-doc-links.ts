@@ -193,10 +193,39 @@ export function checkDocLinks(rootDir: string, relFiles: string[]): LinkCheckRes
 	return result;
 }
 
+/**
+ * Drop paths `git ls-files` reports that are not on disk.
+ *
+ * `git ls-files` lists what the INDEX tracks, which still includes a file
+ * deleted in the working tree but not yet committed. Every doc gate then reads
+ * each listed path, so a perfectly ordinary state — a refactor mid-flight, a
+ * branch that removes a doc, a shared worktree — made the gate die with a raw
+ * `ENOENT` naming a file, instead of reporting on the docs that do exist. It is
+ * the worst kind of failure to receive: it says nothing about the rule being
+ * checked, and it points at a file whose absence is the intended change.
+ *
+ * A deleted file also cannot violate any of these rules. It has no links, no
+ * imports, and tells no user to install anything, so skipping it is correct and
+ * not merely convenient.
+ *
+ * One owner because there were four listers and only one of them guarded this,
+ * which is the same defect surfacing in three places and being fixed in one.
+ *
+ * `check-doc-freshness.ts` deliberately does NOT use this and should not: there,
+ * a listed file that is gone is REPORTED (`result.missing`) rather than skipped,
+ * because that gate is about whether docs are being maintained and a vanished
+ * doc is exactly the kind of thing it should say out loud. The difference is
+ * about what each gate is asking, not an inconsistency to unify away.
+ */
+export function existingOnly(rootDir: string, relativePaths: readonly string[]): string[] {
+	return relativePaths.filter(rel => fs.existsSync(path.join(rootDir, rel)));
+}
+
 export function listTrackedMarkdown(rootDir: string): string[] {
 	const proc = spawnSync("git", ["ls-files", "*.md", "**/*.md"], { cwd: rootDir, encoding: "utf8" });
 	if (proc.status !== 0) throw new Error(`git ls-files failed: ${proc.stderr}`);
-	return (
+	return existingOnly(
+		rootDir,
 		[...new Set(proc.stdout.split("\n"))]
 			.filter(f => f !== "")
 			.filter(f => !f.startsWith("docs/handbook/book/"))
@@ -206,7 +235,7 @@ export function listTrackedMarkdown(rootDir: string): string[] {
 			// upstream trees that no longer exist and must not be rewritten.
 			.filter(f => !f.endsWith("CHANGELOG.md"))
 			// Grep-rule pattern docs use [...](...) as rule syntax, not markdown links.
-			.filter(f => !f.includes("/discovery/builtin-rules/"))
+			.filter(f => !f.includes("/discovery/builtin-rules/")),
 	);
 }
 

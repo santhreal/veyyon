@@ -1,6 +1,4 @@
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
-import { getFastembedCacheDir } from "@veyyon/utils";
-import "./setup";
 import {
 	available,
 	availableApi,
@@ -13,7 +11,11 @@ import {
 } from "@veyyon/mnemopi/core/embeddings";
 import { Mnemopi } from "@veyyon/mnemopi/core/memory";
 import { withMnemopiRuntimeOptions } from "@veyyon/mnemopi/core/runtime-options";
+import { getFastembedCacheDir } from "@veyyon/utils";
 import packageJson from "../package.json" with { type: "json" };
+import { useMnemopiTestEnv } from "./setup";
+
+useMnemopiTestEnv();
 
 const ENV_KEYS = [
 	"NODE_ENV",

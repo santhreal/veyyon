@@ -200,6 +200,8 @@ function signatureCoveredByPayload(
 ): boolean {
 	let parsed: unknown;
 	try {
+		// A signature that is not JSON cannot name what the payload covers, so it covers nothing. Not a
+		// swallowed error: an unparseable signature IS the answer, and the caller re-derives from there.
 		parsed = JSON.parse(signature);
 	} catch {
 		return false;

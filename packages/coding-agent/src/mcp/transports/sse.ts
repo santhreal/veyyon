@@ -1,5 +1,5 @@
 import * as AIError from "@veyyon/ai/error";
-import { logger, readSseEvents, Snowflake } from "@veyyon/utils";
+import { isAbortError, logger, readSseEvents, Snowflake } from "@veyyon/utils";
 import type {
 	JsonRpcError,
 	JsonRpcMessage,
@@ -148,7 +148,7 @@ export class LegacySseTransport implements MCPTransport {
 		} catch (error) {
 			if (!endpointReceived) {
 				endpointReady.reject(error);
-			} else if (error instanceof Error && error.name !== "AbortError") {
+			} else if (error instanceof Error && !isAbortError(error)) {
 				logger.debug("Legacy SSE stream error", { url: this.#config.url, error: error.message });
 				this.onError?.(error);
 				this.#rejectPending(error);

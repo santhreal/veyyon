@@ -5,12 +5,12 @@ import type { ToolExample } from "@veyyon/ai";
 import * as natives from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import { formatGroupedPaths, isEnoent, prompt, untilAborted } from "@veyyon/utils";
+import { formatGroupedPaths, isCancellation, isEnoent, prompt, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { InternalUrlRouter } from "../internal-urls";
 import type { Theme } from "../modes/theme/theme";
-import globDescription from "../prompts/tools/glob.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { type TruncationResult, truncateHead } from "../session/streaming-output";
 import { Ellipsis, fileHyperlink, renderFileList, renderStatusLine, renderTreeList, truncateToWidth } from "../tui";
 import { isTimeoutError, scopedTimeoutSignal } from "../utils/fetch-timeout";
@@ -37,7 +37,7 @@ import {
 	formatErrorMessage,
 	PREVIEW_LIMITS,
 } from "./render-utils";
-import { ToolAbortError, ToolError, throwIfAborted } from "./tool-errors";
+import { ToolError, throwIfAborted, toolAbort } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
 const findSchema = type({
@@ -145,7 +145,7 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 	) {
 		this.#customOps = options?.operations;
 		this.#rootPathAlias = options?.rootPathAlias === true;
-		this.description = prompt.render(globDescription);
+		this.description = prompt.render(PROMPTS["tools/glob"].text);
 	}
 
 	async execute(
@@ -443,13 +443,24 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 					}
 					return out;
 				} catch (error) {
-					if (error instanceof Error && error.name === "AbortError") {
-						if (isTimeoutError(combinedSignal.reason) && !signal?.aborted) {
-							timedOut = true;
-							return [];
-						}
-						throw new ToolAbortError();
+					// A deadline yields the partial matches gathered so far; a real
+					// cancellation propagates with its reason.
+					//
+					// The deadline test used to read `combinedSignal.reason` rather
+					// than the error, because `AbortError` stamped its own name over
+					// the `TimeoutError` and the error could not be asked. It carries
+					// its own name now, so the question goes to the thing that was
+					// thrown. `!signal?.aborted` is still required: an operator
+					// interrupt that lands in the same window is a cancellation even
+					// though the scoped signal also shows a timeout reason.
+					if (isTimeoutError(error) && !signal?.aborted) {
+						timedOut = true;
+						return [];
 					}
+					// `toolAbort`, not a bare mint: callers downstream test
+					// `instanceof ToolAbortError`, so the type has to be preserved,
+					// but the reason has to survive with it.
+					if (isCancellation(error)) throw toolAbort(error, "glob");
 					throw error;
 				}
 			};

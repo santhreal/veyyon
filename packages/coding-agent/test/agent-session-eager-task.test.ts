@@ -95,7 +95,7 @@ describe("AgentSession eager task prelude", () => {
 		const modelRegistry = new ModelRegistry(authStorage, path.join(tempDir.path(), `models-${harnesses.length}.yml`));
 		const settings = Settings.isolated({
 			"compaction.enabled": false,
-			"task.eager": "always",
+			"subagent.delegation": "required",
 			"todo.enabled": false,
 			"todo.eager": "default",
 			...settingsOverride,
@@ -241,8 +241,8 @@ describe("AgentSession eager task prelude", () => {
 		expect(observedCalls[0]?.messageTexts.at(-1)).toBe("now update the serializer too");
 	});
 
-	it("skips eager task prelude when task.eager is disabled", async () => {
-		const { session, observedCalls } = await createHarness({ "task.eager": "default" });
+	it("skips the delegation reminder when delegation is merely allowed", async () => {
+		const { session, observedCalls } = await createHarness({ "subagent.delegation": "allowed" });
 
 		await session.prompt("refactor the parser across modules");
 
@@ -251,8 +251,8 @@ describe("AgentSession eager task prelude", () => {
 		expect(observedCalls[0]?.messageTexts).toEqual(["refactor the parser across modules"]);
 	});
 
-	it("skips eager task prelude when task.eager is preferred (prompt section only, no reminder)", async () => {
-		const { session, observedCalls } = await createHarness({ "task.eager": "preferred" });
+	it("skips the delegation reminder when delegation is preferred (prompt section only)", async () => {
+		const { session, observedCalls } = await createHarness({ "subagent.delegation": "preferred" });
 
 		await session.prompt("refactor the parser across modules");
 
@@ -302,7 +302,7 @@ describe("AgentSession eager task prelude", () => {
 	});
 
 	it("omits batch-call guidance from the eager task reminder when task.batch is disabled", async () => {
-		const { session, observedCalls } = await createHarness({ "task.batch": false });
+		const { session, observedCalls } = await createHarness({ "subagent.batch": false });
 
 		await session.prompt("refactor the parser across modules");
 

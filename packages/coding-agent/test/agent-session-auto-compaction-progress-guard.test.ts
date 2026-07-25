@@ -240,7 +240,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 	it("clamps a reserve exceeding the window for small-window threshold recovery bands", () => {
 		const settings = {
 			enabled: true,
-			strategy: "context-full" as const,
+			strategy: "summary" as const,
 			thresholdTokens: -1,
 			thresholdPercent: -1,
 			reserveTokens: 16384,

@@ -13,6 +13,7 @@ import {
 	removeWithRetries,
 	setAgentDir,
 } from "@veyyon/utils";
+import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 const ORIGINAL_STDOUT_WRITE = process.stdout.write.bind(process.stdout);
 
@@ -29,6 +30,7 @@ describe("auth-broker import (CLIProxyAPI)", () => {
 	let agentDir = "";
 	let cliproxyDir = "";
 	let configRoot = "";
+	let dirOverrides: DirOverridesSnapshot;
 	// `setAgentDir` writes VEYYON_CODING_AGENT_DIR; VEYYON_CONFIG_DIR moves the
 	// separate CONFIG root. Snapshot both so a tempdir override cannot leak into
 	// tests that run after this file in the same process.
@@ -51,6 +53,11 @@ describe("auth-broker import (CLIProxyAPI)", () => {
 		// nothing. A relative path from the real home to the temp root is the way to
 		// move it.
 		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), configRoot);
+		// `setAgentDir` writes `VEYYON_CODING_AGENT_DIR` and this block's env snapshot
+		// did not include it, so the temp agent dir stayed exported to every file that
+		// ran after this one. `scripts/find-test-leaks.ts` caught it; the pair below is
+		// the only restore that can put an ABSENT variable back.
+		dirOverrides = captureDirOverrides();
 		setAgentDir(agentDir);
 		__resetDirsFromEnvForTests();
 	});
@@ -61,7 +68,7 @@ describe("auth-broker import (CLIProxyAPI)", () => {
 			if (value === undefined) delete process.env[key];
 			else process.env[key] = value;
 		}
-		__resetDirsFromEnvForTests();
+		restoreDirOverrides(dirOverrides);
 		await removeWithRetries(agentDir);
 		await removeWithRetries(cliproxyDir);
 		await removeWithRetries(configRoot);
@@ -231,6 +238,7 @@ describe("auth-broker import (broker-routed)", () => {
 	let brokerAgentDir = "";
 	let cliproxyDir = "";
 	let configRoot = "";
+	let dirOverrides: DirOverridesSnapshot;
 	let brokerStore: SqliteAuthCredentialStore | undefined;
 	let brokerStorage: AuthStorage | undefined;
 	let handle: AuthBrokerServerHandle | undefined;
@@ -250,6 +258,11 @@ describe("auth-broker import (broker-routed)", () => {
 		// so without moving it the test would open the user's real credential db to
 		// prove a negative about it.
 		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), configRoot);
+		// `setAgentDir` writes `VEYYON_CODING_AGENT_DIR` and this block's env snapshot
+		// did not include it, so the temp agent dir stayed exported to every file that
+		// ran after this one. `scripts/find-test-leaks.ts` caught it; the pair below is
+		// the only restore that can put an ABSENT variable back.
+		dirOverrides = captureDirOverrides();
 		setAgentDir(agentDir);
 		__resetDirsFromEnvForTests();
 
@@ -274,7 +287,7 @@ describe("auth-broker import (broker-routed)", () => {
 			if (savedEnv[key] === undefined) delete process.env[key];
 			else process.env[key] = savedEnv[key];
 		}
-		__resetDirsFromEnvForTests();
+		restoreDirOverrides(dirOverrides);
 		await removeWithRetries(agentDir);
 		await removeWithRetries(brokerAgentDir);
 		await removeWithRetries(cliproxyDir);

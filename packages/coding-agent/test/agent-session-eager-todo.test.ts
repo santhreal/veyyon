@@ -7,6 +7,7 @@ import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { PROMPTS } from "@veyyon/coding-agent/prompts/registry";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
@@ -15,7 +16,6 @@ import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { TodoTool } from "@veyyon/coding-agent/tools/todo";
 import { TempDir } from "@veyyon/utils";
 import { type } from "arktype";
-import eagerTodoPrompt from "../src/prompts/system/eager-todo.md" with { type: "text" };
 import { createAssistantMessage } from "./helpers/agent-session-setup";
 
 type ObservedPromptCall = {
@@ -225,11 +225,11 @@ describe("AgentSession eager todo enforcement", () => {
 	});
 
 	it("keeps eager init instructions aligned with the todo schema", () => {
-		expect(eagerTodoPrompt).toContain("single `init` op");
-		expect(eagerTodoPrompt).toContain("phase names and task-label strings");
-		expect(eagerTodoPrompt).not.toContain("`details`");
-		expect(eagerTodoPrompt).not.toContain("in_progress");
-		expect(eagerTodoPrompt).not.toContain("pending");
+		expect(PROMPTS["turn-control/eager-todo"].text).toContain("single `init` op");
+		expect(PROMPTS["turn-control/eager-todo"].text).toContain("phase names and task-label strings");
+		expect(PROMPTS["turn-control/eager-todo"].text).not.toContain("`details`");
+		expect(PROMPTS["turn-control/eager-todo"].text).not.toContain("in_progress");
+		expect(PROMPTS["turn-control/eager-todo"].text).not.toContain("pending");
 	});
 
 	it("prepends a hidden eager todo reminder without repeating the prompt text", async () => {

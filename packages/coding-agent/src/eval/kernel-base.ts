@@ -120,6 +120,20 @@ interface PendingExecution {
 	finalize?: () => void;
 }
 
+/**
+ * How long a kernel subprocess gets to report `started` before start-up aborts.
+ *
+ * Unlike the MCP startup grace window, this one really does give up: the
+ * subprocess is killed and the start fails. Ten seconds is generous for an
+ * interpreter that only has to boot and write one line, and tight enough that a
+ * wedged runner surfaces as an error rather than a hang.
+ *
+ * A runtime whose interpreter needs longer overrides it locally and says why
+ * (Julia compiles on first load). The shared value lives here so raising the
+ * floor is one edit rather than one edit per language.
+ */
+export const DEFAULT_KERNEL_STARTUP_TIMEOUT_MS = 10_000;
+
 export function getRemainingTimeMs(deadlineMs?: number): number | undefined {
 	if (deadlineMs === undefined) return undefined;
 	return Math.max(0, deadlineMs - Date.now());

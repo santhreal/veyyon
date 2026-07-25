@@ -24,7 +24,10 @@ export default function (pi: HookAPI) {
 							content: `External trigger: ${content}`,
 							display: true,
 						},
-						true, // triggerTurn - get LLM to respond
+						// Second argument is an options object, not a bare boolean: a
+						// bare `true` is a type error, and older copies of this example
+						// silently passed one.
+						{ triggerTurn: true },
 					);
 					await Bun.write(triggerFile, ""); // Clear after reading
 				}

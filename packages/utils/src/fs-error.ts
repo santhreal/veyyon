@@ -59,6 +59,29 @@ export function isEnotdir(err: unknown): err is FsError {
 	return isFsError(err) && err.code === "ENOTDIR";
 }
 
+/**
+ * True when a filesystem error means the path is NOT THERE, as opposed to being
+ * there and unusable.
+ *
+ * `ENOENT` is the obvious case. `ENOTDIR` is the same fact reached differently:
+ * a component of the path is not a directory, so nothing can exist below it.
+ * Every other code means something IS there and the read failed — `EACCES` (no
+ * permission), `EISDIR` (a directory where a file was expected), `ELOOP`,
+ * `EIO`, `EMFILE`. Code that probes optional paths must not treat those as
+ * absence: that is how a permission error becomes "no config file here" and
+ * silently drops a user's configuration with no symptom to chase (Law 10).
+ *
+ * This is the single owner of that split. It was written out at least six ways —
+ * `isEnoent(e) || isEnotdir(e)`, `hasFsCode(e, "ENOENT") || hasFsCode(e,
+ * "ENOTDIR")`, a raw `code === "ENOENT" || code === "ENOTDIR"`, one file casting
+ * to `NodeJS.ErrnoException` for the second half — under three different local
+ * names (`isNotFoundError`, `isMissingDirectoryError`, `isMissingFileError`).
+ * Deciding "does absence include EISDIR?" in six places is how they drift.
+ */
+export function isMissingPath(err: unknown): err is FsError {
+	return isEnoent(err) || isEnotdir(err);
+}
+
 export function isEexist(err: unknown): err is FsError {
 	return isFsError(err) && err.code === "EEXIST";
 }

@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f3663b17.js";
+            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-de67d70d.js"></script>
+        <script src="../toc-578177b6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -204,7 +204,7 @@ Veyyon is provider-agnostic: roles are not hard-coded provider assumptions.</p>
 <li><strong>Subagents</strong> via the <code>task</code> tool (<code>packages/coding-agent/src/task/executor.ts</code>) and <code>/agents</code>
 thread switching.</li>
 <li><strong>Explicit model slots</strong>, not a role→model matrix: the interactive model (<code>/model</code>), plus plain
-<code>subagent.model</code> and <code>compaction.model</code> fields in settings. <code>default</code> is not a model or a role. Named
+<code>subagent.model</code> and <code>compaction.model</code> fields in settings (<code>subagent.model</code> belongs to the Subagents area, not the role table). <code>default</code> is not a model or a role. Named
 <strong>roles</strong> (<code>modelRoles</code>, scoped per profile) exist for anyone who wants specific work types pinned to
 specific models, but editing them lives in a settings group, not the model picker. See
 <a href="../context/compaction-memory.html">Compaction &amp; project memory</a> and

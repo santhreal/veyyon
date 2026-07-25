@@ -1,7 +1,7 @@
 import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
 import { clampLow } from "@veyyon/utils";
 import { type } from "arktype";
-import memoryEditDescription from "../prompts/tools/memory-edit.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import type { ToolSession } from ".";
 
 const memoryEditSchema = type({
@@ -18,7 +18,7 @@ export class MemoryEditTool implements AgentTool<typeof memoryEditSchema> {
 	readonly name = "memory_edit";
 	readonly approval = "read" as const;
 	readonly label = "Memory Edit";
-	readonly description = memoryEditDescription;
+	readonly description = PROMPTS["tools/memory-edit"].text;
 	readonly parameters = memoryEditSchema;
 	readonly strict = true;
 	readonly loadMode = "discoverable";

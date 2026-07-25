@@ -183,12 +183,76 @@ describe("buildChangelogHtml", () => {
 		expect(v100Block).not.toContain("2026-08-01");
 	});
 
-	it("emits no upstream note when there is no pre-fork history", () => {
+	it("still emits the upstream note when no pre-fork entry remains", () => {
+		// This asserted the opposite until 2026-07-25, and that contract is what
+		// made the attribution disappear: the credit was gated on inherited
+		// entries still sitting in the source changelog, so stripping them removed
+		// the note as a side effect with nothing reporting it. The fork is a fact
+		// about the project, not about the contents of one file.
 		const noFork = gen.parseReleases("# Changelog\n\n## [1.1.0] - 2026-08-02\n\n### Added\n\n- b\n\n## [1.0.0] - 2026-08-01\n\n### Added\n\n- a\n");
 		const { releases } = gen.reconcile(noFork, null);
 		const { html, upstreamCount } = gen.buildChangelogHtml(releases);
 		expect(upstreamCount).toBe(0);
-		expect(html).not.toContain("upstream-note");
+		expect(html).toContain("upstream-note");
+	});
+});
+
+describe("every bullet is rendered", () => {
+	/**
+	 * Sections past six bullets used to hide the rest behind a `N more` toggle.
+	 * That put the longest releases -- the ones with the most to say -- behind a
+	 * click, and hid them from find-in-page and from anything reading the page
+	 * without running its JavaScript. A changelog exists to be read.
+	 */
+	const many = Array.from({ length: 23 }, (_, i) => `- Fixed thing number ${i + 1}.`).join("\n");
+	const source = ["# Changelog", "", "## [1.0.0] - 2026-08-01", "", "### Fixed", "", many, ""].join("\n");
+
+	it("renders all 23 bullets of a long section, not the first six", () => {
+		const { html } = gen.buildChangelogHtml(gen.parseReleases(source));
+		for (let i = 1; i <= 23; i++) {
+			expect(html).toContain(`Fixed thing number ${i}.`);
+		}
+		// Counted, not merely present: a toggle that still rendered the hidden
+		// bullets inside a <details> would satisfy the loop above.
+		expect(html.split("<li>").length - 1).toBe(23);
+	});
+
+	it("emits no collapse toggle at any section length", () => {
+		// The exact markup the old path produced. Named explicitly so a
+		// reintroduction fails here rather than being noticed on the live site.
+		const { html } = gen.buildChangelogHtml(gen.parseReleases(source));
+		expect(html).not.toContain("<details>");
+		expect(html).not.toContain("<summary>");
+		expect(html).not.toContain('class="more"');
+		expect(html).not.toContain("more</summary>");
+	});
+
+	it("still renders a short section unchanged", () => {
+		// The cut applied only past a threshold, so a fix that removed the
+		// threshold by removing the bullets would pass the tests above.
+		const short = ["# Changelog", "", "## [1.0.0] - 2026-08-01", "", "### Added", "", "- One thing.", "- Another thing.", ""].join("\n");
+		const { html } = gen.buildChangelogHtml(gen.parseReleases(short));
+		expect(html).toContain("One thing.");
+		expect(html).toContain("Another thing.");
+		expect(html.split("<li>").length - 1).toBe(2);
+	});
+});
+
+describe("the fork credit is unconditional", () => {
+	/**
+	 * The credit used to be emitted only when the source changelog still carried
+	 * pre-fork entries. Stripping that inherited history from the file therefore
+	 * removed the attribution from the page as a side effect, with nothing
+	 * reporting it. Veyyon is a fork whether or not those entries are still
+	 * carried, and the note is where a reader learns where the project came from.
+	 */
+	it("renders the credit even when no upstream entry remains in the source", () => {
+		const veyyonOnly = ["# Changelog", "", "## [1.0.0] - 2026-08-01", "", "### Added", "", "- A thing.", ""].join("\n");
+		const { html, upstreamCount } = gen.buildChangelogHtml(gen.parseReleases(veyyonOnly));
+		expect(upstreamCount).toBe(0);
+		expect(html).toContain('class="upstream-note"');
+		expect(html).toContain("https://github.com/can1357/oh-my-pi/releases");
+		expect(html).toContain("Can Boluk");
 	});
 });
 

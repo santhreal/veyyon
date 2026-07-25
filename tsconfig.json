@@ -1,10 +1,19 @@
+// The solution file an editor opens. `scripts/` is checked by its own
+// non-composite `tsconfig.tools.json` (see the note there) and cannot be listed
+// here, because a project reference must be composite. Point an editor at that
+// file directly when working under `scripts/`; CI checks it through the root
+// `check:types` script, which `check:ts` runs.
 {
+	// A solution file owns no files of its own. Without this, `include` defaults to
+	// `**/*` and `tsc -p tsconfig.json` compiles the WHOLE tree — including the
+	// third-party repositories `packages/deepswe-bench/repo-cache/` downloads,
+	// which are other people's source and fail on syntax this compiler does not
+	// accept. The real gate never hits that path, so the breakage only ever
+	// reached whoever pointed a compiler or an editor at the root directly.
+	"files": [],
 	"references": [
 		{
 			"path": "./packages/tsconfig.workspace.json"
-		},
-		{
-			"path": "./tsconfig.tools.json"
 		}
 	]
 }

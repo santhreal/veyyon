@@ -41,6 +41,19 @@ export interface FreshnessResult {
 
 export const STAMP_PATTERN = /^\*Verified against `([0-9a-f]{7,40})` on (\d{4}-\d{2}-\d{2})\.\*$/;
 
+/**
+ * A last line that claims verification without being a stamp this gate can read.
+ *
+ * These are the dangerous ones. `*Verified against tree on 2026-07-21.*` and
+ * `*Verified against the scroll-tape change on 2026-07-24.*` both read to a human
+ * as "this page was checked", and both parse to null, so the gate filed them
+ * under "unstamped" and waved them through — including after later edits that
+ * would have failed a real stamp. Two docs sat in that blind spot. A claim the
+ * gate cannot check is worse than no claim, so it is an error rather than a
+ * silent pass.
+ */
+export const NEAR_MISS_PATTERN = /^\*?Verified against .*$/i;
+
 /** Parse the verification stamp from a doc's last non-empty line, if any. */
 export function parseStamp(markdown: string): Stamp | null {
 	const lines = markdown.trimEnd().split("\n");
@@ -66,8 +79,22 @@ export function checkFreshness(root: string, files: string[]): FreshnessResult {
 			continue;
 		}
 		result.filesChecked++;
-		const stamp = parseStamp(fs.readFileSync(abs, "utf-8"));
+		const markdown = fs.readFileSync(abs, "utf-8");
+		const stamp = parseStamp(markdown);
 		if (!stamp) {
+			const lines = markdown.trimEnd().split("\n");
+			const last = lines[lines.length - 1]?.trim() ?? "";
+			if (NEAR_MISS_PATTERN.test(last)) {
+				result.issues.push({
+					file,
+					reason:
+						`ends with a verification claim this gate cannot read (${JSON.stringify(last)}), so edits to ` +
+						"this doc were never checked against it. Use the exact form " +
+						"*Verified against `<sha>` on YYYY-MM-DD.* after verifying the doc, or reword the line so it " +
+						"does not claim verification",
+				});
+				continue;
+			}
 			result.unstamped.push(file);
 			continue;
 		}

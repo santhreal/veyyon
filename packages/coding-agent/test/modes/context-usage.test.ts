@@ -14,6 +14,7 @@ import {
 	computeNonMessageTokens,
 	computeStoredMessagesTokens,
 	estimateToolSchemaTokens,
+	renderContextUsage,
 } from "@veyyon/coding-agent/modes/utils/context-usage";
 import { type } from "arktype";
 
@@ -166,5 +167,69 @@ describe("computeStoredMessagesTokens incremental cache", () => {
 		expect(result).toBeGreaterThan(0);
 
 		estimateSpy.mockRestore();
+	});
+});
+
+/**
+ * Contract: the context panel reports what was kept OUT of the request, not
+ * only what is in it.
+ *
+ * WHY THIS EXISTS. Two mechanisms quietly shrink every request: wire-path
+ * relativization, and the Gemini thought-signature retention window. Both had
+ * an accessor on the session and no reader anywhere outside a test, so the only
+ * way to know either was working was to read the source. That is how a
+ * mechanism ends up switched off for a year with nobody noticing: nothing
+ * breaks, the requests are simply bigger.
+ *
+ * `/context` is the right home because it already answers "what is in my
+ * context", and this is the other half of that question. The line appears only
+ * when something was actually elided, so a session with both mechanisms idle
+ * renders exactly as it did before.
+ */
+describe("renderContextUsage — bytes kept out of the request", () => {
+	const theme = {
+		fg: (_color: string, text: string) => text,
+		bold: (text: string) => text,
+	} as never;
+
+	function breakdown(elided: { wirePaths: number; thoughtSignatures: number }) {
+		return {
+			model: { id: "gemini-3-pro-preview", name: "Gemini 3 Pro", contextWindow: 200_000 },
+			contextWindow: 200_000,
+			categories: [],
+			usedTokens: 1000,
+			autoCompactBufferTokens: 0,
+			freeTokens: 199_000,
+			elidedBytes: elided,
+		} as never;
+	}
+
+	/** A session where nothing was elided must look exactly as it did before this landed. */
+	it("says nothing when neither mechanism elided anything", () => {
+		const rendered = renderContextUsage(breakdown({ wirePaths: 0, thoughtSignatures: 0 }), theme);
+		expect(rendered).not.toContain("Kept out of context");
+	});
+
+	/** The signature window is the big one, so its number has to be legible, not a percentage. */
+	it("reports elided thought-signature bytes with the exact count", () => {
+		const rendered = renderContextUsage(breakdown({ wirePaths: 0, thoughtSignatures: 2_858_296 }), theme);
+		expect(rendered).toContain("Kept out of context");
+		expect(rendered).toContain("2.7MB of thought signatures");
+		expect(rendered).not.toContain("absolute paths");
+	});
+
+	/** The older mechanism reports on the same line rather than growing a second one. */
+	it("reports elided path bytes on the same line", () => {
+		const rendered = renderContextUsage(breakdown({ wirePaths: 4_096, thoughtSignatures: 0 }), theme);
+		expect(rendered).toContain("4.0KB of absolute paths");
+		expect(rendered).not.toContain("thought signatures");
+	});
+
+	/** Both active is the normal case on a long Gemini session; signatures lead because they dominate. */
+	it("lists signatures before paths when both elided", () => {
+		const rendered = renderContextUsage(breakdown({ wirePaths: 4_096, thoughtSignatures: 2_858_296 }), theme);
+		const line = rendered.split("\n").find(l => l.includes("Kept out of context")) ?? "";
+		expect(line.indexOf("thought signatures")).toBeLessThan(line.indexOf("absolute paths"));
+		expect(line).toContain("2.7MB of thought signatures, 4.0KB of absolute paths");
 	});
 });

@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -149,7 +149,7 @@ describe("a credential committed before a crash survives the next open", () => {
 			const raw = new Database(file);
 			raw.run("BEGIN");
 			raw.run(
-				"INSERT INTO auth_credentials (provider, credential_type, data, created_at, updated_at) VALUES ('google', 'oauth', '{\"type\":\"oauth\",\"refresh\":\"never-committed\"}', 0, 0)",
+				'INSERT INTO auth_credentials (provider, credential_type, data, created_at, updated_at) VALUES (\'google\', \'oauth\', \'{"type":"oauth","refresh":"never-committed"}\', 0, 0)',
 			);
 			// No COMMIT, and no close: the handle is dropped mid-transaction.
 

@@ -13,6 +13,7 @@ import {
 	pathIsWithin,
 	relativePathWithinRoot,
 } from "@veyyon/utils";
+import { PRIORITY_TIER_LABEL } from "../../../config/service-tier";
 import { type ThemeColor, theme } from "../../../modes/theme/theme";
 import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../../../tools/render-utils";
 import { getSessionAccentAnsi, getSessionAccentHex } from "../../../utils/session-color";
@@ -20,6 +21,7 @@ import { sanitizeStatusText } from "../../shared";
 import { emberBandEscape } from "../sun";
 import {
 	type ContextUsageLevel,
+	formatContextRemainingPercent,
 	formatContextUsage,
 	getContextUsageLevel,
 	getContextUsageThemeColor,
@@ -139,15 +141,12 @@ const modelSegment: StatusLineSegment = {
 		const compact = ctx.compactThinkingLevel && thinkingDisplay !== "";
 		const modelIcon = compact ? thinkingGlyph(thinkingDisplay) : theme.icon.model;
 
-		// Fast-mode icon and thinking-level suffix trail the model name and are
-		// colored together with it as `statusLineModel`. The advisor "++" badge
-		// sits between the name and that tail in `accent`, so it reads as a
-		// distinct marker. theme.fg resets only the fg, so the spans are
-		// concatenated (not nested) to keep each color intact.
+		// The thinking-level suffix trails the model name and is colored with it as
+		// `statusLineModel`. The advisor "++" badge sits between the name and that
+		// tail in `accent`, so it reads as a distinct marker. theme.fg resets only
+		// the fg, so the spans are concatenated (not nested) to keep each color
+		// intact. The service tier is NOT part of this tail — see below.
 		let tail = "";
-		if (ctx.session.isFastModeActive() && theme.icon.fast) {
-			tail += ` ${theme.icon.fast}`;
-		}
 		if (!compact && thinkingDisplay) {
 			// Roomy (quiet footline): the effort merges into the model label as
 			// ONE segment (`Model @high`) — a fake ` · ` separator made it read
@@ -164,10 +163,31 @@ const modelSegment: StatusLineSegment = {
 		if (tail) {
 			content += theme.fg("statusLineModel", tail);
 		}
+		// The priority service tier is a QUEUE tier, not a fourth effort level. Its
+		// icon used to sit immediately BEFORE the effort glyph in the same
+		// `statusLineModel` color, so `⚡ ◉ high` read as one more rung on the
+		// thinking scale (operator review 2026-07-24). It now trails the effort as
+		// its own `warning`-colored chip, and it names itself wherever there is room,
+		// so it reads as a serving choice. Naming it also makes the tier visible in
+		// symbol themes whose `icon.fast` is empty, where it used to show nothing.
+		if (ctx.session.isFastModeActive()) {
+			content += theme.fg("warning", ` ${formatServiceTierChip(compact)}`);
+		}
 
 		return { content, visible: true };
 	},
 };
+
+/**
+ * The priority-tier chip: icon plus the word, or the word alone when the symbol
+ * theme has no icon. Compact mode (a narrow status line) keeps the icon only,
+ * falling back to the word rather than rendering nothing.
+ */
+function formatServiceTierChip(compact: boolean): string {
+	const icon = theme.icon.fast;
+	if (!icon) return PRIORITY_TIER_LABEL;
+	return compact ? icon : `${icon} ${PRIORITY_TIER_LABEL}`;
+}
 
 /** Cells in the compact goal progress bar (verbose mode only). */
 const GOAL_BAR_WIDTH = 8;
@@ -524,15 +544,23 @@ const CONTEXT_BAR_TIP_STEP_MS = 1000;
 const CONTEXT_BAR_TIP_STEP_URGENT_MS = 500;
 
 /**
- * The growing context bar: `▰▰▰▱▱▱▱▱` — filled cells in the usage-level hue
- * (silver → gold → ember → alarm via the ONE getContextUsageThemeColor
- * owner), rest cells dim. Strictly two glyphs, two tones: mixing shaded
- * quarter-step glyphs (░▒▓) into the outlined track read as a rendering
- * artifact ("a random rectangle in the middle of the context window box",
- * user report 2026-07-22) — the adjacent percent text already carries the
- * sub-cell precision. While the agent RUNS (`live`) the frontier cell pulses
- * between filled and empty in the SAME two-glyph vocabulary — motion means
- * "the model is working right now"; at rest the bar is fully static. Pure in
+ * The draining context bar: `▰▰▰▰▰▰▱▱` — one filled cell per eighth of the room
+ * still available, in the usage-level hue (silver → gold → ember → alarm via the
+ * ONE getContextUsageThemeColor owner), spent cells dim.
+ *
+ * `ratio` is the fraction of cells to fill, and the caller passes REMAINING
+ * room, so the bar empties as the session grows. It used to fill instead, which
+ * put it in contradiction with the percentage beside it the moment that
+ * percentage started saying "left" — and a gauge for how much you have left
+ * that grows as you spend is a fuel gauge running backwards.
+ *
+ * Strictly two glyphs, two tones: mixing shaded quarter-step glyphs (░▒▓) into
+ * the outlined track read as a rendering artifact ("a random rectangle in the
+ * middle of the context window box", user report 2026-07-22) — the adjacent
+ * percent text already carries the sub-cell precision. While the agent RUNS
+ * (`live`) the last remaining cell pulses between filled and empty in the SAME
+ * two-glyph vocabulary: that is the cell being spent right now. Motion means
+ * "the model is working"; at rest the bar is fully static. Pure in
  * (ratio, level, nowMs, live) so tests can pin exact frames.
  */
 export function renderContextBar(ratio: number, level: ContextUsageLevel, nowMs: number, live: boolean): string {
@@ -541,12 +569,12 @@ export function renderContextBar(ratio: number, level: ContextUsageLevel, nowMs:
 	const levelColor = getContextUsageThemeColor(level);
 	let bar = "";
 	for (let cell = 0; cell < CONTEXT_BAR_CELLS; cell++) {
-		if (cell < filled) {
-			bar += theme.fg(levelColor, "▰");
-		} else if (live && cell === filled) {
+		if (live && cell === filled - 1) {
 			const stepMs = level === "error" ? CONTEXT_BAR_TIP_STEP_URGENT_MS : CONTEXT_BAR_TIP_STEP_MS;
 			const tipOn = Math.floor(nowMs / stepMs) % 2 === 0;
 			bar += tipOn ? theme.fg(levelColor, "▰") : theme.fg("dim", "▱");
+		} else if (cell < filled) {
+			bar += theme.fg(levelColor, "▰");
 		} else {
 			bar += theme.fg("dim", "▱");
 		}
@@ -554,21 +582,25 @@ export function renderContextBar(ratio: number, level: ContextUsageLevel, nowMs:
 	return bar;
 }
 
+/**
+ * The room-left gauge. It measures against {@link SegmentContext.contextLimit} —
+ * the auto-compaction trigger when auto-compaction is on, the model's window
+ * otherwise — because that is where the context actually runs out. The window
+ * itself belongs to {@link contextTotalSegment}.
+ */
 const contextPctSegment: StatusLineSegment = {
 	id: "context_pct",
 	render(ctx) {
 		const pct = ctx.contextPercent;
-		const window = ctx.contextWindow;
-		const level = getContextUsageLevel(pct ?? 0, window);
+		const level = getContextUsageLevel(pct);
 
 		if (ctx.options.context_pct?.bar) {
-			// Quiet zones: the bar carries the heat; the percent number stays and
-			// the `/window` denominator is dropped (approved §04). Auto-compaction
+			// Quiet zones: the bar carries the heat and the number says what it
+			// is. Both report room LEFT, so they cannot disagree. Auto-compaction
 			// shows as a session-accent ∞ — the endless-session mark.
-			const bar = renderContextBar((pct ?? 0) / 100, level, Date.now(), ctx.session.isStreaming);
-			// Whole percent: the bar already carries the fine grain, and the two
-			// saved cells keep the gauge alive on 100-col footlines.
-			const pctText = pct === null || pct === undefined ? "?" : `${Math.round(pct)}%`;
+			const remainingRatio = pct === null || pct === undefined ? 1 : Math.max(0, 100 - pct) / 100;
+			const bar = renderContextBar(remainingRatio, level, Date.now(), ctx.session.isStreaming);
+			const pctText = formatContextRemainingPercent(pct);
 			const autoIcon =
 				ctx.autoCompactEnabled && theme.icon.auto ? ` ${theme.fg("sessionAccent", theme.icon.auto)}` : "";
 			return {
@@ -578,7 +610,8 @@ const contextPctSegment: StatusLineSegment = {
 		}
 
 		const autoIcon = ctx.autoCompactEnabled && theme.icon.auto ? ` ${theme.icon.auto}` : "";
-		const text = `${formatContextUsage(pct, window, ctx.contextTokens)}${autoIcon}`;
+		// tok/tok, one unit on both sides of the slash: `47k/170k`.
+		const text = `${formatContextUsage(ctx.contextTokens, ctx.contextLimit)}${autoIcon}`;
 
 		// The quiet zone's gauge warms up the ember ramp as it fills — the sun
 		// heating — while the error state keeps its unmistakable semantic red.
@@ -591,6 +624,11 @@ const contextPctSegment: StatusLineSegment = {
 	},
 };
 
+/**
+ * The model's context window, and only ever that. It used to print whatever was
+ * in `contextWindow`, which the status line had already overwritten with the
+ * auto-compaction trigger — so a 200k model advertised a 170k window here.
+ */
 const contextTotalSegment: StatusLineSegment = {
 	id: "context_total",
 	render(ctx) {

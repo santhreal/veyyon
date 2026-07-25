@@ -169,8 +169,8 @@ const oracleAgent = {
 function makeSpawnSession(spawns: string): ToolSession {
 	const settings = Settings.isolated({
 		"async.enabled": false,
-		"task.batch": true,
-		"task.isolation.mode": "none",
+		"subagent.batch": true,
+		"subagent.isolation.mode": "none",
 	});
 	return makeToolSession({
 		settings,

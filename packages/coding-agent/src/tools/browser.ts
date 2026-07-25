@@ -1,8 +1,8 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
-import { prompt, stringifyJsonSafe, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
+import { isCancellation, prompt, stringifyJsonSafe, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
-import browserDescription from "../prompts/tools/browser.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import type { ToolSession } from "../sdk";
 import { enforceInlineByteCap } from "../session/streaming-output";
 import { truncateForPrompt } from "./approval";
@@ -10,10 +10,10 @@ import { resolveCmuxKind } from "./browser/cmux/rpc";
 import { acquireBrowser, type BrowserHandle, type BrowserKind, type BrowserKindTag } from "./browser/registry";
 import type { Observation, ScreenshotResult } from "./browser/tab-protocol";
 import { acquireTab, dropHeadlessTabs, getTab, releaseAllTabs, releaseTab, runInTab } from "./browser/tab-supervisor";
-import { saveOutputArtifact } from "./output-artifact";
+import { inlineOutputPricing, saveOutputArtifact } from "./output-artifact";
 import type { OutputMeta } from "./output-meta";
 import { resolveToCwd } from "./path-utils";
-import { ToolAbortError, ToolError, throwIfAborted } from "./tool-errors";
+import { ToolAbortError, ToolError, throwIfAborted, toolAbort } from "./tool-errors";
 import { prependResultNotice, toolResult } from "./tool-result";
 import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice } from "./tool-timeouts";
 
@@ -173,7 +173,7 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 	constructor(private readonly session: ToolSession) {}
 	#description?: string;
 	get description(): string {
-		this.#description ??= prompt.render(browserDescription, {});
+		this.#description ??= prompt.render(PROMPTS["tools/browser"].text, {});
 		return this.#description;
 	}
 
@@ -217,9 +217,11 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 			return clampNotice ? prependResultNotice(result, clampNotice) : result;
 		} catch (error) {
 			if (error instanceof ToolAbortError) throw error;
-			if (error instanceof Error && error.name === "AbortError") {
-				throw new ToolAbortError();
-			}
+			// `isCancellation`, not `isAbortError`: a deadline now reaches here
+			// wearing its own `TimeoutError` name, and it stops the browser action
+			// just as surely as an interrupt does. `toolAbort` keeps the reason so
+			// the operator learns which of the two happened.
+			if (isCancellation(error)) throw toolAbort(error, "browser");
 			throw error;
 		}
 	}
@@ -348,6 +350,7 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 		// text inline; the full text stays recoverable via the artifact footer
 		// when allocation succeeds.
 		const cappedText = await enforceInlineByteCap(textOnly, {
+			...inlineOutputPricing(this.session),
 			saveArtifact: full => saveBrowserOutputArtifact(this.session, full),
 		});
 		details.result = cappedText;

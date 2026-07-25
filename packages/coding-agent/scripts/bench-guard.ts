@@ -21,7 +21,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 const THRESHOLD = 1.05; // 5% regression budget
-const BASELINE_PATH = path.join(import.meta.dir, "..", "bench", "boot-baseline.json");
+const BASELINE_PATH = path.join(import.meta.dir, "..", "bench/throughput", "boot-baseline.json");
 const BENCH_COMMAND = "VEYYON_TIMING=x VEYYON_STRICT_EDIT_MODE=1 bun src/cli.ts";
 const cwd = path.join(import.meta.dir, "..");
 
@@ -33,7 +33,7 @@ function medianOf(hyperfineJson: string): number {
 }
 
 async function measure(): Promise<{ seconds: number; raw: string }> {
-	const tmp = path.join(import.meta.dir, "..", "bench", `.boot-run-${Date.now()}.json`);
+	const tmp = path.join(import.meta.dir, "..", "bench/throughput", `.boot-run-${Date.now()}.json`);
 	const proc = Bun.spawn(["hyperfine", "--warmup", "3", "--min-runs", "10", "--export-json", tmp, BENCH_COMMAND], {
 		cwd,
 		stdout: "inherit",

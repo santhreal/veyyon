@@ -49,7 +49,7 @@ import { canUseInteractiveBashPty } from "./bash-pty-selection";
 import { expandInternalUrls, type InternalUrlExpansionOptions } from "./bash-skill-urls";
 import { resolveEvalBackends } from "./eval-backends";
 import { invalidateGithubCacheForBashCommand } from "./gh-cache-invalidation";
-import { saveOutputArtifact } from "./output-artifact";
+import { inlineBudgetFor, inlineOutputPricing, saveOutputArtifact } from "./output-artifact";
 import { foldToolOutputBookkeeping } from "./output-fold";
 import {
 	formatStyledTruncationWarning,
@@ -547,7 +547,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 	 */
 	async #boundBashOutput(text: string, existingArtifactId?: string): Promise<string> {
 		const capped = await enforceInlineByteCap(text, {
-			turnIndex: this.session.getTurnIndex?.(),
+			...inlineOutputPricing(this.session),
 			saveArtifact: existingArtifactId
 				? async () => existingArtifactId
 				: full => saveBashOriginalArtifact(this.session, full),
@@ -655,7 +655,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			// Scale the inline budget by how long this result will sit in context:
 			// an early result is re-read for the rest of the session, a late one
 			// barely at all.
-			turnIndex: this.session.getTurnIndex?.(),
+			...inlineOutputPricing(this.session),
 			saveArtifact: full => saveBashOriginalArtifact(this.session, full),
 		});
 
@@ -745,6 +745,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 						env: options.resolvedEnv,
 						artifactPath,
 						artifactId,
+						spillThreshold: inlineBudgetFor(this.session),
 						onChunk: chunk => {
 							lastOutputAt = performance.now();
 							tailBuffer.append(chunk);
@@ -1316,6 +1317,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 					env: resolvedEnv,
 					artifactPath,
 					artifactId,
+					spillThreshold: inlineBudgetFor(this.session),
 				})
 			: await executeBash(command, {
 					cwd: commandCwd,
@@ -1325,6 +1327,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 					env: resolvedEnv,
 					artifactPath,
 					artifactId,
+					spillThreshold: inlineBudgetFor(this.session),
 					onChunk: streamTailUpdates(tailBuffer, onUpdate),
 					onMinimizedSave: originalText => saveBashOriginalArtifact(this.session, originalText),
 				});

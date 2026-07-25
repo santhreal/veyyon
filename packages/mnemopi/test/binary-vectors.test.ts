@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import "./setup";
 import {
 	BinaryVectorStore,
 	cosineSimilarity,
@@ -10,6 +9,9 @@ import {
 	maximallyInformativeBinarization,
 	quantizeInt8,
 } from "@veyyon/mnemopi/core/binary-vectors";
+import { useMnemopiTestEnv } from "./setup";
+
+useMnemopiTestEnv();
 
 describe("binary vector helpers", () => {
 	it("packs positive signs into Moorcheh MIB bit vectors", () => {

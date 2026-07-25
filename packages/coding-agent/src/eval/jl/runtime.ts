@@ -2,6 +2,7 @@
  * Julia runtime resolution utilities.
  */
 import {
+	BASE_ENV_ALLOW_PREFIXES,
 	BASE_ENV_ALLOWLIST,
 	createEnvFilter,
 	enumerateRuntimes,
@@ -40,7 +41,7 @@ const WINDOWS_ENV_ALLOWLIST = [
 
 // Julia version managers and package layout live behind these prefixes; passing them
 // through lets Julia discover packages and configure its runtime consistently.
-const DEFAULT_ENV_ALLOW_PREFIXES = ["LC_", "XDG_", "VEYYON_", "JULIA_", "OPENBLAS_", "MKL_"];
+const JULIA_ENV_ALLOW_PREFIXES = [...BASE_ENV_ALLOW_PREFIXES, "JULIA_", "OPENBLAS_", "MKL_"];
 
 export interface JuliaRuntime {
 	/** Path to the julia executable. */
@@ -53,7 +54,7 @@ export const filterEnv = createEnvFilter({
 	allowList: BASE_ENV_ALLOWLIST,
 	windowsAllowList: WINDOWS_ENV_ALLOWLIST,
 	denyList: SECRET_ENV_DENYLIST,
-	allowPrefixes: DEFAULT_ENV_ALLOW_PREFIXES,
+	allowPrefixes: JULIA_ENV_ALLOW_PREFIXES,
 });
 
 /**

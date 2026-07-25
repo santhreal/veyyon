@@ -31,7 +31,7 @@ Veyyon separates the model you use from the job it does:
 
 - **The interactive model** is what you set with `/model` or `--model`, and it persists as `modelRoles.default`.
 - **Roles** pin a model to a kind of work, such as `smol` for cheap fast work or `task` for subagents, and you can add your own in `modelRoles`. The full built-in set is listed in [Models, roles, and profiles](../using/roles-and-profiles.md).
-- **Overrides** let a slot win over a role. `subagent.model` overrides `modelRoles.task` when set, and `compaction.model` overrides the interactive model for compaction, otherwise compaction inherits it.
+- **Overrides** let a slot win over a role. `compaction.model` overrides the interactive model for compaction, otherwise compaction inherits it. Subagent models are not roles at all: they live in the Subagents settings area, which owns them alone.
 - **Cycling** rotates through `cycleOrder` (which defaults to `smol` then `slow`), bound to `app.model.cycleForward`, often Ctrl+P.
 
 The full contract is in [Models, roles, and profiles](../using/roles-and-profiles.md).

@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f3663b17.js";
+            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-de67d70d.js"></script>
+        <script src="../toc-578177b6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -229,6 +229,57 @@ $ veyyon config path                     # print the active agent directory
 <li><strong>Ephemeral Session Re-root (<code>set_cwd</code> tool / <code>/cwd</code>)</strong>: Re-roots the active session’s working directory temporarily. It never writes <code>session.workdir</code>.</li>
 <li><strong>Prompt Cache Protection</strong>: Working directory changes mid-session update path resolution, but the rendered System Prompt header (<code>&lt;workstation&gt;</code>) remains frozen until context compaction. Mutating system prompt headers mid-session prior to compaction invalidates LLM prefix prompt caches, causing 100% cache-miss token inflation.</li>
 </ul>
+<h3 id="your-comments-and-formatting-survive-a-save"><a class="header" href="#your-comments-and-formatting-survive-a-save">Your comments and formatting survive a save</a></h3>
+<p><code>config.yml</code> is yours to edit by hand, and veyyon writes to the same file when you change a
+setting from <code>/settings</code> or <code>veyyon config set</code>. A save edits only the lines it needs to, so
+your comments, blank lines, key order, and quoting stay as you wrote them:</p>
+<pre><code class="language-yaml"># my machine runs hot
+temperature: 0.7
+
+# search
+topK: 40
+</code></pre>
+<p>Change <code>topK</code> from the UI and the file becomes:</p>
+<pre><code class="language-yaml"># my machine runs hot
+temperature: 0.7
+
+# search
+topK: 60
+</code></pre>
+<p>A new setting is appended at the end, and a setting you reset has its line removed. If the
+key you removed had a comment above it, the comment moves to the next key rather than being
+deleted with it.</p>
+<p>One exception: a file veyyon could not read at all is rewritten from scratch, because there
+is nothing in it to edit. Your original is preserved first, which is the case the next
+section describes.</p>
+<p>The same holds for every other file veyyon writes that you also edit by hand:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>file</th><th>when veyyon writes it</th></tr>
+</thead>
+<tbody>
+<tr><td><code>config.yml</code></td><td>you change a setting from <code>/settings</code> or <code>veyyon config set</code></td></tr>
+<tr><td><code>~/.veyyon/config.yml</code></td><td>you set a default profile or profile sharing</td></tr>
+<tr><td><code>keybindings.yml</code></td><td>a binding you wrote uses a name from an older release</td></tr>
+<tr><td><code>WATCHDOG.yml</code></td><td>you edit an advisor from the dashboard</td></tr>
+</tbody>
+</table>
+</div>
+<p>A <code>keybindings.yml</code> using older binding names is the interesting one, because veyyon renames
+those names for you on the next launch. The rename happens where the binding already sits, so
+this:</p>
+<pre><code class="language-yaml"># hold this one, muscle memory
+interrupt: ctrl+x
+</code></pre>
+<p>becomes this, and not a file with the binding moved to the bottom and the comment left behind:</p>
+<pre><code class="language-yaml"># hold this one, muscle memory
+app.interrupt: ctrl+x
+</code></pre>
+<p>Copying a profile follows the same rule. <code>veyyon profile new &lt;new&gt; --from &lt;old&gt;</code> copies the
+old profile’s <code>config.yml</code> and removes one key from the copy, <code>profile.displayName</code>, so the new
+profile does not claim the old one’s name. Everything else in the file, comments included,
+arrives exactly as you wrote it.</p>
 <h3 id="when-a-settings-file-has-a-syntax-error"><a class="header" href="#when-a-settings-file-has-a-syntax-error">When a settings file has a syntax error</a></h3>
 <p>If you edit a config file by hand and leave it with invalid YAML, veyyon cannot
 read it. It tells you at startup, names the file, and runs the session on
@@ -248,6 +299,20 @@ as the start of a nested mapping, so this line is invalid:</p>
 </code></pre>
 <p>Fix the syntax in the original file, or copy the preserved file back over it and
 edit from there.</p>
+<h3 id="when-a-setting-cannot-be-saved"><a class="header" href="#when-a-setting-cannot-be-saved">When a setting cannot be saved</a></h3>
+<p>If veyyon cannot write your config file, it tells you in the session rather than letting the
+change disappear. This happens when the file or its directory is not writable, when the disk
+is full, or when something has left a directory where <code>config.yml</code> should be:</p>
+<pre><code class="language-text">Could not save your settings after 3 attempts, so this change will not survive a restart:
+  ~/.veyyon/profiles/default/agent/config.yml
+    EACCES: permission denied, open '~/.veyyon/profiles/default/agent/config.yml'
+Check that the file and its directory are writable, then change the setting again.
+</code></pre>
+<p>The setting still applies to the session you are in, which is why the message matters: the UI
+shows the new value, and without it your only clue would be the setting reverting the next
+time you launch. Veyyon retries first and reports only when the retries have not worked, so a
+brief clash with another veyyon writing at the same moment stays quiet. Fix the permissions
+and change the setting again, and nothing further is reported.</p>
 <h2 id="pick-models-and-providers"><a class="header" href="#pick-models-and-providers">Pick models and providers</a></h2>
 <p>Three explicit model slots, each set on its own:</p>
 <div class="table-wrapper">
@@ -257,7 +322,7 @@ edit from there.</p>
 </thead>
 <tbody>
 <tr><td>Choose the model you talk to</td><td><code>--model</code> / <code>/model</code> (persisted as <code>modelRoles.default</code>)</td></tr>
-<tr><td>Model for spawned subagents</td><td><code>subagent.model</code></td></tr>
+<tr><td>Model for spawned subagents</td><td><code>subagent.model</code> (Subagents tab)</td></tr>
 <tr><td>Model for context compaction</td><td><code>compaction.model</code></td></tr>
 <tr><td>Named model assignments (optional)</td><td><code>modelRoles</code>, per profile (settings → Models → Roles)</td></tr>
 <tr><td>Add a local or BYOK provider</td><td>a <code>providers:</code> entry in <code>models.yml</code> (see <a href="./models.html">Models</a>)</td></tr>
@@ -270,7 +335,7 @@ modelRoles:
   smol: openai/gpt-4.1-mini
   task: deepseek/deepseek-chat
 subagent:
-  model: deepseek/deepseek-chat   # optional; overrides modelRoles.task
+  model: deepseek/deepseek-chat   # optional; unset means subagents inherit your model
 compaction:
   model: openai/gpt-5-mini        # optional; else inherit interactive
 </code></pre>
@@ -319,7 +384,7 @@ separate OS shell sandbox, the approval mode is the only boundary; see
 <tr><th>Goal</th><th>What to set</th></tr>
 </thead>
 <tbody>
-<tr><td>Auto-compaction threshold</td><td><code>compaction.thresholdPercent</code> (also <code>compaction.thresholdTokens</code>)</td></tr>
+<tr><td>Auto-compaction threshold</td><td><code>compaction.threshold</code>: <code>auto</code>, a percent (<code>85%</code>), or a token amount (<code>170000</code>)</td></tr>
 <tr><td>Compaction type</td><td><code>compaction.strategy</code>: <code>summary</code> or <code>handoff</code> (schema default <code>summary</code>)</td></tr>
 <tr><td>Compaction model</td><td><code>compaction.model</code> (unset = interactive model)</td></tr>
 <tr><td>Cross-session memory backend</td><td><code>memory.backend</code>: <code>off</code> (default), <code>local</code>, <code>hindsight</code>, <code>mnemopi</code></td></tr>
@@ -372,6 +437,30 @@ saved transcript, so an entry never has to agree with an older one. Once the
 agent has loaded a project, veyyon lists its handles in the system prompt, and
 the model writes them from then on. A session where the agent never loads
 anything simply writes full strings, exactly as if Argot were off.</p>
+<h3 id="you-never-see-a-handle"><a class="header" href="#you-never-see-a-handle">You never see a handle</a></h3>
+<p>Shorthand is for the model, not for you. Everywhere veyyon shows you what the
+model wrote, it shows the full text. If the model writes <code>§conn</code>, you read
+<code>packages/server/src/database/connection.ts</code>.</p>
+<p>That holds for every surface, not only the reply text:</p>
+<ul>
+<li>the answer as it streams in, and the finished message</li>
+<li>the model’s reasoning, when you have thinking blocks visible</li>
+<li>a tool call’s arguments, including the file body of a <code>write</code> while it is
+still being typed out</li>
+<li>the one-line intent shown beside a running tool</li>
+<li>the transcript after you resize the window, change theme, or resume the
+session later</li>
+<li><code>--print</code> output and an exported or shared session</li>
+</ul>
+<p>The saving is real all the same, because the short form is what stays in the
+conversation the model rereads. You are reading an expanded copy; the model is
+reading the handles. A handle is only ever expanded for display, so nothing you
+see depends on the dictionary still being loaded.</p>
+<p>One detail is worth knowing if you watch closely. While a handle is arriving,
+veyyon holds back the last few characters rather than showing you a partial
+<code>§co</code> that is about to become something else. The text catches up on the next
+chunk. You may notice a word appearing a fraction later; you will not see a
+handle.</p>
 <h3 id="choose-which-models-write-shorthand"><a class="header" href="#choose-which-models-write-shorthand">Choose which models write shorthand</a></h3>
 <p>Enabling Argot alone does not make any model write handles. You also list the
 models allowed to do so:</p>

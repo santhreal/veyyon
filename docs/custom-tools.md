@@ -146,6 +146,18 @@ execute(toolCallId, params, onUpdate, ctx, signal);
 - `ctx` includes `sessionManager`, `modelRegistry`, current `model`, `isIdle()`, `hasQueuedMessages()`, `abort()`, and optional `settings`, `fetch`, and `autoApprove`.
 - `signal` carries cancellation.
 
+An extension tool registered with `pi.registerTool` takes the same five arguments
+in a different order, with the signal third:
+
+```ts
+execute(toolCallId, params, signal, onUpdate, ctx);
+```
+
+Use the order that belongs to the API you are writing against. Copying one into
+the other place raises no error at the call site and none at runtime either: the
+arguments still arrive, so `ctx` is the update callback and the first
+`ctx.sessionManager` you touch is undefined.
+
 `CustomToolAdapter` bridges this to the agent tool interface and forwards calls in the correct argument order.
 
 Tool definitions may also declare `strict`, `hidden`, `deferrable`, `mcpServerName`, `mcpToolName`, `approval`, and `formatApprovalDetails`.
@@ -168,7 +180,22 @@ Runtime behavior in TUI:
 
 - If hooks exist, tool output is rendered inside a `Box` container.
 - `renderResult` receives `{ expanded, isPartial, spinnerFrame? }`.
-- Renderer errors are caught and logged; UI falls back to default text rendering.
+
+If a rendering hook throws, veyyon catches it so the session keeps running, and
+then says so where your card would have been:
+
+```
+✗ tool "widget" result renderer threw: payload has no rows — showing raw output; fix or remove the renderer
+```
+
+The notice names which hook failed, because `renderCall` and `renderResult` fail
+independently, and it names what you are looking at instead: the tool label alone
+for a failed `renderCall`, the raw text output for a failed `renderResult`. When
+there is no raw output to fall back to, it says that too rather than implying
+output you cannot see. The failure is also written to the log.
+
+Returning `undefined` from a hook is different: that is how you decline to draw
+for a particular call, and it renders the default with no notice.
 
 ## Session/state handling
 

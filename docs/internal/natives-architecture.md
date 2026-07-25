@@ -28,7 +28,7 @@ This document is the foundation for deeper module-level docs.
 - `exports["."].types`: `./native/index.d.ts`
 - `exports["."].import`: `./native/index.js`
 
-There is no current `packages/natives/src` TypeScript wrapper layer. Consumers import functions/classes/enums directly from `@veyyon/natives`; the type contract is the generated `native/index.d.ts` plus the explicit named exports generated into `native/index.js` by `scripts/gen-enums.ts`.
+There is no current `packages/natives/src` TypeScript wrapper layer. Consumers import functions/classes/enums directly from `@veyyon/natives`; the type contract is the generated `native/index.d.ts` plus the explicit named exports generated into `native/index.js` by `packages/natives/scripts/gen-enums.ts`.
 
 Current capability groups in the generated API include:
 

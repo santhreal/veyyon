@@ -90,6 +90,9 @@ async function probeCdpAt(port: number, signal?: AbortSignal): Promise<boolean> 
 		await res.body?.cancel();
 		return res.ok;
 	} catch {
+		// "Nothing is listening on that port" arrives as a thrown fetch, not as a status, so the throw is the
+		// probe's answer rather than a swallowed failure. A timeout lands here too and means the same thing to
+		// the caller: do not attach to this port.
 		return false;
 	} finally {
 		probeTimeout.cancel();

@@ -2,7 +2,7 @@
 
 Native tool-calling convention of Moonshot AI's **Kimi K2** family (`moonshotai/Kimi-K2-Instruct` and `-Base`, `model_type: "kimi_k2"`, 1T-param MoE). It is a ChatML-like envelope built on a TikToken tokenizer (160K vocab): every turn is `<|im_{class}|>{name}<|im_middle|>{body}<|im_end|>`, and tool calls are emitted inside the assistant turn wrapped by a dedicated `<|tool_calls_section_begin|>…<|tool_calls_section_end|>` block. All control tokens are plain ASCII `<|…|>` forms (no fullwidth/unicode variants, unlike DeepSeek). An inference server turns the raw stream into OpenAI-style `tool_calls` with a parser: vLLM and SGLang both expose `--tool-call-parser kimi_k2` (vLLM additionally requires `--enable-auto-tool-choice`). The chat template (a standalone `chat_template.jinja` since the 2025.8.11 update) injects the tool schemas and renders the per-turn markers.
 
-This document was verified against the model card, the official `docs/tool_call_guidance.md` and `docs/deploy_guidance.md` (GitHub `MoonshotAI/Kimi-K2`), the raw `chat_template.jinja` and `tokenizer_config.json` from the HF repo (rendered locally for the byte-exact streams below), and the vLLM `kimi_k2` tool parser source.
+This document was verified against the model card, the official `tool_call_guidance.md` and `deploy_guidance.md` under `docs/` in GitHub `MoonshotAI/Kimi-K2`, the raw `chat_template.jinja` and `tokenizer_config.json` from the HF repo (rendered locally for the byte-exact streams below), and the vLLM `kimi_k2` tool parser source.
 
 ## Special tokens
 

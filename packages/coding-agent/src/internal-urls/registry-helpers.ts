@@ -6,7 +6,7 @@
 import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent } from "@veyyon/utils";
+import { isMissingPath } from "@veyyon/utils";
 import { AgentRegistry } from "../registry/agent-registry";
 
 const extraArtifactsDirs = new Set<string>();
@@ -71,7 +71,7 @@ export async function sessionFilesFromDisk(): Promise<Map<string, string>> {
 		try {
 			entries = await fs.readdir(dir, { withFileTypes: true });
 		} catch (err) {
-			if (isEnoent(err) || (err as NodeJS.ErrnoException).code === "ENOTDIR") return;
+			if (isMissingPath(err)) return;
 			throw err;
 		}
 		for (const entry of entries) {

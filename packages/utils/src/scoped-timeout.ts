@@ -4,11 +4,11 @@ export function withTimeoutSignal(timeoutMs: number, signal?: AbortSignal): Abor
 	return signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
 }
 
-/** Detect a timeout raised by an abortable fetch. */
-export function isTimeoutError(error: unknown): boolean {
-	return error instanceof Error && error.name === "TimeoutError";
-}
-
+// `isTimeoutError` used to live here as a second definition of the same predicate that
+// `abortable.ts` now owns. That one reads the error NAME without an `instanceof Error`
+// gate, which is what keeps it working in a browser bundle where `DOMException` does not
+// inherit from `Error`. Import it from the barrel; this module keeps only the signal
+// plumbing.
 /**
  * Cancelable variant of {@link withScopedTimeoutSignal} for call sites whose
  * body doesn't fit a callback: returns a timeout signal (optionally combined

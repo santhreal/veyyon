@@ -36,17 +36,17 @@ import * as path from "node:path";
 import { Agent, type AgentMessage, type AgentTool } from "@veyyon/agent-core";
 import { createMockModel, type MockResponse } from "@veyyon/ai/providers/mock";
 import { getBundledModel } from "@veyyon/catalog/models";
+import { createArgotSession } from "@veyyon/coding-agent/argot-cache";
+import { expandToolArguments } from "@veyyon/coding-agent/argot-wire";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { createArgotSession } from "@veyyon/coding-agent/lexpack-cache";
-import { expandToolArguments } from "@veyyon/coding-agent/lexpack-wire";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { ArgotLoadTool, ArgotUnloadTool } from "@veyyon/coding-agent/tools/argot";
 import { BashTool } from "@veyyon/coding-agent/tools/bash";
-import { ArgotLoadTool, ArgotUnloadTool } from "@veyyon/coding-agent/tools/lexpack";
 import {
 	__resetDirsFromEnvForTests,
 	APP_NAME,
@@ -55,11 +55,13 @@ import {
 	removeSyncWithRetries,
 	setProfile,
 } from "@veyyon/utils";
+import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 import { type ArgotSession, renderPreamble } from "argot";
 
 const CONNECTION = "packages/server/src/database/connection.ts";
 const ROUTES = "packages/server/src/server/routes.ts";
 const TEST_PROFILE = "argot-loop-test";
+let dirOverrides: DirOverridesSnapshot;
 const MODEL_ID = "claude-sonnet-4-5";
 
 function git(cwd: string, ...args: string[]): void {
@@ -121,6 +123,12 @@ describe("argot agent-driven adoption loop (e2e)", () => {
 		fs.mkdirSync(path.join(process.env.XDG_CACHE_HOME, APP_NAME, "profiles", TEST_PROFILE), { recursive: true });
 		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
 		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), tempDir);
+		// Snapshot before the profile switch. Restoring the two variables is not
+		// enough: `setProfile` records the active profile in MODULE state and writes
+		// `VEYYON_PROFILE` and `VEYYON_CODING_AGENT_DIR`, so this suite left every later
+		// file in the process on `argot-loop-test` — `scripts/find-test-leaks.ts`
+		// reported `state.activeProfile: work -> argot-loop-test`.
+		dirOverrides = captureDirOverrides();
 		__resetDirsFromEnvForTests();
 		setProfile(TEST_PROFILE);
 		// Proof, not intention: BOTH roots are checked, because the cache assertion
@@ -206,6 +214,11 @@ describe("argot agent-driven adoption loop (e2e)", () => {
 			// The REAL seam 1, one line mirroring sdk.ts's transformToolCallArguments:
 			// expansion runs before the tool executes, identity until a dict loads.
 			transformToolCallArguments: args => (argot.loaded ? expandToolArguments(argot, args) : args),
+			// On, as sdk.ts has it by default, so the intent a model writes is lifted
+			// out of the arguments here the same way it is in production. The intent
+			// is an operator-visible string that does NOT travel with the arguments,
+			// so leaving tracing off would hide the seam this suite checks.
+			intentTracing: true,
 		});
 
 		session = new AgentSession({
@@ -226,7 +239,7 @@ describe("argot agent-driven adoption loop (e2e)", () => {
 		else process.env.XDG_CACHE_HOME = originalXdgCache;
 		if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
 		else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
-		__resetDirsFromEnvForTests();
+		restoreDirOverrides(dirOverrides);
 		for (const dir of [repoDir, cacheRoot, tempDir]) if (dir) removeSyncWithRetries(dir);
 		resetSettingsForTest();
 	});
@@ -277,6 +290,117 @@ describe("argot agent-driven adoption loop (e2e)", () => {
 		// The cache entry exists on disk under the isolated root (nothing in the repo).
 		expect(fs.existsSync(getArgotCacheDir())).toBe(true);
 		expect(fs.existsSync(path.join(repoDir, "AGENTS.dict"))).toBe(false);
+	});
+
+	it("shows the operator an expanded tool call: arguments and intent, on the events the renderer reconciles from", async () => {
+		// The operator-facing half of adoption. A handle the model writes in a tool
+		// call reaches the screen down two paths, and both used to carry the raw
+		// form:
+		//
+		//   - `tool_execution_start.args` is what an interactive renderer treats as
+		//     final and writes over the live preview with, so a raw value there is
+		//     not a flicker, it is what stays on screen for the rest of the session.
+		//     The argument transform used to run after this event was emitted.
+		//   - `tool_execution_start.intent` is the sentence the model wrote about
+		//     what it is doing, and it goes straight into the working line. It is
+		//     lifted out of the arguments before the transform runs, so the
+		//     expansion applied to every argument never reached it.
+		//
+		// Asserting on the emitted events rather than on a rendered string is
+		// deliberate: the events are the contract every front end shares, so this
+		// covers the TUI, `--print`, ACP and collab at once.
+		scripted.push(toolCall("argot_load", { folder_path: repoDir }, "call_load_display"));
+		await session!.prompt("work on this repo");
+		await session!.waitForIdle();
+
+		const match = argot.promptFragment().match(/`§([a-z0-9_]+)`\s*→\s*`([^`]+)`/);
+		expect(match, "expected at least one taught handle in the fragment").not.toBeNull();
+		const [, name, expansion] = match!;
+
+		const starts: { args: Record<string, unknown>; intent?: string }[] = [];
+		const unsubscribe = session!.subscribe(event => {
+			if (event.type === "tool_execution_start" && event.toolName === "bash") {
+				starts.push({ args: event.args as Record<string, unknown>, intent: event.intent });
+			}
+		});
+		// `i` is the wire field the harness injects for intent tracing and strips
+		// back off before execution, which is exactly why the intent escapes the
+		// argument transform.
+		scripted.push(
+			toolCall(
+				"bash",
+				{ command: `cat §${name}`, i: `Reading §${name} for the pool config`, timeout: 10 },
+				"call_display",
+			),
+		);
+		scripted.push(stopReply("done"));
+		await session!.prompt("continue");
+		await session!.waitForIdle();
+		unsubscribe();
+
+		expect(starts).toHaveLength(1);
+		const start = starts[0]!;
+		expect(start.args.command).toBe(`cat ${expansion}`);
+		expect(JSON.stringify(start.args)).not.toContain("§");
+		expect(start.intent).toBe(`Reading ${expansion} for the pool config`);
+	});
+
+	it("emits no session event carrying a raw handle, wherever the model writes one", async () => {
+		// The whole-surface contract, as one assertion. Session events are what
+		// every front end renders from — the TUI, `--print`, ACP, the collab web
+		// client — so "the operator never sees a handle" reduces to "no emitted
+		// event carries the sigil".
+		//
+		// It is written as a sweep rather than as one assertion per seam on
+		// purpose. Each seam already has its own focused test, but seams keep being
+		// ADDED, and a new event field carrying model-authored text is exactly the
+		// kind of thing that ships undecoded and is noticed by a user rather than
+		// by the suite. This fails the moment that happens, without anyone having
+		// to remember to extend it.
+		scripted.push(toolCall("argot_load", { folder_path: repoDir }, "call_load_sweep"));
+		await session!.prompt("work on this repo");
+		await session!.waitForIdle();
+
+		const match = argot.promptFragment().match(/`§([a-z0-9_]+)`\s*→\s*`([^`]+)`/);
+		expect(match, "expected at least one taught handle in the fragment").not.toBeNull();
+		const [, name, expansion] = match!;
+
+		const offenders: string[] = [];
+		const unsubscribe = session!.subscribe(event => {
+			// The event is scanned whole, so a handle in any field counts, including
+			// fields that did not exist when this test was written.
+			const serialized = JSON.stringify(event, (_key, value) => (value instanceof Error ? value.message : value));
+			if (serialized?.includes("§")) offenders.push(`${event.type}: ${serialized.slice(0, 400)}`);
+		});
+		// A handle in every position a model can put one: prose, thinking, a tool
+		// argument, and the intent that rides alongside it.
+		scripted.push({
+			content: [
+				{ type: "thinking", thinking: `The pool is in §${name}.` },
+				{ type: "text", text: `Checking §${name} now.` },
+				{
+					type: "toolCall",
+					id: "call_sweep",
+					name: "bash",
+					arguments: { command: `cat §${name}`, i: `Reading §${name}`, timeout: 10 },
+				},
+			],
+			stopReason: "toolUse",
+		});
+		scripted.push(stopReply(`Done with §${name}.`));
+		await session!.prompt("continue");
+		await session!.waitForIdle();
+		unsubscribe();
+
+		expect(offenders).toEqual([]);
+		// Proof the sweep had something to catch: the model really did write the
+		// handle, and the persisted history really does still hold it (keeping the
+		// history cheap is the entire point of the codec, so an "expand everything
+		// everywhere" fix that also rewrote history would pass the sweep and lose
+		// the token win).
+		const persisted = JSON.stringify(session!.agent.state.messages);
+		expect(persisted).toContain(`§${name}`);
+		expect(expansion.length).toBeGreaterThan(`§${name}`.length);
 	});
 
 	it("a mid-session load rebuilds the base system prompt so the model is taught the handles", async () => {

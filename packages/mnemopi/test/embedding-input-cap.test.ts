@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import "./setup";
 import { embed, resetEmbeddingProviderForTests, setEmbeddingProviderForTests } from "@veyyon/mnemopi/core/embeddings";
 import { withMnemopiRuntimeOptions } from "@veyyon/mnemopi/core/runtime-options";
+import { useMnemopiTestEnv } from "./setup";
+
+useMnemopiTestEnv();
 
 /**
  * Regression coverage for issue #3126: `MnemopiSessionState.retainMessages`

@@ -51,22 +51,45 @@ describe("scraper source contract locks", () => {
 	});
 
 	it("no handler swallows its outer failure with an empty catch", async () => {
-		// `} catch {}` before `return null` inside a handler body was the
-		// silent-degrade pattern this contract eliminated; failures must return
-		// scraperDegrade or rethrow. Catches inside URL-parse helpers (which
-		// precede the handler in the file) express a non-match and are fine.
-		// discourse and lemmy match by path shape on arbitrary hosts, so a
-		// failed probe there means "not this platform" — an intentional quiet
-		// non-match, not a degrade.
-		const PROBE_STYLE = new Set(["discourse.ts", "lemmy.ts"]);
+		// `} catch {}` before `return null` inside a handler body was the silent-degrade
+		// pattern this contract eliminated. A failure must return `scraperDegrade`, or — for
+		// the handlers that match by path shape on an arbitrary host, where a failed API call
+		// genuinely means "not this platform" — return null from a catch that still lets a
+		// CANCELLATION through. Catches inside URL-parse helpers precede the handler in the
+		// file and express a non-match, so only the handler body is scanned.
 		const offenders: string[] = [];
 		for (const file of await handlerFiles()) {
-			if (PROBE_STYLE.has(file)) continue;
 			const src = await readFile(path.join(SCRAPERS_DIR, file), "utf-8");
 			const handlerStart = src.search(/export const handle\w+: SpecialHandler/);
 			if (handlerStart === -1) continue;
 			if (/\} catch \{\}\n\n?\treturn null;/.test(src.slice(handlerStart))) offenders.push(file);
 		}
 		expect(offenders).toEqual([]);
+	});
+
+	it("every quiet handler catch still lets a cancellation through", async () => {
+		// The bug this locks out: a handler that answers the user's abort with `return null`
+		// tells the dispatcher "not my site", and the dispatcher then runs the generic fetch —
+		// making the request that was just cancelled. A quiet catch is allowed; swallowing an
+		// abort is not.
+		const offenders: string[] = [];
+		for (const file of await handlerFiles()) {
+			const src = await readFile(path.join(SCRAPERS_DIR, file), "utf-8");
+			const handlerStart = src.search(/export const handle\w+: SpecialHandler/);
+			if (handlerStart === -1) continue;
+			const body = src.slice(handlerStart);
+			// A handler whose outer catch returns null without consulting the error at all.
+			if (!/\} catch \(\w+\) \{[\s\S]{0,400}?\n\t\}\n\n\treturn null;/.test(body)) continue;
+			const quietCatch = /\} catch \((\w+)\) \{([\s\S]{0,400}?)\n\t\}\n\n\treturn null;/.exec(body);
+			if (!quietCatch) continue;
+			const handled = quietCatch[2] ?? "";
+			// A catch that degrades or rethrows is already correct; `scraperDegrade` itself
+			// rethrows cancellations, which is where that guarantee comes from.
+			if (/scraperDegrade|throw /.test(handled)) continue;
+			if (!/isCancellation|throwIfAborted|aborted/.test(handled)) offenders.push(file);
+		}
+		expect(offenders, "a handler catch that returns null must rethrow cancellations (isCancellation) first").toEqual(
+			[],
+		);
 	});
 });

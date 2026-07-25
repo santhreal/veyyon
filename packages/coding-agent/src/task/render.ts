@@ -10,7 +10,6 @@ import type { Component } from "@veyyon/tui";
 import { Container, Markdown, Text } from "@veyyon/tui";
 import { formatCount, formatNumber, isRecord, sanitizeText } from "@veyyon/utils";
 import { settings } from "../config/settings";
-import { classifySubagentOutcome } from "./outcome";
 import { EXIT_CODE_NOTICE_RE } from "../exec/exit-notice";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { formatContextUsage } from "../modes/components/status-line/context-thresholds";
@@ -38,6 +37,8 @@ import {
 	type SubmitReviewDetails,
 } from "../tools/review";
 import { framedBlock, renderStatusLine } from "../tui";
+import { buildTreePrefix } from "../tui/utils";
+import { classifySubagentOutcome } from "./outcome";
 import { repairDoubleEncodedJsonString } from "./repair-args";
 import { subprocessToolRegistry } from "./subprocess-tool-registry";
 import type { AgentProgress, SingleResult, TaskItem, TaskParams, TaskToolDetails, YieldItem } from "./types";
@@ -104,12 +105,9 @@ function appendAgentStats(
 	if (opts.requests) {
 		line += `${theme.sep.dot}${theme.fg("dim", `${formatNumber(opts.requests)} req`)}`;
 	}
-	// Current per-turn context — match the status line's `<pct>%/<window>` gauge (e.g. `5.1%/1M`).
+	// Current per-turn context — match the status line's tok/tok gauge (e.g. `47k/200k`).
 	if (opts.contextTokens && opts.contextTokens > 0) {
-		const ctx =
-			opts.contextWindow && opts.contextWindow > 0
-				? formatContextUsage((opts.contextTokens / opts.contextWindow) * 100, opts.contextWindow)
-				: `${formatNumber(opts.contextTokens)}`;
+		const ctx = formatContextUsage(opts.contextTokens, opts.contextWindow ?? 0);
 		line += `${theme.sep.dot}${theme.fg("dim", ctx)}`;
 	}
 	if (opts.cost > 0) {
@@ -312,10 +310,6 @@ function extractMissingYieldWarning(output: string): { warning?: string; rest: s
 		.join("\n")
 		.replace(/^\s*\n+/, "");
 	return { warning: firstLine, rest };
-}
-
-function buildTreePrefix(ancestors: boolean[], theme: Theme): string {
-	return ancestors.map(hasNext => (hasNext ? `${theme.tree.vertical}  ` : "   ")).join("");
 }
 
 function renderJsonTreeLines(
@@ -942,7 +936,7 @@ function renderAgentProgress(
 		statusLine += ` ${formatBadge(statusLabel, iconColor, theme)}`;
 	}
 
-	const showBadge = settings.get("task.showResolvedModelBadge");
+	const showBadge = settings.get("subagent.showResolvedModelBadge");
 	if (progress.status === "running") {
 		if (!description) {
 			const taskPreview = previewLine(sanitizeText(progress.assignment ?? progress.task), 40);
@@ -1262,7 +1256,7 @@ function renderAgentResult(
 		success && !needsWarning ? "text" : "accent",
 		titlePart,
 	)}${agentTypeBadge(result.agent, theme)} ${formatBadge(statusText, iconColor, theme)}`;
-	const showBadge = settings.get("task.showResolvedModelBadge");
+	const showBadge = settings.get("subagent.showResolvedModelBadge");
 	statusLine = appendAgentStats(
 		statusLine,
 		{

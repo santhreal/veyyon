@@ -1,0 +1,10 @@
+{
+	// This example is its own package: it exists to show that an extension's own
+	// node_modules is resolved, so `ms` is deliberately NOT a workspace dependency
+	// and its types come from the `@types/ms` in the package.json beside this file.
+	// It therefore sits outside the workspace examples project, and this config is
+	// what lets the generated `index.js` twin still be transpiled from `index.ts`
+	// instead of hand-maintained. Compiler options are inherited, never restated.
+	"extends": "../../../../tsconfig.workspace.json",
+	"include": ["index.ts"]
+}

@@ -656,6 +656,9 @@ function isClaudeJsonUserId(userId: string): boolean {
 	try {
 		parsed = JSON.parse(userId);
 	} catch {
+		// This asks whether the caller's `user_id` is Claude Code's JSON envelope. Text starting with `{`
+		// that is not JSON is not that envelope, so false is the answer, and the caller then treats the
+		// value as an opaque id.
 		return false;
 	}
 	if (!isRecord(parsed)) return false;
@@ -673,6 +676,8 @@ function extractClaudeMetadataSessionId(userId: unknown): string | undefined {
 	try {
 		parsed = JSON.parse(userId);
 	} catch {
+		// No envelope means no session id to lift out of it: undefined is "the caller did not supply one",
+		// and a fresh one is minted, which is the documented behaviour for a plain id.
 		return undefined;
 	}
 	if (!isRecord(parsed)) return undefined;
@@ -1319,6 +1324,9 @@ function buildClaudeCodeTlsFetchOptions(
 	try {
 		serverName = new URL(baseUrl).hostname;
 	} catch {
+		// Without a hostname there is no SNI name to pin, so no Claude-Code TLS options are built and the
+		// request goes out with the default fetch options. The unparseable base URL is reported by the
+		// request that then fails on it, which names the URL the user configured.
 		return undefined;
 	}
 
@@ -2458,7 +2466,7 @@ const streamAnthropicOnce = (
 						throw firstEventTimeoutError;
 					}
 					if (activeAbortTracker.wasCallerAbort()) {
-						throw new AIError.AbortError();
+						throw new AIError.RequestAbortError();
 					}
 					if (!sawEvent || !sawMessageStart) {
 						throw new AIError.AnthropicStreamEnvelopeError("stream ended before message_start");

@@ -691,7 +691,9 @@ describe("parseWorkingTreePaths", () => {
 
 	/** Staged, unstaged, and mixed states are all uncommitted work land must not write over. */
 	it("collects every uncommitted status code, not just unstaged modifications", () => {
-		const paths = parseWorkingTreePaths("M  staged.ts\n M unstaged.ts\nMM both.ts\nA  added.ts\n D deleted.ts\nAM addedThenEdited.ts");
+		const paths = parseWorkingTreePaths(
+			"M  staged.ts\n M unstaged.ts\nMM both.ts\nA  added.ts\n D deleted.ts\nAM addedThenEdited.ts",
+		);
 		expect([...paths].sort()).toEqual([
 			"added.ts",
 			"addedThenEdited.ts",
@@ -708,9 +710,9 @@ describe("parseWorkingTreePaths", () => {
 	 * real paths unprotected, and the source side still holds your history.
 	 */
 	it("protects both sides of a rename", () => {
-		const paths = parseWorkingTreePaths("R  packages/argot/x.ts -> packages/lexpack/x.ts");
+		const paths = parseWorkingTreePaths("R  packages/argot/x.ts -> packages/wire/x.ts");
 		expect(paths.has("packages/argot/x.ts")).toBe(true);
-		expect(paths.has("packages/lexpack/x.ts")).toBe(true);
+		expect(paths.has("packages/wire/x.ts")).toBe(true);
 		expect(paths.size).toBe(2);
 	});
 

@@ -24,10 +24,12 @@ import {
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
+	ModalRevealDriver,
 	type ModalShellGeometry,
+	type ModalShortcut,
+	planModalChrome,
 	renderModalShell,
 	withCompact,
-	ModalRevealDriver,
 } from "./modal-shell";
 
 /** Minimum rows reserved for the tree even on short terminals. */
@@ -59,6 +61,13 @@ function connectorCells(symbol: string): string {
 function gutterCells(hasNext: boolean): string {
 	return `${hasNext ? theme.tree.vertical : " "}  `;
 }
+
+/** ModalShell footer chips. One array so the chrome plan is computed from the chips the card renders. */
+const COPY_SHORTCUTS: readonly ModalShortcut[] = [
+	{ label: "up/down move" },
+	{ label: "enter copy", clickable: true, id: "confirm" },
+	{ label: "esc close", clickable: true, id: "close" },
+];
 
 /**
  * `/copy` picker: tree of copy targets inside a floating ModalShell card with
@@ -255,7 +264,19 @@ export class CopySelectorComponent implements Component {
 		);
 		const selected = flat[cursorIdx]?.target;
 
-		const available = Math.max(MIN_TREE_ROWS + 1, dims.modalHeight - 8);
+		// Tree + one blank separator + preview, so the two panes share the body
+		// budget minus that separator. `modalHeight - 8` put the body TWO rows over
+		// what the card shows (it reserves nine at this sizing, and the separator is
+		// a tenth), and the shell truncates the overrun silently — the bottom of the
+		// preview, which is the pane you are reading before you copy.
+		const chrome = planModalChrome({
+			sizing,
+			modalHeight: dims.modalHeight,
+			contentWidth: dims.contentWidth,
+			shortcuts: COPY_SHORTCUTS,
+			hoveredShortcutId: this.#hoveredShortcutId,
+		});
+		const available = Math.max(MIN_TREE_ROWS + 1, chrome.maxBodyRows - 1);
 		const treeRows = clampLow(flat.length, 1, Math.floor(available / 2));
 		this.#treeRows = treeRows;
 		const previewRows = Math.max(1, available - treeRows);
@@ -273,11 +294,7 @@ export class CopySelectorComponent implements Component {
 			areaWidth: width,
 			areaHeight: height,
 			body,
-			shortcuts: [
-				{ label: "up/down move" },
-				{ label: "enter copy", clickable: true, id: "confirm" },
-				{ label: "esc close", clickable: true, id: "close" },
-			],
+			shortcuts: COPY_SHORTCUTS,
 			hoveredShortcutId: this.#hoveredShortcutId,
 			showClose: true,
 		});

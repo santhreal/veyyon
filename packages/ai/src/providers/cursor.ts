@@ -613,7 +613,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 					abortHandler = () => {
 						h2Request?.close();
 						void closeDebugLog().finally(() => {
-							reject(new AIError.AbortError());
+							reject(new AIError.RequestAbortError());
 						});
 					};
 					// Already aborted before we attached: the event will never fire, so

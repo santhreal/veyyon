@@ -4,6 +4,42 @@
 
 ### Fixed
 
+- A GCE metadata server that refuses a token is reported. `fetchMetadataToken` answered a refused status and "not running on GCE at all" with the same `undefined`, and the error the caller raises offers "run on a GCE or Cloud Run instance with a service account" as one of three fixes, which is exactly the wrong advice for an instance whose metadata server answered 403. The status and URL are now warned where they are still known; not being on GCE stays silent, since that is every laptop.
+
+- Tool-call arguments that cannot be used are no longer dropped in silence. The DeepSeek, Harmony and Kimi dialects and the GitLab Duo provider each had their own copy of the same parse, and each answered a failure with an empty object, which is also what a call that takes no arguments produces. So a stream cut mid-arguments, or a model emitting a bare string or an array, ran the tool with nothing and nothing said so. There is one owner now, and it names the source, the tool, and an excerpt of what arrived; the empty object is still returned, because refusing the call belongs to the tool's own argument validation.
+
+- Usage history that cannot be read is now reported instead of appearing as usage you never had. Both the history and the cost queries answered any database failure with an empty list, so an unreadable database presented as a clean slate and the cost totals read as zero.
+
+### Changed
+
+- An OAuth refresh no longer trusts a credential row purely because it sits under the right id. The peer-rotation
+  check re-reads the row by a bare numeric id to see whether another process already rotated the token, and nothing
+  in that lookup said which provider the row belongs to: `readAuthCredentialById` is an optional method on the
+  credential-store interface, so the row comes from whichever store is plugged in, and the explicit-id insert paths
+  used by migration and import write ids chosen elsewhere. A row for a different provider is a live, unexpired OAuth
+  credential whose refresh token differs from the one held, which is exactly the shape the check is looking for, so
+  it would have been returned as your own rotated token and sent to the wrong provider. Such a row is now refused
+  and the refusal is logged with both provider names and the credential id, and with no part of either credential.
+  The shipped SQLite store uses `AUTOINCREMENT` and does not recycle ids on its own, so this is a check at the
+  store-interface boundary rather than a fix for a race in that store.
+
+- Three more pass-through wrappers are gone: `hermes`, `qwen3` and `pi-native` each declared a
+  `renderToolResults` whose whole body forwarded to `renderToolResponseResults`, which is what the
+  generic `xml` dialect already referenced directly. A wrapper that adds nothing is a place a reader
+  has to visit to learn that nothing happens there.
+
+- Anthropic's `<invoke>` tool-call syntax has one owner in `dialect/rendering.ts`. Three dialects speak it (`anthropic`, the generic `xml`, and `minimax`, which wraps the same invokes in a tag of its own) and each had a byte-identical private copy of the invoke renderer, the invoke list, the single-call renderer and the transcript wrapper, with two of them also repeating the `<function_results>` block: one wire format written out three times. A change to the escaping or to the rule that emits a declared string argument verbatim would have left the other two dialects emitting a shape the model was never prompted for, and the symptom is not an error but a model that calls tools badly. Six dialects' pass-through `renderThinking` wrappers and the three per-model turn delimiters, which `rendering.ts` already exported, went the same way. No output change: the shared renderers produce the same bytes, which the new suite asserts literally for all three dialects.
+
+- The reasoning-effort and service-tier guards come from the lists that own those values: `isEffort` beside `THINKING_EFFORTS` in `@veyyon/catalog`, and `isServiceTier` beside `SERVICE_TIERS` in this package, with `ServiceTier` now derived from the list instead of declared next to it. Both OpenAI-compatible servers hand-wrote the six effort levels and the five tiers as comparison chains, so adding a level to the ladder left every one of them silently rejecting it: a request naming the new effort was answered as if it had named none. Their `formatError` wrappers, which only forwarded to `formatOpenAiError`, became re-exports.
+
+- The snapshot generation's entity-tag format has one owner, `auth-broker/generation-tag.ts`, which both writes and reads it. The broker's client and server each had a private copy of the parser next to their own inline copy of the quoting, so one header format had four independent statements of itself, and both ends both write and read it. The failure mode is quiet either way: a tag the server cannot parse reads as no condition and returns a full snapshot the client already has, and a tag the client cannot parse leaves its generation unchanged so it asks again forever. See the Fixed note above for the defect the copies were hiding.
+
+- SigV4 signing and the auth-broker snapshot cache take their WebCrypto byte coercion from `asStrictBytes` in `@veyyon/utils` rather than each defining it. It decides whether a `Uint8Array` has to be copied before `crypto.subtle` reads it, and `crypto.subtle` reads the whole backing buffer, so getting it wrong signs or decrypts bytes the caller did not name. Four packages had a private copy of the same three-line condition. No behaviour change.
+
+### Fixed
+
+- An empty entity tag on a broker snapshot request read as generation 0 instead of as no generation. `Number("")` is 0, so `If-None-Match: ""`, or a header an intermediary blanked, matched a store that was still at its first generation: with `?wait=` set, the broker then long-polled for up to 30 seconds waiting for a change instead of immediately serving the snapshot the client did not have, on every poll. The same hole was in the client's reading of the response `ETag`, where a blanked tag reset its generation to 0 and made it re-download the snapshot it already held. An empty or whitespace-only tag is now no generation, which falls back to sending the snapshot in full. Found while collapsing the two copies of the parser below.
+
 - **Auth Gateway Models**: Fixed `/v1/models` endpoint returning ambiguous bare model IDs when multiple providers register the same model name. Model IDs are now correctly advertised with their `provider/` prefix (e.g., `anthropic/shared-model`) and duplicate entries from the resolver map are deduplicated.
 
 ## [16.5.2] - 2026-07-14
@@ -13,6 +49,8 @@
 - Added OpenAI Codex rate-limit response-header ingestion to proactively refresh account usage snapshots and rotate credentials before hitting 429 errors.
 
 ### Changed
+
+- The cancelled-request error is `RequestAbortError`, not `AbortError`. It shared the name with two unrelated classes in `@veyyon/utils` (a cancelled operation and a killed child process), which made an `instanceof` check read as a question about cancellation when it was really a question about which layer raised it. `name` is still `"AbortError"` and the default message is still `"Request was aborted"`, so name-based and text-based matchers, and the auth gateway's 499 classification, are unchanged.
 
 - Optimized multi-account credential ranking to maximize quota utilization and prevent mid-session blocks by prioritizing expiring quota and demoting heavily used accounts.
 - Improved responsiveness of credential blocking by bypassing the usage-ingestion throttle immediately when an account is detected as exhausted.

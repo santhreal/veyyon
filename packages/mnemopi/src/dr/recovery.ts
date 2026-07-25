@@ -321,6 +321,9 @@ export function verifyIntegrity(dbPath?: string | null): boolean {
 		const row = db.query("PRAGMA integrity_check").get() as { integrity_check: string } | null;
 		return row?.integrity_check === "ok";
 	} catch {
+		// Fail CLOSED: this answers "is this database intact", and a database we cannot even open to ask is
+		// not intact. False is the verdict the caller acts on (restore from backup), which is the safe
+		// direction; treating an unopenable file as healthy is how a corrupt store gets kept.
 		return false;
 	} finally {
 		closeQuietly(db);

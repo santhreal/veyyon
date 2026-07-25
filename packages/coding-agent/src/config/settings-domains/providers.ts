@@ -28,6 +28,7 @@ import {
 	TTS_LOCAL_VOICE_VALUES,
 } from "../../tts/models";
 import { SEARCH_PROVIDER_OPTIONS, SEARCH_PROVIDER_PREFERENCES, type SearchProviderId } from "../../web/search/types";
+import { unsetNumberOption } from "../optional-number";
 
 /** Providers domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const PROVIDERS_SETTINGS = {
@@ -456,7 +457,7 @@ export const PROVIDERS_SETTINGS = {
 			description:
 				"Default routing-variant suffix appended to OpenRouter model IDs (overridden when the selector already names a variant)",
 			options: [
-				{ value: "default", label: "Default", description: "No suffix; use OpenRouter's default routing" },
+				unsetNumberOption("No suffix; use OpenRouter's default routing"),
 				{ value: "nitro", label: ":nitro", description: "Prioritize throughput / lowest latency" },
 				{ value: "floor", label: ":floor", description: "Prioritize cheapest available provider" },
 				{ value: "online", label: ":online", description: "Enable OpenRouter's web-search plugin" },
@@ -712,6 +713,8 @@ export const PROVIDERS_SETTINGS = {
 	"gc.retainNewestGlobal": { type: "number", default: 20 },
 
 	"gc.retainNewestPerCwd": { type: "number", default: 10 },
+
+	"gc.writeGraceMinutes": { type: "number", default: 5 },
 
 	"thinkingBudgets.minimal": { type: "number", default: 1024 },
 

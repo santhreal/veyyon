@@ -11,9 +11,11 @@ import { contextFileCapability } from "./capability/context-file";
 import { systemPromptCapability } from "./capability/system-prompt";
 import { findConfigFile } from "./config";
 import type { SkillsSettings } from "./config/settings";
+import { DEFAULT_ENABLED_BUNDLED_AGENT } from "./config/settings-domains/subagents";
 import { type ContextFile, loadCapability, type SystemPrompt as SystemPromptFile } from "./discovery";
 import { ensureManagedAgentsFilesOnStartup } from "./discovery/agents-guidance";
 import { expandAtImports } from "./discovery/at-imports";
+import { findNearestProjectConfigDir } from "./discovery/builtin";
 import { loadSkills, type Skill } from "./extensibility/skills";
 import { hasObsidian } from "./internal-urls/vault-protocol";
 import {
@@ -22,16 +24,22 @@ import {
 	type ResolvedPersonality,
 	resolvePersonality,
 } from "./personality/resolver";
-import customSystemPromptTemplate from "./prompts/system/custom-system-prompt.md" with { type: "text" };
-import projectPromptTemplate from "./prompts/system/project-prompt.md" with { type: "text" };
+import { PROMPTS } from "./prompts/registry";
 import { assembleDefaultTemplate, parseSectionOverridesJson } from "./system-prompt-builder/default-template";
-import {
-	OPTION_BACKED_RUNTIME_SECTIONS,
-	RUNTIME_SECTIONS,
-	type RuntimeSectionId,
-	withSectionBanner,
-} from "./system-prompt-builder/prompt-blocks";
 import { applyPromptSectionOrderToParts } from "./system-prompt-builder/prompt-sections";
+import {
+	applySectionOverrides,
+	loadSectionOverrideFiles,
+	PROMPT_SECTIONS_DIR,
+} from "./system-prompt-builder/section-overrides";
+import {
+	type ComputedRuntimeSectionId,
+	isOptionBackedSection,
+	type OptionBackedSectionKey,
+	RUNTIME_SECTIONS,
+	type RuntimeSectionEntry,
+	withSectionBanner,
+} from "./system-prompt-builder/section-registry";
 import { normalizeConcurrencyLimit } from "./task/parallel";
 import { usesCodexTaskPrompt } from "./task/prompt-policy";
 import { shortenPath } from "./tools/render-utils";
@@ -47,26 +55,38 @@ export interface AlwaysApplyRule {
 }
 
 /**
- * The runtime sections this module renders itself. Everything else is
- * option-backed and read through the registry.
- */
-type ComputedRuntimeSectionId = Exclude<RuntimeSectionId, "shorthand" | "shorthand-handles">;
-
-/**
  * Compile-time proof that every option key the registry declares is a REAL
  * `BuildSystemPromptOptions` field carrying string text.
  *
  * The registry cannot import this interface (that would be a cycle), so it
  * declares keys as strings. This check is what stops that from being a typo
- * channel: renaming or removing an option now fails the build here instead of
- * leaving a section reading an undefined field forever.
+ * channel: renaming or removing an option fails the build here instead of leaving
+ * a section reading an undefined field forever.
+ *
+ * IT DID NOT DO THAT. The previous version mapped the registry's keys through
+ * `section.input.key as StringOptionKeys` and annotated the result. A cast
+ * asserts a type rather than checking one, so it accepted anything: pointing the
+ * shorthand section at a key that existed nowhere compiled clean, and the section
+ * would have rendered nothing for good. The comment above it claimed the
+ * opposite, which is the part that made it worse than no check — a reader had a
+ * stated reason not to look.
+ *
+ * The version below has no cast. `OptionBackedSectionKey` is a union of literals
+ * (the registry keeps them now), so a key that is not a string-valued field of
+ * this interface survives the `Exclude` and the initializer stops being
+ * assignable. The failure names the offending key inside the expected type rather
+ * than pointing at an index expression somewhere else.
  */
 type StringOptionKeys = {
 	[K in keyof BuildSystemPromptOptions]-?: string extends BuildSystemPromptOptions[K] ? K : never;
 }[keyof BuildSystemPromptOptions];
-const _assertDeclaredOptionKeysExist: readonly StringOptionKeys[] = OPTION_BACKED_RUNTIME_SECTIONS.map(
-	section => section.input.key as StringOptionKeys,
-);
+type UnknownDeclaredOptionKeys = Exclude<OptionBackedSectionKey, StringOptionKeys>;
+const _assertDeclaredOptionKeysExist: [UnknownDeclaredOptionKeys] extends [never]
+	? true
+	: {
+			error: "section-registry.ts declares a section option key that is not a string field of BuildSystemPromptOptions";
+			keys: UnknownDeclaredOptionKeys;
+		} = true;
 void _assertDeclaredOptionKeysExist;
 
 function normalizePromptBlock(content: string): string {
@@ -588,6 +608,13 @@ export interface BuildSystemPromptOptions {
 	taskMaxConcurrency?: number;
 	/** Whether IRC-backed parallel coordination can be included in delegation policy. */
 	taskIrcEnabled?: boolean;
+	/**
+	 * The agent types this session may spawn (`subagent.agents`), in discovery
+	 * order. Delegation prose names a specialist only when it is in this list: the
+	 * bundled specialists are off by default, and telling the model to route
+	 * research to a `scout` it cannot spawn is an instruction it can only fail.
+	 */
+	subagentNames?: string[];
 	/** Rules with alwaysApply=true — their full content is injected into the prompt. */
 	alwaysApplyRules?: AlwaysApplyRule[];
 	/** Whether secret obfuscation is active. When true, explains the redaction format in the prompt. */
@@ -708,9 +735,13 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		taskBatch = true,
 		taskMaxConcurrency = 0,
 		taskIrcEnabled = false,
+		subagentNames = [],
 		secretsEnabled = false,
-		argotPreamble,
-		argotHandles,
+		// `argotPreamble` and `argotHandles` are deliberately NOT destructured here.
+		// They are option-backed runtime sections, so the assembler reads them off
+		// `options` through the section registry (`section.input.key`). Naming them
+		// here as well left two bindings for one value, one of them dead, and a
+		// reader could not tell which one the prompt actually used.
 		workspaceTree: providedWorkspaceTree,
 		memoryRootEnabled = false,
 		model,
@@ -982,24 +1013,52 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		taskBatch,
 		MAX_CONCURRENCY: normalizeConcurrencyLimit(taskMaxConcurrency),
 		taskIrcEnabled,
+		subagentNames,
+		// True when something other than the general-purpose worker is spawnable.
+		// The delegation gates that talk about picking an agent TYPE only mean
+		// anything then; with the specialists off there is one kind of subagent and
+		// the advice is noise.
+		hasSubagentSpecialists: subagentNames.some(name => name !== DEFAULT_ENABLED_BUNDLED_AGENT),
 		secretsEnabled,
 		hasMemoryRoot: memoryRootEnabled,
 		hasObsidian: hasObsidian(),
 		includeWorkspaceTree,
 		renderMermaid,
 	};
-	const sectionOverrides = resolveEvalSectionOverrides();
+	const evalSectionOverrides = resolveEvalSectionOverrides();
+	// The eval instrument wins outright and SUPPRESSES the file surface rather
+	// than merging with it. A benchmark arm must measure the prompt it declared;
+	// letting a `PROMPT_SECTIONS/` directory on the machine running the arm mix
+	// into it would silently contaminate the result, which is the whole reason
+	// that override refuses to live in config in the first place.
+	const usingEvalOverrides = Object.keys(evalSectionOverrides).length > 0;
+	const sectionOverrideFiles = await loadSectionOverrideFiles({
+		cwd: resolvedCwd,
+		projectConfigDir: (await findNearestProjectConfigDir(resolvedCwd))?.dir,
+	});
+	if (usingEvalOverrides && sectionOverrideFiles.length > 0) {
+		logger.warn(
+			`${PROMPT_SECTIONS_DIR}/ overrides are present but IGNORED because ` +
+				"VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS is set; the benchmark payload is the only section source.",
+		);
+	}
+	const sectionOverrides = usingEvalOverrides ? evalSectionOverrides : applySectionOverrides(sectionOverrideFiles);
 	if (resolvedCustomPrompt && Object.keys(sectionOverrides).length > 0) {
 		// A custom prompt replaces the whole template, so it has no banner
-		// sections to override. Silently ignoring the overrides would run the
-		// eval against the custom prompt while the operator believes their
-		// section change is live — fail loudly instead.
+		// sections to override. Silently ignoring the overrides would run against
+		// the custom prompt while the operator believes their section change is
+		// live — fail loudly instead.
+		const source = usingEvalOverrides
+			? "VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS"
+			: `${PROMPT_SECTIONS_DIR}/ overrides (${sectionOverrideFiles.map(file => file.path).join(", ")})`;
 		throw new Error(
-			"VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS cannot be combined with a custom system prompt " +
+			`${source} cannot be combined with a custom system prompt ` +
 				"(--system-prompt / SYSTEM.md): a custom prompt has no banner sections to override. Use one or the other.",
 		);
 	}
-	const baseTemplate = resolvedCustomPrompt ? customSystemPromptTemplate : assembleDefaultTemplate(sectionOverrides);
+	const baseTemplate = resolvedCustomPrompt
+		? PROMPTS["session/custom-system-prompt"].text
+		: assembleDefaultTemplate(sectionOverrides);
 	const rendered = prompt.render(baseTemplate, data);
 	const reorderSections = Boolean(sectionOrder && sectionOrder.length > 0);
 	if (reorderSections && resolvedCustomPrompt) {
@@ -1008,7 +1067,10 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	// Custom prompt templates already render context files and append text; the
 	// project footer still carries environment, cwd, workspace, and dir-context.
 	const projectPrompt = prompt
-		.render(projectPromptTemplate, resolvedCustomPrompt ? { ...data, contextFiles: [], appendPrompt: "" } : data)
+		.render(
+			PROMPTS["session/project-prompt"].text,
+			resolvedCustomPrompt ? { ...data, contextFiles: [], appendPrompt: "" } : data,
+		)
 		.trim();
 
 	// Runtime sections are assembled from the ONE registry, by section id. Order is
@@ -1016,9 +1078,10 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	// order statements happen to appear in this function, and a section cannot
 	// reach the model without being registered.
 	//
-	// Keyed by the RuntimeSectionId union, so this map must cover EVERY registered
-	// runtime section: adding one to the registry without supplying its text is a
-	// compile error here, not a section that silently renders nothing.
+	// Keyed by the COMPUTED ids the registry derives from each row's `input.kind`,
+	// so this map covers exactly the sections this function is responsible for:
+	// registering a computed section without supplying its text is a compile error
+	// here, and registering an OPTION-backed one does not touch this map at all.
 	//
 	// The shorthand sections teach the notation (and the load-yourself instruction)
 	// whenever the encode gate is open, plus the concrete handle table once a
@@ -1032,10 +1095,16 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	const computedText: Record<ComputedRuntimeSectionId, string | undefined> = {
 		project: projectPrompt,
 	};
-	const runtimeText = (section: (typeof RUNTIME_SECTIONS)[number]): string | undefined =>
-		section.input.kind === "option"
-			? (options[section.input.key as keyof BuildSystemPromptOptions] as string | undefined)
-			: computedText[section.id as ComputedRuntimeSectionId];
+	// No casts on either branch, and that is the point rather than tidiness. Both
+	// sides used to be asserted (`as keyof BuildSystemPromptOptions`, `as
+	// ComputedRuntimeSectionId`), which is what let the registry and this function
+	// drift apart in silence: an option key that named no field read `undefined`,
+	// and a section reclassified as computed missed the map and read `undefined`
+	// too. Either way the section rendered nothing and the build stayed green.
+	// Indexing with the registry's own literal types makes both of those a
+	// compile error at the index itself.
+	const runtimeText = (section: RuntimeSectionEntry): string | undefined =>
+		isOptionBackedSection(section) ? options[section.input.key] : computedText[section.id];
 
 	// Each runtime section is emitted as its own array entry, carrying the banner
 	// the registry owns. Separate entries are a CACHING contract, not a structural

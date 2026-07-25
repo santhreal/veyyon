@@ -384,7 +384,7 @@ describe("IRC", () => {
 				getAgentId: () => "0-Main",
 			};
 			// Depth 0 with spawning gated off: no peers exist or can be created.
-			session.settings.set("task.maxRecursionDepth", 0);
+			session.settings.set("subagent.maxRecursionDepth", 0);
 			expect(IrcTool.createIf(session)).toBeNull();
 		});
 
@@ -417,7 +417,7 @@ describe("IRC", () => {
 				taskDepth: 2,
 			};
 			// A leaf subagent cannot spawn, but its parent (and siblings) exist.
-			session.settings.set("task.maxRecursionDepth", 2);
+			session.settings.set("subagent.maxRecursionDepth", 2);
 			expect(IrcTool.createIf(session)).toBeInstanceOf(IrcTool);
 		});
 

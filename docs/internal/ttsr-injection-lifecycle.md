@@ -8,7 +8,7 @@ This document covers the current Time Traveling Stream Rules (TTSR) runtime path
 - [`../src/export/ttsr.ts`](../../packages/coding-agent/src/export/ttsr.ts)
 - [`../src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts)
 - [`../src/session/session-manager.ts`](../../packages/coding-agent/src/session/session-manager.ts)
-- [`../src/prompts/system/ttsr-interrupt.md`](../../packages/coding-agent/src/prompts/system/ttsr-interrupt.md)
+- [`../src/prompts/rules/ttsr-interrupt.md`](../../packages/coding-agent/src/prompts/rules/ttsr-interrupt.md)
 - [`../src/capability/index.ts`](../../packages/coding-agent/src/capability/index.ts)
 - [`../src/extensibility/extensions/types.ts`](../../packages/coding-agent/src/extensibility/extensions/types.ts)
 - [`../src/extensibility/hooks/types.ts`](../../packages/coding-agent/src/extensibility/hooks/types.ts)
@@ -141,11 +141,22 @@ Within a single matching batch, each rule is attached to exactly one sibling too
 - The tool's own `toolResult` content is preserved verbatim; the reminder is **prepended** as an additional leading text block. Renderers that assume `content[0]` is the tool's primary output must scan past any block whose text begins with `<system-reminder reason="rule_violation"` (or filter on the wrapper tag) to find the real payload.
 - The reminder is in-band on the tool result, not a separate `custom_message`/`ttsr-injection` entry. Transcript readers looking for non-interrupting TTSR activity on tool-source rules MUST inspect tool results (and the persisted `ttsr_injection` entry list), not just synthetic injection entries.
 - A single tool result may carry reminders for several rules concatenated with a blank line between rendered templates.
-- If the assistant message ends with `stopReason === "aborted"` or `"error"` before the matched tools run, the pending per-tool buckets are cleared: those rules are **not** persisted as injected and remain eligible to re-trigger on a future turn (subject to repeat policy).
+- The reminder body is template-rendered before delivery, by the same `#renderRuleBody` owner the interrupting path uses. Both paths resolve `argot`, `argotUnloaded`, `cwd`, and `matchedPath`. `argot` is the feature flag; `argotUnloaded` is `argot.enabled && !argot.loaded`, which is the question a nudge to LOAD shorthand actually depends on (the template language has no `unless`, so an inverted condition is passed in already inverted). The tool path used to fold the RAW body in, so a rule with a `{{#if ... }}` gate reached the model as markup; `cwd-reroot` only ever takes this path, so that was the only body it ever delivered.
+- If the assistant message ends with `stopReason === "aborted"` or `"error"` before the matched tools run, the pending per-tool buckets are dropped by `#dropUndeliveredPerToolInjections`, which also calls `TtsrManager.releaseInjectedByNames` to give back the claim taken at bucket time. Those rules are **not** persisted as injected and remain eligible to re-trigger (subject to repeat policy). Clearing the bucket without releasing the claim leaves a rule marked as injected with nothing ever shown to the model, and under `repeatMode: "once"` that retires it for the session.
+
+### Matches that render to nothing
+
+`#handleTtsrMatches` filters every match through `#deliverableTtsrMatches` before anything else happens. A rule whose body renders to the empty string is dropped there: before the claim is taken, before a bucket exists, and before `ttsr_triggered` is emitted.
+
+A body wrapped entirely in a `{{#if}}` gate renders to nothing whenever the gate is closed. `argot-load-nudge` is that shape, and delivering the empty result would spend tokens, interrupt the stream on the interrupting path, mark the rule as injected so it could not fire once the gate opened, and tell the model a rule was violated without naming a behaviour to change.
+
+The drop is reported at debug when the body carries a `{{#if}}` (the gate working, on every match, for as long as it stays closed) and at warn when it does not (a body that can never say anything, which is a packaging bug in the rule).
 
 ## 5. Repeat policy and gap logic
 
-`TtsrManager` tracks `#messageCount` and per-rule `lastInjectedAt`. `repeatMode` and `repeatGap` are manager-level `ttsr.*` settings (defaults `"once"` / `10`), not per-rule fields, one policy applies to every registered rule.
+`TtsrManager` tracks `#messageCount` and per-rule `lastInjectedAt`. `repeatMode` and `repeatGap` come from the `ttsr.*` settings (defaults `"once"` / `10`), and a rule may override either in its own frontmatter. Per-rule wins, in both directions.
+
+The global default is right for a rule stating a convention: saying it twice adds nothing. It is wrong for a NAVIGATIONAL rule, whose advice applies again to a different directory. Under the global default, `cwd-reroot` fired for the first foreign project a session touched and stayed silent for every later one, which reads as the rule not working. So `cwd-reroot` carries `repeatMode: after-gap` with `repeatGap: 8`.
 
 ### `repeatMode: "once"`
 

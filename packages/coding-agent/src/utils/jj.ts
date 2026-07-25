@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { $which } from "@veyyon/utils";
+import { $which, readPipeText } from "@veyyon/utils";
 import { LRUCache } from "lru-cache/raw";
 import * as git from "./git";
 
@@ -96,8 +96,8 @@ async function jj(cwd: string, args: readonly string[], options: CommandOptions 
 	}
 
 	const [stdout, stderr, exitCode] = await Promise.all([
-		new Response(child.stdout).text(),
-		new Response(child.stderr).text(),
+		readPipeText(child.stdout),
+		readPipeText(child.stderr),
 		child.exited,
 	]);
 

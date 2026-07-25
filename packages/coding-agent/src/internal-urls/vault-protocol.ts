@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { $which, errorMessage, formatCount, isEnoent, trimTrailingSlashes } from "@veyyon/utils";
+import { $which, errorMessage, formatCount, isEnoent, readPipeText, trimTrailingSlashes } from "@veyyon/utils";
 import { isSettingsInitialized, settings } from "../config/settings";
 import { getDefault } from "../config/settings-schema";
 import { getContentType } from "./content-type";
@@ -248,8 +248,8 @@ export async function spawnObsidian(
 		stdout: "pipe",
 		stderr: "pipe",
 	});
-	const stdout = new Response(proc.stdout as ReadableStream<Uint8Array>).text();
-	const stderr = new Response(proc.stderr as ReadableStream<Uint8Array>).text();
+	const stdout = readPipeText(proc.stdout);
+	const stderr = readPipeText(proc.stderr);
 	const aborted = Promise.withResolvers<never>();
 	const timedOut = Promise.withResolvers<never>();
 

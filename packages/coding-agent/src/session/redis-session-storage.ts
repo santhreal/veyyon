@@ -64,6 +64,8 @@ function decodeTitleMeta(raw: string | undefined): SessionTitleUpdate | undefine
 			updatedAt: record.updatedAt,
 		};
 	} catch {
+		// The stored value is not JSON, so there is no remembered title. Reported by no one on purpose:
+		// a title is decoration, the session loads without it, and the next rename overwrites the value.
 		return undefined;
 	}
 }

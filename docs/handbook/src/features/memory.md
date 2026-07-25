@@ -53,7 +53,7 @@ these primary fields:
 
 | Setting | Key | Values |
 | --- | --- | --- |
-| Threshold | `compaction.thresholdPercent` | percent of the context window (`compaction.thresholdTokens` optional) |
+| Threshold | `compaction.threshold` | `auto`, a percent of the window (`85%`), or a token amount (`170000`) |
 | Type | `compaction.strategy` | `summary` or `handoff` (schema default `summary`) |
 | Model | `compaction.model` | model id; unset uses the interactive model |
 
@@ -65,6 +65,19 @@ Run on demand with `/compact`. See [Compaction and project memory](../context/co
 Recalled or summarized memory is **background context**, not instructions. Current user messages,
 tool output, and repo state win on conflict. The agent should cite memory paths when memory changes
 a plan and pair citations with fresh repo evidence.
+
+It arrives in two places. The guidance that stays the same all session is part of the system prompt.
+Anything that changes while you work, the memories recalled for your current question and the mental
+models when they reload, arrives as a message next to your prompt instead.
+
+That split is about cost, not ordering. The provider caches the system prompt as the prefix of every
+request; changing it mid-session throws that cache away and the next request re-reads the whole
+conversation at the uncached rate. A recalled memory in the prompt made every recall cost a full
+re-read. The model reads the same text either way.
+
+A block is sent once. A reload that finds the same memories sends nothing, so your context does not
+grow by a copy of your memories every turn. `/memory view` shows both halves, so what you read there
+is what the model gets.
 
 ## Configuration
 

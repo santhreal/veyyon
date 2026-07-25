@@ -651,7 +651,7 @@ const streamOpenAIResponsesOnce = (
 				throw localAbortReason;
 			}
 			if (abortTracker.wasCallerAbort()) {
-				throw new AIError.AbortError();
+				throw new AIError.RequestAbortError();
 			}
 
 			// Detect premature stream closure: the HTTP stream ended without the
@@ -749,6 +749,9 @@ function isOfficialOpenAIResponsesEndpoint(model: Model<"openai-responses">): bo
 	try {
 		return new URL(model.baseUrl).hostname === "api.openai.com";
 	} catch {
+		// This asks "is this the official endpoint". A base URL we cannot parse is certainly not provably
+		// official, and false only turns OFF OpenAI-specific request shaping, which is the conservative
+		// direction for a third-party endpoint.
 		return false;
 	}
 }

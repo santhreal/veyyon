@@ -414,6 +414,9 @@ function decodeKittyPrintable(data: string): string | undefined {
 			try {
 				return String.fromCodePoint(...codepoints);
 			} catch {
+				// A codepoint outside Unicode's range is not text, so this key produces no text: undefined
+				// means "not printable input", exactly as it does for the control keys filtered above, and the
+				// key is then matched as a binding instead.
 				return undefined;
 			}
 		}
@@ -440,6 +443,8 @@ function decodeKittyPrintable(data: string): string | undefined {
 	try {
 		return String.fromCodePoint(effectiveCodepoint);
 	} catch {
+		// Same as above: an out-of-range codepoint yields no text, and undefined is the "not printable"
+		// answer the caller already handles for every non-text key.
 		return undefined;
 	}
 }
@@ -490,6 +495,8 @@ function decodeModifyOtherKeysPrintable(data: string): string | undefined {
 	try {
 		return String.fromCodePoint(parsed.codepoint);
 	} catch {
+		// Same as the Kitty decoders: no text for an out-of-range codepoint, so the sequence is treated as a
+		// binding rather than as input.
 		return undefined;
 	}
 }
@@ -508,13 +515,31 @@ export function decodePrintableKey(data: string): string | undefined {
  * Decode a Kitty CSI-u keypad sequence (numpad digits / keypad operators) into the
  * text it produces, or `undefined` for any non-keypad sequence.
  *
- * The native key matcher classifies bare numpad codepoints (those without a NumLock
- * modifier bit) as navigation keys, but terminals such as the VS Code integrated
- * terminal emit those codepoints for real digit input. Restricting the fast path to
- * keypad codepoints keeps canonical named keys (space, backspace, shifted keys, and
- * modifyOtherKeys sequences) flowing through native normalization.
+ * The native matcher agrees with this on unshifted keypad keys, digits included, so most of what
+ * this path covers it now covers too: it was added when bare numpad codepoints (those without a
+ * NumLock modifier bit) came back as navigation keys, while terminals such as the VS Code
+ * integrated terminal emit them for real digit input.
+ *
+ * What it still owns is the SHIFT bit on a keypad operator. Shift does not change the character a
+ * keypad key produces, so shifted keypad `/` is `/`, and the native matcher reports `shift+/`,
+ * which on a main keyboard is where `?` lives. Reporting that would insert nothing and match no
+ * keybinding. There are 120 such inputs across the operator codepoints and the modifier
+ * combinations that include shift, and they are the reason this runs ahead of native rather than
+ * behind it (`test/keypad-prefilter.test.ts` covers them).
+ *
+ * Restricting the fast path to keypad codepoints keeps canonical named keys (space, backspace,
+ * shifted letters, and modifyOtherKeys sequences) flowing through native normalization.
  */
 function decodeKittyKeypadText(data: string): string | undefined {
+	// Necessary condition for KITTY_CSI_U_PATTERN, which is anchored `^\x1b\[ ... u$`. This runs
+	// ahead of the native parser on EVERY keypress, and the regex has six capture groups, so
+	// without the guard a plain `a` pays for a full match that cannot succeed. Three charCodeAt
+	// calls reject every printable character and every legacy sequence. This is not a second
+	// answer to the same question: the pattern already requires exactly these three characters, so
+	// anything the guard rejects the regex would have rejected too.
+	if (data.charCodeAt(0) !== 0x1b || data.charCodeAt(1) !== 0x5b || data.charCodeAt(data.length - 1) !== 0x75) {
+		return undefined;
+	}
 	const match = data.match(KITTY_CSI_U_PATTERN);
 	if (!match) return undefined;
 	const codepoint = Number.parseInt(match[1] ?? "", 10);

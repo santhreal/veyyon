@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -64,7 +64,10 @@ describe("opening an older credential store preserves every credential", () => {
 	 * `identity_key`, no schema-version row. This is what the very first stores on
 	 * disk look like, and it is the longest migration path available.
 	 */
-	function seedV0(file: string, rows: Array<{ provider: string; type: string; data: string; disabled?: number }>): void {
+	function seedV0(
+		file: string,
+		rows: Array<{ provider: string; type: string; data: string; disabled?: number }>,
+	): void {
 		const db = new Database(file);
 		try {
 			db.run(`
@@ -139,7 +142,9 @@ describe("opening an older credential store preserves every credential", () => {
 	}
 
 	/** Every row in the raw table, including ones the public list filters out. */
-	function rawRows(file: string): Array<{ id: number; provider: string; data: string; disabled_cause: string | null }> {
+	function rawRows(
+		file: string,
+	): Array<{ id: number; provider: string; data: string; disabled_cause: string | null }> {
 		const db = new Database(file, { readonly: true });
 		try {
 			return db.query("SELECT id, provider, data, disabled_cause FROM auth_credentials ORDER BY id").all() as Array<{

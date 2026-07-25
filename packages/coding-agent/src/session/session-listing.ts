@@ -711,7 +711,15 @@ export function listSessionsReadOnly(sessionDir: string, storage: SessionStorage
 	return scanSessionDirReadOnly(sessionDir, storage, true);
 }
 
-/** List all sessions across all project directories (newest first). */
+/**
+ * List all sessions across all project directories (newest first).
+ *
+ * An absent sessions root is an empty list and nothing more: that is what a fresh install looks
+ * like. Any other failure to scan it is REPORTED, because this list is what the session picker and
+ * `--resume` show, so an unreadable root presented as "you have no sessions" and the work looked
+ * gone. The empty list is still returned, since a picker that cannot list is more useful empty than
+ * crashed, and the log is what tells you the difference.
+ */
 export async function listAllSessions(storage: SessionStorage = new FileSessionStorage()): Promise<SessionInfo[]> {
 	const sessionsRoot = path.join(getDefaultAgentDir(), "sessions");
 	try {
@@ -719,7 +727,12 @@ export async function listAllSessions(storage: SessionStorage = new FileSessionS
 			path.join(sessionsRoot, name),
 		);
 		return await collectSessionsFromFiles(files, storage, true);
-	} catch {
+	} catch (err) {
+		if (isEnoent(err)) return [];
+		logger.warn("Sessions directory could not be scanned; no sessions can be listed or resumed from it", {
+			path: sessionsRoot,
+			error: toError(err).message,
+		});
 		return [];
 	}
 }

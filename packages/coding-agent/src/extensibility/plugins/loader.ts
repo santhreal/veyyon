@@ -7,7 +7,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getPluginsDir, getPluginsLockfile, isEnoent } from "@veyyon/utils";
+import { errorMessage, getPluginsDir, getPluginsLockfile, isEnoent, logger } from "@veyyon/utils";
 import { getConfigDirPaths } from "../../config";
 import { registerPluginCacheInvalidator, resolveActiveProjectRegistryPath } from "../../discovery/helpers";
 import { type ManifestHolder, manifestFromPackageJson } from "../manifest-key";
@@ -317,7 +317,18 @@ function resolveDirectoryEntries(dir: string): string[] {
 	let children: string[];
 	try {
 		children = fs.readdirSync(dir);
-	} catch {
+	} catch (err) {
+		// The caller has already stat'ed this path and found a directory, so an absent one can only mean it
+		// was removed in between: a race, and not worth a warning. Anything else means the plugin is
+		// installed and contributes nothing, which an empty list cannot distinguish from a plugin that
+		// legitimately declares no entries -- so the tools and hooks it should have registered are simply
+		// missing from the session with nothing to trace.
+		if (!isEnoent(err)) {
+			logger.warn("A plugin directory could not be read; the entries inside it are not being loaded", {
+				dir,
+				error: errorMessage(err),
+			});
+		}
 		return [];
 	}
 	const resolved: string[] = [];
@@ -367,6 +378,9 @@ function resolveManifestEntryFiles(joined: string, expandDirectory: boolean): st
 	try {
 		stats = fs.statSync(joined);
 	} catch {
+		// Absent, or in a directory this process cannot traverse. Both mean the declared entry cannot be
+		// loaded, and the caller does not treat the empty array as "no entry declared": it turns it into a
+		// `resolvedPath: null` the doctor reports as a missing entry, naming the path from the manifest.
 		return [];
 	}
 	if (!stats.isDirectory()) {

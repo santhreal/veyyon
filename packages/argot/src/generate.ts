@@ -37,6 +37,7 @@
  */
 
 import {
+	DEFAULT_SAVINGS_COVERAGE,
 	DEFAULT_SIGIL,
 	DEFAULT_TOKEN_BUDGET,
 	HANDLE_NAME_RE,
@@ -75,6 +76,16 @@ export interface GenerateOptions {
 	minExpansionLength?: number;
 	/** Optional hard cap on how many handles to emit, applied after the budget. */
 	maxHandles?: number;
+	/**
+	 * Stop admitting handles once the selected set reaches this fraction of the
+	 * savings the full ranked candidate list could achieve. Default
+	 * {@link DEFAULT_SAVINGS_COVERAGE}. Pass `1` to fill the whole budget.
+	 *
+	 * Applies alongside {@link GenerateOptions.tokenBudget}, and whichever binds
+	 * first wins: coverage keeps a cheap dictionary from growing a worthless
+	 * tail, the budget keeps an expensive one from growing at all.
+	 */
+	savingsCoverage?: number;
 	/** How to name handles. Default `"mnemonic"`. */
 	naming?: HandleNaming;
 	/**
@@ -1089,9 +1100,19 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 	// New handles fill the remaining budget. maxHandles caps the TOTAL, and pinned
 	// entries are never dropped to satisfy it, so new additions get whatever room
 	// is left under the cap.
-	const chosenNew: GeneratedHandle[] = [];
+	//
+	// Two stages, because the coverage rule needs to know what is ACHIEVABLE
+	// before it can take a fraction of it. Stage one admits every candidate that
+	// fits the budget and yields a valid, unused name; stage two keeps the
+	// shortest prefix of that list reaching `savingsCoverage` of its total
+	// savings. Measuring coverage against every scored candidate instead would
+	// make the target unreachable on a large corpus -- the ranked tail sums to
+	// more than the budget can ever hold -- so the rule would silently do nothing
+	// exactly where the tail is longest, which is the opposite of the intent.
+	const feasible: GeneratedHandle[] = [];
+	let feasibleTokens = 0;
 	for (const entry of scored) {
-		if (options.maxHandles !== undefined && pinnedHandles.length + chosenNew.length >= options.maxHandles) {
+		if (options.maxHandles !== undefined && pinnedHandles.length + feasible.length >= options.maxHandles) {
 			break;
 		}
 		const name =
@@ -1112,12 +1133,12 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 			continue;
 		}
 		const entryTokens = countTokens(`${name} = "${entry.candidate.expansion}"`);
-		if (dictTokens + entryTokens > tokenBudget) {
+		if (dictTokens + feasibleTokens + entryTokens > tokenBudget) {
 			continue; // does not fit; a smaller later entry still might
 		}
 		taken.add(name);
-		dictTokens += entryTokens;
-		chosenNew.push({
+		feasibleTokens += entryTokens;
+		feasible.push({
 			name,
 			expansion: entry.candidate.expansion,
 			frequency: entry.candidate.frequency,
@@ -1125,6 +1146,26 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 			savedTokens: entry.savedTokens,
 			dictTokens: entryTokens,
 		});
+	}
+
+	const coverage = options.savingsCoverage ?? DEFAULT_SAVINGS_COVERAGE;
+	const pinnedSavings = pinnedHandles.reduce((sum, h) => sum + h.savedTokens, 0);
+	const achievableSavings = pinnedSavings + feasible.reduce((sum, h) => sum + h.savedTokens, 0);
+	const savingsTarget = coverage >= 1 ? Number.POSITIVE_INFINITY : achievableSavings * coverage;
+	const chosenNew: GeneratedHandle[] = [];
+	let selectedSavings = pinnedSavings;
+	for (const handle of feasible) {
+		// The cut is a PREFIX, so `break` rather than `continue`: the list is ranked,
+		// and once the target is met every remaining handle is worth less than the
+		// one that met it. Reaching past the cut for a cheaper entry would admit a
+		// strictly worse handle.
+		if (selectedSavings >= savingsTarget) {
+			taken.delete(handle.name);
+			continue;
+		}
+		selectedSavings += handle.savedTokens;
+		dictTokens += handle.dictTokens;
+		chosenNew.push(handle);
 	}
 
 	// Present pinned and new together, highest savings first. Order is cosmetic

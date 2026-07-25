@@ -24,8 +24,7 @@ const ST = `${ESC}\\`;
 const BEL = "\x07";
 
 /** `ESC ] 8 ; ; <uri> <term> <text> ESC ] 8 ; ; <term>` — one hyperlink. */
-const link = (text: string, uri: string, term: string) =>
-	`${ESC}]8;;${uri}${term}${text}${ESC}]8;;${term}`;
+const link = (text: string, uri: string, term: string) => `${ESC}]8;;${uri}${term}${text}${ESC}]8;;${term}`;
 
 describe("visibleWidth: OSC 8 hyperlinks", () => {
 	/**

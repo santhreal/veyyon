@@ -41,14 +41,21 @@ Run before every push:
 ```
 bun run check        # typecheck, TS and Rust (this is the release gate)
 bun run test         # the local test suite
-bun run lint         # biome + clippy, advisory (not a release gate)
+bun run check:tools  # biome: formatting, import order, and lint rules (CI gate)
+bun run lint         # biome lint + clippy, advisory
 ```
 
 `check` typechecks and runs the tests that gate a release; it does not run
-biome. Formatting and lint are advisory: run `bun run fmt` to format and
-`bun run lint` to see biome/clippy findings. Keep the tree formatted, but a
-biome finding never blocks a release the way a type error or a failing test
-does.
+biome. Biome splits into two halves, and they are gated differently.
+
+`check:tools` runs `biome check`, which is formatting, import organization, and
+the lint rules that are set to error. CI runs it, so an unformatted file or an
+unorganized import list fails the build. Run `bun run fmt` to format, or
+`bun run fix:tools` to apply the safe fixes to what you changed.
+
+The advisory half is everything biome reports as a warning, which you see with
+`bun run lint`. Fix a warning that points at a real bug; do not contort code for
+a style-only one. Clippy is advisory in the same way.
 
 If your change touches native paths, build the addon first: `bun run ci:build:native`.
 Testing rules and anti-patterns: [testing.md](testing.md).
@@ -106,4 +113,4 @@ Open the PR against `main`. Put your change under the affected package's
 fix), and make sure `bun run check` and the tests pass. CI, the security suite, and
 the automated review run before a maintainer reviews it.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `ce7c4c68` on 2026-07-25.*

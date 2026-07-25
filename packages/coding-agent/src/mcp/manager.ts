@@ -71,7 +71,18 @@ type TrackedPromise<T> = {
 	reason?: unknown;
 };
 
-const STARTUP_TIMEOUT_MS = 250;
+/**
+ * How long startup waits for MCP connections before serving cached tools.
+ *
+ * This is a grace window, NOT a timeout: connections that have not settled by
+ * the time it elapses keep running, and their real tool lists replace the
+ * cached ones as they arrive. It exists only so a slow server cannot hold the
+ * first prompt hostage. It was called `STARTUP_TIMEOUT_MS`, which read as "an
+ * MCP server gets 250 ms to start or it is dropped" — alarming, wrong, and
+ * indistinguishable by name from the eval kernels' genuine 10 s startup
+ * timeouts, which do abort.
+ */
+const STARTUP_TOOL_WAIT_MS = 250;
 
 /**
  * Per-server reconnect-storm circuit breaker.
@@ -509,7 +520,7 @@ export class MCPManager {
 		if (connectionTasks.length > 0) {
 			await Promise.race([
 				Promise.allSettled(connectionTasks.map(task => task.tracked.promise)),
-				Bun.sleep(STARTUP_TIMEOUT_MS),
+				Bun.sleep(STARTUP_TOOL_WAIT_MS),
 			]);
 
 			const cachedTools = new Map<string, MCPToolDefinition[]>();

@@ -18,6 +18,9 @@ export default class Gc extends Command {
 		"cold-archive-after-days": Flags.integer({ description: "Minimum session age before archiving" }),
 		"retain-newest-global": Flags.integer({ description: "Always keep this many newest sessions active" }),
 		"retain-newest-per-cwd": Flags.integer({ description: "Always keep this many newest sessions per cwd active" }),
+		"write-grace-minutes": Flags.integer({
+			description: "Leave files written this recently alone (minimum 1)",
+		}),
 	};
 
 	async run(): Promise<void> {
@@ -33,6 +36,7 @@ export default class Gc extends Command {
 				coldArchiveAfterDays: flags["cold-archive-after-days"],
 				retainNewestGlobal: flags["retain-newest-global"],
 				retainNewestPerCwd: flags["retain-newest-per-cwd"],
+				writeGraceMinutes: flags["write-grace-minutes"],
 			},
 		};
 		const result = await runGcCommand(cmd);

@@ -32,7 +32,7 @@ const repoRoot = path.resolve(import.meta.dir, "..", "..");
 const cliEntry = path.join(repoRoot, "src", "cli.ts");
 
 /** Any ANSI escape sequence: colour, cursor movement, erase, mode set. */
-// biome-ignore lint/suspicious/noControlCharactersInRegex: matching escape bytes is the point
+// Matching raw escape bytes is the point, so the class is deliberate.
 const ANSI = /\[[0-9;?]*[A-Za-z]/u;
 
 interface SpawnResult {
@@ -176,7 +176,7 @@ describe("piped output carries no terminal control bytes", () => {
 	it("emits no cursor movement or line-erase sequences when piped", async () => {
 		const result = await runCli(["--help"]);
 		// Cursor up/down/forward/back, position, erase-in-line, erase-in-display.
-		// biome-ignore lint/suspicious/noControlCharactersInRegex: matching escape bytes is the point
+		// Matching raw escape bytes is the point, so the class is deliberate.
 		const CURSOR = /\[[0-9;]*[ABCDHJKfsu]/u;
 
 		expect(CURSOR.test(result.stdout)).toBe(false);

@@ -29,12 +29,13 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { clamp, clampLow, collapseWhitespace, formatCount, prompt, untilAborted } from "@veyyon/utils";
+import { clamp, clampLow, collapseWhitespace, formatCount, isCancellation, prompt, untilAborted } from "@veyyon/utils";
 import { type as arkType } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { ExtensionUISelectItem } from "../extensibility/extensions";
+import { HOOK_EDITOR_TEXT_PAD_COLS } from "../modes/components/hook-editor";
 import { getMarkdownTheme, type Theme, theme } from "../modes/theme/theme";
-import askDescription from "../prompts/tools/ask.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { vocalizer } from "../tts/vocalizer";
 import { framedBlock, renderStatusLine } from "../tui";
 import type { ToolSession } from ".";
@@ -190,9 +191,24 @@ interface CustomInputContext {
 const MAX_CUSTOM_INPUT_OPTION_ROWS = 8;
 const MAX_CUSTOM_INPUT_TITLE_ROWS = 16;
 const MIN_CUSTOM_INPUT_CONTENT_WIDTH = 20;
-/** Subtracted from the terminal width to leave room for the surrounding
- *  `Text(... padX=1)` padding + DynamicBorder vertical chrome. */
-const CUSTOM_INPUT_CHROME_COLUMNS = 4;
+/**
+ * Subtracted from the terminal width to leave room for the chrome the title is
+ * rendered inside.
+ *
+ * That chrome is exactly the title row's own horizontal padding, taken from the
+ * component that applies it rather than restated here. `HookEditorComponent`
+ * mounts the title as `new Text(title, HOOK_EDITOR_TEXT_PAD_COLS, 0)` and `Text`
+ * wraps at `width - paddingX * 2`, so this is the width the title actually gets.
+ *
+ * It used to be a hardcoded 4, described as the padding "+ DynamicBorder
+ * vertical chrome". `DynamicBorder` has no vertical chrome: it renders one
+ * full-width horizontal rule and consumes zero columns. So every title row was
+ * truncated two columns short of the space it had, on every terminal width.
+ * There is no clamp anywhere else that would have caught it, because narrower
+ * than available never wraps and never looks broken, it just quietly loses two
+ * columns of question text.
+ */
+const CUSTOM_INPUT_CHROME_COLUMNS = HOOK_EDITOR_TEXT_PAD_COLS * 2;
 const CUSTOM_INPUT_DESCRIPTION_INDENT = "    ";
 
 function customInputContentWidth(): number {
@@ -517,7 +533,10 @@ async function askSingleQuestion(
 			}
 			return { choice, timedOut: timeoutTriggered, navigation: navigationAction };
 		} catch (error) {
-			if (timeoutTriggered && error instanceof Error && error.name === "AbortError") {
+			// `isCancellation`: the dialog's own deadline can surface as a
+			// `TimeoutError` now that the abort helpers keep the reason's name, and
+			// this branch exists precisely to recognise that deadline.
+			if (timeoutTriggered && isCancellation(error)) {
 				return { choice: undefined, timedOut: true, navigation: navigationAction };
 			}
 			throw error;
@@ -807,7 +826,7 @@ export class AskTool implements AgentTool<typeof askSchema, AskToolDetails> {
 	readonly loadMode = "discoverable";
 
 	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(askDescription);
+		this.description = prompt.render(PROMPTS["tools/ask"].text);
 	}
 
 	static createIf(session: ToolSession): AskTool | null {
@@ -966,7 +985,9 @@ export class AskTool implements AgentTool<typeof askSchema, AskToolDetails> {
 				const responseText = `User answers:\n${results.map(formatQuestionResult).join("\n")}`;
 				return { content: [{ type: "text" as const, text: responseText }], details };
 			} catch (error) {
-				if (error instanceof Error && error.name === "AbortError") {
+				// Both spellings mean the operator is no longer answering, so both
+				// end the ask rather than falling through to the caller's error path.
+				if (isCancellation(error)) {
 					throw new ToolAbortError("Ask input was cancelled");
 				}
 				throw error;
@@ -998,7 +1019,9 @@ export class AskTool implements AgentTool<typeof askSchema, AskToolDetails> {
 				);
 				return { optionLabels, selectedOptions, customInput, note, navigation, cancelled, timedOut };
 			} catch (error) {
-				if (error instanceof Error && error.name === "AbortError") {
+				// Both spellings mean the operator is no longer answering, so both
+				// end the ask rather than falling through to the caller's error path.
+				if (isCancellation(error)) {
 					throw new ToolAbortError("Ask input was cancelled");
 				}
 				throw error;

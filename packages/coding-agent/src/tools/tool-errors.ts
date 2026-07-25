@@ -77,9 +77,29 @@ function abortMessage(reason: unknown, what?: string): string {
  */
 export function throwIfAborted(signal?: AbortSignal, what?: string): void {
 	if (!signal?.aborted) return;
-	const { reason } = signal;
-	if (reason instanceof ToolAbortError) throw reason;
-	throw new ToolAbortError(abortMessage(reason, what), { cause: reason });
+	throw toolAbort(signal.reason, what);
+}
+
+/**
+ * The {@link ToolAbortError} to throw for `reason`, preserving what it said.
+ *
+ * {@link throwIfAborted} covers the common case where the reason lives on a
+ * signal. This is the same decision for the case where it does not: a caught
+ * `AbortError` from a platform API, where the ERROR is the only thing carrying
+ * why the operation stopped. Both go through here so the two cannot disagree
+ * about what an abort reads as, which they did — `mcp/tool-bridge.ts` minted a
+ * bare `new ToolAbortError()` for a caught abort, so an MCP call cancelled by an
+ * expired deadline reached the operator as the generic "Operation aborted" and
+ * the `TimeoutError` identity that tells a deadline from an Escape went with it.
+ *
+ * An existing `ToolAbortError` is returned unchanged rather than rewrapped: it
+ * is already the right type and already carries its message and cause.
+ *
+ * @param what Names the operation, used when the reason carries nothing.
+ */
+export function toolAbort(reason: unknown, what?: string): ToolAbortError {
+	if (reason instanceof ToolAbortError) return reason;
+	return new ToolAbortError(abortMessage(reason, what), { cause: reason });
 }
 
 /**

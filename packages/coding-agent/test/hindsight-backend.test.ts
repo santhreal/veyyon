@@ -62,6 +62,7 @@ function makeFakeSession(deps: FakeSessionDeps) {
 			return () => listeners.delete(listener);
 		},
 		refreshBaseSystemPrompt: vi.fn().mockResolvedValue(undefined),
+		publishVolatileMemoryContext: vi.fn().mockResolvedValue(true),
 		getHindsightSessionState: () => hindsightState,
 		setHindsightSessionState(state: HindsightSessionState | undefined) {
 			const previous = hindsightState;
@@ -338,7 +339,7 @@ describe("hindsightBackend first-turn injection", () => {
 		expect(session.getHindsightSessionState()?.lastRecallSnippet).toBe(block);
 	});
 
-	it("keeps the <memories> wrapper in buildDeveloperInstructions", async () => {
+	it("keeps the <memories> wrapper in the volatile context, and out of the system prompt", async () => {
 		const settings = Settings.isolated({
 			"memory.backend": "hindsight",
 			"hindsight.apiUrl": "http://localhost:8888",
@@ -356,13 +357,23 @@ describe("hindsightBackend first-turn injection", () => {
 		expect(state).toBeDefined();
 		state!.lastRecallSnippet = "<memories>\nremembered fact\n</memories>";
 
+		// The recall block reaches the model at the context tail, not in the system
+		// prompt: a recall that rewrote the prompt invalidated the provider's cache
+		// prefix and made the next request re-read the whole conversation.
+		const volatileContext = await hindsightBackend.buildVolatileContext?.(session as never);
+		expect(volatileContext).toContain("<memories>");
+		expect(volatileContext).toContain("</memories>");
+		expect(volatileContext).toContain("remembered fact");
+
 		const prompt = await hindsightBackend.buildDeveloperInstructions("/tmp", settings, session as never);
+		expect(prompt).toBeDefined();
+		expect(prompt).not.toContain("remembered fact");
+		// The static guidance, which does not change for the life of the session,
+		// is what stays in the prompt.
 		expect(prompt).toContain("<memories>");
-		expect(prompt).toContain("</memories>");
-		expect(prompt).toContain("remembered fact");
 	});
 
-	it("places the <mental_models> block above the <memories> recall block in developer instructions", async () => {
+	it("places the <mental_models> block above the <memories> recall block in the volatile context", async () => {
 		// Stable, curated semantic memory must come first so the LLM's prior is
 		// anchored on it; the volatile per-turn recall block follows. Ordering
 		// is part of the integration's behavioural contract.
@@ -384,7 +395,7 @@ describe("hindsightBackend first-turn injection", () => {
 		state!.mentalModelsSnippet = "<mental_models>\n# User Preferences\nprefers tabs\n</mental_models>";
 		state!.lastRecallSnippet = "<memories>\nrecalled fact\n</memories>";
 
-		const prompt = await hindsightBackend.buildDeveloperInstructions("/tmp", settings, session as never);
+		const prompt = await hindsightBackend.buildVolatileContext?.(session as never);
 		expect(prompt).toBeDefined();
 		// `<memories>` and `<mental_models>` are mentioned in STATIC_INSTRUCTIONS
 		// bullets too. Match the actual injected block opener (tag + newline)
@@ -396,11 +407,11 @@ describe("hindsightBackend first-turn injection", () => {
 		expect(mmIdx).toBeLessThan(memIdx);
 	});
 
-	it("reloadMentalModelsForSession refreshes the cached snippet and base prompt", async () => {
+	it("reloadMentalModelsForSession refreshes the cached snippet and publishes it to the tail", async () => {
 		// Defends the TTL/manual reload contract: a fresh `listMentalModels`
 		// must update both `mentalModelsSnippet` and `mentalModelsLoadedAt`,
-		// and call `refreshBaseSystemPrompt` so the next turn picks up the
-		// new content.
+		// and publish the new content to the context tail so the next turn picks it
+		// up WITHOUT invalidating the provider's cache prefix.
 		const settings = Settings.isolated({
 			"memory.backend": "hindsight",
 			"hindsight.apiUrl": "http://localhost:8888",
@@ -424,8 +435,9 @@ describe("hindsightBackend first-turn injection", () => {
 		expect(state!.mentalModelsSnippet).toBeUndefined();
 		expect(state!.mentalModelsLoadedAt).toBeDefined();
 		const initialLoadedAt = state!.mentalModelsLoadedAt!;
-		const refreshSpy = session.refreshBaseSystemPrompt;
-		const callsBefore = refreshSpy.mock.calls.length;
+		const publishSpy = session.publishVolatileMemoryContext;
+		const callsBefore = publishSpy.mock.calls.length;
+		const refreshCallsBefore = session.refreshBaseSystemPrompt.mock.calls.length;
 
 		// Now publish content and trigger a reload.
 		listSpy.mockResolvedValue({
@@ -447,7 +459,11 @@ describe("hindsightBackend first-turn injection", () => {
 		expect(state!.mentalModelsSnippet).toContain("# User Preferences");
 		expect(state!.mentalModelsSnippet).toContain("prefers concise prose");
 		expect(state!.mentalModelsLoadedAt).toBeGreaterThan(initialLoadedAt - 1000);
-		expect(refreshSpy.mock.calls.length).toBeGreaterThan(callsBefore);
+		expect(publishSpy.mock.calls.length).toBeGreaterThan(callsBefore);
+		expect(publishSpy.mock.calls.at(-1)?.[0]).toBe("hindsight:MM reload");
+		// And the system prompt was NOT touched, which is the whole point: rebuilding
+		// it would cost a full uncached re-read of the conversation on the next turn.
+		expect(session.refreshBaseSystemPrompt.mock.calls.length).toBe(refreshCallsBefore);
 	});
 
 	it("reloadMentalModelsForSession returns false on subagent aliases", async () => {

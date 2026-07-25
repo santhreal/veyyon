@@ -9,14 +9,8 @@ import * as oauthFlow from "@veyyon/coding-agent/mcp/oauth-flow";
 import type { MCPServerConfig } from "@veyyon/coding-agent/mcp/types";
 import { MCPCommandController } from "@veyyon/coding-agent/modes/controllers/mcp-command-controller";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import {
-	getConfigRootDir,
-	getMCPConfigPath,
-	getProjectDir,
-	removeWithRetries,
-	setAgentDir,
-	setProjectDir,
-} from "@veyyon/utils";
+import { getMCPConfigPath, getProjectDir, removeWithRetries, setAgentDir, setProjectDir } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 const RAW_SERVER_URL = `https://\${MCP_HOST}/mcp`;
 const EXPANDED_SERVER_URL = "https://mcp.example.com/mcp";
@@ -29,8 +23,10 @@ type TestConfigFile = {
 };
 
 const originalProjectDir = getProjectDir();
-const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
-const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
+// One owner for "undo a setAgentDir call": the hand-rolled version below could not
+// restore an ABSENT VEYYON_CODING_AGENT_DIR and left the active profile cleared,
+// which leaked into every file that ran after this one.
+const dirOverrides = captureDirOverrides();
 
 function restoreEnvValue(name: string, value: string | undefined): void {
 	if (value === undefined) {
@@ -130,12 +126,7 @@ describe("/mcp auth commands", () => {
 		vi.restoreAllMocks();
 		restoreEnvValue("MCP_HOST", originalMcpHost);
 		setProjectDir(originalProjectDir);
-		if (originalAgentDir) {
-			setAgentDir(originalAgentDir);
-		} else {
-			setAgentDir(fallbackAgentDir);
-			delete process.env.VEYYON_CODING_AGENT_DIR;
-		}
+		restoreDirOverrides(dirOverrides);
 		await removeWithRetries(projectDir);
 		await removeWithRetries(agentDir);
 	});

@@ -1,6 +1,6 @@
 import { parseJsonWithRepair } from "@veyyon/utils";
 import type { Message, ToolCall } from "../types";
-import { mintToolCallId, partialSuffixOverlapAny, recordOrEmpty } from "./coercion";
+import { mintToolCallId, parseToolArgsText, partialSuffixOverlapAny } from "./coercion";
 import dialectPrompt from "./deepseek.md" with { type: "text" };
 import {
 	assistantTranscriptParts,
@@ -37,9 +37,9 @@ const LEGACY_JSON_FENCE = "```json";
 const CODE_FENCE = "```";
 
 const DSML_TOOL_CALLS_OPEN_FULLWIDTH = "<｜DSML｜tool_calls>";
-const DSML_TOOL_CALLS_CLOSE_FULLWIDTH = "</｜DSML｜tool_calls>";
+export const DSML_TOOL_CALLS_CLOSE_FULLWIDTH = "</｜DSML｜tool_calls>";
 const DSML_TOOL_CALLS_OPEN_ASCII = "<|DSML|tool_calls>";
-const DSML_TOOL_CALLS_CLOSE_ASCII = "</|DSML|tool_calls>";
+export const DSML_TOOL_CALLS_CLOSE_ASCII = "</|DSML|tool_calls>";
 
 const CONTROL_TOKENS = [
 	DEEPSEEK_BOS,
@@ -454,13 +454,7 @@ export class DeepSeekInbandScanner implements InbandScanner {
 	}
 
 	#parseArgs(rawArgs: string): Record<string, unknown> {
-		const trimmed = rawArgs.trim();
-		if (trimmed.length === 0) return {};
-		try {
-			return recordOrEmpty(parseJsonWithRepair<unknown>(trimmed));
-		} catch {
-			return {};
-		}
+		return parseToolArgsText(rawArgs, { source: "deepseek", tool: this.#name });
 	}
 
 	#skipWhitespace(): string {
@@ -572,10 +566,6 @@ function renderToolResults(results: readonly DialectToolResult[], _options: Dial
 	return results.map(result => `${DEEPSEEK_TOOL_OUTPUT_BEGIN}${result.text}${DEEPSEEK_TOOL_OUTPUT_END}`).join("\n");
 }
 
-function renderThinking(text: string): string {
-	return renderThinkTags(text);
-}
-
 function renderTranscript(messages: readonly Message[], options: DialectRenderOptions = {}): string {
 	if (messages.length === 0) return "";
 	let out = DEEPSEEK_BOS;
@@ -583,7 +573,7 @@ function renderTranscript(messages: readonly Message[], options: DialectRenderOp
 		const message = messages[i]!;
 		if (message.role === "assistant") {
 			const parts = assistantTranscriptParts(message);
-			out += `${DEEPSEEK_ASSISTANT}${renderThinking(parts.thinking)}${parts.text}${renderAssistantToolCalls(parts.toolCalls, options)}${DEEPSEEK_EOS}`;
+			out += `${DEEPSEEK_ASSISTANT}${renderThinkTags(parts.thinking)}${parts.text}${renderAssistantToolCalls(parts.toolCalls, options)}${DEEPSEEK_EOS}`;
 			i++;
 			continue;
 		}
@@ -607,7 +597,7 @@ const definition: DialectDefinition = {
 	renderToolCall,
 	renderAssistantToolCalls,
 	renderToolResults,
-	renderThinking,
+	renderThinking: renderThinkTags,
 	renderTranscript,
 };
 

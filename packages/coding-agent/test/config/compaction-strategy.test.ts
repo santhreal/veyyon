@@ -114,6 +114,10 @@ describe("toAgentCompactionSettings", () => {
 		const result = toAgentCompactionSettings({
 			enabled: true,
 			strategy: "snap",
+			// Both retired threshold keys plus the current one: the adapter must carry
+			// all three through untouched, since the migration off the retired pair is
+			// the settings layer's job, not this adapter's.
+			threshold: "80%",
 			thresholdPercent: 80,
 			thresholdTokens: 1000,
 			reserveTokens: 500,
@@ -121,10 +125,7 @@ describe("toAgentCompactionSettings", () => {
 			midTurnEnabled: false,
 			handoffSaveToDisk: true,
 			autoContinue: true,
-			remoteEnabled: false,
 			remoteEndpoint: undefined,
-			remoteStreamingV2Enabled: false,
-			v2RetainedMessageBudget: 10,
 			idleEnabled: false,
 			idleThresholdTokens: 0,
 			idleTimeoutSeconds: 0,
@@ -132,7 +133,9 @@ describe("toAgentCompactionSettings", () => {
 			dropUseless: true,
 		});
 		expect(result.strategy).toBe("summary");
+		expect(result.threshold).toBe("80%");
 		expect(result.thresholdPercent).toBe(80);
+		expect(result.thresholdTokens).toBe(1000);
 		expect(result.keepRecentTokens).toBe(200);
 		expect(result.enabled).toBe(true);
 	});

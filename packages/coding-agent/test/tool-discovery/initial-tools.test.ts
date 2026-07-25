@@ -146,6 +146,105 @@ describe("built-in tool loadMode annotations", () => {
 	});
 });
 
+/**
+ * `loadMode: "discoverable"` is supposed to keep a tool OUT of the prompt and reachable through
+ * `search_tool_bm25`. It only does that under `tools.discoveryMode: "all"`. The shipped default is
+ * `auto`, which never consults `loadMode`, so every discoverable tool the default config builds is
+ * carried in the prompt at full length and re-read on every turn.
+ *
+ * Measured on a 66-turn trace: the needlessly-active discoverable tools are roughly 3,800 tokens,
+ * about 2% of that session's bill. This suite does NOT change the default, because the tradeoff is
+ * real — a tool the model cannot see is a tool it must search for first — and the decision needs a
+ * reward measurement, not a token count. What it does is make the contradiction visible: the list
+ * below is exact, so adding a twelfth discoverable-but-active tool fails here instead of quietly
+ * costing another few hundred tokens a turn (Law 11: a declared field that changes nothing).
+ */
+describe("loadMode against the shipped default configuration", () => {
+	/** The tools a default-settings session actually builds, with their load modes. */
+	async function defaultSessionTools(): Promise<{ name: string; loadMode: string | undefined }[]> {
+		const settings = Settings.isolated({});
+		const session: ToolSession = {
+			cwd: "/tmp/test",
+			hasUI: false,
+			getSessionFile: () => null,
+			getSessionSpawns: () => null,
+			settings,
+		};
+		const tools = await createTools(session, Object.keys(BUILTIN_TOOLS));
+		return tools.map(tool => ({ name: tool.name, loadMode: tool.loadMode }));
+	}
+
+	it("leaves the default discovery mode as auto, which never reads loadMode", () => {
+		// The premise of everything below. If this ever becomes "all", the assertions
+		// about inertness stop describing the shipped product and must be revisited.
+		expect(Settings.isolated({}).get("tools.discoveryMode")).toBe("auto");
+	});
+
+	it("names every tool that declares discoverable and is active anyway", async () => {
+		const discoverable = (await defaultSessionTools())
+			.filter(tool => tool.loadMode === "discoverable")
+			.map(tool => tool.name)
+			.sort();
+
+		expect(discoverable).toEqual([
+			"ast_edit",
+			"ast_grep",
+			"browser",
+			"debug",
+			"grep",
+			"job",
+			"lsp",
+			"set_cwd",
+			"task",
+			"todo",
+			"web_search",
+		]);
+	});
+
+	it("drops exactly those tools when discovery-all is on, so the mechanism itself works", async () => {
+		// The other half of the claim: the filter is not broken, it is simply never
+		// reached by the default. Feeding the default slate through it leaves the
+		// essential tools and nothing that merely declared itself discoverable.
+		const tools = await defaultSessionTools();
+		const loadModes = new Map(tools.map(tool => [tool.name, tool.loadMode as BuiltinToolLoadMode | undefined]));
+		const settings = Settings.isolated({});
+
+		const kept = filterInitialToolsForDiscoveryAll(
+			tools.map(tool => tool.name),
+			{
+				loadModeOf: name => loadModes.get(name),
+				essentialNames: new Set(computeEssentialBuiltinNames(settings)),
+				explicitlyRequested: new Set<string>(),
+				restored: new Set<string>(),
+				forceActive: new Set<string>(),
+			},
+		).sort();
+
+		expect(kept).toEqual(["bash", "edit", "eval", "glob", "launch", "read", "resolve", "write"]);
+		// Every discoverable tool is gone, and nothing essential went with it.
+		for (const tool of tools) {
+			if (tool.loadMode === "discoverable") expect(kept).not.toContain(tool.name);
+		}
+	});
+
+	it("keeps a discoverable tool the caller asked for by name", async () => {
+		// Someone who passes `--tools grep` means it, whatever grep declares. Without
+		// this the explicit request would be silently ignored under discovery-all.
+		const tools = await defaultSessionTools();
+		const loadModes = new Map(tools.map(tool => [tool.name, tool.loadMode as BuiltinToolLoadMode | undefined]));
+
+		const kept = filterInitialToolsForDiscoveryAll(["grep", "ast_grep"], {
+			loadModeOf: name => loadModes.get(name),
+			essentialNames: new Set<string>(),
+			explicitlyRequested: new Set(["grep"]),
+			restored: new Set<string>(),
+			forceActive: new Set<string>(),
+		});
+
+		expect(kept).toEqual(["grep"]);
+	});
+});
+
 describe("computeEssentialBuiltinNames", () => {
 	it("returns DEFAULT_ESSENTIAL_TOOL_NAMES when override is empty", () => {
 		const settings = Settings.isolated({});

@@ -2,15 +2,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { getAgentDir, isEnoent, logger, prompt } from "@veyyon/utils";
 import { expandAtImports } from "../discovery/at-imports";
-import activeRepoWatchdogTemplate from "../prompts/advisor/active-repo-watchdog.md" with { type: "text" };
-import contextFilesTemplate from "../prompts/advisor/context-files.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import type { ActiveRepoContext } from "../utils/active-repo-context";
 import { repo } from "../utils/git";
 import { normalizePromptPath } from "../utils/prompt-path";
 
 export function formatActiveRepoWatchdogPrompt(activeRepoContext: ActiveRepoContext): string {
 	return prompt
-		.render(activeRepoWatchdogTemplate, {
+		.render(PROMPTS["advisor/active-repo-watchdog"].text, {
 			relativeRepoRoot: normalizePromptPath(activeRepoContext.relativeRepoRoot),
 		})
 		.trim();
@@ -27,7 +26,7 @@ export function formatAdvisorContextPrompt(
 	contextFiles: ReadonlyArray<{ path: string; content: string }>,
 ): string | undefined {
 	if (contextFiles.length === 0) return undefined;
-	return prompt.render(contextFilesTemplate, { contextFiles }).trim() || undefined;
+	return prompt.render(PROMPTS["advisor/context-files"].text, { contextFiles }).trim() || undefined;
 }
 
 /**

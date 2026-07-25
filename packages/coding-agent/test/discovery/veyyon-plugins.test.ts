@@ -32,7 +32,8 @@ import {
 	clearVeyyonExtensionCliRoots,
 	injectVeyyonExtensionCliRoots,
 } from "@veyyon/coding-agent/discovery/veyyon-extension-roots";
-import { getConfigRootDir, removeSyncWithRetries, setAgentDir } from "@veyyon/utils";
+import { removeSyncWithRetries, setAgentDir } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 const PROVIDER_ID = "veyyon-plugins";
 
@@ -41,8 +42,10 @@ let home: string;
 let project: string;
 let ext: string;
 
-const originalAgentDirEnv = process.env.VEYYON_CODING_AGENT_DIR;
-const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
+// One owner for "undo a setAgentDir call": the hand-rolled version this replaces could
+// not express "the variable was absent" and left the active profile cleared, so it
+// handed every later file in the process the default profile.
+const dirOverrides = captureDirOverrides();
 
 function writeFile(filePath: string, content: string): void {
 	fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -102,12 +105,7 @@ beforeEach(() => {
 afterEach(() => {
 	clearCache();
 	clearVeyyonExtensionCliRoots();
-	if (originalAgentDirEnv) {
-		setAgentDir(originalAgentDirEnv);
-	} else {
-		setAgentDir(fallbackAgentDir);
-		delete process.env.VEYYON_CODING_AGENT_DIR;
-	}
+	restoreDirOverrides(dirOverrides);
 	removeSyncWithRetries(tempDir);
 });
 

@@ -54,7 +54,7 @@ To test a system prompt candidate:
 
 Pasting a whole template is how a setting quietly dies, so there is no whole-prompt arm vehicle. The default template gates each setting behind a conditional, for example `{{#if taskIrcEnabled}}`. When you hand-copy the template and edit one region, it is easy to drop a conditional in a region you never meant to touch. The setting still parses and still flows into the render data, but no branch consumes it, so it renders as nothing and fails silently. This is the bug that made the delegation settings (`taskIrcEnabled`, `eagerTasksAlways`) useless during earlier experiments.
 
-The `.sections.yml` mechanism makes that bug unreachable. The default template is one file, `packages/coding-agent/src/prompts/system/system-prompt.md`, and `system-prompt-builder/default-template.ts` exposes it as named sections:
+The `.sections.yml` mechanism makes that bug unreachable. The default template is one file, `packages/coding-agent/src/prompts/session/system-prompt.md`, and `system-prompt-builder/default-template.ts` exposes it as named sections:
 
 ```ts
 import { assembleDefaultTemplate } from "../system-prompt-builder/default-template";
@@ -107,6 +107,7 @@ bun run.ts \
 - `--dry-run`: Run every pre-run guard and STOP before the first container. Always do this first. It validates each arm's YAML, stages any sections file, pins temperature, computes arm fingerprints and checks for a zero-IV collision, matches every encode arm's allowlist against `--model`, confirms the task files and agent binary exist, and runs the auth preflight; then it prints the queue, each arm's resolved inputs, the task set's `@headline`/`@biased` provenance, and how many trials of real quota the run would cost, and exits 0 writing no report. Seconds instead of the hours a real run takes, since one DeepSWE task can hold a container for 90 minutes and a one-line YAML typo is otherwise discovered only afterwards.
 - `--tasks-root <dir>`: Directory holding the DeepSWE task definitions. Defaults to `deep-swe/tasks` inside the bench package, then `$DEEPSWE_TASKS_ROOT`. Point it elsewhere if you keep the task corpus outside the repo; the runner fails before any container if no task root resolves.
 - `--trial-timeout <seconds>`: Wall-clock ceiling for ONE trial. There is no flat default: each task gets the budget its own `task.toml` declares, `[environment].build_timeout_sec` + `[agent].timeout_sec` + `[verifier].timeout_sec`, because the harness runs one timer across all three phases. Pass the flag only to shorten a run deliberately. A ceiling below a task's budget truncates it rather than shortening it, and the truncation is not neutral between arms: a slower-per-turn arm eats more truncations, so a flat ceiling turns "slower per turn" into "solves fewer tasks". The run warns before it starts when the flag truncates any selected task, the report counts harness kills separately from agent failures, and any delta between arms with different timeout counts is printed as `not attributable (timeout gap)` rather than as a winner.
+- `--binary <path>`: Use an already-built `vey` binary instead of rebuilding from the working tree, and stage those exact bytes. Point it at an earlier run's `assets/vey`. This exists to make POOLING possible: `--merge` refuses runs whose binary sha differs, the runner rebuilds whenever anything under `packages/coding-agent/src` is newer than the binary, and in a shared tree that is every day (three runs on 2026-07-25 staged three different binaries). Pin every run of a comparison after the first to the first run's staged copy and the days pool. It announces itself loudly, because the run then measures that binary's code and not the working tree's: you give up testing today's code to buy a reward comparison with enough decisive tasks to mean anything.
 - `--out <dir>`: Directory where results and verbatim traces are stored.
 
 ### Pinned sampling regime (held constant across arms, stamped for the long term)
@@ -133,6 +134,40 @@ If accounting code or trace analysis is updated, re-calculate metrics without re
 bun run.ts --reaggregate runs/prompt-tuning-01
 ```
 
+### Pooling several days into one comparison
+
+A paired sign test needs at least 6 decisive tasks before any outcome can clear the
+adjusted bar, and one day of provider quota funds roughly fifteen tasks across two
+arms. When a comparison comes back **not distinguishable (underpowered)**, the fix
+is more samples, and those usually have to be gathered on a later day. Pool them:
+
+```bash
+bun run.ts --merge runs/2026-07-25T19-51-41-474Z,runs/2026-07-26T08-11-02-330Z \
+  --out runs/pooled-sig-max4000
+```
+
+- `--merge A,B,C`: comma-separated run directories to pool into one comparison. Each
+  needs a `results.json`; run `--reaggregate` on it first if the run died before
+  writing one.
+- `--out DIR`: where to write `merged-report.md` and `merged-results.json`. Defaults
+  to the last directory passed to `--merge`.
+
+Pooling across days is only sound because every run carries **both** arms, so each
+task's pair is measured under the same provider conditions, binary and hour, and a
+paired test differences the day-to-day variation away. The merge refuses, rather
+than warns, when that argument breaks: runs carrying different arms (the day effect
+lands entirely on the single arm present, which fabricates a result rather than
+degrading one), different models, different binaries, or an arm whose config
+fingerprint changed between runs (every row still shows the same arm name, so
+nothing downstream could catch it).
+
+Plan for this before you start: **freeze the binary across every run you intend to
+pool.** The runner records the `vey` binary's sha, and any change under
+`packages/coding-agent` or `packages/ai` rebuilds it, so a day of ordinary
+development between two runs is enough to make them unmergeable. Land the code you
+want measured, then gather all the days, then resume editing. Changes confined to
+`packages/deepswe-bench` do not rebuild the binary and are safe to make in between.
+
 ## 5. Evaluation Criteria (What Counts as a Win)
 
 1. **Correctness / Verifier Reward (PRIMARY):** Candidate must match or exceed baseline score on held-out verifier tests. Lower correctness is UNACCEPTABLE. Read the verdict from the report's **Arm comparison (paired by task)** section, not from whether the two arms' per-arm intervals overlap: it pairs by task (removing between-task difficulty) and decides with a two-sided exact sign test, so it is both more powerful and honest at small task counts. A candidate is a win only when the paired sign test reaches **Holm-adjusted `adj p` < 0.05** in its favor. The report now corrects for multiple comparisons directly: a run with k arms tests k(k-1)/2 pairs, so the `adj p (Holm)` column holds the family-wise false-positive rate at 5% no matter how many arms you compare, and the verdict is decided on it, not the raw p. A raw p<0.05 whose `adj p` is above 0.05 is exactly the false winner the correction exists to reject. Read the null carefully too: a row that says **not distinguishable (underpowered)** had too few decisive tasks for any outcome (even a clean sweep) to reach the adjusted bar — with one pair the floor is 6 decisive tasks (a 5-0 sweep is only p=0.0625), two pairs need 7 — so it means "add tasks", not "the arms are equal". Only a plain **not distinguishable** is a real measured null. Raise `--repeats` and/or the task count when the delta is small or the verdict is underpowered. Note the pass rate excludes a trial the verifier never scored: a missing reward is the `verifier-no-reward` error class (surfaced in **Errors (per arm)**), not a fail — a real failure is reward=0, so an unscored trial that folded in as a fail would understate correctness and let a scorer outage that tracks one arm masquerade as a correctness loss. Read that error row for asymmetry the same way you read a refusal asymmetry.
@@ -142,6 +177,8 @@ bun run.ts --reaggregate runs/prompt-tuning-01
 5. **Treatment actually fired (prerequisite, not optional):** Before you trust any efficiency delta for a feature, confirm the **Argot treatment applied? (per arm)** section shows the mechanism engaged. The authoritative column is `preamble taught`: it reads the actual system prompt the model was given (after catalog id resolution), so `preamble taught N/N` proves encode fired and `0/N` proves it never reached the model — a silent decode-only degrade that makes every token delta against that arm inert, and one the runner now fails closed on. Secondary signals: non-zero `argot_load` calls and `§`-carrying messages with an `encoded/N` fraction above zero. Encode is counted wherever a handle can appear, including inside tool-call arguments (commands and diffs), not prose alone.
 
    Teaching alone does not make an arm measurable, so read the `vocab handles` column next to it: the handle count the launch project's dictionary actually loaded, from the agent's `argot_armed` record. A `0 encoded` result means three different things depending on that number, and only one of them is a result about argot. `vocab handles 0` means the repo had no repeated-token mass, the dictionary came out empty, and encoding was IMPOSSIBLE — the token delta measures nothing about the feature, so do not report it as "argot does not help"; switch to tasks whose repos repeat long paths and commands. A positive `vocab handles` with `0/N` encoded means the model had shorthand available and declined to use it, which is a real model-adoption finding chargeable to the model, not the corpus. Only `encoded > 0` makes the delta a genuine argot measurement. A `—` means the run predates the telemetry and its null is uninterpretable: rerun before drawing any conclusion. The report prints the matching interpretation under the table. Note `argot_load` calls stay `0.00` for the launch project by design (it auto-loads at startup; the tool adds additional projects), so a zero there is not evidence of anything.
+6. **Read the predicted-vs-actual block the run prints after the report.** For a run with a `baseline` arm and a context lever, the runner derives each treatment arm's predicted saving from that arm's own staged settings against this run's baseline transcripts, and prints it beside the measured cost delta over the tasks both arms completed. The `gap` is a statement about the INSTRUMENT rather than the arm: a small one means the simulator can size the next lever without buying the answer, a large one means every other prediction it makes should be re-read. Two outputs are refusals rather than numbers and must not be read as results. `NO PREDICTION` / `PARTIAL PREDICTION` means the arm sets a lever with no simulator (`context.thinkingRetention` and `tools.inlineOutputFloor` today), so the total covers only part of the treatment. `no paired trials with usage` means the treatment arm billed nothing, which is what a quota kill looks like, and it is not a 100% saving.
+
 5. **Watch the Errors (per arm) section for a refusal asymmetry.** An errored or provider-refused sample is excluded from every rate and mean, so an arm that errors more is scored on fewer, possibly easier samples and a delta against it can be a selection effect. A provider content-filter stop is named by finish reason (e.g. `PROHIBITED_CONTENT`). If one arm shows more refusals than another — most of all if the refusal tracks an injected preamble — that is a confound: raise `--repeats` and check whether the asymmetry persists before reading the deltas.
 
 ---

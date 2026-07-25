@@ -11,7 +11,7 @@ import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
 import { LearnTool } from "@veyyon/coding-agent/tools/learn";
 import { ManageSkillTool } from "@veyyon/coding-agent/tools/manage-skill";
 import { removeWithRetries } from "@veyyon/utils";
-import { getAgentDir, setAgentDir } from "@veyyon/utils/dirs";
+import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides, setAgentDir } from "@veyyon/utils/dirs";
 import { type } from "arktype";
 
 function makeSession(
@@ -107,10 +107,15 @@ describe("autolearn tool gating", () => {
 
 describe("manage_skill execute", () => {
 	let tempHome: string;
-	let originalAgentDir: string;
+	let dirOverrides: DirOverridesSnapshot;
 
 	beforeEach(async () => {
-		originalAgentDir = getAgentDir();
+		// `captureDirOverrides` rather than `getAgentDir()` plus
+		// `setAgentDir(original)`: that pair cannot restore an ABSENT
+		// `VEYYON_CODING_AGENT_DIR`, and `setAgentDir` also clears the active profile,
+		// so the old restore left the real agent dir exported and the process on the
+		// default profile for every later file. `scripts/find-test-leaks.ts` caught it.
+		dirOverrides = captureDirOverrides();
 		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-manage-skill-"));
 		spyOn(os, "homedir").mockReturnValue(tempHome);
 		setAgentDir(path.join(tempHome, ".veyyon", "agent"));
@@ -118,7 +123,7 @@ describe("manage_skill execute", () => {
 
 	afterEach(async () => {
 		spyOn(os, "homedir").mockRestore();
-		setAgentDir(originalAgentDir);
+		restoreDirOverrides(dirOverrides);
 		resetActiveSkillsForTests();
 		await removeWithRetries(tempHome);
 	});
@@ -185,7 +190,7 @@ describe("manage_skill execute", () => {
 describe("learn execute", () => {
 	let tempHome: string;
 	let remembered: string[];
-	let originalAgentDir: string;
+	let dirOverrides: DirOverridesSnapshot;
 
 	function learnSession(): ToolSession {
 		const fakeState = {
@@ -203,7 +208,12 @@ describe("learn execute", () => {
 	}
 
 	beforeEach(async () => {
-		originalAgentDir = getAgentDir();
+		// `captureDirOverrides` rather than `getAgentDir()` plus
+		// `setAgentDir(original)`: that pair cannot restore an ABSENT
+		// `VEYYON_CODING_AGENT_DIR`, and `setAgentDir` also clears the active profile,
+		// so the old restore left the real agent dir exported and the process on the
+		// default profile for every later file. `scripts/find-test-leaks.ts` caught it.
+		dirOverrides = captureDirOverrides();
 		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-learn-"));
 		spyOn(os, "homedir").mockReturnValue(tempHome);
 		setAgentDir(path.join(tempHome, ".veyyon", "agent"));
@@ -212,7 +222,7 @@ describe("learn execute", () => {
 
 	afterEach(async () => {
 		spyOn(os, "homedir").mockRestore();
-		setAgentDir(originalAgentDir);
+		restoreDirOverrides(dirOverrides);
 		await removeWithRetries(tempHome);
 	});
 

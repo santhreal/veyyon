@@ -7,10 +7,11 @@ import type { ToolDefinition } from "../../extensibility/extensions";
 import type { Theme } from "../../modes/theme/theme";
 import { replaceTabs, truncateToWidth } from "../../tools/render-utils";
 import * as git from "../../utils/git";
-import { computeRunModifiedPaths, getCurrentAutoresearchBranch, parseWorkDirDirtyPaths } from "../git";
+import { computeRunModifiedPaths, getCurrentAutoresearchBranch, parseWorkDirDirtyPaths, tryReadHeadSha } from "../git";
 import {
 	ensureNumericMetricMap,
 	formatNum,
+	formatPercentChange,
 	mergeAsi,
 	pathMatchesSpec,
 	sanitizeAsi,
@@ -418,14 +419,6 @@ function mergeMetrics(
 	return merged;
 }
 
-async function tryReadHeadSha(cwd: string): Promise<string | null> {
-	try {
-		return (await git.head.sha(cwd)) ?? null;
-	} catch {
-		return null;
-	}
-}
-
 function buildLogText(
 	state: ExperimentState,
 	experiment: ExperimentResult,
@@ -443,24 +436,19 @@ function buildLogText(
 	if (state.bestMetric !== null) {
 		lines.push(`Baseline ${state.metricName}: ${formatNum(state.bestMetric, state.metricUnit)}`);
 	}
-	if (segmentRunCount > 1 && state.bestMetric !== null && experiment.metric !== state.bestMetric) {
-		const delta = ((experiment.metric - state.bestMetric) / state.bestMetric) * 100;
-		const sign = delta > 0 ? "+" : "";
-		lines.push(`This run: ${formatNum(experiment.metric, state.metricUnit)} (${sign}${delta.toFixed(1)}%)`);
-	} else {
-		lines.push(`This run: ${formatNum(experiment.metric, state.metricUnit)}`);
-	}
+	const runChange = segmentRunCount > 1 ? formatPercentChange(experiment.metric, state.bestMetric) : undefined;
+	lines.push(
+		runChange
+			? `This run: ${formatNum(experiment.metric, state.metricUnit)} (${runChange})`
+			: `This run: ${formatNum(experiment.metric, state.metricUnit)}`,
+	);
 	if (Object.keys(experiment.metrics).length > 0) {
 		const baselineSecondary = findBaselineSecondary(state.results, state.currentSegment, state.secondaryMetrics);
 		const parts = Object.entries(experiment.metrics).map(([name, value]) => {
 			const unit = state.secondaryMetrics.find(metric => metric.name === name)?.unit ?? "";
 			const baseline = baselineSecondary[name];
-			if (baseline === undefined || baseline === 0 || segmentRunCount === 1) {
-				return `${name}: ${formatNum(value, unit)}`;
-			}
-			const delta = ((value - baseline) / baseline) * 100;
-			const sign = delta > 0 ? "+" : "";
-			return `${name}: ${formatNum(value, unit)} (${sign}${delta.toFixed(1)}%)`;
+			const change = segmentRunCount === 1 ? undefined : formatPercentChange(value, baseline);
+			return change ? `${name}: ${formatNum(value, unit)} (${change})` : `${name}: ${formatNum(value, unit)}`;
 		});
 		lines.push(`Secondary metrics: ${parts.join("  ")}`);
 	}

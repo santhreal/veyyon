@@ -27,7 +27,16 @@ export * from "./extensibility/custom-tools";
 export type * from "./extensibility/extensions";
 // Extension types and utilities
 export * from "./extensibility/extensions";
-// Hook system types (legacy re-export)
+// Hook system types. `HookAPI` is the type every hook file annotates its
+// default export with, and every example and doc page imports it FROM HERE. The
+// export line under this comment had been deleted, leaving the comment behind:
+// `import type { HookAPI } from "@veyyon/coding-agent"` then failed to
+// typecheck in all fifteen hook examples, and `examples/hooks/README.md` sent
+// readers to `@veyyon/coding-agent/hooks`, a specifier that does not resolve.
+// Named rather than `export type *`: the hook API deliberately mirrors the
+// extension API, so eleven event-result type names are declared in both modules
+// and a star re-export is ambiguous. These two are what a hook file needs.
+export type { HookAPI, HookContext } from "./extensibility/hooks/types";
 // Skills
 export * from "./extensibility/skills";
 // Slash commands

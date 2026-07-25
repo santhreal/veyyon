@@ -5,7 +5,7 @@ import { formatNumber, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
 import type { Theme, ThemeColor } from "../../modes/theme/theme";
-import goalDescription from "../../prompts/tools/goal.md" with { type: "text" };
+import { PROMPTS } from "../../prompts/registry";
 import { formatDurationCoarse } from "../../slash-commands/helpers/format";
 import type { ToolSession } from "../../tools";
 import { formatErrorDetail, TRUNCATE_LENGTHS } from "../../tools/render-utils";
@@ -58,7 +58,7 @@ function validateCreateParams(params: GoalToolInput): { objective: string; token
 export class GoalTool implements AgentTool<typeof goalSchema, GoalToolDetails> {
 	readonly name = "goal";
 	readonly label = "Goal";
-	readonly description = prompt.render(goalDescription);
+	readonly description = prompt.render(PROMPTS["tools/goal"].text);
 	readonly parameters = goalSchema;
 	readonly strict = true;
 	readonly intent = "omit" as const;

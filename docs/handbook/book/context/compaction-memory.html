@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f3663b17.js";
+            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-de67d70d.js"></script>
+        <script src="../toc-578177b6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -204,26 +204,46 @@ behind it.</p>
 <h2 id="context-compaction"><a class="header" href="#context-compaction">Context compaction</a></h2>
 <p>Primary compaction knobs (settings → Models → Compaction, or <code>config.yml</code>):</p>
 <ul>
-<li><strong>Threshold</strong> (<code>compaction.thresholdTokens</code>): an absolute token amount,
-model-independent. Auto-compaction runs once context exceeds this many
-tokens, whatever the current model’s window is. This is the primary knob.
-When the amount is larger than the current model’s window, it is honored up
-to one token below the window and you get a one-time warning. Set it to
-<code>Default</code> (<code>-1</code>) to fall back to the legacy percent trigger
-(<code>compaction.thresholdPercent</code>), which is a percent of the current model’s
-window. You can also compact on demand with <code>/compact</code>.</li>
-<li><strong>Type</strong> (<code>compaction.strategy</code>): how history is compressed:
+<li>
+<p><strong>Threshold</strong> (<code>compaction.threshold</code>): when auto-compaction runs. The unit is
+part of the value, so one setting covers all three ways you might want to say
+it:</p>
+<ul>
+<li><code>auto</code> (the default) triggers at the model’s context window minus the
+reserve, so it adapts to whatever model you are on.</li>
+<li><code>85%</code> is a percent of the current model’s window, so the trigger moves with
+the model.</li>
+<li><code>170000</code> is an absolute token amount and triggers at the same point on every
+model. When the amount is larger than the current model’s window it is
+honored up to one token below the window and you get a one-time warning.</li>
+</ul>
+<p>You can also compact on demand with <code>/compact</code>.</p>
+</li>
+<li>
+<p><strong>Type</strong> (<code>compaction.strategy</code>): how history is compressed:</p>
 <ul>
 <li><code>summary</code>: rewrites old history into an in-place LLM summary on the current branch (the default).</li>
 <li><code>handoff</code>: writes a structured handoff summary that preserves the task, pending questions, and
 recent decisions, then continues from it (LLM transfer path).</li>
 </ul>
 </li>
-<li><strong>Model</strong> (<code>compaction.model</code>): the model that performs LLM compaction / handoff. Unset uses your
-interactive model. See <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</li>
+<li>
+<p><strong>Model</strong> (<code>compaction.model</code>): the model that performs LLM compaction / handoff. Unset uses your
+interactive model. See <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</p>
+</li>
 </ul>
 <p><code>/compact &lt;focus&gt;</code> steers a run with an “Additional focus:” directive. Recent user messages are
 retained verbatim up to the type’s budget.</p>
+<p>You can also pick the type for a single run by naming it first: <code>/compact summary</code> or
+<code>/compact handoff</code>. The name is a one-off override, so it does not change
+<code>compaction.strategy</code>. Anything after the name is focus text, as in
+<code>/compact handoff keep the auth details</code>.</p>
+<p>Two older names, <code>soft</code> and <code>remote</code>, are no longer types. Both existed only to steer a
+provider-native compaction path that veyyon has removed, so there is nothing left for them to
+select. If you type one, veyyon compacts with your configured type, treats the whole argument
+as focus text, and says which name you used and what to use instead. Your text is passed
+through exactly as you typed it, because a sentence that happens to start with “soft” is a
+reasonable thing to ask for.</p>
 <h2 id="shake-and-duplicate-elision"><a class="header" href="#shake-and-duplicate-elision">Shake and duplicate elision</a></h2>
 <p>Shake is a lighter reducer than compaction. Instead of summarizing history, it drops heavy
 content out of the live context and leaves a short placeholder in its place. Whole tool

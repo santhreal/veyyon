@@ -17,6 +17,7 @@ import { getDefault, type Settings } from "../config/settings";
 import { formatGroupedDiagnosticMessages } from "../lsp/utils";
 import type { Theme } from "../modes/theme/theme";
 import { type OutputSummary, type TruncationResult, truncateMiddle, truncateTail } from "../session/streaming-output";
+import { inlineBudgetFor } from "./output-artifact";
 import { formatBytes, wrapBrackets } from "./render-utils";
 import { renderError } from "./tool-errors";
 
@@ -689,8 +690,26 @@ async function spillLargeResultToArtifact(
 ): Promise<AgentToolResult> {
 	const sessionManager = context?.sessionManager;
 	if (!sessionManager) return result;
+	// `read` is exempt ON PURPOSE, not by inheritance. It is bounded by LINES, not
+	// by bytes: `read.defaultLimit` caps an open-ended read at 300 lines and the
+	// agent has to ask for a range to get more, so the size of a read result is
+	// something the caller chose rather than something a tool ran away with. A
+	// byte spill on top of that would silently return fewer lines than were asked
+	// for, which breaks the one contract this tool has. The measurement agrees it
+	// is not load-bearing either way: over nine live sessions read results had a
+	// median of 1,688 characters and a maximum of 11,974, comfortably inside the
+	// threshold, so the exemption is about the contract and not about the bytes.
 	if (toolName === "read") return result;
-	const { threshold, tailBytes, tailLines, headBytes } = getSpillConfig(context?.settings);
+	const { threshold: flatThreshold, tailBytes, tailLines, headBytes } = getSpillConfig(context?.settings);
+	// Priced through the same owner every streaming tool uses, with the configured
+	// threshold as the ceiling. Without this the centralised path was a SECOND
+	// answer to "how many bytes may stay inline": flat 50KB here, turn-scaled
+	// there, for no reason anyone chose. A host with no notion of turns has no
+	// `getTurnIndex`, gets the flat ceiling back, and is unaffected.
+	const threshold = inlineBudgetFor(
+		{ getTurnIndex: context?.getTurnIndex, settings: context?.settings },
+		flatThreshold,
+	);
 
 	// Skip if tool already saved an artifact
 	const existingMeta = (result.details as { meta?: OutputMeta } | undefined)?.meta;

@@ -4,7 +4,6 @@
  */
 import type { Component } from "@veyyon/tui";
 import type { KeybindingsManager } from "../../config/keybindings";
-import { theme } from "../theme/theme";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
 import { appKey } from "./keybinding-hints";
 import { layoutShortcutRows, type ModalShortcut } from "./modal-shell";
@@ -16,6 +15,13 @@ export type ComposerContext = {
 	hasDraft: boolean;
 	/** Queue has pending messages. */
 	hasQueue: boolean;
+	/**
+	 * A foreground bash command is waiting and can be moved to the background
+	 * right now. Read from the bash foreground registry, never inferred from
+	 * `busy`: the agent is busy for every tool call, and advertising a key that
+	 * would fall through to its other meaning is worse than no hint at all.
+	 */
+	canBackgroundBash: boolean;
 };
 
 /**
@@ -31,6 +37,13 @@ export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: Com
 	const chips: ModalShortcut[] = [];
 	if (ctx.busy) {
 		chips.push({ label: `${appKey(keybindings, "app.interrupt")} interrupt` });
+	}
+	if (ctx.canBackgroundBash) {
+		// Ordered after interrupt deliberately. Both appear while a command runs,
+		// and interrupt is the destructive one: it stays in the same position it
+		// occupies when a command is not backgroundable, so muscle memory built on
+		// a plain streaming turn does not land on a different chip here.
+		chips.push({ label: `${appKey(keybindings, "app.bash.background")} background` });
 	}
 	if (ctx.hasQueue) {
 		chips.push({ label: `${appKey(keybindings, "app.message.dequeue")} dequeue` });

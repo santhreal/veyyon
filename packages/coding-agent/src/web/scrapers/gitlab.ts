@@ -25,68 +25,64 @@ interface GitLabUrl {
  * Parse GitLab URL into structured data
  */
 function parseGitLabUrl(url: string): GitLabUrl | null {
-	try {
-		const parsed = tryParseUrl(url);
-		if (!parsed) return null;
-		if (parsed.hostname !== "gitlab.com") return null;
+	const parsed = tryParseUrl(url);
+	if (!parsed) return null;
+	if (parsed.hostname !== "gitlab.com") return null;
 
-		const segments = parsed.pathname.split("/").filter(Boolean);
-		if (segments.length < 2) return null;
+	const segments = parsed.pathname.split("/").filter(Boolean);
+	if (segments.length < 2) return null;
 
-		const [namespace, project, ...rest] = segments;
+	const [namespace, project, ...rest] = segments;
 
-		// Repo root
-		if (rest.length === 0) {
-			return { namespace, project, type: "repo" };
-		}
-
-		// Skip - prefix
-		if (rest[0] !== "-") return null;
-
-		const [, type, ...remaining] = rest;
-
-		// File: gitlab.com/{ns}/{proj}/-/blob/{ref}/{path}
-		if (type === "blob" && remaining.length >= 2) {
-			const [ref, ...pathParts] = remaining;
-			return {
-				namespace,
-				project,
-				type: "blob",
-				ref,
-				path: pathParts.join("/"),
-			};
-		}
-
-		// Directory: gitlab.com/{ns}/{proj}/-/tree/{ref}/{path}
-		if (type === "tree" && remaining.length >= 1) {
-			const [ref, ...pathParts] = remaining;
-			return {
-				namespace,
-				project,
-				type: "tree",
-				ref,
-				path: pathParts.length > 0 ? pathParts.join("/") : undefined,
-			};
-		}
-
-		// Issue: gitlab.com/{ns}/{proj}/-/issues/{id}
-		if (type === "issues" && remaining.length === 1) {
-			const id = parseInt(remaining[0], 10);
-			if (Number.isNaN(id)) return null;
-			return { namespace, project, type: "issue", id };
-		}
-
-		// MR: gitlab.com/{ns}/{proj}/-/merge_requests/{id}
-		if (type === "merge_requests" && remaining.length === 1) {
-			const id = parseInt(remaining[0], 10);
-			if (Number.isNaN(id)) return null;
-			return { namespace, project, type: "merge_request", id };
-		}
-
-		return null;
-	} catch {
-		return null;
+	// Repo root
+	if (rest.length === 0) {
+		return { namespace, project, type: "repo" };
 	}
+
+	// Skip - prefix
+	if (rest[0] !== "-") return null;
+
+	const [, type, ...remaining] = rest;
+
+	// File: gitlab.com/{ns}/{proj}/-/blob/{ref}/{path}
+	if (type === "blob" && remaining.length >= 2) {
+		const [ref, ...pathParts] = remaining;
+		return {
+			namespace,
+			project,
+			type: "blob",
+			ref,
+			path: pathParts.join("/"),
+		};
+	}
+
+	// Directory: gitlab.com/{ns}/{proj}/-/tree/{ref}/{path}
+	if (type === "tree" && remaining.length >= 1) {
+		const [ref, ...pathParts] = remaining;
+		return {
+			namespace,
+			project,
+			type: "tree",
+			ref,
+			path: pathParts.length > 0 ? pathParts.join("/") : undefined,
+		};
+	}
+
+	// Issue: gitlab.com/{ns}/{proj}/-/issues/{id}
+	if (type === "issues" && remaining.length === 1) {
+		const id = parseInt(remaining[0], 10);
+		if (Number.isNaN(id)) return null;
+		return { namespace, project, type: "issue", id };
+	}
+
+	// MR: gitlab.com/{ns}/{proj}/-/merge_requests/{id}
+	if (type === "merge_requests" && remaining.length === 1) {
+		const id = parseInt(remaining[0], 10);
+		if (Number.isNaN(id)) return null;
+		return { namespace, project, type: "merge_request", id };
+	}
+
+	return null;
 }
 
 /**

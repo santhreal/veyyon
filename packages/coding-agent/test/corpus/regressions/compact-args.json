@@ -4,65 +4,190 @@
 			"id": "compact-args-empty",
 			"contract": "Empty /compact args parse to an empty object",
 			"surface": "parse-compact-args",
-			"tags": ["boundary"],
-			"input": { "args": "" },
+			"tags": [
+				"boundary"
+			],
+			"input": {
+				"args": ""
+			},
 			"expect": {}
 		},
 		{
 			"id": "compact-args-soft",
-			"contract": "A lone soft token selects soft mode with no instructions",
+			"contract": "The retired `soft` name is not a mode: it stays focus text and the user is told so",
 			"surface": "parse-compact-args",
-			"tags": ["positive"],
-			"input": { "args": "soft" },
-			"expect": { "mode": "soft" }
+			"tags": [
+				"regression",
+				"adversarial"
+			],
+			"input": {
+				"args": "soft"
+			},
+			"expect": {
+				"instructions": "soft",
+				"noticeContains": "`soft` is no longer a compaction mode"
+			}
 		},
 		{
 			"id": "compact-args-soft-focus",
-			"contract": "soft plus focus text yields mode soft and the focus instructions",
+			"contract": "A retired name in front of focus text leaves the text exactly as typed, plus the notice",
 			"surface": "parse-compact-args",
-			"tags": ["positive"],
-			"input": { "args": "soft keep the auth bits" },
-			"expect": { "mode": "soft", "instructions": "keep the auth bits" }
+			"tags": [
+				"regression",
+				"adversarial"
+			],
+			"input": {
+				"args": "soft keep the auth bits"
+			},
+			"expect": {
+				"instructions": "soft keep the auth bits",
+				"noticeContains": "use `/compact summary`"
+			}
 		},
 		{
 			"id": "compact-args-remote-case",
-			"contract": "REMOTE is accepted case-insensitively as remote mode",
+			"contract": "The retired `remote` name is recognized case-insensitively so the notice still fires",
 			"surface": "parse-compact-args",
-			"tags": ["boundary", "positive"],
-			"input": { "args": "REMOTE" },
-			"expect": { "mode": "remote" }
+			"tags": [
+				"regression",
+				"boundary"
+			],
+			"input": {
+				"args": "REMOTE"
+			},
+			"expect": {
+				"instructions": "REMOTE",
+				"noticeContains": "`remote` is no longer a compaction mode"
+			}
 		},
 		{
 			"id": "compact-args-unknown-as-instructions",
 			"contract": "An unknown first token keeps the whole string as focus instructions",
 			"surface": "parse-compact-args",
-			"tags": ["adversarial", "regression"],
-			"input": { "args": "focus on auth" },
-			"expect": { "instructions": "focus on auth" }
+			"tags": [
+				"adversarial",
+				"regression"
+			],
+			"input": {
+				"args": "focus on auth"
+			},
+			"expect": {
+				"instructions": "focus on auth"
+			}
 		},
 		{
 			"id": "compact-args-whitespace-only",
 			"contract": "Whitespace-only args parse like empty args",
 			"surface": "parse-compact-args",
-			"tags": ["boundary"],
-			"input": { "args": "   \t  " },
+			"tags": [
+				"boundary"
+			],
+			"input": {
+				"args": "   \t  "
+			},
 			"expect": {}
 		},
 		{
 			"id": "find-compact-mode-soft-trim",
-			"contract": "findCompactMode trims and lowercases soft",
+			"contract": "A retired name resolves to no mode, however it is cased or padded",
 			"surface": "find-compact-mode",
-			"tags": ["positive", "boundary"],
-			"input": { "name": " Soft " },
-			"expect": { "name": "soft" }
+			"tags": [
+				"regression",
+				"negative"
+			],
+			"input": {
+				"name": " Soft "
+			},
+			"expect": {
+				"name": null
+			}
 		},
 		{
 			"id": "find-compact-mode-unknown",
 			"contract": "An unknown compact mode name resolves to null",
 			"surface": "find-compact-mode",
-			"tags": ["negative"],
-			"input": { "name": "nope" },
-			"expect": { "name": null }
+			"tags": [
+				"negative"
+			],
+			"input": {
+				"name": "nope"
+			},
+			"expect": {
+				"name": null
+			}
+		},
+		{
+			"id": "find-compact-mode-summary-trim",
+			"contract": "findCompactMode trims and lowercases a live mode name",
+			"surface": "find-compact-mode",
+			"tags": [
+				"positive",
+				"boundary"
+			],
+			"input": {
+				"name": "  Summary "
+			},
+			"expect": {
+				"name": "summary"
+			}
+		},
+		{
+			"id": "find-compact-mode-handoff",
+			"contract": "handoff is a live mode name",
+			"surface": "find-compact-mode",
+			"tags": [
+				"positive"
+			],
+			"input": {
+				"name": "handoff"
+			},
+			"expect": {
+				"name": "handoff"
+			}
+		},
+		{
+			"id": "compact-args-summary-focus",
+			"contract": "A live mode plus focus text yields that mode and the text with the mode word removed",
+			"surface": "parse-compact-args",
+			"tags": [
+				"positive"
+			],
+			"input": {
+				"args": "summary keep the auth bits"
+			},
+			"expect": {
+				"mode": "summary",
+				"instructions": "keep the auth bits"
+			}
+		},
+		{
+			"id": "compact-args-handoff-lone",
+			"contract": "A lone live mode token selects it with no instructions",
+			"surface": "parse-compact-args",
+			"tags": [
+				"positive"
+			],
+			"input": {
+				"args": "HANDOFF"
+			},
+			"expect": {
+				"mode": "handoff"
+			}
+		},
+		{
+			"id": "compact-args-retired-word-not-leading",
+			"contract": "A retired name that is not the leading token is ordinary focus text and fires no notice",
+			"surface": "parse-compact-args",
+			"tags": [
+				"adversarial",
+				"regression"
+			],
+			"input": {
+				"args": "keep the soft dependency bounds"
+			},
+			"expect": {
+				"instructions": "keep the soft dependency bounds"
+			}
 		}
 	]
 }

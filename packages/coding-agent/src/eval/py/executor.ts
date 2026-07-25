@@ -1,10 +1,8 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
-
 import { errorMessage, getProjectDir, logger } from "@veyyon/utils";
 import type { ToolSession } from "../../tools";
 import {
 	attachSessionOwner,
+	buildEvalSessionKey,
 	buildManagedKernelEnv,
 	buildManagedKernelEnvPatch,
 	createCancelledKernelResult,
@@ -15,20 +13,27 @@ import {
 	getRemainingTimeoutMs,
 	isCancellationError,
 	isTimedOutCancellation,
+	type KernelMode,
+	normalizeSessionCwd,
 	waitForPromiseWithCancellation,
 } from "../executor-base";
 import type { JsStatusEvent } from "../js/shared/types";
+import type { KernelExecutor, SessionKernel } from "../kernel-base";
 import { ensureKernelToolBridge } from "../kernel-tool-bridge";
 import {
 	checkPythonKernelAvailability,
 	type KernelDisplayOutput,
 	type KernelExecuteOptions,
-	type KernelExecuteResult,
 	PythonKernel,
 } from "./kernel";
 import { resolveExplicitPythonRuntime } from "./runtime";
 
-export type PythonKernelMode = "session" | "per-call";
+/**
+ * Kept as an alias of the shared {@link KernelMode} rather than its own union: the type is exported and
+ * `python.kernelMode` reads it in `py/index.ts`, so removing the name would break callers for nothing,
+ * while a second literal union would let the two drift.
+ */
+export type PythonKernelMode = KernelMode;
 
 export interface PythonExecutorOptions {
 	/** Working directory for command execution */
@@ -100,10 +105,6 @@ export interface PythonExecutorOptions {
 	bridge?: { url: string; token: string };
 }
 
-export interface PythonKernelExecutor {
-	execute: (code: string, options?: KernelExecuteOptions) => Promise<KernelExecuteResult>;
-}
-
 export interface PythonResult {
 	/** Combined stdout + stderr output (sanitized, possibly truncated) */
 	output: string;
@@ -142,7 +143,10 @@ interface PythonSession {
 	sessionKey: string;
 	sessionId: string;
 	cwd: string;
-	kernel: PythonKernel;
+	// The CONTRACT, not the concrete class: session bookkeeping only ever executes,
+	// checks liveness, and shuts down. Typing it this way is also what lets a test fake
+	// stand in without an `as unknown as PythonKernel` cast that checks nothing.
+	kernel: SessionKernel<KernelExecuteOptions>;
 	ownerIds: Set<string>;
 	hasFallbackOwner: boolean;
 }
@@ -150,25 +154,6 @@ interface PythonSession {
 const sessions = new Map<string, PythonSession>();
 const startingSessions = new Map<string, Promise<PythonSession>>();
 const resettingSessions = new Map<string, Promise<void>>();
-
-function normalizeSessionCwd(cwd: string): string {
-	return path.resolve(cwd);
-}
-
-function normalizeExplicitInterpreter(cwd: string, interpreter: string | undefined): string {
-	if (interpreter === undefined) return "";
-	const resolved = resolveExplicitPythonRuntime(interpreter, cwd, {}).pythonPath;
-	try {
-		return fs.realpathSync.native(resolved);
-	} catch {
-		return resolved;
-	}
-}
-
-function buildSessionKey(sessionId: string, cwd: string, interpreter: string | undefined): string {
-	const normalizedCwd = normalizeSessionCwd(cwd);
-	return `${sessionId}\0${normalizedCwd}\0${normalizeExplicitInterpreter(normalizedCwd, interpreter)}`;
-}
 
 // ---------------------------------------------------------------------------
 // Cancellation plumbing
@@ -357,7 +342,7 @@ export async function disposeKernelSessionsByOwner(ownerId: string): Promise<voi
 // ---------------------------------------------------------------------------
 
 async function executeWithKernel(
-	kernel: PythonKernelExecutor,
+	kernel: KernelExecutor,
 	code: string,
 	options: PythonExecutorOptions | undefined,
 ): Promise<PythonResult> {
@@ -410,7 +395,13 @@ async function executePerCall(code: string, cwd: string, options: PythonExecutor
 
 async function executeOnSession(code: string, cwd: string, options: PythonExecutorOptions): Promise<PythonResult> {
 	const sessionId = options.sessionId ?? `session:${cwd}`;
-	const sessionKey = buildSessionKey(sessionId, cwd, options.interpreter);
+	const sessionKey = buildEvalSessionKey({
+		sessionId,
+		cwd,
+		interpreter: options.interpreter,
+		resolveInterpreterPath: (interpreter, resolvedCwd) =>
+			resolveExplicitPythonRuntime(interpreter, resolvedCwd, {}).pythonPath,
+	});
 	if (options.bridge && !options.bridgeSessionId) {
 		options.bridgeSessionId = sessionId;
 	}
@@ -474,7 +465,7 @@ async function executeOnSession(code: string, cwd: string, options: PythonExecut
 }
 
 export async function executePythonWithKernel(
-	kernel: PythonKernelExecutor,
+	kernel: KernelExecutor,
 	code: string,
 	options?: PythonExecutorOptions,
 ): Promise<PythonResult> {

@@ -214,7 +214,7 @@ Cancelable pre-events:
 ### Prompt and turn lifecycle
 
 - `input`
-- `before_agent_start`
+- `before_agent_start`: receives the base system prompt. Memory context (recalled memories, mental models) is not part of it: that content is delivered as a message on the turn instead, because changing the system prompt mid-session throws away the provider's cache prefix.
 - `before_provider_request` (may replace provider request payload)
 - `after_provider_response`
 - `context`
@@ -266,6 +266,13 @@ execute(
 	ctx,
 ): Promise<AgentToolResult>
 ```
+
+A custom tool (a file under `tools/`, documented in `custom-tools.md`) takes the
+same five arguments in a different order, with the signal last:
+`execute(toolCallId, params, onUpdate, ctx, signal)`. Copying one into the other
+place raises no error at the call site and none at runtime either: the arguments
+still arrive, so `ctx` is the update callback and the first `ctx.sessionManager`
+you touch is undefined.
 
 Template:
 
@@ -381,6 +388,17 @@ pi.registerMessageRenderer("my-type", (message, { expanded }, theme) => {
 ```
 
 Used by interactive rendering when custom messages are displayed.
+
+Return `undefined` to decline and let veyyon draw its built-in card for that
+message. If your renderer throws instead, veyyon draws the built-in card and adds
+a notice row to it:
+
+```
+✗ custom message "my-type" renderer threw: cannot read properties of undefined — showing the default card; fix or remove the renderer
+```
+
+The failure is also written to the log, so a renderer that breaks only on certain
+payloads is visible in the transcript rather than silently replaced.
 
 ## Assistant thinking renderer
 

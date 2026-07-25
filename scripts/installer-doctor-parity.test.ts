@@ -55,7 +55,10 @@ describe("doctor verifies where the command resolves, not merely that it exists"
 	it("shadowing warns but never aborts the install", () => {
 		// The installed binary is fine; only PATH order is wrong, and that is the
 		// user's to fix. `die`/`throw` here would fail an otherwise good install.
-		const shFn = installSh.slice(installSh.indexOf("check_not_shadowed() {"), installSh.indexOf("# ---- post-install"));
+		const shFn = installSh.slice(
+			installSh.indexOf("check_not_shadowed() {"),
+			installSh.indexOf("# ---- post-install"),
+		);
 		expect(shFn).toContain("warn ");
 		expect(shFn).not.toContain("die ");
 		const psFn = installPs1.slice(installPs1.indexOf("function Test-NotShadowed {"));
@@ -95,7 +98,7 @@ describe("doctor verifies the installed binary is the version the release claims
 		// Printing "Installation complete" over a wrong-version binary is exactly
 		// the silent failure being removed, so this one must abort.
 		expect(installSh).toMatch(/die "installed \$BIN_NAME reports \$got but the \$want_tag release was requested/);
-		expect(installPs1).toContain("throw \"installed $BinName reports $got but the $ExpectedTag release was requested");
+		expect(installPs1).toContain('throw "installed $BinName reports $got but the $ExpectedTag release was requested');
 	});
 
 	it("an unparseable version output fails closed rather than passing the gate", () => {
@@ -275,7 +278,7 @@ describe("a release that cannot run is refused before it touches the system", ()
 		// aliased, PATH-edited, and only then asked whether it runs.
 		expect(installPs1).toContain('Test-NativeAddon -Command $StagingPath -Phase "downloaded"');
 		expect(installPs1).toContain('param([string]$Command, [string]$Phase = "installed")');
-		expect(installPs1).toContain('native addon loads ($Phase)');
+		expect(installPs1).toContain("native addon loads ($Phase)");
 	});
 
 	it("install.ps1 probes before the move, the alias and the PATH edit", () => {

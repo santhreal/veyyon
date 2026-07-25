@@ -45,7 +45,11 @@ describe("normalizeToLF / restoreLineEndings round-trip", () => {
 			if (ending === "\n" && !sample.includes("\r")) {
 				expect(restored).toBe(sample);
 			}
-			if (ending === "\r\n" && !sample.replace(/\r\n/g, "").includes("\n") && !sample.replace(/\r\n/g, "").includes("\r")) {
+			if (
+				ending === "\r\n" &&
+				!sample.replace(/\r\n/g, "").includes("\n") &&
+				!sample.replace(/\r\n/g, "").includes("\r")
+			) {
 				// Pure CRLF file: the full round-trip must reproduce the original bytes.
 				expect(restored).toBe(sample);
 			}

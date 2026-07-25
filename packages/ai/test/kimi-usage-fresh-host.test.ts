@@ -30,10 +30,13 @@ const USAGE_KIMI = path.join(PKG_ROOT, "src", "usage", "kimi.ts");
 describe("kimiUsageProvider.fetchUsage on a fresh host (no config dir yet)", () => {
 	it("returns a real report instead of a null masked by an ENOENT device-id write", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "kimi-fresh-host-"));
-		// The config root itself does not exist yet, so <configRoot>/agent (where
-		// the device-id file lives) and its parent are both absent — a first-ever
-		// launch. Do NOT create it.
-		const configDir = path.join(root, "config-never-created");
+		// The config root itself does not exist yet, so <configRoot>/agent (where the
+		// device-id file lives) and its parent are both absent — a first-ever launch. Do NOT
+		// create it. This is a NAME, not a path: `VEYYON_CONFIG_DIR` is joined onto the
+		// child's home, which is the temp `home` set below, and an absolute value is refused
+		// (it used to be joined anyway and produced `<home>/<root>/config-never-created`,
+		// which happened to still be absent, so the test passed for the wrong reason).
+		const configDirName = "config-never-created";
 
 		const script = [
 			`import { kimiUsageProvider } from ${JSON.stringify(USAGE_KIMI)};`,
@@ -54,7 +57,7 @@ describe("kimiUsageProvider.fetchUsage on a fresh host (no config dir yet)", () 
 			if (value !== undefined && !key.startsWith("VEYYON_")) childEnv[key] = value;
 		}
 		childEnv.HOME = path.join(root, "home");
-		childEnv.VEYYON_CONFIG_DIR = configDir;
+		childEnv.VEYYON_CONFIG_DIR = configDirName;
 
 		const proc = Bun.spawnSync(["bun", "-e", script], {
 			cwd: PKG_ROOT,

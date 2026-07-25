@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 /**
- * Generates lexpack dictionaries (AGENTS.dict) for DeepSWE task repos and
+ * Generates argot dictionaries (AGENTS.dict) for DeepSWE task repos and
  * reports the SDK's estimated savings per task.
  *
  * For each task this clones the task's repository at its base commit (shallow,
- * cached under repo-cache/), runs the lexpack SDK's generateDictFromRepo over
+ * cached under repo-cache/), runs the argot SDK's generateDictFromRepo over
  * the tree, and writes the dictionary to dicts/<task>.AGENTS.dict. run.ts
  * stages that file into the task container at /app/AGENTS.dict so the full
  * arm has a real dictionary to load (none/decode run with the same file
@@ -21,7 +21,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { generateDictFromRepo } from "lexpack";
+import { generateDictFromRepo } from "argot";
 const BENCH_DIR = path.dirname(new URL(import.meta.url).pathname);
 const TASKS_ROOT = path.join(BENCH_DIR, "deep-swe", "tasks");
 const REPO_CACHE = path.join(BENCH_DIR, "repo-cache");
@@ -147,7 +147,7 @@ async function main() {
     }));
     rows.sort((a, b) => b.estimatedSavings - a.estimatedSavings);
     const lines = [
-        "# Lexpack dictionary savings per DeepSWE task",
+        "# Argot dictionary savings per DeepSWE task",
         "",
         `Generated ${new Date().toISOString()} by gen-dicts.ts (SDK generateDictFromRepo, default token budget).`,
         "",

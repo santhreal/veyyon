@@ -20,12 +20,13 @@ import type { SessionInfo, SessionStatus } from "../../session/session-listing";
 import { shortenPath } from "../../tools/render-utils";
 import { HookSelectorComponent } from "./hook-selector";
 import {
+	applyModalReveal,
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
-	type ModalShellGeometry,
-	applyModalReveal,
 	ModalRevealDriver,
+	type ModalShellGeometry,
+	planModalChrome,
 	renderModalShell,
 	withCompact,
 } from "./modal-shell";
@@ -973,12 +974,28 @@ export class SessionSelectorComponent extends Container {
 		for (const line of this.#contentSlot.render(dims.contentWidth)) body.push(line);
 
 		const scopeLabel = this.#scope === "all" ? "current folder" : "all projects";
+		const shortcuts = [
+			{ label: "enter select", clickable: true, id: "confirm" },
+			{ label: "del delete", clickable: true, id: "delete" },
+			{ label: `tab ${scopeLabel}` },
+			{ label: "esc close", clickable: true, id: "close" },
+		];
 		// Card height tracks the content: the shell pads the body to fill the
 		// area it is given, and handing it the whole terminal stretched a
 		// 2-session list into a full-height card of blank rows (read as broken
-		// layout). Chrome = top border + vPad + footer divider + footer band +
-		// bottom border; vMargin is the centered card's breathing room.
-		const chrome = 3 + sizing.vPad + Math.max(sizing.footerLines, 1);
+		// layout). Ask the shell what it will reserve rather than restating it:
+		// the old `3 + vPad + max(footerLines, 1)` charged vPad once where the
+		// card charges it above AND below, and ignored chips wrapping past
+		// `footerLines`, so a long list was handed an area two-plus rows short
+		// and the shell silently dropped its tail. `modalHeight: termHeight` is
+		// the upper bound, which is what sizing UP to fit the body wants.
+		const chrome = planModalChrome({
+			sizing,
+			modalHeight: termHeight,
+			contentWidth: dims.contentWidth,
+			shortcuts,
+			hoveredShortcutId: this.#hoveredShortcutId,
+		}).nonBody;
 		const shellArea = Math.min(termHeight, body.length + chrome + 2 * sizing.vMargin);
 		const shell = renderModalShell({
 			title: "Resume Session",
@@ -987,12 +1004,7 @@ export class SessionSelectorComponent extends Container {
 			areaWidth: width,
 			areaHeight: shellArea,
 			body,
-			shortcuts: [
-				{ label: "enter select", clickable: true, id: "confirm" },
-				{ label: "del delete", clickable: true, id: "delete" },
-				{ label: `tab ${scopeLabel}` },
-				{ label: "esc close", clickable: true, id: "close" },
-			],
+			shortcuts,
 			hoveredShortcutId: this.#hoveredShortcutId,
 			showClose: true,
 		});

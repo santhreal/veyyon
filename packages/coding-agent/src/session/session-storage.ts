@@ -229,10 +229,23 @@ export class FileSessionStorage implements SessionStorage {
 		return { size: stats.size, mtimeMs: stats.mtimeMs, mtime: stats.mtime };
 	}
 
+	/**
+	 * Files in `dir` matching `pattern`, or an empty list.
+	 *
+	 * A directory that is not there yet is genuinely empty and stays quiet. Anything else is reported:
+	 * callers read this as "these are all the session files", so an unreadable directory otherwise
+	 * presents as a project with no sessions in it.
+	 */
 	listFilesSync(dir: string, pattern: string): string[] {
 		try {
 			return Array.from(new Bun.Glob(pattern).scanSync(dir)).map(name => path.join(dir, name));
-		} catch {
+		} catch (err) {
+			if (isEnoent(err)) return [];
+			logger.warn("Session directory could not be listed; its sessions are invisible to this run", {
+				dir,
+				pattern,
+				error: toError(err).message,
+			});
 			return [];
 		}
 	}

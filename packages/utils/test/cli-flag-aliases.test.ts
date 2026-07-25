@@ -49,7 +49,7 @@ async function parseWith(argv: string[]): Promise<Record<string, unknown>> {
 function helpText(): string {
 	const original = process.stdout.write.bind(process.stdout);
 	let captured = "";
-	// biome-ignore lint/suspicious/noExplicitAny: narrow stdout stub for one call
+	// Narrow stdout stub for one call.
 	(process.stdout as any).write = (chunk: string) => {
 		captured += chunk;
 		return true;
@@ -57,7 +57,7 @@ function helpText(): string {
 	try {
 		renderCommandHelp("testbin", "alias-cmd", AliasCommand);
 	} finally {
-		// biome-ignore lint/suspicious/noExplicitAny: restoring the stub
+		// Restoring the stub.
 		(process.stdout as any).write = original;
 	}
 	return captured;

@@ -98,7 +98,7 @@ the prompt is one flat string:
   `<｜Assistant｜></think>`. With vLLM, V3.1 reasoning is disabled by default; enable it via
   `chat_template_kwargs={"thinking": true}`.
 - **Search-agent channel**: a separate thinking-mode protocol using `<｜search▁begin｜>` /
-  `<｜search▁end｜>` (see the model card's `assets/search_tool_trajectory.html`); out of
+  `<｜search▁end｜>` (see the model card's `assets/search_tool_trajectory.html` in the upstream DeepSeek repo); out of
   scope for ordinary function calling.
 
 ## Tool definitions

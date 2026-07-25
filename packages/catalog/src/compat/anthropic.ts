@@ -12,6 +12,7 @@ import {
 } from "../identity/family";
 import type { ModelSpec, ResolvedAnthropicCompat } from "../types";
 import { applyCompatOverrides } from "./apply";
+import { matchesKimiK27CodeFamily } from "./kimi";
 
 const OFFICIAL_ANTHROPIC_URL = "https://api.anthropic.com";
 
@@ -26,14 +27,6 @@ export function isOfficialAnthropicApiUrl(baseUrl?: string): boolean {
 	if (!baseUrl) return true;
 	const lower = baseUrl.toLowerCase();
 	return lower === OFFICIAL_ANTHROPIC_URL || lower.startsWith(`${OFFICIAL_ANTHROPIC_URL}/`);
-}
-
-/** Mirrors `compat/openai.ts`; native-only host gating is the caller's responsibility. */
-const KIMI_K27_CODE_MODEL_PATTERN = /(?:^|\/)kimi[-._]?k2(?:[._-]?|p)7[-._]?code(?:[-._]?highspeed)?$/i;
-
-function matchesKimiK27CodeFamily(spec: ModelSpec<"anthropic-messages">): boolean {
-	if (KIMI_K27_CODE_MODEL_PATTERN.test(spec.id)) return true;
-	return spec.id === "kimi-for-coding" && /k2\.?7 code/i.test(spec.name ?? "");
 }
 
 const CLOUDFLARE_ANTHROPIC_GATEWAY_URL_MARKER = /gateway\.ai\.cloudflare\.com\/.+\/anthropic(?:\/|$)/i;

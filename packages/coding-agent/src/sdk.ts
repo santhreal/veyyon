@@ -35,6 +35,7 @@ import {
 	formatActiveRepoWatchdogPrompt,
 	formatAdvisorContextPrompt,
 } from "./advisor";
+import { armArgotAfterStartup } from "./argot-cache";
 import { type AsyncJob, AsyncJobManager } from "./async";
 import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
 import { loadCapability } from "./capability";
@@ -61,9 +62,10 @@ import { loadPromptTemplates as loadPromptTemplatesInternal, type PromptTemplate
 import { buildServiceTierByFamily } from "./config/service-tier";
 import { Settings, type SkillsSettings } from "./config/settings";
 import { CursorExecHandlers } from "./cursor";
-import { armArgotAfterStartup } from "./lexpack-cache";
 import "./discovery";
 import { type ArgotGate, type ArgotSession, renderPreamble, shouldEncode } from "argot";
+import { collectArgotLoadedRoots, createArgotSession, rearmArgotForDecode } from "./argot-cache";
+import { buildArgotGate, expandToolArguments } from "./argot-wire";
 import { DEFAULT_MODEL_SLOT } from "./config/model-roles";
 import { optionalNumber } from "./config/optional-number";
 import { initializeWithSettings } from "./discovery";
@@ -104,8 +106,6 @@ import { type FileSlashCommand, loadSlashCommands as loadSlashCommandsInternal }
 import { filterToolsByHarnessProfile, resolvePromptSectionOrderForModel } from "./harness/model-profile";
 import type { HindsightSessionState } from "./hindsight/state";
 import { LocalProtocolHandler, type LocalProtocolOptions } from "./internal-urls";
-import { collectArgotLoadedRoots, createArgotSession, rearmArgotForDecode } from "./lexpack-cache";
-import { buildArgotGate, expandToolArguments } from "./lexpack-wire";
 import type { LspStartupServerInfo } from "./lsp";
 import { LSP_STARTUP_EVENT_CHANNEL, type LspStartupEvent } from "./lsp/startup-events";
 import {
@@ -119,8 +119,7 @@ import {
 import { MCP_CONNECTION_STATUS_EVENT_CHANNEL, type McpConnectionStatusEvent } from "./mcp/startup-events";
 import { createSessionMemoryRuntimeContext, resolveMemoryBackend } from "./memory-backend";
 import type { MnemopiSessionState } from "./mnemopi/state";
-import asyncResultTemplate from "./prompts/tools/async-result.md" with { type: "text" };
-import lateDiagnosticTemplate from "./prompts/tools/lsp-late-diagnostic.md" with { type: "text" };
+import { PROMPTS } from "./prompts/registry";
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "./registry/agent-registry";
 import { createRepairToolCallArgumentsHook } from "./repair/agent-hook";
@@ -157,7 +156,7 @@ import {
 	buildSystemPromptToolMetadata,
 	loadProjectContextFiles as loadContextFilesInternal,
 } from "./system-prompt";
-import { ARGOT_HANDLES_BANNER } from "./system-prompt-builder/prompt-blocks";
+import { ARGOT_HANDLES_BANNER } from "./system-prompt-builder/section-registry";
 import { AgentOutputManager } from "./task/output-manager";
 import { wrapStreamFnWithProviderConcurrency } from "./task/provider-concurrency";
 import { delegationPreferred, delegationRequired, enabledSubagentNames } from "./task/subagent-settings";
@@ -256,7 +255,7 @@ function buildAsyncResultBatchMessage(entries: AsyncResultEntry[]): CustomMessag
 	return {
 		role: "custom",
 		customType: "async-result",
-		content: prompt.render(asyncResultTemplate, {
+		content: prompt.render(PROMPTS["tools/async-result"].text, {
 			multiple: jobs.length > 1,
 			jobs,
 		}),
@@ -292,7 +291,7 @@ function buildLateDiagnosticsBatchMessage(
 	return {
 		role: "custom",
 		customType: LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE,
-		content: prompt.render(lateDiagnosticTemplate, {
+		content: prompt.render(PROMPTS["tools/lsp-late-diagnostic"].text, {
 			multiple: files.length > 1,
 			files,
 		}),
@@ -1117,9 +1116,9 @@ function buildMCPPromptCommands(manager: MCPManager): LoadedCustomCommand[] {
  * const { session } = await createAgentSession();
  *
  * // With explicit model
- * import { getModel } from '@veyyon/ai';
+ * import { getBundledModel } from '@veyyon/catalog';
  * const { session } = await createAgentSession({
- *   model: getModel('anthropic', 'claude-opus-4-5'),
+ *   model: getBundledModel('anthropic', 'claude-opus-4-5'),
  *   thinkingLevel: 'high',
  * });
  *
@@ -1516,7 +1515,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		async () => {
 			const { TtsrManager } = await import("./export/ttsr");
 			const ttsrSettings = settings.getGroup("ttsr");
-			const ttsrManager = new TtsrManager(ttsrSettings);
+			// `getCwd` is a live getter, not `cwd`: a rule with a `pathScope` compares the match
+			// against the CURRENT working directory, and `set_cwd` moves it mid-session.
+			const ttsrManager = new TtsrManager(ttsrSettings, { getCwd: () => sessionManager.getCwd() });
 			const rulesResult =
 				options.rules !== undefined
 					? { items: options.rules, warnings: undefined }
@@ -1699,6 +1700,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			trackEvalExecution: (execution, abortController) =>
 				session ? session.trackEvalExecution(execution, abortController) : execution,
 			getSessionId: () => sessionManager.getSessionId?.() ?? null,
+			getTurnIndex: () => session?.getTurnIndex() ?? 0,
 			getHindsightSessionState: () => session?.getHindsightSessionState(),
 			getMnemopiSessionState: () => session?.getMnemopiSessionState(),
 			getAgentId: () => resolvedAgentId,
@@ -2758,6 +2760,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const requestedToolNames = explicitlyRequestedToolNames ?? toolNamesFromRegistry;
 		const normalizedRequested = requestedToolNames.filter(name => toolRegistry.has(name));
 		const requestedToolNameSet = new Set(normalizedRequested);
+		// The registry is complete here, MCP and extension tools included, which is the first point where
+		// "this rule is scoped to a tool that does not exist" is answerable. Checked against the whole
+		// registry rather than the active set: scoping a rule to a tool the user has not activated is
+		// legitimate, and a rule that names no tool at all is a typo that would otherwise never fire.
+		ttsrManager.reportUnknownToolScopes(toolRegistry.keys());
 		// Effective discovery mode is resolved after the full registry exists so auto mode can count MCP/extension tools.
 		const defaultInactiveToolNames = new Set(
 			registeredTools.filter(tool => tool.definition.defaultInactive).map(tool => tool.definition.name),

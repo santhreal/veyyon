@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { type Component, TUI } from "@veyyon/tui";
 import type { Terminal, TerminalAppearance } from "@veyyon/tui/terminal";
+import { settleFrames } from "./helpers/settle-frames";
 
 class CaptureTerminal implements Terminal {
 	writes: string[] = [];
@@ -71,8 +72,10 @@ class RawLinesComponent implements Component {
 	}
 }
 
-async function settle(): Promise<void> {
-	await Bun.sleep(0);
+/** `await Bun.sleep(0)` was enough only because the first paint is immediate;
+ *  the engine is asked directly now, so a throttled follow-up cannot be missed. */
+async function settle(term: CaptureTerminal, tui: TUI): Promise<void> {
+	await settleFrames(term, tui);
 }
 
 describe("issue #2045: renderer bounds oversized rows", () => {
@@ -84,7 +87,7 @@ describe("issue #2045: renderer bounds oversized rows", () => {
 		tui.addChild(new RawLinesComponent([line]));
 		try {
 			tui.start();
-			await settle();
+			await settle(term, tui);
 		} finally {
 			tui.stop();
 		}
@@ -102,7 +105,7 @@ describe("issue #2045: renderer bounds oversized rows", () => {
 		tui.addChild(new RawLinesComponent([line]));
 		try {
 			tui.start();
-			await settle();
+			await settle(term, tui);
 		} finally {
 			tui.stop();
 		}
@@ -119,7 +122,7 @@ describe("issue #2045: renderer bounds oversized rows", () => {
 		tui.addChild(new RawLinesComponent([line]));
 		try {
 			tui.start();
-			await settle();
+			await settle(term, tui);
 		} finally {
 			tui.stop();
 		}
@@ -138,7 +141,7 @@ describe("issue #2045: renderer bounds oversized rows", () => {
 		tui.addChild(new RawLinesComponent([line]));
 		try {
 			tui.start();
-			await settle();
+			await settle(term, tui);
 		} finally {
 			tui.stop();
 		}

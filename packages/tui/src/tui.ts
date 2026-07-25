@@ -1386,6 +1386,37 @@ export class TUI extends Container {
 	}
 
 	/**
+	 * True while a frame is owed: requested, throttled, or waiting out one of the
+	 * quiet windows, and not yet painted. Read-only diagnostic surface like
+	 * {@link committedRows}.
+	 *
+	 * It exists because tests cannot otherwise tell "the engine is idle" from
+	 * "the engine has not started yet". Their settle helpers sampled counters
+	 * (`committedRows`, `scrollTapeRows`, …) and returned as soon as two samples
+	 * matched, which is also exactly what an engine that has not run yet looks
+	 * like: nothing has changed BECAUSE nothing has happened. Under a loaded
+	 * sweep the throttled frame then landed after the assertion, and the test
+	 * failed with a stale frame — `overlay-scroll` read `"status-before"` after
+	 * setting the text to `"status-after"`, and the pinned-composer suite
+	 * snapshotted a view that three later wheel events then moved. Both were
+	 * green alone and only failed in a 378,000-test run, which is the worst kind
+	 * of flake: it reads exactly like a regression.
+	 *
+	 * All four sources of an owed frame count. `#renderRequested` is the request
+	 * itself; `#renderTimer` is the throttled/adaptive schedule; the ConPTY
+	 * post-full-paint settle and the multiplexer resize settle both hold a frame
+	 * back deliberately and then paint it.
+	 */
+	get renderPending(): boolean {
+		return (
+			this.#renderRequested ||
+			this.#renderTimer !== undefined ||
+			this.#postFullPaintSettleTimer !== undefined ||
+			this.#multiplexerResizeTimer !== undefined
+		);
+	}
+
+	/**
 	 * Rows of the composed frame the engine has committed to native scrollback
 	 * (`frame[0..committedRows)` is the engine's claim of what terminal history
 	 * holds). Read-only diagnostic surface: the render-stress harness reads
@@ -2009,6 +2040,11 @@ export class TUI extends Container {
 			this.#renderTimer.cancel();
 			this.#renderTimer = undefined;
 		}
+		// The request itself, not just its timer: a stopped engine owes no frame,
+		// and leaving the flag set made `renderPending` report a frame that could
+		// never arrive (`#scheduleRender` refuses while stopped). `start()` issues
+		// its own full-paint request, so nothing depends on carrying this across.
+		this.#renderRequested = false;
 		if (this.#ghosttyInitialImageDelayTimer) {
 			this.#ghosttyInitialImageDelayTimer.cancel();
 			this.#ghosttyInitialImageDelayTimer = undefined;
@@ -3424,13 +3460,16 @@ export class TUI extends Container {
 			// under it can shift a row the reader is looking at. The footer is
 			// always the live frame's last rows, so the composer keeps typing,
 			// spinning, and updating while the history above it holds still.
-			const snapshot = (this.#scrollSnapshot ??= [...this.#scrollTape, ...frame.slice(this.#committedRows)]);
+			this.#scrollSnapshot ??= [...this.#scrollTape, ...frame.slice(this.#committedRows)];
+			const snapshot = this.#scrollSnapshot;
 			const footerRows = Math.min(this.#pinnedFooterRows, height - 1);
 			const regionRows = height - footerRows;
 			const viewTop = this.#virtualScrollTop!;
 			for (let r = 0; r < height; r++) {
 				window[r] =
-					r < regionRows ? (snapshot[viewTop + r] ?? "") : (frame[frameLength - footerRows + (r - regionRows)] ?? "");
+					r < regionRows
+						? (snapshot[viewTop + r] ?? "")
+						: (frame[frameLength - footerRows + (r - regionRows)] ?? "");
 			}
 			this.#drawScrollTrack(window, regionRows, viewTop, snapshot.length, width);
 		} else {

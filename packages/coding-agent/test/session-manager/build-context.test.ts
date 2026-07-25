@@ -253,7 +253,19 @@ describe("buildSessionContext", () => {
 			expect((ctx.messages[0] as any).summary).toContain("Empty summary");
 		});
 
-		it("uses preserved OpenAI replacement history instead of kept raw messages", () => {
+		/**
+		 * Sessions compacted by the removed provider-native remote path still hold
+		 * an opaque `openaiRemoteCompaction` payload on disk. Rebuilding context
+		 * must IGNORE it rather than replay it: only OpenAI could read that blob,
+		 * replaying it re-sent it to the provider on every rebuild, and the entry's
+		 * summary is a placeholder rather than real text. Ignoring it means the
+		 * kept turns come back as real messages, which is what lets the next
+		 * compaction re-expand and summarize them locally.
+		 *
+		 * This replaces a test that asserted the opposite (the payload replaced the
+		 * kept raw messages) and would now be pinning the removed behavior.
+		 */
+		it("ignores a legacy remote compaction payload and emits the kept raw messages", () => {
 			const remoteCompaction: CompactionEntry = {
 				...compaction("3", "2", "Remote summary", "1"),
 				preserveData: {
@@ -274,18 +286,16 @@ describe("buildSessionContext", () => {
 				msg("4", "3", "user", "after compact"),
 			];
 			const ctx = buildSessionContext(entries);
-			expect(ctx.messages).toHaveLength(2);
+
+			// summary + kept (1, 2) + after (4)
+			expect(ctx.messages).toHaveLength(4);
 			expect(ctx.messages[0]?.role).toBe("compactionSummary");
 			if (ctx.messages[0]?.role !== "compactionSummary") throw new Error("Expected compaction summary message");
-			expect(ctx.messages[0].providerPayload).toEqual({
-				type: "openaiResponsesHistory",
-				provider: "openai",
-				items: [
-					{ type: "message", role: "user", content: [{ type: "input_text", text: "Preserved user" }] },
-					{ type: "compaction", encrypted_content: "enc_123" },
-				],
-			});
-			expect((ctx.messages[1] as { content: string }).content).toBe("after compact");
+			// The opaque provider payload is never reconstructed.
+			expect(ctx.messages[0].providerPayload).toBeUndefined();
+			expect((ctx.messages[1] as { content: string }).content).toBe("first");
+			expect((ctx.messages[2] as { content: { text: string }[] }).content[0].text).toBe("response");
+			expect((ctx.messages[3] as { content: string }).content).toBe("after compact");
 		});
 
 		// Regression for #4470: a session compacted by the removed image-archive

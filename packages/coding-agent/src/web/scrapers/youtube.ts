@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { collapseWhitespace, ptree, Snowflake, truncate } from "@veyyon/utils";
+import { collapseWhitespace, errorMessage, ptree, Snowflake, truncate } from "@veyyon/utils";
 import { settings } from "../../config/settings";
 import type { AgentStorage } from "../../session/agent-storage";
 import { throwIfAborted } from "../../tools/tool-errors";
@@ -147,8 +147,12 @@ export const handleYouTube: SpecialHandler = async (
 						});
 					}
 				}
-			} catch {
+			} catch (error) {
 				throwIfAborted(signal);
+				// Parallel extract is the better source when it works (a real transcript rather
+				// than yt-dlp metadata), so its failure changes what the reader gets. yt-dlp
+				// still runs below, which is why this is a note and not a degrade.
+				notes.push(`Parallel extract failed (${errorMessage(error)}); used yt-dlp instead`);
 			}
 		}
 
@@ -205,7 +209,14 @@ export const handleYouTube: SpecialHandler = async (
 				duration = meta.duration || 0;
 				uploadDate = meta.upload_date || "";
 				viewCount = meta.view_count || 0;
-			} catch {}
+			} catch (error) {
+				// yt-dlp answered with something that is not the JSON it documents. The result
+				// below is still built, from the fallback title alone, so the reader has to be
+				// told the metadata is missing rather than absent from the video.
+				notes.push(
+					`yt-dlp metadata was not valid JSON (${errorMessage(error)}); title and channel are unavailable`,
+				);
+			}
 		}
 
 		// Format upload date

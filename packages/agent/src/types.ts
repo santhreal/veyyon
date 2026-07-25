@@ -275,6 +275,16 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	/**
 	 * Optional transform applied to tool call arguments before execution.
 	 * Use for deobfuscating secrets or rewriting arguments.
+	 *
+	 * It runs once, straight after argument validation and before anything else
+	 * reads the arguments, so its output is what `tool_execution_start`, the
+	 * telemetry span, `beforeToolCall`, `tool_execution_update` and `tool.execute`
+	 * all receive. That single position matters for display: a transform that
+	 * expands secret placeholders or codec handles is what an operator sees, and
+	 * running it any later would show them the pre-transform text instead.
+	 *
+	 * Throwing fails the call with the thrown message as the tool error; the tool
+	 * does not run.
 	 */
 	transformToolCallArguments?: (args: Record<string, unknown>, toolName: string) => Record<string, unknown>;
 
@@ -533,8 +543,8 @@ export interface BeforeToolCallContext {
 	/** The raw tool call block from `assistantMessage.content`. */
 	toolCall: AgentToolCall;
 	/**
-	 * Validated tool arguments. The same reference is forwarded to `tool.execute`
-	 * (after any `transformToolCallArguments` pass), so in-place mutations stick.
+	 * Validated tool arguments, already through `transformToolCallArguments`. The
+	 * same reference is forwarded to `tool.execute`, so in-place mutations stick.
 	 */
 	args: Record<string, unknown>;
 	/** Current agent context at the time the tool call is prepared. */

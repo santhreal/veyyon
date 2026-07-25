@@ -40,6 +40,11 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
+// The arm overlays are veyyon settings, so the schema is what decides whether an
+// arm names a real one. Read it directly rather than keeping a second list here
+// that would go stale the first time a setting is renamed.
+import { getEnumValues, getType, isSettingPath } from "@veyyon/coding-agent/config/settings-schema";
+import { readPipeText } from "@veyyon/utils";
 import YAML from "yaml";
 import {
 	type ArmResult,
@@ -49,15 +54,23 @@ import {
 	effectiveTemperature,
 	emptyArmResult,
 	encodeHeadroom,
+	finishedWithoutPatch,
 	isHardError,
 	jobNameOf,
+	MergeRefused,
+	mergeRuns,
 	mostCommonAgentReason,
 	NO_REWARD_ERROR,
 	noRewardError,
+	onPairedTasks,
 	PINNED_TEMPERATURE,
 	parseJobName,
 	parseTaskListProvenance,
+	predictedVsActual,
 	providerFinishReason,
+	providerQuotaStop,
+	quotaStopMarker,
+	type RunToMerge,
 	renderReport,
 	type SessionUsage,
 	selectTasks,
@@ -65,8 +78,34 @@ import {
 	systemPromptTeachesArgot,
 	type TaskSetProvenance,
 	tallyUsage,
+	trialQueue,
 } from "./aggregate";
+import { formatArmPrediction, predictArmSaving } from "./arm-prediction";
+import { resolveBinaryPin } from "./binary-pin";
+import {
+	conversationCollapsed,
+	measureRunPrefix,
+	PREFIX_CATEGORIES,
+	prefixShares,
+} from "./prefix-composition";
 import { type ArmInputs, computeArmFingerprint, findZeroIvCollisions } from "./arm-fingerprint";
+import {
+	type CredentialProbe,
+	decideAuthPreflight,
+	describeAuthPreflightFailure,
+	describeExhaustedPool,
+	exhaustedPoolFor,
+	modelVendor,
+	spentQuotaShouldAbort,
+} from "./auth-preflight";
+import { decideAuthSeed, probeCredentialStore, snapshotCredentialStore } from "./auth-seed";
+import {
+	encodeArmModelMismatch,
+	encodePreambleSilentlyDropped,
+	isEncodeArm,
+	mistypedArmSettings,
+	unknownArmSettings,
+} from "./treatment-guard";
 import {
 	parseTaskTimeBudget,
 	parseTrialTimeoutFlag,
@@ -74,9 +113,6 @@ import {
 	resolveTrialTimeout,
 	truncationWarning,
 } from "./trial-timeout";
-import { type CredentialProbe, decideAuthPreflight, describeAuthPreflightFailure } from "./auth-preflight";
-import { decideAuthSeed } from "./auth-seed";
-import { encodeArmModelMismatch, encodePreambleSilentlyDropped, isEncodeArm } from "./treatment-guard";
 
 const BENCH_DIR = path.dirname(new URL(import.meta.url).pathname);
 const CODING_AGENT_DIR = path.resolve(BENCH_DIR, "../coding-agent");
@@ -84,7 +120,9 @@ const VEY_BINARY = path.join(CODING_AGENT_DIR, "dist", "vey");
 // The bench keeps its own copy of the shared-auth DB, refreshed from the live
 // store by `ensureAuthDbSeeded` on every run. The copy exists because the host
 // store is not stable storage (other veyyon lanes prune it); the refresh exists
-// because OAuth tokens rotate and a frozen copy authenticates nothing.
+// because OAuth tokens rotate and a frozen copy authenticates nothing, and it is
+// checked as well as dated because a copy that is newer but damaged used to be
+// kept forever.
 const AUTH_DB = path.join(BENCH_DIR, "assets", "auth-agent.db");
 
 function parseArgs(argv: string[]): Record<string, string> {
@@ -168,7 +206,7 @@ const AUTH_DB_SOURCES = [
 function ensureAuthDbSeeded(): void {
 	fs.mkdirSync(path.join(BENCH_DIR, "assets"), { recursive: true });
 	const mtimeOf = (p: string): number | undefined => (fs.existsSync(p) ? fs.statSync(p).mtimeMs : undefined);
-	const decision = decideAuthSeed(AUTH_DB_SOURCES, AUTH_DB, mtimeOf);
+	const decision = decideAuthSeed(AUTH_DB_SOURCES, AUTH_DB, mtimeOf, probeCredentialStore);
 	if (decision.kind === "missing") {
 		console.error(
 			`missing credential store: no agent.db at any of\n  ${AUTH_DB_SOURCES.join("\n  ")}\n` +
@@ -183,12 +221,19 @@ function ensureAuthDbSeeded(): void {
 		);
 	}
 	if (decision.kind === "current") return;
-	console.log(
-		decision.kind === "seed"
-			? `deepswe-bench: seeding auth DB from ${decision.source}`
-			: `deepswe-bench: re-seeding auth DB from ${decision.source} (staged copy is older than the live store)`,
-	);
-	fs.copyFileSync(decision.source, AUTH_DB);
+	if (decision.kind === "seed") {
+		console.log(`deepswe-bench: seeding auth DB from ${decision.source}`);
+	} else if (decision.reason === "stale") {
+		console.log(
+			`deepswe-bench: re-seeding auth DB from ${decision.source} (staged copy is older than the live store)`,
+		);
+	} else {
+		console.warn(
+			`deepswe-bench: staged auth DB ${AUTH_DB} does not open (${decision.fault}); ` +
+				`re-seeding from ${decision.source}`,
+		);
+	}
+	snapshotCredentialStore(decision.source, AUTH_DB);
 }
 
 /**
@@ -205,7 +250,7 @@ function ensureAuthDbSeeded(): void {
  * then the provider's auth-verifying request per credential without swallowing
  * errors. The verdict logic is `auth-preflight.ts`, under test.
  */
-async function requireStagedAuthCanServeToken(): Promise<void> {
+async function requireStagedAuthCanServeToken(model: string, dryRun = false): Promise<void> {
 	const store = await SqliteAuthCredentialStore.open(AUTH_DB);
 	let probes: CredentialProbe[];
 	try {
@@ -216,9 +261,34 @@ async function requireStagedAuthCanServeToken(): Promise<void> {
 		store.close();
 	}
 
+	// Serving a token and having quota left are different questions, and only the
+	// first was ever asked. A gateway meters each upstream vendor separately, so a
+	// credential authenticates perfectly while the pool this model draws from is at
+	// zero. Checking it here costs nothing; discovering it mid-run costs an hour of
+	// container setup and leaves a run with missing samples that read as data.
+	const spent = exhaustedPoolFor(probes, model);
+	if (spent) {
+		// A DRY RUN REPORTS THIS RATHER THAN DYING ON IT, and the distinction is the
+		// whole point of the flag. `--dry-run` exists to answer "is my arm wired
+		// correctly" without paying for a container, and the moment you most want that
+		// answer is while waiting for a spent pool to refill so the real run can start
+		// the instant it does. Exiting here made the flag unusable in exactly that
+		// window: the one time config validation is free, it refused to run.
+		//
+		// Quota is a property of the model, not of the configuration, so it belongs
+		// with the things a dry run cannot check rather than with the guards it exists
+		// to apply. It is still printed, because starting a real run against a spent
+		// pool is the mistake the check was added to prevent.
+		console.error(`deepswe-bench: ${describeExhaustedPool(spent, model)}`);
+		if (spentQuotaShouldAbort(spent, dryRun)) process.exit(1);
+		console.error("deepswe-bench: continuing anyway because this is a --dry-run; no trial will be started.\n");
+	}
+
 	const verdict = decideAuthPreflight(probes);
 	if (verdict.kind === "ok") {
-		console.log(`deepswe-bench: staged auth DB serves a token (${verdict.usable} usable credential(s))`);
+		const vendor = modelVendor(model);
+		const checked = vendor ? "" : ` Quota pool NOT checked: no vendor could be inferred from "${model}".`;
+		console.log(`deepswe-bench: staged auth DB serves a token (${verdict.usable} usable credential(s))${checked}`);
 		return;
 	}
 	if (verdict.kind === "unverifiable") {
@@ -359,6 +429,17 @@ function parseSessionsUsage(trialDir: string): {
 	};
 }
 
+/**
+ * Read a trial-side log if it exists, else null. Trial directories are written by
+ * pier and every file in them is optional: a trial killed during setup has no
+ * agent log, one that never raised has no exception file. Absence is normal input
+ * here, not an error, so the callers below classify on `null` rather than guarding
+ * each read themselves.
+ */
+function readIfPresent(file: string): string | null {
+	return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
+}
+
 function parseTrialResult(arm: string, task: string, repeat: number, jobDir: string): ArmResult {
 	const result: ArmResult = emptyArmResult(arm, task, repeat);
 	// Pier truncates long task names in trial dir names, and a job has exactly
@@ -406,6 +487,30 @@ function parseTrialResult(arm: string, task: string, repeat: number, jobDir: str
 		result.agentSeconds =
 			(Date.parse(trial.agent_execution.finished_at) - Date.parse(trial.agent_execution.started_at)) / 1000;
 	}
+	// A trial that finished under its own power and wrote no patch has FAILED THE
+	// TASK, and is scored 0 rather than excluded. Pier cannot express that: the
+	// missing artifact surfaces as a teardown `RuntimeError` that cancels the trial
+	// into n_errored_trials, where it is dropped from every rate and mean. Since
+	// every context-shrinking lever here risks exactly that failure mode, letting it
+	// delete itself from the measurement would credit the arm that caused it.
+	// finishedWithoutPatch reads the full traceback so a KILLED trial (SIGTERM,
+	// cancellation, timeout above the same cp failure) keeps its exclusion.
+	//
+	// The source is the JOB log, not the trial's own exception.txt. Only the job
+	// log carries both halves of the discriminator: exception.txt for the one real
+	// instance in hand records the cancellation and stops there, with no trace of
+	// the artifact download that failed afterwards during teardown.
+	const jobLog = readIfPresent(path.join(jobDir, "job.log"));
+	if (trial.exception_info && finishedWithoutPatch(jobLog)) {
+		// Derived, not invented: no patch means none of the fail-to-pass tests can
+		// pass, so f2p and the continuous partial metric are 0 and reward is 0 with
+		// them. p2p stays null because the verifier never ran, and claiming the
+		// pre-existing tests broke would be a different lie from the one being fixed.
+		result.reward = 0;
+		result.partial = 0;
+		result.f2p = 0;
+		return result;
+	}
 	if (trial.exception_info) {
 		let err = JSON.stringify(trial.exception_info).slice(0, 300);
 		// pier's exception_info carries the failed command, not WHY the model
@@ -414,11 +519,17 @@ function parseTrialResult(arm: string, task: string, repeat: number, jobDir: str
 		// fold the finish reason into the error. This lets classifyError separate a
 		// provider refusal from a genuine crash — an asymmetry that would otherwise be
 		// invisible and could silently bias an arm comparison.
-		const agentLog = path.join(trialDirPath, "agent", "veyyon.txt");
-		if (fs.existsSync(agentLog)) {
-			const tail = fs.readFileSync(agentLog, "utf8").slice(-2000);
+		const agentLog = readIfPresent(path.join(trialDirPath, "agent", "veyyon.txt"));
+		if (agentLog) {
+			const tail = agentLog.slice(-2000);
 			const finish = providerFinishReason(tail);
 			if (finish) err += ` finish_reason: ${finish}`;
+			// A provider quota stop is a global condition with a named recovery time, and
+			// it must survive into results.json in a form the report and the run loop can
+			// both read back. The raw payload is kilobytes of JSON that the error field
+			// truncates away, so restate the two facts that matter compactly.
+			const quota = providerQuotaStop(tail);
+			if (quota) err += ` ${quotaStopMarker(quota)}`;
 		}
 		result.error = err;
 	}
@@ -470,6 +581,7 @@ function reaggregate(runDir: string): void {
 	// selection-bias banner instead of silently dropping it (a reaggregate has no task
 	// list to re-parse). Absent on older runs → undefined → no banner, as before.
 	let taskSet: (TaskSetProvenance & { file: string | null }) | undefined;
+	let incomplete = false;
 	try {
 		const prior = JSON.parse(fs.readFileSync(path.join(runDir, "results.json"), "utf8"));
 		model = prior.model ?? model;
@@ -479,6 +591,11 @@ function reaggregate(runDir: string): void {
 		armFingerprints = prior.armFingerprints ?? null;
 		binarySha = prior.binarySha ?? null;
 		taskSet = prior.taskSet ?? undefined;
+		// Carry forward whether the run actually finished. A reaggregate rebuilds the
+		// trials from the jobs on disk, which says nothing about whether the run was
+		// cut short, and quietly clearing the flag would let a quota-truncated run
+		// look complete once it had been re-rendered.
+		incomplete = prior.incomplete === true;
 	} catch {
 		/* first aggregation */
 	}
@@ -497,6 +614,7 @@ function reaggregate(runDir: string): void {
 				arms,
 				tasks,
 				repeats,
+				incomplete,
 				results,
 			},
 			null,
@@ -508,12 +626,98 @@ function reaggregate(runDir: string): void {
 		renderReport(results, model, new Date().toISOString(), repeats, taskSet),
 	);
 	console.log(`reaggregated ${results.length} runs into ${path.join(runDir, "report.md")}`);
+	// A reaggregate is what you run after a quota truncation, which is exactly the
+	// case the prediction check has to be right about: an arm whose trials all died
+	// bills nothing and must read as no measurement, never as a total saving.
+	reportPredictedVsActual(runDir, [...new Set(results.map(r => r.arm))], results);
+}
+
+/**
+ * Pool several completed runs into one report, so a reward comparison can reach
+ * enough decisive tasks to be worth reading.
+ *
+ * A paired sign test cannot reach significance below six decisive tasks, and one
+ * day of provider quota funds roughly fifteen tasks across two arms. So a powered
+ * reward comparison accumulates over several days, and this is what turns those
+ * days into one comparison. `mergeRuns` refuses anything that would make the pool
+ * dishonest; see its documentation for which cases and why.
+ */
+function mergeIntoReport(runDirs: string[], outDir: string | null): void {
+	if (runDirs.length < 2) {
+		console.error(`--merge needs at least two run directories, got ${runDirs.length}.`);
+		process.exit(1);
+	}
+	const runs: RunToMerge[] = [];
+	for (const dir of runDirs) {
+		const file = path.join(dir, "results.json");
+		if (!fs.existsSync(file)) {
+			console.error(`missing: ${file}\nRun --reaggregate on that directory first.`);
+			process.exit(1);
+		}
+		const prior = JSON.parse(fs.readFileSync(file, "utf8"));
+		runs.push({
+			label: path.basename(dir),
+			model: prior.model ?? "unknown",
+			binarySha: prior.binarySha ?? null,
+			armFingerprints: prior.armFingerprints ?? null,
+			results: prior.results ?? [],
+		});
+	}
+	let merged: { results: ArmResult[]; model: string };
+	try {
+		merged = mergeRuns(runs);
+	} catch (err) {
+		if (err instanceof MergeRefused) {
+			console.error(`refusing to merge: ${err.message}`);
+			process.exit(1);
+		}
+		throw err;
+	}
+	const target = outDir ?? runDirs[runDirs.length - 1]!;
+	fs.mkdirSync(target, { recursive: true });
+	const arms = [...new Set(merged.results.map(r => r.arm))];
+	const tasks = [...new Set(merged.results.map(r => r.task))];
+	const repeats = merged.results.length ? Math.max(...merged.results.map(r => r.repeat)) + 1 : 1;
+	fs.writeFileSync(
+		path.join(target, "merged-results.json"),
+		JSON.stringify(
+			{
+				model: merged.model,
+				mergedFrom: runDirs,
+				arms,
+				tasks,
+				repeats,
+				results: merged.results,
+			},
+			null,
+			2,
+		),
+	);
+	fs.writeFileSync(
+		path.join(target, "merged-report.md"),
+		renderReport(merged.results, merged.model, new Date().toISOString(), repeats, undefined),
+	);
+	console.log(
+		`merged ${runDirs.length} runs (${merged.results.length} trials, ${tasks.length} tasks) into ` +
+			`${path.join(target, "merged-report.md")}`,
+	);
 }
 
 async function main(): Promise<void> {
 	const args = parseArgs(process.argv.slice(2));
 	if (args.reaggregate) {
 		reaggregate(path.resolve(args.reaggregate));
+		return;
+	}
+	if (args.merge) {
+		mergeIntoReport(
+			args.merge
+				.split(",")
+				.map(dir => dir.trim())
+				.filter(Boolean)
+				.map(dir => path.resolve(dir)),
+			args.out ? path.resolve(args.out) : null,
+		);
 		return;
 	}
 	const localTasks = path.join(BENCH_DIR, "deep-swe", "tasks");
@@ -623,10 +827,30 @@ async function main(): Promise<void> {
 		process.exit(1);
 	}
 
-	await ensureBinaryUpToDate();
+	// A PINNED binary is what makes two days of quota poolable. `mergeRuns` refuses
+	// runs whose binary sha differs, and this is a shared tree where other sessions
+	// edit `packages/coding-agent` between runs, so a rebuild between days makes the
+	// pooling impossible exactly when it is needed: a powered reward test needs more
+	// decisive tasks than one day's quota buys.
+	const pin = resolveBinaryPin(args.binary);
+	if (pin.kind === "invalid") {
+		console.error(`error: ${pin.reason}`);
+		process.exit(1);
+	}
+	const pinnedBinary = pin.kind === "pinned" ? pin.path : null;
+	if (pinnedBinary) {
+		requireFile(pinnedBinary, "point --binary at a previous run's assets/vey");
+		console.log(
+			`binary PINNED to ${pinnedBinary} (sha256 ${sha256File(pinnedBinary).slice(0, 12)}).\n` +
+				`  The working tree is NOT rebuilt, so this run measures that binary's code, not today's.\n` +
+				`  That is the point: it is what lets this run pool with the one it came from.`,
+		);
+	} else {
+		await ensureBinaryUpToDate();
+	}
 	ensureAuthDbSeeded();
-	await requireStagedAuthCanServeToken();
-	requireFile(VEY_BINARY, "build it: cd ../coding-agent && bun scripts/build-binary.ts");
+	await requireStagedAuthCanServeToken(model, args["dry-run"] !== undefined);
+	requireFile(pinnedBinary ?? VEY_BINARY, "build it: cd ../coding-agent && bun scripts/build-binary.ts");
 	for (const arm of arms) {
 		requireFile(path.join(BENCH_DIR, "arms", `${arm}.yml`), `create arms/${arm}.yml`);
 	}
@@ -663,12 +887,12 @@ async function main(): Promise<void> {
 		process.exit(1);
 	}
 
-	const binarySha = sha256File(VEY_BINARY);
+	const binarySha = sha256File(pinnedBinary ?? VEY_BINARY);
 
 	// Stage the assets every task container sees at /opt/veyyon-assets.
 	const assetsDir = path.join(outRoot, "assets");
 	fs.mkdirSync(path.join(assetsDir, "arms"), { recursive: true });
-	fs.copyFileSync(VEY_BINARY, path.join(assetsDir, "vey"));
+	fs.copyFileSync(pinnedBinary ?? VEY_BINARY, path.join(assetsDir, "vey"));
 	fs.chmodSync(path.join(assetsDir, "vey"), 0o755);
 	fs.copyFileSync(AUTH_DB, path.join(assetsDir, "auth-agent.db"));
 	// Stage each arm's config overlay, an optional per-section prompt override,
@@ -710,6 +934,34 @@ async function main(): Promise<void> {
 		// config BEFORE fingerprinting keeps the single-IV floor intact: the same
 		// value goes into every arm, so it never becomes a spurious difference, and
 		// the staged file the container reads matches exactly what was fingerprinted.
+		// An unrecognised key is not an error to veyyon: the overlay merges, the key
+		// is never read, and the arm runs as the control under a treatment's name.
+		// Refuse, rather than report a comparison of the control against itself.
+		const mistyped = mistypedArmSettings(config, path =>
+			isSettingPath(path) ? { kind: getType(path), values: getEnumValues(path) } : undefined,
+		);
+		if (mistyped.length > 0) {
+			console.error(
+				`error: arm "${arm}" arms/${arm}.yml sets ${mistyped.length} key(s) to a value the settings\n` +
+					`schema would reject:\n` +
+					mistyped.map(m => `  ${m.path}: expected ${m.expected}, got ${m.actual}`).join("\n") +
+					`\nAn unusable value is merged and then ignored, so the arm would run as the\n` +
+					`control while claiming a treatment. Note that YAML reads bare yes/no/on/off\n` +
+					`as booleans and quoted "0.1" as a string.`,
+			);
+			process.exit(1);
+		}
+		const unknown = unknownArmSettings(config, isSettingPath);
+		if (unknown.length > 0) {
+			console.error(
+				`error: arm "${arm}" arms/${arm}.yml sets ${unknown.length} key(s) that are not veyyon settings:\n` +
+					unknown.map(p => `  ${p}`).join("\n") +
+					`\nAn unknown key is merged and never read, so the arm would run as the\n` +
+					`control while claiming a treatment. Check the spelling against\n` +
+					`docs/settings-reference.md, or remove the key.`,
+			);
+			process.exit(1);
+		}
 		const temperature = effectiveTemperature(config);
 		(config as Record<string, unknown>).temperature = temperature;
 		armTemperature.set(arm, temperature);
@@ -790,9 +1042,7 @@ async function main(): Promise<void> {
 	}
 
 	const results: ArmResult[] = [];
-	const queue: Array<{ arm: string; task: string; repeat: number }> = arms.flatMap(arm =>
-		tasks.flatMap(task => Array.from({ length: repeats }, (_, repeat) => ({ arm, task, repeat }))),
-	);
+	const queue = trialQueue(arms, tasks, repeats);
 	// Fail-fast canary state (see runOne). The canary window is the first wave of
 	// completed jobs — the smaller of the worker-pool width and the total queue —
 	// so a systematic config failure trips as soon as one full concurrent batch has
@@ -872,6 +1122,47 @@ async function main(): Promise<void> {
 		process.exit(0);
 	}
 
+	// Stamp the run's provenance BEFORE any trial runs, so a run that dies partway
+	// still says what it was.
+	//
+	// WHY THIS IS NOT MERELY TIDY. `results.json` used to be written only at the very
+	// end, so a run cut short by provider quota never wrote one at all, and its model,
+	// binary sha and arm fingerprints were lost permanently. `--reaggregate` can
+	// rebuild the per-trial results from the jobs on disk, but it can only carry the
+	// provenance forward from a PRIOR `results.json`; with none, it fills in
+	// `model: "unknown"` and `binarySha: null` and the run can never be pooled with
+	// another, because `--merge` cannot confirm it used the same model or binary.
+	//
+	// That is exactly the run this bench produces most often. Quota truncation is
+	// normal here, and with task-major ordering a truncated run now yields perfectly
+	// good paired samples. Losing them to a missing header would waste the very
+	// samples the ordering change exists to save.
+	//
+	// The trial list is empty at this point and is overwritten by the real one when
+	// the run completes. Everything else is already known and never changes.
+	const provenance = {
+		model,
+		binarySha,
+		limit: limit ?? null,
+		totalTasksAvailable,
+		sampling: {
+			pinnedTemperature: PINNED_TEMPERATURE,
+			perArm: Object.fromEntries(arms.map(a => [a, armTemperature.get(a) ?? PINNED_TEMPERATURE])),
+			note: "greedy at temperature 0: top-p / top-k are irrelevant, so temperature alone fixes the regime",
+		},
+		armFingerprints: Object.fromEntries(arms.map(a => [a, armFingerprints.get(a) ?? null])),
+		taskSet: { file: args.tasks ?? null, ...taskSetProvenance },
+		arms,
+		tasks,
+		repeats,
+		// Marks a header written before the trials ran. A file still carrying this
+		// flag is a run that never finished, which is a fact worth keeping rather
+		// than one to infer from an empty results array.
+		incomplete: true,
+		results: [],
+	};
+	fs.writeFileSync(path.join(outRoot, "results.json"), JSON.stringify(provenance, null, 2));
+
 	function writeJobConfig(arm: string, task: string, repeat: number): string {
 		const jobName = jobNameOf(arm, task, repeat, repeats);
 		const configDir = path.join(outRoot, "configs");
@@ -931,8 +1222,8 @@ async function main(): Promise<void> {
 
 		const exitCode = await proc.exited;
 		clearTimeout(timer);
-		const stdout = await new Response(proc.stdout).text();
-		const stderr = await new Response(proc.stderr).text();
+		const stdout = await readPipeText(proc.stdout);
+		const stderr = await readPipeText(proc.stderr);
 
 		let result: ArmResult;
 		try {
@@ -963,6 +1254,28 @@ async function main(): Promise<void> {
 		console.log(
 			`[${results.length}/${totalQueued}] ${jobName}: ${mark} out=${result.outputTokens ?? "?"}tok cost=$${result.costUsd?.toFixed(3) ?? "?"} (${((Date.now() - started) / 1000).toFixed(0)}s)`,
 		);
+		// Quota abort. This runs BEFORE both canaries because it is the only stop
+		// condition that is self-declaring: the provider states a global refusal and
+		// names its own recovery time, so one occurrence is proof and waiting for a
+		// statistical wave is pure waste. Neither canary would catch it anyway —
+		// quota strikes mid-run, so an early success has already disarmed the global
+		// one, and it kills every arm at once so the per-arm one sees no dead arm.
+		// Without this the run keeps burning container setup on trials that cannot
+		// produce a token, and then reports a comparison against an arm whose samples
+		// simply are not there.
+		const quotaStop = !canaryTripped ? providerQuotaStop(result.error) : null;
+		if (quotaStop) {
+			canaryTripped = true;
+			const until = quotaStop.resetAt ? ` Quota resets at ${quotaStop.resetAt}.` : "";
+			const which = quotaStop.model ? ` for model "${quotaStop.model}"` : "";
+			console.error(
+				`\nABORTING: the provider refused on quota${which} (HTTP 429 RESOURCE_EXHAUSTED).${until} ` +
+					`Every one of the ${queue.length} remaining trials would fail the same way and produce no ` +
+					`tokens, leaving a comparison against arms with missing samples. ${results.length} trials ` +
+					`completed before the stop; their jobs are on disk and can be reaggregated. Rerun after the ` +
+					`reset, or point --model at a credential with quota left. No report was written.`,
+			);
+		}
 		// Fail-fast canary: a config that makes EVERY run error (an unservable model,
 		// a bad auth DB, a missing binary) otherwise burns the whole run — 120 jobs ×
 		// ~1min of container setup — to prove one typo. The trip DECISION is the pure,
@@ -1051,6 +1364,9 @@ async function main(): Promise<void> {
 				arms,
 				tasks,
 				repeats,
+				// The run reached the end, so clear the flag the pre-run header set.
+				// A `results.json` still carrying `incomplete: true` is a run that died.
+				incomplete: false,
 				results,
 			},
 			null,
@@ -1062,6 +1378,8 @@ async function main(): Promise<void> {
 		renderReport(results, model, new Date().toISOString(), repeats, taskSetProvenance),
 	);
 	console.log(`\nwrote ${path.join(outRoot, "report.md")} and results.json`);
+
+	reportPredictedVsActual(outRoot, arms, results);
 
 	// Authoritative post-run treatment check. The pre-run allowlist guard matched the
 	// REQUESTED --model, but the runtime resolves that id through the catalog (provider
@@ -1087,6 +1405,109 @@ async function main(): Promise<void> {
 		);
 		process.exitCode = 1;
 	}
+}
+
+/**
+ * Print each treatment arm's predicted saving beside the one it actually delivered.
+ *
+ * WHY THIS RUNS AUTOMATICALLY RATHER THAN BEING A COMMAND TO REMEMBER. The check
+ * that decides whether the instrument can be trusted for the NEXT lever is the gap
+ * between predicted and actual, and it was previously three separate commands run
+ * from memory with the prediction typed in by hand. A step that has to be
+ * remembered is a step that gets skipped on the run where it mattered, and a typed
+ * prediction is a copy free to drift from the simulator that produced it. Both
+ * halves now come out of this run: the prediction from each arm's parsed overlay
+ * against the baseline transcripts just written, the actual from the paired cost
+ * delta over the tasks both arms completed.
+ *
+ * It never fails the run. A missing baseline arm, a lever with no simulator, or a
+ * truncated set of trials all produce a printed refusal instead, because this is a
+ * diagnostic about the instrument and the reward gate is what decides an arm.
+ */
+function reportPredictedVsActual(runDir: string, arms: string[], results: ArmResult[]): void {
+	const baseline = arms.find(arm => arm === "baseline");
+	if (!baseline || arms.length < 2) return;
+	const jobsRoot = path.join(runDir, "jobs");
+	if (!fs.existsSync(jobsRoot)) return;
+	// Read the STAGED overlay from the run directory, not `arms/<arm>.yml` on disk.
+	// The staged copy is what the container actually read; the working-tree file is
+	// free to have been edited since, and a reaggregate of an old run would then
+	// predict from settings that run never used.
+	const stagedConfig = (arm: string): unknown => {
+		const staged = path.join(runDir, "assets", "arms", `${arm}.yml`);
+		if (!fs.existsSync(staged)) return undefined;
+		try {
+			return YAML.parse(fs.readFileSync(staged, "utf8")) ?? {};
+		} catch {
+			return undefined;
+		}
+	};
+	const measured = measureRunPrefix(jobsRoot, `${baseline}__`);
+	if (measured.sessions === 0) {
+		console.log("\npredicted vs actual: no baseline transcripts on disk, nothing to predict from.");
+		return;
+	}
+	console.log("\npredicted vs actual saving (prediction derived from this run's own baseline):");
+	for (const arm of arms) {
+		if (arm === baseline) continue;
+		const config = stagedConfig(arm);
+		if (config === undefined) {
+			// REFUSE rather than predict from the working tree. Guessing here would
+			// silently attribute today's settings to yesterday's run.
+			console.log(`  ${arm}: no staged arm file in this run, so no prediction can be derived.`);
+			continue;
+		}
+		const prediction = predictArmSaving(arm, config, measured.perSession, measured.mass, measured.usage);
+		for (const line of formatArmPrediction(prediction)) console.log(line);
+		if (prediction.levers.length === 0) continue;
+		// Cost is a SUM, so an arm that completed more tasks looks more expensive for a
+		// reason that has nothing to do with its lever. Compare only the shared tasks.
+		// DID THE LEVER ACTUALLY FIRE? Reported BEFORE the cost delta and independently
+		// of it, because a gap can mean the simulation was wrong or it can mean the
+		// setting never took effect, and those need opposite responses. It is also the
+		// only question still answerable when the arm billed nothing: transcripts exist
+		// for trials that died on quota, and whether the category shrank in them says
+		// whether the wiring works.
+		const treated = measureRunPrefix(jobsRoot, `${arm}__`);
+		if (conversationCollapsed(measured.mass, measured.sessions, treated.mass, treated.sessions)) {
+			// A share table over sessions that died at startup reads as a lever that
+			// removed every category at once, which is the most impressive output this
+			// report can print and means the arm never ran. Refuse it.
+			console.log(
+				`    ${arm} sessions carry almost no conversation, so its trials died before doing work.` +
+					` No composition comparison is possible.`,
+			);
+		} else if (treated.sessions > 0) {
+			const before = prefixShares(measured.mass);
+			const after = prefixShares(treated.mass);
+			for (const category of PREFIX_CATEGORIES) {
+				const moved = after[category] - before[category];
+				if (Math.abs(moved) < 0.01) continue;
+				console.log(
+					`    ${category.padEnd(14)} ${(100 * before[category]).toFixed(1)}% of prefix` +
+						`  ->  ${(100 * after[category]).toFixed(1)}%` +
+						`  (${moved >= 0 ? "+" : ""}${(100 * moved).toFixed(1)} points)`,
+				);
+			}
+		}
+		const comparison = predictedVsActual(
+			onPairedTasks(results, baseline, arm),
+			baseline,
+			arm,
+			prediction.netSaving,
+		);
+		if (!comparison) {
+			console.log(`  ${arm}: no paired trials with usage, so the actual saving cannot be measured.`);
+			continue;
+		}
+		console.log(
+			`  ${arm}  actual ${(100 * comparison.actual).toFixed(1)}%` +
+				`  vs predicted ${(100 * comparison.predicted).toFixed(1)}%` +
+				`  ->  gap ${(100 * comparison.gap >= 0 ? "+" : "")}${(100 * comparison.gap).toFixed(1)} points`,
+		);
+	}
+	console.log("  A gap near zero means the simulator can be trusted for the next lever without buying it.");
+	console.log("  Cost is not the gate: read the paired sign test on reward first.");
 }
 
 await main();

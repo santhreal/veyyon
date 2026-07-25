@@ -303,10 +303,6 @@ function findExactMatchOutcome(content: string, target: string): MatchOutcome | 
 // Core Algorithms
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Canonical implementation lives in @veyyon/utils; re-exported here for
-// existing importers of this module's fuzzy-matching surface.
-export { levenshteinDistance };
-
 /** Compute similarity score between two strings (0 to 1) */
 export function similarity(a: string, b: string): number {
 	if (a.length === 0 && b.length === 0) return 1;

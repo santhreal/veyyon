@@ -1,10 +1,11 @@
-import { errorMessage, logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/utils";
+import { errorMessage, isAbortError, logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/utils";
 import {
 	createWorkerHandle,
 	createWorkerSubprocess,
 	resolveWorkerSpawnCmd,
 	workerEnvFromParent,
 } from "../../subprocess/worker-client";
+import { logWorkerMessage } from "../../subprocess/worker-log";
 import type { ToolSession } from "../../tools";
 import { ToolAbortError, ToolError } from "../../tools/tool-errors";
 import { raceWithTimeout } from "../../utils/fetch-timeout";
@@ -522,17 +523,11 @@ function toErrorPayload(error: unknown): RunErrorPayload {
 			name: error.name,
 			message: error.message,
 			stack: error.stack,
-			isAbort: error.name === "AbortError" || error.name === "ToolAbortError",
+			isAbort: isAbortError(error),
 			isToolError: error instanceof ToolError || error.name === "ToolError",
 		};
 	}
 	return { message: String(error) };
-}
-
-function logWorkerMessage(msg: Extract<WorkerOutbound, { type: "log" }>): void {
-	if (msg.level === "debug") logger.debug(msg.msg, msg.meta);
-	else if (msg.level === "warn") logger.warn(msg.msg, msg.meta);
-	else logger.error(msg.msg, msg.meta);
 }
 
 function spawnJsWorker(): WorkerHandle {

@@ -11,9 +11,11 @@
  *
  * The generated prompt appears as a draft in the editor for review/editing.
  */
+
+import { serializeConversation } from "@veyyon/agent-core";
 import { complete, type Message } from "@veyyon/ai";
 import type { HookAPI, SessionEntry } from "@veyyon/coding-agent";
-import { BorderedLoader, convertToLlm, serializeConversation } from "@veyyon/coding-agent";
+import { BorderedLoader, convertToLlm } from "@veyyon/coding-agent";
 
 const SYSTEM_PROMPT = `You are a context transfer assistant. Given a conversation history and the user's goal for a new thread, generate a focused prompt that:
 

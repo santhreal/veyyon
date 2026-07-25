@@ -531,9 +531,13 @@ export class MnemopiSessionState {
 		if (!context) return;
 		this.lastRecallSnippet = context;
 		try {
-			await this.session.refreshBaseSystemPrompt("mnemopi");
+			// The tail, not the system prompt: a recall that rewrote the prompt made the
+			// next request re-read the entire conversation as uncached input.
+			await this.session.publishVolatileMemoryContext("mnemopi:recall");
 		} catch (error) {
-			if (this.config.debug) logger.debug("Mnemopi: prompt refresh after recall failed", { error: String(error) });
+			if (this.config.debug) {
+				logger.debug("Mnemopi: publishing memory context after recall failed", { error: String(error) });
+			}
 		}
 	}
 

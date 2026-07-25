@@ -5,6 +5,7 @@
 
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Effort } from "@veyyon/ai";
+import { attributesEnabled, colorEnabled } from "@veyyon/tui";
 import { colorLuma, logger, relativeLuminance } from "@veyyon/utils";
 import { bgAnsi, type ColorMode, colorToAnsi, fgAnsi, resolveToHex, type ThemeBg, type ThemeColor } from "./color";
 import {
@@ -305,12 +306,17 @@ export class Theme {
 	fg(color: ThemeColor, text: string): string {
 		const ansi = this.#fgColors[color];
 		if (!ansi) throw new Error(`Unknown theme color: ${color}`);
+		// The unknown-colour check runs FIRST and unconditionally: a typo'd key
+		// must fail the same way whether or not colour happens to be enabled, or
+		// the bug only surfaces on the machines that render it.
+		if (!colorEnabled()) return text;
 		return `${ansi}${text}\x1b[39m`; // Reset only foreground color
 	}
 
 	bg(color: ThemeBg, text: string): string {
 		const ansi = this.#bgColors[color];
 		if (!ansi) throw new Error(`Unknown theme background color: ${color}`);
+		if (!colorEnabled()) return text;
 		return `${ansi}${text}\x1b[49m`; // Reset only background color
 	}
 
@@ -323,22 +329,27 @@ export class Theme {
 	// fallback (Law 10). Each attribute closes with its specific off-code so
 	// nesting inside colored spans survives.
 	bold(text: string): string {
+		if (!attributesEnabled()) return text;
 		return `\x1b[1m${text}\x1b[22m`;
 	}
 
 	italic(text: string): string {
+		if (!attributesEnabled()) return text;
 		return `\x1b[3m${text}\x1b[23m`;
 	}
 
 	underline(text: string): string {
+		if (!attributesEnabled()) return text;
 		return `\x1b[4m${text}\x1b[24m`;
 	}
 
 	strikethrough(text: string): string {
+		if (!attributesEnabled()) return text;
 		return `\x1b[9m${text}\x1b[29m`;
 	}
 
 	inverse(text: string): string {
+		if (!attributesEnabled()) return text;
 		return `\x1b[7m${text}\x1b[27m`;
 	}
 

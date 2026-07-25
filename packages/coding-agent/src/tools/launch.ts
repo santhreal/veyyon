@@ -15,9 +15,10 @@ import { daemonClientForProject } from "../launch/client";
 import type { DaemonOperation, DaemonRpcResult, DaemonSnapshot, DaemonSpec, DaemonState } from "../launch/protocol";
 import { renderTerminalOutput } from "../launch/terminal-output";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
-import launchDescription from "../prompts/tools/launch.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { framedBlock, outputBlockContentWidth, renderStatusLine } from "../tui";
 import type { ToolSession } from ".";
+import { foldToolOutputBookkeeping } from "./output-fold";
 import { resolveToCwd } from "./path-utils";
 import {
 	capPreviewLines,
@@ -35,7 +36,6 @@ import {
 	truncateToWidth,
 } from "./render-utils";
 import { styleTerminalRow } from "./terminal-output";
-import { foldPassingTestOutput } from "./test-output-fold";
 import { ToolError } from "./tool-errors";
 
 const launchSchema = type({
@@ -357,7 +357,7 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 	readonly label = "Launch";
 	readonly loadMode = "essential";
 	readonly summary = "Launch and control shared long-running project processes";
-	readonly description = prompt.render(launchDescription);
+	readonly description = prompt.render(PROMPTS["tools/launch"].text);
 	readonly parameters = launchSchema;
 	readonly strict = true;
 	readonly examples: readonly ToolExample<LaunchParams>[] = [
@@ -420,7 +420,7 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 			// through a launched process lands in context identically, and its
 			// per-test bookkeeping is re-read on every later turn. A no-op unless
 			// the output carries a real run's worth of pass/skip lines.
-			content: [{ type: "text", text: replaceTabs(foldPassingTestOutput(toolContent(result, params)).text) }],
+			content: [{ type: "text", text: replaceTabs(foldToolOutputBookkeeping(toolContent(result, params)).text) }],
 			details: await toolDetails(result, params),
 		};
 	}

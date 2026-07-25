@@ -3,10 +3,10 @@
 > Stop being taught a folder's Argot shorthand; handles you already wrote keep expanding, so this is always safe.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/lexpack.ts` (`ArgotUnloadTool`)
+- Entry: `packages/coding-agent/src/tools/argot.ts` (`ArgotUnloadTool`)
 - Tool name constant: `ARGOT_UNLOAD_TOOL`, exported by the `argot` package.
 - Key collaborators:
-  - `packages/coding-agent/src/lexpack-cache.ts`: `unloadArgotFolder()` resolves the folder to its work-unit root and drops that key from the teach set.
+  - `packages/coding-agent/src/argot-cache.ts`: `unloadArgotFolder()` resolves the folder to its work-unit root and drops that key from the teach set.
   - `packages/coding-agent/src/tools/path-utils.ts`: `resolveToCwd()` resolves a relative request against the session cwd.
   - `packages/coding-agent/src/tools/index.ts`: registers the tool, gated on the `argot.enabled` setting.
 

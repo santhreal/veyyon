@@ -9,7 +9,7 @@ import { loadCapability } from "../discovery";
 import { formatExitCodeNotice } from "../exec/exit-notice";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
-import sshDescriptionBase from "../prompts/tools/ssh.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { DEFAULT_MAX_BYTES, streamTailUpdates, TailBuffer } from "../session/streaming-output";
 import type { SSHHostInfo } from "../ssh/connection-manager";
 import { ensureHostInfo, getCachedHostInfoSync } from "../ssh/connection-manager";
@@ -18,6 +18,7 @@ import { renderStatusLine } from "../tui";
 import { CachedOutputBlock, markFramedBlockComponent } from "../tui/output-block";
 import type { ToolSession } from ".";
 import { truncateForPrompt } from "./approval";
+import { inlineBudgetFor } from "./output-artifact";
 import { formatStyledTruncationWarning, type OutputMeta, stripOutputNotice } from "./output-meta";
 import { capPreviewLines, replaceTabs } from "./render-utils";
 import { ToolError } from "./tool-errors";
@@ -62,7 +63,7 @@ function formatHostEntry(host: SSHHost): string {
 }
 
 function formatDescription(hosts: SSHHost[]): string {
-	const baseDescription = prompt.render(sshDescriptionBase);
+	const baseDescription = prompt.render(PROMPTS["tools/ssh"].text);
 	if (hosts.length === 0) {
 		return baseDescription;
 	}
@@ -205,6 +206,7 @@ export class SshTool implements AgentTool<typeof sshSchema, SSHToolDetails> {
 			compatEnabled: hostInfo.compatEnabled,
 			artifactPath,
 			artifactId,
+			spillThreshold: inlineBudgetFor(this.session),
 			onChunk: streamTailUpdates(tailBuffer, onUpdate),
 		});
 

@@ -13,6 +13,7 @@ import {
 	removeWithRetries,
 	setAgentDir,
 } from "@veyyon/utils";
+import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 const TEAM_ORG = "org-team-1111";
 
@@ -38,6 +39,7 @@ describe("auth-broker migrate (org-only dedupe)", () => {
 	let agentDir = "";
 	let brokerAgentDir = "";
 	let configRoot = "";
+	let dirOverrides: DirOverridesSnapshot;
 	let brokerStore: SqliteAuthCredentialStore | undefined;
 	let brokerStorage: AuthStorage | undefined;
 	let handle: AuthBrokerServerHandle | undefined;
@@ -56,6 +58,11 @@ describe("auth-broker migrate (org-only dedupe)", () => {
 		// the agent dir left it reading the user's real credentials and uploading
 		// them to a test broker — the same missed root as the import suite.
 		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), configRoot);
+		// `setAgentDir` writes `VEYYON_CODING_AGENT_DIR` and this block's env snapshot
+		// did not include it, so the temp agent dir stayed exported to every file that
+		// ran after this one. `scripts/find-test-leaks.ts` caught it; the pair below is
+		// the only restore that can put an ABSENT variable back.
+		dirOverrides = captureDirOverrides();
 		setAgentDir(agentDir);
 		__resetDirsFromEnvForTests();
 
@@ -80,7 +87,7 @@ describe("auth-broker migrate (org-only dedupe)", () => {
 			if (savedEnv[key] === undefined) delete process.env[key];
 			else process.env[key] = savedEnv[key];
 		}
-		__resetDirsFromEnvForTests();
+		restoreDirOverrides(dirOverrides);
 		await removeWithRetries(agentDir);
 		await removeWithRetries(brokerAgentDir);
 		await removeWithRetries(configRoot);

@@ -30,7 +30,10 @@ describe("formatProvisioningFailure", () => {
 	it("lists every asset it tried and why each one failed", () => {
 		const failures: AssetFailure[] = [
 			{ filename: "veyyon_natives.linux-x64.node", reason: "the v1.0.0 release publishes no such asset (HTTP 404)" },
-			{ filename: "veyyon_natives.linux-x64-baseline.node", reason: "HTTP 503 Service Unavailable fetching the asset" },
+			{
+				filename: "veyyon_natives.linux-x64-baseline.node",
+				reason: "HTTP 503 Service Unavailable fetching the asset",
+			},
 		];
 		const message = formatProvisioningFailure(failures, true);
 		expect(message).toContain("veyyon_natives.linux-x64.node: the v1.0.0 release publishes no such asset (HTTP 404)");

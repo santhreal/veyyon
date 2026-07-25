@@ -21,8 +21,18 @@
 // `renderRootChangelog` is pure, the check is an exact byte comparison — no
 // approximate diffing, no silent tolerance.
 //
+// The root is GENERATED, so an entry written directly into it is not a changelog
+// entry — it is content the next render deletes. That is easy to do by accident
+// (the root is the file a contributor opens first, and it looks hand-written), and
+// the deletion used to be silent: `--check` failed in CI, the contributor ran the
+// fix command, and the fix threw their paragraph away without a word. So the write
+// path now REFUSES when the root holds an unreleased bullet that no package
+// changelog claims, naming each orphan and the package to move it to. `--force`
+// discards them deliberately.
+//
 //   bun scripts/sync-root-changelog.ts           # write CHANGELOG.md from the packages
 //   bun scripts/sync-root-changelog.ts --check    # exit 1 if root is stale
+//   bun scripts/sync-root-changelog.ts --force    # write even if it discards orphaned entries
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -62,8 +72,56 @@ export function buildRootChangelog(): string {
 	return renderRootChangelog(changelogSources());
 }
 
+/**
+ * The `## [Unreleased]` bullets of a changelog, one string per bullet.
+ *
+ * A bullet may wrap over several lines, so a continuation line belongs to the
+ * bullet above it. Comparing whole bullets rather than lines is what makes an
+ * orphan detectable: a re-wrapped paragraph is the same entry, and half a
+ * paragraph is not an entry at all.
+ */
+export function unreleasedBullets(md: string): string[] {
+	const start = md.indexOf("## [Unreleased]");
+	if (start === -1) return [];
+	const rest = md.slice(start + "## [Unreleased]".length);
+	const nextRelease = rest.search(/\n## /);
+	const block = nextRelease === -1 ? rest : rest.slice(0, nextRelease);
+	const bullets: string[] = [];
+	let current: string[] = [];
+	for (const line of block.split("\n")) {
+		if (line.startsWith("- ")) {
+			if (current.length > 0) bullets.push(current.join(" "));
+			current = [line.slice(2).trim()];
+		} else if (current.length > 0 && line.trim().length > 0 && !line.startsWith("#")) {
+			current.push(line.trim());
+		} else if (line.startsWith("#")) {
+			if (current.length > 0) bullets.push(current.join(" "));
+			current = [];
+		}
+	}
+	if (current.length > 0) bullets.push(current.join(" "));
+	return bullets.map(bullet => bullet.replace(/\s+/g, " ").trim()).filter(bullet => bullet.length > 0);
+}
+
+/**
+ * Unreleased entries the on-disk root has and a fresh render does not: exactly
+ * what a regeneration would delete.
+ *
+ * Compared against the RENDER, not against the package files, deliberately. The
+ * renderer rewrites entry text on the way through (the omp→veyyon rebrand, the
+ * fork split), so a package-side comparison reports every rewritten entry as
+ * unclaimed and the warning becomes noise nobody reads. Comparing what is on disk
+ * to what would replace it is immune to any rewriting, and it is the precise
+ * question being asked: which of these paragraphs is about to be lost?
+ */
+export function orphanedRootEntries(currentRoot: string, expectedRoot: string): string[] {
+	const rendered = new Set(unreleasedBullets(expectedRoot));
+	return unreleasedBullets(currentRoot).filter(bullet => !rendered.has(bullet));
+}
+
 async function main(): Promise<void> {
 	const check = process.argv.includes("--check");
+	const force = process.argv.includes("--force");
 	const expected = buildRootChangelog();
 	const current = existsSync(ROOT_PATH) ? readFileSync(ROOT_PATH, "utf8") : null;
 
@@ -86,6 +144,23 @@ async function main(): Promise<void> {
 	if (current === expected) {
 		console.log("CHANGELOG.md (root) already up to date.");
 		return;
+	}
+	const orphans = current === null ? [] : orphanedRootEntries(current, expected);
+	if (orphans.length > 0 && !force) {
+		console.error(
+			`Refusing to regenerate: the root CHANGELOG.md holds ${orphans.length} unreleased ${
+				orphans.length === 1 ? "entry" : "entries"
+			} that no package changelog claims.`,
+		);
+		console.error("Writing the root would delete them. The root is generated; entries belong to a package.");
+		for (const orphan of orphans) {
+			console.error(`  - ${orphan.length > 120 ? `${orphan.slice(0, 117)}...` : orphan}`);
+		}
+		console.error("");
+		console.error("  Fix:   move each entry under `## [Unreleased]` in the owning packages/<name>/CHANGELOG.md,");
+		console.error("         then re-run this command.");
+		console.error("  Or:    bun scripts/sync-root-changelog.ts --force   # discard them deliberately");
+		process.exit(1);
 	}
 	writeFileSync(ROOT_PATH, expected);
 	console.log("Wrote CHANGELOG.md (root) from the package changelogs.");

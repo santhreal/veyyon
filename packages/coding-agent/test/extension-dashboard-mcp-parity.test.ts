@@ -19,11 +19,16 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { initializeWithSettings, reset as resetDiscoveryCache } from "@veyyon/coding-agent/discovery";
 import { readMCPConfigFile, setMcpServerEnabled, setServerDisabled } from "@veyyon/coding-agent/mcp/config-writer";
 import { loadAllExtensions } from "@veyyon/coding-agent/modes/components/extensions/state-manager";
-import { __resetDirsFromEnvForTests, getMCPConfigPath, removeWithRetries, setAgentDir } from "@veyyon/utils";
+import { getMCPConfigPath, removeWithRetries, setAgentDir } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 describe("loadAllExtensions MCP parity with /mcp list (issue #3827)", () => {
 	let projectDir = "";
 	let userAgentDir = "";
+	// `__resetDirsFromEnvForTests()` alone was not enough: `setAgentDir` had written
+	// `VEYYON_CODING_AGENT_DIR`, so re-deriving FROM the environment re-derived the temp
+	// dir this file then deleted. The snapshot clears the variable it found absent.
+	const dirOverrides = captureDirOverrides();
 
 	beforeEach(async () => {
 		resetSettingsForTest();
@@ -68,7 +73,7 @@ describe("loadAllExtensions MCP parity with /mcp list (issue #3827)", () => {
 
 	afterEach(async () => {
 		resetSettingsForTest();
-		__resetDirsFromEnvForTests();
+		restoreDirOverrides(dirOverrides);
 		await removeWithRetries(projectDir);
 		await removeWithRetries(userAgentDir);
 	});

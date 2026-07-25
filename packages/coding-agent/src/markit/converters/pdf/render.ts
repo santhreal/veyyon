@@ -92,7 +92,6 @@ export function renderTableToMarkdown(table: TableGrid): string {
  */
 function normalizeShiftedSparseColumns(matrix: string[][]): string[][] {
 	if (matrix.length === 0 || matrix[0].length < 5) return matrix;
-	const _rows = matrix.length;
 	const cols = matrix[0].length;
 	const counts = Array.from({ length: cols }, (_, c) =>
 		matrix.reduce((n, row) => n + (row[c].trim().length > 0 ? 1 : 0), 0),

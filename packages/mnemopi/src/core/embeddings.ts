@@ -411,12 +411,15 @@ async function embedApi(texts: readonly string[]): Promise<EmbeddingMatrix | nul
  *
  * Every caller answers the failure the same way, by falling back to keyword-only
  * search, so every caller owes the operator the same explanation: what broke,
- * which endpoint, and what it costs them.
+ * which endpoint or provider, and what it costs them.
+ *
+ * `target` is the embeddings base URL for the HTTP path, or `provider:<name>` for
+ * a registered provider, which has no URL of its own to name.
  */
-function reportEmbeddingFailure(cause: string, baseUrl: string): void {
+function reportEmbeddingFailure(cause: string, target: string): void {
 	logger.warn("Memory embedding failed, falling back to keyword-only search", {
 		cause,
-		baseUrl,
+		target,
 		impact: "Semantic recall is unavailable for this query, so memory results will be less relevant.",
 		fix: "Check the embedding base URL and API key in your memory settings, or disable embeddings to stop retrying.",
 	});
@@ -429,6 +432,9 @@ async function providerAvailable(provider: EmbeddingProvider): Promise<boolean> 
 	try {
 		return await provider.available();
 	} catch {
+		// A provider whose own availability check throws is not available, which is the answer this asks for.
+		// Quiet here on purpose: the caller that then tries to embed reports the loss through
+		// `reportEmbeddingFailure`, and warning twice for one unusable provider trains the reader to ignore it.
 		return false;
 	}
 }
@@ -521,14 +527,21 @@ export async function embed(texts: readonly string[]): Promise<EmbeddingMatrix |
 	if (activeProvider !== undefined) {
 		try {
 			return await collectMatrix(await activeProvider.embed(texts));
-		} catch {
+		} catch (error) {
+			// Null makes every caller fall back to keyword-only search, which is the same thing "embeddings are
+			// switched off" produces, so a provider that is failing looked exactly like a provider nobody
+			// configured. Reported through the one owner so the operator learns semantic recall is gone.
+			reportEmbeddingFailure(String(error), `provider:${activeEmbeddingOptions()?.provider ?? "active"}`);
 			return null;
 		}
 	}
 	if (providerOverride !== null) {
 		try {
 			return await collectMatrix(await providerOverride.embed(texts));
-		} catch {
+		} catch (error) {
+			// Same loss through the override path, which tests and embedders set: silent null here made a
+			// broken override indistinguishable from embeddings being disabled.
+			reportEmbeddingFailure(String(error), "provider:override");
 			return null;
 		}
 	}

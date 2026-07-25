@@ -130,8 +130,33 @@ const FAST_MODE_NOT_SUPPORTED_PATTERN = /not support/i;
 const FAST_MODE_RATE_LIMIT_PATTERN = /rate_limit_error/i;
 const FAST_MODE_ENTITLEMENT_PATTERN = /fast mode/i;
 // Definitive OAuth refresh failure — the stored grant/client is dead.
-const OAUTH_DEFINITIVE_FAILURE_PATTERN =
-	/invalid_grant|invalid_token|unauthorized_client|\brevoked\b|refresh[\s_]?token.*expired/i;
+//
+// Two spellings, because providers use both. The first alternation is the
+// machine-readable RFC 6749 §5.2 error codes, which is what a well-formed token
+// endpoint returns. The second is the same conditions written as PROSE, which
+// several providers return instead of, or alongside, the code: Kimi answers a
+// dead grant with `400 "The provided authorization grant is invalid"`. That
+// carries no code and is not a 401, so before the prose form was recognised
+// every dead Kimi grant classified as transient, and the credential was blocked
+// for five minutes and retried forever instead of being disabled once with a
+// re-login prompt.
+//
+// The prose form is deliberately narrow: an invalidity word has to sit next to
+// the thing that is invalid (`grant` or `refresh token`), in either order and
+// with at most a short run of words between. A bare "invalid" or "expired"
+// anywhere in a message is not enough, because a wrong "yes" here disables a
+// working account (see {@link isOAuthExpiry}). The transient guard still runs
+// first and still wins, so a 429 or a 5xx page repeating this prose stays
+// transient.
+const OAUTH_DEFINITIVE_FAILURE_PATTERN = new RegExp(
+	[
+		String.raw`invalid_grant|invalid_token|unauthorized_client|\brevoked\b|refresh[\s_]?token.*expired`,
+		String.raw`(?:authorization\s+)?grant(?:\s+\w+){0,3}\s+(?:is\s+|was\s+|has\s+been\s+)?(?:invalid|expired|revoked)`,
+		String.raw`refresh[\s_]?token(?:\s+\w+){0,3}\s+(?:is\s+|was\s+|has\s+been\s+)?(?:invalid|expired|revoked|not found)`,
+		String.raw`(?:invalid|expired|revoked)\s+(?:\w+\s+){0,2}(?:authorization\s+)?(?:grant|refresh[\s_]?token)`,
+	].join("|"),
+	"i",
+);
 const OAUTH_TRANSIENT_FAILURE_PATTERN =
 	/timeout|network|fetch failed|ECONN(?:REFUSED|RESET)|ETIMEDOUT|EAI_AGAIN|socket hang up|\b(?:408|425|429|5\d{2})\b|rate.?limit|too many requests|temporar|unavailable|forbidden|permission_denied|cloudflare|captcha/i;
 const OAUTH_HTTP_AUTH_PATTERN = /\b401\b/;

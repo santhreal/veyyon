@@ -107,12 +107,36 @@ export interface MemoryBackend {
 	/**
 	 * Markdown injected as the system-prompt append section.
 	 * Returned on every prompt rebuild via `refreshBaseSystemPrompt()`.
+	 *
+	 * This must be STABLE for the life of the session. The system prompt is the
+	 * provider's cache prefix: changing it mid-session makes the next request
+	 * re-read the entire conversation as fresh input at the uncached rate, which
+	 * on a measured 66-turn trace cost about 8% of the session bill across five
+	 * turns. Anything that can change while the session runs — recalled
+	 * memories, mental models — belongs in {@link buildVolatileContext} instead.
 	 */
 	buildDeveloperInstructions(
 		agentDir: string,
 		settings: Settings,
 		session?: AgentSession,
 	): Promise<string | undefined>;
+
+	/**
+	 * Markdown that changes while the session runs, delivered at the TAIL of the
+	 * context as a message rather than in the system prompt.
+	 *
+	 * Recalled memories and mental models are the motivating case. They used to
+	 * ride in the system prompt through {@link buildDeveloperInstructions}, so
+	 * every recall and every mental-model reload rewrote the cache prefix and the
+	 * next request paid full price for the whole conversation. The information is
+	 * the same and the model reads it in the same place in the ordering; only the
+	 * cache consequence differs.
+	 *
+	 * Called on every turn. Return the CURRENT full block: the session tracks what
+	 * it has already delivered and sends nothing when the text has not changed, so
+	 * an implementation does not need its own dirty flag.
+	 */
+	buildVolatileContext?(session: AgentSession): Promise<string | undefined>;
 
 	/** Wipe all persisted state for this backend (slash `/memory clear`). */
 	clear(agentDir: string, cwd: string, session?: AgentSession): Promise<void>;

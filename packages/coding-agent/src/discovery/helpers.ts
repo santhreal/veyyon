@@ -195,6 +195,19 @@ export function buildRuleFromMarkdown(
 	}
 
 	const resolvedName = options?.ruleName ?? name.replace(options?.stripNamePattern ?? /\.(md|mdc)$/, "");
+	const rawPathScope = frontmatter.pathScope;
+	const pathScope: Rule["pathScope"] =
+		rawPathScope === "outside-cwd" || rawPathScope === "inside-cwd" ? rawPathScope : undefined;
+	const rawRepeatMode = frontmatter.repeatMode;
+	const repeatMode: Rule["repeatMode"] =
+		rawRepeatMode === "once" || rawRepeatMode === "after-gap" ? rawRepeatMode : undefined;
+	const rawRepeatGap = frontmatter.repeatGap;
+	// A negative or fractional gap is not a smaller gap, it is a typo; ignoring it falls back to the
+	// global setting rather than inventing a policy the author did not write.
+	const repeatGap =
+		typeof rawRepeatGap === "number" && Number.isInteger(rawRepeatGap) && rawRepeatGap >= 0
+			? rawRepeatGap
+			: undefined;
 	const rawMode = frontmatter.interruptMode;
 	const interruptMode: Rule["interruptMode"] =
 		rawMode === "never" || rawMode === "prose-only" || rawMode === "tool-only" || rawMode === "always"
@@ -211,6 +224,9 @@ export function buildRuleFromMarkdown(
 		astCondition,
 		scope,
 		interruptMode,
+		pathScope,
+		repeatMode,
+		repeatGap,
 		_source: source,
 	};
 }

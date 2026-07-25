@@ -1,10 +1,11 @@
-import { parseJsonWithRepair } from "@veyyon/utils";
 import type { Message, ToolCall } from "../types";
-import { normalizeKimiFunctionName, partialSuffixOverlapAny, recordOrEmpty } from "./coercion";
+import { normalizeKimiFunctionName, parseToolArgsText, partialSuffixOverlapAny } from "./coercion";
 import dialectPrompt from "./kimi.md" with { type: "text" };
 import {
 	assistantTranscriptParts,
 	collectToolResultRun,
+	kimiCallId,
+	kimiTurn,
 	messageContentText,
 	renderThinkTags,
 	stringifyJson,
@@ -217,12 +218,7 @@ export class KimiInbandScanner implements InbandScanner {
 	}
 
 	#parseArgs(rawArgs: string): Record<string, unknown> {
-		if (rawArgs.length === 0) return {};
-		try {
-			return recordOrEmpty(parseJsonWithRepair<unknown>(rawArgs));
-		} catch {
-			return {};
-		}
+		return parseToolArgsText(rawArgs, { source: "kimi", tool: this.#name });
 	}
 
 	#nextTokenIndex(): number {
@@ -290,10 +286,6 @@ function renderToolResults(results: readonly DialectToolResult[], _options?: Dia
 		.join("");
 }
 
-function renderThinking(text: string): string {
-	return renderThinkTags(text);
-}
-
 function renderTranscript(messages: readonly Message[], _options?: DialectRenderOptions): string {
 	let out = "";
 	for (let i = 0; i < messages.length; ) {
@@ -303,7 +295,7 @@ function renderTranscript(messages: readonly Message[], _options?: DialectRender
 			out += kimiTurn(
 				"assistant",
 				"assistant",
-				`${renderThinking(parts.thinking)}${parts.text}${renderAssistantToolCalls(parts.toolCalls)}`,
+				`${renderThinkTags(parts.thinking)}${parts.text}${renderAssistantToolCalls(parts.toolCalls)}`,
 			);
 			i++;
 			continue;
@@ -322,15 +314,6 @@ function renderTranscript(messages: readonly Message[], _options?: DialectRender
 	return out;
 }
 
-function kimiCallId(name: string, id: string, index: number): string {
-	const trimmed = id.trim();
-	return trimmed.startsWith("functions.") ? trimmed : `functions.${name}:${index}`;
-}
-
-function kimiTurn(role: "assistant" | "system" | "user", name: string, body: string): string {
-	return `<|im_${role}|>${name}<|im_middle|>${body}<|im_end|>`;
-}
-
 const definition: DialectDefinition = {
 	dialect: "kimi",
 	prompt: dialectPrompt,
@@ -338,7 +321,7 @@ const definition: DialectDefinition = {
 	renderToolCall,
 	renderAssistantToolCalls,
 	renderToolResults,
-	renderThinking,
+	renderThinking: renderThinkTags,
 	renderTranscript,
 };
 

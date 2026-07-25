@@ -17,13 +17,13 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { IrcBus, type IrcMessage } from "@veyyon/coding-agent/irc/bus";
+import { PROMPTS } from "@veyyon/coding-agent/prompts/registry";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { Snowflake, TempDir } from "@veyyon/utils";
 import { type } from "arktype";
-import planModeReminderPrompt from "../src/prompts/system/plan-mode-tool-decision-reminder.md" with { type: "text" };
 
 /** A stable, literal (non-templated) line of the reminder prompt, so the test
  *  pins the reminder by its real content rather than a hardcoded copy. */
@@ -35,7 +35,7 @@ function deriveReminderFragment(template: string): string {
 	if (!line) throw new Error("plan-mode reminder template is missing a stable marker line");
 	return line;
 }
-const REMINDER_FRAGMENT = deriveReminderFragment(planModeReminderPrompt);
+const REMINDER_FRAGMENT = deriveReminderFragment(PROMPTS["plan-mode/tool-decision-reminder"].text);
 
 function makeTool(name: string): AgentTool {
 	return {

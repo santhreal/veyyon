@@ -83,21 +83,28 @@ export const hindsightBackend: MemoryBackend = {
 		await installPrimaryState(session, settings, new Set());
 	},
 
-	async buildDeveloperInstructions(_agentDir, settings, session): Promise<string | undefined> {
+	async buildDeveloperInstructions(_agentDir, settings): Promise<string | undefined> {
 		const config = loadHindsightConfig(settings);
 		if (!isHindsightConfigured(config)) return undefined;
 
-		const state = session?.getHindsightSessionState();
+		// The static instructions only. Mental models and recall move with the
+		// session, so they go to the context tail through `buildVolatileContext`
+		// rather than rewriting the provider's cache prefix on every recall.
+		return STATIC_INSTRUCTIONS;
+	},
+
+	async buildVolatileContext(session): Promise<string | undefined> {
+		const state = session.getHindsightSessionState();
 		const primary = state?.aliasOf ?? state;
 		const recallSnippet = primary?.lastRecallSnippet;
 		const mentalModelsSnippet = primary?.mentalModelsSnippet;
 
-		// Order: static instructions → mental models (stable, curated) → recall
-		// (volatile per turn). Stable context first so the LLM's prior is
-		// anchored on curated knowledge.
-		const parts = [STATIC_INSTRUCTIONS];
+		// Order: mental models (stable, curated) → recall (volatile per turn).
+		// Curated knowledge first so the model's prior is anchored on it.
+		const parts: string[] = [];
 		if (mentalModelsSnippet) parts.push(mentalModelsSnippet);
 		if (recallSnippet) parts.push(recallSnippet);
+		if (parts.length === 0) return undefined;
 		return parts.join("\n\n");
 	},
 

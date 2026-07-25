@@ -129,7 +129,11 @@
       for (var gx = gx0; gx < gx1; gx++) {
         var px = gx * cellW + cellW / 2;
         var d = Math.hypot(px - cxPx, py - cyPx) / R;
-        var base = 1 - smooth(0.72, 1.02, d);
+        // Limb darkening, matching the terminal sun's FALLOFF (sun.ts): the
+        // smoothstep alone falls off across the outer rim only, so every cell
+        // inside 0.72R saturates at the top band and the disc reads as a blob
+        // instead of the stepped ember ramp. brand-conformance pins these numbers.
+        var base = (1 - smooth(0.72, 1.02, d)) * (1 - 0.34 * Math.pow(d, 1.5));
         var corona = d > 1.0 && d < 1.26 ? smooth(1.26, 1.0, d) * 0.5 : 0;
 
         var rp = 0;

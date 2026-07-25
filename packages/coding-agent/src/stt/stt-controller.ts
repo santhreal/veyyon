@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { collapseWhitespace, errorMessage, logger, Snowflake } from "@veyyon/utils";
+import { collapseWhitespace, errorMessage, isAbortError, logger, Snowflake } from "@veyyon/utils";
 import { settings } from "../config/settings";
 import { type SttStreamHandle, sttClient } from "./asr-client";
 import { downloadSttModel, isSttModelCached } from "./downloader";
@@ -364,7 +364,7 @@ export class STTController {
 			if (!this.#disposed) this.#setState("idle", options);
 		} catch (err) {
 			if (this.#disposed) return;
-			if (err instanceof DOMException && err.name === "AbortError") {
+			if (isAbortError(err)) {
 				this.#setState("idle", options);
 				return;
 			}

@@ -467,44 +467,44 @@ editor.setAutocompleteProvider(provider);
 
 ## Key Detection
 
-Helper functions for detecting keyboard input (supports Kitty keyboard protocol):
+One function reads keys, and one object names them. `matchesKey(data, keyId)`
+answers "is this raw input that key?", and `Key` gives you the identifiers with
+autocomplete (including the modifier helpers `Key.ctrl`, `Key.shift`, `Key.alt`
+and their combinations):
 
 ```typescript
-import {
-	isEnter,
-	isEscape,
-	isTab,
-	isShiftTab,
-	isArrowUp,
-	isArrowDown,
-	isArrowLeft,
-	isArrowRight,
-	isCtrlA,
-	isCtrlC,
-	isCtrlE,
-	isCtrlK,
-	isCtrlO,
-	isCtrlP,
-	isCtrlLeft,
-	isCtrlRight,
-	isAltLeft,
-	isAltRight,
-	isShiftEnter,
-	isAltEnter,
-	isShiftCtrlO,
-	isShiftCtrlD,
-	isShiftCtrlP,
-	isBackspace,
-	isDelete,
-	isHome,
-	isEnd,
-	// ... and more
-} from "@veyyon/tui";
+import { Key, matchesKey } from "@veyyon/tui";
 
-if (isCtrlC(data)) {
+if (matchesKey(data, Key.ctrl("c"))) {
 	process.exit(0);
 }
+
+if (matchesKey(data, Key.enter)) submit();
+if (matchesKey(data, Key.escape)) cancel();
+if (matchesKey(data, Key.shift("tab"))) focusPrevious();
+if (matchesKey(data, Key.up) || matchesKey(data, Key.down)) move(data);
 ```
+
+To go the other way, `parseKey(data)` returns a normalized identifier such as
+`"escape"`, `"ctrl+c"`, or `"shift+tab"`, and `undefined` when the input is not a
+recognized key sequence. Use it when you want to switch over many keys at once:
+
+```typescript
+import { parseKey } from "@veyyon/tui";
+
+switch (parseKey(data)) {
+	case "enter":
+		return submit();
+	case "escape":
+		return cancel();
+	case "ctrl+c":
+		return process.exit(0);
+}
+```
+
+Both understand the Kitty keyboard protocol when the terminal negotiates it, so
+`Key.shift("enter")` and `Key.ctrl("left")` resolve on terminals that can report
+them and fall back to the legacy sequences elsewhere.
 
 ## Differential Rendering
 
@@ -569,7 +569,7 @@ When creating custom components, **each line returned by `render()` must not exc
 Use the key detection utilities to handle keyboard input:
 
 ```typescript
-import { isEnter, isEscape, isArrowUp, isArrowDown, isCtrlC, isTab, isBackspace } from "@veyyon/tui";
+import { Key, matchesKey, truncateToWidth } from "@veyyon/tui";
 import type { Component } from "@veyyon/tui";
 
 class MyInteractiveComponent implements Component {
@@ -580,13 +580,13 @@ class MyInteractiveComponent implements Component {
 	onCancel?: () => void;
 
 	handleInput(data: string): void {
-		if (isArrowUp(data)) {
+		if (matchesKey(data, Key.up)) {
 			this.selectedIndex = Math.max(0, this.selectedIndex - 1);
-		} else if (isArrowDown(data)) {
+		} else if (matchesKey(data, Key.down)) {
 			this.selectedIndex = Math.min(this.items.length - 1, this.selectedIndex + 1);
-		} else if (isEnter(data)) {
+		} else if (matchesKey(data, Key.enter)) {
 			this.onSelect?.(this.selectedIndex);
-		} else if (isEscape(data) || isCtrlC(data)) {
+		} else if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c"))) {
 			this.onCancel?.();
 		}
 	}

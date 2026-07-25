@@ -1,6 +1,6 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ImageContent, ToolExample } from "@veyyon/ai";
-import { formatCount, prompt } from "@veyyon/utils";
+import { errorMessage, formatCount, logger, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import { jsBackend, juliaBackend, pythonBackend, rubyBackend } from "../eval";
 import type { ExecutorBackend, ExecutorBackendResult } from "../eval/backend";
@@ -9,7 +9,7 @@ import { IdleTimeout } from "../eval/idle-timeout";
 import { defaultEvalSessionId } from "../eval/session-id";
 import type { EvalCellResult, EvalDisplayOutput, EvalLanguage, EvalStatusEvent, EvalToolDetails } from "../eval/types";
 import { formatExitCodeNotice } from "../exec/exit-notice";
-import evalDescription from "../prompts/tools/eval.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { DEFAULT_MAX_BYTES, OutputSink, type OutputSummary, TailBuffer } from "../session/streaming-output";
 import { resolveSpawnPolicy } from "../task/spawn-policy";
 import { webpExclusionForModel } from "../utils/image-loading";
@@ -18,8 +18,9 @@ import type { ToolSession } from ".";
 import { truncateForPrompt } from "./approval";
 import { type EvalBackendsAllowance, resolveEvalBackends } from "./eval-backends";
 import { upsertStatusEvent } from "./eval-render";
+import { inlineBudgetFor } from "./output-artifact";
+import { foldToolOutputBookkeeping } from "./output-fold";
 import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "./output-meta";
-import { foldPassingTestOutput } from "./test-output-fold";
 import { ToolAbortError, ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
 import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice, TOOL_TIMEOUTS } from "./tool-timeouts";
@@ -179,7 +180,7 @@ export function getEvalToolDescription(options: EvalToolDescriptionOptions = {})
 	const rb = options.rb ?? false;
 	const jl = options.jl ?? false;
 	const spawnPolicy = resolveSpawnPolicy(options.spawns ?? true);
-	return prompt.render(evalDescription, {
+	return prompt.render(PROMPTS["tools/eval"].text, {
 		py,
 		js,
 		rb,
@@ -220,7 +221,8 @@ function uniqueEvalLanguages(cells: ResolvedEvalCell[]): EvalLanguage[] {
  * transcript and matching the two is the whole point. Otherwise the ordinal and
  * the language, which at least locates the cell in the call that was issued. The
  * code itself is deliberately not included: a cancellation message is read in a
- * hurry, and pasting a cell body into it buries the sentence that matters.
+ * hurry, and pasting a cell body into it buries the applied/not-applied lists
+ * that are the reason the message exists.
  */
 function describeEvalCell(cell: ResolvedEvalCell): string {
 	return cell.title ?? `cell ${cell.index + 1} (${cell.resolved.backend.id})`;
@@ -546,6 +548,10 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 				outputSink = new OutputSink({
 					artifactPath,
 					artifactId,
+					// eval is the single largest producer of tool-result bytes, and its
+					// largest tenth of results carried two thirds of them. Price the
+					// inline window through the one owner rather than the flat default.
+					spillThreshold: inlineBudgetFor(session),
 					headBytes: resolveOutputSinkHeadBytes(session.settings),
 					maxColumns: resolveOutputMaxColumns(session.settings),
 					onChunk: chunk => {
@@ -701,7 +707,7 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 						// This is the one accumulation point every return path below builds its
 						// `outputText` from, so folding here covers the success, non-zero-exit
 						// and cancelled paths without repeating itself in three places.
-						const folded = foldPassingTestOutput(cellOutput).text;
+						const folded = foldToolOutputBookkeeping(cellOutput).text;
 						cellOutputs.push(folded);
 						appendTail(folded);
 					}
@@ -719,20 +725,19 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 						// the defect. Nothing downstream could tell a cancellation from a cell
 						// that threw, though the agent loop's correct response to a failure is
 						// to read it and retry and its correct response to a cancellation is to
-						// stop. Worse, the text was `result.output || "Command aborted"`, and an
-						// interrupted backend returns an EMPTY `result.output`, so the whole
-						// message was that bare constant: it never named the cell, and it never
-						// said that whatever the half-run cell had already mutated is still
-						// live in the kernel, which is the part the operator has to deal with.
+						// stop. Worse, the text was `result.output || "Command aborted"`, so a
+						// cell that had printed anything at all before being interrupted
+						// reported ONLY that output: the word "cancelled" appeared nowhere, and
+						// a half-finished multi-cell run read as a finished one.
 						//
 						// The user's own signal outranks the watchdog when both have fired.
 						// They asked for the stop, and telling them their cell timed out when
 						// they cancelled it is the same conflation in the other direction.
 						if (signal?.aborted || sessionAbortController.signal.aborted) {
 							await finalizeOutput();
-							// `result.output` is empty on this path, so the streamed text is the
-							// only surviving record of how far the work got, and it is what the
-							// operator needs to decide whether to re-run.
+							// `result.output` is empty for an interrupted cell, so the streamed
+							// text is the only surviving record of how far the work got, and it
+							// is what the operator needs to decide whether to re-run.
 							const partial = (result.output || liveOutput.text()).trim();
 							throw new ToolAbortError(
 								[
@@ -818,7 +823,16 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 				if (!outputDumped) {
 					try {
 						await finalizeOutput();
-					} catch {}
+					} catch (error) {
+						// Reached on the failure path, so the throw in flight must survive: it is
+						// what the caller is waiting for, and rethrowing from a `finally` would
+						// replace it. The dump is how a run's full output reaches the operator when
+						// it overflowed the inline budget, so losing it silently means the output is
+						// simply gone with no explanation.
+						logger.warn("Eval output could not be written to its overflow sink; the full output is lost", {
+							error: errorMessage(error),
+						});
+					}
 				}
 			}
 		})();

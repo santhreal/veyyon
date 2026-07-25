@@ -22,6 +22,18 @@ export interface HookEditorOptions {
 	promptStyle?: boolean;
 }
 
+/**
+ * Columns of padding on EACH side of the editor's title and hint rows.
+ *
+ * Exported because a caller that pre-wraps or pre-truncates the title has to
+ * know the width it will actually be rendered at, and the only other way to
+ * know is to guess. `ask.ts` guessed 2 columns per side and attributed the
+ * extra pair to "DynamicBorder vertical chrome", which does not exist: the
+ * border renders one full-width horizontal row and consumes no columns. The
+ * result was a title truncated two columns narrower than the space it had.
+ */
+export const HOOK_EDITOR_TEXT_PAD_COLS = 1;
+
 export class HookEditorComponent extends Container {
 	#editor: Editor;
 	#onSubmitCallback: (value: string) => void;
@@ -48,7 +60,7 @@ export class HookEditorComponent extends Container {
 		this.addChild(new Spacer(1));
 
 		// Title
-		this.addChild(new Text(theme.fg("accent", title), 1, 0));
+		this.addChild(new Text(theme.fg("accent", title), HOOK_EDITOR_TEXT_PAD_COLS, 0));
 		this.addChild(new Spacer(1));
 
 		// Editor
@@ -69,7 +81,7 @@ export class HookEditorComponent extends Container {
 		const hint = this.#promptStyle
 			? "enter or ctrl+q submit  esc cancel  ctrl+g external editor"
 			: "ctrl+q/ctrl+enter submit  esc cancel  ctrl+g external editor";
-		this.addChild(new Text(theme.fg("dim", hint), 1, 0));
+		this.addChild(new Text(theme.fg("dim", hint), HOOK_EDITOR_TEXT_PAD_COLS, 0));
 
 		this.addChild(new Spacer(1));
 		this.addChild(new DynamicBorder());

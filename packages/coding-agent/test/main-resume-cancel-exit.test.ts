@@ -62,6 +62,10 @@ describe("runRootCommand — startup --resume picker cancellation", () => {
 		try {
 			await runRootCommand(parsed, ["--resume", "--print"], {
 				discoverAuthStorage: async () => authStorage,
+				// Startup reads the piped prompt from the process's real stdin before it
+				// gets to the resume picker; an inherited pipe with no writer never hits
+				// EOF and this test would hang there instead of reaching what it asserts.
+				readPipedInput: async () => undefined,
 				settings,
 				selectSession: async () => {
 					pickerCalled = true;

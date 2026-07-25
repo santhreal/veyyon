@@ -18,7 +18,8 @@ import { afterEach, beforeEach } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
 import { closeDb } from "@veyyon/stats/db";
-import { getAgentDir, setAgentDir, TempDir } from "@veyyon/utils";
+import { setAgentDir, TempDir } from "@veyyon/utils";
+import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 const XDG_KEYS = ["XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"] as const;
 // VEYYON_CONFIG_DIR is the live resolution key (dirs.ts CONFIG_DIR_ENV_KEYS);
@@ -31,12 +32,19 @@ export interface StatsTestIsolation {
 }
 
 export function installStatsTestIsolation(prefix: string): StatsTestIsolation {
-	const originalAgentDir = getAgentDir();
 	const originalConfigDirs: Record<string, string | undefined> = {};
+	let dirOverrides: DirOverridesSnapshot | undefined;
 	const originalXdg: Record<string, string | undefined> = {};
 	let tempDir: TempDir | null = null;
 
 	beforeEach(() => {
+		// Captured per test, before anything is redirected. `setAgentDir(theOldValue)` is
+		// NOT an inverse of `setAgentDir(temp)`: it always WRITES
+		// `VEYYON_CODING_AGENT_DIR`, so it cannot express "the variable was absent", and it
+		// CLEARS the active profile. Restoring that way made all twelve suites using this
+		// helper export the developer's real agent dir and the default profile to every
+		// file that ran after them in the same process.
+		dirOverrides = captureDirOverrides();
 		tempDir = TempDir.createSync(prefix);
 		for (const key of CONFIG_DIR_KEYS) {
 			originalConfigDirs[key] = process.env[key];
@@ -63,7 +71,10 @@ export function installStatsTestIsolation(prefix: string): StatsTestIsolation {
 			if (prior === undefined) delete process.env[key];
 			else process.env[key] = prior;
 		}
-		setAgentDir(originalAgentDir);
+		// After the config/XDG variables are back, because the restore rebuilds the dir
+		// resolver FROM the environment.
+		if (dirOverrides) restoreDirOverrides(dirOverrides);
+		dirOverrides = undefined;
 		tempDir?.removeSync();
 		tempDir = null;
 	});

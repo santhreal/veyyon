@@ -67,45 +67,41 @@ function parseHuggingFaceUrl(url: string): {
 	type: "model" | "dataset" | "space" | "model_or_user";
 	id: string; // Full ID (org/name or just name)
 } | null {
-	try {
-		const parsed = tryParseUrl(url);
-		if (!parsed) return null;
-		if (parsed.hostname !== "huggingface.co") return null;
+	const parsed = tryParseUrl(url);
+	if (!parsed) return null;
+	if (parsed.hostname !== "huggingface.co") return null;
 
-		const parts = parsed.pathname.split("/").filter(Boolean);
-		if (parts.length === 0) return null;
+	const parts = parsed.pathname.split("/").filter(Boolean);
+	if (parts.length === 0) return null;
 
-		// huggingface.co/datasets/{org}/{dataset} or huggingface.co/datasets/{dataset}
-		if (parts[0] === "datasets" && parts.length >= 2) {
-			const id = parts.slice(1).join("/");
-			return { type: "dataset", id };
-		}
+	// huggingface.co/datasets/{org}/{dataset} or huggingface.co/datasets/{dataset}
+	if (parts[0] === "datasets" && parts.length >= 2) {
+		const id = parts.slice(1).join("/");
+		return { type: "dataset", id };
+	}
 
-		// huggingface.co/spaces/{org}/{space}
-		if (parts[0] === "spaces" && parts.length >= 3) {
-			return { type: "space", id: `${parts[1]}/${parts[2]}` };
-		}
+	// huggingface.co/spaces/{org}/{space}
+	if (parts[0] === "spaces" && parts.length >= 3) {
+		return { type: "space", id: `${parts[1]}/${parts[2]}` };
+	}
 
-		// Skip non-resource paths
-		const reservedPaths = ["docs", "blog", "pricing", "enterprise", "join", "login", "settings"];
-		if (reservedPaths.includes(parts[0])) {
-			return null;
-		}
-
-		// huggingface.co/{org}/{model} (two parts = definitely a model)
-		if (parts.length >= 2) {
-			return { type: "model", id: `${parts[0]}/${parts[1]}` };
-		}
-
-		// huggingface.co/{id} (single part = could be model or user, try model first)
-		if (parts.length === 1) {
-			return { type: "model_or_user", id: parts[0] };
-		}
-
-		return null;
-	} catch {
+	// Skip non-resource paths
+	const reservedPaths = ["docs", "blog", "pricing", "enterprise", "join", "login", "settings"];
+	if (reservedPaths.includes(parts[0])) {
 		return null;
 	}
+
+	// huggingface.co/{org}/{model} (two parts = definitely a model)
+	if (parts.length >= 2) {
+		return { type: "model", id: `${parts[0]}/${parts[1]}` };
+	}
+
+	// huggingface.co/{id} (single part = could be model or user, try model first)
+	if (parts.length === 1) {
+		return { type: "model_or_user", id: parts[0] };
+	}
+
+	return null;
 }
 
 export const handleHuggingFace: SpecialHandler = async (url: string, timeout: number, signal?: AbortSignal) => {

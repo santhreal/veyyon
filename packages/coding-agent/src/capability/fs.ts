@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { isEnoent, isEnotdir, isFsError } from "@veyyon/utils/fs-error";
+import { isFsError, isMissingPath } from "@veyyon/utils/fs-error";
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 
@@ -41,7 +41,7 @@ export async function readFile(filePath: string): Promise<string | null> {
 		// missing from the prompt (Law 10: no silent recall loss). We still
 		// return null so startup proceeds; the cached null above suppresses
 		// re-warning on repeat reads of the same path.
-		if (!isEnoent(err) && !isEnotdir(err)) {
+		if (!isMissingPath(err)) {
 			logger.warn("Context file exists but could not be read; dropped from discovery", {
 				path: abs,
 				code: isFsError(err) ? err.code : undefined,
@@ -69,7 +69,7 @@ export async function readDirEntries(dirPath: string): Promise<fs.Dirent[]> {
 		// cannot be listed (EACCES, EMFILE, ...) is a real error that would
 		// otherwise silently hide every context file beneath it. Warn, cache
 		// the empty result so we do not re-warn, and fail soft with [].
-		if (!isEnoent(err) && !isEnotdir(err)) {
+		if (!isMissingPath(err)) {
 			logger.warn("Directory exists but could not be listed; skipped during discovery", {
 				path: abs,
 				code: isFsError(err) ? err.code : undefined,

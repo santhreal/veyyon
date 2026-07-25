@@ -3,7 +3,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { discoverAndLoadExtensions } from "@veyyon/coding-agent/extensibility/extensions/loader";
-import { getAgentDir, getPluginsDir, removeSyncWithRetries, setAgentDir, TempDir } from "@veyyon/utils";
+import { getPluginsDir, removeSyncWithRetries, setAgentDir, TempDir } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 const currentPiCodingAgentPath = Bun.resolveSync("@veyyon/coding-agent", import.meta.dir);
 const currentPiExtensionsPath = Bun.resolveSync("@veyyon/coding-agent/extensibility/extensions", import.meta.dir);
@@ -11,7 +12,7 @@ const currentPiExtensionsPath = Bun.resolveSync("@veyyon/coding-agent/extensibil
 describe("plugin extension discovery", () => {
 	let projectDir: TempDir;
 	let tempHome = "";
-	const originalAgentDir = getAgentDir();
+	const dirOverrides = captureDirOverrides();
 	const xdgVars = ["XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"] as const;
 	const originalXdg = new Map<string, string | undefined>();
 
@@ -80,7 +81,7 @@ describe("plugin extension discovery", () => {
 			else process.env[key] = value;
 		}
 		originalXdg.clear();
-		setAgentDir(originalAgentDir);
+		restoreDirOverrides(dirOverrides);
 		removeSyncWithRetries(tempHome);
 	});
 

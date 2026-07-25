@@ -13,6 +13,14 @@ export const GENERAL_SETTINGS = {
 	// ────────────────────────────────────────────────────────────────────────
 	setupVersion: { type: "number", default: 0 },
 
+	// Which settings migrations have already been applied to the global config.
+	// A migration that cannot tell an old encoding from a value the user typed
+	// needs this: stripping the `-1` that used to mean "unset" is safe exactly
+	// once, and re-running it on every load would delete a `-1` the user set
+	// deliberately (which is now a legal presence penalty). Stamped into
+	// config.yml when the migration runs; not a knob, so it has no `ui`.
+	settingsMigrationVersion: { type: "number", default: 0 },
+
 	// Auth broker — credentials proxied through a remote `veyyon auth-broker serve`
 	// host. Hidden from the UI; populate via env vars or hand-edited config.yml.
 	// Env (`VEYYON_AUTH_BROKER_URL` / `VEYYON_AUTH_BROKER_TOKEN`) takes precedence so
@@ -173,18 +181,6 @@ export const GENERAL_SETTINGS = {
 			label: "Role Models",
 			description:
 				"Assign a model to each role (task, plan, advisor, …). Opens a searchable picker with auth status. Scoped to the active profile — never edit config by hand.",
-		},
-	},
-
-	"subagent.model": {
-		type: "string",
-		default: undefined,
-		ui: {
-			tab: "model",
-			group: "Models",
-			label: "Subagent Model",
-			description:
-				"Model for spawned task subagents. Default: inherit — follows the main model live. Searchable picker with auth status. Overrides modelRoles.task when set.",
 		},
 	},
 

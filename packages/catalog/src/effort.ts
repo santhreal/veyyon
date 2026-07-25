@@ -18,6 +18,20 @@ export const THINKING_EFFORTS: readonly Effort[] = [
 ];
 
 /**
+ * Is this an effort level?
+ *
+ * The guard lives beside {@link THINKING_EFFORTS} because that list is the one
+ * owner of the values, and a guard that spells them again is a second owner.
+ * That is not hypothetical: both OpenAI-compatible servers in `@veyyon/ai` had a
+ * hand-written chain of six `value === "..."` comparisons, so adding a level to
+ * the ladder left every one of them silently rejecting it, and a request that
+ * named the new effort was answered as if it had named none.
+ */
+export function isEffort(value: unknown): value is Effort {
+	return typeof value === "string" && THINKING_EFFORTS.includes(value as Effort);
+}
+
+/**
  * Canonicalize an effort ladder to unique {@link Effort} values in
  * least → most-intensive order.
  *

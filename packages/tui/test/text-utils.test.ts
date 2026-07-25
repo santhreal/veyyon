@@ -4,11 +4,13 @@ import {
 	encodeTextSized,
 	extractSegments,
 	padLineToWidth,
+	replaceTabs,
 	sanitizeSingleLine,
 	sliceWithWidth,
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui/utils";
+import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { Glob } from "bun";
 
 describe("text utils", () => {
@@ -157,13 +159,40 @@ describe("sanitizeSingleLine", () => {
 		expect(sanitizeSingleLine("")).toBe("");
 	});
 
+	/**
+	 * Parity with the repo-wide owner of the collapse idiom, on the fixtures the
+	 * cases above pin plus the degenerate inputs.
+	 *
+	 * `sanitizeSingleLine` is the tab-expanding WRAPPER over `collapseWhitespace`;
+	 * it inlined its own `[\r\n]+` / `\s+` regex pair until 2026-07-25 while
+	 * `ask-dialog.ts` and `transcript-render-helpers.ts` were calling
+	 * `collapseWhitespace(replaceTabs(...))` by hand for the same effect. Two
+	 * answers to one question is how a flatten helper starts disagreeing with
+	 * itself about, say, U+00A0 or a vertical tab. This fails if they ever diverge.
+	 */
+	it.each([
+		"  a\tb\n\nc  \r\n d  ",
+		"line one\nline two",
+		"",
+		"\t",
+		"   ",
+		"\r\n\r\n",
+		"a\u000bb",
+		"a\u00a0b",
+		"one\ttwo\tthree",
+	])("agrees with collapseWhitespace(replaceTabs(...)) on %j", input => {
+		expect(sanitizeSingleLine(input)).toBe(collapseWhitespace(replaceTabs(input)));
+	});
+
 	// ONE-PLACE lock: this helper was copy-pasted byte-for-byte into select-list
 	// and settings-list. It now lives only in utils.ts — a second definition must
-	// re-import, not re-declare, or copies drift.
+	// re-import, not re-declare, or copies drift. Every package that depends on
+	// `@veyyon/utils` is scanned, not just the two that had the copies: the next
+	// copy will be made wherever the next list component is written.
 	it("is defined in exactly one source file", async () => {
 		const root = `${import.meta.dir}/../..`;
 		const definitions: string[] = [];
-		for (const pkg of ["tui/src", "coding-agent/src"]) {
+		for (const pkg of ["tui/src", "coding-agent/src", "collab-web/src", "tool-render/src", "agent/src", "ai/src"]) {
 			const glob = new Glob("**/*.ts");
 			for await (const rel of glob.scan({ cwd: `${root}/${pkg}` })) {
 				const src = await Bun.file(`${root}/${pkg}/${rel}`).text();
@@ -171,6 +200,17 @@ describe("sanitizeSingleLine", () => {
 			}
 		}
 		expect(definitions).toEqual(["tui/src/utils.ts"]);
+	});
+
+	/** And the one definition must DELEGATE, not re-inline the collapse. A body
+	 *  that flattens with its own regex is the copy this lock exists to prevent,
+	 *  even though it lives at the blessed path. */
+	it("delegates the collapse to the utils owner instead of inlining a regex", async () => {
+		const src = await Bun.file(`${import.meta.dir}/../src/utils.ts`).text();
+		const body = /export function sanitizeSingleLine\(text: string\): string \{([^}]*)\}/.exec(src)?.[1] ?? "";
+
+		expect(body).toContain("collapseWhitespace(replaceTabs(text))");
+		expect(body).not.toMatch(/replace\(/);
 	});
 });
 

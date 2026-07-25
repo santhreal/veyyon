@@ -37,7 +37,7 @@ Code already neutralizes a failure mode? DELETE its rule. Each dropped rule buys
 
 ## Case Study: Session Titles
 
-`packages/coding-agent/src/prompts/system/title-system.md`, consumed by LFM2-350M/700M on-device (`tiny/worker.ts` prefills `<title>`, stops on `</title>`, caps 20 tokens; `normalizeGeneratedTitle` strips quotes/punctuation/tags in code).
+`packages/coding-agent/src/prompts/titles/system.md`, consumed by LFM2-350M/700M on-device (`tiny/worker.ts` prefills `<title>`, stops on `</title>`, caps 20 tokens; `normalizeGeneratedTitle` strips quotes/punctuation/tags in code).
 
 ```
 WRONG (instruction-heavy, negation list, output-only examples):

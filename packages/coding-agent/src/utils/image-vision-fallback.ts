@@ -25,8 +25,7 @@ import type { ModelRegistry } from "../config/model-registry";
 import { expandRoleAlias, getModelMatchPreferences, resolveModelFromString } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
 import { type LocalProtocolOptions, resolveLocalRoot } from "../internal-urls";
-import describeUserPrompt from "../prompts/tools/image-attachment-describe.md" with { type: "text" };
-import describeSystemPrompt from "../prompts/tools/image-attachment-describe-system.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 
 /** Telemetry tag for the oneshot vision-description calls. */
 const ONESHOT_KIND = "image_attachment_describe";
@@ -130,13 +129,13 @@ async function describeImage(
 		const response = await instrumentedCompleteSimple(
 			visionModel,
 			{
-				systemPrompt: [prompt.render(describeSystemPrompt)],
+				systemPrompt: [prompt.render(PROMPTS["tools/image-attachment-describe-system"].text)],
 				messages: [
 					{
 						role: "user",
 						content: [
 							{ type: "image", data: image.data, mimeType: image.mimeType },
-							{ type: "text", text: prompt.render(describeUserPrompt) },
+							{ type: "text", text: prompt.render(PROMPTS["tools/image-attachment-describe"].text) },
 						],
 						timestamp: Date.now(),
 					},

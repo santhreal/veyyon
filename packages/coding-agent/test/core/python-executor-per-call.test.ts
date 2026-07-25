@@ -3,6 +3,13 @@ import { executePython } from "@veyyon/coding-agent/eval/py/executor";
 import type { KernelExecuteOptions, KernelExecuteResult } from "@veyyon/coding-agent/eval/py/kernel";
 import { PythonKernel } from "@veyyon/coding-agent/eval/py/kernel";
 import { TempDir } from "@veyyon/utils";
+import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
+
+// The code under test opens `AgentStorage`, which resolves `agent.db` under the ACTIVE
+// PROFILE's agent dir, so without this the suite writes into the developer's real
+// `~/.veyyon/profiles/<profile>/agent` and the real-data tripwire fails the one test
+// that gets far enough to reach a kernel.
+useIsolatedAgentDir();
 
 interface KernelStub {
 	execute: (code: string, options?: KernelExecuteOptions) => Promise<KernelExecuteResult>;
@@ -48,6 +55,10 @@ function rejectOnStartupCancellation(options: KernelStartOptions): Promise<never
 	return promise;
 }
 
+// No `VEYYON_PYTHON_SKIP_CHECK` here on purpose: `checkPythonKernelAvailability`
+// already returns ok without probing an interpreter under `bun test`, so setting the
+// flag bought nothing and leaked a process-global into every file that ran later.
+// Pinned by `core/python-availability-preflight-skip.test.ts`.
 describe("executePython (per-call)", () => {
 	afterEach(() => {
 		PythonKernel.start = originalStart;
@@ -55,7 +66,6 @@ describe("executePython (per-call)", () => {
 	});
 
 	it("returns a cancelled timeout result when kernel startup exceeds the deadline", async () => {
-		Bun.env.VEYYON_PYTHON_SKIP_CHECK = "1";
 		using tempDir = TempDir.createSync("@veyyon-python-executor-per-call-");
 
 		PythonKernel.start = async options => await rejectOnStartupCancellation(options);
@@ -72,7 +82,6 @@ describe("executePython (per-call)", () => {
 	});
 
 	it("returns a cancelled timeout result when the startup budget expires before kernel creation", async () => {
-		Bun.env.VEYYON_PYTHON_SKIP_CHECK = "1";
 		using tempDir = TempDir.createSync("@veyyon-python-executor-per-call-");
 
 		let nowCalls = 0;
@@ -93,7 +102,6 @@ describe("executePython (per-call)", () => {
 	});
 
 	it("returns a cancelled result when caller aborts during kernel startup", async () => {
-		Bun.env.VEYYON_PYTHON_SKIP_CHECK = "1";
 		using tempDir = TempDir.createSync("@veyyon-python-executor-per-call-");
 		const startupStarted = Promise.withResolvers<void>();
 
@@ -118,7 +126,6 @@ describe("executePython (per-call)", () => {
 	});
 
 	it("shuts down kernel on timed-out cancellation", async () => {
-		Bun.env.VEYYON_PYTHON_SKIP_CHECK = "1";
 		using tempDir = TempDir.createSync("@veyyon-python-executor-per-call-");
 
 		let shutdownCalls = 0;

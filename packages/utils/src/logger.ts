@@ -16,6 +16,7 @@ import winston from "winston";
 import DailyRotateFile from "winston-daily-rotate-file";
 import { getLogsDir } from "./dirs";
 import { drainModuleLoadEvents } from "./timing-buffer";
+import { errorMessage } from "./type-guards";
 
 /** Ensure a logs directory exists; return the resolved path. */
 function ensureDir(dir: string): string {
@@ -72,16 +73,139 @@ function getLogFormat(): winston.Logform.Format {
 	return logFormat;
 }
 
+/**
+ * The directory the live file transport writes to, so a later move is noticed.
+ *
+ * `undefined` while no file transport exists, and set to an explicit directory when
+ * {@link setTransports} was given one (that caller chose the path and owns it).
+ */
+let fileTransportDir: string | undefined;
+
+/** Whether the live file transport follows {@link getLogsDir} rather than a fixed path. */
+let fileTransportFollowsDirs = false;
+
+/**
+ * A destination the rebind already failed on, so it is neither retried nor re-announced.
+ *
+ * The rebind check runs on every emission, so a destination that cannot be written to
+ * would otherwise cost one failed `mkdir` and one warning per log line. Cleared as soon
+ * as the resolved directory changes again or transports are reconfigured, so a problem
+ * that gets fixed is picked up on the next line.
+ */
+let failedRebindTarget: string | undefined;
+
 /** Build a rotating file transport, materializing the target directory lazily. */
 function makeFileTransport(dir?: string): winston.transport {
-	return new DailyRotateFile({
-		dirname: ensureDir(dir ?? getLogsDir()),
+	fileTransportFollowsDirs = dir === undefined;
+	fileTransportDir = ensureDir(dir ?? getLogsDir());
+	const transport = new DailyRotateFile({
+		dirname: fileTransportDir,
 		filename: "veyyon.%DATE%.log",
 		datePattern: "YYYY-MM-DD",
 		maxSize: "10m",
 		maxFiles: 5,
 		zippedArchive: true,
 	});
+	// A transport is an EventEmitter, and an `error` with no listener is an UNCAUGHT
+	// exception. Everything about a log destination can go wrong after the transport is
+	// built and while the stream is opening: the directory is removed, the disk fills, the
+	// volume is unmounted. None of that is a reason to take the process down — the log line
+	// is the least important thing happening at that moment. Announced once per transport,
+	// through `process.emitWarning` because the logger is the thing that just failed and a
+	// per-line report would be its own flood.
+	let announced = false;
+	const onError = (error: Error): void => {
+		if (announced) return;
+		announced = true;
+		process.emitWarning(`Log output to "${fileTransportDir}" failed: ${error.message}`, {
+			code: "VEYYON_LOG_WRITE_FAILED",
+		});
+	};
+	transport.on("error", onError);
+	// The transport itself is not enough. `winston-daily-rotate-file` forwards `new`,
+	// `rotate` and `logRemoved` from its underlying rotator and NOT `error`, so a failure
+	// to open the file reaches an emitter nobody is listening to and takes the process
+	// down. Reaching for `logStream` is deliberate for that reason, and it is guarded so a
+	// future version that stops exposing it degrades to the handler above rather than
+	// throwing here.
+	const logStream = (
+		transport as unknown as { logStream?: { on?: (event: string, listener: (error: Error) => void) => void } }
+	).logStream;
+	logStream?.on?.("error", onError);
+	return transport;
+}
+
+/**
+ * Rebind the file transport when the config root has moved under it.
+ *
+ * The transport resolves its directory ONCE, when the logger is first built, and the
+ * logger is built on the first log emission, which lands somewhere inside whatever the
+ * process happened to be doing. A process that moves the config root afterwards kept
+ * writing to the OLD directory forever. Two ways that hurts, both silent:
+ *
+ *  - The lines are not where the operator looks for them. `veyyon logs` and every doc
+ *    name the CURRENT config root, and the file there simply has no entries.
+ *  - If the old directory has been deleted meanwhile, the open stream keeps writing to
+ *    an unlinked file and the lines are gone. The emit helpers swallow logging failures
+ *    by design, so there is nothing to notice.
+ *
+ * It is also what left 130 `~/.veyyon-*-<id>` directories in a real home directory, each
+ * holding only `logs/` and a cache file. `file-stream-rotator` calls `mkDirForFile` before
+ * every `createWriteStream`, so any stream open RECREATES the directory tree: a suite
+ * isolated the config root, logged a line, removed its temp root, and the still-bound
+ * transport put the tree back on its next open. An already-open stream does not do this
+ * (probed: 200 writes after `rm -rf`, nothing came back), which is why the leftovers all
+ * carry a `logs/` and nothing else.
+ *
+ * Checking on emit rather than being told about the move keeps the dependency one-way:
+ * `dirs.ts` resolves every path in the process and must not import the logger.
+ * `getLogsDir` is a cached lookup, so the cost is a map read per emission.
+ */
+function rebindFileTransportIfMoved(logger: winston.Logger): void {
+	if (!fileTransportFollowsDirs || fileTransportDir === undefined) return;
+	let current: string;
+	try {
+		current = getLogsDir();
+	} catch {
+		// An unusable HOME is reported by the code that resolves paths for real work,
+		// not by a log line's side effect. Keep writing where we already are.
+		return;
+	}
+	if (current === fileTransportDir) return;
+	// A destination that already failed is not retried, and not re-announced. The check
+	// runs on EVERY emission, so without this a single unwritable destination produces one
+	// failed `mkdir` and one warning per log line: the first version of this emitted 4626
+	// of them in one test run. Once is informative, 4626 is the same absorbed failure in
+	// a louder costume.
+	if (current === failedRebindTarget) return;
+	// BUILD FIRST, then swap. Clearing first and building second means a failed build
+	// (an unwritable directory, a guard refusing the path) leaves the logger with no
+	// transports at all, and since the emit helpers swallow their own failures the
+	// process would go quiet for the rest of its life while winston printed "Attempt to
+	// write logs with no transports" on every line. Keeping the working transport bound
+	// is strictly better than that, and the failure is announced rather than absorbed.
+	const previous = { dir: fileTransportDir, follows: fileTransportFollowsDirs };
+	let rebuilt: winston.transport[];
+	try {
+		rebuilt = buildTransports(transportOpts);
+	} catch (error) {
+		fileTransportDir = previous.dir;
+		fileTransportFollowsDirs = previous.follows;
+		failedRebindTarget = current;
+		// `process.emitWarning` rather than a log line: the logger is the thing that just
+		// failed, so logging the failure is not available. Same reasoning as the XDG
+		// refusal in `dirs.ts`.
+		process.emitWarning(
+			`Log output could not follow the config root to "${current}" (${errorMessage(error)}); ` +
+				`veyyon is still writing to "${previous.dir}".`,
+			{ code: "VEYYON_LOG_REBIND_FAILED" },
+		);
+		return;
+	}
+	failedRebindTarget = undefined;
+	logger.clear();
+	for (const transport of rebuilt) logger.add(transport);
+	logger.silent = rebuilt.length === 0;
 }
 
 function makeConsoleTransport(): winston.transport {
@@ -99,6 +223,11 @@ let winstonLogger: winston.Logger | undefined;
 
 function buildTransports(opts: { console?: boolean; file?: boolean | string }): winston.transport[] {
 	const transports: winston.transport[] = [];
+	// Cleared first so turning the file transport OFF cannot leave the previous
+	// directory recorded, which would make a later move look like a rebind is due.
+	fileTransportDir = undefined;
+	fileTransportFollowsDirs = false;
+	failedRebindTarget = undefined;
 	if (opts.file) transports.push(makeFileTransport(typeof opts.file === "string" ? opts.file : undefined));
 	if (opts.console) transports.push(makeConsoleTransport());
 	return transports;
@@ -118,7 +247,9 @@ function getWinstonLogger(): winston.Logger {
 			// Don't exit on error - logging failures shouldn't crash the app
 			exitOnError: false,
 		});
+		return winstonLogger;
 	}
+	rebindFileTransportIfMoved(winstonLogger);
 	return winstonLogger;
 }
 
@@ -189,22 +320,12 @@ export function debug(message: string, context?: Record<string, unknown>): void 
 	}
 }
 
-/**
- * Streaming startup markers, enabled by `VEYYON_DEBUG_STARTUP`. Unlike the
- * VEYYON_TIMING tree (printed only after startup completes), these write one
- * synchronous stderr line as each phase begins/ends, so a hard hang still
- * shows the last phase that started. `fs.writeSync(2)` is used deliberately:
- * it cannot be reordered or buffered past a synchronous block of the event
- * loop (dlopen, sync fs on a dead mount, spawnSync).
- */
-export function startupMarker(text: string): void {
-	if (!process.env.VEYYON_DEBUG_STARTUP) return;
-	try {
-		fs.writeSync(2, `[startup] ${text}\n`);
-	} catch {
-		// stderr unavailable; markers are best-effort
-	}
-}
+// The marker itself lives in `./startup-marker`, which imports nothing but `node:fs`
+// so the CLI bootstrap can use it without pulling this winston-backed module in.
+// Re-exported here because callers reach it as `logger.startupMarker`.
+export { startupMarker } from "./startup-marker";
+
+import { startupMarker } from "./startup-marker";
 
 const LOGGED_TIMING_THRESHOLD_MS = 0.5;
 

@@ -23,7 +23,7 @@ import { setShimmerActivity, shimmerText } from "../../modes/theme/shimmer";
 import { getSymbolTheme, theme } from "../../modes/theme/theme";
 import type { InteractiveModeContext, TodoPhase } from "../../modes/types";
 import type { PlanApprovalDetails } from "../../plan-mode/approved-plan";
-import idleRecapPrompt from "../../prompts/system/recap-user.md" with { type: "text" };
+import { PROMPTS } from "../../prompts/registry";
 import type { AgentSessionEvent } from "../../session/agent-session";
 import { isSilentAbort, readQueueChipText, resolveAbortLabel } from "../../session/messages";
 import { previewLine, TRUNCATE_LENGTHS } from "../../tools/render-utils";
@@ -1406,12 +1406,9 @@ export class EventController {
 					: event.reason === "idle"
 						? "Idle "
 						: "";
-		const actionLabel =
-			event.action === "handoff"
-				? "Auto-handoff"
-				: event.action === "shake"
-					? "Auto-shake"
-					: "Auto context-full maintenance";
+		// Two engine actions, so two labels. A third arm for `shake` stood here
+		// after the shake engine was removed; nothing could emit it.
+		const actionLabel = event.action === "handoff" ? "Auto-handoff" : "Auto context-full maintenance";
 		this.ctx.autoCompactionLoader = new Loader(
 			this.ctx.ui,
 			spinner => theme.fg("accent", spinner),
@@ -1434,34 +1431,8 @@ export class EventController {
 			this.ctx.statusContainer.disposeChildren();
 		}
 		const isHandoffAction = event.action === "handoff";
-		const isShakeAction = event.action === "shake";
 		if (event.aborted) {
-			this.ctx.showStatus(
-				isHandoffAction
-					? "Auto-handoff cancelled"
-					: isShakeAction
-						? "Auto-shake cancelled"
-						: "Auto context-full maintenance cancelled",
-			);
-		} else if (isShakeAction) {
-			// Shake produces no CompactionResult; rebuild on success, suppress benign skips.
-			// The fallback path (`errorMessage` set, `skipped` false) means shake reclaimed
-			// some tokens before deciding the threshold still wasn't cleared — rebuild so
-			// the chat reflects the dropped regions even though a context-full pass follows.
-			if (event.errorMessage) {
-				if (!event.skipped) {
-					this.ctx.rebuildChatFromMessages();
-					this.ctx.statusLine.invalidate();
-					this.ctx.ui.requestRender();
-				}
-				this.ctx.showWarning(event.errorMessage);
-			} else if (!event.skipped) {
-				this.ctx.lastAssistantUsage = undefined;
-				this.ctx.rebuildChatFromMessages();
-				this.ctx.statusLine.invalidate();
-				this.ctx.ui.requestRender();
-				this.ctx.showStatus("Auto-shake completed");
-			}
+			this.ctx.showStatus(isHandoffAction ? "Auto-handoff cancelled" : "Auto context-full maintenance cancelled");
 		} else if (event.result) {
 			this.ctx.lastAssistantUsage = undefined;
 			this.ctx.rebuildChatFromMessages();
@@ -1684,7 +1655,7 @@ export class EventController {
 		if (!this.ctx.viewSession.model) return;
 		if (this.ctx.viewSession.messages.length === 0) return;
 
-		const promptText = prompt.render(idleRecapPrompt, {
+		const promptText = prompt.render(PROMPTS["side-channel/recap-user"].text, {
 			goal: this.#idleRecapGoalText() ?? "",
 			task: nextActionableTask(this.ctx.todoPhases)?.content ?? "",
 		});

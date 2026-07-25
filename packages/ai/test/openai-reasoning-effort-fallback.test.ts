@@ -3,8 +3,8 @@ import { streamAzureOpenAIResponses } from "@veyyon/ai/providers/azure-openai-re
 import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
 import { resolveOpenAIReasoningEffortFallback } from "@veyyon/ai/providers/openai-reasoning-fallback";
 import { streamOpenAIResponses } from "@veyyon/ai/providers/openai-responses";
-import type { CapturedHttpErrorResponse } from "@veyyon/ai/utils/http-inspector";
 import type { Context, FetchImpl, Model, ProviderSessionState } from "@veyyon/ai/types";
+import type { CapturedHttpErrorResponse } from "@veyyon/ai/utils/http-inspector";
 import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
 

@@ -1,23 +1,13 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isEnoent, isProcessAlive, postmortem } from "@veyyon/utils";
-import { daemonRuntimeDir } from "./paths";
+import { canonicalProjectDir, daemonRuntimeDir } from "./paths";
 
 const CLIENTS_DIR = "clients";
 
 /** Handle keeping one veyyon process registered in a project daemon scope. */
 export interface DaemonProjectPresence {
 	close(): Promise<void>;
-}
-
-async function canonicalProjectDir(projectDir: string): Promise<string> {
-	const resolved = path.resolve(projectDir);
-	try {
-		return await fs.realpath(resolved);
-	} catch (error) {
-		if (isEnoent(error)) return resolved;
-		throw error;
-	}
 }
 
 /** Register this veyyon process so project daemons survive while it remains alive. */

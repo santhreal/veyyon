@@ -1,16 +1,19 @@
 import { describe, expect, it } from "bun:test";
 import { prompt } from "@veyyon/utils";
 import "../../src/config/prompt-templates";
-import subagentSystemPromptTemplate from "../../src/prompts/system/subagent-system-prompt.md" with { type: "text" };
+import { PROMPTS } from "@veyyon/coding-agent/prompts/registry";
 
 /** Render the subagent template with `agent` set (always required) plus overrides. */
 function renderSubagent(overrides: Record<string, unknown> = {}): string {
-	return prompt.render(subagentSystemPromptTemplate, { agent: "Do the assigned work.", ...overrides });
+	return prompt.render(PROMPTS["subagent/system-prompt"].text, {
+		agent: "Do the assigned work.",
+		...overrides,
+	});
 }
 
 describe("subagent system prompt", () => {
 	it("revokes native output labels when caller schema overrides the agent", () => {
-		const out = prompt.render(subagentSystemPromptTemplate, {
+		const out = prompt.render(PROMPTS["subagent/system-prompt"].text, {
 			agent: 'Use incremental yield with type: ["findings"].',
 			outputSchemaOverridesAgent: true,
 			outputSchema: {
@@ -93,7 +96,7 @@ describe("subagent system prompt: gate parity", () => {
 			"outputSchemaOverridesAgent",
 		]);
 		const found = new Set<string>();
-		for (const m of subagentSystemPromptTemplate.matchAll(/\{\{#if\s+([A-Za-z_][\w.]*)\}\}/g)) {
+		for (const m of PROMPTS["subagent/system-prompt"].text.matchAll(/\{\{#if\s+([A-Za-z_][\w.]*)\}\}/g)) {
 			found.add(m[1].replace(/\.length$/, ""));
 		}
 		expect(found.size).toBeGreaterThanOrEqual(6);

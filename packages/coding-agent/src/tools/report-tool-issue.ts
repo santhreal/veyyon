@@ -23,7 +23,16 @@
 import { Database } from "bun:sqlite";
 import type { AgentTool } from "@veyyon/agent-core";
 import type { FetchImpl } from "@veyyon/ai";
-import { $env, $flag, getAutoQaDbDir, getInstallId, logger, scopedTimeoutSignal, VERSION } from "@veyyon/utils";
+import {
+	$env,
+	$flag,
+	errorMessage,
+	getAutoQaDbDir,
+	getInstallId,
+	logger,
+	scopedTimeoutSignal,
+	VERSION,
+} from "@veyyon/utils";
 import { sqlPlaceholders } from "@veyyon/utils/sqlite";
 import { type } from "arktype";
 import type { Settings } from "..";
@@ -231,7 +240,14 @@ export function openAutoQaDb(): Database | null {
 		db.run("CREATE INDEX IF NOT EXISTS grievances_pushed_idx ON grievances(pushed, id)");
 		cachedDb = db;
 		return db;
-	} catch {
+	} catch (error) {
+		// Every caller reads null as "auto-QA is not set up", and the CLI used to say so in as many
+		// words. A hard open failure is a different fact: reports are being dropped on a machine that
+		// asked for them, so it is named here rather than inferred from an empty list.
+		logger.warn("Auto-QA database could not be opened; tool issue reports cannot be recorded", {
+			path: getAutoQaDbDir(),
+			error: errorMessage(error),
+		});
 		return null;
 	}
 }

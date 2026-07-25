@@ -1,7 +1,7 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import { estimateTokens } from "@veyyon/agent-core/compaction";
 import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
-import { logger } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import { obfuscateToolArguments, type SecretObfuscator } from "../secrets/obfuscator";
 import { formatSessionHistoryMarkdown, PRIMARY_CONTEXT_CUSTOM_TYPES } from "../session/session-history-format";
 
@@ -290,7 +290,15 @@ export class AdvisorRuntime {
 		this.#wakeAllWaiters();
 		try {
 			this.agent.abort("advisor disposed");
-		} catch {}
+		} catch (error) {
+			// Dispose must finish whatever happens, so this is reported rather than rethrown.
+			// It is worth reporting: if the abort did not take, the advisor's own agent keeps
+			// running against a runtime that believes it is gone, and the only symptom is
+			// provider spend with nothing consuming the answers.
+			logger.warn("Advisor agent did not abort on dispose; it may still be running", {
+				error: errorMessage(error),
+			});
+		}
 	}
 
 	#resetAdvisorContext(clearBacklog: boolean, wakeWaiters: boolean): void {
@@ -307,10 +315,20 @@ export class AdvisorRuntime {
 		}
 		try {
 			this.agent.reset();
-		} catch {}
+		} catch (error) {
+			// A reset that did not happen leaves the previous conversation in place, so the
+			// advisor answers the next turn with context it was supposed to have dropped.
+			logger.warn("Advisor agent could not be reset; it is carrying stale context", {
+				error: errorMessage(error),
+			});
+		}
 		try {
 			this.agent.abort("advisor reset");
-		} catch {}
+		} catch (error) {
+			logger.warn("Advisor agent did not abort on reset; an in-flight request may still land", {
+				error: errorMessage(error),
+			});
+		}
 	}
 
 	/**

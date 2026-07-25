@@ -8,15 +8,16 @@ import {
 	extractExplicitThinkingSelector,
 	fallbackForUnavailableDefault,
 	filterAvailableModelsByEnabledPatterns,
+	findSlowModel,
 	formatModelSelectorValue,
 	formatModelString,
 	formatModelStringWithRouting,
 	parseModelPattern,
 	parseModelString,
 	pickDefaultAvailableModel,
-	resolveAgentModelPatterns,
 	resolveAllowedModels,
 	resolveCliModel,
+	resolveConfiguredModelPatterns,
 	resolveModelFromString,
 	resolveModelOverride,
 	resolveModelRoleValue,
@@ -744,73 +745,79 @@ describe("resolveModelRoleValue", () => {
 		expect(result.explicitThinkingLevel).toBe(true);
 	});
 });
-describe("resolveAgentModelPatterns", () => {
-	test("falls back to the active session model when @task is unset", () => {
+/**
+ * Role EXPANSION, the layer every subagent model pattern passes through.
+ *
+ * Expansion answers one question: does this `@role` alias name a model of its
+ * own? It must never answer with a model the operator did not choose, because
+ * the caller (`resolveSubagentModel`) applies inherit afterwards and cannot tell
+ * an operator's choice from a built-in guess once expansion has returned one.
+ */
+describe("resolveConfiguredModelPatterns — role expansion", () => {
+	/**
+	 * `@task` was retired along with the `task` model role: the subagent model
+	 * lives in the Subagents settings area (`subagent.model`) and having a role by
+	 * the same name meant two owners for one value, with role expansion answering
+	 * first. An old agent file still carrying `@task` must expand to nothing so the
+	 * spawn path reports it loudly rather than resolving it behind the operator.
+	 */
+	test("@task names no role and expands to nothing", () => {
 		const settings = Settings.isolated({
 			modelRoles: { default: "anthropic/claude-sonnet-4-5" },
 		});
 
-		const result = resolveAgentModelPatterns({
-			agentModel: "@task",
-			settings,
-			activeModelPattern: "openai/gpt-4o",
-		});
-
-		expect(result).toEqual(["openai/gpt-4o"]);
+		expect(resolveConfiguredModelPatterns("@task", settings)).toEqual([]);
 	});
 
-	test("uses the configured task role before falling back to the session model", () => {
+	/** A role configured with a YAML list expands to every pattern, in order. */
+	test("expands a role configured as a YAML list to all its patterns in order", () => {
 		const settings = Settings.isolated({
 			modelRoles: {
-				default: "openai/gpt-4o",
-				task: "anthropic/claude-sonnet-4-5:high",
+				slow: ["anthropic/claude-sonnet-4-6", "zai/glm-5.2:high"],
 			},
 		});
 
-		const result = resolveAgentModelPatterns({
-			agentModel: "@task",
-			settings,
-			activeModelPattern: "openai/gpt-4o",
-		});
-
-		expect(result).toEqual(["anthropic/claude-sonnet-4-5:high"]);
+		expect(resolveConfiguredModelPatterns("@slow", settings)).toEqual([
+			"anthropic/claude-sonnet-4-6",
+			"zai/glm-5.2:high",
+		]);
 	});
 
-	test("accepts YAML list values for configured task role patterns", () => {
-		const settings = Settings.isolated({
-			modelRoles: {
-				task: ["anthropic/claude-sonnet-4-6", "zai/glm-5.2:high"],
-			},
-		});
-
-		const result = resolveAgentModelPatterns({
-			agentModel: "@task",
-			settings,
-		});
-
-		expect(result).toEqual(["anthropic/claude-sonnet-4-6", "zai/glm-5.2:high"]);
-	});
-
-	test("uses priority defaults for unconfigured smol, slow, and designer agent roles", () => {
+	/**
+	 * Locks the removal of the built-in priority chain from role EXPANSION.
+	 *
+	 * `@smol` / `@slow` / `@designer` used to expand to `priority.json` when the
+	 * role was unset, which is why a stock install spawned scout, reviewer and
+	 * designer subagents on three different models and no subagent model setting
+	 * could hold: agent frontmatter carries those aliases, and the chain answered
+	 * before any operator choice was consulted. An unset role must contribute NO
+	 * pattern of its own so the caller applies inherit.
+	 */
+	test("an unset role expands to nothing, leaving the caller to inherit", () => {
 		const settings = Settings.isolated({
 			modelRoles: { default: "local/llama" },
 		});
 
-		expect(resolveAgentModelPatterns({ agentModel: "@smol", settings })[0]).toBeDefined();
-		expect(resolveAgentModelPatterns({ agentModel: "@slow", settings })[0]).toBeDefined();
-		expect(resolveAgentModelPatterns({ agentModel: "@designer", settings })[0]).toBeDefined();
-		expect(resolveAgentModelPatterns({ agentModel: "@smol", settings })).not.toEqual(["local/llama"]);
+		expect(resolveConfiguredModelPatterns("@smol", settings)).toEqual([]);
+		expect(resolveConfiguredModelPatterns("@slow", settings)).toEqual([]);
+		expect(resolveConfiguredModelPatterns("@designer", settings)).toEqual([]);
 	});
 
-	test("does not inherit modelRoles.default for unset smol", () => {
+	/**
+	 * An unset role must not quietly borrow the default slot either. `modelRoles.default`
+	 * is the main conversation's model, not a stand-in for every role: expanding to
+	 * it here would make a role look configured when it is not.
+	 */
+	test("does not expand an unset role to modelRoles.default", () => {
 		const settings = Settings.isolated({
 			modelRoles: { default: "@slow", slow: "anthropic/claude-sonnet-4-5" },
 		});
 
-		expect(resolveAgentModelPatterns({ agentModel: "@smol", settings })).not.toEqual(["anthropic/claude-sonnet-4-5"]);
+		expect(resolveConfiguredModelPatterns("@smol", settings)).toEqual([]);
 	});
 
-	test("prefers configured designer role override over priority defaults", () => {
+	/** A role the operator DID configure expands to exactly that choice. */
+	test("expands a configured role to the operator's model", () => {
 		const settings = Settings.isolated({
 			modelRoles: {
 				default: "anthropic/claude-sonnet-4-5",
@@ -818,37 +825,42 @@ describe("resolveAgentModelPatterns", () => {
 			},
 		});
 
-		const result = resolveAgentModelPatterns({
-			agentModel: "@designer",
-			settings,
-		});
-
-		expect(result).toEqual(["openai/gpt-4o"]);
+		expect(resolveConfiguredModelPatterns("@designer", settings)).toEqual(["openai/gpt-4o"]);
 	});
+});
 
-	test("slow priority falls forward to Opus 4.8 before older Opus aliases", () => {
-		const settings = Settings.isolated();
-		const patterns = resolveAgentModelPatterns({ agentModel: "@slow", settings });
-
+/**
+ * `priority.json` survives for FIRST-RUN model selection only — picking a fast or
+ * strong model when the operator has chosen nothing yet. These cases moved here
+ * from the retired agent-model resolver when role expansion stopped consulting the
+ * chain; they keep the ordering contract covered at the one place it still
+ * applies, so a reordering regression is still caught.
+ */
+describe("findSlowModel — priority chain ordering", () => {
+	test("falls forward to Opus 4.8 before older Opus aliases (dotted ids)", async () => {
 		const dottedRegistry = {
 			getAvailable: () => [
 				createOpusModel("github-copilot", "claude-opus-4.7", "Claude Opus 4.7"),
 				createOpusModel("github-copilot", "claude-opus-4.8", "Claude Opus 4.8"),
 			],
-		} as Parameters<typeof resolveModelOverride>[1];
-		const dotted = resolveModelOverride(patterns, dottedRegistry, settings);
-		expect(dotted.model?.provider).toBe("github-copilot");
-		expect(dotted.model?.id).toBe("claude-opus-4.8");
+		} as Parameters<typeof findSlowModel>[0];
 
+		const dotted = await findSlowModel(dottedRegistry);
+		expect(dotted?.provider).toBe("github-copilot");
+		expect(dotted?.id).toBe("claude-opus-4.8");
+	});
+
+	test("falls forward to Opus 4.8 before older Opus aliases (dashed ids)", async () => {
 		const dashedRegistry = {
 			getAvailable: () => [
 				createOpusModel("anthropic", "claude-opus-4-7", "Claude Opus 4.7"),
 				createOpusModel("anthropic", "claude-opus-4-8", "Claude Opus 4.8"),
 			],
-		} as Parameters<typeof resolveModelOverride>[1];
-		const dashed = resolveModelOverride(patterns, dashedRegistry, settings);
-		expect(dashed.model?.provider).toBe("anthropic");
-		expect(dashed.model?.id).toBe("claude-opus-4-8");
+		} as Parameters<typeof findSlowModel>[0];
+
+		const dashed = await findSlowModel(dashedRegistry);
+		expect(dashed?.provider).toBe("anthropic");
+		expect(dashed?.id).toBe("claude-opus-4-8");
 	});
 });
 

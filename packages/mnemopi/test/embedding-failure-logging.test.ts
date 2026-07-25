@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
-import { logger } from "@veyyon/utils";
-import "./setup";
 import {
 	embed,
 	resetEmbeddingProviderForTests,
 	setLocalModelInitializerForTests,
 } from "@veyyon/mnemopi/core/embeddings";
 import { withMnemopiRuntimeOptions } from "@veyyon/mnemopi/core/runtime-options";
+import { logger } from "@veyyon/utils";
+import { useMnemopiTestEnv } from "./setup";
+
+useMnemopiTestEnv();
 
 const ENV_KEYS = [
 	"NODE_ENV",

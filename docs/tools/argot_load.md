@@ -3,10 +3,10 @@
 > Teach yourself another folder's Argot shorthand, so you can write its long paths and identifiers as short `§handle` tokens.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/lexpack.ts` (`ArgotLoadTool`)
+- Entry: `packages/coding-agent/src/tools/argot.ts` (`ArgotLoadTool`)
 - Tool name constant: `ARGOT_LOAD_TOOL`, exported by the `argot` package.
 - Key collaborators:
-  - `packages/coding-agent/src/lexpack-cache.ts`: `loadArgotFolder()` resolves the folder to its work-unit root and reads or generates that root's cache entry.
+  - `packages/coding-agent/src/argot-cache.ts`: `loadArgotFolder()` resolves the folder to its work-unit root and reads or generates that root's cache entry.
   - `packages/coding-agent/src/tools/path-utils.ts`: `resolveToCwd()` resolves a relative request against the session cwd.
   - `packages/coding-agent/src/tools/index.ts`: registers the tool, gated on the `argot.enabled` setting.
 

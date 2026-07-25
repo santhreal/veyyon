@@ -35,8 +35,8 @@ import { selectSession } from "./cli/session-picker";
 import { announceAutoChdir, applySessionWorkdir, applyStartupCwd } from "./cli/startup-cwd";
 import { getLatestRelease, type ReleaseInfo, runAutoUpdate } from "./cli/update-cli";
 import { findConfigFile } from "./config";
-import { ModelRegistry } from "./config/model-registry";
 import { resolveEffort, withLegacyDefaultEffort } from "./config/effort-resolver";
+import { ModelRegistry } from "./config/model-registry";
 import { modelResolutionFailureMessage } from "./config/model-resolution-failure";
 import {
 	expandRoleAlias,
@@ -47,6 +47,7 @@ import {
 	resolveModelScope,
 	type ScopedModel,
 } from "./config/model-resolver";
+import { DEFAULT_MODEL_SLOT } from "./config/model-roles";
 import { ModelsConfigFile } from "./config/models-config";
 import { getDefault, type SettingPath, Settings, settings } from "./config/settings";
 import { initializeWithSettings } from "./discovery";
@@ -62,6 +63,7 @@ import type { ExtensionUIContext } from "./extensibility/extensions/types";
 import { scheduleMarketplaceAutoUpdate } from "./extensibility/plugins/marketplace-auto-update";
 import { registerDaemonProjectPresence } from "./launch/presence";
 import type { MCPManager } from "./mcp";
+import { setLaunchTip, updateInstalledTip } from "./modes/components/welcome";
 import type { InteractiveMode } from "./modes/interactive-mode";
 import type { PrintModeOptions } from "./modes/print-mode";
 import { CURRENT_SETUP_VERSION } from "./modes/setup-version";
@@ -85,7 +87,7 @@ import { shouldShowStartupSplash } from "./startup-splash";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "./system-prompt";
 import { createPersistedSubagentReviverFactory } from "./task/persisted-revive";
 import { initTelemetryExport, isTelemetryExportEnabled } from "./telemetry-export";
-import { concreteThinkingLevel, parseConfiguredThinkingLevel } from "./thinking";
+import { concreteThinkingLevel } from "./thinking";
 import type { LspStartupServerInfo } from "./tools";
 import { decideUpdateNotice, readLastChangelogVersion, writeLastChangelogVersion } from "./utils/changelog";
 import { EventBus } from "./utils/event-bus";
@@ -136,15 +138,14 @@ async function checkForNewVersion(currentVersion: string): Promise<ReleaseInfo |
 // Todo settings are caller-controlled in protocol modes. Do not host-default them:
 // embedders need project-level opt-outs for reminder/prelude prompt injection.
 const HOST_DEFAULTED_SETTING_PATHS: SettingPath[] = [
-	"task.isolation.mode",
-	"task.isolation.merge",
-	"task.isolation.commits",
-	"task.eager",
-	"task.batch",
-	"task.maxConcurrency",
-	"task.maxRecursionDepth",
-	"task.disabledAgents",
-	"task.agentModelOverrides",
+	"subagent.isolation.mode",
+	"subagent.isolation.merge",
+	"subagent.isolation.commits",
+	"subagent.delegation",
+	"subagent.batch",
+	"subagent.maxConcurrency",
+	"subagent.maxRecursionDepth",
+	"subagent.agents",
 	// Memory subsystems are off-by-default for RPC/ACP hosts; embedders that want
 	// memory should opt in explicitly through their own settings layer.
 	"memory.backend",
@@ -466,14 +467,27 @@ async function runInteractiveMode(
 		mode.showUnparseableSettingsNotification(settings.quarantinedFiles);
 	}
 
+	// The write-side twin, and it cannot be a startup check: a save happens when the user
+	// changes a setting, which is exactly when they are looking. Until this existed a
+	// config path that could not be written left the UI showing the new value while the
+	// file kept the old one, and the setting silently reverted on the next launch.
+	settings.onSaveFailure(failure => {
+		mode.showSettingsSaveFailureNotification(failure);
+	});
+
 	// First launch after an update: one line naming the version, pointing at
-	// `/changelog` for the notes. Driven by the marker the previous run wrote,
-	// so it fires exactly once per upgrade.
+	// `/changelog` for the notes and at the controls in `/settings`. Driven by the
+	// marker the previous run wrote, so it fires exactly once per upgrade.
+	//
+	// It goes in the welcome card's tip slot rather than its own transcript block:
+	// it is a one-line, one-time "here is what you can do next", which is what
+	// that slot is, and a separate block put product chrome in the space reserved
+	// for the conversation.
 	if (settings.get("startup.updateNotice")) {
 		const marker = await readLastChangelogVersion();
 		const decision = decideUpdateNotice(marker, VERSION);
 		if (decision.installedVersion) {
-			mode.showUpdateInstalledNotification(decision.installedVersion);
+			setLaunchTip(updateInstalledTip(decision.installedVersion));
 		}
 		if (decision.persistCurrentVersion) {
 			await writeLastChangelogVersion(VERSION);
@@ -929,7 +943,7 @@ export async function buildSessionOptions(
 			}
 		}
 	} else if (scopedModels.length > 0 && !parsed.continue && !parsed.resume) {
-		const remembered = activeSettings.getModelRole("default");
+		const remembered = activeSettings.getModelRole(DEFAULT_MODEL_SLOT);
 		if (remembered) {
 			const rememberedSpec = resolveModelRoleValue(
 				remembered,
@@ -1107,6 +1121,21 @@ interface RunRootCommandDependencies {
 	runAcpMode?: RunAcpMode;
 	settings?: Settings;
 	forceSetupWizard?: boolean;
+	/**
+	 * Reads the piped prompt, replacing the process-stdin read below.
+	 *
+	 * An in-process caller does not own stdin. The default reader waits for EOF
+	 * on the process's real stdin, which is correct for the CLI and a deadlock
+	 * for anyone who calls `runRootCommand` inside a longer-lived process: an
+	 * inherited pipe nobody ever writes to or closes never reaches EOF, so
+	 * startup stops at `readPipedInput` and nothing downstream runs. That is not
+	 * hypothetical — it hung `cli-max-time-flag.test.ts` (a 5s test timeout) and
+	 * then left the unsettled span behind, so a LATER suite's `openSpanPath()`
+	 * assertion came back `["readPipedInput"]`. Whether it happened at all
+	 * depended on how the sweep was launched: with `< /dev/null` stdin is at EOF
+	 * immediately and everything passed.
+	 */
+	readPipedInput?: () => Promise<string | undefined>;
 }
 const DEFAULT_RUN_ROOT_DEPENDENCIES: RunRootCommandDependencies = {};
 
@@ -1241,7 +1270,9 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 	const mode = parsedArgs.mode || "text";
 	const isProtocolMode = mode === "rpc" || mode === "rpc-ui" || mode === "acp";
 	// Protocol modes own stdin; treating it as prompt text would consume JSON-RPC frames before their transports start.
-	const pipedInput = isProtocolMode ? undefined : await logger.time("readPipedInput", readPipedInput);
+	const pipedInput = isProtocolMode
+		? undefined
+		: await logger.time("readPipedInput", deps.readPipedInput ?? readPipedInput);
 	const autoPrint = pipedInput !== undefined && !parsedArgs.print && parsedArgs.mode === undefined;
 	const isInteractive = !parsedArgs.print && !autoPrint && parsedArgs.mode === undefined;
 	// Interactive mode reads keystrokes from stdin; without a TTY (cron, CI,
@@ -1624,7 +1655,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 				settings: settingsInstance,
 				enableLsp: sessionOptions.enableLsp ?? true,
 			}),
-			Math.trunc(Number(settingsInstance.get("task.agentIdleTtlMs") ?? 420_000) || 0),
+			Math.trunc(Number(settingsInstance.get("subagent.idleTtlMs") ?? 420_000) || 0),
 		);
 		if (parsedArgs.apiKey && !sessionOptions.model && session.model) {
 			authStorage.setRuntimeApiKey(session.model.provider, parsedArgs.apiKey);

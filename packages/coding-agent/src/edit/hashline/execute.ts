@@ -13,6 +13,7 @@
 
 import type { AgentToolResult } from "@veyyon/agent-core";
 import {
+	assertUniqueCanonicalPaths,
 	type BlockResolution,
 	buildCompactDiffPreview,
 	MismatchError as HashlineMismatchError,
@@ -75,19 +76,6 @@ function noChangeLoopDiagnostic(path: string, count: number): string {
 		`or your anchor is wrong (re-read the file with \`read\` to observe the current line numbers and ` +
 		`tag, then author a different edit). This exact payload will keep being rejected until it changes.`
 	);
-}
-
-function assertUniqueCanonicalPaths(prepared: readonly PreparedSection[]): void {
-	const seen = new Map<string, string>();
-	for (const entry of prepared) {
-		const previous = seen.get(entry.canonicalPath);
-		if (previous !== undefined) {
-			throw new Error(
-				`Multiple hashline sections resolve to the same file (${previous} and ${entry.section.path}). Merge their ops under one header before applying.`,
-			);
-		}
-		seen.set(entry.canonicalPath, entry.section.path);
-	}
 }
 
 function narrowBatchRequest(outer: LspBatchRequest | undefined, isLast: boolean): LspBatchRequest | undefined {

@@ -128,33 +128,13 @@ function buildModelsConfigSchemas() {
 			};
 		});
 
-	const RemoteCompactionSchema = type({
-		"enabled?": "boolean",
-		"api?": ApiSchema,
-		"endpoint?": "string",
-		"model?": "string",
-		"v2StreamingEnabled?": "boolean",
-		"v2Endpoint?": "string",
-		"streamingEndpoint?": "string",
-	}).narrow((value, ctx) => {
-		if (value.endpoint !== undefined && typeof value.endpoint === "string" && value.endpoint.length === 0) {
-			return ctx.mustBe("remoteCompaction.endpoint a non-empty string");
-		}
-		if (value.model !== undefined && typeof value.model === "string" && value.model.length === 0) {
-			return ctx.mustBe("remoteCompaction.model a non-empty string");
-		}
-		if (value.v2Endpoint !== undefined && typeof value.v2Endpoint === "string" && value.v2Endpoint.length === 0) {
-			return ctx.mustBe("remoteCompaction.v2Endpoint a non-empty string");
-		}
-		if (
-			value.streamingEndpoint !== undefined &&
-			typeof value.streamingEndpoint === "string" &&
-			value.streamingEndpoint.length === 0
-		) {
-			return ctx.mustBe("remoteCompaction.streamingEndpoint a non-empty string");
-		}
-		return true;
-	});
+	// `remoteCompaction` is RETIRED. Nothing has read it since provider-native
+	// compaction was removed, so a config that still sets it configures nothing.
+	// It stays declared here — as opaque, unvalidated data — for one reason: an
+	// undeclared key is dropped before validation runs, and a dropped key cannot
+	// be reported. Declaring it keeps the value alive long enough for
+	// `validateProviderConfiguration` to refuse the file and name the retirement.
+	const RetiredRemoteCompactionSchema = type("unknown");
 
 	const ModelDefinitionSchema = type({
 		id: "string",
@@ -179,7 +159,7 @@ function buildModelsConfigSchemas() {
 		"compat?": OpenAICompatSchema,
 		"contextPromotionTarget?": "string",
 		"compactionModel?": "string",
-		"remoteCompaction?": RemoteCompactionSchema,
+		"remoteCompaction?": RetiredRemoteCompactionSchema,
 	}).narrow((value, ctx) => {
 		// Enforce id non-empty
 		if (typeof value.id === "string" && value.id.length === 0) {
@@ -228,7 +208,7 @@ function buildModelsConfigSchemas() {
 		"compat?": OpenAICompatSchema,
 		"contextPromotionTarget?": "string",
 		"compactionModel?": "string",
-		"remoteCompaction?": RemoteCompactionSchema,
+		"remoteCompaction?": RetiredRemoteCompactionSchema,
 	}).narrow((value, ctx) => {
 		if (value.name !== undefined && typeof value.name === "string" && value.name.length === 0) {
 			return ctx.mustBe("name a non-empty string");
@@ -262,7 +242,7 @@ function buildModelsConfigSchemas() {
 		"api?": ApiSchema,
 		"headers?": { "[string]": "string" },
 		"compat?": OpenAICompatSchema,
-		"remoteCompaction?": RemoteCompactionSchema,
+		"remoteCompaction?": RetiredRemoteCompactionSchema,
 		"authHeader?": "boolean",
 		"auth?": ProviderAuthSchema,
 		"discovery?": ProviderDiscoverySchema,

@@ -2,6 +2,32 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed compaction doing nothing when the newest turn alone exceeded the keep-recent budget. One very large tool result at the end of a session was enough: the cut-point search found no boundary at or after the entry that blew the budget and fell back to keeping the whole session, so compaction reported nothing to do while the context meter sat at the ceiling. It now cuts to the newest valid boundary, which never separates a tool call from its result.
+- Fixed images in a user message counting as zero tokens. Every other message role already counted them, so a session of pasted screenshots under-reported its own size to the compaction trigger, the pruning budgets, and the context meter.
+
+### Changed
+
+- The narrowing that answers "does this session entry carry a tool result" lives with the entry union it narrows, as `getToolResultMessage` in `compaction/entries.ts`. Both compaction passes, pruning and shake, had a byte-identical private copy, and a pass that recognised one message shape while its sibling recognised another would prune output the other still counted.
+
+- The two compaction strategies now state distinct contracts instead of asking for the same document. `summary` is told it continues in the SAME session, so the recent turns survive alongside it and must not be restated; `handoff` is told it starts a NEW session where nothing survives, so it must carry cold-restart state (working directory, branch, uncommitted files, toolchain, the exact next command). Both prompts now ask for verification evidence explicitly (commands run verbatim, pass/fail counts, durations, run IDs, exact error text), and the summary prompt states the precedence between brevity and evidence rather than leaving "be concise" one sentence away from "keep the command results".
+- The handoff prompt gained a `Blocked` section, which only the summary prompt had. Handoff is the strategy whose reader starts cold with nothing but the document, so it is the one that most needs to carry blockers; without the section they had nowhere to go. In practice it now records constraints that cannot be re-derived from the repository at all, such as an action requiring explicit approval or a repository-owner UI step.
+- Compaction prompts now separate the overarching goal from the current task, in one shape shared by `compaction-summary`, `compaction-update-summary`, and `handoff-document`. A single Goal field meant the model wrote whichever goal was most concrete, which is always the immediate task, so the standing objective went unrecorded from the first compaction onward. `compaction-update-summary` runs on every later compaction and permits dropping anything no longer relevant; the overarching goal is now carved out of that permission.
+- Compaction prompts ask for the HEAD commit and whether anything was committed during the session, not just the branch. A branch name does not say where the work started or whether any of it is saved anywhere but the working tree. Repository state stays conditional on the work actually being version controlled, so a session outside a repository is not pushed into inventing one.
+- Both compaction strategies now fail loudly when the model returns an empty document instead of accepting it. A provider can return `stopReason: "stop"` with output tokens spent entirely on reasoning and no text content; `handoff` then returned just the deterministic `<files>` block, which reads as a real document while carrying no goal, no decisions, and no next step, and `summary` would have stored an empty summary in place of the history it replaces.
+
+- Mechanical compaction-request pruning has one owner, `pruneMessagesForCompaction`. It previously existed as two inline copies inside `serializeConversation`, one per rendering branch, so it applied to the `summary` strategy and to nothing else. Both strategies now route through it. Dropping a useless result also drops its paired `toolCall`, so no call is sent without a result; non-text content blocks (images) survive pruning; a byte-identical repeat is collapsed only when the back-reference is shorter than the text it replaces; and stale reads are recognized with `readToolSupersedeKey`, which moved to `compaction/utils.ts` so the durable pruner and the request pruner share one definition of that rule.
+
+- Tool-result truncation is opt-out through `truncateToolResults`. `summary` keeps it; `handoff` turns it off, because handoff seeds a new session where a truncated result is evidence deleted rather than shortened. Across two real sessions the lossless passes accounted for 0.0% and 1.6% of message bytes while truncation accounted for 60.4% and 35.3%, so the size win and the data loss are the same pass.
+- `generateHandoff` accepts `fileOps` and appends the same deterministic `<files>` block the `summary` strategy has always emitted. The block is machine-generated and byte-identical across models, so withholding it made handoff strictly worse for free.
+
+
+### Removed
+
+- Removed provider-native remote compaction (OpenAI `/responses/compact` and the Responses V2 streaming variant). It stored the durable history as an opaque provider blob that no other provider could replay, wrote a fixed placeholder string in place of the compaction summary, and re-sent the full context uncached on every call. Compaction now has exactly two strategies, `summary` and `handoff`, and no provider gets a private path. Sessions compacted by the old path still load: such an entry is treated as having no usable summary, so the original messages behind it are re-expanded and summarized locally.
+- Removed the `compaction.remoteEnabled`, `compaction.remoteStreamingV2Enabled`, and `compaction.v2RetainedMessageBudget` settings, which existed only to gate that path. `compaction.remoteEndpoint` stays: it is a summarizer transport for the `summary` strategy and returns summary text.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed

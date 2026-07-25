@@ -549,7 +549,7 @@ describe("AgentSession handoff", () => {
 			isSplitTurn: false,
 			tokensBefore: 100,
 			fileOps: { read: new Set(), written: new Set(), edited: new Set() },
-			settings: { ...compactionModule.DEFAULT_COMPACTION_SETTINGS, strategy: "context-full" },
+			settings: { ...compactionModule.DEFAULT_COMPACTION_SETTINGS, strategy: "summary" },
 		};
 		const extensionRunner = {
 			hasHandlers: vi.fn((eventType: string) => eventType === "session.compacting"),
@@ -620,7 +620,7 @@ describe("AgentSession handoff", () => {
 			isSplitTurn: false,
 			tokensBefore: 100,
 			fileOps: { read: new Set(), written: new Set(), edited: new Set() },
-			settings: { ...compactionModule.DEFAULT_COMPACTION_SETTINGS, strategy: "context-full" },
+			settings: { ...compactionModule.DEFAULT_COMPACTION_SETTINGS, strategy: "summary" },
 		};
 		const extensionRunner = {
 			hasHandlers: vi.fn((eventType: string) => eventType === "session.compacting"),

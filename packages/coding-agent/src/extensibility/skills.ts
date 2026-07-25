@@ -13,8 +13,7 @@ import { type Skill as CapabilitySkill, loadCapability } from "../discovery";
 import { PROVIDER_ID as NATIVE_SKILL_PROVIDER } from "../discovery/builtin";
 import { compareSkillOrder, scanSkillsFromDir } from "../discovery/helpers";
 import { PROVIDER_ID as VEYYON_PLUGINS_SKILL_PROVIDER } from "../discovery/veyyon-plugins";
-import autoloadTemplate from "../prompts/skills/autoload.md" with { type: "text" };
-import userInvocationTemplate from "../prompts/skills/user-invocation.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import type { SkillPromptDetails } from "../session/messages";
 
 /**
@@ -405,7 +404,7 @@ export async function buildSkillPromptMessage(
 		// User-invoked skills announce themselves and expose their skill directory
 		// so the model resolves the skill's own relative paths (scripts/, templates/).
 		message = prompt
-			.render(userInvocationTemplate, {
+			.render(PROMPTS["skills/user-invocation"].text, {
 				name: skill.name,
 				body,
 				baseDir: skill.baseDir,
@@ -416,7 +415,7 @@ export async function buildSkillPromptMessage(
 		// Autoload skills are hidden, non-user context — they MUST NOT claim the
 		// user invoked them; this keeps the minimal provenance-only format.
 		message = prompt
-			.render(autoloadTemplate, {
+			.render(PROMPTS["skills/autoload"].text, {
 				body,
 				filePath: skill.filePath,
 				userArgs: trimmedArgs || undefined,

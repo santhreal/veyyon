@@ -13,7 +13,7 @@ import { findApiKey, isSearchResponse } from "../../../exa/mcp-client";
 import { parseSSE } from "../../../mcp/json-rpc";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
-import { clampNumResults, dateToAgeSeconds } from "../utils";
+import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
@@ -23,7 +23,6 @@ const DEFAULT_EXA_SEARCH_DELAY_MS = getDefault("exa.searchDelayMs");
 // Result-count bounds, matching the house convention every other list provider
 // follows (clampNumResults with a per-provider DEFAULT/MAX). The Exa `/search`
 // API accepts up to 100 results, the same ceiling firecrawl uses.
-const DEFAULT_NUM_RESULTS = 10;
 const MAX_NUM_RESULTS = 100;
 
 let nextExaSearchRequestAt = 0;
@@ -272,7 +271,7 @@ export function synthesizeAnswer(results: ExaSearchResult[]): string | undefined
 export function buildExaRequestBody(params: ExaSearchParams): Record<string, unknown> {
 	const body: Record<string, unknown> = {
 		query: params.query,
-		numResults: params.num_results ?? DEFAULT_NUM_RESULTS,
+		numResults: params.num_results ?? SEARCH_DEFAULT_NUM_RESULTS,
 		type: normalizeSearchType(params.type),
 		contents: {
 			summary: { query: params.query },
@@ -406,7 +405,7 @@ export async function searchExa(params: ExaSearchParams): Promise<SearchResponse
 	// and the MCP `num_results`) and the post-fetch slice below are bounded to
 	// the same cap, regardless of whether the caller reached searchExa directly
 	// or through ExaProvider.search. This mirrors the zai/brave/tavily pattern.
-	const resultCap = clampNumResults(params.num_results, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
+	const resultCap = clampNumResults(params.num_results, SEARCH_DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
 	const cappedParams: ExaSearchParams = { ...params, num_results: resultCap };
 	const response = keyOrResolver
 		? await withAuth(keyOrResolver, key => callExaSearch(key, cappedParams), { signal: params.signal })

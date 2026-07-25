@@ -165,12 +165,16 @@ describe("buildChangelogHtml", () => {
         expect(v100Block).toContain("2026-08-05"); // GitHub date, not the 2026-08-01 CHANGELOG date
         expect(v100Block).not.toContain("2026-08-01");
     });
-    it("emits no upstream note when there is no pre-fork history", () => {
+    it("still emits the upstream note when no pre-fork entry remains", () => {
+        // This asserted the opposite until 2026-07-25, and that contract is what
+        // made the attribution disappear: the credit was gated on inherited
+        // entries still sitting in the source changelog, so stripping them
+        // removed the note as a side effect with nothing reporting it.
         const noFork = gen.parseReleases("# Changelog\n\n## [1.1.0] - 2026-08-02\n\n### Added\n\n- b\n\n## [1.0.0] - 2026-08-01\n\n### Added\n\n- a\n");
         const { releases } = gen.reconcile(noFork, null);
         const { html, upstreamCount } = gen.buildChangelogHtml(releases);
         expect(upstreamCount).toBe(0);
-        expect(html).not.toContain("upstream-note");
+        expect(html).toContain("upstream-note");
     });
 });
 describe("upstreamNote", () => {

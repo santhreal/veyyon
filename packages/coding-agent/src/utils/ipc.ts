@@ -1,19 +1,4 @@
-import { errorMessage, logger } from "@veyyon/utils";
-
-/**
- * Narrow a value to a thenable so a rejection handler can be attached.
- *
- * Mirrors the local helper in `mcp/transports/stdio.ts` (kept separate because
- * that copy serves the FileSink stdin-write path and is battle-tested there).
- * This shared copy is the home for the IPC `send()` sites.
- */
-export function isThenable(value: unknown): value is PromiseLike<unknown> {
-	return (
-		value != null &&
-		(typeof value === "object" || typeof value === "function") &&
-		typeof (value as { then?: unknown }).then === "function"
-	);
-}
+import { errorMessage, isThenable, logger } from "@veyyon/utils";
 
 /**
  * Send a message to a Bun subprocess over IPC, neutralizing both the

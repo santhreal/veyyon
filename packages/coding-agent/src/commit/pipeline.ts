@@ -4,6 +4,7 @@ import type { Api, ApiKey, Model } from "@veyyon/ai";
 import { getProjectDir, logger, prompt } from "@veyyon/utils";
 import { ModelRegistry } from "../config/model-registry";
 import { Settings } from "../config/settings";
+import { PROMPTS } from "../prompts/registry";
 import { discoverAuthStorage } from "../sdk";
 import { loadProjectContextFiles } from "../system-prompt";
 import * as git from "../utils/git";
@@ -19,14 +20,12 @@ import { runChangelogFlow } from "./changelog";
 import { runMapReduceAnalysis, shouldUseMapReduce } from "./map-reduce";
 import { formatCommitMessage } from "./message";
 import { resolvePrimaryModel, resolveSmolModel } from "./model-selection";
-import summaryRetryPrompt from "./prompts/summary-retry.md" with { type: "text" };
-import typesDescriptionPrompt from "./prompts/types-description.md" with { type: "text" };
 import type { CommitCommandArgs, ConventionalAnalysis } from "./types";
 
 const SUMMARY_MAX_CHARS = 72;
 const RECENT_COMMITS_COUNT = 8;
 let typesDescription: string | undefined;
-const TYPES_DESCRIPTION = (): string => (typesDescription ??= prompt.render(typesDescriptionPrompt));
+const TYPES_DESCRIPTION = (): string => (typesDescription ??= prompt.render(PROMPTS["commit/types-description"].text));
 
 /**
  * Execute the veyyon commit pipeline for staged changes.
@@ -243,7 +242,7 @@ async function generateSummaryWithRetry(input: {
 }
 
 function buildRetryContext(base: string | undefined, errors: string[]): string {
-	return prompt.render(summaryRetryPrompt, {
+	return prompt.render(PROMPTS["commit/summary-retry"].text, {
 		base_context: base,
 		errors: errors.join("; "),
 	});

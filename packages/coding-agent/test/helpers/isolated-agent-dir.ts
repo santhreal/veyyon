@@ -1,9 +1,15 @@
 import { afterAll, beforeAll } from "bun:test";
-import * as os from "node:os";
-import * as path from "node:path";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
-import { __resetDirsFromEnvForTests, getWorktreesDir, setAgentDir, setWorktreesDir, TempDir } from "@veyyon/utils";
-import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./settings-test-state";
+import { getWorktreesDir, setAgentDir, setWorktreesDir, TempDir } from "@veyyon/utils";
+import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../../utils/test/helpers/isolated-config-root";
+import {
+	beginSettingsTest,
+	claimFileLevelIsolation,
+	releaseFileLevelIsolation,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "./settings-test-state";
 
 /**
  * Isolate the AGENT DIRECTORY for a test file, in one line.
@@ -29,21 +35,31 @@ import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } f
  * reading a directory this one already deleted.
  *
  * Call it once at the top level of a suite file, outside any `describe`.
+ *
+ * @param options.globalSettings Also initialize the global `Settings` singleton in
+ *   memory, which is what {@link useIsolatedGlobalSettings} does on its own. Pass this
+ *   instead of calling both helpers: they cannot be stacked, and
+ *   {@link claimFileLevelIsolation} explains why and refuses.
  */
-export function useIsolatedAgentDir(): void {
+export function useIsolatedAgentDir(options: { globalSettings?: boolean } = {}): void {
 	let state: SettingsTestState | undefined;
 	let tempDir: TempDir | undefined;
 
-	beforeAll(() => {
+	beforeAll(async () => {
+		claimFileLevelIsolation("useIsolatedAgentDir()");
 		state = beginSettingsTest();
 		tempDir = TempDir.createSync("@veyyon-isolated-agent-dir-");
 		setAgentDir(tempDir.path());
+		// After the redirect, so the in-memory singleton is built against the temp dir
+		// rather than the developer's real one.
+		if (options.globalSettings) await Settings.init({ inMemory: true });
 	});
 
 	afterAll(async () => {
 		AgentStorage.resetInstance();
 		restoreSettingsTestState(state);
 		state = undefined;
+		releaseFileLevelIsolation();
 		if (tempDir) {
 			try {
 				await tempDir.remove();
@@ -62,56 +78,42 @@ export function useIsolatedAgentDir(): void {
  * in-process command reads the config root through this process's own resolver,
  * so only moving the resolver helps.
  *
- * THE TRAP THIS CLOSES, which is why it is a helper and not three lines in each
- * suite. Setting `VEYYON_CONFIG_DIR` and rebuilding looks sufficient and is not:
- * `resolveActiveAgentDirOverride()` reads `VEYYON_CODING_AGENT_DIR` whenever no
- * named profile is active, and in `DirResolver` that override WINS over the
- * config root outright. `setAgentDir` writes that variable into `process.env`
- * and nothing clears it, so any earlier suite in the same process that isolated
- * its agent dir leaves the variable set, and a later suite's careful temp config
- * root is then ignored in favour of the earlier suite's directory.
- *
- * The failure mode is the worst kind: the suite passes when run alone and fails
- * only in a full run, where the culprit is a different file entirely, and the
- * assertion it fails on is the one that was supposed to prove the isolation.
- * `test/cli/ttsr-cli.test.ts` and `test/cli/plain-pipe-output.test.ts` both
- * failed exactly that way. Clearing the agent-dir and profile variables here is
- * what makes the config root actually take effect.
- *
- * `VEYYON_CONFIG_DIR` is resolved relative to `os.homedir()`, so the value
- * written is a relative path. Assigning `HOME` instead would do nothing: Bun
- * fixes `os.homedir()` at process start.
+ * The redirection itself lives in `enterIsolatedConfigRoot`
+ * (`packages/utils/test/helpers/isolated-config-root.ts`), which is where the trap this
+ * closes is documented: `VEYYON_CODING_AGENT_DIR` wins over the config root outright when
+ * no named profile is active, `setAgentDir` writes that variable and nothing clears it, so
+ * an earlier suite's agent-dir isolation silently defeats a later suite's config root.
+ * `test/cli/ttsr-cli.test.ts` and `test/cli/plain-pipe-output.test.ts` both failed that
+ * way. This function is the file-level HOOK shape; suites in other packages, and suites
+ * that need a fresh root per test rather than per file, call the imperative form directly.
+ * One implementation, two shapes.
  *
  * @returns An accessor for the temp config root. It is only populated inside
  *   `beforeAll`, so call it from a test body, never at module scope.
  */
 export function useIsolatedConfigRoot(): () => string {
 	let state: SettingsTestState | undefined;
-	let tempDir: TempDir | undefined;
+	let isolated: IsolatedConfigRoot | undefined;
 	let configRoot = "";
 
 	beforeAll(() => {
-		// Captures and restores the env wholesale, including the two variables
-		// cleared below, so no second hand-rolled snapshot is needed here.
+		claimFileLevelIsolation("useIsolatedConfigRoot()");
+		// Captures and restores the env wholesale, including the variables the imperative
+		// helper changes, so no second hand-rolled snapshot is needed here.
 		state = beginSettingsTest();
-		tempDir = TempDir.createSync("@veyyon-isolated-config-root-");
-		configRoot = tempDir.path();
-		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), configRoot);
-		delete process.env.VEYYON_CODING_AGENT_DIR;
-		delete process.env.VEYYON_PROFILE;
-		__resetDirsFromEnvForTests();
+		// `defaultProfile` because a suite using this shape wants a predictable
+		// `profiles/default/...` layout whatever the developer's environment says.
+		isolated = enterIsolatedConfigRoot("coding-agent-suite", { defaultProfile: true });
+		configRoot = isolated.root;
 	});
 
-	afterAll(async () => {
+	afterAll(() => {
+		isolated?.restore();
+		isolated = undefined;
 		restoreSettingsTestState(state);
 		state = undefined;
 		configRoot = "";
-		if (tempDir) {
-			try {
-				await tempDir.remove();
-			} catch {}
-			tempDir = undefined;
-		}
+		releaseFileLevelIsolation();
 	});
 
 	return () => configRoot;

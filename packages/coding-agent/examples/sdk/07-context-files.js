@@ -4,8 +4,9 @@
  * Context files provide project-specific instructions loaded into the system prompt.
  */
 import { createAgentSession, discoverContextFiles, SessionManager } from "@veyyon/coding-agent";
-// Discover AGENTS.md files walking up from cwd
-const discovered = discoverContextFiles();
+// Discover AGENTS.md files walking up from cwd. The discovery reads from disk,
+// so it is async: without the `await` you iterate a promise, not the files.
+const discovered = await discoverContextFiles();
 console.log("Discovered context files:");
 for (const file of discovered) {
     console.log(`  - ${file.path} (${file.content.length} chars)`);

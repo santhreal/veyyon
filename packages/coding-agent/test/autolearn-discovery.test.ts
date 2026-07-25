@@ -6,7 +6,7 @@ import { getManagedSkillsDir } from "@veyyon/coding-agent/autolearn/managed-skil
 import "@veyyon/coding-agent/discovery";
 import { loadSkills } from "@veyyon/coding-agent/extensibility/skills";
 import { removeWithRetries } from "@veyyon/utils";
-import { getAgentDir, setAgentDir } from "@veyyon/utils/dirs";
+import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides, setAgentDir } from "@veyyon/utils/dirs";
 
 async function writeSkill(dir: string, name: string, description: string): Promise<void> {
 	const file = path.join(dir, name, "SKILL.md");
@@ -20,9 +20,14 @@ describe("managed-skills discovery", () => {
 	let managedDir: string;
 	let authoredDir: string;
 
-	let originalAgentDir: string;
+	let dirOverrides: DirOverridesSnapshot;
 	beforeEach(async () => {
-		originalAgentDir = getAgentDir();
+		// `captureDirOverrides` rather than `getAgentDir()` plus
+		// `setAgentDir(original)`: that pair cannot restore an ABSENT
+		// `VEYYON_CODING_AGENT_DIR`, and `setAgentDir` also clears the active profile,
+		// so the old restore left the real agent dir exported and the process on the
+		// default profile for every later file. `scripts/find-test-leaks.ts` caught it.
+		dirOverrides = captureDirOverrides();
 		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-managed-disco-home-"));
 		// cwd MUST live under the fake home so loadSkills' ancestor walk is bounded
 		// and cannot pick up ambient /tmp/.veyyon or /.veyyon fixtures (full-suite-safe).
@@ -37,7 +42,7 @@ describe("managed-skills discovery", () => {
 
 	afterEach(async () => {
 		spyOn(os, "homedir").mockRestore();
-		setAgentDir(originalAgentDir);
+		restoreDirOverrides(dirOverrides);
 		await removeWithRetries(tempHome);
 	});
 

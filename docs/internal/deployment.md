@@ -261,4 +261,4 @@ merge lands:
 4. `bun run site:deploy`.
 5. If `install.sh`/`install.ps1` changed, also deploy `veyyon-get`.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `ce7c4c68` on 2026-07-25.*

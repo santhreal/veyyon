@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
-import { logger, TempDir } from "@veyyon/utils";
+import { TempDir } from "@veyyon/utils";
 
 /**
  * A broken stats database must not take the agent down with it.

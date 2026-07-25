@@ -159,6 +159,8 @@ async function resolveGitHubUsername(
 		if (!isRecord(data)) return undefined;
 		return typeof data.login === "string" ? data.login : undefined;
 	} catch {
+		// The login only LABELS a usage row. Undefined means the row is shown without a name, the same as a
+		// response with no `login` field, and the usage numbers beside it are unaffected.
 		return undefined;
 	}
 }

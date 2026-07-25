@@ -55,7 +55,7 @@ cp permission-gate.ts ~/.veyyon/agent/extensions/
 
 | Extension              | Description                                                           |
 | ---------------------- | --------------------------------------------------------------------- |
-| `pirate.ts`            | Demonstrates `systemPromptAppend` to dynamically modify system prompt |
+| `pirate.ts`            | Extends the system prompt from `before_agent_start` based on extension state |
 | `custom-compaction.ts` | Custom compaction that summarizes entire conversation                 |
 
 ### External Dependencies

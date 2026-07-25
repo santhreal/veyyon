@@ -4,23 +4,23 @@ Exception: agents marked BLOCKING below run inline — their results return in t
 Execution blocks your turn: the call only returns once the work is completely finished.{{/if}}
 
 # Task Design
-- **Agent typing:** Choose each item's `agent` type first. Read-only research MUST use `agent: "scout"`, which runs on a faster model. Use the default worker only when no listed specialist fits.
+{{#has agentNames "scout"}}- **Agent typing:** Choose each item's `agent` type first. Read-only research MUST use `agent: "scout"`. Use the default worker only when no listed specialist fits.{{else}}- **Agent typing:** Choose each item's `agent` type first, from the list below. Use the default worker when no listed specialist fits.{{/has}}
 - **No overhead:** Each `task` MUST instruct its agent to skip formatters, linters, and project-wide test suites. You will run those once at the end.
-- **One-pass agents:** Prefer agents that investigate **and** edit in a single pass; only spin a read-only discovery step (e.g. `agent: "scout"`) when the affected files are genuinely unknown.
+- **One-pass agents:** Prefer agents that investigate **and** edit in a single pass{{#if hasReadOnlyAgents}}; only spin a read-only discovery step when the affected files are genuinely unknown{{/if}}.
 
 # Inputs
 {{#if batchEnabled}}
 - `context`: Shared project state, constraints, and contracts. Applies to the entire batch; do not duplicate this background into individual tasks.
 - `tasks[]`: Array of subagents to spawn.
   - `name`: A stable CamelCase identifier (≤32 chars), used to address the agent (IRC, job ids). Generated automatically if omitted.
-  - `agent`: The agent type running this item (e.g. `scout`, `reviewer`). Omitting it gives you the general-purpose worker (`{{defaultAgent}}`) — NEVER pass that name explicitly. Only omit it after checking the agent list below and finding no specialist that fits.{{#if allowedAgentsText}} Current spawn policy allows: {{allowedAgentsText}}.{{/if}}
+  - `agent`: The agent type running this item, from the list below. Omitting it gives you the general-purpose worker (`{{defaultAgent}}`) — NEVER pass that name explicitly. Only omit it after checking the agent list below and finding no specialist that fits.{{#if allowedAgentsText}} Current spawn policy allows: {{allowedAgentsText}}.{{/if}}
   - `task`: Complete, self-contained instructions. One-liners or missing acceptance criteria are PROHIBITED.
 {{#if isolationEnabled}}
   - `isolated`: Run in a dedicated worktree and return patches. Isolated agents are destroyed upon completion and cannot be addressed afterward.
 {{/if}}
 {{else}}
 - `name`: A stable CamelCase identifier (≤32 chars), used to address the agent (IRC, job ids). Generated automatically if omitted.
-- `agent`: The agent type to spawn (e.g. `scout`, `reviewer`). Omitting it gives you the general-purpose worker (`{{defaultAgent}}`) — NEVER pass that name explicitly. Only omit it after checking the agent list below and finding no specialist that fits.{{#if allowedAgentsText}} Current spawn policy allows: {{allowedAgentsText}}.{{/if}}
+- `agent`: The agent type to spawn, from the list below. Omitting it gives you the general-purpose worker (`{{defaultAgent}}`) — NEVER pass that name explicitly. Only omit it after checking the agent list below and finding no specialist that fits.{{#if allowedAgentsText}} Current spawn policy allows: {{allowedAgentsText}}.{{/if}}
 - `task`: Complete, self-contained instructions. One-liners or missing acceptance criteria are PROHIBITED.
 {{#if isolationEnabled}}
 - `isolated`: Run in a dedicated worktree and return patches. Isolated agents are destroyed upon completion and cannot be addressed afterward.

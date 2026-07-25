@@ -5,6 +5,7 @@ import * as path from "node:path";
 import type { AgentTool } from "@veyyon/agent-core";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { EDIT_MODE_STRATEGIES } from "@veyyon/coding-agent/edit";
+import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer-chrome";
 import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";
@@ -409,16 +410,27 @@ describe("streaming tool call preview height (bounded across renderers)", () => 
 			.filter(line => line !== "" && !line.includes("earlier lines"));
 	}
 
-	test("framed inline tool previews span the full tool width", () => {
+	/**
+	 * The frame spans the tool's width INSIDE the transcript rail: it starts at
+	 * `COMPOSER_INSET_COLS` and ends the same distance from the right edge. It used to
+	 * start at column 0 and run edge to edge, which put it two columns left of every
+	 * other block on screen; see `transcript-one-left-rail.test.ts` for the rail itself.
+	 * What this test still guards is that the frame is a full-width band within that
+	 * rail rather than hugging its content, which is what a preview must not do while
+	 * args stream in and the content width jumps every tick.
+	 */
+	test("framed inline tool previews span the full tool width inside the rail", () => {
 		const width = 80;
 		const { lines } = renderPending("bash", { command: "echo hi" });
 		const strippedLines = lines.map(line => Bun.stripANSI(line));
 		const topBorder = strippedLines.find(line => line.includes(activeTheme.boxSharp.topLeft));
 
 		expect(topBorder).toBeDefined();
-		expect(topBorder?.[0]).toBe(activeTheme.boxSharp.topLeft);
-		expect(topBorder?.endsWith(activeTheme.boxSharp.topRight)).toBe(true);
-		expect(visibleWidth(topBorder ?? "")).toBe(width);
+		const trimmed = (topBorder ?? "").trimEnd();
+		expect(trimmed.length - trimmed.trimStart().length).toBe(COMPOSER_INSET_COLS);
+		expect(trimmed.trimStart()[0]).toBe(activeTheme.boxSharp.topLeft);
+		expect(trimmed.endsWith(activeTheme.boxSharp.topRight)).toBe(true);
+		expect(visibleWidth(trimmed)).toBe(width - COMPOSER_INSET_COLS);
 	});
 
 	test("bash/ssh pending previews stay short even with very long multiline args", () => {

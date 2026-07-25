@@ -7,19 +7,12 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { loadMnemopiConfig } from "@veyyon/coding-agent/mnemopi/config";
 import { Mnemopi } from "@veyyon/mnemopi";
-import {
-	__resetProfileSnapshotForTests,
-	getActiveProfile,
-	getAgentDir,
-	removeWithRetries,
-	setProfile,
-} from "@veyyon/utils";
-import { Snowflake } from "@veyyon/utils/snowflake";
+import { __resetProfileSnapshotForTests, getActiveProfile, getAgentDir, setProfile } from "@veyyon/utils";
+import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
 
 function dbPathForProfile(profile: string): string {
 	setProfile(profile);
@@ -28,25 +21,24 @@ function dbPathForProfile(profile: string): string {
 }
 
 describe("mnemopi per-profile isolation (SPEC-MEMORY #5)", () => {
-	let configDir = "";
+	let isolated: IsolatedConfigRoot | undefined;
 	let originalProfile: string | undefined;
-	let originalConfigDir: string | undefined;
 
 	beforeEach(() => {
 		originalProfile = getActiveProfile();
-		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
-		configDir = `.veyyon-mnemopi-profile-iso-${Snowflake.next()}`;
-		process.env.VEYYON_CONFIG_DIR = configDir;
+		// A temp root, not a fresh dot-directory NAME under the home. The name form is
+		// what left 130 abandoned `~/.veyyon-mnemopi-profile-iso-*` directories in a real
+		// home directory: it isolates from other suites and not from the developer.
+		isolated = enterIsolatedConfigRoot("mnemopi-profile-iso");
 		setProfile(undefined);
 	});
 
-	afterEach(async () => {
+	afterEach(() => {
 		setProfile(undefined);
-		if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
-		else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
 		if (originalProfile) setProfile(originalProfile);
 		__resetProfileSnapshotForTests();
-		await removeWithRetries(path.join(os.homedir(), configDir));
+		isolated?.restore();
+		isolated = undefined;
 	});
 
 	it("resolves distinct absolute dbPath under profiles/alpha vs profiles/beta", () => {

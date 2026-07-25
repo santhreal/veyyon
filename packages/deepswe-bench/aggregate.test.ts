@@ -26,6 +26,7 @@ import {
 	efficiencyDeltaAttribution,
 	emptyArmResult,
 	encodeHeadroom,
+	finishedWithoutPatch,
 	fmtCost,
 	holmBonferroni,
 	interpretEncodeArm,
@@ -42,7 +43,10 @@ import {
 	parseJobName,
 	parseTaskListProvenance,
 	providerFinishReason,
+	providerQuotaStop,
+	quotaStopMarker,
 	relativeSpreadPct,
+	renderQuotaTruncationBanner,
 	renderReport,
 	renderTaskSetProvenanceBanner,
 	rewardDeltaAttribution,
@@ -52,8 +56,8 @@ import {
 	summarizeCell,
 	sweepCanReachSignificance,
 	systemPromptTeachesArgot,
-	tallyUsage,
 	TIMEOUT_UNATTRIBUTABLE_VERDICT,
+	tallyUsage,
 	timeoutAttributionBanner,
 	timeoutRate,
 	typeableHandleMass,
@@ -847,6 +851,378 @@ describe("isAgentTimeout — the one place that decides what a timeout is", () =
 	 */
 	test("does not match an unrelated use of the word timeout", () => {
 		expect(isAgentTimeout('{"exception_type":"ConnectTimeout","message":"read timeout"}')).toBe(false);
+	});
+});
+
+/**
+ * Verbatim lines from a real job log, `runs/2026-07-25T19-51-41-474Z/jobs/
+ * baseline__scriggo-method-declarations/job.log`, kept as bytes rather than
+ * paraphrased. The shape of this log is the whole problem: pier's SIGTERM handler
+ * fires, the agent is cancelled mid-turn, and only THEN does teardown fail to
+ * copy a patch that was never going to exist. Paraphrasing it would let the
+ * predicate drift away from the text it has to classify.
+ */
+const KILLED_MID_RUN_JOB_LOG = [
+	'  File "/home/mukund-thiru/.local/share/uv/tools/datacurve-pier/lib/python3.14/site-packages/pier/cli/jobs.py", line 149, in _handle_sigterm',
+	"    raise KeyboardInterrupt",
+	"KeyboardInterrupt",
+	"",
+	"asyncio.exceptions.CancelledError",
+	"",
+	'  File "/home/mukund-thiru/.local/share/uv/tools/datacurve-pier/lib/python3.14/site-packages/pier/trial/artifact_handler.py", line 195, in _download_artifact',
+	"RuntimeError: Docker compose command failed for environment datacurve/scriggo-method-declarations.",
+	"Error response from daemon: Could not find the file /logs/artifacts/model.patch in container 90cc95e883d14c6ce5ae00d9259a9c8c3df39cabd001e05990e599ae38a6e49d",
+].join("\n");
+
+/**
+ * The same teardown failure with nothing above it: the agent exited under its own
+ * power and simply wrote no patch. This is the case the bench had no way to
+ * express, and the only difference from the log above is the ABSENCE of a
+ * cancellation, which is exactly what makes the two opposite facts.
+ */
+const FINISHED_WITHOUT_PATCH_JOB_LOG = [
+	'  File "/home/mukund-thiru/.local/share/uv/tools/datacurve-pier/lib/python3.14/site-packages/pier/trial/artifact_handler.py", line 195, in _download_artifact',
+	"RuntimeError: Docker compose command failed for environment datacurve/scriggo-method-declarations.",
+	"Error response from daemon: Could not find the file /logs/artifacts/model.patch in container 90cc95e883d14c6ce5ae00d9259a9c8c3df39cabd001e05990e599ae38a6e49d",
+].join("\n");
+
+/**
+ * The measurement bias this predicate exists to close.
+ *
+ * An errored sample is EXCLUDED from every rate and mean the report prints, so an
+ * arm that errors more is measured on fewer and easier trials. Every
+ * context-shrinking lever in this bench risks one specific failure: the agent
+ * loses something it needed and never lands a patch. Left unclassified, that
+ * failure deletes itself from the measurement and CREDITS the arm that caused it,
+ * which would let a cost win look clean while the arm quietly fails more tasks.
+ *
+ * The predicate must therefore be sharp in BOTH directions, and these tests are
+ * written as matched pairs for that reason: firing when it should not would
+ * charge an arm for an operator's Ctrl-C, which is the same lie inverted.
+ */
+describe("finishedWithoutPatch — an agent that produced nothing has failed, not errored", () => {
+	/**
+	 * THE CASE THE BENCH COULD NOT EXPRESS. The agent ran to completion, wrote no
+	 * patch, and pier could only report that as a teardown crash. Its honest score
+	 * is reward 0 inside the denominator.
+	 */
+	test("fires when the patch is missing and nothing cancelled the trial", () => {
+		expect(finishedWithoutPatch(FINISHED_WITHOUT_PATCH_JOB_LOG)).toBe(true);
+	});
+
+	/**
+	 * THE REAL INSTANCE IN HAND, and the reason detection is two-part. Matching the
+	 * cp failure alone would score this trial 0, but the agent was killed by SIGTERM
+	 * mid-turn (its own log tail is still `Working...`). Charging an arm for that
+	 * would be the mirror of the bug being fixed, so this is the single most
+	 * important assertion in the suite.
+	 */
+	test("does not fire on the real killed-mid-run log that motivated it", () => {
+		expect(finishedWithoutPatch(KILLED_MID_RUN_JOB_LOG)).toBe(false);
+	});
+
+	/**
+	 * Each cancellation marker vetoes on its own. Pier can stop a trial through
+	 * three different paths and only one of them was present in the log above, so a
+	 * predicate that happened to key on `KeyboardInterrupt` alone would still
+	 * mis-score the other two.
+	 */
+	test("treats every cancellation spelling as a veto, one at a time", () => {
+		for (const marker of ["KeyboardInterrupt", "CancelledError", "AgentTimeoutError"]) {
+			const log = `${marker}\n${FINISHED_WITHOUT_PATCH_JOB_LOG}`;
+			expect(finishedWithoutPatch(log)).toBe(false);
+		}
+	});
+
+	/**
+	 * A cancellation counts wherever it appears, including BELOW the download
+	 * failure. Python prints chained exceptions oldest-first, but a teardown that
+	 * is itself interrupted inverts that, and ordering is not evidence of cause.
+	 */
+	test("vetoes on a cancellation that appears after the download failure", () => {
+		expect(finishedWithoutPatch(`${FINISHED_WITHOUT_PATCH_JOB_LOG}\nasyncio.exceptions.CancelledError`)).toBe(false);
+	});
+
+	/**
+	 * THE NECESSARY TWIN. Every other kind of crash keeps today's exclusion. A
+	 * predicate that answered true for infrastructure failures would convert the
+	 * bench's whole error bucket into fake task failures and understate every arm.
+	 */
+	test("does not fire on an unrelated crash", () => {
+		expect(finishedWithoutPatch("RuntimeError: Docker compose command failed. Return code: 137")).toBe(false);
+		expect(finishedWithoutPatch('Model "gpt-5.5" not found')).toBe(false);
+		expect(finishedWithoutPatch("container build failed")).toBe(false);
+	});
+
+	/**
+	 * A DIFFERENT missing artifact is a different fact. Only the graded patch means
+	 * "the agent produced nothing"; a missing log or trace is a harness problem and
+	 * must keep its exclusion, so the phrase is matched whole rather than by the
+	 * words "Could not find the file".
+	 */
+	test("does not fire when some other artifact is the one missing", () => {
+		expect(
+			finishedWithoutPatch("Error response from daemon: Could not find the file /logs/agent.log in container abc"),
+		).toBe(false);
+	});
+
+	/**
+	 * A passing job's log carries neither half of the discriminator, and a trial
+	 * with no log at all must classify rather than throw. Absence is normal input
+	 * here: a trial killed during setup writes no log.
+	 */
+	test("returns false for a clean log, an empty log, and no log at all", () => {
+		expect(finishedWithoutPatch("trial completed, verifier scored 1.0")).toBe(false);
+		expect(finishedWithoutPatch("")).toBe(false);
+		expect(finishedWithoutPatch(null)).toBe(false);
+		expect(finishedWithoutPatch(undefined)).toBe(false);
+	});
+
+	/**
+	 * The predicate is fed the JOB log, never the trial's own `exception.txt`. On
+	 * the real instance that narrower file records the cancellation and stops there,
+	 * with no trace of the download that failed afterwards. A caller that passed it
+	 * would see no patch signature at all and the predicate would silently never
+	 * fire, which is the quiet half of the same bias. This pins the fact rather than
+	 * the file name, so a caller reading the wrong file has a test explaining why.
+	 */
+	test("cannot classify from an exception file that omits the teardown failure", () => {
+		const exceptionTxtOnly = ['  File "pier/cli/jobs.py", line 149, in _handle_sigterm', "KeyboardInterrupt"].join(
+			"\n",
+		);
+		expect(exceptionTxtOnly).not.toContain("/logs/artifacts/model.patch");
+		expect(finishedWithoutPatch(exceptionTxtOnly)).toBe(false);
+	});
+});
+
+/**
+ * The real 429 payload, verbatim from
+ * `runs/2026-07-25T20-46-08-607Z/jobs/sig-last1__ytt-jsonpath-query-api`'s agent
+ * log. Kept as bytes because every field the predicate extracts is nested
+ * somewhere non-obvious in it: the reset timestamp lives under `details[].
+ * metadata`, not beside the message, and the model name sits in the same bag.
+ */
+const QUOTA_429_AGENT_LOG = `Working...
+Cloud Code Assist API error (429): {
+  "error": {
+    "code": 429,
+    "message": "Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 2h26m55s.",
+    "status": "RESOURCE_EXHAUSTED",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+        "reason": "QUOTA_EXHAUSTED",
+        "domain": "cloudcode-pa.googleapis.com",
+        "metadata": {
+          "quotaResetTimeStamp": "2026-07-25T23:50:11Z",
+          "uiMessage": "true",
+          "model": "gemini-3-flash-agent",
+          "quotaResetDelay": "2h26m55.663141191s"
+        }
+      }
+    ]
+  }
+}`;
+
+/**
+ * The stop condition no canary can see.
+ *
+ * `shouldTripCanary` requires EVERY completed trial to be a hard error, so a
+ * single early success disarms it permanently. `armCanaryFailure` requires a full
+ * wave within one arm. Quota exhaustion fits neither: it strikes mid-run, after
+ * successes have already banked, and it kills every arm at once. The run that
+ * motivated this scored ten baseline trials, ran out of quota, and then produced
+ * twenty-six consecutive zero-token trials without either canary firing.
+ *
+ * What made that dangerous is not the wasted hour. It is that the report would
+ * have compared a ten-sample baseline against an arm with no samples, and an
+ * arm's absence reads as data.
+ */
+describe("providerQuotaStop — the provider declaring a global refusal, with a recovery time", () => {
+	/**
+	 * THE REAL PAYLOAD. Both facts worth having are buried in `details[].metadata`
+	 * rather than beside the message, so this pins the extraction against the actual
+	 * bytes instead of a convenient reconstruction of them.
+	 */
+	test("extracts the reset timestamp and model from the real 429 payload", () => {
+		expect(providerQuotaStop(QUOTA_429_AGENT_LOG)).toEqual({
+			resetAt: "2026-07-25T23:50:11Z",
+			model: "gemini-3-flash-agent",
+		});
+	});
+
+	/**
+	 * A provider that refuses without naming a reset time still has to trip the
+	 * abort. Returning null here would trade a known-fatal condition for a silent
+	 * one, which is the opposite of the point: the run must stop either way, and the
+	 * operator merely loses the "come back at" hint.
+	 */
+	test("still fires when the provider names no reset time", () => {
+		expect(providerQuotaStop('{"code":429,"status":"RESOURCE_EXHAUSTED"}')).toEqual({
+			resetAt: null,
+			model: null,
+		});
+	});
+
+	/**
+	 * THE ROUND TRIP. A live trial and a re-read `results.json` must classify
+	 * identically, or `--reaggregate` would quietly disagree with the run that
+	 * produced the data. The runner cannot store the raw payload (the error field
+	 * truncates at 300 characters), so it stores the compact marker, and that marker
+	 * has to parse back to the same two facts.
+	 */
+	test("reads its own compact marker back out of a stored error string", () => {
+		const stop = providerQuotaStop(QUOTA_429_AGENT_LOG);
+		expect(stop).not.toBeNull();
+		const marker = quotaStopMarker(stop as NonNullable<typeof stop>);
+		expect(marker).toBe("QUOTA_EXHAUSTED resets_at=2026-07-25T23:50:11Z quota_model=gemini-3-flash-agent");
+		const stored = `{"exception_type":"RuntimeError","exception_message":"agent exited 1"} ${marker}`;
+		expect(providerQuotaStop(stored)).toEqual(stop);
+	});
+
+	/** A marker for a quota stop that named nothing degrades to the bare token, and still parses. */
+	test("round-trips a marker with no reset time or model", () => {
+		expect(quotaStopMarker({ resetAt: null, model: null })).toBe("QUOTA_EXHAUSTED");
+		expect(providerQuotaStop("QUOTA_EXHAUSTED")).toEqual({ resetAt: null, model: null });
+	});
+
+	/**
+	 * THE NECESSARY TWIN, and the expensive direction to get wrong. This predicate
+	 * aborts an entire run on ONE hit, with no statistical safety margin behind it,
+	 * so a false positive throws away a whole measurement. Ordinary failures,
+	 * including other 429-adjacent rate limiting that a retry would clear, must not
+	 * match.
+	 */
+	test("does not fire on ordinary failures or on plain rate limiting", () => {
+		expect(providerQuotaStop("HTTP 429: too many requests, retrying in 5s")).toBeNull();
+		expect(providerQuotaStop('{"exception_type":"CancelledError"}')).toBeNull();
+		expect(providerQuotaStop('Model "gpt-5.5" not found')).toBeNull();
+		expect(providerQuotaStop("finish reason: PROHIBITED_CONTENT")).toBeNull();
+		expect(providerQuotaStop("trial timed out after 900s")).toBeNull();
+	});
+
+	/** A trial with no captured output must classify rather than throw. */
+	test("returns null for empty and absent input", () => {
+		expect(providerQuotaStop("")).toBeNull();
+		expect(providerQuotaStop(null)).toBeNull();
+		expect(providerQuotaStop(undefined)).toBeNull();
+	});
+
+	/**
+	 * The two spellings the provider uses are accepted independently. Google sends
+	 * `RESOURCE_EXHAUSTED` as the status and `QUOTA_EXHAUSTED` as the reason, and a
+	 * predicate keyed on only one of them would miss any payload carrying the other.
+	 */
+	test("accepts either exhaustion spelling on its own", () => {
+		expect(providerQuotaStop("status: RESOURCE_EXHAUSTED")).not.toBeNull();
+		expect(providerQuotaStop("reason: QUOTA_EXHAUSTED")).not.toBeNull();
+	});
+});
+
+/**
+ * The `--reaggregate` hole, which is the half of the quota problem the runner's
+ * own abort cannot close.
+ *
+ * A live run stops on the first quota refusal and writes no report. But
+ * reaggregation reads whatever jobs are on disk, and a truncated run's survivors
+ * aggregate into something indistinguishable from a complete result. The run that
+ * motivated this kept ten baseline trials and lost every trial of the arm under
+ * test, so the honest reading is "no comparison" while the arithmetic would print
+ * a tidy per-arm table with one arm quietly missing.
+ */
+describe("renderQuotaTruncationBanner — an incomplete run must not read as a result", () => {
+	const quotaError = "QUOTA_EXHAUSTED resets_at=2026-07-25T23:50:11Z quota_model=gemini-3-flash-agent";
+	const stopped = (arm: string, task: string): ArmResult => ({
+		...emptyArmResult(arm, task, 0),
+		error: quotaError,
+	});
+	const scored = (arm: string, task: string): ArmResult => ({
+		...emptyArmResult(arm, task, 0),
+		reward: 1,
+		outputTokens: 50_000,
+	});
+
+	/**
+	 * A clean run must print NO banner. A caveat that appears on every report is
+	 * one readers learn to ignore, which would disarm it for the run that needs it.
+	 */
+	test("says nothing when no sample hit quota", () => {
+		expect(renderQuotaTruncationBanner([scored("baseline", "a"), scored("sig-last1", "a")])).toBeNull();
+	});
+
+	/**
+	 * THE SHAPE THAT MOTIVATED THIS. One arm keeps its samples, the other loses all
+	 * of them. Naming the affected arm is the point: "some trials failed" leaves a
+	 * reader to assume the loss was symmetric, and here it was total for one side.
+	 */
+	test("names the arms that lost samples and the reset time", () => {
+		const banner = renderQuotaTruncationBanner([
+			scored("baseline", "a"),
+			scored("baseline", "b"),
+			stopped("sig-last1", "a"),
+			stopped("sig-last1", "b"),
+		]);
+		expect(banner).toContain("CUT SHORT by provider quota");
+		expect(banner).toContain("2 trial(s)");
+		expect(banner).toContain("arm(s): sig-last1");
+		expect(banner).not.toContain("baseline");
+		expect(banner).toContain("2026-07-25T23:50:11Z");
+	});
+
+	/** Both arms losing samples is still a truncated run, and both are named. */
+	test("names every affected arm, in a stable order", () => {
+		const banner = renderQuotaTruncationBanner([stopped("sig-last1", "a"), stopped("baseline", "a")]);
+		expect(banner).toContain("arm(s): baseline, sig-last1");
+	});
+
+	/** A quota stop that named no reset time still banners, just without the hint. */
+	test("banners without a reset time when the provider named none", () => {
+		const banner = renderQuotaTruncationBanner([{ ...emptyArmResult("baseline", "a", 0), error: "QUOTA_EXHAUSTED" }]);
+		expect(banner).toContain("CUT SHORT by provider quota");
+		expect(banner).not.toContain("Quota reset was");
+	});
+
+	/**
+	 * THE NECESSARY TWIN. Ordinary errors are a normal part of every run and must
+	 * not raise this banner, or it would fire on almost every report and mean
+	 * nothing.
+	 */
+	test("does not banner on ordinary errors", () => {
+		const banner = renderQuotaTruncationBanner([
+			{ ...emptyArmResult("baseline", "a", 0), error: "trial timed out after 900s" },
+			{ ...emptyArmResult("baseline", "b", 0), error: '{"exception_type":"CancelledError"}' },
+		]);
+		expect(banner).toBeNull();
+	});
+
+	/**
+	 * The banner has to reach the rendered report, above the provenance line. A
+	 * predicate nobody calls is the same as no predicate, and this is the assertion
+	 * that would catch the wiring being dropped.
+	 */
+	test("appears at the top of the rendered report, before the provenance banner", () => {
+		const report = renderReport(
+			[scored("baseline", "a"), stopped("sig-last1", "a")],
+			"google-antigravity/gemini-3.5-flash",
+			"2026-07-25T21:00:00Z",
+			1,
+			{ marked: true, biased: false, note: null },
+		);
+		const quotaAt = report.indexOf("CUT SHORT by provider quota");
+		const provenanceAt = report.indexOf("Task set: headline");
+		expect(quotaAt).toBeGreaterThan(-1);
+		expect(provenanceAt).toBeGreaterThan(-1);
+		expect(quotaAt).toBeLessThan(provenanceAt);
+	});
+
+	/** A clean report stays clean: no banner text leaks into a run that never hit quota. */
+	test("leaves a clean report free of quota text", () => {
+		const report = renderReport(
+			[scored("baseline", "a"), scored("sig-last1", "a")],
+			"google-antigravity/gemini-3.5-flash",
+			"2026-07-25T21:00:00Z",
+		);
+		expect(report).not.toContain("CUT SHORT by provider quota");
 	});
 });
 
@@ -2718,7 +3094,12 @@ describe("timeoutRate — the share of a cell the harness killed", () => {
 	test("divides timeouts by the pass-rate denominator, not the row count", () => {
 		// One infra error is excluded from n entirely, so 1 timeout over 2 scored
 		// plus 1 timed out is 1/3, not 1/4.
-		const s = summarizeCell([res({ reward: 1 }), res({ reward: 0 }), timeout(), res({ error: 'Model "x" not found' })]);
+		const s = summarizeCell([
+			res({ reward: 1 }),
+			res({ reward: 0 }),
+			timeout(),
+			res({ error: 'Model "x" not found' }),
+		]);
 		expect(s.n).toBe(3);
 		expect(timeoutRate(s)).toBeCloseTo(1 / 3, 10);
 	});
@@ -2761,8 +3142,14 @@ describe("rewardDeltaAttribution — a reward delta a timeout gap could have pro
 	 * one stray timeout is inevitable, so the bar is proportional to the effect.
 	 */
 	test("allows a delta far larger than the timeout gap that could bias it", () => {
-		const a = cell(Array.from({ length: 19 }, () => 1), 0);
-		const b = cell(Array.from({ length: 19 }, () => 1), 1);
+		const a = cell(
+			Array.from({ length: 19 }, () => 1),
+			0,
+		);
+		const b = cell(
+			Array.from({ length: 19 }, () => 1),
+			1,
+		);
 		const attribution = rewardDeltaAttribution(a, b, -0.6);
 
 		expect(attribution.rateGap).toBeCloseTo(0.05, 10);
@@ -2969,5 +3356,114 @@ describe("renderReport — the timeout guard reaches the printed verdicts", () =
 
 		expect(report).toContain("1 timed out");
 		expect(report).not.toContain(TIMEOUT_UNATTRIBUTABLE_VERDICT);
+	});
+});
+
+describe("renderReport — partial credit is the continuous correctness metric", () => {
+	const STAMP = "2026-07-23T00:00:00.000Z";
+
+	/**
+	 * The nine partial values recorded on a real baseline run over the diverse-20
+	 * task set, alongside the binary reward each one scored. This is the shape the
+	 * whole section exists for: eight of these tasks score reward=0, and five of
+	 * those eight are within two percent of a full pass. Any fixture that invents
+	 * round numbers would hide exactly the effect being guarded.
+	 */
+	const REAL_BASELINE: ReadonlyArray<{ task: string; reward: number; partial: number }> = [
+		{ task: "drizzle-orm-window-function-builders", reward: 1, partial: 1.0 },
+		{ task: "fastapi-implicit-head-options", reward: 1, partial: 1.0 },
+		{ task: "happy-dom-abort-pending-body-reads", reward: 1, partial: 1.0 },
+		{ task: "httpx-streaming-json-iteration", reward: 1, partial: 1.0 },
+		{ task: "prometheus-transactional-reload-status", reward: 1, partial: 1.0 },
+		{ task: "ts-pattern-match-each", reward: 1, partial: 1.0 },
+		{ task: "wazero-multi-module-snapshots", reward: 1, partial: 1.0 },
+		{ task: "effect-sse-httpapi-streaming", reward: 0, partial: 0.8547008547008547 },
+		{ task: "etree-xml-diff-patch", reward: 0, partial: 0.9850746268656716 },
+		{ task: "koota-deferred-mutation-buffer", reward: 0, partial: 0.9849246231155779 },
+		{ task: "superjson-error-stack-serialization", reward: 0, partial: 0.9744897959183674 },
+		{ task: "tengo-destructuring-bindings", reward: 0, partial: 0.9775784753363229 },
+		{ task: "valibot-recursive-schema-composition", reward: 0, partial: 0.9634703196347032 },
+		{ task: "yaegi-go-embed-directives", reward: 0, partial: 0.9791666666666666 },
+		{ task: "ytt-jsonpath-query-api", reward: 0, partial: 0.9807692307692307 },
+	];
+
+	/** Both arms over the same tasks, with B losing `drop` of partial credit on every one. */
+	function armsWithPartialDrop(drop: number): ArmResult[] {
+		const out: ArmResult[] = [];
+		for (const row of REAL_BASELINE) {
+			out.push(res({ arm: "baseline", task: row.task, repeat: 0, reward: row.reward, partial: row.partial }));
+			out.push(
+				res({
+					arm: "candidate",
+					task: row.task,
+					repeat: 0,
+					reward: row.reward,
+					partial: Math.max(0, row.partial - drop),
+				}),
+			);
+		}
+		return out;
+	}
+
+	/**
+	 * The premise the whole section rests on, asserted against real data rather
+	 * than assumed. If the verifier ever starts returning a fractional reward this
+	 * fails, and the prose claiming reward is binary has to be revisited.
+	 */
+	test("reward really is binary on this verifier, so it cannot carry the signal", () => {
+		const distinct = new Set(REAL_BASELINE.map(row => row.reward));
+		expect([...distinct].sort()).toEqual([0, 1]);
+		const partials = new Set(REAL_BASELINE.map(row => row.partial));
+		expect(partials.size).toBeGreaterThan(distinct.size);
+	});
+
+	/**
+	 * The report has to show the operator the continuous number, not only consult
+	 * it inside a verdict. A guardrail nobody can see is a guardrail nobody trusts.
+	 */
+	test("renders a partial-credit comparison table", () => {
+		const report = renderReport(armsWithPartialDrop(0.02), "m", STAMP, 1);
+		expect(report).toContain("## Partial-credit comparison — the continuous metric (paired by task)");
+		expect(report).toContain("Δ mean partial");
+	});
+
+	/**
+	 * The defect this fixes, stated as a test. Every task keeps its pass/fail, so
+	 * the pass-rate and reward tables see nothing at all; only partial credit
+	 * moves. The report must call that a loss for the candidate.
+	 */
+	test("catches a regression that leaves every task's pass/fail untouched", () => {
+		const report = renderReport(armsWithPartialDrop(0.02), "m", STAMP, 1);
+		expect(report).toContain("candidate lower partial credit");
+	});
+
+	/**
+	 * And the consequence that matters: a cheaper arm that quietly lost partial
+	 * credit must not be reported as a clean win. Before this, `reward held` was
+	 * two spellings of the same binary question and this arm would have shipped.
+	 */
+	test("a cheaper arm that lost partial credit is not reported as reward held", () => {
+		const results = armsWithPartialDrop(0.02).map(r =>
+			r.arm === "candidate"
+				? { ...r, outputTokens: 1000, costUsd: 0.1 }
+				: { ...r, outputTokens: 4000, costUsd: 0.4 },
+		);
+		const report = renderReport(results, "m", STAMP, 1);
+		expect(report).toContain("cheaper BUT reward dropped");
+		expect(report).not.toContain("cheaper, reward held");
+	});
+
+	/**
+	 * The other direction, so the guardrail is not simply always vetoing. Identical
+	 * partial credit on every task must leave a genuine cost win intact.
+	 */
+	test("a cheaper arm that held partial credit still reads as reward held", () => {
+		const results = armsWithPartialDrop(0).map(r =>
+			r.arm === "candidate"
+				? { ...r, outputTokens: 1000, costUsd: 0.1 }
+				: { ...r, outputTokens: 4000, costUsd: 0.4 },
+		);
+		const report = renderReport(results, "m", STAMP, 1);
+		expect(report).not.toContain("cheaper BUT reward dropped");
 	});
 });

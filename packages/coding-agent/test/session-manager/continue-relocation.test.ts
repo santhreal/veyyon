@@ -7,8 +7,8 @@ import type { SessionHeader } from "@veyyon/coding-agent/session/session-entries
 import { loadEntriesFromFile } from "@veyyon/coding-agent/session/session-loader";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { getTerminalId } from "@veyyon/tui";
-import { getConfigRootDir, getTerminalSessionsDir, setAgentDir } from "@veyyon/utils";
-
+import { getTerminalSessionsDir, setAgentDir } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 import { makeAssistantMessage } from "./helpers";
 
 function getHeader(entries: unknown[]): SessionHeader | undefined {
@@ -43,9 +43,11 @@ describe("SessionManager.continueRecent relocation", () => {
 	let testAgentDir: string;
 	let cwdA: string;
 	let cwdB: string;
-	const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
+	// One owner for "undo a setAgentDir call": the hand-rolled version this replaces could
+	// not express "the variable was absent" and left the active profile cleared, so it
+	// handed every later file in the process the default profile.
+	const dirOverrides = captureDirOverrides();
 	const originalTmuxPane = process.env.TMUX_PANE;
-	const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
 
 	beforeEach(async () => {
 		// Force a deterministic, non-TTY terminal id so breadcrumb read/write is stable.
@@ -61,12 +63,7 @@ describe("SessionManager.continueRecent relocation", () => {
 	afterEach(async () => {
 		if (originalTmuxPane === undefined) delete process.env.TMUX_PANE;
 		else process.env.TMUX_PANE = originalTmuxPane;
-		if (originalAgentDir) {
-			setAgentDir(originalAgentDir);
-		} else {
-			setAgentDir(fallbackAgentDir);
-			delete process.env.VEYYON_CODING_AGENT_DIR;
-		}
+		restoreDirOverrides(dirOverrides);
 		await fsp.rm(testAgentDir, { recursive: true, force: true });
 	});
 

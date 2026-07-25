@@ -18,6 +18,7 @@ import { UserMessageComponent } from "@veyyon/coding-agent/modes/components/user
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { TERMINAL } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils";
+import { useFullColor } from "../../helpers/theme-assertions";
 
 // The color assertions below pin exact 24-bit bytes (`38;2;r;g;b`). The theme
 // bakes each color to ANSI at construction using `detectColorMode()`, which
@@ -32,6 +33,12 @@ const originalTrueColor = trueColorHandle.trueColor;
 const originalColorterm = Bun.env.COLORTERM;
 
 describe("UserMessageComponent working indicator", () => {
+	// Colour depth is only half the story. `theme.fg(color, text)` returns its
+	// input unchanged unless the ANSI policy is `full`, so the assertions below
+	// on `\x1b[38;2;86;95;119m›` see a bare `›` under the harness default no
+	// matter what `COLORTERM` says. A suite whose subject is colour declares the
+	// policy rather than inheriting it from the terminal.
+	useFullColor();
 	beforeAll(async () => {
 		Bun.env.COLORTERM = "truecolor";
 		trueColorHandle.trueColor = true;

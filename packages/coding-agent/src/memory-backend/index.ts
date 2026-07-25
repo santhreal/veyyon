@@ -13,6 +13,7 @@ export type {
 } from "../mnemopi/state";
 export * from "./local-backend";
 export * from "./off-backend";
+export * from "./payload";
 export * from "./resolve";
 export * from "./runtime";
 export * from "./types";

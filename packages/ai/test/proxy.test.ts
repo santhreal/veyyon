@@ -278,7 +278,7 @@ describe("connectProxiedSocket", () => {
 			controller.abort();
 			const result = await pending;
 
-			expect(result).toBeInstanceOf(AIError.AbortError);
+			expect(result).toBeInstanceOf(AIError.RequestAbortError);
 			await waitForSocketClose(socket);
 			expect(socket.destroyed).toBe(true);
 		} finally {

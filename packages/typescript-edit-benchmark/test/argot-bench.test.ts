@@ -25,7 +25,8 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { __resetDirsFromEnvForTests, APP_NAME, getAgentDir, getArgotCacheDir, setProfile } from "@veyyon/utils";
+import { APP_NAME, getAgentDir, getArgotCacheDir, setProfile } from "@veyyon/utils";
+import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 import {
 	type ArgotBenchOutcome,
 	applyArgotPhaseSettings,
@@ -35,8 +36,8 @@ import {
 	prepareArgotWorkdir,
 	runArgotBench,
 	runContentReproBench,
-} from "../src/lexpack-bench";
-import { assembleRunMeasurement, assertArgotCertified, EDIT_TASK_TRUTHS } from "../src/lexpack-certify";
+} from "../src/argot-bench";
+import { assembleRunMeasurement, assertArgotCertified, EDIT_TASK_TRUTHS } from "../src/argot-certify";
 import { loadTasksFromDir } from "../src/tasks";
 import { verifyExpectedFileSubset } from "../src/verify";
 
@@ -45,10 +46,12 @@ const TEST_PROFILE = "argot-bench-test";
 
 let cacheRoot = "";
 let originalXdgCache: string | undefined;
+let dirOverrides: DirOverridesSnapshot;
 let originalConfigDir: string | undefined;
 
 beforeAll(() => {
 	cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "argot-bench-xdg-"));
+	dirOverrides = captureDirOverrides();
 	originalXdgCache = process.env.XDG_CACHE_HOME;
 	process.env.XDG_CACHE_HOME = path.join(cacheRoot, "cache");
 	fs.mkdirSync(path.join(process.env.XDG_CACHE_HOME, APP_NAME, "profiles", TEST_PROFILE), { recursive: true });
@@ -79,7 +82,10 @@ afterAll(() => {
 	else process.env.XDG_CACHE_HOME = originalXdgCache;
 	if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
 	else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
-	__resetDirsFromEnvForTests();
+	// Not `__resetDirsFromEnvForTests()` alone: `setProfile(TEST_PROFILE)` above EXPORTS
+	// both `VEYYON_PROFILE` and the profile's agent dir, so re-deriving from the
+	// environment re-derived the test profile and left it active for every later file.
+	restoreDirOverrides(dirOverrides);
 	if (cacheRoot) fs.rmSync(cacheRoot, { recursive: true, force: true });
 });
 

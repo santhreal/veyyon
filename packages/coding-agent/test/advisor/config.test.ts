@@ -302,6 +302,91 @@ describe("WATCHDOG.yml file round-trip", () => {
 		expect(serializeWatchdogConfig({ advisors: [] })).toBe("");
 	});
 
+	/**
+	 * `WATCHDOG.yml` is a file the docs tell people to write by hand, and the advisor editor
+	 * saves it back after a change. That save used to re-serialize the whole doc, which is
+	 * semantically identical and throws away everything that is not a value: the comment above
+	 * each advisor explaining what it is for, the blank lines separating them, the order they
+	 * were arranged in. Editing one advisor's model from the dashboard deleted the comments on
+	 * all of them, and every test here compared VALUES, so nothing noticed.
+	 */
+	describe("saving over a hand-written file", () => {
+		it("keeps the comments and blank lines around an advisor whose model changed", async () => {
+			const file = path.join(tmp, "WATCHDOG.yml");
+			await Bun.write(
+				file,
+				[
+					"# advisors that review every turn",
+					"advisors:",
+					"  # keeps an eye on module boundaries",
+					"  - name: Architecture",
+					"    model: old/model",
+					"",
+					"  # the paranoid one",
+					"  - name: Security",
+					"    tools:",
+					"      - read",
+					"",
+				].join("\n"),
+			);
+
+			await saveWatchdogConfigFile(file, {
+				advisors: [
+					{ name: "Architecture", model: "new/model" },
+					{ name: "Security", tools: ["read"] },
+				],
+			});
+
+			const text = await Bun.file(file).text();
+			expect(text).toContain("# advisors that review every turn");
+			expect(text).toContain("# keeps an eye on module boundaries");
+			expect(text).toContain("# the paranoid one");
+			expect(text).toContain("model: new/model");
+			expect(text).not.toContain("old/model");
+			// And it still loads as the doc that was saved, since preserved formatting is
+			// worthless if the file stops parsing into the same advisors.
+			expect(await loadWatchdogConfigFile(file)).toEqual({
+				advisors: [
+					{ name: "Architecture", model: "new/model" },
+					{ name: "Security", tools: ["read"] },
+				],
+			});
+		});
+
+		it("leaves a file byte-identical when the save changes nothing", async () => {
+			// A dashboard that opens and closes the editor must not touch the file at all.
+			const file = path.join(tmp, "WATCHDOG.yml");
+			const original = ["# mine", "advisors:", "  - name: Security", "    tools:", "      - read", ""].join("\n");
+			await Bun.write(file, original);
+
+			await saveWatchdogConfigFile(file, { advisors: [{ name: "Security", tools: ["read"] }] });
+
+			expect(await Bun.file(file).text()).toBe(original);
+		});
+
+		it("refuses to write over a file it cannot parse, naming the path and the fix", async () => {
+			// The one case where overwriting destroys text we could not read: a warning
+			// followed by a clobber would be the silent fallback this codebase bans, so the
+			// save fails and says what to do about it.
+			const file = path.join(tmp, "WATCHDOG.yml");
+			await Bun.write(file, "advisors:\n  - name: [unclosed\n");
+
+			await expect(saveWatchdogConfigFile(file, { advisors: [{ name: "Security" }] })).rejects.toThrow(
+				/Cannot save .*WATCHDOG\.yml.*cannot be edited in place/s,
+			);
+			// The unreadable original is still exactly where the user left it.
+			expect(await Bun.file(file).text()).toBe("advisors:\n  - name: [unclosed\n");
+		});
+
+		it("still writes a fresh serialization when there is no file yet", async () => {
+			// The negative twin: preservation must not break the first save.
+			const file = path.join(tmp, "WATCHDOG.yml");
+			await saveWatchdogConfigFile(file, { advisors: [{ name: "Security" }] });
+
+			expect(await Bun.file(file).text()).toBe("advisors:\n  - name: Security\n");
+		});
+	});
+
 	it("resolves project and user scope paths", () => {
 		expect(advisorConfigFilePath("project", { projectDir: "/repo", agentDir: "/home/.omp" })).toBe(
 			path.join("/repo", "WATCHDOG.yml"),

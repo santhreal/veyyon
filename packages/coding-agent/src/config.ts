@@ -1,7 +1,14 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { CONFIG_DIR_NAME, getConfigAgentDirName, getProjectDir } from "@veyyon/utils";
+import {
+	CONFIG_DIR_NAME,
+	errorMessage,
+	getConfigAgentDirName,
+	getProjectDir,
+	isMissingPath,
+	logger,
+} from "@veyyon/utils";
 import { expandTilde } from "./tools/path-utils";
 
 export * from "./config/config-file";
@@ -226,7 +233,19 @@ export function findAllNearestProjectConfigDirs(subpath: string, cwd: string = g
 					results.push({ path: candidate, source: name, level: "project" });
 					foundBases.add(name);
 				}
-			} catch {}
+			} catch (error) {
+				// The walk probes one candidate per config base per ancestor directory, so
+				// absence is the overwhelmingly common answer and stays silent. A candidate that
+				// EXISTS and cannot be stat'd is different: the walk carries on to the ancestor
+				// above it and the nearer config — the one that should have won — is skipped, so
+				// the user's project settings quietly stop applying (Law 10).
+				if (!isMissingPath(error)) {
+					logger.warn("Config directory could not be read while walking up; skipped it", {
+						path: candidate,
+						error: errorMessage(error),
+					});
+				}
+			}
 		}
 
 		const parentDir = path.dirname(currentDir);

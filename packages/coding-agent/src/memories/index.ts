@@ -19,13 +19,10 @@ import {
 
 import type { ModelRegistry } from "../config/model-registry";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../config/model-resolver";
+import { DEFAULT_MODEL_SLOT } from "../config/model-roles";
 import type { Settings } from "../config/settings";
 import type { MemoryBackendSaveInput, MemoryBackendSaveResult } from "../memory-backend/types";
-import consolidationTemplate from "../prompts/memories/consolidation.md" with { type: "text" };
-import consolidationSystemTemplate from "../prompts/memories/consolidation_system.md" with { type: "text" };
-import readPathTemplate from "../prompts/memories/read-path.md" with { type: "text" };
-import stageOneInputTemplate from "../prompts/memories/stage_one_input.md" with { type: "text" };
-import stageOneSystemTemplate from "../prompts/memories/stage_one_system.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import type { AgentSession } from "../session/agent-session";
 import {
 	claimStage1Jobs,
@@ -228,7 +225,7 @@ function renderMemoryToolDeveloperInstructionsSnapshot(
 		snapshot.learned && learnedBudget > 0 ? truncateByApproxTokens(snapshot.learned, learnedBudget).trim() : "";
 	if (!summaryOut && !learnedOut) return undefined;
 
-	return prompt.render(readPathTemplate, {
+	return prompt.render(PROMPTS["memories/read-path"].text, {
 		memory_summary: summaryOut,
 		learned: learnedOut,
 	});
@@ -735,7 +732,7 @@ async function runStage1Job(options: {
 			Math.floor(modelMaxTokens * config.rolloutPayloadPercent),
 		);
 		const truncatedItems = truncateByApproxTokens(serializedItems, budgetTokens);
-		const inputPrompt = prompt.render(stageOneInputTemplate, {
+		const inputPrompt = prompt.render(PROMPTS["memories/stage_one_input"].text, {
 			thread_id: claim.threadId,
 			response_items_json: truncatedItems,
 		});
@@ -743,7 +740,7 @@ async function runStage1Job(options: {
 		const response = await completeSimple(
 			model,
 			{
-				systemPrompt: [stageOneSystemTemplate],
+				systemPrompt: [PROMPTS["memories/stage_one_system"].text],
 				messages: [{ role: "user", content: [{ type: "text", text: inputPrompt }], timestamp: Date.now() }],
 			},
 			{
@@ -872,7 +869,7 @@ async function runConsolidationModel(options: {
 	const { memoryRoot, model, apiKey } = options;
 	const rawMemories = await Bun.file(path.join(memoryRoot, "raw_memories.md")).text();
 	const rolloutSummaries = await readRolloutSummaries(memoryRoot);
-	const input = prompt.render(consolidationTemplate, {
+	const input = prompt.render(PROMPTS["memories/consolidation"].text, {
 		raw_memories: truncateByApproxTokens(rawMemories, 20_000),
 		rollout_summaries: truncateByApproxTokens(rolloutSummaries, 12_000),
 	});
@@ -880,7 +877,7 @@ async function runConsolidationModel(options: {
 	const response = await completeSimple(
 		model,
 		{
-			systemPrompt: [consolidationSystemTemplate],
+			systemPrompt: [PROMPTS["memories/consolidation_system"].text],
 			messages: [{ role: "user", content: [{ type: "text", text: input }], timestamp: Date.now() }],
 		},
 		{
@@ -1224,7 +1221,8 @@ async function resolveMemoryModel(options: {
 	fallbackRole: string;
 }): Promise<Model | undefined> {
 	const { modelRegistry, session, fallbackRole } = options;
-	const requestedModel = session.settings.getModelRole(fallbackRole) || session.settings.getModelRole("default");
+	const requestedModel =
+		session.settings.getModelRole(fallbackRole) || session.settings.getModelRole(DEFAULT_MODEL_SLOT);
 	if (requestedModel) {
 		const resolved = resolveModelRoleValue(requestedModel, modelRegistry.getAll(), {
 			settings: session.settings,

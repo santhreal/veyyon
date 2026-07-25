@@ -26,6 +26,7 @@ import {
 	refreshDirsFromEnv,
 	setProfile,
 } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 function nativeUserSkillsDir(): string {
 	// Mirrors discovery/builtin.ts loadSkills user scan: `<agentDir>/skills`.
@@ -33,28 +34,27 @@ function nativeUserSkillsDir(): string {
 }
 
 // A VEYYON_CODING_AGENT_DIR override leaked by a sibling test file makes default
-// mode resolve to the override verbatim instead of profiles/default. Pin the
-// baseline (no override) for this file, then restore whatever was there.
-let leakedAgentDirOverride: string | undefined;
+// mode resolve to the override verbatim instead of profiles/default, so this file pins
+// the baseline (no override) for its own window and puts the whole snapshot back after.
+const dirOverrides = captureDirOverrides();
 
 beforeAll(() => {
-	leakedAgentDirOverride = process.env.VEYYON_CODING_AGENT_DIR;
 	delete process.env.VEYYON_CODING_AGENT_DIR;
 	__resetProfileSnapshotForTests();
 	refreshDirsFromEnv();
 });
 
 afterAll(() => {
-	if (leakedAgentDirOverride !== undefined) {
-		process.env.VEYYON_CODING_AGENT_DIR = leakedAgentDirOverride;
-	}
+	restoreDirOverrides(dirOverrides);
 	__resetProfileSnapshotForTests();
 	refreshDirsFromEnv();
 });
 
 afterEach(() => {
-	// Never leak an activated profile into sibling test files in this process.
-	setProfile(undefined);
+	// Back to whatever profile this process was on, which is NOT necessarily the default:
+	// `setProfile(undefined)` here used to hand every later file the default profile while
+	// the developer was running under a named one.
+	restoreDirOverrides(dirOverrides);
 });
 
 describe("per-profile skill isolation", () => {

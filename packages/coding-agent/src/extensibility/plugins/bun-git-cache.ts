@@ -1,7 +1,7 @@
 import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent, trimTrailingSlashes } from "@veyyon/utils";
+import { isEnoent, readPipeText, trimTrailingSlashes } from "@veyyon/utils";
 import type { GitSource } from "./git-url";
 
 interface CommandResult {
@@ -20,8 +20,8 @@ async function runCommand(command: string[], cwd: string): Promise<CommandResult
 	});
 	const [exitCode, stdout, stderr] = await Promise.all([
 		proc.exited,
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
+		readPipeText(proc.stdout),
+		readPipeText(proc.stderr),
 	]);
 	return { exitCode, stdout, stderr };
 }

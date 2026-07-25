@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isEffort } from "@veyyon/catalog/effort";
 import { emptyUsage } from "@veyyon/catalog/models";
 import { errorMessage, isRecord } from "@veyyon/utils";
 import { type } from "arktype";
@@ -15,7 +16,6 @@ import type {
 	Context,
 	ImageContent,
 	Message,
-	ServiceTier,
 	StopReason,
 	TextContent,
 	Tool,
@@ -23,6 +23,7 @@ import type {
 	ToolResultMessage,
 	TSchema,
 } from "../types";
+import { isServiceTier } from "../types";
 import {
 	type OpenAIChatContentPart,
 	type OpenAIChatMessage,
@@ -31,26 +32,8 @@ import {
 	type OpenAIChatToolChoice,
 	openaiChatRequestSchema,
 } from "./openai-chat-server-schema";
-import { formatOpenAiError } from "./openai-shared";
 
 export type { ParsedRequest };
-
-type ReasoningEffort = NonNullable<ParsedRequest["options"]["reasoning"]>;
-
-function isReasoningEffort(value: unknown): value is ReasoningEffort {
-	return (
-		value === "minimal" ||
-		value === "low" ||
-		value === "medium" ||
-		value === "high" ||
-		value === "xhigh" ||
-		value === "max"
-	);
-}
-
-function isServiceTier(value: unknown): value is ServiceTier {
-	return value === "auto" || value === "default" || value === "flex" || value === "scale" || value === "priority";
-}
 
 // ---------------------------------------------------------------------------
 // parseRequest
@@ -168,7 +151,7 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 	if (data.user !== undefined) options.user = data.user;
 	if (data.response_format !== undefined) options.responseFormat = data.response_format;
 	if (data.parallel_tool_calls !== undefined) options.parallelToolCalls = data.parallel_tool_calls;
-	if (data.reasoning_effort !== undefined && isReasoningEffort(data.reasoning_effort)) {
+	if (data.reasoning_effort !== undefined && isEffort(data.reasoning_effort)) {
 		options.reasoning = data.reasoning_effort;
 	}
 	if (data.service_tier !== undefined && isServiceTier(data.service_tier)) {
@@ -709,6 +692,4 @@ export function encodeStream(
  *   `{ error: { message, type } }`
  * Matches the shape the official SDK auto-parses into `APIError`.
  */
-export function formatError(status: number, type: string, message: string): Response {
-	return formatOpenAiError(status, type, message);
-}
+export { formatOpenAiError as formatError } from "./openai-shared";

@@ -72,6 +72,9 @@ function stderrSharesStdoutTerminal(): boolean {
 		const stderrStat = fs.fstatSync(STDERR_FILENO);
 		return stdoutStat.dev === stderrStat.dev && stdoutStat.ino === stderrStat.ino;
 	} catch {
+		// Cannot prove the two fds share a terminal, so assume they do not and LEAVE STDERR ALONE. False is
+		// the conservative answer: redirecting a stderr that was not ours to redirect would swallow output
+		// the user is watching, which is worse than a few stray writes over the TUI.
 		return false;
 	}
 }
@@ -112,6 +115,9 @@ export function suppressTerminalStderr(options?: SuppressTerminalStderrOptions):
 		try {
 			redirectFd = fs.openSync("/dev/null", "w");
 		} catch {
+			// Neither the log file nor /dev/null could be opened, so there is nowhere to send fd 2 and the
+			// guard is not installed. False is the caller's signal to carry on without it, which it reports;
+			// installing a guard that pointed at a broken fd would lose the diagnostics entirely.
 			return false;
 		}
 	}

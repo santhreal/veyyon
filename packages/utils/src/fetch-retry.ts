@@ -1,4 +1,5 @@
 import { scheduler } from "node:timers/promises";
+import { isAbortError } from "./abortable";
 
 // "reset after 1h2m3s" / "10m15s" / "39s"
 const QUOTA_RESET_PATTERN = /reset after (?:(\d+)h)?(?:(\d+)m)?(\d+(?:\.\d+)?)s/i;
@@ -272,7 +273,7 @@ function mergeInit(base: RequestInit, overlay: RequestInit, timeout: number | fa
 
 function wrapNetworkError(error: unknown): Error {
 	if (error instanceof Error) {
-		if (error.name === "AbortError" || error.message === "Request was aborted") {
+		if (isAbortError(error) || error.message === "Request was aborted") {
 			return new Error("Request was aborted");
 		}
 		if (error.message === "fetch failed" && error.cause instanceof Error) {
@@ -384,8 +385,7 @@ const VALIDATION_MESSAGE_PATTERN =
 export function isRetryableError(error: unknown): boolean {
 	const info = error as { message?: string; name?: string } | null;
 	const message = info?.message ?? "";
-	const name = info?.name ?? "";
-	if (name === "AbortError" || /timeout|timed out|aborted/i.test(message)) return true;
+	if (isAbortError(error) || /timeout|timed out|aborted/i.test(message)) return true;
 
 	const status = extractHttpStatusFromError(error);
 	if (status !== undefined) {

@@ -34,9 +34,9 @@ describe("classifyHostAvx2Support — architecture gate", () => {
 
 describe("classifyHostAvx2Support — linux /proc/cpuinfo", () => {
 	it("supported when cpuinfo lists the avx2 flag", () => {
-		expect(classifyHostAvx2Support(probes({ platform: "linux", readCpuInfo: () => "flags: sse4_2 avx avx2\n" }))).toBe(
-			"supported",
-		);
+		expect(
+			classifyHostAvx2Support(probes({ platform: "linux", readCpuInfo: () => "flags: sse4_2 avx avx2\n" })),
+		).toBe("supported");
 	});
 
 	it("unsupported when cpuinfo is readable but has no avx2 flag", () => {
@@ -60,7 +60,11 @@ describe("classifyHostAvx2Support — darwin sysctl", () => {
 
 	it("supported when the fallback features key reports AVX2", () => {
 		const run = (_c: string, args: string[]) =>
-			args[1] === "machdep.cpu.features" ? "FPU VME ... AVX1.0 AVX2" : args[1] === "machdep.cpu.leaf7_features" ? "BMI1 BMI2" : null;
+			args[1] === "machdep.cpu.features"
+				? "FPU VME ... AVX1.0 AVX2"
+				: args[1] === "machdep.cpu.leaf7_features"
+					? "BMI1 BMI2"
+					: null;
 		expect(classifyHostAvx2Support(probes({ platform: "darwin", runCommand: run }))).toBe("supported");
 	});
 
@@ -78,7 +82,9 @@ describe("classifyHostAvx2Support — darwin sysctl", () => {
 
 describe("classifyHostAvx2Support — win32 powershell", () => {
 	it("supported when powershell prints True", () => {
-		expect(classifyHostAvx2Support(probes({ platform: "win32", arch: "x64", runCommand: () => "True" }))).toBe("supported");
+		expect(classifyHostAvx2Support(probes({ platform: "win32", arch: "x64", runCommand: () => "True" }))).toBe(
+			"supported",
+		);
 	});
 
 	it("unsupported when powershell prints False", () => {
@@ -88,6 +94,8 @@ describe("classifyHostAvx2Support — win32 powershell", () => {
 	});
 
 	it("UNKNOWN when powershell could not run", () => {
-		expect(classifyHostAvx2Support(probes({ platform: "win32", arch: "x64", runCommand: () => null }))).toBe("unknown");
+		expect(classifyHostAvx2Support(probes({ platform: "win32", arch: "x64", runCommand: () => null }))).toBe(
+			"unknown",
+		);
 	});
 });

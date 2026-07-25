@@ -1,7 +1,8 @@
+import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { errorMessage, formatBytes, formatCount, isEnoent } from "@veyyon/utils";
+import { errorMessage, formatBytes, formatCount, isEnoent, logger } from "@veyyon/utils";
 import { AgentRegistry } from "../registry/agent-registry";
 import { getContentType } from "./content-type";
 import { buildDirectoryResource, ensureWithinRoot as ensureWithinRootShared } from "./filesystem-resource";
@@ -118,6 +119,8 @@ function isUtf8Text(bytes: Uint8Array): boolean {
 		new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 		return true;
 	} catch {
+		// The throw IS the answer: `fatal` decoding rejects exactly the byte sequences that are not UTF-8,
+		// which is the question asked. Nothing is being swallowed, so there is nothing to report.
 		return false;
 	}
 }
@@ -236,6 +239,45 @@ export function resolveLocalRoot(options: LocalProtocolOptions, platform: NodeJS
 }
 
 /** Resolve a local:// URL to an on-disk path under the active session's local root. */
+/**
+ * List the plan files in a session-local root as `local://` URLs, newest first.
+ *
+ * This is the fallback both the interactive and the ACP plan-approval paths use when a plan reference
+ * arrives without its title: the newest `*plan.md` in the local root is the plan the user just wrote.
+ * Both paths had their own copy of this walk, and both copies answered every failure with an empty
+ * list, so an unreadable local root looked exactly like a session that has written no plan and plan
+ * approval quietly had nothing to offer.
+ *
+ * A root that does not exist IS an empty list: no plan has been written yet, which is the state of
+ * every new session. Anything else is reported, and the empty list is still returned, because plan
+ * approval must not fail outright when it cannot enumerate its fallbacks.
+ */
+export async function listLocalPlanFileUrls(localRoot: string): Promise<string[]> {
+	let entries: Dirent[];
+	try {
+		entries = await fs.readdir(localRoot, { withFileTypes: true });
+	} catch (err) {
+		if (!isEnoent(err)) {
+			logger.warn("Local plan root could not be read; plan approval has no plan files to fall back on", {
+				root: localRoot,
+				error: errorMessage(err),
+			});
+		}
+		return [];
+	}
+	const plans = await Promise.all(
+		entries
+			.filter(entry => entry.isFile() && /plan\.md$/i.test(entry.name))
+			.map(async entry => {
+				// An entry that vanished between the listing and the stat sorts last rather than dropping
+				// out: its URL is still worth offering, and reading it reports its own failure.
+				const stat = await fs.stat(path.join(localRoot, entry.name)).catch(() => null);
+				return { url: `local://${entry.name}`, mtime: stat?.mtimeMs ?? 0 };
+			}),
+	);
+	return plans.sort((left, right) => right.mtime - left.mtime).map(plan => plan.url);
+}
+
 export function resolveLocalUrlToPath(
 	input: string | InternalUrl,
 	options: LocalProtocolOptions,

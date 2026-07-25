@@ -16,9 +16,8 @@ import { assistantMsg, userMsg } from "./utilities";
 /**
  * Regression: when the user sets `modelRoles.default` to a model on a different
  * provider than the current chat, compaction must still pick the active chat's
- * model first. Otherwise an Anthropic chat would route compaction through the
- * OpenAI remote-compaction endpoint (gated by `shouldUseOpenAiRemoteCompaction`),
- * even though the live conversation never used OpenAI.
+ * model first, so an Anthropic chat summarizes on Anthropic rather than billing
+ * and routing through a provider the live conversation never used.
  */
 describe("compaction prefers the current session model over modelRoles.default", () => {
 	let tempDir: TempDir;
@@ -234,14 +233,19 @@ describe("compaction prefers the current session model over modelRoles.default",
 		expect(`${session.model?.provider}/${session.model?.id}`).toBe(`${currentModel.provider}/${currentModel.id}`);
 	});
 
-	it("/compact remote skips a non-remote-capable compactionModel and uses the active remote-capable model", async () => {
-		// Active model is OpenAI (provider-native remote-capable per
-		// shouldUseOpenAiRemoteCompaction). compactionModel points at an
-		// Anthropic model that is NOT remote-capable, so the default candidate
-		// chain would try Anthropic first and run a local summary — exactly the
-		// silent-fallback the reviewer flagged for `/compact remote`. The fix
-		// filters non-remote candidates in this mode, so the spy must observe
-		// the OpenAI model as the first invocation.
+	/**
+	 * No `/compact` mode may filter the candidate chain by provider.
+	 *
+	 * This replaces a test for the removed `/compact remote` mode, which dropped
+	 * candidates that were not provider-native-remote-capable so an OpenAI model
+	 * would win over a configured Anthropic `compactionModel`. Provider-native
+	 * compaction is gone, so that filtering is gone with it: the configured
+	 * compactionModel is honored for every mode, on every provider. If a mode
+	 * ever starts steering the chain by provider again, this fails.
+	 */
+	it("a mode never overrides the configured compactionModel by provider", async () => {
+		// Active model is OpenAI; compactionModel points at Anthropic. The
+		// configured compaction model must win regardless of the mode.
 		const baseCurrentModel = getBundledModel("openai", "gpt-5");
 		const nonRemoteCompactionModel = getBundledModel("anthropic", "claude-sonnet-4-5");
 		if (!baseCurrentModel || !nonRemoteCompactionModel) {
@@ -295,10 +299,15 @@ describe("compaction prefers the current session model over modelRoles.default",
 			details: { provider: model.provider },
 		}));
 
-		await session.compact(undefined, { mode: "remote" });
+		// A session can only compact once from this state ("Already compacted"),
+		// so the mode-to-strategy mapping itself is covered in compact-modes.test.ts.
+		// What matters here is that the mode does not re-pick the model.
+		await session.compact(undefined, { mode: "summary" });
 
 		expect(compactSpy).toHaveBeenCalled();
 		const [, firstCandidate] = compactSpy.mock.calls[0]!;
-		expect(`${firstCandidate.provider}/${firstCandidate.id}`).toBe(`${currentModel.provider}/${currentModel.id}`);
+		expect(`${firstCandidate.provider}/${firstCandidate.id}`).toBe(
+			`${nonRemoteCompactionModel.provider}/${nonRemoteCompactionModel.id}`,
+		);
 	});
 });

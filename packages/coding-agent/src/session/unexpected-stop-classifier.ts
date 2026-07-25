@@ -4,12 +4,19 @@ import { errorMessage, logger, prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
-import unexpectedStopClassifierPrompt from "../prompts/system/unexpected-stop-classifier.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { isTinyMemoryLocalModelKey, ONLINE_MEMORY_MODEL_KEY } from "../tiny/models";
 import { tinyModelClient } from "../tiny/title-client";
 import { REASONING_SAFE_MAX_TOKENS } from "./classifier-tokens";
 
-const CLASSIFIER_SYSTEM_PROMPT = prompt.render(unexpectedStopClassifierPrompt);
+/**
+ * The instruction half only: the online path sends the message as its own user
+ * turn (see {@link classifyOnline}), so the template's `Message:` slot is left
+ * unfilled and its heading suppressed. Rendering it unguarded used to emit a
+ * bare `Message:` header with nothing under it, which told the model to judge
+ * text that was not there.
+ */
+const CLASSIFIER_SYSTEM_PROMPT = prompt.render(PROMPTS["turn-control/unexpected-stop-classifier"].text, {});
 
 /**
  * The answer is a single word. OpenAI-compatible endpoints reject values below
@@ -110,7 +117,7 @@ async function classifyLocal(
 	if (!isTinyMemoryLocalModelKey(modelKey)) {
 		throw new Error(`unexpected-stop: unsupported local classifier model: ${modelKey}`);
 	}
-	const builtPrompt = prompt.render(unexpectedStopClassifierPrompt, { message: text });
+	const builtPrompt = prompt.render(PROMPTS["turn-control/unexpected-stop-classifier"].text, { message: text });
 	const output = await tinyModelClient.complete(modelKey, builtPrompt, {
 		maxTokens: ANSWER_MAX_TOKENS,
 		signal: deps.signal,

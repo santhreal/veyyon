@@ -87,6 +87,9 @@ export function parseTitleSlotLine(line: string): SessionTitleSlotEntry | undefi
 	try {
 		return parseTitleSlotObject(JSON.parse(line)) ?? undefined;
 	} catch {
+		// Every line of the header is offered to this parser, including lines written before title
+		// slots existed. "Not a title slot" is the expected answer, not a failure, so it stays quiet;
+		// the line's own reader reports it if it cannot make sense of it either.
 		return undefined;
 	}
 }

@@ -1,4 +1,17 @@
 /**
+ * Recognising the git URLs a plugin can be installed from.
+ *
+ * WHAT `null` MEANS HERE, once for the whole file: every parser below answers `null` for "this string
+ * is not a git URL I can clone from", and that is the ONLY thing `null` means. There is no failure to
+ * report: the callers try each shape in turn (known host, generic URL, namespaced shorthand) and offer
+ * the same string to each, so being rejected is the ordinary outcome for most of them. The two throwing
+ * operations, `new URL` and `decodeURIComponent`, are both shape tests -- a string that is not a URL and
+ * a percent-escape that is not valid UTF-8 -- and each throw IS the answer rather than something
+ * swallowed. Refusing is also the safe direction: a spec that cannot be parsed must never be handed to
+ * `git clone` on a guess.
+ */
+
+/**
  * Parsed git URL information.
  */
 export type GitSource = {
@@ -89,6 +102,7 @@ function tryKnownHost(candidate: string): { domain: string; user: string; projec
 	try {
 		parsed = new URL(candidate);
 	} catch {
+		// Not a URL, so not a known-host URL. See the file header on what null means.
 		return null;
 	}
 
@@ -104,6 +118,8 @@ function tryKnownHost(candidate: string): { domain: string; user: string; projec
 		try {
 			committish = decodeURIComponent(parsed.hash.slice(1));
 		} catch {
+			// A ref whose percent-escapes are not valid UTF-8 cannot be resolved, so the whole spec is refused
+			// rather than cloned at the default branch, which would silently install the wrong code.
 			return null;
 		}
 	}
@@ -202,6 +218,7 @@ function parseGenericGitUrl(url: string): GitSource | null {
 				try {
 					decodeURIComponent(parsed.hash.slice(1));
 				} catch {
+					// Undecodable ref: refuse the spec rather than clone the default branch. Same as above.
 					return null;
 				}
 			}
@@ -209,6 +226,8 @@ function parseGenericGitUrl(url: string): GitSource | null {
 			repoPath = parsed.pathname.replace(/^\/+/, "");
 			repo = stripUrlCredentials(repoWithoutRef);
 		} catch {
+			// Carried a protocol prefix but is not a parseable URL, so there is nothing to clone. Null is the
+			// parser's negative answer, not a swallowed failure.
 			return null;
 		}
 	} else {
@@ -221,6 +240,7 @@ function parseGenericGitUrl(url: string): GitSource | null {
 			repoPath = parsed.pathname.replace(/^\/+/, "");
 			repo = stripUrlCredentials(repo);
 		} catch {
+			// `host/user/repo` with an https prefix bolted on still did not parse, so this is not a git URL.
 			return null;
 		}
 		if (!host.includes(".") && host !== "localhost") return null;
@@ -255,6 +275,7 @@ function tryNamespacedShorthand(trimmed: string): GitSource | null {
 		try {
 			decodeURIComponent(ref);
 		} catch {
+			// Undecodable ref: refuse the shorthand rather than resolve it to the default branch.
 			return null;
 		}
 	}
@@ -318,6 +339,7 @@ export function parseGitUrl(source: string): GitSource | null {
 			try {
 				decodeURIComponent(hash);
 			} catch {
+				// Undecodable ref: refuse rather than clone something the caller did not ask for.
 				return null;
 			}
 		}

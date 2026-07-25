@@ -132,7 +132,7 @@ function createContext(overrides?: {
 	const ctx = {
 		session,
 		sessionManager,
-		settings: Settings.isolated({ "task.enableLsp": true }),
+		settings: Settings.isolated({ "subagent.enableLsp": true }),
 		showStatus: vi.fn(),
 		showWarning: vi.fn(),
 		showError: vi.fn(),

@@ -8,12 +8,7 @@ import { ModalSelectListComponent } from "./modal-select-list";
 export class ShowImagesSelectorComponent {
 	#inner: ModalSelectListComponent;
 
-	constructor(
-		currentValue: boolean,
-		onSelect: (show: boolean) => void,
-		onCancel: () => void,
-		reveal?: boolean,
-	) {
+	constructor(currentValue: boolean, onSelect: (show: boolean) => void, onCancel: () => void, reveal?: boolean) {
 		const items: SelectItem[] = [
 			{ value: "yes", label: "Yes", description: "Show images inline in terminal" },
 			{ value: "no", label: "No", description: "Show text placeholder instead" },

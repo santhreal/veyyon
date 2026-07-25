@@ -228,9 +228,10 @@ describe("AgentSession advisor toggle", () => {
 	});
 
 	it("setAdvisorEnabled reports inactive when the advisor role resolves to no model", () => {
-		// The advisor role falls back to the `slow` priority chain when unset, so an
-		// unset role still resolves a model. The inactive-but-enabled path is only
-		// reached when the configured advisor model cannot be resolved at all.
+		// An unset advisor role inherits the session's live model (no role carries a
+		// built-in chain), so the inactive-but-enabled path is only reached when a
+		// CONFIGURED advisor model cannot be resolved at all — never by leaving the
+		// role unset.
 		session.settings.setModelRole("advisor", "nonexistent/advisor-model");
 		const active = session.setAdvisorEnabled(true);
 		expect(active).toBe(false);

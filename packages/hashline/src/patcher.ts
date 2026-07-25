@@ -167,7 +167,18 @@ function mergeWarnings(...sources: ReadonlyArray<readonly string[] | undefined>)
 	return out;
 }
 
-function assertUniqueCanonicalPaths(prepared: readonly PreparedSection[]): void {
+/**
+ * Refuse a patch whose sections resolve to one file.
+ *
+ * Two headers naming the same file through different spellings (a relative path and an absolute one, a
+ * symlink and its target) would have their ops applied independently against the same content, so the
+ * second write would silently discard the first. Failing here is the only safe answer, and the message
+ * names both spellings so the caller can merge them.
+ *
+ * Exported because the coding agent's hashline edit path had a byte-identical copy of this, including
+ * the message: the check belongs to the patcher that defines {@link PreparedSection}.
+ */
+export function assertUniqueCanonicalPaths(prepared: readonly PreparedSection[]): void {
 	const seen = new Map<string, string>();
 	for (const entry of prepared) {
 		const previous = seen.get(entry.canonicalPath);

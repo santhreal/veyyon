@@ -62,9 +62,17 @@ export function requestManualBackground(): boolean {
 	return true;
 }
 
-/** Subscribe to registry changes (the hint line re-render hook). */
-export function onForegroundBashWaitChange(listener: () => void): void {
+/**
+ * Subscribe to registry changes (the hint line re-render hook). Returns the
+ * unsubscribe function; a listener that outlives its component keeps repainting
+ * a bar that is no longer mounted.
+ */
+export function onForegroundBashWaitChange(listener: () => void): () => void {
 	listeners.push(listener);
+	return () => {
+		const index = listeners.indexOf(listener);
+		if (index !== -1) listeners.splice(index, 1);
+	};
 }
 
 /** Test hook: clear all waits and listeners. */

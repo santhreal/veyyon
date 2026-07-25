@@ -3,12 +3,12 @@ import { errorMessage } from "@veyyon/utils";
 import { parseHTML } from "linkedom";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
-import { clampNumResults, collapseWhitespace } from "../utils";
+import { clampNumResults, collapseWhitespace, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import type { LoadedHtmlPage } from "./browser-page";
 import { browserFetch } from "./browser-page";
-import { classifyProviderHttpError, withHardTimeout } from "./utils";
+import { classifyProviderHttpError, resolveExternalResultUrl, withHardTimeout } from "./utils";
 
 /**
  * Ecosia serves a server-rendered Vue/Nuxt results page (no `__NUXT_DATA__`
@@ -24,8 +24,10 @@ import { classifyProviderHttpError, withHardTimeout } from "./utils";
  * be approximated.
  */
 const ECOSIA_HOME_URL = "https://www.ecosia.org/";
+
+/** Hosts that belong to the engine itself, so a link back into it is not a result. Matched as the host or any subdomain. */
+const ECOSIA_OWN_HOSTS: readonly string[] = ["ecosia.org"];
 const ECOSIA_SEARCH_URL = "https://www.ecosia.org/search";
-const DEFAULT_NUM_RESULTS = 10;
 const MAX_NUM_RESULTS = 20;
 const RESULT_RENDER_TIMEOUT_MS = 10_000;
 
@@ -41,15 +43,7 @@ interface ParsedResult {
  * navigation such as the images/news verticals) is rejected.
  */
 function resolveResultUrl(href: string): string | undefined {
-	let url: URL;
-	try {
-		url = new URL(href, ECOSIA_HOME_URL);
-	} catch {
-		return undefined;
-	}
-	if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
-	if (url.hostname === "ecosia.org" || url.hostname === "www.ecosia.org") return undefined;
-	return url.href;
+	return resolveExternalResultUrl(href, ECOSIA_HOME_URL, ECOSIA_OWN_HOSTS);
 }
 
 /**
@@ -145,7 +139,11 @@ async function callEcosiaHtml(params: SearchParams): Promise<string> {
 
 /** Execute an Ecosia web search and parse the server-rendered result page. */
 export async function searchEcosia(params: SearchParams): Promise<SearchResponse> {
-	const numResults = clampNumResults(params.numSearchResults ?? params.limit, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
+	const numResults = clampNumResults(
+		params.numSearchResults ?? params.limit,
+		SEARCH_DEFAULT_NUM_RESULTS,
+		MAX_NUM_RESULTS,
+	);
 	const html = await callEcosiaHtml(params);
 	const parsed = parseHtmlResults(html);
 

@@ -11,8 +11,7 @@ import { type } from "arktype";
 import { settings } from "../../config/settings";
 import type { CustomTool, CustomToolContext, RenderResultOptions } from "../../extensibility/custom-tools/types";
 import type { Theme } from "../../modes/theme/theme";
-import webSearchSystemPrompt from "../../prompts/system/web-search.md" with { type: "text" };
-import webSearchDescription from "../../prompts/tools/web-search.md" with { type: "text" };
+import { PROMPTS } from "../../prompts/registry";
 import { discoverAuthStorage } from "../../sdk";
 import type { ToolSession } from "../../tools";
 import { formatAge } from "../../tools/render-utils";
@@ -171,7 +170,7 @@ async function executeSearch(
 				query: params.query,
 				limit: params.limit,
 				recency: params.recency,
-				systemPrompt: webSearchSystemPrompt,
+				systemPrompt: PROMPTS["tools/web-search-system"].text,
 				maxOutputTokens: params.max_tokens,
 				numSearchResults: params.num_search_results,
 				temperature: params.temperature,
@@ -273,7 +272,7 @@ export class WebSearchTool implements AgentTool<typeof webSearchSchema, SearchRe
 
 	constructor(session: ToolSession) {
 		this.#session = session;
-		this.description = prompt.render(webSearchDescription);
+		this.description = prompt.render(PROMPTS["tools/web-search"].text);
 	}
 
 	async execute(
@@ -293,7 +292,7 @@ export class WebSearchTool implements AgentTool<typeof webSearchSchema, SearchRe
 export const webSearchCustomTool: CustomTool<typeof webSearchSchema, SearchRenderDetails> = {
 	name: "web_search",
 	label: "Web Search",
-	description: prompt.render(webSearchDescription),
+	description: prompt.render(PROMPTS["tools/web-search"].text),
 	parameters: webSearchSchema,
 
 	approval: "read",

@@ -29,30 +29,39 @@ import { activityColorToken, setShimmerActivity } from "../theme/shimmer";
 import { getMarkdownTheme, highlightCode, theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import { CountdownTimer } from "./countdown-timer";
+import { HOOK_EDITOR_TEXT_PAD_COLS } from "./hook-editor";
 import {
 	applyModalReveal,
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
+	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
+	minModalChromeRows,
 	renderModalShell,
-	ModalRevealDriver,
 } from "./modal-shell";
 import { handleTabSwitchKey } from "./selector-helpers";
 
 const OTHER_OPTION = "Other (type your own)";
 const SUBMIT_OPTION = "Submit";
 
-/** Minimum plan-body rows kept visible even on a short terminal. */
+/**
+ * Minimum rows kept for the question/submit body on a short terminal.
+ *
+ * Higher than the plan overlay's floor, and deliberately so: this body carries
+ * the question text and its options together, whereas the plan overlay's floor
+ * covers only a scroll region that has its prompt, slider, and options laid out
+ * beneath it. (The doc here used to say "plan-body rows", copied from that
+ * overlay, which made the two look like one number that disagreed with itself.)
+ */
 const MIN_BODY_ROWS = 5;
-/** Fixed rows reserved by ModalShell chrome outside the body budget: top
- *  border/close bar, the divider before the footer, the bottom border, plus
- *  the sizing's vertical padding and minimum footer band. Mirrors the
- *  arithmetic `renderModalShell` uses internally so the body/list layout
- *  decision (side-by-side preview vs stacked) is made against a realistic
- *  budget without needing to duplicate the whole layout pass. */
-const CHROME_ROWS = 3 + MODAL_SIZING_LARGE.footerLines + MODAL_SIZING_LARGE.vPad;
+/** Rows ModalShell reserves outside the body budget, so the body/list layout
+ *  decision (side-by-side preview vs stacked) is made against a realistic budget
+ *  without duplicating the whole layout pass. Taken from the shell rather than
+ *  restated: this was `3 + footerLines + vPad`, three unnamed rows that happened
+ *  to agree with the shell and would not have failed if the shell grew one. */
+const CHROME_ROWS = minModalChromeRows(MODAL_SIZING_LARGE);
 const PREVIEW_MIN_WIDTH = 40;
 const SIDE_BY_SIDE_LIST_MIN_WIDTH = 30;
 const SIDE_BY_SIDE_GAP_WIDTH = 3;
@@ -62,8 +71,19 @@ const MAX_HEADER_CHIP_WIDTH = 16;
  *  the bounded-title pattern from the legacy ask path without its option-window
  *  coupling. */
 const MAX_PROMPT_TITLE_ROWS = 3;
-/** Border (2) + padX (2) columns consumed by the HookEditor chrome. */
-const PROMPT_TITLE_CHROME_COLUMNS = 4;
+/**
+ * Columns consumed by the chrome the bounded title is rendered inside.
+ *
+ * The title goes to `onPrompt`, which mounts a `HookEditorComponent` in the
+ * full-width editor container, so the only chrome around the title row is that
+ * component's own horizontal padding. Taken from there rather than restated,
+ * because the same value was independently hardcoded to 4 here and in
+ * `tools/ask.ts`, both described as border plus padding. `DynamicBorder`, the
+ * only border in that component, renders one full-width horizontal rule and
+ * consumes zero columns, so both copies wrapped the title two columns narrower
+ * than the space it had.
+ */
+const PROMPT_TITLE_CHROME_COLUMNS = HOOK_EDITOR_TEXT_PAD_COLS * 2;
 /** Maximum number of wrapped lines for an in-body question header, so a long
  *  or multi-line question cannot push the option list off-screen. Mirrors the
  *  row-cap pattern used by boundPromptTitle for the prompt editor overlay. */

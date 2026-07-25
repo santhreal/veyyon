@@ -1,0 +1,81 @@
+# Spill tool output to an artifact above 2 KB instead of the shipped 50 KB.
+#
+# WHY THIS ARM EXISTS, and why an earlier note wrongly closed the whole lever.
+# Measured on Gemini, lowering the spill threshold looked hopeless: the shipped
+# 50 KB reaches 0.5% of the bill and even 1 KB reaches only 12.7%, so it was
+# recorded as closed as a route to 20%. That conclusion was PROVIDER-SPECIFIC.
+# Tool results are 26.3% of the Gemini prefix and 74.0% of the Claude prefix, so
+# the same threshold buys very different amounts:
+#
+#   threshold      bill (gemini)   bill (claude)   tool results spilled
+#   50 KB (ship)            0.5%            0.0%                     0%
+#   20 KB                   2.1%            3.2%                     1%
+#   10 KB                   3.3%            8.5%                     3%
+#    5 KB                   4.9%           13.5%                     6%
+#    2 KB                   9.2%           26.1%                    23%
+#    1 KB                  12.5%           33.9%                    35%
+#
+# 2 KB is the choice because it is the loosest threshold that clears the 20%
+# target on Claude, so it removes the least context for the saving.
+#
+# THE SPILL RATE IS THE RISK, and it belongs next to the saving rather than in a
+# sentence. At 2 KB nearly a quarter of ALL tool results are spilled (the column
+# is measured on Claude; on Gemini the same threshold spills 17%). For contrast
+# the primary signature arm reaches a comparable saving by touching 15% of
+# signatures, and a signature is opaque provider state the model never reads
+# back, where a spilled tool result is content it asked for. Same order of
+# saving, materially more exposure.
+#
+# THE SAVING IS NET OF WHAT REPLACES THE BYTES. A spill does not delete the
+# overflow, it substitutes a middle-elision marker and an `artifact://` footer,
+# and both ride in the prefix on every later turn just as the elided bytes would
+# have. That is about 45 characters per spilled result per turn, measured from
+# the shipped `formatMiddleElisionMarker` and `artifactFooter` rather than
+# assumed, and the table above already subtracts it. An earlier version of this
+# table did not and read 0.3 points high at 2 KB. The correction is small; the
+# asymmetry was not, because the signature simulation had netted its own
+# sentinel from the start.
+#
+# THE READ TOOL IS EXEMPT AND THE PREDICTION ACCOUNTS FOR IT. `read` is deliberately
+# excluded from artifact spill: it is bounded by LINES, not bytes, so a byte spill
+# would hand back fewer lines than the caller asked for and break the one contract
+# it has. An earlier version of this arm was sized against a simulation that capped
+# every tool result including `read`, which put 5 KB at 24.9% and made it look
+# sufficient. Excluding the exempt tools, as the shipped lever does, 5 KB is really
+# 13.6% and does not clear the target. Read that as a warning about simulating a
+# lever the code does not implement.
+#
+# WHAT THE MASS ACTUALLY IS, because it changes what the lever is doing. No single
+# result is large: across the Claude baseline the biggest mean is `read` at 5,955
+# characters, and `eval` dominates by count at 334 calls averaging 1,800. Total
+# tool-result bytes are about 973 KB against 65.2M character-turns of prefix, an
+# average re-read multiplier near 67. This lever is not trimming a few giant
+# outputs, it is stopping many medium ones from being re-read sixty-odd times, and
+# that is why the 50 KB and 20 KB thresholds buy nothing on either provider.
+#
+# CACHE-SAFE BY CONSTRUCTION, which is why it is worth quota. The threshold is
+# compared against the result's OWN size, and a result's size never changes, so the
+# verdict on it is fixed for the life of the session and the rendered prefix stays
+# byte-identical turn over turn. A recency rule over the same bytes would rewrite
+# history every turn and hand part of the saving back as cache misses. Confirm with
+# the stability report before running:
+#
+#   bun prefix-composition.ts runs/<run-id>/jobs
+#
+# THIS IS A SEPARATE VARIABLE FROM THE SIGNATURE ARMS. Do not run it in the same
+# comparison as sig-max4000 or sig-last1: they act on different categories, and
+# moving both at once produces a delta attributable to neither.
+#
+# WHERE IT COULD BREAK, and the risk is higher than the signature arms carry. A
+# thought signature is opaque provider state the model never reads back, so
+# dropping one costs nothing but the provider's own reasoning replay. A tool result
+# is content the model asked for. Spilling leaves a pointer plus the kept tail, so
+# the model can re-read the artifact, but that costs a turn and it may not bother.
+# At 2 KB this spills a large share of ordinary `eval` output, so if any threshold
+# is going to cost reward it is this one.
+#
+# Reward is the gate. Report the paired sign test on reward first, then cost.
+argot:
+  enabled: false
+tools:
+  artifactSpillThreshold: 2

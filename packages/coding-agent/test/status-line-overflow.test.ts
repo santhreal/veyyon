@@ -11,6 +11,7 @@ import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { getSessionAccentAnsi, getSessionAccentHex } from "@veyyon/coding-agent/utils/session-color";
 import { visibleWidth } from "@veyyon/tui";
 import { getProjectDir, setProjectDir, stripAnsi } from "@veyyon/utils";
+import { useFullColor } from "./helpers/theme-assertions";
 
 const originalProjectDir = getProjectDir();
 
@@ -65,6 +66,8 @@ function createCtx(overrides?: { pathMaxLength?: number; branch?: string | null 
 		contextPercent: 0,
 		contextTokens: 0,
 		contextWindow: 0,
+		contextLimit: 0,
+		contextLimitKind: "window" as const,
 		autoCompactEnabled: false,
 		subagentCount: 0,
 		activeMs: 0,
@@ -120,6 +123,8 @@ function createStatusLineSession(sessionName: string, modelName?: string) {
 }
 
 describe("status line session accent", () => {
+	useFullColor();
+
 	function buildComponent(sessionAccent: boolean) {
 		const component = new StatusLineComponent(createStatusLineSession("Named session"));
 		component.updateSettings({

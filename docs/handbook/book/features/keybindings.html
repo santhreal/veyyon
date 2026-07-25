@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f3663b17.js";
+            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-de67d70d.js"></script>
+        <script src="../toc-578177b6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -206,6 +206,17 @@ app.history.search: []   # disable
 </code></pre>
 <p>Chord names match the UI (<code>Ctrl+P</code>, <code>Alt+Shift+P</code>, <code>Shift+Enter</code>). Older <code>keybindings.json</code> files migrate
 to <code>.yml</code> on load.</p>
+<p>Action IDs from older releases (<code>interrupt</code>, <code>fork</code>, <code>cursorUp</code>) are renamed to their current IDs
+(<code>app.interrupt</code>, <code>app.session.fork</code>, <code>tui.editor.cursorUp</code>) the first time veyyon loads the file, and
+the file is written back. The rename happens where the binding already sits, so your comments, blank
+lines, and key order come back unchanged:</p>
+<pre><code class="language-yaml"># hold this one, muscle memory
+interrupt: ctrl+x
+</code></pre>
+<p>becomes</p>
+<pre><code class="language-yaml"># hold this one, muscle memory
+app.interrupt: ctrl+x
+</code></pre>
 <p>Common action IDs include <code>app.model.cycleForward</code>, <code>app.model.select</code>, <code>app.plan.toggle</code>,
 <code>app.history.search</code>, <code>app.tools.expand</code>, <code>app.thinking.toggle</code>, <code>app.thinking.cycle</code> (<code>Shift+Tab</code>),
 <code>app.editor.external</code> (<code>Ctrl+G</code>), <code>app.message.followUp</code>, <code>app.retry</code>, <code>app.display.reset</code>, and

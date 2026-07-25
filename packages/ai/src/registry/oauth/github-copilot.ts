@@ -226,6 +226,9 @@ async function discoverGitHubCopilotApiEndpoint(token: string, fetchImpl: FetchI
 		const endpoints = (data as { endpoints?: { api?: unknown } }).endpoints;
 		return typeof endpoints?.api === "string" ? normalizeGitHubCopilotApiEndpoint(endpoints.api) : undefined;
 	} catch {
+		// Undefined means "no endpoint advertised", so the caller uses the documented default base URL. That
+		// is the same path a response without an `endpoints.api` takes, and a wrong endpoint would be worse
+		// than the default; the request that follows reports if the default does not work either.
 		return undefined;
 	}
 }
@@ -258,6 +261,9 @@ async function enableGitHubCopilotModel(
 		});
 		return response.ok;
 	} catch {
+		// False means "the policy could not be enabled", which the caller surfaces to the user as the reason
+		// sign-in did not complete. Same answer as a non-ok response, so a network failure and a refusal are
+		// treated alike on purpose: neither one leaves the policy enabled.
 		return false;
 	}
 }

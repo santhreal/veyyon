@@ -19,29 +19,19 @@
  */
 import { Markdown } from "../src/components/markdown";
 import { defaultMarkdownTheme } from "../test/test-themes.js";
+import { benchFail, benchStats } from "./_harness";
 
 const WIDTH = 100;
-const WORDS =
-	"the quick brown fox jumps over the lazy dog while the agent streams tokens into a long transcript".split(" ");
-
-function stats(samplesMs: number[]): { p50: number; p95: number; mean: number } {
-	const sorted = [...samplesMs].sort((a, b) => a - b);
-	const at = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] ?? 0;
-	const mean = sorted.reduce((a, b) => a + b, 0) / Math.max(1, sorted.length);
-	return { p50: at(0.5), p95: at(0.95), mean };
-}
+const WORDS = "the quick brown fox jumps over the lazy dog while the agent streams tokens into a long transcript".split(
+	" ",
+);
 
 function report(label: string, samples: number[], extra = ""): void {
-	const { p50, p95, mean } = stats(samples);
+	const { p50, p95, mean } = benchStats(samples);
 	console.log(
 		`${label.padEnd(40)} n=${String(samples.length).padStart(5)}  ` +
 			`p50=${p50.toFixed(3)}ms  p95=${p95.toFixed(3)}ms  mean=${mean.toFixed(3)}ms${extra ? `  ${extra}` : ""}`,
 	);
-}
-
-function fail(message: string): never {
-	console.error(`GUARD FAILED: ${message}`);
-	process.exit(1);
 }
 
 type TokenFn = (t: number) => string;
@@ -69,7 +59,7 @@ function benchSameInstance(label: string, token: TokenFn, tokens: number, transi
 		samples.push(performance.now() - start);
 	}
 	const last = md.render(WIDTH).join("\n");
-	if (!last.includes("FINAL_SENTINEL")) fail(`${label}: last token never rendered`);
+	if (!last.includes("FINAL_SENTINEL")) benchFail(`${label}: last token never rendered`);
 	report(`${label}${transient ? " transient" : ""}`, samples, `chars=${text.length}`);
 }
 
@@ -87,7 +77,7 @@ function benchNewInstancePerUpdate(label: string, token: TokenFn, tokens: number
 		lines = md.render(WIDTH);
 		samples.push(performance.now() - start);
 	}
-	if (!lines.join("\n").includes("FINAL_SENTINEL")) fail(`${label}: last token never rendered`);
+	if (!lines.join("\n").includes("FINAL_SENTINEL")) benchFail(`${label}: last token never rendered`);
 	report(`${label} new-instance`, samples, `chars=${text.length}`);
 }
 

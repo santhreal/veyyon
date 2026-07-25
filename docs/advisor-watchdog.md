@@ -208,6 +208,8 @@ Later project files sit closer to the end of the advisor prompt, so narrower dir
 
 `WATCHDOG.yml` (or `WATCHDOG.yaml`) is the advisor roster. Where `WATCHDOG.md` supplies review priorities, `WATCHDOG.yml` declares the advisors themselves, one entry per name, each with its own model, tool grant, and specialization prompt. The `/advisor configure` overlay edits this file in place. Files that fail to parse or fail schema validation are logged and skipped so one bad project config cannot kill the session.
 
+Saving from the overlay edits the file rather than rewriting it, so the comments above each advisor, the blank lines between them, and the order you put them in all survive a change to one advisor's model or tool grant. Entries are matched by position, so an edit that adds or removes an advisor re-serializes the whole `advisors` list. A file whose current text cannot be parsed is not written over at all: the save fails naming the path, because overwriting it would destroy text veyyon could not read. Fix the file, or move it aside, and save again.
+
 Example:
 
 ```yaml

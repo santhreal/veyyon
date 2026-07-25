@@ -3,7 +3,7 @@
  */
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ImageContent, Static, TextContent, TSchema } from "@veyyon/ai";
-import { isAbortError } from "@veyyon/utils";
+import { isCancellation } from "@veyyon/utils";
 import type { Settings } from "../../config/settings";
 import type { Theme } from "../../modes/theme/theme";
 import {
@@ -262,7 +262,10 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 			// retryable failure and re-issues the very work the user cancelled. There
 			// is also nothing for a handler to usefully rewrite, since the "content"
 			// of a cancelled call is the fact that it did not happen.
-			if (isAbortError(err)) throw err;
+			// `isCancellation`, so a deadline is not swallowed either. Both mean the
+			// call did not happen, and turning either into a result the handlers can
+			// rewrite invites the agent loop to re-issue the work.
+			if (isCancellation(err)) throw err;
 			executionError = err instanceof Error ? err : new Error(String(err));
 			result = {
 				content: [{ type: "text", text: executionError.message }],

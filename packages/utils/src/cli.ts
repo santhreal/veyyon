@@ -1,33 +1,6 @@
-/**
- * Minimal CLI framework — drop-in replacement for the subset of @oclif/core
- * actually used by the coding agent. Provides `Command`, `Args`, `Flags`,
- * and a `run()` entry point with explicit command registration.
- *
- * Design goals:
- *   - Zero dependencies beyond node builtins
- *   - No filesystem scanning, no manifest files, no plugin loading
- *   - Lazy command imports (only the invoked command is loaded)
- *   - Typed `this.parse()` output matching oclif's API shape
- */
-import * as fs from "node:fs";
 import { parseArgs as nodeParseArgs } from "node:util";
+import { startupMarker } from "./startup-marker";
 import { errorMessage } from "./type-guards";
-
-/**
- * Streaming startup marker, enabled by `VEYYON_DEBUG_STARTUP`. Local copy of
- * `logger.startupMarker` so the minimal `--version`/bootstrap import graph
- * stays free of the winston-backed logger module. Synchronous on purpose:
- * a command module whose import hangs (dlopen, fs on a dead mount) must
- * still leave its `:start` marker behind.
- */
-function startupMarker(text: string): void {
-	if (!process.env.VEYYON_DEBUG_STARTUP) return;
-	try {
-		fs.writeSync(2, `[startup] ${text}\n`);
-	} catch {
-		// stderr unavailable; markers are best-effort
-	}
-}
 
 /**
  * A token that is a negative number rather than an option: `-1`, `-0.5`, `-1e-3`.

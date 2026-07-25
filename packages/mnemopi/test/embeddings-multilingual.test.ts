@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import "./setup";
 import {
 	cosineSimilarity,
 	embed,
@@ -8,6 +7,9 @@ import {
 	resetEmbeddingProviderForTests,
 	setEmbeddingProviderForTests,
 } from "@veyyon/mnemopi/core/embeddings";
+import { useMnemopiTestEnv } from "./setup";
+
+useMnemopiTestEnv();
 
 function withEnvValue<T>(key: string, value: string | undefined, fn: () => T): T {
 	const previous = process.env[key];

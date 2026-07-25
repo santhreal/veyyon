@@ -221,7 +221,7 @@ describe("StatusLineComponent context breakdown", () => {
 		expect(usageCalls()).toBe(0);
 	});
 
-	it("renders the anchored percent against the (sub-)budget window in the context segment", () => {
+	it("renders used tokens against the limit in the context segment", () => {
 		const { session } = makeSession({
 			messages: [userMessage("hi"), assistantMessage("done")],
 			usage: { tokens: 5000, contextWindow: 272_000, percent: 1.8 },
@@ -234,12 +234,14 @@ describe("StatusLineComponent context breakdown", () => {
 			separator: "powerline-thin",
 		});
 
-		// 5000 / 272000 → 1.8%, window formatted as 272K (matches the footer gauge).
+		// tok/tok, one unit on both sides: the gauge stopped rendering `1.8%/272K`,
+		// which put a percent and a token count either side of a slash.
 		const plain = comp.getTopBorder(80).content.replaceAll(/\x1b\[[0-9;]*m/g, "");
-		expect(plain).toContain("1.8%/272K");
+		expect(plain).toContain("5K/272K");
+		expect(plain).not.toContain("%");
 	});
 
-	it("renders speculative percent instead of ? after compaction", () => {
+	it("renders speculative usage instead of ? after compaction", () => {
 		const { session } = makeSession({
 			messages: [userMessage("compaction summary")],
 			usage: { tokens: 1234, contextWindow: 272_000, percent: 0.45 },
@@ -253,7 +255,7 @@ describe("StatusLineComponent context breakdown", () => {
 		});
 
 		const plain = comp.getTopBorder(80).content.replaceAll(/\x1b\[[0-9;]*m/g, "");
-		expect(plain).toContain("0.5%/272K");
+		expect(plain).toContain("1.2K/272K");
 	});
 
 	it("renders token usage with an unknown marker when the model window is unavailable", () => {
@@ -272,6 +274,6 @@ describe("StatusLineComponent context breakdown", () => {
 
 		const plain = comp.getTopBorder(80).content.replaceAll(/\x1b\[[0-9;]*m/g, "");
 		expect(plain).toContain("5K/?");
-		expect(plain).not.toContain("0.0%/0");
+		expect(plain).not.toContain("/0");
 	});
 });

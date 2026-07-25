@@ -116,8 +116,8 @@ function createSession(
 		enableLsp: options.parentEnableLsp,
 		settings: Settings.isolated({
 			"async.enabled": false,
-			"task.isolation.mode": options.isolationMode ?? "none",
-			...(options.taskEnableLsp !== undefined ? { "task.enableLsp": options.taskEnableLsp } : {}),
+			"subagent.isolation.mode": options.isolationMode ?? "none",
+			...(options.taskEnableLsp !== undefined ? { "subagent.enableLsp": options.taskEnableLsp } : {}),
 		}),
 		getSessionFile: () => options.sessionFile ?? null,
 		getSessionSpawns: () => "*",

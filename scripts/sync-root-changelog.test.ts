@@ -16,7 +16,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 // @ts-expect-error — plain .mjs module, no types; imported for its exports.
 import { renderRootChangelog } from "../website/tools/gen-changelog.mjs";
-import { buildRootChangelog, changelogSources, PACKAGES_DIR, REPO_ROOT, ROOT_PATH } from "./sync-root-changelog";
+import {
+	buildRootChangelog,
+	changelogSources,
+	orphanedRootEntries,
+	PACKAGES_DIR,
+	REPO_ROOT,
+	ROOT_PATH,
+	unreleasedBullets,
+} from "./sync-root-changelog";
 
 describe("buildRootChangelog", () => {
 	it("renders through the shared renderRootChangelog core, not a private copy", () => {
@@ -160,7 +168,12 @@ describe("the root changelog covers every package", () => {
 	 */
 	it("keeps Unreleased from a package with no release of its own", () => {
 		const md = renderRootChangelog(
-			[{ name: "a", md: "# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n- pending\n\n## [16.5.1] - 2026-01-01\n\n### Fixed\n\n- upstream\n" }],
+			[
+				{
+					name: "a",
+					md: "# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n- pending\n\n## [16.5.1] - 2026-01-01\n\n### Fixed\n\n- upstream\n",
+				},
+			],
 			{ forkPointVersion: "16.5.2" },
 		) as string;
 
@@ -213,6 +226,76 @@ describe("the root changelog covers every package", () => {
 		]) as string;
 
 		expect(md).toContain("## [1.0.1] - 2026-01-01");
+	});
+});
+
+/**
+ * The root is generated, so a paragraph written directly into it is not a
+ * changelog entry — it is content the next render deletes. That is easy to do by
+ * accident, because the root is the file a contributor opens first and it reads
+ * as hand-written, and the deletion was SILENT: `--check` failed in CI, the
+ * contributor ran the fix command it names, and the fix threw their paragraph
+ * away without a word. It happened during this session, to 23 entries across
+ * several packages.
+ *
+ * So the write path refuses when the root holds an unreleased entry the render
+ * does not produce. These tests pin the detection, and above all pin that it does
+ * not cry wolf: a guard with false positives gets bypassed and then protects
+ * nothing.
+ */
+describe("orphaned root entries", () => {
+	const ROOT = (bullets: string) =>
+		`# Changelog\n\n## [Unreleased]\n\n### Changed\n\n${bullets}\n\n## [1.0.0] - 2026-01-01\n\n### Fixed\n\n- old\n`;
+
+	it("reports an entry the render does not produce", () => {
+		const orphans = orphanedRootEntries(ROOT("- hand written\n- rendered"), ROOT("- rendered"));
+
+		expect(orphans).toEqual(["hand written"]);
+	});
+
+	it("reports nothing when every entry is accounted for", () => {
+		expect(orphanedRootEntries(ROOT("- rendered"), ROOT("- rendered"))).toEqual([]);
+	});
+
+	/** The renderer rewrites entry text on the way through (the omp→veyyon rebrand),
+	 * which is why the comparison is against the RENDER and not against the package
+	 * files: comparing to the sources reported every rewritten entry as unclaimed. */
+	it("does not report an entry the renderer rewrote, because it compares to the render", () => {
+		expect(orphanedRootEntries(buildRootChangelog(), buildRootChangelog())).toEqual([]);
+	});
+
+	/** A bullet may wrap over several lines. Comparing lines instead of whole
+	 * bullets would report every wrapped entry as half-missing. */
+	it("treats a re-wrapped entry as the same entry", () => {
+		const wrapped = ROOT("- one entry that happens to\n  wrap over two lines");
+		const flat = ROOT("- one entry that happens to wrap over two lines");
+
+		expect(orphanedRootEntries(wrapped, flat)).toEqual([]);
+	});
+
+	it("ignores released sections, which are not at risk", () => {
+		const withRelease = `# Changelog\n\n## [Unreleased]\n\n### Changed\n\n- kept\n\n## [1.0.0] - 2026-01-01\n\n### Fixed\n\n- only here\n`;
+		const rendered = `# Changelog\n\n## [Unreleased]\n\n### Changed\n\n- kept\n`;
+
+		expect(orphanedRootEntries(withRelease, rendered)).toEqual([]);
+	});
+});
+
+describe("unreleasedBullets", () => {
+	it("reads bullets from the unreleased section only", () => {
+		const md = `# Changelog\n\n## [Unreleased]\n\n### Added\n\n- new thing\n\n### Changed\n\n- changed thing\n\n## [1.0.0]\n\n### Fixed\n\n- released thing\n`;
+
+		expect(unreleasedBullets(md)).toEqual(["new thing", "changed thing"]);
+	});
+
+	it("returns nothing for a changelog with no unreleased section", () => {
+		expect(unreleasedBullets("# Changelog\n\n## [1.0.0]\n\n### Fixed\n\n- released\n")).toEqual([]);
+	});
+
+	it("joins a wrapped bullet into one entry and collapses its whitespace", () => {
+		const md = "# Changelog\n\n## [Unreleased]\n\n### Changed\n\n- first line\n  second   line\n";
+
+		expect(unreleasedBullets(md)).toEqual(["first line second line"]);
 	});
 });
 

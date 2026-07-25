@@ -12,8 +12,8 @@ import { loadEntriesFromFile } from "@veyyon/coding-agent/session/session-loader
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { FileSessionStorage, type WriteTextAtomicOptions } from "@veyyon/coding-agent/session/session-storage";
 import type { SessionTitleUpdate } from "@veyyon/coding-agent/session/session-title-slot";
-import { getConfigRootDir, removeSyncWithRetries, setAgentDir } from "@veyyon/utils";
-
+import { removeSyncWithRetries, setAgentDir } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 import { makeAssistantMessage } from "./helpers";
 
 class CountingTitleSlotStorage extends FileSessionStorage {
@@ -61,8 +61,10 @@ function getHeader(entries: unknown[]): SessionHeader | undefined {
 describe("session title source persistence", () => {
 	let testAgentDir: string;
 	let cwd: string;
-	const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
-	const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
+	// One owner for "undo a setAgentDir call": the hand-rolled version below could not
+	// restore an ABSENT VEYYON_CODING_AGENT_DIR and left the active profile cleared,
+	// which leaked into every file that ran after this one.
+	const dirOverrides = captureDirOverrides();
 
 	beforeEach(() => {
 		testAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-title-source-"));
@@ -72,12 +74,7 @@ describe("session title source persistence", () => {
 	});
 
 	afterEach(() => {
-		if (originalAgentDir) {
-			setAgentDir(originalAgentDir);
-		} else {
-			setAgentDir(fallbackAgentDir);
-			delete process.env.VEYYON_CODING_AGENT_DIR;
-		}
+		restoreDirOverrides(dirOverrides);
 		removeSyncWithRetries(testAgentDir);
 	});
 

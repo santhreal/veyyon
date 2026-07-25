@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $which, hasFsCode, isEisdir, isEnoent, isEnotdir, Snowflake } from "@veyyon/utils";
+import { $which, hasFsCode, isAbortError, isEisdir, isEnoent, isEnotdir, Snowflake } from "@veyyon/utils";
 import type { Subprocess } from "bun";
 import {
 	parseDiffHunks as parseCommitDiffHunks,
@@ -891,7 +891,7 @@ async function isReftableRepo(repository: GitRepository): Promise<boolean> {
 async function resolveHeadStateReftable(repository: GitRepository, signal?: AbortSignal): Promise<GitHeadState | null> {
 	throwIfAborted(signal);
 	const symResult = await git(repository.repoRoot, ["symbolic-ref", "HEAD"], { readOnly: true, signal }).catch(err => {
-		if (signal?.aborted || (err instanceof Error && (err.name === "AbortError" || err.name === "ToolAbortError"))) {
+		if (signal?.aborted || isAbortError(err)) {
 			throw err;
 		}
 		return null;
@@ -901,7 +901,7 @@ async function resolveHeadStateReftable(repository: GitRepository, signal?: Abor
 		readOnly: true,
 		signal,
 	}).catch(err => {
-		if (signal?.aborted || (err instanceof Error && (err.name === "AbortError" || err.name === "ToolAbortError"))) {
+		if (signal?.aborted || isAbortError(err)) {
 			throw err;
 		}
 		return null;
@@ -1016,10 +1016,7 @@ async function readRef(repository: GitRepository, targetRef: string, signal?: Ab
 		throwIfAborted(signal);
 		const symResult = await git(repository.repoRoot, ["symbolic-ref", targetRef], { readOnly: true, signal }).catch(
 			err => {
-				if (
-					signal?.aborted ||
-					(err instanceof Error && (err.name === "AbortError" || err.name === "ToolAbortError"))
-				) {
+				if (signal?.aborted || isAbortError(err)) {
 					throw err;
 				}
 				return null;
@@ -1033,10 +1030,7 @@ async function readRef(repository: GitRepository, targetRef: string, signal?: Ab
 			readOnly: true,
 			signal,
 		}).catch(err => {
-			if (
-				signal?.aborted ||
-				(err instanceof Error && (err.name === "AbortError" || err.name === "ToolAbortError"))
-			) {
+			if (signal?.aborted || isAbortError(err)) {
 				throw err;
 			}
 			return null;
@@ -1575,6 +1569,25 @@ export const branch = {
 		const result = await git(cwd, ["symbolic-ref", "--short", "HEAD"], { readOnly: true, signal });
 		if (result.exitCode !== 0) return null;
 		return result.stdout.trim() || null;
+	},
+
+	/**
+	 * Current branch name, or the literal `HEAD` when there is none.
+	 *
+	 * The spelling a human-facing surface wants: a detached HEAD, a repository with no commits, and a
+	 * directory that is not a repository at all are all ordinary states there, and each one prints as
+	 * `HEAD`, which is what git itself calls that position. Two bundled commands (`/review` and
+	 * `/ci-green`) each had a private copy of this, so a change to how a detached HEAD reads would have
+	 * landed in one of them.
+	 *
+	 * Prefer {@link branch.current} anywhere the distinction between "no branch" and a name matters.
+	 */
+	async currentOrHead(cwd: string, signal?: AbortSignal): Promise<string> {
+		try {
+			return (await branch.current(cwd, signal)) ?? "HEAD";
+		} catch {
+			return "HEAD";
+		}
 	},
 
 	/** Default branch name (from remote HEAD refs). */

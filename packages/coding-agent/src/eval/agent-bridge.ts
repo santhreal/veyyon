@@ -6,11 +6,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { errorMessage, prompt, Snowflake } from "@veyyon/utils";
 import { type } from "arktype";
-import { resolveAgentModelPatterns } from "../config/model-resolver";
+import { resolveConfiguredModelPatterns } from "../config/model-resolver";
 import type { LocalProtocolOptions } from "../internal-urls";
 import { registerArtifactsDir } from "../internal-urls/registry-helpers";
 import { MCPManager } from "../mcp/manager";
-import subagentUserPromptTemplate from "../prompts/system/subagent-user-prompt.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { MAIN_AGENT_ID } from "../registry/agent-registry";
 import * as taskDiscovery from "../task/discovery";
 import type { ExecutorOptions } from "../task/executor";
@@ -25,6 +25,13 @@ import {
 } from "../task/isolation-runner";
 import { AgentOutputManager } from "../task/output-manager";
 import { resolveSpawnPolicy } from "../task/spawn-policy";
+import {
+	filterEnabledAgents,
+	isSubagentSpawnable,
+	resolveSubagentModel,
+	resolveSubagentThinkingLevel,
+	subagentModelSourceLabel,
+} from "../task/subagent-settings";
 import { type AgentDefinition, type AgentProgress, canSpawnAtDepth, type SingleResult } from "../task/types";
 import { type NestedRepoPatch, parseIsolationMode } from "../task/worktree";
 import type { ToolSession } from "../tools";
@@ -139,7 +146,7 @@ function assertDepthAllowed(session: ToolSession): void {
 	// in tools/index.ts) but never above the hard ceiling. `< 0` means
 	// "Unlimited" in the same schema `canSpawnAtDepth` reads, so it falls back
 	// to the hard ceiling instead of going past it.
-	const settingMax = session.settings.get("task.maxRecursionDepth") ?? 2;
+	const settingMax = session.settings.get("subagent.maxRecursionDepth") ?? 2;
 	const effectiveMax = settingMax < 0 ? EVAL_AGENT_MAX_DEPTH : Math.min(settingMax, EVAL_AGENT_MAX_DEPTH);
 	if (!canSpawnAtDepth(effectiveMax, taskDepth)) {
 		throw new ToolError(
@@ -158,12 +165,18 @@ function assertSpawnAllowed(session: ToolSession, agentName: string): void {
 	}
 }
 
-function assertAgentEnabled(session: ToolSession, agentName: string, agents: AgentDefinition[]): void {
-	const disabledAgents = session.settings.get("task.disabledAgents") as string[];
-	if (!disabledAgents.includes(agentName)) return;
-	const enabled = agents.filter(agent => !disabledAgents.includes(agent.name)).map(agent => agent.name);
+/**
+ * Refuse an `agent()` call for an agent the operator turned off.
+ *
+ * An `agent()` call always names its agent, so the bar is `isSubagentSpawnable`:
+ * only an explicit `enabled: false` refuses. A bundled specialist that is merely
+ * unadvertised runs, exactly as it does through the `task` tool.
+ */
+function assertAgentEnabled(session: ToolSession, agent: AgentDefinition, agents: AgentDefinition[]): void {
+	if (isSubagentSpawnable(session.settings, agent)) return;
+	const available = filterEnabledAgents(session.settings, agents).map(candidate => candidate.name);
 	throw new ToolError(
-		`Agent "${agentName}" is disabled in settings. Enable it via /agents, or use a different agent type.${enabled.length > 0 ? ` Available: ${enabled.join(", ")}` : ""}`,
+		`Agent "${agent.name}" is turned off (subagent.agents.${agent.name}.enabled is false). Turn it back on via /agents or the Subagents settings tab, or use a different agent type.${available.length > 0 ? ` Available: ${available.join(", ")}` : ""}`,
 	);
 }
 
@@ -174,7 +187,7 @@ function assertNotPlanMode(session: ToolSession): void {
 }
 
 function renderSubagentPrompt(assignment: string): string {
-	return prompt.render(subagentUserPromptTemplate, { assignment: assignment.trim() });
+	return prompt.render(PROMPTS["subagent/user-prompt"].text, { assignment: assignment.trim() });
 }
 
 function trimToUndefined(value: string | undefined): string | undefined {
@@ -330,18 +343,34 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		const available = agents.map(candidate => candidate.name).join(", ") || "none";
 		throw new ToolError(`Unknown agent "${agentName}". Available: ${available}`);
 	}
-	assertAgentEnabled(options.session, agentName, agents);
+	assertAgentEnabled(options.session, agent, agents);
 
 	const effectiveAgent = agent;
 	const parentActiveModelPattern = options.session.getActiveModelString?.();
-	const agentModelOverrides = options.session.settings.get("task.agentModelOverrides");
-	const modelOverride = resolveAgentModelPatterns({
-		settingsOverride: parsed.model ?? agentModelOverrides[agentName],
-		agentModel: effectiveAgent.model,
-		settings: options.session.settings,
-		activeModelPattern: parentActiveModelPattern,
-		fallbackModelPattern: options.session.getModelString?.(),
-	});
+	// An explicit `agent(..., { model })` call is the caller speaking for this one
+	// spawn, so it outranks the settings layers; everything else goes through the
+	// one owner (row -> blanket -> frontmatter -> inherit).
+	const resolvedModel = parsed.model
+		? { patterns: resolveConfiguredModelPatterns(parsed.model, options.session.settings), source: "agent" as const }
+		: resolveSubagentModel({
+				settings: options.session.settings,
+				agentName,
+				agentModel: effectiveAgent.model,
+				activeModelPattern: parentActiveModelPattern,
+				fallbackModelPattern: options.session.getModelString?.(),
+			});
+	if ("unresolved" in resolvedModel && resolvedModel.unresolved) {
+		const { source, value } = resolvedModel.unresolved;
+		throw new ToolError(
+			`Cannot spawn "${agentName}": ${subagentModelSourceLabel(source, agentName)} is set to "${value}", which matches no available model. Fix that setting (or clear it to inherit the session model) and try again.`,
+		);
+	}
+	if (parsed.model && resolvedModel.patterns.length === 0) {
+		throw new ToolError(
+			`Cannot spawn "${agentName}": the requested model "${parsed.model}" matches no available model.`,
+		);
+	}
+	const modelOverride = resolvedModel.patterns;
 	const availableSkills = [...(options.session.skills ?? [])];
 	const resolvedAutoloadSkills =
 		effectiveAgent.autoloadSkills?.length && availableSkills.length > 0
@@ -368,13 +397,13 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 	// default. Mirrors the `task` tool so eval `agent()` and `task` callers
 	// see the same semantic. `isolated=true` while the mode is `"none"`
 	// surfaces a clear error instead of silently downgrading.
-	const isolationMode = options.session.settings.get("task.isolation.mode");
+	const isolationMode = options.session.settings.get("subagent.isolation.mode");
 	const isolationEnabledInSettings = isolationMode !== "none";
 	if (parsed.isolated === true && !isolationEnabledInSettings) {
 		throw new ToolError(`agent(isolated=True) requires task.isolation.mode to be set; current mode is "none".`);
 	}
 	const isIsolated = parsed.isolated === true;
-	const settingsMergeMode = options.session.settings.get("task.isolation.merge");
+	const settingsMergeMode = options.session.settings.get("subagent.isolation.merge");
 	const mergeMode: "patch" | "branch" = parsed.merge === false ? "patch" : settingsMergeMode;
 	const applyChanges = parsed.apply !== false;
 
@@ -396,7 +425,14 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		taskDepth: options.session.taskDepth ?? 0,
 		modelOverride,
 		parentActiveModelPattern,
-		thinkingLevel: effectiveAgent.thinkingLevel,
+		// Through the one owner, like the model above. Passing the frontmatter level
+		// straight through made an eval `agent()` spawn ignore both `subagent.thinkingLevel`
+		// and this agent's own `thinkingLevel` row.
+		thinkingLevel: resolveSubagentThinkingLevel({
+			settings: options.session.settings,
+			agentName,
+			agentThinkingLevel: effectiveAgent.thinkingLevel,
+		}),
 		...(structured ? { outputSchema: parsed.schema, outputSchemaOverridesAgent: true } : {}),
 		sessionFile,
 		persistArtifacts: Boolean(sessionFile),

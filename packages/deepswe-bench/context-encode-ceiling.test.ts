@@ -12,15 +12,14 @@
  * higher than anything achievable, and that inflated ceiling was used to
  * justify continuing.
  *
- * `retainedTokenCost` replaces charging a token once. Context is re-read on
- * every later turn, so a token's real price depends on when it enters the
- * session. Charging the dictionary once made a dictionary that loses money look
- * like it saved it.
+ * `retainedTokenCost`, which had the same history and used to be tested here,
+ * moved to `cost-model.ts` when the second ceiling script turned out to have its
+ * own copy of it; its tests moved with it rather than being left pointing at a
+ * re-export.
  */
 
 import { describe, expect, test } from "bun:test";
-import { encodeGreedy, retainedTokenCost } from "./context-encode-ceiling";
-import { REFERENCE_RATE_CARD } from "./cost-model";
+import { encodeGreedy } from "./context-encode-ceiling";
 
 describe("encodeGreedy", () => {
 	/**
@@ -70,40 +69,5 @@ describe("encodeGreedy", () => {
 	/** An empty dictionary is a no-op, which is the zero-budget baseline the sweep starts from. */
 	test("is a no-op for an empty dictionary", () => {
 		expect(encodeGreedy("abc", [])).toBe("abc");
-	});
-});
-
-describe("retainedTokenCost", () => {
-	/**
-	 * A token entering on the final turn is never re-read, so it costs exactly
-	 * fresh input and nothing more. This is the boundary the reread arithmetic
-	 * gets wrong by one if `totalTurns - turn` is used instead of minus one.
-	 */
-	test("charges a last-turn token as fresh input only", () => {
-		expect(retainedTokenCost(9, 10)).toBeCloseTo(REFERENCE_RATE_CARD.input / 1_000_000, 15);
-	});
-
-	/**
-	 * The finding that reframed the whole effort, as arithmetic: a token entering
-	 * at turn 0 of a 66-turn session is billed once as input and 65 times as
-	 * cache read, roughly seventeen times its face value. This is why context
-	 * size dominates the bill and why the dictionary, which sits in the prompt
-	 * from turn 0, is the most expensive place to put anything.
-	 */
-	test("charges a turn-0 token of a 66-turn session at ~17x face value", () => {
-		const unit = retainedTokenCost(0, 66);
-		const face = REFERENCE_RATE_CARD.input / 1_000_000;
-		expect(unit / face).toBeCloseTo(17.25, 2);
-	});
-
-	/** Cost falls monotonically the later a token enters, which is what makes late context cheaper than early context. */
-	test("falls monotonically as a token enters later", () => {
-		const costs = [0, 10, 20, 30].map(turn => retainedTokenCost(turn, 40));
-		for (let i = 1; i < costs.length; i++) expect(costs[i]).toBeLessThan(costs[i - 1]);
-	});
-
-	/** A turn index past the end cannot produce a negative reread count and a negative price. */
-	test("never returns less than the fresh-input price", () => {
-		expect(retainedTokenCost(99, 10)).toBeCloseTo(REFERENCE_RATE_CARD.input / 1_000_000, 15);
 	});
 });

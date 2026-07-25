@@ -26,7 +26,7 @@
  */
 
 import { scheduler } from "node:timers/promises";
-import { DAY_MS } from "@veyyon/utils";
+import { DAY_MS, isAbortError } from "@veyyon/utils";
 
 // ---------------------------------------------------------------------------
 // EventLoopKeepalive — the primary fix for idle-state busy-wait
@@ -62,7 +62,7 @@ async function sleepAtLeast(ms: number, signal?: AbortSignal): Promise<void> {
 		try {
 			await scheduler.wait(remaining, { signal });
 		} catch (err) {
-			if ((err as { name?: string })?.name === "AbortError") return;
+			if (isAbortError(err)) return;
 			throw err;
 		}
 		remaining = ms - (performance.now() - start);

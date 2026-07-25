@@ -15,7 +15,7 @@ import { settings } from "../config/settings";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../discovery/helpers.js";
 import { shareSession } from "../export/share";
 import { PluginManager } from "../extensibility/plugins";
-import { resolveMemoryBackend } from "../memory-backend";
+import { buildMemoryPayloadForDisplay, resolveMemoryBackend } from "../memory-backend";
 import { runPauseScreen } from "../modes/components/pause-screen";
 import { describeLoopLimitRuntime } from "../modes/loop-limit";
 import { theme } from "../modes/theme/theme";
@@ -1255,7 +1255,11 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 		getTuiAutocompleteDescription: runtime => {
 			const usage = runtime.ctx.session.getContextUsage();
 			if (!usage) return "Show context usage breakdown";
-			return `Show context usage breakdown · ${Math.round(usage.percent)}% (${formatTokenCount(usage.tokens)}/${formatTokenCount(usage.contextWindow)})`;
+			// Same vocabulary as the status-line gauge: tok/tok in one unit, and the
+			// percentage names what it is instead of leaving "17%" to be read as
+			// either consumption or room.
+			const left = Math.max(0, 100 - Math.round(usage.percent));
+			return `Show context usage breakdown · ${formatTokenCount(usage.tokens)}/${formatTokenCount(usage.contextWindow)} · ${left}% left`;
 		},
 		handle: async (_command, runtime) => {
 			await runtime.output(buildContextReportText(runtime));
@@ -1514,6 +1518,8 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 		handle: async (command, runtime) => {
 			const parsed = parseCompactArgs(command.args);
 			if ("error" in parsed) return usage(parsed.error, runtime);
+			// A retired mode name still compacts, and must never do so quietly.
+			if (parsed.notice) await runtime.output(parsed.notice);
 			const before = runtime.session.getContextUsage?.();
 			const beforeTokens = before?.tokens;
 			try {
@@ -1541,6 +1547,8 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 				runtime.ctx.showWarning(parsed.error);
 				return;
 			}
+			// A retired mode name still compacts, and must never do so quietly.
+			if (parsed.notice) runtime.ctx.showWarning(parsed.notice);
 			await runtime.ctx.handleCompactCommand(parsed.instructions, parsed.mode);
 		},
 	},
@@ -1689,7 +1697,8 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 			const backend = await resolveMemoryBackend(runtime.settings);
 			switch (verb) {
 				case "view": {
-					const payload = await backend.buildDeveloperInstructions(
+					const payload = await buildMemoryPayloadForDisplay(
+						backend,
 						runtime.settings.getAgentDir(),
 						runtime.settings,
 						runtime.session,

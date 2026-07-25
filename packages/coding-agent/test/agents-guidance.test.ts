@@ -10,6 +10,7 @@ import {
 	stripManagedGuidance,
 } from "@veyyon/coding-agent/discovery/agents-guidance";
 import { setAgentDir, TempDir } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 import * as logger from "@veyyon/utils/logger";
 
 describe("stripManagedGuidance", () => {
@@ -85,24 +86,26 @@ describe("ensureActiveProfileAgentsFile (startup back-fill for pre-existing prof
 	// shadow-safety: a blank high-priority AGENTS.md must never be seeded over a
 	// user's existing lower-priority agent.md, and an existing symlink (the exact
 	// real-world case) must be left untouched.
-	const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
-	const originalProfile = process.env.VEYYON_PROFILE;
 	async function withAgentDir<T>(agentDir: string, run: () => T | Promise<T>): Promise<T> {
 		// Under a named profile the dirs layer ignores VEYYON_CODING_AGENT_DIR
 		// (profile-derived dirs win), so a VEYYON_PROFILE exported in the dev
 		// shell would silently break this isolation. Clear it for the duration.
 		// The helper MUST be async: the seeded calls await internally, and a
-		// synchronous finally would restore the real agent dir (exported as
-		// VEYYON_CODING_AGENT_DIR in the dev shell) before the seed lands.
+		// synchronous finally would restore the real agent dir before the seed lands.
+		//
+		// The snapshot is taken here, not at module scope, and restored through
+		// `restoreDirOverrides`: the hand-rolled version put the two variables back
+		// but left the ACTIVE PROFILE cleared (`setAgentDir` clears it), so every file
+		// after this one resolved `profiles/default/...`. That is what
+		// `scripts/find-test-leaks.ts` reported as `state.activeProfile: work ->
+		// (default)`.
+		const snapshot = captureDirOverrides();
 		delete process.env.VEYYON_PROFILE;
 		setAgentDir(agentDir);
 		try {
 			return await run();
 		} finally {
-			if (originalProfile === undefined) delete process.env.VEYYON_PROFILE;
-			else process.env.VEYYON_PROFILE = originalProfile;
-			if (originalAgentDir === undefined) delete process.env.VEYYON_CODING_AGENT_DIR;
-			else setAgentDir(originalAgentDir);
+			restoreDirOverrides(snapshot);
 		}
 	}
 

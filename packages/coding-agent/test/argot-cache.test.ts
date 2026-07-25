@@ -27,16 +27,25 @@ import {
 	loadArgotFolder,
 	rearmArgotForDecode,
 	unloadArgotFolder,
-} from "@veyyon/coding-agent/lexpack-cache";
+} from "@veyyon/coding-agent/argot-cache";
 import {
-	__resetDirsFromEnvForTests,
 	APP_NAME,
 	getAgentDir,
 	getArgotCacheDir,
+	refreshDirsFromEnv,
 	removeSyncWithRetries,
 	setProfile,
 } from "@veyyon/utils";
-import { ArgotSession, cacheDictPath, DEFAULT_TOKEN_BUDGET, projectCacheId, resolveProjectRoot } from "argot";
+import {
+	ArgotSession,
+	budgetKeyedSignature,
+	cacheDictPath,
+	DEFAULT_TOKEN_BUDGET,
+	GENERATOR_REVISION,
+	projectCacheId,
+	resolveProjectRoot,
+} from "argot";
+import { enterIsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
 
 /** Profile activated for the duration of each test so the XDG cache root takes effect. */
 const TEST_PROFILE = "argot-cache-test";
@@ -49,11 +58,35 @@ function git(cwd: string, ...args: string[]): void {
 	if (result.status !== 0) throw new Error(`git ${args.join(" ")} failed`);
 }
 
-/** The current HEAD sha of a repo, used to name the immutable cache entry we expect. */
+/** The current HEAD sha of a repo: the raw content signature the cache entry is keyed on. */
 function spawnHead(cwd: string): string {
 	const result = spawnSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" });
 	if (result.status !== 0) throw new Error("git rev-parse HEAD failed");
 	return result.stdout.trim();
+}
+
+/**
+ * The entry name a DEFAULT-budget load writes for a repo at `head`.
+ *
+ * It is NOT the HEAD with a `.dict` suffix, and that difference is the whole point
+ * of this helper. Argot folds the token budget AND its own `GENERATOR_REVISION`
+ * into the signature, so the bare HEAD names the entry only at revision 1; every
+ * later revision derives a distinct 32-character signature, which is what stops an
+ * unchanged HEAD from going on serving a dictionary the current generator would
+ * never produce. Five assertions here had spelled that name out by hand, restating
+ * a rule that lives in `budgetKeyedSignature`, and all of them went red the moment
+ * the revision moved to 2 -- reporting a deliberate keying CHANGE as a cache-naming
+ * BUG in veyyon, with a 40-character sha printed against a 32-character hash so the
+ * diff read like corruption rather than like a version bump.
+ *
+ * Deriving the name from the exported function keeps everything these tests are
+ * actually about (an implicit and an explicit default alias to ONE entry, a
+ * non-default budget writes a SECOND, an invalid budget writes none) and makes them
+ * survive the next revision. Which signature a given revision produces is owned by
+ * argot's own `project-vocab.test.ts`, and is deliberately not re-asserted here.
+ */
+function defaultEntry(head: string): string {
+	return `${budgetKeyedSignature(head, DEFAULT_TOKEN_BUDGET)}.dict`;
 }
 
 function writeFile(root: string, rel: string, content: string): void {
@@ -61,35 +94,86 @@ function writeFile(root: string, rel: string, content: string): void {
 	fs.writeFileSync(path.join(root, rel), content);
 }
 
-describe("loadArgotFolder", () => {
-	let repoDir = "";
-	let plainDir = "";
-	let cacheRoot = "";
-	let originalXdgCache: string | undefined;
-	let originalConfigDir: string | undefined;
-	let configRoot = "";
+/**
+ * One isolated argot environment: temp cache root, temp CONFIG root, the test
+ * profile active, and a seeded git repo.
+ *
+ * Three `describe` blocks had each written this by hand, byte-identical apart
+ * from the temp-directory prefixes, and all three shared the same leak: they
+ * restored `XDG_CACHE_HOME` and `VEYYON_CONFIG_DIR` but never undid
+ * `setProfile(TEST_PROFILE)`. `setProfile` writes `VEYYON_PROFILE` (and
+ * `VEYYON_CODING_AGENT_DIR`) into the environment, so the profile stayed active
+ * for the rest of the process while the config root went back to the real home.
+ * Every suite that ran after this file then resolved
+ * `~/.veyyon/profiles/argot-cache-test/...` in the developer's REAL home. It was
+ * caught by the real-data tripwire refusing a log write there, from a completely
+ * unrelated suite. `enterIsolatedConfigRoot` snapshots all three variables and
+ * re-derives the profile from the restored environment, so the window closes.
+ */
+interface ArgotIsolation {
+	/** A seeded git repo with the two files the cache tests expect. */
+	repoDir: string;
+	/** A directory that is deliberately NOT a git repo. */
+	plainDir: string;
+	/** Root of the redirected XDG cache, which is what `getArgotCacheDir` must land in. */
+	cacheRoot: string;
+	restore: () => void;
+}
 
-	beforeEach(() => {
-		cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "argot-cache-xdg-"));
-		repoDir = fs.mkdtempSync(path.join(os.tmpdir(), "argot-cache-repo-"));
-		plainDir = fs.mkdtempSync(path.join(os.tmpdir(), "argot-cache-plain-"));
+function enterArgotIsolation(label: string): ArgotIsolation {
+	const cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), `argot-${label}-xdg-`));
+	const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), `argot-${label}-repo-`));
+	const plainDir = fs.mkdtempSync(path.join(os.tmpdir(), `argot-${label}-plain-`));
 
-		// Redirect the cache under a temp XDG root, pre-creating the profile dir the
-		// resolver requires, then activate the profile so getArgotCacheDir points here.
-		originalXdgCache = process.env.XDG_CACHE_HOME;
-		process.env.XDG_CACHE_HOME = path.join(cacheRoot, "cache");
-		fs.mkdirSync(path.join(process.env.XDG_CACHE_HOME, APP_NAME, "profiles", TEST_PROFILE), { recursive: true });
-		// The cache lever alone is NOT enough, and that gap put
-		// `~/.veyyon/profiles/argot-cache-test/` in the developer's REAL config root.
-		// `XDG_CACHE_HOME` moves the CACHE; agent storage and gpu_cache.json resolve
-		// from the CONFIG ROOT, which `setProfile` only names a subdirectory of.
-		// `VEYYON_CONFIG_DIR` moves the root itself. See docs/internal/testing.md.
-		configRoot = fs.mkdtempSync(path.join(os.tmpdir(), "argot-cache-root-"));
-		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
-		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), configRoot);
-		__resetDirsFromEnvForTests();
+	const xdgCache = path.join(cacheRoot, "cache");
+
+	// The cache lever alone is NOT enough, and that gap put
+	// `~/.veyyon/profiles/argot-cache-test/` in the developer's REAL config root.
+	// `XDG_CACHE_HOME` moves the CACHE; agent storage and gpu_cache.json resolve
+	// from the CONFIG ROOT, which `setProfile` only names a subdirectory of.
+	// See docs/internal/testing.md.
+	const isolated = enterIsolatedConfigRoot(`argot-${label}`);
+
+	const restore = () => {
+		// `isolated.restore()` snapshotted XDG_CACHE_HOME before this function touched
+		// it, so it puts back the developer's real value. Restoring it by hand here as
+		// well would only be a second way to get the same variable wrong.
+		isolated.restore();
+		for (const dir of [repoDir, plainDir, cacheRoot]) removeSyncWithRetries(dir);
+	};
+
+	// EVERYTHING PAST THE REDIRECT RUNS UNDER THIS GUARD, and it is not defensive
+	// styling: the checks below deliberately throw, and so does the git seeding on a
+	// machine without git. A throw here skips the caller's `afterAll`, so without the
+	// guard the isolated root, `VEYYON_CONFIG_DIR`, `VEYYON_CODING_AGENT_DIR` and the
+	// active profile all stay in place for the WHOLE REST OF THE PROCESS. Every later
+	// suite in that run then resolves into this suite's temp root, which is how a
+	// `/agents` surface test came to render an agent list out of an argot cache root
+	// and fail on wording it never set. That run left 42 roots in `/tmp`.
+	//
+	// It is the same leak the comment on this interface describes, one layer out:
+	// restoring correctly is not enough if the restore can be skipped.
+	try {
+		// AFTER the config root, never before, and this ordering is the whole reason
+		// the isolation proof below exists. `enterIsolatedConfigRoot` DELETES every XDG
+		// base variable on the way in, deliberately, so that "isolated" means isolated
+		// for a developer who has them set. Redirecting the cache before that call
+		// therefore had the redirect wiped a line later, and `getArgotCacheDir()` fell
+		// back to the config root. A suite that wants an XDG base sets it after the
+		// call and rebuilds the resolver, which is exactly what these three lines do.
+		process.env.XDG_CACHE_HOME = xdgCache;
+		// Pre-create the profile dir the resolver requires: a named profile only adopts
+		// an XDG path that already exists.
+		fs.mkdirSync(path.join(xdgCache, APP_NAME, "profiles", TEST_PROFILE), { recursive: true });
+		refreshDirsFromEnv();
+
+		// Back to the default profile first, so activating the test profile is a FIRST
+		// activation against the isolated root. Otherwise a profile left active by an
+		// earlier suite makes `setProfile` skip its pre-profile snapshot, and the
+		// restore semantics depend on state this file never chose.
+		setProfile(undefined);
 		setProfile(TEST_PROFILE);
-		setProfile(TEST_PROFILE);
+
 		// Prove the redirect actually took, so a silent fallback to the real cache
 		// cannot let these tests pass while polluting the developer's machine.
 		if (!getArgotCacheDir().startsWith(cacheRoot)) {
@@ -98,8 +182,8 @@ describe("loadArgotFolder", () => {
 		// Proof on BOTH roots: the cache assertion alone passed for months while the
 		// config root stayed real.
 		const resolvedAgentDir = path.resolve(getAgentDir());
-		if (path.relative(configRoot, resolvedAgentDir).startsWith("..")) {
-			throw new Error(`config root not isolated: ${resolvedAgentDir} is outside ${configRoot}`);
+		if (path.relative(isolated.root, resolvedAgentDir).startsWith("..")) {
+			throw new Error(`config root not isolated: ${resolvedAgentDir} is outside ${isolated.root}`);
 		}
 
 		writeFile(repoDir, CONNECTION, "export const url = 'x';\n");
@@ -109,16 +193,25 @@ describe("loadArgotFolder", () => {
 		git(repoDir, "config", "user.name", "Test");
 		git(repoDir, "add", "-A");
 		git(repoDir, "commit", "-q", "-m", "init");
+	} catch (error) {
+		restore();
+		throw error;
+	}
+
+	return { repoDir, plainDir, cacheRoot, restore };
+}
+
+describe("loadArgotFolder", () => {
+	let repoDir = "";
+	let plainDir = "";
+	let restoreIsolation: () => void = () => {};
+
+	beforeEach(() => {
+		({ repoDir, plainDir, restore: restoreIsolation } = enterArgotIsolation("cache"));
 	});
 
 	afterEach(() => {
-		if (originalXdgCache === undefined) delete process.env.XDG_CACHE_HOME;
-		else process.env.XDG_CACHE_HOME = originalXdgCache;
-		if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
-		else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
-		__resetDirsFromEnvForTests();
-		for (const dir of [repoDir, plainDir, cacheRoot, configRoot]) if (dir) removeSyncWithRetries(dir);
-		configRoot = "";
+		restoreIsolation();
 	});
 
 	it("generates a cache from the repo and loads the session with handles for repo paths", async () => {
@@ -169,7 +262,10 @@ describe("loadArgotFolder", () => {
 		// The exact immutable entry path is computable from the project id + HEAD, so
 		// this asserts the specific files rather than scanning a (possibly shared) dir.
 		const cacheId = projectCacheId(resolveProjectRoot(repoDir)!);
-		const entryFor = (head: string) => cacheDictPath(getArgotCacheDir(), cacheId, head);
+		// Default-budget loads, so the entry is keyed by the signature derived from the
+		// HEAD (see `defaultEntry`), never by the HEAD itself.
+		const entryFor = (head: string) =>
+			cacheDictPath(getArgotCacheDir(), cacheId, budgetKeyedSignature(head, DEFAULT_TOKEN_BUDGET));
 
 		const first = new ArgotSession();
 		await loadArgotFolder(first, repoDir);
@@ -243,8 +339,10 @@ describe("loadArgotFolder", () => {
 	// cache key: two budgets over one repository state are two different
 	// dictionaries and must not alias to a single immutable entry. These tests
 	// lock three contracts that together make the setting real and coherent:
-	//   1. the default budget keeps the plain `<HEAD>.dict` name, so existing
-	//      caches still hit and passing the default explicitly changes nothing;
+	//   1. the default budget and an explicitly-passed default resolve to ONE
+	//      entry, so passing the compiled default changes nothing (the entry's
+	//      name comes from `budgetKeyedSignature`, which folds in the generator
+	//      revision as well as the budget -- see `defaultEntry`);
 	//   2. a non-default budget writes a DISTINCT entry and leaves the default's
 	//      entry byte-for-byte intact (no aliasing, no overwrite);
 	//   3. a larger budget teaches strictly more handles than a smaller one, so
@@ -298,22 +396,59 @@ describe("loadArgotFolder", () => {
 		try {
 			const head = spawnHead(budgetRepo);
 			const cacheId = projectCacheId(resolveProjectRoot(budgetRepo)!);
-			const headEntry = cacheDictPath(getArgotCacheDir(), cacheId, head);
+			const headEntry = cacheDictPath(getArgotCacheDir(), cacheId, budgetKeyedSignature(head, DEFAULT_TOKEN_BUDGET));
 
-			// Arming with no budget generates the plain `<HEAD>.dict` entry.
+			// Arming with no budget generates the default-budget entry for this HEAD.
 			const implicit = new ArgotSession();
 			await loadArgotFolder(implicit, budgetRepo);
 			expect(fs.existsSync(headEntry)).toBe(true);
-			expect(dictEntries(budgetRepo)).toEqual([`${head}.dict`]);
+			expect(dictEntries(budgetRepo)).toEqual([defaultEntry(head)]);
 			const bytes = fs.readFileSync(headEntry);
 
 			// Passing the compiled default explicitly resolves to the SAME entry and
 			// writes nothing new: default-in maps to the bare content signature.
 			const explicit = new ArgotSession();
 			await loadArgotFolder(explicit, budgetRepo, undefined, DEFAULT_TOKEN_BUDGET);
-			expect(dictEntries(budgetRepo)).toEqual([`${head}.dict`]);
+			expect(dictEntries(budgetRepo)).toEqual([defaultEntry(head)]);
 			expect(fs.readFileSync(headEntry).equals(bytes)).toBe(true);
 			expect(explicit.vocabulary().handles.size).toBe(implicit.vocabulary().handles.size);
+		} finally {
+			removeSyncWithRetries(budgetRepo);
+		}
+	});
+
+	/**
+	 * Anti-vacuity for `defaultEntry`, and a tripwire on the cache-key contract itself.
+	 *
+	 * The four budget tests above assert against a name this file DERIVES, so a helper
+	 * that quietly answered the wrong thing would make all four agree with a cache that
+	 * is wrong in the same way. This test pins the derivation to what argot actually
+	 * wrote to disk: the single entry a default load leaves behind must be exactly the
+	 * name `budgetKeyedSignature` predicts, and at any revision past 1 it must NOT be
+	 * the bare HEAD -- which is the property that makes a generator upgrade re-key the
+	 * cache instead of going on serving stale dictionaries under an unchanged sha.
+	 *
+	 * It also states the failure the old hardcoded `<HEAD>.dict` assertions could not:
+	 * if a future change made the default budget key on the raw HEAD again while the
+	 * revision stayed above 1, every pre-upgrade entry would silently come back to life.
+	 */
+	it("names the default entry by the derived signature, not by the bare HEAD", async () => {
+		const budgetRepo = buildCandidateRepo();
+		try {
+			const head = spawnHead(budgetRepo);
+			await loadArgotFolder(new ArgotSession(), budgetRepo);
+
+			// Exactly what argot put on disk, compared against the derivation -- not a
+			// name this file made up.
+			const written = dictEntries(budgetRepo);
+			expect(written).toEqual([`${budgetKeyedSignature(head, DEFAULT_TOKEN_BUDGET)}.dict`]);
+			expect(written).toEqual([defaultEntry(head)]);
+
+			// A revision past 1 must move the key off the raw HEAD, or the upgrade is inert.
+			if (GENERATOR_REVISION !== 1) {
+				expect(written[0]).not.toBe(`${head}.dict`);
+				expect(budgetKeyedSignature(head, DEFAULT_TOKEN_BUDGET)).toHaveLength(32);
+			}
 		} finally {
 			removeSyncWithRetries(budgetRepo);
 		}
@@ -324,19 +459,19 @@ describe("loadArgotFolder", () => {
 		try {
 			const head = spawnHead(budgetRepo);
 			const cacheId = projectCacheId(resolveProjectRoot(budgetRepo)!);
-			const headEntry = cacheDictPath(getArgotCacheDir(), cacheId, head);
+			const headEntry = cacheDictPath(getArgotCacheDir(), cacheId, budgetKeyedSignature(head, DEFAULT_TOKEN_BUDGET));
 
-			// Default load: one entry, named by HEAD.
+			// Default load: exactly one entry, keyed on this HEAD at the default budget.
 			await loadArgotFolder(new ArgotSession(), budgetRepo);
-			expect(dictEntries(budgetRepo)).toEqual([`${head}.dict`]);
+			expect(dictEntries(budgetRepo)).toEqual([defaultEntry(head)]);
 			const defaultBytes = fs.readFileSync(headEntry);
 
-			// A larger budget: a SECOND, differently-named entry appears; the HEAD entry
+			// A larger budget: a SECOND, differently-named entry appears; the default entry
 			// is untouched (no overwrite, no aliasing).
 			await loadArgotFolder(new ArgotSession(), budgetRepo, undefined, 4000);
 			const afterLarge = dictEntries(budgetRepo);
 			expect(afterLarge.length).toBe(2);
-			expect(afterLarge).toContain(`${head}.dict`);
+			expect(afterLarge).toContain(defaultEntry(head));
 			expect(fs.readFileSync(headEntry).equals(defaultBytes)).toBe(true);
 
 			// A tiny budget: a THIRD entry. All three coexist, each its own file.
@@ -367,17 +502,17 @@ describe("loadArgotFolder", () => {
 		const budgetRepo = buildCandidateRepo();
 		try {
 			const head = spawnHead(budgetRepo);
-			// The default load establishes the baseline handle count and the HEAD entry.
+			// The default load establishes the baseline handle count and the default entry.
 			const baseline = await handleCount(budgetRepo, undefined);
 			expect(baseline).toBeGreaterThan(0);
 
 			// A zero / negative / NaN budget is a misconfiguration: it must resolve to the
-			// default (same handle count, same HEAD-keyed entry), never a silent empty dict.
+			// default (same handle count, same default-budget entry), never a silent empty dict.
 			for (const bad of [0, -100, Number.NaN]) {
 				expect(await handleCount(budgetRepo, bad)).toBe(baseline);
 			}
 			// No extra entries were written: every invalid budget mapped to the default key.
-			expect(dictEntries(budgetRepo)).toEqual([`${head}.dict`]);
+			expect(dictEntries(budgetRepo)).toEqual([defaultEntry(head)]);
 		} finally {
 			removeSyncWithRetries(budgetRepo);
 		}
@@ -442,54 +577,14 @@ describe("rearmArgotForDecode", () => {
 	// model loads the folder again itself.
 
 	let repoDir = "";
-	let cacheRoot = "";
-	let originalXdgCache: string | undefined;
-	let originalConfigDir: string | undefined;
-	let configRoot = "";
+	let restoreIsolation: () => void = () => {};
 
 	beforeEach(() => {
-		cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "argot-rearm-xdg-"));
-		repoDir = fs.mkdtempSync(path.join(os.tmpdir(), "argot-rearm-repo-"));
-		originalXdgCache = process.env.XDG_CACHE_HOME;
-		process.env.XDG_CACHE_HOME = path.join(cacheRoot, "cache");
-		fs.mkdirSync(path.join(process.env.XDG_CACHE_HOME, APP_NAME, "profiles", TEST_PROFILE), { recursive: true });
-		// The cache lever alone is NOT enough, and that gap put
-		// `~/.veyyon/profiles/argot-cache-test/` in the developer's REAL config root.
-		// `XDG_CACHE_HOME` moves the CACHE; agent storage and gpu_cache.json resolve
-		// from the CONFIG ROOT, which `setProfile` only names a subdirectory of.
-		// `VEYYON_CONFIG_DIR` moves the root itself. See docs/internal/testing.md.
-		configRoot = fs.mkdtempSync(path.join(os.tmpdir(), "argot-cache-root-"));
-		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
-		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), configRoot);
-		__resetDirsFromEnvForTests();
-		setProfile(TEST_PROFILE);
-		setProfile(TEST_PROFILE);
-		if (!getArgotCacheDir().startsWith(cacheRoot)) {
-			throw new Error(`cache root not isolated: ${getArgotCacheDir()}`);
-		}
-		// Proof on BOTH roots: the cache assertion alone passed for months while the
-		// config root stayed real.
-		const resolvedAgentDir = path.resolve(getAgentDir());
-		if (path.relative(configRoot, resolvedAgentDir).startsWith("..")) {
-			throw new Error(`config root not isolated: ${resolvedAgentDir} is outside ${configRoot}`);
-		}
-		writeFile(repoDir, CONNECTION, "export const url = 'x';\n");
-		writeFile(repoDir, ROUTES, `import '../database/connection.ts';\n// see ${CONNECTION}\n`);
-		git(repoDir, "init", "-q");
-		git(repoDir, "config", "user.email", "t@example.com");
-		git(repoDir, "config", "user.name", "Test");
-		git(repoDir, "add", "-A");
-		git(repoDir, "commit", "-q", "-m", "init");
+		({ repoDir, restore: restoreIsolation } = enterArgotIsolation("rearm"));
 	});
 
 	afterEach(() => {
-		if (originalXdgCache === undefined) delete process.env.XDG_CACHE_HOME;
-		else process.env.XDG_CACHE_HOME = originalXdgCache;
-		if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
-		else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
-		__resetDirsFromEnvForTests();
-		for (const dir of [repoDir, cacheRoot, configRoot]) if (dir) removeSyncWithRetries(dir);
-		configRoot = "";
+		restoreIsolation();
 	});
 
 	it("re-arms decode without teaching: expand works, promptFragment stays empty", async () => {
@@ -645,55 +740,14 @@ describe("unloadArgotFolder", () => {
 describe("armArgotAfterStartup", () => {
 	let repoDir = "";
 	let plainDir = "";
-	let cacheRoot = "";
-	let originalXdgCache: string | undefined;
-	let originalConfigDir: string | undefined;
-	let configRoot = "";
+	let restoreIsolation: () => void = () => {};
 
 	beforeEach(() => {
-		cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "argot-arm-xdg-"));
-		repoDir = fs.mkdtempSync(path.join(os.tmpdir(), "argot-arm-repo-"));
-		plainDir = fs.mkdtempSync(path.join(os.tmpdir(), "argot-arm-plain-"));
-		originalXdgCache = process.env.XDG_CACHE_HOME;
-		process.env.XDG_CACHE_HOME = path.join(cacheRoot, "cache");
-		fs.mkdirSync(path.join(process.env.XDG_CACHE_HOME, APP_NAME, "profiles", TEST_PROFILE), { recursive: true });
-		// The cache lever alone is NOT enough, and that gap put
-		// `~/.veyyon/profiles/argot-cache-test/` in the developer's REAL config root.
-		// `XDG_CACHE_HOME` moves the CACHE; agent storage and gpu_cache.json resolve
-		// from the CONFIG ROOT, which `setProfile` only names a subdirectory of.
-		// `VEYYON_CONFIG_DIR` moves the root itself. See docs/internal/testing.md.
-		configRoot = fs.mkdtempSync(path.join(os.tmpdir(), "argot-cache-root-"));
-		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
-		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), configRoot);
-		__resetDirsFromEnvForTests();
-		setProfile(TEST_PROFILE);
-		setProfile(TEST_PROFILE);
-		if (!getArgotCacheDir().startsWith(cacheRoot)) {
-			throw new Error(`cache root not isolated: ${getArgotCacheDir()}`);
-		}
-		// Proof on BOTH roots: the cache assertion alone passed for months while the
-		// config root stayed real.
-		const resolvedAgentDir = path.resolve(getAgentDir());
-		if (path.relative(configRoot, resolvedAgentDir).startsWith("..")) {
-			throw new Error(`config root not isolated: ${resolvedAgentDir} is outside ${configRoot}`);
-		}
-		writeFile(repoDir, CONNECTION, "export const url = 'x';\n");
-		writeFile(repoDir, ROUTES, `import '../database/connection.ts';\n// see ${CONNECTION}\n`);
-		git(repoDir, "init", "-q");
-		git(repoDir, "config", "user.email", "t@example.com");
-		git(repoDir, "config", "user.name", "Test");
-		git(repoDir, "add", "-A");
-		git(repoDir, "commit", "-q", "-m", "init");
+		({ repoDir, plainDir, restore: restoreIsolation } = enterArgotIsolation("arm"));
 	});
 
 	afterEach(() => {
-		if (originalXdgCache === undefined) delete process.env.XDG_CACHE_HOME;
-		else process.env.XDG_CACHE_HOME = originalXdgCache;
-		if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
-		else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
-		__resetDirsFromEnvForTests();
-		for (const dir of [repoDir, plainDir, cacheRoot, configRoot]) if (dir) removeSyncWithRetries(dir);
-		configRoot = "";
+		restoreIsolation();
 	});
 
 	it("arms in the background and fires onArmed once the dictionary is loaded", async () => {

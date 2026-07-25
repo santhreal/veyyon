@@ -227,6 +227,28 @@ describe("Settings", () => {
 			expect((await readSettings()).setupVersion).toBe(2);
 		});
 
+		it("replaces the wrong-shape file with a clean mapping rather than editing it in place", async () => {
+			// Saves normally EDIT the existing file so the user's comments and formatting
+			// survive, and that editor refuses a file it cannot read as settings. This is
+			// the one case where overwriting is right: the content is already preserved in
+			// the `.corrupt` sibling, and the user's change has to be able to land. The
+			// rewritten file must be a mapping with only the change in it, not a patched
+			// sequence.
+			fs.mkdirSync(agentDir, { recursive: true });
+			await Bun.write(getConfigPath(), "- one\n- two\n");
+
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+			settings.set("setupVersion", 7);
+			await settings.flush();
+
+			const text = fs.readFileSync(getConfigPath(), "utf-8");
+			expect(text).not.toContain("- one");
+			expect(text).not.toContain("- two");
+			expect(YAML.parse(text)).toMatchObject({ setupVersion: 7 });
+			// The rescued copy is still the user's original, untouched by the rewrite.
+			expect(fs.readFileSync(`${getConfigPath()}.corrupt`, "utf-8")).toBe("- one\n- two\n");
+		});
+
 		it("leaves a blank file silent: an empty settings file is legitimately empty, not malformed", async () => {
 			// The fix must distinguish an empty file (null parse — the user has no
 			// settings yet, which is normal on first run) from a wrong-shape file. A
@@ -927,7 +949,7 @@ describe("Settings", () => {
 			expect(settings.get("mnemopi.dbPath")).toBe("/tmp/new.db");
 		});
 
-		it("migrates boolean task.eager/todo.eager true to always", async () => {
+		it("migrates boolean task.eager to the strongest delegation, and todo.eager to always", async () => {
 			await writeSettings({
 				task: { eager: true },
 				todo: { eager: true },
@@ -935,12 +957,14 @@ describe("Settings", () => {
 
 			const settings = await Settings.init({ cwd: projectDir, agentDir });
 
-			// `true` reproduced the previous "on" behavior, now `always`.
-			expect(settings.get("task.eager")).toBe("always");
+			// `true` reproduced the previous "on" behavior. For delegation that is now
+			// `required` on subagent.delegation, whose scale added `off` below the old
+			// three values; todo.eager keeps its own enum.
+			expect(settings.get("subagent.delegation")).toBe("required");
 			expect(settings.get("todo.eager")).toBe("always");
 		});
 
-		it("migrates boolean task.eager/todo.eager false to default", async () => {
+		it("migrates boolean task.eager false to the lowest non-off delegation", async () => {
 			await writeSettings({
 				task: { eager: false },
 				todo: { eager: false },
@@ -948,9 +972,11 @@ describe("Settings", () => {
 
 			const settings = await Settings.init({ cwd: projectDir, agentDir });
 
-			// Load-bearing direction: consumers treat any non-`default` value as enabled
-			// (`false !== "default"`), so an un-coerced boolean `false` would read as ON.
-			expect(settings.get("task.eager")).toBe("default");
+			// `false` meant "do not push delegation", NOT "no delegation at all" — the
+			// task tool was still offered. It must land on `allowed`, never `off`, or
+			// this migration would silently take the task tool away from every config
+			// that had turned the old nudge off.
+			expect(settings.get("subagent.delegation")).toBe("allowed");
 			expect(settings.get("todo.eager")).toBe("default");
 		});
 

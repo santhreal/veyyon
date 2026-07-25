@@ -78,9 +78,7 @@ describe("reporting why a provider's credential was disabled", () => {
 		expect(store.listAuthCredentials(provider)).toHaveLength(0);
 		expect(authStorage.hasAuth(provider)).toBe(false);
 
-		expect(authStorage.disabledCredentialCause(provider)).toBe(
-			"oauth refresh failed: HTTP 400 invalid_grant",
-		);
+		expect(authStorage.disabledCredentialCause(provider)).toBe("oauth refresh failed: HTTP 400 invalid_grant");
 	});
 
 	/**

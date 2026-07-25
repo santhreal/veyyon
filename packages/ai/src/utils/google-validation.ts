@@ -11,6 +11,9 @@ export function extractGoogleValidationUrl(errorBody: string): string | undefine
 		);
 		return detail?.metadata?.validation_url;
 	} catch {
+		// This mines a validation URL out of an error body that is already being reported to the user.
+		// Undefined means "no URL in there", so the error is shown without the extra link; the error itself
+		// is never swallowed here.
 		return undefined;
 	}
 }

@@ -174,6 +174,24 @@ candidate's value is the output tokens it removes (how much longer the string is
 than its handle, times how often it appears), and stops before the next entry
 would breach the budget. The default budget is 1000 tokens.
 
+The generator usually stops well short of that budget, because filling it buys
+almost nothing. Candidates are ranked by value and the ranking is steep: across
+three unrelated corpora in this repository, the top ten handles carried about two
+thirds of the estimated savings for under a twentieth of the budget, and the top
+thirty carried roughly 86% for about a sixth of it. The remaining handles cost
+around 83% of the budget for the last 14% of the value, and that trade runs the
+wrong way, because a dictionary is input you carry on every turn while its
+savings are output you produce once.
+
+So generation also stops once the chosen handles cover `savingsCoverage` of the
+savings the budget could achieve, which defaults to 0.9. Whichever limit binds
+first wins: coverage keeps a cheap dictionary from growing a worthless tail, the
+budget keeps an expensive one from growing at all. Pass `savingsCoverage: 1` to
+fill the budget as before. The limit is a fraction rather than a smaller budget
+because a budget is an absolute quantity, so any number would bind differently on
+a small repository than on a large one; a ratio of savings to savings means the
+same thing at every scale.
+
 ### Other corpora
 
 `generateDictFromRepo` is a thin wrapper over `generateDict`, which takes any
@@ -193,7 +211,8 @@ is unique, else a minimal hash suffix only on a stem collision, deterministic
 across runs; `"numeric"` for the densest; `"content"` for a stem plus a fixed
 8-char hash on every handle, globally unique but longer and so fewer tokens saved,
 see [Runtime cache](#runtime-cache-generated-never-committed)),
-`maxHandles`, and `countTokens` (pass your model's real tokenizer for exact
+`maxHandles`, `savingsCoverage` (the coverage target described above, default
+0.9), and `countTokens` (pass your model's real tokenizer for exact
 accounting instead of the built-in heuristic). The result is empty (`toml === ""`)
 when nothing clears the thresholds; that is a normal outcome, not an error, and
 the emitted TOML always re-parses through `parseDict` to the same vocabulary.
@@ -333,7 +352,7 @@ exported too, for harnesses that drive the flow directly.
 | `resolveProjectCache({ baseDir, cacheId, contentSig, files, options? }): Promise<ResolvedCache>` | Resolve a project's cache entry for one state: read the existing immutable entry (`hit: true`) or generate content-named handles and write atomically (`hit: false`). Never mutates an existing entry. A malformed existing entry throws; a *write* that fails instead returns the correct freshly generated vocabulary with the failure on `writeError`, so an unwritable state directory is slower, never wrong, and never silent. See [Runtime cache](#runtime-cache-generated-never-committed). |
 | `resolveProjectVocab({ folder, cacheDir, io, tokenBudget?, onNotice?, signal? }): Promise<ResolvedProjectVocab \| undefined>` | The whole cache flow in one call, so no harness reimplements it: resolve `folder` to its project root, read the immutable entry for the current repository state or generate it once on a miss, and return `{ root, vocab }`. You inject only `io` (a `ProjectVocabIO` wrapping `git rev-parse HEAD` / `git ls-files`) and `cacheDir`. `undefined` when `folder` has no `.git`/`.argot` marker. See [Runtime cache](#runtime-cache-generated-never-committed). |
 | `ProjectVocabIO` / `ProjectVocabNotice` / `ResolvedProjectVocab` | The git access `resolveProjectVocab` needs (`gitHead`, `listTrackedFiles`, each `null` for a non-git folder), the notices it surfaces (a reached content budget, a truncated or partially-unreadable non-git tree, an invalid budget) so no degrade is silent, and its `{ root, vocab }` result. |
-| `resolveTokenBudget(raw, onNotice?): number` / `budgetKeyedSignature(sig, budget): string` | The budget validation and cache-key derivation `resolveProjectVocab` uses. An invalid budget is surfaced through `onNotice` and defaulted (never a silent empty dict); a non-default budget derives a distinct cache signature so two budgets over one state are two entries. |
+| `resolveTokenBudget(raw, onNotice?): number` / `budgetKeyedSignature(sig, budget): string` | The budget validation and cache-key derivation `resolveProjectVocab` uses. An invalid budget is surfaced through `onNotice` and defaulted (never a silent empty dict); a non-default budget derives a distinct cache signature so two budgets over one state are two entries. The key also folds in `GENERATOR_REVISION`, because repository state is a sufficient key only while the generator holds still: after a change to the ranking or to a default, an unchanged HEAD would otherwise keep serving a dictionary the current generator would never produce. Bump the revision in the same change that alters generated output and every project regenerates once. |
 | `gatherRepoFiles(root, paths, onNotice?)` / `walkProjectTree(root, onNotice?)` / `shouldScanContent(path)` | The corpus policy `resolveProjectVocab` applies: read bounded, deterministic file content (skipping lockfiles/assets/binaries via `CONTENT_SKIP_*`, capped by `MAX_FILE_CONTENT_BYTES` / `TOTAL_CONTENT_BUDGET_BYTES`), and the non-git tree walk (`WALK_IGNORE_NAMES`, `WALK_FILE_CAP`). Both surface an incomplete listing through `onNotice` (a hit cap, an unreadable directory, unreadable files) rather than silently truncating. Exported so a harness driving a stage directly gathers the corpus identically. |
 | `PROJECT_MARKERS: readonly string[]` | The default markers `resolveProjectRoot` looks for (`.git`, `.argot`). Pass your own set through its `markers` option to change what counts as a project. |
 | `makeExpander(vocab)` / `makePromptFragment(vocab)` | The expander function and the prompt block that `makeDict` composes, exposed for a harness that wants one without the `AgentDict` wrapper. |
@@ -439,7 +458,7 @@ reproducible byte for byte.
 Run it against any repository:
 
 ```sh
-bun bench/lexpack-bench.ts /path/to/repo
+bun bench/argot-bench.ts /path/to/repo
 ```
 
 Here is a real run over the veyyon coding agent (about 4,000 tracked files, 14.5

@@ -42,10 +42,11 @@ import {
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
+	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
+	minModalChromeRows,
 	renderModalShell,
-	ModalRevealDriver,
 } from "./modal-shell";
 import { fit } from "./overlay-box";
 import { joinPlanSections, parsePlanSections, sectionDeletionSpan } from "./plan-toc";
@@ -61,10 +62,12 @@ const SIDEBAR_MIN_TOTAL_WIDTH = 64;
 const SIDEBAR_MIN_BODY_WIDTH = 40;
 /** Columns spent on the sidebar/body divider: one space, the glyph, one space. */
 const SIDEBAR_DIVIDER_COLS = 3;
-/** Fixed rows ModalShell reserves outside the body budget (see ask-dialog's
- *  identically-derived CHROME_ROWS): top/close bar, footer divider, bottom
- *  border, sizing vPad, and the minimum footer band. */
-const CHROME_ROWS = 3 + MODAL_SIZING_LARGE.footerLines + MODAL_SIZING_LARGE.vPad;
+/** Rows ModalShell reserves outside the body budget. Asked of the shell rather
+ *  than restated: the hand-rolled `3 + footerLines + vPad` this replaced went
+ *  silently wrong the moment the shell started charging `vPad` on BOTH sides of
+ *  the body, which it now does — the overlay then sized its body a vPad too tall
+ *  and nothing failed, because the copy could not know the shell had changed. */
+const CHROME_ROWS = minModalChromeRows(MODAL_SIZING_LARGE);
 
 type Focus = "toc" | "body" | "actions";
 

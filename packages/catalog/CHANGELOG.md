@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- `fetchOpenAICompatibleModels` takes an `onFailure` callback and calls it with an `OpenAICompatibleDiscoveryFailure` before returning `null`. Discovery answered a refused connection, a 401, an HTML error page and an unrecognized payload with the same bare `null`, and the caller that keeps per-provider discovery state only reported a reason when discovery THREW, so a model you pay for disappeared from the picker with nothing anywhere explaining it. The reason travels back as a value rather than a log line, because no source file in this package logs and its callers already own the state they report from; `stage` separates the three fixes an operator would reach for, since `request` points at the network, `status` at credentials, and `payload` at whether the endpoint is OpenAI-compatible at all. An empty catalog is still `[]` and still silent.
+
+- `DEVIN_SESSION_TOKEN_PREFIX` and `normalizeDevinSessionToken` are exported, and `@veyyon/ai`'s Devin provider takes them from here instead of spelling both again. Two packages send that header, so one format had four statements across a package boundary; a disagreement would let model discovery authenticate while every completion 401s, which reads like a broken account rather than a mismatched header.
+
+- `matchesKimiK27CodeFamily` and `hasBillableCost` each have one home. The Kimi K2.7 Code family test lived in both compat layers, id pattern and match, with the second copy documented as mirroring the first: one model-identity rule stated four times, and a drift between them would force thinking on only for whichever transport handled the request. `hasBillableCost` lived in the model generator and again in `@veyyon/stats`, where it decides whether to trust a bundled price, so two functions that only happened to agree were deciding money a user reads. Note what it does not answer: an all-zero cost cannot tell a free model from an unpriced one, which is what `costKnown` is for.
+
+- Added `isEffort`, the guard for a thinking level, beside the `THINKING_EFFORTS` list that owns the values. Callers were spelling the six levels out again in comparison chains, which meant adding a level to the ladder left them rejecting it while the type system accepted it.
+
+### Removed
+
+- Removed `remoteCompaction` from model and provider metadata, along with the Codex discovery constant that set it. It configured provider-native compaction, which no longer exists, so nothing has read it for some time while it was still declared on every model and shipped in `models.json`.
+
 ### Fixed
 
 - Fixed GPT-5.6 Codex SKUs (`gpt-5.6-{sol,terra,luna}`) losing ~75K of usable context when the Codex discovery endpoint actively reports `context_window: 272000`: discovery now floors these SKUs at the 372K hard capacity instead of only substituting it when the field is absent, so the runtime dynamic value no longer overwrites the bundled pin ([#6259](https://github.com/can1357/oh-my-pi/issues/6259)).

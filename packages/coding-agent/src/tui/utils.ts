@@ -77,7 +77,16 @@ export interface RenderCache {
 	lines: string[];
 }
 
-export function buildTreePrefix(ancestors: boolean[], theme: Theme): string {
+/**
+ * The indentation that carries a tree's vertical rules down to a nested row.
+ *
+ * One owner for three renderers (the task tree, the JSON tree and the TUI helpers), which each
+ * had a copy: the JSON one had even drifted to the opposite argument order. Two renderers
+ * disagreeing here means the same nesting draws different rules in two panes of one screen.
+ * `ancestors[i]` says whether the ancestor at that depth has a sibling still to come, so the
+ * rule continues past this row instead of stopping at it.
+ */
+export function buildTreePrefix(ancestors: readonly boolean[], theme: Theme): string {
 	return ancestors.map(hasNext => (hasNext ? `${theme.tree.vertical}  ` : "   ")).join("");
 }
 

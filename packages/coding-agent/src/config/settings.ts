@@ -31,6 +31,7 @@ import {
 	type QuarantinedFile,
 	quarantineUnparseableFile,
 	setWorktreesDir,
+	syncYamlTextToSettings,
 	withFileLock,
 } from "@veyyon/utils";
 import { JSONC, YAML } from "bun";
@@ -49,6 +50,7 @@ import {
 	type GroupPrefix,
 	type GroupTypeMap,
 	getDefault,
+	isUnsetNumberPath,
 	SETTINGS_SCHEMA,
 	type SettingPath,
 	type SettingValue,
@@ -74,6 +76,21 @@ export interface RawSettings {
  * settings layer and the keybindings layer describe the same thing one way.
  */
 export type QuarantinedSettingsFile = QuarantinedFile;
+
+/** A config file this session repeatedly could not write, and why. */
+export interface SettingsSaveFailure {
+	path: string;
+	reason: string;
+	attempts: number;
+}
+
+/**
+ * How many consecutive failed saves of the same file it takes to tell the user.
+ *
+ * Saves are debounced and retried, and one failure under a concurrent writer is normal.
+ * Three in a row is not a race: it is a path that cannot be written.
+ */
+const SAVE_FAILURE_REPORT_AFTER = 3;
 
 /** A configured setting whose value does not match the type the schema declares. */
 export interface InvalidSettingValue {
@@ -123,6 +140,88 @@ const SETTING_PATH_SEGMENTS: Record<SettingPath, readonly string[]> = Object.fro
 ) as unknown as Record<SettingPath, readonly string[]>;
 
 /**
+ * The value optional numeric settings used to store to mean "unset", and the
+ * paths that stored it. Unset is an absent key now (see {@link Settings.unset});
+ * this pair exists only so the load migration can drop the old sentinel, and the
+ * path list is derived from the schema so a new optional numeric setting is
+ * covered without being registered anywhere else.
+ */
+const LEGACY_UNSET_SENTINEL = -1;
+
+/**
+ * Migration numbers stamped into the global config as `settingsMigrationVersion`.
+ * One per migration that may run only once; bump {@link SETTINGS_MIGRATION_VERSION}
+ * and add a named constant when another needs the same treatment.
+ */
+export const SETTINGS_MIGRATION_VERSION_UNSET_ABSENT_KEY = 1;
+export const SETTINGS_MIGRATION_VERSION = SETTINGS_MIGRATION_VERSION_UNSET_ABSENT_KEY;
+
+/**
+ * The migrations that may run only ONCE, applied to the global config in place
+ * and recorded with a stamp.
+ *
+ * Every other migration here is idempotent and runs on every read of every
+ * source. This one is not: it deletes the `-1` that used to mean "unset", and
+ * `-1` is now a value a user can mean (a legal presence penalty). Without the
+ * stamp the next load would delete it again — which is precisely what happened
+ * in dogfooding, one minute after the change landed, on a value set through the
+ * shipped CLI.
+ *
+ * Exported so its contract can be driven directly: the stamp, the fixed point,
+ * and the values it must not touch.
+ */
+function appliedMigrationVersion(raw: RawSettings): number {
+	return typeof raw.settingsMigrationVersion === "number" ? raw.settingsMigrationVersion : 0;
+}
+
+/**
+ * Drop the `-1` that used to mean "unset" from the owned config, in memory.
+ *
+ * Safe to run on every load and does nothing once the stamp says the migration
+ * has been applied. Returns the paths it removed.
+ */
+export function stripLegacyUnsetSentinels(raw: RawSettings): string[] {
+	if (appliedMigrationVersion(raw) >= SETTINGS_MIGRATION_VERSION_UNSET_ABSENT_KEY) return [];
+	const removed: string[] = [];
+	for (const segments of LEGACY_UNSET_SENTINEL_PATHS) {
+		if (getByPath(raw, segments) !== LEGACY_UNSET_SENTINEL) continue;
+		deleteByPath(raw, segments);
+		removed.push(segments.join("."));
+	}
+	return removed;
+}
+
+/**
+ * Commit the one-shot migrations to the owned config: strip the old sentinels and
+ * record that it happened. Returns every path that changed, for the caller to mark
+ * modified so the save path actually writes them.
+ *
+ * Called when a value on one of those paths is written, NOT on every load, for two
+ * reasons that pull in opposite directions:
+ *
+ *  - The stamp must be on disk before a `-1` can be trusted, or the next load
+ *    deletes a value the user just set (dogfooded, 2026-07-25).
+ *  - Stamping at load time would add a line to every config in existence,
+ *    including ones that have never touched a sampling knob.
+ *
+ * Writing one of these paths is exactly the moment both concerns are satisfied:
+ * the file is being rewritten anyway, and the stamp is what makes the new value
+ * survivable. Anything still holding a legacy `-1` is stripped in the same write,
+ * so the stamp can never certify a config the migration has not finished.
+ */
+export function stampOwnedConfigMigrations(raw: RawSettings): string[] {
+	const changed = stripLegacyUnsetSentinels(raw);
+	if (appliedMigrationVersion(raw) !== SETTINGS_MIGRATION_VERSION) {
+		raw.settingsMigrationVersion = SETTINGS_MIGRATION_VERSION;
+		changed.push("settingsMigrationVersion");
+	}
+	return changed;
+}
+const LEGACY_UNSET_SENTINEL_PATHS: readonly (readonly string[])[] = (Object.keys(SETTINGS_SCHEMA) as SettingPath[])
+	.filter(settingPath => isUnsetNumberPath(settingPath))
+	.map(settingPath => settingPath.split("."));
+
+/**
  * Set a nested value in an object by path segments.
  * Creates intermediate objects as needed.
  */
@@ -136,6 +235,19 @@ function setByPath(obj: RawSettings, segments: string[], value: unknown): void {
 		current = current[segment] as RawSettings;
 	}
 	current[segments[segments.length - 1]] = value;
+}
+
+/**
+ * Delete a nested value by path segments, leaving the objects around it alone.
+ *
+ * The counterpart to {@link setByPath}, and the shape a migration needs: fold the
+ * old key's value onto the new key, then remove the old one so the file has one
+ * owner per value and the migration is a fixed point on its own output.
+ */
+function deleteByPath(obj: RawSettings, segments: readonly string[]): void {
+	const parent = segments.length > 1 ? getByPath(obj, segments.slice(0, -1)) : obj;
+	if (!isRecord(parent)) return;
+	delete (parent as Record<string, unknown>)[segments[segments.length - 1]];
 }
 
 export function normalizeProviderMaxInFlightRequests(value: unknown): Record<string, number> {
@@ -277,6 +389,10 @@ export class Settings {
 	#overrides: RawSettings = {};
 	/** Settings files that could not be parsed, and where their bytes were kept. */
 	#quarantined: QuarantinedSettingsFile[] = [];
+	/** Consecutive failed saves of `#configPath`, and why the last one failed. */
+	#saveFailure: { path: string; reason: string; attempts: number } | undefined;
+	/** Told when a save has failed often enough that the user has to hear about it. */
+	#saveFailureListeners = new Set<(failure: SettingsSaveFailure) => void>();
 	/** Configured values whose type contradicts the schema, found during load. */
 	#invalidValues: InvalidSettingValue[] = [];
 	/** Merged view (global + project + overrides) */
@@ -287,11 +403,19 @@ export class Settings {
 
 	/** Paths modified during this session (for partial save) */
 	#modified = new Set<string>();
+	/**
+	 * Legacy `-1` sentinels removed from the owned config at load, waiting to be
+	 * removed from the FILE. They are written out with the migration stamp, on the
+	 * first write to a path the migration governs — see #stampOwnedMigrationsFor.
+	 */
+	#pendingSentinelStrips: string[] = [];
 
 	/** Legacy `lastChangelogVersion` captured from config.yml during migration (now a marker file). */
 	#legacyLastChangelogVersion?: string;
 	/** Set once `ask.timeout` has been reported as rewritten, so the warning does not repeat on every read. */
 	#reportedAskTimeoutRewrite = false;
+	/** Dotted-key problems already reported, so each one is said once per process rather than once per read. */
+	#reportedDottedKeyProblems = new Set<string>();
 
 	/** Pending save (debounced) */
 	#saveTimer?: NodeJS.Timeout;
@@ -445,6 +569,54 @@ export class Settings {
 	}
 
 	/**
+	 * The save failure the user needs to hear about, or undefined when saves are landing.
+	 *
+	 * A save that cannot write the file used to be swallowed into a `logger.warn` and the
+	 * paths re-queued for retry. Nothing reached the operator: the UI reported the setting
+	 * as changed, the in-memory value WAS changed, and the file on disk was not, so the
+	 * setting silently reverted on the next launch. On a read-only home, a full disk, or a
+	 * config path that became a directory, the retry never succeeds and the user got no
+	 * signal at any point (Law 10).
+	 *
+	 * Only reported once the retries are spent, because a single failure under a concurrent
+	 * writer is normal and self-healing. Cleared by the next save that succeeds.
+	 */
+	get saveFailure(): SettingsSaveFailure | undefined {
+		if (!this.#saveFailure) return undefined;
+		const { path: failedPath, reason, attempts } = this.#saveFailure;
+		if (attempts < SAVE_FAILURE_REPORT_AFTER) return undefined;
+		return { path: failedPath, reason, attempts };
+	}
+
+	/**
+	 * The last save error on this instance, with no retry threshold applied.
+	 *
+	 * {@link saveFailure} deliberately waits for a run of failures, because in a live
+	 * session one failure is a lost race that the retry fixes. A ONE-SHOT command has no
+	 * retry future: `veyyon config set` writes once and exits, so the first failure is the
+	 * whole story and it has to be able to report it and exit non-zero rather than print
+	 * a success it did not achieve. Cleared by the next save that lands.
+	 */
+	get lastSaveError(): { path: string; reason: string } | undefined {
+		if (!this.#saveFailure) return undefined;
+		return { path: this.#saveFailure.path, reason: this.#saveFailure.reason };
+	}
+
+	/**
+	 * Be told when a save has failed too many times, since a save happens mid-session.
+	 *
+	 * Startup-only reporting (the shape {@link quarantinedFiles} uses) cannot cover this:
+	 * the failure happens when the user changes a setting, which is exactly when they are
+	 * looking. Returns an unsubscribe.
+	 */
+	onSaveFailure(listener: (failure: SettingsSaveFailure) => void): () => void {
+		this.#saveFailureListeners.add(listener);
+		return () => {
+			this.#saveFailureListeners.delete(listener);
+		};
+	}
+
+	/**
 	 * Configured settings whose value does not match the schema's declared type.
 	 *
 	 * Empty in the normal case. A non-empty list means the config on disk says
@@ -505,6 +677,12 @@ export class Settings {
 			return;
 		}
 
+		// Before writing one of the optional numeric paths, finish the one-shot
+		// migration and stamp it: the value being written may itself be the `-1`
+		// that used to mean "unset", and only an on-disk stamp keeps the next load
+		// from deleting it. Stamping first also means the strip cannot reach the new
+		// value.
+		this.#stampOwnedMigrationsFor(path);
 		const segments = path.split(".");
 		setByPath(this.#global, segments, value);
 		this.#modified.add(path);
@@ -518,6 +696,74 @@ export class Settings {
 			hook(next, prev);
 		}
 		this.#fireEffectiveSettingChanged(path, next, prev);
+	}
+
+	/**
+	 * Return a setting to its default by REMOVING the key, rather than writing a
+	 * value that stands for "unset".
+	 *
+	 * This is what "Default" means for an optional setting. Encoding it as a
+	 * magic number instead made that number unreachable as a real value: with
+	 * `-1` meaning unset, `presencePenalty: -1` — which the provider accepts —
+	 * could not be configured at all. An absent key has no such collision, and
+	 * `get` already falls back to the schema default.
+	 *
+	 * Fires the same hooks and change signals as {@link set}, because from every
+	 * reader's point of view the effective value changed.
+	 */
+	unset(path: SettingPath): void {
+		const prev = this.get(path);
+
+		const globalBinding = GLOBAL_SETTING_BINDINGS[path];
+		if (globalBinding) {
+			if (this.#persist) {
+				try {
+					globalBinding.write(undefined);
+				} catch (error) {
+					logger.warn("Settings: global unset rejected; value not cleared", { path, error: String(error) });
+					return;
+				}
+			} else {
+				deleteByPath(this.#overrides, path.split("."));
+				this.#rebuildMerged();
+			}
+			const next = this.get(path);
+			SETTING_HOOKS[path]?.(next, prev);
+			this.#fireEffectiveSettingChanged(path, next, prev);
+			return;
+		}
+
+		this.#stampOwnedMigrationsFor(path);
+		const segments = SETTING_PATH_SEGMENTS[path] ?? path.split(".");
+		deleteByPath(this.#global, segments);
+		// Also drop a runtime override for the same path. Both are values this
+		// process owns, and leaving the override in place would make "Default"
+		// appear to do nothing whenever a flag or overlay had set the same knob. A
+		// value from a PROJECT config is not touched: this instance does not own
+		// that file, and get() still reports it as the effective value.
+		deleteByPath(this.#overrides, segments);
+		this.#modified.add(path);
+		this.#rebuildMerged();
+		const next = this.get(path);
+		this.#queueSave();
+		SETTING_HOOKS[path]?.(next, prev);
+		this.#fireEffectiveSettingChanged(path, next, prev);
+	}
+
+	/**
+	 * Stamp the one-shot migrations into the owned config when the path being
+	 * written is one they govern. A no-op for every other setting, so an ordinary
+	 * write does not add the stamp to a config that has nothing to migrate.
+	 */
+	#stampOwnedMigrationsFor(path: SettingPath): void {
+		if (!isUnsetNumberPath(path)) return;
+		// The load already removed the legacy sentinels from the in-memory tree, so
+		// they are marked modified from the record kept then: without that the file
+		// would keep a `-1` while the stamp said "migrated", and the next load would
+		// read that `-1` as the VALUE minus one and send it to the provider.
+		for (const strippedPath of this.#pendingSentinelStrips) this.#modified.add(strippedPath);
+		this.#pendingSentinelStrips = [];
+		for (const changedPath of stampOwnedConfigMigrations(this.#global)) this.#modified.add(changedPath);
 	}
 
 	/**
@@ -845,6 +1091,12 @@ export class Settings {
 				this.#global = await this.#loadYaml(this.#configPath!);
 			}
 			await this.#seedLastChangelogVersionMarker();
+			// Drop the legacy `-1` sentinels from the owned config, in memory. Not
+			// stamped here: the stamp goes in when one of those paths is written (see
+			// stampOwnedConfigMigrations), so an upgrade does not add a line to every
+			// config on disk, and a `-1` written by this version is still safe from
+			// the next load.
+			this.#pendingSentinelStrips = stripLegacyUnsetSentinels(this.#global);
 		}
 
 		this.#project = await projectPromise;
@@ -1118,7 +1370,7 @@ export class Settings {
 		// with a re-read, matching #saveNow.
 		if (migrated && Object.keys(settings).length > 0) {
 			try {
-				await atomicWriteFile(this.#configPath, YAML.stringify(settings, null, 2));
+				await this.#writeConfigPreservingText(this.#configPath, settings);
 				logger.debug("Settings: migrated to config.yml", { path: this.#configPath });
 			} catch (error) {
 				// The migration ran but the merged config could not be persisted, so
@@ -1141,6 +1393,81 @@ export class Settings {
 	 * watching an ask auto-select in two seconds and having no idea why. Once per
 	 * process, because the migration runs on every read of the file.
 	 */
+	/**
+	 * Expand every top-level dotted key that names a registered setting into the
+	 * nested tree it belongs in.
+	 *
+	 * `subagent.model: openai/gpt-5` at the top level of `config.yml` is the same
+	 * setting as `subagent: { model: openai/gpt-5 }` to anyone reading the file, and
+	 * people write it that way. It was parsed, merged, and then never read: {@link
+	 * get} walks nested segments, so the value sat in the tree under a literal
+	 * `"subagent.model"` key that nothing looked at, and the setting silently did
+	 * nothing (Law 10). It affected every setting, not one — the shape was found
+	 * while migrating the subagent keys, where a migration writing this spelling made
+	 * every legacy config revert to defaults with no signal.
+	 *
+	 * Only paths the schema declares are expanded. An unknown dotted key is left
+	 * exactly as written: it belongs to a newer build or another tool, preserving it
+	 * verbatim is a documented contract, and guessing at its shape would corrupt it.
+	 *
+	 * A fixed point, like every migration here: after one pass no registered dotted
+	 * key remains, so a second pass changes nothing.
+	 */
+	#expandDottedSettingKeys(raw: RawSettings): void {
+		for (const key of Object.keys(raw)) {
+			if (!key.includes(".")) continue;
+			const segments = SETTING_PATH_SEGMENTS[key as SettingPath];
+			if (segments === undefined) continue;
+
+			// Refuse rather than clobber when the nested spelling is blocked by a
+			// non-object: writing through would replace whatever the operator has
+			// there. Keep the flat key (so nothing is lost) and say so.
+			const parentSegments = segments.slice(0, -1);
+			let blocked: string | undefined;
+			for (let depth = 1; depth <= parentSegments.length; depth++) {
+				const branch = getByPath(raw, parentSegments.slice(0, depth));
+				if (branch !== undefined && !isRecord(branch)) {
+					blocked = parentSegments.slice(0, depth).join(".");
+					break;
+				}
+			}
+			if (blocked !== undefined) {
+				this.#reportDottedKeyProblem(
+					`Settings: "${key}" cannot be read because "${blocked}" holds a value instead of a block. ` +
+						`Remove or rename "${blocked}", or nest the setting under it.`,
+					{ key, blocked },
+				);
+				continue;
+			}
+
+			const flat = raw[key];
+			delete raw[key];
+			const nested = getByPath(raw, segments);
+			if (nested !== undefined) {
+				// The nested spelling is what the docs show and what every UI writes, so
+				// it wins. The flat one is dropped, and never silently: the operator wrote
+				// two values for one setting and needs to know which one is live.
+				this.#reportDottedKeyProblem(
+					`Settings: "${key}" is set twice, flat and nested. The nested value is used and the flat key is dropped.`,
+					{ key, used: nested, dropped: flat },
+				);
+				continue;
+			}
+			setByPath(raw, [...segments], flat);
+		}
+	}
+
+	/**
+	 * Report one dotted-key problem, once per message per process. The migration
+	 * runs on every read of every source, so an unconditional warn would repeat the
+	 * same line dozens of times per session and train the reader to skip it.
+	 */
+	#reportDottedKeyProblem(message: string, context: Record<string, unknown>): void {
+		if (this.#reportedDottedKeyProblems.has(message)) return;
+		this.#reportedDottedKeyProblems.add(message);
+		logger.warn(message, context);
+	}
+
 	#reportAskTimeoutRewrite(from: number, to: number): void {
 		if (this.#reportedAskTimeoutRewrite) return;
 		this.#reportedAskTimeoutRewrite = true;
@@ -1151,8 +1478,131 @@ export class Settings {
 		);
 	}
 
+	/**
+	 * Fold every retired subagent key onto the `subagent.*` area, in place.
+	 *
+	 * Runs on every read of a settings source, so it must be a FIXED POINT:
+	 * applying it to its own output changes nothing. That holds because each
+	 * legacy key is deleted after it is folded, and an already-present new value
+	 * always wins (an operator who has set the new key is never overwritten by a
+	 * stale legacy one).
+	 *
+	 * `task.eager` mapped three values onto delegation strength; the new
+	 * `subagent.delegation` adds `off` at the bottom, so `default` becomes
+	 * `allowed` and `always` becomes `required`. `task.disabledAgents` and
+	 * `task.agentModelOverrides` were parallel maps keyed by agent name; both fold
+	 * into one row per agent in `subagent.agents`.
+	 */
+	#migrateSubagentSettings(raw: RawSettings): void {
+		// Every value in a settings source is NESTED — the loader builds the tree
+		// with `setByPath` and `get` reads it back segment by segment — so a dotted
+		// key written at the top level here would be stored but never read. That is
+		// not theoretical: writing `raw["subagent.delegation"]` made this whole
+		// migration a no-op, and only a test that loaded a legacy config and read the
+		// new setting back caught it.
+		const read = (segments: string[]): unknown => getByPath(raw, segments);
+		const take = (segments: string[]): unknown => {
+			const value = getByPath(raw, segments);
+			if (value !== undefined) deleteByPath(raw, segments);
+			return value;
+		};
+		const setNew = (key: string[], value: unknown): void => {
+			if (value === undefined) return;
+			// An explicit new-key value already on disk is authoritative: an operator
+			// who has set the new setting is never overwritten by a stale legacy key.
+			if (read(["subagent", ...key]) !== undefined) return;
+			setByPath(raw, ["subagent", ...key], value);
+		};
+
+		const eager = take(["task", "eager"]);
+		if (typeof eager === "string") {
+			// `task.eager` had three values; `subagent.delegation` adds `off` BELOW all
+			// of them. The old bottom value must land on `allowed`, not `off`: someone
+			// with eager delegation switched off still delegated by hand, and mapping
+			// them onto `off` would take the task tool away entirely.
+			const delegation = eager === "always" ? "required" : eager === "preferred" ? "preferred" : "allowed";
+			setNew(["delegation"], delegation);
+		}
+
+		for (const [legacy, next] of [
+			["batch", "batch"],
+			["maxConcurrency", "maxConcurrency"],
+			["enableLsp", "enableLsp"],
+			["maxRecursionDepth", "maxRecursionDepth"],
+			["maxRuntimeMs", "maxRuntimeMs"],
+			["agentIdleTtlMs", "idleTtlMs"],
+			["softRequestBudget", "softRequestBudget"],
+			["softRequestBudgetNotice", "softRequestBudgetNotice"],
+			["showResolvedModelBadge", "showResolvedModelBadge"],
+		] as const) {
+			setNew([next], take(["task", legacy]));
+		}
+
+		// task.isolation.* -> subagent.isolation.*
+		for (const key of ["mode", "merge", "commits"] as const) {
+			setNew(["isolation", key], take(["task", "isolation", key]));
+		}
+
+		// The two agent-keyed maps become one row per agent. Two parallel maps meant
+		// two lookups that could disagree, which is how an agent could read as off on
+		// one surface while a model override for it lived on invisibly.
+		const agents: Record<string, Record<string, unknown>> = {};
+		const disabled = take(["task", "disabledAgents"]);
+		if (Array.isArray(disabled)) {
+			for (const name of disabled) {
+				if (typeof name !== "string" || !name.trim()) continue;
+				agents[name.trim()] = { ...(agents[name.trim()] ?? {}), enabled: false };
+			}
+		}
+		const overrides = take(["task", "agentModelOverrides"]);
+		if (isRecord(overrides)) {
+			for (const [name, model] of Object.entries(overrides)) {
+				if (typeof model !== "string" || !model.trim()) continue;
+				agents[name] = { ...(agents[name] ?? {}), model: model.trim() };
+			}
+		}
+		// An agent in BOTH legacy maps keeps both facts in its one row: the row says
+		// disabled AND remembers the model, so turning it back on later does not
+		// silently lose the model the operator chose.
+		if (Object.keys(agents).length > 0) setNew(["agents"], agents);
+
+		// modelRoles.task was the "model for subagents" knob before this section
+		// existed. It folds into the blanket subagent model AND the role entry goes:
+		// leaving it would restore two owners for one value, with role expansion
+		// answering first, which is exactly why a subagent model setting used to have
+		// no effect.
+		const legacyRoleModel = read(["modelRoles", "task"]);
+		if (typeof legacyRoleModel === "string" && legacyRoleModel.trim()) {
+			setNew(["model"], legacyRoleModel.trim());
+			deleteByPath(raw, ["modelRoles", "task"]);
+		}
+
+		// Leave no empty husk behind: a surviving `task: {}` block is a second place
+		// to look for settings that no longer live there.
+		if (isRecord(raw.task) && Object.keys(raw.task).length === 0) delete raw.task;
+		const isolation = getByPath(raw, ["task", "isolation"]);
+		if (isRecord(isolation) && Object.keys(isolation).length === 0) {
+			deleteByPath(raw, ["task", "isolation"]);
+			if (isRecord(raw.task) && Object.keys(raw.task).length === 0) delete raw.task;
+		}
+	}
+
 	/** Apply schema migrations to raw settings */
+	/**
+	 * Apply every field-level migration to one raw settings tree.
+	 *
+	 * Runs on EVERY load of EVERY source (global, project, `--config` overlays,
+	 * runtime overrides), so every migration here must be a fixed point on its own
+	 * output. A migration that CANNOT be — one that cannot distinguish an old
+	 * encoding from a value the user typed — does not belong here: it goes in
+	 * {@link migrateOwnedConfigOnce}, which runs once against the config this
+	 * instance owns.
+	 */
 	#migrateRawSettings(raw: RawSettings): RawSettings {
+		// Both spellings of a key mean the same thing, and only the nested one used
+		// to be readable. Runs FIRST so every migration below sees one shape.
+		this.#expandDottedSettingKeys(raw);
+
 		// queueMode -> steeringMode
 		if ("queueMode" in raw && !("steeringMode" in raw)) {
 			raw.steeringMode = raw.queueMode;
@@ -1199,6 +1649,47 @@ export class Settings {
 				this.#reportAskTimeoutRewrite(oldValue, converted);
 			}
 		}
+
+		// compaction.thresholdTokens / compaction.thresholdPercent -> compaction.threshold
+		//
+		// Two keys wrote one axis with an invisible precedence. Fold them into the one
+		// key HERE, on load, so the ambiguity leaves the file: an absolute amount
+		// becomes a bare token count, a percent becomes `85%`, and the retired keys are
+		// dropped. Precedence matches the old resolver (tokens, then percent), so the
+		// trigger point does not move. A `threshold` already present always wins and
+		// the retired keys are dropped without being read, which is what makes this a
+		// fixed point — re-running it on its own output changes nothing.
+		//
+		// `withLegacyCompactionThreshold` still folds them at read time, for config
+		// sources this never rewrites (project files, `--config` overlays, and
+		// non-persisting instances).
+		const compaction = raw.compaction as Record<string, unknown> | undefined;
+		if (compaction && ("thresholdTokens" in compaction || "thresholdPercent" in compaction)) {
+			if (compaction.threshold === undefined) {
+				const legacyTokens = compaction.thresholdTokens;
+				const legacyPercent = compaction.thresholdPercent;
+				if (typeof legacyTokens === "number" && Number.isFinite(legacyTokens) && legacyTokens > 0) {
+					compaction.threshold = String(legacyTokens);
+				} else if (typeof legacyPercent === "number" && Number.isFinite(legacyPercent) && legacyPercent > 0) {
+					compaction.threshold = `${legacyPercent}%`;
+				}
+			}
+			delete compaction.thresholdTokens;
+			delete compaction.thresholdPercent;
+		}
+
+		// Optional numeric settings once stored `-1` to mean "unset", which made -1
+		// unreachable as a real value: `presencePenalty: -1` is a penalty the
+		// provider accepts, and it could not be configured. Unset is an ABSENT key
+		// now, so the old sentinel is dropped — in every prior version it meant
+		// exactly this, so nothing a user chose is lost.
+		//
+		// ONCE, and only in the config this instance owns. This is the one
+		// migration here that cannot tell its input apart from a legitimate current
+		// value, so re-running it would delete a `-1` the user typed on purpose (it
+		// deleted one within a minute of the change landing, in dogfooding). The
+		// stamp records that it ran; a project file or a `--config` overlay is
+		// hand-written against the current docs, so a `-1` there is a value.
 
 		// Migrate old flat "theme" string to nested theme.dark/theme.light
 		if (typeof raw.theme === "string") {
@@ -1257,6 +1748,16 @@ export class Settings {
 			}
 		}
 
+		// task.* / modelRoles.task -> the subagent.* settings area.
+		//
+		// Everything about spawned agents used to be spread across `task.*`
+		// operational keys, `subagent.model` under Models, `modelRoles.task` in the
+		// role table, and two UI-less maps (`task.agentModelOverrides`,
+		// `task.disabledAgents`). This rewrites the old keys onto the one section so
+		// the file has a single owner per value — no dual-read, which is how the
+		// precedence tangle grew in the first place.
+		this.#migrateSubagentSettings(raw);
+
 		// edit.mode: removed "atom" and "vim" variants map back to "hashline"
 		const editObj = raw.edit as Record<string, unknown> | undefined;
 		if (editObj) {
@@ -1272,10 +1773,6 @@ export class Settings {
 				}
 			}
 		}
-		if (raw["edit.mode"] === "atom" || raw["edit.mode"] === "vim") {
-			raw["edit.mode"] = "hashline";
-		}
-
 		// compaction.strategy: collapse legacy strategies to handoff|summary; off disables compaction.
 		const compactionObj = raw.compaction as Record<string, unknown> | undefined;
 		const migrateStrategy = (current: unknown): CompactionStrategySetting | undefined => {
@@ -1300,36 +1797,26 @@ export class Settings {
 				delete compactionObj.compactionModel;
 			}
 		}
-		if (raw["compaction.strategy"] === "shake-summary") {
-			raw["compaction.strategy"] = "handoff";
-		} else if (raw["compaction.strategy"] === "off") {
-			raw["compaction.strategy"] = "handoff";
-			if (raw["compaction.enabled"] === undefined) {
-				raw["compaction.enabled"] = false;
-			}
-		} else {
-			const migrated = migrateStrategy(raw["compaction.strategy"]);
-			if (migrated) raw["compaction.strategy"] = migrated;
-		}
-		if (raw["compaction.compactionModel"] !== undefined && raw["compaction.model"] === undefined) {
-			raw["compaction.model"] = raw["compaction.compactionModel"];
+		// `compaction.compactionModel` is a RETIRED key, so it survives the dotted-key
+		// expansion above (only registered paths are expanded) and both spellings of it
+		// still have to be folded. The destination is always nested: a flat
+		// `compaction.model` would be written into the tree and then never read.
+		const legacyFlatCompactionModel = raw["compaction.compactionModel"];
+		if (legacyFlatCompactionModel !== undefined && getByPath(raw, ["compaction", "model"]) === undefined) {
+			setByPath(raw, ["compaction", "model"], legacyFlatCompactionModel);
 			delete raw["compaction.compactionModel"];
 		}
-		if (typeof raw.compactionModel === "string" && raw["compaction.model"] === undefined) {
-			raw["compaction.model"] = raw.compactionModel;
+		if (typeof raw.compactionModel === "string" && getByPath(raw, ["compaction", "model"]) === undefined) {
+			setByPath(raw, ["compaction", "model"], raw.compactionModel);
 			delete raw.compactionModel;
 		}
 
 		const modelOverrides = raw.modelOverrides as Record<string, Record<string, unknown>> | undefined;
-		if (modelOverrides && raw["compaction.model"] === undefined && compactionObj?.model === undefined) {
+		if (modelOverrides && getByPath(raw, ["compaction", "model"]) === undefined) {
 			for (const entry of Object.values(modelOverrides)) {
 				const compactionModel = entry?.compactionModel;
 				if (typeof compactionModel === "string" && compactionModel.trim()) {
-					if (compactionObj) {
-						compactionObj.model = compactionModel;
-					} else {
-						raw["compaction.model"] = compactionModel;
-					}
+					setByPath(raw, ["compaction", "model"], compactionModel);
 					break;
 				}
 			}
@@ -1390,9 +1877,6 @@ export class Settings {
 		const codexResetsObj = raw.codexResets as Record<string, unknown> | undefined;
 		if (codexResetsObj && typeof codexResetsObj.autoRedeem === "boolean") {
 			codexResetsObj.autoRedeem = codexResetsObj.autoRedeem ? "yes" : "no";
-		}
-		if (typeof raw["codexResets.autoRedeem"] === "boolean") {
-			raw["codexResets.autoRedeem"] = raw["codexResets.autoRedeem"] ? "yes" : "no";
 		}
 
 		// Map legacy `memories.enabled` boolean to the explicit `memory.backend`
@@ -1455,10 +1939,11 @@ export class Settings {
 		// The enum is cumulative: each level adds the flags of all lower levels.
 		// Migration picks the highest level whose condition is met, scanning from
 		// most to least aggressive so a single enum value captures the old state.
-		if (
-			!("sleepPrevention" in ((raw.power as Record<string, unknown>) ?? {})) &&
-			raw["power.sleepPrevention"] === undefined
-		) {
+		// The flat spelling of the destination needs no check: the expansion above has
+		// already folded `power.sleepPrevention` into the nested tree. The legacy
+		// booleans below are RETIRED keys, which the expansion leaves alone, so both
+		// spellings of those are still read.
+		if (!("sleepPrevention" in ((raw.power as Record<string, unknown>) ?? {}))) {
 			const powerObj = raw.power as Record<string, unknown> | undefined;
 			const getFlag = (key: string): boolean | undefined => {
 				const nested = powerObj?.[key];
@@ -1688,6 +2173,73 @@ export class Settings {
 	// Saving
 	// ─────────────────────────────────────────────────────────────────────────
 
+	/**
+	 * The ONE place settings are written to disk.
+	 *
+	 * It edits the existing file as a document rather than re-serializing the settings
+	 * object, so the comments, blank lines, key order and quoting the user chose survive a
+	 * setting change. `config.yml` is a file people edit by hand; a save that silently
+	 * reformatted it was deleting their work.
+	 *
+	 * The settings object stays the authority on content, so migrations and resets land
+	 * exactly as they did when this was a `YAML.stringify` call.
+	 */
+	async #writeConfigPreservingText(configPath: string, settings: RawSettings): Promise<void> {
+		let existing = "";
+		try {
+			existing = await Bun.file(configPath).text();
+		} catch (error) {
+			// A missing file is the first-write case and starts from an empty document.
+			// Anything else is a read this process should not paper over: writing as if the
+			// file were empty would drop every comment and every externally-added key in it.
+			if (!isEnoent(error)) throw error;
+		}
+		let text: string;
+		try {
+			text = syncYamlTextToSettings(existing, settings);
+		} catch (error) {
+			// The editor refuses a file it cannot parse, because overwriting it would
+			// destroy content nothing else preserved. There is exactly one case where the
+			// content HAS been preserved: the loader already copied this file to its
+			// `.corrupt` sibling, and the user's change has to be able to land. Then a
+			// fresh serialization is the right answer, and it is announced with the path
+			// to the rescued copy rather than done quietly (Law 10).
+			const rescued = this.#quarantined.find(entry => entry.path === configPath);
+			if (!rescued) throw error;
+			logger.warn("Settings: rewriting a config file that could not be parsed; the original was preserved", {
+				path: configPath,
+				preservedAt: rescued.quarantinePath,
+				reason: errorMessage(error),
+			});
+			text = YAML.stringify(settings, null, 2);
+		}
+		await atomicWriteFile(configPath, text);
+	}
+
+	/**
+	 * Count a failed save, and tell the operator once the retries are spent.
+	 *
+	 * The first failures stay quiet on purpose: a lost race with a concurrent writer is
+	 * normal and the retry fixes it. A run of them is a broken filesystem or a config path
+	 * that is not writable, and that has to reach the user rather than a debug log.
+	 */
+	#recordSaveFailure(configPath: string, error: unknown): void {
+		const reason = errorMessage(error);
+		const attempts = (this.#saveFailure?.path === configPath ? this.#saveFailure.attempts : 0) + 1;
+		this.#saveFailure = { path: configPath, reason, attempts };
+		if (attempts !== SAVE_FAILURE_REPORT_AFTER) return;
+		// Exactly at the threshold, so a filesystem that stays broken reports once rather
+		// than on every retry for the rest of the session.
+		const failure: SettingsSaveFailure = { path: configPath, reason, attempts };
+		for (const listener of this.#saveFailureListeners) {
+			try {
+				listener(failure);
+			} catch (listenerError) {
+				logger.warn("Settings: a save-failure listener threw", { error: errorMessage(listenerError) });
+			}
+		}
+	}
+
 	#queueSave(): void {
 		if (!this.#persist || !this.#configPath) return;
 
@@ -1724,14 +2276,17 @@ export class Settings {
 
 				// Update our global with any external changes we preserved
 				this.#global = current;
-				await atomicWriteFile(configPath, YAML.stringify(this.#global, null, 2));
+				await this.#writeConfigPreservingText(configPath, this.#global);
 			});
+			// The file took the write, so whatever was wrong is over.
+			this.#saveFailure = undefined;
 		} catch (error) {
 			logger.warn("Settings: save failed", { error: String(error) });
 			// Re-add failed paths for retry
 			for (const p of modifiedPaths) {
 				this.#modified.add(p);
 			}
+			this.#recordSaveFailure(configPath, error);
 		}
 
 		this.#rebuildMerged();

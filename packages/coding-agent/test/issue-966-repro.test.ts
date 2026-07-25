@@ -48,7 +48,11 @@ try {
 		throw new Error("unexpected log: " + JSON.stringify(log));
 	}
 	const summary = await git.status.summary(dir);
-	if (!Bun.deepEquals(summary, { staged: 0, unstaged: 0, untracked: 0 })) {
+	// The three counts, field by field, rather than deep-equality against the whole
+	// object: the summary grew a \`truncated\` flag and this assertion started failing
+	// on a shape change while the behaviour it checks was still correct.
+	const counts = { staged: summary.staged, unstaged: summary.unstaged, untracked: summary.untracked };
+	if (!Bun.deepEquals(counts, { staged: 0, unstaged: 0, untracked: 0 })) {
 		throw new Error("unexpected status: " + JSON.stringify(summary));
 	}
 } finally {
@@ -56,6 +60,9 @@ try {
 }
 `;
 		const result = await $`bun --eval ${script}`.cwd(packageRoot).quiet().nothrow();
-		expect(result.exitCode).toBe(0);
+		// The child does the asserting, so its stderr IS the failure message. Reporting
+		// only the exit code (which is what this did) turns every failure here into
+		// "expected 0, received 1" and sends the reader off to re-run the script by hand.
+		expect(result.exitCode, result.stderr.toString() || result.stdout.toString()).toBe(0);
 	});
 });

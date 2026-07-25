@@ -13,7 +13,15 @@ const DEVIN_DEFAULT_BASE_URL = "https://server.codeium.com";
 const DEVIN_GET_CLI_MODEL_CONFIGS_PATH = "/exa.api_server_pb.ApiServerService/GetCliModelConfigs";
 const DEVIN_IDE_VERSION = "3.2.23";
 const DEVIN_EXTENSION_VERSION = "1.48.2";
-const DEVIN_SESSION_TOKEN_PREFIX = "devin-session-token$";
+/**
+ * Prefix Devin's API expects on a session token.
+ *
+ * A user pastes the token with or without it, so it is added when missing rather than
+ * demanded. The provider in `@veyyon/ai` sends the same header, and both used to spell the
+ * prefix and the normalization themselves: if one added it and the other did not, model
+ * discovery would authenticate while the requests that follow would not, or the reverse.
+ */
+export const DEVIN_SESSION_TOKEN_PREFIX = "devin-session-token$";
 
 const DEFAULT_CONTEXT_WINDOW = 200_000;
 const DEFAULT_MAX_TOKENS = 64_000;
@@ -91,13 +99,17 @@ export async function fetchDevinModels(
 
 		return normalizeDevinModels(decoded.clientModelConfigs, options.baseUrl);
 	} catch {
+		// Same as the other discovery readers: null is 'no catalog from this provider', distinct from the `[]` an
+		// endpoint with no models returns, and the caller reports the provider as unavailable. Carrying the reason
+		// through an `onFailure` channel, as `fetchOpenAICompatibleModels` now does, is a tracked task.
 		return null;
 	} finally {
 		clearTimeout(timer);
 	}
 }
 
-function normalizeDevinSessionToken(apiKey: string | undefined): string {
+/** A Devin session token with its prefix, adding it when the pasted value lacks one. */
+export function normalizeDevinSessionToken(apiKey: string | undefined): string {
 	if (!apiKey) return "";
 	return apiKey.startsWith(DEVIN_SESSION_TOKEN_PREFIX) ? apiKey : `${DEVIN_SESSION_TOKEN_PREFIX}${apiKey}`;
 }
@@ -114,6 +126,9 @@ function decodeCliModelConfigsResponse(payload: Uint8Array) {
 		try {
 			return fromBinary(GetCliModelConfigsResponseSchema, gunzipSync(payload));
 		} catch {
+			// Same as the other discovery readers: null is 'no catalog from this provider', distinct from the `[]` an
+			// endpoint with no models returns, and the caller reports the provider as unavailable. Carrying the reason
+			// through an `onFailure` channel, as `fetchOpenAICompatibleModels` now does, is a tracked task.
 			return null;
 		}
 	}

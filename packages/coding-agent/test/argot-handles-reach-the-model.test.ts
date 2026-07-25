@@ -1,7 +1,7 @@
 /**
  * Does the handle table actually reach the model?
  *
- * Every other argot test certifies a PIECE of the path: `lexpack-integration`
+ * Every other argot test certifies a PIECE of the path: `argot-integration`
  * proves that a handle table passed as `argotHandles` lands in the prompt under
  * its own banner, and `argot-cache` proves a repository resolves to a generated
  * vocabulary. Neither one joins the two, and the join is where the feature
@@ -29,13 +29,14 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { armArgotAfterStartup } from "@veyyon/coding-agent/lexpack-cache";
+import { armArgotAfterStartup } from "@veyyon/coding-agent/argot-cache";
 import { buildSystemPrompt } from "@veyyon/coding-agent/system-prompt";
+import { renderBanner } from "@veyyon/coding-agent/system-prompt-builder/banner-grammar";
 import {
 	ARGOT_HANDLES_BANNER,
 	RUNTIME_SECTIONS,
 	withSectionBanner,
-} from "@veyyon/coding-agent/system-prompt-builder/prompt-blocks";
+} from "@veyyon/coding-agent/system-prompt-builder/section-registry";
 import { TempDir } from "@veyyon/utils";
 import { ArgotSession, renderPreamble } from "argot";
 import { useIsolatedConfigRoot } from "./helpers/isolated-agent-dir";
@@ -165,7 +166,7 @@ describe("the argot handle table reaches the model after the background arm", ()
 		// carries the table as a real section. Asserted through `withSectionBanner`
 		// (the assembler's own owner) so it proves placement, not mere substring
 		// presence somewhere in 85kB of text.
-		expect(HANDLES_SECTION.banner).toBe("SHORTHAND HANDLES\n==");
+		expect(renderBanner(HANDLES_SECTION.name)).toBe("SHORTHAND HANDLES\n==============");
 		expect(armedPrompt).toContain(withSectionBanner(HANDLES_SECTION, argot.promptFragment()));
 	});
 
@@ -193,7 +194,7 @@ describe("the argot handle table reaches the model after the background arm", ()
 		// "no handles taught" on a perfectly armed session and the bench blames the
 		// harness for nothing. This pins the constant to the section that owns it
 		// AND to the bytes that actually land in a real armed prompt.
-		expect(ARGOT_HANDLES_BANNER).toBe(HANDLES_SECTION.banner);
+		expect(ARGOT_HANDLES_BANNER).toBe(renderBanner(HANDLES_SECTION.name));
 		expect(armedPrompt.join("\n\n")).toContain(ARGOT_HANDLES_BANNER);
 	});
 

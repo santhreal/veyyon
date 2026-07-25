@@ -4,10 +4,10 @@
 import { errorMessage, logger, prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import type { Settings } from "../config/settings";
-import taskLabelSystemPrompt from "../prompts/system/task-label.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { generateSessionTitle } from "../utils/title-generator";
 
-const TASK_LABEL_SYSTEM_PROMPT = prompt.render(taskLabelSystemPrompt);
+const TASK_LABEL_SYSTEM_PROMPT = prompt.render(PROMPTS["subagent/task-label"].text);
 
 /** Compresses a delegated assignment into a one-sentence UI label via the tiny title model — fired by the executor spawn path because the task wire schema no longer carries a `description`; null on empty input or failure. */
 export async function generateTaskLabel(

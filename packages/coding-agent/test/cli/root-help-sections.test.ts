@@ -35,7 +35,7 @@ describe("root help sections", () => {
 			expect(mainSection).not.toMatch(new RegExp(`^  ${dev} `, "m"));
 			expect(diagSection).toMatch(new RegExp(`^  ${dev} `, "m"));
 		}
-		for (const user of ["plugin", "config", "setup", "update", "models"]) {
+		for (const user of ["plugin", "config", "setup", "update", "rollback", "models"]) {
 			expect(mainSection).toMatch(new RegExp(`^  ${user} `, "m"));
 		}
 	}, 30000);

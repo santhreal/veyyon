@@ -42,6 +42,10 @@ Single-shot result.
 
 - Success always returns a text block.
   - Plain file write: `Successfully wrote <chars> bytes to <relative-path>` (the count is `cleanContent.length`, not encoded byte length).
+    On a case-insensitive filesystem, which is the default on macOS and Windows, `<relative-path>` is the name the
+    filesystem stores rather than the one you asked for. Writing to `Foo.ts` when the directory entry is `foo.ts` updates
+    `foo.ts` and leaves its spelling alone, so the result says `foo.ts`. Only a case-only difference is adopted this way:
+    a path that resolves elsewhere, such as a symlink, is reported by the name you passed.
   - Internal URL write: `Successfully wrote <chars> bytes to <url>`.
   - Archive write: `Successfully wrote <chars> bytes to <relative-archive-path>:<entry-path>`.
   - SQLite write: one of `Inserted row into <table>`, `Updated row '<key>' in <table>`, `No row updated ...`, `Deleted row ...`, `No row deleted ...`.

@@ -19,7 +19,11 @@ export default function (pi) {
                         customType: "file-trigger",
                         content: `External trigger: ${content}`,
                         display: true,
-                    }, true);
+                    }, 
+                    // Second argument is an options object, not a bare boolean: a
+                    // bare `true` is a type error, and older copies of this example
+                    // silently passed one.
+                    { triggerTurn: true });
                     await Bun.write(triggerFile, ""); // Clear after reading
                 }
             }

@@ -82,11 +82,21 @@ describe("AssistantMessageComponent error rendering", () => {
 	it("clamps the line count of a runaway error body", () => {
 		const lines = renderLines(erroredMessage(proxy502));
 		const markerLines = lines.filter(line => line.includes("marker-"));
-		// MAX_TRANSCRIPT_ERROR_LINES is 8; the first preview line is the long line,
-		// so at most 7 markers survive — and the late ones are gone entirely.
-		expect(markerLines.length).toBeLessThanOrEqual(8);
-		expect(lines.some(line => line.includes("marker-0"))).toBe(true);
-		expect(lines.some(line => line.includes("marker-24"))).toBe(false);
+		// MAX_TRANSCRIPT_ERROR_LINES is 8 and the first preview line is the long
+		// line, so exactly the first 7 markers survive. Stated as the exact list
+		// rather than "at most 8, and 0 is in, and 24 is out": the bound admitted a
+		// render that kept none of them, and naming only the first and last left
+		// the clamp free to keep any subset in any order in between. Truncation is
+		// a rule about WHICH lines survive, so the answer is the whole list.
+		expect(markerLines.map(line => line.match(/marker-\d+/)?.[0])).toEqual([
+			"marker-0",
+			"marker-1",
+			"marker-2",
+			"marker-3",
+			"marker-4",
+			"marker-5",
+			"marker-6",
+		]);
 	});
 
 	it("width-truncates an overlong error line", () => {

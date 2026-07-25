@@ -1,11 +1,13 @@
-import systemPromptTemplate from "../prompts/system/system-prompt.md" with { type: "text" };
 import { isRecord, kebabToCamel } from "@veyyon/utils";
-import { BANNERED_TEMPLATE_SECTIONS, TEMPLATE_SECTION_CAMEL_KEYS } from "./prompt-blocks";
+import { PROMPTS } from "../prompts/registry";
+import { bannerTable, describeBanner, startsWithBanner } from "./banner-grammar";
+import { splitBanneredDocument } from "./prompt-sections";
+import { BANNERED_TEMPLATE_SECTIONS, TEMPLATE_SECTION_CAMEL_KEYS } from "./section-registry";
 
 /**
  * Composition seam for the default system-prompt template.
  *
- * WHY THIS EXISTS: the template is one file (`prompts/system/system-prompt.md`)
+ * WHY THIS EXISTS: the template is one file (`prompts/session/system-prompt.md`)
  * so a human can read it top to bottom, and the rewrite tooling and the
  * `--all` prompt glob can treat it as a single document. But prompt experiments
  * want to swap ONE region — say the tool-policy block — while leaving every
@@ -43,7 +45,7 @@ export interface DefaultTemplateSections {
 /**
  * Canonical section order. Concatenation reproduces the original template.
  *
- * DERIVED from the one registry in `prompt-blocks.ts`, not written out here.
+ * DERIVED from the one registry in `section-registry.ts`, not written out here.
  * This list and the banner table below used to be hand-maintained alongside a
  * second, independent copy in `prompt-sections.ts`; renaming a section meant
  * editing both, and nothing caught it when only one was updated.
@@ -56,44 +58,56 @@ export const DEFAULT_TEMPLATE_SECTION_ORDER = TEMPLATE_SECTION_CAMEL_KEYS as rea
  * Order matters — the banners must appear in the template in this sequence, and
  * that order is the registry's document order.
  */
-const SECTION_BANNERS: readonly { key: keyof DefaultTemplateSections; banner: string }[] =
-	BANNERED_TEMPLATE_SECTIONS.map(b => ({
+const SECTION_BANNERS: readonly { key: keyof DefaultTemplateSections; name: string }[] = BANNERED_TEMPLATE_SECTIONS.map(
+	b => ({
 		key: kebabToCamel(b.id) as keyof DefaultTemplateSections,
-		banner: b.banner,
-	}));
+		name: b.name,
+	}),
+);
+
+/** The template's bannered sections, in the order the document must present them. */
+const EXPECTED_TEMPLATE_SECTIONS = BANNERED_TEMPLATE_SECTIONS.map(b => ({ id: b.id as string, name: b.name }));
 
 /**
- * Split the single template file into its named sections at banner offsets.
+ * Split the single template file into its named sections.
  *
- * Fails loudly (throws) if any banner is missing or out of order, because a
- * missing banner would silently collapse two sections into one and let an
- * override target the wrong region — exactly the silent-drop failure this seam
- * exists to prevent. Each section keeps its banner and all trailing content up
- * to the next banner, so the slices rejoin with `""` byte-for-byte.
+ * Fails loudly if a banner is missing or out of order, because a missing banner
+ * would collapse two sections into one and let an override target the wrong
+ * region. That refusal now comes from `splitBanneredDocument`'s `expect`, which
+ * is the SAME parser the reorder and inspection paths use. This file used to
+ * carry its own `indexOf` scanner, so the product had two implementations of one
+ * grammar that disagreed on exactly this point: this one threw, the other folded
+ * the missing region into its predecessor and reported nothing. Sharing the
+ * parser is what makes the two agree; `expect` is what keeps this caller strict.
+ *
+ * Each section keeps its banner and all trailing content up to the next banner,
+ * so the slices rejoin with `""` byte-for-byte.
  */
 export function splitDefaultTemplate(template: string): DefaultTemplateSections {
-	const offsets: number[] = [];
-	let searchFrom = 0;
-	for (const { key, banner } of SECTION_BANNERS) {
-		const at = template.indexOf(banner, searchFrom);
-		if (at < 0) {
-			throw new Error(
-				`default system prompt is missing the "${banner.replace("\n", "\\n")}" banner for section "${key}"; ` +
-					"the section boundaries in default-template.ts no longer match the template",
-			);
-		}
-		offsets.push(at);
-		searchFrom = at + banner.length;
-	}
-	const bounds = [0, ...offsets, template.length];
-	const parts = DEFAULT_TEMPLATE_SECTION_ORDER.map(
-		(key, i) => [key, template.slice(bounds[i], bounds[i + 1])] as const,
+	const regions = splitBanneredDocument(template, {
+		banners: bannerTable(BANNERED_TEMPLATE_SECTIONS),
+		expect: EXPECTED_TEMPLATE_SECTIONS,
+		label: "the default system prompt",
+	});
+	// The registry's kebab ids are the parser's vocabulary; the camelCase keys are
+	// a view for the override API. Converting here keeps that a rename rather than
+	// a second parse, which is what the two-spelling split used to be.
+	const parts = regions.map(
+		region =>
+			[
+				(region.name === "preamble"
+					? DEFAULT_TEMPLATE_SECTION_ORDER[0]
+					: kebabToCamel(region.name)) as keyof DefaultTemplateSections,
+				region.text,
+			] as const,
 	);
 	return Object.fromEntries(parts) as unknown as DefaultTemplateSections;
 }
 
 /** The shipped default sections, sliced once from the single source file. */
-export const DEFAULT_TEMPLATE_SECTIONS: DefaultTemplateSections = splitDefaultTemplate(systemPromptTemplate);
+export const DEFAULT_TEMPLATE_SECTIONS: DefaultTemplateSections = splitDefaultTemplate(
+	PROMPTS["session/system-prompt"].text,
+);
 
 /**
  * Assemble the default template from its sections. Pass `overrides` to swap
@@ -106,9 +120,9 @@ export function assembleDefaultTemplate(overrides: Partial<DefaultTemplateSectio
 	return DEFAULT_TEMPLATE_SECTION_ORDER.map(key => sections[key]).join("");
 }
 
-/** The banner each section must lead with. `conventions` has no banner. */
+/** The banner name each section must lead with. `conventions` has no banner. */
 const SECTION_REQUIRED_BANNER: Partial<Record<keyof DefaultTemplateSections, string>> = Object.fromEntries(
-	SECTION_BANNERS.map(({ key, banner }) => [key, banner]),
+	SECTION_BANNERS.map(({ key, name }) => [key, name]),
 );
 
 /**
@@ -151,14 +165,16 @@ export function resolveSectionOverrides(
 			);
 		}
 		if (typeof value !== "string") {
-			throw new Error(`section override for "${key}" must be a string, got ${value === null ? "null" : typeof value}`);
-		}
-		const banner = SECTION_REQUIRED_BANNER[key as keyof DefaultTemplateSections];
-		if (banner && !value.startsWith(banner)) {
 			throw new Error(
-				`section override for "${key}" must begin with its section banner ` +
-					`"${banner.replace("\n", "\\n")}…" so the banner boundary is preserved. A section override ` +
-					"replaces one banner region and MUST keep that region's banner; start from the shipped section text.",
+				`section override for "${key}" must be a string, got ${value === null ? "null" : typeof value}`,
+			);
+		}
+		const name = SECTION_REQUIRED_BANNER[key as keyof DefaultTemplateSections];
+		if (name && !startsWithBanner(value, name)) {
+			throw new Error(
+				`section override for "${key}" must begin with its section banner: ${describeBanner(name)}, ` +
+					"so the banner boundary is preserved. A section override replaces one banner region and " +
+					"MUST keep that region's banner; start from the shipped section text.",
 			);
 		}
 		out[key as keyof DefaultTemplateSections] = value;

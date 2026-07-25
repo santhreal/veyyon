@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f3663b17.js";
+            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-de67d70d.js"></script>
+        <script src="../toc-578177b6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -203,7 +203,7 @@
 <tr><th>Concept</th><th>Meaning</th></tr>
 </thead>
 <tbody>
-<tr><td><strong>Interactive model</strong></td><td>The model used for the main conversation. Chosen with <code>/model</code> or <code>--model</code>. Persisted under <code>modelRoles.default</code> (legacy key name; not a selectable “role” in the UI).</td></tr>
+<tr><td><strong>Default model</strong></td><td>The model used for the main conversation, and the one a new session starts on. Chosen with <code>/model</code> or <code>--model</code>, or in <code>/settings</code> under Model. Persisted under <code>modelRoles.default</code>, which is a slot rather than a selectable role, so it does not appear in role pickers.</td></tr>
 <tr><td><strong>Role</strong></td><td>A named model assignment for a kind of work (<code>smol</code>, <code>plan</code>, <code>task</code>, …). Configured in <code>modelRoles</code> / settings → Model → Roles.</td></tr>
 <tr><td><strong>Slot overrides</strong></td><td><code>subagent.model</code> and <code>compaction.model</code>, dedicated destinations that override the corresponding role or inherit the interactive model when unset.</td></tr>
 <tr><td><strong>Profile</strong></td><td>User config tree at <code>~/.veyyon/profiles/&lt;name&gt;/</code> (including <code>default</code>).</td></tr>
@@ -242,13 +242,14 @@ modelRoles:
 <tr><td><code>designer</code></td><td>Designer</td><td>Design-oriented work</td></tr>
 <tr><td><code>commit</code></td><td>Commit</td><td>Commit / changelog generation</td></tr>
 <tr><td><code>tiny</code></td><td>Tiny</td><td>Lightweight background (titles, classifiers); else falls back toward <code>@smol</code></td></tr>
-<tr><td><code>task</code></td><td>Subtask</td><td>Task subagents unless <code>subagent.model</code> is set</td></tr>
 <tr><td><code>advisor</code></td><td>Advisor</td><td>Advisor runtime; unset uses thinking-model chain</td></tr>
 </tbody>
 </table>
 </div>
 <p>Custom role names can appear via <code>modelRoles</code>, <code>modelTags</code>, or <code>cycleOrder</code> entries.</p>
-<p>Unset selectable roles <strong>inherit the live interactive model</strong> at use time (except <code>advisor</code>, which uses its own chain when unset).</p>
+<p>Unset selectable roles, <code>advisor</code> included, <strong>inherit the live interactive model</strong> at use time. No role carries a built-in model chain: a role you have not set names no model of its own, so nothing you did not choose ends up running.</p>
+<p>There is no <code>task</code> role. The model your subagents run is set in the Subagents settings area, which owns that decision on its own; see <a href="../../../settings.html#subagents">Settings: Subagents</a>.</p>
+<p>To return an assigned role or slot to its unset state, open its picker in <code>/settings</code> and choose the first row, <code>(inherit main model)</code> (the default model’s picker reads <code>(auto-select on launch)</code>). Del or Backspace with an empty search does the same.</p>
 <h2 id="slot-overrides"><a class="header" href="#slot-overrides">Slot overrides</a></h2>
 <div class="table-wrapper">
 <table>
@@ -256,7 +257,7 @@ modelRoles:
 <tr><th>Setting</th><th>Effect</th></tr>
 </thead>
 <tbody>
-<tr><td><code>subagent.model</code></td><td>Model for task subagents. Unset → inherit interactive. When set, overrides <code>modelRoles.task</code>.</td></tr>
+<tr><td><code>subagent.model</code></td><td>Model for every subagent that has no model of its own. Unset → inherit interactive. A per-agent model in <code>subagent.agents</code> wins over it.</td></tr>
 <tr><td><code>compaction.model</code></td><td>Model for compaction/handoff. Unset → inherit interactive.</td></tr>
 </tbody>
 </table>

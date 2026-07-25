@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent, isRecord, logger, quarantineUnparseableFile } from "@veyyon/utils";
+import { isEnoent, isRecord, logger, quarantineUnparseableFile, syncYamlTextToSettings } from "@veyyon/utils";
 import { type } from "arktype";
 import { YAML } from "bun";
 import { expandAtImports } from "../discovery/at-imports";
@@ -295,5 +295,31 @@ export async function saveWatchdogConfigFile(filePath: string, doc: WatchdogConf
 		}
 		return;
 	}
-	await Bun.write(filePath, content);
+	// `WATCHDOG.yml` is a file people write by hand, and the dashboard saves it back after
+	// editing one advisor. Re-serializing would drop the comments they used to explain what
+	// each advisor is for, so the existing file is EDITED and only the changed values move.
+	// A file that does not exist yet is written from an empty document, which also means the
+	// bytes on disk always come from ONE serializer rather than depending on whether this is
+	// the first save. A file the editor
+	// refuses to write over (it does not parse, its root is not a mapping) is an error the
+	// caller has to see: overwriting it would destroy text we could not read and therefore
+	// cannot reconstruct, and a logged warning followed by a clobber is the silent fallback
+	// this codebase bans (Law 10). Fixing the file, or moving it aside, is the user's call.
+	let existingText = "";
+	try {
+		existingText = await Bun.file(filePath).text();
+	} catch (err) {
+		if (!isEnoent(err)) throw err;
+	}
+	let edited: string;
+	try {
+		edited = syncYamlTextToSettings(existingText, YAML.parse(content) as Record<string, unknown>);
+	} catch (err) {
+		throw new Error(
+			`Cannot save ${filePath}: its current contents cannot be edited in place (${String(err)}). ` +
+				"Fix the file, or move it aside and save again.",
+			{ cause: err },
+		);
+	}
+	await Bun.write(filePath, edited);
 }

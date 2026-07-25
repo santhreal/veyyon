@@ -28,8 +28,8 @@
  */
 import { describe, expect, it } from "bun:test";
 import type { AgentTool } from "@veyyon/agent-core";
-import { ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
 import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
+import { ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
 import { ToolAbortError, ToolError } from "@veyyon/coding-agent/tools/tool-errors";
 import { type } from "arktype";
 

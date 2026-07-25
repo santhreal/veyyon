@@ -10,7 +10,10 @@ export default function (pi) {
             message: z.string().describe("Test message"),
             logLevel: z.enum(["error", "warn", "debug"]).default("debug").describe("Log level to use"),
         }),
-        async execute(_toolCallId, params, _onUpdate, ctx, _signal) {
+        // `registerTool` takes the signal BEFORE `onUpdate`; a custom tool loaded from
+        // `tools/` takes them the other way round. Copying one order into the other
+        // place types `ctx` as the update callback and every `ctx.*` access fails.
+        async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
             const { message, logLevel } = params;
             // Use logger at specified level
             pi.logger[logLevel]("API demo tool executed", { message, logLevel });

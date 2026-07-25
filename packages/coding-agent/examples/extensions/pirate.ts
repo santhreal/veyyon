@@ -1,8 +1,13 @@
 /**
  * Pirate Extension
  *
- * Demonstrates using systemPromptAppend in before_agent_start to dynamically
- * modify the system prompt based on extension state.
+ * Demonstrates extending the system prompt from `before_agent_start` based on
+ * extension state.
+ *
+ * `before_agent_start` replaces the prompt rather than appending to it, so you
+ * append by returning the prompt the event handed you plus your own lines. The
+ * event's `systemPrompt` already carries whatever earlier extensions returned,
+ * which is what makes several extensions able to extend it in one turn.
  *
  * Usage:
  * 1. Copy this file to ~/.veyyon/agent/extensions/ (legacy: ~/.pi/agent/extensions/) or your project's .veyyon/extensions/
@@ -24,10 +29,12 @@ export default function pirateExtension(pi: ExtensionAPI) {
 	});
 
 	// Append to system prompt when pirate mode is enabled
-	pi.on("before_agent_start", async () => {
+	pi.on("before_agent_start", async event => {
 		if (pirateMode) {
 			return {
-				systemPromptAppend: `
+				systemPrompt: [
+					...event.systemPrompt,
+					`
 IMPORTANT: You are now in PIRATE MODE. You must:
 - Speak like a stereotypical pirate in all responses
 - Use phrases like "Arrr!", "Ahoy!", "Shiver me timbers!", "Avast!", "Ye scurvy dog!"
@@ -36,6 +43,7 @@ IMPORTANT: You are now in PIRATE MODE. You must:
 - End sentences with nautical expressions
 - Still complete the actual task correctly, just in pirate speak
 `,
+				],
 			};
 		}
 		return undefined;

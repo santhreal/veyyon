@@ -4,11 +4,51 @@
 
 ### Fixed
 
+- Shifted keypad operators are covered by a test for the first time, and the keypad fast path says
+  why it exists. Both `parseKey` and `matchesKey` consult a keypad decoder ahead of the native
+  parser on every keypress. The reason recorded there was bare numpad codepoints coming back as
+  navigation keys, which the native parser no longer does: sweeping all 16 keypad codepoints against
+  every modifier value and event type found the two agreeing everywhere except the shift bit on the
+  five operator keys, 120 inputs where native reports `shift+/` for a key that produces `/`. Shift
+  does not change the character a keypad key produces, so the fast path is right and is now the
+  documented reason the pre-check runs at all. Nothing had tested any of those 120 inputs.
+
+- The keypad pre-check no longer runs a six-group regular expression against every keystroke. It
+  first rejects anything that cannot be a Kitty CSI-u sequence with three character comparisons,
+  which is a necessary condition of the pattern that follows rather than a second answer to the same
+  question, so no input changes hands. Worth about 8% of the cost of parsing a non-Kitty keypress
+  (229ns to 209ns for `a`, 233 to 209 for `ctrl+c`, 250 to 234 for a legacy arrow, three process
+  pairs each); Kitty sequences are unchanged, since those pass straight through.
+
+- The key-parser benchmark runs again. `bench/parse-key.ts` is the measurement that says whether the
+  native key parser earns its place, and it had been throwing on its third statement:
+  `bench/_jskey.ts`, the frozen pre-native parser it measures against, exported only its type
+  aliases, so every function the bench imported was undefined. No test imported either file and the
+  benchmarks gate nothing, so no timing had been produced for some time. Three of its expectations
+  had drifted from the shipped parser in the meantime, one of them a real behaviour change: Kitty
+  base-layout keys now report the letter you see and fall back to the PC-101 position only for
+  non-Latin layouts, where the baseline preferred the position unconditionally. Those three are now
+  declared as superseded baseline behaviour rather than read as failures, the correctness gate checks
+  each parser against the contract instead of only against the other one, and it exits non-zero when
+  a sample disagrees. `test/key-bench-samples.test.ts` keeps all of it honest without timing
+  anything.
+
+- Markdown tables now honour the alignment markers in the delimiter row. A column written `| :---: |`
+  centers and `| ---: |` right-aligns; `| :--- |` and a bare `| --- |` stay left, which is the GFM
+  default. The parser had always supplied the alignment and the renderer had always ignored it, padding
+  every cell on the right, so all four spellings produced identical output. When a centered cell's slack
+  is odd the extra column goes on the right.
+
 - Fixed the pinned composer scrolling off screen when reading history back: scroll isolation held the wheel only while the composed frame overflowed the viewport, and a virtualized transcript (the coding agent's) drops committed rows from its frame on every quiet frame, so the gate closed, the wheel went to the terminal, and the whole window scrolled with the prompt in it. Wheel capture now arms while anything sits above the window, including rows already on the new scroll tape.
 - Fixed scroll-back depth being limited to the commit lag (a few rows) rather than the session. The engine records every prepared row it lets scroll off on a bounded scroll tape (`scrollTapeRows`, `setScrollTapeCap`, default 20k rows) and scrolls a snapshot of the tape plus the live frame, so a frozen view reaches the first row of the session and cannot be shifted by a transcript dropping rows underneath it.
 
 ### Added
 
+- Added `TUI#onSelectionAttempt`, called when a left press and a release land in different cells outside the pinned footer while the engine holds the mouse. Capturing the mouse is what lets the wheel scroll the transcript, and it also takes plain drag-select away from the terminal, so hosts can now explain a drag that selected nothing instead of leaving it silent.
+
+- Added the scroll position to the right edge of a frozen transcript region: a dim one-column groove with a bright thumb, composited through the same cell-accurate path overlays use. It sits in the region that scrolled, so a host's pinned footer renders byte-identically whether the view is frozen or following.
+
+- Added `rankSettingItems`/`filterSettingItems`: field-weighted ranking for settings search. Label, declared synonyms, config path, group and description are scored separately with the best field winning, so a setting NAMED for your query outranks every setting whose description merely mentions it. A setting's current value and its enum values are no longer searchable (typing `high` used to match everything set to high, and results shifted as values changed), a punctuation-only query returns nothing instead of matching everything, and heading rows are excluded. `SettingItem` gained `group` and `keywords` for this.
 - Added `TUI#onSelectionAttempt`, called when a left press and a release land in different cells outside the pinned footer while the engine holds the mouse. Capturing the mouse is what lets the wheel scroll the transcript, and it also takes plain drag-select away from the terminal, so hosts can now explain a drag that selected nothing instead of leaving it silent.
 - Added the scroll position to the right edge of a frozen transcript region: a dim one-column groove with a bright thumb, composited through the same cell-accurate path overlays use. It sits in the region that scrolled, so a host's pinned footer renders byte-identically whether the view is frozen or following.
 

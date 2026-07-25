@@ -15,10 +15,13 @@ import {
 } from "@veyyon/coding-agent/modes/components/agent-status-display";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AgentStatus } from "@veyyon/coding-agent/registry/agent-registry";
+import { useFullColor } from "../../helpers/theme-assertions";
 
 const ALL_STATUSES: AgentStatus[] = ["running", "idle", "parked", "aborted"];
 
 describe("agent status display (ONE-PLACE)", () => {
+	useFullColor();
+
 	beforeAll(async () => {
 		await initTheme();
 	});

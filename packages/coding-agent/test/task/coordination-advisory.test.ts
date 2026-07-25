@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
+import { PROMPTS } from "@veyyon/coding-agent/prompts/registry";
 import { buildCoordinationAdvisory, composeSpawnAdvisory } from "@veyyon/coding-agent/task";
 import type { TaskItem } from "@veyyon/coding-agent/task/types";
 import { prompt } from "@veyyon/utils";
-import subagentSystemPromptTemplate from "../../src/prompts/system/subagent-system-prompt.md" with { type: "text" };
 
 // Contract: a multi-sibling spawn with spawn capacity and IRC available draws
 // a proactive coordinate-via-irc suggestion, and the subagent COOP prompt
@@ -32,7 +32,7 @@ describe("buildCoordinationAdvisory", () => {
 
 describe("subagent COOP irc guidance", () => {
 	it("prompts coordination before overlapping edits when peers are present", () => {
-		const out = prompt.render(subagentSystemPromptTemplate, {
+		const out = prompt.render(PROMPTS["subagent/system-prompt"].text, {
 			agent: "Base worker.",
 			ircPeers: "- `Sib` — task (sub, running)",
 			ircSelfId: "Self",

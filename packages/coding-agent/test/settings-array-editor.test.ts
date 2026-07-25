@@ -58,7 +58,12 @@ describe("array settings with a ui block are reachable in the settings UI", () =
 		expect(def).toBeDefined();
 		expect(def?.type).toBe("text");
 		expect(def?.label).toBe("Argot Models");
-		expect(def?.tab).toBe("context");
+		// It has A tab, so it is reachable — but not WHICH tab. This asserted
+		// "context" and broke when the group moved to Experimental, reporting a
+		// tab move as a failure of array-setting reachability, which is the only
+		// thing this suite is about. Which tab holds a group is a product
+		// decision; `argot-settings-e2e.test.ts` owns the group's own shape.
+		expect(def?.tab).toBeTruthy();
 	});
 
 	it("other labeled array settings are reachable too (the fix is general, not argot-only)", () => {

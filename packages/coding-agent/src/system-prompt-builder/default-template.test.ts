@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import systemPromptTemplate from "../prompts/system/system-prompt.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import {
 	assembleDefaultTemplate,
 	DEFAULT_TEMPLATE_SECTION_ORDER,
@@ -29,18 +29,18 @@ describe("assembleDefaultTemplate byte-equality", () => {
 	 * lost or duplicated bytes.
 	 */
 	it("reproduces the source template exactly with no overrides", () => {
-		expect(assembleDefaultTemplate()).toBe(systemPromptTemplate);
+		expect(assembleDefaultTemplate()).toBe(PROMPTS["session/system-prompt"].text);
 	});
 
 	/** Empty override object must behave identically to no argument at all. */
 	it("treats an empty override object as no override", () => {
-		expect(assembleDefaultTemplate({})).toBe(systemPromptTemplate);
+		expect(assembleDefaultTemplate({})).toBe(PROMPTS["session/system-prompt"].text);
 	});
 
 	/** Concatenating the exported sections in canonical order is the source file. */
 	it("concatenates its sections in order back into the source", () => {
 		const joined = DEFAULT_TEMPLATE_SECTION_ORDER.map(key => DEFAULT_TEMPLATE_SECTIONS[key]).join("");
-		expect(joined).toBe(systemPromptTemplate);
+		expect(joined).toBe(PROMPTS["session/system-prompt"].text);
 	});
 });
 
@@ -61,7 +61,7 @@ describe("default template section boundaries", () => {
 
 	/** The preamble (`conventions`) precedes ROLE and carries no later banner. */
 	it("puts the conventions preamble first and free of later banners", () => {
-		expect(systemPromptTemplate.startsWith(DEFAULT_TEMPLATE_SECTIONS.conventions)).toBe(true);
+		expect(PROMPTS["session/system-prompt"].text.startsWith(DEFAULT_TEMPLATE_SECTIONS.conventions)).toBe(true);
 		expect(DEFAULT_TEMPLATE_SECTIONS.conventions).not.toContain("ROLE\n==");
 		expect(DEFAULT_TEMPLATE_SECTIONS.conventions).not.toContain("DELIVERY CONTRACT\n==");
 	});
@@ -96,7 +96,7 @@ describe("assembleDefaultTemplate overrides", () => {
 			expect(out).toContain(DEFAULT_TEMPLATE_SECTIONS[key]);
 		}
 		// And the result equals the source with only the tool-policy slice swapped.
-		const expected = systemPromptTemplate.replace(DEFAULT_TEMPLATE_SECTIONS.toolPolicy, sentinel);
+		const expected = PROMPTS["session/system-prompt"].text.replace(DEFAULT_TEMPLATE_SECTIONS.toolPolicy, sentinel);
 		expect(out).toBe(expected);
 	});
 
@@ -247,13 +247,26 @@ describe("splitDefaultTemplate fail-loud contract", () => {
 	 * fallbacks).
 	 */
 	it("throws when a required banner is absent", () => {
-		const mangled = systemPromptTemplate.replace("TOOL POLICY\n==", "TOOL POLICY REMOVED\n==");
+		const mangled = PROMPTS["session/system-prompt"].text.replace("TOOL POLICY\n==", "TOOL POLICY REMOVED\n==");
 		expect(() => splitDefaultTemplate(mangled)).toThrow(/TOOL POLICY.*banner/s);
 	});
 
-	/** The named section appears in the error so the failure is diagnosable. */
-	it("names the missing section in the error", () => {
-		const mangled = systemPromptTemplate.replace("EXECUTION WORKFLOW\n==", "EXECUTION FLOW\n==");
-		expect(() => splitDefaultTemplate(mangled)).toThrow(/executionWorkflow/);
+	/**
+	 * The error names BOTH halves of the repair: the section id to look up in
+	 * `section-registry.ts`, and the banner line to search the document for.
+	 *
+	 * The id is the registry's kebab spelling (`execution-workflow`), not the
+	 * camelCase override key this file used to report. That is the point of
+	 * sharing one splitter with the reorder path: the product had two spellings
+	 * for one section because it had two parsers, and a reader who saw
+	 * `executionWorkflow` in an error could not grep the template for it. The
+	 * camelCase keys survive as the override API's view, derived from the ids.
+	 */
+	it("names the missing section and its banner in the error", () => {
+		const mangled = PROMPTS["session/system-prompt"].text.replace("EXECUTION WORKFLOW\n==", "EXECUTION FLOW\n==");
+
+		expect(() => splitDefaultTemplate(mangled)).toThrow(/execution-workflow/);
+		expect(() => splitDefaultTemplate(mangled)).toThrow(/EXECUTION WORKFLOW/);
+		expect(() => splitDefaultTemplate(mangled)).toThrow(/the default system prompt/);
 	});
 });

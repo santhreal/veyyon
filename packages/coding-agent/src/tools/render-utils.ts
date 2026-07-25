@@ -327,7 +327,15 @@ interface ParsedDiagnostic {
 	code?: string;
 }
 
-function sanitizeDiagnosticDisplayText(text: string): string {
+/**
+ * Diagnostic text as it is shown to a reader: tabs replaced, nothing else touched.
+ *
+ * A diagnostic message carries a compiler's own spacing, and a literal tab in a rendered line lands
+ * wherever the terminal's tab stops happen to be, so a column marker under it points at the wrong
+ * column. The LSP renderer had a byte-identical private copy of this, so the two surfaces that show
+ * diagnostics could have disagreed about what "display text" means.
+ */
+export function sanitizeDiagnosticDisplayText(text: string): string {
 	return replaceTabs(text);
 }
 

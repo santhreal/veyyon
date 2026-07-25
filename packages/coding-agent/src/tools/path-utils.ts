@@ -4,7 +4,7 @@ import * as url from "node:url";
 import {
 	expandTilde,
 	isEnoent,
-	isEnotdir,
+	isMissingPath,
 	READ_SELECTOR_RANGE_LIST_SRC,
 	splitReadSelector,
 	stripWindowsExtendedLengthPathPrefix,
@@ -104,6 +104,9 @@ function fileExists(filePath: string): boolean {
 		fs.accessSync(filePath, fs.constants.F_OK);
 		return true;
 	} catch {
+		// This picks between candidate spellings of a path the user typed (shell escapes, curly
+		// apostrophes). A spelling we cannot reach is not the one they meant, and the read that follows
+		// the chosen spelling reports its own failure with the path.
 		return false;
 	}
 }
@@ -320,7 +323,7 @@ export async function probeLiteralPathExists(filePath: string, cwd: string): Pro
 		await fs.promises.lstat(resolved);
 		return "exists";
 	} catch (err) {
-		if (isEnoent(err) || isEnotdir(err)) return "missing";
+		if (isMissingPath(err)) return "missing";
 		return "unknown";
 	}
 }
@@ -756,6 +759,41 @@ export function formatPathRelativeToCwd(
 		displayPath += "/";
 	}
 	return displayPath;
+}
+
+/**
+ * The path as the filesystem actually stores it, when that differs from the
+ * path that was asked for.
+ *
+ * WHY THIS EXISTS. On a case-insensitive filesystem (the default on macOS and
+ * Windows), writing to `Foo.ts` when the directory entry is `foo.ts` succeeds
+ * and updates `foo.ts`. The entry keeps its original case: the write does NOT
+ * rename it. Reporting back the requested spelling then tells the operator a
+ * filename that does not exist, and they grep for `Foo.ts` and find nothing.
+ * The write itself is correct; only the report is a lie.
+ *
+ * So this reads the stored name back with `fs.realpathSync.native`, one syscall,
+ * which resolves
+ * to the true on-disk spelling rather than echoing the caller's string. It also
+ * resolves symlinks, which is why the result is only used when it differs from
+ * the input in case ALONE: a path that resolves somewhere genuinely different
+ * is a symlink the operator asked for by name, and rewriting the report to the
+ * link target would be its own lie.
+ *
+ * Returns `absolutePath` unchanged when the path does not exist, cannot be
+ * resolved, or is stored exactly as asked -- which is every path on a
+ * case-sensitive filesystem, so this is a no-op on Linux.
+ */
+export function resolveStoredPathCase(absolutePath: string): string {
+	try {
+		const stored = fs.realpathSync.native(absolutePath);
+		if (stored === absolutePath) return absolutePath;
+		// Case-only difference, i.e. the same path spelled differently. Anything
+		// else is a real redirection (symlink, `..`) and is left alone.
+		return stored.toLowerCase() === absolutePath.toLowerCase() ? stored : absolutePath;
+	} catch {
+		return absolutePath;
+	}
 }
 
 /**
@@ -1431,7 +1469,7 @@ export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<To
 			try {
 				await fs.promises.stat(resolveToCwd(rawPath, cwd));
 			} catch (err) {
-				externalUrl = isEnoent(err) || isEnotdir(err);
+				externalUrl = isMissingPath(err);
 			}
 		}
 		if (externalUrl) {
@@ -1532,9 +1570,8 @@ export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<To
 		// Only a genuinely-missing path is "Path not found". A permission error
 		// (EACCES on a parent dir without +x), EIO, ELOOP, etc. must propagate
 		// loudly rather than be masked as not-found — otherwise the operator hunts
-		// for a path that exists. Matches this module's own convention
-		// (partitionExistingPaths rethrows non-ENOENT; isEnoent/isEnotdir at L339).
-		if (!isEnoent(err) && !isEnotdir(err)) throw err;
+		// for a path that exists. `isMissingPath` is the repo-wide owner of that split.
+		if (!isMissingPath(err)) throw err;
 		const hint = opts.multipathStatHint && rawPaths.length > 1 ? opts.multipathStatHint : "";
 		throw new ToolError(`Path not found: ${scopePath}${hint}`);
 	}

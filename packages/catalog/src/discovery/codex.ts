@@ -1,7 +1,7 @@
 import { normalizeBaseUrl } from "@veyyon/utils";
 import { type } from "arktype";
-import type { ModelSpec } from "../types";
 import { parseKnownModel, semverEqual } from "../identity/classify";
+import type { ModelSpec } from "../types";
 import { discoveryFetch } from "../utils";
 import { CODEX_BASE_URL, CODEX_CLIENT_VERSION, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "../wire/codex";
 
@@ -16,11 +16,6 @@ const DEFAULT_MAX_TOKENS = 128_000;
  * SKUs so the reported/absent value never regresses the real window.
  */
 const GPT_5_6_CONTEXT_WINDOW = 372_000;
-const CODEX_REMOTE_COMPACTION = {
-	enabled: true,
-	api: "openai-codex-responses",
-	v2StreamingEnabled: true,
-} as const;
 
 const codexReasoningPresetSchema = type({
 	"effort?": "unknown",
@@ -248,7 +243,6 @@ function normalizeCodexModelEntry(entry: unknown, baseUrl: string): NormalizedCo
 			// This endpoint publishes no pricing, so the zeros mean "not told", not "free".
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 			pricing: "unknown",
-			remoteCompaction: CODEX_REMOTE_COMPACTION,
 			contextWindow,
 			maxTokens,
 			...(preferWebsockets ? { preferWebsockets: true } : {}),

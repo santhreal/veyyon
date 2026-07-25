@@ -88,7 +88,10 @@ describe("settings-test-state isolation", () => {
 			profileCleanups.push(profileDir);
 		}
 		setProjectDir(project);
-		const leakedConfig = path.join(temp, "cfg-name");
+		// A NAME, not a path: `VEYYON_CONFIG_DIR` is joined onto the home directory and an
+		// absolute value is refused. What this test needs is only a value that differs from
+		// the one before it, so restore can be seen to put the original back.
+		const leakedConfig = ".veyyon-iso-leaked-name";
 		process.env.VEYYON_CONFIG_DIR = leakedConfig;
 		Bun.env.VEYYON_CONFIG_DIR = leakedConfig;
 

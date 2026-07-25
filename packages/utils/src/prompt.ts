@@ -1,6 +1,16 @@
 import type { HelperDelegate, HelperOptions, Template, TemplateDelegate } from "handlebars";
 import Handlebars from "handlebars";
+import { analyzeTemplate, assertTemplateContext, type TemplateVariables } from "./prompt-variables";
 
+export {
+	analyzeTemplate,
+	assertTemplateContext,
+	findMissingTemplateVariables,
+	MissingTemplateVariableError,
+	type TemplateVariable,
+	type TemplateVariables,
+	type TemplateVariableUse,
+} from "./prompt-variables";
 export type { HelperDelegate, HelperOptions, Template, TemplateDelegate };
 
 export type PromptRenderPhase = "pre-render" | "post-render";
@@ -502,7 +512,7 @@ export function registerPartial(name: string, fn: Template): void {
  * Inject a no-op comment between them so the lexer tokenizes the helper close
  * cleanly and treats the rest as content.
  */
-function disambiguateClosingBraces(template: string): string {
+export function disambiguateClosingBraces(template: string): string {
 	return template.replace(/\}\}(\}+)/g, "}}{{!---}}$1");
 }
 
@@ -520,8 +530,65 @@ export function compile(template: string): (context: TemplateContext) => string 
 	return compiled;
 }
 
-export function render(template: string, context: TemplateContext = {}): string {
+/**
+ * How the analyzer must be told to read a template of THIS module's dialect.
+ *
+ * Two things differ from a stock Handlebars parse and both would give wrong
+ * answers if a caller skipped them, so nothing outside this file should be
+ * calling `analyzeTemplate` directly:
+ *
+ *   - the source has to go through {@link disambiguateClosingBraces} first, or a
+ *     template containing `{{x}}}` fails to parse at all (that transform is the
+ *     only reason it compiles);
+ *   - the helper list has to come from the PRIVATE instance, which carries ~20
+ *     helpers the global registry does not, or a zero-argument helper mustache
+ *     reads as a context variable and gets demanded of the caller.
+ */
+function analyzerOptions(): { helperNames: string[] } {
+	return { helperNames: Object.keys(handlebars.helpers) };
+}
+
+/** Analyze a template of this module's dialect. See {@link analyzerOptions}. */
+export function analyzePromptTemplate(template: string): TemplateVariables {
+	return analyzeTemplate(disambiguateClosingBraces(template), analyzerOptions());
+}
+
+/** Assert a context fills a template of this module's dialect. */
+export function assertPromptContext(template: string, context: TemplateContext, label?: string): void {
+	assertTemplateContext(disambiguateClosingBraces(template), context, label, analyzerOptions());
+}
+
+export interface RenderOptions {
+	/**
+	 * Names the template in a missing-variable error. Pass the source path when
+	 * there is one: the stack trace runs through the render machinery and does
+	 * not say which of the 143 templates failed.
+	 */
+	label?: string;
+	/**
+	 * Render even if the context leaves a hole.
+	 *
+	 * For callers that legitimately build a context piecemeal (a partial render
+	 * whose remaining variables are filled by a later pass). It is an explicit,
+	 * greppable opt-out rather than the default precisely because the default
+	 * used to be silent, which is the defect this option exists to keep visible.
+	 */
+	allowMissing?: boolean;
+}
+
+/**
+ * Render `template` against `context`, refusing to leave a hole.
+ *
+ * A variable the template PRINTS but the context does not provide throws
+ * {@link MissingTemplateVariableError} rather than rendering the empty string.
+ * Variables the template only TESTS are untouched: absent still means "off",
+ * which is what every optional region in these prompts relies on. See
+ * `prompt-variables.ts` for why the check draws the line there.
+ */
+export function render(template: string, context: TemplateContext = {}, options: RenderOptions = {}): string {
+	const resolved = context ?? {};
+	if (!options.allowMissing) assertPromptContext(template, resolved, options.label);
 	const compiled = compile(template);
-	const rendered = compiled(context ?? {});
+	const rendered = compiled(resolved);
 	return format(rendered, { renderPhase: "post-render" });
 }

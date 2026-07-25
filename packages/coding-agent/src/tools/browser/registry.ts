@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { errorMessage, logger, trimTrailingSlashes, withTimeout } from "@veyyon/utils";
+import { errorMessage, isCancellation, logger, trimTrailingSlashes, withTimeout } from "@veyyon/utils";
 import type { Subprocess } from "bun";
 import type { Browser, CDPSession } from "puppeteer-core";
 import { ToolAbortError, ToolError } from "../tool-errors";
@@ -188,7 +188,9 @@ async function openBrowserHandle(kind: BrowserKind, opts: AcquireBrowserOptions)
 		} catch (err) {
 			await gracefulKillTreeOnce(child.pid).catch(() => undefined);
 			if (err instanceof ToolAbortError) throw err;
-			if (err instanceof Error && err.name === "AbortError") throw err;
+			// A cancellation of any kind, deadline included, must not be rewrapped
+			// as a ToolError: that would present a stop as a failure to attach.
+			if (isCancellation(err)) throw err;
 			throw new ToolError(`Failed to attach to ${path.basename(exe)} on ${cdpUrl}: ${(err as Error).message}`);
 		}
 	}

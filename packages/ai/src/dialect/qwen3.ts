@@ -1,9 +1,9 @@
 import { parseJsonWithRepair, parseStreamingJson } from "@veyyon/utils";
-import type { Message, ToolCall } from "../types";
+import type { ToolCall } from "../types";
 import { mintToolCallId, partialSuffixOverlapAny, recordOrEmpty } from "./coercion";
 import dialectPrompt from "./qwen3.md" with { type: "text" };
 import {
-	renderChatMlTranscript,
+	chatMlTranscriptRenderer,
 	renderThinkTags,
 	renderToolResponseResults,
 	stringifyJson,
@@ -13,7 +13,6 @@ import {
 import type {
 	DialectDefinition,
 	DialectRenderOptions,
-	DialectToolResult,
 	InbandScanEvent,
 	InbandScanner,
 	InbandScannerOptions,
@@ -239,32 +238,20 @@ function renderAssistantToolCalls(calls: readonly ToolCall[], options: DialectRe
 	return calls.map(call => renderToolCall(call, options)).join("\n");
 }
 
-function renderToolResults(results: readonly DialectToolResult[], _options: DialectRenderOptions = {}): string {
-	return renderToolResponseResults(results);
-}
-
-function renderThinking(text: string): string {
-	return renderThinkTags(text);
-}
-
-function renderTranscript(messages: readonly Message[], options: DialectRenderOptions = {}): string {
-	return renderChatMlTranscript(messages, options, {
-		toolResultRole: "user",
-		renderThinking,
-		renderCalls: renderAssistantToolCalls,
-		renderResultsBody: renderToolResults,
-	});
-}
-
 const definition: DialectDefinition = {
 	dialect: "qwen3",
 	prompt: dialectPrompt,
 	createScanner: options => new Qwen3InbandScanner(options),
 	renderToolCall,
 	renderAssistantToolCalls,
-	renderToolResults,
-	renderThinking,
-	renderTranscript,
+	renderToolResults: renderToolResponseResults,
+	renderThinking: renderThinkTags,
+	renderTranscript: chatMlTranscriptRenderer({
+		toolResultRole: "user",
+		renderThinking: renderThinkTags,
+		renderCalls: renderAssistantToolCalls,
+		renderResultsBody: renderToolResponseResults,
+	}),
 };
 
 export default definition;

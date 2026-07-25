@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f3663b17.js";
+            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-de67d70d.js"></script>
+        <script src="../toc-578177b6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -214,8 +214,27 @@
 </table>
 </div>
 <p>Built-in segment IDs include: <code>pi</code> (legacy product mark segment), <code>profile</code>, <code>model</code>, <code>mode</code>, <code>path</code>, <code>git</code>, <code>pr</code>, <code>subagents</code>, <code>token_in</code>, <code>token_out</code>, <code>token_total</code>, <code>token_rate</code>, <code>cost</code>, <code>context_pct</code>, <code>context_total</code>, <code>time_spent</code>, <code>time</code>, <code>session</code>, <code>hostname</code>, <code>cache_read</code>, <code>cache_write</code>, <code>cache_hit</code>, <code>session_name</code>, <code>usage</code>, <code>collab</code>.</p>
+<p>The <code>model</code> segment shows the model you are working with, then two things that are easy to confuse, so they are drawn differently:</p>
+<ul>
+<li>The <strong>thinking effort</strong> joins the model label as one unit (<code>Sonnet 4.5 @high</code> in the quiet footline, <code>Sonnet 4.5 · high</code> elsewhere), in the model’s own color. It is how much reasoning the model does per turn. Change it with <code>/thinking</code> (its alias is <code>/effort</code>), or set a per-model default under Settings → Model → Default Effort.</li>
+<li>The <strong>priority tier</strong> follows the effort as its own chip, named and in the warning color (<code>⚡ priority</code>, or just <code>priority</code> when your symbol preset has no icon). It is how your requests are queued and served, not how deeply the model thinks. Toggle it with <code>/fast</code>, or set it per provider family under Settings → Model → Service Tier.</li>
+</ul>
+<p>The <code>git</code> segment shows the current branch, and appends the multi-step operation you are part-way through when there is one:</p>
+<pre><code>main                 on a branch, nothing in progress
+detached             detached HEAD
+topic|REBASE         rebasing topic
+main|MERGE           a merge that stopped on a conflict
+main|CHERRY-PICK     a cherry-pick that stopped on a conflict
+main|REVERT          a revert that stopped on a conflict
+main|AM              applying a patch series with git am
+detached|BISECT      bisecting
+</code></pre>
+<p>A rebase detaches HEAD, so without the suffix the segment could only say <code>detached</code>, which tells you neither which branch you are rebasing nor that a rebase is running. Veyyon reads the branch back from the rebase’s own record, so you see <code>topic|REBASE</code>. A merge is the opposite case: it leaves HEAD on its branch, so the segment would look like an ordinary checkout while your working tree holds conflict markers. The suffix is what distinguishes them.</p>
+<p>The <code>pr</code> segment is skipped while any of these operations is in progress. A branch being rebased does not yet point where it is going to end up, so a pull request looked up against it would describe a state that is about to be replaced.</p>
 <p>The <code>profile</code> segment shows the active profile name (<code>work</code>, <code>rec</code>, a client sandbox), so you always know which profile’s config, sessions, and keys are live. It hides itself on the built-in <code>default</code> profile, so an unconfigured status line stays clean. Every built-in preset places it, so switching profiles is visible without any configuration.</p>
-<p>In the composer’s quiet footline the <code>context_pct</code> segment renders as a growing 8-cell bar instead of the <code>pct/window</code> text: <code>▰▰▰▓▱▱▱▱ 38% ∞</code>. Filled cells take the usage hue (silver, then gold, ember, and red as the window fills), and cells at the 25/50/75/90 percent marks lock in gold once reached. The cell at the fill frontier breathes while the model is running (faster once usage passes 90 percent); at rest it is a static quarter-step glyph showing how full the next cell is, so an idle screen never moves. The percent number stays; the window denominator moves to the <code>context_total</code> segment. A session-accent <code>∞</code> after the bar means auto-compaction is on, so the session continues past the window. Classic status-line presets keep the text form.</p>
+<p>The <code>context_pct</code> segment answers one question: how much room is left before the context runs out. “Runs out” means whichever comes first, auto-compaction firing or the model’s window filling, so with auto-compaction on the segment measures against the compaction trigger, not the window. The window itself is what <code>context_total</code> prints.</p>
+<p>In the composer’s quiet footline the segment renders as an 8-cell bar with a labelled percentage: <code>▰▰▰▰▰▰▱▱ 76% left ∞</code>. The bar drains, one cell per eighth of the room remaining, so the bar and the number always agree. Filled cells take the usage hue (silver, then gold, ember, and red as room runs out). While the model is running, the last remaining cell pulses between filled and empty, faster once you are past 90 percent used; at rest the bar never moves, so an idle screen is still. A session-accent <code>∞</code> after the bar means auto-compaction is on, so the session continues past the trigger.</p>
+<p>Classic status-line presets render the same measurement as text, in tokens on both sides of the slash: <code>47K/170K</code>. For a full picture of what is in the window, and how it is divided between the system prompt, tools, skills, and messages, run <code>/context</code>.</p>
 <p>Two run clocks tick alongside the segments, both measuring model runtime, never idle wall time. While the agent runs, the location line (path and git branch) ends with the current run’s elapsed, in <code>M:SS</code> form and widening to <code>H:MM:SS</code> past the hour: <code>…keyhog  ·  main *      12:34</code>. When the run finishes it reads <code>Worked for 12m34s</code> and freezes; before the model has ever started it shows nothing. The working line shows how long the current step has been running, between the step label and the esc hint: <code>Running tests · 0:42 ⟦esc⟧</code>; that clock restarts whenever the step changes. The <code>time_spent</code> segment is related but cumulative: it sums every run in the session (a fresh session with <code>/new</code> starts it at zero) and appears in the <code>full</code> and <code>nerd</code> presets.</p>
 <h2 id="session-tree-and-agents"><a class="header" href="#session-tree-and-agents">Session tree and agents</a></h2>
 <div class="table-wrapper">
@@ -234,7 +253,7 @@
 </tbody>
 </table>
 </div>
-<p>The inline task widget also shows the model each subagent runs on, right in its status line, so you can see which model every launched subagent used without opening the cockpit. To hide it, turn off <code>task.showResolvedModelBadge</code> (Appearance settings).</p>
+<p>The inline task widget also shows the model each subagent runs on, right in its status line, so you can see which model every launched subagent used without opening the cockpit. To hide it, turn off <code>subagent.showResolvedModelBadge</code> (Subagents settings).</p>
 <p>Session files are append-only JSONL under the active profile’s agent <code>sessions/</code> directory. See <a href="../using/sessions.html">Sessions</a>.</p>
 <h2 id="inter-agent-messaging"><a class="header" href="#inter-agent-messaging">Inter-agent messaging</a></h2>
 <p>Subagents and the main agent use the <code>irc</code> tool (<code>send</code>, <code>wait</code>, <code>inbox</code>, <code>list</code>) over a process-global mailbox. <code>/btw</code> is an ephemeral side question; <code>/tan</code> and <code>/omfg</code> spawn background agents for tangential work.</p>
@@ -250,7 +269,7 @@
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../using/sessions.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../features/subagents.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
@@ -264,7 +283,7 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../using/sessions.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../features/subagents.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 

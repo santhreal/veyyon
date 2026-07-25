@@ -51,7 +51,7 @@ TUI rendering adds presentation-only truncation from `packages/coding-agent/src/
    - `{ type: "text", text: params.question }`
 10. `systemPrompt` is a one-element array rendered from `packages/coding-agent/src/prompts/tools/inspect-image-system.md`; telemetry is tagged with oneshot kind `inspect_image`.
 11. If the model response stop reason is `error` or `aborted`, the tool maps that to `ToolError`.
-12. `extractTextContent(...)` from `packages/coding-agent/src/commit/utils.ts` concatenates only `text` content blocks from the assistant message, trims the result, and the tool fails if nothing remains.
+12. `extractTextContent(...)` from `packages/coding-agent/src/commit/utils/analysis.ts` concatenates only `text` content blocks from the assistant message, trims the result, and the tool fails if nothing remains.
 13. Success returns the text plus `details`; `inspectImageToolRenderer` formats the result for the TUI.
 
 ## Modes / Variants

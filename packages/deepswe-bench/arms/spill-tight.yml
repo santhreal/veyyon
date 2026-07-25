@@ -1,0 +1,41 @@
+# Spill early tool output harder: a tenth of the flat cap instead of a quarter.
+#
+# WHY THIS ARM EXISTS. The floor is the only parameter in `inlineCapForTurn`
+# that actually binds. The scaled budget is `maxBytes / remaining re-reads`,
+# which stays under a 0.25 floor until roughly four turns from the horizon, so
+# across a real session the mechanism is a flat tightening by `1 / floor`. Every
+# other knob (the horizon, the curve) changes almost nothing; this one changes
+# everything.
+#
+# So the experiment is a floor sweep, and this is its far end. Read as a triple:
+#
+#   spill-control  floor 1     flat 50KB cap, the unpriced behaviour
+#   baseline       floor 0.25  12.8KB inline for the first ~56 turns (shipped)
+#   spill-tight    floor 0.1   5.1KB inline for the first ~56 turns
+#
+# WHERE THIS IS EXPECTED TO BREAK, and the reason the far end is worth running
+# even if it loses. 5KB is about 60 lines of build output. A test run or a stack
+# trace will not fit, so the agent sees a head/tail window and an
+# `artifact://` handle. If it can work from the window, this is close to free
+# and the saving is large, because those are exactly the results that would
+# otherwise be re-read for the rest of the session. If it cannot, it spends a
+# turn fetching the artifact back, and one extra turn costs more than every byte
+# saved. A loss here is a real answer: it puts a floor under the floor.
+#
+# SINCE 2026-07-25 THIS REACHES EVAL. The floor used to govern only bash,
+# browser and grep, about 4% of tool-result bytes; the streaming executors took
+# a flat 50KB default because the centralised spill skips a tool that saved its
+# own artifact. All six `OutputSink` sites are now priced through one owner, so
+# a tenth of the budget is a tenth for eval too, and eval is 80.9% of result
+# bytes. The 5KB figure below therefore bites far harder than it did when this
+# arm was written, which is the point.
+#
+# Reward must hold. Report `ref cost` from the paired sign test, not the sums
+# table, and note the +-30% per-task noise floor: a sub-10% effect will not
+# resolve at n=20 without repeats. Read the partial-credit table too, not only
+# the binary reward: a result the agent had to fetch back costs correctness in
+# fractions of a task long before it flips one.
+argot:
+  enabled: false
+tools:
+  inlineOutputFloor: 0.1

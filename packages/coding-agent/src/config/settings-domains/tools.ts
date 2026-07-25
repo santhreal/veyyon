@@ -1,4 +1,6 @@
 /** Tools domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
+import { DEFAULT_INLINE_FLOOR_FRACTION } from "./shared";
+
 export const TOOLS_SETTINGS = {
 	// ────────────────────────────────────────────────────────────────────────
 	// Tools
@@ -143,6 +145,38 @@ export const TOOLS_SETTINGS = {
 			group: "Available Tools",
 			label: "Grep",
 			description: "Enable the grep tool for regex content search",
+		},
+	},
+
+	// How tightly an early tool result is held before it spills to an artifact.
+	//
+	// A tool result is billed once as fresh input and then re-read as a cache
+	// token on every later turn, so the same bytes cost far more arriving at turn
+	// 3 than at turn 55. `inlineCapForTurn` scales the inline budget by the
+	// remaining re-reads, but that curve is steep enough that this floor is what
+	// actually binds for most of a session: the scaled value sits under it until
+	// roughly four turns from the horizon. The floor is therefore the parameter,
+	// and it is a setting rather than a constant so it can be measured on the
+	// bench instead of chosen by taste.
+	//
+	// 1 disables the scaling: the floor becomes the full budget, so every result
+	// gets the flat cap regardless of when it arrives. That is the control arm.
+	"tools.inlineOutputFloor": {
+		type: "number",
+		default: DEFAULT_INLINE_FLOOR_FRACTION,
+		ui: {
+			tab: "tools",
+			group: "Output Limits",
+			label: "Inline Output Floor",
+			description:
+				"Smallest share of the inline output budget an early tool result may use before the rest spills to an artifact. A result that arrives early is re-read on every later turn, so it is charged more tightly than one that arrives near the end. Lower spills sooner and costs fewer context tokens; 1 keeps the flat cap and never spills early. This governs every tool that streams output, including eval, bash, ssh and the interactive shell, as well as grep and the browser.",
+			options: [
+				{ value: "1", label: "Flat cap (no early spill)" },
+				{ value: "0.5", label: "Half budget" },
+				{ value: "0.25", label: "Quarter budget" },
+				{ value: "0.1", label: "Tenth budget" },
+			],
+			advanced: true,
 		},
 	},
 
@@ -495,10 +529,11 @@ export const TOOLS_SETTINGS = {
 		type: "number",
 		default: 120_000,
 		ui: {
-			tab: "tools",
-			group: "Execution",
+			tab: "subagents",
+			group: "Coordination",
 			label: "IRC Timeout",
-			description: "Default timeout for irc wait (and send await:true) in milliseconds; 0 disables the timeout",
+			description:
+				"Default timeout for irc wait (and send await:true) in milliseconds; 0 disables the timeout. IRC is how a parent and its subagents talk, which is why it is configured here.",
 			options: [
 				{ value: "0", label: "Disabled" },
 				{ value: "30000", label: "30 seconds" },

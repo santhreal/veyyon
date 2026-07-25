@@ -1,18 +1,16 @@
-import type { Message, ToolCall } from "../types";
+import type { ToolCall } from "../types";
 import { AnthropicInbandScanner } from "./anthropic";
-import { buildArgShapes, type ToolArgShape } from "./coercion";
 import { DeepSeekInbandScanner } from "./deepseek";
 import {
-	escapeXmlAttr,
-	renderLegacyTextTranscript,
+	legacyTextTranscriptRenderer,
+	renderInvokes,
+	renderInvokeToolCall,
 	renderToolResponseResults,
 	renderXmlThinkingTags,
-	stringifyJson,
 } from "./rendering";
 import type {
 	DialectDefinition,
 	DialectRenderOptions,
-	DialectToolResult,
 	InbandScanEvent,
 	InbandScanner,
 	InbandScannerOptions,
@@ -36,55 +34,26 @@ export class XmlInbandScanner implements InbandScanner {
 	}
 }
 
-function renderToolCall(call: ToolCall, options: DialectRenderOptions = {}): string {
-	return renderInvoke(call, buildArgShapes(options.tools).get(call.name));
-}
-
 function renderAssistantToolCalls(calls: readonly ToolCall[], options: DialectRenderOptions = {}): string {
 	return renderInvokes(calls, options.tools ?? []);
-}
-
-function renderToolResults(results: readonly DialectToolResult[]): string {
-	return renderToolResponseResults(results);
-}
-
-function renderThinking(text: string): string {
-	return renderXmlThinkingTags(text);
-}
-
-function renderTranscript(messages: readonly Message[], options: DialectRenderOptions = {}): string {
-	return renderLegacyTextTranscript(messages, options, {
-		renderThinking,
-		renderCalls: renderAssistantToolCalls,
-		renderResults: renderToolResults,
-	});
-}
-
-function renderInvoke(call: ToolCall, shape: ToolArgShape | undefined): string {
-	let body = `<invoke name="${escapeXmlAttr(call.name)}">`;
-	for (const key in call.arguments) {
-		const value = call.arguments[key];
-		const isString = shape?.stringArgs.has(key) === true;
-		const rendered = isString && typeof value === "string" ? value : stringifyJson(value);
-		body += `<parameter name="${escapeXmlAttr(key)}">${rendered}</parameter>`;
-	}
-	return `${body}</invoke>`;
-}
-
-function renderInvokes(calls: readonly ToolCall[], tools: NonNullable<DialectRenderOptions["tools"]>): string {
-	const shapes = buildArgShapes(tools);
-	return calls.map(call => renderInvoke(call, shapes.get(call.name))).join("\n");
 }
 
 const definition: DialectDefinition = {
 	dialect: "xml",
 	prompt: dialectPrompt,
 	createScanner: options => new XmlInbandScanner(options),
-	renderToolCall,
+	// The `<invoke>` syntax, the `<tool_response>` results and the thinking tags all belong to
+	// `./rendering`, which the `anthropic` and `minimax` dialects speak as well. This dialect
+	// is the bare form of it: no wrapper tag around the invokes.
+	renderToolCall: renderInvokeToolCall,
 	renderAssistantToolCalls,
-	renderToolResults,
-	renderThinking,
-	renderTranscript,
+	renderToolResults: renderToolResponseResults,
+	renderThinking: renderXmlThinkingTags,
+	renderTranscript: legacyTextTranscriptRenderer({
+		renderThinking: renderXmlThinkingTags,
+		renderCalls: renderAssistantToolCalls,
+		renderResults: renderToolResponseResults,
+	}),
 };
 
 export default definition;

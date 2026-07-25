@@ -1,15 +1,19 @@
-import { countTokens } from "@veyyon/agent-core";
+/**
+ * Per-tool schema cost, alongside the system prompt's per-section cost.
+ *
+ * The prompt half is NOT measured here. It comes from `inspectSystemPrompt`,
+ * the same call `veyyon prompt --sections` makes, because this script used to
+ * assemble and measure the prompt itself with a private `est()` that
+ * re-implemented `estimateTokensFromText` — two owners for one number, and they
+ * drift the moment either changes. What remains is the part the command does
+ * not cover: the tool schemas, which are sent alongside the prompt and are
+ * usually the larger of the two.
+ */
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { estimateToolSchemaTokens } from "@veyyon/coding-agent/modes/utils/context-usage";
-import { buildSystemPrompt } from "@veyyon/coding-agent/system-prompt";
+import { formatInspectionTable, inspectSystemPrompt } from "@veyyon/coding-agent/system-prompt-builder/prompt-inspect";
 import { createTools, type Tool, type ToolSession } from "@veyyon/coding-agent/tools";
-
-function bytes(s: string): number {
-	return Buffer.byteLength(s, "utf-8");
-}
-function est(s: string): number {
-	return (bytes(s) + 3) >> 2;
-}
+import { estimateTokensFromText } from "@veyyon/utils";
 
 await Settings.init({ inMemory: true, cwd: process.cwd() });
 const settings = Settings.isolated({});
@@ -23,41 +27,33 @@ const session: ToolSession = {
 } as ToolSession;
 
 const tools = await createTools(session);
-const toolsMap = new Map<string, Tool>(tools.map(t => [t.name, t]));
 
 console.log(`active tools (${tools.length}): ${tools.map(t => t.name).join(", ")}\n`);
 
-const rows: Array<{ name: string; descBytes: number; tok: number; schemaTok: number }> = [];
-for (const t of tools) {
-	const tok = estimateToolSchemaTokens([t as never]);
-	const descBytes = bytes(t.description ?? "");
-	const descTok = est(t.description ?? "");
-	rows.push({ name: t.name, descBytes, tok, schemaTok: tok - descTok });
-}
-rows.sort((a, b) => b.tok - a.tok);
+const rows = tools
+	.map((tool: Tool) => {
+		const total = estimateToolSchemaTokens([tool as never]);
+		const description = tool.description ?? "";
+		return {
+			name: tool.name,
+			descBytes: Buffer.byteLength(description, "utf8"),
+			total,
+			schema: total - estimateTokensFromText(description),
+		};
+	})
+	.sort((a, b) => b.total - a.total);
 
-const totalTok = estimateToolSchemaTokens(tools as never);
 console.log("per-tool tokens (sorted): name | total tok | desc bytes | ~schema tok");
-for (const r of rows) {
+for (const row of rows) {
 	console.log(
-		`  ${r.name.padEnd(20)} ${String(r.tok).padStart(6)}  ${String(r.descBytes).padStart(7)}  ${String(r.schemaTok).padStart(6)}`,
+		`  ${row.name.padEnd(20)} ${String(row.total).padStart(6)}  ${String(row.descBytes).padStart(7)}  ${String(row.schema).padStart(6)}`,
 	);
 }
-console.log(`\nTOOLS TOTAL tokens: ${totalTok}\n`);
+console.log(`\nTOOLS TOTAL tokens: ${estimateToolSchemaTokens(tools as never)}\n`);
 
-const built = await buildSystemPrompt({
-	tools: toolsMap as never,
+const inspection = await inspectSystemPrompt({
+	tools: new Map<string, Tool>(tools.map(t => [t.name, t])) as never,
 	toolNames: tools.map(t => t.name),
-	inlineToolDescriptors: false,
-	nativeTools: true,
 	cwd: process.cwd(),
-	skills: [],
-	contextFiles: [],
-	workspaceTree: { rootPath: process.cwd(), rendered: "", truncated: false, totalLines: 0, agentsMdFiles: [] },
 });
-const parts = built.systemPrompt;
-const part0 = parts[0] ?? "";
-const rest = parts.slice(1).join("\n");
-console.log(`system prompt parts: ${parts.length}`);
-console.log(`SYSTEM PROMPT tokens (part0, no skills): ${countTokens(part0)}  (bytes=${bytes(part0)})`);
-console.log(`SYSTEM CONTEXT tokens (parts[1..]): ${countTokens(rest)}  (bytes=${bytes(rest)})`);
+console.log(formatInspectionTable(inspection));

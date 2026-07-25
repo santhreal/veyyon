@@ -23,7 +23,7 @@
  *   - ENCODE+EXPAND argot.enabled = true, models=[m] teach every turn, expansion armed
  *
  * Run:
- *   bun bench/lexpack-bench.ts [corpus-root]
+ *   bun bench/argot-bench.ts [corpus-root]
  *
  * `corpus-root` defaults to this repository. Pass another repo (e.g. veyyon) to
  * bench against a larger, more representative codebase. Budget matches the
@@ -33,9 +33,9 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { ArgotSession } from "../src/session.js";
 import { DEFAULT_SIGIL } from "../src/constants.js";
-import { estimateTokens, generateDictFromRepo, type GeneratedHandle, type RepoFile } from "../src/generate.js";
+import { estimateTokens, type GeneratedHandle, generateDictFromRepo, type RepoFile } from "../src/generate.js";
+import { ArgotSession } from "../src/session.js";
 
 const MAX_FILES = 4000;
 const MAX_FILE_BYTES = 256 * 1024;
@@ -143,7 +143,9 @@ function main(): void {
 	}
 
 	// Expansion latency, on a real handle-bearing payload.
-	const latencyPayload = best ? encodeWithHandles(withContent.find(f => f.path === best?.path)?.content ?? "", dict.handles, DEFAULT_SIGIL) : allEncoded;
+	const latencyPayload = best
+		? encodeWithHandles(withContent.find(f => f.path === best?.path)?.content ?? "", dict.handles, DEFAULT_SIGIL)
+		: allEncoded;
 	const t0 = performance.now();
 	for (let i = 0; i < EXPANSION_LATENCY_ITERS; i++) argot.expand(latencyPayload);
 	const perExpandUs = ((performance.now() - t0) * 1000) / EXPANSION_LATENCY_ITERS;
@@ -168,8 +170,16 @@ function main(): void {
 		rows.push(
 			["best real file", best.path],
 			["  full / encoded tokens", `${best.full.toLocaleString()} / ${best.enc.toLocaleString()}`],
-			["  saved on that file", `${(best.full - best.enc).toLocaleString()} (${pct(best.full - best.enc, best.full)})`],
-			["  break-even (encode arm)", best.full - best.enc > 0 ? `emit it ${(teachTokens / (best.full - best.enc)).toFixed(2)}× to repay the teach cost` : "never (no savings)"],
+			[
+				"  saved on that file",
+				`${(best.full - best.enc).toLocaleString()} (${pct(best.full - best.enc, best.full)})`,
+			],
+			[
+				"  break-even (encode arm)",
+				best.full - best.enc > 0
+					? `emit it ${(teachTokens / (best.full - best.enc)).toFixed(2)}× to repay the teach cost`
+					: "never (no savings)",
+			],
 		);
 	}
 	rows.push(["", ""], ["expansion latency", `${perExpandUs.toFixed(2)} µs/call (${EXPANSION_LATENCY_ITERS} iters)`]);
@@ -188,7 +198,9 @@ function main(): void {
 	// corpus (on veyyon: fontawesome SVG blocks, license headers, lockfile lines).
 	console.log("\ntop handles (name  freq  saved  expansion)");
 	for (const h of dict.handles.slice(0, 8)) {
-		console.log(`  ${(DEFAULT_SIGIL + h.name).padEnd(10)} ${String(h.frequency).padStart(5)}  ${String(h.savedTokens).padStart(7)}  "${preview(h.expansion)}"`);
+		console.log(
+			`  ${(DEFAULT_SIGIL + h.name).padEnd(10)} ${String(h.frequency).padStart(5)}  ${String(h.savedTokens).padStart(7)}  "${preview(h.expansion)}"`,
+		);
 	}
 
 	// Three-arm per-turn accounting, all from the real numbers above, for a turn
@@ -200,8 +212,12 @@ function main(): void {
 		const encode = best.enc + teachTokens; // teach paid once this turn, output encoded
 		console.log("\nthree-arm accounting for a turn that reproduces the best real file:");
 		console.log(`  OFF            output ${off.toLocaleString()}  teach 0     total ${off.toLocaleString()}`);
-		console.log(`  EXPAND-ONLY    output ${expandOnly.toLocaleString()}  teach 0     total ${expandOnly.toLocaleString()}  (Δ ${(expandOnly - off).toLocaleString()}; helps only when handles already sit in history)`);
-		console.log(`  ENCODE+EXPAND  output ${best.enc.toLocaleString()}  teach ${teachTokens}  total ${encode.toLocaleString()}  (Δ ${(encode - off).toLocaleString()})`);
+		console.log(
+			`  EXPAND-ONLY    output ${expandOnly.toLocaleString()}  teach 0     total ${expandOnly.toLocaleString()}  (Δ ${(expandOnly - off).toLocaleString()}; helps only when handles already sit in history)`,
+		);
+		console.log(
+			`  ENCODE+EXPAND  output ${best.enc.toLocaleString()}  teach ${teachTokens}  total ${encode.toLocaleString()}  (Δ ${(encode - off).toLocaleString()})`,
+		);
 	}
 	console.log("");
 

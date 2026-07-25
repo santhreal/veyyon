@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import {
@@ -10,12 +9,11 @@ import {
 	getProfileRootDir,
 	listProfiles,
 	profileExists,
-	removeWithRetries,
 	resolveGlobalDefaultProfile,
 	setProfile,
 } from "@veyyon/utils";
-import { Snowflake } from "@veyyon/utils/snowflake";
 import { YAML } from "bun";
+import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
 import { createProfile, removeProfile, runProfileCommand, writeProfileDisplayName } from "../src/cli/profile-cli";
 import { useIsolatedAgentDir } from "./helpers/isolated-agent-dir";
 
@@ -25,15 +23,16 @@ import { useIsolatedAgentDir } from "./helpers/isolated-agent-dir";
 useIsolatedAgentDir();
 
 describe("profile lifecycle CLI", () => {
-	let configDir = "";
+	let isolated: IsolatedConfigRoot | undefined;
+	/** The absolute config root for the current test, so expected paths name the temp
+	 * tree rather than being rebuilt from the home directory and a directory name. */
+	let configRoot = "";
 	let originalProfile: string | undefined;
-	let originalConfigDir: string | undefined;
 
 	beforeEach(() => {
 		originalProfile = getActiveProfile();
-		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
-		configDir = `.veyyon-profile-lifecycle-${Snowflake.next()}`;
-		process.env.VEYYON_CONFIG_DIR = configDir;
+		isolated = enterIsolatedConfigRoot("profile-lifecycle");
+		configRoot = isolated.root;
 		setProfile(undefined);
 		process.exitCode = 0;
 	});
@@ -41,12 +40,11 @@ describe("profile lifecycle CLI", () => {
 	afterEach(async () => {
 		vi.restoreAllMocks();
 		setProfile(undefined);
-		if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
-		else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
 		if (originalProfile) setProfile(originalProfile);
 		__resetProfileSnapshotForTests();
 		process.exitCode = 0;
-		await removeWithRetries(path.join(os.homedir(), configDir));
+		isolated?.restore();
+		isolated = undefined;
 	});
 
 	it("lists default and named profiles with paths", async () => {
@@ -58,11 +56,11 @@ describe("profile lifecycle CLI", () => {
 		const output = logSpy.mock.calls.map(call => String(call[0] ?? "")).join("\n");
 		expect(output).toContain("default");
 		expect(output).toContain("work");
-		expect(output).toContain(path.join(os.homedir(), configDir, "profiles", "work"));
+		expect(output).toContain(path.join(configRoot, "profiles", "work"));
 	});
 
 	it("creates a profile seeded from default config and keybindings", async () => {
-		const defaultAgentDir = path.join(os.homedir(), configDir, "profiles", "default", "agent");
+		const defaultAgentDir = path.join(configRoot, "profiles", "default", "agent");
 		await fs.mkdir(defaultAgentDir, { recursive: true });
 		await Bun.write(path.join(defaultAgentDir, "config.yml"), YAML.stringify({ theme: "dark" }, null, 2));
 		await Bun.write(
@@ -131,9 +129,80 @@ describe("profile lifecycle CLI", () => {
 		await expect(createProfile("work", "src")).rejects.toThrow("not valid YAML");
 
 		expect(profileExists("work")).toBe(false);
-		const profilesDir = path.join(os.homedir(), configDir, "profiles");
+		const profilesDir = path.join(configRoot, "profiles");
 		const leftovers = (await fs.readdir(profilesDir)).filter(name => name.includes("work"));
 		expect(leftovers).toEqual([]);
+	});
+
+	/**
+	 * Copying a profile copies its `config.yml` and then removes one key from the copy,
+	 * `profile.displayName`, so the new profile does not claim the old one's name. That removal
+	 * used to re-serialize the whole file, which silently discarded everything the user had
+	 * written into the profile they copied: the comments explaining their settings, their
+	 * blank-line grouping, their key order. Copying a profile you had carefully annotated gave
+	 * you back a stripped file, and every test here compared values.
+	 */
+	describe("copying a profile keeps what the user wrote in the source", () => {
+		it("removes only the display name, leaving the comments and order intact", async () => {
+			await createProfile("src", "blank");
+			const sourceConfig = path.join(getProfileRootDir("src"), "agent", "config.yml");
+			await Bun.write(
+				sourceConfig,
+				[
+					"# my careful setup",
+					"temperature: 0.7",
+					"",
+					"# how deep search goes",
+					"topK: 40",
+					"",
+					"profile:",
+					"  displayName: The Original",
+					"",
+				].join("\n"),
+			);
+
+			await createProfile("copy", "src");
+
+			const copied = await Bun.file(path.join(getProfileRootDir("copy"), "agent", "config.yml")).text();
+			expect(copied).toContain("# my careful setup");
+			expect(copied).toContain("# how deep search goes");
+			expect(copied).toContain("temperature: 0.7");
+			expect(copied).toContain("topK: 40");
+			// The one key the copy must not inherit is gone, and so is the now-empty parent.
+			expect(copied).not.toContain("The Original");
+			expect(copied).not.toContain("displayName");
+			expect(YAML.parse(copied)).toEqual({ temperature: 0.7, topK: 40 });
+			// In the order the user arranged them, not the order a serializer would pick.
+			expect(copied.indexOf("temperature")).toBeLessThan(copied.indexOf("topK"));
+		});
+
+		it("leaves a source config with no display name byte-identical in the copy", async () => {
+			// The negative twin: nothing to remove means nothing to rewrite at all.
+			await createProfile("src", "blank");
+			const original = ["# nothing to strip here", "temperature: 0.5", ""].join("\n");
+			await Bun.write(path.join(getProfileRootDir("src"), "agent", "config.yml"), original);
+
+			await createProfile("copy", "src");
+
+			expect(await Bun.file(path.join(getProfileRootDir("copy"), "agent", "config.yml")).text()).toBe(original);
+		});
+
+		it("keeps the other keys under `profile` when only the display name is removed", async () => {
+			// The parent mapping is only deleted when it becomes empty, and a sibling key
+			// there must survive with its comment.
+			await createProfile("src", "blank");
+			await Bun.write(
+				path.join(getProfileRootDir("src"), "agent", "config.yml"),
+				["profile:", "  # a colour I picked", "  color: teal", "  displayName: The Original", ""].join("\n"),
+			);
+
+			await createProfile("copy", "src");
+
+			const copied = await Bun.file(path.join(getProfileRootDir("copy"), "agent", "config.yml")).text();
+			expect(copied).toContain("# a colour I picked");
+			expect(copied).toContain("color: teal");
+			expect(copied).not.toContain("displayName");
+		});
 	});
 
 	it("refuses to recreate an existing profile and never disturbs its tree", async () => {
@@ -146,7 +215,7 @@ describe("profile lifecycle CLI", () => {
 
 		// The existing tree survives untouched and no staging dir leaks.
 		expect(await Bun.file(marker).text()).toBe("keep-me");
-		const profilesDir = path.join(os.homedir(), configDir, "profiles");
+		const profilesDir = path.join(configRoot, "profiles");
 		const leftovers = (await fs.readdir(profilesDir)).filter(name => name.startsWith("."));
 		expect(leftovers).toEqual([]);
 	});
@@ -156,7 +225,7 @@ describe("profile lifecycle CLI", () => {
 		// a populated directory (a concurrent create won the TOCTOU race), so the
 		// loser cleans up staging and rethrows instead of clobbering the winner.
 		// Pin that platform contract: replacing a non-empty dir must reject.
-		const base = path.join(os.homedir(), configDir, "rename-backstop");
+		const base = path.join(configRoot, "rename-backstop");
 		const winner = path.join(base, "winner");
 		const loser = path.join(base, "loser");
 		await fs.mkdir(winner, { recursive: true });
@@ -215,7 +284,7 @@ describe("profile lifecycle CLI", () => {
 	});
 
 	it("does not copy sessions or blobs when seeding from default", async () => {
-		const defaultAgentDir = path.join(os.homedir(), configDir, "profiles", "default", "agent");
+		const defaultAgentDir = path.join(configRoot, "profiles", "default", "agent");
 		await fs.mkdir(path.join(defaultAgentDir, "sessions"), { recursive: true });
 		await fs.mkdir(path.join(defaultAgentDir, "blobs"), { recursive: true });
 		await Bun.write(path.join(defaultAgentDir, "sessions", "old.jsonl"), '{"id":"old"}\n');
@@ -238,7 +307,7 @@ describe("profile lifecycle CLI", () => {
 	});
 
 	it("copies exactly the selected items when seeding with an item set", async () => {
-		const defaultAgentDir = path.join(os.homedir(), configDir, "profiles", "default", "agent");
+		const defaultAgentDir = path.join(configRoot, "profiles", "default", "agent");
 		await fs.mkdir(path.join(defaultAgentDir, "skills", "demo"), { recursive: true });
 		await fs.mkdir(path.join(defaultAgentDir, "commands"), { recursive: true });
 		await Bun.write(path.join(defaultAgentDir, "AGENTS.md"), "# agents\n");
@@ -258,7 +327,7 @@ describe("profile lifecycle CLI", () => {
 	});
 
 	it("clears the copied display name so two profiles never share one", async () => {
-		const defaultAgentDir = path.join(os.homedir(), configDir, "profiles", "default", "agent");
+		const defaultAgentDir = path.join(configRoot, "profiles", "default", "agent");
 		await fs.mkdir(defaultAgentDir, { recursive: true });
 		await Bun.write(
 			path.join(defaultAgentDir, "config.yml"),
@@ -306,29 +375,29 @@ describe("profile lifecycle CLI", () => {
 });
 
 describe("profile keybindings isolation", () => {
-	let configDir = "";
+	let isolated: IsolatedConfigRoot | undefined;
+	/** The absolute config root for the current test, so expected paths name the temp
+	 * tree rather than being rebuilt from the home directory and a directory name. */
+	let configRoot = "";
 	let originalProfile: string | undefined;
-	let originalConfigDir: string | undefined;
 
 	beforeEach(() => {
 		originalProfile = getActiveProfile();
-		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
-		configDir = `.veyyon-profile-kb-${Snowflake.next()}`;
-		process.env.VEYYON_CONFIG_DIR = configDir;
+		isolated = enterIsolatedConfigRoot("profile-kb");
+		configRoot = isolated.root;
 		setProfile(undefined);
 	});
 
 	afterEach(async () => {
 		setProfile(undefined);
-		if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
-		else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
 		if (originalProfile) setProfile(originalProfile);
 		__resetProfileSnapshotForTests();
-		await removeWithRetries(path.join(os.homedir(), configDir));
+		isolated?.restore();
+		isolated = undefined;
 	});
 
 	it("keeps keybindings isolated between profiles after seed-once", async () => {
-		const defaultAgentDir = path.join(os.homedir(), configDir, "profiles", "default", "agent");
+		const defaultAgentDir = path.join(configRoot, "profiles", "default", "agent");
 		await fs.mkdir(defaultAgentDir, { recursive: true });
 		await Bun.write(
 			path.join(defaultAgentDir, "keybindings.yml"),
@@ -354,15 +423,16 @@ describe("profile keybindings isolation", () => {
 });
 
 describe("profile default command", () => {
-	let configDir = "";
+	let isolated: IsolatedConfigRoot | undefined;
+	/** The absolute config root for the current test, so expected paths name the temp
+	 * tree rather than being rebuilt from the home directory and a directory name. */
+	let configRoot = "";
 	let originalProfile: string | undefined;
-	let originalConfigDir: string | undefined;
 
 	beforeEach(() => {
 		originalProfile = getActiveProfile();
-		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
-		configDir = `.veyyon-profile-default-${Snowflake.next()}`;
-		process.env.VEYYON_CONFIG_DIR = configDir;
+		isolated = enterIsolatedConfigRoot("profile-default");
+		configRoot = isolated.root;
 		setProfile(undefined);
 		process.exitCode = 0;
 	});
@@ -370,12 +440,11 @@ describe("profile default command", () => {
 	afterEach(async () => {
 		vi.restoreAllMocks();
 		setProfile(undefined);
-		if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
-		else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
 		if (originalProfile) setProfile(originalProfile);
 		__resetProfileSnapshotForTests();
 		process.exitCode = 0;
-		await removeWithRetries(path.join(os.homedir(), configDir));
+		isolated?.restore();
+		isolated = undefined;
 	});
 
 	it("sets, shows, and clears the global default profile", async () => {
@@ -385,7 +454,7 @@ describe("profile default command", () => {
 		await runProfileCommand({ action: "default", name: "work" });
 		expect(resolveGlobalDefaultProfile()).toBe("work");
 		// The write lands in the GLOBAL config root, not a profile.
-		const globalConfig = path.join(os.homedir(), configDir, "config.yml");
+		const globalConfig = path.join(configRoot, "config.yml");
 		expect(await Bun.file(globalConfig).text()).toContain("defaultProfile: work");
 
 		logSpy.mockClear();
@@ -405,15 +474,12 @@ describe("profile default command", () => {
 });
 
 describe("profile list launch-default marker", () => {
-	let configDir = "";
+	let isolated: IsolatedConfigRoot | undefined;
 	let originalProfile: string | undefined;
-	let originalConfigDir: string | undefined;
 
 	beforeEach(() => {
 		originalProfile = getActiveProfile();
-		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
-		configDir = `.veyyon-profile-launchdef-${Snowflake.next()}`;
-		process.env.VEYYON_CONFIG_DIR = configDir;
+		isolated = enterIsolatedConfigRoot("profile-launchdef");
 		setProfile(undefined);
 		process.exitCode = 0;
 	});
@@ -421,12 +487,11 @@ describe("profile list launch-default marker", () => {
 	afterEach(async () => {
 		vi.restoreAllMocks();
 		setProfile(undefined);
-		if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
-		else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
 		if (originalProfile) setProfile(originalProfile);
 		__resetProfileSnapshotForTests();
 		process.exitCode = 0;
-		await removeWithRetries(path.join(os.homedir(), configDir));
+		isolated?.restore();
+		isolated = undefined;
 	});
 
 	it("marks the global launch default in list output and JSON", async () => {

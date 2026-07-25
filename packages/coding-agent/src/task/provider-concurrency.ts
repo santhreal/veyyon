@@ -36,7 +36,11 @@ export function getProviderConcurrencyLimit(settings: Settings, provider: string
 	const settingPath = PROVIDER_MAX_CONCURRENCY_SETTINGS[provider];
 	if (!settingPath) return undefined;
 	const raw = settings.get(settingPath);
-	const limit = Number.isFinite(raw) ? Math.trunc(raw) : 0;
+	// `settingPath` is the general union here, so the value is every type the
+	// schema can hold. The `typeof` guard is what makes that honest: `Math.trunc`
+	// needs a number and `Number.isFinite` does not narrow. Behaviour is unchanged
+	// — `Number.isFinite` was already false for a non-number, which took the 0 arm.
+	const limit = typeof raw === "number" && Number.isFinite(raw) ? Math.trunc(raw) : 0;
 	return limit > 0 ? limit : Number.POSITIVE_INFINITY;
 }
 

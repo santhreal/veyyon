@@ -1,5 +1,5 @@
 import * as fs from "node:fs/promises";
-import { isEnoent, logger, ptree } from "@veyyon/utils";
+import { errorMessage, isEnoent, logger, ptree } from "@veyyon/utils";
 import { NON_INTERACTIVE_ENV } from "../exec/non-interactive-env";
 import { MessageFramer } from "../jsonrpc/message-framing";
 import { ToolAbortError } from "../tools/tool-errors";
@@ -45,11 +45,6 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const WRITE_MESSAGE_TIMEOUT_MS = 30_000;
 /** Default wait for socket-mode adapters to become reachable. */
 const SOCKET_READY_TIMEOUT_MS = 10_000;
-
-function toErrorMessage(value: unknown): string {
-	if (value instanceof Error) return value.message;
-	return String(value);
-}
 
 export class DapClient {
 	readonly adapter: DapResolvedAdapter;
@@ -477,7 +472,7 @@ export class DapClient {
 		} catch (error) {
 			logger.debug("Failed to kill DAP adapter", {
 				adapter: this.adapter.name,
-				error: toErrorMessage(error),
+				error: errorMessage(error),
 			});
 		}
 		await this.proc.exited.catch(() => {});
@@ -523,13 +518,13 @@ export class DapClient {
 					} catch (error) {
 						logger.warn("DAP message handling failed", {
 							adapter: this.adapter.name,
-							error: toErrorMessage(error),
+							error: errorMessage(error),
 						});
 					}
 				}
 			}
 		} catch (error) {
-			this.#rejectPendingRequests(new Error(`DAP connection closed: ${toErrorMessage(error)}`));
+			this.#rejectPendingRequests(new Error(`DAP connection closed: ${errorMessage(error)}`));
 		} finally {
 			// Persist any unparsed remainder so a restarted reader resumes mid-message.
 			this.#messageBuffer = framer.remainder();
@@ -548,8 +543,8 @@ export class DapClient {
 			pending.resolve(message.body);
 			return;
 		}
-		const errorMessage = message.message ?? `DAP request ${pending.command} failed`;
-		pending.reject(new Error(errorMessage));
+		const failure = message.message ?? `DAP request ${pending.command} failed`;
+		pending.reject(new Error(failure));
 	}
 
 	async #dispatchEvent(message: DapEventMessage): Promise<void> {
@@ -562,7 +557,7 @@ export class DapClient {
 				logger.warn("DAP event handler failed", {
 					adapter: this.adapter.name,
 					event: message.event,
-					error: toErrorMessage(error),
+					error: errorMessage(error),
 				});
 			}
 		}
@@ -576,38 +571,38 @@ export class DapClient {
 					const body = await handler(message.arguments);
 					await this.sendResponse(message, true, body);
 				} catch (error) {
-					const errorMessage = toErrorMessage(error);
+					const failure = errorMessage(error);
 					await this.sendResponse(
 						message,
 						false,
 						{
 							error: {
 								id: 1,
-								format: errorMessage,
+								format: failure,
 							},
 						},
-						errorMessage,
+						failure,
 					);
 				}
 				return;
 			}
-			const errorMessage = `Unsupported DAP request: ${message.command}`;
+			const unsupported = `Unsupported DAP request: ${message.command}`;
 			await this.sendResponse(
 				message,
 				false,
 				{
 					error: {
 						id: 1,
-						format: errorMessage,
+						format: unsupported,
 					},
 				},
-				errorMessage,
+				unsupported,
 			);
 		} catch (error) {
 			logger.warn("Failed to answer DAP adapter request", {
 				adapter: this.adapter.name,
 				command: message.command,
-				error: toErrorMessage(error),
+				error: errorMessage(error),
 			});
 		}
 	}

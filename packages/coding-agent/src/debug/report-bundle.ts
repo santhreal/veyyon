@@ -15,9 +15,13 @@ import { collectSystemInfo, sanitizeEnv } from "./system-info";
 const MAX_LOG_LINES = 5000;
 
 /** Maximum bytes to read from the tail of a log file (2 MB). */
-const MAX_LOG_BYTES = 2 * 1024 * 1024;
+// How much of a log file's tail a bug report may read. A bound on what we ship
+// to the user, not on what the log is allowed to grow to (see LOG_ROTATE_BYTES
+// in launch/broker.ts, which is an order of magnitude larger and means something
+// else entirely).
+const MAX_BUNDLED_LOG_TAIL_BYTES = 2 * 1024 * 1024;
 /** Read last N lines from a file, reading at most `maxBytes` from the tail. */
-async function readLastLines(filePath: string, n: number, maxBytes = MAX_LOG_BYTES): Promise<string> {
+async function readLastLines(filePath: string, n: number, maxBytes = MAX_BUNDLED_LOG_TAIL_BYTES): Promise<string> {
 	try {
 		const file = Bun.file(filePath);
 		const size = file.size;

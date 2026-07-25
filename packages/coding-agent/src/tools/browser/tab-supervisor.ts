@@ -1,6 +1,6 @@
-import { errorMessage, logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/utils";
-import type { Page, Target } from "puppeteer-core";
+import { errorMessage, isCancellation, logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/utils";
 import { callSessionTool } from "../../eval/js/tool-bridge";
+import { logWorkerMessage } from "../../subprocess/worker-log";
 import { raceWithTimeout } from "../../utils/fetch-timeout";
 import { webpExclusionForModel } from "../../utils/image-loading";
 import { TAB_WORKER_ARG } from "../../worker-args";
@@ -30,6 +30,7 @@ import type {
 	WorkerInitPayload,
 	WorkerOutbound,
 } from "./tab-protocol";
+import { targetIdForPage, targetIdForTarget } from "./target-id";
 
 // Coding-agent binary/bundle workers route through the CLI entrypoint with a
 // hidden argv mode, so compiled/npm builds only need one JavaScript entry.
@@ -711,7 +712,10 @@ function toErrorPayload(error: unknown): RunErrorPayload {
 			name: error.name,
 			message: error.message,
 			stack: error.stack,
-			isAbort: error.name === "AbortError" || error.name === "ToolAbortError",
+			// Deadlines count as aborts for this classification: the caller uses the
+			// flag to decide whether the tab stopped for a reason of its own, and a
+			// timeout is one.
+			isAbort: isCancellation(error),
 			isToolError: error instanceof ToolError || error.name === "ToolError",
 		};
 	}
@@ -804,23 +808,6 @@ function expandBrowserScreenshotDir(session: ToolSession): string | undefined {
 	return value ? expandPath(value) : undefined;
 }
 
-async function targetIdForPage(page: Page): Promise<string> {
-	return await targetIdForTarget(page.target());
-}
-
-async function targetIdForTarget(target: Target): Promise<string> {
-	const raw = target as unknown as { _targetId?: unknown };
-	if (typeof raw._targetId === "string") return raw._targetId;
-	const session = await target.createCDPSession();
-	try {
-		const info = (await session.send("Target.getTargetInfo")) as { targetInfo?: { targetId?: string } };
-		if (info.targetInfo?.targetId) return info.targetInfo.targetId;
-		throw new ToolError("Target id unavailable from CDP target info");
-	} finally {
-		await session.detach().catch(() => undefined);
-	}
-}
-
 function errorFromPayload(payload: RunErrorPayload): Error {
 	const error = payload.isAbort
 		? new ToolAbortError()
@@ -830,12 +817,6 @@ function errorFromPayload(payload: RunErrorPayload): Error {
 	error.name = payload.name;
 	if (payload.stack) error.stack = payload.stack;
 	return error;
-}
-
-function logWorkerMessage(msg: Extract<WorkerOutbound, { type: "log" }>): void {
-	if (msg.level === "debug") logger.debug(msg.msg, msg.meta);
-	else if (msg.level === "warn") logger.warn(msg.msg, msg.meta);
-	else logger.error(msg.msg, msg.meta);
 }
 
 async function spawnTabWorker(): Promise<WorkerHandle> {

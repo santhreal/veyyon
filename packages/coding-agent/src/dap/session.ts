@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import * as timers from "node:timers/promises";
-import { logger, ptree, untilAborted } from "@veyyon/utils";
+import { errorMessage, logger, ptree, untilAborted } from "@veyyon/utils";
 import { NON_INTERACTIVE_ENV } from "../exec/non-interactive-env";
 import { DapClient } from "./client";
 import type {
@@ -78,7 +78,7 @@ interface DapSession {
 	dataBreakpoints: DapDataBreakpoint[];
 	/** Serializes breakpoint mutations — see #serializeBreakpointMutation. */
 	breakpointMutationQueue: Promise<void>;
-	/** Recent output chunks; trimmed from the front when over MAX_OUTPUT_BYTES. */
+	/** Recent output chunks; trimmed from the front when over MAX_BUFFERED_OUTPUT_BYTES. */
 	outputChunks: string[];
 	/** Cumulative bytes of output ever received (reported in summaries). */
 	outputBytes: number;
@@ -103,13 +103,11 @@ export interface DapOutputSnapshot {
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 30 * 1000;
 const HEARTBEAT_INTERVAL_MS = 5 * 1000;
-const MAX_OUTPUT_BYTES = 128 * 1024;
+// Cap on the debug session's in-memory output ring. Unrelated to the task tool's
+// MAX_OUTPUT_BYTES, which bounds what a subagent may return and is user-tunable
+// via VEYYON_TASK_MAX_OUTPUT_BYTES.
+const MAX_BUFFERED_OUTPUT_BYTES = 128 * 1024;
 const STOP_CAPTURE_TIMEOUT_MS = 5_000;
-
-function toErrorMessage(value: unknown): string {
-	if (value instanceof Error) return value.message;
-	return String(value);
-}
 
 interface DapStartRequestFailure {
 	rejected: boolean;
@@ -139,8 +137,8 @@ function trackDapStartRequest<T>(promise: Promise<T>, failure: DapStartRequestFa
 }
 
 function combineDapStartErrors(command: "launch" | "attach", startError: unknown, configurationError: unknown): Error {
-	const startMessage = toErrorMessage(startError);
-	const configurationMessage = toErrorMessage(configurationError);
+	const startMessage = errorMessage(startError);
+	const configurationMessage = errorMessage(configurationError);
 	if (startMessage === configurationMessage) {
 		return startError instanceof Error ? startError : new Error(startMessage);
 	}
@@ -171,7 +169,7 @@ const DEBUGPY_MISSING_MODULE_RE = /No module named ['"]?debugpy['"]?/;
  */
 function mapDebugpyMissingModule(adapterName: string, error: unknown): Error | null {
 	if (adapterName !== "debugpy") return null;
-	if (!DEBUGPY_MISSING_MODULE_RE.test(toErrorMessage(error))) return null;
+	if (!DEBUGPY_MISSING_MODULE_RE.test(errorMessage(error))) return null;
 	return new Error("adapter 'debugpy' is not available: install with 'pip install debugpy'");
 }
 
@@ -186,23 +184,23 @@ function truncateOutput(session: DapSession, output: string): void {
 	session.outputBytes += bytes;
 	session.outputBufferedBytes += bytes;
 	// Trim whole chunks from the front, but only while the remainder still
-	// holds a full MAX_OUTPUT_BYTES tail — dropping the front chunk whenever
+	// holds a full MAX_BUFFERED_OUTPUT_BYTES tail — dropping the front chunk whenever
 	// the total exceeded the cap could retain far less than the cap (e.g.
 	// [120KB, 10KB] would keep only 10KB). Recomputing one big string's byte
 	// length per 1KB trim iteration was O(n^2) inside the event dispatch loop.
 	while (session.outputChunks.length > 1) {
 		const frontBytes = Buffer.byteLength(session.outputChunks[0], "utf-8");
-		if (session.outputBufferedBytes - frontBytes < MAX_OUTPUT_BYTES) break;
+		if (session.outputBufferedBytes - frontBytes < MAX_BUFFERED_OUTPUT_BYTES) break;
 		session.outputChunks.shift();
 		session.outputBufferedBytes -= frontBytes;
 		session.outputTruncated = true;
 	}
-	if (session.outputBufferedBytes > MAX_OUTPUT_BYTES) {
+	if (session.outputBufferedBytes > MAX_BUFFERED_OUTPUT_BYTES) {
 		// Byte-slice the front chunk's head so exactly the cap remains (a torn
 		// code point at the cut decodes as U+FFFD, acceptable for log output).
 		const front = session.outputChunks[0];
 		const frontBytes = Buffer.byteLength(front, "utf-8");
-		const excess = session.outputBufferedBytes - MAX_OUTPUT_BYTES;
+		const excess = session.outputBufferedBytes - MAX_BUFFERED_OUTPUT_BYTES;
 		const kept = Buffer.from(front, "utf-8").subarray(excess).toString("utf-8");
 		session.outputChunks[0] = kept;
 		session.outputBufferedBytes += Buffer.byteLength(kept, "utf-8") - frontBytes;
@@ -1029,7 +1027,7 @@ export class DapSessionManager {
 			try {
 				this.#cleanupIdleSessions();
 			} catch (error) {
-				logger.error("DAP idle session cleanup failed", { error: toErrorMessage(error) });
+				logger.error("DAP idle session cleanup failed", { error: errorMessage(error) });
 			}
 		}
 	}
@@ -1238,7 +1236,7 @@ export class DapSessionManager {
 		} catch (error) {
 			logger.debug("Failed to capture stopped frame", {
 				sessionId: session.id,
-				error: toErrorMessage(error),
+				error: errorMessage(error),
 			});
 		}
 	}

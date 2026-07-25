@@ -2,10 +2,9 @@ import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, ApiKey, AssistantMessage, Message, Model } from "@veyyon/ai";
 import { completeSimple } from "@veyyon/ai";
 import { prompt } from "@veyyon/utils";
-import fileObserverSystemPrompt from "../../commit/prompts/file-observer-system.md" with { type: "text" };
-import fileObserverUserPrompt from "../../commit/prompts/file-observer-user.md" with { type: "text" };
 import type { FileDiff, FileObservation } from "../../commit/types";
 import { isExcludedFile } from "../../commit/utils/exclusions";
+import { PROMPTS } from "../../prompts/registry";
 import { mapWithConcurrencyLimit } from "../../task/parallel";
 import { toReasoningEffort } from "../../thinking";
 import { withScopedTimeoutSignal } from "../../utils/fetch-timeout";
@@ -39,7 +38,7 @@ export async function runMapPhase({
 	config,
 }: MapPhaseInput): Promise<FileObservation[]> {
 	const filtered = files.filter(file => !isExcludedFile(file.filename));
-	const systemPrompt = prompt.render(fileObserverSystemPrompt);
+	const systemPrompt = prompt.render(PROMPTS["commit/file-observer-system"].text);
 	const maxFileTokens = config?.maxFileTokens ?? MAX_FILE_TOKENS;
 	const maxConcurrency = config?.maxConcurrency ?? MAX_CONCURRENCY;
 	const timeoutMs = config?.timeoutMs ?? MAP_PHASE_TIMEOUT_MS;
@@ -61,7 +60,7 @@ export async function runMapPhase({
 
 		const contextHeader = generateContextHeader(filtered, file.filename);
 		const truncated = truncateToTokenLimit(file.content, maxFileTokens);
-		const userContent = prompt.render(fileObserverUserPrompt, {
+		const userContent = prompt.render(PROMPTS["commit/file-observer-user"].text, {
 			filename: file.filename,
 			diff: truncated,
 			context_header: contextHeader,

@@ -6,6 +6,7 @@ import { transitionsEnabled } from "@veyyon/coding-agent/modes/theme/shimmer";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { TERMINAL } from "@veyyon/tui";
 import { setProfile } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 function plain(lines: readonly string[]): string {
 	return lines.map(line => stripVTControlCharacters(line)).join("\n");
@@ -184,10 +185,14 @@ describe("WelcomeComponent profile indicator", () => {
 		await initTheme(false, "unicode", false, "titanium", "light");
 	});
 
+	// Not `setProfile(undefined)`: the default profile is not "no profile", it is a state
+	// of its own, and forcing it left every later file in the process on the default while
+	// the developer (or CI) was running under a named one.
+	const dirOverrides = captureDirOverrides();
+
 	afterEach(() => {
 		vi.restoreAllMocks();
-		// Return to the default profile so the shared process-global cannot leak.
-		setProfile(undefined);
+		restoreDirOverrides(dirOverrides);
 	});
 
 	it("names the active profile on the metadata line for a named sandbox", () => {

@@ -15,8 +15,7 @@ import type {
 	MemoryBackendStartOptions,
 	MemoryBackendStatus,
 } from "../memory-backend/types";
-import memoryConsolidationPrompt from "../prompts/system/memory-consolidation-system.md" with { type: "text" };
-import memoryExtractionPrompt from "../prompts/system/memory-extraction-system.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import type { AgentSession } from "../session/agent-session";
 import { isTinyMemoryLocalModelKey, ONLINE_MEMORY_MODEL_KEY } from "../tiny/models";
 import { tinyModelClient } from "../tiny/title-client";
@@ -100,14 +99,21 @@ export const mnemopiBackend: MemoryBackend = {
 		}
 	},
 
-	async buildDeveloperInstructions(_agentDir, settings, session): Promise<string | undefined> {
-		const state = getMnemopiSessionState(session);
-		const primary = state?.aliasOf ?? state;
-		const parts = [STATIC_INSTRUCTIONS];
-		if (primary?.lastRecallSnippet) parts.push(primary.lastRecallSnippet);
-		const rendered = parts.join("\n\n").trim();
+	async buildDeveloperInstructions(_agentDir, settings): Promise<string | undefined> {
+		// The static instructions only. A recalled memory changes with the session,
+		// so it goes to the context tail through `buildVolatileContext` instead of
+		// rewriting the provider's cache prefix on every recall.
+		const rendered = STATIC_INSTRUCTIONS.trim();
 		if (!rendered) return undefined;
 		return truncateApproxTokens(rendered, settings.get("mnemopi.injectionTokenLimit"));
+	},
+
+	async buildVolatileContext(session): Promise<string | undefined> {
+		const state = getMnemopiSessionState(session);
+		const primary = state?.aliasOf ?? state;
+		const snippet = primary?.lastRecallSnippet?.trim();
+		if (!snippet) return undefined;
+		return truncateApproxTokens(snippet, session.settings.get("mnemopi.injectionTokenLimit"));
 	},
 
 	async beforeAgentStartPrompt(session, promptText): Promise<string | undefined> {
@@ -487,8 +493,8 @@ async function resolveMnemopiProviderOptions(
 			...base,
 			llm: {
 				complete: (prompt, opts) => tinyModelClient.complete(memoryModel, prompt, { maxTokens: opts?.maxTokens }),
-				extractionPrompt: memoryExtractionPrompt,
-				consolidationPrompt: memoryConsolidationPrompt,
+				extractionPrompt: PROMPTS["memories/extraction-lines"].text,
+				consolidationPrompt: PROMPTS["memories/consolidation-short"].text,
 			},
 		};
 	}

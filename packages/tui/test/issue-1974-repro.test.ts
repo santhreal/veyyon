@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { type Component, CURSOR_MARKER, type NativeScrollbackLiveRegion, TUI } from "@veyyon/tui";
+import { settleFrames } from "./helpers/settle-frames";
 import { VirtualTerminal } from "./virtual-terminal";
 
 // Regression test for https://github.com/can1357/oh-my-pi/issues/1974
@@ -89,12 +90,10 @@ class VolatileLiveRegion implements Component, NativeScrollbackLiveRegion {
 	}
 }
 
-async function settle(term: VirtualTerminal): Promise<void> {
-	const nextTick = Promise.withResolvers<void>();
-	process.nextTick(nextTick.resolve);
-	await nextTick.promise;
-	await Bun.sleep(40);
-	await term.flush();
+async function settle(term: VirtualTerminal, tui: TUI): Promise<void> {
+	// The engine's own "a frame is owed" signal instead of a fixed sleep; see
+	// `packages/tui/test/helpers/settle-frames.ts` for the flakes the sleep caused.
+	await settleFrames(term, tui);
 }
 
 async function withEnvPatch<T>(patch: Record<string, string | undefined>, run: () => T | Promise<T>): Promise<T> {
@@ -171,7 +170,7 @@ describe("issue #1974: tmux scrollback rendering", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				// Stream the reply in chunks. Each chunk grows the live block
 				// by 5 rows — small enough that no single frame double-
@@ -180,7 +179,7 @@ describe("issue #1974: tmux scrollback rendering", () => {
 				for (let chunk = 5; chunk <= markers.length; chunk += 5) {
 					stream.setLines(markers.slice(0, chunk));
 					tui.requestRender();
-					await settle(term);
+					await settle(term, tui);
 				}
 
 				// `getScrollBuffer()` returns pane history + the active grid
@@ -222,13 +221,13 @@ describe("issue #1974: tmux scrollback rendering", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				const writes = capture(term);
 				for (let chunk = 5; chunk <= 40; chunk += 5) {
 					stream.setLines(Array.from({ length: chunk }, (_unused, i) => `row-${String(i).padStart(3, "0")}`));
 					tui.requestRender();
-					await settle(term);
+					await settle(term, tui);
 				}
 
 				// ED3 would either be a no-op or yank a scrolled tmux reader.
@@ -262,12 +261,12 @@ describe("issue #1974: tmux scrollback rendering", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				for (let chunk = 4; chunk <= markers.length; chunk += 4) {
 					stream.setLines(markers.slice(0, chunk));
 					tui.requestRender();
-					await settle(term);
+					await settle(term, tui);
 				}
 
 				// `getScrollBuffer()` returns pane history followed by the
@@ -313,16 +312,16 @@ describe("issue #1974: tmux scrollback rendering", () => {
 
 		try {
 			tui.start();
-			await settle(term);
+			await settle(term, tui);
 
 			stream.setLines(["same", "same", "same", `same${CURSOR_MARKER}`, "same"]);
 			tui.requestRender();
-			await settle(term);
+			await settle(term, tui);
 			expect(term.getCursor()).toEqual({ row: 3, col: 4 });
 
 			stream.setLines(["same", "same", "same", "same", `same${CURSOR_MARKER}`, "same"]);
 			tui.requestRender();
-			await settle(term);
+			await settle(term, tui);
 
 			expect(strip(term.getViewport())).toEqual(["same", "same", "same", "same", "same"]);
 			expect(term.getCursor()).toEqual({ row: 3, col: 4 });

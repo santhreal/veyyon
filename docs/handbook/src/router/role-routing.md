@@ -9,7 +9,7 @@ Veyyon is provider-agnostic: roles are not hard-coded provider assumptions.
 - **Subagents** via the `task` tool (`packages/coding-agent/src/task/executor.ts`) and `/agents`
   thread switching.
 - **Explicit model slots**, not a role→model matrix: the interactive model (`/model`), plus plain
-  `subagent.model` and `compaction.model` fields in settings. `default` is not a model or a role. Named
+  `subagent.model` and `compaction.model` fields in settings (`subagent.model` belongs to the Subagents area, not the role table). `default` is not a model or a role. Named
   **roles** (`modelRoles`, scoped per profile) exist for anyone who wants specific work types pinned to
   specific models, but editing them lives in a settings group, not the model picker. See
   [Compaction & project memory](../context/compaction-memory.md) and

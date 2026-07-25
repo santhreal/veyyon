@@ -14,7 +14,13 @@ import * as path from "node:path";
 import { $flag, errorMessage, isBunTestRuntime, logger, Snowflake } from "@veyyon/utils";
 import { $ } from "bun";
 import { Settings } from "../../config/settings";
-import { BaseKernel, getRemainingTimeMs, type KernelRuntimeEnv, type KernelStartOptions } from "../kernel-base";
+import {
+	BaseKernel,
+	DEFAULT_KERNEL_STARTUP_TIMEOUT_MS,
+	getRemainingTimeMs,
+	type KernelRuntimeEnv,
+	type KernelStartOptions,
+} from "../kernel-base";
 import type { KernelDisplayOutput } from "../py/display";
 import { hostHasInheritableConsole, shouldDetachKernel, shouldHideKernelWindow } from "../py/spawn-options";
 import { RUBY_PRELUDE } from "./prelude";
@@ -51,7 +57,7 @@ async function ensureRunnerScript(): Promise<string> {
 }
 
 const SHUTDOWN_GRACE_MS = 1_000;
-const STARTUP_TIMEOUT_MS = 10_000;
+const STARTUP_TIMEOUT_MS = DEFAULT_KERNEL_STARTUP_TIMEOUT_MS;
 // How long to wait after SIGINT for the runner to emit `done` before escalating
 // to a full subprocess shutdown so the host queue unblocks instead of hanging.
 const INTERRUPT_ESCALATION_MS = 5_000;

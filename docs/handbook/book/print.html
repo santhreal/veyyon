@@ -51,10 +51,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f3663b17.js";
+            window.path_to_searchindex_js = "searchindex-ce9b3186.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-de67d70d.js"></script>
+        <script src="toc-578177b6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -312,7 +312,7 @@ points you at.</p>
 <ul>
 <li><strong>The interactive model</strong> is what you set with <code>/model</code> or <code>--model</code>, and it persists as <code>modelRoles.default</code>.</li>
 <li><strong>Roles</strong> pin a model to a kind of work, such as <code>smol</code> for cheap fast work or <code>task</code> for subagents, and you can add your own in <code>modelRoles</code>. The full built-in set is listed in <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</li>
-<li><strong>Overrides</strong> let a slot win over a role. <code>subagent.model</code> overrides <code>modelRoles.task</code> when set, and <code>compaction.model</code> overrides the interactive model for compaction, otherwise compaction inherits it.</li>
+<li><strong>Overrides</strong> let a slot win over a role. <code>compaction.model</code> overrides the interactive model for compaction, otherwise compaction inherits it. Subagent models are not roles at all: they live in the Subagents settings area, which owns them alone.</li>
 <li><strong>Cycling</strong> rotates through <code>cycleOrder</code> (which defaults to <code>smol</code> then <code>slow</code>), bound to <code>app.model.cycleForward</code>, often Ctrl+P.</li>
 </ul>
 <p>The full contract is in <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</p>
@@ -330,6 +330,117 @@ points you at.</p>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="argot"><a class="header" href="#argot">Argot</a></h1>
+<p>Argot is experimental: off by default, gated to models you explicitly allow, and
+still being measured on live benches. The mechanism is fully wired and lossless;
+what is unproven is the economics (whether real sessions save enough output
+tokens to matter), which is why it ships behind a flag.</p>
+<p>Argot is a per-project shorthand that the model writes in. A project keeps a
+small table of handles, each one a short name that stands for a longer string it
+repeats a lot: a full path, an import root, a canonical build command. The model
+writes the handle, and Veyyon restores it to the full string before anything runs
+or is shown. This is the largest mechanism the fork adds on top of oh-my-pi.</p>
+<p>This chapter explains what Argot is and how the codec works. To turn it on, see
+<a href="#save-tokens-with-project-shorthand-argot-experimental">Save tokens with project shorthand</a>.</p>
+<h2 id="the-idea-in-one-example"><a class="header" href="#the-idea-in-one-example">The idea in one example</a></h2>
+<p>Say a project’s build command is a long, exact string the agent types over and
+over:</p>
+<pre><code>node --experimental-vm-modules ./scripts/build.mjs --target release --profile ci
+</code></pre>
+<p>With Argot, that string gets a handle, for example <code>§build</code>. The model writes
+<code>§build</code>, and by the time the command reaches the shell it is the full string
+again. The model carried a short token where it would have carried a long one,
+and nothing downstream ever saw the short form.</p>
+<p>A handle is a marker followed by a name. The default marker is the section sign
+<code>§</code>, so the handle is <code>§build</code>. A name is lowercase letters, digits, and
+underscores. The marker is configurable per project through the dictionary’s
+<code>sigil</code> field, and it may never contain a character that could blur into a name
+or into whitespace.</p>
+<h2 id="the-dictionary"><a class="header" href="#the-dictionary">The dictionary</a></h2>
+<p>The handles live in a file named <code>AGENTS.dict</code>. It is a small table mapping each
+name to its expansion:</p>
+<pre><code class="language-toml">sigil = "§"
+
+[handles]
+build = "node --experimental-vm-modules ./scripts/build.mjs --target release --profile ci"
+dbconn = "src/server/db/connection.ts"
+</code></pre>
+<p>A handle stands for a recurring string, not a document, so an expansion has an
+upper bound and a longer one is rejected. The file also declares a format
+version. A file that targets a newer major version is refused loudly rather than
+read on a guess.</p>
+<p>You do not write or commit this file by hand, and Veyyon does not guess which
+project you mean. The agent decides: it calls the <code>argot_load</code> tool on the folder
+it is about to work in, and Veyyon generates the dictionary for that project from
+the strings it actually repeats, scores each candidate by how much output it
+would save, and keeps the result in a local cache under its own config
+directory. In a monorepo the agent loads the one package it is working in, not
+the repo root. Nothing is written into your working tree, so there is no file
+for a pull request to pick up, and a session where the agent never loads
+anything simply behaves as if Argot were off.</p>
+<h2 id="two-directions-two-rules"><a class="header" href="#two-directions-two-rules">Two directions, two rules</a></h2>
+<p>Argot has two directions, and they are gated differently on purpose.</p>
+<p><strong>Decoding</strong> is turning a handle back into its full text. It is unconditional.
+Once a dictionary is loaded, every handle expands, always, before the text
+reaches a tool, the disk, or your screen. A handle that arrived at a tool
+unexpanded would be a broken path, not merely worse text, so decoding is never
+something a setting can switch off.</p>
+<p><strong>Encoding</strong> is teaching the model the notation so it writes handles in the first
+place. This is a policy choice, and it has two levers:</p>
+<ul>
+<li>A model allowlist. Only the models you name are taught the shorthand. The list
+is empty by default, so turning Argot on without naming a model stays inert.
+This lets you keep shorthand on for a model you trust to recall the dictionary
+and off for one you are still measuring.</li>
+<li>A context-size cutoff. Recall of the dictionary degrades as a conversation
+grows, so past a token threshold Veyyon stops teaching new shorthand and the
+model writes in full.</li>
+</ul>
+<p>Because decoding never depends on either lever, it is always safe to stop
+encoding. The worst case is the model writing a full string it could have
+shortened, never a raw handle leaking through. Switching models mid-session is
+safe for the same reason: a handle already in the history expands whatever model
+is active now.</p>
+<h2 id="why-it-saves-tokens"><a class="header" href="#why-it-saves-tokens">Why it saves tokens</a></h2>
+<p>Output tokens cost several times more than input tokens. A handle pays off when
+the model would otherwise retype a long string many times across a session, since
+each repeat is output the model is charged for at the higher rate. The generator
+optimizes for exactly this: it fills the dictionary highest-value first, where
+value is how much output a handle removes across the project’s text, and it stops
+before the dictionary itself grows large enough to cost more to carry than it
+saves.</p>
+<h2 id="the-cache-is-immutable-and-content-keyed"><a class="header" href="#the-cache-is-immutable-and-content-keyed">The cache is immutable and content-keyed</a></h2>
+<p>Each cache entry is named by the content it was built from: the git commit for a
+git project, or a signature of the file listing for a project with a <code>.argot</code>
+marker. An entry is never rewritten once it exists. A new commit reads a new
+entry, built from the new tree; the old entry stays exactly as it was. Two agents
+on the same commit read one entry, agents on different commits read different
+entries, and a race to build the same entry produces byte-identical output, so
+the write is safe with no lock.</p>
+<p>Nothing depends on a handle keeping its name from one entry to the next. The
+expansion rule (see “Two directions, two rules” above) expands every handle
+before it reaches the saved transcript, so no stored transcript ever holds a raw
+handle. Because the history never references a handle, a rebuilt-from-empty cache
+would break nothing: the two directions stay correct whatever the dictionary
+holds. That is why the cache can be keyed on content and thrown away freely,
+rather than pinned and grown forever. To rebuild deliberately, delete the
+project’s cache directory and let the next session regenerate it.</p>
+<h2 id="subagents-each-expand-their-own-output"><a class="header" href="#subagents-each-expand-their-own-output">Subagents each expand their own output</a></h2>
+<p>A subagent veyyon spawns for a task follows the same two rules on its own. Every
+agent expands its output before it reaches a tool, the saved transcript, a prompt
+it hands to a child, or the result it returns to a parent, so a handle never
+crosses between a parent and a child in either direction. A subagent that starts
+with no dictionary is already correct: it reads the full text its parent wrote
+(the parent expanded it) and writes full text back (the child expands it).
+Sharing a dictionary between parent and child is only a way to save tokens, never
+a thing correctness rests on. The <code>argot.subagents</code> setting picks between no
+shorthand, a fresh dictionary from the child’s own project, and a copy of the
+parent’s; see <a href="#choose-how-subagents-start">the configuration
+page</a>.</p>
+<h2 id="related-1"><a class="header" href="#related-1">Related</a></h2>
+<ul>
+<li><a href="#save-tokens-with-project-shorthand-argot-experimental">Save tokens with project shorthand</a>: the settings and how to enable it</li>
+<li><a href="#mechanisms">Mechanisms</a>: the rest of what the fork adds</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="harness-design-goals"><a class="header" href="#harness-design-goals">Harness design goals</a></h1>
 <p>Model quality depends on the agent harness: tool schemas, edit format, context handling, and control flow. The same weights can succeed or fail depending on those choices.</p>
@@ -345,7 +456,7 @@ points you at.</p>
 <li>Engine-enforced modes: plan file + resolve path, goal continuation, approval tiers.</li>
 <li>Schema-based tool-call repair before argument validation (see <a href="#tool-call-repair">Repair</a>).</li>
 </ul>
-<h2 id="related-1"><a class="header" href="#related-1">Related</a></h2>
+<h2 id="related-2"><a class="header" href="#related-2">Related</a></h2>
 <ul>
 <li><a href="#mechanisms">Mechanisms</a></li>
 <li><a href="#tool-call-repair">Repair</a></li>
@@ -399,7 +510,7 @@ prompt ──► │  veyyon (packages/coding-agent)                            
 <p>CLI/TUI and session loop: TypeScript on Bun. Grep, PTY/shell, hashline apply: Rust natives. Streaming returns tokens as they arrive.</p>
 <h2 id="measurement"><a class="header" href="#measurement">Measurement</a></h2>
 <p>Hot-path changes are covered by package tests and criteria where present. Do not treat marketing numbers as SLAs without the linked method and host.</p>
-<h2 id="related-2"><a class="header" href="#related-2">Related</a></h2>
+<h2 id="related-3"><a class="header" href="#related-3">Related</a></h2>
 <ul>
 <li><a href="#mechanisms">Mechanisms</a></li>
 <li><a href="#getting-started">Getting started</a></li>
@@ -487,7 +598,8 @@ by hand. See <a href="#model-and-provider-selection">Model and provider selectio
 <h2 id="install-on-linux-or-macos"><a class="header" href="#install-on-linux-or-macos">Install on Linux or macOS</a></h2>
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh
 </code></pre>
-<p>That installs the <code>veyyon</code> binary to <code>~/.local/bin</code>, links <code>vey</code> beside it, and prints a <code>doctor:</code> line confirming the binary runs. When <code>~/.local/bin</code> is not on your <code>PATH</code> yet, the installer adds it to your shell profile and tells you to restart your shell.</p>
+<p>That installs the <code>veyyon</code> binary to <code>~/.local/bin</code>, links <code>vey</code> beside it, and runs a <code>doctor:</code> self-check. The self-check does two things: it confirms the binary starts and reports the version the release claims, and it runs a real search to confirm the native addon loads. The second check matters because <code>veyyon --version</code> answers without the addon, so a binary built for the wrong architecture starts cleanly and then fails on your first real command.</p>
+<p>That search runs twice. The first time is on the downloaded file, before anything is installed: the checksum proves the bytes are the ones that were published, but it cannot tell you the release has no build for your platform. If the download cannot run a search, the installer stops there and your machine is untouched, with no binary installed, no <code>vey</code> alias, no change to your shell profile and no completion files. The second run proves the finished install works from where it now lives. Each message says which of the two it is. Either way, when the search fails the installer tells you to install from source. When <code>~/.local/bin</code> is not on your <code>PATH</code> yet, the installer adds it to your shell profile and tells you to restart your shell.</p>
 <h2 id="install-on-windows"><a class="header" href="#install-on-windows">Install on Windows</a></h2>
 <pre><code class="language-powershell">irm https://veyyon.dev/install.ps1 | iex
 </code></pre>
@@ -496,6 +608,10 @@ by hand. See <a href="#model-and-provider-selection">Model and provider selectio
 </code></pre>
 <p>The first interactive <code>vey</code> opens the first-run setup, which moves through a splash, providers, glyphs, theme, and an outro. To run it again later, use <code>veyyon setup</code>. To re-open just the providers panel inside a session, use <code>/setup</code> or <code>/providers</code>. See <a href="#getting-started">Getting started</a>.</p>
 <p>Your configuration home is <code>~/.veyyon</code>, and the default profile keeps its agent directory at <code>~/.veyyon/profiles/default/agent/</code>.</p>
+<p>If an install is interrupted, run it again. The installer stages the binary beside its final path and moves it into place only once the file is complete, so a cancelled install never leaves you with a half-written <code>veyyon</code>. Cancelling with Ctrl-C removes the staged file on the way out; a kill the process cannot catch leaves it behind, and the next install reclaims it and names it:</p>
+<pre><code class="language-console">  ok  removed /home/you/.local/bin/.veyyon.download.48213 left by an interrupted install (pid 48213)
+</code></pre>
+<p>A staged file belonging to an installer that is still running is left alone, so two installs at once cannot delete each other’s download.</p>
 <p>On Linux the installer checks which C library your system uses before it downloads anything. The published binaries are built against glibc, so on a musl system (Alpine and similar) the installer stops and tells you to install from source instead. It stops rather than continuing because a musl system would install the binary cleanly and then fail to start it, with a “not found” error from the dynamic loader about a file that is plainly there.</p>
 <h2 id="install-a-specific-version-or-from-source"><a class="header" href="#install-a-specific-version-or-from-source">Install a specific version, or from source</a></h2>
 <p>The installer takes a few options. Pass them after <code>-- </code> when you pipe the script:</p>
@@ -530,12 +646,12 @@ version, and if it finds one it downloads the new binary in the background:</p>
 <pre><code class="language-text">veyyon 1.2.0 installed · restart to use it
 </code></pre>
 <p>The running process keeps the version it started with, so the update takes
-effect the next time you launch. On that launch you get one line naming the new
-version:</p>
-<pre><code class="language-text">Updated to veyyon 1.2.0 · run /changelog for release notes
+effect the next time you launch. On that launch the welcome card’s tip line
+names the new version and points at what you can do about it:</p>
+<pre><code class="language-text">Tip: Updated to veyyon 1.2.0 · /changelog · roll back or turn auto-update off in /settings
 </code></pre>
-<p><code>/changelog</code> opens the release notes on the web rather than printing them into
-your terminal.</p>
+<p>You see it once per update, on the first launch after it. <code>/changelog</code> opens the
+release notes on the web rather than printing them into your terminal.</p>
 <p>Two settings control this, both on by default:</p>
 <div class="table-wrapper">
 <table>
@@ -554,11 +670,60 @@ your terminal.</p>
 <p>You can always update on demand, whichever settings are in force:</p>
 <pre><code class="language-console">$ veyyon update
 </code></pre>
+<h3 id="going-back-to-an-older-version"><a class="header" href="#going-back-to-an-older-version">Going back to an older version</a></h3>
+<p>If a release breaks something you depend on, you do not have to wait for the next
+one. <code>veyyon rollback</code> moves your install to any published version.</p>
+<p>Run it with no arguments and you get a picker over every published version:</p>
+<pre><code class="language-console">$ veyyon rollback
+</code></pre>
+<p>The list opens on the version you are running. Type to filter it, press <code>c</code> to
+open the highlighted version’s changelog in your browser, and press enter to
+choose one. Nothing installs until you choose, and the change takes effect the
+next time you launch.</p>
+<p>If you already know the version you want, or you are writing a script, the same
+command works without the picker. Start by seeing what there is:</p>
+<pre><code class="language-console">$ veyyon rollback --list
+VERSION  PUBLISHED
+1.3.0    2026-07-01  (newer)
+1.2.0    2026-06-01  (current)
+1.1.0    2026-05-01  (previously run)
+</code></pre>
+<p>The markers tell you where you stand: <code>current</code> is the version running now,
+<code>newer</code> is a version you would move forward to, and <code>previously run</code> is one this
+machine has been on before. Then name the one you want:</p>
+<pre><code class="language-console">$ veyyon rollback 1.1.0
+</code></pre>
+<p>That installs 1.1.0 the same way an update installs a new release, verifies the
+binary really is the version it claims, and prints the changelog link for it. Like
+an update, it takes effect the next time you launch.</p>
+<p>Two things it refuses rather than guesses at. Rolling back to the version you are
+already running does nothing useful, so it says so instead of reinstalling and
+reporting success. And a source checkout cannot be rolled back: it updates by
+fast-forwarding its git branch, which only moves forward, so Veyyon tells you
+that rather than quietly reinstalling the latest version. To run an older version
+from a checkout, check the tag out yourself, or install the binary build and roll
+back from there.</p>
+<p>Add <code>--json</code> to <code>--list</code> when you want the same information for a script; each
+row carries the version, its publish date, the markers, and the changelog URL.
+Without a terminal on both ends, the bare <code>veyyon rollback</code> prints the list
+rather than opening a picker nothing can drive, so it is safe in a pipeline.</p>
+<p>You can also reach the picker without leaving a session. Open <code>/settings</code>, go to
+the <code>Interaction</code> tab, and you will find <code>Roll back version</code> directly under
+<code>Automatic Updates</code>, showing the version you are running now. It opens the same
+picker, and choosing a version closes the settings panel first so you can watch
+the install and read anything it has to tell you. The row appears only on an
+install that can actually perform the move, so you will not see it on a source
+checkout.</p>
 <p>Veyyon is distributed only two ways, and it updates the way it was installed. A
 binary install (the <code>curl</code> installer from veyyon.dev) replaces its own binary
 with the newer one it fetches from veyyon.dev; veyyon.dev serves the signed
 release and propagates automatically from GitHub Releases, so that is the only
-place a binary ever comes from. A source checkout updates in its own terms:
+place a binary ever comes from. Before it keeps the new binary it runs the same
+two checks the installer runs: the binary reports the version the release
+claims, and a real search confirms the native addon loads. If either fails the
+previous binary goes back in place and the update reports why, so a release with
+no build for your platform cannot leave you with a binary that starts and then
+fails on your first command. A source checkout updates in its own terms:
 <code>veyyon update</code> fast-forwards the checkout, reinstalls dependencies, and
 regenerates build artifacts, and refreshes the native addon, all in one command.
 It then reads the checkout’s own version back and refuses to report success
@@ -601,6 +766,23 @@ file per shell into the directory bash, zsh, and fish each autoload from. If a
 shell will not load that directory (zsh’s <code>$fpath</code> often does not include it,
 and bash needs the <code>bash-completion</code> package), the installer says so and prints
 the exact line to add, rather than leaving you a file nothing reads.</p>
+<p>Completion knows more than the command names. It offers the models in the
+catalog for <code>--model</code>, your saved sessions for <code>--resume</code>, and for <code>veyyon config</code> it offers the settings that exist and the values each one accepts:</p>
+<pre><code class="language-console">$ veyyon config set startup.&lt;Tab&gt;
+startup.autoUpdate  startup.checkUpdate  startup.quiet  startup.setupWizard
+$ veyyon config set startup.autoUpdate &lt;Tab&gt;
+true  false
+</code></pre>
+<p>Those candidates come from the installed binary itself, so they describe the
+version you are running rather than the version the script was written for. A
+value only you know, an API key or a search term, is left alone: completion
+offers nothing rather than a list of your files.</p>
+<p>Attachments complete as paths. A word starting with <code>@</code> names a file to send
+along with your message, so the shell completes it the way it completes any
+path:</p>
+<pre><code class="language-console">$ vey @src/ma&lt;Tab&gt;
+@src/main.ts
+</code></pre>
 <p>Windows works differently, because PowerShell has no directory it autoloads
 completions from. The installer writes <code>veyyon-completions.ps1</code> next to your
 profile and adds one line to the profile that loads it:</p>
@@ -616,6 +798,9 @@ anyway would give your tool Veyyon’s subcommands. You can ask for that form
 yourself:</p>
 <pre><code class="language-console">$ veyyon completions zsh --no-alias
 </code></pre>
+<p>Updates keep that decision. When Veyyon rewrites your completion files it reads
+the ones already there to see whether they bind <code>vey</code>, and regenerates them the
+same way, so an update never starts completing a command that is not ours.</p>
 <h2 id="uninstall"><a class="header" href="#uninstall">Uninstall</a></h2>
 <p>The installer removes everything it added, and only what it added: the binary, the <code>vey</code> alias, the shell completions it wrote, the cached native addon, and a source checkout if you made one.</p>
 <p>Two things it deliberately leaves behind. If you already had your own <code>vey</code> command, the installer never created that alias in the first place (it says so at install time and tells you to launch with <code>veyyon</code>), so uninstall does not touch it or its completion file. And if your source checkout has uncommitted edits or commits on a local branch that is on no remote, it is moved to <code>~/.veyyon/src.bak-&lt;timestamp&gt;</code> instead of being deleted, so nothing you wrote is lost.</p>
@@ -1173,7 +1358,7 @@ trust the directory.</p>
 <p>When a tool is denied, or a policy check fails, Veyyon returns an error to the model. It
 does not retry with more permission. An error never escalates what the model is allowed to
 do.</p>
-<h2 id="related-3"><a class="header" href="#related-3">Related</a></h2>
+<h2 id="related-4"><a class="header" href="#related-4">Related</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
 <li><a href="#safety-1">Safety</a></li>
@@ -1308,12 +1493,14 @@ have resolvable credentials.</li>
 <p>The conversation model (<code>/model</code> or <code>--model</code>) is separate from background roles. Roles are configured
 under <code>modelRoles</code>:</p>
 <ul>
-<li><code>modelRoles.task</code>: default for spawned subagents unless an agent definition pins its own model.</li>
 <li><code>modelRoles.tiny</code> (or <code>smol</code>): lightweight background work (titles, memory, auto-thinking).</li>
 </ul>
-<p>Precedence for subagents is explicit: an agent definition’s own model pattern wins, otherwise
-<code>modelRoles.task</code>, otherwise the conversation model. There is no silent blend. <code>/status</code> and
-<code>veyyon plugin doctor</code> report the effective values. See
+<p>Subagent models are not roles. They live in the Subagents settings area, where four layers can
+name one, highest first: that agent’s row in <code>subagent.agents</code>, the blanket <code>subagent.model</code>, the
+agent definition’s own <code>model:</code>, otherwise the conversation model. There is no silent blend, and a
+configured value that matches no available model refuses the spawn instead of quietly handing the
+decision to the next layer. <code>/agents</code> shows the resolved model and which of the four decided.
+See <a href="../../settings.html#subagents">Settings: Subagents</a> and
 <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</p>
 <h2 id="automation-note"><a class="header" href="#automation-note">Automation note</a></h2>
 <p>For non-interactive runs, pass the prompt and pick an approval mode that matches your trust boundary:</p>
@@ -1461,7 +1648,7 @@ stops instead. To run unattended, pass <code>--yolo</code> or pick a mode that d
 tiers you need. The process exit status follows the run.</p>
 <h2 id="execpolicy-1"><a class="header" href="#execpolicy-1">Execpolicy</a></h2>
 <p>User and project <code>.rules</code> files further restrict which commands auto-run. Untrusted project directories disable project-local rules, config, and hooks until the directory is trusted.</p>
-<h2 id="related-4"><a class="header" href="#related-4">Related</a></h2>
+<h2 id="related-5"><a class="header" href="#related-5">Related</a></h2>
 <ul>
 <li><a href="#permission-model">Permission model</a></li>
 <li><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a></li>
@@ -1470,7 +1657,7 @@ tiers you need. The process exit status follows the run.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="safety-1"><a class="header" href="#safety-1">Safety</a></h1>
 <p>Commands and file writes go through <strong>approval mode</strong> (<code>tools.approvalMode</code>). There is no OS command sandbox (Landlock, seccomp, Seatbelt, bubblewrap). Policy details: <a href="#approvals">Approvals</a>. Concepts: <a href="#permission-model">Permission model</a>. Summary: <a href="#approvals-and-errors">Approvals and errors</a>.</p>
-<p>Task subagents can use <strong>filesystem isolation</strong> (CoW worktree backends via <code>task.isolation.*</code>) so their edits land in a private tree until merged. That is change-control for subagents, not an OS process sandbox. See task tool docs / <code>task.isolation</code> in settings.</p>
+<p>Task subagents can use <strong>filesystem isolation</strong> (CoW worktree backends via <code>subagent.isolation.*</code>) so their edits land in a private tree until merged. That is change-control for subagents, not an OS process sandbox. See the task tool docs, or the Isolation group in the Subagents settings tab.</p>
 <h2 id="operator-visible-cases"><a class="header" href="#operator-visible-cases">Operator-visible cases</a></h2>
 <div class="table-wrapper">
 <table>
@@ -1489,7 +1676,7 @@ tiers you need. The process exit status follows the run.</p>
 </div>
 <h2 id="headless-1"><a class="header" href="#headless-1">Headless</a></h2>
 <p><code>veyyon --print</code> has no TTY for prompts. Set <code>--approval-mode</code> / <code>--yolo</code> explicitly for the job. Reserve full auto-approve for disposable runners. See <a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a>.</p>
-<h2 id="related-5"><a class="header" href="#related-5">Related</a></h2>
+<h2 id="related-6"><a class="header" href="#related-6">Related</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
 <li><a href="#configuration-4">Configuration</a></li>
@@ -1586,8 +1773,8 @@ external binaries and keys.</p>
 </thead>
 <tbody>
 <tr><td><strong>Interactive model</strong></td><td>Main conversation</td><td><code>/model</code>, <code>--model</code>; persisted as <code>modelRoles.default</code></td></tr>
-<tr><td><strong>Roles</strong></td><td>Named assignments (<code>smol</code>, <code>slow</code>, <code>plan</code>, <code>task</code>, <code>advisor</code>, …)</td><td><code>modelRoles</code> / settings → Model → Roles</td></tr>
-<tr><td><strong>Subagent override</strong></td><td>Task subagents</td><td><code>subagent.model</code> (overrides <code>modelRoles.task</code> when set; else inherit interactive)</td></tr>
+<tr><td><strong>Roles</strong></td><td>Named assignments (<code>smol</code>, <code>slow</code>, <code>plan</code>, <code>advisor</code>, …)</td><td><code>modelRoles</code> / settings → Model → Roles</td></tr>
+<tr><td><strong>Subagent model</strong></td><td>Spawned subagents</td><td><code>subagent.model</code> (or a per-agent model in <code>subagent.agents</code>; unset inherits interactive)</td></tr>
 <tr><td><strong>Compaction override</strong></td><td>Compaction / handoff</td><td><code>compaction.model</code> (else inherit interactive)</td></tr>
 </tbody>
 </table>
@@ -1771,6 +1958,108 @@ the recalled messages). Queueing an empty message is refused with an error.</p>
 <h2 id="next-2"><a class="header" href="#next-2">Next</a></h2>
 <p>Read <a href="#examples">Examples</a> for concrete prompts and workflows.</p>
 <div style="break-before: page; page-break-before: always;"></div>
+<h1 id="subagents"><a class="header" href="#subagents">Subagents</a></h1>
+<p>A subagent is a second veyyon session that your session starts, hands one piece of
+work to, and collects a report from. The parent spawns it with the <code>task</code> tool; the
+subagent has its own context window, so bulk reading and long grinding work stay out
+of the conversation you are having.</p>
+<p>Everything about them is configured in one place: the <strong>Subagents</strong> tab in
+<code>/settings</code>, backed by the <code>subagent.*</code> settings. <code>/agents</code> opens the same agent
+table with a live view of what each agent will run.</p>
+<h2 id="what-you-get-out-of-the-box"><a class="header" href="#what-you-get-out-of-the-box">What you get out of the box</a></h2>
+<p>One agent type, the general-purpose worker, and delegation that is available but
+never pushed:</p>
+<pre><code class="language-yaml">subagent:
+  delegation: allowed   # the task tool is offered; the model decides when to use it
+</code></pre>
+<p>Every subagent runs the model you are working with. Change the model you are talking
+to and your subagents follow it.</p>
+<p>Veyyon also ships five specialists (<code>scout</code>, <code>reviewer</code>, <code>designer</code>, <code>librarian</code>,
+<code>sonic</code>), and they are <strong>not offered</strong> by default. Each agent type you enable adds its
+description to every request you send for the rest of the session, so you pay for the
+ones you use and nothing else. Enable one in the Subagents tab or with <code>/agents</code>.</p>
+<h2 id="how-hard-to-push"><a class="header" href="#how-hard-to-push">How hard to push</a></h2>
+<p><code>subagent.delegation</code> is the one switch for “does this session delegate”:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Value</th><th>What happens</th></tr>
+</thead>
+<tbody>
+<tr><td><code>off</code></td><td>No delegation at all. The <code>task</code> tool is not offered, and every delegation instruction leaves the prompt.</td></tr>
+<tr><td><code>allowed</code></td><td>The default. The tool is there; the model judges when it is worth it.</td></tr>
+<tr><td><code>preferred</code></td><td>The prompt asks the model to fan substantial work out instead of doing it alone.</td></tr>
+<tr><td><code>required</code></td><td>The same, plus a first-turn reminder that delegation is the default here.</td></tr>
+</tbody>
+</table>
+</div>
+<p>The instructions follow what you have enabled. With only the worker offered, nothing
+in the prompt talks about picking an agent type, and nothing tells the model to send
+research to a <code>scout</code> it cannot spawn.</p>
+<h2 id="choosing-agents"><a class="header" href="#choosing-agents">Choosing agents</a></h2>
+<p><code>subagent.agents</code> holds one row per agent name. Two places edit it, and both show
+the same thing:</p>
+<ul>
+<li><strong><code>/settings</code> → Subagents → Agents.</strong> Every discovered agent, with its state, the
+model it resolves to, and the setting that decided. Enter opens one agent to set
+its state, model and effort, or reset it back to defaults.</li>
+<li><strong><code>/agents</code>.</strong> The same rows next to the agent files themselves, so this is where
+you write a new agent. <code>space</code> cycles a row’s state.</li>
+</ul>
+<p>A row can express three states:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>State</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>Offered (default)</strong></td><td>Your own agents and the general worker. Listed in the <code>task</code> tool and choosable by the model.</td></tr>
+<tr><td><strong>Not offered (default)</strong></td><td>The bundled specialists. Not listed, so they cost nothing, but they still run when something names them.</td></tr>
+<tr><td><strong>Blocked</strong></td><td>Refused even when named, with a message pointing at the setting.</td></tr>
+</tbody>
+</table>
+</div>
+<p>The middle state is what keeps the built-in flows working with the specialists off:
+<code>/review</code> asks for <code>agent: "reviewer"</code> by name, and so can you (“use the scout agent
+to map the parser”). Blocking is the stronger, explicit choice.</p>
+<p>Writing an agent file is itself the opt-in: an agent under your own or the project’s
+<code>agents/</code> directory is offered as soon as it exists.</p>
+<h2 id="choosing-models"><a class="header" href="#choosing-models">Choosing models</a></h2>
+<p>Four things can name the model a subagent runs. The first that names one wins:</p>
+<ol>
+<li>that agent’s own row, <code>subagent.agents.&lt;name&gt;.model</code></li>
+<li>the blanket <code>subagent.model</code></li>
+<li>the agent definition’s own <code>model:</code> frontmatter, for an agent you wrote</li>
+<li>otherwise the subagent inherits the model you are working with</li>
+</ol>
+<pre><code class="language-yaml">subagent:
+  model: openai/gpt-5:high             # every subagent
+  agents:
+    reviewer:
+      enabled: true
+      model: anthropic/claude-opus-4-5 # except this one
+</code></pre>
+<p>No bundled agent pins a model, so layer 4 is the normal case and <code>subagent.model</code>
+moves all of them together. <code>subagent.thinkingLevel</code> does the same for effort, and an
+explicit <code>:effort</code> suffix on a model pattern always wins over an agent’s own default.</p>
+<p>Effort is chosen from a list — <code>off</code>, <code>minimal</code> through <code>max</code>, <code>auto</code>, or <code>Inherit</code> —
+in both places, so you cannot set a level that does not exist. If a hand-written config
+holds one that does not, veyyon says so and names the levels that work, rather than
+treating it as <code>Inherit</code> and leaving you with a setting that reads as configured and
+changes nothing.</p>
+<p>A configured model that matches nothing available does <strong>not</strong> quietly fall through to
+the next layer. The spawn is refused and the message names the setting to fix, because
+falling through is indistinguishable from your setting having no effect. Both agent
+surfaces show, for the selected agent, the pattern, the model it resolves to, and
+which of the four layers decided.</p>
+<h2 id="limits-and-isolation"><a class="header" href="#limits-and-isolation">Limits and isolation</a></h2>
+<p>The remaining groups in the tab are operational: how many subagents run at once
+(<code>subagent.maxConcurrency</code>), how deep they may spawn their own (<code>maxRecursionDepth</code>),
+per-run wall clock and request budgets, how long an idle subagent stays in memory
+before being parked to disk (<code>idleTtlMs</code>), and whether their edits land in an isolated
+copy of the tree first (<code>subagent.isolation.*</code>, see <a href="#safety-1">Safety</a>).</p>
+<p>The full key list is in the <a href="../../settings.html#subagents">settings reference</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="multi-agent-monitoring"><a class="header" href="#multi-agent-monitoring">Multi-agent monitoring</a></h1>
 <p>The interactive TUI is the main surface for one session. Status line, session tree, background jobs, <code>/cockpit</code>, and optional swarm orchestration cover multi-agent work.</p>
 <h2 id="status-line"><a class="header" href="#status-line">Status line</a></h2>
@@ -1790,8 +2079,27 @@ the recalled messages). Queueing an empty message is refused with an error.</p>
 </table>
 </div>
 <p>Built-in segment IDs include: <code>pi</code> (legacy product mark segment), <code>profile</code>, <code>model</code>, <code>mode</code>, <code>path</code>, <code>git</code>, <code>pr</code>, <code>subagents</code>, <code>token_in</code>, <code>token_out</code>, <code>token_total</code>, <code>token_rate</code>, <code>cost</code>, <code>context_pct</code>, <code>context_total</code>, <code>time_spent</code>, <code>time</code>, <code>session</code>, <code>hostname</code>, <code>cache_read</code>, <code>cache_write</code>, <code>cache_hit</code>, <code>session_name</code>, <code>usage</code>, <code>collab</code>.</p>
+<p>The <code>model</code> segment shows the model you are working with, then two things that are easy to confuse, so they are drawn differently:</p>
+<ul>
+<li>The <strong>thinking effort</strong> joins the model label as one unit (<code>Sonnet 4.5 @high</code> in the quiet footline, <code>Sonnet 4.5 · high</code> elsewhere), in the model’s own color. It is how much reasoning the model does per turn. Change it with <code>/thinking</code> (its alias is <code>/effort</code>), or set a per-model default under Settings → Model → Default Effort.</li>
+<li>The <strong>priority tier</strong> follows the effort as its own chip, named and in the warning color (<code>⚡ priority</code>, or just <code>priority</code> when your symbol preset has no icon). It is how your requests are queued and served, not how deeply the model thinks. Toggle it with <code>/fast</code>, or set it per provider family under Settings → Model → Service Tier.</li>
+</ul>
+<p>The <code>git</code> segment shows the current branch, and appends the multi-step operation you are part-way through when there is one:</p>
+<pre><code>main                 on a branch, nothing in progress
+detached             detached HEAD
+topic|REBASE         rebasing topic
+main|MERGE           a merge that stopped on a conflict
+main|CHERRY-PICK     a cherry-pick that stopped on a conflict
+main|REVERT          a revert that stopped on a conflict
+main|AM              applying a patch series with git am
+detached|BISECT      bisecting
+</code></pre>
+<p>A rebase detaches HEAD, so without the suffix the segment could only say <code>detached</code>, which tells you neither which branch you are rebasing nor that a rebase is running. Veyyon reads the branch back from the rebase’s own record, so you see <code>topic|REBASE</code>. A merge is the opposite case: it leaves HEAD on its branch, so the segment would look like an ordinary checkout while your working tree holds conflict markers. The suffix is what distinguishes them.</p>
+<p>The <code>pr</code> segment is skipped while any of these operations is in progress. A branch being rebased does not yet point where it is going to end up, so a pull request looked up against it would describe a state that is about to be replaced.</p>
 <p>The <code>profile</code> segment shows the active profile name (<code>work</code>, <code>rec</code>, a client sandbox), so you always know which profile’s config, sessions, and keys are live. It hides itself on the built-in <code>default</code> profile, so an unconfigured status line stays clean. Every built-in preset places it, so switching profiles is visible without any configuration.</p>
-<p>In the composer’s quiet footline the <code>context_pct</code> segment renders as a growing 8-cell bar instead of the <code>pct/window</code> text: <code>▰▰▰▓▱▱▱▱ 38% ∞</code>. Filled cells take the usage hue (silver, then gold, ember, and red as the window fills), and cells at the 25/50/75/90 percent marks lock in gold once reached. The cell at the fill frontier breathes while the model is running (faster once usage passes 90 percent); at rest it is a static quarter-step glyph showing how full the next cell is, so an idle screen never moves. The percent number stays; the window denominator moves to the <code>context_total</code> segment. A session-accent <code>∞</code> after the bar means auto-compaction is on, so the session continues past the window. Classic status-line presets keep the text form.</p>
+<p>The <code>context_pct</code> segment answers one question: how much room is left before the context runs out. “Runs out” means whichever comes first, auto-compaction firing or the model’s window filling, so with auto-compaction on the segment measures against the compaction trigger, not the window. The window itself is what <code>context_total</code> prints.</p>
+<p>In the composer’s quiet footline the segment renders as an 8-cell bar with a labelled percentage: <code>▰▰▰▰▰▰▱▱ 76% left ∞</code>. The bar drains, one cell per eighth of the room remaining, so the bar and the number always agree. Filled cells take the usage hue (silver, then gold, ember, and red as room runs out). While the model is running, the last remaining cell pulses between filled and empty, faster once you are past 90 percent used; at rest the bar never moves, so an idle screen is still. A session-accent <code>∞</code> after the bar means auto-compaction is on, so the session continues past the trigger.</p>
+<p>Classic status-line presets render the same measurement as text, in tokens on both sides of the slash: <code>47K/170K</code>. For a full picture of what is in the window, and how it is divided between the system prompt, tools, skills, and messages, run <code>/context</code>.</p>
 <p>Two run clocks tick alongside the segments, both measuring model runtime, never idle wall time. While the agent runs, the location line (path and git branch) ends with the current run’s elapsed, in <code>M:SS</code> form and widening to <code>H:MM:SS</code> past the hour: <code>…keyhog  ·  main *      12:34</code>. When the run finishes it reads <code>Worked for 12m34s</code> and freezes; before the model has ever started it shows nothing. The working line shows how long the current step has been running, between the step label and the esc hint: <code>Running tests · 0:42 ⟦esc⟧</code>; that clock restarts whenever the step changes. The <code>time_spent</code> segment is related but cumulative: it sums every run in the session (a fresh session with <code>/new</code> starts it at zero) and appears in the <code>full</code> and <code>nerd</code> presets.</p>
 <h2 id="session-tree-and-agents"><a class="header" href="#session-tree-and-agents">Session tree and agents</a></h2>
 <div class="table-wrapper">
@@ -1810,7 +2118,7 @@ the recalled messages). Queueing an empty message is refused with an error.</p>
 </tbody>
 </table>
 </div>
-<p>The inline task widget also shows the model each subagent runs on, right in its status line, so you can see which model every launched subagent used without opening the cockpit. To hide it, turn off <code>task.showResolvedModelBadge</code> (Appearance settings).</p>
+<p>The inline task widget also shows the model each subagent runs on, right in its status line, so you can see which model every launched subagent used without opening the cockpit. To hide it, turn off <code>subagent.showResolvedModelBadge</code> (Subagents settings).</p>
 <p>Session files are append-only JSONL under the active profile’s agent <code>sessions/</code> directory. See <a href="#sessions">Sessions</a>.</p>
 <h2 id="inter-agent-messaging"><a class="header" href="#inter-agent-messaging">Inter-agent messaging</a></h2>
 <p>Subagents and the main agent use the <code>irc</code> tool (<code>send</code>, <code>wait</code>, <code>inbox</code>, <code>list</code>) over a process-global mailbox. <code>/btw</code> is an ephemeral side question; <code>/tan</code> and <code>/omfg</code> spawn background agents for tangential work.</p>
@@ -1833,6 +2141,17 @@ app.history.search: []   # disable
 </code></pre>
 <p>Chord names match the UI (<code>Ctrl+P</code>, <code>Alt+Shift+P</code>, <code>Shift+Enter</code>). Older <code>keybindings.json</code> files migrate
 to <code>.yml</code> on load.</p>
+<p>Action IDs from older releases (<code>interrupt</code>, <code>fork</code>, <code>cursorUp</code>) are renamed to their current IDs
+(<code>app.interrupt</code>, <code>app.session.fork</code>, <code>tui.editor.cursorUp</code>) the first time veyyon loads the file, and
+the file is written back. The rename happens where the binding already sits, so your comments, blank
+lines, and key order come back unchanged:</p>
+<pre><code class="language-yaml"># hold this one, muscle memory
+interrupt: ctrl+x
+</code></pre>
+<p>becomes</p>
+<pre><code class="language-yaml"># hold this one, muscle memory
+app.interrupt: ctrl+x
+</code></pre>
 <p>Common action IDs include <code>app.model.cycleForward</code>, <code>app.model.select</code>, <code>app.plan.toggle</code>,
 <code>app.history.search</code>, <code>app.tools.expand</code>, <code>app.thinking.toggle</code>, <code>app.thinking.cycle</code> (<code>Shift+Tab</code>),
 <code>app.editor.external</code> (<code>Ctrl+G</code>), <code>app.message.followUp</code>, <code>app.retry</code>, <code>app.display.reset</code>, and
@@ -1938,7 +2257,7 @@ follows the print-mode run (<code>veyyon --help</code>).</p>
 <h2 id="approvals-2"><a class="header" href="#approvals-2">Approvals</a></h2>
 <p>Tool approvals use <code>tools.approvalMode</code> and per-tool policy. See <a href="#approvals">Approvals</a> and
 <a href="#safety-1">Safety</a>.</p>
-<h2 id="related-6"><a class="header" href="#related-6">Related</a></h2>
+<h2 id="related-7"><a class="header" href="#related-7">Related</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
 <li><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a></li>
@@ -1986,7 +2305,7 @@ EOF
 </table>
 </div>
 <p>Headless runs have no TTY for approval prompts: choose a mode that does not block (<code>--yolo</code> only on disposable runners) or expect the turn to stop when a prompt would be required. See <a href="#approvals">Approvals</a>.</p>
-<h2 id="related-7"><a class="header" href="#related-7">Related</a></h2>
+<h2 id="related-8"><a class="header" href="#related-8">Related</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
 <li><a href="#safety-1">Safety</a></li>
@@ -2841,7 +3160,7 @@ export default function hook(pi: HookAPI): void {
 <p>Hook/extension paths are resolved as absolute, <code>~</code>-expanded, or relative to cwd. Discovery loads capability-registered modules, importable <code>.ts</code>/<code>.js</code> factories, plugin extension entry points, and explicit paths.</p>
 <h2 id="lifecycle-extension-bus"><a class="header" href="#lifecycle-extension-bus">Lifecycle (extension bus)</a></h2>
 <p>Handlers attach to the runtime event bus used by the extension runner (tool call, session, compaction, and related events as defined in <code>types.ts</code>). Exact event names and payloads are in <code>packages/coding-agent/src/extensibility/hooks/types.ts</code> and <code>docs/hooks.md</code>.</p>
-<h2 id="related-8"><a class="header" href="#related-8">Related</a></h2>
+<h2 id="related-9"><a class="header" href="#related-9">Related</a></h2>
 <ul>
 <li><a href="#custom-hooks-guide">Custom hooks guide</a></li>
 <li>Repository <code>docs/hooks.md</code></li>
@@ -2875,7 +3194,7 @@ export default function (pi: HookAPI): void {
 </ul>
 <h2 id="events"><a class="header" href="#events">Events</a></h2>
 <p>Event names and payloads are defined in <code>packages/coding-agent/src/extensibility/hooks/types.ts</code>. Common surfaces include tool call, permission-related gates (via the approval path), session lifecycle, and compaction. See <code>docs/hooks.md</code> for the typed list and return shapes (<code>block</code>, reasons, message injection).</p>
-<h2 id="related-9"><a class="header" href="#related-9">Related</a></h2>
+<h2 id="related-10"><a class="header" href="#related-10">Related</a></h2>
 <ul>
 <li><a href="#hooks">Hooks</a></li>
 <li><a href="#approvals">Approvals</a></li>
@@ -2913,7 +3232,7 @@ common connection errors, see <a href="#mcp-server-setup">MCP server setup</a>.<
 Veyyon the agent an editor talks to; MCP makes Veyyon the client that talks to tool servers.</li>
 <li><strong>SDK</strong>: embedding the agent in your own host process.</li>
 </ul>
-<h2 id="related-10"><a class="header" href="#related-10">Related</a></h2>
+<h2 id="related-11"><a class="header" href="#related-11">Related</a></h2>
 <ul>
 <li><a href="#mcp-server-setup">MCP server setup</a>: the configuration and troubleshooting guide</li>
 <li><a href="#mcp-3">MCP internals</a>: how the client is built</li>
@@ -3227,7 +3546,7 @@ these primary fields:</p>
 <tr><th>Setting</th><th>Key</th><th>Values</th></tr>
 </thead>
 <tbody>
-<tr><td>Threshold</td><td><code>compaction.thresholdPercent</code></td><td>percent of the context window (<code>compaction.thresholdTokens</code> optional)</td></tr>
+<tr><td>Threshold</td><td><code>compaction.threshold</code></td><td><code>auto</code>, a percent of the window (<code>85%</code>), or a token amount (<code>170000</code>)</td></tr>
 <tr><td>Type</td><td><code>compaction.strategy</code></td><td><code>summary</code> or <code>handoff</code> (schema default <code>summary</code>)</td></tr>
 <tr><td>Model</td><td><code>compaction.model</code></td><td>model id; unset uses the interactive model</td></tr>
 </tbody>
@@ -3239,6 +3558,16 @@ Run on demand with <code>/compact</code>. See <a href="#compaction-and-project-m
 <p>Recalled or summarized memory is <strong>background context</strong>, not instructions. Current user messages,
 tool output, and repo state win on conflict. The agent should cite memory paths when memory changes
 a plan and pair citations with fresh repo evidence.</p>
+<p>It arrives in two places. The guidance that stays the same all session is part of the system prompt.
+Anything that changes while you work, the memories recalled for your current question and the mental
+models when they reload, arrives as a message next to your prompt instead.</p>
+<p>That split is about cost, not ordering. The provider caches the system prompt as the prefix of every
+request; changing it mid-session throws that cache away and the next request re-reads the whole
+conversation at the uncached rate. A recalled memory in the prompt made every recall cost a full
+re-read. The model reads the same text either way.</p>
+<p>A block is sent once. A reload that finds the same memories sends nothing, so your context does not
+grow by a copy of your memories every turn. <code>/memory view</code> shows both halves, so what you read there
+is what the model gets.</p>
 <h2 id="configuration-3"><a class="header" href="#configuration-3">Configuration</a></h2>
 <p>Use <code>/memory</code> or <code>/settings</code> (Memory group), or set keys under <code>memory.*</code>, <code>mnemopi.*</code>,
 <code>hindsight.*</code>, or <code>memories.*</code> depending on the active backend.</p>
@@ -3333,6 +3662,20 @@ $ veyyon profile default work
 <li><code>rm</code> refuses the default profile, the active profile, and destructive deletes without <code>--yes</code>. If you remove the profile that is set as the launch default, its <code>defaultProfile</code> pointer is cleared at the same time, so the next launch falls back to the default profile instead of a directory that no longer exists.</li>
 <li><code>default [name]</code> shows or sets the global <code>defaultProfile</code> (which profile a bare <code>vey</code> launches); <code>default --clear</code> removes it.</li>
 </ul>
+<h3 id="reading-the-size-in-profile-list---json"><a class="header" href="#reading-the-size-in-profile-list---json">Reading the size in <code>profile list --json</code></a></h3>
+<p><code>veyyon profile list --json</code> prints one object per profile. Two of its fields describe disk usage:</p>
+<pre><code class="language-console">$ veyyon profile list --json
+[
+  {
+    "name": "work",
+    "rootDir": "/home/you/.veyyon/profiles/work",
+    "bytes": 41238904,
+    "bytesComplete": true
+  }
+]
+</code></pre>
+<p><code>bytes</code> is the total size of every file under <code>rootDir</code>. <code>bytesComplete</code> tells you whether that total is the whole story. The walk skips anything it cannot read rather than failing the listing, so a directory with no read permission would otherwise make a large profile look small. When a path is skipped, <code>bytesComplete</code> is <code>false</code>, <code>bytes</code> becomes a lower bound, and the skipped paths are written to the profile’s log with the message <code>Profile size is incomplete; some paths could not be read</code>. Check that log when you need to know which path to fix.</p>
+<p>A profile whose directory does not exist yet reports <code>"bytes": 0</code> with <code>"bytesComplete": true</code>: there is nothing there, which is a measurement rather than a failure.</p>
 <p>In the TUI, <code>/profile new &lt;name&gt;</code> (or <code>/profile create &lt;name&gt;</code>) opens a picker listing every carry-over item (AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings), each individually toggleable (all selected by default). The new profile is seeded from the <strong>active</strong> profile with exactly the chosen items. Deleting is available too: <code>/profile rm &lt;name&gt;</code> (or the picker’s <strong>Delete</strong> action) removes a profile after a confirmation, and refuses the active and default profiles. See <a href="#tui-profile-commands">TUI profile commands</a> for the full verb list.</p>
 <p>You can still create a profile implicitly by running <code>veyyon --profile &lt;name&gt;</code> once; use <code>profile new</code> when you want seeding without launching the TUI.</p>
 <h2 id="onboarding-import"><a class="header" href="#onboarding-import">Onboarding import</a></h2>
@@ -3367,7 +3710,7 @@ compaction:
 <tr><th>Concept</th><th>Meaning</th></tr>
 </thead>
 <tbody>
-<tr><td><strong>Interactive model</strong></td><td>The model used for the main conversation. Chosen with <code>/model</code> or <code>--model</code>. Persisted under <code>modelRoles.default</code> (legacy key name; not a selectable “role” in the UI).</td></tr>
+<tr><td><strong>Default model</strong></td><td>The model used for the main conversation, and the one a new session starts on. Chosen with <code>/model</code> or <code>--model</code>, or in <code>/settings</code> under Model. Persisted under <code>modelRoles.default</code>, which is a slot rather than a selectable role, so it does not appear in role pickers.</td></tr>
 <tr><td><strong>Role</strong></td><td>A named model assignment for a kind of work (<code>smol</code>, <code>plan</code>, <code>task</code>, …). Configured in <code>modelRoles</code> / settings → Model → Roles.</td></tr>
 <tr><td><strong>Slot overrides</strong></td><td><code>subagent.model</code> and <code>compaction.model</code>, dedicated destinations that override the corresponding role or inherit the interactive model when unset.</td></tr>
 <tr><td><strong>Profile</strong></td><td>User config tree at <code>~/.veyyon/profiles/&lt;name&gt;/</code> (including <code>default</code>).</td></tr>
@@ -3406,13 +3749,14 @@ modelRoles:
 <tr><td><code>designer</code></td><td>Designer</td><td>Design-oriented work</td></tr>
 <tr><td><code>commit</code></td><td>Commit</td><td>Commit / changelog generation</td></tr>
 <tr><td><code>tiny</code></td><td>Tiny</td><td>Lightweight background (titles, classifiers); else falls back toward <code>@smol</code></td></tr>
-<tr><td><code>task</code></td><td>Subtask</td><td>Task subagents unless <code>subagent.model</code> is set</td></tr>
 <tr><td><code>advisor</code></td><td>Advisor</td><td>Advisor runtime; unset uses thinking-model chain</td></tr>
 </tbody>
 </table>
 </div>
 <p>Custom role names can appear via <code>modelRoles</code>, <code>modelTags</code>, or <code>cycleOrder</code> entries.</p>
-<p>Unset selectable roles <strong>inherit the live interactive model</strong> at use time (except <code>advisor</code>, which uses its own chain when unset).</p>
+<p>Unset selectable roles, <code>advisor</code> included, <strong>inherit the live interactive model</strong> at use time. No role carries a built-in model chain: a role you have not set names no model of its own, so nothing you did not choose ends up running.</p>
+<p>There is no <code>task</code> role. The model your subagents run is set in the Subagents settings area, which owns that decision on its own; see <a href="../../settings.html#subagents">Settings: Subagents</a>.</p>
+<p>To return an assigned role or slot to its unset state, open its picker in <code>/settings</code> and choose the first row, <code>(inherit main model)</code> (the default model’s picker reads <code>(auto-select on launch)</code>). Del or Backspace with an empty search does the same.</p>
 <h2 id="slot-overrides"><a class="header" href="#slot-overrides">Slot overrides</a></h2>
 <div class="table-wrapper">
 <table>
@@ -3420,7 +3764,7 @@ modelRoles:
 <tr><th>Setting</th><th>Effect</th></tr>
 </thead>
 <tbody>
-<tr><td><code>subagent.model</code></td><td>Model for task subagents. Unset → inherit interactive. When set, overrides <code>modelRoles.task</code>.</td></tr>
+<tr><td><code>subagent.model</code></td><td>Model for every subagent that has no model of its own. Unset → inherit interactive. A per-agent model in <code>subagent.agents</code> wins over it.</td></tr>
 <tr><td><code>compaction.model</code></td><td>Model for compaction/handoff. Unset → inherit interactive.</td></tr>
 </tbody>
 </table>
@@ -3464,7 +3808,7 @@ compaction:
 <p>Global <code>~/.veyyon/config.yml</code> holds cross-profile keys such as <code>defaultProfile</code>.<br>Activate: <code>--profile</code>, <code>VEYYON_PROFILE</code>, <code>veyyon profile default &lt;name&gt;</code>, TUI <code>/profiles</code> picker or <code>/profile &lt;name&gt;</code> (relaunch).<br>See <a href="#profiles-1">Profiles</a>, <a href="#file-locations-1">File locations</a>.</p>
 <h2 id="approvals-3"><a class="header" href="#approvals-3">Approvals</a></h2>
 <p><code>tools.approvalMode</code>: <code>plan</code> | <code>ask</code> | <code>auto-edit</code> | <code>yolo</code> (schema default <code>yolo</code>).<br>Aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>.<br>See <a href="#approvals">Approvals</a>.</p>
-<h2 id="related-11"><a class="header" href="#related-11">Related</a></h2>
+<h2 id="related-12"><a class="header" href="#related-12">Related</a></h2>
 <ul>
 <li><a href="#models-and-providers">Models and providers</a></li>
 <li><a href="../../settings.html">Settings: models</a> (repo <code>docs/settings.md</code>)</li>
@@ -3661,6 +4005,57 @@ $ veyyon config path                     # print the active agent directory
 <li><strong>Ephemeral Session Re-root (<code>set_cwd</code> tool / <code>/cwd</code>)</strong>: Re-roots the active session’s working directory temporarily. It never writes <code>session.workdir</code>.</li>
 <li><strong>Prompt Cache Protection</strong>: Working directory changes mid-session update path resolution, but the rendered System Prompt header (<code>&lt;workstation&gt;</code>) remains frozen until context compaction. Mutating system prompt headers mid-session prior to compaction invalidates LLM prefix prompt caches, causing 100% cache-miss token inflation.</li>
 </ul>
+<h3 id="your-comments-and-formatting-survive-a-save"><a class="header" href="#your-comments-and-formatting-survive-a-save">Your comments and formatting survive a save</a></h3>
+<p><code>config.yml</code> is yours to edit by hand, and veyyon writes to the same file when you change a
+setting from <code>/settings</code> or <code>veyyon config set</code>. A save edits only the lines it needs to, so
+your comments, blank lines, key order, and quoting stay as you wrote them:</p>
+<pre><code class="language-yaml"># my machine runs hot
+temperature: 0.7
+
+# search
+topK: 40
+</code></pre>
+<p>Change <code>topK</code> from the UI and the file becomes:</p>
+<pre><code class="language-yaml"># my machine runs hot
+temperature: 0.7
+
+# search
+topK: 60
+</code></pre>
+<p>A new setting is appended at the end, and a setting you reset has its line removed. If the
+key you removed had a comment above it, the comment moves to the next key rather than being
+deleted with it.</p>
+<p>One exception: a file veyyon could not read at all is rewritten from scratch, because there
+is nothing in it to edit. Your original is preserved first, which is the case the next
+section describes.</p>
+<p>The same holds for every other file veyyon writes that you also edit by hand:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>file</th><th>when veyyon writes it</th></tr>
+</thead>
+<tbody>
+<tr><td><code>config.yml</code></td><td>you change a setting from <code>/settings</code> or <code>veyyon config set</code></td></tr>
+<tr><td><code>~/.veyyon/config.yml</code></td><td>you set a default profile or profile sharing</td></tr>
+<tr><td><code>keybindings.yml</code></td><td>a binding you wrote uses a name from an older release</td></tr>
+<tr><td><code>WATCHDOG.yml</code></td><td>you edit an advisor from the dashboard</td></tr>
+</tbody>
+</table>
+</div>
+<p>A <code>keybindings.yml</code> using older binding names is the interesting one, because veyyon renames
+those names for you on the next launch. The rename happens where the binding already sits, so
+this:</p>
+<pre><code class="language-yaml"># hold this one, muscle memory
+interrupt: ctrl+x
+</code></pre>
+<p>becomes this, and not a file with the binding moved to the bottom and the comment left behind:</p>
+<pre><code class="language-yaml"># hold this one, muscle memory
+app.interrupt: ctrl+x
+</code></pre>
+<p>Copying a profile follows the same rule. <code>veyyon profile new &lt;new&gt; --from &lt;old&gt;</code> copies the
+old profile’s <code>config.yml</code> and removes one key from the copy, <code>profile.displayName</code>, so the new
+profile does not claim the old one’s name. Everything else in the file, comments included,
+arrives exactly as you wrote it.</p>
 <h3 id="when-a-settings-file-has-a-syntax-error"><a class="header" href="#when-a-settings-file-has-a-syntax-error">When a settings file has a syntax error</a></h3>
 <p>If you edit a config file by hand and leave it with invalid YAML, veyyon cannot
 read it. It tells you at startup, names the file, and runs the session on
@@ -3680,6 +4075,20 @@ as the start of a nested mapping, so this line is invalid:</p>
 </code></pre>
 <p>Fix the syntax in the original file, or copy the preserved file back over it and
 edit from there.</p>
+<h3 id="when-a-setting-cannot-be-saved"><a class="header" href="#when-a-setting-cannot-be-saved">When a setting cannot be saved</a></h3>
+<p>If veyyon cannot write your config file, it tells you in the session rather than letting the
+change disappear. This happens when the file or its directory is not writable, when the disk
+is full, or when something has left a directory where <code>config.yml</code> should be:</p>
+<pre><code class="language-text">Could not save your settings after 3 attempts, so this change will not survive a restart:
+  ~/.veyyon/profiles/default/agent/config.yml
+    EACCES: permission denied, open '~/.veyyon/profiles/default/agent/config.yml'
+Check that the file and its directory are writable, then change the setting again.
+</code></pre>
+<p>The setting still applies to the session you are in, which is why the message matters: the UI
+shows the new value, and without it your only clue would be the setting reverting the next
+time you launch. Veyyon retries first and reports only when the retries have not worked, so a
+brief clash with another veyyon writing at the same moment stays quiet. Fix the permissions
+and change the setting again, and nothing further is reported.</p>
 <h2 id="pick-models-and-providers"><a class="header" href="#pick-models-and-providers">Pick models and providers</a></h2>
 <p>Three explicit model slots, each set on its own:</p>
 <div class="table-wrapper">
@@ -3689,7 +4098,7 @@ edit from there.</p>
 </thead>
 <tbody>
 <tr><td>Choose the model you talk to</td><td><code>--model</code> / <code>/model</code> (persisted as <code>modelRoles.default</code>)</td></tr>
-<tr><td>Model for spawned subagents</td><td><code>subagent.model</code></td></tr>
+<tr><td>Model for spawned subagents</td><td><code>subagent.model</code> (Subagents tab)</td></tr>
 <tr><td>Model for context compaction</td><td><code>compaction.model</code></td></tr>
 <tr><td>Named model assignments (optional)</td><td><code>modelRoles</code>, per profile (settings → Models → Roles)</td></tr>
 <tr><td>Add a local or BYOK provider</td><td>a <code>providers:</code> entry in <code>models.yml</code> (see <a href="#models-and-providers">Models</a>)</td></tr>
@@ -3702,7 +4111,7 @@ modelRoles:
   smol: openai/gpt-4.1-mini
   task: deepseek/deepseek-chat
 subagent:
-  model: deepseek/deepseek-chat   # optional; overrides modelRoles.task
+  model: deepseek/deepseek-chat   # optional; unset means subagents inherit your model
 compaction:
   model: openai/gpt-5-mini        # optional; else inherit interactive
 </code></pre>
@@ -3751,7 +4160,7 @@ separate OS shell sandbox, the approval mode is the only boundary; see
 <tr><th>Goal</th><th>What to set</th></tr>
 </thead>
 <tbody>
-<tr><td>Auto-compaction threshold</td><td><code>compaction.thresholdPercent</code> (also <code>compaction.thresholdTokens</code>)</td></tr>
+<tr><td>Auto-compaction threshold</td><td><code>compaction.threshold</code>: <code>auto</code>, a percent (<code>85%</code>), or a token amount (<code>170000</code>)</td></tr>
 <tr><td>Compaction type</td><td><code>compaction.strategy</code>: <code>summary</code> or <code>handoff</code> (schema default <code>summary</code>)</td></tr>
 <tr><td>Compaction model</td><td><code>compaction.model</code> (unset = interactive model)</td></tr>
 <tr><td>Cross-session memory backend</td><td><code>memory.backend</code>: <code>off</code> (default), <code>local</code>, <code>hindsight</code>, <code>mnemopi</code></td></tr>
@@ -3804,6 +4213,30 @@ saved transcript, so an entry never has to agree with an older one. Once the
 agent has loaded a project, veyyon lists its handles in the system prompt, and
 the model writes them from then on. A session where the agent never loads
 anything simply writes full strings, exactly as if Argot were off.</p>
+<h3 id="you-never-see-a-handle"><a class="header" href="#you-never-see-a-handle">You never see a handle</a></h3>
+<p>Shorthand is for the model, not for you. Everywhere veyyon shows you what the
+model wrote, it shows the full text. If the model writes <code>§conn</code>, you read
+<code>packages/server/src/database/connection.ts</code>.</p>
+<p>That holds for every surface, not only the reply text:</p>
+<ul>
+<li>the answer as it streams in, and the finished message</li>
+<li>the model’s reasoning, when you have thinking blocks visible</li>
+<li>a tool call’s arguments, including the file body of a <code>write</code> while it is
+still being typed out</li>
+<li>the one-line intent shown beside a running tool</li>
+<li>the transcript after you resize the window, change theme, or resume the
+session later</li>
+<li><code>--print</code> output and an exported or shared session</li>
+</ul>
+<p>The saving is real all the same, because the short form is what stays in the
+conversation the model rereads. You are reading an expanded copy; the model is
+reading the handles. A handle is only ever expanded for display, so nothing you
+see depends on the dictionary still being loaded.</p>
+<p>One detail is worth knowing if you watch closely. While a handle is arriving,
+veyyon holds back the last few characters rather than showing you a partial
+<code>§co</code> that is about to become something else. The text catches up on the next
+chunk. You may notice a word appearing a fraction later; you will not see a
+handle.</p>
 <h3 id="choose-which-models-write-shorthand"><a class="header" href="#choose-which-models-write-shorthand">Choose which models write shorthand</a></h3>
 <p>Enabling Argot alone does not make any model write handles. You also list the
 models allowed to do so:</p>
@@ -3941,7 +4374,7 @@ $ # edit ~/.veyyon/profiles/work/agent/config.yml
 }
 </code></pre>
 <p>Hooks: TypeScript modules under project/profile hook paths (<code>pi.on(...)</code>). See <a href="#hooks">Hooks</a>, <a href="#task-guides">Task guides</a>. MCP: <a href="#mcp">MCP</a>.</p>
-<h2 id="related-12"><a class="header" href="#related-12">Related</a></h2>
+<h2 id="related-13"><a class="header" href="#related-13">Related</a></h2>
 <ul>
 <li><a href="#getting-started">Getting started</a></li>
 <li><a href="#task-guides">Task guides</a></li>
@@ -3980,7 +4413,7 @@ $ veyyon plugin features &lt;plugin&gt; --disable f1    # turn features off
 $ veyyon plugin features &lt;plugin&gt; --set f1,f2     # replace the enabled set
 </code></pre>
 <p>See <a href="#plugins">Plugins</a> for installation and management.</p>
-<h2 id="related-13"><a class="header" href="#related-13">Related</a></h2>
+<h2 id="related-14"><a class="header" href="#related-14">Related</a></h2>
 <p>Tool approvals are not feature flags, they use <code>tools.approvalMode</code> and per-tool policy.
 See <a href="#approvals">Approvals</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -3995,7 +4428,7 @@ See <a href="#approvals">Approvals</a>.</p>
 <p>External tools via Model Context Protocol: client config in <code>mcp.json</code> (user profile and/or project). See <a href="#mcp">MCP</a>.</p>
 <h2 id="hooks-1"><a class="header" href="#hooks-1">Hooks</a></h2>
 <p>TypeScript modules with <code>pi.on(...)</code>, not JSON command tables. See <a href="#hooks">Hooks</a>.</p>
-<h2 id="related-14"><a class="header" href="#related-14">Related</a></h2>
+<h2 id="related-15"><a class="header" href="#related-15">Related</a></h2>
 <ul>
 <li><a href="#configuration-4">Configuration</a>: approval mode and settings paths</li>
 <li><a href="#mechanisms">Mechanisms</a></li>
@@ -4260,7 +4693,7 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 <tr><th>Command</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>/compact [focus]</code></td><td>Compact context now (<code>compaction.model</code> + type); optional focus string</td></tr>
+<tr><td><code>/compact [summary|handoff] [focus]</code></td><td>Compact context now (<code>compaction.model</code> + type); optional type override and focus string</td></tr>
 <tr><td><code>/shake [elide|images]</code></td><td>Shake tool-result bulk</td></tr>
 <tr><td><code>/handoff</code></td><td>Compaction handoff helper</td></tr>
 <tr><td><code>/context</code></td><td>Context usage report</td></tr>
@@ -4588,7 +5021,7 @@ active profile is selected by its own variable:</p>
 <tr><th>Variable</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>VEYYON_CONFIG_DIR</code></td><td>Overrides the config directory <strong>name</strong> under <code>$HOME</code> (default <code>.veyyon</code>). Does not accept a full path.</td></tr>
+<tr><td><code>VEYYON_CONFIG_DIR</code></td><td>Overrides the config directory <strong>name</strong> under <code>$HOME</code> (default <code>.veyyon</code>). It is a name, not a path. An absolute value is refused at startup, with a message naming the directory it would otherwise have created inside your home; to place the config root on another volume, use the <code>XDG_*_HOME</code> variables below.</td></tr>
 <tr><td><code>VEYYON_CODING_AGENT_DIR</code></td><td>Full override for the agent directory (default <code>~/&lt;config-dir-name&gt;/profiles/&lt;active-or-default&gt;/agent</code>).</td></tr>
 <tr><td><code>VEYYON_PROFILE</code></td><td>Selects the active named profile (<code>~/.veyyon/profiles/&lt;name&gt;/agent</code>).</td></tr>
 <tr><td><code>VEYYON_PACKAGE_DIR</code></td><td>Override package directory for bundled assets (Nix/Guix).</td></tr>
@@ -5085,7 +5518,7 @@ your own keys and choose models.</p>
 <li><strong>Tool-output bounds</strong>: truncation limits behave as configured and remain visible to the model.</li>
 <li><strong>Architecture gates</strong>: layering, re-exports, and related repo checks (see project CI / <code>STANDARD.md</code> where applicable).</li>
 </ul>
-<h2 id="related-15"><a class="header" href="#related-15">Related</a></h2>
+<h2 id="related-16"><a class="header" href="#related-16">Related</a></h2>
 <ul>
 <li><a href="#the-repair-cascade">The repair cascade</a></li>
 <li><a href="#the-hashline-edit-engine">The hashline edit engine</a></li>
@@ -5112,7 +5545,7 @@ your own keys and choose models.</p>
 </table>
 </div>
 <p>Implementation: <code>packages/coding-agent/src/repair/schema-repair.ts</code><br>Tests: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code></p>
-<h2 id="related-16"><a class="header" href="#related-16">Related</a></h2>
+<h2 id="related-17"><a class="header" href="#related-17">Related</a></h2>
 <ul>
 <li><a href="#the-repair-cascade">The repair cascade</a>: ordered rules</li>
 <li><a href="#per-model-repair-posture">Per-model posture</a>: harness profiles</li>
@@ -5131,7 +5564,7 @@ your own keys and choose models.</p>
 </ol>
 <p>Conformance suite: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code> (alias renames, ambiguity refusals, strict-mode refusals, and a guard that strict rejection does not fire on ArkType/Zod wire schemas that synthesize <code>additionalProperties: false</code> for closed-object emission rather than authorial strictness).</p>
 <p>Per-model enable/disable and tool allowlist hints: <a href="#per-model-repair-posture">Per-model posture</a>.</p>
-<h2 id="related-17"><a class="header" href="#related-17">Related</a></h2>
+<h2 id="related-18"><a class="header" href="#related-18">Related</a></h2>
 <ul>
 <li><a href="#tool-call-repair">Why repair exists</a></li>
 <li><a href="#repair-on-edits">Repair on edits</a></li>
@@ -5173,7 +5606,7 @@ your own keys and choose models.</p>
 </ul>
 <h2 id="opentelemetry"><a class="header" href="#opentelemetry">OpenTelemetry</a></h2>
 <p>When <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> or <code>OTEL_EXPORTER_OTLP_TRACES_ENDPOINT</code> is set, the process registers an OTLP/protobuf trace exporter and exports agent-loop spans (<code>invoke_agent</code>, <code>chat</code>, <code>execute_tool</code>, …). Standard <code>OTEL_*</code> env vars apply (<code>OTEL_SERVICE_NAME</code>, headers, <code>OTEL_SDK_DISABLED</code>, <code>OTEL_TRACES_EXPORTER=none</code>). Transport is <code>http/protobuf</code> only. See <code>packages/coding-agent/src/telemetry-export.ts</code>.</p>
-<h2 id="related-18"><a class="header" href="#related-18">Related</a></h2>
+<h2 id="related-19"><a class="header" href="#related-19">Related</a></h2>
 <ul>
 <li><a href="#observability">Observability</a></li>
 <li><a href="#the-repair-cascade">Repair cascade</a></li>
@@ -5456,26 +5889,46 @@ behind it.</p>
 <h2 id="context-compaction"><a class="header" href="#context-compaction">Context compaction</a></h2>
 <p>Primary compaction knobs (settings → Models → Compaction, or <code>config.yml</code>):</p>
 <ul>
-<li><strong>Threshold</strong> (<code>compaction.thresholdTokens</code>): an absolute token amount,
-model-independent. Auto-compaction runs once context exceeds this many
-tokens, whatever the current model’s window is. This is the primary knob.
-When the amount is larger than the current model’s window, it is honored up
-to one token below the window and you get a one-time warning. Set it to
-<code>Default</code> (<code>-1</code>) to fall back to the legacy percent trigger
-(<code>compaction.thresholdPercent</code>), which is a percent of the current model’s
-window. You can also compact on demand with <code>/compact</code>.</li>
-<li><strong>Type</strong> (<code>compaction.strategy</code>): how history is compressed:
+<li>
+<p><strong>Threshold</strong> (<code>compaction.threshold</code>): when auto-compaction runs. The unit is
+part of the value, so one setting covers all three ways you might want to say
+it:</p>
+<ul>
+<li><code>auto</code> (the default) triggers at the model’s context window minus the
+reserve, so it adapts to whatever model you are on.</li>
+<li><code>85%</code> is a percent of the current model’s window, so the trigger moves with
+the model.</li>
+<li><code>170000</code> is an absolute token amount and triggers at the same point on every
+model. When the amount is larger than the current model’s window it is
+honored up to one token below the window and you get a one-time warning.</li>
+</ul>
+<p>You can also compact on demand with <code>/compact</code>.</p>
+</li>
+<li>
+<p><strong>Type</strong> (<code>compaction.strategy</code>): how history is compressed:</p>
 <ul>
 <li><code>summary</code>: rewrites old history into an in-place LLM summary on the current branch (the default).</li>
 <li><code>handoff</code>: writes a structured handoff summary that preserves the task, pending questions, and
 recent decisions, then continues from it (LLM transfer path).</li>
 </ul>
 </li>
-<li><strong>Model</strong> (<code>compaction.model</code>): the model that performs LLM compaction / handoff. Unset uses your
-interactive model. See <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</li>
+<li>
+<p><strong>Model</strong> (<code>compaction.model</code>): the model that performs LLM compaction / handoff. Unset uses your
+interactive model. See <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</p>
+</li>
 </ul>
 <p><code>/compact &lt;focus&gt;</code> steers a run with an “Additional focus:” directive. Recent user messages are
 retained verbatim up to the type’s budget.</p>
+<p>You can also pick the type for a single run by naming it first: <code>/compact summary</code> or
+<code>/compact handoff</code>. The name is a one-off override, so it does not change
+<code>compaction.strategy</code>. Anything after the name is focus text, as in
+<code>/compact handoff keep the auth details</code>.</p>
+<p>Two older names, <code>soft</code> and <code>remote</code>, are no longer types. Both existed only to steer a
+provider-native compaction path that veyyon has removed, so there is nothing left for them to
+select. If you type one, veyyon compacts with your configured type, treats the whole argument
+as focus text, and says which name you used and what to use instead. Your text is passed
+through exactly as you typed it, because a sentence that happens to start with “soft” is a
+reasonable thing to ask for.</p>
 <h2 id="shake-and-duplicate-elision"><a class="header" href="#shake-and-duplicate-elision">Shake and duplicate elision</a></h2>
 <p>Shake is a lighter reducer than compaction. Instead of summarizing history, it drops heavy
 content out of the live context and leaves a short placeholder in its place. Whole tool
@@ -5515,7 +5968,7 @@ Veyyon is provider-agnostic: roles are not hard-coded provider assumptions.</p>
 <li><strong>Subagents</strong> via the <code>task</code> tool (<code>packages/coding-agent/src/task/executor.ts</code>) and <code>/agents</code>
 thread switching.</li>
 <li><strong>Explicit model slots</strong>, not a role→model matrix: the interactive model (<code>/model</code>), plus plain
-<code>subagent.model</code> and <code>compaction.model</code> fields in settings. <code>default</code> is not a model or a role. Named
+<code>subagent.model</code> and <code>compaction.model</code> fields in settings (<code>subagent.model</code> belongs to the Subagents area, not the role table). <code>default</code> is not a model or a role. Named
 <strong>roles</strong> (<code>modelRoles</code>, scoped per profile) exist for anyone who wants specific work types pinned to
 specific models, but editing them lives in a settings group, not the model picker. See
 <a href="#compaction-and-project-memory">Compaction &amp; project memory</a> and
@@ -5588,7 +6041,7 @@ veyyon plugin doctor
 <p>Policy is <strong><code>tools.approvalMode</code></strong> and <code>tools.approval</code> (plus execpolicy <code>.rules</code>). There is no OS command sandbox. Schema default is <strong><code>yolo</code></strong>. See <a href="#approvals">Approvals</a> and <a href="#configuration-4">Configuration</a>.</p>
 <h2 id="truncated-tool-output"><a class="header" href="#truncated-tool-output">Truncated tool output</a></h2>
 <p>Tool results truncate at configured budgets; the result text should state that truncation occurred and how to continue (limit, offset, narrower query). See <a href="#context-size-and-retries">Context size and retries</a>, <a href="#bounded-reads-and-search">Bounded reads and search</a>.</p>
-<h2 id="related-19"><a class="header" href="#related-19">Related</a></h2>
+<h2 id="related-20"><a class="header" href="#related-20">Related</a></h2>
 <ul>
 <li><a href="#approvals-and-errors">Approvals and errors</a></li>
 <li><a href="#observability">Observability</a></li>

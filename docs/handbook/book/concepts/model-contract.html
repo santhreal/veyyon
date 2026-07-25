@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f3663b17.js";
+            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-de67d70d.js"></script>
+        <script src="../toc-578177b6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -323,12 +323,14 @@ have resolvable credentials.</li>
 <p>The conversation model (<code>/model</code> or <code>--model</code>) is separate from background roles. Roles are configured
 under <code>modelRoles</code>:</p>
 <ul>
-<li><code>modelRoles.task</code>: default for spawned subagents unless an agent definition pins its own model.</li>
 <li><code>modelRoles.tiny</code> (or <code>smol</code>): lightweight background work (titles, memory, auto-thinking).</li>
 </ul>
-<p>Precedence for subagents is explicit: an agent definition’s own model pattern wins, otherwise
-<code>modelRoles.task</code>, otherwise the conversation model. There is no silent blend. <code>/status</code> and
-<code>veyyon plugin doctor</code> report the effective values. See
+<p>Subagent models are not roles. They live in the Subagents settings area, where four layers can
+name one, highest first: that agent’s row in <code>subagent.agents</code>, the blanket <code>subagent.model</code>, the
+agent definition’s own <code>model:</code>, otherwise the conversation model. There is no silent blend, and a
+configured value that matches no available model refuses the spawn instead of quietly handing the
+decision to the next layer. <code>/agents</code> shows the resolved model and which of the four decided.
+See <a href="../../../settings.html#subagents">Settings: Subagents</a> and
 <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</p>
 <h2 id="automation-note"><a class="header" href="#automation-note">Automation note</a></h2>
 <p>For non-interactive runs, pass the prompt and pick an approval mode that matches your trust boundary:</p>

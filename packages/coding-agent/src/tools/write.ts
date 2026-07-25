@@ -21,7 +21,7 @@ import {
 } from "@veyyon/utils";
 import { type } from "arktype";
 
-import { canonicalSnapshotKey, getFileSnapshotStore } from "../edit/file-snapshot-store";
+import { allLineNumbers, canonicalSnapshotKey, getFileSnapshotStore } from "../edit/file-snapshot-store";
 import { normalizeToLF } from "../edit/normalize";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { InternalUrlRouter } from "../internal-urls";
@@ -30,7 +30,7 @@ import { createLspWritethrough, type FileDiagnosticsResult, type WritethroughCal
 import { DeferredDiagnostics } from "../lsp/deferred-diagnostics";
 import { getDiagnosticsLedger } from "../lsp/diagnostics-ledger";
 import { getLanguageFromPath, highlightCode, type Theme } from "../modes/theme/theme";
-import writeDescription from "../prompts/tools/write.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import type { ToolSession } from "../sdk";
 import { fileHyperlink, framedBlock, renderStatusLine } from "../tui";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
@@ -55,7 +55,13 @@ import {
 } from "./conflict-detect";
 import { invalidateFsScanAfterWrite } from "./fs-cache-invalidation";
 import { type OutputMeta, outputMeta } from "./output-meta";
-import { formatPathRelativeToCwd, isInternalUrlPath, pathTargetsSsh, peelWriteUrlSelector } from "./path-utils";
+import {
+	formatPathRelativeToCwd,
+	isInternalUrlPath,
+	pathTargetsSsh,
+	peelWriteUrlSelector,
+	resolveStoredPathCase,
+} from "./path-utils";
 import { enforcePlanModeWrite, resolvePlanPath, unwrapHashlineHeaderPath } from "./plan-mode-guard";
 import {
 	cachedRenderedString,
@@ -250,7 +256,15 @@ function stripWriteContent(session: ToolSession, content: string): { text: strin
 function maybeWriteSnapshotHeader(session: ToolSession, absolutePath: string, content: string): string | undefined {
 	if (!resolveFileDisplayMode(session).hashLines) return undefined;
 	const normalized = normalizeToLF(content);
-	const tag = getFileSnapshotStore(session).record(canonicalSnapshotKey(absolutePath), normalized);
+	// Every line is recorded as seen: the model authored the bytes, so the
+	// patcher's unseen-anchor gate should RUN and pass rather than be skipped
+	// by an empty provenance set. See allLineNumbers for why that distinction
+	// matters even though the two are indistinguishable today.
+	const tag = getFileSnapshotStore(session).record(
+		canonicalSnapshotKey(absolutePath),
+		normalized,
+		allLineNumbers(normalized),
+	);
 	return formatHashlineHeader(formatPathRelativeToCwd(absolutePath, session.cwd), tag);
 }
 
@@ -457,7 +471,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 						: undefined,
 				})
 			: writethroughNoop;
-		this.description = prompt.render(writeDescription);
+		this.description = prompt.render(PROMPTS["tools/write"].text);
 	}
 
 	async #resolveArchiveWritePath(writePath: string): Promise<ResolvedArchiveWritePath | null> {
@@ -1066,11 +1080,18 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			const batchRequest = getLspBatchRequest(context?.toolCall);
 
 			// Check if file exists and is auto-generated before overwriting
-			if (await fs.exists(absolutePath)) {
+			const overwritingExistingFile = await fs.exists(absolutePath);
+			if (overwritingExistingFile) {
 				await assertEditableFile(absolutePath, path);
 			}
 
-			const displayPath = formatPathRelativeToCwd(absolutePath, this.session.cwd);
+			// On a case-insensitive filesystem the existing directory entry keeps
+			// its own spelling: writing to `Foo.ts` updates `foo.ts` and does NOT
+			// rename it. Report the name the filesystem actually stores, or the
+			// operator greps for a filename that does not exist. No-op for a new
+			// file (nothing is stored yet) and on a case-sensitive filesystem.
+			const reportedPath = overwritingExistingFile ? resolveStoredPathCase(absolutePath) : absolutePath;
+			const displayPath = formatPathRelativeToCwd(reportedPath, this.session.cwd);
 			emitWriteProgress(onUpdate, cleanContent, displayPath, absolutePath);
 
 			// Try ACP bridge first for editor-visible filesystem paths. Internal

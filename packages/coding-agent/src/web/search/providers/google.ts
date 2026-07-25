@@ -3,16 +3,18 @@ import { errorMessage } from "@veyyon/utils";
 import { parseHTML } from "linkedom";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
-import { clampNumResults, collapseWhitespace } from "../utils";
+import { clampNumResults, collapseWhitespace, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import type { LoadedHtmlPage } from "./browser-page";
 import { browserFetch } from "./browser-page";
-import { withHardTimeout } from "./utils";
+import { isExternalHttpUrl, parseResultUrl, withHardTimeout } from "./utils";
 
 const GOOGLE_HOME_URL = "https://www.google.com/";
+
+/** Hosts that belong to the engine itself, so a link back into it is not a result. Matched as the host or any subdomain. */
+const GOOGLE_OWN_HOSTS: readonly string[] = ["google.com"];
 const GOOGLE_SEARCH_URL = "https://www.google.com/search";
-const DEFAULT_NUM_RESULTS = 10;
 const MAX_NUM_RESULTS = 20;
 const RESULT_RENDER_TIMEOUT_MS = 10_000;
 
@@ -37,26 +39,24 @@ interface ParsedResult {
 }
 
 function unwrapResultUrl(href: string): string | undefined {
-	let url: URL;
-	try {
-		url = new URL(href, GOOGLE_HOME_URL);
-	} catch {
-		return undefined;
-	}
+	let url = parseResultUrl(href, GOOGLE_HOME_URL);
+	if (!url) return undefined;
 
-	if ((url.hostname === "google.com" || url.hostname === "www.google.com") && url.pathname === "/url") {
+	// Google routes clicks through `/url?q=<target>`, so the wrapper has to be opened before the host rule
+	// can be applied -- otherwise every result reads as a link back to google.com and is rejected.
+	if (isGoogleHost(url.hostname) && url.pathname === "/url") {
 		const target = url.searchParams.get("q") || url.searchParams.get("url");
-		if (!target) return undefined;
-		try {
-			url = new URL(target);
-		} catch {
-			return undefined;
-		}
+		const unwrapped = parseResultUrl(target, GOOGLE_HOME_URL);
+		if (!unwrapped) return undefined;
+		url = unwrapped;
 	}
 
-	if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
-	if (url.hostname === "google.com" || url.hostname === "www.google.com") return undefined;
-	return url.href;
+	return isExternalHttpUrl(url, GOOGLE_OWN_HOSTS) ? url.href : undefined;
+}
+
+/** Whether a hostname is Google's own, for the redirect-wrapper check above. */
+function isGoogleHost(hostname: string): boolean {
+	return GOOGLE_OWN_HOSTS.some(host => hostname === host || hostname.endsWith(`.${host}`));
 }
 
 function findSnippet(heading: Element): string | undefined {
@@ -160,7 +160,11 @@ async function callGoogleHtml(params: SearchParams, numResults: number): Promise
 
 /** Execute a Google web search with fetch-first loading and a headless-browser fallback. */
 export async function searchGoogle(params: SearchParams): Promise<SearchResponse> {
-	const numResults = clampNumResults(params.numSearchResults ?? params.limit, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
+	const numResults = clampNumResults(
+		params.numSearchResults ?? params.limit,
+		SEARCH_DEFAULT_NUM_RESULTS,
+		MAX_NUM_RESULTS,
+	);
 	const html = await callGoogleHtml(params, numResults);
 	const parsed = parseHtmlResults(html);
 

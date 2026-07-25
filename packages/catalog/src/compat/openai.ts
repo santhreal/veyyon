@@ -31,6 +31,7 @@ import type {
 	ResolvedOpenRouterCompat,
 } from "../types";
 import { applyCompatOverrides } from "./apply";
+import { matchesKimiK27CodeFamily } from "./kimi";
 
 /** GLM coding-plan SKUs idle for minutes mid-reasoning; see `streamIdleTimeoutMs`. */
 const GLM_CODING_PLAN_MODEL_PATTERN = /(^|\/)glm-5(?:[.-]|$)/i;
@@ -47,12 +48,6 @@ const KIMI_K26_REASONING_STREAM_IDLE_TIMEOUT_MS = 300_000;
  * OpenRouter `openrouter`, …) MUST keep their per-dialect disable shape —
  * gating on `isMoonshotKimi` is the caller's responsibility.
  */
-const KIMI_K27_CODE_MODEL_PATTERN = /(?:^|\/)kimi[-._]?k2(?:[._-]?|p)7[-._]?code(?:[-._]?highspeed)?$/i;
-
-function matchesKimiK27CodeFamily(spec: ModelSpec<"openai-completions">): boolean {
-	if (KIMI_K27_CODE_MODEL_PATTERN.test(spec.id)) return true;
-	return spec.id === "kimi-for-coding" && /k2\.?7 code/i.test(spec.name ?? "");
-}
 /** Xiaomi MiMo Pro on api.xiaomimimo.com can stall ~2min before the first event (issue #1770). */
 const XIAOMI_MIMO_STREAM_IDLE_TIMEOUT_MS = 300_000;
 /** Alibaba Coding Plan (coding-intl.dashscope) qwen models idle before the first event (issue #1770). */

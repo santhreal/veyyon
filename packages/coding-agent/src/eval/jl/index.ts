@@ -6,11 +6,12 @@ import {
 	resolveEvalUrlRoots,
 } from "../backend";
 import {
+	readSetting,
 	namespaceSessionId as sharedNamespace,
 	readInterpreterSetting as sharedReadInterpreterSetting,
 	toExecutorBackendResult,
 } from "../backend-helpers";
-import { executeJulia } from "./executor";
+import { executeJulia, type JuliaExecutorOptions } from "./executor";
 import { checkJuliaKernelAvailability } from "./kernel";
 
 const JULIA_SESSION_PREFIX = "julia:";
@@ -36,6 +37,7 @@ export default {
 	async execute(code: string, opts: ExecutorBackendExecOptions): Promise<ExecutorBackendResult> {
 		const result = await executeJulia(code, {
 			cwd: opts.cwd,
+			kernelMode: readSetting<JuliaExecutorOptions["kernelMode"]>(opts.session, "julia.kernelMode"),
 			idleTimeoutMs: opts.idleTimeoutMs,
 			signal: opts.signal,
 			sessionId: namespaceSessionId(opts.sessionId),

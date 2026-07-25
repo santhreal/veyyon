@@ -85,6 +85,9 @@ function readStringSetting(key: "providers.tts" | "tts.localModel" | "tts.localV
 		const value = settings.get(key);
 		return typeof value === "string" ? value : undefined;
 	} catch {
+		// `settings.get` throws when there is no settings context at all (a bare library caller, a unit
+		// test). Undefined means "unset", which is exactly what the caller does next: fall back to the
+		// documented default. A configured value can never arrive here as undefined.
 		return undefined;
 	}
 }

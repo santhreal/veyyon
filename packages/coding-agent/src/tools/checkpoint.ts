@@ -1,8 +1,7 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import { prompt } from "@veyyon/utils";
 import { type } from "arktype";
-import checkpointDescription from "../prompts/tools/checkpoint.md" with { type: "text" };
-import rewindDescription from "../prompts/tools/rewind.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import type { ToolSession } from ".";
 import type { OutputMeta } from "./output-meta";
 import { ToolError } from "./tool-errors";
@@ -67,7 +66,7 @@ export class CheckpointTool implements AgentTool<typeof checkpointSchema, Checkp
 	readonly intent = (args: Partial<CheckpointParams>) => (args.goal ? `checkpointing: ${args.goal}` : "checkpointing");
 
 	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(checkpointDescription);
+		this.description = prompt.render(PROMPTS["tools/checkpoint"].text);
 	}
 
 	static createIf(session: ToolSession): CheckpointTool | null {
@@ -113,7 +112,7 @@ export class RewindTool implements AgentTool<typeof rewindSchema, RewindToolDeta
 	readonly intent = (): string => "rewinding";
 
 	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(rewindDescription);
+		this.description = prompt.render(PROMPTS["tools/rewind"].text);
 	}
 
 	static createIf(session: ToolSession): RewindTool | null {

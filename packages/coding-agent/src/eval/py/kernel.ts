@@ -13,7 +13,12 @@ import * as path from "node:path";
 import { $flag, errorMessage, isBunTestRuntime, logger, Snowflake } from "@veyyon/utils";
 import { $ } from "bun";
 import { Settings } from "../../config/settings";
-import { BaseKernel, getRemainingTimeMs, type KernelStartOptions } from "../kernel-base";
+import {
+	BaseKernel,
+	DEFAULT_KERNEL_STARTUP_TIMEOUT_MS,
+	getRemainingTimeMs,
+	type KernelStartOptions,
+} from "../kernel-base";
 import { PYTHON_PRELUDE } from "./prelude";
 import RUNNER_SCRIPT from "./runner.py" with { type: "text" };
 import {
@@ -56,7 +61,7 @@ async function ensureRunnerScript(): Promise<string> {
 }
 
 const SHUTDOWN_GRACE_MS = 1_000;
-const STARTUP_TIMEOUT_MS = 10_000;
+const STARTUP_TIMEOUT_MS = DEFAULT_KERNEL_STARTUP_TIMEOUT_MS;
 // How long to wait after SIGINT for the runner to emit `done`. If the cell is
 // stuck in code that ignores Python signals (e.g. a C extension holding the
 // GIL), we escalate to a full subprocess shutdown so the host queue unblocks
@@ -67,6 +72,7 @@ const INTERRUPT_ESCALATION_MS = 5_000;
 
 export interface PythonKernelAvailability {
 	ok: boolean;
+	/** The interpreter that answered the probe. Present only when `ok` is true. */
 	pythonPath?: string;
 	reason?: string;
 	/** The probed-working runtime, when one was found. */
@@ -130,9 +136,13 @@ async function probePythonKernelAvailability(cwd: string, interpreter?: string):
 				failures.push(`${runtime.pythonPath} (${errorMessage(err)})`);
 			}
 		}
+		// No `pythonPath` on failure. Every candidate here has already been probed and
+		// none of them ran, so handing one back invites a caller that reads the path
+		// without checking `ok` to launch an interpreter this function just proved is
+		// broken. The reason names every candidate that was tried, which is what a
+		// diagnostic actually needs.
 		return {
 			ok: false,
-			pythonPath: runtimes[0].pythonPath,
 			reason: `No working Python interpreter found. Tried: ${failures.join("; ")}`,
 		};
 	} catch (err) {

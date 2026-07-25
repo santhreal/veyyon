@@ -39,7 +39,7 @@ import {
 	selectLaunchAdapter,
 } from "../dap";
 import type { Theme } from "../modes/theme/theme";
-import debugDescription from "../prompts/tools/debug.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { renderStatusLine } from "../tui";
 import { CachedOutputBlock, markFramedBlockComponent } from "../tui/output-block";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
@@ -713,7 +713,7 @@ export class DebugTool implements AgentTool<typeof debugSchema, DebugToolDetails
 	readonly loadMode = "discoverable";
 
 	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(debugDescription);
+		this.description = prompt.render(PROMPTS["tools/debug"].text);
 	}
 
 	static createIf(session: ToolSession): DebugTool | null {

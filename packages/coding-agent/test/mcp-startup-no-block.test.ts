@@ -10,7 +10,7 @@
  *
  * Contract this test defends: when an MCP server stalls and has no cached
  * tools, `connectServers` MUST return inside the bounded startup window
- * (currently `STARTUP_TIMEOUT_MS = 250 ms`, padded here for scheduling
+ * (currently `STARTUP_TOOL_WAIT_MS = 250 ms`, padded here for scheduling
  * jitter) so the rest of session bring-up — model registry, prompt setup,
  * UI ready signal — is not gated on slow/dead servers. The slow server is
  * left in flight; its tools surface via the background `#onToolsChanged`
@@ -51,7 +51,7 @@ describe("MCP startup (issue #2100)", () => {
 			const result = await manager.connectServers({ hang: config }, {});
 			const elapsedMs = performance.now() - start;
 
-			// `STARTUP_TIMEOUT_MS` is 250 ms; allow generous headroom for
+			// `STARTUP_TOOL_WAIT_MS` is 250 ms; allow generous headroom for
 			// process spawn + scheduling jitter in CI. The pre-fix code path
 			// blocked 30 000 ms, so anything under a few seconds proves the
 			// regression is closed.

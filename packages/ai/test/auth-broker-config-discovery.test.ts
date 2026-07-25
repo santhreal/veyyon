@@ -4,11 +4,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { resolveAuthBrokerConfig } from "@veyyon/ai/auth-broker";
 import { removeWithRetries } from "../../utils/src/temp";
+import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
 import { withEnv } from "./helpers";
 
 describe("resolveAuthBrokerConfig config discovery", () => {
 	let agentDir = "";
-	let configDirName = "";
+	let isolated: IsolatedConfigRoot | undefined;
 	let configRoot = "";
 	// Discovery also falls back to the machine-wide global config
 	// (`~/<VEYYON_CONFIG_DIR>/config.yml`), so every test pins the config dir to
@@ -18,12 +19,14 @@ describe("resolveAuthBrokerConfig config discovery", () => {
 
 	beforeEach(async () => {
 		agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-ai-auth-broker-config-"));
-		configDirName = `.veyyon-broker-discovery-test-${process.pid}-${Math.random().toString(36).slice(2)}`;
-		configRoot = path.join(os.homedir(), configDirName);
+		// A temp root, not a fresh dot-directory name under the real home: the name form
+		// isolates from other suites and writes into the developer's actual home.
+		isolated = enterIsolatedConfigRoot("broker-discovery");
+		configRoot = isolated.root;
 		suppressEnv = {
 			VEYYON_AUTH_BROKER_URL: undefined,
 			VEYYON_AUTH_BROKER_TOKEN: undefined,
-			VEYYON_CONFIG_DIR: configDirName,
+			VEYYON_CONFIG_DIR: isolated.envValue,
 		};
 	});
 
@@ -32,10 +35,9 @@ describe("resolveAuthBrokerConfig config discovery", () => {
 			await removeWithRetries(agentDir);
 			agentDir = "";
 		}
-		if (configRoot) {
-			await fs.rm(configRoot, { recursive: true, force: true });
-			configRoot = "";
-		}
+		isolated?.restore();
+		isolated = undefined;
+		configRoot = "";
 	});
 
 	test("resolves broker URL and token from config.yaml when config.yml is absent", async () => {

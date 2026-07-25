@@ -3,9 +3,8 @@ import type { Api, ApiKey, AssistantMessage, Model } from "@veyyon/ai";
 import { completeSimple, validateToolCall } from "@veyyon/ai";
 import { prompt } from "@veyyon/utils";
 import { type } from "arktype";
-import summarySystemPrompt from "../../commit/prompts/summary-system.md" with { type: "text" };
-import summaryUserPrompt from "../../commit/prompts/summary-user.md" with { type: "text" };
 import type { CommitSummary } from "../../commit/types";
+import { PROMPTS } from "../../prompts/registry";
 import { toReasoningEffort } from "../../thinking";
 import { extractTextContent, extractToolCall } from "../utils";
 
@@ -46,7 +45,7 @@ export async function generateSummary({
 	userContext,
 }: SummaryInput): Promise<CommitSummary> {
 	const systemPrompt = renderSummaryPrompt({ commitType, scope, maxChars });
-	const userPrompt = prompt.render(summaryUserPrompt, {
+	const userPrompt = prompt.render(PROMPTS["commit/summary-user"].text, {
 		user_context: userContext,
 		details: details.join("\n"),
 		stat,
@@ -75,7 +74,7 @@ function renderSummaryPrompt({
 	maxChars: number;
 }): string {
 	const scopePrefix = scope ? `(${scope})` : "";
-	return prompt.render(summarySystemPrompt, {
+	return prompt.render(PROMPTS["commit/summary-system"].text, {
 		commit_type: commitType,
 		scope_prefix: scopePrefix,
 		chars: String(maxChars),

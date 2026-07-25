@@ -37,8 +37,23 @@ describe("renderInlineMarkdown", () => {
 });
 
 describe("Markdown component", () => {
+	/**
+	 * The rendered lines, ANSI stripped and right-padding removed.
+	 *
+	 * Every list case below asserts the WHOLE array in order. They used to ask
+	 * `plainLines.some(line => line.includes("  - Nested 1.1"))` once per
+	 * expected item, which is an existence check: it says the string appears
+	 * somewhere. A renderer that emitted the four items in reverse, or emitted
+	 * each of them twice, or inserted a blank line between every one, or dropped
+	 * a line and duplicated another, satisfied all four assertions. For a list
+	 * renderer, order and nesting depth ARE the contract, so those were the only
+	 * two properties the tests could not see.
+	 */
+	const renderedLines = (markdown: Markdown, width: number): string[] =>
+		markdown.render(width).map(line => stripVTControlCharacters(line).trimEnd());
+
 	describe("Nested lists", () => {
-		it("should render simple nested list", () => {
+		it("renders a nested list as four lines, indenting the children by two columns", () => {
 			const markdown = new Markdown(
 				`- Item 1
   - Nested 1.1
@@ -49,22 +64,21 @@ describe("Markdown component", () => {
 				defaultMarkdownTheme,
 			);
 
-			const lines = markdown.render(80);
-
-			// Check that we have content
-			expect(lines.length > 0).toBeTruthy();
-
-			// Strip ANSI codes for checking
-			const plainLines = lines.map(line => stripVTControlCharacters(line));
-
-			// Check structure
-			expect(plainLines.some(line => line.includes("- Item 1"))).toBeTruthy();
-			expect(plainLines.some(line => line.includes("  - Nested 1.1"))).toBeTruthy();
-			expect(plainLines.some(line => line.includes("  - Nested 1.2"))).toBeTruthy();
-			expect(plainLines.some(line => line.includes("- Item 2"))).toBeTruthy();
+			expect(renderedLines(markdown, 80)).toEqual(["- Item 1", "  - Nested 1.1", "  - Nested 1.2", "- Item 2"]);
 		});
 
-		it("should render deeply nested list", () => {
+		it("pads every rendered line to the full render width", () => {
+			// The trim above is for legibility; the component really does emit
+			// width-filled lines, and a caller compositing them into a frame depends
+			// on it. Asserted once here so the other cases can read cleanly.
+			const markdown = new Markdown("- Item 1\n  - Nested 1.1", 0, 0, defaultMarkdownTheme);
+
+			const widths = markdown.render(80).map(line => stripVTControlCharacters(line).length);
+
+			expect(widths).toEqual([80, 80]);
+		});
+
+		it("indents each nesting level by two more columns, four deep", () => {
 			const markdown = new Markdown(
 				`- Level 1
   - Level 2
@@ -75,17 +89,14 @@ describe("Markdown component", () => {
 				defaultMarkdownTheme,
 			);
 
-			const lines = markdown.render(80);
-			const plainLines = lines.map(line => stripVTControlCharacters(line));
-
-			// Check proper indentation
-			expect(plainLines.some(line => line.includes("- Level 1"))).toBeTruthy();
-			expect(plainLines.some(line => line.includes("  - Level 2"))).toBeTruthy();
-			expect(plainLines.some(line => line.includes("    - Level 3"))).toBeTruthy();
-			expect(plainLines.some(line => line.includes("      - Level 4"))).toBeTruthy();
+			expect(renderedLines(markdown, 80)).toEqual(["- Level 1", "  - Level 2", "    - Level 3", "      - Level 4"]);
 		});
 
-		it("should render ordered nested list", () => {
+		it("restarts numbering inside a nested ordered list and resumes the outer one after it", () => {
+			// The case an existence check is weakest on: `1.` and `2.` each appear
+			// twice, so four `some(...)` assertions pass even if the renderer emitted
+			// the nested pair AFTER the outer `2.`, or numbered the nested items 3
+			// and 4 by continuing the outer sequence.
 			const markdown = new Markdown(
 				`1. First
    1. Nested first
@@ -96,16 +107,15 @@ describe("Markdown component", () => {
 				defaultMarkdownTheme,
 			);
 
-			const lines = markdown.render(80);
-			const plainLines = lines.map(line => stripVTControlCharacters(line));
-
-			expect(plainLines.some(line => line.includes("1. First"))).toBeTruthy();
-			expect(plainLines.some(line => line.includes("  1. Nested first"))).toBeTruthy();
-			expect(plainLines.some(line => line.includes("  2. Nested second"))).toBeTruthy();
-			expect(plainLines.some(line => line.includes("2. Second"))).toBeTruthy();
+			expect(renderedLines(markdown, 80)).toEqual([
+				"1. First",
+				"  1. Nested first",
+				"  2. Nested second",
+				"2. Second",
+			]);
 		});
 
-		it("should render mixed ordered and unordered nested lists", () => {
+		it("keeps each list's own marker style when ordered and unordered nest together", () => {
 			const markdown = new Markdown(
 				`1. Ordered item
    - Unordered nested
@@ -117,12 +127,15 @@ describe("Markdown component", () => {
 				defaultMarkdownTheme,
 			);
 
-			const lines = markdown.render(80);
-			const plainLines = lines.map(line => stripVTControlCharacters(line));
-
-			expect(plainLines.some(line => line.includes("1. Ordered item"))).toBeTruthy();
-			expect(plainLines.some(line => line.includes("  - Unordered nested"))).toBeTruthy();
-			expect(plainLines.some(line => line.includes("2. Second ordered"))).toBeTruthy();
+			// The old version asserted three of these five lines and never noticed
+			// that "Another nested" and "More nested" were unchecked entirely.
+			expect(renderedLines(markdown, 80)).toEqual([
+				"1. Ordered item",
+				"  - Unordered nested",
+				"  - Another nested",
+				"2. Second ordered",
+				"  - More nested",
+			]);
 		});
 
 		it("should maintain numbering when code blocks are not indented (LLM output)", () => {
@@ -164,7 +177,14 @@ describe("Markdown component", () => {
 	});
 
 	describe("Tables", () => {
-		it("should render simple table", () => {
+		it("renders a table as a bordered grid with columns sized to their widest cell", () => {
+			// This case used to assert that each of the four cell texts appeared
+			// somewhere, that a `|` appeared somewhere, and that a `-` appeared
+			// somewhere. The last two are the clearest example of an assertion that
+			// cannot fail for the reason it claims to check: a table rendered as
+			// four bare lines of text still contains a hyphen if any cell does. None
+			// of the six assertions could see column alignment, which is the only
+			// thing a table renderer is really being asked to get right.
 			const markdown = new Markdown(
 				`| Name | Age |
 | --- | --- |
@@ -175,17 +195,40 @@ describe("Markdown component", () => {
 				defaultMarkdownTheme,
 			);
 
-			const lines = markdown.render(80);
-			const plainLines = lines.map(line => stripVTControlCharacters(line));
+			expect(renderedLines(markdown, 80)).toEqual([
+				"+-------+-----+",
+				"| Name  | Age |",
+				"+-------+-----+",
+				"| Alice | 30  |",
+				"| Bob   | 25  |",
+				"+-------+-----+",
+			]);
+		});
 
-			// Check table structure
-			expect(plainLines.some(line => line.includes("Name"))).toBeTruthy();
-			expect(plainLines.some(line => line.includes("Age"))).toBeTruthy();
-			expect(plainLines.some(line => line.includes("Alice"))).toBeTruthy();
-			expect(plainLines.some(line => line.includes("Bob"))).toBeTruthy();
-			// Check for table borders
-			expect(plainLines.some(line => line.includes("|"))).toBeTruthy();
-			expect(plainLines.some(line => line.includes("-"))).toBeTruthy();
+		it("aligns every cell in a column to the same start column", () => {
+			// Stated as a property rather than by eye, so it holds for cell contents
+			// the fixture above does not have. The `|` positions must be identical on
+			// every row of the table, which is what "aligned" means and what a
+			// per-cell `includes` check can never establish.
+			const markdown = new Markdown(
+				`| Name | Age |
+| --- | --- |
+| Alice | 30 |
+| Bob | 25 |`,
+				0,
+				0,
+				defaultMarkdownTheme,
+			);
+
+			const pipeColumns = renderedLines(markdown, 80)
+				.filter(line => line.startsWith("|"))
+				.map(line => [...line].flatMap((char, index) => (char === "|" ? [index] : [])));
+
+			expect(pipeColumns).toEqual([
+				[0, 8, 14],
+				[0, 8, 14],
+				[0, 8, 14],
+			]);
 		});
 
 		it("should render row dividers between data rows", () => {
@@ -234,7 +277,19 @@ describe("Markdown component", () => {
 			).toBeTruthy();
 		});
 
-		it("should render table with alignment", () => {
+		/**
+		 * The delimiter row's alignment markers reach the rendered cells.
+		 *
+		 * This test was named "should render table with alignment" and asserted
+		 * that the words "Left", "Center", "Right" and "Long text" each appeared
+		 * somewhere. It made no claim about alignment at all, and it was hiding a
+		 * real gap: `#renderTable` appended padding to the right of every cell
+		 * unconditionally, so `| :---: |` and `| ---: |` parsed correctly, were
+		 * carried on the token as `align`, and then rendered identically to a
+		 * plain `| --- |`. The renderer did not support alignment, and no test
+		 * could tell.
+		 */
+		it("centers and right-aligns cells according to the delimiter row", () => {
 			const markdown = new Markdown(
 				`| Left | Center | Right |
 | :--- | :---: | ---: |
@@ -245,18 +300,55 @@ describe("Markdown component", () => {
 				defaultMarkdownTheme,
 			);
 
-			const lines = markdown.render(80);
-			const plainLines = lines.map(line => stripVTControlCharacters(line));
-
-			// Check headers
-			expect(plainLines.some(line => line.includes("Left"))).toBeTruthy();
-			expect(plainLines.some(line => line.includes("Center"))).toBeTruthy();
-			expect(plainLines.some(line => line.includes("Right"))).toBeTruthy();
-			// Check content
-			expect(plainLines.some(line => line.includes("Long text"))).toBeTruthy();
+			expect(renderedLines(markdown, 80)).toEqual([
+				"+-----------+--------+-------+",
+				"| Left      | Center | Right |",
+				"+-----------+--------+-------+",
+				"| A         |   B    |     C |",
+				"| Long text | Middle |   End |",
+				"+-----------+--------+-------+",
+			]);
 		});
 
-		it("should handle tables with varying column widths", () => {
+		it("gives a centered cell's odd leftover column to the right side", () => {
+			// `B` in a 6-wide column has 5 columns of slack, which cannot be split
+			// evenly. Pinned because either choice looks fine in isolation and only
+			// a rule keeps a column from wobbling row to row; this matches how
+			// browsers round it.
+			const markdown = new Markdown(
+				`| Center |
+| :---: |
+| B |`,
+				0,
+				0,
+				defaultMarkdownTheme,
+			);
+
+			expect(renderedLines(markdown, 80)).toEqual([
+				"+--------+",
+				"| Center |",
+				"+--------+",
+				"|   B    |",
+				"+--------+",
+			]);
+		});
+
+		it("leaves a table with no alignment markers left-aligned", () => {
+			// The negative twin. `---` is GFM's default and must not start centering
+			// now that the renderer knows how.
+			const markdown = new Markdown(
+				`| Head |
+| --- |
+| x |`,
+				0,
+				0,
+				defaultMarkdownTheme,
+			);
+
+			expect(renderedLines(markdown, 80)).toEqual(["+------+", "| Head |", "+------+", "| x    |", "+------+"]);
+		});
+
+		it("sizes each column to its widest cell rather than sharing the width evenly", () => {
 			const markdown = new Markdown(
 				`| Short | Very long column header |
 | --- | --- |
@@ -267,14 +359,14 @@ describe("Markdown component", () => {
 				defaultMarkdownTheme,
 			);
 
-			const lines = markdown.render(80);
-
-			// Should render without errors
-			expect(lines.length > 0).toBeTruthy();
-
-			const plainLines = lines.map(line => stripVTControlCharacters(line));
-			expect(plainLines.some(line => line.includes("Very long column header"))).toBeTruthy();
-			expect(plainLines.some(line => line.includes("This is a much longer cell content"))).toBeTruthy();
+			expect(renderedLines(markdown, 80)).toEqual([
+				"+-------+------------------------------------+",
+				"| Short | Very long column header            |",
+				"+-------+------------------------------------+",
+				"| A     | This is a much longer cell content |",
+				"| B     | Short                              |",
+				"+-------+------------------------------------+",
+			]);
 		});
 
 		it("should wrap table cells when table exceeds available width", () => {
@@ -504,17 +596,23 @@ describe("Markdown component", () => {
 				defaultMarkdownTheme,
 			);
 
-			const lines = markdown.render(80);
-			const plainLines = lines.map(line => stripVTControlCharacters(line));
-
-			// Check heading
-			expect(plainLines.some(line => line.includes("Test Document"))).toBeTruthy();
-			// Check list
-			expect(plainLines.some(line => line.includes("- Item 1"))).toBeTruthy();
-			expect(plainLines.some(line => line.includes("  - Nested item"))).toBeTruthy();
-			// Check table
-			expect(plainLines.some(line => line.includes("Col1"))).toBeTruthy();
-			expect(plainLines.some(line => line.includes("|"))).toBeTruthy();
+			// The whole document, in order. Blank lines included: the spacing between
+			// a heading, a list, and a table is the only thing this case can really
+			// be about, and it is precisely what five `some(...)` checks could not
+			// see. They would have passed on a render that emitted the table first.
+			expect(renderedLines(markdown, 80)).toEqual([
+				"Test Document",
+				"",
+				"- Item 1",
+				"  - Nested item",
+				"- Item 2",
+				"",
+				"+------+------+",
+				"| Col1 | Col2 |",
+				"+------+------+",
+				"| A    | B    |",
+				"+------+------+",
+			]);
 		});
 	});
 
@@ -1024,14 +1122,11 @@ bar`,
 			const lines = markdown.render(80);
 			const plainLines = lines.map(line => stripVTControlCharacters(line));
 
-			// Should have the quote border
-			expect(plainLines.some(line => line.startsWith("│ "))).toBeTruthy();
-
-			// Content should be preserved
-			const allPlain = plainLines.join(" ");
-			expect(allPlain.includes("Quote with")).toBeTruthy();
-			expect(allPlain.includes("bold")).toBeTruthy();
-			expect(allPlain.includes("code")).toBeTruthy();
+			// The visible text, exactly: one bordered line with the markers consumed
+			// and the words in their original order. The previous version joined
+			// every line into one string and asked whether each word was in it,
+			// which is true of any output containing the letters in any arrangement.
+			expect(plainLines.map(line => line.trimEnd())).toEqual(["│ Quote with bold and code"]);
 
 			const allOutput = lines.join("\n");
 
@@ -1044,15 +1139,15 @@ bar`,
 			// Should have italic from quote styling (\x1b[3m)
 			expect(allOutput.includes("\x1b[3m")).toBeTruthy();
 		});
-		it("should render list content inside blockquotes", () => {
+		it("keeps a nested list's indentation inside the quote border", () => {
+			// Filtering to the quoted lines and then asking whether each expected
+			// string appears among them threw away the two facts worth checking:
+			// that the border is on EVERY line of the quote, and that the nested
+			// bullet is still indented relative to its parent once the border has
+			// consumed the leading columns.
 			const markdown = new Markdown("> 1. bla bla\n>    - nested bullet", 0, 0, defaultMarkdownTheme);
 
-			const lines = markdown.render(80);
-			const plainLines = lines.map(line => stripVTControlCharacters(line).trimEnd());
-			const quotedLines = plainLines.filter(line => line.startsWith("│ "));
-
-			expect(quotedLines.some(line => line.includes("1. bla bla"))).toBeTruthy();
-			expect(quotedLines.some(line => line.includes("- nested bullet"))).toBeTruthy();
+			expect(renderedLines(markdown, 80)).toEqual(["│ 1. bla bla", "│   - nested bullet"]);
 		});
 
 		it("should render table content inside blockquotes", () => {

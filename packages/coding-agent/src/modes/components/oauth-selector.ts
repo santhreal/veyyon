@@ -20,11 +20,11 @@ import {
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
+	ModalRevealDriver,
 	type ModalShellGeometry,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
 	withCompact,
-	ModalRevealDriver,
 } from "./modal-shell";
 
 const OAUTH_SELECTOR_MAX_VISIBLE = 10;

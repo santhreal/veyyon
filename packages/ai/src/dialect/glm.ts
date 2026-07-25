@@ -537,10 +537,6 @@ function renderToolResults(results: readonly DialectToolResult[]): string {
 	return `<observation>\n${renderToolResponseResults(results)}\n</observation>`;
 }
 
-function renderThinking(text: string): string {
-	return renderThinkTags(text);
-}
-
 function renderTranscript(messages: readonly Message[], options: DialectRenderOptions = {}): string {
 	if (messages.length === 0) return "";
 	let out = "[gMASK]<sop>";
@@ -548,7 +544,7 @@ function renderTranscript(messages: readonly Message[], options: DialectRenderOp
 		const message = messages[i]!;
 		if (message.role === "assistant") {
 			const parts = assistantTranscriptParts(message);
-			const thinking = parts.thinking ? `\n${renderThinking(parts.thinking)}` : "";
+			const thinking = parts.thinking ? `\n${renderThinkTags(parts.thinking)}` : "";
 			out += `<|assistant|>\n${thinking}${parts.text}${renderAssistantToolCalls(parts.toolCalls, options)}`;
 			i++;
 			continue;
@@ -573,7 +569,7 @@ const definition: DialectDefinition = {
 	renderToolCall,
 	renderAssistantToolCalls,
 	renderToolResults,
-	renderThinking,
+	renderThinking: renderThinkTags,
 	renderTranscript,
 };
 

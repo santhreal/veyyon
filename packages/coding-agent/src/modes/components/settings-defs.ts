@@ -8,6 +8,7 @@
  */
 
 import { TERMINAL } from "@veyyon/tui";
+import { resolveEffort, withLegacyDefaultEffort } from "../../config/effort-resolver";
 import { Settings } from "../../config/settings";
 import {
 	type AnyUiMetadata,
@@ -22,6 +23,7 @@ import {
 	type SubmenuOption,
 	TAB_GROUPS,
 } from "../../config/settings-schema";
+import { AUTO_THINKING } from "../../thinking";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // UI Definition Types
@@ -44,6 +46,8 @@ interface BaseSettingDef {
 	condition?: () => boolean;
 	/** When true, the setting renders inside the tab's collapsed "Advanced" fold instead of its normal group. */
 	advanced?: boolean;
+	/** Search synonyms declared on the schema entry; see UiBase.keywords. */
+	keywords?: readonly string[];
 }
 
 export interface BooleanSettingDef extends BaseSettingDef {
@@ -64,6 +68,19 @@ export interface SubmenuSettingDef extends BaseSettingDef {
 	onPreviewCancel?: (originalValue: string) => void;
 }
 
+/**
+ * The `compaction.threshold` drill-down: three modes (Auto / Percent / Tokens)
+ * on the first level, the mode's preset values plus a Custom entry on the
+ * second. A dedicated type rather than the flat submenu because the stored
+ * string mixes three semantics (`auto`, `85%`, `200000`) and one 19-row list
+ * hid that structure; the schema options stay the single source of presets and
+ * are partitioned by unit at render time.
+ */
+export interface CompactionThresholdSettingDef extends BaseSettingDef {
+	type: "compactionThreshold";
+	options: OptionList;
+}
+
 export interface TextInputSettingDef extends BaseSettingDef {
 	type: "text";
 }
@@ -80,6 +97,20 @@ export interface ModelSelectorSettingDef extends BaseSettingDef {
 /** Per-role model assignments via the same searchable picker. */
 export interface ModelRolesSettingDef extends BaseSettingDef {
 	type: "modelRoles";
+}
+
+/**
+ * The `subagent.agents` table: one row per discovered agent, each carrying
+ * whether it is offered, its model, and its effort.
+ *
+ * A dedicated type rather than the generic record-as-text control because the
+ * keys are not free-form — they are the agents this project actually has, and an
+ * operator editing JSON by hand cannot see which names exist or what a blank
+ * model resolves to. The editor reads `task/subagent-settings.ts` for both, so
+ * the settings tab and `/agents` cannot disagree about precedence.
+ */
+export interface SubagentAgentsSettingDef extends BaseSettingDef {
+	type: "subagentAgents";
 }
 
 /**
@@ -106,18 +137,25 @@ export type SettingDef =
 	| BooleanSettingDef
 	| EnumSettingDef
 	| SubmenuSettingDef
+	| CompactionThresholdSettingDef
 	| TextInputSettingDef
 	| ProviderLimitsSettingDef
 	| ModelSelectorSettingDef
 	| ModelRolesSettingDef
+	| SubagentAgentsSettingDef
 	| DefaultEffortSettingDef
 	| DefaultModelSettingDef;
 
 /**
  * Synthetic settings id for the {@link DefaultModelSettingDef}. Not a real
- * config key: the value lives in the `default` model-role slot, read/written via
- * `settings.getModelRole("default")` / `setModelRole`. Kept as a shared const so
- * the def, the item builder, and the change handler all agree on the id.
+ * config key: the value lives in the {@link DEFAULT_MODEL_SLOT} model-role slot,
+ * read/written via `settings.getModelRole(DEFAULT_MODEL_SLOT)` / `setModelRole`.
+ * Kept as a shared const so the def, the item builder, and the change handler all
+ * agree on the id.
+ *
+ * The id is a SETTINGS PATH, a different namespace from the role string, so it is
+ * deliberately not one of `DEFAULT_MODEL_SLOT_ALIASES`: `resolveModelSlot` accepts
+ * role arguments, and a settings row id has no business resolving as one.
  *
  * Typed as {@link SettingPath} at this single definition (rather than cast at
  * each use) so `def.path === DEFAULT_MODEL_SETTING_ID` comparisons and the
@@ -130,57 +168,48 @@ export const DEFAULT_MODEL_SETTING_ID = "defaultModel" as SettingPath;
 // Condition Functions
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * Read a settings-backed visibility condition, treating an unreachable Settings singleton as "off".
+ *
+ * Every condition below asks the live settings whether a feature is on, and `Settings.instance` throws
+ * when there is no initialized settings context (a bare library caller, a unit test that renders a
+ * definition without booting a session). Each condition used to carry its own `try`/`catch` returning
+ * false, seven byte-identical copies of the same decision, so the reason lived nowhere and a change of
+ * mind would have had to be made seven times.
+ *
+ * False means the conditional row is not shown, which is the same thing an off setting means. That is
+ * safe here because it can only happen before settings exist, when there is no `/settings` screen to
+ * show a row on; it is not a fallback for a setting that failed to read at runtime.
+ */
+function whenSettingsSay(read: () => boolean): boolean {
+	try {
+		return read();
+	} catch {
+		return false;
+	}
+}
+
 const CONDITIONS: Record<string, () => boolean> = {
 	hasImageProtocol: () => !!TERMINAL.imageProtocol,
-	advisorEnabled: () => {
-		try {
-			return Settings.instance.get("advisor.enabled") === true;
-		} catch {
-			return false;
-		}
-	},
-	argotEnabled: () => {
-		try {
-			return Settings.instance.get("argot.enabled") === true;
-		} catch {
-			return false;
-		}
-	},
-	hindsightActive: () => {
-		try {
-			return Settings.instance.get("memory.backend") === "hindsight";
-		} catch {
-			return false;
-		}
-	},
-	mnemopiActive: () => {
-		try {
-			return Settings.instance.get("memory.backend") === "mnemopi";
-		} catch {
-			return false;
-		}
-	},
-	autolearnActive: () => {
-		try {
-			return Settings.instance.get("autolearn.enabled") === true;
-		} catch {
-			return false;
-		}
-	},
-	autoThinkingActive: () => {
-		try {
-			return Settings.instance.get("defaultThinkingLevel") === "auto";
-		} catch {
-			return false;
-		}
-	},
-	planModeEnabled: () => {
-		try {
-			return Settings.instance.get("plan.enabled");
-		} catch {
-			return false;
-		}
-	},
+	advisorEnabled: () => whenSettingsSay(() => Settings.instance.get("advisor.enabled") === true),
+	argotEnabled: () => whenSettingsSay(() => Settings.instance.get("argot.enabled") === true),
+	hindsightActive: () => whenSettingsSay(() => Settings.instance.get("memory.backend") === "hindsight"),
+	mnemopiActive: () => whenSettingsSay(() => Settings.instance.get("memory.backend") === "mnemopi"),
+	autolearnActive: () => whenSettingsSay(() => Settings.instance.get("autolearn.enabled") === true),
+	// Reads the Default Effort list through its one owner, so a `*` row of `auto`
+	// counts: checking the retired `defaultThinkingLevel` here would have gone
+	// stale the moment the list became the surface people edit.
+	autoThinkingActive: () =>
+		whenSettingsSay(
+			() =>
+				resolveEffort({
+					defaultEffort: withLegacyDefaultEffort(
+						Settings.instance.get("defaultEffort"),
+						Settings.instance.get("defaultThinkingLevel"),
+					),
+				}).level === AUTO_THINKING,
+		),
+	planModeEnabled: () => whenSettingsSay(() => Settings.instance.get("plan.enabled")),
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -207,6 +236,7 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 		group: ui.group,
 		condition,
 		advanced: ui.advanced,
+		keywords: ui.keywords,
 	};
 
 	if (schemaType === "boolean") {
@@ -234,6 +264,9 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 		if (path === "subagent.model" || path === "compaction.model") {
 			return { ...base, type: "modelSelector" };
 		}
+		if (path === "compaction.threshold") {
+			return { ...base, type: "compactionThreshold", options: options && options !== "runtime" ? options : [] };
+		}
 		if (options === "runtime") {
 			// Empty list now; the selector layer (theme handling, etc.) injects choices.
 			return { ...base, type: "submenu", options: [] };
@@ -247,6 +280,7 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 	if (schemaType === "record") {
 		if (path === "providers.maxInFlightRequests") return { ...base, type: "providerLimits" };
 		if (path === "modelRoles") return { ...base, type: "modelRoles" };
+		if (path === "subagent.agents") return { ...base, type: "subagentAgents" };
 		if (path === "defaultEffort") return { ...base, type: "defaultEffort" };
 		return { ...base, type: "text" };
 	}

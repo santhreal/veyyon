@@ -50,6 +50,7 @@ import {
 	errorMessage,
 	estimateTokensFromText,
 	formatCount,
+	isAbortError,
 	isRecord,
 	logger,
 	sanitizeText,
@@ -1829,7 +1830,7 @@ export function abortReasonText(signal: AbortSignal | undefined): string {
 	if (scopedReason) return scopedReason.message;
 	const reason = signal?.reason;
 	if (typeof reason === "string" && reason.trim().length > 0) return reason;
-	if (reason instanceof Error && reason.name !== "AbortError" && reason.message.trim().length > 0) {
+	if (reason instanceof Error && !isAbortError(reason) && reason.message.trim().length > 0) {
 		return reason.message;
 	}
 	return "Request was aborted";
@@ -2189,6 +2190,45 @@ async function executeToolCalls(
 			}
 		}
 
+		// Rewrite the arguments HERE, before anything else observes them, so every
+		// consumer sees one canonical set of values: `tool_execution_start`, the
+		// telemetry span, `beforeToolCall`, `tool_execution_update`, and the tool
+		// body itself.
+		//
+		// This used to run just before `tool.execute`, which meant the transform's
+		// output reached the tool but nothing else. The transform is where secret
+		// placeholders are deobfuscated and argot handles are expanded, so an
+		// interactive operator watching a tool call was shown the pre-transform
+		// form: `tool_execution_start` is the event the renderer treats as
+		// authoritative ("args are final, reconcile them"), so it overwrote the
+		// live preview with `§handle` and `#HASH#` text and left it there. The
+		// operator must always see the expanded form of a tool's input.
+		//
+		// It also makes the `BeforeToolCallContext.args` contract true. That doc
+		// promises the same reference reaches `tool.execute` so in-place mutations
+		// stick, but the old order handed the hook the pre-transform object and
+		// then executed a transformed copy, silently dropping any mutation
+		// whenever a transform actually fired.
+		if (transformToolCallArguments) {
+			try {
+				effectiveArgs = transformToolCallArguments(effectiveArgs, toolCall.name);
+			} catch (transformError) {
+				record.args = effectiveArgs;
+				emitToolResult(
+					record,
+					{
+						content: [{ type: "text" as const, text: errorMessage(transformError) }],
+						details: {
+							isError: true,
+							error: errorMessage(transformError),
+						},
+					},
+					true,
+				);
+				return;
+			}
+		}
+
 		record.args = effectiveArgs;
 		if (record.signal.aborted) {
 			record.skipped = true;
@@ -2253,11 +2293,6 @@ async function executeToolCalls(
 					isError = true;
 					return;
 				}
-				const executionArgs = transformToolCallArguments
-					? transformToolCallArguments(effectiveArgs, toolCall.name)
-					: effectiveArgs;
-				record.args = executionArgs;
-
 				const toolContext = getToolContext
 					? getToolContext({
 							batchId,
@@ -2272,14 +2307,14 @@ async function executeToolCalls(
 				if (instrumentationLevel !== "off") record.startedAt = Date.now();
 				const rawResult = await tool.execute(
 					toolCall.id,
-					executionArgs,
+					effectiveArgs,
 					record.signal,
 					partialResult => {
 						stream.push({
 							type: "tool_execution_update",
 							toolCallId: toolCall.id,
 							toolName: toolCall.name,
-							args: executionArgs,
+							args: effectiveArgs,
 							partialResult: coerceToolResult(partialResult).result,
 						});
 					},

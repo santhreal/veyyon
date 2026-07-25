@@ -4,11 +4,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai/auth-storage";
-import {
-	CREDENTIAL_CLOCK_TOLERANCE_MS,
-	epochSecondsToMs,
-	isRecordFromFutureClock,
-} from "@veyyon/ai/credential-clock";
+import { CREDENTIAL_CLOCK_TOLERANCE_MS, epochSecondsToMs, isRecordFromFutureClock } from "@veyyon/ai/credential-clock";
 import { removeWithRetries } from "../../utils/src/temp";
 
 /**
@@ -277,7 +273,12 @@ describe("SqliteAuthCredentialStore.getCredentialBlock", () => {
 	}
 
 	function blockCredential(credentialId: number, blockedUntilMs: number): void {
-		store?.upsertCredentialBlock({ credentialId, providerKey: `${PROVIDER}:api_key`, blockScope: "", blockedUntilMs });
+		store?.upsertCredentialBlock({
+			credentialId,
+			providerKey: `${PROVIDER}:api_key`,
+			blockScope: "",
+			blockedUntilMs,
+		});
 	}
 
 	function readBlock(credentialId: number): number | undefined {

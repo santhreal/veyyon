@@ -7,9 +7,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { PROMPTS } from "@veyyon/coding-agent/prompts/registry";
 import { jobToolRenderer } from "@veyyon/coding-agent/tools/job";
 import { prompt } from "@veyyon/utils";
-import taskSummaryTemplate from "../src/prompts/tools/task-summary.md" with { type: "text" };
 
 function renderLines(resultText: string): string {
 	const result = {
@@ -47,7 +47,7 @@ describe("job renderer task-result preview", () => {
 	});
 
 	it("previews the envelope body, not the wrapper markup", () => {
-		const summary = prompt.render(taskSummaryTemplate, {
+		const summary = prompt.render(PROMPTS["tools/task-summary"].text, {
 			agentName: "sonic",
 			id: "SpawnProbe",
 			status: "completed",
@@ -66,7 +66,7 @@ describe("job renderer task-result preview", () => {
 	});
 
 	it("previews the truncated <preview> body the same way", () => {
-		const summary = prompt.render(taskSummaryTemplate, {
+		const summary = prompt.render(PROMPTS["tools/task-summary"].text, {
 			agentName: "task",
 			id: "BigOne",
 			status: "completed",
@@ -82,7 +82,7 @@ describe("job renderer task-result preview", () => {
 	});
 
 	it("flattens a pretty-printed JSON body instead of previewing a lone brace", () => {
-		const summary = prompt.render(taskSummaryTemplate, {
+		const summary = prompt.render(PROMPTS["tools/task-summary"].text, {
 			agentName: "sonic",
 			id: "EchoAlpha",
 			status: "completed",

@@ -1,10 +1,10 @@
-# @veyyon/agent
+# @veyyon/agent-core
 
 Stateful agent with tool execution and event streaming. Built on `@veyyon/ai`.
 
 ## Installation
 
-Veyyon ships through GitHub only, so `@veyyon/agent` is not on npm or any other
+Veyyon ships through GitHub only, so `@veyyon/agent-core` is not on npm or any other
 registry. It depends on its sibling packages with Bun's `workspace:*` and
 `catalog:` protocols, which resolve only inside a checkout, so a registry
 install could not work even if one were published.
@@ -29,13 +29,13 @@ See [the SDK guide](../../docs/sdk.md#installation) for the same steps in full.
 ## Quick Start
 
 ```typescript
-import { Agent } from "@veyyon/agent";
-import { getModel } from "@veyyon/ai";
+import { Agent } from "@veyyon/agent-core";
+import { getBundledModel } from "@veyyon/catalog";
 
 const agent = new Agent({
 	initialState: {
 		systemPrompt: ["You are a helpful assistant."],
-		model: getModel("anthropic", "claude-sonnet-4-20250514"),
+		model: getBundledModel("anthropic", "claude-sonnet-4-20250514"),
 	},
 });
 
@@ -217,7 +217,7 @@ await agent.continue();
 
 ```typescript
 agent.setSystemPrompt("New prompt");
-agent.setModel(getModel("openai", "gpt-4o"));
+agent.setModel(getBundledModel("openai", "gpt-4o"));
 agent.setThinkingLevel("medium");
 agent.setTools([myTool]);
 agent.replaceMessages(newMessages);
@@ -273,7 +273,7 @@ steering until the current turn completes.
 Extend `AgentMessage` via declaration merging:
 
 ```typescript
-declare module "@veyyon/agent" {
+declare module "@veyyon/agent-core" {
 	interface CustomAgentMessages {
 		notification: { role: "notification"; text: string; timestamp: number };
 	}
@@ -346,7 +346,7 @@ Thrown errors are caught by the agent and reported to the LLM as tool errors wit
 For browser apps that proxy through a backend:
 
 ```typescript
-import { Agent, streamProxy } from "@veyyon/agent";
+import { Agent, streamProxy } from "@veyyon/agent-core";
 
 const agent = new Agent({
 	streamFn: (model, context, options) =>
@@ -363,7 +363,7 @@ const agent = new Agent({
 For direct control without the Agent class:
 
 ```typescript
-import { agentLoop, agentLoopContinue } from "@veyyon/agent";
+import { agentLoop, agentLoopContinue } from "@veyyon/agent-core";
 
 const context: AgentContext = {
 	systemPrompt: ["You are helpful."],
@@ -372,7 +372,7 @@ const context: AgentContext = {
 };
 
 const config: AgentLoopConfig = {
-	model: getModel("openai", "gpt-4o"),
+	model: getBundledModel("openai", "gpt-4o"),
 	convertToLlm: (msgs) => msgs.filter((m) => ["user", "assistant", "toolResult"].includes(m.role)),
 };
 
@@ -463,7 +463,7 @@ fold N summaries with `aggregateAgentRunSummaries` / `aggregateAgentRunCoverage`
 import {
 	aggregateAgentRunSummaries,
 	aggregateAgentRunCoverage,
-} from "@veyyon/agent";
+} from "@veyyon/agent-core";
 
 const summaries: AgentRunSummary[] = [];
 const coverages: AgentRunCoverage[] = [];

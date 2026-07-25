@@ -6,8 +6,7 @@ import { type } from "arktype";
 import { extractTextContent } from "../commit/utils";
 
 import { expandRoleAlias, getModelMatchPreferences, resolveModelFromString } from "../config/model-resolver";
-import inspectImageDescription from "../prompts/tools/inspect-image.md" with { type: "text" };
-import inspectImageSystemPromptTemplate from "../prompts/tools/inspect-image-system.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import {
 	ImageInputTooLargeError,
 	type LoadedImageInput,
@@ -141,7 +140,7 @@ export class InspectImageTool implements AgentTool<typeof inspectImageSchema, In
 		private readonly session: ToolSession,
 		private readonly completeImageRequest: typeof completeSimple = completeSimple,
 	) {
-		this.description = prompt.render(inspectImageDescription);
+		this.description = prompt.render(PROMPTS["tools/inspect-image"].text);
 	}
 
 	async execute(
@@ -234,7 +233,7 @@ export class InspectImageTool implements AgentTool<typeof inspectImageSchema, In
 		const response = await instrumentedCompleteSimple(
 			model,
 			{
-				systemPrompt: [prompt.render(inspectImageSystemPromptTemplate)],
+				systemPrompt: [prompt.render(PROMPTS["tools/inspect-image-system"].text)],
 				messages: [
 					{
 						role: "user",

@@ -43,7 +43,7 @@ picker. Commands below are the **builtin** set; extensions may add more.
 
 | Command | Purpose |
 | --- | --- |
-| `/compact [focus]` | Compact context now (`compaction.model` + type); optional focus string |
+| `/compact [summary\|handoff] [focus]` | Compact context now (`compaction.model` + type); optional type override and focus string |
 | `/shake [elide\|images]` | Shake tool-result bulk |
 | `/handoff` | Compaction handoff helper |
 | `/context` | Context usage report |

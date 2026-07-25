@@ -421,6 +421,8 @@ export class TodoCommandController {
 		try {
 			return await fs.open(candidate, "r+");
 		} catch {
+			// Same as the editor handle: no usable tty means the caller keeps the in-app path, which the
+			// user sees. Null is the "not available" answer, not a swallowed failure to open a real tty.
 			return null;
 		}
 	}

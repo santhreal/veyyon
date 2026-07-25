@@ -1,7 +1,13 @@
 import { describe, expect, it } from "bun:test";
-import { getDefault, getEnumValues, getType, type SettingPath } from "@veyyon/coding-agent/config/settings-schema";
+import { UNSET_NUMBER_OPTION_VALUE } from "@veyyon/coding-agent/config/optional-number";
+import {
+	getDefault,
+	getEnumValues,
+	getType,
+	isUnsetNumberPath,
+	type SettingPath,
+} from "@veyyon/coding-agent/config/settings-schema";
 import { getAllSettingDefs } from "@veyyon/coding-agent/modes/components/settings-defs";
-import { COMPACTION_DEFAULT_SENTINEL_PATHS } from "@veyyon/coding-agent/modes/components/settings-selector";
 
 /**
  * HSL-2: every `ui.options[].value` string a user can pick in `/settings` must
@@ -12,7 +18,8 @@ import { COMPACTION_DEFAULT_SENTINEL_PATHS } from "@veyyon/coding-agent/modes/co
  * not round-trip, instead of shipping a knob that silently ignores the choice.
  *
  * The setter logic lives in `settings-selector.ts #setSettingValue`:
- *  - sentinel paths accept the string `"default"` (mapped to -1),
+ *  - an optional numeric setting (isUnsetNumberPath) accepts the string
+ *    `"default"`, stored as the UNSET_NUMBER sentinel,
  *  - number settings otherwise do `settings.set(path, Number(value))`,
  *  - enum settings store the value string as-is.
  */
@@ -32,9 +39,7 @@ describe("settings UI option values round-trip through their setter (HSL-2)", ()
 		for (const def of submenuDefs) {
 			if (getType(def.path) !== "number") continue;
 			for (const opt of def.options) {
-				const isSentinelDefault =
-					COMPACTION_DEFAULT_SENTINEL_PATHS.has(def.path) &&
-					(opt.value === "default" || opt.value === "-1" || opt.value === "");
+				const isSentinelDefault = isUnsetNumberPath(def.path) && opt.value === UNSET_NUMBER_OPTION_VALUE;
 				if (isSentinelDefault) continue;
 				if (!Number.isFinite(Number(opt.value))) {
 					broken.push(`${def.path} -> ${JSON.stringify(opt.value)}`);
@@ -44,14 +49,14 @@ describe("settings UI option values round-trip through their setter (HSL-2)", ()
 		expect(broken).toEqual([]);
 	});
 
-	it("uses the string 'default' (not '-1') for the sentinel option on sentinel-path number settings", () => {
+	it("uses the string 'default' (not '-1') for the unset option on every optional numeric setting", () => {
 		// The reverse mapping (#getSubmenuCurrentValue) turns a stored -1 into the
 		// string "default", so the option that represents the default MUST use
 		// value "default" or it will never render as selected.
 		const broken: string[] = [];
 		for (const def of submenuDefs) {
-			if (!COMPACTION_DEFAULT_SENTINEL_PATHS.has(def.path)) continue;
-			const hasDefaultOption = def.options.some(o => o.value === "default");
+			if (!isUnsetNumberPath(def.path)) continue;
+			const hasDefaultOption = def.options.some(o => o.value === UNSET_NUMBER_OPTION_VALUE);
 			// Every sentinel-path knob defaults to -1, so it must expose a "default" option.
 			if (!hasDefaultOption) broken.push(def.path);
 			// And it must not try to represent that default with a literal "-1" value,
@@ -90,43 +95,63 @@ describe("settings UI option values round-trip through their setter (HSL-2)", ()
 });
 
 /**
- * HSL-1: numeric sentinel defaults must stay reachable and consistent. A knob
- * that defaults to the `-1` "inherit/default" sentinel must (a) actually declare
- * `-1` as its schema default and (b) expose a UI option that restores that
- * sentinel, or the user can never get back to the default once they change it.
- * A mismatch here silently changes behavior (the stored default and the
- * "Default" option disagree, or the default is unreachable).
+ * HSL-1: a numeric knob's default must stay reachable. Once you change a knob you
+ * must be able to get back, so a submenu has to carry a row that restores the
+ * default, and the default has to be what the schema actually declares.
+ *
+ * The shape of "default" changed here: an optional numeric setting stores NO
+ * value when unset (an absent key, restored by the shared `Default` row) rather
+ * than the old `-1` sentinel, which stole a value the provider accepts. Knobs
+ * whose `-1` means something they name — `argot.disableAboveTokens` "Off",
+ * `providers.stream*TimeoutSeconds` "Auto" — keep it as a real default.
  */
-describe("numeric sentinel defaults are consistent and reachable (HSL-1)", () => {
+describe("numeric defaults are consistent and reachable (HSL-1)", () => {
 	const defs = getAllSettingDefs();
 	const submenuDefs = defs.filter((def): def is Extract<typeof def, { type: "submenu" }> => def.type === "submenu");
 
-	it("every compaction sentinel-path setting defaults to -1", () => {
+	it("every optional numeric setting has no stored default at all", () => {
+		// The set is schema-derived now, so pin it exactly: an empty sweep would pass
+		// vacuously, and a setting silently leaving the set is a knob whose Default
+		// row stopped round-tripping.
+		const optional = getAllSettingDefs().filter(def => isUnsetNumberPath(def.path));
+		expect(optional.map(def => def.path).sort()).toEqual([
+			"compaction.modelContextWindow",
+			"minP",
+			"presencePenalty",
+			"repetitionPenalty",
+			"temperature",
+			"topK",
+			"topP",
+		]);
+		// Unset is an ABSENT key, so the schema default is undefined. A sentinel
+		// default would steal a real value: `presencePenalty: -1` is a penalty the
+		// provider accepts, and while -1 meant "unset" it could not be configured.
 		const broken: string[] = [];
-		for (const path of COMPACTION_DEFAULT_SENTINEL_PATHS) {
-			const defaultValue = getDefault(path as SettingPath);
-			if (defaultValue !== -1) broken.push(`${path} defaults to ${JSON.stringify(defaultValue)}, expected -1`);
+		for (const def of optional) {
+			const defaultValue = getDefault(def.path as SettingPath);
+			if (defaultValue !== undefined) {
+				broken.push(`${def.path} defaults to ${JSON.stringify(defaultValue)}, expected no default`);
+			}
 		}
 		expect(broken).toEqual([]);
 	});
 
-	it("every numeric submenu whose default is the -1 sentinel exposes an option that restores it", () => {
+	/** A numeric knob must always offer a way back to its default, whether that
+	 * default is an absent key (the `Default` row, which unsets) or an explicit
+	 * `-1` that means something the setting names (`argot.disableAboveTokens` uses
+	 * -1 for "Off", `providers.stream*TimeoutSeconds` for "Auto"). */
+	it("every numeric submenu exposes an option that restores its default", () => {
 		const broken: string[] = [];
 		for (const def of submenuDefs) {
 			if (getType(def.path) !== "number") continue;
-			if (getDefault(def.path) !== -1) continue;
-			// The option must map back to -1: either the "default" sentinel string
-			// on a sentinel path, or a literal "-1"/"" value that Number()-parses to -1.
+			const defaultValue = getDefault(def.path);
 			const restores = def.options.some(o => {
-				if (
-					COMPACTION_DEFAULT_SENTINEL_PATHS.has(def.path) &&
-					(o.value === "default" || o.value === "" || o.value === "-1")
-				) {
-					return true;
-				}
-				return Number(o.value) === -1;
+				if (isUnsetNumberPath(def.path) && o.value === UNSET_NUMBER_OPTION_VALUE) return true;
+				if (defaultValue === undefined) return false;
+				return Number(o.value) === defaultValue;
 			});
-			if (!restores) broken.push(`${def.path} defaults to -1 but no option restores it`);
+			if (!restores)
+				broken.push(`${def.path} defaults to ${JSON.stringify(defaultValue)} but no option restores it`);
 		}
 		expect(broken).toEqual([]);
 	});

@@ -20,21 +20,26 @@ import {
  * they no longer measure.
  *
  * The specific bug these tests exist for: the `argot` exemption was keyed on the
- * DIRECTORY name, the directory was later renamed to `packages/lexpack`, and the
+ * DIRECTORY name, the directory was renamed to `packages/lexpack`, and the
  * exemption quietly stopped matching. Six ownership locks then failed against a
  * standalone published package that cannot import `@veyyon/utils` at all. The
  * exemption is now resolved from the package's declared `name`, and a name that
  * matches nothing is a loud error rather than a silent no-op.
+ *
+ * The directory is `packages/argot` again as of 2026-07-25, so name and directory
+ * agree today. That is exactly why the resolution must stay keyed on the name:
+ * these assertions would have passed for the wrong reason under the old scheme,
+ * and the next rename must not be able to kill the exemption a second time.
  */
 describe("the shared package-source traversal", () => {
 	describe("exemptions resolve by published name, not by directory name", () => {
 		it("resolves `argot` to the directory that actually declares it", async () => {
 			const dirs = await resolveExemptPackageDirs();
-			// The concrete pairing this suite exists for: the published name and the
-			// directory it lives in have diverged, and the exemption must follow the name.
-			expect([...dirs]).toEqual(["lexpack"]);
+			// Resolved from the manifest, never assumed from the directory string: the
+			// two agree today and the mechanism must not depend on that.
+			expect([...dirs]).toEqual(["argot"]);
 
-			const manifest = JSON.parse(await readFile(path.join(PACKAGES_DIR, "lexpack", "package.json"), "utf8"));
+			const manifest = JSON.parse(await readFile(path.join(PACKAGES_DIR, "argot", "package.json"), "utf8"));
 			expect(manifest.name).toBe("argot");
 		});
 
@@ -63,11 +68,11 @@ describe("the shared package-source traversal", () => {
 
 			// Exact files, not a count: the exempt package's sources are the ones the six
 			// ownership locks were failing on, so their absence is the fix being asserted.
-			expect(rels).not.toContain("lexpack/src/codec.ts");
-			expect(rels).not.toContain("lexpack/src/generate.ts");
-			expect(rels).not.toContain("lexpack/src/parse.ts");
-			expect(rels).not.toContain("lexpack/src/cache.ts");
-			expect(rels.some(rel => rel.startsWith("lexpack/"))).toBe(false);
+			expect(rels).not.toContain("argot/src/codec.ts");
+			expect(rels).not.toContain("argot/src/generate.ts");
+			expect(rels).not.toContain("argot/src/parse.ts");
+			expect(rels).not.toContain("argot/src/cache.ts");
+			expect(rels.some(rel => rel.startsWith("argot/"))).toBe(false);
 
 			// And it is still scanning real code, so the exclusion above cannot pass by
 			// the walk having collapsed to nothing.

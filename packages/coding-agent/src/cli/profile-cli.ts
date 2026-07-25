@@ -10,14 +10,17 @@ import {
 	atomicWriteFile,
 	getActiveProfile,
 	getProfileRootDir,
+	isMissingPath,
 	isRecord,
 	listProfiles,
+	logger,
 	MAIN_CONFIG_FILENAMES,
 	normalizeProfileName,
 	type ProfileInfo,
 	profileExists,
 	removeWithRetries,
 	resolveGlobalDefaultProfile,
+	syncYamlTextToSettings,
 	writeGlobalDefaultProfile,
 } from "@veyyon/utils";
 import chalk from "chalk";
@@ -127,13 +130,33 @@ async function applyPresetSettings(agentDir: string, preset: ProfilePreset): Pro
 	await settings.flush();
 }
 
-async function directorySize(root: string): Promise<number> {
-	let total = 0;
+/**
+ * The bytes a profile occupies on disk, and every path that could not be measured.
+ *
+ * The walk skips what it cannot read, which is the right behaviour — one unreadable
+ * subdirectory must not make `profile list --json` fail. What it cannot do is skip
+ * SILENTLY. `bytes` is a number a cleanup script acts on, and a walk that omitted an
+ * unreadable subtree reports a profile as much smaller than it is, with nothing in the
+ * output marking the difference between "this profile is small" and "most of it was
+ * not counted" (Law 10). So the skipped paths come back with the total and the caller
+ * reports them.
+ */
+interface DirectorySize {
+	bytes: number;
+	/** Paths that could not be read, so their size is missing from `bytes`. */
+	unmeasured: string[];
+}
+
+async function directorySize(root: string): Promise<DirectorySize> {
+	let bytes = 0;
+	const unmeasured: string[] = [];
 	const walk = async (dir: string): Promise<void> => {
 		let entries: Dirent[];
 		try {
 			entries = await fs.readdir(dir, { withFileTypes: true });
-		} catch {
+		} catch (error) {
+			// A missing root is not a measurement failure: an empty profile is zero bytes.
+			if (!isMissingPath(error)) unmeasured.push(dir);
 			return;
 		}
 		for (const entry of entries) {
@@ -142,13 +165,17 @@ async function directorySize(root: string): Promise<number> {
 				await walk(fullPath);
 			} else if (entry.isFile()) {
 				try {
-					total += (await fs.stat(fullPath)).size;
-				} catch {}
+					bytes += (await fs.stat(fullPath)).size;
+				} catch (error) {
+					// A file deleted between the readdir and the stat is a race, not a
+					// measurement failure — its bytes are genuinely gone.
+					if (!isMissingPath(error)) unmeasured.push(fullPath);
+				}
 			}
 		}
 	};
 	await walk(root);
-	return total;
+	return { bytes, unmeasured };
 }
 
 function resolveSeedAgentDir(from: ProfileSeedSource | undefined): string | undefined {
@@ -241,9 +268,10 @@ async function clearCopiedDisplayName(agentDir: string): Promise<void> {
 		const filePath = path.join(agentDir, filename);
 		const file = Bun.file(filePath);
 		if (!(await file.exists())) continue;
+		const text = await file.text();
 		let parsed: unknown;
 		try {
-			parsed = YAML.parse(await file.text());
+			parsed = YAML.parse(text);
 		} catch (error) {
 			throw new Error(`Copied settings file ${filePath} is not valid YAML: ${String(error)}`);
 		}
@@ -257,8 +285,11 @@ async function clearCopiedDisplayName(agentDir: string): Promise<void> {
 		if (Object.keys(profileObj).length === 0) delete root.profile;
 		// Atomic write so an interrupted rewrite never leaves a truncated config
 		// in the staging tree (a torn file would still fail loud on the next read,
-		// but a clean temp+rename keeps the settings file whole regardless).
-		await atomicWriteFile(filePath, YAML.stringify(root, null, 2));
+		// but a clean temp+rename keeps the settings file whole regardless), and an
+		// EDIT rather than a re-serialization: this file was copied from a profile the
+		// user had been editing by hand, so re-stringifying it to drop one key would
+		// throw away every comment and blank line they wrote in the profile they copied.
+		await atomicWriteFile(filePath, syncYamlTextToSettings(text, root));
 	}
 }
 
@@ -413,13 +444,27 @@ export async function runProfileCommand(args: ProfileCommandArgs): Promise<void>
 			const launchDefault = resolveGlobalDefaultProfile() ?? "default";
 			if (args.json) {
 				const rows = await Promise.all(
-					profiles.map(async profile => ({
-						...profile,
-						displayName: await readProfileDisplayName(profile.name === "default" ? undefined : profile.name),
-						active: profile.name === active,
-						launchDefault: profile.name === launchDefault,
-						bytes: await directorySize(profile.rootDir),
-					})),
+					profiles.map(async profile => {
+						const size = await directorySize(profile.rootDir);
+						if (size.unmeasured.length > 0) {
+							// `bytesComplete: false` is the machine-readable half; this is the half a
+							// person reads, and it names the paths so the permission bit is findable.
+							logger.warn("Profile size is incomplete; some paths could not be read", {
+								profile: profile.name,
+								bytes: size.bytes,
+								unmeasured: size.unmeasured,
+							});
+						}
+						return {
+							...profile,
+							displayName: await readProfileDisplayName(profile.name === "default" ? undefined : profile.name),
+							active: profile.name === active,
+							launchDefault: profile.name === launchDefault,
+							bytes: size.bytes,
+							/** False when a path could not be read, so `bytes` is a lower bound. */
+							bytesComplete: size.unmeasured.length === 0,
+						};
+					}),
 				);
 				console.log(JSON.stringify(rows, null, 2));
 				return;

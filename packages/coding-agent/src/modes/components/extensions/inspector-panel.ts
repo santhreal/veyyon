@@ -6,6 +6,7 @@
 import * as os from "node:os";
 import { isZodSchema, zodToWireSchema } from "@veyyon/ai/utils/schema";
 import { type Component, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui";
+import { collapseWhitespace, errorMessage, logger } from "@veyyon/utils";
 import type { ThemeColor } from "../../../modes/theme/color";
 import { theme } from "../../../modes/theme/theme";
 import { shortenPath } from "../../../tools/render-utils";
@@ -37,6 +38,20 @@ interface McpConfigView {
 	args?: string[];
 	arguments?: string[];
 	env?: Record<string, unknown>;
+}
+
+/**
+ * The row an inspector section shows when it cannot read what it was given.
+ *
+ * These three sections used to print a dim `(unable to parse …)` with no reason
+ * and no log line. Dim is the colour this panel uses for "nothing here", so a
+ * malformed definition read as an extension that simply declares no arguments,
+ * and there was nowhere to look for the cause. The notice is a warning now, it
+ * carries the reason, and it also reaches the log.
+ */
+function unreadableRows(subject: string, error: unknown): string[] {
+	logger.warn("Extension inspector could not read a definition", { subject, error: String(error) });
+	return [theme.fg("warning", `  (unable to read the ${subject}: ${collapseWhitespace(errorMessage(error))})`)];
 }
 
 export class InspectorPanel implements Component {
@@ -226,8 +241,8 @@ export class InspectorPanel implements Component {
 					lines.push(`  ${nameCol} ${typeCol} ${reqCol}`);
 				}
 			}
-		} catch {
-			lines.push(theme.fg("dim", "  (unable to parse tool definition)"));
+		} catch (err) {
+			lines.push(...unreadableRows("tool definition", err));
 		}
 
 		lines.push("");
@@ -255,8 +270,8 @@ export class InspectorPanel implements Component {
 					lines.push(theme.fg("dim", "(truncated at line 15)"));
 				}
 			}
-		} catch {
-			lines.push(theme.fg("dim", "  (unable to parse skill content)"));
+		} catch (err) {
+			lines.push(...unreadableRows("skill content", err));
 		}
 
 		lines.push("");
@@ -291,8 +306,8 @@ export class InspectorPanel implements Component {
 					lines.push(`  ${theme.fg("muted", "Env vars:")}   ${theme.fg("dim", `${envCount} defined`)}`);
 				}
 			}
-		} catch {
-			lines.push(theme.fg("dim", "  (unable to parse MCP configuration)"));
+		} catch (err) {
+			lines.push(...unreadableRows("MCP configuration", err));
 		}
 
 		lines.push("");

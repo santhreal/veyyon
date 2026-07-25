@@ -117,49 +117,45 @@ const SEARCH_QUERY = `query Search($query: String!) {
 }`;
 
 function parseSourcegraphUrl(url: string): SourcegraphTarget | null {
-	try {
-		const parsed = tryParseUrl(url);
-		if (!parsed) return null;
-		if (parsed.hostname !== "sourcegraph.com" && parsed.hostname !== "www.sourcegraph.com") return null;
+	const parsed = tryParseUrl(url);
+	if (!parsed) return null;
+	if (parsed.hostname !== "sourcegraph.com" && parsed.hostname !== "www.sourcegraph.com") return null;
 
-		if (parsed.pathname.startsWith("/search")) {
-			const query = parsed.searchParams.get("q")?.trim();
-			if (!query) return null;
-			return { type: "search", query };
-		}
-
-		const parts = parsed.pathname
-			.split("/")
-			.filter(Boolean)
-			.map(part => decodeURIComponent(part));
-		if (parts.length < 3) return null;
-
-		const hyphenIndex = parts.indexOf("-");
-		const repoParts = hyphenIndex === -1 ? parts : parts.slice(0, hyphenIndex);
-		if (repoParts.length < 3) return null;
-
-		const lastRepoPart = repoParts[repoParts.length - 1];
-		const atIndex = lastRepoPart.indexOf("@");
-		let rev: string | undefined;
-		let repoTail = lastRepoPart;
-		if (atIndex > 0) {
-			repoTail = lastRepoPart.slice(0, atIndex);
-			rev = lastRepoPart.slice(atIndex + 1) || undefined;
-		}
-
-		repoParts[repoParts.length - 1] = repoTail;
-		const repoName = repoParts.join("/");
-
-		if (hyphenIndex !== -1 && parts[hyphenIndex + 1] === "blob") {
-			const filePath = parts.slice(hyphenIndex + 2).join("/");
-			if (!filePath) return null;
-			return { type: "file", repoName, rev, filePath };
-		}
-
-		return { type: "repo", repoName, rev };
-	} catch {
-		return null;
+	if (parsed.pathname.startsWith("/search")) {
+		const query = parsed.searchParams.get("q")?.trim();
+		if (!query) return null;
+		return { type: "search", query };
 	}
+
+	const parts = parsed.pathname
+		.split("/")
+		.filter(Boolean)
+		.map(part => decodeURIComponent(part));
+	if (parts.length < 3) return null;
+
+	const hyphenIndex = parts.indexOf("-");
+	const repoParts = hyphenIndex === -1 ? parts : parts.slice(0, hyphenIndex);
+	if (repoParts.length < 3) return null;
+
+	const lastRepoPart = repoParts[repoParts.length - 1];
+	const atIndex = lastRepoPart.indexOf("@");
+	let rev: string | undefined;
+	let repoTail = lastRepoPart;
+	if (atIndex > 0) {
+		repoTail = lastRepoPart.slice(0, atIndex);
+		rev = lastRepoPart.slice(atIndex + 1) || undefined;
+	}
+
+	repoParts[repoParts.length - 1] = repoTail;
+	const repoName = repoParts.join("/");
+
+	if (hyphenIndex !== -1 && parts[hyphenIndex + 1] === "blob") {
+		const filePath = parts.slice(hyphenIndex + 2).join("/");
+		if (!filePath) return null;
+		return { type: "file", repoName, rev, filePath };
+	}
+
+	return { type: "repo", repoName, rev };
 }
 
 async function fetchGraphql<T>(

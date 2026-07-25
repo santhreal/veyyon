@@ -3,14 +3,27 @@ import { stripVTControlCharacters } from "node:util";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { buildComposerShortcuts, ComposerShortcutsBar } from "@veyyon/coding-agent/modes/components/composer-shortcuts";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { useFullColor } from "../../helpers/theme-assertions";
 
 await initTheme(false, "unicode", false, "titanium", "light");
 
 describe("composer contextual shortcuts", () => {
+	useFullColor();
+
 	it("surfaces the interrupt chip only while busy", () => {
 		const kb = KeybindingsManager.inMemory();
-		const idle = buildComposerShortcuts(kb, { busy: false, hasDraft: true, hasQueue: false });
-		const busy = buildComposerShortcuts(kb, { busy: true, hasDraft: true, hasQueue: false });
+		const idle = buildComposerShortcuts(kb, {
+			busy: false,
+			hasDraft: true,
+			hasQueue: false,
+			canBackgroundBash: false,
+		});
+		const busy = buildComposerShortcuts(kb, {
+			busy: true,
+			hasDraft: true,
+			hasQueue: false,
+			canBackgroundBash: false,
+		});
 		// Quiet composer: no idle chrome — the interrupt chip is the live action.
 		expect(idle.length).toBe(0);
 		expect(busy.some(c => c.label.includes("interrupt"))).toBe(true);
@@ -30,7 +43,12 @@ describe("composer contextual shortcuts", () => {
 
 	it("stays empty when neither busy nor queued — the quiet idle contract", () => {
 		const kb = KeybindingsManager.inMemory();
-		const idle = buildComposerShortcuts(kb, { busy: false, hasDraft: false, hasQueue: false });
+		const idle = buildComposerShortcuts(kb, {
+			busy: false,
+			hasDraft: false,
+			hasQueue: false,
+			canBackgroundBash: false,
+		});
 		expect(idle.length).toBe(0);
 	});
 
@@ -43,7 +61,9 @@ describe("composer contextual shortcuts", () => {
 	it("keeps its own chips while the transcript is scrolled — no scroll readout in the composer", () => {
 		const kb = KeybindingsManager.inMemory();
 		const bar = new ComposerShortcutsBar();
-		bar.setShortcuts(buildComposerShortcuts(kb, { busy: true, hasDraft: false, hasQueue: false }));
+		bar.setShortcuts(
+			buildComposerShortcuts(kb, { busy: true, hasDraft: false, hasQueue: false, canBackgroundBash: false }),
+		);
 		const following = bar.render(80);
 		// Nothing about scroll state can reach this component: there is no
 		// setter to feed it, so a frozen view cannot change what it renders.
@@ -62,7 +82,9 @@ describe("composer contextual shortcuts", () => {
 	it("aligns band content at the composer rail", () => {
 		const kb = KeybindingsManager.inMemory();
 		const bar = new ComposerShortcutsBar();
-		bar.setShortcuts(buildComposerShortcuts(kb, { busy: true, hasDraft: false, hasQueue: false }));
+		bar.setShortcuts(
+			buildComposerShortcuts(kb, { busy: true, hasDraft: false, hasQueue: false, canBackgroundBash: false }),
+		);
 		const rows = bar.render(80);
 		expect(rows.length).toBe(1);
 		const plain = stripVTControlCharacters(rows[0]!);
@@ -76,11 +98,15 @@ describe("composer contextual shortcuts", () => {
 	it("renders exactly one row in every state so the footer height never changes", () => {
 		const kb = KeybindingsManager.inMemory();
 		const bar = new ComposerShortcutsBar();
-		bar.setShortcuts(buildComposerShortcuts(kb, { busy: false, hasDraft: false, hasQueue: false }));
+		bar.setShortcuts(
+			buildComposerShortcuts(kb, { busy: false, hasDraft: false, hasQueue: false, canBackgroundBash: false }),
+		);
 		const idleRows = bar.render(80);
 		expect(idleRows.length).toBe(1);
 		expect(stripVTControlCharacters(idleRows[0]!).trim()).toBe("");
-		bar.setShortcuts(buildComposerShortcuts(kb, { busy: true, hasDraft: false, hasQueue: true }));
+		bar.setShortcuts(
+			buildComposerShortcuts(kb, { busy: true, hasDraft: false, hasQueue: true, canBackgroundBash: false }),
+		);
 		const busyRows = bar.render(80);
 		expect(busyRows.length).toBe(1);
 		expect(stripVTControlCharacters(busyRows[0]!).trim()).not.toBe("");
@@ -90,9 +116,24 @@ describe("composer contextual shortcuts", () => {
 
 	it("adds the dequeue chip only while the queue is nonempty, in any busy/draft state", () => {
 		const kb = KeybindingsManager.inMemory();
-		const noQueue = buildComposerShortcuts(kb, { busy: false, hasDraft: false, hasQueue: false });
-		const queued = buildComposerShortcuts(kb, { busy: false, hasDraft: false, hasQueue: true });
-		const busyQueued = buildComposerShortcuts(kb, { busy: true, hasDraft: false, hasQueue: true });
+		const noQueue = buildComposerShortcuts(kb, {
+			busy: false,
+			hasDraft: false,
+			hasQueue: false,
+			canBackgroundBash: false,
+		});
+		const queued = buildComposerShortcuts(kb, {
+			busy: false,
+			hasDraft: false,
+			hasQueue: true,
+			canBackgroundBash: false,
+		});
+		const busyQueued = buildComposerShortcuts(kb, {
+			busy: true,
+			hasDraft: false,
+			hasQueue: true,
+			canBackgroundBash: false,
+		});
 		expect(noQueue.some(c => c.label.includes("dequeue"))).toBe(false);
 		expect(queued.some(c => c.label.includes("dequeue"))).toBe(true);
 		expect(busyQueued.some(c => c.label.includes("dequeue"))).toBe(true);
@@ -102,7 +143,9 @@ describe("composer contextual shortcuts", () => {
 	it("never renders the ember accent chrome — chips stay silver/muted (brand: no invented orange chips)", () => {
 		const kb = KeybindingsManager.inMemory();
 		const bar = new ComposerShortcutsBar();
-		bar.setShortcuts(buildComposerShortcuts(kb, { busy: true, hasDraft: false, hasQueue: true }));
+		bar.setShortcuts(
+			buildComposerShortcuts(kb, { busy: true, hasDraft: false, hasQueue: true, canBackgroundBash: false }),
+		);
 		const raw = bar.render(80).join("\n");
 		// "accent" is silver (the structural chip/key color) in this brand —
 		// ember/sun is a separate, rare role reserved for links/carets and

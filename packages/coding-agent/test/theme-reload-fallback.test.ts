@@ -14,7 +14,8 @@ import {
 	stopThemeWatcher,
 	type Theme,
 } from "@veyyon/coding-agent/modes/theme/theme";
-import { getAgentDir, getCustomThemesDir, setAgentDir } from "@veyyon/utils";
+import { getCustomThemesDir, setAgentDir } from "@veyyon/utils";
+import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 /**
  * Contract for the single theme-reload owner (`applyTheme`).
@@ -38,7 +39,7 @@ const INVALID_THEME = "{ this is not valid json";
 /** A shipped built-in outside the `dark`/`light` pair the old watcher check named. */
 const SHADOWED_BUILTIN = "titanium";
 
-let originalAgentDir: string;
+let dirOverrides: DirOverridesSnapshot;
 let tempAgentDir: string;
 let themesDir: string;
 let dark: Theme;
@@ -54,7 +55,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-	originalAgentDir = getAgentDir();
+	dirOverrides = captureDirOverrides();
 	tempAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-theme-reload-"));
 	setAgentDir(tempAgentDir);
 	themesDir = getCustomThemesDir();
@@ -63,7 +64,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	stopThemeWatcher();
-	setAgentDir(originalAgentDir);
+	restoreDirOverrides(dirOverrides);
 	fs.rmSync(tempAgentDir, { recursive: true, force: true });
 });
 

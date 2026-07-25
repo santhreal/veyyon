@@ -30,6 +30,22 @@ At session start, if a memory summary exists for the current project, it is inje
 - Cite the memory artifact path when memory changes the plan, and pair it with current-repo evidence before acting.
 - Prefer repo state and user instruction when they conflict with memory; treat conflicting memory as stale.
 
+A backend contributes in two places, and which one it uses matters for what a session costs you:
+
+- **The system prompt** carries the guidance that does not change while the session runs. The provider caches the prompt as
+  the prefix of every request, so this text is paid for once.
+- **The context tail** carries whatever changes as you work: memories recalled for the current question, and the mental-model
+  block when it reloads. These arrive as a message alongside your prompt.
+
+The split exists because changing the system prompt mid-session invalidates the provider's cache prefix, and the next request
+re-reads the whole conversation at the uncached rate. Writing a recalled memory into the prompt made every recall cost a full
+re-read of everything before it. The model sees the same text in the same order either way.
+
+A block is sent once. If a reload finds the same memories, nothing is sent, so the context does not grow by a copy of your
+memories every turn.
+
+`/memory view` shows both halves together, so what you read there is what the model gets.
+
 ### Reading memory artifacts
 
 The agent can read memory files directly using `memory://` URLs with the `read` tool:

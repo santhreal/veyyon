@@ -2,14 +2,13 @@ import { type ApiKey, type ApiKeyResolver, type AuthStorage, withAuth } from "@v
 import { $env } from "@veyyon/utils";
 import type { SearchCitation, SearchResponse, SearchSource, SearchUsage } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
-import { clampNumResults } from "../utils";
+import { clampNumResults, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
 
 const XAI_RESPONSES_URL = "https://api.x.ai/v1/responses";
 const XAI_WEB_SEARCH_MODEL = "grok-4.3";
-const DEFAULT_NUM_RESULTS = 10;
 const MAX_NUM_RESULTS = 30;
 
 interface XAIUrlCitationAnnotation {
@@ -268,7 +267,11 @@ function resolveXAIWebSearchApiKey(params: SearchParams): ApiKeyResolver {
 export async function searchXAI(params: SearchParams): Promise<SearchResponse> {
 	const keyOrResolver: ApiKey = resolveXAIWebSearchApiKey(params);
 
-	const resultCap = clampNumResults(params.numSearchResults ?? params.limit, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
+	const resultCap = clampNumResults(
+		params.numSearchResults ?? params.limit,
+		SEARCH_DEFAULT_NUM_RESULTS,
+		MAX_NUM_RESULTS,
+	);
 	const response = await withAuth(keyOrResolver, (key: string) => callXAIResponses(key, params), {
 		signal: params.signal,
 		missingKeyMessage: 'xAI credentials not found. Set XAI_API_KEY or configure an API key for provider "xai".',

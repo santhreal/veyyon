@@ -14,9 +14,11 @@
 			"correctness": {
 				"noUnusedImports": "error",
 				"noUnusedVariables": {
-					"level": "warn",
+					"level": "error",
 					"fix": "none"
 				},
+				"noUnusedFunctionParameters": "error",
+				"noUnusedPrivateClassMembers": "error",
 				"noVoidTypeReturn": "off"
 			},
 			"style": {
@@ -53,11 +55,13 @@
 			"packages/*/src/**/*.ts",
 			"packages/*/src/**/*.tsx",
 			"packages/*/test/**/*.ts",
+			"packages/*/bench/**/*.ts",
 			"packages/*/examples/**/*.ts",
 			"packages/*/scripts/**/*.ts",
 			"packages/*/*.ts",
 			"scripts/**/*.ts",
 			"!packages/natives/native/index.d.ts",
+			"!packages/tui/bench/_jskey.ts",
 			"!**/vendor/**/*",
 			"!**/node_modules/**/*",
 			"!**/test-sessions.ts",

@@ -65,6 +65,125 @@ export const MODAL_SIZING_SETTINGS: ModalSizing = {
 	footerLines: 2,
 };
 
+/**
+ * Rows {@link renderModalShell} reserves outside the body when nothing is
+ * droppable: the top border, the caller's vertical padding ABOVE AND BELOW the
+ * body, the footer divider, the reserved footer band, and the bottom border.
+ *
+ * A caller that decides its own layout before rendering (side-by-side preview
+ * versus stacked, say) needs the body budget, and the only alternative to this is
+ * to restate the arithmetic. `ask-dialog.ts` did restate it, as
+ * `3 + footerLines + vPad`, with a comment admitting it "mirrors the arithmetic
+ * renderModalShell uses internally". That is the same number by coincidence of
+ * three unnamed `1`s, and nothing would have failed if the shell had grown a row.
+ * The terms live here now, next to the loop that shrinks them.
+ *
+ * This is the MINIMUM. The real reservation grows with a search line (two more
+ * rows) and with shortcut chips that wrap past `footerLines`, and shrinks again
+ * when the card is too short: the tip gap goes, then the tip, then `vPad`, then
+ * the caller's reserved footer padding down to the chip rows. A caller sizing a
+ * layout wants the floor, which is what this returns.
+ */
+export function minModalChromeRows(sizing: ModalSizing): number {
+	const topBorder = 1;
+	const footerDivider = 1;
+	const bottomBorder = 1;
+	return topBorder + 2 * sizing.vPad + footerDivider + sizing.footerLines + bottomBorder;
+}
+
+/** What {@link renderModalShell} will reserve outside the body for a given card. */
+export interface ModalChromePlan {
+	/** Laid-out shortcut chip rows (already wrapped to `contentWidth`). */
+	layoutRows: ShortcutLayoutRow[];
+	tipText: string;
+	searchChrome: number;
+	/** Padding rows, charged once ABOVE and once BELOW the body. */
+	vPad: number;
+	tipRows: number;
+	tipGap: number;
+	footerBand: number;
+	/** Every row that is not body: borders, padding, divider, footer band. */
+	nonBody: number;
+	/** Body rows the card can actually show. Content past this is dropped. */
+	maxBodyRows: number;
+}
+
+/**
+ * Resolve the chrome reservation for one card, including the shrink order that
+ * applies when it is too short.
+ *
+ * {@link minModalChromeRows} answers the static question (what does this sizing
+ * cost at minimum). This answers the real one: given these shortcuts, this tip,
+ * and this height, how many body rows will the card show? A caller that builds
+ * its body before rendering needs that number, because the shell SILENTLY
+ * TRUNCATES a body that is too long — `input.body.slice(0, bodyBudget)`.
+ *
+ * `model-hub.ts` learned that the hard way. It sized its split pane against a
+ * restated `3 + footerLines + vPad`, which charges `vPad` once where the card
+ * charges it twice, so its body ran two rows long and the shell silently ate the
+ * tail. The tail was the hub's strip row, which carries the hint line and every
+ * chip strip, so the entire contextual surface of the model hub was missing on
+ * an ordinary 40-row terminal. There must be ONE answer to "how many rows do I
+ * get", and this is it.
+ */
+export function planModalChrome(input: {
+	sizing: ModalSizing;
+	modalHeight: number;
+	contentWidth: number;
+	shortcuts: readonly ModalShortcut[];
+	hoveredShortcutId?: string | null;
+	tipCandidates?: readonly string[];
+	hasSearch?: boolean;
+}): ModalChromePlan {
+	const { sizing, modalHeight, contentWidth } = input;
+	const layoutRows = layoutShortcutRows(input.shortcuts, contentWidth, input.hoveredShortcutId);
+	const tipText = input.tipCandidates?.length ? fitTipLine(input.tipCandidates, contentWidth) : "";
+	const searchChrome = input.hasSearch ? 2 : 0;
+
+	// Chips (or the caller's reserved footer lines) plus the top border, footer
+	// divider, and bottom border are mandatory chrome — they must never be
+	// clipped. The tip line, its gap, and the vertical padding are droppable, in
+	// that order, when the card is too short (e.g. a search+tip overlay on a
+	// 24-row terminal, where a naive slice would shear off the bottom border).
+	const shortcutRows = layoutRows.length;
+	let vPad = sizing.vPad;
+	let tipRows = tipText ? 1 : 0;
+	let tipGap = tipRows > 0 && modalHeight >= 6 ? 1 : 0;
+	let footerBand = Math.max(sizing.footerLines, shortcutRows + tipRows + tipGap);
+	// vPad is charged TWICE: the body gets the same breathing room above and
+	// below. A single top pad was invisible while every card was full height and
+	// padded with filler rows, but a card that hugs its content shows the last
+	// row resting directly on the footer divider.
+	const nonBody = () => 1 + searchChrome + 2 * vPad + 1 + footerBand + 1;
+	const refreshFooterBand = () => {
+		footerBand = Math.max(sizing.footerLines, shortcutRows + tipRows + tipGap);
+	};
+	if (nonBody() > modalHeight && tipGap > 0) {
+		tipGap = 0;
+		refreshFooterBand();
+	}
+	if (nonBody() > modalHeight && tipRows > 0) {
+		tipRows = 0;
+		refreshFooterBand();
+	}
+	while (nonBody() > modalHeight && vPad > 0) vPad--;
+	// Last resort: give up the caller's reserved footer padding, but keep every
+	// shortcut chip row.
+	while (nonBody() > modalHeight && footerBand > shortcutRows) footerBand--;
+
+	return {
+		layoutRows,
+		tipText,
+		searchChrome,
+		vPad,
+		tipRows,
+		tipGap,
+		footerBand,
+		nonBody: nonBody(),
+		maxBodyRows: Math.max(0, modalHeight - nonBody()),
+	};
+}
+
 /** Compact strip: reclaim vertical margin when the terminal is short. */
 export function withCompact(sizing: ModalSizing, compact: boolean): ModalSizing {
 	if (!compact) return sizing;
@@ -131,7 +250,7 @@ function styleShortcutChip(label: string, hovered: boolean): string {
 	return hovered ? theme.bg("selectedBg", chip) : chip;
 }
 
-interface ShortcutLayoutRow {
+export interface ShortcutLayoutRow {
 	plain: string;
 	styled: string;
 	/** Chip placements within the content column (before centering pad). */
@@ -273,6 +392,22 @@ export interface ModalShellInput {
 	areaHeight: number;
 	/** Body lines already clipped to contentWidth (no outer border). */
 	body: readonly string[];
+	/**
+	 * Body rows this surface actually wants, when the terminal can spare fewer
+	 * than the card's maximum.
+	 *
+	 * Without it the card is always the full height the vertical margins allow,
+	 * so a seven-row list paints into a card sized for twenty and the ten blank
+	 * rows below it read as a list that failed to load the rest rather than as a
+	 * list that is simply short.
+	 *
+	 * Pass the surface's NATURAL row count, not the count currently visible: a
+	 * filtered list that passed its filtered length would resize the card on every
+	 * keystroke, which is worse than the empty space. The value is clamped to what
+	 * fits, so a caller can pass an honest number without also doing the chrome
+	 * arithmetic. Omit it to keep the full-height card.
+	 */
+	preferredBodyRows?: number;
 	/** Optional tip candidates (LONG then SHORT). */
 	tipCandidates?: readonly string[];
 	shortcuts: readonly ModalShortcut[];
@@ -329,42 +464,29 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 		};
 	}
 
-	const { modalWidth, modalHeight, leftPad, topPad, contentWidth } = dims;
+	const { modalWidth, modalHeight, leftPad, contentWidth } = dims;
 	const title = input.breadcrumb ? `${input.title}${input.breadcrumb}` : input.title;
 
-	const layoutRows = layoutShortcutRows(input.shortcuts, contentWidth, input.hoveredShortcutId);
-	const tipText = input.tipCandidates?.length ? fitTipLine(input.tipCandidates, contentWidth) : "";
-
+	const plan = planModalChrome({
+		sizing: input.sizing,
+		modalHeight,
+		contentWidth,
+		shortcuts: input.shortcuts,
+		hoveredShortcutId: input.hoveredShortcutId,
+		tipCandidates: input.tipCandidates,
+		hasSearch: input.searchLine !== undefined,
+	});
+	const { layoutRows, tipText, vPad, tipRows, tipGap, footerBand, maxBodyRows } = plan;
 	const hasSearch = input.searchLine !== undefined;
-	const searchChrome = hasSearch ? 2 : 0;
-	// Chips (or the caller's reserved footer lines) plus the top border, footer
-	// divider, and bottom border are mandatory chrome — they must never be
-	// clipped. The tip line, its gap, and the vertical padding are droppable, in
-	// that order, when the card is too short (e.g. a search+tip overlay on a
-	// 24-row terminal, where a naive slice would shear off the bottom border).
-	const shortcutRows = layoutRows.length;
-	let vPad = input.sizing.vPad;
-	let tipRows = tipText ? 1 : 0;
-	let tipGap = tipRows > 0 && modalHeight >= 6 ? 1 : 0;
-	let footerBand = Math.max(input.sizing.footerLines, shortcutRows + tipRows + tipGap);
-	const nonBody = () => 1 + searchChrome + vPad + 1 + footerBand + 1;
-	const refreshFooterBand = () => {
-		footerBand = Math.max(input.sizing.footerLines, shortcutRows + tipRows + tipGap);
-	};
-	if (nonBody() > modalHeight && tipGap > 0) {
-		tipGap = 0;
-		refreshFooterBand();
-	}
-	if (nonBody() > modalHeight && tipRows > 0) {
-		tipRows = 0;
-		refreshFooterBand();
-	}
-	while (nonBody() > modalHeight && vPad > 0) vPad--;
-	// Last resort: give up the caller's reserved footer padding, but keep every
-	// shortcut chip row.
-	while (nonBody() > modalHeight && footerBand > shortcutRows) footerBand--;
-
-	const bodyBudget = Math.max(0, modalHeight - nonBody());
+	// The card is as tall as its content asks for, bounded by what fits. A caller
+	// that asks for nothing gets the full-height card it always got.
+	const bodyBudget =
+		input.preferredBodyRows === undefined
+			? maxBodyRows
+			: clamp(input.preferredBodyRows, Math.min(1, maxBodyRows), maxBodyRows);
+	const cardHeight = plan.nonBody + bodyBudget;
+	// Re-centre: the card shrank, so the pad above it grew by half the difference.
+	const cardTopPad = Math.max(0, Math.floor((input.areaHeight - cardHeight) / 2));
 
 	const body = [...input.body.slice(0, bodyBudget)];
 	while (body.length < bodyBudget) body.push("");
@@ -429,6 +551,10 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 		card.push(row(fit(line, contentWidth), modalWidth));
 	}
 
+	for (let i = 0; i < vPad; i++) {
+		card.push(row("", modalWidth));
+	}
+
 	card.push(divider(modalWidth));
 	const footerStartInCard = card.length;
 	if (tipText && tipRows > 0) {
@@ -444,7 +570,7 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 		const pad = Math.max(0, contentWidth - visibleWidth(layout.plain));
 		const left = Math.floor(pad / 2);
 		card.push(row(padding(left) + layout.styled + padding(pad - left), modalWidth));
-		const screenRow = topPad + shortcutStartInCard + i;
+		const screenRow = cardTopPad + shortcutStartInCard + i;
 		for (const chip of layout.chips) {
 			if (!chip.clickable || !chip.id) continue;
 			shortcutHits.push({
@@ -460,14 +586,14 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 	}
 	card.push(bottomBorder(modalWidth));
 
-	while (card.length < modalHeight) {
+	while (card.length < cardHeight) {
 		card.splice(bodyRowStartInCard + body.length, 0, row("", modalWidth));
 	}
-	const clipped = card.slice(0, modalHeight);
+	const clipped = card.slice(0, cardHeight);
 
 	const rightPad = Math.max(0, input.areaWidth - leftPad - modalWidth);
 	const frame: string[] = [];
-	for (let i = 0; i < topPad; i++) frame.push(padding(input.areaWidth));
+	for (let i = 0; i < cardTopPad; i++) frame.push(padding(input.areaWidth));
 	for (const line of clipped) {
 		frame.push(padding(leftPad) + line + padding(rightPad));
 	}
@@ -477,24 +603,24 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 		lines: frame.slice(0, input.areaHeight),
 		geometry: {
 			leftPad,
-			topPad,
+			topPad: cardTopPad,
 			modalWidth,
-			modalHeight,
+			modalHeight: cardHeight,
 			contentWidth,
-			bodyRowStart: topPad + bodyRowStartInCard,
+			bodyRowStart: cardTopPad + bodyRowStartInCard,
 			bodyRowCount: bodyBudget,
-			searchRow: searchRowInCard >= 0 ? topPad + searchRowInCard : -1,
-			footerRowStart: topPad + footerStartInCard,
-			shortcutRowStart: topPad + shortcutStartInCard,
+			searchRow: searchRowInCard >= 0 ? cardTopPad + searchRowInCard : -1,
+			footerRowStart: cardTopPad + footerStartInCard,
+			shortcutRowStart: cardTopPad + shortcutStartInCard,
 			closeColStart,
 			closeColEnd,
 			breadcrumbColStart,
 			breadcrumbColEnd,
-			titleRow: topPad,
+			titleRow: cardTopPad,
 			cardColStart: leftPad,
 			cardColEnd: leftPad + modalWidth,
-			cardRowStart: topPad,
-			cardRowEnd: topPad + Math.min(clipped.length, modalHeight),
+			cardRowStart: cardTopPad,
+			cardRowEnd: cardTopPad + Math.min(clipped.length, cardHeight),
 			shortcutHits,
 		},
 	};

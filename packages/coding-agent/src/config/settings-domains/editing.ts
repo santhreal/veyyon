@@ -388,6 +388,30 @@ export const EDITING_SETTINGS = {
 	},
 
 	// Runtime knobs (consumed by eval backends and the /python slash command)
+	"ruby.kernelMode": {
+		type: "enum",
+		values: ["session", "per-call"] as const,
+		default: "session",
+		ui: {
+			tab: "shell",
+			group: "Eval & Runtimes",
+			label: "Ruby Kernel Mode",
+			description: "Keep the Ruby kernel alive across eval calls or start fresh each time",
+		},
+	},
+
+	"julia.kernelMode": {
+		type: "enum",
+		values: ["session", "per-call"] as const,
+		default: "session",
+		ui: {
+			tab: "shell",
+			group: "Eval & Runtimes",
+			label: "Julia Kernel Mode",
+			description: "Keep the Julia kernel alive across eval calls or start fresh each time",
+		},
+	},
+
 	"python.kernelMode": {
 		type: "enum",
 		values: ["session", "per-call"] as const,

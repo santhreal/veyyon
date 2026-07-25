@@ -16,7 +16,7 @@ that terminal protocol.
 ## Usage
 
 ```typescript
-import { grep, find, encodeSixel } from "@veyyon/natives";
+import { glob, grep, encodeSixel } from "@veyyon/natives";
 
 // Grep for a pattern
 const results = await grep({
@@ -26,8 +26,8 @@ const results = await grep({
 	context: 2,
 });
 
-// Find files
-const files = await find({
+// Find files (glob: the same options, under the name the addon exports)
+const files = await glob({
 	pattern: "*.rs",
 	path: "/path/to/project",
 	fileType: "file",

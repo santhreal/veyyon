@@ -1,11 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
-import { resolveThresholdTokens } from "@veyyon/agent-core/compaction";
 import type { AssistantMessage, UsageLimit, UsageReport } from "@veyyon/ai";
 import { type Component, padding, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { formatClock, getProjectDir, scopedTimeoutSignal, withScopedTimeoutSignal } from "@veyyon/utils";
-import { isCompactionStrategyOff } from "../../../config/compaction-strategy";
+import { resolveContextLimit } from "../../../config/compaction-strategy";
 import { settings } from "../../../config/settings";
 import type { AgentSession } from "../../../session/agent-session";
 import type { OAuthAccountIdentity } from "../../../session/auth-storage";
@@ -1092,24 +1091,31 @@ export class StatusLineComponent implements Component {
 		};
 
 		let contextWindow = state.model?.contextWindow ?? this.session.model?.contextWindow ?? 0;
+		let contextLimit = contextWindow;
+		let contextLimitKind: "window" | "compaction" = "window";
 		let contextPercent: number | null = 0;
 		let contextTokens = 0;
 		if (includeContext) {
 			const breakdown = this.getCachedContextBreakdown();
 			contextTokens = breakdown.usedTokens;
 			contextWindow = breakdown.contextWindow || contextWindow;
-			// Display against the auto-compact fire point, not the raw model
-			// window: the question the bar answers is "when will compaction
-			// happen", so 100% = auto-compact triggers now. With auto-compact
-			// off the raw window is the real limit and stays the denominator.
-			if (this.#autoCompactEnabled && contextWindow > 0) {
-				const compactionSettings = this.session.settings.getGroup("compaction");
-				if (compactionSettings.enabled && !isCompactionStrategyOff(compactionSettings.strategy as string)) {
-					const thresholdTokens = resolveThresholdTokens(contextWindow, compactionSettings);
-					if (thresholdTokens > 0) contextWindow = thresholdTokens;
-				}
+			contextLimit = contextWindow;
+			// Measure against the auto-compact fire point, not the raw model
+			// window: the question the gauge answers is "when does the context
+			// run out", and with auto-compaction on it runs out at the trigger.
+			// The window itself stays intact in `contextWindow` — overwriting it
+			// here is what made `context_total` print the trigger.
+			//
+			// `resolveContextLimit` owns that question for every surface, so the
+			// gauge and the `/context` panel cannot disagree about whether a fire
+			// point exists. `#autoCompactEnabled` is the same predicate mirrored
+			// from the session for the `∞` icon, not a second axis on the limit.
+			if (this.#autoCompactEnabled) {
+				const limit = resolveContextLimit(contextWindow, this.session.settings.getGroup("compaction"));
+				contextLimit = limit.tokens;
+				contextLimitKind = limit.kind;
 			}
-			contextPercent = contextWindow > 0 ? (breakdown.usedTokens / contextWindow) * 100 : null;
+			contextPercent = contextLimit > 0 ? (breakdown.usedTokens / contextLimit) * 100 : null;
 		}
 
 		// Collab guest: context comes from the host's state frames — the local
@@ -1119,6 +1125,11 @@ export class StatusLineComponent implements Component {
 			contextWindow = collabState.contextUsage.contextWindow || contextWindow;
 			contextTokens = collabState.contextUsage.tokens ?? contextTokens;
 			contextPercent = collabState.contextUsage.percent ?? contextPercent;
+			// The host frame carries a window and a percent, not the host's
+			// compaction trigger, so the guest's limit is the window it was told
+			// about — never a trigger resolved from the guest's own settings.
+			contextLimit = contextWindow;
+			contextLimitKind = "window";
 		}
 
 		const shouldResolveActiveRepo = this.#gitEnabled() && (includePath || includeGit || includePr);
@@ -1149,6 +1160,8 @@ export class StatusLineComponent implements Component {
 			contextPercent,
 			contextTokens,
 			contextWindow,
+			contextLimit,
+			contextLimitKind,
 			autoCompactEnabled: this.#autoCompactEnabled,
 			subagentCount: this.#subagentCount,
 			activeMs: this.getActiveMs(),
@@ -1452,15 +1465,26 @@ export class StatusLineComponent implements Component {
 			const rendered = renderSegment(id, ctx);
 			if (rendered.visible && rendered.content) out.push({ id, content: rendered.content });
 		};
+		// The context gauge is the footline's one LIVE value; everything else on the
+		// right is standing state. A gauge configured on the left still belongs in the
+		// right group (it is a capability reading, not a location), but pushing it there
+		// during this first loop put it AHEAD of every right-configured segment, so the
+		// default preset read `model · gauge · session-name`: the number that changes
+		// every turn sandwiched between two that do not. Nobody chose that order; it
+		// fell out of which loop ran first. Held aside and appended after the right
+		// group instead, so the live value is the line's last word. A gauge the user
+		// configured on the RIGHT keeps the position they gave it.
+		const contextFromLeft: QuietPart[] = [];
 		for (const id of leftCfg) {
 			if (LOCATION_IDS[id]) push(id, location);
-			else if (CONTEXT_IDS[id]) push(id, capRight);
+			else if (CONTEXT_IDS[id]) push(id, contextFromLeft);
 			else push(id, capLeft);
 		}
 		for (const id of rightCfg) {
 			if (LOCATION_IDS[id]) push(id, location);
 			else push(id, capRight);
 		}
+		capRight.push(...contextFromLeft);
 		const runningBackgroundJobs = this.session.getAsyncJobSnapshot()?.running.length ?? 0;
 		const badgeParts: string[] = [];
 		if (subagentBadge) badgeParts.push(subagentBadge);
@@ -1515,9 +1539,7 @@ export class StatusLineComponent implements Component {
 		if (elapsed >= StatusLineComponent.#BADGE_ANIM_MS) return this.#badgeSlotTargetWidth;
 		const t = elapsed / StatusLineComponent.#BADGE_ANIM_MS;
 		const eased = t * t * (3 - 2 * t);
-		return Math.round(
-			this.#badgeSlotFromWidth + (this.#badgeSlotTargetWidth - this.#badgeSlotFromWidth) * eased,
-		);
+		return Math.round(this.#badgeSlotFromWidth + (this.#badgeSlotTargetWidth - this.#badgeSlotFromWidth) * eased);
 	}
 
 	/**
@@ -1543,8 +1565,7 @@ export class StatusLineComponent implements Component {
 		const left = location.join(sep);
 		if (!left) return left;
 		const { runningMs, lastRunMs } = this.getRunClock();
-		const readout =
-			runningMs !== null ? formatClock(runningMs) : lastRunMs > 0 ? `✓ ${formatClock(lastRunMs)}` : "";
+		const readout = runningMs !== null ? formatClock(runningMs) : lastRunMs > 0 ? `✓ ${formatClock(lastRunMs)}` : "";
 		if (!readout) return left;
 		return `${left}${gap}${theme.fg("dim", readout)}`;
 	}

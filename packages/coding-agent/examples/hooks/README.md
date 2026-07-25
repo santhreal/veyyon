@@ -34,7 +34,7 @@ cp permission-gate.ts ~/.veyyon/agent/hooks/
 See [docs/hooks.md](../../../../docs/hooks.md) for full documentation.
 
 ```typescript
-import type { HookAPI } from "@veyyon/coding-agent/hooks";
+import type { HookAPI } from "@veyyon/coding-agent";
 
 export default function (pi: HookAPI) {
 	// Subscribe to events

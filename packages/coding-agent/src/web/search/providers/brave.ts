@@ -7,13 +7,12 @@
 import { type AuthStorage, type FetchImpl, getEnvApiKey } from "@veyyon/ai";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
-import { clampNumResults, dateToAgeSeconds } from "../utils";
+import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
 
 const BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
-const DEFAULT_NUM_RESULTS = 10;
 const MAX_NUM_RESULTS = 20;
 
 const RECENCY_MAP: Record<"day" | "week" | "month" | "year", "pd" | "pw" | "pm" | "py"> = {
@@ -72,7 +71,7 @@ async function callBraveSearch(
 	apiKey: string,
 	params: BraveSearchParams,
 ): Promise<{ response: BraveSearchResponse; requestId?: string }> {
-	const numResults = clampNumResults(params.num_results, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
+	const numResults = clampNumResults(params.num_results, SEARCH_DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
 	const url = new URL(BRAVE_SEARCH_URL);
 	url.searchParams.set("q", params.query);
 	url.searchParams.set("count", String(numResults));
@@ -106,7 +105,7 @@ async function callBraveSearch(
 
 /** Execute Brave web search. */
 export async function searchBrave(params: BraveSearchParams): Promise<SearchResponse> {
-	const numResults = clampNumResults(params.num_results, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
+	const numResults = clampNumResults(params.num_results, SEARCH_DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
 	const apiKey = findApiKey();
 	if (!apiKey) {
 		throw new Error("BRAVE_API_KEY not found. Set it in environment or .env file.");

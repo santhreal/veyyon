@@ -13,6 +13,7 @@ import { clampLow, errorMessage, logger } from "@veyyon/utils";
 import { type Type, type } from "arktype";
 import type { AuthStorage, StoredCredentialBlock } from "../auth-storage";
 import { parseBind } from "../utils/parse-bind";
+import { formatGenerationTag, parseGenerationTag } from "./generation-tag";
 import { AuthBrokerRefresher, type AuthBrokerRefresherSchedule } from "./refresher";
 import type {
 	CredentialBlockResponse,
@@ -131,21 +132,9 @@ const DISABLED_NEXT_SWEEP_IN_MS = Number.MAX_SAFE_INTEGER;
 
 function snapshotHeaders(generation: number): Record<string, string> {
 	return {
-		ETag: `"${generation}"`,
+		ETag: formatGenerationTag(generation),
 		"Cache-Control": "no-store",
 	};
-}
-
-function parseGenerationTag(header: string | null): number | undefined {
-	if (!header) return undefined;
-	let value = header.trim();
-	if (value.startsWith("W/")) value = value.slice(2).trim();
-	if (value.startsWith('"') && value.endsWith('"') && value.length >= 2) {
-		value = value.slice(1, -1);
-	}
-	const generation = Number(value);
-	if (!Number.isInteger(generation) || generation < 0) return undefined;
-	return generation;
 }
 
 function parseWaitMs(url: URL): number {

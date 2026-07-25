@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f3663b17.js";
+            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-de67d70d.js"></script>
+        <script src="../toc-578177b6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -284,6 +284,20 @@ $ veyyon profile default work
 <li><code>rm</code> refuses the default profile, the active profile, and destructive deletes without <code>--yes</code>. If you remove the profile that is set as the launch default, its <code>defaultProfile</code> pointer is cleared at the same time, so the next launch falls back to the default profile instead of a directory that no longer exists.</li>
 <li><code>default [name]</code> shows or sets the global <code>defaultProfile</code> (which profile a bare <code>vey</code> launches); <code>default --clear</code> removes it.</li>
 </ul>
+<h3 id="reading-the-size-in-profile-list---json"><a class="header" href="#reading-the-size-in-profile-list---json">Reading the size in <code>profile list --json</code></a></h3>
+<p><code>veyyon profile list --json</code> prints one object per profile. Two of its fields describe disk usage:</p>
+<pre><code class="language-console">$ veyyon profile list --json
+[
+  {
+    "name": "work",
+    "rootDir": "/home/you/.veyyon/profiles/work",
+    "bytes": 41238904,
+    "bytesComplete": true
+  }
+]
+</code></pre>
+<p><code>bytes</code> is the total size of every file under <code>rootDir</code>. <code>bytesComplete</code> tells you whether that total is the whole story. The walk skips anything it cannot read rather than failing the listing, so a directory with no read permission would otherwise make a large profile look small. When a path is skipped, <code>bytesComplete</code> is <code>false</code>, <code>bytes</code> becomes a lower bound, and the skipped paths are written to the profile’s log with the message <code>Profile size is incomplete; some paths could not be read</code>. Check that log when you need to know which path to fix.</p>
+<p>A profile whose directory does not exist yet reports <code>"bytes": 0</code> with <code>"bytesComplete": true</code>: there is nothing there, which is a measurement rather than a failure.</p>
 <p>In the TUI, <code>/profile new &lt;name&gt;</code> (or <code>/profile create &lt;name&gt;</code>) opens a picker listing every carry-over item (AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings), each individually toggleable (all selected by default). The new profile is seeded from the <strong>active</strong> profile with exactly the chosen items. Deleting is available too: <code>/profile rm &lt;name&gt;</code> (or the picker’s <strong>Delete</strong> action) removes a profile after a confirmation, and refuses the active and default profiles. See <a href="#tui-profile-commands">TUI profile commands</a> for the full verb list.</p>
 <p>You can still create a profile implicitly by running <code>veyyon --profile &lt;name&gt;</code> once; use <code>profile new</code> when you want seeding without launching the TUI.</p>
 <h2 id="onboarding-import"><a class="header" href="#onboarding-import">Onboarding import</a></h2>

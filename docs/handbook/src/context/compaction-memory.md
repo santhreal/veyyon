@@ -10,14 +10,18 @@ behind it.
 
 Primary compaction knobs (settings → Models → Compaction, or `config.yml`):
 
-- **Threshold** (`compaction.thresholdTokens`): an absolute token amount,
-  model-independent. Auto-compaction runs once context exceeds this many
-  tokens, whatever the current model's window is. This is the primary knob.
-  When the amount is larger than the current model's window, it is honored up
-  to one token below the window and you get a one-time warning. Set it to
-  `Default` (`-1`) to fall back to the legacy percent trigger
-  (`compaction.thresholdPercent`), which is a percent of the current model's
-  window. You can also compact on demand with `/compact`.
+- **Threshold** (`compaction.threshold`): when auto-compaction runs. The unit is
+  part of the value, so one setting covers all three ways you might want to say
+  it:
+  - `auto` (the default) triggers at the model's context window minus the
+    reserve, so it adapts to whatever model you are on.
+  - `85%` is a percent of the current model's window, so the trigger moves with
+    the model.
+  - `170000` is an absolute token amount and triggers at the same point on every
+    model. When the amount is larger than the current model's window it is
+    honored up to one token below the window and you get a one-time warning.
+
+  You can also compact on demand with `/compact`.
 - **Type** (`compaction.strategy`): how history is compressed:
   - `summary`: rewrites old history into an in-place LLM summary on the current branch (the default).
   - `handoff`: writes a structured handoff summary that preserves the task, pending questions, and
@@ -27,6 +31,18 @@ Primary compaction knobs (settings → Models → Compaction, or `config.yml`):
 
 `/compact <focus>` steers a run with an "Additional focus:" directive. Recent user messages are
 retained verbatim up to the type's budget.
+
+You can also pick the type for a single run by naming it first: `/compact summary` or
+`/compact handoff`. The name is a one-off override, so it does not change
+`compaction.strategy`. Anything after the name is focus text, as in
+`/compact handoff keep the auth details`.
+
+Two older names, `soft` and `remote`, are no longer types. Both existed only to steer a
+provider-native compaction path that veyyon has removed, so there is nothing left for them to
+select. If you type one, veyyon compacts with your configured type, treats the whole argument
+as focus text, and says which name you used and what to use instead. Your text is passed
+through exactly as you typed it, because a sentence that happens to start with "soft" is a
+reasonable thing to ask for.
 
 ## Shake and duplicate elision
 

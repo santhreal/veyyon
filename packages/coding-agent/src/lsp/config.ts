@@ -1,8 +1,16 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $which, isRecord, logger, pathIsWithin, type WhichOptions } from "@veyyon/utils";
-import { YAML } from "bun";
+import {
+	$which,
+	errorMessage,
+	isMissingPath,
+	isRecord,
+	logger,
+	parseJsonOrYamlByExtension,
+	pathIsWithin,
+	type WhichOptions,
+} from "@veyyon/utils";
 import { getConfigDirPaths } from "../config";
 import { type ClaudePluginRoot, getPreloadedPluginRoots } from "../discovery/helpers";
 import { BiomeClient } from "./clients/biome-client";
@@ -44,14 +52,6 @@ interface RawServerConfig extends Partial<ServerConfig> {
 interface NormalizedConfig {
 	servers: Record<string, RawServerConfig>;
 	idleTimeoutMs?: number;
-}
-
-function parseConfigContent(content: string, filePath: string): unknown {
-	const extension = path.extname(filePath).toLowerCase();
-	if (extension === ".yaml" || extension === ".yml") {
-		return YAML.parse(content) as unknown;
-	}
-	return JSON.parse(content) as unknown;
 }
 
 function normalizeConfig(value: unknown): NormalizedConfig | null {
@@ -113,14 +113,51 @@ function normalizeServerConfig(name: string, config: RawServerConfig): ServerCon
 	};
 }
 
+/**
+ * Read one LSP config file, or null if there is no usable config at that path.
+ *
+ * A file that EXISTS and does not parse is announced. This used to be a bare
+ * `catch { return null }`, which made a JSON typo in `.veyyon/lsp.json`
+ * indistinguishable from having no config file at all: the servers the user
+ * configured never started, nothing failed, and `/lsp` reported "not
+ * configured" — the config was silently ignored with no symptom to chase
+ * (Law 10). The same applies to `normalizeConfig` returning null, which means
+ * the file parsed to something that is not an object (a bare list, a string).
+ *
+ * The read itself is still non-fatal: one bad file must not stop the remaining
+ * sources from loading, and the per-server validation below already warns about
+ * the fields it drops.
+ */
 function readConfigFile(filePath: string): NormalizedConfig | null {
+	let content: string;
 	try {
-		const content = fs.readFileSync(filePath, "utf-8");
-		const parsed = parseConfigContent(content, filePath);
-		return normalizeConfig(parsed);
-	} catch {
+		content = fs.readFileSync(filePath, "utf-8");
+	} catch (error) {
+		if (!isMissingPath(error)) {
+			logger.warn("LSP config file exists but could not be read; ignoring it.", {
+				path: filePath,
+				error: errorMessage(error),
+			});
+		}
 		return null;
 	}
+
+	let parsed: unknown;
+	try {
+		parsed = parseJsonOrYamlByExtension(content, filePath);
+	} catch (error) {
+		logger.warn("LSP config file could not be parsed; ignoring it.", {
+			path: filePath,
+			error: errorMessage(error),
+		});
+		return null;
+	}
+
+	const normalized = normalizeConfig(parsed);
+	if (!normalized) {
+		logger.warn("LSP config file does not contain a server map; ignoring it.", { path: filePath });
+	}
+	return normalized;
 }
 
 function coerceServerConfigs(servers: Record<string, RawServerConfig>): Record<string, ServerConfig> {
@@ -336,25 +373,65 @@ function readMarketplaceLspConfig(root: ClaudePluginRoot): NormalizedConfig | nu
 	];
 
 	for (const catalogPath of catalogPaths) {
+		let catalog: unknown;
 		try {
-			const catalog = JSON.parse(fs.readFileSync(catalogPath, "utf-8")) as unknown;
-			if (!isRecord(catalog) || !Array.isArray(catalog.plugins)) continue;
-
-			for (const plugin of catalog.plugins) {
-				if (!isRecord(plugin) || plugin.name !== root.plugin) continue;
-
-				const lspServers = plugin.lspServers;
-				if (typeof lspServers === "string") {
-					const configPath = path.resolve(root.path, lspServers);
-					if (!pathIsWithin(root.path, configPath)) return null;
-					return readConfigFile(configPath);
-				}
-				if (isRecord(lspServers)) {
-					return normalizeConfig({ servers: lspServers });
-				}
-				return null;
+			catalog = JSON.parse(fs.readFileSync(catalogPath, "utf-8")) as unknown;
+		} catch (error) {
+			// Only one of the two candidate locations exists in a given marketplace
+			// layout, so an absent catalog is the ordinary case. A catalog that is
+			// present and malformed silently dropped every LSP server the plugin
+			// declares, which is the same invisible loss as a bad `lsp.json`.
+			if (!isMissingPath(error)) {
+				logger.warn("Plugin marketplace catalog could not be read; its LSP servers are being ignored.", {
+					path: catalogPath,
+					plugin: root.plugin,
+					error: errorMessage(error),
+				});
 			}
-		} catch {}
+			continue;
+		}
+		if (!isRecord(catalog) || !Array.isArray(catalog.plugins)) {
+			logger.warn("Plugin marketplace catalog has no plugin list; its LSP servers are being ignored.", {
+				path: catalogPath,
+				plugin: root.plugin,
+			});
+			continue;
+		}
+
+		for (const plugin of catalog.plugins) {
+			if (!isRecord(plugin) || plugin.name !== root.plugin) continue;
+
+			const lspServers = plugin.lspServers;
+			if (typeof lspServers === "string") {
+				const configPath = path.resolve(root.path, lspServers);
+				// A plugin pointing its config outside its own directory is refused, and
+				// the refusal is announced: it is either an attempt to read a file the
+				// plugin has no business reading, or a path mistake whose only symptom
+				// would otherwise be that the plugin's servers never appear.
+				if (!pathIsWithin(root.path, configPath)) {
+					logger.warn("Plugin LSP config path escapes the plugin directory; refusing to read it.", {
+						plugin: root.plugin,
+						declared: lspServers,
+						resolved: configPath,
+					});
+					return null;
+				}
+				return readConfigFile(configPath);
+			}
+			if (isRecord(lspServers)) {
+				return normalizeConfig({ servers: lspServers });
+			}
+			// The plugin is in the catalog and declares no LSP servers, or declares
+			// them as something that is neither a path nor a map. The latter is worth
+			// a word; the former is the common case and says nothing.
+			if (lspServers !== undefined) {
+				logger.warn("Plugin declares lspServers as neither a config path nor a server map; ignoring it.", {
+					plugin: root.plugin,
+					type: typeof lspServers,
+				});
+			}
+			return null;
+		}
 	}
 
 	return null;

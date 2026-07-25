@@ -149,11 +149,7 @@ function formatAgentStats(event: EvalStatusEvent, theme: Theme): string {
 	}
 	const contextTokens = eventNumber(event.contextTokens);
 	if (contextTokens > 0) {
-		const contextWindow = eventNumber(event.contextWindow);
-		const ctx =
-			contextWindow > 0
-				? formatContextUsage((contextTokens / contextWindow) * 100, contextWindow)
-				: formatNumber(contextTokens);
+		const ctx = formatContextUsage(contextTokens, eventNumber(event.contextWindow));
 		line += `${theme.sep.dot}${theme.fg("dim", ctx)}`;
 	}
 	const cost = eventNumber(event.cost);
@@ -161,7 +157,7 @@ function formatAgentStats(event: EvalStatusEvent, theme: Theme): string {
 		line += `${theme.sep.dot}${theme.fg("statusLineCost", `$${cost.toFixed(2)}`)}`;
 	}
 	const model = eventString(event.model);
-	if (model && settings.get("task.showResolvedModelBadge")) {
+	if (model && settings.get("subagent.showResolvedModelBadge")) {
 		line += `${theme.sep.dot}${theme.fg("dim", truncateToWidth(replaceTabs(model), 30))}`;
 	}
 	return line;

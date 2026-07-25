@@ -33,7 +33,8 @@
   "scripts": {
     "build": "bun scripts/build-binary.ts",
     "check": "biome check . && bun run check:types",
-    "check:types": "tsgo -p tsconfig.json --noEmit",
+    "check:types": "tsgo -p tsconfig.json --noEmit && bun run check:types:examples",
+    "check:types:examples": "tsgo -p tsconfig.examples.json --noEmit",
     "lint": "biome lint .",
     "test": "bun ../../scripts/ci-test-ts.ts coding-agent-heavy --full",
     "fix": "biome check --write --unsafe . && bun run format-prompts",
@@ -90,6 +91,7 @@
     "smol-toml": "catalog:",
     "turndown": "catalog:",
     "turndown-plugin-gfm": "catalog:",
+    "yaml": "catalog:",
     "zod": "catalog:"
   },
   "optionalDependencies": {
@@ -502,7 +504,10 @@
       "types": "./src/plan-mode/*.ts",
       "import": "./src/plan-mode/*.ts"
     },
-    "./prompts/*": "./src/prompts/*.md",
+    "./prompts/*": {
+      "types": "./src/prompts/*.ts",
+      "import": "./src/prompts/*.ts"
+    },
     "./secrets": {
       "types": "./src/secrets/index.ts",
       "import": "./src/secrets/index.ts"

@@ -177,7 +177,7 @@ and the full merge re-runs.
 
 - `docs/models.md`: registry, equivalence, compat flags
   (`supportsStrictMode`, `toolStrictMode`, `disableStrictTools`).
-- `docs/provider-streaming-internals.md`: how the normalized schemas are
+- `docs/internal/provider-streaming-internals.md`: how the normalized schemas are
   used downstream during the provider stream loop.
 - `docs/internal/mcp-server-tool-authoring.md`: MCP `inputSchema` ingestion via
   `normalizeSchemaForMCP`.

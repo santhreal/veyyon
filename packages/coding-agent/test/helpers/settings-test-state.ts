@@ -9,15 +9,8 @@ import {
 	setKeybindings,
 	setTuiTight,
 } from "@veyyon/tui";
-import {
-	__resetDirsFromEnvForTests,
-	getActiveProfile,
-	getAgentDir,
-	getProjectDir,
-	setAgentDir,
-	setProfile,
-	setProjectDir,
-} from "@veyyon/utils";
+import { getActiveProfile, getAgentDir, getProjectDir, setProjectDir } from "@veyyon/utils";
+import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 /**
  * Snapshot of every process-global that Settings / dir / profile tests mutate.
@@ -33,6 +26,13 @@ export interface SettingsTestState {
 	env: Record<string, string | undefined>;
 	projectDir: string;
 	tuiTight: boolean;
+	/**
+	 * The dir OVERRIDES — `VEYYON_CODING_AGENT_DIR`, `VEYYON_PROFILE`, the in-memory
+	 * profile, and the pre-profile agent-dir baseline — captured by the one owner of that
+	 * undo. `agentDir` above is the RESOLVED path, which cannot express whether it came
+	 * from a variable, a profile, or a default, and cannot express the baseline at all.
+	 */
+	dirOverrides: DirOverridesSnapshot;
 }
 
 /**
@@ -56,6 +56,7 @@ export function beginSettingsTest(): SettingsTestState {
 		env,
 		projectDir: getProjectDir(),
 		tuiTight: isTuiTight(),
+		dirOverrides: captureDirOverrides(),
 	};
 	resetSettingsForTest();
 	resetKeybindingsForTests();
@@ -88,13 +89,15 @@ export function restoreSettingsTestState(state: SettingsTestState | undefined): 
 	if (!state) return;
 
 	restoreEnv(state.env);
-	// Rebuild profile + DirResolver from the restored env first, then force the
-	// exact agent/project/profile the caller had. setAgentDir/setProfile write
-	// env vars; re-applying the snapshotted env keys after them would fight the
-	// intentional overrides, so we re-set agent/profile after env+resetDirs.
-	__resetDirsFromEnvForTests();
-	setAgentDir(state.agentDir);
-	setProfile(state.profile);
+	// One call for the whole dir/profile undo, instead of `setAgentDir` + `setProfile`
+	// here and a hand-rolled env re-pin at the end. Those two setters are not inverses
+	// (each writes environment variables the snapshot may say were absent, `setAgentDir`
+	// clears the active profile, and `setAgentDir` OVERWRITES the pre-profile baseline),
+	// and forcing the RESOLVED agent dir back through `setAgentDir` is what left that
+	// baseline pointing at the developer's real `~/.veyyon/profiles/<profile>/agent` in
+	// every suite using this helper — invisible in the environment and in the resolved
+	// dir, and only caught once the leak tracer grew a probe for it.
+	restoreDirOverrides(state.dirOverrides);
 	// Prefer the snapshotted projectDir; fall back to cwd if projectDir is gone
 	// (deleted temp) so the process is never left trying to enter a removed path.
 	// setProjectDir chdirs first and only then assigns the global — a throw leaves
@@ -107,10 +110,9 @@ export function restoreSettingsTestState(state: SettingsTestState | undefined): 
 			: process.cwd();
 	setProjectDir(projectTarget);
 	setTuiTight(state.tuiTight);
-	// Final env pin for agent-dir keys that setAgentDir/setProfile may have
-	// rewritten away from the snapshot when profile was active.
-	restoreEnvValue("VEYYON_CODING_AGENT_DIR", state.env.VEYYON_CODING_AGENT_DIR);
-	restoreEnvValue("VEYYON_PROFILE", state.env.VEYYON_PROFILE);
+	// `VEYYON_CONFIG_DIR` is not part of the dir-overrides snapshot (it names the config
+	// ROOT, a different lever), and `setProjectDir` above can chdir through code that
+	// reads it, so it is pinned here.
 	restoreEnvValue("VEYYON_CONFIG_DIR", state.env.VEYYON_CONFIG_DIR);
 }
 
@@ -146,6 +148,44 @@ function restoreEnvValue(key: string, value: string | undefined): void {
 	}
 	process.env[key] = value;
 	Bun.env[key] = value;
+}
+
+let fileLevelIsolationOwner: string | undefined;
+
+/**
+ * Claim the single FILE-LEVEL isolation slot, for helpers that snapshot at
+ * `beforeAll` and restore at `afterAll`.
+ *
+ * Why a claim rather than "just call both helpers": Bun runs `afterAll` callbacks in
+ * REGISTRATION order, not in reverse. Two file-level helpers therefore restore
+ * outermost-first, and the second one — whose snapshot was taken AFTER the first had
+ * already redirected the agent dir — puts that temp redirection back on the way out.
+ * `tools/non-interactive-approval-fails-closed.test.ts` stacked
+ * `useIsolatedAgentDir()` and `useIsolatedGlobalSettings()` exactly that way and left
+ * `VEYYON_CODING_AGENT_DIR` pointing at its own deleted temp dir for every later file
+ * in the process. Stacking cannot be made to work by ordering, so it fails loudly
+ * here instead, and the legitimate combination is an option on one helper.
+ */
+export function claimFileLevelIsolation(label: string): void {
+	if (fileLevelIsolationOwner !== undefined) {
+		throw new Error(
+			`${label} cannot be stacked on ${fileLevelIsolationOwner}: two file-level isolation ` +
+				`helpers restore in registration order, so the second one reinstates the first one's ` +
+				`temp state. Call useIsolatedAgentDir({ globalSettings: true }) instead of calling ` +
+				`useIsolatedAgentDir() and useIsolatedGlobalSettings() in the same file.`,
+		);
+	}
+	fileLevelIsolationOwner = label;
+}
+
+/** Release the file-level isolation slot. Safe to call when nothing is claimed. */
+export function releaseFileLevelIsolation(): void {
+	fileLevelIsolationOwner = undefined;
+}
+
+/** Test-only: which helper currently holds the file-level slot, if any. */
+export function fileLevelIsolationOwnerForTests(): string | undefined {
+	return fileLevelIsolationOwner;
 }
 
 /** Test-only: install a custom keybindings singleton (for isolation proving tests). */

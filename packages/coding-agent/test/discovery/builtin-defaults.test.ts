@@ -72,7 +72,10 @@ describe("builtin-defaults rule provider", () => {
 		const rule = rules.find(r => r.name === "cwd-reroot");
 		if (!rule) throw new Error("cwd-reroot rule missing");
 
-		const manager = new TtsrManager();
+		// The working directory is supplied, because the rule now carries `pathScope: outside-cwd`
+		// and the whole nudge is "that path is somewhere else". A manager with no working directory
+		// cannot answer that and deliberately declines to fire (see `ttsr/path-scope.test.ts`).
+		const manager = new TtsrManager(undefined, { getCwd: () => "/media/mukund-thiru/work/veyyon" });
 		expect(manager.addRule(rule)).toBe(true);
 
 		// A read/grep/glob call carrying a deep absolute path (the shape produced only
@@ -107,6 +110,68 @@ describe("builtin-defaults rule provider", () => {
 		// navigation call and must not trip the re-root nudge.
 		manager.resetBuffer();
 		expect(manager.checkDelta(foreign, { source: "tool", toolName: "edit", filePaths: ["src/foo.ts"] })).toEqual([]);
+
+		// THE false positive this rule shipped with for a long time. An absolute path INSIDE the
+		// working directory matches the condition regex exactly as well as a foreign one does, so
+		// the nudge fired and advised re-rooting to the directory the session was already in. A
+		// model writes these constantly: a grep result, a path pasted back from a tool header, any
+		// path it happens to have in absolute form.
+		manager.resetBuffer();
+		expect(
+			manager.checkDelta('{"path":"/media/mukund-thiru/work/veyyon/packages/coding-agent/src/tools/read.ts"}', {
+				source: "tool",
+				toolName: "read",
+			}),
+		).toEqual([]);
+
+		// System paths are outside the working directory and are NOT another project. Advising a
+		// re-root into `/usr/lib` or `/proc` is advice that cannot be taken, and reading a header, a
+		// toolchain source, or a temp file is ordinary work.
+		for (const systemPath of [
+			'{"path":"/usr/lib/gcc/x86_64-linux-gnu/13/include/stddef.h"}',
+			'{"path":"/etc/systemd/system/multi-user.target.wants/x.service"}',
+			'{"path":"/var/log/journal/abc/system.journal"}',
+			'{"path":"/tmp/veyyon-scratch/a/b/c.txt"}',
+			'{"path":"/proc/self/task/1/status"}',
+		]) {
+			manager.resetBuffer();
+			expect(manager.checkDelta(systemPath, { source: "tool", toolName: "read" }), systemPath).toEqual([]);
+		}
+	});
+
+	/**
+	 * The injected body has to name both directories, because the advice is a move between two of
+	 * them. It used to name neither: "re-root there with set_cwd" left the model to work out both
+	 * where it was and where "there" is, and the directory it picks is the file's own rather than the
+	 * project root.
+	 */
+	it("cwd-reroot's body names the current root and the path that triggered it", async () => {
+		const rules = await loadBuiltinRules();
+		const rule = rules.find(r => r.name === "cwd-reroot");
+		if (!rule) throw new Error("cwd-reroot rule missing");
+
+		const rendered = prompt.render(rule.content, {
+			argot: false,
+			cwd: "/work/veyyon",
+			matchedPath: "/work/other/crates/cli/src/main.rs",
+		});
+
+		expect(rendered).toContain("/work/veyyon");
+		expect(rendered).toContain("/work/other/crates/cli/src/main.rs");
+		// And it says which directory to re-root to, since the file's own directory is the wrong one.
+		expect(rendered).toMatch(/project's ROOT/);
+	});
+
+	/** With no matched path recorded the body still has to read as a sentence, not as an empty hole. */
+	it("cwd-reroot's body degrades to a readable sentence with no matched path", async () => {
+		const rules = await loadBuiltinRules();
+		const rule = rules.find(r => r.name === "cwd-reroot");
+		if (!rule) throw new Error("cwd-reroot rule missing");
+
+		const rendered = prompt.render(rule.content, { argot: false, cwd: "/work/veyyon", matchedPath: undefined });
+
+		expect(rendered).toContain("a file by its full absolute path");
+		expect(rendered).not.toContain("``");
 	});
 
 	// Regression for BUG-CWD-REROOT-ARGOT-LEAK-DEFAULT: bundled rules are ALWAYS
@@ -119,18 +184,31 @@ describe("builtin-defaults rule provider", () => {
 	// to call a tool that does not exist); an ungated `argot` in a rule body is the
 	// leak this guards against.
 	describe("bundled rules never leak argot advice when argot is off", () => {
-		it("every rule body rendered with argot=false contains no argot mention", () => {
-			const leaks = BUILTIN_RULE_SOURCES.filter(({ content }) =>
-				/argot/i.test(prompt.render(content, { argot: false })),
-			).map(r => r.name);
+		it("every rule body rendered with argot=false contains no argot mention", async () => {
+			// `cwd` is part of the injection context (`cwd-reroot` names the directory the model is
+			// currently rooted at), and the renderer refuses a template variable the context does not
+			// provide, so it has to be supplied here too.
+			// `argotUnloaded` is the other argot gate: it asks whether the nudge to LOAD shorthand still
+			// applies, and it is false whenever the feature is off, so both gates are closed here.
+			//
+			// The PARSED rules, not the raw sources: only the body is ever injected, and a rule about
+			// argot says so in its `description`, which stays in the frontmatter and never reaches the
+			// model. Rendering the raw source reported that description as a leak.
+			const leaks = (await loadBuiltinRules())
+				.filter(rule =>
+					/argot/i.test(prompt.render(rule.content, { argot: false, argotUnloaded: false, cwd: "/work/project" })),
+				)
+				.map(rule => rule.name);
 			expect(leaks).toEqual([]);
 		});
 
 		it("cwd-reroot's argot_load advice appears only when argot is on (the gate actually passes content through)", () => {
 			const cwdReroot = BUILTIN_RULE_SOURCES.find(r => r.name === "cwd-reroot");
 			if (!cwdReroot) throw new Error("cwd-reroot rule missing");
-			expect(prompt.render(cwdReroot.content, { argot: false })).not.toMatch(/argot_load/);
-			expect(prompt.render(cwdReroot.content, { argot: true })).toContain("argot_load");
+			expect(
+				prompt.render(cwdReroot.content, { argot: false, argotUnloaded: false, cwd: "/work/project" }),
+			).not.toMatch(/argot_load/);
+			expect(prompt.render(cwdReroot.content, { argot: true, cwd: "/work/project" })).toContain("argot_load");
 		});
 	});
 

@@ -6,6 +6,7 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { errorMessage, isEnoent, logger } from "@veyyon/utils";
 
 /**
  * Sanitize a tool name for safe use as the middle segment of the artifact
@@ -129,12 +130,22 @@ export class ArtifactManager {
 
 	/**
 	 * List all artifact files in the directory.
-	 * Returns empty array if directory doesn't exist.
+	 *
+	 * A directory that does not exist is an empty list: no output has been truncated into an artifact
+	 * yet. A directory that exists and cannot be read is reported, because the artifacts are what an
+	 * `artifact://` URL resolves against, so an empty list there means every truncated tool output in
+	 * the session becomes unreachable with nothing saying why.
 	 */
 	async listFiles(): Promise<string[]> {
 		try {
 			return await fs.readdir(this.#dir);
-		} catch {
+		} catch (err) {
+			if (!isEnoent(err)) {
+				logger.warn("Artifact directory could not be read; truncated tool outputs are unreachable", {
+					dir: this.#dir,
+					error: errorMessage(err),
+				});
+			}
 			return [];
 		}
 	}

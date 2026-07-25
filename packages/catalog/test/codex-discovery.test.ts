@@ -48,11 +48,6 @@ describe("Codex model discovery", () => {
 			id: "gpt-5.5",
 			provider: "openai-codex",
 			api: "openai-codex-responses",
-			remoteCompaction: {
-				enabled: true,
-				api: "openai-codex-responses",
-				v2StreamingEnabled: true,
-			},
 		});
 	});
 
@@ -158,13 +153,11 @@ describe("Codex model discovery", () => {
 			contextWindow: 272_000,
 			maxTokens: 128_000,
 		};
+		// The refreshed copy differs in one field, which is what proves the refetched
+		// model reached the caller rather than the stale cached one.
 		const refreshedModel: ModelSpec<"openai-codex-responses"> = {
 			...cachedModel,
-			remoteCompaction: {
-				enabled: true,
-				api: "openai-codex-responses",
-				v2StreamingEnabled: true,
-			},
+			maxTokens: 96_000,
 		};
 		try {
 			writeModelCache(
@@ -195,9 +188,7 @@ describe("Codex model discovery", () => {
 			});
 
 			expect(fetched).toBe(true);
-			expect(result.models.find(model => model.id === "gpt-5.5")?.remoteCompaction).toEqual(
-				refreshedModel.remoteCompaction,
-			);
+			expect(result.models.find(model => model.id === "gpt-5.5")?.maxTokens).toBe(refreshedModel.maxTokens);
 		} finally {
 			await fs.rm(tempDir, { recursive: true, force: true });
 		}

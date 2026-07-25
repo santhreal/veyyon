@@ -1,6 +1,4 @@
 import { describe, expect, it, vi } from "bun:test";
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import { parseArgs } from "@veyyon/coding-agent/cli/args";
 import { Settings } from "@veyyon/coding-agent/config/settings";
@@ -9,6 +7,7 @@ import type { CreateAgentSessionOptions } from "@veyyon/coding-agent/sdk";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 import { APP_NAME } from "@veyyon/utils/dirs";
+import { enterIsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
 import { runCli } from "../src/cli";
 
 describe("parseArgs — --max-time flag", () => {
@@ -64,21 +63,18 @@ describe("parseArgs — --max-time flag", () => {
 			return true;
 		});
 
-		// runCli runs the legacy-layout migration gate against ~/<configDirName>
-		// before arg validation; on a machine whose real ~/.veyyon is in the
-		// both-layouts conflict state that exits 1 and the usage error under
-		// test never runs. bun's os.homedir() ignores runtime HOME mutation, so
-		// isolation goes through the live-read VEYYON_CONFIG_DIR name instead.
-		const configDirName = `.veyyon-max-time-test-${crypto.randomUUID()}`;
-		const previousConfigDir = process.env.VEYYON_CONFIG_DIR;
-		process.env.VEYYON_CONFIG_DIR = configDirName;
+		// runCli runs the legacy-layout migration gate against the config root before arg
+		// validation; on a machine whose real ~/.veyyon is in the both-layouts conflict
+		// state that exits 1 and the usage error under test never runs. Isolation goes
+		// through the live-read VEYYON_CONFIG_DIR, because bun's os.homedir() ignores a
+		// runtime HOME mutation, and it points at a temp root rather than a fresh
+		// directory name under the real home.
+		const isolated = enterIsolatedConfigRoot("max-time");
 		try {
 			await runCli(["--max-time", "5d", "--print", "hello"]);
 			observedExitCode = process.exitCode;
 		} finally {
-			if (previousConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
-			else process.env.VEYYON_CONFIG_DIR = previousConfigDir;
-			await fs.rm(path.join(os.homedir(), configDirName), { recursive: true, force: true });
+			isolated.restore();
 			vi.restoreAllMocks();
 			process.exitCode = previousExitCode ?? 0;
 		}
@@ -108,6 +104,12 @@ describe("parseArgs — --max-time flag", () => {
 		try {
 			await runRootCommand(parsed, ["--max-time", "3", "--print", "hello"], {
 				discoverAuthStorage: async () => authStorage,
+				// This process's stdin is not ours: under `bun test` it is whatever the
+				// launcher attached, and an open pipe nobody writes to never reaches EOF,
+				// so the default reader parks startup here forever (5s timeout). Injecting
+				// the read is the only way an in-process caller can be deterministic about
+				// it. See main-piped-input-injection.test.ts.
+				readPipedInput: async () => undefined,
 				settings,
 				createAgentSession: async options => {
 					observedOptions = options;

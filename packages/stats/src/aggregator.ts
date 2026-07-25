@@ -1,5 +1,5 @@
 import * as fs from "node:fs";
-import { DAY_MS, HOUR_MS, MINUTE_MS, workerHostEntry } from "@veyyon/utils";
+import { DAY_MS, errorMessage, HOUR_MS, isEnoent, logger, MINUTE_MS, workerHostEntry } from "@veyyon/utils";
 import {
 	getRecentErrors as dbGetRecentErrors,
 	getRecentRequests as dbGetRecentRequests,
@@ -233,7 +233,17 @@ export async function syncAllSessions(opts?: SyncOptions): Promise<{ processed: 
 		let fileStats: fs.Stats;
 		try {
 			fileStats = await fs.promises.stat(sessionFile);
-		} catch {
+		} catch (err) {
+			// The file was listed a moment ago, so it going away is a race worth noting and anything
+			// else is a real fault. Either way this file contributes nothing to the totals, and the
+			// progress bar still counts it as done, so without this line a sync that read none of your
+			// sessions looks exactly like a sync that had nothing to read.
+			if (!isEnoent(err)) {
+				logger.warn("Session file could not be examined; it is missing from every statistic", {
+					path: sessionFile,
+					error: errorMessage(err),
+				});
+			}
 			report(sessionFile);
 			return;
 		}

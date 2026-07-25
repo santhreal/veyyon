@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { makeExpander } from "../src/codec.js";
 import { HANDLE_NAME_RE, MAX_EXPANSION_BYTES } from "../src/constants.js";
 import {
+	emittedTokenCost,
 	estimateTokens,
 	extractCandidates,
 	generateDict,
-	emittedTokenCost,
 	generateDictFromRepo,
 	scoringFrequency,
 } from "../src/generate.js";

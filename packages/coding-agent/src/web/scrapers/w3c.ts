@@ -1,4 +1,4 @@
-import { trimTrailingSlashes, tryParseJson } from "@veyyon/utils";
+import { errorMessage, logger, trimTrailingSlashes, tryParseJson } from "@veyyon/utils";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, htmlToBasicMarkdown, loadPage, scraperDegrade, tryParseUrl } from "./types";
 import { asRecord } from "./utils";
@@ -124,7 +124,14 @@ export const handleW3c: SpecialHandler = async (
 				try {
 					const editorsPayload = asRecord(JSON.parse(editorsResult.content));
 					editors = editorsPayload ? extractEditors(editorsPayload) : [];
-				} catch {}
+				} catch (error) {
+					// The spec still renders, without its editors list. Nothing else marks that
+					// difference, so the reader would take an editor-less spec at face value.
+					logger.warn("W3C editors list was not valid JSON; the spec renders without editors", {
+						url: editorsUrl,
+						error: errorMessage(error),
+					});
+				}
 			}
 		}
 

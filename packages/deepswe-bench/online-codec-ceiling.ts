@@ -34,15 +34,9 @@
 
 import * as fs from "node:fs";
 import { countTokens as nativeCountTokens } from "@veyyon/natives";
-import { REFERENCE_RATE_CARD } from "./cost-model";
+import { REFERENCE_RATE_CARD, retainedTokenCost } from "./cost-model";
 
 const countTokens = (text: string): number => nativeCountTokens(text);
-
-/** Cost of one token that enters context at `turn` and is re-read for the rest of the session. */
-function retainedTokenCost(turn: number, totalTurns: number): number {
-	const rereads = Math.max(0, totalTurns - turn - 1);
-	return (REFERENCE_RATE_CARD.input + REFERENCE_RATE_CARD.cacheRead * rereads) / 1_000_000;
-}
 
 /**
  * Candidate strings from one chunk: whole lines, and the long shared prefixes

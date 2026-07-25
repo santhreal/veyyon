@@ -17,7 +17,7 @@ import { createPromptActionAutocompleteProvider } from "../../modes/prompt-actio
 import { parseQueueShorthand, splitQueuedMessages } from "../../modes/queue-input";
 import { invokeSkillCommandFromText, isKnownSkillCommand } from "../../modes/skill-command";
 import type { InteractiveModeContext } from "../../modes/types";
-import manualContinuePrompt from "../../prompts/system/manual-continue.md" with { type: "text" };
+import { PROMPTS } from "../../prompts/registry";
 import { USER_INTERRUPT_LABEL } from "../../session/messages";
 import { executeBuiltinSlashCommand } from "../../slash-commands/builtin-registry";
 import type { TuiSlashCommandHostContext } from "../../slash-commands/types";
@@ -705,7 +705,7 @@ export class InputController {
 				if (this.ctx.onInputCallback) {
 					this.ctx.editor.clearDraft();
 					this.ctx.onInputCallback({
-						text: manualContinuePrompt,
+						text: PROMPTS["turn-control/manual-continue"].text,
 						cancelled: false,
 						started: true,
 						synthetic: true,
@@ -1584,6 +1584,9 @@ export class InputController {
 			);
 			return true;
 		} catch {
+			// False means "there was no image to paste", and the caller then treats the keypress as an
+			// ordinary text paste. A clipboard with no image, and a clipboard we could not read, both leave
+			// the user's paste working; raising here would break paste entirely on a headless clipboard.
 			return false;
 		}
 	}
@@ -1923,6 +1926,10 @@ export class InputController {
 
 	setToolsExpanded(expanded: boolean): void {
 		this.ctx.toolOutputExpanded = expanded;
+		// Remember it, the same way the thinking-block toggle does. Without this the
+		// choice lasted only until the session ended, so a reader who wants the full
+		// form of every tool call had to re-make it every time.
+		this.ctx.settings.set("display.toolOutputExpanded", expanded);
 		for (const child of this.ctx.chatContainer.children) {
 			if (isExpandable(child)) {
 				child.setExpanded(expanded);
@@ -1991,6 +1998,9 @@ export class InputController {
 		try {
 			return await fs.open(terminalPath, "r+");
 		} catch {
+			// No controlling terminal to hand the external editor. Null is the documented "not available"
+			// answer the caller already handles by falling back to the in-app editor, which is visible to
+			// the user in a way a log line would not be.
 			return null;
 		}
 	}

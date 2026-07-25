@@ -558,6 +558,57 @@ staging_path() {
     printf '%s/.%s.%s.%s' "$(install_dir)" "$BIN_NAME" "$1" "$$"
 }
 
+# Remove staging files left behind by an install that was killed.
+#
+# The EXIT/INT/TERM trap cleans up a Ctrl-C, but nothing survives SIGKILL or a
+# power loss, and until now only `--uninstall` ever swept them. Each staging file
+# is a full copy of the binary (~100 MB), so a user whose install kept getting
+# killed accumulated hundreds of megabytes of hidden files in their install
+# directory with nothing on screen to explain them, and no command short of
+# uninstalling to reclaim it.
+#
+# A staging file whose pid is still ALIVE belongs to a concurrent installer and is
+# never touched: $$ in staging_path exists precisely so two installers do not
+# share a path, and sweeping a live one would delete the other process's partial
+# download out from under it — the exact bug that made the paths per-process.
+# Removing files is a visible change to a directory the user owns, so every
+# removal is announced (Law 10: no quiet cleanup).
+sweep_stale_staging() {
+    for _ss_path in "$(install_dir)/.$BIN_NAME".*; do
+        [ -e "$_ss_path" ] || continue
+        _ss_pid=${_ss_path##*.}
+        # Anything that is not `<name>.<phase>.<pid>` was not written by
+        # staging_path; leave it alone rather than guess.
+        case "$_ss_pid" in
+            "" | *[!0-9]*) continue ;;
+        esac
+        if pid_is_running "$_ss_pid"; then
+            say "leaving $_ss_path alone — another installer (pid $_ss_pid) is using it"
+            continue
+        fi
+        rm -f "$_ss_path" && ok "removed $_ss_path left by an interrupted install (pid $_ss_pid)"
+    done
+}
+
+# Whether a process with this pid exists, regardless of who owns it.
+#
+# NOT `kill -0`: that reports EPERM for a process this user may not signal, which
+# is indistinguishable from ESRCH through the exit status alone. A pid can be
+# recycled onto another user's process, and reading "cannot signal it" as "it is
+# gone" is what would let the sweep delete a live installer's download. `ps -p` is
+# POSIX and answers for every process on both Linux and macOS.
+#
+# With no `ps` at all the answer is unknowable, so it fails SAFE and says the pid
+# is running: refusing to reclaim a stale file costs disk, and the alternative
+# costs another process its download.
+pid_is_running() {
+    if has ps; then
+        ps -p "$1" >/dev/null 2>&1
+        return $?
+    fi
+    return 0
+}
+
 # ---- place a downloaded binary at its final path, atomically ----
 # Refuses an empty download, makes the file executable BEFORE the move (so it is
 # never visible non-executable at the final path), then moves it into place.
@@ -1086,6 +1137,7 @@ install_local() {
     # nothing on screen to explain which binary was actually installed.
     say "installing the local build at $local_bin"
     mkdir -p "$(install_dir)"
+    sweep_stale_staging
     tmpbin=$(staging_path local)
     # Same cleanup contract as install_binary: a Ctrl-C or a failed copy must not
     # leave a staging file behind in the user's install directory.
@@ -1170,6 +1222,7 @@ install_binary() {
     say "version: $LATEST"
 
     mkdir -p "$(install_dir)"
+    sweep_stale_staging
     BINARY_URL="https://github.com/${REPO}/releases/download/${LATEST}/${BINARY}"
     tmpbin=$(staging_path download)
     # Never leave a partial or tampered download behind: a failed curl, a

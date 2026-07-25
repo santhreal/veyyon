@@ -5,7 +5,7 @@ import { type Component, Spacer, Text, TruncatedText } from "@veyyon/tui";
 import { APP_NAME, errorMessage, formatCount } from "@veyyon/utils";
 import type { AdvisorMessageDetails } from "../../advisor";
 import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../collab/protocol";
-import { settings } from "../../config/settings";
+import { type SettingsSaveFailure, settings } from "../../config/settings";
 import { getFileSnapshotStore } from "../../edit/file-snapshot-store";
 import { createAdvisorMessageCard } from "../../modes/components/advisor-message";
 import { AssistantMessageComponent } from "../../modes/components/assistant-message";
@@ -751,26 +751,6 @@ export class UiHelpers {
 		this.ctx.present([new Spacer(1), new Text(theme.fg("warning", `Warning: ${warningMessage}`), 1, 0)]);
 	}
 
-	/**
-	 * One line confirming an update landed, shown on the first launch after it.
-	 * Deliberately not the release notes: `/changelog` opens them on the web,
-	 * which stays current without the terminal rendering or bounding anything.
-	 */
-	showUpdateInstalledNotification(installedVersion: string): void {
-		const block = new TranscriptBlock();
-		block.addChild(
-			new Text(
-				theme.fg("accent", `Updated to ${APP_NAME} ${installedVersion}`) +
-					theme.fg("dim", " · run ") +
-					theme.fg("accent", "/changelog") +
-					theme.fg("dim", " for release notes"),
-				1,
-				0,
-			),
-		);
-		this.ctx.present(block);
-	}
-
 	showUpdateReadyNotification(newVersion: string): void {
 		// An automatic update finished writing the new binary. It cannot affect the
 		// process already running, so say what the user has to do about it.
@@ -802,6 +782,20 @@ export class UiHelpers {
 		this.ctx.showError(
 			`Could not read your settings, so this session is using defaults for them:\n${lines}\n` +
 				"Fix the syntax in the file above, or copy the preserved file back over it.",
+		);
+	}
+
+	showSettingsSaveFailureNotification(failure: SettingsSaveFailure): void {
+		// The counterpart to showUnparseableSettingsNotification: that one covers a config
+		// veyyon could not READ, this one a config it cannot WRITE. Both leave the user
+		// with settings that are not what they think they are, and both used to be a log
+		// line nobody sees. Here the in-memory value DID change, so the UI already showed
+		// the new setting: without this the user only finds out on their next launch, when
+		// it silently reverts (Law 10).
+		this.ctx.showError(
+			`Could not save your settings after ${failure.attempts} attempts, so this change will not survive a restart:\n` +
+				`  ${failure.path}\n    ${failure.reason}\n` +
+				"Check that the file and its directory are writable, then change the setting again.",
 		);
 	}
 

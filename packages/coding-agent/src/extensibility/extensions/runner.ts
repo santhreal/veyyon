@@ -1023,6 +1023,8 @@ export class ExtensionRunner {
 						messages.push(result.message);
 					}
 					if (result.systemPrompt !== undefined) {
+						// A bare string is one section. Extensions are plain JavaScript
+						// loaded at runtime, so this is a shape that really arrives.
 						currentSystemPrompt =
 							typeof result.systemPrompt === "string" ? [result.systemPrompt] : result.systemPrompt;
 						systemPromptModified = true;

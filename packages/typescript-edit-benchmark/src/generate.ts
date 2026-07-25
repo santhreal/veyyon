@@ -649,6 +649,9 @@ async function generateCase(
 		try {
 			return mutation.canApply(entry.content);
 		} catch {
+			// This asks whether a mutation fits a file. A predicate that throws on this file has not shown that
+			// it fits, so the file is skipped and the next candidate is tried; generation reports when no
+			// candidate at all can be mutated.
 			return false;
 		}
 	}

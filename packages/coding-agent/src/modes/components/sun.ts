@@ -43,6 +43,28 @@ export function paintCanvasBlack(lines: readonly string[], width: number): strin
 }
 
 /**
+ * The disc's shape: where it fades out, and how it dims toward the limb.
+ *
+ * The ramp and the glyph vocabulary already had one owner; the SHAPE did not, and
+ * three renderers wrote the formula out by hand (`website/sun.js`,
+ * `website/sunmark.js`, the OAuth callback page). When the terminal sun gained
+ * limb darkening, the web renderers kept the saturated disc, and the existing
+ * parity pin only compared colors and glyphs, so nothing failed. These four
+ * numbers are what brand-conformance now pins in every copy.
+ *
+ * `innerEdge`/`outerEdge` are the smoothstep band, in radii. `limbStrength` and
+ * `limbExponent` are the second factor, `1 - strength * d ** exponent`: without
+ * it every cell inside `innerEdge` sits at exactly 1.0 and selects the top band,
+ * which read as a cream blob instead of the stepped ember ramp.
+ */
+export const FALLOFF = {
+	innerEdge: 0.72,
+	outerEdge: 1.02,
+	limbStrength: 0.34,
+	limbExponent: 1.5,
+} as const;
+
+/**
  * Intensity → glyph. Eight stops, dark core of the void to a solid disc.
  * Exported so brand-conformance can pin website/sun-field.js to this exact
  * vocabulary: the web hero and the terminal splash must draw one glyph ramp.
@@ -160,7 +182,9 @@ export function renderSunField(o: SunFieldOptions): string[] {
 			// as the stepped ramp the brand is built on. Falling off across the WHOLE
 			// radius spreads the cells over every band, the way a real photosphere dims
 			// toward the limb.
-			const base = (1 - smoothstep(0.72, 1.02, d)) * (1 - 0.34 * d ** 1.5);
+			const base =
+				(1 - smoothstep(FALLOFF.innerEdge, FALLOFF.outerEdge, d)) *
+				(1 - FALLOFF.limbStrength * d ** FALLOFF.limbExponent);
 			const corona = d > 1.0 && d < 1.26 ? smoothstep(1.26, 1.0, d) * 0.5 : 0;
 
 			// Ripples: damped ring wavelets, like a struck pond, cell-space distance.

@@ -351,6 +351,9 @@ async function fetchNamespaceOverrideCandidate(
 			headers: buildGitLabJsonHeaders(config.apiKey),
 		});
 	} catch {
+		// Null here means this step of the GitLab Duo handshake produced nothing usable, and the caller treats the
+		// provider as unavailable rather than as empty. The reason is not carried back yet; see the README section
+		// on failures travelling back and the tracked task to extend that channel.
 		return null;
 	}
 	if (!response.ok) {
@@ -360,6 +363,9 @@ async function fetchNamespaceOverrideCandidate(
 	try {
 		payload = await response.json();
 	} catch {
+		// Null here means this step of the GitLab Duo handshake produced nothing usable, and the caller treats the
+		// provider as unavailable rather than as empty. The reason is not carried back yet; see the README section
+		// on failures travelling back and the tracked task to extend that channel.
 		return null;
 	}
 	const rootNamespaceId = extractRootNamespaceId(payload) ?? namespaceId;
@@ -417,6 +423,9 @@ async function fetchProjectRootNamespaceViaRest(
 			headers: buildGitLabJsonHeaders(config.apiKey),
 		});
 	} catch {
+		// Null here means this step of the GitLab Duo handshake produced nothing usable, and the caller treats the
+		// provider as unavailable rather than as empty. The reason is not carried back yet; see the README section
+		// on failures travelling back and the tracked task to extend that channel.
 		return null;
 	}
 	if (!response.ok) {
@@ -426,6 +435,9 @@ async function fetchProjectRootNamespaceViaRest(
 	try {
 		payload = await response.json();
 	} catch {
+		// Null here means this step of the GitLab Duo handshake produced nothing usable, and the caller treats the
+		// provider as unavailable rather than as empty. The reason is not carried back yet; see the README section
+		// on failures travelling back and the tracked task to extend that channel.
 		return null;
 	}
 	return {
@@ -530,6 +542,9 @@ async function postGraphQL(
 			body: JSON.stringify({ query, variables }),
 		});
 	} catch {
+		// Null here means this step of the GitLab Duo handshake produced nothing usable, and the caller treats the
+		// provider as unavailable rather than as empty. The reason is not carried back yet; see the README section
+		// on failures travelling back and the tracked task to extend that channel.
 		return null;
 	}
 	if (!response.ok) {
@@ -538,6 +553,9 @@ async function postGraphQL(
 	try {
 		return await response.json();
 	} catch {
+		// Null here means this step of the GitLab Duo handshake produced nothing usable, and the caller treats the
+		// provider as unavailable rather than as empty. The reason is not carried back yet; see the README section
+		// on failures travelling back and the tracked task to extend that channel.
 		return null;
 	}
 }
@@ -758,6 +776,9 @@ async function readTextFile(filePath: string): Promise<string | null> {
 	try {
 		return await fs.readFile(filePath, "utf8");
 	} catch {
+		// Null here means this step of the GitLab Duo handshake produced nothing usable, and the caller treats the
+		// provider as unavailable rather than as empty. The reason is not carried back yet; see the README section
+		// on failures travelling back and the tracked task to extend that channel.
 		return null;
 	}
 }
@@ -845,6 +866,9 @@ function parseUrlHost(url: string): string | null {
 		// Match `parseRemoteUrl`: include the port so host comparison is port-aware.
 		return new URL(url).host;
 	} catch {
+		// Null here means this step of the GitLab Duo handshake produced nothing usable, and the caller treats the
+		// provider as unavailable rather than as empty. The reason is not carried back yet; see the README section
+		// on failures travelling back and the tracked task to extend that channel.
 		return null;
 	}
 }
@@ -853,6 +877,9 @@ function parseUrlBasePath(url: string): string {
 	try {
 		return new URL(url).pathname.replace(/^\/+|\/+$/g, "");
 	} catch {
+		// Null here means this step of the GitLab Duo handshake produced nothing usable, and the caller treats the
+		// provider as unavailable rather than as empty. The reason is not carried back yet; see the README section
+		// on failures travelling back and the tracked task to extend that channel.
 		return "";
 	}
 }

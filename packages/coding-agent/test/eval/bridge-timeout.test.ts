@@ -5,8 +5,9 @@ import {
 	isEvalTimeoutControlEvent,
 	withBridgeTimeoutPause,
 } from "@veyyon/coding-agent/eval/bridge-timeout";
-import { executeWithKernelBase, type GenericKernel } from "@veyyon/coding-agent/eval/executor-base";
+import { executeWithKernelBase } from "@veyyon/coding-agent/eval/executor-base";
 import type { JsStatusEvent } from "@veyyon/coding-agent/eval/js/shared/types";
+import type { KernelExecutor } from "@veyyon/coding-agent/eval/kernel-base";
 import type { KernelDisplayOutput } from "@veyyon/coding-agent/eval/py/display";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 
@@ -121,23 +122,23 @@ describe("executeWithKernelBase external-abort deferral", () => {
 		const triggerAbort = Promise.withResolvers<void>();
 		const observed = Promise.withResolvers<boolean>();
 		const release = Promise.withResolvers<void>();
-		const kernel: GenericKernel<Record<string, string | null>> = {
+		const kernel: KernelExecutor = {
 			async execute(_code, options) {
 				entered.resolve();
 				await triggerAbort.promise;
-				options.onDisplay({
+				options?.onDisplay?.({
 					type: "status",
 					event: { op: EVAL_TIMEOUT_PAUSE_OP, deferExternalAbort: true },
 				} satisfies KernelDisplayOutput);
 				abortController.abort(new Error("external interrupt"));
 				// While a defer-flagged pause is active, the abort must NOT reach the kernel signal yet.
-				observed.resolve(options.signal?.aborted ?? false);
+				observed.resolve(options?.signal?.aborted ?? false);
 				await release.promise;
-				options.onDisplay({
+				options?.onDisplay?.({
 					type: "status",
 					event: { op: EVAL_TIMEOUT_RESUME_OP, deferExternalAbort: true },
 				} satisfies KernelDisplayOutput);
-				return { status: "ok", cancelled: false, timedOut: false };
+				return { status: "ok", cancelled: false, timedOut: false, stdinRequested: false };
 			},
 		};
 
@@ -168,23 +169,23 @@ describe("executeWithKernelBase external-abort deferral", () => {
 		const triggerAbort = Promise.withResolvers<void>();
 		const observed = Promise.withResolvers<boolean>();
 		const release = Promise.withResolvers<void>();
-		const kernel: GenericKernel<Record<string, string | null>> = {
+		const kernel: KernelExecutor = {
 			async execute(_code, options) {
 				entered.resolve();
 				await triggerAbort.promise;
 				// No deferExternalAbort flag: a plain pause must let the abort land immediately.
-				options.onDisplay({
+				options?.onDisplay?.({
 					type: "status",
 					event: { op: EVAL_TIMEOUT_PAUSE_OP },
 				} satisfies KernelDisplayOutput);
 				abortController.abort(new Error("external interrupt"));
-				observed.resolve(options.signal?.aborted ?? false);
+				observed.resolve(options?.signal?.aborted ?? false);
 				await release.promise;
-				options.onDisplay({
+				options?.onDisplay?.({
 					type: "status",
 					event: { op: EVAL_TIMEOUT_RESUME_OP },
 				} satisfies KernelDisplayOutput);
-				return { status: "ok", cancelled: false, timedOut: false };
+				return { status: "ok", cancelled: false, timedOut: false, stdinRequested: false };
 			},
 		};
 

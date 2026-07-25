@@ -3,6 +3,7 @@ import { capTextBytes, clampLow, sanitizeText, truncateHeadBytes, truncateTailBy
 
 export { type ByteTruncationResult, truncateHeadBytes, truncateTailBytes } from "@veyyon/utils";
 
+import { DEFAULT_INLINE_FLOOR_FRACTION } from "../config/settings-domains/shared";
 import { formatBytes } from "../tools/render-utils";
 import { sanitizeWithOptionalSixelPassthrough } from "../utils/sixel";
 
@@ -544,16 +545,35 @@ export const DEFAULT_SESSION_HORIZON_TURNS = 60;
  * nothing, which would spill the very output an agent most needs to see while
  * it is still orienting, and would trade cost for the extra turns that a
  * needless retrieval costs.
+ *
+ * The floor is in fact the only parameter that binds. The scaled value is
+ * `maxBytes / remaining re-reads`, which stays under a 0.25 floor until about
+ * four turns from the horizon, so over almost all of a session this is a flat
+ * tightening by `1 / floorFraction` rather than a curve. That is why it is the
+ * setting (`tools.inlineOutputFloor`) and the curve is not, and why 1 is a
+ * meaningful value: it lifts the floor to the whole budget and restores the
+ * flat cap exactly, which is what an unpriced control arm needs.
+ *
+ * A floor outside 0..1 is nonsense rather than a preference, so it is clamped:
+ * above 1 would be a cap larger than the budget the caller set, and below 0 a
+ * negative one. A non-finite value falls back to the default.
  */
 export function inlineCapForTurn(
 	maxBytes: number,
 	turnIndex: number,
 	horizon = DEFAULT_SESSION_HORIZON_TURNS,
-	floorFraction = 0.25,
+	floorFraction = DEFAULT_INLINE_FLOOR_FRACTION,
 ): number {
+	const floor = Number.isFinite(floorFraction)
+		? Math.min(1, Math.max(0, floorFraction))
+		: DEFAULT_INLINE_FLOOR_FRACTION;
 	const rereads = expectedRereads(turnIndex, horizon);
 	const scaled = Math.round((maxBytes * expectedRereads(horizon, horizon)) / rereads);
-	return Math.max(Math.round(maxBytes * floorFraction), Math.min(maxBytes, scaled));
+	// `clampLow` rather than a hand-rolled floor-first clamp: one owner for the idiom, and it
+	// returns the floor for a non-finite value instead of propagating a NaN cap into every byte
+	// comparison downstream. (The source lock in `utils/test/math.test.ts` scans raw file text,
+	// so spelling the idiom out even in a comment counts as an offence.)
+	return clampLow(scaled, Math.round(maxBytes * floor), maxBytes);
 }
 
 /** Options for {@link enforceInlineByteCap}. */
@@ -568,11 +588,35 @@ export interface InlineByteCapOptions {
 	 */
 	turnIndex?: number;
 	/**
+	 * Smallest share of `maxBytes` an early result may keep inline, passed to
+	 * {@link inlineCapForTurn}. Only meaningful alongside `turnIndex`, since it
+	 * is the floor under the turn-scaled budget. 1 makes the floor the whole
+	 * budget, which is the flat cap. Omit to take the default.
+	 */
+	floorFraction?: number;
+	/**
 	 * Persist the full text as a session artifact. When an artifact id is
 	 * returned, a `[raw output: artifact://<id>]` footer is appended so the
 	 * elided bytes stay recoverable.
 	 */
 	saveArtifact?: (full: string) => string | undefined | Promise<string | undefined>;
+}
+
+/**
+ * The byte budget a result actually gets, given when it arrives.
+ *
+ * Exported because not every tool bounds its output the same way.
+ * {@link enforceInlineByteCap} keeps a head AND tail window, which is right for
+ * a command's output where the ending matters; grep keeps a head only, because
+ * matches come in order and a truncated tail is not a partial line. Those are
+ * different truncation shapes and should stay different, but the BUDGET must be
+ * one number derived one way, or a grep result at turn 3 is held to a different
+ * standard than a bash result at turn 3 for no reason anyone chose.
+ */
+export function resolveInlineCap(options: InlineByteCapOptions): number {
+	const budget = options.maxBytes ?? DEFAULT_MAX_BYTES;
+	if (options.turnIndex === undefined) return budget;
+	return inlineCapForTurn(budget, options.turnIndex, DEFAULT_SESSION_HORIZON_TURNS, options.floorFraction);
 }
 
 /**
@@ -588,11 +632,7 @@ export interface InlineByteCapOptions {
  * result reaches the provider.
  */
 export async function enforceInlineByteCap(text: string, options: InlineByteCapOptions): Promise<string> {
-	const budget = options.maxBytes ?? DEFAULT_MAX_BYTES;
-	const capped = capTextBytes(
-		text,
-		options.turnIndex === undefined ? budget : inlineCapForTurn(budget, options.turnIndex),
-	);
+	const capped = capTextBytes(text, resolveInlineCap(options));
 	if (capped.elidedBytes === 0) return capped.text;
 
 	const artifactId = await options.saveArtifact?.(text);

@@ -55,7 +55,12 @@ describe("git subprocess config", () => {
 		const spawnCalls: SpawnCall[] = [];
 		vi.spyOn(Bun, "spawn").mockImplementation(createSpawnMock(spawnCalls));
 
-		expect(await git.status.summary("/work/veyyon")).toEqual({ staged: 0, truncated: false, unstaged: 0, untracked: 0 });
+		expect(await git.status.summary("/work/veyyon")).toEqual({
+			staged: 0,
+			truncated: false,
+			unstaged: 0,
+			untracked: 0,
+		});
 		expect(spawnCalls).toHaveLength(1);
 		expect(spawnCalls[0]?.cmd).toEqual([
 			"git",

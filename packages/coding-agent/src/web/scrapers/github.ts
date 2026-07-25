@@ -38,69 +38,65 @@ interface GitHubIssueComment {
  * Parse GitHub URL into components
  */
 export function parseGitHubUrl(url: string): GitHubUrl | null {
-	try {
-		const parsed = tryParseUrl(url);
-		if (!parsed) return null;
-		if (parsed.hostname !== "github.com") return null;
+	const parsed = tryParseUrl(url);
+	if (!parsed) return null;
+	if (parsed.hostname !== "github.com") return null;
 
-		const parts = parsed.pathname.split("/").filter(Boolean);
-		if (parts.length < 2) return null;
+	const parts = parsed.pathname.split("/").filter(Boolean);
+	if (parts.length < 2) return null;
 
-		const [owner, repo, ...rest] = parts;
+	const [owner, repo, ...rest] = parts;
 
-		if (rest.length === 0) {
-			return { type: "repo", owner, repo };
+	if (rest.length === 0) {
+		return { type: "repo", owner, repo };
+	}
+
+	const [section, ...subParts] = rest;
+
+	switch (section) {
+		case "blob":
+		case "tree": {
+			const [ref, ...pathParts] = subParts;
+			return { type: section, owner, repo, ref, path: pathParts.join("/") };
 		}
-
-		const [section, ...subParts] = rest;
-
-		switch (section) {
-			case "blob":
-			case "tree": {
-				const [ref, ...pathParts] = subParts;
-				return { type: section, owner, repo, ref, path: pathParts.join("/") };
+		case "commit":
+			if (subParts.length > 0 && subParts[0]) {
+				return { type: "commit", owner, repo, ref: subParts[0] };
 			}
-			case "commit":
-				if (subParts.length > 0 && subParts[0]) {
-					return { type: "commit", owner, repo, ref: subParts[0] };
-				}
-				return { type: "other", owner, repo };
-			case "issues":
-				if (subParts.length > 0 && /^\d+$/.test(subParts[0])) {
-					return { type: "issue", owner, repo, number: parseInt(subParts[0], 10) };
-				}
-				return { type: "issues", owner, repo };
-			case "pull":
-				if (subParts.length > 0 && /^\d+$/.test(subParts[0])) {
-					return { type: "pull", owner, repo, number: parseInt(subParts[0], 10) };
-				}
-				return { type: "pulls", owner, repo };
-			case "pulls":
-				return { type: "pulls", owner, repo };
-			case "actions": {
-				// /actions/runs/{runId}                      → run summary + jobs
-				// /actions/runs/{runId}/job/{jobId}          → single job (web URL uses singular "job")
-				// /actions/runs/{runId}/jobs/{jobId}         → single job (API-style plural)
-				if (subParts[0] === "runs" && /^\d+$/.test(subParts[1] ?? "")) {
-					const runId = parseInt(subParts[1], 10);
-					const seg = subParts[2];
-					if ((seg === "job" || seg === "jobs") && /^\d+$/.test(subParts[3] ?? "")) {
-						return { type: "actions-job", owner, repo, runId, jobId: parseInt(subParts[3], 10) };
-					}
-					return { type: "actions-run", owner, repo, runId };
-				}
-				return { type: "other", owner, repo };
+			return { type: "other", owner, repo };
+		case "issues":
+			if (subParts.length > 0 && /^\d+$/.test(subParts[0])) {
+				return { type: "issue", owner, repo, number: parseInt(subParts[0], 10) };
 			}
-			case "discussions":
-				if (subParts.length > 0 && /^\d+$/.test(subParts[0])) {
-					return { type: "discussion", owner, repo, number: parseInt(subParts[0], 10) };
+			return { type: "issues", owner, repo };
+		case "pull":
+			if (subParts.length > 0 && /^\d+$/.test(subParts[0])) {
+				return { type: "pull", owner, repo, number: parseInt(subParts[0], 10) };
+			}
+			return { type: "pulls", owner, repo };
+		case "pulls":
+			return { type: "pulls", owner, repo };
+		case "actions": {
+			// /actions/runs/{runId}                      → run summary + jobs
+			// /actions/runs/{runId}/job/{jobId}          → single job (web URL uses singular "job")
+			// /actions/runs/{runId}/jobs/{jobId}         → single job (API-style plural)
+			if (subParts[0] === "runs" && /^\d+$/.test(subParts[1] ?? "")) {
+				const runId = parseInt(subParts[1], 10);
+				const seg = subParts[2];
+				if ((seg === "job" || seg === "jobs") && /^\d+$/.test(subParts[3] ?? "")) {
+					return { type: "actions-job", owner, repo, runId, jobId: parseInt(subParts[3], 10) };
 				}
-				return { type: "discussions", owner, repo };
-			default:
-				return { type: "other", owner, repo };
+				return { type: "actions-run", owner, repo, runId };
+			}
+			return { type: "other", owner, repo };
 		}
-	} catch {
-		return null;
+		case "discussions":
+			if (subParts.length > 0 && /^\d+$/.test(subParts[0])) {
+				return { type: "discussion", owner, repo, number: parseInt(subParts[0], 10) };
+			}
+			return { type: "discussions", owner, repo };
+		default:
+			return { type: "other", owner, repo };
 	}
 }
 

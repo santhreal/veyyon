@@ -106,6 +106,25 @@ session.
 Programmatic access uses the Agent Client Protocol (`veyyon acp`) or SDK embedding; no separate daemon
 is required. Session tree operations in the TUI use `/tree`, `/branch`, and `/fork`.
 
+## Cleaning up old sessions
+
+`veyyon gc` reclaims disk: it sweeps blobs no session references any more, archives cold sessions, and
+checkpoints the database write-ahead logs. It is a dry run unless you pass `--apply`, and it prints what
+it would do either way.
+
+GC never touches a file that was written recently, because a running veyyon may still be appending to it.
+That window is five minutes by default, and you can change it:
+
+```yaml
+# ~/.veyyon/profiles/default/agent/config.yml
+gc:
+   writeGraceMinutes: 15
+```
+
+Pass `--write-grace-minutes` to override it for one run. The minimum is one minute: a shorter window
+would let GC delete a blob a live session wrote a moment ago, so a smaller value is raised to the minimum
+and the run says so.
+
 ## Typing while the agent works
 
 Input entered during a running turn goes to one of two places, and the bottom pane always shows

@@ -84,6 +84,9 @@ function prewalkLabel(prewalkJson: string | null): string {
 		}
 		return ` → ${parsed.into ?? "smol"} at first action`;
 	} catch {
+		// This builds a human-readable SUFFIX for an experiment label. An unparseable spec has no suffix to
+		// show, and the empty string means the label is printed without one; the spec itself is validated
+		// where the experiment is run.
 		return "";
 	}
 }

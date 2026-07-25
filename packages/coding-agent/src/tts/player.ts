@@ -7,7 +7,7 @@
  * that walks the resulting fallback chain.
  */
 import * as fs from "node:fs/promises";
-import { $which, errorMessage } from "@veyyon/utils";
+import { $which, errorMessage, readPipeText } from "@veyyon/utils";
 import { getToolPath } from "../utils/tools-manager";
 
 export interface PlayerCommand {
@@ -115,7 +115,7 @@ export async function playAudioFile(filePath: string, options: PlayAudioOptions 
 				if (code === 0) return;
 				let stderr = "";
 				if (proc.stderr && typeof proc.stderr !== "number") {
-					stderr = await new Response(proc.stderr as ReadableStream).text();
+					stderr = await readPipeText(proc.stderr);
 				}
 				failures.push(`${command.cmd} exited ${code}${stderr.trim() ? `: ${stderr.trim()}` : ""}`);
 			} finally {

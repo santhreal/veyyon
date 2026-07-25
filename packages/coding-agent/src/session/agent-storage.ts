@@ -594,7 +594,7 @@ LIMIT ?4`,
 			// file and the way out: this database holds usage history, is rebuilt by
 			// `veyyon stats`, and deleting it costs nothing else.
 			throw new Error(
-				`Cannot read the stats database at ${statsDbPath}: ${error instanceof Error ? error.message : String(error)}. ` +
+				`Cannot read the stats database at ${statsDbPath}: ${errorMessage(error)}. ` +
 					`It holds usage history only and is rebuilt by \`veyyon stats\`, so deleting the file is safe and clears this.`,
 				{ cause: error },
 			);

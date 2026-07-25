@@ -169,7 +169,7 @@ describe("task spawn routing", () => {
 		});
 
 		const manager = createManager();
-		const tool = await TaskTool.create(createSession({ manager, settings: { "task.maxConcurrency": 1 } }));
+		const tool = await TaskTool.create(createSession({ manager, settings: { "subagent.maxConcurrency": 1 } }));
 
 		const first = await tool.execute("tc-1", { agent: "task", name: "First", task: "Work A." } as TaskParams);
 		const second = await tool.execute("tc-2", { agent: "task", name: "Second", task: "Work B." } as TaskParams);
@@ -211,7 +211,7 @@ describe("task spawn routing", () => {
 		});
 
 		const manager = createManager();
-		const tool = await TaskTool.create(createSession({ manager, settings: { "task.maxConcurrency": 1 } }));
+		const tool = await TaskTool.create(createSession({ manager, settings: { "subagent.maxConcurrency": 1 } }));
 
 		const first = await tool.execute("tc-1", { agent: "task", name: "First", task: "Work A." } as TaskParams);
 		const second = await tool.execute("tc-2", { agent: "task", name: "Second", task: "Work B." } as TaskParams);
@@ -254,7 +254,7 @@ describe("task spawn routing", () => {
 		});
 
 		const manager = createManager();
-		const tool = await TaskTool.create(createSession({ manager, settings: { "task.maxConcurrency": 1 } }));
+		const tool = await TaskTool.create(createSession({ manager, settings: { "subagent.maxConcurrency": 1 } }));
 
 		// A holds the only permit, gated inside the executor.
 		const first = await tool.execute("tc-1", { agent: "task", name: "First", task: "Work A." } as TaskParams);
@@ -323,7 +323,7 @@ describe("task spawn routing", () => {
 
 			const manager = createManager();
 			const tool = await TaskTool.create(
-				createSession({ manager, settings: { "task.maxConcurrency": maxConcurrency } }),
+				createSession({ manager, settings: { "subagent.maxConcurrency": maxConcurrency } }),
 			);
 
 			const first = await tool.execute("tc-1", { agent: "task", name: "First", task: "Work A." } as TaskParams);
@@ -360,7 +360,7 @@ describe("task spawn routing", () => {
 		});
 
 		const manager = createManager();
-		const settings = Settings.isolated({ "task.maxConcurrency": 4 });
+		const settings = Settings.isolated({ "subagent.maxConcurrency": 4 });
 		const tool = await TaskTool.create(
 			makeToolSession({
 				cwd: "/tmp",
@@ -377,7 +377,7 @@ describe("task spawn routing", () => {
 		await pollUntil(() => started.length === 1);
 
 		// Tighten the cap mid-session. The next spawn MUST see the new ceiling.
-		settings.override("task.maxConcurrency", 1);
+		settings.override("subagent.maxConcurrency", 1);
 		const second = await tool.execute("tc-2", { agent: "task", name: "Second", task: "Work B." } as TaskParams);
 		const secondJob = manager.getJob(second.details!.async!.jobId)!;
 
@@ -413,7 +413,7 @@ describe("task spawn routing", () => {
 		});
 
 		const manager = createManager();
-		const settings = Settings.isolated({ "task.maxConcurrency": 4 });
+		const settings = Settings.isolated({ "subagent.maxConcurrency": 4 });
 		const tool = await TaskTool.create(
 			makeToolSession({
 				cwd: "/tmp",
@@ -436,7 +436,7 @@ describe("task spawn routing", () => {
 		expect([...started].sort()).toEqual(["First", "Fourth", "Second", "Third"]);
 		expect(fifthJob.queued).toBe(true);
 
-		settings.override("task.maxConcurrency", 1);
+		settings.override("subagent.maxConcurrency", 1);
 		gates.get("First")!.resolve();
 		await jobs[0]!.promise;
 		await Promise.resolve();

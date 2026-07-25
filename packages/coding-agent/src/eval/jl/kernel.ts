@@ -8,10 +8,15 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $flag, errorMessage, Snowflake } from "@veyyon/utils";
+import { $flag, errorMessage, isBunTestRuntime, Snowflake } from "@veyyon/utils";
 import { $ } from "bun";
 import { Settings } from "../../config/settings";
-import { BaseKernel, getRemainingTimeMs, type KernelStartOptions } from "../kernel-base";
+import {
+	BaseKernel,
+	DEFAULT_KERNEL_STARTUP_TIMEOUT_MS,
+	getRemainingTimeMs,
+	type KernelStartOptions,
+} from "../kernel-base";
 import type { KernelDisplayOutput } from "../py/display";
 import { hostHasInheritableConsole, shouldDetachKernel, shouldHideKernelWindow } from "../py/spawn-options";
 import { JULIA_PRELUDE } from "./prelude";
@@ -48,7 +53,9 @@ async function ensureRunnerScript(): Promise<string> {
 }
 
 const SHUTDOWN_GRACE_MS = 1_000;
-const STARTUP_TIMEOUT_MS = 15_000; // Julia compile/warmup can be slightly slower
+// Julia compiles its runner on first load, so it needs longer than the shared
+// default before start-up is called a failure.
+const STARTUP_TIMEOUT_MS = DEFAULT_KERNEL_STARTUP_TIMEOUT_MS + 5_000;
 const INTERRUPT_ESCALATION_MS = 5_000;
 
 export interface KernelExecuteOptions {
@@ -78,6 +85,13 @@ export async function checkJuliaKernelAvailability(
 	cwd: string,
 	interpreter?: string,
 ): Promise<JuliaKernelAvailability> {
+	// Same fast path Python and Ruby have. Probing spawns the interpreter, so under `bun test` every suite
+	// that touches the executor paid a process spawn and then failed on machines without Julia, which is
+	// most of them: the executor's kernel lifecycle is what those suites are about, not whether this host
+	// can run Julia. Integration suites that need a real kernel reach the probe through the runner.
+	if (isBunTestRuntime() || $flag("VEYYON_JULIA_SKIP_CHECK")) {
+		return { ok: true };
+	}
 	const cacheKey = `${path.resolve(cwd)}::${interpreter ?? ""}`;
 	let cached = availabilityCache.get(cacheKey);
 	if (!cached) {

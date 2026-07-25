@@ -34,7 +34,11 @@
         var x = gx * px + px / 2, y = gy * px + px / 2;
         var d = Math.hypot(x - cx, y - cy) / R;
         if (d > 1.32) continue;
-        var base = 1 - smooth(0.72, 1.02, d);
+        // Limb darkening, matching the terminal sun's FALLOFF (sun.ts): the
+        // smoothstep alone falls off across the outer rim only, so every cell
+        // inside 0.72R saturates at the top band and the disc reads as a blob
+        // instead of the stepped ember ramp. brand-conformance pins these numbers.
+        var base = (1 - smooth(0.72, 1.02, d)) * (1 - 0.34 * Math.pow(d, 1.5));
         var val = base;
         if (base > 0.02) val += (hash(gx, gy, step) - 0.5) * 0.22 * Math.min(1, base + 0.25);
         else if (R > 30 && d < 1.28 && hash(gx, gy, step + 5) < 0.16) val = 0.3 + hash(gx, gy, 9) * 0.2;

@@ -1,11 +1,6 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import { legacyArchiveSourceText } from "@veyyon/agent-core/compaction";
-import {
-	coerceServiceTierByFamily,
-	type ProviderPayload,
-	type ServiceTierByFamily,
-	type TextContent,
-} from "@veyyon/ai";
+import { coerceServiceTierByFamily, type ServiceTierByFamily, type TextContent } from "@veyyon/ai";
 import {
 	createBranchSummaryMessage,
 	createCompactionSummaryMessage,
@@ -340,19 +335,14 @@ export function buildSessionContext(
 			}
 		}
 	} else if (compaction) {
-		const providerPayload: ProviderPayload | undefined = (() => {
-			const candidate = compaction.preserveData?.openaiRemoteCompaction;
-			if (!candidate || typeof candidate !== "object") return undefined;
-			const remote = candidate as { provider?: unknown; replacementHistory?: unknown };
-			if (typeof remote.provider !== "string" || remote.provider.length === 0) return undefined;
-			if (!Array.isArray(remote.replacementHistory)) return undefined;
-			return {
-				type: "openaiResponsesHistory",
-				provider: remote.provider,
-				items: remote.replacementHistory as Array<Record<string, unknown>>,
-			};
-		})();
-		const remoteReplacementHistory = providerPayload?.items;
+		// Provider-native remote compaction was removed, so no compaction entry
+		// replays an opaque provider payload. Sessions compacted by the old path
+		// still hold one in `preserveData.openaiRemoteCompaction`; it is
+		// deliberately ignored rather than replayed. Only that provider could read
+		// it, rebuilding context would re-send it on every turn, and the entry's
+		// summary is a placeholder. Ignoring it means the kept turns below are
+		// emitted as real messages instead, and the next compaction re-expands and
+		// summarizes them locally (see hasReusableSummary in compaction.ts).
 
 		// Re-attach any legacy archived history as text so the model can keep
 		// reading it after every context rebuild (old sessions only).
@@ -361,7 +351,7 @@ export function buildSessionContext(
 			compaction.tokensBefore,
 			compaction.timestamp,
 			compaction.shortSummary,
-			providerPayload,
+			undefined,
 			undefined,
 			legacyArchiveBlocksForContext(compaction.preserveData, options),
 			compaction.warning,
@@ -375,22 +365,15 @@ export function buildSessionContext(
 		// Find compaction index in path
 		const compactionIdx = path.findIndex(e => e.type === "compaction" && e.id === compaction.id);
 
-		// The remote replacement payload (OpenAI remote compaction) carries the
-		// kept turns for the LLM context only; it is not rendered as visible
-		// messages. The collapsed display transcript must still emit the kept
-		// SessionEntry rows so a remotely-compacted session keeps its recent
-		// turns visible instead of showing only the summary and post-compaction.
-		if (!remoteReplacementHistory || options?.transcript) {
-			// Emit kept messages (before compaction, starting from firstKeptEntryId)
-			let foundFirstKept = false;
-			for (let i = 0; i < compactionIdx; i++) {
-				const entry = path[i];
-				if (entry.id === compaction.firstKeptEntryId) {
-					foundFirstKept = true;
-				}
-				if (foundFirstKept) {
-					appendMessage(entry);
-				}
+		// Emit kept messages (before compaction, starting from firstKeptEntryId)
+		let foundFirstKept = false;
+		for (let i = 0; i < compactionIdx; i++) {
+			const entry = path[i];
+			if (entry.id === compaction.firstKeptEntryId) {
+				foundFirstKept = true;
+			}
+			if (foundFirstKept) {
+				appendMessage(entry);
 			}
 		}
 

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -19,7 +19,10 @@ import {
 } from "@agentclientprotocol/sdk/dist/schema/zod.gen.js";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
-import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+// One owner for how `/fast` names the state it changes, so this suite cannot drift
+// from the command the way it did when the wording became "priority tier".
+import { PRIORITY_TIER_COMMAND_LABEL } from "@veyyon/coding-agent/config/service-tier";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import { resolveLocalUrlToPath } from "@veyyon/coding-agent/internal-urls";
 import {
 	ACP_BOOTSTRAP_RACE_GUARD_MS,
@@ -37,8 +40,9 @@ import {
 	TTS_LOCAL_MODELS,
 	TTS_LOCAL_VOICE_OPTIONS,
 } from "@veyyon/coding-agent/tts/models";
-import { getConfigRootDir, setAgentDir } from "@veyyon/utils";
+import { setAgentDir } from "@veyyon/utils";
 import type { z } from "zod/v4";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 
 /**
  * Validate an ACP wire payload against the external `@agentclientprotocol/sdk`
@@ -423,17 +427,20 @@ function expectAcpNotifications(updates: SessionNotification[]): void {
 }
 
 const cleanupRoots: string[] = [];
-const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
-const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
+let settingsState: SettingsTestState | undefined;
+
+beforeEach(() => {
+	// `beginSettingsTest` rather than a hand-rolled `setAgentDir(original)` restore,
+	// which is what this suite used to do. `setAgentDir` also CLEARS the active
+	// profile, so the hand-rolled version left the whole process on the default
+	// profile: every file after this one resolved `profiles/default/...` while the
+	// developer was on `work`. `scripts/find-test-leaks.ts` caught it.
+	settingsState = beginSettingsTest();
+});
 
 afterEach(async () => {
-	if (originalAgentDir) {
-		setAgentDir(originalAgentDir);
-	} else {
-		setAgentDir(fallbackAgentDir);
-		delete process.env.VEYYON_CODING_AGENT_DIR;
-	}
-	resetSettingsForTest();
+	restoreSettingsTestState(settingsState);
+	settingsState = undefined;
 
 	for (const root of cleanupRoots.splice(0)) {
 		await fs.promises.rm(root, { recursive: true, force: true });
@@ -2203,7 +2210,7 @@ describe("ACP agent", () => {
 				update =>
 					update.update.sessionUpdate === "agent_message_chunk" &&
 					update.update.content.type === "text" &&
-					update.update.content.text === "Fast mode is off.",
+					update.update.content.text === `${PRIORITY_TIER_COMMAND_LABEL} is off.`,
 			),
 		).toBe(true);
 

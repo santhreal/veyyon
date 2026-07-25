@@ -8,6 +8,7 @@
  * {@link Filesystem.readText} and {@link Filesystem.writeText}; the FS deals
  * only in raw text strings.
  */
+import type { Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as pathModule from "node:path";
 
@@ -73,34 +74,128 @@ export async function sameExistingFile(a: string, b: string): Promise<boolean> {
 let atomicTempCounter = 0;
 
 /**
+ * Resolve the file an atomic write should actually replace.
+ *
+ * A symlinked path is followed to the END of its chain, not one hop. One hop is
+ * what a naive implementation does and it is wrong in the layout that makes
+ * symlinked sources common in the first place: a linked package or a dotfile
+ * manager where `pkg/src/index.ts` is a link to a link to the real file. Writing
+ * after one hop replaces the INTERMEDIATE link with a regular file, so the link
+ * is destroyed and the file the user actually keeps never receives the patch.
+ * Both halves of that are silent, because a read afterwards returns the new
+ * bytes from the file that replaced the link.
+ *
+ * `viaSymlink` is true whenever the caller's path was a link, including a
+ * dangling one. The caller uses it to decide whether creating parent directories
+ * is appropriate: fabricating the target directory of a dangling link would
+ * turn "this link points nowhere" into a new tree nobody asked for.
+ */
+async function resolveAtomicWriteTarget(filePath: string): Promise<{ target: string; viaSymlink: boolean }> {
+	try {
+		const stats = await fs.lstat(filePath);
+		if (!stats.isSymbolicLink()) {
+			assertRegularFileTarget(stats, filePath);
+			return { target: filePath, viaSymlink: false };
+		}
+	} catch (error) {
+		// A path that does not exist yet is the normal create case.
+		if (!isNotFound(error)) throw error;
+		return { target: filePath, viaSymlink: false };
+	}
+	try {
+		const target = await fs.realpath(filePath);
+		assertRegularFileTarget(await fs.lstat(target), target);
+		return { target, viaSymlink: true };
+	} catch (error) {
+		// A chain ending in a dangling link has no real path. Fall back to the
+		// single hop so the failure names the missing file rather than the link.
+		if (!isNotFound(error)) throw error;
+		return {
+			target: pathModule.resolve(pathModule.dirname(filePath), await fs.readlink(filePath)),
+			viaSymlink: true,
+		};
+	}
+}
+
+/**
+ * Refuse to replace anything that is not a regular file.
+ *
+ * An atomic write ends in `rename(temp, target)`, and rename does not care what
+ * the target is: pointed at a FIFO it DESTROYS the named pipe and leaves a
+ * regular file with the same name, silently breaking whatever process was
+ * reading the other end. Sockets and device nodes go the same way. None of them
+ * can be written atomically by definition, so the only honest outcomes are to
+ * refuse or to destroy, and the refusal names the type so the caller can see
+ * what their path actually pointed at. A missing target is not an error.
+ */
+function assertRegularFileTarget(stats: Stats, target: string): void {
+	if (stats.isFile()) return;
+	const kind = stats.isDirectory()
+		? "a directory"
+		: stats.isFIFO()
+			? "a named pipe (FIFO)"
+			: stats.isSocket()
+				? "a socket"
+				: stats.isBlockDevice() || stats.isCharacterDevice()
+					? "a device node"
+					: "not a regular file";
+	throw new Error(
+		`Refusing to write ${target}: it is ${kind}, and an atomic write would replace it with a regular file. ` +
+			`Point the write at a regular file path instead.`,
+	);
+}
+
+/**
+ * Restate a failure in terms of the file the caller asked to write.
+ *
+ * The work happens on a temp sibling, so the OS error names that temp:
+ * `EACCES: permission denied, open '/src/.index.ts.4711.1.tmp'`. That path never
+ * existed as far as the caller is concerned, it changes on every attempt, and it
+ * sends people looking for a stray temp file instead of at the read-only
+ * directory that actually stopped them. The reason and the failing syscall are
+ * kept, the real target is swapped in, and the original travels as `cause` with
+ * its `code` copied across so `isNotFound` and any code match keep working.
+ */
+function withTargetInMessage(error: unknown, target: string, tempPath: string): unknown {
+	if (!(error instanceof Error) || !error.message.includes(tempPath)) return error;
+	const restated = new Error(
+		`${error.message.replaceAll(tempPath, target)} (the write is staged in a temporary file beside the target, ` +
+			`so it can replace it atomically; the temporary file is what the operating system named)`,
+		{ cause: error },
+	);
+	const code = (error as NodeJS.ErrnoException).code;
+	if (code !== undefined) (restated as NodeJS.ErrnoException).code = code;
+	return restated;
+}
+
+/**
  * Write `content` to `targetPath` crash-atomically: stream into a sibling temp
- * file, then rename it over the target. A rename is atomic on POSIX, so a death
- * mid-write (SIGINT, out-of-memory kill, full disk, power loss) leaves the
- * target as either the whole old file or the whole new one, never a truncated
- * mix. A plain `Bun.write`/`writeFile` truncates the target in place and streams
- * into it, so the same interruption corrupts the user's real source file.
+ * file, flush it, then rename it over the target. A rename is atomic on POSIX,
+ * so a death mid-write (SIGINT, out-of-memory kill, full disk, power loss)
+ * leaves the target as either the whole old file or the whole new one, never a
+ * truncated mix. A plain `Bun.write`/`writeFile` truncates the target in place
+ * and streams into it, so the same interruption corrupts the user's real source
+ * file.
  *
  * This is deliberately a small self-contained copy of the temp+rename pattern
  * rather than a dependency on `@veyyon/utils` (which owns the fuller
  * `atomicWriteFile`): hashline is a lean, standalone patch library with only
  * `diff` and `lru-cache` as dependencies, and pulling in the utils package would
  * drag its logging/templating/native transitive deps into every hashline
- * consumer. Keep the two in sync by behavior, not by import.
+ * consumer.
  *
- * A symlinked target is resolved so the link's target is replaced and the link
- * itself is preserved. The existing file's permission bits are carried forward
- * because the rename swaps the inode (a new file defaults to 0o644).
+ * The two are kept in step by BEHAVIOR, not by import, and that promise is only
+ * worth anything because a test checks it: `packages/coding-agent/test/
+ * atomic-write-has-one-behavior.test.ts` runs this function and
+ * `atomicWriteFilePreservingMode` through the same scenarios and fails when they
+ * diverge. Change one, run that suite, change the other.
+ *
+ * The existing file's permission bits are carried forward, because the rename
+ * swaps the inode and a fresh file would otherwise arrive as 0o644 and quietly
+ * strip an executable script's `+x`.
  */
-async function writeFileAtomic(targetPath: string, content: string): Promise<void> {
-	let target = targetPath;
-	try {
-		const linkStat = await fs.lstat(targetPath);
-		if (linkStat.isSymbolicLink()) {
-			target = pathModule.resolve(pathModule.dirname(targetPath), await fs.readlink(targetPath));
-		}
-	} catch (error) {
-		if (!isNotFound(error)) throw error;
-	}
+export async function writeFileAtomic(targetPath: string, content: string): Promise<void> {
+	const { target, viaSymlink } = await resolveAtomicWriteTarget(targetPath);
 
 	let mode = 0o644;
 	try {
@@ -110,25 +205,60 @@ async function writeFileAtomic(targetPath: string, content: string): Promise<voi
 	}
 
 	const dir = pathModule.dirname(target);
+	// Create parents for a regular path. Never for a symlink: a missing target
+	// directory there means the link is dangling, and inventing the tree hides it.
+	if (!viaSymlink) await fs.mkdir(dir, { recursive: true });
+
 	const tempPath = pathModule.join(dir, `.${pathModule.basename(target)}.${process.pid}.${atomicTempCounter++}.tmp`);
 	try {
-		await fs.writeFile(tempPath, content, { mode });
+		// Open with `mode` and flush the same handle that holds write access: on
+		// Windows fsync requires write rights, so flushing a reopened read handle
+		// is not equivalent. The flush is what protects the CONTENTS against power
+		// loss; the rename alone only protects against a truncated file.
+		const handle = await fs.open(tempPath, "w", mode);
 		try {
-			await fs.rename(tempPath, target);
-		} catch (error) {
-			// Windows cannot rename onto an existing file; drop it and retry so the
-			// overwrite still happens (POSIX rename already replaces atomically).
-			const code = (error as NodeJS.ErrnoException).code;
-			if (code === "EEXIST" || code === "EPERM" || code === "EACCES") {
-				await fs.rm(target, { force: true });
-				await fs.rename(tempPath, target);
-			} else {
-				throw error;
-			}
+			await handle.writeFile(content);
+			await handle.sync();
+		} finally {
+			await handle.close();
 		}
 	} catch (error) {
 		await fs.rm(tempPath, { force: true }).catch(() => {});
-		throw error;
+		throw withTargetInMessage(error, target, tempPath);
+	}
+
+	try {
+		await fs.rename(tempPath, target);
+	} catch (error) {
+		// Windows cannot rename onto an existing file; drop it and retry so the
+		// overwrite still happens (POSIX rename already replaces atomically). Any
+		// other failure is real: clean up the temp and report it against the target.
+		const code = (error as NodeJS.ErrnoException).code;
+		if (code === "EEXIST" || code === "EPERM" || code === "EACCES") {
+			try {
+				await fs.rm(target, { force: true });
+				await fs.rename(tempPath, target);
+			} catch (retryError) {
+				await fs.rm(tempPath, { force: true }).catch(() => {});
+				throw withTargetInMessage(retryError, target, tempPath);
+			}
+		} else {
+			await fs.rm(tempPath, { force: true }).catch(() => {});
+			throw withTargetInMessage(error, target, tempPath);
+		}
+	}
+
+	// Persist the rename itself by flushing the directory entry. Some platforms
+	// refuse to open a directory for fsync; the rename stands there regardless.
+	try {
+		const dirHandle = await fs.open(dir, "r");
+		try {
+			await dirHandle.sync();
+		} finally {
+			await dirHandle.close();
+		}
+	} catch {
+		// Directory fsync unsupported on this platform.
 	}
 }
 

@@ -1,7 +1,7 @@
 import type { Message, ToolCall } from "../types";
 import { mintToolCallId, partialSuffixOverlap, partialSuffixOverlapAny, setToolArg } from "./coercion";
 import dialectPrompt from "./gemma.md" with { type: "text" };
-import { assistantTranscriptParts, collectToolResultRun, messageContentText } from "./rendering";
+import { assistantTranscriptParts, collectToolResultRun, gemmaTurn, messageContentText } from "./rendering";
 import type {
 	DialectDefinition,
 	DialectRenderOptions,
@@ -367,10 +367,6 @@ function parseMaybeJson(text: string): unknown {
 	} catch {
 		return text;
 	}
-}
-
-function gemmaTurn(role: "model" | "system" | "user", body: string): string {
-	return `<|turn>${role}\n${body}<turn|>`;
 }
 
 const definition: DialectDefinition = {

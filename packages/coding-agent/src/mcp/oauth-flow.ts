@@ -192,6 +192,9 @@ function staticClientIdFromConfig(config: MCPOAuthConfig): string | undefined {
 	try {
 		return new URL(config.authorizationUrl).searchParams.get("client_id") ?? undefined;
 	} catch {
+		// No parseable authorization URL means no client_id can be mined from one, which is the same
+		// state as a URL that simply does not carry the parameter: dynamic client registration runs next.
+		// The URL is validated where the grant actually uses it, so a bad one is reported there.
 		return undefined;
 	}
 }
@@ -534,6 +537,8 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 		try {
 			return new URL(authorizationUrl).searchParams.get("resource") ?? undefined;
 		} catch {
+			// An optional RFC 8707 hint. Undefined means "not advertised in the URL", which is also what a
+			// parseable URL without the parameter gives, and the request omits `resource` in both cases.
 			return undefined;
 		}
 	}

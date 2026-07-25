@@ -3,14 +3,11 @@ import * as path from "node:path";
 import type { AutocompleteItem } from "@veyyon/tui";
 import { errorMessage, logger, prompt } from "@veyyon/utils";
 import type { ExtensionContext, ExtensionFactory } from "../extensibility/extensions";
+import { PROMPTS } from "../prompts/registry";
 import * as git from "../utils/git";
-import commandResumeTemplate from "./command-resume.md" with { type: "text" };
 import { createDashboardController } from "./dashboard";
 import { ensureAutoresearchBranch } from "./git";
 import { formatNum } from "./helpers";
-import promptTemplate from "./prompt.md" with { type: "text" };
-import setupPromptTemplate from "./prompt-setup.md" with { type: "text" };
-import resumeMessageTemplate from "./resume-message.md" with { type: "text" };
 import {
 	buildExperimentState,
 	createExperimentState,
@@ -204,7 +201,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 				dashboard.updateWidget(ctx, runtime);
 				await api.setActiveTools([...new Set([...api.getActiveTools(), ...EXPERIMENT_TOOL_NAMES])]);
 				api.sendUserMessage(
-					prompt.render(commandResumeTemplate, {
+					prompt.render(PROMPTS["autoresearch/command-resume"].text, {
 						branch_status_line: branchStatusLine,
 						has_resume_context: resumeContext.length > 0,
 						resume_context: resumeContext,
@@ -280,7 +277,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		api.sendMessage(
 			{
 				customType: "autoresearch-resume",
-				content: prompt.render(resumeMessageTemplate, {
+				content: prompt.render(PROMPTS["autoresearch/resume-message"].text, {
 					has_pending_run: Boolean(pendingRun),
 				}),
 				display: false,
@@ -361,7 +358,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 				: "Heads up: you are not on a dedicated `autoresearch/*` branch. `log_experiment discard` will only revert run-modified files, not reset to baseline — so harness files written before `init_experiment` may not survive a discard. Clean the worktree and re-run `/autoresearch` if you want full revert safety.";
 			return {
 				systemPrompt: [
-					prompt.render(setupPromptTemplate, {
+					prompt.render(PROMPTS["autoresearch/prompt-setup"].text, {
 						base_system_prompt: basePrompt,
 						has_goal: goal.trim().length > 0,
 						goal,
@@ -376,7 +373,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		}
 		return {
 			systemPrompt: [
-				prompt.render(promptTemplate, {
+				prompt.render(PROMPTS["autoresearch/prompt"].text, {
 					base_system_prompt: basePrompt,
 					has_goal: goal.trim().length > 0,
 					goal,

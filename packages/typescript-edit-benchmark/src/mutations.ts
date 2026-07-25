@@ -188,6 +188,8 @@ function snippetFromNode(node: t.Node): string {
 	try {
 		return trimSnippet(generate(node, { comments: false, compact: false, retainLines: false }).code);
 	} catch {
+		// An empty snippet means "no printable source for this node", and the caller treats an empty snippet as
+		// no candidate rather than mutating with it, so a failed print cannot produce a nonsense case.
 		return "";
 	}
 }

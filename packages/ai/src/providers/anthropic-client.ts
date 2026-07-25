@@ -82,7 +82,7 @@ export interface AnthropicClientOptions {
 }
 
 function createAbortError(): Error {
-	return new AIError.AbortError("Request was aborted.");
+	return new AIError.RequestAbortError("Request was aborted.");
 }
 
 /** `x-should-retry` override, then 408/409/429/5xx. */

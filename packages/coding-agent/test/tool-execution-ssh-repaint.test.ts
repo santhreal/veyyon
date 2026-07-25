@@ -132,9 +132,15 @@ describe("ToolExecutionComponent SSH repaint seams", () => {
 			const rows = plainBuffer(term);
 			expect(rows.some(row => row.includes("SSH: […]"))).toBe(false);
 			expect(rows.some(row => row.includes("$ …"))).toBe(false);
-			expect(rows.some(row => row.includes("⋯ SSH: [router]"))).toBe(true);
-			expect(rows.some(row => row.includes("Output"))).toBe(true);
-			expect(rows.some(row => row.includes("partial output"))).toBe(true);
+			// Counted, not merely present. This is a REPAINT test: the failure it
+			// exists to catch is the old rows surviving alongside the new ones, and
+			// `some(...)` is true whether the header was repainted in place or drawn
+			// a second time below the first. The placeholder checks above catch only
+			// the case where the stale text differs; a header that repainted itself
+			// verbatim twice was invisible to every assertion here.
+			expect(rows.filter(row => row.includes("⋯ SSH: [router]"))).toHaveLength(1);
+			expect(rows.filter(row => row.includes("Output"))).toHaveLength(1);
+			expect(rows.filter(row => row.includes("partial output"))).toHaveLength(1);
 		} finally {
 			tui.stop();
 			await term.flush();
@@ -157,8 +163,9 @@ describe("ToolExecutionComponent SSH repaint seams", () => {
 			tui.requestRender();
 			await drain(scheduler, term);
 			const partialRows = plainBuffer(term);
-			expect(partialRows.some(row => row.includes("SSH: [router]"))).toBe(true);
-			expect(partialRows.some(row => row.includes("partial output"))).toBe(true);
+			// Counted for the same reason as above: a duplicated repaint is the bug.
+			expect(partialRows.filter(row => row.includes("SSH: [router]"))).toHaveLength(1);
+			expect(partialRows.filter(row => row.includes("partial output"))).toHaveLength(1);
 
 			component.updateResult(sshResult("final output"), false);
 			tui.requestRender();

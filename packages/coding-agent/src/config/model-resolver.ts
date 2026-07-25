@@ -40,8 +40,8 @@ import { isAuthenticated, kNoAuth, type ModelRegistry } from "./model-registry";
 import { modelResolutionFailureMessage } from "./model-resolution-failure";
 import {
 	DEFAULT_MODEL_ROLE_ALIAS,
+	DEFAULT_MODEL_SLOT,
 	formatModelRoleAlias,
-	LEGACY_DEFAULT_MODEL_ROLE,
 	LEGACY_MODEL_ROLE_ALIAS_PREFIX,
 	MODEL_ROLE_ALIAS_PREFIX,
 	MODEL_ROLE_IDS,
@@ -504,7 +504,7 @@ interface ModelPreferenceContext {
 }
 
 function buildPreferenceContext(
-	availableModels: Model<Api>[],
+	availableModels: readonly Model<Api>[],
 	preferences: ModelMatchPreferences | undefined,
 ): ModelPreferenceContext {
 	const modelUsageRank = new Map<string, number>();
@@ -639,7 +639,10 @@ function includeSyntheticAllowedModels(available: Model<Api>[], allowedModels: I
 /**
  * Find an exact explicit provider/model match.
  */
-function findExactModelReferenceMatch(modelReference: string, availableModels: Model<Api>[]): Model<Api> | undefined {
+function findExactModelReferenceMatch(
+	modelReference: string,
+	availableModels: readonly Model<Api>[],
+): Model<Api> | undefined {
 	const trimmedReference = modelReference.trim();
 	if (!trimmedReference) {
 		return undefined;
@@ -667,7 +670,7 @@ function findExactModelReferenceMatch(modelReference: string, availableModels: M
  */
 function matchModel(
 	modelPattern: string,
-	availableModels: Model<Api>[],
+	availableModels: readonly Model<Api>[],
 	context: ModelPreferenceContext,
 ): Model<Api> | undefined {
 	const exactRefMatch = findExactModelReferenceMatch(modelPattern, availableModels);
@@ -803,7 +806,7 @@ export interface ParsedModelResult {
  */
 function parseModelPatternWithContext(
 	pattern: string,
-	availableModels: Model<Api>[],
+	availableModels: readonly Model<Api>[],
 	context: ModelPreferenceContext,
 	options?: { allowInvalidThinkingSelectorFallback?: boolean },
 ): ParsedModelResult {
@@ -863,7 +866,7 @@ function parseModelPatternWithContext(
  *  across every fallback pattern instead of rebuilding it per pattern. */
 function matchPatternWithContext(
 	pattern: string,
-	availableModels: Model<Api>[],
+	availableModels: readonly Model<Api>[],
 	context: ModelPreferenceContext,
 	options?: { allowInvalidThinkingSelectorFallback?: boolean },
 ): ParsedModelResult {
@@ -885,7 +888,7 @@ function matchPatternWithContext(
 
 export function parseModelPattern(
 	pattern: string,
-	availableModels: Model<Api>[],
+	availableModels: readonly Model<Api>[],
 	preferences?: ModelMatchPreferences,
 	options?: { allowInvalidThinkingSelectorFallback?: boolean },
 ): ParsedModelResult {
@@ -932,31 +935,24 @@ function normalizeModelPatternList(value: string | string[] | undefined): string
 	return patterns.map(pattern => pattern.trim()).filter(Boolean);
 }
 
-function isSessionInheritedAgentPattern(value: string): boolean {
-	return value === formatModelRoleAlias("task") || value === `${LEGACY_MODEL_ROLE_ALIAS_PREFIX}task`;
-}
-
 /**
- * Roles that have no priority.json chain of their own reuse another role's
- * list. The advisor — a second-opinion reviewer — defaults to the `slow`
- * reasoning chain, but (unlike the `slow` role, see
- * {@link shouldInheritDefaultBeforePriority}) never inherits the primary's
- * model, so it stays a distinct strong model out of the box. The `tiny` role —
- * the override for online title/memory/classifier tasks — reuses the `smol`
- * fast chain so an unset tiny role auto-resolves to the same fast model smol
- * would pick.
+ * Expand one configured pattern, resolving a `@role` alias to the model the role
+ * is configured with.
+ *
+ * An UNSET role resolves to `undefined`, never to a built-in chain. That is the
+ * product contract stated on {@link MODEL_ROLES} and owned by
+ * {@link resolveRoleSelectionWithInherit}: an unset role inherits the live main
+ * model, so pattern expansion must report "this role names no model of its own"
+ * and let the caller apply inherit.
+ *
+ * Returning `priority.json` defaults here instead is the bug this shape exists
+ * to prevent: `@smol` / `@slow` / `@designer` resolved to concrete — and
+ * different — models even though every role picker showed "inherit (follows main
+ * model)". Subagents took this path (agent frontmatter carried role aliases), so
+ * a stock install silently fanned out across several models and no subagent
+ * model setting could hold. `priority.json` is for FIRST-RUN model selection
+ * ({@link findSmolModel} / {@link findSlowModel}), not for role expansion.
  */
-const ROLE_PRIORITY_ALIAS: Partial<Record<ModelRole, keyof typeof MODEL_PRIO>> = {
-	advisor: "slow",
-	tiny: "smol",
-};
-
-/** Built-in priority patterns for a role, following {@link ROLE_PRIORITY_ALIAS}. */
-function rolePriorityDefaults(role: ModelRole): string[] {
-	const key = ROLE_PRIORITY_ALIAS[role] ?? (role as keyof typeof MODEL_PRIO);
-	return normalizeModelPatternList(MODEL_PRIO[key]);
-}
-
 function resolveConfiguredRolePattern(
 	value: string,
 	settings?: Settings,
@@ -971,13 +967,21 @@ function resolveConfiguredRolePattern(
 		MAX_THINKING_SUFFIX_OPTIONS,
 	);
 	const role = getModelRoleAlias(aliasCandidate, settings);
-	if (!role) return [normalized];
+	if (!role) {
+		// A `@name` that matches no role is not a model pattern either — no provider
+		// or model id starts with `@` — so resolving it to the literal string only
+		// pushes the failure downstream, where it surfaces as "no model matched"
+		// with no mention of the role that does not exist. Report nothing and let
+		// the caller name the setting. (The legacy `pi/` spelling is left alone:
+		// `pi/` is also a plausible provider prefix.)
+		if (normalized.startsWith(MODEL_ROLE_ALIAS_PREFIX)) return undefined;
+		return [normalized];
+	}
 	if (visited.has(role)) return undefined;
 	visited.add(role);
 
 	const configured = settings?.getModelRole(role)?.trim();
-	const roleDefaults = isModelRole(role) ? rolePriorityDefaults(role) : [];
-	const resolved = configured ? normalizeModelPatternList(configured) : roleDefaults;
+	const resolved = configured ? normalizeModelPatternList(configured) : [];
 	if (resolved.length === 0) {
 		return undefined;
 	}
@@ -1014,43 +1018,19 @@ export function resolveConfiguredModelPatterns(value: string | string[] | undefi
 		return resolved ?? [];
 	});
 }
-export interface AgentModelPatternResolutionOptions {
-	settingsOverride?: string | string[];
-	agentModel?: string | string[];
-	settings?: Settings;
-	activeModelPattern?: string;
-	fallbackModelPattern?: string;
-}
-
-export function resolveAgentModelPatterns(options: AgentModelPatternResolutionOptions): string[] {
-	const { settingsOverride, agentModel, settings, activeModelPattern, fallbackModelPattern } = options;
-
-	const overridePatterns = resolveConfiguredModelPatterns(settingsOverride, settings);
-	if (overridePatterns.length > 0) return overridePatterns;
-
-	const subagentModel = settings?.get("subagent.model")?.trim();
-	if (subagentModel) {
-		const subagentPatterns = resolveConfiguredModelPatterns(subagentModel, settings);
-		if (subagentPatterns.length > 0) return subagentPatterns;
-	}
-
-	const normalizedAgentPatterns = normalizeModelPatternList(agentModel);
-	const configuredAgentPatterns = resolveConfiguredModelPatterns(agentModel, settings);
-	const singleAgentPattern = normalizedAgentPatterns.length === 1 ? normalizedAgentPatterns[0] : undefined;
-	const agentInheritsSessionModel = singleAgentPattern ? isSessionInheritedAgentPattern(singleAgentPattern) : false;
-	if (configuredAgentPatterns.length > 0) {
-		if (
-			singleAgentPattern === formatModelRoleAlias("task") ||
-			singleAgentPattern === `${LEGACY_MODEL_ROLE_ALIAS_PREFIX}task`
-		) {
-			return configuredAgentPatterns;
-		}
-		if (!agentInheritsSessionModel) return configuredAgentPatterns;
-	}
-
-	const fallback = activeModelPattern?.trim() || fallbackModelPattern?.trim() || "";
-	return resolveConfiguredModelPatterns(fallback, settings);
-}
+/*
+ * There is deliberately no agent-model resolver here.
+ *
+ * `resolveAgentModelPatterns` used to live at this spot and re-implemented the
+ * whole subagent precedence chain — settings override, then `subagent.model`,
+ * then the agent's frontmatter, then inherit — with a silent fall-through at
+ * every step and a special case for the retired `@task` role. That made it a
+ * second owner of "what model does this subagent run", disagreeing with the
+ * spawn path on unresolvable values, and it is why changing the subagent model
+ * appeared to do nothing. The one owner is now `resolveSubagentModel` in
+ * `task/subagent-settings.ts`, which also reports WHICH layer decided and
+ * refuses instead of falling through. Resolve subagent models there.
+ */
 
 /** Resolve configured compaction model patterns from settings (`compaction.model`). */
 export function resolveCompactionModelPatterns(settings?: Settings): string[] {
@@ -1071,7 +1051,10 @@ export interface ResolvedModelRoleValue {
 
 export function resolveModelRoleValue(
 	roleValue: string | undefined,
-	availableModels: Model<Api>[],
+	// Readonly: this only reads the list, and callers legitimately hold a readonly
+	// model list (the settings selector's picker does), which a mutable parameter
+	// type rejected.
+	availableModels: readonly Model<Api>[],
 	options?: { settings?: Settings; matchPreferences?: ModelMatchPreferences },
 ): ResolvedModelRoleValue {
 	if (!roleValue) {
@@ -1194,7 +1177,7 @@ export function resolveModelFromSettings(options: {
 	// but remains a valid stored assignment and must be honored first — a
 	// configured provider-qualified default that misses must yield undefined,
 	// never silently fall back to availableModels[0] (#980).
-	const roles = roleOrder ?? [LEGACY_DEFAULT_MODEL_ROLE, ...MODEL_ROLE_IDS];
+	const roles = roleOrder ?? [DEFAULT_MODEL_SLOT, ...MODEL_ROLE_IDS];
 	let sawConfiguredProviderQualifiedRole = false;
 	for (const role of roles) {
 		const configured = settings.getModelRole(role);
@@ -1303,45 +1286,76 @@ export async function resolveModelOverrideWithAuthFallback(
 	return { ...fallback, authFallbackUsed: true, warning: primary.warning ?? fallback.warning };
 }
 
+/** A role chain walk: the winning selection, plus the roles that were set but could not resolve. */
+interface RoleChainWalk {
+	selection?: { model: Model<Api>; thinkingLevel?: ConfiguredThinkingLevel };
+	/** Roles carrying a configured value that matched no available model. */
+	misconfiguredRoles: string[];
+}
+
+/**
+ * Walk a role chain in order, returning the first role that resolves plus every
+ * role that was CONFIGURED yet matched no available model.
+ *
+ * The second half is what keeps "unset" and "set to something broken" apart. A
+ * chain is a preference list, so a broken role does not stop the walk, but the
+ * caller must be able to tell a deliberate blank (inherit the main model) from a
+ * typo'd or unauthenticated override (report it) instead of silently running a
+ * model the operator never chose.
+ */
+function walkRoleChain(
+	roles: readonly string[],
+	settings: Settings,
+	availableModels: readonly Model<Api>[],
+): RoleChainWalk {
+	const matchPreferences = getModelMatchPreferences(settings);
+	const misconfiguredRoles: string[] = [];
+	for (const role of roles) {
+		const configured = settings.getModelRole(role)?.trim();
+		const resolved = resolveModelRoleValue(configured, availableModels, { settings, matchPreferences });
+		if (resolved.model) {
+			return { selection: { model: resolved.model, thinkingLevel: resolved.thinkingLevel }, misconfiguredRoles };
+		}
+		if (configured) misconfiguredRoles.push(role);
+	}
+	return { misconfiguredRoles };
+}
+
 /**
  * Resolve a list of role patterns to the first matching model.
  */
 export function resolveRoleSelection(
 	roles: readonly string[],
 	settings: Settings,
-	availableModels: Model<Api>[],
+	availableModels: readonly Model<Api>[],
 ): { model: Model<Api>; thinkingLevel?: ConfiguredThinkingLevel } | undefined {
-	const matchPreferences = getModelMatchPreferences(settings);
-	for (const role of roles) {
-		const resolved = resolveModelRoleValue(settings.getModelRole(role), availableModels, {
-			settings,
-			matchPreferences,
-		});
-		if (resolved.model) {
-			return { model: resolved.model, thinkingLevel: resolved.thinkingLevel };
-		}
-	}
-	return undefined;
+	return walkRoleChain(roles, settings, availableModels).selection;
 }
 
 /**
  * Role resolution with the inherit default: configured roles win; when every
- * role in the chain is unset (or resolves to no available model), the live
- * main model is inherited. Headless contexts (no session) pass no `liveModel`
- * and inherit the persisted `default` role instead. This is the single owner
- * of the "unset role follows the main model" product contract — role
- * consumers must not hand-roll their own unset fallback.
+ * role in the chain is UNSET the live main model is inherited. Headless contexts
+ * (no session) pass no `liveModel` and inherit the persisted `default` role
+ * instead. This is the single owner of the "unset role follows the main model"
+ * product contract — role consumers must not hand-roll their own unset fallback.
+ *
+ * A role that IS configured but resolves to no available model (typo, retired
+ * id, unauthenticated provider) returns `undefined` rather than inheriting. The
+ * operator asked for a specific model, so quietly running a different one is the
+ * silent fallback this contract exists to prevent; callers surface the miss
+ * instead (an advisor reports itself inactive, titling skips and logs).
  */
 export function resolveRoleSelectionWithInherit(
 	roles: readonly string[],
 	settings: Settings,
-	availableModels: Model<Api>[],
+	availableModels: readonly Model<Api>[],
 	liveModel?: Model<Api>,
 ): { model: Model<Api>; thinkingLevel?: ConfiguredThinkingLevel } | undefined {
-	const configured = resolveRoleSelection(roles, settings, availableModels);
-	if (configured) return configured;
+	const { selection, misconfiguredRoles } = walkRoleChain(roles, settings, availableModels);
+	if (selection) return selection;
+	if (misconfiguredRoles.length > 0) return undefined;
 	if (liveModel) return { model: liveModel, thinkingLevel: undefined };
-	const persisted = resolveModelRoleValue(settings.getModelRole("default"), availableModels, {
+	const persisted = resolveModelRoleValue(settings.getModelRole(DEFAULT_MODEL_SLOT), availableModels, {
 		settings,
 		matchPreferences: getModelMatchPreferences(settings),
 	});
@@ -1359,7 +1373,7 @@ export function resolveRoleSelectionWithInherit(
  */
 export function fallbackForUnavailableDefault(
 	configuredDefault: string | undefined,
-	availableModels: Model<Api>[],
+	availableModels: readonly Model<Api>[],
 ): { model: Model<Api>; warning: string } | undefined {
 	const model = availableModels[0];
 	if (!model) return undefined;
@@ -1375,20 +1389,21 @@ export function fallbackForUnavailableDefault(
 /**
  * Resolve the model for the `advisor` role. A configured `modelRoles.advisor`
  * wins outright (a bad override surfaces as no model rather than silently
- * running something else); when unset it falls back to the `slow` priority
- * chain via {@link ROLE_PRIORITY_ALIAS} — a strong reasoning model that, unlike
- * the `slow` role itself, never inherits the primary's model. Returns undefined
- * only when no candidate in the resolved chain is available.
+ * running something else); when unset the advisor inherits the live main model
+ * like every other role, via the one owner {@link resolveRoleSelectionWithInherit}.
+ *
+ * The advisor used to be the single role that resolved a built-in `slow`
+ * priority chain when unset. It is off by default and every model — including
+ * inherit — is a valid choice once it is turned on, so a hidden chain only
+ * decided a model the operator never picked. Returns undefined only when no
+ * model is available at all.
  */
 export function resolveAdvisorRoleSelection(
 	settings: Settings,
-	availableModels: Model<Api>[],
+	availableModels: readonly Model<Api>[],
+	liveModel?: Model<Api>,
 ): { model: Model<Api>; thinkingLevel?: ConfiguredThinkingLevel } | undefined {
-	const resolved = resolveModelRoleValue(formatModelRoleAlias("advisor"), availableModels, {
-		settings,
-		matchPreferences: getModelMatchPreferences(settings),
-	});
-	return resolved.model ? { model: resolved.model, thinkingLevel: resolved.thinkingLevel } : undefined;
+	return resolveRoleSelectionWithInherit(["advisor"], settings, availableModels, liveModel);
 }
 
 /**

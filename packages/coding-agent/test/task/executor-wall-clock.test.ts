@@ -97,7 +97,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 	};
 
 	it("aborts a stalled subagent and surfaces a runtime-limit reason", async () => {
-		const settings = Settings.isolated({ "task.maxRuntimeMs": 50 });
+		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 50 });
 		const handle = createHangingSession();
 		mockCreateAgentSession(handle.session);
 
@@ -122,7 +122,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 	it("does not abort early when the runtime budget is unlimited", async () => {
 		// Stub session resolves immediately to a no-op yield so we don't actually
 		// hang; we only need to assert that NO timeout fires when maxRuntimeMs=0.
-		const settings = Settings.isolated({ "task.maxRuntimeMs": 0 });
+		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 0 });
 		const fastSession: Partial<AgentSession> = {
 			state: { messages: [] } as never,
 			agent: { state: { systemPrompt: ["test"] } } as never,
@@ -170,7 +170,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 		// timer fires while the executor is still doing async setup, well before
 		// it ever calls session.prompt(). The fix must observe abortSignal
 		// immediately before prompting and return the runtime-limit result.
-		const settings = Settings.isolated({ "task.maxRuntimeMs": 30 });
+		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 30 });
 		const handle = createHangingSession();
 		let promptCalls = 0;
 		const originalPrompt = handle.session.prompt;
@@ -208,7 +208,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 		// the timer has already aborted). Without the fix, `hasYield=true` would
 		// make finalizeSubprocessOutput zero the exit code and `wasAborted`
 		// would resolve to false — silently masking the runtime-limit breach.
-		const settings = Settings.isolated({ "task.maxRuntimeMs": 30 });
+		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 30 });
 		const { promise: hang, resolve: releaseHang } = Promise.withResolvers<void>();
 		let listenerRef: ((event: AgentSessionEvent) => void) | undefined;
 		let abortCount = 0;
@@ -267,7 +267,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 	});
 
 	it("commits a yield tool call before the soft request budget aborts the turn", async () => {
-		const settings = Settings.isolated({ "task.softRequestBudget": 1 });
+		const settings = Settings.isolated({ "subagent.softRequestBudget": 1 });
 		const firstAssistantMessage = {
 			role: "assistant" as const,
 			content: [{ type: "text" as const, text: "finishing the task" }],
@@ -347,7 +347,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 	});
 
 	it("does not finalize rejected yield arguments after crossing the soft request budget", async () => {
-		const settings = Settings.isolated({ "task.softRequestBudget": 1 });
+		const settings = Settings.isolated({ "subagent.softRequestBudget": 1 });
 		const firstAssistantMessage = {
 			role: "assistant" as const,
 			content: [{ type: "text" as const, text: "finishing the task" }],
@@ -484,7 +484,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 	});
 
 	it("resumes the hard budget guard after an incremental yield commits", async () => {
-		const settings = Settings.isolated({ "task.softRequestBudget": 1 });
+		const settings = Settings.isolated({ "subagent.softRequestBudget": 1 });
 		const firstAssistantMessage = {
 			role: "assistant" as const,
 			content: [{ type: "text" as const, text: "still working" }],
@@ -598,7 +598,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 		// `singleResult.contextWindow` onto AgentProgress. This test pins the
 		// upstream contract: when an assistant message_end carries totalTokens,
 		// executor must surface it on SingleResult.contextTokens.
-		const settings = Settings.isolated({ "task.maxRuntimeMs": 0 });
+		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 0 });
 		const fastSession: Partial<AgentSession> = {
 			state: { messages: [] } as never,
 			agent: { state: { systemPrompt: ["test"] } } as never,

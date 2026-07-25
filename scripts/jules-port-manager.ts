@@ -689,7 +689,12 @@ async function harvest(): Promise<void> {
 		console.log("harvest: nothing in flight.");
 		return;
 	}
-	const lanes = resolveKeys().map(key => ({ key, fp: keyFingerprint(key) }));
+	// `resolveKeys` yields `{ name, key }`, not a bare key. Taking the whole object
+	// as `key` fingerprinted an object (so `marker.fp` matched no lane and the
+	// preferred-lane sort below was a no-op) and then passed that object to `jules`
+	// as the API credential, which no lane could authenticate. Nothing caught it
+	// because `scripts/` was not typechecked.
+	const lanes = resolveKeys().map(({ name, key }) => ({ name, key, fp: keyFingerprint(key) }));
 	// One PR listing serves every issue this run.
 	const prs = await ghAll(`/repos/${ORIGIN}/pulls?state=all&sort=created&direction=desc`, 300);
 

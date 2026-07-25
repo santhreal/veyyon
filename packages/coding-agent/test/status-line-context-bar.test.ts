@@ -1,8 +1,13 @@
 /**
- * The growing context bar — the quiet zone's replacement for `88.7%/231K ⟲`:
- * 8 cells, filled cells in the usage-level hue from the ONE
- * getContextUsageThemeColor owner, dim ▱ rest cells, and the auto-compaction
- * mark changed from ⟲ to a session-accent ∞.
+ * The draining context bar — the quiet zone's replacement for `88.7%/231K ⟲`:
+ * 8 cells, one per eighth of the room LEFT, in the usage-level hue from the ONE
+ * getContextUsageThemeColor owner, dim ▱ for room already spent, and the
+ * auto-compaction mark changed from ⟲ to a session-accent ∞. `ratio` is the
+ * fraction of cells to fill and the caller passes remaining room, so the bar
+ * empties as the session grows (CTX-GAUGE-USED-VS-LEFT, 2026-07-25): a bar that
+ * grew while the number beside it said "left" was a fuel gauge running
+ * backwards. This suite pins the geometry and the glyph vocabulary, which are
+ * unchanged by that flip, plus the new pulse position.
  *
  * The bar is STRICTLY two glyphs (▰/▱) and two tones (level hue / dim). The
  * first shipped design mixed shaded quarter-step glyphs (░▒▓) into the
@@ -15,8 +20,9 @@
  *  1. Geometry: always exactly 8 visible cells, at 0%, mid-fill, and 100%.
  *  2. Fill math rounds to the nearest cell (the % text is the precise value).
  *  3. Only ▰ and ▱ ever appear — the ░▒▓█ family and gold majors are banned.
- *  4. Live (agent running): the frontier cell pulses ▰↔▱ in the same
- *     two-glyph vocabulary, doubling cadence at the error level.
+ *  4. Live (agent running): the last REMAINING cell pulses ▰↔▱ in the same
+ *     two-glyph vocabulary — the cell being spent right now — doubling cadence
+ *     at the error level.
  *  5. At rest the bar is byte-identical at any wall time (no idle motion).
  *  6. The unicode auto-compaction icon is ∞ (the user rejected ⟲).
  */
@@ -24,12 +30,15 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { renderContextBar } from "@veyyon/coding-agent/modes/components/status-line/segments";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { useFullColor } from "./helpers/theme-assertions";
 
 function cells(bar: string): string {
 	return stripVTControlCharacters(bar);
 }
 
 describe("context bar", () => {
+	useFullColor();
+
 	beforeAll(() => {
 		initTheme();
 	});
@@ -85,31 +94,42 @@ describe("context bar", () => {
 	});
 
 	/** Motion means "the model is working right now" — the spinner's contract.
-	 * While live, the frontier cell pulses between filled and empty in the
-	 * SAME two-glyph vocabulary; no foreign glyph is introduced for motion. */
-	it("pulses the frontier cell ▰↔▱ while live", () => {
-		// 37.5% live: cell 3 is the frontier. Step cadence is 1000ms.
-		expect(cells(renderContextBar(0.375, "normal", 0, true))).toBe("▰▰▰▰▱▱▱▱");
-		expect(cells(renderContextBar(0.375, "normal", 1000, true))).toBe("▰▰▰▱▱▱▱▱");
-		expect(cells(renderContextBar(0.375, "normal", 2000, true))).toBe("▰▰▰▰▱▱▱▱");
-		// The pulsed-on frontier carries the level hue, the off phase is dim.
+	 * While live, the last remaining cell pulses between filled and empty in the
+	 * SAME two-glyph vocabulary; no foreign glyph is introduced for motion. On a
+	 * draining bar that cell is the one being consumed, so the motion sits at the
+	 * boundary the user is watching rather than out in the spent region. */
+	it("pulses the last remaining cell ▰↔▱ while live", () => {
+		// 37.5% left: cells 0-2 remain, so cell 2 is the one being spent.
+		expect(cells(renderContextBar(0.375, "normal", 0, true))).toBe("▰▰▰▱▱▱▱▱");
+		expect(cells(renderContextBar(0.375, "normal", 1000, true))).toBe("▰▰▱▱▱▱▱▱");
+		expect(cells(renderContextBar(0.375, "normal", 2000, true))).toBe("▰▰▰▱▱▱▱▱");
+		// The pulsed-on cell carries the level hue, the off phase is dim.
 		const on = renderContextBar(0.375, "normal", 0, true);
-		expect(on.split(theme.fg("statusLineContext", "▰")).length - 1).toBe(4);
+		expect(on.split(theme.fg("statusLineContext", "▰")).length - 1).toBe(3);
 	});
 
 	it("doubles the pulse cadence at the error level", () => {
 		// At t=500ms: normal (1000ms step) is still on phase 0 (tip on);
 		// error (500ms step) has advanced to phase 1 (tip off).
-		const normalTip = cells(renderContextBar(0.375, "normal", 500, true))[3];
-		const urgentTip = cells(renderContextBar(0.375, "error", 500, true))[3];
+		const normalTip = cells(renderContextBar(0.375, "normal", 500, true))[2];
+		const urgentTip = cells(renderContextBar(0.375, "error", 500, true))[2];
 		expect(normalTip).toBe("▰");
 		expect(urgentTip).toBe("▱");
 	});
 
-	it("has no frontier pulse at 100% — nothing left to fill", () => {
+	/** With no room left there is no cell to spend, so the empty bar is static
+	 * even while the agent runs — motion would point at nothing. */
+	it("has no pulse at 0% remaining — no cell left to spend", () => {
 		for (const t of [0, 500, 1000]) {
-			expect(cells(renderContextBar(1, "normal", t, true))).toBe("▰".repeat(8));
+			expect(cells(renderContextBar(0, "normal", t, true))).toBe("▱".repeat(8));
 		}
+	});
+
+	/** A full bar pulses its LAST cell (cell 7): a fresh session is still being
+	 * spent, and the pulse must not fall off the end of the track. */
+	it("pulses the eighth cell on a full bar", () => {
+		expect(cells(renderContextBar(1, "normal", 0, true))).toBe("▰".repeat(8));
+		expect(cells(renderContextBar(1, "normal", 1000, true))).toBe(`${"▰".repeat(7)}▱`);
 	});
 
 	/** The first shipped bar breathed on an IDLE screen, signalling activity

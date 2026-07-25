@@ -2,6 +2,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getAgentDir, getConfigRootDir, refreshDirsFromEnv } from "./dirs";
+import { isMissingPath } from "./fs-error";
+import * as logger from "./logger";
+import { errorMessage } from "./type-guards";
 
 export * from "./worker-host";
 
@@ -71,6 +74,12 @@ export function filterChildShellEnv(
  * Ignores lines that are empty or start with '#'. Trims whitespace.
  * Allows values to be quoted with single or double quotes.
  * Returns an object of key-value pairs.
+ *
+ * Four candidate paths are probed on startup (cwd, agent dir, config root, home)
+ * and most of them are absent, so a missing file says nothing. A file that EXISTS
+ * and cannot be read is reported: it is usually the one holding the user's API
+ * keys, and the symptom of dropping it silently is an authentication failure
+ * nobody can trace back to a permission bit (Law 10).
  */
 export function parseEnvFile(filePath: string): Record<string, string> {
 	const result: Record<string, string> = {};
@@ -97,8 +106,13 @@ export function parseEnvFile(filePath: string): Record<string, string> {
 
 			result[key] = value;
 		}
-	} catch {
-		// File doesn't exist or can't be read - return empty result
+	} catch (error) {
+		if (!isMissingPath(error)) {
+			logger.warn("Environment file exists but could not be read; none of its variables were applied.", {
+				path: filePath,
+				error: errorMessage(error),
+			});
+		}
 	}
 
 	return result;
@@ -157,14 +171,41 @@ export function $pickenv(...keys: string[]): string | undefined {
 }
 
 /**
- * Parses a positive decimal integer from `$env[name]`.
- * Empty, invalid, NaN, zero, or negative values return `defaultValue`.
+ * Parses a positive decimal integer from `$env[name]`, or `defaultValue` when the
+ * variable is unset or empty.
+ *
+ * The WHOLE value must be digits. This used to be a bare `Number.parseInt`, which
+ * stops at the first character it cannot use and returns what it read so far, so
+ * `VEYYON_TASK_MAX_OUTPUT_BYTES=5OO000` (letter O for zero) silently capped agent
+ * output at FIVE BYTES rather than five hundred thousand. Taking a prefix of a value
+ * the user got wrong is worse than ignoring it: the number that reaches the code is
+ * one nobody chose.
+ *
+ * A variable that IS set and is not a positive integer is reported before the default
+ * is used. `=0`, `=-5`, `=1_000_000` (underscores are source syntax, not environment
+ * syntax) and `=10s` all name something specific, and returning the built-in default
+ * with no word leaves the operator reasoning about a limit that was never in effect
+ * (Law 10). The call still returns the default rather than throwing: an override typo
+ * must not stop the process from starting.
+ *
+ * This is the single owner of "positive integer from the environment". `task/types.ts`
+ * had its own `parseNumber` with a dead `try/catch` around `Number.parseInt`, which
+ * does not throw.
  */
+const POSITIVE_INTEGER_RE = /^\d+$/;
+
 export function $envpos(name: string, defaultValue: number): number {
-	const raw = $env[name];
+	const raw = $env[name]?.trim();
 	if (!raw) return defaultValue;
-	const parsed = Number.parseInt(raw, 10);
-	if (Number.isNaN(parsed) || parsed <= 0) return defaultValue;
+	const parsed = POSITIVE_INTEGER_RE.test(raw) ? Number.parseInt(raw, 10) : Number.NaN;
+	if (Number.isNaN(parsed) || parsed <= 0) {
+		logger.warn("Environment variable is not a positive integer; using the default instead.", {
+			name,
+			value: raw,
+			default: defaultValue,
+		});
+		return defaultValue;
+	}
 	return parsed;
 }
 

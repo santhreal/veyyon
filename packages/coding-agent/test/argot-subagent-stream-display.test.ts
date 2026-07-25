@@ -31,6 +31,13 @@ import { runSubprocess } from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition, AgentProgress } from "@veyyon/coding-agent/task/types";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { ArgotSession, type Vocabulary } from "argot";
+import { useIsolatedAgentDir } from "./helpers/isolated-agent-dir";
+
+// The executor opens a session file for the child it spawns, under the agent dir.
+// Without this the writes land in the developer's real `~/.veyyon`, the real-data
+// tripwire refuses them, and the run fails before a single delta is streamed — so
+// every assertion here reported an empty preview and said nothing about decoding.
+useIsolatedAgentDir();
 
 const DBCONN = "packages/server/src/database/connection.ts";
 
@@ -151,6 +158,32 @@ function collectPreviews() {
 	return { snapshots, onProgress };
 }
 
+/**
+ * Run the child and REFUSE a run that never reached the display seam.
+ *
+ * Every "never shows a raw handle" assertion in this file passes vacuously on an
+ * empty preview, so a run that dies before streaming anything reads as a clean
+ * pass on three of the four tests and as a confusing empty-string mismatch on the
+ * fourth. That is exactly what happened while the suite was not isolating the
+ * agent dir: the executor's session write hit the real-data tripwire,
+ * `runSubprocess` turned it into a failed run with no output, and the file
+ * reported nothing about decoding for as long as it stayed broken.
+ *
+ * The exit code cannot be the guard: these scripted children deliberately never
+ * call `yield`, so a non-zero exit is the NORMAL outcome here. What proves the
+ * seam ran is that the preview was written at all, so that is what is checked,
+ * with the child's stderr in the message to name the real cause.
+ */
+async function runChild(id: string, onProgress: (p: AgentProgress) => void, snapshots: string[][]): Promise<void> {
+	const result = await runSubprocess(baseOptions(id, onProgress));
+	if (!snapshots.some(snap => snap.join("").trim().length > 0)) {
+		throw new Error(
+			`the child produced no live preview at all, so nothing about decoding was tested ` +
+				`(exit ${result.exitCode}): ${result.stderr.trim() || "no stderr"}`,
+		);
+	}
+}
+
 describe("Argot subagent streaming display seam through the real runSubprocess executor", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
@@ -174,7 +207,7 @@ describe("Argot subagent streaming display seam through the real runSubprocess e
 		});
 		vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(sessionResult(session));
 
-		await runSubprocess(baseOptions("stream-split", onProgress));
+		await runChild("stream-split", onProgress, snapshots);
 
 		// No snapshot at any point held the raw handle...
 		for (const snap of snapshots) {
@@ -203,7 +236,7 @@ describe("Argot subagent streaming display seam through the real runSubprocess e
 		});
 		vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(sessionResult(session));
 
-		await runSubprocess(baseOptions("stream-short", onProgress));
+		await runChild("stream-short", onProgress, snapshots);
 
 		const last = snapshots[snapshots.length - 1].join("\n");
 		expect(last).toContain("src/db.ts");
@@ -226,7 +259,7 @@ describe("Argot subagent streaming display seam through the real runSubprocess e
 		});
 		vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(sessionResult(session));
 
-		await runSubprocess(baseOptions("stream-fullcontent", onProgress));
+		await runChild("stream-fullcontent", onProgress, snapshots);
 
 		const last = snapshots[snapshots.length - 1].join("\n");
 		expect(last).toContain(DBCONN);
@@ -249,7 +282,7 @@ describe("Argot subagent streaming display seam through the real runSubprocess e
 		});
 		vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(sessionResult(session));
 
-		await runSubprocess(baseOptions("stream-off", onProgress));
+		await runChild("stream-off", onProgress, snapshots);
 
 		const last = snapshots[snapshots.length - 1].join("\n");
 		expect(last).toContain("§dbconn");

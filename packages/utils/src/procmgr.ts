@@ -21,6 +21,8 @@ export function isExecutable(path: string): boolean {
 		fs.accessSync(path, fs.constants.X_OK);
 		return true;
 	} catch {
+		// A binary we cannot execute is one we cannot use, whether it is absent or merely not executable.
+		// The caller tries the next candidate shell and reports when none of them works.
 		return false;
 	}
 }

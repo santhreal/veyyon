@@ -6,11 +6,12 @@ import {
 	resolveEvalUrlRoots,
 } from "../backend";
 import {
+	readSetting,
 	namespaceSessionId as sharedNamespace,
 	readInterpreterSetting as sharedReadInterpreterSetting,
 	toExecutorBackendResult,
 } from "../backend-helpers";
-import { executeRuby } from "./executor";
+import { executeRuby, type RubyExecutorOptions } from "./executor";
 import { checkRubyKernelAvailability } from "./kernel";
 
 const RUBY_SESSION_PREFIX = "ruby:";
@@ -36,6 +37,7 @@ export default {
 	async execute(code: string, opts: ExecutorBackendExecOptions): Promise<ExecutorBackendResult> {
 		const result = await executeRuby(code, {
 			cwd: opts.cwd,
+			kernelMode: readSetting<RubyExecutorOptions["kernelMode"]>(opts.session, "ruby.kernelMode"),
 			idleTimeoutMs: opts.idleTimeoutMs,
 			signal: opts.signal,
 			sessionId: namespaceSessionId(opts.sessionId),
