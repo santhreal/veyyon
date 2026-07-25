@@ -134,6 +134,12 @@ function createEditWritethrough(session: ToolSession): WritethroughCallback {
  * helper, because the per-file loop and the per-entry loop must not word this
  * differently: an operator reading the two should not have to work out whether
  * they mean the same thing.
+ *
+ * It stays local rather than moving to `tools/tool-errors.ts`. The eval tool has
+ * the same defect and the same fix, but its `cells` array is always exactly one
+ * element, so an "N of M, these ran and these did not" summary would describe a
+ * sequence it never has. A shared helper would have to be told that, and would
+ * be a worse home for both wordings than each tool saying its own plainly.
  */
 function abortedPartway(unit: "file" | "entry", applied: readonly string[], pending: readonly string[], cause: unknown) {
 	const total = applied.length + pending.length;

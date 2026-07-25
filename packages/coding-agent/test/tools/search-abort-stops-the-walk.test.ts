@@ -41,7 +41,7 @@ import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { GlobTool } from "@veyyon/coding-agent/tools/glob";
 import { GrepTool } from "@veyyon/coding-agent/tools/grep";
-import { glob as nativeGlob, GrepOutputMode, grep as nativeGrep } from "@veyyon/natives";
+import { astGrep as nativeAstGrep, GrepOutputMode, glob as nativeGlob, grep as nativeGrep } from "@veyyon/natives";
 import { removeWithRetries } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 import { makeToolSession } from "../helpers/tool-session";
@@ -136,23 +136,60 @@ describe("the natives refuse work under a signal that has already fired", () => 
 	 */
 	it("glob rejects instead of walking the whole tree", async () => {
 		const signal = spentSignal();
-		const rejected = await new Promise<boolean>(resolve => {
-			try {
-				nativeGlob({ patterns: ["**/*.ts"], cwd: tmpDir, hidden: true, gitignore: false, signal }, (err: unknown) =>
-					resolve(err !== null && err !== undefined),
-				);
-			} catch {
-				resolve(true);
-			}
+
+		// `glob` reports the abort by REJECTING the promise it returns, so that
+		// promise has to be awaited. Watching only the `onMatch` callback left the
+		// rejection unhandled, which fails the run rather than the assertion and
+		// says nothing about whether the walk was actually cancelled.
+		const rejection = await nativeGlob(
+			{ pattern: "**/*.ts", path: tmpDir, hidden: true, gitignore: false, signal },
+			() => {},
+		).then(
+			() => undefined,
+			(err: unknown) => err,
+		);
+
+		expect(rejection).toBeInstanceOf(Error);
+		expect(String(rejection)).toContain("Aborted");
+	});
+
+	/**
+	 * The third native entry point, and the one whose tool loops over it. The AST
+	 * search tool's `runMultiTargetAstGrep` calls this once per target with the
+	 * same signal, so it has the shape that made the grep tool's per-chunk loop
+	 * expensive after a cancellation: every remaining target paid for a full walk
+	 * before anything noticed. That loop now checks the signal itself, and this
+	 * asserts the layer underneath it, so the guard is defence rather than the
+	 * only thing standing between a cancelled search and a full result set.
+	 */
+	it("ast_grep rejects instead of parsing every file in the tree", async () => {
+		const call = nativeAstGrep({
+			patterns: ["export const id = $A"],
+			path: tmpDir,
+			includeMeta: true,
+			signal: spentSignal(),
 		});
 
-		expect(rejected).toBe(true);
+		await expect(call).rejects.toThrow();
 	});
 
 	/**
 	 * The guard on the guard. Both assertions above are satisfied by a native that
 	 * refuses everything, so the same call under a live signal has to succeed.
 	 */
+	it("ast_grep still returns matches under a signal that has not fired", async () => {
+		// The same guard for the entry point added above: an assertion that a call
+		// rejects is satisfied by a native that rejects everything.
+		const result = await nativeAstGrep({
+			patterns: ["export const id = $A"],
+			path: tmpDir,
+			includeMeta: true,
+			signal: new AbortController().signal,
+		});
+
+		expect(result.matches.length).toBeGreaterThan(0);
+	});
+
 	it("grep still returns matches under a signal that has not fired", async () => {
 		const result = await nativeGrep(
 			{
