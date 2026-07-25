@@ -1,12 +1,17 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, expect, it } from "bun:test";
 import * as path from "node:path";
-import { $which, TempDir } from "@veyyon/utils";
+import { TempDir } from "@veyyon/utils";
+import { describeRequiringTool } from "../../../../utils/test/helpers/requires-tool";
 import { disposeJuliaKernelSessionsByOwner, executeJulia } from "../jl/executor";
 
-const HAS_JULIA = Boolean($which("julia"));
 const OWNER_ID = "julia-prelude-tests";
 
-describe.skipIf(!HAS_JULIA)("eval Julia prelude helpers", () => {
+// Not `describe.skipIf(!$which("julia"))`: julia is absent on every dev machine
+// on this fleet, so that form switched the suite off everywhere it was run and
+// said nothing about it — a local run reported 2 skip / 0 fail and looked
+// exactly like a clean one. This form announces the skip, and refuses to skip at
+// all in an environment that declares julia through VEYYON_REQUIRE_TOOLS.
+describeRequiringTool("julia", "eval Julia prelude helpers", () => {
 	afterEach(async () => {
 		await disposeJuliaKernelSessionsByOwner(OWNER_ID);
 	}, 30_000);
