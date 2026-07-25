@@ -235,6 +235,8 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 	#streamingActive = false;
 	/** Latched once the broker has answered 404 — never try the stream again. */
 	#streamingUnsupported = false;
+	/** Stale-view causes already warned about, so each one is shouted exactly once. */
+	#reportedStaleSnapshotCauses = new Set<string>();
 
 	constructor(opts: RemoteAuthCredentialStoreOptions) {
 		this.#client = opts.client;
@@ -266,7 +268,7 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		try {
 			onSnapshot(this.#snapshot, generation);
 		} catch (error) {
-			logger.debug("auth-broker snapshot callback failed", { error: String(error) });
+			this.#reportStaleSnapshot("snapshot-callback", error, { generation });
 		}
 	}
 	#protectNewSnapshotBlocks(previous: readonly SnapshotEntry[], next: readonly SnapshotEntry[], nowMs: number): void {
@@ -329,7 +331,7 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 				backoffMs = BACKGROUND_BACKOFF_INITIAL_MS;
 			} catch (error) {
 				if (this.#closed || this.#backgroundAbort.signal.aborted) break;
-				logger.debug("auth-broker background snapshot sync failed", { error: String(error) });
+				this.#reportStaleSnapshot("background-sync", error, { backoffMs });
 				await scheduler.wait(backoffMs, { signal: this.#backgroundAbort.signal }).catch(() => {});
 				backoffMs = Math.min(BACKGROUND_BACKOFF_MAX_MS, backoffMs * 2);
 			}
@@ -776,10 +778,34 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 	 * active the broker will deliver the new generation push, so the extra GET
 	 * is wasted bandwidth and we skip it.
 	 */
+	/**
+	 * Report that this process's view of the broker's credentials has gone stale.
+	 *
+	 * Every caller here is a path that already succeeded at the thing the user
+	 * asked for and then failed to bring the local snapshot back in line. That
+	 * combination is what makes silence dangerous: nothing looks wrong, yet the
+	 * next decision taken from the snapshot (which credential is blocked, which
+	 * token is current) is made against data known to be out of date. Warned once
+	 * per cause, because the cause is normally a broker that is down for the whole
+	 * process and a per-request warning would bury itself.
+	 */
+	#reportStaleSnapshot(cause: string, error: unknown, fields: Record<string, unknown> = {}): void {
+		const detail = { cause, error: String(error), ...fields };
+		if (this.#reportedStaleSnapshotCauses.has(cause)) {
+			logger.debug("auth-broker credential view still stale", detail);
+			return;
+		}
+		this.#reportedStaleSnapshotCauses.add(cause);
+		logger.warn(
+			"auth-broker credential view is stale; this process may keep using outdated credential or block state until the broker responds again",
+			detail,
+		);
+	}
+
 	#maybeRefreshSnapshot(reason: string): void {
 		if (this.#streamingActive) return;
 		void this.refreshSnapshot().catch(error => {
-			logger.debug("auth-broker snapshot refresh after write failed", { reason, error: String(error) });
+			this.#reportStaleSnapshot("refresh-after-write", error, { reason });
 		});
 	}
 
@@ -839,7 +865,7 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		const { entry } = await this.#client.refreshCredential(credentialId, signal);
 		if (!this.#streamingActive) {
 			await this.refreshSnapshot().catch(error => {
-				logger.debug("auth-broker snapshot refresh after credential refresh failed", { error: String(error) });
+				this.#reportStaleSnapshot("refresh-after-credential-refresh", error, { credentialId });
 			});
 		}
 		if (entry.credential.type !== "oauth") {

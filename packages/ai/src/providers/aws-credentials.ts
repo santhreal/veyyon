@@ -322,6 +322,13 @@ async function loadSsoCachedToken(
 	for (const entry of entries) {
 		if (entry.endsWith(".json") && !candidates.includes(entry)) candidates.push(entry);
 	}
+	// A file that cannot be read or parsed might have been the one we needed, and
+	// we cannot tell which without reading it. Errors are therefore collected
+	// rather than dropped, and reported below only when the scan came up empty,
+	// which is exactly the case where a swallowed error IS the reason for the
+	// failure. Reporting them on a successful scan would fire on every unrelated
+	// profile's stale file and train everyone to ignore the line.
+	const unreadable: string[] = [];
 	for (const file of candidates) {
 		if (!entries.includes(file)) continue;
 		try {
@@ -331,8 +338,14 @@ async function loadSsoCachedToken(
 				return parsed;
 			}
 		} catch (err) {
-			logger.debug("aws-credentials: failed to read SSO cache", { file, err: String(err) });
+			unreadable.push(`${file}: ${String(err)}`);
 		}
+	}
+	if (unreadable.length > 0) {
+		logger.warn(
+			"No cached AWS SSO token was found, and some cache files could not be read; one of them may have been the token, so you may be asked to log in again unnecessarily",
+			{ cacheDir, startUrl, sessionName, unreadable },
+		);
 	}
 	return undefined;
 }
