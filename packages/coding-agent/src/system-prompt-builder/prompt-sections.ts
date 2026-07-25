@@ -45,7 +45,16 @@ const SECTION_BANNER_TO_NAME: Record<string, PromptSectionName> = Object.fromEnt
 	BANNERED_SECTIONS.map(b => [b.banner.split("\n")[0] as string, b.id]),
 );
 
-export interface PromptSection {
+/**
+ * One fragment of a SPLIT prompt: a banner name and the text under it.
+ *
+ * Deliberately not called `PromptSection`: that name belongs to the registry
+ * entry in `prompt-blocks.ts`, which describes a section's identity, banner and
+ * source. This is the runtime result of cutting a rendered document at those
+ * banners. Two sibling files exporting one name for two different things is how
+ * a reader ends up importing the wrong one.
+ */
+export interface RenderedSection {
 	name: PromptSectionName | "preamble";
 	text: string;
 }
@@ -64,10 +73,10 @@ export interface PromptSection {
  * reorder consumer ({@link applyPromptSectionOrder}) handles that case by
  * dropping an empty-text preamble from the join, so it never fabricates one.
  */
-export function splitPromptSections(rendered: string): PromptSection[] {
+export function splitPromptSections(rendered: string): RenderedSection[] {
 	const lines = rendered.split("\n");
-	const sections: PromptSection[] = [];
-	let current: PromptSection = { name: "preamble", text: "" };
+	const sections: RenderedSection[] = [];
+	let current: RenderedSection = { name: "preamble", text: "" };
 	let buf: string[] = [];
 	const flush = () => {
 		current.text = buf.join("\n");
@@ -104,9 +113,9 @@ export function applyPromptSectionOrder(rendered: string, order: readonly string
 	// loss. By identity, every section is emitted exactly once regardless of
 	// name collisions: a duplicated name in `order` emits all its instances at
 	// that position, and nothing is ever dropped.
-	const emitted = new Set<PromptSection>();
+	const emitted = new Set<RenderedSection>();
 	const handledNames = new Set<string>();
-	const ordered: PromptSection[] = [];
+	const ordered: RenderedSection[] = [];
 	for (const name of order) {
 		if (handledNames.has(name)) continue;
 		handledNames.add(name);
