@@ -31,12 +31,17 @@ describe("renderPromptCacheInvalidationSection", () => {
 	});
 
 	/**
-	 * Zero is a real, good answer and must be legible as one: the prompt never
-	 * changed and the provider served the whole prefix from cache. Rendering it
-	 * the same as "we did not measure" would hide the best outcome the system can
-	 * produce.
+	 * An arm with a recorded empty list is genuinely clean: the prompt never
+	 * changed and the provider served the whole prefix from cache. That is the
+	 * best outcome the system can produce and must be legible as one.
+	 *
+	 * Note this is only reachable when SOMETHING in the run recorded an entry.
+	 * `parseSessionsUsage` deliberately maps "no entries anywhere" to `null`
+	 * rather than `[]`, because a binary built before the instrumentation existed
+	 * also emits nothing, and the first re-aggregate of a legacy run reported
+	 * every arm as "0 invalidations, fully cached" on exactly that confusion.
 	 */
-	test("reports a clean arm as zero rather than as unmeasured", () => {
+	test("reports a recorded-clean arm as zero rather than as unmeasured", () => {
 		const out = renderPromptCacheInvalidationSection([row("decode", [])], ["decode"]);
 		expect(out).toContain("| decode | 0 | 0.0 | none |");
 		expect(out).not.toContain("Not recorded");
