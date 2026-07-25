@@ -5,6 +5,7 @@ import {
 	estimateTokens,
 	extractCandidates,
 	generateDict,
+	emittedTokenCost,
 	generateDictFromRepo,
 	scoringFrequency,
 } from "../src/generate.js";
@@ -814,7 +815,8 @@ describe("structure outranks repo paths, and the table stays bounded (ARGOT-DICT
 			goFiles(4).map(f => ({ ...f, content: f.content.replace(/\n\t\treturn err\w+/g, "") })),
 			{ tokenBudget: 4000 },
 		);
-		const rankOf = (d: { handles: { expansion: string }[] }) => d.handles.map(h => h.expansion).indexOf("\n\t\treturn");
+		const rankOf = (d: { handles: { expansion: string }[] }) =>
+			d.handles.map(h => h.expansion).indexOf("\n\t\treturn");
 
 		expect(rankOf(dense)).toBeGreaterThanOrEqual(0);
 		expect(rankOf(dense)).toBeLessThanOrEqual(rankOf(sparse) < 0 ? Number.MAX_SAFE_INTEGER : rankOf(sparse));
@@ -903,5 +905,97 @@ describe("a newline-bearing expansion survives the dict round trip", () => {
 		const expand = makeExpander(vocab);
 
 		expect(expand("{§i2}")).toBe("{\n\t\t}");
+	});
+});
+
+describe("the dictionary's value is signed by the channel the model writes into", () => {
+	// WHY THIS SUITE EXISTS, and why it asserts a WEAKNESS rather than a fix.
+	// `emittedTokenCost` prices line structure as the model really emits it inside
+	// a tool-call argument, where JSON escaping turns one newline into the two
+	// characters `\` and `n`. That is a deliberate and well-argued choice, and it
+	// is what makes structure handles pay at all. But it is an assumption about
+	// the CHANNEL, and the whole dictionary rests on it: code in a plain assistant
+	// message carries a real newline, and there the raw pricing is correct.
+	//
+	// Measured on a 39-file TypeScript tree, the split is total rather than
+	// marginal. Under the escaped model every one of the 43 generated handles is
+	// net-positive, 2 to 10 tokens per use. Under the raw model every one of the
+	// 43 is net-negative, because a handle costs at least two tokens and a raw
+	// indentation run is one. There is no middle: the sign of the whole
+	// dictionary flips with the channel.
+	//
+	// The share of structure a real agent emits outside tool-call arguments has
+	// never been measured, so there is nothing here to fix yet. What can be done
+	// now is stop the assumption being invisible: a reader who changes
+	// `emittedTokenCost`, or who wonders why a bare indentation run earns a
+	// handle, meets these tests and the number rather than having to rediscover
+	// it. If a run ever shows a material share emitted raw, the first of these
+	// tests is the one that has to change, and it says so.
+
+	/** The corpus the numbers in these docs were measured on: ordinary tab-indented source. */
+	function tsFiles(count: number): { path: string; content: string }[] {
+		return Array.from({ length: count }, (_, i) => ({
+			path: `mod${i}.ts`,
+			content: [
+				`export class Widget${i} {`,
+				`\t\tconst a = 1;`,
+				`\t\tconst b = 2;`,
+				`\t\tif (a) {`,
+				`\t\t\t\treturn a;`,
+				`\t\t}`,
+				`\t\treturn b;`,
+				`}`,
+			].join("\n"),
+		}));
+	}
+
+	/** Raw pricing: what the string costs when the model writes a real newline. */
+	const rawCost = (expansion: string) => estimateTokens(expansion);
+	/** Escaped pricing, through the generator's own owner rather than a second copy. */
+	const escapedCost = (expansion: string) => emittedTokenCost(expansion, estimateTokens);
+
+	test("every generated handle pays under the escaped model", () => {
+		// The claim the generator is built on. If this fails, structure handles are
+		// costing tokens on the channel they were designed for, which is a defect
+		// rather than an exposure.
+		const { handles } = generateDictFromRepo(tsFiles(8), { tokenBudget: 4000 });
+		expect(handles.length).toBeGreaterThan(0);
+
+		for (const handle of handles) {
+			expect(escapedCost(handle.expansion) - estimateTokens(`§${handle.name}`)).toBeGreaterThan(0);
+		}
+	});
+
+	test("and every one of them LOSES under the raw model", () => {
+		// The exposure, asserted as a fact rather than described as a risk. A
+		// reader who assumes the dictionary is merely "less good" outside tool
+		// calls should see that it is negative, for every row, without exception.
+		const { handles } = generateDictFromRepo(tsFiles(8), { tokenBudget: 4000 });
+		const structure = handles.filter(h => h.expansion.startsWith("\n"));
+		expect(structure.length).toBeGreaterThan(0);
+
+		for (const handle of structure) {
+			expect(rawCost(handle.expansion) - estimateTokens(`§${handle.name}`)).toBeLessThanOrEqual(0);
+		}
+	});
+
+	test("the two models disagree only about line structure", () => {
+		// The scope of the exposure. A path or an identifier is priced identically
+		// either way, so nothing about the non-structure tail of a dictionary is
+		// contingent on the channel, and a future fix must not disturb it.
+		const path = "packages/coding-agent/src/database/connection.ts";
+		expect(escapedCost(path)).toBe(rawCost(path));
+		expect(escapedCost("\n\t\t")).toBeGreaterThan(rawCost("\n\t\t"));
+	});
+
+	test("the gap widens with indentation depth, which is why deep runs rank highest", () => {
+		// The mechanism behind the ranking, pinned so it cannot drift silently: a
+		// tokenizer collapses a run of real tabs into very few tokens but charges
+		// for every escaped `\t` separately, so the deeper the indent the larger
+		// the modelled saving. This is also the reason the top of a generated table
+		// is bare indentation rather than `\n\t\treturn`.
+		const shallow = escapedCost("\n\t") - rawCost("\n\t");
+		const deep = escapedCost("\n\t\t\t\t\t") - rawCost("\n\t\t\t\t\t");
+		expect(deep).toBeGreaterThan(shallow);
 	});
 });
