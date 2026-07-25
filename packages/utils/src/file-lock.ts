@@ -131,14 +131,42 @@ function tryAcquireLockSync(lockPath: string): string | null {
 	}
 }
 
-function skipReleaseLog(lockPath: string, expectedToken: string, actualToken: string | undefined): void {
-	// We are not the owner. The lock either expired and was reaped or another
-	// process reclaimed it. Do nothing — releasing here would wipe the rightful
-	// owner's lock.
-	logger.debug("file-lock: skipping release for non-owned lock", {
+/**
+ * Report that this process no longer owned the lock it was releasing.
+ *
+ * Not releasing is the only safe thing to do here: the lock expired and was
+ * reaped, or another process reclaimed it, and removing it now would wipe the
+ * rightful owner's lock. But the reason this cannot be a debug line is what the
+ * situation means rather than what the code does next. This process ran its
+ * critical section to completion believing it held the lock, while another
+ * process held it for some part of that. Whatever the lock protects was not
+ * protected, and the corruption that follows shows up later, somewhere else,
+ * with nothing connecting it back.
+ *
+ * The timeout is the tunable that fixes it, so the message names it.
+ */
+function reportLostLockOwnership(lockPath: string, expectedToken: string, actualToken: string | undefined): void {
+	logger.warn(
+		"file-lock: the lock was taken by another process before this one finished with it, so the work it guards was not actually exclusive; consider a longer lock timeout",
+		{ lockPath, expectedToken, actualToken: actualToken ?? "(lock is gone)" },
+	);
+}
+
+/**
+ * Report a release that failed outright.
+ *
+ * A lock directory left on disk blocks every other process that wants this
+ * resource until the stale-lock reaper gets to it, which on a long timeout is
+ * a long wait for an operation that looks hung and has no cause to point at.
+ */
+function reportFailedRelease(lockPath: string, error: unknown): void {
+	// The lock already being gone is not a failed release, it is a release with
+	// nothing left to do. Reporting it would fire on the ordinary path where a
+	// reaper got there first.
+	if (isEnoent(error)) return;
+	logger.warn("file-lock: could not remove the lock, so other processes will wait for it to go stale", {
 		lockPath,
-		expectedToken,
-		actualToken,
+		error: String(error),
 	});
 }
 
@@ -147,13 +175,16 @@ async function releaseLock(lockPath: string, expectedToken?: string): Promise<vo
 		if (expectedToken !== undefined) {
 			const info = await readLockInfo(lockPath);
 			if (!info || info.token !== expectedToken) {
-				skipReleaseLog(lockPath, expectedToken, info?.token);
+				reportLostLockOwnership(lockPath, expectedToken, info?.token);
 				return;
 			}
 		}
 		await fs.rm(lockPath, { recursive: true });
-	} catch {
-		// Ignore errors on release.
+	} catch (error) {
+		// Release never throws at the caller: it runs in finally blocks and on
+		// shutdown paths, where an exception would mask the real error. It is
+		// reported instead of ignored.
+		reportFailedRelease(lockPath, error);
 	}
 }
 
@@ -162,13 +193,14 @@ function releaseLockSync(lockPath: string, expectedToken?: string): void {
 		if (expectedToken !== undefined) {
 			const info = readLockInfoSync(lockPath);
 			if (!info || info.token !== expectedToken) {
-				skipReleaseLog(lockPath, expectedToken, info?.token);
+				reportLostLockOwnership(lockPath, expectedToken, info?.token);
 				return;
 			}
 		}
 		fsSync.rmSync(lockPath, { recursive: true });
-	} catch {
-		// Ignore errors on release.
+	} catch (error) {
+		// See releaseLock: reported, never thrown at the caller.
+		reportFailedRelease(lockPath, error);
 	}
 }
 
