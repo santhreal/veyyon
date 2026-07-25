@@ -609,3 +609,62 @@ describe("comma-separated values complete one element at a time", () => {
 		expect(generateCompletion("powershell", spec)).toContain("__Veyyon-CommaCandidates");
 	});
 });
+
+/**
+ * The comma helper, RUN rather than read.
+ *
+ * Every other assertion in this file checks emitted text, which cannot tell
+ * whether the script bash actually sources behaves correctly. These source the
+ * generated completion in a real bash and call the helper, so a quoting mistake
+ * that produces valid-looking but wrong output fails here.
+ */
+describe("the generated bash comma helper, executed", () => {
+	const script = generateCompletion("bash", spec);
+
+	/** COMPREPLY after completing `cur` against the `--tools` value list. */
+	function complete(cur: string): string[] {
+		const driver = [
+			script,
+			// compopt only works inside a real completion; stub it out.
+			"compopt() { :; }",
+			`cur=${JSON.stringify(cur)}`,
+			"COMPREPLY=()",
+			'_veyyon_comma "read bash"',
+			'printf "%s\\n" "${COMPREPLY[@]}"',
+		].join("\n");
+		const out = Bun.spawnSync(["bash", "-c", driver]);
+		expect(out.exitCode, new TextDecoder().decode(out.stderr)).toBe(0);
+		return new TextDecoder()
+			.decode(out.stdout)
+			.split("\n")
+			.filter(line => line.length > 0);
+	}
+
+	it("offers every value when nothing has been typed", () => {
+		expect(complete("")).toEqual(["read", "bash"]);
+	});
+
+	it("filters by the partial element under the cursor", () => {
+		expect(complete("ba")).toEqual(["bash"]);
+	});
+
+	it("carries the chosen elements into each candidate", () => {
+		// The candidate replaces the whole word, so a bare "bash" here would turn
+		// `--tools read,` into `--tools bash` and drop the user's first choice.
+		expect(complete("read,")).toEqual(["read,bash"]);
+	});
+
+	it("filters the last element while carrying the prefix", () => {
+		expect(complete("read,ba")).toEqual(["read,bash"]);
+	});
+
+	it("does not offer an element the user already chose", () => {
+		// Accepting it would produce `read,read`, which the CLI rejects.
+		expect(complete("read,")).not.toContain("read,read");
+		expect(complete("bash,")).toEqual(["bash,read"]);
+	});
+
+	it("returns nothing once every element is chosen", () => {
+		expect(complete("read,bash,")).toEqual([]);
+	});
+});
