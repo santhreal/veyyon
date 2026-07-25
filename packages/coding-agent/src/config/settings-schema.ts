@@ -1,3 +1,4 @@
+import { isRecord } from "@veyyon/utils";
 import { APPEARANCE_SETTINGS } from "./settings-domains/appearance";
 import { CONTEXT_SETTINGS } from "./settings-domains/context";
 import { EDITING_SETTINGS } from "./settings-domains/editing";
@@ -346,6 +347,69 @@ export function getPathsForTab(tab: SettingTab): SettingPath[] {
 /** Get the type of a setting */
 export function getType(path: SettingPath): SettingDef["type"] {
 	return SETTINGS_SCHEMA[path].type;
+}
+
+/** What a value actually is, in the vocabulary the schema uses for types. */
+function describeValueType(value: unknown): string {
+	if (value === null) return "null";
+	if (Array.isArray(value)) return "array";
+	return typeof value;
+}
+
+/**
+ * Explain why `value` cannot be the value of `path`, or `undefined` when it can.
+ *
+ * A settings file is hand-editable, so a wrong type is an ordinary mistake:
+ * `autoUpdate: "no"`, `tabWidth: "4"`, a theme name where an object belongs. The
+ * danger is that most of those are silently WRONG rather than obviously broken.
+ * `"no"` is a truthy string, so a boolean setting a user clearly meant to turn
+ * off stays on, and nothing anywhere says why. Detecting the mismatch is what
+ * lets the loader say so out loud (Law 10) instead of letting the config lie.
+ *
+ * The message names the key, what the schema expects, and what was found,
+ * because the reader is someone who edited a file and needs to know which line
+ * to fix. Enum values are listed for the same reason: "expected one of a, b, c"
+ * is actionable where "invalid value" is not.
+ *
+ * Returns `undefined` for unregistered paths rather than guessing. Subsystems
+ * read dotted paths that are not in the schema yet, and inventing a type for
+ * those would turn a forward-compatible read into a spurious error.
+ */
+export function describeSettingTypeMismatch(path: string, value: unknown): string | undefined {
+	// Read structurally rather than as `SettingDef`: the schema's literal entries
+	// carry readonly defaults (`readonly ["interactive"]`), which are not
+	// assignable to the mutable shapes in that union. Only `type` and `values` are
+	// needed here, and both are safe to read from the literal.
+	const def = (SETTINGS_SCHEMA as unknown as Record<string, { type?: string; values?: readonly string[] } | undefined>)[
+		path
+	];
+	if (def?.type === undefined || value === undefined) return undefined;
+
+	const found = describeValueType(value);
+	const mismatch = (expected: string): string =>
+		`${path}: expected ${expected}, found ${found} (${JSON.stringify(value)})`;
+
+	switch (def.type) {
+		case "boolean":
+			return typeof value === "boolean" ? undefined : mismatch("a boolean (true or false)");
+		case "number":
+			// NaN and the infinities are numbers to `typeof` and poison every
+			// comparison they reach, so they are rejected with the non-numbers.
+			return typeof value === "number" && Number.isFinite(value) ? undefined : mismatch("a finite number");
+		case "string":
+			return typeof value === "string" ? undefined : mismatch("a string");
+		case "enum": {
+			const values = def.values ?? [];
+			if (typeof value === "string" && values.includes(value)) return undefined;
+			return `${path}: expected one of ${values.join(", ")}, found ${JSON.stringify(value)}`;
+		}
+		case "array":
+			return Array.isArray(value) ? undefined : mismatch("an array");
+		case "record":
+			return isRecord(value) ? undefined : mismatch("an object");
+		default:
+			return undefined;
+	}
 }
 
 /** Get enum values for an enum setting */
