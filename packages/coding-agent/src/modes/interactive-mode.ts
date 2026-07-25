@@ -54,14 +54,11 @@ import {
 	logger,
 	postmortem,
 	prompt,
-	setProjectDir,
 } from "@veyyon/utils";
 import chalk from "chalk";
-import { reset as resetCapabilities } from "../capability";
 import type { CollabGuestLink } from "../collab/guest";
 import type { CollabHost } from "../collab/host";
 import { KeybindingsManager } from "../config/keybindings";
-import { applyProviderGlobalsFromSettings } from "../config/provider-globals";
 import {
 	isSettingsInitialized,
 	onStatusLineSessionAccentChanged,
@@ -69,7 +66,6 @@ import {
 	Settings,
 	settings,
 } from "../config/settings";
-import { clearClaudePluginRootsCache } from "../discovery/helpers";
 import type {
 	AutocompleteProviderFactory,
 	ContextUsage,
@@ -1404,39 +1400,28 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * reflect `newCwd` before this is called.
 	 */
 	async applyCwdChange(newCwd: string): Promise<void> {
-		setProjectDir(newCwd);
-		// Re-scope project settings (`.claude/settings.yml` etc.) to the new
-		// directory in place so the active session and every settings reader pick
-		// up the destination project's configuration.
-		if (isSettingsInitialized()) {
-			await settings.reloadForCwd(newCwd);
-			// Reapply provider preferences from the newly-loaded settings so the
-			// module-level search/image provider state reflects the destination
-			// project's configuration. Without this, the previous project's
-			// exclusions leak and newly-excluded providers are still used.
-			applyProviderGlobalsFromSettings(settings);
-		}
-		// Re-warm plugin roots, capabilities, slash commands, and the ssh tool so
-		// the next prompt sees everything scoped to the new project directory.
-		clearClaudePluginRootsCache();
-		await this.refreshTitleSystemPrompt(newCwd);
-		resetCapabilities();
-		await this.refreshSlashCommandState(newCwd);
-		await this.session.refreshSshTool({ activateIfAvailable: true });
-		// Rebuild the base system prompt LAST, once settings, capabilities, plugin
-		// roots and slash commands have all been re-scoped, so it is assembled from
-		// the destination project's state.
+		// The mode-independent half lives on the session, because this is not the
+		// only way a session moves. Three paths reach here: `/move`, which calls
+		// `sessionManager.moveTo` directly; resuming a session that belongs to
+		// another project; and the `cwd_changed` event, which the `set_cwd` tool
+		// raises through `AgentSession.setCwd`. Only the third goes through
+		// `setCwd`, so this cannot simply be dropped in favour of it, and `setCwd`
+		// cannot be left as the sole owner either. Both call the one owner, which
+		// skips a repeat of the same destination so the third path does the work
+		// once rather than twice.
 		//
-		// Everything above re-scoped the machinery while leaving the prompt itself
-		// describing the OLD directory. The prompt states the cwd verbatim ("the
-		// current working directory is '<path>'") and carries the workspace tree, the
-		// discovered context files, and the active-repo-context block, so after a
-		// `/cd` the model was told it was working in the previous project: it read the
-		// wrong AGENTS.md instructions and resolved relative paths against a directory
-		// it had already left. `refreshBaseSystemPrompt` also invalidates the provider
-		// prompt-cache key when the content changes, so the stale prefix is not
-		// re-served either.
-		await this.session.refreshBaseSystemPrompt();
+		// It reloads project settings, reapplies provider globals, clears the plugin
+		// root cache, resets capabilities, refreshes the ssh tool, and rebuilds the
+		// base system prompt for the destination. The prompt matters most: it states
+		// the cwd verbatim ("the current working directory is '<path>'") and carries
+		// the workspace tree and the discovered context files, so before this was
+		// rebuilt a `/cd` left the model reading the previous project's AGENTS.md
+		// while resolving relative paths against the new directory.
+		await this.session.rescopeToCwd(newCwd);
+		// What stays here is what only a terminal session has: the title prompt read
+		// from the destination, the slash-command picker, and the rendered chrome.
+		await this.refreshTitleSystemPrompt(newCwd);
+		await this.refreshSlashCommandState(newCwd);
 		setSessionTerminalTitle(this.sessionManager.getSessionName(), this.sessionManager.getCwd());
 		this.statusLine.invalidate();
 		this.ui.requestRender();

@@ -318,10 +318,24 @@ describe("wrapToolWithRerootHint", () => {
 		expect(third.content).toHaveLength(1);
 	});
 
-	it("leaves a tool with no filesystem targets alone", async () => {
-		const plain = { name: "plain", execute: async () => ({ content: [] }) } as unknown as AgentTool<never, unknown>;
+	/**
+	 * A tool that contributes neither signal must never grow a hint, however many
+	 * times it runs. This used to be written as an identity check on the wrapper's
+	 * return value, which proved nothing: the wrapper installs itself with
+	 * `Object.defineProperties` and returns the SAME object either way, so the
+	 * assertion held whether or not the tool had been wrapped.
+	 */
+	it("never appends a hint to a tool that declares no targets and no directory", async () => {
+		const plain = {
+			name: "plain",
+			execute: async () => ({ content: [{ type: "text" as const, text: "done" }] }),
+		} as unknown as AgentTool<never, unknown>;
+		const tool = wrapToolWithRerootHint(plain, new RerootDetector(), { cwd: CWD });
 
-		expect(wrapToolWithRerootHint(plain, new RerootDetector(), { cwd: CWD })).toBe(plain);
+		const results = [];
+		for (let call = 0; call < 5; call++) results.push(await tool.execute(String(call), {} as never));
+
+		expect(results.every(result => result.content.length === 1)).toBe(true);
 	});
 
 	it("returns the result unchanged when target parsing throws", async () => {
@@ -344,5 +358,109 @@ describe("wrapToolWithRerootHint", () => {
 		const tool = wrapToolWithRerootHint(fakeTool(), new RerootDetector(), { cwd: CWD });
 
 		expect(wrapToolWithRerootHint(tool, new RerootDetector(), { cwd: CWD })).toBe(tool);
+	});
+});
+
+/**
+ * The `bash` half of the detector.
+ *
+ * WHY IT EXISTS SEPARATELY. `bash` declares no filesystem targets, because its
+ * paths live inside a shell command string that nothing here should be parsing.
+ * So the file counter above could not see it at all, and a session that builds,
+ * tests and greps another project entirely through bash produced exactly zero
+ * evidence: the most common way to work in a second project was the one way the
+ * detector was blind to. The `cwd` argument needs no parsing and says outright
+ * where the work is.
+ */
+describe("RerootDetector watches the directory a call is told to run in", () => {
+	/**
+	 * A command run elsewhere counts, and unlike a file the same directory named
+	 * again counts AGAIN. Running one command over there could be a check; running
+	 * three is where the work is.
+	 */
+	it("fires after three commands run in one directory outside cwd", () => {
+		const detector = new RerootDetector();
+
+		const hints = [1, 2, 3].map(() => detector.observe([], CWD, OTHER)).filter(hint => hint !== undefined);
+
+		expect(hints).toHaveLength(1);
+		expect(hints[0]?.directory).toBe(OTHER);
+		expect(hints[0]?.fileCount).toBe(REROOT_FILE_THRESHOLD);
+	});
+
+	/** Two is still a coincidence here, exactly as it is for files. */
+	it("stays silent for two commands", () => {
+		const detector = new RerootDetector();
+
+		const hints = [1, 2].map(() => detector.observe([], CWD, OTHER)).filter(hint => hint !== undefined);
+
+		expect(hints).toEqual([]);
+	});
+
+	/**
+	 * A command run inside the working directory is the normal case and must never
+	 * count, or every session would trip its own detector.
+	 */
+	it("ignores a working directory inside cwd", () => {
+		const detector = new RerootDetector();
+
+		const hints = [1, 2, 3, 4].map(() => detector.observe([], CWD, `${CWD}/packages`)).filter(Boolean);
+
+		expect(hints).toEqual([]);
+	});
+
+	/**
+	 * The two signals are evidence about the same thing and add up. Two files read
+	 * over there plus one command run there is three, and the model should hear
+	 * about it once rather than twice at half strength.
+	 */
+	it("counts files and commands together", () => {
+		const detector = new RerootDetector();
+
+		expect(detector.observe([`${OTHER}/a.ts`], CWD)).toBeUndefined();
+		expect(detector.observe([`${OTHER}/b.ts`], CWD)).toBeUndefined();
+		const hint = detector.observe([], CWD, OTHER);
+
+		expect(hint?.directory).toBe(OTHER);
+		expect(hint?.fileCount).toBe(3);
+	});
+
+	/** A relative working directory resolves against cwd, so it is inside it. */
+	it("resolves a relative working directory against cwd", () => {
+		const detector = new RerootDetector();
+
+		const hints = [1, 2, 3, 4].map(() => detector.observe([], CWD, "packages/tui")).filter(Boolean);
+
+		expect(hints).toEqual([]);
+	});
+
+	/** A blank or absent directory is not evidence of anything. */
+	it("ignores an absent or blank working directory", () => {
+		const detector = new RerootDetector();
+
+		const hints = [undefined, "", "   "].map(value => detector.observe([], CWD, value)).filter(Boolean);
+
+		expect(hints).toEqual([]);
+	});
+
+	/**
+	 * The end-to-end shape: a bash-like tool, which has no `filesystemTargets` at
+	 * all, still produces the hint through the wrapper. This is the regression that
+	 * matters, because the wrapper used to return such a tool unwrapped.
+	 */
+	it("appends the hint to a tool that only has a cwd argument", async () => {
+		const bashLike = {
+			name: "bash",
+			execute: async () => ({ content: [{ type: "text" as const, text: "ok" }] }),
+		} as unknown as AgentTool<never, unknown>;
+		const tool = wrapToolWithRerootHint(bashLike, new RerootDetector(), { cwd: CWD });
+
+		await tool.execute("1", { command: "bun test", cwd: OTHER } as never);
+		await tool.execute("2", { command: "bun run build", cwd: OTHER } as never);
+		const third = await tool.execute("3", { command: "git status", cwd: OTHER } as never);
+
+		expect(third.content).toHaveLength(2);
+		expect(third.content[1]).toMatchObject({ type: "text" });
+		expect((third.content[1] as { text: string }).text).toContain(`call set_cwd with ${OTHER}`);
 	});
 });
