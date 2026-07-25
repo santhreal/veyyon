@@ -10,6 +10,17 @@
 
 ### Fixed
 
+- A `git status` autoresearch cannot read is no longer reported as a clean worktree. `tryGitStatus` answered any failure with `""`, which parses to "no dirty paths", and three things acted on that: a `discard` reported "nothing to revert" while the experiment's changes sat in the tree, `log_experiment` recorded an empty modified-path list so the scope-deviation check passed vacuously against `off_limits`, and `run_experiment` recorded an empty PRE-RUN dirty set, which claims the tree was clean and would attribute the user's own uncommitted files to the experiment. The probes now propagate and each caller reports through the error channel it already had. A cwd outside a repository is still answered with `""`, decided by resolving the repository rather than by a failed command, because autoresearch may run there and then has no tracked changes.
+
+- `init_experiment` treats an unreadable `git status` as dirty rather than clean. False took the branch that skips committing harness changes, which is the branch whose own warning says "discard may not preserve uncommitted harness files".
+
+- A debug adapter config that exists and cannot be read or parsed is reported. Six filenames are probed per directory, so absence is silent, but a `dap.json` with a trailing comma used to be indistinguishable from no `dap.json`: the configured adapters simply were not there and the debugger fell back to its defaults without a word. Same for an unparseable lspmux `config.toml`, where a typo silently reverted every language server to the direct, unmultiplexed path.
+
+- Detecting a repository inside the working directory says when it could not look. An unreadable cwd produced the same empty listing as one with no repository in it, so the prompt and the status line both showed nothing with no sign the check never ran. The "exactly one direct child" rule also has one owner now instead of a copy in each of the asynchronous and synchronous paths.
+
+- A mistyped `--system-prompt` path is now an error instead of becoming the system prompt. The option takes either a path or the prompt text, and any read failure returned the input unchanged with `ENOENT` explicitly excluded from the warning, so `--system-prompt ./promtps/main.md` handed the model a system prompt whose entire content was that string: every rule, tool policy and workflow gone, the session behaving nothing like it should, and nothing on screen connecting it to a misspelled directory. `--append-system-prompt` and `TITLE_SYSTEM.md` resolved the same way. A value that fails to read is now refused when it has no spaces and either contains a path separator or ends in a prompt-file extension, naming the option, the path and the error. Prose is untouched: a one-line prompt containing a slash or ending in a dotted word is still used as written.
+- `looksLikeFilePath` is one function in `@veyyon/utils` rather than a private copy in the Anthropic provider. It decides whether an option that accepts "a path or the value itself" was written as a path, and the provider's copy was the only place asking; prompt resolution had no shape check at all, so the same class of typo was an error for a certificate and silent for a system prompt. The extension list is passed by the caller, since `.md` names a prompt file and means nothing in a certificate option.
+- A `PROMPT_SECTIONS/` directory that exists and cannot be read is now refused instead of read as having no overrides. Any error from listing it returned the same empty list a missing directory does, so a directory that became root-owned after a `sudo` edit, a broken symlink, or a path that is a file dropped every section override the user wrote and the agent ran the shipped prompt with nothing logged. Absence is now `ENOENT`/`ENOTDIR` alone, through the shared `isMissingPath`, and anything else names the directory, the underlying error, and what would have happened. A file the listing just reported and the reader cannot open is refused the same way: it used to be skipped silently, which left a file on disk that had quietly stopped doing anything. Both judgements moved to the loader itself, so a reader injected by a test or an embedder is held to the same contract.
 - The error refusing a `PROMPT_SECTIONS/<section>.md` replacement now says how long the underline has to be. It named the banner, so a file refused for its underline read as though the section name were wrong, and the width it did mention was prose written by hand at the throw site rather than the constant the check applies — a change to the accepted width would have left it telling you to write the length that no longer works.
 - A plugin directory that cannot be read is reported instead of loading as a plugin with nothing in it. `resolveDirectoryEntries` answered a failed `readdirSync` with `[]`, which is also what a directory holding no loadable files gives, so an unreadable one registered no tools, hooks or commands and said nothing. The empty list is still returned, because one unreadable directory must not stop the rest of the plugin from loading.
 
@@ -248,6 +259,888 @@
 - A source checkout missing its generated tool-views bundle (any freshly pulled or cloned checkout) no longer dies at launch with a raw module-resolution error: the launcher regenerates the bundle before starting, and fails with the exact fix command if it cannot.
 - The setup wizard now paints its own pure-black ground across the full frame (splash, scene transitions, and outro), so the launch sequence looks the same on every terminal background instead of inheriting the terminal's color.
 - The Windows binary is now built as a modern (AVX2) Bun target instead of baseline. Baseline Windows standalone builds crash in the Bun runtime at startup before any Veyyon code runs (oven-sh/bun#32684), which made every published `veyyon-windows-x64.exe` exit with a segmentation fault on launch. The modern target requires a CPU with AVX2 (Intel Haswell 2013 / AMD Excavator 2015 or newer).
+
+## [1.0.36] - 2026-07-24
+
+### Fixed
+
+- `plugin-cli`: stop doubling the 'Error:' prefix in plugin command errors.
+- `errors`: remove remaining doubled 'Error:' prefixes; generalize the source-lock.
+
+## [1.0.35] - 2026-07-24
+
+### Added
+
+- `update`: confirm 'Checksum verified' on a successful self-update.
+
+### Changed
+
+- `slash-commands`: drop unnecessary 'as SettingPath' casts.
+- `atomic-write`: allowlist hashline's deliberate node:fs-only temp+rename.
+
+## [1.0.34] - 2026-07-24
+
+### Fixed
+
+- `update`: rich release-binary download-failure message.
+- `update`: verify self-update binary checksum, fail closed (parity with installers).
+- `update`: honest --check --force message when already up to date.
+
+## [1.0.33] - 2026-07-24
+
+### Changed
+
+- `ai`: give heavy idempotence property tests explicit timeouts.
+- `test`: give packages/ai a 20s per-test timeout floor.
+
+### Fixed
+
+- `settings`: quarantine wrong-shape settings files instead of dropping them silently.
+- `keybindings`: quarantine wrong-shape keybindings files instead of corrupting the map.
+- `mnemopi`: validate the source name in renameBank to close a traversal.
+- `settings-test`: drop wrong SettingPath cast that broke the release typecheck.
+
+## [1.0.32] - 2026-07-24
+
+### Changed
+
+- Verify the published Windows binary runs (install channel had no release verification).
+- Verify get.veyyon.dev serves the install script post-deploy (curl|sh regression guard).
+- Assert the published binary reports the release version (all platforms).
+
+### Fixed
+
+- `mnemopi`: migrate the legacy triples database crash-atomically.
+- `hashline`: crash-atomic NodeFilesystem writes.
+
+## [1.0.31] - 2026-07-24
+
+### Changed
+
+- `ai`: cover in-flight slot release when a provider request fails.
+
+### Fixed
+
+- `coding-agent`: make apply_patch default filesystem crash-atomic.
+- `mnemopi`: write content-addressed blobs crash-atomically.
+
+## [1.0.30] - 2026-07-24
+
+### Fixed
+
+- `coding-agent`: commit edits and writes crash-atomically.
+- `coding-agent`: make file moves crash-atomic; hoist mode-preserving atomic write.
+
+## [1.0.29] - 2026-07-24
+
+### Changed
+
+- `utils`: one owner for the read-tool selector grammar.
+- `install`: extract + cover the Windows checksum verification path.
+- `ai`: lock global idempotence of validateToolArguments on valid input.
+
+### Fixed
+
+- `install`: remove a partial binary download on failure (Windows).
+
+## [1.0.28] - 2026-07-24
+
+### Changed
+
+- `install`: fix ps1 backup-branch discovery (scalar-index bug) and make it robust.
+
+### Fixed
+
+- `install`: preserve local src edits on Windows update/uninstall (parity with install.sh).
+- `ai`: stop over-coercing string|number tool args to numbers.
+- `cli`: guard fatal-error cause walk against circular cause chains.
+
+## [1.0.27] - 2026-07-24
+
+### Changed
+
+- `catalog`: lock anthropic models.dev outage fallback; document the swallow.
+
+### Fixed
+
+- `install`: write PATH to the login-shell rc on macOS, not ~/.bashrc.
+- `install`: compare whole PATH entries on Windows, add gated ps1 function tests.
+
+## [1.0.26] - 2026-07-24
+
+### Changed
+
+- Rebuild handbook book to match sources.
+- `utils`: differential property suite for the JSON repair/parse path.
+
+### Fixed
+
+- `utils`: stop normalizeBaseUrl leaking a trailing space behind a stripped slash.
+- `install`: warn instead of silently skipping a failed shell completion.
+
+## [1.0.25] - 2026-07-24
+
+### Added
+
+- `tui`: accelerate repeated wheel ticks in scroll isolation.
+
+### Changed
+
+- `coding-agent`: never block session startup on argot dictionary generation.
+- `ai`: hoist duplicated OpenAI SSE event-name resolver into one owner.
+- `tui`: update the EIO write-failure test to the fatal/transient contract.
+
+### Fixed
+
+- `tui`: don't brick rendering on a single transient write failure.
+- `edit`: preserve a UTF-8 BOM through an old_text/new_text edit.
+- `lsp`: don't silently swallow format-on-write failures.
+
+## [1.0.24] - 2026-07-24
+
+### Added
+
+- `coding-agent`: present only alabaster while the light-theme slab class is unfixed.
+- `release`: derive commit-history notes + gate the generator on CI.
+
+### Changed
+
+- `coding-agent`: lock the argot mid-session prompt-refresh contract.
+- `changelog`: backfill the undocumented veyyon changes across all packages.
+
+### Fixed
+
+- `coding-agent`: teach argot handles after a mid-session load.
+
+## [1.0.23] - 2026-07-24
+
+### Changed
+
+- Enforce the changelog gate on direct-to-main pushes.
+- Describe the changelog gate as running on direct-to-main pushes.
+
+### Fixed
+
+- `edit`: stop applyCodexPatch from silently hiding partial application.
+- `edit`: trim apply_patch marker paths so the write matches the approved path.
+- `hashline`: guard NodeFilesystem.move against deleting the file it just wrote.
+- `hashline`: guard the production move adapter against deleting the file it just wrote.
+- `hashline`: guard InMemoryFilesystem.move against dropping a same-key move.
+
+## [1.0.22] - 2026-07-23
+
+### Added
+
+- `coding-agent`: unify the run clock, merge model effort, clickable scroll-to-bottom.
+
+### Changed
+
+- Set veyyon package author to santhreal.
+- `natives`: cover the runtime load gate that threw for stale addons.
+- `coding-agent`: make the agents-guidance isolation helper async and profile-aware.
+- `types`: sync loader-state.d.ts with the tri-state + load-gate API.
+- `natives`: cover the runtime AVX2 classifier + lock parity with the build one.
+- `identity`: lock every @veyyon manifest to author santhreal.
+- `natives`: document the version-sentinel freshness gate and tri-state AVX2 lock-step.
+
+### Fixed
+
+- `ci`: make single-owner guards self-contained and clear unused-import lint errors.
+- `natives`: don't silently downgrade to baseline when AVX2 detection fails.
+- `build`: don't silently build baseline-only when host AVX2 probe fails.
+- `website`: serve install.sh at the get.veyyon.dev root.
+- `website`: serve get.veyyon.dev root from a dedicated install-only tree.
+
+## [1.0.21] - 2026-07-23
+
+### Changed
+
+- `changelog`: note the release-publish fix for the next release.
+
+### Fixed
+
+- `release`: ci-release-notes.ts must not import a workspace package.
+
+## [1.0.20] - 2026-07-23
+
+### Changed
+
+- `release`: assert the tarball smoke PACKS every closure dep, not just overrides it.
+- `changelog`: record the Kimi usage and recent-sessions ordering fixes.
+
+### Fixed
+
+- `release`: never rewrite the native sentinel inside test files.
+
+## [1.0.19] - 2026-07-23
+
+### Changed
+
+- `natives`: cover the ship-path stale-native guard on real .node bytes.
+- `release`: lock the fork-notice-safe changelog roll.
+- `release`: unify the changelog roll onto the gate's bullet predicate.
+- `release`: verify the published linux-x64 binary launches.
+- `release`: verify the darwin binary's .sha256 sidecar too.
+- `hashline`: sample the seed-fuzz corpus on the gate, soak the full 3M nightly.
+- `hashline`: reclaim the range-edit perf bullet into [Unreleased].
+- `ai`: satisfy useLiteralKeys in the prototype-key metadata test.
+- `lint`: remove dead vars and a comma operator flagged by biome.
+
+### Fixed
+
+- `smoke`: force core native-addon load in --smoke-test.
+- `ai`: create the config dir before writing the Kimi device-id file.
+- `coding-agent`: make the recent-sessions recency order deterministic.
+
+## [1.0.18] - 2026-07-23
+
+### Fixed
+
+- `ci`: keep hashline scale suites under the 5s per-test limit on slow CI.
+- `release`: reclaim hashline perf bullet into [Unreleased]; keep new [Unreleased] below fork notice.
+
+## [1.0.17] - 2026-07-23
+
+### Changed
+
+- `hashline`: reject bodyless SWAP with EMPTY_REPLACE in expand/contract scale suites.
+- `hashline`: O(n) large-range applyEdits; bound the O(n^2) scale suites.
+- `ci`: run release-sentinel.test.ts in the workspace scripts bucket.
+- `hashline`: meta-guard that scale suites never reintroduce a large 1..n sweep.
+
+### Fixed
+
+- `ci-test-ts`: honor the native bucket's --smol request.
+- `release`: scope the native sentinel bump to the previous version only.
+- `natives`: restore native sentinel test fixtures corrupted by the 1.0.16 bump.
+
+## [1.0.16] - 2026-07-23
+
+### Changed
+
+- `natives`: warn (not silently skip) on a stale workspace native.
+- Align stale tests with strict contracts (unblock release gates).
+
+### Fixed
+
+- `natives`: refuse to embed a native addon built for the wrong version.
+- `install-smoke`: pack argot + build prepack bundle so release gate passes.
+- `natives`: declare the four new loader-state exports in the .d.ts.
+
+## [1.0.15] - 2026-07-23
+
+### Added
+
+- `coding-agent`: ease the footline badge slot open and closed.
+- `tui`: release the mouse when the frame fits the viewport.
+
+### Changed
+
+- Document scroll isolation in the settings reference and renderer internals.
+- `install`: --uninstall never deletes a checkout holding local work.
+- `changelog`: note the set_cwd argot_load tip fix.
+- Purge upstream (can1357/oh-my-pi) traces from runtime source.
+- Lock loud surfacing of managed AGENTS.md seed failures.
+
+### Fixed
+
+- `install`: never reset over local checkout edits; back-fill profile AGENTS.md.
+- `task`: resolve a relative subagent cwd against the parent, not reject it.
+- `install`: make preserve/move-aside backup names collision-proof.
+- `ci`: green the Checks and Docs gates.
+- `coding-agent`: align the composer band at the rail under the location group.
+- `docs`: delink references to local-only design.md.
+- `set-cwd`: gate the argot_load advice on argot.enabled, not the argot session.
+
+## [1.0.14] - 2026-07-23
+
+### Changed
+
+- Preserve in-progress startup-cwd and home-anchor-layout edits.
+- `coding-agent`: correct the auto-chdir fallback chain in the maybeAutoChdir comment.
+- `tui`: warm the native addon before process.platform mocks.
+
+### Fixed
+
+- `ai/dialect`: route model-controlled arg keys through prototype-safe setToolArg.
+- `utils,ai`: share one prototype-safe dynamic-key primitive; fix loop-guard hash collision.
+- `utils/json-parse`: store __proto__ keys safely in the relaxed/streaming parser.
+- `coding-agent`: make the composer anchor stateless, no latch-off on transient spikes.
+- `onboarding`: run the setup wizard on first install only, never on update.
+
+### Removed
+
+- `polish`: drop the 'sun' from user-facing copy (it's design, never named).
+
+## [1.0.13] - 2026-07-23
+
+### Added
+
+- Add ship-skills index and prove-feature bar.
+- Ship real demo captures and wire them through README and the site.
+- Add root changelog sync and tighten release CI gates.
+- Land pending coding-agent TUI, session, and test work.
+- Land remaining package and natives pending work.
+- Land remaining coding-agent SDK and JTD prompt tweaks.
+- Land leftover JTD and deepswe-bench run tweaks.
+- `stats`: attach turn context to request details instead of a lone reply.
+- `dist`: GitHub-only update path and changelog-gated auto-release.
+- `tui`: scroll isolation, wheel scrolls the transcript, footer stays pinned.
+
+### Changed
+
+- Replace README mark with the entrance ASCII sun.
+- Pin demo recordings to Gemini 3.6 Flash high on the work profile.
+- Update website pages and sun field assets.
+- Sync handbook and docs tree with pending content work.
+- Fold snapcompact into agent as legacy archive compaction.
+- Expand hashline adversarial and apply-suite coverage.
+- Point AGENTS proof ritual at ship skills; drop keyhog baseline from git.
+- Harden JTD-to-TypeScript conversion and image-tool gating tests.
+- Tidy deepswe-bench runner and pier agent glue.
+- Prove search cwd gating, reset keybindings between tests, and drop natives embed from source.
+- Harden settings-test-state keybindings isolation for full-suite pollution.
+- Re-sync root CHANGELOG with coding-agent source.
+- Migrate discovery and render-utils tests onto settings-test-state isolation.
+- `stats`: clarify negation lead patterns are message-leading, not line-leading.
+- `utils`: cover frontmatter key normalization, fences, fallback, and error levels.
+- `utils`: add behavioral coverage for isUuid and isDateOnly validators.
+- `stats`: fix misleading folder-encoding example in extractFolderFromPath.
+- `markit`: one owner for markdown-table layout, fix ragged-row data loss.
+- Unify HTML entity decoding into one single-pass owner.
+- Compile glob excludes once and dedup overlapping matches.
+- Count JSON-schema string length in code points, not UTF-16 units.
+- `ai`: cache JSON-schema pattern compilation instead of recompiling per value.
+- `utils,ai`: one owner for rate-limit reset epoch/delta classification.
+- `hashline`: correct inverted before/after direction in AnchorNeighbors.
+- Expand coding-agent regression corpus and operator path contracts.
+- Expand path-utils corpus pack and thicken regression contracts.
+- Expand normalize-roots corpus and thicken settings/CLI contracts.
+- Expand corpus for gh-url, timeouts, compact args, and line ranges.
+- Expand corpus for search/find parse, RPC builders, and conflict review.
+- Expand corpus for title slots, drive aliases, and media formatters.
+- Expand corpus for output notices, Codex redeem gates, and git/changelog parsers.
+- Revert accidental eval/deepswe files from the corpus expansion commit.
+- Expand corpus for gallery states, JSON payload, search dates, and languages.
+- System prompt: composition seam + gate-parity across the prompt family.
+- Install + docs: setup-cli, doctor, install.sh, handbook pages, demo assets.
+- Rebuild handbook site and update guide/reference pages.
+- `coding-agent`: checkpoint work-in-progress tests and src.
+- `hashline`: checkpoint work-in-progress tests, src, benches, scripts.
+- `packages`: checkpoint wip across ai, tui, utils, catalog, natives, mnemopi, agent, metaharness, bench, collab-web.
+- `root`: checkpoint scripts, skills, README/AGENTS, config, lockfile, assets.
+- `prompt-sections`: make reorder duplicate-safe, add property/adversarial tests.
+- `prompt`: cover the 18 previously-untested render helpers.
+- `prompt`: lock closing-brace disambiguation contract (JSON works, triple-stash unsupported).
+- `system-prompt`: unit-test the prompt-source dedup logic.
+- Rename dedup unit suite to prompt-source-dedupe-matcher.
+- `render-utils`: pin capPreviewLines tail-window math and formatMoreItems.
+- `render-utils`: cover truncateDiffByHunk budget-fill and context-ratio branches.
+- `coding-agent`: assert the first message hugs the composer, no reserved void.
+- `bash-skill-urls`: direct unit coverage for resolveSkillUrlToPath.
+- Snapshot in-progress working tree to preserve uncommitted changes.
+- `tui`: derive the pinned footer rows from the compose segment ledger.
+- `coding-agent`: add scrollToLiveTail to the InputController ui stubs.
+- `utils`: one owner for the source-lock package walk.
+- `onboarding`: clarify check is the typecheck+test gate, biome is advisory.
+- `mnemopi/mmr`: drop provably-dead MMR top-up branch, pin length invariant.
+- `test`: O(n) fuzz content generator; explicit timeout for DATALOSS-2 fuzzer.
+
+### Fixed
+
+- Close non-Argot P1/P2 hygiene: changelog, search cwd proof, natives tarball, suite isolation.
+- Stop process-global mock.module pollution of utils and natives.
+- `coding-agent`: escape external text in markdown tables; fold whitespace in fuzzy normalizer.
+- `scrapers,markit,metaharness`: escape external text in markdown tables; unify pptx run join.
+- `scrapers`: route markdown links through one paren-safe builder.
+- `scrapers`: route external-data links through markdownLink to stop paren truncation.
+- `scrapers`: escape external table cells in terraform and dockerhub.
+- `scrapers`: route sec-edgar links through markdownLink to stop paren truncation.
+- `utils`: roll formatNumber tier-top rounding overflow up to the next unit.
+- `utils`: promote formatBytes boundary values that round up to a full unit.
+- `web`: keep HN comment links whole through markdownLink.
+- `markit`: keep numeric EPUB metadata instead of dropping it.
+- `utils`: detect dotted-version integer components strictly, not via parseInt.
+- `web`: decode &amp; last so doubly-encoded entities stop at one level.
+- Fix markit dropping a numeric-zero cell/run and unify XML text extraction.
+- Fix time and ipv6 JSON-schema format validation.
+- `mnemopi`: substitute conversation text into extraction prompt verbatim.
+- `markit`: render large tables without the argument-spread ceiling.
+- `mnemopi`: route SHMR/scratchpad env tunables through envInt/envFloat.
+- `catalog`: parse OpenRouter pricing through toPositiveNumber, not bare parseFloat.
+- `coding-agent`: accept any-length time fractional seconds per RFC 3339.
+- `coding-agent`: require RFC 3339 shape for the date-time format.
+- `coding-agent`: range-bound the time format components.
+- `schema`: one float-safe multipleOf owner for both schema validators.
+- `coding-agent`: count typebox string length in code points, not UTF-16 units.
+- `coding-agent`: compile typebox string pattern once and fail invalid ones cleanly.
+- `catalog`: canonicalize hand-authored thinking effort ladders at build.
+- `mnemopi`: match named times as whole words, not substrings.
+- `metaharness`: keep edit-benchmark fail disjoint from error.
+- `mnemopi`: drop decorative voice weights that never reached RRF scoring.
+- `system-prompt`: fix Linux GPU name extraction and Matrox BMC skip.
+- `tui`: stop the live-region blank-hole regression in transcript layout.
+- `tui`: re-anchor editor at viewport bottom when a tall transient block collapses.
+- `tui`: re-anchor the editor when a collapsed frame fits the viewport.
+- `settings`: type DEFAULT_MODEL_SETTING_ID as SettingPath at its definition.
+- `test`: make the regression corpus runner typecheck under strict matchers.
+- `tui`: give the composer shortcut band a fixed one-row height.
+- `tui`: anchor the editor after collapse even when the transcript overflows.
+- `jtd`: honor nullable and metadata.description in JTD to JSON Schema conversion.
+- `lang`: detect Makefile by basename in getLanguageFromPath.
+- `dist`: vendor argot as packages/argot so a clean clone builds.
+- `catalog`: apply compat overrides by own-key, not prototype membership.
+- `ai`: validate JSON Schema object keywords by own property, not `in`.
+- `ai`: own-property omit + membership in Responses chain equality.
+- `ai`: stop silently dropping Codex client metadata named after prototype keys.
+- `ai`: use own-property membership for prototype-named header/effort keys.
+- Own-property membership for bareword and advisor-noise lookup sets.
+- Exclude standalone argot package from ONE-PLACE source locks; dedup jtd guard.
+- `coding-agent`: align the agent transcript viewer chrome on the shared left rail.
+- `agent,catalog,hashline`: typed normalizeTools overload, drop removed cost.total, tighten test casts.
+- `catalog,collab-web`: silence prototype-member and codec expect type errors.
+- `ai/cursor`: stop mislabeling date-bearing grep matches as context lines.
+- `release,ai`: make natives sentinel rewrite exhaustive; type http2 stream param.
+- `release,install-test`: use Bun.Glob for sentinel discovery; pin XDG completion dirs.
+- `release`: rebase-retry the bump push so a busy main can't kill the release.
+- `test`: update GPU-probe cache expectation to the prefix-stripped name.
+
+### Removed
+
+- Drop the black fill from the README sun mark.
+- `prompt`: remove dead topLevelTags bookkeeping from format() hot path.
+
+## [1.0.12] - 2026-07-20
+
+### Added
+
+- `skills`: load skills only from the active profile.
+- `profile`: interactive picker and full verb set for /profile.
+- `utils`: give clamp01 one owner and fix its NaN divergence.
+- Add batched() array helper and fold five hand-rolled batch loops onto it.
+- `tui`: add conservation fuzz for the bracketed-paste state machine.
+- `utils`: give the profiles path segment one owner (PROFILES_DIR_NAME).
+- `settings`: per-model thinking effort on compaction.model + subagent.model.
+- Add /thinking (and /effort alias) command and interactive effort picker.
+- Add effort step to the settings model roles picker via a shared renderEffortStep.
+- Render model-slot effort as readable ' · high' across settings rows and role list.
+- `approval`: add full-bypass rung for the /yolo command.
+- `approval`: /yolo command for a full session permission bypass.
+- Add --dangerously-skip-permissions launch flag for full permission bypass.
+- Add settings UI option round-trip guard (HSL-2).
+- Add exhaustive fail-closed approval precedence matrix (HSL-4).
+- Add settings sentinel-default + model-selector round-trip guards (HSL-1, HSL-3).
+- `utils`: add atomicWriteFileWith and route the last hand-rolled atomic writers through the owner.
+- `profile`: create profiles atomically via a staging dir + rename.
+- `instructions`: load exactly three instruction layers by default.
+- `instructions`: seed a new profile's AGENTS.md on creation.
+- `session`: per-profile workdir, agent setCwd, task cwd input.
+- `session`: canonicalize outbound tool call ids per provider compat.
+- `session`: relativize wire paths under session roots (TW-10).
+
+### Changed
+
+- Repoint two assistantText copies onto the @veyyon/ai owner.
+- Repoint mnemopi local-llm envInt + estimateTokens to their owners.
+- Shrink errorMessage + estimateTokens source-lock allowlists.
+- Repoint two AssistantMessage inline text extractions to assistantText.
+- Rebrand the two GitLab Duo GraphQL operation names omp_ -> veyyon_.
+- `ai`: extract shared formatOpenAiError for the two byte-identical OpenAI-compatible error envelopes.
+- `ai`: dedup 6 inline trailing-slash strips onto trimTrailingSlashes.
+- Dedup 9 more inline trailing-slash strips onto trimTrailingSlashes.
+- `ai`: lock getProviderDetails endpoint normalization (strip-all trailing slashes).
+- `ai`: pin formatOpenAiError wire envelope, status, and content-type.
+- Dedup inline errorMessage ternaries onto the @veyyon/utils owner.
+- `ai`: dedup inline errorMessage ternaries in the ai server/provider modules.
+- `utils`: cover async and glob modules.
+- `agent`: repoint compaction-v2-streaming onto errorMessage owner.
+- `hashline`: cover tokenizer public surface.
+- `hashline`: one owner for hasAnchorScopedEdit; drop dead getter.
+- `hashline`: cover Executor.reset, snapshot recordSeenLines + base findByHash.
+- `hashline`: cover empty-file INS.HEAD/INS.TAIL apply branch.
+- `agent`: cover CompactionCancelledError sentinel contract.
+- `catalog`: cover gemini/antigravity wire headers; drop redundant ternaries.
+- `catalog`: cover credential-gated special model-manager builders.
+- `catalog`: cover google-family model-manager builders.
+- `catalog`: cover the lazy bundled reference index.
+- `hashline`: one owner for edit anchor-line collection.
+- `utils`: cover the module-load timing buffer.
+- `ai`: cover createProviderErrorMessage.
+- `ai`: cover the kimi-code usage provider parse chain.
+- `ai`: cover the gemini-cli usage provider.
+- `ai`: cover the ollama/ollama-cloud usage providers.
+- `ai`: cover the minimax-code usage provider stub.
+- `ai`: cover the github-copilot usage provider.
+- Rust Book register pass and em-dash removal across all prose.
+- Fix phantom CLI flags in handbook and rebuild book.
+- Correct exit-code table (usage errors are 2, add 130).
+- Remove em dashes from user-facing --help text.
+- Rebuild handbook for the skills and profile changes.
+- Replace inline error-message ternaries with errorMessage().
+- Repoint inline trailing-slash strips onto trimTrailingSlashes.
+- Unify strip-one base-URL normalizers onto trimTrailingSlashes.
+- Repoint assistantText copies onto the @veyyon/ai owner.
+- Repoint web-provider asRecord copies onto the @veyyon/utils owner.
+- Repoint stringField copies onto the getStringProperty family.
+- Rename coarse formatDuration to formatDurationCoarse.
+- Repoint ai ollama normalizeBaseUrl onto the catalog owner.
+- Document VEYYON_SKIP_SETUP, VEYYON_NO_WEBP, VEYYON_HARMONY_DEBUG.
+- `utils`: real-value coverage for module-timer instrumentation helpers.
+- `utils`: fold five normalizeBaseUrl copies into one owner.
+- `utils`: real-value coverage for tab-spacing editorconfig resolution.
+- `utils`: real-value coverage for $which PATH resolution and cache policies.
+- `utils`: real-value coverage for the ptree subprocess primitive.
+- `utils`: cover dirs pure surface, profile-name validation, path containment, hashPath, worktree base resolution.
+- `metaharness`: rename local formatDuration to formatTraceDuration.
+- `hashline`: cover normalize.ts, line-ending detection, LF round-trip, BOM stripping.
+- `hashline`: cover containsRecognizableHashlineOperations op-recognition boundary.
+- `escapeRegExp`: remove last test-helper copy and extend the lock to guard tests.
+- Fold test-local isRecord/stripAnsi copies onto owners and lock test dirs.
+- `utils`: extend url/tokens source locks to guard test dirs.
+- `coding-agent`: fold six local isRecord copies onto @veyyon/utils.
+- Fold remaining four isRecord copies onto the single owner.
+- `settings`: surface legacy-migration failures instead of swallowing them.
+- Walker+discovery: surface an unreadable scan root instead of scanning it as empty.
+- `read`: document the trailing-newline phantom line as intentional.
+- `grep`: rename resolve_search_path to resolve_grep_operand.
+- `tool-render`: one browser shortenPath owner, kill same-name divergence.
+- `utils`: extract splitTextLines, dedup two identical copies.
+- `coding-agent`: route assistant-text extraction through the ai owner.
+- `utils`: extract contentText, dedup two tolerant user-text extractors.
+- `utils`: one UUID matcher (isUuid), dedup three identical copies.
+- `utils`: one date-only matcher (isDateOnly), dedup four copies.
+- `utils`: one owner for the scheme:// regex family.
+- `utils`: one owner for the bare scheme: URI-prefix check.
+- `catalog`: single owner for the zeroed Usage/cost literal.
+- `ai`: one owner for the Copilot fetch-JSON helper, plus usage coverage.
+- `utils`: one owner for millisecond duration constants.
+- Usage/mnemopi/stats: route inline duration literals through the time owner.
+- `utils`: one owner for the relay reconnect backoff schedule.
+- `utils`: one owner for string/number coercion, kill asString same-name divergence.
+- Align every sleep onto Bun.sleep / untilAborted, one primitive.
+- Fold every isRecord clone onto the @veyyon/utils owner.
+- Replace inline isRecord predicates with the utils owner.
+- Rename the dialect asRecord to recordOrEmpty.
+- `one-place`: fold negated inline isRecord onto the shared owner.
+- `one-place`: fold mnemopi env helpers onto the util/env owner.
+- `coding-agent`: one owner for message content flattening.
+- Utils,ai,coding-agent,stats,metaharness,swarm: one owner for safe JSON parse.
+- `utils`: one owner for JWT payload decoding.
+- One clamp owner across packages.
+- `utils`: one owner for the alphanumeric character class.
+- `utils`: add clampLow owner for the floor-first clamp idiom.
+- `utils`: fold floor-first clamp idiom onto clampLow across all non-modes packages.
+- `tui`: one owner for the inline-markdown token grammar.
+- `mnemopi`: one owner for the unicode word-token character set.
+- `ai`: cover cursor usage provider edge branches.
+- `coding-agent`: fold three inline truncate copies onto the utils owner.
+- `mnemopi`: one detectLanguage owner, wired to the comprehensive detector.
+- `ai/usage`: one owner for the used-fraction status ladder.
+- `mnemopi`: one owner for temporal scoring, delete the dead forks.
+- `mnemopi`: fold beam envNumber into the util/env owner.
+- `ai/usage`: fold claude/zai/opencode-go into the status owner.
+- `ai`: unify toNumber to the catalog owner.
+- `session`: fold the last content flattener onto contentText.
+- `mnemopi`: cover the plugin system's error and lifecycle paths.
+- `mnemopi`: cover ExtractionDiagnostics directly.
+- `mnemopi`: one owner for the log-truncation idiom.
+- `mnemopi`: close entities and binary-vector branch gaps.
+- Unify tableExists into @veyyon/utils/sqlite (ONE-PLACE).
+- Fold two isObject clones onto the canonical isRecord (ONE-PLACE).
+- Unify the SQL placeholder builder into one sqlPlaceholders (ONE-PLACE).
+- Repoint five inline sqlite_master existence checks to tableExists (ONE-PLACE).
+- `utils`: unify SQL LIKE-wildcard escaping onto one escapeLike owner.
+- `tui`: cover decodeReencodedPasteControls with byte-exact tests.
+- `ai`: cover normalizeCodexBaseUrl branches (issue #3679 guard).
+- `ai`: cover calculateAnthropicRetryDelayMs backoff bounds.
+- `ai`: cover buildBetaHeader anthropic-beta assembly.
+- `ai`: cover dialect coercion helpers (overlap, kimi name, jsonTypeOf).
+- `ai`: cover mintToolCallId format and same-ms uniqueness.
+- `coding-agent`: unify scraper partial-ISO date assembly into one owner.
+- `coding-agent`: pin formatMediaDuration hour boundary and padding.
+- `coding-agent`: cover formatDurationCoarse and renderAsciiBar edges.
+- `coding-agent`: show download state + cached size in tiny-models list.
+- `coding-agent`: scope the glob timeout in read path resolution.
+- `coding-agent`: scope the marketplace catalog fetch timeout.
+- `coding-agent`: scope subagent-teardown cleanup timeouts.
+- Make npm-plugin agent discovery test profile-hermetic.
+- `coding-agent`: scope the codex reset-credit redeem timeout.
+- Make three plugin/config tests profile-hermetic.
+- `cli`: load per-profile .env by importing errorMessage via subpath, not the barrel.
+- Guard the whole pre-setProfile import graph against eager .env loads.
+- `mnemopi`: one owner for the stored-embedding wire format.
+- `mnemopi`: surface throwing memory-stream listeners instead of swallowing them.
+- `mnemopi`: fold recall.ts parseEmbedding into the shared embedding codec.
+- `mnemopi`: hoist query norm out of recall's per-candidate cosine loop.
+- `mnemopi`: one owner for the set-jaccard similarity formula.
+- `mnemopi`: route weibull/patterns timestamps through the canonical UTC parser.
+- `mnemopi`: store cost-log timestamps as UTC via the canonical toUtcIso.
+- `mnemopi`: cover the config env resolvers to 100%.
+- `mnemopi`: cover the DR backup/restore/rotate/health API.
+- `mnemopi`: cover extraction parse helpers and local heuristic fallback.
+- `mnemopi`: cover beam detectLanguage, lexical partials, metadata coercion.
+- `mnemopi`: cover SHMR belief parsing, cluster formatting, and reflect.
+- `mnemopi`: cover local-llm prompt build, cleanOutput, and chunk budget edges.
+- `mnemopi`: cover embedding input truncation window and provider availability.
+- `mnemopi`: cover MCP initialize, tools/call dispatch, errors, and CLI flags.
+- `mnemopi`: cover CLI sleep, diagnose, and --help handlers.
+- `mnemopi`: give the summarization header one owner.
+- `mnemopi`: cover MEMORIA category storage, veracity aggregation, ability routing.
+- `mnemopi`: fully cover veracity consolidation helpers and conflict lifecycle.
+- `mnemopi`: cover temporal-parser relative-day, delta units, and this-month/year.
+- `mnemopi`: lock typed-memory priority, decay, and length-boost tables.
+- `mnemopi`: cover local-llm transport error paths and runtime-scoped options.
+- `mnemopi`: cover fastembed download failure, orchestrator embedding conversion, empty extension specifiers.
+- `mnemopi`: cover embedding API transport, availability branches, and local-model cache/error paths.
+- `mnemopi`: cover extraction transport failure, no-output diagnostics, and salvage-miss line parsing.
+- `mnemopi`: cover recall date-window, author, and channel scope filters plus single-token lexical boost.
+- `mnemopi`: cover BeamMemory hub delegators (global/scoped stats, fact-extract, MEMORIA, degrade, health, sleep-all, consolidation-log).
+- `mnemopi`: cover getEpisodicStats author/type/channel scoping + health healthy/stale/error arms.
+- `mnemopi`: cover recall source/veracity/memoryType filters + lock topic-eq-source behavior.
+- `mnemopi`: cover local-llm guard branches (sleep-prompt render, empty chunk/summarize, no-baseURL, llmAvailable arms).
+- `mnemopi`: cover EpisodicGraph getFact + getEdges list/endpoint-filter paths.
+- `mnemopi`: cover module-level write/read aliases, consolidate, and the db-backed annotations facade.
+- `mnemopi`: cover MemoryStream off/offAny, iterator return-with-pending, and DeltaSync checkpointRoot derivation.
+- `mnemopi`: cover mcp-tools surface labels by kind and validate update path.
+- `mnemopi`: cover store trust-tier derivation, temporal annotations, and episodic invalidation.
+- `mnemopi`: cover episodic veracity aggregation fallthrough and graph-enrichment failure.
+- `mnemopi`: cover parseNlDate year branches and diagnose inspect-failure path.
+- `mnemopi`: cover shmr provider-failure embedding fallback and update-belief application.
+- `mnemopi`: cover minimumRecallRelevance tiers and e6 migration missing-db guard.
+- `mnemopi`: cover schema ALTER-migration path and build-side non-finite vector drops.
+- `mnemopi`: cover empty-vector, unknown-synonym, no-recall, graph close, and module query aliases.
+- `mnemopi`: cover proactive-link failure, batch extract scheduling, and annotation unique-index skip.
+- `mnemopi`: pin adversarial LLM-output parsing (category caps, field priority, fence, punctuation).
+- `agent`: pin compaction message transform for every core+compaction role.
+- `agent`: cover branch entry collection, conversion, file-op accrual, and early returns.
+- `agent`: cover shake block regions for user/developer/custom entries and the compaction boundary.
+- `agent`: cover openai compaction endpoint resolution, native-history encoding, and codex auth headers.
+- `agent`: cover telemetry content capture, gateway detection, warning hooks, invoke_agent aggregates, and value shaping.
+- `agent`: cover v2 streaming compaction endpoints, retained-history truncation, SSE collector, and retry loop.
+- `agent`: cover Agent accessor/mutator/queue surface, listener resilience, and busy guard.
+- `agent`: cover compaction token-estimate role branches, cut-point detection, and threshold resolution.
+- `agent`: cover proxy stream non-ok responses, thinking blocks, event-order guards, and mid-stream abort.
+- `agent`: cover compaction utils legacy serializer, edit/elided file-ops, upsert, and truncation.
+- `agent`: cover pause-gate paused/pausedAt getters and run-collector runEnded latch.
+- Extract effortStepItems for testable effort-picker row ordering.
+- Extract and test subagent thinking-effort precedence (explicit suffix wins).
+- Extract effort-picker module so settings and advisor share one effort UI source.
+- Docs: document per-model effort step, /thinking (/effort), and thinking keybindings.
+- Make the compaction threshold an absolute token amount, model-independent.
+- Goal status-line: always-on token readout, streaming icon motion, near-budget warning.
+- `goals`: track completed-turn count on goal state.
+- Goal mode: down-arrow opens the goal detail menu; richer detail card.
+- Goal status indicator, down-arrow affordance, turn count.
+- `shake`: elide redundant identical tool-results (re-reads / re-runs).
+- `write`: lock result body to a byte-count summary with proving tests.
+- `shake`: extract offload tail + add lossless dedupeRedundantToolResults primitive.
+- `compaction`: run lossless dedup as a Tier-0 pass on every strategy.
+- `config`: write config.yml atomically so an interrupted save can't corrupt profiles.
+- `config`: write the global defaultProfile pointer atomically too.
+- `config`: route hand-rolled atomic writers through the canonical helper.
+- `markit`: route the mupdf cache-asset write through atomicWriteFileSync.
+- `mnemopi`: use errorMessage() in memory-stream listener isolation.
+- `utils`: source-lock hand-rolled temp+rename to the atomic-write owner.
+- `profile`: clear the launch-default pointer when its profile is removed.
+- `settings`: pin the first-run invariant on the unlocked legacy-migration write.
+- Lock writeGlobalDefaultProfile; move file-lock into @veyyon/utils.
+- Harden profile create: atomic display-name clear + race backstop tests.
+- Rename active profile through the live settings singleton.
+- Warn on profile rename to an unreachable display name.
+- Make legacy default-profile migration resumable.
+- `mcp`: serialize mcp.json read-modify-write under a cross-process lock.
+- `ssh`: serialize ssh.json read-modify-write under a cross-process lock.
+- `keybindings`: write keybindings.yml atomically to prevent torn-file corruption.
+- `config`: migrate JSON to YAML atomically to prevent stuck corrupt files.
+- `status-line`: stub isApprovalBypassed in session mocks.
+- `images`: use a local WebP fixture for the Kitty tool-image test.
+- Drop reference to deleted plugin installer.ts.
+- `system-prompt`: isolate HOME so the GPU probe cache can't leak.
+- Clear biome lint blocking the release check gate.
+- `utils`: make type-guards source locks fast enough to not time out.
+- `contributing`: require before/after screenshots for UI changes.
+- Make npm publish opt-in via NPM_PUBLISH repo var.
+- `grep`: spill oversized results to a recoverable artifact instead of silent loss.
+- `ui`: show every launched subagent's model across all agent surfaces.
+- Prepare 1.0.12: shared profile credentials, Global settings tab, per-profile cwd, argot wire.
+
+### Fixed
+
+- Normalize doubled trailing slashes in base-URL resolvers via trimTrailingSlashes.
+- `auth`: sign-in success page text sits below the sun, not over it.
+- `stats`: deep-import errorMessage in the browser-graph SyncButton.
+- `utils`: close the unhandled-rejection window in ChildProcess.wait.
+- `tool-render`: route truncate through the code-point-safe owner (no more surrogate-splitting).
+- `capability/fs`: surface unreadable context files instead of silently dropping them.
+- `claude-plugins`: surface malformed plugin/marketplace manifests instead of swallowing them.
+- `config/settings`: surface project settings discovery warnings (Law 10).
+- `discovery`: surface malformed --plugin-dir manifest instead of silent basename fallback (Law 10).
+- `grep`: fail closed on an unreadable directory operand (Law 10).
+- `cli`: reject positionals beyond the declared args (Law 10).
+- `read`: exit non-zero when the read CLI cannot deliver content.
+- `cli`: unknown command exits 1 on the help path, with one message.
+- `metaharness`: use byte-aware token estimate, drop chars/4 heuristic.
+- `tui`: stop bracketed paste from swallowing pre-marker bytes.
+- Close modal overlays exactly once, even on synchronous or racing done().
+- `settings`: cycle a value with click-then-choose, not Left/Right.
+- `io`: harden user-config writes and keep the utils barrel off early-load paths.
+- `bash`: spill oversized abort/timeout output to an artifact.
+- `bash`: reuse sink artifact for oversized timeout/abort output.
+- `compaction`: count retained custom/branch tokens in keepRecent budget.
+- `compaction`: cut past the crossing entry when keeping everything dead-ends.
+
+### Removed
+
+- `coding-agent`: delete dead plugin installer duplicate.
+
+## [1.0.11] - 2026-07-18
+
+### Changed
+
+- `utils`: promote collapseWhitespace to the repo-wide owner.
+- Repoint sibling-package collapse-and-trim onto the utils owner.
+- `utils`: give collapseWhitespace a dependency-free subpath.
+- Repoint the three named errorMessage copies onto the utils owner.
+
+### Fixed
+
+- `ci`: generate tool-views before release binary bundle.
+
+## [1.0.10] - 2026-07-18
+
+### Changed
+
+- `utils`: unify the last three escapeRegExp copies onto the owner.
+- `subprocess`: unify the ref-counted worker-handle wrapper.
+- `web-search`: unify the whitespace-collapse idiom onto one owner.
+
+### Fixed
+
+- `update`: prune rebranded scoped cache entries by manifest name.
+
+## [1.0.9] - 2026-07-18
+
+### Changed
+
+- `coding-agent`: lock the process.exitCode restore pattern.
+
+### Fixed
+
+- `release`: gate the CI watcher on the release workflow, not every run.
+- `test`: stop deleting VEYYON_PROFILE before the profile-cli assertions.
+
+## [1.0.8] - 2026-07-18
+
+### Changed
+
+- `internal-urls`: hoist getContentType to a single owner.
+
+### Fixed
+
+- `security`: make cargo-deny and cargo-audit gates pass with documented exceptions.
+- `test`: restore process.exitCode to 0, not captured-undefined, after mutation.
+
+## [1.0.7] - 2026-07-18
+
+### Fixed
+
+- `security`: override tar>=7.5.20 and adm-zip>=0.6.0 to clear high audit advisories.
+- `grep`: use a backreference, not a stray paren, in the literal-fallback test.
+
+## [1.0.6] - 2026-07-18
+
+### Fixed
+
+- Loud grep literal-fallback (Law 10) and fix latent release-only CI failures.
+
+## [1.0.5] - 2026-07-18
+
+### Changed
+
+- `veyyon-shell`: unify blank-line collapse onto one primitive.
+- `veyyon-shell`: remove unwired unknown-command counter, fix flaky tests.
+
+### Fixed
+
+- `ci`: generate tool-views codegen in shared bun-install so source-run jobs work.
+
+## [1.0.4] - 2026-07-18
+
+### Changed
+
+- `coding-agent`: drop the superseded export/html/tool-render duplicate + orphaned generator.
+- `utils`: repoint strip-ansi's stale browser-consumer refs to @veyyon/tool-render.
+- `veyyon-shell`: unify head_tail_dedup onto one primitive owner.
+
+### Fixed
+
+- `release`: drop unpublished @veyyon/tool-render dep + pack @veyyon/stats in install smoke.
+
+## [1.0.3] - 2026-07-17
+
+### Changed
+
+- Add dependabot for the bun/npm, cargo, and github-actions graphs.
+
+### Fixed
+
+- `stats`: deep-import format helpers + lock browser bundles off the Bun-mixed utils barrel.
+
+## [1.0.2] - 2026-07-17
+
+### Fixed
+
+- `tool-render`: deep-import formatCount so the collab-web browser bundle stops pulling Bun-only utils.
+
+## [1.0.1] - 2026-07-17
+
+### Changed
+
+- Run releases on GitHub-hosted runners; drop self-hosted omp-kata.
+- Complete pi -> veyyon rename across crates, native build, CI, and docs.
+
+### Fixed
+
+- `branding`: user-visible .omp/OMP leaks -> CONFIG_DIR_NAME/.veyyon (menus, ssh list, ttsr help, mcp schema, autolearn prompt).
+- `ci`: restore collab:web:build root script (unblocks release check gate).
+
+## [1.0.0] - 2026-07-17
+
+### Added
+
+- `cli`: did-you-mean near-miss subcommand suggestion (blocks bare typo -> paid prompt).
+
+### Changed
+
+- Forked oh-my-pi 16.5.2 and imported it under the veyyon name.
+- `website`: latest design refresh + PWA/SEO assets.
+- `doc-freshness`: surface tracked-but-deleted docs loudly; re-stamp releasing.md to canonical HEAD.
+- `tui`: paint terminal ground (OSC 11) + track missing source; add handbook book-freshness gate.
+- Docs+debrand: canonical internal-doc coherence, verification stamps, dead-code cleanup.
+- Fix auth-broker-gateway ASCII diagram alignment after veyyon rename.
+- `website`: auto-sync changelog from CHANGELOG + published GitHub releases; auto-deploy site on release.
+- Website changelog: show only veyyon releases + Unreleased block; credit pre-fork oh-my-pi history as a note, not release cards.
+- Gate npm publish + Homebrew tap on their secrets/vars; debrand brew formula (veyyon.rb, veyyon binary + vey alias, santhreal/veyyon repo).
+- Debrand user-visible surfaces: terminal title π→vey, App/report/prompt/gallery omp→veyyon.
+- `wip`: in-progress modes/plugins/mcp/tui/docs work from parallel session (committed to unblock the 1.0.0 release cut).
+- Biome format wrap in auto-compaction-queue test.
+- `natives`: changelog references the real exported symbol __ompInstallTokioRuntime.
+- `deployment`: repo secrets/variables table + rollback-and-hotfix runbook.
+- Rustfmt diff.rs, crash_handler.rs, bun.rs.
+- `swarm-extension`: debrand npm metadata (description + repo/bugs URLs).
+- `utils`: hoist levenshteinDistance to @veyyon/pi-utils (one canonical home).
+- `mnemopi`: use canonical levenshteinDistance from @veyyon/pi-utils.
+- `cli`: near-miss did-you-mean routing coverage.
+
+### Fixed
+
+- Resolve lint/format errors in parallel-session WIP so the tree gates green.
+- Debrand user-visible omp leaks (login hint told users to run `omp`).
+- `swarm-extension`: peerDependency @veyyon/pi-coding-agent ^16 -> catalog:.
+- `plugins`: plugin doctor reports ok for the fresh-install state.
+- `session`: clearer no-model/no-key guidance pointing at /login and veyyon setup.
+- `release`: skip changelog diff when no baseline ref exists (first release).
+- `cli`: fail fast on non-TTY interactive/empty stdin; consume piped prompts.
 
 ## Upstream history
 

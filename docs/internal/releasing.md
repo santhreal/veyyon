@@ -123,17 +123,19 @@ The website build fails if a version exists on GitHub Releases that
 `packages/coding-agent/CHANGELOG.md` does not describe. Users can install that
 version, so the changelog has to say what is in it.
 
-This used to be a warning, and the build exited 0 anyway. Eight releases went
-undocumented before anyone noticed, so those eight are listed in
-`UNDOCUMENTED_RELEASE_BASELINE` in `website/tools/gen-changelog.mjs` and still
-pass. Anything outside that list fails the build that introduced it.
+The gate is unconditional: `UNDOCUMENTED_RELEASE_BASELINE` in
+`website/tools/gen-changelog.mjs` is empty, so no version is exempt.
+
+It was a warning once, and the build exited 0 anyway, so eight releases went
+undocumented before anyone noticed. Those eight were grandfathered in that list
+while anything outside it failed, and the list emptied when the backfill landed:
+`## [1.0.0]` through `## [1.0.36]` were reconstructed from git history, one
+section per version, each dated by the `chore: bump version` commit that cut it.
 
 When you see the failure, write the entry. Do not add the version to the
-baseline: the list is a shrinking record of old debt, not somewhere to park a new
-gap, and the error message says so. When you backfill one of the eight, delete it
-from the list and update the count pinned in
-`website/tools/undocumented-release-ratchet.test.ts`. Once the list is empty the
-gate is unconditional with no further change.
+baseline: it is a shrinking record of old debt, not somewhere to park a new gap,
+the error message says so, and `website/tools/undocumented-release-ratchet.test.ts`
+pins it empty so growing it fails the suite.
 
 Binaries compile with Bun bytecode by default (`VEYYON_BUILD_BYTECODE=0` opts out),
 ~70ms warm startup instead of ~650ms of JS parse per launch, at the cost of a

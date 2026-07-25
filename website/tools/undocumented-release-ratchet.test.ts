@@ -73,32 +73,36 @@ describe("undocumented release ratchet", () => {
 		expect(() => reportUndocumentedReleases([], ["1.0.21"])).not.toThrow();
 	});
 
-	it("ships a baseline that matches the real gap, with no stale entries", () => {
-		// A baseline listing versions that are already documented would quietly
-		// widen the allowance: the next real gap could reuse one of those numbers
-		// and pass. Pinning the exact contents means backfilling forces an edit
-		// here, which is the tightening step.
-		expect([...UNDOCUMENTED_RELEASE_BASELINE]).toEqual([
-			"1.0.36",
-			"1.0.27",
-			"1.0.26",
-			"1.0.25",
-			"1.0.24",
-			"1.0.23",
-			"1.0.22",
-			"1.0.21",
-		]);
+	it("ships an empty baseline, so the gate is unconditional", () => {
+		// The backfill landed on 2026-07-25: `## [1.0.0]` through `## [1.0.36]` were
+		// reconstructed from git history, which documented all eight grandfathered
+		// versions and emptied the list. Every published release now needs an entry.
+		//
+		// Pinned exactly, and this is the assertion that must not be relaxed: a
+		// baseline listing a documented version would quietly widen the allowance,
+		// because the next real gap could reuse that number and pass. An empty list
+		// leaves no number to reuse. Adding one back is a regression even when the
+		// version named is genuinely undocumented; the fix is the entry, not the
+		// exemption.
+		expect([...UNDOCUMENTED_RELEASE_BASELINE]).toEqual([]);
 	});
 
 	it("is frozen, so nothing can widen the allowance at runtime", () => {
 		expect(Object.isFrozen(UNDOCUMENTED_RELEASE_BASELINE)).toBe(true);
 	});
 
-	it("defaults to the shipped baseline when none is passed", () => {
-		// The generator calls it with one argument. If the default were empty the
-		// gate would fail the deploy today; if it were permissive it would fail
-		// nothing.
-		expect(() => reportUndocumentedReleases(unmatched("1.0.21"))).not.toThrow();
+	it("excuses nothing when no baseline is passed", () => {
+		// The generator calls it with one argument, so the default decides what the
+		// site deploy tolerates. It is the shipped baseline, which is now empty, so
+		// every undocumented release fails including the eight that used to be
+		// grandfathered. A permissive default would fail nothing and the gate would
+		// be decoration again.
+		expect(() => reportUndocumentedReleases(unmatched("1.0.21"))).toThrow(/v1\.0\.21/);
+		expect(() => reportUndocumentedReleases(unmatched("1.0.36"))).toThrow(/v1\.0\.36/);
 		expect(() => reportUndocumentedReleases(unmatched("9.9.9"))).toThrow(/v9\.9\.9/);
+	});
+
+	it("still passes when every published release is documented", () => {
+		expect(() => reportUndocumentedReleases([])).not.toThrow();
 	});
 });

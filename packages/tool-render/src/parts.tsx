@@ -187,17 +187,50 @@ export function ResultText({
 	);
 }
 
+/**
+ * Open a URL in a new tab, reaching `window` through `globalThis` instead of
+ * naming it.
+ *
+ * This package is host-agnostic source that other programs typecheck, and not all
+ * of them declare the DOM library. `scripts/tool-renderer-coverage.test.ts` checks
+ * every tool the agent can call against this package's registry, so its program
+ * holds this file next to `packages/coding-agent`, and those two cannot share one
+ * `lib`: with DOM, the agent's node code collides with the DOM's `Response`,
+ * `Headers` and `NodeList`. Everything else here (`atob`, `Blob`, `URL`,
+ * `setTimeout`) exists in both libraries, so a bare `window` was the one name that
+ * broke the build over there. See the note in `tsconfig.tools.json`.
+ *
+ * A missing opener throws rather than returning quietly. `ResultImages` renders in
+ * a browser, so there is no case where this is absent and the click still did what
+ * the reader asked; swallowing it would leave a button that looks live and does
+ * nothing.
+ */
+function openInNewTab(url: string): void {
+	type Opener = { open?: (url: string, target: string, features: string) => unknown };
+	const browserWindow = (globalThis as { window?: Opener }).window;
+	if (typeof browserWindow?.open !== "function") {
+		throw new Error("tool-render: cannot open an image, this host has no window.open");
+	}
+	browserWindow.open(url, "_blank", "noopener");
+}
+
 function openImage(img: ToolResultImage): void {
+	let url: string;
 	try {
 		const bin = atob(img.data);
 		const bytes = new Uint8Array(bin.length);
 		for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-		const url = URL.createObjectURL(new Blob([bytes], { type: img.mimeType }));
-		window.open(url, "_blank", "noopener");
-		setTimeout(() => URL.revokeObjectURL(url), 60_000);
+		url = URL.createObjectURL(new Blob([bytes], { type: img.mimeType }));
 	} catch {
-		// undecodable image data — the broken thumbnail already conveys it
+		// Undecodable base64 is the one failure worth passing over: the broken
+		// thumbnail beside this button already shows it, and there is nothing to
+		// open. The try covers decoding ONLY, so a blocked popup or a host without
+		// `window` still surfaces instead of being swallowed with it.
+		return;
 	}
+	// Scheduled before the open so a throw below cannot strand the object URL.
+	setTimeout(() => URL.revokeObjectURL(url), 60_000);
+	openInNewTab(url);
 }
 
 /** Thumbnails for every image block in a result; click opens full size. */
