@@ -20,6 +20,9 @@
  * that only a genuine mismatch says "not found" at all.
  */
 import { describe, expect, it } from "bun:test";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describeModelResolutionFailure, findNearMatches } from "@veyyon/coding-agent/config/model-resolution-failure";
 
 const CATALOG = [
@@ -233,5 +236,62 @@ describe("findNearMatches", () => {
 	 * an id that is otherwise exactly right. */
 	it("ignores case", () => {
 		expect(findNearMatches("OpenAI/GPT-5", CATALOG)).toContain("openai/gpt-5");
+	});
+});
+
+/** Building a "Model ... not found" sentence anywhere but the one owner. Matches
+ * the OPERATION (that phrasing in a template or concatenation), not a variable. */
+const BUILDS_NOT_FOUND_MESSAGE = /`Model [^`]*not found`|"Model [^"]*not found"/;
+
+describe("no source outside the owner spells out a not-found message", () => {
+	/**
+	 * The durable half. Six call sites each built their own
+	 * `Model "<id>" not found` string, so a credential or registry failure was
+	 * reported as an unknown id in six places, and fixing one left five. They now
+	 * all route through `modelResolutionFailureMessage`; this keeps a seventh from
+	 * appearing, which is exactly how the first six accumulated.
+	 */
+	it("finds no hand-built not-found message in coding-agent src", () => {
+		const srcRoot = fileURLToPath(new URL("../../src", import.meta.url));
+		const files: string[] = [];
+		const walk = (dir: string): void => {
+			for (const entry of readdirSync(dir)) {
+				const full = join(dir, entry);
+				if (statSync(full).isDirectory()) walk(full);
+				else if (entry.endsWith(".ts") && !entry.endsWith(".test.ts")) files.push(full);
+			}
+		};
+		walk(srcRoot);
+
+		const offenders: string[] = [];
+		for (const file of files) {
+			const rel = file.slice(srcRoot.length + 1);
+			// The owner is where the sentence is allowed to live.
+			if (rel === "config/model-resolution-failure.ts") continue;
+			readFileSync(file, "utf8")
+				.split("\n")
+				.forEach((line, index) => {
+					// Comments discuss the old wording on purpose (this fix is documented
+					// in several places). The lock is about code that BUILDS the string.
+					const trimmed = line.trim();
+					if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) return;
+					if (BUILDS_NOT_FOUND_MESSAGE.test(line)) offenders.push(`${rel}:${index + 1}`);
+				});
+		}
+		expect(
+			offenders,
+			"these build a model not-found message by hand, which reports credential and registry failures as an " +
+				"unknown model id; call modelResolutionFailureMessage(patterns, modelRegistry) instead",
+		).toEqual([]);
+	});
+
+	/** The positive twin: an empty offender list is also what deleting the message
+	 * produces, so pin that the owner still says it for the one true case. */
+	it("keeps the owner saying not found for a genuine mismatch", () => {
+		const owner = readFileSync(
+			fileURLToPath(new URL("../../src/config/model-resolution-failure.ts", import.meta.url)),
+			"utf8",
+		);
+		expect(owner).toContain("not found");
 	});
 });

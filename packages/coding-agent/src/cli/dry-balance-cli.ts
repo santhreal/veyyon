@@ -16,6 +16,7 @@ import { replaceTabs, truncateToWidth } from "@veyyon/tui";
 import { formatDuration, getProjectDir } from "@veyyon/utils";
 import chalk from "chalk";
 import { ModelRegistry } from "../config/model-registry";
+import { modelResolutionFailureMessage } from "../config/model-resolution-failure";
 import {
 	formatModelString,
 	getModelMatchPreferences,
@@ -558,7 +559,7 @@ async function resolveDryBalanceModel(
 			preferences,
 		});
 		if (resolved.error) throw new Error(resolved.error);
-		if (!resolved.model) throw new Error(`Model "${modelSelector}" not found`);
+		if (!resolved.model) throw new Error(modelResolutionFailureMessage([modelSelector], modelRegistry));
 		return { model: resolved.model, warning: resolved.warning };
 	}
 

@@ -43,7 +43,7 @@ import { bucketRules } from "./capability/rule-buckets";
 import { shouldEnableAppendOnlyContext } from "./config/append-only-context-mode";
 import { shouldInlineToolDescriptors } from "./config/inline-tool-descriptors-mode";
 import { isAuthenticated, kNoAuth, ModelRegistry } from "./config/model-registry";
-import { describeModelResolutionFailure } from "./config/model-resolution-failure";
+import { modelResolutionFailureMessage } from "./config/model-resolution-failure";
 import {
 	formatModelSelectorValue,
 	formatModelString,
@@ -2224,13 +2224,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				// reporting it as an unknown model id is what sent a real
 				// investigation into model allowlists for a day (BACKLOG
 				// AUTH-FAILURE-BLAMES-MODEL-ID). The classification is
-				// `describeModelResolutionFailure`, under test.
-				modelFallbackMessage = describeModelResolutionFailure({
-					requested: deferredModelPatterns,
-					allModelIds: modelRegistry.getAll().map(entry => `${entry.provider}/${entry.id}`),
-					availableModelIds: modelRegistry.getAvailable().map(entry => `${entry.provider}/${entry.id}`),
-					registryError: modelRegistry.getError()?.message,
-				}).message;
+				// `modelResolutionFailureMessage`, under test.
+				modelFallbackMessage = modelResolutionFailureMessage(deferredModelPatterns, modelRegistry);
 			}
 		}
 
@@ -2338,12 +2333,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				modelFallbackMessage =
 					patterns && patterns.length > 0
 						? `No model available matching enabledModels (${patterns.join(", ")}) with usable credentials. Configure auth for an allowed provider or adjust enabledModels.`
-						: describeModelResolutionFailure({
-								requested: [],
-								allModelIds: modelRegistry.getAll().map(entry => `${entry.provider}/${entry.id}`),
-								availableModelIds: modelRegistry.getAvailable().map(entry => `${entry.provider}/${entry.id}`),
-								registryError: modelRegistry.getError()?.message,
-							}).message;
+						: modelResolutionFailureMessage([], modelRegistry);
 			}
 		}
 
