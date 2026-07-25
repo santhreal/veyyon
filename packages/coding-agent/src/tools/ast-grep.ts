@@ -33,7 +33,7 @@ import {
 	formatParseErrorsCountLabel,
 	PREVIEW_LIMITS,
 } from "./render-utils";
-import { ToolError } from "./tool-errors";
+import { ToolError, throwIfAborted } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
 const astGrepSchema = type({
@@ -90,6 +90,13 @@ async function runMultiTargetAstGrep(
 	let filesSearched = 0;
 	let limitReached = false;
 	for (const target of targets) {
+		// Do not enter the native again once the operator has cancelled. The
+		// natives fail closed on an already-fired signal, so this is not what keeps
+		// a cancelled search from returning results; it is what keeps a cancelled
+		// search from paying to find that out once per remaining target. The
+		// equivalent gap in the grep tool's per-chunk loop bought a full scan for
+		// every chunk after the cancellation, and this loop has the same shape.
+		throwIfAborted(options.signal, "ast_grep");
 		const targetResult = await astGrep({
 			patterns: options.patterns,
 			path: target.basePath,

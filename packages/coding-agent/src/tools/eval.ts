@@ -213,6 +213,20 @@ function uniqueEvalLanguages(cells: ResolvedEvalCell[]): EvalLanguage[] {
 }
 
 /**
+ * Name a cell for a cancellation message, so an operator can tell which of
+ * several cells they interrupted.
+ *
+ * The title when there is one, since that is the label already shown in the
+ * transcript and matching the two is the whole point. Otherwise the ordinal and
+ * the language, which at least locates the cell in the call that was issued. The
+ * code itself is deliberately not included: a cancellation message is read in a
+ * hurry, and pasting a cell body into it buries the sentence that matters.
+ */
+function describeEvalCell(cell: ResolvedEvalCell): string {
+	return cell.title ?? `cell ${cell.index + 1} (${cell.resolved.backend.id})`;
+}
+
+/**
  * The clamp notice for one cell, or `undefined` when its timeout was honored (or
  * disabled). `timeoutMs === 0` disables the deadline entirely (see the run
  * loop), so there is nothing to clamp or report. Surfacing this keeps eval from
@@ -575,7 +589,15 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 					cellResult.statusEvents = undefined;
 					cellResult.exitCode = undefined;
 					cellResult.durationMs = undefined;
-					activeLiveCell = { result: cellResult, buf: new TailBuffer(DEFAULT_MAX_BYTES * 2) };
+					// Held by name as well as through `activeLiveCell`, which the `finally`
+					// below clears. This is the ONLY surviving record of what a cancelled
+					// cell printed: a backend that is interrupted returns an empty
+					// `result.output`, and `cellResult.output` is overwritten from that
+					// empty value before the cancellation is handled. Without this the
+					// abort message can only say the cell produced nothing, which is a
+					// statement about the plumbing rather than about the run.
+					const liveOutput = new TailBuffer(DEFAULT_MAX_BYTES * 2);
+					activeLiveCell = { result: cellResult, buf: liveOutput };
 					pushUpdate();
 
 					const startTime = Date.now();
@@ -687,6 +709,41 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 					if (result.cancelled) {
 						cellResult.status = "error";
 						pushUpdate();
+						// THREE different signals are merged into `combinedSignal`, and this
+						// one flag collapsed all of them. The two that matter here want
+						// opposite responses: an idle timeout means "raise the cell's timeout
+						// and run it again", and it already arrives carrying the backend's own
+						// `timed out after N seconds` annotation, which is exactly what the
+						// model needs to act on, so it keeps its ordinary error result. A user
+						// pressing Escape means STOP, and folding that into the same result was
+						// the defect. Nothing downstream could tell a cancellation from a cell
+						// that threw, though the agent loop's correct response to a failure is
+						// to read it and retry and its correct response to a cancellation is to
+						// stop. Worse, the text was `result.output || "Command aborted"`, and an
+						// interrupted backend returns an EMPTY `result.output`, so the whole
+						// message was that bare constant: it never named the cell, and it never
+						// said that whatever the half-run cell had already mutated is still
+						// live in the kernel, which is the part the operator has to deal with.
+						//
+						// The user's own signal outranks the watchdog when both have fired.
+						// They asked for the stop, and telling them their cell timed out when
+						// they cancelled it is the same conflation in the other direction.
+						if (signal?.aborted || sessionAbortController.signal.aborted) {
+							await finalizeOutput();
+							// `result.output` is empty on this path, so the streamed text is the
+							// only surviving record of how far the work got, and it is what the
+							// operator needs to decide whether to re-run.
+							const partial = (result.output || liveOutput.text()).trim();
+							throw new ToolAbortError(
+								[
+									`Eval cancelled: ${describeEvalCell(cell)} started and did NOT finish`,
+									"any state it had already mutated is still in the kernel",
+									partial ? `output so far:\n${partial}` : "it produced no output before the cancellation",
+								].join("; "),
+								{ cause: signal?.reason ?? sessionAbortController.signal.reason },
+							);
+						}
+
 						const errorMsg = result.output || "Command aborted";
 						const combinedOutput = cellOutputs.join("\n\n");
 						const outputText = combinedOutput || errorMsg;
