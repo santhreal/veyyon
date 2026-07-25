@@ -21,7 +21,6 @@ set -e
 # After install, launch with `vey` in any repo.
 
 REPO="santhreal/veyyon"
-PACKAGE="@veyyon/coding-agent"
 BIN_NAME="veyyon"
 ALIAS_NAME="vey"
 INSTALL_DIR="${VEYYON_INSTALL_DIR:-$HOME/.local/bin}"
@@ -407,7 +406,6 @@ do_uninstall() {
             [ -e "$n" ] && rm -f "$n" && { ok "removed $n"; removed=1; }
         done
     done
-    if has bun; then bun remove -g "$PACKAGE" >/dev/null 2>&1 && ok "removed global $PACKAGE" || true; fi
     src="${VEYYON_SRC_DIR:-$HOME/.veyyon/src}"
     if [ -d "$src" ]; then
         # Never rm -rf a checkout that holds uncommitted edits or unpushed local
