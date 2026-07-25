@@ -94,17 +94,36 @@ describe("declining the alias also declines its completion file", () => {
 	// regardless — a file describing OUR subcommands under THEIR command name,
 	// written straight over the completion script their tool shipped. install.ps1
 	// has no counterpart only because Windows installs no completions.
-	it("install.sh gates the alias completion on the alias being ours", () => {
-		expect(installSh).toContain("alias_points_at_us() {");
-		expect(installSh).toContain('&& alias_points_at_us "$bin"; then');
+	it("install.sh gates the alias completion on the recorded verdict", () => {
+		expect(installSh).toContain("ALIAS_IS_OURS=0");
+		expect(installSh).toContain('&& [ "$ALIAS_IS_OURS" = 1 ]; then');
 	});
 
-	it("the gate compares the link target against our binary, not just the name", () => {
-		// A `vey` symlink can point anywhere, and a plain file is not a link at all.
-		// Existence proves nothing; only the resolved target does.
-		const fn = fnBody(installSh, "alias_points_at_us() {", "\n}\n");
-		expect(fn).toContain('[ -L "$l" ] || return 1');
-		expect(fn).toContain('[ "$(readlink "$l" 2>/dev/null)" = "$d/$BIN_NAME" ]');
+	it("link_alias is the only thing that decides, and sets it on every exit", () => {
+		// ONE PLACE: link_alias is the only code that inspects and writes the
+		// alias, so it owns the answer. install_completions and doctor read it.
+		// Re-deriving it needed `readlink`, which doctor cannot depend on — doctor
+		// exists to diagnose a broken PATH, and on a broken PATH that fork fails
+		// and the alias silently reads as "not ours".
+		const fn = fnBody(installSh, "link_alias() {", "\n}\n");
+		// One reset at entry plus one claim per path that ends with the alias
+		// pointing at our binary: kept, repaired, created.
+		expect(fn.match(/ALIAS_IS_OURS=0/g) ?? []).toHaveLength(1);
+		expect(fn.match(/ALIAS_IS_OURS=1/g) ?? []).toHaveLength(3);
+		const doctorFn = fnBody(installSh, "doctor() {", "\n}\n");
+		expect(doctorFn).not.toContain("readlink");
+	});
+
+	it("install.ps1 decides the same way before its shadow check", () => {
+		expect(installPs1).toContain("function Test-AliasPointsAtUs {");
+		expect(installPs1).toContain("if (Test-AliasPointsAtUs -BinPath $Command) {");
+	});
+
+	it("doctor says the alias is not ours instead of calling it a shadow", () => {
+		// Reporting that the user's own `vey` "shadows the copy just installed"
+		// and telling them to remove it is false: no `vey` was installed at all.
+		expect(installSh).toContain("is not ours — launch with '$BIN_NAME'");
+		expect(installPs1).toContain("is not ours - launch with '$BinName'");
 	});
 
 	it("uninstall removes the alias completion only when it is a copy of ours", () => {

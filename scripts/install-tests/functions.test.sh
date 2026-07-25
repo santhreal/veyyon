@@ -250,7 +250,7 @@ check "the alias uses the same per-shell convention (fish)" "$(completion_file_f
   check "uninstall removed the fish completion" "$( [ -e "$fishdir/veyyon.fish" ] && echo present || echo absent )" "absent"
   check "uninstall removed the fish alias completion" "$( [ -e "$fishdir/vey.fish" ] && echo present || echo absent )" "absent" )
 
-# --- alias_points_at_us: the completion half of the no-clobber rule ---
+# --- ALIAS_IS_OURS: the completion half of the no-clobber rule ---
 # link_alias refuses to overwrite a `vey` the user owns. install_completions ran
 # afterwards regardless, writing completions/vey — a file that both describes the
 # wrong command (it completes OUR subcommands for THEIR tool) and destroys the
@@ -263,18 +263,31 @@ check "the alias uses the same per-shell convention (fish)" "$(completion_file_f
   printf '#!/bin/sh\ncase "$1 $2" in\n  "completions --help") exit 0 ;;\n  "completions bash") echo "complete -F _veyyon veyyon vey"; exit 0 ;;\n  "completions zsh") echo "#compdef veyyon vey"; exit 0 ;;\n  "completions fish") echo "complete -c vey -w veyyon"; exit 0 ;;\nesac\nexit 1\n' > "$fakebin"
   chmod +x "$fakebin"
 
-  check "no alias present at all is not ours" "$(alias_points_at_us "$fakebin" && echo ours || echo not)" "not"
+  # link_alias is the single owner of the verdict, and every one of its exits
+  # must set it: a path that forgets leaves a stale value from the previous call
+  # and the completion/doctor decisions silently follow the wrong answer.
+  ALIAS_IS_OURS=1
+  link_alias "$_h/bin" >/dev/null 2>&1
+  check "no alias present at all: link_alias creates one and claims it" "$ALIAS_IS_OURS" "1"
 
   # Someone else's `vey`: a real file, exactly what link_alias leaves untouched.
-  printf '#!/bin/sh\necho other tool\n' > "$_h/bin/vey"; chmod +x "$_h/bin/vey"
-  check "a regular file named vey is not ours" "$(alias_points_at_us "$fakebin" && echo ours || echo not)" "not"
+  rm -f "$_h/bin/vey"; printf '#!/bin/sh\necho other tool\n' > "$_h/bin/vey"; chmod +x "$_h/bin/vey"
+  link_alias "$_h/bin" >/dev/null 2>&1
+  check "a regular file named vey is not ours" "$ALIAS_IS_OURS" "0"
 
   # A symlink, but to something else entirely — still not ours to replace.
-  rm -f "$_h/bin/vey"; ln -s "$_h/bin/somebody-else" "$_h/bin/vey"
-  check "a symlink to another target is not ours" "$(alias_points_at_us "$fakebin" && echo ours || echo not)" "not"
+  rm -f "$_h/bin/vey"; printf 'x\n' > "$_h/bin/somebody-else"; ln -s "$_h/bin/somebody-else" "$_h/bin/vey"
+  link_alias "$_h/bin" >/dev/null 2>&1
+  check "a symlink to another target is not ours" "$ALIAS_IS_OURS" "0"
+
+  # A dangling link has nothing to lose: link_alias repairs it and it is ours.
+  rm -f "$_h/bin/vey"; ln -s "$_h/bin/gone-away" "$_h/bin/vey"
+  link_alias "$_h/bin" >/dev/null 2>&1
+  check "a repaired broken link is ours" "$ALIAS_IS_OURS" "1"
 
   rm -f "$_h/bin/vey"; ln -s "$fakebin" "$_h/bin/vey"
-  check "a symlink to our binary is ours" "$(alias_points_at_us "$fakebin" && echo ours || echo not)" "ours"
+  link_alias "$_h/bin" >/dev/null 2>&1
+  check "a symlink to our binary is ours" "$ALIAS_IS_OURS" "1"
 
   # Now the behavior: restore the foreign `vey` plus the completion file its own
   # installer wrote, and prove install_completions leaves both alone.
@@ -283,6 +296,7 @@ check "the alias uses the same per-shell convention (fish)" "$(completion_file_f
   mkdir -p "$bashdir" "$fishdir"
   printf 'complete -F _their_tool vey\n' > "$bashdir/vey"
   printf 'complete -c vey -a their-subcommand\n' > "$fishdir/vey.fish"
+  link_alias "$_h/bin" >/dev/null 2>&1
   install_completions "$fakebin" >/dev/null 2>&1
 
   check "our own bash completion is still installed" "$(cat "$bashdir/veyyon" 2>/dev/null)" "complete -F _veyyon veyyon vey"
@@ -462,7 +476,45 @@ check "version_from_output reads a bare semver" "$(version_from_output '2.0.1')"
 
   # Not on PATH at all: a distinct message telling the user what to add.
   out=$( PATH="/nonexistent-dir-for-test" doctor "$mine/veyyon" 2>&1 )
-  check "doctor tells the user to add the dir when the name is absent from PATH" "$(printf '%s' "$out" | grep -c "add $mine to PATH")" "2" )
+  check "doctor tells the user to add the dir when the name is absent from PATH" "$(printf '%s' "$out" | grep -c "add $mine to PATH")" "2"
+
+  # The alias branch must survive that same broken PATH. It briefly asked
+  # `readlink` whether the alias was ours, which cannot run when PATH is empty —
+  # the exact situation doctor exists to diagnose — so the alias silently read as
+  # "not ours" and its check was skipped without a word. link_alias records the
+  # verdict instead, and reading a variable cannot fail.
+  link_alias "$mine" >/dev/null 2>&1
+  out=$( PATH="/nonexistent-dir-for-test" doctor "$mine/veyyon" 2>&1 )
+  check "doctor still checks our alias with no usable PATH" "$(printf '%s' "$out" | grep -c "'vey' not on PATH yet")" "1"
+  check "doctor never claims our own alias is foreign" "$(printf '%s' "$out" | grep -c "'vey' is not ours")" "0" )
+
+# --- doctor: no shadow warning for a `vey` the installer never created ---
+# link_alias declines when the user already owns `vey`, but doctor still ran the
+# shadow check on that name — so the install ended by telling the user their own
+# command "shadows the copy just installed" and to remove it, about an alias this
+# installer deliberately did not create. Two sentences flatly contradicting each
+# other, one of them false. The alias check now runs only when the alias is ours.
+( _d="$SANDBOX/doctor-foreign-alias"
+  mkdir -p "$_d"
+  printf '#!/bin/sh\necho veyyon/9.9.9\n' > "$_d/veyyon"; chmod +x "$_d/veyyon"
+  # The user's own vey, exactly what link_alias refuses to touch.
+  printf '#!/bin/sh\necho their tool\n' > "$_d/vey"; chmod +x "$_d/vey"
+  # link_alias runs first in every real install and is what records the verdict.
+  link_alias "$_d" >/dev/null 2>&1
+
+  out=$( PATH="$_d:$PATH" doctor "$_d/veyyon" 2>&1 )
+  check "the binary itself is still checked" "$(printf '%s' "$out" | grep -c "'veyyon' on PATH resolves to this install")" "1"
+  check "a foreign vey is never called a shadow" "$(printf '%s' "$out" | grep -c "'vey' on PATH resolves to")" "0"
+  check "doctor does not tell the user to remove their own vey" "$(printf '%s' "$out" | grep -c 'Remove it')" "0"
+  check "doctor says the alias is not ours" "$(printf '%s' "$out" | grep -c "'vey' is not ours")" "1"
+  check "doctor points at the name that does work" "$(printf '%s' "$out" | grep -c "launch with 'veyyon'")" "1"
+  check "a foreign alias warns about nothing" "$(printf '%s' "$out" | grep -c '!!')" "0"
+  ( PATH="$_d:$PATH" doctor "$_d/veyyon" >/dev/null 2>&1 ); check "a foreign alias is not fatal" "$?" "0"
+
+  # And when the alias IS ours, the shadow check still runs in full.
+  rm -f "$_d/vey"; link_alias "$_d" >/dev/null 2>&1
+  out=$( PATH="$_d:$PATH" doctor "$_d/veyyon" 2>&1 )
+  check "our own alias is still shadow-checked" "$(printf '%s' "$out" | grep -c "'vey' on PATH resolves to this install")" "1" )
 
 # --- finalize_binary: refuses an empty download, installs a good one atomically ---
 # Locks the robustness fixes: a 0-byte download must NOT be installed (a wrong

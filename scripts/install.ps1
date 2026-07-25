@@ -361,9 +361,27 @@ function Invoke-Doctor {
     # Both names the user might type must reach the copy just installed (mirrors
     # check_not_shadowed in install.sh).
     $binDir = Split-Path -Parent $Command
-    foreach ($name in @($BinName, $AliasName)) {
-        Test-NotShadowed -Name $name -WantDir $binDir
+    Test-NotShadowed -Name $BinName -WantDir $binDir
+    # ...but the alias only when it is ours. If Install-Alias declined because
+    # the user already had their own vey.cmd, the shadow check would report that
+    # THEIR command shadows "the copy just installed" and tell them to remove it,
+    # for an alias this installer deliberately never created. Install-Alias
+    # already said the true thing; contradicting it here is worse than silence.
+    if (Test-AliasPointsAtUs -BinPath $Command) {
+        Test-NotShadowed -Name $AliasName -WantDir $binDir
+    } else {
+        Write-Host "OK  '$AliasName' is not ours - launch with '$BinName'" -ForegroundColor Green
     }
+}
+
+# True when the alias shim next to $BinPath is one we wrote (it forwards to our
+# binary). Mirrors alias_points_at_us in install.sh.
+function Test-AliasPointsAtUs {
+    param([string]$BinPath)
+    $shim = Join-Path (Split-Path -Parent $BinPath) "$AliasName.cmd"
+    if (-not (Test-Path $shim)) { return $false }
+    $existing = (Get-Content -Raw -Path $shim -ErrorAction SilentlyContinue)
+    return [bool]($existing -and $existing.Contains($BinPath))
 }
 
 # Report whether `$Name` on PATH is the copy just installed into `$WantDir`.

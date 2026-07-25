@@ -36,10 +36,13 @@ describe("doctor verifies where the command resolves, not merely that it exists"
 
 	it("both check the binary name AND the launch alias", () => {
 		// A user who types the documented `vey` must be covered too: the alias is
-		// the name most people use, and it can be shadowed independently.
+		// the name most people use, and it can be shadowed independently. The
+		// alias check is conditional: an alias the installer declined to create is
+		// not ours to call a shadow (see installer-no-clobber.test.ts).
 		expect(installSh).toContain('check_not_shadowed "$BIN_NAME" "$bin_dir"');
 		expect(installSh).toContain('check_not_shadowed "$ALIAS_NAME" "$bin_dir"');
-		expect(installPs1).toContain("foreach ($name in @($BinName, $AliasName))");
+		expect(installPs1).toContain("Test-NotShadowed -Name $BinName -WantDir $binDir");
+		expect(installPs1).toContain("Test-NotShadowed -Name $AliasName -WantDir $binDir");
 	});
 
 	it("both name the shadowing path in the warning, so the user can act on it", () => {
