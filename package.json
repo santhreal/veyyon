@@ -106,7 +106,8 @@
     "brace-expansion": "^5.0.8"
   },
   "scripts": {
-    "setup": "bun install && bun run build:native && bun --cwd=packages/coding-agent link && sh scripts/link-veyyon.sh",
+    "setup": "bun install && bun run hooks:install && bun run build:native && bun --cwd=packages/coding-agent link && sh scripts/link-veyyon.sh",
+    "hooks:install": "git config core.hooksPath .githooks",
     "dev": "bun --cwd=packages/coding-agent src/cli.ts",
     "dev:timing": "VEYYON_TIMING=x bun --cwd=packages/coding-agent --preload ../utils/src/module-timer.ts src/cli.ts",
     "claude:trace": "bun scripts/claude-trace.ts",

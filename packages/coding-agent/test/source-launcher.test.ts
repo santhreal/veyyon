@@ -164,3 +164,37 @@ describe("the source launcher refuses to run against a missing checkout", () => 
 		expect(result.stderr).not.toContain("gen:tool-views");
 	});
 });
+
+/**
+ * The Windows launcher (`scripts/veyyon.cmd`) is the same command for a Windows
+ * source install, wired by `install.ps1 -Source`. It cannot be executed on the
+ * Linux dev host, so its half of the contract is asserted from its text.
+ */
+describe("the Windows launcher guards the same two preconditions", () => {
+	const cmd = fs.readFileSync(path.resolve(import.meta.dir, "..", "scripts", "veyyon.cmd"), "utf8");
+
+	it("checks for bun before running anything that needs it", () => {
+		expect(cmd).toContain("where bun >nul 2>&1");
+		expect(cmd).toContain("bun is not on PATH");
+		// Before the self-heal steps, which are themselves bun invocations.
+		expect(cmd.indexOf("where bun")).toBeLessThan(cmd.indexOf("gen:tool-views"));
+	});
+
+	it("checks the checkout exists before handing bun a path into it", () => {
+		expect(cmd).toContain('if not exist "%cli%"');
+		expect(cmd).toContain("source checkout this command points at is incomplete");
+		expect(cmd.indexOf('if not exist "%cli%"')).toBeLessThan(cmd.indexOf("gen:tool-views"));
+	});
+
+	it("points at the Windows recovery commands, not the POSIX ones", () => {
+		// A `curl | sh` line on Windows is not a fix, it is a second problem.
+		expect(cmd).toContain("irm https://veyyon.dev/install.ps1");
+		expect(cmd).not.toContain("curl -fsSL");
+	});
+
+	it("keeps its stderr redirections real rather than echoing them", () => {
+		// In a parenthesised cmd block `1>&2` is a redirection; `1^>^&2` is four
+		// literal characters appended to the message. Both look plausible.
+		expect(cmd).not.toContain("1^>^&2");
+	});
+});
