@@ -8,7 +8,7 @@ When you start doing sustained work in a DIFFERENT project than the one you laun
 Re-rooting does NOT arm that project's Argot shorthand; the two are separate. To also compress the project's identifiers, call `argot_load` on it. A model settling into a new project typically does both: `set_cwd` there (shorter headers) and `argot_load` there (shorter identifiers).
 {{/if}}
 
-Re-root when the work moves, not when you touch a file. Concretely: the user names a project or directory and you are about to work there; you have read or edited three or more files under one directory outside the working directory; or the session started in a home, temp, or launch directory rather than the project you were asked about. Do not re-root to pass through a file or two, and do not re-root to a parent of the current directory in order to reach one file.
+Re-root when the work moves, not when you touch a file. Concretely: the user names a project or directory and you are about to work there; you have read or edited three or more files under one directory outside the working directory, or run three or more commands there; or the session started in a home, temp, or launch directory rather than the project you were asked about. Do not re-root to pass through a file or two, and do not re-root to a parent of the current directory in order to reach one file.
 
 The result names which rule files (AGENTS.md, CLAUDE.md and the other context layers) started and stopped applying, because those are found by walking up from the working directory. Follow the ones it names as newly in effect, and stop applying the ones it names as dropped.
 

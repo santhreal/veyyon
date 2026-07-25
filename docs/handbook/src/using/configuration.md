@@ -35,7 +35,7 @@ $ veyyon config path                     # print the active agent directory
 
 - **Persistent Profile Default (`session.workdir`)**: Configures the default working directory for a profile across all future sessions. Set interactively via `/settings` (Interaction › Profile) or in `~/.veyyon/profiles/<profile>/agent/config.yml`.
 - **Ephemeral Session Re-root (`set_cwd` tool / `/cwd`)**: Re-roots the active session's working directory temporarily. It never writes `session.workdir`.
-- **Prompt Cache Protection**: Working directory changes mid-session update path resolution, but the rendered System Prompt header (`<workstation>`) remains frozen until context compaction. Mutating system prompt headers mid-session prior to compaction invalidates LLM prefix prompt caches, causing 100% cache-miss token inflation.
+- **What a re-root costs**: the system prompt names the working directory and carries that project's context files and workspace tree, so a re-root rebuilds it. That rebuild invalidates the provider's prefix prompt cache, and the next request re-reads the whole context as fresh input. It is done anyway because the alternative is worse: a frozen header tells the model it is working in the directory it just left, so it follows the previous project's `AGENTS.md` and resolves relative paths against a directory it has moved out of. Moving is worth paying for; being lied to about where you are is not. The rebuild happens once per move, in every mode, and a re-root to the directory already in force does nothing at all.
 ### When a settings file has a syntax error
 
 If you edit a config file by hand and leave it with invalid YAML, veyyon cannot

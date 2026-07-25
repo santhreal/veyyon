@@ -65,16 +65,23 @@ describe("the system prompt is directory-specific", () => {
 	});
 });
 
-describe("applyCwdChange rebuilds the prompt for the destination", () => {
+describe("applyCwdChange re-scopes the destination through the session", () => {
 	/**
-	 * `applyCwdChange` lives on `InteractiveMode`, whose construction pulls in the
-	 * whole TUI, so the existing cwd tests all mock it and none cover its body.
-	 * This reads the shipped source instead: weaker than a behavior test, and
-	 * chosen deliberately over no coverage at all for a method whose omission is
-	 * invisible at runtime. The behavior half above proves WHY the call must be
-	 * there; this proves it IS there.
+	 * The rebuild itself now lives on `AgentSession.rescopeToCwd`, where every mode
+	 * reaches it, and `test/session/rescope-to-cwd.test.ts` covers it with real
+	 * behavior tests. What is left to prove here is the TUI's own wiring, and it
+	 * still cannot be proven by behavior: `applyCwdChange` lives on
+	 * `InteractiveMode`, whose construction pulls in the whole TUI, so the cwd
+	 * tests all mock it and none cover its body.
+	 *
+	 * The wiring matters because `applyCwdChange` has three callers and only ONE of
+	 * them goes through `setCwd`. `/move` calls `sessionManager.moveTo` directly,
+	 * and resuming a session from another project calls `switchSession`; neither
+	 * raises `cwd_changed`, so neither re-scopes unless this method asks for it.
+	 * Reading the shipped source is weaker than a behavior test and is chosen over
+	 * no coverage at all for a call whose omission is invisible at runtime.
 	 */
-	it("calls refreshBaseSystemPrompt inside applyCwdChange", () => {
+	it("delegates to session.rescopeToCwd inside applyCwdChange", () => {
 		const source = readFileSync(
 			fileURLToPath(new URL("../../src/modes/interactive-mode.ts", import.meta.url)),
 			"utf8",
@@ -83,14 +90,35 @@ describe("applyCwdChange rebuilds the prompt for the destination", () => {
 		expect(start, "applyCwdChange not found — did it move or get renamed?").toBeGreaterThan(-1);
 
 		// Bound the scan to this method: the next method declaration at the same
-		// indentation ends it, so a refresh call elsewhere in the file cannot
-		// satisfy this assertion by accident.
+		// indentation ends it, so a call elsewhere in the file cannot satisfy this
+		// assertion by accident.
 		const rest = source.slice(start + 1);
 		const end = rest.search(/\n\tasync |\n\t[A-Za-z#][A-Za-z0-9_]*\(/);
 		const body = end === -1 ? rest : rest.slice(0, end);
 
-		expect(body, "applyCwdChange must rebuild the base system prompt for the new directory").toContain(
-			"refreshBaseSystemPrompt()",
+		expect(body, "applyCwdChange must re-scope the session for the new directory").toContain(
+			"this.session.rescopeToCwd(newCwd)",
 		);
+	});
+
+	/**
+	 * The other half of the same wiring: the re-scope must not be duplicated here.
+	 * Two owners for one job is how the settings reload and the prompt rebuild
+	 * drifted apart in the first place, and a second rebuild in this method would
+	 * cost a full prompt-cache invalidation on every `/cd`.
+	 */
+	it("does not keep its own copy of the re-scope", () => {
+		const source = readFileSync(
+			fileURLToPath(new URL("../../src/modes/interactive-mode.ts", import.meta.url)),
+			"utf8",
+		);
+		const start = source.indexOf("async applyCwdChange(");
+		const rest = source.slice(start + 1);
+		const end = rest.search(/\n\tasync |\n\t[A-Za-z#][A-Za-z0-9_]*\(/);
+		const body = end === -1 ? rest : rest.slice(0, end);
+
+		expect(body).not.toContain("refreshBaseSystemPrompt(");
+		expect(body).not.toContain("reloadForCwd(");
+		expect(body).not.toContain("resetCapabilities(");
 	});
 });

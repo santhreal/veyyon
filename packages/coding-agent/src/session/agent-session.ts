@@ -216,15 +216,19 @@ import {
 } from "../config/model-roles";
 import { expandPromptTemplate, type PromptTemplate } from "../config/prompt-templates";
 import { buildServiceTierByFamily, serviceTierForAllFamilies, serviceTierSettingToTier } from "../config/service-tier";
+import { applyProviderGlobalsFromSettings } from "../config/provider-globals";
 import type { Settings, SkillsSettings } from "../config/settings";
 import {
 	getDefault,
+	isSettingsInitialized,
 	onAppendOnlyModeChanged,
 	onModelRolesChanged,
+	settings,
 	validateProviderMaxInFlightRequests,
 } from "../config/settings";
 import { RawSseDebugBuffer } from "../debug/raw-sse-buffer";
 import { loadCapability } from "../discovery";
+import { clearClaudePluginRootsCache } from "../discovery/helpers";
 import { expandApplyPatchToEntries, normalizeDiff, normalizeToLF, ParseError, previewPatch, stripBom } from "../edit";
 import { getFileSnapshotStore } from "../edit/file-snapshot-store";
 import { disposeJuliaKernelSessionsByOwner } from "../eval/jl/executor";
@@ -1982,6 +1986,12 @@ export class AgentSession {
 	#toolCallIdCounter = 0;
 	/** Session cwd roots accumulated over setCwd calls; rebuilt from history on resume. */
 	#wirePathRoots: string[] = [];
+	/**
+	 * Directory {@link AgentSession.rescopeToCwd} last re-scoped to, so the two
+	 * callers of one move (this session, then the TUI's `cwd_changed` handler) do
+	 * the work once between them.
+	 */
+	#lastRescopedCwd: string | undefined;
 	/** Cumulative outbound bytes elided by path relativization this session. */
 	#wirePathBytesSaved = 0;
 	#sideStreamFn: StreamFn;
@@ -6271,9 +6281,63 @@ export class AgentSession {
 	 */
 
 	/**
+	 * Everything that has to be re-read when the session's working directory
+	 * moves, for every mode.
+	 *
+	 * This used to live in `InteractiveMode.applyCwdChange` and ONLY there, reached
+	 * through the TUI's `cwd_changed` handler. So an SDK session, an ACP session, a
+	 * headless run and every subagent re-rooted with the previous project's
+	 * settings, provider exclusions, plugin roots, capabilities and system prompt
+	 * still live: the base prompt states the cwd verbatim, so those modes went on
+	 * naming a directory the session had left, and the model read the old project's
+	 * AGENTS.md while resolving relative paths against the new one.
+	 *
+	 * ORDER IS LOAD-BEARING. The base system prompt is assembled from settings,
+	 * capabilities and plugin roots, so it is rebuilt LAST, once every input to it
+	 * has been re-scoped. `refreshBaseSystemPrompt` also invalidates the provider
+	 * prompt-cache key when the content changes, so the stale prefix is not re-served.
+	 *
+	 * REPEATING A DIRECTORY IS SKIPPED, and that is not an optimization: the TUI
+	 * reaches this twice for one move. `setCwd` calls it and then emits
+	 * `cwd_changed`, whose handler calls `applyCwdChange`, which calls it again for
+	 * the same destination. Doing the work twice would reload settings, reset
+	 * capabilities and rebuild the prompt a second time, and the rebuild is a full
+	 * prompt-cache invalidation. The guard remembers the LAST directory rescoped,
+	 * not every directory seen, so moving away and back still rescopes: what makes
+	 * the second call redundant is that nothing changed in between, and something
+	 * did change if another directory was rescoped meanwhile.
+	 */
+	async rescopeToCwd(cwd: string): Promise<void> {
+		if (this.#lastRescopedCwd === cwd) return;
+		this.#lastRescopedCwd = cwd;
+		// Align process project dir so status-line / discovery readers that still
+		// consult getProjectDir() stay consistent with the live session root.
+		setProjectDir(cwd);
+		// Re-scope project settings (`.claude/settings.yml` etc.) to the new
+		// directory in place so the active session and every settings reader pick
+		// up the destination project's configuration. An SDK session may have no
+		// global settings at all, hence the guard.
+		if (isSettingsInitialized()) {
+			await settings.reloadForCwd(cwd);
+			// Reapply provider preferences from the newly-loaded settings so the
+			// module-level search/image provider state reflects the destination
+			// project's configuration. Without this, the previous project's
+			// exclusions leak and newly-excluded providers are still used.
+			applyProviderGlobalsFromSettings(settings);
+		}
+		// Re-warm plugin roots, capabilities and the ssh tool so the next prompt
+		// sees everything scoped to the new project directory.
+		clearClaudePluginRootsCache();
+		resetCapabilities();
+		await this.refreshSshTool({ activateIfAvailable: true });
+		await this.refreshBaseSystemPrompt();
+	}
+
+	/**
 	 * Re-root the live session working directory for this session only.
-	 * Updates SessionManager cwd + header, aligns process project dir, emits
-	 * `cwd_changed`, and injects a visible/context system note. Never writes
+	 * Updates SessionManager cwd + header, aligns process project dir, re-scopes
+	 * settings/capabilities/plugins/prompt via {@link AgentSession.rescopeToCwd},
+	 * emits `cwd_changed`, and injects a visible/context system note. Never writes
 	 * profile `session.workdir` or other persisted settings.
 	 */
 	async setCwd(newCwd: string, options?: { validate?: boolean }): Promise<string> {
@@ -6284,9 +6348,7 @@ export class AgentSession {
 		}
 		this.#wirePathRoots = normalizeRoots([...this.#wirePathRoots, cwd]);
 
-		// Align process project dir so status-line / discovery readers that still
-		// consult getProjectDir() stay consistent with the live session root.
-		setProjectDir(cwd);
+		await this.rescopeToCwd(cwd);
 
 		const note = `Session working directory changed: ${previous} → ${cwd}`;
 		const details = { previous, cwd };

@@ -70,11 +70,13 @@ export interface RerootHint {
  * never leak between sessions and a subagent starts clean.
  */
 export class RerootDetector {
-	/** Candidate directory to the distinct files seen under it. */
+	/** Candidate directory to the distinct evidence keys seen under it. */
 	readonly #filesByDirectory = new Map<string, Set<string>>();
 	/** Directories already mentioned, so each is suggested at most once. */
 	readonly #announced = new Set<string>();
 	#hintsEmitted = 0;
+	/** Calls that named an out-of-cwd working directory, used to key each one. */
+	#workingDirectoryCalls = 0;
 
 	/**
 	 * Record the paths a tool call touched and return a hint if one is now due.
@@ -85,8 +87,27 @@ export class RerootDetector {
 	 * pay for a `realpath` on every call to reach a conclusion a symlink could
 	 * only make marginally more accurate.
 	 */
-	observe(targets: readonly string[], cwd: string): RerootHint | undefined {
+	observe(targets: readonly string[], cwd: string, workingDirectory?: string): RerootHint | undefined {
 		if (!cwd || this.#hintsEmitted >= MAX_HINTS) return undefined;
+
+		// A tool told to RUN somewhere is the strongest evidence there is, and it is
+		// the only evidence `bash` produces. Bash declares no filesystem targets,
+		// because its paths live inside a shell command that nothing here should be
+		// parsing, so a session that builds, greps and edits another project through
+		// bash was invisible to the file counter below. Its `cwd` argument is not:
+		// it is an explicit statement of where the work is, and it needs no parsing.
+		//
+		// Each such call counts once, keyed by a counter rather than by the
+		// directory, because unlike a file the same directory named three times IS
+		// three pieces of evidence. Running one command there could be a check;
+		// running three is the session's subject.
+		if (typeof workingDirectory === "string" && workingDirectory.trim().length > 0) {
+			const resolved = resolveToCwd(workingDirectory, cwd);
+			if (!isPathWithinCwd(resolved, cwd)) {
+				this.#workingDirectoryCalls++;
+				this.#credit(`run#${this.#workingDirectoryCalls}`, resolved, cwd);
+			}
+		}
 
 		for (const raw of targets) {
 			if (typeof raw !== "string" || raw.trim().length === 0) continue;
@@ -101,15 +122,22 @@ export class RerootDetector {
 			// genuinely named `a:1-50` is left alone.
 			const resolved = resolveToCwd(splitPathAndSel(raw).path, cwd);
 			if (isPathWithinCwd(resolved, cwd)) continue;
-			this.#credit(resolved, cwd);
+			this.#credit(resolved, path.dirname(resolved), cwd);
 		}
 
 		return this.#dueHint(cwd);
 	}
 
-	/** Count `file` against its own directory and each ancestor within the cap. */
-	#credit(file: string, cwd: string): void {
-		let directory = path.dirname(file);
+	/**
+	 * Count one piece of evidence against `startDirectory` and each ancestor
+	 * within the cap.
+	 *
+	 * `key` is what makes the count a count of DISTINCT evidence: a file path for a
+	 * file, so three paged reads of one file count once, and a per-call token for a
+	 * working directory, so three commands run in one place count three times.
+	 */
+	#credit(key: string, startDirectory: string, cwd: string): void {
+		let directory = startDirectory;
 		for (let step = 0; step < MAX_ANCESTOR_DEPTH; step++) {
 			// An ancestor that contains cwd is not a re-root target: suggesting it
 			// would WIDEN the session's reach rather than move it, and every path
@@ -120,7 +148,7 @@ export class RerootDetector {
 				files = new Set();
 				this.#filesByDirectory.set(directory, files);
 			}
-			files.add(file);
+			files.add(key);
 			const parent = path.dirname(directory);
 			if (parent === directory) break;
 			directory = parent;
@@ -169,7 +197,7 @@ export class RerootDetector {
  */
 export function formatRerootHint(directory: string, fileCount: number, cwd: string): string {
 	return (
-		`You have worked on ${fileCount} files under ${directory}, which is outside the session working directory (${cwd}). ` +
+		`You keep working under ${directory} (${fileCount} files or commands now), which is outside the session working directory (${cwd}). ` +
 		`If the rest of this task is there, call set_cwd with ${directory}: paths in tool headers become relative instead of absolute, and that project's AGENTS.md rules load. ` +
 		`If you are only passing through, ignore this.`
 	);
@@ -180,16 +208,37 @@ export interface RerootHintSession {
 	readonly cwd: string;
 }
 
+/**
+ * The directory a tool call was told to run in, when it names one.
+ *
+ * Read from the arguments by SHAPE rather than from a list of tool names. Any
+ * tool taking a `cwd` argument means the same thing by it in this codebase, so a
+ * name list would be a second place to update every time one is added, and it
+ * would be wrong the first time somebody forgot. `bash` is the case that
+ * matters today: it declares no filesystem targets, so without this the entire
+ * build/test/grep half of a session is invisible to the detector.
+ */
+export function workingDirectoryArg(args: unknown): string | undefined {
+	if (typeof args !== "object" || args === null) return undefined;
+	const cwd = (args as { cwd?: unknown }).cwd;
+	return typeof cwd === "string" && cwd.trim().length > 0 ? cwd : undefined;
+}
+
 const kRerootWrapped = Symbol.for("veyyon.rerootHintWrapped");
 
 /**
  * Wrap a tool so its result carries a re-root hint when one becomes due.
  *
- * Only tools that declare `filesystemTargets` are watched, which is the same set
- * the cwd boundary governs, so the detector sees exactly the calls that read or
- * write real paths and nothing else. Unlike the boundary, this runs in EVERY
- * approval mode: `cwdEscapingTargets` is skipped under yolo, and yolo is where a
- * session is most likely to wander out of cwd without ever being asked about it.
+ * Two signals feed it. Tools that declare `filesystemTargets` contribute the
+ * paths they read or write, which is the same set the cwd boundary governs; and
+ * any tool called with a `cwd` argument contributes that directory, which is how
+ * `bash` is seen at all. Unlike the boundary, this runs in EVERY approval mode:
+ * `cwdEscapingTargets` is skipped under yolo, and yolo is where a session is most
+ * likely to wander out of cwd without ever being asked about it.
+ *
+ * Every tool is wrapped rather than only the filesystem ones, because the second
+ * signal can come from any of them. The added work for a tool that contributes
+ * neither is one property read on a call that has already done real IO.
  *
  * The hint is appended to the result rather than replacing anything, and only on
  * a successful call. A failed call is the model's problem to solve first;
@@ -200,7 +249,7 @@ export function wrapToolWithRerootHint<T extends AgentTool<any, any, any>>(
 	detector: RerootDetector,
 	session: RerootHintSession,
 ): T {
-	if (!hasFilesystemTargets(tool) || kRerootWrapped in tool) return tool;
+	if (kRerootWrapped in tool) return tool;
 
 	const originalExecute = tool.execute.bind(tool);
 	const wrapped = async (...args: Parameters<typeof originalExecute>): Promise<AgentToolResult<unknown>> => {
@@ -210,7 +259,8 @@ export function wrapToolWithRerootHint<T extends AgentTool<any, any, any>>(
 		// call that already succeeded. A hint is never worth that.
 		let hint: RerootHint | undefined;
 		try {
-			hint = detector.observe(tool.filesystemTargets(args[1]), session.cwd);
+			const targets = hasFilesystemTargets(tool) ? tool.filesystemTargets(args[1]) : [];
+			hint = detector.observe(targets, session.cwd, workingDirectoryArg(args[1]));
 		} catch {
 			return result;
 		}
