@@ -160,6 +160,7 @@ const repoScriptTests = [
 	"scripts/docs-book-pin.test.ts",
 	"scripts/install-methods-coverage.test.ts",
 	"scripts/workspace-typecheck-coverage.test.ts",
+	"scripts/tool-renderer-coverage.test.ts",
 	"scripts/sync-root-changelog.test.ts",
 	"scripts/dependency-overrides.test.ts",
 	"scripts/installer-alias-parity.test.ts",

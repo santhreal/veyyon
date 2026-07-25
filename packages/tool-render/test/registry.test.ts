@@ -8,6 +8,8 @@ import { stripAnsi } from "../src/util";
  * renderer. Prototype keys must never resolve as accidental "registered" tools.
  */
 const REGISTERED_NAMES = [
+	"argot_load",
+	"argot_unload",
 	"ask",
 	"ast_edit",
 	"ast_grep",
