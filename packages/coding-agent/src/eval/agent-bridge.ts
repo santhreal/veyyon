@@ -13,16 +13,19 @@ import { MCPManager } from "../mcp/manager";
 import { PROMPTS } from "../prompts/registry";
 import { MAIN_AGENT_ID } from "../registry/agent-registry";
 import * as taskDiscovery from "../task/discovery";
+// `../task/executor` and `../task/isolation-runner` are loaded inside
+// `runEvalAgent`, not here. `task/executor` imports `../sdk`, the composition
+// root, so a static import put this module in a 54-module cycle that ran back
+// through the whole application: eval/js/tool-bridge -> agent-bridge ->
+// task/executor -> sdk -> agent-session -> eval/*, sweeping in `main.ts`, the
+// interactive UI and the browser tool. A cycle is instantiated as one unit, and
+// `session/agent-session` reaches this file through the eval kernels, so it cost
+// 91 MB per file. Deferring changes nothing at runtime: these are only needed
+// when an eval cell actually calls `agent()`, and by then the program that
+// offered `agent()` has loaded the task layer anyway. TYPES stay static, since
+// they are erased.
 import type { ExecutorOptions } from "../task/executor";
-import * as taskExecutor from "../task/executor";
-import {
-	applyEligibleNestedPatches,
-	type IsolationContext,
-	makeIsolationCommitMessage,
-	mergeIsolatedChanges,
-	prepareIsolationContext,
-	runIsolatedSubprocess,
-} from "../task/isolation-runner";
+import type { IsolationContext } from "../task/isolation-runner";
 import { AgentOutputManager } from "../task/output-manager";
 import { resolveSpawnPolicy } from "../task/spawn-policy";
 import {
@@ -411,6 +414,19 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 	// happens inside the timeout-pause closure below; on dirty/large repos the
 	// baseline walk can run long and must stay covered by the eval idle
 	// suspension.
+
+	// One deferral point for the task layer, rather than five scattered awaits.
+	// Both modules are already resolved and cached after the first `agent()` call.
+	const [
+		taskExecutor,
+		{
+			applyEligibleNestedPatches,
+			makeIsolationCommitMessage,
+			mergeIsolatedChanges,
+			prepareIsolationContext,
+			runIsolatedSubprocess,
+		},
+	] = await Promise.all([import("../task/executor"), import("../task/isolation-runner")]);
 
 	const buildCommitMessage = makeIsolationCommitMessage(options.session);
 

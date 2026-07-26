@@ -5,7 +5,9 @@ import type { Settings } from "../config/settings";
 import { MCPManager } from "../mcp/manager";
 import type { PersistedSubagentReviverFactory } from "../registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
-import { createAgentSession } from "../sdk";
+// Loaded on demand where the revive happens. See the note in `./executor`: a
+// static import of `../sdk`, the composition root, is what put this module in a
+// 54-module cycle.
 import type { AgentSession } from "../session/agent-session";
 import type { AuthStorage } from "../session/auth-storage";
 import { SessionManager } from "../session/session-manager";
@@ -83,6 +85,7 @@ export function createPersistedSubagentReviverFactory(
 			// re-discovery), exactly as the executor does for live subagents.
 			const mcpManager = MCPManager.instance();
 			const mcpProxyTools = mcpManager ? createMCPProxyTools(mcpManager) : [];
+			const { createAgentSession } = await import("../sdk");
 			const { session } = await createAgentSession({
 				cwd: ctx.session.sessionManager.getCwd(),
 				authStorage: ctx.authStorage,
