@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { EditMatchError, findClosestSequenceMatch, similarity } from "@veyyon/coding-agent/edit/modes/replace";
+import { EditMatchError, findClosestSequenceMatch, similarity } from "@veyyon/coding-agent/edit/match";
 
 /**
  * The edit tool's fuzzy-match engine (edit/modes/replace.ts) decides whether the

@@ -8,7 +8,7 @@ import * as path from "node:path";
 import { atomicWriteFile, isEnoent, withFileLock } from "@veyyon/utils";
 import { invalidate as invalidateFsCache } from "../capability/fs";
 
-import { validateServerConfig } from "./config";
+import { validateServerConfig } from "./validate";
 import { MCP_CONFIG_SCHEMA_URL, type MCPConfigFile, type MCPServerConfig } from "./types";
 
 function withSchema(config: MCPConfigFile): MCPConfigFile {

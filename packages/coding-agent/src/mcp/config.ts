@@ -10,6 +10,9 @@ import type { SourceMeta } from "../capability/types";
 import type { MCPServer } from "../discovery";
 import { loadCapability } from "../discovery";
 import { readDisabledServers, readEnabledServers } from "./config-writer";
+// Re-exported below: `validateServerConfig` moved to `./validate` so the writer
+// can validate without importing this loader, which was a cycle.
+import { validateServerConfig } from "./validate";
 import type { MCPServerConfig } from "./types";
 
 /** Options for loading MCP configs */
@@ -248,40 +251,6 @@ export function filterExaMCPServers(
 	return { configs: filtered, exaApiKeys, sources: filteredSources };
 }
 
-/**
- * Validate server config has required fields.
- */
-export function validateServerConfig(name: string, config: MCPServerConfig): string[] {
-	const errors: string[] = [];
-
-	const serverType = config.type ?? "stdio";
-
-	// Check for conflicting transport fields
-	const hasCommand = "command" in config && config.command;
-	const hasUrl = "url" in config && (config as { url?: string }).url;
-	if (hasCommand && hasUrl) {
-		errors.push(
-			`Server "${name}": both "command" and "url" are set - server should be either stdio (command) OR http/sse (url), not both`,
-		);
-	}
-
-	if (serverType === "stdio") {
-		const stdioConfig = config as { command?: string };
-		if (!stdioConfig.command) {
-			errors.push(`Server "${name}": stdio server requires "command" field`);
-		}
-	} else if (serverType === "http" || serverType === "sse") {
-		const httpConfig = config as { url?: string };
-		if (!httpConfig.url) {
-			errors.push(`Server "${name}": ${serverType} server requires "url" field`);
-		}
-	} else {
-		errors.push(`Server "${name}": unknown server type "${serverType}"`);
-	}
-
-	return errors;
-}
-
 /** Known browser automation MCP server names (lowercase) */
 const BROWSER_MCP_NAMES = new Set([
 	"puppeteer",
@@ -367,3 +336,5 @@ export function filterBrowserMCPServers(
 
 	return { configs: filtered, sources: filteredSources };
 }
+
+export { validateServerConfig };

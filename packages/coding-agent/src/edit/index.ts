@@ -30,6 +30,9 @@ export * from "./file-snapshot-store";
 export * from "./hashline";
 export * from "./modes/apply-patch";
 export * from "./modes/patch";
+// The matching engine moved out of `./modes/replace` to break a cycle with
+// `./diff`; re-exported here so the barrel surface is unchanged.
+export * from "./match";
 export * from "./modes/replace";
 export * from "./normalize";
 export * from "./renderer";
