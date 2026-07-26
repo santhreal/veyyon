@@ -36,7 +36,7 @@ import { PROMPTS } from "../prompts/registry";
 import { truncateForPrompt } from "../tools/approval";
 import { isIrcEnabled } from "../tools/irc";
 import { formatBytes, formatDuration } from "../tools/render-utils";
-import { anySubagentFailed, classifySubagentOutcome } from "./outcome";
+import { classifySubagentOutcome, describeSubagentBatch, summarizeSubagentBatch } from "./outcome";
 import { resolveSpawnPolicy } from "./spawn-policy";
 import {
 	type EnabledSubagentSource,
@@ -388,6 +388,14 @@ interface MergedSyncPayloads {
 	usage?: Usage;
 	outputPaths?: string[];
 	projectAgentsDir: string | null;
+	/**
+	 * Spawns cancelled before they started, so they have no payload and no
+	 * `SingleResult` to classify. Counted separately because the batch summary is
+	 * built from `results`, and a spawn that never ran is invisible there: without
+	 * this, cancelling a five-agent fan-out before two of them started reported
+	 * "3 of 3 agents completed".
+	 */
+	cancelledBeforeStart: number;
 }
 
 /**
@@ -404,11 +412,13 @@ function mergeSyncPayloads(
 	const outputPaths: string[] = [];
 	const usageTotals = createUsageTotals();
 	let hasUsage = false;
+	let cancelledBeforeStart = 0;
 	let projectAgentsDir: string | null = null;
 	for (let position = 0; position < spawns.length; position++) {
 		const payload = payloads[position];
 		const { item, index } = spawns[position];
 		if (!payload) {
+			cancelledBeforeStart++;
 			contentParts.push(`Task ${item.name?.trim() || `#${index + 1}`}: cancelled before start.`);
 			continue;
 		}
@@ -430,6 +440,7 @@ function mergeSyncPayloads(
 		usage: hasUsage ? usageTotals : undefined,
 		outputPaths: outputPaths.length > 0 ? outputPaths : undefined,
 		projectAgentsDir,
+		cancelledBeforeStart,
 	};
 }
 
@@ -964,14 +975,21 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			started.length > 0
 				? `Spawned ${formatCount("background agent", started.length)}.${scheduleFailureSummary} Each result will be delivered when that agent yields.\n${started.map(({ agentId, jobId }) => `- \`${agentId}\` (job \`${jobId}\`)`).join("\n")}\n${coordinationHint}`
 				: scheduleFailureSummary.trim();
-		const text = [merged.contentParts.join("\n\n"), spawnedSummary]
+		// Same distinction as the blocking-only path, through the same owner: the
+		// inline half of a mixed call is cancellable too, and a cancelled child
+		// there was reported as a failed one for the same reason.
+		const syncSummary = summarizeSubagentBatch(syncResults);
+		syncSummary.cancelled += merged.cancelledBeforeStart;
+		const syncHeadline = describeSubagentBatch(syncSummary);
+		const text = [syncHeadline ?? "", merged.contentParts.join("\n\n"), spawnedSummary]
 			.filter(section => section.trim().length > 0)
 			.join("\n\n");
 		return withAdvisory({
 			content: [{ type: "text", text: text.length > 0 ? text : "No results." }],
 			// A mixed call fails if any spawn could not be scheduled or any of the
-			// inline children failed. The detached ones report themselves later.
-			isError: failedSchedules.length > 0 || anySubagentFailed(syncResults),
+			// inline children failed. A cancelled inline child is neither: see
+			// `SubagentBatchSummary.isError`. The detached ones report themselves later.
+			isError: failedSchedules.length > 0 || syncSummary.isError,
 			details: buildAsyncDetails(),
 		});
 	}
@@ -1186,12 +1204,24 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			spawnItems.map((item, index) => ({ item, index })),
 			payloads,
 		);
+		// Cancellation and failure are different answers and used to arrive as the
+		// same one. `mapWithConcurrencyLimit` does not throw on abort: it stops
+		// picking up new work and hands back partial results, so a five-agent
+		// fan-out stopped after three finished produced the same shape as one where
+		// two agents crashed. The summary keeps them apart, and the line it renders
+		// leads the content so a reader scrolling three transcripts knows up front
+		// that two more were expected.
+		const summary = summarizeSubagentBatch(merged.results);
+		summary.cancelled += merged.cancelledBeforeStart;
+		const headline = describeSubagentBatch(summary);
+		const contentParts = headline ? [headline, ...merged.contentParts] : merged.contentParts;
 		return {
-			content: [{ type: "text", text: merged.contentParts.join("\n\n") }],
-			// A batch is an error if ANY child failed. Reporting success because
-			// most of them worked buries the failures in a wall of successful
+			content: [{ type: "text", text: contentParts.join("\n\n") }],
+			// FAILURES ONLY, deliberately: see `SubagentBatchSummary.isError`. A
+			// batch is still an error if any child failed, because reporting success
+			// because most of them worked buries the failures in a wall of successful
 			// output, which is where a parent stops reading.
-			isError: anySubagentFailed(merged.results),
+			isError: summary.isError,
 			details: {
 				projectAgentsDir: merged.projectAgentsDir,
 				results: merged.results,

@@ -68,14 +68,71 @@ export function classifySubagentOutcome(result: Pick<SingleResult, "aborted" | "
 	return { kind: "completed", isError: false, label: "completed" };
 }
 
+/** What a batch of subagent runs amounts to, counted by outcome. */
+export interface SubagentBatchSummary {
+	/** Ran to completion and delivered. */
+	completed: number;
+	/** Did not finish: cancelled by the parent, out of budget, or self-aborted. */
+	cancelled: number;
+	/** Exited non-zero, or produced work whose merge back could not be applied. */
+	failed: number;
+	/**
+	 * Whether the merged tool result carries `isError`.
+	 *
+	 * FAILURES ONLY. Cancellation is not a failure claim: a five-agent fan-out
+	 * that the operator stopped after three finished used to arrive at the parent
+	 * model shaped exactly like one where two agents crashed, because both went
+	 * through a single "did any child fail" predicate. The parent would then
+	 * re-run work the operator had just stopped, and the three transcripts it did
+	 * get were buried under a claim that something had gone wrong.
+	 *
+	 * This does NOT contradict {@link SubagentOutcome.isError}, which is true for
+	 * a single aborted run. One run that was cancelled delivered nothing, so the
+	 * call it belongs to failed. A batch is a different question: the completed
+	 * children's work is real and is being returned, and the stop was the
+	 * parent's own instruction. What the batch owes the reader is the truth about
+	 * which children finished, which is {@link describeSubagentBatch}, not a
+	 * failure flag standing in for it.
+	 */
+	isError: boolean;
+}
+
 /**
- * Whether any child in a batch failed, which is what decides `isError` on a
- * merged multi-spawn result.
+ * Count a batch of settled runs by outcome.
  *
- * A batch is reported as failed if ANY child failed. The alternative, reporting
- * success when at least one child succeeded, hides the failures inside a wall
- * of successful output, which is exactly where a parent stops looking.
+ * The ONE owner of "what does this batch amount to", replacing a predicate that
+ * answered only "did anything go wrong" and so could not tell a cancelled
+ * fan-out from a failed one. Both merged multi-spawn results read it, so the
+ * blocking-only path and the mixed async/sync path cannot drift apart.
  */
-export function anySubagentFailed(results: readonly Pick<SingleResult, "aborted" | "exitCode" | "error">[]): boolean {
-	return results.some(result => classifySubagentOutcome(result).isError);
+export function summarizeSubagentBatch(
+	results: readonly Pick<SingleResult, "aborted" | "exitCode" | "error">[],
+): SubagentBatchSummary {
+	let completed = 0;
+	let cancelled = 0;
+	let failed = 0;
+	for (const result of results) {
+		const kind = classifySubagentOutcome(result).kind;
+		if (kind === "aborted") cancelled++;
+		else if (kind === "completed") completed++;
+		else failed++;
+	}
+	return { completed, cancelled, failed, isError: failed > 0 };
+}
+
+/**
+ * One line naming what became of a batch, or `undefined` when every child
+ * completed and there is nothing to explain.
+ *
+ * Returned rather than pushed, so the caller decides where it goes. It leads the
+ * merged content because a reader who scrolls a wall of subagent transcripts
+ * needs to know up front that some of them are missing and why.
+ */
+export function describeSubagentBatch(summary: SubagentBatchSummary): string | undefined {
+	if (summary.cancelled === 0 && summary.failed === 0) return undefined;
+	const total = summary.completed + summary.cancelled + summary.failed;
+	const parts = [`${summary.completed} of ${total} agents completed`];
+	if (summary.cancelled > 0) parts.push(`${summary.cancelled} cancelled`);
+	if (summary.failed > 0) parts.push(`${summary.failed} failed`);
+	return `${parts.join(", ")}.`;
 }
