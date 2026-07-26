@@ -6,10 +6,14 @@
  * and `setColorBlindMode` directly, so it imported `modes/theme/theme`, which
  * imports `./shimmer`, which imports `config/settings` again. A cycle is one
  * strongly connected component and has to be instantiated as a unit, so every
- * module in it pulled in the whole thing. Measured separately, `config/settings`,
- * `shimmer`, `discovery` and `theme` all reported the identical cost, which is the
- * signature: they were one component wearing four names, and reaching any of them
- * for one value loaded the entire theme engine.
+ * module in it cost what the whole thing cost. Measured with twenty identical test
+ * files that did nothing but import one module: `config/settings` 51.4 MB per
+ * file, `shimmer` 51.4, `discovery` 51.4, `theme` 51.2, all the same number
+ * because they were the same component, against 15.4 for `settings-schema` just
+ * outside it and 2.7 for the hundred bundled theme JSON files. The test runner
+ * gives every test file a fresh realm, so a full run of the roughly 1,800 files in
+ * `packages/coding-agent/test` rebuilt that component once per file and was
+ * OOM-killed.
  *
  * The edge was also backwards. Settings is domain configuration, the theme engine
  * is terminal UI, and this repo's standard is that domain logic does not import

@@ -1,10 +1,11 @@
 /**
  * The package's hot import graphs stay acyclic.
  *
- * WHY THIS SUITE EXISTS. A cycle is one strongly connected component and has to
- * be instantiated as a unit, so importing ANY member pulls in the whole component
- * and everything it reaches. Three of them had grown through this package, and
- * each let a module that should have been small drag in most of the codebase:
+ * WHY THIS SUITE EXISTS. Import cycles in this package are not a style problem,
+ * they are the reason a full test run was OOM-killed. A cycle is one strongly
+ * connected component and has to be instantiated as a unit, so importing ANY
+ * member costs what the whole component costs, and Bun's test runner gives every
+ * test file a fresh realm. Two cycles did the damage:
  *
  *   config/settings -> modes/theme/theme -> modes/theme/shimmer -> config/settings
  *
@@ -12,10 +13,13 @@
  *   extensibility/skills -> discovery -> discovery/builtin -> tools/path-utils
  *
  * The second pulled two dozen modules into one component, including `mcp/*`,
- * `lsp/utils` and `config.ts`. Every member of it measured identically, which is
- * the signature of a cycle: they were one thing wearing several names. Since
- * `path-utils` is imported for small helpers throughout the package, that reach
- * extended to nearly everything.
+ * `lsp/utils` and `config.ts`. Measured with twenty identical test files that did
+ * nothing but import one module, every member of it reported the same figure:
+ * `path-utils` 51.7 MB per file, `internal-urls` 51.7, `discovery` 51.5,
+ * `config/settings` 51.4. Modules just outside cost a fraction of that:
+ * `settings-schema` 15.4, `capability/fs` 7.1, `extensibility/manifest-key` 1.9.
+ * Since `path-utils` is imported for small helpers throughout the package, that
+ * cost reached nearly everything.
  *
  * A third, larger one ran through the composition root:
  *
@@ -24,29 +28,35 @@
  *   session/agent-session
  *
  * That component held 54 modules, `main.ts` and the whole interactive UI among
- * them, so importing `agent-session` loaded the entire application. It was closed
- * by `eval/agent-bridge` naming `task/executor` statically, for the `agent()` helper
+ * them, which is why importing `agent-session` cost 91 MB. It was closed by
+ * `eval/agent-bridge` naming `task/executor` statically, for the `agent()` helper
  * an eval cell can call. Those imports are deferred to the call now, so the task
  * layer loads when something actually spawns a subagent.
  *
- * Cutting the three shrank what each entry reaches: `path-utils` now reaches two
- * modules in total, `agent-session` 712 instead of 1120, and every entry point in
- * the tables below is acyclic.
+ * Cutting the three moved the same numbers: `path-utils` 51.7 to 7.8 MB per file,
+ * `config/settings` 51.4 to 15.6, `modes/theme/theme` 51.2 to 16.1, `discovery`
+ * 51.5 to 44.0, `session/agent-session` 90.9 to 61.6. `path-utils` now reaches two
+ * modules in total, `agent-session` 712 instead of 1120, and the graphs under
+ * `discovery`, `config/settings`, `path-utils` and `theme` are acyclic.
  *
- * A CORRECTION WORTH KEEPING, because this suite was first written on the wrong
- * premise. It originally said the cycles were why a full test run was OOM-killed,
- * citing per-file memory costs of about 51 MB. Those were per-PROCESS measurements
- * generalised to a per-file cost, and the generalisation is wrong: a run puts every
- * file through one process, and bun caches the module registry across files. Files
- * importing the 710-module `agent-session` graph grow RSS by 1.70 MB each; files
- * importing nothing grow it by 1.68. The run still exhausts memory, for reasons
- * that have nothing to do with imports. What the cycles cost is architectural, not
- * memory, and that is reason enough to keep them out.
+ * HOW TO MEASURE THIS, AND THE TRAP THAT WASTED A ROUND. Put N identical test
+ * files somewhere and have each import one module, then read
+ * `process.memoryUsage().rss` from a `--preload` as each file loads. The files
+ * MUST live inside the workspace, and you MUST check that they passed. Copies
+ * written to a scratch directory outside the repo cannot resolve
+ * `@veyyon/coding-agent/*`, so every import fails, every file errors, and RSS
+ * grows by the runner's own ~1.7 MB per file. Read without the pass/fail line that
+ * looks exactly like proof that imports are free, and it is how this comment
+ * briefly acquired a "correction" claiming the memory story was wrong. Measured
+ * properly, from `packages/coding-agent/node_modules/`: six files that each import
+ * `session/agent-session` take RSS from 43 MB to 529 MB, and a heap snapshot at the
+ * end holds 8,937 `ModuleRecord`s, about 1,490 per file, one full copy of the graph
+ * for every realm.
  *
  * WHAT THIS ASSERTS AND WHY IT IS STRUCTURAL. Each cycle was closed by ONE import
  * line, and each is a one-line change to reintroduce, with no failing behaviour to
- * catch it: everything still works, a leaf module just silently depends on the
- * whole package again. So this checks the graph itself. It resolves the real static import edges from source
+ * catch it: everything still works, it just costs 51 MB per realm again. So this
+ * checks the graph itself. It resolves the real static import edges from source
  * and runs Tarjan over them, rather than pattern-matching on known-bad pairs,
  * which would miss a new cycle through a different route.
  *
@@ -204,21 +214,18 @@ const ACYCLIC_ENTRIES = [
  * How many modules each entry point drags in, with a ceiling. A RATCHET, same
  * rule: these may only go down.
  *
- * THIS IS AN ARCHITECTURE RATCHET, NOT A MEMORY ONE. An earlier version of this
- * comment claimed the count bounds peak RSS over a test run, citing per-file costs
- * of 7.8 MB for `path-utils` and 61.6 MB for `agent-session`. That was measured
- * wrong and the claim is withdrawn. Those are per-PROCESS costs, and a run puts
- * every file through ONE process, where bun caches the module registry across
- * files: 24 files that each import the 710-module `agent-session` graph grow RSS
- * by 1.70 MB per file, and 24 files that import nothing at all grow it by 1.68.
- * The graph is instantiated once, so its size is very nearly free per file.
+ * WHY COUNT MODULES RATHER THAN MEASURE MEMORY. What actually needs bounding is
+ * peak RSS over a full test run, and the direct way to bound it is to run the
+ * whole suite under `/usr/bin/time -v` and check the peak. That takes minutes and
+ * cannot run in a unit test, so nothing would run it and the ceiling would be
+ * rediscovered the next time the suite grew. The reachable module count is the
+ * thing peak RSS is proportional to, it is deterministic, and it costs
+ * milliseconds. The measurements line up: `path-utils` at 2 modules costs 7.8 MB
+ * per file, `discovery` at 211 costs 44.0, `agent-session` at 712 costs 61.6.
  *
- * What the count does bound is what it literally measures: how much of the package
- * a module drags in. That is worth holding for its own sake. One convenient import
- * of a barrel can double a leaf module's reach, which slows a cold process start,
- * widens the blast radius of any change, and is how the cycles above got in. Read
- * a failure here as "this module now depends on far more than it used to", not as
- * "this will use more memory".
+ * A cycle is the pathological way this number grows, and the cases above already
+ * cover that. This catches the ordinary way: one convenient import of a barrel
+ * that quietly doubles what a module pulls in. Both were happening here.
  *
  * The ceilings are today's counts plus a little slack, so ordinary work does not
  * trip them, and a change that adds a hundred modules to a hot path does.

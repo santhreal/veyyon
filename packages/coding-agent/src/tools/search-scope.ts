@@ -13,8 +13,8 @@ import {
 	parseSearchPath,
 	parseSearchPathPreferringLiteral,
 	partitionExistingPaths,
-	type ResolvedSearchTarget,
 	resolveExplicitSearchPaths,
+	type ResolvedSearchTarget,
 	resolveToCwd,
 } from "./path-utils";
 import { ToolError } from "./tool-errors";
@@ -29,12 +29,13 @@ import { ToolError } from "./tool-errors";
  * part of a 23-module import cycle: `path-utils` -> `internal-urls` ->
  * `skill-protocol` -> `extensibility/skills` -> `discovery` -> `builtin` ->
  * `path-utils`, with `mcp`, `lsp/utils` and `config.ts` pulled in along the way.
- * A cycle has to be instantiated as one unit, so importing ANY member pulled in
- * the whole component. Measuring each member separately gave the identical number
- * for `path-utils`, `internal-urls` and `discovery`, which is the tell: they were
- * one component wearing three names. `path-utils` is imported for
- * `expandTilde`-grade helpers all over the package, so it spread that reach very
- * widely.
+ * A cycle has to be instantiated as one unit, so importing ANY member cost what
+ * the whole component cost. Measured with twenty identical test files that did
+ * nothing but import one module: `path-utils` 51.7 MB per file, `internal-urls`
+ * 51.7, `discovery` 51.5, all the same number because they were the same
+ * component. `path-utils` is imported for `expandTilde`-grade helpers all over
+ * the package, so it spread that cost very widely, and the test runner gives each
+ * test file a fresh realm.
  *
  * Splitting it here is also the honest boundary. `path-utils` answers questions
  * about paths; this answers "what should this tool scan", which is a different
@@ -43,6 +44,7 @@ import { ToolError } from "./tool-errors";
  * KEEP THIS MODULE DOWNSTREAM. It may import `./path-utils`; nothing in
  * `./path-utils` may import it back, or the cycle returns.
  */
+
 
 /** Local file materialized from a readable external URL for shared tool-scope resolution. */
 export interface ResolvedExternalSearchUrl {
