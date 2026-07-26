@@ -52,7 +52,7 @@ import { type ResolvedArtifactFile, resolveArtifactFile } from "../internal-urls
 import { parseInternalUrl } from "../internal-urls/parse";
 import type { InternalUrl } from "../internal-urls/types";
 import { CONVERTIBLE_EXTENSIONS } from "../markit";
-import { getLanguageFromPath, type Theme } from "../modes/theme/theme";
+import type { Theme } from "../modes/theme/theme-class";
 import { PROMPTS } from "../prompts/registry";
 import type { ToolSession } from "../sdk";
 import {
@@ -74,6 +74,7 @@ import {
 	MAX_IMAGE_INPUT_BYTES,
 	webpExclusionForModel,
 } from "../utils/image-loading";
+import { getLanguageFromPath } from "../utils/lang-from-path";
 import { convertFileWithMarkit } from "../utils/markit";
 import { type ArchiveReader, formatArchiveEntryLines, openArchive, parseArchivePathCandidates } from "../utils/zip";
 import { buildDirectoryTree, type DirectoryTree } from "../workspace-tree";
