@@ -203,6 +203,36 @@ const RATCHETED_ENTRIES = [
 	["session/agent-session", "session/agent-session.ts", 2],
 ] as const;
 
+/**
+ * How many modules each entry point drags in, with a ceiling. A RATCHET, same
+ * rule: these may only go down.
+ *
+ * WHY COUNT MODULES RATHER THAN MEASURE MEMORY. What actually needs bounding is
+ * peak RSS over a full test run, and the direct way to bound it is to run the
+ * whole suite under `/usr/bin/time -v` and check the peak. That takes minutes and
+ * cannot run in a unit test, so nothing would run it and the ceiling would be
+ * rediscovered the next time the suite grew. The reachable module count is the
+ * thing peak RSS is proportional to, it is deterministic, and it costs
+ * milliseconds. The measurements line up: `path-utils` at 2 modules costs 7.8 MB
+ * per file, `discovery` at 211 costs 44.0, `agent-session` at 712 costs 61.6.
+ *
+ * A cycle is the pathological way this number grows, and the cases above already
+ * cover that. This catches the ordinary way: one convenient import of a barrel
+ * that quietly doubles what a module pulls in. Both were happening here.
+ *
+ * The ceilings are today's counts plus a little slack, so ordinary work does not
+ * trip them, and a change that adds a hundred modules to a hot path does.
+ */
+const GRAPH_SIZE_CEILINGS = [
+	["tools/path-utils", "tools/path-utils.ts", 20],
+	["config/settings", "config/settings.ts", 160],
+	["modes/theme/theme", "modes/theme/theme.ts", 170],
+	["tools/index", "tools/index.ts", 200],
+	["discovery", "discovery/index.ts", 240],
+	["internal-urls", "internal-urls/index.ts", 520],
+	["session/agent-session", "session/agent-session.ts", 760],
+] as const;
+
 describe("hot import graphs are acyclic", () => {
 	for (const [label, relative] of ACYCLIC_ENTRIES) {
 		/**
@@ -233,12 +263,27 @@ describe("hot import graphs are acyclic", () => {
 		});
 	}
 
+	for (const [label, relative, ceiling] of GRAPH_SIZE_CEILINGS) {
+		/**
+		 * The size ratchet. A hot module that suddenly reaches hundreds more modules
+		 * is the ordinary, non-cyclic way per-realm cost comes back, and the count is
+		 * printed on failure so the diff that caused it is obvious.
+		 */
+		it(`does not grow the module graph under ${label} past ${ceiling}`, () => {
+			const { moduleCount } = buildGraph(path.join(SRC, relative));
+
+			expect(moduleCount).toBeLessThanOrEqual(ceiling);
+		});
+	}
+
 	/**
-	 * NON-VACUITY FOR EVERY CASE ABOVE. All of them assert an empty array, which is
-	 * exactly what a broken graph builder returns too: a resolver that silently
-	 * failed, a regex that matched nothing, or a wrong `SRC` would make this suite
-	 * pass while checking nothing at all. This proves the graph is really being
-	 * walked, and that the detector really finds a cycle when one exists.
+	 * NON-VACUITY FOR EVERY CASE ABOVE. The cycle cases all assert an empty array,
+	 * which is exactly what a broken graph builder returns too, and the ceilings are
+	 * all upper bounds, which a builder that resolved nothing would satisfy trivially
+	 * with a count of one. A resolver that silently failed, a regex that matched
+	 * nothing, or a wrong `SRC` would make this whole suite pass while checking
+	 * nothing at all. This proves the graph is really being walked, and that the
+	 * detector really finds a cycle when one exists.
 	 */
 	it("actually walks the graph and can still detect a cycle", () => {
 		const graph = buildGraph(path.join(SRC, "discovery/index.ts"));
