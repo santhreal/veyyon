@@ -8,13 +8,15 @@
 import * as url from "node:url";
 import { detectStreamAnsiPolicy, TERMINAL } from "@veyyon/tui";
 import { isSettingsInitialized, settings } from "../config/settings";
-import {
-	LocalProtocolHandler,
-	memoryRootsFromRegistry,
-	parseInternalUrl,
-	resolveLocalUrlToPath,
-	resolveMemoryUrlToPath,
-} from "../internal-urls";
+// The three leaf modules, NOT the `../internal-urls` barrel. The barrel also
+// exports the MCP protocol, which reaches `mcp/manager` -> `mcp/tool-bridge` ->
+// `mcp/render` -> `tui/index` -> this file, so importing it from here closed an
+// eight-module cycle. Nothing below needs the MCP protocol, and a cycle is
+// instantiated as one unit, so that import made rendering a hyperlink pull in the
+// MCP client.
+import { LocalProtocolHandler, resolveLocalUrlToPath } from "../internal-urls/local-protocol";
+import { memoryRootsFromRegistry, resolveMemoryUrlToPath } from "../internal-urls/memory-protocol";
+import { parseInternalUrl } from "../internal-urls/parse";
 
 const OSC = "\x1b]";
 const ST = "\x1b\\";
@@ -176,6 +178,9 @@ export function tryResolveInternalUrlSync(input: string): string | undefined {
 			return undefined;
 		}
 	} catch {
+		// Hyperlink targets come from rendered text, including text a model wrote, so a URL this cannot map to
+		// a local path is ordinary. Undefined means "not a link this terminal should offer to open", which is
+		// the safe direction: the alternative is offering to open a path that was guessed.
 		return undefined;
 	}
 	return undefined;

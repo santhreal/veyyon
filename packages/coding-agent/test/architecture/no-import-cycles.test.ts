@@ -21,10 +21,23 @@
  * Since `path-utils` is imported for small helpers throughout the package, that
  * cost reached nearly everything.
  *
- * Cutting the two edges moved those same numbers: `path-utils` 51.7 to 7.8 MB per
- * file, `config/settings` 51.4 to 15.6, `modes/theme/theme` 51.2 to 16.1,
- * `discovery` 51.5 to 44.0. `path-utils` now reaches two modules in total, and the
- * graphs under `discovery`, `config/settings` and `theme` are acyclic.
+ * A third, larger one ran through the composition root:
+ *
+ *   session/agent-session -> eval/py/executor -> eval/kernel-tool-bridge ->
+ *   eval/js/tool-bridge -> eval/agent-bridge -> task/executor -> sdk ->
+ *   session/agent-session
+ *
+ * That component held 54 modules, `main.ts` and the whole interactive UI among
+ * them, which is why importing `agent-session` cost 91 MB. It was closed by
+ * `eval/agent-bridge` naming `task/executor` statically, for the `agent()` helper
+ * an eval cell can call. Those imports are deferred to the call now, so the task
+ * layer loads when something actually spawns a subagent.
+ *
+ * Cutting the three moved the same numbers: `path-utils` 51.7 to 7.8 MB per file,
+ * `config/settings` 51.4 to 15.6, `modes/theme/theme` 51.2 to 16.1, `discovery`
+ * 51.5 to 44.0, `session/agent-session` 90.9 to 61.6. `path-utils` now reaches two
+ * modules in total, `agent-session` 712 instead of 1120, and the graphs under
+ * `discovery`, `config/settings`, `path-utils` and `theme` are acyclic.
  *
  * WHAT THIS ASSERTS AND WHY IT IS STRUCTURAL. Each cycle was closed by ONE import
  * line, and each is a one-line change to reintroduce, with no failing behaviour to
@@ -171,23 +184,23 @@ const ACYCLIC_ENTRIES = [
 ] as const;
 
 /**
- * The entry points that are NOT clean yet, with the size of the largest cycle
- * still under each. A RATCHET, not a target: these numbers may only go down, and
- * a case here fails if a change makes a component bigger.
+ * The entry points that still carry cycles, with the size of the largest one
+ * under each. A RATCHET, not a target: these numbers may only go down, and a case
+ * here fails if a change makes a component bigger.
  *
- * They are recorded rather than quietly excluded because leaving them out of the
- * suite would read as "everything is acyclic", which is false. `internal-urls`
- * keeps an 8-module component among its protocol handlers and
- * `extensibility/skills`. `agent-session` keeps a 54-module one that runs through
- * `task/executor -> sdk.ts` and back out through the whole application, including
- * `main.ts` and the interactive UI: `sdk.ts` is the composition root and the task
- * executor legitimately needs it to spawn a subagent, so breaking that one means
- * injecting the session factory rather than moving a file, which is a larger
- * change than the two edges already cut.
+ * They are listed rather than quietly excluded, because leaving them out would
+ * read as "everything is acyclic", which is not true. What is left is three
+ * mutual pairs, each two modules that genuinely need each other:
+ * `config/model-registry` with `config/model-resolver`, `mcp/config` with
+ * `mcp/config-writer`, and `edit/diff` with `edit/modes/replace` (diff needs the
+ * fuzzy matcher, the matcher needs to render a diff). Splitting the shared
+ * primitives out of each pair is worth doing and cheap, but a two-module
+ * component costs almost nothing next to the 54-module one that used to be here,
+ * so the ratchet holds the line rather than blocking on it.
  */
 const RATCHETED_ENTRIES = [
-	["internal-urls", "internal-urls/index.ts", 8],
-	["session/agent-session", "session/agent-session.ts", 54],
+	["internal-urls", "internal-urls/index.ts", 2],
+	["session/agent-session", "session/agent-session.ts", 2],
 ] as const;
 
 describe("hot import graphs are acyclic", () => {
@@ -236,7 +249,13 @@ describe("hot import graphs are acyclic", () => {
 		// two-node cycle it reports it.
 		const a = path.join(SRC, "a.ts");
 		const b = path.join(SRC, "b.ts");
-		const seeded: Graph = { edges: new Map([[a, [b]], [b, [a]]]), moduleCount: 2 };
+		const seeded: Graph = {
+			edges: new Map([
+				[a, [b]],
+				[b, [a]],
+			]),
+			moduleCount: 2,
+		};
 		expect(findCycles(seeded)).toEqual([["a.ts", "b.ts"]]);
 	});
 });

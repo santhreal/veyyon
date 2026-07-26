@@ -48,7 +48,18 @@ import type { MnemopiSessionState } from "../mnemopi/state";
 import { PROMPTS } from "../prompts/registry";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import { AgentRegistry } from "../registry/agent-registry";
-import { type CreateAgentSessionOptions, createAgentSession, discoverAuthStorage } from "../sdk";
+// `createAgentSession` is loaded on demand, further down, where a subagent is
+// actually spawned. `../sdk` is the composition root and imports the whole
+// application, so naming it statically put this module in a 54-module import
+// cycle (task/executor -> sdk -> task/index -> task/executor) that also swept in
+// `main.ts`, the interactive UI, eval and the browser tool. A cycle is
+// instantiated as one unit, so importing `session/agent-session` cost 91 MB per
+// file. Deferring changes nothing at runtime: by the time anything spawns a
+// subagent the real program has loaded `sdk` anyway, and a test that never spawns
+// one no longer pays for it. The TYPE stays a static import because types are
+// erased.
+import type { CreateAgentSessionOptions } from "../sdk";
+import { discoverAuthStorage } from "../session/auth-broker-config";
 import type { AgentSession, AgentSessionEvent } from "../session/agent-session";
 import type { ArtifactManager } from "../session/artifacts";
 import type { AuthStorage } from "../session/auth-storage";
@@ -465,6 +476,13 @@ function previewOffendingData(value: unknown, maxLength = 500): string {
 	return serialized.length > maxLength ? `${serialized.slice(0, maxLength)}…` : serialized;
 }
 
+/**
+ * A task's output as JSON, or undefined when it is not JSON.
+ *
+ * Undefined is a real answer rather than a swallowed failure: a task's output is whatever its command
+ * printed, and prose is the common case. The caller keeps the raw text either way and only uses the
+ * parsed form when there is one, so nothing is dropped for failing to parse.
+ */
 function tryParseJsonOutput(text: string): unknown | undefined {
 	const trimmed = text.trim();
 	if (!trimmed) return undefined;
@@ -2663,6 +2681,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				},
 			});
 
+			const { createAgentSession } = await import("../sdk");
 			const sessionPromise = createAgentSession(buildSubagentSessionOptions(sessionManager));
 			let session: AgentSession;
 			try {
@@ -2690,7 +2709,8 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 					if (options.parentArtifactManager) {
 						reopened.adoptArtifactManager(options.parentArtifactManager);
 					}
-					const { session: revived } = await createAgentSession(buildSubagentSessionOptions(reopened));
+					const { createAgentSession: createRevivedSession } = await import("../sdk");
+					const { session: revived } = await createRevivedSession(buildSubagentSessionOptions(reopened));
 					installRegistryStatusSync(revived);
 					return revived;
 				};
