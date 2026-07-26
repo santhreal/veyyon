@@ -290,7 +290,7 @@ import { resolveMemoryBackend } from "../memory-backend";
 import { shutdownMnemopiEmbedClient } from "../mnemopi/embed-client";
 import { getMnemopiSessionState, type MnemopiSessionState, setMnemopiSessionState } from "../mnemopi/state";
 import { containsOrchestrate, ORCHESTRATE_NOTICE } from "../modes/orchestrate";
-import { theme } from "../modes/theme/theme";
+import { theme } from "../modes/theme/theme-binding";
 import { parseTurnBudget } from "../modes/turn-budget";
 import { containsUltrathink, ULTRATHINK_NOTICE } from "../modes/ultrathink";
 import {
