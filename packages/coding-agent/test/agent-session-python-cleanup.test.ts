@@ -473,7 +473,18 @@ describe("AgentSession python cleanup", () => {
 		// something the operator needs at the moment a session is torn down under a
 		// running cell: WHICH cell stopped, that its effects are still live in the
 		// kernel it was mutating, and what it had managed to emit first.
-		expect(error.message).toContain("cell 1 (python) started and did NOT finish");
+		//
+		// It names the RUNTIME, not an ordinal. This assertion read `cell 1 (python)`
+		// and was the last thing still pinning that wording after `describeEvalCell`
+		// dropped it, so it failed against the shipped message rather than guarding
+		// anything: a call carries exactly one cell, and "cell 1" counted to one while
+		// inviting the reader to ask which of the others had run.
+		// `test/tools/eval-abort-is-an-abort.test.ts` owns that decision and asserts
+		// both halves of it directly. What matters here is the same fact under a
+		// different trigger, a session teardown rather than an operator cancel: the
+		// message says which kernel is holding the half-mutated state.
+		expect(error.message).toContain("Eval cancelled: the python cell started and did NOT finish");
+		expect(error.message).not.toContain("cell 1");
 		expect(error.message).toContain("still in the kernel");
 		expect(error.message).toContain("Command aborted");
 	});

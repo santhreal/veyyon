@@ -12,6 +12,7 @@ import { parseHexColor, TERMINAL } from "@veyyon/tui";
 import { adjustHsv, colorLuma, errorMessage, getCustomThemesDir, isEnoent, logger } from "@veyyon/utils";
 import { type } from "arktype";
 import { LRUCache } from "lru-cache/raw";
+import { onAutoThemeMappingChanged, onColorBlindModeChanged, onSymbolPresetChanged } from "../../config/settings";
 import {
 	ansi256ToHex,
 	type ColorMode,
@@ -23,16 +24,21 @@ import {
 	type ThemeColor,
 	type ThemeJson,
 } from "./color";
-// Embed theme JSON files at build time
-import darkThemeJson from "./dark.json" with { type: "json" };
-import { defaultThemes } from "./defaults";
-import lightThemeJson from "./light.json" with { type: "json" };
+// The bundled themes and the synchronous light/dark classifier live in
+// `./builtin-themes` so `config/settings` can reach `isLightTheme` for its legacy
+// theme migration without importing this module. Importing it from here closed a
+// cycle (settings -> theme -> shimmer -> settings) that cost 51 MB per realm; see
+// the note at the top of that file.
+import { getBuiltinThemes, isLightThemeJson } from "./builtin-themes";
 import { resolveMermaidAscii } from "./mermaid-cache";
 import { lavaText } from "./shimmer";
 import { normalizeSpinnerFramesOverride, type SymbolPreset } from "./symbols";
 import { Theme } from "./theme-class";
 
 export { getLanguageFromPath } from "../../utils/lang-from-path";
+// Re-exported so this stays the one place callers import theme lookups from,
+// even though the definitions moved out of the cycle.
+export { getBuiltinThemes, isLightTheme, isLightThemeJson } from "./builtin-themes";
 export { isValidThemeColor } from "./color";
 export type { SpinnerType, SymbolKey, SymbolPreset } from "./symbols";
 export type { ThemeBg, ThemeColor };
@@ -41,16 +47,6 @@ export { Theme };
 // ============================================================================
 // Theme Loading
 // ============================================================================
-
-const BUILTIN_THEMES: Record<string, ThemeJson> = {
-	dark: darkThemeJson as ThemeJson,
-	light: lightThemeJson as ThemeJson,
-	...(defaultThemes as Record<string, ThemeJson>),
-};
-
-function getBuiltinThemes(): Record<string, ThemeJson> {
-	return BUILTIN_THEMES;
-}
 
 export async function getAvailableThemes(): Promise<string[]> {
 	const themes = new Set<string>(Object.keys(getBuiltinThemes()));
@@ -565,6 +561,64 @@ export function getColorBlindMode(): boolean {
 	return currentColorBlindMode;
 }
 
+// ============================================================================
+// Live application of theme settings
+// ============================================================================
+
+/**
+ * Apply `theme.dark`, `theme.light`, `symbolPreset` and `colorBlindMode` to the
+ * running engine when an operator changes them mid-session.
+ *
+ * THE SUBSCRIPTION LIVES HERE, NOT IN SETTINGS. `config/settings` used to call the
+ * three setters above directly, which made domain configuration import the
+ * terminal UI and closed the cycle settings -> theme -> shimmer -> settings. That
+ * component cost 51 MB every time any part of it was imported, and the test runner
+ * gives each test file its own realm, so a full run paid it about 1,800 times and
+ * ran out of memory. Settings now fires a signal and this module listens, which
+ * reverses the edge and leaves settings free of the theme engine.
+ *
+ * These run at import, so a program that never loads the theme engine simply has
+ * no listener. That is correct rather than a dropped update: `Settings.set` writes
+ * and persists the value either way, and there is no rendered theme to re-apply
+ * until this module is loaded, at which point `applyTheme` reads the committed
+ * settings.
+ */
+onAutoThemeMappingChanged((slot, themeName) => {
+	setAutoThemeMapping(slot, themeName);
+});
+
+onSymbolPresetChanged(preset => {
+	setSymbolPreset(preset)
+		.then(result => {
+			// The preset applied, but re-rendering the committed theme fell back.
+			// Record which theme is actually on screen now.
+			if (result.fellBack) {
+				logger.warn("Settings: symbolPreset applied but the theme fell back", {
+					preset,
+					error: result.error,
+				});
+			}
+		})
+		.catch(err => {
+			logger.warn("Settings: symbolPreset hook failed", { preset, error: String(err) });
+		});
+});
+
+onColorBlindModeChanged(enabled => {
+	setColorBlindMode(enabled)
+		.then(result => {
+			if (result.fellBack) {
+				logger.warn("Settings: colorBlindMode applied but the theme fell back", {
+					enabled,
+					error: result.error,
+				});
+			}
+		})
+		.catch(err => {
+			logger.warn("Settings: colorBlindMode hook failed", { enabled, error: String(err) });
+		});
+});
+
 export function onThemeChange(callback: (event: ThemeChangeEvent) => void): () => void {
 	onThemeChangeCallback = callback;
 	return () => {
@@ -804,27 +858,6 @@ export function stopThemeWatcher(): void {
 // HTML Export Helpers
 // ============================================================================
 
-/**
- * Classify a parsed theme JSON as light/dark by the perceived luminance of its
- * status-line background. Mirrors {@link Theme.isLight} so the synchronous
- * helpers below stay in lockstep with the runtime classifier — see the comment
- * on `Theme.statusLineLuminance` for why `statusLineBg` is the source of truth
- * (themes like `porcelain` style a dark chat bubble on an otherwise-light
- * theme, so `userMessageBg` is unreliable).
- */
-function isLightThemeJson(themeJson: ThemeJson): boolean {
-	try {
-		const resolved = resolveVarRefs(themeJson.colors.statusLineBg, themeJson.vars ?? {});
-		const luminance = colorLuma(resolved);
-		return luminance !== undefined && luminance > 0.5;
-	} catch {
-		// A theme whose status-line background cannot be resolved gets classified as dark, which is the
-		// same answer an unreadable luminance gives above. Dark is the safe default because it is the
-		// shipped default, and the load path reports the malformed theme with its parse error.
-		return false;
-	}
-}
-
 function getHtmlDefaultTextForSurface(surface: string | number | undefined): string {
 	const luminance = surface === undefined ? undefined : colorLuma(surface);
 	return luminance !== undefined && luminance > 0.5 ? "#000000" : "#e5e5e7";
@@ -888,32 +921,6 @@ export async function getResolvedThemeColors(themeName?: string): Promise<Record
 		}
 	}
 	return cssColors;
-}
-
-/**
- * Check if a theme is a "light" theme by analyzing its status-line background
- * luminance. Loads theme JSON synchronously (built-in or custom file on disk)
- * for callers in synchronous flows (settings migration, setup wizard).
- */
-export function isLightTheme(themeName?: string): boolean {
-	const name = themeName ?? "dark";
-	const builtinThemes = getBuiltinThemes();
-	let themeJson: ThemeJson | undefined;
-	if (name in builtinThemes) {
-		themeJson = builtinThemes[name];
-	} else {
-		try {
-			const customPath = path.join(getCustomThemesDir(), `${name}.json`);
-			const content = fs.readFileSync(customPath, "utf-8");
-			themeJson = JSON.parse(content) as ThemeJson;
-		} catch {
-			// Classified as dark rather than reported, deliberately: this is a synchronous classifier called
-			// on render paths, and the theme's LOAD reports the same broken file once with its error. A
-			// warning here would repeat it for every frame.
-			return false;
-		}
-	}
-	return isLightThemeJson(themeJson);
 }
 
 /**

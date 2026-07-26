@@ -37,8 +37,12 @@ import {
 import { JSONC, YAML } from "bun";
 import { type Settings as SettingsCapabilityItem, settingsCapability } from "../capability/settings";
 import type { ModelRole } from "../config/model-roles";
-import { loadCapability } from "../discovery";
-import { isLightTheme, setAutoThemeMapping, setColorBlindMode, setSymbolPreset } from "../modes/theme/theme";
+// The bundled-theme leaf, NOT `../modes/theme/theme`. The barrel imports
+// `./shimmer`, which imports this file, and that cycle had to be instantiated as
+// one unit: importing `config/settings` anywhere cost 51 MB, paid once per test
+// file because the runner gives each one a fresh realm. `isLightTheme` is the
+// only thing the migration below needs, and it has no engine behind it.
+import { isLightTheme } from "../modes/theme/builtin-themes";
 import { AgentStorage } from "../session/agent-storage";
 import { normalizeToolName } from "../tools/builtin-names";
 import { type EditMode, normalizeEditMode } from "../utils/edit-mode";
@@ -1246,6 +1250,12 @@ export class Settings {
 
 	async #loadProjectSettings(): Promise<RawSettings> {
 		try {
+			// Imported here rather than at the top of the file. `../discovery`
+			// registers fourteen capability providers and is the other half of the
+			// import cycle described above, so naming it statically pulled the whole
+			// component into every module that reads a setting. This method is already
+			// async and already does file I/O, so deferring the import costs nothing.
+			const { loadCapability } = await import("../discovery");
 			const result = await loadCapability(settingsCapability.id, { cwd: this.#cwd });
 			// Surface provider-level warnings (e.g. a malformed project settings
 			// file that the capability layer flagged): dropping them silently
@@ -2387,46 +2397,22 @@ class SettingSignal<A extends unknown[] = []> {
 const SETTING_HOOKS: Partial<Record<SettingPath, SettingHook<any>>> = {
 	"theme.dark": value => {
 		if (typeof value === "string") {
-			setAutoThemeMapping("dark", value);
+			autoThemeMappingSignal.fire("dark", value);
 		}
 	},
 	"theme.light": value => {
 		if (typeof value === "string") {
-			setAutoThemeMapping("light", value);
+			autoThemeMappingSignal.fire("light", value);
 		}
 	},
 	symbolPreset: value => {
 		if (typeof value === "string" && (value === "unicode" || value === "nerd" || value === "ascii")) {
-			setSymbolPreset(value)
-				.then(result => {
-					// The preset applied, but re-rendering the committed theme fell
-					// back — record which theme is actually on screen now.
-					if (result.fellBack) {
-						logger.warn("Settings: symbolPreset applied but the theme fell back", {
-							preset: value,
-							error: result.error,
-						});
-					}
-				})
-				.catch(err => {
-					logger.warn("Settings: symbolPreset hook failed", { preset: value, error: String(err) });
-				});
+			symbolPresetSignal.fire(value);
 		}
 	},
 	colorBlindMode: value => {
 		if (typeof value === "boolean") {
-			setColorBlindMode(value)
-				.then(result => {
-					if (result.fellBack) {
-						logger.warn("Settings: colorBlindMode applied but the theme fell back", {
-							enabled: value,
-							error: result.error,
-						});
-					}
-				})
-				.catch(err => {
-					logger.warn("Settings: colorBlindMode hook failed", { enabled: value, error: String(err) });
-				});
+			colorBlindModeSignal.fire(value);
 		}
 	},
 	"provider.appendOnlyContext": value => {
@@ -2452,6 +2438,46 @@ const SETTING_HOOKS: Partial<Record<SettingPath, SettingHook<any>>> = {
 		}
 	},
 };
+/**
+ * Fires when `theme.dark` or `theme.light` changes at runtime, with the slot that
+ * changed and the theme name now in it.
+ *
+ * WHY THESE FOUR THEME SETTINGS GO THROUGH SIGNALS. This file used to call
+ * `setAutoThemeMapping`, `setSymbolPreset` and `setColorBlindMode` directly, which
+ * meant settings imported `modes/theme/theme`, which imports `./shimmer`, which
+ * imports this file again. That cycle is one strongly connected component, so
+ * every module in it had to be instantiated as a unit: importing `config/settings`
+ * anywhere cost 51 MB, and since the test runner gives each test file a fresh
+ * realm, a full run rebuilt the component about 1,800 times and ran out of memory.
+ * The edge was also backwards. Settings is domain configuration and the theme
+ * engine is the terminal UI, and domain code does not import UI.
+ *
+ * NOTHING IS DROPPED WHEN NOBODY IS LISTENING. A hook here only applies a value
+ * LIVE to a loaded theme engine; the value itself is written and persisted by
+ * `Settings.set` regardless. If the theme module was never imported there is no
+ * engine to update, and it reads the committed settings when it does load.
+ */
+const autoThemeMappingSignal = new SettingSignal<[slot: "dark" | "light", themeName: string]>("theme mapping");
+
+/**
+ * Subscribe to `theme.dark` / `theme.light` changes. Returns an unsubscribe
+ * function. `modes/theme/theme` subscribes at its own import.
+ */
+export const onAutoThemeMappingChanged = (cb: (slot: "dark" | "light", themeName: string) => void) =>
+	autoThemeMappingSignal.on(cb);
+
+/** Fires when `symbolPreset` changes at runtime. */
+const symbolPresetSignal = new SettingSignal<[preset: "unicode" | "nerd" | "ascii"]>("symbolPreset");
+
+/** Subscribe to `symbolPreset` changes. Returns an unsubscribe function. */
+export const onSymbolPresetChanged = (cb: (preset: "unicode" | "nerd" | "ascii") => void) => symbolPresetSignal.on(cb);
+
+/** Fires when `colorBlindMode` changes at runtime. */
+const colorBlindModeSignal = new SettingSignal<[enabled: boolean]>("colorBlindMode");
+
+/** Subscribe to `colorBlindMode` changes. Returns an unsubscribe function. */
+export const onColorBlindModeChanged = (cb: (enabled: boolean) => void) => colorBlindModeSignal.on(cb);
+
 /** Fires when `provider.appendOnlyContext` changes at runtime. */
 const appendOnlyModeSignal = new SettingSignal<[value: string]>("provider.appendOnlyContext");
 
