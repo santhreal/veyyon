@@ -16,7 +16,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resolveToolSearchScope } from "@veyyon/coding-agent/tools/path-utils";
+import { resolveToolSearchScope } from "@veyyon/coding-agent/tools/search-scope";
 import { removeWithRetries } from "@veyyon/utils";
 
 const isRoot = typeof process.getuid === "function" && process.getuid() === 0;

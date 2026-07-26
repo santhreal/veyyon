@@ -21,7 +21,8 @@ import { createFileRecorder, formatResultPath } from "./file-recorder";
 import { classifyGroupedLines, formatGroupedFiles, groupLineIndicesByBlank } from "./grouped-file-output";
 import { formatMatchLine } from "./match-line-format";
 import type { OutputMeta } from "./output-meta";
-import { resolveToolSearchScope, toPathList } from "./path-utils";
+import { toPathList } from "./path-utils";
+import { resolveToolSearchScope } from "./search-scope";
 import {
 	appendParseErrorsBulletList,
 	capParseErrors,

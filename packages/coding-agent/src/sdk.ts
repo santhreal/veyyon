@@ -133,7 +133,7 @@ import {
 	SecretObfuscator,
 } from "./secrets";
 import { AgentSession, type PlanYolo, type Prewalk } from "./session/agent-session";
-import { discoverAuthStorage as discoverAuthStorageFromConfig } from "./session/auth-broker-config";
+import { discoverAuthStorage } from "./session/auth-broker-config";
 import type { AuthStorage } from "./session/auth-storage";
 import { createInterruptedTurnAbortMessage } from "./session/exit-diagnostics";
 import {
@@ -701,12 +701,16 @@ export {
  * back into the broker through the {@link AuthStorageOptions.refreshOAuthCredential}
  * override to re-mint access tokens when needed.
  *
- * Delegates to {@link ./session/auth-broker-config} so the TUI and the catalog
- * generator share the same credential-discovery logic.
+ * RE-EXPORTED, NOT REDEFINED. This was a wrapper that called the function below
+ * and added nothing: `session/auth-broker-config` already defaults `agentDir` to
+ * `getAgentDir()`, so the two were the same function under one name in two
+ * places. Callers that only wanted credential discovery had to import this
+ * module, which is the whole application, and one of them (`web/search`) sat in a
+ * 49-module import cycle because of it. Anything inside the package should import
+ * it from `./session/auth-broker-config`; this export exists because it is part
+ * of the published SDK surface.
  */
-export async function discoverAuthStorage(agentDir: string = getAgentDir()): Promise<AuthStorage> {
-	return discoverAuthStorageFromConfig(agentDir);
-}
+export { discoverAuthStorage };
 
 /**
  * Discover extensions from cwd.
