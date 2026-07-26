@@ -1,8 +1,5 @@
-import { prompt } from "@veyyon/utils";
-import { PROMPTS } from "../prompts/registry";
 import { createGradientHighlighter, type KeywordHighlighter } from "./gradient-highlight";
 import { magicKeywordRegex } from "./magic-keyword-boundary";
-import { keywordInProse } from "./markdown-prose";
 
 /**
  * "workflowz" keyword support.
@@ -14,27 +11,14 @@ import { keywordInProse } from "./markdown-prose";
  * Matching is prose-delimited and case-sensitive (lowercase only) —
  * "workflowz" triggers, but "workflowzed", "Workflowz", and "workflowz.ts"
  * never do.
+ *
+ * The detection half lives in `./workflow-keyword` so a caller that only needs to
+ * know whether a message mentions the keyword does not have to import the
+ * gradient highlighter and, through it, the theme engine. Both halves are
+ * re-exported here, so this stays the one place to import either from.
  */
 
-// Detection: lowercase keyword flanked by prose punctuation, whitespace, or a string edge.
-const WORKFLOW_WORD = magicKeywordRegex("workflowz");
-
-/** WORKFLOW_NOTICE is the default hidden notice for sessions with batched task calls enabled. */
-export const WORKFLOW_NOTICE: string = renderWorkflowNotice({ taskBatch: true });
-
-/** renderWorkflowNotice renders the workflow notice for the active task schema. */
-export function renderWorkflowNotice({ taskBatch }: { taskBatch: boolean }): string {
-	return prompt.render(PROMPTS["subagent/workflow-notice"].text, { taskBatch }).trim();
-}
-
-/**
- * Whether `text` contains the standalone keyword "workflowz"
- * (lowercase, prose-delimited) in prose — never inside a code block, inline
- * code span, or XML/HTML section.
- */
-export function containsWorkflow(text: string): boolean {
-	return keywordInProse(text, WORKFLOW_WORD);
-}
+export { containsWorkflow, renderWorkflowNotice, WORKFLOW_NOTICE } from "./workflow-keyword";
 
 /**
  * Highlight every standalone "workflowz" in `text` for editor display
