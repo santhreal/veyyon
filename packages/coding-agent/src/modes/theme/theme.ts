@@ -13,6 +13,12 @@ import { adjustHsv, colorLuma, errorMessage, getCustomThemesDir, isEnoent, logge
 import { type } from "arktype";
 import { LRUCache } from "lru-cache/raw";
 import { onAutoThemeMappingChanged, onColorBlindModeChanged, onSymbolPresetChanged } from "../../config/settings";
+// The bundled themes and the synchronous light/dark classifier live in
+// `./builtin-themes` so `config/settings` can reach `isLightTheme` for its legacy
+// theme migration without importing this module. Importing it from here closed
+// the cycle settings -> theme -> shimmer -> settings; see the note at the top of
+// that file.
+import { getBuiltinThemes, isLightThemeJson } from "./builtin-themes";
 import {
 	ansi256ToHex,
 	type ColorMode,
@@ -24,12 +30,6 @@ import {
 	type ThemeColor,
 	type ThemeJson,
 } from "./color";
-// The bundled themes and the synchronous light/dark classifier live in
-// `./builtin-themes` so `config/settings` can reach `isLightTheme` for its legacy
-// theme migration without importing this module. Importing it from here closed a
-// cycle (settings -> theme -> shimmer -> settings) that cost 51 MB per realm; see
-// the note at the top of that file.
-import { getBuiltinThemes, isLightThemeJson } from "./builtin-themes";
 import { resolveMermaidAscii } from "./mermaid-cache";
 import { lavaText } from "./shimmer";
 import { normalizeSpinnerFramesOverride, type SymbolPreset } from "./symbols";
@@ -571,11 +571,10 @@ export function getColorBlindMode(): boolean {
  *
  * THE SUBSCRIPTION LIVES HERE, NOT IN SETTINGS. `config/settings` used to call the
  * three setters above directly, which made domain configuration import the
- * terminal UI and closed the cycle settings -> theme -> shimmer -> settings. That
- * component cost 51 MB every time any part of it was imported, and the test runner
- * gives each test file its own realm, so a full run paid it about 1,800 times and
- * ran out of memory. Settings now fires a signal and this module listens, which
- * reverses the edge and leaves settings free of the theme engine.
+ * terminal UI and closed the cycle settings -> theme -> shimmer -> settings, so
+ * anything reaching settings for one value got the whole theme engine with it.
+ * Settings now fires a signal and this module listens, which reverses the edge and
+ * leaves settings free of the theme engine.
  *
  * These run at import, so a program that never loads the theme engine simply has
  * no listener. That is correct rather than a dropped update: `Settings.set` writes
