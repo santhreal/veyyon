@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import { resolveSubagentErrorText } from "@veyyon/coding-agent/task/executor";
-import { anySubagentFailed, classifySubagentOutcome } from "@veyyon/coding-agent/task/outcome";
+import {
+	classifySubagentOutcome,
+	describeSubagentBatch,
+	summarizeSubagentBatch,
+} from "@veyyon/coding-agent/task/outcome";
 import type { SingleResult } from "@veyyon/coding-agent/task/types";
 
 /**
@@ -115,14 +119,65 @@ describe("aggregating a batch of children", () => {
 	 * which is exactly where a parent stops reading.
 	 */
 	it("fails the batch when one child of many failed", () => {
-		const results = [makeResult({}), makeResult({}), makeResult({ exitCode: 1 })];
+		const summary = summarizeSubagentBatch([makeResult({}), makeResult({}), makeResult({ exitCode: 1 })]);
 
-		expect(anySubagentFailed(results)).toBe(true);
+		expect(summary.isError).toBe(true);
+		expect(summary).toMatchObject({ completed: 2, cancelled: 0, failed: 1 });
 	});
 
-	/** A single aborted child is enough, for the same reason. */
-	it("fails the batch when one child was cancelled", () => {
-		expect(anySubagentFailed([makeResult({}), makeResult({ aborted: true })])).toBe(true);
+	/**
+	 * THE CASE THIS SPLIT EXISTS FOR, and the one assertion here that reversed.
+	 *
+	 * A cancelled child used to fail the batch, through a predicate that asked
+	 * only "did anything go wrong". So a five-agent fan-out the operator stopped
+	 * after three finished arrived at the parent model shaped exactly like one
+	 * where two agents crashed: the parent re-ran work that had just been
+	 * cancelled on purpose, and the three transcripts it did get sat under a claim
+	 * that something had failed.
+	 *
+	 * The single-run rule is unchanged, and the two do not contradict: one run
+	 * that was cancelled delivered nothing, so its own call failed. A batch is a
+	 * different question, because the completed children's work is real and is
+	 * being returned, and the stop was the parent's own instruction. The counts
+	 * below carry what the flag no longer has to.
+	 */
+	it("does not fail a batch that was only cancelled", () => {
+		const summary = summarizeSubagentBatch([makeResult({}), makeResult({}), makeResult({ aborted: true })]);
+
+		expect(summary.isError).toBe(false);
+		expect(summary).toMatchObject({ completed: 2, cancelled: 1, failed: 0 });
+	});
+
+	/** Cancellation does not mask a real failure alongside it. */
+	it("still fails a batch holding both a cancellation and a failure", () => {
+		const summary = summarizeSubagentBatch([makeResult({ aborted: true }), makeResult({ exitCode: 2 })]);
+
+		expect(summary.isError).toBe(true);
+		expect(summary).toMatchObject({ completed: 0, cancelled: 1, failed: 1 });
+	});
+
+	/**
+	 * A merge failure counts as failed, not as its own third thing: the child did
+	 * the work and the parent did not receive it, so the operation it asked for
+	 * did not happen.
+	 */
+	it("counts a merge failure as a failure", () => {
+		const summary = summarizeSubagentBatch([makeResult({ error: "merge conflict" })]);
+
+		expect(summary).toMatchObject({ completed: 0, cancelled: 0, failed: 1 });
+		expect(summary.isError).toBe(true);
+	});
+
+	/**
+	 * An abort outranks the exit code here exactly as it does for a single run, so
+	 * a cancelled child that also exited non-zero is counted once, as cancelled.
+	 * Counting it twice would report more children than the batch contains.
+	 */
+	it("counts a cancelled child that also exited non-zero as cancelled only", () => {
+		const summary = summarizeSubagentBatch([makeResult({ aborted: true, exitCode: 1 })]);
+
+		expect(summary).toMatchObject({ completed: 0, cancelled: 1, failed: 0 });
+		expect(summary.isError).toBe(false);
 	});
 
 	/**
@@ -130,16 +185,77 @@ describe("aggregating a batch of children", () => {
 	 * carries no information and a parent learns to ignore it.
 	 */
 	it("does not fail a batch where every child completed", () => {
-		expect(anySubagentFailed([makeResult({}), makeResult({}), makeResult({})])).toBe(false);
+		const summary = summarizeSubagentBatch([makeResult({}), makeResult({}), makeResult({})]);
+
+		expect(summary.isError).toBe(false);
+		expect(summary).toMatchObject({ completed: 3, cancelled: 0, failed: 0 });
 	});
 
 	/**
 	 * An empty batch is not a failure. It happens when every spawn was cancelled
-	 * before start, which is reported through its own path; inventing an error
+	 * before start, which is counted through its own path; inventing an error
 	 * here would double-report it.
 	 */
 	it("does not fail an empty batch", () => {
-		expect(anySubagentFailed([])).toBe(false);
+		expect(summarizeSubagentBatch([]).isError).toBe(false);
+	});
+});
+
+describe("the line a batch shows the reader", () => {
+	/**
+	 * Silence when there is nothing to explain. A batch where everything worked
+	 * would otherwise open with a sentence restating that, and a header that
+	 * always appears is one a reader stops seeing.
+	 */
+	it("says nothing when every child completed", () => {
+		expect(describeSubagentBatch(summarizeSubagentBatch([makeResult({}), makeResult({})]))).toBeUndefined();
+	});
+
+	/**
+	 * The headline a cancelled fan-out needs: how many of the expected agents
+	 * actually reported. Without the total, three transcripts read as the whole
+	 * answer rather than as three fifths of one.
+	 */
+	it("names how many of the expected agents completed", () => {
+		const summary = summarizeSubagentBatch([
+			makeResult({}),
+			makeResult({}),
+			makeResult({}),
+			makeResult({ aborted: true }),
+			makeResult({ aborted: true }),
+		]);
+
+		expect(describeSubagentBatch(summary)).toBe("3 of 5 agents completed, 2 cancelled.");
+	});
+
+	/** Both kinds appear, and separately, because they call for different responses. */
+	it("reports cancellations and failures as different things", () => {
+		const summary = summarizeSubagentBatch([
+			makeResult({}),
+			makeResult({ aborted: true }),
+			makeResult({ exitCode: 1 }),
+		]);
+
+		expect(describeSubagentBatch(summary)).toBe("1 of 3 agents completed, 1 cancelled, 1 failed.");
+	});
+
+	/** A failure with no cancellation does not mention cancelling. */
+	it("omits the cancelled count when nothing was cancelled", () => {
+		const summary = summarizeSubagentBatch([makeResult({}), makeResult({ exitCode: 1 })]);
+
+		expect(describeSubagentBatch(summary)).toBe("1 of 2 agents completed, 1 failed.");
+	});
+
+	/**
+	 * Spawns cancelled before they started have no result to classify, so callers
+	 * add them to the count. The total has to move with them, or the line reports
+	 * fewer agents than were asked for.
+	 */
+	it("counts spawns that never started once the caller adds them", () => {
+		const summary = summarizeSubagentBatch([makeResult({}), makeResult({})]);
+		summary.cancelled += 2;
+
+		expect(describeSubagentBatch(summary)).toBe("2 of 4 agents completed, 2 cancelled.");
 	});
 });
 
