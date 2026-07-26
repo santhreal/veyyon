@@ -5,7 +5,8 @@
 import { PROVIDER_REGISTRY } from "@veyyon/ai";
 import { Args, Command, Flags } from "@veyyon/utils/cli";
 import chalk from "chalk";
-import { isAuthenticated, ModelRegistry } from "../config/model-registry";
+import { isAuthenticated } from "../config/auth-state";
+import { ModelRegistry } from "../config/model-registry";
 import { discoverAuthStorage } from "../sdk";
 import { getAvailableAuthMethods } from "../web/search/providers/perplexity-auth";
 

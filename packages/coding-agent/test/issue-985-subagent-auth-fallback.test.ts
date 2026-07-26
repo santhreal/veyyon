@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Api, Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
-import { kNoAuth } from "@veyyon/coding-agent/config/model-registry";
+import { kNoAuth } from "@veyyon/coding-agent/config/auth-state";
 import {
 	type ModelLookupRegistry,
 	resolveModelOverrideWithAuthFallback,
