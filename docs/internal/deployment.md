@@ -61,6 +61,27 @@ cd docs/handbook && mdbook build
 Use mdbook **v0.5.2**, the `docs.yml` book-freshness gate rebuilds with that pinned
 version and fails CI if the committed `docs/handbook/book/` doesn't match the sources.
 
+The built book is tracked on purpose. Cloudflare Pages deploys `website/**` and
+`docs/handbook/book/**` as static files and does not run mdbook, so the committed
+output is what readers get, and the freshness gate is what keeps it honest.
+
+That makes `mdbook build` a publishing step, not a private one. It regenerates the
+whole book from whatever sources are on disk, including sources someone else is
+still editing. Rebuilding to publish one new section once rewrote 93 files and
+deleted a 367-line chapter, because a chapter rename was in flight: the new page
+was untracked, `SUMMARY.md` no longer listed the old one, and the rebuild was
+correct output for that half-finished state.
+
+So, before you commit a rebuild:
+
+- Stage `docs/handbook/book/**` only alongside the source change it belongs to.
+  Never sweep it into an unrelated commit.
+- Check `git status docs/handbook/src/` first. An untracked page or a `SUMMARY.md`
+  entry you did not write means a rename is in flight, and your rebuild will bundle
+  it. Wait for it to land.
+- If the rebuild deletes a chapter you did not remove, that is the signal. Stop and
+  find out whose change you are carrying.
+
 ### Technical reports and the blog
 
 A technical report is a Markdown file in `website/blog/`, and that file is the only
