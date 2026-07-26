@@ -9,7 +9,7 @@ import {
 	resetRegisteredArtifactDirsForTests,
 } from "@veyyon/coding-agent/internal-urls/registry-helpers";
 import { InternalUrlRouter } from "@veyyon/coding-agent/internal-urls/router";
-import { resolveToolSearchScope } from "@veyyon/coding-agent/tools/path-utils";
+import { resolveToolSearchScope } from "@veyyon/coding-agent/tools/search-scope";
 
 /**
  * Path-only callers (search/grep, bash URL expansion) only need the artifact's

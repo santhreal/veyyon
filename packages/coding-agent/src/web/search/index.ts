@@ -12,7 +12,7 @@ import { settings } from "../../config/settings";
 import type { CustomTool, CustomToolContext, RenderResultOptions } from "../../extensibility/custom-tools/types";
 import type { Theme } from "../../modes/theme/theme";
 import { PROMPTS } from "../../prompts/registry";
-import { discoverAuthStorage } from "../../sdk";
+import { discoverAuthStorage } from "../../session/auth-broker-config";
 import type { ToolSession } from "../../tools";
 import { formatAge } from "../../tools/render-utils";
 import { throwIfAborted } from "../../tools/tool-errors";

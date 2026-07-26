@@ -20,7 +20,8 @@ import { parseReadUrlTarget } from "./fetch";
 import { createFileRecorder, formatResultPath } from "./file-recorder";
 import { classifyGroupedLines, formatGroupedFiles, groupLineIndicesByBlank } from "./grouped-file-output";
 import type { OutputMeta } from "./output-meta";
-import { isInternalUrlPath, resolveToolSearchScope } from "./path-utils";
+import { isInternalUrlPath } from "./path-utils";
+import { resolveToolSearchScope } from "./search-scope";
 import { enforcePlanModeWrite } from "./plan-mode-guard";
 import {
 	appendParseErrorsBulletList,

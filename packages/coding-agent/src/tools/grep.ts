@@ -59,13 +59,13 @@ import {
 	pathTargetsSsh,
 	type ResolvedSearchTarget,
 	resolveReadPath,
-	resolveToolSearchScope,
 	selectorLineRanges,
 	splitInternalUrlSel,
 	splitPathAndSel,
 	splitPathAndSelPreferringLiteral,
 	toPathList,
 } from "./path-utils";
+import { resolveToolSearchScope } from "./search-scope";
 import {
 	createCachedComponent,
 	formatCodeFrameLine,

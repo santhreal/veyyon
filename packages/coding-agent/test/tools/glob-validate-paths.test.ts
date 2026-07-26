@@ -7,9 +7,9 @@ import { getThemeByName, initTheme, type Theme } from "@veyyon/coding-agent/mode
 import {
 	expandDelimitedPathEntries,
 	parseFindPattern,
-	resolveToolSearchScope,
 	splitDelimitedPathEntry,
 } from "@veyyon/coding-agent/tools/path-utils";
+import { resolveToolSearchScope } from "@veyyon/coding-agent/tools/search-scope";
 import type { Component } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
 import { globToolRenderer } from "../../src/tools/glob";
