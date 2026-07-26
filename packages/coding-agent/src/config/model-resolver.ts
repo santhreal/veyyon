@@ -36,7 +36,8 @@ import {
 	parseThinkingLevel,
 	resolveThinkingLevelForModel,
 } from "../thinking";
-import { isAuthenticated, kNoAuth, type ModelRegistry } from "./model-registry";
+import { isAuthenticated, kNoAuth } from "./auth-state";
+import type { ModelRegistry } from "./model-registry";
 import { modelResolutionFailureMessage } from "./model-resolution-failure";
 import {
 	DEFAULT_MODEL_ROLE_ALIAS,

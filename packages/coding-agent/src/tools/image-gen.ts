@@ -23,7 +23,8 @@ import {
 } from "@veyyon/utils";
 import { type } from "arktype";
 import packageJson from "../../package.json" with { type: "json" };
-import { isAuthenticated, type ModelRegistry } from "../config/model-registry";
+import { isAuthenticated } from "../config/auth-state";
+import type { ModelRegistry } from "../config/model-registry";
 import { settings } from "../config/settings";
 import type { CustomTool } from "../extensibility/custom-tools/types";
 import { resolveXAIHttpCredentials, veyyonXAIUserAgent } from "../lib/xai-http";

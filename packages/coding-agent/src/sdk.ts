@@ -42,9 +42,10 @@ import { loadCapability } from "./capability";
 import { type Rule, ruleCapability, setActiveRules } from "./capability/rule";
 import { bucketRules } from "./capability/rule-buckets";
 import { shouldEnableAppendOnlyContext } from "./config/append-only-context-mode";
+import { isAuthenticated, kNoAuth } from "./config/auth-state";
 import { resolveEffort, withLegacyDefaultEffort } from "./config/effort-resolver";
 import { shouldInlineToolDescriptors } from "./config/inline-tool-descriptors-mode";
-import { isAuthenticated, kNoAuth, ModelRegistry } from "./config/model-registry";
+import { ModelRegistry } from "./config/model-registry";
 import { modelResolutionFailureMessage } from "./config/model-resolution-failure";
 import {
 	formatModelSelectorValue,

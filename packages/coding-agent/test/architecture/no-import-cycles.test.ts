@@ -172,35 +172,28 @@ function findCycles(graph: Graph): string[][] {
 }
 
 /**
- * The entry points that are CLEAN and must stay clean. These are the hot ones:
- * `path-utils` and `config/settings` are imported for small things all over the
- * package, and `discovery` and `theme` sit under both.
+ * The entry points that are CLEAN and must stay clean.
+ *
+ * There is no ratchet list any more, because there is nothing left to ratchet:
+ * every entry point below is acyclic, including `session/agent-session`, which
+ * used to sit on a 54-module component that reached `main.ts` and the whole
+ * interactive UI. This list replaced it. If a cycle comes back, add the fix, not
+ * a row saying the cycle is allowed.
+ *
+ * The hot ones are first: `path-utils` and `config/settings` are imported for
+ * small things all over the package, and `discovery` and `theme` sit under both.
+ * The rest are the modules the cycles used to run through, kept as entry points
+ * so a regression is caught where it happens rather than in whatever imports it.
  */
 const ACYCLIC_ENTRIES = [
 	["discovery", "discovery/index.ts"],
 	["config/settings", "config/settings.ts"],
 	["tools/path-utils", "tools/path-utils.ts"],
 	["modes/theme/theme", "modes/theme/theme.ts"],
-] as const;
-
-/**
- * The entry points that still carry cycles, with the size of the largest one
- * under each. A RATCHET, not a target: these numbers may only go down, and a case
- * here fails if a change makes a component bigger.
- *
- * They are listed rather than quietly excluded, because leaving them out would
- * read as "everything is acyclic", which is not true. What is left is three
- * mutual pairs, each two modules that genuinely need each other:
- * `config/model-registry` with `config/model-resolver`, `mcp/config` with
- * `mcp/config-writer`, and `edit/diff` with `edit/modes/replace` (diff needs the
- * fuzzy matcher, the matcher needs to render a diff). Splitting the shared
- * primitives out of each pair is worth doing and cheap, but a two-module
- * component costs almost nothing next to the 54-module one that used to be here,
- * so the ratchet holds the line rather than blocking on it.
- */
-const RATCHETED_ENTRIES = [
-	["internal-urls", "internal-urls/index.ts", 2],
-	["session/agent-session", "session/agent-session.ts", 2],
+	["config/model-registry", "config/model-registry.ts"],
+	["config/model-resolver", "config/model-resolver.ts"],
+	["internal-urls", "internal-urls/index.ts"],
+	["session/agent-session", "session/agent-session.ts"],
 ] as const;
 
 /**
@@ -224,10 +217,13 @@ const RATCHETED_ENTRIES = [
  * trip them, and a change that adds a hundred modules to a hot path does.
  */
 const GRAPH_SIZE_CEILINGS = [
+	["config/auth-state", "config/auth-state.ts", 1],
+	["config/model-resolver", "config/model-resolver.ts", 12],
 	["tools/path-utils", "tools/path-utils.ts", 20],
 	["config/settings", "config/settings.ts", 160],
 	["modes/theme/theme", "modes/theme/theme.ts", 170],
 	["tools/index", "tools/index.ts", 200],
+	["config/model-registry", "config/model-registry.ts", 165],
 	["discovery", "discovery/index.ts", 240],
 	["internal-urls", "internal-urls/index.ts", 520],
 	["session/agent-session", "session/agent-session.ts", 760],
@@ -246,20 +242,6 @@ describe("hot import graphs are acyclic", () => {
 			const cycles = findCycles(buildGraph(path.join(SRC, relative)));
 
 			expect(cycles).toEqual([]);
-		});
-	}
-
-	for (const [label, relative, largest] of RATCHETED_ENTRIES) {
-		/**
-		 * The ratchet. Asserts the biggest remaining component under this entry is no
-		 * bigger than it is today, so work that shrinks it is free and work that grows
-		 * it fails here with the module list.
-		 */
-		it(`does not grow the largest import cycle under ${label} (currently ${largest})`, () => {
-			const cycles = findCycles(buildGraph(path.join(SRC, relative)));
-			const biggest = Math.max(0, ...cycles.map(cycle => cycle.length));
-
-			expect(biggest).toBeLessThanOrEqual(largest);
 		});
 	}
 
