@@ -1,6 +1,6 @@
 ---
 description: "Reaching into another project by absolute path costs tokens on every call; re-root there with set_cwd so its files take short relative paths"
-condition: "(?:^|[\\s\"'=(,])/(?!usr/|etc/|opt/|proc/|sys/|dev/|var/|bin/|sbin/|lib/|lib64/|boot/|run/|snap/|nix/|tmp/|private/|System/|Library/|Applications/)(?:[\\w.@+-]+/){3,}[\\w.@+-]+"
+condition: "(?:^|[\\s\"'=(,])/(?!usr/|etc/|opt/|proc/|sys/|dev/|var/|bin/|sbin/|lib/|lib64/|boot/|run/|snap/|nix/|tmp/|private/|System/|Library/|Applications/)(?:[\\w.@+-]+/){2,}[\\w.@+-]+"
 scope: "tool:read, tool:grep, tool:glob, tool:ast_grep"
 pathScope: outside-cwd
 interruptMode: never

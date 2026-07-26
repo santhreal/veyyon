@@ -43,6 +43,7 @@ import {
 import { normalizeConcurrencyLimit } from "./task/parallel";
 import { usesCodexTaskPrompt } from "./task/prompt-policy";
 import { shortenPath } from "./tools/render-utils";
+import { isNonProjectRoot, NON_PROJECT_REASON_TEXT, type NonProjectReason } from "./tools/reroot-hint";
 import { type ActiveRepoContext, resolveActiveRepoContext } from "./utils/active-repo-context";
 import { formatLocalCalendarDate } from "./utils/local-date";
 import { normalizePromptPath } from "./utils/prompt-path";
@@ -769,6 +770,9 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 			agentsMdFiles: [],
 		} satisfies WorkspaceTree,
 		activeRepoContext: null as ActiveRepoContext | null,
+		// Null means "no reason to complain", which is the right answer when the check could not run:
+		// a prompt that timed out preparing must not assert the session is misrooted.
+		nonProjectCwd: null as NonProjectReason | null,
 		cpuModel: undefined as string | undefined,
 		gpu: undefined as string | undefined,
 		resolvedPersonality: {
@@ -850,6 +854,10 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		providedActiveRepoContext !== undefined
 			? Promise.resolve(providedActiveRepoContext)
 			: logger.time("resolveActiveRepoContext", () => resolveActiveRepoContext(resolvedCwd));
+	// Whether the session is rooted somewhere that is not a project at all. Prepared here, under the
+	// same deadline as everything else, because it may stat the working directory and scan a bounded
+	// way below it; a prompt is never worth blocking on.
+	const nonProjectCwdPromise = logger.time("isNonProjectRoot", () => isNonProjectRoot(resolvedCwd));
 	const cpuModelPromise = logger.time("getCpuModel", getCpuModel);
 	const gpuPromise = logger.time("getCachedGpu", getCachedGpu);
 	const personalityPromise: Promise<ResolvedPersonality> =
@@ -865,6 +873,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		skills,
 		workspaceTree,
 		activeRepoContext,
+		nonProjectCwd,
 		cpuModel,
 		gpu,
 		resolvedPersonality,
@@ -890,6 +899,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		withDeadline("loadSkills", skillsPromise, prepDefaults.skills),
 		withDeadline("buildWorkspaceTree", workspaceTreePromise, prepDefaults.workspaceTree),
 		withDeadline("resolveActiveRepoContext", activeRepoContextPromise, prepDefaults.activeRepoContext),
+		withDeadline("isNonProjectRoot", nonProjectCwdPromise, prepDefaults.nonProjectCwd),
 		withDeadline("getCpuModel", cpuModelPromise, prepDefaults.cpuModel),
 		withDeadline("getCachedGpu", gpuPromise, prepDefaults.gpu),
 		withDeadline("resolvePersonality", personalityPromise, prepDefaults.resolvedPersonality),
@@ -991,6 +1001,9 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		// Merged into the project section: same input (cwd), same lifetime, same
 		// invalidation as the rest of the project framing.
 		activeRepoRoot: activeRepoContext ? normalizePromptPath(activeRepoContext.relativeRepoRoot) : "",
+		// Why the working directory is not a project, when it is not one. The prompt turns the reason
+		// into the sentence that names it; an empty string is "nothing to say".
+		nonProjectCwd: nonProjectCwd ? NON_PROJECT_REASON_TEXT[nonProjectCwd] : "",
 		contextFiles,
 		agentsMdSearch: { files: agentsMdFiles },
 		workspaceTree,

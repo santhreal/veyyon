@@ -2206,6 +2206,33 @@ export const repo = {
 		return result.stdout.trim() || null;
 	},
 
+	/**
+	 * Which of `paths` this repository ignores.
+	 *
+	 * Answered by git rather than by reading `.gitignore`, because the real rules are the union of
+	 * nested ignore files, negations, the global excludes file and `.git/info/exclude`, and a
+	 * hand-rolled reader agrees with git right up until it does not.
+	 *
+	 * `git check-ignore` exits 1 to mean "nothing here is ignored", which is an ANSWER and not a
+	 * failure, so only a higher code is treated as one. Returns null when the command could not run
+	 * at all, so a caller can tell "nothing is ignored" apart from "the question was not answered".
+	 *
+	 * Paths go in on stdin rather than as arguments. `-z` is what makes the exchange unambiguous
+	 * when a path contains a newline, and git refuses `-z` in any other mode ("-z only makes sense
+	 * with --stdin"); passing them as arguments would also put an unbounded list on the command
+	 * line.
+	 */
+	async ignored(root: string, paths: readonly string[], signal?: AbortSignal): Promise<Set<string> | null> {
+		if (paths.length === 0) return new Set();
+		const result = await git(root, ["check-ignore", "-z", "--stdin"], {
+			readOnly: true,
+			signal,
+			stdin: `${paths.join("\0")}\0`,
+		});
+		if (result.exitCode > 1) return null;
+		return new Set(result.stdout.split("\0").filter(entry => entry.length > 0));
+	},
+
 	/** Resolve the primary checkout root, or the shared common dir for bare-repo worktrees. */
 	async primaryRoot(cwd: string, signal?: AbortSignal): Promise<string | null> {
 		const repository = await resolveRepository(cwd);

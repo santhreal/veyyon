@@ -32,6 +32,12 @@ The rules above were found by walking up from the working directory, so they des
 - You have read or edited three or more files under one directory outside the working directory, or run three or more commands there.
 - The working directory is a home, temp, or launch directory rather than the project you were asked about.
 Re-rooting loads the destination's `AGENTS.md` and makes tool headers relative instead of absolute. Do not re-root to pass through a file or two, and do not re-root to a parent of the current directory to reach one file.
+{{#if nonProjectCwd}}
+The third case is already confirmed for this session: `{{cwd}}` is not a project root, because {{nonProjectCwd}}. No project `AGENTS.md` has loaded and every path you touch will be absolute. As soon as you know which project the work is in, `set_cwd` to its root before doing anything else.
+{{/if}}
+{{#unless (includes tools "set_cwd")}}
+`set_cwd` is not in your active toolset right now, so find and activate it with `search_tool_bm25` before calling it.
+{{/unless}}
 </working-directory>
 
 {{#if includeWorkspaceTree}}
@@ -52,6 +58,7 @@ Today is {{date}}, and the current working directory is '{{cwd}}'.
 <active-repo-context>
 The session cwd is outside git. Exactly one direct child git repository was detected at `{{activeRepoRoot}}`.
 Paths under `{{activeRepoRoot}}/` are the active project for this session. Parent-cwd misses are inconclusive until checking under `{{activeRepoRoot}}/`.
+That is the third re-root case above, already confirmed rather than guessed: unless the user asked for work spanning the parent directory, `set_cwd` to `{{activeRepoRoot}}` before you start, which loads that project's `AGENTS.md`.
 </active-repo-context>
 {{/if}}
 
