@@ -59,7 +59,7 @@ import {
 	findMatch,
 	type SequenceSearchResult,
 	seekSequence,
-} from "./replace";
+} from "../match";
 
 export type Operation = "create" | "delete" | "update";
 

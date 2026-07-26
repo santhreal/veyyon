@@ -9,7 +9,7 @@ import { errorMessage } from "@veyyon/utils";
 import * as Diff from "diff";
 import { resolveToCwd } from "../tools/path-utils";
 import { type BlockContextSource, findBlockContextLines } from "../utils/block-context";
-import { DEFAULT_FUZZY_THRESHOLD, EditMatchError, findMatch } from "./modes/replace";
+import { DEFAULT_FUZZY_THRESHOLD, EditMatchError, findMatch } from "./match";
 import { adjustIndentation, normalizeToLF, stripBom } from "./normalize";
 import { readEditFileText } from "./read-file";
 
