@@ -29,7 +29,7 @@ The context files above are loaded automatically: every `AGENTS.md` and `CLAUDE.
 <working-directory>
 The rules above were found by walking up from the working directory, so they describe THAT project and not whatever you happen to open. Re-root with `set_cwd` when the work moves, in any of these cases:
 - The user names a project or directory and you are about to work there.
-- You have read or edited three or more files under one directory outside the working directory.
+- You have read or edited three or more files under one directory outside the working directory, or run three or more commands there.
 - The working directory is a home, temp, or launch directory rather than the project you were asked about.
 Re-rooting loads the destination's `AGENTS.md` and makes tool headers relative instead of absolute. Do not re-root to pass through a file or two, and do not re-root to a parent of the current directory to reach one file.
 </working-directory>

@@ -953,6 +953,17 @@ export interface AgentSessionConfig {
 	 */
 	ownedAsyncJobManager?: AsyncJobManager;
 	/**
+	 * Whether this session was spawned by another session in the SAME process.
+	 *
+	 * Set from `isSubagentSession` in `sdk.ts`, which is the one owner of that
+	 * question. It governs re-rooting: a subagent shares the process with its
+	 * parent and its siblings, so moving its working directory must not move
+	 * theirs. See {@link AgentSession.rescopeToCwd}. Default false, which is the
+	 * safe reading for an embedder that builds a session directly: a session with
+	 * nobody above it owns the process.
+	 */
+	isSubagent?: boolean;
+	/**
 	 * AsyncJobManager reachable by this session for scoped job actions.
 	 *
 	 * Top-level owners receive their own manager, subagents receive the inherited
@@ -1918,6 +1929,8 @@ export class AgentSession {
 	 * this undefined and **MUST NOT** dispose the global instance on teardown.
 	 */
 	readonly #ownedAsyncJobManager: AsyncJobManager | undefined;
+	/** Whether another session in this process spawned this one. */
+	readonly #isSubagent: boolean;
 	/**
 	 * AsyncJobManager scoped to this session for introspection/cancellation.
 	 *
@@ -2555,6 +2568,7 @@ export class AgentSession {
 		this.#evalKernelOwnerId = config.evalKernelOwnerId ?? `agent-session:${Snowflake.next()}`;
 		this.#parentEvalSessionId = config.parentEvalSessionId;
 		this.#ownedAsyncJobManager = config.ownedAsyncJobManager;
+		this.#isSubagent = config.isSubagent === true;
 		this.#asyncJobManager = config.asyncJobManager ?? config.ownedAsyncJobManager;
 		this.#scopedModels = config.scopedModels ?? [];
 		if (config.thinkingLevel === AUTO_THINKING) {
@@ -6476,6 +6490,10 @@ export class AgentSession {
 	 * has been re-scoped. `refreshBaseSystemPrompt` also invalidates the provider
 	 * prompt-cache key when the content changes, so the stale prefix is not re-served.
 	 *
+	 * WHOSE STATE MOVES depends on who is asking. The process-global half lives in
+	 * `#rescopeProcessToCwd` and runs only for the session that owns the process; a
+	 * subagent re-roots itself and leaves its parent and its siblings where they are.
+	 *
 	 * REPEATING A DIRECTORY IS SKIPPED, and that is not an optimization: the TUI
 	 * reaches this twice for one move. `setCwd` calls it and then emits
 	 * `cwd_changed`, whose handler calls `applyCwdChange`, which calls it again for
@@ -6489,6 +6507,41 @@ export class AgentSession {
 	async rescopeToCwd(cwd: string): Promise<void> {
 		if (this.#lastRescopedCwd === cwd) return;
 		this.#lastRescopedCwd = cwd;
+		// A SUBAGENT MAY NOT MOVE THE PROCESS. Everything above this line is
+		// per-session; everything in `#rescopeProcessToCwd` is process-global, and
+		// subagents are built in-process (`sdk.ts`), several can be in flight at
+		// once, and each carries its own `AgentSession` with its own session cwd.
+		// One of them re-rooting used to `chdir` the whole process, reload the
+		// global settings singleton for ITS project, and reset the shared
+		// capability and plugin-root caches, so the parent and every sibling
+		// silently moved to a directory nobody asked them to be in. Their tool
+		// calls mostly survived it, because `resolveToCwd(path, sessionCwd)`
+		// resolves against the SESSION cwd, and what did not survive is everything
+		// that reads `process.cwd()` directly: a spawned child process, a bare
+		// relative `fs` call, and any reader still consulting `getProjectDir()`.
+		if (!this.#isSubagent) await this.#rescopeProcessToCwd(cwd);
+		// Session-scoped, so it runs for every session. The base system prompt
+		// states the working directory verbatim, so a subagent that skipped this
+		// would go on naming the directory it just left.
+		await this.refreshSshTool({ activateIfAvailable: true });
+		await this.refreshBaseSystemPrompt();
+	}
+
+	/**
+	 * The half of a re-root that belongs to the PROCESS, not to one session.
+	 *
+	 * Every line here writes state shared by everything running in this process,
+	 * which is why only the session that owns the process runs it. Kept as its own
+	 * method so that boundary is a thing you can see rather than a comment you have
+	 * to trust: anything added here is process-global by construction, and anything
+	 * session-scoped belongs in {@link AgentSession.rescopeToCwd} beside the prompt
+	 * refresh.
+	 *
+	 * ORDER IS LOAD-BEARING with the caller's: the base system prompt is assembled
+	 * from settings, capabilities and plugin roots, so it is rebuilt after all of
+	 * these, once every input to it has been re-scoped.
+	 */
+	async #rescopeProcessToCwd(cwd: string): Promise<void> {
 		// Align process project dir so status-line / discovery readers that still
 		// consult getProjectDir() stay consistent with the live session root.
 		setProjectDir(cwd);
@@ -6504,12 +6557,10 @@ export class AgentSession {
 			// exclusions leak and newly-excluded providers are still used.
 			applyProviderGlobalsFromSettings(settings);
 		}
-		// Re-warm plugin roots, capabilities and the ssh tool so the next prompt
-		// sees everything scoped to the new project directory.
+		// Re-warm plugin roots and capabilities so the next prompt sees everything
+		// scoped to the new project directory.
 		clearClaudePluginRootsCache();
 		resetCapabilities();
-		await this.refreshSshTool({ activateIfAvailable: true });
-		await this.refreshBaseSystemPrompt();
 	}
 
 	/**

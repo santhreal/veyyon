@@ -110,4 +110,19 @@ per-run wall clock and request budgets, how long an idle subagent stays in memor
 before being parked to disk (`idleTtlMs`), and whether their edits land in an isolated
 copy of the tree first (`subagent.isolation.*`, see [Safety](../using/safety.md)).
 
+A subagent's working directory is its own. If a subagent calls `set_cwd`, only that
+subagent moves: its tool paths resolve against the new directory and its system prompt
+is rebuilt for it, while your session and every other subagent stay where they were.
+
+That matters because subagents run inside the same process you do. The main session
+also moves the process working directory when it re-roots, so that a command you run
+and a relative path you write agree with the project you have open. A subagent doing
+the same would move the ground under everyone else, and the symptom would be a command
+running in the wrong repository with nothing on screen to explain it.
+
+The trade is that a subagent working elsewhere does not pick up that project's
+settings, capabilities or plugins, because those are read once for the process. Give a
+subagent a task in another project only when the work is self-contained, and re-root
+your own session instead when you want that project's configuration to apply.
+
 The full key list is in the [settings reference](../../../settings.md#subagents).

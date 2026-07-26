@@ -606,6 +606,28 @@ export interface CreateAgentSessionOptions {
 	bypassAllApprovals?: boolean;
 }
 
+/**
+ * Whether these options describe a SUBAGENT: a session another session spawned
+ * inside this same process, rather than the top-level session the process was
+ * started for.
+ *
+ * Both signals are needed. `taskDepth` counts task recursion and is what the task
+ * executor sets; `parentTaskPrefix` names the spawning agent's artifact prefix and
+ * is what the IRC and registry path sets. A session can arrive carrying one and
+ * not the other, so asking about either alone misses a real subagent.
+ *
+ * ONE owner because the answer decides four separate things: which Argot policy
+ * the session follows, whether it is displayed as "sub", whether it is given the
+ * vibe tools, and whether re-rooting it may move the PROCESS working directory.
+ * Those were four inline copies of this expression, which is three chances for
+ * them to disagree about what a subagent is. The last of the four is the one with
+ * teeth, because a subagent that re-roots the process moves the working directory
+ * out from under its parent and every sibling sharing the process.
+ */
+export function isSubagentSession(options: Pick<CreateAgentSessionOptions, "taskDepth" | "parentTaskPrefix">): boolean {
+	return (options.taskDepth ?? 0) > 0 || Boolean(options.parentTaskPrefix);
+}
+
 /** Result from createAgentSession */
 export interface CreateAgentSessionResult {
 	/** The created session */
@@ -1316,10 +1338,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	// session and loads its task's project itself, `inherit` forks the parent's
 	// codec. Correctness never rests on this (the boundary rule expands every
 	// emitted seam); the policy trades tokens.
-	const argotIsSubagent = (options.taskDepth ?? 0) > 0 || Boolean(options.parentTaskPrefix);
+	const sessionIsSubagent = isSubagentSession(options);
 	const argot = createArgotSession({
 		enabled: argotEnabled,
-		isSubagent: argotIsSubagent,
+		isSubagent: sessionIsSubagent,
 		subagentMode: settings.get("argot.subagents"),
 		parentArgot: options.parentArgot,
 	});
@@ -1625,9 +1647,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 	const agentRegistry = options.agentRegistry ?? AgentRegistry.global();
 	const resolvedAgentId = options.agentId ?? options.parentTaskPrefix ?? MAIN_AGENT_ID;
-	const resolvedAgentDisplayName =
-		options.agentDisplayName ?? ((options.taskDepth ?? 0) > 0 || options.parentTaskPrefix ? "sub" : "main");
-	const agentKind = (options.taskDepth ?? 0) > 0 || options.parentTaskPrefix ? ("sub" as const) : ("main" as const);
+	const resolvedAgentDisplayName = options.agentDisplayName ?? (sessionIsSubagent ? "sub" : "main");
+	const agentKind = sessionIsSubagent ? ("sub" as const) : ("main" as const);
 	/**
 	 * Forget the agent ref on teardown — unless the agent is being parked (or is
 	 * already parked). Parking disposes the session but keeps the ref addressable
@@ -1658,23 +1679,36 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				activeToolNames.add(name);
 			}
 		};
+		/**
+		 * Move the session working directory before an `AgentSession` exists.
+		 *
+		 * Only reachable in the window where a tool runs during construction. Once
+		 * `session` is assigned, both tool sessions delegate to `AgentSession.setCwd`,
+		 * which owns the re-scope and does considerably more than this.
+		 *
+		 * ONE copy, because there were two: the agent's tool session and the
+		 * advisor's held byte-identical bodies, and the `setProjectDir` below is
+		 * exactly the kind of line that gets fixed in one of a pair and not the other.
+		 * It is guarded for the same reason `AgentSession.rescopeToCwd` guards its
+		 * process-global half: a subagent shares this process with its parent and its
+		 * siblings, and may not move their working directory.
+		 */
+		const setCwdBeforeSessionExists: NonNullable<ToolSession["setCwd"]> = async (resolvedPath, options) => {
+			const previous = sessionManager.getCwd();
+			const cwd = await sessionManager.setCwd(resolvedPath, options);
+			if (cwd !== previous) {
+				if (!sessionIsSubagent) setProjectDir(cwd);
+				const note = `Session working directory changed: ${previous} → ${cwd}`;
+				sessionManager.appendCustomMessageEntry("cwd_changed", note, true, { previous, cwd }, "agent");
+			}
+			return cwd;
+		};
 		const toolSession: ToolSession = {
 			get cwd() {
 				return sessionManager.getCwd();
 			},
-			setCwd: async (resolvedPath, options) => {
-				if (session) {
-					return session.setCwd(resolvedPath, options);
-				}
-				const previous = sessionManager.getCwd();
-				const cwd = await sessionManager.setCwd(resolvedPath, options);
-				if (cwd !== previous) {
-					setProjectDir(cwd);
-					const note = `Session working directory changed: ${previous} → ${cwd}`;
-					sessionManager.appendCustomMessageEntry("cwd_changed", note, true, { previous, cwd }, "agent");
-				}
-				return cwd;
-			},
+			setCwd: async (resolvedPath, options) =>
+				session ? session.setCwd(resolvedPath, options) : setCwdBeforeSessionExists(resolvedPath, options),
 			isToolActive: name => activeToolNames.has(name),
 			setActiveToolNames,
 			hasUI: options.hasUI ?? false,
@@ -3118,19 +3152,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			get cwd() {
 				return sessionManager.getCwd();
 			},
-			setCwd: async (resolvedPath, options) => {
-				if (session) {
-					return session.setCwd(resolvedPath, options);
-				}
-				const previous = sessionManager.getCwd();
-				const cwd = await sessionManager.setCwd(resolvedPath, options);
-				if (cwd !== previous) {
-					setProjectDir(cwd);
-					const note = `Session working directory changed: ${previous} → ${cwd}`;
-					sessionManager.appendCustomMessageEntry("cwd_changed", note, true, { previous, cwd }, "agent");
-				}
-				return cwd;
-			},
+			setCwd: async (resolvedPath, options) =>
+				session ? session.setCwd(resolvedPath, options) : setCwdBeforeSessionExists(resolvedPath, options),
 			hasEditTool: true,
 			requireYieldTool: false,
 			getSessionId: () => {
@@ -3192,10 +3215,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			skillsSettings: settings.getGroup("skills"),
 			modelRegistry,
 			toolRegistry,
-			createVibeTools:
-				(options.taskDepth ?? 0) === 0 && !options.parentTaskPrefix
-					? () => createVibeTools(toolSession)
-					: undefined,
+			createVibeTools: sessionIsSubagent ? undefined : () => createVibeTools(toolSession),
+			// A subagent shares this process with its parent and its siblings, so its
+			// re-root may not move the process working directory or any other
+			// process-global project state. See `AgentSession.rescopeToCwd`.
+			isSubagent: sessionIsSubagent,
 			builtInToolNames: builtInRegistryToolNames,
 			transformContext,
 			transformProviderContext,
