@@ -207,12 +207,12 @@ function resolvesFor(rootDir: string, relFile: string, target: string): boolean 
  *    `packages/server/src/database/connection.ts` that argot's docs use as a
  *    stand-in for "some long path in your repo").
  *
- * One entry is none of those and is real rot left deliberately visible:
- * `packages/natives/scripts/gen-npm-packages.ts` is named as the generator of the
- * per-platform leaf packages, and neither the script nor the `LEAF_TARGETS` list
- * the same paragraph tells contributors to edit exists anywhere in the tree. That
- * needs someone who knows where the leaf layout moved, not a guess, so it is
- * listed rather than rewritten. An entry here is a promise to remove it.
+ * An entry here is a promise to remove it, and one has been kept: the list used
+ * to carry `docs/internal/natives-architecture.md:77`, which named a generator
+ * script for the per-platform natives leaf packages. The script did not move, it
+ * was deleted when the npm publish channel was removed, and the doc had gone on
+ * describing it. The doc now describes what actually ships, so the path is gone
+ * and the entry with it. Every remaining entry is one of the three kinds above.
  *
  * Adding to this list is deliberately awkward: the exact line number is part of
  * the key, so an entry stops matching the moment the doc is edited around it, and
@@ -227,7 +227,6 @@ export const DEAD_PATH_BASELINE: readonly string[] = Object.freeze([
 	"docs/context-files.md:217:.github/copilot-instructions.md",
 	"docs/environment-variables.md:328:examples/",
 	"docs/handbook/src/using/configuration.md:278:packages/server/src/database/connection.ts",
-	"docs/internal/natives-architecture.md:77:packages/natives/scripts/gen-npm-packages.ts",
 	"docs/internal/toolconv/deepseek.md:101:assets/search_tool_trajectory.html",
 	"packages/coding-agent/src/prompts/skills/user-invocation.md:8:scripts/foo.js",
 	"website/blog/argot.md:12:packages/server/src/database/connection.ts",
