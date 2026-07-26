@@ -15,13 +15,10 @@ import lightThemeJson from "./light.json" with { type: "json" };
  * migration, and importing it from `./theme` closed an import cycle:
  * `config/settings` -> `modes/theme/theme` -> `./shimmer` -> `config/settings`.
  * A cycle is one strongly connected component, so every module in it has to be
- * instantiated as a unit, and measuring the cost said so plainly: importing
- * `config/settings` into a file cost 51 MB, and so did importing `shimmer`, or
- * `discovery`, or `theme`, all of them the same number because they were the same
- * component. The pieces outside it are cheap by comparison (the hundred bundled
- * theme JSON files below are 2.7 MB, `@veyyon/tui` is 8.4). Since the test runner
- * gives every test file a fresh realm, the whole component was re-instantiated
- * about 1,800 times in a full run, which is what exhausted memory.
+ * instantiated as a unit. That is why `config/settings`, `shimmer`, `discovery`
+ * and `theme` all reported the identical cost when measured separately: they were
+ * one thing wearing four names. Reaching any of them meant loading all of them,
+ * plus everything they import.
  *
  * Nothing here may import `config/settings`, directly or transitively, or the
  * cycle comes back. `./color` and `./defaults` are safe; `./theme`,
