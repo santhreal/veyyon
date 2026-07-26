@@ -13,6 +13,12 @@ import { adjustHsv, colorLuma, errorMessage, getCustomThemesDir, isEnoent, logge
 import { type } from "arktype";
 import { LRUCache } from "lru-cache/raw";
 import { onAutoThemeMappingChanged, onColorBlindModeChanged, onSymbolPresetChanged } from "../../config/settings";
+// The bundled themes and the synchronous light/dark classifier live in
+// `./builtin-themes` so `config/settings` can reach `isLightTheme` for its legacy
+// theme migration without importing this module. Importing it from here closed a
+// cycle (settings -> theme -> shimmer -> settings) that cost 51 MB per realm; see
+// the note at the top of that file.
+import { getBuiltinThemes, isLightThemeJson } from "./builtin-themes";
 import {
 	ansi256ToHex,
 	type ColorMode,
@@ -24,15 +30,10 @@ import {
 	type ThemeColor,
 	type ThemeJson,
 } from "./color";
-// The bundled themes and the synchronous light/dark classifier live in
-// `./builtin-themes` so `config/settings` can reach `isLightTheme` for its legacy
-// theme migration without importing this module. Importing it from here closed a
-// cycle (settings -> theme -> shimmer -> settings) that cost 51 MB per realm; see
-// the note at the top of that file.
-import { getBuiltinThemes, isLightThemeJson } from "./builtin-themes";
 import { resolveMermaidAscii } from "./mermaid-cache";
 import { lavaText } from "./shimmer";
 import { normalizeSpinnerFramesOverride, type SymbolPreset } from "./symbols";
+import { setActiveTheme, theme } from "./theme-binding";
 import { Theme } from "./theme-class";
 
 export { getLanguageFromPath } from "../../utils/lang-from-path";
@@ -299,7 +300,11 @@ function getDefaultTheme(): string {
 // Global Theme Instance
 // ============================================================================
 
-export var theme: Theme;
+// The binding itself lives in `./theme-binding`, a leaf, so a caller that only
+// needs to READ the active theme does not have to import this engine. Re-exported
+// here because this module has always been where callers import it from.
+export { theme } from "./theme-binding";
+
 var currentThemeName: string | undefined;
 
 /** Get the name of the currently active theme. */
@@ -409,7 +414,7 @@ async function applyTheme(name: string, options: ApplyThemeOptions = {}): Promis
 		if (requestId !== themeLoadRequestId) {
 			return { success: false, error: supersededMessage };
 		}
-		theme = loadedTheme;
+		setActiveTheme(loadedTheme);
 		if (commitName) currentThemeName = name;
 		if (enableWatcher) await startThemeWatcher();
 		notifyThemeChange(event);
@@ -437,7 +442,7 @@ async function applyTheme(name: string, options: ApplyThemeOptions = {}): Promis
 		if (commitName) currentThemeName = FALLBACK_THEME_NAME;
 		// The fallback is a built-in, so this cannot hit the disk or throw. If it
 		// ever does, the theme system is unusable and the throw is the honest signal.
-		theme = await loadTheme(FALLBACK_THEME_NAME, getCurrentThemeOptions());
+		setActiveTheme(await loadTheme(FALLBACK_THEME_NAME, getCurrentThemeOptions()));
 		// Bump the epoch so memoized renderers re-shape with the fallback colors
 		// instead of holding the failed theme's stale styling.
 		notifyThemeChange(event);
@@ -519,7 +524,7 @@ export function onTerminalAppearanceChange(mode: "dark" | "light"): void {
 
 export function setThemeInstance(themeInstance: Theme): void {
 	autoDetectedTheme = false;
-	theme = themeInstance;
+	setActiveTheme(themeInstance);
 	currentThemeName = "<in-memory>";
 	stopThemeWatcher();
 	notifyThemeChange({ ephemeral: true });
@@ -700,7 +705,7 @@ async function startThemeWatcher(): Promise<void> {
 
 			loadTheme(watchedThemeName, getCurrentThemeOptions())
 				.then(loadedTheme => {
-					theme = loadedTheme;
+					setActiveTheme(loadedTheme);
 					notifyThemeChange({ ephemeral: true });
 				})
 				.catch(() => {
@@ -741,7 +746,7 @@ function reevaluateAutoTheme(debugLabel: string, event: ThemeChangeEvent = {}): 
 	currentThemeName = resolved;
 	loadTheme(resolved, getCurrentThemeOptions())
 		.then(loadedTheme => {
-			theme = loadedTheme;
+			setActiveTheme(loadedTheme);
 			notifyThemeChange(event);
 		})
 		.catch(err => {

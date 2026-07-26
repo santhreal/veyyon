@@ -9,7 +9,7 @@ import { errorMessage, sanitizeText } from "@veyyon/utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { FileDiagnosticsResult } from "../lsp";
 import { renderDiff as renderDiffColored } from "../modes/components/diff";
-import { getLanguageFromPath, type Theme } from "../modes/theme/theme";
+import type { Theme } from "../modes/theme/theme-class";
 import type { OutputMeta } from "../tools/output-meta";
 import {
 	cachedRenderedString,
@@ -38,6 +38,7 @@ import {
 	WidthAwareText,
 } from "../tui";
 import type { EditMode } from "../utils/edit-mode";
+import { getLanguageFromPath } from "../utils/lang-from-path";
 import type { DiffError, DiffResult } from "./diff";
 import { type ApplyPatchEntry, expandApplyPatchToEntries, expandApplyPatchToPreviewEntries } from "./modes/apply-patch";
 import type { Operation } from "./modes/patch";

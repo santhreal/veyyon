@@ -19,7 +19,8 @@ import {
 	untilAborted,
 } from "@veyyon/utils";
 import type { BunFile } from "bun";
-import { type Theme, theme } from "../modes/theme/theme";
+import { theme } from "../modes/theme/theme-binding";
+import type { Theme } from "../modes/theme/theme-class";
 import { PROMPTS } from "../prompts/registry";
 import type { ToolSession } from "../tools";
 import { truncateForPrompt } from "../tools/approval";
