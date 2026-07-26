@@ -628,6 +628,35 @@ export interface CreateAgentSessionOptions {
 export function isSubagentSession(options: Pick<CreateAgentSessionOptions, "taskDepth" | "parentTaskPrefix">): boolean {
 	return (options.taskDepth ?? 0) > 0 || Boolean(options.parentTaskPrefix);
 }
+/**
+ * Whether another session in THIS process spawned this one, and therefore already
+ * owns the process-global singletons it should inherit rather than replace.
+ *
+ * Deliberately NOT `isSubagentSession`, and the difference is the point. That
+ * predicate answers "is this a subagent", and takes `taskDepth` into account
+ * because a session can be one without carrying a parent's prefix. This one
+ * answers a narrower question about OWNERSHIP, and only a `parentTaskPrefix` can
+ * answer it: the prefix is what names the spawning agent, so it is the only signal
+ * that says a live parent exists in this process to inherit from. A `taskDepth`
+ * greater than zero says the session sits at some recursion depth, which does not
+ * imply anyone here owns anything.
+ *
+ * Swapping in `isSubagentSession` here would change behaviour for a session
+ * carrying depth but no prefix. It would stop installing the skills, rules and
+ * MCP singletons, and it would take `AsyncJobManager.instance()` as its scoped
+ * manager, which is `undefined` when nothing installed one. That session would
+ * then refuse async work with no parent to route to instead.
+ *
+ * No in-tree caller constructs that shape today: the task executor and
+ * `persisted-revive` both set the two together, and the eval bridge reaches the
+ * executor, which sets `parentTaskPrefix` at the spawn. `createAgentSession` is a
+ * public SDK export, though, so an outside caller can pass depth alone, which is
+ * exactly why the two questions get two named predicates rather than one shared
+ * expression that happens to read the same today.
+ */
+export function isInProcessChildSession(options: Pick<CreateAgentSessionOptions, "parentTaskPrefix">): boolean {
+	return Boolean(options.parentTaskPrefix);
+}
 
 /** Result from createAgentSession */
 export interface CreateAgentSessionResult {
@@ -1629,7 +1658,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	// (issue #1923). The `instance()` guard means later sessions also skip
 	// constructing an orphaned manager that nothing would ever route to.
 	const asyncJobManager =
-		!options.parentTaskPrefix && !AsyncJobManager.instance()
+		!isInProcessChildSession(options) && !AsyncJobManager.instance()
 			? new AsyncJobManager({
 					maxRunningJobs: asyncMaxJobs,
 					onJobComplete: async (jobId, result, job) => {
@@ -1648,7 +1677,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				})
 			: undefined;
 
-	const scopedAsyncJobManager = asyncJobManager ?? (options.parentTaskPrefix ? AsyncJobManager.instance() : undefined);
+	const scopedAsyncJobManager =
+		asyncJobManager ?? (isInProcessChildSession(options) ? AsyncJobManager.instance() : undefined);
 
 	const agentRegistry = options.agentRegistry ?? AgentRegistry.global();
 	const resolvedAgentId = options.agentId ?? options.parentTaskPrefix ?? MAIN_AGENT_ID;
@@ -1835,7 +1865,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// which collapses to the parent's dir for subagents (they adopt the
 		// parent's ArtifactManager) so one lookup hits everything.
 		const getArtifactsDir = () => sessionManager.getArtifactsDir();
-		if (!options.parentTaskPrefix) {
+		if (!isInProcessChildSession(options)) {
 			setActiveSkills(skills);
 			// Include TTSR rules so `rule://<name>` can resolve them too. They are
 			// registered with the manager and bucketed out before rulebook/always,
@@ -1973,7 +2003,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// receive the parent's manager via `options.mcpManager`, and reassigning
 		// the singleton to the same value is a no-op — keep the gate explicit
 		// to mirror the AsyncJobManager ownership rule.
-		if (mcpManager && !options.parentTaskPrefix) MCPManager.setInstance(mcpManager);
+		if (mcpManager && !isInProcessChildSession(options)) MCPManager.setInstance(mcpManager);
 
 		// Add image tools when generation is enabled and either no explicit tool
 		// whitelist was given or it names `generate_image`. Unlike built-in tools
