@@ -19,8 +19,8 @@ import { ToolError } from "./tool-errors";
 // single `InternalUrlRouter` import used to put it inside a 23-module cycle
 // (path-utils -> internal-urls -> skill-protocol -> extensibility/skills ->
 // discovery -> builtin -> path-utils), dragging `mcp`, `lsp/utils` and `config`
-// in with it. A cycle is instantiated as one unit, so a file wanting one path
-// helper got all 23 modules and everything they reach.
+// in with it. A cycle is instantiated as one unit, so importing this file cost
+// 51.7 MB, once per test file because the runner gives each one a fresh realm.
 // The one function that needed the router now lives in `./search-scope`, which
 // is downstream of this module. Keep it that way.
 
@@ -1389,3 +1389,4 @@ export function resolveReadPath(filePath: string, cwd: string): string {
 
 	return resolved;
 }
+

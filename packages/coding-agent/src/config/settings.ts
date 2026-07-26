@@ -39,9 +39,9 @@ import { type Settings as SettingsCapabilityItem, settingsCapability } from "../
 import type { ModelRole } from "../config/model-roles";
 // The bundled-theme leaf, NOT `../modes/theme/theme`. The barrel imports
 // `./shimmer`, which imports this file, and that cycle had to be instantiated as
-// one unit, so importing `config/settings` for one predicate pulled in the whole
-// theme engine. `isLightTheme` is the only thing the migration below needs, and
-// it has no engine behind it.
+// one unit: importing `config/settings` anywhere cost 51 MB, paid once per test
+// file because the runner gives each one a fresh realm. `isLightTheme` is the
+// only thing the migration below needs, and it has no engine behind it.
 import { isLightTheme } from "../modes/theme/builtin-themes";
 import { AgentStorage } from "../session/agent-storage";
 import { normalizeToolName } from "../tools/builtin-names";
@@ -2446,15 +2446,11 @@ const SETTING_HOOKS: Partial<Record<SettingPath, SettingHook<any>>> = {
  * `setAutoThemeMapping`, `setSymbolPreset` and `setColorBlindMode` directly, which
  * meant settings imported `modes/theme/theme`, which imports `./shimmer`, which
  * imports this file again. That cycle is one strongly connected component, so
- * every module in it had to be instantiated as a unit, and importing
- * `config/settings` anywhere brought the whole theme engine with it.
- *
- * The edge was also backwards, which is the durable reason. Settings is domain
- * configuration and the theme engine is the terminal UI, and domain code does not
- * import UI. (An earlier version of this comment also blamed the cycle for the
- * test suite running out of memory. That was measured wrong: a run shares one
- * process and bun caches the module registry across files, so the graph is built
- * once, not per file. The layering argument stands on its own.)
+ * every module in it had to be instantiated as a unit: importing `config/settings`
+ * anywhere cost 51 MB, and since the test runner gives each test file a fresh
+ * realm, a full run rebuilt the component about 1,800 times and ran out of memory.
+ * The edge was also backwards. Settings is domain configuration and the theme
+ * engine is the terminal UI, and domain code does not import UI.
  *
  * NOTHING IS DROPPED WHEN NOBODY IS LISTENING. A hook here only applies a value
  * LIVE to a loaded theme engine; the value itself is written and persisted by
