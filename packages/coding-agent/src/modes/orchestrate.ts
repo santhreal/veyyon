@@ -1,7 +1,5 @@
-import { PROMPTS } from "../prompts/registry";
 import { createGradientHighlighter, type KeywordHighlighter } from "./gradient-highlight";
 import { magicKeywordRegex } from "./magic-keyword-boundary";
-import { keywordInProse } from "./markdown-prose";
 
 /**
  * "orchestrate" keyword support.
@@ -13,22 +11,14 @@ import { keywordInProse } from "./markdown-prose";
  * case-sensitive (lowercase only), so "orchestrated", "Orchestrate", or a path
  * like "orchestrate.ts" never trigger either behavior. Replaces the former
  * `/orchestrate` slash command.
+ *
+ * The detection half lives in `./orchestrate-keyword` so a caller that only needs
+ * to know whether a message mentions the keyword does not have to import the
+ * gradient highlighter and, through it, the theme engine. Both halves are
+ * re-exported here, so this stays the one place to import either from.
  */
 
-// Detection: lowercase keyword flanked by prose punctuation, whitespace, or a string edge.
-const ORCHESTRATE_WORD = magicKeywordRegex("orchestrate");
-
-/** Hidden system notice appended after a user message that mentions "orchestrate". */
-export const ORCHESTRATE_NOTICE: string = PROMPTS["subagent/orchestrate-notice"].text.trim();
-
-/**
- * Whether `text` contains the standalone keyword "orchestrate" (lowercase,
- * prose-delimited) in prose — never inside a code block, inline code span,
- * or XML/HTML section.
- */
-export function containsOrchestrate(text: string): boolean {
-	return keywordInProse(text, ORCHESTRATE_WORD);
-}
+export { containsOrchestrate, ORCHESTRATE_NOTICE } from "./orchestrate-keyword";
 
 /**
  * Highlight every standalone "orchestrate" in `text` for editor display with a

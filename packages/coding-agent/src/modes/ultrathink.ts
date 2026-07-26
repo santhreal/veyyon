@@ -1,7 +1,5 @@
-import { PROMPTS } from "../prompts/registry";
 import { createGradientHighlighter, type KeywordHighlighter } from "./gradient-highlight";
 import { magicKeywordRegex } from "./magic-keyword-boundary";
-import { keywordInProse } from "./markdown-prose";
 
 /**
  * "ultrathink" keyword support, mirroring Claude Code's affordance.
@@ -12,22 +10,14 @@ import { keywordInProse } from "./markdown-prose";
  * multi-step reasoning. Matching is prose-delimited and case-sensitive
  * (lowercase only), so "ultrathinking", "Ultrathink", or "ultrathink.ts" never
  * trigger either behavior.
+ *
+ * The detection half lives in `./ultrathink-keyword` so a caller that only needs
+ * to know whether a message mentions the keyword does not have to import the
+ * gradient highlighter and, through it, the theme engine. Both halves are
+ * re-exported here, so this stays the one place to import either from.
  */
 
-// Detection: lowercase keyword flanked by prose punctuation, whitespace, or a string edge.
-const ULTRATHINK_WORD = magicKeywordRegex("ultrathink");
-
-/** Hidden system notice appended after a user message that mentions "ultrathink". */
-export const ULTRATHINK_NOTICE: string = PROMPTS["turn-control/ultrathink-notice"].text.trim();
-
-/**
- * Whether `text` contains the standalone keyword "ultrathink" (lowercase,
- * prose-delimited) in prose — never inside a code block, inline code span,
- * or XML/HTML section.
- */
-export function containsUltrathink(text: string): boolean {
-	return keywordInProse(text, ULTRATHINK_WORD);
-}
+export { containsUltrathink, ULTRATHINK_NOTICE } from "./ultrathink-keyword";
 
 /**
  * Rainbow-highlight every standalone "ultrathink" in `text` for editor display.
