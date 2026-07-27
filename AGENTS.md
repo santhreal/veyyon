@@ -450,8 +450,9 @@ Static site under `website/`, deployed to Cloudflare Pages.
   Deploy the latter with `VEYYON_PAGES_PROJECT=veyyon-get bun run site:deploy`.
 - **Handbook**: `website/docs` is a symlink to `docs/handbook/book`; rebuild it with
   `mdbook build` in `docs/handbook` before deploying if the docs changed.
-- The staged `website/install.sh` / `install.ps1` are build artifacts — the source of
-  truth is `scripts/install.{sh,ps1}`. Edit those, not the copies.
+- `site:build` stages copies of the installers under `website/` as `install.{sh,ps1}`.
+  They are build artifacts, gitignored, and exist only so the Pages project can serve
+  them. The source of truth is `scripts/install.{sh,ps1}`. Edit those, not the copies.
 
 ### Install endpoints
 
