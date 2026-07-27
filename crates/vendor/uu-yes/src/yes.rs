@@ -224,6 +224,8 @@ mod tests {
 				budget,
 				fail_kind,
 			}),
+			// A capture buffer is not a terminal.
+			stdout_is_terminal:    false,
 			stderr:                Box::new(SharedWriter { buf: stderr_buf.clone() }),
 			cwd:                   PathBuf::from("."),
 			env:                   HashMap::new(),

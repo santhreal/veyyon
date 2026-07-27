@@ -474,42 +474,18 @@ fn filetime_set(_path: &Path, _mtime: std::time::SystemTime) -> std::io::Result<
 
 #[cfg(test)]
 mod tests {
-	use std::{
-		fs,
-		path::{Path, PathBuf},
-		sync::atomic::{AtomicU64, Ordering},
-		time::{SystemTime, UNIX_EPOCH},
-	};
+	use std::fs;
+
+	use veyyon_test_scratch::TempTree;
 
 	use super::*;
 
-	struct TempDirGuard(PathBuf);
-
-	impl TempDirGuard {
-		fn new() -> Self {
-			static COUNTER: AtomicU64 = AtomicU64::new(0);
-			let nanos = SystemTime::now()
-				.duration_since(UNIX_EPOCH)
-				.expect("system time should be after epoch")
-				.as_nanos();
-			let dir = std::env::temp_dir().join(format!(
-				"veyyon-iso-rcopy-test-{}-{nanos}-{}",
-				std::process::id(),
-				COUNTER.fetch_add(1, Ordering::Relaxed)
-			));
-			fs::create_dir_all(&dir).expect("create temp test directory");
-			Self(dir)
-		}
-
-		fn path(&self) -> &Path {
-			&self.0
-		}
-	}
-
-	impl Drop for TempDirGuard {
-		fn drop(&mut self) {
-			let _ = fs::remove_dir_all(&self.0);
-		}
+	/// A scratch directory for one case.
+	///
+	/// The guard was declared here, one of eight identical copies across the
+	/// workspace. `veyyon-test-scratch` owns the single implementation now.
+	fn temp_dir_guard() -> TempTree {
+		veyyon_test_scratch::scratch_dir("iso-rcopy")
 	}
 
 	#[cfg(unix)]
@@ -517,7 +493,7 @@ mod tests {
 	fn git_apply_drains_stderr_while_writing_stdin() {
 		use std::os::unix::fs::PermissionsExt as _;
 
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		let fake_git = root.path().join("git");
 		fs::write(
 			&fake_git,

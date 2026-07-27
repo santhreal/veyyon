@@ -701,6 +701,8 @@ mod tests {
 			stdin_fd: None,
 			stdin_is_search_input: false,
 			stdout: Box::new(SharedWriter { buf: stdout_buf.clone() }),
+			// A capture buffer is not a terminal.
+			stdout_is_terminal: false,
 			stderr: Box::new(SharedWriter { buf: stderr_buf.clone() }),
 			cwd,
 			env: HashMap::new(),
@@ -843,6 +845,8 @@ mod tests {
 			stdin_fd:              None,
 			stdin_is_search_input: false,
 			stdout:                Box::new(BrokenPipeWriter),
+			// The writer under test is a pipe that breaks, which is never a terminal.
+			stdout_is_terminal:    false,
 			stderr:                Box::new(io::sink()),
 			cwd:                   std::env::temp_dir(),
 			env:                   HashMap::new(),

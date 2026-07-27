@@ -14,6 +14,8 @@ use image::{DynamicImage, ImageReader, imageops::FilterType};
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
+use crate::napi_error::to_napi_with;
+
 /// Encode image bytes into a SIXEL escape sequence for terminal rendering.
 ///
 /// The input image is decoded and resized to the requested pixel dimensions
@@ -40,15 +42,15 @@ pub fn encode_sixel(
 	let rgba = resized.to_rgba8();
 	let options = EncodeOptions::default();
 	sixel_encode(rgba.as_raw(), target_width_px as usize, target_height_px as usize, &options)
-		.map_err(|err| Error::from_reason(format!("Failed to encode SIXEL: {err}")))
+		.map_err(|err| to_napi_with("Failed to encode SIXEL", err))
 }
 
 fn decode_image_from_bytes(bytes: &[u8]) -> Result<DynamicImage> {
 	let reader = ImageReader::new(Cursor::new(bytes))
 		.with_guessed_format()
-		.map_err(|e| Error::from_reason(format!("Failed to detect image format: {e}")))?;
+		.map_err(|e| to_napi_with("Failed to detect image format", e))?;
 
 	reader
 		.decode()
-		.map_err(|e| Error::from_reason(format!("Failed to decode image: {e}")))
+		.map_err(|e| to_napi_with("Failed to decode image", e))
 }

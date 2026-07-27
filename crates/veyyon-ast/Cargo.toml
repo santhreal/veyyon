@@ -73,3 +73,10 @@ tree-sitter-vue.workspace = true
 tree-sitter-xml.workspace = true
 tree-sitter-yaml.workspace = true
 tree-sitter-zig.workspace = true
+
+[dev-dependencies]
+# `tests/apply_edits.rs` constructs `Edit` values directly. An integration test
+# sees only the crate's public API plus dev-dependencies, so the matcher has to
+# be declared again here even though it is already a dependency above. Same
+# feature set, or the test would build against a different matcher than ships.
+ast-grep-core.workspace = true

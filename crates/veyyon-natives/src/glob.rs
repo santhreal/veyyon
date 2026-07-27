@@ -24,7 +24,7 @@ use napi_derive::napi;
 
 // Re-export entry types so existing `glob::FileType` / `glob::GlobMatch` paths still work.
 pub use crate::iofs::{FileType, GlobMatch};
-use crate::{glob_util, iofs, task};
+use crate::{glob_util, iofs, napi_error::to_napi_with, task};
 
 /// Input options for `glob`, including traversal, filtering, and cancellation.
 #[napi(object)]
@@ -176,7 +176,7 @@ fn run_glob(
 	// entire subtree under `dir` to match only direct children.
 	let walk_depth_limit = glob_util::walk_depth_bound(&walk_glob_pattern);
 	let walk_glob = veyyon_walker::CompiledWalkGlob::new([walk_glob_pattern])
-		.map_err(|err| Error::from_reason(format!("Invalid glob pattern: {err}")))?;
+		.map_err(|err| to_napi_with("Invalid glob pattern", err))?;
 	if config.max_results == 0 {
 		return Ok(GlobResult { matches: Vec::new(), total_matches: 0 });
 	}
@@ -300,38 +300,14 @@ pub fn glob(
 
 #[cfg(test)]
 mod tests {
-	use std::{
-		fs,
-		path::{Path, PathBuf},
-		sync::atomic::{AtomicU64, Ordering},
-		time::{SystemTime, UNIX_EPOCH},
-	};
+	use std::fs;
 
-	static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
-
-	struct TempDirGuard(PathBuf);
-
-	impl TempDirGuard {
-		fn new() -> Self {
-			let timestamp = SystemTime::now()
-				.duration_since(UNIX_EPOCH)
-				.expect("system time is after UNIX_EPOCH")
-				.as_nanos();
-			let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-			let path = std::env::temp_dir().join(format!("veyyon-glob-test-{timestamp}-{counter}"));
-			fs::create_dir_all(&path).expect("create temp test directory");
-			Self(path)
-		}
-
-		fn path(&self) -> &Path {
-			&self.0
-		}
-	}
-
-	impl Drop for TempDirGuard {
-		fn drop(&mut self) {
-			let _ = fs::remove_dir_all(&self.0);
-		}
+	/// A scratch directory for one case.
+	///
+	/// The guard used to be declared here, one of eight identical copies across
+	/// the workspace. `veyyon-test-scratch` owns the single implementation now.
+	fn temp_dir_guard() -> veyyon_test_scratch::TempTree {
+		veyyon_test_scratch::scratch_dir("natives-glob")
 	}
 
 	fn match_paths(result: &super::GlobResult) -> Vec<&str> {
@@ -344,7 +320,7 @@ mod tests {
 
 	#[test]
 	fn run_glob_with_gitignore_prunes_ignored_directory_but_keeps_matching_sibling() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		fs::create_dir_all(root.path().join(".git")).expect("create repo marker");
 		fs::write(root.path().join(".gitignore"), "ignored/\n").expect("write gitignore");
 		fs::create_dir_all(root.path().join("ignored")).expect("create ignored directory");
@@ -388,7 +364,7 @@ mod tests {
 		// this defends the boundary: matches AT the bound depth must survive,
 		// deeper entries must not appear, and the mtime-ranked mode (the glob
 		// tool default) must behave identically to the streaming mode.
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		fs::write(root.path().join("top.txt"), "top").expect("write top file");
 		fs::create_dir_all(root.path().join("deep/nested")).expect("create nested dirs");
 		fs::write(root.path().join("deep/child.txt"), "mid").expect("write mid file");
@@ -427,5 +403,40 @@ mod tests {
 		let mut recursive_paths = match_paths(&recursive);
 		recursive_paths.sort_unstable();
 		assert_eq!(recursive_paths, ["deep/child.txt", "deep/nested/leaf.txt", "top.txt"]);
+	}
+
+	#[test]
+	fn run_glob_finds_a_match_a_character_class_reaches_across_a_separator() {
+		// The operator-visible end of the bug `walk_depth_bound` was fixed for.
+		// `literal_separator(true)` keeps `*` and `?` inside one component but does
+		// NOT govern a character class: `[,-[]` spans 0x2C..=0x5B and `/` is 0x2F,
+		// so `deep[,-[]child.txt` matches `deep/child.txt` two components down
+		// while the pattern's segment count says one. The walk used to stop at
+		// depth 1 and return nothing, with no error and nothing logged -- the
+		// caller could not tell an empty result from a genuine absence.
+		let root = temp_dir_guard();
+		fs::create_dir_all(root.path().join("deep")).expect("create nested dir");
+		fs::write(root.path().join("deep/child.txt"), "mid").expect("write mid file");
+
+		let result = super::run_glob(
+			super::GlobConfig {
+				root:                  root.path().to_path_buf(),
+				pattern:               "deep[,-[]child.txt".to_string(),
+				recursive:             false,
+				include_hidden:        true,
+				file_type_filter:      None,
+				max_results:           100,
+				use_gitignore:         true,
+				mentions_node_modules: false,
+				sort_by_mtime:         false,
+				cache:                 false,
+			},
+			None,
+			crate::task::CancelToken::default(),
+		)
+		.expect("glob succeeds");
+
+		assert_eq!(match_paths(&result), ["deep/child.txt"]);
+		assert_eq!(result.total_matches, 1);
 	}
 }

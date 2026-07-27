@@ -1,0 +1,15 @@
+# Scratch directories for this workspace's Rust tests, deleted when the test that made
+# one ends. Dev-dependency only; nothing ships it. See src/lib.rs for why it exists.
+[package]
+name = "veyyon-test-scratch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]

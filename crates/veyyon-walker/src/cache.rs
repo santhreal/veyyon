@@ -402,43 +402,22 @@ pub fn invalidate_all() {
 mod tests {
 	#[cfg(unix)]
 	use std::{ffi::CString, os::unix::ffi::OsStrExt};
-	use std::{
-		fs,
-		path::{Path, PathBuf},
-		sync::atomic::{AtomicU64, Ordering},
-		time::{Duration, SystemTime, UNIX_EPOCH},
-	};
+	use std::{fs, path::Path, time::Duration};
+
+	use veyyon_test_scratch::TempTree;
 
 	#[cfg(unix)]
 	use super::classify_file_type;
 	use crate::{CollectedEntry, FileType};
 
-	static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
-
-	struct TempDirGuard(PathBuf);
-
-	impl TempDirGuard {
-		fn new() -> Self {
-			let timestamp = SystemTime::now()
-				.duration_since(UNIX_EPOCH)
-				.expect("system time is after UNIX_EPOCH")
-				.as_nanos();
-			let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-			let path =
-				std::env::temp_dir().join(format!("veyyon-fs-cache-test-{timestamp}-{counter}"));
-			fs::create_dir_all(&path).expect("create temp test directory");
-			Self(path)
-		}
-
-		fn path(&self) -> &Path {
-			&self.0
-		}
-	}
-
-	impl Drop for TempDirGuard {
-		fn drop(&mut self) {
-			let _ = fs::remove_dir_all(&self.0);
-		}
+	/// A scratch directory for one cache test, removed when the test that made
+	/// it ends.
+	///
+	/// This file carried its own copy of the guard, one of eight identical ones
+	/// in the workspace. `veyyon-test-scratch` is the single implementation
+	/// now.
+	fn temp_dir_guard() -> TempTree {
+		veyyon_test_scratch::scratch_dir("walker-fs-cache")
 	}
 
 	#[cfg(unix)]
@@ -513,7 +492,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn classify_file_type_skips_fifo() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		let fifo = root.path().join("skip-me.fifo");
 		make_fifo(&fifo);
 
@@ -522,7 +501,7 @@ mod tests {
 
 	#[test]
 	fn collect_entries_skips_node_modules() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		fs::create_dir_all(root.path().join("node_modules/pkg")).unwrap();
 		fs::write(root.path().join("node_modules/pkg/index.js"), "nm").unwrap();
 		fs::write(root.path().join("real.txt"), "ok").unwrap();
@@ -545,7 +524,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn collect_entries_follow_links_always() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		fs::create_dir_all(root.path().join("target")).unwrap();
 		fs::write(root.path().join("target/linked.txt"), "linked").unwrap();
 		std::os::unix::fs::symlink(root.path().join("target"), root.path().join("link")).unwrap();
@@ -567,7 +546,7 @@ mod tests {
 
 	#[test]
 	fn traversal_gitignore_excludes_files() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		fs::create_dir_all(root.path().join(".git")).unwrap();
 		fs::write(root.path().join(".gitignore"), "ignored.txt\n").unwrap();
 		fs::write(root.path().join("ignored.txt"), "ignored").unwrap();
@@ -590,7 +569,7 @@ mod tests {
 
 	#[test]
 	fn traversal_hidden_disabled_excludes_files_and_descendants() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		fs::create_dir_all(root.path().join(".hidden-dir")).unwrap();
 		fs::write(root.path().join(".hidden-dir/child.txt"), "child").unwrap();
 		fs::write(root.path().join(".hidden-file"), "secret").unwrap();
@@ -621,7 +600,7 @@ mod tests {
 
 	#[test]
 	fn traversal_hidden_enabled_includes_non_ignored_hidden_entries() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		fs::create_dir_all(root.path().join(".git")).unwrap();
 		fs::write(root.path().join(".gitignore"), ".ignored-hidden\n").unwrap();
 		fs::create_dir_all(root.path().join(".hidden-dir")).unwrap();
@@ -648,7 +627,7 @@ mod tests {
 
 	#[test]
 	fn collect_entries_respects_pre_cancelled_token() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		fs::write(root.path().join("real.txt"), "ok").unwrap();
 
 		std::thread::sleep(Duration::from_millis(1));
@@ -669,7 +648,7 @@ mod tests {
 
 	#[test]
 	fn scan_detail_controls_metadata_collection() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		fs::write(root.path().join("real.txt"), "ok").unwrap();
 
 		let minimal = super::collect_entries(
@@ -714,7 +693,7 @@ mod tests {
 			return;
 		}
 
-		let guard = TempDirGuard::new();
+		let guard = temp_dir_guard();
 		let unreadable = guard.path().join("locked");
 		fs::create_dir(&unreadable).expect("create locked dir");
 		fs::write(unreadable.join("hidden.txt"), b"secret").expect("seed a file");
@@ -744,7 +723,7 @@ mod tests {
 	fn resolve_search_path_accepts_a_readable_root() {
 		// The readability probe must not reject an ordinary readable directory,
 		// empty or not: it opens the directory and probes at most one entry.
-		let guard = TempDirGuard::new();
+		let guard = temp_dir_guard();
 		let empty = guard.path().join("empty");
 		fs::create_dir(&empty).expect("create empty dir");
 		super::resolve_search_path(&empty.to_string_lossy())
@@ -766,7 +745,7 @@ mod tests {
 			return;
 		}
 
-		let guard = TempDirGuard::new();
+		let guard = temp_dir_guard();
 		let locked = guard.path().join("locked");
 		fs::create_dir(&locked).expect("create locked dir");
 		fs::set_permissions(&locked, std::os::unix::fs::PermissionsExt::from_mode(0o000))
@@ -789,7 +768,7 @@ mod tests {
 
 	#[test]
 	fn ensure_readable_dir_accepts_empty_and_populated_directories() {
-		let guard = TempDirGuard::new();
+		let guard = temp_dir_guard();
 		super::ensure_readable_dir(guard.path()).expect("an empty readable directory passes");
 		fs::write(guard.path().join("file.txt"), b"x").expect("seed a file");
 		super::ensure_readable_dir(guard.path()).expect("a populated readable directory passes");

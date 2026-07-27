@@ -15,7 +15,7 @@ use napi_derive::napi;
 use veyyon_shell::process::{self as core_process, ProcessStatus as CoreProcessStatus};
 pub use veyyon_shell::process::{KILL_SIGNAL, TERM_SIGNAL, TerminationTargets, kill_process_group};
 
-use crate::task;
+use crate::{napi_error::to_napi, task};
 
 #[derive(Default)]
 #[napi(object)]
@@ -137,7 +137,7 @@ impl Process {
 			process
 				.terminate_tree(group, graceful_ms, timeout_ms, ct.into_core())
 				.await
-				.map_err(|err| napi::Error::from_reason(err.to_string()))
+				.map_err(to_napi)
 		})
 	}
 
@@ -160,7 +160,7 @@ impl Process {
 			process
 				.wait_for_exit(timeout, ct.into_core())
 				.await
-				.map_err(|err| napi::Error::from_reason(err.to_string()))
+				.map_err(to_napi)
 		})
 	}
 

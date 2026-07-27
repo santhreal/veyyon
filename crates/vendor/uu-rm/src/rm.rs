@@ -1167,6 +1167,8 @@ mod tests {
 			stdin_fd:              None,
 			stdin_is_search_input: false,
 			stdout:                Box::new(std::io::sink()),
+			// A capture buffer is not a terminal.
+			stdout_is_terminal:    false,
 			stderr:                Box::new(std::io::sink()),
 			cwd:                   cwd.clone(),
 			env:                   HashMap::new(),

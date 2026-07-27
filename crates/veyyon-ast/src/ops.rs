@@ -111,9 +111,13 @@ pub fn compile_pattern(
 			// rejected as `MultipleNode`; auto-wrap it in a single-node context
 			// before giving up. Any other error, or a failed fallback, keeps the
 			// original message so genuinely-bad patterns behave as before.
+			// Falls through to the probe below rather than returning here: a
+			// wrapped fragment is still a pattern that has to survive matching,
+			// and the wrapper is exactly the sort of construction that can put an
+			// ellipsis somewhere the matcher will not accept.
 			Err(err @ PatternError::MultipleNode(_)) => {
 				match compile_wrapped_fallback(pattern, strictness, lang) {
-					Some(compiled) => return Ok(compiled),
+					Some(compiled) => compiled,
 					None => return Err(anyhow!("Invalid pattern: {err}")),
 				}
 			},
@@ -121,7 +125,118 @@ pub fn compile_pattern(
 		}
 	};
 	compiled.strictness = strictness.clone();
+	if let Some(upstream) = matching_would_panic(&compiled, lang) {
+		return Err(anyhow!(
+			"Invalid pattern: `{}` compiles but cannot be matched ({upstream}). This is an ast-grep \
+			 limitation around multi-node metavariables: an ellipsis matches a run of siblings, so \
+			 it needs a parent to sit inside. Write the enclosing construct, as in `fn $NAME($$$) {{ \
+			 $$$ }}`",
+			pattern.trim()
+		));
+	}
 	Ok(compiled)
+}
+
+/// Sources the pattern probe runs against.
+///
+/// Small and shape-diverse rather than realistic: an empty file, a bare
+/// identifier, two siblings, a call, a block, punctuation that parses to error
+/// nodes in most grammars, and two statements. Each makes the matcher take a
+/// different walk, and the walk is what decides whether the assert below is
+/// reached. `"!^"` is in the list because it is what the fuzzer produced.
+const PROBE_SOURCES: &[&str] = &["", "a", "a b", "a(b)", "{ a }", "!^", "a; b;"];
+
+/// Run `compiled` against each probe source and report the message if the
+/// matcher panics rather than returning.
+///
+/// WHAT THIS IS GUARDING AGAINST. `ast-grep-core` has a `debug_assert!` in
+/// `match_tree/mod.rs:79`, "Ellipsis should be matched in parent level", that
+/// fires when an unnamed `$$$` (`MetaVariable::Multiple`) is reached as a leaf
+/// rather than being consumed by its parent. Patterns arrive from an `ast_grep`
+/// tool call and `$$$` is ordinary ast-grep syntax, so this is reachable input.
+///
+/// BE PRECISE ABOUT THE SEVERITY. It is a `debug_assert!`, so a release build
+/// compiles it out and the matcher returns `Some(())` instead: the shipped
+/// binary does not abort, it may quietly report a match it should not have.
+/// Debug, test, and fuzz builds do abort. So this guard turns a developer-build
+/// crash into an error and a release-build wrong answer into an error, and
+/// neither of those is the same thing as fixing the assert, which is
+/// upstream's.
+///
+/// WHY A PROBE AND NOT A CHECK ON THE PATTERN TREE. `Pattern::node` is public
+/// and it is tempting to test the root for a `Multiple` metavar directly. That
+/// is not the condition: `"+$$$"` has an ellipsis below its root and still
+/// trips the assert against some sources but not others, so reproducing the
+/// rule statically means reimplementing upstream's matcher walk and keeping it
+/// in step. Asking the matcher is honest about what it will do.
+///
+/// AND BE HONEST THAT A PROBE IS NOT A PROOF. It answers for the sources in
+/// `PROBE_SOURCES`, not for every source. A pattern that only misbehaves on a
+/// shape none of them cover still gets through. The first version of this guard
+/// tried to recognise the bad patterns by their text, rejected a bare `$$$`,
+/// and `fuzz/fuzz_targets/ast_parse_and_match.rs` immediately found `"+$$$"`;
+/// the probe is a wider net rather than a complete one, and the fuzzer is what
+/// keeps widening it.
+///
+/// This is a boundary that converts a panic into an error, not a fallback:
+/// nothing continues past it, and the message names both the pattern and what
+/// the matcher said.
+fn matching_would_panic(compiled: &Pattern, lang: SupportLang) -> Option<String> {
+	for source in PROBE_SOURCES {
+		let probe = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+			let ast = lang.ast_grep(*source);
+			let _ = ast.root().find_all(compiled.clone()).count();
+		}));
+		let Err(payload) = probe else {
+			continue;
+		};
+		return Some(panic_message(&payload));
+	}
+	None
+}
+
+/// Recover a panic payload's own message.
+///
+/// One function rather than the `downcast_ref` chain at each catch site, so the
+/// probe and the match-time guard report the same thing for the same panic.
+fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
+	payload
+		.downcast_ref::<&str>()
+		.map(|message| (*message).to_string())
+		.or_else(|| payload.downcast_ref::<String>().cloned())
+		.unwrap_or_else(|| "the matcher panicked".to_string())
+}
+
+/// Run a matcher call, converting a panic into an error.
+///
+/// WHY THIS EXISTS ON TOP OF THE COMPILE-TIME PROBE. The probe answers for the
+/// seven sources in `PROBE_SOURCES`, and whether the upstream assert fires
+/// depends on the CANDIDATE as well as on the pattern: `match_node_impl`
+/// consults `should_skip_cand_for_metavar(candidate)` and the parent's child
+/// iteration before an ellipsis ever reaches `match_leaf_meta_var`. So a
+/// pattern can pass the probe and still panic against a real file, which is
+/// what the eight-target campaign on 2026-07-25 found, and which contradicts
+/// the earlier claim (in this file's history and in `pattern_compilation.rs`)
+/// that one probe answers for every source.
+///
+/// The probe stays because it refuses a bad pattern early, with a message about
+/// the pattern rather than about a file. This is the guarantee: no matcher call
+/// this crate makes can abort the process, whatever the pattern and whatever
+/// the source. Not a fallback (Law 10): nothing continues past it, the error
+/// names what was being matched and quotes the matcher's own message, and the
+/// caller gets an `Err` rather than a shorter list of matches.
+///
+/// `catch_unwind` costs nothing on the path where no panic occurs, and this
+/// wraps a whole call rather than a node, so it is not on the hot loop.
+fn guard_matcher<T>(what: &str, run: impl FnOnce() -> T) -> Result<T> {
+	std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)).map_err(|payload| {
+		anyhow!(
+			"The matcher panicked while {what}: {}. This is an ast-grep-core defect reached by this \
+			 pattern; rewrite the pattern so the ellipsis sits inside a node, as in `fn $NAME($$$) \
+			 {{ $$$ }}`",
+			panic_message(&payload),
+		)
+	})
 }
 
 /// Language-specific wrapper template used to turn a multi-node fragment into a
@@ -248,12 +363,26 @@ pub fn compile_rewrite_rules(
 		.collect()
 }
 
-#[must_use]
-pub fn collect_matches(source: &str, language: SupportLang, patterns: &[Pattern]) -> Vec<AstMatch> {
+/// Find every match of `patterns` in `source`.
+///
+/// # Errors
+///
+/// Returns an error when the matcher panics on a pattern. That is an upstream
+/// defect rather than a bad call, and it is reported rather than swallowed: the
+/// alternative is a shorter list of matches that looks like a correct answer.
+/// See [`guard_matcher`].
+pub fn collect_matches(
+	source: &str,
+	language: SupportLang,
+	patterns: &[Pattern],
+) -> Result<Vec<AstMatch>> {
 	let ast = language.ast_grep(source);
 	let mut matches = Vec::new();
 	for pattern in patterns {
-		for matched in ast.root().find_all(pattern.clone()) {
+		let found = guard_matcher("searching for a pattern", || {
+			ast.root().find_all(pattern.clone()).collect::<Vec<_>>()
+		})?;
+		for matched in found {
 			let start = matched.start_pos();
 			let end = matched.end_pos();
 			let range = matched.range();
@@ -269,7 +398,7 @@ pub fn collect_matches(source: &str, language: SupportLang, patterns: &[Pattern]
 			});
 		}
 	}
-	matches
+	Ok(matches)
 }
 
 pub fn rewrite_source(
@@ -281,7 +410,12 @@ pub fn rewrite_source(
 	let mut replacements = 0_u32;
 	for op in ops {
 		for pattern in &op.patterns {
-			let edits = ast.root().replace_all(pattern.clone(), op.out.as_str());
+			// Same guard as `collect_matches`, for the same reason: a rewrite that
+			// aborted the process would take the file with it.
+			let edits = guard_matcher("applying a rewrite", || {
+				ast.root().replace_all(pattern.clone(), op.out.as_str())
+			})
+			.map_err(|error| error.to_string())?;
 			if edits.is_empty() {
 				continue;
 			}
@@ -326,6 +460,19 @@ pub fn apply_edits(content: &str, edits: &[Edit<String>]) -> Result<String> {
 		let end = edit.position.saturating_add(edit.deleted_length);
 		if end > output.len() || start > end {
 			return Err(anyhow!("Computed edit range is out of bounds"));
+		}
+		// `replace_range` panics on an offset that lands inside a multi-byte
+		// character, and every other way this function can be given a bad edit
+		// returns `Err`. Bounds and ordering were already checked here and
+		// character boundaries were not, so a source file with any non-ASCII
+		// content -- an identifier, a comment, a string literal -- could abort the
+		// process instead of reporting a bad edit. Found by
+		// `fuzz/fuzz_targets/ast_apply_edits.rs`.
+		if !output.is_char_boundary(start) || !output.is_char_boundary(end) {
+			return Err(anyhow!(
+				"Computed edit range {start}..{end} splits a multi-byte character; the match offsets \
+				 do not line up with the source text"
+			));
 		}
 		let replacement = std::str::from_utf8(&edit.inserted_text)
 			.map_err(|err| anyhow!("Replacement text is not valid UTF-8: {err}"))?;

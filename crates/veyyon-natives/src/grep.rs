@@ -10,7 +10,6 @@
 use std::{
 	borrow::Cow,
 	cell::RefCell,
-	fmt,
 	fs::File,
 	io::{self, Read},
 	path::{Path, PathBuf},
@@ -20,9 +19,7 @@ use std::{
 use grep_matcher::Matcher;
 use grep_pcre2::{RegexMatcher as PcreMatcher, RegexMatcherBuilder as PcreMatcherBuilder};
 use grep_regex::{RegexMatcher, RegexMatcherBuilder};
-use grep_searcher::{
-	BinaryDetection, Searcher, SearcherBuilder, Sink, SinkContext, SinkContextKind, SinkMatch,
-};
+use grep_searcher::{BinaryDetection, Searcher, Sink, SinkContext, SinkContextKind, SinkMatch};
 use napi::{
 	JsString,
 	bindgen_prelude::*,
@@ -31,8 +28,12 @@ use napi::{
 use napi_derive::napi;
 use parking_lot::Mutex;
 use smallvec::SmallVec;
+use veyyon_grep_kernel::{
+	CompiledMatcher, SearcherSpec, build_searcher as kernel_build_searcher, escape_literal_pattern,
+	pcre_matcher_defaults,
+};
 
-use crate::{glob_util, iofs, task};
+use crate::{glob_util, iofs, napi_error::to_napi_with, task};
 
 const MAX_FILE_BYTES: u64 = 4 * 1024 * 1024;
 
@@ -454,8 +455,7 @@ fn resolve_grep_operand(path: &str) -> Result<PathBuf> {
 	if candidate.is_absolute() {
 		return Ok(candidate);
 	}
-	let cwd = std::env::current_dir()
-		.map_err(|err| Error::from_reason(format!("Failed to resolve cwd: {err}")))?;
+	let cwd = std::env::current_dir().map_err(|err| to_napi_with("Failed to resolve cwd", err))?;
 	Ok(cwd.join(candidate))
 }
 
@@ -557,50 +557,6 @@ struct SearchParams {
 	multiline:          bool,
 }
 
-enum CompiledMatcher {
-	Rust(RegexMatcher),
-	Pcre(PcreMatcher),
-}
-
-#[derive(Debug)]
-enum CompiledMatcherError {
-	Rust(grep_matcher::NoError),
-	Pcre(grep_pcre2::Error),
-}
-
-impl fmt::Display for CompiledMatcherError {
-	fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			Self::Rust(err) => err.fmt(formatter),
-			Self::Pcre(err) => err.fmt(formatter),
-		}
-	}
-}
-
-impl Matcher for CompiledMatcher {
-	type Captures = grep_matcher::NoCaptures;
-	type Error = CompiledMatcherError;
-
-	fn find_at(
-		&self,
-		haystack: &[u8],
-		at: usize,
-	) -> std::result::Result<Option<grep_matcher::Match>, Self::Error> {
-		match self {
-			Self::Rust(matcher) => matcher
-				.find_at(haystack, at)
-				.map_err(CompiledMatcherError::Rust),
-			Self::Pcre(matcher) => matcher
-				.find_at(haystack, at)
-				.map_err(CompiledMatcherError::Pcre),
-		}
-	}
-
-	fn new_captures(&self) -> std::result::Result<Self::Captures, Self::Error> {
-		Ok(grep_matcher::NoCaptures::new())
-	}
-}
-
 fn run_search<M: Matcher + Sync>(
 	matcher: &M,
 	content: &[u8],
@@ -666,19 +622,27 @@ fn with_parallel_grep_searcher<T>(
 	})
 }
 
+/// The searcher these tools read files with.
+///
+/// `BinaryDetection::quit` is the one setting that is a policy rather than a
+/// flag: a `grep` over a source tree meets `.png` and `.node` files, and
+/// reading one as text means a match that is a megabyte of one line. Everything
+/// else is left at the library default, which the shared spec states rather
+/// than leaves implicit; see `veyyon_grep_kernel::SearcherSpec`.
 fn build_searcher(
 	context_before: u32,
 	context_after: u32,
 	multiline: bool,
 	line_number: bool,
 ) -> Searcher {
-	SearcherBuilder::new()
-		.binary_detection(BinaryDetection::quit(b'\x00'))
-		.line_number(line_number)
-		.multi_line(multiline)
-		.before_context(context_before as usize)
-		.after_context(context_after as usize)
-		.build()
+	kernel_build_searcher(SearcherSpec {
+		binary_detection: BinaryDetection::quit(b'\x00'),
+		line_number,
+		multi_line: multiline,
+		before_context: context_before as usize,
+		after_context: context_after as usize,
+		..SearcherSpec::default()
+	})
 }
 
 const FILE_CLASSIFICATION_READ_BYTES: u64 = MAX_FILE_BYTES + 1;
@@ -1039,12 +1003,8 @@ fn build_pcre_matcher(
 	multiline: bool,
 ) -> std::result::Result<PcreMatcher, grep_pcre2::Error> {
 	let mut builder = PcreMatcherBuilder::new();
-	builder
-		.caseless(ignore_case)
-		.multi_line(multiline)
-		.utf(true)
-		.ucp(true)
-		.jit_if_available(true);
+	builder.caseless(ignore_case).multi_line(multiline);
+	pcre_matcher_defaults(&mut builder);
 	builder.build(pattern)
 }
 
@@ -1095,9 +1055,12 @@ fn build_matcher(
 	// code-snippet patterns, but it is NOT silent — the returned notice is
 	// surfaced up to the CLI/agent so the operator knows the pattern was not
 	// honored as a regex.
-	build_regex_matcher(&regex::escape(pattern), ignore_case, multiline)
+	// The escaping rule has one owner in the kernel; the `grep` builtin used to
+	// hand-roll a second copy of the meta-character list, which was identical and
+	// free to drift.
+	build_regex_matcher(&escape_literal_pattern(pattern), ignore_case, multiline)
 		.map(|matcher| (CompiledMatcher::Rust(matcher), Some(message.clone())))
-		.map_err(|_| Error::from_reason(format!("Regex error: {message}")))
+		.map_err(|_| to_napi_with("Regex error", message))
 }
 
 // ---------------------------------------------------------------------------
@@ -1160,7 +1123,7 @@ fn build_grep_walk_request(
 	if let Some(glob) = glob.map(str::trim).filter(|value| !value.is_empty()) {
 		let pattern = glob_util::build_glob_pattern(glob, true);
 		let compiled = veyyon_walker::CompiledWalkGlob::new([pattern])
-			.map_err(|err| Error::from_reason(format!("Invalid glob pattern: {err}")))?;
+			.map_err(|err| to_napi_with("Invalid glob pattern", err))?;
 		filter = filter.glob(compiled);
 	}
 
@@ -1946,8 +1909,8 @@ fn grep_sync_with_matcher<M: Matcher + Sync>(
 	matcher: &M,
 ) -> Result<GrepResult> {
 	let search_path = resolve_grep_operand(&options.path)?;
-	let metadata = std::fs::metadata(&search_path)
-		.map_err(|err| Error::from_reason(format!("Path not found: {err}")))?;
+	let metadata =
+		std::fs::metadata(&search_path).map_err(|err| to_napi_with("Path not found", err))?;
 	let multiline = options.multiline.unwrap_or(false);
 	let output_mode = parse_output_mode(options.mode);
 
@@ -2006,7 +1969,7 @@ fn grep_sync_with_matcher<M: Matcher + Sync>(
 		if output_mode == OutputMode::FilesWithMatches && max_count.is_none() && offset == 0 {
 			let matched = matcher
 				.is_match(bytes.as_slice())
-				.map_err(|err| Error::from_reason(format!("Search failed: {err}")))?;
+				.map_err(|err| to_napi_with("Search failed", err))?;
 			if !matched {
 				return Ok(GrepResult { files_searched: 1, ..Default::default() });
 			}
@@ -2030,7 +1993,7 @@ fn grep_sync_with_matcher<M: Matcher + Sync>(
 		}
 
 		let search = run_search(matcher, bytes.as_slice(), params)
-			.map_err(|err| Error::from_reason(format!("Search failed: {err}")))?;
+			.map_err(|err| to_napi_with("Search failed", err))?;
 
 		if search.match_count == 0 {
 			return Ok(GrepResult { files_searched: 1, ..Default::default() });
@@ -2189,7 +2152,7 @@ pub fn has_match(
 		},
 		Either::B(buf) => {
 			pattern_string = std::str::from_utf8(buf.as_ref())
-				.map_err(|err| Error::from_reason(format!("Invalid UTF-8 in pattern: {err}")))?
+				.map_err(|err| to_napi_with("Invalid UTF-8 in pattern", err))?
 				.to_owned();
 			&pattern_string
 		},
@@ -2262,12 +2225,7 @@ mod tests {
 	#[cfg(unix)]
 	use std::{ffi::CString, os::unix::ffi::OsStrExt};
 	#[cfg(unix)]
-	use std::{
-		fs,
-		path::{Path, PathBuf},
-		sync::atomic::{AtomicU64, Ordering},
-		time::{Duration, SystemTime, UNIX_EPOCH},
-	};
+	use std::{fs, path::Path, time::Duration};
 
 	use grep_matcher::Matcher;
 
@@ -2278,33 +2236,12 @@ mod tests {
 	use crate::task;
 
 	#[cfg(unix)]
-	struct TempDirGuard(PathBuf);
-
-	#[cfg(unix)]
-	impl TempDirGuard {
-		fn new() -> Self {
-			static COUNTER: AtomicU64 = AtomicU64::new(0);
-			let nanos = SystemTime::now()
-				.duration_since(UNIX_EPOCH)
-				.expect("system time is after UNIX_EPOCH")
-				.as_nanos();
-			let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
-			let pid = std::process::id();
-			let path = std::env::temp_dir().join(format!("veyyon-grep-test-{pid}-{nanos}-{seq}"));
-			fs::create_dir_all(&path).expect("create temp test directory");
-			Self(path)
-		}
-
-		fn path(&self) -> &Path {
-			&self.0
-		}
-	}
-
-	#[cfg(unix)]
-	impl Drop for TempDirGuard {
-		fn drop(&mut self) {
-			let _ = fs::remove_dir_all(&self.0);
-		}
+	/// A scratch directory for one case.
+	///
+	/// The guard used to be declared here, one of eight identical copies across
+	/// the workspace. `veyyon-test-scratch` owns the single implementation now.
+	fn temp_dir_guard() -> veyyon_test_scratch::TempTree {
+		veyyon_test_scratch::scratch_dir("natives-grep")
 	}
 
 	#[cfg(unix)]
@@ -2439,7 +2376,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn grep_supports_pcre2_lookaround_and_backreferences() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		write_file(&root.path().join("lookahead.txt"), "foobar\nfoobaz\n");
 		write_file(&root.path().join("backreference.txt"), "same same\nsame other\n");
 
@@ -2466,7 +2403,7 @@ mod tests {
 		// canonicalized: a symlinked operand must stay the symlink so grep reports
 		// match paths relative to the path the caller passed. This is the exact
 		// contract that keeps it separate from veyyon_walker::resolve_search_path.
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		let target = root.path().join("target-dir");
 		fs::create_dir(&target).expect("create target dir");
 		let link = root.path().join("link-dir");
@@ -2490,7 +2427,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn grep_directory_skips_fifo_entries() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		write_file(&root.path().join("regular.txt"), "needle\n");
 		make_fifo(&root.path().join("skip-me.fifo"));
 
@@ -2518,7 +2455,7 @@ mod tests {
 			return;
 		}
 
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		let locked = root.path().join("locked");
 		fs::create_dir(&locked).expect("create locked dir");
 		write_file(&locked.join("hidden.txt"), "needle\n");
@@ -2544,7 +2481,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn grep_directory_counts_searched_files_without_storing_no_match_results() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		write_file(&root.path().join("a.txt"), "needle\n");
 		write_file(&root.path().join("b.txt"), "haystack\n");
 
@@ -2561,7 +2498,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn grep_sync_with_gitignore_skips_ignored_rs_files() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		fs::create_dir_all(root.path().join(".git")).expect("create repo marker");
 		fs::write(root.path().join(".gitignore"), "ignored.rs\nignored-dir/\n")
 			.expect("write gitignore");
@@ -2587,7 +2524,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn grep_files_with_matches_counts_all_searched_files_when_none_match() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		write_file(&root.path().join("a.txt"), "haystack a\n");
 		write_file(&root.path().join("b.txt"), "haystack b\n");
 
@@ -2606,7 +2543,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn grep_directory_applies_offset_and_limit_in_walker_order() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		write_file(&root.path().join("a.txt"), "needle a1\nneedle a2\n");
 		write_file(&root.path().join("b.txt"), "needle b1\n");
 		write_file(&root.path().join("c.txt"), "haystack\n");
@@ -2631,7 +2568,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn grep_count_mode_limit_applies_to_matches_not_files() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		write_file(&root.path().join("a.txt"), "needle a1\nneedle a2\n");
 		write_file(&root.path().join("b.txt"), "needle b1\n");
 
@@ -2653,7 +2590,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn grep_streaming_respects_pre_cancelled_token() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		write_file(&root.path().join("regular.txt"), "needle\n");
 
 		let ct = task::CancelToken::new(Some(0), None);
@@ -2672,7 +2609,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn grep_special_root_path_returns_empty_result() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		let fifo = root.path().join("direct.fifo");
 		make_fifo(&fifo);
 
@@ -2689,7 +2626,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn grep_multiline_matches_cross_line_patterns() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		write_file(&root.path().join("code.txt"), "fn foo() {\n  return 1;\n}\n");
 
 		let mut config = base_grep_config(root.path());
@@ -2708,7 +2645,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn grep_per_file_max_count_preserves_file_diversity() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		write_file(&root.path().join("a.txt"), "needle 1\nneedle 2\nneedle 3\nneedle 4\nneedle 5\n");
 		write_file(&root.path().join("z.txt"), "needle z\n");
 
@@ -2895,7 +2832,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn parallel_streaming_content_matches_sequential_with_context_and_gitignore() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		populate_parallel_parity_tree(root.path());
 		let (matcher, _) = super::build_matcher("needle", false, false).expect("build test matcher");
 		let params = unlimited_params(super::OutputMode::Content, 1);
@@ -2934,7 +2871,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn parallel_streaming_count_and_files_modes_match_sequential_reference() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		populate_parallel_parity_tree(root.path());
 
 		for (mode, output_mode) in [
@@ -2956,7 +2893,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn parallel_streaming_type_filter_limits_search_to_matching_extensions() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		let mut expected = Vec::new();
 		for index in 0..150 {
 			let source = format!("dir_{:02}/source_{index:03}.rs", index % 6);
@@ -2990,7 +2927,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn parallel_streaming_large_budget_stops_walking_before_scanning_tree() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		let file_count = 3_000;
 		for index in 0..file_count {
 			write_file(&root.path().join(format!("{index:04}.txt")), "needle\n");
@@ -3016,7 +2953,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn parallel_streaming_defers_oversized_results_until_after_normal_results() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		write_oversized_file(&root.path().join("000_big.txt"), "needle big 0\n");
 		write_oversized_file(&root.path().join("001_big.txt"), "needle big 1\n");
 		for index in 0..300 {
@@ -3040,7 +2977,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn parallel_streaming_respects_cancelled_token_mid_walk() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		for index in 0..1_000 {
 			write_file(&root.path().join(format!("{index:04}.txt")), "needle\n");
 		}
@@ -3061,7 +2998,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn streaming_grep_stops_after_first_page_content_budget() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		write_file(&root.path().join("a.txt"), "needle a1\nneedle a2\n");
 		write_file(&root.path().join("z.txt"), "needle z\n");
 		let (matcher, _) = super::build_matcher("needle", false, false).expect("build test matcher");
@@ -3090,7 +3027,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn streaming_grep_budget_counts_returned_matches_under_per_file_cap() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		write_file(&root.path().join("a.txt"), "needle a1\nneedle a2\n");
 		write_file(&root.path().join("b.txt"), "needle b1\nneedle b2\n");
 		write_file(&root.path().join("c.txt"), "needle c1\nneedle c2\n");
@@ -3125,7 +3062,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn streaming_grep_quits_parallel_after_large_budget() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		let budget = super::ORDERED_STREAMING_STOP_MAX_COUNT + 1;
 		let file_count = super::GREP_STREAM_WINDOW * 3;
 		let expected_paths: Vec<String> = (0..file_count)
@@ -3203,7 +3140,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn windowed_streaming_skips_oversized_when_normal_matches_satisfy_budget() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		let normal_paths = populate_windowed_oversized_tree(root.path());
 		let mut config = base_grep_config(root.path());
 		config.max_count = Some(65);
@@ -3229,7 +3166,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn windowed_streaming_emits_deferred_oversized_after_normals_when_budget_remains() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		let normal_paths = populate_windowed_oversized_tree(root.path());
 		let mut config = base_grep_config(root.path());
 		config.max_count = Some(100);
@@ -3252,7 +3189,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn oversized_file_is_searched_over_its_prefix_window() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		write_oversized_file(&root.path().join("big.txt"), "needle\n");
 
 		let result = grep_sync(base_grep_config(root.path()), None, task::CancelToken::default())
@@ -3270,7 +3207,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn oversized_prefix_read_returns_stable_snapshot_after_rewrite() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		let path = root.path().join("big.txt");
 		let prefix_len = usize::try_from(super::MAX_FILE_BYTES).expect("MAX_FILE_BYTES fits usize");
 		let oversized_len = prefix_len + 1024;
@@ -3292,7 +3229,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn oversized_results_follow_normal_results_regardless_of_path_order() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		// `a_big.txt` sorts before `z_small.txt` lexically, but as an oversized
 		// file it must still be emitted after the normal-sized file.
 		write_oversized_file(&root.path().join("a_big.txt"), "needle\n");
@@ -3309,7 +3246,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn oversized_pass_skipped_when_budget_satisfied_by_normal_files() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		write_file(&root.path().join("small.txt"), "needle\n");
 		write_oversized_file(&root.path().join("big.txt"), "needle\n");
 
@@ -3330,7 +3267,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn single_oversized_target_searches_prefix() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		let big = root.path().join("big.txt");
 		write_oversized_file(&big, "needle\n");
 

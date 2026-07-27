@@ -8,8 +8,9 @@
 //!   file. Binary entries surface as `diff: None`.
 //! - **Plain mode.** No `.git`; we walk both trees in parallel, short-circuit
 //!   on `(size, mtime-truncated-to-seconds)` equality, and emit a unified diff
-//!   for each surviving pair via `similar`. NUL within the first 8 KiB
-//!   classifies the file as binary → `diff: None`.
+//!   for each surviving pair. The unified body, the rule for what counts as a
+//!   line, and the NUL window that classifies a file as binary → `diff: None`
+//!   all come from `veyyon-diff-kernel`, shared with the `diff` shell builtin.
 //!
 //! Per the PAL contract: for binary files we don't materialize the bytes
 //! in the patch — callers that want them read directly from `merged`
@@ -23,8 +24,16 @@ use std::{
 };
 
 use tokio::process::Command;
+use veyyon_diff_kernel::{Ignore, Unified, looks_binary};
 
 use crate::{IsoError, IsoResult, command_failed};
+
+/// Lines of context either side of a change in the patch text this crate emits.
+///
+/// Three is what `diff -u` and `git diff` both default to, and a patch these
+/// produce is read by the same eyes and tools, so it matches rather than
+/// inventing its own width.
+const UNIFIED_CONTEXT: usize = 3;
 
 /// Captured changes between a `lower` baseline and a `merged` view.
 #[derive(Debug, Clone, Default)]
@@ -190,12 +199,19 @@ async fn git_spawn(cwd: &Path, args: &[&str]) -> IsoResult<std::process::Output>
 	})
 }
 
-/// Split a `git diff` blob into per-file [`FileChange`] entries. Each
-/// entry covers exactly one `diff --git a/<path> b/<path>` block. Binary
+/// Split a `git diff` blob into per-file [`FileChange`] entries.
+///
+/// Each entry covers exactly one `diff --git a/<path> b/<path>` block. Binary
 /// blocks are emitted with `diff: None`; the rest carry their original
 /// unified-diff slice unchanged so `git apply` produces byte-identical
 /// results downstream.
-fn parse_git_diff(blob: &[u8]) -> Vec<FileChange> {
+///
+/// Public because it is the only part of git mode that can be exercised without
+/// a repository on disk: everything around it shells out to `git`. Fuzzed by
+/// the `iso_git_diff_parse` target, whose input is `git`'s stdout, and which is
+/// therefore the one place a malformed blob is cheap to try.
+#[must_use]
+pub fn parse_git_diff(blob: &[u8]) -> Vec<FileChange> {
 	let Ok(text) = std::str::from_utf8(blob) else {
 		return Vec::new();
 	};
@@ -409,30 +425,32 @@ fn render_unified(rel: &Path, op: ChangeKind, old: &str, new: &str) -> String {
 		},
 		ChangeKind::Modified => {},
 	}
-	let body = similar::TextDiff::from_lines(old, new)
-		.unified_diff()
-		.context_radius(3)
-		.header(&from_label, &to_label)
-		.to_string();
-	out.push_str(&body);
+	// The body comes from the shared owner rather than from `similar` directly, so
+	// this crate and the `diff` shell builtin cannot disagree about what a line is.
+	// No ignore flags here: plain mode reports every difference it finds.
+	let mut body = Vec::new();
+	let diff = Unified::compute(old, new, UNIFIED_CONTEXT, Ignore::default());
+	let _ = diff.write(&mut body, &from_label, &to_label);
+	out.push_str(&String::from_utf8_lossy(&body));
 	if !out.ends_with('\n') {
 		out.push('\n');
 	}
 	out
 }
 
-fn looks_binary(bytes: &[u8]) -> bool {
-	bytes.iter().take(8192).any(|&b| b == 0)
-}
-
 #[cfg(test)]
 mod tests {
+	use veyyon_test_scratch::TempTree;
+
 	use super::*;
 
-	fn temp_root(tag: &str) -> PathBuf {
-		let dir = std::env::temp_dir().join(format!("veyyon-iso-diff-{tag}-{}", std::process::id()));
-		std::fs::create_dir_all(&dir).unwrap();
-		dir
+	/// A scratch directory for one case, removed when that case ends.
+	///
+	/// It used to be a fixed name per tag with no cleanup at all, so every run
+	/// left one directory per case behind and two runs in parallel shared a
+	/// path.
+	fn temp_root(tag: &str) -> TempTree {
+		veyyon_test_scratch::scratch_dir(&format!("iso-diff-{tag}"))
 	}
 
 	#[test]
@@ -461,11 +479,183 @@ mod tests {
 			plain_change(&side, Path::new("file.txt"), ChangeKind::Modified, Some(&peer)).unwrap();
 		assert_eq!(change.op, ChangeKind::Modified);
 		assert_eq!(change.path, Path::new("file.txt"));
-		let diff = change.diff.expect("text files must carry a unified diff");
-		assert!(diff.contains("-line two\n"), "diff missing removed line: {diff}");
-		assert!(diff.contains("+line two changed\n"), "diff missing added line: {diff}");
+		// The WHOLE patch, not two `contains` probes. This test used to assert only
+		// that the removed and added lines appeared somewhere in the text, which
+		// passes for a patch with the wrong header, the wrong ranges, or a hunk split
+		// in the wrong place, and did pass while the body drifted from the `diff`
+		// builtin's.
+		assert_eq!(
+			change.diff.expect("text files must carry a unified diff"),
+			"diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n \
+			 line one\n-line two\n+line two changed\n"
+		);
 
 		std::fs::remove_dir_all(&side).unwrap();
 		std::fs::remove_dir_all(&peer).unwrap();
+	}
+	/// Byte-exact pins on the patch text plain mode emits.
+	///
+	/// WHY THIS SUITE EXISTS. The unified body used to come from `similar`'s own
+	/// formatter, called here and separately in the `diff` shell builtin, and
+	/// the two were free to drift: the builtin's copy already differed on how a
+	/// line is split, because `similar`'s tokenizer treats a lone `\r` as a
+	/// line break and GNU diff does not. Both now call one owner, and these
+	/// cases were written against the OLD formatter so the move is provably
+	/// byte-identical.
+	///
+	/// The pins assert the WHOLE patch, header lines included, because the
+	/// header is assembled here and the body is not, and a change that shifted
+	/// work across that seam would otherwise pass.
+	mod the_patch_text_is_pinned_byte_for_byte {
+		use super::*;
+
+		/// A modified file carries the `diff --git` line, no mode line, and a
+		/// unified body labelled `a/` and `b/`.
+		#[test]
+		fn a_modified_file_gets_a_git_header_and_a_unified_body() {
+			let patch = render_unified(
+				Path::new("src/main.rs"),
+				ChangeKind::Modified,
+				"line one\nline two\n",
+				"line one\nline two changed\n",
+			);
+
+			assert_eq!(
+				patch,
+				"diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ \
+				 -1,2 +1,2 @@\n line one\n-line two\n+line two changed\n"
+			);
+		}
+
+		/// An added file gains a `new file mode` line and `/dev/null` on the
+		/// left, and the left range is the empty `-0,0`.
+		#[test]
+		fn an_added_file_gets_a_mode_line_and_a_dev_null_label() {
+			let patch = render_unified(Path::new("new.txt"), ChangeKind::Added, "", "fresh\n");
+
+			assert_eq!(
+				patch,
+				"diff --git a/new.txt b/new.txt\nnew file mode 100644\n--- /dev/null\n+++ \
+				 b/new.txt\n@@ -0,0 +1 @@\n+fresh\n"
+			);
+		}
+
+		/// A removed file is the mirror image: `deleted file mode` and
+		/// `/dev/null` on the right.
+		#[test]
+		fn a_removed_file_gets_a_deleted_mode_line() {
+			let patch = render_unified(Path::new("gone.txt"), ChangeKind::Removed, "was here\n", "");
+
+			assert_eq!(
+				patch,
+				"diff --git a/gone.txt b/gone.txt\ndeleted file mode 100644\n--- a/gone.txt\n+++ \
+				 /dev/null\n@@ -1 +0,0 @@\n-was here\n"
+			);
+		}
+
+		/// A missing final newline carries the marker, and the patch still ends
+		/// in a newline because the header assembly guarantees it.
+		#[test]
+		fn a_missing_final_newline_is_marked() {
+			let patch = render_unified(Path::new("t"), ChangeKind::Modified, "a\nb", "a\nc\n");
+
+			assert_eq!(
+				patch,
+				"diff --git a/t b/t\n--- a/t\n+++ b/t\n@@ -1,2 +1,2 @@\n a\n-b\n\\ No newline at end \
+				 of file\n+c\n"
+			);
+			assert!(patch.ends_with('\n'));
+		}
+
+		/// TWO distant changes make two hunks under ONE pair of `---`/`+++`
+		/// lines, which is the case that catches a formatter emitting the
+		/// header per hunk.
+		#[test]
+		fn two_distant_changes_make_two_hunks_under_one_header() {
+			let old = (1..=20).fold(String::new(), |mut lines, i| {
+				use std::fmt::Write as _;
+				let _ = writeln!(lines, "l{i}");
+				lines
+			});
+			let new = old.replace("l2\n", "L2\n").replace("l19\n", "L19\n");
+
+			let patch = render_unified(Path::new("f"), ChangeKind::Modified, &old, &new);
+
+			assert_eq!(
+				patch,
+				"diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1,5 +1,5 @@\n l1\n-l2\n+L2\n l3\n l4\n \
+				 l5\n@@ -16,5 +16,5 @@\n l16\n l17\n l18\n-l19\n+L19\n l20\n"
+			);
+		}
+
+		/// Identical text produces the header and NOTHING else, since a body with
+		/// no hunks has no `---`/`+++` lines either.
+		#[test]
+		fn identical_text_produces_a_header_with_no_body() {
+			let patch = render_unified(Path::new("same"), ChangeKind::Modified, "x\n", "x\n");
+
+			assert_eq!(patch, "diff --git a/same b/same\n");
+		}
+
+		/// A path with a space is written as typed on both sides, because the
+		/// header is assembled by interpolation and nothing quotes it.
+		#[test]
+		fn a_path_with_a_space_is_written_as_typed() {
+			let patch = render_unified(Path::new("a b/c.txt"), ChangeKind::Modified, "1\n", "2\n");
+
+			assert!(patch.starts_with("diff --git a/a b/c.txt b/a b/c.txt\n"), "{patch}");
+		}
+
+		/// A LONE `\r` is NOT a line break. GNU diff splits on `\n` and nothing
+		/// else, so this is one line and the hunk reads `@@ -1 +1 @@`.
+		/// `similar`'s tokenizer disagreed and produced a two-line hunk here,
+		/// which is the concrete drift that having two formatters allowed.
+		#[test]
+		fn a_lone_carriage_return_does_not_start_a_line() {
+			let patch = render_unified(Path::new("cr"), ChangeKind::Modified, "a\rb\n", "a\rc\n");
+
+			assert_eq!(patch, "diff --git a/cr b/cr\n--- a/cr\n+++ b/cr\n@@ -1 +1 @@\n-a\rb\n+a\rc\n");
+		}
+	}
+
+	/// The binary sniff, which decides whether a pair gets a patch at all.
+	mod a_nul_within_the_window_means_binary {
+		use super::*;
+
+		/// The window is 4 KiB, MEASURED against GNU diff 3.10, which sniffs
+		/// whatever its first read returned: a NUL at offset 4095 makes a file
+		/// binary and one at 4096 does not. This crate used to use 8 KiB, and
+		/// the `diff` builtin used to as well; both were wrong in the same
+		/// direction and one of them was fixed without the other, which is what
+		/// sharing the owner prevents.
+		#[test]
+		fn the_window_ends_at_four_kilobytes() {
+			let mut just_inside = vec![b'x'; 4095];
+			just_inside.push(0);
+			just_inside.extend(std::iter::repeat_n(b'x', 10_000));
+			assert!(looks_binary(&just_inside), "a NUL at 4095 is inside the window");
+
+			let mut just_outside = vec![b'x'; 4096];
+			just_outside.push(0);
+			just_outside.extend(std::iter::repeat_n(b'x', 10_000));
+			assert!(!looks_binary(&just_outside), "a NUL at 4096 is outside it");
+		}
+
+		/// The ordinary cases: a NUL near the start is binary and text is not.
+		#[test]
+		fn a_nul_near_the_start_is_binary_and_plain_text_is_not() {
+			assert!(looks_binary(b"\0"));
+			assert!(looks_binary(b"ELF\0\0\0"));
+			assert!(!looks_binary(b"fn main() {}\n"));
+			assert!(!looks_binary(b""), "an empty file is text");
+		}
+
+		/// A large NUL-free file is text however long it is, so the sniff reports
+		/// on NULs and not on size.
+		#[test]
+		fn a_large_nul_free_file_is_text() {
+			let text = "line\n".repeat(20_000);
+			assert!(!looks_binary(text.as_bytes()));
+		}
 	}
 }

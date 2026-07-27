@@ -22,6 +22,8 @@ use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use veyyon_iso::{BackendKind, ChangeKind, Diff, FileChange, IsoError, IsolationBackend};
 
+use crate::napi_error::to_napi_with;
+
 const ISO_UNAVAILABLE_PREFIX: &str = "ISO_UNAVAILABLE:";
 
 /// Isolation backend identifier. Numeric so the JS side can `switch` on
@@ -137,7 +139,7 @@ pub async fn iso_start(kind: Option<IsoBackendKind>, lower: String, merged: Stri
 		veyyon_iso::backend(resolved).start(&lower_path, &merged_path)
 	})
 	.await
-	.map_err(|err| Error::from_reason(format!("iso_start join: {err}")))?
+	.map_err(|err| to_napi_with("iso_start join", err))?
 	.map_err(to_napi_error)
 }
 
@@ -148,7 +150,7 @@ pub async fn iso_stop(kind: Option<IsoBackendKind>, merged: String) -> Result<()
 	let merged_path = std::path::PathBuf::from(merged);
 	tokio::task::spawn_blocking(move || veyyon_iso::backend(resolved).stop(&merged_path))
 		.await
-		.map_err(|err| Error::from_reason(format!("iso_stop join: {err}")))?
+		.map_err(|err| to_napi_with("iso_stop join", err))?
 		.map_err(to_napi_error)
 }
 

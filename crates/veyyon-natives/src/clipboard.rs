@@ -11,7 +11,7 @@ use image::{DynamicImage, ImageFormat, RgbaImage};
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
-use crate::task;
+use crate::{napi_error::to_napi_with, task};
 
 /// Clipboard image payload encoded as PNG bytes.
 #[napi(object)]
@@ -41,7 +41,7 @@ fn rgba_to_png(buffer: RgbaImage) -> Result<Vec<u8>> {
 	let mut output = Vec::with_capacity(capacity);
 	DynamicImage::ImageRgba8(buffer)
 		.write_to(&mut Cursor::new(&mut output), ImageFormat::Png)
-		.map_err(|err| Error::from_reason(format!("Failed to encode clipboard image: {err}")))?;
+		.map_err(|err| to_napi_with("Failed to encode clipboard image", err))?;
 	Ok(output)
 }
 
@@ -110,7 +110,7 @@ fn dib_to_png(dib: &[u8]) -> Result<Vec<u8>> {
 	bmp.extend_from_slice(dib);
 
 	let decoded = image::load_from_memory_with_format(&bmp, ImageFormat::Bmp)
-		.map_err(|err| Error::from_reason(format!("Failed to decode clipboard DIB: {err}")))?;
+		.map_err(|err| to_napi_with("Failed to decode clipboard DIB", err))?;
 	rgba_to_png(decoded.into_rgba8())
 }
 
@@ -162,16 +162,14 @@ fn set_clipboard_text(text: String) -> Result<()> {
 	let cell = CLIPBOARD.get_or_init(|| Mutex::new(None));
 	let mut guard = cell.lock();
 	if guard.is_none() {
-		*guard = Some(
-			Clipboard::new()
-				.map_err(|err| Error::from_reason(format!("Failed to access clipboard: {err}")))?,
-		);
+		*guard =
+			Some(Clipboard::new().map_err(|err| to_napi_with("Failed to access clipboard", err))?);
 	}
 	guard
 		.as_mut()
 		.expect("clipboard initialized above")
 		.set_text(text)
-		.map_err(|err| Error::from_reason(format!("Failed to copy to clipboard: {err}")))?;
+		.map_err(|err| to_napi_with("Failed to copy to clipboard", err))?;
 	Ok(())
 }
 
@@ -181,11 +179,11 @@ fn set_clipboard_text(text: String) -> Result<()> {
 /// macOS.
 #[cfg(not(target_os = "linux"))]
 fn set_clipboard_text(text: String) -> Result<()> {
-	let mut clipboard = Clipboard::new()
-		.map_err(|err| Error::from_reason(format!("Failed to access clipboard: {err}")))?;
+	let mut clipboard =
+		Clipboard::new().map_err(|err| to_napi_with("Failed to access clipboard", err))?;
 	clipboard
 		.set_text(text)
-		.map_err(|err| Error::from_reason(format!("Failed to copy to clipboard: {err}")))?;
+		.map_err(|err| to_napi_with("Failed to copy to clipboard", err))?;
 	Ok(())
 }
 
@@ -198,8 +196,8 @@ fn set_clipboard_text(text: String) -> Result<()> {
 #[napi]
 pub fn read_image_from_clipboard() -> task::Promise<Option<ClipboardImage>> {
 	task::blocking("clipboard.read_image", (), move |_| -> Result<Option<ClipboardImage>> {
-		let mut clipboard = Clipboard::new()
-			.map_err(|err| Error::from_reason(format!("Failed to access clipboard: {err}")))?;
+		let mut clipboard =
+			Clipboard::new().map_err(|err| to_napi_with("Failed to access clipboard", err))?;
 		match clipboard.get_image() {
 			Ok(image) => {
 				let bytes = encode_png(image)?;
@@ -221,7 +219,7 @@ pub fn read_image_from_clipboard() -> task::Promise<Option<ClipboardImage>> {
 						mime_type: "image/png".to_string(),
 					}));
 				}
-				Err(Error::from_reason(format!("Failed to read clipboard image: {err}")))
+				Err(to_napi_with("Failed to read clipboard image", err))
 			},
 		}
 	})

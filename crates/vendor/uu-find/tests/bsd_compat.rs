@@ -34,6 +34,9 @@ fn run_in(cwd: PathBuf, args: Vec<String>) -> (i32, String, String) {
 		stdin_fd: None,
 		stdin_is_search_input: false,
 		stdout: Box::new(SharedWriter { buf: stdout_buf.clone() }),
+		// A capture buffer is not a terminal, and saying so is what keeps this harness
+		// comparing against BSD find's piped behaviour rather than its interactive one.
+		stdout_is_terminal: false,
 		stderr: Box::new(SharedWriter { buf: stderr_buf.clone() }),
 		cwd,
 		env: HashMap::new(),

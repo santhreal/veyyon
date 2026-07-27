@@ -115,6 +115,8 @@ mod tests {
 				stdin_fd: None,
 				stdin_is_search_input: false,
 				stdout: Box::new(stdout.clone()),
+				// A capture buffer is not a terminal.
+				stdout_is_terminal: false,
 				stderr: Box::new(stderr.clone()),
 				cwd,
 				env: HashMap::new(),

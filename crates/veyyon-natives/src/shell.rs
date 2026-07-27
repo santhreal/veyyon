@@ -15,7 +15,7 @@ use veyyon_shell::{
 	execute_shell as core_execute_shell, minimizer,
 };
 
-use crate::task;
+use crate::{napi_error::to_napi, task};
 
 /// N-API opt-in handle for the minimizer.
 #[napi(object)]
@@ -167,7 +167,7 @@ pub struct ShellRunResult {
 	/// `exit(137)` itself produces just as readily. This field is set only for a
 	/// real signalled death, so callers can tell an out-of-memory kill (SIGKILL,
 	/// 9) from a program choosing that exit code.
-	pub signal: Option<i32>,
+	pub signal:    Option<i32>,
 	/// Whether the command was cancelled via abort.
 	pub cancelled: bool,
 	/// Whether the command timed out before completion.
@@ -238,7 +238,7 @@ impl Shell {
 				.run(run_options, chunk_tx, cancel_token.into_core())
 				.await
 				.map(Into::into)
-				.map_err(|err| Error::from_reason(err.to_string()));
+				.map_err(to_napi);
 			if let Some(handle) = drain_handle {
 				let _ = handle.await;
 			}
@@ -292,7 +292,7 @@ pub fn execute_shell<'env>(
 		let result = core_execute_shell(exec_options, chunk_tx, cancel_token.into_core())
 			.await
 			.map(Into::into)
-			.map_err(|err| Error::from_reason(err.to_string()));
+			.map_err(to_napi);
 		if let Some(handle) = drain_handle {
 			let _ = handle.await;
 		}

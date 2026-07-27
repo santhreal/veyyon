@@ -3,6 +3,8 @@
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
+use crate::napi_error::to_napi;
+
 #[napi(object)]
 pub struct SummaryOptions {
 	/// Source code to summarize.
@@ -84,5 +86,5 @@ pub fn summarize_code(options: SummaryOptions) -> Result<SummaryResult> {
 		unfold_limit_lines: options.unfold_limit_lines,
 	})
 	.map(Into::into)
-	.map_err(|error| Error::from_reason(error.to_string()))
+	.map_err(to_napi)
 }

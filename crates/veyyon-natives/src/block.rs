@@ -3,6 +3,8 @@
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
+use crate::napi_error::to_napi;
+
 #[napi(object)]
 pub struct BlockRangeOptions {
 	/// Source code to inspect.
@@ -43,7 +45,7 @@ pub fn block_range_at(options: BlockRangeOptions) -> Result<Option<BlockRange>> 
 		line: options.line,
 	})
 	.map(|range| range.map(Into::into))
-	.map_err(|error| Error::from_reason(error.to_string()))
+	.map_err(to_napi)
 }
 
 #[napi(object)]
@@ -91,5 +93,5 @@ pub fn enclosing_block_boundaries(options: EnclosingBoundaryOptions) -> Result<O
 			})
 			.collect(),
 	})
-	.map_err(|error| Error::from_reason(error.to_string()))
+	.map_err(to_napi)
 }

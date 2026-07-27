@@ -7,6 +7,8 @@
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
+use crate::napi_error::{to_napi, to_napi_with};
+
 /// Resolved filesystem entry kind for glob filters and match metadata.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[napi]
@@ -33,13 +35,18 @@ pub struct GlobMatch {
 	pub size:      Option<f64>,
 }
 
-fn walker_error_to_napi<E: std::fmt::Display>(err: veyyon_walker::WalkError<E>) -> Error {
+/// Converts a native walker error into an N-API error.
+///
+/// The walker's two failure kinds get different treatment on purpose. An
+/// interruption carries the caller's own error and nothing this crate can add,
+/// while invalid data is about a specific path, so the path becomes the context
+/// and the walker's message stays the reason.
+pub(crate) fn map_walker_error<E: std::fmt::Display>(err: veyyon_walker::WalkError<E>) -> Error {
 	match err {
-		veyyon_walker::WalkError::Interrupted(err) => Error::from_reason(err.to_string()),
-		veyyon_walker::WalkError::InvalidData { path, message } => Error::from_reason(format!(
-			"Native directory scan failed for {}: {message}",
-			path.display()
-		)),
+		veyyon_walker::WalkError::Interrupted(err) => to_napi(err),
+		veyyon_walker::WalkError::InvalidData { path, message } => {
+			to_napi_with(format!("Native directory scan failed for {}", path.display()), message)
+		},
 	}
 }
 
@@ -60,11 +67,6 @@ impl From<veyyon_walker::CollectedEntry> for GlobMatch {
 			size:      entry.size,
 		}
 	}
-}
-
-/// Converts a native walker error into an N-API error.
-pub(crate) fn map_walker_error<E: std::fmt::Display>(err: veyyon_walker::WalkError<E>) -> Error {
-	walker_error_to_napi(err)
 }
 
 /// Invalidate the walker scan cache.
