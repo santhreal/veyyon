@@ -121,8 +121,9 @@ pub struct ShellRunResult {
 	/// The signal that killed the command, when it died from one.
 	///
 	/// `exit_code` keeps bash's `128 + signal` form, which cannot be told apart
-	/// from a command that called `exit(137)` itself. This reports the raw signal
-	/// so callers can distinguish an out-of-memory kill from an ordinary failure.
+	/// from a command that called `exit(137)` itself. This reports the raw
+	/// signal so callers can distinguish an out-of-memory kill from an ordinary
+	/// failure.
 	pub signal:      Option<i32>,
 	pub cancelled:   bool,
 	pub timed_out:   bool,
@@ -2181,9 +2182,7 @@ mod tests {
 	/// display the original operand, not the resolved absolute path.
 	#[tokio::test(flavor = "multi_thread")]
 	async fn uutils_mkdir_resolves_cwd_and_displays_operand() {
-		let tmp = std::env::temp_dir().join(format!("veyyon-mkdir-{}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&tmp);
-		std::fs::create_dir_all(&tmp).expect("temp dir");
+		let tmp = veyyon_test_scratch::scratch_dir("shell-mkdir");
 		let tmp_str = tmp.to_str().expect("utf8 temp path");
 
 		let config = ShellConfig { session_env: None, snapshot_path: None, minimizer: None };
@@ -2214,8 +2213,6 @@ mod tests {
 		let out = std::fs::read_to_string(tmp.join("out.txt")).expect("out.txt");
 		assert!(out.contains("'rel'"), "verbose output missing operand `rel`: {out:?}");
 		assert!(!out.contains(tmp_str), "verbose output leaked absolute path: {out:?}");
-
-		let _ = std::fs::remove_dir_all(&tmp);
 	}
 
 	/// `mkdir --help` and an invalid flag must be handled in-process: rendered
@@ -2225,9 +2222,7 @@ mod tests {
 	/// vendored `run` entry point bypasses that path.
 	#[tokio::test(flavor = "multi_thread")]
 	async fn uutils_mkdir_help_and_bad_flag_do_not_exit_process() {
-		let tmp = std::env::temp_dir().join(format!("veyyon-mkdir-help-{}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&tmp);
-		std::fs::create_dir_all(&tmp).expect("temp dir");
+		let tmp = veyyon_test_scratch::scratch_dir("shell-mkdir-help");
 		let tmp_str = tmp.to_str().expect("utf8 temp path");
 
 		let config = ShellConfig { session_env: None, snapshot_path: None, minimizer: None };
@@ -2257,8 +2252,6 @@ mod tests {
 		assert_ne!(exit_code(&bad), 0, "invalid flag should be a usage error");
 		let err_text = std::fs::read_to_string(tmp.join("err.txt")).expect("err.txt");
 		assert!(!err_text.is_empty(), "usage error should be reported to stderr");
-
-		let _ = std::fs::remove_dir_all(&tmp);
 	}
 
 	/// The uutils-backed `head` builtin must read piped stdin through the
@@ -2267,9 +2260,7 @@ mod tests {
 	/// redirected) stdout.
 	#[tokio::test(flavor = "multi_thread")]
 	async fn uutils_head_streams_stdin_and_reads_files() {
-		let tmp = std::env::temp_dir().join(format!("veyyon-head-{}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&tmp);
-		std::fs::create_dir_all(&tmp).expect("temp dir");
+		let tmp = veyyon_test_scratch::scratch_dir("shell-head");
 		std::fs::write(tmp.join("data.txt"), "l1\nl2\nl3\nl4\nl5\n").expect("write data");
 		let tmp_str = tmp.to_str().expect("utf8 temp path");
 
@@ -2309,8 +2300,6 @@ mod tests {
 			.expect("run_string obsolete");
 		assert_eq!(exit_code(&o), 0, "head -1 should succeed");
 		assert_eq!(std::fs::read_to_string(tmp.join("out_obs.txt")).unwrap(), "1\n");
-
-		let _ = std::fs::remove_dir_all(&tmp);
 	}
 
 	/// `head --help` / invalid flag must be handled in-process (rendered to the
@@ -2319,9 +2308,7 @@ mod tests {
 	/// help strings.
 	#[tokio::test(flavor = "multi_thread")]
 	async fn uutils_head_help_and_bad_flag_do_not_exit_process() {
-		let tmp = std::env::temp_dir().join(format!("veyyon-head-help-{}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&tmp);
-		std::fs::create_dir_all(&tmp).expect("temp dir");
+		let tmp = veyyon_test_scratch::scratch_dir("shell-head-help");
 		let tmp_str = tmp.to_str().expect("utf8 temp path");
 
 		let config = ShellConfig { session_env: None, snapshot_path: None, minimizer: None };
@@ -2354,8 +2341,6 @@ mod tests {
 				.expect("err.txt")
 				.is_empty()
 		);
-
-		let _ = std::fs::remove_dir_all(&tmp);
 	}
 
 	/// Smoke-test the read-only uutils filter/listing builtins end-to-end
@@ -2363,8 +2348,7 @@ mod tests {
 	/// resolution (grep/ls/find), and redirected stdout capture.
 	#[tokio::test(flavor = "multi_thread")]
 	async fn uutils_filters_listing_find_grep() {
-		let tmp = std::env::temp_dir().join(format!("veyyon-utils-{}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&tmp);
+		let tmp = veyyon_test_scratch::scratch_dir("shell-utils");
 		std::fs::create_dir_all(tmp.join("sub")).expect("temp dirs");
 		std::fs::write(tmp.join("data.txt"), "foo\nbar\nbaz\n").expect("data");
 		std::fs::write(tmp.join("sub/nested.txt"), "deep\n").expect("nested");
@@ -2450,16 +2434,13 @@ mod tests {
 			.await
 			.expect("uniq");
 		assert_eq!(read("uniq.txt"), "a\nb\nc\n");
-
-		let _ = std::fs::remove_dir_all(&tmp);
 	}
 
 	/// `rg` is not an alias for `grep`: it recurses by default, respects
 	/// ripgrep's ignore/hidden/binary filters, and keeps `-h` as help.
 	#[tokio::test(flavor = "multi_thread")]
 	async fn rg_builtin_uses_ripgrep_defaults() {
-		let tmp = std::env::temp_dir().join(format!("veyyon-rg-defaults-{}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&tmp);
+		let tmp = veyyon_test_scratch::scratch_dir("shell-rg-defaults");
 		std::fs::create_dir_all(tmp.join("sub")).expect("sub dir");
 		std::fs::create_dir_all(tmp.join(".git")).expect("git dir");
 		std::fs::write(tmp.join("data.txt"), "alpha\nneedle\n").expect("data");
@@ -2501,13 +2482,22 @@ mod tests {
 		assert_eq!(exit_code(&single), 0, "rg explicit file should match");
 		assert_eq!(read("single.txt"), "data.txt:2:needle\n");
 
+		// A named binary file IS searched, and what ripgrep prints for it is the
+		// notice rather than the records: measured on ripgrep 15.1.0,
+		// `rg needle binary.bin` on `needle\0hidden\n` prints
+		// `binary file matches (found "\0" byte around offset 6)` and exits 0. The
+		// match is found, so the status says so, and the records are replaced by the
+		// sentence that says why they are not there.
 		let explicit_binary = session
 			.shell
 			.run_string("rg needle binary.bin > explicit-binary.txt", &si, &params)
 			.await
 			.expect("rg explicit binary");
 		assert_eq!(exit_code(&explicit_binary), 0, "explicit binary file should be searched");
-		assert_eq!(read("explicit-binary.txt"), "needle\n");
+		assert_eq!(
+			read("explicit-binary.txt"),
+			"binary file matches (found \"\\0\" byte around offset 6)\n"
+		);
 
 		let help = session
 			.shell
@@ -2519,8 +2509,6 @@ mod tests {
 			read("help.txt").contains("ripgrep recursively searches"),
 			"help text should describe ripgrep"
 		);
-
-		let _ = std::fs::remove_dir_all(&tmp);
 	}
 
 	/// `fd` recurses from the shell working directory, respects hidden and
@@ -2528,8 +2516,7 @@ mod tests {
 	/// prefixes, and renders help to stdout with a success status.
 	#[tokio::test(flavor = "multi_thread")]
 	async fn fd_builtin_uses_fd_defaults() {
-		let tmp = std::env::temp_dir().join(format!("veyyon-fd-defaults-{}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&tmp);
+		let tmp = veyyon_test_scratch::scratch_dir("shell-fd-defaults");
 		std::fs::create_dir_all(tmp.join("sub")).expect("sub dir");
 		std::fs::create_dir_all(tmp.join(".git/info")).expect("git info dir");
 		std::fs::write(tmp.join("needle.txt"), "visible\n").expect("visible");
@@ -2635,8 +2622,6 @@ mod tests {
 		assert_eq!(exit_code(&help), 0, "fd help should succeed");
 		assert!(read("help.txt").contains("A program to find entries in your filesystem"));
 		assert_eq!(read("help.err"), "");
-
-		let _ = std::fs::remove_dir_all(&tmp);
 	}
 
 	/// Plain `rg PATTERN` uses the shell working directory when the host wired
@@ -2644,9 +2629,7 @@ mod tests {
 	/// (`-f -`) must not consume the implicit search path decision.
 	#[tokio::test(flavor = "multi_thread")]
 	async fn rg_builtin_defaults_to_cwd_unless_stdin_is_pipeline() {
-		let tmp = std::env::temp_dir().join(format!("veyyon-rg-stdin-{}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&tmp);
-		std::fs::create_dir_all(&tmp).expect("temp dir");
+		let tmp = veyyon_test_scratch::scratch_dir("shell-rg-stdin");
 		std::fs::write(tmp.join("data.txt"), "from-cwd\nfrom-pattern\n").expect("data");
 		let tmp_str = tmp.to_str().expect("utf8");
 
@@ -2689,8 +2672,6 @@ mod tests {
 		let files = read("files.txt");
 		assert!(files.contains("data.txt"), "--files should list cwd files: {files:?}");
 		assert!(!files.contains("not-a-path"), "--files must not read piped stdin: {files:?}");
-
-		let _ = std::fs::remove_dir_all(&tmp);
 	}
 
 	/// `grep -q` must suppress all stdout and drive the exit status (0 on match,
@@ -2698,9 +2679,7 @@ mod tests {
 	/// Mirrors busybox applet probing: `grep -qx "$applet" <(strings bin)`.
 	#[tokio::test(flavor = "multi_thread")]
 	async fn grep_quiet_and_line_regexp() {
-		let tmp = std::env::temp_dir().join(format!("veyyon-grepq-{}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&tmp);
-		std::fs::create_dir_all(&tmp).expect("temp dir");
+		let tmp = veyyon_test_scratch::scratch_dir("shell-grepq");
 		std::fs::write(tmp.join("data.txt"), "foo\nbar\nbaz\n").expect("data");
 		let tmp_str = tmp.to_str().expect("utf8");
 
@@ -2748,16 +2727,13 @@ mod tests {
 			.await
 			.expect("grep -qx miss");
 		assert_eq!(read("xmiss.txt"), "XMISS\n", "-x must reject a partial-line match");
-
-		let _ = std::fs::remove_dir_all(&tmp);
 	}
 
 	/// The destructive uutils builtins (`rm`, `mv`) must operate on paths
 	/// resolved against the shell working directory, not the host process cwd.
 	#[tokio::test(flavor = "multi_thread")]
 	async fn uutils_rm_and_mv_operate_on_shell_cwd() {
-		let tmp = std::env::temp_dir().join(format!("veyyon-rmmv-{}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&tmp);
+		let tmp = veyyon_test_scratch::scratch_dir("shell-rmmv");
 		std::fs::create_dir_all(tmp.join("tree/inner")).expect("tree");
 		std::fs::write(tmp.join("a.txt"), "hello").expect("a");
 		std::fs::write(tmp.join("tree/inner/leaf.txt"), "x").expect("leaf");
@@ -2792,8 +2768,6 @@ mod tests {
 		assert!(!tmp.join("tree").exists(), "tree should be removed");
 		// and the host process cwd must be untouched.
 		assert!(tmp.join("b.txt").exists());
-
-		let _ = std::fs::remove_dir_all(&tmp);
 	}
 
 	/// Removing a nonexistent file must print exactly one diagnostic (like GNU
@@ -2802,9 +2776,7 @@ mod tests {
 	/// `Err(1)` returned after `remove()` had already reported each failure.
 	#[tokio::test(flavor = "multi_thread")]
 	async fn uutils_rm_missing_file_prints_single_diagnostic() {
-		let tmp = std::env::temp_dir().join(format!("veyyon-rm-missing-{}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&tmp);
-		std::fs::create_dir_all(&tmp).expect("temp dir");
+		let tmp = veyyon_test_scratch::scratch_dir("shell-rm-missing");
 		let tmp_str = tmp.to_str().expect("utf8");
 
 		let config = ShellConfig { session_env: None, snapshot_path: None, minimizer: None };
@@ -2826,8 +2798,6 @@ mod tests {
 		let lines: Vec<&str> = err.lines().collect();
 		assert_eq!(lines.len(), 1, "rm should emit exactly one diagnostic line, got: {err:?}");
 		assert!(lines[0].contains("nonexistent.txt"), "diagnostic should name the file: {err:?}");
-
-		let _ = std::fs::remove_dir_all(&tmp);
 	}
 
 	/// The find display/match surface must use the operand-relative path while
@@ -2835,8 +2805,7 @@ mod tests {
 	/// `-printf %p` see `./...`, while `-delete` removes the correct file.
 	#[tokio::test(flavor = "multi_thread")]
 	async fn uutils_find_display_and_actions_split_paths() {
-		let tmp = std::env::temp_dir().join(format!("veyyon-find-split-{}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&tmp);
+		let tmp = veyyon_test_scratch::scratch_dir("shell-find-split");
 		std::fs::create_dir_all(tmp.join("sub")).expect("dirs");
 		std::fs::write(tmp.join("keep.log"), "k").expect("keep");
 		std::fs::write(tmp.join("sub/drop.tmp"), "d").expect("drop");
@@ -2894,8 +2863,6 @@ mod tests {
 			"./keep.log",
 			"-exec {{}} should be operand-relative and run in the shell cwd"
 		);
-
-		let _ = std::fs::remove_dir_all(&tmp);
 	}
 
 	/// The vendored `sed` builtin must stream pipeline stdin through scripts and
@@ -2903,9 +2870,7 @@ mod tests {
 	/// working directory rather than the host process cwd.
 	#[tokio::test(flavor = "multi_thread")]
 	async fn uutils_sed_substitutes_streams_and_edits_in_place() {
-		let tmp = std::env::temp_dir().join(format!("veyyon-sed-{}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&tmp);
-		std::fs::create_dir_all(&tmp).expect("temp dir");
+		let tmp = veyyon_test_scratch::scratch_dir("shell-sed");
 		std::fs::write(tmp.join("conf.txt"), "x=1\n").expect("conf");
 		let tmp_str = tmp.to_str().expect("utf8");
 
@@ -2934,8 +2899,6 @@ mod tests {
 			.expect("sed -i");
 		assert_eq!(read("conf.txt"), "x=2\n", "in-place edit must land in the shell cwd");
 		assert_eq!(read("conf.txt.bak"), "x=1\n", "backup must keep the original");
-
-		let _ = std::fs::remove_dir_all(&tmp);
 	}
 
 	/// The `xargs` builtin spawns real child processes, but their stdout must
@@ -2944,9 +2907,7 @@ mod tests {
 	#[cfg(unix)]
 	#[tokio::test(flavor = "multi_thread")]
 	async fn uutils_xargs_children_feed_pipeline_and_report_failure() {
-		let tmp = std::env::temp_dir().join(format!("veyyon-xargs-{}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&tmp);
-		std::fs::create_dir_all(&tmp).expect("temp dir");
+		let tmp = veyyon_test_scratch::scratch_dir("shell-xargs");
 		let tmp_str = tmp.to_str().expect("utf8");
 
 		let config = ShellConfig { session_env: None, snapshot_path: None, minimizer: None };
@@ -2984,8 +2945,6 @@ mod tests {
 			.await
 			.expect("xargs false");
 		assert_eq!(read("code.txt"), "123");
-
-		let _ = std::fs::remove_dir_all(&tmp);
 	}
 
 	/// The `jq` builtin must evaluate filters over piped JSON, resolve file
@@ -2993,9 +2952,7 @@ mod tests {
 	/// null/false exit status through the shell.
 	#[tokio::test(flavor = "multi_thread")]
 	async fn uutils_jq_filters_json_and_propagates_exit_status() {
-		let tmp = std::env::temp_dir().join(format!("veyyon-jq-{}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&tmp);
-		std::fs::create_dir_all(&tmp).expect("temp dir");
+		let tmp = veyyon_test_scratch::scratch_dir("shell-jq");
 		std::fs::write(tmp.join("in.json"), "{\"name\":\"pi\"}\n").expect("in.json");
 		let tmp_str = tmp.to_str().expect("utf8");
 
@@ -3030,8 +2987,6 @@ mod tests {
 			.await
 			.expect("jq -e");
 		assert_eq!(read("code.txt"), "1");
-
-		let _ = std::fs::remove_dir_all(&tmp);
 	}
 
 	/// A stdin-reading builtin blocked on an open pipe must honor abort/timeout:

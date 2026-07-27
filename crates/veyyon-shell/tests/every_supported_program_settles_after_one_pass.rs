@@ -38,7 +38,13 @@
 //! suites are where the actual reductions are pinned; this one is the floor
 //! underneath all of them.
 
-use veyyon_shell::minimizer::{MinimizerConfig, MinimizerCtx, filters};
+use std::fmt::Write as _;
+
+use veyyon_shell::minimizer::{MinimizerCtx, filters};
+
+mod common;
+
+use common::enabled;
 
 /// One dispatcher arm: the program, the subcommand the dispatcher would detect,
 /// and a command line consistent with both.
@@ -327,11 +333,11 @@ fn repeated_lines() -> String {
 
 /// A hundred distinct lines, which is where capping and elision interact.
 fn distinct_lines() -> String {
-	(1..=100).map(|n| format!("line {n} of output\n")).collect()
-}
-
-fn enabled() -> MinimizerConfig {
-	MinimizerConfig { enabled: true, ..Default::default() }
+	let mut out = String::new();
+	for n in 1..=100 {
+		let _ = writeln!(out, "line {n} of output");
+	}
+	out
 }
 
 /// Check both properties for one arm, one capture, one exit code.

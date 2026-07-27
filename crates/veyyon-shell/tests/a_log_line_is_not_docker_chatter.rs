@@ -24,11 +24,11 @@
 
 use veyyon_shell::minimizer::{MinimizerConfig, MinimizerCtx, filters};
 
-fn enabled() -> MinimizerConfig {
-	MinimizerConfig { enabled: true, ..Default::default() }
-}
+mod common;
 
-fn docker<'a>(command: &'a str, config: &'a MinimizerConfig) -> MinimizerCtx<'a> {
+use common::enabled;
+
+const fn docker<'a>(command: &'a str, config: &'a MinimizerConfig) -> MinimizerCtx<'a> {
 	MinimizerCtx { program: "docker", subcommand: Some("build"), command, config }
 }
 

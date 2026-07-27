@@ -1642,9 +1642,6 @@ fn filter_gradle_other(input: &str) -> String {
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
 
-/// Join kept lines with `\n` and a trailing newline when non-empty, mirroring
-/// the per-line `format!("{line}\n")` emission of rtk's `StreamFilter`s so the
-/// output shape (and token counts) match the donor.
 // ═══════════════════════════════════════════════════════════════════════════
 // SPRING BOOT RUN MODE (shared by `mvn spring-boot:run` and gradle `bootRun`)
 // ═══════════════════════════════════════════════════════════════════════════

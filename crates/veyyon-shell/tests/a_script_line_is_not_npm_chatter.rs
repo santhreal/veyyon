@@ -22,11 +22,15 @@
 
 use veyyon_shell::minimizer::{MinimizerConfig, MinimizerCtx, filters};
 
-fn enabled() -> MinimizerConfig {
-	MinimizerConfig { enabled: true, ..Default::default() }
-}
+mod common;
 
-fn npm<'a>(subcommand: &'a str, command: &'a str, config: &'a MinimizerConfig) -> MinimizerCtx<'a> {
+use common::enabled;
+
+const fn npm<'a>(
+	subcommand: &'a str,
+	command: &'a str,
+	config: &'a MinimizerConfig,
+) -> MinimizerCtx<'a> {
 	MinimizerCtx { program: "npm", subcommand: Some(subcommand), command, config }
 }
 

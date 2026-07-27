@@ -28,12 +28,12 @@
 
 use veyyon_shell::minimizer::{MinimizerConfig, MinimizerCtx, filters, primitives};
 
-fn enabled() -> MinimizerConfig {
-	MinimizerConfig { enabled: true, ..Default::default() }
-}
+mod common;
+
+use common::enabled;
 
 /// Build the context a filter is handed for one command.
-fn ctx<'a>(
+const fn ctx<'a>(
 	program: &'a str,
 	subcommand: Option<&'a str>,
 	command: &'a str,
