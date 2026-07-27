@@ -1170,6 +1170,9 @@ function Get-RedirectLocation {
         # GitHub answers some clients differently, and a request with no
         # user-agent is one of them.
         $req.UserAgent = "veyyon-installer"
+        # Headers only: the answer is the Location header, and the body of a
+        # redirect is an empty page nobody reads.
+        $req.Method = "HEAD"
         $resp = $req.GetResponse()
         try {
             return "$($resp.Headers["Location"])"
@@ -1201,7 +1204,9 @@ function Get-TagFromRedirect {
 function Test-ReleaseTagExists {
     param([string]$Tag)
     try {
-        $null = Invoke-WebRequest -Uri "https://github.com/$Repo/releases/tag/$Tag" -TimeoutSec 60 -UseBasicParsing
+        # -Method Head: the question is whether the page is there, not what is
+        # on it, and a release page's body is a few hundred kilobytes.
+        $null = Invoke-WebRequest -Uri "https://github.com/$Repo/releases/tag/$Tag" -Method Head -TimeoutSec 60 -UseBasicParsing
         return $true
     } catch {
         return $false
