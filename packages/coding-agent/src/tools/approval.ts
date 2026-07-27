@@ -46,6 +46,12 @@ export interface ResolvedApproval {
 	tier: ToolTier;
 	reason?: string;
 	override: boolean;
+	/**
+	 * True when the tool judged this specific call dangerous enough to prompt
+	 * even in yolo. Carried on the result so the `/yolo` bypass can tell a
+	 * routine prompt from a floor it must not lift.
+	 */
+	critical?: boolean;
 }
 
 const POLICY_VALUES: ReadonlySet<ApprovalPolicy> = new Set(["allow", "deny", "prompt"]);
@@ -132,9 +138,14 @@ function normalizeDecision(value: unknown): Omit<ResolvedApproval, "policy"> {
 		const record = value as Record<string, unknown>;
 		const tier = isToolTier(record.tier) ? record.tier : "exec";
 		const reason = typeof record.reason === "string" && record.reason.length > 0 ? record.reason : undefined;
+		// `critical` implies `override`: a decision that must survive yolo must
+		// also beat a per-tool allow, and requiring both flags at every call site
+		// is a way to eventually forget one.
+		const critical = record.critical === true;
 		return {
 			tier,
-			override: record.override === true,
+			override: critical || record.override === true,
+			...(critical ? { critical: true } : {}),
 			...(reason ? { reason } : {}),
 		};
 	}
@@ -172,11 +183,16 @@ function planAutonomyBlocksMutation(
  *  3. Active autonomy level tier comparison (`plan` denies mutations; `ask` prompts).
  *
  * In yolo mode, override-based tool prompts are ignored; user `tools.approval`
- * settings remain authoritative.
+ * settings remain authoritative. The exception is a decision the tool marked
+ * `critical`, which still prompts in yolo unless `tools.approval.<tool>` says
+ * otherwise. Without that floor the ordering is inverted: the calls a tool
+ * considers most dangerous are the ones most likely to run in the mode that
+ * skips the check.
  *
  * When `options.bypassAllApprovals` is set (the `/yolo` command), any result
- * that would still prompt is turned into `allow` as a final step. A `deny` is a
- * hard block, not a prompt, so it survives the bypass unchanged.
+ * that would still prompt is turned into `allow` as a final step, EXCEPT a
+ * critical one. A `deny` is a hard block, not a prompt, so it survives the
+ * bypass unchanged.
  */
 export function resolveApproval(
 	tool: ApprovalSubject,
@@ -186,7 +202,10 @@ export function resolveApproval(
 	options?: ApprovalResolutionOptions,
 ): ResolvedApproval {
 	const resolved = resolveApprovalInner(tool, args, mode, userConfig, options);
-	if (options?.bypassAllApprovals && resolved.policy === "prompt") {
+	// A critical prompt is a floor, not a prompt the bypass may lift. `/yolo`
+	// is a statement about routine friction, not consent to delete a home
+	// directory unasked.
+	if (options?.bypassAllApprovals && resolved.policy === "prompt" && !resolved.critical) {
 		return { ...resolved, policy: "allow" };
 	}
 	return resolved;
@@ -204,6 +223,22 @@ function resolveApprovalInner(
 	const userPolicy = Object.hasOwn(userConfig, tool.name) ? normalizePolicy(userConfig[tool.name]) : undefined;
 
 	if (level === "yolo") {
+		// A critical decision has a floor: yolo used to return here before ever
+		// looking at `decision.override`, which inverted the severity ordering.
+		// The most dangerous commands are the ones most likely to be run in the
+		// mode that ignored the check, and every published home-directory wipe
+		// happened in exactly that configuration. An explicit
+		// `tools.approval.<tool>` still wins in both directions, so `allow` is
+		// the escape hatch and `deny` is still a hard block.
+		if (decision.critical && userPolicy === undefined) {
+			return {
+				policy: "prompt",
+				tier: decision.tier,
+				override: true,
+				critical: true,
+				...(decision.reason ? { reason: decision.reason } : {}),
+			};
+		}
 		return { policy: userPolicy ?? "allow", tier: decision.tier, override: false };
 	}
 
@@ -211,10 +246,14 @@ function resolveApprovalInner(
 		if (userPolicy === "deny") {
 			return { policy: "deny", tier: decision.tier, override: true };
 		}
+		// `critical` has to travel with the result, not just be acted on above:
+		// this is the branch the non-yolo modes take, and the `/yolo` bypass
+		// reads the flag off the result to know which prompts it may lift.
 		return {
 			policy: "prompt",
 			tier: decision.tier,
 			override: true,
+			...(decision.critical ? { critical: true } : {}),
 			...(decision.reason ? { reason: decision.reason } : {}),
 		};
 	}

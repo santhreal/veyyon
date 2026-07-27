@@ -6,7 +6,7 @@ Tool approval has two independent inputs:
    - `read`: reads data or updates UI-only session metadata.
    - `write`: mutates workspace/session state but does not execute arbitrary code.
    - `exec`: executes code, shells out, drives a browser, spawns agents, or performs similarly broad actions.
-2. **User policy**: `tools.approval.<toolName>: allow | deny | prompt` overrides the mode for that tool unless a non-yolo safety override forces a prompt.
+2. **User policy**: `tools.approval.<toolName>: allow | deny | prompt` overrides the mode for that tool unless a tool's safety override forces a prompt. An explicit policy always wins over a `critical` safety prompt, in both directions.
 
 Tools without an `approval` declaration are treated as `exec`. This is the safe default for unknown custom tools. MCP server tools declare `write`.
 
@@ -16,10 +16,12 @@ Configure with `tools.approvalMode`:
 
 | Mode               | Auto-approves           | Prompts for     |
 | ------------------ | ----------------------- | --------------- |
-| `plan`             | `read`                  | `write`, `exec` (plan-mode semantics) |
+| `plan`             | `read`                  | `write` only inside an active plan-mode session; `write` and `exec` are otherwise denied |
 | `ask`              | `read`                  | `write`, `exec` |
 | `auto-edit`        | `read`, `write`         | `exec`          |
 | `yolo` (default)   | `read`, `write`, `exec` | none            |
+
+Under `plan`, `exec` is always denied (it returns an error to the model, never a prompt). Outside an active plan-mode session, `write` is denied too; with a plan-mode session active, `write` prompts.
 
 Legacy aliases still accepted: `always-ask` → `ask`, `write` → `auto-edit`.
 
@@ -59,14 +61,15 @@ a prompt.
 
 ## The `/yolo` command (full session bypass)
 
-The `yolo` mode above still honors your per-tool policies: `tools.approval.<tool>: prompt` and a tool's own safety `override` prompt both still stop the call. The `/yolo` command is stronger. It removes every approval prompt for the current session, including per-tool `prompt` overrides and safety `override` prompts.
+The `yolo` mode above still honors your per-tool policies: `tools.approval.<tool>: prompt` and a tool's own `critical` safety prompt both still stop the call. The `/yolo` command is stronger. It removes approval prompts for the current session, including per-tool `prompt` overrides and plain `override` prompts.
 
 Run `/yolo` in the TUI and confirm the danger prompt to turn it on. While it is on, file writes, shell commands, and network calls run without asking. The composer border and prompt glyph turn red and the status line shows a red `YOLO` marker, so you always know it is active.
 
-Two things still block a call, because they are hard denials rather than prompts:
+Three things still stop a call:
 
-- an explicit `tools.approval.<tool>: deny`, and
-- plan mode (mutating tools stay blocked).
+- an explicit `tools.approval.<tool>: deny`, a hard denial rather than a prompt,
+- plan mode (mutating tools stay blocked), and
+- a `critical` safety decision, such as a command that would recursively delete your home directory. This one is a prompt, and it is the single prompt the bypass does not lift. Set `tools.approval.<tool>: allow` if you want it gone too.
 
 The bypass is session-scoped. It defaults to off, is never written to settings, and resets to off when the session ends. Turn it off at any time with `/yolo off`, and check the current state with `/yolo status`.
 
@@ -84,14 +87,14 @@ tools:
   approval:
     bash: prompt
     read: allow
-    mcp__filesystem__delete: deny
+    mcp__filesystem_delete: deny
 ```
 
 Resolution per tool call:
 
 1. Compute the tool's approval decision from `tool.approval(args)`; omitted means `exec`.
 2. Normalize `tools.approval.<tool>` if present; invalid values are ignored.
-3. In `yolo` mode, the user policy is used when present; otherwise the call is allowed. Safety `override` reasons do not force a prompt in `yolo`.
+3. In `yolo` mode, the user policy is used when present. Otherwise a `critical` decision prompts and everything else is allowed: plain `override` reasons do not force a prompt in `yolo`, but `critical` ones do.
 4. In non-yolo modes, if the tool sets `override: true`, `deny` is blocked and all other cases prompt, even if user policy says `allow`.
 5. Otherwise, a valid user policy wins.
 6. Otherwise, the active mode auto-approves or prompts by tier.
@@ -101,10 +104,20 @@ Resolution per tool call:
 A tool can force a prompt with object-form approval:
 
 ```ts
-approval: { tier: "exec", override: true, reason: "Critical pattern detected" }
+approval: { tier: "exec", override: true, reason: "Needs confirmation" }
 ```
 
-`bash` uses this for critical destructive patterns such as `rm -rf /`, fork bombs, remote-fetch-then-execute, writes to `/etc/passwd`, and host shutdown commands. These surface as `reason` in the approval prompt, but in `yolo` mode they are auto-approved unless a user policy for the tool is set to `prompt` or `deny`.
+`override: true` beats a per-tool `allow` in `plan`, `ask`, and `auto-edit`. `yolo` ignores it.
+
+There is a second strength for calls that must stop even there:
+
+```ts
+approval: { tier: "exec", critical: true, reason: "rm would recursively remove the home directory itself" }
+```
+
+`critical: true` implies `override: true` and adds a floor under it: the call still prompts in `yolo`, and the `/yolo` session bypass does not lift it. Setting `tools.approval.<tool>` explicitly still wins in both directions, so `allow` is the escape hatch and `deny` is still a hard block.
+
+`bash` marks both halves of its guard critical: the paths a command would recursively delete (judged after expansion, so `rm -rf ~/` and `rm -rf "$HOME"/` are recognized) and the text-shaped patterns such as fork bombs, remote-fetch-then-execute, writes to `/etc/passwd`, and host shutdown commands. The reason names the path where there is one, and surfaces as `reason` in the approval prompt. Without the floor the ordering would be inverted: `tools.approvalMode` defaults to `yolo`, so the calls the guard considers most dangerous would be the ones most likely to run in the mode that skips the check.
 
 ## Per-tool prompt details
 
@@ -137,7 +150,7 @@ approval: (args) => (LSP_READONLY_ACTIONS.has(args.action) ? "read" : "write");
 
 approval: (args) =>
   isCritical(args.command)
-    ? { tier: "exec", override: true, reason: "Critical pattern detected" }
+    ? { tier: "exec", critical: true, reason: "Critical pattern detected" }
     : "exec";
 ```
 

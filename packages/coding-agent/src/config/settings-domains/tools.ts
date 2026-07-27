@@ -19,6 +19,25 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
+	// Extra paths the destructive-command guard refuses to delete recursively.
+	//
+	// ADDITIONS ONLY, BY CONSTRUCTION. The compiled set in src/tools/bash-guard.ts
+	// (the home directory, the system roots, the credential directories) is not
+	// reachable from config in any direction, so this setting can make the guard
+	// stricter and can never make it weaker. A setting that could shrink a safety
+	// floor is a setting an agent can be talked into editing.
+	"tools.protectedPaths": {
+		type: "array",
+		default: [] as string[],
+		ui: {
+			tab: "interaction",
+			group: "Approvals",
+			label: "Extra Protected Paths",
+			description:
+				"Additional absolute paths (a leading ~ is expanded) that a recursive delete must never target without approval. Adds to the built-in set; it cannot remove from it.",
+		},
+	},
+
 	// Default tool approval mode (interaction tab, but governs the tool wrapper).
 	// Autonomy ladder (src/tools/approval.ts normalizeApprovalMode):
 	//   "plan"      — read-tier only; plan-mode session semantics.
@@ -41,7 +60,8 @@ export const TOOLS_SETTINGS = {
 				{
 					value: "plan",
 					label: "Plan",
-					description: "Read-only planning: auto-approve read tools; write and exec tools require confirmation.",
+					description:
+						"Read-only planning: auto-approve read tools; write asks only inside an active plan-mode session, exec is blocked.",
 				},
 				{
 					value: "ask",
