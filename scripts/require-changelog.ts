@@ -254,8 +254,18 @@ async function resolveBase(): Promise<string> {
 	return mergeBase;
 }
 
+/**
+ * Every publishable package under `packages/`, in path order.
+ *
+ * A package with no `CHANGELOG.md` is an ERROR here, not a package to skip. Skipping was the old
+ * behaviour and it made the gate quietly incomplete: `argot` and `@veyyon/tool-render` both shipped
+ * for releases with their source ungated, and nothing said so, because the check that would have
+ * complained was the same one being skipped. The rule is that a publishable package documents what
+ * it ships, so a missing changelog fails the gate and names the file to create.
+ */
 export async function discoverPackages(repoRoot: string): Promise<ChangelogPackage[]> {
 	const packages: ChangelogPackage[] = [];
+	const missing: string[] = [];
 	const glob = new Glob("packages/*/package.json");
 	for await (const rel of glob.scan({ cwd: repoRoot })) {
 		const dir = path.dirname(rel);
@@ -264,8 +274,20 @@ export async function discoverPackages(repoRoot: string): Promise<ChangelogPacka
 			private?: boolean;
 		};
 		if (manifest.private) continue;
-		if (!(await Bun.file(path.join(repoRoot, dir, "CHANGELOG.md")).exists())) continue;
+		if (!(await Bun.file(path.join(repoRoot, dir, "CHANGELOG.md")).exists())) {
+			missing.push(`${dir}/CHANGELOG.md (${manifest.name ?? dir})`);
+			continue;
+		}
 		packages.push({ dir, name: manifest.name ?? dir });
+	}
+	if (missing.length > 0) {
+		// Thrown rather than exited so the rule is reachable from a test with a fixture repo;
+		// `main` turns it into the same red operator message every other gate failure uses.
+		throw new Error(
+			`publishable package with no changelog, so its source ships ungated:\n  ${missing.join("\n  ")}\n` +
+				`Create the file with a "# Changelog" heading and a "${UNRELEASED_HEADING}" section, ` +
+				`or mark the package "private": true in its package.json if it is not published.`,
+		);
 	}
 	packages.sort((a, b) => a.dir.localeCompare(b.dir));
 	return packages;
@@ -284,7 +306,12 @@ async function main(): Promise<void> {
 	const changedRaw = await gitOutput(["diff", "--name-only", `${base}...HEAD`]);
 	const changedFiles = changedRaw ? changedRaw.split("\n").filter(Boolean) : [];
 
-	const packages = await discoverPackages(repoRoot);
+	let packages: ChangelogPackage[];
+	try {
+		packages = await discoverPackages(repoRoot);
+	} catch (error) {
+		fail(error instanceof Error ? error.message : String(error));
+	}
 
 	const commitMessages = await gitOutput(["log", `${base}..HEAD`, "--format=%B"]);
 	const markers = parseSkipMarkers(commitMessages);

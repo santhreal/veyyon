@@ -81,9 +81,15 @@ export function buildRootChangelog(): string {
  * paragraph is not an entry at all.
  */
 export function unreleasedBullets(md: string): string[] {
-	const start = md.indexOf("## [Unreleased]");
-	if (start === -1) return [];
-	const rest = md.slice(start + "## [Unreleased]".length);
+	// Anchored to the start of a LINE, not found anywhere in the text. An unanchored
+	// `indexOf` matched the words inside prose that merely mentions the heading, and the
+	// first thing to do that was the root file's own generated banner: the search landed in
+	// the banner, the block ended at the real heading one line later, and the function
+	// answered "no entries" for a file full of them -- which made every entry look orphaned
+	// and the writer refuse. A heading is a line, so the pattern is a line.
+	const heading = /^## \[Unreleased\][^\n]*$/m.exec(md);
+	if (!heading) return [];
+	const rest = md.slice(heading.index + heading[0].length);
 	const nextRelease = rest.search(/\n## /);
 	const block = nextRelease === -1 ? rest : rest.slice(0, nextRelease);
 	const bullets: string[] = [];

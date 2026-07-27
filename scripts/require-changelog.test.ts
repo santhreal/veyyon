@@ -18,6 +18,7 @@ import * as path from "node:path";
 import { $ } from "bun";
 import {
 	type ChangelogPackage,
+	discoverPackages,
 	evaluateChangelogRequirement,
 	parseSkipMarkers,
 	parseUnreleasedBullets,
@@ -430,6 +431,95 @@ describe("require-changelog.ts end to end against a real repo", () => {
 			const result = await run(root, "origin/does-not-exist");
 			expect(result.exitCode).toBe(1);
 			expect(result.stderr.toString()).toContain("cannot resolve base ref");
+		} finally {
+			await fs.rm(root, { recursive: true, force: true });
+		}
+	});
+});
+
+/**
+ * `discoverPackages` decides WHICH packages the gate covers, so a package it quietly leaves out is
+ * a package whose source ships with no changelog requirement at all. That is exactly what happened:
+ * `argot` and `@veyyon/tool-render` were publishable with no `CHANGELOG.md`, the old code skipped
+ * them with a bare `continue`, and nothing anywhere said the gate was incomplete. These lock the
+ * replacement rule — publishable means gated, and the only way out is `"private": true`.
+ */
+describe("discoverPackages", () => {
+	async function makeTree(
+		packages: Array<{ dir: string; manifest: Record<string, unknown>; changelog?: string }>,
+	): Promise<string> {
+		const root = await fs.mkdtemp(path.join(os.tmpdir(), "clog-discover-"));
+		for (const pkg of packages) {
+			await Bun.write(path.join(root, "packages", pkg.dir, "package.json"), JSON.stringify(pkg.manifest));
+			if (pkg.changelog !== undefined) {
+				await Bun.write(path.join(root, "packages", pkg.dir, "CHANGELOG.md"), pkg.changelog);
+			}
+		}
+		return root;
+	}
+
+	const CHANGELOG = ["# Changelog", "", "## [Unreleased]", ""].join("\n");
+
+	it("returns every publishable package that has a changelog, in path order", async () => {
+		const root = await makeTree([
+			{ dir: "zed", manifest: { name: "@scope/zed" }, changelog: CHANGELOG },
+			{ dir: "alpha", manifest: { name: "@scope/alpha" }, changelog: CHANGELOG },
+		]);
+		try {
+			expect(await discoverPackages(root)).toEqual([
+				{ dir: "packages/alpha", name: "@scope/alpha" },
+				{ dir: "packages/zed", name: "@scope/zed" },
+			]);
+		} finally {
+			await fs.rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it("throws and names the missing file when a publishable package has no changelog", async () => {
+		const root = await makeTree([
+			{ dir: "gated", manifest: { name: "@scope/gated" }, changelog: CHANGELOG },
+			{ dir: "ungated", manifest: { name: "@scope/ungated" } },
+		]);
+		try {
+			await expect(discoverPackages(root)).rejects.toThrow("packages/ungated/CHANGELOG.md (@scope/ungated)");
+		} finally {
+			await fs.rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it("lists every missing changelog at once rather than stopping at the first", async () => {
+		const root = await makeTree([
+			{ dir: "one", manifest: { name: "@scope/one" } },
+			{ dir: "two", manifest: { name: "@scope/two" } },
+		]);
+		try {
+			await discoverPackages(root);
+			throw new Error("expected discoverPackages to reject");
+		} catch (error) {
+			const message = (error as Error).message;
+			expect(message).toContain("packages/one/CHANGELOG.md (@scope/one)");
+			expect(message).toContain("packages/two/CHANGELOG.md (@scope/two)");
+		} finally {
+			await fs.rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it("leaves a private package alone, changelog or not, because it is never published", async () => {
+		const root = await makeTree([
+			{ dir: "internal", manifest: { name: "@scope/internal", private: true } },
+			{ dir: "shipped", manifest: { name: "@scope/shipped" }, changelog: CHANGELOG },
+		]);
+		try {
+			expect(await discoverPackages(root)).toEqual([{ dir: "packages/shipped", name: "@scope/shipped" }]);
+		} finally {
+			await fs.rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it("falls back to the directory when a manifest has no name, so the message still points somewhere", async () => {
+		const root = await makeTree([{ dir: "nameless", manifest: {} }]);
+		try {
+			await expect(discoverPackages(root)).rejects.toThrow("packages/nameless/CHANGELOG.md (packages/nameless)");
 		} finally {
 			await fs.rm(root, { recursive: true, force: true });
 		}
