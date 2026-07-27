@@ -14,6 +14,7 @@ import {
 } from "@veyyon/utils";
 import type { EmbeddingModel } from "fastembed";
 import { LRUCache } from "lru-cache/raw";
+import { EMBEDDING_DIMS, FALLBACK_EMBEDDING_DIM } from "../config";
 import { ensureFastembedModelSidecars } from "./fastembed-model-cache";
 import { loadFastembed } from "./fastembed-runtime";
 import {
@@ -253,31 +254,30 @@ export function isApiModel(modelName: string): boolean {
 	return $flag("MNEMOPI_EMBEDDINGS_VIA_API");
 }
 
-const MODEL_DIMS: Record<string, number> = {
-	"BAAI/bge-small-en-v1.5": 384,
-	"BAAI/bge-base-en-v1.5": 768,
-	"BAAI/bge-large-en-v1.5": 1024,
-	"BAAI/bge-small-zh-v1.5": 512,
-	"BAAI/bge-base-zh-v1.5": 768,
-	"BAAI/bge-large-zh-v1.5": 1024,
-	"intfloat/multilingual-e5-small": 384,
-	"intfloat/multilingual-e5-base": 768,
-	"intfloat/multilingual-e5-large": 1024,
-	"BAAI/bge-m3": 1024,
-	"BAAI/bge-multilingual-gemma2": 3584,
-	"openai/text-embedding-3-small": 1536,
-	"openai/text-embedding-3-large": 3072,
-	"text-embedding-3-small": 1536,
-	"text-embedding-3-large": 3072,
-	"jina-embeddings-v5-omni-nano": 768,
-	"jina-embeddings-v5-omni-small": 1024,
-};
+/**
+ * The dimension a named embedding model produces.
+ *
+ * The table lives in `../config` as `EMBEDDING_DIMS` and is imported rather than
+ * repeated. This file carried a byte-identical seventeen-entry copy called
+ * `MODEL_DIMS`, which is the kind of duplicate that costs nothing until the day
+ * someone adds a model to one of them: the vector store would then pack a width
+ * that the embedder does not produce, and nothing would report it.
+ *
+ * KNOWN DIVERGENCE, DELIBERATELY NOT CHANGED HERE. This resolves the dimension for
+ * whatever model name you hand it, and `EMBEDDING_DIM` below passes `DEFAULT_MODEL`,
+ * which consults the active `withMnemopiRuntimeOptions` scope. `config.embeddingDim()`
+ * answers the same question from `MNEMOPI_EMBEDDING_MODEL` alone and never sees that
+ * scope, and `binary-vectors.ts` sizes its packed vectors from that one. A scope whose
+ * model has a different dimension would therefore have the two disagree. No caller
+ * sets a scope model today, so this is latent rather than live; see
+ * `EMBED-DIM-TWO-RESOLVERS` in BACKLOG.md.
+ */
 export function embeddingDimFor(modelName: string): number {
 	const override = Number.parseInt($env.MNEMOPI_EMBEDDING_DIM ?? "", 10);
 	if (Number.isFinite(override)) {
 		return override;
 	}
-	return MODEL_DIMS[modelName] ?? 384;
+	return EMBEDDING_DIMS[modelName] ?? FALLBACK_EMBEDDING_DIM;
 }
 
 /** Drain an embedding stream (a custom provider or fastembed) into a `Float32Array` matrix. */

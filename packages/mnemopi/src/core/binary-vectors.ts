@@ -118,8 +118,25 @@ export function quantizeInt8(embedding: readonly number[]): Int8Array {
 	return out;
 }
 
+/**
+ * Pack an embedding to one bit per dimension, at the embedding's OWN width.
+ *
+ * IT USED TO CAP AT `EMBEDDING_DIM`, WHICH SILENTLY DISCARDED SIGNAL. That constant is
+ * derived from `config.embeddingDim()`, which maps the configured model name through a
+ * seventeen-entry table and falls back to 384 for anything it does not list. So
+ * configuring any unlisted model (a new jina, voyage or cohere release, say) truncated
+ * every vector to its first 384 dimensions: a 1536-dimension model kept a quarter of
+ * its signal. Nothing threw and nothing logged. It surfaced only as recall quietly
+ * getting worse, which is the hardest kind of defect to attribute.
+ *
+ * The width is not needed as a constant here. The schema stores `original_dim` per row
+ * and `search` already compares at `min(queryDim, storedDim)`, so rows of differing
+ * widths were always handled; the cap was an assumption that every embedding is exactly
+ * the configured width, not a compression budget. Rows written before this change keep
+ * working at the width they recorded.
+ */
 export function maximallyInformativeBinarization(embedding: readonly number[]): Uint8Array {
-	const dim = Math.min(embedding.length, EMBEDDING_DIM);
+	const dim = embedding.length;
 	const nBytes = Math.ceil(dim / BITS_PER_BYTE);
 	const out = new Uint8Array(nBytes);
 	for (let i = 0; i < dim; i += 1) {
@@ -219,17 +236,23 @@ export class BinaryVectorStore {
 				 (memory_id, binary_vector, original_dim, magnitude)
 				 VALUES (?, ?, ?, ?)`,
 			)
-			.run(memoryId, binary, Math.min(embedding.length, EMBEDDING_DIM), magnitude(embedding));
+			// The row's TRUE width. Recording the capped value made the truncation
+			// unrecoverable as well as invisible: a reader could not tell a genuine
+			// 384-dimension model from a 1536-dimension one that had been cut down.
+			.run(memoryId, binary, embedding.length, magnitude(embedding));
 	}
 	search(queryEmbedding: readonly number[], topK = 10): BinaryVectorSearchResult[] {
-		const queryDim = Math.min(queryEmbedding.length, EMBEDDING_DIM);
+		const queryDim = queryEmbedding.length;
 		const queryBinary = maximallyInformativeBinarization(queryEmbedding);
 		const rows = this.conn
 			.query(`SELECT memory_id, binary_vector, original_dim, magnitude FROM ${this.tableName}`)
 			.all() as VectorRow[];
 		const results: BinaryVectorSearchResult[] = [];
 		for (const row of rows) {
-			const storedDim = clampLow(Math.trunc(toFiniteNumber(row.original_dim)), 0, EMBEDDING_DIM);
+			// Clamped to the QUERY's width, not to the module constant: a row wider than
+			// the configured default is a legitimate row, and clamping it to that
+			// constant reintroduced the truncation on the read side.
+			const storedDim = clampLow(Math.trunc(toFiniteNumber(row.original_dim)), 0, queryDim);
 			const comparedDim = Math.min(queryDim, storedDim);
 			const distance = hammingDistanceForDimension(queryBinary, bytesFromBlob(row.binary_vector), comparedDim);
 			results.push({
