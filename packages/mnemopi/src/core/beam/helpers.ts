@@ -1,6 +1,5 @@
 import type { Database } from "bun:sqlite";
 import { clamp01, logger } from "@veyyon/utils";
-import { envFloat } from "../../util/env";
 import { generateId as generateTimedId, sha256Hex16, stableMemoryId } from "../../util/ids";
 import {
 	cjkFtsTerms,
@@ -20,7 +19,8 @@ import { buildExactVectorIndex, searchExactVectorIndex } from "../vector-index";
 import { decodeEmbeddingJson, encodeEmbeddingJson } from "../vector-math";
 import type { BeamMemoryState, JsonValue, Metadata } from "./types";
 
-export type HybridWeights = readonly [vecWeight: number, ftsWeight: number, importanceWeight: number];
+// `HybridWeights` is declared in `../../config`, next to the weights it describes.
+export type { HybridWeights } from "../../config";
 
 export interface VectorDistanceResult {
 	rowid: number;
@@ -31,8 +31,6 @@ export interface WorkingVectorResult {
 	id: string;
 	sim: number;
 }
-
-const DEFAULT_WEIGHTS: HybridWeights = [0.5, 0.3, 0.2];
 
 const SPLIT_TOKEN_RE = /[_:/.-]+/g;
 
@@ -47,22 +45,6 @@ export function generateId(content: string, now: Date = new Date()): string {
 
 export function generateStableId(content: string, source = ""): string {
 	return stableMemoryId(content, source);
-}
-
-export function normalizeWeights(
-	vecWeight: number | null | undefined,
-	ftsWeight: number | null | undefined,
-	importanceWeight: number | null | undefined,
-): HybridWeights {
-	let vw = Math.max(0, vecWeight ?? envFloat("MNEMOPI_VEC_WEIGHT", DEFAULT_WEIGHTS[0]));
-	let fw = Math.max(0, ftsWeight ?? envFloat("MNEMOPI_FTS_WEIGHT", DEFAULT_WEIGHTS[1]));
-	let iw = Math.max(0, importanceWeight ?? envFloat("MNEMOPI_IMPORTANCE_WEIGHT", DEFAULT_WEIGHTS[2]));
-	if (!Number.isFinite(vw)) vw = 0;
-	if (!Number.isFinite(fw)) fw = 0;
-	if (!Number.isFinite(iw)) iw = 0;
-	const total = vw + fw + iw;
-	if (total === 0) return DEFAULT_WEIGHTS;
-	return [vw / total, fw / total, iw / total];
 }
 
 export function normalizeImportance(importance: number | null | undefined, fallback = 0.5): number {

@@ -181,6 +181,36 @@ export function scratchpadMaxItems(env: Env = process.env): number {
 	return envInt("MNEMOPI_SP_MAX", 1000, env);
 }
 
+/**
+ * Self-Harmonizing Memory Reconciliation, the pass that clusters near-duplicate memories
+ * and reconciles the beliefs they imply. Its five knobs lived in `core/shmr.ts` and were
+ * the only `MNEMOPI_*` family with no accessor here, so `mnemopi diagnose` could not report
+ * them and an operator had no one place to look them up.
+ *
+ * Each falls back to its default rather than to `NaN`: a `NaN` threshold makes every
+ * `>= threshold` comparison false, so clustering would quietly find nothing, and a `NaN`
+ * size corrupts the SQLite `LIMIT` bind.
+ */
+export function shmrBatchSize(env: Env = process.env): number {
+	return envInt("MNEMOPI_SHMR_BATCH_SIZE", 50, env);
+}
+
+export function shmrMaxIterations(env: Env = process.env): number {
+	return envInt("MNEMOPI_SHMR_MAX_ITERATIONS", 3, env);
+}
+
+export function shmrSimilarityThreshold(env: Env = process.env): number {
+	return envFloat("MNEMOPI_SHMR_SIMILARITY_THRESHOLD", 0.7, env);
+}
+
+export function shmrHarmonyThreshold(env: Env = process.env): number {
+	return envFloat("MNEMOPI_SHMR_HARMONY_THRESHOLD", 0.6, env);
+}
+
+export function shmrMinClusterSize(env: Env = process.env): number {
+	return envInt("MNEMOPI_SHMR_MIN_CLUSTER_SIZE", 2, env);
+}
+
 export function recencyHalflifeHours(env: Env = process.env): number {
 	return envFloat("MNEMOPI_RECENCY_HALFLIFE", 168, env);
 }
@@ -256,34 +286,66 @@ export function vecType(env: Env = process.env): VecType {
 	return envOneOf("MNEMOPI_VEC_TYPE", ["float32", "int8", "bit"] as const, "int8", env);
 }
 
+/** The three recall scoring weights, in the order recall applies them. */
+export type HybridWeights = readonly [vecWeight: number, ftsWeight: number, importanceWeight: number];
+
+/**
+ * The recall weights when nothing overrides them: vector, full-text, importance.
+ *
+ * One triple, because a default written in several places is several defaults. The three
+ * accessors below each read their own slot and `normalizedRecallWeights` falls back to the
+ * whole triple, so retuning recall means editing this line and nothing else.
+ */
+export const DEFAULT_RECALL_WEIGHTS: HybridWeights = [0.5, 0.3, 0.2];
+
+/**
+ * How close a weight sum must be to 1 to count as already normalized. Dividing an
+ * already-normalized triple by its own total is a float round trip that can move a weight
+ * by an ulp, so the exact numbers the caller asked for are returned instead.
+ */
+const NORMALIZED_WEIGHT_EPSILON = 1e-10;
+
 export function vectorWeight(env: Env = process.env): number {
-	return envFloat("MNEMOPI_VEC_WEIGHT", 0.5, env);
+	return envFloat("MNEMOPI_VEC_WEIGHT", DEFAULT_RECALL_WEIGHTS[0], env);
 }
 
 export function ftsWeight(env: Env = process.env): number {
-	return envFloat("MNEMOPI_FTS_WEIGHT", 0.3, env);
+	return envFloat("MNEMOPI_FTS_WEIGHT", DEFAULT_RECALL_WEIGHTS[1], env);
 }
 
 export function importanceWeight(env: Env = process.env): number {
-	return envFloat("MNEMOPI_IMPORTANCE_WEIGHT", 0.2, env);
+	return envFloat("MNEMOPI_IMPORTANCE_WEIGHT", DEFAULT_RECALL_WEIGHTS[2], env);
 }
 
+/**
+ * A weight that is negative, `NaN` or infinite contributes nothing.
+ *
+ * Recall's weights arrive from `RecallOptions`, which is public and typed only as `number`,
+ * so a caller that computed one with `Number(input)` can hand over `NaN`. Left alone it
+ * poisons the sum, and every weight comes back `NaN`: no memory then out-scores any other
+ * and recall silently returns whatever order the candidates happened to be in.
+ */
+function usableWeight(value: number): number {
+	return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+/**
+ * The recall weights, non-negative and summing to 1.
+ *
+ * `null` and `undefined` both mean "use the configured weight", so a caller holding an
+ * optional override can pass it straight through.
+ */
 export function normalizedRecallWeights(
-	vec = vectorWeight(),
-	fts = ftsWeight(),
-	importance = importanceWeight(),
-): readonly [number, number, number] {
-	const vw = Math.max(0, vec);
-	const fw = Math.max(0, fts);
-	const iw = Math.max(0, importance);
+	vec: number | null | undefined = vectorWeight(),
+	fts: number | null | undefined = ftsWeight(),
+	importance: number | null | undefined = importanceWeight(),
+): HybridWeights {
+	const vw = usableWeight(vec ?? vectorWeight());
+	const fw = usableWeight(fts ?? ftsWeight());
+	const iw = usableWeight(importance ?? importanceWeight());
 	const total = vw + fw + iw;
-	if (total === 0) {
-		return [0.5, 0.3, 0.2];
-	}
-	const epsilon = 1e-10;
-	if (Math.abs(total - 1) < epsilon) {
-		return [vw, fw, iw];
-	}
+	if (total === 0) return DEFAULT_RECALL_WEIGHTS;
+	if (Math.abs(total - 1) < NORMALIZED_WEIGHT_EPSILON) return [vw, fw, iw];
 	return [vw / total, fw / total, iw / total];
 }
 

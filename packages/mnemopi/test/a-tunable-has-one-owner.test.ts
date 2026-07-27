@@ -60,12 +60,6 @@ const KNOWN_BYPASSES = new Set([
 	path.join("core", "extraction.ts"),
 	// Duplicates MNEMOPI_HOST_LLM_PROVIDER/MODEL with core/extraction.ts.
 	path.join("core", "local-llm.ts"),
-	// MNEMOPI_SHMR_* have no accessor in config.ts yet; they are owned here for now.
-	path.join("core", "shmr.ts"),
-	// MNEMOPI_SP_MAX duplicates config.ts's scratchpadMaxItems.
-	path.join("core", "beam", "store.ts"),
-	// MNEMOPI_VEC_WEIGHT / FTS_WEIGHT / IMPORTANCE_WEIGHT have no accessor yet.
-	path.join("core", "beam", "helpers.ts"),
 ]);
 
 /** Every `.ts` file under `packages/mnemopi/src`. */
