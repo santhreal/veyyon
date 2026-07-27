@@ -10,7 +10,7 @@ Review src/auth.rs for missing error handling.
 EOF
 ```
 
-The prompt may be a CLI argument or stdin. If both are present, stdin is appended as a `<stdin>` block.
+The prompt may be a CLI argument or stdin. If both are present, the piped stdin content is prepended to the argument prompt (stdin first, then the argument, separated by a newline).
 
 Run `veyyon --help` for the generated flag set. Common options:
 
@@ -30,7 +30,7 @@ Run `veyyon --help` for the generated flag set. Common options:
 
 | Option | Effect |
 | --- | --- |
-| `--json` | Machine-readable event stream on stdout |
+| `--mode json` | Machine-readable event stream on stdout |
 | `--model` / role flags | Model selection for the run |
 | `--approval-mode` / `--yolo` | Approval policy for the run |
 

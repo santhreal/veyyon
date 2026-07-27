@@ -6,7 +6,7 @@
 - Entry: `packages/coding-agent/src/tools/ask.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/ask.md`
 - Key collaborators:
-  - `packages/coding-agent/src/config/settings-schema.ts`: `ask.timeout` / `ask.notify` defaults
+  - `packages/coding-agent/src/config/settings-domains/interaction.ts`: `ask.timeout` / `ask.notify` defaults (the ms-legacy rewrite lives in `packages/coding-agent/src/config/settings.ts`)
   - `packages/coding-agent/src/modes/theme/theme.ts`: checkbox and radio glyphs for TUI rendering
   - `packages/coding-agent/src/tui/index.ts`: status-line rendering
 
@@ -22,7 +22,8 @@
 | --- | --- | --- | --- |
 | `id` | `string` | Yes | Stable identifier used in multi-question results. |
 | `question` | `string` | Yes | Prompt text shown to the user. |
-| `options` | `{ label: string; description?: string }[]` | Yes | Option labels for the picker, each with optional explanatory `description` text shown below the label. The schema does not require a minimum length; the UI always appends `Other (type your own)`, and callers must not include it. |
+| `header` | `string` | No | Optional short display chip for rich ask dialogs. |
+| `options` | `{ label: string; description?: string; preview?: string }[]` | Yes | Option labels for the picker, each with optional explanatory `description` text shown below the label and optional rich `preview` content for interactive ask dialogs. The schema does not require a minimum length; the UI always appends `Other (type your own)`, and callers must not include it. Labels colliding with the reserved runtime labels `Other (type your own)`, `Chat about this`, and `Next →` are rejected by the schema. |
 | `multi` | `boolean` | No | Enables multi-select mode. Default: `false`. |
 | `recommended` | `number` | No | Zero-based recommended option index. In single-select mode the label gets ` (Recommended)` appended in the UI. |
 
@@ -68,7 +69,7 @@
 
 ## Limits & Caps
 - `questions` must contain at least 1 item (`askSchema` in `packages/coding-agent/src/tools/ask.ts`).
-- `ask.timeout` default is `0` seconds, which disables timeout (`packages/coding-agent/src/config/settings-schema.ts`). Configured non-zero values are seconds. A value above `1000` is read as milliseconds left over from an older config and divided by 1000, with the rewrite logged, so `1000` seconds is the longest timeout you can configure.
+- `ask.timeout` default is `0` seconds, which disables timeout (`packages/coding-agent/src/config/settings-domains/interaction.ts`). Configured non-zero values are seconds. A value above `1000` is read as milliseconds left over from an older config and divided by 1000, with the rewrite logged, so `1000` seconds is the longest timeout you can configure.
 - Prompt guidance says provide 2-5 options, but code only requires the `options` array field and does not enforce a minimum or maximum length (`packages/coding-agent/src/prompts/tools/ask.md`).
 - Timeout only applies to the option picker; once the user chooses `Other`, the editor has no timeout (`promptForCustomInput()` in `packages/coding-agent/src/tools/ask.ts`).
 - `AskTool.concurrency = "exclusive"`: the tool runs alone in its tool batch because the selector/editor UI surface is shared and concurrent `ask` calls would clobber each other.
@@ -77,7 +78,7 @@
 - Missing interactive UI: throws `ToolAbortError("Ask tool requires interactive mode")`.
 - User cancels picker/editor without timeout: throws `ToolAbortError("Ask tool was cancelled by the user")`.
 - Abort signal during input: converted to `ToolAbortError("Ask input was cancelled")`.
-- Empty `questions` at runtime returns a text error payload instead of throwing: `Error: questions must not be empty`.
+- Empty `questions` at runtime returns an `isError` result instead of throwing: `The ask tool was called with no questions, so nothing was shown to the user. Call it again with at least one question, or ask in your reply instead.`
 
 ## Notes
 - `recommended` is only a UI hint; invalid indexes are ignored.

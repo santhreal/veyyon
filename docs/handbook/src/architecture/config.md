@@ -7,7 +7,7 @@ layered YAML/JSON from the project and user agent directories.
 
 - Resolve config roots (`.veyyon`, plus Claude/Codex/Gemini compatibility paths)
 - Merge project + user settings; apply **profiles** (`veyyon --profile <name>`)
-- Validate against `settings-schema.ts`; support CLI `-c key=value` overrides
+- Validate against `settings-schema.ts`; support `--config <file>` YAML overlay files (repeatable)
 - Feed resolved settings to sessions, tools, and discovery (skills, hooks, MCP, extensions)
 
 ## Public boundary

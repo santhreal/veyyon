@@ -16,7 +16,7 @@
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `path` | `string` | Yes | Image path passed to `loadImageInput`; resolved relative to `session.cwd` by `resolveReadPath(...)`. |
+| `path` | `string` | Yes | Image file path, `Image #N` label, or `attachment://N` / `image://N` URI. Attachment references load the referenced session image; plain paths are passed to `loadImageInput` and resolved relative to `session.cwd` by `resolveReadPath(...)`. |
 | `question` | `string` | Yes | User prompt sent as a text content block alongside the image. |
 
 ## Outputs
@@ -75,7 +75,7 @@ TUI rendering adds presentation-only truncation from `packages/coding-agent/src/
 ## Limits & Caps
 - Supported detected input formats: `image/png`, `image/jpeg`, `image/gif`, `image/webp` (`SUPPORTED_IMAGE_MIME_TYPES` in `packages/utils/src/mime.ts`).
 - Metadata sniff cap: `DEFAULT_IMAGE_METADATA_HEADER_BYTES = 256 * 1024` bytes. Format detection only reads up to 256 KiB from the file header.
-- Availability is gated by `inspect_image.enabled`, default `false`, in `packages/coding-agent/src/config/settings-schema.ts` / `packages/coding-agent/src/tools/index.ts`.
+- Availability is gated by `inspect_image.enabled`, default `false`, in `packages/coding-agent/src/config/settings-domains/tools.ts` / `packages/coding-agent/src/tools/index.ts`.
 - Upload input cap: `MAX_IMAGE_INPUT_BYTES = 20 * 1024 * 1024` bytes (20 MiB) in `packages/coding-agent/src/utils/image-loading.ts`.
 - Auto-resize defaults in `packages/coding-agent/src/utils/image-resize.ts`:
   - `maxWidth: 1568`

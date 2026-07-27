@@ -157,7 +157,7 @@ Three explicit model slots, each set on its own:
 | Choose the model you talk to | `--model` / `/model` (persisted as `modelRoles.default`) |
 | Model for spawned subagents | `subagent.model` (Subagents tab) |
 | Model for context compaction | `compaction.model` |
-| Named model assignments (optional) | `modelRoles`, per profile (settings → Models → Roles) |
+| Named model assignments (optional) | `modelRoles`, per profile (settings → Model → Roles) |
 | Add a local or BYOK provider | a `providers:` entry in `models.yml` (see [Models](./models.md)) |
 
 ```yaml
@@ -172,7 +172,7 @@ compaction:
   model: openai/gpt-5-mini        # optional; else inherit interactive
 ```
 
-`/model` changes the interactive model (persists to `modelRoles.default` when saved as default). `/status` shows effective models. Role list and Ctrl+P cycling: [Models, roles, and profiles](./roles-and-profiles.md).
+`/model` changes the interactive model (persists to `modelRoles.default` when saved as default) and shows the current one. `/session info` shows session stats. Role list and Ctrl+P cycling: [Models, roles, and profiles](./roles-and-profiles.md).
 
 ## Stay safe (approvals)
 
@@ -217,7 +217,7 @@ Compaction compresses older history instead of truncating it. Common keys:
 
 ```yaml
 compaction:
-  thresholdPercent: 80
+  threshold: "80%"
   strategy: handoff
   model: openai/gpt-5-mini
 
@@ -245,12 +245,15 @@ argot:
   enabled: true
 ```
 
-The default is `false`. You do not write or commit any dictionary, and veyyon
-does not guess which project you mean: the agent decides. When Argot is on and
-the model is allowed to write shorthand (see the next section), the system
-prompt teaches it the notation and gives it two tools, `argot_load` and
-`argot_unload`. Starting work in a project, the agent calls `argot_load` on that
-folder. veyyon resolves the folder to its project root (the nearest `.git`, or a
+The default is `false`. You do not write or commit any dictionary. When Argot is
+on and the model is allowed to write shorthand (see the next section), veyyon
+loads the folder you started the session in, and the system prompt teaches the
+model the notation and gives it two tools, `argot_load` and `argot_unload`, so it
+can load further projects itself. You can turn the startup load off and leave
+every load to the agent, described under
+[Choose when a project is loaded](#choose-when-a-project-is-loaded) below.
+
+Loading a folder resolves it to its project root (the nearest `.git`, or a
 `.argot` marker for a project with no git), reads the project's files (the ones
 git tracks, or a walk of the tree for a `.argot` project), proposes handles for
 the strings that would save the most tokens, and keeps the result in a local
@@ -266,16 +269,16 @@ from (the git commit for a git project, or a signature of the file listing for a
 project with a `.argot` marker). A new commit reads a new entry, built from the
 new tree; the old entry is never rewritten. Nothing depends on a handle keeping
 its name across states, because veyyon expands every handle before it reaches the
-saved transcript, so an entry never has to agree with an older one. Once the
-agent has loaded a project, veyyon lists its handles in the system prompt, and
-the model writes them from then on. A session where the agent never loads
-anything simply writes full strings, exactly as if Argot were off.
+saved transcript, so an entry never has to agree with an older one. Once a
+project is loaded, veyyon lists its handles in the system prompt, and the model
+writes them from then on. A session where nothing is ever loaded simply writes
+full strings, exactly as if Argot were off.
 
 ### You never see a handle
 
 Shorthand is for the model, not for you. Everywhere veyyon shows you what the
-model wrote, it shows the full text. If the model writes `§conn`, you read
-`packages/server/src/database/connection.ts`.
+model wrote, it shows the full text. If the model writes `§conn`, you read the
+full path it stands for, such as "packages/server/src/database/connection.ts".
 
 That holds for every surface, not only the reply text:
 
@@ -307,8 +310,9 @@ models allowed to do so:
 ```yaml
 argot:
   enabled: true
-  models:
-    - anthropic/claude-opus-4
+  encode:
+    models:
+      - anthropic/claude-opus-4
 ```
 
 A model on this list is taught the notation; a model left off never is. The list
@@ -317,6 +321,47 @@ lets you keep shorthand on for a model you trust to recall the dictionary and of
 for one you are still measuring. Expansion never depends on this list: a handle
 already written expands whatever model is active, so switching models never
 leaves a raw handle behind.
+
+The two settings under `encode` are the two that decide whether a model is taught
+to write shorthand: this list, and the context cutoff described below. Everything
+else about Argot sits directly under `argot`, because it decides whether the
+feature runs, when a dictionary is built, how large it is, and what a subagent
+starts with. The split is there to make one thing obvious: nothing under `encode`
+affects reading. A handle already in the conversation expands whatever these hold.
+
+If you have `argot.models` or `argot.disableAboveTokens` in a config from an
+earlier version, you do not have to change anything. veyyon moves them under
+`encode` the first time it reads the file, keeps the value, and drops the old key
+the next time it saves.
+
+### Choose when a project is loaded
+
+A dictionary has to be built before any handle exists, and there are two ways
+that happens. veyyon loads the folder you started the session in, once, in the
+background as the session comes up; and the model loads any further project it
+moves into by calling `argot_load` itself. The first of those is what
+`argot.autoload` controls:
+
+```yaml
+argot:
+  enabled: true
+  encode:
+    models:
+      - anthropic/claude-opus-4
+  autoload: false
+```
+
+The default is `true`, so the project you launched in is ready without the model
+spending a turn on it. Set it to `false` when you want every load to be a
+deliberate act by the agent: a session then starts with no dictionary, and stays
+that way until the model calls `argot_load`. That is the setting to reach for on
+a machine where the first walk of a very large repository is expensive enough
+that you would rather pay it only when shorthand is actually wanted.
+
+Turning it off changes when a dictionary is built, never whether a handle
+expands. The startup load runs in the background, so a session never waits on it
+either way; when it finishes it refreshes the system prompt to teach the handles,
+which is the same thing `argot_load` does.
 
 ### Size the dictionary
 
@@ -330,8 +375,9 @@ only the most central strings. Set it with `argot.tokenBudget`:
 ```yaml
 argot:
   enabled: true
-  models:
-    - anthropic/claude-opus-4
+  encode:
+    models:
+      - anthropic/claude-opus-4
   tokenBudget: 2000
 ```
 
@@ -349,9 +395,10 @@ stop teaching shorthand once the context passes a token threshold:
 ```yaml
 argot:
   enabled: true
-  models:
-    - anthropic/claude-opus-4
-  disableAboveTokens: 400000
+  encode:
+    models:
+      - anthropic/claude-opus-4
+    disableAboveTokens: 400000
 ```
 
 Past the threshold the model writes in full instead of risking a garbled handle.
@@ -367,8 +414,9 @@ or none. Set that with `argot.subagents`:
 ```yaml
 argot:
   enabled: true
-  models:
-    - anthropic/claude-opus-4
+  encode:
+    models:
+      - anthropic/claude-opus-4
   subagents: fresh
 ```
 
@@ -408,8 +456,9 @@ bash:
   enabled: false
 ```
 
-Plan mode and agent definitions can narrow the tool set further. Enforcement removes the tool from both
-the model-visible set and the dispatch registry.
+Plan mode and agent definitions can narrow the tool set further. `enabled: false` removes the tool from both
+the model-visible set and the dispatch registry; `tools.approval.*: deny` keeps the tool visible but
+refuses every call with an error naming the policy.
 
 ## Set the default working directory
 

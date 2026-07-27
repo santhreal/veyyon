@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -301,7 +301,7 @@ $ veyyon profile default work
 <p>In the TUI, <code>/profile new &lt;name&gt;</code> (or <code>/profile create &lt;name&gt;</code>) opens a picker listing every carry-over item (AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings), each individually toggleable (all selected by default). The new profile is seeded from the <strong>active</strong> profile with exactly the chosen items. Deleting is available too: <code>/profile rm &lt;name&gt;</code> (or the picker’s <strong>Delete</strong> action) removes a profile after a confirmation, and refuses the active and default profiles. See <a href="#tui-profile-commands">TUI profile commands</a> for the full verb list.</p>
 <p>You can still create a profile implicitly by running <code>veyyon --profile &lt;name&gt;</code> once; use <code>profile new</code> when you want seeding without launching the TUI.</p>
 <h2 id="onboarding-import"><a class="header" href="#onboarding-import">Onboarding import</a></h2>
-<p>On first run (and once after upgrading past setup version 2), the setup wizard scans the machine for user-level config written for other tools (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> from Claude Code, Codex, Cursor, and similar) and offers each item for import into your default profile. Imports <strong>copy</strong>: skills land in the profile’s <code>skills/</code>, instruction files append to the profile’s <code>AGENTS.md</code> under a source marker (re-imports are idempotent). The scan runs no matter how <code>discovery.importForeignConfig</code> is set, because importing is how foreign config comes in by default: ambient loading of the originals stays off unless you turn that setting on.</p>
+<p>On first run, the setup wizard scans the machine for user-level config written for other tools (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> from Claude Code, Codex, Cursor, and similar) and offers each item for import into the active profile. Imports <strong>copy</strong>: skills land in the profile’s <code>skills/</code>, instruction files append to the profile’s <code>AGENTS.md</code> under a source marker (re-imports are idempotent). The scan runs no matter how <code>discovery.importForeignConfig</code> is set, because importing is how foreign config comes in by default: ambient loading of the originals stays off unless you turn that setting on.</p>
 <p>Do not document inline <code>[profiles.&lt;name&gt;]</code> tables or standalone <code>&lt;name&gt;.config.yml</code> files as shipped; settings use <code>config.yml</code> under the active agent dir.</p>
 <h2 id="model-slots-and-roles-per-profile"><a class="header" href="#model-slots-and-roles-per-profile">Model slots and roles (per profile)</a></h2>
 <p>Each profile’s <code>config.yml</code> owns the three model slots and optional roles:</p>
@@ -310,13 +310,13 @@ $ veyyon profile default work
   plan: openai/o3
   smol: deepseek/deepseek-chat
 subagent:
-  model: deepseek/deepseek-chat     # optional override of modelRoles.task
+  model: deepseek/deepseek-chat     # optional blanket override for all subagents
 compaction:
   model: openai/gpt-5-mini
   strategy: handoff                 # or summary (the default)
-  thresholdPercent: 80
+  threshold: "80%"
 </code></pre>
-<p><strong>Unset slots and roles inherit the live main model.</strong> The compaction model and every model role default to “inherit”: when unset, they resolve to whatever the main model is <em>at use time</em>, so switching with <code>/model</code> changes them instantly. Only an explicit assignment pins a different model. (The advisor role is the one exception, unset, it follows its thinking-model chain; the settings UI labels each role’s unset behavior.) Switching profiles switches all of these assignments with the profile.</p>
+<p><strong>Unset slots and roles inherit the live main model.</strong> The compaction model and every model role default to “inherit”: when unset, they resolve to whatever the main model is <em>at use time</em>, so switching with <code>/model</code> changes them instantly. Only an explicit assignment pins a different model. (The advisor role follows the same rule, unset, it inherits the live main model; the settings UI labels each role’s unset behavior.) Switching profiles switches all of these assignments with the profile.</p>
 <h2 id="see-also"><a class="header" href="#see-also">See also</a></h2>
 <ul>
 <li><a href="../using/roles-and-profiles.html">Models, roles, and profiles</a></li>

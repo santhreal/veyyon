@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -220,10 +220,10 @@ append rollout entry ──► update active leaf
 The difference is who supplies the next prompt and whether a TUI is attached.</p>
 <h2 id="what-a-session-is"><a class="header" href="#what-a-session-is">What a session is</a></h2>
 <p>A session is the unit of interactive work. Start one with <code>veyyon</code> in the repository you want to change. The session records every turn, tool call, approval, edit, and verification result.</p>
-<p>Sessions are stored as append-only rollout JSONL files. Each line is an entry with an <code>id</code> and a <code>parent_id</code>. Those two fields make the file a tree, not just a log. The session never rewrites history. It only appends new entries or pointer moves.</p>
+<p>Sessions are stored as append-only rollout JSONL files. Each line is an entry with an <code>id</code> and a <code>parentId</code>. Those two fields make the file a tree, not just a log. The session never rewrites history. It only appends new entries or pointer moves.</p>
 <h2 id="what-a-turn-is"><a class="header" href="#what-a-turn-is">What a turn is</a></h2>
 <p>A turn is one user request plus the agent loop that responds to it. The loop calls the model, dispatches any tool calls, and produces the final reply. A turn ends when the model stops or when the harness decides to stop it.</p>
-<p>While a turn runs you can steer it with <code>Enter</code> or queue a follow-up with <code>Tab</code> or <code>alt+enter</code>. A queued follow-up becomes a new turn after the current one finishes. Interrupting with <code>Esc</code> aborts the turn and returns queued messages to the composer.</p>
+<p>While a turn runs you can steer it with <code>Enter</code> or queue a follow-up with <code>ctrl+q</code> or <code>ctrl+enter</code>. A queued follow-up becomes a new turn after the current one finishes. Interrupting with <code>Esc</code> aborts the turn and returns queued messages to the composer.</p>
 <h2 id="threads-and-the-active-leaf"><a class="header" href="#threads-and-the-active-leaf">Threads and the active leaf</a></h2>
 <p>At any moment, one path through the session tree is active. That path is the thread. The active leaf is the current entry at the end of that path.</p>
 <p>Branching creates siblings in the tree. <code>/tree</code> browses every entry, including abandoned branches.
@@ -234,17 +234,14 @@ original session is never modified.</p>
 <p>Models have a finite token window. As a session grows, the raw transcript may no longer fit. Veyyon compacts history into a smaller, information-preserving summary instead of truncating it.</p>
 <p>Compaction preserves the goal card, active user instructions, recent turns, and a deterministic working-set of files touched so a resumed session does not require the full raw transcript.</p>
 <p>Prefer <code>/compact</code> when you need a summary to retain state. Prefer the <code>/new</code> command when prior transcript is no longer useful and you want a clean session without summarization. See <a href="../reference/slash-commands.html">Slash commands</a>.</p>
-<h2 id="rollout-and-the-state-database"><a class="header" href="#rollout-and-the-state-database">Rollout and the state database</a></h2>
-<p>Session history is kept in two layers.</p>
-<p>The <strong>rollout</strong> is the append-only JSONL file. Every event is one line: a user message, an agent response, a tool call, a compaction, a goal update, or a leaf move. The rollout is the source of truth, and it is never rewritten, which is what makes branching and resume safe and auditable.</p>
-<p>The <strong>state database</strong> is a local SQLite index that mirrors thread metadata, goal cards, and queued follow-ups. It exists so listing sessions and resuming one do not require replaying the entire rollout log. It is a cache built from the rollout, not a second source of truth.</p>
+<h2 id="the-rollout"><a class="header" href="#the-rollout">The rollout</a></h2>
+<p>Session history lives in one layer: the append-only JSONL rollout. Every event is one line: a user message, an agent response, a tool call, a compaction, a goal update, or a branch summary. The rollout is the only source of truth, and it is never rewritten, which is what makes branching and resume safe and auditable. Listing sessions and resuming one read the rollout’s header lines directly; goal cards persist as rollout entries. There is no separate session-state database.</p>
 <h2 id="how-the-pieces-relate"><a class="header" href="#how-the-pieces-relate">How the pieces relate</a></h2>
 <ul>
 <li>A <strong>session</strong> owns one or more <strong>threads</strong> and stores them on disk.</li>
 <li>A <strong>thread</strong> is a path through the session’s tree of turns.</li>
 <li>A <strong>turn</strong> is one step on that path.</li>
 <li>The <strong>rollout</strong> is the append-only log that holds every turn, branch, and system event.</li>
-<li>The <strong>state database</strong> is the runtime index for resume and active metadata.</li>
 <li>The <strong>goal card</strong> is a separate context slot that carries the current objective across turns and compactions. See <a href="../context/goal-state.html">Goal state and long sessions</a>.</li>
 </ul>
 <h2 id="where-the-details-live"><a class="header" href="#where-the-details-live">Where the details live</a></h2>

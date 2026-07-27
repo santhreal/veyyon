@@ -28,7 +28,7 @@ Each turn is `<|turn>{role}\n{body}<turn|>`, and turns are concatenated with no 
 
 ## Tool definitions
 
-The `gemma` dialect does not put tool schemas on the wire. Tools are advertised in the system prompt by `renderInbandToolPrompt` (`packages/ai/src/dialect/catalog.ts`): an OpenAI-style JSON catalog, one object per line inside a `<tools></tools>` block, followed by the format guide (`packages/ai/src/dialect/gemma.md`):
+The `gemma` dialect does not put tool schemas on the wire. Tools are advertised in the system prompt by `renderInbandToolPrompt` (`packages/ai/src/dialect/catalog.ts`): an OpenAI-style JSON catalog, one object per line inside a `<tools></tools>` block, followed by the format guide (`packages/ai/src/prompts/dialect/gemma.md`):
 
 ```text
 <tools>
@@ -98,7 +98,7 @@ The current weather in Tokyo is 15 degrees Celsius and sunny.<turn|>
 
 ## Sources
 
-- Veyyon `gemma` dialect implementation: `packages/ai/src/dialect/gemma.ts` (scanner + renderers), `packages/ai/src/dialect/catalog.ts` + `packages/ai/src/dialect/prompt-template.md` (tool catalog), `packages/ai/src/dialect/gemma.md` (format guide).
+- Veyyon `gemma` dialect implementation: `packages/ai/src/dialect/gemma.ts` (scanner + renderers), `packages/ai/src/dialect/catalog.ts` + `packages/ai/src/prompts/dialect/prompt-template.md` (tool catalog), `packages/ai/src/prompts/dialect/gemma.md` (format guide).
 - Function calling with Gemma 4: https://ai.google.dev/gemma/docs/capabilities/text/function-calling-gemma4
 - Gemma 4 prompt formatting: https://ai.google.dev/gemma/docs/core/prompt-formatting-gemma4
 

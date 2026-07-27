@@ -451,7 +451,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `tools.artifactSpillThreshold` | Artifact Spill Threshold (KB) | number | `50` | Tool output above this size is saved as an artifact; tail is kept inline. |
+| `tools.artifactSpillThreshold` | Artifact Spill Threshold (KB) | number | `50` | Tool output above this size is saved as an artifact and the result keeps a head/tail window plus the artifact:// id that reads the full text back, so a lower threshold costs a re-read rather than losing output. It governs every tool that streams output, including bash, eval, ssh and the interactive shell, as well as grep and the browser. |
 | `tools.artifactTailBytes` | Artifact Tail Size (KB) | number | `20` | Amount of tail content kept inline when output spills to artifact. |
 | `tools.artifactHeadBytes` | Artifact Head Size (KB) | number | `20` | Amount of head content kept inline alongside the tail when output spills to artifact (middle elision). 0 disables — keep tail only. |
 | `tools.outputMaxColumns` | Output Column Cap | number | `768` | Per-line byte cap for streaming tool outputs (bash, ssh, python, js eval) and `read`. Lines wider than this are ellipsis-truncated; remaining bytes up to the next newline are dropped. 0 disables. |
@@ -473,7 +473,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `tools.discoveryMode` | Tool Discovery | enum | `auto` | Hide tools behind a search tool to save tokens. 'auto' hides MCP tools once the tool set has more than 40 tools; 'mcp-only' always hides MCP tools; 'all' hides all non-essential built-ins too. Values: `auto`, `off`, `mcp-only`, `all`. |
-| `tools.essentialOverride` | Essential Tools Override | array | `[]` | Override the always-loaded built-in tools (default: read, bash, edit, write, glob, eval). Leave empty to use defaults. |
+| `tools.essentialOverride` | Essential Tools Override | array | `[]` | Override the always-loaded built-in tools (default: read, bash, launch, edit, write, glob, eval). Leave empty to use defaults. |
 | `mcp.enableProjectConfig` | MCP Project Config | boolean | `true` | Load .mcp.json/mcp.json from project root. |
 | `mcp.discoveryMode` | MCP Tool Discovery | boolean | `false` | Hide MCP tools by default and expose them through a tool discovery tool. |
 | `mcp.discoveryDefaultServers` | MCP Discovery Default Servers | array | `[]` | Keep MCP tools from these servers visible while discovery mode hides other MCP tools. |
@@ -516,14 +516,15 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.delegation` | Task Delegation | enum | `allowed` | Whether this session delegates work to spawned subagents, and how strongly. Off removes the task tool and every delegation instruction from the prompt; allowed offers it and lets the model judge; preferred asks the model to fan substantial work out; required also adds a first-turn reminder. The prompt text follows this setting and the agents you have enabled — a disabled agent is never advertised. Values: `off`, `allowed`, `preferred`, `required`. |
+| `subagent.enabled` | Subagents | boolean | `true` | Whether this session may use subagents at all. Off removes the task tool and every delegation instruction from the prompt, so nothing can be spawned. This is the only setting that takes the ability away: Task Delegation below decides how hard the model is PUSHED to delegate, never whether it may. Your delegation strength and Agents table are kept while this is off and take effect again when you turn it back on. |
+| `subagent.delegation` | Task Delegation | enum | `preferred` | How hard this session pushes work out to subagents. It never removes the ability to delegate — at `allowed` the model still has the task tool and still spawns a subagent when that is the sensible move, it is simply not asked to. To remove subagents entirely, use the Subagents switch above. WHAT gets delegated is decided by the Agents table, not here: the agents you enable are the instruction, so enabling the reviewer is how you say reviews are delegable. With no agent enabled there is nothing to delegate to and the strength you pick has no effect. Values: `allowed`, `preferred`, `required`. |
 | `subagent.batch` | Batch Task Calls | boolean | `true` | Switch the task tool to its batch shape: one call carries { agent, context, tasks[] } — one subagent per item (with per-item isolation) and a required shared context prepended to every assignment. With async.enabled=true, each spawn runs as an independent background agent with the normal idle/parked lifecycle; otherwise the call blocks for merged results. Disable to restore the flat single-spawn schema. |
 
 ### Agents
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.agents` | Agents | record | `{}` | Which agent types this session offers, and the model and effort each one runs. Every row is optional: an agent with no row is offered if it is one of yours (or the general worker) and merely unlisted if it is a bundled specialist — unlisted still runs when something names it outright. Blocking an agent refuses it even by name. A per-agent model wins over the blanket Subagent Model; blank inherits. |
+| `subagent.agents` | Agents | record | `{}` | Which agent types the model may choose, and the model and effort each one runs. Enabled means the model can pick that agent on its own; disabled means it cannot, and nothing runs behind your back. Every row is optional: with no row, the general worker and any agent you wrote are enabled, and the bundled specialists are disabled. Turning an agent off does not disable the `/` commands that name it — `/review` is you asking for a review, so it still spawns its reviewer. A per-agent model wins over the blanket Subagent Model; blank inherits. |
 
 ### Models
 
@@ -641,10 +642,11 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `argot.enabled` | Argot Shorthand | boolean | `false` | Let the agent load token-saving shorthand for the projects it works in, kept in a local cache (nothing is written to the repository). The model loads a project with the argot_load tool, then writes its short handles; the harness expands them to full text before any tool runs or the display shows them. |
-| `argot.models` | Argot Models | array | `[]` | Models allowed to write Argot shorthand, by model id. Empty (the default) means no model does, so turning Argot on alone stays inert until you add one here. A model left off this list is never taught the shorthand; handles already in history still expand. |
+| `argot.enabled` | Argot Shorthand | boolean | `false` | Let the agent load token-saving shorthand for the projects it works in, kept in a local cache (nothing is written to the repository). The project you launch in is loaded for you, and the model loads any further project with the argot_load tool; it then writes short handles that the harness expands to full text before any tool runs or the display shows them. |
+| `argot.autoload` | Argot Startup Load | boolean | `true` | Load the project you started the session in, in the background, so shorthand works without the model spending a turn on it. Off, a session starts with no dictionary until the model calls argot_load itself. Either way a handle already written still expands. |
+| `argot.encode.models` | Argot Models | array | `[]` | Models allowed to write Argot shorthand, by model id. Empty (the default) means no model does, so turning Argot on alone stays inert until you add one here. A model left off this list is never taught the shorthand; handles already in history still expand. |
 | `argot.tokenBudget` | Argot Dictionary Budget | number | `1000` | How many tokens the generated Argot dictionary may spend on its handle table. A larger budget teaches more handles (more transcript savings) but adds a longer preamble each turn; a smaller budget teaches only the most central strings. Changing it regenerates the dictionary. |
-| `argot.disableAboveTokens` | Argot Context Cutoff | number | `-1` | Stop teaching Argot shorthand once context passes this many tokens (the model then writes in full). Handles already written still expand losslessly. -1 disables the cutoff. |
+| `argot.encode.disableAboveTokens` | Argot Context Cutoff | number | `-1` | Stop teaching Argot shorthand once context passes this many tokens (the model then writes in full). Handles already written still expand losslessly. -1 disables the cutoff. |
 | `argot.subagents` | Argot in Subagents | enum | `off` | How a subagent starts with Argot shorthand. Correctness never depends on this (handles never cross the parent/child wire); it only trades tokens. off: no shorthand in subagents. fresh: the subagent loads its task's project itself through argot_load. inherit: the subagent starts from a copy of the parent's loaded shorthand. Values: `off`, `fresh`, `inherit`. |
 
 ### Tool Calling
@@ -687,4 +689,4 @@ veyyon config get compaction.threshold
 | `authBrokerUrl` | Auth Broker URL | string | _(empty)_ | Base URL of the auth broker that mints provider credentials for this machine. Stored in ~/.veyyon/config.yml under auth.broker.url; empty disables broker discovery via config. Stored machine-wide, not per profile. |
 | `authBrokerToken` | Auth Broker Token | string | _(empty)_ | Bearer token for the auth broker. Write-only: a stored token shows as a mask and is never echoed. Enter a new value to replace it, leave the mask to keep it, or clear the field to delete it. Stored machine-wide, not per profile. |
 
-323 settings.
+325 settings.

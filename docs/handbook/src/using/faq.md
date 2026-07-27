@@ -10,17 +10,11 @@ This page answers common questions and errors. For a guided diagnostic path, see
 
 ### Does Veyyon sandbox the commands it runs?
 
-No OS confinement (no Landlock, seccomp, Seatbelt, bubblewrap). Policy is **`tools.approvalMode`** (schema default **`yolo`**) plus execpolicy `.rules`. See [Approvals](../features/sandbox.md).
+No OS confinement (no Landlock, seccomp, Seatbelt, bubblewrap). Policy is **`tools.approvalMode`** (schema default **`yolo`**) plus hard-coded critical bash patterns that prompt in non-yolo modes. See [Approvals](../features/sandbox.md).
 
 ## Database and session locking
 
-### "Session file is locked" or "another Veyyon process is running"
-
-Veyyon uses file locking to prevent two processes from writing the same session file at once. Only one process may hold a session lock at a time. If you see this error:
-
-- Check that no other `veyyon` process is holding the same session file lock.
-- If a previous process crashed, the lock may be stale. Restarting the machine or waiting for the process table to clear usually releases it.
-- Do not delete or edit the session file while a process might still hold it.
+There is no cross-process lock on a session file: nothing prevents two `veyyon` processes from opening the same session at once, and the single-writer guarantee is per-process only. Treat one session as belonging to one running process; do not edit or delete its file while that process is alive.
 
 For how sessions are stored and resumed, see [Sessions](./sessions.md).
 
@@ -36,21 +30,21 @@ The base URL you configured must match the provider region and product endpoint.
 
 ### Why is my model not listed?
 
-Veyyon discovers model ids from the provider's `/models` endpoint rather than maintaining a hardcoded allowlist. If a model is not listed, the provider endpoint may not expose it, or your key may not have access to it. Check the provider catalog and your key scopes first.
+Veyyon lists models from a bundled catalog plus live discovery from providers that expose a `/models` endpoint. If a model is not listed, the provider endpoint may not expose it, or your key may not have access to it. Check the provider catalog and your key scopes first.
 
 ## Workflow
 
 ### Why did my edit ask for approval?
 
-The approval mode decides when Veyyon prompts before a tool runs. In `ask` and `plan`, write and exec tiers prompt. Change mode with `--approval-mode <mode>` (`plan`, `ask`, `auto-edit`, `yolo`), `--auto-approve` / `--yolo`, or `tools.approvalMode` in `config.yml`. See [Approvals](../features/sandbox.md).
+The approval mode decides when Veyyon prompts before a tool runs. In `ask`, write and exec tiers prompt. In `plan`, exec is blocked outright and write prompts only inside an active plan-mode session. Change mode with `--approval-mode <mode>` (`plan`, `ask`, `auto-edit`, `yolo`), `--auto-approve` / `--yolo`, or `tools.approvalMode` in `config.yml`. See [Approvals](../features/sandbox.md).
 
 ### How do I resume a session?
 
-Run `veyyon --continue` to continue the most recent session, or `veyyon --resume <SESSION_ID>` to resume a specific one. The session stores turns, tool activity, and queued follow-ups, so a resumed session should keep its context and any pending work. For branching, forking, or exporting a session, see [Sessions](./sessions.md).
+Run `veyyon --continue` to continue the most recent session, or `veyyon --resume <SESSION_ID>` to resume a specific one. The session stores turns and tool activity, so a resumed session keeps its context. For branching, forking, or exporting a session, see [Sessions](./sessions.md).
 
 ### What happened to my queued follow-up?
 
-Follow-ups queued during a turn are stored with the session on disk, so they survive TUI restarts and session resumes. If you press `Esc` to interrupt the current turn, queued follow-ups are pulled back into the composer so nothing is lost. See [Sessions](./sessions.md) for the full queue behavior.
+Queued follow-ups live in memory for the lifetime of the running process; they are not written to the session file. If you press `Esc` to interrupt the current turn, queued follow-ups are pulled back into the composer so nothing is lost. See [Sessions](./sessions.md) for the full queue behavior.
 
 ### Why does my output look truncated?
 

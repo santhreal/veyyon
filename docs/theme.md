@@ -79,9 +79,9 @@ These color the "cool arc" of the design language: session identity segments use
 
 ### `composerBg` (optional)
 
-The tonal ground painted under the composer's input rows and the padding rows above and below them (the "quiet card"). The padding rows carry the same ground so the card has a visible body rather than a single tinted line. A theme that omits it inherits its `statusLineBg`.
+The tonal ground painted under the composer's input rows and the padding rows above and below them (the "quiet card"). The padding rows carry the same ground so the card has a visible body rather than a single tinted line.
 
-This token is no longer painted. The composer renders directly on the terminal's own background (2026-07-22): every painted composer ground, absolute or derived, read as a gray slab on real terminals, so the input area carries no background at all. The token remains accepted in theme files for compatibility but has no visual effect.
+A theme that omits `composerBg` gets an unpainted composer: the input area renders directly on the terminal's own background. Inheriting `statusLineBg` here used to render the composer band as a gray slab on mismatched terminals, so the default is no paint. A theme that wants a painted composer card must set `composerBg` explicitly, and an explicit value is painted.
 
 ### `export` section (optional)
 
@@ -109,13 +109,14 @@ Invalid override keys are ignored and logged (`logger.debug`).
 
 #### Box-drawing borders
 
-All outlined chrome, tool-result frames, overlays, code fences, the editor, the welcome banner, draws with the `boxRound.*` tokens: rounded corners (`╭╮╰╯`) plus tee/cross junctions (`├┤┬┴┼`, which have no rounded Unicode form, so they are sourced from the `boxSharp.*` tokens). Markdown tables are the sole exception and keep the fully sharp `boxSharp.*` set (`┌┐└┘`).
+All outlined chrome, tool-result frames, overlays, code fences, the editor, the welcome banner, and markdown tables draw with the `boxSharp.*` tokens (`┌┐└┘─│├┤┬┴┼`).
 
-Override behavior follows from that split:
+Override behavior follows from that:
 
-- `boxRound.{topLeft,topRight,bottomLeft,bottomRight,horizontal,vertical}` restyle every border's corners and edges.
-- `boxSharp.{cross,teeDown,teeUp,teeRight,teeLeft}` restyle dividers/junctions everywhere (rounded frames and tables alike).
-- `boxSharp.{topLeft,topRight,bottomLeft,bottomRight}` now affect markdown table corners only.
+- `boxSharp.{topLeft,topRight,bottomLeft,bottomRight}` restyle corners everywhere, markdown tables included.
+- `boxSharp.{horizontal,vertical}` restyle edges and rules.
+- `boxSharp.{cross,teeDown,teeUp,teeRight,teeLeft}` restyle dividers and junctions.
+- The `boxRound.*` tokens (rounded corners `╭╮╰╯`) remain in the symbol schema, but no shipped surface consumes them today; setting them changes nothing.
 
 ## Built-in vs custom theme sources
 
@@ -364,6 +365,6 @@ Use this workflow:
 
 - All `colors` tokens are required for custom themes.
 - `export` and `symbols` are optional.
-- `$schema` in theme JSON is informational; runtime validation is enforced by a Zod schema in code.
+- `$schema` in theme JSON is informational; runtime validation is enforced by an arktype schema in code.
 - `setTheme` failure falls back to `dark`; `previewTheme` failure does not replace current theme.
 - File watcher reload errors or temporary missing files keep the current loaded theme until a successful reload or explicit theme switch.

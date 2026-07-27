@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -199,7 +199,8 @@
 <p>Approvals are how you decide which tools run without asking. One setting drives them:
 <code>tools.approvalMode</code>. There is no operating-system sandbox behind it (no Landlock, seccomp,
 Seatbelt, or bubblewrap). Shell commands and file writes run as your user, bounded only by
-this policy and the execpolicy rules below.</p>
+this policy, per-tool <code>tools.approval</code> overrides, and the hard-coded critical bash patterns
+below.</p>
 <p>This page is the operator reference. For the model behind it, see
 <a href="../concepts/permission-model.html">Permission model</a>. For the wider boundary, see
 <a href="../using/safety.html">Safety</a>.</p>
@@ -223,7 +224,7 @@ this policy and the execpolicy rules below.</p>
 <tr><th>Mode</th><th>read</th><th>write</th><th>exec</th></tr>
 </thead>
 <tbody>
-<tr><td><code>plan</code></td><td>auto</td><td>ask</td><td>ask</td></tr>
+<tr><td><code>plan</code></td><td>auto</td><td>ask with an active plan-mode session, denied otherwise</td><td>denied</td></tr>
 <tr><td><code>ask</code></td><td>auto</td><td>ask</td><td>ask</td></tr>
 <tr><td><code>auto-edit</code></td><td>auto</td><td>auto</td><td>ask</td></tr>
 <tr><td><code>yolo</code></td><td>auto</td><td>auto</td><td>auto</td></tr>
@@ -239,41 +240,51 @@ $ veyyon --plan-yolo               # plan now; yolo after leaving plan mode
   approvalMode: ask
 </code></pre>
 <h2 id="the-approval-prompt"><a class="header" href="#the-approval-prompt">The approval prompt</a></h2>
-<p>When the active mode requires approval for a tool call, the TUI shows the action and waits:</p>
-<pre><code class="language-text">Veyyon would like to run a shell command
-
-Command:   cargo test
-Directory: /home/user/my-project
-
-[y] yes   [n] no   [a] always for this session   [p] show policy
-</code></pre>
-<pre><code class="language-text">Veyyon would like to edit a file
-
-File:   src/main.rs
-Change: update the function signature and add a null check
-
-[y] yes   [n] no   [a] always for this session   [p] show policy
-</code></pre>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Key</th><th>Effect</th></tr>
-</thead>
-<tbody>
-<tr><td><code>y</code></td><td>Allow once</td></tr>
-<tr><td><code>a</code></td><td>Allow this kind of action for the rest of the session</td></tr>
-<tr><td><code>n</code></td><td>Deny; the model receives the denial</td></tr>
-<tr><td><code>p</code></td><td>Show the active policy</td></tr>
-</tbody>
-</table>
-</div>
-<p>Denied actions return an error to the model, and permissions are never widened.</p>
+<p>When the active mode requires approval for a tool call, the TUI shows a selector titled
+<code>Allow tool: &lt;name&gt;</code> with the reason and the tool’s detail lines, and waits on two options:</p>
+<ul>
+<li><strong>Approve</strong>: the call runs.</li>
+<li><strong>Deny</strong>: the call is refused and the model receives <code>Tool call denied by user: &lt;name&gt;</code>.</li>
+</ul>
+<p>Navigate with the usual list keys (<code>up</code>/<code>down</code>, <code>enter</code> to confirm, <code>esc</code> to cancel; cancelling
+counts as a denial). Denied actions return an error to the model, and permissions are never widened.</p>
 <h2 id="headless"><a class="header" href="#headless">Headless</a></h2>
-<p><code>veyyon --print</code> has no terminal to prompt in. If the mode would ask for approval, the turn
-stops instead. To run unattended, pass <code>--yolo</code> or pick a mode that does not prompt for the
-tiers you need. The process exit status follows the run.</p>
-<h2 id="execpolicy"><a class="header" href="#execpolicy">Execpolicy</a></h2>
-<p>User and project <code>.rules</code> files further restrict which commands auto-run. Untrusted project directories disable project-local rules, config, and hooks until the directory is trusted.</p>
+<p><code>veyyon --print</code> has no terminal to prompt in. If the mode would ask for approval, the tool call
+fails with an error that explains the required setting or override (set <code>tools.approvalMode: yolo</code>,
+add <code>tools.approval.&lt;name&gt;: allow</code>, or use an interactive UI), and the model receives that error. To
+run unattended, pass <code>--yolo</code> or pick a mode that does not prompt for the tiers you need. The
+process exit status follows the run.</p>
+<h2 id="critical-bash-commands"><a class="header" href="#critical-bash-commands">Critical bash commands</a></h2>
+<p>Some shell commands always prompt in <code>plan</code>, <code>ask</code>, and <code>auto-edit</code>, even over a per-tool
+<code>allow</code> override. The guard lives in <code>packages/coding-agent/src/tools/bash-guard.ts</code> and has
+two halves.</p>
+<p>The first half judges what a command would delete, after expansion rather than as text. It
+resolves a leading tilde and <code>$HOME</code>, judges every target rather than only the first, and
+stops a recursive delete of the home directory, of anything containing it, of a system
+directory, or of a directory holding your credentials. It also stops a recursive delete whose
+target it cannot resolve, such as <code>rm -rf "$dir"/*</code>, because an empty <code>$dir</code> makes that
+command start at the root. It also stops a truncating redirect into a credentials directory,
+such as <code>echo x &gt; ~/.ssh/id_ed25519</code>; appending with <code>&gt;&gt;</code> is left alone. Deletes inside your
+workspace, such as <code>rm -rf node_modules</code> or <code>rm -rf dist</code>, run without a prompt, and so do
+ordinary redirects such as <code>bun test &gt; /tmp/results.txt</code>.</p>
+<p>The second half is a pattern list (<code>CRITICAL_BASH_PATTERNS</code>, same file) for shapes with no
+path to expand: <code>sudo rm</code>, recursive <code>chmod</code>/<code>chown</code> on <code>/</code>, fork bombs, disk and filesystem
+destruction (<code>mkfs</code>, <code>dd</code> to a device, writes to <code>/dev/sd*</code>), writes to
+<code>/etc/passwd</code>/<code>shadow</code>/<code>sudoers</code>, remote-fetch piped to a shell (<code>curl … | sh</code> and its
+process-substitution and <code>eval</code> variants), host control (<code>shutdown</code>, <code>reboot</code>, <code>kill -9 1</code>),
+and network shells (<code>nc -e</code>).</p>
+<p>Neither half can be narrowed; the guard exists because a false negative costs data loss or a
+compromised host. You can widen the first half with <code>tools.protectedPaths</code>, a list of absolute
+paths (a leading <code>~</code> is expanded) that a recursive delete must also stop for. It only adds:
+nothing in the built-in judgement reads configuration, so no value there can stop the guard
+refusing your home directory. See
+<a href="../concepts/permission-model.html">the permission model</a> for an example.</p>
+<p>These commands stop for approval in <code>yolo</code> as well, and the <code>/yolo</code> session bypass does not lift
+them. It is the one place <code>yolo</code> is not absolute. To turn the floor off, set
+<code>tools.approval.bash</code> to <code>allow</code>; setting it to <code>deny</code> remains a hard block.</p>
+<p>Separately, the bash interceptor (<code>bashInterceptor.enabled</code>, default off) blocks shell
+commands that duplicate dedicated tools, so the model reaches for <code>read</code>/<code>grep</code>/<code>glob</code>
+instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in <code>bashInterceptor.patterns</code>.</p>
 <h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
 <li><a href="../concepts/permission-model.html">Permission model</a></li>

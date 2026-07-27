@@ -19,7 +19,8 @@ Primary compaction knobs (settings → Models → Compaction, or `config.yml`):
     the model.
   - `170000` is an absolute token amount and triggers at the same point on every
     model. When the amount is larger than the current model's window it is
-    honored up to one token below the window and you get a one-time warning.
+    honored up to one token below the window and you get a warning (once per
+    model context window, so switching to a smaller-window model warns again).
 
   You can also compact on demand with `/compact`.
 - **Type** (`compaction.strategy`): how history is compressed:
@@ -29,17 +30,16 @@ Primary compaction knobs (settings → Models → Compaction, or `config.yml`):
 - **Model** (`compaction.model`): the model that performs LLM compaction / handoff. Unset uses your
   interactive model. See [Models, roles, and profiles](../using/roles-and-profiles.md).
 
-`/compact <focus>` steers a run with an "Additional focus:" directive. Recent user messages are
-retained verbatim up to the type's budget.
+`/compact <focus>` steers a run with an "Additional focus:" directive. The most recent turns, user, assistant, and tool messages, are kept verbatim up to `compaction.keepRecentTokens` (default 20,000 tokens).
 
 You can also pick the type for a single run by naming it first: `/compact summary` or
 `/compact handoff`. The name is a one-off override, so it does not change
 `compaction.strategy`. Anything after the name is focus text, as in
 `/compact handoff keep the auth details`.
 
-Two older names, `soft` and `remote`, are no longer types. Both existed only to steer a
-provider-native compaction path that veyyon has removed, so there is nothing left for them to
-select. If you type one, veyyon compacts with your configured type, treats the whole argument
+Two older names, `soft` and `remote`, are no longer types. `remote` selected a provider-native
+compaction path and `soft` existed only to skip it; that path is removed, so there is nothing left
+for them to select. If you type one, veyyon compacts with your configured type, treats the whole argument
 as focus text, and says which name you used and what to use instead. Your text is passed
 through exactly as you typed it, because a sentence that happens to start with "soft" is a
 reasonable thing to ask for.
@@ -75,7 +75,7 @@ the window, but it too starts from the smaller deduped history.
 
 ## Memory backends
 
-When `memory.backend` is `mnemopi` or `local`, compaction can request **pre-compaction context**
+When `memory.backend` is `mnemopi` or `hindsight`, compaction can request **pre-compaction context**
 from the active memory backend so summaries retain project facts. See [Memory](../features/memory.md).
 
 ## Goals

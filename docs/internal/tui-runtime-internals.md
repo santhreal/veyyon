@@ -171,7 +171,7 @@ Status lane ownership:
 
 Loader behavior:
 
-- `Loader` advances its spinner every 80ms (animated message colorizers redraw at ~30fps) and requests a component-scoped render each frame (`requestComponentRender`), so idle spinner ticks repaint without re-walking the transcript.
+- `Loader` advances its spinner every 80ms (animated message colorizers redraw at ~30fps) and requests a direct row rewrite each frame (`requestDirectWrite`, which downgrades to a component-scoped `requestComponentRender` whenever the frame is not a safe single-component change), so idle spinner ticks repaint without re-walking the transcript.
 - Escape cancels an in-progress auto-compaction, handoff generation, or auto-retry: the editor's single `onEscape` handler dispatches on live session state (`isCompacting`/`isGeneratingHandoff`/`isRetrying`) and calls the matching abort method, rather than swapping the handler.
 - On end/cancel paths, controllers stop/clear the loader components.
 
@@ -222,7 +222,7 @@ Event-driven updates:
 Throttled/debounced paths:
 
 - TUI rendering is tick-debounced (`requestRender` coalescing).
-- Loader animation is interval-driven (80ms spinner advance; ~30fps when the message colorizer is animated), each frame requesting a component-scoped render.
+- Loader animation is interval-driven (80ms spinner advance; ~30fps when the message colorizer is animated), each frame requesting a direct row rewrite (`requestDirectWrite`, falling back to a component-scoped render when the frame is unsafe).
 - Editor autocomplete updates (inside `Editor`) use debounce timers, reducing recompute churn during typing.
 
 The runtime therefore mixes event-driven state transitions with bounded render cadence to keep interactivity responsive without repaint storms.

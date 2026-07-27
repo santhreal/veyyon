@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -285,8 +285,6 @@ a large skill set while another stays empty.</p>
 <pre><code class="language-markdown">---
 name: my-custom-skill
 description: Performs a custom code audit or analysis.
-metadata:
-  short-description: Audit code for typical issues.
 ---
 
 # My Custom Skill
@@ -298,53 +296,9 @@ Use this skill when analyzing source files. Ensure you focus on:
 <p>The frontmatter contains these fields.</p>
 <ul>
 <li><code>name</code>: The name of the skill (optional). Defaults to the name of the parent folder.</li>
-<li><code>description</code>: A description of what the skill does (optional).</li>
-<li><code>metadata</code>: Nested metadata block (optional).
-<ul>
-<li><code>short-description</code>: A short summary of the skill (optional).</li>
-</ul>
-</li>
-</ul>
-<h3 id="optional-configuration-agentsopenaiyaml"><a class="header" href="#optional-configuration-agentsopenaiyaml">Optional configuration (<code>agents/openai.yaml</code>)</a></h3>
-<p>You can configure dependencies, policy settings, and interface preferences by adding an <code>agents/openai.yaml</code> file in the skill’s subdirectory. This file name is inherited from oh-my-pi’s upstream skill format.</p>
-<p>Here is an example <code>agents/openai.yaml</code> file.</p>
-<pre><code class="language-yaml">interface:
-  display_name: "Code Auditor"
-  short_description: "Audit code for typical issues"
-  brand_color: "#C6CBD4"
-  default_prompt: "Audit the files in the current workspace"
-dependencies:
-  tools:
-    - type: "command"
-      value: "cargo check"
-      description: "Checks Rust project compilation"
-policy:
-  allow_implicit_invocation: true
-  products:
-    - veyyon
-</code></pre>
-<p>The following fields are available in <code>agents/openai.yaml</code>.</p>
-<ul>
-<li><code>interface</code>: TUI presentation settings (optional).
-<ul>
-<li><code>display_name</code>: The display name shown in TUI lists (optional).</li>
-<li><code>short_description</code>: A short description (optional).</li>
-<li><code>icon_small</code> / <code>icon_large</code>: Filesystem paths to icons (optional).</li>
-<li><code>brand_color</code>: A hex color code or color name (optional).</li>
-<li><code>default_prompt</code>: Pre-filled text when launching the skill (optional).</li>
-</ul>
-</li>
-<li><code>dependencies</code>: List of tools needed for the skill (optional).
-<ul>
-<li><code>tools</code>: A list of dependency blocks. Each block can specify a <code>type</code> (for example, <code>command</code> or <code>url</code>), a <code>value</code> (for example, the command name or URL), a <code>description</code>, an optional <code>transport</code>, an optional <code>command</code> path, and an optional <code>url</code>.</li>
-</ul>
-</li>
-<li><code>policy</code>: Restrict how the skill is invoked (optional).
-<ul>
-<li><code>allow_implicit_invocation</code>: A boolean (defaults to <code>true</code>). If <code>false</code>, the skill will not be implicitly suggested or automatically injected by the model.</li>
-<li><code>products</code>: A list of product names to restrict the skill to (for example, <code>veyyon</code>). If set, the skill only loads for matching products.</li>
-</ul>
-</li>
+<li><code>description</code>: A description of what the skill does (required). A skill without one is skipped at load time.</li>
+<li><code>enabled</code>: Set to <code>false</code> to skip the skill at load time (optional).</li>
+<li><code>hide</code> / <code>disableModelInvocation</code>: Either one hides the skill from the model-facing list (optional).</li>
 </ul>
 <h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
 <p>Skills are configured in the <code>skills</code> block of Veyyon’s <code>config.yml</code> file.</p>
@@ -377,7 +331,7 @@ import it into your profile.</p>
 <ul>
 <li><code>/extensions</code> opens the Extension Control Center, which lists every discovered skill alongside tools and hooks, and lets you enable or disable individual skills.</li>
 </ul>
-<p>When you close the toggle list, the TUI displays a status message stating how many skills were enabled or disabled.</p>
+<p>Toggles persist immediately to <code>disabledExtensions</code>; there is no close-time summary message.</p>
 <h2 id="related-recipes"><a class="header" href="#related-recipes">Related recipes</a></h2>
 <p>For goal-shaped “give the agent a new capability” flows that stitch skills with MCP and
 plugins, see <a href="../using/task-guides.html">Task guides</a>.</p>

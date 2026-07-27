@@ -204,10 +204,11 @@ If restore fails, `modelFallbackMessage` explains fallback.
 
 1. runtime override (`setRuntimeApiKey`, used by CLI `--api-key`)
 2. config-sourced API key override (`models.yml` provider `apiKey`)
-3. stored API-key credential in `agent.db` / broker-backed storage
-4. stored OAuth credential, including refresh when needed
+3. stored OAuth credential, including refresh when needed
+4. stored login-sourced API-key credential
 5. provider environment variables
-6. custom-provider resolver fallback
+6. stored non-login API-key credential (may be a stale broker-migrated copy)
+7. custom-provider resolver fallback
 
 ## Event subscription model
 
@@ -273,10 +274,38 @@ Related APIs:
 
 ```ts
 const { session } = await createAgentSession({
-  toolNames: ["read", "search", "find", "write"],
+  toolNames: ["read", "grep", "glob", "write"],
   requireYieldTool: true,
 });
 ```
+
+### Tool names have one owner
+
+Every tool name is declared once, in `packages/coding-agent/src/tools/builtin-names.ts`:
+`BUILTIN_TOOL_NAMES` for the tools offered by default, `HIDDEN_TOOL_NAMES` for the ones a caller or
+a mode turns on, and `TOOL`, a map derived from both.
+
+Use `TOOL` inside the package rather than writing the name again:
+
+```ts
+import { TOOL } from "./tools/builtin-names";
+
+if (!requestedTools.includes(TOOL.yield)) requestedTools.push(TOOL.yield);
+```
+
+`TOOL.yield` has the literal type `"yield"`, so it fits anywhere the string did. The reason to
+prefer it is what happens when a tool is renamed: the key disappears and every site that used it
+stops compiling. A hand-written `"yield"` keeps compiling and quietly stops matching, and the only
+symptom is a tool that is no longer there.
+
+A few strings in the package share a spelling with a tool while naming something else, such as the
+`"task"` agent id, the `"write"` approval tier, and the `subagent.output: "yield"` setting value.
+Those stay literals and carry a `// not-a-tool-name:` comment saying which they are. The test
+`test/tools/tool-name-literals-have-one-owner.test.ts` reads the selection sites and fails on any
+unmarked tool-name literal.
+
+As a caller of the SDK you keep passing plain strings: `toolNames` takes the names as text, and
+legacy spellings (`search` for `grep`, `find` for `glob`) are still normalized for you.
 
 ### Extensions
 
@@ -379,7 +408,7 @@ const { session } = await createAgentSession({
   modelRegistry,
   settings,
   sessionManager: SessionManager.inMemory(),
-  toolNames: ["read", "search", "find", "edit", "write"],
+  toolNames: ["read", "grep", "glob", "edit", "write"],
   enableMCP: false,
   enableLsp: true,
 });

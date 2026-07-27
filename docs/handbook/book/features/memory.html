@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -222,8 +222,8 @@ off by default. To use it, you pick a backend, which is the store that holds wha
 <p>With <code>memory.backend: mnemopi</code>, Veyyon:</p>
 <ol>
 <li>Opens scoped SQLite banks (<code>global</code>, <code>per-project</code>, or <code>per-project-tagged</code>).</li>
-<li><strong>Recalls</strong> relevant memories into a <code>&lt;memories&gt;</code> block on the first turn (and refreshes the base
-prompt when recall runs from <code>agent_start</code>).</li>
+<li><strong>Recalls</strong> relevant memories into a <code>&lt;memories&gt;</code> block on the first turn, delivered as a message
+next to your prompt rather than by rewriting the cached system prompt.</li>
 <li><strong>Retains</strong> completed turns on a configurable interval (<code>mnemopi.retainEveryNTurns</code>, default 4).</li>
 <li>Supplies <strong>pre-compaction context</strong> from the memory backend when compaction runs.</li>
 </ol>

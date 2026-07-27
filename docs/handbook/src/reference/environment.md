@@ -19,9 +19,10 @@ active profile is selected by its own variable:
 | `VEYYON_PROFILE` | Selects the active named profile (`~/.veyyon/profiles/<name>/agent`). |
 | `VEYYON_PACKAGE_DIR` | Override package directory for bundled assets (Nix/Guix). |
 | `VEYYON_NO_PTY` | Set to `1` to disable PTY-based interactive bash. |
-| `VEYYON_NO_TITLE` | Set to disable auto terminal-title updates. |
+| `VEYYON_NO_TITLE` | Set to disable model-generated session auto-titling (the terminal window title then falls back to the directory name). |
+| `VEYYON_PIPED_STDIN_WAIT_MS` | Milliseconds `veyyon -p "prompt"` waits for the first byte of piped stdin when a prompt is already on the command line (default `10000`). Only the wait before the first byte is bounded, so slow producers are still read in full. Set `0` to wait indefinitely. |
 | `VEYYON_WORKTREE_DIR` | Absolute path for agent-managed git worktrees (default profile path `~/.veyyon/profiles/<name>/wt`; also settable via the `worktree.base` setting). `~` is expanded; a relative value is ignored. |
-| `VEYYON_GITHUB_CACHE_DB` | Full path override for the GitHub view cache database (default `~/.veyyon/cache/github-cache.db`). |
+| `VEYYON_GITHUB_CACHE_DB` | Full path override for the GitHub view cache database (default `~/.veyyon/profiles/<name>/cache/github-cache.db`). |
 
 On Linux, `veyyon config init-xdg` migrates state under `$XDG_DATA_HOME`/`$XDG_STATE_HOME`/`$XDG_CACHE_HOME`
 when those are set; unmigrated installs stay under `~/.veyyon`. See
@@ -104,16 +105,17 @@ There is no `VEYYON_NON_INTERACTIVE` or `VEYYON_INSTALL_URL`; the install script
 
 ## MCP
 
-Any MCP server names its own bearer-token secret via `[mcp_servers.<name>].bearer_token_env_var` in
-`config.yml`, this points at *any* env var you choose (for example plain `GITHUB_PERSONAL_ACCESS_TOKEN`),
-not a fixed `VEYYON_*` name. There is no `VEYYON_GITHUB_PERSONAL_ACCESS_TOKEN` or `VEYYON_CONNECTORS_TOKEN`
-convention in the current runtime.
+An MCP server that needs a bearer token takes it as a literal header in `mcp.json`
+(`mcpServers.<name>.headers.Authorization`) or via `/mcp add --token`, so the secret can live in any
+env var you expand yourself (for example plain `GITHUB_PERSONAL_ACCESS_TOKEN`), not a fixed
+`VEYYON_*` name. There is no `VEYYON_GITHUB_PERSONAL_ACCESS_TOKEN` or `VEYYON_CONNECTORS_TOKEN`
+convention in the current runtime. A `bearer_token_env_var` field is honored only when importing
+servers from a Codex `config.toml`, where the token is materialized into an Authorization header at
+import time.
 
 | Variable | Purpose |
 | --- | --- |
 | `VEYYON_MCP_TIMEOUT_MS` | Overrides the MCP client request timeout (ms) for every server; `0` disables client-side timeouts. Default `30000`. |
-
-See [Configuration](../using/configuration.md) for `bearer_token_env_var` examples.
 
 ## Remote auth broker (optional)
 
@@ -133,7 +135,7 @@ Most installs never set these. Details: `docs/internal/auth-broker-gateway.md`.
 
 | Variable | Purpose |
 | --- | --- |
-| `VEYYON_REPAIR_DISABLE` | Truthy disables the shipped tool-call schema repair (see [Repair overview](../repair/overview.md)) at the tool-dispatch seam. |
+| `VEYYON_REPAIR_DISABLE` | Set to `1`, `true`, or `yes` to disable the shipped tool-call schema repair (see [Repair overview](../repair/overview.md)) at the tool-dispatch seam. |
 
 There is no `VEYYON_REPAIR_LOG`, and Veyyon does not emit per-`(model,tool,shape)` repair telemetry.
 
@@ -163,5 +165,5 @@ for the real `VEYYON_*`-prefixed TUI flags.
 | `VEYYON_MANAGED_BY_NPM` / `VEYYON_MANAGED_BY_BUN` / `VEYYON_MANAGED_PACKAGE_ROOT` | Never existed. |
 | `VEYYON_SANDBOX` / `VEYYON_SANDBOX_NETWORK_DISABLED` / `VEYYON_THREAD_ID` | Never existed under these names. |
 
-Config values can also be overridden per run with `-c key=value`, which is usually clearer than an
-environment variable; see the [CLI reference](./cli.md).
+Config values can also be overridden per run with one or more `--config <file>` overlays (repeatable,
+never persisted); see the [CLI reference](./cli.md).

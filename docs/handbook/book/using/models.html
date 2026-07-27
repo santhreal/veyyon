@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -238,14 +238,15 @@ selectable when it is not in <code>disabledProviders</code> <strong>and</strong>
 <tr><th>Provider id</th><th>Notes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>anthropic</code>, <code>openai</code>, <code>google</code>, <code>groq</code>, …</td><td>Cloud providers; sign in with <code>/login &lt;id&gt;</code> or set the env var.</td></tr>
+<tr><td><code>anthropic</code>, <code>openai</code>, <code>google</code>, <code>groq</code>, …</td><td>Cloud providers; set the env var. Some (for example <code>anthropic</code>) also support <code>/login &lt;id&gt;</code>; see <a href="../../../providers.html">providers</a>.</td></tr>
 <tr><td><code>amazon-bedrock</code></td><td>Uses the AWS credential chain (<code>AWS_PROFILE</code>, instance role, …).</td></tr>
 <tr><td><code>ollama</code>, <code>lm-studio</code>, <code>llama.cpp</code></td><td>Local engines, discovered automatically and keyless by default.</td></tr>
 </tbody>
 </table>
 </div>
-<p>Once a provider is available, model ids come from its discovery endpoint, there is no hardcoded BYOK
-allowlist. Failed discovery returns an error; it does not invent an empty catalog.</p>
+<p>Once a provider is available, model ids come from a bundled static catalog, merged with live
+discovery for providers that expose a <code>/models</code> endpoint. Failed discovery returns an error; it does
+not invent an empty catalog.</p>
 <h2 id="local-models-ollama-and-lm-studio"><a class="header" href="#local-models-ollama-and-lm-studio">Local models: Ollama and LM Studio</a></h2>
 <p>Both are discovered automatically once the engine is running; no <code>models.yml</code> entry and no key are
 required.</p>
@@ -270,12 +271,12 @@ explicit <code>models.yml</code> entry for one of these ids replaces its built-i
 </table>
 </div>
 <p>Switching the interactive model mid-session never blends through a fallback chain into the subagent or
-compaction model. <code>/status</code> shows all effective models. <code>veyyon plugin doctor</code> warns about missing
-external binaries and keys.</p>
+compaction model. <code>/model</code> shows the current interactive model; <code>/session info</code> shows session stats.
+<code>veyyon plugin doctor</code> checks plugin installation health.</p>
 <pre><code class="language-console">$ veyyon --model openai/gpt-5
 # later, inside the TUI:
 /model deepseek/deepseek-chat
-/status
+/session info
 </code></pre>
 <h2 id="model-selection"><a class="header" href="#model-selection">Model selection</a></h2>
 <div class="table-wrapper">
@@ -309,13 +310,21 @@ compaction:
 and model roles. See <a href="../models/prompts.html">Execution-order prompts</a> and
 <a href="../concepts/model-contract.html">Model contract</a>.</p>
 <h3 id="harness-profiles"><a class="header" href="#harness-profiles">Harness profiles</a></h3>
-<p>Optional overrides in <code>config.yml</code> or <code>~/.veyyon/profiles/default/agent/harness-profiles.yml</code>:</p>
-<pre><code class="language-yaml">harness:
+<p>Optional overrides in <code>config.yml</code> or <code>~/.veyyon/profiles/default/agent/harness-profiles.yml</code>. The two files take different shapes: <code>config.yml</code> nests under <code>harness:</code> (the <code>harness.profiles</code> setting), while <code>harness-profiles.yml</code> reads a top-level <code>profiles:</code> map (a top-level <code>harness:</code> key there is silently dropped).</p>
+<pre><code class="language-yaml"># config.yml
+harness:
   profiles:
     "openai/gpt-4.1":
       repair: true
       tools: ["read", "edit", "grep", "bash", "write"]
       promptSectionOrder: ["tool-policy", "delivery-contract"]
+</code></pre>
+<pre><code class="language-yaml"># harness-profiles.yml
+profiles:
+  "openai/gpt-4.1":
+    repair: true
+    tools: ["read", "edit", "grep", "bash", "write"]
+    promptSectionOrder: ["tool-policy", "delivery-contract"]
 </code></pre>
 <p>Keys: exact <code>provider/model-id</code> or <code>provider/*</code>. See <a href="../repair/per-model.html">Per-model repair posture</a>.</p>
 <h2 id="switching-providers"><a class="header" href="#switching-providers">Switching providers</a></h2>

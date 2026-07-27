@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -213,9 +213,12 @@ appended after a colon: <code>src/foo.ts:50-200</code> (inclusive range), <code>
 on), <code>src/foo.ts:50+150</code> (150 lines from line 50), or <code>src/foo.ts:5-16,960-973</code> (multiple ranges in
 one call). <code>:raw</code> reads verbatim with no anchors or line prefixes.</li>
 <li><strong>Dual budget, whichever is hit first:</strong> a line cap (<code>DEFAULT_MAX_LINES = 3000</code>) and a byte cap
-(<code>DEFAULT_MAX_BYTES = 50 KB</code>), defined in <code>session/streaming-output.ts</code>. A file that is short in lines
-but huge in bytes (minified JS, a data blob) is bounded by bytes; a file with many short lines is
-bounded by lines.</li>
+(<code>DEFAULT_MAX_BYTES</code>, 50 KB). A file that is short in lines but huge in bytes (minified JS, a data
+blob) is bounded by bytes; a file with many short lines is bounded by lines. Both are compiled, not
+configured, and <code>read</code> is deliberately the one tool exempt from artifact spilling: it is bounded by
+LINES, so spilling on bytes would hand back fewer lines than you asked for and break the contract
+the tool has. Every other tool’s output is bounded by <code>tools.artifactSpillThreshold</code>, described
+under <a href="#the-grep-tool-toolsgrepts">The <code>grep</code> tool</a> below.</li>
 <li><strong>Structural summaries for parseable code.</strong> A read with no selector on a parseable source file
 returns declarations with bodies elided (<code>…</code>), and the footer names the recovery selector so the model
 re-issues only the ranges it actually needs instead of re-reading the whole file.</li>
@@ -227,8 +230,10 @@ pagination and <code>where</code>/<code>order</code> filters), PDF/Word/PowerPoi
 notebooks (editable cell text), images, URLs (reader-mode by default), and internal URI schemes
 (<code>memory://</code>, <code>skill://</code>, <code>artifact://</code>, <code>mcp://</code>, <code>ssh://</code>, and others).</li>
 </ul>
-<p>Text reading is intentionally separate from image inspection: image files go through <code>view_image</code> or
-a vision prepass rather than being bundled into ordinary text reads.</p>
+<p>Text reading is intentionally separate from image inspection. By default, <code>read</code> decodes image
+files (PNG, JPEG, GIF, WEBP) inline for direct visual analysis. When <code>inspect_image.enabled</code> is set,
+<code>read</code> returns image metadata instead and the model inspects the image by calling <code>inspect_image</code>
+with a question.</p>
 <h2 id="the-glob-tool-toolsglobts"><a class="header" href="#the-glob-tool-toolsglobts">The <code>glob</code> tool (<code>tools/glob.ts</code>)</a></h2>
 <p>There is no separate <code>find</code> or <code>ls</code> tool, pattern matching and directory listing are both the <code>glob</code>
 tool. A model that runs <code>find . -name '*.rs'</code> or <code>ls -R</code> in the shell gets back an unbounded dump that
@@ -252,9 +257,9 @@ as <code>read</code>/<code>grep</code> (including remote/task workspaces when th
 count on top of the same gitignore-aware traversal <code>glob</code> uses:</p>
 <ul>
 <li><strong><code>grep {pattern, path?, case?, gitignore?, skip?}</code>.</strong> <code>path</code> scopes the search (single path,
-semicolon-delimited list, or a <code>file:line-range</code> selector on one target); <code>case</code> enables
-case-sensitivity (default case-insensitive is <strong>not</strong> assumed, see the tool description for the
-exact default); <code>skip</code> pages past files already returned once a call hits the file limit.</li>
+semicolon-delimited list, or a <code>file:line-range</code> selector on one target); <code>case</code> toggles
+case-sensitivity and defaults to sensitive (<code>caseSensitive ?? true</code> in <code>grep.ts</code>); <code>skip</code> pages
+past files already returned once a call hits the file limit.</li>
 <li><strong>Bounded by file count, not match count.</strong> Results are paginated at <code>DEFAULT_FILE_LIMIT = 20</code> files
 per call, with an internal total cap of <code>2000</code> matches (<code>grep.ts</code>); <code>skip</code> continues from where the
 previous call left off.</li>

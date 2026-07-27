@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -286,9 +286,11 @@ leniency (e.g. hashline parsing) is layered on top. See <a href="../repair/overv
 </table>
 </div>
 <h2 id="other-builtins"><a class="header" href="#other-builtins">Other builtins</a></h2>
-<p>Includes <code>web_search</code>, <code>github</code>, <code>lsp</code>, <code>ast_edit</code>, <code>ast_grep</code>, <code>checkpoint</code>, <code>rewind</code>, <code>resolve</code>,
-<code>manage_skill</code>, <code>launch</code>, <code>inspect_image</code>, <code>generate_image</code>, <code>tts</code>, <code>report_finding</code>, and MCP tools
-(<code>mcp__*</code>). Extension hooks may register more.</p>
+<p><code>web_search</code>, <code>github</code>, <code>lsp</code>, <code>ast_edit</code>, <code>ast_grep</code>, <code>checkpoint</code>, <code>rewind</code>, <code>resolve</code>,
+<code>set_cwd</code>, <code>manage_skill</code>, <code>launch</code>, <code>inspect_image</code>, <code>argot_load</code>, <code>argot_unload</code>,
+<code>generate_image</code>, <code>tts</code>, and MCP tools (<code>mcp__*</code>). Extension hooks may register more.
+<code>goal</code>, <code>yield</code>, and <code>report_finding</code> are hidden session-lifecycle tools with no user-facing
+spec. The full per-tool specs live under <a href="../../../tools/"><code>docs/tools/</code></a>.</p>
 
                     </main>
 

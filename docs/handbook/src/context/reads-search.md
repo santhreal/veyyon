@@ -20,9 +20,12 @@ to a budget:
   on), `src/foo.ts:50+150` (150 lines from line 50), or `src/foo.ts:5-16,960-973` (multiple ranges in
   one call). `:raw` reads verbatim with no anchors or line prefixes.
 - **Dual budget, whichever is hit first:** a line cap (`DEFAULT_MAX_LINES = 3000`) and a byte cap
-  (`DEFAULT_MAX_BYTES = 50 KB`), defined in `session/streaming-output.ts`. A file that is short in lines
-  but huge in bytes (minified JS, a data blob) is bounded by bytes; a file with many short lines is
-  bounded by lines.
+  (`DEFAULT_MAX_BYTES`, 50 KB). A file that is short in lines but huge in bytes (minified JS, a data
+  blob) is bounded by bytes; a file with many short lines is bounded by lines. Both are compiled, not
+  configured, and `read` is deliberately the one tool exempt from artifact spilling: it is bounded by
+  LINES, so spilling on bytes would hand back fewer lines than you asked for and break the contract
+  the tool has. Every other tool's output is bounded by `tools.artifactSpillThreshold`, described
+  under [The `grep` tool](#the-grep-tool-toolsgrepts) below.
 - **Structural summaries for parseable code.** A read with no selector on a parseable source file
   returns declarations with bodies elided (`…`), and the footer names the recovery selector so the model
   re-issues only the ranges it actually needs instead of re-reading the whole file.
@@ -34,8 +37,10 @@ to a budget:
   notebooks (editable cell text), images, URLs (reader-mode by default), and internal URI schemes
   (`memory://`, `skill://`, `artifact://`, `mcp://`, `ssh://`, and others).
 
-Text reading is intentionally separate from image inspection: image files go through `view_image` or
-a vision prepass rather than being bundled into ordinary text reads.
+Text reading is intentionally separate from image inspection. By default, `read` decodes image
+files (PNG, JPEG, GIF, WEBP) inline for direct visual analysis. When `inspect_image.enabled` is set,
+`read` returns image metadata instead and the model inspects the image by calling `inspect_image`
+with a question.
 
 ## The `glob` tool (`tools/glob.ts`)
 
@@ -62,9 +67,9 @@ A model that runs `grep -r` / `rg` in the shell can get back tens of thousands o
 count on top of the same gitignore-aware traversal `glob` uses:
 
 - **`grep {pattern, path?, case?, gitignore?, skip?}`.** `path` scopes the search (single path,
-  semicolon-delimited list, or a `file:line-range` selector on one target); `case` enables
-  case-sensitivity (default case-insensitive is **not** assumed, see the tool description for the
-  exact default); `skip` pages past files already returned once a call hits the file limit.
+  semicolon-delimited list, or a `file:line-range` selector on one target); `case` toggles
+  case-sensitivity and defaults to sensitive (`caseSensitive ?? true` in `grep.ts`); `skip` pages
+  past files already returned once a call hits the file limit.
 - **Bounded by file count, not match count.** Results are paginated at `DEFAULT_FILE_LIMIT = 20` files
   per call, with an internal total cap of `2000` matches (`grep.ts`); `skip` continues from where the
   previous call left off.

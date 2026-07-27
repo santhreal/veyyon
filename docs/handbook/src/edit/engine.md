@@ -15,8 +15,8 @@ default and the path Veyyon optimizes for.
 1. **`read` or `grep`** records a whole-file snapshot and prints `[relative/path#TAG]` plus
    `LINE:content` rows (`TAG` is a four-hex snapshot id).
 2. The model sends **`edit`** with an `input` string: one or more `[PATH#TAG]` sections and hashline
-   ops (`SWAP N.=M:`, `DEL N.=M`, `INS.POST N:`, block ops `SWAP.BLK` / `DEL.BLK` / `INS.BLK.POST`,
-   plus `INS.HEAD` / `INS.TAIL`).
+   ops (`SWAP N.=M:`, `DEL N.=M`, `INS.PRE N:` / `INS.POST N:` / `INS.HEAD` / `INS.TAIL`, block ops
+   `SWAP.BLK` / `DEL.BLK` / `INS.BLK.POST`, plus whole-file `REM` and `MV DEST`).
 3. **`@veyyon/hashline`** parses, verifies the tag against the snapshot store, applies ops, and
    returns a fresh `[path#TAG]` header plus a compact diff preview.
 4. **`write`** can create or overwrite whole files; in hashline display mode it also mints snapshot

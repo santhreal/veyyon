@@ -46,7 +46,7 @@ In the composer's quiet footline the segment renders as an 8-cell bar with a lab
 
 Classic status-line presets render the same measurement as text, in tokens on both sides of the slash: `47K/170K`. For a full picture of what is in the window, and how it is divided between the system prompt, tools, skills, and messages, run `/context`.
 
-Two run clocks tick alongside the segments, both measuring model runtime, never idle wall time. While the agent runs, the location line (path and git branch) ends with the current run's elapsed, in `M:SS` form and widening to `H:MM:SS` past the hour: `…keyhog  ·  main *      12:34`. When the run finishes it reads `Worked for 12m34s` and freezes; before the model has ever started it shows nothing. The working line shows how long the current step has been running, between the step label and the esc hint: `Running tests · 0:42 ⟦esc⟧`; that clock restarts whenever the step changes. The `time_spent` segment is related but cumulative: it sums every run in the session (a fresh session with `/new` starts it at zero) and appears in the `full` and `nerd` presets.
+Two run clocks tick alongside the segments, both measuring model runtime, never idle wall time. While the agent runs, the location line (path and git branch) ends with the current run's elapsed, in `M:SS` form and widening to `H:MM:SS` past the hour: `…keyhog  ·  main *      12:34`. When the run finishes the clock freezes as `✓ 12:34` (checkmark plus the final `M:SS`/`H:MM:SS` readout); before the model has ever started it shows nothing. The working line shows how long the current step has been running, between the step label and the esc hint: `Running tests · 0:42 ⟦esc⟧`; that clock restarts whenever the step changes. The `time_spent` segment is related but cumulative: it sums every run in the session (a fresh session with `/new` starts it at zero) and appears in the `full` and `nerd` presets.
 
 ## Session tree and agents
 
@@ -66,7 +66,7 @@ Session files are append-only JSONL under the active profile’s agent `sessions
 
 ## Inter-agent messaging
 
-Subagents and the main agent use the `irc` tool (`send`, `wait`, `inbox`, `list`) over a process-global mailbox. `/btw` is an ephemeral side question; `/tan` and `/omfg` spawn background agents for tangential work.
+Subagents and the main agent use the `irc` tool (`send`, `wait`, `inbox`, `list`) over a process-global mailbox. `/btw` is an ephemeral side question; `/tan` spawns a background agent for tangential work. (`/omfg` is unrelated: it forges a TTSR rule from a complaint to stop a recurring behavior.)
 
 ## Swarm extension
 

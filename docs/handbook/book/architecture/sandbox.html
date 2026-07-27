@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -204,7 +204,7 @@ Seatbelt, or bubblewrap. The boundary is policy the agent loop enforces before d
 <li>Map the <strong>approval mode</strong> (<code>tools.approvalMode</code>) to a per-tier decision (read / write / exec) for
 <code>bash</code>, <code>edit</code>, <code>write</code>, and related tools.</li>
 <li>Apply per-tool overrides (<code>tools.approval</code> → <code>allow</code> / <code>deny</code> / <code>prompt</code>) on top of the mode.</li>
-<li>Apply execpolicy <code>.rules</code> (user and project) that allowlist or require prompts for command classes.</li>
+<li>Force a prompt for hard-coded critical bash patterns (recursive deletion rooted at <code>/</code>, fork bombs, <code>curl | sh</code>, disk destruction) in <code>plan</code>, <code>ask</code>, and <code>auto-edit</code>; <code>yolo</code> auto-approves them unless <code>tools.approval.bash</code> is <code>prompt</code> or <code>deny</code>.</li>
 <li>Surface the approval prompt in the TUI before a gated command or edit runs.</li>
 </ul>
 <h2 id="public-boundary"><a class="header" href="#public-boundary">Public boundary</a></h2>
@@ -221,7 +221,7 @@ exec-server process in the shipped product.</p>
 <tbody>
 <tr><td>Approval mode</td><td>Which tool tiers run without asking (<code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code>).</td></tr>
 <tr><td>Per-tool policy</td><td><code>tools.approval</code> overrides the mode for a named tool.</td></tr>
-<tr><td>Execpolicy rules</td><td><code>.rules</code> files that refine which specific commands auto-run.</td></tr>
+<tr><td>Critical bash patterns</td><td>Hard-coded destructive-command shapes that prompt in non-yolo modes, even over a per-tool <code>allow</code>.</td></tr>
 <tr><td>Plan mode</td><td>Restricts mutating tools until the plan is approved (<code>/plan</code>).</td></tr>
 </tbody>
 </table>

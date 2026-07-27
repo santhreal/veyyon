@@ -19,12 +19,18 @@
 ## Outputs
 A single text block plus structured `details`.
 
-- Changed: `Session cwd is now <cwd> (previously <previous>). Your requested path "<raw>" resolved to it.`
+- Changed: `Session cwd is now <cwd> (previously <previous>). Your requested path "<raw>" resolved to it. This change is session-scoped and ephemeral; a per-profile default working directory is the session.workdir setting, not this tool.`
 - Unchanged: `Session cwd is <cwd>. Your requested path "<raw>" resolved to that same directory, so nothing needed to change. This call succeeded; do not retry it.`
+- Both branches then describe the rule files. When the set changed, the result names the files that started applying and the ones that stopped. When it did not, it says `The rule files in effect are unchanged.`
 - `details`:
   - `previous`: the cwd before the call.
   - `cwd`: the cwd after the call, as the session resolved it.
   - `requested`: the trimmed path string as it arrived.
+  - `rulesApplied`: rule files that apply here and did not apply at `previous`.
+  - `rulesDropped`: rule files that applied at `previous` and do not apply here.
+  - `rulesUnchanged`: how many rule files apply in both directories.
+
+The rule fields are reported for a no-op too, and they carry the real counts. A no-op used to report `rulesUnchanged: 0`, which was untrue: user-level rule files apply from every directory, so a session that never moved still has rules governing it. Both branches now read the same describer, so the numbers and the sentence beside them cannot disagree.
 
 Both branches state the resulting directory rather than describing what did or did not happen, and both echo the path that actually arrived. This is deliberate. The earlier wording for the no-op case was `Session cwd unchanged: <path>`, which a caller that just asked for that path reads as "your call did not take effect". A real agent retried it repeatedly, got the identical line each time, and concluded its argument was not reaching the tool. Nothing in the message let it check that, which is why `requested` is echoed now: when you ask for `.` and land in a long absolute path, seeing both tells you your argument was fine.
 

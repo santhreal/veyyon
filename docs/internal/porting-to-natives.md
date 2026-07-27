@@ -39,8 +39,8 @@ Consumers import directly from `@veyyon/natives`. The generated declarations and
 **Package/build side:**
 
 - `packages/natives/scripts/build-native.ts` runs napi-rs, installs the `.node` artifact, copies generated `index.d.ts`, and regenerates explicit ESM class/function exports plus enum runtime exports in the checked-in `native/index.js`.
-- `packages/natives/native/index.js` is the ESM entrypoint that calls the loader, exposes named exports, and rejects install/compiled `.node` files that do not expose the package-version sentinel.
-- `packages/natives/package.json` exposes only the package root (`@veyyon/natives`) as the import surface. veyyon ships GitHub-only, so there is no published package layout to mirror: the compiled binary embeds the matching `.node`, and a source install provisions it into the per-version cache the loader reads. This is transparent to importers: you `import` from `@veyyon/natives`.
+- `packages/natives/native/index.js` is the ESM entrypoint: every named class/function export is a lazy accessor that runs the loader on first use, and the loader rejects install/compiled `.node` files that do not expose the package-version sentinel.
+- `packages/natives/package.json` exposes the package root (`@veyyon/natives`) as the native import surface, plus a `./sha256-sidecar` helper entry used by release provisioning. veyyon ships GitHub-only, so there is no published package layout to mirror: the compiled binary embeds the matching `.node`, and a source install provisions it into the per-version cache the loader reads. This is transparent to importers: you `import` from `@veyyon/natives`.
 
 **Consumer side:**
 
@@ -133,30 +133,36 @@ napi-rs declarations alone are not enough for JS callers that import named symbo
 - Keep JS and native using identical input arrays.
 - Run both in the same benchmark file to avoid skew.
 - Include enough iterations to smooth startup noise, but keep inputs realistic.
+- Do not write your own timing loop. Use `makeBench`, which runs an untimed warmup first.
 
 ## Benchmark template
 
+Use the shared harness. It is the one place a timing loop lives, and it runs a warmup you do not have to
+remember: a hand-rolled loop times the first call along with the rest, so the figure includes JIT tier-up.
+That matters most for exactly the functions you port to native, which cost hundreds of nanoseconds, where
+warmup can be a large fraction of the run and can reverse the direction of the comparison.
+
 ```ts
+import { makeBench } from "@veyyon/utils/bench-harness";
+
 const ITERATIONS = 2000;
+const bench = makeBench(ITERATIONS);
 
-function bench(name: string, fn: () => void): number {
-  const start = Bun.nanoseconds();
-  for (let i = 0; i < ITERATIONS; i++) fn();
-  const elapsed = (Bun.nanoseconds() - start) / 1e6;
-  console.log(
-    `${name}: ${elapsed.toFixed(2)}ms total (${(elapsed / ITERATIONS).toFixed(6)}ms/op)`,
-  );
-  return elapsed;
-}
-
-bench("feature/js", () => {
+const js = bench("feature/js", () => {
   jsImpl(sample);
 });
 
-bench("feature/native", () => {
+const native = bench("feature/native", () => {
   nativeImpl(sample);
 });
+
+console.log(`native is ${(js / native).toFixed(2)}x`);
 ```
+
+Each line reads `feature/js: 11.40ms total (0.005700ms/op, 200 warmup)`. The warmup count is printed
+because a reader comparing two numbers needs to know what was excluded from each. Pass `{ warmup }` to set
+it yourself when the default (a tenth of the iterations, at least 1 and at most 1000) is wrong for your
+case, and say in the script why.
 
 ## Verification checklist
 
@@ -172,4 +178,4 @@ bench("feature/native", () => {
 - If native is slower, do not switch callsites. Keep or remove the export based on whether it has a near-term owner.
 - If native is faster and behavior-compatible, switch callsites and keep a benchmark to catch regressions.
 
-*Verified against `707a0016` on 2026-07-24.*
+*Verified against `f46fcdb58b933aa498313fd7672a0b29828e860b` on 2026-07-25.*

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -214,11 +214,11 @@
 <tr><th>Mode</th><th>Shows</th></tr>
 </thead>
 <tbody>
-<tr><td><code>default</code></td><td>Conversation nodes; hides label/custom/model_change/thinking bookkeeping</td></tr>
-<tr><td><code>no-tools</code></td><td><code>default</code> plus hides tool-result-only assistant messages</td></tr>
+<tr><td><code>default</code></td><td>Conversation nodes; hides label/custom/model_change/thinking bookkeeping and tool-call-only assistant messages</td></tr>
+<tr><td><code>no-tools</code></td><td><code>default</code> plus hides tool-result messages</td></tr>
 <tr><td><code>user-only</code></td><td>User messages only</td></tr>
 <tr><td><code>labeled-only</code></td><td>Entries with labels</td></tr>
-<tr><td><code>all</code></td><td>Every entry type</td></tr>
+<tr><td><code>all</code></td><td>Every entry type except tool-call-only assistant messages (hidden in all modes unless error/aborted or the current leaf)</td></tr>
 </tbody>
 </table>
 </div>

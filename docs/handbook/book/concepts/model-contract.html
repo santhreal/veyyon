@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -265,7 +265,8 @@ allowlist for BYOK providers, and discovery returns an error; it does not invent
 tool guidance). See <a href="../models/prompts.html">Execution-order prompts</a>.</li>
 <li><strong>User and project instructions</strong> (<code>AGENTS.md</code> / <code>SYSTEM.md</code> layers and any session steers).</li>
 <li><strong>Tool schemas</strong> the model is allowed to call on this turn (bash, edit/write, web search, MCP tools,
-skills, and so on), filtered by approval mode, <code>disallowed_tools</code>, and feature flags.</li>
+skills, and so on), filtered by feature flags, harness-profile allowlists, and plan-mode narrowing.
+A per-tool <code>deny</code> policy does not filter this list; it refuses the call at dispatch.</li>
 <li><strong>Conversation context</strong> for the active thread, possibly compacted.</li>
 </ol>
 <p>The model is expected to call tools using the schemas it was given. When arguments are almost right but
@@ -286,7 +287,7 @@ the same; only the transport differs.</p>
 </div>
 <p>Default edit mode is <strong>hashline</strong> (<code>edit.mode: hashline</code>). When <code>edit.mode</code> is <code>apply_patch</code>, the
 provider wire form is derived from the API kind by default; an optional catalog override can pin the
-tool shape to <code>function</code>, <code>freeform</code>, or <code>none</code>. The Function form keeps structured edits available
+tool shape to <code>function</code> or <code>freeform</code>. The Function form keeps structured edits available
 on chat-wire endpoints (Ollama, LM Studio, DeepSeek, and similar). See <a href="../edit/engine.html">The hashline edit engine</a>
 for the default edit wire format.</p>
 <h2 id="harness-vs-provider-a-clear-split"><a class="header" href="#harness-vs-provider-a-clear-split">Harness vs provider: a clear split</a></h2>
@@ -306,7 +307,7 @@ for the default edit wire format.</p>
 <li>Config rejected at load, malformed <code>models.yml</code>, missing key → harness / your config.</li>
 <li>HTTP 401 / 429 / empty model list → provider or key.</li>
 <li>Patch applied but tests red → harness did its job; the change still needs work.</li>
-<li>Approval or execpolicy denial → permission model, not the model provider.</li>
+<li>Approval or critical-pattern denial → permission model, not the model provider.</li>
 </ul>
 <h2 id="provider-data-at-load-time"><a class="header" href="#provider-data-at-load-time">Provider data at load time</a></h2>
 <p>For BYOK providers, model and provider entries are data in <code>models.yml</code>:</p>

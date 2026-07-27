@@ -402,7 +402,7 @@ The complete resolved Tier-A config that governed the run, keyed by dotted setti
   "timestamp": "2026-02-16T10:20:31.000Z",
   "kind": "full",
   "values": {
-    "compaction.strategy": "summarize",
+    "compaction.strategy": "summary",
     "subagent.maxConcurrency": 4,
     "thinkingBudgets.high": 8000,
     "session.instrumentation": "ultra"
@@ -761,4 +761,4 @@ Metadata extraction for `getRecentSessions` reads a prefix via `readTextSlices(.
 
 Use session files for conversation graph/state replay; use `HistoryStorage` for prompt history UX.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `f46fcdb58b933aa498313fd7672a0b29828e860b` on 2026-07-25.*

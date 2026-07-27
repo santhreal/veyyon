@@ -17,19 +17,17 @@ It covers tool behavior, runner lifecycle, environment handling, execution seman
 
 ## What eval's Python backend is
 
-The `eval` tool executes one or more Python cells inside a retained `python` subprocess that speaks NDJSON over stdin/stdout. No Jupyter gateway and no extra pip dependencies are required, a vanilla Python 3.8+ interpreter is enough. Rich `display()` output (PIL, pandas, plotly, matplotlib figures) keeps working because the wrapper implements MIME-bundle dispatch.
+The `eval` tool executes one Python cell per call inside a retained `python` subprocess that speaks NDJSON over stdin/stdout. No Jupyter gateway and no extra pip dependencies are required, a vanilla Python 3.8+ interpreter is enough. Rich `display()` output (PIL, pandas, plotly, matplotlib figures) keeps working because the wrapper implements MIME-bundle dispatch. State persists across calls in the retained kernel, so define helpers and datasets in one call and reuse them in the next.
 
-Tool params:
+Tool params (one cell per call):
 
 ```ts
 {
-  cells: Array<{
-    language: "py" | "js";
-    code: string;
-    title?: string;
-    timeout?: number; // seconds, clamped to 1..3600, default 30. Inactivity budget, see "Cell timeout".
-    reset?: boolean; // reset this cell's selected runtime before execution
-  }>;
+  language: "py" | "js" | "rb" | "jl";  // enum narrowed per session to the enabled backends
+  code: string;
+  title?: string;
+  timeout?: number; // seconds, clamped to 1..3600, default 30. Inactivity budget, see "Cell timeout".
+  reset?: boolean; // reset this language's kernel before execution
 }
 ```
 
@@ -94,7 +92,7 @@ The runner's source transformer rewrites IPython-style magics to plain Python ca
 | `%reset`                          | Clear user globals and re-inject prelude.                                                                                                                   |
 | `%load <path>`                    | Read a file into a fresh cell and execute.                                                                                                                  |
 | `%run <path>`                     | `runpy.run_path` and merge globals back.                                                                                                                    |
-| `%%bash` / `%%sh`                 | Run the cell body via `bash`/`sh`.                                                                                                                          |
+| `%%bash`                          | Run the cell body via `/bin/bash`.                                                                                                                          |
 | `%%capture [name]`                | Run body with stdout/stderr captured into `name`.                                                                                                           |
 | `%%timeit`                        | Time the cell body.                                                                                                                                         |
 | `%%writefile <path>`              | Write body to file.                                                                                                                                         |
@@ -120,22 +118,16 @@ Unknown magic names raise `NameError: UsageError: ...` inside the cell.
 
 ### Multi-cell behavior in a single tool call
 
-Python cells run sequentially in the same selected Python kernel instance for that tool call.
+A call carries exactly one cell. To build up state, make successive calls: the retained kernel keeps every defined name between them. If a cell fails, earlier state remains in memory and the tool returns a targeted error.
 
-If an intermediate cell fails:
-
-- Earlier cell state remains in memory.
-- Tool returns a targeted error indicating which cell failed.
-- Later cells are not executed.
-
-`reset=true` is per cell and resets that language runtime before the cell executes.
+`reset=true` resets that language's kernel before the cell executes.
 
 ## Environment filtering and runtime resolution
 
 Environment is filtered before launching the runner:
 
 - Allowlist includes core vars like `PATH`, `HOME`, locale vars, `VIRTUAL_ENV`, `PYTHONPATH`, etc.
-- Allow-prefixes: `LC_`, `XDG_`, `PI_`
+- Allow-prefixes: `LC_`, `XDG_`, `VEYYON_`
 - Denylist strips common API keys (OpenAI/Anthropic/Gemini/etc.)
 
 Runtime selection order (skipped entirely when the `python.interpreter` setting names an explicit executable):
@@ -150,7 +142,7 @@ The runner additionally receives `PYTHONUNBUFFERED=1` and `PYTHONIOENCODING=utf-
 
 ## Tool availability and mode selection
 
-`eval.py` / `eval.js` (both default `true`) plus optional boolean env flags `VEYYON_PY` / `VEYYON_JS` control eval backend exposure:
+`eval.py` / `eval.js` (both default `true`) plus optional boolean env flags `VEYYON_PY` / `VEYYON_JS` control eval backend exposure. Ruby and Julia backends (`language: "rb"` / `"jl"`) also exist behind `eval.rb` / `eval.jl` (both default `false`) and the `VEYYON_RB` / `VEYYON_JL` flags; the `language` enum is narrowed per session to the enabled backends:
 
 - Python backend only (`eval.py=true`, `eval.js=false`, or `VEYYON_PY=1 VEYYON_JS=0`)
 - JavaScript backend only (`eval.py=false`, `eval.js=true`, or `VEYYON_PY=0 VEYYON_JS=1`)
@@ -160,7 +152,7 @@ The runner additionally receives `PYTHONUNBUFFERED=1` and `PYTHONIOENCODING=utf-
 
 If Python preflight fails and `eval.js` is enabled, `eval` remains available for `js` cells; `py` cells fail with a Python-backend availability error.
 
-Python prelude helpers include `agent(prompt, *, agent="task", model=None, label=None, schema=None, handle=False)`. It synchronously calls the host bridge, runs one subagent through the task executor, and returns the final text. When `schema` is supplied, the helper parses the subagent's JSON output and returns the object. When `handle=True`, it instead returns a DAG node dict (`{"text", "output", "handle", "id", "agent"}`) whose `handle` is the spawned agent's recoverable `agent://<id>` URI (the parsed object lands under `"data"` when `schema` is also set), so a downstream `pipeline`/`parallel` stage can reference the transcript by handle instead of re-inlining it.
+Python prelude helpers include `agent(prompt, *, agent="task", model=None, label=None, schema=None, handle=False, isolated=None, apply=None, merge=None)`. It synchronously calls the host bridge, runs one subagent through the task executor, and returns the final text. When `schema` is supplied, the helper parses the subagent's JSON output and returns the object. When `handle=True`, it instead returns a DAG node dict (`{"text", "output", "handle", "id", "agent"}`) whose `handle` is the spawned agent's recoverable `agent://<id>` URI (the parsed object lands under `"data"` when `schema` is also set), so a downstream `pipeline`/`parallel` stage can reference the transcript by handle instead of re-inlining it.
 
 ## Execution flow and cancellation/timeout
 
@@ -224,9 +216,12 @@ Output is streamed through `OutputSink` and may be persisted to artifact storage
   - supports expanded mode for all output retained in the tool result
 - Interactive renderer (`eval-execution.ts`):
   - used for user-triggered Python execution in TUI
-  - collapsed preview defaults to 20 lines
-  - clamps very long individual lines to 4000 chars for display safety
+  - collapsed preview defaults to 20 lines (`EXECUTION_PREVIEW_LINES`)
+  - clamps a very long individual line to 4000 terminal **columns**, not characters (`EXECUTION_MAX_DISPLAY_COLUMNS`). Columns are what the terminal has to fit, so ANSI colour codes are not counted and a wide character counts as two. The clamped line ends with `… [N visible columns omitted]`.
+  - keeps at most 100 output lines while a cell is streaming (`EXECUTION_STREAMING_LINE_CAP`, five screenfuls). When more arrive the oldest are dropped and the footer says so: `… N earlier lines dropped while streaming`. That note is separate from the `… N more lines (ctrl+o to expand)` hint, because expanding reveals hidden lines and cannot bring back dropped ones. Once the cell finishes, the full output replaces what streaming kept, so the note disappears.
   - shows cancellation/error/truncation notices
+
+The bash execution block (`bash-execution.ts`) shares all three of those limits, along with the clamp itself, through `modes/components/execution-shared.ts`.
 
 ## Operational troubleshooting
 
@@ -238,7 +233,7 @@ Output is streamed through `OutputSink` and may be persisted to artifact storage
 
 ## Relevant environment variables
 
-Each variable also accepts its `VEYYON_`-prefixed primary name (e.g. `VEYYON_PY`); the `VEYYON_`/`OMP_` value wins when both are set.
+Each variable is read directly from the process environment under its `VEYYON_` name; there is no legacy alias resolution.
 
 - `VEYYON_PY` / `VEYYON_JS`: eval backend exposure overrides
 - `VEYYON_PYTHON_SKIP_CHECK=1`: bypass Python preflight/warm checks

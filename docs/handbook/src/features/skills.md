@@ -107,8 +107,6 @@ Here is an example `SKILL.md` file.
 ---
 name: my-custom-skill
 description: Performs a custom code audit or analysis.
-metadata:
-  short-description: Audit code for typical issues.
 ---
 
 # My Custom Skill
@@ -121,46 +119,9 @@ Use this skill when analyzing source files. Ensure you focus on:
 The frontmatter contains these fields.
 
 - `name`: The name of the skill (optional). Defaults to the name of the parent folder.
-- `description`: A description of what the skill does (optional).
-- `metadata`: Nested metadata block (optional).
-  - `short-description`: A short summary of the skill (optional).
-
-### Optional configuration (`agents/openai.yaml`)
-
-You can configure dependencies, policy settings, and interface preferences by adding an `agents/openai.yaml` file in the skill's subdirectory. This file name is inherited from oh-my-pi's upstream skill format.
-
-Here is an example `agents/openai.yaml` file.
-
-```yaml
-interface:
-  display_name: "Code Auditor"
-  short_description: "Audit code for typical issues"
-  brand_color: "#C6CBD4"
-  default_prompt: "Audit the files in the current workspace"
-dependencies:
-  tools:
-    - type: "command"
-      value: "cargo check"
-      description: "Checks Rust project compilation"
-policy:
-  allow_implicit_invocation: true
-  products:
-    - veyyon
-```
-
-The following fields are available in `agents/openai.yaml`.
-
-- `interface`: TUI presentation settings (optional).
-  - `display_name`: The display name shown in TUI lists (optional).
-  - `short_description`: A short description (optional).
-  - `icon_small` / `icon_large`: Filesystem paths to icons (optional).
-  - `brand_color`: A hex color code or color name (optional).
-  - `default_prompt`: Pre-filled text when launching the skill (optional).
-- `dependencies`: List of tools needed for the skill (optional).
-  - `tools`: A list of dependency blocks. Each block can specify a `type` (for example, `command` or `url`), a `value` (for example, the command name or URL), a `description`, an optional `transport`, an optional `command` path, and an optional `url`.
-- `policy`: Restrict how the skill is invoked (optional).
-  - `allow_implicit_invocation`: A boolean (defaults to `true`). If `false`, the skill will not be implicitly suggested or automatically injected by the model.
-  - `products`: A list of product names to restrict the skill to (for example, `veyyon`). If set, the skill only loads for matching products.
+- `description`: A description of what the skill does (required). A skill without one is skipped at load time.
+- `enabled`: Set to `false` to skip the skill at load time (optional).
+- `hide` / `disableModelInvocation`: Either one hides the skill from the model-facing list (optional).
 
 ## Configuration
 
@@ -210,7 +171,7 @@ In the terminal user interface, you can manage and list skills interactively.
 
 - `/extensions` opens the Extension Control Center, which lists every discovered skill alongside tools and hooks, and lets you enable or disable individual skills.
 
-When you close the toggle list, the TUI displays a status message stating how many skills were enabled or disabled.
+Toggles persist immediately to `disabledExtensions`; there is no close-time summary message.
 
 ## Related recipes
 

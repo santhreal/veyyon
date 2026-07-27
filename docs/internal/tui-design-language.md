@@ -170,9 +170,9 @@ Where a status marker is a bare presence dot, it is a **square**, not a circle:
 | `status.enabled` / `status.done` | `●` `•` | `▪` (filled square) |
 | `status.shadowed` (auto/off) | `○` | `▫` (hollow square) |
 | `radio.selected` / `radio.unselected` | `◉` `○` | `▣` `□` (square-in-square vs open square, kept distinct from the `■`/`□` checkbox) |
-| `thinking.minimal…max` | `o ◔ ◑ ◒ ◕ ◉` | `▁ ▂ ▃ ▅ ▆ █` (an eighth-block level gauge, so effort reads as magnitude) |
+| `thinking.minimal…max` | `o ◔ ◑ ◒ ◕ ◉` | text labels `min` `low` `med` `high` `xhigh` `max` (a deliberate exception: the gauge-bar glyphs `▁▂▃…` were retired because they rendered as stray solid rectangles) |
 
-These live in the `unicode` preset (`symbols.ts`), the base the default Titanium theme inherits, and are locked by `symbols-blockiness.test.ts`. The `nerd` and `ascii` presets keep their own icon/text vocabularies. **Named themes may override the house set** when circles are part of their identity (the poimandres themes keep their circular glyphs deliberately); the block style is the Veyyon default, not a constraint on every theme.
+These live in the `unicode` preset (`symbols.ts`), the base the default Titanium theme inherits, and are locked by `test/modes/theme/symbol-presets.test.ts` (with `test/tools/ask.test.ts` pinning the radio/checkbox distinction). The `nerd` and `ascii` presets keep their own icon/text vocabularies. **Named themes may override the house set** when circles are part of their identity (the poimandres themes keep their circular glyphs deliberately); the block style is the Veyyon default, not a constraint on every theme.
 
 ## Voice register
 
@@ -197,4 +197,4 @@ The website nav speaks lowercase terse ("docs install models changelog"), a disp
 
 When touching TUI polish, name the token (spacing, theme color, motion budget). Hardcoded hex or ANSI at call sites outside `theme.ts` is a design-system bug.
 
-*Verified on 2026-07-22.*
+*Verified against `179635884f50` on 2026-07-25.*

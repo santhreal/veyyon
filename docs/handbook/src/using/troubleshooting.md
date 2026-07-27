@@ -17,7 +17,7 @@ Check API key / auth store / `models.yml` for that provider id, base URL, and sc
 
 ## Command or edit blocked or prompting
 
-Policy is **`tools.approvalMode`** and `tools.approval` (plus execpolicy `.rules`). There is no OS command sandbox. Schema default is **`yolo`**. See [Approvals](../features/sandbox.md) and [Configuration](./configuration.md).
+Policy is **`tools.approvalMode`** and `tools.approval` (plus hard-coded critical bash patterns that prompt in non-yolo modes). There is no OS command sandbox. Schema default is **`yolo`**. See [Approvals](../features/sandbox.md) and [Configuration](./configuration.md).
 
 ## Truncated tool output
 

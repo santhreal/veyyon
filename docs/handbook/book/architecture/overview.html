@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -196,8 +196,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="architecture-overview"><a class="header" href="#architecture-overview">Architecture overview</a></h1>
-<p>Veyyon is a <strong>Bun/TypeScript</strong> coding agent (fork of oh-my-pi) with Rust hot paths (<code>@veyyon/hashline</code>,
-native grep, PTY). The shipped CLI binary is <strong><code>veyyon</code></strong>. There is no separate app-server daemon in
+<p>Veyyon is a <strong>Bun/TypeScript</strong> coding agent (fork of oh-my-pi) with Rust hot paths (native grep, PTY, tree-sitter/AST via <code>crates/veyyon-natives</code>). The shipped CLI binary is <strong><code>veyyon</code></strong>. There is no separate app-server daemon in
 the product surface.</p>
 <h2 id="the-request-path"><a class="header" href="#the-request-path">The request path</a></h2>
 <pre><code class="language-text">prompt ──► veyyon

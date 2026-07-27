@@ -56,7 +56,7 @@
 - Default local voice: `af_heart`; supported local voices include `af_heart`, `af_bella`, `af_nicole`, `af_aoede`, `af_kore`, `af_sarah`, `am_michael`, `am_fenrir`, `am_puck`, `bf_emma`, `bm_george`, and `bm_fable`.
 
 ## Errors
-- xAI credentials missing returns an error result: `No xAI credentials. Run /login → xAI Grok OAuth (SuperGrok Subscription) or set XAI_API_KEY.`
+- xAI credentials missing returns an error result: `No xAI credentials. Run /login → xAI Grok OAuth (SuperGrok or X Premium+) or set XAI_API_KEY.`
 - xAI HTTP failures return an error result containing `xAI TTS failed (<status>): <detail>`.
 - Local synthesis failure returns an error result noting the model key and possible worker/model-download issue.
 

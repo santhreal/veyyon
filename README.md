@@ -22,7 +22,7 @@
 
 Veyyon runs in your terminal and treats the machinery around your code, the language server, the debugger, the shell, the browser, as tools it can call. The model weights are the same ones you get anywhere. The harness is what changes how reliably they land a change.
 
-Multi-provider catalog · 31 built-in tools (more optional and gated) · LSP and DAP · Rust natives on every hot path · and a per-project shorthand the model writes in.
+Multi-provider catalog · 34 built-in tools (more optional and gated) · LSP and DAP · Rust natives on every hot path · and a per-project shorthand the model writes in.
 
 ## Install it in one line
 
@@ -38,9 +38,9 @@ curl -fsSL https://get.veyyon.dev | sh
 irm https://veyyon.dev/install.ps1 | iex
 ```
 
-This installs a single self-contained binary and links a short `vey` command. The first interactive `vey` opens first-run setup (providers, glyphs, theme); re-run it any time with `veyyon setup`. To pin a version or build from a checkout: `curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.12` or `--source`.
+This installs a single self-contained binary and links a short `vey` command. The first interactive `vey` opens first-run setup (providers, glyphs, theme); re-run it any time with `veyyon setup`. To pin a release binary use `--binary --ref v1.0.12`; a bare `--ref v1.0.12` builds that ref from a git checkout (it implies `--source`).
 
-Veyyon ships two ways only: the `curl` installer from veyyon.dev (a signed binary that veyyon.dev serves and propagates automatically from [GitHub Releases](https://github.com/santhreal/veyyon/releases)) or a git clone you build yourself. There is no npm package, no Homebrew tap, and no crates.io release, and Veyyon updates itself only from veyyon.dev.
+Veyyon ships two ways only: the `curl` installer from veyyon.dev (which downloads the signed binary from [GitHub Releases](https://github.com/santhreal/veyyon/releases)) or a git clone you build yourself. There is no npm package, no Homebrew tap, and no crates.io release.
 
 **From source (contributing)**
 
@@ -96,13 +96,9 @@ This is the largest thing the fork adds, and it is experimental: off by default,
 
 The round trip is lossless. The model reads and writes less boilerplate, and nothing downstream, no tool, no file, no transcript, ever sees an unexpanded handle. Encoding is gated per model and by context size, so a large or unfamiliar context writes in full instead of risking a garbled handle; decoding always runs, so a handle can never leak. The dictionary is generated per project, kept in a local content-keyed cache, and never committed. See [Argot](docs/handbook/src/why/argot.md).
 
-<p align="center">
-  <img src="assets/argot-settings-off.png" width="400" alt="Argot settings with the feature off: only the master toggle">
-  &nbsp;
-  <img src="assets/argot-settings-on.png" width="400" alt="Argot settings with the feature on: master toggle plus four dependent knobs">
-</p>
+The five `argot.*` settings live together on the **Experimental** settings tab (`/settings` → Experimental → Argot): the master toggle plus four dependent knobs that appear once it is on.
 
-The fork also adds snap compaction with lossless dedup and artifact spill, shared credentials and global config across profiles, a per-profile working directory, an absolute-token compaction threshold, and atomic, serialized config writes. Each is covered in [Mechanisms](docs/handbook/src/why/innovations.md).
+The fork also adds shared credentials and global config across profiles, a per-profile working directory, a unified auto-compaction threshold (auto, a percent of the window, or an absolute token amount, picked from a two-level drill-down in settings), artifact spill for oversized tool output, and atomic, serialized config writes. Each is covered in [Mechanisms](docs/handbook/src/why/innovations.md).
 
 ## What it can do
 
@@ -164,7 +160,7 @@ With a backend such as mnemopi enabled, Veyyon retains and recalls project-scope
 
 ### 15 · It inherits the config your other tools already wrote
 
-With discovery on by default, Veyyon loads context, skills, rules, and MCP from the on-disk layouts of Claude, Codex, Cursor, Gemini, OpenCode, and related tools, with no conversion step. Turn it off with `discovery.importForeignConfig: false`.
+With foreign-config discovery enabled, Veyyon loads context, skills, rules, and MCP from the on-disk layouts of Claude, Codex, Cursor, Gemini, OpenCode, and related tools, with no conversion step. It is off by default; turn it on with `discovery.importForeignConfig: true`.
 
 ### 16 · Commits split into atomic, ordered pieces
 
@@ -201,7 +197,8 @@ Tools share the agent registry with `read` and `bash`. Restrict the exposed set 
 **Runtime**
 
 - `bash`: shell (optional PTY / background jobs)
-- `eval`: persistent Python/JS cells
+- `eval`: persistent Python/JS cells (opt-in Ruby/Julia kernels)
+- `launch`: supervised long-running processes (dev servers, watchers)
 - `ssh`: remote host command
 
 **Code intelligence**
@@ -223,21 +220,22 @@ Tools share the agent registry with `read` and `bash`. Restrict the exposed set 
 **Memory and state**
 
 - `checkpoint` / `rewind`
-- `retain` / `recall` / `reflect` (Hindsight bank when that backend is active)
+- `set_cwd`: re-root the session's working directory
+- `retain` / `recall` / `reflect` (when the hindsight or mnemopi memory backend is active)
 
 **Misc**
 
 - `resolve`: apply or discard a queued preview action.
 - `search_tool_bm25`: BM25 over the hidden tool index; activates top matches mid-session.
 
-Setting-gated and off by default: `github`, `inspect_image`, `tts`, `checkpoint`, `rewind`, `search_tool_bm25`, `retain`, `recall`, `reflect`. Flip them on once, scoped per project.
+Setting-gated and off by default: `github`, `inspect_image`, `tts`, `checkpoint`, `rewind`, `memory_edit`, `retain`, `recall`, `reflect`, `learn`, `manage_skill`, `argot_load`, `argot_unload`. Enable them in `/settings` or `config.yml`. `search_tool_bm25` needs no toggle: it appears automatically once the tool count passes 40 (`tools.discoveryMode: auto`).
 
-[Tools reference →](packages/coding-agent/README.md)
+[Tool guides →](docs/tools/)
 
 ## Dozens of providers, one `/model` away
 
 - **Interactive model:** `/model` or `--model`; persisted as `modelRoles.default`.
-- **Roles:** `smol`, `slow`, `vision`, `plan`, `designer`, `commit`, `tiny`, `task`, `advisor` (plus custom names). Assign in `modelRoles` or settings → Model → Roles. Launch pins: `--smol`, `--slow`, `--plan`.
+- **Roles:** `smol`, `slow`, `vision`, `plan`, `designer`, `commit`, `tiny`, `advisor` (plus custom names). Assign in `modelRoles` or settings → Model → Roles. Launch pins: `--smol`, `--slow`, `--plan`.
 - **Overrides:** `subagent.model`, `compaction.model` (else inherit interactive).
 - **Cycle:** `cycleOrder` (default `smol`, `slow`); keybinding `app.model.cycleForward` (often Ctrl+P).
 
@@ -249,7 +247,7 @@ The auth tags below read as follows: `oauth` signs in with your provider account
 
 Direct APIs and gateways. Mix providers per role.
 
-Anthropic `oauth` · OpenAI · OpenAI Codex `oauth` · Google Gemini · Google Antigravity `oauth` · xAI · Mistral · Groq · Cerebras · Fireworks · Together · Hugging Face · NVIDIA · OpenRouter · Synthetic · Vercel AI Gateway · Cloudflare AI Gateway · Wafer Serverless · Perplexity `oauth`
+Anthropic `oauth` · OpenAI · OpenAI Codex `oauth` · Google Gemini · Google Antigravity `oauth` · xAI · Mistral · Groq · Cerebras · Fireworks · Together · Hugging Face · NVIDIA · OpenRouter · Synthetic · Vercel AI Gateway · Cloudflare AI Gateway · Wafer Serverless
 
 ### Coding plans
 
@@ -301,8 +299,6 @@ Providers (pin one, or `auto`):
 | `synthetic`  | `SYNTHETIC_API_KEY`    |
 | `searxng`    | self-hosted            |
 | `duckduckgo` | no key                 |
-| `bing`       | no key                 |
-| `yahoo`      | no key                 |
 | `startpage`  | no key                 |
 | `google`     | no key (browser)       |
 | `ecosia`     | no key (browser)       |
@@ -329,9 +325,9 @@ Host-specific extraction for:
 
 ## Rust on the hot paths (`@veyyon/natives`)
 
-Four crates, one platform-tagged N-API addon. Search, shell, AST, highlight, PTY, image decode, and BPE counting run in-process on the libuv pool.
+Thirteen crates, one platform-tagged N-API addon. Search, shell, AST, highlight, PTY, image decode, and BPE counting run in-process on the libuv pool.
 
-- Crates: `veyyon-natives`, `veyyon-shell`, `veyyon-ast`, `veyyon-iso`
+- Crates: `veyyon-natives`, `veyyon-shell`, `veyyon-ast`, `veyyon-iso`, `veyyon-walker`, `veyyon-uutils-ctx`, `veyyon-uu-diff`, `veyyon-uu-grep`, `veyyon-diff-kernel`, `veyyon-grep-kernel`, `veyyon-glob`, `veyyon-keys`, `veyyon-text`
 - Platforms: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `win32-x64`
 
 The table below is a per-module breakdown that intentionally omits glue and tests.
@@ -344,7 +340,6 @@ The table below is a per-module breakdown that intentionally omits glue and test
 | text       | ANSI-aware width · truncation · column slicing · SGR-preserving wrap                 | unicode-width · segmentation              | 1,450 |
 | summary    | Tree-sitter structural source summaries with elision controls                        | tree-sitter · ast-grep-core               | 1,040 |
 | ast        | ast-grep pattern matching and structural rewrites                                    | ast-grep-core                             | 1,000 |
-| fs_cache   | Mtime-keyed file cache shared by read · grep · lsp                                   | in-tree                                   |   840 |
 | highlight  | Syntax highlighting · 11 semantic categories · 30+ aliases                           | syntect                                   |   470 |
 | pty        | Native PTY allocation for sudo · ssh interactive prompts                             | portable-pty                              |   455 |
 | glob       | Discovery with glob · type filters · mtime sort · gitignore respect                  | ignore · globset                          |   410 |
@@ -474,6 +469,7 @@ For architecture and contribution guidelines, see [packages/coding-agent/DEVELOP
 | **[@veyyon/ai](packages/ai)**                        | Multi-provider LLM client with streaming and model/provider integration    |
 | **[@veyyon/catalog](packages/catalog)**              | Model catalog: bundled model database, provider descriptors, and identity  |
 | **[@veyyon/agent-core](packages/agent)**             | Agent runtime with tool calling and state management                       |
+| **[@veyyon/argot](packages/argot)**                  | Per-project shorthand vocabularies: a lossless substitution codec over AGENTS.dict |
 | **[@veyyon/coding-agent](packages/coding-agent)**    | Interactive coding agent CLI and SDK                                       |
 | **[@veyyon/tui](packages/tui)**                      | Terminal UI library with differential rendering                            |
 | **[@veyyon/natives](packages/natives)**              | N-API bindings for grep, shell, image, text, syntax highlighting, and more |
@@ -483,7 +479,10 @@ For architecture and contribution guidelines, see [packages/coding-agent/DEVELOP
 | **[@veyyon/hashline](packages/hashline)**               | Line-anchored patch language and applier behind the `edit` tool            |
 | **[@veyyon/mnemopi](packages/mnemopi)**              | Local SQLite memory engine for Veyyon agents                             |
 | **[@veyyon/metaharness](packages/metaharness)**      | Experimentation / meta harness package                                     |
-| **[@veyyon/swarm-extension](packages/swarm-extension)** | Swarm orchestration extension package                                      |
+| **[@veyyon/swarm-extension](packages/swarm-extension)** | Swarm orchestration extension package                                   |
+| **[@veyyon/tool-render](packages/tool-render)**      | Shared React tool-call renderers for HTML export and collab-web            |
+| **[@veyyon/deepswe-bench](packages/deepswe-bench)**  | DeepSWE bench runner for perf-affecting features                           |
+| **[@veyyon/typescript-edit-benchmark](packages/typescript-edit-benchmark)** | Edit benchmark suite over TypeScript source mutations    |
 
 ### Rust Crates
 
@@ -493,8 +492,18 @@ For architecture and contribution guidelines, see [packages/coding-agent/DEVELOP
 | **[veyyon-shell](crates/veyyon-shell)**                    | Embedded shell / PTY / process management split out of `veyyon-natives` (wraps `brush-*`)               |
 | **[veyyon-ast](crates/veyyon-ast)**                        | tree-sitter-based code summarizer and AST utilities (50+ language grammars)                         |
 | **[veyyon-iso](crates/veyyon-iso)**                        | Task isolation backend resolver: APFS clones, btrfs/zfs reflinks, overlayfs, projfs, rcopy          |
+| **[veyyon-walker](crates/veyyon-walker)**                  | Platform directory traversal primitives: the native directory-read fast path                    |
+| **[veyyon-glob](crates/veyyon-glob)**                      | Glob matching engine (globset) behind the native glob binding                                   |
+| **[veyyon-keys](crates/veyyon-keys)**                      | Kitty keyboard protocol parsing with PHF perfect-hash lookup                                    |
+| **[veyyon-text](crates/veyyon-text)**                      | ANSI-aware text measurement and slicing over UTF-16 (the engine behind the native text module)  |
+| **[veyyon-uutils-ctx](crates/veyyon-uutils-ctx)**          | Thread-local stdio + cwd context for embedding uutils as in-process shell builtins              |
+| **[veyyon-uu-diff](crates/veyyon-uu-diff)**                | `diff`: in-process shell builtin for file comparison                                            |
+| **[veyyon-diff-kernel](crates/veyyon-diff-kernel)**        | One owner for unified-diff text: line splitting, comparison keys, hunk formatting, binary sniff  |
+| **[veyyon-grep-kernel](crates/veyyon-grep-kernel)**        | One owner for the search stack: pattern compilation and searcher construction                    |
+| **[veyyon-uu-grep](crates/veyyon-uu-grep)**                | `grep`: ripgrep-backed in-process shell builtin                                                 |
 | **[brush-core](crates/vendor/brush-core)**         | Vendored fork of [brush-shell](https://github.com/reubeno/brush) for embedded bash execution        |
 | **[brush-builtins](crates/vendor/brush-builtins)** | Vendored bash builtins (cd, echo, test, printf, read, export, etc.)                                 |
+| **[crates/vendor](crates/vendor)**                 | Vendored [uutils](https://github.com/uutils/coreutils) coreutils and jaq, embedded as in-process shell builtins |
 
 ## Contributing
 

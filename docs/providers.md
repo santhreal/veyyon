@@ -72,7 +72,7 @@ If `authHeader: true` is set on a custom provider, the resolved key is injected 
 
 ## Environment variables and `.env` files
 
-Each provider has one or more environment variables that supply a key when no stored credential exists. The table below is the verified provider → variable map; the full catalog is large, so it is split into core and additional providers. OAuth-backed providers can also accept a token variable in addition to (or instead of) an API key.
+Each provider has one or more environment variables that supply a key when no stored credential exists. The table below is the verified provider → variable map; the full catalog is large, so it is split into core and additional providers. Providers reached only through OAuth (`/login`) or local keyless discovery are covered below the tables instead. OAuth-backed providers can also accept a token variable in addition to (or instead of) an API key.
 
 ### Core providers
 
@@ -91,7 +91,7 @@ Each provider has one or more environment variables that supply a key when no st
 | `github-copilot` | `COPILOT_GITHUB_TOKEN` |
 | `cursor` | `CURSOR_ACCESS_TOKEN` |
 | `azure` | `AZURE_OPENAI_API_KEY` |
-| `amazon-bedrock` | `AWS_PROFILE`, or `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`, or an ECS/IRSA credential chain |
+| `amazon-bedrock` | `AWS_BEARER_TOKEN_BEDROCK`, or `AWS_PROFILE`, or `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`, or a web-identity (`AWS_WEB_IDENTITY_TOKEN_FILE` + `AWS_ROLE_ARN`) / ECS credential chain |
 
 ### Additional hosted providers
 
@@ -103,7 +103,7 @@ Each provider has one or more environment variables that supply a key when no st
 | `together` | `TOGETHER_API_KEY` |
 | `nvidia` | `NVIDIA_API_KEY` |
 | `huggingface` | `HUGGINGFACE_HUB_TOKEN`, then `HF_TOKEN` |
-| `moonshot` | `MOONSHOT_API_KEY` |
+| `moonshot` | `MOONSHOT_API_KEY`, then `KIMI_API_KEY` |
 | `nanogpt` | `NANO_GPT_API_KEY` |
 | `novita` | `NOVITA_API_KEY` |
 | `venice` | `VENICE_API_KEY` |
@@ -119,6 +119,16 @@ Each provider has one or more environment variables that supply a key when no st
 | `qwen-portal` | `QWEN_OAUTH_TOKEN`, then `QWEN_PORTAL_API_KEY` |
 | `synthetic` | `SYNTHETIC_API_KEY` |
 | `minimax` | `MINIMAX_API_KEY` |
+| `minimax-code` | `MINIMAX_CODE_API_KEY` |
+| `minimax-code-cn` | `MINIMAX_CODE_CN_API_KEY` |
+| `baseten` | `BASETEN_API_KEY` |
+| `coreweave` | `COREWEAVE_API_KEY`, then `WANDB_API_KEY` |
+| `devin` | `DEVIN_API_KEY` |
+| `gitlab-duo-agent` | `GITLAB_TOKEN` |
+| `sakana` | `SAKANA_API_KEY`, then `FUGU_API_KEY` |
+| `xiaomi-token-plan-ams` | `XIAOMI_TOKEN_PLAN_AMS_API_KEY` |
+| `xiaomi-token-plan-cn` | `XIAOMI_TOKEN_PLAN_CN_API_KEY` |
+| `xiaomi-token-plan-sgp` | `XIAOMI_TOKEN_PLAN_SGP_API_KEY` |
 | `alibaba-coding-plan` | `ALIBABA_CODING_PLAN_API_KEY` |
 | `aimlapi` | `AIMLAPI_API_KEY` |
 | `gitlab-duo` | `GITLAB_TOKEN` |
@@ -128,6 +138,7 @@ Each provider has one or more environment variables that supply a key when no st
 | `xiaomi` | `XIAOMI_API_KEY` |
 | `ollama-cloud` | `OLLAMA_CLOUD_API_KEY` |
 | `ollama` | `OLLAMA_API_KEY` (optional; local discovery is keyless by default) |
+| `vllm` | `VLLM_API_KEY` (optional; local discovery is keyless by default) |
 | `lm-studio` | `LM_STUDIO_API_KEY` (optional; keyless by default) |
 | `llama.cpp` | `LLAMA_CPP_API_KEY` (only when the server requires auth) |
 
@@ -135,15 +146,19 @@ OAuth-backed providers such as `anthropic`, `github-copilot`, `cursor`, `ollama-
 
 ### `.env` discovery and precedence
 
-`veyyon` eagerly loads `.env` files into the process environment before any provider lookup. It reads four files and, for each variable, the **first** source that defines it wins. Effective precedence, high to low:
+`veyyon` eagerly loads `.env` files into the process environment before any provider lookup. It reads four files and, for each variable, the **highest-priority** source that defines it wins. Effective precedence, high to low:
 
 1. The process environment inherited by `veyyon` (already-set variables always win).
 2. `<cwd>/.env`
-3. `~/.veyyon/profiles/default/agent/.env`
-4. `~/.veyyon/.env`
+3. `<agentDir>/.env`, by default `~/.veyyon/profiles/default/agent/.env`
+4. `<configRoot>/.env`, by default `~/.veyyon/profiles/default/.env`
 5. `~/.env`
 
-A variable already present in the process environment is never overwritten by a `.env` file. Among the files, a value set in `<cwd>/.env` wins over `~/.veyyon/profiles/default/agent/.env`, which wins over `~/.veyyon/.env`, which wins over `~/.env`. So a shell-exported `OPENAI_API_KEY` beats every `.env` file, and a project's `<cwd>/.env` beats your home `~/.env`.
+Both `<agentDir>` and `<configRoot>` follow the active profile, so `--profile work` reads `~/.veyyon/profiles/work/agent/.env` and `~/.veyyon/profiles/work/.env`.
+
+A variable already present in the process environment is never overwritten by a `.env` file. Among the files, a value set in `<cwd>/.env` wins over `<agentDir>/.env`, which wins over `<configRoot>/.env`, which wins over `~/.env`. So a shell-exported `OPENAI_API_KEY` beats every `.env` file, and a project's `<cwd>/.env` beats your home `~/.env`.
+
+The order does not depend on which part of `veyyon` runs first. `~/.env` is applied before anything resolves a directory, because a `VEYYON_CODING_AGENT_DIR` or `XDG_CONFIG_HOME` set there decides where the other two files even are; the remaining layers are applied once those directories are known, and they override the values `~/.env` contributed. Whichever module a program imports, it sees the same result.
 
 Project-local `.env` is the simplest way to make one repository use a project-specific gateway, key, or local endpoint:
 

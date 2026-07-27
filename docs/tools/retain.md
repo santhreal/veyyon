@@ -87,6 +87,12 @@ Mnemopi:
 - Background work / cancellation
   - Hindsight flush runs later on timer, queue-size threshold, `agent_end`, backend `enqueue(...)`, or backend `clear(...)`.
   - Mnemopi fact/entity extraction may continue in the Mnemopi runtime; backend `enqueue(...)` calls `flushExtractions()` before sleeping sessions.
+  - Cancelling the tool refuses before the first write, and with the Mnemopi backend it also stops between items.
+    Items already written stay in the store: there is no rollback, so the abort names the memories that landed and
+    the ones that did not. It is not wrapped in `untilAborted`, which would reject the caller while the writes
+    continued.
+  - With the Hindsight backend the items go onto a queue and nothing is written during the call, so a cancellation
+    between items has nothing to report; the up-front refusal is the whole contract there.
 
 ## Limits & Caps
 - Input schema requires `items.length >= 1`.

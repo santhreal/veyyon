@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -204,32 +204,33 @@ of the conversation you are having.</p>
 <code>/settings</code>, backed by the <code>subagent.*</code> settings. <code>/agents</code> opens the same agent
 table with a live view of what each agent will run.</p>
 <h2 id="what-you-get-out-of-the-box"><a class="header" href="#what-you-get-out-of-the-box">What you get out of the box</a></h2>
-<p>One agent type, the general-purpose worker, and delegation that is available but
-never pushed:</p>
+<p>One agent type, the general-purpose worker, and delegation that the prompt asks for:</p>
 <pre><code class="language-yaml">subagent:
-  delegation: allowed   # the task tool is offered; the model decides when to use it
+  delegation: preferred   # the default; the prompt asks for substantial work to be delegated
 </code></pre>
 <p>Every subagent runs the model you are working with. Change the model you are talking
 to and your subagents follow it.</p>
 <p>Veyyon also ships five specialists (<code>scout</code>, <code>reviewer</code>, <code>designer</code>, <code>librarian</code>,
-<code>sonic</code>), and they are <strong>not offered</strong> by default. Each agent type you enable adds its
+<code>sonic</code>), and they are <strong>disabled</strong> by default. Each agent type you enable adds its
 description to every request you send for the rest of the session, so you pay for the
 ones you use and nothing else. Enable one in the Subagents tab or with <code>/agents</code>.</p>
 <h2 id="how-hard-to-push"><a class="header" href="#how-hard-to-push">How hard to push</a></h2>
-<p><code>subagent.delegation</code> is the one switch for “does this session delegate”:</p>
+<p><code>subagent.delegation</code> decides how hard this session is pushed to delegate:</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Value</th><th>What happens</th></tr>
 </thead>
 <tbody>
-<tr><td><code>off</code></td><td>No delegation at all. The <code>task</code> tool is not offered, and every delegation instruction leaves the prompt.</td></tr>
-<tr><td><code>allowed</code></td><td>The default. The tool is there; the model judges when it is worth it.</td></tr>
-<tr><td><code>preferred</code></td><td>The prompt asks the model to fan substantial work out instead of doing it alone.</td></tr>
+<tr><td><code>allowed</code></td><td>The tool is there; the model judges when it is worth it, and is never asked.</td></tr>
+<tr><td><code>preferred</code></td><td>The default. The prompt asks the model to fan substantial work out instead of doing it alone.</td></tr>
 <tr><td><code>required</code></td><td>The same, plus a first-turn reminder that delegation is the default here.</td></tr>
 </tbody>
 </table>
 </div>
+<p>The separate <code>subagent.enabled</code> boolean (default on) is the kill switch: off removes the <code>task</code>
+tool and every delegation instruction from the prompt, so nothing can be spawned. A legacy
+<code>delegation: off</code> migrates to <code>subagent.enabled: false</code>.</p>
 <p>The instructions follow what you have enabled. With only the worker offered, nothing
 in the prompt talks about picking an agent type, and nothing tells the model to send
 research to a <code>scout</code> it cannot spawn.</p>
@@ -241,24 +242,23 @@ the same thing:</p>
 model it resolves to, and the setting that decided. Enter opens one agent to set
 its state, model and effort, or reset it back to defaults.</li>
 <li><strong><code>/agents</code>.</strong> The same rows next to the agent files themselves, so this is where
-you write a new agent. <code>space</code> cycles a row’s state.</li>
+you write a new agent. <code>space</code> toggles a row on or off.</li>
 </ul>
-<p>A row can express three states:</p>
+<p>A row has two states:</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>State</th><th>Meaning</th></tr>
 </thead>
 <tbody>
-<tr><td><strong>Offered (default)</strong></td><td>Your own agents and the general worker. Listed in the <code>task</code> tool and choosable by the model.</td></tr>
-<tr><td><strong>Not offered (default)</strong></td><td>The bundled specialists. Not listed, so they cost nothing, but they still run when something names them.</td></tr>
-<tr><td><strong>Blocked</strong></td><td>Refused even when named, with a message pointing at the setting.</td></tr>
+<tr><td><strong>Enabled</strong></td><td>Listed in the <code>task</code> tool and choosable by the model. Your own agents and the general worker default to enabled.</td></tr>
+<tr><td><strong>Disabled</strong></td><td>Refused even when named, with a message pointing at the setting. The bundled specialists default to disabled, so they cost nothing.</td></tr>
 </tbody>
 </table>
 </div>
-<p>The middle state is what keeps the built-in flows working with the specialists off:
-<code>/review</code> asks for <code>agent: "reviewer"</code> by name, and so can you (“use the scout agent
-to map the parser”). Blocking is the stronger, explicit choice.</p>
+<p>The built-in flows still work with the specialists disabled because a command can grant its
+agent for the turn: <code>/review</code> asks for <code>agent: "reviewer"</code> through a per-turn grant, and so can
+you (“use the scout agent to map the parser”).</p>
 <p>Writing an agent file is itself the opt-in: an agent under your own or the project’s
 <code>agents/</code> directory is offered as soon as it exists.</p>
 <h2 id="choosing-models"><a class="header" href="#choosing-models">Choosing models</a></h2>
@@ -295,6 +295,18 @@ which of the four layers decided.</p>
 per-run wall clock and request budgets, how long an idle subagent stays in memory
 before being parked to disk (<code>idleTtlMs</code>), and whether their edits land in an isolated
 copy of the tree first (<code>subagent.isolation.*</code>, see <a href="../using/safety.html">Safety</a>).</p>
+<p>A subagent’s working directory is its own. If a subagent calls <code>set_cwd</code>, only that
+subagent moves: its tool paths resolve against the new directory and its system prompt
+is rebuilt for it, while your session and every other subagent stay where they were.</p>
+<p>That matters because subagents run inside the same process you do. The main session
+also moves the process working directory when it re-roots, so that a command you run
+and a relative path you write agree with the project you have open. A subagent doing
+the same would move the ground under everyone else, and the symptom would be a command
+running in the wrong repository with nothing on screen to explain it.</p>
+<p>The trade is that a subagent working elsewhere does not pick up that project’s
+settings, capabilities or plugins, because those are read once for the process. Give a
+subagent a task in another project only when the work is self-contained, and re-root
+your own session instead when you want that project’s configuration to apply.</p>
 <p>The full key list is in the <a href="../../../settings.html#subagents">settings reference</a>.</p>
 
                     </main>

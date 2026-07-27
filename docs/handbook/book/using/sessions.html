@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -219,17 +219,22 @@ session resumes, Veyyon should make the important state visible to the next mode
 presenting a clean-looking summary that dropped the real constraint.</p>
 <h2 id="session-files-are-trees"><a class="header" href="#session-files-are-trees">Session files are trees</a></h2>
 <p>A session file (<code>~/.veyyon/profiles/default/agent/sessions/**/&lt;timestamp&gt;_&lt;id&gt;.jsonl</code>) is an append-only log, but its entries form
-a tree. Every recorded line carries an <code>id</code> and a <code>parent_id</code>, and a <code>leaf_move</code> line moves the
-session’s <em>active leaf</em> to any earlier entry, so the next recorded entry starts a sibling branch from
-that point. Nothing is ever rewritten: branches you navigate away from stay in the file, and resuming
+a tree. Recorded session entries carry an <code>id</code> and a <code>parentId</code>, and branching works by appending a
+new entry whose <code>parentId</code> names an earlier entry, so it starts a sibling branch from that point.
+The <em>active leaf</em> is implicit: it advances to each appended entry, and on load it falls back to the
+last entry in the file. Not every line carries <code>parentId</code>: the first-line session header does not,
+and in-place refresh records (a replaced session header, a rewritten custom message) are full
+replaces of the original record, not entries on the tree. Nothing is ever rewritten: branches you
+navigate away from stay in the file, and resuming
 a session materializes only the entries along the active path (for a session with no branches, that
 is the entire file, exactly as before).</p>
 <p>Two properties are guaranteed by the storage layer:</p>
 <ul>
-<li><strong>No history rewriting.</strong> Branching appends a pointer move; abandoned entries remain addressable.</li>
-<li><strong>Fail closed on corruption.</strong> A file whose linkage is broken (duplicate ids, unknown parents, a
-leaf move to a missing entry) refuses to load with an error naming the bad entry, rather than
-silently flattening or truncating the conversation.</li>
+<li><strong>No history rewriting.</strong> Branching appends new entries; abandoned entries remain addressable.</li>
+<li><strong>Loud, fail-open on corruption.</strong> A malformed record is skipped so one corrupt line cannot make
+a whole session unopenable, but the skip is never silent: each dropped record is logged with its
+offset. Duplicate ids are last-write-win, and entries with a broken parent chain surface as extra
+roots rather than blocking the load.</li>
 </ul>
 <p>Session files written by older Veyyon versions have no linkage fields; they load as a linear chain,
 which is the exact shape they recorded.</p>
@@ -238,12 +243,12 @@ which is the exact shape they recorded.</p>
 abandoned. Picking an entry opens a small action menu:</p>
 <ul>
 <li><strong>Jump here</strong> continues from that point. For a <strong>user message</strong> the jump lands just before it and
-places the full message text in the composer, ready to edit and resubmit; the <strong>start of
-conversation</strong> resets to an empty conversation with the original prompt recalled; anything else
-(an agent reply, a compaction) branches from that entry with an empty composer.</li>
+places the full message text in the composer, ready to edit and resubmit. The <strong>start of
+conversation</strong> recalls the original prompt into the composer so you can edit and resubmit it.
+Anything else (an agent reply, a compaction) branches from that entry with an empty composer.</li>
 <li><strong>Label…</strong> attaches a short free-text label to the entry so you can find it again later. Labels
-render as <code>[label]</code> tags in the tree; the corresponding <code>tui</code> option in <code>config.yml</code> also shows when
-each label was set. Submitting empty text, or picking <strong>Clear label</strong>, removes it.</li>
+render as <code>[label]</code> tags in the tree. Submitting empty text, or picking
+<strong>Clear label</strong>, removes it.</li>
 </ul>
 <p>The tree view filter modes (<code>treeFilterMode</code> in <code>config.yml</code>, also toggled in the <code>/tree</code> UI) are:</p>
 <div class="table-wrapper">
@@ -267,8 +272,8 @@ navigation above stays inside the current file.</p>
 <ul>
 <li><strong><code>/fork</code></strong> duplicates the <strong>entire</strong> current session (every entry, including sibling branches)
 into a new persisted file. There is no entry picker; for a slice from a chosen point, use
-<code>/branch</code>. <code>veyyon --fork &lt;session-id&gt;</code> does the same at startup, and the launch session picker
-forks a recorded session the same way.</li>
+<code>/branch</code>. <code>veyyon --fork &lt;session-id&gt;</code> does the same at startup. The launch session picker
+instead copies only the picked session’s ancestor path (the active lineage) into the new file.</li>
 <li><strong><code>/branch</code></strong> picks an earlier <strong>user message</strong> and copies the history up to that point (or resets
 to a fresh root if the picked message is the first one) into a new session file, then recalls the
 message text into the composer for edit-and-resubmit.</li>
@@ -277,43 +282,55 @@ message text into the composer for edit-and-resubmit.</li>
 <p>Labels are stored in the session file itself as append-only bookkeeping lines (last write wins), so
 they survive resume and never rewrite history.</p>
 <h3 id="exporting-a-session"><a class="header" href="#exporting-a-session">Exporting a session</a></h3>
-<p><code>/export</code> writes a copy of the current session to a file you keep, for backup, inspection, or
-moving a conversation between machines. The copy is the session’s rollout file (append-only JSONL,
-Veyyon’s portable session format).</p>
+<p><code>/export</code> renders the current session as a self-contained HTML file you keep, for backup,
+inspection, or sharing.</p>
 <ul>
-<li><code>/export</code>: copy to the session’s working directory under the rollout’s own file name.</li>
-<li><code>/export &lt;path&gt;</code>: copy to <code>&lt;path&gt;</code>. The path may be absolute, relative to the working directory,
-or <code>~</code>-prefixed; if it names an existing directory, the rollout’s file name is used inside it.</li>
+<li><code>/export</code>: write to the session’s working directory under a generated file name.</li>
+<li><code>/export &lt;path&gt;</code>: write to <code>&lt;path&gt;</code>.</li>
 </ul>
-<p>The command reports the destination and the number of bytes written, and never modifies the live
+<p>The command prints the destination and opens the result in your browser. It never modifies the live
 session.</p>
 <p>Programmatic access uses the Agent Client Protocol (<code>veyyon acp</code>) or SDK embedding; no separate daemon
 is required. Session tree operations in the TUI use <code>/tree</code>, <code>/branch</code>, and <code>/fork</code>.</p>
+<h2 id="cleaning-up-old-sessions"><a class="header" href="#cleaning-up-old-sessions">Cleaning up old sessions</a></h2>
+<p><code>veyyon gc</code> reclaims disk: it sweeps blobs no session references any more, archives cold sessions, and
+checkpoints the database write-ahead logs. It is a dry run unless you pass <code>--apply</code>, and it prints what
+it would do either way.</p>
+<p>GC never touches a file that was written recently, because a running veyyon may still be appending to it.
+That window is five minutes by default, and you can change it:</p>
+<pre><code class="language-yaml"># ~/.veyyon/profiles/default/agent/config.yml
+gc:
+   writeGraceMinutes: 15
+</code></pre>
+<p>Pass <code>--write-grace-minutes</code> to override it for one run. The minimum is one minute: a shorter window
+would let GC delete a blob a live session wrote a moment ago, so a smaller value is raised to the minimum
+and the run says so.</p>
 <h2 id="typing-while-the-agent-works"><a class="header" href="#typing-while-the-agent-works">Typing while the agent works</a></h2>
 <p>Input entered during a running turn goes to one of two places, and the bottom pane always shows
 which:</p>
 <ul>
 <li><strong>Steer (<code>Enter</code>).</strong> The message is injected into the <em>current</em> turn: the model sees it at the
 next tool boundary and adjusts course without abandoning its work.</li>
-<li><strong>Queue a follow-up (<code>Tab</code>, or <code>alt+enter</code>).</strong> The message is queued on the <em>server</em> and starts a
-<strong>new turn</strong> once the current one finishes. Follow-ups survive TUI restarts and session resumes
-because the queue lives with the session, not the client. Slash commands and <code>!</code> shell escapes
+<li><strong>Queue a follow-up (<code>Ctrl+Q</code>, or <code>Ctrl+Enter</code> where the terminal delivers it).</strong> The message is queued in the running process and starts a
+<strong>new turn</strong> once the current one finishes. The queue lives in memory for the lifetime of the
+process; it is not written to the session file, so it does not survive a restart. Slash commands and <code>!</code> shell escapes
 queue client-side instead; they are local actions, not model input.</li>
 </ul>
-<p>Queued follow-ups render under the composer (“Follow-ups queued to run after this turn settles”)
-until they are delivered. They are never delivered after an interrupt: pressing <code>Esc</code> aborts the
+<p>Queued messages render under the composer grouped as <code>Steering·N</code> and <code>After yield·N</code>, with the
+dequeue key shown as a hint. They are never delivered after an interrupt: pressing <code>Esc</code> aborts the
 turn and pulls every queued follow-up back into the composer so nothing you typed is lost. To edit
-a queued follow-up without interrupting, press the edit-queued-message chord (<code>alt+up</code> by default,
-also <code>shift+left</code>): the most recent follow-up returns to the composer and older ones stay queued.</p>
+a queued follow-up without interrupting, press the dequeue chord (<code>Alt+Up</code> by default, remappable):
+the most recent follow-up returns to the composer and older ones stay queued.</p>
 <p>Delivery is governed by <code>steeringMode</code> and <code>followUpMode</code> (both <code>one-at-a-time</code> by default; set to
 <code>all</code> to deliver every queued message at the next boundary):</p>
 <pre><code class="language-yaml"># ~/.veyyon/profiles/default/agent/config.yml
 steeringMode: all
 followUpMode: all
 </code></pre>
-<p>Programmatic clients use <code>turn/followUp</code> to queue a follow-up on an active thread and
-<code>thread/followUps/recall</code> to take every queued follow-up back off the queue (the response returns
-the recalled messages). Queueing an empty message is refused with an error.</p>
+<p>Programmatic clients use the <code>follow_up</code> RPC command to queue a follow-up on an active session.
+Recalling a queued follow-up is a TUI-local action (<code>Esc</code> or the dequeue chord); the
+RPC protocol has no recall command. An empty follow-up is a no-op in the TUI, and <code>/queue</code> with no
+text shows a usage warning.</p>
 <h2 id="next"><a class="header" href="#next">Next</a></h2>
 <p>Read <a href="./examples.html">Examples</a> for concrete prompts and workflows.</p>
 

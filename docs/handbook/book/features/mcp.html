@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -214,8 +214,10 @@ use ACP (<code>veyyon acp</code>); to drive it from your own process, use the SD
   }
 }
 </code></pre>
-<p>Each tool an MCP server exposes appears namespaced as <code>mcp__&lt;server&gt;__&lt;tool&gt;</code>, so a server never
-shadows a built-in tool or another server. Veyyon also discovers MCP entries that Claude, Cursor, VS
+<p>Each tool an MCP server exposes appears namespaced as <code>mcp__&lt;server&gt;_&lt;tool&gt;</code> (a single underscore
+between server and tool, for example <code>mcp__sqlite_query</code>), so a server never
+shadows a built-in tool or another server. If you turn on <code>discovery.importForeignConfig</code> (off by
+default), Veyyon also discovers MCP entries that Claude, Cursor, VS
 Code, OpenCode, and related tools already wrote, so a server you configured elsewhere often works
 without re-registering it.</p>
 <p>For the full setup path, choosing a transport (<code>stdio</code>, <code>http</code>, <code>sse</code>), passing environment

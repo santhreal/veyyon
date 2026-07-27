@@ -6,12 +6,9 @@ This document describes how `veyyon plugin` npm/git/link operations mutate plugi
 
 There are two plugin-management implementations in the codebase:
 
-1. **Active path used by CLI commands**: `PluginManager` (`src/extensibility/plugins/manager.ts`)
-2. **Legacy helper module**: installer functions (`src/extensibility/plugins/installer.ts`)
+1. **Active path used by CLI commands**: `PluginManager` (`src/extensibility/plugins/manager.ts`), the sole plugin-management implementation. The legacy `installer.ts` helper module was deleted (commit bbaf24df); no installer module exists under `packages/coding-agent/src`.
 
 `veyyon plugin` npm/git/link actions go through `PluginManager`; marketplace actions go through `MarketplaceManager`. `install` classifies each target (`classifyInstallTarget` in `cli/classify-install-target.ts`): `name@marketplace` routes to the marketplace manager, local paths route to `PluginManager.link()`, git and npm specs to `PluginManager.install()`.
-
-`installer.ts` still documents important safety checks and filesystem behavior, but it is not the path used by `src/commands/plugin.ts` + `src/cli/plugin-cli.ts`.
 
 ## Lifecycle: from CLI invocation to runtime availability
 
@@ -27,7 +24,7 @@ veyyon plugin <npm/link action> ...
 
 veyyon plugin install name@marketplace / veyyon install name@marketplace
   -> MarketplaceManager
-  -> mutate ~/.veyyon/marketplaces.json, ~/.veyyon/profiles/default/plugins/installed_plugins.json, cache dirs
+  -> mutate ~/.veyyon/profiles/default/marketplaces.json, ~/.veyyon/profiles/default/plugins/installed_plugins.json, cache dirs
   -> installed marketplace plugin cache is surfaced as plugin roots/capabilities
 ```
 
@@ -58,7 +55,7 @@ Overrides are read-only from manager/loader perspective (no write path here) and
 
 Marketplace registries live separately:
 
-- `~/.veyyon/marketplaces.json`: configured marketplace catalogs
+- `~/.veyyon/profiles/default/marketplaces.json`: configured marketplace catalogs (profile-scoped via `getConfigRootDir()`)
 - `~/.veyyon/profiles/default/plugins/installed_plugins.json`: user-scoped marketplace installs
 - `<project-root>/.veyyon/plugins/installed_plugins.json`: project-scoped marketplace installs (`resolveActiveProjectRegistryPath` walks up from cwd to the nearest project config dir, stopping before the home dir)
 - `~/.veyyon/profiles/default/plugins/cache/{marketplaces,plugins}/`: cached catalogs and plugin directories
@@ -136,7 +133,7 @@ If uninstall command fails, runtime state is not changed.
 
 1. Read plugin dependency map from `~/.veyyon/profiles/default/plugins/package.json`.
 2. Load lockfile runtime config (missing file -> empty defaults).
-3. Load project overrides (`<cwd>/.veyyon/plugin-overrides.json` (+ other project config bases), parse/read errors -> empty object with warning).
+3. Load project overrides from `<cwd>/.veyyon/plugin-overrides.json` only (multi-base override reading happens only in the runtime loader), parse/read errors -> empty object with warning.
 4. For each dependency with a resolvable package.json:
    - build `InstalledPlugin` record
    - merge feature/enable state:
@@ -160,15 +157,14 @@ Behavior:
 6. Create symlink.
 7. Add runtime lockfile entry enabled with default features (`null`).
 
-Caveat: current `PluginManager.link` does not enforce the `cwd` path-boundary check present in legacy `installer.ts` (`normalizedPath.startsWith(normalizedCwd)`), so trust is the caller’s responsibility.
+Caveat: `PluginManager.link` performs no cwd path-boundary or symlink-target traversal checks, so trust is the caller’s responsibility.
 
 ## Runtime loading: from installed plugin to callable capabilities
 
 ## Discovery gate
 
-`getEnabledPlugins(cwd)` (`plugins/loader.ts`) reads:
+`getEnabledPlugins(cwd)` (`plugins/loader.ts`) enumerates two roots: the user root (`getPluginsDir(home)`) plus, when a `.veyyon/` or `.git/` anchor exists at or above cwd, the project root `<anchor>/.veyyon/plugins`. Each root contributes its plugin dependency manifest (`package.json`) unioned with lockfile plugin entries, so `plugin link`-only plugins without a dependency entry are still discovered, and project entries shadow same-named user entries. It then reads:
 
-- plugin dependency manifest (`package.json`), unioned with lockfile plugin entries so `plugin link`-only plugins without a dependency entry are still discovered
 - lockfile runtime state
 - project overrides via `getConfigDirPaths("plugin-overrides.json", { user: false, cwd })`
 
@@ -236,14 +232,10 @@ This limits command-injection risk when invoking `bun install/uninstall`.
 - Manifest relative paths are joined against plugin package directory and only existence-checked.
 - The plugin package itself is trusted code once installed.
 
-## Legacy installer-only checks
+## Link-time checks
 
-`installer.ts` includes additional link-time checks not mirrored in `PluginManager.link`:
-
-- local path must resolve inside project cwd
-- extra package name/path traversal guards for symlink target naming
-
-Because CLI uses `PluginManager`, these stricter link guards are not currently on the main path.
+No link-time boundary or traversal guards exist anywhere in the current codebase: `PluginManager.link`
+requires only a local `package.json` with a `name` field, so trust is the caller's responsibility.
 
 ## Failure, partial success, and rollback behavior
 
@@ -280,7 +272,7 @@ Operationally, `doctor --fix` can repair some drift (`bun install`, orphaned con
 
 - [`src/commands/plugin.ts`](../../packages/coding-agent/src/commands/plugin.ts): CLI command declaration and flag mapping
 - [`src/cli/plugin-cli.ts`](../../packages/coding-agent/src/cli/plugin-cli.ts): action dispatch, user-facing command handlers
-- [`src/extensibility/plugins/manager.ts`](../../packages/coding-agent/src/extensibility/plugins/manager.ts): active install/remove/list/link/state/doctor implementation, including the link safety checks
+- [`src/extensibility/plugins/manager.ts`](../../packages/coding-agent/src/extensibility/plugins/manager.ts): active install/remove/list/link/state/doctor implementation (link performs no path-boundary/traversal safety checks)
 - [`src/extensibility/plugins/loader.ts`](../../packages/coding-agent/src/extensibility/plugins/loader.ts): enabled-plugin discovery and tool/hook/command path resolution
 - [`src/extensibility/plugins/parser.ts`](../../packages/coding-agent/src/extensibility/plugins/parser.ts): install spec and package-name parsing helpers
 - [`src/extensibility/plugins/types.ts`](../../packages/coding-agent/src/extensibility/plugins/types.ts): manifest/runtime/override type contracts

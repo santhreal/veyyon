@@ -172,7 +172,7 @@ N-API exports are generated from Rust `#[napi]` functions/classes/objects/enums.
   - user-facing policy and fallbacks that are not built into the native API
   - higher-level rendering, artifact, shell-session, and command behavior
 
-For the contributor-facing crate map covering `veyyon-natives`, `veyyon-shell`, `veyyon-ast`, `veyyon-iso`, `veyyon-walker`, `veyyon_uu_grep`, `veyyon-uutils-ctx`, and the vendored `brush-*` crates, see [`native-crates.md`](./native-crates.md). The root-docs inclusion policy that keeps internal Rust crates under native architecture docs unless promoted as user-facing also lives in [`user-facing-packages.md`](./user-facing-packages.md).
+For the contributor-facing crate map covering `veyyon-natives`, `veyyon-shell`, `veyyon-ast`, `veyyon-iso`, `veyyon-walker`, `veyyon-uu-grep`, `veyyon-uu-diff`, `veyyon-uutils-ctx`, and the vendored `brush-*` crates, see [`native-crates.md`](./native-crates.md). The root-docs inclusion policy that keeps internal Rust crates under native architecture docs unless promoted as user-facing also lives in [`user-facing-packages.md`](./user-facing-packages.md).
 
 ## Runtime flow (high level)
 

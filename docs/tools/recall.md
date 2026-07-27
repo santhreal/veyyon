@@ -93,7 +93,7 @@ When no matches exist:
 - Throws `Mnemopi backend is not initialised for this session.` when `memory.backend == "mnemopi"` but no state exists.
 - Throws `Hindsight backend is not initialised for this session.` when `memory.backend == "hindsight"` but no state exists.
 - Hindsight HTTP and fetch failures become `HindsightError` with `statusCode` and parsed `details` when available.
-- Mnemopi recall target failures inside `collectScopedRecallResults(...)` are caught per bank and logged only when `mnemopi.debug` is enabled; if all targets fail, the tool can return `No relevant memories found.`
+- Mnemopi recall target failures inside `collectScopedRecallResults(...)` are caught per bank and logged unconditionally with `logger.warn`; if all targets fail, it throws `Memory recall failed: none of the configured banks could be read (...)`, which the tool rethrows as an error.
 - Non-`Error` failures caught by the tool are normalized to `new Error(String(err))` before rethrow.
 
 ## Notes

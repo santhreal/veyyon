@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -234,15 +234,16 @@ dbconn = "src/server/db/connection.ts"
 upper bound and a longer one is rejected. The file also declares a format
 version. A file that targets a newer major version is refused loudly rather than
 read on a guess.</p>
-<p>You do not write or commit this file by hand, and Veyyon does not guess which
-project you mean. The agent decides: it calls the <code>argot_load</code> tool on the folder
-it is about to work in, and Veyyon generates the dictionary for that project from
-the strings it actually repeats, scores each candidate by how much output it
-would save, and keeps the result in a local cache under its own config
-directory. In a monorepo the agent loads the one package it is working in, not
-the repo root. Nothing is written into your working tree, so there is no file
-for a pull request to pick up, and a session where the agent never loads
-anything simply behaves as if Argot were off.</p>
+<p>You do not write or commit this file by hand. Veyyon loads the folder you started
+the session in, and the agent loads any further project by calling the
+<code>argot_load</code> tool on the folder it is about to work in. Either way Veyyon
+generates the dictionary for that project from the strings it actually repeats,
+scores each candidate by how much output it would save, and keeps the result in a
+local cache under its own config directory. In a monorepo the agent loads the one
+package it is working in, not the repo root. Nothing is written into your working
+tree, so there is no file for a pull request to pick up, and a session where
+nothing is ever loaded simply behaves as if Argot were off. The startup load is
+<code>argot.autoload</code>, on by default; turn it off to leave every load to the agent.</p>
 <h2 id="two-directions-two-rules"><a class="header" href="#two-directions-two-rules">Two directions, two rules</a></h2>
 <p>Argot has two directions, and they are gated differently on purpose.</p>
 <p><strong>Decoding</strong> is turning a handle back into its full text. It is unconditional.

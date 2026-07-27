@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -198,44 +198,43 @@
                         <h1 id="plugins"><a class="header" href="#plugins">Plugins</a></h1>
 <p>A plugin bundles several extensions into one installable package: skills, MCP servers,
 hooks, and related assets that ship and update together. Reach for a plugin when you want to
-share a whole capability at once instead of wiring each piece by hand. Some manifests also
-carry a <code>apps</code> field for packaged connectors; see <a href="./connectors.html">Connectors</a> for the
-current integration surface (MCP, plugins, hooks, and skills).</p>
+share a whole capability at once instead of wiring each piece by hand. See
+<a href="./connectors.html">Connectors</a> for the current integration surface (MCP, plugins, hooks, and skills).</p>
 <h2 id="plugin-structure"><a class="header" href="#plugin-structure">Plugin Structure</a></h2>
-<p>Every plugin is a directory with a <code>.veyyon-plugin/plugin.json</code> manifest file. The manifest describes the plugin’s metadata and lists its integration points.</p>
+<p>Every plugin is a directory with a <code>.claude-plugin/plugin.json</code> manifest file (the Claude
+Code-compatible path). The manifest describes the plugin’s metadata and lists its integration points.</p>
 <h3 id="plugin-manifest-pluginjson"><a class="header" href="#plugin-manifest-pluginjson">Plugin Manifest (<code>plugin.json</code>)</a></h3>
-<p>The following fields are defined in the <code>plugin.json</code> schema:</p>
+<p>Veyyon reads these fields from <code>plugin.json</code>:</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Field</th><th>Type</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>name</code></td><td>String</td><td>The unique name of the plugin. Only ASCII alphanumeric characters, hyphens, and underscores are allowed.</td></tr>
-<tr><td><code>version</code></td><td>String</td><td>The version of the plugin (optional). Defaults to <code>"local"</code>.</td></tr>
+<tr><td><code>name</code></td><td>String</td><td>The unique name of the plugin. Lowercase ASCII alphanumerics with interior dots and hyphens (no leading/trailing separator, no underscores), at most 64 characters.</td></tr>
+<tr><td><code>version</code></td><td>String</td><td>The version of the plugin (optional). When omitted, the installed version resolves in this order: marketplace catalog entry version, then this manifest or <code>package.json</code>, then the source git SHA truncated to 7 characters, then <code>"0.0.0"</code>.</td></tr>
 <tr><td><code>description</code></td><td>String</td><td>A description of the plugin (optional).</td></tr>
-<tr><td><code>keywords</code></td><td>Array of Strings</td><td>Keywords used to index and search for the plugin (optional).</td></tr>
 <tr><td><code>skills</code></td><td>String or Array of Strings</td><td>Path or paths to directories containing skill definitions (optional).</td></tr>
-<tr><td><code>mcpServers</code></td><td>String or Object</td><td>Path to a file or an inline object defining the plugin’s MCP servers (optional).</td></tr>
-<tr><td><code>apps</code></td><td>String</td><td>Path to a file defining the plugin’s custom applications and connectors (optional).</td></tr>
-<tr><td><code>hooks</code></td><td>String or Array of Strings or Object</td><td>Path or paths to hook definition files, or inline hook objects (optional).</td></tr>
-<tr><td><code>interface</code></td><td>Object</td><td>Presentation metadata for the TUI (optional). Details like display name, descriptions, default prompt, developer name, category, website, privacy policy, and logo files.</td></tr>
+<tr><td><code>commands</code> / <code>slash-commands</code></td><td>String or Array of Strings</td><td>Path or paths to command definitions (optional).</td></tr>
 </tbody>
 </table>
 </div>
+<p>Other plugin content loads from conventional locations rather than manifest fields: MCP servers from
+a <code>.mcp.json</code> file at the plugin root, and hooks from executable files under the plugin’s
+<code>hooks/pre/</code> and <code>hooks/post/</code> directories.</p>
 <h2 id="marketplaces"><a class="header" href="#marketplaces">Marketplaces</a></h2>
 <p>Marketplaces are collections of plugins. A marketplace is a directory or Git repository containing a <code>marketplace.json</code> catalog manifest.</p>
 <p>Veyyon checks the following relative paths under a marketplace root to locate its catalog manifest:</p>
 <ol>
-<li><code>.agents/plugins/marketplace.json</code> (canonical path)</li>
-<li><code>.agents/plugins/api_marketplace.json</code></li>
-<li><code>.claude-plugin/marketplace.json</code></li>
+<li><code>.veyyon-plugin/marketplace.json</code> (preferred)</li>
+<li><code>.claude-plugin/marketplace.json</code> (Claude Code-compatible fallback)</li>
 </ol>
-<p>The marketplace catalog defines:</p>
-<ul>
-<li>A <code>name</code> and optional presentation metadata.</li>
-<li>A <code>plugins</code> list. Each entry contains the plugin name, installation policy, authentication policy, supported products, and its source. The source can point to a local directory or a Git repository (with optional branch, tag, commit ref, or subdirectory path).</li>
-</ul>
+<p>The marketplace catalog requires a <code>name</code>, an <code>owner.name</code>, and a <code>plugins</code> list. Each plugin entry
+requires only a <code>name</code> and a <code>source</code>; optional entry metadata includes <code>description</code>, <code>version</code>,
+<code>author</code>, <code>homepage</code>, <code>repository</code>, <code>license</code>, <code>keywords</code>, <code>category</code>, <code>tags</code>, <code>strict</code>, and embedded
+capability fields (<code>commands</code>, <code>agents</code>, <code>hooks</code>, <code>mcpServers</code>, <code>lspServers</code>, <code>dapAdapters</code>). A source
+can point to a local directory, a Git repository (with optional branch, tag, commit ref, or
+subdirectory path), a URL, or an npm package.</p>
 <h2 id="file-locations"><a class="header" href="#file-locations">File Locations</a></h2>
 <p>Plugin install state is <strong>profile-scoped</strong> under <code>~/.veyyon/profiles/&lt;profile&gt;/plugins/</code> (default profile: <code>profiles/default/plugins/</code>). Config root is relocatable with <code>VEYYON_CONFIG_DIR</code>.</p>
 <div class="table-wrapper">
@@ -255,76 +254,65 @@ current integration surface (MCP, plugins, hooks, and skills).</p>
 <h2 id="command-line-interface"><a class="header" href="#command-line-interface">Command Line Interface</a></h2>
 <p>You can manage plugins and marketplaces using the <code>veyyon plugin</code> and <code>veyyon plugin marketplace</code> command groups.</p>
 <h3 id="managing-plugins"><a class="header" href="#managing-plugins">Managing Plugins</a></h3>
-<h4 id="add-a-plugin"><a class="header" href="#add-a-plugin">Add a Plugin</a></h4>
-<p>Install a plugin from a configured marketplace. Specify the plugin as <code>plugin_name@marketplace_name</code>, or use the <code>--marketplace</code> option.</p>
-<pre><code class="language-console">$ veyyon plugin add sample@debug
-$ veyyon plugin add sample --marketplace debug
+<h4 id="install-a-plugin"><a class="header" href="#install-a-plugin">Install a Plugin</a></h4>
+<p>Install a plugin from a configured marketplace. Specify the plugin as <code>plugin_name@marketplace_name</code>.</p>
+<pre><code class="language-console">$ veyyon plugin install sample@debug
+$ veyyon plugin install --force --scope project sample@debug
 </code></pre>
-<p>Use the <code>--json</code> flag to print the installation result as JSON.</p>
+<p>Use <code>--force</code> to reinstall over an existing install and <code>--scope user|project</code> to choose the install
+scope. <code>--json</code> prints the installation result as JSON for npm and link installs; marketplace
+installs ignore it.</p>
 <h4 id="list-plugins"><a class="header" href="#list-plugins">List Plugins</a></h4>
 <p>List installed plugins and their statuses.</p>
 <pre><code class="language-console">$ veyyon plugin list
 </code></pre>
 <p>Options:</p>
 <ul>
-<li><code>-m, --marketplace &lt;name&gt;</code>: Filter listing to a specific marketplace.</li>
 <li><code>--json</code>: Print the output as JSON.</li>
-<li><code>--available</code>: Include uninstalled but available plugins from the marketplaces (requires <code>--json</code>).</li>
 </ul>
-<h4 id="remove-a-plugin"><a class="header" href="#remove-a-plugin">Remove a Plugin</a></h4>
+<h4 id="uninstall-a-plugin"><a class="header" href="#uninstall-a-plugin">Uninstall a Plugin</a></h4>
 <p>Uninstall a plugin from local cache and config.</p>
-<pre><code class="language-console">$ veyyon plugin remove sample@debug
+<pre><code class="language-console">$ veyyon plugin uninstall sample@debug
 </code></pre>
-<p>Use the <code>--json</code> flag to return the removal result as JSON.</p>
+<p>Use the <code>--json</code> flag to return the removal result as JSON for npm plugins; marketplace uninstalls
+ignore it.</p>
 <h3 id="managing-marketplaces"><a class="header" href="#managing-marketplaces">Managing Marketplaces</a></h3>
 <h4 id="add-a-marketplace"><a class="header" href="#add-a-marketplace">Add a Marketplace</a></h4>
 <p>Add a local path or Git repository to your configured marketplace sources.</p>
 <pre><code class="language-console">$ veyyon plugin marketplace add ./path/to/marketplace
-$ veyyon plugin marketplace add owner/repo --ref main
-$ veyyon plugin marketplace add https://github.com/owner/repo --sparse plugins/foo
+$ veyyon plugin marketplace add owner/repo
+$ veyyon plugin marketplace add https://github.com/owner/repo
 </code></pre>
-<p>Options:</p>
-<ul>
-<li><code>--ref &lt;ref&gt;</code>: Git branch, tag, or commit SHA to fetch.</li>
-<li><code>--sparse &lt;path&gt;</code>: Limits the Git clone to a specific subdirectory. Can be repeated.</li>
-<li><code>--json</code>: Print the result as JSON.</li>
-</ul>
 <h4 id="list-marketplaces"><a class="header" href="#list-marketplaces">List Marketplaces</a></h4>
-<p>List all configured marketplaces and their filesystem root directories.</p>
+<p>List all configured marketplaces and their sources.</p>
 <pre><code class="language-console">$ veyyon plugin marketplace list
 </code></pre>
-<p>Use the <code>--json</code> flag to output the list as JSON.</p>
-<h4 id="upgrade-marketplaces"><a class="header" href="#upgrade-marketplaces">Upgrade Marketplaces</a></h4>
-<p>Fetch the latest revisions for configured Git marketplaces. Omit the marketplace name to upgrade all configured Git marketplaces.</p>
-<pre><code class="language-console">$ veyyon plugin marketplace upgrade
-$ veyyon plugin marketplace upgrade debug
+<h4 id="update-marketplaces"><a class="header" href="#update-marketplaces">Update Marketplaces</a></h4>
+<p>Fetch the latest revisions for configured Git marketplaces. Omit the marketplace name to update all configured Git marketplaces.</p>
+<pre><code class="language-console">$ veyyon plugin marketplace update
+$ veyyon plugin marketplace update debug
 </code></pre>
-<p>Use the <code>--json</code> flag to output the upgrade result as JSON.</p>
 <h4 id="remove-a-marketplace"><a class="header" href="#remove-a-marketplace">Remove a Marketplace</a></h4>
 <p>Remove a configured marketplace by name.</p>
 <pre><code class="language-console">$ veyyon plugin marketplace remove debug
 </code></pre>
-<p>Use the <code>--json</code> flag to output the result as JSON.</p>
+<p>The <code>plugin marketplace</code> subcommands print human-readable output only; <code>--json</code> has no effect on them.</p>
 <h2 id="tui-integration"><a class="header" href="#tui-integration">TUI Integration</a></h2>
-<p>Veyyon TUI integrates plugin management directly.</p>
 <h3 id="slash-commands"><a class="header" href="#slash-commands">Slash Commands</a></h3>
 <ul>
-<li><code>/plugins</code>: Opens the interactive plugins catalog popup. You can browse all available plugins, install or uninstall them, and toggle plugins on or off.</li>
+<li><code>/plugins</code>: Lists installed npm and link plugins.</li>
 <li><code>/extensions</code>: Opens the Extension Control Center dashboard, which shows plugin-provided skills, tools, and hooks alongside everything else that is loaded.</li>
 </ul>
-<h3 id="tui-keybindings"><a class="header" href="#tui-keybindings">TUI Keybindings</a></h3>
-<p>When the <code>/plugins</code> popup is open, you can use the following keyboard shortcuts on the selected marketplace tab:</p>
-<ul>
-<li><code>Ctrl+R</code>: Remove the selected configured marketplace.</li>
-<li><code>Ctrl+U</code>: Upgrade the selected configured Git marketplace.</li>
-</ul>
+<p>The Plugins tab of <code>/settings</code> lists installed npm and marketplace plugins and toggles each one on or
+off. Browsing and installing happen through the <code>veyyon plugin</code> CLI.</p>
 <h2 id="registry-files"><a class="header" href="#registry-files">Registry Files</a></h2>
-<p>Marketplace and plugin state is not kept in <code>config.yml</code>. Two JSON registries, both managed
-by the <code>/plugins</code> UI and the <code>veyyon plugin</code> CLI (edit through those, not by hand):</p>
+<p>Marketplace and plugin state is not kept in <code>config.yml</code>. Two JSON registries, managed
+by the <code>veyyon plugin</code> CLI (and the <code>/settings</code> Plugins tab for the enabled toggle; edit through
+those, not by hand):</p>
 <ul>
-<li><strong><code>marketplaces.json</code></strong> (under the config root, next to <code>config.yml</code>): which catalogs you
-have added. Each entry records the marketplace <code>name</code>, <code>sourceType</code>, <code>sourceUri</code>,
-<code>catalogPath</code>, and added/updated timestamps.</li>
+<li><strong><code>marketplaces.json</code></strong> (<code>~/.veyyon/profiles/&lt;profile&gt;/marketplaces.json</code>, the profile root beside
+<code>agent/</code> and <code>plugins/</code>): which catalogs you have added. Each entry records the marketplace <code>name</code>,
+<code>sourceType</code>, <code>sourceUri</code>, <code>catalogPath</code>, and added/updated timestamps.</li>
 <li><strong><code>installed_plugins.json</code></strong> (under the plugins dir): which plugins are installed. Each
 entry is keyed <code>&lt;plugin_name&gt;@&lt;marketplace_name&gt;</code> and records the install <code>scope</code>
 (user or project), <code>installPath</code>, <code>version</code>, install/update timestamps, the source git
@@ -336,7 +324,7 @@ paint, and it takes one of three values:</p>
 <ul>
 <li><code>notify</code> (the default) refreshes any marketplace catalog older than a day, compares your
 installed versions against it, and prints one line naming how many updates are available.
-Run <code>/plugins</code> to install them.</li>
+Install them with <code>veyyon plugin upgrade</code> (all) or <code>veyyon plugin upgrade &lt;name&gt;@&lt;marketplace&gt;</code>.</li>
 <li><code>auto</code> does the same check and installs the updates itself, then prints one line naming how
 many landed. The running session keeps the versions it loaded at startup, so restart to use
 the new ones.</li>
@@ -345,7 +333,7 @@ the new ones.</li>
 <p>A check that fails, usually because you are offline, is written to the log and does not
 interrupt the session.</p>
 <h2 id="related-recipes"><a class="header" href="#related-recipes">Related recipes</a></h2>
-<p>Plugins are installed through the <code>/plugins</code> popup or the <code>veyyon plugin</code> CLI above, there is
+<p>Plugins are installed through the <code>veyyon plugin</code> CLI above, there is
 no model-facing plugin-install tool. For task-shaped recipes that combine plugins with MCP and
 skills, see <a href="../using/task-guides.html">Task guides</a>.</p>
 

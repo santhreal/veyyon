@@ -1,7 +1,6 @@
 # Architecture overview
 
-Veyyon is a **Bun/TypeScript** coding agent (fork of oh-my-pi) with Rust hot paths (`@veyyon/hashline`,
-native grep, PTY). The shipped CLI binary is **`veyyon`**. There is no separate app-server daemon in
+Veyyon is a **Bun/TypeScript** coding agent (fork of oh-my-pi) with Rust hot paths (native grep, PTY, tree-sitter/AST via `crates/veyyon-natives`). The shipped CLI binary is **`veyyon`**. There is no separate app-server daemon in
 the product surface.
 
 ## The request path

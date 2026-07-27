@@ -11,7 +11,7 @@ tracks its own credentials. Those credentials are shared across profiles by defa
 Use the interactive slash commands inside a session:
 
 - `/login`: opens the OAuth/key selector.
-- `/login <provider>`: jumps straight to one provider, e.g. `/login anthropic`, `/login openai`.
+- `/login <provider>`: jumps straight to one provider, e.g. `/login anthropic`, `/login github-copilot`.
 - `/login <redirect-url>`: completes an OAuth flow that needs a pasted callback URL.
 - `/logout`: opens the provider selector to remove stored credentials.
 
@@ -33,8 +33,8 @@ for the broker model.
 
 ## Using an environment variable instead
 
-Every provider reads one or more environment variables, so a key already exported in your shell (or in
-a `.env` file) is used without an interactive sign-in.
+Every API-key provider reads one or more environment variables, so a key already exported in your shell (or in
+a `.env` file) is used without an interactive sign-in. OAuth-only providers (for example `google-antigravity`, `google-gemini-cli`, `kimi-code`) take no key variable: sign in with `/login`.
 
 | Provider | Environment variable |
 | --- | --- |
@@ -58,9 +58,10 @@ When a provider needs a key, Veyyon resolves it in order (first match wins):
 
 1. A runtime `--api-key` for the current process (never persisted).
 2. A `models.yml` `apiKey` on a custom provider.
-3. A stored API key in the auth store.
-4. A stored OAuth credential (refreshed as needed).
+3. A stored OAuth credential (refreshed as needed).
+4. A stored API key in the auth store (persisted by `/login`).
 5. The provider's environment variable (including `.env`).
+6. Any other stored API-key credential, then a custom-provider resolver fallback.
 
 Stored credentials live in a machine-wide auth store at `~/.veyyon/shared-auth/agent.db` (or the configured
 auth-broker snapshot in broker mode). `VEYYON_CODING_AGENT_DIR` relocates the agent base for a profile's own

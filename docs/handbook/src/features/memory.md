@@ -26,8 +26,8 @@ memory:
 With `memory.backend: mnemopi`, Veyyon:
 
 1. Opens scoped SQLite banks (`global`, `per-project`, or `per-project-tagged`).
-2. **Recalls** relevant memories into a `<memories>` block on the first turn (and refreshes the base
-   prompt when recall runs from `agent_start`).
+2. **Recalls** relevant memories into a `<memories>` block on the first turn, delivered as a message
+   next to your prompt rather than by rewriting the cached system prompt.
 3. **Retains** completed turns on a configurable interval (`mnemopi.retainEveryNTurns`, default 4).
 4. Supplies **pre-compaction context** from the memory backend when compaction runs.
 

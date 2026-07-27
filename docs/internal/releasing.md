@@ -170,6 +170,8 @@ larger binary. `packages/coding-agent/scripts/compile-binary.ts` owns the build
 and fails closed if the bundle contains any `import.meta.resolve`/`import.meta.env`
 (they crash Bun bytecode, upstream oven-sh/bun#21097).
 
+The binary build embeds mupdf's runtime files before compiling. `packages/coding-agent/scripts/embed-mupdf-wasm.ts --generate` copies `mupdf-wasm.wasm`, `mupdf.js` and `mupdf-wasm.js` next to `packages/coding-agent/src/utils/mupdf-wasm-embed.ts` and rewrites that module to import them as file assets; `--reset` restores the committed placeholder and deletes the copies. A build that dies in between leaves your tree in the generated state, where `mupdf-wasm-embed.ts` shows as modified and two `mupdf-*embedded.js` files appear beside it. Run `bun packages/coding-agent/scripts/embed-mupdf-wasm.ts --reset` to get back to the checked-in state. All three copies are gitignored and the assets are declared in `types/assets/index.d.ts`, so the generated state still typechecks and cannot be committed by accident.
+
 Once the release is published, `curl -fsSL https://get.veyyon.dev | sh` installs it
 through `releases/latest` with no further action. Verify with a real install on a
 clean machine, not just a local `bun`/`cargo` build. See [deployment.md](./deployment.md)

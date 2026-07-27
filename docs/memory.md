@@ -65,6 +65,13 @@ The agent can read memory files directly using `memory://` URLs with the `read` 
 | `diagnose`            | Show backend-specific diagnostics, when supported         |
 | `clear` / `reset`     | Delete active backend memory data/artifacts               |
 | `enqueue` / `rebuild` | Force consolidation/retention work for the active backend |
+| `mm list`             | List mental models on the active bank                     |
+| `mm show <id>`        | Show one mental model                                     |
+| `mm refresh [id]`     | Refresh auto-refresh models bank-wide, or one model by id |
+| `mm history <id>`     | Diff the change history of a mental model                 |
+| `mm seed`             | Create any built-in mental models that are missing        |
+| `mm delete <id>`      | Delete a mental model from the bank                       |
+| `mm reload`           | Re-pull the cached `<mental_models>` block                |
 
 ## How it works
 

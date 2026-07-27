@@ -101,7 +101,7 @@ Every tool call falls into one of three tiers: `read`, `write`, or `exec`. The `
 
 | Mode | Runs without asking | Prompts you for |
 | --- | --- | --- |
-| `plan` | `read` (it proposes, but does not write) | everything that writes or runs |
+| `plan` | `read` (it proposes, but does not write) | `write` only inside an active plan-mode session; `write` and `exec` are otherwise denied |
 | `ask` | `read` | `write` and `exec` |
 | `auto-edit` | `read` and `write` | `exec` |
 | `yolo` (default) | all tiers | nothing, unless a per-tool override or a bash safety rule applies |

@@ -28,7 +28,7 @@ Set `bash.enabled: false` in settings to remove the model-facing `bash` tool fro
 - extracts a leading single-line `cd <path> && ...` into `cwd` when `cwd` was not supplied,
 - rejects `async: true` when `async.enabled` is false.
 
-There are no structured `head` or `tail` tool parameters in the current schema, and commands run exactly as written, no pre-execution rewrites. Output limiting is handled by `OutputSink` truncation/artifacts.
+There are no structured `head` or `tail` tool parameters in the current schema, and commands run mostly as written: aside from the leading `cd … &&` extraction into `cwd` and internal-URL expansion applied to the command and every env value, there are no pre-execution rewrites. Output limiting is handled by `OutputSink` truncation/artifacts.
 
 ## 2) Optional interception (blocked-command path)
 
@@ -82,7 +82,7 @@ PTY eligibility is decided by `canUseInteractiveBashPty(pty, ctx)` (`src/tools/b
 
 If `pty` is requested but unavailable, the call falls back to non-PTY and appends a `pty requested but unavailable …` notice.
 
-Before the local PTY/non-PTY choice, a foreground (`async: false`) call can route to a managed background job (auto-backgrounding; see below) or, when the session's client advertises a terminal capability (`clientBridge.capabilities.terminal` + `createTerminal`, with `pty` false), to a **client-bridge editor terminal** that runs the command remotely (streaming `terminalId` updates, killing on timeout, mapping a signal kill to exit code `137`). Otherwise it uses non-interactive `executeBash()`.
+Before the local PTY/non-PTY choice, a foreground (`async: false`) call can route to a managed background job (auto-backgrounding; see below) or, when the session's client advertises a terminal capability (`clientBridge.capabilities.terminal` + `createTerminal`, with `pty` false), to a **client-bridge editor terminal** that runs the command remotely (streaming `terminalId` updates, killing on timeout, mapping a signalled death to exit code `128 + signal`, throwing when the signal cannot be resolved to a number). Otherwise it uses non-interactive `executeBash()`.
 
 That means print mode and non-UI RPC/tool contexts always use non-PTY.
 
@@ -166,7 +166,7 @@ Both PTY and non-PTY paths use `OutputSink`.
 
 The bash executor builds the sink with `headBytes` and `maxColumns` from settings (`resolveOutputSinkHeadBytes` / `resolveOutputMaxColumns`).
 
-- keeps a UTF-8-safe rolling **tail** window (`spillThreshold`, `DEFAULT_MAX_BYTES`, currently 50KB); on overflow it trims to the tail (UTF-8 boundary safe) and marks `truncated`,
+- keeps a UTF-8-safe rolling **tail** window (`spillThreshold`, 50KB by default, set by `tools.artifactSpillThreshold`); on overflow it trims to the tail (UTF-8 boundary safe) and marks `truncated`,
 - when `headBytes > 0` (`tools.artifactHeadBytes`, default 20KB) it also retains a **head** window and elides the middle, splicing an elision marker between head and tail in `dump()`,
 - per-line column cap: when `maxColumns > 0` (`tools.outputMaxColumns`, default 768 bytes) over-wide lines are ellipsis-truncated at write time and the rest of the line is dropped,
 - tracks total bytes/lines seen,

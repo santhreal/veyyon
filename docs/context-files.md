@@ -23,7 +23,7 @@ The native provider is the recommended format for new projects. It reads from yo
 |---|---|---|
 | `~/.veyyon/AGENTS.md` | Global User | Global cross-profile context for every session across all profiles. |
 | `~/.veyyon/profiles/<profile>/...` | Profile User | Active profile context. Scanned in descending priority order (first match wins; exactly 1 file loaded per profile):<br>1. `~/.veyyon/profiles/<profile>/agent/AGENTS.md` (Highest)<br>2. `~/.veyyon/profiles/<profile>/AGENTS.md`<br>3. `~/.veyyon/profiles/<profile>/agent/agent.md`<br>4. `~/.veyyon/profiles/<profile>/agent.md` (Lowest) |
-| `<ancestor>/.veyyon/AGENTS.md` | Project | Project context. `veyyon` walks upward from the current directory to the repository root and uses the **nearest** non-empty `.veyyon/AGENTS.md`. Farther native project files are not also included. |
+| `<encestor>/.veyyon/AGENTS.md` | Project | Project context. `veyyon` walks upward from the current directory to the repository root and uses the **nearest** non-empty `.veyyon/AGENTS.md`. Farther `.veyyon/AGENTS.md` files are not also included. Separately, every bare `<encestor>/AGENTS.md` and `<encestor>/CLAUDE.md` along the walk-up is collected too (see the `native` provider row below). |
 | `~/.veyyon/profiles/<profile>/agent/RULES.md` | User | User-level sticky rule content. Loaded as an always-apply rule, not as a context file. |
 | `<ancestor>/.veyyon/RULES.md` | Project | Project sticky rule content. Same nearest-ancestor walk-up as above. Loaded as an always-apply rule. |
 Two details matter:
@@ -31,7 +31,7 @@ Two details matter:
 - **Walk-up to the repository root.** Discovery starts in the current working directory and climbs through each ancestor up to the repository root, stopping at the first ancestor that has a usable `.veyyon/` directory. The *nearest* match wins; ancestors above it are not loaded as native context.
 - **The `.veyyon/` directory must be non-empty.** An empty `.veyyon/` directory is skipped during the walk-up, so the search continues to the next ancestor. An empty `AGENTS.md` or `RULES.md` file contributes nothing.
 
-`~/.veyyon/profiles/default/agent` is the user base, and it is **profile-aware**: under a named profile (`--profile <name>` / `VEYYON_PROFILE`) the base becomes `~/.veyyon/profiles/<name>/agent`, so each profile carries its own `AGENTS.md` and `RULES.md`. Non-native user files (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, …) are profile-independent and still discovered under every profile. If `VEYYON_CODING_AGENT_DIR` is set, it relocates the base outright, so the user files become `$VEYYON_CODING_AGENT_DIR/AGENTS.md` and `$VEYYON_CODING_AGENT_DIR/RULES.md`.
+`~/.veyyon/profiles/default/agent` is the user base, and it is **profile-aware**: under a named profile (`--profile <name>` / `VEYYON_PROFILE`) the base becomes `~/.veyyon/profiles/<name>/agent`, so each profile carries its own `AGENTS.md` and `RULES.md`. Non-native user files (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, …) are profile-independent and still discovered under every profile. If `VEYYON_CODING_AGENT_DIR` is set under the **default** profile, it relocates the base outright, so the user files become `$VEYYON_CODING_AGENT_DIR/AGENTS.md` and `$VEYYON_CODING_AGENT_DIR/RULES.md`; under a named profile the override is ignored.
 
 ### Monorepo example
 
@@ -48,7 +48,7 @@ repo/
 Starting a session in `repo/packages/api`:
 
 - The native context file is `repo/packages/api/.veyyon/AGENTS.md` (the nearest one). `repo/.veyyon/AGENTS.md` is **not** also included.
-- The project sticky rule is `repo/packages/api/.veyyon/RULES.md` if present; otherwise the walk-up continues and `repo/.veyyon/RULES.md` is used.
+- The project sticky rule is read from the nearest non-empty `.veyyon/` directory only: if that directory has no `RULES.md`, no project sticky rule loads. The search does not continue to farther ancestors.
 
 Put broad, durable project background in `AGENTS.md`. Reserve `RULES.md` for short, hard requirements that must stay visible across long conversations.
 
@@ -58,9 +58,9 @@ Put broad, durable project background in `AGENTS.md`. Reserve `RULES.md` for sho
 
 | Provider id | Convention path | Scope | Notes |
 |---|---|---|---|
-| `native` | `.veyyon/AGENTS.md` | User + project | Recommended `veyyon` format. User file at `~/.veyyon/profiles/default/agent/AGENTS.md`; project file is the nearest non-empty `.veyyon/AGENTS.md` walking up to the repo root. |
+| `native` | `.veyyon/AGENTS.md` | User + project | Recommended `veyyon` format. User file at `~/.veyyon/profiles/default/agent/AGENTS.md`; project file is the nearest non-empty `.veyyon/AGENTS.md` walking up to the repo root, plus every bare `<encestor>/AGENTS.md` and `<encestor>/CLAUDE.md` collected at each ancestor. |
 | `claude` | `.claude/CLAUDE.md` | User + project | User file `~/.claude/CLAUDE.md`; project file `<cwd>/.claude/CLAUDE.md` only (no ancestor walk-up). |
-| `codex` | `.codex/AGENTS.md` | User | User file `~/.codex/AGENTS.md` only. Project-level Codex context comes from a standalone `AGENTS.md` via the `agents-md` provider, not from `<cwd>/.codex/AGENTS.md`. |
+| `codex` | `.codex/AGENTS.md` | User | User file `~/.codex/AGENTS.md` only. Project-level standalone `AGENTS.md` files load through the `native` provider's ancestor walk-up, not from `<cwd>/.codex/AGENTS.md`. |
 | `gemini` | `.gemini/GEMINI.md` | User + project | User file `~/.gemini/GEMINI.md`; project file `<cwd>/.gemini/GEMINI.md` only (no ancestor walk-up). |
 | `opencode` | `.config/opencode/AGENTS.md` | User | User file `~/.config/opencode/AGENTS.md` only. |
 | `github` | `.github/copilot-instructions.md` | User + project | Project file `<cwd>/.github/copilot-instructions.md` only (no ancestor walk-up), plus a user-global `~/.copilot/copilot-instructions.md` (relocate with `COPILOT_HOME`) and an `AGENTS.md` from each `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` entry. |
@@ -106,10 +106,10 @@ repo/
 
 Starting in `repo/packages/api`:
 
-- `repo/AGENTS.md` is found by `agents-md` at depth 2 and kept.
-- `repo/packages/api/AGENTS.md` (`agents-md`, priority 10) and `repo/packages/api/.github/copilot-instructions.md` (`github`, priority 30) both resolve to depth 0. GitHub's higher priority shadows the package-level standalone `AGENTS.md`, so the Copilot file wins at that depth.
-- The two kept files are ordered root-first, package-last, so `packages/api`'s file is the more prominent one.
-- If you add `repo/packages/api/.veyyon/AGENTS.md`, `native` (priority 100) wins depth 0 outright, shadowing both lower-priority files.
+- Both bare `AGENTS.md` files load through `native` (priority 100): `repo/AGENTS.md` at depth 2 and `repo/packages/api/AGENTS.md` at depth 0.
+- `repo/packages/api/.github/copilot-instructions.md` (`github`, priority 30) also resolves to depth 0 and is shadowed there by the higher-priority native file.
+- The kept files are ordered root-first, package-last, so `packages/api`'s file is the more prominent one.
+- If you add `repo/packages/api/.veyyon/AGENTS.md`, it is the nearest non-empty `.veyyon/AGENTS.md` and loads as the project context file; `repo/.veyyon/AGENTS.md` is not also included.
 
 ## Injection behavior
 
@@ -213,7 +213,7 @@ Remember that higher-precedence settings layers **replace** array settings rathe
 ### A file is not loaded
 
 - Native project context must live at `.veyyon/AGENTS.md`, and the `.veyyon/` directory must be non-empty; an empty `.veyyon/` is skipped and the walk-up continues to the next ancestor.
-- A standalone `AGENTS.md` is handled by `agents-md`, not `native`.
+- A standalone `AGENTS.md` or `CLAUDE.md` at any ancestor is loaded by `native` itself; `agents-md` contributes only when `native` is disabled.
 - `.claude/CLAUDE.md`, `.gemini/GEMINI.md`, and `.github/copilot-instructions.md` are read only from the current working directory's config directory: not from every ancestor.
 - `~/.codex/AGENTS.md` and `~/.config/opencode/AGENTS.md` are user-level only and have no project equivalent.
 - Empty files contribute nothing for the native and standalone providers.

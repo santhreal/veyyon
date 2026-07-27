@@ -16,7 +16,8 @@ See the command help in-session and `docs/handbook` task guides for example prom
 ## Advisor
 
 The advisor is a second model role that reads each main-agent turn and can inject notes
-(aside, concern, or blocker). Enable with `--advisor` or the advisor settings/role.
+(nit, concern, or blocker). Enable with `--advisor` or the `advisor.enabled` setting; assign its
+model via the advisor role.
 Uses its own context and model assignment when configured.
 
 ## Plan review

@@ -9,7 +9,7 @@ Seatbelt, or bubblewrap. The boundary is policy the agent loop enforces before d
 - Map the **approval mode** (`tools.approvalMode`) to a per-tier decision (read / write / exec) for
   `bash`, `edit`, `write`, and related tools.
 - Apply per-tool overrides (`tools.approval` → `allow` / `deny` / `prompt`) on top of the mode.
-- Apply execpolicy `.rules` (user and project) that allowlist or require prompts for command classes.
+- Force a prompt for hard-coded critical bash patterns (recursive deletion rooted at `/`, fork bombs, `curl | sh`, disk destruction) in `plan`, `ask`, and `auto-edit`; `yolo` auto-approves them unless `tools.approval.bash` is `prompt` or `deny`.
 - Surface the approval prompt in the TUI before a gated command or edit runs.
 
 ## Public boundary
@@ -25,7 +25,7 @@ exec-server process in the shipped product.
 | --- | --- |
 | Approval mode | Which tool tiers run without asking (`plan`, `ask`, `auto-edit`, `yolo`). |
 | Per-tool policy | `tools.approval` overrides the mode for a named tool. |
-| Execpolicy rules | `.rules` files that refine which specific commands auto-run. |
+| Critical bash patterns | Hard-coded destructive-command shapes that prompt in non-yolo modes, even over a per-tool `allow`. |
 | Plan mode | Restricts mutating tools until the plan is approved (`/plan`). |
 
 User-facing guide: [Approvals](../features/sandbox.md).

@@ -94,7 +94,7 @@ Hook events are strongly typed in `types.ts`.
 ### Agent/context events
 
 - `context` → can return `{ messages?: Message[] }`
-- `before_agent_start` → can return `{ message?: { customType; content; display; details; attribution } }`
+- `before_agent_start` → can return `{ message?: { customType; content; display; details; attribution? } }`
 - `agent_start`
 - `agent_end`
 - `turn_start`
@@ -343,4 +343,4 @@ export default function (pi: HookAPI): void {
 - all hook types
 - `execCommand` re-export
 
-The package root (`@veyyon/coding-agent`) does not re-export `HookAPI`; import legacy hook types from the hooks subpath.
+The package root (`@veyyon/coding-agent`) re-exports `HookAPI` and `HookContext`; the full hooks subsystem is additionally available from the hooks subpath.

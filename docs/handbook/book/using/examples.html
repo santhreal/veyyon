@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -232,8 +232,7 @@ enabled. See <a href="../context/compaction-memory.html">Compaction and memory</
 <h2 id="verify-before-claiming-done"><a class="header" href="#verify-before-claiming-done">Verify before claiming done</a></h2>
 <pre><code class="language-text">Run the package test gate for the area you changed.
 </code></pre>
-<p>Example: <code>bun run test</code> in <code>packages/coding-agent</code> or the project’s documented <code>cargo_full</code> / CI
-script from <code>STANDARD.md</code> when touching Rust natives.</p>
+<p>Example: <code>bun run test</code> in <code>packages/coding-agent</code>, or the Rust + TypeScript CI matrix documented in <code>CONTRIBUTING.md</code> when touching Rust natives.</p>
 <h2 id="use-the-modelprovider-contract"><a class="header" href="#use-the-modelprovider-contract">Use the model/provider contract</a></h2>
 <pre><code class="language-text">Point Veyyon at a provider model and rely on the same harness contract every provider path must satisfy.
 </code></pre>

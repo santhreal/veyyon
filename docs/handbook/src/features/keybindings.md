@@ -1,4 +1,4 @@
-# Keybindings and Vim mode
+# Keybindings
 
 Remap TUI shortcuts from **`~/.veyyon/profiles/default/agent/keybindings.yml`** (YAML map of action ID → chord or chord
 list). Run **`/hotkeys`** in a session to see active bindings.
@@ -48,7 +48,4 @@ Engineering detail: [`docs/keybindings.md`](../../../keybindings.md).
 
 Remap keys by editing `keybindings.yml`; `/hotkeys` shows the current bindings.
 
-## Vim mode
-
-When enabled in settings, the composer supports Normal/Insert modal editing (`i`, `Esc`, motions,
-operators). Toggle via the settings UI if exposed in your build.
+There is no Vim or modal editing mode; the composer uses the bindings above.

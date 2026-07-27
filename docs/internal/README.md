@@ -26,6 +26,7 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 | --- | --- |
 | [onboarding.md](onboarding.md) | Clone, run from source (`bun setup` / `bun dev`), and the gate. |
 | [testing.md](testing.md) | How the suites are organized and what to run. |
+| [fuzzing.md](fuzzing.md) | The cargo-fuzz suite in `fuzz/`: running it, the targets, and what to do with a finding. |
 | [releasing.md](releasing.md) | Cutting a release: versioning, changelog, binaries, publish. |
 | [deployment.md](deployment.md) | Website (Cloudflare Pages) and install-script deployment. |
 | [agent-workflow.md](agent-workflow.md) | How an autonomous agent works this repo and ships updates. |

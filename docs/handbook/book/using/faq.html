@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -201,15 +201,9 @@
 <h3 id="veyyon-plugin-doctor-fails-what-do-i-fix"><a class="header" href="#veyyon-plugin-doctor-fails-what-do-i-fix"><code>veyyon plugin doctor</code> fails. What do I fix?</a></h3>
 <p><code>veyyon plugin doctor</code> exits non-zero when a check reports an error, and it prints the failed check and the next action. Fix the line it reports, then run it again. For the full diagnostics surface, see <a href="../features/doctor.html">Diagnostics and health</a>.</p>
 <h3 id="does-veyyon-sandbox-the-commands-it-runs"><a class="header" href="#does-veyyon-sandbox-the-commands-it-runs">Does Veyyon sandbox the commands it runs?</a></h3>
-<p>No OS confinement (no Landlock, seccomp, Seatbelt, bubblewrap). Policy is <strong><code>tools.approvalMode</code></strong> (schema default <strong><code>yolo</code></strong>) plus execpolicy <code>.rules</code>. See <a href="../features/sandbox.html">Approvals</a>.</p>
+<p>No OS confinement (no Landlock, seccomp, Seatbelt, bubblewrap). Policy is <strong><code>tools.approvalMode</code></strong> (schema default <strong><code>yolo</code></strong>) plus hard-coded critical bash patterns that prompt in non-yolo modes. See <a href="../features/sandbox.html">Approvals</a>.</p>
 <h2 id="database-and-session-locking"><a class="header" href="#database-and-session-locking">Database and session locking</a></h2>
-<h3 id="session-file-is-locked-or-another-veyyon-process-is-running"><a class="header" href="#session-file-is-locked-or-another-veyyon-process-is-running">“Session file is locked” or “another Veyyon process is running”</a></h3>
-<p>Veyyon uses file locking to prevent two processes from writing the same session file at once. Only one process may hold a session lock at a time. If you see this error:</p>
-<ul>
-<li>Check that no other <code>veyyon</code> process is holding the same session file lock.</li>
-<li>If a previous process crashed, the lock may be stale. Restarting the machine or waiting for the process table to clear usually releases it.</li>
-<li>Do not delete or edit the session file while a process might still hold it.</li>
-</ul>
+<p>There is no cross-process lock on a session file: nothing prevents two <code>veyyon</code> processes from opening the same session at once, and the single-writer guarantee is per-process only. Treat one session as belonging to one running process; do not edit or delete its file while that process is alive.</p>
 <p>For how sessions are stored and resumed, see <a href="./sessions.html">Sessions</a>.</p>
 <h2 id="model-authentication"><a class="header" href="#model-authentication">Model authentication</a></h2>
 <h3 id="invalid-api-key-or-authentication-failed"><a class="header" href="#invalid-api-key-or-authentication-failed">“Invalid API key” or “Authentication failed”</a></h3>
@@ -217,14 +211,14 @@
 <h3 id="unsupported-region-or-endpoint-errors"><a class="header" href="#unsupported-region-or-endpoint-errors">“Unsupported region” or endpoint errors</a></h3>
 <p>The base URL you configured must match the provider region and product endpoint. A model id that exists in one region may not exist in another, and the same hostname may host different model catalogs. Verify the endpoint URL in your provider dashboard and compare it with the <code>base_url</code> in your config. <a href="./models.html">Models and providers</a> explains how provider configuration is resolved.</p>
 <h3 id="why-is-my-model-not-listed"><a class="header" href="#why-is-my-model-not-listed">Why is my model not listed?</a></h3>
-<p>Veyyon discovers model ids from the provider’s <code>/models</code> endpoint rather than maintaining a hardcoded allowlist. If a model is not listed, the provider endpoint may not expose it, or your key may not have access to it. Check the provider catalog and your key scopes first.</p>
+<p>Veyyon lists models from a bundled catalog plus live discovery from providers that expose a <code>/models</code> endpoint. If a model is not listed, the provider endpoint may not expose it, or your key may not have access to it. Check the provider catalog and your key scopes first.</p>
 <h2 id="workflow"><a class="header" href="#workflow">Workflow</a></h2>
 <h3 id="why-did-my-edit-ask-for-approval"><a class="header" href="#why-did-my-edit-ask-for-approval">Why did my edit ask for approval?</a></h3>
-<p>The approval mode decides when Veyyon prompts before a tool runs. In <code>ask</code> and <code>plan</code>, write and exec tiers prompt. Change mode with <code>--approval-mode &lt;mode&gt;</code> (<code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code>), <code>--auto-approve</code> / <code>--yolo</code>, or <code>tools.approvalMode</code> in <code>config.yml</code>. See <a href="../features/sandbox.html">Approvals</a>.</p>
+<p>The approval mode decides when Veyyon prompts before a tool runs. In <code>ask</code>, write and exec tiers prompt. In <code>plan</code>, exec is blocked outright and write prompts only inside an active plan-mode session. Change mode with <code>--approval-mode &lt;mode&gt;</code> (<code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code>), <code>--auto-approve</code> / <code>--yolo</code>, or <code>tools.approvalMode</code> in <code>config.yml</code>. See <a href="../features/sandbox.html">Approvals</a>.</p>
 <h3 id="how-do-i-resume-a-session"><a class="header" href="#how-do-i-resume-a-session">How do I resume a session?</a></h3>
-<p>Run <code>veyyon --continue</code> to continue the most recent session, or <code>veyyon --resume &lt;SESSION_ID&gt;</code> to resume a specific one. The session stores turns, tool activity, and queued follow-ups, so a resumed session should keep its context and any pending work. For branching, forking, or exporting a session, see <a href="./sessions.html">Sessions</a>.</p>
+<p>Run <code>veyyon --continue</code> to continue the most recent session, or <code>veyyon --resume &lt;SESSION_ID&gt;</code> to resume a specific one. The session stores turns and tool activity, so a resumed session keeps its context. For branching, forking, or exporting a session, see <a href="./sessions.html">Sessions</a>.</p>
 <h3 id="what-happened-to-my-queued-follow-up"><a class="header" href="#what-happened-to-my-queued-follow-up">What happened to my queued follow-up?</a></h3>
-<p>Follow-ups queued during a turn are stored with the session on disk, so they survive TUI restarts and session resumes. If you press <code>Esc</code> to interrupt the current turn, queued follow-ups are pulled back into the composer so nothing is lost. See <a href="./sessions.html">Sessions</a> for the full queue behavior.</p>
+<p>Queued follow-ups live in memory for the lifetime of the running process; they are not written to the session file. If you press <code>Esc</code> to interrupt the current turn, queued follow-ups are pulled back into the composer so nothing is lost. See <a href="./sessions.html">Sessions</a> for the full queue behavior.</p>
 <h3 id="why-does-my-output-look-truncated"><a class="header" href="#why-does-my-output-look-truncated">Why does my output look truncated?</a></h3>
 <p>Output is intentionally truncated when it exceeds a tool budget. The truncation should include a next action, such as increasing a limit, using an offset, or narrowing the search. See <a href="./troubleshooting.html">Troubleshooting</a> for the public path.</p>
 <h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to go next</a></h2>

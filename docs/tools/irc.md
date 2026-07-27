@@ -12,7 +12,7 @@
   - `packages/coding-agent/src/session/agent-session.ts`: `deliverIrcMessage(...)`: recipient-side injection and wake turns.
   - `packages/coding-agent/src/prompts/side-channel/irc-incoming.md`: incoming-message rendering for the recipient.
   - `packages/coding-agent/src/prompts/side-channel/irc-autoreply.md`: prompt for the ephemeral auto-reply side turn (busy recipient, async disabled).
-  - `packages/coding-agent/src/config/settings-schema.ts`: `irc.timeoutMs`.
+  - `packages/coding-agent/src/config/settings-domains/tools.ts`: `irc.timeoutMs`.
   - `packages/coding-agent/src/modes/controllers/event-controller.ts`: renders IRC events into chat UI.
 
 ## Inputs
@@ -40,7 +40,7 @@
 ## Flow
 1. `IrcTool.createIf` constructs the tool only when `isIrcEnabled` passes and the session has both an `AgentRegistry` and `getAgentId`. There is no `irc.enabled` setting: availability is derived: true for every subagent (`taskDepth > 0`; a parent always exists) and for any session that can still spawn subagents through the task tool. Only a top-level session with task spawning unavailable has no peers, hence no irc.
 2. `execute` resolves the registry and sender id; missing either returns a text error result instead of throwing.
-3. `op: "list"`: `registry.list()` minus self and minus `aborted` agents: `parked` peers ARE listed. Each row includes the unread count from `IrcBus.unreadCount(...)` and last activity.
+3. `op: "list"`: `registry.list()` minus self, minus `aborted` agents, and minus advisor-kind transcripts: `parked` peers ARE listed. Each row includes the unread count from `IrcBus.unreadCount(...)` and last activity.
 4. `op: "send"` validates `to`/`message`, rejects self-sends, and rejects `await` with `to: "all"`.
 5. Target resolution: broadcasts fan out to `registry.listVisibleTo(senderId)` (live peers only: `running`/`idle`; reviving every parked agent on a broadcast would be a stampede). Direct sends go through the bus unfiltered, so a parked recipient is revived.
 6. `IrcBus.send(...)` is fire-and-forget: it never blocks on the recipient generating anything. Delivery by recipient status:

@@ -67,7 +67,7 @@ subagent:
 compaction:
   model: openai/gpt-5-mini
   strategy: handoff
-  thresholdPercent: 80
+  threshold: "80%"
 ```
 
 ## Cycling roles (Ctrl+P)

@@ -1,6 +1,6 @@
 # Approvals and errors
 
-File writes and shell commands are gated by `tools.approvalMode` and related policy (execpolicy rules, project trust). There is no OS-level command sandbox.
+File writes and shell commands are gated by `tools.approvalMode` and related policy (per-tool `tools.approval` overrides, hard-coded critical bash patterns). There is no OS-level command sandbox.
 
 ## Behavior
 

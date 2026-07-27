@@ -31,18 +31,23 @@ presenting a clean-looking summary that dropped the real constraint.
 ## Session files are trees
 
 A session file (`~/.veyyon/profiles/default/agent/sessions/**/<timestamp>_<id>.jsonl`) is an append-only log, but its entries form
-a tree. Every recorded line carries an `id` and a `parent_id`, and a `leaf_move` line moves the
-session's *active leaf* to any earlier entry, so the next recorded entry starts a sibling branch from
-that point. Nothing is ever rewritten: branches you navigate away from stay in the file, and resuming
+a tree. Recorded session entries carry an `id` and a `parentId`, and branching works by appending a
+new entry whose `parentId` names an earlier entry, so it starts a sibling branch from that point.
+The *active leaf* is implicit: it advances to each appended entry, and on load it falls back to the
+last entry in the file. Not every line carries `parentId`: the first-line session header does not,
+and in-place refresh records (a replaced session header, a rewritten custom message) are full
+replaces of the original record, not entries on the tree. Nothing is ever rewritten: branches you
+navigate away from stay in the file, and resuming
 a session materializes only the entries along the active path (for a session with no branches, that
 is the entire file, exactly as before).
 
 Two properties are guaranteed by the storage layer:
 
-- **No history rewriting.** Branching appends a pointer move; abandoned entries remain addressable.
-- **Fail closed on corruption.** A file whose linkage is broken (duplicate ids, unknown parents, a
-  leaf move to a missing entry) refuses to load with an error naming the bad entry, rather than
-  silently flattening or truncating the conversation.
+- **No history rewriting.** Branching appends new entries; abandoned entries remain addressable.
+- **Loud, fail-open on corruption.** A malformed record is skipped so one corrupt line cannot make
+  a whole session unopenable, but the skip is never silent: each dropped record is logged with its
+  offset. Duplicate ids are last-write-win, and entries with a broken parent chain surface as extra
+  roots rather than blocking the load.
 
 Session files written by older Veyyon versions have no linkage fields; they load as a linear chain,
 which is the exact shape they recorded.
@@ -53,12 +58,12 @@ Run `/tree` in the TUI to browse every entry of the session, including branches 
 abandoned. Picking an entry opens a small action menu:
 
 - **Jump here** continues from that point. For a **user message** the jump lands just before it and
-  places the full message text in the composer, ready to edit and resubmit; the **start of
-  conversation** resets to an empty conversation with the original prompt recalled; anything else
-  (an agent reply, a compaction) branches from that entry with an empty composer.
+  places the full message text in the composer, ready to edit and resubmit. The **start of
+  conversation** recalls the original prompt into the composer so you can edit and resubmit it.
+  Anything else (an agent reply, a compaction) branches from that entry with an empty composer.
 - **Label…** attaches a short free-text label to the entry so you can find it again later. Labels
-  render as `[label]` tags in the tree; the corresponding `tui` option in `config.yml` also shows when
-  each label was set. Submitting empty text, or picking **Clear label**, removes it.
+  render as `[label]` tags in the tree. Submitting empty text, or picking
+  **Clear label**, removes it.
 
 The tree view filter modes (`treeFilterMode` in `config.yml`, also toggled in the `/tree` UI) are:
 
@@ -79,8 +84,8 @@ navigation above stays inside the current file.
 
 - **`/fork`** duplicates the **entire** current session (every entry, including sibling branches)
   into a new persisted file. There is no entry picker; for a slice from a chosen point, use
-  `/branch`. `veyyon --fork <session-id>` does the same at startup, and the launch session picker
-  forks a recorded session the same way.
+  `/branch`. `veyyon --fork <session-id>` does the same at startup. The launch session picker
+  instead copies only the picked session's ancestor path (the active lineage) into the new file.
 - **`/branch`** picks an earlier **user message** and copies the history up to that point (or resets
   to a fresh root if the picked message is the first one) into a new session file, then recalls the
   message text into the composer for edit-and-resubmit.
@@ -92,15 +97,13 @@ they survive resume and never rewrite history.
 
 ### Exporting a session
 
-`/export` writes a copy of the current session to a file you keep, for backup, inspection, or
-moving a conversation between machines. The copy is the session's rollout file (append-only JSONL,
-Veyyon's portable session format).
+`/export` renders the current session as a self-contained HTML file you keep, for backup,
+inspection, or sharing.
 
-- `/export`: copy to the session's working directory under the rollout's own file name.
-- `/export <path>`: copy to `<path>`. The path may be absolute, relative to the working directory,
-  or `~`-prefixed; if it names an existing directory, the rollout's file name is used inside it.
+- `/export`: write to the session's working directory under a generated file name.
+- `/export <path>`: write to `<path>`.
 
-The command reports the destination and the number of bytes written, and never modifies the live
+The command prints the destination and opens the result in your browser. It never modifies the live
 session.
 
 Programmatic access uses the Agent Client Protocol (`veyyon acp`) or SDK embedding; no separate daemon
@@ -132,16 +135,16 @@ which:
 
 - **Steer (`Enter`).** The message is injected into the *current* turn: the model sees it at the
   next tool boundary and adjusts course without abandoning its work.
-- **Queue a follow-up (`Tab`, or `alt+enter`).** The message is queued on the *server* and starts a
-  **new turn** once the current one finishes. Follow-ups survive TUI restarts and session resumes
-  because the queue lives with the session, not the client. Slash commands and `!` shell escapes
+- **Queue a follow-up (`Ctrl+Q`, or `Ctrl+Enter` where the terminal delivers it).** The message is queued in the running process and starts a
+  **new turn** once the current one finishes. The queue lives in memory for the lifetime of the
+  process; it is not written to the session file, so it does not survive a restart. Slash commands and `!` shell escapes
   queue client-side instead; they are local actions, not model input.
 
-Queued follow-ups render under the composer ("Follow-ups queued to run after this turn settles")
-until they are delivered. They are never delivered after an interrupt: pressing `Esc` aborts the
+Queued messages render under the composer grouped as `Steering·N` and `After yield·N`, with the
+dequeue key shown as a hint. They are never delivered after an interrupt: pressing `Esc` aborts the
 turn and pulls every queued follow-up back into the composer so nothing you typed is lost. To edit
-a queued follow-up without interrupting, press the edit-queued-message chord (`alt+up` by default,
-also `shift+left`): the most recent follow-up returns to the composer and older ones stay queued.
+a queued follow-up without interrupting, press the dequeue chord (`Alt+Up` by default, remappable):
+the most recent follow-up returns to the composer and older ones stay queued.
 
 Delivery is governed by `steeringMode` and `followUpMode` (both `one-at-a-time` by default; set to
 `all` to deliver every queued message at the next boundary):
@@ -152,9 +155,10 @@ steeringMode: all
 followUpMode: all
 ```
 
-Programmatic clients use `turn/followUp` to queue a follow-up on an active thread and
-`thread/followUps/recall` to take every queued follow-up back off the queue (the response returns
-the recalled messages). Queueing an empty message is refused with an error.
+Programmatic clients use the `follow_up` RPC command to queue a follow-up on an active session.
+Recalling a queued follow-up is a TUI-local action (`Esc` or the dequeue chord); the
+RPC protocol has no recall command. An empty follow-up is a no-op in the TUI, and `/queue` with no
+text shows a usage warning.
 
 ## Next
 

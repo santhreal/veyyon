@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -201,9 +201,9 @@
 <h2 id="what-the-fork-adds"><a class="header" href="#what-the-fork-adds">What the fork adds</a></h2>
 <ul>
 <li><strong>Argot.</strong> A per-project shorthand the model writes in. The model writes a short handle like <code>§build</code> where it would have written a long string it repeats, and Veyyon restores the full text before anything runs or is shown. The round trip is lossless, encoding is gated per model and by context size, and the generated dictionary is cached per project and only grows. See <a href="./argot.html">Argot</a>.</li>
-<li><strong>Snap compaction.</strong> Bitmap-frame context compression with lossless dedup and artifact spill, so a long session sheds tokens without losing what it already established. See <a href="../context/compaction-memory.html">Compaction and project memory</a>.</li>
+<li><strong>Local compaction with a lossless first pass.</strong> When the window fills, a Tier-0 pass first drops tool results that are byte-identical to a newer copy, then compaction condenses history in place (<code>summary</code>, the default) or writes a handoff document and continues from it. See <a href="../context/compaction-memory.html">Compaction and project memory</a>.</li>
 <li><strong>Shared credentials and global config.</strong> Providers and global settings are shared across profiles, so signing in once reaches every profile instead of each one holding its own copy.</li>
-<li><strong>Per-profile working directory.</strong> A profile can pin its own working directory, and <code>setCwd</code> moves an existing session, so one install can hold several projects without them bleeding into each other.</li>
+<li><strong>Per-profile working directory.</strong> A profile can pin its own working directory, and <code>set_cwd</code> moves an existing session, so one install can hold several projects without them bleeding into each other.</li>
 <li><strong>Absolute-token compaction threshold.</strong> Compaction can trigger on an absolute token count, not only a fraction of the window, so the trigger point is the same across models with different context sizes.</li>
 <li><strong>Atomic, serialized config writes.</strong> Settings are written through a single serialized path with an atomic swap, so two writers never tear a config file.</li>
 </ul>
@@ -211,13 +211,13 @@
 <p>The <code>edit</code> and <code>write</code> tools accept hashline patches, which are addressed by content rather than by line number. Before writing, the natives layer verifies the patch against the current file. If they do not match, the tool fails and returns recovery context to the model instead of writing a corrupted file.</p>
 <p>See <a href="../using/editing.html">Editing and repair</a> and <a href="../edit/engine.html">The hashline edit engine</a>.</p>
 <h2 id="tool-approval-tiers"><a class="header" href="#tool-approval-tiers">Tool approval tiers</a></h2>
-<p>The <code>tools.approvalMode</code> setting is one of <code>plan</code>, <code>ask</code>, <code>auto-edit</code>, or <code>yolo</code>. The older aliases <code>always-ask</code> and <code>write</code> still map to <code>ask</code> and <code>auto-edit</code>. On top of the mode, per-tool <code>tools.approval</code> overrides apply. The three tiers are read, write, and exec. Bash can still force a prompt on destructive patterns, depending on your execpolicy rules.</p>
-<p>See <a href="../features/sandbox.html">Approvals</a> and <code>/settings</code> then Advanced then Safety.</p>
+<p>The <code>tools.approvalMode</code> setting is one of <code>plan</code>, <code>ask</code>, <code>auto-edit</code>, or <code>yolo</code>. The older aliases <code>always-ask</code> and <code>write</code> still map to <code>ask</code> and <code>auto-edit</code>. On top of the mode, per-tool <code>tools.approval</code> overrides apply. The three tiers are read, write, and exec. Bash can still force a prompt on destructive patterns through the bash interceptor (<code>bashInterceptor.enabled</code> and <code>bashInterceptor.patterns</code>).</p>
+<p>See <a href="../features/sandbox.html">Approvals</a> and <code>/settings</code> → Interaction → Approvals.</p>
 <h2 id="model-slots-and-roles"><a class="header" href="#model-slots-and-roles">Model slots and roles</a></h2>
 <p>Veyyon separates the model you use from the job it does:</p>
 <ul>
 <li><strong>The interactive model</strong> is what you set with <code>/model</code> or <code>--model</code>, and it persists as <code>modelRoles.default</code>.</li>
-<li><strong>Roles</strong> pin a model to a kind of work, such as <code>smol</code> for cheap fast work or <code>task</code> for subagents, and you can add your own in <code>modelRoles</code>. The full built-in set is listed in <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</li>
+<li><strong>Roles</strong> pin a model to a kind of work, such as <code>smol</code> for cheap fast work or <code>advisor</code> for the reviewing advisor, and you can add your own in <code>modelRoles</code>. The full built-in set is listed in <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</li>
 <li><strong>Overrides</strong> let a slot win over a role. <code>compaction.model</code> overrides the interactive model for compaction, otherwise compaction inherits it. Subagent models are not roles at all: they live in the Subagents settings area, which owns them alone.</li>
 <li><strong>Cycling</strong> rotates through <code>cycleOrder</code> (which defaults to <code>smol</code> then <code>slow</code>), bound to <code>app.model.cycleForward</code>, often Ctrl+P.</li>
 </ul>

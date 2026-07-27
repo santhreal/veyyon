@@ -46,7 +46,7 @@ Each branch states the resulting state and echoes the path that arrived, so a ca
 ## Side Effects
 - Session state: removes the project's handles from the teach set, so its handle table stops appearing in the prompt. Decoding is untouched.
 - Filesystem: none. Unlike loading, this reads no repository and writes no cache; it only resolves the project root.
-- Approval: read-tier, for the same reason as `argot_load`. No working tree is modified.
+- Approval: read-tier. Unlike `argot_load` (write-tier, because it reads a project tree and writes the dictionary cache), unloading mutates no working tree and writes no cache.
 
 ## Errors
 - `folder_path is required` when the argument is empty or whitespace only.

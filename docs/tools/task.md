@@ -1,6 +1,6 @@
 # task
 
-> Spawn subagents: one per call, or a `tasks[]` batch per call (`subagent.batch`, default on). With `async.enabled=true`, spawns run in the background; otherwise the call blocks until they finish. Execution mode is per item: an item whose agent type declares `blocking: true` (e.g. `scout`) runs inline and returns its result in the call, while non-blocking items in the same call still spawn as background jobs.
+> Spawn subagents: one per call, or a `tasks[]` batch per call (`subagent.batch`, default on). With `async.enabled=true`, spawns run in the background; otherwise the call blocks until they finish. Execution mode is per item: an item whose agent type declares `blocking: true` in its frontmatter runs inline and returns its result in the call, while non-blocking items in the same call still spawn as background jobs. No bundled agent type declares `blocking`.
 
 ## Source
 - Entry: `packages/coding-agent/src/task/index.ts`
@@ -26,7 +26,7 @@
 
 ## Inputs
 
-The wire schema is shape-swapped by `subagent.batch` (default on). One unit of work is the task item `{ name?, agent?, task, isolated? }` (`isolated` only when `subagent.isolation.mode` is not `none`):
+The wire schema is shape-swapped by `subagent.batch` (default on). One unit of work is the task item `{ name?, agent?, task, cwd?, isolated? }` (`isolated` only when `subagent.isolation.mode` is not `none`):
 
 - **Batch shape** (`subagent.batch` on): `{ context, tasks: item[] }`: one subagent per item, all run under the same fan-out rules; there is no top-level agent field. `context` is **required** shared background rendered into every spawned subagent's system prompt (`CONTEXT` section); `agent` and `isolated` are per item, so one call may mix agent types.
 - **Flat shape** (`subagent.batch` off): `{ ...item }`: exactly one spawn per call. Shared background goes into a `local://` file (e.g. `local://ctx.md`) that each spawn's `task` references; subagents share the parent's `local://` root.
@@ -38,6 +38,7 @@ The wire schema is shape-swapped by `subagent.batch` (default on). One unit of w
 | `name` | `string` | No | Stable agent name, becomes the registry/IRC id. Defaults to a generated AdjectiveNoun name. Uniquified per session by `AgentOutputManager`. Item field in batch shape, top-level in flat shape. |
 | `agent` | `string` | No | Agent type to run this item (e.g. `scout`). Defaults to the spawn policy's default agent (usually `task`); items in one batch call may use different agent types. Item field in batch shape, top-level in flat shape. |
 | `task` | `string` | Yes | The work, complete, self-contained instructions. Empty-after-trim is rejected. Item field in batch shape, top-level in flat shape. |
+| `cwd` | `string` | No | Per-spawn working-directory override. Item field in batch shape, top-level in flat shape. |
 | `isolated` | `boolean` | No | Run in an isolated workspace and return patches. Exists only when `subagent.isolation.mode` is not `none`; per item in batch shape, top-level in flat shape. Isolated agents are torn down at completion, not revivable. |
 
 There is no wire label field: the one-line UI label shown in the TUI/registry is generated automatically from the `task` text by the tiny/title model (fire-and-forget), so callers never provide it.
@@ -83,7 +84,7 @@ Artifacts and side channels:
    - a failed or aborted run throws `TaskJobError` so the job lands `failed`, but the agent itself stays registered and interrogable.
    - a mixed call registers the async jobs first, then runs its blocking items inline and returns once they settle: the text combines the inline summaries with the spawned-job listing, and the block keeps rendering the still-running background rows beside the inline results.
 5. `#executeSync(...)` runs the spawn path (`#runSpawn`), which rediscovers agents from disk, so runtime resolution can differ from the create-time description.
-6. It resolves each spawn's requested `agent` type, rejects unknown agents and agents blocked by `subagent.agents.<name>.enabled: false`, and enforces parent spawn policy plus `VEYYON_BLOCKED_AGENT` self-recursion prevention.
+6. It resolves each spawn's requested `agent` type, rejects unknown agents and any agent that is disabled (`subagent.agents.<name>.enabled: false`, or a bundled specialist with no row, since those ship disabled), and enforces parent spawn policy plus `VEYYON_BLOCKED_AGENT` self-recursion prevention. A disabled agent passes only when a `/` command declared it for this turn (`CustomCommand.spawnsAgents` → `session.agentGrantedThisTurn`), which is how `/review` reaches `reviewer`.
 7. Output schema priority: agent frontmatter `output` → inherited parent session schema (the call itself never carries one).
 8. Plan mode swaps in an `effectiveAgent` with a read-only tool subset and plan-mode prompt; `runSubprocess(...)` receives the effective agent.
 9. If `isolated`, it requires a git repo (`getRepoRoot(...)` / `captureBaseline(...)`), maps `subagent.isolation.mode` to a backend-kind hint (`parseIsolationMode`), and materializes the workspace via the natives PAL (`ensureIsolation` → `isoResolve`/`isoStart`), walking the candidate list when a backend is unavailable.
@@ -161,6 +162,8 @@ Artifacts and side channels:
 - Shared background convention without batch mode: write it once to a `local://` file and reference that path in each spawn's `task`: subagents share the parent's `local://` root. With `subagent.batch`, the required `context` parameter carries the shared background directly into each spawn's system prompt.
 - Prefer messaging an existing agent (`irc`) over a fresh spawn for follow-up work: it already holds the relevant context. `irc` op:"list" shows idle/parked candidates; messaging a parked agent revives it. `history://<id>` shows what an agent has done.
 - `irc` availability is derived, not configured (`isIrcEnabled` in `packages/coding-agent/src/tools/irc.ts`): it exists exactly when there is someone to message: the session can spawn subagents, or it is a subagent itself. Messaging is the only follow-up path to a finished subagent, so task without irc would strand idle agents.
+- `tools.discoveryMode: all` hides non-essential built-ins, and `task` is a carve-out. At `subagent.delegation` `preferred` (the default) or `required` the prompt asks you to delegate, so `task` stays in the request; hiding it would leave an instruction you cannot follow. At `allowed` nothing asks for delegation, so `task` is hidden like any other discoverable built-in and you reach it through `search_tool_bm25`, and the prompt drops its delegation section to match. The decision is made in `sdk.ts` before agent discovery runs, from the strength alone: whether any agent is enabled is not knowable yet at that point.
+- Only the general-purpose `task` agent ships enabled. Every other bundled agent, `scout` included, needs a `subagent.agents.<name>.enabled = true` row before the model may choose it, and a spawn that names a disabled agent is refused with `Agent "<name>" is disabled`. A user-authored agent under `.veyyon/agents/` is on by default: writing the file is the opt-in.
 - Subagents are internally synchronous: the executor forces `async.enabled = false` and `bash.autoBackground.enabled = false` in the child settings snapshot, so there are no fire-and-forget grandchildren.
 - Agent discovery precedence is first-wins by exact name: project `.veyyon` agents dir before the user `.veyyon` dir (task agents only load from `.veyyon` roots; `.claude`/`.codex`/`.gemini` agent dirs are skipped), Claude plugin agent dirs after config dirs, bundled agents last. Create-time discovery is memoized per cwd for the prompt description; execution-time discovery stays fresh.
 - Child sessions do not inherit conversation history. Built-in carry-over is the workspace tree/skills/context files, the shared `local://` root, and the approved-plan reference when one exists.

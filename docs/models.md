@@ -172,7 +172,7 @@ ModelRegistry pipeline (on refresh):
 ### Provider-model cache and static fingerprint
 
 Cached per-provider model lists are persisted in the model-cache SQLite
-database (current schema version 6) with a `static_fingerprint` column that
+database (current schema version 8) with a `static_fingerprint` column that
 hashes the static catalog slice merged into the row. When `resolveProviderModels`
 skips the network fetch and the fingerprint of the in-memory static
 catalog matches the cached one, the cached rows are returned verbatim,
@@ -506,7 +506,7 @@ Both surfaces keep provider-prefixed models visible and selectable.
 They now also expose canonical/coalesced models:
 
 - `/model` includes a canonical view alongside provider tabs
-- `veyyon models` prints provider-grouped tables of every concrete model, and `veyyon models canonical` prints the coalesced canonical view
+- `veyyon models` prints provider-grouped tables of every concrete model (`ls`, `find`, and `refresh` actions)
 
 Selecting a canonical entry stores the canonical selector. Selecting a provider row stores the explicit `provider/modelId`.
 

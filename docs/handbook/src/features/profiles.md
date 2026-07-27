@@ -134,7 +134,7 @@ You can still create a profile implicitly by running `veyyon --profile <name>` o
 
 ## Onboarding import
 
-On first run (and once after upgrading past setup version 2), the setup wizard scans the machine for user-level config written for other tools (skills and `CLAUDE.md`/`AGENTS.md` from Claude Code, Codex, Cursor, and similar) and offers each item for import into your default profile. Imports **copy**: skills land in the profile's `skills/`, instruction files append to the profile's `AGENTS.md` under a source marker (re-imports are idempotent). The scan runs no matter how `discovery.importForeignConfig` is set, because importing is how foreign config comes in by default: ambient loading of the originals stays off unless you turn that setting on.
+On first run, the setup wizard scans the machine for user-level config written for other tools (skills and `CLAUDE.md`/`AGENTS.md` from Claude Code, Codex, Cursor, and similar) and offers each item for import into the active profile. Imports **copy**: skills land in the profile's `skills/`, instruction files append to the profile's `AGENTS.md` under a source marker (re-imports are idempotent). The scan runs no matter how `discovery.importForeignConfig` is set, because importing is how foreign config comes in by default: ambient loading of the originals stays off unless you turn that setting on.
 
 Do not document inline `[profiles.<name>]` tables or standalone `<name>.config.yml` files as shipped; settings use `config.yml` under the active agent dir.
 
@@ -148,14 +148,14 @@ modelRoles:
   plan: openai/o3
   smol: deepseek/deepseek-chat
 subagent:
-  model: deepseek/deepseek-chat     # optional override of modelRoles.task
+  model: deepseek/deepseek-chat     # optional blanket override for all subagents
 compaction:
   model: openai/gpt-5-mini
   strategy: handoff                 # or summary (the default)
-  thresholdPercent: 80
+  threshold: "80%"
 ```
 
-**Unset slots and roles inherit the live main model.** The compaction model and every model role default to "inherit": when unset, they resolve to whatever the main model is *at use time*, so switching with `/model` changes them instantly. Only an explicit assignment pins a different model. (The advisor role is the one exception, unset, it follows its thinking-model chain; the settings UI labels each role's unset behavior.) Switching profiles switches all of these assignments with the profile.
+**Unset slots and roles inherit the live main model.** The compaction model and every model role default to "inherit": when unset, they resolve to whatever the main model is *at use time*, so switching with `/model` changes them instantly. Only an explicit assignment pins a different model. (The advisor role follows the same rule, unset, it inherits the live main model; the settings UI labels each role's unset behavior.) Switching profiles switches all of these assignments with the profile.
 
 ## See also
 

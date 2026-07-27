@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -222,7 +222,7 @@ export default (pi) =&gt; {
 <pre><code class="language-console">$ veyyon -p --approval-mode auto-edit \
     "Run the focused tests for the files changed in the last commit and fail if any regress"
 </code></pre>
-<p>The prompt can be an argument or piped on stdin. <code>auto-edit</code> auto-approves writes and still prompts on exec; <code>--yolo</code> auto-approves all tiers (use only on disposable runners). JSON event streams: <code>--json</code>. For review, pass a review prompt to <code>-p</code>, or use the passive advisor (<code>--advisor</code>) in the TUI. See <a href="../features/exec.html">Non-interactive mode</a>.</p>
+<p>The prompt can be an argument or piped on stdin. <code>auto-edit</code> auto-approves writes and safe exec commands, and still prompts on critical exec; <code>--yolo</code> auto-approves all tiers (use only on disposable runners). JSON event streams: <code>--mode json</code>. For review, pass a review prompt to <code>-p</code>, or use the passive advisor (<code>--advisor</code>) in the TUI. See <a href="../features/exec.html">Non-interactive mode</a>.</p>
 <hr>
 <h2 id="give-the-agent-a-new-tool-mcp-or-skills"><a class="header" href="#give-the-agent-a-new-tool-mcp-or-skills">Give the agent a new tool (MCP or skills)</a></h2>
 <p>Goal: teach Veyyon a capability you do not want to bake into the binary.</p>
@@ -259,7 +259,7 @@ server needs OAuth, run <code>/mcp reauth &lt;name&gt;</code>. Details: <a href=
 <a href="./mcp-setup.html">MCP setup</a>.</p>
 <h3 id="path-2-author-a-skill"><a class="header" href="#path-2-author-a-skill">Path 2: author a skill</a></h3>
 <p>Create a skill directory in user or project scope, for example
-<code>~/.veyyon/profiles/default/agent/skills/audit-config/SKILL.md</code> (or <code>.veyyon/skills/…</code> in a repo):</p>
+<code>~/.veyyon/profiles/default/agent/skills/audit-config/SKILL.md</code>:</p>
 <pre><code class="language-markdown">---
 name: audit-config
 description: Audit Veyyon config.yml for unsafe approval and tool-policy combinations.
@@ -299,11 +299,11 @@ where conventions matter; leave it <code>off</code> for throwaway scratch sessio
 </thead>
 <tbody>
 <tr><td>Inspect the tree / jump to a prior turn</td><td><code>/tree</code></td></tr>
-<tr><td>Copy history into a new session from a user message</td><td><code>/fork</code></td></tr>
+<tr><td>Copy history into a new session from a user message</td><td><code>/branch</code></td></tr>
 </tbody>
 </table>
 </div>
-<p>Typical flow: reach a decision point, <code>/fork</code> to try an alternate approach, continue on the
+<p>Typical flow: reach a decision point, <code>/branch</code> to try an alternate approach, continue on the
 branch that works. Full behavior: <a href="../features/branching.html">Branching</a> and <a href="./sessions.html">Sessions</a>.</p>
 <h3 id="memory-vs-branching"><a class="header" href="#memory-vs-branching">Memory vs branching</a></h3>
 <ul>

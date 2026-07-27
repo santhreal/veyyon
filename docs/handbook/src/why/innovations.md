@@ -7,9 +7,9 @@ Veyyon is a fork of oh-my-pi. The first group below is what the fork adds on top
 ## What the fork adds
 
 - **Argot.** A per-project shorthand the model writes in. The model writes a short handle like `§build` where it would have written a long string it repeats, and Veyyon restores the full text before anything runs or is shown. The round trip is lossless, encoding is gated per model and by context size, and the generated dictionary is cached per project and only grows. See [Argot](./argot.md).
-- **Snap compaction.** Bitmap-frame context compression with lossless dedup and artifact spill, so a long session sheds tokens without losing what it already established. See [Compaction and project memory](../context/compaction-memory.md).
+- **Local compaction with a lossless first pass.** When the window fills, a Tier-0 pass first drops tool results that are byte-identical to a newer copy, then compaction condenses history in place (`summary`, the default) or writes a handoff document and continues from it. See [Compaction and project memory](../context/compaction-memory.md).
 - **Shared credentials and global config.** Providers and global settings are shared across profiles, so signing in once reaches every profile instead of each one holding its own copy.
-- **Per-profile working directory.** A profile can pin its own working directory, and `setCwd` moves an existing session, so one install can hold several projects without them bleeding into each other.
+- **Per-profile working directory.** A profile can pin its own working directory, and `set_cwd` moves an existing session, so one install can hold several projects without them bleeding into each other.
 - **Absolute-token compaction threshold.** Compaction can trigger on an absolute token count, not only a fraction of the window, so the trigger point is the same across models with different context sizes.
 - **Atomic, serialized config writes.** Settings are written through a single serialized path with an atomic swap, so two writers never tear a config file.
 
@@ -21,16 +21,16 @@ See [Editing and repair](../using/editing.md) and [The hashline edit engine](../
 
 ## Tool approval tiers
 
-The `tools.approvalMode` setting is one of `plan`, `ask`, `auto-edit`, or `yolo`. The older aliases `always-ask` and `write` still map to `ask` and `auto-edit`. On top of the mode, per-tool `tools.approval` overrides apply. The three tiers are read, write, and exec. Bash can still force a prompt on destructive patterns, depending on your execpolicy rules.
+The `tools.approvalMode` setting is one of `plan`, `ask`, `auto-edit`, or `yolo`. The older aliases `always-ask` and `write` still map to `ask` and `auto-edit`. On top of the mode, per-tool `tools.approval` overrides apply. The three tiers are read, write, and exec. Bash can still force a prompt on destructive patterns through the bash interceptor (`bashInterceptor.enabled` and `bashInterceptor.patterns`).
 
-See [Approvals](../features/sandbox.md) and `/settings` then Advanced then Safety.
+See [Approvals](../features/sandbox.md) and `/settings` → Interaction → Approvals.
 
 ## Model slots and roles
 
 Veyyon separates the model you use from the job it does:
 
 - **The interactive model** is what you set with `/model` or `--model`, and it persists as `modelRoles.default`.
-- **Roles** pin a model to a kind of work, such as `smol` for cheap fast work or `task` for subagents, and you can add your own in `modelRoles`. The full built-in set is listed in [Models, roles, and profiles](../using/roles-and-profiles.md).
+- **Roles** pin a model to a kind of work, such as `smol` for cheap fast work or `advisor` for the reviewing advisor, and you can add your own in `modelRoles`. The full built-in set is listed in [Models, roles, and profiles](../using/roles-and-profiles.md).
 - **Overrides** let a slot win over a role. `compaction.model` overrides the interactive model for compaction, otherwise compaction inherits it. Subagent models are not roles at all: they live in the Subagents settings area, which owns them alone.
 - **Cycling** rotates through `cycleOrder` (which defaults to `smol` then `slow`), bound to `app.model.cycleForward`, often Ctrl+P.
 

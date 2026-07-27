@@ -12,25 +12,40 @@ It documents only active behavior.
 
 Most runtime lookups use `$env` from `@veyyon/utils` (`packages/utils/src/env.ts`).
 
-`$env` loading order:
+`$env` precedence, high to low:
 
 1. Existing process environment (`Bun.env`)
 2. Project `.env` (`$PWD/.env`) for keys not already set
 3. Agent `.env` (`~/.veyyon/profiles/default/agent/.env`, respecting `VEYYON_CONFIG_DIR` / `VEYYON_CODING_AGENT_DIR`) for keys not already set
-4. Config-root `.env` (`~/.veyyon/.env`, respecting `VEYYON_CONFIG_DIR`) for keys not already set
+4. Config-root `.env` (`~/.veyyon/profiles/default/.env`, respecting `VEYYON_CONFIG_DIR` and the active profile) for keys not already set
 5. Home `.env` (`~/.env`) for keys not already set
+
+Precedence is not the same as load order, and the difference matters if you are reading the source. Part of the home `.env` is applied FIRST, by `packages/utils/src/dotenv-home.ts`, because a `VEYYON_CODING_AGENT_DIR` or `XDG_CONFIG_HOME` set there decides where layers 3 and 4 are. `packages/utils/src/dirs.ts` imports that module before it resolves anything, so a directory is never computed from a pre-`.env` environment. `env.ts` then applies all four layers in full, overriding the values home contributed and nothing else, and refreshes the directory resolver. The result is the precedence listed above, whichever module a program imported.
+
+That early phase applies only the variables that decide where a directory is: `VEYYON_CODING_AGENT_DIR`, `VEYYON_CONFIG_DIR`, and the four `XDG_*` bases. Everything else in your home `.env`, including every API key, waits for `env.ts`. The reason is that whatever is in the environment that early is inherited by every process veyyon spawns, and the sandboxed evaluator that runs your `eval` code is one of them: it should not receive your credentials.
+
+Two variables are deliberately not read from a `.env` file at all. `VEYYON_PROFILE` selects the profile, and the profile decides where layers 3 and 4 are, so reading it out of one of them would be circular; set it in your shell or pass `--profile`. `PATH` is read only after `env.ts` has run, which is when binary lookup happens anyway, so extending `PATH` in a `.env` works as it always has.
 
 
 ---
 
 ## 1) Model/provider authentication
 
-These are consumed via `getEnvApiKey()` (`packages/ai/src/stream.ts`) unless noted otherwise.
+These are consumed via `getEnvApiKey()` (`packages/ai/src/env-api-key.ts`) unless noted otherwise.
 
 ### Core provider credentials
 
+The provider-first projection of this map lives in [Providers](./providers.md#environment-variables-and-env-files); the two tables are two views of one source.
+
 | Variable                        | Used for                                         | Required when                                                  | Notes / precedence                                                                                  |
 | ------------------------------- | ------------------------------------------------ | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `OPENAI_CODEX_OAUTH_TOKEN`      | OpenAI Codex OAuth auth                          | Using `openai-codex` provider                                  |                                                                                                     |
+| `BASETEN_API_KEY`               | Baseten auth                                     | Using `baseten` provider                                       |                                                                                                     |
+| `COREWEAVE_API_KEY`             | CoreWeave auth                                   | Using `coreweave` provider                                     | Takes precedence over `WANDB_API_KEY`                                                               |
+| `WANDB_API_KEY`                 | CoreWeave auth                                   | Using `coreweave` provider                                     | Fallback after `COREWEAVE_API_KEY`                                                                  |
+| `DEVIN_API_KEY`                 | Devin auth                                       | Using `devin` provider                                         |                                                                                                     |
+| `SAKANA_API_KEY`                | Sakana auth                                      | Using `sakana` provider                                        | Takes precedence over `FUGU_API_KEY`                                                                |
+| `FUGU_API_KEY`                  | Sakana auth                                      | Using `sakana` provider                                        | Fallback after `SAKANA_API_KEY`                                                                     |
 | `ANTHROPIC_OAUTH_TOKEN`         | Anthropic API auth                               | Using Anthropic with OAuth token auth                          | Takes precedence over `ANTHROPIC_API_KEY` for provider auth resolution                              |
 | `ANTHROPIC_API_KEY`             | Anthropic API auth                               | Using Anthropic without OAuth token                            | Fallback after `ANTHROPIC_OAUTH_TOKEN`                                                              |
 | `ANTHROPIC_FOUNDRY_API_KEY`     | Anthropic via Azure Foundry / enterprise gateway | `CLAUDE_CODE_USE_FOUNDRY` enabled                              | Takes precedence over `ANTHROPIC_OAUTH_TOKEN` and `ANTHROPIC_API_KEY` when Foundry mode is enabled  |
@@ -102,7 +117,7 @@ When the broker is enabled, the local SQLite credential store is bypassed and al
 | `VEYYON_AUTH_BROKER_URL`   | Base URL of the remote auth-broker (e.g. `https://broker.tailnet:8765`); selects broker mode | Resolving credentials through a broker; also required by `veyyon auth-gateway serve` (the gateway is itself a broker client) | Wins over `auth.broker.url` in `config.yml`. When set with no resolvable token, `resolveAuthBrokerConfig()` hard-errors instead of falling back to local SQLite.                           |
 | `VEYYON_AUTH_BROKER_TOKEN` | Bearer token sent on every broker endpoint except `/v1/healthz`                              | `VEYYON_AUTH_BROKER_URL` is set and no token is available from `auth.broker.token` or `<config-dir>/auth-broker.token`       | Resolution: this env → `auth.broker.token` (`$ENV_NAME` indirection supported) → `<config-dir>/auth-broker.token` (mode `0600`). `<config-dir>` is `~/.veyyon/` (respecting `VEYYON_CONFIG_DIR`). |
 | `VEYYON_AUTH_BROKER_SNAPSHOT_TTL_MS` | Freshness window for the encrypted local broker snapshot cache | Optional in broker mode | Default `3600000` (1 h). Freshness is based on broker `snapshot.generatedAt`; `0` disables cache reads/writes and forces the old blocking fetch every startup. |
-| `VEYYON_AUTH_BROKER_SNAPSHOT_CACHE` | Path to the encrypted local broker snapshot cache | Optional in broker mode | Defaults to `~/.veyyon/cache/auth-broker-snapshot.enc` (or XDG cache equivalent). Useful for tests, ephemeral hosts, or relocating the `0600` cache file. |
+| `VEYYON_AUTH_BROKER_SNAPSHOT_CACHE` | Path to the encrypted local broker snapshot cache | Optional in broker mode | Defaults to `~/.veyyon/profiles/<profile>/cache/auth-broker-snapshot.enc` (or XDG cache equivalent). Useful for tests, ephemeral hosts, or relocating the `0600` cache file. |
 
 The gateway has no dedicated env vars, it inherits `VEYYON_AUTH_BROKER_*`. Its own inbound bearer token lives at `<config-dir>/auth-gateway.token` and is managed via `veyyon auth-gateway token`.
 
@@ -297,12 +312,18 @@ Use `ANTHROPIC_SEARCH_BASE_URL` (optionally with `ANTHROPIC_SEARCH_API_KEY`) to 
 | `VEYYON_PYTHON_SKIP_CHECK`  | If `1`, skips Python interpreter availability checks (subprocess runner still starts on demand)                     |
 | `VEYYON_PYTHON_INTEGRATION` | If `1`, opts gated integration tests in (e.g. `python-runner-integration.test.ts`) into running against real Python |
 | `VEYYON_PYTHON_IPC_TRACE`   | If `1`, logs NDJSON frames exchanged with the Python runner subprocess                                              |
+| `VEYYON_RUBY_IPC_TRACE`     | Same, for the Ruby runner subprocess                                                                                |
+| `VEYYON_JULIA_IPC_TRACE`    | Same, for the Julia runner subprocess                                                                               |
 | `VIRTUAL_ENV`           | Highest-priority venv path for Python runtime resolution                                                            |
 
 Extra conditional behavior:
 
 - If `BUN_ENV=test` or `NODE_ENV=test`, Python availability checks are treated as OK and warming is skipped.
 - Python env filtering denies common API keys and allows safe base vars + `LC_`, `XDG_`, `VEYYON_` prefixes.
+- Every eval kernel names its IPC trace variable `VEYYON_<LANGUAGE>_IPC_TRACE`, with the language spelled out
+  in full (`PYTHON`, `RUBY`, `JULIA`), not abbreviated the way the source directories are. A language added
+  later follows the same convention: it comes from one helper in `packages/coding-agent/src/eval/kernel-base.ts`
+  rather than from each kernel formatting its own name.
 
 ---
 
@@ -325,7 +346,7 @@ Extra conditional behavior:
 | `VEYYON_TASK_MAX_OUTPUT_LINES`   | Max captured output lines per subagent (default `5000`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `VEYYON_TIMING`                  | If set (any non-empty value), prints a hierarchical timing-span tree to **stderr** via `logger.printTimings()`. In interactive mode the tree prints once the agent is ready (before the TUI starts); in print mode it prints after the whole prompt batch completes. Print-mode prompts are wrapped in `print:prompt:initial` / `print:prompt:next` spans so each user message shows up as its own row. `VEYYON_TIMING=x` exits the process with code 0 right after printing in interactive mode (use to measure cold startup only). `VEYYON_TIMING=full` lists every module-load entry instead of just the top N. |
 | `VEYYON_DEBUG_STARTUP`           | If set (any non-empty value), streams one synchronous `[startup] <phase>:start` / `:done` marker line to **stderr** as each startup phase begins/ends, including command-module imports (`cli:load:<name>`) and the native addon extraction/`dlopen` (`native:*`). Unlike `VEYYON_TIMING` (which prints only once startup completes), the markers survive a hard hang: the last line on stderr names the phase the process is stuck in. Combine with `VEYYON_TIMING` freely; markers and the span tree share the same phase names.                                                                                |
-| `VEYYON_PACKAGE_DIR`         | Overrides package asset base dir resolution (`docs/`, `examples/`, `CHANGELOG.md`)|
+| `VEYYON_PACKAGE_DIR`         | Overrides package asset base dir resolution (docs, examples, and CHANGELOG assets)|
 | `VEYYON_REPAIR_DISABLE`      | If `1`/`true`/`yes`, disables malformed-tool-call schema repair (calls fail instead of being repaired) |
 | `VEYYON_DISABLE_LSPMUX`      | If `1`, disables lspmux detection/integration and forces direct LSP server spawning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `VEYYON_RPC_EMIT_TITLE`      | Boolean-like flag enabling title events in RPC mode|
@@ -348,6 +369,7 @@ Extra conditional behavior:
 | `VEYYON_DIALECT`             | Force-enables owned (in-band) tool calling with the named dialect when no configured dialect wins: `glm`, `hermes`, `kimi`, `xml`, `anthropic`, `deepseek`, `harmony`, `qwen3`, `gemini`, `gemma`, `minimax`, `pi-native`; `1`/`true` mean `glm`. Unrecognized values are ignored. Same set as the `tools.format` setting.                                                                                                                                                                                                                                                                                    |
 | `VEYYON_HARMONY_DEBUG`      | Debug. If `1`, includes the full removed text as `removedBlob` in each harmony-leak audit event (the `onHarmonyLeak` hook); otherwise only a redacted length/hash/preview is emitted. Use to inspect what harmony-leak scrubbing removed. |
 | `VEYYON_MCP_TIMEOUT_MS`         | Overrides MCP client request timeout (ms) for every MCP server. `0` disables client-side timeouts (`AbortSignal` never fires). Invalid (negative or non-numeric) values are ignored with a warning and the per-server config or default (`30000`) is used                                                                                                                                                                                                                                                                                                                                                 |
+| `VEYYON_PIPED_STDIN_WAIT_MS` | How long `veyyon -p "prompt"` waits for the FIRST byte of piped stdin when the prompt is already on the command line (default `10000`). It bounds only the wait before anything arrives, so a slow or large piped document is still read in full; `0` waits indefinitely, which is what happens when the pipe is your only input. It exists because a parent process that spawns Veyyon with an inherited pipe it never writes to and never closes sends no EOF, and the run would otherwise block forever. |
 | `VEYYON_STACK`               | If `1`, fatal CLI errors print the full inspected error (stack + source context) instead of the default concise `message + cause chain` report                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 `VEYYON_NO_PTY` is also set internally when CLI `--no-pty` is used.

@@ -10,7 +10,8 @@ The root itself holds only **global, cross-profile** state. Everything else is p
 
 | Path | Contents |
 | --- | --- |
-| `config.yml` | **Global** settings that apply across profiles, today `defaultProfile` (which profile a bare `vey` launches). Not to be confused with a profile's own `config.yml` (below). |
+| `config.yml` | **Global** settings that apply across profiles: `defaultProfile` (which profile a bare `veyyon` launches), `profileSharing`, and the auth-broker keys `authBrokerUrl` / `authBrokerToken`. Not to be confused with a profile's own `config.yml` (below). |
+| `shared-auth/` | Shared credential store, used when `profileSharing` is on: `agent.db` (SQLite OAuth/API-key storage shared across profiles). |
 | `AGENTS.md` | **Global** instructions loaded into every profile's session. Veyyon creates it on first run with a stripped-before-load guidance header. Keep profile-specific rules in the profile's own `AGENTS.md` (below). See [Instruction layers](../features/skills.md#instruction-layers). |
 | `install-id` | Persistent per-install UUID. Shared by every profile. |
 | `profiles/` | One directory per profile, including `profiles/default/`, see below. |

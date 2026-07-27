@@ -1,0 +1,43 @@
+# Crash signatures that are artefacts of the fuzzing harness, not bugs in the code.
+#
+# `scripts/fuzz-triage.ts` reports these separately and never files them. Adding
+# an entry here is a claim that the shipped binary behaves correctly and only the
+# fuzz build crashes, so each one has to say why. Get it wrong and a real bug
+# goes unfiled forever, which is strictly worse than filing a bad issue: nobody
+# ever looks at a suppressed crash again.
+#
+# `location` and `message` are substrings, matched against the panic location and
+# the first line of the message. An empty `message` matches any message at that
+# location.
+#
+# Format:
+#
+#   [[signature]]
+#   # why this is the harness and not the code
+#   location = "some/file.rs"
+#   message = "the assertion text"
+#
+# THE LIST IS EMPTY, AND ONE NEAR-MISS IS WORTH RECORDING.
+#
+# libfuzzer-sys installs a panic hook that calls `std::process::abort()` before
+# unwinding (libfuzzer-sys-0.4.13/src/lib.rs:92), specifically so that a
+# `catch_unwind` in the code under test cannot hide a bug.
+# `veyyon_ast::ops::compile_pattern` ends by probing the compiled pattern inside
+# `catch_unwind`, because ast-grep-core asserts on some pattern trees at match
+# time rather than at compile time, and the probe turns that into an ordinary
+# `Err`. So the fuzzer was dying at the exact point the shipped code was
+# reporting an error correctly, and an entry for
+# `ast-grep-core-0.39.9/src/match_tree/mod.rs` / "Ellipsis should be matched in
+# parent level" was written here.
+#
+# It was wrong. The SAME assert is reachable from `collect_matches`, on a real
+# call path, with an identical location and message, and that one is a genuine
+# crash. A substring filter cannot tell the two apart, so the entry would have
+# permanently hidden a live bug the same campaign had just found.
+#
+# The rule that falls out: if a signature can be produced by both the harness and
+# the code, it does not belong here. Fix it in the target instead, where the
+# suppression can be scoped to the exact call that is allowed to panic.
+# `ast_parse_and_match` does that: it skips the abort for the duration of the
+# `compile_pattern` call and for nothing else, so the harness case never reaches
+# triage at all and only real crashes do.

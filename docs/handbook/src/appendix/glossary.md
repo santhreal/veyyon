@@ -4,7 +4,7 @@ A concise vocabulary of the primitives that shape Veyyon's runtime behavior.
 
 - **apply_patch**: Edit mode (`edit.mode: apply_patch`) for a Codex-style `*** Begin Patch … *** End Patch` envelope. Default edit mode is **hashline** via the `edit` tool. Apply-patch shares approval policy with other write paths.
 
-- **approval mode**: The autonomy control (`tools.approvalMode`) for tool tiers: `plan`, `ask`, `auto-edit`, `yolo` (legacy `always-ask` → `ask`, `write` → `auto-edit`). There is no OS command sandbox; the mode (plus execpolicy) is the boundary.
+- **approval mode**: The autonomy control (`tools.approvalMode`) for tool tiers: `plan`, `ask`, `auto-edit`, `yolo` (legacy `always-ask` → `ask`, `write` → `auto-edit`). There is no OS command sandbox; the mode, per-tool `tools.approval` overrides, and hard-coded critical bash patterns are the boundary.
 
 - **model catalog**: Bundled provider/model data plus `models.yml` / `models.yaml` custom entries. There is no separate `backends.toml` subsystem.
 
@@ -16,7 +16,7 @@ A concise vocabulary of the primitives that shape Veyyon's runtime behavior.
 
 - **goal state**: A structured goal card on the session (session-backed). Holds the objective and lifecycle fields, injected outside the raw conversation tail so compaction does not drop intent.
 
-- **hook**: A TypeScript module that default-exports a factory and registers handlers with `pi.on(...)` (events such as `tool_call`, `tool_result`, `session`). Can block tools, inject context, or register commands. See [Hooks](../features/hooks.md).
+- **hook**: A TypeScript module that default-exports a factory and registers handlers with `pi.on(...)` (events such as `tool_call`, `tool_result`, `session_start`). Can block tools, inject context, or register commands. See [Hooks](../features/hooks.md).
 
 - **MCP**: Model Context Protocol. Veyyon is an MCP **client** that connects to external MCP servers and exposes their tools as `mcp__…`. Editor embedding uses ACP (`veyyon acp`), which is a different protocol.
 
@@ -24,7 +24,7 @@ A concise vocabulary of the primitives that shape Veyyon's runtime behavior.
 
 - **personality**: Style-only system prompt block. Built-ins include `default`, `pragmatic`, `friendly`, and `none`.
 
-- **plugin**: A directory with a `.veyyon-plugin/plugin.json` manifest that can add skills, MCP servers, hooks, and related assets. Plugins are discovered through marketplaces.
+- **plugin**: A directory with a `.claude-plugin/plugin.json` manifest (or a `package.json` carrying the `veyyon` manifest) that can add skills, MCP servers, hooks, and related assets. Plugins are discovered through marketplaces, npm installs, or `veyyon plugin link`.
 
 - **profile**: A directory under `~/.veyyon/profiles/<name>/` (including `default`) holding agent settings, sessions, MCP, skills, and related state. Activate with `--profile`, `VEYYON_PROFILE`, or `/profile` (relaunch).
 
@@ -32,13 +32,13 @@ A concise vocabulary of the primitives that shape Veyyon's runtime behavior.
 
 - **repair**: Schema-based coercion of malformed tool-call arguments before validation; ambiguous cases return an error tool result (no dispatch). See [Repair](../repair/overview.md).
 
-- **repair cascade**: The ordered set of sound transforms the repair engine applies to a tool call. Each rule returns a coerced value, a rule name for telemetry, and a coaching hint.
+- **repair cascade**: The ordered set of sound transforms the repair engine applies to a tool call (parse leniency, alias/typo key repair, strict unknown-key rejection, ambiguity guard). The engine returns a status (`clean` / `repaired` / `unrepairable`), the coerced arguments, and coaching hints; an unrepairable call returns an error tool result without dispatch.
 
-- **rollout**: The append-only JSONL log of a session's entries. Each entry carries an `id` and `parent_id`; a `leaf_move` line branches the active leaf to any earlier entry without rewriting history.
+- **rollout**: The append-only JSONL log of a session's entries. Each entry carries an `id` and a `parentId`. Branching moves the in-memory leaf; the next appended entry's `parentId` (and an optional `branch_summary` entry) records the move without rewriting history.
 
-- **session**: The unit of interactive work in Veyyon. A session records turns, tool activity, approvals, edits, and verification output, 
+- **session**: The unit of interactive work in Veyyon. A session records turns, tool activity, approvals, edits, and verification output.
 
-- **skill**: Filesystem package with a `SKILL.md`. Discovered from profile/project skill dirs, managed-skills, plugins, and optional foreign-tool layouts. Metadata enters the system prompt; body is read via `skill://`.
+- **skill**: Filesystem package with a `SKILL.md`. Loaded only from an explicit allowlist: the active profile's skills directory, veyyon-managed skills, and plugin-bundled skills. Foreign-tool layouts never contribute skills. Metadata enters the system prompt; body is read via `skill://`.
 
 - **thread / active leaf**: A thread is a linear sequence of messages within a session. The active leaf is the currently selected tip of the session tree that receives the next turn; branching moves the leaf without erasing sibling history.
 

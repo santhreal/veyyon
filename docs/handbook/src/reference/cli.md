@@ -16,14 +16,15 @@ Common launch options:
 | Option | Purpose |
 | --- | --- |
 | `[PROMPT]` | Optional initial user prompt |
-| `-c, --config key=value` | Override config for one run (repeatable) |
+| `-c, --continue` | Continue the previous session |
+| `--config <file>` | Load an extra config.yml-style overlay for this run (repeatable) |
 | `--approval-mode <policy>` | When to ask before running commands |
 | `--profile <name>` | Use an isolated profile agent directory |
 | `--model <id>` | Interactive model (`provider/model`) |
 | `--subagent-model <id>` | Model for spawned task subagents |
 | `--compaction-model <id>` | Model for context compaction |
 
-Config precedence: CLI flags → `-c` overrides → `config.yml` → defaults. See
+Config precedence: CLI flags → `--config` overlays → project config → global config → defaults. See
 [Configuration](../using/configuration.md).
 
 ## Registered subcommands
@@ -37,7 +38,7 @@ Unknown first tokens route to `launch` as a prompt:
 | `agents` | | Manage agent definitions |
 | `auth-broker` | | Shared auth broker (headless login) |
 | `auth-gateway` | | Auth gateway helper |
-| `bench` | | Benchmark harness |
+| `bench/throughput` | | Throughput benchmark harness |
 | `commit` | | Agentic commit workflow |
 | `completions` | | Shell completion scripts |
 | `config` | | List/get/set settings |
@@ -46,17 +47,21 @@ Unknown first tokens route to `launch` as a prompt:
 | `grep` | | Grep-tool CLI probe |
 | `gallery` | | TUI gallery / fixtures |
 | `grievances` | | Internal grievance reporter |
-| `install` | | Install / bootstrap |
+| `install` | | Install or link an extension package (alias of `plugin install`/`plugin link`) |
 | `join` | | Join collab session |
 | `models` | | List models and providers |
 | `plugin` | | Plugin lifecycle (`list`, `install`, …) |
+| `profile` | `profiles` | List, create, or remove self-contained profiles |
+| `prompt` | | Inspect the assembled system prompt without starting a session |
 | `read` | | Read-tool CLI probe |
+| `rollback` | | Move this install to another published version |
 | `say` | | Speak text with local TTS (`--voices` lists voices) |
 | `search` | `q` | Web search probe |
 | `session` | `sessions` | Study a stored session (`stats`: timing, tool cost, turn cadence) |
 | `setup` | | First-run setup wizard |
 | `shell` | | Native shell probe |
 | `ssh` | | SSH host configuration |
+| `stats` | | Usage statistics dashboard (`--summary` prints to console, `--json` for machines) |
 | `tiny-models` | | On-device tiny model utilities |
 | `token` | | Print a provider's API key or OAuth token |
 | `ttsr` | | Time-traveling stream rules test |

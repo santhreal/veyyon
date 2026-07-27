@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -202,7 +202,7 @@
 <h2 id="edit-path"><a class="header" href="#edit-path">Edit path</a></h2>
 <p>Hashline avoids re-emitting large surrounding context when anchors are available. Apply cost scales with patch size, not with re-serializing the full file for every change. See <a href="../edit/engine.html">Hashline engine</a>.</p>
 <h2 id="harness-overhead"><a class="header" href="#harness-overhead">Harness overhead</a></h2>
-<p>CLI/TUI and session loop: TypeScript on Bun. Grep, PTY/shell, hashline apply: Rust natives. Streaming returns tokens as they arrive.</p>
+<p>CLI/TUI and session loop: TypeScript on Bun. Grep, glob, PTY/shell, and tree-sitter parsing: Rust natives in <code>@veyyon/natives</code>; hashline apply is TypeScript in <code>@veyyon/hashline</code>. Streaming returns tokens as they arrive.</p>
 <h2 id="measurement"><a class="header" href="#measurement">Measurement</a></h2>
 <p>Hot-path changes are covered by package tests and criteria where present. Do not treat marketing numbers as SLAs without the linked method and host.</p>
 <h2 id="related"><a class="header" href="#related">Related</a></h2>

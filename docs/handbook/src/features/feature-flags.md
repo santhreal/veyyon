@@ -6,7 +6,8 @@ per-plugin feature gates managed with the **plugin** subcommand.
 ## Settings-schema flags (`features.*`)
 
 Registered flags live in `config.yml` under dotted `features.*` keys and appear in
-**Settings › Interaction** in the TUI. Unknown keys are rejected.
+**Settings › Interaction** in the TUI. Unknown keys are preserved verbatim (they may belong to a
+newer build or another tool); only schema-declared keys are type-checked.
 
 | Key | Default | Effect |
 | --- | --- | --- |
@@ -17,10 +18,10 @@ features:
   unexpectedStopDetection: true
 ```
 
-Per-run override:
+Per-run override: put the same YAML in a file and load it as an overlay:
 
 ```console
-$ veyyon -c features.unexpectedStopDetection=true "long refactor; keep going until done"
+$ veyyon --config ./flag-overlay.yml "long refactor; keep going until done"
 ```
 
 ## Plugin feature gates

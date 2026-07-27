@@ -80,7 +80,7 @@
 - `custom_request`: `command`
 
 ### Interactive selector values
-`packages/coding-agent/src/debug/index.ts` also exposes a fixed UI-only selector with values `open-artifacts`, `performance`, `work`, `dump`, `memory`, `logs`, `system`, `terminal`, `protocols`, `raw-sse`, `transcript`, `clear-cache`. These are not model-callable through `debugSchema`; they are local TUI menu routes.
+`packages/coding-agent/src/debug/index.ts` also exposes a fixed UI-only selector with values `open-artifacts`, `performance`, `work`, `dump`, `memory`, `logs`, `system`, `terminal`, `protocols`, `raw-sse`, `remote-debugger`, `transcript`, `clear-cache`. These are not model-callable through `debugSchema`; they are local TUI menu routes.
 
 ## Outputs
 The agent tool returns a standard `toolResult()` payload from `packages/coding-agent/src/tools/debug.ts`:
@@ -270,7 +270,7 @@ Example `.veyyon/dap.json`:
 - Single active session: enforced by `#ensureLaunchSlot()` in `packages/coding-agent/src/dap/session.ts`.
 - Idle session cleanup: `IDLE_TIMEOUT_MS = 10 * 60 * 1000`, checked every `CLEANUP_INTERVAL_MS = 30 * 1000`.
 - Adapter liveness heartbeat: `HEARTBEAT_INTERVAL_MS = 5 * 1000`.
-- Output capture cap: `MAX_OUTPUT_BYTES = 128 * 1024`; whole chunks are dropped from the front (then the front chunk is byte-sliced so exactly the cap remains) and `outputTruncated` is recorded.
+- Output capture cap: `MAX_BUFFERED_OUTPUT_BYTES = 128 * 1024`; whole chunks are dropped from the front (then the front chunk is byte-sliced so exactly the cap remains) and `outputTruncated` is recorded.
 - Initial stop capture timeout after launch/attach: `STOP_CAPTURE_TIMEOUT_MS = 5_000`.
 - Socket-mode adapter readiness timeout: `10_000` ms in `waitForCondition()` and TCP connect timeout logic in `packages/coding-agent/src/dap/client.ts`.
 - Raw SSE buffer caps in `packages/coding-agent/src/debug/raw-sse-buffer.ts`:
@@ -282,7 +282,7 @@ Example `.veyyon/dap.json`:
   - `LOAD_OLDER_CHUNK = 50`
 - Report/log ingestion caps in `packages/coding-agent/src/debug/report-bundle.ts`:
   - `MAX_LOG_LINES = 5000` for interactive log reading
-  - `MAX_LOG_BYTES = 2 * 1024 * 1024` tail-read ceiling
+  - `MAX_BUNDLED_LOG_TAIL_BYTES = 2 * 1024 * 1024` tail-read ceiling
   - report bundles include only the last `1000` log lines
   - subagent session inclusion is capped at the most recent `10` JSONL files
 - Interactive profiling windows in `packages/coding-agent/src/debug/index.ts`: both performance and work reports request `getWorkProfile(30)`.
@@ -290,7 +290,7 @@ Example `.veyyon/dap.json`:
 
 ## Errors
 - Parameter validation in `packages/coding-agent/src/tools/debug.ts` throws `ToolError` with explicit messages such as:
-  - `program is required for launch`
+  - `launch requires "program" (the target to debug).`
   - `attach requires pid or port`
   - `set_breakpoint requires file+line or function`
   - `variables requires variable_ref or scope_id`

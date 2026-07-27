@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -231,7 +231,9 @@ to add a server is <code>/mcp add</code> in the TUI, which writes to <code>mcp.j
 </code></pre>
 <p>Top-level keys: <code>mcpServers</code> (map of name to config) and <code>disabledServers</code> (names to turn off). Server
 names match <code>^[a-zA-Z0-9_.-]{1,100}$</code>. Shared per-server fields: <code>enabled</code>, <code>timeout</code> (milliseconds;
-<code>0</code> disables the client-side timeout), <code>auth</code>, and <code>oauth</code>.</p>
+<code>0</code> disables the client-side timeout), <code>auth</code>, and <code>oauth</code>. Stdio servers also take <code>command</code>,
+<code>args</code>, <code>env</code>, and <code>cwd</code>; remote servers take <code>url</code> plus <code>type</code> (or a <code>type</code>-less inferred URL)
+and <code>headers</code>.</p>
 <h2 id="choose-a-transport"><a class="header" href="#choose-a-transport">Choose a transport</a></h2>
 <div class="table-wrapper">
 <table>
@@ -324,7 +326,7 @@ tools:
 </tbody>
 </table>
 </div>
-<p>Run <code>/mcp verbose</code> to see exactly which tools, resources, and templates Veyyon registered.</p>
+<p>Run <code>/mcp list</code> to see exactly which tools, resources, and templates Veyyon registered.</p>
 <h2 id="resolve-common-errors"><a class="header" href="#resolve-common-errors">Resolve common errors</a></h2>
 <h3 id="server-not-found"><a class="header" href="#server-not-found">Server not found</a></h3>
 <p>For a <code>stdio</code> server, the command is usually not on <code>PATH</code> or the path is wrong. Check it directly:</p>
@@ -345,7 +347,7 @@ may require additional headers.</p>
 <h3 id="model-cannot-see-the-tools"><a class="header" href="#model-cannot-see-the-tools">Model cannot see the tools</a></h3>
 <p>If a server is connected but the model never uses its tools, check that the server is not in
 <code>disabledServers</code>, that <code>enabled</code> is not <code>false</code>, and that no <code>tools.approval</code> entry denies the
-namespaced tool. Run <code>/mcp verbose</code> to see what was registered.</p>
+namespaced tool. Run <code>/mcp resources</code> to see what was registered.</p>
 <h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to go next</a></h2>
 <ul>
 <li><a href="../features/mcp.html">MCP</a> for the feature overview (MCP client; ACP is separate).</li>

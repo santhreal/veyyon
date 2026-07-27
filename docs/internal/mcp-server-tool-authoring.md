@@ -40,7 +40,7 @@ Config sources (.veyyon/.claude/.cursor/.vscode/mcp.json, mcp.json, etc.)
 ### Transport pitfalls
 
 - `type` omitted means stdio. If you intended HTTP/SSE but omitted `type`, `command` becomes mandatory.
-- `sse` is still accepted but treated as HTTP transport internally (`createHttpTransport`).
+- `sse` is still accepted but connects through the legacy HTTP+SSE transport (`createSseTransport`, `transports/sse.ts`), not the streamable-HTTP transport.
 - Validation is structural, not reachability: a syntactically valid URL can still fail at connect time.
 
 ## 2) Discovery, normalization, and precedence
@@ -129,8 +129,9 @@ mcp__<sanitized_server_name>_<sanitized_tool_name>
 Rules:
 
 - lowercases
-- non-`[a-z_]` chars become `_`
+- non-`[a-z0-9_]` chars become `_` (digits are preserved)
 - repeated underscores collapse
+- leading/trailing underscores are stripped
 - redundant `<server>_` prefix in tool name is stripped once
 
 This avoids many collisions, but not all. Different raw names can still sanitize to the same identifier (for example `my-server` and `my.server` both sanitize similarly), and registry insertion is last-write-wins.

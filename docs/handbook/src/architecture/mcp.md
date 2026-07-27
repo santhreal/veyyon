@@ -7,7 +7,7 @@ Model Context Protocol (MCP) connects Veyyon to external tools and data as an MC
 
 - Discover MCP servers from project and user config files
 - Connect over **stdio** or **HTTP** (streamable HTTP / SSE-style transports)
-- Register tools as namespaced names (`mcp__<server>__<tool>`)
+- Register tools as namespaced names (`mcp__<server>_<tool>`, e.g. `mcp__filesystem_delete`)
 - Handle OAuth for remote servers and persist credentials per profile
 
 ## Implementation (TypeScript)

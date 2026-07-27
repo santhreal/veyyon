@@ -42,7 +42,7 @@ Rust creates `brush_core::Shell` with:
 - inherited environment disabled (`do_not_inherit_env: true`), followed by explicit environment reconstruction from host env,
 - profile and rc loading skipped,
 - bash-mode builtins, with `exec` and `suspend` disabled,
-- native `sleep`, `timeout`, and `nohup` builtins registered, plus in-process coreutils builtins (`ls`, `cat`, `head`, `tail`, `wc`, `sort`, `uniq`, `find`, `grep`, `rg`, `fd`, `mkdir`, `jq`, `diff`, ...) from `veyyon-shell/src/coreutils.rs` backed by the vendored `uu-*`/`jaq`/`pi-uu-*` crates,
+- native `sleep`, `timeout`, and `nohup` builtins registered, plus in-process coreutils builtins (`ls`, `cat`, `head`, `tail`, `wc`, `sort`, `uniq`, `find`, `grep`, `rg`, `mkdir`, `jq`, `diff`, ...) from `veyyon-shell/src/coreutils.rs` backed by the vendored `uu-*`/`jaq`/`veyyon-uu-*` crates, and the `fd` builtin from `veyyon-shell/src/fd.rs`,
 - skip-list for shell-sensitive vars (`PS1`, `PWD`, `SHLVL`, bash function exports, etc.),
 - a non-exported `env="$env"` fallback so PowerShell-style `$env:NAME` survives brush parameter expansion unless the user shadows `env`.
 
@@ -62,7 +62,7 @@ Persistent shell (`Shell.run`) uses this state machine:
 - **Running**: first `run()` lazily creates a session, stores an abort token, executes command.
 - **Completed + keepalive**: if execution control flow is normal, abort state is cleared and session is reused.
 - **Completed + teardown**: if control flow is loop/script/shell-exit related, session is dropped.
-- **Cancelled/Timed out**: Tokio cancellation token is triggered, descendants started after the baseline snapshot receive termination waves, a 2-second graceful wait is allowed, the task may be aborted, and the persistent session is dropped if the lock can be acquired.
+- **Cancelled/Timed out**: Tokio cancellation token is triggered, the processes this run actually spawned (tracked in its per-run spawn registry) receive termination waves, a 2-second graceful wait is allowed, the task may be aborted, and the persistent session is dropped if the lock can be acquired.
 - **Error**: session is dropped.
 
 One-shot shell (`executeShell`) always creates and drops a fresh session per call.

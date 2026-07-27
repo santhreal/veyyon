@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -218,7 +218,7 @@
 </tbody>
 </table>
 </div>
-<p>Addressable banner sections: <code>role</code>, <code>runtime</code>, <code>tool-policy</code>, <code>execution-workflow</code>, <code>delivery-contract</code>. Listed sections move to the front in the given order (after the fixed system-conventions preamble); unlisted sections keep template order after them. An unknown name rejects the whole list with a warning. Custom system-prompt templates have no banner sections, so the setting is ignored (with a warning).</p>
+<p>Addressable banner sections: <code>role</code>, <code>runtime</code>, <code>tool-policy</code>, <code>execution-workflow</code>, <code>delivery-contract</code>, plus the runtime sections <code>project</code>, <code>shorthand</code>, and <code>shorthand-handles</code>. Listed sections move to the front in the given order (after the fixed system-conventions preamble); unlisted sections keep template order after them. One boundary holds: runtime sections (<code>project</code>, <code>shorthand</code>, <code>shorthand-handles</code>) can never move ahead of template sections, because the template prefix is the provider-cached part. A runtime section listed ahead of a template section stays put and the harness logs a warning. An entry that is not a section name rejects the whole list with a warning, whether it is misspelled or not a string at all, so a hand-edited file can never apply an order you did not write. <code>tools</code> follows the same rule: one bad entry drops the whole allowlist rather than silently denying the model a tool. A <code>harness-profiles.yml</code> that cannot be read or parsed is reported with the path and the reason, and no profiles take effect. Custom system-prompt templates have no banner sections, so the setting is ignored (with a warning).</p>
 <p>Disable all repair process-wide: <code>VEYYON_REPAIR_DISABLE=1</code>.</p>
 <p>See <a href="./overview.html">Why repair exists</a> and <a href="../using/models.html#harness-profiles">Models</a>.</p>
 

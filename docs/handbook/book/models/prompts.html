@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -208,6 +208,51 @@ goal mode (<code>/goal</code>) add gating on top of the default prompt stack.</p
 <p>Edit tool prompts switch with <code>edit.mode</code> (the hashline prompt when hashline is active).</p>
 <p>There is no <code>backends.toml</code>-driven catalog or per-backend prompt tuning, and <code>apply_patch</code> is not the
 default edit surface, Veyyon uses hashline by default.</p>
+<h2 id="seeing-every-prompt"><a class="header" href="#seeing-every-prompt">Seeing every prompt</a></h2>
+<p>You do not have to read the source to find out what Veyyon sends a model. Run:</p>
+<pre><code>veyyon prompt --prompts
+</code></pre>
+<p>That lists every prompt by id, grouped by the directory it lives in, with one line on what
+each is for. An id is the file’s path under that directory without the <code>.md</code>, so
+<code>turn-control/auto-continue</code> and <code>dialect/gemma</code> name their own files.</p>
+<p>Then look at one:</p>
+<pre><code>veyyon prompt --prompt subagent/system-prompt
+</code></pre>
+<p>The lookup spans every registry, so an id from any of them works without naming its package.
+A mistyped id is refused with the nearest real id quoted back.</p>
+<p>For the system prompt itself, <code>veyyon prompt</code> prints the assembled text and
+<code>veyyon prompt --sections</code> breaks it down by section with the byte and token cost of each.</p>
+<p><code>veyyon prompt --statements</code> goes one level finer. The prompt is assembled from named statements,
+one per rule, so this prints what each individual rule costs you:</p>
+<pre><code>statement                                      bytes   tokens  share  condition
+execution-workflow/verify                       1099      275  10.6%  always
+delivery-contract/personality                   1098      274  10.5%  personality
+tool-policy/lsp                                  412      103   4.0%  tools has lsp
+</code></pre>
+<p>Two things to read from it. The cost is MARGINAL: it is what the prompt would be shorter by without
+that rule, not the length of the rule’s text, so the numbers add up to their section rather than
+exceeding it. And the condition tells you what turns the rule on, which is what you need to know
+before deciding a rule is not earning its tokens.</p>
+<p>Under the table is every rule this configuration leaves out, with the condition that would include
+it, so a rule being off is visible as a fact rather than as an absence you have to notice:</p>
+<pre><code>not in this prompt (33 of 68):
+  tool-policy/delegation-gates      needs tools has task
+  runtime/obsidian-vault-url        needs hasObsidian
+</code></pre>
+<p>To read one of those rules, name it:</p>
+<pre><code>veyyon prompt --statement delivery-contract/personality
+</code></pre>
+<p>You get the rule’s rendered text, which is what the model sees rather than the template behind it. If
+the rule is not in this prompt you get the condition that would include it and why the rule exists,
+and the command still exits 0, because a rule being off is a configuration and not a failure. An id
+that does not exist exits non-zero and quotes the ids of the section you named.</p>
+<p>Both read your real configuration. The settings the prompt is gated on – your personality, whether
+subagent delegation is preferred or required, whether Mermaid diagrams are rendered, which tool
+dialect applies – are resolved from <code>config.yml</code> and your project settings before the prompt is
+assembled, so what you see is what a session in that directory would send. Change a setting, run it
+again, and the difference is visible.</p>
+<p>Nothing is written while you look. The command opens no database, migrates nothing, and leaves no
+marker files, so inspecting the prompt cannot change what the next session does.</p>
 
                     </main>
 

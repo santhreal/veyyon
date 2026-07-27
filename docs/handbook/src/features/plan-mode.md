@@ -8,7 +8,7 @@ Read-focused exploration that drafts a **plan file** before implementation.
 
 ### Enabling
 
-- Setting: `plan.enabled` (default `true`; `/settings` Advanced → Plan)
+- Setting: `plan.enabled` (default `true`; `/settings` → Tasks → Modes → Plan Mode)
 - Slash: `/plan` toggles plan mode; `/plan <prompt>` enters plan mode and submits the prompt
 - `/plan-review` reopens plan review while plan mode is active
 

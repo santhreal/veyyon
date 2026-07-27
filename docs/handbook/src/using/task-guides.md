@@ -40,7 +40,7 @@ $ veyyon -p --approval-mode auto-edit \
     "Run the focused tests for the files changed in the last commit and fail if any regress"
 ```
 
-The prompt can be an argument or piped on stdin. `auto-edit` auto-approves writes and still prompts on exec; `--yolo` auto-approves all tiers (use only on disposable runners). JSON event streams: `--json`. For review, pass a review prompt to `-p`, or use the passive advisor (`--advisor`) in the TUI. See [Non-interactive mode](../features/exec.md).
+The prompt can be an argument or piped on stdin. `auto-edit` auto-approves writes and safe exec commands, and still prompts on critical exec; `--yolo` auto-approves all tiers (use only on disposable runners). JSON event streams: `--mode json`. For review, pass a review prompt to `-p`, or use the passive advisor (`--advisor`) in the TUI. See [Non-interactive mode](../features/exec.md).
 
 ---
 
@@ -85,7 +85,7 @@ server needs OAuth, run `/mcp reauth <name>`. Details: [MCP](../features/mcp.md)
 ### Path 2: author a skill
 
 Create a skill directory in user or project scope, for example
-`~/.veyyon/profiles/default/agent/skills/audit-config/SKILL.md` (or `.veyyon/skills/…` in a repo):
+`~/.veyyon/profiles/default/agent/skills/audit-config/SKILL.md`:
 
 ```markdown
 ---
@@ -135,9 +135,9 @@ Use the session tree when you need parallel context *inside* one problem.
 | Intent | Command |
 | --- | --- |
 | Inspect the tree / jump to a prior turn | `/tree` |
-| Copy history into a new session from a user message | `/fork` |
+| Copy history into a new session from a user message | `/branch` |
 
-Typical flow: reach a decision point, `/fork` to try an alternate approach, continue on the
+Typical flow: reach a decision point, `/branch` to try an alternate approach, continue on the
 branch that works. Full behavior: [Branching](../features/branching.md) and [Sessions](./sessions.md).
 
 ### Memory vs branching

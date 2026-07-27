@@ -52,15 +52,16 @@ upper bound and a longer one is rejected. The file also declares a format
 version. A file that targets a newer major version is refused loudly rather than
 read on a guess.
 
-You do not write or commit this file by hand, and Veyyon does not guess which
-project you mean. The agent decides: it calls the `argot_load` tool on the folder
-it is about to work in, and Veyyon generates the dictionary for that project from
-the strings it actually repeats, scores each candidate by how much output it
-would save, and keeps the result in a local cache under its own config
-directory. In a monorepo the agent loads the one package it is working in, not
-the repo root. Nothing is written into your working tree, so there is no file
-for a pull request to pick up, and a session where the agent never loads
-anything simply behaves as if Argot were off.
+You do not write or commit this file by hand. Veyyon loads the folder you started
+the session in, and the agent loads any further project by calling the
+`argot_load` tool on the folder it is about to work in. Either way Veyyon
+generates the dictionary for that project from the strings it actually repeats,
+scores each candidate by how much output it would save, and keeps the result in a
+local cache under its own config directory. In a monorepo the agent loads the one
+package it is working in, not the repo root. Nothing is written into your working
+tree, so there is no file for a pull request to pick up, and a session where
+nothing is ever loaded simply behaves as if Argot were off. The startup load is
+`argot.autoload`, on by default; turn it off to leave every load to the agent.
 
 ## Two directions, two rules
 

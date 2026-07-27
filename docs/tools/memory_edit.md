@@ -19,7 +19,7 @@
 
 ## Outputs
 - `content[0].type = "text"`
-- `content[0].text = "Memory <id> <status> in bank <bank> (<store>)."` or `"Memory <id> was not found..."`
+- `content[0].text = "Memory <id> <status> in bank <bank> (<store>)."`, `"Memory <id> was not found..."`, or `"Memory <id> is a read-only fact in bank <bank> (<store>); it cannot be edited. Read it with memory://<id>."` (status `not_editable`, for fact-store rows)
 - `details` is the backend edit result from `editScopedMemory(...)`, including status and location metadata when available.
 
 ## Flow
@@ -44,6 +44,9 @@
 - Availability requires `memory.backend = "mnemopi"`; Hindsight and local memory backends do not expose this tool.
 - `id` must come from `recall`; the tool does not search by content.
 - `update` with neither `content` nor `importance` is rejected before any backend write.
+- A cancelled call is refused before any backend write. The edit itself is one synchronous store call, so there is
+  nothing to interrupt once it starts and nothing to release; what matters is that an edit issued before you
+  cancelled is not applied afterwards, because it changes what the agent recalls in every later turn.
 
 ## Errors
 - `Mnemopi backend is not initialised for this session.` when the tool is exposed but session state is missing.

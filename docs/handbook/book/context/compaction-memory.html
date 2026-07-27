@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -215,7 +215,8 @@ reserve, so it adapts to whatever model you are on.</li>
 the model.</li>
 <li><code>170000</code> is an absolute token amount and triggers at the same point on every
 model. When the amount is larger than the current model’s window it is
-honored up to one token below the window and you get a one-time warning.</li>
+honored up to one token below the window and you get a warning (once per
+model context window, so switching to a smaller-window model warns again).</li>
 </ul>
 <p>You can also compact on demand with <code>/compact</code>.</p>
 </li>
@@ -232,15 +233,14 @@ recent decisions, then continues from it (LLM transfer path).</li>
 interactive model. See <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</p>
 </li>
 </ul>
-<p><code>/compact &lt;focus&gt;</code> steers a run with an “Additional focus:” directive. Recent user messages are
-retained verbatim up to the type’s budget.</p>
+<p><code>/compact &lt;focus&gt;</code> steers a run with an “Additional focus:” directive. The most recent turns, user, assistant, and tool messages, are kept verbatim up to <code>compaction.keepRecentTokens</code> (default 20,000 tokens).</p>
 <p>You can also pick the type for a single run by naming it first: <code>/compact summary</code> or
 <code>/compact handoff</code>. The name is a one-off override, so it does not change
 <code>compaction.strategy</code>. Anything after the name is focus text, as in
 <code>/compact handoff keep the auth details</code>.</p>
-<p>Two older names, <code>soft</code> and <code>remote</code>, are no longer types. Both existed only to steer a
-provider-native compaction path that veyyon has removed, so there is nothing left for them to
-select. If you type one, veyyon compacts with your configured type, treats the whole argument
+<p>Two older names, <code>soft</code> and <code>remote</code>, are no longer types. <code>remote</code> selected a provider-native
+compaction path and <code>soft</code> existed only to skip it; that path is removed, so there is nothing left
+for them to select. If you type one, veyyon compacts with your configured type, treats the whole argument
 as focus text, and says which name you used and what to use instead. Your text is passed
 through exactly as you typed it, because a sentence that happens to start with “soft” is a
 reasonable thing to ask for.</p>
@@ -269,7 +269,7 @@ compaction is skipped entirely and your history is left intact apart from the el
 overflow recovery always finishes its compaction, because the prompt still has to be rebuilt to fit
 the window, but it too starts from the smaller deduped history.</p>
 <h2 id="memory-backends"><a class="header" href="#memory-backends">Memory backends</a></h2>
-<p>When <code>memory.backend</code> is <code>mnemopi</code> or <code>local</code>, compaction can request <strong>pre-compaction context</strong>
+<p>When <code>memory.backend</code> is <code>mnemopi</code> or <code>hindsight</code>, compaction can request <strong>pre-compaction context</strong>
 from the active memory backend so summaries retain project facts. See <a href="../features/memory.html">Memory</a>.</p>
 <h2 id="goals"><a class="header" href="#goals">Goals</a></h2>
 <p>Goal cards and budgets: <code>/goal</code>, <code>/guided-goal</code>, and the <code>goal</code> tool. Structure: <a href="./goal-state.html">Goal state and long sessions</a>. Operator surface: <a href="../features/plan-mode.html">Plan mode and goals</a>.</p>

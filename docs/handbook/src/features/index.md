@@ -1,13 +1,13 @@
 # Features
 
-This chapter is the hub for Veyyon's features. It follows the same split the book's navigation uses: the surfaces you touch every session, then what you add on top to extend and customize the agent. For worked examples, see the recipes at the end.
+This chapter is the hub for Veyyon's features: the surfaces you touch every session, then what you add on top to extend and customize the agent. For worked examples, see the recipes at the end.
 
 ## Interactive surfaces
 
 These are the parts of the TUI you touch every session:
 
 - [Status line and multi-agent UI](./cockpit.md) covers the status segments, `/cockpit`, jobs, and the swarm view.
-- [Keybindings](./keybindings.md) covers the chords and Vim mode.
+- [Keybindings](./keybindings.md) covers the chords.
 - The composer gives you prompt history, `@` and `/` completion, and `Esc` to interrupt. See [Quickstart](../using/quickstart.md) and [Keybindings](./keybindings.md).
 - [Web search](./web-search.md) covers searching from inside a session.
 
@@ -23,6 +23,7 @@ These add capabilities or change how the agent runs:
 | [Hooks](./hooks.md) | TypeScript modules that run on events with `pi.on(...)` |
 | [MCP](./mcp.md) | Model Context Protocol servers and tools |
 | [Branching](./branching.md) | Forking a session into parallel lines of work |
+| [Subagents](./subagents.md) | Delegating work to background agents |
 | [Memory](./memory.md) | Project-scoped recall across sessions |
 | [Profiles](./profiles.md) | Isolated config, sessions, and state per name |
 | [Personalities](./personalities.md) | Named voice and behavior presets |

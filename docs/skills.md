@@ -131,9 +131,9 @@ If `skills.enableSkillCommands` is true, interactive mode registers one slash co
 - delivery mode follows the **submission keybinding**:
   - **Enter** → invokes the skill on the `steer` queue while streaming (matches free-text Enter, which also steers), or as a normal idle prompt when the agent is not streaming
   - **Ctrl+Enter** (`app.message.followUp`) → invokes the skill on the `followUp` queue while streaming, or as a normal idle prompt when the agent is not streaming
-- appends metadata (`Skill: <path>`, optional `User: <args>`)
+- appends metadata (`[Skill directory: <baseDir>]`, optional `User: <args>`)
 
-There is no flag, mode-selector, or frontmatter knob to override this, the keybinding _is_ the choice, identical to how free text is routed during streaming (`input-controller.ts:562-568` for Enter, `input-controller.ts:961-966` for Ctrl+Enter; both dispatch through `#invokeSkillCommand`).
+There is no flag, mode-selector, or frontmatter knob to override this, the keybinding _is_ the choice, identical to how free text is routed during streaming (Enter steers, Ctrl+Enter queues a follow-up; both dispatch through `#invokeSkillCommand` in `packages/coding-agent/src/modes/controllers/input-controller.ts`).
 
 ## `skill://` URL behavior
 
@@ -169,6 +169,7 @@ Resolution details:
 Content type:
 
 - `.md` => `text/markdown`
+- `.json` => `application/json`
 - everything else => `text/plain`
 
 No fallback search is performed for missing assets.

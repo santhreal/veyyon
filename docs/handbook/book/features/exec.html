@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -203,7 +203,7 @@ $ veyyon -p - &lt;&lt;'EOF'
 Review src/auth.rs for missing error handling.
 EOF
 </code></pre>
-<p>The prompt may be a CLI argument or stdin. If both are present, stdin is appended as a <code>&lt;stdin&gt;</code> block.</p>
+<p>The prompt may be a CLI argument or stdin. If both are present, the piped stdin content is prepended to the argument prompt (stdin first, then the argument, separated by a newline).</p>
 <p>Run <code>veyyon --help</code> for the generated flag set. Common options:</p>
 <h3 id="session-and-config"><a class="header" href="#session-and-config">Session and config</a></h3>
 <div class="table-wrapper">
@@ -229,7 +229,7 @@ EOF
 <tr><th>Option</th><th>Effect</th></tr>
 </thead>
 <tbody>
-<tr><td><code>--json</code></td><td>Machine-readable event stream on stdout</td></tr>
+<tr><td><code>--mode json</code></td><td>Machine-readable event stream on stdout</td></tr>
 <tr><td><code>--model</code> / role flags</td><td>Model selection for the run</td></tr>
 <tr><td><code>--approval-mode</code> / <code>--yolo</code></td><td>Approval policy for the run</td></tr>
 </tbody>

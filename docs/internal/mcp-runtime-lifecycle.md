@@ -103,7 +103,7 @@ For each discovered server in `connectServers()`:
 `connectServers()` waits on a race between:
 
 - all connect/tool-load tasks settled, and
-- `STARTUP_TIMEOUT_MS = 250`.
+- `STARTUP_TOOL_WAIT_MS = 250` (a grace window, not a timeout: unsettled connects keep running in the background).
 
 After 250ms:
 
@@ -184,7 +184,7 @@ Operationally:
 - removes pending entries, source metadata, saved config, resource refresh/subscription state,
 - detaches `onClose` so explicit close does not trigger reconnect,
 - closes transport if connected,
-- removes manager tool entries using the current raw-name prefix filter (`mcp__${name}_`); generated tool names are sanitized by `tool-bridge.ts`.
+- removes manager tool entries using the sanitized `mcpToolNamePrefix(name)` filter from `tool-bridge.ts` (so servers whose names needed sanitizing are filtered correctly); the raw-name `mcp__${name}_` string remains only in the `hadTools` notification check.
 
 ### Global teardown
 

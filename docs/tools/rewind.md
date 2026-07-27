@@ -32,15 +32,15 @@ The returned tool result is not the final rewind. `AgentSession` waits until `tu
 ## Flow
 1. `RewindTool.createIf()` in `packages/coding-agent/src/tools/checkpoint.ts` hides the tool from subagents.
 2. `RewindTool.execute()` rejects subagent calls with `ToolError("Checkpoint not available in subagents.")`.
-3. It rejects calls with no active checkpoint using `ToolError("No active checkpoint.")`.
+3. With no active checkpoint, it throws `ToolError("Checkpoint already completed; continue from the retained rewind report instead of calling rewind again.")` when a completed rewind report exists for the branch, otherwise `ToolError("No active checkpoint. Create a checkpoint before calling rewind.")`.
 4. It trims `params.report`; if empty, it throws `ToolError("Report cannot be empty.")`.
 5. It returns a `toolResult()` with `details.report` and `details.rewound = true`.
 6. On the rewind tool result's `message_end`, `AgentSession` extracts the report from `details.report` or the first text content block and stores it in `#pendingRewindReport`.
-7. On `turn_end`, if `#pendingRewindReport` is set, `AgentSession.#applyRewind()` runs.
-8. `#applyRewind()` computes `safeCount = clamp(checkpointMessageCount, 0, agent.state.messages.length)`, calls `agent.replaceMessages(agent.state.messages.slice(0, safeCount))`, then resets the advisor runtime via `#advisorRuntime?.reset()`.
-9. It then calls `sessionManager.branchWithSummary(checkpointEntryId, report, { startedAt })`. That moves the persisted session leaf back to the checkpoint entry and appends a new `branch_summary` entry whose `summary` is the rewind report.
-10. If `checkpointEntryId` no longer resolves, it logs a warning and falls back to `branchWithSummary(null, report, { startedAt })`, branching from root instead.
-11. `#applyRewind()` appends a hidden in-memory custom message `{ customType: "rewind-report", content: report, display: false }` and persists the same payload through `sessionManager.appendCustomMessageEntry("rewind-report", ...)` with `details = { startedAt, rewoundAt }`.
+7. On `turn_end`, if a rewind report is pending, `AgentSession.#applyRewind(report, activeMessages?)` runs.
+8. `#applyRewind()` calls `sessionManager.branchWithSummary(checkpointEntryId, report, { startedAt })`. That moves the persisted session leaf back to the checkpoint entry and appends a new `branch_summary` entry whose `summary` is the rewind report. If `checkpointEntryId` no longer resolves, it logs a warning and falls back to `branchWithSummary(null, report, { startedAt })`, branching from root instead.
+9. It persists a hidden custom message through `sessionManager.appendCustomMessageEntry("rewind-report", ...)` with `details = { report, startedAt, rewoundAt }`, and records `#lastCompletedRewind = { report, startedAt, rewoundAt }` so a later `rewind` call gets the "already completed" error instead of "No active checkpoint".
+10. It rebuilds the conversation with `buildDisplaySessionContext()`, splices the rebuilt messages into the live agent (`agent.replaceMessages(...)`), marks the rewound tool result ids in `#rewoundToolResultIds`, and restores MCP tool selections via `#restoreMCPSelectionsForSessionContext(...)`.
+11. It then runs `#resetAdvisorSessionState()`, `#syncTodoPhasesFromBranch()`, and `#closeCodexProviderSessionsForHistoryRewrite()`.
 12. Finally it clears `#checkpointState` and `#pendingRewindReport`.
 
 ## Modes / Variants
@@ -50,7 +50,7 @@ The returned tool result is not the final rewind. `AgentSession` waits until `tu
 
 ## Side Effects
 - Session state (transcript, memory, jobs, checkpoints, registries)
-  - Replaces in-memory conversation history with the prefix ending at the checkpoint tool result.
+  - Replaces the in-memory conversation history with the rebuilt session context for the checkpoint branch.
   - Adds a hidden custom message `rewind-report` carrying the retained report.
   - Clears the active checkpoint state and pending rewind report.
   - Repositions the persisted session leaf to the checkpoint branch point and appends new session entries.
@@ -65,7 +65,7 @@ The returned tool result is not the final rewind. `AgentSession` waits until `tu
   - Rewind application is deferred to `turn_end`. There is no separate job object or cancel handle.
 
 ## Limits & Caps
-- Availability is gated by `checkpoint.enabled`, default `false`, in `packages/coding-agent/src/config/settings-schema.ts`.
+- Availability is gated by `checkpoint.enabled`, default `false`, in `packages/coding-agent/src/config/settings-domains/tools.ts`.
 - Top-level sessions only.
 - Requires exactly one active checkpoint; there is no path to name or choose among multiple checkpoints.
 - Report text must be non-empty after `trim()`.
@@ -74,7 +74,8 @@ The returned tool result is not the final rewind. `AgentSession` waits until `tu
 
 ## Errors
 - `ToolError("Checkpoint not available in subagents.")`: thrown for subagent sessions.
-- `ToolError("No active checkpoint.")`: thrown when no checkpoint state is present.
+- `ToolError("Checkpoint already completed; continue from the retained rewind report instead of calling rewind again.")`: thrown when the branch's most recent checkpoint was already rewound.
+- `ToolError("No active checkpoint. Create a checkpoint before calling rewind.")`: thrown when no checkpoint state is present.
 - `ToolError("Report cannot be empty.")`: thrown when the trimmed report is empty.
 - Missing checkpoint entry IDs during apply do not fail the tool call; `#applyRewind()` catches the error, logs `Rewind branch checkpoint missing, falling back to root`, and branches from root.
 

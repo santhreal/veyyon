@@ -38,18 +38,15 @@ advisor:
 
 The advisor role uses normal model-role resolution, including provider-prefixed ids, canonical ids, and optional thinking suffixes.
 
-Slash commands:
+The `/advisor` slash commands were removed from Veyyon. Control the advisor through these surfaces instead:
 
-| Command | Effect |
+| Surface | Effect |
 |---|---|
-| `/advisor` | Toggle the persisted `advisor.enabled` setting. |
-| `/advisor on` | Enable the setting and start the runtime when an advisor model is assigned. |
-| `/advisor off` | Disable the setting and stop the runtime. |
-| `/advisor status` | Show active model, context usage, token usage, and cost. |
-| `/advisor dump` | Copy the advisor's compact transcript to the clipboard. |
-| `/advisor dump raw` | Copy the advisor's full dump (system prompt, tools, thinking, and calls) to the clipboard. |
+| `advisor.enabled` setting | Persisted toggle. Set it in `/settings`, with `veyyon config set advisor.enabled true`, or in `config.yml`. The runtime starts when an advisor model is assigned. |
+| `--advisor` CLI flag | Enable the advisor for the launched session. |
+| `WATCHDOG.yml` | Define the advisor roster (models, tools, prompts); see below. |
 
-If `advisor.enabled` is true but no `modelRoles.advisor` value resolves to an available model, status reports that the setting is enabled but no advisor model is assigned.
+If `advisor.enabled` is true but no `modelRoles.advisor` value resolves to an available model, the advisor stays inactive until a model is assigned.
 
 ## What the advisor sees
 
@@ -206,9 +203,7 @@ Later project files sit closer to the end of the advisor prompt, so narrower dir
 
 ## WATCHDOG.yml
 
-`WATCHDOG.yml` (or `WATCHDOG.yaml`) is the advisor roster. Where `WATCHDOG.md` supplies review priorities, `WATCHDOG.yml` declares the advisors themselves, one entry per name, each with its own model, tool grant, and specialization prompt. The `/advisor configure` overlay edits this file in place. Files that fail to parse or fail schema validation are logged and skipped so one bad project config cannot kill the session.
-
-Saving from the overlay edits the file rather than rewriting it, so the comments above each advisor, the blank lines between them, and the order you put them in all survive a change to one advisor's model or tool grant. Entries are matched by position, so an edit that adds or removes an advisor re-serializes the whole `advisors` list. A file whose current text cannot be parsed is not written over at all: the save fails naming the path, because overwriting it would destroy text veyyon could not read. Fix the file, or move it aside, and save again.
+`WATCHDOG.yml` (or `WATCHDOG.yaml`) is the advisor roster. Where `WATCHDOG.md` supplies review priorities, `WATCHDOG.yml` declares the advisors themselves, one entry per name, each with its own model, tool grant, and specialization prompt. You edit this file directly in your editor; the `/advisor` slash commands, including the configure overlay, were removed. Files that fail to parse or fail schema validation are logged and skipped so one bad project config cannot kill the session.
 
 Example:
 
@@ -253,7 +248,7 @@ Subagent advisors remain isolated from the subagent's primary tool session in th
 
 ## Cost and context behavior
 
-Advisor usage is separate model usage. `/advisor status` reports advisor token counts and cost from the advisor agent's own transcript.
+Advisor usage is separate model usage, tracked on the advisor agent's own transcript.
 
 The advisor has its own append-only context. Before each advisor prompt, `AgentSession` estimates incoming tokens and may maintain advisor context:
 
@@ -261,7 +256,7 @@ The advisor has its own append-only context. Before each advisor prompt, `AgentS
 2. if promotion cannot fit enough context, compact the advisor's own message history
 3. if compaction has no candidates or still cannot fit, re-prime from the current bounded primary transcript
 
-The advisor's live context is in-memory and append-only; it is retained while the session runs so `/advisor dump` can inspect it, and is independently promoted/compacted/re-primed (above). It is not a replacement for the primary persisted transcript.
+The advisor's live context is in-memory and append-only; it is retained while the session runs, and is independently promoted/compacted/re-primed (above). It is not a replacement for the primary persisted transcript.
 
 ## Transcript persistence and observability
 

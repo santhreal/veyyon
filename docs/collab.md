@@ -118,12 +118,30 @@ The relay is a small content-blind Go service. It keeps no state beyond live con
 - `POST /s` / `GET /s/<id>` / `GET /s/<id>/raw`: `/share` blob upload, viewer page, and blob fetch,
 - `GET /healthz`: liveness.
 
+### Close codes
+
+A relay closes a socket with one of four codes when reconnecting would be pointless:
+
+| Code   | Reason shown                                  | When                                                       |
+| ------ | --------------------------------------------- | ---------------------------------------------------------- |
+| `4001` | `room closed`                                 | The host left, so the room no longer exists.               |
+| `4004` | `no such room`                                | The room id was never valid, or expired before the join.   |
+| `4009` | `a host is already connected for this room`   | A second host tried to take a room that already has one.   |
+| `4029` | `room is full`                                | The room is at capacity.                                   |
+
+Any other close code is transient, and a client reconnects with exponential backoff up to thirty seconds. That
+default is why the table matters: a client that does not recognise a fatal code retries against a condition
+that will never clear, quietly, so the codes are declared once in `packages/wire/src/relay.ts` and both the CLI
+and browser clients read them from there. If you write your own relay, close with these codes and these
+reasons; a code outside the table tells a client to come back.
+
+
 
 ## Architecture notes
 
 Hub topology, the host is authoritative, guests never peer:
 
-1. `entry` frames: durable session entries, broadcast pre-blob-externalization so images stay inline (guests cannot resolve host blob refs). Guests append them verbatim (ids preserved) to a replica session file under `~/.veyyon/collab/<roomId>.jsonl` and into the agent's message array, which is why `/dump` and context estimates work.
+1. `entry` frames: durable session entries, broadcast pre-blob-externalization so images stay inline (guests cannot resolve host blob refs). Guests append them verbatim (ids preserved) to a replica session file under `~/.veyyon/profiles/<profile>/collab/<roomId>.jsonl` and into the agent's message array, which is why `/dump` and context estimates work.
 2. `event` frames: live agent events, fed straight into the guest's normal event controller; rendering is events-only to prevent double-render.
 3. `state` frames: debounced footer snapshots: streaming flag, the host's full model object and thinking level (applied to the guest's replica agent state, so model display and context-window math are native), host context numbers, and participants.
 4. `bus` frames: mirrored task-subagent lifecycle/progress EventBus traffic, republished on the guest's local bus so the subagent HUD and status-line count work natively.

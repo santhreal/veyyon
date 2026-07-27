@@ -6,7 +6,7 @@ Built-in tools (read, grep, glob, edit, bash, …) run through the agent loop un
 
 ## Skills
 
-Filesystem skill packages (e.g. `SKILL.md` trees) discovered under project and profile skill dirs. Invalid or unmet dependencies surface load errors. See [Skills](../features/skills.md).
+Filesystem skill packages (e.g. `SKILL.md` trees) discovered under project and profile skill dirs. Unreadable or malformed skill files surface load warnings. See [Skills](../features/skills.md).
 
 ## Plugins
 

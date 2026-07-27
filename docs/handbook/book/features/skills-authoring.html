@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -216,8 +216,6 @@
 <p>A skill directory may contain additional files:</p>
 <pre><code>my-skill/
 ├── SKILL.md
-├── agents/
-│   └── openai.yaml
 └── scripts/, references/, assets/ ...optional
 </code></pre>
 <p>Only <code>SKILL.md</code> is required. The other files are loaded when the skill is active or when the model explicitly asks for them.</p>
@@ -226,15 +224,14 @@
 <pre><code class="language-markdown">---
 name: my-skill
 description: Describe what this skill does and when to use it.
-metadata:
-  short-description: Short summary shown in skill lists.
 ---
 </code></pre>
 <p>The frontmatter fields are:</p>
 <ul>
 <li><code>name</code>: The skill identifier. Optional; defaults to the parent directory name. Use lowercase letters, digits, and hyphens. Keep it under 64 characters.</li>
 <li><code>description</code>: A clear explanation of what the skill does and when it should be triggered. This is the main signal the model uses to decide whether to invoke the skill.</li>
-<li><code>metadata.short-description</code>: A short summary shown in the TUI and other skill lists. Optional; keep it to one line.</li>
+<li><code>enabled</code>: Set to <code>false</code> to skip the skill at load time.</li>
+<li><code>hide</code> / <code>disableModelInvocation</code>: Either one hides the skill from the model-facing list.</li>
 </ul>
 <p>Be specific in the description. A vague description makes the skill less likely to be selected at the right moment.</p>
 <h2 id="writing-the-body"><a class="header" href="#writing-the-body">Writing the body</a></h2>
@@ -260,47 +257,6 @@ Use this skill when the user asks for a review of a code change or pull request.
 
 Do not leave comments on external platforms unless the user explicitly asks for it.
 </code></pre>
-<h2 id="optional-agentsopenaiyaml"><a class="header" href="#optional-agentsopenaiyaml">Optional agents/openai.yaml</a></h2>
-<p>The <code>agents/openai.yaml</code> file controls how the skill appears in the TUI and how it may be invoked. It is optional but recommended for skills that users interact with directly.</p>
-<p>Example:</p>
-<pre><code class="language-yaml">interface:
-  display_name: "Code Review"
-  short_description: "Review code for quality and correctness"
-  brand_color: "#C6CBD4"
-  default_prompt: "Review the current diff"
-dependencies:
-  tools:
-    - type: "command"
-      value: "git diff"
-      description: "Inspect local changes"
-policy:
-  allow_implicit_invocation: true
-  products:
-    - veyyon
-</code></pre>
-<p>Available fields:</p>
-<ul>
-<li><code>interface</code>: Presentation settings.
-<ul>
-<li><code>display_name</code>: Name shown in the TUI skill list.</li>
-<li><code>short_description</code>: One-line description shown in the TUI.</li>
-<li><code>icon_small</code> / <code>icon_large</code>: Paths to optional icons relative to the skill directory.</li>
-<li><code>brand_color</code>: A hex color or color name for the skill chip.</li>
-<li><code>default_prompt</code>: Pre-filled text when the skill is opened from the TUI.</li>
-</ul>
-</li>
-<li><code>dependencies</code>: Tools the skill needs.
-<ul>
-<li><code>tools</code>: A list of dependency blocks. Each block may specify <code>type</code>, <code>value</code>, <code>description</code>, <code>transport</code>, <code>command</code>, and <code>url</code>.</li>
-</ul>
-</li>
-<li><code>policy</code>: Invocation restrictions.
-<ul>
-<li><code>allow_implicit_invocation</code>: Whether the skill may be suggested or injected automatically. Defaults to <code>true</code>. Set to <code>false</code> to require explicit selection.</li>
-<li><code>products</code>: A list of product names that may load this skill (for example, <code>veyyon</code>). If omitted, the skill loads for all products that support it.</li>
-</ul>
-</li>
-</ul>
 <h2 id="configuring-in-configyml"><a class="header" href="#configuring-in-configyml">Configuring in config.yml</a></h2>
 <p>There is no registration step: a skill placed in any discovered directory (see
 <a href="./skills.html">Skills</a>) loads automatically. The <code>skills</code> section of <code>config.yml</code> controls
@@ -315,14 +271,7 @@ denylist):</p>
   ignoredSkills:
     - internal-*
 </code></pre>
-<p>Enable or disable individual skills by name or by absolute path:</p>
-<pre><code class="language-yaml">skills:
-  config:
-    - name: my-skill
-      enabled: true
-    - path: /home/user/.veyyon/profiles/default/agent/skills/other-skill/SKILL.md
-      enabled: false
-</code></pre>
+<p><code>includeSkills</code> is the allowlist twin: when it is non-empty, only matching skills load.</p>
 <h2 id="worked-example-a-profile-skill"><a class="header" href="#worked-example-a-profile-skill">Worked example: a profile skill</a></h2>
 <p>This example creates a skill in your active profile that adds a custom onboarding check.</p>
 <p>Create the skill directory under the active profile (<code>profiles/default</code> when you have not selected one):</p>
@@ -332,8 +281,6 @@ denylist):</p>
 <pre><code class="language-markdown">---
 name: onboarding-check
 description: Review the project for missing onboarding files and recommend improvements.
-metadata:
-  short-description: Check onboarding completeness.
 ---
 
 # Onboarding check
@@ -347,16 +294,6 @@ Use this skill when the user asks whether the project is ready for a new contrib
 
 Report the result as a short checklist with `done` or `missing` for each item.
 </code></pre>
-<p>Create <code>onboarding-check/agents/openai.yaml</code> in the same directory:</p>
-<pre><code class="language-yaml">interface:
-  display_name: "Onboarding Check"
-  short_description: "Check project onboarding completeness"
-  default_prompt: "Is this project ready for a new contributor?"
-policy:
-  allow_implicit_invocation: true
-  products:
-    - veyyon
-</code></pre>
 <p>No registration is needed, a skill under the active profile’s <code>skills</code> directory is
 picked up automatically. If your <code>config.yml</code> uses an <code>includeSkills</code>
 allowlist, add the skill’s name to it:</p>
@@ -367,7 +304,7 @@ allowlist, add the skill’s name to it:</p>
 <h3 id="invoking-the-skill"><a class="header" href="#invoking-the-skill">Invoking the skill</a></h3>
 <p>In the TUI, you can invoke the skill in two ways:</p>
 <ol>
-<li>Open <code>/extensions</code>, find <strong>Onboarding Check</strong> in the skills list, and invoke it from there (or type its name as a slash command directly when <code>skills.enableSkillCommands</code> is on).</li>
+<li>Open <code>/extensions</code> to confirm the skill is enabled, then invoke it with <code>/skill:onboarding-check</code> (available when <code>skills.enableSkillCommands</code> is on).</li>
 <li>Type a natural request such as “Is this project ready for a new contributor?” in the composer. The model reads the skill description and selects the skill automatically when the request matches.</li>
 </ol>
 <p>From a command-line invocation, refer to the skill by its name. The exact command depends on the Veyyon CLI version; run <code>veyyon --help</code> or see the <a href="../reference/cli.html">CLI reference</a> for the current syntax.</p>

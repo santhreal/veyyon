@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -211,7 +211,8 @@ $ veyyon "fix the failing test in auth.rs"
 </thead>
 <tbody>
 <tr><td><code>[PROMPT]</code></td><td>Optional initial user prompt</td></tr>
-<tr><td><code>-c, --config key=value</code></td><td>Override config for one run (repeatable)</td></tr>
+<tr><td><code>-c, --continue</code></td><td>Continue the previous session</td></tr>
+<tr><td><code>--config &lt;file&gt;</code></td><td>Load an extra config.yml-style overlay for this run (repeatable)</td></tr>
 <tr><td><code>--approval-mode &lt;policy&gt;</code></td><td>When to ask before running commands</td></tr>
 <tr><td><code>--profile &lt;name&gt;</code></td><td>Use an isolated profile agent directory</td></tr>
 <tr><td><code>--model &lt;id&gt;</code></td><td>Interactive model (<code>provider/model</code>)</td></tr>
@@ -220,7 +221,7 @@ $ veyyon "fix the failing test in auth.rs"
 </tbody>
 </table>
 </div>
-<p>Config precedence: CLI flags → <code>-c</code> overrides → <code>config.yml</code> → defaults. See
+<p>Config precedence: CLI flags → <code>--config</code> overlays → project config → global config → defaults. See
 <a href="../using/configuration.html">Configuration</a>.</p>
 <h2 id="registered-subcommands"><a class="header" href="#registered-subcommands">Registered subcommands</a></h2>
 <p>Unknown first tokens route to <code>launch</code> as a prompt:</p>
@@ -235,7 +236,7 @@ $ veyyon "fix the failing test in auth.rs"
 <tr><td><code>agents</code></td><td></td><td>Manage agent definitions</td></tr>
 <tr><td><code>auth-broker</code></td><td></td><td>Shared auth broker (headless login)</td></tr>
 <tr><td><code>auth-gateway</code></td><td></td><td>Auth gateway helper</td></tr>
-<tr><td><code>bench</code></td><td></td><td>Benchmark harness</td></tr>
+<tr><td><code>bench/throughput</code></td><td></td><td>Throughput benchmark harness</td></tr>
 <tr><td><code>commit</code></td><td></td><td>Agentic commit workflow</td></tr>
 <tr><td><code>completions</code></td><td></td><td>Shell completion scripts</td></tr>
 <tr><td><code>config</code></td><td></td><td>List/get/set settings</td></tr>
@@ -244,17 +245,21 @@ $ veyyon "fix the failing test in auth.rs"
 <tr><td><code>grep</code></td><td></td><td>Grep-tool CLI probe</td></tr>
 <tr><td><code>gallery</code></td><td></td><td>TUI gallery / fixtures</td></tr>
 <tr><td><code>grievances</code></td><td></td><td>Internal grievance reporter</td></tr>
-<tr><td><code>install</code></td><td></td><td>Install / bootstrap</td></tr>
+<tr><td><code>install</code></td><td></td><td>Install or link an extension package (alias of <code>plugin install</code>/<code>plugin link</code>)</td></tr>
 <tr><td><code>join</code></td><td></td><td>Join collab session</td></tr>
 <tr><td><code>models</code></td><td></td><td>List models and providers</td></tr>
 <tr><td><code>plugin</code></td><td></td><td>Plugin lifecycle (<code>list</code>, <code>install</code>, …)</td></tr>
+<tr><td><code>profile</code></td><td><code>profiles</code></td><td>List, create, or remove self-contained profiles</td></tr>
+<tr><td><code>prompt</code></td><td></td><td>Inspect the assembled system prompt without starting a session</td></tr>
 <tr><td><code>read</code></td><td></td><td>Read-tool CLI probe</td></tr>
+<tr><td><code>rollback</code></td><td></td><td>Move this install to another published version</td></tr>
 <tr><td><code>say</code></td><td></td><td>Speak text with local TTS (<code>--voices</code> lists voices)</td></tr>
 <tr><td><code>search</code></td><td><code>q</code></td><td>Web search probe</td></tr>
 <tr><td><code>session</code></td><td><code>sessions</code></td><td>Study a stored session (<code>stats</code>: timing, tool cost, turn cadence)</td></tr>
 <tr><td><code>setup</code></td><td></td><td>First-run setup wizard</td></tr>
 <tr><td><code>shell</code></td><td></td><td>Native shell probe</td></tr>
 <tr><td><code>ssh</code></td><td></td><td>SSH host configuration</td></tr>
+<tr><td><code>stats</code></td><td></td><td>Usage statistics dashboard (<code>--summary</code> prints to console, <code>--json</code> for machines)</td></tr>
 <tr><td><code>tiny-models</code></td><td></td><td>On-device tiny model utilities</td></tr>
 <tr><td><code>token</code></td><td></td><td>Print a provider’s API key or OAuth token</td></tr>
 <tr><td><code>ttsr</code></td><td></td><td>Time-traveling stream rules test</td></tr>

@@ -37,7 +37,9 @@ to add a server is `/mcp add` in the TUI, which writes to `mcp.json` for you.
 
 Top-level keys: `mcpServers` (map of name to config) and `disabledServers` (names to turn off). Server
 names match `^[a-zA-Z0-9_.-]{1,100}$`. Shared per-server fields: `enabled`, `timeout` (milliseconds;
-`0` disables the client-side timeout), `auth`, and `oauth`.
+`0` disables the client-side timeout), `auth`, and `oauth`. Stdio servers also take `command`,
+`args`, `env`, and `cwd`; remote servers take `url` plus `type` (or a `type`-less inferred URL)
+and `headers`.
 
 ## Choose a transport
 
@@ -146,7 +148,7 @@ To turn a server off entirely, add its name to `disabledServers` in `mcp.json`.
 | `/mcp test <name>` | Test connectivity |
 | `/mcp reauth <name>` | Refresh OAuth |
 
-Run `/mcp verbose` to see exactly which tools, resources, and templates Veyyon registered.
+Run `/mcp list` to see exactly which tools, resources, and templates Veyyon registered.
 
 ## Resolve common errors
 
@@ -183,7 +185,7 @@ may require additional headers.
 
 If a server is connected but the model never uses its tools, check that the server is not in
 `disabledServers`, that `enabled` is not `false`, and that no `tools.approval` entry denies the
-namespaced tool. Run `/mcp verbose` to see what was registered.
+namespaced tool. Run `/mcp resources` to see what was registered.
 
 ## Where to go next
 

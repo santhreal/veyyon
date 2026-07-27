@@ -11,32 +11,34 @@ table with a live view of what each agent will run.
 
 ## What you get out of the box
 
-One agent type, the general-purpose worker, and delegation that is available but
-never pushed:
+One agent type, the general-purpose worker, and delegation that the prompt asks for:
 
 ```yaml
 subagent:
-  delegation: allowed   # the task tool is offered; the model decides when to use it
+  delegation: preferred   # the default; the prompt asks for substantial work to be delegated
 ```
 
 Every subagent runs the model you are working with. Change the model you are talking
 to and your subagents follow it.
 
 Veyyon also ships five specialists (`scout`, `reviewer`, `designer`, `librarian`,
-`sonic`), and they are **not offered** by default. Each agent type you enable adds its
+`sonic`), and they are **disabled** by default. Each agent type you enable adds its
 description to every request you send for the rest of the session, so you pay for the
 ones you use and nothing else. Enable one in the Subagents tab or with `/agents`.
 
 ## How hard to push
 
-`subagent.delegation` is the one switch for "does this session delegate":
+`subagent.delegation` decides how hard this session is pushed to delegate:
 
 | Value | What happens |
 | --- | --- |
-| `off` | No delegation at all. The `task` tool is not offered, and every delegation instruction leaves the prompt. |
-| `allowed` | The default. The tool is there; the model judges when it is worth it. |
-| `preferred` | The prompt asks the model to fan substantial work out instead of doing it alone. |
+| `allowed` | The tool is there; the model judges when it is worth it, and is never asked. |
+| `preferred` | The default. The prompt asks the model to fan substantial work out instead of doing it alone. |
 | `required` | The same, plus a first-turn reminder that delegation is the default here. |
+
+The separate `subagent.enabled` boolean (default on) is the kill switch: off removes the `task`
+tool and every delegation instruction from the prompt, so nothing can be spawned. A legacy
+`delegation: off` migrates to `subagent.enabled: false`.
 
 The instructions follow what you have enabled. With only the worker offered, nothing
 in the prompt talks about picking an agent type, and nothing tells the model to send
@@ -51,19 +53,18 @@ the same thing:
   model it resolves to, and the setting that decided. Enter opens one agent to set
   its state, model and effort, or reset it back to defaults.
 - **`/agents`.** The same rows next to the agent files themselves, so this is where
-  you write a new agent. `space` cycles a row's state.
+  you write a new agent. `space` toggles a row on or off.
 
-A row can express three states:
+A row has two states:
 
 | State | Meaning |
 | --- | --- |
-| **Offered (default)** | Your own agents and the general worker. Listed in the `task` tool and choosable by the model. |
-| **Not offered (default)** | The bundled specialists. Not listed, so they cost nothing, but they still run when something names them. |
-| **Blocked** | Refused even when named, with a message pointing at the setting. |
+| **Enabled** | Listed in the `task` tool and choosable by the model. Your own agents and the general worker default to enabled. |
+| **Disabled** | Refused even when named, with a message pointing at the setting. The bundled specialists default to disabled, so they cost nothing. |
 
-The middle state is what keeps the built-in flows working with the specialists off:
-`/review` asks for `agent: "reviewer"` by name, and so can you ("use the scout agent
-to map the parser"). Blocking is the stronger, explicit choice.
+The built-in flows still work with the specialists disabled because a command can grant its
+agent for the turn: `/review` asks for `agent: "reviewer"` through a per-turn grant, and so can
+you ("use the scout agent to map the parser").
 
 Writing an agent file is itself the opt-in: an agent under your own or the project's
 `agents/` directory is offered as soon as it exists.

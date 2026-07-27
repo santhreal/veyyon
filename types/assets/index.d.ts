@@ -56,6 +56,30 @@ declare module "*.generated.js" {
 	export default content;
 }
 
+// The three mupdf runtime files `coding-agent/scripts/embed-mupdf-wasm.ts
+// --generate` copies next to `src/utils/mupdf-wasm-embed.ts` and imports with
+// `with { type: "file" }`, which yields the asset's PATH as a string.
+//
+// They are declared here because the module that imports them is generated and
+// carries a "Do not edit or commit" header, so it cannot hold its own
+// declarations: without these, any tree caught between `--generate` and
+// `--reset` fails `tsc` with three errors pointing at a file you are told not to
+// touch, and the binary build's own typecheck step is exactly such a tree.
+declare module "*mupdf-embedded.js" {
+	const assetPath: string;
+	export default assetPath;
+}
+
+declare module "*mupdf-wasm-embedded.js" {
+	const assetPath: string;
+	export default assetPath;
+}
+
+declare module "*.wasm" {
+	const assetPath: string;
+	export default assetPath;
+}
+
 // turndown-plugin-gfm has no published types
 declare module "turndown-plugin-gfm" {
 	import type TurndownService from "turndown";
