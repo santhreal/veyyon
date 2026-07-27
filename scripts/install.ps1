@@ -33,6 +33,21 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Windows PowerShell 5.1 is what `irm https://veyyon.dev/install.ps1 | iex` runs
+# under on a stock Windows box, and its default SecurityProtocol still includes
+# SSL 3.0 and TLS 1.0. GitHub has required TLS 1.2 since 2018, so without this
+# every request in this script fails with "The request was aborted: Could not
+# create SSL/TLS secure channel" — an error that says nothing about the real
+# cause and sends the user looking at their network. Added rather than assigned,
+# so a policy that has already enabled TLS 1.3 keeps it. PowerShell 7 negotiates
+# this itself and is unaffected either way.
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+} catch {
+    # .NET 5+ removed the setting entirely and always negotiates the best
+    # protocol available. Nothing to do there, and nothing to report.
+}
+
 $Repo = "santhreal/veyyon"
 $RepoUrl = "https://github.com/$Repo.git"
 $InstallDir = if ($env:VEYYON_INSTALL_DIR) { $env:VEYYON_INSTALL_DIR } else { "$env:LOCALAPPDATA\veyyon" }
@@ -1133,17 +1148,46 @@ function Test-FileSha256 {
 # and it is the same host the binary is downloaded from. Mirrors
 # resolve_latest_tag in install.sh.
 #
-# -MaximumRedirection 0 makes PowerShell hand back the 302 instead of following
-# it, so the answer comes from the Location header rather than from parsing HTML.
-function Get-TagFromRedirect {
+# HttpWebRequest rather than Invoke-WebRequest, because the two PowerShells
+# disagree about what an unfollowed redirect IS. `-MaximumRedirection 0` returns
+# the 302 as a response on PowerShell 7 and raises an error on Windows PowerShell
+# 5.1, where the Location then has to be dug out of an exception, and 5.1 is what
+# `irm | iex` runs under on a stock Windows box. HttpWebRequest with
+# AllowAutoRedirect off behaves identically on both: a 302 is an ordinary
+# response, and the header is a string on each.
+#
+# The answer comes from the Location header rather than from parsing the page, so
+# a redesign of GitHub's release page cannot change which version gets installed.
+# Where $Url redirects to, as a string, or "" when it does not redirect or could
+# not be reached. The transport half, split from the parse below so the guard on
+# what a redirect is ALLOWED to point at can be tested without a network.
+function Get-RedirectLocation {
     param([string]$Url)
     try {
-        $resp = Invoke-WebRequest -Uri $Url -MaximumRedirection 0 -ErrorAction SilentlyContinue -TimeoutSec 60
-        $target = $resp.Headers.Location
+        $req = [System.Net.WebRequest]::Create($Url)
+        $req.AllowAutoRedirect = $false
+        $req.Timeout = 60000
+        # GitHub answers some clients differently, and a request with no
+        # user-agent is one of them.
+        $req.UserAgent = "veyyon-installer"
+        $resp = $req.GetResponse()
+        try {
+            return "$($resp.Headers["Location"])"
+        } finally {
+            $resp.Close()
+        }
     } catch {
-        $target = $_.Exception.Response.Headers.Location
+        # A 4xx or 5xx arrives here as an exception carrying the response, and a
+        # dead host as one carrying nothing. Neither has a Location, so both are
+        # "no redirect" and the caller reports that it could not reach the
+        # release, which is true.
+        return ""
     }
-    $target = "$target"
+}
+
+function Get-TagFromRedirect {
+    param([string]$Url)
+    $target = Get-RedirectLocation $Url
     # A redirect that did not land on a tag page means GitHub answered with
     # something other than a release. Taking the last path segment anyway is how
     # an installer ends up downloading a binary for the version "latest".
@@ -1198,11 +1242,26 @@ function Install-Binary {
     # per-process so two installers cannot truncate each other's download.
     Clear-StaleInstallArtifacts -Dir $InstallDir -BaseName "$BinName.exe" -BinName $BinName
     $StagingPath = Join-Path $InstallDir ".$BinName.$PID.download"
+    # -UseBasicParsing: without it, Windows PowerShell 5.1 hands the response to
+    # Internet Explorer's parsing engine, which is absent on Server Core and
+    # refuses to run at all on a machine where IE's first-launch configuration
+    # was never completed. The download then fails with a message about Internet
+    # Explorer, on an install that never mentioned a browser.
+    #
+    # $ProgressPreference: 5.1's progress bar repaints per read on a synchronous
+    # download, and on a file this size that repainting dominates the transfer —
+    # the well-known order-of-magnitude slowdown. Suppressed for the download and
+    # restored afterwards, so nothing else in the session loses its progress
+    # output. PowerShell 7 does not have the problem and is unaffected.
+    $priorProgress = $ProgressPreference
+    $ProgressPreference = "SilentlyContinue"
     try {
-        Invoke-WebRequest -Uri $BinaryUrl -OutFile $StagingPath -TimeoutSec 900
+        Invoke-WebRequest -Uri $BinaryUrl -OutFile $StagingPath -TimeoutSec 900 -UseBasicParsing
     } catch {
         Remove-Item $StagingPath -ErrorAction SilentlyContinue
         throw "download failed ($BinaryAsset not published for this release, or the connection dropped) - try -Source. ($_)"
+    } finally {
+        $ProgressPreference = $priorProgress
     }
 
     # Verify checksum against the release's .sha256 sidecar. Fail closed: a
@@ -1213,7 +1272,7 @@ function Install-Binary {
     } else {
         $expected = $null
         try {
-            $expected = ConvertFrom-Sha256Sidecar (Invoke-RestMethod -Uri "$BinaryUrl.sha256" -TimeoutSec 30)
+            $expected = ConvertFrom-Sha256Sidecar (Invoke-RestMethod -Uri "$BinaryUrl.sha256" -TimeoutSec 30 -UseBasicParsing)
         } catch {
             Remove-Item $StagingPath -ErrorAction SilentlyContinue
             throw "no published checksum for $BinaryAsset ($Latest) - refusing to install unverified. Current releases publish .sha256 sidecars; for an old pre-sidecar release, pass -NoVerify to override."
