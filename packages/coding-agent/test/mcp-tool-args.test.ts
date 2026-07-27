@@ -6,7 +6,7 @@ import { DeferredMCPTool, MCPTool, type MCPToolDefinition } from "@veyyon/coding
 import type { MCPServerConnection } from "@veyyon/coding-agent/mcp/types";
 import { TempDir } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
-import { createMockConnection, createMockTransport } from "./mcp-test-utils";
+import { createMockConnection, createMockTransport } from "./helpers/mcp-mocks";
 
 type CapturedRequest = {
 	method: string;

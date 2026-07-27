@@ -13,7 +13,7 @@ import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
 import { Snowflake } from "@veyyon/utils";
-import { e2eApiKey } from "../../ai/test/oauth";
+import { e2eApiKey } from "../../../ai/test/oauth";
 
 export { e2eApiKey };
 

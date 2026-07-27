@@ -14,7 +14,7 @@ import {
 import { RpcClient } from "@veyyon/coding-agent/modes/rpc/rpc-client";
 import type { BashExecutionMessage } from "@veyyon/coding-agent/session/messages";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
-import { e2eApiKey } from "./utilities";
+import { e2eApiKey } from "./helpers/e2e-session";
 
 type MessageEndEvent = Extract<AgentEvent, { type: "message_end" }>;
 
