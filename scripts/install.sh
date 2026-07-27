@@ -82,13 +82,134 @@ done
 # Default to source when a ref is pinned.
 if [ -n "$REF" ] && [ -z "$MODE" ]; then MODE="source"; fi
 
+# ---- color ----
+# The install is the first thing anyone ever sees of veyyon and it rendered in
+# the same monochrome as any package manager, so the one line that says the
+# install worked looked exactly like the twelve lines of progress above it.
+# Color is applied only where it carries meaning: the status glyph, and the
+# completion line.
+#
+# Three conditions, all of which have to hold. Stdout must be a terminal, so
+# `| tee install.log` and a CI log get plain bytes and every existing assertion
+# over this script's output keeps matching. NO_COLOR (https://no-color.org) and
+# TERM=dumb are the two ways a person says they do not want it, and both are
+# honored. One place decides; nothing below writes an escape inline.
+#
+# `IS_TTY` is answered HERE, once, at the top of the script, and every later
+# question about the terminal reads it. `[ -t 1 ]` asks about the stdout of
+# whatever is running at that moment, so asking it again from inside a `$( )`
+# always answers "no": the substitution's stdout is a pipe by construction. That
+# is not a hypothetical — the width lookup did exactly this, decided there was no
+# terminal, and silently disabled wrapping on every terminal there is.
+if [ -t 1 ]; then IS_TTY=1; else IS_TTY=0; fi
+if [ "$IS_TTY" = 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then
+    C_RESET=$(printf '\033[0m')
+    C_BOLD=$(printf '\033[1m')
+    C_DIM=$(printf '\033[2m')
+    C_OK=$(printf '\033[32m')
+    C_WARN=$(printf '\033[33m')
+    C_ERR=$(printf '\033[31m')
+else
+    C_RESET='' C_BOLD='' C_DIM='' C_OK='' C_WARN='' C_ERR=''
+fi
+
+# The terminal's width, or 0 when there is nothing to wrap to.
+#
+# 0 for a pipe, a log file and a CI run, which is what keeps this script's output
+# byte-identical everywhere it is captured or asserted on.
+#
+# Three sources, in the order they deserve trust. `COLUMNS` first, because a user
+# who exported one means it. Then `tput cols`, which is the standard answer and
+# needs both a terminfo database and ncurses installed. Then `stty size`, because
+# a minimal container has neither: the image this was first dogfooded in had no
+# `tput` at all, so every long message fell back to unwrapped, which looked
+# exactly like the bug this exists to fix. Falling all the way through to 0 means
+# "width unknown", and an unknown width prints one line rather than guessing 80
+# and wrapping a 200-column terminal into a narrow column.
+# A width is usable only if it is digits and at least 24. Every source here can
+# hand back something that is neither: `tput cols` answered a literal `0` in the
+# container this was dogfooded in, and a `0` is non-empty, so a plain
+# "did it print anything" test accepted it and disabled wrapping while looking
+# like it had found a width. Validating each candidate is what lets the chain
+# fall through to the next source instead of stopping at a bad answer.
+usable_width() { case "$1" in ''|*[!0-9]*) return 1 ;; esac; [ "$1" -ge 24 ]; }
+term_cols() {
+    [ "$IS_TTY" = 1 ] || { printf '0\n'; return; }
+    if usable_width "${COLUMNS:-}"; then printf '%s\n' "$COLUMNS"; return; fi
+    _tc=$(tput cols 2>/dev/null)
+    if usable_width "$_tc"; then printf '%s\n' "$_tc"; return; fi
+    # `stty size` prints "<rows> <cols>"; the second field is the one wanted.
+    _tc=$(stty size 2>/dev/null | awk '{ print $2 }')
+    if usable_width "$_tc"; then printf '%s\n' "$_tc"; return; fi
+    printf '0\n'
+}
+
+# Print a message under a two-character status glyph, wrapping continuation lines
+# under the TEXT rather than under the glyph.
+#
+# An unwrapped message longer than the terminal is broken mid-word by the
+# terminal itself and its remainder starts at column 0, so a warning about bash
+# completions read as `…so those completions d` / `o nothing yet` with the tail
+# hanging off the left margin, indistinguishable from a new message. Wrapping is
+# done here, on word boundaries, with a six-space hanging indent that lines the
+# continuation up with the first word.
+#
+# A message that starts with spaces keeps them, on the first line and on every
+# continuation. Some messages indent themselves a further four spaces to say "I
+# belong to the warning above me" — the `fix:` line under a completion warning is
+# one — and collapsing that indent turns a follow-on into what looks like a
+# separate, unrelated warning.
+#
+# Width 0 (a pipe, a log, a test) prints the message on one line exactly as it
+# always has: wrapping output nobody is looking at only makes it harder to grep.
+glyph_line() { # glyph, color, message...
+    _gl_glyph=$1; _gl_color=$2; shift 2
+    _gl_cols=$(term_cols)
+    if [ "$_gl_cols" -lt 24 ]; then
+        printf '  %s%s%s  %s\n' "$_gl_color" "$_gl_glyph" "$C_RESET" "$*"
+        return
+    fi
+    printf '%s' "$*" | awk -v w="$((_gl_cols - 6))" -v head="  ${_gl_color}${_gl_glyph}${C_RESET}  " '
+        {
+            match($0, /^ */)
+            lead = substr($0, 1, RLENGTH)
+            $0 = substr($0, RLENGTH + 1)
+            w -= length(lead)
+            n = split($0, word, " ")
+            line = ""
+            prefix = head lead
+            for (i = 1; i <= n; i++) {
+                cand = (line == "" ? word[i] : line " " word[i])
+                # A single word longer than the width still gets its own line:
+                # breaking a path or a URL to fit would make it uncopyable.
+                if (length(cand) > w && line != "") {
+                    print prefix line
+                    # Six spaces is the width of the glyph gutter ("  !!  "), so
+                    # a continuation starts under the first word rather than
+                    # under the marker; the message`s own indent is kept on top.
+                    prefix = "      " lead
+                    line = word[i]
+                } else {
+                    line = cand
+                }
+            }
+            if (line != "") print prefix line
+        }'
+}
+
 # ---- small ui helpers (silver-on-black brand voice: quiet, honest) ----
 say()  { printf '%s\n' "$*"; }
-ok()   { printf '  ok  %s\n' "$*"; }
-warn() { printf '  !!  %s\n' "$*" >&2; }
+# The glyph carries the color, never the message: a green sentence is harder to
+# read than a green two-character marker, and a colored message would fight the
+# paths and command names inside it.
+ok()   { glyph_line "ok" "$C_OK" "$*"; }
+warn() { glyph_line "!!" "$C_WARN" "$*" >&2; }
 # Lines in a file, counting a final line with no newline. `wc -l` does not.
 count_lines() { awk 'END { print NR }' "$1"; }
-die()  { printf '  xx  %s\n' "$*" >&2; exit 1; }
+die()  { glyph_line "xx" "$C_ERR" "$*" >&2; exit 1; }
+# Progress narration: what the installer is doing right now, dimmed so the `ok`
+# lines that record what it DID are what the eye lands on.
+step() { printf '%s%s%s\n' "$C_DIM" "$*" "$C_RESET"; }
 
 has() { command -v "$1" >/dev/null 2>&1; }
 
@@ -255,7 +376,7 @@ launch_command() {
 print_next_steps() {
     _cmd=$(launch_command)
     say ""
-    say "✓ Installation complete."
+    say "${C_OK}${C_BOLD}✓ Installation complete.${C_RESET}"
     say ""
     say "Next steps:"
     say "  1. Launch in any repository: $_cmd"
@@ -895,7 +1016,7 @@ require_bun_version() {
 }
 
 install_bun() {
-    say "installing bun..."
+    step "installing bun..."
     # Download the installer to a file, THEN run it.
     #
     # This used to be `curl ... | bash`, which hands the shell whatever bytes
@@ -1096,19 +1217,19 @@ fetch_lfs_assets() {
             ;;
     esac
     has git-lfs || die "this checkout tracks files with Git LFS but git-lfs is not installed — those files would be left as pointer text and veyyon would fail at runtime. Install git-lfs (https://git-lfs.com), then re-run this installer"
-    say "fetching Git LFS assets..."
+    step "fetching Git LFS assets..."
     ( cd "$src" && git lfs pull ) || die "git lfs pull failed in $src — LFS-tracked files are still pointer text. Fix the network/credential problem and re-run this installer"
     ok "fetched Git LFS assets"
 }
 
 install_via_bun() {
     has git || die "git is required to install veyyon from source"
-    say "installing veyyon from source (bun)..."
+    step "installing veyyon from source (bun)..."
     fetch_source_tree
     [ -d "$(src_dir)/packages/coding-agent" ] || die "expected package at $(src_dir)/packages/coding-agent"
     launcher="$(src_dir)/packages/coding-agent/scripts/$BIN_NAME"
     [ -x "$launcher" ] || die "source launcher not found or not executable: $launcher"
-    say "installing workspace dependencies (bun install)..."
+    step "installing workspace dependencies (bun install)..."
     ( cd "$(src_dir)" && bun install ) || die "failed to install workspace dependencies"
     # Bun runs no root lifecycle scripts on workspace installs, so gitignored
     # build artifacts must be generated explicitly: without this, the checkout
@@ -1143,7 +1264,7 @@ install_local() {
     # Three candidate locations are searched, so name the one that won: a stale
     # dist/ in the current directory otherwise shadows a fresh package build with
     # nothing on screen to explain which binary was actually installed.
-    say "installing the local build at $local_bin"
+    step "installing the local build at $local_bin"
     mkdir -p "$(install_dir)"
     sweep_stale_staging
     tmpbin=$(staging_path local)
@@ -1217,17 +1338,17 @@ install_binary() {
     BINARY="${BIN_NAME}-${PLATFORM}-${ARCH}"
 
     if [ -n "$REF" ]; then
-        say "fetching release $REF..."
+        step "fetching release $REF..."
         RELEASE_JSON=$(gh_curl --connect-timeout 10 --max-time 60 "https://api.github.com/repos/${REPO}/releases/tags/${REF}") \
             || die "release tag not found: $REF (for a branch/commit, use --source --ref)"
     else
-        say "fetching latest release..."
+        step "fetching latest release..."
         RELEASE_JSON=$(gh_curl --connect-timeout 10 --max-time 60 "https://api.github.com/repos/${REPO}/releases/latest") \
             || die "could not reach GitHub releases (network error or rate limit — set GITHUB_TOKEN to raise the API limit, retry, or use --source)"
     fi
     LATEST=$(printf '%s' "$RELEASE_JSON" | parse_release_tag)
     [ -z "$LATEST" ] && die "failed to parse release tag"
-    say "version: $LATEST"
+    step "version: $LATEST"
 
     mkdir -p "$(install_dir)"
     sweep_stale_staging
@@ -1237,8 +1358,24 @@ install_binary() {
     # checksum mismatch (die inside verify_release_binary), or a Ctrl-C must all
     # clean up the temp file. Cleared after the atomic move succeeds.
     trap 'rm -f "$tmpbin"' EXIT INT TERM
-    say "downloading $BINARY..."
-    curl -fsSL $CURL_RETRY --connect-timeout 10 --speed-limit 1024 --speed-time 30 "$BINARY_URL" -o "$tmpbin" \
+    step "downloading $BINARY..."
+    # The binary is the one part of the install that takes real time, and `-s`
+    # hid every sign of it: on a slow link the installer printed "downloading…"
+    # and then said nothing for a minute, which reads as a hang. On a terminal
+    # curl draws its progress bar; anywhere else (a pipe, a CI log) the output
+    # stays exactly as silent as before, because a progress bar written to a log
+    # file is thousands of lines of carriage returns. `--progress-bar` rather
+    # than the default meter: one line that fills, not a table of columns.
+    # `IS_TTY` rather than `[ -t 1 ]`: same reason the color block hoists it, and
+    # the same conditions, so the bar and the color can never disagree about
+    # whether a person is watching.
+    if [ "$IS_TTY" = 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then
+        _dl_progress="--progress-bar"
+    else
+        _dl_progress="-s"
+    fi
+    # -S keeps curl's own error message on failure, which `-s` alone suppresses.
+    curl -fL -S $_dl_progress $CURL_RETRY --connect-timeout 10 --speed-limit 1024 --speed-time 30 "$BINARY_URL" -o "$tmpbin" \
         || die "download failed ($BINARY not published for this release?) — try --source"
 
     verify_release_binary "$tmpbin" "$BINARY_URL" "$BINARY" "$LATEST"

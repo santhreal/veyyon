@@ -123,7 +123,17 @@ You can always update on demand, whichever settings are in force:
 
 ```console
 $ veyyon update
+Current version: 1.0.37
+New version available: 1.0.38
+  ok  Checksum verified
+  ok  Updated to 1.0.38. Restart veyyon to run it.
+Changelog for 1.0.38: https://veyyon.dev/changelog#v1-0-38
 ```
+
+The last line is the same changelog link `veyyon rollback` prints, so however you
+change version you are told where to read what changed. If an update fails,
+Veyyon points you at `veyyon rollback` in the same breath, since a failed update
+is the moment you most want the way back.
 
 ### Going back to an older version
 
@@ -154,7 +164,10 @@ VERSION  PUBLISHED
 
 The markers tell you where you stand: `current` is the version running now,
 `newer` is a version you would move forward to, and `previously run` is one this
-machine has been on before. Then name the one you want:
+machine has been on before. Every version change is recorded, whether it came
+from an update, from a background automatic update, or from a rollback, so
+`previously run` marks the whole path this install has taken rather than only the
+times it went backwards. Then name the one you want:
 
 ```console
 $ veyyon rollback 1.1.0

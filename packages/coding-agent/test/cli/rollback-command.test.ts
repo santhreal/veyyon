@@ -79,6 +79,29 @@ describe("rollback --list", () => {
 		expect(rows[0]).toMatchObject({ version: "1.3.0", changelogUrl: "https://veyyon.dev/changelog#v1-3-0" });
 	});
 
+	/**
+	 * The columns are padded so they line up, which left trailing spaces on the
+	 * header and on every row that has no marker. Invisible on screen and real in
+	 * a file: this output gets pasted into bug reports and piped into diffs, where
+	 * a line ending in three spaces does not match the same line typed by hand.
+	 */
+	it("leaves no trailing whitespace on any line, header included", async () => {
+		const { output } = await runRollbackCommand({ list: true }, deps());
+
+		for (const line of output.split("\n")) expect(line).toBe(line.trimEnd());
+	});
+
+	/** The alignment the padding exists for has to survive the trim. */
+	it("still aligns the marker column across rows of different marker widths", async () => {
+		const moves: UpdateHistoryEntry[] = [{ from: "1.1.0", to: "1.2.0", at: "2026-06-02T00:00:00Z" }];
+		const { output } = await runRollbackCommand({ list: true }, deps({ history: async () => moves }));
+		const [header, ...rows] = output.split("\n");
+
+		expect(header).toBe("VERSION  PUBLISHED");
+		// 21 = the "VERSION" header width (7) + 2 + the date column (10) + 2.
+		for (const row of rows) expect(row.indexOf("(")).toBeOneOf([-1, 21]);
+	});
+
 	it("lists rather than doing nothing when no version is given", async () => {
 		// The bare non-interactive form must still be useful; exiting silently
 		// would look like a command that ran and failed.
