@@ -170,11 +170,18 @@ export function rollbackMarkers(row: RollbackRow): string[] {
 /** One line per version: what it is, when it shipped, and where you stand. */
 export function formatRollbackList(rows: readonly RollbackRow[]): string {
 	const width = Math.max(...rows.map(row => row.version.length), "VERSION".length);
-	const lines = [`${"VERSION".padEnd(width)}  PUBLISHED   `];
+	// Every line is right-trimmed. The columns are padded so they line up, which
+	// leaves trailing spaces on the header and on every row with no marker, and
+	// those are invisible on screen but real in a file: this output gets pasted
+	// into bug reports and piped into diffs, where a line that ends in three
+	// spaces is a line that does not match the same line typed by hand.
+	const lines = [`${"VERSION".padEnd(width)}  PUBLISHED`];
 	for (const row of rows) {
 		const markers = rollbackMarkers(row);
 		const marker = markers.length > 0 ? `  (${markers.join(", ")})` : "";
-		lines.push(`${row.version.padEnd(width)}  ${rollbackPublishedDate(row.publishedAt).padEnd(10)}${marker}`);
+		lines.push(
+			`${row.version.padEnd(width)}  ${rollbackPublishedDate(row.publishedAt).padEnd(10)}${marker}`.trimEnd(),
+		);
 	}
 	return lines.join("\n");
 }

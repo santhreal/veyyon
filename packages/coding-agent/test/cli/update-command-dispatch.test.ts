@@ -117,6 +117,69 @@ describe("runUpdateCommand reaches the installer", () => {
 	});
 });
 
+/**
+ * `update` and `rollback` shipped as two halves of one mechanism and neither
+ * command mentioned the other. Someone whose update just broke their install had
+ * no way to learn that the way back exists, and someone who updated cleanly was
+ * told nothing about what had changed even though `rollback` ends by printing
+ * exactly that. These pin both halves of the closing text.
+ */
+describe("update closes by pointing at the rest of the mechanism", () => {
+	it("prints the changelog URL for the version it installed", async () => {
+		const logs: string[] = [];
+		spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+			logs.push(args.map(String).join(" "));
+		});
+		stubLatestRelease("999.0.0");
+
+		await updateCli.runUpdateCommand({ force: false, check: false }, async () => {});
+
+		// The exact URL, from the same single owner `rollback` uses, so the two
+		// commands can never point a user at differently-shaped links.
+		expect(logs.join("\n")).toContain("Changelog for 999.0.0: https://veyyon.dev/changelog#v999-0-0");
+	});
+
+	/** `--check` installs nothing, so there is no new version to read about. */
+	it("says nothing about a changelog when only checking", async () => {
+		const logs: string[] = [];
+		spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+			logs.push(args.map(String).join(" "));
+		});
+		stubLatestRelease("999.0.0");
+
+		await updateCli.runUpdateCommand({ force: false, check: true }, async () => {});
+
+		expect(logs.join("\n")).not.toContain("Changelog for");
+	});
+
+	/** An up-to-date run installs nothing either, and has nothing new to link. */
+	it("says nothing about a changelog when already up to date", async () => {
+		const logs: string[] = [];
+		spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+			logs.push(args.map(String).join(" "));
+		});
+		stubLatestRelease("0.0.1");
+
+		await updateCli.runUpdateCommand({ force: false, check: false }, async () => {});
+
+		expect(logs.join("\n")).not.toContain("Changelog for");
+	});
+
+	/** The help is where someone looks for the command they do not know exists. */
+	it("lists rollback in `update --help`", () => {
+		const logs: string[] = [];
+		spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+			logs.push(args.map(String).join(" "));
+		});
+
+		updateCli.printUpdateHelp();
+
+		const help = logs.join("\n");
+		expect(help).toContain("veyyon rollback ");
+		expect(help).toContain("veyyon rollback --list");
+	});
+});
+
 describe("the manual source-update guidance is still available where it belongs", () => {
 	it("names the checkout's launcher and both recovery routes", () => {
 		// It is no longer the answer to `veyyon update`, but it is still what every

@@ -14,6 +14,7 @@ import {
 	APP_ALIAS,
 	APP_NAME,
 	bareVersion,
+	changelogUrlForVersion,
 	compareSemver,
 	errorMessage,
 	getAutoUpdateStatePath,
@@ -1226,19 +1227,37 @@ export async function updateViaSourceAt(
  *
  * `force` is accepted for API symmetry with callers (the rollback path passes
  * it); a binary swap is unconditional, so it does not change binary behavior.
+ *
+ * A successful move is recorded here, which is the only place that sees every
+ * one of them. It used to be recorded by `rollbackToVersion` alone, so the
+ * history held rollbacks and nothing else: an update that took you from 1.0.30
+ * to 1.0.37 left no trace, and the picker offering to send you back had no way
+ * to say where you came from. Update, the background auto-update and rollback
+ * all move a version through this function, so recording here is what makes the
+ * history mean "every version this install has been on" rather than "the times
+ * you went backwards".
+ *
+ * A forced reinstall of the version already running is not a move and is not
+ * recorded: a history of `1.0.37 -> 1.0.37` rows describes nothing and would
+ * push the real moves out of view.
  */
 export async function installRelease(
 	version: string,
 	force: boolean,
 	report: UpdateReporter = CONSOLE_UPDATE_REPORTER,
+	currentVersion: string = VERSION,
+	historyPath: string = getUpdateHistoryPath(),
 ): Promise<void> {
 	void force;
 	const target = await resolveUpdateTarget();
 	if (target.method === "source") {
 		await updateViaSourceAt(target.path, version, report);
-		return;
+	} else {
+		await updateViaBinaryAt(target.path, version, report);
 	}
-	await updateViaBinaryAt(target.path, version, report);
+	if (version !== currentVersion) {
+		await recordVersionMove({ from: currentVersion, to: version, at: new Date().toISOString() }, historyPath);
+	}
 }
 
 /**
@@ -1373,8 +1392,9 @@ export async function rollbackToVersion(
 	if (unsupported) throw new Error(unsupported);
 
 	report(`Moving from ${currentVersion} to ${version}...`);
-	await installRelease(version, true, report);
-	await recordVersionMove({ from: currentVersion, to: version, at: new Date().toISOString() }, historyPath);
+	// installRelease records the move: it is the one function every version change
+	// goes through, so recording here as well would file each rollback twice.
+	await installRelease(version, true, report, currentVersion, historyPath);
 	report(`Now on ${version}. Restart ${APP_NAME} to run it.`);
 }
 
@@ -1565,8 +1585,23 @@ export async function runUpdateCommand(
 		// errorMessage(err), not `${err}`: the latter stringifies as "Error: …"
 		// and doubles the prefix into "Update failed: Error: …".
 		console.error(chalk.red(`Update failed: ${errorMessage(err)}`));
+		// A failed update can leave the install on a version the user did not
+		// choose, and the way back shipped in the same release as the way forward
+		// without either command ever naming the other. Said only where it applies:
+		// a source install cannot be rolled back, and offering it there would send
+		// the user to a command that refuses.
+		if (await isRollbackSupported()) {
+			console.error(
+				chalk.dim(`To return to a version that worked, run \`${APP_NAME} rollback\` and pick it from the list.`),
+			);
+		}
 		process.exit(1);
 	}
+	// `rollback` ends by printing the changelog for the version it moved you to,
+	// and `update` — the command that moves almost everybody — printed nothing at
+	// all about what changed. Same fact, same single URL owner, so the two now
+	// close the same way.
+	console.log(chalk.dim(`Changelog for ${release.version}: ${changelogUrlForVersion(release.version)}`));
 }
 
 /**
@@ -1588,5 +1623,9 @@ ${chalk.bold("Examples:")}
   ${APP_NAME} update --check      Check if updates are available
   ${APP_NAME} update --force      Force reinstall
   ${APP_NAME} update -l           Update installed plugins
+
+${chalk.bold("Going back:")}
+  ${APP_NAME} rollback            Pick any published version, forward or back
+  ${APP_NAME} rollback --list     Print every published version and dates
 `);
 }

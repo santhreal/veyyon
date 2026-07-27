@@ -1847,6 +1847,132 @@ export HOME="$SANDBOX/home"
 unset VEYYON_INSTALL_DIR
 export VEYYON_INSTALL_DIR="$SANDBOX/bin"
 
+# --- color: the first thing anyone sees of veyyon, and only where it means something ---
+# The installer rendered in the same monochrome as any package manager, so
+# "✓ Installation complete." looked exactly like the twelve progress lines above
+# it. Color is now applied to the status glyph and the completion line, and to
+# nothing else. These pin the three conditions that turn it off, because a script
+# whose output is piped into a log or a test assertion must keep emitting the
+# same bytes it always has.
+#
+# This suite runs with stdout captured through `$( )`, which is not a terminal,
+# so the helpers here are the real ones running in their real no-color state.
+check "ok() emits no escape when stdout is not a terminal" \
+    "$( ok "installed" | grep -c '\033' )" "0"
+check "ok() still reads exactly as it did before color" \
+    "$( ok "installed" )" "  ok  installed"
+check "warn() is unchanged on a pipe" \
+    "$( warn "careful" 2>&1 )" "  !!  careful"
+check "step() narrates without decoration on a pipe" \
+    "$( step "downloading veyyon-linux-x64..." )" "downloading veyyon-linux-x64..."
+# The color variables must EXIST and be empty rather than be unset: an unset
+# variable under `set -u` would abort the install on the first `ok` line.
+check "the color variables are defined and empty off a terminal" \
+    "$( printf '[%s%s%s%s%s%s]' "$C_RESET" "$C_BOLD" "$C_DIM" "$C_OK" "$C_WARN" "$C_ERR" )" "[]"
+# Re-derive the decision with a terminal's answer forced, so the ON branch is
+# covered too without needing a PTY. Same three conditions, same order.
+_color_on() { # no-color-value, term-value -> the branch a terminal would take
+    ( NO_COLOR="$1"; TERM="$2"
+      if [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then echo on; else echo off; fi )
+}
+check "a terminal with a normal TERM gets color" "$(_color_on "" "xterm-256color")" "on"
+check "NO_COLOR turns it off" "$(_color_on "1" "xterm-256color")" "off"
+# NO_COLOR set to the empty string is treated as absent, matching `-z`: an
+# exported-but-empty variable is what a shell leaves behind after `NO_COLOR=`,
+# and reading that as "no color" would silence a terminal nobody asked to.
+check "an empty NO_COLOR is treated as absent" "$(_color_on "" "xterm-256color")" "on"
+check "TERM=dumb turns it off" "$(_color_on "" "dumb")" "off"
+
+# --- the download says something while it runs ---
+# `curl -fsSL` hid every sign of the one step that takes real time: on a slow
+# link the installer printed "downloading…" and then nothing for a minute, which
+# reads as a hang. A progress bar on a terminal, silence everywhere else, because
+# a bar written to a log file is thousands of lines of carriage returns.
+check "the download picks a progress bar for a terminal and -s otherwise" \
+    "$( grep -c '_dl_progress="--progress-bar"' "$ROOT/scripts/install.sh" )" "1"
+check "the silent branch is still there for pipes and CI" \
+    "$( grep -c '_dl_progress="-s"' "$ROOT/scripts/install.sh" )" "1"
+# -S is what keeps curl's own diagnosis on failure; `-s` alone throws it away,
+# and "download failed" with no reason is the message this script must not print.
+check "curl keeps its error message on failure" \
+    "$( grep -c 'curl -fL -S \$_dl_progress' "$ROOT/scripts/install.sh" )" "1"
+
+# --- long messages wrap under the text, not under the glyph ---
+# An unwrapped message longer than the terminal is broken mid-word by the
+# terminal itself and its remainder starts at column 0, so the bash-completion
+# warning read as "...so those completions d" / "o nothing yet", with the tail
+# hanging off the left margin looking like a new message. Caught by rendering the
+# real install output to an image on both a grey and a black ground; wrapping now
+# happens here, on word boundaries, with a six-space hanging indent.
+#
+# `glyph_line` is driven directly with an explicit width, because the width this
+# suite would otherwise see is 0: its stdout is a captured pipe.
+_wrapped() { # width, message... -> the wrapped lines
+    ( term_cols() { printf '%s\n' "$1"; }
+      _w=$1; shift
+      term_cols() { printf '%s\n' "$_w"; }
+      glyph_line "!!" "" "$@" )
+}
+_long="bash does not load /home/tester/.local/share/bash-completion/completions, so those completions do nothing yet"
+check "a message that fits is left on one line" \
+    "$(_wrapped 100 "short enough")" "  !!  short enough"
+check "a long message becomes more than one line" \
+    "$(_wrapped 60 "$_long" | wc -l | tr -d ' ')" "3"
+check "the continuation lines are indented under the text, not at column 0" \
+    "$(_wrapped 60 "$_long" | sed -n '2p' | sed 's/[^ ].*//' | wc -c | tr -d ' ')" "7"
+check "no word is broken in half" \
+    "$(_wrapped 60 "$_long" | grep -c 'completions d$')" "0"
+check "the message survives the wrap word for word" \
+    "$(_wrapped 60 "$_long" | sed 's/^ *//; s/^!!  //' | tr '\n' ' ' | sed 's/  */ /g; s/ $//')" "$_long"
+check "no wrapped line exceeds the width" \
+    "$(_wrapped 60 "$_long" | awk 'length($0) > 60 { n++ } END { print n + 0 }')" "0"
+# A path or URL longer than the whole width keeps its own line rather than being
+# split, because a broken path is a path nobody can copy.
+check "an over-long single word is never split" \
+    "$(_wrapped 30 "see https://veyyon.dev/a/very/long/path/that/exceeds/the/width" | grep -c 'https://veyyon.dev/a/very/long/path/that/exceeds/the/width')" "1"
+# Width 0 is a pipe, a log file or a test: one line, exactly as before, so
+# captured output stays greppable.
+check "a pipe gets one unwrapped line" \
+    "$(_wrapped 0 "$_long")" "  !!  $_long"
+
+# Some messages indent themselves a further four spaces to say "I belong to the
+# warning above me" — the `fix:` line under a completion warning is one. The
+# first wrap implementation split on spaces and collapsed that indent, which
+# turned a follow-on into what looked like a separate, unrelated warning.
+_fix="    fix: install your distro's bash-completion package, then open a new shell and try again"
+check "a self-indented message keeps its indent on the first line" \
+    "$(_wrapped 60 "$_fix" | sed -n '1p')" "  !!      fix: install your distro's bash-completion"
+check "and keeps it on the continuation lines too" \
+    "$(_wrapped 60 "$_fix" | sed -n '2p' | sed 's/[^ ].*//' | wc -c | tr -d ' ')" "11"
+check "the self-indented message also survives word for word" \
+    "$(_wrapped 60 "$_fix" | sed 's/^ *//; s/^!!  *//' | tr '\n' ' ' | sed 's/  */ /g; s/ $//')" "$(printf '%s' "$_fix" | sed 's/^ *//')"
+
+# The terminal check has ONE owner, `IS_TTY`, decided at the top of the script.
+# `[ -t 1 ]` asks about the stdout of whatever is running right now, so asking it
+# again from inside a `$( )` always answers no: the substitution's stdout is a
+# pipe by construction. The width lookup did exactly that, concluded there was no
+# terminal, and disabled wrapping on every terminal there is.
+check "the tty question is asked once, at the top" \
+    "$( grep -c '^if \[ -t 1 \]; then IS_TTY=1; else IS_TTY=0; fi$' "$ROOT/scripts/install.sh" )" "1"
+# Comment lines are excluded: two of them explain the rule, and explaining it is
+# not re-asking it. Only executable occurrences count.
+check "and nothing else re-asks it" \
+    "$( grep '\[ -t 1 \]' "$ROOT/scripts/install.sh" | grep -vc '^ *#' )" "1"
+# A width source can hand back something that is not a width: `tput cols`
+# answered a literal 0 in the container this was dogfooded in, and 0 is
+# non-empty, so a "did it print anything" test accepted it and silently disabled
+# wrapping while looking like it had found a width.
+check "a literal zero from a width source is rejected" \
+    "$( usable_width 0 && echo accepted || echo rejected )" "rejected"
+check "a non-numeric width is rejected" \
+    "$( usable_width "abc" && echo accepted || echo rejected )" "rejected"
+check "an empty width is rejected" \
+    "$( usable_width "" && echo accepted || echo rejected )" "rejected"
+check "a terminal too narrow to wrap into is rejected" \
+    "$( usable_width 23 && echo accepted || echo rejected )" "rejected"
+check "a real width is accepted" \
+    "$( usable_width 80 && echo accepted || echo rejected )" "accepted"
+
 # `grep -c` already prints 0 when nothing matches (and exits 1); a `|| echo 0`
 # fallback would append a SECOND zero and make the arithmetic below choke.
 PASS=$(grep -c '^P$' "$RESULTS" 2>/dev/null); PASS=${PASS:-0}
