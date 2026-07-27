@@ -48,7 +48,16 @@ type MaybeAssistantMessage = {
 	};
 };
 
-function isAssistantMessage(message: MaybeAssistantMessage | undefined): message is AssistantLikeMessage {
+/**
+ * Whether a message is an assistant turn this module can compute a rate from.
+ *
+ * STRICTER THAN THE ROLE. It also requires a numeric `timestamp` and a numeric
+ * `usage.output`, because both are inputs to the rate. It was called
+ * `isAssistantMessage`, as were three unrelated predicates in other modules, one of which
+ * checks only the role; a reader carrying that weaker meaning here would expect a rate for
+ * every assistant turn.
+ */
+function isRateableAssistantTurn(message: MaybeAssistantMessage | undefined): message is AssistantLikeMessage {
 	return (
 		message?.role === "assistant" &&
 		typeof message.timestamp === "number" &&
@@ -60,7 +69,7 @@ function isAssistantMessage(message: MaybeAssistantMessage | undefined): message
 function getLastAssistantMessage(messages: ReadonlyArray<MaybeAssistantMessage>): AssistantLikeMessage | null {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const message = messages[i];
-		if (isAssistantMessage(message)) {
+		if (isRateableAssistantTurn(message)) {
 			return message;
 		}
 	}
