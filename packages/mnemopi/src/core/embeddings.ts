@@ -14,8 +14,8 @@ import {
 } from "@veyyon/utils";
 import type { EmbeddingModel } from "fastembed";
 import { LRUCache } from "lru-cache/raw";
-import { EMBEDDING_DIMS, FALLBACK_EMBEDDING_DIM } from "../config";
-import { ensureFastembedModelSidecars } from "./fastembed-model-cache";
+import { DEFAULT_EMBEDDING_MODEL, EMBEDDING_DIMS, FALLBACK_EMBEDDING_DIM } from "../config";
+import { ensureFastembedModelSidecars, FASTEMBED_ID_BY_HF_REPO } from "./fastembed-model-cache";
 import { loadFastembed } from "./fastembed-runtime";
 import {
 	type EmbeddingOutput,
@@ -223,7 +223,10 @@ function defaultModel(): string {
 	if (active?.model !== undefined) {
 		return active.model;
 	}
-	return $env.MNEMOPI_EMBEDDING_MODEL || "BAAI/bge-small-en-v1.5";
+	// `DEFAULT_EMBEDDING_MODEL`, not the literal spelled a second time. The bare string
+	// used to be written here, so the default model had two homes and the one that
+	// `config.embeddingModel()` reads was not this one.
+	return $env.MNEMOPI_EMBEDDING_MODEL || DEFAULT_EMBEDDING_MODEL;
 }
 
 /**
@@ -291,20 +294,19 @@ async function collectMatrix(batches: EmbeddingOutput): Promise<EmbeddingMatrix>
 	return rows;
 }
 
-const KNOWN_MODEL_NAMES: Record<string, string> = {
-	"BAAI/bge-small-en-v1.5": "fast-bge-small-en-v1.5",
-	"BAAI/bge-base-en-v1.5": "fast-bge-base-en-v1.5",
-	"BAAI/bge-small-en": "fast-bge-small-en",
-	"BAAI/bge-base-en": "fast-bge-base-en",
-	"BAAI/bge-small-zh-v1.5": "fast-bge-small-zh-v1.5",
-	"intfloat/multilingual-e5-large": "fast-multilingual-e5-large",
-	"sentence-transformers/all-MiniLM-L6-v2": "fast-all-MiniLM-L6-v2",
-};
+/**
+ * The fastembed identifier for a configured model name, or `null` when mnemopi cannot run
+ * that model locally.
+ *
+ * The name pairs live in `./fastembed-model-cache`, which owns both directions. This file
+ * held `KNOWN_MODEL_NAMES`, the exact inverse of that module's table, written out by hand
+ * a second time: adding a model to one and not the other resolved here and then failed to
+ * find the repository its tokenizer comes from. The values are still fastembed's
+ * `EmbeddingModel` enum strings, and resolving one still never imports `fastembed`, whose
+ * module eagerly loads the `onnxruntime-node` native addon and segfaults in some runtimes.
+ */
 function fastembedModelName(modelName: string): StandardEmbeddingModel | null {
-	// Fastembed `EmbeddingModel` enum string values, inlined so resolving a model name
-	// (and `available()`) never imports `fastembed` — its module eagerly loads the
-	// `onnxruntime-node` native addon, which segfaults in some runtimes.
-	const id = KNOWN_MODEL_NAMES[modelName];
+	const id = FASTEMBED_ID_BY_HF_REPO[modelName];
 	return id === undefined ? null : (id as StandardEmbeddingModel);
 }
 
