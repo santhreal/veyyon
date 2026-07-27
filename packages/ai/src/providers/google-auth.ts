@@ -15,14 +15,13 @@
 import { Buffer } from "node:buffer";
 import * as os from "node:os";
 import * as path from "node:path";
+import { GOOGLE_OAUTH_TOKEN_ENDPOINT, GOOGLE_SCOPE_CLOUD_PLATFORM } from "@veyyon/catalog/wire/google-oauth";
 import { $envpos, isEnoent, logger, scopedTimeoutSignal } from "@veyyon/utils";
 import * as AIError from "../error";
 import type { FetchImpl } from "../types";
 import { raceWithSignal } from "../utils/abort";
 
-const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const METADATA_TOKEN_URL = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token";
-const CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 const JWT_BEARER_GRANT = "urn:ietf:params:oauth:grant-type:jwt-bearer";
 
 interface CachedToken {
@@ -135,8 +134,8 @@ async function exchangeJwtForToken(
 	const assertion = await signJwtRs256(
 		{
 			iss: creds.client_email,
-			scope: CLOUD_PLATFORM_SCOPE,
-			aud: OAUTH_TOKEN_URL,
+			scope: GOOGLE_SCOPE_CLOUD_PLATFORM,
+			aud: GOOGLE_OAUTH_TOKEN_ENDPOINT,
 			exp: now + 3600,
 			iat: now,
 		},
@@ -144,7 +143,7 @@ async function exchangeJwtForToken(
 		creds.private_key_id,
 	);
 	const body = new URLSearchParams({ grant_type: JWT_BEARER_GRANT, assertion });
-	return postForToken(OAUTH_TOKEN_URL, body, signal, fetchImpl);
+	return postForToken(GOOGLE_OAUTH_TOKEN_ENDPOINT, body, signal, fetchImpl);
 }
 
 async function exchangeRefreshToken(
@@ -158,7 +157,7 @@ async function exchangeRefreshToken(
 		refresh_token: creds.refresh_token,
 		grant_type: "refresh_token",
 	});
-	return postForToken(OAUTH_TOKEN_URL, body, signal, fetchImpl);
+	return postForToken(GOOGLE_OAUTH_TOKEN_ENDPOINT, body, signal, fetchImpl);
 }
 
 async function fetchMetadataToken(
@@ -209,6 +208,8 @@ async function postForToken(
 		signal,
 	});
 	if (!response.ok) {
+		// The STATUS is the failure and it is in the thrown message; the body is Google's explanation of it. An
+		// unreadable body must not replace "token exchange failed (400)" with a read error.
 		const detail = await response.text().catch(() => "");
 		throw new AIError.OAuthError(`Google OAuth token exchange failed (${response.status}): ${detail}`, {
 			kind: "token-exchange",
@@ -252,13 +253,15 @@ async function resolveAccessTokenUncached(
 					},
 					body: JSON.stringify({
 						delegates: creds.delegates ?? [],
-						scope: [CLOUD_PLATFORM_SCOPE],
+						scope: [GOOGLE_SCOPE_CLOUD_PLATFORM],
 						lifetime: "3600s",
 					}),
 					signal,
 				},
 			);
 			if (!response.ok) {
+				// Same as the token exchange above: the status is the failure, the body is its detail, and an
+				// unreadable body degrades to empty rather than masking the status.
 				const detail = await response.text().catch(() => "");
 				throw new AIError.OAuthError(`Google Impersonation token exchange failed (${response.status}): ${detail}`, {
 					kind: "token-exchange",

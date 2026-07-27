@@ -1,3 +1,4 @@
+import { AI_PROMPTS } from "../prompts/registry";
 import type { ToolCall } from "../types";
 import { AnthropicInbandScanner } from "./anthropic";
 import { DeepSeekInbandScanner } from "./deepseek";
@@ -15,7 +16,6 @@ import type {
 	InbandScanner,
 	InbandScannerOptions,
 } from "./types";
-import dialectPrompt from "./xml.md" with { type: "text" };
 
 export class XmlInbandScanner implements InbandScanner {
 	readonly #inner: InbandScanner;
@@ -40,7 +40,7 @@ function renderAssistantToolCalls(calls: readonly ToolCall[], options: DialectRe
 
 const definition: DialectDefinition = {
 	dialect: "xml",
-	prompt: dialectPrompt,
+	prompt: AI_PROMPTS["dialect/xml"].text,
 	createScanner: options => new XmlInbandScanner(options),
 	// The `<invoke>` syntax, the `<tool_response>` results and the thinking tags all belong to
 	// `./rendering`, which the `anthropic` and `minimax` dialects speak as well. This dialect

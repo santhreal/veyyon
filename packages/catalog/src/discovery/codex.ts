@@ -1,13 +1,21 @@
-import { normalizeBaseUrl } from "@veyyon/utils";
+import { errorMessage } from "@veyyon/utils/type-guards";
+import { normalizeBaseUrl } from "@veyyon/utils/url";
 import { type } from "arktype";
 import { parseKnownModel, semverEqual } from "../identity/classify";
 import type { ModelSpec } from "../types";
 import { discoveryFetch } from "../utils";
 import { CODEX_BASE_URL, CODEX_CLIENT_VERSION, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "../wire/codex";
+import type { DiscoveryFailure, DiscoveryHooks } from "./failure";
 
 const DEFAULT_MODEL_LIST_PATHS = ["/codex/models", "/models"] as const;
-const DEFAULT_CONTEXT_WINDOW = 272_000;
-const DEFAULT_MAX_TOKENS = 128_000;
+/**
+ * Codex assumes a GPT-5-class pair, not the Claude-class one three sibling discovery modules assume. Prefixed
+ * with the provider because these were declared as bare `DEFAULT_CONTEXT_WINDOW` / `DEFAULT_MAX_TOKENS`, the same
+ * names those siblings used for 200_000 / 64_000, and one name meaning two values in one directory is how a
+ * reader carries the wrong number across a file boundary.
+ */
+const CODEX_DEFAULT_CONTEXT_WINDOW = 272_000;
+const CODEX_DEFAULT_MAX_TOKENS = 128_000;
 /**
  * GPT-5.6 luna/sol/terra hard context capacity. OpenAI's Codex model registry
  * declares context_window = max_context_window = 372000 (#5705), but Codex
@@ -66,6 +74,16 @@ export interface CodexModelDiscoveryOptions {
 	signal?: AbortSignal;
 	/** Optional fetch implementation override for tests. */
 	fetchFn?: typeof fetch;
+	/**
+	 * Called with the reason each route attempt produced nothing.
+	 *
+	 * The same channel every reader in this package uses. This reader tries a LIST of routes (`/codex/models`
+	 * then `/models`) and `continue`d past every failure, so an expired OAuth token and a backend that has
+	 * retired both routes ended in the same bare `null`. Reporting per route is what makes them tellable
+	 * apart: a 401 on both routes is a credential problem, a 404 on both is a protocol change.
+	 * Never called on success, including a route that succeeds with no usable models.
+	 */
+	onFailure?: DiscoveryHooks["onFailure"];
 }
 
 /**
@@ -92,6 +110,8 @@ export async function fetchCodexModels(options: CodexModelDiscoveryOptions): Pro
 	let sawSuccessfulResponse = false;
 	for (const path of paths) {
 		const requestUrl = buildModelsUrl(baseUrl, path, clientVersion);
+		const report = (stage: DiscoveryFailure["stage"], detail: string): void =>
+			options.onFailure?.({ stage, url: requestUrl, detail });
 		let response: Response;
 		try {
 			response = await fetchFn(requestUrl, {
@@ -99,23 +119,28 @@ export async function fetchCodexModels(options: CodexModelDiscoveryOptions): Pro
 				headers,
 				signal: options.signal,
 			});
-		} catch {
+		} catch (error) {
+			// `continue` moves on to the next route, which is right; the attempt used to leave no trace at all.
+			report("request", errorMessage(error));
 			continue;
 		}
 
 		if (!response.ok) {
+			report("status", `HTTP ${response.status} ${response.statusText}`.trim());
 			continue;
 		}
 
 		let payload: unknown;
 		try {
 			payload = await response.json();
-		} catch {
+		} catch (error) {
+			report("body", `response is not JSON: ${errorMessage(error)}`);
 			continue;
 		}
 
 		const models = normalizeCodexModels(payload, baseUrl);
 		if (models === null) {
+			report("payload", "response holds no model list this reader recognizes");
 			continue;
 		}
 		sawSuccessfulResponse = true;
@@ -222,8 +247,8 @@ function normalizeCodexModelEntry(entry: unknown, baseUrl: string): NormalizedCo
 	const reportedContextWindow = toPositiveInt(payload.context_window);
 	const contextWindow = isGpt56
 		? Math.max(GPT_5_6_CONTEXT_WINDOW, reportedContextWindow ?? 0)
-		: (reportedContextWindow ?? DEFAULT_CONTEXT_WINDOW);
-	const maxTokens = Math.min(DEFAULT_MAX_TOKENS, contextWindow);
+		: (reportedContextWindow ?? CODEX_DEFAULT_CONTEXT_WINDOW);
+	const maxTokens = Math.min(CODEX_DEFAULT_MAX_TOKENS, contextWindow);
 	const reasoning = supportsReasoning(payload.default_reasoning_level, payload.supported_reasoning_levels);
 	const input = normalizeInputModalities(payload.input_modalities);
 	const preferWebsockets = toBoolean(payload.prefer_websockets) === true;

@@ -80,6 +80,8 @@ export class AnthropicApiError extends ProviderHttpError {
 	}
 
 	static async fromResponse(response: Response): Promise<AnthropicApiError> {
+		// The STATUS is the failure being classified; the body is extra detail on it. A body that cannot be
+		// read (already consumed, connection dropped) must not turn an HTTP error into a read error.
 		const body = await response.text().catch(() => "");
 		const detail = body.trim() || "status code (no body)";
 		return new AnthropicApiError(response.status, `${response.status} ${detail}`, response.headers);

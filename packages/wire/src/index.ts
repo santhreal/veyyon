@@ -75,7 +75,23 @@ export type AssistantContent =
 	| ToolCallContent
 	| FallbackContent;
 
-export type StopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
+/**
+ * Why a turn ended, as a guest receives it.
+ *
+ * The same five literals `StopReason` in `@veyyon/ai` declares today, spelled separately because
+ * this package has no runtime dependencies and a browser guest must not pull the host's model
+ * layer in to render a transcript. Prefixed anyway: two identical-today unions under one name are
+ * how they drift apart later without either side noticing.
+ */
+export type WireStopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
+
+/**
+ * The old name for {@link WireStopReason}, kept because this package is published.
+ *
+ * Deprecated: import `WireStopReason`. A renamed export rather than an alias declaration, so the
+ * name keeps exactly one declaration repo-wide.
+ */
+export type { WireStopReason as StopReason };
 
 export interface WireUsage {
 	input: number;
@@ -90,7 +106,13 @@ export interface WireUsage {
 // Messages
 // ═══════════════════════════════════════════════════════════════════════════
 
-export interface UserMessage {
+/**
+ * A user turn, as a guest receives it.
+ *
+ * The host's `UserMessage` in `@veyyon/ai` additionally carries `steering`, `attribution` and
+ * `providerPayload`; none of the three is anything a guest draws.
+ */
+export interface WireUserMessage {
 	role: "user";
 	content: string | (TextContent | ImageContent)[];
 	/** True if the message was injected by the system (e.g. auto-continue). */
@@ -99,23 +121,41 @@ export interface UserMessage {
 	timestamp: number;
 }
 
-export interface DeveloperMessage {
+/** A developer turn, as a guest receives it. Narrower than `DeveloperMessage` in `@veyyon/ai`. */
+export interface WireDeveloperMessage {
 	role: "developer";
 	content: string | (TextContent | ImageContent)[];
 	timestamp: number;
 }
 
-export interface AssistantMessage {
+/**
+ * An assistant turn, as a guest receives it.
+ *
+ * The widest gap in this file. The host's `AssistantMessage` in `@veyyon/ai` carries the api it was
+ * sent to, `providerPayload` (the transport-native history used to replay the turn upstream),
+ * `request` (the exact sampling and reasoning parameters as sent), `contextSnapshot`,
+ * `retryRecovery`, `responseId`, `turnMetrics`, `errorId` and more. A guest renders none of them.
+ */
+export interface WireAssistantMessage {
 	role: "assistant";
 	content: AssistantContent[];
 	model: string;
+	/**
+	 * Which provider answered, as a bare id such as `"anthropic"`.
+	 *
+	 * Declared rather than projected away because a guest holds a transcript replica, and a replica
+	 * that cannot say what answered is not faithful. The host's `api` is NOT declared: that is the
+	 * transport endpoint the request went to, which is a detail of how the host is configured.
+	 */
+	provider: string;
 	usage: WireUsage;
-	stopReason: StopReason;
+	stopReason: WireStopReason;
 	errorMessage?: string;
 	timestamp: number;
 }
 
-export interface ToolResultMessage {
+/** A tool result, as a guest receives it. */
+export interface WireToolResultMessage {
 	role: "toolResult";
 	toolCallId: string;
 	toolName: string;
@@ -125,20 +165,203 @@ export interface ToolResultMessage {
 	timestamp: number;
 }
 
-export type WireMessage = UserMessage | DeveloperMessage | AssistantMessage | ToolResultMessage;
+// ───────────────────────────────────────────────────────────────────────────
+// The seven custom roles
+//
+// A session message can carry eleven roles. The four above are the model's own;
+// these seven come from the host's `CustomAgentMessages` declaration-merging
+// hook. A guest RENDERS them -- its replica transcript is drawn by the same
+// renderer the host uses -- so they travel, and dropping them would make a `!ls`
+// and its output vanish from every guest's transcript.
+//
+// They are declared here for the same reason the four above are: assignability
+// runs the permissive way, so an undeclared field on a host shape reaches every
+// guest and lands in their replica session file the day somebody adds it.
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * The output notice a guest draws under a command's output.
+ *
+ * Declared `unknown` on the same contract as a tool result's `details`, and for the same reason: the
+ * notice is formatted by the host package's own formatter, which reads a truncation record, a source
+ * record, a diagnostics record and a limits record, and narrowing it here would mean copying four
+ * host types into a published contract and keeping them in step by hand. It is drawn in full, so
+ * nothing is dropped; what is missing is a promise about width, and that is stated rather than
+ * pretended.
+ */
+export type WireOutputMeta = unknown;
+
+/** A `!command` the user ran, and what it printed. */
+export interface WireBashExecutionMessage {
+	role: "bashExecution";
+	command: string;
+	output: string;
+	exitCode: number | undefined;
+	/** The signal that killed it, when it died from one. Absent means "not known", not "not a signal". */
+	signal?: number;
+	cancelled: boolean;
+	truncated: boolean;
+	meta?: WireOutputMeta;
+	/** Drawn: a `!!` execution is marked in the transcript as excluded from the model's context. */
+	excludeFromContext?: boolean;
+	timestamp: number;
+}
+
+/** A `$code` the user ran in the Python kernel, and what it printed. */
+export interface WirePythonExecutionMessage {
+	role: "pythonExecution";
+	code: string;
+	output: string;
+	exitCode: number | undefined;
+	cancelled: boolean;
+	truncated: boolean;
+	meta?: WireOutputMeta;
+	excludeFromContext?: boolean;
+	timestamp: number;
+}
+
+/**
+ * A message an extension injected.
+ *
+ * `details` is declared `unknown` deliberately, on the same contract as a tool result's `details`:
+ * an extension owns the shape and the renderer it registered owns the drawing, so this package
+ * cannot narrow it without breaking every extension. It is the one field here that is NOT a promise
+ * about width, and an extension that puts a secret in it puts that secret on the wire.
+ */
+export interface WireCustomMessage {
+	role: "custom";
+	customType: string;
+	content: string | (TextContent | ImageContent)[];
+	display: boolean;
+	details?: unknown;
+	timestamp: number;
+}
+
+/** The pre-extensions spelling of the above, kept because old sessions still contain them. */
+export interface WireHookMessage {
+	role: "hookMessage";
+	customType: string;
+	content: string | (TextContent | ImageContent)[];
+	display: boolean;
+	details?: unknown;
+	timestamp: number;
+}
+
+/** The summary left behind where a branch was cut. */
+export interface WireBranchSummaryMessage {
+	role: "branchSummary";
+	summary: string;
+	fromId: string;
+	timestamp: number;
+}
+
+/**
+ * The summary compaction left in place of the turns it replaced.
+ *
+ * The host's own shape also carries `providerPayload`, the transport-native history used to replay
+ * the compacted span upstream, plus two legacy block arrays from a removed image-archive engine.
+ * None is drawn and the first is large, so none is declared.
+ */
+export interface WireCompactionSummaryMessage {
+	role: "compactionSummary";
+	summary: string;
+	shortSummary?: string;
+	tokensBefore: number;
+	/** A dead-end warning the progress guard attached; drawn beneath the summary. */
+	warning?: string;
+	timestamp: number;
+}
+
+/**
+ * Files pulled in by `@path`, drawn as a list of "Read <path>" rows.
+ *
+ * The host's own shape carries each file's FULL TEXT in `content`, and the renderer draws none of it:
+ * a row shows the path, the line count or the skip reason, and whether an image came with it. So
+ * mentioning a 4 MB file sent 4 MB to every guest, on the join snapshot and again on the entry frame,
+ * and it landed in their replica session file on disk. The body does not travel.
+ *
+ * `hasContent` is here because absence has to be distinguishable from emptiness. A guest that exports
+ * its replica says the body was not replicated rather than printing an empty `<file>` block, which is
+ * what dropping the field alone would have produced.
+ */
+export interface WireFileMentionMessage {
+	role: "fileMention";
+	files: {
+		path: string;
+		/** Whether the host read a body for this file. The body itself is not sent. */
+		hasContent: boolean;
+		lineCount?: number;
+		byteSize?: number;
+		skippedReason?: "tooLarge" | "binary";
+		image?: ImageContent;
+	}[];
+	timestamp: number;
+}
+
+export type WireMessage =
+	| WireUserMessage
+	| WireDeveloperMessage
+	| WireAssistantMessage
+	| WireToolResultMessage
+	| WireBashExecutionMessage
+	| WirePythonExecutionMessage
+	| WireCustomMessage
+	| WireHookMessage
+	| WireBranchSummaryMessage
+	| WireCompactionSummaryMessage
+	| WireFileMentionMessage;
+
+/**
+ * The old names for the four message shapes above, kept because this package is published.
+ *
+ * Deprecated: import the `Wire`-prefixed names. Renamed exports rather than alias declarations, so
+ * each name keeps exactly one declaration repo-wide and `shared-types-have-one-owner.test.ts`
+ * stays honest about it.
+ */
+export type {
+	WireAssistantMessage as AssistantMessage,
+	WireDeveloperMessage as DeveloperMessage,
+	WireToolResultMessage as ToolResultMessage,
+	WireUserMessage as UserMessage,
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Session entries (rendered subset; cast `as SessionEntry` at the JSON
+// Session entries (rendered subset; cast `as WireSessionEntry` at the JSON
 // boundary and skip unknown `type`s in a tolerant `default:`)
+//
+// This is the SUBSET a guest can render, not the session's own entry union.
+// The host's is `SessionEntry` in `@veyyon/agent-core/compaction/entries`, and
+// it carries a dozen more variants (mode changes, subagent spawns, settings
+// snapshots) that no guest draws. Both were spelled `SessionEntry`, so
+// `host.ts` had to import one of them under an alias to say which it meant,
+// and an editor's auto-import decided the question everywhere else.
 // ═══════════════════════════════════════════════════════════════════════════
 
-export interface SessionHeader {
+/**
+ * The session's first log line, as a guest receives it.
+ *
+ * The four fields a guest needs and nothing else. The host's own header (`SessionHeader` in
+ * `@veyyon/coding-agent/session/session-entries`) additionally carries `titleSource`,
+ * `parentSession`, `providerPromptCacheKey` and a schema `version`, and the stats parser's
+ * (`SessionLogHeader` in `@veyyon/stats`) carries `version` too. All three were spelled
+ * `SessionHeader`. The host now projects its header onto this shape before sending, so the
+ * narrower type is what actually travels rather than merely what the guest promises to read.
+ */
+export interface WireSessionHeader {
 	type: "session";
 	id: string;
 	title?: string;
 	timestamp: string;
 	cwd: string;
 }
+
+/**
+ * The old name for {@link WireSessionHeader}, kept because this package is published.
+ *
+ * Deprecated: import `WireSessionHeader`. A renamed export rather than an alias declaration, so
+ * the name keeps exactly one declaration repo-wide.
+ */
+export type { WireSessionHeader as SessionHeader };
 
 export interface EntryBase {
 	id: string;
@@ -185,13 +408,23 @@ export interface ThinkingLevelChangeEntry extends EntryBase {
 	thinkingLevel?: string | null;
 }
 
-export type SessionEntry =
+/** The entry variants a guest can render. See the section note above for what it is not. */
+export type WireSessionEntry =
 	| MessageEntry
 	| CustomMessageEntry
 	| CompactionEntry
 	| BranchSummaryEntry
 	| ModelChangeEntry
 	| ThinkingLevelChangeEntry;
+
+/**
+ * The old name for {@link WireSessionEntry}, kept because this package is published.
+ *
+ * Deprecated: import `WireSessionEntry`. Written as a renamed export rather than
+ * `export type SessionEntry = WireSessionEntry` on purpose, so the name has exactly one
+ * declaration repo-wide and `shared-types-have-one-owner.test.ts` stays honest about it.
+ */
+export type { WireSessionEntry as SessionEntry };
 
 /** customType of collab guest prompts injected on the host. */
 export const COLLAB_PROMPT_MESSAGE_TYPE = "collab-prompt";
@@ -228,11 +461,41 @@ export type AgentEvent =
 // State & agents
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * The model a guest renders.
+ *
+ * A guest never builds a provider request: it renders a replica of the host's session and forwards
+ * prompts to the host, which does the calling. So everything on the host's catalog `Model` that
+ * exists to SHAPE a request is absent here by design, and that is a structural rule rather than a
+ * field-by-field judgement. `baseUrl` is the field that made this worth fixing: on a proxied,
+ * self-hosted or gateway-routed configuration it is an internal endpoint, and the state frame
+ * re-broadcasts every couple of seconds while streaming, to every guest including read-only viewers.
+ * Also absent, for the same reason: `api`, `requestModelId`, `headers`, `maxTokens`, the per-million
+ * `cost` table and the compatibility record.
+ *
+ * What remains is what a guest DRAWS. The thinking fields are here because the status line shows a
+ * thinking level and the model picker offers the levels the model actually has, and both read the
+ * model rather than a separate field.
+ */
 export interface WireModel {
 	id: string;
 	name: string;
 	provider: string;
 	contextWindow: number | null;
+	/** Whether the model reasons at all. Gates the whole thinking display. */
+	reasoning?: boolean;
+	/**
+	 * Which thinking efforts the model offers, and which one it starts on.
+	 *
+	 * A narrowed copy of the host's `ThinkingConfig`. The parts left out (`effortMap`,
+	 * `effortRouting`, per-effort token budgets, `supportsDisplay`) all encode an effort into a
+	 * provider wire field, which is request shaping and never happens on a guest.
+	 */
+	thinking?: {
+		mode: string;
+		efforts: readonly string[];
+		defaultLevel?: string;
+	};
 }
 
 export interface ContextUsage {
@@ -375,11 +638,11 @@ export type HostFrame =
 	| {
 			t: "welcome";
 			proto: number;
-			header: SessionHeader;
+			header: WireSessionHeader;
 			state: SessionState;
 			agents: AgentSnapshot[];
 			/**
-			 * Total number of `SessionEntry` items the host will deliver in the
+			 * Total number of `WireSessionEntry` items the host will deliver in the
 			 * `snapshot-chunk` frames that follow. Guests stay in the loading
 			 * phase until they have accumulated all of them (or a chunk arrives
 			 * with `final: true`).
@@ -394,8 +657,8 @@ export type HostFrame =
 	 * forced through one giant frame the relay may stall on. The last chunk
 	 * carries `final: true`; guests finalize the replica on that frame.
 	 */
-	| { t: "snapshot-chunk"; entries: SessionEntry[]; final: boolean }
-	| { t: "entry"; entry: SessionEntry }
+	| { t: "snapshot-chunk"; entries: WireSessionEntry[]; final: boolean }
+	| { t: "entry"; entry: WireSessionEntry }
 	| { t: "event"; event: AgentEvent }
 	| { t: "state"; state: SessionState }
 	/** Mirrored EventBus traffic (task subagent lifecycle/progress channels only). */
@@ -654,11 +917,18 @@ export interface ParsedCollabLink {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Relay control messages (TEXT JSON, unencrypted, no session data)
+// Relay protocol (TEXT JSON control messages, fatal close codes, send bound)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Relay → host control message. */
-export type RelayControlToHost = { t: "peer-joined" | "peer-left"; peer: number };
-/** Relay → guest control message. */
-export type RelayControlToGuest = { t: "room-closed" };
-export type RelayControlMessage = RelayControlToHost | RelayControlToGuest;
+// Owned by `./relay`, which has no imports, so a relay client pays one module for the protocol instead of
+// this whole barrel. Re-exported here so anything that already took the relay types from `@veyyon/wire` is
+// unchanged.
+export {
+	isRelayFatalCloseCode,
+	RELAY_FATAL_CLOSE_REASONS,
+	RELAY_MAX_PENDING_SENDS,
+	type RelayControlMessage,
+	type RelayControlToGuest,
+	type RelayControlToHost,
+	relayFatalCloseReason,
+} from "./relay";

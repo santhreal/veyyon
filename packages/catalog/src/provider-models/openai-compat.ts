@@ -1,4 +1,6 @@
-import { trimTrailingSlashes } from "@veyyon/utils";
+import { errorMessage } from "@veyyon/utils/type-guards";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
+import type { DiscoveryHooks } from "../discovery/failure";
 import {
 	fetchOpenAICompatibleModels,
 	type OpenAICompatibleModelMapperContext,
@@ -540,8 +542,9 @@ export function createSimpleOpenAICompletionsOptions(
 	return {
 		providerId,
 		...(apiKey && {
-			fetchDynamicModels: () =>
+			fetchDynamicModels: hooks =>
 				fetchOpenAICompatibleModels({
+					onFailure: hooks?.onFailure,
 					api: "openai-completions",
 					provider: providerId,
 					baseUrl,
@@ -569,8 +572,9 @@ function createSimpleOpenAIResponsesOptions(
 	return {
 		providerId,
 		...(apiKey && {
-			fetchDynamicModels: () =>
+			fetchDynamicModels: hooks =>
 				fetchOpenAICompatibleModels({
+					onFailure: hooks?.onFailure,
 					api: "openai-responses",
 					provider: providerId,
 					baseUrl,
@@ -598,8 +602,9 @@ function createSimpleAnthropicProviderOptions(
 	return {
 		providerId,
 		...(apiKey && {
-			fetchDynamicModels: () =>
+			fetchDynamicModels: hooks =>
 				fetchOpenAICompatibleModels({
+					onFailure: hooks?.onFailure,
 					api: "anthropic-messages",
 					provider: providerId,
 					baseUrl: discoveryBaseUrl,
@@ -747,6 +752,7 @@ async function fetchUmansModelsInfo(options: {
 	apiKey?: string;
 	fetch?: FetchImpl;
 	references: Map<string, ModelSpec<"anthropic-messages">>;
+	onFailure?: DiscoveryHooks["onFailure"];
 }): Promise<ModelSpec<"anthropic-messages">[] | null> {
 	const discoveryBaseUrl = toAnthropicDiscoveryBaseUrl(options.baseUrl);
 	const requestHeaders: Record<string, string> = { Accept: "application/json" };
@@ -754,13 +760,19 @@ async function fetchUmansModelsInfo(options: {
 		requestHeaders["x-api-key"] = options.apiKey;
 	}
 	const fetchImpl = discoveryFetch(options.fetch);
+	const url = `${discoveryBaseUrl}${UMANS_MODELS_INFO_PATH}`;
 	let payload: unknown;
 	try {
-		const response = await fetchImpl(`${discoveryBaseUrl}${UMANS_MODELS_INFO_PATH}`, {
+		const response = await fetchImpl(url, {
 			method: "GET",
 			headers: requestHeaders,
 		});
 		if (!response.ok) {
+			options.onFailure?.({
+				stage: "status",
+				url,
+				detail: `HTTP ${response.status} ${response.statusText}`.trim(),
+			});
 			return null;
 		}
 		payload = await response.json();
@@ -768,6 +780,7 @@ async function fetchUmansModelsInfo(options: {
 		throw new Error("Failed to fetch Umans models info", { cause: error });
 	}
 	if (!isRecord(payload)) {
+		options.onFailure?.({ stage: "payload", url, detail: "models-info response was not an object" });
 		return null;
 	}
 	const models: ModelSpec<"anthropic-messages">[] = [];
@@ -789,7 +802,8 @@ export function umansModelManagerOptions(config?: UmansModelManagerConfig): Mode
 		providerId: "umans",
 		dynamicModelsAuthoritative: true,
 		dropCachedModelIdsOnStaticMismatch: UMANS_VIA_HANDOFF_MODEL_IDS,
-		fetchDynamicModels: () => fetchUmansModelsInfo({ baseUrl, apiKey, fetch: config?.fetch, references }),
+		fetchDynamicModels: hooks =>
+			fetchUmansModelsInfo({ baseUrl, apiKey, fetch: config?.fetch, references, onFailure: hooks?.onFailure }),
 	};
 }
 // ---------------------------------------------------------------------------
@@ -809,8 +823,9 @@ export function openaiModelManagerOptions(config?: OpenAIModelManagerConfig): Mo
 	return {
 		providerId: "openai",
 		...(apiKey && {
-			fetchDynamicModels: () =>
+			fetchDynamicModels: hooks =>
 				fetchOpenAICompatibleModels({
+					onFailure: hooks?.onFailure,
 					api: "openai-responses",
 					provider: "openai",
 					baseUrl,
@@ -933,8 +948,9 @@ export function cerebrasModelManagerOptions(
 	return {
 		providerId: "cerebras",
 		...(apiKey && {
-			fetchDynamicModels: () =>
+			fetchDynamicModels: hooks =>
 				fetchOpenAICompatibleModels({
+					onFailure: hooks?.onFailure,
 					api: "openai-completions",
 					provider: "cerebras",
 					baseUrl,
@@ -1083,8 +1099,9 @@ export function novitaModelManagerOptions(
 	return {
 		providerId: "novita",
 		dynamicModelsAuthoritative: true,
-		fetchDynamicModels: async () =>
+		fetchDynamicModels: async hooks =>
 			fetchOpenAICompatibleModels({
+				onFailure: hooks?.onFailure,
 				api: "openai-completions",
 				provider: "novita",
 				baseUrl,
@@ -1391,8 +1408,8 @@ export function xaiOAuthModelManagerOptions(
 	return {
 		...base,
 		staticModels,
-		fetchDynamicModels: async () => {
-			const dynamic = await inner();
+		fetchDynamicModels: async hooks => {
+			const dynamic = await inner(hooks);
 			return dynamic == null ? dynamic : applyXAIOAuthCuration(dynamic);
 		},
 	};
@@ -1432,8 +1449,9 @@ export function aimlApiModelManagerOptions(
 		providerId: "aimlapi",
 		dynamicModelsAuthoritative: true,
 		...(apiKey && {
-			fetchDynamicModels: () =>
+			fetchDynamicModels: hooks =>
 				fetchOpenAICompatibleModels({
+					onFailure: hooks?.onFailure,
 					api: "openai-completions",
 					provider: "aimlapi",
 					baseUrl,
@@ -1483,8 +1501,9 @@ export function zhipuCodingPlanModelManagerOptions(
 		providerId: "zhipu-coding-plan",
 		dynamicModelsAuthoritative: true,
 		...(apiKey && {
-			fetchDynamicModels: () =>
+			fetchDynamicModels: hooks =>
 				fetchOpenAICompatibleModels({
+					onFailure: hooks?.onFailure,
 					api: "openai-completions",
 					provider: "zhipu-coding-plan",
 					baseUrl,
@@ -1736,9 +1755,13 @@ async function fetchFireworksServerlessModels(options: {
 	apiKey: string;
 	resolveReference: (publicModelId: string) => ModelSpec<"openai-completions"> | undefined;
 	fetch?: FetchImpl;
+	onFailure?: DiscoveryHooks["onFailure"];
 }): Promise<ModelSpec<"openai-completions">[] | null> {
 	const listUrl = toFireworksControlPlaneModelsUrl(options.baseUrl, FIREWORKS_CONTROL_PLANE_ACCOUNT);
-	if (!listUrl) return null;
+	if (!listUrl) {
+		options.onFailure?.({ stage: "base-url", url: options.baseUrl, detail: "not a Fireworks control-plane URL" });
+		return null;
+	}
 	const fetchImpl = discoveryFetch(options.fetch);
 	const collected = new Map<string, ModelSpec<"openai-completions">>();
 	let pageToken = "";
@@ -1753,23 +1776,31 @@ async function fetchFireworksServerlessModels(options: {
 				method: "GET",
 				headers: { Accept: "application/json", Authorization: `Bearer ${options.apiKey}` },
 			});
-		} catch {
-			// Null is 'this resolver produced no catalog', which the caller distinguishes from the `[]` an endpoint
-			// with no models returns. The reason is not carried back yet: `fetchOpenAICompatibleModels` takes an
-			// `onFailure` channel and these callers do not pass one through yet, which is a tracked task.
+		} catch (error) {
+			// Null is "this resolver produced no catalog", which the caller distinguishes from the `[]` an
+			// endpoint with no models returns; the reason travels back through `onFailure`.
+			options.onFailure?.({ stage: "request", url: url.toString(), detail: errorMessage(error) });
 			return null;
 		}
-		if (!response.ok) return null;
+		if (!response.ok) {
+			options.onFailure?.({
+				stage: "status",
+				url: url.toString(),
+				detail: `HTTP ${response.status} ${response.statusText}`.trim(),
+			});
+			return null;
+		}
 		let payload: unknown;
 		try {
 			payload = await response.json();
-		} catch {
-			// Null is 'this resolver produced no catalog', which the caller distinguishes from the `[]` an endpoint
-			// with no models returns. The reason is not carried back yet: `fetchOpenAICompatibleModels` takes an
-			// `onFailure` channel and these callers do not pass one through yet, which is a tracked task.
+		} catch (error) {
+			options.onFailure?.({ stage: "body", url: url.toString(), detail: errorMessage(error) });
 			return null;
 		}
-		if (!isRecord(payload)) return null;
+		if (!isRecord(payload)) {
+			options.onFailure?.({ stage: "payload", url: url.toString(), detail: "response was not an object" });
+			return null;
+		}
 		const models = Array.isArray(payload.models) ? payload.models : [];
 		for (const entry of models) {
 			if (!isRecord(entry)) continue;
@@ -1841,7 +1872,7 @@ export function fireworksModelManagerOptions(
 	return {
 		providerId: "fireworks",
 		...(apiKey && {
-			fetchDynamicModels: async () => {
+			fetchDynamicModels: async hooks => {
 				const modelsDevReferences = await loadModelsDevReferences<"openai-completions">(config?.fetch);
 				return fetchFireworksServerlessModels({
 					baseUrl,
@@ -1849,6 +1880,7 @@ export function fireworksModelManagerOptions(
 					resolveReference: publicModelId =>
 						modelsDevReferences.get(publicModelId) ?? bundledReferences(publicModelId),
 					fetch: config?.fetch,
+					onFailure: hooks?.onFailure,
 				});
 			},
 		}),
@@ -2026,8 +2058,9 @@ export function waferServerlessModelManagerOptions(
 	return {
 		providerId,
 		...(apiKey && {
-			fetchDynamicModels: () =>
+			fetchDynamicModels: hooks =>
 				fetchOpenAICompatibleModels({
+					onFailure: hooks?.onFailure,
 					api: "openai-completions",
 					provider: providerId,
 					baseUrl,
@@ -2098,8 +2131,9 @@ function openCodeModelManagerOptions(
 		cacheProviderId: openCodeModelCacheProviderId(providerId, apiKey, discoveryBaseUrl),
 		dynamicModelsAuthoritative: true,
 		...(apiKey && {
-			fetchDynamicModels: () =>
+			fetchDynamicModels: hooks =>
 				fetchOpenAICompatibleModels<Api>({
+					onFailure: hooks?.onFailure,
 					api: "openai-completions",
 					provider: providerId,
 					baseUrl: discoveryBaseUrl,
@@ -2154,8 +2188,9 @@ export function ollamaModelManagerOptions(config?: OllamaModelManagerConfig): Mo
 	const resolveMetadata = createOllamaMetadataResolver(nativeBaseUrl, config?.fetch);
 	return {
 		providerId: "ollama",
-		fetchDynamicModels: async () => {
+		fetchDynamicModels: async hooks => {
 			const openAiCompatible = await fetchOpenAICompatibleModels({
+				onFailure: hooks?.onFailure,
 				api: "openai-responses",
 				provider: "ollama",
 				baseUrl,
@@ -2221,8 +2256,9 @@ export function openrouterModelManagerOptions(
 		// Namespace the refreshed pseudo-API cache separately so those rows cannot
 		// override bundled `api: "openrouter"` models during online-if-uncached startup.
 		cacheProviderId: "openrouter:pseudo-api",
-		fetchDynamicModels: () =>
+		fetchDynamicModels: hooks =>
 			fetchOpenAICompatibleModels({
+				onFailure: hooks?.onFailure,
 				api: "openrouter",
 				provider: "openrouter",
 				baseUrl,
@@ -2355,8 +2391,9 @@ export function zenmuxModelManagerOptions(config?: ZenMuxModelManagerConfig): Mo
 	const anthropicBaseUrl = toZenMuxAnthropicBaseUrl(openAiBaseUrl);
 	return {
 		providerId: "zenmux",
-		fetchDynamicModels: () =>
+		fetchDynamicModels: hooks =>
 			fetchOpenAICompatibleModels<Api>({
+				onFailure: hooks?.onFailure,
 				api: "openai-completions",
 				provider: "zenmux",
 				baseUrl: openAiBaseUrl,
@@ -2402,8 +2439,9 @@ export function kiloModelManagerOptions(config?: KiloModelManagerConfig): ModelM
 	const baseUrl = config?.baseUrl ?? "https://api.kilo.ai/api/gateway";
 	return {
 		providerId: "kilo",
-		fetchDynamicModels: () =>
+		fetchDynamicModels: hooks =>
 			fetchOpenAICompatibleModels({
+				onFailure: hooks?.onFailure,
 				api: "openai-completions",
 				provider: "kilo",
 				baseUrl,
@@ -2431,8 +2469,9 @@ export function alibabaCodingPlanModelManagerOptions(
 	const references = createBundledReferenceMap<"openai-completions">("alibaba-coding-plan");
 	return {
 		providerId: "alibaba-coding-plan",
-		fetchDynamicModels: () =>
+		fetchDynamicModels: hooks =>
 			fetchOpenAICompatibleModels({
+				onFailure: hooks?.onFailure,
 				api: "openai-completions",
 				provider: "alibaba-coding-plan",
 				baseUrl,
@@ -2473,8 +2512,9 @@ export function vercelAiGatewayModelManagerOptions(
 	const { baseUrl, catalogBaseUrl } = normalizeVercelAiGatewayBaseUrls(config?.baseUrl);
 	return {
 		providerId: "vercel-ai-gateway",
-		fetchDynamicModels: () =>
+		fetchDynamicModels: hooks =>
 			fetchOpenAICompatibleModels({
+				onFailure: hooks?.onFailure,
 				api: "anthropic-messages",
 				provider: "vercel-ai-gateway",
 				baseUrl: catalogBaseUrl,
@@ -2530,8 +2570,9 @@ export function kimiCodeModelManagerOptions(
 	return {
 		providerId: "kimi-code",
 		...(apiKey && {
-			fetchDynamicModels: () =>
+			fetchDynamicModels: hooks =>
 				fetchOpenAICompatibleModels({
+					onFailure: hooks?.onFailure,
 					api: "openai-completions",
 					provider: "kimi-code",
 					baseUrl,
@@ -2679,11 +2720,12 @@ export function lmStudioModelManagerOptions(
 	const references = new Map<string, ModelSpec<"openai-completions">>();
 	return {
 		providerId: "lm-studio",
-		fetchDynamicModels: async () => {
+		fetchDynamicModels: async hooks => {
 			const nativeMetadataPromise = fetchLmStudioNativeModelMetadata(baseUrl, config?.fetch, {
 				headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
 			});
 			const models = await fetchOpenAICompatibleModels({
+				onFailure: hooks?.onFailure,
 				api: "openai-completions",
 				provider: "lm-studio",
 				baseUrl,
@@ -2738,8 +2780,9 @@ export function syntheticModelManagerOptions(
 		providerId: "synthetic",
 		dynamicModelsAuthoritative: true,
 		...(apiKey && {
-			fetchDynamicModels: () =>
+			fetchDynamicModels: hooks =>
 				fetchOpenAICompatibleModels({
+					onFailure: hooks?.onFailure,
 					api: "openai-completions",
 					provider: "synthetic",
 					baseUrl,
@@ -2787,8 +2830,9 @@ export function veniceModelManagerOptions(
 	const references = createBundledReferenceMap<"openai-completions">("venice");
 	return {
 		providerId: "venice",
-		fetchDynamicModels: () =>
+		fetchDynamicModels: hooks =>
 			fetchOpenAICompatibleModels({
+				onFailure: hooks?.onFailure,
 				api: "openai-completions",
 				provider: "venice",
 				baseUrl,
@@ -2827,8 +2871,9 @@ export function basetenModelManagerOptions(
 		providerId: "baseten",
 		dynamicModelsAuthoritative: true,
 		...(apiKey && {
-			fetchDynamicModels: () =>
+			fetchDynamicModels: hooks =>
 				fetchOpenAICompatibleModels({
+					onFailure: hooks?.onFailure,
 					api: "openai-completions",
 					provider: "baseten",
 					baseUrl,
@@ -2956,8 +3001,9 @@ export function moonshotModelManagerOptions(
 	return {
 		providerId: "moonshot",
 		...(apiKey && {
-			fetchDynamicModels: () =>
+			fetchDynamicModels: hooks =>
 				fetchOpenAICompatibleModels({
+					onFailure: hooks?.onFailure,
 					api: "openai-completions",
 					provider: "moonshot",
 					baseUrl,
@@ -3069,8 +3115,9 @@ export function sakanaModelManagerOptions(config?: SakanaModelManagerConfig): Mo
 		dynamicModelsAuthoritative: true,
 		dropCachedModelIdsOnStaticMismatch: SAKANA_FUGU_STATIC_MODEL_IDS,
 		...(apiKey && {
-			fetchDynamicModels: () =>
+			fetchDynamicModels: hooks =>
 				fetchOpenAICompatibleModels({
+					onFailure: hooks?.onFailure,
 					api: "openai-responses",
 					provider: "sakana",
 					baseUrl,
@@ -3190,8 +3237,9 @@ export function xiaomiModelManagerOptions(
 	// would incorrectly pin to the standard endpoint (api.xiaomimimo.com).
 	const baseUrl = isTokenPlanKey ? tokenPlanBaseUrls[0] : (config?.baseUrl ?? XIAOMI_STANDARD_BASE_URL);
 	const references = createBundledReferenceMap<"openai-completions">("xiaomi");
-	const fetchModels = (url: string) =>
+	const fetchModels = (url: string, hooks: DiscoveryHooks | undefined) =>
 		fetchOpenAICompatibleModels({
+			onFailure: hooks?.onFailure,
 			api: "openai-completions",
 			provider: providerId,
 			baseUrl: url,
@@ -3213,12 +3261,14 @@ export function xiaomiModelManagerOptions(
 	return {
 		providerId,
 		...(apiKey && {
-			fetchDynamicModels: async () => {
+			fetchDynamicModels: async hooks => {
 				if (!isTokenPlanKey) {
-					return fetchModels(baseUrl);
+					return fetchModels(baseUrl, hooks);
 				}
+				// Token-plan keys are tried against each cluster in turn, so a per-attempt failure is expected
+				// while a later one still succeeds. The reasons all travel back; the caller reports them.
 				for (const url of tokenPlanBaseUrls) {
-					const result = await fetchModels(url);
+					const result = await fetchModels(url, hooks);
 					if (result) return result;
 				}
 				return null;
@@ -3646,7 +3696,7 @@ export function litellmModelManagerOptions(
 		// would leak the machine's localhost catalog). Prefer the proxy's richer
 		// management metadata, then enrich ids against models.dev with the bundled
 		// catalog as a fallback before using /v1/models.
-		fetchDynamicModels: async () => {
+		fetchDynamicModels: async hooks => {
 			const modelsDevReferences = await loadModelsDevReferences<"openai-completions">(config?.fetch);
 			const resolveReference = createReferenceResolver(modelsDevReferences);
 			const richModels = await fetchLiteLLMRichModels({
@@ -3662,6 +3712,7 @@ export function litellmModelManagerOptions(
 				return richModels;
 			}
 			return fetchOpenAICompatibleModels({
+				onFailure: hooks?.onFailure,
 				api: "openai-completions",
 				provider: "litellm",
 				baseUrl,
@@ -3693,8 +3744,9 @@ export function vllmModelManagerOptions(config?: VllmModelManagerConfig): ModelM
 	return {
 		providerId: "vllm",
 		cacheProviderId: `vllm:${Bun.hash(baseUrl).toString(36)}`,
-		fetchDynamicModels: () =>
+		fetchDynamicModels: hooks =>
 			fetchOpenAICompatibleModels({
+				onFailure: hooks?.onFailure,
 				api: "openai-completions",
 				provider: "vllm",
 				baseUrl,
@@ -3733,10 +3785,11 @@ export function nanoGptModelManagerOptions(
 	return {
 		providerId: "nanogpt",
 		...(apiKey && {
-			fetchDynamicModels: async () => {
+			fetchDynamicModels: async hooks => {
 				// Track base IDs that have :thinking variants so we can mark them reasoning-capable.
 				const thinkingBaseIds = new Set<string>();
 				const models = await fetchOpenAICompatibleModels({
+					onFailure: hooks?.onFailure,
 					api: "openai-completions",
 					provider: "nanogpt",
 					baseUrl,
@@ -3946,9 +3999,10 @@ export function githubCopilotModelManagerOptions(config?: GithubCopilotModelMana
 	return {
 		providerId: "github-copilot",
 		...(apiKey && {
-			fetchDynamicModels: async () => {
+			fetchDynamicModels: async hooks => {
 				const longContextVariants: ModelSpec<Api>[] = [];
 				const models = await fetchOpenAICompatibleModels<Api>({
+					onFailure: hooks?.onFailure,
 					api: "openai-completions",
 					provider: "github-copilot",
 					baseUrl,
@@ -4110,7 +4164,7 @@ export function anthropicModelManagerOptions(
 			map: payload => mapAnthropicModelsDev(payload, baseUrl),
 		},
 		...(apiKey && {
-			fetchDynamicModels: async () => {
+			fetchDynamicModels: async hooks => {
 				// models.dev is a best-effort ENRICHMENT layer here, not a recall path.
 				// `buildAnthropicReferenceMap` always merges the shipped bundled catalog
 				// (`getBundledModels("anthropic")`) on top of whatever models.dev returns,
@@ -4128,6 +4182,7 @@ export function anthropicModelManagerOptions(
 				const references = buildAnthropicReferenceMap(modelsDevModels);
 				return (
 					fetchOpenAICompatibleModels({
+						onFailure: hooks?.onFailure,
 						api: "anthropic-messages",
 						provider: "anthropic",
 						baseUrl,

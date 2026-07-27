@@ -1,3 +1,4 @@
+import { AI_PROMPTS } from "../prompts/registry";
 import type { ToolCall } from "../types";
 import {
 	buildArgShapes,
@@ -13,15 +14,7 @@ import {
 	setToolArg,
 	type ToolArgShape,
 } from "./coercion";
-import dialectPrompt from "./pi-native.md" with { type: "text" };
-import {
-	chatMlTranscriptRenderer,
-	renderThinkTags,
-	renderToolResponseResults,
-	stringifyJson,
-	THINK_CLOSE,
-	THINK_OPEN,
-} from "./rendering";
+import { chatMlTranscriptRenderer, renderThinkTags, renderToolResponseResults, stringifyJson } from "./rendering";
 import type {
 	DialectDefinition,
 	DialectRenderOptions,
@@ -29,14 +22,19 @@ import type {
 	InbandScanner,
 	InbandScannerOptions,
 } from "./types";
+import { THINK_CLOSE, THINK_OPEN } from "./wire-tags";
 
 // Spec: docs/internal/toolconv/pi-native.md. Calls are `<call:NAME …>…</call:NAME>`
 // blocks; arguments are attributes (scalars), child elements (anything), or a
 // verbatim inline body (bulk string). Typing is schema-driven: string-typed
 // values are verbatim, everything else JSON-coerces.
 
-const CALL_OPEN = "<call:";
-const CALL_CLOSE_PREFIX = "</call:";
+/**
+ * Pi-native's own tags, prefixed with the dialect because `gemma.ts` used the bare `PI_CALL_OPEN` for a completely
+ * different byte sequence. See the note in that file.
+ */
+const PI_CALL_OPEN = "<call:";
+const PI_CALL_CLOSE_PREFIX = "</call:";
 
 type State = "outside" | "thinking" | "opentag" | "body";
 
@@ -99,8 +97,8 @@ export class PiNativeInbandScanner implements InbandScanner {
 	}
 
 	#consumeOutside(final: boolean, events: InbandScanEvent[]): boolean {
-		const holdTags = this.#parseThinking ? [CALL_OPEN, THINK_OPEN] : [CALL_OPEN];
-		const call = this.#buffer.indexOf(CALL_OPEN);
+		const holdTags = this.#parseThinking ? [PI_CALL_OPEN, THINK_OPEN] : [PI_CALL_OPEN];
+		const call = this.#buffer.indexOf(PI_CALL_OPEN);
 		const think = this.#parseThinking ? this.#buffer.indexOf(THINK_OPEN) : -1;
 		const start = call === -1 ? think : think === -1 ? call : Math.min(call, think);
 		if (start === -1) {
@@ -167,8 +165,8 @@ export class PiNativeInbandScanner implements InbandScanner {
 		const parsed = parseOpenTag(tag);
 		if (!parsed) {
 			// Not a well-formed call tag (bad name): emit `<call:` as text and rescan.
-			events.push({ type: "text", text: CALL_OPEN });
-			this.#buffer = this.#buffer.slice(CALL_OPEN.length);
+			events.push({ type: "text", text: PI_CALL_OPEN });
+			this.#buffer = this.#buffer.slice(PI_CALL_OPEN.length);
 			this.#state = "outside";
 			return true;
 		}
@@ -185,7 +183,7 @@ export class PiNativeInbandScanner implements InbandScanner {
 		this.#call = {
 			id,
 			name: parsed.name,
-			closer: `${CALL_CLOSE_PREFIX}${parsed.name}>`,
+			closer: `${PI_CALL_CLOSE_PREFIX}${parsed.name}>`,
 			shape,
 			attrs,
 			rawBlock: tag,
@@ -305,8 +303,8 @@ interface ParsedOpenTag {
 
 /** Parse `<call:NAME attr…>` / `<call:NAME attr…/>`; null when malformed. */
 function parseOpenTag(tag: string): ParsedOpenTag | null {
-	if (!tag.startsWith(CALL_OPEN) || !tag.endsWith(">")) return null;
-	let inner = tag.slice(CALL_OPEN.length, -1);
+	if (!tag.startsWith(PI_CALL_OPEN) || !tag.endsWith(">")) return null;
+	let inner = tag.slice(PI_CALL_OPEN.length, -1);
 	const selfClosing = inner.endsWith("/");
 	if (selfClosing) inner = inner.slice(0, -1);
 	const nameMatch = /^[A-Za-z_][A-Za-z0-9_-]*/.exec(inner);
@@ -612,7 +610,7 @@ function renderToolCall(call: ToolCall, options: DialectRenderOptions = {}): str
 function piNativeInvocation(call: ToolCall, shape: ToolArgShape | undefined): string {
 	const args = call.arguments;
 	const keys = Object.keys(args);
-	const closer = `${CALL_CLOSE_PREFIX}${call.name}>`;
+	const closer = `${PI_CALL_CLOSE_PREFIX}${call.name}>`;
 
 	if (shape) {
 		// Inline-body form: every parameter is string-typed, the bulk value goes
@@ -629,20 +627,20 @@ function piNativeInvocation(call: ToolCall, shape: ToolArgShape | undefined): st
 			const inlineTarget = shape.parameterOrder.find(key => !others.includes(key));
 			if (inlineTarget === bulk && !bulkValue.includes(closer) && others.every(key => attrSafe(args[key]))) {
 				const attrText = others.map(key => ` ${key}=${renderAttrValue(args[key], true)}`).join("");
-				return `${CALL_OPEN}${call.name}${attrText}>\n${bulkValue}\n${closer}`;
+				return `${PI_CALL_OPEN}${call.name}${attrText}>\n${bulkValue}\n${closer}`;
 			}
 		}
 		// Attribute form: all-scalar arguments collapse onto a self-closing tag.
 		if (keys.length > 0 && keys.every(key => attrSafe(args[key]))) {
 			const attrText = keys.map(key => ` ${key}=${renderAttrValue(args[key], shape.stringArgs.has(key))}`).join("");
-			return `${CALL_OPEN}${call.name}${attrText}/>`;
+			return `${PI_CALL_OPEN}${call.name}${attrText}/>`;
 		}
 	}
 
 	// Element form (canonical, fully general).
-	if (keys.length === 0) return `${CALL_OPEN}${call.name}/>`;
+	if (keys.length === 0) return `${PI_CALL_OPEN}${call.name}/>`;
 	const children = keys.map(key => renderElement(key, args[key], shape?.properties[key], "")).join("\n");
-	return `${CALL_OPEN}${call.name}>\n${children}\n${closer}`;
+	return `${PI_CALL_OPEN}${call.name}>\n${children}\n${closer}`;
 }
 
 function renderAssistantToolCalls(calls: readonly ToolCall[], options: DialectRenderOptions = {}): string {
@@ -652,7 +650,7 @@ function renderAssistantToolCalls(calls: readonly ToolCall[], options: DialectRe
 
 const definition: DialectDefinition = {
 	dialect: "pi-native",
-	prompt: dialectPrompt,
+	prompt: AI_PROMPTS["dialect/pi-native"].text,
 	createScanner: options => new PiNativeInbandScanner(options),
 	renderToolCall,
 	renderAssistantToolCalls,

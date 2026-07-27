@@ -3,7 +3,7 @@
  * derivation shared by catalog discovery and the pi-ai OAuth flow. The device
  * login / token refresh flow lives in `@veyyon/ai`'s registry.
  */
-import { trimTrailingSlashes } from "@veyyon/utils";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 
 export const COPILOT_USER_AGENT = "opencode/1.3.15" as const;
 

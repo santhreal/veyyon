@@ -17,7 +17,8 @@ export interface GoogleOAuthFlowConfig {
 	clientSecret: string;
 	authUrl: string;
 	tokenUrl: string;
-	scopes: string[];
+	/** Read only to build the `scope` parameter, so a shared, frozen scope list is accepted as-is. */
+	scopes: readonly string[];
 	callbackPort: number;
 	callbackPath: string;
 	discoverProject: (accessToken: string, onProgress?: (message: string) => void) => Promise<string>;

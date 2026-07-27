@@ -1,4 +1,5 @@
-import { trimTrailingSlashes } from "@veyyon/utils";
+import { errorMessage } from "@veyyon/utils/type-guards";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { type } from "arktype";
 import type { ModelSpec } from "../types";
 import { discoveryFetch, toPositiveNumber } from "../utils";
@@ -8,14 +9,18 @@ import {
 	type VariantCollapseTable,
 } from "../variant-collapse";
 import { getAntigravityUserAgent } from "../wire/gemini-headers";
+import { AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW, AGENT_GATEWAY_DEFAULT_MAX_TOKENS } from "./default-limits";
+import type { DiscoveryFailure, DiscoveryHooks } from "./failure";
 
-export const ANTIGRAVITY_PRIMARY_ENDPOINT = "https://daily-cloudcode-pa.googleapis.com";
-export const ANTIGRAVITY_SANDBOX_ENDPOINT = "https://daily-cloudcode-pa.sandbox.googleapis.com";
-const DEFAULT_ANTIGRAVITY_DISCOVERY_ENDPOINTS = [ANTIGRAVITY_PRIMARY_ENDPOINT, ANTIGRAVITY_SANDBOX_ENDPOINT] as const;
+// Re-exported, not redeclared: `@veyyon/catalog/provider-endpoints` owns the hosts, and this module's
+// existing importers keep the names they already use.
+export { ANTIGRAVITY_PRIMARY_ENDPOINT, ANTIGRAVITY_SANDBOX_ENDPOINT } from "../provider-endpoints";
+
+import { ANTIGRAVITY_ENDPOINTS } from "../provider-endpoints";
+
+const DEFAULT_ANTIGRAVITY_DISCOVERY_ENDPOINTS = ANTIGRAVITY_ENDPOINTS;
 const FETCH_AVAILABLE_MODELS_PATH = "/v1internal:fetchAvailableModels";
 
-const DEFAULT_CONTEXT_WINDOW = 200_000;
-const DEFAULT_MAX_TOKENS = 64_000;
 const ANTIGRAVITY_DISCOVERY_DENYLIST = new Set(["chat_20706", "chat_23310", "gemini-2.5-pro"]);
 
 /**
@@ -151,6 +156,16 @@ export interface FetchAntigravityDiscoveryModelsOptions {
 	 * level-transport table so cloudcode-pa keeps `thinkingLevel`.
 	 */
 	collapseTable?: VariantCollapseTable;
+	/**
+	 * Called with the reason each endpoint attempt produced nothing.
+	 *
+	 * The same channel every reader in this package uses. This reader walks a LIST of fallback endpoints and
+	 * `continue`d past every kind of failure, so a token the service rejects looked identical to a list of
+	 * endpoints that have all moved -- and the final answer was a bare `null` naming none of them. Every
+	 * attempt reports, because "all three endpoints answered 401" and "all three refused the connection"
+	 * are different problems. Never called on success, including a success with no models.
+	 */
+	onFailure?: DiscoveryHooks["onFailure"];
 }
 
 /**
@@ -168,9 +183,12 @@ export async function fetchAntigravityDiscoveryModels(
 		: DEFAULT_ANTIGRAVITY_DISCOVERY_ENDPOINTS.map(trimTrailingSlashes);
 
 	for (const endpoint of endpoints) {
+		const url = `${endpoint}${FETCH_AVAILABLE_MODELS_PATH}`;
+		const report = (stage: DiscoveryFailure["stage"], detail: string): void =>
+			options.onFailure?.({ stage, url, detail });
 		let response: Response;
 		try {
-			response = await fetcher(`${endpoint}${FETCH_AVAILABLE_MODELS_PATH}`, {
+			response = await fetcher(url, {
 				method: "POST",
 				headers: {
 					Authorization: `Bearer ${options.token}`,
@@ -180,23 +198,29 @@ export async function fetchAntigravityDiscoveryModels(
 				body: JSON.stringify({}),
 				signal: options.signal,
 			});
-		} catch {
+		} catch (error) {
+			// `continue` tries the next fallback endpoint, which is right; what was wrong is that the attempt
+			// left no trace, so an operator whose whole endpoint list is unreachable saw only an empty picker.
+			report("request", errorMessage(error));
 			continue;
 		}
 
 		if (!response.ok) {
+			report("status", `HTTP ${response.status} ${response.statusText}`.trim());
 			continue;
 		}
 
 		let payload: unknown;
 		try {
 			payload = await response.json();
-		} catch {
+		} catch (error) {
+			report("body", `response is not JSON: ${errorMessage(error)}`);
 			continue;
 		}
 
 		const parsed = parseAntigravityDiscoveryResponse(payload);
 		if (!parsed) {
+			report("payload", "response holds no model map this reader recognizes");
 			continue;
 		}
 
@@ -227,8 +251,8 @@ export async function fetchAntigravityDiscoveryModels(
 					cacheWrite: 0,
 				},
 				pricing: "unknown",
-				contextWindow: toPositiveNumber(model.maxTokens, DEFAULT_CONTEXT_WINDOW),
-				maxTokens: toPositiveNumber(model.maxOutputTokens, DEFAULT_MAX_TOKENS),
+				contextWindow: toPositiveNumber(model.maxTokens, AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW),
+				maxTokens: toPositiveNumber(model.maxOutputTokens, AGENT_GATEWAY_DEFAULT_MAX_TOKENS),
 			});
 		}
 

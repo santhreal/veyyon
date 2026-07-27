@@ -17,12 +17,21 @@ import type { OAuthController, OAuthCredentials } from "./types";
 
 const DEFAULT_TIMEOUT = 300_000;
 const DEFAULT_HOSTNAME = "localhost";
-const CALLBACK_PATH = "/callback";
+/**
+ * The loopback path a provider redirects back to when nothing else is configured.
+ *
+ * Exported because this class is the one that serves it, and four callers each kept their own
+ * `const CALLBACK_PATH = "/callback"` to hand back the same value: three OAuth providers passing it in
+ * explicitly and the MCP flow using it as its own fallback. A change here would have moved the served path
+ * and left all four still advertising the old one to the provider, which fails as a redirect mismatch at
+ * the authorization server rather than anywhere in this codebase.
+ */
+export const DEFAULT_CALLBACK_PATH = "/callback";
 /**
  * Path served by {@link OAuthCallbackFlow} that 302-redirects to the pending
  * authorization URL. Kept out of {@link OAuthCallbackFlowOptions} because it
- * lives on the loopback callback server alongside {@link CALLBACK_PATH} and
- * must never clash with a provider-registered redirect URI (all known
+ * lives on the loopback callback server alongside {@link DEFAULT_CALLBACK_PATH}
+ * and must never clash with a provider-registered redirect URI (all known
  * providers register `/callback`-shaped paths).
  */
 const LAUNCH_PATH = "/launch";
@@ -78,7 +87,7 @@ export abstract class OAuthCallbackFlow {
 	constructor(
 		ctrl: OAuthController,
 		preferredPortOrOptions: number | OAuthCallbackFlowOptions,
-		callbackPath: string = CALLBACK_PATH,
+		callbackPath: string = DEFAULT_CALLBACK_PATH,
 	) {
 		this.ctrl = ctrl;
 		if (typeof preferredPortOrOptions === "number") {
@@ -91,7 +100,7 @@ export abstract class OAuthCallbackFlow {
 		}
 
 		this.preferredPort = preferredPortOrOptions.preferredPort;
-		this.callbackPath = preferredPortOrOptions.callbackPath ?? CALLBACK_PATH;
+		this.callbackPath = preferredPortOrOptions.callbackPath ?? DEFAULT_CALLBACK_PATH;
 		this.callbackHostname = preferredPortOrOptions.callbackHostname ?? DEFAULT_HOSTNAME;
 		this.redirectUri = preferredPortOrOptions.redirectUri;
 		this.allowPortFallback = preferredPortOrOptions.allowPortFallback ?? true;

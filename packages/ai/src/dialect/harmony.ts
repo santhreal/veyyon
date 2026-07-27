@@ -1,6 +1,6 @@
+import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
 import { mintToolCallId, parseToolArgsText, partialSuffixOverlapAny } from "./coercion";
-import dialectPrompt from "./harmony.md" with { type: "text" };
 import {
 	assistantTranscriptParts,
 	collectToolResultRun,
@@ -327,7 +327,7 @@ function renderTranscript(messages: readonly Message[], options: DialectRenderOp
 
 const definition: DialectDefinition = {
 	dialect: "harmony",
-	prompt: dialectPrompt,
+	prompt: AI_PROMPTS["dialect/harmony"].text,
 	createScanner: () => new HarmonyInbandScanner(),
 	renderToolCall,
 	renderAssistantToolCalls,

@@ -8,6 +8,8 @@
  * `authStorage.getApiKey("anthropic", sessionId)` first, then pass the result
  * through {@link buildAnthropicAuthConfig} for header/URL shaping.
  */
+
+import { ANTHROPIC_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { $env, normalizeBaseUrl } from "@veyyon/utils";
 import {
 	buildAnthropicHeaders as buildProviderAnthropicHeaders,
@@ -22,8 +24,6 @@ export interface AnthropicAuthConfig {
 	baseUrl: string;
 	isOAuth: boolean;
 }
-
-const DEFAULT_BASE_URL = "https://api.anthropic.com";
 
 export function resolveAnthropicBaseUrlFromEnv(): string | undefined {
 	if (isFoundryEnabled()) {
@@ -47,7 +47,7 @@ export function isOAuthToken(apiKey: string): boolean {
  * `apiKey` is whatever the caller chose for `Authorization`/`x-api-key` —
  * usually `authStorage.getApiKey("anthropic")`. `baseUrl` overrides the
  * env-derived base; pass `undefined` to fall back to FOUNDRY/ANTHROPIC env
- * resolution and finally `DEFAULT_BASE_URL`.
+ * resolution and finally the official host.
  *
  * `isOAuth` is derived from the token prefix so the helper stays pure: callers
  * never have to thread the OAuth flag through their own resolution logic.
@@ -55,7 +55,7 @@ export function isOAuthToken(apiKey: string): boolean {
 export function buildAnthropicAuthConfig(apiKey: string, baseUrl?: string): AnthropicAuthConfig {
 	return {
 		apiKey,
-		baseUrl: normalizeBaseUrl(baseUrl) ?? resolveAnthropicBaseUrlFromEnv() ?? DEFAULT_BASE_URL,
+		baseUrl: normalizeBaseUrl(baseUrl) ?? resolveAnthropicBaseUrlFromEnv() ?? ANTHROPIC_API_ENDPOINT,
 		isOAuth: isOAuthToken(apiKey),
 	};
 }

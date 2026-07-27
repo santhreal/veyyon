@@ -35,9 +35,9 @@ No source file in this package logs. It is a data library: it answers questions 
 not own a console, a log file, or a user. When something fails, the reason goes back to the caller as a
 value, and the caller decides what to say about it.
 
-Discovery is where this matters. `fetchOpenAICompatibleModels` returns `null` when it could not produce a
-catalog and `[]` when the endpoint answered with no models, and those two mean different things: `[]` is
-an answer, `null` is a failure. Pass `onFailure` to learn which failure it was:
+Discovery is where this matters. A reader returns `null` when it could not produce a catalog and `[]` when
+the endpoint answered with no models, and those two mean different things: `[]` is an answer, `null` is a
+failure. Pass `onFailure` to learn which failure it was:
 
 ```ts
 const models = await fetchOpenAICompatibleModels({
@@ -58,6 +58,32 @@ means the JSON parsed and held no model list, so the endpoint is probably not Op
 `base-url` means nothing was requested because the configured URL is unusable.
 
 Without `onFailure` you still get `null`, exactly as before. Nothing is thrown for a discovery failure.
+
+Every reader takes the same `onFailure`, and they all use the same `DiscoveryFailure` shape, so you write
+one handler rather than one per provider: `fetchOpenAICompatibleModels`, `fetchCodexModels`,
+`fetchCursorUsableModels`, `fetchDevinModels`, `fetchGeminiModels`,
+`fetchAntigravityDiscoveryModels`, and `fetchGitLabDuoWorkflowModels`.
+
+Some readers try more than one endpoint before giving up: Codex walks two routes, Antigravity walks its
+fallback endpoints, and a Xiaomi token-plan key is tried against each cluster. Those readers report EVERY
+attempt, so you may receive several reasons for one `null`, and you may receive a reason followed by a
+success when a later attempt works. Both are deliberate. An endpoint that is refusing connections is worth
+knowing about even when a fallback covers for it.
+
+To receive reasons through a model manager instead of calling a reader directly, pass
+`onDiscoveryFailure`:
+
+```ts
+const manager = createModelManager({
+    providerId: "openai",
+    fetchDynamicModels: hooks => fetchOpenAICompatibleModels({ ...args, onFailure: hooks?.onFailure }),
+    onDiscoveryFailure: failure => recordProviderDiscoveryError("openai", failure),
+});
+```
+
+The manager passes the hooks to your fetcher and reports through the same channel when the fetcher throws,
+which arrives with the stage `unhandled`: a reader that throws instead of reporting is a bug in the reader,
+not a statement about the provider's endpoint.
 
 ## Install
 

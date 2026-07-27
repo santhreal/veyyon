@@ -1,6 +1,6 @@
+import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
 import { mintToolCallId, partialSuffixOverlap, partialSuffixOverlapAny, setToolArg } from "./coercion";
-import dialectPrompt from "./gemma.md" with { type: "text" };
 import { assistantTranscriptParts, collectToolResultRun, gemmaTurn, messageContentText } from "./rendering";
 import type {
 	DialectDefinition,
@@ -11,15 +11,22 @@ import type {
 	InbandScannerOptions,
 } from "./types";
 
-const CALL_OPEN = "<|tool_call>";
-const CALL_CLOSE = "<tool_call|>";
+/**
+ * Gemma's own tags, every one prefixed with the dialect. The bare names collided across this directory: this
+ * file's `GEMMA_CALL_OPEN` was `<|tool_call>` while `pi-native.ts` used the same name for `<call:`, and its
+ * `GEMMA_RESPONSE_OPEN` was `<|tool_response>` while `glm.ts` used the same name for the shared `<tool_response>`.
+ * One name standing for different bytes in sibling files is a latent bug rather than a style nit, since the
+ * next reader carries the wrong meaning across the file boundary.
+ */
+const GEMMA_CALL_OPEN = "<|tool_call>";
+const GEMMA_CALL_CLOSE = "<tool_call|>";
 const STRING = '<|"|>';
-const RESPONSE_OPEN = "<|tool_response>";
-const RESPONSE_CLOSE = "<tool_response|>";
-const OPEN_TAGS = [CALL_OPEN] as const;
-const THOUGHT_OPEN = "<|channel>thought\n";
-const THOUGHT_CLOSE = "<channel|>";
-const OPEN_TAGS_THINK = [CALL_OPEN, THOUGHT_OPEN] as const;
+const GEMMA_RESPONSE_OPEN = "<|tool_response>";
+const GEMMA_RESPONSE_CLOSE = "<tool_response|>";
+const OPEN_TAGS = [GEMMA_CALL_OPEN] as const;
+const GEMMA_THOUGHT_OPEN = "<|channel>thought\n";
+const GEMMA_THOUGHT_CLOSE = "<channel|>";
+const OPEN_TAGS_THINK = [GEMMA_CALL_OPEN, GEMMA_THOUGHT_OPEN] as const;
 const CALL_HEAD = /^call:\s*([A-Za-z_]\w*)\s*\{/;
 
 type State = "outside" | "tool" | "thinking";
@@ -76,8 +83,8 @@ export class GemmaInbandScanner implements InbandScanner {
 	}
 
 	#consumeOutside(final: boolean, events: InbandScanEvent[]): void {
-		const call = this.#buffer.indexOf(CALL_OPEN);
-		const thought = this.#parseThinking ? this.#buffer.indexOf(THOUGHT_OPEN) : -1;
+		const call = this.#buffer.indexOf(GEMMA_CALL_OPEN);
+		const thought = this.#parseThinking ? this.#buffer.indexOf(GEMMA_THOUGHT_OPEN) : -1;
 		let start = call;
 		let isThought = false;
 		if (thought !== -1 && (start === -1 || thought < start)) {
@@ -94,27 +101,27 @@ export class GemmaInbandScanner implements InbandScanner {
 		}
 		if (start > 0) events.push({ type: "text", text: this.#buffer.slice(0, start) });
 		if (isThought) {
-			this.#buffer = this.#buffer.slice(start + THOUGHT_OPEN.length);
+			this.#buffer = this.#buffer.slice(start + GEMMA_THOUGHT_OPEN.length);
 			this.#thinking = "";
 			events.push({ type: "thinkingStart" });
 			this.#state = "thinking";
 			return;
 		}
-		this.#buffer = this.#buffer.slice(start + CALL_OPEN.length);
+		this.#buffer = this.#buffer.slice(start + GEMMA_CALL_OPEN.length);
 		this.#state = "tool";
 	}
 
 	#consumeThinking(final: boolean, events: InbandScanEvent[]): void {
-		const close = this.#buffer.indexOf(THOUGHT_CLOSE);
+		const close = this.#buffer.indexOf(GEMMA_THOUGHT_CLOSE);
 		if (close === -1) {
-			const hold = final ? 0 : partialSuffixOverlap(this.#buffer, THOUGHT_CLOSE);
+			const hold = final ? 0 : partialSuffixOverlap(this.#buffer, GEMMA_THOUGHT_CLOSE);
 			this.#emitThinking(this.#buffer.slice(0, this.#buffer.length - hold), events);
 			this.#buffer = this.#buffer.slice(this.#buffer.length - hold);
 			if (final) this.#endThinking(events);
 			return;
 		}
 		this.#emitThinking(this.#buffer.slice(0, close), events);
-		this.#buffer = this.#buffer.slice(close + THOUGHT_CLOSE.length);
+		this.#buffer = this.#buffer.slice(close + GEMMA_THOUGHT_CLOSE.length);
 		this.#endThinking(events);
 		this.#state = "outside";
 	}
@@ -150,10 +157,10 @@ export class GemmaInbandScanner implements InbandScanner {
 				id,
 				name: parsed.name,
 				arguments: parsed.arguments,
-				rawBlock: `${CALL_OPEN}${body}${CALL_CLOSE}`,
+				rawBlock: `${GEMMA_CALL_OPEN}${body}${GEMMA_CALL_CLOSE}`,
 			});
 		}
-		this.#buffer = this.#buffer.slice(close + CALL_CLOSE.length);
+		this.#buffer = this.#buffer.slice(close + GEMMA_CALL_CLOSE.length);
 		this.#state = "outside";
 	}
 }
@@ -224,7 +231,7 @@ function findCallClose(text: string): number {
 			i = skipGemmaString(text, i);
 			continue;
 		}
-		if (text.startsWith(CALL_CLOSE, i)) return i;
+		if (text.startsWith(GEMMA_CALL_CLOSE, i)) return i;
 		i++;
 	}
 	return -1;
@@ -296,7 +303,7 @@ function renderToolCall(call: ToolCall, _options: DialectRenderOptions = {}): st
 	const args = Object.entries(call.arguments)
 		.map(([key, value]) => `${key}:${gemmaValue(value)}`)
 		.join(",");
-	return `${CALL_OPEN}call:${call.name}{${args}}${CALL_CLOSE}`;
+	return `${GEMMA_CALL_OPEN}call:${call.name}{${args}}${GEMMA_CALL_CLOSE}`;
 }
 
 function renderAssistantToolCalls(calls: readonly ToolCall[], options: DialectRenderOptions = {}): string {
@@ -307,14 +314,14 @@ function renderToolResults(results: readonly DialectToolResult[], _options: Dial
 	return results
 		.map(
 			result =>
-				`${RESPONSE_OPEN}response:${result.name}{output:${gemmaValue(parseMaybeJson(result.text))}}${RESPONSE_CLOSE}`,
+				`${GEMMA_RESPONSE_OPEN}response:${result.name}{output:${gemmaValue(parseMaybeJson(result.text))}}${GEMMA_RESPONSE_CLOSE}`,
 		)
 		.join("");
 }
 
 function renderThinking(text: string): string {
 	if (!text) return "";
-	return `${THOUGHT_OPEN}${text}${THOUGHT_CLOSE}`;
+	return `${GEMMA_THOUGHT_OPEN}${text}${GEMMA_THOUGHT_CLOSE}`;
 }
 
 function renderTranscript(messages: readonly Message[], options: DialectRenderOptions = {}): string {
@@ -371,7 +378,7 @@ function parseMaybeJson(text: string): unknown {
 
 const definition: DialectDefinition = {
 	dialect: "gemma",
-	prompt: dialectPrompt,
+	prompt: AI_PROMPTS["dialect/gemma"].text,
 	createScanner: options => new GemmaInbandScanner(options),
 	renderToolCall,
 	renderAssistantToolCalls,

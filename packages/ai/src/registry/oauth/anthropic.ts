@@ -2,11 +2,11 @@
  * Anthropic OAuth flow (Claude Pro/Max)
  */
 
+import { CLAUDE_CODE_VERSION as claudeCodeVersion } from "@veyyon/catalog/wire/anthropic";
 import { withScopedTimeoutSignal } from "@veyyon/utils";
 import * as AIError from "../../error";
-import { claudeCodeVersion } from "../../providers/anthropic";
 import type { FetchImpl } from "../../types";
-import { OAuthCallbackFlow } from "./callback-server";
+import { DEFAULT_CALLBACK_PATH, OAuthCallbackFlow } from "./callback-server";
 import { credentialExpiryFromExpiresIn } from "./expiry";
 import { generatePKCE } from "./pkce";
 import type { OAuthController, OAuthCredentials } from "./types";
@@ -19,7 +19,6 @@ const BOOTSTRAP_URL = "https://api.anthropic.com/api/claude_cli/bootstrap";
 const CLAUDE_CODE_BOOTSTRAP_MODEL = "claude-opus-4-8";
 const CLAUDE_CODE_BOOTSTRAP_USER_AGENT = `claude-code/${claudeCodeVersion}`;
 const CALLBACK_PORT = 54545;
-const CALLBACK_PATH = "/callback";
 // Scopes required for direct OAuth-token inference (user:inference) plus account/session management.
 // platform.claude.com/oauth/authorize issues console tokens (org:create_api_key only) and does not
 // grant user:inference — the claude.ai endpoint is required for direct inference access.
@@ -218,7 +217,7 @@ export class AnthropicOAuthFlow extends OAuthCallbackFlow {
 	#fetch: FetchImpl;
 
 	constructor(ctrl: OAuthController) {
-		super(ctrl, CALLBACK_PORT, CALLBACK_PATH);
+		super(ctrl, CALLBACK_PORT, DEFAULT_CALLBACK_PATH);
 		this.#fetch = ctrl.fetch ?? fetch;
 	}
 

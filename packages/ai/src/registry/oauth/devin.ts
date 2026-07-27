@@ -1,16 +1,14 @@
+import { DEVIN_AUTH_ENDPOINT, DEVIN_WEBAPP_URL } from "@veyyon/catalog/provider-endpoints";
 import { DAY_MS, decodeJwtPayload } from "@veyyon/utils";
 import * as AIError from "../../error";
-import { OAuthCallbackFlow } from "./callback-server";
+import { DEFAULT_CALLBACK_PATH, OAuthCallbackFlow } from "./callback-server";
 import { credentialExpiryFromJwtExp } from "./expiry";
 import { generatePKCE } from "./pkce";
 import type { OAuthController, OAuthCredentials } from "./types";
 
 type FetchFunction = NonNullable<OAuthController["fetch"]>;
 
-const DEVIN_WEBAPP_URL = "https://app.devin.ai";
-const DEVIN_API_URL = "https://api.devin.ai";
 const CALLBACK_PORT = 59653;
-const CALLBACK_PATH = "/callback";
 const TOKEN_PATH = "/auth/cli/token";
 const FALLBACK_EXPIRES_MS = 365 * DAY_MS;
 
@@ -30,7 +28,7 @@ class DevinOAuthFlow extends OAuthCallbackFlow {
 	constructor(ctrl: OAuthController) {
 		super(ctrl, {
 			preferredPort: CALLBACK_PORT,
-			callbackPath: CALLBACK_PATH,
+			callbackPath: DEFAULT_CALLBACK_PATH,
 			callbackHostname: "127.0.0.1",
 		});
 	}
@@ -68,7 +66,7 @@ class DevinOAuthFlow extends OAuthCallbackFlow {
 			access: token,
 			refresh: token,
 			expires: getTokenExpiry(token),
-			apiEndpoint: DEVIN_API_URL,
+			apiEndpoint: DEVIN_AUTH_ENDPOINT,
 			enterpriseUrl: DEVIN_WEBAPP_URL,
 		};
 	}
@@ -79,7 +77,7 @@ export async function exchangeDevinCliToken(
 	codeVerifier: string,
 	fetchImpl: FetchFunction = fetch,
 ): Promise<string> {
-	const response = await fetchImpl(`${DEVIN_API_URL}${TOKEN_PATH}`, {
+	const response = await fetchImpl(`${DEVIN_AUTH_ENDPOINT}${TOKEN_PATH}`, {
 		method: "POST",
 		headers: {
 			Accept: "application/json",

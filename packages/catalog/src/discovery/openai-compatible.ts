@@ -1,7 +1,9 @@
-import { errorMessage, normalizeBaseUrl } from "@veyyon/utils";
+import { errorMessage } from "@veyyon/utils/type-guards";
+import { normalizeBaseUrl } from "@veyyon/utils/url";
 import { type } from "arktype";
 import type { Api, FetchImpl, ModelSpec, Provider } from "../types";
 import { discoveryFetch } from "../utils";
+import type { DiscoveryHooks } from "./failure";
 
 const MODELS_PATH = "/models";
 
@@ -82,25 +84,6 @@ export interface OpenAICompatibleModelMapperContext<TApi extends Api> {
 }
 
 /**
- * Why a discovery attempt produced no model list.
- *
- * `stage` says how far the attempt got, which is what tells an operator where to look:
- *
- * - `base-url` — the configured base URL is not usable, so nothing was requested.
- * - `request` — the request never completed (DNS, connection refused, TLS, timeout, abort).
- * - `status` — the endpoint answered, with a status that is not ok.
- * - `body` — the response body was not readable JSON.
- * - `payload` — the JSON did not hold a model list in any shape this reader understands.
- */
-export interface OpenAICompatibleDiscoveryFailure {
-	stage: "base-url" | "request" | "status" | "body" | "payload";
-	/** The `/models` URL that was attempted, or the configured base URL when nothing was requested. */
-	url: string;
-	/** Human-readable detail: the error message, or the status line. */
-	detail: string;
-}
-
-/**
  * Options for fetching and normalizing OpenAI-compatible `/models` catalogs.
  */
 export interface FetchOpenAICompatibleModelsOptions<TApi extends Api> {
@@ -146,7 +129,7 @@ export interface FetchOpenAICompatibleModelsOptions<TApi extends Api> {
 	 * Never called when discovery succeeds, including when it succeeds with an empty list: an endpoint that
 	 * answers "no models" is not a failure.
 	 */
-	onFailure?: (failure: OpenAICompatibleDiscoveryFailure) => void;
+	onFailure?: DiscoveryHooks["onFailure"];
 }
 
 /**

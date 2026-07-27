@@ -1,15 +1,8 @@
 import { parseJsonWithRepair, parseStreamingJson } from "@veyyon/utils";
+import { AI_PROMPTS } from "../prompts/registry";
 import type { ToolCall } from "../types";
 import { mintToolCallId, partialSuffixOverlapAny, recordOrEmpty } from "./coercion";
-import dialectPrompt from "./hermes.md" with { type: "text" };
-import {
-	chatMlTranscriptRenderer,
-	renderThinkTags,
-	renderToolResponseResults,
-	stringifyJson,
-	THINK_CLOSE,
-	THINK_OPEN,
-} from "./rendering";
+import { chatMlTranscriptRenderer, renderThinkTags, renderToolResponseResults, stringifyJson } from "./rendering";
 import type {
 	DialectDefinition,
 	DialectRenderOptions,
@@ -17,10 +10,9 @@ import type {
 	InbandScanner,
 	InbandScannerOptions,
 } from "./types";
+import { THINK_CLOSE, THINK_OPEN, TOOL_CALL_CLOSE, TOOL_CALL_OPEN } from "./wire-tags";
 
-const TOOL_OPEN = "<tool_call>";
-const TOOL_CLOSE = "</tool_call>";
-const HOLD_TAGS = [TOOL_OPEN, TOOL_CLOSE, THINK_OPEN, THINK_CLOSE] as const;
+const HOLD_TAGS = [TOOL_CALL_OPEN, TOOL_CALL_CLOSE, THINK_OPEN, THINK_CLOSE] as const;
 
 export class HermesInbandScanner implements InbandScanner {
 	#buffer = "";
@@ -79,7 +71,7 @@ export class HermesInbandScanner implements InbandScanner {
 			}
 
 			if (!this.#inside) {
-				const open = this.#buffer.indexOf(TOOL_OPEN);
+				const open = this.#buffer.indexOf(TOOL_CALL_OPEN);
 				const think = this.#parseThinking ? this.#buffer.indexOf(THINK_OPEN) : -1;
 				const start = open === -1 ? think : think === -1 ? open : Math.min(open, think);
 				if (start === -1) {
@@ -97,7 +89,7 @@ export class HermesInbandScanner implements InbandScanner {
 					events.push({ type: "thinkingStart" });
 					continue;
 				}
-				this.#buffer = this.#buffer.slice(start + TOOL_OPEN.length);
+				this.#buffer = this.#buffer.slice(start + TOOL_CALL_OPEN.length);
 				this.#inside = true;
 				this.#id = mintToolCallId();
 				this.#name = "";
@@ -105,7 +97,7 @@ export class HermesInbandScanner implements InbandScanner {
 				continue;
 			}
 
-			const close = this.#buffer.indexOf(TOOL_CLOSE);
+			const close = this.#buffer.indexOf(TOOL_CALL_CLOSE);
 			const body = close === -1 ? this.#buffer : this.#buffer.slice(0, close);
 			if (!this.#started) this.#tryStart(body, events);
 			if (close === -1) {
@@ -115,14 +107,14 @@ export class HermesInbandScanner implements InbandScanner {
 					// downstream projector keeps the half-open toolCall block it created
 					// on toolStart (arguments: {}) and the agent dispatches the named
 					// tool with EMPTY args. Emit a best-effort end before resetting.
-					this.#emitBestEffortEnd(body, `${TOOL_OPEN}${body}`, events);
+					this.#emitBestEffortEnd(body, `${TOOL_CALL_OPEN}${body}`, events);
 					this.#reset();
 				}
 				break;
 			}
 
 			const parsed = this.#parseCall(body);
-			const rawBlock = `${TOOL_OPEN}${body}${TOOL_CLOSE}`;
+			const rawBlock = `${TOOL_CALL_OPEN}${body}${TOOL_CALL_CLOSE}`;
 			if (parsed) {
 				if (!this.#started) {
 					events.push({ type: "toolStart", id: this.#id, name: parsed.name });
@@ -136,7 +128,7 @@ export class HermesInbandScanner implements InbandScanner {
 				// rather than resetting and stranding a half-open, empty-args call.
 				this.#emitBestEffortEnd(body, rawBlock, events);
 			}
-			this.#buffer = this.#buffer.slice(close + TOOL_CLOSE.length);
+			this.#buffer = this.#buffer.slice(close + TOOL_CALL_CLOSE.length);
 			this.#reset();
 		}
 		return events;
@@ -168,6 +160,10 @@ export class HermesInbandScanner implements InbandScanner {
 			}
 			return { name: parsed.name, arguments: recordOrEmpty(args) };
 		} catch {
+			// A body that closed but will not parse is not a call, and saying so is not a swallow: the
+			// caller checks for `undefined` and emits a best-effort `toolEnd` so an already-announced
+			// `toolStart` is never left half-open with empty arguments. Reporting the parse error instead
+			// would abort a stream over one malformed block the model may still recover from.
 			return undefined;
 		}
 	}
@@ -204,7 +200,7 @@ export class HermesInbandScanner implements InbandScanner {
 }
 
 function renderToolCall(call: ToolCall, _options: DialectRenderOptions = {}): string {
-	return `<tool_call>\n${stringifyJson({ name: call.name, arguments: call.arguments })}\n</tool_call>`;
+	return `${TOOL_CALL_OPEN}\n${stringifyJson({ name: call.name, arguments: call.arguments })}\n${TOOL_CALL_CLOSE}`;
 }
 
 function renderAssistantToolCalls(calls: readonly ToolCall[], options: DialectRenderOptions = {}): string {
@@ -213,7 +209,7 @@ function renderAssistantToolCalls(calls: readonly ToolCall[], options: DialectRe
 
 const definition: DialectDefinition = {
 	dialect: "hermes",
-	prompt: dialectPrompt,
+	prompt: AI_PROMPTS["dialect/hermes"].text,
 	createScanner: options => new HermesInbandScanner(options),
 	renderToolCall,
 	renderAssistantToolCalls,

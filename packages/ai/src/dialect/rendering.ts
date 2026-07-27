@@ -2,9 +2,17 @@ import { escapeXmlAttribute, escapeXmlText, stringifyJson as stringifyJsonValue 
 import type { AssistantMessage, Message, ToolCall, ToolResultMessage } from "../types";
 import { buildArgShapes, type ToolArgShape } from "./coercion";
 import type { DialectRenderOptions, DialectToolResult } from "./types";
+import {
+	THINK_CLOSE,
+	THINK_OPEN,
+	TOOL_RESPONSE_CLOSE,
+	TOOL_RESPONSE_OPEN,
+	XML_THINKING_CLOSE,
+	XML_THINKING_OPEN,
+} from "./wire-tags";
 
 export function renderToolResponseResults(results: readonly DialectToolResult[]): string {
-	return results.map(result => `<tool_response>\n${result.text}\n</tool_response>`).join("\n");
+	return results.map(result => `${TOOL_RESPONSE_OPEN}\n${result.text}\n${TOOL_RESPONSE_CLOSE}`).join("\n");
 }
 
 /**
@@ -304,29 +312,12 @@ export function renderDelimitedThinking(open: string, close: string, text: strin
 }
 
 /**
- * The `<think>` envelope shared by every ChatML-style dialect (deepseek, glm,
- * hermes, kimi, pi-native, qwen3). Gemini deliberately differs and keeps its own
- * fenced ` ```thinking ` delimiters.
- */
-export const THINK_OPEN = "<think>";
-export const THINK_CLOSE = "</think>";
-
-/**
  * Render thinking text inside the shared `<think>` envelope. Collapses tags that
  * are already present rather than nesting a second envelope around them.
  */
 export function renderThinkTags(text: string): string {
 	return renderDelimitedThinking(THINK_OPEN, THINK_CLOSE, text);
 }
-
-/**
- * The longer `<thinking>` envelope used by the XML-style dialects (anthropic,
- * minimax, xml). Deliberately distinct from the `<think>` envelope above: the
- * two tag families are not interchangeable, so they get separate owners rather
- * than one flag-switched constant.
- */
-export const XML_THINKING_OPEN = "<thinking>";
-export const XML_THINKING_CLOSE = "</thinking>";
 
 /** Render thinking text inside the shared `<thinking>` envelope. */
 export function renderXmlThinkingTags(text: string): string {

@@ -1,19 +1,18 @@
 import * as http2 from "node:http2";
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
-import { trimTrailingSlashes } from "@veyyon/utils";
+import { errorMessage, trimTrailingSlashes } from "@veyyon/utils";
 import { type } from "arktype";
 import { getBundledModels } from "../models";
+import { CURSOR_API_ENDPOINT } from "../provider-endpoints";
 import { toModelSpec } from "../provider-models/bundled-references";
 import type { Model, ModelSpec } from "../types";
 import { stripEffortTierSuffix } from "../variant-collapse";
 import { GetUsableModelsRequestSchema, GetUsableModelsResponseSchema } from "./cursor-gen/agent_pb";
+import { AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW, AGENT_GATEWAY_DEFAULT_MAX_TOKENS } from "./default-limits";
+import type { DiscoveryFailure, DiscoveryHooks } from "./failure";
 
-const CURSOR_DEFAULT_BASE_URL = "https://api2.cursor.sh";
 const CURSOR_DEFAULT_CLIENT_VERSION = "cli-2026.02.13-41ac335";
 const CURSOR_GET_USABLE_MODELS_PATH = "/agent.v1.AgentService/GetUsableModels";
-
-const DEFAULT_CONTEXT_WINDOW = 200_000;
-const DEFAULT_MAX_TOKENS = 64_000;
 
 /**
  * Model-id families whose native catalogs (anthropic, openai/openai-codex,
@@ -66,6 +65,16 @@ export interface CursorModelDiscoveryOptions {
 	timeoutMs?: number;
 	/** Optional list of custom Cursor model ids to include in request context. */
 	customModelIds?: string[];
+	/**
+	 * Called with the reason when discovery returns `null`.
+	 *
+	 * The same channel every reader in this package uses. It matters most here, because this reader talks
+	 * HTTP/2 directly and had five separate ways to answer `null` with no reason at all: the timeout fired,
+	 * the connection errored, the stream errored, the response carried a non-2xx status, or the body did not
+	 * decode. Those call for four different things from an operator and used to be indistinguishable.
+	 * Never called on success, including a success with no models.
+	 */
+	onFailure?: DiscoveryHooks["onFailure"];
 }
 
 /**
@@ -78,32 +87,37 @@ export async function fetchCursorUsableModels(
 	options: CursorModelDiscoveryOptions,
 ): Promise<ModelSpec<"cursor-agent">[] | null> {
 	const timeoutMs = options.timeoutMs ?? 5_000;
+	const baseUrl = trimTrailingSlashes(options.baseUrl ?? CURSOR_API_ENDPOINT);
+	const url = `${baseUrl}${CURSOR_GET_USABLE_MODELS_PATH}`;
+	const report = (stage: DiscoveryFailure["stage"], detail: string): void =>
+		options.onFailure?.({ stage, url, detail });
 	try {
 		const requestPayload = create(GetUsableModelsRequestSchema, {
 			customModelIds: normalizeCustomModelIds(options.customModelIds),
 		});
 		const body = toBinary(GetUsableModelsRequestSchema, requestPayload);
-		const baseUrl = trimTrailingSlashes(options.baseUrl ?? CURSOR_DEFAULT_BASE_URL);
 
-		const responseBuffer = await fetchViaHttp2(baseUrl, body, options, timeoutMs);
+		const responseBuffer = await fetchViaHttp2(baseUrl, body, options, timeoutMs, report);
 
 		if (!responseBuffer) {
+			// `fetchViaHttp2` has already reported which of its four ways of giving up happened.
 			return null;
 		}
-		const decoded = decodeGetUsableModelsResponse(responseBuffer);
+		const decoded = decodeGetUsableModelsResponse(responseBuffer, detail => report("body", detail));
 		const parsedDecoded = CursorDecodedResponseSchema(decoded);
 		if (parsedDecoded instanceof type.errors) {
+			report("payload", `response holds no model list: ${parsedDecoded.summary}`);
 			return null;
 		}
 
 		const references = createCursorReferenceMap();
 		return normalizeCursorModels(parsedDecoded.models, options.baseUrl, references);
-	} catch {
+	} catch (error) {
 		// Null means this provider produced no catalog, which the caller records as an unavailable provider.
-		// The reason is not carried yet: only `fetchOpenAICompatibleModels` takes an `onFailure` channel so far
-		// (see the README section on failures travelling back), and threading it through the remaining discovery
-		// readers is a tracked task. Nothing here is swallowed twice over: `[]` is never returned for a failure,
-		// so the caller can still tell 'no catalog' from 'a catalog with no models'.
+		// Nothing is swallowed twice over: `[]` is never returned for a failure, so the caller can still tell
+		// 'no catalog' from 'a catalog with no models', and now also WHY. A throw this far out is the request
+		// construction or the reference map rather than the transport, which reports for itself.
+		report("unhandled", errorMessage(error));
 		return null;
 	}
 }
@@ -125,16 +139,19 @@ async function fetchViaHttp2(
 	body: Uint8Array,
 	options: CursorModelDiscoveryOptions,
 	timeoutMs: number,
+	report: (stage: DiscoveryFailure["stage"], detail: string) => void,
 ): Promise<Uint8Array | null> {
 	const { promise, resolve } = Promise.withResolvers<Uint8Array | null>();
 	const client = http2.connect(baseUrl);
 	const timer = setTimeout(() => {
 		client.destroy();
+		report("request", `no response within ${timeoutMs}ms`);
 		resolve(null);
 	}, timeoutMs);
 
-	client.on("error", () => {
+	client.on("error", error => {
 		clearTimeout(timer);
+		report("request", `HTTP/2 connection failed: ${errorMessage(error)}`);
 		resolve(null);
 	});
 
@@ -151,9 +168,10 @@ async function fetchViaHttp2(
 		client.close();
 		resolve(new Uint8Array(Buffer.concat(chunks)));
 	});
-	req.on("error", () => {
+	req.on("error", error => {
 		clearTimeout(timer);
 		client.close();
+		report("request", `HTTP/2 stream failed: ${errorMessage(error)}`);
 		resolve(null);
 	});
 	req.on("response", headers => {
@@ -161,6 +179,9 @@ async function fetchViaHttp2(
 		if (status < 200 || status >= 300) {
 			clearTimeout(timer);
 			client.close();
+			// Cursor answers 464 to an HTTP/1.1 request and 401 to a stale token, and an operator does
+			// different things about each, so the status is the reason rather than a bare "unavailable".
+			report("status", `HTTP ${status}`);
 			resolve(null);
 		}
 	});
@@ -200,8 +221,9 @@ function createCursorReferenceMap(): Map<string, ModelSpec<"cursor-agent">> {
 	return references;
 }
 
-function decodeGetUsableModelsResponse(payload: Uint8Array) {
+function decodeGetUsableModelsResponse(payload: Uint8Array, reportUndecodable: (detail: string) => void) {
 	if (payload.length === 0) {
+		reportUndecodable("response body is empty");
 		return null;
 	}
 
@@ -209,24 +231,18 @@ function decodeGetUsableModelsResponse(payload: Uint8Array) {
 	if (framedBody) {
 		try {
 			return fromBinary(GetUsableModelsResponseSchema, framedBody);
-		} catch {
-			// Null means this provider produced no catalog, which the caller records as an unavailable provider.
-			// The reason is not carried yet: only `fetchOpenAICompatibleModels` takes an `onFailure` channel so far
-			// (see the README section on failures travelling back), and threading it through the remaining discovery
-			// readers is a tracked task. Nothing here is swallowed twice over: `[]` is never returned for a failure,
-			// so the caller can still tell 'no catalog' from 'a catalog with no models'.
+		} catch (error) {
+			reportUndecodable(`Connect frame is not a GetUsableModelsResponse: ${errorMessage(error)}`);
 			return null;
 		}
 	}
 
 	try {
 		return fromBinary(GetUsableModelsResponseSchema, payload);
-	} catch {
-		// Null means this provider produced no catalog, which the caller records as an unavailable provider.
-		// The reason is not carried yet: only `fetchOpenAICompatibleModels` takes an `onFailure` channel so far
-		// (see the README section on failures travelling back), and threading it through the remaining discovery
-		// readers is a tracked task. Nothing here is swallowed twice over: `[]` is never returned for a failure,
-		// so the caller can still tell 'no catalog' from 'a catalog with no models'.
+	} catch (error) {
+		// Unframed is the second attempt, so the detail says so: a body that decodes as neither is usually
+		// not protobuf at all, which points at a proxy answering instead of Cursor.
+		reportUndecodable(`unframed body is not a GetUsableModelsResponse: ${errorMessage(error)}`);
 		return null;
 	}
 }
@@ -321,14 +337,14 @@ function normalizeCursorModel(
 		name,
 		api: "cursor-agent",
 		provider: "cursor",
-		baseUrl: baseUrlOverride ?? CURSOR_DEFAULT_BASE_URL,
+		baseUrl: baseUrlOverride ?? CURSOR_API_ENDPOINT,
 		reasoning,
 		input: inferInputFromCursorId(id),
 		// This endpoint publishes no pricing, so the zeros mean "not told", not "free".
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		pricing: "unknown",
-		contextWindow: DEFAULT_CONTEXT_WINDOW,
-		maxTokens: DEFAULT_MAX_TOKENS,
+		contextWindow: AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW,
+		maxTokens: AGENT_GATEWAY_DEFAULT_MAX_TOKENS,
 		cursorMaxMode: details.maxMode,
 	};
 }

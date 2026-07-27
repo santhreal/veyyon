@@ -1,3 +1,9 @@
+// Fills the usage-provider registry that `auth-storage.ts` consults. The credential store no
+// longer imports the eleven backends itself, so SOMETHING has to, and the barrel is where every
+// consumer of `AuthStorage` from this package already arrives. Without it the registry refuses to
+// answer rather than reporting no usage for everything -- see `usage/registry.ts`.
+import "./usage/defaults";
+
 export { type Type, type } from "arktype";
 export { type ZodType, z } from "zod/v4";
 export * from "./api-registry";
@@ -6,6 +12,7 @@ export type { AuthGatewayBootOptions, ModelResolver } from "./auth-gateway/serve
 export * from "./auth-gateway/types";
 export * from "./auth-retry";
 export * from "./auth-storage";
+export * from "./env-api-key";
 export * from "./error/rate-limit";
 export * from "./instrumentation";
 export * from "./provider-details";

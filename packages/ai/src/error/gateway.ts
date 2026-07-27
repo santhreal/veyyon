@@ -1,4 +1,5 @@
-import { errorMessage, isAbortError } from "@veyyon/utils";
+import { isAbortError } from "@veyyon/utils/abortable";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import { isUsageLimit } from "./flags";
 
 /** A gateway-facing classification of an arbitrary upstream/internal error. */

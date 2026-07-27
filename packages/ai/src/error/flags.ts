@@ -1,4 +1,4 @@
-import { isUnexpectedSocketCloseMessage } from "@veyyon/utils";
+import { isUnexpectedSocketCloseMessage } from "@veyyon/utils/fetch-retry";
 import type { Api, AssistantMessage } from "../types";
 import { AwsCredentialsError } from "./aws";
 import {

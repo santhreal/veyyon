@@ -24,21 +24,23 @@ import type {
 
 export * from "../shared-types";
 
-export interface Usage {
-	input: number;
-	output: number;
-	cacheRead: number;
-	cacheWrite: number;
-	totalTokens: number;
-	premiumRequests?: number;
-	cost: {
-		input: number;
-		output: number;
-		cacheRead: number;
-		cacheWrite: number;
-		total: number;
-	};
-}
+/**
+ * Token accounting, owned by `@veyyon/catalog` because that is where the writer declares it.
+ *
+ * This module used to declare its own `Usage` with the same five required counters, the same
+ * `cost` object, and nothing else. That was not a harmless copy: sessions are written against the
+ * catalog type, so the fields it omitted (`orchestration`, `reasoningTokens`, `cttl`, `server`)
+ * were present in the data and invisible to every stats reader, and a `Usage` read here could not
+ * be handed to catalog-typed code without the compiler picking one of the two by whichever import
+ * the editor offered.
+ *
+ * Imported as well as re-exported: a bare `export type { Usage } from ...` publishes the name
+ * without binding it locally, so `MessageStats.usage` below had no type at all and the package
+ * stopped type-checking.
+ */
+import type { Usage } from "@veyyon/catalog";
+
+export type { Usage };
 
 export interface MessageStats {
 	id?: number;

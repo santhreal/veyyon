@@ -48,16 +48,38 @@ export interface RequestDetails extends MessageStats {
 }
 
 /**
- * Session log entry types.
+ * The first line of a session JSONL log, as this parser reads it.
+ *
+ * One of three types that were all called `SessionHeader`. The writer's own is
+ * `SessionHeader` in `@veyyon/coding-agent/session/session-entries` and carries `titleSource`,
+ * `parentSession` and `providerPromptCacheKey` besides these; `WireSessionHeader` in
+ * `@veyyon/wire` is the four fields a collab guest receives.
  */
-export interface SessionHeader {
+export interface SessionLogHeader {
 	type: "session";
-	version: number;
+	/**
+	 * Schema version, ABSENT on v1 sessions.
+	 *
+	 * Typed as required here while the writer declares `version?: number // v1 sessions don't have
+	 * this`, so a v1 header parsed through this type presented a `number` that is `undefined` at
+	 * runtime -- the one field where the two copies disagreed, and disagreed in the direction that
+	 * hands a caller a value the file does not contain. Nothing in this package reads it yet, which
+	 * is why it never surfaced; anything that starts reading it must handle the absence.
+	 */
+	version?: number;
 	id: string;
 	timestamp: string;
 	cwd: string;
 	title?: string;
 }
+
+/**
+ * The old name for {@link SessionLogHeader}, kept because this package is published.
+ *
+ * Deprecated: import `SessionLogHeader`. A renamed export rather than an alias declaration, so the
+ * name keeps exactly one declaration repo-wide.
+ */
+export type { SessionLogHeader as SessionHeader };
 
 export interface SessionMessageEntry {
 	type: "message";
@@ -75,7 +97,25 @@ export interface SessionServiceTierChangeEntry {
 	serviceTier: ServiceTierByFamily | ServiceTier | null;
 }
 
-export type SessionEntry = SessionHeader | SessionMessageEntry | SessionServiceTierChangeEntry | { type: string };
+/**
+ * One line of a session JSONL log as the stats parser sees it.
+ *
+ * Deliberately tolerant: the `{ type: string }` arm keeps a line the parser has no
+ * interest in from being a parse failure, which is why this is NOT the session's own
+ * entry union (`SessionEntry` in `@veyyon/agent-core/compaction/entries`) nor the
+ * guest-renderable subset (`WireSessionEntry` in `@veyyon/wire`). All three were spelled
+ * `SessionEntry`, and this one is the widest of them: it admits any object with a `type`,
+ * so a value from here typechecks in places that then read fields it has no promise of.
+ */
+export type SessionLogEntry = SessionLogHeader | SessionMessageEntry | SessionServiceTierChangeEntry | { type: string };
+
+/**
+ * The old name for {@link SessionLogEntry}, kept because this package is published.
+ *
+ * Deprecated: import `SessionLogEntry`. A renamed export rather than an alias declaration,
+ * so the name keeps exactly one declaration repo-wide.
+ */
+export type { SessionLogEntry as SessionEntry };
 
 /**
  * Behavioral stats extracted from a single user message.

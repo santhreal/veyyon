@@ -1,4 +1,4 @@
-import { trimTrailingSlashes } from "@veyyon/utils";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import * as AIError from "../error";
 import * as apiKeyValidation from "./api-key-validation";
 import type { OAuthController, OAuthCredentials, OAuthLoginCallbacks } from "./oauth/types";

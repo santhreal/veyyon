@@ -30,6 +30,5 @@ export async function loginLlamaCpp(options: OAuthController): Promise<string> {
 export const llamaCppProvider = {
 	id: PROVIDER_ID,
 	name: "llama.cpp (Local OpenAI-compatible)",
-	envKeys: "LLAMA_CPP_API_KEY",
 	login: (cb: OAuthLoginCallbacks) => loginLlamaCpp(cb),
 } as const satisfies ProviderDefinition;

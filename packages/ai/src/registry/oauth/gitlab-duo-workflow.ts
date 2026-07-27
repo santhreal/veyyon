@@ -1,3 +1,4 @@
+import { GITLAB_SAAS_URL } from "@veyyon/catalog/provider-endpoints";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import { OAuthCallbackFlow } from "./callback-server";
@@ -5,7 +6,6 @@ import { credentialExpiryFromExpiresIn } from "./expiry";
 import { generatePKCE } from "./pkce";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "./types";
 
-const GITLAB_COM_URL = "https://gitlab.com";
 export const GITLAB_DUO_WORKFLOW_OAUTH_CLIENT_ID = "36f2a70cddeb5a0889d4fd8295c241b7e9848e89cf9e599d0eed2d8e5350fbf5";
 export const GITLAB_DUO_WORKFLOW_OAUTH_REDIRECT_URI = "vscode://gitlab.gitlab-workflow/authentication";
 const OAUTH_SCOPES = ["api"];
@@ -68,7 +68,7 @@ class GitLabDuoWorkflowOAuthFlow extends OAuthCallbackFlow {
 		});
 
 		return {
-			url: `${GITLAB_COM_URL}/oauth/authorize?${authParams.toString()}`,
+			url: `${GITLAB_SAAS_URL}/oauth/authorize?${authParams.toString()}`,
 			instructions:
 				"Complete GitLab login in your browser. This uses GitLab's official VS Code OAuth application. " +
 				"If the redirect opens VS Code instead of returning to Veyyon, copy the full " +
@@ -77,7 +77,7 @@ class GitLabDuoWorkflowOAuthFlow extends OAuthCallbackFlow {
 	}
 
 	override async exchangeToken(code: string): Promise<OAuthCredentials> {
-		const response = await this.#fetch(`${GITLAB_COM_URL}/oauth/token`, {
+		const response = await this.#fetch(`${GITLAB_SAAS_URL}/oauth/token`, {
 			method: "POST",
 			headers: { "Content-Type": "application/x-www-form-urlencoded" },
 			body: new URLSearchParams({
@@ -117,7 +117,7 @@ export async function refreshGitLabDuoWorkflowToken(
 	credentials: OAuthCredentials,
 	fetchImpl: FetchImpl = fetch,
 ): Promise<OAuthCredentials> {
-	const response = await fetchImpl(`${GITLAB_COM_URL}/oauth/token`, {
+	const response = await fetchImpl(`${GITLAB_SAAS_URL}/oauth/token`, {
 		method: "POST",
 		headers: { "Content-Type": "application/x-www-form-urlencoded" },
 		body: new URLSearchParams({

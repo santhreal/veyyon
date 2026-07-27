@@ -2,7 +2,7 @@
 
 Unified LLM API with automatic model discovery, provider configuration, token and cost tracking, and simple context persistence and hand-off to other models mid-session.
 
-**Note**: This library only includes models that support tool calling (function calling), as this is essential for agentic workflows.
+**Note**: The catalog is curated for agentic workflows; a small number of bundled models do not support tool calling (see the `supportsTools` flag on each model).
 
 ## Table of Contents
 
@@ -510,7 +510,7 @@ import { getBundledModel } from "@veyyon/catalog";
 // OpenAI Reasoning (o1, o3, gpt-5)
 const openaiModel = getBundledModel("openai", "gpt-5-mini");
 await complete(openaiModel, context, {
-	reasoningEffort: "medium",
+	reasoning: "medium",
 	reasoningSummary: "detailed", // OpenAI Responses API only
 });
 
@@ -675,7 +675,7 @@ const response = await complete(model, context, {
 
 ## APIs, Models, and Providers
 
-The library implements 4 API interfaces, each with its own streaming function and options:
+The library implements these API interfaces, each with its own streaming function and options: `openai-completions`, `openai-responses`, `anthropic-messages`, and `google-generative-ai`, plus provider-specific transports such as `openrouter`, `openai-codex-responses`, `azure-openai-responses`, `bedrock-converse-stream`, `google-gemini-cli`, `google-vertex`, `ollama-chat`, `cursor-agent`, `gitlab-duo-agent`, and `devin-agent`.
 
 - **`anthropic-messages`**: Anthropic's Messages API (`streamAnthropic`, `AnthropicOptions`)
 - **`google-generative-ai`**: Google's Generative AI API (`streamGoogle`, `GoogleOptions`)
@@ -802,10 +802,10 @@ The `openai-completions` API is implemented by many providers with minor differe
 
 ```typescript
 interface OpenAICompat {
-	supportsStore?: boolean; // Whether provider supports the `store` field (default: true)
-	supportsDeveloperRole?: boolean; // Whether provider supports `developer` role vs `system` (default: true)
-	supportsReasoningEffort?: boolean; // Whether provider supports `reasoning_effort` (default: true)
-	maxTokensField?: "max_completion_tokens" | "max_tokens"; // Which field name to use (default: max_completion_tokens)
+	supportsStore?: boolean; // Whether provider supports the `store` field (default: auto-detected from URL)
+	supportsDeveloperRole?: boolean; // Whether provider supports `developer` role vs `system` (default: auto-detected from URL)
+	supportsReasoningEffort?: boolean; // Whether provider supports `reasoning_effort` (default: auto-detected from URL)
+	maxTokensField?: "max_completion_tokens" | "max_tokens"; // Which field name to use (default: auto-detected from URL)
 	extraBody?: Record<string, unknown>; // Extra request-body fields for custom proxy routing or provider-specific options
 }
 ```
@@ -986,7 +986,7 @@ In Node.js environments, you can set environment variables to avoid passing API 
 | ZenMux         | `ZENMUX_API_KEY`                                                             |
 | vLLM           | `VLLM_API_KEY`                                                               |
 | Cloudflare AI Gateway | `CLOUDFLARE_AI_GATEWAY_API_KEY`                                      |
-| GitHub Copilot | `COPILOT_GITHUB_TOKEN` or `GH_TOKEN` or `GITHUB_TOKEN`                      |
+| GitHub Copilot | `COPILOT_GITHUB_TOKEN`                                                      |
 
 For Cloudflare AI Gateway models, use provider base URL format
 `https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/anthropic`.
@@ -1012,7 +1012,7 @@ Provider endpoint defaults for the current OpenAI-compatible integrations:
 - Novita: `https://api.novita.ai/openai/v1`
 - Hugging Face Inference: `https://router.huggingface.co/v1`
 - Venice: `https://api.venice.ai/api/v1`
-- Xiaomi MiMo: `https://api.xiaomimimo.com/anthropic`
+- Xiaomi MiMo: `https://api.xiaomimimo.com/v1`
 - ZenMux (OpenAI): `https://zenmux.ai/api/v1`
 - ZenMux (Anthropic models): `https://zenmux.ai/api/anthropic`
 - Umans AI Coding Plan: `https://api.code.umans.ai`
@@ -1216,6 +1216,48 @@ const response = await complete(
 **GitHub Copilot**: If you get "The requested model is not supported" error, enable the model manually in VS Code: open Copilot Chat, click the model selector, select the model (warning icon), and click "Enable".
 
 **Google Gemini CLI / Antigravity**: These use Google Cloud OAuth. The `apiKey` returned by `getOAuthApiKey()` is a JSON string containing both the token and project ID, which the library handles automatically.
+
+### Quota Reporting
+
+Eleven providers report how much of a subscription's quota you have used, and `AuthStorage` surfaces
+those numbers. Each provider reports differently, so each has a backend that knows how to ask.
+
+You do not wire this up when you import the package normally:
+
+```ts
+import { AuthStorage } from "@veyyon/ai";
+```
+
+The barrel loads the backends for you. If you import `AuthStorage` from the subpath instead, load
+them yourself, once, anywhere before you build the store:
+
+```ts
+import "@veyyon/ai/usage/defaults";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
+```
+
+Forgetting it is reported rather than silent. `AuthStorage` reads the backends through a registry,
+and a registry nothing has filled warns once, naming this import. It has to say something: an empty
+table answers "no backend" for every provider, which is indistinguishable from a provider that
+genuinely reports no quota, so every number would disappear from your UI with nothing to explain it.
+
+It warns rather than refusing because the same registry holds the credential-ranking strategies, and
+`getApiKey` reads those. Refusing there would stop a process selecting a credential over a feature it
+never asked for.
+
+The split also keeps the credential store light. Storing a token and reading a quota are different
+jobs, and the backends pull in provider transports the store has no use for, so `auth-storage.ts`
+imports the registry interface and `usage/defaults.ts` imports the backends.
+
+To report no usage at all in a process, pass the resolvers explicitly rather than leaving the
+registry unfilled:
+
+```ts
+const storage = new AuthStorage(store, {
+	usageProviderResolver: () => undefined,
+	rankingStrategyResolver: () => undefined,
+});
+```
 
 ## License
 

@@ -1,7 +1,7 @@
+import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
 import { mintToolCallId, partialSuffixOverlapAny, setToolArg } from "./coercion";
 import { FencedThinkingScanner } from "./fenced-thinking";
-import dialectPrompt from "./gemini.md" with { type: "text" };
 import {
 	assistantTranscriptParts,
 	collectToolResultRun,
@@ -17,13 +17,19 @@ import type {
 	InbandScanner,
 	InbandScannerOptions,
 } from "./types";
+import { CODE_FENCE } from "./wire-tags";
 
 const CODE_OPEN = "```tool_code";
 const OUTPUT_OPEN = "```tool_outputs";
-const FENCE = "```";
 const OPEN_TAGS = [CODE_OPEN] as const;
-const THINK_OPEN = "```thinking\n";
-const OPEN_TAGS_THINK = [CODE_OPEN, THINK_OPEN] as const;
+/**
+ * Gemini's fenced thinking opener. Named for the dialect on purpose: five sibling dialects import a shared
+ * `THINK_OPEN` from `./wire-tags` whose value is `<think>`, and a bare `THINK_OPEN` here meant one name in one
+ * directory standing for two different byte sequences. Adding the shared name to this file's imports would
+ * have silently shadowed it with this value.
+ */
+const GEMINI_THINK_FENCE_OPEN = "```thinking\n";
+const OPEN_TAGS_THINK = [CODE_OPEN, GEMINI_THINK_FENCE_OPEN] as const;
 
 type State = "outside" | "tool" | "thinking";
 
@@ -86,7 +92,7 @@ export class GeminiInbandScanner implements InbandScanner {
 
 	#consumeOutside(final: boolean, events: InbandScanEvent[]): void {
 		const code = this.#buffer.indexOf(CODE_OPEN);
-		const think = this.#parseThinking ? this.#buffer.indexOf(THINK_OPEN) : -1;
+		const think = this.#parseThinking ? this.#buffer.indexOf(GEMINI_THINK_FENCE_OPEN) : -1;
 		let start = code;
 		let isThink = false;
 		if (think !== -1 && (start === -1 || think < start)) {
@@ -103,7 +109,7 @@ export class GeminiInbandScanner implements InbandScanner {
 		}
 		if (start > 0) events.push({ type: "text", text: this.#buffer.slice(0, start) });
 		if (isThink) {
-			this.#buffer = this.#buffer.slice(start + THINK_OPEN.length);
+			this.#buffer = this.#buffer.slice(start + GEMINI_THINK_FENCE_OPEN.length);
 			this.#thinking = "";
 			this.#fenced = new FencedThinkingScanner();
 			events.push({ type: "thinkingStart" });
@@ -137,7 +143,7 @@ export class GeminiInbandScanner implements InbandScanner {
 	}
 
 	#consumeTool(final: boolean, events: InbandScanEvent[]): void {
-		const close = this.#buffer.indexOf(FENCE);
+		const close = this.#buffer.indexOf(CODE_FENCE);
 		if (close === -1) {
 			// Inside the fence we emit nothing until it closes; on a truncated
 			// stream the incomplete block is dropped rather than leaked as text.
@@ -148,13 +154,13 @@ export class GeminiInbandScanner implements InbandScanner {
 			return;
 		}
 		const body = this.#buffer.slice(0, close);
-		const rawBlock = `${CODE_OPEN}${body}${FENCE}`;
+		const rawBlock = `${CODE_OPEN}${body}${CODE_FENCE}`;
 		for (const call of parseGeminiCalls(body)) {
 			const id = mintToolCallId();
 			events.push({ type: "toolStart", id, name: call.name });
 			events.push({ type: "toolEnd", id, name: call.name, arguments: call.arguments, rawBlock });
 		}
-		this.#buffer = this.#buffer.slice(close + FENCE.length);
+		this.#buffer = this.#buffer.slice(close + CODE_FENCE.length);
 		this.#state = "outside";
 	}
 }
@@ -514,16 +520,16 @@ function renderAssistantToolCalls(calls: readonly ToolCall[], options: DialectRe
 			? renderToolCall(calls[0]!, options)
 			: `[${calls.map(call => renderToolCall(call, options)).join(", ")}]`;
 	// Examples show the bare call; the live wire form fences it as `tool_code`.
-	return options.example ? body : `${CODE_OPEN}\n${body}\n${FENCE}`;
+	return options.example ? body : `${CODE_OPEN}\n${body}\n${CODE_FENCE}`;
 }
 
 function renderToolResults(results: readonly DialectToolResult[]): string {
-	return results.map(result => `${OUTPUT_OPEN}\n${result.text}\n${FENCE}`).join("\n");
+	return results.map(result => `${OUTPUT_OPEN}\n${result.text}\n${CODE_FENCE}`).join("\n");
 }
 
 function renderThinking(text: string): string {
 	if (!text) return "";
-	return `${THINK_OPEN}${text}\n${FENCE}`;
+	return `${GEMINI_THINK_FENCE_OPEN}${text}\n${CODE_FENCE}`;
 }
 
 function renderTranscript(messages: readonly Message[], options: DialectRenderOptions = {}): string {
@@ -587,7 +593,7 @@ function pyString(value: string): string {
 
 const definition: DialectDefinition = {
 	dialect: "gemini",
-	prompt: dialectPrompt,
+	prompt: AI_PROMPTS["dialect/gemini"].text,
 	createScanner: options => new GeminiInbandScanner(options),
 	renderToolCall,
 	renderAssistantToolCalls,

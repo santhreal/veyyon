@@ -153,9 +153,13 @@ describe("the two ends of the exchange", () => {
 
 			expect(source).not.toContain("function parseGenerationTag(");
 			expect(source).toContain('from "./generation-tag"');
-			// And neither side spells the quoting inline any more.
-			expect(source).not.toContain('= `"${opts.ifGenerationGt}"`');
-			expect(source).not.toContain('ETag: `"${generation}"`');
+			// And neither side spells the quoting inline any more. The searched text contains a
+			// template interpolation, so it is built with an escaped brace: a PLAIN string holding
+			// `${...}` is what `noTemplateCurlyInString` exists to catch, since a string that looks
+			// interpolated and is not is almost always a bug, and this is the rare case where the
+			// un-interpolated form is the point.
+			expect(source).not.toContain(`= \`"$\{opts.ifGenerationGt}"\``);
+			expect(source).not.toContain(`ETag: \`"$\{generation}"\``);
 		}
 	});
 });

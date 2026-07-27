@@ -1,3 +1,4 @@
+import { CURSOR_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { toNumber } from "@veyyon/catalog/utils";
 import { isRecord, trimTrailingSlashes } from "@veyyon/utils";
 import type {
@@ -20,7 +21,7 @@ function parseTimestamp(value: unknown): number | undefined {
 }
 
 function normalizeCursorBaseUrl(baseUrl?: string): string {
-	if (!baseUrl) return "https://api2.cursor.sh";
+	if (!baseUrl) return CURSOR_API_ENDPOINT;
 	return trimTrailingSlashes(baseUrl);
 }
 

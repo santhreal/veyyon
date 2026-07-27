@@ -13,11 +13,9 @@ import {
 	requireSupportedEffort,
 	resolveWireModelId,
 } from "@veyyon/catalog/model-thinking";
-import { CATALOG_PROVIDERS, type ProviderCatalogEntry } from "@veyyon/catalog/provider-models";
 import { CODEX_BASE_URL } from "@veyyon/catalog/wire/codex";
 import {
 	$env,
-	$pickenv,
 	atomicWriteFile,
 	errorMessage,
 	getConfigRootDir,
@@ -29,9 +27,11 @@ import {
 } from "@veyyon/utils";
 import { getCustomApi } from "./api-registry";
 import { createAuthRetryKeyState, isApiKeyResolver, resolveNextAuthRetryKey } from "./auth-retry";
+import { getEnvApiKey } from "./env-api-key";
 import * as AIError from "./error";
 import { ProviderHttpError } from "./error";
 import { isUsageLimitOutcome } from "./error/rate-limit";
+import { resolveProviderInFlightLimit } from "./provider-inflight-limits";
 import type { BedrockOptions } from "./providers/amazon-bedrock";
 import type { AnthropicOptions } from "./providers/anthropic";
 import type { CursorOptions } from "./providers/cursor";
@@ -69,7 +69,6 @@ import {
 	streamOpenAIResponses,
 } from "./providers/register-builtins";
 import { isSyntheticModel, streamSynthetic } from "./providers/synthetic";
-import { PROVIDER_REGISTRY } from "./registry";
 import type {
 	Api,
 	AssistantMessage,
@@ -158,6 +157,8 @@ type ProviderInFlightLease = {
 	path: string;
 	heartbeat: NodeJS.Timeout;
 	flushHeartbeat: () => Promise<void>;
+	/** Run one heartbeat now and wait for it, so a test does not have to wait for the interval. */
+	touchHeartbeat: () => Promise<void>;
 };
 
 type ProviderInFlightLeaseInfo = {
@@ -172,23 +173,30 @@ const PROVIDER_INFLIGHT_LOCK_STALE_MS = 10_000;
 const PROVIDER_INFLIGHT_LEASE_STALE_MS = 30_000;
 const PROVIDER_INFLIGHT_HEARTBEAT_MS = 5_000;
 const PROVIDER_INFLIGHT_SIGNAL_FALLBACK_MS = 250;
+/**
+ * Consecutive heartbeat write failures that mean this lease WILL be treated as dead.
+ *
+ * A single failure is normal and uninteresting: the next beat rewrites the file. What matters is a run of
+ * them long enough for the lease's timestamp to age past {@link PROVIDER_INFLIGHT_LEASE_STALE_MS}, because at
+ * that point another process reclaims the lease while this request is still in flight and the concurrency
+ * guard has failed OPEN. Derived from the two intervals rather than written as a number so it cannot drift
+ * out of step with them.
+ */
+const PROVIDER_INFLIGHT_HEARTBEAT_FAILURES_BEFORE_STALE = Math.ceil(
+	PROVIDER_INFLIGHT_LEASE_STALE_MS / PROVIDER_INFLIGHT_HEARTBEAT_MS,
+);
 
-let configuredProviderMaxInFlightRequests: Record<string, number> = {};
 let providerInFlightRootOverride: string | undefined;
 
-export function configureProviderMaxInFlightRequests(limits: Record<string, number> | undefined): void {
-	configuredProviderMaxInFlightRequests = limits ?? {};
-}
-
-function resolveProviderInFlightLimit(
-	provider: string,
-	options?: Pick<StreamOptions, "maxInFlightRequests">,
-): number | undefined {
-	const limits = options?.maxInFlightRequests ?? configuredProviderMaxInFlightRequests;
-	const value = limits[provider];
-	if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return undefined;
-	return Math.max(1, Math.floor(value));
-}
+/**
+ * The caps and their resolver live in `./provider-inflight-limits`, which imports nothing.
+ *
+ * The WRITER of this state is the harness's settings layer, and reaching a setter that lived here meant
+ * importing this module's 285: every provider transport, the model registry, the error taxonomy. The
+ * re-export keeps `@veyyon/ai/stream` a working import path for it, so nothing that already calls it
+ * changes, while a caller that only configures caps can name the owner instead.
+ */
+export { configureProviderMaxInFlightRequests } from "./provider-inflight-limits";
 
 function providerInFlightRoot(): string {
 	if (providerInFlightRootOverride) return providerInFlightRootOverride;
@@ -430,21 +438,67 @@ async function tryAcquireProviderInFlightLease(
 			await fs.mkdir(leaseDir);
 			await writeProviderInFlightInfo(leaseDir, token);
 		} catch (error) {
+			// The lease-creation error is what the caller needs and it is rethrown. A cleanup that also fails
+			// could only be surfaced by replacing that error with a less useful one; the cost of dropping it is
+			// one lease directory that the staleness sweep will reclaim.
 			await removeProviderInFlightLeaseDir(leaseDir).catch(() => {});
 			throw error;
 		}
 		let heartbeatFlush = Promise.resolve();
-		const touchHeartbeat = () => {
+		// A heartbeat that keeps failing lets the lease age past PROVIDER_INFLIGHT_LEASE_STALE_MS, after which
+		// another process treats this in-flight request as dead and proceeds: the concurrency guard fails OPEN
+		// while the operator still believes duplicate in-flight requests are prevented. The write itself cannot
+		// be made to throw here (nothing awaits the interval callback), so the failure is COUNTED, and the run
+		// is reported once it is long enough to have that effect. The first failures stay quiet on purpose: a
+		// single transient write failure is normal and the next beat repairs it.
+		let consecutiveFailures = 0;
+		let reportedStaleRisk = false;
+		const touchHeartbeat = (): Promise<void> => {
 			heartbeatFlush = heartbeatFlush
 				.then(
 					() => writeProviderInFlightInfo(leaseDir, token),
 					() => writeProviderInFlightInfo(leaseDir, token),
 				)
-				.catch(() => {});
+				.then(
+					() => {
+						if (reportedStaleRisk) {
+							logger.warn("Provider in-flight lease heartbeat recovered", {
+								provider,
+								lease: leaseDir,
+								missedBeats: consecutiveFailures,
+							});
+						}
+						consecutiveFailures = 0;
+						reportedStaleRisk = false;
+					},
+					(error: unknown) => {
+						consecutiveFailures++;
+						if (consecutiveFailures < PROVIDER_INFLIGHT_HEARTBEAT_FAILURES_BEFORE_STALE || reportedStaleRisk) {
+							return;
+						}
+						reportedStaleRisk = true;
+						logger.warn(
+							"Provider in-flight lease heartbeat keeps failing; another process may treat this request as dead and exceed the in-flight limit",
+							{
+								provider,
+								lease: leaseDir,
+								missedBeats: consecutiveFailures,
+								staleAfterMs: PROVIDER_INFLIGHT_LEASE_STALE_MS,
+								error: errorMessage(error),
+							},
+						);
+					},
+				);
+			return heartbeatFlush;
 		};
 		const heartbeat = setInterval(touchHeartbeat, PROVIDER_INFLIGHT_HEARTBEAT_MS);
 		heartbeat.unref?.();
-		return { path: leaseDir, heartbeat, flushHeartbeat: () => heartbeatFlush };
+		return {
+			path: leaseDir,
+			heartbeat,
+			flushHeartbeat: () => heartbeatFlush,
+			touchHeartbeat: () => touchHeartbeat(),
+		};
 	} finally {
 		await releaseLock();
 	}
@@ -567,6 +621,22 @@ export const __providerInFlightForTesting = {
 		if (!stale) return null;
 		return () => releaseProviderInFlightStaleLock(lockDir, stale);
 	},
+	/**
+	 * Take a real lease and expose one heartbeat, so a test can make the write fail and drive beats itself
+	 * instead of waiting out PROVIDER_INFLIGHT_HEARTBEAT_MS several times.
+	 */
+	async acquireLease(
+		provider: string,
+		limit: number,
+	): Promise<{ path: string; beat: () => Promise<void>; release: () => Promise<void> } | null> {
+		const lease = await tryAcquireProviderInFlightLease(provider, limit);
+		if (!lease) return null;
+		return {
+			path: lease.path,
+			beat: () => lease.touchHeartbeat(),
+			release: () => releaseProviderInFlightLease(lease),
+		};
+	},
 	async captureLockDirRelease(provider: string): Promise<(() => Promise<void>) | null> {
 		const lockDir = providerInFlightLockDir(provider);
 		try {
@@ -590,7 +660,7 @@ function withProviderInFlightLimit<TOptions extends Pick<StreamOptions, "signal"
 	// chokepoint — so the loop guard (which wraps this) sees healed events and all
 	// provider exits are covered by one wrap. Official first-party providers are
 	// exempt (see `healLeakedThinking`); healing is otherwise idempotent.
-	const limit = resolveProviderInFlightLimit(model.provider, options);
+	const limit = resolveProviderInFlightLimit(model.provider, options?.maxInFlightRequests);
 	if (limit === undefined) return healLeakedThinking(model, dispatch());
 
 	const outer = new AssistantMessageEventStream();
@@ -711,74 +781,11 @@ function resolveVertexRequest(input: string | URL | Request): string | URL | Req
 	return rewriteUrl(input);
 }
 
-type KeyResolver = string | (() => string | undefined);
-
-const LEGACY_ENV_KEYS: Record<string, KeyResolver> = {
-	// Non-provider / search-tool keys and API-name keys not modeled as registry provider defs.
-	"azure-openai-responses": "AZURE_OPENAI_API_KEY",
-	exa: "EXA_API_KEY",
-	jina: "JINA_API_KEY",
-	brave: "BRAVE_API_KEY",
-	tinyfish: "TINYFISH_API_KEY",
-	firecrawl: "FIRECRAWL_API_KEY",
-};
-
-/**
- * Env fallbacks derived from the catalog table — the single source for plain
- * provider env-var names. Registry defs override with computed resolvers
- * (Foundry/ADC/Bedrock probes); legacy non-provider keys merge last.
- */
-const CATALOG_ENTRY_ENV_KEYS = (CATALOG_PROVIDERS as readonly ProviderCatalogEntry[]).flatMap(provider => {
-	const envVars = provider.envVars;
-	if (!envVars || envVars.length === 0) return [];
-	const resolver: KeyResolver = envVars.length === 1 ? envVars[0] : () => $pickenv(...envVars);
-	return [[provider.id, resolver] as [string, KeyResolver]];
-});
-
-const serviceProviderMap: Record<string, KeyResolver> = {
-	...Object.fromEntries(CATALOG_ENTRY_ENV_KEYS),
-	...Object.fromEntries(
-		PROVIDER_REGISTRY.flatMap(provider =>
-			provider.envKeys != null ? [[provider.id, provider.envKeys] as [string, KeyResolver]] : [],
-		),
-	),
-	...LEGACY_ENV_KEYS,
-};
-
-/**
- * Get API key for provider from known environment variables, e.g. OPENAI_API_KEY.
- *
- * Will not return API keys for providers that require OAuth tokens.
- * Checks Bun.env, then cwd/.env, then ~/.env.
- */
-export function getEnvApiKey(provider: string): string | undefined {
-	const resolver = serviceProviderMap[provider];
-	if (typeof resolver === "string") {
-		return $env[resolver];
-	}
-	return resolver?.();
-}
-
-/**
- * Name of the environment variable that backs `getEnvApiKey` for a provider,
- * when that provider maps to a single named variable (e.g. `github-copilot` →
- * `COPILOT_GITHUB_TOKEN`). Returns undefined for providers whose env fallback
- * is computed (multi-var pickers, Vertex ADC / Bedrock probes, …) since no
- * single variable name describes the source.
- */
-export function getEnvApiKeyName(provider: string): string | undefined {
-	const resolver = serviceProviderMap[provider];
-	return typeof resolver === "string" ? resolver : undefined;
-}
-
-/**
- * Enumerate every provider that has an env-var fallback for `getEnvApiKey`.
- * Used by `veyyon auth-broker migrate --include-env` to discover env-sourced keys
- * that should be uploaded to the broker.
- */
-export function listProvidersWithEnvKey(): string[] {
-	return Object.keys(serviceProviderMap);
-}
+// The env-key table moved to `./env-api-key`, a leaf that imports the catalog and the registry and
+// nothing else. It was here only because it was written here, and it made every caller that wanted
+// "which variable holds this key" instantiate the whole streaming engine. Re-exported rather than
+// dropped so the specifier a caller already uses keeps working.
+export { getEnvApiKey, getEnvApiKeyName, listProvidersWithEnvKey } from "./env-api-key";
 
 export function stream<TApi extends Api>(
 	model: Model<TApi>,

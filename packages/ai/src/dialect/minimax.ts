@@ -1,10 +1,10 @@
+import { AI_PROMPTS } from "../prompts/registry";
 import type { ToolCall } from "../types";
 import {
 	ANTHROPIC_THINKING_TAG_PREFIXES,
 	AnthropicInbandScanner,
 	type AnthropicInbandScannerConfig,
 } from "./anthropic";
-import dialectPrompt from "./minimax.md" with { type: "text" };
 import {
 	legacyTextTranscriptRenderer,
 	renderFunctionResults,
@@ -39,7 +39,7 @@ function renderAssistantToolCalls(calls: readonly ToolCall[], options: DialectRe
 
 const definition: DialectDefinition = {
 	dialect: "minimax",
-	prompt: dialectPrompt,
+	prompt: AI_PROMPTS["dialect/minimax"].text,
 	createScanner: options => new AnthropicInbandScanner(options, MINIMAX_SCANNER_CONFIG),
 	renderToolCall: renderInvokeToolCall,
 	renderAssistantToolCalls,
