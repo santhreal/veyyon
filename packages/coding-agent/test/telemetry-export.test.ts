@@ -83,7 +83,7 @@ describe("initTelemetryExport export path", () => {
 		// provider, so exercising the positive path in-process would leak that
 		// singleton into every later test. The probe stands up its own loopback
 		// receiver and exits 0 only when a protobuf trace export actually lands.
-		const probe = fileURLToPath(new URL("./otel-export-probe.ts", import.meta.url));
+		const probe = fileURLToPath(new URL("./helpers/otel-export-probe.ts", import.meta.url));
 		const { env, cleanup } = hermeticSpawnEnv();
 		let code: number;
 		let stdout: string;

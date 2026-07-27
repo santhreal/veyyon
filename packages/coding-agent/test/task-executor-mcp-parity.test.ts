@@ -5,7 +5,7 @@ import { MCPManager } from "../src/mcp/manager";
 import { DeferredMCPTool, MCPTool } from "../src/mcp/tool-bridge";
 import type { MCPServerConnection, MCPToolDefinition } from "../src/mcp/types";
 import { createMCPProxyTools } from "../src/task/executor";
-import { createMockConnection, createMockTransport } from "./mcp-test-utils";
+import { createMockConnection, createMockTransport } from "./helpers/mcp-mocks";
 
 type CapturedRequest = { method: string; params: Record<string, unknown> | undefined };
 

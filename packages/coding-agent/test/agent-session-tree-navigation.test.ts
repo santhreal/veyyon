@@ -9,7 +9,7 @@
  * - Abort handling during summarization
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { createTestSession, e2eApiKey, type TestSessionContext } from "./utilities";
+import { createTestSession, e2eApiKey, type TestSessionContext } from "./helpers/e2e-session";
 
 describe.skipIf(!e2eApiKey("ANTHROPIC_API_KEY"))("AgentSession tree navigation e2e", () => {
 	let ctx: TestSessionContext;

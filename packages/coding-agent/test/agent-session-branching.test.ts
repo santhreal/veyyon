@@ -20,7 +20,7 @@ import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
-import { e2eApiKey } from "./utilities";
+import { e2eApiKey } from "./helpers/e2e-session";
 
 describe.skipIf(!e2eApiKey("ANTHROPIC_API_KEY"))("AgentSession branching", () => {
 	let session: AgentSession;

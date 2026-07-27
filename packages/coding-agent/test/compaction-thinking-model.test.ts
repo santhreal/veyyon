@@ -13,7 +13,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
-import { e2eApiKey } from "./utilities";
+import { e2eApiKey } from "./helpers/e2e-session";
 
 // Check for auth
 const HAS_ANTIGRAVITY_AUTH = false; // OAuth not available in test environment

@@ -16,7 +16,7 @@ import type {
 	MCPResourceTemplatesListResult,
 	MCPTransport,
 } from "@veyyon/coding-agent/mcp/types";
-import { createMockConnection, createMockTransport } from "./mcp-test-utils";
+import { createMockConnection, createMockTransport } from "./helpers/mcp-mocks";
 
 describe("listResources", () => {
 	it("returns empty array when server does not support resources", async () => {

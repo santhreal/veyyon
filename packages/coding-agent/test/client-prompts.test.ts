@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { getPrompt, listPrompts, serverSupportsPrompts } from "@veyyon/coding-agent/mcp/client";
 import type { MCPGetPromptResult, MCPPrompt, MCPPromptsListResult } from "@veyyon/coding-agent/mcp/types";
-import { createMockConnection, createMockTransport } from "./mcp-test-utils";
+import { createMockConnection, createMockTransport } from "./helpers/mcp-mocks";
 
 describe("listPrompts", () => {
 	it("returns empty array when server does not support prompts", async () => {

@@ -28,7 +28,7 @@ import type {
 } from "@veyyon/coding-agent/session/session-entries";
 import { parseSessionEntries } from "@veyyon/coding-agent/session/session-loader";
 import { migrateSessionEntries } from "@veyyon/coding-agent/session/session-migrations";
-import { e2eApiKey } from "./utilities";
+import { e2eApiKey } from "./helpers/e2e-session";
 
 // ============================================================================
 // Test fixtures

@@ -9,7 +9,7 @@ import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { TempDir } from "@veyyon/utils";
-import { assistantMsg, userMsg } from "./utilities";
+import { assistantMsg, userMsg } from "./helpers/e2e-session";
 
 describe("issue #986 compaction auth fallback", () => {
 	let tempDir: TempDir;
