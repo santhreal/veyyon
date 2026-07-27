@@ -36,8 +36,18 @@
  * Reads are deliberately NOT blocked: a test reading the real home is at worst
  * non-hermetic, and blocking reads would break legitimate suites that inspect
  * the developer's git config. Only mutation is forbidden.
+ *
+ * ## Why the temp-directory janitor is imported here
+ *
+ * It is the second protection that has to run in every test process and must not be
+ * opt-in, and this file is the only entry the preload list names. Bun reads `bunfig.toml`
+ * from the cwd only, so each of the eighteen packages carries its own pointer to this
+ * path and `scripts/ci-test-ts.ts` passes it with `--preload`; a second preload entry
+ * would be twenty more places to keep in step and one more thing to forget. It is
+ * imported FIRST so it captures `fs.rmSync` before the wrapping below replaces it.
  */
 
+import { installTempDirJanitor } from "./temp-dir-janitor";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -291,6 +301,10 @@ function installSqliteTripwire(): void {
 	}
 	sqlite.Database = GuardedDatabase as unknown as new (...args: never[]) => unknown;
 }
+
+// Before the wrapping below, so the janitor captures the real `fs.rmSync`, and OUTSIDE the
+// `ENABLED` gate: a run with the tripwire disabled still has to clean up after itself.
+installTempDirJanitor();
 
 if (ENABLED) {
 	installFsTripwire();
