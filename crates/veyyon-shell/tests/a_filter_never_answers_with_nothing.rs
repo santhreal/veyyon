@@ -24,20 +24,11 @@
 //! its idempotence property precisely because it is the consequence that
 //! matters.
 
-use veyyon_shell::minimizer::{MinimizerConfig, MinimizerCtx, filters, primitives::or_original};
+use veyyon_shell::minimizer::{filters, primitives::or_original};
 
-fn context<'a>(
-	program: &'a str,
-	subcommand: Option<&'a str>,
-	command: &'a str,
-	config: &'a MinimizerConfig,
-) -> MinimizerCtx<'a> {
-	MinimizerCtx { program, subcommand, command, config }
-}
+mod common;
 
-fn enabled() -> MinimizerConfig {
-	MinimizerConfig { enabled: true, ..Default::default() }
-}
+use common::{context, enabled};
 
 mod the_rule_itself {
 	use super::*;

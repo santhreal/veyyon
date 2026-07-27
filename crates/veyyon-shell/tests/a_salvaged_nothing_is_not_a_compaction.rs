@@ -31,13 +31,15 @@
 //!
 //! Found by `fuzz/fuzz_targets/minimizer_filters.rs`.
 
+use std::fmt::Write as _;
+
 use veyyon_shell::minimizer::{MinimizerConfig, MinimizerCtx, filters, primitives};
 
-fn enabled() -> MinimizerConfig {
-	MinimizerConfig { enabled: true, ..Default::default() }
-}
+mod common;
 
-fn psql<'a>(command: &'a str, config: &'a MinimizerConfig) -> MinimizerCtx<'a> {
+use common::enabled;
+
+const fn psql<'a>(command: &'a str, config: &'a MinimizerConfig) -> MinimizerCtx<'a> {
 	MinimizerCtx { program: "psql", subcommand: Some("clean"), command, config }
 }
 
@@ -159,7 +161,7 @@ mod a_real_result_set_is_still_compacted {
 		let ctx = psql("psql -c 'select 1'", &config);
 		let mut input = String::from(" id | name\n----+------\n");
 		for row in 0..200 {
-			input.push_str(&format!("  {row} | name-{row}\n"));
+			let _ = writeln!(input, "  {row} | name-{row}");
 		}
 		input.push_str("(200 rows)\n");
 

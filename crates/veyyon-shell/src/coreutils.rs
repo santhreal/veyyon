@@ -10,7 +10,7 @@
 use std::{
 	collections::HashMap,
 	ffi::OsString,
-	io::{self, Read, Write},
+	io::{self, IsTerminal, Read, Write},
 	panic::catch_unwind,
 	sync::{
 		Arc,
@@ -70,6 +70,19 @@ async fn run_uutil<SE: ShellExtensions>(
 	let stdin_is_search_input = stdin
 		.as_ref()
 		.is_some_and(|file| matches!(file, OpenFile::PipeReader(_) | OpenFile::Stream(_)));
+	// Whether the COMMAND's stdout is a terminal, which is not the same question as
+	// whether the shell's is: `rg pat > out` and `rg pat | head` are both
+	// redirected away from the terminal the shell still owns, and a utility told
+	// otherwise would flush every line of a large redirected run. Asked of the
+	// handle itself rather than through a raw fd so the answer is the same on
+	// Windows; a pipe and a custom stream are never terminals. Read by `rg`, which
+	// line-buffers to a terminal and block-buffers to a pipe the way ripgrep does.
+	let stdout_is_terminal = match stdout.as_ref() {
+		Some(OpenFile::Stdout(handle)) => handle.is_terminal(),
+		Some(OpenFile::Stderr(handle)) => handle.is_terminal(),
+		Some(OpenFile::File(file)) => file.is_terminal(),
+		_ => false,
+	};
 
 	let cancel_flag = Arc::new(AtomicBool::new(false));
 	let scope_flag = Arc::clone(&cancel_flag);
@@ -102,6 +115,7 @@ async fn run_uutil<SE: ShellExtensions>(
 				stdin_fd,
 				stdin_is_search_input,
 				stdout,
+				stdout_is_terminal,
 				stderr,
 				cwd,
 				env,
@@ -279,6 +293,7 @@ mod tests {
 			stdin_fd: None,
 			stdin_is_search_input: false,
 			stdout: Box::new(io::sink()),
+			stdout_is_terminal: false,
 			stderr,
 			cwd: PathBuf::from("."),
 			env: HashMap::new(),

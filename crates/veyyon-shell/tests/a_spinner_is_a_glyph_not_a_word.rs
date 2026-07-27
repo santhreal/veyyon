@@ -18,11 +18,11 @@
 //! `a_log_line_is_not_docker_chatter.rs` and
 //! `a_table_row_is_not_a_download_log.rs`.
 
-use veyyon_shell::minimizer::{MinimizerConfig, MinimizerCtx, filters, primitives};
+use veyyon_shell::minimizer::{MinimizerCtx, filters, primitives};
 
-fn enabled() -> MinimizerConfig {
-	MinimizerConfig { enabled: true, ..Default::default() }
-}
+mod common;
+
+use common::enabled;
 
 mod the_predicate_itself {
 	use super::*;

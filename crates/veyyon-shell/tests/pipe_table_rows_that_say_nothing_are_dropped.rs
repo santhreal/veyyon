@@ -30,25 +30,16 @@
 
 use veyyon_shell::minimizer::{MinimizerConfig, MinimizerCtx, filters};
 
-fn context<'a>(
-	program: &'a str,
-	subcommand: Option<&'a str>,
-	command: &'a str,
-	config: &'a MinimizerConfig,
-) -> MinimizerCtx<'a> {
-	MinimizerCtx { program, subcommand, command, config }
-}
+mod common;
 
-fn psql<'a>(command: &'a str, config: &'a MinimizerConfig) -> MinimizerCtx<'a> {
+use common::{context, enabled};
+
+const fn psql<'a>(command: &'a str, config: &'a MinimizerConfig) -> MinimizerCtx<'a> {
 	context("psql", Some("log"), command, config)
 }
 
-fn aws<'a>(command: &'a str, config: &'a MinimizerConfig) -> MinimizerCtx<'a> {
+const fn aws<'a>(command: &'a str, config: &'a MinimizerConfig) -> MinimizerCtx<'a> {
 	context("aws", Some("ec2"), command, config)
-}
-
-fn enabled() -> MinimizerConfig {
-	MinimizerConfig { enabled: true, ..Default::default() }
 }
 
 /// Filter `input`, then filter the result, and return both.

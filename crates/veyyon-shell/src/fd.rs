@@ -207,11 +207,12 @@ struct FdCli {
 	#[arg(long = "ignore-file", value_name = "path")]
 	ignore_files: Vec<PathBuf>,
 
-	/// Declare when to use color for pattern match output.
+	/// Accepted for compatibility; this builtin never colorizes its output.
 	#[arg(short = 'c', long = "color", value_enum, default_value_t = When::Auto)]
 	color: When,
 
-	/// Add a terminal hyperlink to a file:// URL for each path in the output.
+	/// Accepted for compatibility; this builtin never writes terminal
+	/// hyperlinks.
 	#[arg(long = "hyperlink", value_enum, num_args = 0..=1, default_missing_value = "auto")]
 	hyperlink: Option<When>,
 
@@ -251,7 +252,7 @@ struct FdCli {
 	#[arg(long = "search-path", value_name = "search-path")]
 	search_paths: Vec<PathBuf>,
 
-	/// Control whether ./ is stripped from command paths.
+	/// Accepted for compatibility; this builtin never prefixes a path with ./.
 	#[arg(long = "strip-cwd-prefix", value_enum, num_args = 0..=1, default_missing_value = "always")]
 	strip_cwd_prefix: Option<When>,
 
@@ -668,6 +669,12 @@ fn search(
 			"--list-details, --exec, and --exec-batch are not supported by the in-process fd builtin",
 		));
 	}
+	// Read so the compiler agrees they are consumed, and no further. These three
+	// are accepted for compatibility and cannot change this builtin's output:
+	// nothing here emits ANSI or OSC 8 sequences, and `display_path` strips the
+	// search root rather than prefixing `./`, so there is never a `./` to strip.
+	// Each flag's help text says so, which is the contract
+	// `compatibility_flags_are_accepted_and_change_nothing` pins.
 	let _ = (cli.color, cli.hyperlink, cli.strip_cwd_prefix);
 
 	let base_dir = resolve_path(&cwd, cli.base_directory.as_deref());
@@ -728,7 +735,10 @@ fn search(
 		return Ok(state);
 	}
 
-	let use_gitignore = !(no_ignore(&cli) || no_ignore_vcs(&cli));
+	// `--no-ignore` drops every ignore source; `--no-ignore-vcs` drops only the git
+	// ones. Folding the second into the first also dropped `.ignore`, which
+	// `--no-ignore-vcs` says nothing about.
+	let use_gitignore = !no_ignore(&cli);
 	let mut out = BufWriter::new(stdout);
 	let mut state = SearchState { matches: 0, had_error: false };
 	for search_path in &search_paths {
@@ -778,6 +788,15 @@ fn fd_walk_request(
 	veyyon_walker::WalkRequest::new(root)
 		.hidden(include_hidden(cli))
 		.gitignore(use_gitignore)
+		// `.gitignore` is a git file, so it applies inside a repository only, the way
+		// git and fd both read it. `--no-require-git` asks for it anywhere.
+		.require_git(!cli.no_require_git)
+		// `--no-ignore-vcs` turns off git's own sources and leaves `.ignore` in place.
+		.vcs_ignore(!no_ignore_vcs(cli))
+		.exclude_ignore(!no_ignore_vcs(cli))
+		// The same flag that stops `.fdignore` above the root stops every other ignore
+		// file above it.
+		.parent_ignore(!cli.no_ignore_parent)
 		.skip_git(false)
 		.skip_node_modules(false)
 		.follow_links(cli.follow.into())
@@ -871,7 +890,46 @@ const fn fast_type_filter_supported(filter: &TypeFilter) -> bool {
 	!filter.socket && !filter.pipe && !filter.block && !filter.character
 }
 
-fn process_walker_entry<W: Write>(
+/// What a caller should do with one entry after the shared rule has judged it.
+///
+/// The two search paths express "do not look inside this" differently: the
+/// streaming walk returns a [`veyyon_walker::WalkDecision`], and the collecting
+/// walk has already been handed the whole tree, so it records the directory and
+/// filters its descendants out afterwards. That difference is real. Everything
+/// LEADING to it is not, which is why the verdict is what they share.
+/// Two independent facts, so there is no unrepresentable combination. A
+/// `--prune` hit is both at once: it IS a result and its children are not
+/// eligible, which a three-way enum could not say.
+#[derive(Debug, PartialEq, Eq)]
+struct EntryVerdict {
+	/// The entry counted as a match, and was written unless `--quiet`.
+	matched: bool,
+	/// The caller should look inside it. Only meaningful for a directory, and
+	/// always true for anything else, since a file has nothing to look inside.
+	descend: bool,
+}
+
+impl EntryVerdict {
+	/// Not a match; children still eligible.
+	const SKIP: Self = Self { matched: false, descend: true };
+	/// Not a match, and nothing under it is either.
+	const SKIP_TREE: Self = Self { matched: false, descend: false };
+}
+
+/// Judge one entry and write it when it matches: the ONE owner of fd's
+/// per-entry rule and of its output contract.
+///
+/// WHY THIS EXISTS. `process_walker_entry` and `process_collected_entry` each
+/// carried their own copy of this sequence: the depth-0 skip, the excludes
+/// check, the `--ignore-file`-directory check, `--prune`, the metadata filters,
+/// the name match, the counter, the `--quiet` early return, and the four lines
+/// that decide what a matched entry LOOKS like. The last part is the dangerous
+/// one. The fast path runs only when `can_use_fast_search` says so, so a change
+/// made to one copy of the printing rule and not the other would alter fd's
+/// output for some flag combinations and not others, with nothing failing:
+/// `--format` applied on one path, `--print0` honoured on the other, and no
+/// test comparing them.
+fn judge_entry<W: Write>(
 	config: &SearchConfig,
 	ignore_contains: &[OsString],
 	path: &Path,
@@ -879,43 +937,47 @@ fn process_walker_entry<W: Write>(
 	file_type: veyyon_walker::FileType,
 	out: &mut W,
 	matches: &mut usize,
-) -> io::Result<veyyon_walker::WalkDecision> {
+) -> io::Result<EntryVerdict> {
 	let is_directory = file_type == veyyon_walker::FileType::Dir;
+	// The root itself is never a result, but it must still be descended into.
 	if depth == 0 && is_directory {
-		return Ok(veyyon_walker::WalkDecision::Skip);
+		return Ok(EntryVerdict::SKIP);
 	}
 	if config.excludes.matches(path, &config.base_dir) {
 		return Ok(if is_directory {
-			veyyon_walker::WalkDecision::SkipDescend
+			EntryVerdict::SKIP_TREE
 		} else {
-			veyyon_walker::WalkDecision::Skip
+			EntryVerdict::SKIP
 		});
 	}
-	if is_directory {
-		if ignore_contains.iter().any(|name| path.join(name).exists()) {
-			return Ok(veyyon_walker::WalkDecision::SkipDescend);
-		}
-		if config.prune
-			&& config
-				.matcher
-				.matches(&match_target(path, &config.base_dir, config.full_path))
-		{
-			return Ok(veyyon_walker::WalkDecision::SkipDescend);
-		}
+	let target = match_target(path, &config.base_dir, config.full_path);
+	if is_directory && ignore_contains.iter().any(|name| path.join(name).exists()) {
+		return Ok(EntryVerdict::SKIP_TREE);
 	}
+	// `--prune` stops the DESCENT and nothing else. Its own help text reads "do
+	// not traverse into directories that match the search criteria", and the flag
+	// exists precisely because `--exclude` is the one that removes them: the fd
+	// documentation contrasts the two that way. This branch used to return before
+	// the match was counted, so a pruned directory vanished from the results
+	// entirely and `--prune` behaved like a weaker `--exclude`, which is the one
+	// thing it is documented not to be.
+	let pruned = is_directory && config.prune && config.matcher.matches(&target);
+	// A pruned directory that turns out not to be a result still stops the walk,
+	// which is what the pre-existing behaviour did and what the flag asks for.
+	let unmatched = EntryVerdict { matched: false, descend: !pruned };
 
 	let metadata = fs::symlink_metadata(path).ok();
 	if !matches_walker_filters(config, path, file_type, metadata.as_ref()) {
-		return Ok(veyyon_walker::WalkDecision::Skip);
+		return Ok(unmatched);
 	}
-	let target = match_target(path, &config.base_dir, config.full_path);
 	if !config.matcher.matches(&target) {
-		return Ok(veyyon_walker::WalkDecision::Skip);
+		return Ok(unmatched);
 	}
 
 	*matches = (*matches).saturating_add(1);
+	let verdict = EntryVerdict { matched: true, descend: !pruned };
 	if config.quiet {
-		return Ok(veyyon_walker::WalkDecision::Include);
+		return Ok(verdict);
 	}
 	let display = display_path(config, path);
 	let text = if let Some(format) = config.format.as_deref() {
@@ -929,7 +991,32 @@ fn process_walker_entry<W: Write>(
 	} else {
 		out.write_all(b"\n")?;
 	}
-	Ok(veyyon_walker::WalkDecision::Include)
+	Ok(verdict)
+}
+
+/// Translate the shared verdict into the streaming walk's vocabulary.
+fn process_walker_entry<W: Write>(
+	config: &SearchConfig,
+	ignore_contains: &[OsString],
+	path: &Path,
+	depth: usize,
+	file_type: veyyon_walker::FileType,
+	out: &mut W,
+	matches: &mut usize,
+) -> io::Result<veyyon_walker::WalkDecision> {
+	let verdict = judge_entry(config, ignore_contains, path, depth, file_type, out, matches)?;
+	// The entry has already been written by the time this runs, so the decision
+	// only steers traversal: SkipDescend covers both "not a result, stay out" and
+	// the `--prune` case of "a result, stay out".
+	Ok(if verdict.descend {
+		if verdict.matched {
+			veyyon_walker::WalkDecision::Include
+		} else {
+			veyyon_walker::WalkDecision::Skip
+		}
+	} else {
+		veyyon_walker::WalkDecision::SkipDescend
+	})
 }
 
 fn matches_walker_filters(
@@ -1040,62 +1127,29 @@ fn process_collected_entry<W: Write>(
 	if pruned_dirs.iter().any(|dir| path.starts_with(dir)) {
 		return Ok(());
 	}
-	let depth = entry.depth();
 	let is_directory = entry.file_type == veyyon_walker::FileType::Dir;
-	if depth == 0 && is_directory {
-		return Ok(());
-	}
+	// The ignore rules are this path's own: the fast path cannot reach them,
+	// because it runs only when `--no-ignore` made them irrelevant.
 	if fd_ignores.is_ignored(&path, is_directory) {
 		if is_directory {
 			pruned_dirs.push(path);
 		}
 		return Ok(());
 	}
-	if config.excludes.matches(&path, &config.base_dir) {
-		if is_directory {
-			pruned_dirs.push(path);
-		}
-		return Ok(());
-	}
-	if is_directory {
-		if ignore_contains.iter().any(|name| path.join(name).exists()) {
-			pruned_dirs.push(path);
-			return Ok(());
-		}
-		if config.prune
-			&& config
-				.matcher
-				.matches(&match_target(&path, &config.base_dir, config.full_path))
-		{
-			pruned_dirs.push(path);
-			return Ok(());
-		}
-	}
-
-	let metadata = fs::symlink_metadata(&path).ok();
-	if !matches_walker_filters(config, &path, entry.file_type, metadata.as_ref()) {
-		return Ok(());
-	}
-	let target = match_target(&path, &config.base_dir, config.full_path);
-	if !config.matcher.matches(&target) {
-		return Ok(());
-	}
-
-	state.matches = state.matches.saturating_add(1);
-	if config.quiet {
-		return Ok(());
-	}
-	let display = display_path(config, &path);
-	let text = if let Some(format) = config.format.as_deref() {
-		format_path(format, &path, &display)
-	} else {
-		display
-	};
-	out.write_all(text.as_bytes())?;
-	if config.print0 {
-		out.write_all(b"\0")?;
-	} else {
-		out.write_all(b"\n")?;
+	let verdict = judge_entry(
+		config,
+		ignore_contains,
+		&path,
+		entry.depth(),
+		entry.file_type,
+		out,
+		&mut state.matches,
+	)?;
+	// This walk already holds the whole tree, so "do not look inside" is recorded
+	// and applied to the descendants that follow, rather than returned to a
+	// walker that has yet to reach them.
+	if !verdict.descend {
+		pruned_dirs.push(path);
 	}
 	Ok(())
 }
@@ -1644,35 +1698,21 @@ fn exit_status(code: i32) -> u8 {
 
 #[cfg(test)]
 mod tests {
-	use std::{
-		env, fs,
-		io::Read,
-		sync::atomic::{AtomicBool, AtomicUsize, Ordering},
-		time::{SystemTime, UNIX_EPOCH},
-	};
+	use std::{fs, io::Read, sync::atomic::AtomicBool};
 
 	use brush_core::openfiles::OpenFile;
 	use clap::Parser;
 
 	use super::{FdCli, cancel_heartbeat, search};
 
-	static COUNTER: AtomicUsize = AtomicUsize::new(0);
-
 	/// Build a fresh temp directory containing a single matchable file plus a
 	/// filler file, so the walker has more than one entry to iterate. Both the
 	/// walker-level regressions below and the positive-path search test assert
 	/// against this seed.
-	fn seeded_tree(tag: &str) -> std::path::PathBuf {
-		let nanos = SystemTime::now()
-			.duration_since(UNIX_EPOCH)
-			.map_or(0, |d| d.as_nanos());
-		let root = env::temp_dir().join(format!(
-			"veyyon-shell-fd-cancel-{tag}-{}-{}-{}",
-			std::process::id(),
-			nanos,
-			COUNTER.fetch_add(1, Ordering::Relaxed),
-		));
-		fs::create_dir_all(&root).expect("temp tree should be created");
+	fn seeded_tree(tag: &str) -> veyyon_test_scratch::TempTree {
+		// Owned rather than a bare path: nothing removed these, so every run of this
+		// module left one directory per case in the system temp directory.
+		let root = veyyon_test_scratch::scratch_dir(&format!("shell-fd-{tag}"));
 		fs::write(root.join("haystack.txt"), b"needle\n").expect("seed file should be written");
 		fs::write(root.join("filler.txt"), b"filler\n").expect("filler file should be written");
 		root
@@ -1681,16 +1721,12 @@ mod tests {
 	/// Returns `(capture_path, writable_handle)`. The path is a fresh temp file
 	/// scoped to this test invocation; the handle wraps that same file so writes
 	/// go through the `OpenFile::File` variant and can later be read back.
-	fn capture_file(kind: &str) -> (std::path::PathBuf, fs::File) {
-		let nanos = SystemTime::now()
-			.duration_since(UNIX_EPOCH)
-			.map_or(0, |d| d.as_nanos());
-		let path = env::temp_dir().join(format!(
-			"veyyon-shell-fd-cancel-{kind}-{}-{}-{}",
-			std::process::id(),
-			nanos,
-			COUNTER.fetch_add(1, Ordering::Relaxed),
-		));
+	/// The capture file lives INSIDE a scratch directory, so removing the
+	/// directory removes the file. A bare temp file has no guard to attach
+	/// cleanup to, and these were never deleted.
+	fn capture_file(kind: &str) -> (veyyon_test_scratch::TempTree, std::path::PathBuf, fs::File) {
+		let dir = veyyon_test_scratch::scratch_dir(&format!("shell-fd-capture-{kind}"));
+		let path = dir.join("capture.out");
 		let file = fs::OpenOptions::new()
 			.create(true)
 			.read(true)
@@ -1698,7 +1734,7 @@ mod tests {
 			.truncate(true)
 			.open(&path)
 			.expect("capture file should open");
-		(path, file)
+		(dir, path, file)
 	}
 
 	fn read_all(path: &std::path::Path) -> Vec<u8> {
@@ -1788,12 +1824,12 @@ mod tests {
 		let tree = seeded_tree("normal");
 		let path = tree.to_str().expect("utf8 path");
 		let cli = FdCli::try_parse_from(["fd", "haystack", path]).expect("argv");
-		let (stdout_capture, stdout_file) = capture_file("stdout-ok");
-		let (stderr_capture, stderr_file) = capture_file("stderr-ok");
+		let (_stdout_dir, stdout_capture, stdout_file) = capture_file("stdout-ok");
+		let (_stderr_dir, stderr_capture, stderr_file) = capture_file("stderr-ok");
 		let mut stdout = OpenFile::from(stdout_file);
 		let mut stderr = OpenFile::from(stderr_file);
 		let cancelled = AtomicBool::new(false);
-		let state = search(cli, tree.clone(), &mut stdout, &mut stderr, &cancelled)
+		let state = search(cli, tree.to_path_buf(), &mut stdout, &mut stderr, &cancelled)
 			.expect("uncancelled search should succeed");
 		drop(stdout);
 		drop(stderr);
@@ -1806,5 +1842,543 @@ mod tests {
 		);
 		assert!(err.is_empty(), "stderr should stay clean on success: {err:?}");
 		let _ = fs::remove_dir_all(&tree);
+	}
+
+	/// The two search paths answer identically.
+	///
+	/// WHY THIS SUITE EXISTS. `fd` has two walks. `try_search_fast` streams
+	/// entries and returns a `WalkDecision` per entry; `search` collects the
+	/// whole tree first, because it has to consult `.gitignore` and `.fdignore`
+	/// state that the streaming walk does not carry. Which one runs is decided
+	/// by `can_use_fast_search`, so it changes with the FLAGS: `--no-ignore`
+	/// takes the fast path, `--one-file-system` or a socket/pipe type filter
+	/// forces the slow one.
+	///
+	/// Both used to carry their own copy of the per-entry rule, printing block
+	/// included, and nothing compared them. A `--format` or `--print0` change
+	/// made to one copy would alter fd's output under some flag combinations
+	/// and not others, silently. They now share `judge_entry`, and these tests
+	/// are what says so: each drives BOTH paths over the same tree and asserts
+	/// the bytes are equal, so a future divergence fails here rather than in a
+	/// user's shell.
+	mod both_search_paths_agree {
+		use std::sync::Arc;
+
+		// `super::*` reaches the enclosing test module's helpers; the crate items
+		// under test are named explicitly so it is clear which of them this suite
+		// touches.
+		use super::{
+			super::{
+				EntryVerdict, SearchConfig, build_excludes, build_matcher, build_type_filter,
+				can_use_fast_search, judge_entry,
+			},
+			*,
+		};
+
+		/// A tree with a nested directory, a hidden file, an excluded directory
+		/// and two extensions, so the shared rule has something to decide at
+		/// every branch rather than just one name to match.
+		///
+		/// Three of the four `needle` entries are visible: `.hidden-needle.txt`
+		/// is deliberately hidden, because fd skips hidden entries without
+		/// `--hidden` and `--no-ignore` does NOT turn them on. Every count
+		/// below is 3 rather than 4 for that reason, and it is the same 3 on
+		/// both paths, which is the property under test.
+		fn mixed_tree(tag: &str) -> veyyon_test_scratch::TempTree {
+			let root = seeded_tree(tag);
+			fs::create_dir_all(root.join("nest/deep")).expect("nest");
+			fs::create_dir_all(root.join("skipme")).expect("skipme");
+			fs::write(root.join("nest/needle.rs"), b"a\n").expect("nest file");
+			fs::write(root.join("nest/deep/needle.txt"), b"b\n").expect("deep file");
+			fs::write(root.join("skipme/needle.txt"), b"c\n").expect("excluded file");
+			fs::write(root.join(".hidden-needle.txt"), b"d\n").expect("hidden file");
+			root
+		}
+
+		/// Run one query with `args`, returning `(matches, stdout, stderr)`.
+		fn run_query(tree: &std::path::Path, args: &[&str]) -> (usize, Vec<u8>, Vec<u8>) {
+			let mut argv = vec!["fd"];
+			argv.extend_from_slice(args);
+			let path = tree.to_str().expect("utf8 path");
+			argv.push(path);
+			let cli = FdCli::try_parse_from(&argv).expect("argv should parse");
+			let (_out_dir, out_path, out_file) = capture_file("dual-stdout");
+			let (_err_dir, err_path, err_file) = capture_file("dual-stderr");
+			let mut stdout = OpenFile::from(out_file);
+			let mut stderr = OpenFile::from(err_file);
+			let cancelled = AtomicBool::new(false);
+			let state = search(cli, tree.to_path_buf(), &mut stdout, &mut stderr, &cancelled)
+				.expect("search should succeed");
+			drop(stdout);
+			drop(stderr);
+			(state.matches, read_all(&out_path), read_all(&err_path))
+		}
+
+		/// Sorted lines, so the comparison is about WHAT was emitted rather than
+		/// the order two different walks happened to reach it in.
+		fn sorted_lines(bytes: &[u8], terminator: u8) -> Vec<String> {
+			let mut lines: Vec<String> = bytes
+				.split(|byte| *byte == terminator)
+				.filter(|slice| !slice.is_empty())
+				.map(|slice| String::from_utf8_lossy(slice).into_owned())
+				.collect();
+			lines.sort();
+			lines
+		}
+
+		/// Run the same query down both paths. `--no-ignore` is what selects the
+		/// fast one, and adding `--one-file-system` forces the slow one WITHOUT
+		/// changing the answer: the tree is one temp directory, so nothing
+		/// crosses a mount point.
+		fn both_paths(tree: &std::path::Path, args: &[&str]) -> ((usize, Vec<u8>), (usize, Vec<u8>)) {
+			let mut fast_args = vec!["--no-ignore"];
+			fast_args.extend_from_slice(args);
+			let (fast_matches, fast_out, fast_err) = run_query(tree, &fast_args);
+			assert!(fast_err.is_empty(), "fast path stderr: {fast_err:?}");
+
+			let mut slow_args = vec!["--no-ignore", "--one-file-system"];
+			slow_args.extend_from_slice(args);
+			let (slow_matches, slow_out, slow_err) = run_query(tree, &slow_args);
+			assert!(slow_err.is_empty(), "slow path stderr: {slow_err:?}");
+
+			((fast_matches, fast_out), (slow_matches, slow_out))
+		}
+
+		/// THE LEVER ITSELF, proved before it is used: `--one-file-system` really
+		/// does move the run off the fast path, and `--no-ignore` alone really is
+		/// on it. Without this, every comparison below could be one path against
+		/// itself and pass no matter how far the two drifted.
+		#[test]
+		fn the_flags_used_below_select_the_two_different_paths() {
+			let cwd = std::path::Path::new("/");
+			let config = |cli: &FdCli| SearchConfig {
+				base_dir:       cwd.to_path_buf(),
+				absolute_roots: Vec::new(),
+				matcher:        Arc::new(build_matcher(cli).expect("matcher")),
+				excludes:       build_excludes(&[]).expect("excludes"),
+				types:          build_type_filter(&cli.types).expect("types"),
+				extensions:     Vec::new(),
+				sizes:          Vec::new(),
+				changed_after:  None,
+				changed_before: None,
+				owners:         Vec::new(),
+				full_path:      false,
+				absolute_path:  false,
+				separator:      "/".to_string(),
+				format:         None,
+				print0:         false,
+				quiet:          false,
+				show_errors:    false,
+				prune:          false,
+			};
+
+			let fast = FdCli::try_parse_from(["fd", "--no-ignore", "needle"]).expect("argv");
+			assert!(
+				can_use_fast_search(&fast, &config(&fast)),
+				"--no-ignore alone must take the fast path"
+			);
+
+			let slow = FdCli::try_parse_from(["fd", "--no-ignore", "--one-file-system", "needle"])
+				.expect("argv");
+			assert!(
+				!can_use_fast_search(&slow, &config(&slow)),
+				"--one-file-system must force the collecting path"
+			);
+
+			let ignoring = FdCli::try_parse_from(["fd", "needle"]).expect("argv");
+			assert!(
+				!can_use_fast_search(&ignoring, &config(&ignoring)),
+				"a run that must consult .gitignore cannot use the fast path"
+			);
+		}
+
+		/// The plain query: same count, same set of paths.
+		#[test]
+		fn a_plain_query_matches_the_same_entries() {
+			let tree = mixed_tree("dual-plain");
+			let ((fast_matches, fast_out), (slow_matches, slow_out)) = both_paths(&tree, &["needle"]);
+
+			assert_eq!(fast_matches, slow_matches, "match counts must agree");
+			assert_eq!(sorted_lines(&fast_out, b'\n'), sorted_lines(&slow_out, b'\n'));
+			// And the answer is the real one, not two empty results agreeing.
+			assert_eq!(fast_matches, 3, "fast: {}", String::from_utf8_lossy(&fast_out));
+			let names = sorted_lines(&fast_out, b'\n');
+			assert!(
+				names
+					.iter()
+					.any(|line| line.ends_with("nest/deep/needle.txt")),
+				"the nested match must be found by both: {names:?}"
+			);
+			let _ = fs::remove_dir_all(&tree);
+		}
+
+		/// `--print0` is part of the output contract, and it lived in both
+		/// copies. The terminator is asserted directly, because a path that
+		/// ignored the flag would still produce the same SET of paths.
+		#[test]
+		fn print0_terminates_both_paths_with_nul() {
+			let tree = mixed_tree("dual-print0");
+			let ((fast_matches, fast_out), (slow_matches, slow_out)) =
+				both_paths(&tree, &["--print0", "needle"]);
+
+			assert_eq!(fast_matches, slow_matches);
+			assert_eq!(sorted_lines(&fast_out, b'\0'), sorted_lines(&slow_out, b'\0'));
+			for (label, bytes) in [("fast", &fast_out), ("slow", &slow_out)] {
+				assert!(!bytes.contains(&b'\n'), "{label} must emit no newline under --print0");
+				assert!(bytes.ends_with(b"\0"), "{label} must end its last record with NUL");
+				assert_eq!(
+					sorted_lines(bytes, b'\0').len(),
+					fast_matches,
+					"{label} must end every record with NUL"
+				);
+			}
+			let _ = fs::remove_dir_all(&tree);
+		}
+
+		/// `--format` was the other half of the duplicated printing block.
+		#[test]
+		fn a_format_template_renders_the_same_on_both_paths() {
+			let tree = mixed_tree("dual-format");
+			let ((fast_matches, fast_out), (slow_matches, slow_out)) =
+				both_paths(&tree, &["--format", "[{}]", "needle"]);
+
+			assert_eq!(fast_matches, slow_matches);
+			let fast_lines = sorted_lines(&fast_out, b'\n');
+			assert_eq!(fast_lines, sorted_lines(&slow_out, b'\n'));
+			assert!(
+				fast_lines
+					.iter()
+					.all(|line| line.starts_with('[') && line.ends_with(']')),
+				"the template must be applied on both paths: {fast_lines:?}"
+			);
+			let _ = fs::remove_dir_all(&tree);
+		}
+
+		/// `--exclude` prunes a directory, which is the branch where the two
+		/// paths express themselves differently: one returns `SkipDescend`, the
+		/// other records the directory and drops its descendants. The RESULT
+		/// must be the same, and the excluded file must be absent from both.
+		#[test]
+		fn an_excluded_directory_is_pruned_on_both_paths() {
+			let tree = mixed_tree("dual-exclude");
+			let ((fast_matches, fast_out), (slow_matches, slow_out)) =
+				both_paths(&tree, &["--exclude", "skipme", "needle"]);
+
+			assert_eq!(fast_matches, slow_matches);
+			let fast_lines = sorted_lines(&fast_out, b'\n');
+			assert_eq!(fast_lines, sorted_lines(&slow_out, b'\n'));
+			assert_eq!(fast_matches, 2, "one of the three visible matches is inside skipme");
+			assert!(
+				!fast_lines.iter().any(|line| line.contains("skipme")),
+				"nothing under the excluded directory may be printed: {fast_lines:?}"
+			);
+			let _ = fs::remove_dir_all(&tree);
+		}
+
+		/// `--prune` stops the descent and KEEPS the match, which is the whole
+		/// difference between it and `--exclude`.
+		///
+		/// THE BUG THIS FOUND. The prune branch returned before the match was
+		/// counted, so a pruned directory disappeared from the results and the
+		/// flag behaved like a weaker `--exclude`. Its own help text says "do
+		/// not traverse into directories that match the search criteria", and
+		/// fd's documentation draws the contrast explicitly: `--exclude` is
+		/// what removes them. The code contradicted the text it shipped with.
+		#[test]
+		fn prune_keeps_the_match_and_stops_the_descent_on_both_paths() {
+			let tree = seeded_tree("dual-prune");
+			fs::create_dir_all(tree.join("needle-dir/inner")).expect("nest");
+			fs::write(tree.join("needle-dir/needle.txt"), b"x\n").expect("inner file");
+
+			let ((fast_matches, fast_out), (slow_matches, slow_out)) =
+				both_paths(&tree, &["--prune", "needle"]);
+
+			assert_eq!(fast_matches, slow_matches);
+			let fast_lines = sorted_lines(&fast_out, b'\n');
+			assert_eq!(fast_lines, sorted_lines(&slow_out, b'\n'));
+			assert_eq!(fast_matches, 1, "the directory itself is the one result: {fast_lines:?}");
+			assert!(
+				fast_lines.iter().any(|line| line.ends_with("needle-dir")),
+				"the matching directory is itself a result: {fast_lines:?}"
+			);
+			assert!(
+				!fast_lines
+					.iter()
+					.any(|line| line.contains("needle-dir/needle.txt")),
+				"--prune must stop the walk at the matching directory: {fast_lines:?}"
+			);
+
+			// THE CONTRAST that gives the flag its meaning: without --prune the same
+			// tree yields the directory AND the file inside it, so pruning removed
+			// the descent and not the match.
+			let ((plain_matches, plain_out), _) = both_paths(&tree, &["needle"]);
+			let plain_lines = sorted_lines(&plain_out, b'\n');
+			assert_eq!(plain_matches, 2, "{plain_lines:?}");
+			assert!(
+				plain_lines
+					.iter()
+					.any(|line| line.ends_with("needle-dir/needle.txt")),
+				"{plain_lines:?}"
+			);
+
+			// AND THE OTHER CONTRAST: --exclude is the flag that removes the
+			// directory itself. This is the behaviour --prune used to have.
+			let ((excluded_matches, excluded_out), _) =
+				both_paths(&tree, &["--exclude", "needle-dir", "needle"]);
+			assert_eq!(
+				excluded_matches,
+				0,
+				"--exclude drops the directory and its contents: {:?}",
+				sorted_lines(&excluded_out, b'\n')
+			);
+			let _ = fs::remove_dir_all(&tree);
+		}
+
+		/// A type filter narrows the same way on both paths.
+		#[test]
+		fn a_type_filter_narrows_both_paths_alike() {
+			let tree = mixed_tree("dual-type");
+			let ((fast_dirs, fast_out), (slow_dirs, slow_out)) =
+				both_paths(&tree, &["--type", "d", "needle"]);
+
+			assert_eq!(fast_dirs, slow_dirs);
+			assert_eq!(sorted_lines(&fast_out, b'\n'), sorted_lines(&slow_out, b'\n'));
+			assert_eq!(fast_dirs, 0, "no directory in this tree is named needle");
+
+			let ((fast_files, fast_out), (slow_files, slow_out)) =
+				both_paths(&tree, &["--type", "f", "needle"]);
+			assert_eq!(fast_files, slow_files);
+			assert_eq!(sorted_lines(&fast_out, b'\n'), sorted_lines(&slow_out, b'\n'));
+			assert_eq!(fast_files, 3, "all three visible matches are files");
+			let _ = fs::remove_dir_all(&tree);
+		}
+
+		/// `--extension` and `--full-path` change what the shared rule matches
+		/// AGAINST, and both live in `judge_entry`.
+		#[test]
+		fn extension_and_full_path_agree_across_both_paths() {
+			let tree = mixed_tree("dual-ext");
+
+			let ((fast, fast_out), (slow, slow_out)) =
+				both_paths(&tree, &["--extension", "rs", "needle"]);
+			assert_eq!(fast, slow);
+			assert_eq!(sorted_lines(&fast_out, b'\n'), sorted_lines(&slow_out, b'\n'));
+			assert_eq!(fast, 1, "only nest/needle.rs has that extension");
+
+			let ((fast, fast_out), (slow, slow_out)) =
+				both_paths(&tree, &["--full-path", "nest/deep.*needle"]);
+			assert_eq!(fast, slow);
+			assert_eq!(sorted_lines(&fast_out, b'\n'), sorted_lines(&slow_out, b'\n'));
+			assert_eq!(fast, 1, "--full-path must match the directory part on both paths");
+			let _ = fs::remove_dir_all(&tree);
+		}
+
+		/// `--quiet` counts without printing, on both paths. This is the branch
+		/// that returns before the printing block, so a path that had lost the
+		/// early return would print here and still report the same count.
+		#[test]
+		fn quiet_counts_without_printing_on_both_paths() {
+			let tree = mixed_tree("dual-quiet");
+			let ((fast_matches, fast_out), (slow_matches, slow_out)) =
+				both_paths(&tree, &["--quiet", "needle"]);
+
+			assert_eq!(fast_matches, slow_matches);
+			assert!(fast_matches > 0, "the query must actually match something");
+			assert!(fast_out.is_empty(), "fast path printed under --quiet: {fast_out:?}");
+			assert!(slow_out.is_empty(), "slow path printed under --quiet: {slow_out:?}");
+			let _ = fs::remove_dir_all(&tree);
+		}
+
+		/// `--max-results` truncates both paths to the same count. The SET can
+		/// differ, since the two walks reach entries in different orders, so only
+		/// the count is compared, and that is stated rather than assumed.
+		#[test]
+		fn max_results_truncates_both_paths_to_the_same_count() {
+			let tree = mixed_tree("dual-max");
+			let ((fast_matches, fast_out), (slow_matches, slow_out)) =
+				both_paths(&tree, &["--max-results", "2", "needle"]);
+
+			assert_eq!(fast_matches, 2, "fast: {}", String::from_utf8_lossy(&fast_out));
+			assert_eq!(slow_matches, 2, "slow: {}", String::from_utf8_lossy(&slow_out));
+			assert_eq!(sorted_lines(&fast_out, b'\n').len(), 2);
+			assert_eq!(sorted_lines(&slow_out, b'\n').len(), 2);
+			let _ = fs::remove_dir_all(&tree);
+		}
+
+		/// The root directory is never a result but is always descended into,
+		/// which is why the depth-0 case keeps `descend: true`. Were it false
+		/// the whole search would return nothing, so this is the case that pins
+		/// the distinction the two verdict fields exist to make.
+		#[test]
+		fn the_root_is_not_a_result_but_is_descended_into() {
+			let tree = seeded_tree("dual-root");
+			let leaf = tree
+				.file_name()
+				.and_then(|name| name.to_str())
+				.expect("temp dir name")
+				.to_string();
+
+			// The root's own name never comes back as a match...
+			let ((fast_matches, _), (slow_matches, _)) = both_paths(&tree, &[leaf.as_str()]);
+			assert_eq!(fast_matches, 0, "the root itself is not a result");
+			assert_eq!(slow_matches, 0);
+
+			// ...yet its children do, so the walk did enter it.
+			let ((fast_matches, _), (slow_matches, _)) = both_paths(&tree, &["haystack"]);
+			assert_eq!(fast_matches, 1, "the root must still be descended into");
+			assert_eq!(slow_matches, 1);
+			let _ = fs::remove_dir_all(&tree);
+		}
+
+		/// The three compatibility flags are accepted and change nothing.
+		///
+		/// They are read once into `let _` so the compiler agrees they are
+		/// consumed, which is easy to mistake for wiring. This asserts the
+		/// documented contract instead: the output is byte-identical with and
+		/// without them, on both paths. If one of the three is ever implemented,
+		/// this test fails and its help text has to change with it, which is the
+		/// point. A flag that quietly does nothing while its help implies
+		/// otherwise is the failure being locked out here.
+		#[test]
+		fn compatibility_flags_are_accepted_and_change_nothing() {
+			let tree = mixed_tree("dual-compat");
+			let ((base_matches, base_out), _) = both_paths(&tree, &["needle"]);
+			assert!(base_matches > 0, "the query must match something");
+
+			for flags in [
+				vec!["--color=always"],
+				vec!["--hyperlink=always"],
+				vec!["--strip-cwd-prefix=always"],
+				vec!["--color=always", "--hyperlink=always", "--strip-cwd-prefix=always"],
+			] {
+				let mut args = flags.clone();
+				args.push("needle");
+				let ((fast_matches, fast_out), (slow_matches, slow_out)) = both_paths(&tree, &args);
+
+				assert_eq!(fast_matches, base_matches, "{flags:?} changed the match count");
+				assert_eq!(fast_matches, slow_matches, "{flags:?} disagreed across the two paths");
+				assert_eq!(fast_out, base_out, "{flags:?} changed the fast path's bytes");
+				assert_eq!(slow_out, base_out, "{flags:?} changed the slow path's bytes");
+				assert!(
+					!fast_out.contains(&0x1b),
+					"{flags:?} must not introduce an escape sequence: {:?}",
+					String::from_utf8_lossy(&fast_out)
+				);
+			}
+			let _ = fs::remove_dir_all(&tree);
+		}
+
+		/// The verdict's own contract, read at the source rather than inferred
+		/// from output: `descend: false` is reached only for a directory,
+		/// because only a directory has anything under it, and the root is
+		/// always descended into.
+		///
+		/// The two fields are independent on purpose. A three-way enum could not
+		/// express the `--prune` case, which is a match AND a stopped descent,
+		/// and that unrepresentable state is exactly where the pruned-match bug
+		/// lived.
+		#[test]
+		fn a_stopped_descent_is_only_ever_reported_for_a_directory() {
+			let tree = seeded_tree("verdict");
+			fs::create_dir_all(tree.join("skipme")).expect("dir");
+			let cli = FdCli::try_parse_from([
+				"fd",
+				"--no-ignore",
+				"--exclude",
+				"skipme",
+				"--exclude",
+				"filler.txt",
+				"haystack",
+			])
+			.expect("argv");
+			let config = SearchConfig {
+				base_dir:       tree.to_path_buf(),
+				absolute_roots: Vec::new(),
+				matcher:        Arc::new(build_matcher(&cli).expect("matcher")),
+				excludes:       build_excludes(&cli.excludes).expect("excludes"),
+				types:          build_type_filter(&cli.types).expect("types"),
+				extensions:     Vec::new(),
+				sizes:          Vec::new(),
+				changed_after:  None,
+				changed_before: None,
+				owners:         Vec::new(),
+				full_path:      false,
+				absolute_path:  false,
+				separator:      "/".to_string(),
+				format:         None,
+				print0:         false,
+				quiet:          false,
+				show_errors:    false,
+				prune:          false,
+			};
+			let mut out = Vec::new();
+			let mut matches = 0;
+
+			let excluded_dir = judge_entry(
+				&config,
+				&[],
+				&tree.join("skipme"),
+				1,
+				veyyon_walker::FileType::Dir,
+				&mut out,
+				&mut matches,
+			)
+			.expect("judge");
+			assert_eq!(excluded_dir, EntryVerdict { matched: false, descend: false });
+
+			let excluded_file = judge_entry(
+				&config,
+				&[],
+				&tree.join("filler.txt"),
+				1,
+				veyyon_walker::FileType::File,
+				&mut out,
+				&mut matches,
+			)
+			.expect("judge");
+			assert_eq!(
+				excluded_file,
+				EntryVerdict { matched: false, descend: true },
+				"a file has no tree to skip"
+			);
+
+			let root = judge_entry(
+				&config,
+				&[],
+				&tree,
+				0,
+				veyyon_walker::FileType::Dir,
+				&mut out,
+				&mut matches,
+			)
+			.expect("judge");
+			assert_eq!(
+				root,
+				EntryVerdict { matched: false, descend: true },
+				"the root must be descended into"
+			);
+
+			assert_eq!(matches, 0, "none of the three cases above is a match");
+			assert!(out.is_empty(), "a skipped entry writes nothing: {out:?}");
+
+			let matched = judge_entry(
+				&config,
+				&[],
+				&tree.join("haystack.txt"),
+				1,
+				veyyon_walker::FileType::File,
+				&mut out,
+				&mut matches,
+			)
+			.expect("judge");
+			assert_eq!(matched, EntryVerdict { matched: true, descend: true });
+			assert_eq!(matches, 1);
+			assert_eq!(
+				String::from_utf8_lossy(&out).trim_end(),
+				"haystack.txt",
+				"a match writes its display path and one terminator"
+			);
+			let _ = fs::remove_dir_all(&tree);
+		}
 	}
 }

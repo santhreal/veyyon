@@ -35,11 +35,11 @@
 
 use veyyon_shell::minimizer::{MinimizerConfig, MinimizerCtx, filters, primitives};
 
-fn enabled() -> MinimizerConfig {
-	MinimizerConfig { enabled: true, ..Default::default() }
-}
+mod common;
 
-fn bun_test<'a>(config: &'a MinimizerConfig) -> MinimizerCtx<'a> {
+use common::enabled;
+
+const fn bun_test(config: &MinimizerConfig) -> MinimizerCtx<'_> {
 	MinimizerCtx { program: "bun", subcommand: Some("test"), command: "bun test", config }
 }
 

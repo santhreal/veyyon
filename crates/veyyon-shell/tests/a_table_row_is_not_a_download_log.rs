@@ -23,11 +23,15 @@
 
 use veyyon_shell::minimizer::{MinimizerConfig, MinimizerCtx, filters};
 
-fn enabled() -> MinimizerConfig {
-	MinimizerConfig { enabled: true, ..Default::default() }
-}
+mod common;
 
-fn ctx<'a>(program: &'a str, command: &'a str, config: &'a MinimizerConfig) -> MinimizerCtx<'a> {
+use common::enabled;
+
+const fn ctx<'a>(
+	program: &'a str,
+	command: &'a str,
+	config: &'a MinimizerConfig,
+) -> MinimizerCtx<'a> {
 	MinimizerCtx { program, subcommand: None, command, config }
 }
 

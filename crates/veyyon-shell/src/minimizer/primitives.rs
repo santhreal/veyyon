@@ -250,7 +250,7 @@ pub fn is_find_summary_header(line: &str) -> bool {
 /// rule cannot be fixed in one filter and left wrong in the other three.
 #[must_use]
 pub fn has_program_content(text: &str) -> bool {
-	text.lines().any(|line| is_program_content(line))
+	text.lines().any(is_program_content)
 }
 
 /// True when this single line is something the PROGRAM printed.
@@ -345,17 +345,13 @@ pub fn normalize_carriage_returns(text: &str) -> String {
 	let mut out = String::with_capacity(text.len());
 	let mut rest = text;
 	loop {
-		match rest.find('\n') {
-			Some(idx) => {
-				out.push_str(rest[..idx].trim_end_matches('\r'));
-				out.push('\n');
-				rest = &rest[idx + 1..];
-			},
-			None => {
-				out.push_str(rest.trim_end_matches('\r'));
-				break;
-			},
-		}
+		let Some(idx) = rest.find('\n') else {
+			out.push_str(rest.trim_end_matches('\r'));
+			break;
+		};
+		out.push_str(rest[..idx].trim_end_matches('\r'));
+		out.push('\n');
+		rest = &rest[idx + 1..];
 	}
 	out
 }

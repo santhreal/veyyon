@@ -31,7 +31,7 @@ toml.workspace = true
 xxhash-rust.workspace = true
 flume.workspace = true
 veyyon-walker.workspace = true
-veyyon-uutils-ctx = { path = "../veyyon-uutils-ctx" }
+veyyon-uutils-ctx.workspace = true
 uu_mkdir = { path = "../vendor/uu-mkdir" }
 uu_head = { path = "../vendor/uu-head" }
 uu_sort = { path = "../vendor/uu-sort" }
@@ -41,7 +41,7 @@ uu_rm = { path = "../vendor/uu-rm" }
 uu_mv = { path = "../vendor/uu-mv" }
 uu_ls = { path = "../vendor/uu-ls" }
 uu_find = { path = "../vendor/uu-find" }
-veyyon_uu_grep = { path = "../veyyon-uu-grep" }
+veyyon-uu-grep.workspace = true
 uu_cat = { path = "../vendor/uu-cat" }
 uu_uniq = { path = "../vendor/uu-uniq" }
 uu_base64 = { path = "../vendor/uu-base64" }
@@ -70,7 +70,7 @@ uu_nproc = { path = "../vendor/uu-nproc" }
 uu_uname = { path = "../vendor/uu-uname" }
 uu_whoami = { path = "../vendor/uu-whoami" }
 uu_hostname = { path = "../vendor/uu-hostname" }
-veyyon_uu_diff = { path = "../veyyon-uu-diff" }
+veyyon-uu-diff.workspace = true
 uu_cut = { path = "../vendor/uu-cut" }
 uu_tee = { path = "../vendor/uu-tee" }
 uu_tr = { path = "../vendor/uu-tr" }
@@ -87,3 +87,6 @@ libc.workspace = true
 smallvec.workspace = true
 windows-sys.workspace = true
 winreg.workspace = true
+
+[dev-dependencies]
+veyyon-test-scratch.workspace = true
