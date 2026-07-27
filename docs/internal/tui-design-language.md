@@ -13,7 +13,7 @@ First-party themes follow [Brand and identity](./brand.md); the website (`websit
 | Structure / brand | Silver `#C6CBD4` | Silver `#B8BDC7` | Dark silver `#5C6470` |
 | Accent | Ember `#F0862E` | Deep blue `#4A84C9` (pre-ember) | Ember `#F0862E` (chrome) / `#B65E14` (links) |
 
-Titanium mirrors the website tokens exactly, and Light is its sanctioned inverse (see `docs/internal/design.md`, "Light ground"), both locked by `packages/coding-agent/test/brand-conformance.test.ts`.
+Titanium mirrors the website tokens exactly, and Light is its sanctioned inverse. Both are locked by `packages/coding-agent/test/brand-conformance.test.ts`, which is the shipped source of truth for every brand color: the brand notes it was written from are local to the maintainer's machine and are not distributed, so a doc that points a reader at them points at nothing.
 
 The pitch-black `#000000` surface still applies to CONTROLLED grounds only: the HTML export (`export.pageBg`/`cardBg`/`infoBg`) and the website, where we own every pixel.
 
@@ -114,6 +114,8 @@ Never rely on color alone. Pair hue with a glyph or word (`ok`, `err`, `mcp`). R
 
 A block's `state` is not a signal by itself. `renderOutputBlock` turns `state` into a border TINT and nothing else, so passing `state: "error"` and stopping there leaves the outcome carried by hue alone. This shipped in the bash renderer (2026-07-25): `showHeader: false` suppressed the title, correctly, and suppressed the failure marker with it, so with SGR sequences stripped a failed command rendered byte-identically to a clean one. A failed run now draws its own `✗ failed` header. When you pass a state to a block, ask what a reader sees with every color removed, and assert it with the styling stripped — a test that reads the ANSI is testing the tint, not the signal.
 
+A selection band fills the ROW, not the text. `theme.bg("selectedBg", line)` wrapped around a row's content tints only as far as that row happens to reach, so the band stops mid-row and changes shape as the cursor moves; the eye reads that ragged edge as the end of something rather than as "you are here". Pad the line to the row width before filling. Where the rows go through a `ScrollView`, take that width from `ScrollView.contentWidth(width)` rather than from the width you render at: the view reserves two columns for its scrollbar and truncates anything longer, and a cut inside a fill drops the escape that CLOSES it, so the bar and every cell after it come out painted. The Agent Control Center shipped the ragged version and it was caught by looking at a render proof, not by a test, because with color off the fill is not there either way. `test/modes/components/agent-dashboard-selection-fill.test.ts` shows the shape of the lock: force color on with `setAnsiPolicy("full")`, then assert the tinted span reaches the pane edge and that the scrollbar sits outside it.
+
 Call sites route through `packages/coding-agent/src/modes/theme/theme.ts` helpers, not raw ANSI literals at widget sites.
 
 ## Motion
@@ -197,4 +199,4 @@ The website nav speaks lowercase terse ("docs install models changelog"), a disp
 
 When touching TUI polish, name the token (spacing, theme color, motion budget). Hardcoded hex or ANSI at call sites outside `theme.ts` is a design-system bug.
 
-*Verified against `179635884f50` on 2026-07-25.*
+*Verified against `d438d1ad8018` on 2026-07-26.*

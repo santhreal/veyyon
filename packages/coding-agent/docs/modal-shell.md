@@ -7,7 +7,7 @@ fold glyphs, Esc peel, search row, mouse chrome). **Visual brand** is Veyyon:
 sharp silver borders on pitch black — not Grok colors, not orange fills, not
 rounded corners. Idle session stays transcript + bottom composer; overlays float.
 
-Source: `src/modes/components/modal-shell.ts`. Brand SoT: `docs/internal/design.md`.
+Source: `src/modes/components/modal-shell.ts`. Brand SoT: `packages/coding-agent/test/brand-conformance.test.ts`.
 
 ## Sizing presets
 
@@ -56,7 +56,7 @@ Sun/ember (`#f0862e` / `#fb9e44`) is reserved for caret, focus ring, and links e
 
 ## Hosting
 
-Prefer `SelectorController.showModalSelector` / fullscreen overlay (`fullscreen: true`) so underpaint clears. Editor-slot hosts remain only where scrollback or long multi-step flows require (agent-hub, login, large wizards).
+Prefer `SelectorController.showModalSelector` / fullscreen overlay (`fullscreen: true`) so underpaint clears. Editor-slot hosts remain only where scrollback or long multi-step flows require (login, large wizards).
 
 ## Surfaces on ModalShell
 
