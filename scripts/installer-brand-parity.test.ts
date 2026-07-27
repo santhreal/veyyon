@@ -21,6 +21,7 @@ import { EMBER, GLYPH } from "@veyyon/coding-agent/modes/components/sun";
 
 const repoRoot = path.join(import.meta.dir, "..");
 const installSh = fs.readFileSync(path.join(repoRoot, "scripts", "install.sh"), "utf8");
+const installPs1 = fs.readFileSync(path.join(repoRoot, "scripts", "install.ps1"), "utf8");
 
 /** The bands the mark draws with: dark rim, brand ember, and the white-hot core. */
 const MARK_BANDS = [1, 4, 6, 7] as const;
@@ -164,5 +165,68 @@ describe("where the mark appears", () => {
 	it("prints nothing when stdout is not a terminal", () => {
 		const fn = installSh.slice(installSh.indexOf("brand_mark() {"));
 		expect(fn.slice(0, fn.indexOf("\n}"))).toContain('[ "$IS_TTY" = 1 ] || return 0');
+	});
+});
+
+describe("the Windows installer prints the same sun", () => {
+	/**
+	 * Two installers with two different suns is worse than one installer with a
+	 * sun and one without. The mark is a fixed string of escapes, so the check is
+	 * exact: every band the shell emits, the PowerShell emits, in the same order.
+	 */
+	it.each([...MARK_BANDS])("emits ember band %i", (band: number) => {
+		const [r, g, b] = EMBER[band] as readonly [number, number, number];
+		expect(installPs1).toContain(`[38;2;${r};${g};${b}m`);
+	});
+
+	it("uses no ember band outside the four it draws with", () => {
+		for (let band = 0; band < EMBER.length; band++) {
+			if ((MARK_BANDS as readonly number[]).includes(band)) continue;
+			const [r, g, b] = EMBER[band] as readonly [number, number, number];
+			expect(installPs1).not.toContain(`[38;2;${r};${g};${b}m`);
+		}
+	});
+
+	/**
+	 * The glyphs are written as code points rather than literals so the file
+	 * survives being served, saved and re-encoded by whatever a Windows user
+	 * pipes it through; this asserts they are the same seven cells.
+	 */
+	it("draws the same dome, written as code points", () => {
+		const expected = MARK_PROFILE.map(g => `[char]0x${g.codePointAt(0)?.toString(16).toUpperCase()}`);
+		for (const ref of expected) expect(installPs1).toContain(ref);
+		const drawn = [...installPs1.matchAll(/\[char\]0x(25[0-9A-F]{2})/g)].map(m =>
+			String.fromCodePoint(Number.parseInt(m[1] as string, 16)),
+		);
+		expect(drawn).toEqual([...MARK_PROFILE]);
+	});
+
+	it("uses the same silver for the name", () => {
+		expect(installPs1).toContain("[38;2;198;203;212m");
+		expect(installSh).toContain("38;2;198;203;212m");
+	});
+
+	/**
+	 * install.sh has a 256-color rendering for a terminal without truecolor;
+	 * install.ps1 deliberately does not. Its two audiences are Windows Terminal,
+	 * which has truecolor, and the legacy console host, which renders the block
+	 * glyphs as mojibake whatever color they are. A middle rendering would only
+	 * ever be drawn wrong, so the fallback is the plain ASCII form.
+	 */
+	it("falls back to plain ASCII rather than to 256 colors", () => {
+		expect(installPs1).toContain('"  (*) v e y y o n"');
+		expect(installPs1).not.toContain("[38;5;");
+	});
+
+	it("prints nothing into a pipe", () => {
+		expect(installPs1).toContain("if ([Console]::IsOutputRedirected) { return }");
+	});
+
+	/** An install is a good moment for a logo. A removal is not. */
+	it("is printed for an install and not for an uninstall", () => {
+		const main = installPs1.slice(installPs1.indexOf("if (-not $env:VEYYON_INSTALL_SOURCED)"));
+		const uninstallBranch = main.slice(main.indexOf("Uninstall-Veyyon"), main.indexOf("Write-BrandMark"));
+		expect(uninstallBranch).not.toContain("Write-BrandMark");
+		expect(main).toContain("Write-BrandMark");
 	});
 });

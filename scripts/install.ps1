@@ -1409,6 +1409,47 @@ function Uninstall-Veyyon {
     }
 }
 
+# The sun, once, at the top of an install.
+#
+# Same mark install.sh prints, from the same owner: four bands of the ember ramp
+# in packages/coding-agent/src/modes/components/sun.ts, drawn as lower blocks of
+# rising height so the silhouette is a dome rather than a rectangle. A rectangle
+# of solid blocks reads as a progress bar, and shading with the TUI's `.:-=` ramp
+# averages to grey over seven cells. See scripts/installer-brand-parity.test.ts,
+# which fails when the two suns stop agreeing about the color.
+#
+# ANSI rather than -ForegroundColor, because sixteen console colors cannot draw a
+# gradient. Windows Terminal ($env:WT_SESSION) and PowerShell 7's VT support give
+# real color; anywhere else, including the legacy console host, gets the plain
+# ASCII form, since a wrong-looking logo is worse than a plain one.
+# The lines the mark is made of, colored or plain. Split from the printing so it
+# can be tested: a test process has its output redirected by definition, and
+# Write-BrandMark declines to draw anything into a pipe.
+function Get-BrandMarkLines {
+    param([switch]$Color)
+    if (-not $Color) { return @("", "  (*) v e y y o n", "") }
+    $e = [char]27
+    # EMBER bands 1, 4, 6, 7, 6, 4, 1. Band 4 is the brand ember the website's
+    # --sun and the setup splash both rest on, so the brand color is IN the ramp
+    # rather than near it.
+    $disc = "$e[38;2;110;52;24m" + [char]0x2581 +
+            "$e[38;2;240;134;46m" + [char]0x2583 +
+            "$e[38;2;251;192;109m" + [char]0x2585 +
+            "$e[38;2;255;227;173m" + [char]0x2588 +
+            "$e[38;2;251;192;109m" + [char]0x2585 +
+            "$e[38;2;240;134;46m" + [char]0x2583 +
+            "$e[38;2;110;52;24m" + [char]0x2581
+    # Silver for the name, matching the splash's wordmark rather than the ember.
+    return @("", "  $disc$e[0m   $e[38;2;198;203;212m$e[1mv e y y o n$e[0m", "")
+}
+
+function Write-BrandMark {
+    # Nothing into a pipe or a log, which keeps captured output stable.
+    if ([Console]::IsOutputRedirected) { return }
+    $color = [bool]($env:WT_SESSION) -and -not $env:NO_COLOR
+    foreach ($line in (Get-BrandMarkLines -Color:$color)) { Write-Host $line }
+}
+
 # Main logic. Guarded so the test harness can dot-source this file to exercise
 # the helper functions in isolation without running a real install: set
 # $env:VEYYON_INSTALL_SOURCED=1 before sourcing (mirrors install.sh).
@@ -1417,6 +1458,10 @@ if (-not $env:VEYYON_INSTALL_SOURCED) {
         Uninstall-Veyyon
         return
     }
+
+    # An install is a good moment for a logo. A removal is not: a mark over an
+    # uninstall reads as a sales pitch at exactly the wrong time.
+    Write-BrandMark
 
     # A local install ignores $Ref entirely: there is no release to resolve.
     if ($Local) {
