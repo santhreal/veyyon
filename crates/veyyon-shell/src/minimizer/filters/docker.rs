@@ -724,6 +724,17 @@ fn is_compose_log_service(value: &str) -> bool {
 }
 
 fn compact_table(input: &str, visible_rows: usize) -> String {
+	// Already capped: hand it back rather than capping it again.
+	//
+	// Every non-blank line counts as a row here, including the tally this
+	// function writes and the elision marker below it, so a second pass counted
+	// two of its own annotations as data: `13 rows` became `14 rows` with the old
+	// tally listed underneath as a row. Filters chain and captures get replayed,
+	// so a count that grows every time the output is re-minimized reaches real
+	// callers. See `primitives::is_row_count_annotation`.
+	if input.lines().any(primitives::is_row_count_annotation) {
+		return input.to_string();
+	}
 	let lines: Vec<&str> = input
 		.lines()
 		.filter(|line| !line.trim().is_empty())
@@ -762,30 +773,128 @@ fn compact_build_or_progress(input: &str) -> String {
 	primitives::head_tail_dedup(&out)
 }
 
+/// True when the line is docker's own progress chatter rather than program
+/// output.
+///
+/// EVERY RULE HERE IS ANCHORED, and that is the whole point. This was written
+/// as `line.contains("Waiting")`, `line.contains("Downloading")`,
+/// `line.contains("Extracting")`, and `compact_build_or_progress` is the
+/// DEFAULT path for `docker` and for `helm install/upgrade/lint`, so a
+/// container that logged `Waiting for database connection` had that line
+/// deleted from what the agent was shown. Nothing recorded the drop, and a log
+/// with a line missing reads as a log, which is what makes an unanchored
+/// substring test worse than no filter at all.
 fn is_progress_line(line: &str) -> bool {
 	line.starts_with("=> ")
-		|| line.starts_with('#') && line.contains("DONE")
-		|| line.starts_with('#') && line.contains("CACHED")
-		|| line.starts_with('#') && line.contains("transferring ")
-		|| line.starts_with('#') && line.contains("extracting ")
-		|| line.contains("Pulling fs layer")
-		|| line.contains("Pull complete")
-		|| line.contains("Download complete")
-		|| line.contains("Downloading")
-		|| line.contains("Extracting")
-		|| line.contains("Waiting")
-		|| line.contains("Verifying Checksum")
+		|| is_buildkit_step_line(line)
+		|| is_layer_status_line(line)
 		|| line.starts_with("Attaching to ")
 		|| line.starts_with("Gracefully stopping")
 		|| is_compose_container_status_line(line)
 }
 
+/// A buildkit step line: `#8 DONE 2.3s`, `#5 CACHED`, `#2 transferring
+/// dockerfile: 32B`.
+///
+/// The step number is what anchors it. `#` alone claimed any comment or shell
+/// prompt that mentioned one of these words.
+fn is_buildkit_step_line(line: &str) -> bool {
+	let Some(rest) = line.strip_prefix('#') else {
+		return false;
+	};
+	let mut parts = rest.split_whitespace();
+	let Some(step) = parts.next() else {
+		return false;
+	};
+	if step.is_empty() || !step.chars().all(|ch| ch.is_ascii_digit()) {
+		return false;
+	}
+	match parts.next() {
+		Some("DONE" | "CACHED") => true,
+		Some(_) => rest.contains("transferring ") || rest.contains("extracting "),
+		None => false,
+	}
+}
+
+/// The statuses docker and compose print per layer while a pull or push runs.
+const LAYER_STATUSES: &[&str] = &[
+	"Pulling fs layer",
+	"Pulling",
+	"Pull complete",
+	"Pushing",
+	"Push complete",
+	"Download complete",
+	"Downloading",
+	"Uploading",
+	"Extracting",
+	"Preparing",
+	"Waiting",
+	"Verifying Checksum",
+	"Already exists",
+	"Layer already exists",
+	"Retrying in ",
+];
+
+/// A `docker pull`/`push` layer line: `a1b2c3d4e5f6: Downloading [==>   ]
+/// 1.2MB/3.4MB`, or compose's `app Downloading [==>   ]`.
+///
+/// TWO ANCHORS, because one is not enough here. The status must START the line,
+/// after at most one leading token for the layer id or the service name, and
+/// what follows the status must be nothing, a meter, or a size. `worker Waiting
+/// on queue` clears the first anchor and fails the second, which is exactly the
+/// line the unanchored `contains("Waiting")` used to delete.
+fn is_layer_status_line(line: &str) -> bool {
+	let trimmed = line.trim();
+	if status_then_meter(trimmed) {
+		return true;
+	}
+	match trimmed.split_once(char::is_whitespace) {
+		Some((_, rest)) => status_then_meter(rest.trim_start()),
+		None => false,
+	}
+}
+
+/// True when `body` opens with a layer status and carries nothing after it but
+/// a meter.
+fn status_then_meter(body: &str) -> bool {
+	LAYER_STATUSES.iter().any(|status| {
+		let Some(rest) = body.strip_prefix(status) else {
+			return false;
+		};
+		let rest = rest.trim();
+		rest.is_empty() || rest.starts_with('[') || rest.starts_with(|ch: char| ch.is_ascii_digit())
+	})
+}
+
+/// A compose lifecycle line: `Container myapp-db-1  Healthy`.
+///
+/// The status is the LAST token, which is how compose writes it. Asking only
+/// that the line contain the word claimed `Container startup logs: Started
+/// processing job 4`.
 fn is_compose_container_status_line(line: &str) -> bool {
 	let line = line.trim_start();
-	line.starts_with("Container ")
-		&& ["Creating", "Created", "Starting", "Started", "Waiting", "Healthy", "Running"]
-			.iter()
-			.any(|status| line.contains(status))
+	if !line.starts_with("Container ") {
+		return false;
+	}
+	let Some(last) = line.split_whitespace().next_back() else {
+		return false;
+	};
+	matches!(
+		last,
+		"Creating"
+			| "Created"
+			| "Starting"
+			| "Started"
+			| "Waiting"
+			| "Healthy"
+			| "Running"
+			| "Stopping"
+			| "Stopped"
+			| "Removing"
+			| "Removed"
+			| "Recreate"
+			| "Recreated"
+	)
 }
 
 #[cfg(test)]

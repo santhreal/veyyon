@@ -39,9 +39,9 @@ fn drop_passed_lines(input: &str) -> String {
 		push_line(&mut out, line);
 	}
 
-	if has_content(&out) {
+	if primitives::has_program_content(&out) {
 		out
-	} else if has_content(&summary) {
+	} else if primitives::has_program_content(&summary) {
 		summary
 	} else {
 		primitives::head_tail_lines(input, 0, 20)
@@ -97,7 +97,7 @@ fn failures_only(input: &str) -> String {
 		}
 	}
 
-	if has_content(&out) {
+	if primitives::has_program_content(&out) {
 		out
 	} else {
 		primitives::head_tail_lines(input, 80, 80)
@@ -107,10 +107,6 @@ fn failures_only(input: &str) -> String {
 fn push_line(out: &mut String, line: &str) {
 	out.push_str(line);
 	out.push('\n');
-}
-
-fn has_content(text: &str) -> bool {
-	text.lines().any(|line| !line.trim().is_empty())
 }
 
 fn is_summary_line(trimmed: &str) -> bool {
@@ -195,17 +191,27 @@ fn is_error_context_line(trimmed: &str) -> bool {
 		|| trimmed.contains(".test.")
 }
 
+/// Playwright numbers the failures in its summary: `1) tests/a.spec.ts:3:1 ›
+/// renders`. The marker is a number, a `)`, a space, AND THEN THE TEST THAT
+/// FAILED.
+///
+/// Requiring that last part is what keeps this predicate stable. It used to ask
+/// only that some whitespace follow the `)`, which made the answer turn on
+/// TRAILING whitespace: `" 0)\r"` was a failure header and `" 0)"` was not. A
+/// capture routinely loses its trailing carriage returns between passes, so the
+/// same line started a kept failure block on one pass and started nothing on
+/// the next, and everything above the next real header was dropped the second
+/// time. A line that is nothing but a number and a bracket names no test and is
+/// not a failure header on any pass. Found by
+/// `fuzz/fuzz_targets/minimizer_filters.rs`.
 fn is_playwright_numbered_failure(trimmed: &str) -> bool {
-	let mut chars = trimmed.chars();
-	let mut saw_digit = false;
-	while let Some(ch) = chars.next() {
-		if ch.is_ascii_digit() {
-			saw_digit = true;
-			continue;
-		}
-		return saw_digit && ch == ')' && chars.next().is_some_and(char::is_whitespace);
+	let Some((number, rest)) = trimmed.split_once(')') else {
+		return false;
+	};
+	if number.is_empty() || !number.chars().all(|ch| ch.is_ascii_digit()) {
+		return false;
 	}
-	false
+	rest.starts_with(char::is_whitespace) && !rest.trim().is_empty()
 }
 
 #[cfg(test)]

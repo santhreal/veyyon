@@ -1,6 +1,8 @@
 //! Filter dispatch table for built-in minimizer strategies.
 
-use crate::minimizer::{MinimizerCtx, MinimizerOutput};
+use std::borrow::Cow;
+
+use crate::minimizer::{MinimizerCtx, MinimizerOutput, primitives};
 
 pub mod cloud;
 pub mod cpp;
@@ -142,8 +144,61 @@ fn is_lint_script_token(token: &str) -> bool {
 }
 
 /// Apply the matching built-in filter.
+///
+/// ESCAPES ARE STRIPPED FIRST, THEN CARRIAGE RETURNS ARE NORMALIZED, AND THE
+/// ORDER IS THE WHOLE POINT. Normalizing CRs on the way in is the other half of
+/// a rule the crate already applied on the way out:
+/// `MinimizerOutput::transformed` strips a trailing CR from every line, so a
+/// filter's own output never carries one, while a raw capture routinely does.
+/// That asymmetry made line predicates answer differently on a second pass:
+/// `bun test` read `"00)\r"` as ordinary output and fell back to head/tail,
+/// then read the same line as `"00)"`, a playwright failure header, and
+/// answered with a much shorter capture.
+///
+/// Normalizing alone did not close it, because a CR is only trailing once the
+/// escapes behind it are gone. `" 0)\r\r\r\r\x1b\x1b\x1b"` has no TRAILING
+/// carriage return at all, so it reached the filter untouched; the filter's own
+/// `strip_ansi` then removed the escapes, and the CRs the shared pass would
+/// have taken became trailing one step too late. The next pass saw the
+/// normalized line and answered differently. Every filter in this module strips
+/// ANSI as its first act, so doing it here costs nothing and makes the two
+/// rewrites happen in the one order where neither can hide work from the other.
+/// Found by `fuzz/fuzz_targets/minimizer_filters.rs`.
+///
+/// A filter that DECLINES still hands back the program's own bytes. Rewriting
+/// is for the filters' benefit, not the caller's, and
+/// [`MinimizerOutput::passthrough`] promises the capture unchanged: handing
+/// back a de-escaped, LF-only rendering while reporting "nothing was minimized"
+/// would break that promise for the one case where the raw bytes are what was
+/// asked for.
 #[must_use]
 pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerOutput {
+	let stripped: Cow<'_, str> = if input.contains('\x1b') {
+		Cow::Owned(primitives::strip_ansi(input))
+	} else {
+		Cow::Borrowed(input)
+	};
+	let normalized: Cow<'_, str> = if stripped.contains('\r') {
+		Cow::Owned(primitives::normalize_carriage_returns(&stripped))
+	} else {
+		stripped
+	};
+	if normalized == input {
+		return dispatch(ctx, input, exit_code);
+	}
+	let mut output = dispatch(ctx, &normalized, exit_code);
+	if output.text == normalized {
+		return MinimizerOutput::passthrough(input);
+	}
+	// The savings metric describes the capture the PROGRAM produced, not this
+	// function's normalization of it. A filter handed the normalized text records
+	// its length, so without this the reported input is short by one byte per
+	// CRLF line and the minimizer under-reports what it saved.
+	output.input_bytes = input.len();
+	output
+}
+
+fn dispatch(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerOutput {
 	let _ = ctx.command;
 	let _ = ctx.config.per_command(ctx.program);
 	match ctx.program {

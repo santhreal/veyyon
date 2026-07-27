@@ -107,7 +107,13 @@ fn filter_aws(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> String {
 		return compacted;
 	}
 	if looks_like_table(&without_progress) {
-		compact_delimited_table(&without_progress, 40)
+		// Reshaping can leave nothing behind: the compaction drops border lines
+		// and normalizes the rest, and a normalized line can BECOME a border, so
+		// a second pass dropped it and answered with the empty string. Keeping
+		// the capture is the honest answer -- the caller's `text == input` check
+		// then reports a passthrough, so the telemetry says this filter declined
+		// to minimize rather than claiming a rewrite that deleted everything.
+		primitives::or_original(compact_delimited_table(&without_progress, 40), &without_progress)
 	} else {
 		without_progress
 	}
@@ -886,10 +892,14 @@ fn filter_psql(input: &str, exit_code: i32) -> String {
 		return String::new();
 	}
 
+	// Same guard as the aws table path, and for the same reason: the table
+	// reshapers drop borders on the way in and can normalize a row into
+	// something they would drop, so a capture of nothing but borders and empty
+	// rows compacts to nothing at all. See `primitives::or_original`.
 	let compacted = if looks_like_psql_table(input) {
-		compact_psql_table(input)
+		primitives::or_original(compact_psql_table(input), input)
 	} else if looks_like_psql_expanded(input) {
-		compact_psql_expanded(input)
+		primitives::or_original(compact_psql_expanded(input), input)
 	} else {
 		compact_jsonish_or_text(input, 120, 80, 40)
 	};
@@ -931,7 +941,7 @@ fn is_transfer_progress_line(line: &str) -> bool {
 	{
 		return true;
 	}
-	if trimmed.starts_with("--") && trimmed.contains("://") {
+	if trimmed.starts_with("--") && contains_url_scheme(trimmed) {
 		return true;
 	}
 	if trimmed.starts_with("Resolving ")
@@ -946,13 +956,41 @@ fn is_transfer_progress_line(line: &str) -> bool {
 	if trimmed.contains("--:--:--") || trimmed.contains("100%[") {
 		return true;
 	}
-	if trimmed.contains('%') && trimmed.contains('[') && trimmed.contains(']') {
+	// wget's meter is `45%[===>      ]`, so the bracket follows the percentage with
+	// nothing between them. Asking only that the line hold a `%`, a `[` and a `]`
+	// anywhere claimed any line that happened to have all three, which a JSON
+	// fragment or a shell glob easily does.
+	if trimmed.contains("%[") && trimmed.contains(']') {
 		return true;
 	}
 	if trimmed.contains('%') && (trimmed.contains("K/s") || trimmed.contains("M/s")) {
 		return true;
 	}
 	looks_like_wget_transfer_progress(trimmed)
+}
+
+/// True when the line holds a URL, judged by a real scheme rather than by
+/// `://`.
+///
+/// The wget log line this guards is `--2024-05-01 12:00:00--  https://host/path`,
+/// and the test for it used to be "starts with `--` and contains `://`". A
+/// table border is a run of dashes, so any row whose cells happened to put a
+/// colon before two slashes was read as a download log and DELETED. The filter
+/// did it to its own output: a bordered row normalizes to a leading dash run,
+/// so a capture that survived one pass lost that row on the next, and the loss
+/// looked like a quiet table rather than like a bug. Found by
+/// `fuzz/fuzz_targets/minimizer_filters.rs`.
+///
+/// A scheme is what RFC 3986 says it is: a letter followed by letters, digits,
+/// `+`, `-` or `.`. That is enough to tell `https://` from `::///`.
+fn contains_url_scheme(line: &str) -> bool {
+	line.match_indices("://").any(|(at, _)| {
+		let scheme = line[..at]
+			.rsplit(|ch: char| !(ch.is_ascii_alphanumeric() || matches!(ch, '+' | '-' | '.')))
+			.next()
+			.unwrap_or("");
+		scheme.starts_with(|ch: char| ch.is_ascii_alphabetic())
+	})
 }
 
 fn looks_like_wget_transfer_progress(line: &str) -> bool {
@@ -1046,17 +1084,58 @@ fn is_psql_expanded_header(line: &str) -> bool {
 	!suffix.is_empty() && suffix.chars().all(|ch| ch == '-')
 }
 
+/// Trim a row's LAYOUT whitespace: spaces, carriage returns, newlines, never
+/// tabs.
+///
+/// Tab is the delimiter these compactors EMIT, so a leading or trailing tab is
+/// a column and not padding. `str::trim` removed it, and that made the output
+/// unstable the moment a row legitimately had an empty edge cell: pass one
+/// turned `  1 | ` into `1\t`, and pass two trimmed the tab back off, so the
+/// same capture minimized to two different things depending on how many passes
+/// it had been through. Filters chain and captures get replayed, so an answer
+/// that depends on the pass count cannot be cached, compared across runs, or
+/// replayed. Same class as the blank-row regression in
+/// `normalize_pipe_row_if_meaningful`, reached through the delimiter rather
+/// than through an empty row.
+///
+/// A line that is nothing BUT whitespace is still skipped by both compactors,
+/// and that decision uses `str::trim` deliberately: a row of only tabs says
+/// nothing and emitting it would put a blank-looking line into the output,
+/// which is exactly what the loops drop on the way in.
+fn trim_row_layout(line: &str) -> &str {
+	line.trim_matches(|ch: char| ch.is_whitespace() && ch != '\t')
+}
+
 fn compact_delimited_table(input: &str, max_rows: usize) -> String {
+	let border_style = detect_pipe_border_style(input);
 	let mut out = Vec::new();
 	let mut data_rows = 0usize;
 	let mut saw_header = false;
 	for line in input.lines() {
-		let trimmed = line.trim();
-		if trimmed.is_empty() || is_border_line(trimmed) {
+		// Two different trims, and the difference is the point: whether the line
+		// says anything is decided on ALL whitespace, but the content that survives
+		// keeps its tabs. See `trim_row_layout`.
+		if line.trim().is_empty() {
+			continue;
+		}
+		let trimmed = trim_row_layout(line);
+		if is_border_line(trimmed) {
+			continue;
+		}
+		// A line the minimizer wrote is not a row to reshape. `| (×2)` is a
+		// repeat counter, and splitting it on its pipes turned it into a
+		// tab-prefixed cell. See `primitives::is_minimizer_annotation`.
+		if primitives::is_minimizer_annotation(trimmed) {
+			out.push(trimmed.to_string());
 			continue;
 		}
 		let normalized = if trimmed.contains('|') {
-			normalize_pipe_row(trimmed)
+			// See `normalize_pipe_row_if_meaningful`: a row of empty cells would
+			// be emitted as a blank line, which this loop drops on the way in.
+			let Some(normalized) = normalize_pipe_row_if_meaningful(trimmed, border_style) else {
+				continue;
+			};
+			normalized
 		} else {
 			trimmed.to_string()
 		};
@@ -1077,18 +1156,31 @@ fn compact_delimited_table(input: &str, max_rows: usize) -> String {
 }
 
 fn compact_psql_table(input: &str) -> String {
+	let border_style = detect_pipe_border_style(input);
 	let mut out = Vec::new();
 	let mut row_count_lines = Vec::new();
 	let mut data_rows = 0usize;
 	let mut saw_header = false;
 
 	for line in input.lines() {
-		let trimmed = line.trim();
-		if trimmed.is_empty() || is_border_line(trimmed) {
+		// See `trim_row_layout`: emptiness is decided on all whitespace, content
+		// keeps its tabs.
+		if line.trim().is_empty() {
+			continue;
+		}
+		let trimmed = trim_row_layout(line);
+		if is_border_line(trimmed) {
 			continue;
 		}
 		if is_psql_row_count(trimmed) {
 			row_count_lines.push(trimmed.to_string());
+			continue;
+		}
+		// A line the minimizer wrote is not a row to reshape. `| (×2)` is a
+		// repeat counter, and splitting it on its pipes turned it into a
+		// tab-prefixed cell. See `primitives::is_minimizer_annotation`.
+		if primitives::is_minimizer_annotation(trimmed) {
+			out.push(trimmed.to_string());
 			continue;
 		}
 		if is_important_line(trimmed) {
@@ -1096,7 +1188,11 @@ fn compact_psql_table(input: &str) -> String {
 			continue;
 		}
 		if trimmed.contains('|') {
-			let normalized = normalize_pipe_row(trimmed);
+			// See `normalize_pipe_row_if_meaningful`: a row of empty cells would
+			// be emitted as a blank line, which this loop drops on the way in.
+			let Some(normalized) = normalize_pipe_row_if_meaningful(trimmed, border_style) else {
+				continue;
+			};
 			if !saw_header {
 				saw_header = true;
 				out.push(normalized);
@@ -1166,9 +1262,101 @@ fn flush_record(out: &mut Vec<String>, current: &mut Vec<String>, records: usize
 	current.clear();
 }
 
-fn normalize_pipe_row(line: &str) -> String {
-	line
-		.trim_matches('|')
+/// Normalize a pipe-delimited row, or `None` when the result is not something
+/// this compactor would accept as a row.
+///
+/// THE RULE. A compactor must never emit a line its own loop would drop on the
+/// way in. Both loops skip blank lines and border lines, so a normalized row
+/// that is either of those has to be dropped here instead of written out.
+/// Filters chain and captures get replayed, so the next pass ran those same
+/// entry conditions over the output and removed what this pass had just added,
+/// and the same capture minimized to two different things depending on how many
+/// passes it had been through.
+///
+/// BLANK is the first way it happened. `"|"` on its own has no cells, so it
+/// normalized to the empty string, and it hit the HEADER slot, pushing the real
+/// column names down into the data rows where a wide result could cap them
+/// away.
+///
+/// BORDER is the second, found after the first was fixed. Normalizing strips
+/// the pipes and the padding, so a row can BECOME a border that was not one
+/// before: `"|-+-\r|"` is not a border (the carriage return is not a border
+/// character) and normalized to `"-+-"`, which is. Pass one emitted it as the
+/// header, pass two classified it as a border and dropped it, and the row below
+/// was promoted into the header slot.
+///
+/// One owner for both compactors: `compact_psql_table` and
+/// `compact_delimited_table` are the same shape, and fixing one of them left
+/// the fuzzer to find the other an hour later. Found by
+/// `fuzz/fuzz_targets/minimizer_filters.rs`.
+fn normalize_pipe_row_if_meaningful(line: &str, style: PipeBorderStyle) -> Option<String> {
+	let normalized = normalize_pipe_row(line, style);
+	if normalized.trim().is_empty() || is_border_line(&normalized) {
+		None
+	} else {
+		Some(normalized)
+	}
+}
+
+/// Whether a table's pipes at the start and end of a row are a BORDER or a
+/// column SEPARATOR.
+///
+/// This cannot be answered from one row. `"  1 | "` is either a bordered row
+/// missing its left border, or an unbordered two-column row whose last cell is
+/// empty, and nothing in the line itself says which. It CAN be answered from
+/// the table, because psql's aligned output either draws outer pipes on every
+/// row or on none, and so does every other aligned table these compactors see.
+///
+/// Deciding it per row was a fidelity loss: `normalize_pipe_row` trimmed pipes
+/// off both ends unconditionally, so an unbordered row whose last cell was
+/// empty came back with that column GONE. A reader saw a one-column row where
+/// the query returned two, and nothing said a column had been dropped. An
+/// interior empty cell was unaffected, which is what made it a silent loss
+/// rather than a formatting choice.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum PipeBorderStyle {
+	/// Every row is wrapped in pipes, so the outer ones are decoration.
+	Bordered,
+	/// The pipes only ever separate, so a leading or trailing one introduces a
+	/// real empty cell.
+	Unbordered,
+}
+
+/// Decide the border question ONCE for a whole table.
+///
+/// Bordered means EVERY row that carries columns is wrapped in pipes. One row
+/// that is not makes the pipes separators, because a table cannot be half
+/// bordered: an aligned renderer draws the border on all its rows or none of
+/// them, and the mixed case is a fragment or hand-written text where treating
+/// an edge pipe as decoration would delete a column.
+///
+/// Border lines and blank lines are skipped because they carry no cells;
+/// everything else with a pipe in it votes, which is exactly the set of lines
+/// the compactors go on to normalize.
+fn detect_pipe_border_style(input: &str) -> PipeBorderStyle {
+	for line in input.lines() {
+		let trimmed = line.trim();
+		if trimmed.is_empty() || is_border_line(trimmed) || !trimmed.contains('|') {
+			continue;
+		}
+		if !(trimmed.starts_with('|') && trimmed.ends_with('|')) {
+			return PipeBorderStyle::Unbordered;
+		}
+	}
+	// Reached when every pipe row was wrapped, and also when there were no pipe
+	// rows at all. The second case has nothing to trim either way, so the answer
+	// does not matter to it.
+	PipeBorderStyle::Bordered
+}
+
+/// Split one row into tab-separated cells, trimming the outer pipes only when
+/// the TABLE said they were a border.
+fn normalize_pipe_row(line: &str, style: PipeBorderStyle) -> String {
+	let cells = match style {
+		PipeBorderStyle::Bordered => line.trim_matches('|'),
+		PipeBorderStyle::Unbordered => line,
+	};
+	cells
 		.split('|')
 		.map(str::trim)
 		.collect::<Vec<&str>>()
