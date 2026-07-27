@@ -15,6 +15,7 @@ import {
 	extractScopeCandidates,
 	generateConventionalAnalysis,
 	generateSummary,
+	SUMMARY_MAX_CHARS,
 	validateAnalysis,
 	validateSummary,
 } from "./analysis";
@@ -24,7 +25,6 @@ import { formatCommitMessage } from "./message";
 import { resolvePrimaryModel, resolveSmolModel } from "./model-selection";
 import type { CommitCommandArgs, ConventionalAnalysis } from "./types";
 
-const SUMMARY_MAX_CHARS = 72;
 const RECENT_COMMITS_COUNT = 8;
 let typesDescription: string | undefined;
 const TYPES_DESCRIPTION = (): string =>

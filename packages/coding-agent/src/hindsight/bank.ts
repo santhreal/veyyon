@@ -27,7 +27,16 @@ import type { HindsightApi } from "./client";
 import type { HindsightConfig } from "./config";
 
 const DEFAULT_BANK_NAME = "veyyon";
-const PROJECT_TAG_PREFIX = "project:";
+/**
+ * The prefix on a per-project hindsight tag, written here and read in `mental-models.ts`.
+ *
+ * Exported because this file WRITES the tag (`project:<label>`) and `mental-models.ts`
+ * READS it back by stripping the same prefix, and each used to hold its own copy. A drift
+ * would not raise anything: the reader would simply stop recognising project tags, every
+ * seed would fall back to its unscoped id, and per-project scoping would quietly stop
+ * working.
+ */
+export const PROJECT_TAG_PREFIX = "project:";
 const UNKNOWN_PROJECT = "unknown";
 const MISSION_SET_CAP = 10_000;
 

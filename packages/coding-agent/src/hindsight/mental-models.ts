@@ -40,7 +40,7 @@
  */
 
 import { logger, truncate } from "@veyyon/utils";
-import type { BankScope } from "./bank";
+import { type BankScope, PROJECT_TAG_PREFIX } from "./bank";
 import type {
 	HindsightApi,
 	MentalModelListResponse,
@@ -105,7 +105,6 @@ export function resolveSeedsForScope(scope: BankScope, scoping: HindsightScoping
 	return out;
 }
 
-const PROJECT_TAG_PREFIX = "project:";
 
 function resolveSeedId(seed: RawSeed, tags: string[], scoping: HindsightScoping): string {
 	if (scoping !== "per-project-tagged" || !seed.projectTagged || tags.length === 0) return seed.id;
