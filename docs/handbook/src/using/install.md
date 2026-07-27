@@ -123,6 +123,19 @@ Tip: Updated to veyyon 1.2.0 · /changelog · roll back or turn auto-update off 
 You see it once per update, on the first launch after it. `/changelog` opens the
 release notes on the web rather than printing them into your terminal.
 
+The check costs one request to `github.com`, and no request to the GitHub API.
+It reads the newest version out of where `https://github.com/santhreal/veyyon/releases/latest`
+redirects to, the same way the installer does, because the API is capped at 60
+requests an hour per address and that cap is shared by everyone behind it. A
+laptop is nowhere near it; an office, a CI fleet or a container host running
+several agents spent it on startup checks alone, and then every machine behind
+that address reported that it could not check for updates. Nothing here needs a
+token, and setting one changes nothing.
+
+The one thing that still asks the API is the version list behind `veyyon
+rollback`, because a list of every published version has no redirect to read it
+from. That runs when you open the picker, not on startup.
+
 Two settings control this, both on by default:
 
 | Setting | Effect when off |

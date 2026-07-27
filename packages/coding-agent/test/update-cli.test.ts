@@ -21,6 +21,7 @@ import {
 import Update from "@veyyon/coding-agent/commands/update";
 import { removeWithRetries } from "@veyyon/utils";
 import type { CliConfig } from "@veyyon/utils/cli";
+import { LATEST_RELEASE_URL, releaseRedirect } from "./helpers/release-redirect";
 import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
 
 // Tracked temp directories: the factory deletes what it made when this file finishes.
@@ -67,21 +68,51 @@ describe("getLatestRelease reads GitHub Releases, not npm", () => {
 		return { calls };
 	}
 
-	it("queries the GitHub releases/latest endpoint for santhreal/veyyon with a User-Agent", async () => {
-		const { calls } = mockFetch(new Response(JSON.stringify({ tag_name: "v1.2.3" }), { status: 200 }));
+	it("resolves the newest version from where releases/latest redirects, with a User-Agent", async () => {
+		const { calls } = mockFetch(releaseRedirect("v1.2.3"));
 
 		const release = await updateCli.getLatestRelease(1000);
 
 		expect(release).toEqual({ tag: "v1.2.3", version: "1.2.3" });
 		expect(calls).toHaveLength(1);
-		expect(calls[0]?.url).toBe("https://api.github.com/repos/santhreal/veyyon/releases/latest");
+		expect(calls[0]?.url).toBe(LATEST_RELEASE_URL);
 		expect(calls[0]?.url).not.toContain("registry.npmjs.org");
 		const headers = calls[0]?.init?.headers as Record<string, string> | undefined;
 		expect(headers?.["User-Agent"]).toContain("veyyon");
 	});
 
+	/**
+	 * `api.github.com` allows 60 requests an hour per IP without a token, and that
+	 * budget is shared by everyone behind the same address. The startup check
+	 * spent one of them on every launch, so an office, a CI fleet or a container
+	 * host running several agents exhausted it and then could not update at all,
+	 * on machines where nothing was wrong. `github.com` is not part of that
+	 * budget. This is the assertion that keeps the API from creeping back in.
+	 */
+	it("does not touch the rate-limited API host at all", async () => {
+		const { calls } = mockFetch(releaseRedirect("v1.2.3"));
+
+		await updateCli.getLatestRelease(1000);
+
+		expect(calls[0]?.url).not.toContain("api.github.com");
+	});
+
+	/**
+	 * The redirect is the answer, so following it would download the release
+	 * page — a few hundred kilobytes of HTML nobody reads — on every startup
+	 * check. HEAD for the same reason: even the redirect's own body is waste.
+	 */
+	it("asks for the redirect itself rather than following it", async () => {
+		const { calls } = mockFetch(releaseRedirect("v1.2.3"));
+
+		await updateCli.getLatestRelease(1000);
+
+		expect(calls[0]?.init?.redirect).toBe("manual");
+		expect(calls[0]?.init?.method).toBe("HEAD");
+	});
+
 	it("normalizes a tag published without a leading v", async () => {
-		mockFetch(new Response(JSON.stringify({ tag_name: "2.0.0" }), { status: 200 }));
+		mockFetch(releaseRedirect("2.0.0"));
 
 		expect(await updateCli.getLatestRelease(1000)).toEqual({ tag: "v2.0.0", version: "2.0.0" });
 	});
@@ -92,16 +123,34 @@ describe("getLatestRelease reads GitHub Releases, not npm", () => {
 		await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/no published GitHub release yet/);
 	});
 
-	it("throws with a retry hint when GitHub rate-limits (403/429)", async () => {
-		mockFetch(new Response("", { status: 403, statusText: "Forbidden" }));
+	/**
+	 * Only a tag page is an answer. A redirect anywhere else means GitHub replied
+	 * with something other than a release — an interstitial, a moved repository,
+	 * a captive portal — and taking the last path segment anyway is how an updater
+	 * ends up trying to install the version "latest".
+	 */
+	it.each([
+		["the releases index", "https://github.com/santhreal/veyyon/releases"],
+		["a login interstitial", "https://github.com/login?return_to=%2Fsanthreal%2Fveyyon"],
+		["a captive portal", "http://wifi.example.net/portal"],
+		["a tag page with no tag on it", "https://github.com/santhreal/veyyon/releases/tag/"],
+	])("refuses a redirect to %s", async (_name: string, location: string) => {
+		mockFetch(new Response(null, { status: 302, headers: { location } }));
 
-		await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/rate-limiting this address/);
+		await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/names no release tag/);
+	});
+
+	/** A response with no redirect at all is a failure, not an empty version. */
+	it("throws when there is no redirect to read", async () => {
+		mockFetch(new Response("", { status: 200 }));
+
+		await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/Failed to resolve the latest release/);
 	});
 
 	it("refuses a release whose tag is not a usable semver instead of guessing", async () => {
-		mockFetch(new Response(JSON.stringify({ tag_name: "nightly" }), { status: 200 }));
+		mockFetch(releaseRedirect("nightly"));
 
-		await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/unusable tag/);
+		await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/names no release tag/);
 	});
 });
 
@@ -365,7 +414,8 @@ describe("update-cli release-info errors", () => {
 		expect(exitSpy).toHaveBeenCalledWith(1);
 		const combined = errors.join("\n");
 		expect(combined).toContain("Failed to check for updates");
-		expect(combined).toContain("api.github.com/repos/santhreal/veyyon/releases/latest");
+		expect(combined).toContain("github.com/santhreal/veyyon/releases/latest");
+		expect(combined).not.toContain("api.github.com");
 		expect(combined).not.toContain("registry.npmjs.org");
 		expect(combined).toContain("HTTP 404");
 		expect(combined).toContain("no published GitHub release yet");
@@ -385,7 +435,7 @@ describe("runUpdateCommand fetch cancellation", () => {
 		const fetchStub = Object.assign(
 			async (_input: string | URL | Request, init?: RequestInit | BunFetchRequestInit) => {
 				requestSignal = init?.signal ?? undefined;
-				return Response.json({ tag_name: "v999.0.0" });
+				return releaseRedirect("v999.0.0");
 			},
 			{ preconnect: globalThis.fetch.preconnect },
 		);
@@ -403,7 +453,7 @@ describe("runUpdateCommand --check --force messaging", () => {
 		// command used to print "Forcing reinstall of X" and then return silently,
 		// which reads as a reinstall that broke. In check mode it must instead state
 		// that --force WOULD reinstall, so the output matches what actually happens.
-		spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ tag_name: "v0.0.1" }));
+		spyOn(globalThis, "fetch").mockResolvedValue(releaseRedirect("v0.0.1"));
 		const logs: string[] = [];
 		spyOn(console, "log").mockImplementation((...args: unknown[]) => {
 			logs.push(args.map(String).join(" "));
@@ -435,7 +485,7 @@ describe("runAutoUpdate", () => {
 	});
 
 	it("reports up-to-date when the registry has nothing newer", async () => {
-		stubRegistry(async () => Response.json({ tag_name: "v1.2.3" }));
+		stubRegistry(async () => releaseRedirect("v1.2.3"));
 
 		expect(await updateCli.runAutoUpdate("1.2.3", undefined, await statePath(), () => "binary")).toEqual({
 			status: "up-to-date",
@@ -473,7 +523,7 @@ describe("runAutoUpdate", () => {
 		// the reporter rather than on stdout is what makes this test meaningful:
 		// an earlier version only exercised the up-to-date path, which never
 		// reaches an install and so could not have caught a console write.
-		stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
+		stubRegistry(async () => releaseRedirect("v9.9.9"));
 		const install = spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
 
 		const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, await statePath(), () => "binary");
@@ -487,7 +537,7 @@ describe("runAutoUpdate", () => {
 		// swap would overwrite its launcher. The background updater must SKIP it, not
 		// attempt the install and fail-loop every launch (Law 10). The install method
 		// is injected so the test does not depend on how veyyon is installed locally.
-		stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
+		stubRegistry(async () => releaseRedirect("v9.9.9"));
 		const install = spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
 
 		const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, await statePath(), () => "source");
@@ -499,7 +549,7 @@ describe("runAutoUpdate", () => {
 	it("still installs a binary install when the newer version is available", async () => {
 		// The companion to the source-skip test: an injected `binary` method takes
 		// the normal install path, proving the skip is specific to source installs.
-		stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
+		stubRegistry(async () => releaseRedirect("v9.9.9"));
 		const install = spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
 
 		const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, await statePath(), () => "binary");
@@ -509,7 +559,7 @@ describe("runAutoUpdate", () => {
 	});
 
 	it("reports an install failure instead of claiming success", async () => {
-		stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
+		stubRegistry(async () => releaseRedirect("v9.9.9"));
 		spyOn(updateCli, "installRelease").mockRejectedValue(new Error("brew exited 1"));
 
 		expect(await updateCli.runAutoUpdate("1.0.0", undefined, await statePath(), () => "binary")).toEqual({
@@ -520,7 +570,7 @@ describe("runAutoUpdate", () => {
 	});
 
 	it("does not write to stdout on the up-to-date path", async () => {
-		stubRegistry(async () => Response.json({ tag_name: "v1.0.0" }));
+		stubRegistry(async () => releaseRedirect("v1.0.0"));
 		const write = spyOn(process.stdout, "write").mockImplementation(() => true);
 
 		await updateCli.runAutoUpdate("1.0.0", undefined, await statePath(), () => "binary");
@@ -532,7 +582,7 @@ describe("runAutoUpdate", () => {
 		it("records the failed version so the next launch can see it", async () => {
 			// The record is what the backoff reads. If the failure path did not
 			// write it, every launch would retry an install that cannot succeed.
-			stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
+			stubRegistry(async () => releaseRedirect("v9.9.9"));
 			spyOn(updateCli, "installRelease").mockRejectedValue(new Error("EACCES: permission denied"));
 			const state = await statePath();
 
@@ -549,7 +599,7 @@ describe("runAutoUpdate", () => {
 			// A machine that cannot install at all showed the same red error on
 			// every launch. It now reports once and backs off, and crucially does
 			// not spend a package-manager run reproducing the failure each time.
-			stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
+			stubRegistry(async () => releaseRedirect("v9.9.9"));
 			const install = spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
 			const state = await statePath();
 			await recordAutoUpdateFailure("9.9.9", "EACCES", state, Date.now());
@@ -563,7 +613,7 @@ describe("runAutoUpdate", () => {
 		it("still installs a different version while an older failure is in its window", async () => {
 			// A build that failed is not evidence the next build fails, so a new
 			// release must never be held back by the previous one's cooldown.
-			stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
+			stubRegistry(async () => releaseRedirect("v9.9.9"));
 			const install = spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
 			const state = await statePath();
 			await recordAutoUpdateFailure("9.9.8", "bad tarball", state, Date.now());
@@ -577,7 +627,7 @@ describe("runAutoUpdate", () => {
 		it("clears the record after a successful install", async () => {
 			// Otherwise a machine that recovered keeps a failure on disk that
 			// nothing removes, and a later failure is judged against a stale one.
-			stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
+			stubRegistry(async () => releaseRedirect("v9.9.9"));
 			spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
 			const state = await statePath();
 			await recordAutoUpdateFailure("9.9.9", "transient", state, 1_000);
@@ -591,7 +641,7 @@ describe("runAutoUpdate", () => {
 			// Opening three terminals at once used to run three concurrent
 			// package-manager writes at the same binary. The lock makes the
 			// losers stand down instead of racing.
-			stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
+			stubRegistry(async () => releaseRedirect("v9.9.9"));
 			const install = spyOn(updateCli, "installRelease").mockImplementation(async () => {
 				// Hold long enough that the siblings must contend for the lock.
 				await Bun.sleep(30);
@@ -615,7 +665,7 @@ describe("runAutoUpdate", () => {
 		it("releases the lock after an install, so the next launch is not blocked", async () => {
 			// A lock left behind by a finished install would stall updates until
 			// its staleness window elapsed, which is deliberately fifteen minutes.
-			stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
+			stubRegistry(async () => releaseRedirect("v9.9.9"));
 			spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
 			const state = await statePath();
 

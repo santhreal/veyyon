@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-bae4794e.js";
+            window.path_to_searchindex_js = "../searchindex-e059680e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-2e8c749f.js"></script>
+        <script src="../toc-5cf6de48.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -266,6 +266,16 @@ names the new version and points at what you can do about it:</p>
 </code></pre>
 <p>You see it once per update, on the first launch after it. <code>/changelog</code> opens the
 release notes on the web rather than printing them into your terminal.</p>
+<p>The check costs one request to <code>github.com</code>, and no request to the GitHub API.
+It reads the newest version out of where <code>https://github.com/santhreal/veyyon/releases/latest</code>
+redirects to, the same way the installer does, because the API is capped at 60
+requests an hour per address and that cap is shared by everyone behind it. A
+laptop is nowhere near it; an office, a CI fleet or a container host running
+several agents spent it on startup checks alone, and then every machine behind
+that address reported that it could not check for updates. Nothing here needs a
+token, and setting one changes nothing.</p>
+<p>The one thing that still asks the API is the version list behind <code>veyyon rollback</code>, because a list of every published version has no redirect to read it
+from. That runs when you open the picker, not on startup.</p>
 <p>Two settings control this, both on by default:</p>
 <div class="table-wrapper">
 <table>

@@ -19,6 +19,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as updateCli from "@veyyon/coding-agent/cli/update-cli";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { releaseRedirect } from "../helpers/release-redirect";
 
 // The command styles its output through the global theme, which the CLI
 // initializes before dispatching any subcommand. Tests have to do the same or
@@ -55,7 +56,7 @@ function withSourceInstallOnPath<T>(run: () => T): T {
 
 /** Stub the release lookup so the command sees a newer version to install. */
 function stubLatestRelease(version: string): void {
-	spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ tag_name: `v${version}` }) as never);
+	spyOn(globalThis, "fetch").mockResolvedValue(releaseRedirect(`v${version}`) as never);
 }
 
 describe("runUpdateCommand reaches the installer", () => {

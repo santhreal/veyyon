@@ -60,6 +60,13 @@ const REPO = "santhreal/veyyon";
  */
 const GITHUB_RELEASES_API = `https://api.github.com/repos/${REPO}/releases`;
 /**
+ * The web endpoint that redirects to the newest published release's tag page.
+ *
+ * Not part of the `api.github.com` rate budget, which is why the startup check
+ * resolves here instead. See {@link getLatestRelease}.
+ */
+const GITHUB_LATEST_RELEASE_URL = `https://github.com/${REPO}/releases/latest`;
+/**
  * GitHub requires a User-Agent on every API request and rejects requests
  * without one. Identify the updater so the traffic is attributable.
  */
@@ -243,13 +250,32 @@ function defaultInstalledMethod(): UpdateMethod | undefined {
  * `timeoutMs` exists because the two callers want different patience: a
  * startup check runs while you are waiting to type and gives up quickly, while
  * an explicit `veyyon update` is worth waiting on.
+ *
+ * It does NOT call the GitHub API, and that is the point. `api.github.com`
+ * allows 60 requests an hour per IP without a token, and that budget is shared
+ * by everyone behind the same address — so an office, a CI fleet or a container
+ * host running several agents spent it on startup checks and then could not
+ * update at all, on machines where nothing was wrong. `github.com` itself is not
+ * part of that budget, and `/releases/latest` redirects to the tag page of the
+ * newest non-prerelease release, which is the only thing the API response was
+ * ever read for. `install.sh` resolves the same way, so a self-update and a
+ * fresh install still agree on what "latest" means.
+ *
+ * {@link getAllReleases} still uses the API, deliberately: a full version list
+ * has no equivalent redirect, and unlike this function it runs only when someone
+ * opens the rollback picker, not on every launch.
  */
 export async function getLatestRelease(timeoutMs: number = RELEASE_METADATA_TIMEOUT_MS): Promise<ReleaseInfo> {
-	const url = `${GITHUB_RELEASES_API}/latest`;
+	const url = `${GITHUB_LATEST_RELEASE_URL}`;
 	let response: Response;
 	try {
+		// `redirect: "manual"` so the 302 itself is the answer. Following it would
+		// download the release page, which is a few hundred kilobytes of HTML this
+		// function does not read, on every startup check.
 		response = await fetch(url, {
-			headers: { "User-Agent": GITHUB_API_USER_AGENT, Accept: "application/vnd.github+json" },
+			method: "HEAD",
+			redirect: "manual",
+			headers: { "User-Agent": GITHUB_API_USER_AGENT },
 			signal: withTimeoutSignal(timeoutMs),
 		});
 	} catch (err) {
@@ -258,23 +284,27 @@ export async function getLatestRelease(timeoutMs: number = RELEASE_METADATA_TIME
 		}
 		throw err;
 	}
-	if (!response.ok) {
+	// A redirect is the expected answer, so `response.ok` is false on the happy
+	// path and cannot be the check. 404 means the repository has no published
+	// release; anything else is a transport problem worth naming.
+	const location = response.headers.get("location") ?? "";
+	if (!location) {
 		const hint =
 			response.status === 404
 				? ` — ${REPO} has no published GitHub release yet (a draft or untagged release does not count)`
-				: response.status === 403 || response.status === 429
-					? " — GitHub is rate-limiting this address; retry in a few minutes"
-					: "";
-		throw new Error(
-			`Failed to fetch release info from ${url}: HTTP ${response.status} ${response.statusText}${hint}`,
-		);
+				: "";
+		const status = response.statusText ? `${response.status} ${response.statusText}` : `${response.status}`;
+		throw new Error(`Failed to resolve the latest release from ${url}: HTTP ${status}${hint}`);
 	}
-
-	const data = (await response.json()) as { tag_name?: unknown };
-	const tag = typeof data.tag_name === "string" ? data.tag_name : "";
+	// Only a tag page is an answer. A redirect anywhere else means GitHub replied
+	// with something other than a release — an interstitial, a moved repository, a
+	// captive portal — and taking the last path segment anyway is how an updater
+	// ends up trying to install the version "latest".
+	const match = /\/releases\/tag\/(.+)$/.exec(location);
+	const tag = match?.[1] ?? "";
 	const version = bareVersion(tag);
 	if (!isValidSemver(version)) {
-		throw new Error(`GitHub returned a release with an unusable tag ${JSON.stringify(tag)} from ${url}`);
+		throw new Error(`GitHub redirected ${url} to ${JSON.stringify(location)}, which names no release tag`);
 	}
 
 	return {

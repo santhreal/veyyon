@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { readAutoUpdateState } from "@veyyon/coding-agent/cli/auto-update-state";
 import * as updateCli from "@veyyon/coding-agent/cli/update-cli";
 import { removeWithRetries } from "@veyyon/utils";
+import { releaseRedirect, releaseTagUrl } from "./helpers/release-redirect";
 
 /**
  * UPD-11: when the release source is unreachable, veyyon must say so.
@@ -64,7 +65,7 @@ describe("an unreachable release source fails loudly and never answers from stal
 			// The message has to carry the URL: the first question anyone asks is whether
 			// it is the network, the proxy, or the wrong endpoint being queried.
 			await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(
-				/api\.github\.com\/repos\/santhreal\/veyyon\/releases\/latest: HTTP 500 Internal Server Error/,
+				/github\.com\/santhreal\/veyyon\/releases\/latest: HTTP 500 Internal Server Error/,
 			);
 		});
 
@@ -100,42 +101,49 @@ describe("an unreachable release source fails loudly and never answers from stal
 		});
 
 		it("surfaces a DNS failure rather than swallowing it", async () => {
-			const dns = new Error("getaddrinfo ENOTFOUND api.github.com");
+			const dns = new Error("getaddrinfo ENOTFOUND github.com");
 			failWith(dns);
 			await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/ENOTFOUND/);
 		});
 	});
 
-	describe("a 200 that is not a release", () => {
+	/** A 302 to an arbitrary tag path, for the shapes `releaseRedirect` will not build. */
+	const redirectTo = (tag: string) => new Response(null, { status: 302, headers: { location: releaseTagUrl(tag) } });
+
+	describe("a reply that is not a release", () => {
 		it("throws when the body is HTML, as a captive portal or proxy returns", async () => {
 			// Status 200 with an interception page is the nastiest case: every status
-			// check passes and only the body is wrong.
+			// check passes and there is simply no redirect to read.
 			respondWith(() => new Response("<html><body>Sign in to the network</body></html>", { status: 200 }));
-			await expect(updateCli.getLatestRelease(1000)).rejects.toThrow();
+			await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/Failed to resolve the latest release/);
 		});
 
-		it("throws when tag_name is absent instead of resolving to an empty version", async () => {
+		it("throws when the redirect header is absent instead of resolving to an empty version", async () => {
 			// An empty version string would compare as "not newer" against anything and
 			// silently report up to date forever.
-			respondWith(() => new Response(JSON.stringify({ name: "1.2.3" }), { status: 200 }));
-			await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/unusable tag/);
+			respondWith(() => new Response(null, { status: 302 }));
+			await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/Failed to resolve the latest release/);
 		});
 
-		it("throws when tag_name is the wrong type", async () => {
-			respondWith(() => new Response(JSON.stringify({ tag_name: 123 }), { status: 200 }));
-			await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/unusable tag/);
+		it("throws when the redirect points somewhere that is not a tag page", async () => {
+			// A captive portal that answers with a redirect rather than a body. Taking
+			// the last path segment anyway is how an updater tries to install "portal".
+			respondWith(
+				() => new Response(null, { status: 302, headers: { location: "http://wifi.example.net/portal" } }),
+			);
+			await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/names no release tag/);
 		});
 
-		it("throws when tag_name is an empty string", async () => {
-			respondWith(() => new Response(JSON.stringify({ tag_name: "" }), { status: 200 }));
-			await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/unusable tag/);
+		it("throws when the tag page names no tag", async () => {
+			respondWith(() => redirectTo(""));
+			await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/names no release tag/);
 		});
 
 		it("throws when the tag is a moving pointer rather than a version", async () => {
 			// `latest`/`nightly` style tags are not installable versions; accepting one
 			// would send the installer after an artifact whose contents change underneath.
-			respondWith(() => new Response(JSON.stringify({ tag_name: "v1.2" }), { status: 200 }));
-			await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/unusable tag/);
+			respondWith(() => releaseRedirect("v1.2"));
+			await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/names no release tag/);
 		});
 	});
 
@@ -145,7 +153,7 @@ describe("an unreachable release source fails loudly and never answers from stal
 			const { calls } = respondWith(() => {
 				attempt += 1;
 				if (attempt === 1) return new Response("", { status: 500, statusText: "Internal Server Error" });
-				return new Response(JSON.stringify({ tag_name: "v3.1.4" }), { status: 200 });
+				return releaseRedirect("v3.1.4");
 			});
 
 			await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/HTTP 500/);
@@ -159,7 +167,7 @@ describe("an unreachable release source fails loudly and never answers from stal
 		it("returns each successive version on repeated calls, so a newer release is seen immediately", async () => {
 			const versions = ["v1.0.0", "v1.1.0", "v2.0.0"];
 			let index = 0;
-			respondWith(() => new Response(JSON.stringify({ tag_name: versions[index++] }), { status: 200 }));
+			respondWith(() => releaseRedirect(versions[index++] ?? ""));
 
 			expect((await updateCli.getLatestRelease(1000)).version).toBe("1.0.0");
 			expect((await updateCli.getLatestRelease(1000)).version).toBe("1.1.0");
@@ -200,7 +208,7 @@ describe("an unreachable release source fails loudly and never answers from stal
 		it("still reports up to date when the source IS reachable and the version matches", async () => {
 			// The control. Without it, every assertion above would also pass if
 			// runAutoUpdate had simply stopped working.
-			respondWith(() => new Response(JSON.stringify({ tag_name: "v1.0.0" }), { status: 200 }));
+			respondWith(() => releaseRedirect("v1.0.0"));
 
 			expect((await updateCli.runAutoUpdate("1.0.0", undefined, await statePath())).status).toBe("up-to-date");
 		});
