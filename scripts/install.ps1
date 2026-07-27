@@ -1317,9 +1317,11 @@ function Install-LocalBinary {
 
 function Uninstall-Veyyon {
     $removed = $false
+    $pathEntryRemoved = $false
     if (Remove-FromPath) {
         Write-Host "OK  removed $InstallDir from your PATH" -ForegroundColor Green
         $removed = $true
+        $pathEntryRemoved = $true
     }
     if (Remove-Completions) { $removed = $true }
     # The alias is checked, and the binary is not, because Install-Alias refuses
@@ -1394,6 +1396,14 @@ function Uninstall-Veyyon {
     }
     if ($removed) {
         Write-Host "veyyon uninstalled."
+        # A PATH entry lives in the registry and reaches a process when that
+        # process starts, so every terminal already open still has the entry this
+        # uninstall just removed. Without this line, typing `veyyon` in one of
+        # them answers with a path the user can see is gone, which reads as a
+        # half-finished uninstall. Mirrors the same message in install.sh.
+        if ($pathEntryRemoved) {
+            Write-Host "  open terminals keep the old PATH entry until they restart"
+        }
     } else {
         Write-Host "nothing to uninstall."
     }
