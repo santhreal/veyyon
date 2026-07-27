@@ -10,7 +10,20 @@ $ curl -fsSL https://get.veyyon.dev | sh
 
 That installs the `veyyon` binary to `~/.local/bin`, links `vey` beside it, and runs a `doctor:` self-check. The self-check does two things: it confirms the binary starts and reports the version the release claims, and it runs a real search to confirm the native addon loads. The second check matters because `veyyon --version` answers without the addon, so a binary built for the wrong architecture starts cleanly and then fails on your first real command.
 
-That search runs twice. The first time is on the downloaded file, before anything is installed: the checksum proves the bytes are the ones that were published, but it cannot tell you the release has no build for your platform. If the download cannot run a search, the installer stops there and your machine is untouched, with no binary installed, no `vey` alias, no change to your shell profile and no completion files. The second run proves the finished install works from where it now lives. Each message says which of the two it is. Either way, when the search fails the installer tells you to install from source. When `~/.local/bin` is not on your `PATH` yet, the installer adds it to your shell profile and tells you to restart your shell.
+That search runs twice. The first time is on the downloaded file, before anything is installed: the checksum proves the bytes are the ones that were published, but it cannot tell you the release has no build for your platform. If the download cannot run a search, the installer stops there and your machine is untouched, with no binary installed, no `vey` alias, no change to your shell profile and no completion files. The second run proves the finished install works from where it now lives. Each message says which of the two it is. Either way, when the search fails the installer tells you to install from source. When `~/.local/bin` is not on your `PATH` yet, the installer adds it to your shell profile. A profile is read when a shell starts, and the shell you ran the installer in has already started, so `veyyon` is not a command in it yet. The closing steps say so, and reloading is the first of them:
+
+```console
+Next steps:
+  1. Reload your shell:        exec $SHELL -l
+     (or, without a new shell: source /home/you/.bashrc)
+  2. Launch in any repository: veyyon
+  3. Connect API providers:    veyyon setup
+  4. See every command:        veyyon --help
+```
+
+When the directory was already on your `PATH`, there is nothing to reload and the list starts at the launch step.
+
+The installer never calls the GitHub API. It finds the newest release from where `https://github.com/santhreal/veyyon/releases/latest` redirects to, and downloads the binary from that same host. The API is capped at 60 requests an hour per address, shared by everyone behind it, so a CI fleet or an office network that installs Veyyon repeatedly used to start getting a rate-limit failure on a machine where nothing was wrong. Nothing needs a token, and setting one changes nothing about the install.
 
 ## Install on Windows
 
@@ -313,6 +326,15 @@ same way, so an update never starts completing a command that is not ours.
 ## Uninstall
 
 The installer removes everything it added, and only what it added: the binary, the `vey` alias, the shell completions it wrote, the cached native addon, and a source checkout if you made one.
+
+The `PATH` line goes too. When the install directory was not already on your `PATH`, the installer appended two lines to your shell profile: a comment naming itself, and the line that adds the directory. On bash and zsh the pair looks like this, with the directory in single quotes so a name containing `$`, a backtick or a space is used literally rather than expanded when the profile is sourced:
+
+```sh
+# added by the veyyon installer
+export PATH='/home/you/.local/bin':"$PATH"
+```
+
+On fish it is `fish_add_path '/home/you/.local/bin'` instead. Uninstall removes that exact line, and the comment directly above it when the comment is still there, and nothing else: a line you wrote yourself that happens to name the same directory stays. Installs made before the quoting was added wrote `export PATH="/home/you/.local/bin:$PATH"`, and uninstall recognizes that older form too, so upgrading and then uninstalling does not strand a line in your profile.
 
 Two things it deliberately leaves behind. If you already had your own `vey` command, the installer never created that alias in the first place (it says so at install time and tells you to launch with `veyyon`), so uninstall does not touch it or its completion file. And if your source checkout has uncommitted edits or commits on a local branch that is on no remote, it is moved to `~/.veyyon/src.bak-<timestamp>` instead of being deleted, so nothing you wrote is lost.
 

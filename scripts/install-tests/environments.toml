@@ -144,3 +144,38 @@ expect_rc_stays_symlink = true
 "dotfiles/zshrc" = "# dotfiles-managed\nexport EDITOR=hx\n"
 [case.pre_symlinks]
 ".zshrc" = "$HOME/dotfiles/zshrc"
+
+# A `$` in the directory name is not exotic: it is legal in a Unix path, and CI
+# runners and container images do produce them. The PATH line used to be written
+# into a DOUBLE-quoted string, so `$PATH` expanded inside the directory NAME on
+# the next login, put a nonsense entry on PATH, and left `veyyon: command not
+# found` in a shell whose profile plainly named the right directory. Backtick and
+# backslash are the same bug, single quote is the escaping edge, and a glob
+# character is what an unquoted `fish_add_path` argument would expand.
+[[case]]
+name = "a HOME containing a dollar sign"
+shell = "/bin/bash"
+home_dir = "home$PATH-dollar"
+install_dir = ".local/bin"
+expect_rc = ".bashrc"
+
+[[case]]
+name = "a HOME containing a backtick"
+shell = "/bin/zsh"
+home_dir = "home`tick"
+install_dir = ".local/bin"
+expect_rc = ".zshrc"
+
+[[case]]
+name = "a HOME containing a single quote"
+shell = "/bin/bash"
+home_dir = "home's dir"
+install_dir = ".local/bin"
+expect_rc = ".bashrc"
+
+[[case]]
+name = "a HOME containing a glob character"
+shell = "/usr/bin/fish"
+home_dir = "home*glob"
+install_dir = ".local/bin"
+expect_rc = ".config/fish/config.fish"

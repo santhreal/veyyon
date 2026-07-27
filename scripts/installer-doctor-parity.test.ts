@@ -135,14 +135,19 @@ describe("the installer does not create the shadowing it then warns about", () =
 		// any older veyyon already on PATH kept winning and doctor reported a
 		// shadow on every single install — one the installer had just caused.
 		// The line text has one owner now (path_line_for), shared with uninstall.
-		expect(installSh).toContain(`printf 'export PATH="%s:$PATH"' "$2"`);
-		expect(installSh).toContain(`printf 'fish_add_path %s' "$2"`);
+		// The directory is single-quoted and `$PATH` is not: a directory name
+		// containing `$` used to expand when the profile was sourced, so the
+		// entry that landed on PATH was not the one the line named. `$PATH` still
+		// has to expand, which is why only the directory is inside the quotes.
+		expect(installSh).toContain(`printf 'export PATH=%s:"$PATH"' "$(shell_single_quote "$2")"`);
+		expect(installSh).toContain(`printf 'fish_add_path %s' "$(shell_single_quote "$2")"`);
 		expect(installPs1).toContain("return ((@($Dir) + @(Split-PathEntries $Raw)) -join ';')");
 	});
 
 	it("neither appends the install dir behind the existing entries", () => {
 		expect(installPs1).not.toContain("(@(Split-PathEntries $Raw) + $Dir)");
 		expect(installSh).not.toContain(`printf 'export PATH="$PATH:%s"'`);
+		expect(installSh).not.toContain(`printf 'export PATH="$PATH":%s'`);
 	});
 });
 
