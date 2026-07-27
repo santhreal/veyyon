@@ -2,7 +2,7 @@ import type { Database, SQLQueryBindings } from "bun:sqlite";
 import { batched, errorMessage, HOUR_MS, isRecord, logger } from "@veyyon/utils";
 import { transaction } from "../../db";
 import { toUtcIso } from "../../util/datetime";
-import { envInt } from "../../util/env";
+import { scratchpadMaxItems } from "../../config";
 import { generateId } from "../../util/ids";
 import { currentEmbeddingModel, embeddingsDisabled } from "../embeddings";
 import { EpisodicGraph } from "../episodic-graph";
@@ -54,10 +54,9 @@ const TRUST_TIERS: Record<string, true> = {
 	EXTERNAL_WRITE: true,
 	IMPORTED: true,
 };
-// Parse through the shared envInt owner so a non-numeric/empty MNEMOPI_SP_MAX
-// falls back to 1000 rather than seeding a NaN cap that corrupts the pruning
-// bound and its SQLite LIMIT bind.
-const SCRATCHPAD_MAX_ITEMS = envInt("MNEMOPI_SP_MAX", 1000);
+// Read through `../../config`, the one owner of MNEMOPI_SP_MAX. It falls back to 1000
+// rather than seeding a NaN cap that corrupts the pruning bound and its SQLite LIMIT bind.
+const SCRATCHPAD_MAX_ITEMS = scratchpadMaxItems();
 
 function metadataJson(metadata: Metadata | null | undefined): string | null {
 	return metadata == null ? null : JSON.stringify(metadata);

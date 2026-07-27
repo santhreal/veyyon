@@ -16,7 +16,6 @@ import {
 	metadataJson,
 	normalizeImportance,
 	normalizeMetadata,
-	normalizeWeights,
 	recallTokens,
 	strictFactMatches,
 	workingMemoryVecSearch,
@@ -36,9 +35,9 @@ describe("beam helper ids, weights, and metadata", () => {
 		expect(generateStableId("hello", "conversation")).not.toBe(generateStableId("hello", "other"));
 	});
 
-	it("normalizes hybrid weights and clamps importance metadata inputs", () => {
-		expect(normalizeWeights(2, 1, 1)).toEqual([0.5, 0.25, 0.25]);
-		expect(normalizeWeights(-1, 0, 0)).toEqual([0.5, 0.3, 0.2]);
+	// The hybrid-weight normalizer moved to `config.normalizedRecallWeights`, the one owner.
+	// Its coverage moved with it, to `test/recall-weights-have-one-normalizer.test.ts`.
+	it("clamps importance metadata inputs", () => {
 		expect(normalizeImportance(1.5)).toBe(1);
 		expect(normalizeImportance(-0.1)).toBe(0);
 		expect(normalizeMetadata('{"ok":true,"bad":null,"nan":null,"nested":{"n":2}}')).toEqual({

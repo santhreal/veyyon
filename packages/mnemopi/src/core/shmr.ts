@@ -1,24 +1,28 @@
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { batched, clampLow, logger } from "@veyyon/utils";
-import { envFloat, envInt } from "../util/env";
+import {
+	shmrBatchSize,
+	shmrHarmonyThreshold,
+	shmrMaxIterations,
+	shmrMinClusterSize,
+	shmrSimilarityThreshold,
+} from "../config";
 import { SQLITE_IN_CLAUSE_BATCH, sqlPlaceholders, tableExists } from "../util/sqlite";
 import * as embeddings from "./embeddings";
 import { cosineSimilarity, decodeEmbeddingJson } from "./vector-math";
 
 export { cosineSimilarity };
 
-// Route every tunable through the shared envInt/envFloat parsers (their sole
-// owner) so a non-numeric or empty override falls back to the default instead
-// of silently seeding NaN. A NaN threshold makes every `>= threshold`
-// comparison false, so clustering/harmonization would quietly produce nothing;
-// a NaN limit/size corrupts the SQLite `LIMIT` bind. Fail back to the default,
-// never to NaN.
-export const SHMR_BATCH_SIZE = envInt("MNEMOPI_SHMR_BATCH_SIZE", 50);
-export const SHMR_MAX_ITERATIONS = envInt("MNEMOPI_SHMR_MAX_ITERATIONS", 3);
-export const SHMR_SIMILARITY_THRESHOLD = envFloat("MNEMOPI_SHMR_SIMILARITY_THRESHOLD", 0.7);
-export const SHMR_HARMONY_THRESHOLD = envFloat("MNEMOPI_SHMR_HARMONY_THRESHOLD", 0.6);
-export const SHMR_MIN_CLUSTER_SIZE = envInt("MNEMOPI_SHMR_MIN_CLUSTER_SIZE", 2);
+// Read through `../config`, the one owner of every MNEMOPI_* knob, rather than parsing the
+// same five names here. Each accessor falls back to its default instead of seeding NaN,
+// which matters most for the thresholds: a NaN threshold makes every `>= threshold`
+// comparison false, so clustering and harmonization would quietly produce nothing.
+export const SHMR_BATCH_SIZE = shmrBatchSize();
+export const SHMR_MAX_ITERATIONS = shmrMaxIterations();
+export const SHMR_SIMILARITY_THRESHOLD = shmrSimilarityThreshold();
+export const SHMR_HARMONY_THRESHOLD = shmrHarmonyThreshold();
+export const SHMR_MIN_CLUSTER_SIZE = shmrMinClusterSize();
 /**
  * The width of the SHA1 bag-of-words fallback vector, and of nothing else.
  *
