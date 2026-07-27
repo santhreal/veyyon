@@ -1092,7 +1092,7 @@ alias_in_dir_is_ours() {
 }
 
 do_uninstall() {
-    removed=0
+    removed=0; _rc_line_removed=0
     for d in "$(install_dir)" "$HOME/.bun/bin"; do
         # The alias is checked BEFORE the binary is removed, and it is checked at
         # all because install refuses to overwrite a `vey` the user already has.
@@ -1181,6 +1181,7 @@ do_uninstall() {
         if remove_path_line_from_rc "$rc" "$(install_dir)"; then
             ok "removed the veyyon PATH line from $rc"
             removed=1
+            _rc_line_removed=1
         fi
         IFS='
 '
@@ -1191,7 +1192,19 @@ do_uninstall() {
     for stale in "$(install_dir)/.$BIN_NAME".*; do
         [ -e "$stale" ] && rm -f "$stale" && { ok "removed leftover $stale"; removed=1; }
     done
-    [ "$removed" -eq 1 ] && say "veyyon uninstalled." || say "nothing to uninstall."
+    if [ "$removed" -eq 1 ]; then
+        say "veyyon uninstalled."
+        # An rc is read when a shell starts, so this shell still holds the PATH
+        # entry the uninstall just deleted from the file, and bash and zsh also
+        # cache the resolved location of a command they have already run. Without
+        # this line, typing `veyyon` right after uninstalling answers "No such
+        # file or directory" from a path the user can see is gone, which reads as
+        # a half-finished uninstall rather than as a shell that has not caught up.
+        [ "${_rc_line_removed:-0}" = 1 ] && \
+            wrap_line "  " "  " 2 "your shell keeps the old PATH entry until it reloads: exec \$SHELL -l"
+    else
+        say "nothing to uninstall."
+    fi
 }
 
 # ---- bun (source) install ----

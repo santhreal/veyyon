@@ -872,7 +872,49 @@ check "removing only the PATH line still counts as an uninstall" \
   unset XDG_DATA_HOME XDG_CONFIG_HOME
   mkdir -p "$(install_dir)"
   printf '%s\n%s\n' "# added by the veyyon installer" "export PATH=\"$(install_dir):\$PATH\"" > "$_h/.bashrc"
-  do_uninstall 2>&1 | tail -1 ) )" "veyyon uninstalled."
+  do_uninstall 2>&1 | grep -c '^veyyon uninstalled\.$' ) )" "1"
+
+# --- do_uninstall: the shell that ran it still holds the entry it just removed ---
+# An rc is read when a shell STARTS, so the shell running the uninstall keeps the
+# PATH entry the uninstall has just deleted from the file, and bash and zsh also
+# cache where a command they have already run was found. Typing `veyyon` right
+# after uninstalling therefore answered "No such file or directory" for a path
+# the user can plainly see is gone, which reads as a half-finished uninstall
+# rather than as a shell that has not caught up. Symmetric with the reload step
+# the install prints for the same reason.
+check "an uninstall that removed a PATH line says the shell has not caught up" \
+    "$( ( _h="$SANDBOX/uninst-reload-hint"
+  export HOME="$_h"; export VEYYON_INSTALL_DIR="$_h/bin"
+  unset XDG_DATA_HOME XDG_CONFIG_HOME
+  mkdir -p "$(install_dir)"
+  printf '%s\n%s\n' "# added by the veyyon installer" "export PATH=\"$(install_dir):\$PATH\"" > "$_h/.bashrc"
+  do_uninstall 2>&1 | grep -c 'exec \$SHELL -l' ) )" "1"
+# It comes AFTER the verdict: the outcome is the headline, and the advice is a
+# footnote to it.
+check "the hint follows the verdict rather than preceding it" \
+    "$( ( _h="$SANDBOX/uninst-reload-order"
+  export HOME="$_h"; export VEYYON_INSTALL_DIR="$_h/bin"
+  unset XDG_DATA_HOME XDG_CONFIG_HOME
+  mkdir -p "$(install_dir)"
+  printf '%s\n%s\n' "# added by the veyyon installer" "export PATH=\"$(install_dir):\$PATH\"" > "$_h/.bashrc"
+  do_uninstall 2>&1 | grep -e '^veyyon uninstalled\.$' -e 'exec \$SHELL' |
+    sed -e 's/^veyyon uninstalled\.$/verdict/' -e 's/.*exec \$SHELL.*/hint/' | tr '\n' ' ' ) )" "verdict hint "
+# An uninstall that touched no rc has nothing to reload, and saying otherwise
+# sends the user to fix a shell that is already correct.
+check "an uninstall that removed no PATH line offers no reload" \
+    "$( ( _h="$SANDBOX/uninst-no-reload-hint"
+  export HOME="$_h"; export VEYYON_INSTALL_DIR="$_h/bin"
+  unset XDG_DATA_HOME XDG_CONFIG_HOME
+  mkdir -p "$(install_dir)"
+  printf '#!/bin/sh\necho veyyon\n' > "$(install_dir)/veyyon"
+  do_uninstall 2>&1 | grep -c 'exec \$SHELL' ) )" "0"
+# And "nothing to uninstall" is not an uninstall at all.
+check "a no-op uninstall offers no reload either" \
+    "$( ( _h="$SANDBOX/uninst-noop-hint"
+  export HOME="$_h"; export VEYYON_INSTALL_DIR="$_h/bin"
+  unset XDG_DATA_HOME XDG_CONFIG_HOME
+  mkdir -p "$(install_dir)"
+  do_uninstall 2>&1 | grep -c 'exec \$SHELL' ) )" "0"
 
 check "removing only completions still counts as an uninstall" \
     "$( ( _h="$SANDBOX/uninst-verdict-comp"

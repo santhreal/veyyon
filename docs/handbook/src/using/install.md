@@ -336,6 +336,15 @@ export PATH='/home/you/.local/bin':"$PATH"
 
 On fish it is `fish_add_path '/home/you/.local/bin'` instead. Uninstall removes that exact line, and the comment directly above it when the comment is still there, and nothing else: a line you wrote yourself that happens to name the same directory stays. Installs made before the quoting was added wrote `export PATH="/home/you/.local/bin:$PATH"`, and uninstall recognizes that older form too, so upgrading and then uninstalling does not strand a line in your profile.
 
+Because a profile is read when a shell starts, the shell you ran the uninstall in still has the old entry on its `PATH`, and bash and zsh also remember where they last found a command. The uninstall says so:
+
+```console
+veyyon uninstalled.
+  your shell keeps the old PATH entry until it reloads: exec $SHELL -l
+```
+
+Without that, typing `veyyon` straight after uninstalling answers "No such file or directory" for a path you can see is gone, which reads as a half-finished uninstall.
+
 Two things it deliberately leaves behind. If you already had your own `vey` command, the installer never created that alias in the first place (it says so at install time and tells you to launch with `veyyon`), so uninstall does not touch it or its completion file. And if your source checkout has uncommitted edits or commits on a local branch that is on no remote, it is moved to `~/.veyyon/src.bak-<timestamp>` instead of being deleted, so nothing you wrote is lost.
 
 ```console
