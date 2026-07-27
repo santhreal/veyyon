@@ -32,6 +32,11 @@ ALIAS_NAME="vey"
 # broken PATH the fork fails and the alias silently reads as "not ours". 0 until
 # link_alias has actually run, so nothing assumes ownership it has not checked.
 ALIAS_IS_OURS=0
+# Set by ensure_on_path when the install directory was missing from the PATH of
+# the shell running this script, which is what makes the closing advice depend on
+# a reload. `PATH_RELOAD_RC` is the file to source, empty when there was none.
+PATH_NEEDS_RELOAD=0
+PATH_RELOAD_RC=""
 # Where the binary and the alias go, resolved on every use rather than when this
 # file is sourced — same reason as src_dir below: a $HOME set after sourcing
 # must be followed, and this path guards removals. It also collapses two names
@@ -224,14 +229,28 @@ term_cols() {
 #
 # Width 0 (a pipe, a log, a test) prints the message on one line exactly as it
 # always has: wrapping output nobody is looking at only makes it harder to grep.
-glyph_line() { # glyph, color, message...
-    _gl_glyph=$1; _gl_color=$2; shift 2
-    _gl_cols=$(term_cols)
-    if [ "$_gl_cols" -lt 24 ]; then
-        printf '  %s%s%s  %s\n' "$_gl_color" "$_gl_glyph" "$C_RESET" "$*"
+# Wrap one message to the terminal, with a first-line prefix and a continuation
+# prefix that keeps the text in the same column.
+#
+# The one wrapper. `glyph_line` grew it for its own "  ok  " gutter, and every
+# other multi-word line the installer prints then had to either be short enough
+# by luck or run off the edge — which is exactly what the "or: source <profile>"
+# hint under the reload step did, at 40 and at 60 columns.
+#
+# The message's OWN leading spaces are preserved and applied to continuations
+# too: without that, a line indented to read as a follow-on to the one above it
+# lost the indent on wrap and read as a separate message.
+wrap_line() { # first-prefix, continuation-prefix, visible-prefix-width, message...
+    _wl_head=$1; _wl_cont=$2; _wl_pad=$3; shift 3
+    _wl_cols=$(term_cols)
+    # Under 24 columns there is no width to wrap into: every break would leave
+    # one or two characters on a line. Print it whole and let the terminal do
+    # whatever it does.
+    if [ "$_wl_cols" -lt 24 ]; then
+        printf '%s%s\n' "$_wl_head" "$*"
         return
     fi
-    printf '%s' "$*" | awk -v w="$((_gl_cols - 6))" -v head="  ${_gl_color}${_gl_glyph}${C_RESET}  " '
+    printf '%s' "$*" | awk -v w="$((_wl_cols - _wl_pad))" -v head="$_wl_head" -v cont="$_wl_cont" '
         {
             match($0, /^ */)
             lead = substr($0, 1, RLENGTH)
@@ -246,10 +265,7 @@ glyph_line() { # glyph, color, message...
                 # breaking a path or a URL to fit would make it uncopyable.
                 if (length(cand) > w && line != "") {
                     print prefix line
-                    # Six spaces is the width of the glyph gutter ("  !!  "), so
-                    # a continuation starts under the first word rather than
-                    # under the marker; the message`s own indent is kept on top.
-                    prefix = "      " lead
+                    prefix = cont lead
                     line = word[i]
                 } else {
                     line = cand
@@ -257,6 +273,15 @@ glyph_line() { # glyph, color, message...
             }
             if (line != "") print prefix line
         }'
+}
+
+# The glyph gutter is "  ok  ": two spaces, a two-character marker, two spaces.
+# Six visible columns, whatever the color escapes around the marker weigh, which
+# is why the width is passed separately from the prefix string. A continuation
+# starts under the first word rather than under the marker.
+glyph_line() { # glyph, color, message...
+    _gl_glyph=$1; _gl_color=$2; shift 2
+    wrap_line "  ${_gl_color}${_gl_glyph}${C_RESET}  " "      " 6 "$@"
 }
 
 # ---- small ui helpers (silver-on-black brand voice: quiet, honest) ----
@@ -275,20 +300,46 @@ step() { printf '%s%s%s\n' "$C_DIM" "$*" "$C_RESET"; }
 
 has() { command -v "$1" >/dev/null 2>&1; }
 
-# ---- GitHub API fetch, optionally authenticated ----
-# Unauthenticated api.github.com is capped at 60 requests/hr per IP; a token
-# raises that limit. Use this ONLY for api.github.com JSON calls (release
-# metadata), never for the binary/sidecar asset download: those redirect to a
-# separate storage host, and a manually-set `-H Authorization` is resent across
-# a cross-host redirect, which would leak the token to that host. The token is
-# always optional — anonymous installs must keep working with no token set.
-gh_curl() {
-    tok="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
-    if [ -n "$tok" ]; then
-        curl -fsSL $CURL_RETRY -H "Authorization: Bearer $tok" "$@"
-    else
-        curl -fsSL $CURL_RETRY "$@"
-    fi
+# ---- resolve a release tag WITHOUT the GitHub API ----
+# api.github.com is capped at 60 requests/hour PER IP for unauthenticated
+# callers, and that budget is shared by everyone behind the same address. A CI
+# fleet, an office NAT or a container host that installs veyyon a few dozen times
+# in an hour used to stop being able to install it at all: the release lookup
+# came back 403 and the script died on a machine where nothing was wrong. An
+# adversarial matrix run hit exactly that, six times, on an installer that was
+# working perfectly.
+#
+# github.com itself is not part of that budget. `/releases/latest` is a redirect
+# to the tag page of the newest non-prerelease release, and `/releases/tag/<tag>`
+# is a 404 for a tag that does not exist, which is the only thing the two API
+# calls were ever read for. It is also the same host the binary is downloaded
+# from, so the install now depends on one host instead of two and needs no token
+# at all.
+#
+# `-o /dev/null -w %{url_effective}` asks curl where it ENDED UP rather than for
+# the page body, so nothing is parsed out of HTML.
+resolve_latest_tag() {
+    _rlt_url=$(curl -fsSL -o /dev/null -w '%{url_effective}' $CURL_RETRY \
+        --connect-timeout 10 --max-time 60 "https://github.com/${REPO}/releases/latest" 2>/dev/null) || return 1
+    # A redirect that did not land on a tag page means GitHub answered with
+    # something other than a release — an interstitial, a moved repo, a captive
+    # portal. Fail rather than install whatever the last path segment happened to
+    # be, which is how you end up downloading `latest` as a version number.
+    case "$_rlt_url" in
+        *"/releases/tag/"*) ;;
+        *) return 1 ;;
+    esac
+    _rlt_tag="${_rlt_url##*/releases/tag/}"
+    [ -n "$_rlt_tag" ] || return 1
+    printf '%s\n' "$_rlt_tag"
+}
+
+# Whether a release tag is published. Used to tell "you asked for a tag that does
+# not exist" apart from "that release has no build for your platform", which are
+# the same curl failure on the asset URL and very different things to be told.
+release_tag_exists() {
+    curl -fsSL -o /dev/null $CURL_RETRY --connect-timeout 10 --max-time 60 \
+        "https://github.com/${REPO}/releases/tag/$1" >/dev/null 2>&1
 }
 
 # ---- the `vey` alias: one short launch command next to the binary ----
@@ -344,10 +395,28 @@ PATH_MARKER="# added by the veyyon installer"
 # remove_path_line_from_rc (which takes it back out). Without a single owner an
 # uninstall has to guess at the text install produced, and a guess either leaves
 # the line behind forever or deletes a line the user wrote themselves.
+#
+# The directory is SINGLE-quoted, and that is the whole point of this function.
+# It used to be written into a double-quoted string, where the shell expands
+# what it finds: an install under a directory containing `$` produced
+# `export PATH="/home/a$PATH/bin:$PATH"`, which on the next login expanded
+# `$PATH` INSIDE the directory name and put a nonsense entry on PATH — the user
+# saw `veyyon: command not found` in a shell whose rc plainly names the right
+# directory. A backtick or a backslash in the name is the same class of bug.
+# Single quotes suppress all of it; `$PATH` itself stays outside them so it is
+# still the expansion it has to be.
+#
+# A literal single quote in the path is closed, escaped and reopened, which is
+# the only way to put one inside single quotes in POSIX sh.
+shell_single_quote() {
+    printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
 path_line_for() {
     case "$1" in
-        */config.fish) printf 'fish_add_path %s' "$2" ;;
-        *) printf 'export PATH="%s:$PATH"' "$2" ;;
+        # fish_add_path takes the path as an argument rather than building a
+        # string, but an unquoted argument still splits on spaces and globs.
+        */config.fish) printf 'fish_add_path %s' "$(shell_single_quote "$2")" ;;
+        *) printf 'export PATH=%s:"$PATH"' "$(shell_single_quote "$2")" ;;
     esac
 }
 
@@ -403,6 +472,13 @@ ensure_on_path() {
     # installer then skipped the add and reported the directory as configured —
     # so a new shell never had it and "restart your shell" was advice that could
     # not work. Same prefix-substring bug Test-PathContainsDir fixed on Windows.
+    # Reaching this point at all means the directory is NOT on the PATH of the
+    # shell running the installer, so whatever happens below, the command the
+    # closing message names cannot be typed until this shell reloads. The next
+    # steps used to open with "1. Launch in any repository: veyyon" regardless,
+    # which is the first thing a new user tries and the first thing that fails.
+    PATH_NEEDS_RELOAD=1
+    PATH_RELOAD_RC="$rc"
     if [ -z "$rc" ]; then
         warn "add $dir to your PATH, then run '$ALIAS_NAME'"
     elif [ -f "$rc" ] && grep -Fqx "$line" "$rc"; then
@@ -435,15 +511,55 @@ launch_command() {
 # subsystem they had never touched. The install's own doctor already ran, eight
 # lines above this. Every step here names a command that exists and does what the
 # label says it does.
+#
+# The commands are padded into a column so the eye can run down them, and the
+# padding is dropped on a terminal too narrow to hold it. At 40 columns the
+# widest row was 41 characters and wrapped, which turns a three-line table into
+# five ragged ones and undoes the alignment the padding existed for. 48 is the
+# widest row (`  3. See every command:        veyyon --help`) plus a margin, so
+# the column survives everywhere it fits and is abandoned only where it cannot.
 print_next_steps() {
     _cmd=$(launch_command)
+    _pns_cols=$(term_cols)
     say ""
     say "${C_OK}${C_BOLD}✓ Installation complete.${C_RESET}"
     say ""
     say "Next steps:"
-    say "  1. Launch in any repository: $_cmd"
-    say "  2. Connect API providers:    $_cmd setup"
-    say "  3. See every command:        $_cmd --help"
+    # The install directory went onto PATH through a shell profile, and a profile
+    # is read when a shell starts. THIS shell already started, so the command
+    # named below is not a command here yet. Leading with it means the first thing
+    # a new user types after a successful install answers "command not found",
+    # which reads as a broken install rather than as a shell that has not caught
+    # up. When a reload is needed it is a step, numbered like the rest, rather than
+    # a parenthetical after the thing it has to precede.
+    _pns_n=0
+    if [ "$PATH_NEEDS_RELOAD" = 1 ]; then
+        if [ -n "$PATH_RELOAD_RC" ]; then
+            pns_step "Reload your shell:" "exec \$SHELL -l" "$_pns_cols"
+            # Indented under the step it belongs to, and wrapped: a profile path
+            # is long, and this line ran off a 40- and a 60-column terminal.
+            wrap_line "     " "     " 5 "or, without a new shell: source $PATH_RELOAD_RC"
+        else
+            pns_step "Reload your shell:" "exec \$SHELL -l" "$_pns_cols"
+        fi
+    fi
+    pns_step "Launch in any repository:" "$_cmd" "$_pns_cols"
+    pns_step "Connect API providers:" "$_cmd setup" "$_pns_cols"
+    pns_step "See every command:" "$_cmd --help" "$_pns_cols"
+}
+
+# One numbered step. The label column is padded so the commands line up, which
+# only works while there is room for it: under 48 columns the padded form ran
+# past the edge and wrapped mid-command, so there the label and the command are
+# separated by a single space instead. `_pns_n` is the caller's counter, since
+# whether the reload step exists decides what number everything after it gets.
+pns_step() { # label, command, cols
+    _pns_n=$((_pns_n + 1))
+    if [ "$3" -gt 0 ] && [ "$3" -lt 48 ]; then
+        say "  $_pns_n. $1 $2"
+        return
+    fi
+    printf '  %s. %-25s %s\n' "$_pns_n" "$1" "$2"
 }
 
 # ---- shell completions (best-effort, loud if unavailable — never silent) ----
@@ -817,16 +933,6 @@ finalize_binary() {
     mv -f "$tmp" "$dest" || die "could not move binary into place at $dest"
 }
 
-# ---- parse the release tag from a GitHub release JSON blob ----
-# Reads JSON on stdin, prints the `tag_name` value (empty if absent). Anchored
-# on the `"tag_name":` key specifically, not "the last quoted string on the
-# first line that mentions tag_name" — the old form would grab a wrong token if
-# the JSON were formatted differently or put on one line. `head -n1` keeps a
-# single value even if the blob somehow contains more than one match.
-parse_release_tag() {
-    sed -n -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -n1
-}
-
 # ---- checksum verification (fail closed on mismatch) ----
 # Read a `.sha256` sidecar body ("<64-hex>  <filename>") to its lowercased
 # digest, printing nothing when the body holds no digest.
@@ -897,11 +1003,38 @@ verify_release_binary() {
 # Rewrites through `cat > "$rc"` rather than `mv`: an rc is very often a symlink
 # into a dotfiles repo, and `mv` would replace that symlink with a regular file.
 # Returns 0 only when something was actually removed.
+# Every spelling of the PATH line an install of veyyon may have written, newest
+# first. Uninstall has to match all of them.
+#
+# `path_line_for` changed once, to single-quote the directory so a name
+# containing `$` stops expanding when the rc is sourced. Matching only the
+# CURRENT spelling would mean an install made before that change is
+# unrecognisable to the uninstall that comes after it: the line stays in the rc
+# forever, pointing at a directory that no longer holds veyyon, which is the
+# exact complaint that started this work. The old spelling is quoted here rather
+# than reconstructed, because it is a historical fact and not a rule.
+path_line_candidates_for() {
+    path_line_for "$1" "$2"
+    printf '\n'
+    case "$1" in
+        */config.fish) printf 'fish_add_path %s\n' "$2" ;;
+        *) printf 'export PATH="%s:$PATH"\n' "$2" ;;
+    esac
+}
+
 remove_path_line_from_rc() {
     rc="$1"; dir="$2"
     [ -f "$rc" ] || return 1
-    line=$(path_line_for "$rc" "$dir")
-    grep -Fqx "$line" "$rc" || return 1
+    line=""
+    # First candidate that is actually present wins; a file can only hold the
+    # line one install wrote.
+    while IFS= read -r _cand; do
+        [ -n "$_cand" ] || continue
+        if grep -Fqx "$_cand" "$rc"; then line="$_cand"; break; fi
+    done <<EOF
+$(path_line_candidates_for "$rc" "$dir")
+EOF
+    [ -n "$line" ] || return 1
     tmp="$rc.veyyon-uninstall.$$"
     : > "$tmp" || return 1
     # One line of lookbehind, so the marker comment is dropped only when it is
@@ -1401,15 +1534,14 @@ install_binary() {
 
     if [ -n "$REF" ]; then
         step "fetching release $REF..."
-        RELEASE_JSON=$(gh_curl --connect-timeout 10 --max-time 60 "https://api.github.com/repos/${REPO}/releases/tags/${REF}") \
+        release_tag_exists "$REF" \
             || die "release tag not found: $REF (for a branch/commit, use --source --ref)"
+        LATEST="$REF"
     else
         step "fetching latest release..."
-        RELEASE_JSON=$(gh_curl --connect-timeout 10 --max-time 60 "https://api.github.com/repos/${REPO}/releases/latest") \
-            || die "could not reach GitHub releases (network error or rate limit — set GITHUB_TOKEN to raise the API limit, retry, or use --source)"
+        LATEST=$(resolve_latest_tag) \
+            || die "could not reach https://github.com/${REPO}/releases/latest (network error, or GitHub is down — retry, or use --source)"
     fi
-    LATEST=$(printf '%s' "$RELEASE_JSON" | parse_release_tag)
-    [ -z "$LATEST" ] && die "failed to parse release tag"
     step "version: $LATEST"
 
     mkdir -p "$(install_dir)"

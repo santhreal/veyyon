@@ -188,9 +188,28 @@ function rcTargetFor(testCase: EnvironmentCase, rcRel: string, home: string): st
 	return linked === undefined ? path.join(home, rcRel) : linked.replaceAll("$HOME", home);
 }
 
-/** The PATH line install.sh writes for this rc, per its `path_line_for`. */
+/**
+ * The directory as install.sh's `shell_single_quote` writes it.
+ *
+ * Single quotes, with a literal quote closed, escaped and reopened, which is the
+ * only way to put one inside single quotes in POSIX sh.
+ */
+function shellSingleQuote(value: string): string {
+	return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+/**
+ * The PATH line install.sh writes for this rc, per its `path_line_for`.
+ *
+ * The directory is quoted, and that is the point of the spelling rather than a
+ * detail of it: written into a double-quoted string, a home directory containing
+ * `$` expanded when the profile was sourced and put a nonsense entry on PATH, so
+ * `veyyon` was not found in a shell whose profile plainly named the right
+ * directory. A backtick or a backslash is the same bug.
+ */
 function pathLineFor(rc: string, installDir: string): string {
-	return rc.endsWith("config.fish") ? `fish_add_path ${installDir}` : `export PATH="${installDir}:$PATH"`;
+	const quoted = shellSingleQuote(installDir);
+	return rc.endsWith("config.fish") ? `fish_add_path ${quoted}` : `export PATH=${quoted}:"$PATH"`;
 }
 
 describe("the stand-in binary answers every probe install.sh makes", () => {
@@ -285,6 +304,36 @@ describe.each(cases.map(c => [c.name, c] as const))("install into %s", (_name, t
 			const after = fs.readFileSync(rcTargetFor(testCase, rcRel, first.home), "utf8");
 			if (before) expect(after.startsWith(before)).toBe(true);
 			expect(after).toBe(`${before}\n${PATH_MARKER}\n${pathLineFor(rcRel, first.installDir)}\n`);
+		});
+
+		it(`writes a ${rcRel} that a shell can source without corrupting the path`, () => {
+			// The assertion above pins the BYTES; this one pins what those bytes
+			// DO, which is the thing that actually broke: a directory written
+			// into a double-quoted string expanded when the profile was sourced,
+			// so the entry that landed on PATH was not the directory the line
+			// named. Reading the file back and asserting a string cannot see
+			// that. Running it can, so this sources the real rc in a real shell
+			// and asks where the first PATH entry points.
+			//
+			// fish is not POSIX and is not necessarily installed, so its line is
+			// checked as an argument list instead: `fish_add_path <dir>` splits
+			// and globs an unquoted argument exactly the way `sh` does.
+			const line = pathLineFor(rcRel, first.installDir);
+			const script = rcRel.endsWith("config.fish")
+				? `set -- ${line.replace(/^fish_add_path /, "")}\nprintf '%s\\n' "$#" "$1"\n`
+				: `PATH=/usr/bin\n${line}\nprintf '%s\\n' "\${PATH%%:*}"\n`;
+			const run = Bun.spawnSync(["sh", "-c", script.replaceAll("\\n", "\n")], {
+				env: { ...process.env, HOME: first.home },
+			});
+			expect(run.exitCode).toBe(0);
+			const out = new TextDecoder().decode(run.stdout).trimEnd().split("\n");
+			if (rcRel.endsWith("config.fish")) {
+				// Exactly one argument, and it is the directory unchanged: a
+				// space would make two, a glob could make none or many.
+				expect(out).toEqual(["1", first.installDir]);
+			} else {
+				expect(out).toEqual([first.installDir]);
+			}
 		});
 
 		it("adds nothing on a second install and says the PATH is already configured", () => {

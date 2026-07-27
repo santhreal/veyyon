@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
+            window.path_to_searchindex_js = "../searchindex-e671867a.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-578177b6.js"></script>
+        <script src="../toc-5cf6de48.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -201,7 +201,16 @@
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh
 </code></pre>
 <p>That installs the <code>veyyon</code> binary to <code>~/.local/bin</code>, links <code>vey</code> beside it, and runs a <code>doctor:</code> self-check. The self-check does two things: it confirms the binary starts and reports the version the release claims, and it runs a real search to confirm the native addon loads. The second check matters because <code>veyyon --version</code> answers without the addon, so a binary built for the wrong architecture starts cleanly and then fails on your first real command.</p>
-<p>That search runs twice. The first time is on the downloaded file, before anything is installed: the checksum proves the bytes are the ones that were published, but it cannot tell you the release has no build for your platform. If the download cannot run a search, the installer stops there and your machine is untouched, with no binary installed, no <code>vey</code> alias, no change to your shell profile and no completion files. The second run proves the finished install works from where it now lives. Each message says which of the two it is. Either way, when the search fails the installer tells you to install from source. When <code>~/.local/bin</code> is not on your <code>PATH</code> yet, the installer adds it to your shell profile and tells you to restart your shell.</p>
+<p>That search runs twice. The first time is on the downloaded file, before anything is installed: the checksum proves the bytes are the ones that were published, but it cannot tell you the release has no build for your platform. If the download cannot run a search, the installer stops there and your machine is untouched, with no binary installed, no <code>vey</code> alias, no change to your shell profile and no completion files. The second run proves the finished install works from where it now lives. Each message says which of the two it is. Either way, when the search fails the installer tells you to install from source. When <code>~/.local/bin</code> is not on your <code>PATH</code> yet, the installer adds it to your shell profile. A profile is read when a shell starts, and the shell you ran the installer in has already started, so <code>veyyon</code> is not a command in it yet. The closing steps say so, and reloading is the first of them:</p>
+<pre><code class="language-console">Next steps:
+  1. Reload your shell:        exec $SHELL -l
+     (or, without a new shell: source /home/you/.bashrc)
+  2. Launch in any repository: veyyon
+  3. Connect API providers:    veyyon setup
+  4. See every command:        veyyon --help
+</code></pre>
+<p>When the directory was already on your <code>PATH</code>, there is nothing to reload and the list starts at the launch step.</p>
+<p>The installer never calls the GitHub API. It finds the newest release from where <code>https://github.com/santhreal/veyyon/releases/latest</code> redirects to, and downloads the binary from that same host. The API is capped at 60 requests an hour per address, shared by everyone behind it, so a CI fleet or an office network that installs Veyyon repeatedly used to start getting a rate-limit failure on a machine where nothing was wrong. Nothing needs a token, and setting one changes nothing about the install.</p>
 <h2 id="install-on-windows"><a class="header" href="#install-on-windows">Install on Windows</a></h2>
 <pre><code class="language-powershell">irm https://veyyon.dev/install.ps1 | iex
 </code></pre>
@@ -272,7 +281,16 @@ release notes on the web rather than printing them into your terminal.</p>
 </code></pre>
 <p>You can always update on demand, whichever settings are in force:</p>
 <pre><code class="language-console">$ veyyon update
+Current version: 1.0.37
+New version available: 1.0.38
+  ok  Checksum verified
+  ok  Updated to 1.0.38. Restart veyyon to run it.
+Changelog for 1.0.38: https://veyyon.dev/changelog#v1-0-38
 </code></pre>
+<p>The last line is the same changelog link <code>veyyon rollback</code> prints, so however you
+change version you are told where to read what changed. If an update fails,
+Veyyon points you at <code>veyyon rollback</code> in the same breath, since a failed update
+is the moment you most want the way back.</p>
 <h3 id="going-back-to-an-older-version"><a class="header" href="#going-back-to-an-older-version">Going back to an older version</a></h3>
 <p>If a release breaks something you depend on, you do not have to wait for the next
 one. <code>veyyon rollback</code> moves your install to any published version.</p>
@@ -293,7 +311,10 @@ VERSION  PUBLISHED
 </code></pre>
 <p>The markers tell you where you stand: <code>current</code> is the version running now,
 <code>newer</code> is a version you would move forward to, and <code>previously run</code> is one this
-machine has been on before. Then name the one you want:</p>
+machine has been on before. Every version change is recorded, whether it came
+from an update, from a background automatic update, or from a rollback, so
+<code>previously run</code> marks the whole path this install has taken rather than only the
+times it went backwards. Then name the one you want:</p>
 <pre><code class="language-console">$ veyyon rollback 1.1.0
 </code></pre>
 <p>That installs 1.1.0 the same way an update installs a new release, verifies the
@@ -406,6 +427,11 @@ the ones already there to see whether they bind <code>vey</code>, and regenerate
 same way, so an update never starts completing a command that is not ours.</p>
 <h2 id="uninstall"><a class="header" href="#uninstall">Uninstall</a></h2>
 <p>The installer removes everything it added, and only what it added: the binary, the <code>vey</code> alias, the shell completions it wrote, the cached native addon, and a source checkout if you made one.</p>
+<p>The <code>PATH</code> line goes too. When the install directory was not already on your <code>PATH</code>, the installer appended two lines to your shell profile: a comment naming itself, and the line that adds the directory. On bash and zsh the pair looks like this, with the directory in single quotes so a name containing <code>$</code>, a backtick or a space is used literally rather than expanded when the profile is sourced:</p>
+<pre><code class="language-sh"># added by the veyyon installer
+export PATH='/home/you/.local/bin':"$PATH"
+</code></pre>
+<p>On fish it is <code>fish_add_path '/home/you/.local/bin'</code> instead. Uninstall removes that exact line, and the comment directly above it when the comment is still there, and nothing else: a line you wrote yourself that happens to name the same directory stays. Installs made before the quoting was added wrote <code>export PATH="/home/you/.local/bin:$PATH"</code>, and uninstall recognizes that older form too, so upgrading and then uninstalling does not strand a line in your profile.</p>
 <p>Two things it deliberately leaves behind. If you already had your own <code>vey</code> command, the installer never created that alias in the first place (it says so at install time and tells you to launch with <code>veyyon</code>), so uninstall does not touch it or its completion file. And if your source checkout has uncommitted edits or commits on a local branch that is on no remote, it is moved to <code>~/.veyyon/src.bak-&lt;timestamp&gt;</code> instead of being deleted, so nothing you wrote is lost.</p>
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --uninstall
 </code></pre>

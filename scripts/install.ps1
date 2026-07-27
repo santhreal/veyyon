@@ -688,6 +688,45 @@ function Set-RawUserPath {
     Publish-EnvironmentChange
 }
 
+# The command the user should actually type.
+#
+# `vey` is the short launch alias, but the installer refuses to create it when
+# the user already owns that name, and the closing message named it anyway, which
+# would have sent them to THEIR tool. One owner, read by every closing message,
+# so the advice cannot contradict what the alias step decided. Mirrors
+# launch_command in install.sh.
+function Get-LaunchCommand {
+    if ($Script:AliasIsOurs) { return $AliasName }
+    return $BinName
+}
+
+# The closing block, one copy for all three install modes.
+#
+# There were three, one per mode, each a single line that named both names and
+# stopped there: it told the user nothing about connecting a provider or finding
+# the command list, and it named `vey` even on an install that had just said it
+# was leaving the user's own `vey` alone. This mirrors print_next_steps in
+# install.sh step for step, including the reload coming FIRST when it is needed:
+# a PATH entry written to the registry reaches a process when that process
+# starts, so a terminal that is already open cannot see it, and leading with a
+# command that is not yet a command reads as a broken install.
+function Write-NextSteps {
+    param([switch]$NeedsRestart)
+    $cmd = Get-LaunchCommand
+    Write-Host ""
+    Write-Host "OK  Installation complete." -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Next steps:"
+    $n = 0
+    if ($NeedsRestart) {
+        $n++
+        Write-Host ("  {0}. {1,-25} {2}" -f $n, "Restart your terminal:", "open a new window")
+    }
+    $n++; Write-Host ("  {0}. {1,-25} {2}" -f $n, "Launch in any repository:", $cmd)
+    $n++; Write-Host ("  {0}. {1,-25} {2}" -f $n, "Connect API providers:", "$cmd setup")
+    $n++; Write-Host ("  {0}. {1,-25} {2}" -f $n, "See every command:", "$cmd --help")
+}
+
 # Add the install dir to the user PATH if it is not already there. Returns $true
 # when a new entry was added (so the caller can tell the user to restart).
 function Add-ToPath {
@@ -1052,12 +1091,7 @@ function Install-FromSource {
     Install-Completions -BinPath $shim
     Invoke-Doctor -Command $shim
 
-    Write-Host ""
-    if ($needsRestart) {
-        Write-Host "Restart your terminal, then run '$BinName' (or '$AliasName') to get started!"
-    } else {
-        Write-Host "Run '$BinName' (or '$AliasName') to get started!"
-    }
+    Write-NextSteps -NeedsRestart:$needsRestart
 }
 
 # Parse a `.sha256` sidecar body ("<64-hex>  <filename>") into the lowercased hash.
@@ -1088,22 +1122,62 @@ function Test-FileSha256 {
     return ($actual -eq $Expected.ToLower())
 }
 
+# The tag of the newest published release, resolved WITHOUT the GitHub API.
+#
+# api.github.com allows 60 requests an hour per IP without a token, and that
+# budget is shared by everyone behind the same address, so a CI fleet or an
+# office network that installs veyyon repeatedly used to start getting a 403 on
+# a machine where nothing was wrong. github.com itself is not part of that
+# budget: /releases/latest redirects to the tag page of the newest
+# non-prerelease release, which is the only thing the API response was read for,
+# and it is the same host the binary is downloaded from. Mirrors
+# resolve_latest_tag in install.sh.
+#
+# -MaximumRedirection 0 makes PowerShell hand back the 302 instead of following
+# it, so the answer comes from the Location header rather than from parsing HTML.
+function Get-TagFromRedirect {
+    param([string]$Url)
+    try {
+        $resp = Invoke-WebRequest -Uri $Url -MaximumRedirection 0 -ErrorAction SilentlyContinue -TimeoutSec 60
+        $target = $resp.Headers.Location
+    } catch {
+        $target = $_.Exception.Response.Headers.Location
+    }
+    $target = "$target"
+    # A redirect that did not land on a tag page means GitHub answered with
+    # something other than a release. Taking the last path segment anyway is how
+    # an installer ends up downloading a binary for the version "latest".
+    if ($target -notmatch '/releases/tag/(.+)$') { return $null }
+    return $Matches[1]
+}
+
+# Whether a release tag is published. Tells "you asked for a tag that does not
+# exist" apart from "that release has no build for your platform", which are the
+# same download failure and very different things to be told.
+function Test-ReleaseTagExists {
+    param([string]$Tag)
+    try {
+        $null = Invoke-WebRequest -Uri "https://github.com/$Repo/releases/tag/$Tag" -TimeoutSec 60 -UseBasicParsing
+        return $true
+    } catch {
+        return $false
+    }
+}
+
 function Install-Binary {
     if ($Ref) {
         Write-Host "Fetching release $Ref..."
-        try {
-            $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/tags/$Ref" -TimeoutSec 60
-        } catch {
+        if (-not (Test-ReleaseTagExists $Ref)) {
             throw "Release tag not found: $Ref`nFor branch/commit installs, use -Source with -Ref."
         }
+        $Latest = $Ref
     } else {
         Write-Host "Fetching latest release..."
-        $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -TimeoutSec 60
+        $Latest = Get-TagFromRedirect "https://github.com/$Repo/releases/latest"
     }
 
-    $Latest = $Release.tag_name
     if (-not $Latest) {
-        throw "Failed to fetch release tag"
+        throw "Could not reach https://github.com/$Repo/releases/latest (network error, or GitHub is down). Retry, or use -Source."
     }
     Write-Host "Using version: $Latest"
 
@@ -1179,12 +1253,7 @@ function Install-Binary {
     Install-Completions -BinPath $OutPath
     Invoke-Doctor -Command $OutPath -ExpectedTag $Latest
 
-    Write-Host ""
-    if ($needsRestart) {
-        Write-Host "Restart your terminal, then run '$BinName' (or '$AliasName') to get started!"
-    } else {
-        Write-Host "Run '$BinName' (or '$AliasName') to get started!"
-    }
+    Write-NextSteps -NeedsRestart:$needsRestart
 }
 
 function Install-LocalBinary {
@@ -1243,12 +1312,7 @@ function Install-LocalBinary {
     # carries, and there is no release to compare it against.
     Invoke-Doctor -Command $OutPath
 
-    Write-Host ""
-    if ($needsRestart) {
-        Write-Host "Restart your terminal, then run '$BinName' (or '$AliasName') to get started!"
-    } else {
-        Write-Host "Run '$BinName' (or '$AliasName') to get started!"
-    }
+    Write-NextSteps -NeedsRestart:$needsRestart
 }
 
 function Uninstall-Veyyon {

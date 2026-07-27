@@ -15,7 +15,8 @@ export VEYYON_INSTALL_DIR="$SANDBOX/bin"
 export HOME="$SANDBOX/home"
 mkdir -p "$VEYYON_INSTALL_DIR" "$HOME"
 
-VEYYON_INSTALL_SOURCED=1 . "$ROOT/scripts/install.sh"
+INSTALL_SH="$ROOT/scripts/install.sh"
+VEYYON_INSTALL_SOURCED=1 . "$INSTALL_SH"
 set +e # install.sh sets -e; tests intentionally exercise failing paths
 
 # Results are tallied through a file, NOT shell variables. Many tests below run
@@ -281,7 +282,7 @@ h="$(eop_home fish)"
 run_eop Linux /usr/bin/fish "/opt/fish-bin" "$h"
 check "fish writes PATH to ~/.config/fish/config.fish" "$(rc_has_dir "$h/.config/fish/config.fish" /opt/fish-bin)" "yes"
 check "fish uses fish_add_path, not export PATH" \
-    "$(grep -c 'fish_add_path /opt/fish-bin' "$h/.config/fish/config.fish" 2>/dev/null)" "1"
+    "$(grep -Fc "fish_add_path '/opt/fish-bin'" "$h/.config/fish/config.fish" 2>/dev/null)" "1"
 check "fish config got no bash-style export line" \
     "$(grep -c 'export PATH' "$h/.config/fish/config.fish" 2>/dev/null)" "0"
 
@@ -318,7 +319,7 @@ mkdir -p "$h"
 printf 'export PATH="/opt/sub-bin2:$PATH"\n' > "$h/.bashrc"
 out=$( uname() { printf 'Linux\n'; }; HOME="$h"; SHELL=/bin/bash; ensure_on_path "/opt/sub-bin" 2>&1 )
 check "a longer entry sharing the prefix does not count as configured" "$(printf '%s' "$out" | grep -c 'is already on PATH in')" "0"
-check "the PATH line is actually written" "$(grep -c 'export PATH="/opt/sub-bin:\$PATH"' "$h/.bashrc")" "1"
+check "the PATH line is actually written" "$(grep -Fc 'export PATH='"'"'/opt/sub-bin'"'"':"$PATH"' "$h/.bashrc")" "1"
 check "the user's own prefix-sharing entry is untouched" "$(grep -c 'sub-bin2' "$h/.bashrc")" "1"
 
 # A comment naming the directory is not configuration either.
@@ -327,7 +328,7 @@ mkdir -p "$h"
 printf '# remember to add /opt/comment-bin one day\n' > "$h/.bashrc"
 out=$( uname() { printf 'Linux\n'; }; HOME="$h"; SHELL=/bin/bash; ensure_on_path "/opt/comment-bin" 2>&1 )
 check "a comment mentioning the dir does not count as configured" "$(printf '%s' "$out" | grep -c 'is already on PATH in')" "0"
-check "the PATH line is written past the comment" "$(grep -c 'export PATH="/opt/comment-bin:\$PATH"' "$h/.bashrc")" "1"
+check "the PATH line is written past the comment" "$(grep -Fc 'export PATH='"'"'/opt/comment-bin'"'"':"$PATH"' "$h/.bashrc")" "1"
 
 # And the fish form, whose line is a different shape entirely, matches exactly too.
 h="$(eop_home fishexact)"
@@ -335,7 +336,7 @@ mkdir -p "$h/.config/fish"
 printf 'fish_add_path /opt/fish-bin2\n' > "$h/.config/fish/config.fish"
 out=$( uname() { printf 'Linux\n'; }; HOME="$h"; SHELL=/usr/bin/fish; ensure_on_path "/opt/fish-bin" 2>&1 )
 check "fish: a prefix-sharing fish_add_path does not count as configured" "$(printf '%s' "$out" | grep -c 'is already on PATH in')" "0"
-check "fish: the exact fish_add_path line is written" "$(grep -c '^fish_add_path /opt/fish-bin$' "$h/.config/fish/config.fish")" "1"
+check "fish: the exact fish_add_path line is written" "$(grep -Fxc "fish_add_path '/opt/fish-bin'" "$h/.config/fish/config.fish")" "1"
 out=$( uname() { printf 'Linux\n'; }; HOME="$h"; SHELL=/usr/bin/fish; ensure_on_path "/opt/fish-bin" 2>&1 )
 check "fish: a reinstall recognizes its own line" "$(printf '%s' "$out" | grep -c 'is already on PATH in')" "1"
 
@@ -783,9 +784,81 @@ check "remove_path_line_from_rc introduces no ordinary global names" \
   set | sed -n 's/^\([A-Za-z_][A-Za-z_0-9]*\)=.*/\1/p' | sort > "$_h/after"
   printf '%s\n' "$_seen_before" > "$_h/before"
   comm -13 "$_h/before" "$_h/after" |
-    grep -vx -e rc -e dir -e line -e tmp -e _pending -e _have_pending -e _cur \
+    grep -vx -e rc -e dir -e line -e tmp -e _pending -e _have_pending -e _cur -e _cand \
              -e _rc_lines_before -e _rc_lines_after -e _seen_before -e _target |
     tr '\n' ' ' ) )" ""
+
+# --- the PATH line quotes the directory, and uninstall still knows the old form ---
+# An install directory whose name contains `$` was written into a DOUBLE-quoted
+# string, so `export PATH="/home/a$PATH/bin:$PATH"` expanded `$PATH` inside the
+# directory NAME on the next login and put a nonsense entry on PATH. The user saw
+# `veyyon: command not found` in a shell whose rc plainly named the right
+# directory. A backtick, a backslash, a space or a glob character is the same
+# class of bug. The directory is single-quoted now, and these pin the exact bytes
+# for each hostile name: a shell that sources the line must end up with the
+# directory it was given, character for character.
+for _q_dir in '/opt/plain/bin' '/opt/a$PATH/bin' "/opt/it's me/bin" '/opt/a b/bin' '/opt/back`tick/bin' '/opt/a*glob/bin'; do
+  check "the PATH line for [$_q_dir] survives being sourced" \
+      "$( ( eval "$(path_line_for "$HOME/.bashrc" "$_q_dir")"; printf '%s' "${PATH%%:*}" ) )" "$_q_dir"
+  # fish takes the path as an argument rather than building a string, but an
+  # unquoted argument still splits on spaces and globs, so it needs the same
+  # treatment. There is no fish here to run it, so assert the emitted bytes.
+  check "the fish PATH line for [$_q_dir] quotes the directory" \
+      "$(path_line_for "$HOME/.config/fish/config.fish" "$_q_dir")" \
+      "fish_add_path $(shell_single_quote "$_q_dir")"
+done
+unset _q_dir
+
+# Changing what install WRITES silently changed what uninstall could RECOGNIZE:
+# `remove_path_line_from_rc` rebuilds the line through the same single owner, so
+# an rc written by an installer from before the quoting fix stopped matching and
+# would have kept its PATH line forever, pointing at a directory that no longer
+# holds veyyon. That is the exact complaint the uninstall exists to prevent, so
+# the old spelling is matched too.
+check "uninstall removes a legacy double-quoted PATH line" \
+    "$( ( _h="$SANDBOX/rc-legacy-form"; mkdir -p "$_h"
+  export HOME="$_h"
+  rc="$_h/.bashrc"
+  printf '%s\n%s\n%s\n%s\n' "alias ll=ls" "# added by the veyyon installer" 'export PATH="/opt/veyyon:$PATH"' "alias gs='git status'" > "$rc"
+  remove_path_line_from_rc "$rc" "/opt/veyyon" >/dev/null 2>&1
+  command cat "$rc" | tr '\n' '|' ) )" "alias ll=ls|alias gs='git status'|"
+
+check "uninstall removes a legacy fish PATH line" \
+    "$( ( _h="$SANDBOX/rc-legacy-fish"; mkdir -p "$_h/.config/fish"
+  export HOME="$_h"
+  rc="$_h/.config/fish/config.fish"
+  printf '%s\n%s\n%s\n' "# added by the veyyon installer" "fish_add_path /opt/veyyon" "set -x EDITOR vim" > "$rc"
+  remove_path_line_from_rc "$rc" "/opt/veyyon" >/dev/null 2>&1
+  command cat "$rc" | tr '\n' '|' ) )" "set -x EDITOR vim|"
+
+check "uninstall removes the current single-quoted PATH line" \
+    "$( ( _h="$SANDBOX/rc-current-form"; mkdir -p "$_h"
+  export HOME="$_h"
+  rc="$_h/.bashrc"
+  { printf 'alias ll=ls\n# added by the veyyon installer\n'
+    path_line_for "$rc" '/opt/a$PATH/bin'; printf '\n' ; } > "$rc"
+  remove_path_line_from_rc "$rc" '/opt/a$PATH/bin' >/dev/null 2>&1
+  command cat "$rc" | tr '\n' '|' ) )" "alias ll=ls|"
+
+# The legacy matcher widens what uninstall will delete, so it has to stay just as
+# narrow about lines it did not write. A PATH line for a DIFFERENT directory is
+# the user's own, in either spelling.
+check "uninstall leaves a PATH line for another directory alone" \
+    "$( ( _h="$SANDBOX/rc-foreign-line"; mkdir -p "$_h"
+  export HOME="$_h"
+  rc="$_h/.bashrc"
+  printf '%s\n' 'export PATH="/opt/somethingelse:$PATH"' > "$rc"
+  remove_path_line_from_rc "$rc" "/opt/veyyon" >/dev/null 2>&1; echo $?
+  command cat "$rc" ) )" "1
+export PATH=\"/opt/somethingelse:\$PATH\""
+
+# One owner writes, one owner enumerates what may be removed, and the first entry
+# the enumerator produces is what the writer produces. If they ever drift, an
+# install writes a line its own uninstall does not list.
+check "the first removal candidate is exactly what install writes" \
+    "$( ( _w=$(path_line_for "$HOME/.bashrc" "/opt/veyyon")
+  _c=$(path_line_candidates_for "$HOME/.bashrc" "/opt/veyyon" | sed -n 1p)
+  [ "$_w" = "$_c" ] && echo same || printf 'write=[%s] first-candidate=[%s]\n' "$_w" "$_c" ) )" "same"
 
 # --- do_uninstall: the closing verdict must match what it actually removed ---
 # `rc_candidates | while ...` ran the PATH-line loop in a SUBSHELL, so the
@@ -861,6 +934,77 @@ check "step 3 names the command list, and names it exactly" \
 # future edit from reintroducing it silently in a different step.
 check "every step is exactly one label and one command" \
     "$( ( ALIAS_IS_OURS=1; print_next_steps | grep -c '^  [123]\. [A-Z][^:]*: *vey\b' ) )" "3"
+
+# --- print_next_steps: a step the user cannot yet run must not come first ---
+# The install directory goes onto PATH through a shell profile, and a profile is
+# read when a shell STARTS. The shell running the installer already started, so
+# `vey` is not a command in it, and the block opened with "1. Launch in any
+# repository: vey" regardless — the first thing a new user types after a
+# successful install answered `command not found`, which reads as a broken
+# install rather than as a shell that has not caught up. The reload is a step
+# now, ahead of the command that depends on it, and the rest renumber around it.
+check "a reload is the first step when PATH was just changed" \
+    "$( ( ALIAS_IS_OURS=1; PATH_NEEDS_RELOAD=1; PATH_RELOAD_RC="$HOME/.bashrc"
+  print_next_steps | grep -c '^  1\. Reload your shell: *exec \$SHELL -l$' ) )" "1"
+check "the launch step moves to 2 behind it" \
+    "$( ( ALIAS_IS_OURS=1; PATH_NEEDS_RELOAD=1; PATH_RELOAD_RC="$HOME/.bashrc"
+  print_next_steps | grep -c '^  2\. Launch in any repository: vey$' ) )" "1"
+check "the whole list renumbers, so no number is used twice" \
+    "$( ( ALIAS_IS_OURS=1; PATH_NEEDS_RELOAD=1; PATH_RELOAD_RC="$HOME/.bashrc"
+  print_next_steps | sed -n 's/^  \([0-9]*\)\..*/\1/p' | tr '\n' ' ' ) )" "1 2 3 4 "
+# Sourcing the profile is the way to get the new PATH without losing the shell,
+# and it is only offered when there is a file to source.
+# The profile path is long, and this line ran off a 40- and a 60-column terminal
+# in the adversarial matrix: it was printed with a plain `say`, which is the only
+# line in the closing block that does not go through the wrapper. Everything the
+# installer prints wraps now, through one owner.
+check "the source hint wraps to a narrow terminal" \
+    "$( ( ALIAS_IS_OURS=1; PATH_NEEDS_RELOAD=1; IS_TTY=1; COLUMNS=40
+  PATH_RELOAD_RC="/home/somebody/dotfiles/shell/.profile"
+  print_next_steps | awk '{ t = $0; sub(/^ +/, "", t); if (length($0) > 40 && t ~ / /) print NR": "$0 }' ) )" ""
+check "and the path itself is never broken across lines" \
+    "$( ( ALIAS_IS_OURS=1; PATH_NEEDS_RELOAD=1; IS_TTY=1; COLUMNS=40
+  PATH_RELOAD_RC="/home/somebody/dotfiles/shell/.profile"
+  print_next_steps | grep -c '/home/somebody/dotfiles/shell/.profile$' ) )" "1"
+check "the reload step names the profile to source" \
+    "$( ( ALIAS_IS_OURS=1; PATH_NEEDS_RELOAD=1; PATH_RELOAD_RC="/home/u/.zshrc"
+  print_next_steps | grep -c 'source /home/u/.zshrc' ) )" "1"
+check "no file to source means no source line" \
+    "$( ( ALIAS_IS_OURS=1; PATH_NEEDS_RELOAD=1; PATH_RELOAD_RC=""
+  print_next_steps | grep -c 'source ' ) )" "0"
+# And an install onto a directory that was ALREADY on PATH must not tell anyone
+# to restart anything: the command works right now, and a spurious reload step is
+# the same kind of wrong advice in the other direction.
+check "an install onto a PATH already carrying the directory adds no reload step" \
+    "$( ( ALIAS_IS_OURS=1; PATH_NEEDS_RELOAD=0
+  print_next_steps | grep -c -e 'Reload' -e 'exec \$SHELL' ) )" "0"
+check "and its list still starts at the launch step" \
+    "$( ( ALIAS_IS_OURS=1; PATH_NEEDS_RELOAD=0
+  print_next_steps | grep -c '^  1\. Launch in any repository: vey$' ) )" "1"
+
+# `ensure_on_path` is the one place that knows the answer, and it returns EARLY
+# when the directory is already on PATH — that early return is what keeps the
+# flag off. Every other path through it means this shell cannot see the
+# directory, including the reinstall branch where the rc already holds the line:
+# the line being in the file is not the same as the file having been read.
+check "ensure_on_path sets no reload flag when the directory is already on PATH" \
+    "$( ( _h="$SANDBOX/reload-already"; mkdir -p "$_h"
+  export HOME="$_h"; PATH="$_h/bin:$PATH"; PATH_NEEDS_RELOAD=0
+  ensure_on_path "$_h/bin" >/dev/null 2>&1; echo "$PATH_NEEDS_RELOAD" ) )" "0"
+check "ensure_on_path asks for a reload after writing the line" \
+    "$( ( _h="$SANDBOX/reload-written"; mkdir -p "$_h"
+  export HOME="$_h"; SHELL=/bin/bash; PATH_NEEDS_RELOAD=0
+  uname() { printf 'Linux\n'; }
+  ensure_on_path "$_h/bin" >/dev/null 2>&1
+  echo "$PATH_NEEDS_RELOAD $(basename "$PATH_RELOAD_RC")" ) )" "1 .bashrc"
+check "ensure_on_path asks for a reload on a reinstall too" \
+    "$( ( _h="$SANDBOX/reload-reinstall"; mkdir -p "$_h"
+  export HOME="$_h"; SHELL=/bin/bash; PATH_NEEDS_RELOAD=0
+  uname() { printf 'Linux\n'; }
+  ensure_on_path "$_h/bin" >/dev/null 2>&1
+  PATH_NEEDS_RELOAD=0
+  ensure_on_path "$_h/bin" >/dev/null 2>&1
+  echo "$PATH_NEEDS_RELOAD" ) )" "1"
 
 # --- do_uninstall: a `vey` the installer never created is not ours to delete ---
 # link_alias refuses to overwrite a `vey` the user owns, and install_completions
@@ -1069,7 +1213,7 @@ write_stub_binary() {
   printf '%s\n' "alias ll=ls" > "$_sp/.bashrc"
   ensure_on_path "$_sp/bin" >/dev/null 2>&1
   check "the PATH line names the spaced directory intact" \
-      "$(grep -c "\"$_sp/bin:\$PATH\"" "$_sp/.bashrc")" "1"
+      "$(grep -Fc "export PATH='$_sp/bin':\"\$PATH\"" "$_sp/.bashrc")" "1"
   check "ensure_on_path keeps the user's own rc content" \
       "$(grep -c 'alias ll=ls' "$_sp/.bashrc")" "1"
   # Running it twice must not append a second line for the same directory.
@@ -1405,30 +1549,93 @@ check "a missing local build reports that it was not found" "$( ( _h="$SANDBOX/l
   mkdir -p "$_h/work"; cd "$_h/work"
   install_local 2>&1 | grep -c "local compiled binary not found" ) )" "1"
 
-# --- parse_release_tag: anchored extraction of the release tag ---
-# Locks the hardened parse: the tag must come from the "tag_name" key
-# specifically, survive extra fields / different key order / a single-line blob,
-# and yield nothing (never a wrong token) when the key is absent.
-check "parse_release_tag extracts a pretty-printed tag" \
-    "$(printf '{\n  "url": "x",\n  "tag_name": "v1.2.3",\n  "name": "Release v1.2.3"\n}' | parse_release_tag)" "v1.2.3"
-check "parse_release_tag is unfazed by key order" \
-    "$(printf '{ "name": "later", "tag_name": "v9.9.9" }' | parse_release_tag)" "v9.9.9"
-check "parse_release_tag handles a single-line blob" \
-    "$(printf '{"assets":[],"tag_name":"v0.0.1-rc1","draft":false}' | parse_release_tag)" "v0.0.1-rc1"
-check "parse_release_tag yields empty when tag_name is absent" \
-    "$(printf '{ "name": "no tag here", "id": 42 }' | parse_release_tag)" ""
+# --- resolve_latest_tag: the release lookup no longer needs the GitHub API ---
+# api.github.com is capped at 60 requests/hour PER IP for unauthenticated
+# callers, shared by everyone behind the same address, and the install spent one
+# of those on every run. An adversarial matrix run of 39 installs from one
+# container exhausted it and six cases died with a 403 on an installer that was
+# working perfectly, which is what a CI fleet or an office NAT would have seen.
+# The tag now comes from where `github.com/<repo>/releases/latest` REDIRECTS to,
+# which costs nothing against that budget. curl is shadowed to answer with a
+# chosen effective URL, so these test the parse rather than the network.
+fake_curl_url() { # effective-url
+  _fcu_url="$1"
+  # `-w %{url_effective}` is what the real curl answers with, so the stand-in
+  # ignores every flag and prints the URL the caller wants it to have landed on.
+  curl() { printf '%s' "$_fcu_url"; }
+  resolve_latest_tag
+}
+check "the tag is taken from the redirect target" \
+    "$(fake_curl_url "https://github.com/santhreal/veyyon/releases/tag/v1.2.3")" "v1.2.3"
+check "a prerelease-shaped tag survives intact" \
+    "$(fake_curl_url "https://github.com/santhreal/veyyon/releases/tag/v0.0.1-rc1")" "v0.0.1-rc1"
+# A redirect that did not land on a tag page means GitHub answered with something
+# other than a release: an interstitial, a moved repo, a captive portal. Taking
+# the last path segment anyway is how an installer ends up trying to download a
+# binary for the version "latest".
+check "a redirect that is not a tag page is refused" \
+    "$( fake_curl_url "https://github.com/santhreal/veyyon/releases" >/dev/null 2>&1; echo $? )" "1"
+check "a login interstitial is refused" \
+    "$( fake_curl_url "https://github.com/login?return_to=%2Fsanthreal%2Fveyyon" >/dev/null 2>&1; echo $? )" "1"
+check "a captive portal's landing page is refused" \
+    "$( fake_curl_url "http://wifi.example.net/portal" >/dev/null 2>&1; echo $? )" "1"
+check "an empty tag after the marker is refused" \
+    "$( fake_curl_url "https://github.com/santhreal/veyyon/releases/tag/" >/dev/null 2>&1; echo $? )" "1"
+# And nothing is printed on the failing paths, so a caller that ignores the exit
+# status cannot end up with a URL fragment where a version belongs.
+check "a refused redirect prints no tag" \
+    "$( fake_curl_url "https://github.com/santhreal/veyyon/releases" 2>/dev/null )" ""
+# A curl that fails outright (no network, DNS failure) is a failure, not an
+# empty tag.
+check "a failed request is a failure" \
+    "$( ( curl() { return 6; }; resolve_latest_tag >/dev/null 2>&1; echo $? ) )" "1"
+# It asks curl where it ENDED UP rather than for the page body: parsing a tag out
+# of GitHub's HTML would break the first time that page is redesigned.
+# The flags themselves, captured to a file rather than read from the function's
+# output: the function REJECTS whatever a flag-echoing curl hands back, so its
+# stdout on this path is deliberately empty.
+curl_args_of_lookup() {
+  ( curl() { printf '%s\n' "$*" > "$SANDBOX/lookup-args"; }
+    resolve_latest_tag >/dev/null 2>&1
+    cat "$SANDBOX/lookup-args" )
+}
+check "the lookup reads the effective URL, not the page body" \
+    "$(curl_args_of_lookup | grep -c -- '-w %{url_effective}')" "1"
+check "the lookup discards the body" \
+    "$(curl_args_of_lookup | grep -c -- '-o /dev/null')" "1"
+check "the lookup goes to github.com, not the API host" \
+    "$(curl_args_of_lookup | grep -c 'api\.github\.com')" "0"
+check "the lookup asks for the latest release by name" \
+    "$(curl_args_of_lookup | grep -c 'https://github.com/santhreal/veyyon/releases/latest')" "1"
+# Every network call in this installer retries a transient failure; a lookup that
+# quietly did not would turn one dropped packet into a failed install.
+check "the lookup retries like every other fetch" \
+    "$(curl_args_of_lookup | grep -c -- '--retry ')" "1"
+check "the lookup cannot hang forever" \
+    "$(curl_args_of_lookup | grep -c -- '--max-time 60')" "1"
 
-# --- gh_curl: attaches the auth header only when a token is set ---
-# Raising the api.github.com rate limit must be opt-in via GITHUB_TOKEN/GH_TOKEN
-# and must never send an Authorization header when no token is set (anonymous
-# installs must keep working). curl is shadowed to echo its own arguments.
-gh_args() { curl() { printf '%s\n' "$*"; }; gh_curl --max-time 5 "https://api.github.com/x"; }
-check "gh_curl sends no auth header without a token" \
-    "$( ( unset GITHUB_TOKEN GH_TOKEN; gh_args ) | grep -c 'Authorization' )" "0"
-check "gh_curl sends a bearer header when GITHUB_TOKEN is set" \
-    "$( ( GITHUB_TOKEN=secret123; unset GH_TOKEN; gh_args ) | grep -c 'Authorization: Bearer secret123' )" "1"
-check "gh_curl falls back to GH_TOKEN" \
-    "$( ( unset GITHUB_TOKEN; GH_TOKEN=ghsecret; gh_args ) | grep -c 'Authorization: Bearer ghsecret' )" "1"
+# --- release_tag_exists: a bad --ref is named as a bad ref ---
+# Asking for a tag that does not exist and asking for a tag with no build for
+# your platform are the same curl failure on the asset URL, and two very
+# different things to be told. The tag page answers the first question directly.
+check "a reachable tag page means the tag exists" \
+    "$( ( curl() { return 0; }; release_tag_exists v1.0.0; echo $? ) )" "0"
+check "a 404 on the tag page means it does not" \
+    "$( ( curl() { return 22; }; if release_tag_exists v0.0.0-nope; then echo exists; else echo absent; fi ) )" "absent"
+check "the check is silent on both paths" \
+    "$( ( curl() { printf 'noise\n'; return 0; }; release_tag_exists v1.0.0 ) )" ""
+
+# No API call is left anywhere in the script, which is the whole point: an
+# install must not be able to fail because somebody else on the same address
+# installed veyyon sixty times this hour.
+# Comment lines are excluded: the comment above resolve_latest_tag names the API
+# host to explain why it is not called, and explaining is not calling.
+check "the installer makes no api.github.com request at all" \
+    "$(grep -v '^[[:space:]]*#' "$INSTALL_SH" | grep -c 'api\.github\.com')" "0"
+# And with no API call there is no rate limit to raise, so no message may still
+# tell the user to go set a token for one.
+check "no message still offers a token as the fix for a rate limit" \
+    "$(grep -ci 'GITHUB_TOKEN' "$INSTALL_SH")" "0"
 
 # --- CURL_RETRY: every download retries transient failures ---
 # Guards the ONE-PLACE retry knob so a refactor cannot silently drop retries
@@ -1701,7 +1908,7 @@ check "no installer temp file is left behind" "$( [ -e "${TMPDIR:-/tmp}/veyyon-b
   mkdir -p "$_h" "$_h/bin"
   printf '# user config\nalias ll="ls -l"\n' > "$_h/.bashrc"
   ( uname() { printf 'Linux\n'; }; SHELL=/bin/bash; ensure_on_path "$_h/bin" >/dev/null 2>&1 )
-  check "install wrote the PATH line" "$(grep -c "^export PATH=\"$_h/bin:\\\$PATH\"$" "$_h/.bashrc")" "1"
+  check "install wrote the PATH line" "$(grep -Fxc "export PATH='$_h/bin':\"\$PATH\"" "$_h/.bashrc")" "1"
   check "install wrote its marker comment" "$(grep -c '^# added by the veyyon installer$' "$_h/.bashrc")" "1"
 
   ( VEYYON_INSTALL_DIR="$_h/bin" do_uninstall >/dev/null 2>&1 )
@@ -1739,7 +1946,7 @@ check "no installer temp file is left behind" "$( [ -e "${TMPDIR:-/tmp}/veyyon-b
   export HOME="$_h"
   mkdir -p "$_h/.config/fish" "$_h/bin"
   ( uname() { printf 'Linux\n'; }; SHELL=/usr/bin/fish; ensure_on_path "$_h/bin" >/dev/null 2>&1 )
-  check "fish: install wrote fish_add_path" "$(grep -c "^fish_add_path $_h/bin$" "$_h/.config/fish/config.fish")" "1"
+  check "fish: install wrote fish_add_path" "$(grep -Fxc "fish_add_path '$_h/bin'" "$_h/.config/fish/config.fish")" "1"
   ( VEYYON_INSTALL_DIR="$_h/bin" do_uninstall >/dev/null 2>&1 )
   check "fish: uninstall removed it" "$(grep -c 'fish_add_path' "$_h/.config/fish/config.fish")" "0" )
 

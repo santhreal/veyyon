@@ -755,6 +755,95 @@ try {
 $fresh = Get-RawUserPath
 Check "Get-RawUserPath returns a string, never null" ($null -ne $fresh.Value) "True"
 
+# --- Get-LaunchCommand / Write-NextSteps: the closing block ---
+# Three install modes each printed their own single-line closing message, which
+# named BOTH names unconditionally: an install that had just declined to create
+# `vey`, because the user already owns that command, still told them to run it,
+# and running it runs their tool. It also said nothing about connecting a
+# provider or finding the command list. One block now, mirroring
+# print_next_steps in install.sh.
+$Script:AliasIsOurs = $true
+Check "the launch command is the alias when the alias is ours" (Get-LaunchCommand) $AliasName
+$Script:AliasIsOurs = $false
+Check "the launch command is the binary when the alias is not ours" (Get-LaunchCommand) $BinName
+
+# `Write-Host` does not go down the pipeline, so the output is captured through
+# the information stream (6) that Write-Host writes to.
+function Get-NextStepsLines {
+    param([switch]$NeedsRestart)
+    return @((Write-NextSteps -NeedsRestart:$NeedsRestart 6>&1) | ForEach-Object { "$_" })
+}
+
+$Script:AliasIsOurs = $false
+$plain = Get-NextStepsLines
+Check "no step names a vey the installer did not create" `
+    (@($plain | Where-Object { $_ -match '\bvey\b' }).Count) "0"
+Check "the launch step is step 1 when nothing has to restart" `
+    (@($plain | Where-Object { $_ -match '^  1\. Launch in any repository: +veyyon$' }).Count) "1"
+Check "a terminal that needs no restart is not told to restart" `
+    (@($plain | Where-Object { $_ -match 'Restart your terminal' }).Count) "0"
+Check "the provider step names the same command" `
+    (@($plain | Where-Object { $_ -match '^  2\. Connect API providers: +veyyon setup$' }).Count) "1"
+Check "the help step names the same command" `
+    (@($plain | Where-Object { $_ -match '^  3\. See every command: +veyyon --help$' }).Count) "1"
+
+# A PATH entry written to the registry reaches a process when that process
+# starts, so a terminal that is already open cannot see it. Leading with a
+# command that is not yet a command is what makes a working install read as a
+# broken one, which is why the restart is a step rather than a footnote.
+$restart = Get-NextStepsLines -NeedsRestart
+Check "the restart is the first step when PATH was just changed" `
+    (@($restart | Where-Object { $_ -match '^  1\. Restart your terminal: +open a new window$' }).Count) "1"
+Check "the launch step renumbers to 2 behind it" `
+    (@($restart | Where-Object { $_ -match '^  2\. Launch in any repository: +veyyon$' }).Count) "1"
+Check "every step is numbered once, in order" `
+    ((($restart | ForEach-Object { if ($_ -match '^  (\d+)\. ') { $Matches[1] } }) -join ' ')) "1 2 3 4"
+$Script:AliasIsOurs = $true
+Check "the block uses the alias throughout when it is ours" `
+    (@((Get-NextStepsLines) | Where-Object { $_ -match ": +vey( |$)" }).Count) "3"
+
+# --- Get-TagFromRedirect: the release lookup no longer needs the GitHub API ---
+# api.github.com allows 60 requests an hour per IP without a token, shared by
+# everyone behind the same address, and the install spent one of them on every
+# run: a CI fleet or an office network doing a few dozen installs in an hour
+# started getting 403 on a machine where nothing was wrong. The tag now comes
+# from where github.com/<repo>/releases/latest REDIRECTS to, which costs nothing
+# against that budget. Invoke-WebRequest is shadowed so these test the parse of a
+# Location header rather than the network.
+function Set-FakeRedirect {
+    param([string]$Location)
+    $Script:FakeLocation = $Location
+    function Global:Invoke-WebRequest {
+        param([Parameter(ValueFromRemainingArguments = $true)]$Rest)
+        return [pscustomobject]@{ Headers = @{ Location = $Script:FakeLocation } }
+    }
+}
+Set-FakeRedirect "https://github.com/santhreal/veyyon/releases/tag/v1.2.3"
+Check "the tag is taken from the redirect target" (Get-TagFromRedirect "x") "v1.2.3"
+Set-FakeRedirect "https://github.com/santhreal/veyyon/releases/tag/v0.0.1-rc1"
+Check "a prerelease-shaped tag survives intact" (Get-TagFromRedirect "x") "v0.0.1-rc1"
+# A redirect that did not land on a tag page means GitHub answered with something
+# other than a release: an interstitial, a moved repo, a captive portal. Taking
+# the last path segment anyway is how an installer ends up trying to download a
+# binary for the version "latest".
+Set-FakeRedirect "https://github.com/santhreal/veyyon/releases"
+Check "a redirect that is not a tag page yields nothing" ($null -eq (Get-TagFromRedirect "x")) "True"
+Set-FakeRedirect "https://github.com/login?return_to=%2Fsanthreal%2Fveyyon"
+Check "a login interstitial yields nothing" ($null -eq (Get-TagFromRedirect "x")) "True"
+Set-FakeRedirect "http://wifi.example.net/portal"
+Check "a captive portal's landing page yields nothing" ($null -eq (Get-TagFromRedirect "x")) "True"
+Set-FakeRedirect ""
+Check "no Location header at all yields nothing" ($null -eq (Get-TagFromRedirect "x")) "True"
+Remove-Item Function:Global:Invoke-WebRequest -ErrorAction SilentlyContinue
+
+# No API call is left anywhere in the script, which is the whole point: an
+# install must not be able to fail because somebody else on the same address
+# installed veyyon sixty times this hour. Comment lines are excluded, since the
+# comment above the lookup names the API host to explain why it is not called.
+$ps1Code = (Get-Content (Join-Path $root "scripts/install.ps1")) | Where-Object { $_ -notmatch '^\s*#' }
+Check "the Windows installer makes no api.github.com request at all" `
+    (@($ps1Code | Where-Object { $_ -match 'api\.github\.com' }).Count) "0"
+
 Write-Host ""
 # A run that recorded nothing is a broken harness, not a pass: fail closed rather
 # than report "0 passed, 0 failed" and exit 0 (mirrors functions.test.sh).
