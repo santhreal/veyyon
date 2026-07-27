@@ -170,6 +170,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `tools.approval` | Tool Approval Policies | record | `{}` | Per-tool approval policies. Set to 'allow' to auto-approve, 'prompt' to require confirmation, or 'deny' to block. Overrides are honored in every approval mode. |
+| `tools.protectedPaths` | Extra Protected Paths | array | `[]` | Additional absolute paths (a leading ~ is expanded) that a recursive delete must never target without approval. Adds to the built-in set; it cannot remove from it. |
 | `tools.approvalMode` | Tool Approval | enum | `yolo` | Default approval behavior for tool calls. 'Ask' auto-approves read-only tools only. 'Auto-edit' auto-approves read and workspace-write tools. 'Yolo' auto-approves all tiers; user policy may still prompt or block. Values: `plan`, `ask`, `auto-edit`, `yolo`, `always-ask`, `write`. |
 
 ### Notifications
@@ -686,4 +687,4 @@ veyyon config get compaction.threshold
 | `authBrokerUrl` | Auth Broker URL | string | _(empty)_ | Base URL of the auth broker that mints provider credentials for this machine. Stored in ~/.veyyon/config.yml under auth.broker.url; empty disables broker discovery via config. Stored machine-wide, not per profile. |
 | `authBrokerToken` | Auth Broker Token | string | _(empty)_ | Bearer token for the auth broker. Write-only: a stored token shows as a mask and is never echoed. Enter a new value to replace it, leave the mask to keep it, or clear the field to delete it. Stored machine-wide, not per profile. |
 
-322 settings.
+323 settings.

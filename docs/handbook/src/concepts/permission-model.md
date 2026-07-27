@@ -26,10 +26,10 @@ A mode is a named choice of which tiers run without asking. There are four:
 
 | Mode | Auto-approves | Prompts for |
 | --- | --- | --- |
-| `plan` | read | write, exec |
+| `plan` | read | write with an active plan-mode session; write and exec are otherwise denied |
 | `ask` | read | write, exec |
 | `auto-edit` | read + write | exec |
-| `yolo` | all tiers | nothing (unless a per-tool override or a bash safety rule applies) |
+| `yolo` | all tiers | nothing (unless a per-tool override applies) |
 
 The schema default is `yolo`. Two older names still work: `always-ask` maps to `ask`, and
 `write` maps to `auto-edit`.
@@ -102,12 +102,58 @@ tools:
 Here the mode is `auto-edit`, so writes run without asking. The override then pulls `bash`
 back to `prompt`, so commands still stop for your approval.
 
-## Execpolicy
+## Critical bash commands
 
-Within the exec tier, `.rules` files refine which shell commands may auto-run. You keep
-them at the user level and per project. A project directory you have not trusted yet is
-treated as untrusted: its project-local rules, config, and hooks stay disabled until you
-trust the directory.
+Within the exec tier, a guard (`packages/coding-agent/src/tools/bash-guard.ts`) forces a prompt in
+`plan`, `ask`, and `auto-edit`, even over a per-tool `allow`. It has two halves.
+
+The first half judges what a command would DELETE, and it judges the paths after expansion rather
+than the command as text. A tilde and `$HOME` are resolved, so `rm -rf ~/` and `rm -rf "$HOME"/`
+are recognized as the home directory. Every target is judged, not just the first, so
+`rm -rf tests/ /` is caught. Recursive deletes of the home directory, of any directory containing
+it, of the system directories, and of the directories that hold your credentials all stop for
+approval. So does a recursive delete whose target the guard cannot resolve, such as
+`rm -rf "$dir"/*`: if `$dir` is empty that command starts at the root, and nothing in the command
+text says whether it is.
+
+The same half stops a truncating redirect into a directory that holds credentials, because
+`echo x > ~/.ssh/id_ed25519` destroys a private key as thoroughly as a delete does. Appending with
+`>>` is left alone, since that is how you add a key to `authorized_keys`.
+
+Deletes inside your workspace are not affected. `rm -rf node_modules`, `rm -rf dist`, and
+`rm -rf /tmp/build-1234` run without a prompt, and so does a delete inside a protected directory
+that does not hold credentials, such as `rm -rf ~/.config/some-app`. Ordinary redirects, such as
+`bun test > /tmp/results.txt`, are not affected either.
+
+The second half is a pattern list (`CRITICAL_BASH_PATTERNS`, in the same file) for the shapes that
+are about text rather than paths: fork bombs, disk destruction, writes to system credential files,
+remote-fetch piped to a shell, and host control commands.
+
+Both halves ship with Veyyon and cannot be narrowed. You can widen the first half with
+`tools.protectedPaths`, a list of absolute paths (a leading `~` is expanded) that a recursive
+delete must also stop for:
+
+```yaml
+tools:
+  protectedPaths:
+    - /mnt/photos
+    - ~/Documents
+```
+
+That setting only adds. Nothing in the built-in judgement reads configuration, so no value you
+write there can stop the guard refusing your home directory, the system roots, or your credentials.
+An entry that is not an absolute or `~`-relative path is ignored, because resolving it against a
+guessed working directory would protect somewhere other than what you wrote.
+
+These commands stop for approval in `yolo` too, and the `/yolo` session bypass does not lift them.
+That is the one place `yolo` is not absolute, and it is deliberate: without it, the commands the
+guard considers most dangerous would be the ones most likely to run in the mode that skips the
+check. To turn the floor off, set `tools.approval.bash` to `allow`, which is read as a decision you
+made on purpose. Setting it to `deny` remains a hard block.
+
+The guard reasons about what a command will do, and that reasoning can be wrong: a shell function,
+an `eval`, or a script invoked by name defeats any parser. Treat it as a seatbelt, not as
+containment.
 
 ## On deny
 

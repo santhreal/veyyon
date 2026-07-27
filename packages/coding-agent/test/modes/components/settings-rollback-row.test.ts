@@ -49,7 +49,14 @@ function stubStdoutGeometry(rows: number): { restore(): void } {
 beforeEach(async () => {
 	resetSettingsForTest();
 	await Settings.init({ inMemory: true });
-	geometryStub = stubStdoutGeometry(60);
+	// Tall enough that the whole interaction tab renders without scrolling. The
+	// number is a FIXTURE, not a contract: these tests assert that the rollback
+	// row exists and sits after the auto-update toggle, and a row scrolled out
+	// of a short viewport fails them for a reason that has nothing to do with
+	// either claim. It was 60, which stopped being enough the first time a
+	// setting was added to the Approvals group, so give it real headroom rather
+	// than the exact current height.
+	geometryStub = stubStdoutGeometry(120);
 });
 
 afterEach(() => {
