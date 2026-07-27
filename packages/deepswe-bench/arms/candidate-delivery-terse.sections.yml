@@ -53,7 +53,7 @@
 # reward column before celebrating a token drop.
 deliveryContract: |
   DELIVERY CONTRACT
-  ==
+  ==============
 
   Report the outcome and nothing else. State what changed, in which files, and
   whether it is verified. If something is incomplete or unverified, say so

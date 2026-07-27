@@ -80,15 +80,14 @@ import {
 	tallyUsage,
 	trialQueue,
 } from "./aggregate";
-import { formatArmPrediction, predictArmSaving } from "./arm-prediction";
-import { resolveBinaryPin } from "./binary-pin";
 import {
-	conversationCollapsed,
-	measureRunPrefix,
-	PREFIX_CATEGORIES,
-	prefixShares,
-} from "./prefix-composition";
-import { type ArmInputs, computeArmFingerprint, findZeroIvCollisions } from "./arm-fingerprint";
+	type ArmInputs,
+	armNamesIn,
+	armSelectionError,
+	computeArmFingerprint,
+	findZeroIvCollisions,
+} from "./arm-fingerprint";
+import { formatArmPrediction, predictArmSaving } from "./arm-prediction";
 import {
 	type CredentialProbe,
 	decideAuthPreflight,
@@ -99,6 +98,8 @@ import {
 	spentQuotaShouldAbort,
 } from "./auth-preflight";
 import { decideAuthSeed, probeCredentialStore, snapshotCredentialStore } from "./auth-seed";
+import { resolveBinaryPin } from "./binary-pin";
+import { conversationCollapsed, measureRunPrefix, PREFIX_CATEGORIES, prefixShares } from "./prefix-composition";
 import {
 	encodeArmModelMismatch,
 	encodePreambleSilentlyDropped,
@@ -902,8 +903,26 @@ async function main(): Promise<void> {
 	// sections/<arm>.json — the exact JSON bytes the agent reads through the
 	// eval-only VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS env var. It is deliberately NOT
 	// a config key: no config.yml can reach it, so it cannot contaminate a normal
-	// run. The fingerprint enforces the single-IV floor below: two arms may not
-	// reduce to identical (config, sections, rule).
+	// run. A per-STATEMENT experiment rides the same way from
+	// arms/<arm>.statements.yml, which is the vehicle for ablating or rewording ONE
+	// rule; a section override cannot do that, since TOOL POLICY is one region and
+	// 34 rules. The fingerprint enforces the single-IV floor below: two arms may not
+	// reduce to identical (config, sections, statements, rule).
+	// An `--arms` entry naming an ATTACHMENT would otherwise be read as an arm config: `--arms
+	// candidate-delivery-terse.sections` finds `candidate-delivery-terse.sections.yml`, parses a
+	// section-override map as a config overlay, and benches nonsense with no error. Refused with the
+	// arm name the operator meant.
+	// Refuse a typo and an attachment name before anything is staged. The predicate lives in
+	// `arm-fingerprint.ts` so it is unit-testable: this file ends in a top-level `await main()`, so a
+	// test that imported it would run a bench.
+	const available = armNamesIn(fs.readdirSync(path.join(BENCH_DIR, "arms")));
+	for (const arm of arms) {
+		const problem = armSelectionError(arm, available);
+		if (problem !== null) {
+			console.error(`error: ${problem}`);
+			process.exit(1);
+		}
+	}
 	const armFingerprints = new Map<string, string>();
 	const armTemperature = new Map<string, number>();
 	// Arms that declare an ENCODE treatment (argot on, non-empty allowlist). After
@@ -1006,6 +1025,43 @@ async function main(): Promise<void> {
 			// Stage the exact JSON the env var will carry (compact, deterministic).
 			fs.writeFileSync(path.join(assetsDir, "sections", `${arm}.json`), JSON.stringify(sections));
 		}
+		// A per-STATEMENT override, the finer vehicle: `statement id -> replacement text, or null to
+		// ablate the rule`. A section override is the wrong instrument for an ablation, since TOOL POLICY
+		// is 34 rules in one region and a score change across it cannot be attributed to a cause.
+		let statements: unknown;
+		const statementsPath = path.join(BENCH_DIR, "arms", `${arm}.statements.yml`);
+		if (fs.existsSync(statementsPath)) {
+			try {
+				statements = YAML.parse(fs.readFileSync(statementsPath, "utf8")) ?? {};
+			} catch (err) {
+				console.error(`error: arm "${arm}" has invalid YAML in arms/${arm}.statements.yml:\n${err}`);
+				process.exit(1);
+			}
+			if (statements === null || typeof statements !== "object" || Array.isArray(statements)) {
+				console.error(
+					`error: arm "${arm}" arms/${arm}.statements.yml must be a mapping of statement id -> ` +
+						`replacement text (or null to ablate the statement), got ` +
+						`${Array.isArray(statements) ? "a sequence" : typeof statements}.`,
+				);
+				process.exit(1);
+			}
+			// Values are checked here as well as in the agent, because a bad value is cheap to catch now
+			// and expensive to discover after paying for a run: the prompt builder refuses the payload,
+			// so every trial in the arm would hard-error identically.
+			for (const [id, value] of Object.entries(statements as Record<string, unknown>)) {
+				if (value !== null && typeof value !== "string") {
+					console.error(
+						`error: arm "${arm}" arms/${arm}.statements.yml value for "${id}" must be text, or null to ` +
+							`ablate the statement, got ${typeof value}.`,
+					);
+					process.exit(1);
+				}
+			}
+			fs.mkdirSync(path.join(assetsDir, "statements"), { recursive: true });
+			// The exact JSON the env var will carry. `null` survives JSON, which is what makes ablation
+			// expressible: an empty string would mean "this rule says nothing but is still here".
+			fs.writeFileSync(path.join(assetsDir, "statements", `${arm}.json`), JSON.stringify(statements));
+		}
 		let rule: Uint8Array | undefined;
 		const rulePath = path.join(BENCH_DIR, "arms", `${arm}.rule.md`);
 		if (fs.existsSync(rulePath)) {
@@ -1016,6 +1072,7 @@ async function main(): Promise<void> {
 		const mod: ArmInputs = {
 			config,
 			...(sections !== undefined ? { sections } : {}),
+			...(statements !== undefined ? { statements } : {}),
 			...(rule !== undefined ? { rule } : {}),
 		};
 		armFingerprints.set(arm, computeArmFingerprint(mod));
@@ -1031,11 +1088,11 @@ async function main(): Promise<void> {
 			const detail = collisions.map(group => `  {${group.join(", ")}} reduce to identical inputs`).join("\n");
 			console.error(
 				"error: zero-IV arm collision — a controlled comparison must vary exactly one\n" +
-					"independent variable, but these arms reduce to the same (config, sections, rule),\n" +
-					`so every delta between them is noise:\n${detail}\n` +
-					"Fix: give each arm a distinct config, a distinct .sections.yml, or a distinct\n" +
-					".rule.md, or drop the redundant arm from --arms. See README 'Single Independent\n" +
-					"Variable Rule'.",
+					"independent variable, but these arms reduce to the same (config, sections, statements,\n" +
+					`rule), so every delta between them is noise:\n${detail}\n` +
+					"Fix: give each arm a distinct config, a distinct .sections.yml, a distinct\n" +
+					".statements.yml, or a distinct .rule.md, or drop the redundant arm from --arms. See\n" +
+					"README 'Single Independent Variable Rule'.",
 			);
 			process.exit(1);
 		}
@@ -1098,11 +1155,13 @@ async function main(): Promise<void> {
 		console.log(`  arms       ${arms.length}`);
 		for (const arm of arms) {
 			const sectionsFile = path.join(BENCH_DIR, "arms", `${arm}.sections.yml`);
+			const statementsFile = path.join(BENCH_DIR, "arms", `${arm}.statements.yml`);
 			const ruleFile = path.join(BENCH_DIR, "arms", `${arm}.rule.md`);
 			const parts = [
 				`temp=${armTemperature.get(arm)}`,
 				encodeArms.has(arm) ? "ENCODE" : "no-encode",
 				fs.existsSync(sectionsFile) ? "sections" : null,
+				fs.existsSync(statementsFile) ? "statements" : null,
 				fs.existsSync(ruleFile) ? "rule" : null,
 			].filter(Boolean);
 			console.log(`    ${arm.padEnd(28)} ${parts.join(" ")}  fp=${(armFingerprints.get(arm) ?? "").slice(0, 12)}`);
@@ -1438,7 +1497,13 @@ function reportPredictedVsActual(runDir: string, arms: string[], results: ArmRes
 		if (!fs.existsSync(staged)) return undefined;
 		try {
 			return YAML.parse(fs.readFileSync(staged, "utf8")) ?? {};
-		} catch {
+		} catch (err) {
+			// Undefined and `{}` are different answers to the caller: `{}` is a staged overlay that set
+			// nothing, while undefined means the overlay could not be read, and the prediction is refused
+			// rather than computed from settings this run may not have used. Absence is already handled above,
+			// so reaching here means the file is there and malformed -- worth saying out loud, because the
+			// printed refusal that follows otherwise looks like a run that simply had no overlay.
+			console.error(`predicted-vs-actual: staged overlay ${staged} could not be parsed: ${String(err)}`);
 			return undefined;
 		}
 	};
@@ -1490,12 +1555,7 @@ function reportPredictedVsActual(runDir: string, arms: string[], results: ArmRes
 				);
 			}
 		}
-		const comparison = predictedVsActual(
-			onPairedTasks(results, baseline, arm),
-			baseline,
-			arm,
-			prediction.netSaving,
-		);
+		const comparison = predictedVsActual(onPairedTasks(results, baseline, arm), baseline, arm, prediction.netSaving);
 		if (!comparison) {
 			console.log(`  ${arm}: no paired trials with usage, so the actual saving cannot be measured.`);
 			continue;
@@ -1503,7 +1563,7 @@ function reportPredictedVsActual(runDir: string, arms: string[], results: ArmRes
 		console.log(
 			`  ${arm}  actual ${(100 * comparison.actual).toFixed(1)}%` +
 				`  vs predicted ${(100 * comparison.predicted).toFixed(1)}%` +
-				`  ->  gap ${(100 * comparison.gap >= 0 ? "+" : "")}${(100 * comparison.gap).toFixed(1)} points`,
+				`  ->  gap ${100 * comparison.gap >= 0 ? "+" : ""}${(100 * comparison.gap).toFixed(1)} points`,
 		);
 	}
 	console.log("  A gap near zero means the simulator can be trusted for the next lever without buying it.");

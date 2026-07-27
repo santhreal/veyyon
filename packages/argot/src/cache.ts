@@ -139,6 +139,9 @@ export async function writeDictFileAtomic(path: string, content: string): Promis
 			await handle.close();
 		}
 	} catch (err) {
+		// Both cleanups drop their own failure on purpose. The write error and the rename error are what the
+		// caller acts on, and they are rethrown untouched; reporting a failed `rm` instead would replace the
+		// real reason with a less useful one. The cost of dropping it is one leftover `*.tmp` beside the file.
 		await rm(temp, { force: true }).catch(() => {});
 		throw err;
 	}

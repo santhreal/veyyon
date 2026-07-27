@@ -28,6 +28,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import YAML from "yaml";
+import { armNamesIn } from "./arm-fingerprint";
 
 const BENCH_DIR = import.meta.dir;
 const REPO_ROOT = path.join(BENCH_DIR, "..", "..");
@@ -37,9 +38,10 @@ const SKILL_PATH = path.join(REPO_ROOT, ".veyyon", "skills", "evals", "SKILL.md"
 const SKILL = fs.existsSync(SKILL_PATH) ? fs.readFileSync(SKILL_PATH, "utf8") : "";
 
 const armFiles = fs.readdirSync(path.join(BENCH_DIR, "arms"));
-/** Arm names, i.e. `<name>.yml` minus the extension. A `.rule.md` is an
- * attachment to an arm, not an arm. */
-const ARMS = armFiles.filter(f => f.endsWith(".yml")).map(f => f.replace(/\.yml$/, ""));
+/** Arm names, from the one owner of "which files in `arms/` are arms". This list used to be every
+ * `*.yml`, which made `candidate-delivery-terse.sections.yml` a phantom arm named
+ * `candidate-delivery-terse.sections` and quantified every check below over an arm nobody can run. */
+const ARMS = armNamesIn(armFiles);
 const TASK_SETS = fs.readdirSync(path.join(BENCH_DIR, "tasks")).filter(f => f.endsWith(".txt"));
 
 /** Arm names a document references, found by the `--arms a,b` and backtick
@@ -336,5 +338,42 @@ describe("the documented model agrees with the code and the arms", () => {
 		const refutations = [/was FALSE/i, /that assertion is false/i, /not a claim that/i, /NOT because/i];
 		const refuted = refutations.some(re => re.test(doc));
 		expect({ claims: found, refuted }).toEqual({ claims: found, refuted: true });
+	});
+});
+
+describe("every shipped prompt-statement arm is actually loadable", () => {
+	/**
+	 * The same contract as the section arms above, at the granularity a rule has, and it needs its own
+	 * check for the same reason: this is the file an operator COPIES to start an ablation, so a broken
+	 * one propagates into every experiment derived from it and only surfaces once a container is
+	 * running and being paid for.
+	 *
+	 * Validated through the builder's OWN `parseStatementOverridesJson`, the same function the agent
+	 * calls on the staged JSON. A typo in a statement id is the interesting failure: the builder
+	 * refuses it, so an arm with one would hard-error every trial rather than quietly bench the
+	 * production prompt under a treatment's name, and this test is what catches it before the run.
+	 */
+	const statementArms = armFiles.filter(f => f.endsWith(".statements.yml"));
+
+	it("ships at least one worked example, since the prose is not the reference", () => {
+		expect(statementArms.length).toBeGreaterThan(0);
+	});
+
+	it.each(statementArms)("%s is accepted by the prompt builder", async file => {
+		const { parseStatementOverridesJson } = await import(
+			"@veyyon/coding-agent/system-prompt-builder/statement-registry"
+		);
+		const parsed = YAML.parse(fs.readFileSync(path.join(BENCH_DIR, "arms", file), "utf8"));
+		const overrides = parseStatementOverridesJson(JSON.stringify(parsed));
+
+		expect(Object.keys(overrides).length).toBeGreaterThan(0);
+	});
+
+	it.each(statementArms)("%s has a config half so it can actually be run", file => {
+		// An attachment with no arm is unrunnable, and the arm enumerators exclude attachments, so
+		// nothing else would notice.
+		const arm = file.slice(0, -".statements.yml".length);
+
+		expect(fs.existsSync(path.join(BENCH_DIR, "arms", `${arm}.yml`)), `${arm}.yml is missing`).toBe(true);
 	});
 });

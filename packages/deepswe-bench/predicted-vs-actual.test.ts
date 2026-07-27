@@ -293,9 +293,7 @@ describe("the reward gate under a lopsided run", () => {
 			errored("treat", "e"),
 		];
 		const report = renderReport(results, "test-model", "2026-07-25T00:00:00Z", 1, undefined);
-		const row = report
-			.split("\n")
-			.find(line => line.startsWith("| baseline → treat |"));
+		const row = report.split("\n").find(line => line.startsWith("| baseline → treat |"));
 		expect(row).toBeDefined();
 		// Only the single task both arms completed is compared.
 		expect(row).toContain("| baseline → treat | 1 |");
@@ -315,9 +313,7 @@ describe("the reward gate under a lopsided run", () => {
 		// Assert on the ROW, not the section: the section's own prose explains what
 		// "not distinguishable (underpowered)" means, so a section-wide search for that
 		// phrase matches the documentation rather than the verdict.
-		const row = report
-			.split("\n")
-			.find(line => line.startsWith("| baseline → treat |"));
+		const row = report.split("\n").find(line => line.startsWith("| baseline → treat |"));
 		expect(row).toBeDefined();
 		expect(row).toContain("| baseline → treat | 8 |");
 		expect(row).not.toContain("underpowered");

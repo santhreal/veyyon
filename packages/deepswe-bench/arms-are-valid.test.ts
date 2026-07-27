@@ -23,9 +23,9 @@
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-
 import { getEnumValues, getType, isSettingPath } from "@veyyon/coding-agent/config/settings-schema";
 import * as YAML from "yaml";
+import { isArmConfigFile } from "./arm-fingerprint";
 
 import { mistypedArmSettings, unknownArmSettings } from "./treatment-guard";
 
@@ -33,10 +33,7 @@ const ARMS_DIR = path.join(path.dirname(new URL(import.meta.url).pathname), "arm
 
 /** Every arm file on disk, so a newly added arm is covered without editing this suite. */
 function armFiles(): string[] {
-	return fs
-		.readdirSync(ARMS_DIR)
-		.filter(name => name.endsWith(".yml") && !name.endsWith(".sections.yml"))
-		.sort();
+	return fs.readdirSync(ARMS_DIR).filter(isArmConfigFile).sort();
 }
 
 describe("arms/*.yml — an arm that sets nothing real is a control wearing a treatment's name", () => {

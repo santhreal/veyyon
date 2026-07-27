@@ -50,6 +50,14 @@ interface DictRow {
 	task: string;
 	handles: number;
 	dictTokens: number;
+	/**
+	 * The SDK's own savings estimate, rounded to whole tokens for the report.
+	 *
+	 * It arrives fractional because line structure is priced on the measured mix of
+	 * channels a model writes into (argot's `DEFAULT_TOOL_CALL_STRUCTURE_SHARE`), so
+	 * a saving is a weighted sum. Rounding here rather than at each print site keeps
+	 * the log line and the table showing the same number.
+	 */
 	estimatedSavings: number;
 	/** Handles whose expansion an agent could plausibly type (no whitespace). */
 	typeableHandles: number;
@@ -162,7 +170,7 @@ async function genOne(task: string): Promise<DictRow> {
 			task,
 			handles: handles.length,
 			dictTokens,
-			estimatedSavings,
+			estimatedSavings: Math.round(estimatedSavings),
 			typeableHandles: mass.typeable,
 			structureHandles: handles.filter(handle => handle.expansion.startsWith("\n")).length,
 			typeableSavings: mass.savingPerEmission,

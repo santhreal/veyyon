@@ -14,6 +14,7 @@ table. That is the entire workflow, and it is the same for every feature.
 ### BINDING RULE: Single Independent Variable Rule (Controlled Experiments)
 Every evaluation comparison MUST vary **EXACTLY ONE independent variable** between arms:
 - **Prompt Benchmark:** Same model, same feature flags; ONLY one section of the system prompt differs. Override exactly one banner section via the candidate's `arms/<arm>.sections.yml`; its control is the same config with no sections file. Every other section — and every settings-gated block in it — stays byte-for-byte. The override reaches the agent only through the eval-only `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS` env var, never a config key, so it cannot leak into a normal run. See "Prompt section arms" below.
+- **Prompt Statement Benchmark:** Same model, same feature flags; ONLY one RULE of the system prompt differs. The prompt is assembled from named statements, one per rule, so `arms/<arm>.statements.yml` removes or rewords exactly one of them (`<statement id>: null` ablates it; a string replaces its text). Its control is the same config with no statements file. This is the vehicle for asking whether a rule earns its tokens, which a section override cannot answer: TOOL POLICY is one banner region and 34 rules, so a delta across a rewritten section has no single cause. The override reaches the agent only through the eval-only `VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS` env var, never a config key. See "Prompt statement arms" below.
 - **Feature Flag Benchmark:** Same model, same prompt; ONLY the setting flag differs (e.g. `argot.enabled: false` vs `argot.enabled: true`).
 - **Model Benchmark:** Same prompt, same feature flags; ONLY the `--model <id>` differs.
 
@@ -23,7 +24,7 @@ Every evaluation comparison MUST vary **EXACTLY ONE independent variable** betwe
 
 The runner enforces five mechanical floors of this rule:
 
-1. **Zero-IV collision.** If any two arms in a run stage byte-identical inputs (same `.yml` and same/no prompt module and same/no rule), it fails loudly with the colliding arm names. A comparison between identical arms varies zero variables, so its "delta" is pure noise — the exact defect behind earlier `candidate-vN` arms that were copied from `baseline` with nothing changed.
+1. **Zero-IV collision.** If any two arms in a run stage byte-identical inputs (same `.yml`, same/no section override, same/no statement override, same/no rule), it fails loudly with the colliding arm names. A comparison between identical arms varies zero variables, so its "delta" is pure noise — the exact defect behind earlier `candidate-vN` arms that were copied from `baseline` with nothing changed.
 2. **Treatment-not-applied (pre-run).** If an arm turns argot encoding on with a non-empty `argot.models` allowlist that does not include the `--model` under test, it fails loudly before running. argot only encodes for a model on its allowlist, so such an arm would SILENTLY degrade to decode-only while still being labelled the encode condition — a silent fallback living inside the eval set. The check uses argot's own `modelAllowed` predicate (exported from the SDK), so it can never drift from the gate the runtime actually applies. A deliberately decode-only arm (`enabled: true`, empty allowlist, as in `arms/decode.yml`) is fine and passes.
 3. **Treatment-not-applied (post-run, authoritative).** The pre-run check matches the model string you *requested*, but the runtime resolves that id through the catalog (provider aliases, effort-tier collapsing) to a different logical id before the encode gate sees it. This really happened: `google-antigravity/gemini-3.6-flash` was aliased onto logical `gemini-3.5-flash`, so the request passed the pre-run check (3.6 was on the list) yet failed the gate (the resolved 3.5 was not) and the arm ran decode-only. After the run, the bench reads whether the encode preamble actually reached the model (from each session's system prompt) and **fails closed** if an encode arm never taught it in any OK trial. The alias has since been removed from the catalog, so 3.6 resolves to 3.6 or fails loudly. The default `--model` and every encode arm's allowlist name **`gemini-3.5-flash`**. That is a choice of a model with a known-good recent run, NOT a claim that any other id is unservable: a `Model "<id>" not found` is usually an auth failure wearing a model id's name (see that section below), so check for a registry-error line and re-seed the auth DB before you suspect the id. The rule still stands whatever the model: requested and resolved must agree, or the run is inert. Watch the `preamble taught` column in the report (below).
 4. **The arm names a setting that does not exist.** An arm is a config overlay, so a key veyyon does not recognise raises nothing: it merges, it is never read, and the arm runs as the control under a treatment's name. The report then compares the control against a second copy of the control, which is the most expensive way to be wrong because it reads as a real measurement. Every key in every arm is checked against the settings schema before the run starts, and an unknown one fails loudly with the path to fix. This catches a typo (`tools.discoverymode`) and, later, a setting that upstream renamed while `arms/` kept the old spelling. Both YAML spellings are accepted, nested and flat, and a record-valued setting such as `tools.approval` keeps its arbitrary keys.
@@ -42,7 +43,7 @@ These are the sound pairings the shipped arms are built for. Each varies exactly
 | Tool discovery | `baseline` ↔ `discovery-all` | `tools.discoveryMode` alone, so non-essential tool docs leave the prompt |
 | Early-output spill | `spill-control` ↔ `baseline` ↔ `spill-tight` | `tools.inlineOutputFloor` alone, 1 → 0.25 → 0.1 |
 | Signature size limit | `baseline` ↔ `sig-max4000` | `context.thoughtSignatureMaxLength` alone, none → 4000 |
-| Artifact spill threshold | `baseline` ↔ `spill2kb` | `tools.artifactSpillThreshold` alone, 50 KB → 2 KB |
+| Artifact spill threshold | `baseline` ↔ `spill2kb` | `tools.artifactSpillThreshold` alone, 50 KB → 2 KB. Since 2026-07-26 it reaches the streaming tools too (bash, eval, ssh, interactive shell), which took a compiled 50 KB before; results recorded earlier understate it |
 | Signature recency | `baseline` ↔ `sig-last8` ↔ `sig-last1` | `context.thoughtSignatureRetention` alone, all → 8 → 1 |
 | Thinking replay | `baseline` ↔ `think-last1` | `context.thinkingRetention` alone, all → 1 |
 | Model | any single arm, two `--model` values | only `--model` differs |
@@ -64,11 +65,11 @@ saving alone:
    15%). Worth running second so its result can be read against the gentler cap: if
    both hold reward, take the larger saving; if only the cap holds, the difference
    tells you replaying older reasoning matters.
-3. `think-last1`. Predicted 7.7%. Cannot reach the target alone, and is worth
-   measuring for what it says about whether the model needs its own thought
-   summaries replayed. Note that the tool cannot yet predict this one from its
-   config: `context.thinkingRetention` has no simulator, so a run reports it as
-   unsimulated rather than guessing.
+3. `think-last1`. Predicted 7.0% net (7.6% gross, 0.6% handed back as cache
+   misses), by dropping 99% of thinking blocks. Cannot reach the target alone, and
+   is worth measuring for what it says about whether the model needs its own
+   thought summaries replayed. Nothing replaces an elided thinking part, so unlike
+   a signature there is no sentinel to subtract.
 4. `spill2kb`. Predicted 26.1% of the Claude bill and 9.2% of the Gemini one, by
    spilling 23% of all tool results. The shipped 50 KB threshold predicts 0.5%:
    see "A category total is not a lever's reach" below for why the tool-result
@@ -77,7 +78,12 @@ saving alone:
 `sig-last8` is not on this list. A deeper retention window saves LESS gross than a
 shallow one and hands back MORE as cache misses, so it nets 22.0% while discarding
 93% of signatures, which the size cap matches at 15%. The whole retention family
-gets worse in both directions as it gets safer.
+gets worse in both directions as it gets safer, and the thinking windows behave the
+same way: 7.0% net at K=1, 3.1% at K=8. There is no conservative-and-cheap point on
+a recency curve.
+
+`tools.inlineOutputFloor` is the one prefix setting with no simulator left. An arm
+that sets it gets a printed refusal rather than a number.
 
 You do not type any of these numbers to check a run. After the run writes its
 report it prints each treatment arm's predicted saving beside the measured one,
@@ -507,7 +513,7 @@ steps run at image build time (no mounts, no host network), and declaring a
 bind mount in the job config REPLACES Pier's default `/logs` mounts, which
 silently loses the trial's logs. Upload-at-run-time avoids both.
 
-A run directory (default `<repo>/runs/deepswe/<timestamp>/`, or `--out`) collects `jobs/` (raw Pier output, trajectories,
+A run directory (default `packages/deepswe-bench/runs/<timestamp>/`, or `--out`) collects `jobs/` (raw Pier output, trajectories,
 verifier reports), `results.json` (every metric, machine-readable), and
 `report.md` (the table).
 
@@ -554,7 +560,17 @@ The merge refuses anything that breaks that argument, rather than warning about 
   ```
 
   `--binary` skips the rebuild entirely and stages those exact bytes, so the
-  recorded sha matches and the days pool. It announces itself loudly, because the
+  recorded sha matches and the days pool. It is also the way to run when the
+  working tree does not compile, which in a shared tree happens often enough to
+  plan for.
+
+  Pinning has one hazard and one guard. The pre-run settings check validates each
+  arm against the CURRENT schema, not against the pinned binary's, so a binary old
+  enough to predate a setting merges that key, never reads it, and runs the arm as
+  the control under a treatment's name. No pre-run guard can see that. The post-run
+  composition block does: if the lever did not fire, its category does not shrink
+  between baseline and treatment. On a pinned run, read that block before the cost
+  delta, and prefer the most recent known-good binary rather than the oldest. It announces itself loudly, because the
   run then measures that binary's code and not the working tree's. That is the
   trade: you give up testing today's code to buy a comparison with enough decisive
   tasks to mean anything. Every run stages its binary at `<runDir>/assets/vey`, so
@@ -568,7 +584,7 @@ A missing arm fingerprint is not treated as a mismatch, so runs predating that
 field still pool.
 
 Plan for the binary before you start. The runner records the `vey` binary's sha,
-and any change under `packages/coding-agent` or `packages/ai` rebuilds it, so a day
+and any change under `packages/coding-agent/src` rebuilds it, so a day
 of ordinary development between two runs is enough to make them unmergeable. Land
 the code you want measured, gather every day you need, and resume editing after.
 Changes confined to `packages/deepswe-bench` do not rebuild the binary.
@@ -842,6 +858,55 @@ into `~/.veyyon/rules/` — a separate single-IV vehicle for benching an additiv
 behavioral nudge rather than a section rewrite (this is what
 `candidate-argot-nudge` uses).
 
+## Prompt statement arms
+
+**Start from the worked example, not from this prose:**
+`arms/candidate-ablate-delegation-gates.statements.yml` (the experiment) plus
+`arms/candidate-ablate-delegation-gates.yml` (its config half, deliberately
+identical to `baseline.yml`). Copy both, rename them, and change which rule you
+ablate. Run it with:
+
+```bash
+bun run.ts --arms baseline,candidate-ablate-delegation-gates \
+  --tasks tasks/pilot-10.txt --model google-antigravity/gemini-3.5-flash \
+  --jobs 2 --repeats 3 --out runs/ablate-delegation-gates
+```
+
+This is the finer of the two prompt lanes, and the difference is what a delta can
+be attributed to. A section override answers "is this section's wording better".
+It cannot answer "is this RULE worth its tokens", because TOOL POLICY is one
+banner region and 34 rules, so a delta across a rewritten section has 34
+candidate causes. The system prompt is assembled from named statements, one per
+rule, so a statement override changes exactly one rule.
+
+`arms/<arm>.statements.yml` is a mapping of statement id to the replacement text,
+or to `null` to REMOVE the rule:
+
+```yaml
+# arms/candidate-ablate-lsp-preference.statements.yml
+tool-policy/lsp: null
+```
+
+`null` and an empty string are different experiments. `null` removes the rule and
+the separation it carried. `""` keeps the rule present and silent, so the
+paragraph break stays and only the words go: that is how you ask whether a rule
+needs saying at all rather than whether it should be there.
+
+Find the ids with `veyyon prompt --statements`, which lists every rule with what
+it costs and the condition that decides whether it is in the prompt at all, and
+read one with `veyyon prompt --statement <id>`. An id that does not exist is
+refused before the run, so a typo cannot quietly bench the production prompt
+under a treatment's name. So is a value that is neither text nor `null`, and
+malformed YAML.
+
+The fingerprint covers the statements file, so an ablation arm and its control
+are distinguishable and the zero-IV floor applies to this lane too. Delete the
+statements file and the two arms collide, and the runner says so by name.
+
+`docs-coherence.test.ts` checks every shipped `.statements.yml` through the
+prompt builder's own validator, so the example is known to load rather than
+assumed to.
+
 ## The argot pilot arms (2026-07-21)
 
 - `baseline` — `argot.enabled: false` (the control; no argot at all).
@@ -895,3 +960,74 @@ That makes the bench measure three distinct things:
 If adoption stays zero on high-mass repos, the defect is the product's
 invitation (preamble, tool surface), not the bench — and the fix belongs in
 veyyon, then this run repeats.
+
+### measure-channel-split.ts: where the agent writes its line structure
+
+Most of a generated dictionary is LINE STRUCTURE: a handle standing for a line
+break and the indentation after it. What that text costs depends on where the
+model writes it. Inside a tool-call argument the arguments are JSON, so a newline
+goes over the wire as the two characters `\` and `n` and a run of tabs is charged
+one escape at a time. In a plain message, or in thinking, the same run carries
+real control characters and costs about one token.
+
+The gap decides the sign of the whole dictionary. On a tab-indented TypeScript
+tree the expensive price earns five structure handles and the cheap price earns
+none at all, because a handle costs at least two tokens.
+
+Run the instrument to measure the split on real transcripts:
+
+```
+bun measure-channel-split.ts                    # the current profile's sessions
+bun measure-channel-split.ts --sessions <dir>   # a specific transcript tree
+bun measure-channel-split.ts --json             # machine-readable totals
+```
+
+It walks assistant turns only, sorts every emitted newline-plus-indentation run
+into the channel it was written into, and prints the share that landed inside
+tool-call arguments. Tool results are excluded: they are input the harness wrote,
+not output the model paid for. Thinking is included, because it is billed output.
+
+Measured over 307 transcripts and 23,467 assistant turns, 41.76% of structure was
+inside tool-call arguments. That number is argot's
+`DEFAULT_TOOL_CALL_STRUCTURE_SHARE`, and the generator prices structure on the
+mix rather than on one channel. When you rerun this instrument on a larger or
+newer corpus and the share moves, update that constant and bump
+`GENERATOR_REVISION` in the same change, or every cached dictionary keeps the old
+price.
+
+### measure-retype-likelihood.ts: does the agent write what the generator ranked
+
+Pricing says what a string costs. It does not say how often the model will write
+it, and a handle only pays when the model writes it. The generator estimates that
+second number from document frequency: how many files of the repository a string
+appears in. That is a claim about the corpus standing in for a claim about the
+agent.
+
+This instrument checks it against the record. Point it at a repository, and it
+generates that repository's dictionary the same way the agent does, reads the
+transcripts of sessions that ran in it, and counts how many times each handle's
+expansion was really emitted.
+
+```
+bun measure-retype-likelihood.ts --repo <dir>      # defaults to the current directory
+bun measure-retype-likelihood.ts --sessions <dir>  # a specific transcript tree
+bun measure-retype-likelihood.ts --json
+```
+
+The columns are `predicted` (the generator's own `savedTokens`), `emitted` (real
+uses), and `actual` (those uses at the same per-use rate). A high `predicted` next
+to an `emitted` of zero is budget spent on a string the model does not write, and
+it rides the system prompt on every turn.
+
+The footer is the part that decides whether a dictionary is worth carrying,
+because it puts both sides of the ledger on one screen. Savings are output tokens
+produced per emission; the dictionary is input tokens carried on every turn. The
+`cost ratio` divides the second by the first. Output tokens cost a few times more
+than input tokens, so a ratio above roughly 5 is a net loss on any real price
+sheet.
+
+Measured on the veyyon repository over 100 attributed transcripts and 7,659
+assistant turns: 18 of 49 handles were never emitted once, rank agreement with the
+generator's order was 0.357 (Kendall tau-a), and the dictionary carried 2,404,926
+input tokens to save 3,202 output tokens, a ratio of 751. See the
+ARGOT-DICT-IS-NET-NEGATIVE row in `BACKLOG.md`.

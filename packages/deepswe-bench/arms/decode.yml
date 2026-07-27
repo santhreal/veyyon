@@ -5,5 +5,6 @@
 # the feature being enabled and loadable without any teaching in the prompt.
 argot:
   enabled: true
-  models: []
+  encode:
+    models: []
   subagents: off

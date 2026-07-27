@@ -18,7 +18,12 @@
 import { describe, expect, test } from "bun:test";
 
 import { formatArmPrediction, PREFIX_AFFECTING_SETTINGS, predictArmSaving } from "./arm-prediction";
-import { accumulatePrefixMass, sessionPrefixSteps, SKIP_SIGNATURE_CHARS, type TranscriptRecord } from "./prefix-composition";
+import {
+	accumulatePrefixMass,
+	SKIP_SIGNATURE_CHARS,
+	sessionPrefixSteps,
+	type TranscriptRecord,
+} from "./prefix-composition";
 
 /** An assistant turn carrying one tool call with a signature of the given length. */
 const sig = (chars: number): TranscriptRecord =>
@@ -151,10 +156,7 @@ describe("predictArmSaving — the prediction comes from the config, not from a 
 		const combined = predict(config, sessions);
 		const signatureOnly = predict({ context: config.context }, sessions);
 		const spillOnly = predict({ tools: config.tools }, sessions);
-		expect(combined.netSaving).toBeCloseTo(
-			(signatureOnly.netSaving as number) + (spillOnly.netSaving as number),
-			10,
-		);
+		expect(combined.netSaving).toBeCloseTo((signatureOnly.netSaving as number) + (spillOnly.netSaving as number), 10);
 	});
 
 	/**
@@ -180,8 +182,8 @@ describe("predictArmSaving — refuses rather than reporting a confident partial
 	 * reads the difference as instrument error.
 	 */
 	test("names a prefix setting it cannot simulate", () => {
-		const prediction = predict({ context: { thinkingRetention: 1 } }, [[sig(5000), turn()]]);
-		expect(prediction.unsimulated).toEqual(["context.thinkingRetention"]);
+		const prediction = predict({ tools: { inlineOutputFloor: 0.1 } }, [[sig(5000), turn()]]);
+		expect(prediction.unsimulated).toEqual(["tools.inlineOutputFloor"]);
 		expect(prediction.levers).toHaveLength(0);
 	});
 
@@ -190,10 +192,10 @@ describe("predictArmSaving — refuses rather than reporting a confident partial
 	 * bill" and "not measured" are opposite conclusions and must not render the same.
 	 */
 	test("refuses outright when every lever it sets is unsimulated", () => {
-		const lines = formatArmPrediction(predict({ context: { thinkingRetention: 1 } }, [[sig(5000), turn()]]));
+		const lines = formatArmPrediction(predict({ tools: { inlineOutputFloor: 0.1 } }, [[sig(5000), turn()]]));
 		expect(lines).toHaveLength(1);
 		expect(lines[0]).toContain("NO PREDICTION");
-		expect(lines[0]).toContain("context.thinkingRetention");
+		expect(lines[0]).toContain("tools.inlineOutputFloor");
 	});
 
 	/**
@@ -203,10 +205,12 @@ describe("predictArmSaving — refuses rather than reporting a confident partial
 	 */
 	test("warns before the total when only part of the arm is simulated", () => {
 		const lines = formatArmPrediction(
-			predict({ context: { thoughtSignatureMaxLength: 1000, thinkingRetention: 1 } }, [[sig(5000), turn()]]),
+			predict({ context: { thoughtSignatureMaxLength: 1000 }, tools: { inlineOutputFloor: 0.1 } }, [
+				[sig(5000), turn()],
+			]),
 		);
 		expect(lines[0]).toContain("PARTIAL PREDICTION");
-		expect(lines[0]).toContain("context.thinkingRetention");
+		expect(lines[0]).toContain("tools.inlineOutputFloor");
 		expect(lines[1]).toContain("thoughtSignatureMaxLength");
 	});
 
@@ -255,5 +259,71 @@ describe("predictArmSaving — refuses rather than reporting a confident partial
 			"tools.artifactSpillThreshold",
 			"tools.inlineOutputFloor",
 		]);
+	});
+});
+
+describe("predictArmSaving — the thinking window, and why it is not a signature window", () => {
+	/** An assistant turn whose thinking block is the given length. */
+	const think = (chars: number): TranscriptRecord =>
+		({
+			type: "message",
+			message: {
+				role: "assistant",
+				usage: { input: 1 },
+				content: [{ type: "thinking", thinking: "t".repeat(chars) }],
+			},
+		}) as TranscriptRecord;
+
+	/**
+	 * `context.thinkingRetention` was the last prefix lever with no simulator, so an
+	 * arm setting it got a refusal rather than a number. It is simulated now, which
+	 * means the only remaining refusal is `tools.inlineOutputFloor`.
+	 */
+	test("predicts a thinking retention window instead of refusing", () => {
+		const prediction = predict({ context: { thinkingRetention: 1 } }, [[think(5000), think(5000), turn(), turn()]]);
+		expect(prediction.unsimulated).toHaveLength(0);
+		expect(prediction.levers[0]?.setting).toBe("context.thinkingRetention");
+		expect(prediction.levers[0]?.contentUnit).toBe("thinking blocks");
+	});
+
+	/**
+	 * ELIDED THINKING IS REPLACED BY NOTHING, where an elided signature is replaced
+	 * by a 33-character sentinel the API requires. That asymmetry is the whole reason
+	 * the two are separate lever kinds, and getting it wrong would understate every
+	 * thinking figure by 33 characters per block per turn.
+	 *
+	 * The arithmetic: two thinking blocks then two empty turns, a one-message window.
+	 * On the second block's turn one block exists and is still inside the window. On
+	 * the third turn the first block has aged out. On the fourth both have. Three
+	 * elisions of the FULL 5,000 characters, with nothing subtracted.
+	 */
+	test("credits the whole block, because nothing replaces elided thinking", () => {
+		const sessions = [[think(5000), think(5000), turn(), turn()]];
+		const prediction = predict({ context: { thinkingRetention: 1 } }, sessions);
+		const total = 4 * 5000 + 5000; // the prefix walk over those four billed turns
+		expect(prediction.levers[0]?.grossSaving).toBeCloseTo((3 * 5000) / total, 10);
+	});
+
+	/**
+	 * A thinking window is a RECENCY rule, so it rewrites bytes it already sent and
+	 * hands part of its saving back. Reporting its gross beside a size cap's net
+	 * would make it look better than it is, which is the same error the signature
+	 * windows were carrying until their give-back was measured.
+	 */
+	test("subtracts the cache a thinking window invalidates", () => {
+		const sessions = [[think(5000), think(5000), think(5000), turn(), turn(), turn()]];
+		const lever = predict({ context: { thinkingRetention: 1 } }, sessions).levers[0];
+		expect(lever?.cacheGiveBack).toBeGreaterThan(0);
+		expect(lever?.netSaving).toBeLessThan(lever?.grossSaving as number);
+	});
+
+	/**
+	 * A thinking window must not touch signatures and a signature window must not
+	 * touch thinking. They are different categories under similar names, and a lever
+	 * that quietly acted on both would report a saving no shipped setting delivers.
+	 */
+	test("leaves signatures alone", () => {
+		const sessions = [[sig(5000), sig(5000), turn(), turn()]];
+		expect(predict({ context: { thinkingRetention: 1 } }, sessions).levers[0]?.grossSaving).toBe(0);
 	});
 });

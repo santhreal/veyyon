@@ -46,7 +46,9 @@ const EXPECTED: Record<string, "function" | "string" | "number" | "object"> = {
 	DEFAULT_SIGIL: "string",
 	DEFAULT_SAVINGS_COVERAGE: "number",
 	GENERATOR_REVISION: "number",
+	DEFAULT_OUTPUT_TO_INPUT_PRICE_RATIO: "number",
 	DEFAULT_TOKEN_BUDGET: "number",
+	DEFAULT_TOOL_CALL_STRUCTURE_SHARE: "number",
 	DICT_FILENAME: "string",
 	MAX_EXPANSION_BYTES: "number",
 	SUPPORTED_VERSION: "number",
@@ -113,7 +115,17 @@ describe("argot public export surface", () => {
 		expect(argot.DICT_FILENAME).toBe("AGENTS.dict");
 		expect(argot.DEFAULT_TOKEN_BUDGET).toBe(1000);
 		expect(argot.DEFAULT_SAVINGS_COVERAGE).toBe(0.9);
-		expect(argot.GENERATOR_REVISION).toBe(2);
+		expect(argot.GENERATOR_REVISION).toBe(3);
+		// The measured share of line structure emitted inside tool-call arguments.
+		// Pinned because it decides whether structure handles pay at all, and because
+		// changing it must go together with a GENERATOR_REVISION bump: the two moved
+		// as a pair here, and a change that moves only one leaves every cached
+		// dictionary priced by a generator that no longer exists.
+		expect(argot.DEFAULT_TOOL_CALL_STRUCTURE_SHARE).toBe(0.4176);
+		// The conservative end of what providers charge for output against input.
+		// Pinned because it sits in the denominator of the case argot makes for
+		// itself, so raising it would flatter the feature without any new evidence.
+		expect(argot.DEFAULT_OUTPUT_TO_INPUT_PRICE_RATIO).toBe(5);
 		expect(argot.SUPPORTED_VERSION).toBe(1);
 		expect(argot.MAX_EXPANSION_BYTES).toBe(8192);
 		expect(argot.ARGOT_LOAD_TOOL).toBe("argot_load");

@@ -16,7 +16,14 @@
  */
 
 import { ARGOT_PREAMBLE, DEFAULT_SIGIL } from "argot";
-import { type CostBreakdown, costShares, priceTokens, type RateCard, REFERENCE_RATE_CARD, type TokenMix } from "./cost-model";
+import {
+	type CostBreakdown,
+	costShares,
+	priceTokens,
+	type RateCard,
+	REFERENCE_RATE_CARD,
+	type TokenMix,
+} from "./cost-model";
 
 /**
  * Heading line of argot's teaching preamble, taken from argot's OWN rendered
@@ -2687,11 +2694,7 @@ export interface QueuedTrial {
  * under the same load and the same cache state, which is exactly the condition a
  * paired test assumes.
  */
-export function trialQueue(
-	arms: readonly string[],
-	tasks: readonly string[],
-	repeats: number,
-): QueuedTrial[] {
+export function trialQueue(arms: readonly string[], tasks: readonly string[], repeats: number): QueuedTrial[] {
 	const queue: QueuedTrial[] = [];
 	for (const task of tasks) {
 		for (let repeat = 0; repeat < repeats; repeat++) {

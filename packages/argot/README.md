@@ -144,7 +144,10 @@ const { toml, handles, dictTokens, estimatedSavings } = generateDictFromRepo(fil
   tokenBudget: 1000, // the generated dictionary stays under this; the default
 });
 
-console.log(`${handles.length} handles, dictionary ~${dictTokens} tokens, ~${estimatedSavings} output tokens saved per pass`);
+console.log(
+  `${handles.length} handles, dictionary ~${dictTokens} tokens, ` +
+    `~${Math.round(estimatedSavings)} output tokens saved per pass`,
+);
 if (toml) writeFileSync("AGENTS.dict", toml);
 
 function tryRead(path: string) {
@@ -191,6 +194,56 @@ fill the budget as before. The limit is a fraction rather than a smaller budget
 because a budget is an absolute quantity, so any number would bind differently on
 a small repository than on a large one; a ratio of savings to savings means the
 same thing at every scale.
+
+### Why a saving is a fraction of a token
+
+`estimatedSavings` and each handle's `savedTokens` are fractional, because the
+price of the text a handle replaces depends on where the model writes it.
+
+Most candidates cost the same everywhere. A path or an identifier is the same
+bytes in a tool call and in a sentence, so its price is simply what a tokenizer
+charges for it.
+
+Line structure is different. A handle whose expansion starts with a newline
+stands for a line break and the indentation after it, and a tool call's arguments
+are JSON. Inside one, a newline goes over the wire as the two characters `\` and
+`n`, and a run of tabs is charged one escape at a time, which makes the same text
+several times more expensive than it is in a plain message or in thinking, where
+it carries real control characters.
+
+The two prices are far enough apart to change the sign of the answer. On a
+tab-indented TypeScript tree, the escaped price earns five structure handles and
+the raw price earns none at all, because a handle costs at least two tokens and a
+real indentation run is about one. So the generator prices structure on the mix:
+`DEFAULT_TOOL_CALL_STRUCTURE_SHARE` of it escaped and the rest raw. The default,
+0.4176, is measured rather than chosen. Reading 307 recorded transcripts and
+23,467 assistant turns, 41.76% of every newline-plus-indentation run the agent
+emitted was inside a tool-call argument.
+
+Pass `toolCallStructureShare` to price for your own harness once you have
+measured it. Use 1 if your agent applies every edit through a tool, and 0 if it
+answers in markdown, in which case it should generate no structure handles at
+all. Round `estimatedSavings` when you print it.
+
+### Read `breakEvenTurns`, not `estimatedSavings` alone
+
+`estimatedSavings` is a gross figure. It counts output tokens the dictionary
+would remove across a pass over the corpus, and it says nothing about what the
+dictionary costs.
+
+That cost is real and it recurs. A dictionary is input, carried on every turn
+whether it is used or not. Its savings are output, produced once per emission.
+`breakEvenTurns` puts both on one line: how many turns of carrying this
+dictionary its own estimate would pay for, at
+`DEFAULT_OUTPUT_TO_INPUT_PRICE_RATIO`. A small number means the dictionary stops
+paying quickly.
+
+Treat it as optimistic in the same way `estimatedSavings` is. The saving is
+estimated from how many files of the repository a string appears in, and measured
+against real transcripts that overstates actual emissions by a median factor of
+about 675. So a small horizon is bad news, and a large one is not yet good news.
+Measure your own repository with
+`packages/deepswe-bench/measure-retype-likelihood.ts` before believing either.
 
 ### Other corpora
 
