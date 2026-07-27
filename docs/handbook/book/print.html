@@ -51,10 +51,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5a517aa6.js";
+            window.path_to_searchindex_js = "searchindex-ca22f3f4.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-578177b6.js"></script>
+        <script src="toc-2e8c749f.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -259,6 +259,19 @@ points you at.</p>
 <li><strong>Prior art</strong> is named with license when a technique is adapted; see <a href="#acknowledgements">Acknowledgements</a>.</li>
 <li><strong>Measurements</strong> state the source (this project’s benchmarks vs third-party). If a number has no method, it does not belong in reference material.</li>
 </ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="design-and-mechanisms"><a class="header" href="#design-and-mechanisms">Design and mechanisms</a></h1>
+<ul>
+<li><a href="#overview">Overview</a>: what the product is and what the harness does</li>
+<li><a href="#mechanisms">Mechanisms</a>: what the fork adds, then the shared base (hashline, approvals, model slots, profiles, engine modes)</li>
+<li><a href="#argot">Argot</a>: the per-project shorthand the model writes in</li>
+<li><a href="#performance">Performance</a>: retries, edit format, and tool bounds</li>
+<li><a href="#why-it-helps">Edit path and tool arguments</a></li>
+<li><a href="#context-size-and-retries">Context size and retries</a></li>
+<li><a href="#model-and-provider-selection">Model and provider selection</a></li>
+<li><a href="#approvals-and-errors">Approvals and errors</a></li>
+</ul>
+<p>Install: <a href="#install">Install</a>. Concepts: <a href="#core-concepts">Core concepts</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="overview"><a class="header" href="#overview">Overview</a></h1>
 <p>Veyyon is a local terminal coding agent. The loop, the tools, and your credentials all stay on your machine. You choose which model to use from the bundled provider catalog, either by signing in to a subscription or by bringing your own key.</p>
@@ -600,7 +613,16 @@ by hand. See <a href="#model-and-provider-selection">Model and provider selectio
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh
 </code></pre>
 <p>That installs the <code>veyyon</code> binary to <code>~/.local/bin</code>, links <code>vey</code> beside it, and runs a <code>doctor:</code> self-check. The self-check does two things: it confirms the binary starts and reports the version the release claims, and it runs a real search to confirm the native addon loads. The second check matters because <code>veyyon --version</code> answers without the addon, so a binary built for the wrong architecture starts cleanly and then fails on your first real command.</p>
-<p>That search runs twice. The first time is on the downloaded file, before anything is installed: the checksum proves the bytes are the ones that were published, but it cannot tell you the release has no build for your platform. If the download cannot run a search, the installer stops there and your machine is untouched, with no binary installed, no <code>vey</code> alias, no change to your shell profile and no completion files. The second run proves the finished install works from where it now lives. Each message says which of the two it is. Either way, when the search fails the installer tells you to install from source. When <code>~/.local/bin</code> is not on your <code>PATH</code> yet, the installer adds it to your shell profile and tells you to restart your shell.</p>
+<p>That search runs twice. The first time is on the downloaded file, before anything is installed: the checksum proves the bytes are the ones that were published, but it cannot tell you the release has no build for your platform. If the download cannot run a search, the installer stops there and your machine is untouched, with no binary installed, no <code>vey</code> alias, no change to your shell profile and no completion files. The second run proves the finished install works from where it now lives. Each message says which of the two it is. Either way, when the search fails the installer tells you to install from source. When <code>~/.local/bin</code> is not on your <code>PATH</code> yet, the installer adds it to your shell profile. A profile is read when a shell starts, and the shell you ran the installer in has already started, so <code>veyyon</code> is not a command in it yet. The closing steps say so, and reloading is the first of them:</p>
+<pre><code class="language-console">Next steps:
+  1. Reload your shell:        exec $SHELL -l
+     (or, without a new shell: source /home/you/.bashrc)
+  2. Launch in any repository: veyyon
+  3. Connect API providers:    veyyon setup
+  4. See every command:        veyyon --help
+</code></pre>
+<p>When the directory was already on your <code>PATH</code>, there is nothing to reload and the list starts at the launch step.</p>
+<p>The installer never calls the GitHub API. It finds the newest release from where <code>https://github.com/santhreal/veyyon/releases/latest</code> redirects to, and downloads the binary from that same host. The API is capped at 60 requests an hour per address, shared by everyone behind it, so a CI fleet or an office network that installs Veyyon repeatedly used to start getting a rate-limit failure on a machine where nothing was wrong. Nothing needs a token, and setting one changes nothing about the install.</p>
 <h2 id="install-on-windows"><a class="header" href="#install-on-windows">Install on Windows</a></h2>
 <pre><code class="language-powershell">irm https://veyyon.dev/install.ps1 | iex
 </code></pre>
@@ -671,7 +693,16 @@ release notes on the web rather than printing them into your terminal.</p>
 </code></pre>
 <p>You can always update on demand, whichever settings are in force:</p>
 <pre><code class="language-console">$ veyyon update
+Current version: 1.0.37
+New version available: 1.0.38
+  ok  Checksum verified
+  ok  Updated to 1.0.38. Restart veyyon to run it.
+Changelog for 1.0.38: https://veyyon.dev/changelog#v1-0-38
 </code></pre>
+<p>The last line is the same changelog link <code>veyyon rollback</code> prints, so however you
+change version you are told where to read what changed. If an update fails,
+Veyyon points you at <code>veyyon rollback</code> in the same breath, since a failed update
+is the moment you most want the way back.</p>
 <h3 id="going-back-to-an-older-version"><a class="header" href="#going-back-to-an-older-version">Going back to an older version</a></h3>
 <p>If a release breaks something you depend on, you do not have to wait for the next
 one. <code>veyyon rollback</code> moves your install to any published version.</p>
@@ -692,7 +723,10 @@ VERSION  PUBLISHED
 </code></pre>
 <p>The markers tell you where you stand: <code>current</code> is the version running now,
 <code>newer</code> is a version you would move forward to, and <code>previously run</code> is one this
-machine has been on before. Then name the one you want:</p>
+machine has been on before. Every version change is recorded, whether it came
+from an update, from a background automatic update, or from a rollback, so
+<code>previously run</code> marks the whole path this install has taken rather than only the
+times it went backwards. Then name the one you want:</p>
 <pre><code class="language-console">$ veyyon rollback 1.1.0
 </code></pre>
 <p>That installs 1.1.0 the same way an update installs a new release, verifies the
@@ -805,6 +839,16 @@ the ones already there to see whether they bind <code>vey</code>, and regenerate
 same way, so an update never starts completing a command that is not ours.</p>
 <h2 id="uninstall"><a class="header" href="#uninstall">Uninstall</a></h2>
 <p>The installer removes everything it added, and only what it added: the binary, the <code>vey</code> alias, the shell completions it wrote, the cached native addon, and a source checkout if you made one.</p>
+<p>The <code>PATH</code> line goes too. When the install directory was not already on your <code>PATH</code>, the installer appended two lines to your shell profile: a comment naming itself, and the line that adds the directory. On bash and zsh the pair looks like this, with the directory in single quotes so a name containing <code>$</code>, a backtick or a space is used literally rather than expanded when the profile is sourced:</p>
+<pre><code class="language-sh"># added by the veyyon installer
+export PATH='/home/you/.local/bin':"$PATH"
+</code></pre>
+<p>On fish it is <code>fish_add_path '/home/you/.local/bin'</code> instead. Uninstall removes that exact line, and the comment directly above it when the comment is still there, and nothing else: a line you wrote yourself that happens to name the same directory stays. Installs made before the quoting was added wrote <code>export PATH="/home/you/.local/bin:$PATH"</code>, and uninstall recognizes that older form too, so upgrading and then uninstalling does not strand a line in your profile.</p>
+<p>Because a profile is read when a shell starts, the shell you ran the uninstall in still has the old entry on its <code>PATH</code>, and bash and zsh also remember where they last found a command. The uninstall says so:</p>
+<pre><code class="language-console">veyyon uninstalled.
+  your shell keeps the old PATH entry until it reloads: exec $SHELL -l
+</code></pre>
+<p>Without that, typing <code>veyyon</code> straight after uninstalling answers “No such file or directory” for a path you can see is gone, which reads as a half-finished uninstall.</p>
 <p>Two things it deliberately leaves behind. If you already had your own <code>vey</code> command, the installer never created that alias in the first place (it says so at install time and tells you to launch with <code>veyyon</code>), so uninstall does not touch it or its completion file. And if your source checkout has uncommitted edits or commits on a local branch that is on no remote, it is moved to <code>~/.veyyon/src.bak-&lt;timestamp&gt;</code> instead of being deleted, so nothing you wrote is lost.</p>
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --uninstall
 </code></pre>
@@ -1167,7 +1211,7 @@ fix that rather than retrying with a different silent default.</p>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="core-concepts"><a class="header" href="#core-concepts">Core concepts</a></h1>
-<p>This chapter gives you the vocabulary for how Veyyon runs: sessions, permissions, and the boundary between the harness and your model provider. If you want operator commands instead, see <a href="#getting-started">Using Veyyon</a>, and for feature guides see <a href="features/index.html">Features</a>.</p>
+<p>This chapter gives you the vocabulary for how Veyyon runs: sessions, permissions, and the boundary between the harness and your model provider. If you want operator commands instead, see <a href="#getting-started">Using Veyyon</a>, and for feature guides see <a href="#features">Features</a>.</p>
 <h2 id="what-this-chapter-covers"><a class="header" href="#what-this-chapter-covers">What this chapter covers</a></h2>
 <p>The CLI is <code>veyyon</code>. It calls a configured model endpoint with your credentials and runs a tool loop: read, edit, verify, stop. The pages below define the units and contracts of that loop, so that later chapters can assume you know them.</p>
 <div class="table-wrapper">
@@ -1558,6 +1602,46 @@ OpenAI-compatible endpoints.</li>
 <li><a href="#permission-model">Permission model</a>: the approval modes.</li>
 <li><a href="#signing-in">Signing in</a>: interactive and env-var auth paths.</li>
 </ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="features"><a class="header" href="#features">Features</a></h1>
+<p>This chapter is the hub for Veyyon’s features: the surfaces you touch every session, then what you add on top to extend and customize the agent. For worked examples, see the recipes at the end.</p>
+<h2 id="interactive-surfaces"><a class="header" href="#interactive-surfaces">Interactive surfaces</a></h2>
+<p>These are the parts of the TUI you touch every session:</p>
+<ul>
+<li><a href="#multi-agent-monitoring">Status line and multi-agent UI</a> covers the status segments, <code>/cockpit</code>, jobs, and the swarm view.</li>
+<li><a href="#keybindings">Keybindings</a> covers the chords.</li>
+<li>The composer gives you prompt history, <code>@</code> and <code>/</code> completion, and <code>Esc</code> to interrupt. See <a href="#quickstart">Quickstart</a> and <a href="#keybindings">Keybindings</a>.</li>
+<li><a href="#web-search">Web search</a> covers searching from inside a session.</li>
+</ul>
+<h2 id="extend-and-customize"><a class="header" href="#extend-and-customize">Extend and customize</a></h2>
+<p>These add capabilities or change how the agent runs:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Feature</th><th>What it adds</th></tr>
+</thead>
+<tbody>
+<tr><td><a href="#plan-mode-and-goals">Plan mode, goals, and vibe</a></td><td>Engine modes that plan, pursue an objective, or direct workers</td></tr>
+<tr><td><a href="#skills">Skills</a></td><td>Reusable, on-demand instructions</td></tr>
+<tr><td><a href="#plugins">Plugins</a></td><td>Packaged extensions</td></tr>
+<tr><td><a href="#hooks">Hooks</a></td><td>TypeScript modules that run on events with <code>pi.on(...)</code></td></tr>
+<tr><td><a href="#mcp">MCP</a></td><td>Model Context Protocol servers and tools</td></tr>
+<tr><td><a href="#session-branching">Branching</a></td><td>Forking a session into parallel lines of work</td></tr>
+<tr><td><a href="#subagents">Subagents</a></td><td>Delegating work to background agents</td></tr>
+<tr><td><a href="#memory">Memory</a></td><td>Project-scoped recall across sessions</td></tr>
+<tr><td><a href="#profiles-1">Profiles</a></td><td>Isolated config, sessions, and state per name</td></tr>
+<tr><td><a href="#personalities">Personalities</a></td><td>Named voice and behavior presets</td></tr>
+<tr><td><a href="#speech">Speech</a></td><td>Text-to-speech output</td></tr>
+<tr><td><a href="#export-and-import">Export and import</a></td><td>Moving sessions in and out</td></tr>
+<tr><td><a href="#connectors-and-apps">Connectors</a></td><td>Third-party app integrations</td></tr>
+<tr><td><a href="#approvals">Approvals</a></td><td>The approval-mode boundary in depth</td></tr>
+<tr><td><a href="#code-review">Code review</a></td><td>Reviewing branches, commits, and uncommitted work</td></tr>
+<tr><td><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a></td><td>Running Veyyon from a script</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="recipes"><a class="header" href="#recipes">Recipes</a></h2>
+<p>For worked examples, see the <a href="#task-guides">Task guides</a>. For the full command and setting reference, see <a href="#reference">Reference</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="editing-and-repair"><a class="header" href="#editing-and-repair">Editing and repair</a></h1>
 <p>Editing reliably is the core of a coding agent, so it is worth understanding how Veyyon does it. The default edit surface is hashline. In practice that means three things work together: numbered lines that come back from <code>read</code> and <code>grep</code>, snapshot tags that identify a known state of a file, and the <code>edit</code> tool with its <code>SWAP</code>, <code>DEL</code>, and <code>INS</code> operations.</p>
