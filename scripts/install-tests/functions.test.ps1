@@ -755,6 +755,62 @@ try {
 $fresh = Get-RawUserPath
 Check "Get-RawUserPath returns a string, never null" ($null -ne $fresh.Value) "True"
 
+$ps1Text = Get-Content (Join-Path $root "scripts/install.ps1") -Raw
+
+# --- TLS 1.2 is enabled before anything is fetched ---
+# `irm https://veyyon.dev/install.ps1 | iex` runs under Windows PowerShell 5.1 on
+# a stock Windows box, whose default SecurityProtocol still includes SSL 3.0 and
+# TLS 1.0. GitHub has required TLS 1.2 since 2018, so without this every request
+# in the script fails with "The request was aborted: Could not create SSL/TLS
+# secure channel" — an error that names nothing about the real cause and sends
+# the user to look at their network. Asserted on the source, because the value is
+# process-wide and a test that set it would be testing itself.
+Check "the script enables TLS 1.2" `
+    ($ps1Text -match '\[Net\.SecurityProtocolType\]::Tls12') "True"
+# ADDED to whatever is already enabled, never assigned: a machine policy that has
+# turned on TLS 1.3 must keep it.
+Check "it adds the protocol rather than replacing the set" `
+    ($ps1Text -match '-bor \[Net\.SecurityProtocolType\]::Tls12') "True"
+# .NET 5+ removed the setting and always negotiates the best available protocol,
+# so PowerShell 7 throws on the assignment. That is not a failure to report.
+$tlsBlock = $ps1Text.Substring($ps1Text.IndexOf("SecurityProtocol -bor"))
+$tlsBlock = $tlsBlock.Substring(0, 200)
+Check "and a runtime without the setting is not an error" `
+    ($tlsBlock -match 'catch') "True"
+
+# --- every fetch survives Windows PowerShell 5.1 ---
+# `irm ... | iex` runs under 5.1 on a stock Windows box, and two of its defaults
+# break an install that is otherwise fine. Asserted on the source, because both
+# are process-wide settings a test cannot exercise from PowerShell 7.
+#
+# Without -UseBasicParsing, 5.1 hands the response to Internet Explorer's parsing
+# engine. That engine is absent on Server Core and refuses to run on any machine
+# where IE's first-launch configuration was never completed, so the download
+# fails with a message about Internet Explorer during an install that never
+# mentioned a browser.
+$fetchLines = @($ps1Text -split "`n" | Where-Object {
+    $_ -match '^\s*[^#]*Invoke-(WebRequest|RestMethod)'
+})
+Check "every fetch in the script is a real call, not only comments" `
+    ($fetchLines.Count -ge 3) "True"
+Check "and every one of them passes -UseBasicParsing" `
+    (@($fetchLines | Where-Object { $_ -notmatch '-UseBasicParsing' }).Count) "0"
+
+# 5.1 repaints its progress bar per read on a synchronous download, and on a
+# 300 MB binary that repainting dominates the transfer. Suppressed around the
+# download only, and restored afterwards, so nothing else in the user's session
+# loses its progress output.
+$dlBlock = $ps1Text.Substring($ps1Text.IndexOf('$StagingPath = Join-Path $InstallDir'))
+$dlBlock = $dlBlock.Substring(0, 1400)
+Check "the binary download suppresses the 5.1 progress bar" `
+    ($dlBlock -match 'ProgressPreference = "SilentlyContinue"') "True"
+Check "it captures what the setting was first" `
+    ($dlBlock -match '\$priorProgress = \$ProgressPreference') "True"
+Check "and restores it in a finally, so a failed download restores it too" `
+    ($dlBlock -match 'finally') "True"
+Check "the restore names the captured value rather than a hardcoded default" `
+    ($dlBlock -match '\$ProgressPreference = \$priorProgress') "True"
+
 # --- Get-LaunchCommand / Write-NextSteps: the closing block ---
 # Three install modes each printed their own single-line closing message, which
 # named BOTH names unconditionally: an install that had just declined to create
@@ -813,9 +869,9 @@ Check "the block uses the alias throughout when it is ours" `
 function Set-FakeRedirect {
     param([string]$Location)
     $Script:FakeLocation = $Location
-    function Global:Invoke-WebRequest {
-        param([Parameter(ValueFromRemainingArguments = $true)]$Rest)
-        return [pscustomobject]@{ Headers = @{ Location = $Script:FakeLocation } }
+    function Global:Get-RedirectLocation {
+        param([string]$Url)
+        return $Script:FakeLocation
     }
 }
 Set-FakeRedirect "https://github.com/santhreal/veyyon/releases/tag/v1.2.3"
@@ -834,13 +890,26 @@ Set-FakeRedirect "http://wifi.example.net/portal"
 Check "a captive portal's landing page yields nothing" ($null -eq (Get-TagFromRedirect "x")) "True"
 Set-FakeRedirect ""
 Check "no Location header at all yields nothing" ($null -eq (Get-TagFromRedirect "x")) "True"
-Remove-Item Function:Global:Invoke-WebRequest -ErrorAction SilentlyContinue
+# A tag page is not the same as a tag: `/releases/tag/` with nothing after it is
+# not a version, and installing "" would build a download URL with an empty path
+# segment that 404s much later, with a message about a missing asset.
+Set-FakeRedirect "https://github.com/santhreal/veyyon/releases/tag/"
+Check "a tag page with no tag on it yields nothing" ($null -eq (Get-TagFromRedirect "x")) "True"
+# The transport reports an unreachable host and an error status the same way, as
+# no redirect, so both reach the caller as "could not resolve a release" rather
+# than as a tag that happens to be empty.
+Set-FakeRedirect $null
+Check "an unreachable host yields nothing" ($null -eq (Get-TagFromRedirect "x")) "True"
+# And the tag is taken from the LAST /releases/tag/ segment, so a repository
+# whose own name contains that string cannot shift which version is read.
+Set-FakeRedirect "https://github.com/someone/releases-tag-mirror/releases/tag/v2.3.4"
+Check "the tag comes from the real tag segment" (Get-TagFromRedirect "x") "v2.3.4"
+Remove-Item Function:Global:Get-RedirectLocation -ErrorAction SilentlyContinue
 
 # No API call is left anywhere in the script, which is the whole point: an
 # install must not be able to fail because somebody else on the same address
 # installed veyyon sixty times this hour. Comment lines are excluded, since the
 # comment above the lookup names the API host to explain why it is not called.
-$ps1Text = Get-Content (Join-Path $root "scripts/install.ps1") -Raw
 $ps1Code = (Get-Content (Join-Path $root "scripts/install.ps1")) | Where-Object { $_ -notmatch '^\s*#' }
 Check "the Windows installer makes no api.github.com request at all" `
     (@($ps1Code | Where-Object { $_ -match 'api\.github\.com' }).Count) "0"
