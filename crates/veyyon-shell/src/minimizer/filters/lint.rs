@@ -57,6 +57,20 @@ pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerO
 
 #[must_use]
 pub fn condense_lint_output(program: &str, input: &str, exit_code: i32) -> String {
+	// Already condensed: hand it back rather than condensing it again.
+	//
+	// `group_diagnostics` preserves this filter's own annotations, but
+	// `strip_lint_noise` runs BEFORE it and does not, and it cannot: the entry
+	// rows under a `path (N diagnostics)` header are the tails of real
+	// diagnostics with the file prefix removed, so they can look like anything.
+	// A biome diagnostic whose text began with digits was re-read as a tsc
+	// code-frame gutter line and DELETED, leaving a summary that said one
+	// diagnostic existed with nothing under it to say what. Recognizing the
+	// header and stopping is the only reliable guard. See
+	// `primitives::is_diagnostic_count_header`.
+	if input.lines().any(primitives::is_diagnostic_count_header) {
+		return input.to_string();
+	}
 	let cleaned = primitives::strip_ansi(input);
 	let stripped = strip_lint_noise(program, &cleaned, exit_code);
 	if program == "eslint" {
@@ -117,6 +131,15 @@ fn preserves_machine_readable_output(ctx: &MinimizerCtx<'_>) -> bool {
 }
 
 fn is_lint_noise(program: &str, line: &str, exit_code: i32) -> bool {
+	// A line this minimizer wrote is never program noise, and stripping one
+	// destroys information rather than condensing it. Checked first, ahead of
+	// every pattern below, because the patterns are what ate them: `0 (×2)` is
+	// shaped exactly like a tsc code-frame body line, so re-condensing
+	// `"0 (×2)\n"` returned the empty string. See
+	// `primitives::is_minimizer_annotation`.
+	if primitives::is_minimizer_annotation(line) {
+		return false;
+	}
 	// eslint's `N error(s) … potentially fixable with the --fix option.` hint is
 	// actionable chatter, not a diagnostic; drop it while keeping the
 	// `✖ N problems (…)` summary line. Checked ahead of the diagnostic-signal
@@ -141,7 +164,7 @@ fn is_lint_noise(program: &str, line: &str, exit_code: i32) -> bool {
 	if matches!(program, "pyright" | "basedpyright") && is_pyright_banner_noise(line) {
 		return true;
 	}
-	if exit_code != 0 && contains_diagnostic_signal(line) {
+	if exit_code != 0 && primitives::contains_diagnostic_signal(line) {
 		return false;
 	}
 	let lower = line.to_ascii_lowercase();
@@ -302,7 +325,7 @@ fn render_eslint_stylish(stripped: &str) -> Option<String> {
 /// diagnostic rows. Reject summary/keyword lines so they are not mistaken for
 /// file headers.
 fn looks_like_eslint_header(line: &str) -> bool {
-	if line.is_empty() || !looks_like_path(line) {
+	if line.is_empty() || !is_plausible_file_field(line) {
 		return false;
 	}
 	let lower = line.to_ascii_lowercase();
@@ -433,7 +456,7 @@ fn is_js_frame_noise(program: &str, trimmed: &str) -> bool {
 	if is_gutter_bar_line(trimmed) {
 		return true;
 	}
-	if is_bare_gutter_numbered_line(trimmed) && !contains_diagnostic_signal(trimmed) {
+	if is_bare_gutter_numbered_line(trimmed) && !primitives::contains_diagnostic_signal(trimmed) {
 		return true;
 	}
 	match program {
@@ -490,11 +513,48 @@ fn is_bare_gutter_numbered_line(trimmed: &str) -> bool {
 
 #[must_use]
 pub fn group_diagnostics(input: &str) -> String {
+	// Already grouped: hand it back rather than grouping it again.
+	//
+	// Recognizing annotations line by line is not enough here, and the reason is
+	// structural. On a second pass EVERY line is either an annotation or an entry
+	// row, so nothing groups, and the empty-map branch below falls through to
+	// `dedup_consecutive_lines` over the WHOLE report -- which then collapses two
+	// identical entries into `0 (×2)`, a repeat counter on rows this function
+	// wrote itself. `"/(]:0\n/(]:0\n"` grouped to two entries reading `0` and came
+	// back as one reading `0 (×2)`.
+	//
+	// This function is called directly by other filters as well as through
+	// `condense_lint_output`, so the guard has to live here too rather than only
+	// at the condenser. See `primitives::is_diagnostic_count_header`.
+	if input.lines().any(primitives::is_diagnostic_count_header) {
+		return input.to_string();
+	}
 	let mut grouped: BTreeMap<String, Vec<String>> = BTreeMap::new();
 	let mut ungrouped = Vec::new();
 	let mut code_counts: BTreeMap<String, usize> = BTreeMap::new();
 
 	for line in input.lines() {
+		// A line this minimizer wrote is never a diagnostic to re-parse.
+		//
+		// Grouped output is shaped `<file> (<n> diagnostics)`, and `split_diagnostic`
+		// happily reads that back: `-/:0 (1 diagnostics)` splits into the path `-/`
+		// and the rest `0 (1 diagnostics)`, because `0 (…` starts with a line number.
+		// So a second pass regrouped the summary into a diagnostic ABOUT the summary
+		// and emitted a second header, which is how `"…\n-/:0 (1 diagnostics)\n"`
+		// became `"…\n-/ (1 diagnostics)\n  0 (1 diagnostics)\n1 diagnostics in 1
+		// files\n"`. Output that grows a layer every time it is condensed is the
+		// worst shape this can take, because captures do get re-minimized.
+		//
+		// Preserved verbatim rather than dropped: the summary is the useful part. When
+		// every line is one of ours nothing groups, and the function returns its
+		// input unchanged, which is exactly what idempotence means here.
+		// `is_minimizer_annotation` is the one owner of "did we write this", shared
+		// with `is_lint_noise`. Found by `fuzz/fuzz_targets/minimizer_lint_condense.
+		// rs`.
+		if primitives::is_minimizer_annotation(line) {
+			ungrouped.push(line.to_string());
+			continue;
+		}
 		if let Some((file, rest)) = split_diagnostic(line) {
 			if let Some(code) = extract_code(rest) {
 				*code_counts.entry(code).or_default() += 1;
@@ -515,8 +575,27 @@ pub fn group_diagnostics(input: &str) -> String {
 	let mut files: Vec<_> = grouped.into_iter().collect();
 	files.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then_with(|| a.0.cmp(&b.0)));
 
-	let mut out = String::new();
 	let diag_count: usize = files.iter().map(|(_, entries)| entries.len()).sum();
+	// One diagnostic is not a report, and grouping one costs more than it saves.
+	//
+	// The structure this function adds is a `N diagnostics in M files` header
+	// plus a `path (N diagnostics)` row per file, and both of those are claims
+	// about a SET. With a single diagnostic they restate the one line underneath
+	// them and the agent pays for two extra lines out of its context, which is a
+	// minimizer doing worse than nothing. At the bottom it inverted outright: a
+	// diagnostic whose message text is empty is counted but not printed, so ONE
+	// line of program output came back as TWO lines with nothing under them.
+	// Found by `fuzz/fuzz_targets/minimizer_lint_condense.rs`, whose property is
+	// that condensing does not grow the line count.
+	//
+	// Two or more diagnostics keep the grouping even when it costs lines: at that
+	// point the header is telling you something the lines do not, and the
+	// per-file rows are what make a long report readable.
+	if diag_count <= 1 {
+		return primitives::dedup_consecutive_lines(input);
+	}
+
+	let mut out = String::new();
 	out.push_str(&diag_count.to_string());
 	out.push_str(" diagnostics in ");
 	out.push_str(&files.len().to_string());
@@ -534,9 +613,23 @@ pub fn group_diagnostics(input: &str) -> String {
 		out.push_str(" (");
 		out.push_str(&entries.len().to_string());
 		out.push_str(" diagnostics)\n");
+		// An entry with no message text is counted but not printed.
+		//
+		// The indent is written before the text, so an empty entry produced a line
+		// holding two spaces and nothing else. That is a wasted line of the agent's
+		// transcript, and it is also what broke IDEMPOTENCE: a condensed output can
+		// reach this filter again, the noise-stripping that runs first on the second
+		// pass drops a whitespace-only line, and the two passes then disagreed for
+		// the same command. The header count above is unchanged, because the
+		// diagnostic really was reported; there is simply nothing to show for it.
+		// Found by `fuzz/fuzz_targets/minimizer_lint_condense.rs`.
 		for entry in entries.iter().take(12) {
+			let text = truncate_line(entry, 180);
+			if text.trim().is_empty() {
+				continue;
+			}
 			out.push_str("  ");
-			out.push_str(&truncate_line(entry, 180));
+			out.push_str(&text);
 			out.push('\n');
 		}
 		if entries.len() > 12 {
@@ -546,12 +639,40 @@ pub fn group_diagnostics(input: &str) -> String {
 		}
 	}
 
+	// Collapse repeated lines BEFORE the 40-line budget is spent, the same way the
+	// no-diagnostics branch above does it. Two reasons, and the second is the one
+	// a fuzzer found. First, forty identical or blank lines are forty lines of the
+	// ungrouped budget buying nothing, and the lines that actually said something
+	// get elided instead. Second, without it this branch is not a fixed point: a
+	// run of blank lines survived the first pass, was collapsed by the second, and
+	// the elision count moved with it, so the same capture condensed to two
+	// different things depending on how many times it had been through.
+	let collapsed = primitives::dedup_consecutive_lines(&ungrouped.join("\n"));
+	// Whitespace-only lines are dropped rather than carried into the tail.
+	//
+	// They cost a line of the agent's transcript and say nothing, which alone would
+	// justify this, but the reason it is a correctness fix is IDEMPOTENCE. A
+	// condensed output can reach this filter again, and the noise-stripping that
+	// runs FIRST on the second pass removes a whitespace-only line, so pass one
+	// emitted `"…(1 diagnostics)\n  \n"` and pass two answered `"…(1 diagnostics)\
+	// n"`. Two passes disagreeing means the same command minimizes differently
+	// depending on how it was captured. Found by
+	// `fuzz/fuzz_targets/minimizer_lint_condense.rs`.
+	let ungrouped: Vec<&str> = if ungrouped.is_empty() {
+		Vec::new()
+	} else {
+		collapsed
+			.lines()
+			.filter(|line| !line.trim().is_empty())
+			.collect()
+	};
+
 	for line in ungrouped.iter().take(40) {
 		out.push_str(line);
 		out.push('\n');
 	}
 	if ungrouped.len() > 40 {
-		out.push_str("[…");
+		out.push_str(primitives::ELISION_OPEN);
 		out.push_str(&(ungrouped.len() - 40).to_string());
 		out.push_str(" ungrouped lines elided…]\n");
 	}
@@ -563,7 +684,7 @@ fn split_diagnostic(line: &str) -> Option<(&str, &str)> {
 		return Some((file, rest));
 	}
 	let (file, rest) = line.split_once(':')?;
-	if !looks_like_path(file) || !starts_with_line_number(rest) {
+	if !is_plausible_file_field(file) || !starts_with_line_number(rest) {
 		return None;
 	}
 	Some((file, rest))
@@ -574,7 +695,7 @@ fn split_tsc_diagnostic(line: &str) -> Option<(&str, &str)> {
 	let close = line[paren..].find(')')? + paren;
 	let file = &line[..paren];
 	let loc = &line[paren + 1..close];
-	if !looks_like_path(file)
+	if !is_plausible_file_field(file)
 		|| !loc
 			.split(',')
 			.all(|part| part.chars().all(|ch| ch.is_ascii_digit()))
@@ -585,7 +706,12 @@ fn split_tsc_diagnostic(line: &str) -> Option<(&str, &str)> {
 	Some((file, rest))
 }
 
-fn looks_like_path(value: &str) -> bool {
+/// Whether a leading field could be the file column of a diagnostic line.
+///
+/// This is a weaker test than "names a source file": a bare `foo.ts` qualifies
+/// and so does an eslint header. It answers a different question from the path
+/// check in `dotnet.rs`, and both used to be called `looks_like_path`.
+fn is_plausible_file_field(value: &str) -> bool {
 	!value.is_empty()
 		&& !value.starts_with(' ')
 		&& (value.contains('/') || value.contains('.') || value.ends_with(')'))
@@ -630,15 +756,6 @@ fn truncate_line(line: &str, max_chars: usize) -> String {
 	let mut out: String = line.chars().take(max_chars.saturating_sub(1)).collect();
 	out.push('…');
 	out
-}
-
-fn contains_diagnostic_signal(line: &str) -> bool {
-	let lower = line.to_ascii_lowercase();
-	lower.contains("error")
-		|| lower.contains("warning")
-		|| lower.contains("failed")
-		|| lower.contains("panic")
-		|| lower.contains("exception")
 }
 
 #[cfg(test)]
@@ -854,11 +971,26 @@ mod tests {
 	#[test]
 	fn eslint_stylish_single_file_keeps_summary() {
 		// snip's "single file error" fixture.
+		//
+		// A single diagnostic is NOT wrapped in a set summary. The
+		// `N diagnostics in M files` header and the `path (N diagnostics)` row are
+		// both claims about a set, and with one diagnostic they restate the line
+		// underneath them: the reshaped `file:line:col` diagnostic is already
+		// complete, so the header cost the agent two lines of context and told it
+		// nothing. See the `diag_count <= 1` branch in `group_diagnostics`, and
+		// `fuzz/fuzz_targets/minimizer_lint_condense.rs`, which found the case
+		// where the same wrapping turned one line of output into two with nothing
+		// under them.
+		//
+		// Everything that carries information still survives, which is what this
+		// fixture is really for: the location, the rule id, the derived
+		// `Top rules:` line, and eslint's own summary.
 		let input = "/app/src/index.js\n  5:3  error  'x' is defined but never used  \
 		             no-unused-vars\n\n✖ 1 problem (1 error, 0 warnings)\n";
 		let out = condense_lint_output("eslint", input, 1);
-		assert!(out.contains("1 diagnostics in 1 files"), "got: {out}");
-		assert!(out.contains("index.js"));
+		assert!(!out.contains(" diagnostics in "), "one diagnostic needs no set summary: {out}");
+		assert!(out.contains("/app/src/index.js:5:3:"), "got: {out}");
+		assert!(out.contains("'x' is defined but never used"), "got: {out}");
 		assert!(out.contains("no-unused-vars"));
 		assert!(out.contains("Top rules:"));
 		assert!(out.contains("✖ 1 problem (1 error, 0 warnings)"), "got: {out}");
@@ -981,9 +1113,9 @@ mod tests {
 		// Helper-level pins: the BARE tsc form only strips when no diagnostic signal
 		// is present, while the biome/oxlint `│`-bar form always strips.
 		assert!(is_bare_gutter_numbered_line("3 foo = 1;"));
-		assert!(contains_diagnostic_signal("7 errors and 2 warnings found"));
-		assert!(contains_diagnostic_signal("5 warnings"));
-		assert!(contains_diagnostic_signal("2 problems (2 errors)"));
+		assert!(primitives::contains_diagnostic_signal("7 errors and 2 warnings found"));
+		assert!(primitives::contains_diagnostic_signal("5 warnings"));
+		assert!(primitives::contains_diagnostic_signal("2 problems (2 errors)"));
 		assert!(!is_gutter_bar_line("10 errors found"), "bare numeric is not a bar gutter");
 		assert!(is_gutter_bar_line("3 \u{2502} interface Props {"), "biome bar gutter strips");
 		assert!(is_gutter_bar_line("12 \u{2502} items.forEach(...)"), "oxlint bar gutter strips");

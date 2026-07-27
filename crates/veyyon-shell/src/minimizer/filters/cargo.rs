@@ -88,13 +88,22 @@ fn failures_only(input: &str, exit_code: i32) -> String {
 	let mut keep = false;
 	for line in input.lines() {
 		let trimmed = line.trim_start();
-		if trimmed.starts_with("failures:")
-			|| trimmed.starts_with("---- ")
-			|| trimmed.starts_with("error:")
-			|| trimmed.starts_with("error[")
-			|| trimmed.starts_with("thread '")
-			|| trimmed.starts_with("test result: FAILED")
-			|| trimmed.starts_with("test result: FAILED.")
+		// A line the minimizer WROTE never opens a failure block. `---- ` is the
+		// Rust failure header prefix, and a capture holding a bare `----` twice
+		// deduplicates to `---- (×2)`, which starts with that prefix without being
+		// a header at all. The latch then fired on the second pass and threw away
+		// everything before it, so a capture that had been minimized once came
+		// back shorter every time it was minimized again. A real header repeating
+		// consecutively would have to name the same test twice in a row, which
+		// cargo does not do. Found by `fuzz/fuzz_targets/minimizer_filters.rs`.
+		if !primitives::is_minimizer_annotation(trimmed)
+			&& (trimmed.starts_with("failures:")
+				|| trimmed.starts_with("---- ")
+				|| trimmed.starts_with("error:")
+				|| trimmed.starts_with("error[")
+				|| trimmed.starts_with("thread '")
+				|| trimmed.starts_with("test result: FAILED")
+				|| trimmed.starts_with("test result: FAILED."))
 		{
 			keep = true;
 		}
@@ -311,9 +320,7 @@ fn condense_fmt(input: &str) -> String {
 }
 
 fn compact_general(input: &str) -> String {
-	let stripped = primitives::strip_lines(input, &[is_general_cargo_noise]);
-	let deduped = primitives::dedup_consecutive_lines(&stripped);
-	primitives::head_tail_lines(&deduped, 80, 40)
+	primitives::strip_dedup_head_tail(input, &[is_general_cargo_noise], 80, 40)
 }
 
 fn is_general_cargo_noise(line: &str) -> bool {

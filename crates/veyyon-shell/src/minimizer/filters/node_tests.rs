@@ -23,20 +23,20 @@ fn drop_passed_lines(input: &str) -> String {
 
 	for line in input.lines() {
 		let trimmed = line.trim_start();
-		if is_summary_line(trimmed) {
-			push_line(&mut summary, line);
-			push_line(&mut out, line);
+		if is_test_run_summary_line(trimmed) {
+			primitives::push_line(&mut summary, line);
+			primitives::push_line(&mut out, line);
 			continue;
 		}
 		// snip jest.yaml strips: console.log noise and the zero-information
 		// "Ran all test suites" line carry no signal even on success.
-		if is_noise_line(trimmed) {
+		if is_test_runner_chatter(trimmed) {
 			continue;
 		}
 		if is_pass_noise(trimmed) {
 			continue;
 		}
-		push_line(&mut out, line);
+		primitives::push_line(&mut out, line);
 	}
 
 	if primitives::has_program_content(&out) {
@@ -59,21 +59,21 @@ fn failures_only(input: &str) -> String {
 		// snip jest.yaml strips: drop console.log noise and the zero-information
 		// "Ran all test suites" line transparently, without breaking the kept
 		// failure block around them.
-		if is_noise_line(trimmed) {
+		if is_test_runner_chatter(trimmed) {
 			continue;
 		}
 
-		if is_summary_line(trimmed) {
+		if is_test_run_summary_line(trimmed) {
 			keeping_block = false;
 			trailing_context = 0;
-			push_line(&mut out, line);
+			primitives::push_line(&mut out, line);
 			continue;
 		}
 
 		if starts_failure_block(trimmed) {
 			keeping_block = true;
 			trailing_context = 10;
-			push_line(&mut out, line);
+			primitives::push_line(&mut out, line);
 			continue;
 		}
 
@@ -83,7 +83,7 @@ fn failures_only(input: &str) -> String {
 				trailing_context = 0;
 				continue;
 			}
-			push_line(&mut out, line);
+			primitives::push_line(&mut out, line);
 			if trimmed.is_empty() {
 				continue;
 			}
@@ -104,12 +104,11 @@ fn failures_only(input: &str) -> String {
 	}
 }
 
-fn push_line(out: &mut String, line: &str) {
-	out.push_str(line);
-	out.push('\n');
-}
-
-fn is_summary_line(trimmed: &str) -> bool {
+/// Whether a line is a jest/vitest run summary such as `Tests:` or `Duration`.
+///
+/// See `is_listing_summary_line` in `listing.rs` for the file-listing question;
+/// the two shared the name `is_summary_line`.
+fn is_test_run_summary_line(trimmed: &str) -> bool {
 	trimmed.starts_with("Test Suites:")
 		|| trimmed.starts_with("Tests:")
 		|| trimmed.starts_with("Snapshots:")
@@ -138,7 +137,12 @@ fn starts_count_summary(trimmed: &str) -> bool {
 /// Zero-information lines worth dropping regardless of pass/fail context.
 /// Ported from snip/filters/jest.yaml's `remove_lines` strips: jest console.log
 /// echoes (`^\s+console\.`) and the trailing `Ran all test suites.` banner.
-fn is_noise_line(trimmed: &str) -> bool {
+/// Whether a line is jest/vitest chatter that carries no result.
+///
+/// `pkg.rs` has a predicate of the same name taking a context and an exit code,
+/// which decides something else entirely (package-manager nags). Renamed so the
+/// two cannot be mistaken for one another.
+fn is_test_runner_chatter(trimmed: &str) -> bool {
 	trimmed.starts_with("console.") || trimmed.starts_with("Ran all test suites")
 }
 

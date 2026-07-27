@@ -99,11 +99,6 @@ pub fn supports(program: &str, subcommand: Option<&str>) -> bool {
 	}
 }
 
-fn is_test_script_token(token: &str) -> bool {
-	let token = token.trim_matches(|ch| matches!(ch, '\'' | '"' | '`'));
-	matches!(token, "test" | "t" | "e2e" | "spec") || token.starts_with("test:")
-}
-
 /// The script/command word a `run`-style invocation targets: the first
 /// non-flag token after the `run`/`-m`/`--module` marker. Returns `None` when
 /// no marker (or no following word) is present.
@@ -125,22 +120,14 @@ fn run_invoked_word(command: &str) -> Option<&str> {
 fn is_pkg_test_invocation(ctx: &MinimizerCtx<'_>) -> bool {
 	matches!(ctx.subcommand, Some("test" | "t"))
 		|| (matches!(ctx.subcommand, Some("run"))
-			&& run_invoked_word(ctx.command).is_some_and(is_test_script_token))
+			&& run_invoked_word(ctx.command).is_some_and(primitives::is_test_script_token))
 }
 
 fn is_pkg_lint_invocation(ctx: &MinimizerCtx<'_>) -> bool {
 	matches!(ctx.subcommand, Some("run"))
 		&& run_invoked_word(ctx.command).is_some_and(|word| {
-			is_lint_script_token(word) || matches!(word, "tsc" | "eslint" | "biome")
+			primitives::is_lint_script_token(word) || matches!(word, "tsc" | "eslint" | "biome")
 		})
-}
-
-fn is_lint_script_token(token: &str) -> bool {
-	let token = token.trim_matches(|ch| matches!(ch, '\'' | '"' | '`'));
-	matches!(token, "lint" | "typecheck" | "type-check")
-		|| token.starts_with("lint:")
-		|| token.starts_with("typecheck:")
-		|| token.starts_with("type-check:")
 }
 
 /// Apply the matching built-in filter.
