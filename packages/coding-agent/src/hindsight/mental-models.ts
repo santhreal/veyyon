@@ -105,7 +105,6 @@ export function resolveSeedsForScope(scope: BankScope, scoping: HindsightScoping
 	return out;
 }
 
-
 function resolveSeedId(seed: RawSeed, tags: string[], scoping: HindsightScoping): string {
 	if (scoping !== "per-project-tagged" || !seed.projectTagged || tags.length === 0) return seed.id;
 	return `${seed.id}-${seedIdSuffixFromProjectTag(tags[0])}`;

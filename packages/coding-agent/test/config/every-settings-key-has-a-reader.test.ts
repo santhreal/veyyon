@@ -156,7 +156,7 @@ describe("every settings key", () => {
 
 		expect(
 			unwired,
-			"declared in the settings schema but nothing reads it — wire it, or delete the key and its documentation",
+			"declared in the settings schema but nothing reads it. Wire it, or delete the key and its documentation",
 		).toEqual([]);
 	});
 

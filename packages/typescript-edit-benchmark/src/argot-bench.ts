@@ -13,10 +13,11 @@
  * pass.
  */
 /// <reference types="./bun-imports.d.ts" />
-import { assistantTextBlocksFromUnknown } from "@veyyon/ai/utils/message-text";
+
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
+import { assistantTextBlocksFromUnknown } from "@veyyon/ai/utils/message-text";
 import { createAgentSession, discoverAuthStorage, ModelRegistry, SessionManager, Settings } from "@veyyon/coding-agent";
 import { loadArgotFolder } from "@veyyon/coding-agent/argot-cache";
 import { ArgotSession, DEFAULT_SIGIL, makePromptFragment, measureDecode, renderPreamble, type Vocabulary } from "argot";

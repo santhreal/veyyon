@@ -319,6 +319,51 @@ fn csi_sequence_len(bytes: &[u8], start: usize) -> Option<usize> {
 	}
 }
 
+/// Length in bytes of the OSC sequence starting at `bytes[start]`, if there is
+/// one.
+///
+/// An OSC sequence is `ESC ]`, then a body, then either BEL (`0x07`) or ST
+/// (`ESC \\`). The body may hold neither BEL nor ESC, which is what makes the
+/// scan bounded: the first of either byte ends the sequence or proves there
+/// isn't one. Terminals accept both terminators and real programs use both, so
+/// both are read here.
+///
+/// This is the half `strip_ansi` used to be missing, and it is not exotic
+/// output: `ESC ] 8 ; ; <url> BEL` is a hyperlink, which `ls --hyperlink`,
+/// cargo and clang all emit, and `ESC ] 0 ; <title> BEL` is a window-title set
+/// that shells and test runners write constantly. With only the CSI half, the
+/// escape byte was dropped and the REST OF THE SEQUENCE was kept as text, so a
+/// minimized capture handed the model `8;;file:///home/you/src/lib.rs` in the
+/// middle of a line. `stripAnsi` in `@veyyon/utils` has always stripped both,
+/// and that is the contract these two share; see
+/// `packages/utils/src/strip-ansi.ts`.
+fn osc_sequence_len(bytes: &[u8], start: usize) -> Option<usize> {
+	if bytes.get(start) != Some(&0x1b) || bytes.get(start + 1) != Some(&b']') {
+		return None;
+	}
+	let mut idx = start + 2;
+	loop {
+		match bytes.get(idx) {
+			// BEL terminates the sequence.
+			Some(0x07) => return Some(idx + 1 - start),
+			// ESC terminates it only as part of ST (`ESC \`). An ESC followed by
+			// anything else means this run was never a complete sequence, so the
+			// answer is `None` and the caller keeps the text: the same rule the CSI
+			// half applies to a capture truncated mid-escape.
+			Some(0x1b) => {
+				return if bytes.get(idx + 1) == Some(&b'\\') {
+					Some(idx + 2 - start)
+				} else {
+					None
+				};
+			},
+			Some(_) => idx += 1,
+			// Ran off the end: a truncated capture, not a sequence.
+			None => return None,
+		}
+	}
+}
+
 /// Trim every trailing carriage return from each line, keeping the final
 /// line's ending as it was.
 ///
@@ -356,7 +401,15 @@ pub fn normalize_carriage_returns(text: &str) -> String {
 	out
 }
 
-/// Remove ANSI CSI escape sequences while preserving line endings verbatim.
+/// Remove ANSI escape sequences, CSI and OSC both, preserving line endings
+/// verbatim.
+///
+/// This contract is shared with `stripAnsi` in
+/// `packages/utils/src/strip-ansi.ts` and both are tested against the same
+/// cases in `fixtures/ansi-strip-corpus.json`; see
+/// `tests/ansi_strip_contract.rs`. The two used to disagree, and each
+/// disagreement was a defect: this half handled CSI only, so an OSC hyperlink
+/// kept its body as visible text here while the TUI path stripped it.
 ///
 /// A byte run that is not a well-formed sequence is passed through as text.
 /// This used to treat any `ESC [` as an introducer and then skip forward to the
@@ -387,7 +440,7 @@ pub fn strip_ansi(input: &str) -> String {
 	let mut out = String::with_capacity(input.len());
 	let mut idx = 0usize;
 	while idx < bytes.len() {
-		if let Some(len) = csi_sequence_len(bytes, idx) {
+		if let Some(len) = csi_sequence_len(bytes, idx).or_else(|| osc_sequence_len(bytes, idx)) {
 			idx += len;
 			continue;
 		}
@@ -412,8 +465,9 @@ pub fn strip_ansi(input: &str) -> String {
 			continue;
 		}
 		// Copy one CHARACTER (not one byte) so the string stays valid UTF-8.
-		// Every byte a CSI sequence can contain is ASCII, so the skip above never
-		// lands inside a multi-byte character.
+		// Every byte a CSI sequence can contain is ASCII, and an OSC body ends on
+		// BEL or on ESC, which are ASCII too, so neither skip above can land inside
+		// a multi-byte character even though an OSC body may hold one.
 		let ch = input[idx..].chars().next().unwrap_or('\u{fffd}');
 		out.push(ch);
 		idx += ch.len_utf8();

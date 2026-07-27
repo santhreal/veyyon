@@ -32,10 +32,7 @@ import * as path from "node:path";
 
 import { DEFAULT_EMBEDDING_MODEL, embeddingModel } from "@veyyon/mnemopi/config";
 import { currentEmbeddingModel } from "@veyyon/mnemopi/core/embeddings";
-import {
-	FASTEMBED_ID_BY_HF_REPO,
-	HF_REPO_BY_FASTEMBED_ID,
-} from "@veyyon/mnemopi/core/fastembed-model-cache";
+import { FASTEMBED_ID_BY_HF_REPO, HF_REPO_BY_FASTEMBED_ID } from "@veyyon/mnemopi/core/fastembed-model-cache";
 
 const SRC = path.join(import.meta.dir, "..", "src");
 
@@ -161,7 +158,7 @@ describe("no second name table", () => {
 
 		expect(
 			offenders,
-			"a second model-name table — import FASTEMBED_ID_BY_HF_REPO from ./fastembed-model-cache instead",
+			"a second model-name table. Import FASTEMBED_ID_BY_HF_REPO from ./fastembed-model-cache instead",
 		).toEqual([]);
 	});
 
@@ -196,6 +193,6 @@ describe("no second name table", () => {
 			if (code.includes('"BAAI/bge-small-en-v1.5"')) offenders.push(rel);
 		}
 
-		expect(offenders, "the default model name — import DEFAULT_EMBEDDING_MODEL from ../config instead").toEqual([]);
+		expect(offenders, "the default model name. Import DEFAULT_EMBEDDING_MODEL from ../config instead").toEqual([]);
 	});
 });

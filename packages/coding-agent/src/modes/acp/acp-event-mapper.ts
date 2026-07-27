@@ -246,7 +246,7 @@ function mapAssistantMessageUpdate(
 	sessionId: string,
 	options: AcpEventMapperOptions,
 ): SessionNotification[] {
-	if (!isAssistantMessage(event.message)) {
+	if (!looksLikeAssistantMessage(event.message)) {
 		return [];
 	}
 
@@ -312,7 +312,7 @@ function mapAssistantMessageEnd(
 	sessionId: string,
 	options: AcpEventMapperOptions,
 ): SessionNotification[] {
-	if (!isAssistantMessage(event.message)) {
+	if (!looksLikeAssistantMessage(event.message)) {
 		return [];
 	}
 	const progress = options.getMessageProgress?.(event.message);
@@ -980,7 +980,16 @@ function extractNumberProperty<T extends object>(value: unknown, key: keyof T): 
 	return typeof property === "number" && Number.isFinite(property) ? property : undefined;
 }
 
-function isAssistantMessage(value: unknown): boolean {
+/**
+ * Whether an arbitrary value is shaped like an assistant message.
+ *
+ * A STRUCTURAL check on `unknown`, which is why it is named for what it inspects rather
+ * than for a type it proves: it reads a `role` field and nothing more. Three other modules
+ * used to call their own, stricter predicates `isAssistantMessage` too: one also requires
+ * usage counters, one requires array content, one requires a linkable id. Four different
+ * questions under one name is how a caller reaches for the wrong guarantee.
+ */
+function looksLikeAssistantMessage(value: unknown): boolean {
 	return (
 		typeof value === "object" && value !== null && "role" in value && (value as TextMessageLike).role === "assistant"
 	);

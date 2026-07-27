@@ -90,7 +90,9 @@ describe("content that has not been validated", () => {
 
 	/** A primitive where a block should be is skipped for the same reason. */
 	it("skips primitives", () => {
-		expect(assistantTextBlocksFromUnknown(["raw string", 42, true, { type: "text", text: "kept" }])).toEqual(["kept"]);
+		expect(assistantTextBlocksFromUnknown(["raw string", 42, true, { type: "text", text: "kept" }])).toEqual([
+			"kept",
+		]);
 	});
 
 	/**
@@ -131,7 +133,12 @@ describe("content that has not been validated", () => {
 	 */
 	it("keeps an empty text block", () => {
 		expect(assistantTextBlocksFromUnknown([{ type: "text", text: "" }])).toEqual([""]);
-		expect(assistantTextFromUnknown([{ type: "text", text: "a" }, { type: "text", text: "" }])).toBe("a\n");
+		expect(
+			assistantTextFromUnknown([
+				{ type: "text", text: "a" },
+				{ type: "text", text: "" },
+			]),
+		).toBe("a\n");
 	});
 
 	/** A non-text block type is not text, however close its shape looks. */

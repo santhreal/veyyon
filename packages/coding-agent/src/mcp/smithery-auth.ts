@@ -2,11 +2,10 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isEnoent, logger } from "@veyyon/utils";
 import { getAgentDir } from "@veyyon/utils/dirs";
-import { withTimeoutSignal } from "../utils/fetch-timeout";
+import { smitheryTimeoutSignal } from "./smithery-http";
 
 const SMITHERY_AUTH_FILENAME = "smithery.json";
 const SMITHERY_URL = process.env.SMITHERY_URL || "https://smithery.ai";
-const SMITHERY_AUTH_TIMEOUT_MS = 10_000;
 
 type SmitheryCliAuthSession = {
 	sessionId: string;
@@ -40,7 +39,7 @@ export function getSmitheryLoginUrl(): string {
 export async function createSmitheryCliAuthSession(): Promise<SmitheryCliAuthSession> {
 	const response = await fetch(`${SMITHERY_URL}/api/auth/cli/session`, {
 		method: "POST",
-		signal: withTimeoutSignal(SMITHERY_AUTH_TIMEOUT_MS),
+		signal: smitheryTimeoutSignal(),
 	});
 	if (!response.ok) {
 		throw new Error(`Failed to create Smithery auth session: ${response.status} ${response.statusText}`);

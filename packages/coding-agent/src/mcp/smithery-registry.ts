@@ -1,9 +1,9 @@
 import { clampLow, logger } from "@veyyon/utils";
-import { isTimeoutError, withTimeoutSignal } from "../utils/fetch-timeout";
+import { isTimeoutError } from "../utils/fetch-timeout";
+import { smitheryTimeoutSignal } from "./smithery-http";
 import type { MCPServerConfig } from "./types";
 
 const SMITHERY_REGISTRY_BASE_URL = "https://registry.smithery.ai";
-const SMITHERY_REGISTRY_TIMEOUT_MS = 10_000;
 
 type SmitherySearchEntry = {
 	id?: string;
@@ -323,7 +323,7 @@ async function fetchServerDetails(
 	}
 	const response = await fetch(`${SMITHERY_REGISTRY_BASE_URL}/servers/${path}`, {
 		headers,
-		signal: withTimeoutSignal(SMITHERY_REGISTRY_TIMEOUT_MS, options?.signal),
+		signal: smitheryTimeoutSignal(options?.signal),
 	});
 	if (!response.ok) return null;
 	return (await response.json()) as SmitheryServerDetails;
@@ -426,7 +426,7 @@ export async function searchSmitheryRegistry(
 		try {
 			response = await fetch(url.toString(), {
 				headers,
-				signal: withTimeoutSignal(SMITHERY_REGISTRY_TIMEOUT_MS, options?.signal),
+				signal: smitheryTimeoutSignal(options?.signal),
 			});
 		} catch (err) {
 			if (isTimeoutError(err)) {

@@ -79,7 +79,16 @@ function extractFolderFromPath(sessionPath: string): string {
 /**
  * Check if an entry is an assistant message.
  */
-function isAssistantMessage(entry: SessionLogEntry): entry is SessionMessageEntry {
+/**
+ * Whether a session-log entry is an assistant message that can be linked to.
+ *
+ * TWO requirements, not one. Beyond the assistant role, the entry needs a non-empty `id`:
+ * legacy sessions recorded message entries before id tracking, and those rows would
+ * violate the `messages.entry_id NOT NULL` constraint downstream. Named for the linkable
+ * part because that is the half a reader would otherwise miss; it was called
+ * `isAssistantMessage`, as were three unrelated predicates elsewhere.
+ */
+function isLinkableAssistantEntry(entry: SessionLogEntry): entry is SessionMessageEntry {
 	if (entry.type !== "message") return false;
 	const msgEntry = entry as SessionMessageEntry;
 	// Legacy sessions (pre-id tracking) recorded message entries without an `id`.
@@ -445,7 +454,7 @@ export async function parseSessionFile(sessionPath: string, fromOffset = 0): Pro
 			if (link) toolResults.push(link);
 			continue;
 		}
-		if (isAssistantMessage(entry)) {
+		if (isLinkableAssistantEntry(entry)) {
 			const msgStats = extractStats(sessionPath, folder, entry, currentServiceTier, agentType);
 			if (msgStats) stats.push(msgStats);
 			toolCalls.push(...extractToolCalls(sessionPath, folder, entry, agentType));

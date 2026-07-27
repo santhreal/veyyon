@@ -304,7 +304,7 @@ interface HistorySurface {
 function collectAssistantSurfaces(messages: readonly AgentMessage[]): HistorySurface[] {
 	const surfaces: HistorySurface[] = [];
 	for (const message of messages) {
-		if (!isAssistantMessage(message)) continue;
+		if (!isAssistantMessageWithBlocks(message)) continue;
 		for (let index = 0; index < message.content.length; index++) {
 			const block = message.content[index];
 			if (block.type === "text") {
@@ -601,7 +601,15 @@ function excerptForSurface(text: string, hints: readonly string[]): string {
 	return `${prefix}${normalized.slice(start, end)}${suffix}`;
 }
 
-function isAssistantMessage(message: AgentMessage): message is AssistantMessage {
+/**
+ * Whether an `AgentMessage` is an assistant message whose content is a block list.
+ *
+ * The block list is the point: the caller walks `content` looking for tool calls, so a
+ * message with the right role and a non-array body is not usable here. Named for that
+ * requirement rather than `isAssistantMessage`, which three other modules also used for
+ * three other questions.
+ */
+function isAssistantMessageWithBlocks(message: AgentMessage): message is AssistantMessage {
 	const candidate = message as { role?: unknown; content?: unknown };
 	return candidate.role === "assistant" && Array.isArray(candidate.content);
 }

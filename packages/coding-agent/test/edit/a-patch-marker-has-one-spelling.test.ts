@@ -32,10 +32,10 @@ import {
 	FILE_OP_MARKERS,
 	MOVE_TO_MARKER,
 	PATCH_WRAPPER_MARKERS,
-	UPDATE_FILE_MARKER,
+	ABORT_MARKER as REEXPORTED_ABORT,
 	BEGIN_PATCH_MARKER as REEXPORTED_BEGIN,
 	END_PATCH_MARKER as REEXPORTED_END,
-	ABORT_MARKER as REEXPORTED_ABORT,
+	UPDATE_FILE_MARKER,
 } from "../../src/edit/apply-patch/markers";
 import { parseApplyPatch } from "../../src/edit/apply-patch/parser";
 
@@ -140,8 +140,12 @@ describe("the parser reads both spellings of a file operation", () => {
 
 	/** The add operation takes the same two spellings. */
 	it("parses an add marker in both spellings", () => {
-		const withSpace = parseApplyPatch(["*** Begin Patch", "*** Add File: new.ts", "+hello", "*** End Patch"].join("\n"));
-		const withoutSpace = parseApplyPatch(["*** Begin Patch", "*** Add File:new.ts", "+hello", "*** End Patch"].join("\n"));
+		const withSpace = parseApplyPatch(
+			["*** Begin Patch", "*** Add File: new.ts", "+hello", "*** End Patch"].join("\n"),
+		);
+		const withoutSpace = parseApplyPatch(
+			["*** Begin Patch", "*** Add File:new.ts", "+hello", "*** End Patch"].join("\n"),
+		);
 
 		expect(withSpace[0]?.path).toBe("new.ts");
 		expect(withoutSpace[0]?.path).toBe("new.ts");
@@ -190,7 +194,7 @@ describe("no module keeps its own copy", () => {
 			if (literal.test(code)) offenders.push(rel);
 		}
 
-		expect(offenders, "an envelope marker literal — import it from ./apply-patch/markers instead").toEqual([]);
+		expect(offenders, "an envelope marker literal. Import it from ./apply-patch/markers instead").toEqual([]);
 	});
 
 	/**

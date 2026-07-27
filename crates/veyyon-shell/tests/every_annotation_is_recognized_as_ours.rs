@@ -254,11 +254,11 @@ mod the_diff_summary {
 	/// `--- Changes ---` from the diff compactor.
 	///
 	/// THE WORST SHAPE IN THE SET, because it is not merely unrecognized, it is
-	/// read as the WRONG thing: the header opens with `--- `, which is a unified-diff
-	/// file marker, so a second pass parsed it as a file named `Changes ---`. A
-	/// two-file diff came back claiming `1 file changed` with the second file's
-	/// name spliced onto the first, and nothing about the output looked wrong.
-	/// Found by `fuzz/fuzz_targets/minimizer_filters.rs`.
+	/// read as the WRONG thing: the header opens with `--- `, which is a
+	/// unified-diff file marker, so a second pass parsed it as a file named
+	/// `Changes ---`. A two-file diff came back claiming `1 file changed` with
+	/// the second file's name spliced onto the first, and nothing about the
+	/// output looked wrong. Found by `fuzz/fuzz_targets/minimizer_filters.rs`.
 	#[test]
 	fn the_changes_header_is_recognized() {
 		let config = enabled();
