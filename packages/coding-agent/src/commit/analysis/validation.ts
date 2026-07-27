@@ -14,6 +14,21 @@ export interface CommitValidationResult {
 	errors: string[];
 }
 
+/**
+ * The longest a commit summary line may be.
+ *
+ * Seventy-two characters is the conventional git limit: it leaves room for the four-space
+ * indent `git log` adds without wrapping in an eighty-column terminal.
+ *
+ * Declared here, in the module that ENFORCES it, because three modules need it and each
+ * used to spell it out. `pipeline.ts` held a private `SUMMARY_MAX_CHARS = 72` and passed
+ * it to `validateSummary` below, while `agentic/validation.ts` exported its own copy of
+ * the same number for the agentic path and its tool. A generator held to one limit and a
+ * validator enforcing another produces summaries that are rejected for being the length
+ * they were asked to be.
+ */
+export const SUMMARY_MAX_CHARS = 72;
+
 export function validateSummary(summary: string, maxChars: number): CommitValidationResult {
 	const errors: string[] = [];
 	if (!summary.trim()) {

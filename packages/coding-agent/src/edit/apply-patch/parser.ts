@@ -30,6 +30,7 @@ import {
 	BEGIN_PATCH_MARKER,
 	DELETE_FILE_MARKER,
 	END_PATCH_MARKER,
+	FILE_OP_MARKERS,
 	MOVE_TO_MARKER,
 	UPDATE_FILE_MARKER,
 } from "./markers";
@@ -160,11 +161,7 @@ function parseApplyPatchWithOptions(patchText: string, options: ParseApplyPatchO
 			const diffLines: string[] = [];
 			while (remaining.length > 0) {
 				const line = remaining[0];
-				if (
-					line.startsWith("*** Add File:") ||
-					line.startsWith("*** Delete File:") ||
-					line.startsWith("*** Update File:")
-				) {
+				if (FILE_OP_MARKERS.some(marker => line.startsWith(marker))) {
 					break;
 				}
 				diffLines.push(line);

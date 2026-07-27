@@ -2,9 +2,8 @@ import type { Usage } from "@veyyon/ai";
 import { Container, Spacer, Text } from "@veyyon/tui";
 import { formatDuration, formatNumber } from "@veyyon/utils";
 import { theme } from "../../modes/theme/theme";
+import { tokensPerSecond } from "./status-line/token-rate";
 
-/** Below this the rate is nonsense (cached/instant responses yield absurd tok/s). */
-const MIN_DURATION_MS = 100;
 
 /**
  * The per-turn receipt shown under a completed assistant message when
@@ -37,11 +36,13 @@ export function createUsageRowBlock(usage: Usage, durationMs?: number, ttftMs?: 
 	if (ttftMs && ttftMs > 0) {
 		parts.push(`ttft ${(ttftMs / 1000).toFixed(1)}s`);
 	}
-	if (durationMs && durationMs > MIN_DURATION_MS && usage.output > 0) {
-		// TPS over the total request duration — the post-TTFT window undercounts
-		// generation time when reasoning tokens are hidden before the first
-		// visible byte, inflating the rate.
-		const tokPerSec = (usage.output / durationMs) * 1000;
+	// TPS over the total request duration — the post-TTFT window undercounts
+	// generation time when reasoning tokens are hidden before the first visible
+	// byte, inflating the rate. `tokensPerSecond` is the one owner of the
+	// arithmetic and of the too-short-to-be-meaningful floor, shared with the
+	// status line so both surfaces publish the same number under the same rule.
+	const tokPerSec = tokensPerSecond(usage.output, durationMs);
+	if (tokPerSec !== null) {
 		parts.push(`${theme.icon.throughput} ${tokPerSec.toFixed(1)}/s`);
 	}
 	const block = new Container();
