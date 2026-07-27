@@ -274,6 +274,7 @@ export const repoScriptTests = [
 	"scripts/require-changelog.test.ts",
 	"scripts/run-rs-task.test.ts",
 	"scripts/verify-deployed-installers.test.ts",
+	"scripts/installer-brand-parity.test.ts",
 	"scripts/jules-port-manager.test.ts",
 	"scripts/upstream-radar.test.ts",
 	"scripts/release-sentinel.test.ts",

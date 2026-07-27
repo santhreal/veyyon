@@ -111,7 +111,69 @@ if [ "$IS_TTY" = 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; the
     C_ERR=$(printf '\033[31m')
 else
     C_RESET='' C_BOLD='' C_DIM='' C_OK='' C_WARN='' C_ERR=''
+    HAS_COLOR=0
 fi
+[ "${HAS_COLOR:-1}" = 0 ] || HAS_COLOR=1
+
+# ---- the mark ----
+# The sun IS the logo, and the install had none of it: the first thing anyone
+# ever saw of veyyon was a line of lowercase progress text.
+#
+# One line, printed once, before anything happens. A disc drawn from the ember
+# ramp, then the name letterspaced in silver, which is the same order the setup
+# splash uses — the eye lands on the sun, the name second.
+#
+# `packages/coding-agent/src/modes/components/sun.ts` is the OWNER of the brand
+# ember and of the glyph ramp; the values below are bands 2, 4, 6 and 7 of its
+# `EMBER` array and glyphs from its `GLYPH` ramp, quoted rather than reinvented.
+# `scripts/installer-brand-parity.test.ts` reads both files and fails if they
+# drift, because two shipped suns that disagree are worse than one plain line.
+#
+# Three renderings, narrowest capability last. Truecolor gets the real ember.
+# A 256-color terminal gets the xterm approximation the TUI already falls back
+# to. Anything else, including a terminal whose locale is not UTF-8 and would
+# render the block glyphs as mojibake, gets an ASCII disc — a wrong-looking
+# logo is worse than a plain one.
+BRAND_NAME_SPACED="v e y y o n"
+supports_utf8() {
+    case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in *[Uu][Tt][Ff]*) return 0 ;; esac
+    return 1
+}
+brand_mark() {
+    [ "$IS_TTY" = 1 ] || return 0
+    if [ "$HAS_COLOR" = 0 ] || ! supports_utf8; then
+        printf '\n  (*) %s\n\n' "$BRAND_NAME_SPACED"
+        return
+    fi
+    # Silver for the name, matching the splash's wordmark rather than the ember.
+    _bm_silver=$(printf '\033[38;2;198;203;212m')
+    # Lower blocks of rising height, so the silhouette is a dome: the sun coming
+    # up over its own horizon, which is the setup splash's sunrise compressed
+    # onto one line. Every cell is SOLID and the color carries the heat.
+    #
+    # Two earlier attempts, both discarded after rendering them to an image on a
+    # grey and a black ground. Shading with the owner's `░ ▒ ▓` ramp the way the
+    # TUI does washed the whole thing out: a terminal draws those as a dot
+    # pattern of the foreground over the background, so an ember `▒` averages to
+    # a muted brown-grey and the mark read as a grey swatch. The TUI can shade
+    # because it has a field of cells to average across; seven cells cannot.
+    # Solid full blocks fixed the color and left a rectangle, which reads as a
+    # progress bar. The height profile is what makes it a sun.
+    case "${COLORTERM:-}" in
+        truecolor|24bit)
+            # EMBER bands 1, 4, 6, 7, 6, 4, 1: a dark rim, then band 4, which is
+            # the brand ember the website's `--sun` and the setup splash both
+            # rest on, then out to the white-hot core and symmetrically back. The
+            # brand color is deliberately IN the ramp rather than near it.
+            _bm_disc=$(printf '\033[38;2;110;52;24m▁\033[38;2;240;134;46m▃\033[38;2;251;192;109m▅\033[38;2;255;227;173m█\033[38;2;251;192;109m▅\033[38;2;240;134;46m▃\033[38;2;110;52;24m▁')
+            ;;
+        *)
+            # EMBER_256, same ordering: 88, 208, 220, 223.
+            _bm_disc=$(printf '\033[38;5;88m▁\033[38;5;208m▃\033[38;5;220m▅\033[38;5;223m█\033[38;5;220m▅\033[38;5;208m▃\033[38;5;88m▁')
+            ;;
+    esac
+    printf '\n  %s%s   %s%s%s%s\n\n' "$_bm_disc" "$C_RESET" "$_bm_silver" "$C_BOLD" "$BRAND_NAME_SPACED" "$C_RESET"
+}
 
 # The terminal's width, or 0 when there is nothing to wrap to.
 #
@@ -1405,8 +1467,11 @@ install_binary() {
 # functions without triggering an install.
 if [ "${VEYYON_INSTALL_SOURCED:-0}" != "1" ]; then
     if [ "$DO_UNINSTALL" -eq 1 ]; then
+        # No mark on the way out. A logo over a removal reads as a sales pitch
+        # at exactly the wrong moment; an uninstall should be quiet and quick.
         do_uninstall
     else
+        brand_mark
         case "$MODE" in
             local) install_local ;;
             source) has bun || install_bun; require_bun_version; install_via_bun ;;
