@@ -7,7 +7,7 @@ import {
 	isTimedOutCancellation,
 	getExecutionDeadlineMs as sharedGetExecutionDeadlineMs,
 } from "@veyyon/coding-agent/eval/executor-base";
-import { getExecutionDeadlineMs as jlGetExecutionDeadlineMs } from "@veyyon/coding-agent/eval/jl/executor";
+import { deadlineForNonZeroTimeout } from "@veyyon/coding-agent/eval/jl/executor";
 
 /**
  * The Julia executor used to carry byte-diverged private copies of
@@ -103,27 +103,38 @@ describe("getRemainingTimeoutMs (shared owner)", () => {
 	});
 });
 
-describe("jl getExecutionDeadlineMs intentional divergence", () => {
+/**
+ * Julia's zero-timeout rule, and the reason it has its own NAME.
+ *
+ * The behaviour was always deliberate; what was wrong is that it was called
+ * `getExecutionDeadlineMs`, the same name as the shared owner in
+ * `executor-base`, so two different answers to "when does this expire" shared
+ * one identifier and a call site that imported the wrong one still compiled.
+ * `deadlineForNonZeroTimeout` says which rule it is. These cases pin both sides
+ * of the difference, because asserting only jl's answer would pass if the shared
+ * owner quietly adopted the same rule and left the split undocumented.
+ */
+describe("deadlineForNonZeroTimeout is Julia's rule and says so in its name", () => {
 	it("returns undefined (no timeout) for a zero timeout, unlike the shared owner", () => {
-		expect(jlGetExecutionDeadlineMs({ timeoutMs: 0 })).toBeUndefined();
+		expect(deadlineForNonZeroTimeout({ timeoutMs: 0 })).toBeUndefined();
 		// Contrast: the shared owner returns an immediate deadline for t=0.
 		expect(typeof sharedGetExecutionDeadlineMs({ timeoutMs: 0 })).toBe("number");
 	});
 
 	it("derives a deadline from a positive timeout", () => {
 		const before = Date.now();
-		const deadline = jlGetExecutionDeadlineMs({ timeoutMs: 5_000 });
+		const deadline = deadlineForNonZeroTimeout({ timeoutMs: 5_000 });
 		expect(deadline).toBeGreaterThanOrEqual(before + 5_000);
 		expect(deadline).toBeLessThanOrEqual(Date.now() + 5_000);
 	});
 
 	it("passes an explicit deadline through unchanged", () => {
-		expect(jlGetExecutionDeadlineMs({ deadlineMs: 123_456 })).toBe(123_456);
+		expect(deadlineForNonZeroTimeout({ deadlineMs: 123_456 })).toBe(123_456);
 	});
 
 	it("returns undefined when neither deadline nor timeout is set", () => {
-		expect(jlGetExecutionDeadlineMs(undefined)).toBeUndefined();
-		expect(jlGetExecutionDeadlineMs({})).toBeUndefined();
+		expect(deadlineForNonZeroTimeout(undefined)).toBeUndefined();
+		expect(deadlineForNonZeroTimeout({})).toBeUndefined();
 	});
 });
 

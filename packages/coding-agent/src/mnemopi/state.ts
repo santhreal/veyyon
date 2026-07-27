@@ -1,11 +1,11 @@
 import { dirname } from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
+// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
+import { assistantTextFromUnknown } from "@veyyon/ai/utils/message-text";
 import type * as MnemopiNs from "@veyyon/mnemopi";
 import type { Mnemopi, RecallResult } from "@veyyon/mnemopi";
 import type * as MnemopiCoreNs from "@veyyon/mnemopi/core";
 import type { LocalModelInitializer } from "@veyyon/mnemopi/core";
-// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
-import { assistantTextFromUnknown } from "@veyyon/ai/utils/message-text";
 import * as logger from "@veyyon/utils/logger";
 import { escapeRegExp } from "@veyyon/utils/regex";
 import {
@@ -833,4 +833,3 @@ function userText(content: unknown): string {
 // possibly-untyped persisted message content (raw JSON off disk), so it cannot
 // use the typed @veyyon/ai assistantText owner, which requires an
 // AssistantMessage. Mirrors userText's null/non-object guard.
-

@@ -29,7 +29,6 @@ const ECOSIA_HOME_URL = "https://www.ecosia.org/";
 const ECOSIA_OWN_HOSTS: readonly string[] = ["ecosia.org"];
 const ECOSIA_SEARCH_URL = "https://www.ecosia.org/search";
 const MAX_NUM_RESULTS = 20;
-const RESULT_RENDER_TIMEOUT_MS = 10_000;
 
 interface ParsedResult {
 	title: string;
@@ -105,10 +104,7 @@ async function callEcosiaHtml(params: SearchParams): Promise<string> {
 				referer: ECOSIA_HOME_URL,
 				browser: {
 					homeUrl: ECOSIA_HOME_URL,
-					ready: {
-						selector: 'article[data-test-id="organic-result"]',
-						timeoutMs: RESULT_RENDER_TIMEOUT_MS,
-					},
+					ready: { selector: 'article[data-test-id="organic-result"]' },
 					shouldFallback: isBlockedPage,
 				},
 			});

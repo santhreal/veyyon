@@ -5,9 +5,10 @@
 # Understand Veyyon
 
 - [How to read this book](./foundations/how-to-read.md)
-- [Overview](./why/value.md)
-- [Mechanisms](./why/innovations.md)
-- [Argot](./why/argot.md)
+- [Design and mechanisms](./why/index.md)
+  - [Overview](./why/value.md)
+  - [Mechanisms](./why/innovations.md)
+  - [Argot](./why/argot.md)
 - [Harness design goals](./foundations/thesis.md)
 - [Architecture at a glance](./foundations/architecture.md)
 - [Performance](./why/performance.md)
@@ -33,6 +34,7 @@
 
 # Everyday use
 
+- [Features](./features/index.md)
 - [Editing and repair](./using/editing.md)
 - [Approvals](./features/sandbox.md)
   - [Safety](./using/safety.md)

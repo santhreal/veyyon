@@ -1,0 +1,118 @@
+{
+	"$doc": [
+		"Cases shared by the two strip-ansi implementations: crates/veyyon-shell/src/minimizer/primitives.rs (strip_ansi) and packages/utils/src/strip-ansi.ts (stripAnsi).",
+		"One corpus because the two used to disagree, and each disagreement was a real defect rather than a stylistic difference: the Rust half stripped CSI only, so an OSC hyperlink kept its body as visible text in minimized shell output; the TypeScript half read parameter bytes as [0-9;?] rather than the spec's 0x30-0x3f, so a colon-subparameter SGR survived; and the TypeScript half kept a stray escape, which is not a fixed point (see escape_run_settles_in_one_pass).",
+		"The contract: remove every well-formed CSI (ESC [, parameter bytes 0x30-0x3f, intermediate bytes 0x20-0x2f, one final byte 0x40-0x7e) and every well-formed OSC (ESC ], a body holding neither BEL nor ESC, terminated by BEL or by ST which is ESC backslash). An escape that opens neither is dropped, alone, and the text after it is kept. Nothing else changes, line endings included.",
+		"Both test suites read this file and assert exact equality plus idempotence for every case. Add a case here, not in one language."
+	],
+	"cases": [
+		{
+			"name": "sgr_color",
+			"why": "The everyday case: a colored word from any build tool.",
+			"input": "\u001b[31mred\u001b[0m",
+			"expected": "red"
+		},
+		{
+			"name": "csi_cursor_and_erase",
+			"why": "Progress rendering is cursor movement and erase, not color, and it is the bulk of what a captured spinner contains.",
+			"input": "\u001b[2K\u001b[1Ahello",
+			"expected": "hello"
+		},
+		{
+			"name": "csi_colon_subparameters",
+			"why": "A true-color SGR written with colon subparameters, which libvte and several test runners emit. The parameter byte range is 0x30-0x3f, so ':' '<' '=' '>' are parameters too; a class of only [0-9;?] leaves 38:2:255:0:0m behind as visible text.",
+			"input": "\u001b[38:2:255:0:0mtrue color\u001b[0m",
+			"expected": "true color"
+		},
+		{
+			"name": "csi_private_mode",
+			"why": "Hiding and showing the cursor, which every interactive tool does on entry and exit.",
+			"input": "\u001b[?25lworking\u001b[?25h",
+			"expected": "working"
+		},
+		{
+			"name": "csi_intermediate_byte",
+			"why": "A sequence with an intermediate byte (0x20-0x2f) between parameters and the final byte: cursor-shape selection.",
+			"input": "\u001b[1 qtext",
+			"expected": "text"
+		},
+		{
+			"name": "osc_window_title_bel",
+			"why": "A window-title set terminated by BEL. Shells and test runners write these constantly, and with no OSC handling the escape was dropped and '0;window title' stayed as visible text.",
+			"input": "\u001b]0;window title\u0007visible",
+			"expected": "visible"
+		},
+		{
+			"name": "osc_hyperlink_st",
+			"why": "An OSC 8 hyperlink terminated by ST. Emitted by ls --hyperlink, cargo and clang, so this reaches the minimizer from ordinary builds.",
+			"input": "\u001b]8;;https://example.com\u001b\\link text\u001b]8;;\u001b\\",
+			"expected": "link text"
+		},
+		{
+			"name": "osc_body_holds_utf8",
+			"why": "An OSC body is arbitrary text, including multi-byte characters. Both terminators are ASCII, so a scan that ends on one never lands inside a character.",
+			"input": "\u001b]0;títle→\u0007body",
+			"expected": "body"
+		},
+		{
+			"name": "osc_unterminated_is_not_a_sequence",
+			"why": "A capture cut at a buffer boundary mid-OSC has no terminator. The escape byte goes and the rest is kept as text: deleting to the end of the buffer would lose everything after it, which is the failure the CSI half was fixed for.",
+			"input": "\u001b]8;;https://example.com",
+			"expected": "]8;;https://example.com"
+		},
+		{
+			"name": "osc_body_broken_by_an_escape_that_is_not_st",
+			"why": "An ESC inside an OSC body ends the sequence only as part of ST. Here it opens a real CSI instead, so the OSC never completes and the CSI still goes.",
+			"input": "\u001b]0;t\u001b[0mrest",
+			"expected": "]0;trest"
+		},
+		{
+			"name": "csi_truncated_keeps_its_tail",
+			"why": "The regression the CSI scanner exists for: a truncated escape used to delete the whole tail of the capture.",
+			"input": "error: \u001b[3",
+			"expected": "error: [3"
+		},
+		{
+			"name": "lone_escape_is_dropped",
+			"why": "A stray escape renders as nothing, so dropping the one byte costs the operator nothing, and it is what makes a pass a fixed point.",
+			"input": "a\u001bb",
+			"expected": "ab"
+		},
+		{
+			"name": "escape_run_settles_in_one_pass",
+			"why": "Found by fuzz/fuzz_targets/minimizer_filters.rs. Keeping a stray escape as text let a removal push it against a following '[' and MAKE a sequence, so the same capture minimized to two different things depending on how many passes it had been through.",
+			"input": " ][:\u001b\u001b[[[[",
+			"expected": " ][:[["
+		},
+		{
+			"name": "adjacent_sequences_of_both_kinds",
+			"why": "Sequences arrive back to back, and a scanner that only restarts on text between them misses the second.",
+			"input": "\u001b[1m\u001b[31m\u001b]0;t\u0007x",
+			"expected": "x"
+		},
+		{
+			"name": "line_endings_are_preserved_verbatim",
+			"why": "Stripping decides which bytes are escapes, never how lines end. Carriage returns are a separate primitive's decision and a strip that ate them would hide a \\r-overwritten line.",
+			"input": "\u001b[32mok\u001b[0m\r\nnext\n",
+			"expected": "ok\r\nnext\n"
+		},
+		{
+			"name": "text_outside_sequences_keeps_its_characters",
+			"why": "Multi-byte characters survive intact: the scan copies characters, not bytes.",
+			"input": "\u001b[1mné→ok\u001b[0m",
+			"expected": "né→ok"
+		},
+		{
+			"name": "bell_alone_is_not_an_escape_sequence",
+			"why": "BEL terminates an OSC; on its own it is data. Stripping it would edit output no terminal treats as an escape.",
+			"input": "beep\u0007done",
+			"expected": "beep\u0007done"
+		},
+		{
+			"name": "plain_text_is_returned_unchanged",
+			"why": "The fast path. Most captured lines hold no escape at all, and they must come back byte for byte.",
+			"input": "plain text, no escapes",
+			"expected": "plain text, no escapes"
+		}
+	]
+}

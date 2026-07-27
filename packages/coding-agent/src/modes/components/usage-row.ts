@@ -4,7 +4,6 @@ import { formatDuration, formatNumber } from "@veyyon/utils";
 import { theme } from "../../modes/theme/theme";
 import { tokensPerSecond } from "./status-line/token-rate";
 
-
 /**
  * The per-turn receipt shown under a completed assistant message when
  * `display.showTokenUsage` is on: what the turn spent and how long it took.

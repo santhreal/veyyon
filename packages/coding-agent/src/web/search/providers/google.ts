@@ -16,7 +16,6 @@ const GOOGLE_HOME_URL = "https://www.google.com/";
 const GOOGLE_OWN_HOSTS: readonly string[] = ["google.com"];
 const GOOGLE_SEARCH_URL = "https://www.google.com/search";
 const MAX_NUM_RESULTS = 20;
-const RESULT_RENDER_TIMEOUT_MS = 10_000;
 
 const RECENCY_TO_GOOGLE_TBS: Record<NonNullable<SearchParams["recency"]>, string> = {
 	day: "qdr:d",
@@ -123,7 +122,7 @@ async function callGoogleHtml(params: SearchParams, numResults: number): Promise
 				referer: GOOGLE_HOME_URL,
 				browser: {
 					homeUrl: GOOGLE_HOME_URL,
-					ready: { selector: "a h3", timeoutMs: RESULT_RENDER_TIMEOUT_MS },
+					ready: { selector: "a h3" },
 					shouldFallback: candidate => blockReason(candidate) !== undefined,
 				},
 			});

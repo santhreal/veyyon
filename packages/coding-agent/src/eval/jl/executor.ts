@@ -6,6 +6,7 @@ import {
 	buildEvalSessionKey,
 	createCancelledKernelResult,
 	executeWithKernelBase,
+	getExecutionDeadlineMs,
 	getRemainingTimeoutMs,
 	isCancellationError as isCancellationErrorBase,
 	isTimedOutCancellation as isTimedOutCancellationBase,
@@ -98,18 +99,26 @@ function isTimedOutCancellation(error: unknown, signal?: AbortSignal): boolean {
 	return isTimedOutCancellationBase(error, JuliaExecutionCancelledError, signal);
 }
 
-// Kept local (not the shared executor-base owner) on purpose: unlike py/rb, jl
-// treats `timeoutMs === 0` as "no timeout" (returns undefined) rather than an
-// immediate deadline. The shared `getExecutionDeadlineMs` returns `Date.now()`
-// for a zero timeout; jl's kernel path would then reject a still-valid session
-// as already expired. The `> 0` guard is the intentional difference; see the
-// getExecutionDeadlineMs test in julia-cancellation-helpers.test.ts.
-export function getExecutionDeadlineMs(
+/**
+ * Julia's deadline rule: a timeout of zero means NO timeout.
+ *
+ * Named for the difference rather than sharing the shared owner's name. It used
+ * to be called `getExecutionDeadlineMs`, the same name as
+ * {@link getExecutionDeadlineMs} in `executor-base`, with a different answer for
+ * `timeoutMs: 0` -- the shared owner returns an immediate deadline, this returns
+ * none. Two behaviours behind one name is the shape a reader cannot see: a call
+ * site that imported the wrong one still compiled, and jl's kernel path would
+ * have rejected a still-valid session as already expired.
+ *
+ * The arithmetic is still the shared owner's; only the zero rule is here, so
+ * there is one place that knows a deadline is `now + timeout`.
+ */
+export function deadlineForNonZeroTimeout(
 	options?: Pick<JuliaExecutorOptions, "deadlineMs" | "timeoutMs">,
 ): number | undefined {
 	if (options?.deadlineMs !== undefined) return options.deadlineMs;
-	if (options?.timeoutMs !== undefined && options.timeoutMs > 0) return Date.now() + options.timeoutMs;
-	return undefined;
+	if (options?.timeoutMs === undefined || options.timeoutMs <= 0) return undefined;
+	return getExecutionDeadlineMs(options);
 }
 
 function requireRemainingTimeoutMs(deadlineMs?: number): number | undefined {
@@ -537,7 +546,7 @@ export async function executeJuliaWithKernel(
 
 export async function executeJulia(code: string, options?: JuliaExecutorOptions): Promise<JuliaResult> {
 	const cwd = normalizeSessionCwd(options?.cwd ?? getProjectDir());
-	const deadlineMs = getExecutionDeadlineMs(options);
+	const deadlineMs = deadlineForNonZeroTimeout(options);
 	const executionOptions: JuliaExecutorOptions = {
 		...(options ?? {}),
 		cwd,

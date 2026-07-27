@@ -28,7 +28,6 @@ export function tokensPerSecond(outputTokens: number, durationMs: number | null 
 	return Number.isFinite(rate) && rate > 0 ? rate : null;
 }
 
-
 type AssistantUsage = {
 	output: number;
 };
