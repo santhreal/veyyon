@@ -51,7 +51,7 @@ describe("the installer's truecolor disc", () => {
 		expect(installSh).toContain(`\\033[38;2;${r};${g};${b}m`);
 	});
 
-	it.each(MARK_BANDS)("emits ember band %i exactly as the owner defines it", band => {
+	it.each([...MARK_BANDS])("emits ember band %i exactly as the owner defines it", (band: number) => {
 		const [r, g, b] = EMBER[band] as readonly [number, number, number];
 		expect(installSh).toContain(`\\033[38;2;${r};${g};${b}m`);
 	});
@@ -81,8 +81,8 @@ describe("the installer's 256-color fallback", () => {
 	 */
 	const EMBER_256_FOR_MARK = { 1: 88, 4: 208, 6: 220, 7: 223 } as const;
 
-	it.each(MARK_BANDS)("emits the 256-color stand-in for band %i", band => {
-		expect(installSh).toContain(`\\033[38;5;${EMBER_256_FOR_MARK[band]}m`);
+	it.each([...MARK_BANDS])("emits the 256-color stand-in for band %i", (band: number) => {
+		expect(installSh).toContain(`\\033[38;5;${EMBER_256_FOR_MARK[band as keyof typeof EMBER_256_FOR_MARK]}m`);
 	});
 });
 
@@ -114,7 +114,10 @@ describe("the installer's silhouette", () => {
 			.filter(line => !line.trimStart().startsWith("#"))
 			.join("\n");
 		for (const glyph of ["░", "▒", "▓"]) {
-			expect(GLYPH).toContain(glyph);
+			// Widened: `GLYPH` is a readonly tuple of literals, and the point of the
+			// assertion is that these are the owner's glyphs, not that the compiler
+			// can already see it.
+			expect(GLYPH as readonly string[]).toContain(glyph);
 			expect(code).not.toContain(glyph);
 		}
 	});
