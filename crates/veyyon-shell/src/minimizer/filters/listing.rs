@@ -309,7 +309,7 @@ fn collapse_parenthesized_segment(text: &str, min_len: usize) -> String {
 fn compact_find_output_legacy(input: &str) -> String {
 	let paths: Vec<&str> = input
 		.lines()
-		.filter(|line| !line.trim().is_empty())
+		.filter(|line| primitives::is_program_content(line))
 		.collect();
 	if paths.len() <= 20 {
 		return input.to_string();
@@ -318,9 +318,16 @@ fn compact_find_output_legacy(input: &str) -> String {
 }
 
 fn compact_find_output(input: &str) -> String {
+	// Our own output, arriving for a second pass. The grouped rows under the
+	// header are not paths, and re-parsing them mangles the count and the names.
+	// See `primitives::is_find_summary_header` for why the header is the only
+	// reliable marker.
+	if input.lines().any(primitives::is_find_summary_header) {
+		return input.to_string();
+	}
 	let paths: Vec<&str> = input
 		.lines()
-		.filter(|line| !line.trim().is_empty())
+		.filter(|line| primitives::is_program_content(line))
 		.collect();
 	if paths.is_empty() {
 		return input.to_string();
@@ -825,7 +832,7 @@ fn compact_source_outline(input: &str, path: &str, level: OutlineLevel) -> Strin
 		}
 	}
 
-	if has_content(&out) {
+	if primitives::has_program_content(&out) {
 		out.push('\n');
 	}
 
@@ -1180,7 +1187,11 @@ fn compact_summary_output(input: &str, program: &str) -> String {
 	let lines: Vec<&str> = input.lines().collect();
 	let windowed = primitives::head_tail_lines(&input, 12, 12);
 	let mut out = String::new();
-	for line in lines.iter().copied().filter(|line| is_summary_line(line)) {
+	for line in lines
+		.iter()
+		.copied()
+		.filter(|line| is_listing_summary_line(line))
+	{
 		if !windowed.lines().any(|existing| existing == line)
 			&& !out.lines().any(|existing| existing == line)
 		{
@@ -1192,7 +1203,14 @@ fn compact_summary_output(input: &str, program: &str) -> String {
 	out
 }
 
-fn is_summary_line(line: &str) -> bool {
+/// Whether a `ls`/`df`/`du` line is the tool's own summary rather than an
+/// entry.
+///
+/// Answers a different question from the same-named predicate that used to sit
+/// in `node_tests.rs`, which looks for a JEST/vitest run summary. Neither name
+/// said which tool it meant, so a reader who found one had no reason to look
+/// for the other.
+fn is_listing_summary_line(line: &str) -> bool {
 	let trimmed = line.trim();
 	let lower = trimmed.to_ascii_lowercase();
 	trimmed == "total"
@@ -1201,10 +1219,6 @@ fn is_summary_line(line: &str) -> bool {
 		|| lower.starts_with("filesystem")
 		|| lower.contains(" mounted on")
 		|| lower.contains(" files ")
-}
-
-fn has_content(text: &str) -> bool {
-	text.lines().any(|line| !line.trim().is_empty())
 }
 
 #[cfg(test)]

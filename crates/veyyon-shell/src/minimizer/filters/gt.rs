@@ -50,20 +50,7 @@ pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerO
 }
 
 fn is_log_short(command: &str) -> bool {
-	has_ordered_tokens(command, "log", "short")
-}
-
-fn has_ordered_tokens(command: &str, first: &str, second: &str) -> bool {
-	let mut saw_first = false;
-	for part in command.split_whitespace() {
-		if saw_first && part == second {
-			return true;
-		}
-		if part == first {
-			saw_first = true;
-		}
-	}
-	false
+	primitives::command_has_ordered_tokens(command, "log", "short")
 }
 
 fn compact_log(input: &str) -> String {

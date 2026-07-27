@@ -110,21 +110,8 @@ fn is_show_path_content(command: &str) -> bool {
 }
 
 fn is_stash_patch(command: &str) -> bool {
-	has_ordered_tokens(command, "stash", "show")
+	primitives::command_has_ordered_tokens(command, "stash", "show")
 		&& (has_token(command, "-p") || has_token(command, "--patch"))
-}
-
-fn has_ordered_tokens(command: &str, first: &str, second: &str) -> bool {
-	let mut saw_first = false;
-	for part in command.split_whitespace() {
-		if saw_first && part == second {
-			return true;
-		}
-		if part == first {
-			saw_first = true;
-		}
-	}
-	false
 }
 
 fn has_token(command: &str, token: &str) -> bool {
@@ -901,7 +888,32 @@ struct DiffHunk {
 	lines:  Vec<String>,
 }
 
+/// The section header [`compact_diff_output`] writes between the stat and the
+/// hunk samples.
+///
+/// A constant because the writer below and the guard that recognizes it have to
+/// agree, and because that agreement is exactly what was missing: the header
+/// begins with `--- `, which is a unified-diff file marker, so re-compacting an
+/// already-compacted diff read the header as a file called `Changes ---`. A
+/// two-file diff came back claiming one file changed, with the second file's
+/// name spliced onto the first. Found by
+/// `fuzz/fuzz_targets/minimizer_filters.rs`.
+pub(crate) const DIFF_CHANGES_HEADER: &str = "--- Changes ---";
+
+/// True when `text` is already a [`compact_diff_output`] summary.
+pub(crate) fn is_compacted_diff(text: &str) -> bool {
+	text
+		.lines()
+		.any(|line| line.trim_end() == DIFF_CHANGES_HEADER)
+}
+
 pub(crate) fn compact_diff_output(input: &str) -> String {
+	// Compacting a summary is never right: its `--- Changes ---` header parses as
+	// a file marker and its indented sample lines parse as hunk content, so the
+	// second pass invents a file and loses the real ones.
+	if is_compacted_diff(input) {
+		return input.to_string();
+	}
 	let files = parse_unified_diff(input);
 	if files.is_empty() {
 		return input.to_string();
@@ -931,7 +943,9 @@ pub(crate) fn compact_diff_output(input: &str) -> String {
 	out.push_str(&total_added.to_string());
 	out.push_str(" insertions(+), ");
 	out.push_str(&total_removed.to_string());
-	out.push_str(" deletions(-)\n\n--- Changes ---\n");
+	out.push_str(" deletions(-)\n\n");
+	out.push_str(DIFF_CHANGES_HEADER);
+	out.push('\n');
 
 	for file in files.iter().take(12) {
 		out.push('\n');

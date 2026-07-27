@@ -171,6 +171,20 @@ fn mask_env_value(value: &str) -> String {
 }
 
 fn compact_log(input: &str) -> String {
+	// Already summarized: hand it back rather than summarizing the summary.
+	//
+	// Every line below counts toward the totals, including the `log summary:`
+	// line this function writes, and that line contains the word "error", so a
+	// second pass counted it as an error and stacked a fresh summary on top:
+	// `log summary: 100 lines, 100 unique, 0 errors` became
+	// `log summary: 82 lines, 82 unique, 1 errors` above the original. Two
+	// contradictory summaries of the same capture, and the newer one invents an
+	// error the program never logged. Filters chain and captures get replayed, so
+	// the second pass is an ordinary event. Found by
+	// `tests/every_supported_program_settles_after_one_pass.rs`.
+	if input.lines().any(primitives::is_log_summary_header) {
+		return input.to_string();
+	}
 	let lines: Vec<&str> = input.lines().collect();
 	if lines.is_empty() {
 		return input.to_string();
@@ -344,7 +358,17 @@ pub(super) fn compact_log_lines(
 		}
 	}
 
-	render_counted_lines(&unique, head, tail)
+	// Collapsed AFTER rendering, not only before. Both callers collapse blank
+	// runs on the way in, and the comment above is right that consecutive blanks
+	// are already gone at that point, but dropping a duplicate line can put two
+	// blanks back TOGETHER: a capture shaped blank, line, blank, line, blank
+	// loses the second line as a duplicate and leaves two adjacent blanks that
+	// nothing re-collapses. So the filter's output still contained a run its own
+	// first step exists to remove, and running the filter again removed it,
+	// which is a different answer for the same text. `collapse_blank_runs` is
+	// idempotent, so applying it here costs one pass and settles the result.
+	// Found by `fuzz/fuzz_targets/minimizer_filters.rs`.
+	primitives::collapse_blank_runs(&render_counted_lines(&unique, head, tail), true)
 }
 
 fn render_counted_lines(lines: &[LogLine], head: usize, tail: usize) -> String {
@@ -681,7 +705,7 @@ fn push_important_lines(out: &mut String, input: &str, max: usize) {
 		if pushed >= max {
 			break;
 		}
-		if is_important_line(line) && !out.lines().any(|existing| existing == line) {
+		if mentions_notable_status(line) && !out.lines().any(|existing| existing == line) {
 			out.push_str(line);
 			out.push('\n');
 			pushed += 1;
@@ -689,7 +713,14 @@ fn push_important_lines(out: &mut String, input: &str, max: usize) {
 	}
 }
 
-fn is_important_line(line: &str) -> bool {
+/// Whether a line mentions any status worth keeping, pass or fail.
+///
+/// A deliberately broad substring scan: it keeps `passed` and `summary` as well
+/// as the failure words, because the caller is deduping a status log rather
+/// than picking diagnostics out of a table. See `is_sql_diagnostic_line` in
+/// `cloud.rs` for the narrow question; the two shared a name until it caused
+/// confusion.
+fn mentions_notable_status(line: &str) -> bool {
 	let lower = line.to_ascii_lowercase();
 	lower.contains("error")
 		|| lower.contains("failed")
@@ -782,7 +813,7 @@ fn compact_pipe_like_output(input: &str, exit_code: i32) -> String {
 	if looks_like_path_listing(input) {
 		return primitives::compact_listing(input, 80);
 	}
-	if input.lines().any(is_important_line) {
+	if input.lines().any(mentions_notable_status) {
 		return input.to_string();
 	}
 	let deduped = primitives::dedup_consecutive_lines(input);

@@ -223,6 +223,9 @@ fn should_keep_go_test_line(line: &str, exit_code: i32) -> bool {
 }
 
 fn filter_go_build(input: &str, exit_code: i32) -> String {
+	if primitives::is_grouped_listing(input) {
+		return input.to_string();
+	}
 	let mut out = String::new();
 	let mut saw_diagnostic = false;
 
@@ -250,6 +253,9 @@ fn filter_go_build(input: &str, exit_code: i32) -> String {
 }
 
 fn filter_go_vet(input: &str) -> String {
+	if primitives::is_grouped_listing(input) {
+		return input.to_string();
+	}
 	let mut out = String::new();
 	for line in input.lines() {
 		let trimmed = line.trim();
@@ -271,6 +277,9 @@ fn filter_go_vet(input: &str) -> String {
 }
 
 fn filter_golangci_lint(input: &str) -> String {
+	if primitives::is_grouped_listing(input) {
+		return input.to_string();
+	}
 	if let Some(json_line) = input
 		.lines()
 		.find(|line| line.trim_start().starts_with('{'))
@@ -349,9 +358,7 @@ fn summarize_golangci_json(line: &str) -> Option<String> {
 }
 
 fn compact_general(input: &str) -> String {
-	let stripped = primitives::strip_lines(input, &[is_go_noise]);
-	let deduped = primitives::dedup_consecutive_lines(&stripped);
-	primitives::head_tail_lines(&deduped, 100, 60)
+	primitives::strip_dedup_head_tail(input, &[is_go_noise], 100, 60)
 }
 
 fn is_go_build_diagnostic(line: &str) -> bool {

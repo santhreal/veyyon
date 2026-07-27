@@ -1145,14 +1145,14 @@ fn compact_delimited_table(input: &str, max_rows: usize) -> String {
 			continue;
 		}
 		data_rows += 1;
-		if data_rows <= max_rows || is_important_line(trimmed) {
+		if data_rows <= max_rows || is_sql_diagnostic_line(trimmed) {
 			out.push(normalized);
 		}
 	}
 	if data_rows > max_rows {
 		out.push(format!("[…{} rows elided…]", data_rows - max_rows));
 	}
-	join_lines(out)
+	primitives::join_lines(&out)
 }
 
 fn compact_psql_table(input: &str) -> String {
@@ -1183,7 +1183,7 @@ fn compact_psql_table(input: &str) -> String {
 			out.push(trimmed.to_string());
 			continue;
 		}
-		if is_important_line(trimmed) {
+		if is_sql_diagnostic_line(trimmed) {
 			out.push(trimmed.to_string());
 			continue;
 		}
@@ -1211,7 +1211,7 @@ fn compact_psql_table(input: &str) -> String {
 		out.push(format!("[…{} rows elided…]", data_rows - MAX_PSQL_ROWS));
 	}
 	out.extend(row_count_lines);
-	join_lines(out)
+	primitives::join_lines(&out)
 }
 
 fn compact_psql_expanded(input: &str) -> String {
@@ -1234,7 +1234,7 @@ fn compact_psql_expanded(input: &str) -> String {
 			current.push(trimmed.to_string());
 			continue;
 		}
-		if is_important_line(trimmed) && current.is_empty() {
+		if is_sql_diagnostic_line(trimmed) && current.is_empty() {
 			out.push(trimmed.to_string());
 			continue;
 		}
@@ -1249,7 +1249,7 @@ fn compact_psql_expanded(input: &str) -> String {
 		out.push(format!("[…{} records elided…]", records - MAX_PSQL_ROWS));
 	}
 	out.extend(row_count_lines);
-	join_lines(out)
+	primitives::join_lines(&out)
 }
 
 fn flush_record(out: &mut Vec<String>, current: &mut Vec<String>, records: usize) {
@@ -1384,7 +1384,7 @@ fn preserve_important_lines(original: &str, compacted: &str) -> String {
 	let mut out = Vec::new();
 	for line in original.lines() {
 		let trimmed = line.trim();
-		if is_important_line(trimmed)
+		if is_sql_diagnostic_line(trimmed)
 			&& !contains_line(&out, trimmed)
 			&& !compacted.lines().any(|existing| existing.trim() == trimmed)
 		{
@@ -1395,10 +1395,19 @@ fn preserve_important_lines(original: &str, compacted: &str) -> String {
 		return compacted.to_string();
 	}
 	out.push(compacted.trim_end().to_string());
-	join_lines(out)
+	primitives::join_lines(&out)
 }
 
-fn is_important_line(line: &str) -> bool {
+/// Whether a psql or AWS CLI line is a diagnostic rather than a data row.
+///
+/// Anchored to the markers those tools print at the start of a line (`ERROR`,
+/// `DETAIL`, `HINT`, `LINE `, `SQLSTATE`), so a data row that merely contains
+/// the word "error" stays a data row and is capped with the rest of the table.
+///
+/// A differently-named predicate in `system.rs` answers a much broader
+/// question. Both used to be called `is_important_line`, and a reader who found
+/// one had no reason to suspect the other.
+fn is_sql_diagnostic_line(line: &str) -> bool {
 	let upper = line.trim_start().to_ascii_uppercase();
 	upper.starts_with("ERROR")
 		|| upper.starts_with("FATAL")
@@ -1413,16 +1422,6 @@ fn is_important_line(line: &str) -> bool {
 
 fn contains_line(lines: &[String], needle: &str) -> bool {
 	lines.iter().any(|line| line == needle)
-}
-
-fn join_lines(lines: Vec<String>) -> String {
-	if lines.is_empty() {
-		String::new()
-	} else {
-		let mut out = lines.join("\n");
-		out.push('\n');
-		out
-	}
 }
 
 #[cfg(test)]

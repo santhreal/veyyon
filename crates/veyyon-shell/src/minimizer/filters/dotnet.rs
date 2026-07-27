@@ -26,6 +26,13 @@ pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerO
 }
 
 fn filter_build_like(label: &str, input: &str, exit_code: i32) -> String {
+	// This filter trims each line on the way in, which would strip the indent
+	// that marks a diagnostic as belonging to the `path:` header above it, and a
+	// grouped block would come back flattened. See
+	// `primitives::is_grouped_listing`.
+	if primitives::is_grouped_listing(input) {
+		return input.to_string();
+	}
 	let mut diagnostics = String::new();
 	let mut summaries = String::new();
 
@@ -68,9 +75,17 @@ fn filter_build_like(label: &str, input: &str, exit_code: i32) -> String {
 		}
 	}
 
+	// Written once and matched once, so the line this pass emits is exactly the
+	// line a later pass skips. Without the skip, filtering our own output read
+	// the header back as a failure diagnostic (it does contain "failed"),
+	// emitted the header again above it, and the dedup pass collapsed the pair
+	// into `dotnet build: failed (×2)`. Captures get replayed, so a filter has to
+	// survive reading its own output.
+	let failure_header = format!("{label}: failed");
+
 	for line in input.lines() {
 		let trimmed = line.trim();
-		if trimmed.is_empty() || is_dotnet_boilerplate(trimmed) {
+		if trimmed.is_empty() || is_dotnet_boilerplate(trimmed) || trimmed == failure_header {
 			continue;
 		}
 		let truncated = primitives::truncate_line(trimmed, primitives::CapClass::Errors.lines());
@@ -85,8 +100,8 @@ fn filter_build_like(label: &str, input: &str, exit_code: i32) -> String {
 
 	let mut out = String::new();
 	if exit_code != 0 {
-		out.push_str(label);
-		out.push_str(": failed\n");
+		out.push_str(&failure_header);
+		out.push('\n');
 	}
 	out.push_str(&primitives::group_by_file(&diagnostics, 24));
 	out.push_str(&summaries);
@@ -155,7 +170,7 @@ fn filter_format(input: &str) -> String {
 		}
 		let truncated = primitives::truncate_line(trimmed, primitives::CapClass::Errors.lines());
 		if is_msbuild_diagnostic(trimmed)
-			|| looks_like_path(trimmed)
+			|| mentions_dotnet_source_path(trimmed)
 			|| contains_format_signal(trimmed)
 		{
 			out.push_str(&truncated);
@@ -263,16 +278,14 @@ fn first_number(map: &serde_json::Map<String, serde_json::Value>, keys: &[&str])
 }
 
 fn compact_general(input: &str) -> String {
-	let stripped = primitives::strip_lines(input, &[is_dotnet_boilerplate]);
-	let deduped = primitives::dedup_consecutive_lines(&stripped);
-	primitives::head_tail_lines(&deduped, 120, 80)
+	primitives::strip_dedup_head_tail(input, &[is_dotnet_boilerplate], 120, 80)
 }
 
 fn is_dotnet_boilerplate(line: &str) -> bool {
 	let lower = line.to_ascii_lowercase();
 	lower.starts_with("determining projects to restore")
 		|| lower.starts_with("all projects are up-to-date for restore")
-		|| lower.starts_with("restored ") && !contains_diagnostic_signal(&lower)
+		|| lower.starts_with("restored ") && !primitives::contains_diagnostic_signal(&lower)
 		|| lower.starts_with("build started")
 		|| lower.starts_with("test run for ")
 		|| lower.starts_with("starting test execution")
@@ -284,7 +297,7 @@ fn is_dotnet_format_noise(line: &str) -> bool {
 	is_dotnet_boilerplate(line)
 		|| lower.starts_with("formatting code files")
 		|| lower.starts_with("running formatters")
-		|| lower.starts_with("  formatted ") && !contains_diagnostic_signal(&lower)
+		|| lower.starts_with("  formatted ") && !primitives::contains_diagnostic_signal(&lower)
 }
 
 fn is_msbuild_diagnostic(line: &str) -> bool {
@@ -303,7 +316,14 @@ fn looks_like_msbuild_location(line: &str) -> bool {
 		|| line.contains(".sln")
 }
 
-fn looks_like_path(line: &str) -> bool {
+/// Whether a line names a .NET source file, either by directory separator or by
+/// language extension.
+///
+/// Deliberately not the same question as `lint.rs` asks about its file column,
+/// which is why neither is called `looks_like_path` any more: that name was on
+/// both, and a reader who found one had no way to know the other existed and
+/// answered differently.
+fn mentions_dotnet_source_path(line: &str) -> bool {
 	line.contains('/')
 		|| line.contains('\\')
 		|| line.contains(".cs")
@@ -313,7 +333,7 @@ fn looks_like_path(line: &str) -> bool {
 
 fn is_failure_line(line: &str) -> bool {
 	let lower = line.to_ascii_lowercase();
-	contains_diagnostic_signal(&lower)
+	primitives::contains_diagnostic_signal(&lower)
 		|| lower.starts_with("failed! ")
 		|| lower.starts_with("failed ")
 		|| lower.starts_with("error ")
@@ -359,13 +379,6 @@ fn contains_format_signal(line: &str) -> bool {
 		|| lower.contains("diagnostic")
 		|| lower.contains("files formatted")
 		|| lower.contains("files need formatting")
-}
-
-fn contains_diagnostic_signal(lower: &str) -> bool {
-	lower.contains("error")
-		|| lower.contains("warning")
-		|| lower.contains("failed")
-		|| lower.contains("exception")
 }
 
 #[cfg(test)]

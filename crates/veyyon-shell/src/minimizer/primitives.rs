@@ -694,6 +694,121 @@ pub fn command_has_any_token(command: &str, tokens: &[&str]) -> bool {
 	})
 }
 
+/// Join lines with newlines and terminate the result, or return an empty
+/// string.
+///
+/// The empty case is the reason this is worth owning. `["a"].join("\n")` plus a
+/// push gives `"a\n"`, but `[].join("\n")` plus a push gives `"\n"`, a capture
+/// that claims the program printed a blank line when it printed nothing. Two
+/// filters each carried a copy that got this right, differing only in whether
+/// they took `Vec<String>` or `&[&str]`; the generic serves both.
+#[must_use]
+pub fn join_lines<S: AsRef<str>>(lines: &[S]) -> String {
+	if lines.is_empty() {
+		return String::new();
+	}
+	let mut out = String::new();
+	for (index, line) in lines.iter().enumerate() {
+		if index > 0 {
+			out.push('\n');
+		}
+		out.push_str(line.as_ref());
+	}
+	out.push('\n');
+	out
+}
+
+/// Strip noise, collapse consecutive duplicates, then keep a head and tail
+/// window.
+///
+/// THE GENERAL-PURPOSE COMPACTION SHAPE, written out three times (`cargo.rs`,
+/// `dotnet.rs`, `go.rs`) with nothing different but the noise predicate and the
+/// two caps. Those belong to the caller; the order of the three steps does not,
+/// and it matters: stripping before dedup means noise lines cannot separate two
+/// duplicates and hide them from the collapse.
+#[must_use]
+pub fn strip_dedup_head_tail(
+	input: &str,
+	noise: &[fn(&str) -> bool],
+	head: usize,
+	tail: usize,
+) -> String {
+	let stripped = strip_lines(input, noise);
+	let deduped = dedup_consecutive_lines(&stripped);
+	head_tail_lines(&deduped, head, tail)
+}
+
+/// Append a line and its newline to a buffer under construction.
+///
+/// Five filters carried their own copy of this. Four were byte-identical and
+/// the fifth trimmed trailing whitespace first, so the same compactor emitted a
+/// different byte depending on which file it happened to live in. The trim
+/// belongs to the caller that wants it: `push_line(out, line.trim_end())` says
+/// so where a reader can see it.
+pub fn push_line(out: &mut String, line: &str) {
+	out.push_str(line);
+	out.push('\n');
+}
+
+/// Strip the quoting a shell leaves on a single command word.
+///
+/// A script name reaches the minimizer exactly as it was typed, so `run
+/// "test:unit"` and `run test:unit` are the same invocation with different
+/// bytes. Every predicate that classifies one word calls this first.
+#[must_use]
+pub fn trim_command_token(token: &str) -> &str {
+	token.trim_matches(|ch| matches!(ch, '\'' | '"' | '`'))
+}
+
+/// Whether a script word names a test run, such as `test`, `e2e`, or
+/// `test:unit`.
+///
+/// THE ROUTER AND THE FILTERS MUST AGREE ON THIS, which is why it lives here.
+/// The dispatcher in `filters/mod.rs` asks it to decide whether `bun run
+/// <word>` output goes to the test filter, and `filters/bun.rs` asks it again
+/// to decide how to compact what it was handed. Two copies could answer
+/// differently, and the failure is silent: output routed as a test run and then
+/// compacted as something else keeps the wrong lines, with nothing to notice.
+#[must_use]
+pub fn is_test_script_token(token: &str) -> bool {
+	let token = trim_command_token(token);
+	matches!(token, "test" | "t" | "e2e" | "spec") || token.starts_with("test:")
+}
+
+/// Whether a line carries a word that marks it as a diagnostic worth keeping.
+///
+/// TWO COPIES OF THIS DISAGREED, which is how it got here. `lint.rs` matched
+/// `panic` and `dotnet.rs` did not, so the same build log kept a panic line
+/// through one filter and dropped it through the other. The union is correct: a
+/// filter that keeps one diagnostic too many costs the reader a line, and one
+/// that drops a panic costs them the failure.
+///
+/// It lowercases the line itself rather than trusting the caller to have done
+/// it. The `dotnet.rs` copy took an already-lowercased string, so passing a raw
+/// line compiled fine and silently matched nothing.
+#[must_use]
+pub fn contains_diagnostic_signal(line: &str) -> bool {
+	let lower = line.to_ascii_lowercase();
+	lower.contains("error")
+		|| lower.contains("warning")
+		|| lower.contains("failed")
+		|| lower.contains("panic")
+		|| lower.contains("exception")
+}
+
+/// Whether a script word names a lint or typecheck run, such as `lint:fix`.
+///
+/// Shares the router/filter agreement contract described on
+/// [`is_test_script_token`].
+#[must_use]
+pub fn is_lint_script_token(token: &str) -> bool {
+	let token = trim_command_token(token);
+	matches!(token, "lint" | "typecheck" | "type-check")
+		|| token.starts_with("lint:")
+		|| token.starts_with("typecheck:")
+		|| token.starts_with("type-check:")
+}
+
 /// Dedup consecutive lines, then keep a head+tail window.
 ///
 /// Canonical owner for the "collapse consecutive dupes, then keep head+tail"

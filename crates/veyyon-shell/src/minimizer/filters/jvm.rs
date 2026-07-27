@@ -1253,7 +1253,7 @@ fn filter_gradle_build(input: &str) -> String {
 			out.push(line);
 		}
 	}
-	join_lines(&out)
+	primitives::join_lines(&out)
 }
 
 // ── Test filter (rtk gradlew_cmd.rs::filter_test ~230-302) ───────────────────
@@ -1348,7 +1348,7 @@ fn filter_gradle_test(input: &str) -> String {
 		}
 	}
 
-	let filtered = join_lines(&result_lines);
+	let filtered = primitives::join_lines(&result_lines);
 
 	// Guarantee non-empty, signal-rich output.
 	if filtered.trim().is_empty() {
@@ -1405,7 +1405,7 @@ fn filter_gradle_connected(input: &str) -> String {
 
 	// After stripping instrumentation noise, connected output uses the same
 	// PASSED/FAILED format as unit tests — delegate.
-	let joined = join_lines(&result_lines);
+	let joined = primitives::join_lines(&result_lines);
 	let filtered = filter_gradle_test(&joined);
 
 	if filtered.trim().is_empty() {
@@ -1499,7 +1499,7 @@ fn filter_gradle_lint(input: &str) -> String {
 		}
 	}
 
-	let filtered = join_lines(&result_lines);
+	let filtered = primitives::join_lines(&result_lines);
 
 	if filtered.trim().is_empty() {
 		if input.contains("BUILD SUCCESSFUL") {
@@ -1628,7 +1628,7 @@ fn filter_gradle_other(input: &str) -> String {
 		}
 		out.push(line);
 	}
-	join_lines(&out)
+	primitives::join_lines(&out)
 }
 
 // ── Carried-over deleted-def: gradle.toml UP-TO-DATE strip
@@ -1645,15 +1645,6 @@ fn filter_gradle_other(input: &str) -> String {
 /// Join kept lines with `\n` and a trailing newline when non-empty, mirroring
 /// the per-line `format!("{line}\n")` emission of rtk's `StreamFilter`s so the
 /// output shape (and token counts) match the donor.
-fn join_lines(lines: &[&str]) -> String {
-	if lines.is_empty() {
-		return String::new();
-	}
-	let mut out = lines.join("\n");
-	out.push('\n');
-	out
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // SPRING BOOT RUN MODE (shared by `mvn spring-boot:run` and gradle `bootRun`)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1675,7 +1666,7 @@ fn filter_spring_boot(input: &str) -> String {
 			out.push(line);
 		}
 	}
-	let kept = join_lines(&out);
+	let kept = primitives::join_lines(&out);
 	primitives::head_tail_cap(&kept, CapClass::List)
 }
 
@@ -2864,28 +2855,85 @@ mod tests {
 
 	// ── Dependencies filter (rtk ~1235-1308) ────────────────────────────────
 
+	/// The fixture is ONE LINE PER ARRAY ELEMENT, and that is a correctness
+	/// requirement rather than a layout preference.
+	///
+	/// This workspace sets `format_strings = true`, and rustfmt's line splitting
+	/// is escape-unaware. Written as one long literal, this fixture exceeded
+	/// `max_width` and the formatter put its continuation BETWEEN the `\` and
+	/// the `n` of the `\n\n` after the task header, leaving `\n\\` at the end
+	/// of a source line. `\\` is an escaped backslash, not a continuation, so
+	/// the newline that followed it went into the string raw along with the
+	/// indentation of the next line: the fixture said `...dependencies\n\` +
+	/// newline + tabs + ` n---------` where gradle prints a blank line and then
+	/// the rule. NOTHING FAILED, because every assertion below is a `contains`,
+	/// which is exactly why a corrupted fixture can sit here unnoticed. Each
+	/// line is now short enough that the formatter has nothing to split.
 	#[test]
 	fn gradle_dependencies_extracts_top_level() {
-		let input =
-			"> Task :app:dependencies\n\\
-			 n------------------------------------------------------------\nProject \
-			 ':app'\n------------------------------------------------------------\n\nimplementation \
-			 - Implementation dependencies for the 'main' feature.\n+--- \
-			 org.jetbrains.kotlin:kotlin-stdlib:1.9.22\n+--- androidx.core:core-ktx:1.12.0\n+--- \
-			 androidx.appcompat:appcompat:1.6.1\n|    +--- androidx.annotation:annotation:1.3.0\n|    \
-			 +--- androidx.core:core:1.9.0\n|    \\--- \
-			 androidx.cursoradapter:cursoradapter:1.0.0\n+--- \
-			 com.google.android.material:material:1.11.0\n|    +--- \
-			 androidx.annotation:annotation:1.2.0\n\\--- com.squareup.retrofit2:retrofit:2.9.0\n     \
-			 +--- com.squareup.okhttp3:okhttp:3.14.9\n     \\--- \
-			 com.squareup.okio:okio:1.17.2\n\ntestImplementation - Test dependencies for the 'main' \
-			 feature.\n+--- junit:junit:4.13.2\n\\--- org.mockito:mockito-core:5.8.0\n\nBUILD \
-			 SUCCESSFUL in 2s\n1 actionable tasks: 1 executed";
+		let input = [
+			"> Task :app:dependencies",
+			"",
+			"------------------------------------------------------------",
+			"Project ':app'",
+			"------------------------------------------------------------",
+			"",
+			"implementation - Implementation dependencies for the 'main' feature.",
+			"+--- org.jetbrains.kotlin:kotlin-stdlib:1.9.22",
+			"+--- androidx.core:core-ktx:1.12.0",
+			"+--- androidx.appcompat:appcompat:1.6.1",
+			"|    +--- androidx.annotation:annotation:1.3.0",
+			"|    +--- androidx.core:core:1.9.0",
+			r"|    \--- androidx.cursoradapter:cursoradapter:1.0.0",
+			"+--- com.google.android.material:material:1.11.0",
+			"|    +--- androidx.annotation:annotation:1.2.0",
+			r"\--- com.squareup.retrofit2:retrofit:2.9.0",
+			"     +--- com.squareup.okhttp3:okhttp:3.14.9",
+			r"     \--- com.squareup.okio:okio:1.17.2",
+			"",
+			"testImplementation - Test dependencies for the 'main' feature.",
+			"+--- junit:junit:4.13.2",
+			r"\--- org.mockito:mockito-core:5.8.0",
+			"",
+			"BUILD SUCCESSFUL in 2s",
+			"1 actionable tasks: 1 executed",
+		]
+		.join("\n");
+		let input = input.as_str();
 		let o = filter_gradle_dependencies(input);
-		assert!(o.contains("implementation (5):"), "config with count; got:\n{o}");
-		assert!(o.contains("testImplementation (2):"), "test config; got:\n{o}");
-		assert!(o.contains("kotlin-stdlib"), "top-level dep; got:\n{o}");
+
+		// THE WHOLE OUTPUT, not four `contains` probes. The probes are what let the
+		// corrupted fixture above sit here unnoticed: they pass on any output that
+		// happens to mention the right substrings, so neither a mangled input nor an
+		// extra line nor a lost header could fail them. Pinning every byte means the
+		// header count, the per-configuration counts, the two-space indent, the blank
+		// line between configurations and the absence of a trailing newline are all
+		// part of the contract, and the fixture cannot drift without saying so.
+		assert_eq!(
+			o,
+			[
+				"7 top-level dependencies across 2 configurations",
+				"",
+				"implementation (5):",
+				"  org.jetbrains.kotlin:kotlin-stdlib:1.9.22",
+				"  androidx.core:core-ktx:1.12.0",
+				"  androidx.appcompat:appcompat:1.6.1",
+				"  com.google.android.material:material:1.11.0",
+				"  com.squareup.retrofit2:retrofit:2.9.0",
+				"",
+				"testImplementation (2):",
+				"  junit:junit:4.13.2",
+				"  org.mockito:mockito-core:5.8.0",
+			]
+			.join("\n")
+		);
+
+		// The three facts the exact match already implies, kept as named claims because
+		// each is a separate promise of this filter and a reader should not have to
+		// diff two blocks to find them: transitive rows are dropped, top-level rows
+		// survive, and the whole point is that the result is much shorter.
 		assert!(!o.contains("cursoradapter"), "transitive deps stripped; got:\n{o}");
+		assert!(o.contains("kotlin-stdlib"), "top-level dep; got:\n{o}");
 		let savings = savings_pct(input, &o);
 		assert!(savings >= 60.0, "deps savings >=60%, got {savings:.1}%");
 	}
