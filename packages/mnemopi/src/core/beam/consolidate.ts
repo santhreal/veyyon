@@ -1,6 +1,6 @@
 import type { SQLQueryBindings } from "bun:sqlite";
 import { collapseWhitespace, DAY_MS, errorMessage, HOUR_MS, logger } from "@veyyon/utils";
-import { envInt } from "../../util/env";
+import { degradeBatchSize, sleepBatchSize, tier2Days, tier3Days, tier3MaxChars } from "../../config";
 import { generateId, stableMemoryId } from "../../util/ids";
 import { unicodeWordTokens, WORD_TOKEN_DOT_HYPHEN_RE } from "../../util/regex";
 import { escapeLike, sqlPlaceholders } from "../../util/sqlite";
@@ -52,11 +52,16 @@ const EPISODIC_VERACITY_WEIGHT = {
 
 type EpisodicVeracity = keyof typeof EPISODIC_VERACITY_WEIGHT;
 
-const SLEEP_BATCH_SIZE = envInt("MNEMOPI_SLEEP_BATCH", 5000);
-const TIER2_DAYS = envInt("MNEMOPI_TIER2_DAYS", 30);
-const TIER3_DAYS = envInt("MNEMOPI_TIER3_DAYS", 180);
-const DEGRADE_BATCH_SIZE = envInt("MNEMOPI_DEGRADE_BATCH", 100);
-const TIER3_MAX_CHARS = envInt("MNEMOPI_TIER3_MAX_CHARS", 300);
+// Read through `../../config`, the one owner of every MNEMOPI_* knob, rather than by
+// calling `envInt` on the same variable names a second time. Both copies existed with
+// byte-identical defaults, which is the duplication that costs nothing until someone
+// tunes one of them: nothing compares the two, so the tier boundary the consolidator
+// applies and the one `config.tier2Days()` reports would simply stop agreeing.
+const SLEEP_BATCH_SIZE = sleepBatchSize();
+const TIER2_DAYS = tier2Days();
+const TIER3_DAYS = tier3Days();
+const DEGRADE_BATCH_SIZE = degradeBatchSize();
+const TIER3_MAX_CHARS = tier3MaxChars();
 const DEFAULT_MAX_EPISODE_CHARS = 100_000;
 const SLEEP_SUMMARY_SEPARATOR = " | ";
 const SLEEP_TRUNCATION_MARKER = "\n[... sleep_consolidation episode truncated by maxEpisodeChars ...]";
