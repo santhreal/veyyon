@@ -153,11 +153,14 @@ export class AuthBrokerClient {
 		// is the only cancel path.
 		const response = await this.#fetch(url, { method: "GET", headers, signal: opts.signal });
 		if (response.status === 404) {
-			// Drain the body so the socket can be reused; tiny payload.
+			// Drain the body so the socket can be reused; tiny payload. Nobody reads it, so a drain that fails
+			// costs one connection and has no bearing on the unsupported-stream error thrown next.
 			await response.text().catch(() => {});
 			throw new AuthBrokerStreamUnsupportedError();
 		}
 		if (!response.ok) {
+			// The STATUS is the failure, and it is thrown below with the body attached as context. A body that
+			// cannot be read must not replace a 500 with a read error, so it degrades to empty.
 			const text = await response.text().catch(() => "");
 			throw new AuthBrokerError(`Auth broker stream failed: ${response.status} ${response.statusText}`, {
 				status: response.status,
@@ -169,6 +172,8 @@ export class AuthBrokerClient {
 		}
 		const contentType = response.headers.get("content-type")?.toLowerCase();
 		if (contentType?.split(";", 1)[0].trim() !== "text/event-stream") {
+			// The content type is the failure and it is thrown next. Cancelling the body we will not read is a
+			// courtesy to the socket; its failure cannot change what is wrong with this response.
 			await response.body.cancel().catch(() => {});
 			throw new AuthBrokerError("Auth broker stream returned non-SSE response", {
 				status: response.status,

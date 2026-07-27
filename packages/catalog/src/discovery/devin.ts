@@ -1,15 +1,17 @@
 import { gunzipSync } from "node:zlib";
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
-import { trimTrailingSlashes } from "@veyyon/utils";
+import { errorMessage, trimTrailingSlashes } from "@veyyon/utils";
+import { DEVIN_CASCADE_ENDPOINT } from "../provider-endpoints";
 import type { FetchImpl, ModelSpec } from "../types";
 import { discoveryFetch } from "../utils";
+import { AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW, AGENT_GATEWAY_DEFAULT_MAX_TOKENS } from "./default-limits";
 import {
 	GetCliModelConfigsRequestSchema,
 	GetCliModelConfigsResponseSchema,
 } from "./devin-gen/exa/api_server_pb/api_server_pb";
 import { type ClientModelConfig, MetadataSchema } from "./devin-gen/exa/codeium_common_pb/codeium_common_pb";
+import type { DiscoveryHooks } from "./failure";
 
-const DEVIN_DEFAULT_BASE_URL = "https://server.codeium.com";
 const DEVIN_GET_CLI_MODEL_CONFIGS_PATH = "/exa.api_server_pb.ApiServerService/GetCliModelConfigs";
 const DEVIN_IDE_VERSION = "3.2.23";
 const DEVIN_EXTENSION_VERSION = "1.48.2";
@@ -22,9 +24,6 @@ const DEVIN_EXTENSION_VERSION = "1.48.2";
  * discovery would authenticate while the requests that follow would not, or the reverse.
  */
 export const DEVIN_SESSION_TOKEN_PREFIX = "devin-session-token$";
-
-const DEFAULT_CONTEXT_WINDOW = 200_000;
-const DEFAULT_MAX_TOKENS = 64_000;
 
 /** Best-effort match for labels whose wording implies a thinking / reasoning-effort variant. */
 const REASONING_LABEL_PATTERN = /think|thinking|minimal|high|medium|low|xhigh|max|reasoning/i;
@@ -48,6 +47,15 @@ export interface DevinModelDiscoveryOptions {
 	signal?: AbortSignal;
 	/** Optional fetch implementation for request-debug/proxy/test transports. */
 	fetch?: FetchImpl;
+	/**
+	 * Called with the reason when discovery returns `null`.
+	 *
+	 * The same channel every reader in this package uses, for the same reason: `null` alone cannot be
+	 * explained, so a token this endpoint rejects and a network that never answered present identically,
+	 * and the user sees a picker with no Devin models and nothing saying why. Never called on success,
+	 * including a success with no models.
+	 */
+	onFailure?: DiscoveryHooks["onFailure"];
 }
 
 /**
@@ -61,7 +69,7 @@ export async function fetchDevinModels(
 	options: DevinModelDiscoveryOptions,
 ): Promise<ModelSpec<"devin-agent">[] | null> {
 	const timeoutMs = options.timeoutMs ?? 5_000;
-	const resolvedBaseUrl = options.baseUrl ?? DEVIN_DEFAULT_BASE_URL;
+	const resolvedBaseUrl = options.baseUrl ?? DEVIN_CASCADE_ENDPOINT;
 	const requestUrl = `${trimTrailingSlashes(resolvedBaseUrl)}${DEVIN_GET_CLI_MODEL_CONFIGS_PATH}`;
 
 	const controller = new AbortController();
@@ -89,19 +97,27 @@ export async function fetchDevinModels(
 		const fetchImpl = discoveryFetch(options.fetch);
 		const response = await fetchImpl(requestUrl, { method: "POST", headers, body, signal });
 		if (!response.ok) {
+			options.onFailure?.({
+				stage: "status",
+				url: requestUrl,
+				detail: `HTTP ${response.status} ${response.statusText}`.trim(),
+			});
 			return null;
 		}
 
-		const decoded = decodeCliModelConfigsResponse(new Uint8Array(await response.arrayBuffer()));
+		const decoded = decodeCliModelConfigsResponse(new Uint8Array(await response.arrayBuffer()), detail =>
+			options.onFailure?.({ stage: "body", url: requestUrl, detail }),
+		);
 		if (!decoded) {
 			return null;
 		}
 
 		return normalizeDevinModels(decoded.clientModelConfigs, options.baseUrl);
-	} catch {
-		// Same as the other discovery readers: null is 'no catalog from this provider', distinct from the `[]` an
-		// endpoint with no models returns, and the caller reports the provider as unavailable. Carrying the reason
-		// through an `onFailure` channel, as `fetchOpenAICompatibleModels` now does, is a tracked task.
+	} catch (error) {
+		// Null is 'no catalog from this provider', distinct from the `[]` an endpoint with no models returns,
+		// and the caller reports the provider as unavailable. The throw covers the request itself and the body
+		// read, both of which point at the network rather than at the protocol.
+		options.onFailure?.({ stage: "request", url: requestUrl, detail: errorMessage(error) });
 		return null;
 	} finally {
 		clearTimeout(timer);
@@ -119,16 +135,19 @@ export function normalizeDevinSessionToken(apiKey: string | undefined): string {
  * auto-decompresses gzip, so the direct decode is attempted first; a
  * `gunzipSync` fallback covers runtimes that hand back the still-compressed body.
  */
-function decodeCliModelConfigsResponse(payload: Uint8Array) {
+function decodeCliModelConfigsResponse(payload: Uint8Array, reportUndecodable: (detail: string) => void) {
 	try {
 		return fromBinary(GetCliModelConfigsResponseSchema, payload);
-	} catch {
+	} catch (directError) {
 		try {
 			return fromBinary(GetCliModelConfigsResponseSchema, gunzipSync(payload));
-		} catch {
-			// Same as the other discovery readers: null is 'no catalog from this provider', distinct from the `[]` an
-			// endpoint with no models returns, and the caller reports the provider as unavailable. Carrying the reason
-			// through an `onFailure` channel, as `fetchOpenAICompatibleModels` now does, is a tracked task.
+		} catch (gzipError) {
+			// Both attempts are reported, because which one failed is the whole diagnosis: a direct decode error
+			// with a gzip error that is NOT a decode error means the body was never protobuf at all (a proxy login
+			// page is the usual culprit), while two decode errors mean the endpoint changed its schema.
+			reportUndecodable(
+				`response is not a GetCliModelConfigsResponse: ${errorMessage(directError)}; after gunzip: ${errorMessage(gzipError)}`,
+			);
 			return null;
 		}
 	}
@@ -148,13 +167,13 @@ function normalizeDevinModels(
 			continue;
 		}
 		const input: ("text" | "image")[] = config.supportsImages ? ["text", "image"] : ["text"];
-		const contextWindow = config.maxTokens > 0 ? config.maxTokens : DEFAULT_CONTEXT_WINDOW;
+		const contextWindow = config.maxTokens > 0 ? config.maxTokens : AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW;
 		byId.set(id, {
 			id,
 			name: config.label.trim() || id,
 			api: "devin-agent",
 			provider: "devin",
-			baseUrl: baseUrlOverride ?? DEVIN_DEFAULT_BASE_URL,
+			baseUrl: baseUrlOverride ?? DEVIN_CASCADE_ENDPOINT,
 			reasoning: supportsDevinThinking(config),
 			input,
 			supportsTools: true,
@@ -162,7 +181,10 @@ function normalizeDevinModels(
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 			pricing: "unknown",
 			contextWindow,
-			maxTokens: Math.min(config.maxTokens > 0 ? config.maxTokens : DEFAULT_MAX_TOKENS, DEFAULT_MAX_TOKENS),
+			maxTokens: Math.min(
+				config.maxTokens > 0 ? config.maxTokens : AGENT_GATEWAY_DEFAULT_MAX_TOKENS,
+				AGENT_GATEWAY_DEFAULT_MAX_TOKENS,
+			),
 		});
 	}
 	return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));

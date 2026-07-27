@@ -1,4 +1,4 @@
-import { extractHttpStatusFromError } from "@veyyon/utils";
+import { extractHttpStatusFromError } from "@veyyon/utils/fetch-retry";
 import { isOAuthExpiry, isUsageLimit } from "./flags";
 import { isUsageLimitOutcome } from "./rate-limit";
 

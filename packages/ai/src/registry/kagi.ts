@@ -41,6 +41,5 @@ export async function loginKagi(options: OAuthController): Promise<string> {
 export const kagiProvider = {
 	id: "kagi",
 	name: "Kagi",
-	envKeys: "KAGI_API_KEY",
 	login: (cb: OAuthLoginCallbacks) => loginKagi(cb),
 } as const satisfies ProviderDefinition;

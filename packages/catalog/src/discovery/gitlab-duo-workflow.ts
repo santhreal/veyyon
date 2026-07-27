@@ -1,11 +1,13 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { trimTrailingSlashes } from "@veyyon/utils";
+import { errorMessage } from "@veyyon/utils/type-guards";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { z } from "zod/v4";
+import { GITLAB_SAAS_URL } from "../provider-endpoints";
 import type { FetchImpl, ModelSpec } from "../types";
 import { discoveryFetch, isRecord } from "../utils";
+import type { DiscoveryHooks } from "./failure";
 
-const GITLAB_DEFAULT_BASE_URL = "https://gitlab.com";
 const GRAPHQL_PATH = "/api/graphql";
 const PROJECTS_PATH = "/api/v4/projects";
 const GROUPS_PATH = "/api/v4/groups";
@@ -109,6 +111,16 @@ export interface GitLabDuoWorkflowDiscoveryConfig {
 	projectId?: string;
 	projectPath?: string;
 	cwd?: string;
+	/**
+	 * Called with the reason when a step of the handshake produces nothing usable.
+	 *
+	 * The same channel every reader in this package uses. This reader is the one that needs it most: reaching
+	 * a model list takes a namespace lookup, a project lookup, a paginated group walk and two GraphQL queries,
+	 * and EVERY one of them answered `null` with no reason, so a wrong token and a namespace without Duo
+	 * access produced the same empty picker. More than one reason can arrive, because the handshake really
+	 * does try more than one candidate, and which candidate failed is the diagnosis.
+	 */
+	onFailure?: DiscoveryHooks["onFailure"];
 }
 
 export interface GitLabDuoWorkflowNamespaceSelection {
@@ -149,14 +161,38 @@ export async function discoverGitLabDuoWorkflowRuntimeNamespace(
 export async function fetchGitLabDuoWorkflowModels(
 	config: GitLabDuoWorkflowDiscoveryConfig,
 ): Promise<readonly ModelSpec<"gitlab-duo-agent">[] | null> {
-	const selection = await discoverGitLabDuoWorkflowNamespace(config);
 	const baseUrl = normalizeGitLabBaseUrl(config.baseUrl);
+	// `discoverGitLabDuoWorkflowNamespace` THROWS when no candidate has Duo access, which is right for the
+	// runtime entry point that has to stop, and wrong here: every reader in this package answers `null` for
+	// "no catalog", and a throw reaches the manager's catch instead, where it is labelled a reader bug
+	// (`unhandled`) rather than the configuration answer it actually is. The individual requests behind the
+	// handshake have already reported their own reasons; this adds the conclusion drawn from them.
+	let selection: GitLabDuoWorkflowNamespaceSelection;
+	try {
+		selection = await discoverGitLabDuoWorkflowNamespace(config);
+	} catch (error) {
+		config.onFailure?.({ stage: "payload", url: `${baseUrl}${GRAPHQL_PATH}`, detail: errorMessage(error) });
+		return null;
+	}
 	const availability = await fetchAiChatAvailableModels(config, baseUrl, selection.rootNamespaceId);
 	if (!availability) {
+		// The request itself has already reported. What is added here is WHICH namespace the handshake settled
+		// on, because the same failure means different things for an override the user configured and for a
+		// group that was picked by walking their memberships.
+		config.onFailure?.({
+			stage: "payload",
+			url: `${baseUrl}${GRAPHQL_PATH}`,
+			detail: `namespace ${selection.rootNamespaceId} (from ${selection.source}) returned no model availability`,
+		});
 		return null;
 	}
 	const modelRefs = resolveModelRefs(availability);
 	if (modelRefs.length === 0) {
+		config.onFailure?.({
+			stage: "payload",
+			url: `${baseUrl}${GRAPHQL_PATH}`,
+			detail: `namespace ${selection.rootNamespaceId} (from ${selection.source}) lists no usable models`,
+		});
 		return null;
 	}
 	return modelRefs.map(model => buildGitLabDuoWorkflowModelSpec(model, baseUrl, selection.rootNamespaceId));
@@ -164,7 +200,7 @@ export async function fetchGitLabDuoWorkflowModels(
 
 export function buildGitLabDuoWorkflowModelSpec(
 	model: GitLabDuoWorkflowModelRef,
-	baseUrl = GITLAB_DEFAULT_BASE_URL,
+	baseUrl = GITLAB_SAAS_URL,
 	rootNamespaceId?: string,
 ): ModelSpec<"gitlab-duo-agent"> {
 	const normalizedBaseUrl = normalizeGitLabBaseUrl(baseUrl);
@@ -192,7 +228,7 @@ export function buildGitLabDuoWorkflowModelSpec(
 export function buildGitLabDuoWorkflowFallbackModel(
 	id = FALLBACK_MODEL_ID,
 	name = FALLBACK_MODEL_NAME,
-	baseUrl = GITLAB_DEFAULT_BASE_URL,
+	baseUrl = GITLAB_SAAS_URL,
 ): ModelSpec<"gitlab-duo-agent"> {
 	return buildGitLabDuoWorkflowModelSpec({ name, ref: id }, baseUrl);
 }
@@ -343,31 +379,13 @@ async function fetchNamespaceOverrideCandidate(
 	if (!restNamespaceId) {
 		return null;
 	}
-	const fetchImpl = discoveryFetch(config.fetch);
-	let response: Response;
-	try {
-		response = await fetchImpl(`${baseUrl}${GROUPS_PATH}/${encodeURIComponent(restNamespaceId)}`, {
-			method: "GET",
-			headers: buildGitLabJsonHeaders(config.apiKey),
-		});
-	} catch {
-		// Null here means this step of the GitLab Duo handshake produced nothing usable, and the caller treats the
-		// provider as unavailable rather than as empty. The reason is not carried back yet; see the README section
-		// on failures travelling back and the tracked task to extend that channel.
+	const result = await requestGitLabJson(config, `${baseUrl}${GROUPS_PATH}/${encodeURIComponent(restNamespaceId)}`, {
+		method: "GET",
+	});
+	if (!result) {
 		return null;
 	}
-	if (!response.ok) {
-		return null;
-	}
-	let payload: unknown;
-	try {
-		payload = await response.json();
-	} catch {
-		// Null here means this step of the GitLab Duo handshake produced nothing usable, and the caller treats the
-		// provider as unavailable rather than as empty. The reason is not carried back yet; see the README section
-		// on failures travelling back and the tracked task to extend that channel.
-		return null;
-	}
+	const payload = result.payload;
 	const rootNamespaceId = extractRootNamespaceId(payload) ?? namespaceId;
 	const namespacePath = extractNamespacePath(payload);
 	return {
@@ -415,34 +433,15 @@ async function fetchProjectRootNamespaceViaRest(
 	baseUrl: string,
 	projectIdOrPath: string,
 ): Promise<GitLabDuoWorkflowRestProject | null> {
-	const fetchImpl = discoveryFetch(config.fetch);
-	let response: Response;
-	try {
-		response = await fetchImpl(`${baseUrl}${PROJECTS_PATH}/${encodeURIComponent(projectIdOrPath)}`, {
-			method: "GET",
-			headers: buildGitLabJsonHeaders(config.apiKey),
-		});
-	} catch {
-		// Null here means this step of the GitLab Duo handshake produced nothing usable, and the caller treats the
-		// provider as unavailable rather than as empty. The reason is not carried back yet; see the README section
-		// on failures travelling back and the tracked task to extend that channel.
-		return null;
-	}
-	if (!response.ok) {
-		return null;
-	}
-	let payload: unknown;
-	try {
-		payload = await response.json();
-	} catch {
-		// Null here means this step of the GitLab Duo handshake produced nothing usable, and the caller treats the
-		// provider as unavailable rather than as empty. The reason is not carried back yet; see the README section
-		// on failures travelling back and the tracked task to extend that channel.
+	const result = await requestGitLabJson(config, `${baseUrl}${PROJECTS_PATH}/${encodeURIComponent(projectIdOrPath)}`, {
+		method: "GET",
+	});
+	if (!result) {
 		return null;
 	}
 	return {
-		rootNamespaceId: extractExplicitRootNamespaceId(payload),
-		pathWithNamespace: extractProjectFullPath(payload),
+		rootNamespaceId: extractExplicitRootNamespaceId(result.payload),
+		pathWithNamespace: extractProjectFullPath(result.payload),
 	};
 }
 
@@ -464,7 +463,6 @@ async function fetchTopLevelGroupNamespaceCandidates(
 	config: GitLabDuoWorkflowDiscoveryConfig,
 	baseUrl: string,
 ): Promise<GitLabDuoWorkflowCandidate[]> {
-	const fetchImpl = discoveryFetch(config.fetch);
 	const candidates: (GitLabDuoWorkflowCandidate & { preferred: boolean })[] = [];
 	// GitLab paginates `/groups`; a token can belong to more than one page of top-level
 	// groups, and a usable Duo namespace may live on a later page. Follow the keyset/
@@ -479,25 +477,20 @@ async function fetchTopLevelGroupNamespaceCandidates(
 		url.searchParams.set("sort", "asc");
 		url.searchParams.set("page", nextPage);
 
-		let response: Response;
-		try {
-			response = await fetchImpl(url, {
-				method: "GET",
-				headers: buildGitLabJsonHeaders(config.apiKey),
-			});
-		} catch {
+		const result = await requestGitLabJson(config, url, { method: "GET" });
+		if (!result) {
+			// The reason has already been reported by the one place that makes the request. The walk stops
+			// rather than skipping the page, because a page that cannot be read makes the rest of the sequence
+			// meaningless: GitLab's paging is positional and the next page number came from THIS response.
 			break;
 		}
-		if (!response.ok) {
-			break;
-		}
-		let payload: unknown;
-		try {
-			payload = await response.json();
-		} catch {
-			break;
-		}
+		const payload = result.payload;
 		if (!Array.isArray(payload)) {
+			config.onFailure?.({
+				stage: "payload",
+				url: url.toString(),
+				detail: `expected an array of groups, received ${payload === null ? "null" : typeof payload}`,
+			});
 			break;
 		}
 		for (const group of payload) {
@@ -513,7 +506,7 @@ async function fetchTopLevelGroupNamespaceCandidates(
 				preferred: hasDuoFeatureFlag(group),
 			});
 		}
-		nextPage = nonEmptyHeader(response.headers.get("x-next-page"));
+		nextPage = result.nextPage;
 	}
 	candidates.sort((left, right) => Number(right.preferred) - Number(left.preferred));
 	return candidates.map(candidate => ({
@@ -527,37 +520,69 @@ function nonEmptyHeader(value: string | null): string | undefined {
 	return value && value.trim().length > 0 ? value.trim() : undefined;
 }
 
+/** A GitLab JSON response, with the pagination header the group walk needs. */
+interface GitLabJsonResponse {
+	payload: unknown;
+	nextPage: string | undefined;
+}
+
+/**
+ * The ONE place this reader turns a GitLab request into JSON, and the one place it reports why it could not.
+ *
+ * Every step of the Duo handshake -- the namespace override, the project lookup, the paginated group walk,
+ * and every GraphQL query -- used to spell this out itself: a `try` around the fetch, an `if (!response.ok)`,
+ * a `try` around `response.json()`, and `return null` from all three with no reason. Four copies of the same
+ * three-way decision meant four places to get it wrong and four places a reason had to be added, so they are
+ * one function now. `null` still means "this step produced nothing usable", and the caller still keeps the
+ * distinction from a namespace that answers with no models, but now the reason travels with it.
+ */
+async function requestGitLabJson(
+	config: GitLabDuoWorkflowDiscoveryConfig,
+	url: string | URL,
+	init: { method: "GET" | "POST"; body?: string },
+): Promise<GitLabJsonResponse | null> {
+	const reportedUrl = url.toString();
+	const fetchImpl = discoveryFetch(config.fetch);
+	let response: Response;
+	try {
+		response = await fetchImpl(url, {
+			method: init.method,
+			headers: buildGitLabJsonHeaders(config.apiKey),
+			...(init.body === undefined ? {} : { body: init.body }),
+		});
+	} catch (error) {
+		config.onFailure?.({ stage: "request", url: reportedUrl, detail: errorMessage(error) });
+		return null;
+	}
+	if (!response.ok) {
+		// A 401 says the token is wrong and a 404 says this candidate is not a namespace the token can see.
+		// Both were the same silence before, and they call for entirely different things from an operator.
+		config.onFailure?.({
+			stage: "status",
+			url: reportedUrl,
+			detail: `HTTP ${response.status} ${response.statusText}`.trim(),
+		});
+		return null;
+	}
+	try {
+		return { payload: await response.json(), nextPage: nonEmptyHeader(response.headers.get("x-next-page")) };
+	} catch (error) {
+		config.onFailure?.({ stage: "body", url: reportedUrl, detail: `response is not JSON: ${errorMessage(error)}` });
+		return null;
+	}
+}
+
 async function postGraphQL(
 	config: GitLabDuoWorkflowDiscoveryConfig,
 	baseUrl: string,
 	query: string,
 	variables: Record<string, string>,
 ): Promise<unknown | null> {
-	const fetchImpl = discoveryFetch(config.fetch);
-	let response: Response;
-	try {
-		response = await fetchImpl(`${baseUrl}${GRAPHQL_PATH}`, {
-			method: "POST",
-			headers: buildGitLabJsonHeaders(config.apiKey),
-			body: JSON.stringify({ query, variables }),
-		});
-	} catch {
-		// Null here means this step of the GitLab Duo handshake produced nothing usable, and the caller treats the
-		// provider as unavailable rather than as empty. The reason is not carried back yet; see the README section
-		// on failures travelling back and the tracked task to extend that channel.
-		return null;
-	}
-	if (!response.ok) {
-		return null;
-	}
-	try {
-		return await response.json();
-	} catch {
-		// Null here means this step of the GitLab Duo handshake produced nothing usable, and the caller treats the
-		// provider as unavailable rather than as empty. The reason is not carried back yet; see the README section
-		// on failures travelling back and the tracked task to extend that channel.
-		return null;
-	}
+	const result = await requestGitLabJson(config, `${baseUrl}${GRAPHQL_PATH}`, {
+		method: "POST",
+		body: JSON.stringify({ query, variables }),
+	});
+	return result?.payload ?? null;
 }
 
 function parseAvailability(value: unknown): GitLabDuoWorkflowAvailability | null {
@@ -699,8 +724,8 @@ function toGraphQLRootNamespaceId(rootNamespaceId: string): string {
 }
 
 function normalizeGitLabBaseUrl(baseUrl: string | undefined): string {
-	const raw = baseUrl?.trim() || GITLAB_DEFAULT_BASE_URL;
-	return trimTrailingSlashes(raw) || GITLAB_DEFAULT_BASE_URL;
+	const raw = baseUrl?.trim() || GITLAB_SAAS_URL;
+	return trimTrailingSlashes(raw) || GITLAB_SAAS_URL;
 }
 
 function buildGitLabJsonHeaders(apiKey: string): Headers {

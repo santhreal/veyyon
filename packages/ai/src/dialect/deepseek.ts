@@ -1,15 +1,13 @@
 import { parseJsonWithRepair } from "@veyyon/utils";
+import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
 import { mintToolCallId, parseToolArgsText, partialSuffixOverlapAny } from "./coercion";
-import dialectPrompt from "./deepseek.md" with { type: "text" };
 import {
 	assistantTranscriptParts,
 	collectToolResultRun,
 	messageContentText,
 	renderThinkTags,
 	stringifyJson,
-	THINK_CLOSE,
-	THINK_OPEN,
 } from "./rendering";
 import type {
 	DialectDefinition,
@@ -19,6 +17,7 @@ import type {
 	InbandScanner,
 	InbandScannerOptions,
 } from "./types";
+import { CODE_FENCE, THINK_CLOSE, THINK_OPEN } from "./wire-tags";
 
 export const DEEPSEEK_TOOL_CALLS_BEGIN = "<｜tool▁calls▁begin｜>";
 export const DEEPSEEK_TOOL_CALLS_END = "<｜tool▁calls▁end｜>";
@@ -34,7 +33,6 @@ const DEEPSEEK_EOS = "<｜end▁of▁sentence｜>";
 
 const LEGACY_TOOL_TYPE = "function";
 const LEGACY_JSON_FENCE = "```json";
-const CODE_FENCE = "```";
 
 const DSML_TOOL_CALLS_OPEN_FULLWIDTH = "<｜DSML｜tool_calls>";
 export const DSML_TOOL_CALLS_CLOSE_FULLWIDTH = "</｜DSML｜tool_calls>";
@@ -592,7 +590,7 @@ function renderTranscript(messages: readonly Message[], options: DialectRenderOp
 
 const definition: DialectDefinition = {
 	dialect: "deepseek",
-	prompt: dialectPrompt,
+	prompt: AI_PROMPTS["dialect/deepseek"].text,
 	createScanner: options => new DeepSeekInbandScanner(options),
 	renderToolCall,
 	renderAssistantToolCalls,

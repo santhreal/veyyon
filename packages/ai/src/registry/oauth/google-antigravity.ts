@@ -2,7 +2,14 @@
  * Antigravity OAuth flow (Gemini 3, Claude, GPT-OSS via Google Cloud)
  * Uses different OAuth credentials than google-gemini-cli for access to additional models.
  */
+
+import { CLOUD_CODE_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { getAntigravityUserAgent } from "@veyyon/catalog/wire/gemini-headers";
+import {
+	GOOGLE_BASE_OAUTH_SCOPES,
+	GOOGLE_OAUTH_AUTH_ENDPOINT,
+	GOOGLE_OAUTH_TOKEN_ENDPOINT,
+} from "@veyyon/catalog/wire/google-oauth";
 import { errorMessage } from "@veyyon/utils";
 import * as AIError from "../../error";
 import { credentialExpiryFromExpiresIn } from "./expiry";
@@ -17,17 +24,16 @@ const CLIENT_SECRET = decode("R09DU1BYLUs1OEZXUjQ4NkxkTEoxbUxCOHNYQzR6NnFEQWY=")
 const CALLBACK_PORT = 51121;
 const CALLBACK_PATH = "/oauth-callback";
 
+// The shared trio plus the two scopes only Antigravity needs, which stay here because no other flow asks
+// for them. Appended rather than interleaved: the order is part of the grant's identity.
 const SCOPES = [
-	"https://www.googleapis.com/auth/cloud-platform",
-	"https://www.googleapis.com/auth/userinfo.email",
-	"https://www.googleapis.com/auth/userinfo.profile",
+	...GOOGLE_BASE_OAUTH_SCOPES,
 	"https://www.googleapis.com/auth/cclog",
 	"https://www.googleapis.com/auth/experimentsandconfigs",
 ];
 
-const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-const TOKEN_URL = "https://oauth2.googleapis.com/token";
-const CLOUD_CODE_ENDPOINT = "https://cloudcode-pa.googleapis.com";
+const AUTH_URL = GOOGLE_OAUTH_AUTH_ENDPOINT;
+const TOKEN_URL = GOOGLE_OAUTH_TOKEN_ENDPOINT;
 const TIER_LEGACY = "legacy-tier";
 const PROJECT_ONBOARD_MAX_ATTEMPTS = 5;
 const PROJECT_ONBOARD_INTERVAL_MS = 2000;

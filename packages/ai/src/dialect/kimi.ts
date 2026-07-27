@@ -1,6 +1,6 @@
+import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
 import { normalizeKimiFunctionName, parseToolArgsText, partialSuffixOverlapAny } from "./coercion";
-import dialectPrompt from "./kimi.md" with { type: "text" };
 import {
 	assistantTranscriptParts,
 	collectToolResultRun,
@@ -9,8 +9,6 @@ import {
 	messageContentText,
 	renderThinkTags,
 	stringifyJson,
-	THINK_CLOSE,
-	THINK_OPEN,
 } from "./rendering";
 import type {
 	DialectDefinition,
@@ -20,6 +18,7 @@ import type {
 	InbandScanner,
 	InbandScannerOptions,
 } from "./types";
+import { THINK_CLOSE, THINK_OPEN } from "./wire-tags";
 
 export const KIMI_SECTION_BEGIN = "<|tool_calls_section_begin|>";
 export const KIMI_SECTION_END = "<|tool_calls_section_end|>";
@@ -316,7 +315,7 @@ function renderTranscript(messages: readonly Message[], _options?: DialectRender
 
 const definition: DialectDefinition = {
 	dialect: "kimi",
-	prompt: dialectPrompt,
+	prompt: AI_PROMPTS["dialect/kimi"].text,
 	createScanner: options => new KimiInbandScanner(options),
 	renderToolCall,
 	renderAssistantToolCalls,

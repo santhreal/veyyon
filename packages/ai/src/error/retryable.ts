@@ -1,4 +1,4 @@
-import { isRetryableError, isUnexpectedSocketCloseMessage } from "@veyyon/utils";
+import { isRetryableError, isUnexpectedSocketCloseMessage } from "@veyyon/utils/fetch-retry";
 import {
 	isRetryableStreamEnvelopeError,
 	isTransientStreamParseError,

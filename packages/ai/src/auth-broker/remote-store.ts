@@ -317,6 +317,9 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 						continue;
 					}
 					logger.debug("auth-broker snapshot stream failed; backing off", { error: String(error) });
+					// This sleep rejects for exactly one reason: the background abort fired, meaning shutdown. The
+					// loop re-checks `#closed` and the signal at the top and exits, so there is nothing to report --
+					// and the failure that caused the backoff has already been recorded above.
 					await scheduler.wait(backoffMs, { signal: this.#backgroundAbort.signal }).catch(() => {});
 					backoffMs = Math.min(BACKGROUND_BACKOFF_MAX_MS, backoffMs * 2);
 					continue;
@@ -333,6 +336,8 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 			} catch (error) {
 				if (this.#closed || this.#backgroundAbort.signal.aborted) break;
 				this.#reportStaleSnapshot("background-sync", error, { backoffMs });
+				// As above: the sleep rejects only on the shutdown abort, which the loop's own checks handle, and
+				// the fetch failure that caused this backoff was just reported.
 				await scheduler.wait(backoffMs, { signal: this.#backgroundAbort.signal }).catch(() => {});
 				backoffMs = Math.min(BACKGROUND_BACKOFF_MAX_MS, backoffMs * 2);
 			}

@@ -4,7 +4,6 @@ import type { ProviderDefinition } from "./types";
 export const gitLabDuoWorkflowProvider = {
 	id: "gitlab-duo-agent",
 	name: "GitLab Duo Agent",
-	envKeys: "GITLAB_TOKEN",
 	login: async (cb: OAuthLoginCallbacks) => {
 		// Lazy import: keep heavy OAuth flow modules out of the eager registry graph.
 		const { loginGitLabDuoWorkflow } = await import("./oauth/gitlab-duo-workflow");

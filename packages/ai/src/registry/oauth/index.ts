@@ -2,7 +2,7 @@
 // High-level API
 // ============================================================================
 
-import { decodeJwtPayload } from "@veyyon/utils";
+import { decodeJwtPayload } from "@veyyon/utils/jwt";
 import * as AIError from "../../error";
 import { getProviderDefinition, PROVIDER_REGISTRY } from "../registry";
 import type {

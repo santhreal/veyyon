@@ -1186,13 +1186,50 @@ export function encodeStream(
 
 				closeOpenFunctionCalls();
 				if (state.open) closeOpen();
-				const message = finalMessage ?? ((await events.result().catch(() => null)) as AssistantMessage | null);
+				// A stream that produced no `done` event is asked for its result, and a REJECTION there is a
+				// failure like any other. It used to be swallowed to `null`, and every reader below treats a null
+				// message as "no final message" rather than as an error: the status became `completed`, the items
+				// became whatever had streamed so far, and usage became null. So a generation that failed after
+				// emitting some text was reported to the client as a successful response with partial content --
+				// the one outcome a client cannot detect or retry. The reason is kept and reported instead.
+				let resultFailure: string | undefined;
+				const message =
+					finalMessage ??
+					((await events.result().catch((error: unknown) => {
+						resultFailure = errorMessage(error);
+						return null;
+					})) as AssistantMessage | null);
+				if (!message) {
+					// No final message, whether because the result rejected or because the stream simply ended
+					// without one. Neither is a completed response, and `response.failed` is the shape this server
+					// already uses to say so, with the items that did stream still attached for context.
+					closeOpenFunctionCalls();
+					controller.enqueue(
+						encoder.encode(
+							sseEvent("response.failed", {
+								type: "response.failed",
+								sequence_number: seq(),
+								response: {
+									...responseSnapshot("failed", finishedItems),
+									error: {
+										message: resultFailure ?? "stream ended without a final message",
+									},
+								},
+							}),
+						),
+					);
+					emitDone();
+					controller.close();
+					return;
+				}
 
 				// Build the canonical output from the final message so non-streaming
 				// readers see the exact same shape they'd get from encodeResponse().
-				const items = message ? buildOutputItems(message) : finishedItems;
-				const usage = message ? buildUsage(message) : null;
-				const status = message ? responseStatusForStopReason(message) : "completed";
+				// The message is non-null here: the no-message case failed above, so these no longer need a
+				// fallback that reported a failure as a completed response.
+				const items = buildOutputItems(message);
+				const usage = buildUsage(message);
+				const status = responseStatusForStopReason(message);
 				const terminalEvent =
 					status === "incomplete"
 						? "response.incomplete"
@@ -1214,7 +1251,7 @@ export function encodeStream(
 								usage,
 								incomplete_details: incompleteDetailsForStatus(status),
 								...(status === "failed"
-									? { error: { message: message?.errorMessage ?? "response failed" } }
+									? { error: { message: message.errorMessage ?? "response failed" } }
 									: {}),
 							},
 						}),

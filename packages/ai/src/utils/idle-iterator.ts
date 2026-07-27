@@ -184,6 +184,9 @@ export async function* iterateWithIdleTimeout<T>(
 		iteratorClosed = true;
 		const returnPromise = iterator.return?.();
 		if (returnPromise) {
+			// Closing the upstream iterator we are done with. The `catch` prevents an unhandled rejection from a
+			// promise nothing awaits; a source that objects to being closed cannot change the outcome we have
+			// already produced, and the reason the iteration ended is what reaches the caller.
 			void returnPromise.catch(() => {});
 		}
 	};
@@ -528,6 +531,8 @@ export async function* iterateWithTerminalGrace<T>(
 	} finally {
 		const returnPromise = iterator.return?.();
 		if (returnPromise) {
+			// Same as `closeIterator` above, in the `finally` that runs however the loop ended. A close failure
+			// here must not replace the error or the completion that is already on its way out of this function.
 			void Promise.resolve(returnPromise).catch(() => {});
 		}
 	}

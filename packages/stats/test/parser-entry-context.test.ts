@@ -20,7 +20,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getSessionEntryWithContext } from "@veyyon/stats/parser";
-import type { SessionEntry } from "@veyyon/stats/types";
+import type { SessionLogEntry } from "@veyyon/stats/types";
 
 const TS = "2026-07-12T00:00:00.000Z";
 
@@ -68,11 +68,11 @@ async function writeSession(lines: string[]): Promise<string> {
 	return file;
 }
 
-function roleOf(entry: SessionEntry): string {
+function roleOf(entry: SessionLogEntry): string {
 	return entry.type === "message" ? (entry as { message: { role: string } }).message.role : entry.type;
 }
 
-function idOf(entry: SessionEntry): string {
+function idOf(entry: SessionLogEntry): string {
 	return (entry as { id: string }).id;
 }
 

@@ -1,4 +1,5 @@
-import { scopedTimeoutSignal, trimTrailingSlashes } from "@veyyon/utils";
+import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import * as AIError from "../error";
 import type { FetchImpl } from "../types";
 

@@ -1,4 +1,4 @@
-import { once } from "@veyyon/utils";
+import { once } from "@veyyon/utils/abortable";
 import { fetchCodexModels } from "../discovery/codex";
 import type { DevinModelDiscoveryOptions } from "../discovery/devin";
 import { buildGitLabDuoWorkflowFallbackModel, fetchGitLabDuoWorkflowModels } from "../discovery/gitlab-duo-workflow";
@@ -23,8 +23,13 @@ export function openaiCodexModelManagerOptions(
 		providerId: "openai-codex",
 		...(accessToken
 			? {
-					fetchDynamicModels: async () => {
-						const result = await fetchCodexModels({ accessToken, accountId, clientVersion });
+					fetchDynamicModels: async hooks => {
+						const result = await fetchCodexModels({
+							accessToken,
+							accountId,
+							clientVersion,
+							onFailure: hooks?.onFailure,
+						});
 						return result?.models ?? null;
 					},
 				}
@@ -51,9 +56,9 @@ export function cursorModelManagerOptions(config: CursorModelManagerConfig = {})
 		cacheProviderId: CURSOR_CACHE_PROVIDER_ID,
 		...(apiKey
 			? {
-					fetchDynamicModels: async () => {
+					fetchDynamicModels: async hooks => {
 						const { fetchCursorUsableModels } = await cursorDiscovery();
-						return fetchCursorUsableModels({ apiKey, baseUrl, clientVersion });
+						return fetchCursorUsableModels({ apiKey, baseUrl, clientVersion, onFailure: hooks?.onFailure });
 					},
 				}
 			: undefined),
@@ -99,7 +104,7 @@ export function gitLabDuoWorkflowModelManagerOptions(
 		],
 		...(apiKey
 			? {
-					fetchDynamicModels: async () =>
+					fetchDynamicModels: async hooks =>
 						fetchGitLabDuoWorkflowModels({
 							apiKey,
 							baseUrl: config.baseUrl,
@@ -107,6 +112,7 @@ export function gitLabDuoWorkflowModelManagerOptions(
 							namespaceId: config.namespaceId,
 							projectId: config.projectId,
 							cwd: config.cwd,
+							onFailure: hooks?.onFailure,
 						}),
 				}
 			: undefined),
@@ -141,9 +147,9 @@ export function devinModelManagerOptions(config: DevinModelManagerConfig = {}): 
 		...(apiKey ? { dynamicModelsAuthoritative: true } : undefined),
 		...(apiKey
 			? {
-					fetchDynamicModels: async () => {
+					fetchDynamicModels: async hooks => {
 						const { fetchDevinModels } = await devinDiscovery();
-						return fetchDevinModels({ apiKey, baseUrl, fetch });
+						return fetchDevinModels({ apiKey, baseUrl, fetch, onFailure: hooks?.onFailure });
 					},
 				}
 			: undefined),

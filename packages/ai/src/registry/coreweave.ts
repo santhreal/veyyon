@@ -1,5 +1,5 @@
 import { coreWeaveProjectHeaders } from "@veyyon/catalog/wire/coreweave";
-import { $env } from "@veyyon/utils";
+import { $env } from "@veyyon/utils/env";
 import * as AIError from "../error";
 import { createApiKeyLogin } from "./api-key-login";
 import type { OAuthLoginCallbacks } from "./oauth/types";

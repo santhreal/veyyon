@@ -19,17 +19,15 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import {
-	fetchOpenAICompatibleModels,
-	type OpenAICompatibleDiscoveryFailure,
-} from "../src/discovery/openai-compatible";
+import type { DiscoveryFailure } from "../src/discovery/failure";
+import { fetchOpenAICompatibleModels } from "../src/discovery/openai-compatible";
 
 /** Run discovery against a stub fetch, collecting whatever reasons it reports. */
 async function discover(
 	fetchImpl: (url: string | URL | Request, init?: RequestInit) => Promise<Response>,
 	baseUrl = "https://models.example.com",
-): Promise<{ models: unknown[] | null; failures: OpenAICompatibleDiscoveryFailure[] }> {
-	const failures: OpenAICompatibleDiscoveryFailure[] = [];
+): Promise<{ models: unknown[] | null; failures: DiscoveryFailure[] }> {
+	const failures: DiscoveryFailure[] = [];
 	const models = await fetchOpenAICompatibleModels({
 		api: "openai-completions",
 		provider: "openai",

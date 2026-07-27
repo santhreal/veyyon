@@ -213,7 +213,15 @@ export type MessageCreateParamsStreaming = MessageCreateParams & { stream: true 
 
 // ─── Response / usage ───────────────────────────────────────────────────────
 
-export type StopReason =
+/**
+ * Anthropic's OWN `stop_reason` vocabulary, as it arrives on the wire.
+ *
+ * Not the harness's `StopReason` in `../types`, which has five values (`stop`, `length`,
+ * `toolUse`, `error`, `aborted`) and is what every provider maps onto. Both were spelled
+ * `StopReason`, so a file that imported the wrong one still typechecked against the wrong eight
+ * literals. `mapStopReason` in `anthropic.ts` is the one place that crosses between them.
+ */
+export type AnthropicWireStopReason =
 	| "end_turn"
 	| "max_tokens"
 	| "stop_sequence"
@@ -248,7 +256,14 @@ export type UsageIteration = {
 	cache_creation_input_tokens?: number | null;
 };
 
-export type Usage = {
+/**
+ * Anthropic's OWN usage block, as it arrives on the wire: snake_case, nullable, token counts only.
+ *
+ * Not the harness's `Usage` in `../types`, which is camelCase and carries cost. `anthropic.ts`
+ * already imported this one as `AnthropicWireUsage` to say which it meant, which is the signal
+ * that the bare name was doing no work here.
+ */
+export type AnthropicWireUsage = {
 	input_tokens?: number | null;
 	output_tokens?: number | null;
 	cache_read_input_tokens?: number | null;
@@ -265,9 +280,9 @@ export type ResponseMessage = {
 	role?: "assistant";
 	model?: string;
 	content?: unknown[];
-	stop_reason?: StopReason | null;
+	stop_reason?: AnthropicWireStopReason | null;
 	stop_sequence?: string | null;
-	usage: Usage;
+	usage: AnthropicWireUsage;
 };
 
 // ─── Stream events ──────────────────────────────────────────────────────────
@@ -293,7 +308,7 @@ export type StopDetails = {
 };
 
 export type MessageDelta = {
-	stop_reason?: StopReason | null;
+	stop_reason?: AnthropicWireStopReason | null;
 	stop_sequence?: string | null;
 	stop_details?: StopDetails | null;
 };
@@ -306,7 +321,7 @@ export type RawContentBlockStartEvent = {
 };
 export type RawContentBlockDeltaEvent = { type: "content_block_delta"; index: number; delta: ContentBlockDelta };
 export type RawContentBlockStopEvent = { type: "content_block_stop"; index: number };
-export type RawMessageDeltaEvent = { type: "message_delta"; delta: MessageDelta; usage: Usage };
+export type RawMessageDeltaEvent = { type: "message_delta"; delta: MessageDelta; usage: AnthropicWireUsage };
 export type RawMessageStopEvent = { type: "message_stop" };
 
 export type RawMessageStreamEvent =

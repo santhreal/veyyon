@@ -2,8 +2,8 @@
  * OpenAI Codex (ChatGPT OAuth) flow — browser and device-code flows.
  */
 
-import { OPENAI_HEADER_VALUES } from "@veyyon/catalog/wire/codex";
-import { decodeJwtPayload, withScopedTimeoutSignal } from "@veyyon/utils";
+import { type CodexTokenIdentity, OPENAI_HEADER_VALUES, readCodexTokenIdentity } from "@veyyon/catalog/wire/codex";
+import { withScopedTimeoutSignal } from "@veyyon/utils";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import { isRecord } from "../../utils";
@@ -17,8 +17,6 @@ const TOKEN_URL = "https://auth.openai.com/oauth/token";
 const CALLBACK_PORT = 1455;
 const CALLBACK_PATH = "/auth/callback";
 const SCOPE = "openid profile email offline_access api.connectors.read api.connectors.invoke";
-const JWT_CLAIM_PATH = "https://api.openai.com/auth";
-const JWT_PROFILE_CLAIM = "https://api.openai.com/profile";
 const TOKEN_REQUEST_TIMEOUT_MS = 15_000;
 const DEVICE_USERCODE_URL = "https://auth.openai.com/api/accounts/deviceauth/usercode";
 const DEVICE_TOKEN_URL = "https://auth.openai.com/api/accounts/deviceauth/token";
@@ -29,30 +27,10 @@ const DEVICE_POLL_SAFETY_MARGIN_MS = 3_000;
 /** Upper bound on device-code polling to avoid infinite loops on server errors. */
 const DEVICE_MAX_POLLS = 120;
 
-type JwtPayload = {
-	[JWT_CLAIM_PATH]?: {
-		chatgpt_account_id?: string;
-	};
-	[JWT_PROFILE_CLAIM]?: {
-		email?: string;
-	};
-	[key: string]: unknown;
-};
-
-/** @deprecated Prefer `decodeJwtPayload` from `@veyyon/utils`; kept for the public re-export. */
-export function decodeJwt<T = Record<string, unknown>>(token: string): T | null {
-	return decodeJwtPayload<T>(token);
-}
-
-function getTokenProfile(accessToken: string): { accountId?: string; email?: string } {
-	const payload = decodeJwt<JwtPayload>(accessToken);
-	const auth = payload?.[JWT_CLAIM_PATH];
-	const accountId = auth?.chatgpt_account_id;
-	const email = payload?.[JWT_PROFILE_CLAIM]?.email?.trim().toLowerCase();
-	return {
-		accountId: typeof accountId === "string" && accountId.length > 0 ? accountId : undefined,
-		email: typeof email === "string" && email.length > 0 ? email : undefined,
-	};
+function getTokenProfile(accessToken: string): CodexTokenIdentity {
+	// The claim namespaces and the empty-claim rule live in `@veyyon/catalog/wire/codex`, beside the header name
+	// the account id is sent under. This module used to hand-roll both.
+	return readCodexTokenIdentity(accessToken);
 }
 
 interface PKCE {

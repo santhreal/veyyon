@@ -10,11 +10,10 @@ import {
 	isAnthropicFableOrMythosModel,
 	supportsMidConversationSystemMessages,
 } from "../identity/family";
+import { ANTHROPIC_API_ENDPOINT } from "../provider-endpoints";
 import type { ModelSpec, ResolvedAnthropicCompat } from "../types";
 import { applyCompatOverrides } from "./apply";
 import { matchesKimiK27CodeFamily } from "./kimi";
-
-const OFFICIAL_ANTHROPIC_URL = "https://api.anthropic.com";
 
 /**
  * Official first-party Anthropic API. A missing baseUrl is official on purpose:
@@ -26,7 +25,7 @@ const OFFICIAL_ANTHROPIC_URL = "https://api.anthropic.com";
 export function isOfficialAnthropicApiUrl(baseUrl?: string): boolean {
 	if (!baseUrl) return true;
 	const lower = baseUrl.toLowerCase();
-	return lower === OFFICIAL_ANTHROPIC_URL || lower.startsWith(`${OFFICIAL_ANTHROPIC_URL}/`);
+	return lower === ANTHROPIC_API_ENDPOINT || lower.startsWith(`${ANTHROPIC_API_ENDPOINT}/`);
 }
 
 const CLOUDFLARE_ANTHROPIC_GATEWAY_URL_MARKER = /gateway\.ai\.cloudflare\.com\/.+\/anthropic(?:\/|$)/i;

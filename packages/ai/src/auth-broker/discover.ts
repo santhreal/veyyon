@@ -21,6 +21,9 @@ import {
 } from "@veyyon/utils";
 import { YAML } from "bun";
 import type { AuthCredential } from "../auth-storage";
+// This module constructs an `AuthStorage` from the subpath rather than through the barrel, so it
+// carries the registry wiring itself; see the note on the same import in `../index.ts`.
+import "../usage/defaults";
 import { AuthStorage, SqliteAuthCredentialStore } from "../auth-storage";
 import * as AIError from "../error";
 import { AuthBrokerClient } from "./client";

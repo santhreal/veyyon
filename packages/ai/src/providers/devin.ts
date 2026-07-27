@@ -29,6 +29,7 @@ import {
 	StopReason,
 } from "@veyyon/catalog/discovery/devin-gen/exa/codeium_common_pb/codeium_common_pb";
 import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
+import { DEVIN_CASCADE_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import {
 	logger,
 	parseStreamingJson,
@@ -54,8 +55,14 @@ import { deterministicUuid } from "../utils/deterministic-id";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { toolWireSchema } from "../utils/schema/wire";
 
-/** Base host for Codeium/Windsurf's Cascade chat API (Connect protocol over HTTP/1.1). */
-export const DEVIN_API_URL = "https://server.codeium.com";
+/**
+ * Base host for Codeium/Windsurf's Cascade chat API (Connect protocol over HTTP/1.1).
+ *
+ * Re-exported from `@veyyon/catalog/provider-endpoints`, not declared here. It used to be `DEVIN_CASCADE_ENDPOINT`, which
+ * was the same name the OAuth flow in `../registry/oauth/devin.ts` used for `https://api.devin.ai`: two hosts,
+ * one name, one package, and this one exported.
+ */
+export { DEVIN_CASCADE_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 
 export interface DevinOptions extends StreamOptions {
 	/** Cascade conversation id; reused as `cascade_id` so the server threads turns. */
@@ -151,7 +158,7 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 
 		try {
 			const fetchImpl = options?.fetch ?? fetch;
-			const baseUrl = trimTrailingSlashes(model.baseUrl || DEVIN_API_URL);
+			const baseUrl = trimTrailingSlashes(model.baseUrl || DEVIN_CASCADE_ENDPOINT);
 			const apiKey = normalizeDevinSessionToken(options?.apiKey);
 			const auth = await fetchDevinAuthMetadata(apiKey, baseUrl, fetchImpl, options?.signal);
 			const chatBaseUrl = auth.baseUrl ?? baseUrl;

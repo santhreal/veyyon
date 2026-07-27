@@ -1,6 +1,6 @@
 import { parseJsonWithRepair } from "@veyyon/utils";
+import { AI_PROMPTS } from "../prompts/registry";
 import type { ToolCall } from "../types";
-import dialectPrompt from "./anthropic.md" with { type: "text" };
 import { buildStringArgsResolver, mintToolCallId, setToolArg } from "./coercion";
 import {
 	legacyTextTranscriptRenderer,
@@ -552,7 +552,7 @@ function renderAssistantToolCalls(calls: readonly ToolCall[], options: DialectRe
 
 const definition: DialectDefinition = {
 	dialect: "anthropic",
-	prompt: dialectPrompt,
+	prompt: AI_PROMPTS["dialect/anthropic"].text,
 	createScanner: options => new AnthropicInbandScanner(options),
 	renderToolCall: renderInvokeToolCall,
 	renderAssistantToolCalls,

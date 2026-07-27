@@ -1,4 +1,4 @@
-import { resetHeaderTargetMs } from "@veyyon/utils";
+import { resetHeaderTargetMs } from "@veyyon/utils/fetch-retry";
 
 export type HeadersLike = Headers | Record<string, string | undefined> | undefined | null;
 

@@ -1,5 +1,6 @@
-import { HOUR_MS, MINUTE_MS } from "@veyyon/utils";
+import { errorMessage, HOUR_MS, MINUTE_MS } from "@veyyon/utils";
 import { buildModel } from "./build";
+import type { DiscoveryFailure, DiscoveryHooks } from "./discovery/failure";
 import { readModelCache, writeModelCache } from "./model-cache";
 import { type GeneratedProvider, getBundledModels } from "./models";
 import type { Api, Model, ModelSpec, Provider } from "./types";
@@ -42,8 +43,27 @@ export interface ModelManagerOptions<TApi extends Api = Api, TModelsDevPayload =
 	dynamicModelsAuthoritative?: boolean;
 	/** Cached model ids to ignore when the cache was written against a different static catalog fingerprint. */
 	dropCachedModelIdsOnStaticMismatch?: readonly string[];
-	/** Optional dynamic endpoint fetcher. */
-	fetchDynamicModels?: () => Promise<readonly ModelSpec<TApi>[] | null>;
+	/**
+	 * Optional dynamic endpoint fetcher.
+	 *
+	 * Receives {@link DiscoveryHooks} so the reason for a `null` reaches whoever configured this manager. A
+	 * fetcher that ignores the hooks still works and still answers `null`; what changes is that the caller
+	 * can distinguish "the endpoint refused the connection" from "the endpoint listed no models", which was
+	 * the same answer before and is why a provider could disappear from a picker with nothing explaining it.
+	 *
+	 * The parameter is OPTIONAL so that a caller holding one of these fetchers can invoke it with no
+	 * argument -- which is how the provider suites in this package drive discovery directly. The manager
+	 * always passes hooks, so a reader reads `hooks?.onFailure` rather than assuming either way.
+	 */
+	fetchDynamicModels?: (hooks?: DiscoveryHooks) => Promise<readonly ModelSpec<TApi>[] | null>;
+	/**
+	 * Called with the reason whenever a dynamic fetch produces no list.
+	 *
+	 * The catalog logs from no source file, so this is how the loss leaves the package. It fires for a
+	 * failure the reader reported through its hooks AND for a fetcher that threw, which reaches the same
+	 * `null` and used to be even quieter.
+	 */
+	onDiscoveryFailure?: (failure: DiscoveryFailure) => void;
 	/** Optional models.dev fallback hook. */
 	modelsDev?: ModelsDevFallback<TApi, TModelsDevPayload>;
 	/** Clock override for deterministic tests. */
@@ -145,7 +165,10 @@ export async function resolveProviderModels<TApi extends Api = Api, TModelsDevPa
 	}
 
 	const [fetchedModelsDevModels, fetchedDynamicModels] = shouldFetchFromNetwork
-		? await Promise.all([fetchModelsDev(options), dynamicFetcher ? fetchDynamicModels(dynamicFetcher) : null])
+		? await Promise.all([
+				fetchModelsDev(options),
+				dynamicFetcher ? fetchDynamicModels(dynamicFetcher, options.onDiscoveryFailure) : null,
+			])
 		: [null, null];
 	const modelsDevModels = normalizeModelList<TApi>(fetchedModelsDevModels ?? []);
 	const shouldUseFreshCacheAsAuthoritative =
@@ -229,18 +252,41 @@ async function fetchModelsDev<TApi extends Api, TModelsDevPayload>(
 }
 
 async function fetchDynamicModels<TApi extends Api>(
-	fetcher: () => Promise<readonly ModelSpec<TApi>[] | null>,
+	fetcher: (hooks?: DiscoveryHooks) => Promise<readonly ModelSpec<TApi>[] | null>,
+	onFailure: ((failure: DiscoveryFailure) => void) | undefined,
 ): Promise<Model<TApi>[] | null> {
 	try {
-		const models = await fetcher();
+		const models = await fetcher({ onFailure });
 		if (models === null) {
 			return null;
 		}
-		return normalizeModelList<TApi>(models);
-	} catch {
-		// Null means this source produced no list, and the manager then falls through to the next source (cache,
-		// then static models) rather than reporting an empty catalog. The reason is not carried back yet; see the
-		// README on failures travelling back.
+		const rejected: string[] = [];
+		const normalized = normalizeModelList<TApi>(models, rejection => {
+			rejected.push(`${rejection.id} (${rejection.field})`);
+		});
+		if (rejected.length > 0) {
+			// Reported per fetch rather than per spec: one drifted field usually disqualifies every model in the
+			// payload, and a hundred identical lines would bury the one fact that matters.
+			onFailure?.({
+				stage: "payload",
+				url: "",
+				detail: `${rejected.length} of ${models.length} models rejected: ${rejected.slice(0, 5).join(", ")}${rejected.length > 5 ? ", ..." : ""}`,
+			});
+		}
+		if (models.length > 0 && normalized.length === 0) {
+			// The fetch itself worked, so returning `[]` would count as SUCCESS: the manager would write an
+			// authoritative cache row from a wholly rejected list and hand the user an empty catalog. Null is the
+			// truthful answer -- this source produced no usable models -- and it keeps the cache non-authoritative
+			// so the next run retries instead of trusting the empty snapshot.
+			return null;
+		}
+		return normalized;
+	} catch (error) {
+		// Null means this source produced no list, and the manager then falls through to the next source
+		// (cache, then static models) rather than reporting an empty catalog. A fetcher that THREW never got
+		// to report through its hooks, so the reason is reported here instead -- and it is a bug rather than a
+		// provider problem, which is what the `unhandled` stage says.
+		onFailure?.({ stage: "unhandled", url: "", detail: errorMessage(error) });
 		return null;
 	}
 }
@@ -435,22 +481,46 @@ function preferDiscoveryLimit(discoveryLimit: number | null, fallbackLimit: numb
 	return discoveryLimit;
 }
 
-function normalizeModelList<TApi extends Api>(value: unknown): Model<TApi>[] {
+/**
+ * Build the models a spec list actually yields, naming every spec it had to drop.
+ *
+ * `onRejected` receives one call per dropped spec with the id it claimed (or `"<no id>"` when even that was
+ * unusable) and the field that disqualified it. Dropping specs silently is how a provider payload drift
+ * turns into an empty model picker with nothing anywhere saying why, so callers that have somewhere to
+ * report pass the sink; the static and models.dev paths, whose input is generated in-repo rather than
+ * fetched, do not.
+ */
+function normalizeModelList<TApi extends Api>(
+	value: unknown,
+	onRejected?: (rejection: { id: string; field: string }) => void,
+): Model<TApi>[] {
 	if (!Array.isArray(value)) {
 		return [];
 	}
 	const models: Model<TApi>[] = [];
 	for (const item of value) {
-		if (isModelLike(item)) {
+		const field = modelSpecRejection(item);
+		if (field === null) {
 			models.push(buildModel(item as ModelSpec<TApi>));
+			continue;
 		}
+		const id = isRecord(item) && typeof item.id === "string" && item.id.length > 0 ? item.id : "<no id>";
+		onRejected?.({ id, field });
 	}
 	return models;
 }
 
-function isModelLike(value: unknown): value is ModelSpec<Api> {
+/**
+ * The first field that disqualifies `value` as a {@link ModelSpec}, as a dotted path, or `null` if it is one.
+ *
+ * The field name is the point. A provider that answers 200 with a real-looking model list whose `cost` has
+ * no `cacheRead`, or whose `contextWindow` arrives as a string, produces an empty catalog; without the name
+ * of the field that failed, an operator sees a model picker with nothing in it and has no way to tell a
+ * payload drift from a provider outage.
+ */
+function modelSpecRejection(value: unknown): string | null {
 	if (!isRecord(value)) {
-		return false;
+		return "not an object";
 	}
 	const v = value as {
 		id?: unknown;
@@ -465,39 +535,40 @@ function isModelLike(value: unknown): value is ModelSpec<Api> {
 		maxTokens?: unknown;
 	};
 	if (typeof v.id !== "string" || v.id.length === 0) {
-		return false;
+		return "id";
 	}
 	if (typeof v.name !== "string" || v.name.length === 0) {
-		return false;
+		return "name";
 	}
 	if (typeof v.api !== "string" || v.api.length === 0) {
-		return false;
+		return "api";
 	}
 	if (typeof v.provider !== "string" || v.provider.length === 0) {
-		return false;
+		return "provider";
 	}
 	if (typeof v.baseUrl !== "string" || v.baseUrl.length === 0) {
-		return false;
+		return "baseUrl";
 	}
 	if (typeof v.reasoning !== "boolean") {
-		return false;
+		return "reasoning";
 	}
 	if (!isModelInputArray(v.input)) {
-		return false;
+		return "input";
 	}
-	if (!isModelCost(v.cost)) {
-		return false;
+	const costField = modelCostRejection(v.cost);
+	if (costField !== null) {
+		return costField;
 	}
 	// Finite positive: NaN > 0 is false, +Infinity < Infinity is false.
 	const cw = v.contextWindow;
 	if (cw !== null && (typeof cw !== "number" || !(cw > 0 && cw < Infinity))) {
-		return false;
+		return "contextWindow";
 	}
 	const mt = v.maxTokens;
 	if (mt !== null && (typeof mt !== "number" || !(mt > 0 && mt < Infinity))) {
-		return false;
+		return "maxTokens";
 	}
-	return true;
+	return null;
 }
 
 function isModelInputArray(value: unknown): value is ("text" | "image")[] {
@@ -513,9 +584,10 @@ function isModelInputArray(value: unknown): value is ("text" | "image")[] {
 	return true;
 }
 
-function isModelCost(value: unknown): value is Model<Api>["cost"] {
+/** The first `cost` field that disqualifies a spec, as `cost.<field>`, or `null` when the cost is usable. */
+function modelCostRejection(value: unknown): string | null {
 	if (!isRecord(value)) {
-		return false;
+		return "cost";
 	}
 	const c = value as {
 		input?: unknown;
@@ -527,19 +599,19 @@ function isModelCost(value: unknown): value is Model<Api>["cost"] {
 	// Preserves original behavior: 0 and negatives remain valid.
 	const ci = c.input;
 	if (typeof ci !== "number" || !(ci > -Infinity && ci < Infinity)) {
-		return false;
+		return "cost.input";
 	}
 	const co = c.output;
 	if (typeof co !== "number" || !(co > -Infinity && co < Infinity)) {
-		return false;
+		return "cost.output";
 	}
 	const cr = c.cacheRead;
 	if (typeof cr !== "number" || !(cr > -Infinity && cr < Infinity)) {
-		return false;
+		return "cost.cacheRead";
 	}
 	const cw = c.cacheWrite;
 	if (typeof cw !== "number" || !(cw > -Infinity && cw < Infinity)) {
-		return false;
+		return "cost.cacheWrite";
 	}
-	return true;
+	return null;
 }

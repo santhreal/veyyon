@@ -1,5 +1,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+// The owner, not the barrel. These three functions and every type beside them are
+// declared in `@veyyon/ai/types`, which reaches 5 modules; the barrel reaches 363,
+// and a session-file parser has no use for the streaming engine behind it.
 import {
 	type AssistantMessage,
 	coerceServiceTierByFamily,
@@ -9,7 +12,7 @@ import {
 	type ToolCall,
 	type ToolResultMessage,
 	type Usage,
-} from "@veyyon/ai";
+} from "@veyyon/ai/types";
 import { emptyCost } from "@veyyon/catalog/models";
 import {
 	clampLow,
@@ -25,10 +28,11 @@ import {
 	tryParseJson,
 	visitJsonlBytes,
 } from "@veyyon/utils";
+import { isAdvisorTranscriptName, isSessionFileName } from "@veyyon/utils/session-file";
 import type {
 	AgentType,
 	MessageStats,
-	SessionEntry,
+	SessionLogEntry,
 	SessionMessageEntry,
 	SessionServiceTierChangeEntry,
 	ToolCallStats,
@@ -37,9 +41,6 @@ import type {
 	UserMessageStats,
 } from "./types";
 import { computeUserMessageMetrics } from "./user-metrics";
-
-/** Basename of an advisor agent's transcript inside a session artifacts dir. */
-const ADVISOR_TRANSCRIPT_BASENAME = "__advisor.jsonl";
 
 /**
  * Classify which agent produced a transcript from its path within the sessions
@@ -53,7 +54,7 @@ const ADVISOR_TRANSCRIPT_BASENAME = "__advisor.jsonl";
  */
 export function classifyAgentType(sessionPath: string): AgentType {
 	const base = path.basename(sessionPath);
-	if (base === ADVISOR_TRANSCRIPT_BASENAME || (base.startsWith("__advisor.") && base.endsWith(".jsonl"))) {
+	if (isAdvisorTranscriptName(base)) {
 		return "advisor";
 	}
 	const rel = path.relative(getSessionsDir(), sessionPath);
@@ -78,7 +79,7 @@ function extractFolderFromPath(sessionPath: string): string {
 /**
  * Check if an entry is an assistant message.
  */
-function isAssistantMessage(entry: SessionEntry): entry is SessionMessageEntry {
+function isAssistantMessage(entry: SessionLogEntry): entry is SessionMessageEntry {
 	if (entry.type !== "message") return false;
 	const msgEntry = entry as SessionMessageEntry;
 	// Legacy sessions (pre-id tracking) recorded message entries without an `id`.
@@ -91,7 +92,7 @@ function isAssistantMessage(entry: SessionEntry): entry is SessionMessageEntry {
 /**
  * Check if an entry is a user message (non-toolResult).
  */
-function isUserMessage(entry: SessionEntry): entry is SessionMessageEntry {
+function isUserMessage(entry: SessionLogEntry): entry is SessionMessageEntry {
 	if (entry.type !== "message") return false;
 	const msgEntry = entry as SessionMessageEntry;
 	if (typeof msgEntry.id !== "string" || msgEntry.id.length === 0) return false;
@@ -101,25 +102,25 @@ function isUserMessage(entry: SessionEntry): entry is SessionMessageEntry {
 /**
  * Check if an entry is a service-tier change.
  */
-function isServiceTierChange(entry: SessionEntry): entry is SessionServiceTierChangeEntry {
+function isServiceTierChange(entry: SessionLogEntry): entry is SessionServiceTierChangeEntry {
 	return entry.type === "service_tier_change";
 }
 
 /**
  * Check if an entry is a tool-result message.
  */
-function isToolResultMessage(entry: SessionEntry): entry is SessionMessageEntry {
+function isToolResultMessage(entry: SessionLogEntry): entry is SessionMessageEntry {
 	if (entry.type !== "message") return false;
 	return (entry as SessionMessageEntry).message?.role === "toolResult";
 }
 
 /**
  * The non-empty `parentId` of any entry, or null. Read defensively because the
- * `{ type: string }` catch-all in {@link SessionEntry} means a value that is not
+ * `{ type: string }` catch-all in {@link SessionLogEntry} means a value that is not
  * a known entry shape still reaches here; a missing, empty, or non-string
  * `parentId` yields null so the caller stops walking the chain.
  */
-function entryParentId(entry: SessionEntry): string | null {
+function entryParentId(entry: SessionLogEntry): string | null {
 	const parentId = (entry as { parentId?: unknown }).parentId;
 	return typeof parentId === "string" && parentId.length > 0 ? parentId : null;
 }
@@ -310,8 +311,8 @@ function extractToolResultLink(sessionFile: string, entry: SessionMessageEntry):
  * truthful outcome, and it preserves the behaviour this parser had before the walk moved to
  * `@veyyon/utils`.
  */
-function decodeSessionEntry(text: string): SessionEntry | undefined {
-	const parsed = tryParseJson<SessionEntry>(text);
+function decodeSessionEntry(text: string): SessionLogEntry | undefined {
+	const parsed = tryParseJson<SessionLogEntry>(text);
 	return parsed !== null && typeof parsed === "object" ? parsed : undefined;
 }
 
@@ -333,17 +334,17 @@ type SkippedLine = JsonlByteSkip;
  */
 function visitSessionEntriesLenient(
 	bytes: Uint8Array,
-	visit: (entry: SessionEntry) => void,
+	visit: (entry: SessionLogEntry) => void,
 	onSkip?: (skip: SkippedLine) => void,
 ): number {
-	return visitJsonlBytes<SessionEntry>(bytes, visit, { decode: decodeSessionEntry, onSkip });
+	return visitJsonlBytes<SessionLogEntry>(bytes, visit, { decode: decodeSessionEntry, onSkip });
 }
 
 function parseSessionEntriesLenient(
 	bytes: Uint8Array,
 	onSkip?: (skip: SkippedLine) => void,
-): { entries: SessionEntry[]; read: number } {
-	const { items, read } = parseJsonlBytes<SessionEntry>(bytes, { decode: decodeSessionEntry, onSkip });
+): { entries: SessionLogEntry[]; read: number } {
+	const { items, read } = parseJsonlBytes<SessionLogEntry>(bytes, { decode: decodeSessionEntry, onSkip });
 	return { entries: items, read };
 }
 
@@ -508,7 +509,7 @@ export async function listSessionFolders(): Promise<string[]> {
 export async function listSessionFiles(folderPath: string): Promise<string[]> {
 	try {
 		const entries = await fs.readdir(folderPath, { recursive: true, withFileTypes: true });
-		return entries.filter(e => e.isFile() && e.name.endsWith(".jsonl")).map(e => path.join(e.parentPath, e.name));
+		return entries.filter(e => e.isFile() && isSessionFileName(e.name)).map(e => path.join(e.parentPath, e.name));
 	} catch (err) {
 		if (isEnoent(err)) return [];
 		logger.warn("Session folder could not be read; its sessions are missing from every statistic", {
@@ -557,11 +558,11 @@ const MAX_CONTEXT_ENTRIES = 500;
 export async function getSessionEntryWithContext(
 	sessionPath: string,
 	entryId: string,
-): Promise<{ entry: SessionMessageEntry; context: SessionEntry[] } | null> {
-	const byId = new Map<string, SessionEntry>();
+): Promise<{ entry: SessionMessageEntry; context: SessionLogEntry[] } | null> {
+	const byId = new Map<string, SessionLogEntry>();
 	try {
 		for await (const line of readLines(Bun.file(sessionPath).stream())) {
-			const entry = decodeJsonlLine<SessionEntry>(line, { decode: decodeSessionEntry });
+			const entry = decodeJsonlLine<SessionLogEntry>(line, { decode: decodeSessionEntry });
 			if (entry && "id" in entry && typeof entry.id === "string" && entry.id.length > 0) {
 				byId.set(entry.id, entry);
 			}
@@ -575,9 +576,9 @@ export async function getSessionEntryWithContext(
 	if (target?.type !== "message") return null;
 	const targetMsg = target as SessionMessageEntry;
 
-	const chain: SessionEntry[] = [];
+	const chain: SessionLogEntry[] = [];
 	const visited = new Set<string>();
-	let cursor: SessionEntry | undefined = target;
+	let cursor: SessionLogEntry | undefined = target;
 	while (cursor && "id" in cursor && typeof cursor.id === "string") {
 		if (visited.has(cursor.id)) break; // guard a self-referential parentId cycle
 		visited.add(cursor.id);

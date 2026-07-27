@@ -40,6 +40,5 @@ export async function loginParallel(options: OAuthController): Promise<string> {
 export const parallelProvider = {
 	id: "parallel",
 	name: "Parallel",
-	envKeys: "PARALLEL_API_KEY",
 	login: (cb: OAuthLoginCallbacks) => loginParallel(cb),
 } as const satisfies ProviderDefinition;

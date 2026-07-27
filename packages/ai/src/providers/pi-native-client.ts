@@ -75,6 +75,8 @@ async function decodeGatewayError(response: Response): Promise<AIError.AuthGatew
 	try {
 		body = await response.json();
 	} catch {
+		// The STATUS is the failure; the body is the detail attached to it. An unreadable body degrades to
+		// empty rather than replacing the status with a read error.
 		body = await response.text().catch(() => "");
 	}
 	if (typeof body === "object" && body !== null && "error" in body) {
@@ -152,6 +154,8 @@ export function streamPiNative<TApi extends Api>(
 		let response: Response | null = null;
 		const onAbort = (): void => {
 			const body = response?.body;
+			// The caller aborted, so there is nobody left to tell. A stream that refuses to cancel -- normally
+			// because it has already ended -- changes nothing about the abort in progress.
 			if (body) body.cancel("Request aborted by caller").catch(() => {});
 		};
 		if (callerSignal) {

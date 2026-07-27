@@ -1,3 +1,4 @@
+import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
 import {
 	buildArgShapes,
@@ -9,7 +10,6 @@ import {
 	setToolArg,
 	type ToolArgShape,
 } from "./coercion";
-import dialectPrompt from "./glm.md" with { type: "text" };
 import {
 	assistantTranscriptParts,
 	collectToolResultRun,
@@ -17,8 +17,6 @@ import {
 	renderThinkTags,
 	renderToolResponseResults,
 	stringifyJson,
-	THINK_CLOSE,
-	THINK_OPEN,
 } from "./rendering";
 import type {
 	DialectDefinition,
@@ -28,37 +26,40 @@ import type {
 	InbandScanner,
 	InbandScannerOptions,
 } from "./types";
-
-const TOOL_OPEN = "<tool_call>";
-const TOOL_CLOSE = "</tool_call>";
-const ARG_KEY_OPEN = "<arg_key>";
-const ARG_KEY_CLOSE = "</arg_key>";
-const ARG_VALUE_OPEN = "<arg_value>";
-const ARG_VALUE_CLOSE = "</arg_value>";
-const RESPONSE_OPEN = "<tool_response>";
-const RESPONSE_CLOSE = "</tool_response>";
+import {
+	ARG_KEY_CLOSE,
+	ARG_KEY_OPEN,
+	ARG_VALUE_CLOSE,
+	ARG_VALUE_OPEN,
+	THINK_CLOSE,
+	THINK_OPEN,
+	TOOL_CALL_CLOSE,
+	TOOL_CALL_OPEN,
+	TOOL_RESPONSE_CLOSE,
+	TOOL_RESPONSE_OPEN,
+} from "./wire-tags";
 
 const OUTSIDE_TAGS = [
-	TOOL_OPEN,
+	TOOL_CALL_OPEN,
 	ARG_KEY_OPEN,
 	ARG_KEY_CLOSE,
 	ARG_VALUE_OPEN,
 	ARG_VALUE_CLOSE,
-	RESPONSE_OPEN,
-	RESPONSE_CLOSE,
+	TOOL_RESPONSE_OPEN,
+	TOOL_RESPONSE_CLOSE,
 	THINK_OPEN,
 	THINK_CLOSE,
 ] as const;
 const OUTSIDE_TAGS_NO_THINK = [
-	TOOL_OPEN,
+	TOOL_CALL_OPEN,
 	ARG_KEY_OPEN,
 	ARG_KEY_CLOSE,
 	ARG_VALUE_OPEN,
 	ARG_VALUE_CLOSE,
-	RESPONSE_OPEN,
-	RESPONSE_CLOSE,
+	TOOL_RESPONSE_OPEN,
+	TOOL_RESPONSE_CLOSE,
 ] as const;
-const BODY_TAGS = [ARG_KEY_OPEN, TOOL_CLOSE] as const;
+const BODY_TAGS = [ARG_KEY_OPEN, TOOL_CALL_CLOSE] as const;
 
 type State = "outside" | "thinking" | "name" | "body" | "key" | "afterkey" | "value";
 
@@ -154,7 +155,7 @@ export class GLMInbandScanner implements InbandScanner {
 		if (match.index > 0) events.push({ type: "text", text: this.#buffer.slice(0, match.index) });
 		this.#buffer = this.#buffer.slice(match.index + match.tag.length);
 
-		if (match.tag === TOOL_OPEN) {
+		if (match.tag === TOOL_CALL_OPEN) {
 			this.#state = "name";
 			return true;
 		}
@@ -164,7 +165,7 @@ export class GLMInbandScanner implements InbandScanner {
 			this.#state = "thinking";
 			return true;
 		}
-		if (match.tag === RESPONSE_OPEN) {
+		if (match.tag === TOOL_RESPONSE_OPEN) {
 			this.#buffer = "";
 			return false;
 		}
@@ -190,7 +191,7 @@ export class GLMInbandScanner implements InbandScanner {
 	#consumeName(final: boolean, events: InbandScanEvent[]): boolean {
 		const newline = this.#buffer.indexOf("\n");
 		const key = this.#buffer.indexOf(ARG_KEY_OPEN);
-		const close = this.#buffer.indexOf(TOOL_CLOSE);
+		const close = this.#buffer.indexOf(TOOL_CALL_CLOSE);
 		const delimiter = minFound(newline, key, close);
 		if (delimiter === -1) {
 			if (!final) return false;
@@ -214,8 +215,8 @@ export class GLMInbandScanner implements InbandScanner {
 			this.#state = "key";
 			return true;
 		}
-		this.#appendCallRaw(TOOL_CLOSE);
-		this.#buffer = this.#buffer.slice(delimiter + TOOL_CLOSE.length);
+		this.#appendCallRaw(TOOL_CALL_CLOSE);
+		this.#buffer = this.#buffer.slice(delimiter + TOOL_CALL_CLOSE.length);
 		this.#endCall(events);
 		return true;
 	}
@@ -229,9 +230,9 @@ export class GLMInbandScanner implements InbandScanner {
 			this.#state = "key";
 			return true;
 		}
-		if (this.#buffer.startsWith(TOOL_CLOSE)) {
-			this.#appendCallRaw(TOOL_CLOSE);
-			this.#buffer = this.#buffer.slice(TOOL_CLOSE.length);
+		if (this.#buffer.startsWith(TOOL_CALL_CLOSE)) {
+			this.#appendCallRaw(TOOL_CALL_CLOSE);
+			this.#buffer = this.#buffer.slice(TOOL_CALL_CLOSE.length);
 			this.#endCall(events);
 			return true;
 		}
@@ -315,7 +316,7 @@ export class GLMInbandScanner implements InbandScanner {
 			arguments: {},
 			key: null,
 			valueRaw: "",
-			rawBlock: `${TOOL_OPEN}${rawName}`,
+			rawBlock: `${TOOL_CALL_OPEN}${rawName}`,
 		};
 		events.push({ type: "toolStart", id, name });
 	}
@@ -485,7 +486,7 @@ function matchHealFollow(text: string, from: number): HealFollow {
 	const at = skipHealWhitespace(text, from);
 	if (at === -1) return { kind: "none" };
 	if (at === text.length) return { kind: "partial" };
-	for (const tag of [ARG_KEY_OPEN, TOOL_CLOSE]) {
+	for (const tag of [ARG_KEY_OPEN, TOOL_CALL_CLOSE]) {
 		const match = matchTagPrefix(text, at, tag);
 		if (match === "match") return { kind: "match", resumeAt: at };
 		if (match === "partial") return { kind: "partial" };
@@ -519,13 +520,13 @@ function renderToolCall(call: ToolCall, options: DialectRenderOptions = {}): str
 }
 
 function glmInvocation(call: ToolCall, shape: ToolArgShape | undefined): string {
-	let body = `${TOOL_OPEN}${call.name}`;
+	let body = `${TOOL_CALL_OPEN}${call.name}`;
 	for (const key in call.arguments) {
 		const value = call.arguments[key];
 		const rendered = shape?.stringArgs.has(key) && typeof value === "string" ? value : stringifyJson(value);
 		body += `\n${ARG_KEY_OPEN}${key}${ARG_KEY_CLOSE}\n${ARG_VALUE_OPEN}${rendered}${ARG_VALUE_CLOSE}`;
 	}
-	return `${body}\n${TOOL_CLOSE}`;
+	return `${body}\n${TOOL_CALL_CLOSE}`;
 }
 
 function renderAssistantToolCalls(calls: readonly ToolCall[], options: DialectRenderOptions = {}): string {
@@ -564,7 +565,7 @@ function renderTranscript(messages: readonly Message[], options: DialectRenderOp
 
 const definition: DialectDefinition = {
 	dialect: "glm",
-	prompt: dialectPrompt,
+	prompt: AI_PROMPTS["dialect/glm"].text,
 	createScanner: options => new GLMInbandScanner(options),
 	renderToolCall,
 	renderAssistantToolCalls,

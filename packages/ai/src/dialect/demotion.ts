@@ -1,5 +1,6 @@
 import { preferredDialect } from "@veyyon/catalog/identity";
 import { getDialectDefinition } from "./factory";
+import { THINK_CLOSE, THINK_OPEN } from "./wire-tags";
 
 /**
  * Wrap a prior-turn reasoning string for demotion into native conversation
@@ -35,6 +36,10 @@ export function renderDemotedThinking(modelId: string, text: string): string {
 	text = text.toWellFormed();
 	const dialect = preferredDialect(modelId);
 	if (dialect === "anthropic") return text;
-	if (dialect === "harmony" || dialect === "gemma") return `<think>\n${text}\n</think>`;
+	// Harmony and Gemma carry reasoning in control tokens that are illegal in a demoted text channel, so they
+	// fall back to the shared `<think>` envelope. Taken from the tag owner, not spelled here: a copy would let
+	// this path emit an envelope the healing scanner in `./thinking.ts` no longer recognises, and the reasoning
+	// would surface as ordinary visible text.
+	if (dialect === "harmony" || dialect === "gemma") return `${THINK_OPEN}\n${text}\n${THINK_CLOSE}`;
 	return getDialectDefinition(dialect).renderThinking(text);
 }

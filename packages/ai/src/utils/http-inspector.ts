@@ -1,12 +1,7 @@
 import * as path from "node:path";
-import {
-	asRecord,
-	errorMessage,
-	getLogsDir,
-	getNonBlankStringProperty,
-	isBunTestRuntime,
-	isRecord,
-} from "@veyyon/utils";
+import { getLogsDir } from "@veyyon/utils/dirs";
+import { isBunTestRuntime } from "@veyyon/utils/env";
+import { asRecord, errorMessage, getNonBlankStringProperty, isRecord } from "@veyyon/utils/type-guards";
 import * as AIError from "../error/flags";
 import { isCopilotTransientModelError } from "./retry.js";
 import { formatErrorMessageWithRetryAfter } from "./retry-after.js";

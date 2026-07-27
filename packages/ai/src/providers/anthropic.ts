@@ -5,7 +5,9 @@ import * as tls from "node:tls";
 import { isOfficialAnthropicApiUrl } from "@veyyon/catalog/compat/anthropic";
 import { mapEffortToAnthropicAdaptiveEffort } from "@veyyon/catalog/model-thinking";
 import { calculateCost, emptyCost, emptyUsage, getBundledModel } from "@veyyon/catalog/models";
+import { ANTHROPIC_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { isAnthropicOAuthToken } from "@veyyon/catalog/utils";
+import { ANTHROPIC_WEB_SEARCH_TOOL, CLAUDE_CODE_VERSION as claudeCodeVersion } from "@veyyon/catalog/wire/anthropic";
 import { parseGitHubCopilotApiKey } from "@veyyon/catalog/wire/github-copilot";
 import {
 	$env,
@@ -14,12 +16,14 @@ import {
 	getInstallId,
 	isEnoent,
 	logger,
+	looksLikeFilePath,
 	parseJsonWithRepair,
 	parseStreamingJsonThrottled,
 	readSseEvents,
 	trimTrailingSlashes,
 } from "@veyyon/utils";
 import { renderDemotedThinking } from "../dialect/demotion";
+import { XML_THINKING_CLOSE, XML_THINKING_OPEN } from "../dialect/wire-tags";
 import * as AIError from "../error";
 import { getEnvApiKey, OUTPUT_FALLBACK_BUFFER } from "../stream";
 import type {
@@ -77,7 +81,7 @@ import {
 import type {
 	ToolInputSchema as AnthropicToolInputSchema,
 	Tool as AnthropicWireTool,
-	Usage as AnthropicWireUsage,
+	AnthropicWireUsage,
 	ContentBlockParam,
 	FallbackParam,
 	MessageCreateParamsStreaming,
@@ -90,6 +94,7 @@ import {
 	hasCopilotVisionInput,
 	resolveGitHubCopilotBaseUrl,
 } from "./github-copilot-headers";
+
 import { transformMessages } from "./transform-messages";
 import { NON_VISION_IMAGE_PLACEHOLDER } from "./vision-guard";
 
@@ -480,7 +485,14 @@ function getCacheControl(
 }
 
 // Stealth mode: mimic Claude Code's request fingerprint.
-export const claudeCodeVersion = "2.1.165";
+/**
+ * Re-exported from `@veyyon/catalog/wire/anthropic`, which owns it.
+ *
+ * Two other modules build their own user-agent from this version and want
+ * nothing else from this file, which reaches 310 modules. They name the leaf.
+ * This re-export keeps the name callers already import.
+ */
+export { CLAUDE_CODE_VERSION as claudeCodeVersion } from "@veyyon/catalog/wire/anthropic";
 export const claudeAgentSdkVersion = "0.3.165";
 export const claudeClientVersion = "1.11187.4";
 export const claudeToolPrefix: string = "_";
@@ -764,9 +776,11 @@ export function resolveAnthropicMetadataUserId(
 	if (!isOAuthToken) return undefined;
 	return generateClaudeJsonUserId(sessionId, accountId);
 }
-const ANTHROPIC_BUILTIN_TOOL_NAMES = new Set(["web_search", "code_execution", "text_editor", "computer"]);
+// `web_search` comes from the owner because two packages have to agree on it: the search provider in
+// `@veyyon/coding-agent` asks Anthropic for that tool by name and this module matches the blocks it returns.
+// The other three are matched here and nowhere else, so they stay inline.
+const ANTHROPIC_BUILTIN_TOOL_NAMES = new Set([ANTHROPIC_WEB_SEARCH_TOOL, "code_execution", "text_editor", "computer"]);
 const UMANS_WEBSEARCH_PROVIDER_HEADER = "X-Umans-Websearch-Provider";
-const UMANS_WEBSEARCH_TOOL_NAME = "web_search";
 export const applyClaudeToolPrefix = (name: string): string => {
 	if (!claudeToolPrefix) return name;
 	if (ANTHROPIC_BUILTIN_TOOL_NAMES.has(name.toLowerCase())) return name;
@@ -809,7 +823,7 @@ function getUmansWebSearchHeader(
 }
 
 function shouldUseUmansGatewayWebSearch(name: string, enabled: boolean): boolean {
-	return enabled && name.toLowerCase() === UMANS_WEBSEARCH_TOOL_NAME;
+	return enabled && name.toLowerCase() === ANTHROPIC_WEB_SEARCH_TOOL;
 }
 
 function encodeAnthropicToolName(
@@ -1177,6 +1191,15 @@ type FoundryTlsOptions = {
 	key?: string;
 };
 
+/**
+ * What a certificate option looks like when it names a file rather than carrying one.
+ *
+ * The domain half of {@link looksLikeFilePath}: the predicate itself is shared, the
+ * list of endings that read as a filename here is not, because `.md` means a prompt
+ * file somewhere else and nothing at all in this option.
+ */
+const CERTIFICATE_EXTENSIONS = ["pem", "crt", "cer", "key"] as const;
+
 const foundryTlsOptionsCache = new Map<string, FoundryTlsOptions | undefined>();
 
 function foundryTlsCacheKeyComponent(value: string | undefined): string | null {
@@ -1185,7 +1208,7 @@ function foundryTlsCacheKeyComponent(value: string | undefined): string | null {
 	// For path-valued vars, fold the file mtime into the key so on-disk cert
 	// rotation (common for short-lived corporate mTLS certs) invalidates the
 	// cached TLS options instead of pinning the first read forever.
-	if (trimmed && !trimmed.includes("-----BEGIN") && looksLikeFilePath(trimmed)) {
+	if (trimmed && !trimmed.includes("-----BEGIN") && looksLikeFilePath(trimmed, CERTIFICATE_EXTENSIONS)) {
 		try {
 			return `${trimmed}@${fs.statSync(trimmed).mtimeMs}`;
 		} catch {
@@ -1214,7 +1237,7 @@ function resolveAnthropicBaseUrl(model: Model<"anthropic-messages">, apiKey?: st
 		}
 	}
 	if (model.provider === "anthropic") {
-		return normalizeAnthropicBaseUrl(model.baseUrl) ?? "https://api.anthropic.com";
+		return normalizeAnthropicBaseUrl(model.baseUrl) ?? ANTHROPIC_API_ENDPOINT;
 	}
 	return normalizeAnthropicBaseUrl(model.baseUrl);
 }
@@ -1260,10 +1283,6 @@ function resolveAnthropicCustomHeaders(model: Model<"anthropic-messages">): Reco
 	return resolveAnthropicCustomHeadersForBaseUrl(model.baseUrl);
 }
 
-function looksLikeFilePath(value: string): boolean {
-	return value.includes("/") || value.includes("\\") || /\.(pem|crt|cer|key)$/i.test(value);
-}
-
 function resolvePemValue(value: string | undefined, name: string): string | undefined {
 	const trimmed = value?.trim();
 	if (!trimmed) return undefined;
@@ -1273,7 +1292,7 @@ function resolvePemValue(value: string | undefined, name: string): string | unde
 		return inline;
 	}
 
-	if (looksLikeFilePath(trimmed)) {
+	if (looksLikeFilePath(trimmed, CERTIFICATE_EXTENSIONS)) {
 		try {
 			return fs.readFileSync(trimmed, "utf8");
 		} catch (error) {
@@ -1587,14 +1606,17 @@ export function isProviderRetryableError(error: unknown, provider?: string): boo
 	});
 }
 
-const THINKING_ENVELOPE_OPEN = "<thinking>";
-const THINKING_ENVELOPE_CLOSE = "</thinking>";
+/**
+ * The envelope this unwraps is the one `dialect/rendering.ts` WRITES, so the bytes are taken from the shared tag
+ * owner. Both ends were spelled independently, this file being the third name for the pair: a drift would leave
+ * an assistant turn's reasoning wrapped in visible `<thinking>` markup that nothing strips.
+ */
 
 function unwrapAnthropicThinkingEnvelope(text: string): string | undefined {
 	let current = text.trim();
 	let stripped = false;
-	while (current.startsWith(THINKING_ENVELOPE_OPEN) && current.endsWith(THINKING_ENVELOPE_CLOSE)) {
-		current = current.slice(THINKING_ENVELOPE_OPEN.length, current.length - THINKING_ENVELOPE_CLOSE.length).trim();
+	while (current.startsWith(XML_THINKING_OPEN) && current.endsWith(XML_THINKING_CLOSE)) {
+		current = current.slice(XML_THINKING_OPEN.length, current.length - XML_THINKING_CLOSE.length).trim();
 		stripped = true;
 	}
 	return stripped ? current : undefined;
@@ -1818,7 +1840,7 @@ const streamAnthropicOnce = (
 				output.usage.premiumRequests = copilotDynamicHeaders.premiumRequests;
 			}
 			const apiKey = options?.apiKey ?? getEnvApiKey(model.provider) ?? "";
-			const baseUrl = resolveAnthropicBaseUrl(model, apiKey) ?? "https://api.anthropic.com";
+			const baseUrl = resolveAnthropicBaseUrl(model, apiKey) ?? ANTHROPIC_API_ENDPOINT;
 			const providerSessionState = getAnthropicProviderSessionState(
 				options?.providerSessionState,
 				baseUrl,

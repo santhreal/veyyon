@@ -12,19 +12,18 @@
 import type { OAuthCredentials, OAuthLoginCallbacks } from "./oauth/types";
 
 /**
- * API-key environment fallback: either a single env var name (e.g.
- * `"OPENAI_API_KEY"`) or a resolver that inspects several env vars / probes
- * the host (Vertex ADC, Bedrock credential chains, …).
+ * API-key environment fallback, re-exported from its owner so the name stays where callers expect it.
+ *
+ * It was declared here AND in `env-api-key.ts`, identically, which is the same-name duplicate that drifts.
+ * `../provider-env-keys.ts` owns both the type and the table it describes.
  */
-export type KeyResolver = string | (() => string | undefined);
+export type { KeyResolver } from "../provider-env-keys";
 
 /**
  * Declarative description of a single provider's auth/login wiring. All
  * fields are optional except `id`/`name`; presence of a field opts the
  * provider into a derived structure:
  *
- * - `envKeys` present ⇒ env-var fallback in `getEnvApiKey`, overriding the
- *   catalog table's `envVars` for that provider.
  * - `login` present ⇒ member of `OAuthProvider`, shown in the `/login` list
  *   (unless `showInLoginList === false`) and dispatchable via `AuthStorage.login`.
  * - `callbackPort` present ⇒ entry in the auth-broker `CALLBACK_PORTS` map.
@@ -41,7 +40,6 @@ export interface ProviderDefinition {
 	/** Whether to surface in the interactive login list. Defaults to true when `login` is present. */
 	readonly showInLoginList?: boolean;
 	// --- env-var fallback (the catalog table's `envVars` supplies plain names; set this only for computed resolvers) ---
-	readonly envKeys?: KeyResolver;
 	// --- interactive login (OAuthProviderInterface-compatible) ---
 	readonly login?: (callbacks: OAuthLoginCallbacks) => Promise<OAuthCredentials | string>;
 	readonly refreshToken?: (credentials: OAuthCredentials) => Promise<OAuthCredentials>;

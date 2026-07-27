@@ -40,6 +40,5 @@ export async function loginTavily(options: OAuthLoginCallbacks): Promise<string>
 export const tavilyProvider = {
 	id: "tavily",
 	name: "Tavily",
-	envKeys: "TAVILY_API_KEY",
 	login: (cb: OAuthLoginCallbacks) => loginTavily(cb),
 } as const satisfies ProviderDefinition;

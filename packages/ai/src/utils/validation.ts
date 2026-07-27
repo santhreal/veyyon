@@ -26,6 +26,7 @@ import { isRecord, structuredCloneJSON } from "@veyyon/utils";
 import { type Type, type } from "arktype";
 import type { ZodType } from "zod/v4";
 import type { $ZodIssue as ZodIssue } from "zod/v4/core";
+import { ARG_KEY_CLOSE, ARG_KEY_OPEN, ARG_VALUE_CLOSE, ARG_VALUE_OPEN, TOOL_CALL_CLOSE } from "../dialect/wire-tags";
 import * as AIError from "../error";
 import type { Tool, ToolCall } from "../types";
 import { upgradeJsonSchemaTo202012 } from "./schema/draft";
@@ -1683,11 +1684,12 @@ function validateContext(ctx: ValidationContext, value: unknown): ContextValidat
 // In-band `arg_key`/`arg_value` tool-call syntax that leaks into native
 // tool-call arguments when a provider parses the model's owned format
 // server-side and the model botches an `</arg_value>` closer.
-const SPILL_KEY_OPEN = "<arg_key>";
-const SPILL_KEY_CLOSE = "</arg_key>";
-const SPILL_VALUE_OPEN = "<arg_value>";
-const SPILL_VALUE_CLOSE = "</arg_value>";
-const SPILL_TOOL_CLOSE = "</tool_call>";
+//
+// The five tags come from the dialect layer's tag owner, not from local copies. This module is not a dialect
+// and must not depend on one, which is exactly why it had its own `SPILL_*` copies: `./dialect/rendering.ts`
+// would have dragged the coercion helpers and the dialect types behind a string. `./dialect/wire-tags` imports
+// nothing, so the repair now keys on the same bytes the GLM scanner parses instead of on a second spelling of
+// them that no test compared.
 /** Plausible spilled argument names; anything else is ordinary content. */
 const SPILL_KEY_PATTERN = /^[\w.$-]{1,128}$/;
 
@@ -1704,12 +1706,12 @@ function skipSpillWhitespace(text: string, from: number): number {
 
 /** Whether a well-formed `<arg_key>NAME</arg_key>…<arg_value>` pair starts at `at`. */
 function isSpillPairStart(text: string, at: number): boolean {
-	if (!text.startsWith(SPILL_KEY_OPEN, at)) return false;
-	const keyStart = at + SPILL_KEY_OPEN.length;
-	const keyEnd = text.indexOf(SPILL_KEY_CLOSE, keyStart);
+	if (!text.startsWith(ARG_KEY_OPEN, at)) return false;
+	const keyStart = at + ARG_KEY_OPEN.length;
+	const keyEnd = text.indexOf(ARG_KEY_CLOSE, keyStart);
 	if (keyEnd === -1 || !SPILL_KEY_PATTERN.test(text.slice(keyStart, keyEnd))) return false;
-	const valueAt = skipSpillWhitespace(text, keyEnd + SPILL_KEY_CLOSE.length);
-	return text.startsWith(SPILL_VALUE_OPEN, valueAt);
+	const valueAt = skipSpillWhitespace(text, keyEnd + ARG_KEY_CLOSE.length);
+	return text.startsWith(ARG_VALUE_OPEN, valueAt);
 }
 
 /**
@@ -1719,24 +1721,24 @@ function isSpillPairStart(text: string, at: number): boolean {
  * provider's parser consumed the terminating closer).
  */
 function findSpillValueEnd(text: string, from: number): { end: number; next: number } {
-	const close = text.indexOf(SPILL_VALUE_CLOSE, from);
-	let wrong = text.indexOf(SPILL_KEY_CLOSE, from);
-	let open = text.indexOf(SPILL_KEY_OPEN, from);
+	const close = text.indexOf(ARG_VALUE_CLOSE, from);
+	let wrong = text.indexOf(ARG_KEY_CLOSE, from);
+	let open = text.indexOf(ARG_KEY_OPEN, from);
 	while (true) {
 		const candidates = [close, wrong, open].filter(index => index !== -1);
 		if (candidates.length === 0) return { end: text.length, next: text.length };
 		const at = Math.min(...candidates);
-		if (at === close) return { end: at, next: at + SPILL_VALUE_CLOSE.length };
+		if (at === close) return { end: at, next: at + ARG_VALUE_CLOSE.length };
 		if (at === wrong) {
-			const follow = skipSpillWhitespace(text, at + SPILL_KEY_CLOSE.length);
+			const follow = skipSpillWhitespace(text, at + ARG_KEY_CLOSE.length);
 			if (
 				follow >= text.length ||
-				text.startsWith(SPILL_KEY_OPEN, follow) ||
-				text.startsWith(SPILL_TOOL_CLOSE, follow)
+				text.startsWith(ARG_KEY_OPEN, follow) ||
+				text.startsWith(TOOL_CALL_CLOSE, follow)
 			) {
-				return { end: at, next: at + SPILL_KEY_CLOSE.length };
+				return { end: at, next: at + ARG_KEY_CLOSE.length };
 			}
-			wrong = text.indexOf(SPILL_KEY_CLOSE, at + 1);
+			wrong = text.indexOf(ARG_KEY_CLOSE, at + 1);
 			continue;
 		}
 		if (isSpillPairStart(text, at)) {
@@ -1744,7 +1746,7 @@ function findSpillValueEnd(text: string, from: number): { end: number; next: num
 			while (end > from && " \n\t\r".includes(text[end - 1]!)) end--;
 			return { end, next: at };
 		}
-		open = text.indexOf(SPILL_KEY_OPEN, at + 1);
+		open = text.indexOf(ARG_KEY_OPEN, at + 1);
 	}
 }
 
@@ -1757,19 +1759,19 @@ function parseSpilledPairs(text: string): [string, string][] | null {
 	const pairs: [string, string][] = [];
 	let at = skipSpillWhitespace(text, 0);
 	while (at < text.length) {
-		if (text.startsWith(SPILL_TOOL_CLOSE, at)) {
-			at = skipSpillWhitespace(text, at + SPILL_TOOL_CLOSE.length);
+		if (text.startsWith(TOOL_CALL_CLOSE, at)) {
+			at = skipSpillWhitespace(text, at + TOOL_CALL_CLOSE.length);
 			return at >= text.length ? pairs : null;
 		}
-		if (!text.startsWith(SPILL_KEY_OPEN, at)) return null;
-		const keyStart = at + SPILL_KEY_OPEN.length;
-		const keyEnd = text.indexOf(SPILL_KEY_CLOSE, keyStart);
+		if (!text.startsWith(ARG_KEY_OPEN, at)) return null;
+		const keyStart = at + ARG_KEY_OPEN.length;
+		const keyEnd = text.indexOf(ARG_KEY_CLOSE, keyStart);
 		if (keyEnd === -1) return null;
 		const key = text.slice(keyStart, keyEnd);
 		if (!SPILL_KEY_PATTERN.test(key)) return null;
-		at = skipSpillWhitespace(text, keyEnd + SPILL_KEY_CLOSE.length);
-		if (!text.startsWith(SPILL_VALUE_OPEN, at)) return null;
-		at += SPILL_VALUE_OPEN.length;
+		at = skipSpillWhitespace(text, keyEnd + ARG_KEY_CLOSE.length);
+		if (!text.startsWith(ARG_VALUE_OPEN, at)) return null;
+		at += ARG_VALUE_OPEN.length;
 		const { end, next } = findSpillValueEnd(text, at);
 		pairs.push([key, text.slice(at, end)]);
 		at = skipSpillWhitespace(text, next);
@@ -1783,20 +1785,20 @@ function parseSpilledPairs(text: string): [string, string][] | null {
  * boundary yields a cleanly parseable tail.
  */
 function splitSpilledValue(text: string): SpillSplit | null {
-	let wrong = text.indexOf(SPILL_KEY_CLOSE);
-	let open = text.indexOf(SPILL_KEY_OPEN);
+	let wrong = text.indexOf(ARG_KEY_CLOSE);
+	let open = text.indexOf(ARG_KEY_OPEN);
 	while (wrong !== -1 || open !== -1) {
 		if (wrong !== -1 && (open === -1 || wrong < open)) {
-			const pairs = parseSpilledPairs(text.slice(wrong + SPILL_KEY_CLOSE.length));
+			const pairs = parseSpilledPairs(text.slice(wrong + ARG_KEY_CLOSE.length));
 			if (pairs) return { head: text.slice(0, wrong), pairs };
-			wrong = text.indexOf(SPILL_KEY_CLOSE, wrong + 1);
+			wrong = text.indexOf(ARG_KEY_CLOSE, wrong + 1);
 			continue;
 		}
 		if (isSpillPairStart(text, open)) {
 			const pairs = parseSpilledPairs(text.slice(open));
 			if (pairs && pairs.length > 0) return { head: text.slice(0, open).trimEnd(), pairs };
 		}
-		open = text.indexOf(SPILL_KEY_OPEN, open + 1);
+		open = text.indexOf(ARG_KEY_OPEN, open + 1);
 	}
 	return null;
 }
@@ -1821,7 +1823,7 @@ function healInbandArgSpill(value: unknown): { value: unknown; changed: boolean 
 	for (const key in value) {
 		const entry = value[key];
 		if (typeof entry !== "string") continue;
-		if (!entry.includes(SPILL_KEY_OPEN) && !entry.includes(SPILL_KEY_CLOSE)) continue;
+		if (!entry.includes(ARG_KEY_OPEN) && !entry.includes(ARG_KEY_CLOSE)) continue;
 		const split = splitSpilledValue(entry);
 		if (!split) continue;
 		out[key] = split.head;

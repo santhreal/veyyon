@@ -3,7 +3,13 @@
  * Standard Gemini models only (gemini-2.0-flash, gemini-2.5-*)
  */
 
+import { CLOUD_CODE_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { getGeminiCliHeaders } from "@veyyon/catalog/wire/gemini-headers";
+import {
+	GOOGLE_BASE_OAUTH_SCOPES,
+	GOOGLE_OAUTH_AUTH_ENDPOINT,
+	GOOGLE_OAUTH_TOKEN_ENDPOINT,
+} from "@veyyon/catalog/wire/google-oauth";
 import { $env } from "@veyyon/utils";
 import * as AIError from "../../error";
 import { credentialExpiryFromExpiresIn } from "./expiry";
@@ -17,14 +23,11 @@ const CLIENT_ID = decode(
 const CLIENT_SECRET = decode("R09DU1BYLTR1SGdNUG0tMW83U2stZ2VWNkN1NWNsWEZzeGw=");
 const CALLBACK_PORT = 8085;
 const CALLBACK_PATH = "/oauth2callback";
-const SCOPES = [
-	"https://www.googleapis.com/auth/cloud-platform",
-	"https://www.googleapis.com/auth/userinfo.email",
-	"https://www.googleapis.com/auth/userinfo.profile",
-];
-const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-const TOKEN_URL = "https://oauth2.googleapis.com/token";
-const CODE_ASSIST_ENDPOINT = "https://cloudcode-pa.googleapis.com";
+// Exactly the trio every Google sign-in here requests, so it is read rather than restated: the scope string
+// is part of what identifies a grant, and a reordering can re-prompt for consent already given.
+const SCOPES = GOOGLE_BASE_OAUTH_SCOPES;
+const AUTH_URL = GOOGLE_OAUTH_AUTH_ENDPOINT;
+const TOKEN_URL = GOOGLE_OAUTH_TOKEN_ENDPOINT;
 
 interface LoadCodeAssistPayload {
 	cloudaicompanionProject?: string;
@@ -76,7 +79,7 @@ async function pollOperation(
 			await Bun.sleep(5000);
 		}
 
-		const response = await fetch(`${CODE_ASSIST_ENDPOINT}/v1internal/${operationName}`, {
+		const response = await fetch(`${CLOUD_CODE_ENDPOINT}/v1internal/${operationName}`, {
 			method: "GET",
 			headers,
 		});
@@ -108,7 +111,7 @@ async function discoverProject(accessToken: string, onProgress?: (message: strin
 	};
 
 	onProgress?.("Checking for existing Cloud Code Assist project...");
-	const loadResponse = await fetch(`${CODE_ASSIST_ENDPOINT}/v1internal:loadCodeAssist`, {
+	const loadResponse = await fetch(`${CLOUD_CODE_ENDPOINT}/v1internal:loadCodeAssist`, {
 		method: "POST",
 		headers,
 		body: JSON.stringify({
@@ -186,7 +189,7 @@ async function discoverProject(accessToken: string, onProgress?: (message: strin
 		(onboardBody.metadata as Record<string, unknown>).duetProject = envProjectId;
 	}
 
-	const onboardResponse = await fetch(`${CODE_ASSIST_ENDPOINT}/v1internal:onboardUser`, {
+	const onboardResponse = await fetch(`${CLOUD_CODE_ENDPOINT}/v1internal:onboardUser`, {
 		method: "POST",
 		headers,
 		body: JSON.stringify(onboardBody),

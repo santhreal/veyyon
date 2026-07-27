@@ -12,14 +12,15 @@
  * Architecture reverse-engineered from Perplexity macOS app (ai.perplexity.mac).
  */
 import * as os from "node:os";
+import {
+	PERPLEXITY_NATIVE_APP_BUNDLE_ID,
+	PERPLEXITY_NATIVE_APP_HEADERS,
+	PERPLEXITY_WEB_ORIGIN,
+} from "@veyyon/catalog/wire/perplexity";
 import { $env, decodeJwtPayload } from "@veyyon/utils";
 import { $ } from "bun";
 import * as AIError from "../../error";
 import type { OAuthController, OAuthCredentials } from "./types";
-
-const API_VERSION = "2.18";
-const NATIVE_APP_BUNDLE = "ai.perplexity.mac";
-const APP_USER_AGENT = "Perplexity/641 CFNetwork/1568 Darwin/25.2.0";
 
 // ---------------------------------------------------------------------------
 // JWT helpers
@@ -62,7 +63,7 @@ async function extractFromNativeApp(): Promise<string | null> {
 	if (os.platform() !== "darwin") return null;
 
 	try {
-		const result = await $`defaults read ${NATIVE_APP_BUNDLE} authToken`.quiet().nothrow();
+		const result = await $`defaults read ${PERPLEXITY_NATIVE_APP_BUNDLE_ID} authToken`.quiet().nothrow();
 		if (result.exitCode !== 0) return null;
 		const token = result.text().trim();
 		if (!token || token === "(null)") return null;
@@ -99,11 +100,8 @@ async function httpEmailLogin(ctrl: OAuthController): Promise<OAuthCredentials> 
 	if (ctrl.signal?.aborted) throw new AIError.LoginCancelledError();
 
 	ctrl.onProgress?.("Fetching Perplexity CSRF token...");
-	const csrfResponse = await fetch("https://www.perplexity.ai/api/auth/csrf", {
-		headers: {
-			"User-Agent": APP_USER_AGENT,
-			"X-App-ApiVersion": API_VERSION,
-		},
+	const csrfResponse = await fetch(`${PERPLEXITY_WEB_ORIGIN}/api/auth/csrf`, {
+		headers: PERPLEXITY_NATIVE_APP_HEADERS,
 		signal: ctrl.signal,
 	});
 
@@ -122,12 +120,11 @@ async function httpEmailLogin(ctrl: OAuthController): Promise<OAuthCredentials> 
 		});
 	}
 	ctrl.onProgress?.("Sending login code to your email...");
-	const sendResponse = await fetch("https://www.perplexity.ai/api/auth/signin-email", {
+	const sendResponse = await fetch(`${PERPLEXITY_WEB_ORIGIN}/api/auth/signin-email`, {
 		method: "POST",
 		headers: {
 			"Content-Type": "application/json",
-			"User-Agent": APP_USER_AGENT,
-			"X-App-ApiVersion": API_VERSION,
+			...PERPLEXITY_NATIVE_APP_HEADERS,
 		},
 		body: JSON.stringify({
 			email: trimmedEmail,
@@ -152,12 +149,11 @@ async function httpEmailLogin(ctrl: OAuthController): Promise<OAuthCredentials> 
 		throw new AIError.OAuthError("OTP code is required", { kind: "validation", provider: "perplexity" });
 	if (ctrl.signal?.aborted) throw new AIError.LoginCancelledError();
 	ctrl.onProgress?.("Verifying login code...");
-	const verifyResponse = await fetch("https://www.perplexity.ai/api/auth/signin-otp", {
+	const verifyResponse = await fetch(`${PERPLEXITY_WEB_ORIGIN}/api/auth/signin-otp`, {
 		method: "POST",
 		headers: {
 			"Content-Type": "application/json",
-			"User-Agent": APP_USER_AGENT,
-			"X-App-ApiVersion": API_VERSION,
+			...PERPLEXITY_NATIVE_APP_HEADERS,
 		},
 		body: JSON.stringify({
 			email: trimmedEmail,

@@ -1,16 +1,12 @@
-import { $pickenv } from "@veyyon/utils";
-import { isFoundryEnabled } from "../utils/foundry";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "./oauth/types";
 import type { ProviderDefinition } from "./types";
 
 export const anthropicProvider = {
 	id: "anthropic",
 	name: "Anthropic (Claude Pro/Max)",
-	// Foundry mode optionally switches Anthropic auth to enterprise gateway credentials.
-	envKeys: () =>
-		isFoundryEnabled()
-			? $pickenv("ANTHROPIC_FOUNDRY_API_KEY", "ANTHROPIC_OAUTH_TOKEN", "ANTHROPIC_API_KEY")
-			: $pickenv("ANTHROPIC_OAUTH_TOKEN", "ANTHROPIC_API_KEY"),
+	// The env-key rule (Foundry mode switches Anthropic auth to enterprise gateway credentials) lives in
+	// `../provider-env-keys.ts`, which is the one place a provider's credential probe is written and the one
+	// module `getEnvApiKey` reads.
 	login: async (cb: OAuthLoginCallbacks) => {
 		// Lazy import: keep heavy OAuth flow modules out of the eager registry graph.
 		const { loginAnthropic } = await import("./oauth/anthropic");

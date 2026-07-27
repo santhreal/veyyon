@@ -171,18 +171,22 @@ describe("GitLab Duo Workflow discovery", () => {
 				expect(selection).toEqual({ rootNamespaceId: "runtime-root", source: "override" });
 				expect(calls).toEqual([]);
 
-				try {
-					await fetchGitLabDuoWorkflowModels({
-						apiKey: TEST_TOKEN,
-						namespaceId: "runtime-root",
-						cwd: tmpDir,
-						fetch,
-					});
-					throw new Error("expected model discovery to fail");
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					expect(message).toContain("available models");
-				}
+				// The RUNTIME entry point resolves this namespace, and model discovery still finds no catalog for
+				// it. Discovery answers `null` with the reason reported, rather than throwing: a throw reaches the
+				// manager's catch and is labelled `unhandled`, which claims a bug in the reader when the real
+				// answer is that this namespace exposes no Duo models. The sentence an operator acts on -- which
+				// env var to set -- now arrives as the reason instead of as an exception message.
+				const reasons: string[] = [];
+				const models = await fetchGitLabDuoWorkflowModels({
+					apiKey: TEST_TOKEN,
+					namespaceId: "runtime-root",
+					cwd: tmpDir,
+					fetch,
+					onFailure: failure => reasons.push(failure.detail),
+				});
+
+				expect(models).toBeNull();
+				expect(reasons.join("\n")).toContain("available models");
 			}
 		} finally {
 			await fs.rm(tmpDir, { recursive: true, force: true });

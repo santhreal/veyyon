@@ -1,6 +1,7 @@
 import { fetchAntigravityDiscoveryModels } from "../discovery/antigravity";
 import { fetchGeminiModels } from "../discovery/gemini";
 import type { ModelManagerOptions } from "../model-manager";
+import { CLOUD_CODE_ENDPOINT } from "../provider-endpoints";
 import type { FetchImpl } from "../types";
 import { GEMINI_CLI_VARIANT_COLLAPSE_TABLE } from "../variant-collapse";
 
@@ -29,8 +30,6 @@ export interface GoogleGeminiCliModelManagerConfig {
 	fetch?: FetchImpl;
 }
 
-const CLOUD_CODE_ASSIST_ENDPOINT = "https://cloudcode-pa.googleapis.com";
-
 function toDiscoveryFetch(fetchImpl: FetchImpl | undefined): typeof fetch | undefined {
 	if (!fetchImpl) {
 		return undefined;
@@ -48,7 +47,10 @@ export function googleModelManagerOptions(
 	return {
 		providerId: "google",
 		...(apiKey
-			? { fetchDynamicModels: () => fetchGeminiModels({ apiKey, fetch: toDiscoveryFetch(config?.fetch) }) }
+			? {
+					fetchDynamicModels: hooks =>
+						fetchGeminiModels({ apiKey, fetch: toDiscoveryFetch(config?.fetch), onFailure: hooks?.onFailure }),
+				}
 			: undefined),
 	};
 }
@@ -65,11 +67,12 @@ export function googleAntigravityModelManagerOptions(
 		providerId: "google-antigravity",
 		...(token
 			? {
-					fetchDynamicModels: () =>
+					fetchDynamicModels: hooks =>
 						fetchAntigravityDiscoveryModels({
 							token,
 							endpoint: config?.endpoint,
 							fetcher: toDiscoveryFetch(config?.fetch),
+							onFailure: hooks?.onFailure,
 						}),
 				}
 			: undefined),
@@ -80,17 +83,18 @@ export function googleGeminiCliModelManagerOptions(
 	config?: GoogleGeminiCliModelManagerConfig,
 ): ModelManagerOptions<"google-gemini-cli"> {
 	const token = config?.oauthToken;
-	const endpoint = config?.endpoint ?? CLOUD_CODE_ASSIST_ENDPOINT;
+	const endpoint = config?.endpoint ?? CLOUD_CODE_ENDPOINT;
 	return {
 		providerId: "google-gemini-cli",
 		...(token
 			? {
-					fetchDynamicModels: async () => {
+					fetchDynamicModels: async hooks => {
 						const models = await fetchAntigravityDiscoveryModels({
 							token,
 							endpoint,
 							fetcher: toDiscoveryFetch(config?.fetch),
 							collapseTable: GEMINI_CLI_VARIANT_COLLAPSE_TABLE,
+							onFailure: hooks?.onFailure,
 						});
 						if (models === null) {
 							return null;

@@ -1,9 +1,9 @@
 import { scheduler } from "node:timers/promises";
 import { bareModelId, parseAnthropicModel } from "@veyyon/catalog/identity";
 import { toNumber } from "@veyyon/catalog/utils";
+import { CLAUDE_CODE_VERSION as claudeCodeVersion } from "@veyyon/catalog/wire/anthropic";
 import { clamp, clamp01, HOUR_MS, isCancellation, trimTrailingSlashes, WEEK_MS } from "@veyyon/utils";
 import * as AIError from "../error";
-import { claudeCodeVersion } from "../providers/anthropic";
 import {
 	type CredentialRankingContext,
 	type CredentialRankingStrategy,

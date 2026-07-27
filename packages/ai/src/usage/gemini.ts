@@ -1,3 +1,4 @@
+import { CLOUD_CODE_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { clamp01, trimTrailingSlashes } from "@veyyon/utils";
 import { getGeminiCliHeaders } from "../providers/google-gemini-cli";
 import type {
@@ -11,8 +12,6 @@ import type {
 } from "../usage";
 
 // (Refresh is the sole responsibility of AuthStorage; no provider-direct refresh here.)
-
-const DEFAULT_ENDPOINT = "https://cloudcode-pa.googleapis.com";
 
 const GEMINI_TIER_MAP: Array<{ tier: string; models: string[] }> = [
 	{
@@ -207,7 +206,7 @@ export const googleGeminiCliUsageProvider: UsageProvider = {
 			return null;
 		}
 
-		const baseUrl = trimTrailingSlashes(params.baseUrl?.trim() || DEFAULT_ENDPOINT);
+		const baseUrl = trimTrailingSlashes(params.baseUrl?.trim() || CLOUD_CODE_ENDPOINT);
 
 		const loadResponse = await loadCodeAssist(params, ctx, accessToken, baseUrl, credential.projectId);
 		const projectId = credential.projectId ?? getProjectId(loadResponse);

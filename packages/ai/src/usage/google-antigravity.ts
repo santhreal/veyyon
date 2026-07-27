@@ -1,3 +1,4 @@
+import { ANTIGRAVITY_ENDPOINTS, ANTIGRAVITY_PRIMARY_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { getAntigravityUserAgent } from "@veyyon/catalog/wire/gemini-headers";
 import { DAY_MS, trimTrailingSlashes, WEEK_MS } from "@veyyon/utils";
 import * as AIError from "../error";
@@ -45,7 +46,6 @@ interface AntigravityUsageResponse {
 	models: Record<string, AntigravityModelInfo>;
 }
 
-const DEFAULT_ENDPOINT = "https://daily-cloudcode-pa.googleapis.com";
 const FETCH_AVAILABLE_MODELS_PATH = "/v1internal:fetchAvailableModels";
 
 interface AntigravityWindowDescriptor {
@@ -264,10 +264,10 @@ async function fetchAntigravityUsage(params: UsageFetchParams, ctx: UsageFetchCo
 	if (!accessToken) return null;
 
 	const baseUrl = params.baseUrl === undefined ? undefined : trimTrailingSlashes(params.baseUrl);
-	const endpoints = baseUrl ? [baseUrl] : [DEFAULT_ENDPOINT, "https://daily-cloudcode-pa.sandbox.googleapis.com"];
+	const endpoints = baseUrl ? [baseUrl] : [...ANTIGRAVITY_ENDPOINTS];
 
 	let response: Response | undefined;
-	let successfulEndpoint = DEFAULT_ENDPOINT;
+	let successfulEndpoint = ANTIGRAVITY_PRIMARY_ENDPOINT;
 	for (const endpoint of endpoints) {
 		try {
 			const url = `${endpoint}${FETCH_AVAILABLE_MODELS_PATH}`;

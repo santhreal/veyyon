@@ -103,6 +103,7 @@ import {
 	WriteSuccessSchema,
 } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
 import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
+import { CURSOR_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import {
 	$env,
 	errorMessage,
@@ -147,7 +148,14 @@ import { connectProxiedSocket, getProxyForProvider, shouldBypassProxy } from "..
 import { createRequestDebugSession, isRequestDebugEnabled, type RequestDebugResponseLog } from "../utils/request-debug";
 import { toolWireSchema } from "../utils/schema/wire";
 
-export const CURSOR_API_URL = "https://api2.cursor.sh";
+/**
+ * Cursor's API host.
+ *
+ * Re-exported from `@veyyon/catalog/provider-endpoints`, which owns it, rather than declared here: this
+ * package's usage reader and `catalog`'s discovery reader both need the same fallback, and this name is the
+ * one callers already import.
+ */
+export const CURSOR_API_URL = CURSOR_API_ENDPOINT;
 export const CURSOR_CLIENT_VERSION = "cli-2026.01.09-231024f";
 
 const CURSOR_PROXY_TUNNEL_TIMEOUT_MS = 30_000;

@@ -1,5 +1,7 @@
 import { toNumber } from "@veyyon/catalog/utils";
-import { clamp, decodeJwtPayload, HOUR_MS, MINUTE_MS, WEEK_MS } from "@veyyon/utils";
+import { getCodexAccountEmail, getCodexAccountId } from "@veyyon/catalog/wire/codex";
+import { clamp, HOUR_MS, MINUTE_MS, WEEK_MS } from "@veyyon/utils";
+import { normalizeStoredEmail } from "../auth-credential-rows";
 import type {
 	CredentialRankingStrategy,
 	UsageAmount,
@@ -17,8 +19,6 @@ import { listCodexResetCredits } from "./openai-codex-reset";
 import { usageStatusFromUsedFraction } from "./shared";
 
 const CODEX_USAGE_PATH = "wham/usage";
-const JWT_AUTH_CLAIM = "https://api.openai.com/auth";
-const JWT_PROFILE_CLAIM = "https://api.openai.com/profile";
 
 interface CodexUsageWindowPayload {
 	used_percent?: number;
@@ -72,41 +72,17 @@ interface ParsedUsage {
 	raw: CodexUsagePayload;
 }
 
-interface JwtPayload {
-	[JWT_AUTH_CLAIM]?: {
-		chatgpt_account_id?: string;
-	};
-	[JWT_PROFILE_CLAIM]?: {
-		email?: string;
-	};
-}
-
 const toBoolean = (value: unknown): boolean | undefined => {
 	if (typeof value === "boolean") return value;
 	return undefined;
 };
 
-function parseJwt(token: string): JwtPayload | null {
-	return decodeJwtPayload<JwtPayload>(token);
-}
-
-function normalizeEmail(email: string | undefined): string | undefined {
-	if (!email) return undefined;
-	const normalized = email.trim().toLowerCase();
-	return normalized || undefined;
-}
-
-function extractAccountId(token: string | undefined): string | undefined {
-	if (!token) return undefined;
-	const payload = parseJwt(token);
-	return payload?.[JWT_AUTH_CLAIM]?.chatgpt_account_id ?? undefined;
-}
-
-function extractEmail(token: string | undefined): string | undefined {
-	if (!token) return undefined;
-	const payload = parseJwt(token);
-	return normalizeEmail(payload?.[JWT_PROFILE_CLAIM]?.email);
-}
+// The claim namespaces, the empty-claim rule and the email lowercasing all live in
+// `@veyyon/catalog/wire/codex`. This module's own copy passed an empty `chatgpt_account_id` through
+// unchanged, and an empty `chatgpt-account-id` header makes the usage endpoint answer a malformed-account
+// error instead of falling back to the token's own account.
+const extractAccountId = getCodexAccountId;
+const extractEmail = getCodexAccountEmail;
 
 function parseUsageWindow(payload: unknown): ParsedUsageWindow | undefined {
 	if (!isRecord(payload)) return undefined;
@@ -385,7 +361,9 @@ export const openaiCodexUsageProvider: UsageProvider = {
 
 		const baseUrl = normalizeCodexBaseUrl(params.baseUrl);
 		const accountId = credential.accountId ?? extractAccountId(accessToken);
-		const email = normalizeEmail(credential.email ?? extractEmail(accessToken));
+		// `normalizeStoredEmail` is the tree's one stored-email normalizer, in `../auth-credential-rows`, and it
+		// applies to the credential's own email as well as to the claim (which the owner already lowercased).
+		const email = normalizeStoredEmail(credential.email ?? extractEmail(accessToken)) ?? undefined;
 
 		const headers: Record<string, string> = {
 			Authorization: `Bearer ${accessToken}`,

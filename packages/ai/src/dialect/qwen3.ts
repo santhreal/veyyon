@@ -1,15 +1,8 @@
 import { parseJsonWithRepair, parseStreamingJson } from "@veyyon/utils";
+import { AI_PROMPTS } from "../prompts/registry";
 import type { ToolCall } from "../types";
 import { mintToolCallId, partialSuffixOverlapAny, recordOrEmpty } from "./coercion";
-import dialectPrompt from "./qwen3.md" with { type: "text" };
-import {
-	chatMlTranscriptRenderer,
-	renderThinkTags,
-	renderToolResponseResults,
-	stringifyJson,
-	THINK_CLOSE,
-	THINK_OPEN,
-} from "./rendering";
+import { chatMlTranscriptRenderer, renderThinkTags, renderToolResponseResults, stringifyJson } from "./rendering";
 import type {
 	DialectDefinition,
 	DialectRenderOptions,
@@ -17,12 +10,10 @@ import type {
 	InbandScanner,
 	InbandScannerOptions,
 } from "./types";
+import { THINK_CLOSE, THINK_OPEN, TOOL_CALL_CLOSE, TOOL_CALL_OPEN } from "./wire-tags";
 
-const TOOL_OPEN = "<tool_call>";
-const TOOL_CLOSE = "</tool_call>";
-
-const TOOL_START_TAGS = [TOOL_OPEN] as const;
-const START_TAGS = [TOOL_OPEN, THINK_OPEN] as const;
+const TOOL_START_TAGS = [TOOL_CALL_OPEN] as const;
+const START_TAGS = [TOOL_CALL_OPEN, THINK_OPEN] as const;
 const THINK_CLOSE_TAGS = [THINK_CLOSE] as const;
 const COMPLETE_NAME = /^\s*\{\s*"name"\s*:\s*("(?:\\.|[^"\\])*")/;
 
@@ -74,7 +65,7 @@ export class Qwen3InbandScanner implements InbandScanner {
 	}
 
 	#consumeOutside(final: boolean, events: InbandScanEvent[]): void {
-		const tool = this.#buffer.indexOf(TOOL_OPEN);
+		const tool = this.#buffer.indexOf(TOOL_CALL_OPEN);
 		const think = this.#parseThinking ? this.#buffer.indexOf(THINK_OPEN) : -1;
 		let start = tool;
 		let isThink = false;
@@ -101,7 +92,7 @@ export class Qwen3InbandScanner implements InbandScanner {
 			return;
 		}
 
-		this.#buffer = this.#buffer.slice(start + TOOL_OPEN.length);
+		this.#buffer = this.#buffer.slice(start + TOOL_CALL_OPEN.length);
 		this.#state = "tool";
 		this.#id = mintToolCallId();
 		this.#name = "";
@@ -125,7 +116,7 @@ export class Qwen3InbandScanner implements InbandScanner {
 	}
 
 	#consumeTool(final: boolean, events: InbandScanEvent[]): void {
-		const close = this.#buffer.indexOf(TOOL_CLOSE);
+		const close = this.#buffer.indexOf(TOOL_CALL_CLOSE);
 		const body = close === -1 ? this.#buffer : this.#buffer.slice(0, close);
 		if (!this.#started) this.#tryStart(body, events);
 		if (close === -1) {
@@ -133,14 +124,14 @@ export class Qwen3InbandScanner implements InbandScanner {
 				// Stream ended with no closing tag. A toolStart already announced here
 				// MUST be balanced by a toolEnd, or the downstream projector dispatches
 				// the named tool with the empty {} args it seeded on toolStart.
-				this.#emitBestEffortEnd(body, `${TOOL_OPEN}${body}`, events);
+				this.#emitBestEffortEnd(body, `${TOOL_CALL_OPEN}${body}`, events);
 				this.#resetTool();
 			}
 			return;
 		}
 
 		const parsed = this.#parseCall(body);
-		const rawBlock = `${TOOL_OPEN}${body}${TOOL_CLOSE}`;
+		const rawBlock = `${TOOL_CALL_OPEN}${body}${TOOL_CALL_CLOSE}`;
 		if (parsed) {
 			if (!this.#started) {
 				events.push({ type: "toolStart", id: this.#id, name: parsed.name });
@@ -152,7 +143,7 @@ export class Qwen3InbandScanner implements InbandScanner {
 			// with a best-effort toolEnd rather than stranding a half-open call.
 			this.#emitBestEffortEnd(body, rawBlock, events);
 		}
-		this.#buffer = this.#buffer.slice(close + TOOL_CLOSE.length);
+		this.#buffer = this.#buffer.slice(close + TOOL_CALL_CLOSE.length);
 		this.#resetTool();
 	}
 
@@ -218,6 +209,9 @@ export class Qwen3InbandScanner implements InbandScanner {
 			}
 			return { name: parsed.name, arguments: recordOrEmpty(args) };
 		} catch {
+			// Same contract as the Hermes scanner: `undefined` means "not a call", and the caller balances
+			// any announced `toolStart` with a best-effort `toolEnd` rather than stranding it with empty
+			// arguments. The failure is visible in the emitted raw block, not discarded.
 			return undefined;
 		}
 	}
@@ -231,7 +225,7 @@ export class Qwen3InbandScanner implements InbandScanner {
 }
 
 function renderToolCall(call: ToolCall, _options: DialectRenderOptions = {}): string {
-	return `${TOOL_OPEN}\n${stringifyJson({ name: call.name, arguments: call.arguments })}\n${TOOL_CLOSE}`;
+	return `${TOOL_CALL_OPEN}\n${stringifyJson({ name: call.name, arguments: call.arguments })}\n${TOOL_CALL_CLOSE}`;
 }
 
 function renderAssistantToolCalls(calls: readonly ToolCall[], options: DialectRenderOptions = {}): string {
@@ -240,7 +234,7 @@ function renderAssistantToolCalls(calls: readonly ToolCall[], options: DialectRe
 
 const definition: DialectDefinition = {
 	dialect: "qwen3",
-	prompt: dialectPrompt,
+	prompt: AI_PROMPTS["dialect/qwen3"].text,
 	createScanner: options => new Qwen3InbandScanner(options),
 	renderToolCall,
 	renderAssistantToolCalls,

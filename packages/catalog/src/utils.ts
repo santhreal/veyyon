@@ -1,6 +1,6 @@
-import { type FetchImpl, wrapFetchForExtraCa } from "@veyyon/utils";
+import { type FetchImpl, wrapFetchForExtraCa } from "@veyyon/utils/tls-fetch";
 
-export { isRecord } from "@veyyon/utils";
+export { isRecord } from "@veyyon/utils/type-guards";
 
 /**
  * Fetch implementation for catalog discovery probes: the caller's override

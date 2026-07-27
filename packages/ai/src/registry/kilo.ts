@@ -1,4 +1,4 @@
-import { DAY_MS } from "@veyyon/utils";
+import { DAY_MS } from "@veyyon/utils/time";
 import * as AIError from "../error";
 import type { OAuthController, OAuthCredentials } from "./oauth/types";
 import type { ProviderDefinition } from "./types";

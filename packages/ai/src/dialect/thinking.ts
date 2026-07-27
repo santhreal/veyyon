@@ -1,6 +1,7 @@
 import { partialSuffixOverlapAny } from "./coercion";
 import { FencedThinkingScanner } from "./fenced-thinking";
 import type { InbandScanEvent, InbandScanner } from "./types";
+import { THINK_CLOSE, THINK_OPEN, XML_THINKING_CLOSE, XML_THINKING_OPEN } from "./wire-tags";
 
 type Tag = { readonly open: string; readonly close: string; readonly fenced?: boolean };
 
@@ -16,8 +17,11 @@ type Tag = { readonly open: string; readonly close: string; readonly fenced?: bo
  * anthropic-dialect parser, not this text-channel healing fallback.
  */
 const TAGS: readonly Tag[] = [
-	{ open: "<think>", close: "</think>" }, // deepseek, glm, hermes, kimi, qwen3 (and anthropic/minimax/xml)
-	{ open: "<thinking>", close: "</thinking>" }, // anthropic, minimax, xml
+	// The first two come from the shared vocabulary rather than being retyped: this scanner heals reasoning that
+	// leaked into the visible channel, so it has to look for exactly what `renderThinking` emitted, and a copy
+	// here that drifted would leave the leak unhealed with nothing reporting it.
+	{ open: THINK_OPEN, close: THINK_CLOSE }, // deepseek, glm, hermes, kimi, qwen3 (and anthropic/minimax/xml)
+	{ open: XML_THINKING_OPEN, close: XML_THINKING_CLOSE }, // anthropic, minimax, xml
 	{ open: "<scratchpad>", close: "</scratchpad>" }, // anthropic
 	{ open: "```thinking\n", close: "```", fenced: true }, // gemini fenced thinking
 	{ open: "<|channel>thought\n", close: "<channel|>" }, // gemma reasoning channel

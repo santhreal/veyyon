@@ -2,7 +2,90 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The Claude Code version this client identifies itself as comes from `@veyyon/catalog/wire/anthropic`. Three modules build a user-agent from it and build deliberately different ones, so the version is the only part that has to agree, and it was declared in the Anthropic provider: 310 modules for a string. The OAuth controller went from 313 modules to 106 and the usage client from 313 to 127. A drift between the three was never an error, only three requests carrying fingerprints that disagree with each other.
+
+- `dialect/wire-tags.ts` owns `CODE_FENCE`, the bare markdown fence. `gemini.ts` called it `FENCE` and `deepseek.ts` called it `CODE_FENCE`, and both dialects SCAN for it rather than emit it: DeepSeek closes a tool call's arguments at the last fence in its raw-argument buffer, Gemini closes a code block at the first one. A copy that drifted would not raise anything, it would make one dialect stop finding the end of a block and swallow the rest of the stream as arguments, which surfaces as a tool call with garbage parameters. Fences that carry an info string stay with their dialect, because the string is the dialect's own convention rather than shared vocabulary.
+
+- `<authenticated>` is exported from `provider-env-keys.ts` as `AUTHENTICATED_API_KEY_SENTINEL`. `providers/amazon-bedrock.ts` declared its own copy to recognise it, and it treats a match as "use the ambient AWS credential chain", so a miss would send the literal string `<authenticated>` as an API key.
+
+- Reads the Gemini developer API base, Anthropic's host, Cursor's host and Google's OAuth endpoints and scopes from `@veyyon/catalog` instead of declaring them. `providers/cursor.ts` re-exports `CURSOR_API_URL` from the owner rather than declaring it, and `registry/oauth/google-oauth-shared.ts` takes `readonly string[]` scopes, since it only joins them into a request parameter.
+
+- The Perplexity login flow reads its client identity from `@veyyon/catalog/wire/perplexity`. Its three OTP requests each spelled the same User-Agent and API version, and both values also existed in `@veyyon/coding-agent`, which spends the session this flow mints.
+
+- The Codex OAuth registry, the usage reader and the credential-row identity extractor all read a token's account id and email through `@veyyon/catalog/wire/codex` instead of each decoding the JWT themselves. The usage reader's copy passed an empty `chatgpt_account_id` through unchanged, which is worse than omitting the header it feeds. `auth-credential-rows.ts` had spelled both claim URIs as bare literals, the copy a grep for any constant name never finds, and the usage reader now uses the tree's one stored-email normalizer rather than a third hand-rolled `trim().toLowerCase()`.
+- Removed the deprecated `decodeJwt` export from `oauth/openai-codex`. It only forwarded to `decodeJwtPayload` in `@veyyon/utils`, which its own doc named as the replacement, and its last caller is gone; import `decodeJwtPayload` from `@veyyon/utils` instead.
+
+- The Devin provider and its OAuth flow take their hosts from `@veyyon/catalog/provider-endpoints` instead of each declaring `DEVIN_API_URL` for a different host.
+
+- The in-band tag vocabulary the ChatML-family dialects share (`<tool_call>`, `<tool_response>`, GLM's `<arg_key>`/`<arg_value>`, and both thinking envelopes) is declared once in `dialect/wire-tags.ts`. It was spread over 19 declarations in 8 modules under 15 names, plus 8 bare literals: the tool-call envelope was retyped in `glm.ts`, `hermes.ts` and `qwen3.ts` and a fourth time in `utils/validation.ts` as `SPILL_TOOL_CLOSE`, the tool-response envelope existed as GLM constants, as inline text in `rendering.ts`, and as bare literals in seven rows of the `owned-stream.ts` detection table, and `providers/anthropic.ts` held a third name for the `<thinking>` pair it strips. Each tag is a contract between a prompt this repo writes and a parser this repo runs, and every failure mode is silent: a scanner that no longer matches an opener reports success and the tool call becomes visible text, and a detector that no longer matches the tool-response opener lets the model's invented continuation of a tool result into the transcript. `hermes.ts` also spelled the envelope inline in its own renderer while keeping a named copy for its scanner, so the producer and the parser in one file were not using the same constant.
+- Three dialect tag names each meant two different byte sequences in sibling files, which is a latent bug rather than a style point. `THINK_OPEN` was `<think>` in six dialects and ` ```thinking ` in `gemini.ts`, where adding the shared name to the import list would have silently shadowed it. `CALL_OPEN` was `<|tool_call>` in `gemma.ts` and `<call:` in `pi-native.ts`. `RESPONSE_OPEN` was `<|tool_response>` in `gemma.ts` and the shared `<tool_response>` in `glm.ts`. Every dialect-specific tag is now prefixed with its dialect, and a scan over the dialect directory fails if any name takes two values again.
+
+- `DEFAULT_CALLBACK_PATH` is exported from `registry/oauth/callback-server.ts`, and the providers that used to hand that class back the value of its own default now import it. `anthropic.ts`, `devin.ts` and `gitlab-duo.ts` each declared `const CALLBACK_PATH = "/callback"`, as did the MCP flow in `@veyyon/coding-agent`, which imports `OAuthCallbackFlow` and then redeclared its default as a private fallback. Moving the served path would have left all four still advertising the old one, and the failure surfaces as a redirect-URI mismatch on the provider's own error page. The three provider-specific paths (`/auth/callback`, `/oauth-callback`, `/oauth2callback`) stay local, deliberately, because each is what that provider has registered.
+- Every Google and GitLab host comes from `@veyyon/catalog/provider-endpoints`, and `SQLITE_NOW_EPOCH` from `@veyyon/utils/sqlite`. Six modules here declared one of those hosts and three declared the SQL timestamp expression; nothing about the requests or the schemas changed.
+
+- Asking which environment variable holds a provider's key no longer loads the provider registry. `getEnvApiKey` was split out of `stream.ts` for exactly this reason and still cost 158 modules, because the OVERRIDES hung on the provider definitions: three credential probes (Bedrock's five credential shapes, Vertex ADC, Anthropic's variable order under Foundry) plus a handful of string keys, read off `PROVIDER_REGISTRY`, which is 121 modules of login flows, transports and model lists and was 95 of them marginal on this lookup. `src/provider-env-keys.ts` owns those rules now at 23 modules, and `registry/types.ts` no longer declares an `envKeys` field, so a provider's env-key rule has exactly one home and one reader. `env-api-key.ts` 158 -> 65, and downstream in `@veyyon/coding-agent`, where eighteen web-search providers and the fetcher import it: `web/parallel.ts` 164 -> 72, `tools/fetch.ts` 368 -> 282, `tools/read.ts` 542 -> 468. Two duplicates went with it: `KeyResolver` was declared identically in `registry/types.ts` and in `env-api-key.ts`, and `gitlab-duo-agent` declared `envKeys: "GITLAB_TOKEN"` while the catalog already said `envVars: ["GITLAB_TOKEN"]` for the same id, with the override silently winning. `test/provider-env-keys.test.ts` (26 cases) drives every branch of every probe from the real environment, including the boundaries a rewrite gets wrong (an AWS access key with no secret, ADC credentials with no project or no location, the Foundry order with all three variables set), and ratchets both duplicates shut.
+
+### Changed
+
+- The sqlite credential store moved out of `auth-storage.ts` into `src/auth-storage-sqlite.ts`, and the
+  row types and row logic into `src/auth-credential-rows.ts`. One 7,800-line module used to hold three
+  jobs: the credential types every consumer speaks, the `AuthStorage` class that selects and refreshes
+  credentials, and the store that reads and writes rows. Reaching the store meant importing all of it,
+  and all of it is the provider registry with its 75 provider definitions, the OAuth flows, and the
+  error taxonomy: 213 modules to persist a credential. It is 83 now, and the row helpers are 75, which
+  is the `@veyyon/utils` barrel plus one. `auth-storage.ts` keeps the OAuth machinery and re-exports
+  `SqliteAuthCredentialStore`, `isSqliteBusyError`, `isRefreshFailureDisableCause` and
+  `OAUTH_REFRESH_FAILURE_DISABLE_PREFIX`, so `@veyyon/ai/auth-storage` and the `@veyyon/ai` barrel both
+  remain working import paths and no caller changed.
+
+  Import the store from `@veyyon/ai/auth-storage-sqlite` when you want persistence without the OAuth
+  stack. veyyon's `session/agent-storage.ts` does, and fell from 213 modules to 84; because
+  `config/settings.ts` imports that file, everything that reads a setting fell from 250 to 125.
+  `packages/ai/test/credential-store-is-not-the-oauth-machinery.test.ts` pins both the numbers and the
+  round trips through the store's own module.
+
+- The per-provider in-flight request caps moved out of the streaming engine into
+  `src/provider-inflight-limits.ts`, which imports nothing. The caps are WRITTEN by a harness when its
+  configuration changes and READ by the engine once per request, so reaching the setter meant importing
+  `stream.ts` and its 285 modules: every provider transport, the model registry, the error taxonomy.
+  veyyon's `config/settings.ts` did exactly that for one setter, and paid it into everything that reads
+  a setting. `stream.ts` re-exports `configureProviderMaxInFlightRequests` and resolves its limits
+  through the new module, so `@veyyon/ai/stream` remains a working import path for it and there is still
+  one owner of the record: two copies would drift, with the harness writing one and the engine reading
+  the other, and a configured cap would silently stop applying.
+
+- The usage-provider table moved out of the credential store. `auth-storage.ts` imported all eleven
+  usage backends directly, so a module about storing credentials owned the table of how every
+  provider reports its quota, and through `usage/claude` it reached the provider transports and the
+  streaming engine. The table now lives in `src/usage/defaults.ts` and is read through
+  `src/usage/registry.ts`, which cuts `auth-storage.ts` from 299 reachable modules to 209.
+
+  Importing `@veyyon/ai` still wires it for you. If you import `AuthStorage` from the subpath, add
+  `import "@veyyon/ai/usage/defaults";` once before you build the store. Leaving it out is reported
+  rather than a quiet loss of quota reporting: an unfilled registry warns once and names the import,
+  because an empty table answers "no backend" for every provider, which is indistinguishable from a
+  provider that genuinely reports nothing. It warns rather than refusing because the same registry
+  holds the credential-ranking strategies and `getApiKey` reads those, so throwing would stop a
+  process selecting a credential over a feature it never asked for. To report no usage deliberately,
+  pass `usageProviderResolver` and `rankingStrategyResolver` explicitly.
+
+- Every prompt this package sends is registered in `src/prompts/registry.ts`, and the fourteen `.md` files moved from `src/dialect/` and `src/providers/` to `src/prompts/dialect/` and `src/prompts/provider/`. They were imported by relative path from the modules that used them, so the package could not say what text it puts in a model's system prompt without a glob, and `veyyon prompt --prompts` listed none of it. Each dialect definition now takes its guide from its registry row, and `dialect-prompt-registry.test.ts` asserts per dialect that the guide it ships is the row named for it and is no other dialect's, which is the failure a coverage check cannot see: handing the Gemma model GLM's syntax compiles, renders, and produces calls the scanner drops.
+
 ### Fixed
+
+- A cache that cannot be read or written now says so once instead of behaving like a permanently cold
+  cache. Every `AuthStorage` cache method answered a database failure by acting as though the cache were
+  empty: a failed read is a miss, a failed write is a value not kept. That behaviour is right, since a
+  cache is an optimization and nothing should fail a request over it, but it was silent, so a read-only
+  or corrupt `auth.db`, a full disk, or a locked file made every model-catalog and OAuth-metadata lookup
+  miss and every write vanish while the process looked merely slow. The first failure of each operation
+  now warns with the underlying error and later ones are debug, because a broken database fails on every
+  call and one warning per call would bury it. A failed `deleteCachePrefix` is reported for a second
+  reason: it leaves stale rows the caller believes it invalidated.
+
+- The auth-gateway no longer reports a failed generation as a completed response. `encodeStream` builds its terminal SSE frame from the stream's final assistant message, and when no `done` event arrived it asked the stream for its result and swallowed a rejection to `null`. Every reader after that treated the null as "there was no final message" rather than as an error, so the status became `completed`, the output became whatever text had already streamed, and usage became null: a generation that failed partway through was announced to the client as a success carrying half an answer, which is the one failure a client cannot detect or retry. The path is reachable by design, since a stream that ends without a terminal value rejects with "Stream ended without a final result" -- what an upstream connection dropping mid-stream looks like from here. It now emits `response.failed` with the real reason, and the items that did stream stay attached so a truncated answer can still be inspected. An explicit `error` event still fails with its own message, and a stream that delivers a final message still completes.
 
 - A GCE metadata server that refuses a token is reported. `fetchMetadataToken` answered a refused status and "not running on GCE at all" with the same `undefined`, and the error the caller raises offers "run on a GCE or Cloud Run instance with a service account" as one of three fixes, which is exactly the wrong advice for an instance whose metadata server answered 403. The status and URL are now warned where they are still known; not being on GCE stays silent, since that is every laptop.
 

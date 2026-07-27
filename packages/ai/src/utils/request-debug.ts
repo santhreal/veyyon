@@ -164,6 +164,9 @@ class FileRequestDebugSession implements RequestDebugSession {
 					log.write(value);
 					controller.enqueue(value);
 				} catch (error) {
+					// Closing a DEBUG log that is written only when request debugging is switched on. A failed close cannot be
+					// allowed to fail the request it was recording, which is the whole point of the debug surface being
+					// passive, and the operator who enabled it sees the truncated file.
 					await log.close().catch(() => undefined);
 					controller.error(error);
 				}

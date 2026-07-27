@@ -7,6 +7,12 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { scheduler } from "node:timers/promises";
 import { calculateCost, emptyCost, emptyUsage } from "@veyyon/catalog/models";
 import {
+	ANTIGRAVITY_ENDPOINTS,
+	ANTIGRAVITY_PRIMARY_ENDPOINT,
+	ANTIGRAVITY_SANDBOX_ENDPOINT,
+	CLOUD_CODE_ENDPOINT,
+} from "@veyyon/catalog/provider-endpoints";
+import {
 	ANTIGRAVITY_SYSTEM_INSTRUCTION,
 	getAntigravityModelWireProfile,
 	getAntigravityUserAgent,
@@ -324,11 +330,6 @@ export function getAntigravityProviderSessionState(
 	return existing;
 }
 
-const DEFAULT_ENDPOINT = "https://cloudcode-pa.googleapis.com";
-const ANTIGRAVITY_DAILY_ENDPOINT = "https://daily-cloudcode-pa.googleapis.com";
-const ANTIGRAVITY_SANDBOX_ENDPOINT = "https://daily-cloudcode-pa.sandbox.googleapis.com";
-const ANTIGRAVITY_ENDPOINT_FALLBACKS = [ANTIGRAVITY_DAILY_ENDPOINT, ANTIGRAVITY_SANDBOX_ENDPOINT] as const;
-
 export {
 	ANTIGRAVITY_SYSTEM_INSTRUCTION,
 	getAntigravityUserAgent,
@@ -566,17 +567,17 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 					endpoints = [ANTIGRAVITY_SANDBOX_ENDPOINT];
 					if (providerState) providerState.lastGoodEndpoint = undefined;
 				} else if (mode === "production") {
-					endpoints = [ANTIGRAVITY_DAILY_ENDPOINT];
+					endpoints = [ANTIGRAVITY_PRIMARY_ENDPOINT];
 					if (providerState) providerState.lastGoodEndpoint = undefined;
 				} else {
 					// auto mode
 					if (baseUrl) {
 						const cleanUrl = trimTrailingSlashes(baseUrl);
-						if (cleanUrl !== ANTIGRAVITY_DAILY_ENDPOINT && cleanUrl !== ANTIGRAVITY_SANDBOX_ENDPOINT) {
+						if (cleanUrl !== ANTIGRAVITY_PRIMARY_ENDPOINT && cleanUrl !== ANTIGRAVITY_SANDBOX_ENDPOINT) {
 							endpoints = [baseUrl];
 							if (providerState) providerState.lastGoodEndpoint = undefined;
 						} else {
-							const defaultFallbacks = [...ANTIGRAVITY_ENDPOINT_FALLBACKS] as string[];
+							const defaultFallbacks = [...ANTIGRAVITY_ENDPOINTS] as string[];
 							const lastGood = providerState?.lastGoodEndpoint;
 							if (lastGood && defaultFallbacks.includes(lastGood)) {
 								endpoints = [lastGood, ...defaultFallbacks.filter(e => e !== lastGood)];
@@ -585,7 +586,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 							}
 						}
 					} else {
-						const defaultFallbacks = [...ANTIGRAVITY_ENDPOINT_FALLBACKS] as string[];
+						const defaultFallbacks = [...ANTIGRAVITY_ENDPOINTS] as string[];
 						const lastGood = providerState?.lastGoodEndpoint;
 						if (lastGood && defaultFallbacks.includes(lastGood)) {
 							endpoints = [lastGood, ...defaultFallbacks.filter(e => e !== lastGood)];
@@ -595,7 +596,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 					}
 				}
 			} else {
-				endpoints = baseUrl ? [baseUrl] : [DEFAULT_ENDPOINT];
+				endpoints = baseUrl ? [baseUrl] : [CLOUD_CODE_ENDPOINT];
 			}
 
 			let requestBody = buildRequest(model, context, projectId, options, isAntigravity);

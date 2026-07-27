@@ -1,4 +1,5 @@
 import { buildModel } from "@veyyon/catalog/build";
+import { GITLAB_SAAS_URL } from "@veyyon/catalog/provider-endpoints";
 import * as AIError from "../error";
 import { ANTHROPIC_THINKING, mapAnthropicToolChoice } from "../stream";
 import type { Api, Context, FetchImpl, Model, ModelSpec, SimpleStreamOptions } from "../types";
@@ -8,7 +9,6 @@ import type { OpenAICompletionsOptions } from "./openai-completions";
 import type { OpenAIResponsesOptions } from "./openai-responses";
 import { streamAnthropic, streamOpenAICompletions, streamOpenAIResponses } from "./register-builtins";
 
-const GITLAB_COM_URL = "https://gitlab.com";
 const AI_GATEWAY_URL = "https://cloud.gitlab.com";
 const ANTHROPIC_PROXY_URL = `${AI_GATEWAY_URL}/ai/v1/proxy/anthropic/`;
 const OPENAI_PROXY_URL = `${AI_GATEWAY_URL}/ai/v1/proxy/openai/v1`;
@@ -185,7 +185,7 @@ async function getDirectAccessToken(
 		return cached;
 	}
 
-	const response = await fetchImpl(`${GITLAB_COM_URL}/api/v4/ai/third_party_agents/direct_access`, {
+	const response = await fetchImpl(`${GITLAB_SAAS_URL}/api/v4/ai/third_party_agents/direct_access`, {
 		method: "POST",
 		headers: {
 			Authorization: `Bearer ${gitlabAccessToken}`,

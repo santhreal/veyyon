@@ -1089,6 +1089,8 @@ export function streamGoogleGenAI<T extends "google-generative-ai" | "google-ver
 					signal: options?.signal,
 				});
 				if (!response.ok) {
+					// The STATUS is the failure; the body is the detail. An unreadable body degrades to empty rather than
+					// replacing the status with a read error.
 					const errorText = await response.text().catch(() => "");
 					throw new AIError.GoogleApiError(
 						`Google API error (${response.status}): ${extractGoogleErrorMessage(errorText)}`,

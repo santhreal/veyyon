@@ -13,6 +13,7 @@ import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
 import { $env, $flag, fetchWithRetry, parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/utils";
 import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
+import { AUTHENTICATED_API_KEY_SENTINEL } from "../provider-env-keys";
 import type {
 	Api,
 	AssistantMessage,
@@ -74,7 +75,6 @@ export interface BedrockOptions extends StreamOptions {
 	 */
 	thinkingDisplay?: BedrockThinkingDisplay;
 }
-const AUTHENTICATED_API_KEY_SENTINEL = "<authenticated>";
 
 function resolveBearerToken(options: BedrockOptions): string | undefined {
 	const apiKey = options.apiKey === AUTHENTICATED_API_KEY_SENTINEL ? undefined : options.apiKey;
@@ -408,6 +408,8 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 					// drop the cache entry so the next attempt re-resolves from scratch.
 					invalidateAwsCredentialCache({ profile: options.profile, region });
 				}
+				// The STATUS is the failure; the body is Bedrock's explanation of it. Losing an unreadable body still
+				// leaves the status, which is what the error below is built from.
 				const errBody = await response.text().catch(() => "");
 				throw new AIError.BedrockApiError(
 					`Bedrock HTTP ${response.status}: ${errBody.slice(0, 1000)}`,

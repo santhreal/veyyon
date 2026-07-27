@@ -15,20 +15,31 @@ import { AssistantMessageEventStream } from "../utils/event-stream";
 import { buildStringArgsResolver, getOwnArg, setToolArg } from "./coercion";
 import { createInbandScanner } from "./factory";
 import type { Dialect, InbandScanEvent, InbandScanner, InbandTool } from "./types";
+import { TOOL_RESPONSE_OPEN } from "./wire-tags";
 
+/**
+ * Where the host's own tool-result text begins, per dialect, so a model that keeps generating past its call can
+ * be cut off before it hallucinates the result.
+ *
+ * Seven of these rows are the SHARED `<tool_response>` opener, which `rendering.ts` is what actually writes.
+ * They were bare literals here, which made this table look like a list of independent per-dialect facts when
+ * most of it is one fact restated: change the renderer's tag and these seven stop matching, silently, and the
+ * model's invented continuation of the tool output reaches the transcript looking like real output. The rows
+ * that are genuinely that model's own token stay spelled out.
+ */
 const RESPONSE_OPEN_TOKENS: Record<Dialect, readonly string[]> = {
-	glm: ["<tool_response>"],
-	hermes: ["<tool_response>"],
+	glm: [TOOL_RESPONSE_OPEN],
+	hermes: [TOOL_RESPONSE_OPEN],
 	kimi: ["<|im_system|>"],
-	xml: ["<tool_response>"],
-	anthropic: ["<function_results>", "<tool_response>"],
-	minimax: ["<function_results>", "<tool_response>"],
+	xml: [TOOL_RESPONSE_OPEN],
+	anthropic: ["<function_results>", TOOL_RESPONSE_OPEN],
+	minimax: ["<function_results>", TOOL_RESPONSE_OPEN],
 	deepseek: ["<｜tool▁outputs▁begin｜>", "<｜tool▁output▁begin｜>"],
 	harmony: ["<|start|>functions."],
-	qwen3: ["<tool_response>"],
+	qwen3: [TOOL_RESPONSE_OPEN],
 	gemini: ["```tool_outputs"],
 	gemma: ["<|tool_response>"],
-	"pi-native": ["<tool_response>"],
+	"pi-native": [TOOL_RESPONSE_OPEN],
 };
 
 function firstTokenIndex(text: string, tokens: readonly string[]): number {

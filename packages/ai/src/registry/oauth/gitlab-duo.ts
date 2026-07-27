@@ -1,12 +1,12 @@
+import { GITLAB_SAAS_URL } from "@veyyon/catalog/provider-endpoints";
 import * as AIError from "../../error";
 import { clearGitLabDuoDirectAccessCache } from "../../providers/gitlab-duo";
 import type { FetchImpl } from "../../types";
-import { OAuthCallbackFlow, type OAuthCallbackFlowOptions } from "./callback-server";
+import { DEFAULT_CALLBACK_PATH, OAuthCallbackFlow, type OAuthCallbackFlowOptions } from "./callback-server";
 import { credentialExpiryFromExpiresIn } from "./expiry";
 import { generatePKCE } from "./pkce";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "./types";
 
-const GITLAB_COM_URL = "https://gitlab.com";
 /**
  * Default OAuth client id baked into the bundled GitLab Duo login flow. GitLab
  * authorize requests are rejected outright (`The redirect URI included is not
@@ -20,7 +20,6 @@ const GITLAB_COM_URL = "https://gitlab.com";
 const DEFAULT_CLIENT_ID = "da4edff2e6ebd2bc3208611e2768bc1c1dd7be791dc5ff26ca34ca9ee44f7d4b";
 const OAUTH_SCOPES = ["api"];
 const DEFAULT_CALLBACK_PORT = 8080;
-const DEFAULT_CALLBACK_PATH = "/callback";
 const DEFAULT_CALLBACK_HOSTNAME = "localhost";
 
 interface PKCEPair {
@@ -138,7 +137,7 @@ class GitLabDuoOAuthFlow extends OAuthCallbackFlow {
 		});
 
 		return {
-			url: `${GITLAB_COM_URL}/oauth/authorize?${authParams.toString()}`,
+			url: `${GITLAB_SAAS_URL}/oauth/authorize?${authParams.toString()}`,
 			instructions:
 				'Complete GitLab login in browser. If GitLab responds with "The redirect URI included is not valid", ' +
 				"register your own GitLab OAuth application and set GITLAB_CLIENT_ID + GITLAB_REDIRECT_URI, or use a " +
@@ -147,7 +146,7 @@ class GitLabDuoOAuthFlow extends OAuthCallbackFlow {
 	}
 
 	override async exchangeToken(code: string, _state: string, redirectUri: string): Promise<OAuthCredentials> {
-		const response = await this.#fetch(`${GITLAB_COM_URL}/oauth/token`, {
+		const response = await this.#fetch(`${GITLAB_SAAS_URL}/oauth/token`, {
 			method: "POST",
 			headers: { "Content-Type": "application/x-www-form-urlencoded" },
 			body: new URLSearchParams({
@@ -191,7 +190,7 @@ export async function loginGitLabDuo(callbacks: OAuthLoginCallbacks): Promise<OA
 }
 
 export async function refreshGitLabDuoToken(credentials: OAuthCredentials): Promise<OAuthCredentials> {
-	const response = await fetch(`${GITLAB_COM_URL}/oauth/token`, {
+	const response = await fetch(`${GITLAB_SAAS_URL}/oauth/token`, {
 		method: "POST",
 		headers: { "Content-Type": "application/x-www-form-urlencoded" },
 		body: new URLSearchParams({

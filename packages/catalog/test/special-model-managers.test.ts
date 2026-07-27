@@ -95,10 +95,14 @@ describe("gitLabDuoWorkflowModelManagerOptions", () => {
 			fetch: spyFetch,
 		});
 		expect(typeof options.fetchDynamicModels).toBe("function");
-		// No candidate namespace surfaces models, so discovery throws — but the
-		// credential must already have reached the GitLab API by then (namespace
-		// enumeration runs before the per-namespace model GraphQL query).
-		await expect(options.fetchDynamicModels?.()).rejects.toThrow(/namespace/i);
+		// No candidate namespace surfaces models. This used to THROW, and now answers `null` with a reported
+		// reason, like every other reader in this package: a throw reached the manager's catch and was labelled
+		// a bug in the reader (`unhandled`), when what happened is that the token sees no namespace with Duo
+		// access. The credential must still have reached the GitLab API by then, since namespace enumeration
+		// runs before the per-namespace model GraphQL query.
+		const reasons: string[] = [];
+		await expect(options.fetchDynamicModels?.({ onFailure: f => reasons.push(f.detail) })).resolves.toBeNull();
+		expect(reasons.join("\n")).toMatch(/namespace/i);
 		expect(sawUrl).toContain("gitlab.com/api/");
 		expect(sawAuth).toBe("Bearer glpat-secret");
 	});

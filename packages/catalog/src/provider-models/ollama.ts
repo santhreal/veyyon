@@ -1,4 +1,5 @@
-import { fetchWithRetry, trimTrailingSlashes } from "@veyyon/utils";
+import { fetchWithRetry } from "@veyyon/utils/fetch-retry";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { Effort } from "../effort";
 import { isGlm52ReasoningEffortModelId } from "../identity/family";
 import type { ModelManagerOptions } from "../model-manager";

@@ -26,6 +26,7 @@ import { AnthropicApiError, AnthropicConnectionError, AnthropicConnectionTimeout
 
 export { AnthropicApiError, AnthropicConnectionError, AnthropicConnectionTimeoutError };
 
+import { ANTHROPIC_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import type { FetchImpl } from "../types";
 import type { MessageCreateParamsStreaming } from "./anthropic-wire";
 
@@ -216,7 +217,7 @@ export class AnthropicMessagesClient implements AnthropicMessagesClientLike {
 		const callerSignal = options?.signal;
 		const timeoutMs = options?.timeout ?? opts.timeout ?? DEFAULT_TIMEOUT_MS;
 		const maxRetries = Math.max(0, options?.maxRetries ?? opts.maxRetries ?? DEFAULT_MAX_RETRIES);
-		const url = `${opts.baseURL ?? "https://api.anthropic.com"}${path}`;
+		const url = `${opts.baseURL ?? ANTHROPIC_API_ENDPOINT}${path}`;
 		const headers = this.#buildHeaders(options?.headers);
 		const body = JSON.stringify(params);
 
@@ -239,6 +240,8 @@ export class AnthropicMessagesClient implements AnthropicMessagesClientLike {
 			if (response.ok) return response;
 
 			if (attempt < maxRetries && shouldRetryResponse(response)) {
+				// Cancelling a body no one will read. The error that matters is raised around this line, and a stream
+				// that refuses to cancel -- usually because it already ended -- changes nothing about it.
 				await response.body?.cancel().catch(() => {});
 				await this.#backoff(attempt, response.headers, callerSignal);
 				continue;

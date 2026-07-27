@@ -19,6 +19,28 @@
 
 ### Changed
 
+- The session parser takes its service-tier helpers from `@veyyon/ai/types`, the module that declares them, rather than from the `@veyyon/ai` entry point. This package reads session files off disk; it has no use for a provider, and it was loading all 363 modules of one to normalize a tier string. `parser.ts` went from 366 modules to 103, and `db.ts` and `sync-worker.ts` followed it down to 105 and 104.
+
+- Classifies advisor transcripts through `@veyyon/utils/session-file` instead of declaring `"__advisor.jsonl"` here. This package cannot import the coding agent that writes the file, so the two spellings could only ever drift apart, and the result would have been a wrong count rather than an error: advisor transcripts silently counted as ordinary subagent sessions.
+
+- `Usage` is now re-exported from `@veyyon/catalog` instead of declared here. The local copy had
+  the same five counters and the same `cost` object and nothing else, but sessions are written
+  against the catalog type, so the fields it omitted (`orchestration`, `reasoningTokens`, `cttl`,
+  `server`) were sitting in the data and invisible to every reader in this package. The name and
+  the import path are unchanged.
+
+- `SessionHeader` is now `SessionLogHeader`, and its `version` is optional. It was declared required
+  while the writer declares `version?: number` because v1 sessions do not have one, so a v1 header
+  read through this type handed the caller a `number` that is `undefined` at runtime. Nothing in this
+  package reads the field yet, which is why it never surfaced. The old name is kept as a renamed
+  export.
+
+- `SessionEntry` is now `SessionLogEntry`. It was one of three types of that name across the
+  workspace, and the widest: its `{ type: string }` arm is there so a log line the parser does not
+  model is not a parse failure, which also means a value typed from here satisfies far less than the
+  host's entry union or the wire subset a guest renders. The new name says what it is, one line of a
+  session JSONL log as this parser sees it. The old name is kept as a renamed export.
+
 - The theme store moved into `@veyyon/utils` as `createThemeStore`, shared with the collab client, which carried a byte-identical copy of the same ~90 lines. Only the storage key and the React binding stay here. See the Fixed note above for the divergence the two copies had.
 
 - `hasBillableCost` now comes from `@veyyon/catalog`, which carried an identical copy in its model generator. The generator uses it to decide whether an OpenAI entry may donate its pricing to the matching Codex entry, and the dashboard uses it to decide whether to trust a bundled price at all, so the two answers had to agree about the same numbers while being written twice.

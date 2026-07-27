@@ -9,6 +9,10 @@ import { create, toBinary } from "@bufbuild/protobuf";
 // copy resolves to the primary checkout, not this worktree.
 import { fetchCursorUsableModels } from "../src/discovery/cursor";
 import { GetUsableModelsResponseSchema, ModelDetailsSchema } from "../src/discovery/cursor-gen/agent_pb";
+import {
+	AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW,
+	AGENT_GATEWAY_DEFAULT_MAX_TOKENS,
+} from "../src/discovery/default-limits";
 import { resolveProviderModels } from "../src/model-manager";
 import { cursorModelManagerOptions } from "../src/provider-models/special";
 import type { ModelSpec } from "../src/types";
@@ -127,8 +131,10 @@ describe("cursor discovery input modalities (issue #4726)", () => {
 		const spec = byId.get("claude-opus-4-8-99999999");
 		expect(spec?.provider).toBe("cursor");
 		expect(spec?.api).toBe("cursor-agent");
-		expect(spec?.contextWindow).toBe(200_000);
-		expect(spec?.maxTokens).toBe(64_000);
+		// Imported rather than retyped: these were two more copies of a value that four source modules also each
+		// declared, and a test carrying its own copy of the number under test can only agree with itself.
+		expect(spec?.contextWindow).toBe(AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW);
+		expect(spec?.maxTokens).toBe(AGENT_GATEWAY_DEFAULT_MAX_TOKENS);
 		expect(spec?.cost).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
 	});
 });
@@ -193,8 +199,8 @@ function cursorModelSpec(id: string): ModelSpec<"cursor-agent"> {
 		reasoning: false,
 		input: ["text"],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-		contextWindow: 200_000,
-		maxTokens: 64_000,
+		contextWindow: AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW,
+		maxTokens: AGENT_GATEWAY_DEFAULT_MAX_TOKENS,
 	};
 }
 

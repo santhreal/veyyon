@@ -5,6 +5,7 @@ import {
 	type GitLabDuoWorkflowNamespaceSelection,
 } from "@veyyon/catalog/discovery/gitlab-duo-workflow";
 import { emptyUsage } from "@veyyon/catalog/models";
+import { GITLAB_SAAS_URL } from "@veyyon/catalog/provider-endpoints";
 import {
 	errorMessage,
 	getNonBlankStringProperty,
@@ -16,6 +17,7 @@ import {
 } from "@veyyon/utils";
 import { parseToolArgsText } from "../dialect/coercion";
 import * as AIError from "../error";
+import { AI_PROMPTS } from "../prompts/registry";
 import type {
 	Api,
 	AssistantMessage,
@@ -34,14 +36,12 @@ import type {
 import { normalizeSystemPrompts } from "../utils";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { toolWireSchema } from "../utils/schema/wire";
-import chatmlHistoryNote from "./gitlab-duo-workflow-chatml-note.md" with { type: "text" };
 
 export const GITLAB_DUO_WORKFLOW_PROVIDER_ID = "gitlab-duo-agent";
 export const GITLAB_DUO_WORKFLOW_API = "gitlab-duo-agent";
 export const GITLAB_DUO_WORKFLOW_DEFINITION = "ambient";
 export type GitLabDuoWorkflowDefinition = "ambient" | (string & {});
 
-const DEFAULT_GITLAB_BASE_URL = "https://gitlab.com";
 const GITLAB_DUO_WORKFLOW_TRACE_ENV = "GITLAB_DUO_WORKFLOW_TRACE";
 const GITLAB_DUO_WORKFLOW_TRACE_FILE_ENV = "GITLAB_DUO_WORKFLOW_TRACE_FILE";
 const DEFAULT_GITLAB_DUO_WORKFLOW_TRACE_FILE = path.resolve(
@@ -524,7 +524,7 @@ export function buildGitLabDuoWorkflowWebSocketHeaders(options: {
 	rootNamespaceId?: string;
 	extraHeaders?: Record<string, string>;
 }): Record<string, string> {
-	const base = new URL(normalizeGitLabBaseUrl(options.baseUrl ?? DEFAULT_GITLAB_BASE_URL));
+	const base = new URL(normalizeGitLabBaseUrl(options.baseUrl ?? GITLAB_SAAS_URL));
 	return {
 		...options.extraHeaders,
 		authorization: `Bearer ${options.token}`,
@@ -997,7 +997,7 @@ async function runGitLabDuoWorkflow(
 ): Promise<void> {
 	const apiKey = options.apiKey;
 	if (!apiKey) throw new AIError.MissingApiKeyError("gitlab-duo-agent");
-	const baseUrl = normalizeGitLabBaseUrl(model.baseUrl || DEFAULT_GITLAB_BASE_URL);
+	const baseUrl = normalizeGitLabBaseUrl(model.baseUrl || GITLAB_SAAS_URL);
 	const fetchImpl = options.fetch ?? fetch;
 	const providerSessionState = getGitLabDuoWorkflowProviderSessionState(
 		options.providerSessionState,
@@ -2584,7 +2584,7 @@ interface GitLabDuoWorkflowReplayMessage {
 
 // Trimmed once: the static note tells the model the goal transcript's ChatML/`<ran>`
 // markers are a historical record, not a syntax to emit.
-const GITLAB_DUO_WORKFLOW_CHATML_HISTORY_NOTE = chatmlHistoryNote.trim();
+const GITLAB_DUO_WORKFLOW_CHATML_HISTORY_NOTE = AI_PROMPTS["provider/gitlab-duo-workflow-chatml-note"].text.trim();
 
 // The veyyon system prompt that rides the inline flow's `prompt_template.system` slot.
 // DWS wraps it in its own gateway boilerplate, but the slot content is delivered to
@@ -2807,6 +2807,9 @@ export function traceGitLabDuoWorkflow(event: string, data: Record<string, unkno
 		event,
 		...truncateGitLabTraceData(data),
 	})}\n`;
+	// A TRACE write, enabled by an env var for debugging and read by nobody in normal operation. It must never
+	// affect the request it is tracing, and there is no channel to report it through that would not itself be
+	// noise on every line; a missing trace file is self-evident to whoever turned tracing on.
 	void fs
 		.mkdir(path.dirname(traceFile), { recursive: true })
 		.then(() => fs.appendFile(traceFile, line, "utf8"))
@@ -2830,7 +2833,7 @@ function truncateGitLabTraceValue(value: unknown): unknown {
 }
 
 function normalizeGitLabBaseUrl(baseUrl: string): string {
-	return trimTrailingSlashes(baseUrl) || DEFAULT_GITLAB_BASE_URL;
+	return trimTrailingSlashes(baseUrl) || GITLAB_SAAS_URL;
 }
 
 // Join a GitLab API path onto a base URL while preserving any relative install path
