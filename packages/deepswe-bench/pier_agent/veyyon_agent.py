@@ -121,6 +121,20 @@ class VeyyonAgent(BaseInstalledAgent):
                 host_assets / "sections" / f"{self._arm_name}.json",
                 f"{CONTAINER_ASSETS_DIR}/sections/{self._arm_name}.json",
             )
+        # An arm MAY carry a per-STATEMENT override, staged by run.ts as
+        # statements/<arm>.json, reaching the agent only through the eval-only
+        # VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS env var. This is the vehicle for an
+        # ABLATION: `{"tool-policy/delegation-gates": null}` removes exactly one
+        # rule, which a section override cannot express, since TOOL POLICY is one
+        # banner region and 34 rules, so no score change across it is attributable
+        # to a cause. A string value rewords the rule instead of removing it.
+        has_statements = (host_assets / "statements" / f"{self._arm_name}.json").is_file()
+        if has_statements:
+            await environment.exec(command=f"mkdir -p {CONTAINER_ASSETS_DIR}/statements", user="root")
+            await environment.upload_file(
+                host_assets / "statements" / f"{self._arm_name}.json",
+                f"{CONTAINER_ASSETS_DIR}/statements/{self._arm_name}.json",
+            )
         await environment.exec(
             command=f"chmod +x {CONTAINER_ASSETS_DIR}/vey", user="root"
         )
@@ -143,9 +157,17 @@ class VeyyonAgent(BaseInstalledAgent):
             if has_sections
             else ""
         )
+        # Same scoping for the per-statement override, and for the same reason: the
+        # JSON reaches the vey process verbatim, with no shell re-parsing of braces
+        # or quotes, and exists for that one command only.
+        statements_env = (
+            f'VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS="$(cat {CONTAINER_ASSETS_DIR}/statements/{self._arm_name}.json)" '
+            if has_statements
+            else ""
+        )
         command = (
             f"{setup} && "
-            f"{sections_env}{CONTAINER_ASSETS_DIR}/vey --model {shlex.quote(self.model_name)} "
+            f"{sections_env}{statements_env}{CONTAINER_ASSETS_DIR}/vey --model {shlex.quote(self.model_name)} "
             f"--auto-approve --config $HOME/.veyyon/arm.yml "
             f"--print {shlex.quote(instruction)} "
             "2>&1 </dev/null | stdbuf -oL tee /logs/agent/veyyon.txt"

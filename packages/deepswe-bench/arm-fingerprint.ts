@@ -40,6 +40,14 @@ export interface ArmInputs {
 	readonly config: unknown;
 	/** The arm's `.sections.yml` after parse, if any: `section -> replacement text`. */
 	readonly sections?: unknown;
+	/**
+	 * The arm's `.statements.yml` after parse, if any: `statement id -> replacement text, or null`.
+	 *
+	 * The finer vehicle, and the one an ablation needs: a section override answers "is this section
+	 * worth its tokens", which for TOOL POLICY is 9KB and 34 rules at once, so no score change can be
+	 * attributed to a cause. `null` removes exactly one rule.
+	 */
+	readonly statements?: unknown;
 	/** Optional always-apply rule bytes; prompt text, so whitespace-significant. */
 	readonly rule?: Uint8Array;
 }
@@ -68,9 +76,64 @@ function sortDeep(value: unknown): unknown {
 }
 
 /**
+ * The suffixes that make an `arms/` file an ATTACHMENT to an arm rather than an arm.
+ *
+ * WHY THIS IS DECLARED ONCE. "Which files in `arms/` are arms" was answered in three places and one of
+ * them was wrong: `docs-coherence.test.ts` took every `*.yml`, so `candidate-delivery-terse.sections.yml`
+ * became a phantom arm named `candidate-delivery-terse.sections`, while the other two enumerators
+ * excluded it. A phantom arm is not cosmetic here, because these lists are what the coherence checks
+ * quantify over: an arm nobody can run reads as an arm nobody documented.
+ *
+ * Adding `.statements.yml` made the duplication urgent rather than merely untidy, since a third suffix
+ * would have had to be added to three places to avoid inventing a second phantom.
+ */
+export const ARM_ATTACHMENT_SUFFIXES: readonly string[] = [".sections.yml", ".statements.yml"];
+
+/** Whether an `arms/` filename is an arm's config, as opposed to an attachment to one. */
+export function isArmConfigFile(name: string): boolean {
+	return name.endsWith(".yml") && !ARM_ATTACHMENT_SUFFIXES.some(suffix => name.endsWith(suffix));
+}
+
+/** The arm names in a directory listing, sorted, with attachments excluded. */
+export function armNamesIn(files: readonly string[]): string[] {
+	return files
+		.filter(isArmConfigFile)
+		.map(name => name.slice(0, -".yml".length))
+		.sort();
+}
+
+/**
+ * Why a requested arm cannot be benched, or `null` when it can.
+ *
+ * A pure function rather than an inline check in `run.ts`, for the reason the header gives: `run.ts`
+ * ends in a top-level `await main()`, so importing it to test anything executes a bench. The two
+ * refusals here are both ones an operator hits by typing, and both used to surface badly.
+ *
+ * A misspelled arm reached `readFileSync` and died with a raw ENOENT stack, which reads as a broken
+ * runner rather than as a typo, and buried the only useful fact: what the arms are called. An
+ * ATTACHMENT name is worse than that, because it does NOT fail: `--arms candidate-delivery-terse.sections`
+ * finds `candidate-delivery-terse.sections.yml`, parses a section-override map as a config overlay,
+ * merges keys veyyon has never heard of, and benches the control under a treatment's name.
+ */
+export function armSelectionError(arm: string, available: readonly string[]): string | null {
+	const attachment = ARM_ATTACHMENT_SUFFIXES.find(suffix => `${arm}.yml`.endsWith(suffix));
+	if (attachment !== undefined) {
+		const real = arm.slice(0, -(attachment.length - ".yml".length));
+		return (
+			`"${arm}" is not an arm, it is the ${attachment} attachment of arm "${real}".\n` +
+			`Fix: bench the arm itself (--arms ${real}); its ${attachment} is applied automatically.`
+		);
+	}
+	if (!available.includes(arm)) {
+		return `no arm "${arm}" in arms/.\nAvailable arms: ${available.join(", ")}`;
+	}
+	return null;
+}
+
+/**
  * A stable content fingerprint of everything the container sees for an arm.
  * Two arms fingerprint equal iff their canonical config, canonical section
- * override, AND rule bytes are all identical. Each field is length-prefixed so
+ * override, canonical statement override AND rule bytes are all identical. Each field is length-prefixed so
  * the encoding is injective: a plain-concatenation scheme is ambiguous (config
  * text ending in the rule's bytes could hash the same as a separate rule),
  * whereas prefixing every field's byte length makes the tuple unambiguous. A
@@ -85,6 +148,14 @@ export function computeArmFingerprint(mod: ArmInputs): string {
 	};
 	field("config", new TextEncoder().encode(canonicalizeConfig(mod.config)));
 	field("sections", new TextEncoder().encode(canonicalizeConfig(mod.sections ?? {})));
+	// The statement override is folded in ONLY when it says something, which is two properties at once
+	// and both are needed. An arm with no statement override, or with an empty one, fingerprints
+	// exactly as it did before this field existed, so the fingerprints already recorded in past results
+	// stay comparable and a longitudinal diff does not report every arm as changed. And an EMPTY
+	// override canonicalizes to `{}` and is therefore treated as absent, so an arm carrying an empty
+	// file cannot pass the single-IV guard by looking different from an identical arm without one.
+	const statements = canonicalizeConfig(mod.statements ?? {});
+	if (statements !== "{}") field("statements", new TextEncoder().encode(statements));
 	if (mod.rule !== undefined) field("rule", mod.rule);
 	return h.digest("hex");
 }

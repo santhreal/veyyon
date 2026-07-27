@@ -19,6 +19,7 @@
 # is given. See the README section on the dictionary budget.
 argot:
   enabled: true
-  models: []
+  encode:
+    models: []
   subagents: off
   tokenBudget: 16000

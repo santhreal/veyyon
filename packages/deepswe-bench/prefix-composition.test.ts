@@ -15,9 +15,12 @@ import { describe, expect, test } from "bun:test";
 import { priceTokens, REFERENCE_RATE_CARD } from "./cost-model";
 import {
 	accumulatePrefixMass,
+	COLLAPSED_CONVERSATION_SHARE,
 	cacheEfficiency,
 	cacheHitRate,
 	calibratePrefix,
+	conversationCollapsed,
+	conversationMassPerSession,
 	emptyPrefixMass,
 	freshRate,
 	freshTokens,
@@ -28,16 +31,13 @@ import {
 	prefixShares,
 	prefixStability,
 	rebilledCostShare,
-	sessionPrefixSteps,
-	COLLAPSED_CONVERSATION_SHARE,
-	conversationCollapsed,
-	conversationMassPerSession,
 	SIGNATURE_CAP_SWEEP,
+	SKIP_SIGNATURE_CHARS,
+	SPILL_SUBSTITUTION_CHARS,
+	sessionPrefixSteps,
 	simulateSignatureCap,
 	simulateSignatureLever,
 	simulateToolResultCap,
-	SKIP_SIGNATURE_CHARS,
-	SPILL_SUBSTITUTION_CHARS,
 	totalPrefixMass,
 } from "./prefix-composition";
 
@@ -1082,9 +1082,7 @@ describe("prefixStability — a lever that rewrites history hands its saving bac
 		message: {
 			role: "assistant",
 			usage: { input: 1 },
-			content: [
-				{ type: "toolCall", thoughtSignature: "s".repeat(chars), arguments: { a: "x".repeat(argChars) } },
-			],
+			content: [{ type: "toolCall", thoughtSignature: "s".repeat(chars), arguments: { a: "x".repeat(argChars) } }],
 		},
 	});
 	const result = (chars: number) => ({

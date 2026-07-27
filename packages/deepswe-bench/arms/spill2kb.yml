@@ -74,6 +74,23 @@
 # At 2 KB this spills a large share of ordinary `eval` output, so if any threshold
 # is going to cost reward it is this one.
 #
+# SINCE 2026-07-26 THE CODE FINALLY DOES WHAT THIS TABLE ALREADY ASSUMED, so any
+# result recorded before that date is not comparable to a fresh run. The table is
+# computed by `simulateToolResultCap`, which caps every tool result except the
+# exempt `read` -- that is, it assumed the threshold reached every tool. The
+# SHIPPED lever did not: `tools.artifactSpillThreshold` governed only the
+# centralised spill that runs after a tool returns, and the centralised spill
+# skips any tool that saved its own artifact, so every streaming tool (bash,
+# eval, ssh, the interactive shell) went on pricing itself against a compiled
+# 50 KB constant this setting could not reach. Eval alone is about 80% of
+# tool-result bytes, so an earlier run of this arm delivered a fraction of the
+# prediction while the prediction read as though it had been met.
+#
+# That is the failure mode this file should be read for: a simulation of a lever
+# the code does not implement, which is the same warning the read-exemption
+# paragraph above records, in the other direction. Both paths now read this one
+# setting, so the table and the arm describe the same treatment. Re-run.
+#
 # Reward is the gate. Report the paired sign test on reward first, then cost.
 argot:
   enabled: false

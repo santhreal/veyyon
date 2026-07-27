@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { makeExpander } from "../src/codec.js";
-import { HANDLE_NAME_RE, MAX_EXPANSION_BYTES } from "../src/constants.js";
+import {
+	DEFAULT_OUTPUT_TO_INPUT_PRICE_RATIO,
+	DEFAULT_TOOL_CALL_STRUCTURE_SHARE,
+	HANDLE_NAME_RE,
+	MAX_EXPANSION_BYTES,
+} from "../src/constants.js";
 import {
 	emittedTokenCost,
 	estimateTokens,
@@ -788,19 +793,32 @@ describe("structure outranks repo paths, and the table stays bounded (ARGOT-DICT
 		}));
 	}
 
-	test("line structure outranks an import path that appears in every file", () => {
-		// THE HEADLINE INVERSION. The import is in all eight files (maximal document
-		// frequency) and is typed by an agent never; `\n\t\treturn` is in the same
-		// eight files and typed four times in each. The old ranking put the import
-		// first, which is how a 551-handle dictionary came to hold zero of the
-		// strings its agent actually repeated.
+	test("line structure earns a handle beside an import path that appears in every file", () => {
+		// THE HEADLINE INVERSION, re-pinned to what the corrected pricing actually
+		// guarantees. The import is in all eight files (maximal document frequency)
+		// and is typed by an agent never; `\n\t\treturn` is in the same eight files
+		// and typed four times in each. The old ranking could not propose the
+		// structure at all, which is how a 551-handle dictionary came to hold zero
+		// of the strings its agent actually repeated, and that is what this asserts:
+		// the structure is in the table.
+		//
+		// It no longer asserts that structure comes FIRST, and the reason is a
+		// deliberate correction elsewhere rather than a regression here. Structure
+		// used to be priced as if every newline went over the wire JSON-escaped,
+		// which overstated it by about 2.4x; it is now priced on the measured mix of
+		// channels (see the mix suite below), and on this corpus that drops
+		// `\n\t\treturn` from 160 saved tokens to 66.8 and puts the import ahead of
+		// it. The ordering was a side effect of an inflated price, so pinning it
+		// would pin the inflation.
+		//
+		// What that leaves genuinely open is tracked, not swallowed: retype
+		// likelihood belongs in the FREQUENCY term, not in the price, and document
+		// frequency still cannot tell a path an agent never types from structure it
+		// types constantly. See the ARGOT-RETYPE-LIKELIHOOD row in BACKLOG.md.
 		const { handles } = generateDictFromRepo(goFiles(8), { tokenBudget: 4000 });
 		const expansions = handles.map(h => h.expansion);
-		const structureRank = expansions.indexOf("\n\t\treturn");
-		const importRank = expansions.findIndex(e => e.includes("aws-lambda-go"));
 
-		expect(structureRank).toBeGreaterThanOrEqual(0);
-		if (importRank >= 0) expect(structureRank).toBeLessThan(importRank);
+		expect(expansions).toContain("\n\t\treturn");
 	});
 
 	test("within-file repetition is not damped away for structure", () => {
@@ -842,11 +860,17 @@ describe("structure outranks repo paths, and the table stays bounded (ARGOT-DICT
 		// on insertion order: a budget that truncated arbitrarily would drop exactly
 		// the structure handles this suite exists to protect, since they are minted
 		// after the paths.
+		//
+		// The small budget is 25 rather than 40 because the corrected structure
+		// pricing shrank the unconstrained table to 38 tokens, and a cap above what
+		// the table costs binds on nothing: the test would have passed on both sides
+		// while proving the budget worked. 25 sits inside the table, so the cut is
+		// real.
 		const big = generateDictFromRepo(goFiles(8), { tokenBudget: 4000 });
-		const small = generateDictFromRepo(goFiles(8), { tokenBudget: 40 });
+		const small = generateDictFromRepo(goFiles(8), { tokenBudget: 25 });
 
 		expect(small.handles.length).toBeLessThan(big.handles.length);
-		expect(small.dictTokens).toBeLessThanOrEqual(40);
+		expect(small.dictTokens).toBeLessThanOrEqual(25);
 		// Whatever survives the cut must be a prefix of the larger table's ranking,
 		// which is what "kept the highest-value rows" means operationally.
 		const bigOrder = big.handles.map(h => h.expansion);
@@ -908,29 +932,30 @@ describe("a newline-bearing expansion survives the dict round trip", () => {
 	});
 });
 
-describe("the dictionary's value is signed by the channel the model writes into", () => {
-	// WHY THIS SUITE EXISTS, and why it asserts a WEAKNESS rather than a fix.
-	// `emittedTokenCost` prices line structure as the model really emits it inside
-	// a tool-call argument, where JSON escaping turns one newline into the two
-	// characters `\` and `n`. That is a deliberate and well-argued choice, and it
-	// is what makes structure handles pay at all. But it is an assumption about
-	// the CHANNEL, and the whole dictionary rests on it: code in a plain assistant
-	// message carries a real newline, and there the raw pricing is correct.
+describe("line structure is priced on the measured mix of channels", () => {
+	// WHY THIS SUITE EXISTS. `emittedTokenCost` used to price line structure as the
+	// model emits it inside a tool-call argument, where JSON escaping turns one
+	// newline into the two characters `\` and `n`. That is the expensive channel,
+	// and pricing everything at it made every structure handle look profitable.
+	// Code in a plain assistant message, or in thinking, carries a real newline,
+	// and there the same run is about one token, which is less than any handle
+	// costs. So the sign of the dictionary's value depended on a channel split
+	// nobody had measured, and the escaped-only price silently assumed the split
+	// was 100/0.
 	//
-	// Measured on a 39-file TypeScript tree, the split is total rather than
-	// marginal. Under the escaped model every one of the 43 generated handles is
-	// net-positive, 2 to 10 tokens per use. Under the raw model every one of the
-	// 43 is net-negative, because a handle costs at least two tokens and a raw
-	// indentation run is one. There is no middle: the sign of the whole
-	// dictionary flips with the channel.
+	// It is now measured rather than assumed. `packages/deepswe-bench/measure-channel-split.ts`
+	// reads recorded transcripts and sorts every emitted newline-plus-indentation
+	// run into the channel it was written into: over 307 transcripts and 23,467
+	// assistant turns, 41.76% were inside tool-call arguments. `emittedTokenCost`
+	// prices the mix at that weight.
 	//
-	// The share of structure a real agent emits outside tool-call arguments has
-	// never been measured, so there is nothing here to fix yet. What can be done
-	// now is stop the assumption being invisible: a reader who changes
-	// `emittedTokenCost`, or who wonders why a bare indentation run earns a
-	// handle, meets these tests and the number rather than having to rediscover
-	// it. If a run ever shows a material share emitted raw, the first of these
-	// tests is the one that has to change, and it says so.
+	// These tests pin the three things that can regress. The two ends still behave
+	// exactly as the single-channel models did, so the correction is a
+	// generalization and not a replacement. The mix sits strictly between them, so
+	// nobody can quietly collapse it back to one channel. And the mix actually
+	// changes what is generated: shallow runs stop paying and deep ones still do,
+	// which is the whole practical consequence and the reason a dictionary got
+	// smaller.
 
 	/** The corpus the numbers in these docs were measured on: ordinary tab-indented source. */
 	function tsFiles(count: number): { path: string; content: string }[] {
@@ -949,53 +974,263 @@ describe("the dictionary's value is signed by the channel the model writes into"
 		}));
 	}
 
+	/**
+	 * A corpus whose structure candidates straddle the bar: `\n\t\t` and
+	 * `\n\t\treturn` clear it on either price, `\n\nfunc` clears it only on the
+	 * escaped one. Needed to show the correction DROPS rows rather than merely
+	 * reducing their scores.
+	 */
+	function goStyleFiles(count: number): { path: string; content: string }[] {
+		const IMPORT = "github.com/aws/aws-lambda-go/events";
+		return Array.from({ length: count }, (_, i) => ({
+			path: `handler${i}.go`,
+			content: [
+				`package main`,
+				``,
+				`import "${IMPORT}"`,
+				``,
+				`func handle${i}(e events.Request) error {`,
+				`\t\treturn nil`,
+				`\t\treturn errNotFound`,
+				`\t\treturn errTimeout`,
+				`\t\treturn errClosed`,
+				`}`,
+			].join("\n"),
+		}));
+	}
+
 	/** Raw pricing: what the string costs when the model writes a real newline. */
 	const rawCost = (expansion: string) => estimateTokens(expansion);
-	/** Escaped pricing, through the generator's own owner rather than a second copy. */
-	const escapedCost = (expansion: string) => emittedTokenCost(expansion, estimateTokens);
+	/** The two ends, through the generator's own owner rather than a second copy. */
+	const escapedCost = (expansion: string) => emittedTokenCost(expansion, estimateTokens, 1);
+	const rawThroughOwner = (expansion: string) => emittedTokenCost(expansion, estimateTokens, 0);
+	const mixedCost = (expansion: string) => emittedTokenCost(expansion, estimateTokens);
 
-	test("every generated handle pays under the escaped model", () => {
-		// The claim the generator is built on. If this fails, structure handles are
-		// costing tokens on the channel they were designed for, which is a defect
-		// rather than an exposure.
+	test("a share of 1 reproduces the escaped price exactly", () => {
+		// The generalization claim, one end. A harness that only ever writes through
+		// tools must still get the price the generator was originally built on, or
+		// this change quietly cost it its whole dictionary.
+		for (const run of ["\n", "\n\t", "\n\t\t", "\n\t\t\t\t", "\n\t\treturn"]) {
+			expect(escapedCost(run)).toBe(estimateTokens(JSON.stringify(run).slice(1, -1)));
+		}
+	});
+
+	test("a share of 0 reproduces the raw price exactly", () => {
+		// The other end, and the one that used to be unreachable. A harness that
+		// answers in markdown should be priced as if it does.
+		for (const run of ["\n", "\n\t", "\n\t\t", "\n\t\t\t\t", "\n\t\treturn"]) {
+			expect(rawThroughOwner(run)).toBe(rawCost(run));
+		}
+	});
+
+	test("the default sits strictly between the two ends", () => {
+		// The mix is a real blend, not one channel wearing a new name. If someone
+		// rounds the share to 0 or 1, or drops the weighting, this fails.
+		const run = "\n\t\t\t\t";
+		expect(mixedCost(run)).toBeGreaterThan(rawCost(run));
+		expect(mixedCost(run)).toBeLessThan(escapedCost(run));
+	});
+
+	test("the default share is the measured one, and it is a fraction", () => {
+		// The number is the measurement, not a hand-picked constant. Pinning it here
+		// means a change to the corpus or the instrument has to come with a change
+		// to this test, which is where the reader is told to rerun the instrument.
+		expect(DEFAULT_TOOL_CALL_STRUCTURE_SHARE).toBeGreaterThan(0);
+		expect(DEFAULT_TOOL_CALL_STRUCTURE_SHARE).toBeLessThan(1);
+		expect(mixedCost("\n\t\t\t\t")).toBeCloseTo(
+			DEFAULT_TOOL_CALL_STRUCTURE_SHARE * escapedCost("\n\t\t\t\t") +
+				(1 - DEFAULT_TOOL_CALL_STRUCTURE_SHARE) * rawCost("\n\t\t\t\t"),
+			10,
+		);
+	});
+
+	test("the savings claimed for structure fall, on every row", () => {
+		// THE CONSEQUENCE, and the reason this is a fix rather than a rename. The
+		// escaped-only price counted a saving the model only collects when it writes
+		// through a tool, which is 41.76% of the time, so every structure row on this
+		// corpus was overstated: 128 saved tokens becomes 34.8, 40 becomes 16.7. The
+		// table is what a reader uses to decide whether argot is worth carrying, so
+		// an inflated column is the defect even when the rows themselves survive.
+		const escaped = generateDictFromRepo(tsFiles(8), { tokenBudget: 4000, toolCallStructureShare: 1 });
+		const mixed = generateDictFromRepo(tsFiles(8), { tokenBudget: 4000 });
+		const byExpansion = new Map(escaped.handles.map(h => [h.expansion, h.savedTokens]));
+
+		const structure = mixed.handles.filter(h => h.expansion.startsWith("\n"));
+		expect(structure.length).toBeGreaterThan(0);
+		for (const handle of structure) {
+			const before = byExpansion.get(handle.expansion);
+			expect(before).toBeDefined();
+			expect(handle.savedTokens).toBeLessThan(before as number);
+		}
+	});
+
+	test("at the raw end the structure dictionary is empty, which is the end the mix leans toward", () => {
+		// The magnitude of what the mix is interpolating between, asserted rather
+		// than described. On this corpus the escaped price earns five structure
+		// handles and the raw price earns none at all, because a handle costs at
+		// least two tokens and a real indentation run is one. That gap is why the
+		// share had to be measured instead of assumed, and it is the reason a
+		// harness that answers in markdown should generate nothing here.
+		const escaped = generateDictFromRepo(tsFiles(8), { tokenBudget: 4000, toolCallStructureShare: 1 });
+		const raw = generateDictFromRepo(tsFiles(8), { tokenBudget: 4000, toolCallStructureShare: 0 });
+
+		expect(escaped.handles.filter(h => h.expansion.startsWith("\n")).length).toBeGreaterThan(0);
+		expect(raw.handles.filter(h => h.expansion.startsWith("\n"))).toEqual([]);
+	});
+
+	test("a marginal structure candidate is dropped outright", () => {
+		// Not every row survives the re-pricing, and the ones that do not are the
+		// point. `\n\nfunc` clears the bar on the escaped price and fails it on the
+		// mix, so a row that used to ride the system prompt every turn for a saving
+		// the model rarely collected is now simply absent.
+		const escaped = generateDictFromRepo(goStyleFiles(8), { tokenBudget: 4000, toolCallStructureShare: 1 });
+		const mixed = generateDictFromRepo(goStyleFiles(8), { tokenBudget: 4000 });
+
+		expect(escaped.handles.map(h => h.expansion)).toContain("\n\nfunc");
+		expect(mixed.handles.map(h => h.expansion)).not.toContain("\n\nfunc");
+	});
+
+	test("every handle that IS generated still pays on the mix", () => {
+		// The invariant the selection loop is supposed to enforce, checked against
+		// the same price the loop used. A handle that costs more than the text it
+		// replaces is a standing loss carried in the system prompt every turn.
 		const { handles } = generateDictFromRepo(tsFiles(8), { tokenBudget: 4000 });
 		expect(handles.length).toBeGreaterThan(0);
 
 		for (const handle of handles) {
-			expect(escapedCost(handle.expansion) - estimateTokens(`§${handle.name}`)).toBeGreaterThan(0);
+			expect(mixedCost(handle.expansion) - estimateTokens(`§${handle.name}`)).toBeGreaterThan(0);
 		}
 	});
 
-	test("and every one of them LOSES under the raw model", () => {
-		// The exposure, asserted as a fact rather than described as a risk. A
-		// reader who assumes the dictionary is merely "less good" outside tool
-		// calls should see that it is negative, for every row, without exception.
-		const { handles } = generateDictFromRepo(tsFiles(8), { tokenBudget: 4000 });
-		const structure = handles.filter(h => h.expansion.startsWith("\n"));
-		expect(structure.length).toBeGreaterThan(0);
-
-		for (const handle of structure) {
-			expect(rawCost(handle.expansion) - estimateTokens(`§${handle.name}`)).toBeLessThanOrEqual(0);
-		}
-	});
-
-	test("the two models disagree only about line structure", () => {
-		// The scope of the exposure. A path or an identifier is priced identically
-		// either way, so nothing about the non-structure tail of a dictionary is
-		// contingent on the channel, and a future fix must not disturb it.
+	test("the channel makes no difference to a path or an identifier", () => {
+		// The scope of the whole mechanism. A path is the same bytes in a tool call
+		// and in a message, so the share must not touch the non-structure tail: a
+		// future re-measurement can then only move structure.
 		const path = "packages/coding-agent/src/database/connection.ts";
 		expect(escapedCost(path)).toBe(rawCost(path));
-		expect(escapedCost("\n\t\t")).toBeGreaterThan(rawCost("\n\t\t"));
+		expect(mixedCost(path)).toBe(rawCost(path));
+		expect(rawThroughOwner(path)).toBe(rawCost(path));
 	});
 
-	test("the gap widens with indentation depth, which is why deep runs rank highest", () => {
+	test("the gap widens with indentation depth, which is why deep runs survive", () => {
 		// The mechanism behind the ranking, pinned so it cannot drift silently: a
 		// tokenizer collapses a run of real tabs into very few tokens but charges
-		// for every escaped `\t` separately, so the deeper the indent the larger
-		// the modelled saving. This is also the reason the top of a generated table
-		// is bare indentation rather than `\n\t\treturn`.
-		const shallow = escapedCost("\n\t") - rawCost("\n\t");
-		const deep = escapedCost("\n\t\t\t\t\t") - rawCost("\n\t\t\t\t\t");
+		// for every escaped `\t` separately, so the deeper the indent the more the
+		// escaped channel contributes to the mix. This is why the correction prunes
+		// the shallow rows and leaves the deep ones standing.
+		const shallow = mixedCost("\n\t") - rawCost("\n\t");
+		const deep = mixedCost("\n\t\t\t\t\t") - rawCost("\n\t\t\t\t\t");
 		expect(deep).toBeGreaterThan(shallow);
+	});
+
+	test("a share outside 0..1 is refused rather than priced", () => {
+		// Fail closed. A share of 2, or a NaN from a bad parse, would produce a price
+		// no channel charges, and the dictionary it generated would look completely
+		// ordinary. The message names the constant so the caller knows what the
+		// number means.
+		for (const bad of [-0.1, 1.1, Number.NaN, Number.POSITIVE_INFINITY]) {
+			expect(() => emittedTokenCost("\n\t\t", estimateTokens, bad)).toThrow(/between 0 and 1/);
+		}
+	});
+});
+
+describe("a dictionary reports what it costs to carry, not only what it saves", () => {
+	// WHY THIS SUITE EXISTS. Every figure argot reported was a SAVINGS figure, and
+	// nothing anywhere counted the other side of the trade. A dictionary is INPUT
+	// carried on every turn; its savings are OUTPUT produced once per emission.
+	// Measured on the veyyon repository over 100 recorded sessions and 7,659
+	// assistant turns, the generated dictionary saved 3,202 output tokens and cost
+	// 2,404,926 input tokens to carry, which is 751 input tokens per output token
+	// saved against a break-even near 5. That result was invisible from inside the
+	// SDK because the SDK had no field for it.
+	//
+	// `breakEvenTurns` is that field: how many turns of carrying the dictionary its
+	// own estimate would pay for. It is a horizon rather than a verdict, because
+	// generation cannot know how many turns a dictionary will ride along on. These
+	// tests pin the arithmetic, the direction it moves in, and the two edges where a
+	// naive implementation would divide by zero or report a number for a dictionary
+	// that does not exist.
+
+	function tsFiles(count: number): { path: string; content: string }[] {
+		return Array.from({ length: count }, (_, i) => ({
+			path: `mod${i}.ts`,
+			content: [
+				`import { helper } from "@fixture/deeply/nested/module/path";`,
+				`export function run${i}(input: string): string {`,
+				`\t\tconst value = helper(input);`,
+				`\t\tconst other = helper(value);`,
+				`\t\treturn other;`,
+				`}`,
+			].join("\n"),
+		}));
+	}
+
+	test("the horizon is the saving, priced against input, divided by what a turn costs", () => {
+		// The exact arithmetic, recomputed from the result's own fields rather than
+		// from a magic number, so a change to the budget or the corpus cannot make
+		// this pass vacuously.
+		const dict = generateDictFromRepo(tsFiles(8), { tokenBudget: 4000 });
+		expect(dict.handles.length).toBeGreaterThan(0);
+
+		expect(dict.breakEvenTurns).toBeCloseTo(
+			(dict.estimatedSavings * DEFAULT_OUTPUT_TO_INPUT_PRICE_RATIO) / dict.dictTokens,
+			6,
+		);
+	});
+
+	test("the price ratio is applied, so the horizon is not a token-for-token comparison", () => {
+		// The part that is easy to drop and impossible to notice missing. Output
+		// tokens and input tokens are different goods, and comparing their raw counts
+		// would understate the horizon by exactly the price multiple. Asserting the
+		// factor rather than the value means the test still holds if the corpus or
+		// the budget moves, and fails the moment the ratio stops being applied.
+		const dict = generateDictFromRepo(tsFiles(8), { tokenBudget: 4000 });
+		const naive = dict.estimatedSavings / dict.dictTokens;
+
+		expect(dict.breakEvenTurns).toBeCloseTo(naive * DEFAULT_OUTPUT_TO_INPUT_PRICE_RATIO, 6);
+		expect(dict.breakEvenTurns).toBeGreaterThan(naive);
+	});
+
+	test("the horizon shrinks when the same savings are carried by more tokens", () => {
+		// The direction that matters, stated as the arithmetic it really is rather
+		// than as a claim about how coverage happens to behave on one corpus. Adding
+		// rows that cost tokens without adding savings must move the horizon DOWN. A
+		// field that moved the other way would present a worse dictionary as a better
+		// one. (Coverage does NOT reliably do this: on a structure-heavy tree the tail
+		// it admits adds savings faster than cost, so the horizon rises. That is a
+		// fact about the corpus, not about this field, and pinning it here would pin
+		// the wrong thing.)
+		const dict = generateDictFromRepo(tsFiles(8), { tokenBudget: 4000 });
+		const horizonAt = (carried: number) => (dict.estimatedSavings * DEFAULT_OUTPUT_TO_INPUT_PRICE_RATIO) / carried;
+
+		expect(horizonAt(dict.dictTokens * 2)).toBeLessThan(dict.breakEvenTurns);
+		expect(horizonAt(dict.dictTokens * 2)).toBeCloseTo(dict.breakEvenTurns / 2, 6);
+	});
+
+	test("an empty dictionary has an infinite horizon, because it costs nothing", () => {
+		// The edge a division would get wrong. Nothing selected means nothing
+		// carried, and a dictionary that costs nothing never has to pay for itself.
+		// Reporting 0 here would read as "immediately unprofitable", the opposite of
+		// the truth.
+		const empty = generateDictFromRepo(
+			Array.from({ length: 3 }, (_, i) => ({ path: `f${i}.txt`, content: "ab\n" })),
+			{ tokenBudget: 4000 },
+		);
+
+		expect(empty.handles).toEqual([]);
+		expect(empty.dictTokens).toBe(0);
+		expect(empty.breakEvenTurns).toBe(Number.POSITIVE_INFINITY);
+	});
+
+	test("the horizon is finite and positive whenever handles were selected", () => {
+		// A non-empty dictionary always has a real horizon. NaN or Infinity here would
+		// propagate into whatever a harness decides with it, and a NaN comparison is
+		// false in both directions, so a gate built on it would silently pass
+		// everything.
+		const dict = generateDictFromRepo(tsFiles(8), { tokenBudget: 4000 });
+
+		expect(dict.handles.length).toBeGreaterThan(0);
+		expect(Number.isFinite(dict.breakEvenTurns)).toBe(true);
+		expect(dict.breakEvenTurns).toBeGreaterThan(0);
 	});
 });

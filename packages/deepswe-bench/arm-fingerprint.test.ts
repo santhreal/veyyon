@@ -2,7 +2,16 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import YAML from "yaml";
-import { type ArmInputs, canonicalizeConfig, computeArmFingerprint, findZeroIvCollisions } from "./arm-fingerprint";
+import {
+	ARM_ATTACHMENT_SUFFIXES,
+	type ArmInputs,
+	armNamesIn,
+	armSelectionError,
+	canonicalizeConfig,
+	computeArmFingerprint,
+	findZeroIvCollisions,
+	isArmConfigFile,
+} from "./arm-fingerprint";
 
 const bytes = (s: string): Uint8Array => new TextEncoder().encode(s);
 
@@ -183,17 +192,26 @@ describe("shipped arms are pairwise distinct (single-IV coherence)", () => {
 	function shippedArmInputs(arm: string): ArmInputs {
 		const config = YAML.parse(fs.readFileSync(path.join(ARMS_DIR, `${arm}.yml`), "utf8")) ?? {};
 		const sectionsPath = path.join(ARMS_DIR, `${arm}.sections.yml`);
+		// Every attachment run.ts stages has to be read here too, and the statements file is the newest
+		// one. When it was added and this reader was not updated, the shipped ablation arm fingerprinted
+		// identically to `baseline` (same config, no attachment seen) and the pairwise check below failed
+		// by name, which is the guard working: an attachment the fingerprint cannot see is an arm the
+		// single-IV floor cannot distinguish.
+		const statementsPath = path.join(ARMS_DIR, `${arm}.statements.yml`);
 		const rulePath = path.join(ARMS_DIR, `${arm}.rule.md`);
 		return {
 			config,
 			...(fs.existsSync(sectionsPath) ? { sections: YAML.parse(fs.readFileSync(sectionsPath, "utf8")) ?? {} } : {}),
+			...(fs.existsSync(statementsPath)
+				? { statements: YAML.parse(fs.readFileSync(statementsPath, "utf8")) ?? {} }
+				: {}),
 			...(fs.existsSync(rulePath) ? { rule: fs.readFileSync(rulePath) } : {}),
 		};
 	}
 
 	const shippedArms = fs
 		.readdirSync(ARMS_DIR)
-		.filter(f => f.endsWith(".yml") && !f.endsWith(".sections.yml"))
+		.filter(isArmConfigFile)
 		.map(f => f.slice(0, -".yml".length))
 		.sort();
 
@@ -229,5 +247,187 @@ describe("shipped arms are pairwise distinct (single-IV coherence)", () => {
 		const budgetless = { ...big.argot };
 		delete budgetless.tokenBudget;
 		expect(budgetless).toEqual(full.argot ?? {});
+	});
+});
+
+/**
+ * WHICH FILES IN `arms/` ARE ARMS, answered once.
+ *
+ * It used to be answered in three places and one was wrong: `docs-coherence.test.ts` took every
+ * `*.yml`, so `candidate-delivery-terse.sections.yml` became a phantom arm named
+ * `candidate-delivery-terse.sections` and every coherence check quantified over an arm nobody can run.
+ * Adding `.statements.yml` would have meant a second phantom in the same place.
+ */
+describe("arm files and attachments", () => {
+	it("counts a plain .yml as an arm and every attachment suffix as not one", () => {
+		expect(isArmConfigFile("baseline.yml")).toBe(true);
+		for (const suffix of ARM_ATTACHMENT_SUFFIXES) {
+			expect(isArmConfigFile(`baseline${suffix}`), `${suffix} should not be an arm`).toBe(false);
+		}
+	});
+
+	it("ignores files that are not YAML at all", () => {
+		// `.rule.md` is an attachment too, and it is excluded by not being `.yml` rather than by being
+		// listed, which is why the suffix list does not mention it.
+		expect(isArmConfigFile("baseline.rule.md")).toBe(false);
+		expect(isArmConfigFile("README.md")).toBe(false);
+		expect(isArmConfigFile("notes.txt")).toBe(false);
+	});
+
+	it("names the arms in a listing, sorted, without their attachments", () => {
+		const listing = [
+			"full.yml",
+			"baseline.yml",
+			"baseline.rule.md",
+			"candidate.sections.yml",
+			"candidate.statements.yml",
+			"candidate.yml",
+		];
+
+		expect(armNamesIn(listing)).toEqual(["baseline", "candidate", "full"]);
+	});
+
+	it("lists every shipped arm exactly once, with no attachment among them", () => {
+		const shipped = armNamesIn(fs.readdirSync(path.join(import.meta.dir, "arms")));
+
+		expect(new Set(shipped).size).toBe(shipped.length);
+		expect(shipped).toContain("baseline");
+		for (const name of shipped) {
+			for (const suffix of ARM_ATTACHMENT_SUFFIXES) {
+				expect(name.endsWith(suffix.slice(0, -".yml".length)), `${name} is an attachment`).toBe(false);
+			}
+		}
+	});
+});
+
+/**
+ * A REQUESTED ARM IS REFUSED BEFORE ANYTHING IS STAGED, and the attachment case is the dangerous one.
+ *
+ * A typo used to reach `readFileSync` and die with a raw ENOENT stack, which reads as a broken runner
+ * and hides the only useful fact, what the arms are called. An attachment name does not fail at all:
+ * `--arms candidate-delivery-terse.sections` finds that file, parses a section-override map as a config
+ * overlay, merges keys veyyon has never heard of, and benches the control under a treatment's name.
+ * That is the most expensive way to be wrong, because it reads as a real measurement.
+ */
+describe("refusing an arm that cannot be benched", () => {
+	const available = ["baseline", "candidate-delivery-terse", "full"];
+
+	it("accepts an arm that exists", () => {
+		expect(armSelectionError("baseline", available)).toBeNull();
+	});
+
+	it("names the available arms when the arm does not exist", () => {
+		const problem = armSelectionError("baselien", available);
+
+		expect(problem).toContain('no arm "baselien"');
+		expect(problem).toContain("baseline, candidate-delivery-terse, full");
+	});
+
+	it("says an attachment is an attachment, and names the arm it belongs to", () => {
+		for (const suffix of ARM_ATTACHMENT_SUFFIXES) {
+			const bare = suffix.slice(0, -".yml".length);
+			const problem = armSelectionError(`candidate-delivery-terse${bare}`, available);
+
+			expect(problem, `${suffix} was not refused`).toContain("is not an arm");
+			expect(problem).toContain(suffix);
+			expect(problem).toContain("--arms candidate-delivery-terse");
+		}
+	});
+
+	it("refuses an attachment even when its arm is not in the available list", () => {
+		// The attachment check must not depend on the arm existing: a stale `--arms` line naming an
+		// attachment of a deleted arm should still say what it is, not just that it is missing.
+		expect(armSelectionError("gone.statements", [])).toContain("is not an arm");
+	});
+});
+
+/**
+ * THE PER-STATEMENT OVERRIDE IS PART OF WHAT AN ARM IS, and an empty one is not.
+ *
+ * Two properties, and both were written into the code before either was asserted, which is how a
+ * mutation that made an empty override count as DISTINCT survived: nothing tested the case.
+ *
+ * 1. An arm carrying a statements file must not fingerprint as its control. That is the whole point of
+ *    the vehicle: without it, an ablation arm and its baseline reduce to the same inputs, the zero-IV
+ *    guard passes, and the report compares the control against a second copy of the control.
+ * 2. An EMPTY override must count as absent. It changes no rule, so an arm carrying an empty file IS
+ *    its control, and letting it look distinct would smuggle a no-op arm past the guard, which is the
+ *    exact defect the guard exists for (`candidate-vN` copied from `baseline` with nothing changed).
+ *
+ * And a third, quieter one: an arm with NO statements file fingerprints exactly as it did before this
+ * field existed, so the fingerprints already recorded in past results stay comparable and a
+ * longitudinal diff does not report every arm as changed.
+ */
+describe("the per-statement override in the fingerprint", () => {
+	const config = { argot: { enabled: false } };
+
+	it("distinguishes an ablation arm from its control", () => {
+		const control = computeArmFingerprint({ config });
+		const ablated = computeArmFingerprint({ config, statements: { "tool-policy/delegation-gates": null } });
+
+		expect(ablated).not.toBe(control);
+	});
+
+	it("distinguishes ablating one rule from ablating another", () => {
+		const first = computeArmFingerprint({ config, statements: { "tool-policy/lsp": null } });
+		const second = computeArmFingerprint({ config, statements: { "tool-policy/delegation-gates": null } });
+
+		expect(first).not.toBe(second);
+	});
+
+	it("distinguishes removing a rule from rewording it, since they are different experiments", () => {
+		const removed = computeArmFingerprint({ config, statements: { "tool-policy/lsp": null } });
+		const reworded = computeArmFingerprint({ config, statements: { "tool-policy/lsp": "Prefer lsp." } });
+
+		expect(removed).not.toBe(reworded);
+	});
+
+	it("treats an empty override as absent, so an empty file cannot smuggle a no-op arm past the guard", () => {
+		expect(computeArmFingerprint({ config, statements: {} })).toBe(computeArmFingerprint({ config }));
+	});
+
+	it("treats an absent override and an explicitly undefined one identically", () => {
+		expect(computeArmFingerprint({ config, statements: undefined })).toBe(computeArmFingerprint({ config }));
+	});
+
+	/**
+	 * A RECORDED digest, which is the only thing that can pin backwards compatibility.
+	 *
+	 * Fingerprints are written into each run's results and compared longitudinally, so an arm whose
+	 * inputs did not change must keep its value across releases; otherwise a diff reports every arm as
+	 * changed and is indistinguishable from every arm actually changing. Comparing two calls of the same
+	 * function cannot detect that, because both move together: a mutation that folded the statements
+	 * field in unconditionally passed every other test here while changing the value of every arm.
+	 *
+	 * This value predates the statements field, which is why it is the one worth recording. If it
+	 * fails, the ENCODING changed. That may be intended, and updating this line is how you say so, with
+	 * the understanding that comparisons against older runs become meaningless at that point.
+	 */
+	it("still fingerprints a plain arm to the value recorded before the statements field existed", () => {
+		expect(computeArmFingerprint({ config })).toBe(
+			"cac97fc4ffb83a5f73b413c5c8999bfc125ceaa8545da1c29d279b68d4f1b39f",
+		);
+	});
+
+	it("ignores key order in the override, as it does everywhere else", () => {
+		const one = computeArmFingerprint({
+			config,
+			statements: { "tool-policy/lsp": null, "role/mermaid-diagrams": "x" },
+		});
+		const other = computeArmFingerprint({
+			config,
+			statements: { "role/mermaid-diagrams": "x", "tool-policy/lsp": null },
+		});
+
+		expect(one).toBe(other);
+	});
+
+	it("does not confuse a statements override with a sections one carrying the same text", () => {
+		// The fields are length-prefixed and labelled precisely so one cannot be mistaken for the other:
+		// two arms overriding different THINGS with the same text are different experiments.
+		const asStatements = computeArmFingerprint({ config, statements: { "role/mermaid-diagrams": "x" } });
+		const asSections = computeArmFingerprint({ config, sections: { "role/mermaid-diagrams": "x" } });
+
+		expect(asStatements).not.toBe(asSections);
 	});
 });

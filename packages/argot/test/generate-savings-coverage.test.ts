@@ -65,15 +65,22 @@ describe("savingsCoverage", () => {
 		// Real numbers, not a "fewer than before" comparison: a size assertion that
 		// only says "smaller" passes for a rule that drops one handle and for a rule
 		// that drops all of them.
+		//
+		// The savings figures are fractional, and that is not sloppiness: line
+		// structure is priced on the measured MIX of channels a model writes into
+		// (see DEFAULT_TOOL_CALL_STRUCTURE_SHARE), so a saving is a weighted sum
+		// rather than a whole number of tokens. They are also about a third of what
+		// this suite pinned before that correction, because the escaped-only price
+		// it used counted a saving the model collects on 41.76% of its emissions.
 		const at85 = generateDict(CORPUS, { savingsCoverage: 0.85 });
 		expect(at85.handles).toHaveLength(7);
-		expect(at85.dictTokens).toBe(43);
-		expect(at85.estimatedSavings).toBe(492);
+		expect(at85.dictTokens).toBe(45);
+		expect(at85.estimatedSavings).toBeCloseTo(152.448, 3);
 
 		const at90 = generateDict(CORPUS, { savingsCoverage: 0.9 });
 		expect(at90.handles).toHaveLength(8);
 		expect(at90.dictTokens).toBe(49);
-		expect(at90.estimatedSavings).toBe(528);
+		expect(at90.estimatedSavings).toBeCloseTo(164.582, 3);
 	});
 
 	it("fills the budget when coverage is 1, which is the behaviour it replaced", () => {
@@ -82,7 +89,7 @@ describe("savingsCoverage", () => {
 		const full = generateDict(CORPUS, { savingsCoverage: 1 });
 		expect(full.handles).toHaveLength(10);
 		expect(full.dictTokens).toBe(59);
-		expect(full.estimatedSavings).toBe(576);
+		expect(full.estimatedSavings).toBeCloseTo(170.65, 2);
 	});
 
 	it("actually reaches the fraction it promises, and does not overshoot by more than one handle", () => {
@@ -141,8 +148,8 @@ describe("savingsCoverage", () => {
 		const tinyFull = generateDict(CORPUS, { tokenBudget: 50, savingsCoverage: 1 });
 		expect(tinyFull.handles).toHaveLength(8);
 		expect(tinyFull.dictTokens).toBe(49);
-		expect(tiny.handles).toHaveLength(6);
-		expect(tiny.dictTokens).toBe(37);
+		expect(tiny.handles).toHaveLength(7);
+		expect(tiny.dictTokens).toBe(45);
 		// And the budget is still a hard ceiling, whichever rule binds.
 		expect(tinyFull.dictTokens).toBeLessThanOrEqual(50);
 	});

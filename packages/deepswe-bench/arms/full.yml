@@ -17,5 +17,6 @@
 # taught 0/N`.
 argot:
   enabled: true
-  models:
-    - gemini-3.5-flash
+  encode:
+    models:
+      - gemini-3.5-flash

@@ -55,8 +55,9 @@
 # the trade from the two token columns; see the README's "Cost is often unpriced".
 argot:
   enabled: true
-  models:
-    # The model the bench runs (see run.ts and full.yml), chosen for having a
-    # known-good recent run. Not a claim that any other id is unservable.
-    - gemini-3.5-flash
+  encode:
+    models:
+      # The model the bench runs (see run.ts and full.yml), chosen for having a
+      # known-good recent run. Not a claim that any other id is unservable.
+      - gemini-3.5-flash
   tokenBudget: 16000

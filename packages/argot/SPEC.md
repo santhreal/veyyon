@@ -333,6 +333,21 @@ A build-time generator proposes a first dictionary; nothing generates at runtime
 - **`estimateTokens(text)`** and **`extractCandidates(text)`** are the default
   token heuristic and candidate extractor, exported so either can be reused or
   replaced.
+- **`emittedTokenCost(expansion, countTokens, toolCallStructureShare?)`** prices
+  what one use of an expansion really costs the model. Line structure is charged
+  on the measured mix of channels an agent writes into, because a newline inside
+  a tool-call argument is JSON-escaped and the same newline in a message is not.
+  The default share is `DEFAULT_TOOL_CALL_STRUCTURE_SHARE`, measured on recorded
+  transcripts; `GenerateOptions.toolCallStructureShare` overrides it for a harness
+  that has measured its own agent. Savings are fractional as a result.
+
+`GeneratedDict` reports both sides of the trade. `estimatedSavings` is the gross
+output tokens a corpus pass would remove. `breakEvenTurns` is how many turns of
+carrying the dictionary that saving would pay for, at
+`DEFAULT_OUTPUT_TO_INPUT_PRICE_RATIO`, and it is `Infinity` when nothing was
+selected. Read them together: a dictionary is input carried on every turn while
+its savings are output produced once per emission, so a savings figure alone
+cannot say whether a dictionary is worth having.
 
 ### Project resolution and cache helpers
 

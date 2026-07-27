@@ -37,9 +37,11 @@
  */
 
 import {
+	DEFAULT_OUTPUT_TO_INPUT_PRICE_RATIO,
 	DEFAULT_SAVINGS_COVERAGE,
 	DEFAULT_SIGIL,
 	DEFAULT_TOKEN_BUDGET,
+	DEFAULT_TOOL_CALL_STRUCTURE_SHARE,
 	HANDLE_NAME_RE,
 	MAX_EXPANSION_BYTES,
 	SUPPORTED_VERSION,
@@ -98,6 +100,18 @@ export interface GenerateOptions {
 	 * considering. Defaults to {@link extractCandidates}.
 	 */
 	extract?: (text: string) => Iterable<string>;
+	/**
+	 * The share of line structure this harness's agent emits inside tool-call
+	 * arguments, from 0 to 1. Defaults to
+	 * {@link DEFAULT_TOOL_CALL_STRUCTURE_SHARE}, measured on real transcripts.
+	 *
+	 * It is worth setting only if you have measured your own agent, because it
+	 * decides whether structure handles pay at all: a harness that applies every
+	 * edit through a tool sits near 1 and earns a dictionary full of indentation
+	 * runs, while one that answers in markdown sits near 0 and should earn none.
+	 * See {@link emittedTokenCost}.
+	 */
+	toolCallStructureShare?: number;
 	/**
 	 * Existing bindings to preserve, for MONOTONIC regeneration. Pass the current
 	 * cached vocabulary here and generation keeps every pinned name→expansion
@@ -179,8 +193,42 @@ export interface GeneratedDict {
 	 * even if the frozen base alone is already over budget.
 	 */
 	dictTokens: number;
-	/** Total estimated output tokens saved per full pass over the corpus. */
+	/**
+	 * Total estimated output tokens saved per full pass over the corpus.
+	 *
+	 * READ THIS TOGETHER WITH {@link GeneratedDict.breakEvenTurns}, never alone. It
+	 * is a GROSS figure over a corpus pass, and a corpus pass is not a unit of an
+	 * agent's work. The other side of the trade, what the dictionary costs to
+	 * carry, is not in this number at all.
+	 */
 	estimatedSavings: number;
+	/**
+	 * How many turns of carrying this dictionary its estimated savings would pay
+	 * for, at {@link DEFAULT_OUTPUT_TO_INPUT_PRICE_RATIO}. `Infinity` when nothing
+	 * was selected.
+	 *
+	 * WHY THIS IS REPORTED. A dictionary is INPUT carried on every turn, while its
+	 * savings are OUTPUT produced once per emission, and until this field existed
+	 * the SDK reported only the second. Measured on the veyyon repository over 100
+	 * recorded sessions and 7,659 assistant turns, the generated dictionary is 49
+	 * handles and 314 tokens, it saved 3,202 output tokens in total, and it cost
+	 * 2,404,926 input tokens to carry: 751 input tokens per output token saved,
+	 * against a break-even near 5. Eighteen of the 49 handles were never emitted
+	 * once. See `packages/deepswe-bench/measure-retype-likelihood.ts`, which
+	 * produces those figures from real transcripts.
+	 *
+	 * The number is deliberately a HORIZON rather than a verdict, because the
+	 * verdict depends on something generation cannot see: how many turns the
+	 * dictionary will ride along on before it is regenerated. A caller that knows
+	 * its own turn count can compare directly. A caller that does not should still
+	 * read this and notice when it is small.
+	 *
+	 * It shares `estimatedSavings`'s optimism: the saving is estimated from corpus
+	 * frequency, which measurement shows overstates real emissions by a median
+	 * factor of about 675. So a small break-even horizon is bad news and a large
+	 * one is not yet good news.
+	 */
+	breakEvenTurns: number;
 	/** The token budget the generation ran under. */
 	tokenBudget: number;
 	/** How many distinct candidates were considered before selection. */
@@ -292,33 +340,57 @@ function lineStructureCandidates(rawLine: string, trimmed: string, previousLine:
  * against a 2-token handle is no saving at all) when in practice each use saves up
  * to three.
  *
- * THE EXPOSURE THIS CREATES, stated because the whole dictionary rests on it and
- * nothing else says so. The escaped form is only what goes over the wire when the
- * model writes code INSIDE A TOOL-CALL ARGUMENT. Code in a plain assistant message
- * (a markdown block, an explanation, a proposed diff shown rather than applied)
- * carries a real newline and a real tab, and there the raw pricing is the correct
- * one. Measured on a 39-file TypeScript tree, the generated dictionary is 43
- * handles and 232 dictionary tokens: under the escaped model every one of the 43
- * is net-positive, saving 2 to 10 tokens per use, and under the raw model every
- * one of the 43 is net-NEGATIVE. Not some of them; all of them, because a handle
- * costs at least two tokens and a raw indentation run is one.
+ * WHICH IS ONLY HALF THE STORY, AND THE OTHER HALF IS MEASURED. The escaped form
+ * is what goes over the wire only when the model writes INSIDE A TOOL-CALL
+ * ARGUMENT. Code in a plain assistant message, or in thinking, carries a real
+ * newline and a real tab, and there the raw pricing is the correct one. Those two
+ * prices are far apart: on a 39-file TypeScript tree the generated dictionary is
+ * 43 handles, every one of them line structure, every one net-positive under the
+ * escaped model and every one net-NEGATIVE under the raw model. So the sign of the
+ * whole dictionary depends on the channel, and a dictionary rides the system
+ * prompt every turn either way.
  *
- * So the sign of the entire dictionary's value flips with the channel the model
- * happens to be writing into, and the split between those channels has never been
- * measured. That is the single largest open assumption in argot, and it is pinned
- * by a test rather than left in a comment: see the escaped-vs-raw describe in
- * `test/generate.test.ts`. If a run ever shows a material share of structure
- * emitted outside tool-call arguments, this function is where the fix goes, and
- * the dictionary should be priced on the observed mix rather than on one channel.
+ * The split is therefore not assumed. `packages/deepswe-bench/measure-channel-split.ts`
+ * reads real recorded transcripts and sorts every emitted newline-plus-indentation
+ * run into the channel it was written into; over 307 transcripts and 23,467
+ * assistant turns, 41.76% landed inside tool-call arguments. That share is
+ * {@link DEFAULT_TOOL_CALL_STRUCTURE_SHARE}, and this function prices structure on
+ * the mix: `share` of it escaped, the rest raw.
+ *
+ * The result is deliberately fractional. Rounding to a whole token here would
+ * quantize away the very difference the mix expresses, and nothing downstream needs
+ * an integer: `perUse` is a ranking key and `estimatedSavings` is a sum.
+ *
+ * Pass `toolCallStructureShare` to price for a harness whose own measurement
+ * differs. `1` restores the escaped-only model and `0` gives the raw one, which is
+ * how the two ends are pinned in `test/generate.test.ts`.
+ *
+ * @throws if `toolCallStructureShare` is not a fraction between 0 and 1. A share
+ * outside that range is a caller bug that would silently produce prices no channel
+ * charges, and a dictionary generated from them looks entirely normal.
  */
-export function emittedTokenCost(expansion: string, countTokens: (text: string) => number): number {
+export function emittedTokenCost(
+	expansion: string,
+	countTokens: (text: string) => number,
+	toolCallStructureShare: number = DEFAULT_TOOL_CALL_STRUCTURE_SHARE,
+): number {
+	if (!Number.isFinite(toolCallStructureShare) || toolCallStructureShare < 0 || toolCallStructureShare > 1) {
+		throw new RangeError(
+			`toolCallStructureShare must be between 0 and 1, got ${toolCallStructureShare}. It is the measured share of line structure emitted inside tool-call arguments; see DEFAULT_TOOL_CALL_STRUCTURE_SHARE.`,
+		);
+	}
 	if (!isLineStructure(expansion)) {
+		// Only line structure is escaped differently by channel. A path or an
+		// identifier is the same bytes in a tool call and in a message, which is
+		// asserted rather than assumed: see the agreement test in generate.test.ts.
 		return countTokens(expansion);
 	}
 	// `JSON.stringify` then strip the quotes: the exact bytes this string becomes
 	// inside a tool-call argument, produced by the same encoder the wire uses
 	// rather than by a hand-rolled escape table that could drift from it.
-	return countTokens(JSON.stringify(expansion).slice(1, -1));
+	const escaped = countTokens(JSON.stringify(expansion).slice(1, -1));
+	const raw = countTokens(expansion);
+	return toolCallStructureShare * escaped + (1 - toolCallStructureShare) * raw;
 }
 
 /** Trim wrapping punctuation a candidate is likely surrounded by in prose or code. */
@@ -929,6 +1001,7 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 	const naming = options.naming ?? "mnemonic";
 	const countTokens = options.countTokens ?? estimateTokens;
 	const extract = options.extract ?? extractCandidates;
+	const toolCallStructureShare = options.toolCallStructureShare ?? DEFAULT_TOOL_CALL_STRUCTURE_SHARE;
 	const samples = typeof corpus === "string" ? [corpus] : corpus;
 
 	// Count distinct candidate expansions, preserving first-seen order so the
@@ -996,7 +1069,7 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 					? contentName(candidate.expansion)
 					: "abcd";
 		const handleTokens = countTokens(sigil + probeName);
-		const expansionTokens = emittedTokenCost(candidate.expansion, countTokens);
+		const expansionTokens = emittedTokenCost(candidate.expansion, countTokens, toolCallStructureShare);
 		const perUse = expansionTokens - handleTokens;
 		if (perUse <= 0) {
 			continue; // the handle is not shorter than what it replaces
@@ -1188,13 +1261,22 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 	const vocab: Vocabulary = { version: SUPPORTED_VERSION, sigil, handles: handleMap, meta: new Map() };
 	const toml = chosen.length > 0 ? toToml(sigil, chosen) : "";
 	const estimatedSavings = chosen.reduce((sum, h) => sum + h.savedTokens, 0);
+	const carriedPerTurn = chosen.length > 0 ? dictTokens : 0;
+	// Output tokens are worth more than input tokens, so the saving buys more turns
+	// than a raw token comparison would suggest. Dividing by zero carried tokens is
+	// an empty dictionary, which costs nothing and therefore never stops paying.
+	const breakEvenTurns =
+		carriedPerTurn === 0
+			? Number.POSITIVE_INFINITY
+			: (estimatedSavings * DEFAULT_OUTPUT_TO_INPUT_PRICE_RATIO) / carriedPerTurn;
 
 	return {
 		vocab,
 		toml,
 		handles: chosen,
-		dictTokens: chosen.length > 0 ? dictTokens : 0,
+		dictTokens: carriedPerTurn,
 		estimatedSavings,
+		breakEvenTurns,
 		tokenBudget,
 		candidatesConsidered,
 	};

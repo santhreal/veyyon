@@ -30,13 +30,12 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-
-// The spill substitution is measured from the functions that emit it, so a change
-// to either string moves this prediction rather than leaving it stale.
-import { artifactFooter, formatMiddleElisionMarker } from "@veyyon/coding-agent/session/streaming-output";
 // The thinking window's boundary rule has exactly one owner: the provider code that
 // applies it. Reimplementing it here would be a different lever with the same name.
 import { firstRetainedAssistantIndex } from "@veyyon/ai/providers/google-shared";
+// The spill substitution is measured from the functions that emit it, so a change
+// to either string moves this prediction rather than leaving it stale.
+import { artifactFooter, formatMiddleElisionMarker } from "@veyyon/coding-agent/session/streaming-output";
 
 import {
 	type CostBreakdown,
@@ -581,8 +580,7 @@ function toolNamesById(records: Iterable<TranscriptRecord>): Map<string, string>
  * line count) because both strings vary by a character or two with the values
  * inside them, and that variance is far below the threshold being simulated.
  */
-export const SPILL_SUBSTITUTION_CHARS =
-	artifactFooter("12").length + formatMiddleElisionMarker(120, 4000).length + 2;
+export const SPILL_SUBSTITUTION_CHARS = artifactFooter("12").length + formatMiddleElisionMarker(120, 4000).length + 2;
 
 export function simulateToolResultCap(
 	records: TranscriptRecord[],
@@ -609,10 +607,7 @@ export function simulateToolResultCap(
 		if (message.role === "assistant") {
 			if (message.usage) {
 				total += running + results.reduce((sum, r) => sum + r.chars, 0);
-				removed += results.reduce(
-					(sum, r) => sum + (r.cappable ? spillSaving(r.chars, cap) : 0),
-					0,
-				);
+				removed += results.reduce((sum, r) => sum + (r.cappable ? spillSaving(r.chars, cap) : 0), 0);
 			}
 			for (const block of content) {
 				if (block.type === "toolCall") {
@@ -1404,20 +1399,29 @@ if (import.meta.main) {
 	// be chosen on the first number alone, which is how a window that surrenders a
 	// quarter of its saving could look like the best lever available.
 	console.log("");
-	console.log("what each SIGNATURE lever saves, net of the cache it invalidates:");
+	console.log("what each CONTEXT lever saves, net of the cache it invalidates:");
 	const promptShareForLevers = lines.input + lines.cacheRead + lines.cacheWrite;
-	const levers: { label: string; lever: SignatureLever }[] = [
-		{ label: "stock", lever: { kind: "stock" } },
-		{ label: "sig-max4000", lever: { kind: "sizeCap", maxLength: 4000 } },
-		{ label: "sig-last1", lever: { kind: "retainLast", assistantMessages: 1 } },
-		{ label: "sig-last5", lever: { kind: "retainLast", assistantMessages: 5 } },
-		{ label: "sig-last8", lever: { kind: "retainLast", assistantMessages: 8 } },
+	// Both lever families in ONE table, because they compete for the same 20% target
+	// and a reader comparing them across two tables compares gross against net.
+	const levers: { label: string; lever: PrefixLever; unit: string }[] = [
+		{ label: "stock", lever: { kind: "stock" }, unit: "signatures" },
+		{ label: "sig-max4000", lever: { kind: "sizeCap", maxLength: 4000 }, unit: "signatures" },
+		{ label: "sig-last1", lever: { kind: "retainLast", assistantMessages: 1 }, unit: "signatures" },
+		{ label: "sig-last5", lever: { kind: "retainLast", assistantMessages: 5 }, unit: "signatures" },
+		{ label: "sig-last8", lever: { kind: "retainLast", assistantMessages: 8 }, unit: "signatures" },
+		{ label: "think-last1", lever: { kind: "thinkingRetainLast", assistantMessages: 1 }, unit: "thinking" },
+		{ label: "think-last8", lever: { kind: "thinkingRetainLast", assistantMessages: 8 }, unit: "thinking" },
 	];
-	for (const { label, lever } of levers) {
+	for (const { label, lever, unit } of levers) {
 		const totals = perSession.reduce(
 			(acc, records) => {
 				const s = prefixStability(records, lever);
-				const sim = simulateSignatureLever(records, lever);
+				const sim =
+					lever.kind === "thinkingRetainLast"
+						? (({ removed, touched, blocks }) => ({ removed, touched, signatures: blocks }))(
+								simulateThinkingRetention(records, lever.assistantMessages),
+							)
+						: simulateSignatureLever(records, lever);
 				return {
 					comparisons: acc.comparisons + s.comparisons,
 					stableComparisons: acc.stableComparisons + s.stableComparisons,
@@ -1444,7 +1448,7 @@ if (import.meta.main) {
 				`  - cache ${(100 * givenBack).toFixed(1).padStart(4)}%` +
 				`  = NET ${(100 * (gross - givenBack)).toFixed(1).padStart(5)}% of bill` +
 				`   |  ${(100 * stable).toFixed(0).padStart(3)}% of turns keep the prefix intact` +
-				`, touches ${(100 * touchedShare).toFixed(0).padStart(3)}% of signatures`,
+				`, touches ${(100 * touchedShare).toFixed(0).padStart(3)}% of ${unit}`,
 		);
 	}
 

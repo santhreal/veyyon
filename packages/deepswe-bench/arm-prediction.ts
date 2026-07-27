@@ -23,17 +23,17 @@
  * none.
  */
 
+import { costShares, priceTokens, type RateCard, REFERENCE_RATE_CARD, type TokenMix } from "./cost-model";
 import {
 	type PrefixMass,
 	prefixStability,
 	type SignatureLever,
 	simulateSignatureLever,
+	simulateThinkingRetention,
 	simulateToolResultCap,
 	type TranscriptRecord,
 	totalPrefixMass,
 } from "./prefix-composition";
-
-import { costShares, priceTokens, type RateCard, REFERENCE_RATE_CARD, type TokenMix } from "./cost-model";
 
 /** One lever inside an arm, and what it is predicted to do on its own. */
 export interface LeverPrediction {
@@ -189,6 +189,34 @@ export function predictArmSaving(
 		);
 	}
 
+	const thinking = numberAt(config, "context.thinkingRetention");
+	if (thinking !== null) {
+		simulated.add("context.thinkingRetention");
+		let removed = 0;
+		let invalidated = 0;
+		let touched = 0;
+		let blocks = 0;
+		const lever = { kind: "thinkingRetainLast", assistantMessages: thinking } as const;
+		for (const records of perSession) {
+			const sim = simulateThinkingRetention(records as TranscriptRecord[], thinking);
+			removed += sim.removed;
+			touched += sim.touched;
+			blocks += sim.blocks;
+			invalidated += prefixStability(records as TranscriptRecord[], lever).invalidatedCharTurns;
+		}
+		const grossSaving = total > 0 ? (removed / total) * promptShare : 0;
+		const cacheGiveBack = total > 0 ? (invalidated / total) * promptShare * rateLoss : 0;
+		levers.push({
+			setting: "context.thinkingRetention",
+			value: thinking,
+			grossSaving,
+			cacheGiveBack,
+			netSaving: grossSaving - cacheGiveBack,
+			contentGivenUp: blocks > 0 ? touched / blocks : 0,
+			contentUnit: "thinking blocks",
+		});
+	}
+
 	const spillKb = numberAt(config, "tools.artifactSpillThreshold");
 	if (spillKb !== null) {
 		simulated.add("tools.artifactSpillThreshold");
@@ -259,8 +287,11 @@ export function formatArmPrediction(prediction: ArmPrediction): string[] {
 		);
 	}
 	for (const lever of prediction.levers) {
-		const cache = lever.cacheGiveBack > 0 ? ` (gross ${(100 * lever.grossSaving).toFixed(1)}%, ` +
-			`${(100 * lever.cacheGiveBack).toFixed(1)}% handed back as cache misses)` : "";
+		const cache =
+			lever.cacheGiveBack > 0
+				? ` (gross ${(100 * lever.grossSaving).toFixed(1)}%, ` +
+					`${(100 * lever.cacheGiveBack).toFixed(1)}% handed back as cache misses)`
+				: "";
 		lines.push(
 			`  ${prediction.arm}  ${lever.setting} = ${lever.value}` +
 				`  ->  ${(100 * lever.netSaving).toFixed(1)}% of bill${cache}` +

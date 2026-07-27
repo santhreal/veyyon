@@ -15,6 +15,26 @@
 # this mass buys whatever the model gains from re-reading its own words, and
 # nothing else.
 #
+# WHAT IT SAVES, simulated rather than asserted. Over the twenty Gemini baseline
+# sessions, net of the cache a moving boundary invalidates:
+#
+#   window        gross    cache give-back    NET     thinking blocks touched
+#   think-last1    7.6%              0.6%    7.0%                         99%
+#   think-last4    7.2%              2.0%    5.3%                         96%
+#   think-last8    6.8%              3.7%    3.1%                         92%
+#
+# UNLIKE A SIGNATURE, NOTHING REPLACES AN ELIDED THINKING PART. There is no
+# sentinel to subtract: the provider request simply omits the part, so the gross
+# figure is the whole block. Reproduce with:
+#
+#   bun prefix-composition.ts runs/<run-id>/jobs
+#
+# The shape is the same as the signature windows and so is the conclusion: a
+# deeper window saves less gross AND hands back more, so there is no
+# conservative-and-cheap point on the curve. Even the shallowest cannot reach a
+# 20% target alone. It is worth running for what it says about whether the model
+# needs its own summaries replayed, not as a route to the target.
+#
 # THIS IS A SEPARATE VARIABLE FROM THE SIGNATURE WINDOW. Do not run it in the
 # same comparison as sig-last1 or sig-last8. Two levers moved at once produce a
 # delta attributable to neither, which is the exact defect the single-IV rule
