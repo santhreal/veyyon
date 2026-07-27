@@ -26,6 +26,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 
@@ -35,7 +36,7 @@ const PACKAGES_DIR = path.join(import.meta.dir, "..", "..");
 
 /** Every `.ts` file under a package's `src`, skipping dependencies and build output. */
 async function sourceFiles(dir: string, out: string[] = []): Promise<string[]> {
-	let entries: Awaited<ReturnType<typeof readdir>>;
+	let entries: Dirent[];
 	try {
 		entries = await readdir(dir, { withFileTypes: true, encoding: "utf8" });
 	} catch {
@@ -99,8 +100,9 @@ describe("no two modules answer different questions under one name", () => {
 		expect(await declarersOf("isAssistantMessageWithBlocks")).toEqual([
 			path.join("coding-agent", "src", "modes", "controllers", "omfg-rule.ts"),
 		]);
-		expect(await declarersOf("isLinkableAssistantEntry")).toEqual([
-			path.join("stats", "src", "parser.ts"),
+		expect(await declarersOf("isLinkableAssistantEntry")).toEqual([path.join("stats", "src", "parser.ts")]);
+		expect(await declarersOf("isRateableAssistantTurn")).toEqual([
+			path.join("coding-agent", "src", "modes", "components", "status-line", "token-rate.ts"),
 		]);
 	});
 });
