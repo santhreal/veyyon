@@ -3,7 +3,7 @@ import type { Api, ApiKey, Model } from "@veyyon/ai";
 
 import { dbPath as configuredDbPath } from "../config";
 import { closeQuietly } from "../db";
-import type { MemoryInput, Metadata } from "../types";
+import type { MemoryInput, Metadata, Veracity } from "../types";
 import { AnnotationStore } from "./annotations";
 import { BankManager } from "./banks";
 import { BeamMemory, initBeam } from "./beam/index";
@@ -19,6 +19,7 @@ import {
 	resolveEmbeddingProvider,
 	withMnemopiRuntimeOptions,
 } from "./runtime-options";
+import { clampVeracity } from "./veracity";
 
 export interface MnemopiOptions {
 	readonly db?: Database;
@@ -158,10 +159,31 @@ type FacadeRememberOptions = {
 	extractText: string | undefined;
 	embedText: string | undefined;
 	trustTier: string | undefined;
-	veracity: string | undefined;
+	/**
+	 * Clamped before it gets here, which is why it is the closed vocabulary and not `string`.
+	 *
+	 * The facade's own option is `string | null`, because a caller reaches it from the CLI, an
+	 * MCP tool, or a JSON config and can pass anything. The boundary is the right place to
+	 * decide what an unrecognized label means, and `clampVeracity` says so out loud rather
+	 * than letting `"tru"` reach the store and score as an unlabelled memory.
+	 */
+	veracity: Veracity | undefined;
 	memoryType: string | undefined;
 	timestamp?: string;
 };
+
+/**
+ * Clamp a caller's veracity, keeping "said nothing" distinct from "said unknown".
+ *
+ * `clampVeracity` maps a missing value to `"unknown"`, which is the right answer once a value
+ * has to exist, but the store distinguishes the two: a batch item with no veracity inherits
+ * the batch default, while one that says `"unknown"` means it. Collapsing them here would
+ * make every item in a batch of stated memories unlabelled.
+ */
+function clampVeracityOrUndefined(raw: string | null | undefined): Veracity | undefined {
+	if (raw === null || raw === undefined) return undefined;
+	return clampVeracity(raw, "remember");
+}
 
 function hasOwn(options: MnemopiOptions, key: keyof MnemopiOptions): boolean {
 	return Object.hasOwn(options, key);
@@ -296,7 +318,7 @@ function toRememberOptions(input: string | RememberInput, options: RememberFacad
 		extractText: extractText ?? undefined,
 		embedText: embedText ?? undefined,
 		trustTier: options.trustTier ?? options.trust_tier ?? memory?.trustTier ?? memory?.trust_tier ?? undefined,
-		veracity: options.veracity ?? memory?.veracity ?? undefined,
+		veracity: clampVeracityOrUndefined(options.veracity ?? memory?.veracity),
 		memoryType: options.memoryType ?? options.memory_type ?? memory?.memoryType ?? memory?.memory_type ?? undefined,
 	};
 	if (timestamp !== null && timestamp !== undefined) rememberOptions.timestamp = timestamp;

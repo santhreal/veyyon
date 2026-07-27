@@ -442,9 +442,17 @@ export function resolveResumeConfig(cli: Config): Config {
 
 const isTTY = Boolean(process.stdout.isTTY);
 const useColor = isTTY && !process.env.NO_COLOR;
-const ESC = "\x1b[";
+/**
+ * Control Sequence Introducer, `ESC [`, named for what it actually is.
+ *
+ * This was called `ESC`, while `packages/tui/src/ansi.ts` uses that name for the escape byte `\x1b` alone. One
+ * name for two byte sequences across two packages, and the shorter reading is the wrong one: `${CSI}0m` is a
+ * complete SGR reset, not an escape byte followed by the text "0m". Kept local rather than imported because this
+ * package does not depend on `@veyyon/tui` and one string is not a reason to add a dependency.
+ */
+const CSI = "\x1b[";
 function c(code: string, s: string): string {
-	return useColor ? `${ESC}${code}m${s}${ESC}0m` : s;
+	return useColor ? `${CSI}${code}m${s}${CSI}0m` : s;
 }
 const dim = (s: string): string => c("2", s);
 const bold = (s: string): string => c("1", s);
@@ -917,8 +925,8 @@ function render(st: RenderState): void {
 
 	if (isTTY) {
 		// home + clear to end of screen, then write frame
-		let out = `${ESC}H${ESC}J`;
-		out += rows.join(`${ESC}K\n`);
+		let out = `${CSI}H${CSI}J`;
+		out += rows.join(`${CSI}K\n`);
 		process.stdout.write(out);
 	} else {
 		process.stdout.write(
@@ -1680,7 +1688,7 @@ async function runBenchmark(cfg: Config): Promise<BenchmarkRun> {
 		: Math.max(1, cfg.tasks * cfg.attempts * cfg.models.length);
 	const st: RenderState = { cfg, jobDir, logPath, startMs: Date.now(), expected, tick: 0 };
 
-	if (isTTY) process.stdout.write(`${ESC}?1049h${ESC}?25l`); // alt screen, hide cursor
+	if (isTTY) process.stdout.write(`${CSI}?1049h${CSI}?25l`); // alt screen, hide cursor
 	let exitCode = 0;
 	let finished = false;
 	proc.exited.then((code: number) => {
@@ -1707,7 +1715,7 @@ async function runBenchmark(cfg: Config): Promise<BenchmarkRun> {
 		render(st); // final frame
 	} finally {
 		gatewayForward?.stop();
-		if (isTTY) process.stdout.write(`${ESC}?25h${ESC}?1049l`); // restore cursor + screen
+		if (isTTY) process.stdout.write(`${CSI}?25h${CSI}?1049l`); // restore cursor + screen
 		try {
 			fs.closeSync(logFd);
 		} catch {
@@ -1755,7 +1763,7 @@ async function main(): Promise<void> {
 
 if (import.meta.main) {
 	main().catch((err: unknown) => {
-		if (isTTY) process.stdout.write(`${ESC}?25h${ESC}?1049l`);
+		if (isTTY) process.stdout.write(`${CSI}?25h${CSI}?1049l`);
 		process.stderr.write(red(`\nerror: ${errorMessage(err)}\n`));
 		process.exit(1);
 	});

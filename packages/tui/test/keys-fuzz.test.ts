@@ -19,7 +19,7 @@ import {
 	parseKittySequence,
 	setKittyProtocolActive,
 } from "@veyyon/tui/keys";
-import { FRAGMENTS, lcg } from "./helpers/adversarial-strings";
+import { FRAGMENTS, fuzzStrings } from "@veyyon/utils/adversarial-strings";
 
 // Key-flavored byte fragments layered on the generic adversarial pool: CSI-u,
 // modifyOtherKeys, arrows/finals, modifier params, kitty event/release suffixes.
@@ -70,33 +70,48 @@ const KEY_IDS = ["escape", "enter", "tab", "backspace", "up", "ctrl+c", "shift+t
 
 afterEach(() => setKittyProtocolActive(false));
 
+/**
+ * Sequences that broke the key parser before, replayed first on every run and under every seed, in
+ * both the kitty-active and kitty-inactive cases.
+ *
+ * Empty is the honest state. Add the string a failure's `corpus entry:` line prints, with a comment
+ * naming the bug it locks out; see `docs/internal/fuzzing.md`.
+ */
+const KEY_SEQUENCE_CORPUS: readonly string[] = [];
+
 describe("key-parsing fuzz", () => {
 	for (const kittyActive of [false, true]) {
 		it(`never throws on adversarial input (kitty ${kittyActive ? "active" : "inactive"})`, () => {
 			setKittyProtocolActive(kittyActive);
-			const rand = lcg(kittyActive ? 0x6b17_ac01 : 0x6b17_ac00);
-			for (let iter = 0; iter < 12000; iter++) {
-				const s = buildKeySeq(rand);
-				try {
-					const key = parseKey(s);
-					expect(key === undefined || typeof key === "string").toBe(true);
+			fuzzStrings(
+				{
+					seed: kittyActive ? 0x6b17_ac01 : 0x6b17_ac00,
+					iterations: 12000,
+					corpus: KEY_SEQUENCE_CORPUS,
+					build: buildKeySeq,
+				},
+				s => {
+					try {
+						const key = parseKey(s);
+						expect(key === undefined || typeof key === "string").toBe(true);
 
-					const kitty = parseKittySequence(s);
-					expect(kitty === null || typeof kitty === "object").toBe(true);
+						const kitty = parseKittySequence(s);
+						expect(kitty === null || typeof kitty === "object").toBe(true);
 
-					const printable = decodePrintableKey(s);
-					expect(printable === undefined || typeof printable === "string").toBe(true);
+						const printable = decodePrintableKey(s);
+						expect(printable === undefined || typeof printable === "string").toBe(true);
 
-					expect(typeof isKeyRelease(s)).toBe("boolean");
-					expect(typeof isKeyRepeat(s)).toBe("boolean");
+						expect(typeof isKeyRelease(s)).toBe("boolean");
+						expect(typeof isKeyRepeat(s)).toBe("boolean");
 
-					for (const id of KEY_IDS) {
-						expect(typeof matchesKey(s, id)).toBe("boolean");
+						for (const id of KEY_IDS) {
+							expect(typeof matchesKey(s, id)).toBe("boolean");
+						}
+					} catch (e) {
+						throw new Error(`key parsing threw on ${JSON.stringify(s)} (kitty ${kittyActive}): ${e}`);
 					}
-				} catch (e) {
-					throw new Error(`key parsing threw on ${JSON.stringify(s)} (kitty ${kittyActive}): ${e}`);
-				}
-			}
+				},
+			);
 		});
 	}
 });

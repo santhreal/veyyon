@@ -558,7 +558,7 @@ export declare function executeShell(options: ShellExecuteOptions, onChunk?: ((e
  */
 export declare function extractSegments(line: string, beforeEnd: number, afterStart: number, afterLen: number, strictAfter: boolean, tabWidth: number): ExtractSegmentsResult
 
-/** Before/after UTF-16 segments around an overlay region, with measured widths. */
+/** Before/after segments around an overlay region (`extractSegments`). */
 export interface ExtractSegmentsResult {
   /** UTF-16 content before the overlay region. */
   before: string
@@ -1381,6 +1381,11 @@ export interface SearchResult {
   patternTreatedAsLiteral?: string
 }
 
+/**
+ * Override the cell width reported for Hangul compatibility jamo.
+ *
+ * Terminals disagree about these, so the host measures one and tells us.
+ */
 export declare function setHangulCompatJamoWidthOverride(value: number): void
 
 /** Options for executing a shell command via brush-core. */

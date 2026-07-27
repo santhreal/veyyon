@@ -1,5 +1,6 @@
 import { LRUCache } from "lru-cache/raw";
 import { Marked, type Token, Tokenizer, type TokenizerAndRendererExtension, type Tokens } from "marked";
+import { OSC66 } from "../ansi";
 import { latexToBlock } from "../latex-block";
 import { inlineMathSpanEnd, isBareMathEnvironment, latexToUnicode } from "../latex-to-unicode";
 import type { SymbolTheme } from "../symbols";
@@ -26,10 +27,9 @@ const STRICT_STRIKETHROUGH_REGEX = /^(~~)(?=[^\s~])((?:\\.|[^\\])*?(?:\\.|[^\s~\
 // ANSI wrapping and width padding: re-wrapping splits/normalizes the sized span
 // (recomputing the explicit `w=` cell count and hoisting SGR out of the OSC
 // payload), and padding would append trailing cells past the doubled glyph.
-const OSC66_LINE_PREFIX = "\x1b]66;";
 
 function isOsc66Line(line: string): boolean {
-	return line.includes(OSC66_LINE_PREFIX);
+	return line.includes(OSC66);
 }
 
 function normalizeHtmlEntitiesForTerminal(raw: string): string {

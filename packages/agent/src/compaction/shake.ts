@@ -13,9 +13,9 @@
 import type { TextContent, ToolResultMessage } from "@veyyon/ai";
 import { countTokens } from "../tokenizer";
 import type { AgentMessage, AgentToolCall } from "../types";
-import { estimateTokens } from "./compaction";
 import type { CustomMessageEntry, SessionEntry, SessionMessageEntry } from "./entries";
 import { getToolResultMessage } from "./entries";
+import { estimateTokens } from "./token-estimate";
 import {
 	collectToolCallsById,
 	isProtectedToolResult,
@@ -348,7 +348,7 @@ export function collectShakeRegions(entries: SessionEntry[], config: ShakeConfig
 function redundancySignature(toolName: string, call: AgentToolCall | undefined, outputText: string): string {
 	const args = call?.arguments;
 	const argsKey = args === undefined ? "" : JSON.stringify(args, Object.keys(args).sort());
-	return `${toolName} ${argsKey} ${outputText}`;
+	return `${toolName}\x00${argsKey}\x00${outputText}`;
 }
 
 /**

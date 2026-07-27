@@ -3,6 +3,25 @@ import * as path from "node:path";
 import { findStaleAddon, staleAddonMessage } from "../native/loader-state.js";
 
 const reset = process.argv.includes("--reset");
+/**
+ * Refresh the archive but leave the metadata module as the checked-in stub.
+ *
+ * `embedded-addon.js` is the loader's authoritative "am I a compiled binary?" signal
+ * (`detectCompiledBinary`, issue 823), and that only holds while the premise behind it does:
+ * the module is `null` in a source tree and populated only inside a `--compile` bundle. A
+ * plain `bun run build:native` used to break that premise and leave it populated, after
+ * which every ordinary `bun packages/coding-agent/src/cli.ts` in that checkout believed it
+ * was a standalone binary and extracted 290 MB of addon into `$HOME/.veyyon/natives/`.
+ * Multiplied by a test suite that spawns the CLI with a fresh temp `HOME`, that filled a
+ * 915 GB disk.
+ *
+ * The archive still has to be refreshed by a rebuild, because a compiled binary loads what
+ * the ARCHIVE holds and the two artifacts must not drift. The metadata module does not: the
+ * release path (`scripts/ci-release-build-binaries.ts`) regenerates it immediately before
+ * each `bun build --compile` and resets it in a `finally`. So a rebuild writes the archive
+ * and keeps the stub, and nothing in a source tree ever claims to be compiled.
+ */
+const stubMetadata = process.argv.includes("--stub-metadata");
 const outputPath = path.join(import.meta.dir, "../native/embedded-addon.js");
 const packageJsonPath = path.join(import.meta.dir, "../package.json");
 const nativeDir = path.join(import.meta.dir, "../native");
@@ -151,4 +170,4 @@ ${files}
 };
 `;
 
-await Bun.write(outputPath, content);
+await Bun.write(outputPath, stubMetadata ? stubContent : content);

@@ -8,6 +8,7 @@ import { currentEmbeddingModel, embeddingsDisabled } from "../embeddings";
 import { EpisodicGraph } from "../episodic-graph";
 import { countExtractedFactCategories, extractFactCategoriesSafe } from "../extraction";
 import { getMnemopiRuntimeOptions, withMnemopiRuntimeOptions } from "../runtime-options";
+import { clampVeracity } from "../veracity";
 import { storeExtractedFactCategories } from "./consolidate";
 import { type EmbedItem, scheduleEmbedding, vecAvailable, vecInsert } from "./helpers";
 import type {
@@ -20,7 +21,6 @@ import type {
 	RememberBatchOptions,
 	RememberOptions,
 	TrustTier,
-	Veracity,
 } from "./types";
 
 type Row = Record<string, unknown>;
@@ -48,15 +48,6 @@ type StoreRememberBatchOptions = RememberBatchOptions & {
 	force_veracity?: boolean;
 };
 
-const CANONICAL_VERACITY: Record<string, true> = {
-	true: true,
-	false: true,
-	stated: true,
-	inferred: true,
-	tool: true,
-	imported: true,
-	unknown: true,
-};
 const TRUST_TIERS: Record<string, true> = {
 	STATED: true,
 	DERIVED: true,
@@ -98,12 +89,6 @@ function embeddingText(content: string, options: { embedText?: string; embed_tex
 
 function storedEmbeddingText(content: string, embedText: string): string | null {
 	return embedText === content ? null : embedText;
-}
-
-function clampVeracity(value: unknown): Veracity {
-	if (typeof value !== "string") return "unknown";
-	const normalized = value.trim().toLowerCase();
-	return CANONICAL_VERACITY[normalized] === true ? normalized : "unknown";
 }
 
 function sourceToTrustTier(source: string | null | undefined): TrustTier {
@@ -377,7 +362,7 @@ export function remember(beam: BeamMemoryState, content: string, options: StoreR
 	const importance = options.importance ?? 0.5;
 	const timestamp = options.timestamp ?? toUtcIso();
 	const scope = options.scope ?? "session";
-	const veracity = clampVeracity(options.veracity);
+	const veracity = clampVeracity(options.veracity, "remember");
 	const trustTier = normalizeTrustTier(options.trustTier, source);
 	const memoryType = options.memoryType ?? "unknown";
 	const validUntil = options.validUntil ?? options.valid_until ?? null;
@@ -493,7 +478,7 @@ export function rememberBatch(
 	const timestamp = toUtcIso();
 	const ids: string[] = [];
 	const forceVeracity = options.forceVeracity ?? options.force_veracity ?? false;
-	const defaultVeracity = clampVeracity(options.veracity);
+	const defaultVeracity = clampVeracity(options.veracity, "remember");
 	const defaultScope = options.scope ?? "session";
 	const trustTier = normalizeTrustTier(options.trustTier ?? "IMPORTED", "imported");
 
@@ -514,7 +499,7 @@ export function rememberBatch(
 			const itemVeracity = forceVeracity
 				? defaultVeracity
 				: item.veracity !== undefined
-					? clampVeracity(item.veracity)
+					? clampVeracity(item.veracity, "rememberBatch")
 					: defaultVeracity;
 			statement.run(
 				memoryId,
@@ -867,7 +852,7 @@ export function importFromDict(beam: BeamMemoryState, data: Record<string, unkno
 				sqlBinding(item.recall_count, 0),
 				sqlBinding(item.last_recalled, null),
 				sqlBinding(item.created_at, null),
-				clampVeracity(item.veracity),
+				clampVeracity(item.veracity, "rememberBatch"),
 				sqlBinding(item.consolidated_at, null),
 				sqlBinding(item.memory_type, "unknown"),
 				sqlBinding(item.embed_text, null),
@@ -928,7 +913,7 @@ export function importFromDict(beam: BeamMemoryState, data: Record<string, unkno
 				sqlBinding(item.recall_count, 0),
 				sqlBinding(item.last_recalled, null),
 				sqlBinding(item.created_at, null),
-				clampVeracity(item.veracity),
+				clampVeracity(item.veracity, "rememberBatch"),
 				sqlBinding(item.memory_type, "unknown"),
 				sqlBinding(item.author_id, null),
 				sqlBinding(item.author_type, null),

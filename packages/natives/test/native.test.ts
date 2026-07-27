@@ -614,7 +614,7 @@ describe("veyyon-natives", () => {
 		it("pads without burying the napi NUL terminator mid-string", () => {
 			// The pad branch copies the raw UTF-16 buffer, which carries a trailing
 			// NUL; padding after it puts "\0" mid-string where the trailing-NUL
-			// strip cannot reach (surfaced as "abc    " on every padded TUI row).
+			// strip cannot reach (surfaced as "abc\x00   " on every padded TUI row).
 			expect(truncateToWidth("abc", 10, undefined, true, 8)).toBe("abc       ");
 			expect(truncateToWidth("ab\x1b[31mcd\x1b[0m", 10, undefined, true, 8)).toBe("ab\x1b[31mcd\x1b[0m      ");
 			// Exact fit and truncation paths stay byte-clean too.

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { fuzzSeed, lcg } from "@veyyon/utils/adversarial-strings";
 import { cosineScorer, cosineSimilarity, decodeEmbeddingJson, encodeEmbeddingJson } from "../src/core/vector-math";
 
 // vector-math owns the single stored-embedding wire format. These tests pin the exact
@@ -69,22 +70,14 @@ describe("embedding JSON codec", () => {
 });
 
 describe("cosine scorer", () => {
-	// Deterministic pseudo-random generator (no Math.random) so the differential
-	// sweep is reproducible.
-	function lcg(seed: number): () => number {
-		let state = seed >>> 0;
-		return () => {
-			state = (state * 1664525 + 1013904223) >>> 0;
-			return state / 0x100000000;
-		};
-	}
-
+	// The generator is `lcg` from `@veyyon/utils` (no Math.random) so the
+	// differential sweep is reproducible from the seed below.
 	function randomVector(next: () => number, length: number): number[] {
 		return Array.from({ length }, () => next() * 4 - 2);
 	}
 
 	it("is byte-identical to cosineSimilarity across a random sweep", () => {
-		const next = lcg(0x9e3779b9);
+		const next = lcg(fuzzSeed(0x9e3779b9));
 		for (let trial = 0; trial < 200; trial += 1) {
 			const dim = 1 + Math.trunc(next() * 16);
 			const query = randomVector(next, dim);

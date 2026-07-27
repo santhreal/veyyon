@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "bun:test";
 import type {
 	AgentSnapshot,
-	AssistantMessage,
 	GuestFrame,
 	HostFrame,
-	SessionEntry,
-	SessionHeader,
 	SessionState,
 	SubagentProgressPayload,
+	WireAssistantMessage,
 	WireMessage,
+	WireSessionEntry,
+	WireSessionHeader,
 } from "@veyyon/wire";
 import { SNAPSHOT_PROGRESS_TIMEOUT_MS } from "@veyyon/wire";
 import { GuestClient } from "../src/lib/client";
@@ -17,7 +17,7 @@ import { CollabSocket } from "../src/lib/socket";
 
 const LINK = `roomroomroom1234#${encodeBase64Url(new Uint8Array(32))}`;
 
-const HEADER: SessionHeader = { type: "session", id: "s1", timestamp: "2026-06-12T00:00:00Z", cwd: "/work" };
+const HEADER: WireSessionHeader = { type: "session", id: "s1", timestamp: "2026-06-12T00:00:00Z", cwd: "/work" };
 
 const STATE: SessionState = {
 	isStreaming: false,
@@ -38,18 +38,19 @@ const AGENTS: AgentSnapshot[] = [
 	},
 ];
 
-function assistantMessage(text: string): AssistantMessage {
+function assistantMessage(text: string): WireAssistantMessage {
 	return {
 		role: "assistant",
 		content: [{ type: "text", text }],
 		model: "test/model",
+		provider: "test",
 		usage: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0, totalTokens: 3, cost: { total: 0 } },
 		stopReason: "stop",
 		timestamp: 1,
 	};
 }
 
-function messageEntry(id: string, message: WireMessage): SessionEntry {
+function messageEntry(id: string, message: WireMessage): WireSessionEntry {
 	return { type: "message", id, parentId: null, timestamp: "2026-06-12T00:00:01Z", message };
 }
 
@@ -57,11 +58,11 @@ function welcomeFrame(entryCount = 0, readOnly?: boolean): HostFrame {
 	return { t: "welcome", proto: COLLAB_PROTO, header: HEADER, state: STATE, agents: AGENTS, entryCount, readOnly };
 }
 
-function snapshotChunk(entries: SessionEntry[], final = true): HostFrame {
+function snapshotChunk(entries: WireSessionEntry[], final = true): HostFrame {
 	return { t: "snapshot-chunk", entries, final };
 }
 
-function liveClient(entries: SessionEntry[] = []): GuestClient {
+function liveClient(entries: WireSessionEntry[] = []): GuestClient {
 	const client = new GuestClient(LINK, "tester");
 	client.applyFrameForTest(welcomeFrame(entries.length));
 	if (entries.length > 0) client.applyFrameForTest(snapshotChunk(entries));

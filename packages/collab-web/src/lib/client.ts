@@ -10,15 +10,15 @@
 
 import type {
 	AgentSnapshot,
-	AssistantMessage,
 	CollabUiRequest,
 	CollabUiResponseValue,
 	HostFrame,
-	SessionEntry,
-	SessionHeader,
 	SessionState,
 	SubagentLifecyclePayload,
 	SubagentProgressPayload,
+	WireAssistantMessage,
+	WireSessionEntry,
+	WireSessionHeader,
 } from "@veyyon/wire";
 import { SNAPSHOT_PROGRESS_TIMEOUT_MS, TRANSCRIPT_TIMEOUT_MS, WELCOME_TIMEOUT_MS } from "@veyyon/wire";
 import { importRoomKey } from "./codec";
@@ -46,8 +46,8 @@ export interface Notice {
 export interface GuestSnapshot {
 	phase: ConnectionPhase;
 	endedReason: string | null;
-	header: SessionHeader | null;
-	entries: readonly SessionEntry[];
+	header: WireSessionHeader | null;
+	entries: readonly WireSessionEntry[];
 	state: SessionState | null;
 	agents: readonly AgentSnapshot[];
 	/** Keyed by `payload.progress.id`. */
@@ -55,7 +55,7 @@ export interface GuestSnapshot {
 	/** Keyed by `payload.id`. */
 	lifecycle: ReadonlyMap<string, SubagentLifecyclePayload>;
 	/** Streaming assistant ghost; held until the matching entry lands. */
-	stream: AssistantMessage | null;
+	stream: WireAssistantMessage | null;
 	streamDone: boolean;
 	activeTools: ReadonlyMap<string, ActiveTool>;
 	/** agent_start..agent_end, reconciled by state.isStreaming. */
@@ -104,13 +104,13 @@ export class GuestClient {
 
 	#phase: ConnectionPhase = "connecting";
 	#endedReason: string | null = null;
-	#header: SessionHeader | null = null;
-	#entries: readonly SessionEntry[] = [];
+	#header: WireSessionHeader | null = null;
+	#entries: readonly WireSessionEntry[] = [];
 	#state: SessionState | null = null;
 	#agents: readonly AgentSnapshot[] = [];
 	#progress: ReadonlyMap<string, SubagentProgressPayload> = new Map();
 	#lifecycle: ReadonlyMap<string, SubagentLifecyclePayload> = new Map();
-	#stream: AssistantMessage | null = null;
+	#stream: WireAssistantMessage | null = null;
 	#streamDone = false;
 	#activeTools: ReadonlyMap<string, ActiveTool> = new Map();
 	#working = false;

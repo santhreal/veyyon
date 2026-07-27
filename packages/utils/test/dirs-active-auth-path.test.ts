@@ -9,7 +9,6 @@ import {
 	getSharedAuthDir,
 	getSharedAuthStoreDirIfEnabled,
 } from "@veyyon/utils/dirs";
-import { Snowflake } from "@veyyon/utils/snowflake";
 
 function restoreEnv(key: string, value: string | undefined): void {
 	if (value === undefined) delete process.env[key];
@@ -59,8 +58,7 @@ describe("getActiveAuthDbPath names the file the store actually opens", () => {
 		delete process.env.VEYYON_PROFILE;
 		delete process.env.VEYYON_CODING_AGENT_DIR;
 
-		tempRoot = path.join(os.tmpdir(), "veyyon-active-auth", Snowflake.next());
-		fs.mkdirSync(tempRoot, { recursive: true });
+		tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-active-auth-"));
 		// Point the config root at the temp tree the same way the XDG-category suite does:
 		// VEYYON_CONFIG_DIR is the config dir NAME relative to home, so getBaseConfigRoot()
 		// resolves back to exactly tempRoot.

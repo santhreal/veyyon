@@ -269,12 +269,12 @@ describe("applyArgotPhaseSettings — the phase-flip regression (ARG-BENCH-SETTI
 
 		await applyArgotPhaseSettings(false, "test/model-a");
 		expect(Settings.instance.get("argot.enabled")).toBe(false);
-		expect(Settings.instance.get("argot.models")).toEqual([]);
+		expect(Settings.instance.get("argot.encode.models")).toEqual([]);
 
 		await applyArgotPhaseSettings(true, "test/model-a", 123);
 		expect(Settings.instance.get("argot.enabled")).toBe(true);
-		expect(Settings.instance.get("argot.models")).toEqual(["test/model-a"]);
-		expect(Settings.instance.get("argot.disableAboveTokens")).toBe(123);
+		expect(Settings.instance.get("argot.encode.models")).toEqual(["test/model-a"]);
+		expect(Settings.instance.get("argot.encode.disableAboveTokens")).toBe(123);
 
 		await applyArgotPhaseSettings(false, "test/model-a");
 		expect(Settings.instance.get("argot.enabled")).toBe(false);

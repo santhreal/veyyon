@@ -2,12 +2,29 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The agent loop and the `Agent` class name the modules that declare the functions they call rather than the `@veyyon/ai` entry point, which re-exports the model catalogue, every provider and the usage backends. Both stream, so both reach the streaming engine either way; what changed is that ten other names stopped arriving with the whole package attached. `agent-loop.ts` went from 378 modules to 321 and `agent.ts` from 380 to 323, and `compaction/utils.ts` from 198 to 164 by taking the dialect factory from its own module instead of the dialect barrel.
+
+- Importing a span attribute no longer imports a model provider. `telemetry.ts` is span vocabulary, and it is used across this package by code that never calls a model, but it also held `instrumentedCompleteSimple`, the one helper in it that runs a completion. That helper names the streaming engine, so an attribute constant cost the provider stack, the model catalogue and the error taxonomy: 281 of the file's 366 modules. The helper moved to `instrumented-complete.ts` and the remaining barrel imports were repointed at their owners, taking `telemetry.ts` from 366 modules to 9 and `compaction/branch-summarization.ts` from 394 to 333. `instrumentedCompleteSimple` is still exported under the same name from the package entry point, which is where callers already took it from.
+
+- `proxy.ts` takes `EventStream` from `@veyyon/ai/utils/event-stream`, the module that declares it, instead of from the `@veyyon/ai` entry point. That entry point re-exports the streaming engine, every provider, the model catalogue and the usage backends, so a 42-module class was arriving with 363 modules behind it. The proxy went from 364 modules to 118. Its types still come from the barrel, which costs nothing because type imports are erased.
+
+- Asking what a message costs no longer loads the machinery that compacts one. `estimateTokens` lived in the compaction engine, which reaches 395 modules for the summarizer, the cut-point search and the provider round trip; the estimate needs a tokenizer. It moved to `compaction/token-estimate.ts` at 85 modules, and the engine re-exports the name, so `shake.ts` went from 398 modules to 88 and `pruning.ts` from 398 to 204. The estimate decides when compaction triggers, how pruning spends its budget and what the context meter reads, so keeping it cheap to import is what lets those callers share one implementation.
+
+- `compaction/threshold.ts` owns the whole compaction trigger now: the `CompactionSettings` shape, the reserve policy (`effectiveReserveTokens`, `resolveBudgetReserveTokens`), `shouldCompact`, and the three threshold wrappers. They were in `compaction/compaction.ts`, which is the module that RUNS a compaction and therefore imports the `@veyyon/ai` barrel, the provider dialects, the prompt registry and the tokenizer. Deciding whether a token count is over the trigger needs none of that, so every host that wanted only the trigger paid for the summarizer: `@veyyon/coding-agent`'s `config/settings.ts`, the module 528 of its test files import, reached `@veyyon/ai/stream.ts` through this one edge. `compaction.ts` re-exports all of it, so no caller changed.
+- `thinking.ts` takes `Effort` from `@veyyon/catalog/effort`, its owner, which imports nothing, instead of from the `@veyyon/ai` barrel. A six-entry ladder and a clamp were carrying the streaming engine to every consumer of `ThinkingLevel`.
+
 ### Fixed
+
+- A turn that ends in an error builds its message with the shared `errorMessage` helper. The two tail branches were that helper written out by hand, and the local `const errorMessage` holding the result shadowed the import, so the hand-rolled copy was the only version reachable in that scope. The local is named `failureMessage` now.
 
 - Fixed compaction doing nothing when the newest turn alone exceeded the keep-recent budget. One very large tool result at the end of a session was enough: the cut-point search found no boundary at or after the entry that blew the budget and fell back to keeping the whole session, so compaction reported nothing to do while the context meter sat at the ceiling. It now cuts to the newest valid boundary, which never separates a tool call from its result.
 - Fixed images in a user message counting as zero tokens. Every other message role already counted them, so a session of pasted screenshots under-reported its own size to the compaction trigger, the pruning budgets, and the context meter.
 
 ### Changed
+
+- This package owns the session-entry vocabulary: `SessionEntryBase` and the fourteen entry interfaces over it, plus the `SessionEntry` union. `@veyyon/coding-agent` had a second copy of all of them and the copies had diverged, so `SessionInitEntry` here was missing the `spawns` and `readSummarize` fields the coding agent writes, and `ThinkingLevelChangeEntry` was missing `configured`. Those three fields are now on the shared declarations, and a consumer that persists its own entry kinds adds them through `CustomCompactionSessionEntries` rather than redeclaring the union.
 
 - The narrowing that answers "does this session entry carry a tool result" lives with the entry union it narrows, as `getToolResultMessage` in `compaction/entries.ts`. Both compaction passes, pruning and shake, had a byte-identical private copy, and a pass that recognised one message shape while its sibling recognised another would prune output the other still counted.
 

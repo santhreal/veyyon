@@ -6,7 +6,7 @@ import type {
 	TextContent,
 	ToolResultMessage,
 } from "@veyyon/ai";
-import { prompt } from "@veyyon/utils";
+import * as prompt from "@veyyon/utils/prompt";
 import { AGENT_PROMPTS } from "../prompts/registry";
 import type { AgentMessage } from "../types";
 

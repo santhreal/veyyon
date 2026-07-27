@@ -18,7 +18,7 @@ import { describe, expect, it } from "bun:test";
 import { Markdown } from "@veyyon/tui/components/markdown";
 import { Text } from "@veyyon/tui/components/text";
 import { padding } from "@veyyon/tui/utils";
-import { buildString, lcg } from "./helpers/adversarial-strings";
+import { buildString, fuzzSeed, lcg } from "@veyyon/utils/adversarial-strings";
 import { defaultMarkdownTheme } from "./test-themes.js";
 
 // Widths that break naive layout math: zero/one/two cols, negatives, NaN,
@@ -34,7 +34,7 @@ describe("component rendering at pathological widths", () => {
 	// width-math crash, comfortably under Bun's per-test timeout. The explicit
 	// timeout is a floor so a slow CI host never flakes this coverage.
 	it("Text never throws and returns a string array at any width", () => {
-		const rand = lcg(0x7e_00_11);
+		const rand = lcg(fuzzSeed(0x7e_00_11));
 		for (let iter = 0; iter < 1200; iter++) {
 			const content = buildString(rand);
 			for (const width of PATHOLOGICAL_WIDTHS) {
@@ -53,7 +53,7 @@ describe("component rendering at pathological widths", () => {
 	// 1200 iters x 10 widths = 12000 markdown renders; same fuzz-vs-timeout
 	// budget as the Text case above.
 	it("Markdown never throws and returns a string array at any width", () => {
-		const rand = lcg(0x7e_00_22);
+		const rand = lcg(fuzzSeed(0x7e_00_22));
 		for (let iter = 0; iter < 1200; iter++) {
 			const content = buildString(rand);
 			for (const width of PATHOLOGICAL_WIDTHS) {

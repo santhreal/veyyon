@@ -202,6 +202,10 @@ async function renameTempOverTarget(tmpPath: string, target: string): Promise<vo
 			await fsp.rm(target, { force: true });
 			await fsp.rename(tmpPath, target);
 		} else {
+			// The RENAME error is the one the caller needs, and it is rethrown below. A failure to remove the
+			// temp file cannot be reported without replacing that error with a less useful one, so it is
+			// deliberately dropped: the worst outcome is one leftover `*.tmp*` beside the target, while the
+			// worst outcome of surfacing it is a write failure explained by the wrong error.
 			await fsp.rm(tmpPath, { force: true }).catch(() => {});
 			throw error;
 		}

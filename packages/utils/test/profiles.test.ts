@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { mkdtempSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -70,7 +71,7 @@ describe("profile directories", () => {
 		originalXdgDataHome = process.env.XDG_DATA_HOME;
 		originalXdgStateHome = process.env.XDG_STATE_HOME;
 		originalXdgCacheHome = process.env.XDG_CACHE_HOME;
-		tempRoot = path.join(os.tmpdir(), "veyyon-utils-profiles", Snowflake.next());
+		tempRoot = mkdtempSync(path.join(os.tmpdir(), "veyyon-utils-profiles-"));
 		// A temp root, not a dot-directory NAME under the real home: the name form writes
 		// profile trees into the developer's actual home whenever this runs outside the
 		// test runner's sandboxed HOME, which is how most suites are run while working.

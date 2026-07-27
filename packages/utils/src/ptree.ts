@@ -346,6 +346,9 @@ export class ChildProcess<In extends InMask = InMask> {
 		const onAbort = () => this.kill(new ProcessAbortError(signal.reason, "<cancelled>"));
 		if (signal.aborted) return void onAbort();
 		signal.addEventListener("abort", onAbort, { once: true });
+		// The `catch` is here to attach the `finally` without creating an unhandled rejection, not to handle
+		// anything: whoever awaits `#exited` still gets the exit failure in full. Removing it would make every
+		// aborted or failed process log an unhandled rejection for a promise that IS being awaited elsewhere.
 		this.#exited.catch(() => {}).finally(() => signal.removeEventListener("abort", onAbort));
 	}
 

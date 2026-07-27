@@ -289,7 +289,17 @@ describe("extraction transport failure and no-output diagnostics", () => {
 		expect(host.error_samples[0]?.reason).toBe("configured_completion_raised");
 	});
 
-	it("records a host no_output and falls back to the local tier when the host returns blank text", async () => {
+	/**
+	 * A blank host answer records `no_output` and hands the text to the pattern extractor, which is
+	 * the whole of the `local` tier. The payload has no pattern in it, so the tier is attempted and
+	 * finds nothing.
+	 *
+	 * The failure count is asserted as 0, and that is the point of this test. The tier used to call a
+	 * `callLocalLlm` stub first and record `model_not_loaded` on every single pass, so an operator
+	 * reading these diagnostics saw a failure for a backend that had never existed. Nothing was ever
+	 * going to load a model, and a reason nobody can act on is worse than no tier at all.
+	 */
+	it("records a host no_output and hands the text to the pattern extractor", async () => {
 		process.env.MNEMOPI_LLM_ENABLED = "true";
 		process.env.MNEMOPI_HOST_LLM_ENABLED = "true";
 		setHostLlmBackend(new CallableLlmBackend("blank-host", () => "   "));
@@ -298,9 +308,26 @@ describe("extraction transport failure and no-output diagnostics", () => {
 		expect(countExtractedFactCategories(result)).toBe(0);
 		const stats = getExtractionStats();
 		expect(stats.by_tier.host.no_output).toBe(1);
-		// localFallback runs after the blank host: callLocalLlm is a null stub, so the local tier
-		// is attempted, misses (model_not_loaded), then the heuristic finds nothing in the payload.
 		expect(stats.by_tier.local.attempts).toBe(1);
+		expect(stats.by_tier.local.failures).toBe(0);
+		expect(stats.by_tier.local.error_samples).toEqual([]);
+	});
+
+	/**
+	 * The same path with a payload the pattern extractor CAN read: the local tier succeeds, and the
+	 * facts come back. This is the non-vacuity twin of the test above, which sees the tier attempted
+	 * and empty. Without it, an extractor that had stopped working entirely would still pass.
+	 */
+	it("returns pattern-extracted facts after a blank host answer", async () => {
+		process.env.MNEMOPI_LLM_ENABLED = "true";
+		process.env.MNEMOPI_HOST_LLM_ENABLED = "true";
+		setHostLlmBackend(new CallableLlmBackend("blank-host", () => "   "));
+
+		const result = await extractFactCategories("My name is Ada and I work at Santh.");
+		expect(result.facts).toEqual(["The user's name is Ada", "The user works at Santh"]);
+		const stats = getExtractionStats();
+		expect(stats.by_tier.local.successes).toBe(1);
+		expect(stats.by_tier.local.failures).toBe(0);
 	});
 
 	it("returns remote-extracted categories when the remote LLM yields facts", async () => {

@@ -8,7 +8,6 @@ import {
 	readGlobalProfileSharingSafe,
 	resolveGlobalProfileSharing,
 } from "@veyyon/utils/dirs";
-import { Snowflake } from "@veyyon/utils/snowflake";
 
 /**
  * The credential-store location is decided by `profileSharing` in the global config.
@@ -52,8 +51,7 @@ describe("Global config reads survive a transient failure without flipping the c
 		delete process.env.XDG_CACHE_HOME;
 		delete process.env.VEYYON_PROFILE;
 		delete process.env.VEYYON_CODING_AGENT_DIR;
-		tempRoot = path.join(os.tmpdir(), "veyyon-config-resilience", Snowflake.next());
-		fs.mkdirSync(tempRoot, { recursive: true });
+		tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-config-resilience-"));
 		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), tempRoot);
 		__resetDirsFromEnvForTests();
 	});

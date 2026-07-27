@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { mkdtempSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getProjectDir, setProjectDir } from "@veyyon/utils/dirs";
-import { Snowflake } from "@veyyon/utils/snowflake";
 import { getEditorConfigFormatting } from "@veyyon/utils/tab-spacing";
 
 describe("getEditorConfigFormatting", () => {
@@ -12,7 +12,7 @@ describe("getEditorConfigFormatting", () => {
 
 	beforeEach(async () => {
 		previousProjectDir = getProjectDir();
-		tempDir = path.join(os.tmpdir(), "pi-utils-editorconfig-formatting", Snowflake.next());
+		tempDir = mkdtempSync(path.join(os.tmpdir(), "pi-utils-editorconfig-formatting-"));
 		await fs.mkdir(tempDir, { recursive: true });
 		setProjectDir(tempDir);
 	});

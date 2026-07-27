@@ -292,6 +292,10 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	 * Enable intent tracing for tool calls.
 	 * When enabled, the harness injects a `string` field into tool schemas sent to the model,
 	 * then strips from arguments before executing tools.
+	 *
+	 * A resolved boolean, not a resolver: the loop config is rebuilt per turn, so `Agent` calls its own
+	 * resolver when it builds this and the whole turn sees one consistent answer. Making it a function
+	 * here would let the schema injection and the argument stripping disagree within a single turn.
 	 */
 	intentTracing?: boolean;
 	/**

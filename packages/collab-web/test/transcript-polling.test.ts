@@ -6,7 +6,7 @@
  * from the same cursor forever.
  */
 import { describe, expect, it, vi } from "bun:test";
-import { type HostFrame, type SessionEntry, TRANSCRIPT_TIMEOUT_MS } from "@veyyon/wire";
+import { type HostFrame, TRANSCRIPT_TIMEOUT_MS, type WireSessionEntry } from "@veyyon/wire";
 import { GuestClient } from "../src/lib/client";
 import { encodeBase64Url } from "../src/lib/link";
 import { decideTranscriptPoll } from "../src/lib/transcript-poll";
@@ -17,7 +17,7 @@ function transcriptFrame(reqId: number, text: string, newSize: number, error?: s
 	return { t: "transcript", reqId, text, newSize, error };
 }
 
-function messageEntry(id: string, content: string, timestamp: number): SessionEntry {
+function messageEntry(id: string, content: string, timestamp: number): WireSessionEntry {
 	return {
 		type: "message",
 		id,

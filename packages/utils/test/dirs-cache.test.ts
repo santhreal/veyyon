@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { mkdtempSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -11,7 +12,6 @@ import {
 	getProfileRootDir,
 	setAgentDir,
 } from "@veyyon/utils/dirs";
-import { Snowflake } from "@veyyon/utils/snowflake";
 
 function restoreEnv(key: string, value: string | undefined): void {
 	if (value === undefined) {
@@ -31,7 +31,7 @@ describe("document conversion cache directory", () => {
 		originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
 		originalProfile = process.env.VEYYON_PROFILE;
 		originalXdgCacheHome = process.env.XDG_CACHE_HOME;
-		tempRoot = path.join(os.tmpdir(), "veyyon-utils-document-cache", Snowflake.next());
+		tempRoot = mkdtempSync(path.join(os.tmpdir(), "veyyon-utils-document-cache-"));
 		await fs.mkdir(tempRoot, { recursive: true });
 	});
 
@@ -77,7 +77,10 @@ describe("test directory state cleanup", () => {
 			delete process.env.XDG_CACHE_HOME;
 			__resetDirsFromEnvForTests();
 
-			setAgentDir(path.join(os.tmpdir(), "veyyon-utils-document-cache", Snowflake.next(), "agent"));
+			// A fresh directory each run, so two runs on one machine cannot share it. It only
+			// has to be a path OUTSIDE any profile root for the assertion below to mean
+			// anything; `mkdtemp` gives that and leaves nothing behind.
+			setAgentDir(path.join(mkdtempSync(path.join(os.tmpdir(), "veyyon-utils-document-cache-")), "agent"));
 			expect(getActiveProfile()).toBeUndefined();
 
 			process.env.VEYYON_PROFILE = "cache-profile";

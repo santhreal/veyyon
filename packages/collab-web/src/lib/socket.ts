@@ -10,18 +10,9 @@
 
 import { exponentialBackoffDelay } from "@veyyon/utils/backoff";
 import type { GuestFrame, HostFrame, RelayControlMessage } from "@veyyon/wire";
+import { RELAY_FATAL_CLOSE_REASONS, RELAY_MAX_PENDING_SENDS } from "@veyyon/wire/relay";
 import { open, seal } from "./codec";
 import { packEnvelope, unpackEnvelope } from "./link";
-
-const FATAL_CLOSE_REASONS: Record<number, string> = {
-	4001: "room closed",
-	4004: "no such room",
-	4009: "a host is already connected for this room",
-	4029: "room is full",
-};
-
-/** Max enveloped frames buffered while a reconnect is pending; overflow is dropped. */
-const MAX_PENDING_SENDS = 256;
 
 export interface CollabSocketOptions {
 	/** wss://host[:port]/r/<roomId> — no query string. */
@@ -78,7 +69,7 @@ export class CollabSocket {
 					ws.send(envelope);
 					return;
 				}
-				if (this.#pendingSends.length >= MAX_PENDING_SENDS) return;
+				if (this.#pendingSends.length >= RELAY_MAX_PENDING_SENDS) return;
 				this.#pendingSends.push(envelope);
 			})
 			.catch(() => {
@@ -171,7 +162,7 @@ export class CollabSocket {
 
 	#handleClose(code: number, reason: string): void {
 		if (this.#closed) return;
-		const fatalReason = FATAL_CLOSE_REASONS[code];
+		const fatalReason = RELAY_FATAL_CLOSE_REASONS[code];
 		if (fatalReason !== undefined) {
 			this.#closed = true;
 			this.#pendingSends.length = 0;

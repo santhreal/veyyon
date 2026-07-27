@@ -1,9 +1,11 @@
 import type { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import { dataDir as configuredDataDir, dbPath as configuredDbPath } from "./config";
-import { initBeam } from "./core/beam";
+// `initBeam` is declared in `core/beam/schema.ts`, which reaches one module. Reaching it through
+// `core/beam` instead means importing the memory engine, 402 modules, to run a schema check.
+import { initBeam } from "./core/beam/schema";
 import { closeQuietly, openDatabase } from "./db";
 import { toUtcIso } from "./util/datetime";
 import { tableExists } from "./util/sqlite";

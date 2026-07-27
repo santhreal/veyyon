@@ -6,6 +6,10 @@ export * from "./agent-loop";
 export * from "./append-only-context";
 // Compaction
 export * from "./compaction";
+// `instrumentedCompleteSimple` lives beside `telemetry.ts` rather than in it: it is the one helper
+// there that RUNS a completion, and naming `completeSimple` carried the streaming engine to every
+// consumer of a span attribute. Re-exported here so the public name is unchanged.
+export * from "./instrumented-complete";
 // Process-global pause gate
 export * from "./pause";
 // Proxy utilities

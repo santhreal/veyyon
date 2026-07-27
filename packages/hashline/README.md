@@ -39,6 +39,19 @@ console.log(await fs.readText("hello.ts"));
 See [`src/prompt.md`](./src/prompt.md) for the user-facing description and
 [`src/grammar.lark`](./src/grammar.lark) for the formal grammar.
 
+That description is the text you put in a model's system prompt so it can write
+hashline patches. Take it from the registry if you are working in this repository:
+
+```ts
+import { HASHLINE_PROMPTS } from "@veyyon/hashline/prompts/registry";
+
+const description = HASHLINE_PROMPTS.prompt.text;
+```
+
+The raw file stays published at `@veyyon/hashline/prompt.md`, so an external consumer
+can import it directly with `with { type: "text" }` if a registry row is more
+indirection than you want.
+
 Each file section starts with `[PATH#TAG]`. The tag is a 4-hex
 content hash of the full normalized file text recorded by the
 `SnapshotStore`, and it is not meaningful outside that store. The patcher
@@ -63,7 +76,7 @@ Inside a section:
 Read and write text by path. The default implementations:
 
 - `InMemoryFilesystem` — backed by a `Map`. Tests, sandboxes.
-- `NodeFilesystem` — disk-backed via `Bun.file`/`Bun.write`. Default for CLIs.
+- `NodeFilesystem` — disk-backed via `Bun.file` reads and crash-atomic writes (`writeFileAtomic`, temp + rename). Default for CLIs.
 
 Subclass `Filesystem` to wire hashline into any storage: VFS, S3, an LSP
 text-document protocol, a Git tree, anything.

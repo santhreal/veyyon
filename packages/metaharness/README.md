@@ -30,7 +30,7 @@ bun run serve --port 4700
    shadows the host's darwin one, and a linux `bun` binary is mounted at
    `/opt/veyyon/bin` — so trial setup needs zero outbound network. Alternatives:
    `--install local` (pack a tarball per run) or `--binary` (prebuilt
-   `dist/veyyon-linux-*` self-contained binaries).
+   `dist/vey-linux-*` self-contained binaries).
 2. **Auth never enters containers.** A generated `models.yml` routes provider
    `baseUrl`s at the host pm2 auth-gateway; the gateway resolves credentials
    host-side.
@@ -68,8 +68,9 @@ bun run serve --port 4700
   }
   ```
 
-  `benchmark` is `harbor` or `edit`. Harbor uses `dataset`, `include`,
-  `timeoutMultiplier`, and `prewalk`; edit uses `include` as task IDs.
+  `benchmark` is `harbor`, `edit`, or `deepswe`. Harbor uses `dataset`, `include`,
+  `timeoutMultiplier`, and `prewalk`; edit uses `include` as task IDs; deepswe takes
+  `--tasks`/`--arms`/`--tasks-root` via `extraArgs`.
 - `GET /api/runs/:name` — `{ run, traces }` (syncs native artifacts on read).
 - `POST /api/runs/:name/cancel` — cancel a manager-launched run.
 - `DELETE /api/runs/:name` — permanently delete a finished run (DB row **and**
@@ -157,8 +158,8 @@ known-correct fix for a failed task), `--concurrency` (default 8).
   registries work; task containers reach models via the host gateway.
 - **`--install source` reflects local TS changes** with no rebuild, but Rust
   natives load from the in-tree `packages/natives/native/veyyon_natives.linux-*.node`
-  prebuilds — rebuild those when Rust changes (the loader skips the version
-  sentinel for workspace loads, so a stale `.node` runs silently).
+  prebuilds — rebuild those when Rust changes (the loader only warns once, instead of
+  throwing, on workspace loads, so a stale `.node` keeps running after a single warning).
 - **Source mode is single-arch.** The deps tree matches the docker daemon's
   native arch; trials on emulated images (e.g. x64 tasks on an arm64 host)
   fail setup with an arch-mismatch error — use `--binary` for those.

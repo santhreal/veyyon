@@ -17,12 +17,10 @@
  * MIT License - Copyright (c) 2025 opentui
  */
 import { EventEmitter } from "events";
-import { PASTE_MAX_BYTES } from "./bracketed-paste";
+import { ESC } from "./ansi";
+import { PASTE_END, PASTE_MAX_BYTES, PASTE_START } from "./bracketed-paste";
 import { isKittyProtocolActive } from "./keys";
 
-const ESC = "\x1b";
-const BRACKETED_PASTE_START = "\x1b[200~";
-const BRACKETED_PASTE_END = "\x1b[201~";
 // Paste-mode recovery bounds: a lost/corrupted end marker (ssh/tmux
 // truncation) must not hang input forever or grow memory unboundedly.
 const PASTE_INACTIVITY_TIMEOUT_MS = 1000;
@@ -412,7 +410,7 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 			return;
 		}
 
-		const startIndex = this.#buffer.indexOf(BRACKETED_PASTE_START);
+		const startIndex = this.#buffer.indexOf(PASTE_START);
 		if (startIndex !== -1) {
 			if (startIndex > 0) {
 				const beforePaste = this.#buffer.slice(0, startIndex);
@@ -424,7 +422,7 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 
 			this.#escapeSearchOffset = 0;
 			this.#pendingKittyPrintableCodepoint = undefined;
-			this.#buffer = this.#buffer.slice(startIndex + BRACKETED_PASTE_START.length);
+			this.#buffer = this.#buffer.slice(startIndex + PASTE_START.length);
 			const firstChunk = this.#buffer;
 			this.#buffer = "";
 			this.#pasteMode = true;
@@ -460,10 +458,10 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 	 */
 	#consumePasteChunk(chunk: string): void {
 		const probe = this.#pasteOverlap + chunk;
-		if (probe.indexOf(BRACKETED_PASTE_END) === -1) {
+		if (probe.indexOf(PASTE_END) === -1) {
 			this.#pasteChunks.push(chunk);
 			this.#pasteBytes += chunk.length;
-			const keep = BRACKETED_PASTE_END.length - 1;
+			const keep = PASTE_END.length - 1;
 			this.#pasteOverlap = probe.length > keep ? probe.slice(probe.length - keep) : probe;
 			if (this.#pasteBytes > this.#pasteByteLimit) {
 				this.#abortPaste();
@@ -476,9 +474,9 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		// End marker arrived: join once and split at its first occurrence,
 		// matching the prior indexOf-from-start semantics exactly.
 		const flat = this.#pasteChunks.length > 0 ? `${this.#pasteChunks.join("")}${chunk}` : chunk;
-		const endIndex = flat.indexOf(BRACKETED_PASTE_END);
+		const endIndex = flat.indexOf(PASTE_END);
 		const pastedContent = flat.slice(0, endIndex);
-		const remaining = flat.slice(endIndex + BRACKETED_PASTE_END.length);
+		const remaining = flat.slice(endIndex + PASTE_END.length);
 
 		this.#clearPasteWatchdog();
 		this.#pasteMode = false;

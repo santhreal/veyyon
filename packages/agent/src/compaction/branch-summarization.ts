@@ -8,10 +8,10 @@
 import type { Api, ApiKey, AssistantMessage, Context, Model, SimpleStreamOptions } from "@veyyon/ai";
 import { preferredDialect } from "@veyyon/catalog/identity";
 import { prompt } from "@veyyon/utils";
+import { instrumentedCompleteSimple } from "../instrumented-complete";
 import { AGENT_PROMPTS } from "../prompts/registry";
-import { type AgentTelemetry, instrumentedCompleteSimple } from "../telemetry";
+import type { AgentTelemetry } from "../telemetry";
 import type { AgentMessage } from "../types";
-import { estimateTokens } from "./compaction";
 import type { ReadonlySessionManager, SessionEntry } from "./entries";
 import {
 	type ConvertToLlm,
@@ -20,6 +20,7 @@ import {
 	createCustomMessage,
 	defaultConvertToLlm,
 } from "./messages";
+import { estimateTokens } from "./token-estimate";
 import {
 	computeFileLists,
 	createFileOps,

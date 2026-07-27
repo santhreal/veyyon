@@ -32,8 +32,14 @@ describe("estimateTokensFromText", () => {
 // source-ownership lock (see ./support/package-sources).
 
 // Message-level estimators with a genuinely different contract (AgentMessage,
-// not text) — permanently allowed, never a text-copy.
-const ESTIMATE_ALLOWED = new Set(["agent/src/compaction/compaction.ts"]);
+// not text) — permanently allowed, never a text-copy. It walks a message's
+// blocks and hands the fragments to the owner's tokenizer; it does not estimate
+// text itself.
+//
+// Moved from `agent/src/compaction/compaction.ts` when the estimator was split
+// out of the compaction engine, which reaches 395 modules and which three
+// callers were importing purely to get this function.
+const ESTIMATE_ALLOWED = new Set(["agent/src/compaction/token-estimate.ts"]);
 
 // Every estimateTokens definition now delegates to estimateTokensFromText. The
 // last holdout (mnemopi/src/core/local-llm.ts, a char-based floor(len/4) copy)
@@ -59,6 +65,32 @@ describe("estimateTokens source lock", () => {
 			[],
 		);
 		expect(cleared, "grandfathered entries whose local estimator is gone — remove them from the list").toEqual([]);
+	});
+
+	/**
+	 * The ALLOWED list rots the same way the grandfathered one does, and it rots more quietly.
+	 *
+	 * A stale grandfathered entry fails the case above. A stale ALLOWED entry fails nothing: it simply stops
+	 * matching any file, and the exemption it was granting silently moves nowhere. That is exactly what
+	 * happened when the message-level estimator was split out of `compaction.ts` into its own module. The
+	 * lock did its job and flagged the new file, but only because the new file was a NEW path; had the split
+	 * gone the other way, an exemption for a file that no longer defines an estimator would have sat here
+	 * indefinitely, ready to excuse a hand-rolled copy that landed in that path later.
+	 *
+	 * So every allowed path must still exist AND must still define an estimator.
+	 */
+	it("every permanently allowed path still defines the estimator it is excusing", async () => {
+		const sources = await collectPackageSources({ dirs: ["src"] });
+		const defining = new Set(sources.filter(({ text }) => ESTIMATE_DEF.test(text)).map(({ rel }) => rel));
+
+		// NON-VACUITY, in both directions this can fail silently: the walk really read the monorepo, and it
+		// really found definitions in it. An empty scan satisfies "every allowed path is among them" for
+		// free, and so does a scan whose pattern stopped matching anything.
+		expect(sources.length).toBeGreaterThan(500);
+		expect(defining.size).toBeGreaterThan(0);
+
+		const stale = [...ESTIMATE_ALLOWED].filter(rel => !defining.has(rel));
+		expect(stale, "allowed entries that no longer define an estimator — remove or repoint them").toEqual([]);
 	});
 
 	// A test helper that hand-rolls its own token estimator instead of importing

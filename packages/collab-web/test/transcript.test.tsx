@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { AssistantMessage, SessionEntry } from "@veyyon/wire";
+import type { WireAssistantMessage, WireSessionEntry } from "@veyyon/wire";
 import { renderToStaticMarkup } from "react-dom/server";
 import "./transcript-dom-shim";
 import { Transcript } from "../src/components/transcript/Transcript";
@@ -11,11 +11,11 @@ const TOOL_NAME = "probe_tool";
 const RAW_ASSISTANT_TARGET = "stale-raw-assistant-target";
 const ACTIVE_TOOL_TARGET = "effective-active-tool-target";
 
-function assistantUsage(): AssistantMessage["usage"] {
+function assistantUsage(): WireAssistantMessage["usage"] {
 	return { input: 1, output: 2, cacheRead: 0, cacheWrite: 0, totalTokens: 3, cost: { total: 0 } };
 }
 
-function committedAssistantToolCall(): SessionEntry {
+function committedAssistantToolCall(): WireSessionEntry {
 	return {
 		type: "message",
 		id: "assistant-entry-1",
@@ -34,6 +34,7 @@ function committedAssistantToolCall(): SessionEntry {
 				},
 			],
 			model: "test/model",
+			provider: "anthropic",
 			usage: assistantUsage(),
 			stopReason: "stop",
 			timestamp: 1,
@@ -52,7 +53,7 @@ function activeTool(): ActiveTool {
 }
 
 function renderTranscript(props: {
-	entries?: readonly SessionEntry[];
+	entries?: readonly WireSessionEntry[];
 	activeTools?: ReadonlyMap<string, ActiveTool>;
 	working: boolean;
 }): string {

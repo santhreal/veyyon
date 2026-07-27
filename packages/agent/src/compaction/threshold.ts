@@ -1,5 +1,20 @@
 /**
- * The one owner of "when does auto-compaction trigger?".
+ * The one owner of "when does auto-compaction trigger?", which now includes the settings shape the
+ * decision reads and the reserve policy the auto behaviour needs.
+ *
+ * THE SECOND HALF ARRIVED LATE, and why it had to is worth recording. `CompactionSettings`,
+ * `resolveBudgetReserveTokens`, `shouldCompact` and the three threshold wrappers lived in
+ * `./compaction.ts`, the module that RUNS a compaction: it imports the `@veyyon/ai` barrel, the provider
+ * dialects, the prompt registry and the tokenizer, because summarizing a conversation needs all of that.
+ * Asking "is 170k over the trigger?" needs none of it. So every host that only wanted the trigger paid
+ * for the engine: `packages/coding-agent/src/config/compaction-strategy.ts` named
+ * `@veyyon/agent-core/compaction` for `resolveThresholdTokens` alone, and through it `config/settings.ts`
+ * -- the most imported module in that package, 528 test files -- reached `@veyyon/ai/stream.ts`. An
+ * architecture gate there asserted the opposite and passed, because its resolution table did not know
+ * this package's name (see `packages/utils/src/module-reach-workspace.ts`).
+ *
+ * Everything here is arithmetic over primitives and imports two clamps. `./compaction.ts` re-exports all
+ * of it, so no caller changed.
  *
  * There used to be TWO settings on this single axis — `compaction.thresholdTokens`
  * (absolute) and `compaction.thresholdPercent` (percent of window) — both labelled
@@ -197,4 +212,149 @@ export function formatCompactionThreshold(resolved: ResolvedCompactionThreshold,
 			: `${tokens} (fixed)`;
 	}
 	return `${tokens} (auto: ${formatTokens(contextWindow)} window minus reserve)`;
+}
+
+export interface CompactionSettings {
+	enabled: boolean;
+	/**
+	 * How compaction reduces the context: summarize in place, or hand off to a
+	 * new session. There are exactly two.
+	 *
+	 * It used to admit `"context-full"`, `"shake"` and `"off"` as well. The first
+	 * two are engine actions, not user strategies, and were folded into `summary`
+	 * when the settings enum collapsed to these two; `"off"` was a third way to
+	 * spell `enabled: false`, which meant two fields could disagree about whether
+	 * compaction runs. The host normalizes every stored and legacy value before
+	 * constructing this (`normalizeCompactionStrategy`), and a legacy `"off"`
+	 * migrates to `strategy: "handoff"` plus `enabled: false`, so the off-ness is
+	 * carried by the field that owns it.
+	 */
+	strategy?: "handoff" | "summary";
+	/**
+	 * The compaction trigger, unit included: `auto`, `85%`, or `170000`. The one
+	 * threshold surface — see {@link resolveCompactionThreshold}.
+	 */
+	threshold?: string;
+	/** Retired; read only by the migration in {@link withLegacyCompactionThreshold}. */
+	thresholdPercent?: number;
+	/** Retired; read only by the migration in {@link withLegacyCompactionThreshold}. */
+	thresholdTokens?: number;
+	midTurnEnabled?: boolean;
+	/**
+	 * Tokens reserved below the context window for the next prompt + response.
+	 *
+	 * Leave unset to use {@link DEFAULT_RESERVE_TOKENS}; the unset state is the
+	 * provenance signal that lets small-window recovery replace the default with
+	 * a proportional reserve (see {@link resolveBudgetReserveTokens}). An
+	 * explicit value — even one equal to the default — is always honored.
+	 */
+	reserveTokens?: number;
+	keepRecentTokens: number;
+	autoContinue?: boolean;
+	/**
+	 * Optional summarizer endpoint. This is still the `summary` strategy — the
+	 * endpoint returns real summary TEXT that veyyon stores and can read. It is
+	 * not a provider-native compaction path and grants no provider a private
+	 * history format.
+	 */
+	remoteEndpoint?: string;
+}
+
+/** Reserve applied when {@link CompactionSettings.reserveTokens} is unset. */
+export const DEFAULT_RESERVE_TOKENS = 16384;
+
+// reserveTokens is deliberately absent: an unset reserve is what marks it as
+// defaulted, which resolveBudgetReserveTokens needs to distinguish "user never
+// chose a reserve" from "user explicitly configured the default value".
+export const DEFAULT_COMPACTION_SETTINGS: CompactionSettings = {
+	enabled: true,
+	strategy: "summary",
+	threshold: AUTO_COMPACTION_THRESHOLD,
+	thresholdPercent: -1,
+	thresholdTokens: -1,
+	midTurnEnabled: true,
+	keepRecentTokens: 20000,
+	autoContinue: true,
+};
+
+/**
+ * Effective reserve: at least 15% of context window or the configured floor
+ * (defaulting to {@link DEFAULT_RESERVE_TOKENS} when unset), whichever is larger.
+ */
+export function effectiveReserveTokens(contextWindow: number, settings: CompactionSettings): number {
+	return Math.max(Math.floor(contextWindow * 0.15), settings.reserveTokens ?? DEFAULT_RESERVE_TOKENS);
+}
+
+/**
+ * Reserve used when deciding whether a prompt still fits inside the model window.
+ *
+ * The default absolute reserve predates small bundled windows and can leave no
+ * practical budget there; recover a DEFAULTED reserve that is impossible for
+ * the window with the 15% proportional reserve (clamped to >= 1 so the derived
+ * threshold stays strictly below the window even for tiny test windows).
+ * Explicit valid reserves — including one that happens to equal the default —
+ * still win, because they intentionally shrink the usable prompt budget;
+ * provenance is carried by `settings.reserveTokens` being unset, never by
+ * comparing values against the default.
+ */
+export function resolveBudgetReserveTokens(contextWindow: number, settings: CompactionSettings): number {
+	const reserveTokens = effectiveReserveTokens(contextWindow, settings);
+	const proportionalReserveTokens = Math.max(1, Math.floor(contextWindow * 0.15));
+	const reserveWasDefaulted = settings.reserveTokens === undefined;
+	const defaultReserveIsEffectivelyImpossible =
+		reserveWasDefaulted && reserveTokens >= contextWindow - proportionalReserveTokens;
+	const reserveExceedsWindow = reserveTokens >= contextWindow;
+
+	return defaultReserveIsEffectivelyImpossible || reserveExceedsWindow ? proportionalReserveTokens : reserveTokens;
+}
+
+/**
+ * Check if compaction should trigger based on context usage.
+ */
+export function shouldCompact(contextTokens: number, contextWindow: number, settings: CompactionSettings): boolean {
+	// `enabled` is the only off switch. The `strategy === "off"` clause that also
+	// stood here was the second one, and two fields that can each disable a
+	// feature can disagree about whether it is disabled.
+	if (!settings.enabled || contextWindow <= 0) return false;
+	const thresholdTokens = resolveThresholdTokens(contextWindow, settings);
+	return contextTokens > thresholdTokens;
+}
+
+/**
+ * Resolve the compaction trigger for a window, with its provenance.
+ *
+ * The choice between units (auto / percent / absolute) and the migration off the
+ * two retired keys belong to {@link resolveCompactionThreshold}; what stays here
+ * is the RESERVE policy the auto behavior needs. The default absolute reserve can
+ * exceed bundled small-context windows, or nearly consume a 16k-class window; in
+ * those known-impossible default configurations `resolveBudgetReserveTokens`
+ * substitutes the proportional reserve so threshold/recovery-band checks stay
+ * usable, while explicit configured reserves still define the usable budget.
+ */
+export function resolveThresholdWithOrigin(
+	contextWindow: number,
+	settings: CompactionSettings,
+): ResolvedCompactionThreshold {
+	return resolveCompactionThreshold(
+		contextWindow,
+		settings,
+		() => contextWindow - resolveBudgetReserveTokens(contextWindow, settings),
+	);
+}
+
+/** Context tokens above which compaction triggers. See {@link resolveThresholdWithOrigin}. */
+export function resolveThresholdTokens(contextWindow: number, settings: CompactionSettings): number {
+	return resolveThresholdWithOrigin(contextWindow, settings).tokens;
+}
+
+/**
+ * True when the operator configured an absolute token threshold that this model's
+ * window cannot hold, so the resolver had to cap it below the configured value.
+ * Callers surface this loudly: the absolute amount is honored up to
+ * `contextWindow - 1` and never silently reinterpreted, so the operator learns
+ * their model-independent amount was capped for the current (smaller) model.
+ */
+export function isThresholdTokensClampedForWindow(contextWindow: number, settings: CompactionSettings): boolean {
+	const resolved = resolveThresholdWithOrigin(contextWindow, settings);
+	return resolved.origin === "tokens" && resolved.clamped;
 }

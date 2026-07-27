@@ -17,7 +17,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { getSegmenter, moveWordLeft, moveWordRight } from "@veyyon/tui/utils";
-import { lcg } from "./helpers/adversarial-strings";
+import { fuzzSeed, lcg } from "@veyyon/utils/adversarial-strings";
 
 /** The set of valid grapheme-cluster boundaries of `text` (indices, incl. 0 and length). */
 function graphemeBoundaries(text: string): Set<number> {
@@ -120,7 +120,7 @@ describe("moveWordLeft / moveWordRight — invariants (fuzz)", () => {
 	}
 
 	it("stays in range, makes progress, and lands on grapheme boundaries", () => {
-		const rand = lcg(0x5f_3a_c0_de);
+		const rand = lcg(fuzzSeed(0x5f_3a_c0_de));
 		for (let iter = 0; iter < 20_000; iter++) {
 			const text = build(rand);
 			const len = text.length;
@@ -152,7 +152,7 @@ describe("moveWordLeft / moveWordRight — invariants (fuzz)", () => {
 	});
 
 	it("repeated moves converge to the edges without overshoot or stall", () => {
-		const rand = lcg(0x1234_abcd);
+		const rand = lcg(fuzzSeed(0x1234_abcd));
 		for (let iter = 0; iter < 3000; iter++) {
 			const text = build(rand);
 			const len = text.length;

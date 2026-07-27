@@ -4,9 +4,13 @@ Native Rust functionality via N-API.
 
 ## What's Inside
 
+Highlights:
+
 - **Grep**: Regex-based search powered by ripgrep's engine with native file walking and matching
-- **Find**: Glob-based file/directory discovery with gitignore support (pure TypeScript via `globPaths`)
+- **Find**: Glob-based file/directory discovery with gitignore support (native `glob` binding)
 - **SIXEL**: Terminal image encoding for SIXEL-capable terminals (decode, resize, encode in one pass)
+
+The addon also exports PTY/process/shell classes (`Process`, `PtySession`, `Shell`), clipboard and image helpers, AST tools (`astGrep`, `astEdit`, `astMatch`), syntax highlighting (`highlightCode`), Kitty key parsing, task isolation (`isoProbe`/`isoStart`/`isoDiff`/`isoResolve`), `htmlToMarkdown`, BPE `countTokens`, fuzzy find, workspace listing, code summarization, and terminal-width text utilities.
 
 General-purpose image processing (decode/resize/encode for files and buffers)
 lives in [`Bun.Image`](https://bun.com/docs/runtime/image) on the JS side; this
@@ -67,13 +71,11 @@ native/                  # Core loader files and local/CI native build outputs
 npm/<platform>-<arch>/   # Generated at publish time, not committed
   package.json           # @veyyon/natives-<platform>-<arch>
   *.node                 # Only that platform's addon binary or x64 ISA variants
-src/                     # TypeScript wrappers and generated declarations source
-  native.ts
-  index.ts
+src/                     # sha256-sidecar.ts, the only TypeScript source (./sha256-sidecar subpath export)
 ```
 
-The published core package contains only the JS loader, declarations, README,
-and `package.json`. Release publishing generates one leaf package per supported
+The published core package contains only the JS loader, declarations, the
+sha256-sidecar source, README, CHANGELOG, and `package.json`. Release publishing generates one leaf package per supported
 `os`/`cpu` pair and injects those leaves into the core manifest as pinned
 `optionalDependencies`, so package managers install only the host platform's
 native addon. x64 leaves include every built ISA variant, and the loader keeps
@@ -123,6 +125,6 @@ resolve correctly.
 The same classification runs on both sides of the build/runtime boundary and
 cannot share code, so it is implemented twice: `classifyAvx2Support` in
 `native/loader-state.js` (runtime) and `classifyHostAvx2Support` in
-`scripts/host-detect.ts` (build). They must agree. `native-avx2-classify.test.ts`
+`scripts/host-detect.ts` at the repo root (build). They must agree. `native-avx2-classify.test.ts`
 runs one probe matrix through both and fails if their verdicts ever diverge. If
 you touch either classifier, run that parity suite before you commit.

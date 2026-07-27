@@ -9,13 +9,13 @@
 import type {
 	AgentEvent,
 	AgentSnapshot,
-	AssistantMessage,
-	SessionEntry,
-	SessionHeader,
 	SubagentProgressPayload,
 	ToolCallContent,
-	ToolResultMessage,
+	WireAssistantMessage,
 	WireModel,
+	WireSessionEntry,
+	WireSessionHeader,
+	WireToolResultMessage,
 	WireUsage,
 } from "@veyyon/wire";
 
@@ -39,7 +39,7 @@ function mkUsage(input: number, output: number, cacheRead: number, cost: number)
 	return { input, output, cacheRead, cacheWrite: 0, totalTokens: input + output + cacheRead, cost: { total: cost } };
 }
 
-export const fixtureHeader: SessionHeader = {
+export const fixtureHeader: WireSessionHeader = {
 	type: "session",
 	id: "mock-collab-session",
 	title: "relay reconnect audit",
@@ -62,7 +62,7 @@ const delay = Math.min(1000 * 2 ** attempt, 30_000);
 
 Checking the actual implementation now.`;
 
-export const fixtureEntries: SessionEntry[] = [
+export const fixtureEntries: WireSessionEntry[] = [
 	{
 		id: "e01",
 		parentId: null,
@@ -105,6 +105,7 @@ export const fixtureEntries: SessionEntry[] = [
 				},
 			],
 			model: fixtureModel.id,
+			provider: fixtureModel.provider,
 			usage: mkUsage(2_410, 386, 18_200, 0.0119),
 			stopReason: "toolUse",
 			timestamp: NOW - 30 * MIN,
@@ -162,6 +163,7 @@ export const fixtureEntries: SessionEntry[] = [
 				},
 			],
 			model: fixtureModel.id,
+			provider: fixtureModel.provider,
 			usage: mkUsage(3_080, 64, 20_540, 0.0124),
 			stopReason: "stop",
 			timestamp: NOW - 29 * MIN,
@@ -192,6 +194,7 @@ export const fixtureEntries: SessionEntry[] = [
 				},
 			],
 			model: fixtureModel.id,
+			provider: fixtureModel.provider,
 			usage: mkUsage(3_420, 142, 21_900, 0.0131),
 			stopReason: "stop",
 			timestamp: NOW - 25 * MIN,
@@ -222,6 +225,7 @@ export const fixtureEntries: SessionEntry[] = [
 				},
 			],
 			model: fixtureModel.id,
+			provider: fixtureModel.provider,
 			usage: mkUsage(3_900, 98, 23_400, 0.0138),
 			stopReason: "stop",
 			timestamp: NOW - 20 * MIN,
@@ -252,6 +256,7 @@ export const fixtureEntries: SessionEntry[] = [
 				},
 			],
 			model: fixtureModel.id,
+			provider: fixtureModel.provider,
 			usage: mkUsage(4_020, 54, 23_500, 0.014),
 			stopReason: "toolUse",
 			timestamp: NOW - 19 * MIN,
@@ -335,6 +340,7 @@ export const fixtureEntries: SessionEntry[] = [
 				},
 			],
 			model: fixtureModel.id,
+			provider: fixtureModel.provider,
 			usage: mkUsage(12_640, 187, 31_780, 0.0212),
 			stopReason: "stop",
 			timestamp: NOW - 8 * MIN,
@@ -460,6 +466,7 @@ const subagentTranscriptLines: unknown[] = [
 				},
 			],
 			model: fixtureModel.id,
+			provider: fixtureModel.provider,
 			usage: mkUsage(1_180, 96, 0, 0.0021),
 			stopReason: "toolUse",
 			timestamp: SUB_T0 + 9_000,
@@ -501,6 +508,7 @@ const subagentTranscriptLines: unknown[] = [
 				},
 			],
 			model: fixtureModel.id,
+			provider: fixtureModel.provider,
 			usage: mkUsage(1_460, 41, 980, 0.0024),
 			stopReason: "toolUse",
 			timestamp: SUB_T0 + 20_000,
@@ -539,6 +547,7 @@ const subagentTranscriptLines: unknown[] = [
 				},
 			],
 			model: fixtureModel.id,
+			provider: fixtureModel.provider,
 			usage: mkUsage(1_720, 88, 1_240, 0.0029),
 			stopReason: "stop",
 			timestamp: SUB_T0 + 30_000,
@@ -555,7 +564,7 @@ export const subagentTranscriptJsonl: string = `${subagentTranscriptLines
 
 export type ScriptedStep =
 	| { kind: "event"; event: AgentEvent }
-	| { kind: "entry"; entry: SessionEntry }
+	| { kind: "entry"; entry: WireSessionEntry }
 	| { kind: "state"; streaming: boolean };
 
 const TURN_THINKING_1 = "Guest wants a live check. ";
@@ -581,10 +590,11 @@ export function makeScriptedTurn(seq: number, parentId: string | null): Scripted
 	const toolResultText =
 		"3 tests passed (reconnect.test.ts)\n3 sockets reconnected in 1.2s\n0 duplicate entries after resync";
 
-	const partial = (content: AssistantMessage["content"]): AssistantMessage => ({
+	const partial = (content: WireAssistantMessage["content"]): WireAssistantMessage => ({
 		role: "assistant",
 		content,
 		model: fixtureModel.id,
+		provider: fixtureModel.provider,
 		usage: mkUsage(0, 0, 0, 0),
 		stopReason: "stop",
 		timestamp: ts,
@@ -598,16 +608,17 @@ export function makeScriptedTurn(seq: number, parentId: string | null): Scripted
 		intent: "Running the reconnect suite",
 	};
 
-	const a1Final: AssistantMessage = {
+	const a1Final: WireAssistantMessage = {
 		role: "assistant",
 		content: [{ type: "thinking", thinking: TURN_THINKING_2 }, { type: "text", text: TURN_TEXT_2 }, toolCall],
 		model: fixtureModel.id,
+		provider: fixtureModel.provider,
 		usage: mkUsage(4_310, 164, 24_800, 0.0147),
 		stopReason: "toolUse",
 		timestamp: ts,
 	};
 
-	const r1Message: ToolResultMessage = {
+	const r1Message: WireToolResultMessage = {
 		role: "toolResult",
 		toolCallId: callId,
 		toolName: "bash",
@@ -616,10 +627,11 @@ export function makeScriptedTurn(seq: number, parentId: string | null): Scripted
 		timestamp: ts,
 	};
 
-	const a2Final: AssistantMessage = {
+	const a2Final: WireAssistantMessage = {
 		role: "assistant",
 		content: [{ type: "text", text: TURN_CLOSE_2 }],
 		model: fixtureModel.id,
+		provider: fixtureModel.provider,
 		usage: mkUsage(4_690, 52, 25_400, 0.0153),
 		stopReason: "stop",
 		timestamp: ts,

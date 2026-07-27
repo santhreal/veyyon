@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { latexToUnicode, renderMathInText } from "@veyyon/tui";
-import { FRAGMENTS, lcg } from "./helpers/adversarial-strings";
+import { FRAGMENTS, fuzzStrings } from "@veyyon/utils/adversarial-strings";
 
 // LaTeX-flavored adversarial tokens on top of the generic fragment pool.
 const LATEX_TOKENS: readonly string[] = [
@@ -52,11 +52,20 @@ function buildLatex(rand: () => number): string {
 	return out;
 }
 
+/**
+ * Inputs that broke the converter before, replayed first on every run and under every seed.
+ *
+ * Empty is the honest state. Add the string a failure's `corpus entry:` line prints, with a comment
+ * naming the bug it locks out; see `docs/internal/fuzzing.md`.
+ */
+const LATEX_CORPUS: readonly string[] = [];
+
+/** Same, for the mixed prose-and-math renderer. See {@link LATEX_CORPUS}. */
+const MIXED_TEXT_CORPUS: readonly string[] = [];
+
 describe("latex fuzz invariants", () => {
 	it("latexToUnicode never throws or hangs on adversarial input", () => {
-		const rand = lcg(0x1a7e_5000);
-		for (let iter = 0; iter < 8000; iter++) {
-			const s = buildLatex(rand);
+		fuzzStrings({ seed: 0x1a7e_5000, iterations: 8000, corpus: LATEX_CORPUS, build: buildLatex }, s => {
 			let out: string;
 			try {
 				out = latexToUnicode(s);
@@ -66,20 +75,28 @@ describe("latex fuzz invariants", () => {
 			if (typeof out !== "string") {
 				throw new Error(`latexToUnicode(${JSON.stringify(s)}) returned ${typeof out}`);
 			}
-		}
+		});
 	}, 30_000);
 
 	it("renderMathInText never throws on adversarial mixed text", () => {
-		const rand = lcg(0x9a2b_7711);
-		for (let iter = 0; iter < 6000; iter++) {
-			const s = `prefix $${buildLatex(rand)}$ mid \\(${buildLatex(rand)}\\) tail`;
-			try {
-				const out = renderMathInText(s);
-				expect(typeof out).toBe("string");
-			} catch (e) {
-				throw new Error(`renderMathInText(${JSON.stringify(s)}) threw: ${e}`);
-			}
-		}
+		fuzzStrings(
+			{
+				seed: 0x9a2b_7711,
+				iterations: 6000,
+				corpus: MIXED_TEXT_CORPUS,
+				// Math delimiters around adversarial bodies, which is the shape the renderer sees in a
+				// model's answer: inline `$...$` and `\(...\)` in one line of prose.
+				build: rand => `prefix $${buildLatex(rand)}$ mid \\(${buildLatex(rand)}\\) tail`,
+			},
+			s => {
+				try {
+					const out = renderMathInText(s);
+					expect(typeof out).toBe("string");
+				} catch (e) {
+					throw new Error(`renderMathInText(${JSON.stringify(s)}) threw: ${e}`);
+				}
+			},
+		);
 	}, 30_000);
 
 	it("does not overflow the stack on deeply nested input", () => {

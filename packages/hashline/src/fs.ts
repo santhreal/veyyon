@@ -223,6 +223,9 @@ export async function writeFileAtomic(targetPath: string, content: string): Prom
 			await handle.close();
 		}
 	} catch (error) {
+		// The WRITE error is what the caller needs and it is rethrown with the paths attached. A failure to
+		// remove the temp file could only be surfaced by replacing that error with a less useful one, so it is
+		// deliberately dropped; the worst outcome is one leftover `*.tmp` beside the target.
 		await fs.rm(tempPath, { force: true }).catch(() => {});
 		throw withTargetInMessage(error, target, tempPath);
 	}

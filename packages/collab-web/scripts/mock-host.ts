@@ -10,7 +10,7 @@
  */
 
 import { clampLow } from "@veyyon/utils/math";
-import type { AgentSnapshot, HostFrame, SessionEntry, SessionState, WireFrame } from "@veyyon/wire";
+import type { AgentSnapshot, HostFrame, SessionState, WireFrame, WireSessionEntry } from "@veyyon/wire";
 import { generateRoomKey, importRoomKey, open, seal } from "../src/lib/codec";
 import { COLLAB_PROTO, formatCollabLink, generateRoomId, packEnvelope, unpackEnvelope } from "../src/lib/link";
 import {
@@ -56,7 +56,7 @@ const link = formatCollabLink(relay.url, roomId, rawKey);
 
 // ── mutable session state ────────────────────────────────────────────────────
 
-const entries: SessionEntry[] = [...fixtureEntries];
+const entries: WireSessionEntry[] = [...fixtureEntries];
 const agents: AgentSnapshot[] = fixtureAgents.map(agent => ({ ...agent }));
 const peers = new Map<number, string>();
 const transcriptBytes = new TextEncoder().encode(subagentTranscriptJsonl);
@@ -120,7 +120,7 @@ function broadcastState(): void {
 	sendFrame({ t: "state", state: buildState() });
 }
 
-function appendEntry(entry: SessionEntry): void {
+function appendEntry(entry: WireSessionEntry): void {
 	entries.push(entry);
 	lastEntryId = entry.id;
 	sendFrame({ t: "entry", entry });

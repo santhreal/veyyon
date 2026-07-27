@@ -15,7 +15,7 @@
 import { describe, expect, it } from "bun:test";
 import { wordWrapLine } from "@veyyon/tui/components/editor";
 import { getSegmenter, visibleWidth } from "@veyyon/tui/utils";
-import { buildString, lcg } from "./helpers/adversarial-strings";
+import { fuzzStrings } from "@veyyon/utils/adversarial-strings";
 
 const WIDTHS = [0, 1, 2, 3, 5, 8, 20, -1, Number.NaN, Number.POSITIVE_INFINITY];
 
@@ -45,11 +45,20 @@ function assertChunkInvariants(line: string, chunks: ReturnType<typeof wordWrapL
 	}
 }
 
+/**
+ * Lines that broke the wrapper before, replayed first on every run and under every seed.
+ *
+ * Empty is the honest state. Add the string a failure's `corpus entry:` line prints, with a comment
+ * naming the bug it locks out; see `docs/internal/fuzzing.md`.
+ */
+const WORDWRAP_CORPUS: readonly string[] = [];
+
+/** Same, for the clean-pool visible-width property. See {@link WORDWRAP_CORPUS}. */
+const CLEAN_WIDTH_CORPUS: readonly string[] = [];
+
 describe("wordWrapLine fuzz invariants", () => {
 	it("never throws and emits in-range, forward-ordered chunk indices", () => {
-		const rand = lcg(0x2ec_0_a11);
-		for (let iter = 0; iter < 10000; iter++) {
-			const line = buildString(rand);
+		fuzzStrings({ seed: 0x2ec_0_a11, iterations: 10000, corpus: WORDWRAP_CORPUS }, line => {
 			for (const width of WIDTHS) {
 				let chunks: ReturnType<typeof wordWrapLine>;
 				try {
@@ -59,7 +68,7 @@ describe("wordWrapLine fuzz invariants", () => {
 				}
 				assertChunkInvariants(line, chunks);
 			}
-		}
+		});
 	});
 
 	it("returns the whole line as one chunk when it already fits", () => {
@@ -109,21 +118,30 @@ describe("wordWrapLine fuzz invariants", () => {
 			"x1",
 			"。",
 		];
-		const rand = lcg(0x9a_5c_11_fe);
-		for (let iter = 0; iter < 8000; iter++) {
-			const n = Math.floor(rand() * 24);
-			let line = "";
-			for (let k = 0; k < n; k++) line += CLEAN[Math.floor(rand() * CLEAN.length)];
-			for (const width of [1, 2, 3, 5, 8, 13]) {
-				for (const chunk of wordWrapLine(line, width)) {
-					const w = visibleWidth(chunk.text);
-					if (w > width) {
-						// Only tolerated when the chunk is a lone, unsplittable grapheme.
-						expect(graphemeCount(chunk.text)).toBe(1);
+		fuzzStrings(
+			{
+				seed: 0x9a_5c_11_fe,
+				iterations: 8000,
+				corpus: CLEAN_WIDTH_CORPUS,
+				build: rand => {
+					const n = Math.floor(rand() * 24);
+					let out = "";
+					for (let k = 0; k < n; k++) out += CLEAN[Math.floor(rand() * CLEAN.length)];
+					return out;
+				},
+			},
+			line => {
+				for (const width of [1, 2, 3, 5, 8, 13]) {
+					for (const chunk of wordWrapLine(line, width)) {
+						const w = visibleWidth(chunk.text);
+						if (w > width) {
+							// Only tolerated when the chunk is a lone, unsplittable grapheme.
+							expect(graphemeCount(chunk.text)).toBe(1);
+						}
 					}
 				}
-			}
-		}
+			},
+		);
 	});
 
 	it("gives exact packing for known wide-char lines", () => {

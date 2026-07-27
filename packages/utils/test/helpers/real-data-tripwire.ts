@@ -47,9 +47,9 @@
  * imported FIRST so it captures `fs.rmSync` before the wrapping below replaces it.
  */
 
-import { installTempDirJanitor } from "./temp-dir-janitor";
 import * as os from "node:os";
 import * as path from "node:path";
+import { installTempDirJanitor } from "./temp-dir-janitor";
 
 /** Env var by which the test runner names the real config root it redirected away from. */
 export const REAL_CONFIG_ROOT_ENV = "VEYYON_TEST_REAL_CONFIG_ROOT";

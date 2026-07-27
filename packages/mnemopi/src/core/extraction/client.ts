@@ -1,15 +1,17 @@
-import { type ApiKey, type FetchImpl, withAuth } from "@veyyon/ai";
+import type { ApiKey, FetchImpl } from "@veyyon/ai";
+// The owner, not the barrel: `withAuth` is the only runtime name this file wants
+// from `@veyyon/ai`, and the barrel brings the streaming engine, the provider
+// registry and the model catalogue with it for a retry wrapper.
+import { withAuth } from "@veyyon/ai/auth-retry";
 import * as AIError from "@veyyon/ai/error";
+import { OPENROUTER_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { trimTrailingSlashes, withScopedTimeoutSignal } from "@veyyon/utils";
 
 import { getDiagnostics } from "./diagnostics";
 import { EXTRACTION_SYSTEM_PROMPT, EXTRACTION_USER_TEMPLATE } from "./prompts";
 
 export const DEFAULT_EXTRACTION_MODEL = process.env.MNEMOPI_EXTRACTION_MODEL || "google/gemini-2.5-flash";
-export const OPENROUTER_BASE_URL = (process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1").replace(
-	/\/+$/,
-	"",
-);
+export const OPENROUTER_BASE_URL = trimTrailingSlashes(process.env.OPENROUTER_BASE_URL || OPENROUTER_API_ENDPOINT);
 export const FALLBACK_MODELS = ["google/gemini-flash-latest"] as const;
 const RATE_LIMIT_BACKOFF_BASE_MS = 1_000;
 const RATE_LIMIT_BACKOFF_MAX_MS = 30_000;

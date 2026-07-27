@@ -1,3 +1,4 @@
+import { SGR_RESET } from "../ansi";
 import { getKittyGraphics } from "../kitty-graphics";
 import {
 	getCellDimensions,
@@ -33,7 +34,8 @@ const SAVE_CURSOR = "\x1b7";
 const RESTORE_CURSOR = "\x1b8";
 // Direct placements reserve height with leading zero-width rows. Keep them
 // non-plain so transcript blank-edge trimming does not collapse image-only blocks.
-const RESERVED_IMAGE_ROW = "\x1b[0m";
+// A reserved row carries nothing but an attribute reset, so the terminal leaves the cells alone.
+const RESERVED_IMAGE_ROW = SGR_RESET;
 
 /** Default count of inline images kept as live graphics before older ones fall back to text. */
 export const DEFAULT_MAX_INLINE_IMAGES = 8;

@@ -1,5 +1,5 @@
 import { getKeybindings } from "../keybindings";
-import { extractPrintableText } from "../keys";
+import { extractPrintableText, isLoneLineFeed } from "../keys";
 import type { MouseRoutable, SgrMouseEvent } from "../mouse";
 import type { Component } from "../tui";
 import {
@@ -862,7 +862,7 @@ export class SettingsList implements Component {
 			this.#jumpSection(1);
 		} else if (kb.matches(data, "tui.select.pageUp")) {
 			this.#jumpSection(-1);
-		} else if (kb.matches(data, "tui.select.confirm") || data === " " || data === "\n") {
+		} else if (kb.matches(data, "tui.select.confirm") || data === " " || isLoneLineFeed(data)) {
 			// Confirm on a focused heading drops into its first setting.
 			if (this.#sectionFocus) this.#sectionFocus = false;
 			else this.#activateItem();

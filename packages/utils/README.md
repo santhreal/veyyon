@@ -9,7 +9,7 @@ Shared utilities for [veyyon](https://github.com/santhreal/veyyon) packages. Bun
 | `logger` | Centralized logger writing to `~/.veyyon/logs/` with rotation (TUI-safe — never stdout) |
 | `prompt` | Handlebars-based prompt templating and formatting helpers |
 | `dirs` | Path helpers for veyyon config directories (`~/.veyyon`, XDG-aware on Linux) |
-| `stream` | `readStream` / `readLines` helpers over `ReadableStream` |
+| `stream` | `readLines` / `readJsonl` / `readSseEvents` helpers over `ReadableStream` |
 | `ptree` / `procmgr` | Process trees, `ChildProcess` wrapper, process lifecycle management |
 | `postmortem` | Cleanup callbacks on exit, signals, and fatal exceptions |
 | `which` | `$which()` binary lookup with caching |
@@ -25,8 +25,8 @@ Import from the root barrel or per-module subpaths (`@veyyon/utils/<module>`).
 ## Install
 
 Veyyon ships through GitHub only, so `@veyyon/utils` is not on npm or any other
-registry. It depends on its sibling packages with Bun's `workspace:*` and
-`catalog:` protocols, which resolve only inside a checkout, so a registry
+registry. It depends on its sibling packages with Bun's `catalog:` protocol,
+which resolves only inside a checkout, so a registry
 install could not work even if one were published.
 
 Consume it from a checkout instead:

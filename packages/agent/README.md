@@ -21,7 +21,7 @@ bun --cwd=packages/agent link
 Then, in your own project:
 
 ```sh
-bun link @veyyon/agent
+bun link @veyyon/agent-core
 ```
 
 See [the SDK guide](../../docs/sdk.md#installation) for the same steps in full.
@@ -152,7 +152,7 @@ const agent = new Agent({
   initialState: {
     systemPrompt: string[],
     model: Model,
-    thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max",
+    thinkingLevel: "minimal" | "low" | "medium" | "high" | "xhigh" | "max",
     tools: AgentTool<any>[],
     messages: AgentMessage[],
   },
@@ -164,7 +164,8 @@ const agent = new Agent({
   transformContext: async (messages, signal) => pruneOldMessages(messages),
 
   // How to handle queued messages: "one-at-a-time" (default) or "all"
-  queueMode: "one-at-a-time",
+  steeringMode: "one-at-a-time",
+  followUpMode: "one-at-a-time",
 
   // Custom stream function (for proxy backends)
   streamFn: streamProxy,
@@ -183,7 +184,7 @@ const agent = new Agent({
 interface AgentState {
 	systemPrompt: string[];
 	model: Model;
-	thinkingLevel: ThinkingLevel;
+	thinkingLevel?: Effort;
 	tools: AgentTool<any>[];
 	messages: AgentMessage[];
 	isStreaming: boolean;

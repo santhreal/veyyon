@@ -201,6 +201,9 @@ export class InProcessClient {
 	}
 
 	[Symbol.dispose](): void {
+		// `Symbol.dispose` is synchronous and cannot await or reject, so there is nowhere for a teardown
+		// failure to go: throwing here would replace whatever error ended the `using` block. A caller that
+		// needs the teardown to succeed awaits `dispose()` itself, which reports in full.
 		this.dispose().catch(() => {});
 	}
 }

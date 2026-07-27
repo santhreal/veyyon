@@ -1,12 +1,11 @@
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { dataDir as configuredDataDir } from "../config";
+import { dataDir as configuredDataDir, DEFAULT_DB_FILENAME } from "../config";
 import { closeQuietly, openDatabase } from "../db";
 
 export const DEFAULT_DATA_DIR = join(homedir(), ".hermes", "mnemopi", "data");
 export const BANKS_DIR = join(DEFAULT_DATA_DIR, "banks");
-const DB_FILENAME = "mnemopi.db";
 
 export class ValueError extends Error {
 	override name = "ValueError";
@@ -35,7 +34,7 @@ export class BankManager {
 		const bankDir = join(this.banksDir, name);
 		if (existsSync(bankDir)) throw new ValueError(`Bank '${name}' already exists`);
 		mkdirSync(bankDir, { recursive: true });
-		const dbPath = join(bankDir, DB_FILENAME);
+		const dbPath = join(bankDir, DEFAULT_DB_FILENAME);
 		const db = openDatabase(dbPath);
 		closeQuietly(db);
 		return dbPath;
@@ -76,9 +75,9 @@ export class BankManager {
 		return existsSync(join(this.banksDir, name));
 	}
 	getBankDbPath(name: string): string {
-		if (name.length === 0 || name === "default") return join(this.dataDir, DB_FILENAME);
+		if (name.length === 0 || name === "default") return join(this.dataDir, DEFAULT_DB_FILENAME);
 		this.validateName(name);
-		return join(this.banksDir, name, DB_FILENAME);
+		return join(this.banksDir, name, DEFAULT_DB_FILENAME);
 	}
 	renameBank(oldName: string, newName: string): string {
 		if (oldName === "default") throw new ValueError("Cannot rename 'default' bank");
@@ -95,7 +94,7 @@ export class BankManager {
 		if (!existsSync(oldDir)) throw new ValueError(`Bank '${oldName}' does not exist`);
 		if (existsSync(newDir)) throw new ValueError(`Bank '${newName}' already exists`);
 		renameSync(oldDir, newDir);
-		return join(newDir, DB_FILENAME);
+		return join(newDir, DEFAULT_DB_FILENAME);
 	}
 	getBankStats(name: string): BankStats {
 		const dbPath = this.getBankDbPath(name);

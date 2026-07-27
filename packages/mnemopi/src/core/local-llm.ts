@@ -1,143 +1,47 @@
-import { type Api, type ApiKey, assistantText, completeSimple, type FetchImpl, type Model, withAuth } from "@veyyon/ai";
-import { ProviderHttpError } from "@veyyon/ai/error";
-import { estimateTokensFromText, trimTrailingSlashes, withScopedTimeoutSignal } from "@veyyon/utils";
-import { envBool, envInt, envString } from "../util/env";
-import { safeForLog } from "./extraction/diagnostics";
-import { type CompleteOptions, callHostLlm, getHostLlmBackend } from "./llm-backends";
-import {
-	getMnemopiRuntimeOptions,
-	isPiAiModel,
-	type MnemopiLlmCompleteOptions,
-	type MnemopiLlmCompletion,
-} from "./runtime-options";
+/**
+ * The half of the memory LLM client that actually calls a model.
+ *
+ * The configuration, prompt building, token budgeting and output cleaning live in
+ * `local-llm-config.ts`, which reaches a handful of leaves. This file imports `completeSimple` and
+ * therefore the streaming engine, which is correct for a module whose job is the round trip, and is
+ * why the two halves are separate files: `core/extraction.ts` asks whether an LLM is available far
+ * more often than it calls one, and the memory engine sits behind extraction.
+ *
+ * The configuration names are re-exported so the module's public surface is unchanged. There is no
+ * cycle to worry about: the config half imports nothing from here.
+ */
 
-const ENV_MODEL_REPO = process.env.MNEMOPI_LLM_REPO ?? "";
+import type { FetchImpl } from "@veyyon/ai";
+import { withAuth } from "@veyyon/ai/auth-retry";
+import { ProviderHttpError } from "@veyyon/ai/error";
+import { completeSimple } from "@veyyon/ai/stream";
+import { assistantText } from "@veyyon/ai/utils/message-text";
+import { withScopedTimeoutSignal } from "@veyyon/utils";
+import { envBool, envString } from "../util/env";
+import { safeForLog } from "./extraction/diagnostics";
+import { type CompleteOptions, callHostLlm } from "./llm-backends";
+import {
+	activeCustomCompletion,
+	activePiAiModel,
+	buildHostPrompt,
+	buildPrompt,
+	chunkMemoriesByBudget,
+	cleanOutput,
+	configuredLlmWillHandleCall,
+	hostBackendWillHandleCall,
+	llmApiKey,
+	llmBaseUrl,
+	llmEnabled,
+	llmMaxTokens,
+	llmModelName,
+} from "./local-llm-config";
+import type { MnemopiLlmCompleteOptions } from "./runtime-options";
+
+export * from "./local-llm-config";
+
+/** Transport override for {@link callRemoteLlm}, so a test can supply its own `fetch`. */
 export interface RemoteLlmOptions {
 	fetch?: FetchImpl;
-}
-
-const ENV_MODEL_FILE = process.env.MNEMOPI_LLM_FILE ?? "";
-export const DEFAULT_MODEL_REPO =
-	ENV_MODEL_REPO !== "" && ENV_MODEL_FILE !== "" ? ENV_MODEL_REPO : "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF";
-export const DEFAULT_MODEL_FILE =
-	ENV_MODEL_REPO !== "" && ENV_MODEL_FILE !== "" ? ENV_MODEL_FILE : "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf";
-
-function activeLlmOptions() {
-	return getMnemopiRuntimeOptions()?.llm;
-}
-
-function activeCustomCompletion(): MnemopiLlmCompletion | undefined {
-	return activeLlmOptions()?.complete;
-}
-
-function activePiAiModel(): Model<Api> | undefined {
-	const model = activeLlmOptions()?.model;
-	return isPiAiModel(model) ? model : undefined;
-}
-
-function llmEnabled(): boolean {
-	const active = activeLlmOptions();
-	if (active?.enabled !== undefined) {
-		return active.enabled;
-	}
-	if (activeCustomCompletion() !== undefined || activePiAiModel() !== undefined) {
-		return true;
-	}
-	return envBool("MNEMOPI_LLM_ENABLED", true);
-}
-
-function llmMaxTokens(): number {
-	const active = activeLlmOptions();
-	if (active?.maxTokens !== undefined) {
-		return active.maxTokens;
-	}
-	return envInt("MNEMOPI_LLM_MAX_TOKENS", 2048);
-}
-
-function llmContextTokens(): number {
-	return envInt("MNEMOPI_LLM_N_CTX", 2048);
-}
-
-function hostLlmEnabled(): boolean {
-	if (activeCustomCompletion() !== undefined || activePiAiModel() !== undefined) {
-		return false;
-	}
-	const active = activeLlmOptions();
-	if (active?.baseUrl !== undefined || (typeof active?.model === "string" && active.model !== "")) {
-		return false;
-	}
-	return envBool("MNEMOPI_HOST_LLM_ENABLED", false);
-}
-
-function hostLlmContextTokens(): number {
-	return envInt("MNEMOPI_HOST_LLM_N_CTX", 32000);
-}
-
-function llmBaseUrl(): string {
-	const active = activeLlmOptions();
-	if (active?.baseUrl !== undefined) {
-		return trimTrailingSlashes(active.baseUrl);
-	}
-	return trimTrailingSlashes(envString("MNEMOPI_LLM_BASE_URL"));
-}
-
-function llmModelName(): string {
-	const model = activeLlmOptions()?.model;
-	if (typeof model === "string") {
-		return model;
-	}
-	return envString("MNEMOPI_LLM_MODEL") || "local";
-}
-
-function llmApiKey(): ApiKey {
-	const active = activeLlmOptions();
-	if (active?.apiKey !== undefined) {
-		return active.apiKey;
-	}
-	return envString("MNEMOPI_LLM_API_KEY");
-}
-
-function sleepPrompt(): string {
-	return envString("MNEMOPI_SLEEP_PROMPT").trim();
-}
-
-function memoryLines(memories: readonly string[]): string {
-	return memories
-		.filter(Boolean)
-		.map(memory => `- ${memory}`)
-		.join("\n");
-}
-
-function formatSleepPrompt(memories: readonly string[], source = ""): string | null {
-	const override = getMnemopiRuntimeOptions()?.llm?.consolidationPrompt;
-	const template = override !== undefined && override !== "" ? override : sleepPrompt();
-	if (template === "") {
-		return null;
-	}
-
-	let rendered = template;
-	rendered = rendered.split("{source}").join(source);
-	rendered = rendered.split("{memories}").join(memoryLines(memories));
-	rendered = rendered.split("{memory_count}").join(String(memories.filter(Boolean).length));
-	return rendered;
-}
-
-/** The instruction preamble shared by every summarization prompt and the budget estimate. */
-const SUMMARY_HEADER =
-	"Summarize the following memories into 1-3 concise sentences. Preserve facts, names, preferences, and decisions. Discard fluff.";
-
-/** {@link SUMMARY_HEADER} with an optional ` Source: <source>.` suffix when a source is named. */
-function summaryHeader(source: string): string {
-	return source === "" ? SUMMARY_HEADER : `${SUMMARY_HEADER} Source: ${source}.`;
-}
-
-export function buildPrompt(memories: readonly string[], source = ""): string {
-	const custom = formatSleepPrompt(memories, source);
-	if (custom !== null) {
-		return custom;
-	}
-
-	return `/no_think\n${summaryHeader(source)}\n\n${memoryLines(memories)}\n\nSummary:`;
 }
 
 export async function callConfiguredCompletion(
@@ -178,23 +82,6 @@ export async function callConfiguredCompletion(
 		},
 	);
 	return assistantText(message).trim() || null;
-}
-
-export function buildHostPrompt(memories: readonly string[], source = ""): string {
-	const custom = formatSleepPrompt(memories, source);
-	if (custom !== null) {
-		return custom;
-	}
-
-	return `${summaryHeader(source)}\n\n${memoryLines(memories)}`;
-}
-
-function hostBackendWillHandleCall(): boolean {
-	return llmEnabled() && hostLlmEnabled() && getHostLlmBackend() !== null;
-}
-
-export function configuredLlmWillHandleCall(): boolean {
-	return llmEnabled() && (activeCustomCompletion() !== undefined || activePiAiModel() !== undefined);
 }
 
 async function tryHostLlm(prompt: string, maxTokens: number, temperature: number): Promise<[boolean, string | null]> {
@@ -241,71 +128,6 @@ async function summaryOrNull(label: string, call: () => Promise<string | null>):
 		console.warn(`mnemopi summarize: ${label} raised: ${safeForLog(exc)}`);
 		return null;
 	}
-}
-
-export function cleanOutput(text: string): string {
-	return text
-		.replaceAll("<|assistant|>", "")
-		.replaceAll("<|user|>", "")
-		.replaceAll("</s>", "")
-		.trim()
-		.replace(/^(Summarize the following memories.*?[.!?:]\s*)/is, "")
-		.replace(/^(Preserve facts.*?[.!?:]\s*)/is, "")
-		.replace(/^Source:.*?\n/im, "")
-		.replace(/^\s*[-*]\s.*\n/gm, "")
-		.trim();
-}
-
-function promptTokenBudget(): number {
-	const overhead = 80;
-	const nCtx = hostBackendWillHandleCall() ? hostLlmContextTokens() : llmContextTokens();
-	const outputReserve = Math.min(llmMaxTokens(), Math.max(128, Math.floor(nCtx / 4)));
-	const safetyMargin = Math.floor(nCtx * 0.2);
-	return Math.max(64, nCtx - overhead - outputReserve - safetyMargin);
-}
-
-export function chunkMemoriesByBudget(memories: readonly string[], source = ""): string[][] {
-	if (memories.length === 0) {
-		return [];
-	}
-
-	const budget = promptTokenBudget();
-	const chunks: string[][] = [];
-	let currentChunk: string[] = [];
-	let currentTokens = 0;
-
-	const headerTokens = estimateTokensFromText(`${summaryHeader(source)}\n\n`);
-	const formatOverhead = estimateTokensFromText("- \n");
-	const available = budget - headerTokens;
-
-	for (const memory of memories) {
-		const memTokens = estimateTokensFromText(memory) + formatOverhead;
-		if (memTokens > budget) {
-			continue;
-		}
-		if (currentTokens + memTokens > available && currentChunk.length > 0) {
-			chunks.push(currentChunk);
-			currentChunk = [];
-			currentTokens = 0;
-		}
-		currentChunk.push(memory);
-		currentTokens += memTokens;
-	}
-
-	if (currentChunk.length > 0) {
-		chunks.push(currentChunk);
-	}
-	return chunks;
-}
-
-export function llmAvailable(): boolean {
-	if (configuredLlmWillHandleCall()) {
-		return true;
-	}
-	if (hostBackendWillHandleCall()) {
-		return true;
-	}
-	return llmEnabled() && llmBaseUrl() !== "";
 }
 
 export async function callRemoteLlm(
@@ -371,12 +193,19 @@ export async function callRemoteLlm(
 	});
 }
 
-export function localGgufAvailable(): false {
-	return false;
-}
-
-export async function callLocalLlm(_prompt: string): Promise<string | null> {
-	return null;
+/**
+ * Whether the remote HTTP backend may be called: the one owner of that three-part condition.
+ *
+ * It was written out twice, in `summarizeChunk` and in `complete`, so the two could disagree about
+ * when memory traffic is allowed to leave the machine. That is the wrong thing to have two copies of.
+ *
+ * `MNEMOPI_FORCE_LOCAL` keeps its spelling even though it no longer names anything: an operator sets
+ * it to keep memory traffic off the network, and renaming the variable would silently re-enable those
+ * calls for everyone who set it. What it does is SUPPRESS the remote backend. It does not select a
+ * local one, because the local-GGUF tier it was named for never had an implementation and is gone.
+ */
+function remoteBackendAllowed(): boolean {
+	return llmEnabled() && llmBaseUrl() !== "" && !envBool("MNEMOPI_FORCE_LOCAL", false);
 }
 
 async function summarizeChunk(
@@ -393,29 +222,17 @@ async function summarizeChunk(
 	}
 	const [attempted, hostText] = await tryHostLlm(hostPrompt, llmMaxTokens(), 0.3);
 	if (attempted) {
-		if (hostText !== null) {
-			return hostText;
-		}
-		const raw = await callLocalLlm(prompt);
-		if (raw !== null) {
-			const cleaned = cleanOutput(raw);
-			return cleaned === "" ? null : cleaned;
-		}
-		return null;
+		// The host backend answered, so it OWNS this call: a null here means it produced no usable
+		// text, not that another backend should be tried. There used to be a `callLocalLlm` attempt
+		// after this and after the remote branch below, both of them a `return null` stub with no
+		// loader behind them, so each one cleaned and inspected output that could not arrive.
+		return hostText;
 	}
 
-	if (llmEnabled() && llmBaseUrl() !== "" && !envBool("MNEMOPI_FORCE_LOCAL", false)) {
-		const summary = await summaryOrNull("remote LLM", () => callRemoteLlm(prompt, 0.3, options));
-		if (summary !== null) {
-			return summary;
-		}
+	if (remoteBackendAllowed()) {
+		return await summaryOrNull("remote LLM", () => callRemoteLlm(prompt, 0.3, options));
 	}
 
-	const raw = await callLocalLlm(prompt);
-	if (raw !== null) {
-		const cleaned = cleanOutput(raw);
-		return cleaned === "" ? null : cleaned;
-	}
 	return null;
 }
 
@@ -461,8 +278,11 @@ export async function complete(
 	if (attempted) {
 		return hostText;
 	}
-	if (llmEnabled() && llmBaseUrl() !== "" && !envBool("MNEMOPI_FORCE_LOCAL", false)) {
+	if (remoteBackendAllowed()) {
 		return await summaryOrNull("remote LLM", () => callRemoteLlm(prompt, temperature, options));
 	}
-	return callLocalLlm(prompt);
+	// No backend is configured. Null is the honest answer, and the caller (extraction, consolidation)
+	// records it as such. This used to `return callLocalLlm(prompt)`, which returned this same null
+	// through a function that read nothing.
+	return null;
 }

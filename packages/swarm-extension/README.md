@@ -2,7 +2,7 @@
 
 Multi-agent orchestration for veyyon. Define agent workflows in YAML — pipelines, parallel fan-outs, sequential chains, or any DAG — and run them unattended until completion.
 
-Each agent is a full veyyon subagent with access to every tool: bash, python, read, write, edit, grep, find, fetch, web_search, browser. The orchestrator manages lifecycle and ordering; agents communicate through the shared workspace filesystem.
+Each agent is a full veyyon subagent with access to every tool: read, write, edit, bash, grep, glob, eval (Python/JS), web_search, browser. The orchestrator manages lifecycle and ordering; agents communicate through the shared workspace filesystem.
 
 Use it for anything: research pipelines, code generation, data processing, content creation, analysis workflows, CI-like automation — any multi-step task that benefits from specialized agents working in coordination.
 
@@ -30,12 +30,11 @@ The standalone runner has no timeout. It runs iteration after iteration until th
 
 ### Inside veyyon (TUI)
 
-Register the extension in your config (`~/.veyyon/config.json` or `.veyyon/config.json`):
+Register the extension in your config (`~/.veyyon/agent/config.yml`, or project `.veyyon/config.yml`):
 
-```json
-{
-	"extensions": ["packages/swarm-extension"]
-}
+```yaml
+extensions:
+  - packages/swarm-extension
 ```
 
 Then:
@@ -386,11 +385,11 @@ Execution per iteration: scraper_a + scraper_b (wave 1) -> transformer (wave 2) 
 
 Each agent is a full veyyon session. It can:
 
-- **bash/python**: Run commands, scripts, install packages, process data
+- **bash/eval**: Run commands, scripts, install packages, process data (Python and JS through `eval`)
 - **read/write/edit**: Create and modify files in the workspace
-- **grep/find**: Search the workspace (or anywhere on disk)
+- **grep/glob**: Search the workspace (or anywhere on disk)
 - **web_search**: Search the internet (via configured provider)
-- **fetch**: Download web pages, APIs, documents
+- **read/bash**: Download web pages, APIs, documents (URL reads or `curl`)
 - **browser**: Navigate websites, scrape dynamic content, take screenshots
 
 ### Inter-Agent Communication

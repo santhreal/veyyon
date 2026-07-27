@@ -1,4 +1,5 @@
-import { getProjectDir, logger } from "@veyyon/utils";
+import { getProjectDir } from "@veyyon/utils/dirs";
+import * as logger from "@veyyon/utils/logger";
 import {
 	type AutocompleteProvider,
 	findLeadingSlashCommandStart,
@@ -7,7 +8,7 @@ import {
 } from "../autocomplete";
 import { BracketedPasteHandler, decodeReencodedPasteControls } from "../bracketed-paste";
 import { getKeybindings, type KeybindingsManager } from "../keybindings";
-import { extractPrintableText, matchesKey } from "../keys";
+import { extractPrintableText, isLoneLineFeed, matchesKey } from "../keys";
 import { KillRing } from "../kill-ring";
 import type { SymbolTheme } from "../symbols";
 import { type Component, CURSOR_MARKER, type Focusable } from "../tui";
@@ -1192,7 +1193,7 @@ export class Editor implements Component, Focusable {
 				kb.matches(data, "tui.select.pageUp") ||
 				kb.matches(data, "tui.select.pageDown") ||
 				kb.matches(data, "tui.input.submit") ||
-				data === "\n" ||
+				isLoneLineFeed(data) ||
 				kb.matches(data, "tui.input.tab")
 			) {
 				// Only pass navigation keys to the list, not Enter/Tab (we handle those directly)
@@ -1252,7 +1253,7 @@ export class Editor implements Component, Focusable {
 				// If Enter was pressed on a slash command (not an absolute-path
 				// completion sharing the leading-slash prefix), apply and submit
 				if (
-					(kb.matches(data, "tui.input.submit") || data === "\n") &&
+					(kb.matches(data, "tui.input.submit") || isLoneLineFeed(data)) &&
 					findLeadingSlashCommandStart(this.#autocompletePrefix) !== null &&
 					!this.#selectedCompletionIsPath()
 				) {
@@ -1283,7 +1284,7 @@ export class Editor implements Component, Focusable {
 					// Don't return - fall through to submission logic
 				}
 				// If Enter was pressed on a file path, apply completion
-				else if (kb.matches(data, "tui.input.submit") || data === "\n") {
+				else if (kb.matches(data, "tui.input.submit") || isLoneLineFeed(data)) {
 					const selected = this.#autocompleteList.getSelectedItem();
 					// Check for stale autocomplete state due to buffer edits since last refresh.
 					const currentLine = this.#state.lines[this.#state.cursorLine] ?? "";
@@ -1387,7 +1388,7 @@ export class Editor implements Component, Focusable {
 			data === "\x1b[13;2~" || // Shift+Enter in some terminals (legacy format)
 			kb.matches(data, "tui.input.newLine") || // Shift+Enter (Kitty protocol, handles lock bits)
 			(data.length > 1 && data.includes("\x1b") && data.includes("\r")) ||
-			(data === "\n" && data.length === 1) // Shift+Enter from iTerm2 mapping
+			isLoneLineFeed(data) // Shift+Enter from iTerm2 mapping
 		) {
 			if (this.#shouldSubmitOnBackslashEnter(data, kb)) {
 				this.#handleBackspace();
@@ -1397,7 +1398,7 @@ export class Editor implements Component, Focusable {
 			this.#addNewLine();
 		}
 		// Plain Enter - submit (handles both legacy \r and Kitty protocol with lock bits)
-		else if (kb.matches(data, "tui.input.submit") || data === "\n") {
+		else if (kb.matches(data, "tui.input.submit") || isLoneLineFeed(data)) {
 			// If submit is disabled, do nothing
 			if (this.disableSubmit) {
 				return;

@@ -31,6 +31,34 @@ export function stripWindowsExtendedLengthPathPrefix(
 }
 
 /**
+ * Whether a string was WRITTEN as a file path, judged without touching the disk.
+ *
+ * The question every "a path or the value itself?" option has to answer, and the
+ * only honest way to answer it. Deciding by whether the file opens conflates two
+ * different facts: `--system-prompt ./promtps/main.md` is a path with a typo in it,
+ * and a reader that falls back to the literal string on `ENOENT` runs the agent with
+ * a system prompt whose entire content is `./promtps/main.md` — no error, no warning,
+ * and a prompt so short the model's behaviour changes completely. Asking about the
+ * SHAPE first separates "you meant a file and it is not there" (an error naming the
+ * path) from "you meant this text" (use it).
+ *
+ * A separator is decisive: no literal value contains `/` or `\` by accident. The
+ * extension list is the caller's, because what looks like a filename is domain
+ * knowledge — `.pem`/`.crt` for a certificate option, `.md`/`.txt` for a prompt —
+ * and a shared list would either miss real filenames or claim ordinary prose.
+ *
+ * One owner because it was two: a private copy in the Anthropic provider decided it
+ * for certificate options while prompt resolution had no shape check at all, so the
+ * same class of typo was an error in one place and silent in the other.
+ */
+export function looksLikeFilePath(value: string, extensions: readonly string[] = []): boolean {
+	if (value.includes("/") || value.includes("\\")) return true;
+	if (extensions.length === 0) return false;
+	const suffix = /\.([A-Za-z0-9]+)$/.exec(value)?.[1]?.toLowerCase();
+	return suffix !== undefined && extensions.some(extension => extension.toLowerCase() === suffix);
+}
+
+/**
  * Expand a leading `~` to the home directory. Handles `~`, `~/x`, `~\x`
  * (Windows), and the bare `~name` form (joined under home). Everything else is
  * returned unchanged.

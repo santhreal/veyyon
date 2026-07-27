@@ -27,8 +27,8 @@
  * naming the repair, rather than being zero-padded into a meaningless cosine.
  */
 
-import { afterEach, describe, expect, it, type Mock, spyOn } from "bun:test";
 import { Database } from "bun:sqlite";
+import { afterEach, describe, expect, it, type Mock, spyOn } from "bun:test";
 import { initBeam } from "@veyyon/mnemopi/core/beam";
 import * as embeddings from "@veyyon/mnemopi/core/embeddings";
 import {
@@ -397,9 +397,7 @@ describe("harmonize over a store where only some memories are pre-embedded", () 
 		const db = new Database(":memory:");
 		initBeam(db);
 		initSchema(db);
-		const insert = db.query(
-			"INSERT INTO episodic_memory (id, content, importance, created_at) VALUES (?, ?, ?, ?)",
-		);
+		const insert = db.query("INSERT INTO episodic_memory (id, content, importance, created_at) VALUES (?, ?, ?, ?)");
 		// Identical content, so any single space clusters them and no space at all does not.
 		insert.run("m1", "the same remembered sentence", 0.6, "2026-01-01T00:00:00Z");
 		insert.run("m2", "the same remembered sentence", 0.6, "2026-01-01T00:00:01Z");

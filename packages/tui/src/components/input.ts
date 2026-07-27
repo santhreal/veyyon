@@ -1,6 +1,6 @@
 import { BracketedPasteHandler, decodeReencodedPasteControls } from "../bracketed-paste";
 import { getKeybindings } from "../keybindings";
-import { extractPrintableText } from "../keys";
+import { extractPrintableText, isLoneLineFeed } from "../keys";
 import { KillRing } from "../kill-ring";
 import { type Component, CURSOR_MARKER, type Focusable } from "../tui";
 import {
@@ -105,7 +105,7 @@ export class Input implements Component, Focusable {
 		}
 
 		// Submit
-		if (kb.matches(data, "tui.input.submit") || data === "\n") {
+		if (kb.matches(data, "tui.input.submit") || isLoneLineFeed(data)) {
 			if (this.onSubmit) this.onSubmit(this.#value);
 			return;
 		}

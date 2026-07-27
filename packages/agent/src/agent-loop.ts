@@ -3,28 +3,22 @@
  * Transforms to Message[] only at the LLM call boundary.
  */
 
-import {
-	type AssistantMessage,
-	type AssistantMessageEvent,
-	type AssistantTurnStatus,
-	type Context,
-	captureAssistantTurnMetrics,
-	captureAssistantTurnRequest,
-	captureToolCallMetrics,
-	EventStream,
-	isApiKeyResolver,
-	type Model,
-	resolveApiKeyOnce,
-	seedApiKeyResolver,
-	streamSimple,
-	stripSchemaDescriptions,
-	type ToolCallStatus,
-	type ToolChoice,
-	type ToolResultMessage,
-	type TSchema,
-	toolWireSchema,
-	validateToolArguments,
+import type {
+	AssistantMessage,
+	AssistantMessageEvent,
+	AssistantTurnStatus,
+	Context,
+	Model,
+	ToolCallStatus,
+	ToolChoice,
+	ToolResultMessage,
+	TSchema,
 } from "@veyyon/ai";
+// Eleven runtime names, each from the module that declares it. The package entry point re-exports
+// the whole of `@veyyon/ai`; this loop legitimately reaches the streaming engine because it streams,
+// but the other ten had been arriving with the catalogue, the providers and the usage backends
+// attached. Types stay on the entry point, which is free.
+import { isApiKeyResolver, resolveApiKeyOnce, seedApiKeyResolver } from "@veyyon/ai/auth-retry";
 import {
 	type Dialect,
 	encodeInbandToolHistory,
@@ -33,7 +27,14 @@ import {
 	wrapInbandToolStream,
 } from "@veyyon/ai/dialect";
 import * as AIError from "@veyyon/ai/error";
+import {
+	captureAssistantTurnMetrics,
+	captureAssistantTurnRequest,
+	captureToolCallMetrics,
+} from "@veyyon/ai/instrumentation";
+import { streamSimple } from "@veyyon/ai/stream";
 import { type CursorExecResolvedCarrier, kCursorExecResolved } from "@veyyon/ai/utils/block-symbols";
+import { EventStream } from "@veyyon/ai/utils/event-stream";
 import {
 	createHarmonyAuditEvent,
 	detectHarmonyLeakInAssistantMessage,
@@ -44,6 +45,8 @@ import {
 	recoverHarmonyToolCall,
 	signalListLabel,
 } from "@veyyon/ai/utils/harmony-leak";
+import { stripSchemaDescriptions, toolWireSchema } from "@veyyon/ai/utils/schema/wire";
+import { validateToolArguments } from "@veyyon/ai/utils/validation";
 import { preferredDialect } from "@veyyon/catalog/identity";
 import { emptyUsage } from "@veyyon/catalog/models";
 import {
@@ -1480,6 +1483,9 @@ async function streamAssistantResponse(
 			const finishAbortedStream = async (): Promise<AssistantMessage> => {
 				try {
 					const cleanup = responseIterator.return?.();
+					// The same reason as the `catch` below, for the ASYNC half of the same call: a provider that
+					// fails to acknowledge the cancellation cannot change the aborted message that is already
+					// being committed, and the user asked for this stream to stop, not for a report about it.
 					if (cleanup) void cleanup.catch(() => {});
 				} catch {
 					// Provider cancellation failures cannot change the committed aborted message.

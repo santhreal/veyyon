@@ -1,5 +1,17 @@
-const PASTE_START = "\x1b[200~";
-const PASTE_END = "\x1b[201~";
+/**
+ * The bracketed-paste start marker a terminal emits before pasted bytes.
+ *
+ * Exported because these two byte strings ARE the protocol, and four modules each carried their own copy:
+ * this one, `stdin-buffer.ts` as `BRACKETED_PASTE_START`, and `custom-editor.ts` plus its test in
+ * `@veyyon/coding-agent`. The three detectors run on the same input at different layers, so a copy edited to
+ * a different sequence would make one layer stop recognising a paste while the others still did, and the
+ * symptom is escape bytes leaking into the editor rather than any error. This module already documented
+ * itself as the one owner of the paste byte cap; the markers belong to it for the same reason.
+ */
+export const PASTE_START = "\x1b[200~";
+
+/** The bracketed-paste end marker. A terminal that truncates it is what the byte cap below recovers from. */
+export const PASTE_END = "\x1b[201~";
 
 export type PasteResult =
 	| { handled: false }

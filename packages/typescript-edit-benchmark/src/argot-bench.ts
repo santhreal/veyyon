@@ -80,8 +80,8 @@ export async function applyArgotPhaseSettings(
 	await Settings.init();
 	const settings = Settings.instance;
 	settings.override("argot.enabled", argotEnabled);
-	settings.override("argot.models", argotEnabled ? [model] : []);
-	settings.override("argot.disableAboveTokens", disableAboveTokens ?? 0);
+	settings.override("argot.encode.models", argotEnabled ? [model] : []);
+	settings.override("argot.encode.disableAboveTokens", disableAboveTokens ?? 0);
 }
 
 /** Recursively copy a directory tree. */
@@ -141,7 +141,7 @@ export interface ArgotBenchOutcome {
  * (a test) decides pass/fail with {@link assertArgotCertified}.
  *
  * Argot is toggled through the global settings the agent session reads at start:
- * on the "on" pass the model id is added to `argot.models` so the encode gate
+ * on the "on" pass the model id is added to `argot.encode.models` so the encode gate
  * actually teaches this model (an empty allowlist teaches nobody); on the "off"
  * pass argot is disabled outright. Both passes run the identical task set so the
  * token comparison is like-for-like.

@@ -222,7 +222,12 @@ const INLINE_ERRORMESSAGE_GRANDFATHERED = new Set([
 // was supposed to make that impossible. It also drifted, since it was written to
 // fall back to the error NAME on an empty message and the owner then did not, so
 // the same call produced different text depending on which copy ran.
-const INLINE_ERRORMESSAGE = /instanceof Error \? \w+\.message(?:\s*\|\|\s*\w+\.name)? : String\(/;
+// Whitespace-tolerant, including newlines. It was not, and that hid two real violations: `agent/src/agent.ts`
+// and `coding-agent/src/task/worktree.ts` each had this idiom as the TAIL of a longer ternary, which the
+// formatter had broken across lines, so the lock read both files as clean while both hand-rolled the
+// helper they already imported. In `agent.ts` the local const even shadowed the import, so the copy was
+// the only version reachable in that scope. See the sibling case in `packages/utils/test/url.test.ts`.
+const INLINE_ERRORMESSAGE = /instanceof\s+Error\s*\?\s*\w+\.message(?:\s*\|\|\s*\w+\.name)?\s*:\s*String\(/;
 
 const ISRECORD_DEF = /function\s+isRecord\s*\(/;
 const ERRORMESSAGE_DEF = /function\s+errorMessage\s*\(/;

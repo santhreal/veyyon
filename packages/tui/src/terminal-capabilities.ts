@@ -1,5 +1,6 @@
 import { encodeSixel } from "@veyyon/natives";
-import { $env, isBunTestRuntime, isTerminalHeadless } from "@veyyon/utils";
+import { APP_DISPLAY_NAME } from "@veyyon/utils/app-identity";
+import { $env, isBunTestRuntime, isTerminalHeadless } from "@veyyon/utils/env";
 import { sendDesktopNotification, shouldDeliverDesktopNotification } from "./desktop-notify";
 import {
 	detectKittyUnicodePlaceholdersSupport,
@@ -1143,7 +1144,6 @@ function notificationToLine(n: TerminalNotification): string {
 // C0/C1 control characters that are unsafe inside an OSC payload (must base64).
 const OSC99_UNSAFE = /[\x00-\x1f\x7f\x80-\x9f]/u;
 const OSC99_MAX_PAYLOAD_BYTES = 2048;
-const OSC99_APP_NAME = "Veyyon";
 let nextOsc99NotificationId = 1;
 
 function base64Utf8(value: string): string {
@@ -1242,7 +1242,7 @@ function osc99Actions(actions: TerminalNotification["actions"]): string | undefi
  */
 function formatOsc99Notification(n: TerminalNotification): string {
 	const id = osc99Id(n.id);
-	const meta: string[] = [`i=${id}`, `f=${base64Utf8(OSC99_APP_NAME)}`];
+	const meta: string[] = [`i=${id}`, `f=${base64Utf8(APP_DISPLAY_NAME)}`];
 	const actions = osc99Actions(n.actions);
 	if (actions) meta.push(`a=${actions}`);
 	const urgency = osc99Urgency(n.urgency);

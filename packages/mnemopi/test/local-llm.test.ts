@@ -6,14 +6,12 @@ import { CallableLlmBackend, resetHostLlmBackendForTests, setHostLlmBackend } fr
 import {
 	buildHostPrompt,
 	buildPrompt,
-	callLocalLlm,
 	callRemoteLlm,
 	chunkMemoriesByBudget,
 	cleanOutput,
 	complete,
 	configuredLlmWillHandleCall,
 	llmAvailable,
-	localGgufAvailable,
 	summarizeMemories,
 } from "@veyyon/mnemopi/core/local-llm";
 import { Mnemopi } from "@veyyon/mnemopi/core/memory";
@@ -61,9 +59,68 @@ describe("local LLM TypeScript port", () => {
 		expect(model).toBe("test-model");
 	});
 
-	it("keeps local GGUF unavailable and returns null for local completion", async () => {
-		expect(localGgufAvailable()).toBe(false);
-		expect(await callLocalLlm("prompt")).toBeNull();
+	/**
+	 * The module no longer offers a local-GGUF tier, and this is the lock that says so.
+	 *
+	 * It replaces two assertions that pinned the tier's stubs AS stubs
+	 * (`expect(localGgufAvailable()).toBe(false)` and `expect(await callLocalLlm("prompt")).toBeNull()`).
+	 * Those passed forever by construction: `localGgufAvailable` was declared `(): false` and
+	 * `callLocalLlm` was a one-line `return null` reading nothing. A test that asserts a stub is a stub
+	 * locks dead code in place instead of flagging it, and it is why the tier survived long enough to
+	 * write `model_not_loaded` into every extraction's diagnostics.
+	 *
+	 * The third assertion is the non-vacuity half: the surface being inspected is the real module, so
+	 * the two absences cannot be an import that resolved to nothing.
+	 */
+	it("no longer exports a local GGUF tier", async () => {
+		const surface = Object.keys(await import("@veyyon/mnemopi/core/local-llm"));
+
+		expect(surface).not.toContain("callLocalLlm");
+		expect(surface).not.toContain("localGgufAvailable");
+		expect(surface).toContain("callRemoteLlm");
+	});
+
+	/**
+	 * With no backend configured at all, both entry points answer null rather than throwing or
+	 * inventing text. This is the behaviour the deleted tier's `return null` was standing in for, now
+	 * asserted through the public surface where a caller actually meets it.
+	 */
+	it("answers null when no backend is configured", async () => {
+		delete process.env.MNEMOPI_LLM_BASE_URL;
+		delete process.env.MNEMOPI_LLM_API_KEY;
+		process.env.MNEMOPI_HOST_LLM_ENABLED = "false";
+
+		expect(llmAvailable()).toBe(false);
+		expect(await complete("prompt")).toBeNull();
+		expect(await summarizeMemories(["Memory one"])).toBeNull();
+	});
+
+	/**
+	 * `MNEMOPI_FORCE_LOCAL` keeps its name and its effect: it suppresses the remote backend. It no
+	 * longer selects a local one, because there is none, so the honest result is null and NOT a
+	 * request that goes out anyway. The fetch counter is what proves it: a test asserting only the
+	 * null would pass even if the call had been made and its answer discarded.
+	 */
+	it("suppresses the remote backend under MNEMOPI_FORCE_LOCAL", async () => {
+		process.env.MNEMOPI_LLM_ENABLED = "true";
+		process.env.MNEMOPI_LLM_BASE_URL = "http://remote/v1";
+		process.env.MNEMOPI_HOST_LLM_ENABLED = "false";
+		let calls = 0;
+		const fetchMock: FetchImpl = async () => {
+			calls += 1;
+			return new Response(JSON.stringify({ choices: [{ message: { content: "Remote summary." } }] }), {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			});
+		};
+
+		process.env.MNEMOPI_FORCE_LOCAL = "1";
+		expect(await summarizeMemories(["Memory one"], "", { fetch: fetchMock })).toBeNull();
+		expect(calls).toBe(0);
+
+		delete process.env.MNEMOPI_FORCE_LOCAL;
+		expect(await summarizeMemories(["Memory one"], "", { fetch: fetchMock })).toBe("Remote summary.");
+		expect(calls).toBe(1);
 	});
 
 	it("uses host backend before remote and skips remote on host miss", async () => {
@@ -182,12 +239,33 @@ describe("local LLM TypeScript port", () => {
 		);
 	});
 
-	it("defines the summarization header literal in exactly one place", async () => {
-		// buildPrompt, buildHostPrompt, and chunkMemoriesByBudget all share one
-		// SUMMARY_HEADER owner; a second inline copy would reintroduce drift.
-		const source = await Bun.file(new URL("../src/core/local-llm.ts", import.meta.url)).text();
-		const matches = source.match(/Summarize the following memories into 1-3 concise sentences\. Preserve facts/g);
-		expect(matches).toHaveLength(1);
+	/**
+	 * ONE PLACE for the summarization header, checked across BOTH halves of the client.
+	 *
+	 * `buildPrompt`, `buildHostPrompt` and `chunkMemoriesByBudget` all read one `SUMMARY_HEADER`, and
+	 * `chunkMemoriesByBudget` sizes its token budget from it, so a second inline copy would drift the
+	 * budget away from the prompt it is budgeting for and every chunk would be measured against text
+	 * that is no longer sent.
+	 *
+	 * The scan covers the configuration half AND the calling half because the client was split into
+	 * two files: a check that reads only one of them would pass while the other held a copy, which is
+	 * exactly the state a careless split produces. It previously read `local-llm.ts` alone and went
+	 * red on the split, which is the lock doing its job with a stale path.
+	 */
+	it("defines the summarization header literal in exactly one place across both halves", async () => {
+		const header = /Summarize the following memories into 1-3 concise sentences\. Preserve facts/g;
+		const halves = ["../src/core/local-llm-config.ts", "../src/core/local-llm.ts"];
+
+		const counts = await Promise.all(
+			halves.map(async relative => {
+				const source = await Bun.file(new URL(relative, import.meta.url)).text();
+				return source.match(header)?.length ?? 0;
+			}),
+		);
+
+		expect(counts.reduce((total, count) => total + count, 0)).toBe(1);
+		// And it is the CONFIGURATION half that owns it, since prompt text is not a network call.
+		expect(counts[0]).toBe(1);
 	});
 
 	it("strips chat-template tokens, echoed instructions, source lines, and bullets", () => {

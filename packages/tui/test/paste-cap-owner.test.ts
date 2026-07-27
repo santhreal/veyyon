@@ -25,8 +25,11 @@ describe("paste byte cap ownership", () => {
 		const stdinBuffer = await Bun.file(path.join(srcDir, "stdin-buffer.ts")).text();
 		const occurrences = (bracketed + stdinBuffer).split("64 * 1024 * 1024").length - 1;
 		expect(occurrences).toBe(1);
-		// stdin-buffer consumes the owner, never a local copy.
-		expect(stdinBuffer).toContain('import { PASTE_MAX_BYTES } from "./bracketed-paste"');
+		// stdin-buffer consumes the owner, never a local copy. Matched as "imports this name from that
+		// module" rather than as a whole import line: the line legitimately grew when the paste MARKERS
+		// moved to the same owner, and pinning its exact text made this case fail on a change that only
+		// strengthened the invariant it exists to protect.
+		expect(stdinBuffer).toMatch(/import \{[^}]*\bPASTE_MAX_BYTES\b[^}]*\} from "\.\/bracketed-paste";/);
 		expect(stdinBuffer).not.toContain("const PASTE_MAX_BYTES");
 	});
 });

@@ -20,8 +20,6 @@ import { buildExactVectorIndex, searchExactVectorIndex } from "../vector-index";
 import { decodeEmbeddingJson, encodeEmbeddingJson } from "../vector-math";
 import type { BeamMemoryState, JsonValue, Metadata } from "./types";
 
-export type Vector = number[];
-
 export type HybridWeights = readonly [vecWeight: number, ftsWeight: number, importanceWeight: number];
 
 export interface VectorDistanceResult {
@@ -145,7 +143,16 @@ export function encodeVector(embedding: readonly number[]): string {
 	return encodeEmbeddingJson(embedding);
 }
 
-export function decodeVector(value: string | null | undefined): Vector | null {
+/**
+ * The decoded embedding, or null when the column held no usable JSON.
+ *
+ * Spelled `number[]` rather than through a local `Vector` alias, which is what this module
+ * used to export: a third `Vector` in this package, meaning a third thing (a plain array,
+ * against `types.ts`'s wide union and `core/embeddings.ts`'s dense `Float32Array`). The
+ * alias was imported by nothing and bought nothing over the concrete type it stood for,
+ * and `decodeEmbeddingJson` already returns exactly this.
+ */
+export function decodeVector(value: string | null | undefined): number[] | null {
 	return decodeEmbeddingJson(value);
 }
 

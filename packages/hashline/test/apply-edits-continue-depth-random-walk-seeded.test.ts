@@ -3,23 +3,16 @@
  */
 import { describe, expect, it } from "bun:test";
 import { applyEdits, parsePatch } from "@veyyon/hashline";
+import { lcgUint32 } from "@veyyon/utils/adversarial-strings";
 
 function apply(text: string, patch: string): string {
 	return applyEdits(text, parsePatch(patch).edits).text;
 }
 
 /** LCG for deterministic "random" ops. */
-function lcg(seed: number): () => number {
-	let s = seed;
-	return () => {
-		s = (s * 1664525 + 1013904223) >>> 0;
-		return s;
-	};
-}
-
 describe("applyEdits continue depth random walk seeded", () => {
 	it("100 ops from seed 42 never empty-ops throw", () => {
-		const next = lcg(42);
+		const next = lcgUint32(42);
 		let t = "a\nb\nc\nd\ne";
 		for (let i = 0; i < 100; i++) {
 			const n = t === "" ? 0 : t.split("\n").length;

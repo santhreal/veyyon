@@ -1,7 +1,13 @@
 import { mkdirSync } from "node:fs";
-import { type ApiKey, getOpenRouterHeaders, withAuth } from "@veyyon/ai";
+import type { ApiKey } from "@veyyon/ai";
+// The owners, not the barrel. Embedding a query needs a retry wrapper and one
+// header builder; through `@veyyon/ai` it was paying for the whole streaming
+// stack behind them.
+import { withAuth } from "@veyyon/ai/auth-retry";
 import { ProviderHttpError } from "@veyyon/ai/error";
+import { getOpenRouterHeaders } from "@veyyon/ai/utils/openrouter-headers";
 import { hostMatchesUrl } from "@veyyon/catalog/hosts";
+import { OPENROUTER_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import {
 	$env,
 	$flag,
@@ -15,6 +21,7 @@ import {
 import type { EmbeddingModel } from "fastembed";
 import { LRUCache } from "lru-cache/raw";
 import { DEFAULT_EMBEDDING_MODEL, EMBEDDING_DIMS, FALLBACK_EMBEDDING_DIM } from "../config";
+import type { DenseVector as Vector } from "../types";
 import { ensureFastembedModelSidecars, FASTEMBED_ID_BY_HF_REPO } from "./fastembed-model-cache";
 import { loadFastembed } from "./fastembed-runtime";
 import {
@@ -24,10 +31,12 @@ import {
 	resolveEmbeddingProvider,
 } from "./runtime-options";
 
+// `Vector` here has always meant the dense `Float32Array` this module produces, which is
+// `DenseVector` in `../types`. Imported for local use and re-exported under the old name
+// so this module's published surface is unchanged; the definition lives in one place.
+export type { DenseVector as Vector } from "../types";
 export type { EmbeddingOutput } from "./runtime-options";
 export { cosineSimilarity } from "./vector-math";
-
-export type Vector = Float32Array;
 export type EmbeddingMatrix = Vector[];
 
 export interface EmbeddingProvider {
@@ -215,7 +224,7 @@ function embeddingBaseUrl(): string {
 	if (active?.apiUrl !== undefined) {
 		return active.apiUrl;
 	}
-	return $env.MNEMOPI_EMBEDDING_API_URL || $env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1";
+	return $env.MNEMOPI_EMBEDDING_API_URL || $env.OPENROUTER_BASE_URL || OPENROUTER_API_ENDPOINT;
 }
 
 function defaultModel(): string {

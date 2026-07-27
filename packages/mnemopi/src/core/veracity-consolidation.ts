@@ -2,27 +2,35 @@ import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { type DatabasePath, openDatabase } from "../db";
 import { toUtcIso } from "../util/datetime";
-import { truncateForLog } from "../util/log-format";
+import {
+	aggregateVeracity,
+	clampVeracity,
+	isVeracity,
+	VERACITY_ALLOWED,
+	VERACITY_WEIGHTS,
+	type Veracity,
+	weightForVeracity,
+} from "./veracity";
 
-export const VERACITY_WEIGHTS = Object.freeze({
-	stated: 1.0,
-	inferred: 0.7,
-	tool: 0.5,
-	imported: 0.6,
-	unknown: 0.8,
-});
+/**
+ * The vocabulary, from the one module that owns it.
+ *
+ * These four were declared here, and this file's list was the SHORTER of the package's two:
+ * five values against recall's eight, while `clampVeracity` and `isVeracity` read this list
+ * to validate every write. A fact stored as `false` was therefore clamped to `unknown` on
+ * its way in and scored 0.8 instead of 0 on its way out. See `core/veracity.ts` for the
+ * whole account; consolidation reads the vocabulary now rather than defining it.
+ */
+export {
+	aggregateVeracity,
+	clampVeracity,
+	isVeracity,
+	VERACITY_ALLOWED,
+	VERACITY_WEIGHTS,
+	type Veracity,
+	weightForVeracity,
+};
 
-export type Veracity = keyof typeof VERACITY_WEIGHTS;
-
-export const VERACITY_ALLOWED: Record<Veracity, true> = Object.freeze({
-	stated: true,
-	inferred: true,
-	tool: true,
-	imported: true,
-	unknown: true,
-});
-
-const VERACITY_WARN_VALUE_CAP = 80;
 const TX_DEPTH = Symbol("mnemopi.veracity.txDepth");
 
 type TxDatabase = Database & {
@@ -85,10 +93,6 @@ export interface ConsolidationStats {
 	readonly avg_mentions: number;
 }
 
-function isVeracity(value: string): value is Veracity {
-	return Object.hasOwn(VERACITY_ALLOWED, value);
-}
-
 function sqliteInTransaction(db: Database): boolean {
 	const txDb = db as TxDatabase;
 	return txDb.inTransaction === true || txDb.in_transaction === true || (txDb[TX_DEPTH] ?? 0) > 0;
@@ -129,32 +133,6 @@ export function computeFactId(subject: string, predicate: string, object: string
 		chunks.push(Buffer.from(`${bytes.length}:`, "ascii"), bytes);
 	}
 	return `cf_${createHash("sha256").update(Buffer.concat(chunks)).digest("hex").slice(0, 24)}`;
-}
-export function clampVeracity(raw: unknown, context = "veracity"): Veracity {
-	if (raw === null || raw === undefined) return "unknown";
-	const norm = String(raw).trim().toLowerCase();
-	if (norm === "") return "unknown";
-	if (isVeracity(norm)) return norm;
-	const rawForLog = truncateForLog(String(raw), VERACITY_WARN_VALUE_CAP);
-	console.warn(`${context} received unknown veracity ${JSON.stringify(rawForLog)}; clamping to 'unknown'`);
-	return "unknown";
-}
-export function aggregateVeracity(sourceVeracities: readonly string[] | null | undefined): Veracity {
-	if (sourceVeracities === null || sourceVeracities === undefined || sourceVeracities.length === 0) return "unknown";
-	const valid = sourceVeracities.filter(isVeracity);
-	if (valid.length === 0) return "unknown";
-	const nonUnknown = valid.filter(v => v !== "unknown");
-	const candidates = nonUnknown.length === 0 ? valid : nonUnknown;
-	const counts = new Map<Veracity, number>();
-	for (const value of candidates) counts.set(value, (counts.get(value) ?? 0) + 1);
-	let max = 0;
-	for (const count of counts.values()) if (count > max) max = count;
-	let winner: Veracity | null = null;
-	for (const [value, count] of counts) {
-		if (count !== max) continue;
-		if (winner === null || VERACITY_WEIGHTS[value] < VERACITY_WEIGHTS[winner]) winner = value;
-	}
-	return winner ?? "unknown";
 }
 export class VeracityConsolidator {
 	readonly conn: Database;
@@ -241,7 +219,9 @@ export class VeracityConsolidator {
 	}
 
 	bayesianUpdate(currentConfidence: number, veracity: string): number {
-		const weight = isVeracity(veracity) ? VERACITY_WEIGHTS[veracity] : VERACITY_WEIGHTS.unknown;
+		// One loud reader for "what is this veracity worth": an unrecognized value is named
+		// rather than folded into the `unknown` weight without a word.
+		const weight = weightForVeracity(veracity, "bayesianUpdate");
 		const increment = (1.0 - currentConfidence) * weight * 0.3;
 		return Math.min(currentConfidence + increment, 1.0);
 	}
@@ -291,7 +271,7 @@ export class VeracityConsolidator {
 				.query("SELECT * FROM consolidated_facts WHERE subject = ? AND predicate = ? AND object != ?")
 				.all(subject, predicate, object) as ConsolidatedFactRow[];
 			const factId = computeFactId(subject, predicate, object);
-			const weight = isVeracity(veracity) ? VERACITY_WEIGHTS[veracity] : VERACITY_WEIGHTS.unknown;
+			const weight = weightForVeracity(veracity, "consolidateFact");
 			const baseConfidence = weight * 0.5;
 			const sources = source !== undefined && source !== null && source !== "" ? [source] : [];
 			this.conn

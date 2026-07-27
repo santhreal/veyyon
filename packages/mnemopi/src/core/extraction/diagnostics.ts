@@ -1,5 +1,16 @@
 import { truncateForLog } from "../../util/log-format";
 
+/**
+ * The tiers a fact extraction can be attributed to.
+ *
+ * `local` is the deterministic PATTERN extractor, not a local model. It was named for a local-GGUF
+ * backend that never had an implementation: two stubs, `callLocalLlm` returning null and
+ * `localGgufAvailable` declared `(): false`, with no loader behind either. Extraction called them
+ * anyway and recorded a `model_not_loaded` failure on every pass, so this tier reported a missing
+ * model where nothing had ever tried to load one. The stubs are gone and the tier keeps its key,
+ * because these strings appear in operator-facing stats and renaming one silently zeroes whatever
+ * was reading it.
+ */
 export const EXTRACTION_TIERS = ["host", "remote", "local", "cloud", "wrapper"] as const;
 export type ExtractionTier = (typeof EXTRACTION_TIERS)[number];
 

@@ -3,7 +3,9 @@
  */
 
 import type { Message, ToolCall } from "@veyyon/ai";
-import { type Dialect, getDialectDefinition } from "@veyyon/ai/dialect";
+import type { Dialect } from "@veyyon/ai/dialect";
+// The factory declares it; the dialect barrel re-exports every definition alongside it.
+import { getDialectDefinition } from "@veyyon/ai/dialect/factory";
 import {
 	containsUrlScheme,
 	formatGroupedPaths,

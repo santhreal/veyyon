@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { hostMatchesUrl } from "@veyyon/catalog/hosts";
+import { OPENROUTER_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { trimTrailingSlashes } from "@veyyon/utils";
 import {
 	type Env,
@@ -23,7 +24,14 @@ export const FASTEMBED_CACHE_DIR = join(homedir(), ".hermes", "cache", "fastembe
 export const MODEL_CACHE_DIR = join(homedir(), ".hermes", "mnemopi", "models");
 
 export const DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5";
-export const DEFAULT_EMBEDDING_API_URL = "https://openrouter.ai/api/v1";
+/**
+ * The embedding endpoint used when nothing is configured.
+ *
+ * Read from the owner in `@veyyon/catalog/provider-endpoints` rather than declared: three other modules spelled
+ * the same URL, two of them inline inside an env fallback chain whose variable is itself called
+ * `OPENROUTER_BASE_URL`.
+ */
+export const DEFAULT_EMBEDDING_API_URL = OPENROUTER_API_ENDPOINT;
 export const DEFAULT_LLM_MODEL_REPO = "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF";
 export const DEFAULT_LLM_MODEL_FILE = "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf";
 export const HOST_LLM_TIMEOUT_SECONDS = 15.0;

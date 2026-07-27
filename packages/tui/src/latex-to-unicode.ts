@@ -1,4 +1,5 @@
-import { clamp01 } from "@veyyon/utils";
+import { clamp01 } from "@veyyon/utils/math";
+import { SGR_BG_RESET, SGR_FG_RESET } from "./ansi";
 import { TERMINAL } from "./terminal-capabilities";
 
 // LaTeX → Unicode/ANSI converter.
@@ -892,9 +893,6 @@ function unescapeText(s: string): string {
 	return s.replace(/\\([&%$#_{}\s])/g, "$1").replace(/~/g, " ");
 }
 
-const ANSI_FG_RESET = "\x1b[39m";
-const ANSI_BG_RESET = "\x1b[49m";
-
 type AnsiColorFormat = "ansi-16m" | "ansi-256";
 
 interface AnsiColor {
@@ -1151,7 +1149,7 @@ export function latexColorScope(model: string | null, spec: string): ((text: str
 	const color = ansiColor(model, spec);
 	if (color === null) return null;
 	const { foreground } = color;
-	return text => foreground + text.replaceAll(ANSI_FG_RESET, foreground) + ANSI_FG_RESET;
+	return text => foreground + text.replaceAll(SGR_FG_RESET, foreground) + SGR_FG_RESET;
 }
 
 function restoreAnsi(
@@ -1161,8 +1159,8 @@ function restoreAnsi(
 	fromBackground: string | null,
 	toBackground: string | null,
 ): string {
-	if (fromForeground !== toForeground && fromForeground !== null) text += toForeground ?? ANSI_FG_RESET;
-	if (fromBackground !== toBackground && fromBackground !== null) text += toBackground ?? ANSI_BG_RESET;
+	if (fromForeground !== toForeground && fromForeground !== null) text += toForeground ?? SGR_FG_RESET;
+	if (fromBackground !== toBackground && fromBackground !== null) text += toBackground ?? SGR_BG_RESET;
 	return text;
 }
 
@@ -1459,7 +1457,7 @@ class LatexParser {
 		if (name === "normalcolor") {
 			const previous = this.#foreground;
 			this.#foreground = null;
-			return previous === null ? "" : ANSI_FG_RESET;
+			return previous === null ? "" : SGR_FG_RESET;
 		}
 		if (name === "phantom" || name === "hphantom") {
 			return " ".repeat(codePointLength(this.#argument(style).text));
@@ -1556,7 +1554,7 @@ class LatexParser {
 		const background = ansiColor(backgroundModel, this.#rawArgument());
 		const body = this.#scopedBackground(background, style);
 		if (frame === null) return `[${body}]`;
-		return `${frame.foreground}[${this.#foreground ?? ANSI_FG_RESET}${body}${frame.foreground}]${this.#foreground ?? ANSI_FG_RESET}`;
+		return `${frame.foreground}[${this.#foreground ?? SGR_FG_RESET}${body}${frame.foreground}]${this.#foreground ?? SGR_FG_RESET}`;
 	}
 
 	/** Read one argument: a `{…}` group, a single command, or a single char. */

@@ -8,11 +8,15 @@
  * results: string fields are strings and every reported width is a finite
  * non-negative integer.
  *
- * Deterministic LCG so a failure reproduces from the printed seed input.
+ * Driven by `fuzzStrings`, so a failing line is reported SHRUNK to the fragment that broke it
+ * rather than as the 300-character string it arrived in, and so any past failure written into the
+ * corpus below is replayed before a single new input is drawn. See `docs/internal/fuzzing.md`.
  */
 import { describe, it } from "bun:test";
 import { extractSegments, sliceWithWidth, visibleWidth } from "@veyyon/tui";
-import { buildString, lcg } from "./helpers/adversarial-strings";
+// `fuzzStrings` for the two cases that need adversarial CONTENT; the raw generator for the
+// strict-cap case, whose input is a fixed ASCII line and whose only randomness is the columns.
+import { fuzzSeed, fuzzStrings, lcg } from "@veyyon/utils/adversarial-strings";
 
 // Column / length arguments, including the pathological ones a resize storm or a
 // bad geometry read can produce.
@@ -22,11 +26,21 @@ function isNonNegInt(n: number): boolean {
 	return Number.isInteger(n) && n >= 0;
 }
 
+/**
+ * Lines that broke these primitives before, replayed first on every run and under every seed.
+ *
+ * Empty is the honest state: nothing has failed since `fuzzStrings` started reporting a
+ * paste-ready `corpus entry:` line. Add the entry a failure prints, with the bug it locks out in a
+ * comment beside it.
+ */
+const SLICE_CORPUS: readonly string[] = [];
+
+/** Same, for `extractSegments`. See {@link SLICE_CORPUS}. */
+const EXTRACT_CORPUS: readonly string[] = [];
+
 describe("slice/extract fuzz invariants", () => {
 	it("sliceWithWidth never throws and returns a coherent {text, width}", () => {
-		const rand = lcg(0x5a1c_e00d);
-		for (let iter = 0; iter < 8000; iter++) {
-			const line = buildString(rand);
+		fuzzStrings({ seed: 0x5a1c_e00d, iterations: 8000, corpus: SLICE_CORPUS }, (line, rand) => {
 			const startCol = INDICES[Math.floor(rand() * INDICES.length)]!;
 			const length = INDICES[Math.floor(rand() * INDICES.length)]!;
 			const strict = rand() < 0.5;
@@ -44,7 +58,7 @@ describe("slice/extract fuzz invariants", () => {
 					`sliceWithWidth(${JSON.stringify(line)}, ${startCol}, ${length}, ${strict}) width=${result.width} not a non-negative integer`,
 				);
 			}
-		}
+		});
 	});
 
 	it("sliceWithWidth (strict) never exceeds the requested length on realistic content", () => {
@@ -53,7 +67,7 @@ describe("slice/extract fuzz invariants", () => {
 		// (the broader native/JS oracle divergence is out of scope here — see
 		// width-math-fuzz), so the cap can be asserted precisely.
 		const ASCII = "the quick brown fox \x1b[31mjumps\x1b[0m over 0123456789 lazy dog";
-		const rand = lcg(0x1abe_11ed);
+		const rand = lcg(fuzzSeed(0x1abe_11ed));
 		for (let iter = 0; iter < 4000; iter++) {
 			const start = Math.floor(rand() * 40);
 			const length = 1 + Math.floor(rand() * 30);
@@ -70,9 +84,7 @@ describe("slice/extract fuzz invariants", () => {
 	});
 
 	it("extractSegments never throws and returns coherent before/after widths", () => {
-		const rand = lcg(0xe57a_c701);
-		for (let iter = 0; iter < 8000; iter++) {
-			const line = buildString(rand);
+		fuzzStrings({ seed: 0xe57a_c701, iterations: 8000, corpus: EXTRACT_CORPUS }, (line, rand) => {
 			const beforeEnd = INDICES[Math.floor(rand() * INDICES.length)]!;
 			const afterStart = INDICES[Math.floor(rand() * INDICES.length)]!;
 			const afterLen = INDICES[Math.floor(rand() * INDICES.length)]!;
@@ -93,6 +105,6 @@ describe("slice/extract fuzz invariants", () => {
 					`extractSegments(${JSON.stringify(line)}, ${beforeEnd}, ${afterStart}, ${afterLen}, ${strictAfter}) widths=(${result.beforeWidth}, ${result.afterWidth}) not non-negative integers`,
 				);
 			}
-		}
+		});
 	});
 });

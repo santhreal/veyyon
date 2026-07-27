@@ -4,9 +4,9 @@
 
 import type { ToolResultMessage } from "@veyyon/ai";
 import type { AgentMessage, AgentToolCall } from "../types";
-import { estimateTokens } from "./compaction";
 import type { SessionEntry, SessionMessageEntry } from "./entries";
 import { getToolResultMessage } from "./entries";
+import { estimateTokens } from "./token-estimate";
 import {
 	collectToolCallsById,
 	isProtectedToolResult,

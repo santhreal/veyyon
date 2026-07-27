@@ -17,10 +17,11 @@
  * component output and never decides which rows are scrollback-bound — those
  * concerns belong to the caller in `tui.ts`.
  */
+
+import { SGR_RESET } from "./ansi";
 import { visibleWidth } from "./utils";
 
 /** Reset every attribute (SGR 0). Mirrors `tui.ts`'s per-line terminator. */
-const SEGMENT_RESET = "\x1b[0m";
 
 /** DECSACE — select the rectangle change extent so DECCARA fills a rectangle. */
 export const DECSACE_RECT = "\x1b[2*x";
@@ -254,7 +255,7 @@ export function planDeccaraFills(lines: string[], width: number, firstScreenRow 
 		// (cut 0) needs no styled text at all — the caller's erase plus the
 		// rectangle paint it. A content row keeps its prefix and a fresh reset so
 		// the inline background never bleeds past the row.
-		const short = analysis.cut === 0 ? "" : line.slice(0, analysis.cut) + SEGMENT_RESET;
+		const short = analysis.cut === 0 ? "" : line.slice(0, analysis.cut) + SGR_RESET;
 		candidates[k] = { left: analysis.leftCol + 1, right: width, bg: analysis.bg, short, origLen: line.length };
 	}
 

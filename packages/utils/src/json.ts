@@ -3,6 +3,31 @@ import { YAML } from "bun";
 import { errorMessage } from "./type-guards";
 
 /**
+ * A JSON leaf: everything that is not an array or an object.
+ *
+ * One declaration, in the package that owns the JSON helpers. This type and
+ * {@link JsonValue} had been written out five times across the repository, in
+ * `@veyyon/mnemopi` three times over (`src/types.ts`, `src/core/beam/types.ts` and
+ * `src/mcp-tools.ts`), plus `@veyyon/tui`'s render harness and a laxer variant in the
+ * coding agent's secret obfuscator. Four of the five were identical, and the scalar
+ * was spelled `JsonScalar` in one and `JsonPrimitive` in the others, so a reader
+ * comparing two modules had to read both definitions to find out they agreed.
+ */
+export type JsonPrimitive = string | number | boolean | null;
+
+/**
+ * Any value `JSON.parse` can produce.
+ *
+ * STRICT, in the sense that an object's values are `JsonValue` and never `undefined`.
+ * `undefined` is not JSON: it survives no round trip, and `JSON.stringify` drops the
+ * property rather than encoding it. A caller passing an object literal with optional
+ * properties needs the laxer shape, and the one place that needs it says so in its own
+ * name (`JsonWithOptionalFields` in the secret obfuscator) rather than redefining this
+ * one a little differently.
+ */
+export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+
+/**
  * Try to parse JSON, returning null on failure.
  */
 export function tryParseJson<T = unknown>(content: string): T | null {

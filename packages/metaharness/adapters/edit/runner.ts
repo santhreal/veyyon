@@ -19,9 +19,7 @@ import {
 	InProcessClient,
 	type SharedInfra,
 } from "@veyyon/typescript-edit-benchmark/in-process-client";
-import benchmarkRetryPrompt from "./prompts/benchmark-retry.md" with { type: "text" };
-import benchmarkSystemPrompt from "./prompts/benchmark-system.md" with { type: "text" };
-import benchmarkTaskPrompt from "./prompts/benchmark-task.md" with { type: "text" };
+import { EDIT_BENCHMARK_PROMPTS } from "./prompts/registry";
 import type { EditTask } from "@veyyon/typescript-edit-benchmark/tasks";
 import {
 	verifyExpectedFileSubset,
@@ -674,21 +672,21 @@ type BenchmarkPromptDelivery = {
 };
 
 function buildBenchmarkSystemPrompt(params: { multiFile: boolean; config: BenchmarkConfig }): string {
-	return prompt.render(benchmarkSystemPrompt, {
+	return prompt.render(EDIT_BENCHMARK_PROMPTS["benchmark-system"].text, {
 		multiFile: params.multiFile,
 		instructions: buildInstructions(params.config),
 	});
 }
 
 function buildInitialBenchmarkPrompt(params: { taskPrompt: string; guidedContext?: string | null }): string {
-	return prompt.render(benchmarkTaskPrompt, {
+	return prompt.render(EDIT_BENCHMARK_PROMPTS["benchmark-task"].text, {
 		task_prompt: params.taskPrompt,
 		guided_context: params.guidedContext ?? undefined,
 	});
 }
 
 function buildRetryBenchmarkPrompt(params: { retryContext: string; guidedContext?: string | null }): string {
-	return prompt.render(benchmarkRetryPrompt, {
+	return prompt.render(EDIT_BENCHMARK_PROMPTS["benchmark-retry"].text, {
 		retry_context: params.retryContext,
 		guided_context: params.guidedContext ?? undefined,
 	});

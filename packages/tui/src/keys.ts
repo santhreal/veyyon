@@ -554,6 +554,99 @@ function matchesKeypadKey(data: string, keyId: KeyId): boolean | undefined {
 }
 
 /**
+ * Is this input a lone line feed (0x0A), the byte terminals disagree about?
+ *
+ * Components accommodate a bare LF explicitly, and they are right to. Three different terminals send it
+ * for three different keys: a Kitty-capable terminal using the iTerm2 mapping sends it for Shift+Enter,
+ * a legacy terminal in newline mode sends it for plain Enter, and Ctrl+J is this byte by definition. The
+ * parser resolves that as far as it honestly can from the protocol mode (see
+ * `canonicalizeAmbiguousLineFeed`), but a multiline editor still wants a lone LF to insert a newline
+ * whichever mode is active, because the terminals that send it without negotiating Kitty exist too, and
+ * a single-line field still wants it to submit, because there is nothing to insert.
+ *
+ * That policy is per component and cannot move into the parser without breaking one of those terminals.
+ * What it can have is ONE name and one definition, so the seven raw `data === "\n"` comparisons that
+ * used to encode it -- four of them in one file, two of them meaning the opposite of the other two --
+ * are no longer each a place where someone can get it subtly wrong.
+ */
+export function isLoneLineFeed(data: string): boolean {
+	return data === "\n";
+}
+
+/**
+ * The one input whose meaning the Kitty protocol flag decides: a bare LF (0x0A).
+ *
+ * Under the Kitty keyboard protocol plain Enter arrives as CR or as the CSI-u sequence for codepoint
+ * 13, never as a bare LF, so a lone LF from a Kitty-capable terminal is the iTerm2-style mapping of
+ * Shift+Enter. Without the protocol, LF is one of the bytes a legacy terminal sends for plain Enter, so
+ * it has to stay `enter` there.
+ *
+ * The pure-TypeScript parser this file replaced made exactly that distinction, and it is the ONLY one
+ * its `kittyProtocolActive` argument ever changed: sweeping all 128 single bytes and generated Kitty,
+ * legacy CSI and SS3 sequences against both parsers in both modes found LF and nothing else. The native
+ * parser answers `enter` in both modes, so `shift+enter` keybindings stopped matching it and only
+ * `editor.ts` still behaved correctly, through a raw `data === "\n"` byte comparison of its own.
+ *
+ * Rather than decide the answer here, this TRANSLATES the ambiguous byte into the canonical sequence
+ * for the key it represents and lets the native parser answer as usual, so key naming, aliases
+ * (`shift+return`) and modifier normalization keep one owner.
+ */
+const KITTY_SHIFT_ENTER_SEQUENCE = "\x1b[13;2u";
+
+function canonicalizeAmbiguousLineFeed(data: string): string | undefined {
+	return kittyProtocolActive && data === "\n" ? KITTY_SHIFT_ENTER_SEQUENCE : undefined;
+}
+
+// =============================================================================
+// Answer memo (keeps FFI off the per-keystroke path)
+// =============================================================================
+
+/**
+ * `parseKey` and `matchesKey` answer out of a memo before they cross into native code.
+ *
+ * WHY. The native parser costs a flat ~150ns per call regardless of input, essentially all of it FFI
+ * and string marshalling; the parse itself is nothing. Measured against the pure-TypeScript parser it
+ * replaced (`bench/parse-key.ts`, `bench/kitty-sequence.ts`), that makes native ~2.9x FASTER on real
+ * Kitty sequences, which are 7-12 bytes of arithmetic, and ~3x SLOWER on the single bytes that
+ * dominate ordinary typing, where TypeScript needed only 57ns. An optimization that pessimizes the
+ * common case is a bug (Law 7), and the fix does not have to be a second parser: the FFI call is the
+ * cost, and for keyboard input the same handful of inputs recur thousands of times, so the call is
+ * almost always redundant.
+ *
+ * The memo therefore keeps ONE parser -- native remains the only definition of what a key means -- and
+ * simply stops asking it the same question twice. Both native entry points are pure functions of
+ * `(data, keyId, kittyActive)`, which is what makes this sound; `test/key-memo.test.ts` asserts that
+ * purity against the whole single-byte range, a set of escape sequences, both protocol modes and a
+ * mutated `WT_SESSION`, so a native build that grew hidden state fails there rather than silently
+ * serving stale keys.
+ *
+ * Longer input skips the memo entirely: pasted text and bracketed-paste bodies arrive once, never
+ * repeat, and caching them would evict the keystrokes that do.
+ */
+const MEMO_MAX_INPUT_LENGTH = 24;
+/**
+ * Entry ceiling per memo. The live working set is tiny (the keys someone actually presses), so this is
+ * a runaway guard rather than a tuning knob, and it is enforced by clearing the whole map instead of
+ * evicting one entry: there is no LRU bookkeeping to get wrong, and re-warming costs one native call
+ * per key that comes back.
+ */
+const MEMO_MAX_ENTRIES = 4096;
+const parseCache = new Map<string, string | undefined>();
+const matchCache = new Map<string, boolean>();
+
+/**
+ * Drop every memoized answer.
+ *
+ * Exported for tests that need to observe the native parser directly (see `test/key-memo.test.ts`).
+ * Production code never needs it: the protocol mode is part of every cache key, so
+ * `setKittyProtocolActive` does not invalidate anything.
+ */
+export function clearKeyAnswerMemo(): void {
+	parseCache.clear();
+	matchCache.clear();
+}
+
+/**
  * Match input data against a key identifier string.
  *
  * Supported key identifiers:
@@ -570,7 +663,23 @@ function matchesKeypadKey(data: string, keyId: KeyId): boolean | undefined {
  * @param keyId - Key identifier (e.g., "ctrl+c", "escape", Key.ctrl("c"))
  */
 export function matchesKey(data: string, keyId: KeyId): boolean {
-	return matchesKeypadKey(data, keyId) ?? matchesKeyNative(data, keyId, kittyProtocolActive);
+	if (data.length > MEMO_MAX_INPUT_LENGTH) {
+		return (
+			matchesKeypadKey(data, keyId) ??
+			matchesKeyNative(canonicalizeAmbiguousLineFeed(data) ?? data, keyId, kittyProtocolActive)
+		);
+	}
+	// NUL separator written as an escape, not a raw byte: key ids never contain NUL, while a space would
+	// let `data: "a b"` with `keyId: "c"` and `data: "a"` with `keyId: "b c"` build one cache key.
+	const cacheKey = `${kittyProtocolActive ? "1" : "0"}${data}\u0000${keyId}`;
+	const cached = matchCache.get(cacheKey);
+	if (cached !== undefined) return cached;
+	const answer =
+		matchesKeypadKey(data, keyId) ??
+		matchesKeyNative(canonicalizeAmbiguousLineFeed(data) ?? data, keyId, kittyProtocolActive);
+	if (matchCache.size >= MEMO_MAX_ENTRIES) matchCache.clear();
+	matchCache.set(cacheKey, answer);
+	return answer;
 }
 
 /**
@@ -582,5 +691,22 @@ export function matchesKey(data: string, keyId: KeyId): boolean {
  * @param data - Raw input data from terminal
  */
 export function parseKey(data: string): string | undefined {
-	return decodeKittyKeypadText(data) ?? parseKeyNative(data, kittyProtocolActive) ?? undefined;
+	if (data.length > MEMO_MAX_INPUT_LENGTH) {
+		return (
+			decodeKittyKeypadText(data) ??
+			parseKeyNative(canonicalizeAmbiguousLineFeed(data) ?? data, kittyProtocolActive) ??
+			undefined
+		);
+	}
+	const cacheKey = `${kittyProtocolActive ? "1" : "0"}${data}`;
+	// `has` before `get`, because `undefined` -- "this input is not a key" -- is a real answer worth
+	// caching, and a `get`-only check would re-cross FFI for every unrecognized input.
+	if (parseCache.has(cacheKey)) return parseCache.get(cacheKey);
+	const answer =
+		decodeKittyKeypadText(data) ??
+		parseKeyNative(canonicalizeAmbiguousLineFeed(data) ?? data, kittyProtocolActive) ??
+		undefined;
+	if (parseCache.size >= MEMO_MAX_ENTRIES) parseCache.clear();
+	parseCache.set(cacheKey, answer);
+	return answer;
 }
