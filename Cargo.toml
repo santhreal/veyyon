@@ -177,7 +177,16 @@ too_many_lines = "allow"     # Arbitrary limits don't account for necessary comp
 # ──────────────────────────────────────────────────────────────────────────────
 veyyon-ast = { path = "crates/veyyon-ast" }
 veyyon-iso = { path = "crates/veyyon-iso" }
+veyyon-diff-kernel = { path = "crates/veyyon-diff-kernel" }
+veyyon-glob = { path = "crates/veyyon-glob" }
+veyyon-grep-kernel = { path = "crates/veyyon-grep-kernel" }
+veyyon-keys = { path = "crates/veyyon-keys" }
 veyyon-shell = { path = "crates/veyyon-shell" }
+veyyon-test-scratch = { path = "crates/veyyon-test-scratch" }
+veyyon-text = { path = "crates/veyyon-text" }
+veyyon-uu-diff = { path = "crates/veyyon-uu-diff" }
+veyyon-uu-grep = { path = "crates/veyyon-uu-grep" }
+veyyon-uutils-ctx = { path = "crates/veyyon-uutils-ctx" }
 veyyon-walker = { path = "crates/veyyon-walker" }
 brush-core = { path = "crates/vendor/brush-core" }
 brush-builtins = { path = "crates/vendor/brush-builtins" }
@@ -211,11 +220,25 @@ bytes = "1"
 # CLI & Configuration
 # ──────────────────────────────────────────────────────────────────────────────
 clap = { version = "4", features = ["derive"] }
+# `rg --generate` writes a man page and shell completions from the SAME clap
+# command the parser uses, so the artifacts can never promise a flag the tool
+# refuses. Both are clap's own generators and add no transitive weight worth
+# naming.
+clap_complete = "4"
+clap_mangen = "0.3"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Text Processing & Parsing
 # ──────────────────────────────────────────────────────────────────────────────
 regex = "1"
+# The escaping half of `regex`, which is where `regex::escape` actually lives. Depended on
+# directly by veyyon-grep-kernel so the one owner of literal escaping does not pull the whole
+# engine in behind it; it is already in the graph under grep-regex, so this costs no build time.
+regex-syntax = "0.8"
+# The engine half of `regex`, for the ONE thing `regex` itself cannot express: a
+# POSIX leftmost-longest span, which GNU grep reports and leftmost-first engines do
+# not. Already in the graph under `regex` and grep-regex, so this costs no build time.
+regex-automata = "0.4"
 similar = "3.1.0"
 unicode-segmentation = "1.13"
 unicode-width = "0.2"

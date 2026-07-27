@@ -56,6 +56,8 @@ fn run_xargs(
 			stdin_fd: None,
 			stdin_is_search_input: false,
 			stdout: Box::new(out.clone()),
+			// A capture buffer is not a terminal.
+			stdout_is_terminal: false,
 			stderr: Box::new(err.clone()),
 			cwd: cwd.to_path_buf(),
 			env,

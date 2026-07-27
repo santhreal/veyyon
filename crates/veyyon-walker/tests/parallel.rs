@@ -2,12 +2,11 @@ use std::{
 	collections::BTreeMap,
 	convert::Infallible,
 	fs,
-	path::{Path, PathBuf},
+	path::Path,
 	sync::{
 		Arc, Mutex,
 		atomic::{AtomicUsize, Ordering},
 	},
-	time::{SystemTime, UNIX_EPOCH},
 };
 #[cfg(unix)]
 use std::{
@@ -15,35 +14,19 @@ use std::{
 	os::unix::ffi::{OsStrExt, OsStringExt},
 };
 
+use veyyon_test_scratch::{TempTree, scratch_dir};
 use veyyon_walker::{
 	CompiledWalkGlob, Entry, EntryVisitor, FollowLinks, ParallelWalkControl, WalkControl, WalkError,
 	WalkFilter, WalkOptions, WalkOrder, WalkRequest, WalkStatus, walk_entries,
 };
 
-struct TempTree {
-	root: PathBuf,
-}
-
-impl TempTree {
-	fn new(name: &str) -> Self {
-		let unique = SystemTime::now()
-			.duration_since(UNIX_EPOCH)
-			.expect("system time should be after UNIX epoch")
-			.as_nanos();
-		let root = std::env::temp_dir().join(format!("veyyon-walker-parallel-{name}-{unique}"));
-		fs::create_dir(&root).expect("temporary root should be created");
-		Self { root }
-	}
-
-	fn path(&self) -> &Path {
-		&self.root
-	}
-}
-
-impl Drop for TempTree {
-	fn drop(&mut self) {
-		let _ = fs::remove_dir_all(&self.root);
-	}
+/// A scratch tree for one case.
+///
+/// This was a private copy of the guard, one of eight identical ones across the
+/// workspace. It is `veyyon-test-scratch` now, so there is a single
+/// implementation to read and to fix.
+fn temp_tree(name: &str) -> TempTree {
+	scratch_dir(&format!("walker-parallel-{name}"))
 }
 
 fn write_file(path: impl AsRef<Path>) {
@@ -112,7 +95,7 @@ fn rs_request(root: &Path) -> WalkRequest {
 
 #[test]
 fn parallel_candidates_match_serial_with_gitignore_hidden_node_modules_and_glob() {
-	let tree = TempTree::new("candidate-equivalence");
+	let tree = temp_tree("candidate-equivalence");
 	write_file(tree.path().join("root.rs"));
 	write_file(tree.path().join("root.txt"));
 	write_file(tree.path().join(".hidden.rs"));
@@ -152,7 +135,7 @@ fn create_wide_tree(root: &Path, dirs: usize, files_per_dir: usize) {
 
 #[test]
 fn parallel_walk_stops_promptly_when_sink_requests_stop() {
-	let tree = TempTree::new("early-stop");
+	let tree = temp_tree("early-stop");
 	let full_file_count = 2_000;
 	create_wide_tree(tree.path(), 100, full_file_count / 100);
 	let request = WalkRequest::new(tree.path()).filter(WalkFilter::files_only());
@@ -182,7 +165,7 @@ fn parallel_walk_stops_promptly_when_sink_requests_stop() {
 
 #[test]
 fn parallel_walk_returns_sink_error_and_terminates() {
-	let tree = TempTree::new("sink-error");
+	let tree = temp_tree("sink-error");
 	let full_file_count = 800;
 	create_wide_tree(tree.path(), 80, full_file_count / 80);
 	let request = WalkRequest::new(tree.path()).filter(WalkFilter::files_only());
@@ -214,7 +197,7 @@ fn parallel_walk_returns_sink_error_and_terminates() {
 
 #[test]
 fn parallel_walk_returns_heartbeat_error_before_visiting_candidates() {
-	let tree = TempTree::new("heartbeat-error");
+	let tree = temp_tree("heartbeat-error");
 	create_wide_tree(tree.path(), 20, 10);
 	let request = WalkRequest::new(tree.path()).filter(WalkFilter::files_only());
 	let invocations = AtomicUsize::new(0);
@@ -243,7 +226,7 @@ fn parallel_walk_returns_heartbeat_error_before_visiting_candidates() {
 #[cfg(unix)]
 #[test]
 fn parallel_follow_links_always_returns_same_candidates_as_serial_collection() {
-	let tree = TempTree::new("follow-links");
+	let tree = temp_tree("follow-links");
 	write_file(tree.path().join("target/child.txt"));
 	write_file(tree.path().join("target/deeper/grandchild.txt"));
 	std::os::unix::fs::symlink(tree.path().join("target"), tree.path().join("link"))
@@ -262,7 +245,7 @@ fn parallel_follow_links_always_returns_same_candidates_as_serial_collection() {
 
 #[test]
 fn unordered_and_path_collection_return_equal_sets_and_path_walk_sorts_each_directory() {
-	let tree = TempTree::new("serial-order");
+	let tree = temp_tree("serial-order");
 	write_file(tree.path().join("βeta.txt"));
 	write_file(tree.path().join("alpha.txt"));
 	write_file(tree.path().join("space name.txt"));
@@ -358,7 +341,7 @@ fn sort_key(name: &std::ffi::OsStr) -> Vec<u8> {
 
 #[test]
 fn parallel_deep_tree_relative_path_preserves_full_component_chain() {
-	let tree = TempTree::new("deep-tree");
+	let tree = temp_tree("deep-tree");
 	let mut dir = tree.path().to_path_buf();
 	let mut components = Vec::new();
 	for depth in 0..40 {

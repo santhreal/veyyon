@@ -37,7 +37,7 @@ mod rcopy;
 mod windows_block_clone;
 mod zfs;
 
-pub use diff::{ChangeKind, Diff, FileChange};
+pub use diff::{ChangeKind, Diff, FileChange, parse_git_diff};
 
 /// Stable identifier for which backend a build was compiled with.
 ///

@@ -1,20 +1,21 @@
-# diff implemented from scratch on top of the `similar` diffing library, with
-# I/O and path resolution routed through veyyon-uutils-ctx so it can run in-process
-# as a shell builtin. Entry point: `veyyon_uu_diff::run`.
+# diff implemented from scratch on veyyon-diff-kernel, which owns the alignment and
+# the unified output, with I/O and path resolution routed through veyyon-uutils-ctx
+# so it can run in-process as a shell builtin. Entry point: `veyyon_uu_diff::run`.
 [package]
-name = "veyyon_uu_diff"
-version = "0.8.0"
-edition = "2024"
-license = "MIT"
-description = "diff ~ similar-backed file comparison (in-process shell builtin)"
+name = "veyyon-uu-diff"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "diff ~ GNU-compatible file comparison (in-process shell builtin)"
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-clap = { version = "4", features = ["wrap_help"] }
-veyyon-uutils-ctx = { path = "../veyyon-uutils-ctx" }
-similar = "3.1.0"
+# The workspace pin plus the one feature this crate needs on top of it.
+clap = { workspace = true, features = ["wrap_help"] }
+veyyon-diff-kernel.workspace = true
+veyyon-uutils-ctx.workspace = true
 
 [dev-dependencies]
 parking_lot.workspace = true

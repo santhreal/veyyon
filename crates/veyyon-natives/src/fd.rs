@@ -261,13 +261,7 @@ pub fn fuzzy_find(options: FuzzyFindOptions<'_>) -> task::Promise<FuzzyFindResul
 #[cfg(test)]
 mod tests {
 	#[cfg(unix)]
-	use std::{
-		fs,
-		os::unix::fs as unix_fs,
-		path::{Path, PathBuf},
-		sync::atomic::{AtomicU64, Ordering},
-		time::{SystemTime, UNIX_EPOCH},
-	};
+	use std::{fs, os::unix::fs as unix_fs};
 
 	#[cfg(unix)]
 	use super::{FuzzyFindConfig, fuzzy_find_sync};
@@ -275,39 +269,18 @@ mod tests {
 	use crate::task;
 
 	#[cfg(unix)]
-	struct TempDirGuard(PathBuf);
-
-	#[cfg(unix)]
-	impl TempDirGuard {
-		fn new() -> Self {
-			static COUNTER: AtomicU64 = AtomicU64::new(0);
-			let nanos = SystemTime::now()
-				.duration_since(UNIX_EPOCH)
-				.expect("system time is after UNIX_EPOCH")
-				.as_nanos();
-			let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
-			let pid = std::process::id();
-			let path = std::env::temp_dir().join(format!("veyyon-fd-test-{pid}-{nanos}-{seq}"));
-			fs::create_dir_all(&path).expect("create temp test directory");
-			Self(path)
-		}
-
-		fn path(&self) -> &Path {
-			&self.0
-		}
-	}
-
-	#[cfg(unix)]
-	impl Drop for TempDirGuard {
-		fn drop(&mut self) {
-			let _ = fs::remove_dir_all(&self.0);
-		}
+	/// A scratch directory for one case.
+	///
+	/// The guard used to be declared here, one of eight identical copies across
+	/// the workspace. `veyyon-test-scratch` owns the single implementation now.
+	fn temp_dir_guard() -> veyyon_test_scratch::TempTree {
+		veyyon_test_scratch::scratch_dir("natives-fd")
 	}
 
 	#[cfg(unix)]
 	#[test]
 	fn fuzzy_find_without_cache_follows_symlinked_directories() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		let real_dir = root.path().join("zz-real-dir");
 		let link_dir_name = "aa-linked-dir";
 		let link_dir = root.path().join(link_dir_name);
@@ -349,7 +322,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn fuzzy_find_ranks_shallow_paths_first_on_score_tie() {
-		let root = TempDirGuard::new();
+		let root = temp_dir_guard();
 		// Same-named directories at different depths all score identically
 		// (exact basename match + directory bonus); the shallow one must win.
 		fs::create_dir_all(root.path().join("scripts")).expect("create root scripts dir");

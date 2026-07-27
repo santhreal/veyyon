@@ -1,0 +1,19 @@
+# The unified-diff half of the diff stack, owned once and shared by everything
+# that turns two texts into patch text: the `diff` shell builtin in
+# veyyon_uu_diff and plain-mode change capture in veyyon-iso. The alignment is a
+# port of GNU diff's own `compareseq` plus `shift_boundaries`, measured against
+# GNU diff 3.10 over 464 pair-and-flag cases; `similar` supplies the op and
+# grouping datatypes, not the comparison.
+[package]
+name = "veyyon-diff-kernel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+similar.workspace = true

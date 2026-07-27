@@ -149,6 +149,152 @@ pub enum VisitOrder {
 	ContentsFirst,
 }
 
+/// One caller-named glob, and whether it matches without regard to case.
+///
+/// `rg --glob` is case-sensitive and `rg --iglob` is not, and a single run may
+/// mix them, so the case rule belongs to the pattern rather than to the set.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct WalkOverridePattern {
+	/// The glob itself. A leading `!` negates it.
+	pub glob:             String,
+	/// Match without regard to case.
+	pub case_insensitive: bool,
+}
+
+impl WalkOverridePattern {
+	/// A case-sensitive pattern.
+	pub fn new(glob: impl Into<String>) -> Self {
+		Self { glob: glob.into(), case_insensitive: false }
+	}
+
+	/// A pattern that matches without regard to case.
+	pub fn case_insensitive(glob: impl Into<String>) -> Self {
+		Self { glob: glob.into(), case_insensitive: true }
+	}
+}
+
+/// What the caller's globs say about one entry.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum WalkOverrideVerdict {
+	/// A glob named this entry, so it is walked whatever the other rules say.
+	Include,
+	/// A glob excluded this entry, or include globs exist and this file matched
+	/// none of them.
+	Exclude,
+	/// The globs say nothing, so the hidden rule and the ignore files decide.
+	Undecided,
+}
+
+/// Caller-named globs that OUTRANK the hidden rule and the ignore files.
+///
+/// This is `rg --glob`/`--iglob` and `fd --glob`: naming a glob is a statement
+/// about what should be walked, so a file matching one is walked even when
+/// `.gitignore` or the hidden rule would drop it, and once any include glob
+/// exists a file matching none of them is dropped.
+///
+/// Directories are treated differently on purpose. A directory is only included
+/// when a glob matches the directory itself, so `--glob '*.txt'` does not
+/// descend into a hidden or ignored directory while `--glob '*'` does. That
+/// asymmetry is what makes the rule usable: without it, one include glob would
+/// force a walk of every ignored directory in the tree looking for matches.
+///
+/// Equality and hashing use the pattern list, not the compiled matcher, the
+/// same way [`CompiledWalkGlob`] does.
+#[derive(Clone)]
+pub struct WalkOverrides {
+	patterns: Arc<[WalkOverridePattern]>,
+	matcher:  Arc<ignore::overrides::Override>,
+}
+
+impl WalkOverrides {
+	/// Compile globs relative to `root`.
+	///
+	/// Patterns are matched against paths under `root`, so the root is part of
+	/// the contract rather than an optimisation.
+	pub fn new<I>(root: impl AsRef<Path>, patterns: I) -> Result<Self, WalkGlobError>
+	where
+		I: IntoIterator<Item = WalkOverridePattern>,
+	{
+		let mut builder = ignore::overrides::OverrideBuilder::new(root.as_ref());
+		let mut kept = Vec::new();
+		for pattern in patterns {
+			builder
+				.case_insensitive(pattern.case_insensitive)
+				.map_err(|error| WalkGlobError {
+					glob:    pattern.glob.clone(),
+					message: error.to_string(),
+				})?;
+			builder.add(&pattern.glob).map_err(|error| WalkGlobError {
+				glob:    pattern.glob.clone(),
+				message: error.to_string(),
+			})?;
+			kept.push(pattern);
+		}
+		let matcher = builder
+			.build()
+			.map_err(|error| WalkGlobError { glob: String::new(), message: error.to_string() })?;
+		Ok(Self { patterns: kept.into(), matcher: Arc::new(matcher) })
+	}
+
+	/// Whether no pattern was given, in which case every verdict is
+	/// [`WalkOverrideVerdict::Undecided`].
+	pub fn is_empty(&self) -> bool {
+		self.patterns.is_empty()
+	}
+
+	/// The compiled patterns, in the order they were added.
+	pub fn patterns(&self) -> &[WalkOverridePattern] {
+		&self.patterns
+	}
+
+	/// What the globs say about `path`.
+	pub fn verdict(&self, path: &Path, is_dir: bool) -> WalkOverrideVerdict {
+		match self.matcher.matched(path, is_dir) {
+			ignore::Match::Whitelist(_) => WalkOverrideVerdict::Include,
+			ignore::Match::Ignore(_) => WalkOverrideVerdict::Exclude,
+			ignore::Match::None => WalkOverrideVerdict::Undecided,
+		}
+	}
+}
+
+impl fmt::Debug for WalkOverrides {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("WalkOverrides")
+			.field("patterns", &self.patterns)
+			.finish()
+	}
+}
+
+impl PartialEq for WalkOverrides {
+	fn eq(&self, other: &Self) -> bool {
+		self.patterns == other.patterns
+	}
+}
+
+impl Eq for WalkOverrides {}
+
+/// A glob that could not be compiled, with the pattern that failed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WalkGlobError {
+	/// The pattern that failed, empty when the failure was not about one
+	/// pattern.
+	pub glob:    String,
+	/// What the glob compiler said.
+	pub message: String,
+}
+
+impl fmt::Display for WalkGlobError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		if self.glob.is_empty() {
+			write!(f, "{}", self.message)
+		} else {
+			write!(f, "invalid glob {:?}: {}", self.glob, self.message)
+		}
+	}
+}
+
+impl std::error::Error for WalkGlobError {}
+
 /// Concrete compiled glob filter for normalized walk-relative paths.
 ///
 /// Patterns are expected to already use the walker's normalized `/` separator
@@ -546,52 +692,96 @@ pub struct WalkOutcome {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct WalkOptions {
 	/// Include dot-prefixed entries.
-	pub include_hidden:    bool,
+	pub include_hidden:     bool,
 	/// Honor `.ignore`, `.gitignore`, repository excludes, and global gitignore.
-	pub use_gitignore:     bool,
+	pub use_gitignore:      bool,
+	/// Read `.ignore` files.
+	///
+	/// `.ignore` is the tool-neutral file: it is not a git file, so it applies
+	/// with no repository in sight. `rg --no-ignore-dot` turns it off.
+	pub use_dot_ignore:     bool,
+	/// Read `.gitignore` files.
+	///
+	/// `rg --no-ignore-vcs` turns this off along with
+	/// [`WalkOptions::use_exclude_ignore`], and leaves `.ignore` alone, which is
+	/// why these are separate switches rather than one.
+	pub use_vcs_ignore:     bool,
+	/// Read a repository's own exclude file, `.git/info/exclude`.
+	///
+	/// `rg --no-ignore-exclude` turns off just this one, so it cannot share a
+	/// switch with `.gitignore`.
+	pub use_exclude_ignore: bool,
+	/// Read the user's global gitignore, git's `core.excludesFile`.
+	///
+	/// `rg --no-ignore-global` turns it off.
+	pub use_global_ignore:  bool,
+	/// Read ignore files in directories ABOVE the walk root.
+	///
+	/// A repository's root `.gitignore` describes files deep inside it, so
+	/// walking a subdirectory still has to read it. `rg --no-ignore-parent`
+	/// turns that off.
+	pub use_parent_ignore:  bool,
+	/// Apply the git-specific ignore sources only inside a repository.
+	///
+	/// `.gitignore`, `.git/info/exclude` and the global gitignore describe what
+	/// git tracks, so git itself reads them only for a directory that is part of
+	/// a repository. `.ignore` is not a git file and always applies either way.
+	///
+	/// This is OFF by default, so a `.gitignore` is honoured wherever it sits,
+	/// which is what a consumer asking for [`WalkOptions::use_gitignore`]
+	/// usually means. Turn it on to match git's own scoping: the `rg` and `fd`
+	/// builtins do, because that is what those tools promise, and their
+	/// `--no-require-git` turns it back off.
+	pub require_git:        bool,
 	/// Prune `.git` directories during traversal.
-	pub skip_git:          bool,
+	pub skip_git:           bool,
 	/// Prune `node_modules` directories during traversal.
-	pub skip_node_modules: bool,
+	pub skip_node_modules:  bool,
 	/// Symbolic-link traversal policy.
-	pub follow_links:      FollowLinks,
+	pub follow_links:       FollowLinks,
 	/// Metadata detail requested for each yielded entry.
-	pub detail:            WalkDetail,
+	pub detail:             WalkDetail,
 	/// Per-directory visit order.
-	pub order:             WalkOrder,
+	pub order:              WalkOrder,
 	/// Yield the traversal root as a depth-0 entry before its children.
-	pub emit_root:         bool,
+	pub emit_root:          bool,
 	/// Minimum depth yielded to the visitor. Root depth is 0.
-	pub min_depth:         usize,
+	pub min_depth:          usize,
 	/// Maximum depth traversed and yielded. Root depth is 0.
-	pub max_depth:         usize,
+	pub max_depth:          usize,
 	/// Yield directory entries after their children.
-	pub contents_first:    bool,
+	pub contents_first:     bool,
 	/// Directory-open error handling policy.
-	pub directory_errors:  DirectoryErrorMode,
+	pub directory_errors:   DirectoryErrorMode,
 	/// Stay on the root filesystem when supported by the platform.
-	pub same_file_system:  bool,
+	pub same_file_system:   bool,
 	/// Use the shared scan cache when collecting owned entries.
-	pub cache:             bool,
+	pub cache:              bool,
 }
 
 impl Default for WalkOptions {
 	fn default() -> Self {
 		Self {
-			include_hidden:    true,
-			use_gitignore:     false,
-			skip_git:          false,
-			skip_node_modules: false,
-			follow_links:      FollowLinks::Never,
-			detail:            WalkDetail::Minimal,
-			order:             WalkOrder::Path,
-			emit_root:         false,
-			min_depth:         1,
-			max_depth:         usize::MAX,
-			contents_first:    false,
-			directory_errors:  DirectoryErrorMode::Visit,
-			same_file_system:  false,
-			cache:             false,
+			include_hidden:     true,
+			use_gitignore:      false,
+			use_dot_ignore:     true,
+			use_vcs_ignore:     true,
+			use_exclude_ignore: true,
+			use_global_ignore:  true,
+			use_parent_ignore:  true,
+			require_git:        false,
+			skip_git:           false,
+			skip_node_modules:  false,
+			follow_links:       FollowLinks::Never,
+			detail:             WalkDetail::Minimal,
+			order:              WalkOrder::Path,
+			emit_root:          false,
+			min_depth:          1,
+			max_depth:          usize::MAX,
+			contents_first:     false,
+			directory_errors:   DirectoryErrorMode::Visit,
+			same_file_system:   false,
+			cache:              false,
 		}
 	}
 }
@@ -602,6 +792,7 @@ pub struct WalkRequest {
 	root:             PathBuf,
 	options:          WalkOptions,
 	cache_policy:     CachePolicy,
+	overrides:        Option<WalkOverrides>,
 	filter:           WalkFilter,
 	limit:            Option<usize>,
 	empty_recheck:    EmptyRecheck,
@@ -631,12 +822,29 @@ impl WalkRequest {
 			root: root.into(),
 			options,
 			cache_policy,
+			overrides: None,
 			filter: WalkFilter::default(),
 			limit: None,
 			empty_recheck: EmptyRecheck::Configured,
 			visit_order,
 			size_hint_policy: SizeHintPolicy::FromDetail,
 		}
+	}
+
+	/// Set caller-named globs that outrank the hidden rule and the ignore files.
+	///
+	/// See [`WalkOverrides`]. This DISABLES the scan cache for the request: a
+	/// cache entry is keyed by [`WalkOptions`], which cannot describe a glob
+	/// set, so a cached answer would belong to a different question.
+	pub fn overrides(mut self, overrides: WalkOverrides) -> Self {
+		self.cache_policy = CachePolicy::Disabled;
+		self.overrides = Some(overrides);
+		self
+	}
+
+	/// The caller-named globs, if any.
+	pub const fn override_globs(&self) -> Option<&WalkOverrides> {
+		self.overrides.as_ref()
 	}
 
 	/// Return the traversal root.
@@ -658,6 +866,50 @@ impl WalkRequest {
 	/// Enable or disable `.ignore`/gitignore matching.
 	pub const fn gitignore(mut self, use_gitignore: bool) -> Self {
 		self.options.use_gitignore = use_gitignore;
+		self
+	}
+
+	/// Enable or disable `.ignore` files. See [`WalkOptions::use_dot_ignore`].
+	pub const fn dot_ignore(mut self, use_dot_ignore: bool) -> Self {
+		self.options.use_dot_ignore = use_dot_ignore;
+		self
+	}
+
+	/// Enable or disable `.gitignore` files. See
+	/// [`WalkOptions::use_vcs_ignore`].
+	pub const fn vcs_ignore(mut self, use_vcs_ignore: bool) -> Self {
+		self.options.use_vcs_ignore = use_vcs_ignore;
+		self
+	}
+
+	/// Enable or disable a repository's exclude file. See
+	/// [`WalkOptions::use_exclude_ignore`].
+	pub const fn exclude_ignore(mut self, use_exclude_ignore: bool) -> Self {
+		self.options.use_exclude_ignore = use_exclude_ignore;
+		self
+	}
+
+	/// Enable or disable the global gitignore. See
+	/// [`WalkOptions::use_global_ignore`].
+	pub const fn global_ignore(mut self, use_global_ignore: bool) -> Self {
+		self.options.use_global_ignore = use_global_ignore;
+		self
+	}
+
+	/// Enable or disable ignore files above the root. See
+	/// [`WalkOptions::use_parent_ignore`].
+	pub const fn parent_ignore(mut self, use_parent_ignore: bool) -> Self {
+		self.options.use_parent_ignore = use_parent_ignore;
+		self
+	}
+
+	/// Restrict the git-specific ignore sources to repositories, or allow them
+	/// anywhere.
+	///
+	/// See [`WalkOptions::require_git`]. `.ignore` files are unaffected either
+	/// way.
+	pub const fn require_git(mut self, require_git: bool) -> Self {
+		self.options.require_git = require_git;
 		self
 	}
 
@@ -994,7 +1246,13 @@ impl WalkRequest {
 			visitor,
 			predicate,
 		};
-		walk_entries(&self.root, options, &mut adapter, &mut heartbeat)
+		walk_entries_with_overrides(
+			&self.root,
+			options,
+			self.overrides.clone(),
+			&mut adapter,
+			&mut heartbeat,
+		)
 	}
 
 	/// Run `operation` for each accepted regular file.
@@ -1176,7 +1434,18 @@ impl WalkRequest {
 		H: Fn() -> std::result::Result<(), E> + Sync,
 		E: fmt::Display,
 	{
-		collect_entries(&self.root, options, heartbeat)
+		match self.overrides.clone() {
+			// A cache entry is keyed by `WalkOptions`, which says nothing about globs,
+			// so a request with globs never reads or writes the cache.
+			Some(overrides) => {
+				let mut options = options;
+				options.cache = false;
+				collect_entries_native_with_overrides(&self.root, options, Some(overrides), || {
+					heartbeat().map_err(|err| err.to_string())
+				})
+			},
+			None => collect_entries(&self.root, options, heartbeat),
+		}
 	}
 
 	fn should_recheck_empty(&self, cache_age_ms: u64) -> bool {
@@ -1372,7 +1641,7 @@ where
 		root: request.root.clone(),
 		options,
 		filter: request.filter.clone(),
-		matcher: FastIgnore::new(options.use_gitignore),
+		matcher: FastIgnore::new(options, request.overrides.clone()),
 	};
 	let root_ignore = context.matcher.root_state(&context.root);
 	let shared = ParallelWalkShared::new(sink, heartbeat);
@@ -1425,7 +1694,13 @@ where
 	options.emit_root = true;
 	options.directory_errors = DirectoryErrorMode::Visit;
 	let mut visitor = SerialCandidateVisitor { filter: &request.filter, sink };
-	walk_entries(&request.root, options, &mut visitor, heartbeat)
+	walk_entries_with_overrides(
+		&request.root,
+		options,
+		request.overrides.clone(),
+		&mut visitor,
+		heartbeat,
+	)
 }
 
 fn emit_parallel_root_file<E, S, H>(
@@ -1579,14 +1854,6 @@ fn walk_parallel_dir<'scope, E, S, H>(
 		if is_dot_entry(name) {
 			continue;
 		}
-		if !context.options.include_hidden && is_hidden_name(name) {
-			continue;
-		}
-		if (context.options.skip_git && is_git_name(name))
-			|| (context.options.skip_node_modules && is_node_modules_name(name))
-		{
-			continue;
-		}
 
 		let name_str = entry_name(name);
 		if name_str.is_empty() {
@@ -1601,7 +1868,10 @@ fn walk_parallel_dir<'scope, E, S, H>(
 		absolute.push(name);
 		push_relative_name(&mut relative, &name_str);
 		let is_dir = entry.file_type == FileType::Dir;
-		if !context.matcher.is_ignored(&dir_ignore, &absolute, is_dir) {
+		if context
+			.matcher
+			.admits(&dir_ignore, &absolute, name, is_dir, context.options)
+		{
 			let decision = {
 				let meta = EntryMeta {
 					root:          &context.root,
@@ -1775,17 +2045,68 @@ pub fn is_relative_ancestor(parent: &str, child: &str) -> bool {
 
 /// Compare normalized walk-relative paths in depth-first,
 /// contents-before-parent order.
+///
+/// Paths are compared one `/`-separated component at a time. The first
+/// component that differs decides, and when one path's components run out first
+/// it is an ancestor of the other, so it sorts last: a directory's contents
+/// come before the directory itself.
+///
+/// WHY NOT AN ANCESTOR CHECK PLUS `str::cmp`. That was the previous
+/// implementation and it is not a total order, which matters because
+/// [`sort_collected_depth_first`] hands this to `slice::sort_unstable_by`, and
+/// the standard library is entitled to panic or return an arbitrary order when
+/// the comparator is inconsistent. It mixed two rules that disagree: paths
+/// related by prefix used the ancestor rule, everything else used whole-string
+/// byte order. Those give opposite answers whenever a sibling's name continues
+/// with a byte below `/` (0x2F), which is `space !"#$%&'()*+,-.` and so
+/// includes the two most common characters in real file names.
+///
+/// The minimal counterexample, found by
+/// `fuzz/fuzz_targets/walker_path_order.rs` in ninety seconds, is `"."`,
+/// `"./aaaaaaaaa"`, `"...."`: the first is an ancestor of the second so it
+/// sorted greater, the second beat the third on byte order because `/` is above
+/// `.`, and yet the first sorted below the third. `src`, `src/x`, `src-gen` is
+/// the same triple in a shape you would find in any checkout.
+///
+/// Comparing component-wise removes the disagreement rather than patching it,
+/// because the two rules become one: byte order within a component, and the
+/// ancestor rule only where a component sequence ends. It agrees with
+/// [`is_relative_ancestor`] on every input for which that returns true, since a
+/// walk-relative ancestor is exactly a proper component-sequence prefix.
 pub fn compare_depth_first_paths(left: &str, right: &str) -> Ordering {
 	if left == right {
 		return Ordering::Equal;
 	}
-	if is_relative_ancestor(left, right) {
+	// The root is an ancestor of every entry, and `"".split('/')` yields one
+	// empty component rather than none, so the component walk below would read it
+	// as a sibling named "" and sort it first. It sorts last, like any ancestor.
+	if left.is_empty() {
 		return Ordering::Greater;
 	}
-	if is_relative_ancestor(right, left) {
+	if right.is_empty() {
 		return Ordering::Less;
 	}
-	left.cmp(right)
+
+	let mut left_components = left.split('/');
+	let mut right_components = right.split('/');
+	loop {
+		match (left_components.next(), right_components.next()) {
+			(Some(left_component), Some(right_component)) => {
+				match left_component.cmp(right_component) {
+					Ordering::Equal => (),
+					decided => return decided,
+				}
+			},
+			// `left` ran out of components first, so it is an ancestor of `right`
+			// and its contents come first.
+			(None, Some(_)) => return Ordering::Greater,
+			(Some(_), None) => return Ordering::Less,
+			// Unreachable given `left != right`, since equal component sequences
+			// rejoin to equal strings. Returning `Equal` keeps the comparator
+			// consistent rather than trusting that reasoning at runtime.
+			(None, None) => return Ordering::Equal,
+		}
+	}
 }
 
 /// Sort collected entries in depth-first, contents-before-parent path order.
@@ -2430,8 +2751,22 @@ fn collect_entries_native<E, H>(
 where
 	H: FnMut() -> std::result::Result<(), E>,
 {
+	collect_entries_native_with_overrides(root, options, None, heartbeat)
+}
+
+/// Collects entries with caller-named globs that outrank the hidden and ignore
+/// rules. Never cached: see [`WalkRequest::overrides`].
+fn collect_entries_native_with_overrides<E, H>(
+	root: &Path,
+	options: WalkOptions,
+	overrides: Option<WalkOverrides>,
+	heartbeat: H,
+) -> std::result::Result<CollectedEntries, WalkError<E>>
+where
+	H: FnMut() -> std::result::Result<(), E>,
+{
 	let mut collector = CollectVisitor::new();
-	let _status = walk_entries(root, options, &mut collector, heartbeat)?;
+	let _status = walk_entries_with_overrides(root, options, overrides, &mut collector, heartbeat)?;
 	if options.contents_first {
 		sort_collected_depth_first(&mut collector.entries);
 	} else {
@@ -2462,12 +2797,28 @@ where
 	V: EntryVisitor,
 	H: FnMut() -> std::result::Result<(), V::Error>,
 {
+	walk_entries_with_overrides(root, options, None, visitor, heartbeat)
+}
+
+/// Streams entries with caller-named globs that outrank the hidden and ignore
+/// rules. [`walk_entries`] is this with no globs.
+fn walk_entries_with_overrides<V, H>(
+	root: &Path,
+	options: WalkOptions,
+	overrides: Option<WalkOverrides>,
+	visitor: &mut V,
+	heartbeat: H,
+) -> std::result::Result<WalkStatus, WalkError<V::Error>>
+where
+	V: EntryVisitor,
+	H: FnMut() -> std::result::Result<(), V::Error>,
+{
 	if options.min_depth > options.max_depth {
 		return Ok(WalkStatus::Complete);
 	}
 
 	let root_device = root_device_for_options(root, options);
-	let matcher = FastIgnore::new(options.use_gitignore);
+	let matcher = FastIgnore::new(options, overrides);
 	let root_ignore = matcher.root_state(root);
 
 	let mut context = WalkContext {
@@ -2695,14 +3046,6 @@ impl<H> WalkContext<'_, H> {
 			if is_dot_entry(name) {
 				continue;
 			}
-			if !self.options.include_hidden && is_hidden_name(name) {
-				continue;
-			}
-			if (self.options.skip_git && is_git_name(name))
-				|| (self.options.skip_node_modules && is_node_modules_name(name))
-			{
-				continue;
-			}
 
 			let name_str = entry_name(name);
 			if name_str.is_empty() {
@@ -2816,9 +3159,9 @@ impl<H> WalkContext<'_, H> {
 			}
 		}
 
-		if self
+		if !self
 			.matcher
-			.is_ignored(dir_ignore, &self.absolute_path, is_dir)
+			.admits(dir_ignore, &self.absolute_path, name, is_dir, self.options)
 		{
 			return Ok(false);
 		}
@@ -2966,7 +3309,7 @@ fn collect_directory_entries<E>(
 ) -> std::result::Result<IgnoreEntryNames, ReadDirError<E>> {
 	scratch.clear_listing();
 	let mut ignore_entries = IgnoreEntryNames::default();
-	let track_ignore_entries = derive_ignore_from_entries && matcher.use_gitignore;
+	let track_ignore_entries = derive_ignore_from_entries && matcher.sources.any();
 	let mut read_buffer = std::mem::take(&mut scratch.read_buffer);
 	let result = platform::read_dir_entries(dir, detail, &mut read_buffer, |entry| {
 		if track_ignore_entries {
@@ -2985,6 +3328,42 @@ pub const fn supports_cheap_size_hints() -> bool {
 	platform::CHEAP_SIZE_HINTS
 }
 
+/// Which ignore sources a walk reads, and how they are scoped.
+///
+/// Derived from [`WalkOptions`] once per walk so the load and match paths
+/// cannot disagree about it. Every field is a source ripgrep and fd can turn
+/// off on its own, which is why this is a set rather than the single switch it
+/// started as.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+struct IgnoreSources {
+	dot:         bool,
+	vcs:         bool,
+	exclude:     bool,
+	global:      bool,
+	parent:      bool,
+	require_git: bool,
+}
+
+impl IgnoreSources {
+	const fn from_options(options: WalkOptions) -> Self {
+		// `use_gitignore` is the master switch: with it off no source is read, which
+		// is what `--no-ignore` asks for.
+		let any = options.use_gitignore;
+		Self {
+			dot:         any && options.use_dot_ignore,
+			vcs:         any && options.use_vcs_ignore,
+			exclude:     any && options.use_exclude_ignore,
+			global:      any && options.use_global_ignore,
+			parent:      any && options.use_parent_ignore,
+			require_git: options.require_git,
+		}
+	}
+
+	const fn any(self) -> bool {
+		self.dot || self.vcs || self.exclude || self.global
+	}
+}
+
 struct IgnoreState {
 	parent:              Option<Arc<Self>>,
 	ignore_matcher:      Option<ignore::gitignore::Gitignore>,
@@ -2996,8 +3375,9 @@ struct IgnoreState {
 }
 
 struct FastIgnore {
-	global:        Option<ignore::gitignore::Gitignore>,
-	use_gitignore: bool,
+	global:    Option<ignore::gitignore::Gitignore>,
+	sources:   IgnoreSources,
+	overrides: Option<WalkOverrides>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -3096,14 +3476,20 @@ fn load_gitignore(
 }
 
 impl IgnoreState {
-	fn build(dir: &Path, parent: Option<Arc<Self>>) -> Arc<Self> {
+	fn build(dir: &Path, parent: Option<Arc<Self>>, sources: IgnoreSources) -> Arc<Self> {
 		let has_git = has_repo_marker(dir);
 		let git_exclude = dir.join(".git/info/exclude");
 		Self::new(
 			parent,
-			load_gitignore(dir, &dir.join(".ignore"), None),
-			load_gitignore(dir, &dir.join(".gitignore"), None),
-			if has_git {
+			sources
+				.dot
+				.then(|| load_gitignore(dir, &dir.join(".ignore"), None))
+				.flatten(),
+			sources
+				.vcs
+				.then(|| load_gitignore(dir, &dir.join(".gitignore"), None))
+				.flatten(),
+			if has_git && sources.exclude {
 				load_gitignore(dir, &git_exclude, None)
 			} else {
 				None
@@ -3112,14 +3498,25 @@ impl IgnoreState {
 		)
 	}
 
-	fn build_parent(dir: &Path, parent: Option<Arc<Self>>, explicit_root: &Path) -> Arc<Self> {
+	fn build_parent(
+		dir: &Path,
+		parent: Option<Arc<Self>>,
+		explicit_root: &Path,
+		sources: IgnoreSources,
+	) -> Arc<Self> {
 		let has_git = has_repo_marker(dir);
 		let git_exclude = dir.join(".git/info/exclude");
 		Self::new(
 			parent,
-			load_gitignore(dir, &dir.join(".ignore"), Some(explicit_root)),
-			load_gitignore(dir, &dir.join(".gitignore"), Some(explicit_root)),
-			if has_git {
+			sources
+				.dot
+				.then(|| load_gitignore(dir, &dir.join(".ignore"), Some(explicit_root)))
+				.flatten(),
+			sources
+				.vcs
+				.then(|| load_gitignore(dir, &dir.join(".gitignore"), Some(explicit_root)))
+				.flatten(),
+			if has_git && sources.exclude {
 				load_gitignore(dir, &git_exclude, Some(explicit_root))
 			} else {
 				None
@@ -3128,24 +3525,29 @@ impl IgnoreState {
 		)
 	}
 
-	fn build_from_entry_names(dir: &Path, parent: &Arc<Self>, names: IgnoreEntryNames) -> Arc<Self> {
+	fn build_from_entry_names(
+		dir: &Path,
+		parent: &Arc<Self>,
+		names: IgnoreEntryNames,
+		sources: IgnoreSources,
+	) -> Arc<Self> {
 		if !names.has_relevant() {
 			return Arc::clone(parent);
 		}
 		let git_exclude = dir.join(".git/info/exclude");
 		Self::new(
 			Some(Arc::clone(parent)),
-			if names.ignore_file {
+			if names.ignore_file && sources.dot {
 				load_gitignore(dir, &dir.join(".ignore"), None)
 			} else {
 				None
 			},
-			if names.gitignore_file {
+			if names.gitignore_file && sources.vcs {
 				load_gitignore(dir, &dir.join(".gitignore"), None)
 			} else {
 				None
 			},
-			if names.git_dir {
+			if names.git_dir && sources.exclude {
 				load_gitignore(dir, &git_exclude, None)
 			} else {
 				None
@@ -3178,8 +3580,8 @@ impl IgnoreState {
 		})
 	}
 
-	fn build_parents(root: &Path, use_gitignore: bool) -> Option<Arc<Self>> {
-		if !use_gitignore {
+	fn build_parents(root: &Path, sources: IgnoreSources) -> Option<Arc<Self>> {
+		if !sources.any() || !sources.parent {
 			return None;
 		}
 		let mut ancestors = Vec::new();
@@ -3196,15 +3598,16 @@ impl IgnoreState {
 		let repo_start = repo_start?;
 		let mut parent = None;
 		for ancestor in ancestors[..=repo_start].iter().rev() {
-			parent = Some(Self::build_parent(ancestor, parent, root));
+			parent = Some(Self::build_parent(ancestor, parent, root, sources));
 		}
 		parent
 	}
 }
 
 impl FastIgnore {
-	fn new(use_gitignore: bool) -> Self {
-		let global = if use_gitignore {
+	fn new(options: WalkOptions, overrides: Option<WalkOverrides>) -> Self {
+		let sources = IgnoreSources::from_options(options);
+		let global = if sources.global {
 			let (matcher, _err) = ignore::gitignore::Gitignore::global();
 			if matcher.is_empty() {
 				None
@@ -3214,11 +3617,49 @@ impl FastIgnore {
 		} else {
 			None
 		};
-		Self { global, use_gitignore }
+		Self { global, sources, overrides }
+	}
+
+	/// Whether one entry is walked at all.
+	///
+	/// This is the single home for that question: the hidden rule, the two
+	/// pruning rules and the ignore files all answer it, and caller-named globs
+	/// outrank all four. Both traversals ask here, which is what keeps them
+	/// from drifting apart.
+	fn admits(
+		&self,
+		state: &Arc<IgnoreState>,
+		path: &Path,
+		name: &OsStr,
+		is_dir: bool,
+		options: WalkOptions,
+	) -> bool {
+		match self.override_verdict(path, is_dir) {
+			WalkOverrideVerdict::Include => true,
+			WalkOverrideVerdict::Exclude => false,
+			WalkOverrideVerdict::Undecided => {
+				if !options.include_hidden && is_hidden_name(name) {
+					return false;
+				}
+				if (options.skip_git && is_git_name(name))
+					|| (options.skip_node_modules && is_node_modules_name(name))
+				{
+					return false;
+				}
+				!self.is_ignored(state, path, is_dir)
+			},
+		}
+	}
+
+	fn override_verdict(&self, path: &Path, is_dir: bool) -> WalkOverrideVerdict {
+		self
+			.overrides
+			.as_ref()
+			.map_or(WalkOverrideVerdict::Undecided, |overrides| overrides.verdict(path, is_dir))
 	}
 
 	fn root_state(&self, root: &Path) -> Arc<IgnoreState> {
-		IgnoreState::build(root, IgnoreState::build_parents(root, self.use_gitignore))
+		IgnoreState::build(root, IgnoreState::build_parents(root, self.sources), self.sources)
 	}
 
 	fn state_from_entries(
@@ -3228,19 +3669,24 @@ impl FastIgnore {
 		names: IgnoreEntryNames,
 		derive_ignore_from_entries: bool,
 	) -> Arc<IgnoreState> {
-		if self.use_gitignore && derive_ignore_from_entries {
-			IgnoreState::build_from_entry_names(dir, parent, names)
+		if self.sources.any() && derive_ignore_from_entries {
+			IgnoreState::build_from_entry_names(dir, parent, names, self.sources)
 		} else {
 			Arc::clone(parent)
 		}
 	}
 
 	fn is_ignored(&self, state: &Arc<IgnoreState>, path: &Path, is_dir: bool) -> bool {
-		if !self.use_gitignore {
+		if !self.sources.any() {
 			return false;
 		}
 
 		let any_git = state.any_git;
+		// The git-specific sources describe what git tracks, so git reads them only
+		// for a directory inside a repository, and so does ripgrep unless
+		// `--no-require-git` says otherwise. `.ignore` is not a git file and applies
+		// either way, which is why only the gitignore chain consults this.
+		let gitignore_applies = any_git || !self.sources.require_git;
 		let global_matcher_applies = any_git && self.global.is_some();
 		if !state.chain_has_matchers && !global_matcher_applies {
 			return false;
@@ -3259,7 +3705,8 @@ impl FastIgnore {
 				{
 					ignore_match = matcher.matched(path, is_dir);
 				}
-				if gitignore_match.is_none()
+				if gitignore_applies
+					&& gitignore_match.is_none()
 					&& let Some(matcher) = &frame.gitignore_matcher
 				{
 					gitignore_match = matcher.matched(path, is_dir);
@@ -4234,38 +4681,18 @@ mod platform {
 
 #[cfg(test)]
 mod tests {
-	use std::{
-		fs,
-		path::PathBuf,
-		time::{Duration, SystemTime, UNIX_EPOCH},
-	};
+	use std::{fs, path::PathBuf, time::Duration};
+
+	use veyyon_test_scratch::TempTree;
 
 	use super::*;
 
-	struct TempTree {
-		root: PathBuf,
-	}
-
-	impl TempTree {
-		fn path(&self) -> &Path {
-			&self.root
-		}
-	}
-
-	impl Drop for TempTree {
-		fn drop(&mut self) {
-			let _ = fs::remove_dir_all(&self.root);
-		}
-	}
-
+	/// A scratch tree for one walker test.
+	///
+	/// The guard used to be declared here, one of eight identical copies across
+	/// the workspace. `veyyon-test-scratch` owns it now.
 	fn temp_tree(name: &str) -> TempTree {
-		let unique = SystemTime::now()
-			.duration_since(UNIX_EPOCH)
-			.expect("system time should be after UNIX_EPOCH")
-			.as_nanos();
-		let root = std::env::temp_dir().join(format!("veyyon-walker-{name}-{unique}"));
-		fs::create_dir_all(&root).expect("temp root should be created");
-		TempTree { root }
+		veyyon_test_scratch::scratch_dir(&format!("walker-{name}"))
 	}
 
 	struct CachePathGuard {
@@ -4294,20 +4721,26 @@ mod tests {
 
 	fn test_options() -> WalkOptions {
 		WalkOptions {
-			include_hidden:    true,
-			use_gitignore:     false,
-			skip_git:          true,
-			skip_node_modules: true,
-			follow_links:      FollowLinks::Never,
-			detail:            WalkDetail::Minimal,
-			order:             WalkOrder::Path,
-			emit_root:         false,
-			min_depth:         1,
-			max_depth:         usize::MAX,
-			contents_first:    false,
-			directory_errors:  DirectoryErrorMode::SkipSkippable,
-			same_file_system:  false,
-			cache:             false,
+			include_hidden:     true,
+			use_gitignore:      false,
+			use_dot_ignore:     true,
+			use_vcs_ignore:     true,
+			use_exclude_ignore: true,
+			use_global_ignore:  true,
+			use_parent_ignore:  true,
+			require_git:        false,
+			skip_git:           true,
+			skip_node_modules:  true,
+			follow_links:       FollowLinks::Never,
+			detail:             WalkDetail::Minimal,
+			order:              WalkOrder::Path,
+			emit_root:          false,
+			min_depth:          1,
+			max_depth:          usize::MAX,
+			contents_first:     false,
+			directory_errors:   DirectoryErrorMode::SkipSkippable,
+			same_file_system:   false,
+			cache:              false,
 		}
 	}
 
@@ -4734,6 +5167,320 @@ mod tests {
 			paths.iter().any(|path| path == "kept.txt"),
 			"repo subdirectory search should still include nonignored files, got: {paths:?}"
 		);
+	}
+
+	/// Caller-named globs outrank the hidden rule and the ignore files.
+	///
+	/// The walk itself has to honour them, because only the traversal can decide
+	/// not to prune a directory, and because a filter applied after the walk
+	/// can never bring back a file the walk refused to yield. Every case here
+	/// is the ripgrep 15.1.0 behaviour for the matching `--glob` invocation,
+	/// measured on a tree with the same shape.
+	mod caller_named_globs_outrank_the_hidden_and_ignore_rules {
+		use super::*;
+
+		/// A gitignored file, a gitignored directory, a hidden file, a hidden
+		/// directory and a plain file, which separates every rule the globs
+		/// outrank.
+		fn tree(label: &str) -> TempTree {
+			let tree = temp_tree(label);
+			let root = tree.path();
+			fs::create_dir_all(root.join(".git")).expect("repo marker created");
+			fs::create_dir_all(root.join("skipdir")).expect("ignored dir created");
+			fs::create_dir_all(root.join(".hid")).expect("hidden dir created");
+			fs::write(root.join(".gitignore"), "skipdir/\n.hid/\nignored.txt\n")
+				.expect("rules written");
+			fs::write(root.join("skipdir/a.txt"), "x").expect("ignored-dir file written");
+			fs::write(root.join(".hid/a.txt"), "x").expect("hidden-dir file written");
+			fs::write(root.join("ignored.txt"), "x").expect("ignored file written");
+			fs::write(root.join(".h.txt"), "x").expect("hidden file written");
+			fs::write(root.join("plain.txt"), "x").expect("plain file written");
+			tree
+		}
+
+		fn walk(root: &Path, patterns: &[&str]) -> Vec<String> {
+			let overrides = WalkOverrides::new(
+				root,
+				patterns
+					.iter()
+					.map(|pattern| WalkOverridePattern::new(*pattern)),
+			)
+			.expect("patterns should compile");
+			let mut paths = WalkRequest::from_options(root, WalkOptions {
+				use_gitignore: true,
+				require_git: true,
+				include_hidden: false,
+				skip_git: false,
+				..test_options()
+			})
+			.overrides(overrides)
+			.filter(WalkFilter::files_only())
+			.collect()
+			.expect("walk should collect successfully")
+			.entries
+			.into_iter()
+			.map(|entry| entry.path)
+			.collect::<Vec<_>>();
+			paths.sort();
+			paths
+		}
+
+		/// Without globs the two rules apply: only the plain file is walked.
+		#[test]
+		fn no_globs_leaves_both_rules_in_charge() {
+			let tree = tree("overrides-none");
+
+			let mut paths = WalkRequest::from_options(tree.path(), WalkOptions {
+				use_gitignore: true,
+				require_git: true,
+				include_hidden: false,
+				skip_git: false,
+				..test_options()
+			})
+			.filter(WalkFilter::files_only())
+			.collect()
+			.expect("walk should collect successfully")
+			.entries
+			.into_iter()
+			.map(|entry| entry.path)
+			.collect::<Vec<_>>();
+			paths.sort();
+
+			assert_eq!(paths, vec!["plain.txt"]);
+		}
+
+		/// One include glob brings back the ignored file AND the hidden file, and
+		/// drops every file that does not match it. The two directories stay
+		/// pruned, because `*.txt` does not name them.
+		#[test]
+		fn an_include_glob_admits_ignored_and_hidden_files() {
+			let tree = tree("overrides-include");
+
+			assert_eq!(walk(tree.path(), &["*.txt"]), vec![".h.txt", "ignored.txt", "plain.txt"]);
+		}
+
+		/// A glob that names the directories reaches inside them, which is the
+		/// other half of the same rule: `*` matches every component, so the
+		/// pruned directories are whitelisted and their files come with them.
+		#[test]
+		fn a_glob_that_names_a_directory_reaches_inside_it() {
+			let tree = tree("overrides-everything");
+
+			assert_eq!(walk(tree.path(), &["*"]), vec![
+				".gitignore",
+				".h.txt",
+				".hid/a.txt",
+				"ignored.txt",
+				"plain.txt",
+				"skipdir/a.txt"
+			]);
+		}
+
+		/// A glob that only names files INSIDE a pruned directory reaches
+		/// nothing: the directory itself was never whitelisted, so the walk
+		/// never descended. This asymmetry is deliberate. Without it one
+		/// include glob would force a walk of every ignored directory in the
+		/// tree.
+		#[test]
+		fn a_glob_under_a_pruned_directory_reaches_nothing() {
+			let tree = tree("overrides-under-pruned");
+
+			assert_eq!(walk(tree.path(), &["skipdir/*"]), Vec::<String>::new());
+			assert_eq!(walk(tree.path(), &[".hid/*"]), Vec::<String>::new());
+		}
+
+		/// A negated glob excludes a file the other rules would have walked, and
+		/// with no positive glob present nothing else changes.
+		#[test]
+		fn a_negated_glob_excludes_a_walkable_file() {
+			let tree = tree("overrides-negated");
+
+			assert_eq!(walk(tree.path(), &["!plain.txt"]), Vec::<String>::new());
+			assert_eq!(walk(tree.path(), &["*.txt", "!plain.txt"]), vec![".h.txt", "ignored.txt"]);
+		}
+
+		/// An empty set decides nothing, so every entry falls through to the
+		/// ordinary rules. This is the case a caller hits when the flag was
+		/// never passed.
+		#[test]
+		fn an_empty_set_decides_nothing() {
+			let overrides =
+				WalkOverrides::new(std::env::temp_dir(), std::iter::empty::<WalkOverridePattern>())
+					.expect("an empty set should compile");
+
+			assert!(overrides.is_empty());
+			assert!(overrides.patterns().is_empty());
+			assert_eq!(
+				overrides.verdict(Path::new("anything.txt"), false),
+				WalkOverrideVerdict::Undecided
+			);
+		}
+
+		/// The verdicts themselves, on one matcher: a matching file is included,
+		/// a negated file is excluded, an unmatched FILE is excluded once any
+		/// include glob exists, and an unmatched DIRECTORY is left undecided so
+		/// the walk can still descend into it.
+		#[test]
+		fn the_verdicts_distinguish_files_from_directories() {
+			let root = std::env::temp_dir();
+			let overrides = WalkOverrides::new(&root, [
+				WalkOverridePattern::new("*.txt"),
+				WalkOverridePattern::new("!secret.txt"),
+			])
+			.expect("patterns should compile");
+
+			assert_eq!(overrides.verdict(&root.join("a.txt"), false), WalkOverrideVerdict::Include);
+			assert_eq!(
+				overrides.verdict(&root.join("secret.txt"), false),
+				WalkOverrideVerdict::Exclude
+			);
+			assert_eq!(overrides.verdict(&root.join("a.rs"), false), WalkOverrideVerdict::Exclude);
+			assert_eq!(overrides.verdict(&root.join("sub"), true), WalkOverrideVerdict::Undecided);
+		}
+
+		/// Case sensitivity travels with the pattern, so one set can hold both a
+		/// `--glob` and an `--iglob`.
+		#[test]
+		fn case_sensitivity_is_per_pattern() {
+			let root = std::env::temp_dir();
+			let overrides = WalkOverrides::new(&root, [
+				WalkOverridePattern::new("*.txt"),
+				WalkOverridePattern::case_insensitive("*.MD"),
+			])
+			.expect("patterns should compile");
+
+			assert_eq!(overrides.verdict(&root.join("a.md"), false), WalkOverrideVerdict::Include);
+			assert_eq!(overrides.verdict(&root.join("a.TXT"), false), WalkOverrideVerdict::Exclude);
+		}
+
+		/// A broken glob reports which pattern failed, so the caller can name the
+		/// flag it came from.
+		#[test]
+		fn a_broken_glob_names_itself() {
+			let error = WalkOverrides::new(std::env::temp_dir(), [WalkOverridePattern::new("a[")])
+				.expect_err("an unclosed class should not compile");
+
+			assert_eq!(error.glob, "a[");
+			assert!(
+				error.to_string().starts_with("invalid glob \"a[\": "),
+				"the message names the pattern: {error}"
+			);
+		}
+
+		/// Globs and the scan cache cannot both apply, because a cache entry is
+		/// keyed by [`WalkOptions`] and those cannot describe a glob set.
+		/// Asking for both still answers the glob question, which is the one
+		/// the caller asked.
+		#[test]
+		fn globs_survive_a_request_that_asked_for_the_cache() {
+			let tree = tree("overrides-cache");
+			let overrides = WalkOverrides::new(tree.path(), [WalkOverridePattern::new("*.txt")])
+				.expect("pattern should compile");
+
+			let mut paths = WalkRequest::from_options(tree.path(), WalkOptions {
+				use_gitignore: true,
+				require_git: true,
+				include_hidden: false,
+				skip_git: false,
+				cache: true,
+				..test_options()
+			})
+			.overrides(overrides)
+			.filter(WalkFilter::files_only())
+			.collect()
+			.expect("walk should collect successfully")
+			.entries
+			.into_iter()
+			.map(|entry| entry.path)
+			.collect::<Vec<_>>();
+			paths.sort();
+
+			assert_eq!(paths, vec![".h.txt", "ignored.txt", "plain.txt"]);
+		}
+	}
+
+	/// `require_git` is what separates the git-specific ignore sources from
+	/// `.ignore`.
+	///
+	/// git reads `.gitignore` only for a directory inside a repository, and the
+	/// tools that promise git's behaviour, `rg` and `fd`, do the same. The
+	/// walker honours the file anywhere by default, so this option is the only
+	/// thing that distinguishes the two readings, and getting it wrong silently
+	/// removes files from a caller's walk. Locks the four combinations of
+	/// "repository present" and "option set", plus the `.ignore` case that must
+	/// not move either way.
+	mod require_git_scopes_the_git_ignore_sources {
+		use super::*;
+
+		fn walk(root: &Path, require_git: bool) -> Vec<String> {
+			let scan = collect_entries(
+				root,
+				WalkOptions { use_gitignore: true, require_git, cache: false, ..test_options() },
+				|| Ok::<(), Infallible>(()),
+			)
+			.expect("collection should not fail");
+			let mut paths = scan
+				.entries
+				.into_iter()
+				.filter(CollectedEntry::is_file)
+				.map(|entry| entry.path)
+				.collect::<Vec<_>>();
+			paths.sort();
+			paths
+		}
+
+		/// Without the option the file applies wherever it sits, repository or
+		/// not.
+		#[test]
+		fn off_the_gitignore_applies_anywhere() {
+			let tree = temp_tree("require-git-off");
+			fs::write(tree.path().join(".gitignore"), "ignored.txt\n").expect("rules written");
+			fs::write(tree.path().join("ignored.txt"), "x").expect("ignored written");
+			fs::write(tree.path().join("kept.txt"), "x").expect("kept written");
+
+			assert_eq!(walk(tree.path(), false), vec![".gitignore", "kept.txt"]);
+		}
+
+		/// With the option and no repository the rules do not apply, so the
+		/// "ignored" file is walked. This is the case that was impossible to
+		/// express before.
+		#[test]
+		fn on_without_a_repository_the_rules_do_not_apply() {
+			let tree = temp_tree("require-git-on-no-repo");
+			fs::write(tree.path().join(".gitignore"), "ignored.txt\n").expect("rules written");
+			fs::write(tree.path().join("ignored.txt"), "x").expect("ignored written");
+			fs::write(tree.path().join("kept.txt"), "x").expect("kept written");
+
+			assert_eq!(walk(tree.path(), true), vec![".gitignore", "ignored.txt", "kept.txt"]);
+		}
+
+		/// With the option and a repository marker the rules apply again, so the
+		/// two readings agree wherever git itself would read the file.
+		#[test]
+		fn on_inside_a_repository_the_rules_apply() {
+			let tree = temp_tree("require-git-on-repo");
+			fs::create_dir_all(tree.path().join(".git")).expect("repo marker created");
+			fs::write(tree.path().join(".gitignore"), "ignored.txt\n").expect("rules written");
+			fs::write(tree.path().join("ignored.txt"), "x").expect("ignored written");
+			fs::write(tree.path().join("kept.txt"), "x").expect("kept written");
+
+			assert_eq!(walk(tree.path(), true), vec![".gitignore", "kept.txt"]);
+		}
+
+		/// `.ignore` is not a git file, so it applies under BOTH settings with no
+		/// repository present. Without this case the option could be implemented
+		/// as "ignore files need a repository", which would be a different
+		/// rule.
+		#[test]
+		fn a_dot_ignore_file_is_unaffected() {
+			let tree = temp_tree("require-git-dot-ignore");
+			fs::write(tree.path().join(".ignore"), "ignored.txt\n").expect("rules written");
+			fs::write(tree.path().join("ignored.txt"), "x").expect("ignored written");
+			fs::write(tree.path().join("kept.txt"), "x").expect("kept written");
+
+			assert_eq!(walk(tree.path(), false), vec![".ignore", "kept.txt"]);
+			assert_eq!(walk(tree.path(), true), vec![".ignore", "kept.txt"]);
+		}
 	}
 
 	#[test]

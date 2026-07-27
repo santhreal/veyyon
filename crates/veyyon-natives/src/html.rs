@@ -1,10 +1,9 @@
 //! HTML to Markdown conversion.
 
 use html_to_markdown_rs::{ConversionOptions, PreprocessingOptions, PreprocessingPreset, convert};
-use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
-use crate::task;
+use crate::{napi_error::to_napi_with, task};
 
 /// Options for HTML to Markdown conversion.
 #[napi(object)]
@@ -42,6 +41,6 @@ pub fn html_to_markdown(
 		};
 
 		convert(html.as_str(), Some(conversion_opts))
-			.map_err(|err| Error::from_reason(format!("Conversion error: {err}")))
+			.map_err(|err| to_napi_with("Conversion error", err))
 	})
 }

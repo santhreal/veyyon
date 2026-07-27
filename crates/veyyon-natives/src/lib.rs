@@ -35,6 +35,7 @@ pub mod highlight;
 pub mod html;
 pub mod iofs;
 pub mod keys;
+mod napi_error;
 pub mod sixel;
 pub use veyyon_ast::language;
 

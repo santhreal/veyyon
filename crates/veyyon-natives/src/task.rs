@@ -35,7 +35,7 @@ use std::{
 use napi::{Env, Error, Result, Status, Task, bindgen_prelude::*};
 use veyyon_shell::cancel as core_cancel;
 
-use crate::prof::profile_region;
+use crate::{napi_error::to_napi, prof::profile_region};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Cancellation
@@ -95,19 +95,19 @@ impl CancelToken {
 	/// signal that has already fired never emits it again. Registering the
 	/// listener alone therefore did nothing for a caller who passed an
 	/// already-cancelled signal: the token was never marked aborted, every
-	/// `heartbeat()` said keep going, and the work ran to completion and RESOLVED
-	/// with a full result set. Cancelled work that returns results indistinguishable
-	/// from real ones is the worst shape this can take, because nothing downstream
-	/// has any way to notice.
+	/// `heartbeat()` said keep going, and the work ran to completion and
+	/// RESOLVED with a full result set. Cancelled work that returns results
+	/// indistinguishable from real ones is the worst shape this can take,
+	/// because nothing downstream has any way to notice.
 	///
 	/// The JS-side entry guards hide it for a single call, but not for a loop:
-	/// `nativeChunkedLineIndexes` in the grep tool calls back in per chunk with the
-	/// same signal, so a cancellation between chunks handed every later chunk an
-	/// already-aborted signal and got a full scan for each.
+	/// `nativeChunkedLineIndexes` in the grep tool calls back in per chunk with
+	/// the same signal, so a cancellation between chunks handed every later
+	/// chunk an already-aborted signal and got a full scan for each.
 	///
-	/// So the state is read up front, and the token is aborted immediately when the
-	/// signal is already spent. The listener is still registered for the ordinary
-	/// case: aborting during the work.
+	/// So the state is read up front, and the token is aborted immediately when
+	/// the signal is already spent. The listener is still registered for the
+	/// ordinary case: aborting during the work.
 	pub fn new(timeout_ms: Option<u32>, signal: Option<Unknown>) -> Self {
 		let mut result = Self { core: core_cancel::CancelToken::new(timeout_ms) };
 		let Some(signal) = signal else {
@@ -115,6 +115,13 @@ impl CancelToken {
 		};
 		// `Unknown` is `Copy`, so reading the property here does not consume the
 		// value the `AbortSignal` conversion below still needs.
+		//
+		// SAFETY: `signal` is a napi value handed to us inside a JS call, so its
+		// `napi_env` is alive for this whole function and the handle is valid. `cast`
+		// is unsafe only because it asserts the JS type: a caller who passes
+		// something other than an object gets `Err` from the cast rather than
+		// undefined behaviour, which is why the result is threaded through
+		// `and_then` and defaulted to `false` instead of unwrapped.
 		let already_aborted = unsafe { signal.cast::<Object>() }
 			.and_then(|object| object.get_named_property::<bool>("aborted"))
 			.unwrap_or(false);
@@ -134,10 +141,7 @@ impl CancelToken {
 	/// Returns `Ok(())` if work should continue, or an error if cancelled.
 	/// Call this periodically in long-running loops.
 	pub fn heartbeat(&self) -> Result<()> {
-		self
-			.core
-			.heartbeat()
-			.map_err(|err| Error::from_reason(err.to_string()))
+		self.core.heartbeat().map_err(to_napi)
 	}
 
 	/// Wait for the cancel token to be aborted.

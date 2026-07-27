@@ -691,6 +691,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap_complete"
+version = "4.6.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db8b397918185f0161ff3d6fcaa9e4bfc09b8367caf6e1d4a2848e5477ed027b"
+dependencies = [
+ "clap",
+]
+
+[[package]]
 name = "clap_derive"
 version = "4.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -707,6 +716,16 @@ name = "clap_lex"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
+
+[[package]]
+name = "clap_mangen"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d82842b45bf9f6a3be090dd860095ac30728042c08e0d6261ca7259b5d850f07"
+dependencies = [
+ "clap",
+ "roff",
+]
 
 [[package]]
 name = "clipboard-win"
@@ -3646,6 +3665,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "roff"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "323c417e1d9665a65b263ec744ba09030cfb277e9daa0b018a4ab62e57bc8189"
+
+[[package]]
 name = "rpds"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5863,15 +5888,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "veyyon-diff-kernel"
+version = "1.0.37"
+dependencies = [
+ "similar 3.1.1",
+]
+
+[[package]]
+name = "veyyon-glob"
+version = "1.0.37"
+dependencies = [
+ "globset",
+]
+
+[[package]]
+name = "veyyon-grep-kernel"
+version = "1.0.37"
+dependencies = [
+ "grep-matcher",
+ "grep-pcre2",
+ "grep-regex",
+ "grep-searcher",
+ "regex-syntax",
+]
+
+[[package]]
 name = "veyyon-iso"
 version = "1.0.37"
 dependencies = [
  "async-trait",
  "libc",
  "parking_lot",
- "similar 3.1.1",
  "tokio",
+ "veyyon-diff-kernel",
+ "veyyon-test-scratch",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "veyyon-keys"
+version = "1.0.37"
+dependencies = [
+ "phf 0.13.1",
 ]
 
 [[package]]
@@ -5905,7 +5963,6 @@ dependencies = [
  "png",
  "portable-pty",
  "rayon",
- "regex",
  "serde",
  "serde_json",
  "similar 3.1.1",
@@ -5918,8 +5975,13 @@ dependencies = [
  "unicode-segmentation",
  "unicode-width 0.2.2",
  "veyyon-ast",
+ "veyyon-glob",
+ "veyyon-grep-kernel",
  "veyyon-iso",
+ "veyyon-keys",
  "veyyon-shell",
+ "veyyon-test-scratch",
+ "veyyon-text",
  "veyyon-uutils-ctx",
  "veyyon-walker",
  "windows-sys 0.61.2",
@@ -5995,20 +6057,70 @@ dependencies = [
  "uu_whoami",
  "uu_xargs",
  "uu_yes",
+ "veyyon-test-scratch",
+ "veyyon-uu-diff",
+ "veyyon-uu-grep",
  "veyyon-uutils-ctx",
  "veyyon-walker",
- "veyyon_uu_diff",
- "veyyon_uu_grep",
  "windows-sys 0.61.2",
  "winreg 0.56.0",
  "xxhash-rust",
 ]
 
 [[package]]
+name = "veyyon-test-scratch"
+version = "1.0.37"
+
+[[package]]
+name = "veyyon-text"
+version = "1.0.37"
+dependencies = [
+ "smallvec",
+ "unicode-segmentation",
+ "unicode-width 0.2.2",
+]
+
+[[package]]
+name = "veyyon-uu-diff"
+version = "1.0.37"
+dependencies = [
+ "clap",
+ "parking_lot",
+ "tempfile",
+ "veyyon-diff-kernel",
+ "veyyon-uutils-ctx",
+]
+
+[[package]]
+name = "veyyon-uu-grep"
+version = "1.0.37"
+dependencies = [
+ "clap",
+ "clap_complete",
+ "clap_mangen",
+ "globset",
+ "grep-cli",
+ "grep-matcher",
+ "grep-pcre2",
+ "grep-printer",
+ "grep-regex",
+ "grep-searcher",
+ "ignore",
+ "parking_lot",
+ "regex-automata",
+ "serde_json",
+ "veyyon-grep-kernel",
+ "veyyon-test-scratch",
+ "veyyon-uutils-ctx",
+ "veyyon-walker",
+]
+
+[[package]]
 name = "veyyon-uutils-ctx"
-version = "0.1.0"
+version = "1.0.37"
 dependencies = [
  "libc",
+ "veyyon-test-scratch",
 ]
 
 [[package]]
@@ -6021,37 +6133,8 @@ dependencies = [
  "libc",
  "parking_lot",
  "rayon",
+ "veyyon-test-scratch",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "veyyon_uu_diff"
-version = "0.8.0"
-dependencies = [
- "clap",
- "parking_lot",
- "similar 3.1.1",
- "tempfile",
- "veyyon-uutils-ctx",
-]
-
-[[package]]
-name = "veyyon_uu_grep"
-version = "0.8.0"
-dependencies = [
- "clap",
- "globset",
- "grep-cli",
- "grep-matcher",
- "grep-pcre2",
- "grep-printer",
- "grep-regex",
- "grep-searcher",
- "ignore",
- "parking_lot",
- "serde_json",
- "veyyon-uutils-ctx",
- "veyyon-walker",
 ]
 
 [[package]]

@@ -20,7 +20,7 @@ use napi_derive::napi;
 use parking_lot::Mutex;
 use portable_pty::{Child, CommandBuilder, PtySize, native_pty_system};
 
-use crate::{ps, task};
+use crate::{napi_error::to_napi_with, ps, task};
 
 /// Options for running a command in a PTY session.
 #[napi(object)]
@@ -225,7 +225,7 @@ impl PtySession {
 
 			match run_result {
 				Ok(inner) => inner,
-				Err(err) => Err(Error::from_reason(format!("PTY execution task failed: {err}"))),
+				Err(err) => Err(to_napi_with("PTY execution task failed", err)),
 			}
 		})
 	}
@@ -267,7 +267,7 @@ fn run_pty_sync(
 ) -> Result<PtyRunResult> {
 	let pty_system = native_pty_system();
 	ct.heartbeat()
-		.map_err(|err| Error::from_reason(format!("PTY setup cancelled before openpty: {err}")))?;
+		.map_err(|err| to_napi_with("PTY setup cancelled before openpty", err))?;
 
 	const PTY_STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
 	let pair = if cfg!(windows) {
@@ -286,7 +286,7 @@ fn run_pty_sync(
 		});
 		match rx.recv_timeout(PTY_STARTUP_TIMEOUT) {
 			Ok(Ok(pair)) => pair,
-			Ok(Err(e)) => return Err(Error::from_reason(format!("Failed to open PTY: {e}"))),
+			Ok(Err(e)) => return Err(to_napi_with("Failed to open PTY", e)),
 			Err(_) => {
 				return Err(Error::from_reason(
 					"PTY creation timed out (5s). ConPTY may be unavailable on this system.",
@@ -301,7 +301,7 @@ fn run_pty_sync(
 				pixel_width:  0,
 				pixel_height: 0,
 			})
-			.map_err(|err| Error::from_reason(format!("Failed to open PTY: {err}")))?
+			.map_err(|err| to_napi_with("Failed to open PTY", err))?
 	};
 
 	let mut cmd = match config.command {
@@ -336,20 +336,20 @@ fn run_pty_sync(
 		}
 	}
 	ct.heartbeat()
-		.map_err(|err| Error::from_reason(format!("PTY setup cancelled before spawn: {err}")))?;
+		.map_err(|err| to_napi_with("PTY setup cancelled before spawn", err))?;
 
 	let mut child = pair
 		.slave
 		.spawn_command(cmd)
-		.map_err(|err| Error::from_reason(format!("Failed to spawn PTY command: {err}")))?;
+		.map_err(|err| to_napi_with("Failed to spawn PTY command", err))?;
 	drop(pair.slave);
 	ct.heartbeat()
-		.map_err(|err| Error::from_reason(format!("PTY setup cancelled before reader: {err}")))?;
+		.map_err(|err| to_napi_with("PTY setup cancelled before reader", err))?;
 
 	let master = pair.master;
 	let mut writer = master
 		.take_writer()
-		.map_err(|err| Error::from_reason(format!("Failed to create PTY writer: {err}")))?;
+		.map_err(|err| to_napi_with("Failed to create PTY writer", err))?;
 	// ConPTY sends ESC[6n (cursor position query) and blocks until we reply.
 	// Reply with cursor at 1,1 so it unblocks the child spawn.
 	// Only needed on Windows; on Unix/macOS this would corrupt stdin.
@@ -360,7 +360,7 @@ fn run_pty_sync(
 	}
 	let mut reader = master
 		.try_clone_reader()
-		.map_err(|err| Error::from_reason(format!("Failed to create PTY reader: {err}")))?;
+		.map_err(|err| to_napi_with("Failed to create PTY reader", err))?;
 
 	let (reader_tx, reader_rx) = flume::unbounded::<ReaderEvent>();
 	let reader_thread = std::thread::spawn(move || {
@@ -484,7 +484,7 @@ fn run_pty_sync(
 		if exit_code.is_none()
 			&& let Some(status) = child
 				.try_wait()
-				.map_err(|err| Error::from_reason(format!("Failed checking PTY status: {err}")))?
+				.map_err(|err| to_napi_with("Failed checking PTY status", err))?
 		{
 			exit_code = Some(i32::try_from(status.exit_code()).unwrap_or(i32::MAX));
 			if !reader_done && reader_drain_deadline.is_none() {
@@ -520,7 +520,7 @@ fn run_pty_sync(
 		if terminate_requested {
 			if let Some(status) = child
 				.try_wait()
-				.map_err(|err| Error::from_reason(format!("Failed checking PTY status: {err}")))?
+				.map_err(|err| to_napi_with("Failed checking PTY status", err))?
 			{
 				exit_code = Some(i32::try_from(status.exit_code()).unwrap_or(i32::MAX));
 			}
@@ -533,7 +533,7 @@ fn run_pty_sync(
 				while exit_code.is_none() && wait_start.elapsed() < Duration::from_secs(5) {
 					if let Some(status) = child
 						.try_wait()
-						.map_err(|err| Error::from_reason(format!("Failed checking PTY status: {err}")))?
+						.map_err(|err| to_napi_with("Failed checking PTY status", err))?
 					{
 						exit_code = Some(i32::try_from(status.exit_code()).unwrap_or(i32::MAX));
 						break;
@@ -545,7 +545,7 @@ fn run_pty_sync(
 			{
 				let status = child
 					.wait()
-					.map_err(|err| Error::from_reason(format!("Failed waiting PTY process: {err}")))?;
+					.map_err(|err| to_napi_with("Failed waiting PTY process", err))?;
 				exit_code = Some(i32::try_from(status.exit_code()).unwrap_or(i32::MAX));
 			}
 		}

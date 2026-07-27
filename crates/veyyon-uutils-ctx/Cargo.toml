@@ -1,8 +1,8 @@
 [package]
 name = "veyyon-uutils-ctx"
-version = "0.1.0"
-edition = "2024"
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
 description = "Thread-local stdio + cwd context for embedding uutils utilities as in-process shell builtins."
 
 [lib]
@@ -13,4 +13,7 @@ path = "src/lib.rs"
 # policy, not ours.
 
 [target.'cfg(unix)'.dependencies]
-libc = "0.2"
+libc.workspace = true
+
+[dev-dependencies]
+veyyon-test-scratch.workspace = true

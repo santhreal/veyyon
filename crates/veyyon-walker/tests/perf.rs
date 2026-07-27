@@ -9,10 +9,10 @@ use std::{
 	fs,
 	hint::black_box,
 	path::{Path, PathBuf},
-	sync::LazyLock,
-	time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+	time::{Duration, Instant},
 };
 
+use veyyon_test_scratch::{TempTree, scratch_dir};
 use veyyon_walker::{WalkDetail, WalkOrder, WalkRequest};
 
 const DIRECTORY_FANOUT: [usize; 5] = [5, 5, 5, 4, 2];
@@ -21,13 +21,18 @@ const NODE_MODULES_PACKAGES: usize = 50;
 const NODE_MODULES_FILES_PER_PACKAGE: usize = 10;
 const MEASURED_ITERATIONS: usize = 5;
 
-static SYNTHETIC_ROOT: LazyLock<PathBuf> = LazyLock::new(build_synthetic_tree);
+// Built per test rather than once in a `LazyLock`. A static never drops, so a
+// shared tree could not be owned by a guard and this file left about 1,700
+// directories in the system temp directory on every run. Three builds instead
+// of one is a small cost against a benchmark that already runs many iterations,
+// and it makes each bench independent of the order the others ran in.
 
 #[test]
 #[ignore = "run with: cargo test --profile ci -p veyyon-walker --test perf -- --ignored \
             --nocapture --test-threads=1"]
 fn perf_walk_candidates_unordered_gitignore() {
-	let root = SYNTHETIC_ROOT.as_path();
+	let tree = build_synthetic_tree();
+	let root = tree.path();
 	run_bench("perf_walk_candidates_unordered_gitignore", || {
 		let candidates = WalkRequest::new(root)
 			.hidden(true)
@@ -47,7 +52,8 @@ fn perf_walk_candidates_unordered_gitignore() {
 #[ignore = "run with: cargo test --profile ci -p veyyon-walker --test perf -- --ignored \
             --nocapture --test-threads=1"]
 fn perf_walk_candidates_path_order_no_gitignore() {
-	let root = SYNTHETIC_ROOT.as_path();
+	let tree = build_synthetic_tree();
+	let root = tree.path();
 	run_bench("perf_walk_candidates_path_order_no_gitignore", || {
 		let candidates = WalkRequest::new(root)
 			.hidden(true)
@@ -67,7 +73,8 @@ fn perf_walk_candidates_path_order_no_gitignore() {
 #[ignore = "run with: cargo test --profile ci -p veyyon-walker --test perf -- --ignored \
             --nocapture --test-threads=1"]
 fn perf_walk_collect_full_detail() {
-	let root = SYNTHETIC_ROOT.as_path();
+	let tree = build_synthetic_tree();
+	let root = tree.path();
 	run_bench("perf_walk_collect_full_detail", || {
 		let outcome = WalkRequest::new(root)
 			.hidden(true)
@@ -102,9 +109,11 @@ fn run_bench(mut name: &str, mut run: impl FnMut() -> usize) {
 	println!("BENCH {name}: {median_ms:.3} ms");
 }
 
-fn build_synthetic_tree() -> PathBuf {
-	let root = unique_temp_root("veyyon-walker-perf");
-	fs::create_dir_all(&root).expect("create synthetic root");
+fn build_synthetic_tree() -> TempTree {
+	// Owned rather than a bare path: this benchmark builds about 1,700 directories,
+	// so a run that leaves them behind is the most expensive leak in the
+	// workspace.
+	let root = scratch_dir("walker-perf");
 	fs::create_dir_all(root.join(".git")).expect("create repo marker");
 
 	let directories = create_directory_layout(&root);
@@ -113,15 +122,6 @@ fn build_synthetic_tree() -> PathBuf {
 	create_node_modules(&root);
 
 	root
-}
-
-fn unique_temp_root(prefix: &str) -> PathBuf {
-	let timestamp = SystemTime::now()
-		.duration_since(UNIX_EPOCH)
-		.expect("system time is after UNIX_EPOCH")
-		.as_nanos();
-	let pid = std::process::id();
-	std::env::temp_dir().join(format!("{prefix}-{pid}-{timestamp}"))
 }
 
 fn create_directory_layout(root: &Path) -> Vec<PathBuf> {

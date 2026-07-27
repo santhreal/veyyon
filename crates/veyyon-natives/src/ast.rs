@@ -14,7 +14,11 @@ use veyyon_ast::{
 	ops::{self as shared_ops},
 };
 
-use crate::{glob_util, iofs, task};
+use crate::{
+	glob_util, iofs,
+	napi_error::{to_napi, to_napi_with},
+	task,
+};
 
 const DEFAULT_FIND_LIMIT: u32 = 50;
 
@@ -393,11 +397,11 @@ fn to_u32(value: usize) -> u32 {
 }
 
 fn resolve_supported_lang(value: &str) -> Result<SupportLang> {
-	shared_ops::resolve_supported_lang(value).map_err(|err| Error::from_reason(err.to_string()))
+	shared_ops::resolve_supported_lang(value).map_err(to_napi)
 }
 
 fn resolve_language(lang: Option<&str>, file_path: &Path) -> Result<SupportLang> {
-	shared_ops::resolve_language(lang, file_path).map_err(|err| Error::from_reason(err.to_string()))
+	shared_ops::resolve_language(lang, file_path).map_err(to_napi)
 }
 
 /// Returns true if the file's extension resolves to a supported language.
@@ -454,7 +458,7 @@ fn normalize_search_path(path: Option<String>) -> Result<PathBuf> {
 		candidate
 	} else {
 		std::env::current_dir()
-			.map_err(|err| Error::from_reason(format!("Failed to resolve cwd: {err}")))?
+			.map_err(|err| to_napi_with("Failed to resolve cwd", err))?
 			.join(candidate)
 	};
 	Ok(std::fs::canonicalize(&absolute).unwrap_or(absolute))
@@ -466,8 +470,8 @@ fn collect_candidates(
 	ct: &task::CancelToken,
 ) -> Result<Vec<FileCandidate>> {
 	let search_path = normalize_search_path(path)?;
-	let metadata = std::fs::metadata(&search_path)
-		.map_err(|err| Error::from_reason(format!("Path not found: {err}")))?;
+	let metadata =
+		std::fs::metadata(&search_path).map_err(|err| to_napi_with("Path not found", err))?;
 	if metadata.is_file() {
 		let display_path = search_path
 			.file_name()
@@ -491,7 +495,7 @@ fn collect_candidates(
 	if let Some(glob) = glob.map(str::trim).filter(|value| !value.is_empty()) {
 		let pattern = glob_util::build_glob_pattern(glob, false);
 		let compiled = veyyon_walker::CompiledWalkGlob::new([pattern])
-			.map_err(|err| Error::from_reason(format!("Invalid glob pattern: {err}")))?;
+			.map_err(|err| to_napi_with("Invalid glob pattern", err))?;
 		filter = filter.glob(compiled);
 	}
 	let request = veyyon_walker::WalkRequest::new(&search_path)
@@ -527,12 +531,11 @@ fn compile_pattern(
 	strictness: &MatchStrictness,
 	lang: SupportLang,
 ) -> Result<Pattern> {
-	shared_ops::compile_pattern(pattern, selector, strictness, lang)
-		.map_err(|err| Error::from_reason(err.to_string()))
+	shared_ops::compile_pattern(pattern, selector, strictness, lang).map_err(to_napi)
 }
 
 fn apply_edits(content: &str, edits: &[Edit<String>]) -> Result<String> {
-	shared_ops::apply_edits(content, edits).map_err(|err| Error::from_reason(err.to_string()))
+	shared_ops::apply_edits(content, edits).map_err(to_napi)
 }
 
 fn normalize_pattern_list(patterns: Option<Vec<String>>) -> Result<Vec<String>> {
@@ -850,7 +853,7 @@ pub fn ast_match(options: AstMatchOptions<'_>) -> task::Promise<AstMatchResult> 
 		let include_meta = include_meta.unwrap_or(false);
 		let lang_str = lang.trim();
 		if lang_str.is_empty() {
-			return Err(Error::from_reason("`lang` is required for ast_match".to_string()));
+			return Err(Error::from_reason("`lang` is required for ast_match"));
 		}
 		let language = resolve_supported_lang(lang_str)?;
 
@@ -1172,35 +1175,19 @@ fn ast_edit_blocking(
 
 #[cfg(test)]
 mod tests {
-	use std::{
-		fs,
-		path::PathBuf,
-		time::{SystemTime, UNIX_EPOCH},
-	};
+	use std::fs;
+
+	use veyyon_test_scratch::TempTree;
 
 	use super::*;
 
-	struct TempTree {
-		root: PathBuf,
-	}
-
-	impl Drop for TempTree {
-		fn drop(&mut self) {
-			let _ = fs::remove_dir_all(&self.root);
-		}
-	}
-
 	fn make_temp_tree() -> TempTree {
-		let unique = SystemTime::now()
-			.duration_since(UNIX_EPOCH)
-			.expect("system time should be after UNIX_EPOCH")
-			.as_nanos();
-		let root = std::env::temp_dir().join(format!("veyyon-ast-glob-test-{unique}"));
+		let root = veyyon_test_scratch::scratch_dir("natives-ast-glob");
 		fs::create_dir_all(root.join("nested")).expect("temp nested dir should be created");
 		fs::write(root.join("a.ts"), "const a = 1;\n").expect("temp file a.ts should be written");
 		fs::write(root.join("nested").join("b.ts"), "const b = 2;\n")
 			.expect("temp file nested/b.ts should be written");
-		TempTree { root }
+		root
 	}
 
 	fn retained_test_match(line: u32) -> RetainedAstFindMatch {
@@ -1249,7 +1236,7 @@ mod tests {
 		let tree = make_temp_tree();
 		let ct = task::CancelToken::default();
 		let candidates =
-			collect_candidates(Some(tree.root.to_string_lossy().into_owned()), Some("*.ts"), &ct)
+			collect_candidates(Some(tree.path().to_string_lossy().into_owned()), Some("*.ts"), &ct)
 				.expect("candidate collection should succeed");
 		let paths = candidates
 			.into_iter()
@@ -1263,7 +1250,7 @@ mod tests {
 		let tree = make_temp_tree();
 		let ct = task::CancelToken::default();
 		let candidates =
-			collect_candidates(Some(tree.root.to_string_lossy().into_owned()), Some("**/*.ts"), &ct)
+			collect_candidates(Some(tree.path().to_string_lossy().into_owned()), Some("**/*.ts"), &ct)
 				.expect("candidate collection should succeed");
 		let paths = candidates
 			.into_iter()
@@ -1272,15 +1259,10 @@ mod tests {
 		assert_eq!(paths, vec!["a.ts".to_string(), "nested/b.ts".to_string()]);
 	}
 	fn make_mixed_temp_tree() -> TempTree {
-		let unique = SystemTime::now()
-			.duration_since(UNIX_EPOCH)
-			.expect("system time should be after UNIX_EPOCH")
-			.as_nanos();
-		let root = std::env::temp_dir().join(format!("veyyon-ast-mixed-lang-test-{unique}"));
-		fs::create_dir_all(&root).expect("temp mixed-lang dir should be created");
+		let root = veyyon_test_scratch::scratch_dir("natives-ast-mixed-lang");
 		fs::write(root.join("a.ts"), "const a = 1;\n").expect("temp file a.ts should be written");
 		fs::write(root.join("b.rs"), "fn main() {}\n").expect("temp file b.rs should be written");
-		TempTree { root }
+		root
 	}
 
 	#[test]
@@ -1288,7 +1270,7 @@ mod tests {
 		let tree = make_temp_tree();
 		let ct = task::CancelToken::default();
 		let candidates =
-			collect_candidates(Some(tree.root.to_string_lossy().into_owned()), Some("**/*.ts"), &ct)
+			collect_candidates(Some(tree.path().to_string_lossy().into_owned()), Some("**/*.ts"), &ct)
 				.expect("candidate collection should succeed");
 		let inferred =
 			infer_single_replace_lang(&candidates, &ct).expect("language should be inferred");
@@ -1300,7 +1282,7 @@ mod tests {
 		let tree = make_mixed_temp_tree();
 		let ct = task::CancelToken::default();
 		let candidates =
-			collect_candidates(Some(tree.root.to_string_lossy().into_owned()), None, &ct)
+			collect_candidates(Some(tree.path().to_string_lossy().into_owned()), None, &ct)
 				.expect("candidate collection should succeed");
 		let err = infer_single_replace_lang(&candidates, &ct)
 			.expect_err("mixed language inference should fail");
@@ -1358,14 +1340,8 @@ mod tests {
 
 	#[test]
 	fn ast_edit_dedupes_identical_matches_across_rules() {
-		let unique = SystemTime::now()
-			.duration_since(UNIX_EPOCH)
-			.expect("system time should be after UNIX_EPOCH")
-			.as_nanos();
-		let root = std::env::temp_dir().join(format!("veyyon-ast-dedupe-{unique}"));
-		fs::create_dir_all(&root).expect("temp dedupe dir should be created");
-		let tree = TempTree { root };
-		let file_path = tree.root.join("a.ts");
+		let tree = veyyon_test_scratch::scratch_dir("natives-ast-dedupe");
+		let file_path = tree.join("a.ts");
 		fs::write(&file_path, "const b = foo(bar);\n").expect("temp file a.ts should be written");
 
 		// Both rules match the same call node and produce the byte-identical
@@ -1379,7 +1355,7 @@ mod tests {
 			task::CancelToken::default(),
 			Some(rewrites),
 			Some("ts".to_string()),
-			Some(tree.root.to_string_lossy().into_owned()),
+			Some(tree.path().to_string_lossy().into_owned()),
 			None,
 			None,
 			None,
@@ -1398,12 +1374,7 @@ mod tests {
 	}
 
 	fn make_apply_failure_tree() -> TempTree {
-		let unique = SystemTime::now()
-			.duration_since(UNIX_EPOCH)
-			.expect("system time should be after UNIX_EPOCH")
-			.as_nanos();
-		let root = std::env::temp_dir().join(format!("veyyon-ast-apply-fail-{unique}"));
-		fs::create_dir_all(&root).expect("temp apply-fail dir should be created");
+		let root = veyyon_test_scratch::scratch_dir("natives-ast-apply-fail");
 		// `a.ts` rewrites cleanly under both rules (one applies, the other doesn't
 		// match).
 		fs::write(root.join("a.ts"), "const a = bar;\n").expect("temp file a.ts should be written");
@@ -1411,14 +1382,14 @@ mod tests {
 		// so `apply_edits` rejects the combined edit set with an overlap error.
 		fs::write(root.join("b.ts"), "const b = foo(bar);\n")
 			.expect("temp file b.ts should be written");
-		TempTree { root }
+		root
 	}
 
 	#[test]
 	fn ast_edit_does_not_partially_write_when_apply_fails() {
 		let tree = make_apply_failure_tree();
-		let a_path = tree.root.join("a.ts");
-		let b_path = tree.root.join("b.ts");
+		let a_path = tree.join("a.ts");
+		let b_path = tree.join("b.ts");
 		let a_before = fs::read_to_string(&a_path).expect("a.ts should be readable");
 		let b_before = fs::read_to_string(&b_path).expect("b.ts should be readable");
 
@@ -1430,7 +1401,7 @@ mod tests {
 			task::CancelToken::default(),
 			Some(rewrites),
 			Some("ts".to_string()),
-			Some(tree.root.to_string_lossy().into_owned()),
+			Some(tree.path().to_string_lossy().into_owned()),
 			None,
 			None,
 			None,

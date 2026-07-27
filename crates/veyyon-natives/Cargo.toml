@@ -36,13 +36,16 @@ phf.workspace = true
 flume.workspace = true
 veyyon-ast.workspace = true
 veyyon-iso.workspace = true
+veyyon-glob.workspace = true
+veyyon-grep-kernel.workspace = true
+veyyon-keys.workspace = true
 veyyon-shell.workspace = true
+veyyon-text.workspace = true
 veyyon-walker.workspace = true
-veyyon-uutils-ctx = { path = "../veyyon-uutils-ctx" }
+veyyon-uutils-ctx.workspace = true
 portable-pty.workspace = true
 png.workspace = true
 rayon.workspace = true
-regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 similar.workspace = true
@@ -68,3 +71,6 @@ winreg.workspace = true
 napi-build.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+veyyon-test-scratch.workspace = true
