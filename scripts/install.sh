@@ -244,6 +244,14 @@ launch_command() {
 
 # The closing block, identical for every install mode. It was pasted three times,
 # so a change to the advice had to be made three times or the modes disagreed.
+#
+# Step 3 used to read "Run system diagnostics: <cmd> plugin doctor". There is no
+# `doctor` command, `plugin doctor` reports on plugins alone, and on a fresh
+# install it prints three plugin slots all "not created yet" — so the step told a
+# new user they were checking their system and then showed them a report about a
+# subsystem they had never touched. The install's own doctor already ran, eight
+# lines above this. Every step here names a command that exists and does what the
+# label says it does.
 print_next_steps() {
     _cmd=$(launch_command)
     say ""
@@ -252,7 +260,7 @@ print_next_steps() {
     say "Next steps:"
     say "  1. Launch in any repository: $_cmd"
     say "  2. Connect API providers:    $_cmd setup"
-    say "  3. Run system diagnostics:  $_cmd plugin doctor"
+    say "  3. See every command:        $_cmd --help"
 }
 
 # ---- shell completions (best-effort, loud if unavailable — never silent) ----

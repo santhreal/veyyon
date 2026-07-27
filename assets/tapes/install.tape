@@ -23,7 +23,9 @@ Type "vey setup status"
 Enter
 Sleep 4s
 
-Type "vey plugin doctor"
+# Step 3 of the installer's own closing advice, so the recording shows a new user
+# the path the installer just told them to take.
+Type "vey --help"
 Enter
 Sleep 4s
 
