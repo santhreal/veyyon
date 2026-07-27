@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-95554262.js";
+            window.path_to_searchindex_js = "../searchindex-bae4794e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-2e8c749f.js"></script>
@@ -214,6 +214,8 @@
 <h2 id="install-on-windows"><a class="header" href="#install-on-windows">Install on Windows</a></h2>
 <pre><code class="language-powershell">irm https://veyyon.dev/install.ps1 | iex
 </code></pre>
+<p>That works in both shells Windows ships: Windows PowerShell 5.1, which is what <code>powershell.exe</code> opens on a stock machine, and PowerShell 7. The installer enables TLS 1.2 before it fetches anything, because 5.1 still offers SSL 3.0 and TLS 1.0 by default and GitHub has required TLS 1.2 since 2018.</p>
+<p>Like the Unix installer, it never calls the GitHub API, and it puts the install directory at the front of your user <code>PATH</code>. A <code>PATH</code> entry reaches a program when that program starts, so terminals you already have open will not see <code>veyyon</code> until they restart. The closing steps say so.</p>
 <h2 id="after-install"><a class="header" href="#after-install">After install</a></h2>
 <pre><code class="language-console">$ vey --version
 </code></pre>
