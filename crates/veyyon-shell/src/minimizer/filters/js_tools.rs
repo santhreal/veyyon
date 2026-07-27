@@ -102,7 +102,7 @@ fn filter_next(input: &str, exit_code: i32) -> String {
 			kept_any = true;
 			continue;
 		}
-		if exit_code != 0 && !is_spinner_frame(trimmed) {
+		if exit_code != 0 && !primitives::is_spinner_frame(trimmed) {
 			push_line(&mut out, trimmed);
 			kept_any = true;
 		}
@@ -130,7 +130,7 @@ fn is_next_noise(line: &str) -> bool {
 		|| lower.starts_with("finalizing page optimization")
 		|| lower.starts_with("collecting build traces")
 		|| lower.starts_with("linting and checking")
-		|| is_spinner_frame(line)
+		|| primitives::is_spinner_frame(line)
 }
 
 fn is_next_summary(line: &str) -> bool {
@@ -162,6 +162,20 @@ fn trim_tree_prefix(line: &str) -> &str {
 }
 
 fn filter_prettier(input: &str, exit_code: i32) -> String {
+	// Already summarized: hand the summary back rather than summarizing it.
+	//
+	// Every return below is a `Prettier: …` line, and none of the classifiers
+	// above recognize one, so a second pass fell through to the catch-all and
+	// answered `Prettier: completed` whatever the first pass had said. A capture
+	// of whitespace summarized to `Prettier: no output` and then, given that,
+	// to `Prettier: completed` -- the same run reported two different outcomes
+	// depending on how many times it had been filtered, and the second one is
+	// wrong. Filters chain and captures get replayed, so the second pass is an
+	// ordinary event. Found by
+	// `tests/every_supported_program_settles_after_one_pass.rs`.
+	if input.lines().any(is_prettier_summary) {
+		return input.to_string();
+	}
 	if input.trim().is_empty() {
 		return "Prettier: no output\n".to_string();
 	}
@@ -249,6 +263,16 @@ fn filter_prettier(input: &str, exit_code: i32) -> String {
 	}
 
 	"Prettier: completed\n".to_string()
+}
+
+/// True for a `Prettier: …` line this filter wrote.
+///
+/// The single owner of that shape: every summary `filter_prettier` returns
+/// starts with this prefix, so recognizing the prefix recognizes all of them,
+/// and a new summary variant is covered the day it is added rather than the day
+/// a fuzzer notices it.
+fn is_prettier_summary(line: &str) -> bool {
+	line.trim_start().starts_with("Prettier: ")
 }
 
 fn looks_like_prettier_write_line(line: &str) -> bool {
@@ -351,7 +375,7 @@ fn should_keep_prisma_line(line: &str, exit_code: i32) -> bool {
 		|| lower.starts_with("all migrations")
 		|| lower.starts_with("pending migrations")
 		|| lower.starts_with("schema pushed")
-		|| exit_code != 0 && !is_spinner_frame(line)
+		|| exit_code != 0 && !primitives::is_spinner_frame(line)
 }
 
 fn is_prisma_schema_change_header(line: &str) -> bool {
@@ -378,12 +402,6 @@ fn is_error_or_warning(line: &str) -> bool {
 		|| lower.contains("failed")
 		|| lower.contains("warning")
 		|| lower.contains("warn ")
-}
-
-fn is_spinner_frame(line: &str) -> bool {
-	line
-		.chars()
-		.all(|ch| matches!(ch, '⠋' | '⠙' | '⠹' | '⠸' | '⠼' | '⠴' | '⠦' | '⠧' | '⠇' | '⠏' | ' '))
 }
 
 fn push_file_list(out: &mut String, files: &[String], limit: usize) {

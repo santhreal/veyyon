@@ -452,7 +452,10 @@ fn is_generic_progress(line: &str, lower: &str) -> bool {
 		|| lower.starts_with("resolving dependencies")
 		|| lower.starts_with("installing dependencies")
 		|| lower.starts_with("fetching packages")
-		|| lower.contains("spinner")
+		// A spinner is a GLYPH. This asked whether the line contained the WORD
+		// "spinner", which deleted every npm line naming a package with that in its
+		// name, `npm WARN deprecated cli-spinners@1.0.0` included.
+		|| primitives::is_spinner_frame(line)
 		|| line
 			.chars()
 			.all(|ch| matches!(ch, '⠁' | '⠂' | '⠄' | '⡀' | '⢀' | '⠠' | '⠐' | '⠈' | ' '))
@@ -469,8 +472,10 @@ fn is_js_install_summary(lower: &str) -> bool {
 	lower.starts_with("added ") && lower.contains("package")
 		|| lower.starts_with("removed ") && lower.contains("package")
 		|| lower.starts_with("changed ") && lower.contains("package")
-		|| lower.starts_with("up to date")
-		|| lower.contains("already up-to-date")
+		// One owner for "is this the no-op line", shared with `is_js_package_noise`. The two
+		// used to spell it differently, and a keep rule that is broader than the strip rule
+		// beside it is how a line ends up classified twice.
+		|| is_up_to_date_line(lower)
 		|| lower.starts_with("done in ")
 		|| lower.starts_with("packages:")
 		|| lower.starts_with("dependencies:")
@@ -522,8 +527,20 @@ fn is_js_package_noise(program: &str, line: &str, lower: &str) -> bool {
 		|| lower.starts_with("reused ")
 		|| lower.starts_with("added ") && lower.contains("packages")
 		|| lower.starts_with("done in ")
-		|| lower.contains("already up-to-date")
-		|| lower.contains("up to date")
+		|| is_up_to_date_line(lower)
+}
+
+/// True when the WHOLE line is a package manager reporting nothing to do.
+///
+/// npm writes `up to date, audited 5 packages in 1s` and yarn writes `success
+/// Already up-to-date.`, so the phrase opens the line, after at most yarn's
+/// `success ` marker. This was a bare `contains`, and `npm run build` reaches
+/// this filter: a build script logging `cache is up to date, rebuilding anyway`
+/// lost that line, which is the script's own output and not the package
+/// manager's.
+fn is_up_to_date_line(lower: &str) -> bool {
+	let body = lower.strip_prefix("success ").unwrap_or(lower);
+	body.starts_with("up to date") || body.starts_with("already up-to-date")
 }
 
 fn is_python_package_noise(ctx: &MinimizerCtx<'_>, _line: &str, lower: &str) -> bool {
@@ -852,9 +869,22 @@ mod tests {
 	fn passes_through_yarn_why_ndjson_output() {
 		let cfg = MinimizerConfig { enabled: true, ..Default::default() };
 		let context = ctx("yarn", Some("why"), "yarn why react --json", &cfg);
-		let input = "{\"type\":\"info\",\"data\":\"=> Found \
-		             \\\"react@npm:19.0.0\\\"\"}\n{\"type\":\"tree\",\"data\":\"react@npm:19.0.0\\\
-		             n└─ app@workspace:.\"}\n";
+		// One NDJSON record per array element, in raw strings. The escaping matters
+		// twice over here: the records are JSON, so `\"` and `\n` inside `data` are the
+		// two-character sequences a JSON parser unescapes, not a quote and a newline.
+		// Spelled as one long escaped literal this fixture exceeded `max_width`, and
+		// rustfmt split it between the `\` and the `n` of `\\n`; that particular split
+		// happened to survive, because the orphaned backslash landed as `\\` followed
+		// by a real continuation, but it is unreadable and one character away from
+		// the corruption that hit `jvm.rs`. Raw strings, one per line, have nothing
+		// to split.
+		let input = [
+			r#"{"type":"info","data":"=> Found \"react@npm:19.0.0\""}"#,
+			r#"{"type":"tree","data":"react@npm:19.0.0\n└─ app@workspace:."}"#,
+			"",
+		]
+		.join("\n");
+		let input = input.as_str();
 		let out = filter(&context, input, 0);
 		assert!(!out.changed);
 		assert_eq!(out.text, input);
@@ -1032,7 +1062,7 @@ mod tests {
 		let input =
 			"Installing dependencies from lock file\n\nNo dependencies to install or update\n";
 		let out = filter(&context, input, 0);
-		assert_eq!(out.text, "ok (up to date)");
+		assert_eq!(out.text, "ok (up to date)\n");
 		assert!(out.changed);
 	}
 
@@ -1044,7 +1074,7 @@ mod tests {
 		let input =
 			"• Installing requests (2.31.0)\n• Installing certifi (2023.11.17)\n\nNo changes.\n";
 		let out = filter(&context, input, 0);
-		assert_eq!(out.text, "ok (up to date)");
+		assert_eq!(out.text, "ok (up to date)\n");
 	}
 
 	#[test]
@@ -1055,7 +1085,7 @@ mod tests {
 		let context = ctx("poetry", Some("lock"), "poetry lock", &cfg);
 		let input = "Resolving dependencies...\nNo changes.\n";
 		let out = filter(&context, input, 0);
-		assert_eq!(out.text, "ok (up to date)");
+		assert_eq!(out.text, "ok (up to date)\n");
 	}
 
 	#[test]
@@ -1069,7 +1099,7 @@ mod tests {
 		             requests-2.31.0-py3-none-any.whl (62.6 kB)\nWarning: the lock file is not up \
 		             to date\n";
 		let out = filter(&context, input, 0);
-		assert_ne!(out.text, "ok (up to date)");
+		assert_ne!(out.text, "ok (up to date)\n");
 		assert!(
 			out.text
 				.contains("Warning: the lock file is not up to date")
@@ -1085,7 +1115,7 @@ mod tests {
 		let context = ctx("uv", Some("sync"), "uv sync", &cfg);
 		let input = "Resolved 42 packages in 123ms\nAudited 42 packages in 0.05ms\n";
 		let out = filter(&context, input, 0);
-		assert_eq!(out.text, "ok (up to date)");
+		assert_eq!(out.text, "ok (up to date)\n");
 	}
 
 	#[test]
@@ -1102,7 +1132,7 @@ mod tests {
 		let input = "warning: VIRTUAL_ENV=.venv does not match the project environment path \
 		             .venv-other\nResolved 42 packages in 123ms\nAudited 42 packages in 0.05ms\n";
 		let out = filter(&context, input, 0);
-		assert_ne!(out.text, "ok (up to date)");
+		assert_ne!(out.text, "ok (up to date)\n");
 		assert!(
 			out.text
 				.contains("warning: VIRTUAL_ENV=.venv does not match the project environment path")
