@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import * as path from "node:path";
 import type { Api, Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
-import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSession, AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
 import { runSubprocess } from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
+import { createMockSession, yieldSuccessEvent } from "./helpers/subagent-session";
 
 function model(provider: string, id: string): Model<Api> {
 	return buildModel({
@@ -22,47 +26,49 @@ function model(provider: string, id: string): Model<Api> {
 	});
 }
 
+/**
+ * A child that reports one retry fallback and then yields.
+ *
+ * The fallback event is the subject: `result.resolvedModel` is set from it, which is how the parent
+ * learns which model actually served the child after the primary failed at runtime. The yield is
+ * only there so the run finishes as a completion rather than as three missing-yield reminders.
+ */
 function createYieldingSession(): AgentSession {
-	const listeners: Array<(event: { type: string; [key: string]: unknown }) => void> = [];
-	const session = {
-		agent: { state: { systemPrompt: ["test"] } },
-		state: { messages: [] },
-		extensionRunner: undefined,
-		sessionManager: { appendSessionInit: () => {} },
-		getActiveToolNames: () => ["yield"],
-		setActiveToolsByName: async () => {},
-		subscribe: (listener: (event: { type: string; [key: string]: unknown }) => void) => {
-			listeners.push(listener);
-			return () => {};
+	return createMockSession(
+		({ emit }) => {
+			emit({
+				type: "retry_fallback_applied",
+				from: "primary/bad-runtime-model",
+				to: "fallback/working-model",
+				role: "subagent:issue-2750",
+			} as unknown as AgentSessionEvent);
+			emit(yieldSuccessEvent(undefined));
 		},
-		prompt: async () => {
-			for (const listener of listeners) {
-				listener({
-					type: "retry_fallback_applied",
-					from: "primary/bad-runtime-model",
-					to: "fallback/working-model",
-					role: "subagent:issue-2750",
-				});
-				listener({
-					type: "tool_execution_end",
-					toolCallId: "tool-yield",
-					toolName: "yield",
-					result: { content: [{ type: "text", text: "Result submitted." }], details: { status: "success" } },
-					isError: false,
-				});
-			}
-		},
-		waitForIdle: async () => {},
-		getLastAssistantMessage: () => undefined,
-		abort: async () => {},
-		dispose: async () => {},
-	};
-	return session as unknown as AgentSession;
+		// No `read`: this child's only tool is the one it answers with.
+		{ activeToolNames: ["yield"] },
+	);
+}
+
+/**
+ * A throwaway artifacts directory for the subagent transcript.
+ *
+ * Required, not cosmetic. With no `artifactsDir`, `runSubprocess` routes the subtask transcript to
+ * `getSessionsDir()`, which on a developer machine resolves inside the REAL `~/.veyyon` profile; the
+ * real-data tripwire then refuses the open and `runSubprocess` fails before it ever creates the child
+ * session, so every assertion about what the child received reads `undefined` for a reason that has nothing
+ * to do with model resolution. That is exactly how these three tests went red.
+ */
+const artifactDirs: string[] = [];
+function isolatedArtifactsDir(): string {
+	const dir = mkdtempSync(path.join(tmpdir(), "veyyon-issue-2750-"));
+	artifactDirs.push(dir);
+	return dir;
 }
 
 describe("subagent runtime model resolution", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
+		for (const dir of artifactDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 	});
 
 	it("passes ordered subagent candidates as a child retry fallback chain", async () => {
@@ -96,6 +102,7 @@ describe("subagent runtime model resolution", () => {
 				getApiKey: async () => "test-key",
 			} as never,
 			enableLsp: false,
+			artifactsDir: isolatedArtifactsDir(),
 		});
 
 		let firstFallbackRole: string | undefined;
@@ -144,6 +151,7 @@ describe("subagent runtime model resolution", () => {
 				getApiKey: async () => "test-key",
 			} as never,
 			enableLsp: false,
+			artifactsDir: isolatedArtifactsDir(),
 		});
 
 		expect(childFallbackChains?.["subagent:issue-2750-routed"]).toEqual(["openrouter/z-ai/glm-4.7@fireworks"]);
@@ -180,6 +188,7 @@ describe("subagent runtime model resolution", () => {
 				getApiKey: async () => "test-key",
 			} as never,
 			enableLsp: false,
+			artifactsDir: isolatedArtifactsDir(),
 		});
 
 		expect(childModel).toBeUndefined();

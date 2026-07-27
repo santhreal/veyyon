@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { Effort } from "@veyyon/ai";
+import { Effort } from "@veyyon/catalog/effort";
 import { initializeWithSettings } from "@veyyon/coding-agent/capability";
 import "@veyyon/coding-agent/discovery";
 import { clearCustomApis } from "@veyyon/ai/api-registry";

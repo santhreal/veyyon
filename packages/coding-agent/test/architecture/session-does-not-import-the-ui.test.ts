@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 const SRC = path.join(import.meta.dir, "..", "..", "src");
 const SESSION = path.join(SRC, "session");
@@ -45,9 +46,14 @@ const ALLOWED = new Map<string, string>([
 	["modes/utils/context-usage", "Computes context usage numbers. Formatting them is the caller's job."],
 ]);
 
-/** `import`/`export ... from` and bare side-effect imports, excluding erased type-only ones. */
-const IMPORT_RE = /(?:^|\n)[ \t]*(?:import|export)\s+(?!type[\s{*])[\s\S]*?\sfrom\s*["']([^"']+)["']/g;
-const SIDE_EFFECT_RE = /(?:^|\n)[ \t]*import\s+["']([^"']+)["']/g;
+/*
+ * THE EXTRACTION IS NOT DEFINED HERE. It used to be, as a copy of two patterns, and the first of them was
+ * the buggy version: a `[\s\S]*?` middle does not stop at the end of a statement, so a non-re-export
+ * `export` ran forward to the next `from "…"` in the file and every real import inside the swallowed span
+ * went unexamined. This gate is an absence check, so a hidden import PASSES.
+ * `@veyyon/utils/module-reach` owns the extraction and
+ * `packages/utils/test/module-reach-reads-code-not-prose.test.ts` pins both directions of that bug.
+ */
 
 /** Every `.ts` file under `session/`, recursively. */
 function sessionFiles(dir: string): string[] {
@@ -62,30 +68,19 @@ function sessionFiles(dir: string): string[] {
 
 /** Specifiers a file imports at runtime, resolved to `src`-relative module paths. */
 function uiImportsIn(file: string): string[] {
-	const source = fs.readFileSync(file, "utf-8");
 	const found: string[] = [];
-	for (const re of [IMPORT_RE, SIDE_EFFECT_RE]) {
-		re.lastIndex = 0;
-		for (const match of source.matchAll(re)) {
-			const specifier = match[1];
-			if (!specifier?.startsWith(".")) continue;
-			const resolved = path.resolve(path.dirname(file), specifier);
-			const rel = path.relative(SRC, resolved).replace(/\\/g, "/");
-			if (rel.startsWith("modes/")) found.push(rel);
-		}
+	for (const specifier of specifiersIn(file)) {
+		if (!specifier.startsWith(".")) continue;
+		const resolved = path.resolve(path.dirname(file), specifier);
+		const rel = path.relative(SRC, resolved).replace(/\\/g, "/");
+		if (rel.startsWith("modes/")) found.push(rel);
 	}
 	return found;
 }
 
-/** Raw relative specifiers a file imports at runtime, unresolved. */
+/** Raw specifiers a file imports at runtime, unresolved. */
 function specifiersIn(file: string): string[] {
-	const source = fs.readFileSync(file, "utf-8");
-	const found: string[] = [];
-	for (const re of [IMPORT_RE, SIDE_EFFECT_RE]) {
-		re.lastIndex = 0;
-		for (const match of source.matchAll(re)) if (match[1]) found.push(match[1]);
-	}
-	return found;
+	return moduleSpecifiersIn(fs.readFileSync(file, "utf-8"));
 }
 
 describe("session does not import the terminal UI", () => {

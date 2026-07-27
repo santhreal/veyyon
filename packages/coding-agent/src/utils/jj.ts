@@ -149,6 +149,8 @@ async function hasJjWorkspaceMetadata(dir: string): Promise<boolean> {
 		await fs.stat(path.join(dir, ".jj", "repo"));
 		return true;
 	} catch {
+		// No `.jj/repo`, so not a workspace. The throw IS the presence test, and this runs at every level of
+		// a walk up the directory chain, so a miss is the common case rather than a failure.
 		return false;
 	}
 }

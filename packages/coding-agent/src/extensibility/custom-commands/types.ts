@@ -23,7 +23,7 @@ export interface CustomCommandAPI {
 	cwd: string;
 	/** Execute a shell command */
 	exec(command: string, args: string[], options?: ExecOptions): Promise<ExecResult>;
-	/** Injected zod-backed typebox shim (legacy/compat). */
+	/** Injected legacy typebox shim (legacy/compat — prefer `arktype`). */
 	typebox: typeof TypeBox;
 	/** Injected arktype module for validation in custom commands. */
 	arktype: typeof arktype;
@@ -32,6 +32,18 @@ export interface CustomCommandAPI {
 	/** Injected coding-agent exports */
 	pi: typeof PiCodingAgent;
 }
+
+/**
+ * What a BUNDLED command may use: everything an author gets except `pi`.
+ *
+ * The two commands veyyon ships (`/green`, `/review`) live in this repository and reach the codebase by
+ * importing it, so they have no use for the injected package namespace -- and providing it is expensive.
+ * `pi` is the whole package barrel, which re-exports every mode and every component, and
+ * `loadCustomCommands` runs on every launch to register the bundled pair. Typing them against this narrower
+ * shape is what lets the loader skip loading the barrel entirely when a project has no custom commands of
+ * its own, which is almost every project. Authors still get the full {@link CustomCommandAPI}.
+ */
+export type BundledCommandAPI = Omit<CustomCommandAPI, "pi">;
 
 /**
  * Custom command definition.
@@ -80,6 +92,28 @@ export interface CustomCommand {
 	name: string;
 	/** Description shown in command autocomplete */
 	description: string;
+	/**
+	 * Subagent types this command's prompt names outright, granted for the turn it
+	 * starts even when those agents are disabled.
+	 *
+	 * `subagent.agents.<name>.enabled` governs THE MODEL: enabled means the model
+	 * may choose that agent on its own initiative. It is not meant to govern the
+	 * person typing, and `/review` is the case that proves it — its prompt says
+	 * `agent: "reviewer"`, and someone running `/review` is asking for a review,
+	 * not asking the model to decide whether reviewing is worthwhile. Without this
+	 * declaration the command would break on a stock install, where every bundled
+	 * specialist ships disabled.
+	 *
+	 * DECLARED HERE, STATICALLY, ON PURPOSE. The grant is scoped to the turn the
+	 * command starts and is readable next to the command's name, so "which commands
+	 * can reach a disabled agent" is a question you answer by grepping this field.
+	 * The alternative — letting a handler grant agents while it runs — is how a
+	 * narrow exception becomes a general escape hatch, and a general escape hatch is
+	 * the old "disabled but still runs" state with extra steps.
+	 *
+	 * Omit it for the overwhelming majority of commands, which spawn nothing.
+	 */
+	spawnsAgents?: readonly string[];
 	/**
 	 * Execute the command.
 	 * @param args - Parsed command arguments

@@ -16,6 +16,7 @@ import {
 	logger,
 	MINUTE_MS,
 } from "@veyyon/utils";
+import { SESSION_BACKUP_EXTENSION, SESSION_FILE_EXTENSION } from "@veyyon/utils/session-file";
 import { tableExists } from "@veyyon/utils/sqlite";
 import { Settings } from "../config/settings";
 import { getDefault } from "../config/settings-schema";
@@ -29,9 +30,9 @@ const BLOB_FILE_RE = /^([a-f0-9]{64})(?:\.[A-Za-z0-9][A-Za-z0-9._-]{0,31})?$/;
 // (externalized large text). Both are content-addressed by the same hash and
 // stored in the same blob dir, so one referenced-hash set covers both.
 const BLOB_REF_RE = /\bblob(?:text)?:sha256:([a-f0-9]{64})\b/gi;
-const JSONL_GLOB = new Bun.Glob("**/*.jsonl");
-const JSONL_GZ_GLOB = new Bun.Glob("**/*.jsonl.gz");
-const JSONL_BACKUP_GLOB = new Bun.Glob("**/*.jsonl.*.bak");
+const JSONL_GLOB = new Bun.Glob(`**/*${SESSION_FILE_EXTENSION}`);
+const JSONL_GZ_GLOB = new Bun.Glob(`**/*${SESSION_FILE_EXTENSION}.gz`);
+const JSONL_BACKUP_GLOB = new Bun.Glob(`**/*${SESSION_FILE_EXTENSION}.*${SESSION_BACKUP_EXTENSION}`);
 const ACTIVE_STATUSES: ReadonlySet<SessionStatus> = new Set(["pending", "interrupted", "unknown"]);
 /**
  * Smallest write-grace window an operator may configure.
@@ -52,8 +53,10 @@ const MIN_GC_WRITE_GRACE_MS = MINUTE_MS;
  * made GC steal live locks from other runs.
  */
 const GC_LOCK_STALE_MS = 5 * MINUTE_MS;
-const SESSION_SUFFIX = ".jsonl";
-const COMPRESSED_SESSION_SUFFIX = ".jsonl.gz";
+// The extension comes from its owner, and the compressed form is that extension plus `.gz`, so moving
+// the transcript extension moves the archive form with it rather than leaving it behind.
+const SESSION_SUFFIX = SESSION_FILE_EXTENSION;
+const COMPRESSED_SESSION_SUFFIX = `${SESSION_FILE_EXTENSION}.gz`;
 const GC_LOCK_BREAKER_SUFFIX = ".break";
 
 export interface GcCommandFlags {
@@ -505,6 +508,10 @@ function sessionIdFromSessionText(text: string): string | undefined {
 				? record.id
 				: undefined;
 		} catch {
+			// The first record of a session file, which the writer appends to as the session runs, so a torn
+			// or partially flushed line is expected at the head of a file that was still being written.
+			// Undefined means "no session id here", and the caller answers by leaving the file alone -- the
+			// conservative direction for a garbage collector, which must never delete a file it cannot read.
 			return undefined;
 		}
 	}

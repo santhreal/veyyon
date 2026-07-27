@@ -23,6 +23,7 @@ import {
 	SUBAGENT_ENABLE_STATE_LABEL,
 	type SubagentEnableState,
 } from "@veyyon/coding-agent/task/subagent-settings";
+import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
 import { removeWithRetries } from "@veyyon/utils";
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
@@ -95,35 +96,48 @@ describe("subagent.agents settings surface", () => {
 
 describe("subagent enable-state wording", () => {
 	/** Every state a row can express needs words; a missing one renders `undefined`. */
-	it("labels all four states, distinctly", () => {
-		const states: SubagentEnableState[] = ["on", "default-on", "default-off", "off"];
+	it("labels both states, distinctly", () => {
+		const states: SubagentEnableState[] = ["on", "off"];
 		const labels = states.map(state => SUBAGENT_ENABLE_STATE_LABEL[state]);
 		expect(Object.keys(SUBAGENT_ENABLE_STATE_LABEL).sort()).toEqual([...states].sort());
-		expect(new Set(labels).size).toBe(4);
+		expect(new Set(labels).size).toBe(2);
 		for (const label of labels) expect(label.length).toBeGreaterThan(0);
 	});
 
 	/**
-	 * The middle state is the one that needs explaining: an unadvertised agent is
-	 * not blocked, and `/review` naming `reviewer` still works. If the wording ever
-	 * loses that, operators read default-off as broken and turn everything on.
+	 * The wording says what the switch does and nothing else.
+	 *
+	 * It used to include "Not offered (default) — still runs when named", a label
+	 * that had to explain why the off position was not off. An operator reading it
+	 * cannot tell what pressing the key will accomplish, and the honest reading —
+	 * "this control does not fully work" — is the one users reached. Two plain
+	 * words replace it, and the behaviour behind them is now equally plain.
 	 */
-	it("says the default-off state still runs when named", () => {
-		expect(SUBAGENT_ENABLE_STATE_LABEL["default-off"]).toBe("Not offered (default) — still runs when named");
-		expect(SUBAGENT_ENABLE_STATE_LABEL.off).toBe("Blocked");
+	it("says only enabled or disabled, and never that a disabled agent still runs", () => {
+		expect(SUBAGENT_ENABLE_STATE_LABEL.on).toBe("Enabled");
+		expect(SUBAGENT_ENABLE_STATE_LABEL.off).toBe("Disabled");
+		for (const label of Object.values(SUBAGENT_ENABLE_STATE_LABEL)) {
+			expect(label).not.toContain("still runs");
+			expect(label).not.toContain("Not offered");
+		}
 	});
 
 	/**
-	 * Cycling must return to unset. A two-state toggle would write `enabled: true`
-	 * on the worker forever, freezing a default that later ships differently.
+	 * A toggle, not a cycle, and it never lands back on "no value".
+	 *
+	 * The old three-stop cycle returned to unset, a keypress that changed nothing
+	 * the operator could see and was indistinguishable from the toggle failing.
+	 * Writing an explicit value both ways also means the choice survives a change
+	 * to the shipped default.
 	 */
-	it("cycles unset to offered to blocked and back to unset", () => {
-		const first = nextSubagentEnableValue(undefined);
-		const second = nextSubagentEnableValue(first);
-		const third = nextSubagentEnableValue(second);
+	it("toggles between the two states without a third stop", () => {
+		const scout = { name: "scout", source: "bundled" } as AgentDefinition;
+		const first = nextSubagentEnableValue(scout, undefined);
+		const second = nextSubagentEnableValue(scout, first);
+		const third = nextSubagentEnableValue(scout, second);
 		expect(first).toBe(true);
 		expect(second).toBe(false);
-		expect(third).toBeUndefined();
+		expect(third).toBe(true);
 	});
 });
 
@@ -134,17 +148,19 @@ describe("/agents rows use the shared wording", () => {
 	 * settings tab shows for the same row — a source-level copy would pass a
 	 * presence check and still drift.
 	 */
-	test("shows the worker as offered by default and a specialist as not offered", async () => {
+	test("shows a specialist as disabled and the worker as enabled, in the shared words", async () => {
 		await initTheme(false);
 		const dashboard = await AgentDashboard.create(await makeTempCwd(), defaultSettings, 24, {});
 		const plain = (): string => dashboard.render(200).join("\n").replace(ANSI_PATTERN, "");
 
 		// Selection starts on the first bundled agent, a specialist.
 		const specialist = plain();
-		expect(specialist).toContain(SUBAGENT_ENABLE_STATE_LABEL["default-off"]);
-		expect(specialist).not.toContain(SUBAGENT_ENABLE_STATE_LABEL["default-on"]);
+		expect(specialist).toContain(SUBAGENT_ENABLE_STATE_LABEL.off);
+		// And it says nothing about the agent running anyway, which is the sentence
+		// that made this screen unreadable.
+		expect(specialist).not.toContain("still runs");
 
-		// Walk down to the worker, the one bundled agent that ships offered. Stepping
+		// Walk down to the worker, the one bundled agent that ships enabled. Stepping
 		// until its inspector appears rather than a fixed count, so adding a bundled
 		// specialist does not silently make this assert the wrong row.
 		let worker = specialist;
@@ -152,7 +168,6 @@ describe("/agents rows use the shared wording", () => {
 			dashboard.handleInput("\x1b[B");
 			worker = plain();
 		}
-		expect(worker).toContain(SUBAGENT_ENABLE_STATE_LABEL["default-on"]);
-		expect(worker).not.toContain(SUBAGENT_ENABLE_STATE_LABEL.off);
+		expect(worker).toContain(SUBAGENT_ENABLE_STATE_LABEL.on);
 	});
 });

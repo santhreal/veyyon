@@ -21,9 +21,9 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { BashExecutionComponent } from "@veyyon/coding-agent/modes/components/bash-execution";
 import { ComposerHairline } from "@veyyon/coding-agent/modes/components/composer-chrome";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { Component, TUI } from "@veyyon/tui";
+import { createToolExecution } from "./helpers/tool-execution";
 
 const WIDTHS = [80, 120, 200];
 
@@ -55,7 +55,7 @@ function bashBlock(exitCode: number | undefined): Component {
 }
 
 function toolBlock(isError: boolean): Component {
-	const block = new ToolExecutionComponent("bash", { command: "ls" }, {}, undefined, uiStub);
+	const block = createToolExecution("bash", { command: "ls" }, {}, undefined, uiStub);
 	block.updateResult({ content: [{ type: "text", text: "a\nb" }], isError } as never, false);
 	return block;
 }

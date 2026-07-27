@@ -1,7 +1,7 @@
 import { prompt } from "@veyyon/utils";
-import type { CustomCommand, CustomCommandAPI } from "../../../../extensibility/custom-commands/types";
+import type { BundledCommandAPI, CustomCommand } from "../../../../extensibility/custom-commands/types";
 import type { HookCommandContext } from "../../../../extensibility/hooks/types";
-import { PROMPTS } from "../../../../prompts/registry";
+import { requestsPrompts } from "../../../../prompts/requests/rows";
 import * as git from "../../../../utils/git";
 
 /**
@@ -11,7 +11,7 @@ import * as git from "../../../../utils/git";
  * hint in a rendered prompt: the prompt is still correct without it, and nothing downstream reads the
  * absence as "this commit is definitely untagged".
  */
-async function getHeadTag(api: CustomCommandAPI): Promise<string | undefined> {
+async function getHeadTag(api: BundledCommandAPI): Promise<string | undefined> {
 	try {
 		return (await git.ref.tags(api.cwd))[0];
 	} catch {
@@ -26,7 +26,7 @@ async function getHeadTag(api: CustomCommandAPI): Promise<string | undefined> {
  * arrives rather than a failure being swallowed. The caller substitutes `origin`, which is the same
  * guess git makes for a branch with no upstream.
  */
-async function getPushRemote(api: CustomCommandAPI, branch: string): Promise<string | undefined> {
+async function getPushRemote(api: BundledCommandAPI, branch: string): Promise<string | undefined> {
 	try {
 		return (
 			(await git.config.getBranch(api.cwd, branch, "pushRemote")) ??
@@ -37,7 +37,9 @@ async function getPushRemote(api: CustomCommandAPI, branch: string): Promise<str
 	}
 }
 
-async function getHeadTagContext(api: CustomCommandAPI): Promise<{ branch: string; headTag?: string; remote: string }> {
+async function getHeadTagContext(
+	api: BundledCommandAPI,
+): Promise<{ branch: string; headTag?: string; remote: string }> {
 	const branch = await git.branch.currentOrHead(api.cwd);
 	const [headTag, pushRemote] = await Promise.all([getHeadTag(api), getPushRemote(api, branch)]);
 	return {
@@ -51,10 +53,10 @@ export class GreenCommand implements CustomCommand {
 	name = "green";
 	description = "Generate a prompt to iterate on CI failures until the branch is green";
 
-	constructor(private api: CustomCommandAPI) {}
+	constructor(private api: BundledCommandAPI) {}
 
 	async execute(_args: string[], _ctx: HookCommandContext): Promise<string> {
 		const { headTag, branch, remote } = await getHeadTagContext(this.api);
-		return prompt.render(PROMPTS["requests/ci-green"].text, { headTag, branch, remote });
+		return prompt.render(requestsPrompts["requests/ci-green"].text, { headTag, branch, remote });
 	}
 }

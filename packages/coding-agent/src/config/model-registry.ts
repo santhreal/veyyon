@@ -1468,7 +1468,7 @@ export class ModelRegistry {
 			error: discoveryError,
 		});
 		if (discoveryError) {
-			this.#warnProviderDiscoveryFailure(providerConfig, discoveryError);
+			this.#warnProviderDiscoveryFailure(providerConfig.provider, providerConfig.baseUrl, discoveryError);
 		}
 		return this.#applyProviderModelOverrides(
 			providerId,
@@ -1499,17 +1499,25 @@ export class ModelRegistry {
 		};
 	}
 
-	#warnProviderDiscoveryFailure(providerConfig: DiscoveryProviderConfig, error: string): void {
-		const previous = this.#lastDiscoveryWarnings.get(providerConfig.provider);
+	/**
+	 * Report that a provider's model discovery did not produce a catalog.
+	 *
+	 * The ONE owner of this message. It was written for discovery that THREW, and a discovery that merely
+	 * returned no list -- a refused connection, a 401, an endpoint that is not OpenAI-compatible -- reached
+	 * no reporter at all, so a provider whose models the user pays for disappeared from the picker with
+	 * nothing anywhere explaining it. Both paths come through here now, and the built-in manager path used
+	 * to log the same sentence again from its own catch, without this dedup.
+	 *
+	 * Deduplicated per provider on the exact reason: discovery re-runs on a timer and on demand, and the
+	 * same unreachable endpoint must not fill the log. A CHANGED reason is reported, because that is news.
+	 */
+	#warnProviderDiscoveryFailure(provider: string, url: string | undefined, error: string): void {
+		const previous = this.#lastDiscoveryWarnings.get(provider);
 		if (previous === error) {
 			return;
 		}
-		this.#lastDiscoveryWarnings.set(providerConfig.provider, error);
-		logger.warn("model discovery failed for provider", {
-			provider: providerConfig.provider,
-			url: providerConfig.baseUrl,
-			error,
-		});
+		this.#lastDiscoveryWarnings.set(provider, error);
+		logger.warn("model discovery failed for provider", { provider, url, error });
 	}
 
 	async #discoverBuiltInProviderModels(
@@ -1697,7 +1705,20 @@ export class ModelRegistry {
 		strategy: ModelRefreshStrategy,
 	): Promise<BuiltInDiscoveryResult> {
 		try {
-			const manager = createModelManager({ ...options, cacheDbPath: this.#cacheDbPath });
+			const manager = createModelManager({
+				...options,
+				cacheDbPath: this.#cacheDbPath,
+				// A dynamic fetch that returns no list is why a model can vanish from the picker, and until now
+				// it reached nothing: only a THROWN failure was reported. The stage is in the message because it
+				// decides where the reader looks -- `request` at the network, `status` at credentials, `payload`
+				// at whether the endpoint speaks the protocol at all.
+				onDiscoveryFailure: failure =>
+					this.#warnProviderDiscoveryFailure(
+						options.providerId,
+						failure.url || undefined,
+						`${failure.stage}: ${failure.detail}`,
+					),
+			});
 			const result = await manager.refresh(strategy);
 			const models = result.models.map(model =>
 				model.provider === options.providerId ? model : { ...model, provider: options.providerId },
@@ -1708,10 +1729,9 @@ export class ModelRegistry {
 			}
 			return { models, authoritativeProviders };
 		} catch (error) {
-			logger.warn("model discovery failed for provider", {
-				provider: options.providerId,
-				error: errorMessage(error),
-			});
+			// Through the same owner as every other discovery failure, which also means this one is now
+			// deduplicated per provider instead of repeating on every refresh.
+			this.#warnProviderDiscoveryFailure(options.providerId, undefined, errorMessage(error));
 			return { models: [], authoritativeProviders: new Set() };
 		}
 	}

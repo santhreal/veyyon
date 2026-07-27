@@ -7,7 +7,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { isEnoent, isRecord, logger, scopedTimeoutSignal } from "@veyyon/utils";
+import { isEnoent, isRecord, logger, removeTempPath, scopedTimeoutSignal } from "@veyyon/utils";
 import * as git from "../../../utils/git";
 
 import type { MarketplaceCatalog, MarketplaceSourceType } from "./types";
@@ -310,7 +310,7 @@ async function cloneAndReadCatalog(url: string, source: string, cacheDir: string
 		const catalog = parseMarketplaceCatalog(content, displayPath);
 		return { catalog, clonePath: tmpDir };
 	} catch (err) {
-		await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+		await removeTempPath(tmpDir, "marketplace-catalog-unreadable");
 		throw new Error(`Cloned repository ${url}: ${(err as Error).message} (source: ${source})`, { cause: err });
 	}
 }

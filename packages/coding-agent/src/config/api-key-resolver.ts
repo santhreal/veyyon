@@ -1,5 +1,8 @@
-import { type Api, type ApiKeyResolver, type AuthStorage, isUsageLimitOutcome, type Model } from "@veyyon/ai";
+import type { Api, ApiKeyResolver, AuthStorage, Model } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
+// The owner, not the barrel: this predicate is one function over a status code and a
+// message, in a module that imports nothing, against the barrel's 363.
+import { isUsageLimitOutcome } from "@veyyon/ai/error/rate-limit";
 
 /** Model slice accepted by the model-form `resolver(model, sessionId)` overload. */
 export type ApiKeyResolverModel = Pick<Model<Api>, "provider" | "baseUrl" | "id">;

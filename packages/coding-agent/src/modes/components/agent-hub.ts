@@ -13,12 +13,14 @@
  *
  * Replaces the old SessionObserverOverlayComponent (ctrl+s observer).
  */
+
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { type AgentTool, ThinkingLevel } from "@veyyon/agent-core";
 import { Container, Ellipsis, matchesKey, type OverlayHandle, padding, type TUI, visibleWidth } from "@veyyon/tui";
 import { errorMessage, formatAge, getProjectDir, logger } from "@veyyon/utils";
-import { ADVISOR_TRANSCRIPT_FILENAME, isAdvisorTranscriptName } from "../../advisor";
+import { advisorTranscriptSlug, isSessionFileName, SESSION_BACKUP_EXTENSION } from "@veyyon/utils/session-file";
+import { isAdvisorTranscriptName } from "../../advisor";
 import type { KeyId } from "../../config/keybindings";
 import type { MessageRenderer } from "../../extensibility/extensions/types";
 import { IrcBus } from "../../irc/bus";
@@ -32,13 +34,12 @@ import { theme } from "../theme/theme";
 import { matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import { AGENT_STATUS_ORDER, agentStatusGlyph } from "./agent-status-display";
 import { AgentTranscriptViewer } from "./agent-transcript-viewer";
+import {
+	AGENT_VIEW_AGE_TICK_MS,
+	AGENT_VIEW_DATA_CHANGE_COALESCE_MS,
+	AGENT_VIEW_LEFT_TAP_WINDOW_MS,
+} from "./agent-view-timings";
 import { DynamicBorder } from "./dynamic-border";
-
-/** Refresh cadence for the relative-time column */
-const AGE_TICK_MS = 5_000;
-const DATA_CHANGE_RENDER_COALESCE_MS = 100;
-/** Double-tap window for the table's left-left "close hub" gesture. */
-const LEFT_TAP_WINDOW_MS = 500;
 
 /** Compute the max content width for the current terminal, accounting for chrome. */
 function contentWidth(): number {
@@ -95,7 +96,7 @@ async function registerPersistedSubagents(
 	registry: AgentRegistry,
 	sessionFile: string | null | undefined,
 ): Promise<void> {
-	if (!sessionFile?.endsWith(".jsonl")) return;
+	if (!sessionFile || !isSessionFileName(sessionFile)) return;
 	const root = sessionFile.slice(0, -6);
 	await registerPersistedSubagentsFromDir(registry, root, undefined);
 }
@@ -112,7 +113,7 @@ async function registerPersistedSubagentsFromDir(
 		return;
 	}
 	for (const entry of entries) {
-		if (!entry.isFile() || !entry.name.endsWith(".jsonl") || entry.name.includes(".bak")) continue;
+		if (!entry.isFile() || !isSessionFileName(entry.name) || entry.name.includes(SESSION_BACKUP_EXTENSION)) continue;
 		const sessionFile = path.join(dir, entry.name);
 		// The advisor transcript is observability-only: register it as a non-peer
 		// `advisor` kind under its owning session so the Hub can show its read-only
@@ -121,8 +122,7 @@ async function registerPersistedSubagentsFromDir(
 			const owner = parentId ?? MAIN_AGENT_ID;
 			// `__advisor.jsonl` → the default advisor (no slug); `__advisor.<slug>.jsonl`
 			// → a named advisor, keyed and labeled by its slug.
-			const slug =
-				entry.name === ADVISOR_TRANSCRIPT_FILENAME ? "" : entry.name.slice("__advisor.".length, -".jsonl".length);
+			const slug = advisorTranscriptSlug(entry.name);
 			const advisorId = slug ? `${owner}/advisor:${slug}` : `${owner}/advisor`;
 			const displayName = slug ? `advisor:${slug}` : "advisor";
 			const existing = registry.get(advisorId);
@@ -279,11 +279,11 @@ export class AgentHubOverlayComponent extends Container {
 		this.#unsubscribers.push(this.#observers.onChange(() => this.#scheduleDataChange()));
 		// Component-scoped: only the relative-time column changes on this tick,
 		// never the hub's row count or layout, so a full-tree requestRender()
-		// would re-walk the whole UI every AGE_TICK_MS purely to refresh a
+		// would re-walk the whole UI every AGENT_VIEW_AGE_TICK_MS purely to refresh a
 		// timestamp label. The timer only exists while the hub is mounted
 		// (started in the constructor, cleared in dispose()), so this never
 		// fires while the overlay is hidden.
-		this.#ageTimer = setInterval(() => this.#ui.requestComponentRender(this), AGE_TICK_MS);
+		this.#ageTimer = setInterval(() => this.#ui.requestComponentRender(this), AGENT_VIEW_AGE_TICK_MS);
 		this.#ageTimer.unref?.();
 
 		this.persistedSubagentsReady = this.#remote
@@ -339,7 +339,7 @@ export class AgentHubOverlayComponent extends Container {
 
 	/**
 	 * Seed the table's left-left close detector with the current time so a single
-	 * subsequent `←` (within {@link LEFT_TAP_WINDOW_MS}) dismisses the hub.
+	 * subsequent `←` (within {@link AGENT_VIEW_LEFT_TAP_WINDOW_MS}) dismisses the hub.
 	 *
 	 * The editor's own double-tap detector consumes the `←←` that opens the hub,
 	 * leaving this detector at its fresh `0` — without this handoff the user would
@@ -407,7 +407,7 @@ export class AgentHubOverlayComponent extends Container {
 		this.#dataChangeTimer = setTimeout(() => {
 			this.#dataChangeTimer = undefined;
 			this.#onDataChange();
-		}, DATA_CHANGE_RENDER_COALESCE_MS);
+		}, AGENT_VIEW_DATA_CHANGE_COALESCE_MS);
 		this.#dataChangeTimer.unref?.();
 	}
 
@@ -576,7 +576,7 @@ export class AgentHubOverlayComponent extends Container {
 		}
 		if (matchesKey(keyData, "left")) {
 			const now = Date.now();
-			if (now - this.#lastLeftTap < LEFT_TAP_WINDOW_MS) {
+			if (now - this.#lastLeftTap < AGENT_VIEW_LEFT_TAP_WINDOW_MS) {
 				this.#lastLeftTap = 0;
 				this.#onDone();
 			} else {

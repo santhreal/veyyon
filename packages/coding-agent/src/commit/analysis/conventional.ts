@@ -3,7 +3,7 @@ import type { Api, ApiKey, Model } from "@veyyon/ai";
 import { completeSimple } from "@veyyon/ai";
 import { prompt } from "@veyyon/utils";
 import type { ConventionalAnalysis } from "../../commit/types";
-import { PROMPTS } from "../../prompts/registry";
+import { commitPrompts } from "../../prompts/commit/rows";
 import { toReasoningEffort } from "../../thinking";
 import { createConventionalAnalysisTool, parseConventionalAnalysisResponse } from "../shared-llm";
 
@@ -39,7 +39,7 @@ export async function generateConventionalAnalysis({
 	stat,
 	diff,
 }: ConventionalAnalysisInput): Promise<ConventionalAnalysis> {
-	const userContent = prompt.render(PROMPTS["commit/analysis-user"].text, {
+	const userContent = prompt.render(commitPrompts["commit/analysis-user"].text, {
 		context_files: contextFiles && contextFiles.length > 0 ? contextFiles : undefined,
 		user_context: userContext,
 		types_description: typesDescription,
@@ -52,7 +52,7 @@ export async function generateConventionalAnalysis({
 	const response = await completeSimple(
 		model,
 		{
-			systemPrompt: [prompt.render(PROMPTS["commit/analysis-system"].text)],
+			systemPrompt: [prompt.render(commitPrompts["commit/analysis-system"].text)],
 			messages: [{ role: "user", content: userContent, timestamp: Date.now() }],
 			tools: [ConventionalAnalysisTool],
 		},

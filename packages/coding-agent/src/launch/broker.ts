@@ -16,7 +16,17 @@ import {
 } from "@veyyon/utils";
 import { truncateHead, truncateHeadBytes, truncateTail, truncateTailBytes } from "../session/streaming-output";
 import { workerEnvFromParent } from "../subprocess/worker-client";
-import { daemonBrokerEndpoint } from "./paths";
+import {
+	daemonBrokerEndpoint,
+	daemonBrokerLeasePath,
+	daemonBrokerTokenPath,
+	managedDaemonDir,
+	managedDaemonLogPath,
+	managedDaemonMetaPath,
+	managedDaemonPreviousLogPath,
+	managedDaemonProcessLeasePath,
+	managedDaemonsRoot,
+} from "./paths";
 import { hasLiveDaemonProjectPresence } from "./presence";
 import {
 	DAEMON_IDLE_GRACE_ENV,
@@ -44,11 +54,6 @@ const LOG_ROTATE_BYTES = 25 * 1024 * 1024;
 const LOG_READ_BYTES = 2 * 1024 * 1024;
 const READINESS_BUFFER_CHARS = 64 * 1024;
 const RESTART_MAX_DELAY_MS = 30_000;
-const TOKEN_FILE = "broker.token";
-const PID_FILE = "broker.pid";
-const META_FILE = "meta.json";
-const LOG_FILE = "output.log";
-const PREVIOUS_LOG_FILE = "output.previous.log";
 
 const SIGNAL_NUMBER: Record<DaemonSignal, number> = {
 	SIGINT: os.constants.signals.SIGINT,
@@ -153,8 +158,8 @@ class DaemonLog {
 
 	static async open(dir: string): Promise<DaemonLog> {
 		await fs.mkdir(dir, { recursive: true, mode: 0o700 });
-		const logPath = path.join(dir, LOG_FILE);
-		const previousPath = path.join(dir, PREVIOUS_LOG_FILE);
+		const logPath = managedDaemonLogPath(dir);
+		const previousPath = managedDaemonPreviousLogPath(dir);
 		await fs.rm(previousPath, { force: true });
 		try {
 			await fs.rename(logPath, previousPath);
@@ -232,7 +237,7 @@ class DaemonLog {
 }
 
 async function acquireBrokerLease(runtimeDir: string): Promise<BrokerLease | null> {
-	const pidPath = path.join(runtimeDir, PID_FILE);
+	const pidPath = daemonBrokerLeasePath(runtimeDir);
 	for (let attempt = 0; attempt < 2; attempt++) {
 		try {
 			const handle = await fs.open(pidPath, "wx", 0o600);
@@ -469,7 +474,7 @@ class DaemonBroker {
 		}
 		const stat = await fs.stat(spec.cwd);
 		if (!stat.isDirectory()) throw new Error(`Daemon cwd is not a directory: ${spec.cwd}`);
-		const dir = path.join(this.#runtimeDir, "daemons", spec.name);
+		const dir = managedDaemonDir(this.#runtimeDir, spec.name);
 		const now = Date.now();
 		const record: ManagedDaemon = {
 			spec,
@@ -566,7 +571,7 @@ class DaemonBroker {
 				onChunk,
 			);
 		} else {
-			const pidPath = path.join(record.dir, "process.pid");
+			const pidPath = managedDaemonProcessLeasePath(record.dir);
 			await fs.rm(pidPath, { force: true });
 			const argv = [record.spec.application, ...record.spec.args];
 			const command = [
@@ -580,7 +585,7 @@ class DaemonBroker {
 			.catch(error => this.#settle(record, generation, undefined, errorMessage(error)));
 
 		if (process.platform === "win32") return;
-		const pidPath = path.join(record.dir, "process.pid");
+		const pidPath = managedDaemonProcessLeasePath(record.dir);
 		const deadline = Date.now() + 5_000;
 		const pidFile = Bun.file(pidPath);
 		while (Date.now() < deadline && generation === record.generation) {
@@ -620,7 +625,7 @@ class DaemonBroker {
 	}
 
 	async #launchDetached(record: ManagedDaemon, generation: number): Promise<void> {
-		const logPath = path.join(record.dir, LOG_FILE);
+		const logPath = managedDaemonLogPath(record.dir);
 		const output = await fs.open(logPath, "a", 0o600);
 		try {
 			const process = Bun.spawn([record.spec.application, ...record.spec.args], {
@@ -668,7 +673,7 @@ class DaemonBroker {
 
 	async #readDetachedOutput(record: ManagedDaemon, generation: number): Promise<void> {
 		if (!record.spec.detached || generation !== record.generation) return;
-		const logPath = path.join(record.dir, LOG_FILE);
+		const logPath = managedDaemonLogPath(record.dir);
 		let size: number;
 		try {
 			size = (await fs.stat(logPath)).size;
@@ -803,8 +808,8 @@ class DaemonBroker {
 		const output = record.log
 			? await record.log.read(operation.head, lines, operation.grep)
 			: await DaemonLog.readFiles(
-					path.join(record.dir, LOG_FILE),
-					path.join(record.dir, PREVIOUS_LOG_FILE),
+					managedDaemonLogPath(record.dir),
+					managedDaemonPreviousLogPath(record.dir),
 					operation.head,
 					lines,
 					operation.grep,
@@ -929,7 +934,7 @@ class DaemonBroker {
 	}
 
 	#persist(record: ManagedDaemon): void {
-		const metaPath = path.join(record.dir, META_FILE);
+		const metaPath = managedDaemonMetaPath(record.dir);
 		record.persistQueue = record.persistQueue
 			.then(() => atomicWriteFile(metaPath, JSON.stringify({ daemon: record.snapshot, spec: record.spec })))
 			.catch(error => {
@@ -941,7 +946,7 @@ class DaemonBroker {
 	}
 
 	async #recoverRecords(): Promise<void> {
-		const root = path.join(this.#runtimeDir, "daemons");
+		const root = managedDaemonsRoot(this.#runtimeDir);
 		const entries = await fs.readdir(root, { withFileTypes: true }).catch(error => {
 			if (isEnoent(error)) return [];
 			throw error;
@@ -950,7 +955,7 @@ class DaemonBroker {
 			if (!entry.isDirectory()) continue;
 			const dir = path.join(root, entry.name);
 			try {
-				const decoded: unknown = await Bun.file(path.join(dir, META_FILE)).json();
+				const decoded: unknown = await Bun.file(managedDaemonMetaPath(dir)).json();
 				if (typeof decoded !== "object" || decoded === null || !("daemon" in decoded) || !("spec" in decoded)) {
 					continue;
 				}
@@ -1037,7 +1042,7 @@ export async function startDaemonBrokerFromEnvironment(): Promise<void> {
 	const lease = await acquireBrokerLease(runtimeDir);
 	if (!lease) return;
 	process.title = "veyyon daemon broker";
-	const token = (await Bun.file(path.join(runtimeDir, TOKEN_FILE)).text()).trim();
+	const token = (await Bun.file(daemonBrokerTokenPath(runtimeDir)).text()).trim();
 	if (!token) throw new Error("Daemon broker token is empty");
 	const broker = new DaemonBroker(projectDir, runtimeDir, token, idleGraceMs);
 	const cancelCleanup = postmortem.register("daemon-broker", () => broker.shutdown());

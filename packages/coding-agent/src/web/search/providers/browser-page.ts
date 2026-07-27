@@ -87,6 +87,9 @@ async function browseHtmlPage(
 			);
 			if (options.afterNavigation) await options.afterNavigation(activePage, signal);
 			if (ready) {
+				// The selector wait is an optimisation: it gives results a chance to render before the HTML is
+				// read. A timeout is an ordinary outcome for a page that never shows it, and the content read
+				// below plus `shouldFallback` decide whether the page was actually usable.
 				await untilAborted(signal, () =>
 					activePage.waitForSelector(ready.selector, { timeout: ready.timeoutMs }).catch(() => null),
 				);
@@ -100,6 +103,8 @@ async function browseHtmlPage(
 		}
 		throw new Error("Browser fallback exhausted without a response");
 	} finally {
+		// Teardown in a `finally` that must not replace either the loaded page or the "exhausted" error above;
+		// a page that will not close is going away with the browser released on the next line.
 		await page?.close().catch(() => undefined);
 		await releaseBrowser(handle, { kill: false });
 	}

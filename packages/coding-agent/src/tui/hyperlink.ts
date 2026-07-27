@@ -7,7 +7,9 @@
  */
 import * as url from "node:url";
 import { detectStreamAnsiPolicy, TERMINAL } from "@veyyon/tui";
-import { isSettingsInitialized, settings } from "../config/settings";
+import { BEL, OSC, ST } from "@veyyon/tui/ansi";
+// The slot leaf, not the 94-module store: this file reads values, it does not fill them.
+import { isSettingsInitialized, settings } from "../config/settings-instance";
 // The three leaf modules, NOT the `../internal-urls` barrel. The barrel also
 // exports the MCP protocol, which reaches `mcp/manager` -> `mcp/tool-bridge` ->
 // `mcp/render` -> `tui/index` -> this file, so importing it from here closed an
@@ -17,10 +19,6 @@ import { isSettingsInitialized, settings } from "../config/settings";
 import { LocalProtocolHandler, resolveLocalUrlToPath } from "../internal-urls/local-protocol";
 import { memoryRootsFromRegistry, resolveMemoryUrlToPath } from "../internal-urls/memory-protocol";
 import { parseInternalUrl } from "../internal-urls/parse";
-
-const OSC = "\x1b]";
-const ST = "\x1b\\";
-const BEL = "\x07";
 
 /** Stable 8-char hex ID derived from a URI — hints terminals to coalesce identical adjacent links. */
 function buildLinkId(uri: string): string {

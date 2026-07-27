@@ -1,18 +1,18 @@
 import { describe, expect, it } from "bun:test";
-import type { ReadyInfo, WorkerInbound, WorkerOutbound } from "@veyyon/coding-agent/tools/browser/tab-protocol";
+import type { ReadyInfo, TabWorkerInbound, TabWorkerOutbound } from "@veyyon/coding-agent/tools/browser/tab-protocol";
 import { initializeTabWorkerForTest } from "@veyyon/coding-agent/tools/browser/tab-supervisor";
 
 class FakeStartupWorker {
 	#errorHandlers = new Set<(error: Error) => void>();
-	#messageHandlers = new Set<(msg: WorkerOutbound) => void>();
-	readonly sent: WorkerInbound[] = [];
+	#messageHandlers = new Set<(msg: TabWorkerOutbound) => void>();
+	readonly sent: TabWorkerInbound[] = [];
 	readonly mode = "worker" as const;
 
-	send(msg: WorkerInbound): void {
+	send(msg: TabWorkerInbound): void {
 		this.sent.push(msg);
 	}
 
-	onMessage(handler: (msg: WorkerOutbound) => void): () => void {
+	onMessage(handler: (msg: TabWorkerOutbound) => void): () => void {
 		this.#messageHandlers.add(handler);
 		return () => this.#messageHandlers.delete(handler);
 	}

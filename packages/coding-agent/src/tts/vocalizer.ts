@@ -38,7 +38,8 @@
  * {@link Vocalizer.setEnhancer}.
  */
 import { errorMessage, logger } from "@veyyon/utils";
-import { settings } from "../config/settings";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { settings } from "../config/settings-instance";
 import { DEFAULT_TTS_VOICE } from "./models";
 import { SpeakableStream } from "./speakable";
 import { BlockAccumulator, type SpeechEnhancer } from "./speech-enhancer";

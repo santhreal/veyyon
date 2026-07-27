@@ -1,10 +1,10 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AgentProgress, SingleResult, TaskToolDetails } from "@veyyon/coding-agent/task/types";
 import type { TUI } from "@veyyon/tui";
+import { createToolExecution } from "../../helpers/tool-execution";
 
 function progressEntry(description: string): AgentProgress {
 	return {
@@ -90,7 +90,7 @@ describe("ToolExecutionComponent detached task freeze", () => {
 		const requestRender = vi.fn();
 		const requestComponentRender = vi.fn();
 		const ui = { requestRender, requestComponentRender } as unknown as TUI;
-		const component = new ToolExecutionComponent(
+		const component = createToolExecution(
 			"task",
 			{ agent: "explore", id: "Anna", description: "scout auth", assignment: "investigate the auth flow" },
 			{ liveRegion: { isBlockInLiveRegion: () => live() } },

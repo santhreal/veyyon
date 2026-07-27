@@ -1,11 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getDefault } from "@veyyon/coding-agent/config/settings-schema";
 import { removeWithRetries } from "@veyyon/utils";
 import { guardDestructivePath } from "../../utils/test/helpers/destructive-guard";
+import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makeSettingsPrecedenceDir = useTrackedTempDirs("veyyon-settings-precedence-");
 
 /**
  * SETC-6: the Tier-A precedence chain, stated once and proven per layer.
@@ -65,7 +71,7 @@ describe("Tier-A settings precedence", () => {
 	let cwd = "";
 
 	beforeEach(() => {
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-settings-precedence-"));
+		const root = makeSettingsPrecedenceDir();
 		agentDir = path.join(root, "agent");
 		cwd = path.join(root, "project");
 		fs.mkdirSync(agentDir, { recursive: true });

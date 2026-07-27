@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { Effort } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
+import { Effort } from "@veyyon/catalog/effort";
 import { resolveConfiguredModelPatterns, resolveModelOverride } from "@veyyon/coding-agent/config/model-resolver";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getBundledAgent } from "@veyyon/coding-agent/task/agents";

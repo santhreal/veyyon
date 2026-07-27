@@ -14,7 +14,7 @@ import {
 	tryEnforceStrictSchema,
 } from "@veyyon/ai/utils/schema";
 import { errorMessage, isRecord } from "@veyyon/utils";
-import { subprocessToolRegistry } from "../task/subprocess-tool-registry";
+import { subprocessToolRegistry, YIELD_TOOL_NAME } from "../task/subprocess-tool-registry";
 import type { ToolSession } from ".";
 import { buildOutputValidator, formatAllValidationIssues } from "./output-schema-validator";
 
@@ -209,7 +209,7 @@ const MAX_SCHEMA_RETRIES = 3;
 const MAX_EMPTY_RESULT_RETRIES = 3;
 
 export class YieldTool implements AgentTool<TSchema, YieldDetails> {
-	readonly name = "yield";
+	readonly name = YIELD_TOOL_NAME;
 	readonly approval = "read" as const;
 	readonly label = "Submit Result";
 	readonly description =
@@ -454,7 +454,7 @@ export class YieldTool implements AgentTool<TSchema, YieldDetails> {
 }
 
 // Register subprocess tool handler for extraction + termination.
-subprocessToolRegistry.register<YieldDetails>("yield", {
+subprocessToolRegistry.register<YieldDetails>(YIELD_TOOL_NAME, {
 	extractData: event => {
 		const details = event.result?.details;
 		if (!details || typeof details !== "object") return undefined;

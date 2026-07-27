@@ -1,7 +1,13 @@
 import type { Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { atomicWriteFile, errorMessage, getDocumentConversionCacheDir, isEnoent, logger } from "@veyyon/utils";
+import { atomicWriteFile } from "@veyyon/utils/atomic-write";
+import { getDocumentConversionCacheDir } from "@veyyon/utils/dirs";
+import { isEnoent } from "@veyyon/utils/fs-error";
+// Owners, not the `@veyyon/utils` barrel: 6 modules against 74.
+import * as logger from "@veyyon/utils/logger";
+import { removeTempPath } from "@veyyon/utils/temp";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import packageJson from "../../package.json" with { type: "json" };
 
 /**
@@ -68,7 +74,7 @@ export async function readMarkitConversionCache(key: string): Promise<MarkitConv
 	}
 
 	if (!entry) {
-		await fs.rm(target, { force: true }).catch(() => undefined);
+		await removeTempPath(target, "markit-cache-entry-unparsable");
 		return { status: "miss" };
 	}
 

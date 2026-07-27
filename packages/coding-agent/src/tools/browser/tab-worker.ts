@@ -29,6 +29,7 @@ import {
 	parseAriaRefSelector,
 	resolveAriaRefHandle,
 } from "./aria/aria-snapshot";
+import { releaseHandle, releaseHandles } from "./handle-release";
 import {
 	applyStealthPatches,
 	applyViewport,
@@ -49,12 +50,12 @@ import type {
 	Observation,
 	ObservationEntry,
 	ReadyInfo,
-	RunErrorPayload,
 	ScreenshotResult,
 	SessionSnapshot,
+	TabRunErrorPayload,
+	TabWorkerInbound,
+	TabWorkerTransport,
 	ToolReply,
-	Transport,
-	WorkerInbound,
 	WorkerInitPayload,
 } from "./tab-protocol";
 import { targetIdForPage, targetIdForTarget } from "./target-id";
@@ -336,7 +337,7 @@ function redactUrlCredentials(url: string): string {
 	}
 }
 
-function errorPayload(error: unknown): RunErrorPayload {
+function errorPayload(error: unknown): TabRunErrorPayload {
 	if (error instanceof ToolAbortError) {
 		return { name: error.name, message: error.message, stack: error.stack, isToolError: false, isAbort: true };
 	}
@@ -349,7 +350,7 @@ function errorPayload(error: unknown): RunErrorPayload {
 	return { name: "Error", message: String(error), isToolError: false, isAbort: false };
 }
 
-function replyError(payload: RunErrorPayload): Error {
+function replyError(payload: TabRunErrorPayload): Error {
 	if (payload.isAbort) {
 		const err = new ToolAbortError(payload.message || "Tool call aborted");
 		if (payload.stack) err.stack = payload.stack;
@@ -477,7 +478,7 @@ async function resolveActionableQueryHandlerClickTarget(handles: ElementHandle[]
 			firstProbeError ??= errorMessage(err);
 		} finally {
 			if (clickableProxy && clickableProxy !== handle && clickable !== clickableProxy) {
-				await clickableProxy.dispose().catch(() => undefined);
+				await releaseHandle(clickableProxy);
 			}
 		}
 	}
@@ -487,7 +488,7 @@ async function resolveActionableQueryHandlerClickTarget(handles: ElementHandle[]
 	const winner = candidates[0]?.handle ?? null;
 	for (let i = 1; i < candidates.length; i++) {
 		const candidate = candidates[i]!;
-		if (candidate.ownedProxy) await candidate.ownedProxy.dispose().catch(() => undefined);
+		await releaseHandle(candidate.ownedProxy);
 	}
 	return { target: winner, ...resolution };
 }
@@ -557,7 +558,7 @@ async function clickQueryHandlerText(
 				await untilAborted(clickSignal, () => Bun.sleep(100));
 			}
 		} finally {
-			await Promise.all(handles.map(async handle => handle.dispose().catch(() => undefined)));
+			await releaseHandles(handles);
 		}
 	}
 	clickTimeout.cancel();
@@ -646,7 +647,7 @@ export function describeInflight(inflight: Map<number, InflightOp>): string {
 }
 
 export class WorkerCore {
-	#transport: Transport;
+	#transport: TabWorkerTransport;
 	#browser?: Browser;
 	#page?: Page;
 	#targetId?: string;
@@ -660,10 +661,10 @@ export class WorkerCore {
 	#dialogHandler?: (dialog: Dialog) => void;
 	#openDialog?: OpenDialogInfo;
 
-	constructor(transport: Transport) {
+	constructor(transport: TabWorkerTransport) {
 		this.#transport = transport;
 		this.#unsub = this.#transport.onMessage(msg => {
-			void this.#handleMessage(msg as WorkerInbound);
+			void this.#handleMessage(msg as TabWorkerInbound);
 		});
 	}
 
@@ -676,7 +677,7 @@ export class WorkerCore {
 		this.#elementCache.set(id, handle);
 	}
 
-	async #handleMessage(msg: WorkerInbound): Promise<void> {
+	async #handleMessage(msg: TabWorkerInbound): Promise<void> {
 		switch (msg.type) {
 			case "init":
 				await this.#init(msg.payload);
@@ -745,6 +746,8 @@ export class WorkerCore {
 	async #findAttachedTarget(targetId: string): Promise<Target> {
 		if (!this.#browser) throw new ToolError("Browser is not connected");
 		for (const target of this.#browser.targets()) {
+			// A target that will not report its id is not the one being looked for; the empty string cannot match
+			// a real id, and exhausting the loop throws the named "no longer available" error below.
 			if ((await targetIdForTarget(target).catch(() => "")) !== targetId) continue;
 			return target;
 		}
@@ -795,6 +798,8 @@ export class WorkerCore {
 		this.#targetId = targetId;
 		return {
 			url: redactUrlCredentials(page.url()),
+			// Reported to the operator for display; a page mid-navigation has no title yet, and `undefined` is the
+			// honest answer for that -- distinct from an empty string, which would claim the page has no title.
 			title: await page.title().catch(() => undefined),
 			viewport: page.viewport() ?? DEFAULT_VIEWPORT,
 			targetId,
@@ -833,7 +838,7 @@ export class WorkerCore {
 		}
 	}
 
-	async #run(msg: Extract<WorkerInbound, { type: "run" }>): Promise<void> {
+	async #run(msg: Extract<TabWorkerInbound, { type: "run" }>): Promise<void> {
 		if (this.#active) {
 			this.#transport.send({
 				type: "result",
@@ -1068,7 +1073,7 @@ export class WorkerCore {
 			try {
 				const handles = await page.$$(resolved);
 				count = handles.length;
-				for (const handle of handles) void handle.dispose().catch(() => undefined);
+				for (const handle of handles) void releaseHandle(handle);
 			} catch {
 				// Inconclusive probe — keep polling without advancing toward failure.
 			}
@@ -1098,7 +1103,7 @@ export class WorkerCore {
 			]);
 			if (!handles) return "";
 			const count = handles.length;
-			for (const handle of handles) void handle.dispose().catch(() => undefined);
+			for (const handle of handles) void releaseHandle(handle);
 			return formatSelectorMatchHint(count);
 		} catch {
 			return "";
@@ -1171,7 +1176,7 @@ export class WorkerCore {
 						try {
 							return await untilAborted(sig, () => captureAriaSnapshot(page, root, opts));
 						} finally {
-							await root?.dispose().catch(() => undefined);
+							await releaseHandle(root);
 						}
 					},
 				),
@@ -1206,7 +1211,7 @@ export class WorkerCore {
 							try {
 								await untilAborted(sig, () => handle.click());
 							} finally {
-								await handle.dispose().catch(() => undefined);
+								await releaseHandle(handle);
 							}
 							return;
 						}
@@ -1228,7 +1233,7 @@ export class WorkerCore {
 						try {
 							await untilAborted(sig, () => handle.type(text, { delay: 0 }));
 						} finally {
-							await handle.dispose().catch(() => undefined);
+							await releaseHandle(handle);
 						}
 					},
 					{ selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS },
@@ -1243,7 +1248,7 @@ export class WorkerCore {
 							try {
 								await fillViaHandle(handle, value, sig);
 							} finally {
-								await handle.dispose().catch(() => undefined);
+								await releaseHandle(handle);
 							}
 							return;
 						}
@@ -1331,7 +1336,7 @@ export class WorkerCore {
 								}),
 							);
 						} finally {
-							await handle.dispose().catch(() => undefined);
+							await releaseHandle(handle);
 						}
 					},
 					{ selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS },
@@ -1452,7 +1457,7 @@ export class WorkerCore {
 				const shotOpts: ElementScreenshotOptions = { type: captureType, scrollIntoView: false };
 				buffer = (await untilAborted(signal, () => handle.screenshot(shotOpts))) as Buffer;
 			} finally {
-				await handle.dispose().catch(() => undefined);
+				await releaseHandle(handle);
 			}
 		} else {
 			buffer = (await untilAborted(signal, () => page.screenshot({ type: captureType, fullPage }))) as Buffer;
@@ -1517,7 +1522,7 @@ export class WorkerCore {
 					height: number;
 				} | null;
 				if (!box) {
-					await handle.dispose().catch(() => undefined);
+					await releaseHandle(handle);
 					throw new ToolError(`Drag ${role} element has no bounding box (likely not visible): ${target}`);
 				}
 				return { x: box.x + box.width / 2, y: box.y + box.height / 2, handle };
@@ -1543,8 +1548,8 @@ export class WorkerCore {
 			await untilAborted(signal, () => page.mouse.move(end!.x, end!.y, { steps: 12 }));
 			await untilAborted(signal, () => page.mouse.up());
 		} finally {
-			if (start.handle) await start.handle.dispose().catch(() => undefined);
-			if (end?.handle) await end.handle.dispose().catch(() => undefined);
+			await releaseHandle(start.handle);
+			await releaseHandle(end?.handle);
 		}
 	}
 
@@ -1583,7 +1588,7 @@ export class WorkerCore {
 				}, values),
 			)) as string[];
 		} finally {
-			await handle.dispose().catch(() => undefined);
+			await releaseHandle(handle);
 		}
 	}
 
@@ -1611,7 +1616,7 @@ export class WorkerCore {
 				);
 			await untilAborted(signal, () => upload.uploadFile(...absolute));
 		} finally {
-			await handle.dispose().catch(() => undefined);
+			await releaseHandle(handle);
 		}
 	}
 
@@ -1697,7 +1702,7 @@ export class WorkerCore {
 		const handles = [...this.#elementCache.values()];
 		this.#elementCache.clear();
 		this.#elementCounter = 0;
-		for (const handle of handles) void handle.dispose().catch(() => undefined);
+		for (const handle of handles) void releaseHandle(handle);
 	}
 
 	/** Best-effort `Page.stopLoading` so an abandoned navigation cannot stall later ops. */
@@ -1721,6 +1726,8 @@ export class WorkerCore {
 		this.#clearElementCache();
 		const page = this.#page;
 		if (this.#dialogHandler && page && !page.isClosed()) page.off("dialog", this.#dialogHandler);
+		// The worker is shutting down and reports `closed` below regardless: a page that will not close is either
+		// already closing or belongs to a browser that is going away with it, and the disconnect follows.
 		if (this.#mode === "headless" && page && !page.isClosed()) await page.close().catch(() => undefined);
 		if (this.#browser?.connected) this.#browser.disconnect();
 		this.#transport.send({ type: "closed" });

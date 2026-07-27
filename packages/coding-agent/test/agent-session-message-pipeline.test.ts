@@ -23,8 +23,9 @@ import { createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/
 import { obfuscateProviderContext, SecretObfuscator } from "@veyyon/coding-agent/secrets";
 import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
-import { convertToLlm, wrapSteeringForModel } from "@veyyon/coding-agent/session/messages";
+import { convertToLlm } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { wrapSteeringForModel } from "@veyyon/coding-agent/session/steering-envelope";
 import { TempDir } from "@veyyon/utils";
 import { createAssistantMessage } from "./helpers/agent-session-setup";
 

@@ -6,8 +6,9 @@ import { INTENT_FIELD } from "@veyyon/wire";
 import chalk from "chalk";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
-import { getMarkdownTheme } from "../../modes/theme/theme";
-import { PROMPTS } from "../../prompts/registry";
+import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
+import { commitPrompts } from "../../prompts/commit/rows";
+import { commitAgenticPrompts } from "../../prompts/commit-agentic/rows";
 import { createAgentSession } from "../../sdk";
 import type { AgentSessionEvent } from "../../session/agent-session";
 import type { AuthStorage } from "../../session/auth-storage";
@@ -36,8 +37,8 @@ export interface ExistingChangelogEntries {
 }
 
 export async function runCommitAgentSession(input: CommitAgentInput): Promise<CommitAgentState> {
-	const typesDescription = prompt.render(PROMPTS["commit/types-description"].text);
-	const systemPrompt = prompt.render(PROMPTS["commit-agentic/system"].text, {
+	const typesDescription = prompt.render(commitPrompts["commit/types-description"].text);
+	const systemPrompt = prompt.render(commitAgenticPrompts["commit-agentic/system"].text, {
 		types_description: typesDescription,
 	});
 	const state: CommitAgentState = { diffText: input.diffText };
@@ -154,7 +155,7 @@ export async function runCommitAgentSession(input: CommitAgentInput): Promise<Co
 	});
 
 	try {
-		const agentUserMessage = prompt.render(PROMPTS["commit-agentic/session-user"].text, {
+		const agentUserMessage = prompt.render(commitAgenticPrompts["commit-agentic/session-user"].text, {
 			user_context: input.userContext,
 			changelog_targets: input.changelogTargets.length > 0 ? input.changelogTargets.join("\n") : undefined,
 			existing_changelog_entries: input.existingChangelogEntries,

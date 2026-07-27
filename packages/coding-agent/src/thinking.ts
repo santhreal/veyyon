@@ -1,5 +1,13 @@
-import { type ResolvedThinkingLevel, ThinkingLevel } from "@veyyon/agent-core";
-import { Effort, type Model, THINKING_EFFORTS } from "@veyyon/ai";
+// The owner, not the `@veyyon/agent-core` barrel. The barrel is the agent loop: 406 modules, including the
+// whole `@veyyon/ai` streaming engine. `@veyyon/agent-core/thinking` is the six-entry ladder and a clamp.
+// This file was RECORDED at 6 modules and was 407, because the gate that pinned it could not resolve this
+// package's name; see `packages/utils/src/module-reach-workspace.ts`.
+import { type ResolvedThinkingLevel, ThinkingLevel } from "@veyyon/agent-core/thinking";
+import type { Model } from "@veyyon/ai";
+// The effort ladder from the module that OWNS it, not through the `@veyyon/ai` barrel that
+// re-exports it. `@veyyon/catalog/effort` imports nothing; the barrel is 325 modules, and this
+// file is on `config/settings`'s path through the settings schema, which ~530 test files import.
+import { Effort, THINKING_EFFORTS } from "@veyyon/catalog/effort";
 import { clampThinkingLevelForModel, getSupportedEfforts } from "@veyyon/catalog/model-thinking";
 
 /**

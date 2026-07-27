@@ -24,10 +24,27 @@ export interface JsonRpcNotification {
 	params?: Record<string, unknown>;
 }
 
-export interface JsonRpcResponse {
+/**
+ * A JSON-RPC response from an MCP server, for every transport this package speaks.
+ *
+ * `T` names the shape of `result` when the caller knows it. `json-rpc.ts` declared its own
+ * generic copy of this interface one directory over, with the error object written out inline
+ * instead of naming {@link JsonRpcError}, so the two could disagree about `data` without anything
+ * comparing them. The transports (`stdio`, `http`, `sse`) already used this one.
+ */
+export interface JsonRpcResponse<T = unknown> {
 	jsonrpc: "2.0";
-	id: string | number;
-	result?: unknown;
+	/**
+	 * `null` when the server could not attribute the answer to a request.
+	 *
+	 * JSON-RPC 2.0 requires it for an error found before the id could be read: a parse error, an
+	 * invalid envelope. This used to be typed `string | number`, so the case was not expressible
+	 * and every transport's dispatcher tested `message.id != null` and dropped such a reply on the
+	 * floor -- the caller's promise then sat until its timeout and reported that the server had not
+	 * answered, when the server had answered and said exactly what was wrong.
+	 */
+	id: string | number | null;
+	result?: T;
 	error?: JsonRpcError;
 }
 

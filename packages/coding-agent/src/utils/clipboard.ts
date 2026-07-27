@@ -271,6 +271,9 @@ async function readTextViaPowerShell(): Promise<string | null> {
 		if (proc.exitCode !== 0) return null;
 		return stdout.replaceAll("\r\n", "\n");
 	} catch {
+		// Spawning PowerShell at all failed: not on PATH, blocked by policy, or no Windows host under this
+		// process. Null means "this reader cannot get the clipboard", which is what the caller needs to try
+		// the next reader; the reader that DOES run reports its own failures a few lines above.
 		return null;
 	}
 }

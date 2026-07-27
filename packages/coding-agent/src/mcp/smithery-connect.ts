@@ -54,6 +54,8 @@ function toApiUrl(path: string): string {
 
 async function expectOk(response: Response, context: string): Promise<void> {
 	if (response.ok) return;
+	// The non-ok STATUS is the failure and it is in the thrown message with its status text; the body is extra
+	// context, so a body that cannot be read just leaves the message without it.
 	const responseText = await response.text().catch(() => "");
 	const suffix = responseText ? `: ${responseText}` : "";
 	throw new SmitheryConnectError(`${context}: ${response.status} ${response.statusText}${suffix}`, response.status);

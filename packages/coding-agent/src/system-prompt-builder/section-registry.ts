@@ -65,10 +65,10 @@
  * uniformly addressable across that boundary; only reordering ACROSS it is
  * refused, because that would move volatile text into the cached prefix.
  */
-import { kebabToCamel } from "@veyyon/utils";
-import { type BanneredSection, hasBanner, renderBanner } from "./banner-grammar";
+import { kebabToCamel, type PromptSection } from "@veyyon/utils";
+import { hasBanner, renderBanner } from "./banner-grammar";
 
-export interface TemplateSection extends BanneredSection {
+export interface TemplateSection extends PromptSection {
 	readonly source: "template";
 }
 
@@ -91,14 +91,23 @@ export interface TemplateSection extends BanneredSection {
  */
 export type RuntimeSectionInput = { readonly kind: "computed" } | { readonly kind: "option"; readonly key: string };
 
-export interface RuntimeSection extends BanneredSection {
+export interface RuntimeSection extends PromptSection {
 	readonly source: "runtime";
 	/** Runtime sections always carry a registry-owned banner, so never `null`. */
 	readonly name: string;
 	readonly input: RuntimeSectionInput;
 }
 
-export type PromptSection = TemplateSection | RuntimeSection;
+/**
+ * A row in the SYSTEM prompt's section list: template-sourced or runtime-sourced.
+ *
+ * Named for the document it describes, not `PromptSection`. That name means the base
+ * row shape every registry shares (`@veyyon/utils`), and this package exported both
+ * meanings under it from sibling modules, so an editor auto-import of "the"
+ * `PromptSection` picked whichever it offered first and the two are not
+ * interchangeable: this union carries `source`, and the base shape does not.
+ */
+export type SystemPromptSection = TemplateSection | RuntimeSection;
 
 /**
  * The template's regions, in document order.
@@ -279,7 +288,7 @@ void _assertHandlesRow;
 export const ARGOT_HANDLES_BANNER: string = renderBanner(SHORTHAND_HANDLES_SECTION.name);
 
 /** Every section, in the order it reaches the model. */
-export const SYSTEM_PROMPT_SECTIONS: readonly PromptSection[] = [...TEMPLATE_SECTIONS, ...RUNTIME_SECTIONS];
+export const SYSTEM_PROMPT_SECTIONS: readonly SystemPromptSection[] = [...TEMPLATE_SECTIONS, ...RUNTIME_SECTIONS];
 
 /**
  * Every banner-bearing section, in order — template and runtime alike.
@@ -288,7 +297,7 @@ export const SYSTEM_PROMPT_SECTIONS: readonly PromptSection[] = [...TEMPLATE_SEC
  * THIS list, so a runtime section is as addressable as a template one. Only
  * `conventions` is absent, because it has no banner to find.
  */
-export const BANNERED_SECTIONS: readonly (PromptSection & { name: string })[] =
+export const BANNERED_SECTIONS: readonly (SystemPromptSection & { name: string })[] =
 	SYSTEM_PROMPT_SECTIONS.filter(hasBanner);
 
 /**

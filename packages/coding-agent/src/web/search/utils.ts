@@ -1,7 +1,8 @@
-// `collapseWhitespace` now lives in @veyyon/utils as the repo-wide owner of the
-// collapse-and-trim idiom; re-exported here so the HTML-scraping providers keep
-// importing it from `../utils` unchanged.
-export { collapseWhitespace } from "@veyyon/utils";
+// `collapseWhitespace` now lives in @veyyon/utils as the repo-wide owner of the collapse-and-trim idiom;
+// re-exported here so the HTML-scraping providers keep importing it from `../utils` unchanged. From
+// `@veyyon/utils/collapse-whitespace`, its owner, and not the barrel: this shim is one re-export, and naming the barrel
+// made it 82 modules, which every web-search provider and `tools/fetch.ts` behind them then carried.
+export { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 
 /** Calculate age in seconds from an ISO date string. Returns undefined on invalid input. */
 export function dateToAgeSeconds(dateStr: string | null | undefined): number | undefined {

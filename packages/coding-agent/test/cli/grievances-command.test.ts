@@ -5,14 +5,16 @@
  */
 import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync } from "node:fs";
 import * as path from "node:path";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
+
+const makeTempDir = useTrackedTempDirs("veyyon-grievances-home-");
 
 const cliPath = path.resolve(import.meta.dir, "../../src/cli.ts");
 
 function makeHome(): string {
-	return mkdtempSync(path.join(tmpdir(), "veyyon-grievances-home-"));
+	return makeTempDir();
 }
 
 function makeEnv(home: string): Record<string, string | undefined> {

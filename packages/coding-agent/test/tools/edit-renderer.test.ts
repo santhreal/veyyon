@@ -7,12 +7,13 @@ import { renderGalleryState, resolveFixture } from "@veyyon/coding-agent/cli/gal
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { editToolRenderer } from "@veyyon/coding-agent/edit/renderer";
 import { renderDiff } from "@veyyon/coding-agent/modes/components/diff";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
 import { InMemorySnapshotStore } from "@veyyon/hashline";
 import { Text, type TUI, visibleWidth } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
 import chalk from "chalk";
+import { createToolExecution } from "../helpers/tool-execution";
 
 beforeAll(async () => {
 	resetSettingsForTest();
@@ -126,7 +127,7 @@ describe("editToolRenderer", () => {
 		await getUiTheme();
 		const uiStub = { requestRender() {}, requestComponentRender() {} } as unknown as TUI;
 		const hashlineTool = { name: "edit", label: "Edit", mode: "hashline" } as unknown as AgentTool;
-		const component = new ToolExecutionComponent(
+		const component = createToolExecution(
 			"edit",
 			{
 				input: [
@@ -302,7 +303,7 @@ describe("editToolRenderer", () => {
 			// single-line edit. The streaming pass trims that in-flight line, so the
 			// preview only becomes computable once args are marked complete.
 			const input = `[memory.ts#${tag}]\nSWAP 2.=2:\n+export const b = 22;`;
-			const component = new ToolExecutionComponent("edit", { input }, { snapshots }, hashlineTool, uiStub, tmpDir);
+			const component = createToolExecution("edit", { input }, { snapshots }, hashlineTool, uiStub, tmpDir);
 
 			component.setArgsComplete();
 
@@ -329,7 +330,7 @@ describe("editToolRenderer", () => {
 			const snapshots = new InMemorySnapshotStore();
 			const tag = snapshots.record(filePath, content);
 			const input = `[memory.ts#${tag}]\nSWAP 2.=2:\n+export const b = 22;\n`;
-			const component = new ToolExecutionComponent(
+			const component = createToolExecution(
 				"edit",
 				{ __partialJson: input },
 				{ snapshots },
@@ -359,7 +360,7 @@ describe("editToolRenderer", () => {
 			"*** End Patch",
 		].join("\n");
 
-		const component = new ToolExecutionComponent("apply_patch", { __partialJson: input }, {}, undefined, uiStub);
+		const component = createToolExecution("apply_patch", { __partialJson: input }, {}, undefined, uiStub);
 		const rendered = await waitForRenderedText(component, 160, "const value = 2;");
 
 		expect(rendered).toContain("src/demo.ts");
@@ -380,7 +381,7 @@ describe("editToolRenderer", () => {
 			},
 		} as unknown as AgentTool;
 
-		const component = new ToolExecutionComponent(
+		const component = createToolExecution(
 			"custom_text",
 			{ __partialJson: "plain streamed text" },
 			{},

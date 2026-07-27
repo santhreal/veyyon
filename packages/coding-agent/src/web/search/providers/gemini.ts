@@ -8,14 +8,21 @@
  * sibling SQLite store and never POSTs the broker sentinel to a Google token
  * endpoint.
  */
-import { type AuthStorage, type FetchImpl, type OAuthAccess, withOAuthAccess } from "@veyyon/ai";
+import type { AuthStorage, FetchImpl, OAuthAccess } from "@veyyon/ai";
+import { withOAuthAccess } from "@veyyon/ai/auth-retry";
+import {
+	ANTIGRAVITY_ENDPOINTS,
+	ANTIGRAVITY_PRIMARY_ENDPOINT,
+	ANTIGRAVITY_SANDBOX_ENDPOINT,
+	CLOUD_CODE_ENDPOINT,
+	GEMINI_DEVELOPER_API_ENDPOINT,
+} from "@veyyon/catalog/provider-endpoints";
 import {
 	ANTIGRAVITY_SYSTEM_INSTRUCTION,
 	getAntigravityUserAgent,
 	getGeminiCliHeaders,
 } from "@veyyon/catalog/wire/gemini-headers";
 import { fetchWithRetry } from "@veyyon/utils";
-
 import type { SearchCitation, SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { sanitizeResultLimit } from "../utils";
@@ -23,12 +30,7 @@ import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
 
-const DEFAULT_ENDPOINT = "https://cloudcode-pa.googleapis.com";
 const DEVELOPER_API_PROVIDER = "google";
-const DEVELOPER_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta";
-const ANTIGRAVITY_DAILY_ENDPOINT = "https://daily-cloudcode-pa.googleapis.com";
-const ANTIGRAVITY_SANDBOX_ENDPOINT = "https://daily-cloudcode-pa.sandbox.googleapis.com";
-const ANTIGRAVITY_ENDPOINT_FALLBACKS = [ANTIGRAVITY_DAILY_ENDPOINT, ANTIGRAVITY_SANDBOX_ENDPOINT] as const;
 const DEFAULT_MODEL = "gemini-2.5-flash";
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
@@ -315,12 +317,12 @@ async function callGeminiSearch(
 		if (m === "sandbox") {
 			endpoints = [ANTIGRAVITY_SANDBOX_ENDPOINT];
 		} else if (m === "production") {
-			endpoints = [ANTIGRAVITY_DAILY_ENDPOINT];
+			endpoints = [ANTIGRAVITY_PRIMARY_ENDPOINT];
 		} else {
-			endpoints = [...ANTIGRAVITY_ENDPOINT_FALLBACKS];
+			endpoints = [...ANTIGRAVITY_ENDPOINTS];
 		}
 	} else {
-		endpoints = [DEFAULT_ENDPOINT];
+		endpoints = [CLOUD_CODE_ENDPOINT];
 	}
 	const headers = auth.isAntigravity ? { "User-Agent": getAntigravityUserAgent() } : getGeminiCliHeaders();
 
@@ -472,7 +474,7 @@ async function callGeminiDeveloperSearch(
 
 	return withHardTimeout(signal, async hardSignal => {
 		const response = await fetchWithRetry(
-			() => `${DEVELOPER_API_ENDPOINT}/models/${model}:streamGenerateContent?alt=sse`,
+			() => `${GEMINI_DEVELOPER_API_ENDPOINT}/models/${model}:streamGenerateContent?alt=sse`,
 			{
 				method: "POST",
 				headers: {

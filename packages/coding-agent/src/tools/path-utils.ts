@@ -1,17 +1,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as url from "node:url";
-import {
-	expandTilde,
-	isEnoent,
-	isMissingPath,
-	READ_SELECTOR_RANGE_LIST_SRC,
-	splitReadSelector,
-	stripWindowsExtendedLengthPathPrefix,
-	trimTrailingSlashes,
-	tryParseJson,
-	URL_SCHEME_PREFIX_RE,
-} from "@veyyon/utils";
+import { isEnoent, isMissingPath } from "@veyyon/utils/fs-error";
+import { tryParseJson } from "@veyyon/utils/json";
+import { expandTilde, stripWindowsExtendedLengthPathPrefix } from "@veyyon/utils/path";
+// Owners, not the `@veyyon/utils` barrel: 5 modules against 74.
+import { READ_SELECTOR_RANGE_LIST_SRC, splitReadSelector } from "@veyyon/utils/read-selector";
+import { trimTrailingSlashes, URL_SCHEME_PREFIX_RE } from "@veyyon/utils/url";
 import { ToolError } from "./tool-errors";
 
 // NOTHING HERE MAY IMPORT `../internal-urls`, DIRECTLY OR THROUGH A BARREL.
@@ -1389,4 +1384,3 @@ export function resolveReadPath(filePath: string, cwd: string): string {
 
 	return resolved;
 }
-

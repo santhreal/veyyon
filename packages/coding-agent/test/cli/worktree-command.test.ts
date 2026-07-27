@@ -6,9 +6,11 @@
  * survive a plain `clear`.
  */
 import { describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
+
+const makeTempDir = useTrackedTempDirs("veyyon-worktree-home-");
 
 const cliPath = path.resolve(import.meta.dir, "../../src/cli.ts");
 
@@ -19,7 +21,7 @@ interface RunResult {
 }
 
 function makeEnv(): { home: string; wt: string } {
-	const home = mkdtempSync(path.join(tmpdir(), "veyyon-worktree-home-"));
+	const home = makeTempDir();
 	const wt = path.join(home, "wt");
 	mkdirSync(wt);
 	return { home, wt };

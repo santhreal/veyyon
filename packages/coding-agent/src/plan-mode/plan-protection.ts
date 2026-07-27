@@ -1,8 +1,8 @@
 import { getReadToolPath, type ProtectedToolContext } from "@veyyon/agent-core/compaction/tool-protection";
 import { normalizeLocalScheme } from "../tools/path-utils";
+import { DEFAULT_PLAN_FILE_URL } from "./plan-file-url";
 
 /** Canonical plan alias every session's `local://` root resolves. */
-const LOCAL_PLAN_ALIAS = "local://PLAN.md";
 
 /** True when `readPath` targets `planTarget`, ignoring `local:/` vs `local://`
  *  scheme spelling and any trailing read selector (`:1-50`, `:raw`, …). */
@@ -26,6 +26,6 @@ export function createPlanReadMatcher(getPlanReferencePath: () => string): (cont
 	return (context: ProtectedToolContext) => {
 		const path = getReadToolPath(context);
 		if (path === undefined) return false;
-		return readTargetsPlan(path, LOCAL_PLAN_ALIAS) || readTargetsPlan(path, getPlanReferencePath());
+		return readTargetsPlan(path, DEFAULT_PLAN_FILE_URL) || readTargetsPlan(path, getPlanReferencePath());
 	};
 }

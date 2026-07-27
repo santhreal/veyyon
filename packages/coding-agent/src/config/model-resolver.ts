@@ -15,7 +15,8 @@
  *   CLI flags, scope globs — onto that pipeline.
  */
 
-import { ThinkingLevel } from "@veyyon/agent-core";
+// The owner, not the barrel: see the note in `../thinking.ts`.
+import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import type { Api, Effort, KnownProvider, Model, ModelSpec } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import { modelMatchesHost } from "@veyyon/catalog/hosts";

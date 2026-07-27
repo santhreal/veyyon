@@ -6,19 +6,11 @@
  * host conflict, room full) and decryption failures never reconnect.
  */
 import { exponentialBackoffDelay, logger } from "@veyyon/utils";
+import { RELAY_FATAL_CLOSE_REASONS, RELAY_MAX_PENDING_SENDS } from "@veyyon/wire/relay";
 import { open, seal } from "./crypto";
 import type { CollabFrame, RelayControlMessage } from "./protocol";
 import { packEnvelope, unpackEnvelope } from "./protocol";
 
-const FATAL_CLOSE_REASONS: Record<number, string> = {
-	4001: "room closed",
-	4004: "no such room",
-	4009: "a host is already connected for this room",
-	4029: "room is full",
-};
-
-/** Max enveloped frames buffered while a reconnect is pending; overflow is dropped. */
-const MAX_PENDING_SENDS = 256;
 const WS_BACKPRESSURE_THRESHOLD = 64 * 1024;
 const WS_BACKPRESSURE_DRAIN_THRESHOLD = 32 * 1024;
 const WS_BACKPRESSURE_DRAIN_RETRY_MS = 25;
@@ -105,7 +97,7 @@ export class CollabSocket {
 	}
 
 	#enqueuePendingSend(envelope: Uint8Array, frameType: CollabFrame["t"]): void {
-		if (this.#pendingSends.length >= MAX_PENDING_SENDS) {
+		if (this.#pendingSends.length >= RELAY_MAX_PENDING_SENDS) {
 			logger.debug("collab: dropping frame, reconnect buffer full", { t: frameType });
 			return;
 		}
@@ -230,7 +222,7 @@ export class CollabSocket {
 	#handleClose(code: number, reason: string): void {
 		if (this.#closed) return;
 		this.#clearBackpressureDrain();
-		const fatalReason = FATAL_CLOSE_REASONS[code];
+		const fatalReason = RELAY_FATAL_CLOSE_REASONS[code];
 		if (fatalReason !== undefined) {
 			this.#closed = true;
 			this.#pendingSends.length = 0;

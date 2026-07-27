@@ -1,4 +1,4 @@
-import { THINKING_EFFORTS } from "@veyyon/ai";
+import { THINKING_EFFORTS } from "@veyyon/catalog/effort";
 import { AUTO_THINKING } from "../../thinking";
 import { unsetNumberOption } from "../optional-number";
 import {

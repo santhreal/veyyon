@@ -54,11 +54,11 @@ import { EventBus } from "../utils/event-bus";
 import { loadExtensionFromFactory, loadExtensions } from "./extensions";
 import { ExtensionRuntime } from "./extensions/loader";
 import type { ExtensionFactory, ToolDefinition } from "./extensions/types";
+import { LEGACY_TOOL_DEFINITION_MARKER } from "./legacy-tool-marker";
 import type { Skill } from "./skills";
 import { loadSkillsFromDir } from "./skills";
 import { Type } from "./typebox";
 
-const TOOL_DEFINITION_MARKER = "__isToolDefinition";
 const LEGACY_BUILTIN_TOOL_MARKER = "__veyyonLegacyBuiltinTool";
 const LEGACY_CODING_TOOL_NAMES = ["read", "bash", "edit", "write"] as const;
 const LEGACY_READ_ONLY_TOOL_NAMES = ["read", "grep", "find", "ls"] as const;
@@ -170,7 +170,7 @@ const legacyLsSchema = Type.Object({
 function markToolDefinition<TParams extends TSchema, TDetails>(
 	tool: ToolDefinition<TParams, TDetails>,
 ): ToolDefinition<TParams, TDetails> {
-	Object.defineProperty(tool, TOOL_DEFINITION_MARKER, {
+	Object.defineProperty(tool, LEGACY_TOOL_DEFINITION_MARKER, {
 		value: true,
 		enumerable: false,
 		writable: false,

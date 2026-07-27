@@ -190,12 +190,20 @@ describe("looking a prompt up", () => {
 		expect(requirePrompt("subagent/system-prompt")).toBe(SUBAGENT_PROMPT);
 	});
 
-	it("throws on an unknown id, saying how ids are formed", () => {
+	it("throws on an unknown id, saying how ids are formed and where they live", () => {
 		// A silent undefined would degrade to an empty prompt, which reaches the
 		// model as no instructions at all and reads downstream as the model
-		// ignoring its brief.
+		// ignoring its brief. The directory is named because four packages ship
+		// registries now, so "an id" is ambiguous without it.
 		expect(() => requirePrompt("system/subagnet-system-prompt")).toThrow(
-			/unknown prompt "system\/subagnet-system-prompt"; ids are the path under src\/prompts without \.md/,
+			/unknown prompt "system\/subagnet-system-prompt" in packages\/coding-agent\/src\/prompts; an id is the path under that directory without \.md/,
 		);
+	});
+
+	it("names the near miss, so a typo in one of 160 ids is not a search", () => {
+		// The reason the shared lookup does the suggesting: every registry's
+		// unknown-id error is the same error, and a bare refusal in a table this
+		// large sends the reader to grep for a name they already almost typed.
+		expect(() => requirePrompt("subagent/system-promt")).toThrow(/Did you mean "subagent\/system-prompt"/);
 	});
 });

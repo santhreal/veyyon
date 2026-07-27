@@ -492,6 +492,38 @@ describe("the worker log replay", () => {
 	});
 
 	/**
+	 * A THIRD copy hid in `subprocess/worker-client.ts`, the sibling module, and the check
+	 * above could not see it because it only looked at the two supervisors it knew about.
+	 * That copy was byte-identical and served the four ONNX subprocess clients (embeddings,
+	 * speech-to-text, tiny-model titles, TTS), so exactly half the workers in the process
+	 * replayed their logs through code nobody was guarding. It now re-exports the owner's
+	 * function rather than defining its own, and its `WorkerLogMessage` is spelled as
+	 * `{ type: "log" } & WorkerLogPayload` so the two cannot disagree about what a log line
+	 * carries. Asserted on the whole directory rather than a list, because a list is how the
+	 * third copy went unnoticed.
+	 */
+	it("has no second definition anywhere in the subprocess directory", async () => {
+		const definitions: string[] = [];
+		for (const file of [
+			"subprocess/worker-log.ts",
+			"subprocess/worker-client.ts",
+			"subprocess/worker-runtime.ts",
+			"subprocess/transformers-cache.ts",
+		]) {
+			const text = await source(file);
+			if (/function logWorkerMessage\s*\(/.test(text)) definitions.push(file);
+		}
+
+		expect(definitions).toEqual(["subprocess/worker-log.ts"]);
+
+		const client = await source("subprocess/worker-client.ts");
+		expect(client).toContain("export { logWorkerMessage };");
+		expect(client).toContain('from "./worker-log"');
+		// The intersection, not a second literal: a re-typed payload is how they drift.
+		expect(client).toContain('export type WorkerLogMessage = { type: "log" } & WorkerLogPayload;');
+	});
+
+	/**
 	 * The owner takes a structural message rather than one worker's union, because the two
 	 * supervisors define their own `WorkerOutbound`. An unrecognised level logs as an error
 	 * rather than vanishing: a line worth sending is worth seeing.

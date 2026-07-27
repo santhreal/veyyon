@@ -212,8 +212,8 @@ describe("gallery --theme matrix (GALLERY-THEME-FLAG)", () => {
 		// not just the label. A degenerate matrix (two identical shots) is the exact
 		// failure the ui-skill differential is meant to catch, so it must fail here.
 		expect(titanium).not.toBe(light);
-		expect(titanium).toContain("[");
-		expect(light).toContain("[");
+		expect(titanium).toContain("\x1b[");
+		expect(light).toContain("\x1b[");
 		// The stripped text is identical (same tool, same state); only styling moved.
 		expect(Bun.stripANSI(titanium)).toBe(Bun.stripANSI(light));
 	});

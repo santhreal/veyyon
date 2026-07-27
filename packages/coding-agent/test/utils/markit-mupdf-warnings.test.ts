@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
+import * as path from "node:path";
 import { convertBufferWithMarkit } from "@veyyon/coding-agent/utils/markit";
-import { logger } from "@veyyon/utils";
+import { getAgentDir, logger } from "@veyyon/utils";
+import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../../utils/test/helpers/isolated-config-root";
 
 function warningPdf(): Uint8Array {
 	const objects: string[] = [];
@@ -38,12 +40,30 @@ function warningPdf(): Uint8Array {
 	return new TextEncoder().encode(pdf);
 }
 
+/**
+ * Converting a PDF MATERIALIZES the embedded mupdf runtime into `<agent dir>/cache/mupdf`, which
+ * resolves from the config root. Without an isolated root that write lands in the developer's
+ * real `~/.veyyon`, the real-data tripwire refuses the `mkdir`, and the conversion fails with
+ * a guard message rather than a PDF error -- so the suite failed for a reason that has nothing
+ * to do with what it tests. It passed under `scripts/ci-test-ts.ts` only because the runner
+ * sandboxes the whole process, and failed under a bare `bun test`, which is how most suites are
+ * actually run during development.
+ */
+let isolated: IsolatedConfigRoot | undefined;
+
 describe("markit MuPDF warnings", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
+		isolated?.restore();
+		isolated = undefined;
 	});
 
 	it("routes recoverable PDF warnings to the file logger", async () => {
+		isolated = enterIsolatedConfigRoot("markit-mupdf", { defaultProfile: true });
+		// Proof, not intention: the runtime is materialized under `<agent dir>/cache/mupdf`, so
+		// that is the path that has to be inside the temp root before the conversion starts.
+		expect(path.relative(isolated.root, path.resolve(getAgentDir())).startsWith("..")).toBe(false);
+
 		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 		const debug = vi.spyOn(logger, "debug").mockImplementation(() => undefined);
 

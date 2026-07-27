@@ -24,9 +24,12 @@ import type {
 	ExtensionAskDialogResultItem,
 	ExtensionAskDialogSubmitResult,
 } from "../../extensibility/extensions";
+import { ASK_OTHER_OPTION_LABEL } from "../../tools/ask-option-labels";
 import { getTabBarTheme } from "../shared";
+import { highlightCode } from "../theme/highlight";
+import { getMarkdownTheme } from "../theme/markdown-theme";
 import { activityColorToken, setShimmerActivity } from "../theme/shimmer";
-import { getMarkdownTheme, highlightCode, theme } from "../theme/theme";
+import { theme } from "../theme/theme-binding";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import { CountdownTimer } from "./countdown-timer";
 import { HOOK_EDITOR_TEXT_PAD_COLS } from "./hook-editor";
@@ -43,7 +46,6 @@ import {
 } from "./modal-shell";
 import { handleTabSwitchKey } from "./selector-helpers";
 
-const OTHER_OPTION = "Other (type your own)";
 const SUBMIT_OPTION = "Submit";
 
 /**
@@ -570,7 +572,7 @@ export class AskDialogComponent implements Component {
 			label: this.#optionLabel(question, option.label, index),
 			optionIndex: index,
 		}));
-		rows.push({ kind: "other", key: "other", label: OTHER_OPTION, optionIndex: undefined });
+		rows.push({ kind: "other", key: "other", label: ASK_OTHER_OPTION_LABEL, optionIndex: undefined });
 		return rows;
 	}
 

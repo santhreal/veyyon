@@ -1,5 +1,7 @@
 import { isEnoent } from "@veyyon/utils";
-import { type LocalProtocolOptions, resolveLocalUrlToPath } from "../internal-urls";
+// The owning module, not the `internal-urls` barrel: the barrel re-exports every protocol
+// handler and reaches hundreds of modules.
+import { type LocalProtocolOptions, resolveLocalUrlToPath } from "../internal-urls/local-protocol";
 
 /** The session's active plan, resolved for handoff into a subagent's context. */
 export interface OverallPlanReference {

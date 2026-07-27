@@ -22,6 +22,7 @@ import {
 	truncate,
 	untilAborted,
 } from "@veyyon/utils";
+import { sessionFileName } from "@veyyon/utils/session-file";
 import type { ArgotSession, StreamDecoder } from "argot";
 import { createSubagentStreamDecoder, expandSubagentReturn } from "../argot-wire";
 import type { Rule } from "../capability/rule";
@@ -45,7 +46,7 @@ import type { HindsightSessionState } from "../hindsight/state";
 import type { LocalProtocolOptions } from "../internal-urls";
 import type { MCPManager } from "../mcp/manager";
 import type { MnemopiSessionState } from "../mnemopi/state";
-import { PROMPTS } from "../prompts/registry";
+import { subagentPrompts } from "../prompts/subagent/rows";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import { AgentRegistry } from "../registry/agent-registry";
 // `createAgentSession` is loaded on demand, further down, where a subagent is
@@ -59,9 +60,9 @@ import { AgentRegistry } from "../registry/agent-registry";
 // one no longer pays for it. The TYPE stays a static import because types are
 // erased.
 import type { CreateAgentSessionOptions } from "../sdk";
-import { discoverAuthStorage } from "../session/auth-broker-config";
 import type { AgentSession, AgentSessionEvent } from "../session/agent-session";
 import type { ArtifactManager } from "../session/artifacts";
+import { discoverAuthStorage } from "../session/auth-broker-config";
 import type { AuthStorage } from "../session/auth-storage";
 import { SKILL_PROMPT_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "../session/messages";
 import { SessionManager } from "../session/session-manager";
@@ -77,12 +78,26 @@ import {
 	summarizeValidationFailure,
 } from "../tools/output-schema-validator";
 import { type ReportFindingDetails, toReviewFinding } from "../tools/review";
+// SIDE-EFFECT IMPORT, and it is load-bearing.
+//
+// `tools/yield.ts` registers the `yield` handler on `subprocessToolRegistry` at module load, and
+// this file's entire completion path reads it: no handler means `recordExtractedToolData` is never
+// called, so `yieldCalled` stays false, the subagent is prompted again for a result it already
+// returned, and the run finally reports a missing yield with exit code 1. Nothing in the extracted
+// output survives either.
+//
+// Until now that registration arrived by luck of import order: a child session builds its own
+// `yield` tool, which loads the module, and in-process children happen to do that before they can
+// emit a yield event. The dependency was real, unstated and unenforced, and it broke the moment the
+// child session was a stub rather than a real one. Stating it here is what makes the parent's
+// interpretation of a yield independent of who built the child.
+import "../tools/yield";
 import { ToolAbortError } from "../tools/tool-errors";
 import type { EventBus } from "../utils/event-bus";
 import { buildNamedToolChoice } from "../utils/tool-choice";
 import type { WorkspaceTree } from "../workspace-tree";
 import { generateTaskLabel } from "./label";
-import { subprocessToolRegistry } from "./subprocess-tool-registry";
+import { subprocessToolRegistry, YIELD_TOOL_NAME } from "./subprocess-tool-registry";
 import {
 	type AgentDefinition,
 	type AgentProgress,
@@ -551,8 +566,15 @@ function resolveFallbackCompletion(rawOutput: string, outputSchema: unknown): { 
 
 interface FinalizeSubprocessOutputArgs {
 	rawOutput: string;
+	/** Whether the TURN failed. Not the run's verdict: `resolveRunVerdict` owns that. */
 	exitCode: number;
 	stderr: string;
+	/**
+	 * The turn did not end on its own (`DriveOutcome.turnCutShort`).
+	 *
+	 * Used to refuse the fallback paths: text a cancelled child happened to leave behind is not a
+	 * delivered result, so it must not be parsed into one or blessed as output.
+	 */
 	doneAborted: boolean;
 	signalAborted: boolean;
 	yieldItems?: YieldItem[];
@@ -687,7 +709,11 @@ export function finalizeSubprocessOutput(args: FinalizeSubprocessOutputArgs): Fi
 		} else if (!hasOutputSchema && allowFallback && rawOutput.trim().length > 0) {
 			exitCode = 0;
 			stderr = "";
-		} else if (exitCode === 0) {
+		} else if (allowFallback) {
+			// `allowFallback` rather than `exitCode === 0`: a cut-short turn gets no missing-yield
+			// warning, because it was cancelled rather than disobedient, and the exit code that says so
+			// comes from `resolveRunVerdict`. Before the verdict moved there, an aborted turn arrived
+			// here with a non-zero exit code and this branch was skipped for that reason instead.
 			const hasRawOutput = rawOutput.trim().length > 0;
 			rawOutput = rawOutput ? `${SUBAGENT_WARNING_MISSING_YIELD}\n\n${rawOutput}` : SUBAGENT_WARNING_MISSING_YIELD;
 			if (hasOutputSchema || !hasRawOutput) {
@@ -1331,7 +1357,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 			existing.push(data);
 		}
 		progress.extractedToolData[toolName] = existing;
-		if (toolName === "yield") {
+		if (toolName === YIELD_TOOL_NAME) {
 			yieldCalled = true;
 			yieldCallPending = false;
 		}
@@ -1364,7 +1390,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 				if (intent) {
 					progress.lastIntent = intent;
 				}
-				if (event.toolName === "yield" && !yieldCalled) {
+				if (event.toolName === YIELD_TOOL_NAME && !yieldCalled) {
 					yieldCallPending = true;
 				}
 				// Reset any prior in-flight task snapshot so we don't show stale
@@ -1399,6 +1425,17 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 
 				// Check for registered subagent tool handler
 				const handler = subprocessToolRegistry.getHandler(event.toolName);
+				if (handler === undefined && event.toolName === YIELD_TOOL_NAME) {
+					// FAIL LOUD, never silently. A yield with no handler is a broken build (see the
+					// side-effect import at the top of this file), and the quiet version of this is what
+					// hid it: the result is dropped, the subagent is asked again, and the run ends as a
+					// missing-yield failure that names the subagent rather than the wiring.
+					logger.error(
+						`Subagent ${id} returned a ${YIELD_TOOL_NAME} result and no ${YIELD_TOOL_NAME} handler is registered on subprocessToolRegistry. ` +
+							`The result cannot be read, so this run will report a missing yield. This is a build wiring fault, not a subagent fault: ` +
+							`task/executor.ts must import tools/yield.ts for its registration side effect.`,
+					);
+				}
 				const eventRecord: unknown = event;
 				const eventArgs = isRecord(eventRecord) && isRecord(eventRecord.args) ? eventRecord.args : {};
 				if (handler) {
@@ -1416,7 +1453,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 						}
 					}
 
-					if (event.toolName === "yield") {
+					if (event.toolName === YIELD_TOOL_NAME) {
 						yieldCallPending = false;
 					}
 
@@ -1491,7 +1528,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 								continue;
 							}
 							if (block.type !== "toolCall" || typeof block.name !== "string") continue;
-							if (block.name === "yield" && !yieldCalled) {
+							if (block.name === YIELD_TOOL_NAME && !yieldCalled) {
 								yieldCallPending = true;
 								flushProgress = true;
 							}
@@ -1723,11 +1760,39 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 	};
 }
 
+/**
+ * What ONE turn of a subagent DID, as facts rather than as a verdict.
+ *
+ * The run's outcome is not decided here. It is decided once, by {@link resolveRunVerdict}, from
+ * these facts plus what `finalizeSubprocessOutput` extracted from the child's yields. The split
+ * matters because the two halves know different things: this function watched the turn, and only the
+ * finalizer knows whether a result was actually delivered.
+ *
+ * Before this shape existed, four sites inside `driveSessionToYield` and a fifth inside
+ * `runSubprocess` each classified the run themselves, and `finalizeRunResult` then re-derived the
+ * same conclusion and silently overrode them. The copies did not agree, and the disagreement was
+ * invisible because the last one to run won: mutating the flag they keyed on so it could never be
+ * true left the whole lane green.
+ */
 interface DriveOutcome {
-	exitCode: number;
-	error?: string;
-	aborted: boolean;
-	abortReasonText?: string;
+	/**
+	 * A genuine failure: the turn threw for a reason that was not an abort, or the model reported an
+	 * `error` stop. An abort is NOT a failure and never lands here.
+	 */
+	failure?: string;
+	/**
+	 * The turn did not end on its own: a signal fired, the model reported the turn aborted, or a soft
+	 * budget stop cut it short without a yield.
+	 *
+	 * Kept separate from {@link DriveOutcome.turnAborted} because they answer different questions. A
+	 * turn cut short cannot be reported as a clean success, even when the cut is an internal teardown
+	 * the operator should see as a failure rather than as a cancellation.
+	 */
+	turnCutShort: boolean;
+	/** The cut was a real cancellation of this run (caller signal, wall clock, or budget stop). */
+	turnAborted: boolean;
+	/** The most precise reason available for {@link DriveOutcome.turnAborted}. */
+	turnAbortReason?: string;
 }
 
 const MAX_YIELD_RETRIES = 3;
@@ -1745,19 +1810,15 @@ async function driveSessionToYield(
 	task: string,
 ): Promise<DriveOutcome> {
 	const abortSignal = monitor.abortSignal;
-	let exitCode = 0;
-	let error: string | undefined;
-	let aborted = false;
-	let abortReasonText: string | undefined;
+	let failure: string | undefined;
+	let turnCutShort = false;
+	let turnAborted = false;
+	let turnAbortReason: string | undefined;
+	// Bookkeeping is deliberately absent here: an abort's MEANING is resolved once, in the `finally`
+	// below, from the state the turn actually ended in. Recording it at every throw site is what let
+	// four copies of the rule drift apart.
 	const checkAbort = () => {
-		if (abortSignal.aborted) {
-			aborted = monitor.isAbortedRun();
-			if (aborted) {
-				abortReasonText ??= monitor.resolveAbortReasonText();
-			}
-			exitCode = 1;
-			throw new ToolAbortError();
-		}
+		if (abortSignal.aborted) throw new ToolAbortError();
 	};
 	const awaitAbortable = async <T>(promise: Promise<T>): Promise<T> => {
 		checkAbort();
@@ -1789,7 +1850,7 @@ async function driveSessionToYield(
 			if (!monitor.budgetStopRequested() || abortSignal.aborted) throw err;
 		}
 
-		const reminderToolChoice = buildNamedToolChoice("yield", session.model);
+		const reminderToolChoice = buildNamedToolChoice(YIELD_TOOL_NAME, session.model);
 
 		let retryCount = 0;
 		while (!monitor.yieldCalled() && retryCount < MAX_YIELD_RETRIES && !abortSignal.aborted) {
@@ -1810,7 +1871,7 @@ async function driveSessionToYield(
 			if (lastBeforeReminder?.stopReason === "error") break;
 			try {
 				retryCount++;
-				const reminder = prompt.render(PROMPTS["subagent/yield-reminder"].text, {
+				const reminder = prompt.render(subagentPrompts["subagent/yield-reminder"].text, {
 					retryCount,
 					maxRetries: MAX_YIELD_RETRIES,
 					budgetStop,
@@ -1845,62 +1906,47 @@ async function driveSessionToYield(
 		} else {
 			await awaitAbortable(session.waitForIdle());
 		}
-
-		const lastAssistant = session.getLastAssistantMessage();
-		if (lastAssistant) {
-			if (lastAssistant.stopReason === "aborted") {
-				if (!monitor.yieldCalled() || monitor.runtimeLimitExceeded()) {
-					aborted = monitor.isAbortedRun();
-					if (aborted) {
-						// A real caller signal or the wall-clock timer carries a precise
-						// reason (signal.reason / "runtime limit exceeded"). An internal
-						// turn abort does NOT — prefer the assistant message's own
-						// errorMessage ("Request was aborted" or a specific stream error)
-						// over the misleading "Cancelled by caller".
-						abortReasonText ??= monitor.hasExplicitAbortReason()
-							? monitor.resolveAbortReasonText()
-							: lastAssistant.errorMessage?.trim() || monitor.resolveAbortReasonText();
-					}
-					exitCode = 1;
-				}
-			} else if (lastAssistant.stopReason === "error") {
-				exitCode = 1;
-				error ??= lastAssistant.errorMessage || "Subagent failed";
-			}
-		}
-
-		// A budget-stopped run that still produced no yield is a budget abort:
-		// surface the precise reason instead of a generic missing-yield failure.
-		if (!monitor.yieldCalled() && monitor.budgetStopRequested() && !aborted) {
-			aborted = true;
-			abortReasonText ??= monitor.resolveAbortReasonText();
-			exitCode = 1;
-		}
 	} catch (err) {
-		if (abortSignal.aborted && monitor.yieldCalled() && !monitor.runtimeLimitExceeded()) {
-			exitCode = 0;
-		} else {
-			exitCode = 1;
-			if (!abortSignal.aborted) {
-				error = err instanceof Error ? err.stack || err.message : String(err);
-			}
+		// An abort is not a failure: it is reported as one of the two abort facts below, and whether it
+		// costs the run its result depends on whether a yield landed, which this function cannot see.
+		if (!abortSignal.aborted) {
+			failure ??= err instanceof Error ? err.stack || err.message : String(err);
 		}
 	} finally {
-		if (abortSignal.aborted && (!monitor.yieldCalled() || monitor.runtimeLimitExceeded())) {
-			aborted = monitor.isAbortedRun();
-			if (aborted) {
-				abortReasonText ??= monitor.resolveAbortReasonText();
-			}
-			if (exitCode === 0) exitCode = 1;
+		const lastAssistant = session.getLastAssistantMessage();
+		if (lastAssistant?.stopReason === "error") {
+			failure ??= lastAssistant.errorMessage || "Subagent failed";
+		}
+		// A budget stop that produced no yield cut the turn short even though no signal named it: the
+		// stop cancels the free-running turn, the forced wrap-up reminder is the child's last chance,
+		// and silence there means the budget ended the run.
+		const budgetStopWithoutYield = monitor.budgetStopRequested() && !monitor.yieldCalled();
+		turnCutShort = abortSignal.aborted || lastAssistant?.stopReason === "aborted" || budgetStopWithoutYield;
+		// A cut turn is a CANCELLATION only when the abort belongs to this run. An internal teardown
+		// (a tool event handler failing, which aborts the session to stop the run) sets an abort reason
+		// of its own and `isAbortedRun` is false for it, so it stays a failure rather than being
+		// reported to the operator as though someone cancelled. A soft budget stop needs no term of its
+		// own here: it reaches this line through `turnCutShort` and leaves no explicit abort reason, so
+		// `isAbortedRun` is true for it. Adding one was redundant and no test could tell the difference.
+		turnAborted = turnCutShort && monitor.isAbortedRun();
+		if (turnAborted) {
+			// A caller signal or the wall-clock timer carries a precise reason (signal.reason,
+			// "runtime limit exceeded"). An internal turn abort does NOT, so the assistant message's
+			// own errorMessage ("Request was aborted", or a specific stream error) beats the
+			// misleading "Cancelled by caller".
+			turnAbortReason = monitor.hasExplicitAbortReason()
+				? monitor.resolveAbortReasonText()
+				: lastAssistant?.errorMessage?.trim() || monitor.resolveAbortReasonText();
 		}
 	}
 
-	return { exitCode, error, aborted, abortReasonText };
+	return { failure, turnCutShort, turnAborted, turnAbortReason };
 }
 
 interface FinalizeRunArgs {
 	monitor: SubagentRunMonitor;
-	done: { exitCode: number; error?: string; aborted?: boolean; abortReason?: string; durationMs: number };
+	/** The turn's facts (see {@link DriveOutcome}) plus how long the run took. */
+	done: DriveOutcome & { durationMs: number };
 	index: number;
 	id: string;
 	agent: AgentDefinition;
@@ -1955,6 +2001,80 @@ export function resolveSubagentErrorText(
 }
 
 /**
+ * THE run verdict: exit code, aborted, and why, decided in ONE place.
+ *
+ * Everything upstream reports facts. `driveSessionToYield` says what the turn did
+ * ({@link DriveOutcome}); `finalizeSubprocessOutput` says what was delivered (whether any yield
+ * landed, whether the child yielded an abort, and the exit code that follows from the payload). This
+ * function is the only thing that turns those into an outcome, so there is exactly one place to read
+ * and one place to change.
+ *
+ * THE RULES, stated once:
+ *
+ * - A delivered yield means the subagent's work exists and belongs to the caller, so an abort around
+ *   it does not fail the run. This is why `hasYield` gates the abort terms rather than being weighed
+ *   against them.
+ * - A blown wall clock overrides everything, including a yield that landed while the session was
+ *   being torn down: a run that exceeded its runtime is not one whose result you want to trust.
+ * - A yielded abort is the child reporting its own cancellation. It keeps exit code 0, because the
+ *   child answered, and it still reports as aborted, because the answer was "I stopped".
+ * - A turn cut short with nothing delivered cannot report success, even when the cut was an internal
+ *   teardown rather than a cancellation. That case fails without being called aborted.
+ *
+ * Both halves of the first two rules are pinned by `test/task/executor-yield-versus-caller-abort.test.ts`,
+ * `test/task/executor-wall-clock.test.ts`, and the verdict matrix in `test/task/run-verdict.test.ts`.
+ */
+export interface RunVerdictInputs {
+	/** The exit code `finalizeSubprocessOutput` arrived at from the payload. */
+	readonly exitCodeAfterFinalize: number;
+	readonly hasYield: boolean;
+	readonly abortedViaYield: boolean;
+	/** The reason carried by a child's own aborted yield. */
+	readonly yieldAbortReason?: string;
+	readonly runtimeLimitExceeded: boolean;
+	readonly turnCutShort: boolean;
+	readonly turnAborted: boolean;
+	readonly turnAbortReason?: string;
+	/** The CALLER's signal, which aborts the run even when the turn never noticed. */
+	readonly callerAborted: boolean;
+	/** Reason resolvers, consulted only for the case each one owns. */
+	readonly resolveAbortReason: () => string | undefined;
+	readonly resolveSignalAbortReason: () => string | undefined;
+}
+
+export interface RunVerdict {
+	readonly exitCode: number;
+	readonly aborted: boolean;
+	readonly abortReason?: string;
+}
+
+export function resolveRunVerdict(inputs: RunVerdictInputs): RunVerdict {
+	let exitCode = inputs.exitCodeAfterFinalize;
+	// The wall clock first, and independent of everything else: a late yield must not buy back a
+	// timed-out run's success.
+	if (inputs.runtimeLimitExceeded && exitCode === 0) exitCode = 1;
+
+	const aborted =
+		inputs.runtimeLimitExceeded ||
+		inputs.abortedViaYield ||
+		(!inputs.hasYield && (inputs.turnAborted || inputs.callerAborted));
+
+	// A cut turn that delivered nothing cannot pass. `abortedViaYield` is excluded because the child
+	// DID answer, and its answer is worth zero exit code plus an aborted status.
+	if (!inputs.hasYield && inputs.turnCutShort && !inputs.abortedViaYield && exitCode === 0) exitCode = 1;
+
+	if (!aborted) return { exitCode, aborted: false };
+
+	const abortReason = inputs.runtimeLimitExceeded
+		? inputs.resolveAbortReason()
+		: inputs.abortedViaYield
+			? inputs.yieldAbortReason
+			: (inputs.turnAbortReason ??
+				(inputs.callerAborted ? inputs.resolveSignalAbortReason() : inputs.resolveAbortReason()));
+	return { exitCode, aborted: true, abortReason };
+}
+
+/**
  * Turn a settled run into a {@link SingleResult}: resolve the yield payload via
  * {@link finalizeSubprocessOutput}, salvage cancelled-run output, write the
  * `<id>.md` output artifact, flush final progress, and emit the lifecycle end
@@ -1963,8 +2083,10 @@ export function resolveSubagentErrorText(
 async function finalizeRunResult(args: FinalizeRunArgs): Promise<SingleResult> {
 	const { monitor, done, index, id, agent, task, assignment, signal, modelOverride } = args;
 	const progress = monitor.progress;
-	let exitCode = done.exitCode;
-	let stderr = done.error ?? "";
+	// The turn's own failure is the only exit code the finalizer starts from. Whether an abort costs
+	// the run its success is `resolveRunVerdict`'s call, made below once the payload is known.
+	let exitCode = done.failure ? 1 : 0;
+	let stderr = done.failure ?? "";
 
 	// Use final output if available, otherwise accumulated output
 	let rawOutput = monitor.rawOutput();
@@ -1980,7 +2102,7 @@ async function finalizeRunResult(args: FinalizeRunArgs): Promise<SingleResult> {
 			rawOutput,
 			exitCode,
 			stderr,
-			doneAborted: Boolean(done.aborted),
+			doneAborted: done.turnCutShort,
 			signalAborted: Boolean(signal?.aborted),
 			yieldItems,
 			reportFindings,
@@ -1998,7 +2120,7 @@ async function finalizeRunResult(args: FinalizeRunArgs): Promise<SingleResult> {
 	// parent doesn't redo work the child already finished.
 	const salvageText = monitor.lastAssistantSalvageText();
 	if (
-		(done.aborted || signal?.aborted || monitor.runtimeLimitExceeded()) &&
+		(done.turnCutShort || signal?.aborted || monitor.runtimeLimitExceeded()) &&
 		!rawOutput.trim() &&
 		salvageText !== undefined
 	) {
@@ -2029,25 +2151,24 @@ async function finalizeRunResult(args: FinalizeRunArgs): Promise<SingleResult> {
 		}
 	}
 
-	// Update final progress. A wall-clock timeout always wins: if the runtime
-	// limit fired we report aborted/failed regardless of whether a yield landed
-	// while we were tearing the session down. The yield data is still surfaced
-	// to the caller via `progress.extractedToolData`, but the exit status must
-	// reflect the timeout so on-call doesn't mistake a stuck run for success.
-	const runtimeLimitExceeded = monitor.runtimeLimitExceeded();
-	if (runtimeLimitExceeded && exitCode === 0) {
-		exitCode = 1;
-	}
-	const wasAborted =
-		runtimeLimitExceeded || abortedViaYield || (!hasYield && (done.aborted || signal?.aborted || false));
-	const finalAbortReason = wasAborted
-		? runtimeLimitExceeded
-			? monitor.resolveAbortReasonText()
-			: abortedViaYield
-				? yieldAbortReason
-				: (done.abortReason ??
-					(signal?.aborted ? monitor.resolveSignalAbortReason() : monitor.resolveAbortReasonText()))
-		: undefined;
+	// The one place the run's outcome is decided. The yield payload is settled by now, which is why
+	// the call happens here and not in the turn loop: `hasYield` is the fact every abort rule turns on.
+	const verdict = resolveRunVerdict({
+		exitCodeAfterFinalize: exitCode,
+		hasYield,
+		abortedViaYield,
+		yieldAbortReason,
+		runtimeLimitExceeded: monitor.runtimeLimitExceeded(),
+		turnCutShort: done.turnCutShort,
+		turnAborted: done.turnAborted,
+		turnAbortReason: done.turnAbortReason,
+		callerAborted: Boolean(signal?.aborted),
+		resolveAbortReason: () => monitor.resolveAbortReasonText(),
+		resolveSignalAbortReason: () => monitor.resolveSignalAbortReason(),
+	});
+	exitCode = verdict.exitCode;
+	const wasAborted = verdict.aborted;
+	const finalAbortReason = verdict.abortReason;
 	progress.status = wasAborted ? "aborted" : exitCode === 0 ? "completed" : "failed";
 	monitor.scheduleProgress(true);
 
@@ -2261,7 +2382,7 @@ export async function runSubagentFollowUpTurn(options: FollowUpTurnOptions): Pro
 
 	return finalizeRunResult({
 		monitor,
-		done: { ...outcome, abortReason: outcome.abortReasonText, durationMs: Date.now() - startTime },
+		done: { ...outcome, durationMs: Date.now() - startTime },
 		index,
 		id,
 		agent,
@@ -2330,8 +2451,8 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 	// provides no artifacts dir, route the transcript to the durable sessions dir so the
 	// run stays studyable and revivable via history://<id> (GRAN-1).
 	const subtaskSessionFile: string = options.artifactsDir
-		? path.join(options.artifactsDir, `${id}.jsonl`)
-		: path.join(getSessionsDir(), `orphan-task-${id}.jsonl`);
+		? path.join(options.artifactsDir, sessionFileName(id))
+		: path.join(getSessionsDir(), sessionFileName(`orphan-task-${id}`));
 
 	const settings = options.settings ?? Settings.isolated();
 	const subagentSettings = createSubagentSettings(
@@ -2442,19 +2563,15 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		});
 	};
 
-	const runSubagent = async (): Promise<{
-		exitCode: number;
-		error?: string;
-		aborted?: boolean;
-		abortReason?: string;
-		durationMs: number;
-	}> => {
+	const runSubagent = async (): Promise<DriveOutcome & { durationMs: number }> => {
 		const sessionAbortController = new AbortController();
 		const abortSignal = monitor.abortSignal;
-		let exitCode = 0;
-		let error: string | undefined;
-		let aborted = false;
-		let abortReasonText: string | undefined;
+		// The same facts `driveSessionToYield` reports, because setup can fail or be cancelled before
+		// the turn ever starts. No verdict is formed here either: see `resolveRunVerdict`.
+		let failure: string | undefined;
+		let turnCutShort = false;
+		let turnAborted = false;
+		let turnAbortReason: string | undefined;
 		const checkAbort = () => {
 			if (abortSignal.aborted) {
 				throw new ToolAbortError();
@@ -2642,7 +2759,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				preloadedExtensionPaths: options.preloadedExtensionPaths,
 				preloadedCustomToolPaths: options.preloadedCustomToolPaths,
 				systemPrompt: defaultPrompt => {
-					const subagentPrompt = prompt.render(PROMPTS["subagent/system-prompt"].text, {
+					const subagentPrompt = prompt.render(subagentPrompts["subagent/system-prompt"].text, {
 						agent: agent.systemPrompt,
 						context: options.context?.trim() ?? "",
 						planReference: options.planReference?.content ?? "",
@@ -2842,22 +2959,28 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 
 			readyAt = performance.now();
 			const outcome = await driveSessionToYield(session, monitor, task);
-			exitCode = outcome.exitCode;
-			error = outcome.error;
-			aborted = outcome.aborted;
-			abortReasonText = outcome.abortReasonText;
+			failure = outcome.failure;
+			turnCutShort = outcome.turnCutShort;
+			turnAborted = outcome.turnAborted;
+			turnAbortReason = outcome.turnAbortReason;
 		} catch (err) {
-			exitCode = 1;
+			// Setup threw: a real failure unless the run was cancelled, in which case the abort facts
+			// below describe it.
 			if (!abortSignal.aborted) {
-				error = err instanceof Error ? err.stack || err.message : String(err);
+				failure ??= err instanceof Error ? err.stack || err.message : String(err);
+			} else {
+				failure ??= undefined;
 			}
 		} finally {
+			// Setup can be cancelled before `driveSessionToYield` ever runs, so the facts are completed
+			// here rather than assumed. This used to be a second copy of the demotion rule that
+			// disagreed with the turn loop's.
 			if (abortSignal.aborted) {
-				aborted = monitor.isAbortedRun();
-				if (aborted) {
-					abortReasonText ??= monitor.resolveAbortReasonText();
+				turnCutShort = true;
+				if (monitor.isAbortedRun()) {
+					turnAborted = true;
+					turnAbortReason ??= monitor.resolveAbortReasonText();
 				}
-				if (exitCode === 0) exitCode = 1;
 			}
 			sessionAbortController.abort();
 			const { signal: cleanupSignal, cancel: cancelCleanup } = scopedTimeoutSignal(5000);
@@ -2882,7 +3005,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				await finalizeSubagentLifecycle({
 					id,
 					session,
-					aborted,
+					aborted: turnAborted,
 					abortKind: monitor.abortKind(),
 					keepAlive: options.keepAlive !== false,
 					isolated: worktree !== undefined,
@@ -2923,10 +3046,10 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			invokeToFirstChatMs,
 		});
 		return {
-			exitCode,
-			error,
-			aborted,
-			abortReason: aborted ? abortReasonText : undefined,
+			failure,
+			turnCutShort,
+			turnAborted,
+			turnAbortReason,
 			durationMs: Date.now() - startTime,
 		};
 	};

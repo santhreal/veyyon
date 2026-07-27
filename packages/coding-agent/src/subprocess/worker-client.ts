@@ -1,17 +1,14 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	$env,
-	errorMessage,
-	isBunTestRuntime,
-	isCompiledBinary,
-	logger,
-	stripWindowsExtendedLengthPathPrefix,
-	workerHostEntry,
-} from "@veyyon/utils";
+import { $env, isBunTestRuntime, isCompiledBinary } from "@veyyon/utils/env";
+import * as logger from "@veyyon/utils/logger";
+import { stripWindowsExtendedLengthPathPrefix } from "@veyyon/utils/path";
+import { errorMessage } from "@veyyon/utils/type-guards";
+import { workerHostEntry } from "@veyyon/utils/worker-host";
 import type { Subprocess } from "bun";
 import { safeSend } from "../utils/ipc";
+import { logWorkerMessage, type WorkerLogPayload } from "./worker-log";
 
 /**
  * Shared lifecycle scaffolding for the ONNX inference subprocess clients
@@ -30,13 +27,15 @@ import { safeSend } from "../utils/ipc";
 /** Minimal inbound contract shared by every worker: a correlated `ping`. */
 export type WorkerInboundBase = { type: "ping"; id: string };
 
-/** Structured log line forwarded from a worker to the parent logger. */
-export type WorkerLogMessage = {
-	type: "log";
-	level: "debug" | "warn" | "error";
-	msg: string;
-	meta?: Record<string, unknown>;
-};
+/**
+ * Structured log line forwarded from a worker to the parent logger.
+ *
+ * The `type: "log"` discriminator is the whole of what this adds to
+ * {@link WorkerLogPayload}: the payload is the content, this is the union member.
+ * Spelled as an intersection rather than written out again so the two can never
+ * disagree about what a log line carries.
+ */
+export type WorkerLogMessage = { type: "log" } & WorkerLogPayload;
 
 /** Minimal outbound contract shared by every worker: `pong`, `error`, `log`. */
 export type WorkerOutboundBase =
@@ -473,12 +472,15 @@ export function spawnWorkerOrUnavailable<Handle>(
 	}
 }
 
-/** Forward a worker's structured `log` message to the matching logger level. */
-export function logWorkerMessage(message: WorkerLogMessage): void {
-	if (message.level === "debug") logger.debug(message.msg, message.meta);
-	else if (message.level === "warn") logger.warn(message.msg, message.meta);
-	else logger.error(message.msg, message.meta);
-}
+/**
+ * Forward a worker's structured `log` message to the matching logger level.
+ *
+ * Re-exported, not reimplemented. This file carried a byte-identical second copy of
+ * `worker-log.ts`'s function, so a fix to the level mapping in one of them would have
+ * moved a whole class of worker diagnostics out of the log the operator reads for
+ * every caller of the other.
+ */
+export { logWorkerMessage };
 
 /**
  * Drive the ping/pong readiness probe wired into `veyyon --smoke-test`: send one

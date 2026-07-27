@@ -5,7 +5,8 @@
  * `discoverModelsByProviderType` with a `DiscoveryContext`; built-in provider
  * discovery lives in pi-catalog's provider-models.
  */
-import { type ApiKey, type FetchImpl, withAuth } from "@veyyon/ai";
+import type { ApiKey, FetchImpl } from "@veyyon/ai";
+import { withAuth } from "@veyyon/ai/auth-retry";
 import type { Api, Model } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
 import {
@@ -59,6 +60,9 @@ function normalizeOllamaHostEnv(value: string | undefined): string | undefined {
 		}
 		return `${parsed.protocol}//${parsed.host}`;
 	} catch {
+		// A host string out of an environment variable or a setting, which may be anything. Undefined means
+		// "not a usable host", and the caller answers by not attempting discovery against it rather than by
+		// guessing a URL -- the throw is the shape test, not a swallowed failure.
 		return undefined;
 	}
 }
@@ -406,6 +410,11 @@ async function discoverOllamaModelMetadata(
 			contextWindow,
 		};
 	} catch {
+		// This is ENRICHMENT of a model that has already been discovered, behind a 150ms probe: null means
+		// "no extra metadata", the model is still offered, and the caller falls back to the documented
+		// defaults for its context window and capabilities. What the reader loses is precision, not the
+		// model, and the defaults are visible in the model record. Carrying the reason back for the
+		// discovery calls that decide whether a model appears AT ALL is a separate, tracked change.
 		return null;
 	}
 }
@@ -483,6 +492,8 @@ async function discoverLlamaCppServerMetadata(
 			input: extractLlamaCppInputCapabilities(payload),
 		};
 	} catch {
+		// Same as the Ollama metadata probe above: optional enrichment behind a 150ms budget, null means the
+		// server's `/props` had nothing to add, and the models it serves are still discovered.
 		return null;
 	}
 }
@@ -602,6 +613,10 @@ export async function discoverLlamaCppModelRuntimeMetadata(
 			? await withAuth(apiKey, key => attempt({ ...baseHeaders, Authorization: `Bearer ${key}` }))
 			: await attempt(baseHeaders);
 	} catch {
+		// A per-model refinement, including the credential lookup it needs: undefined leaves the model with
+		// the values discovery already gave it rather than removing it. Reporting per model per discovery
+		// pass would fire once for every model on an unreachable endpoint, which the discovery-level report
+		// covers in one line instead.
 		return undefined;
 	}
 }

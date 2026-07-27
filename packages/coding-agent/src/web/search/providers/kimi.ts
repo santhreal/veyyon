@@ -4,7 +4,8 @@
  * Uses Moonshot Kimi Code search API to retrieve web results.
  * Endpoint: POST https://api.kimi.com/coding/v1/search
  */
-import { type ApiKey, type AuthStorage, type FetchImpl, withAuth } from "@veyyon/ai";
+import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
+import { withAuth } from "@veyyon/ai/auth-retry";
 import { $env } from "@veyyon/utils";
 
 import type { SearchResponse, SearchSource } from "../../../web/search/types";

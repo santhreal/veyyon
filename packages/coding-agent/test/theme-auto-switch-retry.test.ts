@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
-import { __resetDirsFromEnvForTests, getCustomThemesDir, Snowflake } from "@veyyon/utils";
+import { __resetDirsFromEnvForTests, getCustomThemesDir } from "@veyyon/utils";
 
 /**
  * Automatic theme switching resolves a theme name, commits it to
@@ -37,8 +37,7 @@ describe("automatic theme switching retries after a failed load", () => {
 
 	beforeEach(async () => {
 		savedConfigDir = process.env.VEYYON_CONFIG_DIR;
-		tempHome = path.join(os.tmpdir(), "veyyon-theme-retry", Snowflake.next());
-		fs.mkdirSync(tempHome, { recursive: true });
+		tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-theme-retry-"));
 		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), tempHome);
 		__resetDirsFromEnvForTests();
 		themeModule.stopThemeWatcher();

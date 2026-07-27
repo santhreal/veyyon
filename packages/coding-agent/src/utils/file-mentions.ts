@@ -48,6 +48,14 @@ function sanitizeMentionPath(rawPath: string): string | null {
 	return cleaned.length > 0 ? cleaned : null;
 }
 
+/**
+ * Whether an `@mention` names a file that is really there.
+ *
+ * The throw is how "absent" arrives, and absent is the ordinary answer: this runs against every candidate
+ * a half-typed mention could mean, so most calls are misses by design. False also covers a path this
+ * process cannot stat, which reaches the same place -- a file the session cannot read is not a file it can
+ * attach to the prompt.
+ */
 async function pathExists(filePath: string): Promise<boolean> {
 	try {
 		await Bun.file(filePath).stat();

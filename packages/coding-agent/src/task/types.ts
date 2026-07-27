@@ -1,5 +1,6 @@
 import type { Usage } from "@veyyon/ai";
-import { $envpos } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
+import { $envpos } from "@veyyon/utils/env";
 import { type BaseType, type } from "arktype";
 import type { AgentSessionEvent } from "../session/agent-session";
 import type { ConfiguredThinkingLevel } from "../thinking";

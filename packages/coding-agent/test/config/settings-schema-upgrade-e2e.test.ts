@@ -27,18 +27,24 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { SETTINGS_MIGRATION_VERSION, Settings } from "@veyyon/coding-agent/config/settings";
 import { removeWithRetries } from "@veyyon/utils";
 import * as YAML from "yaml";
 import { guardDestructivePath } from "../../../utils/test/helpers/destructive-guard";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makeSchemaUpgradeDir = useTrackedTempDirs("veyyon-schema-upgrade-");
 
 describe("a config written by an older build", () => {
 	let agentDir = "";
 
 	beforeEach(() => {
-		agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-schema-upgrade-"));
+		agentDir = makeSchemaUpgradeDir();
 	});
 
 	afterEach(async () => {

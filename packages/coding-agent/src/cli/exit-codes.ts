@@ -59,7 +59,9 @@ export const EXIT_USAGE = 2;
  * Re-exported from the one owner in `@veyyon/utils` rather than restated, so the
  * CLI's arithmetic and the bash tool's cannot disagree about what a `137` means.
  */
-export { SIGNAL_EXIT_BASE } from "@veyyon/utils";
+// Subpath, not the barrel: see the note in `args.ts` -- the barrel loads the agent `.env` at import time
+// and this module is reachable from `cli.ts` before the profile is known.
+export { SIGNAL_EXIT_BASE } from "@veyyon/utils/signal-exit";
 
 /**
  * Veyyon itself was interrupted: `128 + SIGINT`.

@@ -4,7 +4,9 @@ import type * as MnemopiNs from "@veyyon/mnemopi";
 import type { Mnemopi, RecallResult } from "@veyyon/mnemopi";
 import type * as MnemopiCoreNs from "@veyyon/mnemopi/core";
 import type { LocalModelInitializer } from "@veyyon/mnemopi/core";
-import { escapeRegExp, logger } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
+import * as logger from "@veyyon/utils/logger";
+import { escapeRegExp } from "@veyyon/utils/regex";
 import {
 	composeRecallQuery,
 	formatCurrentTime,

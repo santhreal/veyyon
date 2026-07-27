@@ -16,10 +16,10 @@ import { loadCapability } from "../../discovery";
 import { discoverExtensionModulePaths, getExtensionNameFromPath } from "../../discovery/helpers";
 import type { ExecOptions } from "../../exec/exec";
 import { execCommand } from "../../exec/exec";
-// Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
-import * as PiCodingAgent from "../../index";
 import type { CustomMessagePayload } from "../../session/messages";
 import { EventBus } from "../../utils/event-bus";
+// Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
+import { type CodingAgentApi, loadCodingAgentApi } from "../coding-agent-api";
 import { type ManifestHolder, manifestFromPackageJson } from "../manifest-key";
 import { installLegacyPiSpecifierShim, loadLegacyPiModule } from "../plugins/legacy-pi-compat";
 import { getAllPluginExtensionPaths } from "../plugins/loader";
@@ -28,12 +28,12 @@ import * as TypeBox from "../typebox";
 import { resolvePath, withExitGuard } from "../utils";
 import type {
 	AssistantThinkingRenderer,
-	Extension,
 	ExtensionAPI,
 	ExtensionContext,
 	ExtensionFactory,
 	ExtensionRuntime as IExtensionRuntime,
 	LoadExtensionsResult,
+	LoadedExtension,
 	MessageRenderer,
 	ProviderConfig,
 	RegisteredCommand,
@@ -135,8 +135,8 @@ class ConcreteExtensionAPI implements ExtensionAPI, IExtensionRuntime {
 	}> = [];
 
 	constructor(
-		public readonly pi: typeof PiCodingAgent,
-		private readonly extension: Extension,
+		public readonly pi: CodingAgentApi,
+		private readonly extension: LoadedExtension,
 		private readonly runtime: IExtensionRuntime,
 		private readonly cwd: string,
 		public readonly events: EventBus,
@@ -269,7 +269,7 @@ class ConcreteExtensionAPI implements ExtensionAPI, IExtensionRuntime {
 /**
  * Create an Extension object with empty collections.
  */
-function createExtension(extensionPath: string, resolvedPath: string): Extension {
+function createExtension(extensionPath: string, resolvedPath: string): LoadedExtension {
 	return {
 		path: extensionPath,
 		resolvedPath,
@@ -288,7 +288,7 @@ async function loadExtension(
 	cwd: string,
 	eventBus: EventBus,
 	runtime: IExtensionRuntime,
-): Promise<{ extension: Extension | null; error: string | null }> {
+): Promise<{ extension: LoadedExtension | null; error: string | null }> {
 	const resolvedPath = resolvePath(extensionPath, cwd);
 	try {
 		const module = (await withExitGuard(() => loadLegacyPiModule(resolvedPath))) as LoadedExtensionModule;
@@ -302,7 +302,7 @@ async function loadExtension(
 		}
 
 		const extension = createExtension(extensionPath, resolvedPath);
-		const api = new ConcreteExtensionAPI(PiCodingAgent, extension, runtime, cwd, eventBus);
+		const api = new ConcreteExtensionAPI(await loadCodingAgentApi(), extension, runtime, cwd, eventBus);
 		await withExitGuard(async () => {
 			await factory(api);
 		});
@@ -323,9 +323,9 @@ export async function loadExtensionFromFactory(
 	eventBus: EventBus,
 	runtime: IExtensionRuntime,
 	name = "<inline>",
-): Promise<Extension> {
+): Promise<LoadedExtension> {
 	const extension = createExtension(name, name);
-	const api = new ConcreteExtensionAPI(PiCodingAgent, extension, runtime, cwd, eventBus);
+	const api = new ConcreteExtensionAPI(await loadCodingAgentApi(), extension, runtime, cwd, eventBus);
 	await factory(api);
 	return extension;
 }
@@ -334,7 +334,7 @@ export async function loadExtensionFromFactory(
  * Load extensions from paths.
  */
 export async function loadExtensions(paths: string[], cwd: string, eventBus?: EventBus): Promise<LoadExtensionsResult> {
-	const extensions: Extension[] = [];
+	const extensions: LoadedExtension[] = [];
 	const errors: Array<{ path: string; error: string }> = [];
 	const resolvedEventBus = eventBus ?? new EventBus();
 	const runtime = new ExtensionRuntime();

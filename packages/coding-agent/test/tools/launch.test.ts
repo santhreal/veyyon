@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../../utils/test/helpers/isolated-config-root";
 import { createDaemonBrokerClient, type DaemonBrokerClient } from "../../src/launch/client";
+import { daemonBrokerEndpoint, daemonBrokerLeasePath } from "../../src/launch/paths";
 import { registerDaemonProjectPresence } from "../../src/launch/presence";
 import type { DaemonSpec } from "../../src/launch/protocol";
 
@@ -233,9 +234,12 @@ setInterval(() => {}, 1000);
 
 			await presence.close();
 			const stopped = await waitUntil(() => !processExists(daemonPid), 5_000);
+			// Through the layout owner, not a hand-spelled name: a literal here would go on
+			// polling a path nothing ever creates if the socket were renamed, and "the file is
+			// gone" would pass instantly on a file that never existed.
 			const socketRemoved = await waitUntil(
 				() =>
-					Bun.file(path.join(runtimeDir, "broker.sock"))
+					Bun.file(daemonBrokerEndpoint(projectDir, runtimeDir))
 						.exists()
 						.then(exists => !exists),
 				5_000,
@@ -288,7 +292,7 @@ setInterval(() => {}, 1000);
 			// Broker shutdown happens in another process, so fake timers cannot observe its lease release.
 			const brokerStopped = await waitUntil(
 				() =>
-					Bun.file(path.join(runtimeDir, "broker.pid"))
+					Bun.file(daemonBrokerLeasePath(runtimeDir))
 						.exists()
 						.then(exists => !exists),
 				5_000,

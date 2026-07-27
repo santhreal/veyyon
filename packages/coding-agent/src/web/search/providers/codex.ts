@@ -7,12 +7,17 @@
  * SQLite store, never POSTs the broker sentinel to an OpenAI token endpoint.
  */
 import * as os from "node:os";
-import { type AuthStorage, type FetchImpl, type Model, type OAuthAccess, withOAuthAccess } from "@veyyon/ai";
-import { decodeJwt } from "@veyyon/ai/oauth/openai-codex";
+import type { AuthStorage, FetchImpl, Model, OAuthAccess } from "@veyyon/ai";
+import { withOAuthAccess } from "@veyyon/ai/auth-retry";
 import { applyCodexResponsesLiteShape } from "@veyyon/ai/providers/openai-codex/request-transformer";
 import { createOpenAICodexCompatibilityMetadata } from "@veyyon/ai/providers/openai-codex-responses";
 import { getBundledModels } from "@veyyon/catalog/models";
-import { CODEX_CLIENT_VERSION, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "@veyyon/catalog/wire/codex";
+import {
+	CODEX_CLIENT_VERSION,
+	getCodexAccountId,
+	OPENAI_HEADER_VALUES,
+	OPENAI_HEADERS,
+} from "@veyyon/catalog/wire/codex";
 import { $env, readSseJson } from "@veyyon/utils";
 import packageJson from "../../../../package.json" with { type: "json" };
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
@@ -38,7 +43,6 @@ const DEFAULT_MODEL_PREFERENCES = [
 	"gpt-5.1-codex",
 	"gpt-5-codex-mini",
 ];
-const JWT_CLAIM_PATH = "https://api.openai.com/auth";
 const DEFAULT_INSTRUCTIONS =
 	"You are a helpful assistant with web search capabilities. Search the web to answer the user's question accurately and cite your sources.";
 
@@ -305,10 +309,9 @@ function extractTextSources(text: string): SearchSource[] {
  * @returns Account ID string, or null if not found
  */
 function getAccountIdFromJwt(accessToken: string): string | null {
-	const payload = decodeJwt(accessToken);
-	const auth = payload?.[JWT_CLAIM_PATH] as { chatgpt_account_id?: string } | undefined;
-	const accountId = auth?.chatgpt_account_id;
-	return typeof accountId === "string" && accountId.length > 0 ? accountId : null;
+	// `null` rather than `undefined` because this module's auth resolution reports every absence as `null`.
+	// The claim namespace and the empty-claim rule are the owner's, in `@veyyon/catalog/wire/codex`.
+	return getCodexAccountId(accessToken) ?? null;
 }
 
 /**

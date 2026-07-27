@@ -1,7 +1,11 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $which, hasFsCode, isAbortError, isEisdir, isEnoent, isEnotdir, Snowflake } from "@veyyon/utils";
+import { isAbortError } from "@veyyon/utils/abortable";
+import { hasFsCode, isEisdir, isEnoent, isEnotdir } from "@veyyon/utils/fs-error";
+import { Snowflake } from "@veyyon/utils/snowflake";
+// Owners, not the `@veyyon/utils` barrel: 4 modules against 74.
+import { $which } from "@veyyon/utils/which";
 import type { Subprocess } from "bun";
 import {
 	parseDiffHunks as parseCommitDiffHunks,
@@ -390,6 +394,9 @@ async function collectSubprocessResult(
 		resolveTimeoutMs(options.timeoutMs),
 	);
 	if (exit.timedOut) {
+		// The timeout itself is already reported: this returns GIT_COMMAND_TIMEOUT_EXIT_CODE and the timeout's
+		// own stderr. The two reads are then abandoned mid-stream, so their rejections describe the streams
+		// being torn down, not why the command timed out; marking them handled keeps that noise out.
 		void stdoutPromise.catch(() => undefined);
 		void stderrPromise.catch(() => undefined);
 		await Promise.all([cancelOutput(stdoutStream), cancelOutput(stderrStream)]);
@@ -1066,7 +1073,7 @@ async function readRef(repository: GitRepository, targetRef: string, signal?: Ab
  */
 function readOperationHeadName(directory: string): string | null {
 	const raw = readOptionalTextSync(path.join(directory, "head-name"))?.trim();
-	if (!raw || !raw.startsWith(LOCAL_BRANCH_PREFIX)) return null;
+	if (!raw?.startsWith(LOCAL_BRANCH_PREFIX)) return null;
 	return raw.slice(LOCAL_BRANCH_PREFIX.length) || null;
 }
 

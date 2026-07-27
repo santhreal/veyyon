@@ -12,7 +12,8 @@
  * in, text (or, with `schema`, a structured object) out.
  */
 import { instrumentedCompleteSimple, resolveTelemetry } from "@veyyon/agent-core";
-import { type Api, Effort, type Model, type Tool } from "@veyyon/ai";
+import type { Api, Model, Tool } from "@veyyon/ai";
+import { Effort } from "@veyyon/catalog/effort";
 import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
 import { type } from "arktype";
 import { extractTextContent, extractToolCall, parseJsonPayload } from "../commit/utils";

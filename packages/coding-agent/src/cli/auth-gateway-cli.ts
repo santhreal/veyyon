@@ -14,7 +14,6 @@
  */
 import {
 	type Api,
-	AuthStorage,
 	type CompletionProbe,
 	type CompletionProbeInput,
 	type CredentialCompletionResult,
@@ -23,6 +22,7 @@ import {
 } from "@veyyon/ai";
 import { AuthBrokerClient, RemoteAuthCredentialStore, type SnapshotResponse } from "@veyyon/ai/auth-broker";
 import { DEFAULT_AUTH_GATEWAY_BIND, startAuthGateway } from "@veyyon/ai/auth-gateway";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { type GeneratedProvider, getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
 import { errorMessage, formatCount, VERSION } from "@veyyon/utils";
 import chalk from "chalk";

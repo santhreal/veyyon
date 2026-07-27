@@ -147,7 +147,7 @@ function flagValue(name: string, desc: FlagDescriptor): ValueSource {
 }
 
 /** Positionals whose value is a path, keyed `<command>.<arg>`. */
-const FILE_ARGS: Record<string, true> = {
+export const FILE_ARGS: Record<string, true> = {
 	"auth-broker.source": true,
 	"grep.path": true,
 	"install.targets": true,
@@ -160,16 +160,24 @@ const FILE_ARGS: Record<string, true> = {
  * file. `veyyon @src/main.ts explain this` is a documented way to launch, and
  * the `@…` half is a path the shell can complete.
  */
-const AT_FILE_ARGS: Record<string, true> = { "launch.messages": true };
-/** Positionals resolved against the live model catalog, keyed `<command>.<arg>`. */
-const MODEL_ARGS: Record<string, true> = {
-	"bench.models": true,
+export const AT_FILE_ARGS: Record<string, true> = { "launch.messages": true };
+/**
+ * Positionals resolved against the live model catalog, keyed `<command>.<arg>`.
+ *
+ * The key is the REGISTERED command name, which is not always the word the command file is called after:
+ * the throughput benchmark registers as `bench/throughput`, and while this table said `bench` it matched
+ * nothing, so `veyyon bench/throughput <TAB>` offered no models at all. A stale key here fails silently,
+ * which is why `completion-arg-tables-name-real-commands.test.ts` checks every key against the real
+ * command list.
+ */
+export const MODEL_ARGS: Record<string, true> = {
+	"bench/throughput.models": true,
 	"dry-balance.model": true,
 	"tiny-models.model": true,
 };
 
 /** Positionals resolved against the settings schema, keyed `<command>.<arg>`. */
-const SETTING_ARGS: Record<string, ValueSource> = {
+export const SETTING_ARGS: Record<string, ValueSource> = {
 	"config.key": { kind: "settings" },
 	"config.value": { kind: "setting-values" },
 };
@@ -178,7 +186,10 @@ function argValue(command: string, name: string, desc: ArgDescriptor): ValueSour
 	if (desc.options && desc.options.length > 0) return { kind: "enum", values: desc.options };
 	const key = `${command}.${name}`;
 	if (SETTING_ARGS[key]) return SETTING_ARGS[key];
-	if (MODEL_ARGS[key]) return { kind: "models", multiple: false };
+	// A repeatable model positional completes as a list, the same way the `models` FLAG does: the throughput
+	// benchmark takes several selectors, and pinning `multiple: false` would stop offering candidates after
+	// the first one.
+	if (MODEL_ARGS[key]) return { kind: "models", multiple: Boolean(desc.multiple) };
 	if (FILE_ARGS[key]) return { kind: "file" };
 	if (AT_FILE_ARGS[key]) return { kind: "at-file" };
 	return { kind: "value" };
@@ -1087,6 +1098,11 @@ function generatePowerShell(spec: CompletionSpec): string {
  * readable block is what makes the generated script auditable.
  */
 const PS_COMPLETER_BODY =
+	// The three pieces below are ONE PowerShell script, split only because PowerShell's escape
+	// character is the backtick, which cannot appear inside a template literal. Every piece stays
+	// `String.raw` so the seam is invisible: the reader does not have to track which fragment
+	// happens to contain a backslash today and which will tomorrow.
+	// biome-ignore lint/complexity/noUselessStringRaw: one raw literal split around a backtick, see above.
 	String.raw`function global:__Veyyon-DynamicCandidates {
 	param([string]$Kind, [string]$WordToComplete, [string]$Arg)
 	# The live model catalog, on-disk sessions and the settings schema are only
@@ -1101,6 +1117,7 @@ const PS_COMPLETER_BODY =
 	if ($LASTEXITCODE -ne 0 -or -not $out) { return @() }
 	return @($out | ForEach-Object { ($_ -split "` +
 	"`t" +
+	// biome-ignore lint/complexity/noUselessStringRaw: same split literal as above.
 	String.raw`")[0] } | Where-Object { $_ })
 }
 

@@ -35,7 +35,7 @@
  * throw with the valid list.
  */
 import * as path from "node:path";
-import { getAgentDir, kebabToCamel } from "@veyyon/utils";
+import { errorMessage, getAgentDir, isMissingPath, kebabToCamel } from "@veyyon/utils";
 import { DEFAULT_TEMPLATE_SECTIONS, type DefaultTemplateSections, resolveSectionOverrides } from "./default-template";
 import { TEMPLATE_SECTION_IDS } from "./section-registry";
 
@@ -61,7 +61,7 @@ export interface LoadSectionOverridesOptions {
 	readonly projectConfigDir?: string;
 	/** Injected for tests; defaults to reading from disk. */
 	readonly listDir?: (dir: string) => Promise<string[]>;
-	readonly readFile?: (file: string) => Promise<string | null>;
+	readonly readFile?: (file: string) => Promise<string>;
 }
 
 const VALID_IDS: readonly string[] = TEMPLATE_SECTION_IDS;
@@ -116,17 +116,74 @@ export async function loadSectionOverrideFiles(
 	}
 
 	for (const { dir, level } of locations) {
-		for (const filename of await listDir(dir)) {
+		for (const filename of await listOverrideDir(listDir, dir)) {
 			const parsed = parseSectionOverrideFilename(filename);
 			if (!parsed) continue;
 			assertKnownSectionId(parsed.id, filename);
 			const filePath = path.join(dir, filename);
-			const content = await readFile(filePath);
-			if (content === null) continue;
+			const content = await readOverrideFile(readFile, filePath);
 			found.push({ id: parsed.id, mode: parsed.mode, path: filePath, content, level });
 		}
 	}
 	return found;
+}
+
+/**
+ * List one override directory, distinguishing "not there" from "there and unusable".
+ *
+ * A missing directory is the overwhelmingly common case — almost nobody overrides a
+ * section — so it is absence, not failure, and must not be noisy. Every other error
+ * means the directory IS there and could not be read: `EACCES` on a directory that
+ * became root-owned after a `sudo` edit, `ELOOP` on a broken symlink, a path that is
+ * a file. Those used to return the same empty list, so a `PROMPT_SECTIONS` full of
+ * overrides the process cannot open produced a prompt with none of them applied and
+ * nothing said anywhere — the precise false confidence this module's header says it
+ * exists to prevent, a few functions below the code that caused it (Law 10).
+ *
+ * `isMissingPath` is the one owner of that split, so "does absence include EISDIR?"
+ * is not decided again here.
+ *
+ * The judgement lives at the CALL SITE rather than inside the default reader,
+ * because a reader injected by a test or an embedder has to be held to the same
+ * contract. Putting it in the default made the guarantee an implementation detail of
+ * one code path instead of a property of the loader.
+ */
+async function listOverrideDir(listDir: (dir: string) => Promise<string[]>, dir: string): Promise<string[]> {
+	try {
+		return await listDir(dir);
+	} catch (error) {
+		if (isMissingPath(error)) return [];
+		throw new Error(
+			`cannot read ${dir}: ${errorMessage(error)}. ` +
+				"Prompt section overrides in that directory would not be applied, and the prompt would " +
+				"run as shipped with no sign of it. Fix the directory's permissions, or remove it if you " +
+				"no longer override any sections.",
+			{ cause: error },
+		);
+	}
+}
+
+/**
+ * Read one override file that the directory listing just reported.
+ *
+ * Every failure here is loud, and that is the difference from listing a directory:
+ * the file was NAMED in the listing a moment ago, so it exists and was written to
+ * change the prompt. Answering an unreadable one with `null` skipped it silently and
+ * the operator kept a file on disk that had stopped doing anything. A file that
+ * vanished between the listing and the read is reported the same way rather than
+ * excused, because at this point in the scan it is an anomaly and not the ordinary
+ * "you have no overrides" case the listing already handles.
+ */
+async function readOverrideFile(readFile: (file: string) => Promise<string>, file: string): Promise<string> {
+	try {
+		return await readFile(file);
+	} catch (error) {
+		throw new Error(
+			`cannot read prompt section override ${file}: ${errorMessage(error)}. ` +
+				"The section would be left as shipped, so this is refused rather than ignored.",
+			{ cause: error },
+		);
+	}
 }
 
 /**
@@ -143,8 +200,18 @@ export async function loadSectionOverrideFiles(
  * the section's banner so a replacement cannot silently collapse two sections
  * into one. Appends are exempt: they follow text that already carries the
  * banner, so demanding a second one would produce a duplicate heading.
+ *
+ * `assembled` is the text each converted section currently has, which the caller
+ * gets from `statementSectionOverrides`. An append needs it because appending
+ * produces a whole-section override, and a whole-section override beats the
+ * statements: appending to the wrong base therefore replaces the section with
+ * that base. Omit a section from `assembled` only when it is not assembled from
+ * statements at all.
  */
-export function applySectionOverrides(files: readonly SectionOverrideFile[]): Partial<DefaultTemplateSections> {
+export function applySectionOverrides(
+	files: readonly SectionOverrideFile[],
+	assembled: Partial<DefaultTemplateSections> = {},
+): Partial<DefaultTemplateSections> {
 	const winner = new Map<string, SectionOverrideFile>();
 	for (const file of files) {
 		const key = `${file.id}:${file.mode}`;
@@ -162,7 +229,18 @@ export function applySectionOverrides(files: readonly SectionOverrideFile[]): Pa
 	for (const file of winner.values()) {
 		if (file.mode !== "append") continue;
 		const key = kebabToCamel(file.id) as keyof DefaultTemplateSections;
-		const base = resolved[key] ?? DEFAULT_TEMPLATE_SECTIONS[key];
+		// WHAT AN APPEND APPENDS TO, in precedence order, and the middle one is the fix for a real
+		// defect. A `replace` file in the same override set wins, since the operator has said what the
+		// section is. Otherwise the base is the ASSEMBLED section, which for a converted section is
+		// the statement registry's output and is the only text a session actually sends. It used to go
+		// straight to `DEFAULT_TEMPLATE_SECTIONS`, the copy sliced out of `system-prompt.md`, so an
+		// operator appending one line to `role.md` silently reverted the rest of ROLE to the template
+		// copy: the append result becomes a section override, and a section override beats the
+		// statements. That was invisible only because the two copies are byte-identical today, and it
+		// would have started deleting statement edits the moment they diverged. `DEFAULT_TEMPLATE_SECTIONS`
+		// remains the base for a section that has NOT been converted, which is what the caller omits
+		// from `assembled`.
+		const base = resolved[key] ?? assembled[key] ?? DEFAULT_TEMPLATE_SECTIONS[key];
 		// The addition goes INSIDE the section, one blank line after its text and
 		// before whatever trailing whitespace the section already ended with.
 		//
@@ -186,22 +264,13 @@ export async function loadPromptSectionOverrides(
 	return applySectionOverrides(await loadSectionOverrideFiles(options));
 }
 
+/** Thin adapters: every judgement about failure lives at the call site above. */
 async function defaultListDir(dir: string): Promise<string[]> {
 	const { readdir } = await import("node:fs/promises");
-	try {
-		return await readdir(dir);
-	} catch {
-		// A missing directory is the overwhelmingly common case: almost nobody
-		// overrides a section. It is absence, not failure, and must not be noisy.
-		return [];
-	}
+	return readdir(dir);
 }
 
-async function defaultReadFile(file: string): Promise<string | null> {
+async function defaultReadFile(file: string): Promise<string> {
 	const { readFile } = await import("node:fs/promises");
-	try {
-		return await readFile(file, "utf8");
-	} catch {
-		return null;
-	}
+	return readFile(file, "utf8");
 }

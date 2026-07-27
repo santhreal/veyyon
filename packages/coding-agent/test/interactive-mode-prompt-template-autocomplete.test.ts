@@ -9,7 +9,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import * as os from "node:os";
 import * as path from "node:path";
 import { Agent, type AgentTool } from "@veyyon/agent-core";
-import { type Api, Effort, type Model } from "@veyyon/ai";
+import type { Api, Model } from "@veyyon/ai";
+import { Effort } from "@veyyon/catalog/effort";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import type { PromptTemplate } from "@veyyon/coding-agent/config/prompt-templates";
 // The word the tier is named by has ONE owner; asserting the literal here is how

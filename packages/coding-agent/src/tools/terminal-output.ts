@@ -1,7 +1,7 @@
+import { SGR_RESET } from "@veyyon/tui/ansi";
 import { sanitizeText } from "@veyyon/utils";
 import type { Terminal as XtermTerminal } from "@xterm/headless";
 
-const RESET = "\x1b[0m";
 const SGR = /\x1b\[([0-9;]*)m/g;
 
 interface TerminalCell {
@@ -83,14 +83,14 @@ export function styleTerminalRow(row: string, baseForeground: string): string {
 		hasText ||= text.length > 0;
 
 		const codes = match[1].split(";").map(Number);
-		if (match[1] === "0") output += `${RESET}${baseForeground}`;
+		if (match[1] === "0") output += `${SGR_RESET}${baseForeground}`;
 		else if (codes.length > 0 && codes.every(Number.isInteger) && isSafeStyle(codes)) output += match[0];
 		offset = index + match[0].length;
 	}
 	const text = sanitizeText(row.slice(offset));
 	output += text;
 	hasText ||= text.length > 0;
-	return hasText ? `${output}${RESET}` : "";
+	return hasText ? `${output}${SGR_RESET}` : "";
 }
 
 /** Reads terminal screen rows as sanitized text plus only the styles the TUI may replay. */
@@ -129,7 +129,7 @@ export function readTerminalRows(terminal: XtermTerminal, startRow: number, rowC
 		for (let index = 0; index <= lastContent; index++) {
 			const cell = cells[index]!;
 			if (cell.style !== previousStyle) {
-				rendered += `${RESET}${cell.style}`;
+				rendered += `${SGR_RESET}${cell.style}`;
 				previousStyle = cell.style;
 			}
 			rendered += cell.chars;

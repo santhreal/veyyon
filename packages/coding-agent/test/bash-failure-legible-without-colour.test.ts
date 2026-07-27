@@ -21,9 +21,9 @@
  * code, so that class of failure previously rendered no marker of any kind.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { TUI } from "@veyyon/tui";
+import { createToolExecution } from "./helpers/tool-execution";
 
 const WIDTH = 76;
 
@@ -35,7 +35,7 @@ beforeAll(async () => {
 
 /** Render a completed bash block and strip all styling. */
 function render(opts: { details?: unknown; isError: boolean; width?: number }): string {
-	const component = new ToolExecutionComponent("bash", { command: "grep zzz missing.txt" }, {}, undefined, uiStub);
+	const component = createToolExecution("bash", { command: "grep zzz missing.txt" }, {}, undefined, uiStub);
 	component.updateResult(
 		{ content: [{ type: "text", text: "no matches" }], details: opts.details, isError: opts.isError } as never,
 		false,

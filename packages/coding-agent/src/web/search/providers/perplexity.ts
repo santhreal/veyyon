@@ -8,20 +8,20 @@
  * - Anonymous via `www.perplexity.ai/rest/sse/perplexity_ask`
  */
 
-import {
-	type AssistantMessage,
-	type AssistantMessageEventStream,
-	type AuthStorage,
-	assistantText,
-	type Context,
-	type FetchImpl,
-	type Usage,
-	withOAuthAccess,
-} from "@veyyon/ai";
+import type { AssistantMessage, AssistantMessageEventStream, AuthStorage, Context, FetchImpl, Usage } from "@veyyon/ai";
+// The owner, not the barrel: a retry wrapper, not the streaming engine behind it.
+import { withOAuthAccess } from "@veyyon/ai/auth-retry";
 import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
 import { streamOpenAIResponses } from "@veyyon/ai/providers/openai-responses";
+import { assistantText } from "@veyyon/ai/utils/message-text";
 import { buildModel } from "@veyyon/catalog/build";
 import type { Model, ModelSpec } from "@veyyon/catalog/types";
+import {
+	PERPLEXITY_HEADERS,
+	PERPLEXITY_NATIVE_APP_API_VERSION,
+	PERPLEXITY_NATIVE_APP_USER_AGENT,
+	PERPLEXITY_WEB_ORIGIN,
+} from "@veyyon/catalog/wire/perplexity";
 import { $env, asRecord, readSseJson, tryParseJson } from "@veyyon/utils";
 import type {
 	PerplexityRequest,
@@ -34,18 +34,15 @@ import { SearchProviderError } from "../../../web/search/types";
 import { dateToAgeSeconds, sanitizeResultLimit } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
+import { CHROME_DESKTOP_USER_AGENT } from "./browser-headers";
 import { type ApiConfig, getAvailableAuthMethods } from "./perplexity-auth";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
 
-const PERPLEXITY_OAUTH_ASK_URL = "https://www.perplexity.ai/rest/sse/perplexity_ask";
+const PERPLEXITY_OAUTH_ASK_URL = `${PERPLEXITY_WEB_ORIGIN}/rest/sse/perplexity_ask`;
 
 const DEFAULT_MAX_TOKENS = 8192;
 const DEFAULT_TEMPERATURE = 0.2;
 const DEFAULT_NUM_SEARCH_RESULTS = 20;
-const OAUTH_API_VERSION = "2.18";
-const OAUTH_USER_AGENT = "Perplexity/641 CFNetwork/1568 Darwin/25.2.0";
-const ANONYMOUS_USER_AGENT =
-	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
 
 interface PerplexityOAuthStreamMarkdownBlock {
 	answer?: string;
@@ -533,10 +530,12 @@ async function callPerplexityAsk(
 	const headers: Record<string, string> = {
 		"Content-Type": "application/json",
 		Accept: "text/event-stream",
-		Origin: "https://www.perplexity.ai",
-		Referer: "https://www.perplexity.ai/",
-		"User-Agent": auth.type === "anonymous" ? ANONYMOUS_USER_AGENT : OAUTH_USER_AGENT,
-		"X-Request-ID": requestId,
+		Origin: PERPLEXITY_WEB_ORIGIN,
+		Referer: `${PERPLEXITY_WEB_ORIGIN}/`,
+		// Signed-in requests identify as the macOS app, which is what unlocks the account's Pro model
+		// selection; anonymous ones look like an ordinary browser, since there is no app session to match.
+		"User-Agent": auth.type === "anonymous" ? CHROME_DESKTOP_USER_AGENT : PERPLEXITY_NATIVE_APP_USER_AGENT,
+		[PERPLEXITY_HEADERS.REQUEST_ID]: requestId,
 	};
 	if (auth.type === "oauth") {
 		// The ask endpoint authenticates via the next-auth session cookie, NOT a
@@ -550,9 +549,9 @@ async function callPerplexityAsk(
 		headers.Cookie = auth.cookies;
 	}
 	if (auth.type !== "anonymous") {
-		headers["X-App-ApiClient"] = "default";
-		headers["X-App-ApiVersion"] = OAUTH_API_VERSION;
-		headers["X-Perplexity-Request-Reason"] = "submit";
+		headers[PERPLEXITY_HEADERS.API_CLIENT] = "default";
+		headers[PERPLEXITY_HEADERS.API_VERSION] = PERPLEXITY_NATIVE_APP_API_VERSION;
+		headers[PERPLEXITY_HEADERS.REQUEST_REASON] = "submit";
 	}
 
 	const requestParams: Record<string, unknown> = {
@@ -564,7 +563,9 @@ async function callPerplexityAsk(
 		attachments: [],
 		frontend_uuid: crypto.randomUUID(),
 		frontend_context_uuid: crypto.randomUUID(),
-		version: OAUTH_API_VERSION,
+		// The same version the `X-App-ApiVersion` header carries. Sent twice per request by the app, so it is
+		// read from one constant rather than restated.
+		version: PERPLEXITY_NATIVE_APP_API_VERSION,
 		language: "en-US",
 		timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
 		search_recency_filter: params.search_recency_filter ?? null,

@@ -7,7 +7,8 @@
 import * as path from "node:path";
 import { isEnoent, peekFile } from "@veyyon/utils";
 import { LRUCache } from "lru-cache/raw";
-import { settings } from "../config/settings";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { settings } from "../config/settings-instance";
 import { ToolError } from "./tool-errors";
 
 /**

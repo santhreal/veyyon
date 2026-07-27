@@ -1118,7 +1118,16 @@ export class PluginManager {
 // Setting Validation
 // =============================================================================
 
-export interface ValidationResult {
+/**
+ * The outcome of validating one plugin setting against its schema.
+ *
+ * Named for what it validates. `CommitValidationResult`
+ * (`commit/analysis/validation.ts`) was also called `ValidationResult` and reports
+ * an `errors` ARRAY rather than this single optional `error`, so a caller that
+ * imported the wrong one read a field that is never populated and concluded the
+ * value was fine.
+ */
+export interface PluginSettingValidationResult {
 	valid: boolean;
 	error?: string;
 }
@@ -1126,7 +1135,7 @@ export interface ValidationResult {
 /**
  * Validate a setting value against its schema.
  */
-export function validateSetting(value: unknown, schema: PluginSettingSchema): ValidationResult {
+export function validateSetting(value: unknown, schema: PluginSettingSchema): PluginSettingValidationResult {
 	switch (schema.type) {
 		case "string":
 			if (typeof value !== "string") {

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
 import { loadPage } from "@veyyon/coding-agent/web/scrapers/types";
+import { CHROME_WINDOWS_USER_AGENT } from "@veyyon/coding-agent/web/search/providers/browser-headers";
 
 /**
  * `loadPage` retries across a list of user agents, and the reason it exists is
@@ -28,8 +29,17 @@ const realFetch = globalThis.fetch;
 /** The user agents `loadPage` walks, in order, mirrored from the source. */
 const CURL_UA = "curl/8.0";
 const TEXTBOT_UA = "Mozilla/5.0 (compatible; TextBot/1.0)";
-const CHROME_UA =
-	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+/**
+ * Read from the module that owns what browser this tree claims to be, not retyped.
+ *
+ * The rotation's last rung has to actually get through, and a copy here would be a fourth statement of the
+ * Chrome version that has to agree with the User-Agent and the `Sec-Ch-Ua` client hint in
+ * `web/search/providers/browser-headers.ts`. This test file held Chrome 131 while that module claimed 149,
+ * so it was asserting a stale identity and would have kept passing while the shipped rotation announced a
+ * different browser. The order and the exact bytes are still asserted; only the source of the last string
+ * moved.
+ */
+const CHROME_UA = CHROME_WINDOWS_USER_AGENT;
 const ALL_USER_AGENTS = [CURL_UA, TEXTBOT_UA, CHROME_UA];
 
 interface Attempt {

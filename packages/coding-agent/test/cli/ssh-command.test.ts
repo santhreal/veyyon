@@ -3,16 +3,19 @@
  * run from a throwaway cwd so project config lands in the fixture, not a repo.
  */
 import { describe, expect, it } from "bun:test";
-import { existsSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync } from "node:fs";
 import * as path from "node:path";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
+
+const makeTempDir1 = useTrackedTempDirs("veyyon-ssh-cwd-");
+const makeTempDir2 = useTrackedTempDirs("veyyon-ssh-home-");
 
 const cliPath = path.resolve(import.meta.dir, "../../src/cli.ts");
 
 function makeDirs(): { home: string; cwd: string } {
 	return {
-		home: mkdtempSync(path.join(tmpdir(), "veyyon-ssh-home-")),
-		cwd: mkdtempSync(path.join(tmpdir(), "veyyon-ssh-cwd-")),
+		home: makeTempDir2(),
+		cwd: makeTempDir1(),
 	};
 }
 

@@ -19,7 +19,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $which, errorMessage, logger, Snowflake } from "@veyyon/utils";
+import { $which, errorMessage, logger, removeTempPath, Snowflake } from "@veyyon/utils";
 import type { FileSink, Subprocess } from "bun";
 import { getToolPath } from "../utils/tools-manager";
 import { type PlayerCommand, playAudioFile } from "./player";
@@ -301,7 +301,7 @@ export class StreamingAudioPlayer {
 				error: errorMessage(error),
 			});
 		} finally {
-			await fs.unlink(wavPath).catch(() => {});
+			await removeTempPath(wavPath, "tts-playback-finished");
 		}
 	}
 

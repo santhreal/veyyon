@@ -1,14 +1,23 @@
 /**
- * Section machinery for the default system-prompt template.
+ * The SYSTEM PROMPT'S sections: which names it has, and how its parts are ordered.
  *
- * The template (`prompts/session/system-prompt.md`) is organized into banner
- * sections (`ROLE\n====`, `RUNTIME\n====`, ...). This leaf module owns the
- * canonical section names and the split/reorder primitives so both the prompt
- * builder (`system-prompt.ts`) and per-model harness profiles
- * (`harness/model-profile.ts`) share one definition without an import cycle.
+ * Everything here is specific to one document. `prompts/session/system-prompt.md` is
+ * organized into banner sections (`ROLE\n====`, `RUNTIME\n====`, ...); this module
+ * derives their names from the registry, supplies the banner table that names them,
+ * and owns the reordering a harness profile asks for. Both the prompt builder
+ * (`system-prompt.ts`) and per-model profiles (`harness/model-profile.ts`) share
+ * these without an import cycle.
+ *
+ * WHAT IS NOT HERE, and used to be. The parser itself moved to `banner-grammar.ts`.
+ * This file's header called it "section machinery for the default system-prompt
+ * template" while exporting the one splitter that cuts EVERY bannered prompt in the
+ * product, and that mislabelling is what let the splitter close over this prompt's
+ * banner table — so the subagent prompt, same grammar, had most of its sections
+ * folded away without a word. Universal machinery belongs with the grammar; what
+ * stays here is the part that is genuinely about this one prompt.
  */
-import { logger } from "@veyyon/utils";
-import { bannerTable, isBannerUnderline, leadingBannerName } from "./banner-grammar";
+import { logger, once } from "@veyyon/utils";
+import { bannerTable, leadingBannerName, type RenderedSection, splitBanneredDocument } from "./banner-grammar";
 import { BANNERED_SECTIONS, BANNERED_TEMPLATE_SECTIONS } from "./section-registry";
 
 export type PromptSectionName = string;
@@ -28,12 +37,14 @@ export type PromptSectionName = string;
  *
  * Deferring the read removes the question. By the time any of these functions is
  * CALLED the module graph is fully evaluated, so no ordering can observe the
- * binding early. Each memoizes, so the cost is one map on first use.
+ * binding early.
+ *
+ * Each memoizes through `once`, the shared no-argument memoizer, rather than through
+ * a module-level `let` and a `??=` written out three times. Three copies of a caching
+ * pattern is three chances to get the cache wrong in a way that only one of them
+ * shows: `??=` in particular re-runs forever if the derivation ever returns an empty
+ * string or zero, which these do not today and nothing was checking.
  */
-
-let promptSectionNamesCache: readonly string[] | undefined;
-let templateSectionNamesCache: readonly string[] | undefined;
-let sectionBannerToNameCache: Record<string, PromptSectionName> | undefined;
 
 /**
  * The reorderable section names, DERIVED from the one registry in
@@ -50,10 +61,7 @@ let sectionBannerToNameCache: Record<string, PromptSectionName> | undefined;
  * away. That is settled separately, by there being one parser
  * ({@link splitBanneredDocument}) whose caller chooses strictness.
  */
-export function promptSectionNames(): readonly string[] {
-	promptSectionNamesCache ??= BANNERED_SECTIONS.map(b => b.id);
-	return promptSectionNamesCache;
-}
+export const promptSectionNames: () => readonly string[] = once(() => BANNERED_SECTIONS.map(b => b.id));
 
 /**
  * The subset that lives in the template FILE.
@@ -63,10 +71,7 @@ export function promptSectionNames(): readonly string[] {
  * is {@link applyPromptSectionOrderToParts}, which accepts every name in
  * {@link promptSectionNames} because it can see the runtime sections too.
  */
-export function templateSectionNames(): readonly string[] {
-	templateSectionNamesCache ??= BANNERED_TEMPLATE_SECTIONS.map(b => b.id);
-	return templateSectionNamesCache;
-}
+export const templateSectionNames: () => readonly string[] = once(() => BANNERED_TEMPLATE_SECTIONS.map(b => b.id));
 
 /**
  * The system prompt's own banner table: the default this module's splitter uses.
@@ -76,140 +81,7 @@ export function templateSectionNames(): readonly string[] {
  * table was built by different code from every other prompt's — the one place a
  * disagreement about which banners exist could not be seen by reading either.
  */
-function sectionBannerToName(): Record<string, PromptSectionName> {
-	sectionBannerToNameCache ??= bannerTable(BANNERED_SECTIONS);
-	return sectionBannerToNameCache;
-}
-
-/**
- * One fragment of a SPLIT prompt: a banner name and the text under it.
- *
- * Deliberately not called `PromptSection`: that name belongs to the registry
- * entry in `section-registry.ts`, which describes a section's identity, banner name
- * and source. This is the runtime result of cutting a rendered document at those
- * banners. Two sibling files exporting one name for two different things is how
- * a reader ends up importing the wrong one.
- */
-export interface RenderedSection {
-	name: PromptSectionName | "preamble";
-	text: string;
-}
-
-/**
- * THE splitter. One implementation cuts every bannered document in the product.
- *
- * WHY THIS IS ONE FUNCTION. There used to be two, for the same `NAME\n====`
- * grammar, and they disagreed about the case that matters. `splitDefaultTemplate`
- * walked byte offsets with `indexOf` and THREW on a missing or out-of-order
- * banner. This module's line-wise splitter did not recognise the line at all and
- * folded the region into its predecessor, silently. They also used different key
- * spellings and different round-trip contracts. Unifying only the banner TABLE
- * (which the registry now owns) fixed which banners exist and left both of those
- * differences standing: one source of truth for the vocabulary says nothing
- * about what either parser does when a word is absent, and the silent one is the
- * path that reorders and inspects the assembled prompt. A renamed banner
- * therefore shipped a prompt with a region folded away, reporting nothing, while
- * the strict path would have refused to build at all.
- *
- * BYTE OFFSETS, NOT LINES, because that is the only version with an exact
- * round-trip: every byte of the input lands in exactly one region, so
- * `regions.map(r => r.text).join("")` reproduces the input for ANY input,
- * including the awkward one where a banner sits on line 0 and there is no
- * preamble newline to reason about. The line-wise version had to document that
- * case as an exception its consumer worked around.
- *
- * A banner still only matches at a line start with an underline beneath it, per
- * {@link isBannerUnderline} — the one place that rule is written down, shared with
- * the section-override validator so a replacement is accepted exactly when this
- * splitter will cut on it.
- *
- * `expect` is what makes it fail closed. Pass the ids a caller REQUIRES and the
- * split raises when one is missing or out of order, naming the document, rather
- * than returning a shape the caller cannot tell apart from a correct one. Omit
- * it and the split reports what it found, which is the right behaviour for a
- * custom template that legitimately has no banners at all.
- */
-export function splitBanneredDocument(
-	document: string,
-	options: {
-		readonly banners?: Record<string, PromptSectionName>;
-		/** Sections that MUST appear, in this order. Omit for a discovery-only split. */
-		readonly expect?: readonly { readonly id: PromptSectionName; readonly name: string }[];
-		/** Named in the error when `expect` is not satisfied. */
-		readonly label?: string;
-	} = {},
-): RenderedSection[] {
-	const banners = options.banners ?? sectionBannerToName();
-	const lines = document.split("\n");
-
-	// Offsets are collected first so every region is a slice of the original and
-	// nothing is rebuilt from parts. `cursor` tracks the byte position of the line
-	// being examined, including the "\n" that `split` consumed.
-	const found: Array<{ name: PromptSectionName; at: number }> = [];
-	let cursor = 0;
-	for (let i = 0; i < lines.length; i++) {
-		const line = lines[i] as string;
-		const name = banners[line.trim()];
-		if (name !== undefined && isBannerUnderline(lines[i + 1])) found.push({ name, at: cursor });
-		cursor += line.length + 1;
-	}
-
-	if (options.expect) {
-		assertExpectedBanners(
-			found.map(entry => entry.name),
-			options.expect,
-			options.label ?? "prompt",
-		);
-	}
-
-	const bounds = [0, ...found.map(entry => entry.at), document.length];
-	const regions: RenderedSection[] = [{ name: "preamble", text: document.slice(bounds[0], bounds[1]) }];
-	for (let i = 0; i < found.length; i++) {
-		const entry = found[i] as { name: PromptSectionName };
-		regions.push({ name: entry.name, text: document.slice(bounds[i + 1], bounds[i + 2]) });
-	}
-	return regions;
-}
-
-/**
- * Refuse a document whose banners do not match what the caller requires.
- *
- * Separate from the scan so the message can say WHICH way it failed. "missing"
- * and "out of order" are different repairs: the first means the document lost a
- * region, the second means the registry's document order no longer describes the
- * file. Reporting only "did not match" would leave the reader to diff by eye.
- *
- * The message names the BANNER LINE as well as the section id, because the
- * banner name is the line to search the document for while the id is the row to
- * look up in `section-registry.ts`, and a reader needs both to make the repair.
- */
-function assertExpectedBanners(
-	found: readonly PromptSectionName[],
-	expected: readonly { readonly id: PromptSectionName; readonly name: string }[],
-	label: string,
-): void {
-	const describe = (section: { id: PromptSectionName; name: string }): string =>
-		`"${section.id}" (${section.name} banner)`;
-
-	const missing = expected.filter(section => !found.includes(section.id));
-	if (missing.length > 0) {
-		throw new Error(
-			`${label} is missing the section${missing.length === 1 ? "" : "s"} ${missing.map(describe).join(", ")}; ` +
-				`it contains ${found.length === 0 ? "no registered banners" : found.map(id => `"${id}"`).join(", ")}. ` +
-				"Either the document lost a section or section-registry.ts no longer describes it.",
-		);
-	}
-
-	const expectedIds = expected.map(section => section.id);
-	const inExpectedOrder = found.filter(id => expectedIds.includes(id));
-	if (inExpectedOrder.some((id, index) => id !== expectedIds[index])) {
-		throw new Error(
-			`${label} has its sections out of order: found ${inExpectedOrder.map(id => `"${id}"`).join(", ")}, ` +
-				`expected ${expectedIds.map(id => `"${id}"`).join(", ")}. ` +
-				"Section order in section-registry.ts is the document's order, so one of the two has to move.",
-		);
-	}
-}
+const sectionBannerToName: () => Record<string, PromptSectionName> = once(() => bannerTable(BANNERED_SECTIONS));
 
 /**
  * Split a rendered prompt on its banner lines, reporting what is there.

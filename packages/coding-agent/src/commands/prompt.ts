@@ -10,6 +10,12 @@ export default class Prompt extends Command {
 	static flags = {
 		json: Flags.boolean({ description: "Output the inspection as JSON" }),
 		sections: Flags.boolean({ description: "Show the per-section size breakdown instead of the prompt text" }),
+		statements: Flags.boolean({
+			description: "Show what each individual rule costs, and which rules this configuration leaves out",
+		}),
+		statement: Flags.string({
+			description: "Print only this rule's text, or why it is not in this prompt (see --statements for the ids)",
+		}),
 		section: Flags.string({ description: "Print only this section (see --sections for the ids)" }),
 		cwd: Flags.string({ description: "Working directory to resolve context files, skills and the tree from" }),
 		"no-tools": Flags.boolean({ description: "Assemble with no tools, to see which regions are tool-gated" }),
@@ -22,6 +28,8 @@ export default class Prompt extends Command {
 		const result = await runPromptCommand({
 			json: flags.json,
 			sections: flags.sections,
+			statements: flags.statements,
+			statement: flags.statement,
 			section: flags.section,
 			cwd: flags.cwd,
 			noTools: flags["no-tools"],

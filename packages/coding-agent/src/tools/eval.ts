@@ -7,9 +7,10 @@ import type { ExecutorBackend, ExecutorBackendResult } from "../eval/backend";
 import { EVAL_TIMEOUT_PAUSE_OP, EVAL_TIMEOUT_RESUME_OP } from "../eval/bridge-timeout";
 import { IdleTimeout } from "../eval/idle-timeout";
 import { defaultEvalSessionId } from "../eval/session-id";
+import { upsertStatusEvent } from "../eval/status-events";
 import type { EvalCellResult, EvalDisplayOutput, EvalLanguage, EvalStatusEvent, EvalToolDetails } from "../eval/types";
 import { formatExitCodeNotice } from "../exec/exit-notice";
-import { PROMPTS } from "../prompts/registry";
+import { toolsPrompts } from "../prompts/tools/rows";
 import { DEFAULT_MAX_BYTES, OutputSink, type OutputSummary, TailBuffer } from "../session/streaming-output";
 import { resolveSpawnPolicy } from "../task/spawn-policy";
 import { webpExclusionForModel } from "../utils/image-loading";
@@ -17,15 +18,12 @@ import { formatDimensionNote, resizeImage } from "../utils/image-resize";
 import type { ToolSession } from ".";
 import { truncateForPrompt } from "./approval";
 import { type EvalBackendsAllowance, resolveEvalBackends } from "./eval-backends";
-import { upsertStatusEvent } from "./eval-render";
 import { inlineBudgetFor } from "./output-artifact";
 import { foldToolOutputBookkeeping } from "./output-fold";
 import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "./output-meta";
 import { ToolAbortError, ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
 import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice, TOOL_TIMEOUTS } from "./tool-timeouts";
-
-export { EVAL_DEFAULT_PREVIEW_LINES, evalToolRenderer } from "./eval-render";
 
 /** Language tokens the eval tool accepts, in stable display order. */
 export type EvalLanguageToken = "py" | "js" | "rb" | "jl";
@@ -180,7 +178,7 @@ export function getEvalToolDescription(options: EvalToolDescriptionOptions = {})
 	const rb = options.rb ?? false;
 	const jl = options.jl ?? false;
 	const spawnPolicy = resolveSpawnPolicy(options.spawns ?? true);
-	return prompt.render(PROMPTS["tools/eval"].text, {
+	return prompt.render(toolsPrompts["tools/eval"].text, {
 		py,
 		js,
 		rb,
@@ -200,6 +198,24 @@ interface ResolvedBackend {
 	notice?: string;
 }
 
+/**
+ * The one cell a call runs, resolved against the session.
+ *
+ * ONE, not a list, and the singular is load-bearing rather than tidying. The wire
+ * schema carries exactly one `language`/`code`/`title`/`timeout`/`reset`, so a
+ * call has always been one cell; `execute` nevertheless built a one-element array
+ * and looped over it, with per-cell timeout construction, `cellOutputs`
+ * accumulation, and helpers that folded several cells into one summary. None of it
+ * could run twice, and it was not free: the cancellation path read as though it
+ * had a partial-progress story to tell (which cells ran, which did not) when there
+ * is only ever one, so a reader reasoning about "the cells after the interrupted
+ * one" was reasoning about an unreachable branch.
+ *
+ * `index` survives at a constant 0 because {@link EvalCellResult} is a wire type:
+ * it reaches the renderer and is persisted in transcripts, so its shape is a
+ * contract this refactor must not break. `details.cells` is still a one-element
+ * array for the same reason.
+ */
 interface ResolvedEvalCell {
 	index: number;
 	title?: string;
@@ -209,23 +225,19 @@ interface ResolvedEvalCell {
 	resolved: ResolvedBackend;
 }
 
-function uniqueEvalLanguages(cells: ResolvedEvalCell[]): EvalLanguage[] {
-	return [...new Set(cells.map(cell => cell.resolved.backend.id))];
-}
-
 /**
- * Name a cell for a cancellation message, so an operator can tell which of
- * several cells they interrupted.
+ * Name the cell for a cancellation message, so an operator can tell what they
+ * interrupted.
  *
  * The title when there is one, since that is the label already shown in the
- * transcript and matching the two is the whole point. Otherwise the ordinal and
- * the language, which at least locates the cell in the call that was issued. The
- * code itself is deliberately not included: a cancellation message is read in a
- * hurry, and pasting a cell body into it buries the applied/not-applied lists
- * that are the reason the message exists.
+ * transcript and matching the two is the whole point. Otherwise the language,
+ * which at least says which runtime holds the half-mutated state. The code itself
+ * is deliberately not included: a cancellation message is read in a hurry, and
+ * pasting a cell body into it buries the rest of the sentence, which is the reason
+ * the message exists.
  */
 function describeEvalCell(cell: ResolvedEvalCell): string {
-	return cell.title ?? `cell ${cell.index + 1} (${cell.resolved.backend.id})`;
+	return cell.title ?? `the ${cell.resolved.backend.id} cell`;
 }
 
 /**
@@ -243,13 +255,16 @@ function timeoutClampNotice(cell: ResolvedEvalCell, maxTimeout?: number): string
 	);
 }
 
-function detailsNotice(cells: ResolvedEvalCell[], maxTimeout?: number): string | undefined {
+/**
+ * The notice line for a call: the backend's own notice and the timeout clamp,
+ * whichever of the two the cell produced.
+ *
+ * Deduplicated even at one cell, because a backend notice and a clamp notice can
+ * be the same sentence and reading it twice reads like two separate problems.
+ */
+function detailsNotice(cell: ResolvedEvalCell, maxTimeout?: number): string | undefined {
 	const notices = [
-		...new Set(
-			cells
-				.flatMap(cell => [cell.resolved.notice, timeoutClampNotice(cell, maxTimeout)])
-				.filter((notice): notice is string => Boolean(notice)),
-		),
+		...new Set([cell.resolved.notice, timeoutClampNotice(cell, maxTimeout)].filter(Boolean) as string[]),
 	];
 	return notices.length > 0 ? notices.join(" ") : undefined;
 }
@@ -452,18 +467,19 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 						? "julia"
 						: "js";
 		const resolved = await resolveBackend(session, cellLanguage);
-		const cells: ResolvedEvalCell[] = [
-			{
-				index: 0,
-				title: params.title,
-				code: params.code,
-				timeoutMs: (params.timeout ?? TOOL_TIMEOUTS.eval.default) * 1000,
-				reset: params.reset ?? false,
-				resolved,
-			},
-		];
-		const languages = uniqueEvalLanguages(cells);
-		const notice = detailsNotice(cells, session.settings.get("tools.maxTimeout"));
+		const cell: ResolvedEvalCell = {
+			index: 0,
+			title: params.title,
+			code: params.code,
+			timeoutMs: (params.timeout ?? TOOL_TIMEOUTS.eval.default) * 1000,
+			reset: params.reset ?? false,
+			resolved,
+		};
+		// `languages` stays a one-element array: it is part of the details wire type
+		// the renderer reads, so its shape is a contract even though a call has only
+		// ever had one language.
+		const languages: EvalLanguage[] = [cell.resolved.backend.id];
+		const notice = detailsNotice(cell, session.settings.get("tools.maxTimeout"));
 		const sessionAbortController = new AbortController();
 		let outputSink: OutputSink | undefined;
 		let outputSummary: OutputSummary | undefined;
@@ -487,21 +503,24 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 				const images: ImageContent[] = [];
 				const statusEvents: EvalStatusEvent[] = [];
 
-				const cellResults: EvalCellResult[] = cells.map(cell => ({
+				const cellResult: EvalCellResult = {
 					index: cell.index,
 					title: cell.title,
 					code: cell.code,
 					language: cell.resolved.backend.id,
 					output: "",
 					status: "pending",
-				}));
-				const cellOutputs: string[] = [];
-				// The cell currently inside backend.execute(). Streamed stdout is
+				};
+				/** The cell's folded output, once it has produced any. Empty until then. */
+				let foldedOutput = "";
+				// Set while the cell is inside backend.execute(). Streamed stdout is
 				// appended to its rendered `output` live so a long-running cell (e.g. a
 				// sleep loop) shows progress instead of nothing until it returns. A
-				// dedicated per-cell tail buffer keeps attribution correct and avoids
-				// double-counting against the aggregate `tailBuffer`; on completion the
-				// authoritative `cellResult.output` (below) overwrites this live tail.
+				// dedicated tail buffer avoids double-counting against the aggregate
+				// `tailBuffer`; on completion the authoritative `cellResult.output`
+				// (below) overwrites this live tail. It is still a nullable handle rather
+				// than a plain flag because a chunk can arrive after `execute` settles,
+				// and that chunk must not reopen a finished cell's live output.
 				let activeLiveCell: { result: EvalCellResult; buf: TailBuffer } | undefined;
 
 				const appendTail = (text: string) => {
@@ -512,10 +531,12 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 					const details: EvalToolDetails = {
 						language: languages[0],
 						languages,
-						cells: cellResults.map(cell => ({
-							...cell,
-							statusEvents: cell.statusEvents ? [...cell.statusEvents] : undefined,
-						})),
+						cells: [
+							{
+								...cellResult,
+								statusEvents: cellResult.statusEvents ? [...cellResult.statusEvents] : undefined,
+							},
+						],
 					};
 					if (jsonOutputs.length > 0) {
 						details.jsonOutputs = jsonOutputs;
@@ -565,251 +586,243 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 				});
 				const sessionId = session.getEvalSessionId?.() ?? defaultEvalSessionId(session);
 
-				for (let i = 0; i < cells.length; i++) {
-					const cell = cells[i];
-					const backend = cell.resolved.backend;
-					// The per-cell `timeout` is a budget on the cell runtime's *own*
-					// work. Host-side `agent()`/`parallel()`/`completion()` bridge calls suspend
-					// that budget entirely and restart a fresh timeout window when control
-					// returns to the active backend runtime. Compute, stdout, `log()`/`phase()`, and
-					// ordinary tool calls all count against the budget. The watchdog drives
-					// `combinedSignal`; we pass no wall-clock deadline downstream so the
-					// backends never arm a competing fixed timer.
-					const idleTimeoutMs =
-						cell.timeoutMs === 0
-							? undefined
-							: clampTimeout("eval", cell.timeoutMs / 1000, session.settings.get("tools.maxTimeout")) * 1000;
-					const idle = idleTimeoutMs === undefined ? undefined : new IdleTimeout(idleTimeoutMs);
-					const combinedSignal =
-						signal && idle
-							? AbortSignal.any([signal, idle.signal, sessionAbortController.signal])
-							: signal
-								? AbortSignal.any([signal, sessionAbortController.signal])
-								: idle
-									? AbortSignal.any([idle.signal, sessionAbortController.signal])
-									: sessionAbortController.signal;
+				const backend = cell.resolved.backend;
+				// The per-cell `timeout` is a budget on the cell runtime's *own*
+				// work. Host-side `agent()`/`parallel()`/`completion()` bridge calls suspend
+				// that budget entirely and restart a fresh timeout window when control
+				// returns to the active backend runtime. Compute, stdout, `log()`/`phase()`, and
+				// ordinary tool calls all count against the budget. The watchdog drives
+				// `combinedSignal`; we pass no wall-clock deadline downstream so the
+				// backends never arm a competing fixed timer.
+				const idleTimeoutMs =
+					cell.timeoutMs === 0
+						? undefined
+						: clampTimeout("eval", cell.timeoutMs / 1000, session.settings.get("tools.maxTimeout")) * 1000;
+				const idle = idleTimeoutMs === undefined ? undefined : new IdleTimeout(idleTimeoutMs);
+				const combinedSignal =
+					signal && idle
+						? AbortSignal.any([signal, idle.signal, sessionAbortController.signal])
+						: signal
+							? AbortSignal.any([signal, sessionAbortController.signal])
+							: idle
+								? AbortSignal.any([idle.signal, sessionAbortController.signal])
+								: sessionAbortController.signal;
 
-					const cellResult = cellResults[i];
-					cellResult.status = "running";
-					cellResult.output = "";
-					cellResult.statusEvents = undefined;
-					cellResult.exitCode = undefined;
-					cellResult.durationMs = undefined;
-					// Held by name as well as through `activeLiveCell`, which the `finally`
-					// below clears. This is the ONLY surviving record of what a cancelled
-					// cell printed: a backend that is interrupted returns an empty
-					// `result.output`, and `cellResult.output` is overwritten from that
-					// empty value before the cancellation is handled. Without this the
-					// abort message can only say the cell produced nothing, which is a
-					// statement about the plumbing rather than about the run.
-					const liveOutput = new TailBuffer(DEFAULT_MAX_BYTES * 2);
-					activeLiveCell = { result: cellResult, buf: liveOutput };
-					pushUpdate();
+				cellResult.status = "running";
+				cellResult.output = "";
+				cellResult.statusEvents = undefined;
+				cellResult.exitCode = undefined;
+				cellResult.durationMs = undefined;
+				// Held by name as well as through `activeLiveCell`, which the `finally`
+				// below clears. This is the ONLY surviving record of what a cancelled
+				// cell printed: a backend that is interrupted returns an empty
+				// `result.output`, and `cellResult.output` is overwritten from that
+				// empty value before the cancellation is handled. Without this the
+				// abort message can only say the cell produced nothing, which is a
+				// statement about the plumbing rather than about the run.
+				const liveOutput = new TailBuffer(DEFAULT_MAX_BYTES * 2);
+				activeLiveCell = { result: cellResult, buf: liveOutput };
+				pushUpdate();
 
-					const startTime = Date.now();
-					let result: ExecutorBackendResult;
-					try {
-						result = await backend.execute(cell.code, {
-							cwd: session.cwd,
-							sessionId,
-							sessionFile: sessionFile ?? undefined,
-							kernelOwnerId,
-							signal: combinedSignal,
-							session,
-							idleTimeoutMs,
-							reset: cell.reset,
-							onChunk: chunk => {
-								outputSink!.push(chunk);
-							},
-							onStatus: event => {
-								if (event.op === EVAL_TIMEOUT_PAUSE_OP) {
-									idle?.pause();
-									return;
-								}
-								if (event.op === EVAL_TIMEOUT_RESUME_OP) {
-									idle?.resume();
-									return;
-								}
-								cellResult.statusEvents ??= [];
-								upsertStatusEvent(cellResult.statusEvents, event);
-								pushUpdate();
-							},
-						});
-					} finally {
-						idle?.dispose();
-						activeLiveCell = undefined;
-					}
-					const durationMs = Date.now() - startTime;
-
-					const cellStatusEvents: EvalStatusEvent[] = [];
-					const cellDisplayOutputs: EvalDisplayOutput[] = [];
-					const cellImageNotes: string[] = [];
-					let cellHasMarkdown = false;
-					for (const output of result.displayOutputs) {
-						if (output.type === "json") {
-							jsonOutputs.push(output.data);
-							cellDisplayOutputs.push(output);
-						}
-						if (output.type === "image") {
-							const resized = await resizeImage(
-								{
-									type: "image",
-									data: output.data,
-									mimeType: output.mimeType,
-								},
-								{ excludeWebP },
-							);
-							const image: ImageContent = {
-								type: "image",
-								data: resized.data,
-								mimeType: resized.mimeType,
-							};
-							images.push(image);
-							cellDisplayOutputs.push({
-								type: "image",
-								data: image.data,
-								mimeType: image.mimeType,
-							});
-							const dimensionNote = formatDimensionNote(resized);
-							if (dimensionNote) {
-								cellImageNotes.push(`display image ${cellImageNotes.length + 1}: ${dimensionNote}`);
+				const startTime = Date.now();
+				let result: ExecutorBackendResult;
+				try {
+					result = await backend.execute(cell.code, {
+						cwd: session.cwd,
+						sessionId,
+						sessionFile: sessionFile ?? undefined,
+						kernelOwnerId,
+						signal: combinedSignal,
+						session,
+						idleTimeoutMs,
+						reset: cell.reset,
+						onChunk: chunk => {
+							outputSink!.push(chunk);
+						},
+						onStatus: event => {
+							if (event.op === EVAL_TIMEOUT_PAUSE_OP) {
+								idle?.pause();
+								return;
 							}
-						}
-						if (output.type === "status") {
-							upsertStatusEvent(statusEvents, output.event);
-							upsertStatusEvent(cellStatusEvents, output.event);
-						}
-						if (output.type === "markdown") {
-							cellHasMarkdown = true;
-						}
+							if (event.op === EVAL_TIMEOUT_RESUME_OP) {
+								idle?.resume();
+								return;
+							}
+							cellResult.statusEvents ??= [];
+							upsertStatusEvent(cellResult.statusEvents, event);
+							pushUpdate();
+						},
+					});
+				} finally {
+					idle?.dispose();
+					activeLiveCell = undefined;
+				}
+				const durationMs = Date.now() - startTime;
+
+				const cellStatusEvents: EvalStatusEvent[] = [];
+				const cellDisplayOutputs: EvalDisplayOutput[] = [];
+				const cellImageNotes: string[] = [];
+				let cellHasMarkdown = false;
+				for (const output of result.displayOutputs) {
+					if (output.type === "json") {
+						jsonOutputs.push(output.data);
+						cellDisplayOutputs.push(output);
 					}
-
-					const stdoutTrimmed = result.output.trim();
-					const imageText = cellImageNotes.join("\n");
-					const displayText = formatDisplayOutputsForText(cellDisplayOutputs);
-					const visibleDisplayText =
-						displayText && imageText ? `${displayText}\n\n${imageText}` : displayText || imageText;
-					const cellOutput =
-						stdoutTrimmed && visibleDisplayText
-							? `${stdoutTrimmed}\n\n${visibleDisplayText}`
-							: stdoutTrimmed || visibleDisplayText;
-					cellResult.output = cellOutput;
-					cellResult.exitCode = result.exitCode;
-					cellResult.durationMs = durationMs;
-					cellResult.statusEvents = cellStatusEvents.length > 0 ? cellStatusEvents : undefined;
-					cellResult.hasMarkdown = cellHasMarkdown || undefined;
-
-					if (cellOutput) {
-						// Fold test bookkeeping out of what the MODEL sees. `cellResult.output`
-						// was assigned the raw text just above, and the renderer reads that, so
-						// the operator still sees the run in full.
-						//
-						// This is the one accumulation point every return path below builds its
-						// `outputText` from, so folding here covers the success, non-zero-exit
-						// and cancelled paths without repeating itself in three places.
-						const folded = foldToolOutputBookkeeping(cellOutput).text;
-						cellOutputs.push(folded);
-						appendTail(folded);
-					}
-
-					if (result.cancelled) {
-						cellResult.status = "error";
-						pushUpdate();
-						// THREE different signals are merged into `combinedSignal`, and this
-						// one flag collapsed all of them. The two that matter here want
-						// opposite responses: an idle timeout means "raise the cell's timeout
-						// and run it again", and it already arrives carrying the backend's own
-						// `timed out after N seconds` annotation, which is exactly what the
-						// model needs to act on, so it keeps its ordinary error result. A user
-						// pressing Escape means STOP, and folding that into the same result was
-						// the defect. Nothing downstream could tell a cancellation from a cell
-						// that threw, though the agent loop's correct response to a failure is
-						// to read it and retry and its correct response to a cancellation is to
-						// stop. Worse, the text was `result.output || "Command aborted"`, so a
-						// cell that had printed anything at all before being interrupted
-						// reported ONLY that output: the word "cancelled" appeared nowhere, and
-						// a half-finished multi-cell run read as a finished one.
-						//
-						// The user's own signal outranks the watchdog when both have fired.
-						// They asked for the stop, and telling them their cell timed out when
-						// they cancelled it is the same conflation in the other direction.
-						if (signal?.aborted || sessionAbortController.signal.aborted) {
-							await finalizeOutput();
-							// `result.output` is empty for an interrupted cell, so the streamed
-							// text is the only surviving record of how far the work got, and it
-							// is what the operator needs to decide whether to re-run.
-							const partial = (result.output || liveOutput.text()).trim();
-							throw new ToolAbortError(
-								[
-									`Eval cancelled: ${describeEvalCell(cell)} started and did NOT finish`,
-									"any state it had already mutated is still in the kernel",
-									partial ? `output so far:\n${partial}` : "it produced no output before the cancellation",
-								].join("; "),
-								{ cause: signal?.reason ?? sessionAbortController.signal.reason },
-							);
-						}
-
-						const errorMsg = result.output || "Command aborted";
-						const combinedOutput = cellOutputs.join("\n\n");
-						const outputText = combinedOutput || errorMsg;
-
-						const summaryForMeta = await summarizeFinal(combinedOutput, finalizeOutput);
-						const details: EvalToolDetails = {
-							language: languages[0],
-							languages,
-							cells: cellResults,
-							jsonOutputs: jsonOutputs.length > 0 ? jsonOutputs : undefined,
-							statusEvents: statusEvents.length > 0 ? statusEvents : undefined,
-							isError: true,
+					if (output.type === "image") {
+						const resized = await resizeImage(
+							{
+								type: "image",
+								data: output.data,
+								mimeType: output.mimeType,
+							},
+							{ excludeWebP },
+						);
+						const image: ImageContent = {
+							type: "image",
+							data: resized.data,
+							mimeType: resized.mimeType,
 						};
-						if (notice) details.notice = notice;
-
-						return toolResult(details)
-							.content([{ type: "text", text: outputText }, ...images])
-							.truncationFromSummary(summaryForMeta, { direction: "tail" })
-							.done();
+						images.push(image);
+						cellDisplayOutputs.push({
+							type: "image",
+							data: image.data,
+							mimeType: image.mimeType,
+						});
+						const dimensionNote = formatDimensionNote(resized);
+						if (dimensionNote) {
+							cellImageNotes.push(`display image ${cellImageNotes.length + 1}: ${dimensionNote}`);
+						}
 					}
-
-					if (result.exitCode !== 0 && result.exitCode !== undefined) {
-						cellResult.status = "error";
-						pushUpdate();
-						const combinedOutput = cellOutputs.join("\n\n");
-						const outputText = combinedOutput
-							? `${combinedOutput}\n\n${formatExitCodeNotice(result.exitCode)}`
-							: formatExitCodeNotice(result.exitCode);
-
-						const summaryForMeta = await summarizeFinal(combinedOutput, finalizeOutput);
-						const details: EvalToolDetails = {
-							language: languages[0],
-							languages,
-							cells: cellResults,
-							jsonOutputs: jsonOutputs.length > 0 ? jsonOutputs : undefined,
-							statusEvents: statusEvents.length > 0 ? statusEvents : undefined,
-							isError: true,
-						};
-						if (notice) details.notice = notice;
-
-						return toolResult(details)
-							.content([{ type: "text", text: outputText }, ...images])
-							.truncationFromSummary(summaryForMeta, { direction: "tail" })
-							.done();
+					if (output.type === "status") {
+						upsertStatusEvent(statusEvents, output.event);
+						upsertStatusEvent(cellStatusEvents, output.event);
 					}
-
-					cellResult.status = "complete";
-					pushUpdate();
+					if (output.type === "markdown") {
+						cellHasMarkdown = true;
+					}
 				}
 
-				const combinedOutput = cellOutputs.join("\n\n");
+				const stdoutTrimmed = result.output.trim();
+				const imageText = cellImageNotes.join("\n");
+				const displayText = formatDisplayOutputsForText(cellDisplayOutputs);
+				const visibleDisplayText =
+					displayText && imageText ? `${displayText}\n\n${imageText}` : displayText || imageText;
+				const cellOutput =
+					stdoutTrimmed && visibleDisplayText
+						? `${stdoutTrimmed}\n\n${visibleDisplayText}`
+						: stdoutTrimmed || visibleDisplayText;
+				cellResult.output = cellOutput;
+				cellResult.exitCode = result.exitCode;
+				cellResult.durationMs = durationMs;
+				cellResult.statusEvents = cellStatusEvents.length > 0 ? cellStatusEvents : undefined;
+				cellResult.hasMarkdown = cellHasMarkdown || undefined;
+
+				if (cellOutput) {
+					// Fold test bookkeeping out of what the MODEL sees. `cellResult.output`
+					// was assigned the raw text just above, and the renderer reads that, so
+					// the operator still sees the run in full.
+					//
+					// This is the one accumulation point every return path below builds its
+					// `outputText` from, so folding here covers the success, non-zero-exit
+					// and cancelled paths without repeating itself in three places.
+					foldedOutput = foldToolOutputBookkeeping(cellOutput).text;
+					appendTail(foldedOutput);
+				}
+
+				if (result.cancelled) {
+					cellResult.status = "error";
+					pushUpdate();
+					// THREE different signals are merged into `combinedSignal`, and this
+					// one flag collapsed all of them. The two that matter here want
+					// opposite responses: an idle timeout means "raise the cell's timeout
+					// and run it again", and it already arrives carrying the backend's own
+					// `timed out after N seconds` annotation, which is exactly what the
+					// model needs to act on, so it keeps its ordinary error result. A user
+					// pressing Escape means STOP, and folding that into the same result was
+					// the defect. Nothing downstream could tell a cancellation from a cell
+					// that threw, though the agent loop's correct response to a failure is
+					// to read it and retry and its correct response to a cancellation is to
+					// stop. Worse, the text was `result.output || "Command aborted"`, so a
+					// cell that had printed anything at all before being interrupted
+					// reported ONLY that output: the word "cancelled" appeared nowhere, and
+					// a half-finished multi-cell run read as a finished one.
+					//
+					// The user's own signal outranks the watchdog when both have fired.
+					// They asked for the stop, and telling them their cell timed out when
+					// they cancelled it is the same conflation in the other direction.
+					if (signal?.aborted || sessionAbortController.signal.aborted) {
+						await finalizeOutput();
+						// `result.output` is empty for an interrupted cell, so the streamed
+						// text is the only surviving record of how far the work got, and it
+						// is what the operator needs to decide whether to re-run.
+						const partial = (result.output || liveOutput.text()).trim();
+						throw new ToolAbortError(
+							[
+								`Eval cancelled: ${describeEvalCell(cell)} started and did NOT finish`,
+								"any state it had already mutated is still in the kernel",
+								partial ? `output so far:\n${partial}` : "it produced no output before the cancellation",
+							].join("; "),
+							{ cause: signal?.reason ?? sessionAbortController.signal.reason },
+						);
+					}
+
+					const errorMsg = result.output || "Command aborted";
+					const outputText = foldedOutput || errorMsg;
+
+					const summaryForMeta = await summarizeFinal(foldedOutput, finalizeOutput);
+					const details: EvalToolDetails = {
+						language: languages[0],
+						languages,
+						cells: [cellResult],
+						jsonOutputs: jsonOutputs.length > 0 ? jsonOutputs : undefined,
+						statusEvents: statusEvents.length > 0 ? statusEvents : undefined,
+						isError: true,
+					};
+					if (notice) details.notice = notice;
+
+					return toolResult(details)
+						.content([{ type: "text", text: outputText }, ...images])
+						.truncationFromSummary(summaryForMeta, { direction: "tail" })
+						.done();
+				}
+
+				if (result.exitCode !== 0 && result.exitCode !== undefined) {
+					cellResult.status = "error";
+					pushUpdate();
+					const outputText = foldedOutput
+						? `${foldedOutput}\n\n${formatExitCodeNotice(result.exitCode)}`
+						: formatExitCodeNotice(result.exitCode);
+
+					const summaryForMeta = await summarizeFinal(foldedOutput, finalizeOutput);
+					const details: EvalToolDetails = {
+						language: languages[0],
+						languages,
+						cells: [cellResult],
+						jsonOutputs: jsonOutputs.length > 0 ? jsonOutputs : undefined,
+						statusEvents: statusEvents.length > 0 ? statusEvents : undefined,
+						isError: true,
+					};
+					if (notice) details.notice = notice;
+
+					return toolResult(details)
+						.content([{ type: "text", text: outputText }, ...images])
+						.truncationFromSummary(summaryForMeta, { direction: "tail" })
+						.done();
+				}
+
+				cellResult.status = "complete";
+				pushUpdate();
+
 				const hasImages = images.length > 0;
 				const outputText =
-					combinedOutput ||
+					foldedOutput ||
 					(hasImages ? `(displayed ${formatCount("image", images.length)}; no text output)` : "(no output)");
-				const summaryForMeta = await summarizeFinal(combinedOutput, finalizeOutput);
+				const summaryForMeta = await summarizeFinal(foldedOutput, finalizeOutput);
 
 				const details: EvalToolDetails = {
 					language: languages[0],
 					languages,
-					cells: cellResults,
+					cells: [cellResult],
 					jsonOutputs: jsonOutputs.length > 0 ? jsonOutputs : undefined,
 					statusEvents: statusEvents.length > 0 ? statusEvents : undefined,
 				};
@@ -841,8 +854,17 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 	}
 }
 
+/**
+ * Reconcile the cell's visible output with the sink's own accounting.
+ *
+ * The sink counted every byte that streamed through it, including bytes the
+ * inline window dropped; `cellOutput` is what the model will actually read. The
+ * returned summary carries the visible text with the FULL totals, so a truncation
+ * notice can say how much is missing rather than describing the window as if it
+ * were the whole run.
+ */
 async function summarizeFinal(
-	combinedOutput: string,
+	cellOutput: string,
 	finalizeOutput: () => Promise<OutputSummary | undefined>,
 ): Promise<OutputSummary> {
 	const rawSummary = (await finalizeOutput()) ?? {
@@ -853,12 +875,12 @@ async function summarizeFinal(
 		outputLines: 0,
 		outputBytes: 0,
 	};
-	const outputLines = combinedOutput.length > 0 ? combinedOutput.split("\n").length : 0;
-	const outputBytes = Buffer.byteLength(combinedOutput, "utf-8");
+	const outputLines = cellOutput.length > 0 ? cellOutput.split("\n").length : 0;
+	const outputBytes = Buffer.byteLength(cellOutput, "utf-8");
 	const missingLines = Math.max(0, rawSummary.totalLines - rawSummary.outputLines);
 	const missingBytes = Math.max(0, rawSummary.totalBytes - rawSummary.outputBytes);
 	return {
-		output: combinedOutput,
+		output: cellOutput,
 		truncated: rawSummary.truncated,
 		totalLines: outputLines + missingLines,
 		totalBytes: outputBytes + missingBytes,

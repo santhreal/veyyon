@@ -11,7 +11,7 @@ import { errorMessage, prompt, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
-import { PROMPTS } from "../prompts/registry";
+import { toolsPrompts } from "../prompts/tools/rows";
 import { Ellipsis, padToWidth, renderStatusLine, truncateToWidth } from "../tui";
 import type { ToolSession } from ".";
 import { replaceTabs } from "./render-utils";
@@ -196,7 +196,7 @@ export class ResolveTool implements AgentTool<typeof resolveSchema, ResolveToolD
 	};
 
 	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(PROMPTS["tools/resolve"].text);
+		this.description = prompt.render(toolsPrompts["tools/resolve"].text);
 	}
 
 	async execute(

@@ -26,8 +26,9 @@ import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { InternalUrlRouter } from "../internal-urls";
 import { paintHotTail, shimmerPhase } from "../modes/components/follow";
 import { truncateToVisualLines } from "../modes/components/visual-truncate";
-import { highlightCode, type Theme } from "../modes/theme/theme";
-import { PROMPTS } from "../prompts/registry";
+import { highlightCode } from "../modes/theme/highlight";
+import type { Theme } from "../modes/theme/theme-class";
+import { toolsPrompts } from "../prompts/tools/rows";
 import type { ClientBridgeTerminalExitStatus, ClientBridgeTerminalOutput } from "../session/client-bridge";
 import {
 	artifactFooter,
@@ -37,8 +38,9 @@ import {
 	streamTailUpdates,
 	TailBuffer,
 } from "../session/streaming-output";
-import { renderStatusLine } from "../tui";
 import { CachedOutputBlock, markFramedBlockComponent, outputBlockContentWidth } from "../tui/output-block";
+// The owner, not the local `../tui` barrel, which re-exports `./file-list` and through it the theme engine.
+import { renderStatusLine } from "../tui/status-line";
 import { getSixelLineMask } from "../utils/sixel";
 import type { ToolSession } from ".";
 import { truncateForPrompt } from "./approval";
@@ -457,7 +459,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 	get description(): string {
 		const evalBackends = resolveEvalBackends(this.session);
 		const isToolActive = (name: string, fallback: boolean): boolean => this.session.isToolActive?.(name) ?? fallback;
-		return prompt.render(PROMPTS["tools/bash"].text, {
+		return prompt.render(toolsPrompts["tools/bash"].text, {
 			asyncEnabled: this.#asyncEnabled,
 			autoBackgroundEnabled: this.#autoBackgroundEnabled,
 			autoBackgroundThresholdSeconds: Math.max(0, Math.floor(this.#autoBackgroundThresholdMs / 1000)),

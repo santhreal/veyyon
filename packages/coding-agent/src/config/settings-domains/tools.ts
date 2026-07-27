@@ -623,7 +623,7 @@ export const TOOLS_SETTINGS = {
 			group: "Discovery & MCP",
 			label: "Essential Tools Override",
 			description:
-				"Override the always-loaded built-in tools (default: read, bash, edit, write, glob, eval). Leave empty to use defaults.",
+				"Override the always-loaded built-in tools (default: read, bash, launch, edit, write, glob, eval). Leave empty to use defaults.",
 		},
 	},
 

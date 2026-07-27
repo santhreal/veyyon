@@ -2,7 +2,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { collapseWhitespace, errorMessage, ptree, Snowflake, truncate } from "@veyyon/utils";
-import { settings } from "../../config/settings";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { settings } from "../../config/settings-instance";
 import type { AgentStorage } from "../../session/agent-storage";
 import { throwIfAborted } from "../../tools/tool-errors";
 import { scopedTimeoutSignal } from "../../utils/fetch-timeout";

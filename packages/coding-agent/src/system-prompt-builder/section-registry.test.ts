@@ -30,7 +30,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { kebabToCamel } from "@veyyon/utils";
-import { PROMPTS } from "../prompts/registry";
+import { sessionPrompts } from "../prompts/session/rows";
 import { hasBanner, renderBanner } from "./banner-grammar";
 import { assembleDefaultTemplate, DEFAULT_TEMPLATE_SECTION_ORDER } from "./default-template";
 import { promptSectionNames, splitPromptSections } from "./prompt-sections";
@@ -93,7 +93,7 @@ describe("prompt-section registry: the shipped template agrees with the registry
 			// would pass on a file whose underline was lost or reflowed, which is
 			// exactly the damage that makes two sections merge into one.
 			const banner = renderBanner(section.name);
-			const at = PROMPTS["session/system-prompt"].text.indexOf(banner, from);
+			const at = sessionPrompts["session/system-prompt"].text.indexOf(banner, from);
 			expect({ id: section.id, found: at >= 0 }).toEqual({ id: section.id, found: true });
 			from = at + banner.length;
 		}
@@ -101,7 +101,7 @@ describe("prompt-section registry: the shipped template agrees with the registry
 
 	/** The whole override mechanism rests on reassembly being lossless. */
 	it("reassembles the template byte-for-byte from its registered sections", () => {
-		expect(assembleDefaultTemplate()).toBe(PROMPTS["session/system-prompt"].text);
+		expect(assembleDefaultTemplate()).toBe(sessionPrompts["session/system-prompt"].text);
 	});
 
 	/** The template splitter must look for exactly the banners the .md contains. A

@@ -24,8 +24,10 @@ import { extractTextContent } from "../commit/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { expandRoleAlias, getModelMatchPreferences, resolveModelFromString } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
-import { type LocalProtocolOptions, resolveLocalRoot } from "../internal-urls";
-import { PROMPTS } from "../prompts/registry";
+// The owning module, not the `../internal-urls` barrel: the barrel re-exports every protocol
+// handler and reaches hundreds of modules, and both of these live in `local-protocol`.
+import { type LocalProtocolOptions, resolveLocalRoot } from "../internal-urls/local-protocol";
+import { toolsPrompts } from "../prompts/tools/rows";
 
 /** Telemetry tag for the oneshot vision-description calls. */
 const ONESHOT_KIND = "image_attachment_describe";
@@ -129,13 +131,13 @@ async function describeImage(
 		const response = await instrumentedCompleteSimple(
 			visionModel,
 			{
-				systemPrompt: [prompt.render(PROMPTS["tools/image-attachment-describe-system"].text)],
+				systemPrompt: [prompt.render(toolsPrompts["tools/image-attachment-describe-system"].text)],
 				messages: [
 					{
 						role: "user",
 						content: [
 							{ type: "image", data: image.data, mimeType: image.mimeType },
-							{ type: "text", text: prompt.render(PROMPTS["tools/image-attachment-describe"].text) },
+							{ type: "text", text: prompt.render(toolsPrompts["tools/image-attachment-describe"].text) },
 						],
 						timestamp: Date.now(),
 					},

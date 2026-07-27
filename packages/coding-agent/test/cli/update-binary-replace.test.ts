@@ -13,13 +13,15 @@
  * binary exec.
  */
 import { describe, expect, it, spyOn } from "bun:test";
-import { existsSync, promises as fsp, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, promises as fsp, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { replaceBinaryForUpdate } from "../../src/cli/update-cli";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
+
+const makeTempDir = useTrackedTempDirs("veyyon-update-swap-");
 
 function sandbox(): { target: string; temp: string; backup: string } {
-	const dir = mkdtempSync(path.join(tmpdir(), "veyyon-update-swap-"));
+	const dir = makeTempDir();
 	return {
 		target: path.join(dir, "veyyon"),
 		temp: path.join(dir, "veyyon.new"),

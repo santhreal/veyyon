@@ -1,5 +1,6 @@
 import { $env, errorMessage, logger } from "@veyyon/utils";
-import { settings } from "../config/settings";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { settings } from "../config/settings-instance";
 import {
 	createWorkerSubprocess,
 	logWorkerMessage,

@@ -2,10 +2,10 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import * as url from "node:url";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { theme as activeTheme, getThemeByName, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { readToolRenderer } from "@veyyon/coding-agent/tools/read";
 import type { TUI } from "@veyyon/tui";
+import { createToolExecution } from "../helpers/tool-execution";
 
 function extractLinkUris(text: string): string[] {
 	return [...text.matchAll(/\x1b\]8;[^;]*;([^\x1b]+)\x1b\\/g)].map(match => match[1]!);
@@ -115,7 +115,7 @@ describe("readToolRenderer hyperlinks", () => {
 describe("read ToolExecutionComponent framing", () => {
 	it("renders framed read results inside the standard tool container padding", () => {
 		const uiStub = { requestRender() {}, requestComponentRender() {} } as unknown as TUI;
-		const component = new ToolExecutionComponent("read", { path: "src/example.ts" }, {}, undefined, uiStub);
+		const component = createToolExecution("read", { path: "src/example.ts" }, {}, undefined, uiStub);
 		component.updateResult(
 			{
 				content: [{ type: "text", text: "export const x = 1;" }],

@@ -1,7 +1,7 @@
 /**
  * Custom tool loader - loads TypeScript tool modules using native Bun import.
  *
- * Dependencies (the zod-backed typebox shim and pi-coding-agent) are injected via the
+ * Dependencies (the self-contained typebox shim and pi-coding-agent) are injected via the
  * CustomToolAPI to avoid import resolution issues with custom tools loaded from user directories.
  */
 import * as path from "node:path";
@@ -10,13 +10,13 @@ import { errorMessage, logger } from "@veyyon/utils";
 import { type } from "arktype";
 import * as zodModule from "zod/v4";
 import { toolCapability } from "../../capability/tool";
-import { type CustomTool, loadCapability } from "../../discovery";
+import { type DiscoveredCustomTool, loadCapability } from "../../discovery";
 import type { ExecOptions } from "../../exec/exec";
 import { execCommand } from "../../exec/exec";
 import type { HookUIContext } from "../../extensibility/hooks/types";
 import { getAllPluginToolPaths } from "../../extensibility/plugins/loader";
 // Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
-import * as PiCodingAgent from "../../index";
+import { type CodingAgentApi, loadCodingAgentApi } from "../coding-agent-api";
 import * as typebox from "../typebox";
 import { createNoOpUIContext, resolvePath, withExitGuard } from "../utils";
 import type { CustomToolAPI, CustomToolFactory, LoadedCustomTool, ToolLoadError } from "./types";
@@ -130,7 +130,7 @@ export class CustomToolLoader {
 	#seenNames: Set<string>;
 
 	constructor(
-		pi: typeof PiCodingAgent,
+		pi: CodingAgentApi,
 		cwd: string,
 		builtInToolNames: string[],
 		pushPendingAction?: (action: {
@@ -211,7 +211,16 @@ export async function loadCustomTools(
 		reject?(reason: string): Promise<AgentToolResult<unknown> | undefined>;
 	}) => void,
 ) {
-	const loader = new CustomToolLoader(PiCodingAgent, cwd, builtInToolNames, pushPendingAction);
+	// No paths means no author code will ever see the API object, and building one costs the whole
+	// package barrel (see `../coding-agent-api`). Every launch calls this from `createAgentSession`,
+	// and almost every launch has no custom tools, so the common case must not pay for it. The
+	// returned `setUIContext` is a no-op because there is genuinely nothing to inform: it exists so
+	// callers need no branch of their own, and a tool that appears later comes with a fresh call here.
+	if (pathsWithSources.length === 0) {
+		return { tools: [] as LoadedCustomTool[], errors: [] as ToolLoadError[], setUIContext: () => {} };
+	}
+
+	const loader = new CustomToolLoader(await loadCodingAgentApi(), cwd, builtInToolNames, pushPendingAction);
 	await loader.load(pathsWithSources);
 	return {
 		tools: loader.tools,
@@ -249,7 +258,7 @@ export async function discoverCustomToolPaths(configuredPaths: string[], cwd: st
 	};
 
 	// 1. Discover tools via capability system (user + project from all providers)
-	const discoveredTools = await loadCapability<CustomTool>(toolCapability.id, { cwd });
+	const discoveredTools = await loadCapability<DiscoveredCustomTool>(toolCapability.id, { cwd });
 	for (const tool of discoveredTools.items) {
 		addPath(tool.path, {
 			provider: tool._source.provider,

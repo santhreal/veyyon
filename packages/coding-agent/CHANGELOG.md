@@ -2,13 +2,524 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Asking which slash commands an ACP or RPC client can drive no longer loads what they do. Three places needed the same answer, and all three got it by reading `command.handle !== undefined` off the assembled registry: the command list advertised to a client, the reserved names that stop an extension shadowing a builtin, and the available-commands list. `handle` is a function, so reading it meant loading all 67 handler bodies. A command now DECLARES `textMode` beside its name, and the handler table is typed against that flag: a command with `textMode` must supply a text handler and one without it may not, so the flag cannot drift from the fact it stands for. `slash-commands/available-commands.ts` went from 959 modules to 192, and the new `slash-commands/text-mode-builtins.ts` answers all three questions in 4. Dispatch stays in `slash-commands/acp-builtins.ts` and still loads the handlers, because it runs one.
+
+- Knowing that a slash command exists no longer means loading what it does. The builtin registry held 67 objects, each carrying a command's name, aliases and description next to the handler body that implements it, and a handler body reaches the model resolver, the collab host, the OAuth providers and the session store. The names now live in `slash-commands/builtin-declarations.ts`, which reaches 3 modules, and the registry attaches handlers to them through a table keyed by the declared names, so a handler for a command that does not exist and a command with no handler are both compile errors rather than something a test has to notice. The extension loader, which imports the reserved names and nothing else, went from 945 modules to 178, `modes/runtime-init.ts` from 947 to 219, and `veyyon -p` from 949 to 221.
+
+- An `apply_patch` streaming preview shows its file path instead of the wire handle. The fields a renderer reads mid-stream are listed per tool name, but the renderer they feed is bound to more than one name: `apply_patch` is the same object as `edit`, and it had no list, so it fell through to a regex that slices the path out of the raw JSON buffer. That buffer is deliberately left unexpanded, since a handle can expand to text holding a quote or a newline and splicing it in would corrupt the JSON the next frame parses. The two names now share one list, so the heading reads the real path for the whole call rather than after the first full parse, which for a long patch is most of it.
+
+- Four more modules name the module that declares the function they wanted rather than the `@veyyon/ai` entry point, which re-exports the whole package and reaches 363 modules. `config/api-key-resolver.ts` wanted `isUsageLimitOutcome`, a predicate over a status code that lives in a module with no imports at all, and went from 364 modules to 42; `commit/shared-llm.ts` from 368 to 112; `mcp/manager.ts` from 613 to 498; `web/search/providers/perplexity.ts` from 372 to 327. The two spellings differ by one keyword, since `import type` is erased and free, which is why this kind of edge accumulates without anything failing.
+
+- A streaming tool-call preview shows the text a handle stands for. Argot replaces long repeated strings on the wire with `§handle` fragments and expands them just before a tool runs, so for the whole time a call streamed the preview drew `§db` where the file body belonged. The codec now reaches both the live reveal and the rebuilt one, and expansion happens on decoded VALUES rather than on the partial JSON they came from: a handle can expand to text containing a quote, a newline or a backslash, and splicing that into the buffer would corrupt the JSON the next frame has to parse. A custom tool's stream is raw text rather than JSON, so both its fields expand. With argot off, which is the default, every path is byte-identical.
+
+- The session backup name is written and read through one owner. `session-storage.ts` moves a transcript aside when it cannot rename over it, and `session-listing.ts` had hand-rolled the inverse parse to recover sessions stranded by a crash between the two renames, one file away from the template it was inverting. The gc glob and the two listing filters that exclude backups now spell the suffix once as well.
+
+- Declaring the web-search tool no longer loads the credential store. `web/search/index.ts` is the module eighteen providers sit behind, and it imported `discoverAuthStorage` statically from a module that reaches the auth broker client, the remote store, the snapshot cache and the SQLite credential store: 347 modules for a function that only runs when a search executes. It is loaded on demand inside the three call sites now, which were already `async`, and the file went from 517 modules to 252.
+
+- The usage CLI, the models CLI, the `token` command and the plugin doctor no longer import the whole application to find out where credentials live. `discoverAuthStorage` is declared in `session/auth-broker-config.ts` and re-exported from `sdk.ts`, and for those four it was the only name they wanted from the barrel; all four are now clean of it.
+
+- Two more values are read from the module that declares them rather than through a barrel. `modes/session-observer-registry.ts` subscribes to two task event channels by name and had taken those two strings from the `../task` barrel, 1,406 modules to know what a channel is called; it names `task/types.ts` now and reaches 24. The slash-command browse order moved to `slash-commands/category-order.ts`, because reaching it through the builtin registry meant importing every command implementation, and the autocomplete that arranges menu headers wanted nothing else from there.
+
+- The session transcript extension and the advisor transcript name come from `@veyyon/utils/session-file`. The session manager, session listing, the gc CLI, HTML export, the Agent Hub, the debug bundle, the `history://` registry helper, the task executor and the read tool had each spelled `.jsonl` themselves, in four incompatible forms: a string, a length constant, `path.basename(file, ".jsonl")` which also strips the directory, and `slice(0, -6)`. The gc CLI's globs and its compressed-session suffix now derive from the extension, so changing it moves the archive form too.
+
+- Reading a setting no longer means importing the module that writes it. `config/settings-instance.ts` owns the process-global slot, the `settings` proxy over it and the test-reset registry, at one module and with no runtime imports; `config/settings.ts` fills that slot and re-exports the names callers already use. Thirty-one modules imported the 95-module store and used nothing but a value: the vault URL handler asked whether the vault is enabled and paid 32 marginal modules for the question, `modes/theme/markdown-theme.ts` imported it to register a test-teardown hook, and `tools/output-meta.ts` reached it for `getDefault`, which the schema owns and the store only re-exports. The settings store is now off the graphs of `tools/read.ts`, `tools/fetch.ts` and `web/search/index.ts`, and off every internal-URL handler.
+
+- `Settings.init()` records the promise that fills the singleton slot rather than the bare load it derives from. The bare load settles first, so a second caller that joined it could resume from `await Settings.init()` before the slot was filled, see `isSettingsInitialized()` return false in a process that was initialising correctly, and fall back to a default with nothing thrown.
+
+- `web/search/providers/perplexity-auth.ts` re-exports its published `OPENROUTER_BASE_URL` from `@veyyon/catalog/provider-endpoints` instead of declaring the host itself.
+
+- Four values that one module produces and another matches now have one owner each: the legacy shim's `__isToolDefinition` marker, the default plan file URL, the MCP protocol revision, and Anthropic's `web_search` tool name. Each was declared on both sides of the boundary, and a drift in any of them is silent. The plan URL was the worst: nine spellings, four of them inline in `session/agent-session.ts`, which is the module that decides it. Plan protection compares an edit target against that URL, so a drift meant plan mode reporting that it was protecting the plan file while an edit to that exact path went through.
+
+- The Gemini web-search provider reads the developer API base from `@veyyon/catalog/provider-endpoints`. Its copy was the third spelling of a URL whose `/v1beta` segment every consumer has to agree on.
+
+- `tools/eval.ts` no longer carries the module that draws eval results. It runs language kernels, and it had two edges to `tools/eval-render.ts`, which brings `Markdown` and `Text` from `@veyyon/tui`, the theme engine, the markdown theme and the settings store with it: one imported `upsertStatusEvent`, a ten-line array helper now living in `src/eval/status-events.ts` beside the event type, and the other re-exported the renderer for consumers that did not need the indirection. `modes/components/tool-execution.ts` had been importing the whole tool to read a preview-line count and now reads it from the renderer. The tool went from 801 modules to 638.
+
+- The Perplexity search provider reads its client identity from `@veyyon/catalog/wire/perplexity`, including the `version` field of the ask request body, which is the same value the `X-App-ApiVersion` header carries and was the copy furthest from the header it has to agree with.
+- `browser-headers.ts` states the Chrome version it claims once, and exports `CHROME_DESKTOP_USER_AGENT` and `CHROME_WINDOWS_USER_AGENT` derived from it. The `Sec-Ch-Ua` client hint and the User-Agent had each spelled the version as a literal, and a fingerprint whose two version claims disagree is what a bot check compares. `web/scrapers/types.ts` used Chrome 131 as the last rung of its bot-block escalation ladder while this module claimed 149, so the attempt that has to get through announced the stalest browser of the three; it now reads the shared Windows User-Agent.
+
+- The Codex web-search provider reads the account id out of a token through `@veyyon/catalog/wire/codex`. It had declared its own copy of the claim namespace while already importing three other constants from that exact file in the same import statement.
+
+- Reads `BEL`, `SGR_BG_RESET`, `SGR_INTENSITY_RESET` and `OSC66` from `@veyyon/tui/ansi` instead of redeclaring them. `\x07` had three local names, `BEL` in `tui/hyperlink.ts`, `OSC_TERMINATOR_BEL` in `utils/enhanced-paste.ts` and `SIXEL_END_BELL` in `utils/sixel.ts`, so the sixel scanner and the paste decoder each decided independently what closes an OSC sequence. `modes/theme/shimmer.ts` called `\x1b[22m` `BOLD_CLOSE` and `modes/components/diff.ts` called it `DIM_OFF`, and it is both: cancelling dim inside a bold run also cancels the bold.
+
+- A long-running eval cell no longer grows its retained output without limit: `capExecutionOutputLines` in `modes/components/execution-shared.ts` bounds it at five screenfuls, the same bound the bash block already had.
+- An execution block now says how many output lines it dropped while streaming, in its own note, instead of folding them into the "… N more lines (ctrl+o to expand)" hint. The bash block used to drop the oldest lines and then compute that hint from the already-trimmed buffer, so a five-thousand-line run reported eighty hidden lines and expanding revealed a hundred. The two are different facts: hidden lines are still held and expanding reveals them, dropped lines are gone.
+
+- The bash and eval execution blocks share one output-line clamp, `clampExecutionDisplayLine` in `modes/components/execution-shared.ts`, and it measures terminal columns. Both components declared `MAX_DISPLAY_LINE_CHARS = 4000` and both had a private `#clampDisplayLine`, but bash measured `visibleWidth` and eval measured `line.length`, so one named limit meant two different things. Eval's half charged a syntax-highlighted line for the ANSI escape bytes a user cannot see and truncated it while it still displayed far short of the limit, let a wide-character line through at twice the budget because it counted a two-column character as one, and cut at a code-unit offset that can land inside an escape sequence or a surrogate pair. The column measurement is the correct one and is now the only one. The twenty-row preview height both components declared is shared as `EXECUTION_PREVIEW_LINES`.
+
+- The three option labels the ask runtime adds to a question (`Other (type your own)`, `Chat about this`, `Next →`) are declared once in `tools/ask-option-labels.ts`, together with the reserved-label predicate. They were declared in three modules under two sets of names, and each is compared by string equality to decide behaviour, so a drift between the module that renders a label and the module that compares it does not fail loudly: the branch never runs and the label is handed back to the model as though the user had typed it. A user who picks the free-text option to answer in their own words gets no prompt, and the model is told their answer was the words "Other (type your own)".
+
+- The Agent Hub and the Subagent Inbox take their three shared interaction timings from `modes/components/agent-view-timings.ts`. Both declared `AGE_TICK_MS`, `DATA_CHANGE_RENDER_COALESCE_MS` and `LEFT_TAP_WINDOW_MS` with the same values, and the inbox's comment on the gesture window said "matching the hub", which names the coupling without doing anything about it. These are two components with separate render loops that a user moves between without being told they are different screens, so drift is felt rather than abstract: the same relative-time column refreshing at two rates, or the same left-left close gesture needing two different rhythms, which reads as the gesture not working. The owner is a leaf with no imports, deliberately NOT `agent-status-display.ts`, whose doc makes it the owner of the AgentStatus visual language and which imports the theme engine to do that.
+
+- The collab relay client takes the fatal close codes and the reconnect send bound from `@veyyon/wire/relay`. Both were declared here and again in `@veyyon/collab-web`'s browser client, character for character; an unlisted code is transient by definition, so a fatal code that only one client knew about would have made the other reconnect forever against a condition that will never clear.
+
+- Every eval kernel takes its shutdown grace, its interrupt escalation window and its two naming conventions from `eval/kernel-base.ts`, which already owned the startup floor for exactly this reason. `SHUTDOWN_GRACE_MS = 1_000` was declared in all three language kernels and a FOURTH time in the Julia executor's session reset, so a language given a longer shutdown in its kernel would still have been killed at one second when its session was reset; `INTERRUPT_ESCALATION_MS = 5_000` was declared three times, though it describes a user's patience behind Ctrl-C rather than anything about an interpreter. The two conventions matter more than the duplication: `VEYYON_<LANGUAGE>_IPC_TRACE` is a name a user types and each kernel formatted its own, so nothing stated the convention and a fourth language had no reason to follow it, and the same went for `<tmpdir>/veyyon-<language>-runner`. Both are now helpers (`kernelIpcTraceEnvVar`, `kernelRunnerCacheDir`), the path one joining with `path.join` as the three call sites did rather than with a slash. `VEYYON_RUBY_IPC_TRACE` and `VEYYON_JULIA_IPC_TRACE` existed and were undocumented; both are in the environment-variable reference now, with the convention stated.
+
+- The Antigravity endpoint switch in `session/agent-session.ts` reads its two hosts from `@veyyon/catalog/provider-endpoints` instead of spelling them inline, and `tools/image-gen.ts`, `web/search/providers/gemini.ts`, `session/agent-storage.ts`, `session/history-storage.ts`, `mcp/oauth-flow.ts` and `modes/components/custom-editor.ts` each stopped declaring a value another package owns: the Google Cloud Code and Antigravity hosts, the SQL `now`-in-seconds expression that stamps the history and model-performance tables, the default OAuth callback path, and the bracketed-paste markers. Behaviour is unchanged; each value now has exactly one place a change to it can be made.
+
+- Twelve modules stopped importing the `@veyyon/utils` barrel whole for one or two names, which takes the barrel off `tools/read.ts`'s graph entirely. The barrel is 81 small leaf modules, and an edge to it only leaves a closure when the LAST path does, so this had to be all twelve at once: `internal-urls/vault-protocol.ts` wanted `$which`, `lsp/utils.ts` wanted `truncate`, `tools/render-utils.ts` five formatters, `web/scrapers/types.ts` one. Each now names its owner (`@veyyon/utils/which`, `/format`, `/byte-truncate`, `/path-tree`, and so on), with the name-to-owner map read off the barrel's own re-export list. Measured: `session/session-context.ts` 130 -> 82, `session/messages.ts` 122 -> 74, `tools/render-utils.ts` 177 -> 139, `internal-urls/index.ts` 231 -> 205, `tools/read.ts` 468 -> 449, and 822,349 module instantiations across the test suite.
+- Rendering a code cell no longer loads the theme engine. `modes/theme/theme-binding.ts` exists so a module can read the ACTIVE theme without importing the loader that sets it, and its doc warns that a value import of `modes/theme/theme` puts the engine back in front of every reader. That is what had happened one function away: `modes/theme/markdown-theme.ts` took `getSymbolTheme` from the engine for one field, and `tui/code-cell.ts` took `highlightCode` from it, which the engine merely forwards from `modes/theme/highlight` (24 modules against 282). A box-drawing character set and a syntax highlighter were carrying theme JSON loading, the hundred embedded theme modules and mermaid rendering into every rendered cell, and through `tools/read.ts` into every file read. `getSymbolTheme` now lives in `modes/theme/symbol-theme.ts`, a two-module leaf beside the binding, re-exported from the engine so the eight callers that already reach it are unchanged; nine modules that render code name the owner of what they use. Measured: `modes/theme/markdown-theme.ts` 319 -> 175, `tui/code-cell.ts` 327 -> 220, `tools/read.ts` 648 -> 542, `modes/components/diff.ts` 288 -> 181. Three of the nine did not move on the first pass, because the engine also arrived through a different import, and those paths were four hops of forwarding: `tools/bash.ts` and `tools/write.ts` took three names from the local `tui` barrel, which `export *`s `tui/file-list.ts`, and that module took `getLanguageFromPath` from the engine rather than from the one-module table it lives in; `modes/components/eval-execution.ts` took its symbols through `modes/components/execution-shared.ts`. With those repointed too: `tui/file-list.ts` 289 -> 180, the local `tui` barrel 352 -> 246, `tools/bash.ts` 504 -> 353, `tools/write.ts` 536 -> 386, `modes/components/eval-execution.ts` 299 -> 193, and 832,035 module instantiations across the test suite instead of 859,485.
+- The prompt registry now holds one row module per prompt directory, and `prompts/registry.ts` aggregates them. It held all 163 `import ... with { type: "text" }` specifiers itself, so importing it to read ONE prompt reached all 163: a tool renders its own description from a row, and `tools/read.ts` paid 167 modules for that one string. 95 files in this package had the same edge. Each of the twenty-one directories now owns its rows in `<directory>/rows.ts` and consumers take the directory they belong to (`toolsPrompts["tools/read"]`), which is 51 modules for `tools/` and 3 for `steering/`. `PROMPTS`, `PromptId`, `PROMPT_IDS`, `promptText`, `requirePrompt` and `codingAgentPrompts` are unchanged, so no consumer had to change; the three modules that genuinely span directories still take the aggregate. Measured: `tools/read.ts` 761 -> 647, `session/steering-envelope.ts` 216 -> 86, and 859,485 module instantiations across the test suite instead of 893,359. The coverage gate now checks the same invariant one level deeper: every `.md` is imported by exactly one row module, every row module is aggregated by `registry.ts`, and nothing else in the repository may import a `.md`.
+- Two re-export shims stopped naming the `@veyyon/utils` barrel. `utils/fetch-timeout.ts` forwards five timeout helpers and `web/search/utils.ts` forwards `collapseWhitespace`, and both took them from the barrel, so a shim whose whole content is a re-export list put 82 modules on its callers' graphs. They now name `@veyyon/utils/scoped-timeout`, `/abortable` and `/collapse-whitespace`. Every web-search provider is 53 modules cheaper (`web/parallel.ts` 217 -> 164) and both shims are 2 modules.
+
+### Fixed
+
+- Resolving an internal URL no longer loads the streaming engine. `session/session-context.ts` took `legacyArchiveSourceText` from `@veyyon/agent-core/compaction`, and that subpath barrel re-exports the compaction engine, which imports the `@veyyon/ai` barrel to summarize a conversation. The function's owner, `compaction/legacy-snapcompact-archive.ts`, is a self-contained reader for a retired archive format and imports nothing at all. One specifier: `session/session-context.ts` 407 -> 131 modules, `session/session-manager.ts` 455 -> 179, and because the URL router reaches the session loader through the history handler, `internal-urls/index.ts` 497 -> 232 and `tools/read.ts` 918 -> 761.
+- Reading `Settings` no longer loads the compaction engine or the streaming engine. Four imports named a barrel where they wanted one value: `config/compaction-strategy.ts` took `resolveThresholdTokens` from `@veyyon/agent-core/compaction`, whose subpath barrel re-exports the summarizer; `config/settings-domains/context.ts` took the string `AUTO_COMPACTION_THRESHOLD` from the bare `@veyyon/agent-core` barrel, 406 modules for a sentinel; `thinking.ts` and `config/model-resolver.ts` took `ThinkingLevel` from the same barrel. All four now name their owners. `config/settings.ts` 442 -> 136 modules, `config/settings-schema.ts` 433 -> 58, `thinking.ts` 407 -> 7, and because settings is imported nearly everywhere, `modes/theme/theme.ts` 588 -> 282, `tui/hyperlink.ts` 497 -> 192, `tools/fetch.ts` 554 -> 369 and `tui/code-cell.ts` 633 -> 327 for free. The gate in `test/architecture/leveraged-imports-stay-cut.test.ts` asserted that settings reached neither `@veyyon/ai/index.ts` nor `@veyyon/ai/stream.ts` and passed anyway, because its resolution table did not know this workspace's own package names; it now derives the table from the workspace and every ceiling in it has been re-measured.
+- Resolving `issue://123` or `pr://7/diff` no longer loads the `github` tool or the prompt corpus. `tools/gh.ts` held two things: the cache-aware issue, PR and PR-diff fetchers, and the `GithubTool` class with its 38 ops, run-watch poller, worktree-based PR checkout and four search renderers. The class renders its own description from the prompt registry, which is correct for a tool, so `internal-urls/issue-pr-protocol.ts` reached 355 modules to call six functions. From there it spread the way these always do: the router builds every handler, `tools/read.ts` consults the router because reading `pr://7` is a real feature, and 54 test files import `read`. The fetchers now live in `tools/gh-fetch.ts` (81 modules) and the primitives both halves share in `tools/gh-format.ts` (4), with every name re-exported from `tools/gh.ts`, so no caller changed. The handler reaches 84 and `internal-urls/index.ts` 205, down from 418. The shared cache row is unaffected and still shared: open `pr://7`, then ask the tool for PR 7, and the second read is free because both call the same fetcher against the same SQLite row.
+- `prompts/registry.ts` takes `definePromptRegistry` from the module that defines it rather than from the `@veyyon/utils` barrel: 3 modules instead of 74. 94 files in this package import the registry, and its own code cost was almost entirely that one import.
+- The prompt inventory reports the real renderer of a prompt again. It finds one by matching a registry table indexed by an id, and the pattern accepted only SCREAMING_CASE table names, so splitting the registry into camelCase per-directory row tables made all 95 consumers invisible at once and the inventory claimed the system prompt was rendered by its own row module and two tests. The accepted camelCase names are derived from the registry's own directories rather than matched as any `\w*Prompts`, so an ordinary local named `userPrompts` is still not a registry.
+
+- `tools.artifactSpillThreshold` now reaches every tool it claims to. "How many bytes of tool output
+  stay in the conversation" had two answers with the same meaning and the same value: this setting
+  governed the centralised spill that runs after a tool returns, while every streaming tool priced
+  itself against a compiled 50KB constant that nothing could reach. They agreed only because both
+  happened to be 50KB, so lowering the threshold to 2KB moved the centralised path and left bash,
+  eval, ssh and the interactive shell at 50KB. `eval` alone is about 80% of tool-result bytes, so
+  most of the setting did nothing while reading as though it had been applied, which is worse than a
+  knob that does nothing at all. `inlineOutputPricing` reads it for both paths now, so it also
+  composes properly with `tools.inlineOutputFloor`, which is a SHARE of this budget: a quarter of
+  50KB and a quarter of 2KB are different budgets, and only one of the two factors had been settable.
+  Nothing is lost by lowering it — output past the threshold is written as a session artifact and the
+  result keeps a head/tail window plus the `artifact://<id>` footer that reads the full text back, so
+  it costs a re-read rather than output. The 50KB exists once, as
+  `DEFAULT_ARTIFACT_SPILL_THRESHOLD_KB` beside the floor default; `DEFAULT_MAX_BYTES` is that value
+  in bytes, under the name every caller and tool doc already uses. A threshold that is not a positive
+  finite number is refused with a log line and the compiled default, never silently corrected.
+
 ### Added
+
+- `argot.autoload` decides whether the project you launched in is loaded for the session, or every
+  load is left to the agent's `argot_load` calls. The startup load already existed and was
+  unconditional, and the handbook described the opposite behaviour ("veyyon does not guess which
+  project you mean: the agent decides"), so an operator could not predict whether their repository
+  would be walked as the session came up, and had no way to say no. The default is `true`, which is
+  the behaviour that shipped. The decision has one owner, `shouldAutoloadArgotAtStartup`, rather than
+  the conditions spelled out inline at the SDK's call site, so a second startup path cannot honour
+  the setting on one route and ignore it on another. It changes WHEN a dictionary is built and
+  nothing else: the codec is still built, the model still gets `argot_load` and `argot_unload`, and
+  expansion stays unconditional, so a handle written after an agent-driven load still expands to
+  exact bytes.
+
+- `veyyon prompt --statements` prints what each individual rule of the system prompt costs, with the
+  condition that decides whether it is in this prompt at all, and lists every rule this configuration
+  leaves out. The section breakdown could not answer the question an operator actually has: TOOL
+  POLICY is one row of it and 9KB of prompt, so the answer was "tool policy is large". The cost is
+  MARGINAL, meaning what the prompt would be shorter by without the rule rather than the length of the
+  rule's text, because `render` ends in a `format` pass that normalizes whitespace across statement
+  boundaries and text lengths would therefore produce a breakdown whose parts exceed the whole. The
+  parts reconcile exactly instead: section bytes equal the banner plus the sum of the statement bytes
+  plus the one separator newline, measured and pinned rather than argued.
+
+- `veyyon prompt --statement <id>` prints one rule's rendered text, which is the counterpart to
+  `--section` at the granularity a rule has and the next thing anyone wants after seeing a row in the
+  cost table they do not recognise. Rendered rather than the template behind it, so an interpolated rule
+  such as the personality block shows what the model receives. A rule that is not in this prompt reports
+  the condition that would include it and why it exists, and still exits 0, because a rule being off is
+  a configuration and not a failure; an unknown id exits non-zero and quotes the ids of the section it
+  named, since an empty stdout reads as an empty rule rather than as a typo. The printed text weighs
+  exactly what `--statements` charges the rule, asserted, so the two surfaces cannot disagree about the
+  same rule.
+
+- The bench can run a per-rule prompt experiment. `VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS` had no arm
+  vehicle when it landed, so the mechanism built for the harness could not be used by it: an operator
+  would have had to set the variable outside the runner, where the single-IV guard cannot see it and two
+  different ablation arms fingerprint identically. An arm now carries `arms/<arm>.statements.yml`,
+  validated before the run (unknown statement id, a value that is neither text nor `null`, malformed
+  YAML), staged as `statements/<arm>.json`, folded into the arm fingerprint, and mounted into the
+  container the same scoped way the section override is. `arms/candidate-ablate-delegation-gates.*` is
+  the worked example, checked through the builder's own validator so it is known to load.
+
+  The fingerprint folds the new field in only when it says something, so arms without one keep the
+  fingerprints already recorded in past results and a longitudinal diff does not report every arm as
+  changed; an EMPTY override canonicalizes to `{}` and counts as absent, so an arm cannot pass the
+  single-IV guard by carrying an empty file.
+
+- `VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS` replaces or removes ONE rule of the system prompt, which is
+  what makes an eval able to attribute a score change to a rule instead of to a section. A JSON object
+  of statement id to replacement text, or to `null` to ablate the rule. Same instrument as the
+  per-section override, one level finer, and deliberately the same shape: environment variable only,
+  no config key and no CLI flag, because a config-reachable prompt override could silently contaminate
+  a production run and a contaminated eval reports a number that looks valid. `null` and `""` are
+  different operations and both are pinned: `null` removes the row and the separation it carries, `""`
+  keeps the row present and drops only its words. Every way an override could do nothing is refused
+  loudly rather than ignored, including an unknown statement id, a value that is neither text nor
+  `null`, and malformed JSON. An override cannot resurrect a rule whose condition is false, since the
+  condition decides presence and the override decides text.
+
+### Changed
+
+- `config/settings.ts` stopped dragging the whole of `@veyyon/ai`. It is the most imported module in
+  the package (528 test files, and every runtime consumer of `Settings`) and it reached 380 modules, 228
+  of them that package: the streaming engine, every provider transport, the model registry, the error
+  taxonomy. Three imports carried it, each naming a barrel or a re-export instead of the module that
+  owns the value: the in-flight caps setter came from `@veyyon/ai/stream` rather than from the caps
+  themselves, `THINKING_EFFORTS` came from the `@veyyon/ai` barrel though `@veyyon/catalog/effort` owns
+  it and imports nothing, and the sqlite credential store came through the barrel (345 modules) rather
+  than from `@veyyon/ai/auth-storage` (212), which defines it. Now 250, with `config/settings-schema.ts`
+  down from 371 to 106 and `thinking.ts` from 346 to 6. Nothing about behaviour changes; what changes is
+  that reading a setting no longer instantiates the streaming stack. Neither existing architecture gate
+  could see any of this, because both walk without resolving workspace packages and read this file as 36
+  modules, so the cut is held by a new gate that resolves them.
+
+  Then 125, once `packages/ai` split the sqlite credential store out of the module that also owns the
+  OAuth machinery. `session/agent-storage.ts` wanted the store and nothing else, so it now names
+  `@veyyon/ai/auth-storage-sqlite` (83 modules) and `@veyyon/ai/auth-credential-rows` (75), and takes
+  the credential types from `@veyyon/ai/auth-storage` as types, which are erased. It fell from 213 to 84,
+  and that carried `session/session-manager.ts` from 482 to 369 and `session/session-context.ts` from 472
+  to 359. `session/auth-storage.ts` stayed at 215 and that is not slack: it forwards `AuthStorage`
+  itself, and that class is the OAuth machinery.
+
+- Reading a local file no longer loads the MCP client, the skill loader or the memory consolidator.
+  `tools/read.ts` reached 972 modules through five hops, and each hop was a process-global slot or a pure
+  function living inside the heavy module that fills it. `internal-urls/mcp-protocol.ts` used `MCPManager`
+  as a type everywhere except one `MCPManager.instance()`, so reading a static slot cost the MCP client
+  and its transports; `internal-urls/skill-protocol.ts` reads the active-skill snapshot from inside the
+  skill loader; `internal-urls/memory-protocol.ts` wanted `getMemoryRoot`, a two-line path join, from the
+  module that asks a model to summarise a session; and `tui/status-line.ts` wanted one status glyph from
+  the tool renderer.
+
+  Four modules now own those four things and import nothing: `mcp/manager-instance.ts`,
+  `extensibility/active-skills.ts`, `memories/paths.ts` and `tools/tool-ui-status.ts`. Each is re-exported
+  from where it used to live, so `MCPManager.instance()`, `getActiveSkills()`, `getMemoryRoot` and
+  `formatStatusIcon` all keep working from their old import paths. An empty slot still means what it
+  meant, and still says so: the `mcp://` handler reports "No MCP manager available. MCP servers may not be
+  configured." with the available resources, and the `skill://` handler names the active skills. Measured
+  after: `read` 736, `internal-urls` 419 (was 911), `tui/hyperlink` 182 (was 609), `tui/status-line` 2
+  (was 168), and the three protocol handlers 76, 79 and 89 where they were 871, 369 and 571.
+
+- The session layer stopped carrying the prompt registry and the tool layer. `session/messages.ts`
+  reached 356 modules, and 261 of them came through two imports that had nothing to do with message
+  shapes. `PROMPTS` came from `prompts/registry.ts`, which imports all 143 prompt files by design, for
+  one interjection template; and `formatOutputNotice` came from `tools/output-meta.ts`, which owns the
+  fluent builder, the tool wrapper and the spill configuration on top of the notice text, and therefore
+  reaches settings, the streaming output sink and the artifact store.
+
+  `wrapSteeringForModel` now lives in `session/steering-envelope.ts`, the module that renders the prompt,
+  and the notice wording, the metadata types and the three strippers live in `tools/output-notice.ts`.
+  `tools/output-meta.ts` re-exports all of them, so no caller changed there; `wrapSteeringForModel` moved
+  import path for its three callers. `session/messages.ts` is 100 modules,
+  `session/session-context.ts` 107 (was 602) and `session/session-manager.ts` 155 (was 612), the last of
+  which 206 test files import.
+
+  The strippers moved WITH the wording on purpose. `stripOutputNotice` removes a notice by rebuilding it
+  and matching the tail of the text, so the writer and the remover are one contract: wording that
+  changed in one and not the other would leave the notice visible twice, once in the message body and
+  once as the styled warning.
+
+- Asking the theme engine for a colour no longer loads an ASCII diagram renderer.
+  `modes/theme/theme.ts` is the second most imported module in the package (291 test files, and every
+  component that paints) and it reached 307 modules. Thirty-six of them were mermaid: `getMarkdownTheme`
+  lived there, and it binds a diagram renderer to the palette, so every consumer of a colour paid for
+  the renderer whether or not anything on screen was a diagram. Nothing here was a barrel import, which
+  is why the earlier sweep did not find it: the function was simply in the wrong module.
+
+  `getMarkdownTheme` and `setMarkdownMermaidRendering` now live in `modes/theme/markdown-theme.ts`, and
+  the memoised native highlighter both sides need lives in `modes/theme/highlight.ts` (17 modules,
+  taking `logger` and `errorMessage` from the modules that own them rather than the `@veyyon/utils`
+  barrel). `theme.ts` is 272 and still re-exports `highlightCode`, so that caller set did not change;
+  it deliberately does not re-export `getMarkdownTheme`, because forwarding it would put the same 36
+  modules straight back. `markdownMermaidRendering`'s test-reset hook moved with it, so the module that
+  owns the state owns its restore, and a suite that never loads the markdown adapter has no such state
+  to restore.
+
+- The same import mistake was found in twenty-six more places and the rule is now written down rather
+  than counted. A value defined in a cheap module gets imported through the `@veyyon/ai` barrel because
+  the barrel re-exports it and that is the first completion an editor offers; the names are identical
+  either way, so nothing ever fails. `assistantText`, `assistantTextBlocks` and `instrumentationRank`
+  are each defined in a module that reaches exactly one, against the barrel's 346, so
+  `modes/utils/copy-targets.ts`, `hindsight/transcript.ts` and `cli/session-stats.ts` each fell from
+  about 347 modules to 76 on one line; `task/agents.ts` went 520 to 253 and
+  `modes/components/settings-selector.ts` 783 to 655. Twelve of the fixes did not change their own
+  file's number, because those files also import `completeSimple` or `streamSimple` and genuinely want
+  the streaming engine, and they were made anyway: a file whose graph is large for a good reason is not
+  a licence to name the wrong owner, and the day the expensive import moves out the wrong one is still
+  there. The gate holds it as a table of value, owner and the owner's reach, so a new entry costs one
+  line instead of a new ceiling. Type imports are out of scope on purpose, since they are erased.
+
+- `argot.models` and `argot.disableAboveTokens` are now `argot.encode.models` and
+  `argot.encode.disableAboveTokens`. Those two are the only Argot settings that decide whether a model
+  is taught to WRITE shorthand; `enabled`, `autoload`, `tokenBudget` and `subagents` decide whether the
+  feature runs, when a dictionary is built, how many tokens it may spend, and what a subagent starts
+  with. Flat, all six read as peers, and nothing in the names said that emptying the allowlist stops
+  the teaching while expansion carries on regardless, which is the distinction you need to predict what
+  turning it off does. Existing configs need no edit: both keys migrate under `encode` the first time
+  the file is read, in either the nested or the dotted spelling, and the retired key is dropped the
+  next time the file is saved. A config carrying both spellings keeps the `encode` value and discards
+  the old one without reading it, so the result never depends on which key is visited first.
+
+- The two gate test suites stopped describing the prompt through a document no session reads.
+  `prompt-gate-registry.test.ts` partitioned every gate variable it could find by regular expression
+  over `system-prompt.md`; it now reads the statement rows and the statement text, which is what
+  reaches the model. That also closed a silent hole in the old check: the expression matched `{{#if}}`,
+  `{{#unless}}`, `{{#each}}`, `{{#ifAny}}` and `{{#has}}`, so `{{#when MAX_CONCURRENCY ">" 0}}` was a
+  gate it could not see and `subagent.maxConcurrency` was partitioned over a set that omitted the one
+  variable it gates. A row's condition names its variable structurally, so that hole cannot exist on
+  this side, and the cross-check is now exact identifier membership rather than a substring match that
+  would accept `{{#if renderMermaidSomethingElse}}` as evidence for a row claiming `renderMermaid`.
+
+- `prompt-gate-inputs.test.ts` asserts which text each gate moves, instead of that 76KB of prompt
+  differs. `expect(flipped).not.toBe(baseline)` proved the flip reached the assembler, which was the
+  bug it was written for, and nothing more: it passes just as well if the flip changes the wrong text,
+  in the wrong section, or one byte of whitespace, and it could not be read, so nobody could tell from
+  the suite what `subagent.maxRecursionDepth` is supposed to do. Each gate now names the statement it
+  decides, with the signature DERIVED from that statement's own text rather than pasted into the test,
+  so the claim cannot rot into a quotation of prose that has since been reworded. Verified against
+  four mutations the old comparison passed, including one where `tui.renderMermaid` gates a different
+  statement entirely.
+
+- The system prompt is now assembled from named statements in full. All six sections are converted,
+  68 rows in total (conventions 1, ROLE 2, RUNTIME 12, TOOL POLICY 34, EXECUTION WORKFLOW 13,
+  DELIVERY CONTRACT 6), and `system-prompt.md` no longer feeds any session. A single gated line such as
+  an `ast_grep` preference, a delegation rule or one contract block can now be named, asserted on,
+  priced in tokens and ablated in an eval without editing the prose around it. Two conditions were added for the shapes the
+  larger sections need: `whenAll`/`whenAny` hold conditions rather than variable names so they nest,
+  which is what lets a row say "the task tool is active and this is not the Codex wording", and `not`
+  covers a block-level `{{else}}` arm. Zero word-level differences across the gate matrix.
+
+- The granularity rule that decides how fine a statement is now admits units the prompt itself
+  delimits. `DELIVERY CONTRACT` is five unconditional XML blocks and `EXECUTION WORKFLOW` six numbered
+  steps under headings; merging each set into one row would have been faithful to the old rule and
+  wrong, because those boundaries come from the document rather than the registry and an eval that
+  ablates one step needs it to have a name. The check allows adjacent unconditional rows only when the
+  second opens a heading or an XML block, so an arbitrary prose split is still reported.
+
+- The system prompt's `RUNTIME` section is now assembled from twelve named statements instead of a
+  block of Handlebars conditionals, and the statements are what a session actually sends. Each one
+  has an id, a stated purpose and a condition drawn from a closed vocabulary, so a single gated line
+  such as the `memory://root` URL or the MCP discovery notice can be named, asserted on and switched
+  off without editing prose around it. Not one word of the prompt changed. The spacing changed in
+  three gate combinations, deliberately: `format` deletes a run of two or more blank lines and keeps
+  a single one, and RUNTIME's template put unconditional blank lines between conditional blocks, so
+  with two of those blocks absent `# Skills & Rules` was landing directly on `# Internal URLs` with
+  no gap. A statement owns the separation that follows it, so the spacing no longer depends on which
+  unrelated blocks are missing. The three differences are enumerated with their measured deltas and
+  the list is asserted exhaustive in both directions.
+
+### Fixed
+
+- The bench's worked prompt-section arm did not load. `arms/candidate-delivery-terse.sections.yml` is
+  the file an operator is told to copy, and its `DELIVERY CONTRACT` banner carried a two-character
+  underline where the builder requires at least four, so the runner rejected it and every experiment
+  derived from it would have failed once a container was already running. `docs-coherence.test.ts` had
+  the check that catches this and the bench suite was simply red.
+
+- A misspelled `--arms` entry died with a raw ENOENT stack from the config read, which reads as a broken
+  runner rather than as a typo and buries the only useful fact: what the arms are called. It now names
+  the available arms and exits. The check is a pure function so it is unit-testable, since `run.ts` ends
+  in a top-level `await main()` and importing it to test anything would run a bench.
+
+- "Which files in `arms/` are arms" was answered in three places and one was wrong.
+  `docs-coherence.test.ts` counted every `*.yml`, so `candidate-delivery-terse.sections.yml` became a
+  phantom arm named `candidate-delivery-terse.sections` and every coherence check quantified over an arm
+  nobody can run. There is now one owner, `isArmConfigFile`/`armNamesIn`, and `run.ts` refuses an
+  `--arms` entry that names an attachment rather than parsing a section-override map as a config overlay
+  and benching nonsense.
+
+- An append-mode section override silently reverted the rest of its section to the copy in
+  `system-prompt.md`. Appending produces a whole-section override (base text plus the addition), and a
+  whole-section override beats the statements by design, so whichever base the append started from
+  became the section. It started from `DEFAULT_TEMPLATE_SECTIONS`, the copy sliced out of the template
+  file, which meant a `.veyyon/prompt-sections/role.md` in append mode replaced ROLE with the
+  template's version of it and kept only the operator's line as intended. Invisible today because that
+  copy and the statements are byte-identical and asserted so, and it would have begun deleting
+  statement edits the moment the two diverged, which is the first thing that happens when someone edits
+  a rule. An append now appends to the ASSEMBLED section, so the base is what the session actually
+  sends; an explicit replacement in the same override set still wins, and the template copy remains the
+  base only for a section that is not assembled from statements. The regression test supplies a base
+  that differs on purpose, because with identical copies no assertion can tell which one was read.
+
+- Two spacing defects in the shipped prompt, both from conditionals that leave an empty line behind. A
+  one-line inline conditional such as `- {{#has tools "ast_grep"}}...{{/has}}` is not a standalone
+  block-helper line, so Handlebars cannot remove it and its newline together; when the condition is
+  false the line collapses to an empty line. Next to an existing blank that makes a run of two, which
+  `format` deletes entirely, so a heading landed directly on the bullet above it. Alone inside a list
+  it survived as a stray blank splitting the list. Statements have no empty line to leave behind, so
+  the class is gone rather than reproduced, and every resulting delta is recorded per matrix point and
+  asserted exhaustive in both directions.
+
+- `TOOL POLICY` sent `delegated.- A subagent's value` as one token to every non-Codex session with
+  delegation required. A `{{#has}}` nested inside an `{{#if}}` across a line boundary jammed the close
+  tags together with the bullet that followed. The statement rows put the bullet on its own line. The
+  byte gate would have reported the repair as drift, so the template side of the comparison applies it
+  explicitly and asserts it in both directions, and the affected matrix points are listed so a new one
+  appearing fails the gate.
+
+- `statement-registry.test.ts` now exists. The registry's header had cited it as the enforcement for
+  its own contracts for weeks, so the granularity rule, the closed condition vocabulary and the
+  disjointness of gate variables from session facts were documented and unchecked. The disjointness
+  check caught a real duplicate on its first run: `hasSubagentSpecialists` was declared a session fact
+  while the `subagent.agents` gate row already claimed it.
+
+- Three of the thirteen rows in the prompt gate registry named template variables that do not exist,
+  and the registry's own test protected the error. The rows are contracted to name the template
+  variables a setting decides. `subagent.maxConcurrency` named `taskMaxConcurrency`, which is the
+  builder option's name; the template is handed `MAX_CONCURRENCY`, so the row described a variable no
+  conditional could read. `includeModelInPrompt` and `includeWorkspaceTree` each named themselves, as
+  though the template contained a conditional on them, when both actually decide whether a runtime
+  section is assembled at all. `tools.intentTracing` named only half of what it decides, leaving the
+  `intentField` parameter name claimed by nothing. The consequence was not cosmetic: a statement's
+  condition is validated against these rows, so a wrong row rejects a correct condition. Rows now
+  name template variables only, a new field carries the runtime-section route for the two settings
+  that gate a section, and a test cross-checks every row against the template. The old test required
+  each gate to name a variable, which is precisely why two settings that gate sections stayed
+  mislabelled.
+
+- The statement registry now reaches the model. `conventions` and `role` had been converted to
+  statements and gated for byte identity, but nothing outside the tests imported the registry, so
+  every session was still served the Handlebars copy and the tests looked identical either way.
+  `buildSystemPrompt` splices the converted sections in through the section-override seam, ahead of
+  your own overrides so a `.veyyon/prompt-sections/` replacement still wins. Wiring it revealed a
+  one-byte bug: the assembler followed the convention where a section separator sits between
+  sections, while the template slicer keeps it inside, so the whole prompt came out two bytes short
+  and the missing bytes were the blank lines before `ROLE` and `RUNTIME`.
+
+- An MCP server's error that names no request now reaches you instead of turning into a timeout.
+  JSON-RPC lets a server answer with `"id": null` when it found the problem before it could read
+  which request the problem belonged to, which is what a parse error is. Both streaming transports
+  dispatched on the id being non-null, so such a reply matched no branch and was dropped in
+  silence, and every call in flight waited out its own timeout and reported that the server had
+  not answered. The server had answered. Now every call on that connection fails with the server's
+  own code and message, for example `MCP error -32700: Parse error`, and the transport logs the
+  server, the code, the message and how many calls it killed. Veyyon's own memory server emits
+  exactly that shape, so this was losing parse errors between two parts of veyyon.
+
+- Disposing a session no longer lets one stuck subsystem leak the rest. Releasing owner-scoped
+  resources was four calls in a row followed by the browser-tab release, so the first one to throw
+  skipped everything after it: a Python kernel that would not close leaked the Ruby and Julia
+  kernels, the JavaScript eval subprocess and every browser tab the session had opened, and you
+  saw one error with no mention of the leaks. Each subsystem now registers its own cleanup, all of
+  them run whatever the others do, and the failures are reported together.
+
+- A `vault://`, `memory://` or `local://` URL rejected for an absolute path or a `..` no longer
+  tells you about `skill://` URLs. The check was shared but its messages were not.
+
+- The two memory tools that write now honour a cancellation, and the two that only read already
+  did. `retain` and `memory_edit` took no abort signal at all, so a call issued just before you
+  pressed Escape wrote to the store afterwards and nothing could have stopped it. Both now refuse
+  before writing anything. `retain` with the Mnemopi backend writes one memory per item, so it
+  also stops between items and the abort names what was already stored, what was not, and that
+  the stored ones were not rolled back. Neither races the signal, because rejecting the caller
+  while the writes continue is worse than not honouring the cancellation at all.
+
+- Changing a setting the system prompt depends on now takes effect. `modes/controllers/selector-controller.ts`
+  carried a hand-written `case` per setting deciding which flips rebuild the prompt, and it had
+  two of the nine: `subagent.batch`, `subagent.delegation`, `subagent.maxConcurrency`,
+  `subagent.maxRecursionDepth`, `subagent.agents`, `includeModelInPrompt` and `tools.format` all
+  change prompt text and had none, so flipping one saved the value and left the model reading a
+  prompt that described the previous configuration until an unrelated rebuild happened to fire.
+  Nothing was logged. The trigger is now derived from
+  `system-prompt-builder/gate-registry.ts`, so registering a gate is what makes it take effect
+  and there is no second list to forget.
+- Flipping a prompt setting a running session cannot pick up now says so. Three gates are read
+  once at startup (`inlineToolDescriptors` deliberately, `includeWorkspaceTree` and
+  `tools.intentTracing` as a consequence of where `sdk.ts` reads them), and the settings screen
+  showed the new value either way, so there was no way to tell an applied change from one that
+  did nothing.
+
+### Added
+
+- `system-prompt-builder/gate-registry.ts` lists every setting that changes the system prompt:
+  the setting path, the template variables it decides, what the model sees change, and whether a
+  mid-session flip reaches it. A settings-fed gate used to be declared in up to six places that
+  had to agree, and the one that failed quietly was the rebuild trigger. Frozen gates now say
+  why they are frozen, and the two reasons are kept apart, because "fixed at session start on
+  purpose" and "fixed because the read sits above the builder" call for different fixes.
+
+### Changed
+
+- The `-1` that older configs stored to mean "unset" is named in one place. `config/settings.ts`
+  declared its own constant for it beside the one in `config/optional-number.ts`, so the module
+  that deletes the old sentinel and the module that translates it each had their own spelling of
+  the same number. No behaviour change; the point is that there is nothing left to keep in sync.
+
+- The session-entry types are declared once, in `@veyyon/agent-core`, instead of twice. This package and the agent core each wrote out the same fifteen entry interfaces and their own `SessionEntry` union over them; twelve of the fifteen were identical and three had drifted, so compaction in the other package saw a `SessionInitEntry` without the `spawns` and `readSummarize` this one actually writes and a `ThinkingLevelChangeEntry` without `configured`. The shared shapes now live in one file and are re-exported here under the same names, so every existing import keeps working, and the two entry kinds only this package persists reach the shared union through the declaration-merging hook that already existed for that purpose.
+
+- The secret obfuscator's JSON type is `JsonWithOptionalFields`, not `JsonValue`. It is a deliberately laxer shape than the repository's `JsonValue` (`@veyyon/utils`), whose objects never hold `undefined`, and it needs to be: `mapJsonStrings` walks tool-call arguments, and a TypeScript object with optional properties is not assignable to the strict shape, so the walker would refuse the values it exists to rewrite. Two exported types with one name and different contents is a bug waiting for an editor's auto-import, so the name now says what the difference is. `JsonRecord` is unchanged in shape.
+- `veyyon prompt --prompts` lists every prompt from all three product registries, grouped by the directory each lives in, and `--prompt <id>` resolves an id from any of them. It listed and looked up only this package's own, so the compaction prompts that rewrite a session's entire history and every dialect format guide were absent from a list that looked complete. An unknown id is now refused with the nearest registered id quoted back and the directory named, rather than a rule that no longer identifies one tree.
+
+### Added
+
+- Every package that ships prompts now has a prompt registry, and `veyyon prompt --prompts` lists all of them. Two packages had none: `@veyyon/ai` shipped fourteen prompts (a tool-call format guide per dialect, plus the tool-catalog template) next to the fourteen modules that imported them by relative path, and `@veyyon/metaharness` shipped the edit benchmark's three. That text goes into a model's system prompt, so "which prompts does veyyon send" had an answer that was short by seventeen, and the inspection command listed none of them. Prompts moved to `packages/ai/src/prompts/` and `packages/metaharness/adapters/edit/prompts/`, each with a registry beside them where the import is the registration. `veyyon prompt --prompts` now lists every id from all three product registries grouped by directory, and `veyyon prompt --prompt <id>` looks a prompt up in whichever one holds it, so `dialect/gemma` and `compaction/summarization-system` work like any coding-agent id. The benchmark harness's prompts stay out of the listing: they are asked by a measurement tool, not by the agent.
 
 - The auto-compaction threshold is now a two-level picker in `/settings`: **Auto-Compaction Threshold** opens to three modes (Auto, Percent, Tokens) with a green check and the current amount on the active one, and each mode drills into its own presets plus a Custom entry. The flat list it replaces mixed all 19 auto/percent/token options in one list, so the three semantics were invisible until you read every description, and a hand-edited value like `170000` showed as nothing selected. Custom values are validated and normalized on entry (`92` stores as `92%`, `170_000` as `170000`), and a stored value the parser cannot read is shown as a warning with Auto in effect instead of presenting Auto as your choice. The stored value is unchanged (`auto`, `85%`, `200000`), so existing configs, the legacy `thresholdTokens`/`thresholdPercent` fold-in, and the clamp warnings all keep working.
 
 - Added an **Experimental** settings tab: every experimental feature now lives in one place — Argot shorthand (five settings, moved from the Context tab's Experimental group), Tool Calling Mode, Auto-Learn (moved from the Memory tab), and the Subagent Inbox layout (moved from Appearance's Advanced fold). The tab's name says "experimental" for everything on it, so labels no longer need an "(experimental)" suffix and the features stop pretending to be regular settings on three different tabs.
 
 ### Fixed
+
+- Cancelling a `github` op that writes no longer walks away from it. Every op ran inside a
+  helper that races the work against the abort signal, so the moment you pressed Escape the tool
+  rejected and the git commands kept going: a `pr_checkout` carried on creating worktrees and
+  branches with nobody waiting for them, and a `pr_push` was left mid-push. The three writing ops
+  (`pr_create`, `pr_checkout`, `pr_push`) are now awaited, and they already pass the signal into
+  every git call, so a cancellation still takes effect promptly. Reads and `run_watch` keep the
+  old behaviour, which is correct for them: nothing was changed, so returning at once is the point.
+
+- A cancelled `pr_checkout` now tells you which worktrees exist. It reported the bare sentence
+  "Operation aborted" and dropped the list, even though the checkouts that finished had created
+  real directories and local branches, so the next checkout of the same PR found a branch nobody
+  had mentioned and refused without `force`. The abort now names each worktree and its branch,
+  names the PRs it did not reach, and says the worktrees were left in place.
+
+- A collab guest no longer receives the host's private session-header fields. The `welcome` frame's
+  header was the host's own, sent verbatim, and the host's header carries three fields the wire
+  contract does not declare: `titleSource`, `parentSession`, and `providerPromptCacheKey`. Extra
+  fields satisfy a narrower type, so nothing complained. The guest writes the header it receives as
+  the first line of its own replica session file, so the provider prompt-cache identity and the id of
+  the session this one was forked from were being persisted on every guest's machine, read-only
+  viewers included. The frame now names the wire type and the host projects onto it field by field,
+  so a field added to the host's header cannot start shipping on its own.
+
+- The generated prompt inventory was scoped to three of the five prompt directories and missed two registries' templates, and its call-site scan named two of the five registry tables. Both were hand-maintained lists inside a tool whose whole purpose is that the set of prompts should not be hand-maintained: it reported `@veyyon/ai`'s fourteen format guides and `@veyyon/hashline`'s tool description as rendered only by their own registry module, and left them out of the orphan check altogether. The directory list now comes off the registry descriptors, so it grows when a package adopts a registry rather than when somebody remembers, and the scan matches any `SOMETHING_PROMPTS` table. `prompt-inventory.test.ts` pins every table name in use against that pattern, in both directions, because the obvious generalisation of it silently stops matching the bare `PROMPTS` and drops 189 call sites at once.
+
+- The `/settings` description of the `plan` approval mode said write and exec tools "require confirmation", but the mode has always denied exec outright and only asks about writes while a plan-mode session is active. The description now says what the mode does: read tools are auto-approved, write asks only inside an active plan-mode session, and exec is blocked.
+
+- The check that keeps every prompt registered was narrower than its own name. It scanned two `src` trees and, inside them, only flagged an import landing in a directory it already knew was a prompts directory, so the predicate deciding "is this a prompt" was "is it already registered": seventeen unregistered prompts in `@veyyon/ai` and `@veyyon/metaharness` were invisible to it, and `scripts/bench-title-models.ts` imported a registered prompt's file by relative path without being seen, because `scripts/` is not `src/`. The rule is now the general one, over every `.ts` under `packages/`: a `.md`-as-text import is a registration and may only appear in a registry module, with two named exception lists (the registries themselves, and `@veyyon/hashline`'s tool description, which its own package exports) that are each asserted to still describe a real import. A relative path reaching into another package's tree is refused even for a file that is otherwise allowed.
+
+- Re-rooting the session no longer tells the model to call a tool it does not have. Two places advise it -- the `<working-directory>` block of the system prompt and the hint appended to a tool result once you have touched three files outside the working directory -- and neither checked whether `set_cwd` was in the toolset. It usually was not: `set_cwd` is a discoverable tool, so under `tools.discoveryMode: all` it is deliberately kept out of the initial tool list and found through `search_tool_bm25`. The advice was right, the model followed it, and the call named a tool absent from the request, so nothing happened -- and re-rooting appeared to work only in sessions where something else had already activated the tool. The hint now activates `set_cwd` before it recommends it, and when it cannot, it says the tool is missing and names the way to get it instead of recommending a call that cannot land. The prompt block gained the same conditional sentence, keyed on the live tool list.
+
+- The re-root hint no longer picks which directory to name by how long its path string is. When several directories cross the threshold in one call (a multi-path grep, a glob, a patch spanning projects) the hint used to go to the longest path, which within one project is accidentally the deepest and between two projects is arbitrary: `/srv/averyverylongprojectname` beat `/srv/a/b/c/d` while being four levels shallower. It now names the deepest directory by path segments, breaks a tie by which one you have worked in more, and resolves a full tie the same way every time rather than by the order files happened to be read. The shared parent of two unrelated projects can no longer win despite holding the sum of both.
+
+- `set_cwd` no longer reports that no rule files are in effect when you ask for the directory you are already in. A real move computed the rule-file counts from the loader; a no-op asserted its own empty answer with `rulesUnchanged: 0`, which is untrue -- your user-level `AGENTS.md` applies from every directory, so a session that never moved still has rules governing it. Both cases now read the same describer, so the counts in the details and the sentence beside them cannot disagree, and a no-op whose rule files cannot be read says which instructions are in effect is unknown rather than claiming a change that did not happen.
+
+- `veyyon -p "prompt"` no longer hangs forever when stdin is a pipe nobody writes to. Reading piped stdin waits for EOF, and a supervisor or CI runner that spawns the CLI with an inherited pipe it never writes to never sends one, so the run stopped before it started with the prompt sitting unused on the command line. When the prompt is already on the command line, the wait for the FIRST byte is now bounded (10 seconds, `VEYYON_PIPED_STDIN_WAIT_MS` to change it, `0` to wait indefinitely) and giving up is reported on stderr. Once any byte arrives the wait is unbounded again, so a slow or large piped document is still read in full: truncating it would let the model answer about content you believe it read.
+
+- A directory that cannot be read no longer reads as "nothing configured". Agent discovery and the managed-skills sweep listed optional directories with `.catch(() => [])`, so a `.veyyon/agents` that exists but cannot be listed produced the same empty result as one that was never created: the agents disappeared from `/agents` with nothing in the log. Both now go through the shared `readdirIfPresent`, which stays quiet when the directory is simply absent and logs the path and what it was looking for when it is there and unreadable.
+
+- Two local auth services starting at the same moment can no longer end up with two different bearer tokens. The token file is created with an exclusive create so the loser of the race re-reads the winner's token, but an exclusive create makes the file exist before its contents are written, and an empty file read as "no token yet" -- so a caller that read inside that window minted a second token, and a client holding the first was then rejected by the service that issued it. The loser now waits for the creator to finish writing. If the file is still empty after the wait, which means a creator died between creating it and writing to it, the caller takes ownership and logs that it did, since the file it replaces may already have been handed out.
+
+- An isolated task no longer mistakes a directory it cannot inspect for ordinary content. `discoverNestedRepos` decides which directories are their own git repositories, and an isolated task treats each one as a boundary it does not snapshot. The check swallowed every error, so a `.git` the process could not stat -- an unreadable parent, a restricted mount, an I/O error -- read the same as "no repository here", and the walk descended into a repository it had failed to recognise and captured its files as the parent's. A directory that could not be listed hid every nested repository beneath it with nothing logged. A missing `.git` is still a plain no; anything else is now logged with the path and treated as a boundary, so the walk stops instead of reaching into a tree it cannot see.
+
+- Startup no longer loads the interactive TUI on runs that never render one. `main.ts` loaded interactive mode with a dynamic import specifically so `-p`, `--rpc` and ACP runs would not pay for the `modes/components` subtree, and two static edges pulled the same subtree in anyway: the four extensibility loaders each held `import * as PiCodingAgent from "../../index"` to hand extension authors the package as `api.pi`, and the package barrel re-exports every mode; `main.ts` also imported two small functions from the welcome component. So `veyyon -p "hi"` with no extensions installed loaded the settings overlay, the plugin-settings panel and the interactive mode it would never construct. The `pi` namespace now loads on demand from one owner, the launch tip moved to a module that pulls no component with it, and a session with no custom tools no longer builds a custom-tool API at all. Interactive mode's inclusive load went from 402ms to 75ms and the instrumented boot wall from about 2.0s to about 1.1s. `test/startup-module-graph.test.ts` resolves the static graph and fails if any of those modules re-enters it.
+
+- A piped prompt that cannot be READ no longer vanishes silently. `veyyon -p` with input on stdin
+  returned no prompt on a read failure and continued as if nothing had been piped, which ends as exit 0
+  with no output and no explanation -- the same disappearing-prompt symptom the code already guarded
+  against for a different cause. A failed read now prints what went wrong on stderr before continuing.
+
+- A GPU probe that cannot RUN is reported. `nvidia-smi`/`lspci`/`wmic` failures were swallowed to "no
+  GPU information", and the prompt's environment section then simply omits the GPU -- which on a machine
+  that has one is a configuration bug, not a fact. A missing probe binary stays quiet at debug level
+  (slim containers and trimmed Windows installs genuinely lack them); anything else warns with the
+  command and the error, so a workstation does not quietly describe itself as GPU-less.
+
+- A theme whose file cannot be read no longer produces an export in default colours with no explanation.
+  `getThemeExportColors` returned "this theme sets no explicit colours" for both a theme that sets none
+  and a theme that could not be loaded; the second case now logs the theme name and the error.
+
+- A tool block's spinner stops itself and warns if the active theme cannot supply spinner frames, rather
+  than throwing from inside its 80ms timer. A throw there has no caller to catch it, so it surfaced as an
+  unhandled error attributed to whatever happened to be running and then repeated twelve times a second
+  for the rest of the process. One unrestored global theme in a test suite cost 12 failures in three
+  suites that render nothing.
+
+- The Essential Tools Override setting description now names the real default list. It showed six tools (`read, bash, edit, write, glob, eval`) while the actual always-loaded default has seven, `launch` included, so an operator writing an override list from the description would have silently dropped process launching.
+
+- `bench/session-tree-nav.bench.ts` runs again. `buildSessionContext` moved to `session/session-context.ts` and the `SessionEntry` union to `session-entries.ts`, and the script still imported both from `session-manager`, so it died on a SyntaxError and published nothing while saying nothing about it. It reports 0.0460ms per navigation before the dedupe fix against 0.0071ms after, an 84.6% reduction, and it uses the shared bench harness instead of its own timing loop now that the harness runs the warmup this script always knew it needed.
+
+- `veyyon bench/throughput <TAB>` completes model ids again, and completes a comma-separated list of them. The completion generator keys its positional tables by `<command>.<arg>`, and the benchmark's was listed under `bench` while the command registers as `bench/throughput`, so the key matched nothing and the positional fell through to "no candidates". The argument is also declared repeatable and was pinned to a single value, which stopped offering candidates after the first selector. A key that matches no command cannot fail on its own, so every key in those tables is now checked against the real command list and the arguments each command declares.
 
 - A provider whose model discovery produced no catalog now says why, for every provider rather than only the ones that failed by throwing. The registry keeps per-provider discovery state and reported a reason only when discovery THREW, so a returned `null` was silent: an endpoint that refused the connection, one that answered 401, and one that answered with an unrecognized payload all left the same result, a picker missing models you pay for with nothing anywhere explaining it. The reason arrives with a stage, which is what decides where to look: `request` at the network, `status` at credentials, `body` or `payload` at whether the endpoint still speaks the protocol. It goes through the same reporter as a thrown failure, so it is deduplicated per provider instead of repeating on every refresh, and an endpoint that answers with an empty list still produces nothing.
 
@@ -63,6 +574,8 @@
 - Added a build-time guard on the system prompt's cached prefix. Block 0 is the byte-stable text a provider serves from its prefix cache, and nothing failed when an edit changed it, so a wording change shipped a one-time full re-read of every user's conversation with no sign of it in the diff. `system-prompt-cached-prefix-stability.test.ts` records the digest, so moving those bytes is now a deliberate line in a review, and separately fails if a runtime section lands inside the prefix, if arming a feature perturbs it, or if two builds of the same inputs differ.
 
 ### Removed
+
+- Removed five directory barrels that nothing imported: `src/exa/index.ts`, `src/mcp/transports/index.ts`, `src/mnemopi/index.ts`, `src/modes/acp/index.ts` and `src/repair/index.ts`. Every consumer already reached the module directly, so each barrel was a second, silently incomplete list of its directory's exports. The subpath exports `@veyyon/coding-agent/exa`, `@veyyon/coding-agent/mcp/transports` and `@veyyon/coding-agent/modes/acp` are gone with them; import the module you want instead (`@veyyon/coding-agent/exa/tools`, `@veyyon/coding-agent/mcp/transports/stdio`, `@veyyon/coding-agent/modes/acp/acp-agent`), which is what every in-tree caller and every example already did. `@veyyon/coding-agent/mnemopi/index` and `@veyyon/coding-agent/repair/index` resolved through the wildcard subpath rather than a declared entry, and are likewise replaced by the direct module (`.../mnemopi/backend`, `.../repair/schema-repair`). A new barrel that nothing imports now fails `scripts/barrel-files-are-imported.test.ts`.
 
 - Removed the `remoteCompaction` option from `models.yml`. It opted a provider or model into provider-native compaction, which was removed, so setting it configured nothing and gave you a session whose compaction was not what your config said. A config that still carries it is now refused at load with the provider, the model, and the replacement named: set `compactionModel` on the model, or the `compaction.model` setting. Deleting the key from your config is the whole migration.
 
@@ -165,6 +678,9 @@
 
 ### Changed
 
+- The "trim each, drop the blanks" loop is `nonEmptyTrimmed` from `@veyyon/utils`. `gh.ts` wrote it twice, 145 lines apart, for a PR identifier list and for search-query fragments, and `autoresearch/helpers.ts` had a third copy with deduplication folded in. Nothing was wrong with any of them, which is why it was worth naming: the next copy is the one that forgets the trim or decides a whitespace-only entry counts, and then two parts of the product disagree about whether `"  "` is a value. `dedupeStrings` now adds only uniqueness on top.
+- Host probing moved out of the prompt builder into `utils/host-environment.ts`. `system-prompt.ts` is about assembling a prompt, and roughly 280 of its lines were not: spawning `lspci` and `wmic`, racing them against a deadline, draining a pipe an exited child left behind, caching the answer on disk, and reading `/proc/cpuinfo`. Burying a subsystem with its own failure modes inside a 1200-line file about something else is what let two of those failures be handled at different volumes without anyone noticing. The prompt builder now asks for what it actually wants — the CPU, the GPU and the finished rows — and passes its preparation budget in, so the probe's margin (it must outlive its own deadline long enough to write the null cache) lives with the probe instead of being derived from a constant in another file. `system-prompt.ts` is 1201 lines to 912.
+- `firstNonEmpty` is in `@veyyon/utils` rather than private to the prompt builder, which needed it in both halves of that split. It picks the first value that is set and not blank after trimming, which is the case `??` and `||` each get half of: `??` keeps an empty string, `||` drops one but also drops `0`, and neither trims. A `TERM=` exported blank now falls through to `COLORTERM` for the same reason it always should have.
 - The one parser that cuts a bannered prompt lives in `banner-grammar.ts`, beside the grammar it parses. It was in `prompt-sections.ts`, whose header called it "section machinery for the default system-prompt template" while it served every prompt in the product, and that mislabelling is what let it close over the system prompt's banner table in the first place: handed the subagent prompt, same grammar, it recognised only the banners the two happen to share and folded the rest away without a word. The banner table is now a required argument, so there is no default to fall back to and no prompt the parser knows. `prompt-sections.ts` keeps what is genuinely about the system prompt: its section names, its table, and the reordering a harness profile asks for.
 - The three memoized derivations in `prompt-sections.ts` use the shared `once` rather than a module-level `let` and a `??=` written out three times. Three copies of a caching pattern are three chances to get it wrong in a way only one of them shows: `??=` re-runs forever if its derivation ever yields an empty string or zero, which these do not today and nothing was checking. The regression test that keeps the reads deferred was also flagging the deferred spelling as if it were an eager one, so the honest fix failed the check that exists to encourage it; it now looks for a read nothing on the line defers, and proves on synthetic input that it still catches an eager read.
 - The prompt banner grammar is its own module, and the file that held it is named for what it contains. `prompt-blocks.ts` owned two unrelated things: how a banner is written and recognised in EVERY prompt, and the system prompt's own list of sections. The universal half is now `system-prompt-builder/banner-grammar.ts`, a leaf that knows no prompt, so `prompts/registry.ts` no longer reaches into the system prompt's module to ask what a banner looks like. The remaining half is `section-registry.ts`, since a "block" in that subsystem already means an entry of the `string[]` `buildSystemPrompt` returns, and the file contained none. `PROMPT_SECTIONS` became `SYSTEM_PROMPT_SECTIONS` for the same reason: it lists the system prompt's sections, not every prompt's, and the `PROMPT_SECTIONS/` override directory shares the old spelling.

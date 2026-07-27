@@ -12,12 +12,14 @@
 import type { Component } from "@veyyon/tui";
 import { Markdown, Text } from "@veyyon/tui";
 import { formatCount, formatNumber } from "@veyyon/utils";
-import { settings } from "../config/settings";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { settings } from "../config/settings-instance";
 import type { EvalCellResult, EvalLanguage, EvalStatusEvent, EvalToolDetails } from "../eval/types";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { formatContextUsage } from "../modes/components/status-line/context-thresholds";
 import { truncateToVisualLines } from "../modes/components/visual-truncate";
-import { getMarkdownTheme, type Theme } from "../modes/theme/theme";
+import { getMarkdownTheme } from "../modes/theme/markdown-theme";
+import type { Theme } from "../modes/theme/theme";
 import { markFramedBlockComponent, outputBlockContentWidth, renderCodeCell } from "../tui";
 import {
 	JSON_TREE_MAX_DEPTH_COLLAPSED,
@@ -107,18 +109,6 @@ type AgentEventStatus = "pending" | "running" | "completed" | "failed" | "aborte
  * op is a discrete action and simply appends. Keeps the persisted event list
  * bounded even when a subagent emits hundreds of throttled progress ticks.
  */
-export function upsertStatusEvent(events: EvalStatusEvent[], event: EvalStatusEvent): void {
-	if (event.op === "agent" && typeof event.id === "string") {
-		const id = event.id;
-		const idx = events.findIndex(e => e.op === "agent" && e.id === id);
-		if (idx >= 0) {
-			events[idx] = event;
-			return;
-		}
-	}
-	events.push(event);
-}
-
 function eventString(value: unknown): string | undefined {
 	return typeof value === "string" && value.length > 0 ? value : undefined;
 }

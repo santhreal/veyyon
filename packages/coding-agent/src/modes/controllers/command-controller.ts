@@ -2,14 +2,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { CompactionCancelledError, type CompactionOutcome } from "@veyyon/agent-core/compaction";
-import {
-	getEnvApiKey,
-	getProviderDetails,
-	type ProviderDetails,
-	resolveUsedFraction,
-	type UsageLimit,
-	type UsageReport,
-} from "@veyyon/ai";
+import { getEnvApiKey, getProviderDetails, type ProviderDetails, type UsageLimit, type UsageReport } from "@veyyon/ai";
+import { resolveUsedFraction } from "@veyyon/ai/usage";
 import { Loader, Markdown, type OverlayHandle, padding, Spacer, Text, visibleWidth } from "@veyyon/tui";
 import {
 	APP_NAME,
@@ -43,7 +37,8 @@ import { EvalExecutionComponent } from "../../modes/components/eval-execution";
 import { modalRevealEnabled } from "../../modes/components/modal-shell";
 import { MoveOverlay, type MoveOverlayResult } from "../../modes/components/move-overlay";
 import { TranscriptBlock } from "../../modes/components/transcript-container";
-import { getMarkdownTheme, getSymbolTheme, theme } from "../../modes/theme/theme";
+import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
+import { getSymbolTheme, theme } from "../../modes/theme/theme";
 import type { InteractiveModeContext } from "../../modes/types";
 import { computeContextBreakdown, renderContextUsage } from "../../modes/utils/context-usage";
 import { buildHotkeysMarkdown } from "../../modes/utils/hotkeys-markdown";

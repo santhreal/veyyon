@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentState } from "@veyyon/agent-core";
 import { APP_NAME, isEnoent, logger } from "@veyyon/utils";
+import { isSessionFileName, SESSION_BACKUP_EXTENSION, sessionFileStem } from "@veyyon/utils/session-file";
 import { getResolvedThemeColors, getThemeExportColors } from "../../modes/theme/theme";
 import type { SessionEntry, SessionHeader } from "../../session/session-entries";
 import { loadEntriesFromFile } from "../../session/session-loader";
@@ -216,7 +217,7 @@ export function buildSessionData(sm: SessionManager, state?: AgentState): Sessio
  */
 export async function collectSubSessions(sessionFile: string): Promise<Record<string, SubSession>> {
 	const result: Record<string, SubSession> = {};
-	if (!sessionFile.endsWith(".jsonl")) return result;
+	if (!isSessionFileName(sessionFile)) return result;
 	await collectSubSessionsFromDir(sessionFile.slice(0, -6), null, result);
 	return result;
 }
@@ -234,7 +235,7 @@ async function collectSubSessionsFromDir(
 		throw err;
 	}
 	for (const name of names) {
-		if (!name.endsWith(".jsonl") || name.includes(".bak")) continue;
+		if (!isSessionFileName(name) || name.includes(SESSION_BACKUP_EXTENSION)) continue;
 		const agentId = name.slice(0, -6);
 		const key = parentKey ? `${parentKey}/${agentId}` : agentId;
 		const fileEntries = await loadEntriesFromFile(path.join(dir, name));
@@ -286,7 +287,7 @@ export async function exportSessionToHtml(
 
 	const palette = opts.palette ?? (opts.themeName ? "theme" : "web");
 	const html = await generateHtml(sessionData, palette, opts.themeName);
-	const outputPath = opts.outputPath || `${APP_NAME}-session-${path.basename(sessionFile, ".jsonl")}.html`;
+	const outputPath = opts.outputPath || `${APP_NAME}-session-${sessionFileStem(path.basename(sessionFile))}.html`;
 
 	await Bun.write(outputPath, html);
 	return outputPath;
@@ -316,7 +317,7 @@ export async function exportFromFile(inputPath: string, options?: ExportOptions 
 
 	const palette = opts.palette ?? (opts.themeName ? "theme" : "web");
 	const html = await generateHtml(sessionData, palette, opts.themeName);
-	const outputPath = opts.outputPath || `${APP_NAME}-session-${path.basename(inputPath, ".jsonl")}.html`;
+	const outputPath = opts.outputPath || `${APP_NAME}-session-${sessionFileStem(path.basename(inputPath))}.html`;
 
 	await Bun.write(outputPath, html);
 	return outputPath;

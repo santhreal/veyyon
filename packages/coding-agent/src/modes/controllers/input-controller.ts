@@ -5,8 +5,11 @@ import type { ImageContent } from "@veyyon/ai";
 import { type AutocompleteProvider, matchesKey, type SlashCommand } from "@veyyon/tui";
 import { errorMessage, isEnoent, logger, sanitizeText } from "@veyyon/utils";
 import { EXIT_INTERRUPTED } from "../../cli/exit-codes";
-import { isSettingsInitialized, settings } from "../../config/settings";
-import { resolveLocalRoot } from "../../internal-urls";
+// The slot leaf, not the 94-module store: this file reads values, it does not fill them.
+import { isSettingsInitialized, settings } from "../../config/settings-instance";
+// The owning module, not the `internal-urls` barrel: the barrel re-exports every protocol
+// handler and reaches hundreds of modules.
+import { resolveLocalRoot } from "../../internal-urls/local-protocol";
 import { AssistantMessageComponent } from "../../modes/components/assistant-message";
 import { extractImagePathFromText } from "../../modes/components/custom-editor";
 import { renderSegmentTrack } from "../../modes/components/segment-track";
@@ -17,7 +20,7 @@ import { createPromptActionAutocompleteProvider } from "../../modes/prompt-actio
 import { parseQueueShorthand, splitQueuedMessages } from "../../modes/queue-input";
 import { invokeSkillCommandFromText, isKnownSkillCommand } from "../../modes/skill-command";
 import type { InteractiveModeContext } from "../../modes/types";
-import { PROMPTS } from "../../prompts/registry";
+import { turnControlPrompts } from "../../prompts/turn-control/rows";
 import { USER_INTERRUPT_LABEL } from "../../session/messages";
 import { executeBuiltinSlashCommand } from "../../slash-commands/builtin-registry";
 import type { TuiSlashCommandHostContext } from "../../slash-commands/types";
@@ -705,7 +708,7 @@ export class InputController {
 				if (this.ctx.onInputCallback) {
 					this.ctx.editor.clearDraft();
 					this.ctx.onInputCallback({
-						text: PROMPTS["turn-control/manual-continue"].text,
+						text: turnControlPrompts["turn-control/manual-continue"].text,
 						cancelled: false,
 						started: true,
 						synthetic: true,

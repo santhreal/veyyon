@@ -9,6 +9,7 @@ import { errorMessage } from "@veyyon/utils";
 import * as Diff from "diff";
 import { resolveToCwd } from "../tools/path-utils";
 import { type BlockContextSource, findBlockContextLines } from "../utils/block-context";
+import { EOF_MARKER, FILE_OP_MARKERS, PATCH_WRAPPER_MARKERS } from "./apply-patch/markers";
 import { DEFAULT_FUZZY_THRESHOLD, EditMatchError, findMatch } from "./match";
 import { adjustIndentation, normalizeToLF, stripBom } from "./normalize";
 import { readEditFileText } from "./read-file";
@@ -410,17 +411,16 @@ export function generateUnifiedDiffString(
 	return { diff: output.join("\n"), firstChangedLine };
 }
 
-const EOF_MARKER = "*** End of File";
 const CHANGE_CONTEXT_MARKER = "@@ ";
 const EMPTY_CHANGE_CONTEXT_MARKER = "@@";
 const UNIFIED_HUNK_HEADER_REGEX = /^@@\s*-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s*@@(?:\s*(.*))?$/;
 const LINE_HINT_REGEX = /^lines?\s+(\d+)(?:\s*-\s*(\d+))?(?:\s*@@)?$/i;
 const TOP_OF_FILE_REGEX = /^(top|start|beginning)\s+of\s+file$/i;
-const MULTI_FILE_MARKERS = ["*** Update File:", "*** Add File:", "*** Delete File:", "diff --git "];
+// `diff --git ` is git's own marker, not part of the apply-patch envelope, so it is
+// added here rather than kept in the shared marker list.
+const MULTI_FILE_MARKERS = [...FILE_OP_MARKERS, "diff --git "];
 const DIFF_METADATA_PREFIXES = [
-	"*** Update File:",
-	"*** Add File:",
-	"*** Delete File:",
+	...FILE_OP_MARKERS,
 	"diff --git ",
 	"index ",
 	"--- ",
@@ -434,7 +434,7 @@ const DIFF_METADATA_PREFIXES = [
 	"old mode ",
 	"new mode ",
 ];
-const PATCH_WRAPPER_PREFIXES = ["*** Begin Patch", "*** End Patch"];
+const PATCH_WRAPPER_PREFIXES = PATCH_WRAPPER_MARKERS;
 const MAX_OCCURRENCE_PREVIEWS = 5;
 
 function isDiffContentLine(line: string): boolean {
@@ -449,7 +449,9 @@ function isDiffContentLine(line: string): boolean {
 	return false;
 }
 
-function matchesTrimmedPrefix(line: string, prefixes: string[]): boolean {
+// `readonly` because this only reads: the shared marker lists are frozen tuples, and a
+// mutable parameter type would have forced a copy at every call site to satisfy it.
+function matchesTrimmedPrefix(line: string, prefixes: readonly string[]): boolean {
 	return prefixes.some(prefix => line.startsWith(prefix));
 }
 
@@ -793,14 +795,8 @@ function extractMarkerPath(line: string): string | undefined {
 		if (!candidate) return undefined;
 		return candidate.replace(/^(a|b)\//, "");
 	}
-	if (line.startsWith("*** Update File:")) {
-		return line.slice("*** Update File:".length).trim();
-	}
-	if (line.startsWith("*** Add File:")) {
-		return line.slice("*** Add File:".length).trim();
-	}
-	if (line.startsWith("*** Delete File:")) {
-		return line.slice("*** Delete File:".length).trim();
+	for (const marker of FILE_OP_MARKERS) {
+		if (line.startsWith(marker)) return line.slice(marker.length).trim();
 	}
 	return undefined;
 }

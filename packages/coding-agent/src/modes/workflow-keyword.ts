@@ -1,5 +1,5 @@
 import { prompt } from "@veyyon/utils";
-import { PROMPTS } from "../prompts/registry";
+import { subagentPrompts } from "../prompts/subagent/rows";
 import { magicKeywordRegex } from "./magic-keyword-boundary";
 import { keywordInProse } from "./markdown-prose";
 
@@ -26,7 +26,7 @@ export const WORKFLOW_NOTICE: string = renderWorkflowNotice({ taskBatch: true })
 
 /** renderWorkflowNotice renders the workflow notice for the active task schema. */
 export function renderWorkflowNotice({ taskBatch }: { taskBatch: boolean }): string {
-	return prompt.render(PROMPTS["subagent/workflow-notice"].text, { taskBatch }).trim();
+	return prompt.render(subagentPrompts["subagent/workflow-notice"].text, { taskBatch }).trim();
 }
 
 /**

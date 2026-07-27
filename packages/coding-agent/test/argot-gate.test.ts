@@ -14,7 +14,7 @@ import { EMPTY_GATE, shouldEncode } from "argot";
 const MODEL = "anthropic/claude-opus-4";
 const OTHER = "anthropic/claude-haiku-4";
 
-// The default `argot.disableAboveTokens` setting is -1 (the "Off" sentinel):
+// The default `argot.encode.disableAboveTokens` setting is -1 (the "Off" sentinel):
 // no cutoff, so encoding is governed purely by the model allowlist.
 const NO_CUTOFF = -1;
 
@@ -63,7 +63,7 @@ describe("the settings -> gate -> encode contract", () => {
 	});
 
 	// The runtime model id is provider-qualified (`provider/model-id`), but an
-	// operator naturally writes the bare model name in argot.models. Without this
+	// operator naturally writes the bare model name in argot.encode.models. Without this
 	// the feature silently no-ops for the setting a user would actually type.
 	it("encodes for a provider-qualified active id when the operator listed the bare model name", () => {
 		const gate = buildArgotGate(true, ["gemini-2.5-flash"], NO_CUTOFF);

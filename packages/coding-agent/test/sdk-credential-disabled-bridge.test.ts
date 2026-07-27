@@ -6,7 +6,7 @@ import { AuthStorage, type CredentialDisabledEvent } from "@veyyon/ai";
 import * as oauthUtils from "@veyyon/ai/oauth";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { Extension, ExtensionError, ExtensionFactory } from "@veyyon/coding-agent/extensibility/extensions";
+import type { ExtensionError, ExtensionFactory, LoadedExtension } from "@veyyon/coding-agent/extensibility/extensions";
 import { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions";
 import { ExtensionRuntime } from "@veyyon/coding-agent/extensibility/extensions/loader";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
@@ -486,7 +486,7 @@ describe("createAgentSession credential_disabled subscription", () => {
 		const authStorage = await AuthStorage.create(path.join(dirs.agentDir, "agent.db"));
 		const modelRegistry = new ModelRegistry(authStorage, path.join(dirs.agentDir, "models.json"));
 		try {
-			const throwingExtension: Extension = {
+			const throwingExtension: LoadedExtension = {
 				path: "test://throwing-credential-disabled",
 				resolvedPath: "test://throwing-credential-disabled",
 				handlers: new Map([

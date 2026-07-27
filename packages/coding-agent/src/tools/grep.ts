@@ -12,7 +12,7 @@ import { formatHashlineHeader } from "@veyyon/hashline";
 import { type GrepMatch, GrepOutputMode, type GrepResult, grep } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import { errorMessage, prompt, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
+import { errorMessage, logger, prompt, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -20,7 +20,7 @@ import type { LocalProtocolOptions } from "../internal-urls/local-protocol";
 import { InternalUrlRouter } from "../internal-urls/router";
 import type { InternalResource, ResolveContext } from "../internal-urls/types";
 import type { Theme } from "../modes/theme/theme";
-import { PROMPTS } from "../prompts/registry";
+import { toolsPrompts } from "../prompts/tools/rows";
 import {
 	artifactFooter,
 	DEFAULT_MAX_COLUMN,
@@ -65,7 +65,6 @@ import {
 	splitPathAndSelPreferringLiteral,
 	toPathList,
 } from "./path-utils";
-import { resolveToolSearchScope } from "./search-scope";
 import {
 	createCachedComponent,
 	formatCodeFrameLine,
@@ -76,6 +75,7 @@ import {
 	PREVIEW_LIMITS,
 	replaceTabs,
 } from "./render-utils";
+import { resolveToolSearchScope } from "./search-scope";
 import { ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
@@ -311,7 +311,11 @@ async function resolveArchiveSearchPaths(
 
 	const cleanup = async () => {
 		if (tempDir) {
-			await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+			// A failed cleanup must not fail the grep the caller asked for, but it leaves a temp directory
+			// behind, and a silently leaked directory grows without bound across a long session. Report it.
+			await rm(tempDir, { recursive: true, force: true }).catch((error: unknown) => {
+				logger.warn("grep could not remove its temp directory", { dir: tempDir, error: errorMessage(error) });
+			});
 		}
 	};
 	return { resolvedPaths, displayMap, displaySet, unreadable, cleanup };
@@ -715,7 +719,10 @@ async function searchVirtualResources(
 			matches.push(...resourceMatches);
 		}
 	} finally {
-		await rm(dir, { recursive: true, force: true }).catch(() => {});
+		// Same as `cleanup` above: the search result stands, and the leaked directory is named in the log.
+		await rm(dir, { recursive: true, force: true }).catch((error: unknown) => {
+			logger.warn("grep could not remove its temp directory", { dir, error: errorMessage(error) });
+		});
 	}
 	return {
 		matches,
@@ -911,7 +918,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 
 	constructor(private readonly session: ToolSession) {
 		const displayMode = resolveFileDisplayMode(session);
-		this.description = prompt.render(PROMPTS["tools/grep"].text, {
+		this.description = prompt.render(toolsPrompts["tools/grep"].text, {
 			IS_HL_MODE: displayMode.hashLines,
 			IS_LINE_NUMBER_MODE: !displayMode.hashLines && displayMode.lineNumbers,
 			// Only tell the model to hand a search off when this session can delegate
@@ -1050,9 +1057,19 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 						if (resolved === spec.clean && !archiveDisplayMap.has(resolved)) {
 							// Non-archive entry; ensure the cleaned path resolves to a regular file.
 							const absKey = path.resolve(resolveReadPath(resolved, this.session.cwd));
-							const stats = await stat(absKey).catch(() => null);
-							if (!stats) {
-								throw new ToolError(`Path not found for line-range selector: ${spec.original}`);
+							// Keep the stat failure's own reason: an unreadable path reported as "not found" sends
+							// the reader looking for a missing file instead of at the permission that blocked it.
+							let stats: Awaited<ReturnType<typeof stat>> | undefined;
+							try {
+								stats = await stat(absKey);
+							} catch (error) {
+								const code = (error as { code?: string }).code;
+								if (code === "ENOENT") {
+									throw new ToolError(`Path not found for line-range selector: ${spec.original}`);
+								}
+								throw new ToolError(
+									`Could not read path for line-range selector: ${spec.original}: ${errorMessage(error)}`,
+								);
 							}
 							if (!stats.isFile()) {
 								throw new ToolError(

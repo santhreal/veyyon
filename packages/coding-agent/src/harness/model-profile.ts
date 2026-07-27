@@ -7,7 +7,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Model } from "@veyyon/ai/types";
-import { getAgentDir, isRecord, logger } from "@veyyon/utils";
+import { errorMessage, getAgentDir, isMissingPath, isRecord, logger, once } from "@veyyon/utils";
 import { YAML } from "bun";
 import type { Settings } from "../config/settings";
 import { type PromptSectionName, promptSectionNames } from "../system-prompt-builder/prompt-sections";
@@ -38,23 +38,25 @@ export function resetHarnessProfileFileCache(): void {
 
 // Built on first use, not at module load: `prompt-sections.ts` derives its names
 // from `section-registry.ts`, and reading that while this module evaluates would put
-// the order dependency straight back.
-let promptSectionNameSet: ReadonlySet<string> | undefined;
-function knownPromptSectionNames(): ReadonlySet<string> {
-	promptSectionNameSet ??= new Set(promptSectionNames());
-	return promptSectionNameSet;
-}
+// the order dependency straight back. `once` is the shared memoizer, so this is not
+// a fourth hand-rolled `let` and `??=`.
+const knownPromptSectionNames: () => ReadonlySet<string> = once(() => new Set(promptSectionNames()));
 
 function normalizePromptSectionOrder(value: unknown): readonly PromptSectionName[] | undefined {
 	if (!Array.isArray(value)) return undefined;
 	const order: PromptSectionName[] = [];
 	for (const entry of value) {
-		if (typeof entry !== "string") continue;
-		if (!knownPromptSectionNames().has(entry)) {
+		// A non-string entry gets the SAME answer as an unknown name, because it is the
+		// same fact: this is not a section. It used to be `continue`, so a
+		// `promptSectionOrder: [role, 42, runtime]` dropped the 42 and applied an order
+		// the operator did not write, silently — the exact failure the branch below
+		// rejects the whole list to prevent, three lines above the comment saying so.
+		if (typeof entry !== "string" || !knownPromptSectionNames().has(entry)) {
 			// Reject the whole list: a typo'd section silently dropped would apply a
 			// different order than the operator wrote.
 			logger.warn(
-				`harness profile promptSectionOrder has unknown section "${entry}" (valid: ${promptSectionNames().join(", ")}); ignoring the list`,
+				`harness profile promptSectionOrder has unknown section ${JSON.stringify(entry)} ` +
+					`(valid: ${promptSectionNames().join(", ")}); ignoring the list`,
 			);
 			return undefined;
 		}
@@ -63,12 +65,34 @@ function normalizePromptSectionOrder(value: unknown): readonly PromptSectionName
 	return order.length > 0 ? order : undefined;
 }
 
+/**
+ * The per-model tool allowlist, refused whole if any entry is not a tool name.
+ *
+ * The same rule `normalizePromptSectionOrder` follows, and for a stronger reason:
+ * this list DENIES tools. Filtering out the bad entries left a shorter allowlist than
+ * the operator wrote, so `tools: [read, 42, bash]` gave the model two tools instead of
+ * three and nothing said which one went missing or why the model then failed to do
+ * something it should have been able to do.
+ */
+function normalizeToolAllowlist(value: unknown): readonly string[] | undefined {
+	if (!Array.isArray(value)) return undefined;
+	const names: string[] = [];
+	for (const entry of value) {
+		if (typeof entry !== "string" || entry.length === 0) {
+			logger.warn(
+				`harness profile tools has an entry that is not a tool name (${JSON.stringify(entry)}); ignoring the list`,
+			);
+			return undefined;
+		}
+		names.push(entry);
+	}
+	return names.length > 0 ? names : undefined;
+}
+
 function normalizeProfileEntry(value: unknown): HarnessModelProfile | undefined {
 	if (!isRecord(value)) return undefined;
 	const repair = typeof value.repair === "boolean" ? value.repair : undefined;
-	const tools = Array.isArray(value.tools)
-		? value.tools.filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
-		: undefined;
+	const tools = normalizeToolAllowlist(value.tools);
 	const promptSectionOrder = normalizePromptSectionOrder(value.promptSectionOrder);
 	if (repair === undefined && (!tools || tools.length === 0) && !promptSectionOrder) return undefined;
 	return {
@@ -89,6 +113,23 @@ function normalizeProfilesRecord(raw: unknown): HarnessProfilesRecord {
 	return profiles;
 }
 
+/**
+ * Load `harness-profiles.yml`, distinguishing "no such file" from "cannot use it".
+ *
+ * Both used to return `{}`, through two branches that did the same thing — an
+ * `ENOENT` check followed by an identical fallthrough, which read as though the cases
+ * were told apart while nothing was done with the distinction. So a YAML syntax error
+ * or an unreadable file dropped every profile the operator had written and started the
+ * agent with none: the model's tool allowlist and its prompt section order both
+ * silently revert to the defaults, which is precisely the "applied a different
+ * configuration than you wrote" failure `normalizePromptSectionOrder` refuses a whole
+ * list to prevent (Law 10).
+ *
+ * Absence stays quiet, because not having the file is the ordinary case, and it is
+ * `isMissingPath` that decides what absence means rather than a fourth hand-written
+ * `ENOENT` comparison. Anything else is warned with the path and the reason, and the
+ * profiles are still empty so a stray typo cannot make the agent unstartable.
+ */
 function loadHarnessProfilesFile(agentDir: string): HarnessProfilesRecord {
 	const filePath = path.join(agentDir, "harness-profiles.yml");
 	try {
@@ -99,7 +140,11 @@ function loadHarnessProfilesFile(agentDir: string): HarnessProfilesRecord {
 		}
 		return normalizeProfilesRecord(parsed);
 	} catch (error) {
-		if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return {};
+		if (isMissingPath(error)) return {};
+		logger.warn("harness-profiles.yml could not be read; no per-model harness profiles are in effect", {
+			path: filePath,
+			error: errorMessage(error),
+		});
 		return {};
 	}
 }

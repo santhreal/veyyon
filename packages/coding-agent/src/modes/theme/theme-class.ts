@@ -6,7 +6,9 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Effort } from "@veyyon/ai";
 import { attributesEnabled, colorEnabled } from "@veyyon/tui";
-import { colorLuma, logger, relativeLuminance } from "@veyyon/utils";
+import { colorLuma, relativeLuminance } from "@veyyon/utils/color";
+// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
+import * as logger from "@veyyon/utils/logger";
 import { bgAnsi, type ColorMode, colorToAnsi, fgAnsi, resolveToHex, type ThemeBg, type ThemeColor } from "./color";
 import {
 	SPINNER_FRAMES,

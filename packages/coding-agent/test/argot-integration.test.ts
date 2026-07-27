@@ -14,9 +14,6 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai";
 import { createArgotSession } from "@veyyon/coding-agent/argot-cache";
@@ -28,6 +25,14 @@ import { ArgotLoadTool, ArgotUnloadTool } from "@veyyon/coding-agent/tools/argot
 import { ArgotParseError, ArgotSession, DICT_FILENAME, parseDict, renderPreamble } from "argot";
 import { cleanupTempHome } from "./helpers/temp-home-cleanup";
 import { makeToolSession } from "./helpers/tool-session";
+import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makePiArgotPromptDir = useTrackedTempDirs("pi-argot-prompt-");
+const makePiArgotPromptHomeDir = useTrackedTempDirs("pi-argot-prompt-home-");
 
 const EMPTY_TREE = {
 	rootPath: "",
@@ -275,8 +280,8 @@ describe("argot preamble and handle-table injection into the system prompt", () 
 	let originalHome: string | undefined;
 
 	beforeEach(() => {
-		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-argot-prompt-"));
-		tempHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-argot-prompt-home-"));
+		tempDir = makePiArgotPromptDir();
+		tempHomeDir = makePiArgotPromptHomeDir();
 		originalHome = process.env.HOME;
 		process.env.HOME = tempHomeDir;
 	});

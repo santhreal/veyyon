@@ -1,4 +1,6 @@
-import { errorMessage, logger } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
+import * as logger from "@veyyon/utils/logger";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import {
 	createUnavailableWorker,
 	createWorkerHandle,

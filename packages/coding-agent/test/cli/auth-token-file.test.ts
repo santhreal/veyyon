@@ -170,6 +170,46 @@ describe("ensuring a token", () => {
 
 		expect(await file.ensure()).toBe("operator-supplied-token");
 	});
+
+	/**
+	 * The SECOND race, narrower than the one above and hidden by it, found by this suite failing about one
+	 * run in ten with `Received: 2`.
+	 *
+	 * `O_CREAT | O_EXCL` makes the file EXIST before its contents are written. A caller that lost the
+	 * create race and read inside that window saw an empty file, `read()` reports empty as "no token", so
+	 * the loser fell through to the last-resort write and minted a SECOND token -- the exact failure the
+	 * exclusive create was added to prevent, one layer down. The fix waits for the winner to finish
+	 * writing, so the assertion is the same as above, repeated enough times to actually enter the window.
+	 *
+	 * Repetition is the test. A single round passed most of the time even while the bug was live, which is
+	 * why the bug survived: an intermittent failure in a security-adjacent suite reads as flakiness.
+	 */
+	it("keeps handing concurrent callers one token across many rounds", async () => {
+		for (let round = 0; round < 40; round++) {
+			await fs.rm(file.path(), { force: true });
+
+			const tokens = await Promise.all(Array.from({ length: 12 }, () => file.ensure()));
+
+			expect(new Set(tokens).size, `round ${round} produced ${new Set(tokens).size} tokens`).toBe(1);
+			expect(await file.read()).toBe(tokens[0]);
+		}
+	});
+
+	/**
+	 * And the case the wait cannot fix: a creator that died between creating the file and writing to it
+	 * leaves an empty file that will never fill in. The caller still must not be handed an empty token, so
+	 * this invocation takes ownership -- but the file it replaces may have been handed out, so taking
+	 * ownership is reported rather than done quietly (Law 10).
+	 */
+	it("replaces an empty token file left behind by an interrupted creator", async () => {
+		await seed("");
+
+		const token = await file.ensure();
+
+		expect(token.length).toBeGreaterThan(0);
+		expect(await file.read()).toBe(token);
+		expect(await modeOf(file.path())).toBe("600");
+	});
 });
 
 describe("rotating a token", () => {

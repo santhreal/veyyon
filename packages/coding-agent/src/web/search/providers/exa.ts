@@ -6,9 +6,14 @@
  * Requests per-result summaries via `contents.summary` and synthesizes
  * them into a combined `answer` string on the SearchResponse.
  */
-import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/ai";
+import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
+import { withAuth } from "@veyyon/ai/auth-retry";
+import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { asRecord, tryParseJson } from "@veyyon/utils";
-import { getDefault, settings } from "../../../config/settings";
+// The two owners rather than the store that re-exports both: the slot leaf for the value, the schema for
+// the default. A web-search provider reading two settings paid 95 modules for the pair.
+import { settings } from "../../../config/settings-instance";
+import { getDefault } from "../../../config/settings-schema";
 import { findApiKey, isSearchResponse } from "../../../exa/mcp-client";
 import { parseSSE } from "../../../mcp/json-rpc";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
@@ -86,6 +91,8 @@ async function waitForExaSearchSlot(signal: AbortSignal | undefined): Promise<vo
 	const delayMs = configuredExaSearchDelayMs();
 	if (delayMs <= 0) return;
 
+	// This is a rate-limit queue, not a work queue: each waiter cares only that the PREVIOUS waiter's turn has
+	// settled, never whether its search succeeded, and a failure there must not wedge the queue for everyone.
 	const prior = exaSearchThrottle.catch(() => {});
 	const queued = prior.then(async () => {
 		signal?.throwIfAborted();
@@ -96,6 +103,8 @@ async function waitForExaSearchSlot(signal: AbortSignal | undefined): Promise<vo
 		signal?.throwIfAborted();
 		nextExaSearchRequestAt = Date.now() + delayMs;
 	});
+	// `queued` is awaited below and carries an abort to this caller; the stored tail only orders the next
+	// waiter, so it must settle.
 	exaSearchThrottle = queued.catch(() => {});
 	await waitUntilDoneOrAborted(queued, signal);
 }

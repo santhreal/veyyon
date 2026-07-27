@@ -35,6 +35,9 @@ import {
 	type CollabFrame,
 	type CollabSessionState,
 	type CollabUiRequest,
+	fromWireAgentEvent,
+	fromWireModel,
+	fromWireSessionEntry,
 	parseCollabLink,
 } from "./protocol";
 import { CollabSocket } from "./relay-client";
@@ -408,7 +411,7 @@ export class CollabGuestLink {
 			logger.debug("collab guest dropping orphan snapshot-chunk");
 			return false;
 		}
-		pending.entries.push(...frame.entries);
+		pending.entries.push(...frame.entries.map(fromWireSessionEntry));
 		const complete = frame.final || pending.entries.length >= pending.entryCount;
 		if (complete) {
 			this.#clearSnapshotProgressTimer();
@@ -492,14 +495,15 @@ export class CollabGuestLink {
 				// Entries are never rendered directly — rendering is events-only
 				// (prevents double-render). They keep the replica file, the agent's
 				// message array (/dump, context estimates), and todos current.
-				this.#ctx.sessionManager.ingestReplicatedEntry(frame.entry);
-				if (frame.entry.type === "message") {
-					this.#ctx.session.agent.replaceMessages([...this.#ctx.session.messages, frame.entry.message]);
+				const entry = fromWireSessionEntry(frame.entry);
+				this.#ctx.sessionManager.ingestReplicatedEntry(entry);
+				if (entry.type === "message") {
+					this.#ctx.session.agent.replaceMessages([...this.#ctx.session.messages, entry.message]);
 				}
 				break;
 			}
 			case "event":
-				this.#applyEvent(frame.event);
+				this.#applyEvent(fromWireAgentEvent(frame.event));
 				break;
 			case "state": {
 				this.state = frame.state;
@@ -580,7 +584,7 @@ export class CollabGuestLink {
 			(session.agent.state.model?.id !== state.model.id ||
 				session.agent.state.model?.provider !== state.model.provider)
 		) {
-			session.agent.setModel(state.model);
+			session.agent.setModel(fromWireModel(state.model));
 		}
 		const level = state.thinkingLevel as ThinkingLevel | undefined;
 		session.agent.setThinkingLevel(toReasoningEffort(level));

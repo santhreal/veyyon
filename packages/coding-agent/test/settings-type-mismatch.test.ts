@@ -1,12 +1,18 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { describeSettingTypeMismatch, getDefault, SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
 import { removeWithRetries } from "@veyyon/utils";
 import * as YAML from "yaml";
 import { guardDestructivePath } from "../../utils/test/helpers/destructive-guard";
+import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makeSettingsMismatchDir = useTrackedTempDirs("veyyon-settings-mismatch-");
 
 /**
  * SETC-4: a wrong-typed setting must be reported, not obeyed in silence.
@@ -109,7 +115,7 @@ describe("a wrong-typed setting is reported rather than silently obeyed", () => 
 		let agentDir = "";
 
 		beforeEach(() => {
-			agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-settings-mismatch-"));
+			agentDir = makeSettingsMismatchDir();
 		});
 
 		afterEach(async () => {

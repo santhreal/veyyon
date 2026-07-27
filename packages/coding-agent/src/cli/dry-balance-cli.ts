@@ -25,7 +25,7 @@ import {
 } from "../config/model-resolver";
 import { DEFAULT_MODEL_SLOT } from "../config/model-roles";
 import type { Settings } from "../config/settings";
-import { PROMPTS } from "../prompts/registry";
+import { benchPrompts } from "../prompts/bench/rows";
 import { createCliModelRuntime } from "./model-runtime";
 
 const DEFAULT_SAMPLE_COUNT = 100;
@@ -35,7 +35,7 @@ const BENCH_RENDER_INTERVAL_MS = 80;
 const BENCH_ACCOUNT_WIDTH = 60;
 const BENCH_ERROR_WIDTH = 110;
 const BENCH_SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
-const DRY_BALANCE_BENCH_PROMPT = PROMPTS["bench/balance"].text.trim();
+const DRY_BALANCE_BENCH_PROMPT = benchPrompts["bench/balance"].text.trim();
 
 export interface DryBalanceCommandArgs {
 	model?: string;

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { Settings } from "@veyyon/coding-agent/config/settings";
+import { inlineBudgetFor } from "@veyyon/coding-agent/tools/output-artifact";
 
 /**
  * Structural lock: every streaming executor prices its inline output budget.
@@ -127,9 +129,15 @@ describe("centralised artifact spill", () => {
 	it("prices its threshold through the same owner as the streaming tools", () => {
 		const source = fs.readFileSync(OUTPUT_META, "utf8");
 		expect(source).toContain("inlineBudgetFor(");
-		// The flat value is kept, as the CEILING passed into the priced budget, not
-		// as the budget itself. Renaming it away would hide which one is in force.
-		expect(source).toContain("threshold: flatThreshold");
+		// And through it ONLY. The spill used to pass the flat setting back in as a
+		// ceiling, which read as belt and braces and was really a second way to
+		// spell the same read: `inlineOutputPricing` reads
+		// `tools.artifactSpillThreshold` itself. Two readers of one setting is how
+		// the two owners this suite exists for came about in the first place, so the
+		// second argument staying absent is part of the contract.
+		expect(source).not.toContain(
+			"inlineBudgetFor({ getTurnIndex: context?.getTurnIndex, settings: context?.settings },",
+		);
 	});
 
 	/**
@@ -152,5 +160,72 @@ describe("centralised artifact spill", () => {
 		const source = fs.readFileSync(path.join(ROOT, "tools", "output-artifact.ts"), "utf8");
 		expect(source).toContain("export interface InlinePricingSource");
 		expect(source).toContain("inlineBudgetFor(session: InlinePricingSource");
+	});
+});
+
+/**
+ * What the source-shape checks above cannot see: the number the setting produces.
+ *
+ * WHY THIS EXISTS ALONGSIDE THEM. The structural locks catch a NEW call site that forgets to
+ * price its budget, which no behavioural test can see because nothing breaks when it happens.
+ * They cannot catch the opposite: a call site that prices correctly through an owner whose
+ * arithmetic is wrong. `tools.artifactSpillThreshold` is in KILOBYTES and the budget is in
+ * BYTES, so a dropped multiplication makes every tool spill after 50 bytes and every one of the
+ * shape assertions still passes. That conversion, and the refusals around it, are pinned here.
+ */
+describe("the priced budget, as a number", () => {
+	/** A settings stand-in that answers only the two keys the pricing owner reads. */
+	function settingsWith(values: Record<string, unknown>): Settings {
+		return { get: (key: string) => values[key] } as unknown as Settings;
+	}
+
+	/**
+	 * The setting is kilobytes and the answer is bytes.
+	 *
+	 * The one arithmetic step in the whole path, and the one that would make every tool result
+	 * spill at 8 bytes if it were dropped.
+	 */
+	it("reads the configured threshold as kilobytes", () => {
+		expect(inlineBudgetFor({ settings: settingsWith({ "tools.artifactSpillThreshold": 8 }) })).toBe(8 * 1024);
+		expect(inlineBudgetFor({ settings: settingsWith({ "tools.artifactSpillThreshold": 200 }) })).toBe(200 * 1024);
+	});
+
+	/**
+	 * A host with no turn index gets the flat configured budget, not a floor of it.
+	 *
+	 * This is the case the centralised spill hits from an MCP server or an extension tool, and
+	 * mis-pricing it was the original defect: those callers invented their own flat number
+	 * because the priced owner demanded a session type they did not have.
+	 */
+	it("returns the flat threshold when the caller has no turns", () => {
+		expect(inlineBudgetFor({ settings: settingsWith({ "tools.artifactSpillThreshold": 64 }) })).toBe(64 * 1024);
+	});
+
+	/**
+	 * An explicit ceiling from the caller still wins.
+	 *
+	 * grep passes one because it keeps a head window only. The argument has to keep working even
+	 * though the spill no longer passes it, or the next caller that needs it will read the
+	 * setting itself instead.
+	 */
+	it("lets a caller bound the budget below the configured one", () => {
+		const settings = settingsWith({ "tools.artifactSpillThreshold": 200 });
+		expect(inlineBudgetFor({ settings }, 4096)).toBe(4096);
+	});
+
+	/**
+	 * A threshold of zero or a non-finite one is refused, not honoured.
+	 *
+	 * Zero elides every tool result down to its ellipsis and a NaN propagates into every byte
+	 * comparison so that nothing spills at all. Both fall back to the compiled default, which is
+	 * the same answer as not setting it, and the refusal is logged rather than silent (Law 10).
+	 */
+	it("refuses a threshold that is not a positive number of kilobytes", () => {
+		const unconfigured = inlineBudgetFor({ settings: settingsWith({}) });
+		for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+			expect(inlineBudgetFor({ settings: settingsWith({ "tools.artifactSpillThreshold": bad }) })).toBe(
+				unconfigured,
+			);
+		}
 	});
 });

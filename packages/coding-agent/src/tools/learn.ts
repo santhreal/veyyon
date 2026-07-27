@@ -4,7 +4,7 @@ import { type } from "arktype";
 import { sanitizeSkillName, writeManagedSkill } from "../autolearn/managed-skills";
 import { isNameClaimedByAuthoredSkill } from "../extensibility/skills";
 import { localBackend } from "../memory-backend/local-backend";
-import { PROMPTS } from "../prompts/registry";
+import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from ".";
 
 const learnSchema = type({
@@ -34,7 +34,7 @@ export class LearnTool implements AgentTool<typeof learnSchema> {
 			? "write"
 			: "read";
 	readonly label = "Learn";
-	readonly description = PROMPTS["tools/learn"].text;
+	readonly description = toolsPrompts["tools/learn"].text;
 	readonly parameters = learnSchema;
 	readonly strict = true;
 	readonly loadMode = "essential" as const;

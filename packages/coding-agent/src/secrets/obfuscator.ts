@@ -15,8 +15,29 @@ export interface SecretEntry {
 	flags?: string;
 }
 
-export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue | undefined };
-export type JsonRecord = { [key: string]: JsonValue | undefined };
+/**
+ * JSON as it arrives from a caller's object, where an optional property is `undefined`.
+ *
+ * NAMED FOR WHAT MAKES IT DIFFERENT, because it used to be called `JsonValue` and it is
+ * not the repository's `JsonValue` (`@veyyon/utils`): that one's objects hold `JsonValue`
+ * and never `undefined`, since `undefined` is not JSON and `JSON.stringify` drops the
+ * property rather than encoding it. Two exported types with one name and different
+ * contents is a bug waiting for an editor's auto-import to pick the wrong one, and the
+ * difference here is load-bearing rather than accidental: {@link mapJsonStrings} walks
+ * tool-call arguments that came from a model, and a TypeScript object literal with
+ * optional fields is not assignable to the strict shape, so the walker would refuse the
+ * values it exists to rewrite.
+ */
+export type JsonWithOptionalFields =
+	| string
+	| number
+	| boolean
+	| null
+	| JsonWithOptionalFields[]
+	| { [key: string]: JsonWithOptionalFields | undefined };
+
+/** An object of {@link JsonWithOptionalFields}, which is what a tool's arguments are. */
+export type JsonRecord = { [key: string]: JsonWithOptionalFields | undefined };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Deterministic replacement generation
@@ -332,7 +353,7 @@ export function mapAssistantContentStrings(
 			return { ...block, thinking };
 		}
 		if (block.type === "toolCall") {
-			const args = mapJsonStrings(block.arguments as JsonValue, fn) as Record<string, unknown>;
+			const args = mapJsonStrings(block.arguments as JsonWithOptionalFields, fn) as Record<string, unknown>;
 			const intent = block.intent === undefined ? undefined : fn(block.intent);
 			const rawBlock = block.rawBlock === undefined ? undefined : fn(block.rawBlock);
 			if (args === block.arguments && intent === block.intent && rawBlock === block.rawBlock) return block;
@@ -354,7 +375,7 @@ export function deobfuscateToolArguments(
 	args: Record<string, unknown>,
 ): Record<string, unknown> {
 	if (!obfuscator.hasSecrets()) return args;
-	return mapJsonStrings(args as JsonValue, s => obfuscator.deobfuscate(s)) as Record<string, unknown>;
+	return mapJsonStrings(args as JsonWithOptionalFields, s => obfuscator.deobfuscate(s)) as Record<string, unknown>;
 }
 
 /** Redact secrets inside a tool call's arguments (same JSON-walk exception as {@link deobfuscateToolArguments}). */
@@ -363,7 +384,7 @@ export function obfuscateToolArguments(
 	args: Record<string, unknown>,
 ): Record<string, unknown> {
 	if (!obfuscator.hasSecrets()) return args;
-	return mapJsonStrings(args as JsonValue, s => obfuscator.obfuscate(s)) as Record<string, unknown>;
+	return mapJsonStrings(args as JsonWithOptionalFields, s => obfuscator.obfuscate(s)) as Record<string, unknown>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -470,7 +491,7 @@ function replaceAll(text: string, search: string, replacement: string): string {
  * shape is model-authored and not known ahead of time. No other caller may walk
  * untyped data: every message/content path is handled by a typed transformer.
  */
-export function mapJsonStrings(value: JsonValue, fn: (s: string) => string): JsonValue {
+export function mapJsonStrings(value: JsonWithOptionalFields, fn: (s: string) => string): JsonWithOptionalFields {
 	if (typeof value === "string") return fn(value);
 	if (Array.isArray(value)) {
 		let changed = false;

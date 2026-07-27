@@ -4,8 +4,10 @@ import type { Api, ApiKey, Model } from "@veyyon/ai";
 import { getProjectDir, logger, prompt } from "@veyyon/utils";
 import { ModelRegistry } from "../config/model-registry";
 import { Settings } from "../config/settings";
-import { PROMPTS } from "../prompts/registry";
-import { discoverAuthStorage } from "../sdk";
+import { commitPrompts } from "../prompts/commit/rows";
+// `session/auth-broker-config`, which OWNS this, not the `sdk` barrel that re-exports it: the barrel is
+// the whole application and this file wants one function.
+import { discoverAuthStorage } from "../session/auth-broker-config";
 import { loadProjectContextFiles } from "../system-prompt";
 import * as git from "../utils/git";
 import { runAgenticCommit } from "./agentic";
@@ -25,7 +27,8 @@ import type { CommitCommandArgs, ConventionalAnalysis } from "./types";
 const SUMMARY_MAX_CHARS = 72;
 const RECENT_COMMITS_COUNT = 8;
 let typesDescription: string | undefined;
-const TYPES_DESCRIPTION = (): string => (typesDescription ??= prompt.render(PROMPTS["commit/types-description"].text));
+const TYPES_DESCRIPTION = (): string =>
+	(typesDescription ??= prompt.render(commitPrompts["commit/types-description"].text));
 
 /**
  * Execute the veyyon commit pipeline for staged changes.
@@ -242,7 +245,7 @@ async function generateSummaryWithRetry(input: {
 }
 
 function buildRetryContext(base: string | undefined, errors: string[]): string {
-	return prompt.render(PROMPTS["commit/summary-retry"].text, {
+	return prompt.render(commitPrompts["commit/summary-retry"].text, {
 		base_context: base,
 		errors: errors.join("; "),
 	});

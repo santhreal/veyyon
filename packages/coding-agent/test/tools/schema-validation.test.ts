@@ -291,9 +291,8 @@ describe("tool schema validation (post-sanitization)", () => {
 	it("hidden tools also have valid sanitized schemas", async () => {
 		const session = createTestSession();
 
-		for (const name in HIDDEN_TOOLS) {
-			if (!Object.hasOwn(HIDDEN_TOOLS, name)) continue;
-			const tool = await HIDDEN_TOOLS[name](session);
+		for (const [name, factory] of Object.entries(HIDDEN_TOOLS)) {
+			const tool = await factory(session);
 			if (!tool) continue;
 
 			const schema = tool.parameters;

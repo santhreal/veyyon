@@ -44,7 +44,7 @@ describe("renderSliderLines — one slider owner, preset-safe glyphs", () => {
 		expect(Bun.stripANSI(line!)).toContain("◂");
 		expect(Bun.stripANSI(line!)).toContain("▸");
 		// activeIndex 0: no previous step, the ◂ paints dim, the ▸ accent.
-		const dimOpen = "[38;2;86;95;119m"; // titanium dim #565F77
+		const dimOpen = "\x1b[38;2;86;95;119m"; // titanium dim #565F77
 		expect(line!).toContain(`${dimOpen}◂`);
 		expect(line!).not.toContain(`${dimOpen}▸`);
 	});

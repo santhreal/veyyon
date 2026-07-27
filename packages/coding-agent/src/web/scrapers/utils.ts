@@ -1,4 +1,5 @@
-import { asRecord, finiteNumber, isRecord, trimmedString } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
+import { asRecord, finiteNumber, isRecord, trimmedString } from "@veyyon/utils/type-guards";
 import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
 
 // Re-export the @veyyon/utils guards/coercers so scraper modules can import

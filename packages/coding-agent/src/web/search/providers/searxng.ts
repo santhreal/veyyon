@@ -28,7 +28,8 @@ import { trimTrailingSlashes } from "@veyyon/utils";
 
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 
-import { settings } from "../../../config/settings";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { settings } from "../../../config/settings-instance";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";

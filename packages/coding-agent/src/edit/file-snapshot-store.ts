@@ -123,6 +123,11 @@ export async function recordFileSnapshot(
 		const normalized = normalizeToLF(await file.text());
 		return getFileSnapshotStore(session).record(canonicalSnapshotKey(absolutePath), normalized, seenLines);
 	} catch {
+		// A snapshot is taken BEFORE an edit so the edit can be described against it, and a file that does
+		// not exist yet is the ordinary case for a write. Undefined means "no snapshot to compare against",
+		// which the caller already handles the same way it handles the over-size case on the line above:
+		// the edit proceeds and is described without a before-image. The edit itself never depends on this,
+		// and a file the reader cannot read will fail loudly at the edit instead.
 		return undefined;
 	}
 }

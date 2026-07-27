@@ -7,8 +7,8 @@
  *   literal arguments (`argot-gate.test.ts`), and the subagent policy is tested by
  *   calling `createArgotSession` with literals (`argot-subagent-boundary.test.ts`).
  *   None of those proves the SETTINGS LAYER binds: that when an operator writes
- *   `argot.enabled`, `argot.models`, `argot.disableAboveTokens`, `argot.tokenBudget`,
- *   or `argot.subagents` into config, `settings.get(...)` returns that value and it
+ *   `argot.enabled`, `argot.encode.models`, `argot.encode.disableAboveTokens`, `argot.tokenBudget`,
+ *   `argot.autoload` or `argot.subagents` into config, `settings.get(...)` returns that value and it
  *   flows into `buildArgotGate` / `createArgotSession` (and `loadArgotFolder` for the budget) the way the SDK wires it. A
  *   setting that appears in the defaults table but never reaches behavior is a dead
  *   knob, the exact "settings don't actually work" failure this suite forbids.
@@ -24,8 +24,11 @@
  *
  * How it stays honest:
  *   `sdkArgotReads` reproduces the EXACT `settings.get(...)` calls the SDK makes at
- *   session construction (sdk.ts: `argot.enabled`, `argot.models`,
- *   `argot.disableAboveTokens`, `argot.subagents`, `argot.tokenBudget`). The test
+ *   session construction (sdk.ts: `argot.enabled`, `argot.encode.models`,
+ *   `argot.encode.disableAboveTokens`, `argot.subagents`, `argot.tokenBudget`, `argot.autoload`).
+ *   The startup-load decision that `argot.autoload` feeds has its own suite
+ *   (`argot-autoload-startup-load.test.ts`); what this file owns for it is the
+ *   Settings round trip and the default. The test
  *   then feeds those reads into the SAME real functions the SDK feeds them into
  *   (`buildArgotGate`, `createArgotSession`). Nothing is re-derived; the only thing
  *   this file owns is proving the operator's value survives the Settings round trip.
@@ -33,7 +36,7 @@
  */
 
 import { afterAll, describe, expect, it } from "bun:test";
-import { createArgotSession } from "@veyyon/coding-agent/argot-cache";
+import { createArgotSession, shouldAutoloadArgotAtStartup } from "@veyyon/coding-agent/argot-cache";
 import { buildArgotGate } from "@veyyon/coding-agent/argot-wire";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { getAllSettingDefs, invalidateSettingDefsCache } from "@veyyon/coding-agent/modes/components/settings-defs";
@@ -51,10 +54,11 @@ function sdkArgotReads(settings: Settings) {
 	const enabled = settings.get("argot.enabled") === true;
 	return {
 		enabled,
-		models: (settings.get("argot.models") as string[] | undefined) ?? [],
-		disableAboveTokens: settings.get("argot.disableAboveTokens") as number,
+		models: (settings.get("argot.encode.models") as string[] | undefined) ?? [],
+		disableAboveTokens: settings.get("argot.encode.disableAboveTokens") as number,
 		subagentMode: settings.get("argot.subagents") as "off" | "fresh" | "inherit",
 		tokenBudget: settings.get("argot.tokenBudget") as number | undefined,
+		autoload: settings.get("argot.autoload") === true,
 	};
 }
 
@@ -78,6 +82,25 @@ describe("Argot defaults: the shipped config is the safe inert state", () => {
 		expect(r.disableAboveTokens).toBe(-1);
 		expect(r.subagentMode).toBe("off");
 		expect(r.tokenBudget).toBe(DEFAULT_TOKEN_BUDGET);
+		expect(r.autoload).toBe(true);
+	});
+
+	/**
+	 * `argot.autoload` defaults ON, and that is only safe because the master switch
+	 * is the one that decides whether anything happens at all. Read the two together:
+	 * a default install has autoload true and enabled false, so no repository is ever
+	 * walked. If this pair ever inverts — autoload defaulting off — the feature would
+	 * silently stop arming its launch project for everyone who turned Argot on, which
+	 * is the "enabled but nothing happens" complaint the whole adoption path exists to
+	 * prevent.
+	 */
+	it("autoload defaults on but the master switch keeps the default install inert", () => {
+		const r = sdkArgotReads(Settings.isolated());
+		expect(r.autoload).toBe(true);
+		expect(r.enabled).toBe(false);
+		expect(
+			shouldAutoloadArgotAtStartup({ enabled: r.enabled, autoload: r.autoload, argot: new ArgotSession() }),
+		).toBe(false);
 	});
 
 	it("the default gate is the inert EMPTY_GATE and never encodes, at any context size", () => {
@@ -101,17 +124,18 @@ describe("Argot defaults: the shipped config is the safe inert state", () => {
 	it("getEffectiveSnapshot records every Argot key so a run can be reproduced", () => {
 		const snap = Settings.isolated().getEffectiveSnapshot();
 		expect(snap["argot.enabled"]).toBe(false);
-		expect(snap["argot.models"]).toEqual([]);
-		expect(snap["argot.disableAboveTokens"]).toBe(-1);
+		expect(snap["argot.encode.models"]).toEqual([]);
+		expect(snap["argot.encode.disableAboveTokens"]).toBe(-1);
 		expect(snap["argot.tokenBudget"]).toBe(DEFAULT_TOKEN_BUDGET);
 		expect(snap["argot.subagents"]).toBe("off");
+		expect(snap["argot.autoload"]).toBe(true);
 	});
 });
 
 describe("argot.enabled binds: the master switch turns the gate and codec on", () => {
 	it("enabling (with a listed model) opens the gate that the default keeps shut", () => {
 		const off = sdkArgotReads(Settings.isolated());
-		const on = sdkArgotReads(Settings.isolated({ "argot.enabled": true, "argot.models": [MODEL] }));
+		const on = sdkArgotReads(Settings.isolated({ "argot.enabled": true, "argot.encode.models": [MODEL] }));
 		expect(buildArgotGate(off.enabled, off.models, off.disableAboveTokens)).toBe(EMPTY_GATE);
 		const onGate = buildArgotGate(on.enabled, on.models, on.disableAboveTokens);
 		expect(onGate).not.toBe(EMPTY_GATE);
@@ -131,7 +155,7 @@ describe("argot.enabled binds: the master switch turns the gate and codec on", (
 	});
 });
 
-describe("argot.models binds: only listed models are taught shorthand", () => {
+describe("argot.encode.models binds: only listed models are taught shorthand", () => {
 	it("an empty allowlist (the default) teaches nobody even with the feature on", () => {
 		const r = sdkArgotReads(Settings.isolated({ "argot.enabled": true }));
 		const gate = buildArgotGate(r.enabled, r.models, r.disableAboveTokens);
@@ -139,7 +163,7 @@ describe("argot.models binds: only listed models are taught shorthand", () => {
 	});
 
 	it("a listed model encodes and an unlisted one does not", () => {
-		const r = sdkArgotReads(Settings.isolated({ "argot.enabled": true, "argot.models": [MODEL] }));
+		const r = sdkArgotReads(Settings.isolated({ "argot.enabled": true, "argot.encode.models": [MODEL] }));
 		const gate = buildArgotGate(r.enabled, r.models, r.disableAboveTokens);
 		expect(gate.models).toEqual([MODEL]);
 		expect(shouldEncode(gate, { model: MODEL, contextTokens: 0 })).toBe(true);
@@ -147,9 +171,9 @@ describe("argot.models binds: only listed models are taught shorthand", () => {
 	});
 });
 
-describe("argot.disableAboveTokens binds: the context cutoff stops teaching", () => {
+describe("argot.encode.disableAboveTokens binds: the context cutoff stops teaching", () => {
 	it("the default -1 sentinel encodes at any context size", () => {
-		const r = sdkArgotReads(Settings.isolated({ "argot.enabled": true, "argot.models": [MODEL] }));
+		const r = sdkArgotReads(Settings.isolated({ "argot.enabled": true, "argot.encode.models": [MODEL] }));
 		expect(r.disableAboveTokens).toBe(-1);
 		const gate = buildArgotGate(r.enabled, r.models, r.disableAboveTokens);
 		expect(shouldEncode(gate, { model: MODEL, contextTokens: 900_000 })).toBe(true);
@@ -157,7 +181,11 @@ describe("argot.disableAboveTokens binds: the context cutoff stops teaching", ()
 
 	it("a configured cutoff stops encoding at and above the threshold", () => {
 		const r = sdkArgotReads(
-			Settings.isolated({ "argot.enabled": true, "argot.models": [MODEL], "argot.disableAboveTokens": 200_000 }),
+			Settings.isolated({
+				"argot.enabled": true,
+				"argot.encode.models": [MODEL],
+				"argot.encode.disableAboveTokens": 200_000,
+			}),
 		);
 		expect(r.disableAboveTokens).toBe(200_000);
 		const gate = buildArgotGate(r.enabled, r.models, r.disableAboveTokens);
@@ -245,16 +273,16 @@ describe("argot.subagents binds: the setting selects the child's codec policy", 
  * the all-default (off) state proves nothing, because you cannot see the feature
  * do anything. Off exposes only the master toggle; turning it on (a permanent
  * settings change, distinct from an ephemeral preview) reveals the four dependent
- * knobs. `argot.models`, `argot.tokenBudget`, `argot.disableAboveTokens`, and
+ * knobs. `argot.encode.models`, `argot.tokenBudget`, `argot.encode.disableAboveTokens`, and
  * `argot.subagents` gate on the `argotEnabled` condition; `argot.enabled` never
  * does. Mirrors the selector's own visibility rule (`!def.condition ||
  * def.condition()`), so this asserts exactly what the screen renders.
  */
 const ARGOT_SETTING_PATHS = [
 	"argot.enabled",
-	"argot.models",
+	"argot.encode.models",
 	"argot.tokenBudget",
-	"argot.disableAboveTokens",
+	"argot.encode.disableAboveTokens",
 	"argot.subagents",
 ] as const;
 
@@ -327,9 +355,9 @@ describe("the Argot settings group is a disabled-vs-enabled differential", () =>
 		await setGlobalArgotEnabled(true);
 		expect(visibleArgotSettings()).toEqual([
 			"argot.enabled",
-			"argot.models",
+			"argot.encode.models",
 			"argot.tokenBudget",
-			"argot.disableAboveTokens",
+			"argot.encode.disableAboveTokens",
 			"argot.subagents",
 		]);
 	});

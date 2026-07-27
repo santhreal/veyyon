@@ -727,6 +727,7 @@ describe("the generated bash comma helper, executed", () => {
 			`cur=${JSON.stringify(cur)}`,
 			"COMPREPLY=()",
 			'_veyyon_comma "read bash"',
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: bash/zsh completion source; the ${...} is shell syntax under test.
 			'printf "%s\\n" "${COMPREPLY[@]}"',
 		].join("\n");
 		const out = Bun.spawnSync(["bash", "-c", driver]);
@@ -785,9 +786,11 @@ describe("the generated bash dispatcher, executed", () => {
 			script,
 			"compopt() { :; }",
 			`COMP_WORDS=(${words.map(w => JSON.stringify(w)).join(" ")})`,
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: bash/zsh completion source; the ${...} is shell syntax under test.
 			"COMP_CWORD=$(( ${#COMP_WORDS[@]} - 1 ))",
 			"COMPREPLY=()",
 			"_veyyon",
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: bash/zsh completion source; the ${...} is shell syntax under test.
 			'printf "%s\\n" "${COMPREPLY[@]}"',
 		].join("\n");
 		const out = Bun.spawnSync(["bash", "-c", driver]);
@@ -861,9 +864,11 @@ describe("the generated bash @file completion, executed", () => {
 			"compopt() { :; }",
 			`cd ${JSON.stringify(dir)}`,
 			`COMP_WORDS=(${words.map(w => JSON.stringify(w)).join(" ")})`,
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: bash/zsh completion source; the ${...} is shell syntax under test.
 			"COMP_CWORD=$(( ${#COMP_WORDS[@]} - 1 ))",
 			"COMPREPLY=()",
 			"_veyyon",
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: bash/zsh completion source; the ${...} is shell syntax under test.
 			'printf "%s\\n" "${COMPREPLY[@]}"',
 		].join("\n");
 		const out = Bun.spawnSync(["bash", "-c", driver]);
@@ -1046,9 +1051,11 @@ describe("the generated bash positional dispatch, executed", () => {
 			script,
 			"compopt() { :; }",
 			`COMP_WORDS=(${words.map(w => JSON.stringify(w)).join(" ")})`,
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: bash/zsh completion source; the ${...} is shell syntax under test.
 			"COMP_CWORD=$(( ${#COMP_WORDS[@]} - 1 ))",
 			"COMPREPLY=()",
 			"_veyyon",
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: bash/zsh completion source; the ${...} is shell syntax under test.
 			'printf "%s\\n" "${COMPREPLY[@]}"',
 		].join("\n");
 		const out = Bun.spawnSync(["bash", "-c", driver]);
@@ -1262,6 +1269,7 @@ describe("settings completion reaches every shell", () => {
 		expect(out).toContain("':value:_veyyon_setting_values'");
 		expect(out).not.toContain("_files");
 		expect(out).toContain("_veyyon_setting_values() {");
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: bash/zsh completion source; the ${...} is shell syntax under test.
 		expect(out).toContain('"${words[CURRENT-1]}"');
 	});
 
@@ -1347,9 +1355,11 @@ describe("the generated bash settings completion, executed", () => {
 			stub,
 			"compopt() { :; }",
 			`COMP_WORDS=(${words.map(w => JSON.stringify(w)).join(" ")})`,
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: bash/zsh completion source; the ${...} is shell syntax under test.
 			"COMP_CWORD=$(( ${#COMP_WORDS[@]} - 1 ))",
 			"COMPREPLY=()",
 			"_veyyon",
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: bash/zsh completion source; the ${...} is shell syntax under test.
 			'printf "%s\\n" "${COMPREPLY[@]}"',
 		].join("\n");
 		const out = Bun.spawnSync(["bash", "-c", driver]);
@@ -1418,7 +1428,9 @@ describe("the @file launch positional", () => {
 	it("bash strips the @ for the lookup and puts it back on every candidate", () => {
 		const out = generateCompletion("bash", atSpec);
 		expect(out).toContain("_veyyon_at_file() {");
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: bash/zsh completion source; the ${...} is shell syntax under test.
 		expect(out).toContain('local realcur="${cur#@}"');
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: bash/zsh completion source; the ${...} is shell syntax under test.
 		expect(out).toContain('matches[i]="@${matches[i]}"');
 	});
 

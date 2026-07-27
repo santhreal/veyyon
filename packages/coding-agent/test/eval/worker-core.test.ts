@@ -5,23 +5,23 @@ import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { WorkerCore } from "@veyyon/coding-agent/eval/js/worker-core";
 import type {
+	EvalWorkerInbound,
+	EvalWorkerOutbound,
+	EvalWorkerTransport,
 	SessionSnapshot,
-	Transport,
-	WorkerInbound,
-	WorkerOutbound,
 } from "@veyyon/coding-agent/eval/js/worker-protocol";
 import { postmortem } from "@veyyon/utils";
 import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
 
 interface WorkerHarness {
-	send(message: WorkerInbound): void;
-	onMessage(handler: (message: WorkerOutbound) => void): () => void;
+	send(message: EvalWorkerInbound): void;
+	onMessage(handler: (message: EvalWorkerOutbound) => void): () => void;
 }
 
 function createWorkerHarness(): WorkerHarness {
-	const hostListeners = new Set<(message: WorkerOutbound) => void>();
-	const workerListeners = new Set<(message: WorkerInbound) => void>();
-	const transport: Transport = {
+	const hostListeners = new Set<(message: EvalWorkerOutbound) => void>();
+	const workerListeners = new Set<(message: EvalWorkerInbound) => void>();
+	const transport: EvalWorkerTransport = {
 		send: message => {
 			queueMicrotask(() => {
 				for (const listener of hostListeners) listener(message);
@@ -52,9 +52,9 @@ function createWorkerHarness(): WorkerHarness {
 
 function waitForMessage(
 	harness: WorkerHarness,
-	predicate: (message: WorkerOutbound) => boolean,
-): Promise<WorkerOutbound> {
-	const { promise, resolve } = Promise.withResolvers<WorkerOutbound>();
+	predicate: (message: EvalWorkerOutbound) => boolean,
+): Promise<EvalWorkerOutbound> {
+	const { promise, resolve } = Promise.withResolvers<EvalWorkerOutbound>();
 	let unsubscribe = (): void => {};
 	unsubscribe = harness.onMessage(message => {
 		if (!predicate(message)) return;
@@ -375,9 +375,9 @@ describe("WorkerCore", () => {
 		const dirA = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-cwd-a-"));
 		const dirB = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-cwd-b-"));
 		const chdirs: string[] = [];
-		const hostListeners = new Set<(message: WorkerOutbound) => void>();
-		const workerListeners = new Set<(message: WorkerInbound) => void>();
-		const transport: Transport = {
+		const hostListeners = new Set<(message: EvalWorkerOutbound) => void>();
+		const workerListeners = new Set<(message: EvalWorkerInbound) => void>();
+		const transport: EvalWorkerTransport = {
 			send: message => {
 				queueMicrotask(() => {
 					for (const listener of hostListeners) listener(message);

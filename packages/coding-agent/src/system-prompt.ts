@@ -2,11 +2,10 @@
  * System prompt construction and project context loading
  */
 
-import * as os from "node:os";
 import type { AgentTool } from "@veyyon/agent-core";
 import type { ToolExample, TSchema } from "@veyyon/ai";
 import { renderToolInventory } from "@veyyon/ai/dialect";
-import { $env, errorMessage, getGpuCachePath, getProjectDir, hasFsCode, isEnoent, logger, prompt } from "@veyyon/utils";
+import { $env, errorMessage, firstNonEmpty, getProjectDir, logger, looksLikeFilePath, prompt } from "@veyyon/utils";
 import { contextFileCapability } from "./capability/context-file";
 import { systemPromptCapability } from "./capability/system-prompt";
 import { findConfigFile } from "./config";
@@ -24,8 +23,13 @@ import {
 	type ResolvedPersonality,
 	resolvePersonality,
 } from "./personality/resolver";
-import { PROMPTS } from "./prompts/registry";
-import { assembleDefaultTemplate, parseSectionOverridesJson } from "./system-prompt-builder/default-template";
+import { sessionPrompts } from "./prompts/session/rows";
+import {
+	assembleDefaultTemplate,
+	parseSectionOverridesJson,
+	statementSectionOverrides,
+} from "./system-prompt-builder/default-template";
+import { type GateInputs, OMITTED_GATE_DEFAULTS } from "./system-prompt-builder/gate-inputs";
 import { applyPromptSectionOrderToParts } from "./system-prompt-builder/prompt-sections";
 import {
 	applySectionOverrides,
@@ -40,11 +44,17 @@ import {
 	type RuntimeSectionEntry,
 	withSectionBanner,
 } from "./system-prompt-builder/section-registry";
+import {
+	parseStatementOverridesJson,
+	type StatementContext,
+	type StatementOverrides,
+} from "./system-prompt-builder/statement-registry";
 import { normalizeConcurrencyLimit } from "./task/parallel";
 import { usesCodexTaskPrompt } from "./task/prompt-policy";
 import { shortenPath } from "./tools/render-utils";
 import { isNonProjectRoot, NON_PROJECT_REASON_TEXT, type NonProjectReason } from "./tools/reroot-hint";
 import { type ActiveRepoContext, resolveActiveRepoContext } from "./utils/active-repo-context";
+import { getCachedGpu, getCpuModel, getEnvironmentInfo } from "./utils/host-environment";
 import { formatLocalCalendarDate } from "./utils/local-date";
 import { normalizePromptPath } from "./utils/prompt-path";
 import { AGENTS_MD_LIMIT, buildWorkspaceTree, type WorkspaceTree } from "./workspace-tree";
@@ -147,267 +157,15 @@ export function dedupePromptSource(
 	return otherSources.some(otherSource => promptSourceContainsRule(otherSource, resolvedSource)) ? "" : resolvedSource;
 }
 
-function firstNonEmpty(...values: (string | undefined | null)[]): string | null {
-	for (const value of values) {
-		const trimmed = value?.trim();
-		if (trimmed) return trimmed;
-	}
-	return null;
-}
-
-function parseWmicTable(output: string, header: string): string | null {
-	const lines = output
-		.split("\n")
-		.map(line => line.trim())
-		.filter(Boolean);
-	const filtered = lines.filter(line => line.toLowerCase() !== header.toLowerCase());
-	return filtered[0] ?? null;
-}
-
+/**
+ * How long prompt preparation may spend on its slow lookups before falling back.
+ *
+ * The prompt's budget, and the only place it is stated. The GPU probe is given it as
+ * an argument rather than reading it across a module boundary, so the probe's own
+ * margin (it must survive its deadline long enough to write the null cache) stays
+ * with the probe.
+ */
 const SYSTEM_PROMPT_PREP_TIMEOUT_MS = 5000;
-/** Kept below prep timeout so timed-out probes can still write the null cache before fallback. */
-const GPU_PROBE_TIMEOUT_MS = SYSTEM_PROMPT_PREP_TIMEOUT_MS - 500;
-/** Drop stdout from a probe descendant that inherited the pipe after the probe exited. */
-const GPU_PROBE_STDOUT_DRAIN_MS = 250;
-
-async function runGpuProbe(cmd: string[]): Promise<string | null> {
-	try {
-		const proc = Bun.spawn({
-			cmd,
-			stdout: "pipe",
-			stderr: "ignore",
-			stdin: "ignore",
-			timeout: GPU_PROBE_TIMEOUT_MS,
-			// SIGKILL so a probe ignoring SIGTERM (PATH wrapper, wedged WMI) still
-			// dies at the deadline and lets getCachedGpu reach the null-cache write.
-			killSignal: "SIGKILL",
-		});
-		const stdoutReader = proc.stdout.getReader();
-		let stdout = "";
-		const decoder = new TextDecoder();
-		const stdoutDone = (async () => {
-			while (true) {
-				const chunk = await stdoutReader.read();
-				if (chunk.done) break;
-				stdout += decoder.decode(chunk.value, { stream: true });
-			}
-			stdout += decoder.decode();
-		})();
-		const exitCode = await proc.exited;
-		// Even on exit 0, a probe wrapper can leave a descendant holding stdout open.
-		// Bound the EOF wait so getCachedGpu cannot outlive the probe in either path;
-		// keep whatever bytes the reader already captured before cancelling.
-		const drained = await Promise.race([
-			stdoutDone.then(() => "ok" as const).catch(() => "err" as const),
-			Bun.sleep(GPU_PROBE_STDOUT_DRAIN_MS).then(() => "timeout" as const),
-		]);
-		if (drained !== "ok") {
-			await stdoutReader.cancel().catch(() => undefined);
-			await stdoutDone.catch(() => undefined);
-		}
-		return exitCode === 0 ? stdout : null;
-	} catch {
-		return null;
-	}
-}
-
-/**
- * Pick the best GPU device name from `lspci` default-format output, or null if
- * none is present. Exported for unit testing.
- *
- * lspci lines are `<slot> <class>: <device>`, e.g.
- * `01:00.0 VGA compatible controller: NVIDIA Corporation Device 2b85 (rev a1)`.
- * The slot (`01:00.0`) contains colons but never a colon-SPACE, so the first
- * `": "` is always the class/device separator; the device name is everything
- * after it. Splitting on a bare `":"` (as an earlier version did) kept the slot
- * tail and class text, so the prompt showed
- * `00.0 VGA compatible controller: NVIDIA ...` instead of the device name.
- *
- * Among candidates, discrete GPUs (NVIDIA/AMD) outrank an unknown adapter,
- * which outranks Intel integrated; BMC/server display adapters are skipped. The
- * sort is stable, so ties keep lspci enumeration order.
- */
-export function selectGpuFromLspci(output: string): string | null {
-	const gpus: Array<{ name: string; priority: number }> = [];
-	for (const line of output.split("\n")) {
-		if (!/(VGA|3D|Display)/i.test(line)) continue;
-		const sep = line.indexOf(": ");
-		const name = sep >= 0 ? line.slice(sep + 2).trim() : line.trim();
-		const nameLower = name.toLowerCase();
-		// Skip BMC/server management adapters. Real lspci names read
-		// `Matrox Electronics Systems Ltd. MGA G200e`, so the model token is
-		// `MGA G200` with a space: match `mga\s*g200` (the earlier `matrox g200` /
-		// `mgag200` patterns never matched real output and let the BMC adapter
-		// through as the reported GPU).
-		if (/aspeed|mga\s*g200/i.test(name)) continue;
-		// Prioritize discrete GPUs
-		let priority = 0;
-		if (
-			nameLower.includes("nvidia") ||
-			nameLower.includes("geforce") ||
-			nameLower.includes("quadro") ||
-			nameLower.includes("rtx")
-		) {
-			priority = 3;
-		} else if (nameLower.includes("amd") || nameLower.includes("radeon") || nameLower.includes("rx ")) {
-			priority = 3;
-		} else if (nameLower.includes("intel")) {
-			priority = 1;
-		} else {
-			priority = 2;
-		}
-		gpus.push({ name, priority });
-	}
-	if (gpus.length === 0) return null;
-	gpus.sort((a, b) => b.priority - a.priority);
-	return gpus[0].name;
-}
-
-async function getGpuModel(): Promise<string | null> {
-	switch (process.platform) {
-		case "win32": {
-			const output = await runGpuProbe(["wmic", "path", "win32_VideoController", "get", "name"]);
-			return output ? parseWmicTable(output, "Name") : null;
-		}
-		case "linux": {
-			const output = await runGpuProbe(["lspci"]);
-			return output ? selectGpuFromLspci(output) : null;
-		}
-		default:
-			return null;
-	}
-}
-
-function getTerminalName(): string | undefined {
-	const termProgram = Bun.env.TERM_PROGRAM;
-	const termProgramVersion = Bun.env.TERM_PROGRAM_VERSION;
-	if (termProgram) {
-		return termProgramVersion ? `${termProgram} ${termProgramVersion}` : termProgram;
-	}
-
-	if (Bun.env.WT_SESSION) return "Windows Terminal";
-
-	const term = firstNonEmpty(Bun.env.TERM, Bun.env.COLORTERM, Bun.env.TERMINAL_EMULATOR);
-	return term ?? undefined;
-}
-
-/** Cached GPU probe result. */
-interface GpuCache {
-	gpu: string | null;
-}
-
-/**
- * Read the GPU probe result cached on disk, or `null` to probe again.
- *
- * A damaged file (truncated by a crash mid-write, hand-edited, replaced with a
- * JSON value that is not an object) must never take the prompt down and must
- * never be trusted: the caller re-probes and overwrites it, so the cache repairs
- * itself on the next launch. But it is reported, because a file that fails to
- * parse on every launch means the probe runs on every launch, and the only
- * symptom of that is a slower start that nobody attributes to a cache.
- *
- * The one silence kept on purpose is a missing file. That is every first run, and
- * a warning that fires for everyone once is a warning people learn to skip.
- */
-async function loadGpuCache(): Promise<GpuCache | null> {
-	const cachePath = getGpuCachePath();
-	let content: unknown;
-	try {
-		content = await Bun.file(cachePath).json();
-	} catch (err) {
-		if (!isEnoent(err)) {
-			logger.warn("GPU cache could not be read; re-probing and rewriting it", {
-				path: cachePath,
-				error: errorMessage(err),
-			});
-		}
-		return null;
-	}
-	if (content && typeof content === "object" && "gpu" in content) {
-		const gpu = (content as { gpu: unknown }).gpu;
-		// `null` is a real cached answer ("probed, found nothing"), so it is a hit.
-		// Anything else that is not a string is damage: normalizing it to `null` and
-		// returning it would leave the bad file on disk forever, because the caller
-		// only rewrites the cache when it re-probes.
-		if (typeof gpu === "string" || gpu === null) return { gpu };
-		logger.warn("GPU cache has a non-string `gpu`; re-probing and rewriting it", {
-			path: cachePath,
-			type: typeof gpu,
-		});
-		return null;
-	}
-	logger.warn("GPU cache parsed but has no `gpu` field; re-probing and rewriting it", { path: cachePath });
-	return null;
-}
-
-/**
- * Persist the probe result. A failed write costs only speed (the probe reruns
- * next launch), so it must not throw, but it is reported for the same reason the
- * read failure is: an unwritable cache directory is otherwise invisible.
- */
-async function saveGpuCache(info: GpuCache): Promise<void> {
-	const cachePath = getGpuCachePath();
-	try {
-		await Bun.write(cachePath, JSON.stringify(info, null, "\t"));
-	} catch (err) {
-		logger.warn("GPU cache could not be written; the GPU will be probed again on every launch", {
-			path: cachePath,
-			error: errorMessage(err),
-		});
-	}
-}
-
-async function getCachedGpu(): Promise<string | undefined> {
-	const cached = await logger.time("getCachedGpu:loadGpuCache", loadGpuCache);
-	if (cached) return cached.gpu ?? undefined;
-	const gpu = await logger.time("getCachedGpu:getGpuModel", getGpuModel);
-	await logger.time("getCachedGpu:saveGpuCache", saveGpuCache, { gpu });
-	return gpu ?? undefined;
-}
-
-async function getCpuModel(): Promise<string | undefined> {
-	if (process.platform !== "linux") return os.cpus()[0]?.model;
-	try {
-		const cpuInfo = await Bun.file("/proc/cpuinfo").text();
-		const match = /^model name\s*:\s*(.+)$/m.exec(cpuInfo);
-		return match?.[1]?.trim() || undefined;
-	} catch (error) {
-		if (!isEnoent(error)) {
-			logger.debug("Could not read Linux CPU model", { error: String(error) });
-		}
-		return undefined;
-	}
-}
-
-/**
- * Kernel identity for the workstation block. Prefers the uname build string
- * from `os.version()`, but Bun on macOS 15+ (Darwin 24/25) returns the literal
- * `"unknown"` when `uv_os_uname()`'s `version` field is empty — which surfaces
- * `Kernel: unknown` in the system prompt and makes the model misidentify the
- * host as Windows (#4141). Fall back to `<type> <release>` (uname -s + -r) so
- * macOS is always tagged as `Darwin <release>` and Linux keeps its build info.
- */
-function getKernelIdentity(): string {
-	const version = os.version()?.trim();
-	if (version && version.toLowerCase() !== "unknown") return version;
-	return `${os.type()} ${os.release()}`.trim();
-}
-
-function getEnvironmentInfo(
-	cpuModel: string | undefined,
-	gpu: string | undefined,
-): Array<{ label: string; value: string }> {
-	const entries: Array<{ label: string; value: string | undefined }> = [
-		{ label: "OS", value: `${os.platform()} ${os.release()}` },
-		{ label: "Distro", value: os.type() },
-		{ label: "Kernel", value: getKernelIdentity() },
-		{ label: "Arch", value: os.arch() },
-		{ label: "CPU", value: cpuModel },
-		{ label: "GPU", value: gpu },
-		{ label: "Terminal", value: getTerminalName() },
-	];
-	return entries.filter((e): e is { label: string; value: string } => !!e.value);
-}
 
 /** Discover TITLE_SYSTEM.md file for automatic session-title prompt overrides */
 export function discoverTitleSystemPromptFile(cwd?: string): string | undefined {
@@ -422,21 +180,53 @@ export function discoverTitleSystemPromptFile(cwd?: string): string | undefined 
 	return undefined;
 }
 
-/** Resolve input as file path or literal string */
+/** Endings that read as a prompt FILE rather than as prompt text. */
+const PROMPT_FILE_EXTENSIONS = ["md", "markdown", "txt", "text", "prompt"] as const;
+
+/**
+ * Resolve a prompt option that may be a file path or the prompt text itself.
+ *
+ * THE BUG THIS FIXES. Any read failure used to return the input unchanged, with
+ * `ENOENT` explicitly excluded from the warning, so a missing file said nothing at
+ * all. `--system-prompt ./promtps/main.md` with a typo in the directory therefore
+ * gave the model a system prompt whose entire content was the string
+ * `./promtps/main.md`. That is not a degraded prompt, it is no prompt: every rule,
+ * tool policy and workflow the agent depends on is gone, the session behaves nothing
+ * like it should, and the only clue is that the run went strangely. The same held for
+ * `--append-system-prompt` and `TITLE_SYSTEM.md`.
+ *
+ * HOW A FAILURE IS JUDGED. The read is still attempted first, because that is the
+ * only test that costs nothing when it succeeds and it keeps working for a path
+ * containing spaces. What changed is the answer when it fails:
+ *
+ *   - No whitespace anywhere AND it looks like a path (a separator, or a prompt-file
+ *     extension): a path was unmistakably meant, so the failure is raised with the
+ *     option, the path and the underlying error. Nothing about `./promtps/main.md`
+ *     is a prompt.
+ *   - Anything else is prose and is used as prose. A one-line instruction can easily
+ *     contain a slash ("write in the style of Strunk/White") or end in a word with a
+ *     dot, and refusing those would break a supported way to pass a prompt.
+ *
+ * Multi-line input is text by definition, since no path contains a newline.
+ *
+ * `looksLikeFilePath` is shared rather than spelled out here — Anthropic's
+ * certificate options ask the same question — with the extension list per domain.
+ */
 export async function resolvePromptInput(input: string | undefined, description: string): Promise<string | undefined> {
-	if (!input) {
-		return undefined;
-	} else if (input.includes("\n")) {
-		return input;
-	}
+	if (!input) return undefined;
+	if (input.includes("\n")) return input;
 
 	try {
 		return await Bun.file(input).text();
 	} catch (error) {
-		if (!hasFsCode(error, "ENAMETOOLONG") && !isEnoent(error)) {
-			logger.warn(`Could not read ${description} file`, { path: input, error: String(error) });
-		}
-		return input;
+		if (/\s/.test(input) || !looksLikeFilePath(input, PROMPT_FILE_EXTENSIONS)) return input;
+		throw new Error(
+			`${description}: cannot read ${input}: ${errorMessage(error)}. ` +
+				"It was taken as a file path because it has no spaces and contains a path separator or ends " +
+				"in a prompt-file extension. Fix the path, or pass the prompt text directly if you meant it " +
+				"literally.",
+			{ cause: error },
+		);
 	}
 }
 
@@ -562,7 +352,20 @@ export function buildSystemPromptToolMetadata(
 	);
 }
 
-export interface BuildSystemPromptOptions {
+/**
+ * Everything `buildSystemPrompt` takes.
+ *
+ * The SETTINGS-FED gates are not listed here: they are `Partial<GateInputs>`, declared once in
+ * `system-prompt-builder/gate-inputs.ts` alongside the resolver that fills them from settings and the
+ * table that says what an omitted one is worth. They used to be declared in both places, with two doc
+ * comments and two statements of each default; a session and the `veyyon prompt` inspector then read
+ * one and the builder read the other.
+ *
+ * `Partial` because every gate is optional to a caller: omitting one means "no configuration to
+ * offer", which {@link OMITTED_GATE_DEFAULTS} answers, and that is deliberately not the same as what a
+ * default session resolves. `test/core/prompt-gate-inputs.test.ts` measures the difference.
+ */
+export interface BuildSystemPromptOptions extends Partial<GateInputs> {
 	/** Custom system prompt (replaces default). */
 	customPrompt?: string;
 	/** Already-loaded custom system prompt text; bypasses path resolution. */
@@ -575,14 +378,6 @@ export interface BuildSystemPromptOptions {
 	appendSystemPrompt?: string;
 	/** Already-loaded append prompt text; bypasses path resolution. */
 	resolvedAppendSystemPrompt?: string;
-	/** Inline full tool descriptors in the system prompt. Default: false */
-	inlineToolDescriptors?: boolean;
-	/**
-	 * Whether provider-native tool calling is active (no owned/in-band syntax).
-	 * When true and `inlineToolDescriptors` is false, the inventory renders as a
-	 * compact tool-name list; otherwise it renders full `# Tool:` sections. Default: true
-	 */
-	nativeTools?: boolean;
 	/** Skills settings for discovery. */
 	skillsSettings?: SkillsSettings;
 	/** Working directory. Default: getProjectDir() */
@@ -593,29 +388,10 @@ export interface BuildSystemPromptOptions {
 	skills?: Skill[];
 	/** Pre-loaded rulebook rules (descriptions, excluding TTSR and always-apply). */
 	rules?: Array<{ name: string; description?: string; path: string; globs?: string[] }>;
-	/** Intent field name injected into every tool schema. If set, explains the field in the prompt. */
-	intentField?: string;
 	/** Whether MCP tool discovery is active for this prompt build. */
 	mcpDiscoveryMode?: boolean;
 	/** Discoverable MCP server summaries to advertise when discovery mode is active. */
 	mcpDiscoveryServerSummaries?: string[];
-	/** Encourage the agent to delegate via tasks unless changes are trivial. */
-	eagerTasks?: boolean;
-	/** When true, the Eager Tasks section uses the hard MUST/ONLY wording (`task.eager: always`) rather than the softer `preferred` nudge. */
-	eagerTasksAlways?: boolean;
-	/** Whether `task.batch` is enabled; selects the centralized delegation guidance's call shape. */
-	taskBatch?: boolean;
-	/** Effective task concurrency limit displayed in centralized delegation guidance. Zero means unlimited. */
-	taskMaxConcurrency?: number;
-	/** Whether IRC-backed parallel coordination can be included in delegation policy. */
-	taskIrcEnabled?: boolean;
-	/**
-	 * The agent types this session may spawn (`subagent.agents`), in discovery
-	 * order. Delegation prose names a specialist only when it is in this list: the
-	 * bundled specialists are off by default, and telling the model to route
-	 * research to a `scout` it cannot spawn is an instruction it can only fail.
-	 */
-	subagentNames?: string[];
 	/** Rules with alwaysApply=true — their full content is injected into the prompt. */
 	alwaysApplyRules?: AlwaysApplyRule[];
 	/** Whether secret obfuscation is active. When true, explains the redaction format in the prompt. */
@@ -645,19 +421,6 @@ export interface BuildSystemPromptOptions {
 	memoryRootEnabled?: boolean;
 	/** Active model identifier (e.g. "anthropic/claude-opus-4") used by prompt policy and optionally surfaced. */
 	model?: string;
-	/** Whether to surface `model` in the workstation block. Model-specific prompt policy still uses it. Default: true. */
-	includeModelInPrompt?: boolean;
-	/**
-	 * Personality name rendered into the default system prompt. Resolved against
-	 * built-ins plus Tier-B `~/.veyyon/personalities` and `.veyyon/personalities`
-	 * data files (project > user > built-in). "none" omits the block. An unknown
-	 * name falls back to "default" with a warning. Default: "default"
-	 */
-	personality?: string;
-	/** Whether to include the workspace directory tree in the system prompt. Default: false */
-	includeWorkspaceTree?: boolean;
-	/** Whether Mermaid fenced blocks render as terminal ASCII diagrams. Default: true */
-	renderMermaid?: boolean;
 	/** Pre-resolved nested active repo context. Undefined resolves from cwd. */
 	activeRepoContext?: ActiveRepoContext | null;
 	/**
@@ -672,6 +435,20 @@ export interface BuildSystemPromptOptions {
 export interface BuildSystemPromptResult {
 	/** Ordered system prompt blocks. Providers should preserve entries as distinct messages/blocks. */
 	systemPrompt: string[];
+	/**
+	 * The template data these blocks were rendered with.
+	 *
+	 * Returned for `prompt-inspect`, which prices each statement by re-assembling its section one
+	 * statement at a time. Doing that against re-resolved inputs would price a prompt nobody was
+	 * sent, since the resolution is where the settings, the tool set and the model profile all land.
+	 *
+	 * `null` means these blocks did not come from the statement registry: a custom system prompt
+	 * replaced the assembly, or `NULL_PROMPT` suppressed it. Null rather than an empty context on
+	 * purpose. An empty context evaluates every condition as false and reads as a legitimate cost
+	 * breakdown of a minimal prompt, so a consumer would report statement costs for statements this
+	 * prompt does not contain. A consumer has to handle the absence, and cannot mistake it for data.
+	 */
+	statementContext: StatementContext | null;
 }
 
 /**
@@ -707,12 +484,48 @@ function resolveEvalSectionOverrides(): ReturnType<typeof parseSectionOverridesJ
 	return overrides;
 }
 
+/**
+ * Read the EVAL-ONLY per-STATEMENT override, which is how a single rule is ablated or reworded.
+ *
+ * Same instrument as {@link resolveEvalSectionOverrides}, one level finer, and deliberately the same
+ * shape: env var only, fail closed, warn loudly. A section override answers "is this section pulling
+ * its weight", which is too coarse to act on when TOOL POLICY is one section and 34 rules. This
+ * answers "is THIS RULE pulling its weight", which is the question an eval can actually attribute a
+ * score change to.
+ *
+ * `VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS` is a JSON object of statement id to replacement text, or to
+ * `null` to remove the rule entirely. There is no config key and no CLI flag, for the reason spelled
+ * out above the section reader: a config-reachable prompt override could silently contaminate a
+ * production run, and a contaminated eval reports a number that looks valid.
+ */
+function resolveEvalStatementOverrides(): StatementOverrides {
+	const overrides = parseStatementOverridesJson($env.VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS);
+	const ids = Object.keys(overrides);
+	if (ids.length === 0) return overrides;
+
+	// Ablations and rewordings are reported separately because they are different experiments, and an
+	// operator reading the log needs to know which arm they are looking at.
+	const ablated = ids.filter(id => overrides[id] === null);
+	const reworded = ids.filter(id => overrides[id] !== null);
+	logger.warn(
+		`EVAL-ONLY system-prompt STATEMENT override is ACTIVE (VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS): ` +
+			`${ablated.length > 0 ? `ablating [${ablated.join(", ")}]` : "ablating nothing"}, ` +
+			`${reworded.length > 0 ? `replacing [${reworded.join(", ")}]` : "replacing nothing"}. ` +
+			`This is NOT the production prompt — expected only inside a benchmark arm.`,
+	);
+	return overrides;
+}
+
 /** Build the system prompt with tools, guidelines, and context */
 export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}): Promise<BuildSystemPromptResult> {
 	if ($env.NULL_PROMPT === "true") {
-		return { systemPrompt: [] };
+		// No prompt was rendered, so there is no context it was rendered with.
+		return { systemPrompt: [], statementContext: null };
 	}
 
+	// Every gate fallback below comes from ONE table, `OMITTED_GATE_DEFAULTS`, rather than being
+	// written inline here. Inline values made each default a second owner independent of the
+	// setting's own default, and the table states what an omitted option means in one place.
 	const {
 		customPrompt,
 		resolvedCustomPrompt: providedResolvedCustomPrompt,
@@ -720,7 +533,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		appendSystemPrompt,
 		inlineToolDescriptors: providedInlineToolDescriptors,
 		resolvedAppendSystemPrompt: providedResolvedAppendPrompt,
-		nativeTools = true,
+		nativeTools = OMITTED_GATE_DEFAULTS.nativeTools,
 		skillsSettings,
 		toolNames: providedToolNames,
 		cwd,
@@ -731,12 +544,12 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		intentField,
 		mcpDiscoveryMode = false,
 		mcpDiscoveryServerSummaries = [],
-		eagerTasks = false,
-		eagerTasksAlways = false,
-		taskBatch = true,
-		taskMaxConcurrency = 0,
-		taskIrcEnabled = false,
-		subagentNames = [],
+		eagerTasks = OMITTED_GATE_DEFAULTS.eagerTasks,
+		eagerTasksAlways = OMITTED_GATE_DEFAULTS.eagerTasksAlways,
+		taskBatch = OMITTED_GATE_DEFAULTS.taskBatch,
+		taskMaxConcurrency = OMITTED_GATE_DEFAULTS.taskMaxConcurrency,
+		taskIrcEnabled = OMITTED_GATE_DEFAULTS.taskIrcEnabled,
+		subagentNames = OMITTED_GATE_DEFAULTS.subagentNames,
 		secretsEnabled = false,
 		// `argotPreamble` and `argotHandles` are deliberately NOT destructured here.
 		// They are option-backed runtime sections, so the assembler reads them off
@@ -746,14 +559,14 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		workspaceTree: providedWorkspaceTree,
 		memoryRootEnabled = false,
 		model,
-		includeModelInPrompt = true,
-		personality = "default",
-		includeWorkspaceTree = false,
-		renderMermaid = true,
+		includeModelInPrompt = OMITTED_GATE_DEFAULTS.includeModelInPrompt,
+		personality = OMITTED_GATE_DEFAULTS.personality,
+		includeWorkspaceTree = OMITTED_GATE_DEFAULTS.includeWorkspaceTree,
+		renderMermaid = OMITTED_GATE_DEFAULTS.renderMermaid,
 		activeRepoContext: providedActiveRepoContext,
 		sectionOrder,
 	} = options;
-	const inlineToolDescriptors = providedInlineToolDescriptors ?? false;
+	const inlineToolDescriptors = providedInlineToolDescriptors ?? OMITTED_GATE_DEFAULTS.inlineToolDescriptors;
 	const resolvedCwd = cwd ?? getProjectDir();
 
 	const prepDefaults = {
@@ -859,7 +672,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	// way below it; a prompt is never worth blocking on.
 	const nonProjectCwdPromise = logger.time("isNonProjectRoot", () => isNonProjectRoot(resolvedCwd));
 	const cpuModelPromise = logger.time("getCpuModel", getCpuModel);
-	const gpuPromise = logger.time("getCachedGpu", getCachedGpu);
+	const gpuPromise = logger.time("getCachedGpu", () => getCachedGpu(SYSTEM_PROMPT_PREP_TIMEOUT_MS));
 	const personalityPromise: Promise<ResolvedPersonality> =
 		personality === "none"
 			? Promise.resolve({ name: "none", text: "" })
@@ -1055,7 +868,12 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 				"VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS is set; the benchmark payload is the only section source.",
 		);
 	}
-	const sectionOverrides = usingEvalOverrides ? evalSectionOverrides : applySectionOverrides(sectionOverrideFiles);
+	// The assembled statement text is computed FIRST so an append-mode override appends to what this
+	// session would actually send, not to the copy in `system-prompt.md`. See `applySectionOverrides`.
+	const statementSections = statementSectionOverrides(data, resolveEvalStatementOverrides());
+	const sectionOverrides = usingEvalOverrides
+		? evalSectionOverrides
+		: applySectionOverrides(sectionOverrideFiles, statementSections);
 	if (resolvedCustomPrompt && Object.keys(sectionOverrides).length > 0) {
 		// A custom prompt replaces the whole template, so it has no banner
 		// sections to override. Silently ignoring the overrides would run against
@@ -1069,9 +887,14 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 				"(--system-prompt / SYSTEM.md): a custom prompt has no banner sections to override. Use one or the other.",
 		);
 	}
+	// Converted sections' text comes from the STATEMENT REGISTRY, spliced in as overrides.
+	// Statements first, operator overrides second, so an operator replacing a section still wins:
+	// a converted section that ignored `.veyyon/prompt-sections/<id>.md` would be a shipped feature
+	// lost to a refactor. A custom prompt replaces the whole document and has no sections at all,
+	// so it takes neither.
 	const baseTemplate = resolvedCustomPrompt
-		? PROMPTS["session/custom-system-prompt"].text
-		: assembleDefaultTemplate(sectionOverrides);
+		? sessionPrompts["session/custom-system-prompt"].text
+		: assembleDefaultTemplate({ ...statementSections, ...sectionOverrides });
 	const rendered = prompt.render(baseTemplate, data);
 	const reorderSections = Boolean(sectionOrder && sectionOrder.length > 0);
 	if (reorderSections && resolvedCustomPrompt) {
@@ -1081,7 +904,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	// project footer still carries environment, cwd, workspace, and dir-context.
 	const projectPrompt = prompt
 		.render(
-			PROMPTS["session/project-prompt"].text,
+			sessionPrompts["session/project-prompt"].text,
 			resolvedCustomPrompt ? { ...data, contextFiles: [], appendPrompt: "" } : data,
 		)
 		.trim();
@@ -1140,5 +963,8 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 			reorderSections && !resolvedCustomPrompt
 				? applyPromptSectionOrderToParts(systemPrompt, sectionOrder)
 				: systemPrompt,
+		// A custom prompt is not assembled from statements, so pricing them against this context
+		// would attribute cost to text the operator replaced.
+		statementContext: resolvedCustomPrompt ? null : data,
 	};
 }

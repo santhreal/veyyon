@@ -6,7 +6,7 @@
  */
 
 import type { OAuthCallbackFlowOptions } from "@veyyon/ai/oauth/callback-server";
-import { OAuthCallbackFlow } from "@veyyon/ai/oauth/callback-server";
+import { DEFAULT_CALLBACK_PATH, OAuthCallbackFlow } from "@veyyon/ai/oauth/callback-server";
 import type { OAuthController, OAuthCredentials } from "@veyyon/ai/oauth/types";
 import type { FetchImpl } from "@veyyon/ai/types";
 import { truncate } from "@veyyon/utils";
@@ -74,7 +74,6 @@ export interface MCPStoredOAuthCredential extends OAuthCredential {
 }
 
 const DEFAULT_PORT = 3000;
-const CALLBACK_PATH = "/callback";
 
 function hasOAuthScope(scopes: string | null | undefined, scope: string): boolean {
 	return !!scopes && scopes.split(/\s+/).includes(scope);
@@ -170,7 +169,7 @@ function resolveCallbackPath(callbackPath: string | undefined, redirectUri: stri
 
 	const parsed = parseRedirectUri(redirectUri);
 	if (parsed?.pathname) return parsed.pathname;
-	return CALLBACK_PATH;
+	return DEFAULT_CALLBACK_PATH;
 }
 
 function resolveCallbackHostname(redirectUri: string | undefined): string | undefined {

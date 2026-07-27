@@ -1,4 +1,5 @@
 import { errorMessage, getProjectDir, logger } from "@veyyon/utils";
+import { registerOwnedResourceDisposer } from "../../session/owned-resources";
 import type { ToolSession } from "../../tools";
 import {
 	attachSessionOwner,
@@ -19,6 +20,7 @@ import {
 } from "../executor-base";
 import type { JsStatusEvent } from "../js/shared/types";
 import type { KernelExecutor } from "../kernel-base";
+import { releaseKernel } from "../kernel-base";
 import { ensureKernelToolBridge } from "../kernel-tool-bridge";
 import { checkRubyKernelAvailability, type KernelDisplayOutput, RubyKernel } from "./kernel";
 import { resolveExplicitRubyRuntime } from "./runtime";
@@ -219,16 +221,18 @@ async function acquireSession(
 async function replaceSessionKernel(session: RubySession, cwd: string, options: RubyExecutorOptions): Promise<void> {
 	const old = session.kernel;
 	const remaining = getRemainingTimeoutMs(options.deadlineMs);
-	await old
-		.shutdown(remaining !== undefined ? { timeoutMs: Math.max(0, remaining) } : undefined)
-		.catch(() => undefined);
+	await releaseKernel(
+		old,
+		"ruby-session-kernel-replaced",
+		remaining !== undefined ? { timeoutMs: Math.max(0, remaining) } : undefined,
+	);
 	if (sessions.get(session.sessionKey) !== session) {
 		throw new RubyExecutionCancelledError(false);
 	}
 	requireRemainingTimeoutMs(options.deadlineMs);
 	const next = await startKernel(cwd, options);
 	if (sessions.get(session.sessionKey) !== session) {
-		await next.shutdown().catch(() => undefined);
+		await releaseKernel(next, "ruby-session-superseded-while-starting");
 		throw new RubyExecutionCancelledError(false);
 	}
 	session.kernel = next;
@@ -236,10 +240,12 @@ async function replaceSessionKernel(session: RubySession, cwd: string, options: 
 
 async function resetSession(sessionKey: string): Promise<void> {
 	const existing =
+		// As in the Julia and Python executors: a start that failed leaves nothing to reset, and its failure
+		// belongs to the caller awaiting the start.
 		sessions.get(sessionKey) ?? (await startingSessions.get(sessionKey)?.promise.catch(() => undefined));
 	if (!existing) return;
 	sessions.delete(sessionKey);
-	await existing.kernel.shutdown().catch(() => undefined);
+	await releaseKernel(existing.kernel, "ruby-session-reset");
 }
 
 // ---------------------------------------------------------------------------
@@ -386,7 +392,7 @@ async function executePerCall(code: string, cwd: string, options: RubyExecutorOp
 	try {
 		return await executeWithKernel(kernel, code, { ...options, cwd });
 	} finally {
-		await kernel.shutdown().catch(() => undefined);
+		await releaseKernel(kernel, "ruby-one-shot-finished");
 	}
 }
 
@@ -404,6 +410,9 @@ async function executeOnSession(code: string, cwd: string, options: RubyExecutor
 	}
 	if (options.reset) {
 		const inFlight = resettingSessions.get(sessionKey);
+		// Another caller owns this reset and is awaiting `resetPromise` itself, so its failure is reported
+		// there. Here the only thing that matters is that the reset has SETTLED before running on the
+		// context: if it failed, `acquireSession` below starts a fresh one and fails with its own reason.
 		if (inFlight) await inFlight.catch(() => undefined);
 		else {
 			const resetPromise = resetSession(sessionKey);
@@ -419,6 +428,9 @@ async function executeOnSession(code: string, cwd: string, options: RubyExecutor
 		}
 	} else {
 		const inFlight = resettingSessions.get(sessionKey);
+		// Another caller owns this reset and is awaiting `resetPromise` itself, so its failure is reported
+		// there. Here the only thing that matters is that the reset has SETTLED before running on the
+		// context: if it failed, `acquireSession` below starts a fresh one and fails with its own reason.
 		if (inFlight) await inFlight.catch(() => undefined);
 	}
 	const session = await acquireSession(sessionKey, sessionId, cwd, options);
@@ -496,3 +508,16 @@ export async function executeRuby(code: string, options?: RubyExecutorOptions): 
 		throw err;
 	}
 }
+
+/**
+ * Wire this subsystem into the session's owner-scoped cleanup.
+ *
+ * Registered at module scope rather than called by name from `agent-session.dispose()`, which is
+ * what used to happen. See `session/owned-resources.ts` for why load-time registration is safe
+ * here: a kernel cannot exist unless this module was loaded to create it.
+ */
+registerOwnedResourceDisposer({
+	name: "ruby-kernels",
+	scope: "eval-kernel-owner",
+	dispose: disposeRubyKernelSessionsByOwner,
+});

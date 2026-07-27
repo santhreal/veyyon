@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { Effort } from "@veyyon/ai";
+import { Effort } from "@veyyon/catalog/effort";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { resolvePrimaryModel, resolveSmolModel } from "@veyyon/coding-agent/commit/model-selection";
 

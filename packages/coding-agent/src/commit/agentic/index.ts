@@ -9,7 +9,7 @@ import { resolvePrimaryModel, resolveSmolModel } from "../../commit/model-select
 import type { CommitCommandArgs, ConventionalAnalysis, NumstatEntry } from "../../commit/types";
 import { ModelRegistry } from "../../config/model-registry";
 import { Settings } from "../../config/settings";
-import { PROMPTS } from "../../prompts/registry";
+import { commitAgenticPrompts } from "../../prompts/commit-agentic/rows";
 import { discoverAuthStorage, discoverContextFiles } from "../../sdk";
 import * as git from "../../utils/git";
 import { type ExistingChangelogEntries, runCommitAgentSession } from "./agent";
@@ -339,7 +339,7 @@ async function confirmSplitCommitPlan(plan: SplitCommitPlan): Promise<boolean> {
 	}
 	const rl = createInterface({ input: process.stdin, output: process.stdout });
 	try {
-		const splitConfirmQuestion = prompt.render(PROMPTS["commit-agentic/split-confirm"].text, {
+		const splitConfirmQuestion = prompt.render(commitAgenticPrompts["commit-agentic/split-confirm"].text, {
 			count: plan.commits.length,
 		});
 		const answer = await rl.question(splitConfirmQuestion);
@@ -382,6 +382,10 @@ async function loadExistingChangelogEntries(paths: string[]): Promise<ExistingCh
 					return { path, sections };
 				}
 			} catch {
+				// A changelog whose Unreleased section this cannot parse. Null means "no entries to fold into
+				// the commit message", and the commit still happens with the message the agent wrote -- the
+				// alternative would be blocking a commit over the shape of a changelog heading. The file is
+				// left untouched, so nothing is rewritten on a half-understood parse.
 				return null;
 			}
 			return null;

@@ -1,9 +1,10 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { type Component, TUI } from "@veyyon/tui";
 import { StressRenderScheduler } from "../../tui/test/render-stress-scheduler";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal";
+import { createToolExecution } from "./helpers/tool-execution";
 
 function sshResult(text: string) {
 	return { content: [{ type: "text", text }] };
@@ -44,7 +45,7 @@ describe("ToolExecutionComponent SSH repaint seams", () => {
 	function makeComponent(args: unknown) {
 		const resetDisplay = vi.fn();
 		const ui = { requestRender() {}, requestComponentRender() {}, resetDisplay } as unknown as TUI;
-		const component = new ToolExecutionComponent("ssh", args, {}, undefined, ui);
+		const component = createToolExecution("ssh", args, {}, undefined, ui);
 		components.push(component);
 		resetDisplay.mockClear();
 		return { component, resetDisplay };
@@ -105,7 +106,7 @@ describe("ToolExecutionComponent SSH repaint seams", () => {
 		const term = new VirtualTerminal(90, 8, 1_000);
 		const scheduler = new StressRenderScheduler();
 		const tui = new TUI(term, undefined, { renderScheduler: scheduler });
-		const component = new ToolExecutionComponent("ssh", { __partialJson: '{"host"' }, {}, undefined, tui);
+		const component = createToolExecution("ssh", { __partialJson: '{"host"' }, {}, undefined, tui);
 		components.push(component);
 		tui.addChild(component);
 		tui.addChild(new Footer(5));
@@ -151,7 +152,7 @@ describe("ToolExecutionComponent SSH repaint seams", () => {
 		const term = new VirtualTerminal(90, 8, 1_000);
 		const scheduler = new StressRenderScheduler();
 		const tui = new TUI(term, undefined, { renderScheduler: scheduler });
-		const component = new ToolExecutionComponent("ssh", { host: "router", command: "uptime" }, {}, undefined, tui);
+		const component = createToolExecution("ssh", { host: "router", command: "uptime" }, {}, undefined, tui);
 		components.push(component);
 		tui.addChild(component);
 		tui.addChild(new Footer(5));

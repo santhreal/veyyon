@@ -23,18 +23,24 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { removeWithRetries } from "@veyyon/utils";
 import * as YAML from "yaml";
 import { guardDestructivePath } from "../../utils/test/helpers/destructive-guard";
+import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makeSubagentMigrationDir = useTrackedTempDirs("veyyon-subagent-migration-");
 
 describe("subagent settings migration", () => {
 	let agentDir = "";
 
 	beforeEach(() => {
-		agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-subagent-migration-"));
+		agentDir = makeSubagentMigrationDir();
 	});
 
 	afterEach(async () => {
@@ -199,15 +205,65 @@ describe("subagent settings migration", () => {
 	 */
 	test("never overwrites a value already stored under the new key", async () => {
 		writeConfig({
-			subagent: { delegation: "off", model: "anthropic/claude-sonnet-4-5" },
+			subagent: { delegation: "allowed", model: "anthropic/claude-sonnet-4-5" },
 			task: { eager: "always" },
 			modelRoles: { task: "openai/gpt-5" },
 		});
 
 		const settings = await load();
 
-		expect(settings.get("subagent.delegation")).toBe("off");
+		// `task.eager: always` would fold to `required`, but an explicit new-key value wins.
+		expect(settings.get("subagent.delegation")).toBe("allowed");
 		expect(settings.get("subagent.model")).toBe("anthropic/claude-sonnet-4-5");
+	});
+
+	/**
+	 * `subagent.delegation: off` was the kill switch before `subagent.enabled` existed,
+	 * so one setting answered two questions. Someone who wrote `off` was turning
+	 * subagents OFF — that is the half worth preserving — so it must land on
+	 * `enabled: false` rather than on the lowest strength, which still delegates.
+	 * Getting this backwards would silently switch subagents back on for every
+	 * operator who had deliberately disabled them.
+	 */
+	test("folds the retired delegation:off onto the subagents master switch", async () => {
+		writeConfig({ subagent: { delegation: "off" } });
+
+		const settings = await load();
+
+		expect(settings.get("subagent.enabled")).toBe(false);
+		// `off` is no longer a legal strength, so it must not survive: left in place it
+		// would fail validation and read as a corrupt config.
+		expect(settings.get("subagent.delegation")).toBe("preferred");
+	});
+
+	/**
+	 * And the fold never overrides an operator who has already answered the new
+	 * question. A config carrying both the legacy `off` and an explicit
+	 * `enabled: true` means they turned subagents back on under the new setting.
+	 */
+	test("leaves an explicit subagent.enabled alone when the legacy off is also present", async () => {
+		writeConfig({ subagent: { delegation: "off", enabled: true } });
+
+		const settings = await load();
+
+		expect(settings.get("subagent.enabled")).toBe(true);
+		expect(settings.get("subagent.delegation")).toBe("preferred");
+	});
+
+	/**
+	 * The migration runs on every read of a settings source, so it has to be a FIXED
+	 * POINT: applying it to its own output changes nothing. A fold that re-ran on the
+	 * value it just wrote is how a migration flips a setting back and forth.
+	 */
+	test("is a fixed point across repeated loads", async () => {
+		writeConfig({ subagent: { delegation: "off" } });
+
+		const first = await load();
+		const second = await load();
+
+		expect(first.get("subagent.enabled")).toBe(false);
+		expect(second.get("subagent.enabled")).toBe(false);
+		expect(second.get("subagent.delegation")).toBe("preferred");
 	});
 
 	/** The same precedence when the new value is stored nested rather than dotted. */
@@ -227,7 +283,8 @@ describe("subagent settings migration", () => {
 
 		const settings = await load();
 
-		expect(settings.get("subagent.delegation")).toBe("allowed");
+		expect(settings.get("subagent.enabled")).toBe(true);
+		expect(settings.get("subagent.delegation")).toBe("preferred");
 		expect(settings.get("subagent.model")).toBeUndefined();
 		expect(settings.get("subagent.agents")).toEqual({});
 	});

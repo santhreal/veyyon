@@ -124,6 +124,8 @@ export class HttpTransport implements MCPTransport {
 		}
 		if (response === null) {
 			if (this.#sseConnection === connection) this.#sseConnection = null;
+			// The startup race already gave up on this connection and reported through `onError`. This only drains
+			// a response that arrives late so its socket is released; there is no longer anyone to tell.
 			void fetchPromise.then(lateResponse => lateResponse.body?.cancel()).catch(() => {});
 			return;
 		}

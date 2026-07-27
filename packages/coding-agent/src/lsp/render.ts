@@ -9,7 +9,8 @@
  */
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import { type Component, Text } from "@veyyon/tui";
-import { getLanguageFromPath, highlightCode as highlightThemeCode, type Theme } from "../modes/theme/theme";
+import { highlightCode as highlightThemeCode } from "../modes/theme/highlight";
+import type { Theme } from "../modes/theme/theme-class";
 import {
 	formatExpandHint,
 	formatMoreItems,
@@ -22,6 +23,7 @@ import {
 } from "../tools/render-utils";
 import { renderStatusLine } from "../tui";
 import { CachedOutputBlock, markFramedBlockComponent } from "../tui/output-block";
+import { getLanguageFromPath } from "../utils/lang-from-path";
 import type { LspParams, LspToolDetails } from "./types";
 
 // =============================================================================

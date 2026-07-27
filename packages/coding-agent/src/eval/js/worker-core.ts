@@ -6,12 +6,12 @@ import { isAbortError } from "@veyyon/utils/abortable";
 import { ToolError } from "../../tools/tool-errors";
 import { JsRuntime, type RuntimeHooks } from "./shared/runtime";
 import type {
-	RunErrorPayload,
+	EvalRunErrorPayload,
+	EvalWorkerInbound,
+	EvalWorkerOutbound,
+	EvalWorkerTransport,
 	SessionSnapshot,
 	ToolReply,
-	Transport,
-	WorkerInbound,
-	WorkerOutbound,
 } from "./worker-protocol";
 
 interface PendingTool {
@@ -28,7 +28,7 @@ interface ActiveRun {
 	floatingRejections: unknown[];
 }
 
-type RunResult = Extract<WorkerOutbound, { type: "result" }>;
+type RunResult = Extract<EvalWorkerOutbound, { type: "result" }>;
 
 export type WorkerCoreOptions =
 	| {
@@ -59,7 +59,7 @@ export type WorkerCoreOptions =
 /** Finished-cell filenames retained for attributing rejections that surface after the run settled. */
 const RECENT_CELL_FILES_MAX = 256;
 
-function errorPayload(error: unknown): RunErrorPayload {
+function errorPayload(error: unknown): EvalRunErrorPayload {
 	if (error instanceof Error) {
 		return {
 			name: error.name,
@@ -72,7 +72,7 @@ function errorPayload(error: unknown): RunErrorPayload {
 	return { message: String(error) };
 }
 
-function errorFromPayload(payload: RunErrorPayload): Error {
+function errorFromPayload(payload: EvalRunErrorPayload): Error {
 	const ctor = payload.isToolError ? ToolError : Error;
 	const error = new ctor(payload.message);
 	if (payload.name) error.name = payload.name;
@@ -105,7 +105,7 @@ function foldFloatingRejections(active: ActiveRun, result: RunResult, hooks: Run
 }
 
 export class WorkerCore {
-	#transport: Transport;
+	#transport: EvalWorkerTransport;
 	#runtime: JsRuntime | null = null;
 	#runs = new Map<string, ActiveRun>();
 	#recentCellFiles = new Set<string>();
@@ -113,7 +113,7 @@ export class WorkerCore {
 	#uninstallRejectionGuard: () => void;
 	#options: WorkerCoreOptions;
 
-	constructor(transport: Transport, options: WorkerCoreOptions) {
+	constructor(transport: EvalWorkerTransport, options: WorkerCoreOptions) {
 		this.#transport = transport;
 		this.#options = options;
 		this.#unsubscribe = transport.onMessage(msg => this.#handle(msg));
@@ -216,7 +216,7 @@ export class WorkerCore {
 		return false;
 	}
 
-	#handle(msg: WorkerInbound): void {
+	#handle(msg: EvalWorkerInbound): void {
 		switch (msg.type) {
 			case "init":
 				try {

@@ -5,7 +5,8 @@ import type { AssistantMessage, UsageLimit, UsageReport } from "@veyyon/ai";
 import { type Component, padding, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { formatClock, getProjectDir, scopedTimeoutSignal, withScopedTimeoutSignal } from "@veyyon/utils";
 import { resolveContextLimit } from "../../../config/compaction-strategy";
-import { settings } from "../../../config/settings";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { settings } from "../../../config/settings-instance";
 import type { AgentSession } from "../../../session/agent-session";
 import type { OAuthAccountIdentity } from "../../../session/auth-storage";
 import { limitMatchesActiveAccount } from "../../../slash-commands/helpers/active-oauth-account";

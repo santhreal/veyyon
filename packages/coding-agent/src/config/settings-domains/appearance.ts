@@ -1,4 +1,5 @@
 import type { StatusLineSegmentId } from "../settings-schema";
+import { DEFAULT_ARTIFACT_SPILL_THRESHOLD_KB } from "./shared";
 
 /** Appearance domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const APPEARANCE_SETTINGS = {
@@ -148,14 +149,21 @@ export const APPEARANCE_SETTINGS = {
 			advanced: true,
 		},
 	},
+	// The one answer to "how many bytes of tool output stay in the conversation".
+	// It reaches BOTH paths that ask: the centralised spill that runs after a tool
+	// returns, and the inline budget every streaming tool prices itself against
+	// (`inlineOutputPricing`), which used to take a compiled 50KB constant nothing
+	// could reach. `tools.inlineOutputFloor` is the SHARE of this budget an early
+	// result may keep, so the two are one parameter pair.
 	"tools.artifactSpillThreshold": {
 		type: "number",
-		default: 50,
+		default: DEFAULT_ARTIFACT_SPILL_THRESHOLD_KB,
 		ui: {
 			tab: "tools",
 			group: "Output Limits",
 			label: "Artifact Spill Threshold (KB)",
-			description: "Tool output above this size is saved as an artifact; tail is kept inline",
+			description:
+				"Tool output above this size is saved as an artifact and the result keeps a head/tail window plus the artifact:// id that reads the full text back, so a lower threshold costs a re-read rather than losing output. It governs every tool that streams output, including bash, eval, ssh and the interactive shell, as well as grep and the browser.",
 			options: [
 				{ value: "1", label: "1 KB", description: "~250 tokens" },
 				{ value: "2.5", label: "2.5 KB", description: "~625 tokens" },

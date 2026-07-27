@@ -13,6 +13,7 @@
  *   - Progress tracking via JSON events
  *   - Session artifacts for debugging
  */
+
 import * as fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
@@ -29,10 +30,14 @@ import {
 	prompt,
 	Snowflake,
 } from "@veyyon/utils";
+import { sessionFileName } from "@veyyon/utils/session-file";
 import type { ToolSession } from "..";
-import { MCPManager } from "../mcp/manager";
+import { mcpManagerInstance } from "../mcp/manager-instance";
 import type { Theme } from "../modes/theme/theme";
-import { PROMPTS } from "../prompts/registry";
+import { DEFAULT_PLAN_FILE_URL } from "../plan-mode/plan-file-url";
+import { planModePrompts } from "../prompts/plan-mode/rows";
+import { subagentPrompts } from "../prompts/subagent/rows";
+import { toolsPrompts } from "../prompts/tools/rows";
 import { truncateForPrompt } from "../tools/approval";
 import { isIrcEnabled } from "../tools/irc";
 import { formatBytes, formatDuration } from "../tools/render-utils";
@@ -41,7 +46,7 @@ import { resolveSpawnPolicy } from "./spawn-policy";
 import {
 	type EnabledSubagentSource,
 	filterEnabledAgents,
-	isSubagentSpawnable,
+	isSubagentEnabled,
 	resolveSubagentModel,
 	resolveSubagentThinkingLevel,
 	subagentModelSourceLabel,
@@ -63,6 +68,7 @@ import type { AsyncJobManager } from "../async";
 import type { LocalProtocolOptions } from "../internal-urls";
 import { loadOverallPlanReference } from "../plan-mode/plan-handoff";
 import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
+import { TOOL } from "../tools/builtin-names";
 import { type DiscoveryResult, discoverAgents, getAgent } from "./discovery";
 import { runSubprocess } from "./executor";
 import {
@@ -81,7 +87,7 @@ import { repairTaskParams } from "./repair-args";
 import { parseIsolationMode } from "./worktree";
 
 function renderSubagentUserPrompt(assignment: string): string {
-	return prompt.render(PROMPTS["subagent/user-prompt"].text, {
+	return prompt.render(subagentPrompts["subagent/user-prompt"].text, {
 		assignment: assignment.trim(),
 	});
 }
@@ -136,29 +142,29 @@ export {
 // An agent is read-only iff its declared tools are a non-empty subset of this set.
 // Fail-safe: any unknown tool makes the agent not read-only.
 export const READ_ONLY_TOOL_NAMES: ReadonlySet<string> = new Set([
-	"read",
-	"grep",
-	"glob",
-	"web_search",
-	"ast_grep",
-	"yield",
-	"irc",
-	"ask",
-	"job",
-	"todo",
-	"recall",
-	"reflect",
-	"retain",
-	"memory_edit",
-	"inspect_image",
-	"checkpoint",
-	"rewind",
-	"resolve",
-	"report_finding",
-	"search_tool_bm25",
+	TOOL.read,
+	TOOL.grep,
+	TOOL.glob,
+	TOOL.web_search,
+	TOOL.ast_grep,
+	TOOL.yield,
+	TOOL.irc,
+	TOOL.ask,
+	TOOL.job,
+	TOOL.todo,
+	TOOL.recall,
+	TOOL.reflect,
+	TOOL.retain,
+	TOOL.memory_edit,
+	TOOL.inspect_image,
+	TOOL.checkpoint,
+	TOOL.rewind,
+	TOOL.resolve,
+	TOOL.report_finding,
+	TOOL.search_tool_bm25,
 ]);
 
-const PLAN_MODE_AGENT_TOOL_ALLOWLIST: ReadonlySet<string> = new Set(["ast_grep", "report_finding"]);
+const PLAN_MODE_AGENT_TOOL_ALLOWLIST: ReadonlySet<string> = new Set([TOOL.ast_grep, TOOL.report_finding]);
 
 export function isReadOnlyAgent(agent: AgentDefinition): boolean {
 	return !!agent.tools?.length && agent.tools.every(tool => READ_ONLY_TOOL_NAMES.has(tool));
@@ -201,7 +207,7 @@ function renderDescription(
 		readOnly: isReadOnlyAgent(agent),
 		blocking: agent.blocking === true,
 	}));
-	return prompt.render(PROMPTS["tools/task"].text, {
+	return prompt.render(toolsPrompts["tools/task"].text, {
 		agents: renderedAgents,
 		agentNames: renderedAgents.map(agent => agent.name),
 		hasReadOnlyAgents: renderedAgents.some(agent => agent.readOnly),
@@ -445,7 +451,7 @@ function mergeSyncPayloads(
 }
 
 /** Generic worker agent types; several in one call usually means a more specific type exists. */
-const GENERIC_SPAWN_AGENTS: ReadonlySet<string> = new Set(["task", "sonic"]);
+const GENERIC_SPAWN_AGENTS: ReadonlySet<string> = new Set(["task", "sonic"]); // not-a-tool-name: agent ids
 
 /**
  * Advisory — never a rejection — nudging the spawner toward tailored
@@ -820,7 +826,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			async: {
 				state: settledCount < asyncSpawns.length ? "running" : failedCount > 0 ? "failed" : "completed",
 				jobId: primaryJobId,
-				type: "task",
+				type: "task", // not-a-tool-name: async job kind
 			},
 		});
 
@@ -858,7 +864,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				content: [
 					{
 						type: "text",
-						text: `Failed to start background task ${pluralize("job", failedSchedules.length)}: ${failedSchedules.join("; ")}`,
+						text: `Failed to start background task ${pluralize("job", failedSchedules.length)}: ${failedSchedules.join("; ")}`, // not-a-tool-name: the English word
 					},
 				],
 				// Nothing started at all. Reporting this as a successful spawn
@@ -1026,7 +1032,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			return `\n\n${agentId} is now idle — ${followUp}transcript at history://${agentId}`;
 		};
 		return manager.register(
-			"task",
+			"task", // not-a-tool-name: async job kind
 			agentId,
 			async ({ signal: runSignal, reportProgress, markRunning }) => {
 				const startedAt = Date.now();
@@ -1342,17 +1348,19 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			};
 		}
 
-		// Only an explicit `enabled: false` refuses here. An agent that is merely
-		// unadvertised — the default for every bundled specialist — still runs when a
-		// caller names it outright, so `/review` naming `reviewer` keeps working; see
-		// `isSubagentSpawnable` for why the two questions differ.
-		if (!isSubagentSpawnable(this.session.settings, agent)) {
+		// A disabled agent is refused, and that is the whole rule: the setting governs
+		// what the MODEL may choose, so there is no "disabled but still runs" state to
+		// fall through to. The one exception is not an exception to the setting at all
+		// — a `/` command that names an agent is the USER asking, and the command
+		// declares that up front, so the grant is checked here rather than the ban
+		// being softened for everybody. See `agentGrantedThisTurn` on ToolSession.
+		if (!isSubagentEnabled(this.session.settings, agent) && !this.session.agentGrantedThisTurn?.(agent.name)) {
 			const enabled = filterEnabledAgents(this.session.settings, agents).map(a => a.name);
 			return {
 				content: [
 					{
 						type: "text",
-						text: `Agent "${agentName}" is turned off (subagent.agents.${agentName}.enabled is false). Turn it back on via /agents or the Subagents settings tab, or use a different agent type.${enabled.length > 0 ? ` Available: ${enabled.join(", ")}` : ""}`,
+						text: `Agent "${agentName}" is disabled (subagent.agents.${agentName}.enabled is false), so it cannot be chosen. Enable it via /agents or the Subagents settings tab, or use a different agent type.${enabled.length > 0 ? ` Enabled: ${enabled.join(", ")}` : ""}`,
 					},
 				],
 				details: { projectAgentsDir, results: [], totalDurationMs: 0 },
@@ -1360,7 +1368,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		}
 
 		const planModeState = this.session.getPlanModeState?.();
-		const planModeBaseTools = ["read", "grep", "glob", "lsp", "web_search"];
+		const planModeBaseTools: string[] = [TOOL.read, TOOL.grep, TOOL.glob, TOOL.lsp, TOOL.web_search];
 		const planModeTools = [
 			...planModeBaseTools,
 			...(agent.tools ?? []).filter(
@@ -1370,7 +1378,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		const effectiveAgent: typeof agent = planModeState?.enabled
 			? {
 					...agent,
-					systemPrompt: `${PROMPTS["plan-mode/subagent"].text}\n\n${agent.systemPrompt}`,
+					systemPrompt: `${planModePrompts["plan-mode/subagent"].text}\n\n${agent.systemPrompt}`,
 					tools: planModeTools,
 					spawns: undefined,
 				}
@@ -1450,12 +1458,12 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 
 		// When the session is executing an approved plan, hand the overall plan to
 		// every subagent so they share the main agent's plan context. Skipped in
-		// plan mode (read-only exploration uses PROMPTS["plan-mode/subagent"].text instead) and
+		// plan mode (read-only exploration uses planModePrompts["plan-mode/subagent"].text instead) and
 		// when no plan file exists at the session's reference path.
 		const planReference = planModeState?.enabled
 			? undefined
 			: await loadOverallPlanReference(
-					this.session.getPlanReferencePath?.() ?? "local://PLAN.md",
+					this.session.getPlanReferencePath?.() ?? DEFAULT_PLAN_FILE_URL,
 					localProtocolOptions,
 				);
 
@@ -1512,7 +1520,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			);
 			const promptTemplates = this.session.promptTemplates;
 			const parentEvalSessionId = this.session.getEvalSessionId?.() ?? undefined;
-			const mcpManager = this.session.mcpManager ?? MCPManager.instance();
+			const mcpManager = this.session.mcpManager ?? mcpManagerInstance();
 
 			// Progress tracking for the single agent
 			let latestProgress: AgentProgress = {
@@ -1693,7 +1701,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				agentId: result.id,
 				agentName: result.agent,
 				task: result.task,
-				sessionFile: path.join(effectiveArtifactsDir, `${result.id}.jsonl`),
+				sessionFile: path.join(effectiveArtifactsDir, sessionFileName(result.id)),
 				isolation: isIsolated ? isolationMode : "none",
 				status: result.aborted ? "cancelled" : result.exitCode === 0 ? "completed" : "failed",
 				exitCode: result.exitCode,
@@ -1735,7 +1743,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		// the parent so it can resume via irc instead of redoing the work.
 		const refStatus = AgentRegistry.global().get(result.id)?.status;
 		const resumable = result.aborted && (refStatus === "idle" || refStatus === "parked");
-		const summary = prompt.render(PROMPTS["tools/task-summary"].text, {
+		const summary = prompt.render(toolsPrompts["tools/task-summary"].text, {
 			agentName: result.agent,
 			id: result.id,
 			status,

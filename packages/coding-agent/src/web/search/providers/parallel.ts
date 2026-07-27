@@ -1,4 +1,6 @@
-import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/ai";
+import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
+import { withAuth } from "@veyyon/ai/auth-retry";
+import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import type { SearchResponse } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import {

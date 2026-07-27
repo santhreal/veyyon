@@ -26,13 +26,12 @@ import { replaceTabs, truncateToWidth } from "../../tools/render-utils";
 import { theme } from "../theme/theme";
 import { matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import { AGENT_STATUS_ORDER, agentStatusGlyph } from "./agent-status-display";
+import {
+	AGENT_VIEW_AGE_TICK_MS,
+	AGENT_VIEW_DATA_CHANGE_COALESCE_MS,
+	AGENT_VIEW_LEFT_TAP_WINDOW_MS,
+} from "./agent-view-timings";
 
-/** Refresh cadence for the relative-time labels (ages only; no layout change). */
-const AGE_TICK_MS = 5_000;
-/** Coalesce window for registry/bus change bursts into a single repaint. */
-const DATA_CHANGE_RENDER_COALESCE_MS = 100;
-/** Double-tap window for the left-left "close" gesture, matching the hub. */
-const LEFT_TAP_WINDOW_MS = 500;
 /** Newest inbound IRC messages shown in the detail pane. */
 const DETAIL_IRC_LIMIT = 6;
 
@@ -103,7 +102,7 @@ export class SubagentInboxComponent extends Container {
 		// Only the age labels move on this tick, never the row count or layout, so
 		// a component-scoped repaint avoids re-walking the whole UI tree. The timer
 		// lives only while the overlay is mounted.
-		this.#ageTimer = setInterval(() => this.#ui.requestComponentRender(this), AGE_TICK_MS);
+		this.#ageTimer = setInterval(() => this.#ui.requestComponentRender(this), AGENT_VIEW_AGE_TICK_MS);
 		this.#ageTimer.unref?.();
 
 		this.#refreshRows();
@@ -145,7 +144,7 @@ export class SubagentInboxComponent extends Container {
 			this.#dataChangeTimer = undefined;
 			this.#refreshRows();
 			this.#requestRender();
-		}, DATA_CHANGE_RENDER_COALESCE_MS);
+		}, AGENT_VIEW_DATA_CHANGE_COALESCE_MS);
 		this.#dataChangeTimer.unref?.();
 	}
 
@@ -328,7 +327,7 @@ export class SubagentInboxComponent extends Container {
 		}
 		if (matchesKey(keyData, "left")) {
 			const now = Date.now();
-			if (now - this.#lastLeftTap < LEFT_TAP_WINDOW_MS) {
+			if (now - this.#lastLeftTap < AGENT_VIEW_LEFT_TAP_WINDOW_MS) {
 				this.#lastLeftTap = 0;
 				this.#onDone();
 			} else {

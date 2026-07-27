@@ -6,17 +6,15 @@ import type { AgentToolResult } from "@veyyon/agent-core";
 import type { FetchImpl, ImageContent, TextContent } from "@veyyon/ai";
 import { htmlToMarkdown } from "@veyyon/natives";
 import { type Component, Text } from "@veyyon/tui";
-import {
-	$which,
-	errorMessage,
-	formatCount,
-	isCancellation,
-	isEnoent,
-	logger,
-	ptree,
-	trimTrailingSlashes,
-	truncate,
-} from "@veyyon/utils";
+import { isCancellation } from "@veyyon/utils/abortable";
+import { formatCount, truncate } from "@veyyon/utils/format";
+import { isEnoent } from "@veyyon/utils/fs-error";
+// Owners, not the `@veyyon/utils` barrel: 8 modules against 74.
+import * as logger from "@veyyon/utils/logger";
+import * as ptree from "@veyyon/utils/ptree";
+import { errorMessage } from "@veyyon/utils/type-guards";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
+import { $which } from "@veyyon/utils/which";
 import { LRUCache } from "lru-cache/raw";
 import type { Settings } from "../config/settings";
 import { readEditableNotebookText } from "../edit/notebook";
@@ -27,8 +25,11 @@ import type { Theme } from "../modes/theme/theme-class";
 import type { ToolSession } from "../sdk";
 import type { AgentStorage } from "../session/agent-storage";
 import { DEFAULT_MAX_BYTES, truncateHead } from "../session/streaming-output";
-import { renderStatusLine, urlHyperlink } from "../tui";
+// Each from its owner, not the `../tui` barrel: the barrel is 768 modules because it re-exports the
+// hyperlink module, and `read.ts` imports this file.
+import { urlHyperlink } from "../tui/hyperlink";
 import { CachedOutputBlock, markFramedBlockComponent } from "../tui/output-block";
+import { renderStatusLine } from "../tui/status-line";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 import { webpExclusionForModel } from "../utils/image-loading";
 import { formatDimensionNote, resizeImage } from "../utils/image-resize";

@@ -100,6 +100,10 @@ async function parseProgram(code: string): Promise<{ program: { body: ReadonlyAr
 			plugins: ["typescript"],
 		}) as unknown as { program: { body: ReadonlyArray<BabelProgramNode> } };
 	} catch {
+		// `errorRecovery` is already on, so reaching here means the source is not recoverable JavaScript at
+		// all. Null tells the caller to leave the code EXACTLY as it was rather than rewrite imports it could
+		// not locate, and the code then fails at evaluation with the runtime's own error, which points at the
+		// real syntax problem far better than a rewrite of half-understood text would.
 		return null;
 	}
 }

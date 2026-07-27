@@ -1,4 +1,4 @@
-import { trimTrailingSlashes } from "@veyyon/utils";
+import { nonEmptyTrimmed, trimTrailingSlashes } from "@veyyon/utils";
 import * as git from "../utils/git";
 import type { ASIData, ASIValue, MetricDirection, NumericMetricMap } from "./types";
 
@@ -166,16 +166,15 @@ export function pathMatchesSpec(pathValue: string, specValue: string): boolean {
 	return normalizedPath === normalizedSpec || normalizedPath.startsWith(`${normalizedSpec}/`);
 }
 
+/**
+ * The distinct non-blank values, trimmed, in first-seen order.
+ *
+ * Uniqueness is the only thing added here; what counts as blank comes from
+ * `nonEmptyTrimmed`, so this cannot drift from the rest of the codebase on whether a
+ * whitespace-only entry is a value.
+ */
 export function dedupeStrings(values: readonly string[]): string[] {
-	const out: string[] = [];
-	const seen = new Set<string>();
-	for (const value of values) {
-		const trimmed = value.trim();
-		if (trimmed.length === 0 || seen.has(trimmed)) continue;
-		seen.add(trimmed);
-		out.push(trimmed);
-	}
-	return out;
+	return [...new Set(nonEmptyTrimmed(values))];
 }
 
 export function ensureNumericMetricMap(value: NumericMetricMap | undefined): NumericMetricMap {
@@ -227,18 +226,35 @@ function sanitizeAsiValue(value: unknown): ASIValue | undefined {
 	return undefined;
 }
 
-export async function tryGitStatus(cwd: string): Promise<string> {
-	try {
-		return await git.status(cwd, { porcelainV1: true, untrackedFiles: "all", z: true });
-	} catch {
-		return "";
-	}
+/**
+ * The porcelain status autoresearch reads dirty paths out of.
+ *
+ * FAILURES PROPAGATE, and that is the whole point of this function existing separately. It used to answer
+ * any git failure with `""`, which parses to "no paths are dirty" -- and every caller acts on that: the
+ * revert reported "nothing to revert" while the experiment's changes sat in the tree, the scope-deviation
+ * check passed vacuously because it had no modified paths to compare against `off_limits`, and the run
+ * recorded an empty modified-path list as the experiment's result. Three false statements from one
+ * swallow. Callers each have an error channel and now use it.
+ *
+ * A cwd that is NOT inside a repository is the one case answered here rather than raised: `""` is then
+ * the true answer, since there are no tracked changes to report, and autoresearch is allowed to run
+ * outside a repository. That case is decided by resolving the repository, a walk up the directory chain
+ * with no subprocess, so it is never confused with a `git status` that failed for another reason.
+ */
+export async function gitStatusPorcelain(cwd: string): Promise<string> {
+	if (!(await git.repo.resolve(cwd))) return "";
+	return git.status(cwd, { porcelainV1: true, untrackedFiles: "all", z: true });
 }
 
-export async function tryGitPrefix(cwd: string): Promise<string> {
-	try {
-		return await git.show.prefix(cwd);
-	} catch {
-		return "";
-	}
+/**
+ * The prefix from the repository root to `cwd`, used to make status paths relative to the work directory.
+ *
+ * Failures propagate for the same reason as {@link gitStatusPorcelain}: an empty prefix is a real value
+ * (cwd IS the repository root), so a failed lookup that returned `""` silently claimed the work directory
+ * was the root and every path was then resolved against the wrong directory. As above, a cwd outside a
+ * repository is answered with `""` rather than raised, because there is no prefix for it to have.
+ */
+export async function gitWorkDirPrefix(cwd: string): Promise<string> {
+	if (!(await git.repo.resolve(cwd))) return "";
+	return git.show.prefix(cwd);
 }

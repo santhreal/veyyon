@@ -22,6 +22,14 @@
  * `provider.appendOnlyContext`, `modelRoles`, `statusLine.sessionAccent` and the
  * hindsight scope.
  *
+ * THEN THE COST MOVED ONE STEP OUT. Breaking the cycle left settings importing
+ * `modes/theme/builtin-themes`, which statically embeds one JSON module per bundled theme. The cycle
+ * was gone, but settings still dragged 103 modules of theme data for one boolean, and so did every file
+ * that imports `Settings`: the reach ratchet in `test/architecture/test-suite-module-reach.test.ts`
+ * measured 33,242 module instantiations across a full run. `modes/theme/theme-luminance` now owns the
+ * light/dark question as a table, and settings imports that. So this suite guards two edges, not one:
+ * settings must stay out of the cycle, AND out of the theme JSON.
+ *
  * WHAT HAS TO STAY TRUE, and what each half of this suite checks. The structural
  * half asserts the import graph, because the behavioural half cannot see a
  * regression: re-adding a static import of the theme barrel to settings would
@@ -30,28 +38,54 @@
  * decoupling that quietly stopped applying `symbolPreset` would satisfy the
  * structural half perfectly.
  */
-import { describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 const SRC = path.join(import.meta.dir, "..", "..", "src");
 const SETTINGS = path.join(SRC, "config", "settings.ts");
 const THEME = path.join(SRC, "modes", "theme", "theme.ts");
 const SHIMMER = path.join(SRC, "modes", "theme", "shimmer.ts");
 const BUILTIN_THEMES = path.join(SRC, "modes", "theme", "builtin-themes.ts");
+const THEME_LUMINANCE = path.join(SRC, "modes", "theme", "theme-luminance.ts");
 
-/** Every module specifier this file imports with a STATIC `import`. */
+/**
+ * The theme-engine modules settings must never statically import, as EXACT specifiers.
+ *
+ * Matched exactly rather than by substring, and that is not a style preference. The earlier version
+ * asked whether any specifier `includes("modes/theme/theme")`, which also matches
+ * `modes/theme/theme-luminance`, `theme-class` and `theme-binding`. So the check reported the cycle was
+ * back the moment a sibling module was named with that prefix, and it would equally have missed nothing
+ * while claiming to guard something narrower than it did. A forbidden-module list says which modules
+ * are forbidden.
+ */
+const FORBIDDEN_FROM_SETTINGS = [
+	"../modes/theme/theme",
+	"../modes/theme/shimmer",
+	"../modes/theme/theme-class",
+	// The JSON-carrying module. Not part of the cycle, but importing it costs the hundred embedded
+	// theme JSON modules, which is what `theme-luminance` exists to avoid; see its header.
+	"../modes/theme/builtin-themes",
+] as const;
+
+/**
+ * Every module specifier this file imports with a STATIC `import`.
+ *
+ * THE EXTRACTION HAS ONE OWNER, `@veyyon/utils/module-reach`, and this helper is now a call to it. It was
+ * three-quarters of a page of pattern with a comment listing the two things it had to get right, and it got
+ * the second one wrong in the same way the owner did before it was fixed: a `[\s\S]*?` middle does not stop
+ * at the end of a statement, so a non-re-export `export` ran forward to the next `from "…"` and swallowed
+ * every import in between. These assertions are ABSENCES, so a swallowed import passes.
+ *
+ * What the owner gets right, and what this file needed: it crosses newlines (a formatter breaks a long
+ * import clause across lines, and a pattern anchored on `[^;\n]` then reports the edge is gone when only
+ * its formatting changed), it does not match ordinary strings, it excludes `import type` because that is
+ * erased, and it excludes `await import()` because deferring is one of the two fixes this suite is about.
+ * `packages/utils/test/module-reach-reads-code-not-prose.test.ts` pins all of it against fixtures.
+ */
 function staticImports(file: string): string[] {
-	const source = fs.readFileSync(file, "utf-8");
-	const specifiers: string[] = [];
-	// `import ... from "x"`, `import "x"`, and `export ... from "x"`. A dynamic
-	// `await import("x")` is deliberately NOT matched: deferring the import is one
-	// of the two fixes here, so counting it would defeat the assertions below.
-	for (const match of source.matchAll(/(?:^|\n)\s*(?:import|export)\b[^;\n]*?["']([^"']+)["']/g)) {
-		const specifier = match[1];
-		if (specifier) specifiers.push(specifier);
-	}
-	return specifiers;
+	return moduleSpecifiersIn(fs.readFileSync(file, "utf-8"));
 }
 
 describe("config/settings stays out of the theme engine", () => {
@@ -60,20 +94,31 @@ describe("config/settings stays out of the theme engine", () => {
 	 * what closed the cycle, and it is a one-line change to reintroduce, so the
 	 * import graph is asserted directly rather than inferred from behaviour.
 	 */
-	it("does not statically import the theme barrel", () => {
+	it("does not statically import the theme barrel or anything else in the cycle", () => {
 		const imports = staticImports(SETTINGS);
 
-		expect(imports).not.toContain("../modes/theme/theme");
-		expect(imports.filter(specifier => specifier.includes("modes/theme/theme"))).toEqual([]);
+		expect(imports.filter(specifier => (FORBIDDEN_FROM_SETTINGS as readonly string[]).includes(specifier))).toEqual(
+			[],
+		);
 	});
 
 	/**
-	 * It still reaches `isLightTheme`, from the leaf. Without this the suite would
-	 * pass just as well if the legacy migration below had been deleted outright,
-	 * which is a different change with a different cost.
+	 * It still reaches `isLightTheme`, from the classifier leaf. Without this the suite would pass just
+	 * as well if the legacy migration below had been deleted outright, which is a different change with
+	 * a different cost.
+	 *
+	 * `theme-luminance`, NOT `builtin-themes`, and the difference is 103 modules. `builtin-themes`
+	 * breaks the import cycle but statically embeds one JSON module per bundled theme, so settings
+	 * reaching through it carried theme data nothing on that path reads, and carried it again into every
+	 * one of the ~1,500 test files that import `Settings`. The reach ratchet in
+	 * `test/architecture/test-suite-module-reach.test.ts` measured 33,242 module instantiations of it.
+	 * `theme-luminance` answers the same question from a table.
 	 */
-	it("reaches the light/dark classifier through the leaf module instead", () => {
-		expect(staticImports(SETTINGS)).toContain("../modes/theme/builtin-themes");
+	it("reaches the light/dark classifier through the classifier leaf, not the JSON one", () => {
+		const imports = staticImports(SETTINGS);
+
+		expect(imports).toContain("../modes/theme/theme-luminance");
+		expect(imports).not.toContain("../modes/theme/builtin-themes");
 	});
 
 	/**
@@ -101,10 +146,35 @@ describe("config/settings stays out of the theme engine", () => {
 		expect(imports).not.toContain("./theme");
 		expect(imports).not.toContain("./shimmer");
 		expect(imports).not.toContain("./theme-class");
-		// What it legitimately needs, so this is not vacuously satisfied by an empty
-		// file: the colour helpers and the embedded theme data.
-		expect(imports).toContain("./color");
+		// What it legitimately needs at RUNTIME, so this is not vacuously satisfied by an empty file: the
+		// embedded theme data and the default table. `./color` is deliberately NOT on this list. It is the
+		// only other thing the file names and it is `import type { ThemeJson }`, which is erased, costs
+		// nothing, and cannot rebuild a cycle. The local pattern this helper replaced did not exclude
+		// `import type`, so it reported `./color` as a runtime edge and this case asserted the phantom.
 		expect(imports).toContain("./defaults");
+		expect(imports).toContain("./dark.json");
+		expect(imports).toContain("./light.json");
+	});
+
+	/**
+	 * The classifier leaf is the one settings actually imports, so it has the stricter rule: it must
+	 * stay out of the cycle AND carry no theme JSON. Importing `./defaults` or `./builtin-themes` from
+	 * it would put all hundred JSON modules straight back on the settings graph while every behavioural
+	 * assertion below kept passing, which is exactly the regression this half of the suite is for.
+	 */
+	it("keeps the classifier leaf free of the cycle and of every theme JSON", () => {
+		const imports = staticImports(THEME_LUMINANCE);
+
+		expect(imports).not.toContain("../../config/settings");
+		expect(imports).not.toContain("./theme");
+		expect(imports).not.toContain("./shimmer");
+		expect(imports).not.toContain("./theme-class");
+		expect(imports).not.toContain("./builtin-themes");
+		expect(imports).not.toContain("./defaults");
+		expect(imports.filter(specifier => specifier.endsWith(".json"))).toEqual([]);
+		// What it legitimately needs: the colour helpers, and the disk read for a user's own theme.
+		expect(imports).toContain("./color");
+		expect(imports).toContain("node:fs");
 	});
 
 	/**
@@ -116,7 +186,13 @@ describe("config/settings stays out of the theme engine", () => {
 	 * intend and the assertions above would be measuring nothing.
 	 */
 	it("still has the edges that made the cycle worth breaking", () => {
-		expect(staticImports(SHIMMER)).toContain("../../config/settings");
+		// Shimmer reads settings through `config/settings-instance`, the leaf that owns the process-global
+		// slot and imports nothing. That is a STRONGER version of the fact this case pins rather than a
+		// weaker one: the dependency on configuration is still here, so the absences above are still
+		// meaningful, and the cycle this suite exists for cannot form through shimmer at all any more,
+		// because the module it now names cannot import the theme barrel back.
+		expect(staticImports(SHIMMER)).toContain("../../config/settings-instance");
+		expect(staticImports(SHIMMER)).not.toContain("../../config/settings");
 		expect(staticImports(THEME)).toContain("../../config/settings");
 	});
 
@@ -129,12 +205,47 @@ describe("config/settings stays out of the theme engine", () => {
 		const settingsImports = staticImports(SETTINGS);
 		const themeImports = staticImports(THEME);
 
-		expect(themeImports.some(specifier => specifier.includes("config/settings"))).toBe(true);
-		expect(settingsImports.some(specifier => specifier.includes("modes/theme/theme"))).toBe(false);
+		expect(themeImports).toContain("../../config/settings");
+		// Exact specifiers, for the reason `FORBIDDEN_FROM_SETTINGS` documents: a substring test for
+		// "modes/theme/theme" also matches `theme-luminance`, the leaf settings is SUPPOSED to import.
+		expect(
+			settingsImports.filter(specifier => (FORBIDDEN_FROM_SETTINGS as readonly string[]).includes(specifier)),
+		).toEqual([]);
 	});
 });
 
 describe("the theme settings still apply when the engine is loaded", () => {
+	/**
+	 * Put the theme engine's ambient state back before any other suite in this process runs.
+	 *
+	 * WHY THIS TEARDOWN IS NOT OPTIONAL. The cases below change global rendering state on purpose --
+	 * that is what they are proving -- and `currentSymbolPresetOverride` in `modes/theme/theme.ts`
+	 * is module scope, so leaving it on `ascii` changes what EVERY later suite in the same process
+	 * renders. That is not hypothetical: it is why
+	 * `assistant-message-mermaid > aligns box borders for CJK labels` intermittently found zero rows
+	 * containing box-drawing characters and read as "the renderer produced nothing". The diagram was
+	 * drawn correctly, in `+` and `|`, because this file had chosen ASCII and walked away. A
+	 * modes-only run passes and `test/config` plus `test/modes` reproduces, which is exactly this
+	 * file's footprint.
+	 *
+	 * The drain before AND after matters as much as the restore. `onSymbolPresetChanged` calls an
+	 * async setter without awaiting it, so the last case's write can still be in flight when
+	 * teardown runs; restoring without draining first lets the stale value land afterwards, which is
+	 * why the symptom looked timing-dependent rather than ordered. The restore is asserted rather
+	 * than assumed, because a teardown that silently does not work is worse than none.
+	 */
+	afterAll(async () => {
+		const themeModule = await import("@veyyon/coding-agent/modes/theme/theme");
+		const { Settings } = await import("@veyyon/coding-agent/config/settings");
+
+		await Bun.sleep(20);
+		await Settings.isolated().set("symbolPreset", "unicode");
+		await Bun.sleep(20);
+
+		expect(themeModule.getSymbolPresetOverride()).toBe("unicode");
+		expect(themeModule.getColorBlindMode()).toBe(false);
+	});
+
 	/**
 	 * The decoupling is only correct if the setting still reaches the engine. This
 	 * imports the theme module (which is what registers the subscription) and then

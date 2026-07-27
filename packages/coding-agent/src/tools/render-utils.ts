@@ -11,9 +11,12 @@ import type { ToolCallContext } from "@veyyon/agent-core";
 import type { Ellipsis } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { getKeybindings, replaceTabs, truncateToWidth } from "@veyyon/tui";
-import { collapseWhitespace, formatCount, pluralize } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
+import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
+import { formatCount, pluralize } from "@veyyon/utils/format";
 import { formatKeyHints, type KeyId } from "../config/keybindings";
-import { settings } from "../config/settings";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { settings } from "../config/settings-instance";
 import type { Theme } from "../modes/theme/theme";
 import { Hasher } from "../tui/utils";
 import { formatDimensionNote, type ResizedImage } from "../utils/image-resize";
@@ -139,40 +142,15 @@ export function getDomain(url: string): string {
 // Formatting Utilities
 // =============================================================================
 
-export { formatAge, formatBytes, formatCount, formatDuration, pluralize } from "@veyyon/utils";
+export { formatAge, formatBytes, formatCount, formatDuration, pluralize } from "@veyyon/utils/format";
+export type { ToolUIStatus } from "./tool-ui-status";
+// The status glyph and its status union live in a leaf, so a status line does not have to import
+// this module's 167. Re-exported because every existing caller asks this file for them.
+export { formatStatusIcon } from "./tool-ui-status";
 
 // =============================================================================
 // Theme Helper Utilities
 // =============================================================================
-
-/**
- * Get the appropriate status icon with color for a given state.
- * Standardizes status icon usage across all renderers.
- */
-export function formatStatusIcon(status: ToolUIStatus, theme: Theme, spinnerFrame?: number): string {
-	switch (status) {
-		case "success":
-			return theme.styledSymbol("status.success", "success");
-		case "done":
-			return theme.styledSymbol("status.done", "success");
-		case "error":
-			return theme.styledSymbol("status.error", "error");
-		case "warning":
-			return theme.styledSymbol("status.warning", "warning");
-		case "info":
-			return theme.styledSymbol("status.info", "accent");
-		case "pending":
-			return theme.styledSymbol("status.pending", "muted");
-		case "running":
-			if (spinnerFrame !== undefined) {
-				const frames = theme.spinnerFrames;
-				return frames[spinnerFrame % frames.length];
-			}
-			return theme.styledSymbol("status.running", "accent");
-		case "aborted":
-			return theme.styledSymbol("status.aborted", "error");
-	}
-}
 
 /**
  * Format the expand hint with proper theming.
@@ -301,7 +279,6 @@ export function formatCodeFrameLine(
 // Tool UI Helpers
 // =============================================================================
 
-export type ToolUIStatus = "success" | "done" | "error" | "warning" | "info" | "pending" | "running" | "aborted";
 export type ToolUIColor = "success" | "error" | "warning" | "accent" | "muted";
 
 export interface ToolUITitleOptions {

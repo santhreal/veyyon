@@ -14,25 +14,18 @@ import { formatHashlineHeader, formatNumberedLine, formatNumberedLines } from "@
 import { glob, type SummaryResult, summarizeCode } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import {
-	errorMessage,
-	formatCount,
-	getRemoteDir,
-	hasUrlScheme,
-	type ImageMetadata,
-	isAbortError,
-	isCancellation,
-	isMissingPath,
-	isProbablyBinary,
-	isProbablyBinaryHeader,
-	isTimeoutError,
-	logger,
-	prompt,
-	readImageMetadata,
-	scopedTimeoutSignal,
-	trimTrailingSlashes,
-	untilAborted,
-} from "@veyyon/utils";
+import { isAbortError, isCancellation, isTimeoutError, untilAborted } from "@veyyon/utils/abortable";
+import { isProbablyBinary, isProbablyBinaryHeader } from "@veyyon/utils/binary";
+import { getRemoteDir } from "@veyyon/utils/dirs";
+import { formatCount } from "@veyyon/utils/format";
+import { isMissingPath } from "@veyyon/utils/fs-error";
+import * as logger from "@veyyon/utils/logger";
+import { type ImageMetadata, readImageMetadata } from "@veyyon/utils/mime";
+import * as prompt from "@veyyon/utils/prompt";
+import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
+import { isSessionFileName, sessionFileStem } from "@veyyon/utils/session-file";
+import { errorMessage } from "@veyyon/utils/type-guards";
+import { hasUrlScheme, trimTrailingSlashes } from "@veyyon/utils/url";
 import { type } from "arktype";
 import { LRUCache } from "lru-cache/raw";
 import {
@@ -53,7 +46,7 @@ import { parseInternalUrl } from "../internal-urls/parse";
 import type { InternalUrl } from "../internal-urls/types";
 import { CONVERTIBLE_EXTENSIONS } from "../markit";
 import type { Theme } from "../modes/theme/theme-class";
-import { PROMPTS } from "../prompts/registry";
+import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from "../sdk";
 import {
 	DEFAULT_MAX_BYTES,
@@ -64,8 +57,12 @@ import {
 	truncateHeadBytes,
 	truncateLine,
 } from "../session/streaming-output";
-import { fileHyperlink, renderCodeCell, renderMarkdownCell, renderStatusLine, tryResolveInternalUrlSync } from "../tui";
+// Each from its owner rather than the `../tui` barrel, which re-exports every component in the
+// directory. 54 test files import this module.
+import { renderCodeCell, renderMarkdownCell } from "../tui/code-cell";
+import { fileHyperlink, tryResolveInternalUrlSync } from "../tui/hyperlink";
 import { CachedOutputBlock, markFramedBlockComponent } from "../tui/output-block";
+import { renderStatusLine } from "../tui/status-line";
 import { buildLineEntriesWithBlockContext, type LineEntry, lineEntriesToPlainText } from "../utils/block-context";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
 import {
@@ -795,6 +792,9 @@ function decodeUtf8Text(bytes: Uint8Array): string | null {
 	try {
 		return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 	} catch {
+		// Invalid UTF-8 is the same answer as the header sniff above: this is not text. `null` means
+		// "treat as binary", which the caller reports to the model as a binary file rather than handing
+		// it replacement characters and pretending they are content.
 		return null;
 	}
 }
@@ -1017,7 +1017,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			Math.min(session.settings.get("read.defaultLimit") ?? DEFAULT_MAX_LINES, DEFAULT_MAX_LINES),
 		);
 		this.#inspectImageEnabled = session.settings.get("inspect_image.enabled");
-		this.description = prompt.render(PROMPTS["tools/read"].text, {
+		this.description = prompt.render(toolsPrompts["tools/read"].text, {
 			DEFAULT_LIMIT: String(this.#defaultLimit),
 			DEFAULT_MAX_LINES: String(DEFAULT_MAX_LINES),
 			IS_HL_MODE: displayMode.hashLines,
@@ -1194,9 +1194,12 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		let root = artifactsDir ?? undefined;
 		if (root === undefined) {
 			const sessionFile = this.session.getSessionFile();
-			root = sessionFile?.endsWith(".jsonl")
-				? sessionFile.slice(0, -6)
-				: path.join(os.tmpdir(), "veyyon-read-pdf-images");
+			// `sessionFileStem`, not `slice(0, -6)`: that 6 was the length of ".jsonl" written as a number,
+			// which is the same value again in the form a grep for the extension never finds.
+			root =
+				sessionFile && isSessionFileName(sessionFile)
+					? sessionFileStem(sessionFile)
+					: path.join(os.tmpdir(), "veyyon-read-pdf-images");
 		}
 		const basename = path.basename(absolutePdfPath).replace(/[^A-Za-z0-9._-]/g, "_");
 		return path.join(root, "read-pdf-images", `${basename}-${Bun.hash(absolutePdfPath).toString(36)}`);

@@ -13,7 +13,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { AstMatchStrictness, astMatch, FileType, type GlobMatch, glob } from "@veyyon/natives";
-import { collapseWhitespace, escapeRegExp, truncate } from "@veyyon/utils";
+import { collapseWhitespace, errorMessage, escapeRegExp, logger, truncate } from "@veyyon/utils";
 import { getProjectDir } from "@veyyon/utils/dirs";
 import chalk from "chalk";
 import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "../capability/rule";
@@ -702,6 +702,10 @@ async function scanAnyAstConditionMatches(
 		}
 		return result.parseErrors && result.parseErrors.length > 0 ? undefined : false;
 	} catch {
+		// Three answers on purpose: true is a match, false is a confident no-match, and undefined is "could
+		// not tell" -- which is what the line above already returns for a file the parser could not read, and
+		// what a failure of the matcher itself means too. The caller keeps those apart, so a file that cannot
+		// be checked is never counted as a file with no matches.
 		return undefined;
 	}
 }
@@ -735,7 +739,12 @@ async function discoverScanFiles(scanDir: string, cwd: string, gitignore: boolea
 		}
 		candidates.sort((a, b) => a.path.localeCompare(b.path));
 		return candidates;
-	} catch {
+	} catch (err) {
+		// An empty candidate list reads as "nothing to check", so a failure here would silently narrow the
+		// search rather than report it.
+		logger.warn("Candidate files could not be listed; this search covered none of them", {
+			error: errorMessage(err),
+		});
 		return [];
 	}
 }

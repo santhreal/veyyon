@@ -11,7 +11,7 @@ import { canonicalSnapshotKey, getFileSnapshotStore } from "../edit/file-snapsho
 import { normalizeToLF } from "../edit/normalize";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
-import { PROMPTS } from "../prompts/registry";
+import { toolsPrompts } from "../prompts/tools/rows";
 import { Ellipsis, fileHyperlink, framedBlock, renderStatusLine, truncateToWidth } from "../tui";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
 import type { ToolSession } from ".";
@@ -21,7 +21,6 @@ import { createFileRecorder, formatResultPath } from "./file-recorder";
 import { classifyGroupedLines, formatGroupedFiles, groupLineIndicesByBlank } from "./grouped-file-output";
 import type { OutputMeta } from "./output-meta";
 import { isInternalUrlPath } from "./path-utils";
-import { resolveToolSearchScope } from "./search-scope";
 import { enforcePlanModeWrite } from "./plan-mode-guard";
 import {
 	appendParseErrorsBulletList,
@@ -35,6 +34,7 @@ import {
 	PREVIEW_LIMITS,
 } from "./render-utils";
 import { queueResolveHandler } from "./resolve";
+import { resolveToolSearchScope } from "./search-scope";
 import { ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
@@ -262,7 +262,7 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 	readonly deferrable = true;
 	readonly loadMode = "discoverable";
 	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(PROMPTS["tools/ast-edit"].text);
+		this.description = prompt.render(toolsPrompts["tools/ast-edit"].text);
 	}
 
 	async execute(

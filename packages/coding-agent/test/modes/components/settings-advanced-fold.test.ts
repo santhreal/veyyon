@@ -17,7 +17,7 @@ import { getSettingDef, getSettingsForTab } from "@veyyon/coding-agent/modes/com
 import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { ImageProtocol, TERMINAL } from "@veyyon/tui";
-import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
+import { removeSyncWithRetries } from "@veyyon/utils";
 
 type MutableTerminalInfo = { imageProtocol: ImageProtocol | null };
 const terminal = TERMINAL as unknown as MutableTerminalInfo;
@@ -317,11 +317,10 @@ describe("settings selector — initial item jump (/statusline)", () => {
 
 describe("appearance advanced fold — persistence", () => {
 	it("round-trips a demoted setting through a config.yml overlay — demotion changes panel placement only, never persistence", async () => {
-		const testDir = path.join(os.tmpdir(), "settings-advanced-fold-roundtrip", Snowflake.next());
+		const testDir = fs.mkdtempSync(path.join(os.tmpdir(), "settings-advanced-fold-roundtrip-"));
 		const overlayPath = path.join(testDir, "overlay.yml");
 		try {
 			resetSettingsForTest();
-			fs.mkdirSync(testDir, { recursive: true });
 			fs.writeFileSync(overlayPath, "statusLine:\n  transparent: true\n");
 
 			const scoped = await Settings.init({ cwd: testDir, inMemory: true, configFiles: [overlayPath] });

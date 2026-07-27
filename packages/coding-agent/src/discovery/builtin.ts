@@ -6,11 +6,12 @@
 
 import * as path from "node:path";
 import { getAgentDir, isRecord, logger, parseFrontmatter, tryParseJson } from "@veyyon/utils";
+import { APP_DISPLAY_NAME } from "@veyyon/utils/app-identity";
 import { YAML } from "bun";
 import { getManagedSkillsDir, MANAGED_SKILLS_PROVIDER_ID } from "../autolearn/managed-skills";
 import { registerProvider } from "../capability";
 import { type ContextFile, contextFileCapability } from "../capability/context-file";
-import { type Extension, type ExtensionManifest, extensionCapability } from "../capability/extension";
+import { type ExtensionManifest, extensionCapability, type ManifestExtension } from "../capability/extension";
 import { type ExtensionModule, extensionModuleCapability } from "../capability/extension-module";
 import { readDirEntries, readFile } from "../capability/fs";
 import { type Hook, hookCapability } from "../capability/hook";
@@ -22,7 +23,7 @@ import { type Settings, settingsCapability } from "../capability/settings";
 import { type Skill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
 import { type SystemPrompt, systemPromptCapability } from "../capability/system-prompt";
-import { type CustomTool, toolCapability } from "../capability/tool";
+import { type DiscoveredCustomTool, toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult } from "../capability/types";
 import { expandTilde } from "../tools/path-utils";
 import { getGlobalAgentsPath, getProfileAgentsCandidates, stripManagedGuidance } from "./agents-guidance";
@@ -38,7 +39,6 @@ import {
 } from "./helpers";
 
 export const PROVIDER_ID = "native";
-const DISPLAY_NAME = "Veyyon";
 const DESCRIPTION = "Native configuration from ~/.veyyon and .veyyon/";
 const PRIORITY = 100;
 
@@ -232,7 +232,7 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 
 registerProvider<MCPServer>(mcpCapability.id, {
 	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
+	displayName: APP_DISPLAY_NAME,
 	description: DESCRIPTION,
 	priority: PRIORITY,
 	load: loadMCPServers,
@@ -272,7 +272,7 @@ async function loadSystemPrompt(ctx: LoadContext): Promise<LoadResult<SystemProm
 
 registerProvider<SystemPrompt>(systemPromptCapability.id, {
 	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
+	displayName: APP_DISPLAY_NAME,
 	description: "Custom system prompt from SYSTEM.md",
 	priority: PRIORITY,
 	load: loadSystemPrompt,
@@ -309,7 +309,7 @@ async function loadManagedSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 
 registerProvider<Skill>(skillCapability.id, {
 	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
+	displayName: APP_DISPLAY_NAME,
 	description: DESCRIPTION,
 	priority: PRIORITY,
 	load: loadSkills,
@@ -349,7 +349,7 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 
 registerProvider<SlashCommand>(slashCommandCapability.id, {
 	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
+	displayName: APP_DISPLAY_NAME,
 	description: DESCRIPTION,
 	priority: PRIORITY,
 	load: loadSlashCommands,
@@ -407,7 +407,7 @@ async function loadStickyRulesFile(filePath: string, level: "user" | "project"):
 
 registerProvider<Rule>(ruleCapability.id, {
 	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
+	displayName: APP_DISPLAY_NAME,
 	description: DESCRIPTION,
 	priority: PRIORITY,
 	load: loadRules,
@@ -438,7 +438,7 @@ async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
 
 registerProvider<Prompt>(promptCapability.id, {
 	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
+	displayName: APP_DISPLAY_NAME,
 	description: DESCRIPTION,
 	priority: PRIORITY,
 	load: loadPrompts,
@@ -547,15 +547,15 @@ async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<Extens
 
 registerProvider<ExtensionModule>(extensionModuleCapability.id, {
 	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
+	displayName: APP_DISPLAY_NAME,
 	description: DESCRIPTION,
 	priority: PRIORITY,
 	load: loadExtensionModules,
 });
 
 // Extensions
-async function loadExtensions(ctx: LoadContext): Promise<LoadResult<Extension>> {
-	const items: Extension[] = [];
+async function loadExtensions(ctx: LoadContext): Promise<LoadResult<ManifestExtension>> {
+	const items: ManifestExtension[] = [];
 	const warnings: string[] = [];
 
 	const configDirs = await getConfigDirs(ctx);
@@ -612,9 +612,9 @@ async function loadExtensions(ctx: LoadContext): Promise<LoadResult<Extension>> 
 	return { items, warnings };
 }
 
-registerProvider<Extension>(extensionCapability.id, {
+registerProvider<ManifestExtension>(extensionCapability.id, {
 	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
+	displayName: APP_DISPLAY_NAME,
 	description: DESCRIPTION,
 	priority: PRIORITY,
 	load: loadExtensions,
@@ -649,7 +649,7 @@ async function loadInstructions(ctx: LoadContext): Promise<LoadResult<Instructio
 
 registerProvider<Instruction>(instructionCapability.id, {
 	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
+	displayName: APP_DISPLAY_NAME,
 	description: DESCRIPTION,
 	priority: PRIORITY,
 	load: loadInstructions,
@@ -708,21 +708,21 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 
 registerProvider<Hook>(hookCapability.id, {
 	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
+	displayName: APP_DISPLAY_NAME,
 	description: DESCRIPTION,
 	priority: PRIORITY,
 	load: loadHooks,
 });
 
 // Custom Tools
-async function loadTools(ctx: LoadContext): Promise<LoadResult<CustomTool>> {
-	const items: CustomTool[] = [];
+async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomTool>> {
+	const items: DiscoveredCustomTool[] = [];
 	const warnings: string[] = [];
 
 	const configDirs = await getConfigDirs(ctx);
 	const entriesResults = await Promise.all(configDirs.map(({ dir }) => readDirEntries(path.join(dir, "tools"))));
 
-	const fileLoadPromises: Array<Promise<{ items: CustomTool[]; warnings?: string[] }>> = [];
+	const fileLoadPromises: Array<Promise<{ items: DiscoveredCustomTool[]; warnings?: string[] }>> = [];
 	const subDirCandidates: Array<{
 		indexPath: string;
 		entryName: string;
@@ -737,7 +737,7 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<CustomTool>> {
 		const toolsDir = path.join(dir, "tools");
 
 		fileLoadPromises.push(
-			loadFilesFromDir<CustomTool>(ctx, toolsDir, PROVIDER_ID, level, {
+			loadFilesFromDir<DiscoveredCustomTool>(ctx, toolsDir, PROVIDER_ID, level, {
 				extensions: ["json", "md", "ts", "js", "sh", "bash", "py"],
 				transform: (name, content, path, source) => {
 					if (name.endsWith(".json")) {
@@ -822,9 +822,9 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<CustomTool>> {
 	return { items, warnings };
 }
 
-registerProvider<CustomTool>(toolCapability.id, {
+registerProvider<DiscoveredCustomTool>(toolCapability.id, {
 	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
+	displayName: APP_DISPLAY_NAME,
 	description: DESCRIPTION,
 	priority: PRIORITY,
 	load: loadTools,
@@ -883,7 +883,7 @@ async function loadSettings(ctx: LoadContext): Promise<LoadResult<Settings>> {
 
 registerProvider<Settings>(settingsCapability.id, {
 	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
+	displayName: APP_DISPLAY_NAME,
 	description: DESCRIPTION,
 	priority: PRIORITY,
 	load: loadSettings,
@@ -1018,7 +1018,7 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 
 registerProvider<ContextFile>(contextFileCapability.id, {
 	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
+	displayName: APP_DISPLAY_NAME,
 	description: "Load AGENTS.md and CLAUDE.md from the project tree and .veyyon/ directories",
 	priority: PRIORITY,
 	load: loadContextFiles,

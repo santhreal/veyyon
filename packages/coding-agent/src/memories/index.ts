@@ -3,27 +3,36 @@ import type * as fsNode from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
-import { type ApiKey, completeSimple, Effort, type Model } from "@veyyon/ai";
+import { type ApiKey, completeSimple, type Model } from "@veyyon/ai";
+import { Effort } from "@veyyon/catalog/effort";
 import { clampThinkingLevelForModel } from "@veyyon/catalog/model-thinking";
 import { emptyCost } from "@veyyon/catalog/models";
 import {
 	clampLow,
 	getAgentDbPath,
-	getMemoriesDir,
 	isEnoent,
 	isRecord,
 	logger,
 	parseJsonlLenient,
 	prompt,
+	readdirIfPresent,
 } from "@veyyon/utils";
+import { isSessionFileName, sessionFileStem } from "@veyyon/utils/session-file";
 
 import type { ModelRegistry } from "../config/model-registry";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../config/model-resolver";
 import { DEFAULT_MODEL_SLOT } from "../config/model-roles";
 import type { Settings } from "../config/settings";
+
+// The path layout lives in its own leaf: this module reaches 558 modules (it asks a model to
+// summarise a session), and `internal-urls/memory-protocol` needs only the root. Re-exported so
+// every existing caller keeps asking this file for it.
+export { getMemoryRoot } from "./paths";
+
 import type { MemoryBackendSaveInput, MemoryBackendSaveResult } from "../memory-backend/types";
-import { PROMPTS } from "../prompts/registry";
+import { memoriesPrompts } from "../prompts/memories/rows";
 import type { AgentSession } from "../session/agent-session";
+import { getMemoryRoot } from "./paths";
 import {
 	claimStage1Jobs,
 	clearMemoryData as clearMemoryDataInDb,
@@ -225,7 +234,7 @@ function renderMemoryToolDeveloperInstructionsSnapshot(
 		snapshot.learned && learnedBudget > 0 ? truncateByApproxTokens(snapshot.learned, learnedBudget).trim() : "";
 	if (!summaryOut && !learnedOut) return undefined;
 
-	return prompt.render(PROMPTS["memories/read-path"].text, {
+	return prompt.render(memoriesPrompts["memories/read-path"].text, {
 		memory_summary: summaryOut,
 		learned: learnedOut,
 	});
@@ -630,7 +639,7 @@ async function collectThreads(session: AgentSession, currentThreadId?: string): 
 	const files = await fs.readdir(sessionDir);
 	const threads: MemoryThread[] = [];
 	for (const name of files) {
-		if (!name.endsWith(".jsonl")) continue;
+		if (!isSessionFileName(name)) continue;
 		const fullPath = path.join(sessionDir, name);
 		let stat: fsNode.Stats;
 		try {
@@ -639,7 +648,7 @@ async function collectThreads(session: AgentSession, currentThreadId?: string): 
 			continue;
 		}
 		let cwd = "";
-		let id = name.slice(0, -6);
+		let id = sessionFileStem(name);
 		try {
 			const fileText = await Bun.file(fullPath).text();
 			let sawTitleSlot = false;
@@ -732,7 +741,7 @@ async function runStage1Job(options: {
 			Math.floor(modelMaxTokens * config.rolloutPayloadPercent),
 		);
 		const truncatedItems = truncateByApproxTokens(serializedItems, budgetTokens);
-		const inputPrompt = prompt.render(PROMPTS["memories/stage_one_input"].text, {
+		const inputPrompt = prompt.render(memoriesPrompts["memories/stage_one_input"].text, {
 			thread_id: claim.threadId,
 			response_items_json: truncatedItems,
 		});
@@ -740,7 +749,7 @@ async function runStage1Job(options: {
 		const response = await completeSimple(
 			model,
 			{
-				systemPrompt: [PROMPTS["memories/stage_one_system"].text],
+				systemPrompt: [memoriesPrompts["memories/stage_one_system"].text],
 				messages: [{ role: "user", content: [{ type: "text", text: inputPrompt }], timestamp: Date.now() }],
 			},
 			{
@@ -832,21 +841,66 @@ function buildRawMemoriesMarkdown(outputs: Stage1OutputRow[]): string {
 	return `# Raw Memories\n\n${blocks.join("\n")}`;
 }
 
-async function readRolloutSummaries(memoryRoot: string): Promise<string> {
+/**
+ * The rollout-summary section of the consolidation prompt.
+ *
+ * EVERY SENTENCE THIS RETURNS IS READ BY THE MODEL AS FACT, which is why neither failure below may end
+ * at "No rollout summaries yet.". Two swallows used to do exactly that: `fs.readdir(dir).catch(() => [])`
+ * turned a permission error into an empty listing, and `.text().catch(() => "")` turned an unreadable
+ * summary into an empty one. A run whose summaries were all present but unreadable therefore told the
+ * model that nothing had ever been summarised, and consolidation rewrote long-term memory from that
+ * premise. Memory loss with no operator-visible cause.
+ *
+ * So the distinction is between "asked, and there are none" and "could not ask". A missing directory is
+ * the first and keeps the concise answer, because it is the ordinary first-run state. Anything else is
+ * the second: it reaches the log with the failing path and the reason, AND the returned text says the
+ * section is unknown rather than empty. Exported so
+ * `test/memories/rollout-summaries-never-report-unreadable-as-absent.test.ts` can assert the exact
+ * sentences, since the sentence is what the model reads.
+ */
+export async function readRolloutSummaries(memoryRoot: string): Promise<string> {
 	const summariesDir = path.join(memoryRoot, "rollout_summaries");
-	const names = await fs.readdir(summariesDir).catch(() => [] as string[]);
+	let names: string[];
+	try {
+		names = await fs.readdir(summariesDir);
+	} catch (error) {
+		if (isEnoent(error)) return "No rollout summaries yet.";
+		logger.warn("Memory rollout summaries could not be listed", { dir: summariesDir, error: String(error) });
+		return "Rollout summaries exist but could not be read; treat this section as unknown, not empty.";
+	}
 	const summaryNames = names.filter(name => name.endsWith(".md")).sort((a, b) => a.localeCompare(b));
 	if (summaryNames.length === 0) return "No rollout summaries yet.";
 
 	const blocks: string[] = [];
+	const unreadable: string[] = [];
 	for (const name of summaryNames) {
-		const text = await Bun.file(path.join(summariesDir, name))
-			.text()
-			.catch(() => "");
+		let text: string;
+		try {
+			text = await Bun.file(path.join(summariesDir, name)).text();
+		} catch (error) {
+			// Named individually so an operator can fix the specific file. A summary that is PRESENT and
+			// empty is a different thing and is skipped below without a word: it was written with no
+			// content, and reporting it as unreadable would send someone after a file that is fine.
+			logger.warn("Memory rollout summary could not be read", { file: name, error: String(error) });
+			unreadable.push(name);
+			continue;
+		}
 		if (!text.trim()) continue;
 		blocks.push(`--- ${name} ---\n${text.trim()}`);
 	}
-	if (blocks.length === 0) return "No rollout summaries yet.";
+	if (blocks.length === 0) {
+		if (unreadable.length > 0) {
+			return `${unreadable.length} rollout summaries exist but could not be read; treat this section as unknown, not empty.`;
+		}
+		return "No rollout summaries yet.";
+	}
+	if (unreadable.length > 0) {
+		// The mixed case is the likely one and the hardest to notice, because the section LOOKS populated.
+		// The gap is named in the same text the model reads, not only in the log.
+		blocks.push(
+			`--- unreadable ---\n${unreadable.length} further summaries could not be read: ${unreadable.join(", ")}`,
+		);
+	}
 	return blocks.join("\n\n");
 }
 
@@ -869,7 +923,7 @@ async function runConsolidationModel(options: {
 	const { memoryRoot, model, apiKey } = options;
 	const rawMemories = await Bun.file(path.join(memoryRoot, "raw_memories.md")).text();
 	const rolloutSummaries = await readRolloutSummaries(memoryRoot);
-	const input = prompt.render(PROMPTS["memories/consolidation"].text, {
+	const input = prompt.render(memoriesPrompts["memories/consolidation"].text, {
 		raw_memories: truncateByApproxTokens(rawMemories, 20_000),
 		rollout_summaries: truncateByApproxTokens(rolloutSummaries, 12_000),
 	});
@@ -877,7 +931,7 @@ async function runConsolidationModel(options: {
 	const response = await completeSimple(
 		model,
 		{
-			systemPrompt: [PROMPTS["memories/consolidation_system"].text],
+			systemPrompt: [memoriesPrompts["memories/consolidation_system"].text],
 			messages: [{ role: "user", content: [{ type: "text", text: input }], timestamp: Date.now() }],
 		},
 		{
@@ -986,8 +1040,17 @@ async function applyConsolidation(
 	}
 }
 
+/**
+ * Every file under `rootDir`, as paths relative to it.
+ *
+ * `readdirIfPresent` rather than a bare catch: absence is an answer here (a memory root with no skills
+ * directory yet), and any OTHER failure is logged with the directory rather than read as "empty". The
+ * caller diffs this list against what consolidation produced and deletes what is missing from it, so an
+ * unlistable directory silently reported as empty would mean nothing gets deleted. That is the safe
+ * direction, and it is still worth a line: the alternative is a stale skill file nobody can explain.
+ */
 async function listRelativeFiles(rootDir: string, prefix = ""): Promise<string[]> {
-	const entries = await fs.readdir(rootDir, { withFileTypes: true }).catch(() => []);
+	const entries = await readdirIfPresent(rootDir, "existing memory files");
 	const files: string[] = [];
 	for (const entry of entries) {
 		const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
@@ -1000,13 +1063,35 @@ async function listRelativeFiles(rootDir: string, prefix = ""): Promise<string[]
 	return files;
 }
 
+/**
+ * Remove directories under `rootDir` that consolidation left empty.
+ *
+ * THE LISTING FAILURE IS NOT AN EMPTY DIRECTORY, and reading it as one deleted live data. The old code
+ * listed the child with `.catch(() => [])` and then removed any child whose listing was empty, so a
+ * directory that could not be listed (a permission change, a half-mounted NFS path) was removed
+ * RECURSIVELY along with everything in it. A skills directory full of captured lessons could go that
+ * way, and the only trace was that it was gone. Now an unlistable directory is reported and SKIPPED:
+ * this function's job is removing what is empty, and it cannot know that about a directory it could not
+ * read.
+ */
 async function pruneEmptyDirectories(rootDir: string): Promise<void> {
-	const entries = await fs.readdir(rootDir, { withFileTypes: true }).catch(() => []);
+	const entries = await readdirIfPresent(rootDir, "empty memory directories to prune");
 	for (const entry of entries) {
 		if (!entry.isDirectory()) continue;
 		const child = path.join(rootDir, entry.name);
 		await pruneEmptyDirectories(child);
-		const childEntries = await fs.readdir(child).catch(() => []);
+		let childEntries: string[];
+		try {
+			childEntries = await fs.readdir(child);
+		} catch (error) {
+			if (!isEnoent(error)) {
+				logger.warn("Memory directory could not be listed; leaving it in place", {
+					dir: child,
+					error: String(error),
+				});
+			}
+			continue;
+		}
 		if (childEntries.length === 0) {
 			await fs.rm(child, { recursive: true, force: true });
 		}
@@ -1255,10 +1340,6 @@ function loadMemoryConfig(settings: Settings): MemoryRuntimeConfig {
 	};
 }
 
-export function getMemoryRoot(agentDir: string, cwd: string): string {
-	return path.join(getMemoriesDir(agentDir), encodeProjectPath(cwd));
-}
-
 /**
  * Filename of the captured-lessons file under a project's memory root.
  *
@@ -1330,6 +1411,9 @@ export async function saveLearnedLesson(
 	// subagents, or two shared tool calls in one turn) share the project memory
 	// root, so an unguarded RMW would let the last writer drop the other's lesson.
 	const run = (learnedWriteChains.get(filePath) ?? Promise.resolve()).then(() => appendLearnedLine(filePath, line));
+	// `guarded` only keeps the chain alive for the NEXT writer; the failure itself is not swallowed,
+	// because `await run` below rethrows it to this caller. Without the guard one failed append would
+	// reject every later lesson on the same file.
 	const guarded = run.catch(() => {});
 	learnedWriteChains.set(filePath, guarded);
 	try {
@@ -1376,10 +1460,6 @@ async function readLearnedLessons(memoryRoot: string): Promise<string> {
 		.split("\n")
 		.map(line => redactSecrets(neutralizeInjection(line)))
 		.join("\n");
-}
-
-function encodeProjectPath(cwd: string): string {
-	return `--${cwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
 }
 
 function unixNow(): number {

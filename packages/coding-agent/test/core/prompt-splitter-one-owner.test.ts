@@ -27,11 +27,10 @@
  */
 import { describe, expect, it } from "bun:test";
 import { PROMPTS } from "@veyyon/coding-agent/prompts/registry";
-import { bannerTable } from "@veyyon/coding-agent/system-prompt-builder/banner-grammar";
+import { bannerTable, splitBanneredDocument } from "@veyyon/coding-agent/system-prompt-builder/banner-grammar";
 import { splitDefaultTemplate } from "@veyyon/coding-agent/system-prompt-builder/default-template";
 import {
 	applyPromptSectionOrder,
-	splitBanneredDocument,
 	splitPromptSections,
 } from "@veyyon/coding-agent/system-prompt-builder/prompt-sections";
 import { BANNERED_TEMPLATE_SECTIONS } from "@veyyon/coding-agent/system-prompt-builder/section-registry";

@@ -20,7 +20,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { errorMessage, escapeRegExp } from "@veyyon/utils";
+import { errorMessage, escapeRegExp, removeTempPath } from "@veyyon/utils";
 
 /**
  * The shells whose completion file lives in a directory the shell autoloads.
@@ -242,7 +242,7 @@ export async function refreshInstalledCompletions(options: {
 			await fs.promises.rename(tempPath, target.filePath);
 			result.refreshed.push(target.filePath);
 		} catch (err) {
-			await fs.promises.rm(tempPath, { force: true }).catch(() => {});
+			await removeTempPath(tempPath, "completion-write-failed");
 			result.failed.push({ filePath: target.filePath, reason: errorMessage(err) });
 		}
 	}

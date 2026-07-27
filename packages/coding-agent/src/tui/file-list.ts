@@ -1,8 +1,11 @@
 /**
  * Render file listings with optional icons and metadata.
  */
-import type { Theme } from "../modes/theme/theme";
-import { getLanguageFromPath } from "../modes/theme/theme";
+// Owners, not `../modes/theme/theme`: the engine is 282 modules and forwards both of these. This file is
+// reached from the local `./index` barrel, which `tools/bash.ts` and `tools/write.ts` import, so the engine
+// arrived in both of them through one name.
+import type { Theme } from "../modes/theme/theme-class";
+import { getLanguageFromPath } from "../utils/lang-from-path";
 import { renderTreeList } from "./tree-list";
 
 export interface FileEntry {

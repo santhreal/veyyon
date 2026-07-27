@@ -1,0 +1,1 @@
+- For multi-file work, plan before touching files; research existing code and conventions first.

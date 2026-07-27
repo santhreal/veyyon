@@ -5,7 +5,8 @@ import { type Component, Loader, type LoaderMessageColorFn, TERMINAL } from "@ve
 import { clampLow, logger, prompt } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import { extractTextContent } from "../../commit/utils";
-import { settings } from "../../config/settings";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { settings } from "../../config/settings-instance";
 import { getFileSnapshotStore } from "../../edit/file-snapshot-store";
 import { AssistantMessageComponent } from "../../modes/components/assistant-message";
 import { detectCacheInvalidation } from "../../modes/components/cache-invalidation-marker";
@@ -23,7 +24,7 @@ import { setShimmerActivity, shimmerText } from "../../modes/theme/shimmer";
 import { getSymbolTheme, theme } from "../../modes/theme/theme";
 import type { InteractiveModeContext, TodoPhase } from "../../modes/types";
 import type { PlanApprovalDetails } from "../../plan-mode/approved-plan";
-import { PROMPTS } from "../../prompts/registry";
+import { sideChannelPrompts } from "../../prompts/side-channel/rows";
 import type { AgentSessionEvent } from "../../session/agent-session";
 import { isSilentAbort, readQueueChipText, resolveAbortLabel } from "../../session/messages";
 import { previewLine, TRUNCATE_LENGTHS } from "../../tools/render-utils";
@@ -901,6 +902,11 @@ export class EventController {
 						rawInput,
 						exposeRawPartialJson: exposesRawPartialJson(content.name, rawInput, tool),
 						streamingStringKeys: streamingStringKeysForTool(content.name, rawInput),
+						// The preview renders arguments that have NOT reached the tool yet, so
+						// they still carry `§handle` fragments; expansion at seam 1 happens
+						// just before execution. Without the codec here a streaming write or
+						// edit preview shows the handle instead of the text it stands for.
+						argot: this.ctx.viewSession.getArgotSession?.(),
 					});
 				} else {
 					this.#toolArgsReveal.finish(content.id);
@@ -1655,7 +1661,7 @@ export class EventController {
 		if (!this.ctx.viewSession.model) return;
 		if (this.ctx.viewSession.messages.length === 0) return;
 
-		const promptText = prompt.render(PROMPTS["side-channel/recap-user"].text, {
+		const promptText = prompt.render(sideChannelPrompts["side-channel/recap-user"].text, {
 			goal: this.#idleRecapGoalText() ?? "",
 			task: nextActionableTask(this.ctx.todoPhases)?.content ?? "",
 		});

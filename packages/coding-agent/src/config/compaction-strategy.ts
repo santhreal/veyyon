@@ -8,7 +8,11 @@
  *   - `handoff`  — generate a session transfer and continue in a new session.
  */
 
-import { resolveThresholdTokens } from "@veyyon/agent-core/compaction";
+// `compaction/threshold`, not `compaction`. The subpath barrel re-exports the compaction ENGINE, which
+// imports the `@veyyon/ai` barrel and the prompt registry to summarize a conversation; deciding whether a
+// token count is over the trigger is arithmetic. This edge is why `config/settings.ts` reached
+// `@veyyon/ai/stream.ts` while a gate two directories away asserted that it did not.
+import { resolveThresholdTokens } from "@veyyon/agent-core/compaction/threshold";
 
 /** Stored compaction strategy after migration / schema validation. */
 export type CompactionStrategySetting = "handoff" | "summary";
@@ -89,7 +93,7 @@ export interface ResolvedContextLimit {
  */
 export function resolveContextLimit(
 	contextWindow: number,
-	settings: import("@veyyon/agent-core/compaction").CompactionSettings,
+	settings: import("@veyyon/agent-core/compaction/threshold").CompactionSettings,
 ): ResolvedContextLimit {
 	if (!Number.isFinite(contextWindow) || contextWindow <= 0) return { tokens: 0, kind: "window" };
 	if (isThresholdCompactionDisabled(settings.enabled, settings.strategy)) {
@@ -113,7 +117,7 @@ export function toAgentCompactionSettings(
 		strategy?: string;
 		model?: string;
 	},
-): import("@veyyon/agent-core/compaction").CompactionSettings {
+): import("@veyyon/agent-core/compaction/threshold").CompactionSettings {
 	const strategy = normalizeCompactionStrategy(settings.strategy);
-	return { ...settings, strategy } as import("@veyyon/agent-core/compaction").CompactionSettings;
+	return { ...settings, strategy } as import("@veyyon/agent-core/compaction/threshold").CompactionSettings;
 }

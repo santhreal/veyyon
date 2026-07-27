@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { TUI } from "@veyyon/tui";
+import { createToolExecution } from "./helpers/tool-execution";
 
 describe("ToolExecutionComponent.updateArgs (F8 — no clone, ref-eq fast path)", () => {
 	let initialized = false;
@@ -17,7 +17,7 @@ describe("ToolExecutionComponent.updateArgs (F8 — no clone, ref-eq fast path)"
 			initialized = true;
 		}
 		const uiStub = { requestRender() {}, requestComponentRender() {} } as unknown as TUI;
-		return new ToolExecutionComponent("bash", args, {}, undefined, uiStub);
+		return createToolExecution("bash", args, {}, undefined, uiStub);
 	}
 
 	it("does NOT call structuredClone in updateArgs (caller already owns isolation)", async () => {

@@ -159,13 +159,24 @@ describe("createAgentSession MCP discovery prompt gating", () => {
 		expect(searchTool?.description).toContain("Total discoverable tools available:");
 	});
 
-	it("exposes task under tools.discoveryMode all when delegation is preferred", async () => {
+	/**
+	 * Opens a discovery-all session at one delegation strength and reports both halves of the
+	 * question, because they have to agree: whether `task` is in the request, and whether the prompt
+	 * tells the model to delegate. A prompt that teaches delegation to a session with no task tool
+	 * asks for a call that cannot be made, and a task tool the prompt never mentions is a tool slot
+	 * paid for and hidden. Under `tools.discoveryMode: all` the two are decided in the same place,
+	 * `filterInitialToolsForDiscoveryAll` and the `forceActive` set feeding it, so they are asserted
+	 * together rather than in two tests that could pass while disagreeing.
+	 */
+	async function delegationUnderDiscoveryAll(
+		delegation: "allowed" | "preferred" | "required",
+	): Promise<{ tools: string[]; teachesDelegation: boolean }> {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
 			agentDir: tempDir,
 			modelRegistry,
 			sessionManager: SessionManager.inMemory(),
-			settings: Settings.isolated({ "tools.discoveryMode": "all", "subagent.delegation": "preferred" }),
+			settings: Settings.isolated({ "tools.discoveryMode": "all", "subagent.delegation": delegation }),
 			model: getBundledModel("openai", "gpt-4o-mini"),
 			disableExtensionDiscovery: true,
 			skills: [],
@@ -175,30 +186,60 @@ describe("createAgentSession MCP discovery prompt gating", () => {
 			enableMCP: false,
 			enableLsp: false,
 		});
+		try {
+			return {
+				tools: session.getActiveToolNames(),
+				teachesDelegation: session.systemPrompt.join("\n").includes("## Delegation gates:"),
+			};
+		} finally {
+			await session.dispose();
+		}
+	}
 
-		expect(session.getActiveToolNames()).toContain("task");
-		await session.dispose();
+	it("exposes task under tools.discoveryMode all when delegation is preferred", async () => {
+		const { tools, teachesDelegation } = await delegationUnderDiscoveryAll("preferred");
+
+		expect(tools).toContain("task");
+		expect(teachesDelegation).toBe(true);
 	});
 
-	it("hides task under tools.discoveryMode all when delegation is merely allowed", async () => {
-		const { session } = await createAgentSession({
-			cwd: tempDir,
-			agentDir: tempDir,
-			modelRegistry,
-			sessionManager: SessionManager.inMemory(),
-			settings: Settings.isolated({ "tools.discoveryMode": "all" }),
-			model: getBundledModel("openai", "gpt-4o-mini"),
-			disableExtensionDiscovery: true,
-			skills: [],
-			contextFiles: [],
-			promptTemplates: [],
-			slashCommands: [],
-			enableMCP: false,
-			enableLsp: false,
-		});
+	/**
+	 * `required` is the strength that cannot survive a hidden task tool: it tells the model to
+	 * delegate, so a request without the tool makes the instruction unfollowable.
+	 */
+	it("exposes task under tools.discoveryMode all when delegation is required", async () => {
+		const { tools, teachesDelegation } = await delegationUnderDiscoveryAll("required");
 
-		expect(session.getActiveToolNames()).not.toContain("task");
-		await session.dispose();
+		expect(tools).toContain("task");
+		expect(teachesDelegation).toBe(true);
+	});
+
+	/**
+	 * `allowed` is the floor: delegation is offered, never asked for. Under discovery-all that makes
+	 * `task` an ordinary non-essential discoverable built-in, hidden from the initial request and
+	 * reachable through `search_tool_bm25`, and the prompt drops the delegation gates with it.
+	 *
+	 * This test USED to omit the setting and rely on the default being `allowed`. The default is
+	 * `preferred` (`settings-domains/subagents.ts`), so it was silently a duplicate of the preferred
+	 * case and failed for the right reason: `task` was correctly present. The strength is named
+	 * explicitly here, which is the only way this test exercises the floor at all, and it stays
+	 * correct if the default moves again.
+	 */
+	it("hides task under tools.discoveryMode all when delegation is merely allowed", async () => {
+		const { tools, teachesDelegation } = await delegationUnderDiscoveryAll("allowed");
+
+		expect(tools).not.toContain("task");
+		expect(teachesDelegation).toBe(false);
+	});
+
+	/**
+	 * The floor still keeps the essential built-ins, so the assertion above is about `task` and not
+	 * about discovery-all having emptied the request.
+	 */
+	it("keeps the essential built-ins active at the delegation floor under discovery-all", async () => {
+		const { tools } = await delegationUnderDiscoveryAll("allowed");
+
+		expect(tools).toEqual(expect.arrayContaining(["read", "bash", "edit", "write", "search_tool_bm25"]));
 	});
 
 	it("preserves explicitly requested MCP tools in discovery mode", async () => {

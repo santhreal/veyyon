@@ -21,6 +21,7 @@ import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import { UiHelpers } from "@veyyon/coding-agent/modes/utils/ui-helpers";
 import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
 import type { Component, TUI } from "@veyyon/tui";
+import { createToolExecution } from "./helpers/tool-execution";
 
 const uiStub = { requestRender() {}, requestComponentRender() {} } as unknown as TUI;
 
@@ -84,7 +85,7 @@ describe("job waiting-poll block lifecycle", () => {
 	});
 
 	function makeJobComponent() {
-		return trackComponent(created, new ToolExecutionComponent("job", { poll: ["j0", "j1"] }, {}, undefined, uiStub));
+		return trackComponent(created, createToolExecution("job", { poll: ["j0", "j1"] }, {}, undefined, uiStub));
 	}
 
 	it("keeps an all-running poll live and displaceable until sealed", () => {
@@ -119,10 +120,7 @@ describe("job waiting-poll block lifecycle", () => {
 	});
 
 	it("keeps successful todo snapshots live for replacement", () => {
-		const component = trackComponent(
-			created,
-			new ToolExecutionComponent("todo", { op: "view" }, {}, undefined, uiStub),
-		);
+		const component = trackComponent(created, createToolExecution("todo", { op: "view" }, {}, undefined, uiStub));
 		component.updateResult(todoResult(), false);
 
 		expect(component.isDisplaceableBlock()).toBe(true);
@@ -134,10 +132,7 @@ describe("job waiting-poll block lifecycle", () => {
 	});
 
 	it("never marks ordinary non-refresh tools displaceable", () => {
-		const component = trackComponent(
-			created,
-			new ToolExecutionComponent("bash", { command: "ls" }, {}, undefined, uiStub),
-		);
+		const component = trackComponent(created, createToolExecution("bash", { command: "ls" }, {}, undefined, uiStub));
 		component.updateResult(pollResult(["running"]), false);
 		expect(component.isDisplaceableBlock()).toBe(false);
 	});
@@ -295,7 +290,7 @@ describe("EventController displaces consecutive waiting polls", () => {
 		});
 		const first = trackComponent(created, children[children.length - 1] as ToolExecutionComponent);
 
-		const second = trackComponent(created, new ToolExecutionComponent("todo", { op: "view" }, {}, undefined, uiStub));
+		const second = trackComponent(created, createToolExecution("todo", { op: "view" }, {}, undefined, uiStub));
 		children.push(second);
 		pendingTools.set("todo-2", second);
 

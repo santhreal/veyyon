@@ -586,9 +586,16 @@ function apply_request_runtime(cwd, env_pairs)
             if !isempty(pair)
                 try
                     k_b64, v_b64 = split(pair, ':', limit=2)
-                    k = String(base64decode(string(k_b64)))
-                    v = String(base64decode(string(v_b64)))
-                    ENV[k] = v
+                    # A leading `!` marks a CLEAR: the supervisor sends `!<key_b64>:` when the
+                    # execute patch carried a `null` for that key. `!` is outside the base64
+                    # alphabet, so it can never be part of an encoded key.
+                    clear = startswith(k_b64, "!")
+                    k = String(base64decode(string(clear ? SubString(k_b64, 2) : k_b64)))
+                    if clear
+                        delete!(ENV, k)
+                    else
+                        ENV[k] = String(base64decode(string(v_b64)))
+                    end
                 catch
                     # ignore
                 end

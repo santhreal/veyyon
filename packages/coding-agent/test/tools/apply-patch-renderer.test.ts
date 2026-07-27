@@ -3,11 +3,12 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import type { TUI } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
+import { createToolExecution } from "../helpers/tool-execution";
 
 async function getUiTheme() {
 	await themeModule.initTheme(false, undefined, undefined, "dark", "light");
@@ -50,7 +51,7 @@ describe("apply_patch rendering", () => {
 		await getUiTheme();
 		const uiStub = { requestRender() {}, requestComponentRender() {} } as unknown as TUI;
 
-		const component = new ToolExecutionComponent(
+		const component = createToolExecution(
 			"apply_patch",
 			{
 				input: "*** Begin Patch\n*** Update File: src/demo.ts\n@@\n-old\n+new\n*** End Patch",
@@ -140,7 +141,7 @@ describe("apply_patch rendering", () => {
 				"*** End Patch",
 			].join("\n");
 
-			const component = new ToolExecutionComponent("apply_patch", { input }, {}, undefined, uiStub, tmpDir);
+			const component = createToolExecution("apply_patch", { input }, {}, undefined, uiStub, tmpDir);
 			const before = Bun.stripANSI(component.render(160).join("\n"));
 			expect(before).not.toContain("(preview)");
 
@@ -160,7 +161,7 @@ describe("apply_patch rendering", () => {
 		const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
 		try {
 			await Bun.write(path.join(tmpDir, "preview.ts"), "const value = 1;\n");
-			const component = new ToolExecutionComponent("apply_patch", { input: "" }, {}, undefined, uiStub, tmpDir);
+			const component = createToolExecution("apply_patch", { input: "" }, {}, undefined, uiStub, tmpDir);
 
 			setTimeoutSpy.mockClear();
 			component.updateArgs({
@@ -184,7 +185,7 @@ describe("apply_patch rendering", () => {
 	it("aligns rendered edit diff separators", async () => {
 		await getUiTheme();
 		const uiStub = { requestRender() {}, requestComponentRender() {} } as unknown as TUI;
-		const component = new ToolExecutionComponent(
+		const component = createToolExecution(
 			"edit",
 			{ path: "packages/coding-agent/src/tools/image-gen.ts" },
 			{},

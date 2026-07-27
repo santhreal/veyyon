@@ -4,7 +4,8 @@
  * Calls Brave's web search REST API and maps results into the unified
  * SearchResponse shape used by the web search tool.
  */
-import { type AuthStorage, type FetchImpl, getEnvApiKey } from "@veyyon/ai";
+import type { AuthStorage, FetchImpl } from "@veyyon/ai";
+import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";

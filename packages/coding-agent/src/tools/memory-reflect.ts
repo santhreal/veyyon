@@ -2,7 +2,7 @@ import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
 import { logger, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import { ensureBankExists } from "../hindsight/bank";
-import { PROMPTS } from "../prompts/registry";
+import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from ".";
 
 const memoryReflectSchema = type({
@@ -16,7 +16,7 @@ export class MemoryReflectTool implements AgentTool<typeof memoryReflectSchema> 
 	readonly name = "reflect";
 	readonly approval = "read" as const;
 	readonly label = "Reflect";
-	readonly description = PROMPTS["tools/reflect"].text;
+	readonly description = toolsPrompts["tools/reflect"].text;
 	readonly parameters = memoryReflectSchema;
 	readonly strict = true;
 	readonly loadMode = "discoverable";

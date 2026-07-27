@@ -19,7 +19,8 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { getMarkdownTheme, initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { getMarkdownTheme } from "@veyyon/coding-agent/modes/theme/markdown-theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 
 describe("theme text attributes", () => {
 	beforeAll(async () => {

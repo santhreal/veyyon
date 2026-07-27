@@ -1,14 +1,15 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { EvalStatusEvent, EvalToolDetails } from "@veyyon/coding-agent/eval/types";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { TUI } from "@veyyon/tui";
+import { createToolExecution } from "../helpers/tool-execution";
 
 const uiStub = { requestRender() {}, requestComponentRender() {} } as unknown as TUI;
 
 function makeEvalComponent() {
-	return new ToolExecutionComponent("eval", { code: "parallel([...])", language: "python" }, {}, undefined, uiStub);
+	return createToolExecution("eval", { code: "parallel([...])", language: "python" }, {}, undefined, uiStub);
 }
 
 /** Build an eval result whose `details.cells` carry agent-fan-out progress. */

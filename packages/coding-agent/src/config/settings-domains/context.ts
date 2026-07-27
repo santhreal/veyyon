@@ -1,4 +1,7 @@
-import { AUTO_COMPACTION_THRESHOLD } from "@veyyon/agent-core";
+// The owner of the trigger sentinel, not the `@veyyon/agent-core` barrel: one string against 406 modules.
+// This is a settings DOMAIN, reached from `config/settings-schema.ts`, so the barrel arrived on the graph of
+// the most imported module in this package.
+import { AUTO_COMPACTION_THRESHOLD } from "@veyyon/agent-core/compaction/threshold";
 import { DEFAULT_TOKEN_BUDGET } from "argot";
 import { unsetNumberOption } from "../optional-number";
 import { EMPTY_STRING_ARRAY, HINDSIGHT_RECALL_TYPES_DEFAULT } from "./shared";
@@ -216,7 +219,29 @@ export const CONTEXT_SETTINGS = {
 			group: "Argot",
 			label: "Argot Shorthand",
 			description:
-				"Let the agent load token-saving shorthand for the projects it works in, kept in a local cache (nothing is written to the repository). The model loads a project with the argot_load tool, then writes its short handles; the harness expands them to full text before any tool runs or the display shows them.",
+				"Let the agent load token-saving shorthand for the projects it works in, kept in a local cache (nothing is written to the repository). The project you launch in is loaded for you, and the model loads any further project with the argot_load tool; it then writes short handles that the harness expands to full text before any tool runs or the display shows them.",
+		},
+	},
+
+	// Whether the launch project is loaded for the session, or every load is left
+	// to the agent. On (the default) the folder the session started in is armed in
+	// the background as the session comes up, so shorthand works out of the box
+	// without spending a model turn on it; the completed load refreshes the system
+	// prompt to teach the handles, exactly as argot_load does. Off, a session
+	// starts with no dictionary and stays that way until the model calls
+	// argot_load. This decides WHEN a dictionary is built, never whether a handle
+	// expands: expansion is unconditional once a dictionary loads, and a handle
+	// already written expands whatever this holds.
+	"argot.autoload": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "experimental",
+			group: "Argot",
+			condition: "argotEnabled",
+			label: "Argot Startup Load",
+			description:
+				"Load the project you started the session in, in the background, so shorthand works without the model spending a turn on it. Off, a session starts with no dictionary until the model calls argot_load itself. Either way a handle already written still expands.",
 		},
 	},
 
@@ -224,7 +249,14 @@ export const CONTEXT_SETTINGS = {
 	// dictionary loads and stays lossless whatever this list holds; this gates only
 	// the encode side — whether the notation preamble is taught. Empty means no
 	// model encodes, so enabling Argot alone stays inert until a model is added.
-	"argot.models": {
+	//
+	// UNDER `encode.` WITH ITS SIBLING, because these two are the only Argot settings
+	// that decide whether the model is taught to write shorthand, and the grouping is
+	// what says so. `enabled`, `autoload`, `tokenBudget` and `subagents` decide whether
+	// the feature runs, when a dictionary is built, how big it is, and what a child
+	// agent starts with. The flat spelling migrates on load (settings.ts), so an
+	// existing `argot.models` keeps working and moves itself into place.
+	"argot.encode.models": {
 		type: "array",
 		default: EMPTY_STRING_ARRAY,
 		ui: {
@@ -265,7 +297,9 @@ export const CONTEXT_SETTINGS = {
 	// Stop teaching shorthand once context passes this many tokens, so a large,
 	// recall-degraded context writes in full and cannot garble a handle. Handles
 	// already in history still expand losslessly. -1 disables the cutoff.
-	"argot.disableAboveTokens": {
+	//
+	// The second encode gate, so it sits beside the first. See the note above.
+	"argot.encode.disableAboveTokens": {
 		type: "number",
 		default: -1,
 		ui: {

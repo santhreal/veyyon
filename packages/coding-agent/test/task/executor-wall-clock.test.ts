@@ -1,14 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { LoadExtensionsResult } from "@veyyon/coding-agent/extensibility/extensions/types";
-import type { CreateAgentSessionResult } from "@veyyon/coding-agent/sdk";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
-import type { AgentSession, AgentSessionEvent, PromptOptions } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { runSubprocess } from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
-import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
+import {
+	createAssistantStopMessage,
+	createAssistantToolCallMessage,
+	createMockSession,
+	createMockSessionHandle,
+	createSessionResult,
+	yieldRejectedEvent,
+	yieldSuccessEvent,
+} from "../helpers/subagent-session";
 
 // Spawning a task writes a session (and, for worktree runs, a checkout) under the
 // ACTIVE PROFILE's agent dir, so without this the suite creates them inside the
@@ -25,53 +31,15 @@ useIsolatedAgentDir();
  * Without this defense, the executor's `await session.waitForIdle()` waits
  * indefinitely (see session 019e2b4d-fa25-7000-a725-955278e9b293, subagent 7,
  * which stayed silent for ~2 hours).
+ *
+ * A stalled child is `hangUntilAbort` on the shared fake in
+ * `test/helpers/subagent-session.ts`: `prompt` and `waitForIdle` wait for something to abort the
+ * session, so only the executor's own guards can end these runs. The soft-budget cases below drive
+ * their events from `waitForIdle` rather than from `prompt`, because they assert how many aborts had
+ * happened by the time a yield's `tool_execution_end` landed, and that ordering lives in that window.
  */
-
-interface HangingSessionHandle {
-	session: AgentSession;
-	abortCalls: () => number;
-}
-
-function createHangingSession(): HangingSessionHandle {
-	let abortCount = 0;
-	const { promise: hang, resolve: releaseHang } = Promise.withResolvers<void>();
-	const session: Partial<AgentSession> = {
-		state: { messages: [] } as never,
-		agent: { state: { systemPrompt: ["test"] } } as never,
-		extensionRunner: undefined as never,
-		sessionManager: {
-			appendSessionInit: () => {},
-		} as never,
-		getActiveToolNames: () => ["read", "yield"],
-		setActiveToolsByName: async (_names: string[]) => {},
-		subscribe: (_listener: (event: AgentSessionEvent) => void) => () => {},
-		prompt: async (_text: string, _options?: PromptOptions) => {
-			await hang;
-			return true;
-		},
-		waitForIdle: async () => {
-			await hang;
-		},
-		getLastAssistantMessage: () => undefined,
-		abort: async () => {
-			abortCount += 1;
-			releaseHang();
-		},
-		dispose: async () => {},
-	};
-	return {
-		session: session as AgentSession,
-		abortCalls: () => abortCount,
-	};
-}
-
 function mockCreateAgentSession(session: AgentSession) {
-	return vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue({
-		session,
-		extensionsResult: {} as unknown as LoadExtensionsResult,
-		setToolUIContext: () => {},
-		eventBus: new EventBus(),
-	} satisfies CreateAgentSessionResult);
+	return vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
 }
 
 describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
@@ -98,7 +66,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 
 	it("aborts a stalled subagent and surfaces a runtime-limit reason", async () => {
 		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 50 });
-		const handle = createHangingSession();
+		const handle = createMockSessionHandle(() => {}, { hangUntilAbort: true });
 		mockCreateAgentSession(handle.session);
 
 		const startedAt = Date.now();
@@ -120,40 +88,13 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 	});
 
 	it("does not abort early when the runtime budget is unlimited", async () => {
-		// Stub session resolves immediately to a no-op yield so we don't actually
-		// hang; we only need to assert that NO timeout fires when maxRuntimeMs=0.
+		// The child answers immediately with a yield, so nothing hangs; the point is
+		// only that NO timeout fires when maxRuntimeMs=0.
 		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 0 });
-		const fastSession: Partial<AgentSession> = {
-			state: { messages: [] } as never,
-			agent: { state: { systemPrompt: ["test"] } } as never,
-			extensionRunner: undefined as never,
-			sessionManager: { appendSessionInit: () => {} } as never,
-			getActiveToolNames: () => ["read", "yield"],
-			setActiveToolsByName: async () => {},
-			subscribe: (listener: (event: AgentSessionEvent) => void) => {
-				// Fire a synthetic yield on the next tick to drive runSubprocess to
-				// completion without depending on the real agent loop.
-				queueMicrotask(() => {
-					listener({
-						type: "tool_execution_end",
-						toolCallId: "tool-fast",
-						toolName: "yield",
-						result: {
-							content: [{ type: "text", text: "Result submitted." }],
-							details: { status: "success", data: { ok: true } },
-						},
-						isError: false,
-					} as AgentSessionEvent);
-				});
-				return () => {};
-			},
-			prompt: async () => true,
-			waitForIdle: async () => {},
-			getLastAssistantMessage: () => undefined,
-			abort: async () => {},
-			dispose: async () => {},
-		};
-		mockCreateAgentSession(fastSession as AgentSession);
+		const session = createMockSession(({ emit }) => {
+			emit(yieldSuccessEvent({ ok: true }, "tool-fast"));
+		});
+		mockCreateAgentSession(session);
 
 		const result = await runSubprocess({
 			...baseOptions,
@@ -171,21 +112,10 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 		// it ever calls session.prompt(). The fix must observe abortSignal
 		// immediately before prompting and return the runtime-limit result.
 		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 30 });
-		const handle = createHangingSession();
-		let promptCalls = 0;
-		const originalPrompt = handle.session.prompt;
-		handle.session.prompt = async (text, options) => {
-			promptCalls += 1;
-			return originalPrompt.call(handle.session, text, options);
-		};
+		const handle = createMockSessionHandle(() => {}, { hangUntilAbort: true });
 		vi.spyOn(sdkModule, "createAgentSession").mockImplementation(async () => {
 			await new Promise(resolve => setTimeout(resolve, 200));
-			return {
-				session: handle.session,
-				extensionsResult: {} as unknown as LoadExtensionsResult,
-				setToolUIContext: () => {},
-				eventBus: new EventBus(),
-			} satisfies CreateAgentSessionResult;
+			return createSessionResult(handle.session);
 		});
 
 		const result = await runSubprocess({
@@ -200,7 +130,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 		expect(result.abortReason).toContain("task.maxRuntimeMs=30");
 		// The whole point: we never reached session.prompt(), because the abort
 		// was observed before issuing the model call.
-		expect(promptCalls).toBe(0);
+		expect(handle.prompts).toHaveLength(0);
 	});
 
 	it("a late successful yield does not flip a timed-out run to success", async () => {
@@ -209,47 +139,12 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 		// make finalizeSubprocessOutput zero the exit code and `wasAborted`
 		// would resolve to false — silently masking the runtime-limit breach.
 		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 30 });
-		const { promise: hang, resolve: releaseHang } = Promise.withResolvers<void>();
-		let listenerRef: ((event: AgentSessionEvent) => void) | undefined;
-		let abortCount = 0;
-		const session: Partial<AgentSession> = {
-			state: { messages: [] } as never,
-			agent: { state: { systemPrompt: ["test"] } } as never,
-			extensionRunner: undefined as never,
-			sessionManager: { appendSessionInit: () => {} } as never,
-			getActiveToolNames: () => ["read", "yield"],
-			setActiveToolsByName: async () => {},
-			subscribe: (listener: (event: AgentSessionEvent) => void) => {
-				listenerRef = listener;
-				return () => {};
-			},
-			prompt: async (_text: string, _options?: PromptOptions) => {
-				await hang;
-				return true;
-			},
-			waitForIdle: async () => {
-				await hang;
-			},
-			getLastAssistantMessage: () => undefined,
-			abort: async () => {
-				abortCount += 1;
-				// Simulate a late yield arriving while the executor is tearing
-				// the session down in response to the wall-clock abort.
-				listenerRef?.({
-					type: "tool_execution_end",
-					toolCallId: "tool-late-yield",
-					toolName: "yield",
-					result: {
-						content: [{ type: "text", text: "Result submitted." }],
-						details: { status: "success", data: { lateButLanded: true } },
-					},
-					isError: false,
-				} as AgentSessionEvent);
-				releaseHang();
-			},
-			dispose: async () => {},
-		};
-		mockCreateAgentSession(session as AgentSession);
+		const handle = createMockSessionHandle(() => {}, {
+			hangUntilAbort: true,
+			// Emitted from inside `abort`, which is the only way to land in the teardown window.
+			onAbort: ({ emit }) => emit(yieldSuccessEvent({ lateButLanded: true }, "tool-late-yield")),
+		});
+		mockCreateAgentSession(handle.session);
 
 		const result = await runSubprocess({
 			...baseOptions,
@@ -257,7 +152,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 			settings,
 		});
 
-		expect(abortCount).toBeGreaterThanOrEqual(1);
+		expect(handle.abortCalls()).toBeGreaterThanOrEqual(1);
 		expect(result.aborted).toBe(true);
 		expect(result.exitCode).toBe(1);
 		expect(result.abortReason).toContain("runtime limit exceeded");
@@ -268,69 +163,21 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 
 	it("commits a yield tool call before the soft request budget aborts the turn", async () => {
 		const settings = Settings.isolated({ "subagent.softRequestBudget": 1 });
-		const firstAssistantMessage = {
-			role: "assistant" as const,
-			content: [{ type: "text" as const, text: "finishing the task" }],
-			stopReason: "stop" as const,
-		};
-		const yieldAssistantMessage = {
-			role: "assistant" as const,
-			content: [
-				{
-					type: "toolCall" as const,
-					id: "tool-yield-budget",
-					name: "yield",
-					arguments: { result: { data: { finished: "unvalidated" } } },
-				},
-			],
-			stopReason: "toolUse" as const,
-		};
-		let listenerRef: ((event: AgentSessionEvent) => void) | undefined;
-		let waitForIdleCalls = 0;
-		let abortCount = 0;
 		let abortCountBeforeYieldExecutionEnd: number | undefined;
-		const session: Partial<AgentSession> = {
-			state: { messages: [] } as never,
-			agent: { state: { systemPrompt: ["test"] } } as never,
-			extensionRunner: undefined as never,
-			sessionManager: { appendSessionInit: () => {} } as never,
-			getActiveToolNames: () => ["read", "yield"],
-			setActiveToolsByName: async () => {},
-			subscribe: (listener: (event: AgentSessionEvent) => void) => {
-				listenerRef = listener;
-				return () => {};
+		const handle = createMockSessionHandle(() => {}, {
+			onWaitForIdle: ({ idleIndex, emit, pushTurn }) => {
+				if (idleIndex !== 1) return;
+				pushTurn(createAssistantStopMessage("finishing the task"));
+				pushTurn(
+					createAssistantToolCallMessage("yield", "tool-yield-budget", {
+						result: { data: { finished: "unvalidated" } },
+					}),
+				);
+				abortCountBeforeYieldExecutionEnd = handle.abortCalls();
+				emit(yieldSuccessEvent({ finished: "validated" }, "tool-yield-budget"));
 			},
-			prompt: async () => true,
-			waitForIdle: async () => {
-				waitForIdleCalls += 1;
-				if (waitForIdleCalls !== 1) return;
-				listenerRef?.({
-					type: "message_end",
-					message: firstAssistantMessage,
-				} as unknown as AgentSessionEvent);
-				listenerRef?.({
-					type: "message_end",
-					message: yieldAssistantMessage,
-				} as unknown as AgentSessionEvent);
-				abortCountBeforeYieldExecutionEnd = abortCount;
-				listenerRef?.({
-					type: "tool_execution_end",
-					toolCallId: "tool-yield-budget",
-					toolName: "yield",
-					result: {
-						content: [{ type: "text", text: "Result submitted." }],
-						details: { status: "success", data: { finished: "validated" } },
-					},
-					isError: false,
-				} as AgentSessionEvent);
-			},
-			getLastAssistantMessage: () => yieldAssistantMessage as never,
-			abort: async () => {
-				abortCount += 1;
-			},
-			dispose: async () => {},
-		};
-		mockCreateAgentSession(session as AgentSession);
+		});
+		mockCreateAgentSession(handle.session);
 
 		const result = await runSubprocess({
 			...baseOptions,
@@ -348,113 +195,33 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 
 	it("does not finalize rejected yield arguments after crossing the soft request budget", async () => {
 		const settings = Settings.isolated({ "subagent.softRequestBudget": 1 });
-		const firstAssistantMessage = {
-			role: "assistant" as const,
-			content: [{ type: "text" as const, text: "finishing the task" }],
-			stopReason: "stop" as const,
-		};
-		const rejectedYieldMessage = {
-			role: "assistant" as const,
-			content: [
-				{
-					type: "toolCall" as const,
-					id: "tool-yield-rejected",
-					name: "yield",
-					arguments: { result: { data: { finished: "rejected-before-validation" } } },
-				},
-			],
-			stopReason: "toolUse" as const,
-		};
-		const validYieldMessage = {
-			role: "assistant" as const,
-			content: [
-				{
-					type: "toolCall" as const,
-					id: "tool-yield-valid",
-					name: "yield",
-					arguments: { result: { data: { finished: "unvalidated-later" } } },
-				},
-			],
-			stopReason: "toolUse" as const,
-		};
-		let listenerRef: ((event: AgentSessionEvent) => void) | undefined;
-		let lastAssistantMessage:
-			| typeof firstAssistantMessage
-			| typeof rejectedYieldMessage
-			| typeof validYieldMessage
-			| undefined;
-		let waitForIdleCalls = 0;
-		let abortCount = 0;
 		let abortCountBeforeRejectedYieldExecutionEnd: number | undefined;
 		let abortCountBeforeValidYieldExecutionEnd: number | undefined;
-		const promptCalls: Array<{ text: string; options?: PromptOptions }> = [];
-		const session: Partial<AgentSession> = {
-			state: { messages: [] } as never,
-			agent: { state: { systemPrompt: ["test"] } } as never,
-			extensionRunner: undefined as never,
-			sessionManager: { appendSessionInit: () => {} } as never,
-			getActiveToolNames: () => ["read", "yield"],
-			setActiveToolsByName: async () => {},
-			subscribe: (listener: (event: AgentSessionEvent) => void) => {
-				listenerRef = listener;
-				return () => {};
-			},
-			prompt: async (text: string, options?: PromptOptions) => {
-				promptCalls.push({ text, options });
-				return true;
-			},
-			waitForIdle: async () => {
-				waitForIdleCalls += 1;
-				if (waitForIdleCalls === 1) {
-					lastAssistantMessage = firstAssistantMessage;
-					listenerRef?.({
-						type: "message_end",
-						message: firstAssistantMessage,
-					} as unknown as AgentSessionEvent);
-					lastAssistantMessage = rejectedYieldMessage;
-					listenerRef?.({
-						type: "message_end",
-						message: rejectedYieldMessage,
-					} as unknown as AgentSessionEvent);
-					abortCountBeforeRejectedYieldExecutionEnd = abortCount;
-					listenerRef?.({
-						type: "tool_execution_end",
-						toolCallId: "tool-yield-rejected",
-						toolName: "yield",
-						result: {
-							content: [{ type: "text", text: "Yield rejected." }],
-							details: { status: "error", data: { finished: "rejected-before-validation" } },
-						},
-						isError: true,
-					} as AgentSessionEvent);
+		const handle = createMockSessionHandle(() => {}, {
+			onWaitForIdle: ({ idleIndex, emit, pushTurn }) => {
+				if (idleIndex === 1) {
+					pushTurn(createAssistantStopMessage("finishing the task"));
+					pushTurn(
+						createAssistantToolCallMessage("yield", "tool-yield-rejected", {
+							result: { data: { finished: "rejected-before-validation" } },
+						}),
+					);
+					abortCountBeforeRejectedYieldExecutionEnd = handle.abortCalls();
+					emit(yieldRejectedEvent({ finished: "rejected-before-validation" }, "tool-yield-rejected"));
 					return;
 				}
-				if (waitForIdleCalls === 2) {
-					lastAssistantMessage = validYieldMessage;
-					listenerRef?.({
-						type: "message_end",
-						message: validYieldMessage,
-					} as unknown as AgentSessionEvent);
-					abortCountBeforeValidYieldExecutionEnd = abortCount;
-					listenerRef?.({
-						type: "tool_execution_end",
-						toolCallId: "tool-yield-valid",
-						toolName: "yield",
-						result: {
-							content: [{ type: "text", text: "Result submitted." }],
-							details: { status: "success", data: { finished: "validated-later" } },
-						},
-						isError: false,
-					} as AgentSessionEvent);
+				if (idleIndex === 2) {
+					pushTurn(
+						createAssistantToolCallMessage("yield", "tool-yield-valid", {
+							result: { data: { finished: "unvalidated-later" } },
+						}),
+					);
+					abortCountBeforeValidYieldExecutionEnd = handle.abortCalls();
+					emit(yieldSuccessEvent({ finished: "validated-later" }, "tool-yield-valid"));
 				}
 			},
-			getLastAssistantMessage: () => lastAssistantMessage as never,
-			abort: async () => {
-				abortCount += 1;
-			},
-			dispose: async () => {},
-		};
-		mockCreateAgentSession(session as AgentSession);
+		});
+		mockCreateAgentSession(handle.session);
 
 		const result = await runSubprocess({
 			...baseOptions,
@@ -464,8 +231,8 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 
 		expect(abortCountBeforeRejectedYieldExecutionEnd).toBe(0);
 		expect(abortCountBeforeValidYieldExecutionEnd).toBe(0);
-		expect(promptCalls.length).toBeGreaterThanOrEqual(2);
-		expect(promptCalls[1]?.options?.synthetic).toBe(true);
+		expect(handle.prompts.length).toBeGreaterThanOrEqual(2);
+		expect(handle.prompts[1]?.options?.synthetic).toBe(true);
 		expect(result.aborted).toBe(false);
 		expect(result.exitCode).toBe(0);
 		expect(result.requests).toBe(3);
@@ -485,92 +252,27 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 
 	it("resumes the hard budget guard after an incremental yield commits", async () => {
 		const settings = Settings.isolated({ "subagent.softRequestBudget": 1 });
-		const firstAssistantMessage = {
-			role: "assistant" as const,
-			content: [{ type: "text" as const, text: "still working" }],
-			stopReason: "stop" as const,
-		};
-		const incrementalYieldMessage = {
-			role: "assistant" as const,
-			content: [
-				{
-					type: "toolCall" as const,
-					id: "tool-yield-incremental",
-					name: "yield",
-					arguments: { type: ["findings"], result: { data: { id: "saved" } } },
-				},
-			],
-			stopReason: "toolUse" as const,
-		};
-		const followingAssistantMessage = {
-			role: "assistant" as const,
-			content: [{ type: "text" as const, text: "continuing after the saved section" }],
-			stopReason: "stop" as const,
-		};
-		let listenerRef: ((event: AgentSessionEvent) => void) | undefined;
-		let lastAssistantMessage:
-			| typeof firstAssistantMessage
-			| typeof incrementalYieldMessage
-			| typeof followingAssistantMessage
-			| undefined;
-		let waitForIdleCalls = 0;
-		let abortCount = 0;
 		let abortCountBeforeYieldExecutionEnd: number | undefined;
 		let abortCountAfterFollowingTurn: number | undefined;
-		const session: Partial<AgentSession> = {
-			state: { messages: [] } as never,
-			agent: { state: { systemPrompt: ["test"] } } as never,
-			extensionRunner: undefined as never,
-			sessionManager: { appendSessionInit: () => {} } as never,
-			getActiveToolNames: () => ["read", "yield"],
-			setActiveToolsByName: async () => {},
-			subscribe: (listener: (event: AgentSessionEvent) => void) => {
-				listenerRef = listener;
-				return () => {};
+		const handle = createMockSessionHandle(() => {}, {
+			onWaitForIdle: ({ idleIndex, emit, pushTurn }) => {
+				if (idleIndex !== 1) return;
+				pushTurn(createAssistantStopMessage("still working"));
+				pushTurn(
+					createAssistantToolCallMessage("yield", "tool-yield-incremental", {
+						type: ["findings"],
+						result: { data: { id: "saved" } },
+					}),
+				);
+				abortCountBeforeYieldExecutionEnd = handle.abortCalls();
+				// An INCREMENTAL yield: it saves a section and the run continues, so the hard budget
+				// guard has to come back on for the turns that follow.
+				emit(yieldSuccessEvent({ id: "saved" }, "tool-yield-incremental", { type: ["findings"] }));
+				pushTurn(createAssistantStopMessage("continuing after the saved section"));
+				abortCountAfterFollowingTurn = handle.abortCalls();
 			},
-			prompt: async () => true,
-			waitForIdle: async () => {
-				waitForIdleCalls += 1;
-				if (waitForIdleCalls !== 1) return;
-				lastAssistantMessage = firstAssistantMessage;
-				listenerRef?.({
-					type: "message_end",
-					message: firstAssistantMessage,
-				} as unknown as AgentSessionEvent);
-				lastAssistantMessage = incrementalYieldMessage;
-				listenerRef?.({
-					type: "message_end",
-					message: incrementalYieldMessage,
-				} as unknown as AgentSessionEvent);
-				abortCountBeforeYieldExecutionEnd = abortCount;
-				listenerRef?.({
-					type: "tool_execution_end",
-					toolCallId: "tool-yield-incremental",
-					toolName: "yield",
-					result: {
-						content: [{ type: "text", text: "Section submitted." }],
-						details: {
-							status: "success",
-							data: { id: "saved" },
-							type: ["findings"],
-						},
-					},
-					isError: false,
-				} as AgentSessionEvent);
-				lastAssistantMessage = followingAssistantMessage;
-				listenerRef?.({
-					type: "message_end",
-					message: followingAssistantMessage,
-				} as unknown as AgentSessionEvent);
-				abortCountAfterFollowingTurn = abortCount;
-			},
-			getLastAssistantMessage: () => lastAssistantMessage as never,
-			abort: async () => {
-				abortCount += 1;
-			},
-			dispose: async () => {},
-		};
-		mockCreateAgentSession(session as AgentSession);
+		});
+		mockCreateAgentSession(handle.session);
 
 		const result = await runSubprocess({
 			...baseOptions,
@@ -599,43 +301,11 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 		// upstream contract: when an assistant message_end carries totalTokens,
 		// executor must surface it on SingleResult.contextTokens.
 		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 0 });
-		const fastSession: Partial<AgentSession> = {
-			state: { messages: [] } as never,
-			agent: { state: { systemPrompt: ["test"] } } as never,
-			extensionRunner: undefined as never,
-			sessionManager: { appendSessionInit: () => {} } as never,
-			getActiveToolNames: () => ["read", "yield"],
-			setActiveToolsByName: async () => {},
-			subscribe: (listener: (event: AgentSessionEvent) => void) => {
-				queueMicrotask(() => {
-					listener({
-						type: "message_end",
-						message: {
-							role: "assistant",
-							content: [{ type: "text", text: "ok" }],
-							usage: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, totalTokens: 12345 },
-						},
-					} as unknown as AgentSessionEvent);
-					listener({
-						type: "tool_execution_end",
-						toolCallId: "tool-ok",
-						toolName: "yield",
-						result: {
-							content: [{ type: "text", text: "Result submitted." }],
-							details: { status: "success", data: { ok: true } },
-						},
-						isError: false,
-					} as AgentSessionEvent);
-				});
-				return () => {};
-			},
-			prompt: async () => true,
-			waitForIdle: async () => {},
-			getLastAssistantMessage: () => undefined,
-			abort: async () => {},
-			dispose: async () => {},
-		};
-		mockCreateAgentSession(fastSession as AgentSession);
+		const session = createMockSession(({ emit, pushTurn }) => {
+			pushTurn(createAssistantStopMessage("ok", "stop", { input: 100, output: 50, totalTokens: 12345 }));
+			emit(yieldSuccessEvent({ ok: true }, "tool-ok"));
+		});
+		mockCreateAgentSession(session);
 
 		const result = await runSubprocess({
 			...baseOptions,

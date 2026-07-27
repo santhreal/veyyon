@@ -17,6 +17,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { initTheme } from "../../src/modes/theme/theme";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
 
 let verifyBinaryUsable: typeof import("../../src/cli/update-cli").verifyBinaryUsable;
 let replaceBinaryForUpdate: typeof import("../../src/cli/update-cli").replaceBinaryForUpdate;
@@ -142,8 +143,14 @@ describe("verifyBinaryUsable", () => {
 describe("a binary that starts but cannot work is rolled back", () => {
 	let swapDir: string;
 
+	// `useTrackedTempDirs` rather than a bare `mkdtempSync`: this ran per case and
+	// nothing ever deleted the result, so every full `test/cli` run left one directory
+	// per case in `/tmp`. The factory registers its own `afterAll`, so a new case in
+	// this describe cannot reintroduce the leak by forgetting a teardown.
+	const makeSwapDir = useTrackedTempDirs("veyyon-usable-swap-");
+
 	beforeEach(() => {
-		swapDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-usable-swap-"));
+		swapDir = makeSwapDir();
 	});
 
 	it("restores the previous binary and names the addon as the cause", async () => {

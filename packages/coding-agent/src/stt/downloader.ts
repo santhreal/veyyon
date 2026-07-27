@@ -57,6 +57,9 @@ export async function isSttModelCached(key: string): Promise<boolean> {
 			}
 			return true;
 		} catch {
+			// "Is this model already downloaded": an absent cache directory is the answer on every machine
+			// that has not used speech input yet, and false is also right for a cache that cannot be read,
+			// since the caller responds by downloading, which reports its own failures.
 			return false;
 		}
 	}

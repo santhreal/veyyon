@@ -6,7 +6,9 @@
 import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isMissingPath } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
+import { isMissingPath } from "@veyyon/utils/fs-error";
+import { isSessionFileName, sessionFileStem } from "@veyyon/utils/session-file";
 import { AgentRegistry } from "../registry/agent-registry";
 
 const extraArtifactsDirs = new Set<string>();
@@ -81,9 +83,9 @@ export async function sessionFilesFromDisk(): Promise<Map<string, string>> {
 			}
 			if (!entry.isFile()) continue;
 			const name = entry.name;
-			if (!name.endsWith(".jsonl")) continue;
+			if (!isSessionFileName(name)) continue;
 			if (name.startsWith("__advisor")) continue;
-			const id = name.slice(0, -".jsonl".length);
+			const id = sessionFileStem(name);
 			if (!found.has(id)) found.set(id, path.join(dir, name));
 		}
 	};

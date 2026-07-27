@@ -2,17 +2,7 @@
  * Component for displaying bash command execution with streaming output.
  */
 
-import {
-	Container,
-	Ellipsis,
-	ImageProtocol,
-	type Loader,
-	TERMINAL,
-	Text,
-	type TUI,
-	truncateToWidth,
-	visibleWidth,
-} from "@veyyon/tui";
+import { Container, ImageProtocol, type Loader, TERMINAL, Text, type TUI } from "@veyyon/tui";
 import { sanitizeText } from "@veyyon/utils";
 import { theme } from "../../modes/theme/theme";
 import type { TruncationMeta } from "../../tools/output-meta";
@@ -20,21 +10,21 @@ import { getSixelLineMask, isSixelPassthroughEnabled, sanitizeWithOptionalSixelP
 import {
 	buildExecutionFrame,
 	buildStatusFooter,
+	capExecutionOutputLines,
+	clampExecutionDisplayLine,
 	createCollapsedPreview,
+	EXECUTION_PREVIEW_LINES,
 	type ExecutionStatus,
 	resolveExecutionStatus,
 } from "./execution-shared";
 
-// Preview line limit when not expanded (matches tool execution behavior)
-const PREVIEW_LINES = 20;
-const STREAMING_LINE_CAP = PREVIEW_LINES * 5;
-const MAX_DISPLAY_LINE_CHARS = 4000;
 // Minimum interval between processing incoming chunks for display (ms).
 // Chunks arriving faster than this are accumulated and processed in one batch.
 const CHUNK_THROTTLE_MS = 50;
 
 export class BashExecutionComponent extends Container {
 	#outputLines: string[] = [];
+	#droppedLineCount = 0;
 	#status: ExecutionStatus = "running";
 	#exitCode: number | undefined = undefined;
 	#loader: Loader;
@@ -109,10 +99,9 @@ export class BashExecutionComponent extends Container {
 			this.#outputLines.push(...this.#clampLinesPreservingSixel(incomingLines));
 		}
 
-		// Cap stored lines during streaming to avoid unbounded memory growth
-		if (this.#outputLines.length > STREAMING_LINE_CAP) {
-			this.#outputLines = this.#outputLines.slice(-STREAMING_LINE_CAP);
-		}
+		// Cap stored lines during streaming to avoid unbounded memory growth, and remember how many went, so the
+		// footer can say so instead of folding them into a hidden-line count that promises to reveal them.
+		this.#droppedLineCount += capExecutionOutputLines(this.#outputLines);
 
 		this.#displayDirty = true;
 	}
@@ -147,7 +136,7 @@ export class BashExecutionComponent extends Container {
 		const availableLines = this.#outputLines;
 
 		// Apply preview truncation based on expanded state
-		const previewLogicalLines = availableLines.slice(-PREVIEW_LINES);
+		const previewLogicalLines = availableLines.slice(-EXECUTION_PREVIEW_LINES);
 		const hiddenLineCount = availableLines.length - previewLogicalLines.length;
 		const sixelLineMask =
 			TERMINAL.imageProtocol === ImageProtocol.Sixel && isSixelPassthroughEnabled()
@@ -171,7 +160,7 @@ export class BashExecutionComponent extends Container {
 			} else {
 				// Use shared visual truncation utility, recomputed per render width
 				const styledOutput = previewLogicalLines.map(line => theme.fg("muted", line)).join("\n");
-				this.#contentContainer.addChild(createCollapsedPreview(`\n${styledOutput}`, PREVIEW_LINES));
+				this.#contentContainer.addChild(createCollapsedPreview(`\n${styledOutput}`, EXECUTION_PREVIEW_LINES));
 			}
 		}
 
@@ -184,33 +173,27 @@ export class BashExecutionComponent extends Container {
 				exitCode: this.#exitCode,
 				truncation: this.#truncation,
 				hiddenLineCount,
+				droppedLineCount: this.#droppedLineCount,
 				suppressHiddenCount: hasSixelOutput,
 			});
 			if (footer) this.#contentContainer.addChild(footer);
 		}
 	}
 
-	#clampDisplayLine(line: string): string {
-		const visible = visibleWidth(line);
-		if (visible <= MAX_DISPLAY_LINE_CHARS) {
-			return line;
-		}
-		const omitted = visible - MAX_DISPLAY_LINE_CHARS;
-		return `${truncateToWidth(line, MAX_DISPLAY_LINE_CHARS, Ellipsis.Omit)}… [${omitted} visible columns omitted]`;
-	}
-
 	#clampLinesPreservingSixel(lines: string[]): string[] {
 		if (lines.length === 0) return [];
 		const sixelLineMask = getSixelLineMask(lines);
 		if (!sixelLineMask.some(Boolean)) {
-			return lines.map(line => this.#clampDisplayLine(line));
+			return lines.map(line => clampExecutionDisplayLine(line));
 		}
-		return lines.map((line, index) => (sixelLineMask[index] ? line : this.#clampDisplayLine(line)));
+		return lines.map((line, index) => (sixelLineMask[index] ? line : clampExecutionDisplayLine(line)));
 	}
 
 	#setOutput(output: string): void {
 		const clean = sanitizeWithOptionalSixelPassthrough(output, sanitizeText);
 		this.#outputLines = clean ? this.#clampLinesPreservingSixel(clean.split("\n")) : [];
+		// The authoritative output replaces whatever streaming kept, so nothing is missing any more.
+		this.#droppedLineCount = 0;
 	}
 
 	/**

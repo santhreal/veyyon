@@ -11,7 +11,8 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
+import { isEnoent } from "@veyyon/utils/fs-error";
 import { artifactsDirsFromRegistry } from "./registry-helpers";
 import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext, UrlCompletion } from "./types";
 

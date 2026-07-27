@@ -51,7 +51,17 @@ export interface HindsightRequestOptions {
 	signal?: AbortSignal;
 }
 
-export interface RecallResult {
+/**
+ * One memory as the HINDSIGHT service returns it.
+ *
+ * Nothing to do with `RecallResult` in `@veyyon/mnemopi`, which is veyyon's own memory backend:
+ * that one keys its body on `content` and carries scores, tiers and truncation flags, this one
+ * keys on `text` and carries none of them. Both were called `RecallResult`, and both are in play
+ * whenever the memory backend is switchable, so an editor's auto-import could hand a Hindsight
+ * result to code written against mnemopi's; the index signature below means the mistake
+ * typechecks and surfaces as an undefined `content` at runtime.
+ */
+export interface HindsightRecallResult {
 	id?: string;
 	text: string;
 	type?: string | null;
@@ -60,7 +70,7 @@ export interface RecallResult {
 }
 
 export interface RecallResponse {
-	results: RecallResult[];
+	results: HindsightRecallResult[];
 	[key: string]: unknown;
 }
 

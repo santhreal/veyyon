@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
-import { Effort } from "@veyyon/ai";
+import { Effort } from "@veyyon/catalog/effort";
 import { getBundledModel } from "@veyyon/catalog/models";
 import * as autoThinkingClassifier from "@veyyon/coding-agent/auto-thinking/classifier";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";

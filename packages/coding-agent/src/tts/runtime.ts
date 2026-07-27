@@ -16,6 +16,9 @@ export async function isTtsRuntimeCached(): Promise<boolean> {
 		const pkg = await Bun.file(path.join(getTtsRuntimeDir(), "node_modules", KOKORO_PACKAGE, "package.json")).json();
 		return typeof pkg === "object" && pkg !== null && "version" in pkg && pkg.version === KOKORO_VERSION;
 	} catch {
+		// "Is the speech runtime already installed at the version we want": an absent manifest is the answer
+		// on a machine that has never used speech output, and a manifest that cannot be read is not one this
+		// can verify a version from. False sends the caller to install, which reports its own failures.
 		return false;
 	}
 }

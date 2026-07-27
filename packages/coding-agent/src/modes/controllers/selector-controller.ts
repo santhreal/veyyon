@@ -1,8 +1,10 @@
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Effort } from "@veyyon/ai";
-import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthProvider } from "@veyyon/ai/oauth/types";
+// The derived provider set from the registry that derives it (164 modules) rather than the
+// barrel (346).
+import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai/registry/derived";
 import type { Component, OverlayHandle } from "@veyyon/tui";
 import { Loader, Spacer, setTuiTight, Text } from "@veyyon/tui";
 import { errorMessage, getActiveAuthDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/utils";
@@ -11,16 +13,17 @@ import type { KeyId } from "../../config/keybindings";
 import { formatModelSelectorValue } from "../../config/model-resolver";
 import { DEFAULT_MODEL_SLOT, getRoleInfo, isDefaultModelSlot } from "../../config/model-roles";
 import { applySamplingKnob, optionalNumber, toNumberOrUndefined } from "../../config/optional-number";
-import { settings } from "../../config/settings";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { settings } from "../../config/settings-instance";
 import { disableProvider, enableProvider } from "../../discovery";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../../discovery/helpers";
+import { setMarkdownMermaidRendering } from "../../modes/theme/markdown-theme";
 import {
 	FALLBACK_THEME_NAME,
 	getAvailableThemes,
 	getSymbolTheme,
 	previewTheme,
 	setColorBlindMode,
-	setMarkdownMermaidRendering,
 	setSymbolPreset,
 	setTheme,
 	type ThemeLoadResult,
@@ -38,6 +41,7 @@ import {
 	type ResetUsageAccount,
 	toResetUsageAccounts,
 } from "../../slash-commands/helpers/reset-usage";
+import { frozenGateNotice, isLivePromptGate } from "../../system-prompt-builder/gate-registry";
 import { AUTO_THINKING, type ConfiguredThinkingLevel } from "../../thinking";
 import { isImageProviderPreference, setPreferredImageProvider } from "../../tools/image-gen";
 import { shortenPath } from "../../tools/render-utils";
@@ -130,6 +134,9 @@ export class SelectorController {
 		const oauthProviders = getOAuthProviders();
 		await Promise.all(
 			oauthProviders.map(provider =>
+				// This refreshes the selector's view of which providers are authenticated. A provider whose key
+				// cannot be resolved is exactly what "not authenticated" looks like here, and the registry
+				// reports its own resolution failures; treating one as fatal would empty the whole selector.
 				this.ctx.session.modelRegistry
 					.getApiKeyForProvider(provider.id, this.ctx.session.sessionId)
 					.catch(() => undefined),
@@ -453,6 +460,10 @@ export class SelectorController {
 			fullscreen: true,
 		});
 		dashboard.onClose = () => {
+			// The card subscribes to the process-global AgentRegistry for its Live
+			// view; without this it would keep rebuilding a layout nobody is looking
+			// at, once per agent event, for the rest of the session.
+			dashboard.dispose();
 			overlay.hide();
 			this.focusActiveEditorArea();
 			this.ctx.ui.requestRender();
@@ -479,6 +490,25 @@ export class SelectorController {
 			return;
 		}
 
+		// Any setting the prompt gates on rebuilds the prompt, read off the ONE registry that
+		// records which those are (`system-prompt-builder/gate-registry.ts`). This used to be a
+		// `case` per setting and carried two of the nine: flipping `subagent.batch`,
+		// `subagent.delegation`, `subagent.maxConcurrency`, `subagent.maxRecursionDepth`,
+		// `subagent.agents`, `includeModelInPrompt` or `tools.format` changed the setting and
+		// left the prompt describing the previous configuration, with nothing logged. The
+		// switch below still runs, for the UI side effects a flip also needs.
+		if (isLivePromptGate(id)) {
+			this.ctx.session.refreshBaseSystemPrompt(`setting:${id}`).catch(err => {
+				this.ctx.showError(`Failed to apply "${id}" to the system prompt: ${errorMessage(err)}`);
+			});
+		} else {
+			// A prompt gate this session captured at startup cannot follow the flip. Saying so is
+			// the point: the settings UI shows the new value either way, so without this the
+			// operator has no way to tell an applied change from one that did nothing.
+			const frozen = frozenGateNotice(id);
+			if (frozen !== undefined) this.ctx.showWarning(frozen);
+		}
+
 		switch (id) {
 			// Session-managed settings (not in SettingsManager)
 			case "autoCompact":
@@ -500,11 +530,9 @@ export class SelectorController {
 				this.ctx.statusLine.invalidate();
 				this.ctx.updateEditorBorderColor();
 				break;
-			case "personality":
-				void this.ctx.session.refreshBaseSystemPrompt().catch(err => {
-					this.ctx.showError(`Failed to apply personality: ${errorMessage(err)}`);
-				});
-				break;
+			// `personality` needs no arm of its own: it is a registered prompt gate, and the
+			// rebuild above covers it. Kept out of the switch rather than left as an empty case
+			// so there is nothing to read that looks like it still does the work.
 
 			case "autocompleteMaxVisible":
 				this.ctx.editor.setAutocompleteMaxVisible(typeof value === "number" ? value : Number(value));
@@ -571,10 +599,9 @@ export class SelectorController {
 				break;
 
 			case "tui.renderMermaid":
+				// The prompt rebuild is the registry's, above. What is left here is the part that
+				// is genuinely about the TUI: the renderer switch and retiring committed blocks.
 				setMarkdownMermaidRendering(value as boolean);
-				this.ctx.session.refreshBaseSystemPrompt().catch(err => {
-					this.ctx.showError(`Failed to apply Mermaid rendering setting: ${errorMessage(err)}`);
-				});
 				this.ctx.rebuildChatFromMessages();
 				this.ctx.ui.resetDisplay();
 				break;

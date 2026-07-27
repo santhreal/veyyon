@@ -16,9 +16,10 @@ import { type Settings, settingsCapability } from "../capability/settings";
 import { type Skill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
 import { type SystemPrompt, systemPromptCapability } from "../capability/system-prompt";
-import { type CustomTool, toolCapability } from "../capability/tool";
+import { type DiscoveredCustomTool, toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult } from "../capability/types";
-import { settings } from "../config/settings";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { settings } from "../config/settings-instance";
 import {
 	calculateDepth,
 	createSourceMeta,
@@ -393,14 +394,14 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 // Custom Tools
 // =============================================================================
 
-async function loadTools(ctx: LoadContext): Promise<LoadResult<CustomTool>> {
-	const items: CustomTool[] = [];
+async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomTool>> {
+	const items: DiscoveredCustomTool[] = [];
 	const warnings: string[] = [];
 
 	const userBase = getUserClaude(ctx);
 	const userToolsDir = path.join(userBase, "tools");
 
-	const userResult = await loadFilesFromDir<CustomTool>(ctx, userToolsDir, PROVIDER_ID, "user", {
+	const userResult = await loadFilesFromDir<DiscoveredCustomTool>(ctx, userToolsDir, PROVIDER_ID, "user", {
 		transform: (name, _content, path, source) => {
 			const toolName = name.replace(/\.(ts|js|sh|bash|py)$/, "");
 			return {
@@ -419,7 +420,7 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<CustomTool>> {
 	const projectBase = getProjectClaude(ctx);
 	const projectToolsDir = path.join(projectBase, "tools");
 
-	const projectResult = await loadFilesFromDir<CustomTool>(ctx, projectToolsDir, PROVIDER_ID, "project", {
+	const projectResult = await loadFilesFromDir<DiscoveredCustomTool>(ctx, projectToolsDir, PROVIDER_ID, "project", {
 		transform: (name, _content, path, source) => {
 			const toolName = name.replace(/\.(ts|js|sh|bash|py)$/, "");
 			return {
@@ -560,7 +561,7 @@ registerProvider<Hook>(hookCapability.id, {
 	load: loadHooks,
 });
 
-registerProvider<CustomTool>(toolCapability.id, {
+registerProvider<DiscoveredCustomTool>(toolCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
 	description: "Load custom tools from .claude/tools/",

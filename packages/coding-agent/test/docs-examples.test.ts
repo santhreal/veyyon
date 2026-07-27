@@ -585,6 +585,24 @@ describe("docs examples — inline dotted settings mentions are registered paths
 		return false;
 	}
 
+	/**
+	 * A doc that explains a RENAME has to name the old key, and the old key is by definition not
+	 * in the schema any more.
+	 *
+	 * The configuration handbook tells a reader with `argot.models` in an existing config that
+	 * veyyon moves it under `encode` on the next read. That sentence is only useful if it spells
+	 * the key the reader will actually find in their file, so the gate has to allow it -- and had
+	 * to be told, because otherwise the only way to keep the gate green is to delete the migration
+	 * note and leave the reader guessing.
+	 *
+	 * Deliberately narrower than {@link NEGATION_RE}: this asks for the specific vocabulary of a
+	 * migration note. A line merely mentioning "old" or "before" is still a failure, because the
+	 * common way to get here is a doc that has fallen behind a rename rather than one that is
+	 * documenting it.
+	 */
+	const LEGACY_SETTING_RE =
+		/from an earlier version|earlier version|moves them under|moves it under|renamed|used to be called|the old key/i;
+
 	it("every settings-rooted dotted mention in handbook prose resolves in the schema", () => {
 		const failures: string[] = [];
 		let mentions = 0;
@@ -602,6 +620,15 @@ describe("docs examples — inline dotted settings mentions are registered paths
 				if (lines[i].includes("Spec — not shipped")) specScope = true;
 				if (specScope) continue;
 				if (NEGATION_RE.test(lines[i])) continue;
+				// A migration sentence wraps, so the vocabulary that makes it one can sit on the
+				// line before or after the key it names.
+				if (
+					LEGACY_SETTING_RE.test(lines[i]) ||
+					LEGACY_SETTING_RE.test(lines[i - 1] ?? "") ||
+					LEGACY_SETTING_RE.test(lines[i + 1] ?? "")
+				) {
+					continue;
+				}
 				for (const match of lines[i].matchAll(MENTION_RE)) {
 					const token = match[1];
 					if (FILE_EXT_RE.test(token)) continue;

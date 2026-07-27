@@ -1,4 +1,5 @@
-import { type FetchImpl, getEnvApiKey } from "@veyyon/ai";
+import type { FetchImpl } from "@veyyon/ai";
+import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { isRecord } from "@veyyon/utils/type-guards";
 import type { AgentStorage } from "../session/agent-storage";
 import { findCredential, withHardTimeout } from "./search/providers/utils";

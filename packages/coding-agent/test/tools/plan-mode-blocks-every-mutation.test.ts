@@ -32,10 +32,16 @@
  */
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { requiresApproval, resolveApproval } from "@veyyon/coding-agent/tools/approval";
 import { enforcePlanModeWrite } from "@veyyon/coding-agent/tools/plan-mode-guard";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makePlanGuardDir = useTrackedTempDirs("veyyon-plan-guard-");
 
 /** A tool stub carrying only what the approval resolver reads: a name and a
  * tier decision. Names are deliberately varied to show they are not consulted. */
@@ -137,7 +143,7 @@ describe("active plan mode lets the write tier reach the guard, on purpose", () 
 });
 
 describe("the guard confines active plan-mode writes to the local sandbox", () => {
-	const root = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-plan-guard-"));
+	const root = makePlanGuardDir();
 	const artifacts = path.join(root, "artifacts");
 	fs.mkdirSync(artifacts, { recursive: true });
 

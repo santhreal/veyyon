@@ -3,7 +3,7 @@ import { errorMessage, isRecord } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import type { ToolSession } from "../../tools";
 import { ToolError } from "../../tools/tool-errors";
-import { EVAL_AGENT_BRIDGE_NAME, runEvalAgent } from "../agent-bridge";
+import { EVAL_AGENT_BRIDGE_NAME } from "../agent-bridge-name";
 import { EVAL_BUDGET_BRIDGE_NAME, type EvalBudgetResult, runEvalBudget } from "../budget-bridge";
 import { EVAL_COMPLETION_BRIDGE_NAME, runEvalCompletion } from "../completion-bridge";
 import { EVAL_CONCURRENCY_BRIDGE_NAME, type EvalConcurrencyResult, runEvalConcurrency } from "../concurrency-bridge";
@@ -113,6 +113,11 @@ export async function callSessionTool(name: string, args: unknown, options: Tool
 		return await runEvalCompletion(args, options);
 	}
 	if (name === EVAL_AGENT_BRIDGE_NAME) {
+		// Loaded on demand. `agent-bridge` runs a real subagent and pulls the MCP manager, task
+		// discovery and the prompt registry with it; an eval that never calls `agent()` should not
+		// pay for any of that. This branch already awaited, so deferring costs nothing, and a
+		// failure to load throws here exactly as a missing symbol would have.
+		const { runEvalAgent } = await import("../agent-bridge");
 		return await runEvalAgent(args, options);
 	}
 	if (name === EVAL_BUDGET_BRIDGE_NAME) {

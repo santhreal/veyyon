@@ -1,24 +1,27 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import {
-	detectMacOSAppearance,
-	MacAppearanceObserver,
-	type HighlightColors as NativeHighlightColors,
-	highlightCode as nativeHighlightCode,
-	supportsLanguage as nativeSupportsLanguage,
-} from "@veyyon/natives";
-import type { EditorTheme, MarkdownTheme, SelectListTheme, SettingsListTheme, SymbolTheme } from "@veyyon/tui";
+import { detectMacOSAppearance, MacAppearanceObserver } from "@veyyon/natives";
+import type { EditorTheme, SelectListTheme, SettingsListTheme } from "@veyyon/tui";
 import { parseHexColor, TERMINAL } from "@veyyon/tui";
-import { adjustHsv, colorLuma, errorMessage, getCustomThemesDir, isEnoent, logger } from "@veyyon/utils";
+import { adjustHsv, colorLuma } from "@veyyon/utils/color";
+import { getCustomThemesDir } from "@veyyon/utils/dirs";
+import { isEnoent } from "@veyyon/utils/fs-error";
+// Owners, not the `@veyyon/utils` barrel: 5 modules against 74.
+import * as logger from "@veyyon/utils/logger";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import { type } from "arktype";
-import { LRUCache } from "lru-cache/raw";
-import { onAutoThemeMappingChanged, onColorBlindModeChanged, onSymbolPresetChanged } from "../../config/settings";
-// The bundled themes and the synchronous light/dark classifier live in
-// `./builtin-themes` so `config/settings` can reach `isLightTheme` for its legacy
-// theme migration without importing this module. Importing it from here closed a
-// cycle (settings -> theme -> shimmer -> settings) that cost 51 MB per realm; see
-// the note at the top of that file.
-import { getBuiltinThemes, isLightThemeJson } from "./builtin-themes";
+import {
+	onAutoThemeMappingChanged,
+	onColorBlindModeChanged,
+	onSymbolPresetChanged,
+	registerSettingsTestResetHook,
+} from "../../config/settings";
+// The bundled theme JSON lives in `./builtin-themes` and the light/dark classifier in
+// `./theme-luminance`, so `config/settings` can reach `isLightTheme` for its legacy theme migration
+// without importing this module and without paying for a hundred JSON modules. Importing it from here
+// closed a cycle (settings -> theme -> shimmer -> settings) that cost 51 MB per realm; see the notes at
+// the top of both files.
+import { getBuiltinThemes } from "./builtin-themes";
 import {
 	ansi256ToHex,
 	type ColorMode,
@@ -30,18 +33,26 @@ import {
 	type ThemeColor,
 	type ThemeJson,
 } from "./color";
-import { resolveMermaidAscii } from "./mermaid-cache";
 import { lavaText } from "./shimmer";
+import { getSymbolTheme } from "./symbol-theme";
 import { normalizeSpinnerFramesOverride, type SymbolPreset } from "./symbols";
 import { setActiveTheme, theme } from "./theme-binding";
 import { Theme } from "./theme-class";
 
 export { getLanguageFromPath } from "../../utils/lang-from-path";
-// Re-exported so this stays the one place callers import theme lookups from,
-// even though the definitions moved out of the cycle.
-export { getBuiltinThemes, isLightTheme, isLightThemeJson } from "./builtin-themes";
+// Re-exported so this stays the one place callers import theme lookups from, even though the
+// definitions moved out of the cycle. Each comes from its owning leaf rather than through
+// `./builtin-themes`, so this file states where each one actually lives.
+export { getBuiltinThemes } from "./builtin-themes";
 export { isValidThemeColor } from "./color";
+// The memoised native highlighter moved to `./highlight` with the markdown adapter that also
+// needed it, so this module stopped naming `@veyyon/natives` and `lru-cache`. Re-exported because
+// every caller already asks this file for it and `./highlight` reaches two modules, so forwarding
+// it costs nothing. `getMarkdownTheme` is deliberately NOT forwarded: that one carries the mermaid
+// renderer, and forwarding it would put those 36 modules straight back on this file's graph.
+export { highlightCode } from "./highlight";
 export type { SpinnerType, SymbolKey, SymbolPreset } from "./symbols";
+export { isLightTheme, isLightThemeJson } from "./theme-luminance";
 export type { ThemeBg, ThemeColor };
 export { Theme };
 
@@ -588,41 +599,73 @@ export function getColorBlindMode(): boolean {
  * until this module is loaded, at which point `applyTheme` reads the committed
  * settings.
  */
-onAutoThemeMappingChanged((slot, themeName) => {
-	setAutoThemeMapping(slot, themeName);
+onAutoThemeMappingChanged(
+	(slot, themeName) => {
+		setAutoThemeMapping(slot, themeName);
+	},
+	{ permanent: true },
+);
+
+/**
+ * Put this module's ambient state back to what a freshly started process has.
+ *
+ * WHY IT EXISTS. `currentSymbolPresetOverride` and `currentColorBlindMode` are module scope and
+ * survive `resetSettingsForTest`, so one suite writing `symbolPreset: "ascii"` changed what every
+ * later suite in the same process rendered. That is how the mermaid suite came to assert on box
+ * borders and receive a diagram drawn with `+` and `|` -- zero lines matching, and a failure that
+ * reads as "the renderer produced nothing" rather than as "someone else chose ASCII". The hook fires
+ * asynchronously off a settings signal, which is why it looked timing-dependent as well.
+ *
+ * `markdownMermaidRendering` was the third variable here and is the same class with a harsher
+ * outcome. It moved to `./markdown-theme` with the function that owns it, and that module registers
+ * its own hook: a module resets its own ambient state, and a suite that never loads the markdown
+ * adapter has none of that state to restore.
+ *
+ * Registered rather than exported for tests to call, so a suite that resets settings gets this for
+ * free and cannot forget it.
+ */
+registerSettingsTestResetHook(() => {
+	currentSymbolPresetOverride = undefined;
+	currentColorBlindMode = false;
 });
 
-onSymbolPresetChanged(preset => {
-	setSymbolPreset(preset)
-		.then(result => {
-			// The preset applied, but re-rendering the committed theme fell back.
-			// Record which theme is actually on screen now.
-			if (result.fellBack) {
-				logger.warn("Settings: symbolPreset applied but the theme fell back", {
-					preset,
-					error: result.error,
-				});
-			}
-		})
-		.catch(err => {
-			logger.warn("Settings: symbolPreset hook failed", { preset, error: String(err) });
-		});
-});
+onSymbolPresetChanged(
+	preset => {
+		setSymbolPreset(preset)
+			.then(result => {
+				// The preset applied, but re-rendering the committed theme fell back.
+				// Record which theme is actually on screen now.
+				if (result.fellBack) {
+					logger.warn("Settings: symbolPreset applied but the theme fell back", {
+						preset,
+						error: result.error,
+					});
+				}
+			})
+			.catch(err => {
+				logger.warn("Settings: symbolPreset hook failed", { preset, error: String(err) });
+			});
+	},
+	{ permanent: true },
+);
 
-onColorBlindModeChanged(enabled => {
-	setColorBlindMode(enabled)
-		.then(result => {
-			if (result.fellBack) {
-				logger.warn("Settings: colorBlindMode applied but the theme fell back", {
-					enabled,
-					error: result.error,
-				});
-			}
-		})
-		.catch(err => {
-			logger.warn("Settings: colorBlindMode hook failed", { enabled, error: String(err) });
-		});
-});
+onColorBlindModeChanged(
+	enabled => {
+		setColorBlindMode(enabled)
+			.then(result => {
+				if (result.fellBack) {
+					logger.warn("Settings: colorBlindMode applied but the theme fell back", {
+						enabled,
+						error: result.error,
+					});
+				}
+			})
+			.catch(err => {
+				logger.warn("Settings: colorBlindMode hook failed", { enabled, error: String(err) });
+			});
+	},
+	{ permanent: true },
+);
 
 export function onThemeChange(callback: (event: ThemeChangeEvent) => void): () => void {
 	onThemeChangeCallback = callback;
@@ -941,7 +984,16 @@ export async function getThemeExportColors(themeName?: string): Promise<{
 	try {
 		const themeJson = await loadThemeJson(name);
 		return resolveThemeExportColors(themeJson);
-	} catch {
+	} catch (error) {
+		// An empty object means "this theme sets no explicit export colors", which is a normal answer and
+		// the reason the caller falls back to its own defaults. A theme file that could not be READ gives
+		// the same answer for a different reason, so it is logged: an export that silently comes out in
+		// default colors, when the theme does define them, is otherwise indistinguishable from a theme
+		// that never set any.
+		logger.warn("Theme could not be read for export colors; the export will use default colors", {
+			theme: name,
+			error: errorMessage(error),
+		});
 		return {};
 	}
 }
@@ -950,232 +1002,15 @@ export async function getThemeExportColors(themeName?: string): Promise<{
 // TUI Helpers
 // ============================================================================
 
-let cachedHighlightColorsFor: Theme | undefined;
-let cachedHighlightColors: NativeHighlightColors | undefined;
-
-function getHighlightColors(t: Theme): NativeHighlightColors {
-	if (cachedHighlightColorsFor !== t || !cachedHighlightColors) {
-		cachedHighlightColorsFor = t;
-		cachedHighlightColors = {
-			comment: t.getFgAnsi("syntaxComment"),
-			keyword: t.getFgAnsi("syntaxKeyword"),
-			function: t.getFgAnsi("syntaxFunction"),
-			variable: t.getFgAnsi("syntaxVariable"),
-			string: t.getFgAnsi("syntaxString"),
-			number: t.getFgAnsi("syntaxNumber"),
-			type: t.getFgAnsi("syntaxType"),
-			operator: t.getFgAnsi("syntaxOperator"),
-			punctuation: t.getFgAnsi("syntaxPunctuation"),
-			inserted: t.getFgAnsi("toolDiffAdded"),
-			deleted: t.getFgAnsi("toolDiffRemoved"),
-		};
-	}
-	return cachedHighlightColors;
-}
-
 /**
- * Memoized native syntax highlight. Returns the joined ANSI string, or `null`
- * when the native tokenizer throws so callers can apply their own fallback.
+ * The symbol reader lives in `./symbol-theme`, a leaf beside the theme binding, and is re-exported here so
+ * the modules that already reach this engine keep taking it from one place.
  *
- * Keyed on `(lang, code)` and reset whenever the active `theme` instance
- * changes — the ANSI colors are baked into the highlighted output, so a theme
- * switch (which always reassigns `theme`) must invalidate every entry.
- *
- * Why this exists: animated tool blocks (eval/bash) repaint their box on every
- * ~33ms border-shimmer frame, and markdown re-lexes on every streamed delta.
- * Without memoization each frame can re-tokenize an unchanged code body through
- * the Rust FFI — ~26ms for 100 lines, ~40ms for 150 — consuming or overrunning
- * the 33ms frame budget and starving the spinner/render timers (the "TUI freeze").
+ * It moved because `./markdown-theme` took it from here for one field, and this module is 144 marginal
+ * modules on that graph: the whole presentation layer arrived in every rendered code cell and, through
+ * `tools/read.ts`, in every file read. `symbol-theme.ts` needs the live binding and a type.
  */
-const HIGHLIGHT_CACHE_MAX = 256;
-const highlightCache = new LRUCache<string, string>({ max: HIGHLIGHT_CACHE_MAX });
-let highlightCacheTheme: Theme | undefined;
-
-/** Languages already reported as failing to highlight, so the warning below fires once each. */
-const reportedHighlightFailures = new Set<string>();
-
-/**
- * Report a highlighter failure once per language.
- *
- * Highlighting failing and a language being unsupported both end as plain text, so without this the
- * difference is invisible: a native highlighter that throws on every Rust block looks exactly like a
- * build with Rust support missing. Bounded to one warning per language because this is a render path.
- */
-function reportHighlightFailureOnce(lang: string | undefined, error: unknown): void {
-	const key = lang ?? "(no language)";
-	if (reportedHighlightFailures.has(key)) return;
-	reportedHighlightFailures.add(key);
-	logger.warn("Code could not be highlighted; rendering it plain", { lang: key, error: errorMessage(error) });
-}
-
-function highlightCached(code: string, validLang: string | undefined, highlightTheme: Theme): string | null {
-	if (highlightCacheTheme !== highlightTheme) {
-		highlightCache.clear();
-		highlightCacheTheme = highlightTheme;
-	}
-	const key = `${validLang ?? ""}\x00${code}`;
-	const hit = highlightCache.get(key);
-	if (hit !== undefined) {
-		return hit;
-	}
-	let highlighted: string;
-	try {
-		highlighted = nativeHighlightCode(code, validLang, getHighlightColors(highlightTheme));
-	} catch (error) {
-		// Null means "render this code plain", which is also what an unsupported language gets, so a
-		// highlighter that is actually FAILING looked like a language nobody supports. Reported once per
-		// language: this runs per code block, and a warning per frame would be its own bug.
-		reportHighlightFailureOnce(validLang, error);
-		return null;
-	}
-	highlightCache.set(key, highlighted);
-	return highlighted;
-}
-
-/**
- * Highlight code with syntax coloring based on file extension or language.
- * Returns array of highlighted lines.
- */
-export function highlightCode(code: string, lang?: string, highlightTheme: Theme = theme): string[] {
-	const validLang = lang && nativeSupportsLanguage(lang) ? lang : undefined;
-	const highlighted = highlightCached(code, validLang, highlightTheme);
-	// Always return a fresh array: callers (e.g. renderCodeCell) push extra lines
-	// onto the result, which would corrupt the cached string otherwise.
-	const lines = (highlighted ?? code).split("\n");
-	// A highlighter only styles tokens inline — it must never change the source
-	// line count. If it did (invalid UTF-16 like a lone surrogate is mangled
-	// crossing the native UTF-8 boundary and can drop lines), the styled output
-	// is untrustworthy: fall back to the raw code so the block renders complete
-	// rather than silently missing lines.
-	const rawLines = code.split("\n");
-	return lines.length === rawLines.length ? lines : rawLines;
-}
-
-export function getSymbolTheme(): SymbolTheme {
-	// Guard against `theme` being undefined (pre-init or cross-module-instance
-	// plugin calls). Fall back to the ASCII preset so the returned symbols are
-	// usable instead of crashing. See #2998.
-	if (typeof theme === "undefined") {
-		const box = {
-			topLeft: "+",
-			topRight: "+",
-			bottomLeft: "+",
-			bottomRight: "+",
-			horizontal: "-",
-			vertical: "|",
-			cross: "+",
-			teeDown: "+",
-			teeUp: "+",
-			teeLeft: "+",
-			teeRight: "+",
-		};
-		return {
-			cursor: ">",
-			inputCursor: "|",
-			boxRound: box,
-			boxSharp: box,
-			table: box,
-			quoteBorder: "|",
-			hrChar: "-",
-			colorSwatch: "[]",
-			spinnerFrames: ["-", "\\", "|", "/"],
-		};
-	}
-	const preset = theme.getSymbolPreset();
-
-	return {
-		cursor: theme.nav.cursor,
-		inputCursor: preset === "ascii" ? "|" : "▏",
-		boxRound: theme.boxRound,
-		boxSharp: theme.boxSharp,
-		table: theme.boxSharp,
-		quoteBorder: theme.md.quoteBorder,
-		hrChar: theme.md.hrChar,
-		colorSwatch: theme.md.colorSwatch,
-		spinnerFrames: theme.getSpinnerFrames("activity"),
-	};
-}
-
-let cachedMarkdownTheme: MarkdownTheme | undefined;
-let cachedMarkdownThemeRef: Theme | undefined;
-let markdownMermaidRendering = true;
-
-export function setMarkdownMermaidRendering(enabled: boolean): void {
-	if (markdownMermaidRendering === enabled) return;
-	markdownMermaidRendering = enabled;
-	cachedMarkdownTheme = undefined;
-}
-
-export function getMarkdownTheme(): MarkdownTheme {
-	if (cachedMarkdownTheme !== undefined && cachedMarkdownThemeRef === theme) {
-		return cachedMarkdownTheme;
-	}
-	const mermaid = markdownMermaidRendering
-		? (() => {
-				// Mermaid ASCII diagrams render with the active palette so they read as
-				// content rather than raw monochrome. Roles mirror the SVG renderer's
-				// mapping; `text`/`muted`/`border`/`borderMuted`/`accent` exist in every theme.
-				const mermaidColorMode =
-					theme.getColorMode() === "truecolor" ? ("truecolor" as const) : ("ansi256" as const);
-				const mermaidTheme = {
-					fg: theme.getColorHex("text"),
-					border: theme.getColorHex("border"),
-					line: theme.getColorHex("muted"),
-					arrow: theme.getColorHex("accent"),
-					corner: theme.getColorHex("muted"),
-					junction: theme.getColorHex("borderMuted"),
-				};
-				return { mermaidColorMode, mermaidTheme };
-			})()
-		: undefined;
-	const markdownTheme: MarkdownTheme = {
-		heading: (text: string) => theme.fg("mdHeading", text),
-		link: (text: string) => theme.fg("mdLink", text),
-		linkUrl: (text: string) => theme.fg("mdLinkUrl", text),
-		code: (text: string) => theme.fg("mdCode", text),
-		codeBlock: (text: string) => theme.fg("mdCodeBlock", text),
-		codeBlockBorder: (text: string) => theme.fg("mdCodeBlockBorder", text),
-		// Designed fence rows: literal ``` markers read as UNRENDERED markdown
-		// (the "this is rendering raw" report), so fenced blocks open with a
-		// short rule + language tag and close with the bare rule — the same
-		// dim-rule section language the transcript already speaks (compaction
-		// marker, cache-miss marker). Chrome stays quiet: one dim token, no
-		// motion, no backticks.
-		codeBlockFence: (lang, pos) =>
-			theme.fg(
-				"mdCodeBlockBorder",
-				pos === "open" && lang
-					? `${theme.boxSharp.horizontal.repeat(2)}╴${lang}`
-					: theme.boxSharp.horizontal.repeat(2),
-			),
-		quote: (text: string) => theme.fg("mdQuote", text),
-		quoteBorder: (text: string) => theme.fg("mdQuoteBorder", text),
-		hr: (text: string) => theme.fg("mdHr", text),
-		listBullet: (text: string) => theme.fg("mdListBullet", text),
-		bold: (text: string) => theme.bold(text),
-		italic: (text: string) => theme.italic(text),
-		underline: (text: string) => theme.underline(text),
-		strikethrough: (text: string) => theme.strikethrough(text),
-		symbols: getSymbolTheme(),
-		resolveMermaidAscii: mermaid
-			? (source, maxWidth) =>
-					resolveMermaidAscii(source, {
-						maxWidth,
-						theme: mermaid.mermaidTheme,
-						colorMode: mermaid.mermaidColorMode,
-					})
-			: undefined,
-		highlightCode: (code: string, lang?: string): string[] => {
-			const validLang = lang && nativeSupportsLanguage(lang) ? lang : undefined;
-			const highlighted = highlightCached(code, validLang, theme);
-			if (highlighted !== null) return highlighted.split("\n");
-			return code.split("\n").map(line => theme.fg("mdCodeBlock", line));
-		},
-	};
-	cachedMarkdownTheme = markdownTheme;
-	cachedMarkdownThemeRef = theme;
-	return markdownTheme;
-}
+export { getSymbolTheme } from "./symbol-theme";
 
 export function getSelectListTheme(): SelectListTheme {
 	// Guard against `theme` being undefined (pre-init or cross-module-instance

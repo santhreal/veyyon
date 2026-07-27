@@ -3,8 +3,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } fr
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Effort, type FetchImpl, type Model, type OpenAICompat, type ThinkingConfig } from "@veyyon/ai";
+import type { FetchImpl, Model, OpenAICompat, ThinkingConfig } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
+import { Effort } from "@veyyon/catalog/effort";
 import { writeModelCache } from "@veyyon/catalog/model-cache";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";

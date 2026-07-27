@@ -507,6 +507,9 @@ export class UiHelpers {
 								rawInput,
 								fullArgs: content.arguments,
 								streamingStringKeys: streamingStringKeysForTool(content.name, rawInput),
+								// Same reason as the live path: a rebuilt preview of an
+								// in-flight call still holds unexpanded handles.
+								argot: this.ctx.viewSession.getArgotSession?.(),
 							})
 						: content.arguments;
 					const component = new ToolExecutionComponent(

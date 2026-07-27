@@ -112,11 +112,9 @@ import type {
 	UsageReport,
 } from "@veyyon/ai";
 import {
-	assistantText,
 	calculateRateLimitBackoffMs,
 	clearAnthropicFastModeFallback,
 	deriveClaudeDeviceId,
-	Effort,
 	isUsageLimitOutcome,
 	parseRateLimitReason,
 	realizesPriorityServiceTier,
@@ -127,12 +125,15 @@ import {
 import * as AIError from "@veyyon/ai/error";
 import { elidedSignatureBytes, signaturePolicy } from "@veyyon/ai/providers/google-shared";
 import { resetOpenAICodexHistoryAfterCompaction } from "@veyyon/ai/providers/openai-codex-responses";
+import { assistantText } from "@veyyon/ai/utils/message-text";
 import { toolWireSchema } from "@veyyon/ai/utils/schema";
 import { GeminiHeaderRunDetector, isGeminiThinkingModel } from "@veyyon/ai/utils/thinking-loop";
 import { type RepeatedToolCallDetection, ToolCallLoopGuard } from "@veyyon/ai/utils/tool-call-loop-guard";
+import { Effort } from "@veyyon/catalog/effort";
 import { isFireworksFastModelId, toFireworksBaseModelId } from "@veyyon/catalog/fireworks-model-id";
 import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
 import { modelsAreEqual } from "@veyyon/catalog/models";
+import { ANTIGRAVITY_PRIMARY_ENDPOINT, ANTIGRAVITY_SANDBOX_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import type { InMemorySnapshotStore } from "@veyyon/hashline";
 import { Patch } from "@veyyon/hashline";
 import { MacOSPowerAssertion } from "@veyyon/natives";
@@ -238,17 +239,18 @@ import {
 import { RawSseDebugBuffer } from "../debug/raw-sse-buffer";
 import { loadCapability } from "../discovery";
 import { clearClaudePluginRootsCache } from "../discovery/helpers";
-import { expandApplyPatchToEntries, normalizeDiff, normalizeToLF, ParseError, previewPatch, stripBom } from "../edit";
+// The owning modules, not the `../edit` barrel. The barrel `export *`s the streaming applier, the
+// hashline engine and the EditTool, and owns 44 modules nothing else here reaches; these six
+// symbols live in four leaves that reach a handful between them.
+import { normalizeDiff, ParseError } from "../edit/diff";
 import { getFileSnapshotStore } from "../edit/file-snapshot-store";
-import { disposeJuliaKernelSessionsByOwner } from "../eval/jl/executor";
-import { disposeVmContextsByOwner } from "../eval/js/context-manager";
-import { namespaceSessionId as namespacePythonSessionId } from "../eval/py";
-import {
-	disposeKernelSessionsByOwner,
-	executePython as executePythonCommand,
-	type PythonResult,
-} from "../eval/py/executor";
-import { disposeRubyKernelSessionsByOwner } from "../eval/rb/executor";
+import { expandApplyPatchToEntries } from "../edit/modes/apply-patch";
+import { previewPatch } from "../edit/modes/patch";
+import { normalizeToLF, stripBom } from "../edit/normalize";
+import { executePython as executePythonCommand, type PythonResult } from "../eval/py/executor";
+// The leaf, not `../eval/py`: that module declares the Python backend descriptor and reaches
+// hundreds of modules, and all this needs is the id prefix.
+import { namespaceSessionId as namespacePythonSessionId } from "../eval/py/session-namespace";
 import { defaultEvalSessionId } from "../eval/session-id";
 import { type BashResult, executeBash as executeBashCommand } from "../exec/bash-executor";
 import type { TtsrManager, TtsrMatchContext } from "../export/ttsr";
@@ -284,7 +286,14 @@ import { expandSlashCommand, type FileSlashCommand } from "../extensibility/slas
 import { GoalRuntime } from "../goals/runtime";
 import type { Goal, GoalModeState } from "../goals/state";
 import type { HindsightSessionState } from "../hindsight/state";
-import { type LocalProtocolOptions, listLocalPlanFileUrls, resolveLocalUrlToPath } from "../internal-urls";
+// The owning module, not the `../internal-urls` barrel: the barrel re-exports every protocol
+// handler and reaches several hundred modules, and all three of these live in `local-protocol`,
+// which reaches seven.
+import {
+	type LocalProtocolOptions,
+	listLocalPlanFileUrls,
+	resolveLocalUrlToPath,
+} from "../internal-urls/local-protocol";
 import { IrcBus, type IrcMessage } from "../irc/bus";
 import { resolveMemoryBackend } from "../memory-backend";
 import { shutdownMnemopiEmbedClient } from "../mnemopi/embed-client";
@@ -300,9 +309,17 @@ import {
 } from "../modes/utils/context-usage";
 import { containsWorkflow, renderWorkflowNotice } from "../modes/workflow-keyword";
 import { resolveApprovedPlan } from "../plan-mode/approved-plan";
+import { DEFAULT_PLAN_FILE_URL } from "../plan-mode/plan-file-url";
 import { createPlanReadMatcher } from "../plan-mode/plan-protection";
 import type { PlanModeState } from "../plan-mode/state";
-import { PROMPTS } from "../prompts/registry";
+import { advisorPrompts } from "../prompts/advisor/rows";
+import { goalsPrompts } from "../prompts/goals/rows";
+import { planModePrompts } from "../prompts/plan-mode/rows";
+import { rulesPrompts } from "../prompts/rules/rows";
+import { sessionPrompts } from "../prompts/session/rows";
+import { sideChannelPrompts } from "../prompts/side-channel/rows";
+import { steeringPrompts } from "../prompts/steering/rows";
+import { turnControlPrompts } from "../prompts/turn-control/rows";
 import { AgentRegistry } from "../registry/agent-registry";
 import {
 	deobfuscateAssistantContent,
@@ -313,7 +330,7 @@ import {
 } from "../secrets/obfuscator";
 import { invalidateHostMetadata } from "../ssh/connection-manager";
 import { usesCodexTaskPrompt } from "../task/prompt-policy";
-import { delegationRequired, enabledSubagentNames } from "../task/subagent-settings";
+import { enabledSubagentNames, resolveDelegation } from "../task/subagent-settings";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,
@@ -339,8 +356,7 @@ import {
 } from "../tool-discovery/tool-index";
 import { validateApprovalModeSetting } from "../tools/approval";
 import { assertEditableFile } from "../tools/auto-generated-guard";
-import { releaseTabsForOwner } from "../tools/browser/tab-supervisor";
-import { normalizeToolNames } from "../tools/builtin-names";
+import { normalizeToolNames, TOOL } from "../tools/builtin-names";
 import type { CheckpointState, CompletedRewindState } from "../tools/checkpoint";
 import { reportLostOutputArtifact } from "../tools/output-artifact";
 import { outputMeta, wrapToolWithMetaNotice } from "../tools/output-meta";
@@ -401,11 +417,18 @@ import {
 	stripImagesFromMessage,
 	USER_INTERRUPT_LABEL,
 } from "./messages";
+import { disposeOwnedResources } from "./owned-resources";
 import { normalizeRoots, relativizePathsUnderRoots } from "./relativize-paths";
 import type { BuildSessionContextOptions, SessionContext } from "./session-context";
 import { getLatestCompactionEntry, getRestorableSessionModels } from "./session-context";
 import { formatSessionDumpText } from "./session-dump-format";
-import type { BranchSummaryEntry, CompactionEntry, NewSessionOptions, SessionEntry } from "./session-entries";
+import type {
+	BranchSummaryEntry,
+	CompactionEntry,
+	NewSessionOptions,
+	SessionEntry,
+	SessionTitleSource,
+} from "./session-entries";
 import { EPHEMERAL_MODEL_CHANGE_ROLE } from "./session-entries";
 import { formatSessionHistoryMarkdown } from "./session-history-format";
 import { cleanupEmptyMoveSession, type SessionManager } from "./session-manager";
@@ -417,7 +440,7 @@ import { YieldQueue } from "./yield-queue";
 
 const SESSION_STOP_CONTINUATION_CAP = 8;
 const PLAN_MODE_REMINDER_MAX = 3;
-const PLAN_DECISION_TOOLS = new Set(["ask", "resolve"]);
+const PLAN_DECISION_TOOLS = new Set<string>([TOOL.ask, TOOL.resolve]);
 
 /**
  * Mutating tool results (`bash`/`eval`/`edit`/`write`/`ast_edit`) without the
@@ -577,7 +600,7 @@ function isSuccessfulCheckpointEntry(entry: SessionEntry): entry is SessionMessa
 	return (
 		entry.type === "message" &&
 		entry.message.role === "toolResult" &&
-		entry.message.toolName === "checkpoint" &&
+		entry.message.toolName === TOOL.checkpoint &&
 		entry.message.isError !== true
 	);
 }
@@ -1422,7 +1445,7 @@ function createHandoffFileName(date = new Date()): string {
 // ============================================================================
 
 /** Tools that require user permission before execution when an ACP client is connected. */
-const PERMISSION_REQUIRED_TOOLS = new Set(["bash", "edit", "delete", "move"]);
+const PERMISSION_REQUIRED_TOOLS = new Set([TOOL.bash, TOOL.edit, "delete", "move"]);
 
 /** Permission options presented to the client on each gated tool call. */
 const PERMISSION_OPTIONS: ClientBridgePermissionOption[] = [
@@ -1496,7 +1519,7 @@ function getPermissionIntent(
 	args: unknown,
 ): { toolName: string; title: string; paths?: string[]; cacheKey: string } | undefined {
 	const a = isRecord(args) ? (args as Record<string, unknown>) : {};
-	if (toolName === "bash") {
+	if (toolName === TOOL.bash) {
 		const cmd = getStringProperty(a, "command")?.slice(0, 80);
 		return { toolName, title: cmd || toolName, cacheKey: toolName };
 	}
@@ -1515,7 +1538,7 @@ function getPermissionIntent(
 			cacheKey: toolName,
 		};
 	}
-	if (toolName === "edit") {
+	if (toolName === TOOL.edit) {
 		const intent = getEditDestructiveIntent(args);
 		if (!intent) return undefined;
 		if (intent.kind === "delete") {
@@ -1720,7 +1743,6 @@ type ScheduledAgentContinueOptions = {
 
 const REPLAN_TITLE_CONTEXT_TURN_LIMIT = 6;
 
-type SessionTitleSource = "auto" | "user";
 type SessionNameTrigger = "replan";
 type SetSessionNameWithTrigger = (
 	name: string,
@@ -1858,7 +1880,7 @@ export class AgentSession {
 	#advisorRecorderClosed: Promise<void> = Promise.resolve();
 	#goalTurnCounter = 0;
 	#planReferenceSent = false;
-	#planReferencePath = "local://PLAN.md";
+	#planReferencePath: string = DEFAULT_PLAN_FILE_URL;
 	#clientBridge: ClientBridge | undefined;
 	#allowAcpAgentInitiatedTurns = false;
 	/** Per-session memory of allow_always / reject_always decisions for gated tools. */
@@ -2185,6 +2207,7 @@ export class AgentSession {
 			this.#releasePowerAssertion();
 			this.#flushPendingAgentEnd();
 			this.#drainStrandedQueuedMessages();
+			this.#clearAgentGrants();
 		}
 	}
 
@@ -2316,6 +2339,54 @@ export class AgentSession {
 		this.#releasePowerAssertion();
 		this.#flushPendingAgentEnd();
 		this.#drainStrandedQueuedMessages();
+		this.#clearAgentGrants();
+	}
+
+	/**
+	 * Subagent types a `/` command declared for the turn it just started.
+	 *
+	 * Empty except between a command returning a prompt and that prompt's run
+	 * settling. See {@link agentGrantedThisTurn}.
+	 */
+	#grantedAgents = new Set<string>();
+
+	/**
+	 * Grant the agents a command declared, for the turn its prompt is about to start.
+	 *
+	 * Called with the command's static `spawnsAgents` list, never with anything a
+	 * handler computed while running: the point of the grant is that "which commands
+	 * can reach a disabled agent" is answerable by reading the command definitions.
+	 */
+	#grantAgentsForTurn(agents: readonly string[] | undefined): void {
+		if (!agents?.length) return;
+		for (const agent of agents) this.#grantedAgents.add(agent);
+	}
+
+	/**
+	 * Drop every grant once the session settles.
+	 *
+	 * Cleared on BOTH settle paths — the normal one and the reset an abort takes —
+	 * because a grant that survived an aborted turn would sit there until the next
+	 * command, and the model's next unrelated spawn would find a disabled agent open.
+	 * That is precisely the "disabled but still runs" behaviour this replaced, so
+	 * leaking it back through the abort path would undo the whole change quietly.
+	 */
+	#clearAgentGrants(): void {
+		this.#grantedAgents.clear();
+	}
+
+	/**
+	 * Whether a `/` command has granted this agent type for the turn in flight.
+	 *
+	 * `subagent.agents.<name>.enabled` governs what the MODEL may choose. It does
+	 * not govern the person typing: `/review` names `reviewer` outright, and someone
+	 * running `/review` is asking for a review rather than asking the model whether
+	 * to review. The command declares the agents its prompt names, that declaration
+	 * is granted for exactly that turn, and the task tool and the eval `agent()`
+	 * bridge both consult it.
+	 */
+	agentGrantedThisTurn(agentName: string): boolean {
+		return this.#grantedAgents.has(agentName);
 	}
 
 	#flushPendingAgentEnd(): void {
@@ -2342,7 +2413,7 @@ export class AgentSession {
 			this.agent.steer({
 				role: "custom",
 				customType: PREWALK_CONTINUE_MESSAGE_TYPE,
-				content: PROMPTS["turn-control/prewalk-continue"].text,
+				content: turnControlPrompts["turn-control/prewalk-continue"].text,
 				attribution: "agent",
 				display: false,
 				timestamp: Date.now(),
@@ -2355,10 +2426,10 @@ export class AgentSession {
 		// edit/write). The todo call itself never triggers: firing there handed
 		// the fast model the whole implementation cold. Sessions without a todo
 		// tool skip the gate.
-		if (context.toolResults.some(result => result.toolName === "todo")) {
+		if (context.toolResults.some(result => result.toolName === TOOL.todo)) {
 			this.#prewalkTodoSeen = true;
 		}
-		const todoGateOpen = this.#prewalkTodoSeen || !this.#toolRegistry.has("todo");
+		const todoGateOpen = this.#prewalkTodoSeen || !this.#toolRegistry.has(TOOL.todo);
 		const action = todoGateOpen
 			? context.toolResults.find(result => PREWALK_ACTION_TOOLS[result.toolName])
 			: undefined;
@@ -2368,7 +2439,7 @@ export class AgentSession {
 				this.agent.steer({
 					role: "custom",
 					customType: PREWALK_PLAN_MESSAGE_TYPE,
-					content: PROMPTS["turn-control/prewalk-plan"].text,
+					content: turnControlPrompts["turn-control/prewalk-plan"].text,
 					display: false,
 					attribution: "agent",
 					timestamp: Date.now(),
@@ -2400,7 +2471,7 @@ export class AgentSession {
 		this.agent.steer({
 			role: "custom",
 			customType: PREWALK_CHECKLIST_MESSAGE_TYPE,
-			content: PROMPTS["turn-control/prewalk-checklist"].text,
+			content: turnControlPrompts["turn-control/prewalk-checklist"].text,
 			attribution: "agent",
 			display: false,
 			timestamp: Date.now(),
@@ -2428,7 +2499,7 @@ export class AgentSession {
 		this.agent.steer({
 			role: "custom",
 			customType: PREWALK_PLAN_MESSAGE_TYPE,
-			content: PROMPTS["turn-control/prewalk-plan"].text,
+			content: turnControlPrompts["turn-control/prewalk-plan"].text,
 			display: false,
 			attribution: "agent",
 			timestamp: Date.now(),
@@ -2472,13 +2543,13 @@ export class AgentSession {
 		if (!this.#planYolo || this.#planYoloArmed) return;
 		this.#planYoloArmed = true;
 		const previousTools = this.getActiveToolNames();
-		const augmentations = ["resolve"];
-		if (this.hasBuiltInTool("write")) augmentations.push("write");
+		const augmentations: string[] = [TOOL.resolve];
+		if (this.hasBuiltInTool(TOOL.write)) augmentations.push(TOOL.write);
 		await this.setActiveToolsByName([...new Set([...previousTools, ...augmentations])]);
 		this.#planYoloPreviousTools = previousTools;
 		this.setPlanModeState({
 			enabled: true,
-			planFilePath: this.getPlanReferencePath() || "local://PLAN.md",
+			planFilePath: this.getPlanReferencePath() || DEFAULT_PLAN_FILE_URL,
 			workflow: "parallel",
 		});
 		this.setStandingResolveHandler(input => this.#runPlanYoloApprovalResolve(input));
@@ -2525,7 +2596,7 @@ export class AgentSession {
 				this.agent.steer({
 					role: "custom",
 					customType: PLAN_YOLO_HANDOFF_MESSAGE_TYPE,
-					content: prompt.render(PROMPTS["plan-mode/yolo-handoff"].text, { planFilePath, title }),
+					content: prompt.render(planModePrompts["plan-mode/yolo-handoff"].text, { planFilePath, title }),
 					attribution: "agent",
 					display: false,
 					timestamp: Date.now(),
@@ -3077,7 +3148,7 @@ export class AgentSession {
 
 			// `#advisorWatchdogPrompt` already carries WATCHDOG.md + YAML shared
 			// instructions; `config.instructions` adds this advisor's specialization.
-			const systemPrompt = [PROMPTS["advisor/system"].text];
+			const systemPrompt = [advisorPrompts["advisor/system"].text];
 			if (this.#advisorContextPrompt) systemPrompt.push(this.#advisorContextPrompt);
 			if (this.#advisorWatchdogPrompt) systemPrompt.push(this.#advisorWatchdogPrompt);
 			if (this.#advisorSharedInstructions) systemPrompt.push(this.#advisorSharedInstructions);
@@ -3943,8 +4014,26 @@ export class AgentSession {
 			await this.#emitExtensionEvent(event);
 		};
 		const queued = this.#queuedExtensionEvents.then(emit, emit);
+		// `queued` is returned, so the failure is delivered to whoever awaits it. The tail must resolve or one
+		// extension throwing would reject every later event on this session; note `then(emit, emit)` above,
+		// which is what makes the queue continue rather than stall on a previous failure.
 		this.#queuedExtensionEvents = queued.catch(() => {});
 		return queued;
+	}
+
+	/**
+	 * Emit a session event without waiting for it, when the caller genuinely cannot wait.
+	 *
+	 * The TTSR paths use this: the abort has to happen immediately and must not be gated on extension
+	 * callbacks. But the failure still matters. `#emitSessionEvent` runs the extension handlers AND the
+	 * wire-level `#emit` to subscribers, so an extension that throws stops the event reaching subscribers
+	 * altogether -- the TTSR notification silently stops working, with the rule still applied and nothing
+	 * saying why the client never heard about it. So the emit is detached, and the failure is reported.
+	 */
+	#emitSessionEventDetached(event: AgentSessionEvent, context: string): void {
+		void this.#emitSessionEvent(event).catch((error: unknown) => {
+			logger.warn("session event emit failed", { context, event: event.type, error: errorMessage(error) });
+		});
 	}
 
 	async #emitSessionEvent(event: AgentSessionEvent): Promise<void> {
@@ -4010,6 +4099,8 @@ export class AgentSession {
 			}
 		};
 		this.#pendingMessageEndPersistence.set(key, promise);
+		// Same tail rule as `#queueExtensionEvent`: `promise` is handed to the slot's caller and carries the
+		// failure; the tail only orders the next message's persistence and must not inherit the rejection.
 		this.#messageEndPersistenceTail = promise.catch(() => {});
 		return {
 			promise,
@@ -4151,7 +4242,7 @@ export class AgentSession {
 		}
 		const skipPersistedRewindResult =
 			message.role === "toolResult" &&
-			message.toolName === "rewind" &&
+			message.toolName === TOOL.rewind &&
 			this.#rewoundToolResultIds.delete(message.toolCallId);
 		if (!skipPersistedRewindResult) {
 			this.#appendSessionMessage(message);
@@ -4176,7 +4267,9 @@ export class AgentSession {
 		return {
 			role: "custom",
 			customType: INTERRUPTED_THINKING_MESSAGE_TYPE,
-			content: prompt.render(PROMPTS["turn-control/interrupted-thinking"].text, { reasoning: demoted.reasoning }),
+			content: prompt.render(turnControlPrompts["turn-control/interrupted-thinking"].text, {
+				reasoning: demoted.reasoning,
+			}),
 			display: false,
 			details: {
 				interruptedAt,
@@ -4290,7 +4383,7 @@ export class AgentSession {
 		// not progress an agent could mark done.
 		if (event.type === "message_end" && event.message.role === "toolResult") {
 			const { toolName, isError } = event.message;
-			if (toolName === "todo") {
+			if (toolName === TOOL.todo) {
 				this.#mutationsSinceLastTodoTouch = 0;
 			} else if (!isError && MID_RUN_TODO_NUDGE_MUTATING_TOOLS[toolName]) {
 				this.#mutationsSinceLastTodoTouch++;
@@ -4467,7 +4560,7 @@ export class AgentSession {
 			}
 		}
 		if (event.type === "tool_execution_end") {
-			if (event.toolName === "goal") {
+			if (event.toolName === TOOL.goal) {
 				await this.#goalRuntime.onGoalToolCompleted();
 			} else {
 				await this.#goalRuntime.onToolCompleted(event.toolName);
@@ -4651,16 +4744,16 @@ export class AgentSession {
 				// is allowed to escalate to the next reminder if todos remain incomplete.
 				this.#todoReminderAwaitingProgress = false;
 				// Invalidate streaming edit cache when edit tool completes to prevent stale data
-				if (toolName === "edit" && details?.path) {
+				if (toolName === TOOL.edit && details?.path) {
 					this.#invalidateFileCacheForPath(details.path);
 				}
-				if (toolName === "todo" && !isError && Array.isArray(details?.phases)) {
+				if (toolName === TOOL.todo && !isError && Array.isArray(details?.phases)) {
 					this.setTodoPhases(details.phases);
 					if (this.#isTodoInitResult(details, toolCallId)) {
 						this.#scheduleReplanTitleRefresh();
 					}
 				}
-				if (toolName === "todo" && isError) {
+				if (toolName === TOOL.todo && isError) {
 					const errorText = content?.find(part => part.type === "text")?.text;
 					const reminderText = [
 						"<system-reminder>",
@@ -4679,7 +4772,7 @@ export class AgentSession {
 						{ deliverAs: "nextTurn" },
 					);
 				}
-				if (toolName === "checkpoint" && !isError) {
+				if (toolName === TOOL.checkpoint && !isError) {
 					const checkpointEntryId = this.sessionManager.getEntries().at(-1)?.id ?? null;
 					this.#checkpointState = {
 						checkpointMessageCount: this.agent.state.messages.length,
@@ -4689,7 +4782,7 @@ export class AgentSession {
 					this.#pendingRewindReport = undefined;
 					this.#lastCompletedRewind = undefined;
 				}
-				if (toolName === "rewind" && !isError && this.#checkpointState) {
+				if (toolName === TOOL.rewind && !isError && this.#checkpointState) {
 					const detailReport = typeof details?.report === "string" ? details.report.trim() : "";
 					const textReport = content?.find(part => part.type === "text")?.text?.trim() ?? "";
 					const report = detailReport || textReport;
@@ -4993,6 +5086,8 @@ export class AgentSession {
 	#trackPostPromptTask(task: Promise<unknown>): void {
 		this.#postPromptTasks.add(task);
 		this.#ensurePostPromptTasksPromise();
+		// The task's own failure is reported wherever it was created; this only tracks completion so
+		// `#postPromptTasks` drains, and a rejection here must not become an unhandled one.
 		void task
 			.catch(() => {})
 			.finally(() => {
@@ -5087,11 +5182,11 @@ export class AgentSession {
 			await this.#promptWithMessage(
 				{
 					role: "developer",
-					content: [{ type: "text", text: PROMPTS["turn-control/auto-continue"].text }],
+					content: [{ type: "text", text: turnControlPrompts["turn-control/auto-continue"].text }],
 					attribution: "agent",
 					timestamp: Date.now(),
 				},
-				PROMPTS["turn-control/auto-continue"].text,
+				turnControlPrompts["turn-control/auto-continue"].text,
 				{
 					skipPostPromptRecoveryWait: true,
 					prependMessages: eagerNudges.length > 0 ? eagerNudges : undefined,
@@ -5235,7 +5330,7 @@ export class AgentSession {
 		const rules = this.#pendingTtsrInjections;
 		const content = rules
 			.map(r =>
-				prompt.render(PROMPTS["rules/ttsr-interrupt"].text, {
+				prompt.render(rulesPrompts["rules/ttsr-interrupt"].text, {
 					name: r.name,
 					path: this.#displayRulePath(r.path),
 					content: this.#renderRuleBody(r),
@@ -5357,7 +5452,7 @@ export class AgentSession {
 		this.#perToolTtsrInjections.delete(ctx.toolCall.id);
 		const reminder = rules
 			.map(r =>
-				prompt.render(PROMPTS["rules/ttsr-tool-reminder"].text, {
+				prompt.render(rulesPrompts["rules/ttsr-tool-reminder"].text, {
 					name: r.name,
 					path: this.#displayRulePath(r.path),
 					content: this.#renderRuleBody(r),
@@ -5651,7 +5746,7 @@ export class AgentSession {
 		const perToolId = shouldInterrupt ? undefined : matchedToolId;
 		if (perToolId) {
 			this.#addPerToolTtsrInjections(perToolId, matches);
-			this.#emitSessionEvent({ type: "ttsr_triggered", rules: matches }).catch(() => {});
+			this.#emitSessionEventDetached({ type: "ttsr_triggered", rules: matches }, "ttsr-per-tool");
 			return false;
 		}
 
@@ -5675,7 +5770,7 @@ export class AgentSession {
 				: abortReason,
 		);
 		// Notify extensions (fire-and-forget, does not block abort)
-		this.#emitSessionEvent({ type: "ttsr_triggered", rules: matches }).catch(() => {});
+		this.#emitSessionEventDetached({ type: "ttsr_triggered", rules: matches }, "ttsr-interrupt");
 		// Schedule retry after a short delay
 		const retryToken = ++this.#ttsrRetryToken;
 		const generation = this.#promptGeneration;
@@ -5829,7 +5924,7 @@ export class AgentSession {
 	}
 
 	#maybeInjectToolCallLoopRedirect(messages: AgentMessage[], detection: RepeatedToolCallDetection): void {
-		const content = prompt.render(PROMPTS["turn-control/tool-call-loop-redirect"].text, {
+		const content = prompt.render(turnControlPrompts["turn-control/tool-call-loop-redirect"].text, {
 			tool_name: detection.toolName,
 			count: detection.count,
 			arguments_summary: detection.argumentsSummary,
@@ -5935,7 +6030,9 @@ export class AgentSession {
 				(m): m is AssistantMessage => m.role === "assistant" && m.timestamp === targetTimestamp,
 			);
 			if (aborted) this.#discardAssistantTurn(aborted);
-			const content = prompt.render(PROMPTS["turn-control/gemini-tool-call-reminder"].text, { count: headerCount });
+			const content = prompt.render(turnControlPrompts["turn-control/gemini-tool-call-reminder"].text, {
+				count: headerCount,
+			});
 			const details = { headers: headerCount };
 			this.agent.appendMessage({
 				role: "custom",
@@ -5975,7 +6072,7 @@ export class AgentSession {
 		}
 
 		const toolCall = messageContent[contentIndex] as ToolCall;
-		if (toolCall.name !== "edit") return undefined;
+		if (toolCall.name !== TOOL.edit) return undefined;
 
 		const args = toolCall.arguments;
 		if (!isRecord(args)) return undefined;
@@ -6875,33 +6972,29 @@ export class AgentSession {
 		if (!evalExecutionsSettled) {
 			logger.warn("Detaching retained eval-kernel ownership during dispose while eval execution is still active");
 		}
-		await disposeKernelSessionsByOwner(this.#evalKernelOwnerId);
-		await disposeRubyKernelSessionsByOwner(this.#evalKernelOwnerId);
-		await disposeJuliaKernelSessionsByOwner(this.#evalKernelOwnerId);
-		// JS eval contexts are owner-scoped like the kernels above; without this
-		// the eval subprocess leaked across sessions for the life of the parent
-		// (GRAN-11). Reap the ones this session owns.
-		await disposeVmContextsByOwner(this.#evalKernelOwnerId);
-		// Release headless / spawned Chromium and worker tabs this session
-		// opened via the browser tool. The tool's `tabs`/`browsers` maps are
-		// module-global — subagents and future sessions share them — so we
-		// walk by `ownerSessionId` (assigned at `acquireTab` creation, never on
-		// reuse) and touch only what THIS session created. Bounded so a broken
-		// CDP close cannot stall `/exit`; mirrors the async-job/MCP pattern.
-		// (Issue #3963.)
+		// Every owner-scoped subsystem that registered a disposer: the Python, Ruby and Julia
+		// kernels, and the JS eval contexts, which are owner-scoped like the kernels and leaked the
+		// eval subprocess across sessions for the life of the parent before they were reaped
+		// (GRAN-11). This used to be four `await`s naming those four functions, which meant the
+		// first one to throw skipped the rest AND the browser-tab release below. The registry runs
+		// all of them and reports the failures together; see `session/owned-resources.ts`.
+		try {
+			await disposeOwnedResources("eval-kernel-owner", this.#evalKernelOwnerId);
+		} catch (error) {
+			logger.warn("Some owner-scoped resources failed to release during dispose", { error: String(error) });
+		}
+		// Everything keyed by the SESSION id rather than the eval-kernel owner id. Today that is the
+		// browser tool's headless / spawned Chromium and worker tabs: its `tabs`/`browsers` maps are
+		// module-global, shared with subagents and future sessions, so release walks by
+		// `ownerSessionId` (stamped at `acquireTab` creation, never on reuse) and touches only what
+		// THIS session created. The registry carries the 3s bound that keeps a broken CDP close from
+		// stalling `/exit` (issue #3963).
 		const browserOwnerId = this.sessionManager.getSessionId();
 		if (browserOwnerId) {
 			try {
-				const released = await withTimeout(
-					releaseTabsForOwner(browserOwnerId, { kill: true }),
-					3_000,
-					"Timed out releasing owned browser tabs during dispose",
-				);
-				if (released > 0) {
-					logger.debug("Released owned browser tabs during dispose", { ownerId: browserOwnerId, released });
-				}
+				await disposeOwnedResources("session", browserOwnerId);
 			} catch (error) {
-				logger.warn("Failed to release owned browser tabs during dispose", { error: String(error) });
+				logger.warn("Some session-scoped resources failed to release during dispose", { error: String(error) });
 			}
 		}
 		await shutdownTinyTitleClient();
@@ -7163,7 +7256,7 @@ export class AgentSession {
 
 	/** Whether the edit tool is registered in this session. */
 	get hasEditTool(): boolean {
-		return this.#toolRegistry.has("edit");
+		return this.#toolRegistry.has(TOOL.edit);
 	}
 
 	/**
@@ -7248,7 +7341,7 @@ export class AgentSession {
 
 	async #syncAfterModelChange(previousEditMode: EditMode): Promise<void> {
 		const currentEditMode = this.#resolveActiveEditMode();
-		const editModeChanged = previousEditMode !== currentEditMode && this.getActiveToolNames().includes("edit");
+		const editModeChanged = previousEditMode !== currentEditMode && this.getActiveToolNames().includes(TOOL.edit);
 		// The system prompt selects model-specific policy even when it does not display the model id.
 		const modelChanged = this.#currentPromptModelKey() !== this.#promptModelKey;
 		if (editModeChanged || modelChanged) {
@@ -7437,7 +7530,7 @@ export class AgentSession {
 						return await target.execute(toolCallId, args as never, signal, onUpdate, ctx);
 					}
 					const command =
-						target.name === "bash" && isRecord(args)
+						target.name === TOOL.bash && isRecord(args)
 							? getStringProperty(args as Record<string, unknown>, "command")
 							: undefined;
 					const commandContent = command
@@ -7467,7 +7560,7 @@ export class AgentSession {
 								toolCallId,
 								toolName: target.name,
 								title: permissionIntent.title,
-								...(target.name === "bash" ? { kind: "execute" } : {}),
+								...(target.name === TOOL.bash ? { kind: "execute" } : {}),
 								status: "pending",
 								rawInput: args,
 								...(commandContent ? { content: commandContent } : {}),
@@ -7549,11 +7642,11 @@ export class AgentSession {
 			}
 		}
 		// Auto-QA tool must survive any runtime tool-set mutation.
-		if (isAutoQaEnabled(this.settings) && !validToolNames.includes("report_tool_issue")) {
-			const qaTool = this.#toolRegistry.get("report_tool_issue");
+		if (isAutoQaEnabled(this.settings) && !validToolNames.includes(TOOL.report_tool_issue)) {
+			const qaTool = this.#toolRegistry.get(TOOL.report_tool_issue);
 			if (qaTool) {
 				tools.push(this.#wrapToolForAcpPermission(qaTool));
-				validToolNames.push("report_tool_issue");
+				validToolNames.push(TOOL.report_tool_issue);
 			}
 		}
 		if (this.#mcpDiscoveryEnabled) {
@@ -7606,32 +7699,32 @@ export class AgentSession {
 	async refreshSshTool(options?: { activateIfAvailable?: boolean }): Promise<void> {
 		resetCapabilities();
 		if (!this.#reloadSshTool) return;
-		const previousSshTool = this.#toolRegistry.get("ssh");
+		const previousSshTool = this.#toolRegistry.get(TOOL.ssh);
 		const previousActiveToolNames = this.getActiveToolNames();
 		const hadSshTool = previousSshTool !== undefined;
-		const wasActive = previousActiveToolNames.includes("ssh");
+		const wasActive = previousActiveToolNames.includes(TOOL.ssh);
 		const previousHostNames =
 			previousSshTool && "hostNames" in previousSshTool && Array.isArray(previousSshTool.hostNames)
 				? [...previousSshTool.hostNames]
 				: [];
 		const candidateHostNames = new Set(previousHostNames);
-		const capability = await loadCapability<{ name: string }>("ssh", { cwd: this.sessionManager.getCwd() });
+		const capability = await loadCapability<{ name: string }>(TOOL.ssh, { cwd: this.sessionManager.getCwd() });
 		for (const host of capability.items) {
 			if (typeof host?.name === "string") {
 				candidateHostNames.add(host.name);
 			}
 		}
 		await invalidateHostMetadata(candidateHostNames);
-		const sshAllowed = this.#requestedToolNames === undefined || this.#requestedToolNames.has("ssh");
+		const sshAllowed = this.#requestedToolNames === undefined || this.#requestedToolNames.has(TOOL.ssh);
 		const refreshedTool = await this.#reloadSshTool();
 		if (refreshedTool) {
 			this.#toolRegistry.set(refreshedTool.name, refreshedTool);
 		} else {
-			this.#toolRegistry.delete("ssh");
-			this.#selectedDiscoveredToolNames.delete("ssh");
+			this.#toolRegistry.delete(TOOL.ssh);
+			this.#selectedDiscoveredToolNames.delete(TOOL.ssh);
 		}
 
-		const nextActive = previousActiveToolNames.filter(name => name !== "ssh" && this.#toolRegistry.has(name));
+		const nextActive = previousActiveToolNames.filter(name => name !== TOOL.ssh && this.#toolRegistry.has(name));
 		if (refreshedTool && sshAllowed && (wasActive || (options?.activateIfAvailable && !hadSshTool))) {
 			nextActive.push(refreshedTool.name);
 		}
@@ -8587,7 +8680,7 @@ export class AgentSession {
 			throw error;
 		}
 
-		const content = prompt.render(PROMPTS["plan-mode/reference"].text, {
+		const content = prompt.render(planModePrompts["plan-mode/reference"].text, {
 			planFilePath,
 		});
 
@@ -8606,7 +8699,7 @@ export class AgentSession {
 	async #buildPlanModeMessage(): Promise<CustomMessage | null> {
 		const state = this.#planModeState;
 		if (!state?.enabled) return null;
-		const sessionPlanUrl = "local://PLAN.md";
+		const sessionPlanUrl = DEFAULT_PLAN_FILE_URL;
 		const resolvedPlanPath = state.planFilePath.startsWith("local:")
 			? resolveLocalUrlToPath(normalizeLocalScheme(state.planFilePath), this.#localProtocolOptions())
 			: resolveToCwd(state.planFilePath, this.sessionManager.getCwd());
@@ -8620,15 +8713,15 @@ export class AgentSession {
 		// Plan mode's research step names `scout` when that agent is on offer and
 		// falls back to the general worker otherwise, so the instruction always
 		// points at an agent this session can actually spawn.
-		const subagentNames = enabledSubagentNames(this.#toolRegistry.get("task"));
-		const content = prompt.render(PROMPTS["plan-mode/active"].text, {
+		const subagentNames = enabledSubagentNames(this.#toolRegistry.get(TOOL.task));
+		const content = prompt.render(planModePrompts["plan-mode/active"].text, {
 			planFilePath: displayPlanPath,
 			planExists,
 			canDelegate: subagentNames.length > 0,
-			researchAgent: subagentNames.includes("scout") ? "scout" : "task",
-			askToolName: "ask",
-			writeToolName: "write",
-			editToolName: "edit",
+			researchAgent: subagentNames.includes("scout") ? "scout" : "task", // not-a-tool-name: agent ids
+			askToolName: TOOL.ask,
+			writeToolName: TOOL.write,
+			editToolName: TOOL.edit,
 			isHashlineEditMode: this.#resolveActiveEditMode() === "hashline",
 			reentry: state.reentry ?? false,
 			iterative: state.workflow === "iterative",
@@ -8651,7 +8744,7 @@ export class AgentSession {
 		return {
 			role: "custom",
 			customType: "goal-mode-context",
-			content: prompt.render(PROMPTS["goals/goal-mode-context"].text, { goalContext: content, todoContext }),
+			content: prompt.render(goalsPrompts["goals/goal-mode-context"].text, { goalContext: content, todoContext }),
 			display: false,
 			attribution: "agent",
 			timestamp: Date.now(),
@@ -8663,7 +8756,7 @@ export class AgentSession {
 		return {
 			role: "custom",
 			customType: "vibe-mode-context",
-			content: prompt.render(PROMPTS["session/vibe-mode-active"].text),
+			content: prompt.render(sessionPrompts["session/vibe-mode-active"].text),
 			display: false,
 			attribution: "agent",
 			timestamp: Date.now(),
@@ -8682,10 +8775,10 @@ export class AgentSession {
 	#buildGoalTodoContext(): string | undefined {
 		if (!this.settings.get("todo.enabled")) return undefined;
 		const activeToolNames = this.getActiveToolNames();
-		const canCallTodoTool = activeToolNames.includes("todo");
+		const canCallTodoTool = activeToolNames.includes(TOOL.todo);
 		const canDiscoverTodoTool =
-			!canCallTodoTool && this.getDiscoverableTools({ source: "builtin" }).some(tool => tool.name === "todo");
-		const canActivateTodoTool = canDiscoverTodoTool && activeToolNames.includes("search_tool_bm25");
+			!canCallTodoTool && this.getDiscoverableTools({ source: "builtin" }).some(tool => tool.name === TOOL.todo);
+		const canActivateTodoTool = canDiscoverTodoTool && activeToolNames.includes(TOOL.search_tool_bm25);
 		if (!canCallTodoTool && !canDiscoverTodoTool) return undefined;
 		const phases = this.getTodoPhases().filter(phase => phase.tasks.length > 0);
 		if (phases.length === 0) return undefined;
@@ -8706,7 +8799,7 @@ export class AgentSession {
 			}),
 		}));
 
-		return prompt.render(PROMPTS["goals/goal-todo-context"].text, {
+		return prompt.render(goalsPrompts["goals/goal-todo-context"].text, {
 			canCallTodoTool,
 			canActivateTodoTool,
 			closed: String(closed),
@@ -8829,7 +8922,7 @@ export class AgentSession {
 		if (
 			this.#magicKeywordEnabled("workflow") &&
 			containsWorkflow(text) &&
-			this.getActiveToolNames().includes("task")
+			this.getActiveToolNames().includes(TOOL.task)
 		) {
 			keywordNotices.push({
 				role: "custom",
@@ -9389,6 +9482,15 @@ export class AgentSession {
 			const result = await loaded.command.execute(args, ctx);
 			// If result is a string, it's a prompt to send to LLM
 			// If void/undefined, command handled everything
+			//
+			// A command that produced a prompt gets its declared agents granted for the
+			// turn that prompt starts, so `/review` still spawns `reviewer` on a stock
+			// install where every bundled specialist is disabled. Granted only for a
+			// real prompt: a fire-and-forget command starts no turn, so a grant would
+			// have nothing to scope it and would sit open until the next settle.
+			if (typeof result === "string" && result.length > 0) {
+				this.#grantAgentsForTurn(loaded.command.spawnsAgents);
+			}
 			return result ?? "";
 		} catch (err) {
 			// Emit error via extension runner
@@ -10200,7 +10302,7 @@ export class AgentSession {
 		this.#mutationsSinceLastTodoTouch = 0;
 		this.#midRunNudgeCount = 0;
 		this.#planReferenceSent = false;
-		this.#planReferencePath = "local://PLAN.md";
+		this.#planReferencePath = DEFAULT_PLAN_FILE_URL;
 		this.#resetAdvisorSessionState();
 		this.#reconnectToAgent();
 
@@ -12045,7 +12147,7 @@ export class AgentSession {
 		return COMPACTION_CHECK_NONE;
 	}
 	#isTerminalYieldToolResult(event: { toolName: string; isError?: boolean; result?: { details?: unknown } }): boolean {
-		if (event.toolName !== "yield" || event.isError) return false;
+		if (event.toolName !== TOOL.yield || event.isError) return false;
 		const details = event.result?.details;
 		if (!details || typeof details !== "object") return true;
 		const record = details as Record<string, unknown>;
@@ -12110,7 +12212,7 @@ export class AgentSession {
 			.slice()
 			.reverse()
 			.find((content): content is ToolCall => content.type === "toolCall");
-		return lastToolCall?.name === "yield" && lastToolCall.id === toolCallId;
+		return lastToolCall?.name === TOOL.yield && lastToolCall.id === toolCallId;
 	}
 
 	#assistantEndedWithSuccessfulYield(assistantMessage: AssistantMessage): boolean {
@@ -12330,7 +12432,7 @@ export class AgentSession {
 	}
 
 	#emptyStopRetryReminder(): string {
-		return prompt.render(PROMPTS["turn-control/empty-stop-retry"].text, {
+		return prompt.render(turnControlPrompts["turn-control/empty-stop-retry"].text, {
 			retryCount: this.#emptyStopRetryCount,
 			maxRetries: EMPTY_STOP_MAX_RETRIES,
 		});
@@ -12393,7 +12495,7 @@ export class AgentSession {
 	}
 
 	#unexpectedStopRetryReminder(): string {
-		return prompt.render(PROMPTS["turn-control/unexpected-stop-retry"].text, {
+		return prompt.render(turnControlPrompts["turn-control/unexpected-stop-retry"].text, {
 			retryCount: this.#unexpectedStopRetryCount,
 			maxRetries: UNEXPECTED_STOP_MAX_RETRIES,
 		});
@@ -12580,7 +12682,7 @@ export class AgentSession {
 		if (this.#pendingRewindReport) return this.#pendingRewindReport;
 		for (let i = messages.length - 1; i >= 0; i--) {
 			const message = messages[i];
-			if (message?.role !== "toolResult" || message.toolName !== "rewind" || message.isError) continue;
+			if (message?.role !== "toolResult" || message.toolName !== TOOL.rewind || message.isError) continue;
 			const details = message.details;
 			const detailReport =
 				details && typeof details === "object" && "report" in details && typeof details.report === "string"
@@ -12613,7 +12715,7 @@ export class AgentSession {
 		const details = { report, startedAt: checkpointState.startedAt, rewoundAt };
 		this.sessionManager.appendCustomMessageEntry(
 			"rewind-report",
-			prompt.render(PROMPTS["turn-control/rewind-report"].text, { report }),
+			prompt.render(turnControlPrompts["turn-control/rewind-report"].text, { report }),
 			false,
 			details,
 			"agent",
@@ -12622,7 +12724,7 @@ export class AgentSession {
 
 		if (activeMessages) {
 			for (const message of activeMessages) {
-				if (message.role === "toolResult" && message.toolName === "rewind") {
+				if (message.role === "toolResult" && message.toolName === TOOL.rewind) {
 					this.#rewoundToolResultIds.add(message.toolCallId);
 				}
 			}
@@ -12675,7 +12777,7 @@ export class AgentSession {
 			logger.debug("Plan mode convergence: reminder cap reached; yielding to user");
 			return false;
 		}
-		const hasRequiredTools = this.#toolRegistry.has("ask") && this.#toolRegistry.has("resolve");
+		const hasRequiredTools = this.#toolRegistry.has(TOOL.ask) && this.#toolRegistry.has(TOOL.resolve);
 		if (!hasRequiredTools) {
 			logger.warn("Plan mode enforcement skipped because ask/resolve tools are unavailable", {
 				activeToolNames: this.agent.state.tools.map(tool => tool.name),
@@ -12686,8 +12788,8 @@ export class AgentSession {
 		this.#planModeReminderCount++;
 		this.#planModeReminderAwaitingProgress = true;
 		this.#toolChoiceQueue.pushOnce("required", { label: "plan-mode-decision" });
-		const reminder = prompt.render(PROMPTS["plan-mode/tool-decision-reminder"].text, {
-			askToolName: "ask",
+		const reminder = prompt.render(planModePrompts["plan-mode/tool-decision-reminder"].text, {
+			askToolName: TOOL.ask,
 		});
 		const reminderMessage: Message = {
 			role: "developer",
@@ -12720,7 +12822,7 @@ export class AgentSession {
 			return typeof tool?.customWireName === "string" ? tool.customWireName : name;
 		};
 		return {
-			toolRefs: { task: wireName("task"), todo: wireName("todo") },
+			toolRefs: { task: wireName(TOOL.task), todo: wireName(TOOL.todo) },
 			taskBatch: this.settings.get("subagent.batch"),
 		};
 	}
@@ -12762,7 +12864,7 @@ export class AgentSession {
 		// (tools.discoveryMode === "all") can register `todo` while hiding it from
 		// the exposed tools. Forcing a named tool_choice for an inactive tool makes
 		// the provider reject the request (HTTP 400).
-		if (!this.getActiveToolNames().includes("todo")) {
+		if (!this.getActiveToolNames().includes(TOOL.todo)) {
 			logger.warn("Eager todo enforcement skipped because todo is not active", {
 				activeToolNames: this.getActiveToolNames(),
 			});
@@ -12772,7 +12874,7 @@ export class AgentSession {
 		const message: AgentMessage = {
 			role: "custom",
 			customType: "eager-todo-prelude",
-			content: prompt.render(PROMPTS["turn-control/eager-todo"].text, {
+			content: prompt.render(turnControlPrompts["turn-control/eager-todo"].text, {
 				...this.#buildEagerPreludeContext(),
 				forced: mode === "always",
 			}),
@@ -12787,7 +12889,7 @@ export class AgentSession {
 		if (promptText === undefined || mode === "preferred") {
 			return { message };
 		}
-		const todoToolChoice = buildNamedToolChoice("todo", this.model);
+		const todoToolChoice = buildNamedToolChoice(TOOL.todo, this.model);
 		if (!todoToolChoice) {
 			// `always` on a model that can't be forced degrades to reminder-only (no
 			// tool_choice). For `todo.eager: true` users migrated to `always`, such
@@ -12803,7 +12905,12 @@ export class AgentSession {
 	}
 
 	#createEagerTaskPrelude(promptText: string | undefined): AgentMessage | undefined {
-		if (!delegationRequired(this.settings)) return undefined;
+		// Resolved against the agents the live task tool will actually accept: a
+		// reminder to delegate, in a session where every agent is disabled, is an
+		// instruction the model can only fail to follow.
+		if (!resolveDelegation(this.settings, enabledSubagentNames(this.#toolRegistry.get(TOOL.task))).required) {
+			return undefined;
+		}
 		// Main agent only: subagents keep `task` active (the parent only filters `todo`),
 		// so a salient delegate-reminder there would amplify nested fan-out. Gate on the
 		// resolved agent kind, not the id, so a top-level session with a custom `agentId`
@@ -12817,11 +12924,11 @@ export class AgentSession {
 			const trimmed = promptText.trimEnd();
 			if (trimmed.endsWith("?") || trimmed.endsWith("!")) return undefined;
 		}
-		if (!this.getActiveToolNames().includes("task")) return undefined;
+		if (!this.getActiveToolNames().includes(TOOL.task)) return undefined;
 		return {
 			role: "custom",
 			customType: "eager-task-prelude",
-			content: prompt.render(PROMPTS["turn-control/eager-task"].text, this.#buildEagerPreludeContext()),
+			content: prompt.render(turnControlPrompts["turn-control/eager-task"].text, this.#buildEagerPreludeContext()),
 			display: false,
 			attribution: "agent",
 			timestamp: Date.now(),
@@ -13005,7 +13112,7 @@ export class AgentSession {
 		// restricting the slate). Mirror {@link #createEagerTodoPrelude}'s
 		// guard so we never ask the model to call a tool that is not in its
 		// schema — the request would fabricate an unknown tool call.
-		if (!this.getActiveToolNames().includes("todo")) return null;
+		if (!this.getActiveToolNames().includes(TOOL.todo)) return null;
 
 		const incomplete = this.getTodoPhases()
 			.flatMap(phase => phase.tasks)
@@ -13018,7 +13125,7 @@ export class AgentSession {
 		this.#midRunNudgeCount++;
 
 		const { toolRefs } = this.#buildEagerPreludeContext();
-		const reminder = prompt.render(PROMPTS["turn-control/mid-run-todo-nudge"].text, {
+		const reminder = prompt.render(turnControlPrompts["turn-control/mid-run-todo-nudge"].text, {
 			toolRefs,
 			incompleteCount: incomplete.length,
 			plural: incomplete.length !== 1,
@@ -15351,14 +15458,14 @@ export class AgentSession {
 		this.agent.appendMessage({
 			role: "custom",
 			customType: THINKING_LOOP_REDIRECT_TYPE,
-			content: PROMPTS["turn-control/thinking-loop-redirect"].text,
+			content: turnControlPrompts["turn-control/thinking-loop-redirect"].text,
 			display: false,
 			attribution: "agent",
 			timestamp: Date.now(),
 		});
 		this.sessionManager.appendCustomMessageEntry(
 			THINKING_LOOP_REDIRECT_TYPE,
-			PROMPTS["turn-control/thinking-loop-redirect"].text,
+			turnControlPrompts["turn-control/thinking-loop-redirect"].text,
 			false,
 			undefined,
 			"agent",
@@ -15489,7 +15596,7 @@ export class AgentSession {
 				signal: abortController.signal,
 				sessionKey: this.sessionId,
 				cwd,
-				timeout: clampTimeout("bash", undefined, this.settings.get("tools.maxTimeout")) * 1000,
+				timeout: clampTimeout(TOOL.bash, undefined, this.settings.get("tools.maxTimeout")) * 1000,
 				onMinimizedSave: originalText => this.#saveBashOriginalArtifact(originalText),
 				useUserShell: options?.useUserShell,
 			});
@@ -15844,7 +15951,7 @@ export class AgentSession {
 		const record: CustomMessage = {
 			role: "custom",
 			customType: "irc:incoming",
-			content: prompt.render(PROMPTS["side-channel/irc-incoming"].text, {
+			content: prompt.render(sideChannelPrompts["side-channel/irc-incoming"].text, {
 				from: msg.from,
 				message: msg.body,
 				replyTo: msg.replyTo ?? "",
@@ -15862,7 +15969,10 @@ export class AgentSession {
 			if (recipientParentId === msg.from) {
 				this.agent.steer({
 					role: "user",
-					content: prompt.render(PROMPTS["steering/parent-irc"].text, { from: msg.from, message: msg.body }),
+					content: prompt.render(steeringPrompts["steering/parent-irc"].text, {
+						from: msg.from,
+						message: msg.body,
+					}),
 					attribution: "agent",
 					timestamp: msg.ts,
 					steering: true,
@@ -15903,7 +16013,7 @@ export class AgentSession {
 	async #runIrcAutoReply(msg: IrcMessage): Promise<void> {
 		try {
 			const { replyText } = await this.runEphemeralTurn({
-				promptText: prompt.render(PROMPTS["side-channel/irc-autoreply"].text, {
+				promptText: prompt.render(sideChannelPrompts["side-channel/irc-autoreply"].text, {
 					from: msg.from,
 					message: msg.body,
 					replyTo: msg.replyTo ?? "",
@@ -16082,7 +16192,7 @@ export class AgentSession {
 		}
 		messages.push({
 			role: "developer",
-			content: [{ type: "text", text: PROMPTS["side-channel/side-channel-no-tools"].text }],
+			content: [{ type: "text", text: sideChannelPrompts["side-channel/side-channel-no-tools"].text }],
 			attribution: "agent",
 			timestamp: Date.now(),
 		});
@@ -16836,7 +16946,7 @@ export class AgentSession {
 				totalCost += assistantMsg.usage.cost.total;
 			}
 
-			if (message.role === "toolResult" && message.toolName === "task") {
+			if (message.role === "toolResult" && message.toolName === TOOL.task) {
 				const usage = getTaskToolUsage(message.details);
 				if (usage) {
 					totalInput += usage.input;
@@ -17085,9 +17195,9 @@ export class AgentSession {
 				if (provider === "google-antigravity") {
 					const mode = this.settings.get("providers.antigravityEndpoint");
 					if (mode === "sandbox") {
-						return "https://daily-cloudcode-pa.sandbox.googleapis.com";
+						return ANTIGRAVITY_SANDBOX_ENDPOINT;
 					} else if (mode === "production") {
-						return "https://daily-cloudcode-pa.googleapis.com";
+						return ANTIGRAVITY_PRIMARY_ENDPOINT;
 					}
 				}
 				return this.#modelRegistry.getProviderBaseUrl?.(provider);

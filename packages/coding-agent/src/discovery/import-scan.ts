@@ -105,6 +105,8 @@ async function importSkill(agentDir: string, candidate: ImportCandidate): Promis
 async function importInstructions(agentDir: string, candidate: ImportCandidate): Promise<"imported" | "skipped"> {
 	const targetFile = path.join(agentDir, "AGENTS.md");
 	const marker = importMarker(candidate.sourcePath);
+	// The target AGENTS.md may not exist yet, which is the normal first-import case, and empty is the correct
+	// reading of that: the marker check below finds nothing and the section is written as the whole file.
 	const existing = await Bun.file(targetFile)
 		.text()
 		.catch(() => "");

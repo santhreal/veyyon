@@ -5,7 +5,8 @@
  * cleaned content.
  */
 
-import { type AuthStorage, type FetchImpl, getEnvApiKey } from "@veyyon/ai";
+import type { AuthStorage, FetchImpl } from "@veyyon/ai";
+import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { applyResultLimit } from "../utils";

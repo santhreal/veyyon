@@ -2,7 +2,8 @@ import type { TextContent } from "@veyyon/ai";
 import { Container, Markdown, Text } from "@veyyon/tui";
 import type { CollabPromptDetails } from "../../collab/protocol";
 import type { CustomMessage } from "../../session/messages";
-import { getMarkdownTheme, theme } from "../theme/theme";
+import { getMarkdownTheme } from "../theme/markdown-theme";
+import { theme } from "../theme/theme";
 
 /**
  * Renders a collab guest prompt on every participant's transcript: a

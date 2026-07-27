@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import * as fs from "node:fs";
 import * as os from "node:os";
-import * as path from "node:path";
 import { buildSystemPrompt } from "@veyyon/coding-agent/system-prompt";
 import { cleanupTempHome } from "./helpers/temp-home-cleanup";
+import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makePiPromptKernelDir = useTrackedTempDirs("pi-prompt-kernel-");
+const makePiPromptKernelHomeDir = useTrackedTempDirs("pi-prompt-kernel-home-");
 
 const EMPTY_TREE = {
 	rootPath: "",
@@ -23,8 +29,8 @@ describe("system prompt Kernel field", () => {
 	let originalHome: string | undefined;
 
 	beforeEach(() => {
-		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-prompt-kernel-"));
-		tempHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-prompt-kernel-home-"));
+		tempDir = makePiPromptKernelDir();
+		tempHomeDir = makePiPromptKernelHomeDir();
 		originalHome = process.env.HOME;
 		process.env.HOME = tempHomeDir;
 	});

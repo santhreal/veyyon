@@ -7,9 +7,19 @@ import { defineCapability } from ".";
 import type { SourceMeta } from "./types";
 
 /**
- * A custom tool definition.
+ * A custom-tool definition FILE found on disk, before anything is loaded from it.
+ *
+ * DISCOVERED is the distinguishing word. `CustomTool`
+ * (`extensibility/custom-tools/types.ts`) is the runtime interface an extension
+ * registers with `pi.registerTool`: it is generic over its parameter schema and
+ * carries an `execute`, an approval tier, and MCP metadata. This one carries none
+ * of that -- it is a path, a description, and where it came from, which is all a
+ * discovery provider knows before the file is read. Both were called `CustomTool`,
+ * so an editor auto-import picked whichever it offered. (A third `CustomTool` in
+ * `packages/ai/src/providers/openai-responses-wire.ts` is generated vendor wire for
+ * OpenAI's own custom-tool type and is not ours to rename.)
  */
-export interface CustomTool {
+export interface DiscoveredCustomTool {
 	/** Tool name (unique key) */
 	name: string;
 	/** Absolute path to tool definition file */
@@ -24,7 +34,7 @@ export interface CustomTool {
 	_source: SourceMeta;
 }
 
-export const toolCapability = defineCapability<CustomTool>({
+export const toolCapability = defineCapability<DiscoveredCustomTool>({
 	id: "tools",
 	displayName: "Custom Tools",
 	description: "User-defined tools that extend agent capabilities",

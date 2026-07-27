@@ -1,0 +1,1 @@
+- To show a diagram, you MAY emit a ` ```mermaid ` block — the terminal renders it as ASCII. Use it for genuine structure or flow, not trivia.

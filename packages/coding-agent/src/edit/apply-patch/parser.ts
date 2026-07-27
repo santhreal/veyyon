@@ -25,12 +25,14 @@
 import { ParseError } from "../diff";
 import type { PatchInput } from "../modes/patch";
 
-const BEGIN_PATCH_MARKER = "*** Begin Patch";
-const END_PATCH_MARKER = "*** End Patch";
-const ADD_FILE_MARKER = "*** Add File: ";
-const DELETE_FILE_MARKER = "*** Delete File: ";
-const UPDATE_FILE_MARKER = "*** Update File: ";
-const MOVE_TO_MARKER = "*** Move to: ";
+import {
+	ADD_FILE_MARKER,
+	BEGIN_PATCH_MARKER,
+	DELETE_FILE_MARKER,
+	END_PATCH_MARKER,
+	MOVE_TO_MARKER,
+	UPDATE_FILE_MARKER,
+} from "./markers";
 
 interface ParseApplyPatchOptions {
 	streaming?: boolean;

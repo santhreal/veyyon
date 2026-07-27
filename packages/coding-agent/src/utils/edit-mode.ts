@@ -1,4 +1,5 @@
-import { $env, $flag } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
+import { $env, $flag } from "@veyyon/utils/env";
 
 export type EditMode = "replace" | "patch" | "hashline" | "apply_patch";
 

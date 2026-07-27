@@ -2,7 +2,7 @@ import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
 import { logger, pluralize, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import { formatCurrentTime, formatMemories } from "../hindsight/content";
-import { PROMPTS } from "../prompts/registry";
+import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from ".";
 
 const memoryRecallSchema = type({
@@ -15,7 +15,7 @@ export class MemoryRecallTool implements AgentTool<typeof memoryRecallSchema> {
 	readonly name = "recall";
 	readonly approval = "read" as const;
 	readonly label = "Recall";
-	readonly description = PROMPTS["tools/recall"].text;
+	readonly description = toolsPrompts["tools/recall"].text;
 	readonly parameters = memoryRecallSchema;
 	readonly strict = true;
 	readonly loadMode = "discoverable";

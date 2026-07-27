@@ -100,6 +100,10 @@ async function isMountedByDeviceBoundary(mountPath: string, stat = readMountPoin
 		const [mountStats, parentStats] = await Promise.all([stat(mountPath), stat(path.dirname(mountPath))]);
 		return mountStats.dev !== parentStats.dev;
 	} catch {
+		// A stat that fails cannot show a device boundary, and false -- "not mounted" -- is the conservative
+		// direction here: the caller responds by MOUNTING, which either succeeds or fails loudly with sshfs's
+		// own message. Answering true on an unexaminable path would instead skip the mount and let every
+		// later read fail against an empty directory.
 		return false;
 	}
 }

@@ -27,7 +27,8 @@ import { type Settings, settingsCapability } from "../capability/settings";
 import { type Skill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
 import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
-import { settings } from "../config/settings";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { settings } from "../config/settings-instance";
 
 import {
 	buildExtensionModuleItems,

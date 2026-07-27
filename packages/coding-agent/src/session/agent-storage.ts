@@ -1,14 +1,21 @@
 import { Database, type Statement } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import {
-	type AuthCredential,
-	type AuthCredentialStore,
-	isSqliteBusyError,
-	SqliteAuthCredentialStore,
-	type StoredAuthCredential,
-} from "@veyyon/ai";
-import { AsyncDrain, DAY_MS, errorMessage, getAgentDbPath, getStatsDbPath, isRecord, logger } from "@veyyon/utils";
+// Each name from the module that OWNS it, which for this file is the difference between 86 modules and
+// 345. The credential TYPES are erased, so naming `auth-storage` for them costs nothing; the sqlite
+// store and the busy-error predicate are values, and taking them from the barrel (or even from
+// `auth-storage`, which owns the OAuth machinery) would put the provider registry and the OAuth flows on
+// `config/settings`'s path and therefore on everything that reads a setting.
+import { isSqliteBusyError } from "@veyyon/ai/auth-credential-rows";
+import type { AuthCredential, AuthCredentialStore, StoredAuthCredential } from "@veyyon/ai/auth-storage";
+import { SqliteAuthCredentialStore } from "@veyyon/ai/auth-storage-sqlite";
+import { AsyncDrain } from "@veyyon/utils/async";
+import { getAgentDbPath, getStatsDbPath } from "@veyyon/utils/dirs";
+// Owners, not the `@veyyon/utils` barrel: 5 modules against 74.
+import * as logger from "@veyyon/utils/logger";
+import { SQLITE_NOW_EPOCH } from "@veyyon/utils/sqlite";
+import { DAY_MS } from "@veyyon/utils/time";
+import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
 import type { RawSettings as Settings } from "../config/settings";
 
 /** Row shape for settings table queries */
@@ -117,7 +124,6 @@ function normalizeModelPerfSample(modelKey: string, sample: ModelPerfSample): Mo
 
 /** Current agent.db schema version; bump when schema changes require migration. */
 export const SCHEMA_VERSION = 6;
-const SQLITE_NOW_EPOCH = "CAST(strftime('%s','now') AS INTEGER)";
 
 /** Singleton instances per database path */
 const instances = new Map<string, AgentStorage>();

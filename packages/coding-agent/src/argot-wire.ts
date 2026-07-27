@@ -20,7 +20,7 @@ import {
 	type Vocabulary,
 } from "argot";
 import {
-	type JsonValue,
+	type JsonWithOptionalFields,
 	mapAgentMessageStrings,
 	mapAssistantContentStrings,
 	mapJsonStrings,
@@ -42,7 +42,7 @@ export function buildArgotGate(enabled: boolean, models: readonly string[], disa
 /** Expand handles in a tool call's arguments before the tool runs. Identity until a dict loads. */
 export function expandToolArguments(argot: ArgotSession, args: Record<string, unknown>): Record<string, unknown> {
 	if (!argot.loaded) return args;
-	return mapJsonStrings(args as JsonValue, s => argot.expand(s)) as Record<string, unknown>;
+	return mapJsonStrings(args as JsonWithOptionalFields, s => argot.expand(s)) as Record<string, unknown>;
 }
 
 /**
@@ -372,7 +372,7 @@ export class ArgotStreamDisplayDecoder {
 		const sigil = this.#codec.vocabulary().sigil;
 		const args = (block as { arguments?: Record<string, unknown> }).arguments;
 		const rawJson = getStreamingPartialJson(block as StreamingPartialJsonCarrier);
-		const jsonCarriesHandle = rawJson !== undefined && rawJson.includes(sigil);
+		const jsonCarriesHandle = rawJson?.includes(sigil);
 		// Look for the sigil before doing any work, and look for it WITHOUT
 		// serialising. This runs on every stream update of every tool call, so a
 		// `write` streaming a large file would otherwise allocate a fresh copy of
@@ -381,7 +381,7 @@ export class ArgotStreamDisplayDecoder {
 		// allocation.
 		const decodedArgs =
 			args !== undefined && containsSigil(args, sigil)
-				? (mapJsonStrings(args as JsonValue, s => this.#decodeSnapshot(s)) as Record<string, unknown>)
+				? (mapJsonStrings(args as JsonWithOptionalFields, s => this.#decodeSnapshot(s)) as Record<string, unknown>)
 				: args;
 		if (decodedArgs === args && !jsonCarriesHandle) return block;
 		const copy = { ...block } as T;

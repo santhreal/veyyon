@@ -16,7 +16,8 @@ import type { Usage } from "@veyyon/ai";
 import type { TUI } from "@veyyon/tui";
 import type { AdvisorMessageDetails } from "../../advisor";
 import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../collab/protocol";
-import { settings } from "../../config/settings";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { settings } from "../../config/settings-instance";
 import type { MessageRenderer } from "../../extensibility/extensions/types";
 import {
 	BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE,

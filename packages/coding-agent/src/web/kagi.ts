@@ -6,7 +6,8 @@
  * through the shared {@link AuthStorage} broker (Bearer token), and responses
  * are categorized result buckets rather than the legacy flat object array.
  */
-import { type AuthStorage, type FetchImpl, withAuth } from "@veyyon/ai";
+import type { AuthStorage, FetchImpl } from "@veyyon/ai";
+import { withAuth } from "@veyyon/ai/auth-retry";
 import { withHardTimeout } from "./search/providers/utils";
 
 const KAGI_SEARCH_URL = "https://kagi.com/api/v1/search";

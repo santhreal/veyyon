@@ -583,7 +583,7 @@ export interface HookAPI {
 
 	/** File logger for error/warning/debug messages */
 	logger: typeof PiLogger;
-	/** Injected zod-backed typebox shim (legacy/compat — prefer `arktype`). */
+	/** Injected legacy typebox shim (legacy/compat — prefer `arktype`). */
 	typebox: typeof TypeBox;
 	/** Injected arktype module for arktype-authored hooks. */
 	arktype: typeof Type;

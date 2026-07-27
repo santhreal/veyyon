@@ -19,6 +19,7 @@ import {
 	withAuth,
 	wrapFetchForCch,
 } from "@veyyon/ai";
+import { ANTHROPIC_WEB_SEARCH_TOOL } from "@veyyon/catalog/wire/anthropic";
 import { $env } from "@veyyon/utils";
 import type {
 	AnthropicApiResponse,
@@ -35,7 +36,6 @@ import { classifyProviderHttpError, withHardTimeout } from "./utils";
 
 const DEFAULT_MODEL = "claude-haiku-4-5";
 const DEFAULT_MAX_TOKENS = 4096;
-const WEB_SEARCH_TOOL_NAME = "web_search";
 const WEB_SEARCH_TOOL_TYPE = "web_search_20250305";
 export interface AnthropicSearchParams {
 	query: string;
@@ -112,7 +112,7 @@ async function callSearch(
 		tools: [
 			{
 				type: WEB_SEARCH_TOOL_TYPE,
-				name: WEB_SEARCH_TOOL_NAME,
+				name: ANTHROPIC_WEB_SEARCH_TOOL,
 			},
 		],
 	};
@@ -206,7 +206,7 @@ function parseResponse(response: AnthropicApiResponse): SearchResponse {
 		if (
 			block.type === "server_tool_use" &&
 			block.name &&
-			stripClaudeToolPrefix(block.name) === WEB_SEARCH_TOOL_NAME
+			stripClaudeToolPrefix(block.name) === ANTHROPIC_WEB_SEARCH_TOOL
 		) {
 			// Intermediate search query
 			if (block.input?.query) {

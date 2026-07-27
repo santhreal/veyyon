@@ -286,7 +286,7 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 	}
 
 	// Arrays edit as a text control: a string array (the common case, e.g.
-	// `argot.models`) shows and edits as a comma-separated list; an object array
+	// `argot.encode.models`) shows and edits as a comma-separated list; an object array
 	// (e.g. `bashInterceptor.patterns`) round-trips as JSON. The selector's
 	// text-save path (#setSettingValue) splits/parses back to an array by the
 	// schema type, so a `ui`-annotated array is reachable instead of silently

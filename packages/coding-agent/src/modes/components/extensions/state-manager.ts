@@ -13,7 +13,7 @@ import type { Prompt } from "../../../capability/prompt";
 import type { Rule } from "../../../capability/rule";
 import type { Skill } from "../../../capability/skill";
 import type { SlashCommand } from "../../../capability/slash-command";
-import type { CustomTool } from "../../../capability/tool";
+import type { DiscoveredCustomTool } from "../../../capability/tool";
 import type { SourceMeta } from "../../../capability/types";
 import {
 	disableProvider,
@@ -25,8 +25,8 @@ import {
 import { readDisabledServers, readEnabledServers } from "../../../mcp/config-writer";
 import type {
 	DashboardState,
-	Extension,
 	ExtensionKind,
+	ExtensionRow,
 	ExtensionState,
 	FlatTreeItem,
 	ProviderTab,
@@ -45,8 +45,8 @@ export interface ExtensionSettingsManager {
 /**
  * Load all extensions from all capabilities.
  */
-export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): Promise<Extension[]> {
-	const extensions: Extension[] = [];
+export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): Promise<ExtensionRow[]> {
+	const extensions: ExtensionRow[] = [];
 	const disabledExtensions = new Set<string>(disabledIds ?? []);
 
 	// Helper to convert capability items to extensions
@@ -125,7 +125,7 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 
 	// Load custom tools
 	try {
-		const tools = await loadCapability<CustomTool>("tools", loadOpts);
+		const tools = await loadCapability<DiscoveredCustomTool>("tools", loadOpts);
 		addItems(tools.all, "tool", {
 			getDescription: t => t.description,
 		});
@@ -322,12 +322,12 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
  * Build sidebar tree from extensions.
  * Groups by provider → kind.
  */
-export function buildSidebarTree(extensions: Extension[]): TreeNode[] {
+export function buildSidebarTree(extensions: ExtensionRow[]): TreeNode[] {
 	const providers = getAllProvidersInfo();
 	const tree: TreeNode[] = [];
 
 	// Group extensions by provider and kind
-	const byProvider = new Map<string, Map<ExtensionKind, Extension[]>>();
+	const byProvider = new Map<string, Map<ExtensionKind, ExtensionRow[]>>();
 
 	for (const ext of extensions) {
 		const providerId = ext.source.provider;
@@ -408,7 +408,7 @@ export function flattenTree(tree: TreeNode[]): FlatTreeItem[] {
 /**
  * Apply fuzzy filter to extensions.
  */
-export function applyFilter(extensions: Extension[], query: string): Extension[] {
+export function applyFilter(extensions: ExtensionRow[], query: string): ExtensionRow[] {
 	if (!query.trim()) {
 		return extensions;
 	}
@@ -465,7 +465,7 @@ function getKindDisplayName(kind: ExtensionKind): string {
 /**
  * Build provider tabs from extensions.
  */
-export function buildProviderTabs(extensions: Extension[]): ProviderTab[] {
+export function buildProviderTabs(extensions: ExtensionRow[]): ProviderTab[] {
 	const providers = getAllProvidersInfo();
 	const tabs: ProviderTab[] = [];
 
@@ -522,14 +522,14 @@ export function buildProviderTabs(extensions: Extension[]): ProviderTab[] {
 /**
  * Filter extensions by provider tab.
  */
-export function filterByProvider(extensions: Extension[], providerId: string): Extension[] {
+export function filterByProvider(extensions: ExtensionRow[], providerId: string): ExtensionRow[] {
 	if (providerId === "all") {
 		return extensions;
 	}
 	return extensions.filter(ext => ext.source.provider === providerId);
 }
 
-function isShadowedExtension(ext: Extension): boolean {
+function isShadowedExtension(ext: ExtensionRow): boolean {
 	if (ext.shadowedBy) return true;
 	return Boolean((ext.raw as { _shadowed?: boolean } | null | undefined)?._shadowed);
 }
@@ -540,7 +540,7 @@ function isShadowedExtension(ext: Extension): boolean {
  */
 export function applyDisabledExtensionsToState(state: DashboardState, disabledIds: string[]): DashboardState {
 	const disabled = new Set(disabledIds);
-	const updateExtension = (ext: Extension): Extension => {
+	const updateExtension = (ext: ExtensionRow): ExtensionRow => {
 		if (disabled.has(ext.id)) {
 			if (ext.state === "disabled" && ext.disabledReason === "item-disabled") return ext;
 			return { ...ext, state: "disabled", disabledReason: "item-disabled" };
@@ -552,11 +552,11 @@ export function applyDisabledExtensionsToState(state: DashboardState, disabledId
 		}
 
 		if (isShadowedExtension(ext)) {
-			const shadowed: Extension = { ...ext, state: "shadowed", disabledReason: "shadowed" };
+			const shadowed: ExtensionRow = { ...ext, state: "shadowed", disabledReason: "shadowed" };
 			return shadowed;
 		}
 
-		const enabled: Extension = { ...ext, state: "active" };
+		const enabled: ExtensionRow = { ...ext, state: "active" };
 		delete enabled.disabledReason;
 		return enabled;
 	};

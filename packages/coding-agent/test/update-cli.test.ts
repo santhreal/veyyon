@@ -21,6 +21,13 @@ import {
 import Update from "@veyyon/coding-agent/commands/update";
 import { removeWithRetries } from "@veyyon/utils";
 import type { CliConfig } from "@veyyon/utils/cli";
+import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makeCmdShimDir = useTrackedTempDirs("veyyon-cmd-shim-");
 
 const tempDirs: string[] = [];
 
@@ -213,7 +220,7 @@ describe("resolveUpdateMethod classifies binary vs source installs", () => {
 	it("reads a real on-disk .cmd shim, not just an injected reader", () => {
 		// Proves the default reader is wired correctly, so the production path is
 		// covered and not only the injected-seam tests above.
-		const dir = nodeFs.mkdtempSync(path.join(os.tmpdir(), "veyyon-cmd-shim-"));
+		const dir = makeCmdShimDir();
 		const launcher = path.join(dir, "src", "packages", "coding-agent", "scripts", "veyyon.cmd");
 		const shim = path.join(dir, "veyyon.cmd");
 		nodeFs.writeFileSync(shim, `@echo off\r\n"${launcher}" %*`);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { PROMPTS } from "../prompts/registry";
+import { sessionPrompts } from "../prompts/session/rows";
 import {
 	assembleDefaultTemplate,
 	DEFAULT_TEMPLATE_SECTION_ORDER,
@@ -29,18 +29,18 @@ describe("assembleDefaultTemplate byte-equality", () => {
 	 * lost or duplicated bytes.
 	 */
 	it("reproduces the source template exactly with no overrides", () => {
-		expect(assembleDefaultTemplate()).toBe(PROMPTS["session/system-prompt"].text);
+		expect(assembleDefaultTemplate()).toBe(sessionPrompts["session/system-prompt"].text);
 	});
 
 	/** Empty override object must behave identically to no argument at all. */
 	it("treats an empty override object as no override", () => {
-		expect(assembleDefaultTemplate({})).toBe(PROMPTS["session/system-prompt"].text);
+		expect(assembleDefaultTemplate({})).toBe(sessionPrompts["session/system-prompt"].text);
 	});
 
 	/** Concatenating the exported sections in canonical order is the source file. */
 	it("concatenates its sections in order back into the source", () => {
 		const joined = DEFAULT_TEMPLATE_SECTION_ORDER.map(key => DEFAULT_TEMPLATE_SECTIONS[key]).join("");
-		expect(joined).toBe(PROMPTS["session/system-prompt"].text);
+		expect(joined).toBe(sessionPrompts["session/system-prompt"].text);
 	});
 });
 
@@ -61,7 +61,7 @@ describe("default template section boundaries", () => {
 
 	/** The preamble (`conventions`) precedes ROLE and carries no later banner. */
 	it("puts the conventions preamble first and free of later banners", () => {
-		expect(PROMPTS["session/system-prompt"].text.startsWith(DEFAULT_TEMPLATE_SECTIONS.conventions)).toBe(true);
+		expect(sessionPrompts["session/system-prompt"].text.startsWith(DEFAULT_TEMPLATE_SECTIONS.conventions)).toBe(true);
 		expect(DEFAULT_TEMPLATE_SECTIONS.conventions).not.toContain("ROLE\n==");
 		expect(DEFAULT_TEMPLATE_SECTIONS.conventions).not.toContain("DELIVERY CONTRACT\n==");
 	});
@@ -96,7 +96,10 @@ describe("assembleDefaultTemplate overrides", () => {
 			expect(out).toContain(DEFAULT_TEMPLATE_SECTIONS[key]);
 		}
 		// And the result equals the source with only the tool-policy slice swapped.
-		const expected = PROMPTS["session/system-prompt"].text.replace(DEFAULT_TEMPLATE_SECTIONS.toolPolicy, sentinel);
+		const expected = sessionPrompts["session/system-prompt"].text.replace(
+			DEFAULT_TEMPLATE_SECTIONS.toolPolicy,
+			sentinel,
+		);
 		expect(out).toBe(expected);
 	});
 
@@ -135,7 +138,66 @@ describe("resolveSectionOverrides", () => {
 	 */
 	it("throws loudly on an unknown section name, listing the valid sections", () => {
 		expect(() => resolveSectionOverrides({ delegation: "whatever" })).toThrow(/unknown section "delegation"/);
-		expect(() => resolveSectionOverrides({ toolpolicy: "x" })).toThrow(/valid sections:.*toolPolicy/s);
+		// The list names the registry's kebab ids, because those are the ones the rest
+		// of the product shows: `veyyon prompt --sections`, the PROMPT_SECTIONS
+		// filenames, the statement id prefixes, and every page of the customization
+		// doc. Listing the camelCase property names sent operators looking for a
+		// spelling nothing had ever printed.
+		expect(() => resolveSectionOverrides({ toolpolicy: "x" })).toThrow(/valid sections:.*tool-policy/s);
+	});
+
+	/**
+	 * The section may be named either way, because the product uses two spellings for
+	 * the same six sections and only one of them was accepted here.
+	 *
+	 * The registry's ids are kebab-case and that is what every operator-facing surface
+	 * prints; the camelCase keys exist only because they are TypeScript property
+	 * names. An operator who followed the documentation, wrote `tool-policy` in
+	 * config, and was told the valid sections were `toolPolicy` and five other unseen
+	 * names was being failed for a spelling the product never showed them.
+	 */
+	it("accepts the kebab section id as well as the camelCase key", () => {
+		const replacement = "TOOL POLICY\n====\ncompressed body\n";
+
+		expect(resolveSectionOverrides({ "tool-policy": replacement })).toEqual({ toolPolicy: replacement });
+		expect(resolveSectionOverrides({ "execution-workflow": "EXECUTION WORKFLOW\n====\nx\n" })).toEqual({
+			executionWorkflow: "EXECUTION WORKFLOW\n====\nx\n",
+		});
+		// Both spellings reach the same key, so a config carrying one and an eval
+		// carrying the other cannot end up overriding two different things.
+		expect(resolveSectionOverrides({ "tool-policy": replacement })).toEqual(
+			resolveSectionOverrides({ toolPolicy: replacement }),
+		);
+	});
+
+	/**
+	 * Every section is reachable by its kebab id, not just the ones that happen to be
+	 * multi-word. A single-word section like `role` spells the same either way, and a
+	 * lookup built only from the multi-word conversions would still reject it.
+	 */
+	it("accepts every declared section by its kebab id", () => {
+		const banners: Record<string, string> = {
+			conventions: "<system-conventions>\nx\n",
+			role: "ROLE\n====\nx\n",
+			runtime: "RUNTIME\n====\nx\n",
+			"tool-policy": "TOOL POLICY\n====\nx\n",
+			"execution-workflow": "EXECUTION WORKFLOW\n====\nx\n",
+			"delivery-contract": "DELIVERY CONTRACT\n====\nx\n",
+		};
+
+		for (const [id, text] of Object.entries(banners)) {
+			expect(() => resolveSectionOverrides({ [id]: text })).not.toThrow();
+		}
+	});
+
+	/**
+	 * A validation error quotes what the operator TYPED, not the normalized key. An
+	 * operator who wrote `tool-policy` and read an error about `toolPolicy` would go
+	 * looking for a second override they never wrote.
+	 */
+	it("reports the spelling the operator used, not the normalized one", () => {
+		expect(() => resolveSectionOverrides({ "tool-policy": "no banner here" })).toThrow(/"tool-policy"/);
+		expect(() => resolveSectionOverrides({ "tool-policy": 42 })).toThrow(/"tool-policy" must be a string/);
 	});
 
 	/**
@@ -247,7 +309,10 @@ describe("splitDefaultTemplate fail-loud contract", () => {
 	 * fallbacks).
 	 */
 	it("throws when a required banner is absent", () => {
-		const mangled = PROMPTS["session/system-prompt"].text.replace("TOOL POLICY\n==", "TOOL POLICY REMOVED\n==");
+		const mangled = sessionPrompts["session/system-prompt"].text.replace(
+			"TOOL POLICY\n==",
+			"TOOL POLICY REMOVED\n==",
+		);
 		expect(() => splitDefaultTemplate(mangled)).toThrow(/TOOL POLICY.*banner/s);
 	});
 
@@ -263,7 +328,10 @@ describe("splitDefaultTemplate fail-loud contract", () => {
 	 * camelCase keys survive as the override API's view, derived from the ids.
 	 */
 	it("names the missing section and its banner in the error", () => {
-		const mangled = PROMPTS["session/system-prompt"].text.replace("EXECUTION WORKFLOW\n==", "EXECUTION FLOW\n==");
+		const mangled = sessionPrompts["session/system-prompt"].text.replace(
+			"EXECUTION WORKFLOW\n==",
+			"EXECUTION FLOW\n==",
+		);
 
 		expect(() => splitDefaultTemplate(mangled)).toThrow(/execution-workflow/);
 		expect(() => splitDefaultTemplate(mangled)).toThrow(/EXECUTION WORKFLOW/);

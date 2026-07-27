@@ -15,7 +15,14 @@ import {
 	BaseKernel,
 	DEFAULT_KERNEL_STARTUP_TIMEOUT_MS,
 	getRemainingTimeMs,
+	KERNEL_INTERRUPT_ESCALATION_MS,
+	KERNEL_SHUTDOWN_GRACE_MS,
+	type KernelEnvPatch,
+	type KernelExecuteOptions,
 	type KernelStartOptions,
+	kernelIpcTraceEnvVar,
+	kernelRunnerCacheDir,
+	releaseKernel,
 } from "../kernel-base";
 import type { KernelDisplayOutput } from "../py/display";
 import { hostHasInheritableConsole, shouldDetachKernel, shouldHideKernelWindow } from "../py/spawn-options";
@@ -29,15 +36,15 @@ import {
 	resolveJuliaRuntime,
 } from "./runtime";
 
-export type { KernelExecuteResult, KernelRuntimeEnv } from "../kernel-base";
+export type { KernelExecuteOptions, KernelExecuteResult, KernelRuntimeEnv } from "../kernel-base";
 export { renderKernelDisplay } from "../py/display";
 export type { KernelDisplayOutput };
 
-const TRACE_IPC = $flag("VEYYON_JULIA_IPC_TRACE");
+const TRACE_IPC = $flag(kernelIpcTraceEnvVar("JULIA"));
 
 // Cache the runner script on disk so the subprocess loads it normally. Cached
 // per script hash so installs don't race across versions.
-const RUNNER_CACHE_DIR = path.join(os.tmpdir(), "veyyon-julia-runner");
+const RUNNER_CACHE_DIR = kernelRunnerCacheDir(os.tmpdir(), "julia");
 let RUNNER_SCRIPT_PATH: string | null = null;
 
 async function ensureRunnerScript(): Promise<string> {
@@ -52,23 +59,9 @@ async function ensureRunnerScript(): Promise<string> {
 	return target;
 }
 
-const SHUTDOWN_GRACE_MS = 1_000;
 // Julia compiles its runner on first load, so it needs longer than the shared
 // default before start-up is called a failure.
 const STARTUP_TIMEOUT_MS = DEFAULT_KERNEL_STARTUP_TIMEOUT_MS + 5_000;
-const INTERRUPT_ESCALATION_MS = 5_000;
-
-export interface KernelExecuteOptions {
-	id?: string;
-	cwd?: string;
-	env?: Record<string, string | undefined>;
-	silent?: boolean;
-	storeHistory?: boolean;
-	timeoutMs?: number;
-	signal?: AbortSignal;
-	onChunk?: (text: string) => void | Promise<void>;
-	onDisplay?: (output: KernelDisplayOutput) => void | Promise<void>;
-}
 
 export interface JuliaKernelAvailability {
 	ok: boolean;
@@ -143,24 +136,27 @@ export class JuliaKernel extends BaseKernel<KernelExecuteOptions> {
 			languageName: "Julia",
 			traceIpc: TRACE_IPC,
 			exitPayload: "exit",
-			interruptEscalationMs: INTERRUPT_ESCALATION_MS,
-			shutdownGraceMs: SHUTDOWN_GRACE_MS,
+			interruptEscalationMs: KERNEL_INTERRUPT_ESCALATION_MS,
+			shutdownGraceMs: KERNEL_SHUTDOWN_GRACE_MS,
 			buildPayload: (code, msgId, opts) => {
 				// Convert arguments into a TSV / Base64 payload.
 				const cwdB64 = Buffer.from(opts?.cwd ?? "").toString("base64");
 				const silentVal = opts?.silent ? "1" : "0";
 				const storeHistVal = opts?.storeHistory !== false && !opts?.silent ? "1" : "0";
 
-				// Format environment variables as key1_b64:val1_b64 key2_b64:val2_b64
+				// Format environment variables as key1_b64:val1_b64 key2_b64:val2_b64.
+				// A `null` in the patch CLEARS the variable, and the wire needs a way to say
+				// that: the key is prefixed with `!` and the value left empty. `!` is not in
+				// the base64 alphabet, so it cannot collide with an encoded key, and a runner
+				// that predates the marker simply fails to decode that one pair rather than
+				// setting the variable to something wrong.
 				const envPairs: string[] = [];
 				if (opts?.env) {
 					for (const key in opts.env) {
 						const val = opts.env[key];
-						if (val !== undefined) {
-							const k_b64 = Buffer.from(key).toString("base64");
-							const v_b64 = Buffer.from(val).toString("base64");
-							envPairs.push(`${k_b64}:${v_b64}`);
-						}
+						if (val === undefined) continue;
+						const k_b64 = Buffer.from(key).toString("base64");
+						envPairs.push(val === null ? `!${k_b64}:` : `${k_b64}:${Buffer.from(val).toString("base64")}`);
 					}
 				}
 				const envPairsStr = envPairs.join(" ");
@@ -223,26 +219,39 @@ export class JuliaKernel extends BaseKernel<KernelExecuteOptions> {
 			await kernel.executeWithBudget(JULIA_PRELUDE, startup.signal, startupBudget, "Julia kernel prelude");
 			return kernel;
 		} catch (err) {
-			await kernel.shutdown({ timeoutMs: SHUTDOWN_GRACE_MS }).catch(() => {});
+			await releaseKernel(kernel, "julia-kernel-startup-failed", { timeoutMs: KERNEL_SHUTDOWN_GRACE_MS });
 			throw err;
 		}
 	}
 }
 
-function buildInitScript(cwd: string, env?: Record<string, string | undefined>): string {
-	const envPayload: Record<string, string> = {};
-	for (const key in env) {
-		const value = env[key];
-		if (value !== undefined) envPayload[key] = value;
-	}
+/**
+ * The `cd` + env preamble prepended to a Julia execution request.
+ *
+ * `null` CLEARS a variable and `undefined` leaves it alone, which is the contract
+ * {@link KernelEnvPatch} documents and the Python runner already honoured. This
+ * function used to take `Record<string, string | undefined>` and test only
+ * `value !== undefined`, so a `null` reached `Buffer.from(null)` and threw a
+ * TypeError while BUILDING the script -- the request failed before Julia saw a byte
+ * of it.
+ *
+ * Exported so the regression suite can assert the emitted bytes directly. The
+ * alternative is a live kernel, which needs the interpreter installed and would not
+ * run in CI, and this contract is precisely about what text gets generated.
+ */
+export function buildInitScript(cwd: string, env?: KernelEnvPatch): string {
+	const b64 = (text: string) => Buffer.from(text).toString("base64");
 	const lines = [
-		`__veyyon_init_cwd = String(Base64.base64decode("${Buffer.from(cwd).toString("base64")}"))`,
+		`__veyyon_init_cwd = String(Base64.base64decode("${b64(cwd)}"))`,
 		"try cd(__veyyon_init_cwd) catch; end",
 	];
-	for (const key in envPayload) {
-		const k_b64 = Buffer.from(key).toString("base64");
-		const v_b64 = Buffer.from(envPayload[key]).toString("base64");
-		lines.push(`ENV[String(Base64.base64decode("${k_b64}"))] = String(Base64.base64decode("${v_b64}"))`);
+	for (const key in env) {
+		const value = env[key];
+		if (value === undefined) continue;
+		const keyExpr = `String(Base64.base64decode("${b64(key)}"))`;
+		lines.push(
+			value === null ? `delete!(ENV, ${keyExpr})` : `ENV[${keyExpr}] = String(Base64.base64decode("${b64(value)}"))`,
+		);
 	}
 	// Avoid modifying LOAD_PATH if not necessary, but if needed, prepend cwd
 	lines.push("if !(__veyyon_init_cwd in LOAD_PATH); pushfirst!(LOAD_PATH, __veyyon_init_cwd); end");

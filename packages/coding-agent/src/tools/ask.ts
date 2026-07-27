@@ -34,26 +34,22 @@ import { type as arkType } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { ExtensionUISelectItem } from "../extensibility/extensions";
 import { HOOK_EDITOR_TEXT_PAD_COLS } from "../modes/components/hook-editor";
-import { getMarkdownTheme, type Theme, theme } from "../modes/theme/theme";
-import { PROMPTS } from "../prompts/registry";
+import { getMarkdownTheme } from "../modes/theme/markdown-theme";
+import { type Theme, theme } from "../modes/theme/theme";
+import { toolsPrompts } from "../prompts/tools/rows";
 import { vocalizer } from "../tts/vocalizer";
 import { framedBlock, renderStatusLine } from "../tui";
 import type { ToolSession } from ".";
+// Only the free-text label and the reserved-label predicate: the other two labels were declared here purely to
+// populate the reserved-label record, while the module that actually renders and compares them is the extension
+// UI controller. That split is why the values were spelled twice.
+import { ASK_OTHER_OPTION_LABEL, isReservedAskOptionLabel } from "./ask-option-labels";
 import { formatErrorMessage, formatMeta, formatTitle } from "./render-utils";
 import { ToolAbortError } from "./tool-errors";
 
 // =============================================================================
 // Types
 // =============================================================================
-
-const OTHER_OPTION = "Other (type your own)";
-const CHAT_ABOUT_THIS_OPTION = "Chat about this";
-const NEXT_OPTION = "Next →";
-const RESERVED_OPTION_LABELS: Record<string, true> = {
-	[OTHER_OPTION]: true,
-	[CHAT_ABOUT_THIS_OPTION]: true,
-	[NEXT_OPTION]: true,
-};
 
 const OptionItem = arkType({
 	label: arkType("string").describe("display label"),
@@ -69,7 +65,7 @@ const QuestionItem = arkType({
 	"multi?": arkType("boolean").describe("allow multiple selections"),
 	"recommended?": arkType("number").describe("recommended option index"),
 }).narrow((question, ctx) => {
-	const reserved = question.options.find(option => RESERVED_OPTION_LABELS[option.label] === true);
+	const reserved = question.options.find(option => isReservedAskOptionLabel(option.label));
 	return (
 		reserved === undefined ||
 		ctx.mustBe(`defined with option labels that do not collide with reserved runtime labels: ${reserved.label}`)
@@ -312,7 +308,7 @@ function buildCustomInputRows(
 	context: CustomInputContext,
 	contentWidth: number,
 ): CustomInputRow[] {
-	const selectedIndex = options.findIndex(option => getSelectOptionLabel(option) === OTHER_OPTION);
+	const selectedIndex = options.findIndex(option => getSelectOptionLabel(option) === ASK_OTHER_OPTION_LABEL);
 	const checked = new Set(context.checkedIndices ?? []);
 	const window = pickCustomInputOptionWindow(options.length, selectedIndex, checked);
 	const rows: CustomInputRow[] = [];
@@ -572,7 +568,7 @@ async function askSingleQuestion(
 			if (!navigation?.allowForward && selected.size > 0) {
 				opts.push(doneLabel);
 			}
-			opts.push(OTHER_OPTION);
+			opts.push(ASK_OTHER_OPTION_LABEL);
 
 			const checkedIndices: number[] = [];
 			for (let i = 0; i < questionOptions.length; i++) {
@@ -601,7 +597,7 @@ async function askSingleQuestion(
 			}
 			if (choice === doneLabel) break;
 
-			if (choice === OTHER_OPTION) {
+			if (choice === ASK_OTHER_OPTION_LABEL) {
 				if (selectTimedOut) {
 					timedOut = true;
 					break;
@@ -638,7 +634,7 @@ async function askSingleQuestion(
 	} else {
 		while (true) {
 			const displayOptions = addRecommendedSuffix(questionOptions, recommended);
-			const optionsWithNavigation: ExtensionUISelectItem[] = [...displayOptions, OTHER_OPTION];
+			const optionsWithNavigation: ExtensionUISelectItem[] = [...displayOptions, ASK_OTHER_OPTION_LABEL];
 
 			let initialIndex = recommended;
 			const previouslySelected = selectedOptions[0];
@@ -672,7 +668,7 @@ async function askSingleQuestion(
 				}
 				break;
 			}
-			if (choice === OTHER_OPTION) {
+			if (choice === ASK_OTHER_OPTION_LABEL) {
 				if (selectTimedOut) {
 					break;
 				}
@@ -826,7 +822,7 @@ export class AskTool implements AgentTool<typeof askSchema, AskToolDetails> {
 	readonly loadMode = "discoverable";
 
 	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(PROMPTS["tools/ask"].text);
+		this.description = prompt.render(toolsPrompts["tools/ask"].text);
 	}
 
 	static createIf(session: ToolSession): AskTool | null {

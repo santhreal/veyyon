@@ -12,9 +12,9 @@
  * multiple reviewer agents based on diff weight and locality.
  */
 import { errorMessage, isRecord, prompt } from "@veyyon/utils";
-import type { CustomCommand, CustomCommandAPI } from "../../../../extensibility/custom-commands/types";
+import type { BundledCommandAPI, CustomCommand } from "../../../../extensibility/custom-commands/types";
 import type { HookCommandContext } from "../../../../extensibility/hooks/types";
-import { PROMPTS } from "../../../../prompts/registry";
+import { requestsPrompts } from "../../../../prompts/requests/rows";
 import * as gh from "../../../../tools/gh";
 import * as git from "../../../../utils/git";
 import * as jj from "../../../../utils/jj";
@@ -247,7 +247,7 @@ function buildReviewPrompt(
 		hunksPreview: skipDiff ? getDiffPreview(f.hunks, linesPerFile) : "",
 	}));
 
-	return prompt.render(PROMPTS["requests/review"].text, {
+	return prompt.render(requestsPrompts["requests/review"].text, {
 		mode,
 		files: filesWithExt,
 		excluded: stats.excluded,
@@ -266,11 +266,11 @@ function buildReviewPrompt(
 }
 
 function buildCustomReviewPrompt(instructions: string): string {
-	return prompt.render(PROMPTS["requests/review-custom"].text, { instructions });
+	return prompt.render(requestsPrompts["requests/review-custom"].text, { instructions });
 }
 
 function buildHeadlessReviewPrompt(focus?: string): string {
-	return prompt.render(PROMPTS["requests/review-headless"].text, { focus });
+	return prompt.render(requestsPrompts["requests/review-headless"].text, { focus });
 }
 
 const REVIEW_CONTEXT_PR_LIMIT = 3;
@@ -394,7 +394,7 @@ function buildReviewPromptFromDiff(
 }
 
 async function buildPrReviewPrompt(
-	api: CustomCommandAPI,
+	api: BundledCommandAPI,
 	ctx: HookCommandContext,
 	ref: ReviewPrRef,
 	extraInstructions: string,
@@ -471,8 +471,20 @@ function findRecentPrRefs(ctx: HookCommandContext, limit: number): ReviewPrRef[]
 export class ReviewCommand implements CustomCommand {
 	name = "review";
 	description = "Launch interactive code review";
+	/**
+	 * Every prompt this command builds says `agent: "reviewer"`, and `reviewer` is a
+	 * bundled specialist that ships disabled — so without this declaration `/review`
+	 * would be refused on a stock install.
+	 *
+	 * Declaring it is the honest way to keep that working. The alternative, and what
+	 * the code used to do, was a third enable state meaning "disabled but still runs
+	 * when named", which made the whole switch unreadable to keep one command alive.
+	 * The setting governs what the MODEL may choose; running `/review` is you asking
+	 * for a review outright.
+	 */
+	spawnsAgents = ["reviewer"] as const;
 
-	constructor(private api: CustomCommandAPI) {}
+	constructor(private api: BundledCommandAPI) {}
 
 	async execute(args: string[], ctx: HookCommandContext): Promise<string | undefined> {
 		const parsedArgs = extractReviewPrRefFromArgs(args);
@@ -652,7 +664,7 @@ export class ReviewCommand implements CustomCommand {
  * Branches, newest git first. Failures propagate: the caller tells "git would not answer" apart from
  * "this repository has no branches", and swallowing them here made those the same answer.
  */
-async function getGitBranches(api: CustomCommandAPI): Promise<string[]> {
+async function getGitBranches(api: BundledCommandAPI): Promise<string[]> {
 	return git.branch.list(api.cwd, { all: true });
 }
 
@@ -665,11 +677,11 @@ async function getGitBranches(api: CustomCommandAPI): Promise<string[]> {
  * caller already turns a throw into `Failed to get diff: <reason>`, and the two `git.diff` calls
  * three lines below it were never guarded either, so this is also what the surrounding code does.
  */
-async function getGitStatus(api: CustomCommandAPI): Promise<string> {
+async function getGitStatus(api: BundledCommandAPI): Promise<string> {
 	return git.status(api.cwd);
 }
 
-async function getUncommittedReviewDiff(api: CustomCommandAPI): Promise<CurrentReviewDiff> {
+async function getUncommittedReviewDiff(api: BundledCommandAPI): Promise<CurrentReviewDiff> {
 	if (await jj.repo.is(api.cwd)) {
 		return {
 			diffText: await jj.diff(api.cwd),
@@ -700,7 +712,7 @@ async function getUncommittedReviewDiff(api: CustomCommandAPI): Promise<CurrentR
 }
 
 /** Recent commits as `hash subject` lines. Failures propagate, for the reason on {@link getGitBranches}. */
-async function getRecentCommits(api: CustomCommandAPI, count: number): Promise<string[]> {
+async function getRecentCommits(api: BundledCommandAPI, count: number): Promise<string[]> {
 	return git.log.onelines(api.cwd, count);
 }
 

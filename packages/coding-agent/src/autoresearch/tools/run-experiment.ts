@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Text } from "@veyyon/tui";
-import { formatBytes } from "@veyyon/utils";
+import { errorMessage, formatBytes } from "@veyyon/utils";
 import { type } from "arktype";
 import { executeBash } from "../../exec/bash-executor";
 import type { ToolDefinition } from "../../extensibility/extensions";
@@ -15,10 +15,10 @@ import {
 	EXPERIMENT_MAX_LINES,
 	formatElapsed,
 	formatNum,
+	gitStatusPorcelain,
+	gitWorkDirPrefix,
 	parseAsiLines,
 	parseMetricLines,
-	tryGitPrefix,
-	tryGitStatus,
 } from "../helpers";
 import { buildExperimentState } from "../state";
 import { openAutoresearchStorageIfExists } from "../storage";
@@ -79,9 +79,25 @@ export function createRunExperimentTool(
 			})();
 
 			const resolvedCommand = DEFAULT_HARNESS_COMMAND;
-			const preRunStatus = await tryGitStatus(ctx.cwd);
-			const workDirPrefix = await tryGitPrefix(ctx.cwd);
-			const preRunDirtyPaths = parseWorkDirDirtyPaths(preRunStatus, workDirPrefix);
+			// The pre-run dirty set is what tells the difference between the user's own uncommitted work and
+			// what this experiment changes, and it is recorded on the run for the log and the revert to use
+			// later. An unreadable status used to become an EMPTY set, which claims the tree was clean: every
+			// pre-existing dirty file would then be attributed to the experiment and reverted with it.
+			let preRunDirtyPaths: string[];
+			try {
+				const preRunStatus = await gitStatusPorcelain(ctx.cwd);
+				const workDirPrefix = await gitWorkDirPrefix(ctx.cwd);
+				preRunDirtyPaths = parseWorkDirDirtyPaths(preRunStatus, workDirPrefix);
+			} catch (err) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Error: git status failed, so no run was started: ${errorMessage(err)}`,
+						},
+					],
+				};
+			}
 
 			const startedAt = Date.now();
 			const insertedRun = storage.insertRun({

@@ -1,6 +1,6 @@
 import * as os from "node:os";
 import * as path from "node:path";
-import { $flag, $which, logger } from "@veyyon/utils";
+import { $flag, $which, errorMessage, logger } from "@veyyon/utils";
 import { TOML } from "bun";
 
 /**
@@ -91,7 +91,15 @@ async function parseConfig(): Promise<LspmuxConfig | null> {
 			return null;
 		}
 		return TOML.parse(await file.text()) as LspmuxConfig;
-	} catch {
+	} catch (err) {
+		// Absence is already answered above, so reaching here means the config EXISTS and could not be read or
+		// parsed. That used to be indistinguishable from "lspmux is not configured", so a typo in the TOML
+		// silently reverted every language server to the direct path with no multiplexing. Null still stands
+		// for "no config", because the direct path is a working fallback, but the reason is now visible.
+		logger.warn("The lspmux config could not be parsed; language servers will not be multiplexed", {
+			path: getConfigPath(),
+			error: errorMessage(err),
+		});
 		return null;
 	}
 }
@@ -119,6 +127,9 @@ async function checkServerRunning(binaryPath: string): Promise<boolean> {
 
 		return exited === 0;
 	} catch {
+		// A liveness probe: spawning the binary at all failed, which answers the question being asked -- this
+		// lspmux is not usable -- exactly as a non-zero exit does. The caller responds by starting language
+		// servers directly, which is the documented fallback rather than a degraded guess.
 		return false;
 	}
 }

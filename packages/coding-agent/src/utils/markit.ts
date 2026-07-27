@@ -1,5 +1,7 @@
 import * as path from "node:path";
-import { isCancellation, logger, untilAborted } from "@veyyon/utils";
+import { isCancellation, untilAborted } from "@veyyon/utils/abortable";
+// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
+import * as logger from "@veyyon/utils/logger";
 import type { ConversionResult, Markit, StreamInfo } from "../markit";
 import { ToolAbortError, toolAbort } from "../tools/tool-errors";
 import {

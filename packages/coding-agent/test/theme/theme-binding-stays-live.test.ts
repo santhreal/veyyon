@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import fs from "node:fs";
 import path from "node:path";
 import { theme as themeFromEngine } from "@veyyon/coding-agent/modes/theme/theme";
@@ -19,6 +19,31 @@ const BINDING = path.join(import.meta.dir, "../../src/modes/theme/theme-binding.
  * getter on its null-object UI adapter.
  */
 describe("the active theme binding stays live", () => {
+	/**
+	 * Publish probes, then put the real theme back.
+	 *
+	 * The probes below are deliberately NOT themes -- `{ name: "first-probe" }` has no colours, no
+	 * symbols and no `spinnerFrames` -- because the contract under test is only that the binding
+	 * forwards whatever was published. But the binding is process-global and every renderer in the
+	 * process reads it, so leaving a probe installed hands a themeless object to whatever renders next.
+	 *
+	 * That is not hypothetical: leaving one installed made 12 tests in three unrelated suites
+	 * (session-manager migration, large-session memory guards, eval/idle-timeout) fail with
+	 * `TypeError: undefined is not an object (evaluating 'theme.spinnerFrames.length')` from a
+	 * `ToolExecution` spinner interval still ticking every 80ms, reported by bun as an unhandled error
+	 * between tests and blamed on whichever test happened to be running. Restoring the previous value
+	 * costs one line and keeps this suite's blast radius inside this suite.
+	 */
+	let previousTheme: Theme;
+
+	beforeEach(() => {
+		previousTheme = theme;
+	});
+
+	afterEach(() => {
+		setActiveTheme(previousTheme);
+	});
+
 	/**
 	 * The contract in one case. Read through the module binding AFTER a
 	 * reassignment, not through a value captured before it, and the new theme must

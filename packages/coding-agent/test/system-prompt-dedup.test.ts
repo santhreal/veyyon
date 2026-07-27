@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { initializeWithSettings } from "@veyyon/coding-agent/capability";
 import { Settings } from "@veyyon/coding-agent/config/settings";
@@ -12,6 +11,14 @@ import {
 } from "@veyyon/coding-agent/system-prompt";
 import { escapeRegExp } from "@veyyon/utils";
 import { cleanupTempHome } from "./helpers/temp-home-cleanup";
+import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makePiSystemPromptDir = useTrackedTempDirs("pi-system-prompt-");
+const makePiSystemHomeDir = useTrackedTempDirs("pi-system-home-");
 
 // Discovering a bare project AGENTS.md (not under .veyyon/) is the foreign
 // agents-md convention, gated behind the (default-off) importForeignConfig
@@ -37,8 +44,8 @@ describe("SYSTEM.md prompt assembly", () => {
 	let originalHome: string | undefined;
 
 	beforeEach(() => {
-		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-system-prompt-"));
-		tempHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-system-home-"));
+		tempDir = makePiSystemPromptDir();
+		tempHomeDir = makePiSystemHomeDir();
 		originalHome = process.env.HOME;
 		process.env.HOME = tempHomeDir;
 	});

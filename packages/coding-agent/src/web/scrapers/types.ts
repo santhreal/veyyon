@@ -2,14 +2,18 @@
  * Shared types and utilities for web-fetch handlers
  */
 import { scheduler } from "node:timers/promises";
-import { clamp, errorMessage, isCancellation } from "@veyyon/utils";
+import { isCancellation } from "@veyyon/utils/abortable";
+// Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
+import { clamp } from "@veyyon/utils/math";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import type TurndownService from "turndown";
 
 import type { AgentStorage } from "../../session/agent-storage";
 import { ToolAbortError, throwIfAborted } from "../../tools/tool-errors";
 import { isTimeoutError, scopedTimeoutSignal } from "../../utils/fetch-timeout";
+import { CHROME_WINDOWS_USER_AGENT } from "../search/providers/browser-headers";
 
-export { formatNumber } from "@veyyon/utils";
+export { formatNumber } from "@veyyon/utils/format";
 
 export interface RenderResult {
 	url: string;
@@ -95,11 +99,12 @@ export type SpecialHandler = (
 export const MAX_OUTPUT_CHARS = 500_000;
 export const MAX_BYTES = 50 * 1024 * 1024;
 
-const USER_AGENTS = [
-	"curl/8.0",
-	"Mozilla/5.0 (compatible; TextBot/1.0)",
-	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-];
+/**
+ * Escalation ladder for a page that answers as though we are a bot: plain curl, then a polite bot, then a real
+ * browser. Only the last rung has to get through, so its Chrome version comes from the one place that states
+ * what browser this tree claims to be rather than from a literal here that went eighteen releases stale.
+ */
+const USER_AGENTS = ["curl/8.0", "Mozilla/5.0 (compatible; TextBot/1.0)", CHROME_WINDOWS_USER_AGENT];
 
 function isBotBlocked(status: number, content: string): boolean {
 	if (status === 403 || status === 503) {
@@ -292,6 +297,8 @@ export async function loadPage(url: string, options: LoadPageOptions = {}): Prom
 
 				if (totalSize > maxBytes) {
 					truncated = true;
+					// The size cap is reached, `truncated` is set, and the bytes collected so far are returned. A
+					// cancel that fails only means the stream ended on its own; the result is unaffected.
 					void reader.cancel().catch(() => {});
 					break;
 				}

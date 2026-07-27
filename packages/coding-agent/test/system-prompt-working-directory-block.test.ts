@@ -19,11 +19,18 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { buildSystemPrompt, type SystemPromptToolMetadata } from "@veyyon/coding-agent/system-prompt";
 import { SET_CWD_TOOL_NAME } from "@veyyon/coding-agent/tools/reroot-hint";
 import { cleanupTempHome } from "./helpers/temp-home-cleanup";
+import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makeWdBlockDir = useTrackedTempDirs("veyyon-wd-block-");
+const makeWdHomeDir = useTrackedTempDirs("veyyon-wd-home-");
 
 function toolMetadata(names: string[]): Map<string, SystemPromptToolMetadata> {
 	return new Map(names.map(name => [name, { label: name, description: `The ${name} tool.` }]));
@@ -35,8 +42,8 @@ describe("the working-directory block and the tool it names", () => {
 	let originalHome: string | undefined;
 
 	beforeEach(() => {
-		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-wd-block-"));
-		tempHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-wd-home-"));
+		tempDir = makeWdBlockDir();
+		tempHomeDir = makeWdHomeDir();
 		originalHome = process.env.HOME;
 		process.env.HOME = tempHomeDir;
 	});

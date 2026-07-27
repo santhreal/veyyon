@@ -419,6 +419,10 @@ export class IndexedSessionStorage implements SessionStorage {
 			if (options.trackDrain && !this.#firstDrainError) this.#firstDrainError = error;
 			throw error;
 		});
+		// `tracked` is what the caller awaits, so the error is delivered there and is NOT swallowed here.
+		// The three guards below exist only to keep the bookkeeping copies of that promise from becoming
+		// unhandled rejections: `tail` is the chain the NEXT write on this path waits on, and it must
+		// resolve so one failed write does not reject every later write to the same file.
 		const tail = tracked.catch(() => {});
 		for (const path of unique) {
 			this.#pathTails.set(path, tail);
@@ -436,6 +440,8 @@ export class IndexedSessionStorage implements SessionStorage {
 				}
 			})
 			.catch(() => {});
+		// A caller that ignores the returned promise (fire-and-forget append) still reaches `#firstDrainError`
+		// above and surfaces at the next drain, so this marks the rejection handled rather than dropping it.
 		tracked.catch(() => {});
 		if (options.trackDrain) {
 			this.#drainPending.add(tracked);
@@ -491,6 +497,9 @@ class IndexedSessionStorageWriter implements SessionStorageWriter {
 				throw this.#recordError(err);
 			}
 		});
+		// The failure travels to the caller through the returned `next`, and `#recordError` also latches it in
+		// `#error` so every later call rethrows it. The chain copy must resolve, or the recorded error would be
+		// re-delivered to unrelated later writers as an unhandled rejection instead of through `#error`.
 		this.#pendingChain = next.catch(() => {});
 		return next;
 	}

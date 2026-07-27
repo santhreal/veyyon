@@ -1,11 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { MAX_ASK_TIMEOUT_SECONDS, Settings } from "@veyyon/coding-agent/config/settings";
 import { logger, removeWithRetries } from "@veyyon/utils";
 import * as YAML from "yaml";
 import { guardDestructivePath } from "../../utils/test/helpers/destructive-guard";
+import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makeSettingsMigrationDir = useTrackedTempDirs("veyyon-settings-migration-");
 
 /**
  * Schema migrations run on EVERY read, so each one has to be a fixed point.
@@ -30,7 +36,7 @@ describe("settings migrations are fixed points", () => {
 	let agentDir = "";
 
 	beforeEach(() => {
-		agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-settings-migration-"));
+		agentDir = makeSettingsMigrationDir();
 	});
 
 	afterEach(async () => {

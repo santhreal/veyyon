@@ -3,7 +3,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentEvent, AgentMessage } from "@veyyon/agent-core";
-import { type AssistantMessage, Effort, type TextContent } from "@veyyon/ai";
+import type { AssistantMessage, TextContent } from "@veyyon/ai";
+import { Effort } from "@veyyon/catalog/effort";
 import {
 	type CompactionEntry,
 	type FileEntry,

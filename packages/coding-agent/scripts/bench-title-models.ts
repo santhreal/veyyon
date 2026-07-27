@@ -23,7 +23,7 @@ import { Database } from "bun:sqlite";
 import * as os from "node:os";
 import * as path from "node:path";
 import { prompt } from "@veyyon/utils";
-import titleSystemPrompt from "../src/prompts/titles/system.md" with { type: "text" };
+import { promptText } from "../src/prompts/registry";
 import { preprocessTinyMessage } from "../src/tiny/message-preproc";
 import { isTinyTitleLocalModelKey } from "../src/tiny/models";
 import { normalizeGeneratedTitle } from "../src/tiny/text";
@@ -81,9 +81,9 @@ const MIN_INPUT_CHARS = 10;
 const MAX_INPUT_CHARS = 800;
 
 /** System prompt with examples (used for the capable Ollama model). */
-const TITLE_PROMPT_WITH_EXAMPLES = prompt.render(titleSystemPrompt, { includeExamples: true });
+const TITLE_PROMPT_WITH_EXAMPLES = prompt.render(promptText("titles/system"), { includeExamples: true });
 /** Example-free prompt matching what the on-device worker ships to tiny models. */
-const TITLE_PROMPT_NO_EXAMPLES = prompt.render(titleSystemPrompt, { includeExamples: false });
+const TITLE_PROMPT_NO_EXAMPLES = prompt.render(promptText("titles/system"), { includeExamples: false });
 
 /** Deterministic mulberry32 PRNG so `--seed` reproduces a sample set. */
 function createRng(seed: number): () => number {

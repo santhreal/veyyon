@@ -7,15 +7,35 @@
  * silent; the CLI now prints a notice so the operator knows matches are literal
  * text, not the regex they wrote.
  */
-import { describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
+import { removeSyncWithRetries } from "@veyyon/utils";
+import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
 
 const cliPath = path.resolve(import.meta.dir, "../../src/cli.ts");
 
+/**
+ * Fixture trees this file made, deleted together at the end.
+ *
+ * Neither these nor the spawn HOMEs were ever deleted. The CLI writes a whole
+ * config root under whatever home it is handed, so one abandoned run was ~287MB;
+ * this suite and the `read`/`models` ones had left 3,265 directories and 34GB in
+ * `/tmp` on the machine where it was found. Registered cleanup rather than
+ * remembered cleanup, because a leak that shows up only on a developer's disk is
+ * invisible to every gate here.
+ */
+const fixtures: string[] = [];
+
+afterAll(() => {
+	for (const dir of fixtures) removeSyncWithRetries(dir);
+	fixtures.length = 0;
+});
+
 function makeFixtureTree(): string {
 	const root = mkdtempSync(path.join(tmpdir(), "veyyon-grep-fixture-"));
+	fixtures.push(root);
 	writeFileSync(path.join(root, "alpha.txt"), "needle one\nplain line\nneedle two\n");
 	writeFileSync(path.join(root, "beta.md"), "no match here\nneedle three\n");
 	mkdirSync(path.join(root, "sub"));
@@ -24,24 +44,29 @@ function makeFixtureTree(): string {
 }
 
 async function runGrep(args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-	const home = mkdtempSync(path.join(tmpdir(), "veyyon-grep-home-"));
-	const env: Record<string, string | undefined> = { ...process.env, HOME: home, NO_COLOR: "1" };
-	for (const key of ["VEYYON_CODING_AGENT_DIR", "VEYYON_CONFIG_DIR", "VEYYON_PROFILE"]) {
-		delete env[key];
+	// `hermeticSpawnEnv` owns both halves of this: the temp HOME's cleanup, and the
+	// full list of variables a spawned CLI must not inherit. The hand-built env here
+	// cleared three veyyon keys and none of the four XDG bases, so a developer with
+	// `XDG_STATE_HOME` set gave every child CLI a state root inside their real tree.
+	const { env, cleanup } = hermeticSpawnEnv();
+	try {
+		const proc = Bun.spawn(["bun", cliPath, "grep", ...args], {
+			env,
+			stdin: "ignore",
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		const [stdout, stderr, exitCode] = await Promise.all([
+			new Response(proc.stdout).text(),
+			new Response(proc.stderr).text(),
+			proc.exited,
+		]);
+		return { exitCode, stdout, stderr };
+	} finally {
+		// `finally`, so a thrown assertion still cleans up. A cleanup that runs only on
+		// the happy path turns an unconditional leak into an intermittent one.
+		cleanup();
 	}
-
-	const proc = Bun.spawn(["bun", cliPath, "grep", ...args], {
-		env,
-		stdin: "ignore",
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	const [stdout, stderr, exitCode] = await Promise.all([
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
-		proc.exited,
-	]);
-	return { exitCode, stdout, stderr };
 }
 
 describe("veyyon grep", () => {

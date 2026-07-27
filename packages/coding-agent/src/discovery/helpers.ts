@@ -22,7 +22,7 @@ import type { Skill, SkillFrontmatter } from "../capability/skill";
 import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
 import { type ManifestHolder, manifestFromPackageJson } from "../extensibility/manifest-key";
 import { type ConfiguredThinkingLevel, parseConfiguredThinkingLevel } from "../thinking";
-import { normalizeToolNames } from "../tools/builtin-names";
+import { normalizeToolNames, TOOL } from "../tools/builtin-names";
 
 import { buildPluginDirRoot } from "./plugin-dir-roots";
 
@@ -271,8 +271,8 @@ export function parseAgentFields(frontmatter: Record<string, unknown>): ParsedAg
 	if (tools) tools = normalizeToolNames(tools);
 
 	// Subagents with explicit tool lists always need yield
-	if (tools && !tools.includes("yield")) {
-		tools = [...tools, "yield"];
+	if (tools && !tools.includes(TOOL.yield)) {
+		tools = [...tools, TOOL.yield];
 	}
 
 	// Parse spawns field (array, "*", or CSV)
@@ -291,7 +291,7 @@ export function parseAgentFields(frontmatter: Record<string, unknown>): ParsedAg
 	}
 
 	// Backward compat: infer spawns: "*" when tools includes "task"
-	if (spawns === undefined && tools?.includes("task")) {
+	if (spawns === undefined && tools?.includes(TOOL.task)) {
 		spawns = "*";
 	}
 
@@ -620,6 +620,8 @@ async function discoverLinkedExtensionModuleFiles(dir: string): Promise<{
 			if (entry.name.startsWith(".") || entry.isDirectory()) return;
 
 			const entryPath = path.join(dir, entry.name);
+			// A probe for "is this entry a directory": anything that cannot be stat-ed is not a workspace package
+			// and is skipped. Discovery adds candidates, so a missed entry costs a suggestion, never correctness.
 			const stat = await fs.promises.stat(entryPath).catch(() => null);
 			if (!stat?.isDirectory()) return;
 

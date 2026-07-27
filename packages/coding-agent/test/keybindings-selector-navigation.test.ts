@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { ExtensionList } from "@veyyon/coding-agent/modes/components/extensions/extension-list";
-import type { Extension } from "@veyyon/coding-agent/modes/components/extensions/types";
+import type { ExtensionRow } from "@veyyon/coding-agent/modes/components/extensions/types";
 import { HistorySearchComponent } from "@veyyon/coding-agent/modes/components/history-search";
 import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/session-selector";
 import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/components/tree-selector";
@@ -63,7 +63,7 @@ function createMessageNode(id: string, parentId: string | null, content: string)
 	};
 }
 
-function createExtension(id: string, displayName: string): Extension {
+function createExtension(id: string, displayName: string): ExtensionRow {
 	return {
 		id,
 		kind: "tool",

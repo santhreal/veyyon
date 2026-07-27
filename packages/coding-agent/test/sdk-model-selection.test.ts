@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Effort, type FetchImpl } from "@veyyon/ai";
+import type { FetchImpl } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
+import { Effort } from "@veyyon/catalog/effort";
 import { writeModelCache } from "@veyyon/catalog/model-cache";
 import { getBundledModel } from "@veyyon/catalog/models";
+import { AsyncJobManager } from "@veyyon/coding-agent/async/job-manager";
 import { ModelRegistry, type ProviderConfigInput } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/sdk";
@@ -22,7 +24,21 @@ describe("createAgentSession deferred model pattern resolution", () => {
 		fs.mkdirSync(tempDir, { recursive: true });
 	});
 
-	afterEach(() => {
+	/**
+	 * Sessions whose test has no reason to dispose them itself, disposed here.
+	 *
+	 * Not tidiness: the first top-level session in a process installs the process-wide `AsyncJobManager`,
+	 * and `createAgentSession` only builds one when that singleton is empty. A session left alive therefore
+	 * changes the OWNERSHIP outcome for every top-level session created later in the same `bun test`
+	 * process, which is how three undisposed sessions in this file made
+	 * `sdk-async-job-manager-singleton.test.ts` fail while passing on its own.
+	 */
+	const sessionsToDispose: Array<{ dispose: () => Promise<void> }> = [];
+
+	afterEach(async () => {
+		for (const session of sessionsToDispose.splice(0)) {
+			await session.dispose();
+		}
 		vi.restoreAllMocks();
 		for (const authStorage of authStoragesToClose) {
 			authStorage.close();
@@ -113,6 +129,7 @@ describe("createAgentSession deferred model pattern resolution", () => {
 		const { session, modelFallbackMessage } = await createAgentSession(
 			await buildSessionOptions("runtime-provider/runtime-model"),
 		);
+		sessionsToDispose.push(session);
 
 		expect(session.model).toBeDefined();
 		expect(session.model?.provider).toBe("runtime-provider");
@@ -160,6 +177,7 @@ describe("createAgentSession deferred model pattern resolution", () => {
 		const { session, modelFallbackMessage } = await createAgentSession(
 			await buildSessionOptions("missing-provider/missing-model"),
 		);
+		sessionsToDispose.push(session);
 
 		// The behaviour under test is the absence of a silent fallback: an
 		// unresolvable explicit `--model` must leave the session with NO model rather
@@ -294,6 +312,7 @@ describe("createAgentSession deferred model pattern resolution", () => {
 			...(await buildSessionOptions("runtime-provider/runtime-reasoning-model")),
 			settings,
 		});
+		sessionsToDispose.push(session);
 
 		expect(session.model?.provider).toBe("runtime-provider");
 		expect(session.model?.id).toBe("runtime-reasoning-model");
@@ -307,6 +326,7 @@ describe("createAgentSession deferred model pattern resolution", () => {
 			...(await buildSessionOptions("runtime-provider/runtime-reasoning-model")),
 			settings,
 		});
+		sessionsToDispose.push(session);
 
 		expect(session.model?.provider).toBe("runtime-provider");
 		expect(session.model?.id).toBe("runtime-reasoning-model");
@@ -724,5 +744,17 @@ describe("createAgentSession deferred model pattern resolution", () => {
 			await session.dispose();
 			authStorage.close();
 		}
+	});
+
+	/**
+	 * The file must hand the process back with no `AsyncJobManager` installed.
+	 *
+	 * Kept as an assertion because the leak is undetectable from inside this file: four tests here created
+	 * top-level sessions and never disposed them, every test still passed, and the only symptom was
+	 * `sdk-async-job-manager-singleton.test.ts` failing whenever it happened to run afterwards. This test
+	 * fails in the file that caused the problem instead of in the file that suffers it.
+	 */
+	test("leaves no AsyncJobManager installed for the next suite", () => {
+		expect(AsyncJobManager.instance()).toBeUndefined();
 	});
 });

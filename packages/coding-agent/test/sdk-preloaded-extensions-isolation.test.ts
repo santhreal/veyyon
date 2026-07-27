@@ -15,6 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { AsyncJobManager } from "@veyyon/coding-agent/async/job-manager";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { LoadExtensionsResult } from "@veyyon/coding-agent/extensibility/extensions/types";
@@ -53,7 +54,14 @@ describe("createAgentSession preloadedExtensions isolation (issue #2190)", () =>
 		const beforeLength = preloaded.extensions.length;
 		const beforeArrayRef = preloaded.extensions;
 
-		await createAgentSession({
+		// Disposed below, and not optional: the first top-level session in a process installs the
+		// process-wide `AsyncJobManager` singleton, and an undisposed session keeps it installed for every
+		// later suite in the same `bun test` process. That is what made
+		// `sdk-async-job-manager-singleton.test.ts` fail only when run alongside its neighbours: with a
+		// manager already installed, the next top-level session constructs none, owns none, and clears none
+		// on dispose, so an assertion that the singleton is empty afterwards reads the leak instead of the
+		// code. The session also holds timers and temp state, so leaking it is wrong on its own terms.
+		const { session } = await createAgentSession({
 			cwd: sharedDir,
 			agentDir: sharedDir,
 			sessionManager: SessionManager.inMemory(),
@@ -71,9 +79,24 @@ describe("createAgentSession preloadedExtensions isolation (issue #2190)", () =>
 			promptTemplates: [],
 		});
 
-		// The session's own `extensionsResult` carries inline wrappers, but the
-		// caller's array (and its identity) must be untouched.
-		expect(preloaded.extensions).toBe(beforeArrayRef);
-		expect(preloaded.extensions.length).toBe(beforeLength);
+		try {
+			// The session's own `extensionsResult` carries inline wrappers, but the
+			// caller's array (and its identity) must be untouched.
+			expect(preloaded.extensions).toBe(beforeArrayRef);
+			expect(preloaded.extensions.length).toBe(beforeLength);
+		} finally {
+			await session.dispose();
+		}
+	});
+
+	/**
+	 * The suite must leave the process as it found it, or it breaks its neighbours rather than the code.
+	 *
+	 * This is asserted rather than assumed because the leak it guards against is invisible from inside this
+	 * file: everything here passes with or without the dispose above, and the damage shows up as a failure
+	 * in a different suite entirely.
+	 */
+	it("leaves no AsyncJobManager installed for the next suite", () => {
+		expect(AsyncJobManager.instance()).toBeUndefined();
 	});
 });

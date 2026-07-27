@@ -429,13 +429,13 @@ export function normalizeAbsolutePath(path: string): string {
 		}
 		parts.push(part);
 	}
-	return "/" + parts.join("/");
+	return `/${parts.join("/")}`;
 }
 
 /** True when `candidate` is `ancestor` or lies beneath it. */
 function isAtOrUnder(candidate: string, ancestor: string): boolean {
 	if (ancestor === "/") return true;
-	return candidate === ancestor || candidate.startsWith(ancestor + "/");
+	return candidate === ancestor || candidate.startsWith(`${ancestor}/`);
 }
 
 /**

@@ -1,14 +1,14 @@
 /**
  * SYSPROMPT-3: the assembled system prompt must be readable without running a session.
  *
- * `prompts/session/system-prompt.md` is a program, not a document: 86 of its 272
- * lines carry template syntax and 54 open a conditional, so whole regions
- * appear or vanish with the live tool set, the settings, the workspace and the
- * model's harness profile. Reading the file tells you what could ship. Before
- * this inspection existed the only way to see what DID ship was to start a
- * session and export it, which is slow enough that in practice nobody did — so
- * prompt changes were reviewed as diffs of template fragments rather than as
- * the artifact the model receives.
+ * The system prompt is a program, not a document: it is assembled from 68 named
+ * statements, roughly half of them conditional, so whole regions appear or
+ * vanish with the live tool set, the settings, the workspace and the model's
+ * harness profile. Reading the rules tells you what could ship. Before this
+ * inspection existed the only way to see what DID ship was to start a session
+ * and export it, which is slow enough that in practice nobody did — so prompt
+ * changes were reviewed as diffs of template fragments rather than as the
+ * artifact the model receives.
  *
  * The contract these tests defend is FAITHFULNESS. An inspection that is merely
  * plausible is worse than none: it invites review of a prompt nobody was ever
@@ -22,10 +22,18 @@ import { describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	formatInspectionTable,
+	formatStatementTable,
 	inspectSystemPrompt,
 	type PromptInspection,
 } from "@veyyon/coding-agent/system-prompt-builder/prompt-inspect";
 import { SYSTEM_PROMPT_SECTIONS } from "@veyyon/coding-agent/system-prompt-builder/section-registry";
+import {
+	PROMPT_STATEMENTS,
+	STATEMENT_SECTIONS,
+	sectionBanner,
+	statementsOf,
+} from "@veyyon/coding-agent/system-prompt-builder/statement-registry";
+import { prompt } from "@veyyon/utils";
 
 await Settings.init({ inMemory: true });
 
@@ -192,5 +200,188 @@ describe("the breakdown table", () => {
 		const shares = [...table.matchAll(/(\d+\.\d)%/g)].map(match => Number(match[1]));
 
 		expect(shares.reduce((sum, share) => sum + share, 0)).toBeCloseTo(100, 0);
+	});
+});
+
+/**
+ * PER-STATEMENT COST: what each individual rule in the prompt costs.
+ *
+ * WHY THIS EXISTS. The section breakdown above answers "what is taking up the prompt" down to the
+ * section, and TOOL POLICY is a single row of it worth 9KB, so for the section that matters most the
+ * answer is "tool policy is large" and nobody can act on it. A statement is one rule, which is the
+ * granularity at which somebody decides a rule is not earning its tokens, and the granularity an
+ * ablation has to operate on to be designed rather than guessed at.
+ *
+ * The contract these tests defend is that the numbers ADD UP. A cost breakdown whose parts do not
+ * reconcile with the whole is worse than no breakdown: it looks authoritative and misattributes the
+ * cost an operator would act on. Because `render` ends in a `format` pass that normalizes whitespace
+ * ACROSS statement boundaries, the obvious implementation (measure each statement's rendered text)
+ * produces parts that exceed their whole, so the measurement is marginal and the reconciliation
+ * below is what proves the marginal costs are real.
+ */
+describe("what each rule costs", () => {
+	it("prices every registered statement, present or absent", () => {
+		// Absent rules are reported at zero rather than omitted, because "this rule is off and costs
+		// nothing" is an answer somebody wants, and a list of only present rows cannot tell an
+		// off rule from a rule that has been deleted.
+		expect(inspection.fromStatements).toBe(true);
+		expect(inspection.statements).toHaveLength(PROMPT_STATEMENTS.length);
+		expect(inspection.statements.map(statement => statement.id)).toEqual(PROMPT_STATEMENTS.map(row => row.id));
+	});
+
+	/**
+	 * The reconciliation the `InspectedStatement.bytes` doc comment claims, measured.
+	 *
+	 * `section bytes = banner + sum of statement bytes + separator`. The banner belongs to the
+	 * assembler rather than to any statement, and the separator is the one newline
+	 * `statementSectionOverrides` adds after every section but the last. This is the test that makes
+	 * the marginal measurement trustworthy: if it fails, either the pricing is wrong or one of those
+	 * two conventions changed, and both are reasons the numbers stop adding up.
+	 */
+	it("adds up to the section, once the banner and the separator are accounted for", () => {
+		const last = STATEMENT_SECTIONS[STATEMENT_SECTIONS.length - 1];
+
+		for (const section of STATEMENT_SECTIONS) {
+			const priced = inspection.statements.filter(statement => statement.section === section);
+			const sum = priced.reduce((total, statement) => total + statement.bytes, 0);
+			const banner = Buffer.byteLength(prompt.render(sectionBanner(section), {}), "utf8");
+			const separator = section === last ? 0 : 1;
+			const actual = inspection.sections.find(entry => entry.id === section);
+			if (actual === undefined) throw new Error(`${section} is not in this prompt at all`);
+
+			expect(sum + banner + separator, `${section} does not reconcile`).toBe(actual.bytes);
+		}
+	});
+
+	/**
+	 * The text a statement contributed weighs exactly what the statement is charged.
+	 *
+	 * `--statement <id>` prints this text and `--statements` prints that number, so the two operator
+	 * surfaces would disagree about the same rule if the equality did not hold. It also proves the
+	 * marginal definition is sound: the text is taken as the growth after the common prefix with the
+	 * section built without the statement, so a statement whose addition ALSO perturbed earlier bytes
+	 * would break this rather than quietly report a length that disagrees with its own cost.
+	 */
+	it("reports text weighing exactly what the statement is charged", () => {
+		for (const statement of inspection.statements) {
+			expect(Buffer.byteLength(statement.text, "utf8"), `${statement.id}: text and cost disagree`).toBe(
+				statement.bytes,
+			);
+		}
+	});
+
+	it("gives an absent statement no text at all, not the text it would have had", () => {
+		// The alternative would be reporting the text a rule WOULD contribute, which reads as though the
+		// rule were in the prompt. Absent means absent on every field.
+		for (const statement of inspection.statements.filter(entry => !entry.present)) {
+			expect(statement.text, `${statement.id} is absent but carries text`).toBe("");
+		}
+	});
+
+	it("prices a statement at what removing it would save, not at the length of its text", () => {
+		// The distinction the whole measurement rests on. `delivery-contract/personality` is an XML
+		// block whose text is 4 lines of template; what it COSTS is the rendered personality, which
+		// is far larger. A test asserting text length would pass on an implementation that reported
+		// template bytes and misattribute every interpolation in the prompt.
+		const personality = inspection.statements.find(statement => statement.id === "delivery-contract/personality");
+		const row = PROMPT_STATEMENTS.find(statement => statement.id === "delivery-contract/personality");
+
+		expect(personality?.present).toBe(true);
+		expect(row).toBeDefined();
+		expect(personality?.bytes ?? 0, "the rendered cost is not the template's length").toBeGreaterThan(
+			Buffer.byteLength(row?.text ?? "", "utf8") * 2,
+		);
+	});
+
+	it("charges nothing for a rule this configuration leaves out", () => {
+		// This assembly has no `task` tool, so the whole delegation family is off. Charging for it
+		// would be the specific error that makes a cost report useless: paying attention to rules
+		// that are not in the prompt.
+		const absent = inspection.statements.filter(statement => !statement.present);
+
+		expect(absent.length).toBeGreaterThan(10);
+		for (const statement of absent) {
+			expect(statement.bytes, `${statement.id} is absent but charged`).toBe(0);
+			expect(statement.tokens, `${statement.id} is absent but charged tokens`).toBe(0);
+		}
+		expect(absent.map(statement => statement.id)).toContain("tool-policy/delegation-gates");
+	});
+
+	it("says why each rule is in or out, in the condition's own terms", () => {
+		// The cost is only actionable next to the reason it is being paid. A reader seeing
+		// `tool-policy/lsp` at 300 tokens needs "tools has lsp" to know what turns it off.
+		const lsp = inspection.statements.find(statement => statement.id === "tool-policy/lsp");
+		const always = inspection.statements.find(statement => statement.id === "role/principles");
+		const codex = inspection.statements.find(statement => statement.id === "tool-policy/delegation-preferred");
+
+		expect(lsp?.condition).toBe("tools has lsp");
+		expect(always?.condition).toBe("always");
+		expect(codex?.condition).toBe(
+			"tools has task and not useCodexTaskPrompt and eagerTasks and not eagerTasksAlways",
+		);
+	});
+
+	it("carries the purpose from the registry, so the cost sits next to the reason to pay it", () => {
+		for (const statement of inspection.statements) {
+			const row = PROMPT_STATEMENTS.find(entry => entry.id === statement.id);
+			if (row === undefined) throw new Error(`${statement.id} is priced but not registered`);
+			expect(statement.purpose, `${statement.id} lost its purpose`).toBe(row.purpose);
+		}
+	});
+});
+
+describe("the per-statement table", () => {
+	const table = formatStatementTable(inspection);
+
+	it("lists present rules largest first and totals them", () => {
+		// Parsed by shape rather than by field position: the condition is the last column and it
+		// contains spaces, so counting words back from the end reads the condition, not the cost.
+		const rows = table.split("\n").slice(1);
+		const priced = rows.slice(
+			0,
+			rows.findIndex(row => row.startsWith("TOTAL")),
+		);
+		const tokens = priced.map(row => {
+			const match = row.match(/\s(\d+)\s+(\d+)\s+(\d+\.\d)%\s+\S/);
+			expect(match, `unparseable row: ${row}`).not.toBeNull();
+			return Number(match?.[2]);
+		});
+
+		expect(tokens.length).toBe(inspection.statements.filter(statement => statement.present).length);
+		expect(tokens).toEqual([...tokens].sort((a, b) => b - a));
+		const total = Number((rows.find(row => row.startsWith("TOTAL")) ?? "").trim().split(/\s+/).at(-1));
+		expect(total).toBe(tokens.reduce((sum, count) => sum + count, 0));
+	});
+
+	it("names every rule this configuration leaves out, with the condition that would turn it on", () => {
+		// The footer is the half a cost table cannot show, and the condition is what makes it
+		// actionable: a reader can see that a rule needs `tools has lsp` rather than going to the
+		// registry to find out.
+		const absent = inspection.statements.filter(statement => !statement.present);
+
+		expect(table).toContain(`not in this prompt (${absent.length} of ${inspection.statements.length}):`);
+		for (const statement of absent) {
+			expect(table).toContain(`${statement.id.padEnd(0)}`);
+			expect(table).toContain(`needs ${statement.condition}`);
+		}
+	});
+
+	it("refuses to price a prompt that was not assembled from statements", async () => {
+		// Not an empty table, which would read as "the rules cost nothing". A custom system prompt
+		// replaces the assembly, so there is no statement in it to charge for, and saying so is the
+		// only honest output. `fromStatements` is what carries that distinction.
+		const custom = await inspectSystemPrompt({ resolvedCustomPrompt: "just this" });
+
+		expect(custom.fromStatements).toBe(false);
+		expect(custom.statements).toEqual([]);
+		expect(formatStatementTable(custom)).toContain("was not assembled from statements");
+	});
+
+	it("keeps one section's statements in row order in the registry, whatever the table sorts by", () => {
+		// The table sorts by cost; the inspection must not. A consumer diffing two configurations
+		// reads `statements` positionally, so registry order is the contract there.
+		const delivery = inspection.statements.filter(statement => statement.section === "delivery-contract");
+
+		expect(delivery.map(statement => statement.id)).toEqual(statementsOf("delivery-contract").map(row => row.id));
 	});
 });

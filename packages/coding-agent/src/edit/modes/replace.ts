@@ -5,7 +5,6 @@
  * fallback strategies for finding text in files.
  */
 import type { AgentToolResult } from "@veyyon/agent-core";
-import { levenshteinDistance } from "@veyyon/utils";
 import { type } from "arktype";
 import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../lsp";
 import type { ToolSession } from "../../tools";
@@ -14,15 +13,8 @@ import { invalidateFsScanAfterWrite } from "../../tools/fs-cache-invalidation";
 import { outputMeta } from "../../tools/output-meta";
 import { enforcePlanModeWrite, resolvePlanPath } from "../../tools/plan-mode-guard";
 import { generateDiffString, replaceText } from "../diff";
-import { DEFAULT_FUZZY_THRESHOLD, EditMatchError, findMatch, formatOccurrenceError } from "../match";
-import {
-	countLeadingWhitespace,
-	detectLineEnding,
-	normalizeForFuzzy,
-	normalizeToLF,
-	normalizeUnicode,
-	restoreLineEndings,
-} from "../normalize";
+import { EditMatchError, findMatch, formatOccurrenceError } from "../match";
+import { detectLineEnding, normalizeToLF, restoreLineEndings } from "../normalize";
 import { readEditFileTextWithBom, serializeEditFileText } from "../read-file";
 import type { EditToolDetails, LspBatchRequest } from "../renderer";
 import { pruneOversizedEditSnapshots } from "../snapshot-details";

@@ -6,7 +6,10 @@
  */
 import * as path from "node:path";
 import * as url from "node:url";
-import { isDefinitiveOAuthFailure, type TSchema } from "@veyyon/ai";
+import type { TSchema } from "@veyyon/ai";
+// The owner, not the barrel: classifying an OAuth failure is a string test, and
+// `error/auth-classify.ts` reaches 7 modules.
+import { isDefinitiveOAuthFailure } from "@veyyon/ai/error/auth-classify";
 import { errorMessage, logger } from "@veyyon/utils";
 import { FOREIGN_PROVIDER_IDS } from "../capability/index";
 import type { SourceMeta } from "../capability/types";
@@ -14,6 +17,7 @@ import { resolveConfigValue } from "../config/resolve-config-value";
 import type { CustomTool } from "../extensibility/custom-tools/types";
 import { type AuthStorage, REMOTE_REFRESH_SENTINEL } from "../session/auth-storage";
 import {
+	closeTransportDetached,
 	connectToServer,
 	disconnectServer,
 	getPrompt,
@@ -28,6 +32,7 @@ import {
 	unsubscribeFromResources,
 } from "./client";
 import { type LoadMCPConfigsResult, loadAllMCPConfigs, validateServerConfig } from "./config";
+import { mcpManagerInstance, setMcpManagerInstance } from "./manager-instance";
 import {
 	lookupMcpOAuthCredential,
 	type MCPOAuthCredentialLookup,
@@ -174,21 +179,26 @@ export interface MCPDiscoverOptions {
  * Manages connections to MCP servers and provides tools to the agent.
  */
 export class MCPManager {
-	static #instance: MCPManager | undefined;
-
-	/** Process-global instance shared by internal URL protocol handlers and tools. */
+	/**
+	 * Process-global instance shared by internal URL protocol handlers and tools.
+	 *
+	 * The slot itself lives in `./manager-instance`, which imports nothing, so a reader that only needs
+	 * to know whether a manager exists does not have to import this class and its 870 modules. These
+	 * three static methods stay as the public API and delegate, so there is one slot and no caller
+	 * changed. See the note at the top of that module.
+	 */
 	static instance(): MCPManager | undefined {
-		return MCPManager.#instance;
+		return mcpManagerInstance();
 	}
 
 	/** Install or clear the process-global instance. */
 	static setInstance(value: MCPManager | undefined): void {
-		MCPManager.#instance = value;
+		setMcpManagerInstance(value);
 	}
 
 	/** Reset the process-global instance. Test-only. */
 	static resetForTests(): void {
-		MCPManager.#instance = undefined;
+		setMcpManagerInstance(undefined);
 	}
 
 	#connections = new Map<string, MCPServerConnection>();
@@ -785,6 +795,8 @@ export class MCPManager {
 
 		const subscribedUris = this.#subscribedResources.get(name);
 		if (subscribedUris && subscribedUris.size > 0 && connection) {
+			// The connection is disconnected a few lines below, which drops every subscription with it, so an
+			// unsubscribe that fails costs nothing: it is a courtesy to the server, not state we still need.
 			void unsubscribeFromResources(connection, Array.from(subscribedUris)).catch(() => {});
 		}
 		this.#subscribedResources.delete(name);
@@ -923,7 +935,7 @@ export class MCPManager {
 		if (oldConnection) {
 			// Detach onClose to prevent re-entrant reconnect from the close itself
 			oldConnection.transport.onClose = undefined;
-			void oldConnection.transport.close().catch(() => {});
+			closeTransportDetached(oldConnection.transport, name, "reconnect-replaced");
 			this.#connections.delete(name);
 		}
 		this.#pendingConnections.delete(name);
@@ -997,7 +1009,7 @@ export class MCPManager {
 		// Bail out if the server was disconnected or the manager was reset
 		// while we were connecting (e.g. /mcp reload called disconnectAll).
 		if (!this.#serverConfigs.has(name) || this.#epoch !== reconnectEpoch) {
-			await connection.transport.close().catch(() => {});
+			closeTransportDetached(connection.transport, name, "reconnect-superseded");
 			throw new Error(`Server "${name}" was disconnected during reconnection`);
 		}
 
@@ -1030,7 +1042,7 @@ export class MCPManager {
 		} catch (error) {
 			// Clean up the connection to avoid zombie transports
 			connection.transport.onClose = undefined;
-			await connection.transport.close().catch(() => {});
+			closeTransportDetached(connection.transport, name, "reconnect-tool-list-failed");
 			this.#connections.delete(name);
 			throw error;
 		}

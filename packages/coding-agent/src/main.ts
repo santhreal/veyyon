@@ -24,6 +24,7 @@ import {
 	setProjectDir,
 	VERSION,
 } from "@veyyon/utils";
+import { isSessionFileName } from "@veyyon/utils/session-file";
 import chalk from "chalk";
 import { reset as resetCapabilities } from "./capability";
 import { type Args, reportUnrecognizedFlags } from "./cli/args";
@@ -63,7 +64,7 @@ import type { ExtensionUIContext } from "./extensibility/extensions/types";
 import { scheduleMarketplaceAutoUpdate } from "./extensibility/plugins/marketplace-auto-update";
 import { registerDaemonProjectPresence } from "./launch/presence";
 import type { MCPManager } from "./mcp";
-import { setLaunchTip, updateInstalledTip } from "./modes/components/welcome";
+import { setLaunchTip, updateInstalledTip } from "./modes/components/launch-tip";
 import type { InteractiveMode } from "./modes/interactive-mode";
 import type { PrintModeOptions } from "./modes/print-mode";
 import { CURRENT_SETUP_VERSION } from "./modes/setup-version";
@@ -182,7 +183,99 @@ function applyAcpDefaultSettingOverrides(targetSettings: Settings = settings): v
 	applyDefaultSettingOverrides(HOST_DEFAULTED_SETTING_PATHS, targetSettings);
 }
 
-async function readPipedInput(): Promise<string | undefined> {
+/**
+ * How long a run that ALREADY has a prompt waits for the first byte of piped stdin.
+ *
+ * A supervisor, CI runner or wrapper that spawns `veyyon -p "…"` with an inherited pipe it never writes to
+ * nor closes leaves startup blocked forever: `Bun.stdin.text()` waits for EOF, which never comes, and the
+ * run produces nothing but a notice. The prompt was on the command line, so there is something to run.
+ *
+ * The bound applies ONLY before the first byte. A producer that is slow to START is indistinguishable from
+ * one that will never write, and a producer that has begun writing is neither -- so once any byte arrives
+ * the wait is unbounded again and a slow, large piped document is never truncated. Override with
+ * `VEYYON_PIPED_STDIN_WAIT_MS`; `0` restores the old wait-forever behaviour.
+ */
+const PIPED_STDIN_FIRST_BYTE_WAIT_MS = 10_000;
+
+function pipedStdinFirstByteWaitMs(): number {
+	const configured = Number($env.VEYYON_PIPED_STDIN_WAIT_MS);
+	return Number.isFinite(configured) && configured >= 0 ? configured : PIPED_STDIN_FIRST_BYTE_WAIT_MS;
+}
+
+/**
+ * Read stdin to EOF, giving up only if NOTHING arrives and the caller already has a prompt.
+ *
+ * Reads the stream in chunks rather than calling `Bun.stdin.text()` so "has anything arrived yet" is
+ * observable: that is the whole distinction the bound rests on. The deadline is armed before the first
+ * chunk and dropped the moment one lands, so a producer that writes slowly, or writes a lot, is waited on
+ * for as long as it takes.
+ *
+ * Returns `undefined` when it gave up, having said so on stderr -- a run that silently dropped the piped
+ * half of its input would be a silent fallback (Law 10), and the operator needs to know the context they
+ * piped is not in the prompt.
+ */
+export async function readStdinWithFirstByteBound(
+	havePromptArgument: boolean,
+	/** The stream to read. Injected by tests; production always reads the process's own stdin. */
+	stream: ReadableStream<Uint8Array> = Bun.stdin.stream(),
+): Promise<string | undefined> {
+	const waitMs = pipedStdinFirstByteWaitMs();
+	if (!havePromptArgument || waitMs === 0) return await new Response(stream).text();
+
+	const reader = stream.getReader();
+	const chunks: Uint8Array[] = [];
+	try {
+		for (;;) {
+			const next = reader.read();
+			// Only the FIRST read races the deadline. `Promise.race` leaves the losing timer pending, so it
+			// is cleared explicitly rather than left to keep the process alive.
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			const result =
+				chunks.length === 0
+					? await Promise.race([
+							next,
+							new Promise<"timeout">(resolve => {
+								timer = setTimeout(() => resolve("timeout"), waitMs);
+								timer.unref?.();
+							}),
+						])
+					: await next;
+			if (timer !== undefined) clearTimeout(timer);
+			if (result === "timeout") {
+				process.stderr.write(
+					`${chalk.yellow(`No piped input arrived within ${Math.round(waitMs / 1000)}s`)}: ${chalk.dim(
+						"continuing with the prompt from the command line. Set VEYYON_PIPED_STDIN_WAIT_MS=0 to wait indefinitely.",
+					)}\n`,
+				);
+				return undefined;
+			}
+			if (result.done) break;
+			if (result.value !== undefined) chunks.push(result.value);
+		}
+	} finally {
+		// The read loop owns the lock; release it so nothing downstream (interactive keystroke handling on a
+		// pipe-fed run, a protocol transport in a later mode) finds stdin locked by a finished read.
+		reader.releaseLock();
+	}
+	// Concatenate by hand rather than through `Blob`: a multi-byte character split across two chunks must
+	// be decoded once over the whole buffer, or a UTF-8 boundary lands as a replacement character.
+	const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+	const joined = new Uint8Array(total);
+	let offset = 0;
+	for (const chunk of chunks) {
+		joined.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return new TextDecoder().decode(joined);
+}
+
+/**
+ * Read piped stdin to EOF.
+ *
+ * @param havePromptArgument true when the command line already carries a prompt, which is what makes a
+ * bounded first-byte wait safe: without it there is nothing to run and waiting is the only option.
+ */
+async function readPipedInput(havePromptArgument = false): Promise<string | undefined> {
 	// On a pipe or redirect Bun/Node leave `isTTY` as `undefined`, never `false`
 	// — so this must be a truthy check. (`!== false` made every piped prompt
 	// vanish: `echo hi | veyyon -p` exited 0 with zero output.)
@@ -194,10 +287,20 @@ async function readPipedInput(): Promise<string | undefined> {
 	}, 1000);
 	notice.unref?.();
 	try {
-		const text = await Bun.stdin.text();
+		const text = await readStdinWithFirstByteBound(havePromptArgument);
+		if (text === undefined) return undefined;
 		if (text.trim().length === 0) return undefined;
 		return text;
-	} catch {
+	} catch (error) {
+		// A read that FAILS is not the same as an empty pipe, and the difference is the whole bug this
+		// function's first comment describes: `undefined` sends the CLI on as if nothing was piped, so a
+		// broken pipe or an unreadable stdin ends as exit 0 with no output and no explanation -- the user
+		// sees their prompt vanish. Say so on stderr before returning; the prompt is genuinely unavailable,
+		// so the return value cannot change, but it must not be silent (Law 10).
+		process.stderr.write(
+			`${chalk.yellow("Could not read the prompt from piped stdin")}: ${errorMessage(error)}\n` +
+				`${chalk.dim("Continuing without a piped prompt. Pass the prompt as an argument if this repeats.")}\n`,
+		);
 		return undefined;
 	} finally {
 		clearTimeout(notice);
@@ -712,7 +815,7 @@ export async function createSessionManager(
 			throw new SessionResolutionError("--fork requires session persistence");
 		}
 		const forkSource = parsed.fork;
-		if (forkSource.includes("/") || forkSource.includes("\\") || forkSource.endsWith(".jsonl")) {
+		if (forkSource.includes("/") || forkSource.includes("\\") || isSessionFileName(forkSource)) {
 			return await SessionManager.forkFrom(forkSource, cwd, parsed.sessionDir);
 		}
 		const match = await resolveResumableSession(forkSource, cwd, parsed.sessionDir);
@@ -732,7 +835,7 @@ export async function createSessionManager(
 
 	if (typeof parsed.resume === "string") {
 		const sessionArg = parsed.resume;
-		if (sessionArg.includes("/") || sessionArg.includes("\\") || sessionArg.endsWith(".jsonl")) {
+		if (sessionArg.includes("/") || sessionArg.includes("\\") || isSessionFileName(sessionArg)) {
 			return await SessionManager.open(sessionArg, parsed.sessionDir);
 		}
 		const match = await resolveResumableSession(sessionArg, cwd, parsed.sessionDir);
@@ -1135,7 +1238,7 @@ interface RunRootCommandDependencies {
 	 * depended on how the sweep was launched: with `< /dev/null` stdin is at EOF
 	 * immediately and everything passed.
 	 */
-	readPipedInput?: () => Promise<string | undefined>;
+	readPipedInput?: (havePromptArgument?: boolean) => Promise<string | undefined>;
 }
 const DEFAULT_RUN_ROOT_DEPENDENCIES: RunRootCommandDependencies = {};
 
@@ -1272,7 +1375,11 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 	// Protocol modes own stdin; treating it as prompt text would consume JSON-RPC frames before their transports start.
 	const pipedInput = isProtocolMode
 		? undefined
-		: await logger.time("readPipedInput", deps.readPipedInput ?? readPipedInput);
+		: await logger.time("readPipedInput", () =>
+				// A prompt already on the command line is what makes the bounded first-byte wait safe: an
+				// inherited pipe that nobody writes to no longer blocks the run forever.
+				(deps.readPipedInput ?? readPipedInput)(parsedArgs.messages.length > 0),
+			);
 	const autoPrint = pipedInput !== undefined && !parsedArgs.print && parsedArgs.mode === undefined;
 	const isInteractive = !parsedArgs.print && !autoPrint && parsedArgs.mode === undefined;
 	// Interactive mode reads keystrokes from stdin; without a TTY (cron, CI,
@@ -1693,6 +1800,8 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 		} else if (isInteractive) {
 			// Gate the check itself, not just its display: with the setting off the
 			// user has opted out of the network round-trip, not merely its output.
+			// The check is a courtesy: the network being unavailable must never delay or fail startup, so a failed
+			// check resolves to `undefined`, which is read below as "no newer version to mention".
 			const versionCheckPromise = settingsInstance.get("startup.checkUpdate")
 				? checkForNewVersion(VERSION).catch(() => undefined)
 				: Promise.resolve(undefined);

@@ -4,8 +4,12 @@
  * Calls Z.AI's remote MCP server (`webSearchPrime`) and adapts results into
  * the unified SearchResponse shape used by the web search tool.
  */
-import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/ai";
+
+import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
+import { withAuth } from "@veyyon/ai/auth-retry";
+import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { isRecord, trimmedString } from "@veyyon/utils";
+import { MCP_PROTOCOL_VERSION } from "../../../mcp/protocol-version";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
@@ -63,7 +67,6 @@ interface ZaiMcpPostResult {
 	sessionId?: string;
 }
 
-const ZAI_MCP_PROTOCOL_VERSION = "2025-03-26";
 const ZAI_MCP_CLIENT_INFO = {
 	name: "veyyon-coding-agent",
 	version: "1.0.0",
@@ -201,7 +204,7 @@ async function callZaiTool(
 		apiKey,
 		"initialize",
 		{
-			protocolVersion: ZAI_MCP_PROTOCOL_VERSION,
+			protocolVersion: MCP_PROTOCOL_VERSION,
 			capabilities: {},
 			clientInfo: ZAI_MCP_CLIENT_INFO,
 		},

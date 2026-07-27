@@ -9,11 +9,13 @@ import path from "node:path";
 import type { Component } from "@veyyon/tui";
 import { Container, Markdown, Text } from "@veyyon/tui";
 import { formatCount, formatNumber, isRecord, sanitizeText } from "@veyyon/utils";
-import { settings } from "../config/settings";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { settings } from "../config/settings-instance";
 import { EXIT_CODE_NOTICE_RE } from "../exec/exit-notice";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { formatContextUsage } from "../modes/components/status-line/context-thresholds";
-import { getMarkdownTheme, type Theme } from "../modes/theme/theme";
+import { getMarkdownTheme } from "../modes/theme/markdown-theme";
+import type { Theme } from "../modes/theme/theme";
 import { stripGeneratedOutputNotice, stripRawOutputArtifactNotice } from "../tools/output-meta";
 import {
 	capPreviewLines,
@@ -40,7 +42,7 @@ import { framedBlock, renderStatusLine } from "../tui";
 import { buildTreePrefix } from "../tui/utils";
 import { classifySubagentOutcome } from "./outcome";
 import { repairDoubleEncodedJsonString } from "./repair-args";
-import { subprocessToolRegistry } from "./subprocess-tool-registry";
+import { subprocessToolRegistry, YIELD_TOOL_NAME } from "./subprocess-tool-registry";
 import type { AgentProgress, SingleResult, TaskItem, TaskParams, TaskToolDetails, YieldItem } from "./types";
 import { assembleYieldResult } from "./yield-assembly";
 
@@ -1026,7 +1028,7 @@ function renderAgentProgress(
 
 		for (const toolName in progress.extractedToolData) {
 			const dataArray = progress.extractedToolData[toolName];
-			if (toolName === "yield") {
+			if (toolName === YIELD_TOOL_NAME) {
 				lines.push(...renderTypedYieldSections(dataArray, continuePrefix, expanded, theme));
 				continue;
 			}
@@ -1334,7 +1336,7 @@ function renderAgentResult(
 	if (result.extractedToolData) {
 		for (const toolName in result.extractedToolData) {
 			const dataArray = result.extractedToolData[toolName];
-			if (toolName === "yield") {
+			if (toolName === YIELD_TOOL_NAME) {
 				const yieldLines = renderTypedYieldSections(dataArray, continuePrefix, expanded, theme);
 				if (yieldLines.length > 0) {
 					hasCustomRendering = true;

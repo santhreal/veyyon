@@ -12,6 +12,7 @@ import {
 } from "@veyyon/utils";
 import { readPipeText } from "@veyyon/utils/stream";
 import packageJson from "../../package.json" with { type: "json" };
+import { ONNXRUNTIME_NODE_PACKAGE } from "../tts/runtime";
 
 /**
  * Child-side scaffolding shared by the ONNX inference worker bodies
@@ -30,7 +31,6 @@ import packageJson from "../../package.json" with { type: "json" };
 
 export const TRANSFORMERS_PACKAGE = "@huggingface/transformers";
 const COMPILED_TRANSFORMERS_VERSION = process.env.VEYYON_TINY_TRANSFORMERS_VERSION;
-const ONNX_RUNTIME_NODE_PACKAGE = "onnxruntime-node";
 const ONNX_RUNTIME_CUDA_INSTALL = "cuda12";
 const ONNX_RUNTIME_CUDA_PROVIDER_FILES = [
 	"libonnxruntime_providers_cuda.so",
@@ -146,6 +146,8 @@ export function replayCachedReady<K, M>(
 ): Promise<M> | undefined {
 	const cached = cache.get(modelKey);
 	if (!cached) return undefined;
+	// Only the progress notification is detached here: `cached` is RETURNED, so whoever awaits the model load
+	// receives the failure and reports it. This guard keeps the same rejection from also arriving unhandled.
 	void cached
 		.then(() => {
 			transport.send({ type: "progress", id: requestId, event: { modelKey, status: "ready", task, model } });
@@ -230,9 +232,9 @@ export async function ensureOnnxRuntimeCudaProviders(
 ): Promise<void> {
 	if (!shouldInstallOnnxRuntimeCudaProviders(device)) return;
 	const nodeModules = path.join(runtimeDir, "node_modules");
-	const manifest = resolveRuntimeModule(nodeModules, `${ONNX_RUNTIME_NODE_PACKAGE}/package.json`);
+	const manifest = resolveRuntimeModule(nodeModules, `${ONNXRUNTIME_NODE_PACKAGE}/package.json`);
 	if (!manifest)
-		throw new Error(`Unable to resolve ${ONNX_RUNTIME_NODE_PACKAGE} in compiled runtime at ${nodeModules}`);
+		throw new Error(`Unable to resolve ${ONNXRUNTIME_NODE_PACKAGE} in compiled runtime at ${nodeModules}`);
 	const packageDir = path.dirname(manifest);
 	const binDir = path.join(packageDir, LINUX_X64_ONNX_RUNTIME_CUDA_PROVIDER_DIR);
 	const missing = await missingOnnxRuntimeCudaProviderFiles(binDir);
@@ -363,14 +365,14 @@ function resolveOnnxRuntimePackageDir(metadata: TransformersRuntimeMetadata): st
 	const entry = metadata.__veyyonTransformersEntry;
 	if (entry) {
 		try {
-			return path.dirname(createRequire(entry).resolve(`${ONNX_RUNTIME_NODE_PACKAGE}/package.json`));
+			return path.dirname(createRequire(entry).resolve(`${ONNXRUNTIME_NODE_PACKAGE}/package.json`));
 		} catch {
 			// Fall through to the side-runtime resolver below.
 		}
 	}
 	const nodeModules = metadata.__veyyonRuntimeNodeModules;
 	if (!nodeModules) return null;
-	const manifest = resolveRuntimeModule(nodeModules, `${ONNX_RUNTIME_NODE_PACKAGE}/package.json`);
+	const manifest = resolveRuntimeModule(nodeModules, `${ONNXRUNTIME_NODE_PACKAGE}/package.json`);
 	return manifest ? path.dirname(manifest) : null;
 }
 

@@ -37,6 +37,15 @@ import {
 	parseDiffHunks,
 } from "../diff";
 import {
+	type ContextLineResult,
+	DEFAULT_FUZZY_THRESHOLD,
+	findClosestSequenceMatch,
+	findContextLine,
+	findMatch,
+	type SequenceSearchResult,
+	seekSequence,
+} from "../match";
+import {
 	adjustIndentation,
 	convertLeadingTabsToSpaces,
 	countLeadingWhitespace,
@@ -51,15 +60,6 @@ import {
 import { readEditFileText, serializeEditFileText } from "../read-file";
 import type { EditToolDetails, LspBatchRequest } from "../renderer";
 import { pruneOversizedEditSnapshots } from "../snapshot-details";
-import {
-	type ContextLineResult,
-	DEFAULT_FUZZY_THRESHOLD,
-	findClosestSequenceMatch,
-	findContextLine,
-	findMatch,
-	type SequenceSearchResult,
-	seekSequence,
-} from "../match";
 
 export type Operation = "create" | "delete" | "update";
 

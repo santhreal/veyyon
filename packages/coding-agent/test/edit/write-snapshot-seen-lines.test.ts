@@ -66,7 +66,7 @@ function resultText(result: { content: { type: string; text?: string }[] }): str
 const HASHLINE_HEADER_LINE = /^\[([^#\r\n]+)#([0-9A-F]{4})\]$/;
 
 /** A ten-line file, so an anchor deep in the body is genuinely out of a head read. */
-const TEN_LINES = Array.from({ length: 10 }, (_, i) => `const line${i + 1} = ${i + 1};`).join("\n") + "\n";
+const TEN_LINES = `${Array.from({ length: 10 }, (_, i) => `const line${i + 1} = ${i + 1};`).join("\n")}\n`;
 
 async function applyPatch(session: ToolSession, cwd: string, input: string): Promise<string> {
 	const patch = Patch.parse(input, { cwd });

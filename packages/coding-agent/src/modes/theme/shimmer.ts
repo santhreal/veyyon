@@ -1,5 +1,9 @@
-import { clamp01 } from "@veyyon/utils";
-import { isSettingsInitialized, settings } from "../../config/settings";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
+
+import { SGR_FG_RESET, SGR_INTENSITY_RESET } from "@veyyon/tui/ansi";
+import { clamp01 } from "@veyyon/utils/math";
+// The slot leaf, not the 94-module store: this file reads values, it does not fill them.
+import { isSettingsInitialized, settings } from "../../config/settings-instance";
 import type { Theme, ThemeColor } from "./theme";
 
 // ─── Animation velocity ──────────────────────────────────────────────────────
@@ -66,9 +70,7 @@ const TIER_HIGH = 0.65;
 const TIER_MID = 0.22;
 
 // ─── Raw ANSI codes ──────────────────────────────────────────────────────────
-const FG_RESET = "\x1b[39m";
 const BOLD_OPEN = "\x1b[1m";
-const BOLD_CLOSE = "\x1b[22m";
 
 type ShimmerTheme = Pick<Theme, "bold" | "fg" | "getFgAnsi">;
 type ShimmerMode = "classic" | "kitt" | "living" | "disabled";
@@ -235,10 +237,10 @@ function compile(theme: ShimmerTheme, palette: ShimmerPalette): CompiledPalette 
 	const midOpen = resolveTierAnsi(theme, palette.mid);
 	const highColorOpen = resolveTierAnsi(theme, palette.high);
 	const highOpen = palette.bold ? `${BOLD_OPEN}${highColorOpen}` : highColorOpen;
-	const highClose = palette.bold ? `${BOLD_CLOSE}${FG_RESET}` : FG_RESET;
+	const highClose = palette.bold ? `${SGR_INTENSITY_RESET}${SGR_FG_RESET}` : SGR_FG_RESET;
 	const out: CompiledPalette = {
-		low: { open: lowOpen, close: FG_RESET },
-		mid: { open: midOpen, close: FG_RESET },
+		low: { open: lowOpen, close: SGR_FG_RESET },
+		mid: { open: midOpen, close: SGR_FG_RESET },
 		high: { open: highOpen, close: highClose },
 	};
 	p[kCompiledFor] = theme;
@@ -655,7 +657,7 @@ export function lavaText(text: string, theme: LavaTheme, trueColor: boolean, now
 		out += `${lavaAnsi(theme, true, now, cell)}${ch}`;
 		cell++;
 	}
-	return `${out}${FG_RESET}`;
+	return `${out}${SGR_FG_RESET}`;
 }
 
 /** Exposed for the lava test suite: period and the exact crest/trough stops. */

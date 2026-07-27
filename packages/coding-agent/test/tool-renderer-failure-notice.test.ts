@@ -16,9 +16,10 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import type { AnyAgentTool } from "@veyyon/agent-core";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { Component, TUI } from "@veyyon/tui";
+import { createToolExecution } from "./helpers/tool-execution";
 
 const WIDTH = 160;
 
@@ -48,7 +49,7 @@ function boom(): never {
 
 describe("renderCall throws", () => {
 	it("reports the tool, the phase, and the failure", () => {
-		const component = new ToolExecutionComponent("widget", { id: 1 }, {}, toolWith({ renderCall: boom }), uiStub);
+		const component = createToolExecution("widget", { id: 1 }, {}, toolWith({ renderCall: boom }), uiStub);
 
 		const text = flatten(component);
 
@@ -60,7 +61,7 @@ describe("renderCall throws", () => {
 	/** The degraded render is still the render: losing the tool name too would
 	 * leave a block that says only that something broke. */
 	it("still shows the tool label underneath the notice", () => {
-		const component = new ToolExecutionComponent("widget", { id: 1 }, {}, toolWith({ renderCall: boom }), uiStub);
+		const component = createToolExecution("widget", { id: 1 }, {}, toolWith({ renderCall: boom }), uiStub);
 
 		expect(flatten(component)).toContain("widget");
 	});
@@ -68,7 +69,7 @@ describe("renderCall throws", () => {
 
 describe("renderResult throws", () => {
 	function withResult(text: string, renderResult: () => never): ToolExecutionComponent {
-		const component = new ToolExecutionComponent(
+		const component = createToolExecution(
 			"widget",
 			{ id: 1 },
 			{},
@@ -107,7 +108,7 @@ describe("the notice as a signal", () => {
 	/** The inline TUI paints no backgrounds and a monochrome terminal drops the
 	 * foreground, so the marker has to be a glyph, present with styling stripped. */
 	it("carries an error glyph that survives stripped styling", () => {
-		const component = new ToolExecutionComponent("widget", {}, {}, toolWith({ renderCall: boom }), uiStub);
+		const component = createToolExecution("widget", {}, {}, toolWith({ renderCall: boom }), uiStub);
 
 		const line = component
 			.render(WIDTH)
@@ -120,7 +121,7 @@ describe("the notice as a signal", () => {
 
 	/** A renderer that works must not pay for this: no notice, no glyph, nothing. */
 	it("is absent when the renderer succeeds", () => {
-		const component = new ToolExecutionComponent(
+		const component = createToolExecution(
 			"widget",
 			{},
 			{},

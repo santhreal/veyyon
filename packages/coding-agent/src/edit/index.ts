@@ -2,16 +2,16 @@ import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallb
 import type { ToolExample } from "@veyyon/ai";
 import { MismatchError as HashlineMismatchError, HL_MOVE_KEYWORD } from "@veyyon/hashline";
 import hashlineGrammar from "@veyyon/hashline/grammar.lark" with { type: "text" };
-import hashlineDescription from "@veyyon/hashline/prompt.md" with { type: "text" };
+import { HASHLINE_PROMPTS } from "@veyyon/hashline/prompts/registry";
 import { errorMessage, isCancellation, prompt } from "@veyyon/utils";
 import { createLspWritethrough, flushLspWritethroughBatch, type WritethroughCallback, writethroughNoop } from "../lsp";
 import { DeferredDiagnostics } from "../lsp/deferred-diagnostics";
 import { getDiagnosticsLedger } from "../lsp/diagnostics-ledger";
 import { PROMPTS } from "../prompts/registry";
 import type { ToolSession } from "../tools";
+import { abortedPartway } from "../tools/aborted-partway";
 import { truncateForPrompt } from "../tools/approval";
 import { isInternalUrlPath } from "../tools/path-utils";
-import { ToolAbortError } from "../tools/tool-errors";
 import { type EditMode, normalizeEditMode, resolveEditMode } from "../utils/edit-mode";
 import { executeHashlineSingle, hashlineEditParamsSchema } from "./hashline";
 import { type ApplyPatchParams, applyPatchSchema, expandApplyPatchToEntries } from "./modes/apply-patch";
@@ -28,11 +28,11 @@ export * from "./apply-patch";
 export * from "./diff";
 export * from "./file-snapshot-store";
 export * from "./hashline";
-export * from "./modes/apply-patch";
-export * from "./modes/patch";
 // The matching engine moved out of `./modes/replace` to break a cycle with
 // `./diff`; re-exported here so the barrel surface is unchanged.
 export * from "./match";
+export * from "./modes/apply-patch";
+export * from "./modes/patch";
 export * from "./modes/replace";
 export * from "./normalize";
 export * from "./renderer";
@@ -131,33 +131,31 @@ function createEditWritethrough(session: ToolSession): WritethroughCallback {
  * which files were already rewritten, was reachable only by reading the result
  * text of something that looked like an ordinary failure.
  *
- * So the abort keeps its type AND carries the summary in its message. One
- * helper, because the per-file loop and the per-entry loop must not word this
- * differently: an operator reading the two should not have to work out whether
- * they mean the same thing.
- *
- * It stays local rather than moving to `tools/tool-errors.ts`. The eval tool has
- * the same defect and the same fix, but its `cells` array is always exactly one
- * element, so an "N of M, these ran and these did not" summary would describe a
- * sequence it never has. A shared helper would have to be told that, and would
- * be a worse home for both wordings than each tool saying its own plainly.
+ * So the abort keeps its type AND carries the summary in its message. The
+ * sentence itself is built by `tools/aborted-partway.ts`, which `pr_checkout`
+ * and `retain` also use: the per-file loop and the per-entry loop must not word
+ * this differently, and neither must the other tools that can stop halfway. This
+ * function supplies the nouns and the advice, which are the parts only the edit
+ * tool can know.
  */
-function abortedPartway(
+function editAbortedPartway(
 	unit: "file" | "entry",
 	applied: readonly string[],
 	pending: readonly string[],
 	cause: unknown,
 ) {
-	const total = applied.length + pending.length;
-	// Spelled out rather than suffixed: `entry` + "s" is `entrys`, and a message
-	// that exists to be read at the worst moment of a session cannot be the place
-	// a reader trips over a typo.
-	const plural = unit === "file" ? "files" : "entries";
-	const parts = [`Edit cancelled after ${applied.length} of ${total} ${total === 1 ? unit : plural}`];
-	if (applied.length > 0) parts.push(`already applied: ${applied.join(", ")}`);
-	if (pending.length > 0) parts.push(`NOT applied: ${pending.join(", ")}`);
-	parts.push("re-read the affected files before re-issuing");
-	return new ToolAbortError(parts.join("; "), { cause });
+	return abortedPartway(
+		{
+			operation: "Edit",
+			unit: unit === "file" ? { one: "file", many: "files" } : { one: "entry", many: "entries" },
+			done: applied,
+			pending,
+			doneLabel: "already applied",
+			pendingLabel: "NOT applied",
+			advice: "re-read the affected files before re-issuing",
+		},
+		cause,
+	);
 }
 
 /**
@@ -203,7 +201,7 @@ async function executeApplyPatchPerFile(
 		// the cancellation.
 		if (signal?.aborted) {
 			await flushAfterAbort(outerBatchRequest, cwd);
-			throw abortedPartway("file", filePaths.slice(0, i), filePaths.slice(i), signal.reason);
+			throw editAbortedPartway("file", filePaths.slice(0, i), filePaths.slice(i), signal.reason);
 		}
 		const isLast = i === fileEntries.length - 1;
 		// Per-file writes join the outer LSP write batch; only the last entry
@@ -239,7 +237,7 @@ async function executeApplyPatchPerFile(
 			// lost by keeping the type.
 			if (isCancellation(err)) {
 				await flushAfterAbort(outerBatchRequest, cwd);
-				throw abortedPartway("file", filePaths.slice(0, i), filePaths.slice(i), err);
+				throw editAbortedPartway("file", filePaths.slice(0, i), filePaths.slice(i), err);
 			}
 			const errorText = errorMessage(err);
 			const displayErrorText = err instanceof HashlineMismatchError ? err.displayMessage : undefined;
@@ -345,7 +343,7 @@ async function executeSinglePathEntries(
 		// rather than trusting the innermost write to refuse.
 		if (signal?.aborted) {
 			await flushAfterAbort(outerBatchRequest, cwd);
-			throw abortedPartway("entry", entryLabels.slice(0, i), entryLabels.slice(i), signal.reason);
+			throw editAbortedPartway("entry", entryLabels.slice(0, i), entryLabels.slice(i), signal.reason);
 		}
 		const isLast = i === runs.length - 1;
 		const batchRequest: LspBatchRequest | undefined = outerBatchRequest
@@ -374,7 +372,7 @@ async function executeSinglePathEntries(
 		} catch (err) {
 			if (isCancellation(err)) {
 				await flushAfterAbort(outerBatchRequest, cwd);
-				throw abortedPartway("entry", entryLabels.slice(0, i), entryLabels.slice(i), err);
+				throw editAbortedPartway("entry", entryLabels.slice(0, i), entryLabels.slice(i), err);
 			}
 			const errorText = errorMessage(err);
 			contentTexts.push(`Error editing ${path} (entry ${i + 1} of ${runs.length}): ${errorText}`);
@@ -712,7 +710,7 @@ export class EditTool implements AgentTool<TInput> {
 				},
 			},
 			hashline: {
-				description: () => prompt.render(hashlineDescription),
+				description: () => prompt.render(HASHLINE_PROMPTS.prompt.text),
 				parameters: hashlineEditParamsSchema,
 				execute: (
 					tool: EditTool,

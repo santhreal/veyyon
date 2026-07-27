@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import { AgentBusyError, type AgentTelemetryConfig, type Tracer } from "@veyyon/agent-core";
-import { type AssistantMessage, Effort } from "@veyyon/ai";
+import type { AssistantMessage } from "@veyyon/ai";
+import { Effort } from "@veyyon/catalog/effort";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { ExtensionActions, LoadExtensionsResult } from "@veyyon/coding-agent/extensibility/extensions/types";
-import type { CreateAgentSessionResult } from "@veyyon/coding-agent/sdk";
+import type { ExtensionActions } from "@veyyon/coding-agent/extensibility/extensions/types";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
-import type { AgentSession, AgentSessionEvent, PromptOptions } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSession, PromptOptions } from "@veyyon/coding-agent/session/agent-session";
 import type { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import {
 	finalizeSubprocessOutput,
@@ -13,90 +13,19 @@ import {
 	SUBAGENT_WARNING_MISSING_YIELD,
 } from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
-import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { logger } from "@veyyon/utils";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
+import {
+	createAssistantStopMessage,
+	createMockSession,
+	createMockSessionHandle,
+	createSessionResult,
+} from "../helpers/subagent-session";
 
 // Spawning a task writes a session (and, for worktree runs, a checkout) under the
 // ACTIVE PROFILE's agent dir, so without this the suite creates them inside the
 // developer's real `~/.veyyon/profiles/<profile>/agent`.
 useIsolatedAgentDir();
-
-function createAssistantStopMessage(text: string): AssistantMessage {
-	return {
-		role: "assistant",
-		content: text ? [{ type: "text", text }] : [],
-		api: "openai-responses",
-		provider: "openai",
-		model: "mock",
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
-		stopReason: "stop",
-		timestamp: Date.now(),
-	};
-}
-
-function createMockSession(
-	onPrompt: (params: {
-		text: string;
-		options?: PromptOptions;
-		promptIndex: number;
-		emit: (event: AgentSessionEvent) => void;
-		state: { messages: AssistantMessage[] };
-	}) => void | Promise<void>,
-): AgentSession {
-	const listeners: Array<(event: AgentSessionEvent) => void> = [];
-	const state = { messages: [] as AssistantMessage[] };
-	let promptIndex = 0;
-
-	const emit = (event: AgentSessionEvent) => {
-		for (const listener of listeners) listener(event);
-	};
-
-	const session = {
-		state,
-		agent: { state: { systemPrompt: ["test"] } },
-		model: undefined,
-		extensionRunner: undefined,
-		sessionManager: {
-			appendSessionInit: () => {},
-		},
-		getActiveToolNames: () => ["read", "yield"],
-		setActiveToolsByName: async (_toolNames: string[]) => {},
-		subscribe: (listener: (event: AgentSessionEvent) => void) => {
-			listeners.push(listener);
-			return () => {
-				const index = listeners.indexOf(listener);
-				if (index >= 0) listeners.splice(index, 1);
-			};
-		},
-		prompt: async (text: string, options?: PromptOptions) => {
-			promptIndex += 1;
-			await onPrompt({ text, options, promptIndex, emit, state });
-		},
-		waitForIdle: async () => {},
-		getLastAssistantMessage: () => state.messages[state.messages.length - 1],
-		abort: async () => {},
-		dispose: async () => {},
-	};
-
-	return session as unknown as AgentSession;
-}
-
-function createSessionResult(session: AgentSession): CreateAgentSessionResult {
-	return {
-		session,
-		extensionsResult: {} as unknown as LoadExtensionsResult,
-		setToolUIContext: () => {},
-		eventBus: new EventBus(),
-	};
-}
 
 function mockCreateAgentSession(session: AgentSession) {
 	return vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
@@ -563,6 +492,40 @@ describe("runSubprocess yield reminders", () => {
 		expect(result.error).toBeUndefined();
 		expect(result.stderr).toBe("");
 	});
+
+	/**
+	 * A model error is a FAILURE, not a cancellation, and it must carry the provider's own words.
+	 *
+	 * The two are told apart by the terminal stop reason: `aborted` above is a cancellation and reports
+	 * as aborted, `error` here is a failure and reports as one. Getting that backwards is what turns a
+	 * rate-limit cap into a mysterious "cancelled" run with no reason to act on, and an on-call
+	 * engineer cannot tell those apart from the outside.
+	 *
+	 * Also pins that the reminder ladder does NOT run: re-prompting a subagent whose provider just
+	 * refused would hit the same wall three more times and multiply the failure noise.
+	 */
+	it("fails with the provider's message when the subagent's turn ended in an error", async () => {
+		const handle = createMockSessionHandle(({ emit, state }) => {
+			const failed: AssistantMessage = {
+				...createAssistantStopMessage(""),
+				stopReason: "error",
+				errorMessage: "rate limit reached for this model",
+			};
+			state.messages.push(failed);
+			emit({ type: "message_end", message: failed });
+		});
+		mockCreateAgentSession(handle.session);
+
+		const result = await runSubprocess({ ...baseOptions, id: "subagent-model-error" });
+
+		expect(result.exitCode).toBe(1);
+		expect(result.aborted).toBe(false);
+		expect(result.abortReason).toBeUndefined();
+		expect(result.stderr).toBe("rate limit reached for this model");
+		// One prompt: the task. No reminders were sent to a subagent whose provider had just refused.
+		expect(handle.prompts).toHaveLength(1);
+	});
+
 	it("uses modelRegistry.authStorage when only options.modelRegistry is provided", async () => {
 		const session = createMockSession(({ emit }) => {
 			emit({

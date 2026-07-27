@@ -9,8 +9,11 @@ import {
 	subsequenceScore,
 } from "@veyyon/tui";
 import { formatKeyHints, type KeybindingsManager } from "../config/keybindings";
-import { isSettingsInitialized, settings } from "../config/settings";
-import { BUILTIN_SLASH_COMMAND_CATEGORY_ORDER } from "../slash-commands/builtin-registry";
+// The slot leaf, not the 94-module store: this file reads values, it does not fill them.
+import { isSettingsInitialized, settings } from "../config/settings-instance";
+// The order leaf, not the registry that declares every command: this file arranges headers, and the
+// registry is 1,381 modules of command implementations.
+import { BUILTIN_SLASH_COMMAND_CATEGORY_ORDER } from "../slash-commands/category-order";
 import { applyEmojiCompletion, getEmojiSuggestions, isEmojiPrefix, tryEmojiInlineReplace } from "./emoji-autocomplete";
 import { getGithubRefContext, getGithubRefSuggestions } from "./github-ref-autocomplete";
 import {

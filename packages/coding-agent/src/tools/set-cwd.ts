@@ -15,10 +15,11 @@ import { errorMessage, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
-import { PROMPTS } from "../prompts/registry";
+import { toolsPrompts } from "../prompts/tools/rows";
 import { framedBlock, renderStatusLine } from "../tui";
 import type { ToolSession } from ".";
 import { resolveToCwd } from "./path-utils";
+import { SET_CWD_TOOL_NAME } from "./reroot-hint";
 import { ToolError, toolFailure } from "./tool-errors";
 
 const setCwdSchema = type({
@@ -119,7 +120,7 @@ async function describeRuleChange(previous: string, cwd: string): Promise<RuleCh
 }
 
 export class SetCwdTool implements AgentTool<typeof setCwdSchema, SetCwdToolDetails> {
-	readonly name = "set_cwd";
+	readonly name = SET_CWD_TOOL_NAME;
 	readonly label = "SetCwd";
 	// Gate the Argot paragraph on `argot.enabled`: the `argot_load` tool is only
 	// registered when Argot is on (off by default), so an unconditional mention
@@ -140,7 +141,7 @@ export class SetCwdTool implements AgentTool<typeof setCwdSchema, SetCwdToolDeta
 
 	constructor(session: ToolSession) {
 		this.#session = session;
-		this.description = prompt.render(PROMPTS["tools/set-cwd"].text, {
+		this.description = prompt.render(toolsPrompts["tools/set-cwd"].text, {
 			argot: session.settings.get("argot.enabled") === true,
 		});
 	}
@@ -183,23 +184,22 @@ export class SetCwdTool implements AgentTool<typeof setCwdSchema, SetCwdToolDeta
 		// so it retries, gets the same line, and loops. Nothing in that message
 		// let it check whether the argument it sent was the argument that
 		// arrived, which is the other half of the loop.
-		if (cwd === previous) {
-			return {
-				content: [
-					{
-						type: "text",
-						text: `Session cwd is ${cwd}. Your requested path ${JSON.stringify(raw)} resolved to that same directory, so nothing needed to change. This call succeeded; do not retry it. The rule files in effect are unchanged.`,
-					},
-				],
-				details: { previous, cwd, requested: raw, rulesApplied: [], rulesDropped: [], rulesUnchanged: 0 },
-			};
-		}
-
-		const lines = [
-			`Session cwd is now ${cwd} (previously ${previous}). Your requested path ${JSON.stringify(raw)} resolved to it. This change is session-scoped and ephemeral; a per-profile default working directory is the session.workdir setting, not this tool.`,
-		];
+		const noop = cwd === previous;
+		const lines = noop
+			? [
+					`Session cwd is ${cwd}. Your requested path ${JSON.stringify(raw)} resolved to that same directory, so nothing needed to change. This call succeeded; do not retry it.`,
+				]
+			: [
+					`Session cwd is now ${cwd} (previously ${previous}). Your requested path ${JSON.stringify(raw)} resolved to it. This change is session-scoped and ephemeral; a per-profile default working directory is the session.workdir setting, not this tool.`,
+				];
 		const details: SetCwdToolDetails = { previous, cwd, requested: raw };
 		try {
+			// A no-op goes through the SAME description, rather than asserting an empty rule state of its own.
+			// It used to report `rulesUnchanged: 0`, which is simply false: user-level rule files apply from any
+			// directory, so a session that never moved still has rules in effect, and a reader of the details
+			// saw a count that said otherwise. Passing `previous === cwd` here yields no applied and no dropped
+			// files and the real unchanged COUNT, so both branches say the same true thing about rules and
+			// there is one place that decides what that sentence is.
 			const change = await describeRuleChange(previous, cwd);
 			lines.push("", ...change.lines);
 			details.rulesApplied = change.applied;
@@ -213,7 +213,9 @@ export class SetCwdTool implements AgentTool<typeof setCwdSchema, SetCwdToolDeta
 			// this block exists to prevent, and it is invisible from the outside.
 			lines.push(
 				"",
-				`WARNING: the cwd changed, but the rule files for the new directory could not be read (${errorMessage(err)}). Your instructions may still be the previous directory's. Read AGENTS.md and CLAUDE.md under ${cwd} before continuing.`,
+				noop
+					? `WARNING: the cwd is unchanged, but the rule files for ${cwd} could not be read (${errorMessage(err)}), so which instructions are in effect is unknown. Read AGENTS.md and CLAUDE.md under ${cwd} before continuing.`
+					: `WARNING: the cwd changed, but the rule files for the new directory could not be read (${errorMessage(err)}). Your instructions may still be the previous directory's. Read AGENTS.md and CLAUDE.md under ${cwd} before continuing.`,
 			);
 		}
 
@@ -222,7 +224,7 @@ export class SetCwdTool implements AgentTool<typeof setCwdSchema, SetCwdToolDeta
 }
 
 export const setCwdToolRenderer = {
-	name: "set_cwd",
+	name: SET_CWD_TOOL_NAME,
 	renderCall(args: unknown, _options: RenderResultOptions, theme: Theme): Component {
 		const pathArg = (args as Partial<SetCwdToolInput>)?.path;
 		const label = typeof pathArg === "string" ? pathArg : "…";

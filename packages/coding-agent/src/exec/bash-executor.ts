@@ -132,6 +132,9 @@ function quarantineShellSession(
 		? Promise.allSettled([runPromise, abortCleanupPromise])
 		: Promise.allSettled([runPromise]);
 	shellSessionQuarantines.set(sessionKey, cleanup);
+	// `cleanup` is `allSettled`, so it cannot reject on the quarantined run's own failure -- that failure was
+	// already delivered to whoever ran the command, and this only waits for the wedged shell to finish before
+	// letting the session be used again. The guard covers a rejection from `finally` itself.
 	void cleanup
 		.finally(() => {
 			if (shellSessionQuarantines.get(sessionKey) === cleanup) {
@@ -308,6 +311,10 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 	const runAbortController = new AbortController();
 	let abortCleanupPromise: Promise<void> | undefined;
 	const abortShell = (): Promise<void> => {
+		// An abort that fails means the shell may still be running the command, which is exactly the state
+		// `quarantineShellSession` exists for: this promise is handed to it, the session is marked broken, and
+		// it is not reused until the shell settles. Rethrowing here would replace the abort reason the caller
+		// is about to receive with a teardown error.
 		abortCleanupPromise ??= executionShell.abort().catch(() => undefined);
 		return abortCleanupPromise;
 	};

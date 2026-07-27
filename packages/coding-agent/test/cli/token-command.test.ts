@@ -4,14 +4,15 @@
  * bare empty line or exit 0 a script would misread as a token.
  */
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
 import * as path from "node:path";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
+
+const makeTempDir = useTrackedTempDirs("veyyon-token-home-");
 
 const cliPath = path.resolve(import.meta.dir, "../../src/cli.ts");
 
 async function runToken(args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-	const home = mkdtempSync(path.join(tmpdir(), "veyyon-token-home-"));
+	const home = makeTempDir();
 	const env: Record<string, string | undefined> = {
 		...process.env,
 		HOME: home,

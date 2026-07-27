@@ -4,7 +4,7 @@ import { completeSimple, validateToolCall } from "@veyyon/ai";
 import { prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { CommitSummary } from "../../commit/types";
-import { PROMPTS } from "../../prompts/registry";
+import { commitPrompts } from "../../prompts/commit/rows";
 import { toReasoningEffort } from "../../thinking";
 import { extractTextContent, extractToolCall } from "../utils";
 
@@ -45,7 +45,7 @@ export async function generateSummary({
 	userContext,
 }: SummaryInput): Promise<CommitSummary> {
 	const systemPrompt = renderSummaryPrompt({ commitType, scope, maxChars });
-	const userPrompt = prompt.render(PROMPTS["commit/summary-user"].text, {
+	const userPrompt = prompt.render(commitPrompts["commit/summary-user"].text, {
 		user_context: userContext,
 		details: details.join("\n"),
 		stat,
@@ -74,7 +74,7 @@ function renderSummaryPrompt({
 	maxChars: number;
 }): string {
 	const scopePrefix = scope ? `(${scope})` : "";
-	return prompt.render(PROMPTS["commit/summary-system"].text, {
+	return prompt.render(commitPrompts["commit/summary-system"].text, {
 		commit_type: commitType,
 		scope_prefix: scopePrefix,
 		chars: String(maxChars),

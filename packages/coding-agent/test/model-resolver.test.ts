@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
-import { type Api, Effort, type Model } from "@veyyon/ai";
+import type { Api, Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
+import { Effort } from "@veyyon/catalog/effort";
 import { DEFAULT_MODEL_PER_PROVIDER } from "@veyyon/catalog/provider-models";
 import {
 	expandRoleAlias,

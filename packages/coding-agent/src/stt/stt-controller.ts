@@ -2,7 +2,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { collapseWhitespace, errorMessage, isAbortError, logger, Snowflake } from "@veyyon/utils";
-import { settings } from "../config/settings";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { settings } from "../config/settings-instance";
 import { type SttStreamHandle, sttClient } from "./asr-client";
 import { downloadSttModel, isSttModelCached } from "./downloader";
 import { resolveSttModelSpec } from "./models";
@@ -393,14 +394,29 @@ export class STTController {
 			this.#streamAbort = null;
 		}
 		this.#stream?.cancel();
-		this.#streamRecorder?.stop().catch(() => {});
+		// `dispose()` is synchronous and its callers cannot wait, but each of these failures leaves something
+		// behind that the user would care about: a recorder that will not stop holds the microphone open, and a
+		// temp file that will not delete leaves recorded AUDIO on disk. Both are reported rather than dropped.
+		this.#streamRecorder?.stop().catch((error: unknown) => {
+			logger.warn("STT stream recorder did not stop; the microphone may stay open", {
+				error: errorMessage(error),
+			});
+		});
 		this.#cleanupStream();
 		if (this.#recordingHandle) {
-			this.#recordingHandle.stop().catch(() => {});
+			this.#recordingHandle.stop().catch((error: unknown) => {
+				logger.warn("STT recorder did not stop; the microphone may stay open", { error: errorMessage(error) });
+			});
 			this.#recordingHandle = null;
 		}
 		if (this.#tempFile) {
-			fs.rm(this.#tempFile, { force: true }).catch(() => {});
+			const tempFile = this.#tempFile;
+			fs.rm(tempFile, { force: true }).catch((error: unknown) => {
+				logger.warn("STT temp recording could not be deleted; recorded audio is left on disk", {
+					file: tempFile,
+					error: errorMessage(error),
+				});
+			});
 			this.#tempFile = null;
 		}
 		this.#state = "idle";

@@ -80,11 +80,23 @@ describe("AgentSession eager task prelude", () => {
 		tempDir.removeSync();
 	});
 
+	/**
+	 * The agent types the mock task tool will accept.
+	 *
+	 * Not decoration. Delegation strength is resolved against the agents a session can ACTUALLY
+	 * spawn (`enabledSubagentNames` reads `enabledAgentNames` off the live task tool), so a mock
+	 * without this models a session whose task tool refuses everything, and `subagent.delegation:
+	 * "required"` correctly resolves to no delegation at all. Every prelude case in this file was
+	 * asserting against that mock and passing only because the resolution used to ignore the tool.
+	 */
+	const SPAWNABLE_AGENTS = ["general", "scout"];
+
 	async function createHarness(
 		settingsOverride: Record<string, unknown> = {},
 		agentId?: string,
 		taskWireName?: string,
 		agentKind?: "main" | "sub",
+		enabledAgentNames: string[] = SPAWNABLE_AGENTS,
 	): Promise<Harness> {
 		const observedCalls: ObservedPromptCall[] = [];
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
@@ -108,8 +120,9 @@ describe("AgentSession eager task prelude", () => {
 			description: "Mock task tool",
 			parameters: type({}),
 			execute: async () => ({ content: [{ type: "text" as const, text: "ok" }] }),
+			enabledAgentNames,
 			...(taskWireName !== undefined ? { customWireName: taskWireName } : {}),
-		};
+		} as AgentTool;
 		const mockBashTool: AgentTool = {
 			name: "bash",
 			label: "Bash",
@@ -321,5 +334,44 @@ describe("AgentSession eager task prelude", () => {
 		const reminder = observedCalls[0]?.messageTexts[0] ?? "";
 		expect(reminder).toContain("`delegate`");
 		expect(reminder).not.toContain("`task`");
+	});
+
+	/**
+	 * The negative twin every case above was missing, and the reason they all broke at once.
+	 *
+	 * Delegation strength is resolved against the agents the task tool will actually accept, so a
+	 * session with `subagent.delegation: "required"` and NOTHING to delegate to must send no
+	 * reminder at all. Telling a model it MUST fan work out to subagents, in a session where every
+	 * `task` call will be refused, is worse than saying nothing: it spends context asking for the
+	 * one action guaranteed to fail.
+	 *
+	 * This suite could not see that. Its mock task tool carried no `enabledAgentNames`, so it was
+	 * describing exactly this session and asserting the prelude appeared anyway; the cases passed
+	 * only while the resolution ignored the tool. The fix was to give the mock spawnable agents,
+	 * which makes it the session the other cases mean, and this case holds the other end.
+	 */
+	it("sends no eager reminder when the task tool can spawn nothing", async () => {
+		const { session, observedCalls } = await createHarness({}, undefined, undefined, undefined, []);
+
+		await session.prompt("refactor the parser across modules");
+
+		expect(observedCalls).toHaveLength(1);
+		expect(observedCalls[0]?.messageRoles).toEqual(["user"]);
+		expect(observedCalls[0]?.messageTexts).toEqual(["refactor the parser across modules"]);
+	});
+
+	/**
+	 * One spawnable agent is enough. The gate is "is there anywhere to send this", not "are there
+	 * several", and an off-by-one in that check would silence the reminder for every project that
+	 * enables a single custom agent.
+	 */
+	it("sends the eager reminder when exactly one agent can be spawned", async () => {
+		const { session, observedCalls } = await createHarness({}, undefined, undefined, undefined, ["general"]);
+
+		await session.prompt("refactor the parser across modules");
+
+		expect(observedCalls).toHaveLength(1);
+		expect(observedCalls[0]?.messageRoles).toEqual(["developer", "user"]);
+		expect(observedCalls[0]?.messageTexts[0]).toContain("delegation is enabled");
 	});
 });

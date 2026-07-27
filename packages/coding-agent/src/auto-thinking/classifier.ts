@@ -13,13 +13,15 @@
  * Throws on any failure (no model, no key, unparseable output, abort/timeout);
  * the caller falls back to a concrete level and continues the turn.
  */
-import { assistantText, completeSimple, Effort, type Model } from "@veyyon/ai";
+import { completeSimple, type Model } from "@veyyon/ai";
+import { assistantText } from "@veyyon/ai/utils/message-text";
+import { Effort } from "@veyyon/catalog/effort";
 import { prompt } from "@veyyon/utils";
 
 import type { ModelRegistry } from "../config/model-registry";
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
-import { PROMPTS } from "../prompts/registry";
+import { thinkingPrompts } from "../prompts/thinking/rows";
 import { REASONING_SAFE_MAX_TOKENS } from "../session/classifier-tokens";
 import { clampAutoThinkingEffort } from "../thinking";
 import { preprocessTinyMessage } from "../tiny/message-preproc";
@@ -30,7 +32,7 @@ import {
 } from "../tiny/models";
 import { tinyModelClient } from "../tiny/title-client";
 
-const DIFFICULTY_SYSTEM_PROMPT = prompt.render(PROMPTS["thinking/difficulty"].text);
+const DIFFICULTY_SYSTEM_PROMPT = prompt.render(thinkingPrompts["thinking/difficulty"].text);
 
 /** Local classifiers occasionally need more room for chat-template boilerplate. */
 const LOCAL_ANSWER_MAX_TOKENS = 16;
@@ -117,7 +119,7 @@ async function classifyLocal(input: string, modelKey: string, deps: ClassifyDiff
 	const maxTokens = isTinyMemoryReasoningModelKey(modelKey)
 		? Math.max(LOCAL_ANSWER_MAX_TOKENS, REASONING_SAFE_MAX_TOKENS)
 		: LOCAL_ANSWER_MAX_TOKENS;
-	const builtPrompt = prompt.render(PROMPTS["thinking/difficulty-local"].text, { prompt: input });
+	const builtPrompt = prompt.render(thinkingPrompts["thinking/difficulty-local"].text, { prompt: input });
 	const text = await tinyModelClient.complete(modelKey, builtPrompt, {
 		maxTokens,
 		signal: deps.signal,

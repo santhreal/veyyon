@@ -13,8 +13,13 @@ import { type Skill as CapabilitySkill, loadCapability } from "../discovery";
 import { PROVIDER_ID as NATIVE_SKILL_PROVIDER } from "../discovery/builtin";
 import { compareSkillOrder, scanSkillsFromDir } from "../discovery/helpers";
 import { PROVIDER_ID as VEYYON_PLUGINS_SKILL_PROVIDER } from "../discovery/veyyon-plugins";
-import { PROMPTS } from "../prompts/registry";
+import { skillsPrompts } from "../prompts/skills/rows";
 import type { SkillPromptDetails } from "../session/messages";
+
+// The active-skill snapshot lives in its own leaf so a reader does not have to import the loader.
+export { getActiveSkills, resetActiveSkillsForTests, setActiveSkills } from "./active-skills";
+
+import { getActiveSkills } from "./active-skills";
 
 /**
  * Skills load ONLY from these Veyyon-native providers, every one rooted under
@@ -63,26 +68,6 @@ export interface SkillWarning {
 export interface LoadSkillsResult {
 	skills: Skill[];
 	warnings: SkillWarning[];
-}
-
-let activeSkills: readonly Skill[] = [];
-
-/**
- * Process-global snapshot of skills the active session loaded.
- * Read by internal URL protocol handlers (skill://).
- */
-export function getActiveSkills(): readonly Skill[] {
-	return activeSkills;
-}
-
-/** Replace the active skill snapshot. Called once per top-level session. */
-export function setActiveSkills(value: readonly Skill[]): void {
-	activeSkills = value;
-}
-
-/** Reset the active skill snapshot. Test-only. */
-export function resetActiveSkillsForTests(): void {
-	activeSkills = [];
 }
 
 /**
@@ -404,7 +389,7 @@ export async function buildSkillPromptMessage(
 		// User-invoked skills announce themselves and expose their skill directory
 		// so the model resolves the skill's own relative paths (scripts/, templates/).
 		message = prompt
-			.render(PROMPTS["skills/user-invocation"].text, {
+			.render(skillsPrompts["skills/user-invocation"].text, {
 				name: skill.name,
 				body,
 				baseDir: skill.baseDir,
@@ -415,7 +400,7 @@ export async function buildSkillPromptMessage(
 		// Autoload skills are hidden, non-user context — they MUST NOT claim the
 		// user invoked them; this keeps the minimal provenance-only format.
 		message = prompt
-			.render(PROMPTS["skills/autoload"].text, {
+			.render(skillsPrompts["skills/autoload"].text, {
 				body,
 				filePath: skill.filePath,
 				userArgs: trimmedArgs || undefined,

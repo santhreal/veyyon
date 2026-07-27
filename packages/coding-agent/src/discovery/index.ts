@@ -63,7 +63,7 @@ export {
 	setDisabledProviders,
 } from "../capability";
 export type { ContextFile } from "../capability/context-file";
-export type { Extension, ExtensionManifest } from "../capability/extension";
+export type { ExtensionManifest, ManifestExtension } from "../capability/extension";
 export type { ExtensionModule } from "../capability/extension-module";
 export type { Hook } from "../capability/hook";
 export type { Instruction } from "../capability/instruction";
@@ -76,6 +76,6 @@ export type { Skill, SkillFrontmatter } from "../capability/skill";
 export type { SlashCommand } from "../capability/slash-command";
 export type { SSHHost } from "../capability/ssh";
 export type { SystemPrompt } from "../capability/system-prompt";
-export type { CustomTool } from "../capability/tool";
+export type { DiscoveredCustomTool } from "../capability/tool";
 // Re-export types
 export type * from "../capability/types";

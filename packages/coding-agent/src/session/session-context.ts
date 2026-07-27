@@ -1,6 +1,14 @@
 import type { AgentMessage } from "@veyyon/agent-core";
-import { legacyArchiveSourceText } from "@veyyon/agent-core/compaction";
-import { coerceServiceTierByFamily, type ServiceTierByFamily, type TextContent } from "@veyyon/ai";
+// The owner, not the `compaction` subpath barrel. That barrel re-exports the compaction ENGINE, which
+// imports the `@veyyon/ai` barrel to summarize a conversation; this module is a self-contained reader for a
+// retired archive format and imports nothing at all. The edge cost 238 modules, and it was on the graph of
+// `internal-urls/index.ts` (the URL router) and `tools/read.ts` through `session/session-loader.ts`.
+import { legacyArchiveSourceText } from "@veyyon/agent-core/compaction/legacy-snapcompact-archive";
+import type { TextContent } from "@veyyon/ai";
+// From the module that DEFINES the coercion, not the barrel that re-exports it.
+// `@veyyon/ai/types` is 5 modules against the barrel's 346, and this file is on
+// `session/session-manager.ts`'s path, which ~200 test files import.
+import { coerceServiceTierByFamily, type ServiceTierByFamily } from "@veyyon/ai/types";
 import {
 	createBranchSummaryMessage,
 	createCompactionSummaryMessage,

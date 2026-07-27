@@ -195,7 +195,10 @@ function appendMarkdownTranscript(lines: string[], messages: readonly AgentMessa
 			lines.push("## File Mention\n");
 			for (const file of fileMsg.files) {
 				lines.push(`<file path="${file.path}">`);
-				if (file.content) lines.push(file.content);
+				// A collab guest holds a replica whose mention bodies were never sent, and saying so
+				// beats an empty block that reads like a file with nothing in it.
+				if (file.contentNotReplicated) lines.push("[body not replicated to this collab guest]");
+				else if (file.content) lines.push(file.content);
 				if (file.image) lines.push("[Image attached]");
 				lines.push("</file>\n");
 			}

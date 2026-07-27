@@ -159,7 +159,7 @@ describe("argot agent-driven adoption loop (e2e)", () => {
 
 		const settings = Settings.isolated({
 			"argot.enabled": true,
-			"argot.models": [MODEL_ID],
+			"argot.encode.models": [MODEL_ID],
 			"argot.subagents": "off",
 			"compaction.enabled": false,
 			"todo.enabled": false,

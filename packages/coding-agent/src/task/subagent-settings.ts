@@ -19,28 +19,113 @@ import { DEFAULT_ENABLED_BUNDLED_AGENT } from "../config/settings-domains/subage
 import { CLI_THINKING_LEVELS, type ConfiguredThinkingLevel, parseConfiguredThinkingLevel } from "../thinking";
 import type { AgentDefinition } from "./types";
 
-/** How hard this session pushes work out to subagents. */
-export type DelegationStrength = "off" | "allowed" | "preferred" | "required";
+/**
+ * How hard this session pushes work out to subagents.
+ *
+ * Every value here still ALLOWS delegation. `allowed` is the floor: the model keeps
+ * the task tool and spawns a subagent when that is the sensible move, it is simply
+ * not asked to. Taking the ability away is a different question and a different
+ * setting, {@link subagentsEnabled}. There used to be an `off` value here, which made
+ * one setting answer both questions and left no way to say "you may, but I am not
+ * asking you to" — the state most sessions actually want.
+ */
+export type DelegationStrength = "allowed" | "preferred" | "required";
 
 /** Resolved delegation strength (`subagent.delegation`). */
 export function delegationStrength(settings: Settings): DelegationStrength {
-	return (settings.get("subagent.delegation") ?? "allowed") as DelegationStrength;
+	return (settings.get("subagent.delegation") ?? "preferred") as DelegationStrength;
 }
 
-/** True when the task tool is offered at all. `off` removes the tool and its prompt sections. */
+/**
+ * Whether subagents exist at all in this session (`subagent.enabled`).
+ *
+ * The one kill switch. False removes the task tool and every delegation section from
+ * the prompt; the delegation strength and the agents table are kept and take effect
+ * again when it is turned back on.
+ */
+export function subagentsEnabled(settings: Settings): boolean {
+	return settings.get("subagent.enabled") ?? true;
+}
+
+/** True when the task tool is offered at all. */
 export function delegationEnabled(settings: Settings): boolean {
-	return delegationStrength(settings) !== "off";
+	return subagentsEnabled(settings);
 }
 
-/** True when the prompt should ask for substantial work to be delegated. */
-export function delegationPreferred(settings: Settings): boolean {
+/**
+ * Why delegation cannot happen, when it cannot.
+ *
+ * Two settings can each stop it on their own, and an operator staring at one of
+ * them has no way to know the other is the reason nothing delegates — so every
+ * surface that reports "no delegation" reports which.
+ */
+export type DelegationBlocker = "subagents-off" | "no-enabled-agents";
+
+/** Delegation as one resolved answer, from both settings that decide it. */
+export interface DelegationState {
+	strength: DelegationStrength;
+	/** Agent types the model may choose, in discovery order. */
+	enabledAgents: readonly string[];
+	/** Delegation can actually happen: the tool is offered AND something can take the work. */
+	possible: boolean;
+	/** The prompt should push substantial work out to a subagent. */
+	preferred: boolean;
+	/** A first-turn reminder to delegate is injected as well. */
+	required: boolean;
+	/** Set exactly when `possible` is false. */
+	blockedBy?: DelegationBlocker;
+}
+
+/**
+ * Resolve delegation from BOTH settings that decide it, in one place.
+ *
+ * `subagent.delegation` and the `subagent.agents` table are one question with two
+ * inputs, and computing them apart produced a pair of states that each looked
+ * right alone and were incoherent together: `required` with every agent disabled
+ * still injected a first-turn "delegate substantial work" reminder, telling the
+ * model to hand work to nothing it was allowed to spawn. Strength decides HOW
+ * HARD to push; the agent table decides whether there is anywhere to push it. If
+ * there is nowhere, the strength cannot matter, and `preferred`/`required` come
+ * back false however hard the setting is turned up.
+ *
+ * The enabled set is passed in rather than re-derived here: the live `task` tool
+ * already filtered its discovered agents through `subagent.agents`, and a second
+ * derivation could name an agent the tool then refuses.
+ */
+export function resolveDelegation(settings: Settings, enabledAgents: readonly string[]): DelegationState {
 	const strength = delegationStrength(settings);
-	return strength === "preferred" || strength === "required";
+	const blockedBy: DelegationBlocker | undefined = !subagentsEnabled(settings)
+		? "subagents-off"
+		: enabledAgents.length === 0
+			? "no-enabled-agents"
+			: undefined;
+	const possible = blockedBy === undefined;
+	return {
+		strength,
+		enabledAgents,
+		possible,
+		preferred: possible && (strength === "preferred" || strength === "required"),
+		required: possible && strength === "required",
+		blockedBy,
+	};
 }
 
-/** True when a first-turn delegation reminder is injected as well. */
-export function delegationRequired(settings: Settings): boolean {
-	return delegationStrength(settings) === "required";
+/**
+ * One sentence saying why nothing will be delegated, for a settings surface.
+ *
+ * Returns `undefined` when delegation is possible, so a caller renders it or
+ * does not without asking a second question. Every surface that shows either
+ * setting shows this, which is what makes each setting visibly the other's
+ * effect rather than an isolated control with an arbitrary-looking value.
+ */
+export function delegationBlockedNotice(state: DelegationState): string | undefined {
+	if (state.blockedBy === "subagents-off") {
+		return "Subagents are off, so nothing here runs until you turn them back on.";
+	}
+	if (state.blockedBy === "no-enabled-agents") {
+		return `No agent is enabled, so there is nothing to delegate to and "${state.strength}" has no effect.`;
+	}
+	return undefined;
 }
 
 /**
@@ -73,54 +158,53 @@ export function subagentEnabledByDefault(agent: AgentDefinition): boolean {
 }
 
 /**
- * Whether `agent` is offered to the model: listed in the `task` tool description
- * and in the delegation prompt, and therefore choosable on the model's own
- * initiative. Its row wins, else the default above.
+ * Whether `agent` is ENABLED: the model may choose it on its own initiative.
  *
- * This is the token-cost switch. It is deliberately NOT the same question as
- * {@link isSubagentSpawnable}: see that function for why.
+ * ONE predicate, and the singular is the point. This used to be two --
+ * `isSubagentAdvertised` (listed in the task tool description) and
+ * `isSubagentSpawnable` (honored when named outright) -- and the gap between them
+ * was a user-visible state reading "Not offered (default) -- still runs when
+ * named". A switch labelled off that still runs is not a switch, it is a
+ * footnote, and it forced the settings copy to apologise for itself.
+ *
+ * The rule is now the one a reader already assumes: enabled means the model may
+ * pick this agent, disabled means it may not, and being disabled is the whole
+ * story. What a disabled agent does NOT block is the user: an ephemeral `/`
+ * command that names an agent is the operator asking directly, and that is
+ * granted per turn by the command itself (see `agentGrantedThisTurn` on the tool
+ * session). A setting that governs the model does not govern the person typing.
+ *
+ * This is also the token-cost switch, unchanged: a disabled agent costs nothing
+ * because it never reaches the tool description.
  */
-export function isSubagentAdvertised(settings: Settings, agent: AgentDefinition): boolean {
-	const row = subagentSettingsFor(settings, agent.name);
-	return row.enabled ?? subagentEnabledByDefault(agent);
+export function isSubagentEnabled(settings: Settings, agent: AgentDefinition): boolean {
+	return subagentSettingsFor(settings, agent.name).enabled ?? subagentEnabledByDefault(agent);
 }
 
-/**
- * Whether a spawn that names `agent` outright is honored.
- *
- * Only an explicit `enabled: false` refuses. An agent that is merely
- * unadvertised still runs when something names it directly, because the built-in
- * flows do exactly that: `/review` hands the model a prompt saying `agent:
- * "reviewer"`, `/orchestrate` names `sonic`, and a user can type "use the scout
- * agent". Those are explicit requests, not the model helping itself, so the
- * default-off state must not break them — it only keeps them out of the tool
- * description, which is where the token cost is.
- *
- * `enabled: false` is the operator saying no, and that is absolute: the spawn is
- * refused with the setting named.
- */
-export function isSubagentSpawnable(settings: Settings, agent: AgentDefinition): boolean {
-	return subagentSettingsFor(settings, agent.name).enabled !== false;
-}
-
-/** Filter a discovered agent list down to the ones offered to the model. */
+/** Filter a discovered agent list down to the ones the model may choose. */
 export function filterEnabledAgents(settings: Settings, agents: readonly AgentDefinition[]): AgentDefinition[] {
-	return agents.filter(agent => isSubagentAdvertised(settings, agent));
+	return agents.filter(agent => isSubagentEnabled(settings, agent));
 }
 
-/** How an agent's row reads on the agent surfaces: what the operator chose, tri-state. */
+/**
+ * How an agent's row reads on the agent surfaces. TWO states, because there are
+ * two.
+ *
+ * There were four: `on`, `off`, `default-on`, `default-off`. The two `default-*`
+ * entries encoded "no row of its own", which is a fact about the SETTINGS FILE,
+ * not about what the agent will do, and pairing it with a distinct behaviour is
+ * what produced the state a user read as "off but not off". Whether a value came
+ * from a row or from the shipped default is now a separate boolean the surfaces
+ * may show as a "(default)" hint; it never changes the answer.
+ */
 export type SubagentEnableState =
-	/** `enabled: true` — advertised to the model. */
+	/** The model may choose this agent. */
 	| "on"
-	/** `enabled: false` — refused even when named outright. */
-	| "off"
-	/** No row: not advertised, but spawnable when named. Bundled specialists start here. */
-	| "default-off"
-	/** No row, and this agent is advertised by default (the worker, and every user-authored agent). */
-	| "default-on";
+	/** The model may not. A `/` command that names it directly still runs (see the grant). */
+	| "off";
 
 /**
- * The tri-state above, for display on `/agents` and in the Subagents tab.
+ * The state above, for display on `/agents` and in the Subagents tab.
  *
  * Takes the row value directly rather than reading settings, so an editor holding
  * an unsaved value gets the same answer as the saved one — a second copy of this
@@ -129,9 +213,16 @@ export type SubagentEnableState =
  * settings in hand.
  */
 export function subagentEnableState(agent: AgentDefinition, configured: boolean | undefined): SubagentEnableState {
-	if (configured === true) return "on";
-	if (configured === false) return "off";
-	return subagentEnabledByDefault(agent) ? "default-on" : "default-off";
+	return (configured ?? subagentEnabledByDefault(agent)) ? "on" : "off";
+}
+
+/**
+ * Whether this row is still on the shipped default rather than a choice someone
+ * made. Surfaces may render it as a "(default)" hint; it must never change what
+ * the agent does, which is the mistake the old `default-off` state made.
+ */
+export function isSubagentEnableDefaulted(configured: boolean | undefined): boolean {
+	return configured === undefined;
 }
 
 /**
@@ -141,20 +232,22 @@ export function subagentEnableState(agent: AgentDefinition, configured: boolean 
  * differently.
  */
 export const SUBAGENT_ENABLE_STATE_LABEL: Record<SubagentEnableState, string> = {
-	on: "Offered",
-	"default-on": "Offered (default)",
-	"default-off": "Not offered (default) — still runs when named",
-	off: "Blocked",
+	on: "Enabled",
+	off: "Disabled",
 };
 
 /**
- * The next state when the operator cycles a row: unset → offered → blocked →
- * unset. Both agent surfaces cycle with the same key, so the order lives here.
+ * The value written when the operator toggles a row.
+ *
+ * A toggle, not a cycle. The old three-stop cycle (unset → on → off → unset)
+ * existed because "unset" was a third BEHAVIOUR; now it is only a provenance
+ * hint, so cycling back to it would be a keypress that changes nothing visible
+ * and is indistinguishable from the toggle failing. Toggling always writes an
+ * explicit value, which is also what makes the choice survive a change to the
+ * shipped default.
  */
-export function nextSubagentEnableValue(configured: boolean | undefined): boolean | undefined {
-	if (configured === undefined) return true;
-	if (configured === true) return false;
-	return undefined;
+export function nextSubagentEnableValue(agent: AgentDefinition, configured: boolean | undefined): boolean {
+	return !(configured ?? subagentEnabledByDefault(agent));
 }
 
 /**

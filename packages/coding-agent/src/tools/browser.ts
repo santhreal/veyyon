@@ -2,7 +2,7 @@ import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallb
 import type { ToolExample } from "@veyyon/ai";
 import { isCancellation, prompt, stringifyJsonSafe, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
-import { PROMPTS } from "../prompts/registry";
+import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from "../sdk";
 import { enforceInlineByteCap } from "../session/streaming-output";
 import { truncateForPrompt } from "./approval";
@@ -173,7 +173,7 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 	constructor(private readonly session: ToolSession) {}
 	#description?: string;
 	get description(): string {
-		this.#description ??= prompt.render(PROMPTS["tools/browser"].text, {});
+		this.#description ??= prompt.render(toolsPrompts["tools/browser"].text, {});
 		return this.#description;
 	}
 

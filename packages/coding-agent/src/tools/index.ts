@@ -28,7 +28,7 @@ import { countToolsForAutoDiscovery, resolveEffectiveToolDiscoveryMode } from ".
 import type { DiscoverableTool, DiscoverableToolSearchIndex } from "../tool-discovery/tool-index";
 import type { EventBus } from "../utils/event-bus";
 import type { WorkspaceTree } from "../workspace-tree";
-import { type BuiltinToolName, normalizeToolNames } from "./builtin-names";
+import { type BuiltinToolName, type HiddenToolName, normalizeToolNames, TOOL } from "./builtin-names";
 import type { CheckpointState, CompletedRewindState } from "./checkpoint";
 import { resolveEvalBackends } from "./eval-backends";
 import { isIrcEnabled } from "./irc-enabled";
@@ -165,6 +165,25 @@ export interface ToolSession {
 	trackEvalExecution?<T>(execution: Promise<T>, abortController: AbortController): Promise<T>;
 	/** Get session ID */
 	getSessionId?: () => string | null;
+	/**
+	 * Whether a `/` command has granted this agent type for the turn in flight.
+	 *
+	 * `subagent.agents.<name>.enabled` governs THE MODEL: enabled means the model
+	 * may pick that agent on its own initiative, disabled means it may not. It does
+	 * not govern the person typing. `/review` names `reviewer` outright, and a user
+	 * running `/review` is asking for a review, not asking the model to decide
+	 * whether reviewing is a good idea — so the command declares the agents its
+	 * prompt will name and the spawn is honored even with that agent disabled.
+	 *
+	 * Turn-scoped and command-declared, deliberately. A grant that outlived its
+	 * turn, or one that any caller could set, would be the old "disabled but still
+	 * runs" state again with extra steps: the whole reason that state was removed
+	 * is that a switch has to mean what it says for every path the MODEL controls.
+	 *
+	 * Absent (no implementation) means no grant, so a session that never runs
+	 * commands behaves exactly as the setting reads.
+	 */
+	agentGrantedThisTurn?: (agentName: string) => boolean;
 	/**
 	 * How many assistant turns have already happened in this session.
 	 *
@@ -356,13 +375,13 @@ export type BuiltinToolLoadMode = "essential" | "discoverable";
 
 /** Default essential tool names when tools.essentialOverride is empty. */
 export const DEFAULT_ESSENTIAL_TOOL_NAMES: readonly string[] = [
-	"read",
-	"bash",
-	"launch",
-	"edit",
-	"write",
-	"glob",
-	"eval",
+	TOOL.read,
+	TOOL.bash,
+	TOOL.launch,
+	TOOL.edit,
+	TOOL.write,
+	TOOL.glob,
+	TOOL.eval,
 ] as const;
 
 /**
@@ -461,7 +480,11 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 			: null,
 };
 
-export const HIDDEN_TOOLS: Record<string, ToolFactory> = {
+// Keyed by `HiddenToolName` rather than `string` for the same reason `BUILTIN_TOOLS` is keyed by
+// `BuiltinToolName`: the registry is a declaration site, so the key set is what the compiler checks
+// a rename against. Typed as `string` it accepted any key, and a hidden tool renamed in one place
+// stayed registered under the old name with nothing to say so.
+export const HIDDEN_TOOLS: Record<HiddenToolName, ToolFactory> = {
 	yield: async s => new (await import("./yield")).YieldTool(s),
 	report_finding: async () => (await import("./review")).reportFindingTool,
 	report_tool_issue: async s => (await import("./report-tool-issue")).createReportToolIssueTool(s),
@@ -480,8 +503,8 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 	let requestedTools = toolNames && toolNames.length > 0 ? normalizeToolNames(toolNames) : undefined;
 	const goalEnabled = session.settings.get("goal.enabled");
 	const goalModeActive = goalEnabled && session.getGoalModeState?.()?.enabled === true;
-	if (goalModeActive && requestedTools && !requestedTools.includes("goal")) {
-		requestedTools = [...requestedTools, "goal"];
+	if (goalModeActive && requestedTools && !requestedTools.includes(TOOL.goal)) {
+		requestedTools = [...requestedTools, TOOL.goal];
 	}
 	const backends = resolveEvalBackends(session);
 	const allowPython = backends.python;
@@ -495,7 +518,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 	let pythonAvailable = true;
 	let rubyAvailable = true;
 	let juliaAvailable = true;
-	const evalRequested = requestedTools === undefined || requestedTools.includes("eval");
+	const evalRequested = requestedTools === undefined || requestedTools.includes(TOOL.eval);
 	if (!skipEvalPreflight && !allowJs && evalRequested) {
 		if (allowPython) {
 			const { checkPythonKernelAvailability } = await import("../eval/py/kernel");
@@ -544,21 +567,21 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 	// Auto-include AST counterparts when their text-based sibling is present
 	if (requestedTools) {
 		if (
-			requestedTools.includes("grep") &&
-			!requestedTools.includes("ast_grep") &&
+			requestedTools.includes(TOOL.grep) &&
+			!requestedTools.includes(TOOL.ast_grep) &&
 			session.settings.get("astGrep.enabled")
 		) {
-			requestedTools.push("ast_grep");
+			requestedTools.push(TOOL.ast_grep);
 		}
 		if (
-			requestedTools.includes("edit") &&
-			!requestedTools.includes("ast_edit") &&
+			requestedTools.includes(TOOL.edit) &&
+			!requestedTools.includes(TOOL.ast_edit) &&
 			session.settings.get("astEdit.enabled")
 		) {
-			requestedTools.push("ast_edit");
+			requestedTools.push(TOOL.ast_edit);
 		}
 		if (["hindsight", "mnemopi"].includes(session.settings.get("memory.backend") ?? "")) {
-			for (const name of ["recall", "retain", "reflect"]) {
+			for (const name of [TOOL.recall, TOOL.retain, TOOL.reflect]) {
 				if (!requestedTools.includes(name)) requestedTools.push(name);
 			}
 		}
@@ -569,12 +592,12 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		// (taskDepth 0): the controller only runs there, so a subagent's explicit
 		// tool whitelist must never be silently widened with write-capable tools.
 		if (session.settings.get("autolearn.enabled") && (session.taskDepth ?? 0) === 0) {
-			if (!requestedTools.includes("manage_skill")) requestedTools.push("manage_skill");
+			if (!requestedTools.includes(TOOL.manage_skill)) requestedTools.push(TOOL.manage_skill);
 			if (
 				["hindsight", "mnemopi", "local"].includes(session.settings.get("memory.backend") ?? "") &&
-				!requestedTools.includes("learn")
+				!requestedTools.includes(TOOL.learn)
 			) {
-				requestedTools.push("learn");
+				requestedTools.push(TOOL.learn);
 			}
 		}
 	}
@@ -588,38 +611,39 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 
 	const allTools: Record<string, ToolFactory> = { ...BUILTIN_TOOLS, ...HIDDEN_TOOLS };
 	const isToolAllowed = (name: string) => {
-		if (name === "goal") return goalEnabled && goalModeActive;
-		if (name === "lsp") return enableLsp && session.settings.get("lsp.enabled");
-		if (name === "bash") return session.settings.get("bash.enabled");
-		if (name === "launch") return session.settings.get("launch.enabled");
-		if (name === "eval") return allowEval;
-		if (name === "debug") return session.settings.get("debug.enabled");
-		if (name === "todo") return !includeYield && session.settings.get("todo.enabled");
-		if (name === "glob") return session.settings.get("glob.enabled");
-		if (name === "grep") return session.settings.get("grep.enabled");
-		if (name === "github") return session.settings.get("github.enabled");
-		if (name === "ast_grep") return session.settings.get("astGrep.enabled");
-		if (name === "ast_edit") return session.settings.get("astEdit.enabled");
-		if (name === "inspect_image") return session.settings.get("inspect_image.enabled");
-		if (name === "web_search") return session.settings.get("web_search.enabled");
+		if (name === TOOL.goal) return goalEnabled && goalModeActive;
+		if (name === TOOL.lsp) return enableLsp && session.settings.get("lsp.enabled");
+		if (name === TOOL.bash) return session.settings.get("bash.enabled");
+		if (name === TOOL.launch) return session.settings.get("launch.enabled");
+		if (name === TOOL.eval) return allowEval;
+		if (name === TOOL.debug) return session.settings.get("debug.enabled");
+		if (name === TOOL.todo) return !includeYield && session.settings.get("todo.enabled");
+		if (name === TOOL.glob) return session.settings.get("glob.enabled");
+		if (name === TOOL.grep) return session.settings.get("grep.enabled");
+		if (name === TOOL.github) return session.settings.get("github.enabled");
+		if (name === TOOL.ast_grep) return session.settings.get("astGrep.enabled");
+		if (name === TOOL.ast_edit) return session.settings.get("astEdit.enabled");
+		if (name === TOOL.inspect_image) return session.settings.get("inspect_image.enabled");
+		if (name === TOOL.web_search) return session.settings.get("web_search.enabled");
 		// search_tool_bm25 is allowed when either legacy mcp.discoveryMode or new tools.discoveryMode is active.
-		if (name === "search_tool_bm25") return discoveryActive;
-		if (name === "ask") return session.settings.get("ask.enabled");
-		if (name === "browser") return session.settings.get("browser.enabled");
-		if (name === "checkpoint" || name === "rewind") return session.settings.get("checkpoint.enabled");
-		if (name === "irc") return isIrcEnabled(session.settings, session.taskDepth ?? 0);
-		if (name === "retain" || name === "recall" || name === "reflect") {
+		if (name === TOOL.search_tool_bm25) return discoveryActive;
+		if (name === TOOL.ask) return session.settings.get("ask.enabled");
+		if (name === TOOL.browser) return session.settings.get("browser.enabled");
+		if (name === TOOL.checkpoint || name === TOOL.rewind) return session.settings.get("checkpoint.enabled");
+		if (name === TOOL.irc) return isIrcEnabled(session.settings, session.taskDepth ?? 0);
+		if (name === TOOL.retain || name === TOOL.recall || name === TOOL.reflect) {
 			return ["hindsight", "mnemopi"].includes(session.settings.get("memory.backend") ?? "");
 		}
-		if (name === "manage_skill") return session.settings.get("autolearn.enabled") && (session.taskDepth ?? 0) === 0;
-		if (name === "learn") {
+		if (name === TOOL.manage_skill)
+			return session.settings.get("autolearn.enabled") && (session.taskDepth ?? 0) === 0;
+		if (name === TOOL.learn) {
 			return (
 				session.settings.get("autolearn.enabled") &&
 				(session.taskDepth ?? 0) === 0 &&
 				["hindsight", "mnemopi", "local"].includes(session.settings.get("memory.backend") ?? "")
 			);
 		}
-		if (name === "task") {
+		if (name === TOOL.task) {
 			// `subagent.delegation: off` means this session does not delegate at all,
 			// so the tool itself is absent rather than present-but-discouraged. A
 			// prompt that says "do not spawn subagents" while still shipping the tool
@@ -629,20 +653,20 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		}
 		return true;
 	};
-	if (includeYield && requestedTools && !requestedTools.includes("yield")) {
-		requestedTools.push("yield");
+	if (includeYield && requestedTools && !requestedTools.includes(TOOL.yield)) {
+		requestedTools.push(TOOL.yield);
 	}
 
 	const filteredRequestedTools = requestedTools?.filter(name => name in allTools && isToolAllowed(name));
 	const baseEntries =
 		filteredRequestedTools !== undefined
-			? filteredRequestedTools.filter(name => name !== "resolve").map(name => [name, allTools[name]] as const)
+			? filteredRequestedTools.filter(name => name !== TOOL.resolve).map(name => [name, allTools[name]] as const)
 			: [
 					...Object.entries(BUILTIN_TOOLS)
 						.filter(([name]) => isToolAllowed(name))
 						.map(([name, factory]) => [name, factory] as const),
-					...(includeYield ? ([["yield", HIDDEN_TOOLS.yield]] as const) : []),
-					...(goalModeActive ? ([["goal", HIDDEN_TOOLS.goal]] as const) : []),
+					...(includeYield ? ([[TOOL.yield, HIDDEN_TOOLS.yield]] as const) : []),
+					...(goalModeActive ? ([[TOOL.goal, HIDDEN_TOOLS.goal]] as const) : []),
 				];
 
 	const activeToolNames = new Set(baseEntries.map(([name]) => name));
@@ -664,7 +688,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		}),
 	);
 	const tools = baseResults.filter((r): r is Tool => r !== null);
-	if (!tools.some(tool => tool.name === "resolve")) {
+	if (!tools.some(tool => tool.name === TOOL.resolve)) {
 		const resolveTool = await logger.time("createTools:resolve", HIDDEN_TOOLS.resolve, session);
 		if (resolveTool) {
 			tools.push(wrap(resolveTool));
@@ -675,14 +699,14 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 	// Injected unconditionally into every agent, regardless of requested tool list.
 	const { createReportToolIssueTool, isAutoQaEnabled } = await import("./report-tool-issue");
 	const autoQA = isAutoQaEnabled(session.settings);
-	if (autoQA && !tools.some(t => t.name === "report_tool_issue")) {
+	if (autoQA && !tools.some(t => t.name === TOOL.report_tool_issue)) {
 		// Build the enum from tools we just constructed via BUILTIN_TOOLS / HIDDEN_TOOLS.
 		// Extension overrides (e.g. a user's custom `bash`) get added later by
 		// other code paths, so they're absent here — exactly what we want; MCP /
 		// extension tools never end up in the report enum.
 		const activeBuiltinNames = tools
 			.map(t => t.name)
-			.filter(name => (name in BUILTIN_TOOLS || name in HIDDEN_TOOLS) && name !== "report_tool_issue");
+			.filter(name => (name in BUILTIN_TOOLS || name in HIDDEN_TOOLS) && name !== TOOL.report_tool_issue);
 		const qaTool = createReportToolIssueTool(session, activeBuiltinNames);
 		if (qaTool) {
 			tools.push(wrap(qaTool));

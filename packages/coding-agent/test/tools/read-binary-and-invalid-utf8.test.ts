@@ -188,7 +188,7 @@ describe("reading bytes that are not text", () => {
 			// Control characters are not binary. Tabs and CRLF are everywhere, and an
 			// ESC byte is normal in a recorded terminal log or a fixture of ANSI
 			// output. Only NUL and invalid UTF-8 make a file unreadable as text.
-			const file = await writeBytes("controls.txt", "col1\tcol2\r\n[31mred[0m\n");
+			const file = await writeBytes("controls.txt", "col1\tcol2\r\n\x1b[31mred\x1b[0m\n");
 
 			const { text, reason } = await read(file);
 

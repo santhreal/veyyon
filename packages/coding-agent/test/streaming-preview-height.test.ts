@@ -6,12 +6,13 @@ import type { AgentTool } from "@veyyon/agent-core";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { EDIT_MODE_STRATEGIES } from "@veyyon/coding-agent/edit";
 import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer-chrome";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";
 import { TUI, visibleWidth } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal";
+import { createToolExecution } from "./helpers/tool-execution";
 
 // The streaming edit preview is a fixed-height tail window ("cursor"): the last
 // EDIT_STREAMING_PREVIEW_LINES rows of the recomputed diff are pinned to the
@@ -143,7 +144,7 @@ describe("streaming edit preview height (stable, full tail window)", () => {
 		const scheduler = makeDrainableScheduler();
 		const tui = new TUI(term, undefined, { renderScheduler: scheduler });
 		const tool = { mode: "replace" } as unknown as AgentTool;
-		const component = new ToolExecutionComponent(
+		const component = createToolExecution(
 			"edit",
 			{ path: file, edits: [{ old_text: oldBlock, new_text: fullNew.slice(0, 1) }] },
 			{},
@@ -198,7 +199,7 @@ describe("streaming edit preview height (stable, full tail window)", () => {
 
 		const uiStub = { requestRender() {}, requestComponentRender() {} } as unknown as TUI;
 		const tool = { mode: "replace" } as unknown as AgentTool;
-		const component = new ToolExecutionComponent(
+		const component = createToolExecution(
 			"edit",
 			{ path: bigFile, edits: [{ old_text: bigOld, new_text: bigNew.slice(0, 1) }] },
 			{},
@@ -393,7 +394,7 @@ describe("streaming tool call preview height (bounded across renderers)", () => 
 	function renderPending(toolName: string, args: unknown): { lines: readonly string[]; text: string } {
 		const term = new VirtualTerminal(80, 20);
 		const tui = new TUI(term);
-		const component = new ToolExecutionComponent(toolName, args, {}, undefined, tui, process.cwd());
+		const component = createToolExecution(toolName, args, {}, undefined, tui, process.cwd());
 		try {
 			const lines = component.render(80);
 			return { lines, text: lines.map(line => Bun.stripANSI(line)).join("\n") };

@@ -1,10 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { removeWithRetries } from "@veyyon/utils";
 import { guardDestructivePath } from "../../../utils/test/helpers/destructive-guard";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makeBranchShapeDir = useTrackedTempDirs("veyyon-branch-shape-");
 
 /**
  * SESS-3: branching must never orphan or duplicate a message.
@@ -36,7 +42,7 @@ describe("branch and rewind produce an exact message tree", () => {
 	let sessionDir = "";
 
 	beforeEach(() => {
-		root = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-branch-shape-"));
+		root = makeBranchShapeDir();
 		cwd = path.join(root, "project");
 		sessionDir = path.join(root, "sessions");
 		for (const dir of [cwd, sessionDir]) fs.mkdirSync(dir, { recursive: true });
