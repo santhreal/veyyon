@@ -4,6 +4,11 @@ import * as nodeFs from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import {
+	STALE_TEMP_DIR_AGE_MS,
+	sweepStaleTempDirs,
+	TEST_TEMP_DIR_PREFIXES,
+} from "../packages/utils/test/helpers/temp-dir-janitor";
 import { ensureToolViewsGenerated } from "./ensure-tool-views";
 
 type Mode =
@@ -59,6 +64,39 @@ export const SANDBOX_HOME = (() => {
 	nodeFs.mkdirSync(sandbox, { recursive: true });
 	return sandbox;
 })();
+
+// Every run used to leave that sandbox behind, and a CLI spawned with a fresh HOME stages
+// about 290 MB of native addon into it, so a few hundred runs filled a 915 GB disk: /tmp
+// held 38,600 stranded veyyon-* directories totalling 240 GB and the root filesystem hit
+// 100% full. Removing it here covers a run that finishes. The sweep below covers the runs
+// that did not, on this machine and on every machine that already has the backlog.
+process.on("exit", () => {
+	try {
+		nodeFs.rmSync(SANDBOX_HOME, { recursive: true, force: true });
+	} catch {
+		// A sandbox that cannot be removed is worth no noise at the very end of a run; the
+		// age-bounded sweep at the start of the next one will collect it.
+	}
+});
+
+{
+	// Every prefix, not just `veyyon-`: the coding-agent suite names its scratch `pi-`, and
+	// sweeping one prefix left 14,364 of those behind while reporting a clean reclaim.
+	let reclaimed = 0;
+	for (const prefix of TEST_TEMP_DIR_PREFIXES) {
+		const swept = sweepStaleTempDirs({ prefix });
+		reclaimed += swept.removed.length;
+		for (const failure of swept.failed) {
+			process.stderr.write(`could not reclaim ${failure.dir}: ${failure.reason}\n`);
+		}
+	}
+	if (reclaimed > 0) {
+		process.stderr.write(
+			`reclaimed ${reclaimed} stranded test directories in ${os.tmpdir()} ` +
+				`(older than ${STALE_TEMP_DIR_AGE_MS / 3_600_000} hours)\n`,
+		);
+	}
+}
 const args = process.argv.slice(2);
 const isDryRun = args.includes("--dry-run");
 const requestedMode = args.find(arg => !arg.startsWith("--")) ?? "all";

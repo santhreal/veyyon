@@ -399,6 +399,97 @@ For a suite that also needs `HOME` itself redirected, `enterTempHome()` in
 that reads it at call time, such as shell completion paths, and the config root that `HOME`
 cannot reach. Its `restore()` puts every variable back as it found it and deletes the tree.
 
+### Temp directories are collected for you
+
+You do not have to remove the temp directories your suite creates. Every test process
+preloads `packages/utils/test/helpers/temp-dir-janitor.ts`, which wraps `fs.mkdtemp`,
+`fs.mkdtempSync`, `fs.promises.mkdtemp` and all three `mkdir` forms, records what each call
+created, and removes those paths in an `afterAll` that bun runs at the end of every test
+file. Removing them yourself is still welcome and still correct; it is simply no longer the
+thing that stands between the suite and a full disk.
+
+It records the path `mkdtemp` returned, never a path it guessed from a prefix, and only
+when that path is inside `os.tmpdir()`. So a suite that points `mkdtemp` at a directory in
+the repository keeps its output, and a directory belonging to another process is never
+touched.
+
+`mkdir` is recorded on the same terms, because most test files do not call `mkdtemp` at
+all: they join a unique name onto the tmpdir themselves. What makes that safe is that
+`mkdir` says whether it created anything. With `recursive: true` it returns the topmost
+directory it made, or `undefined` when everything already existed; without it, the call
+throws when the target exists. So the janitor claims a directory this process made and
+never one it merely opened, and the topmost path is what gets recorded, so removal does not
+leave empty parents behind.
+
+One case is worth knowing about. If your suite creates a FIXED-name directory under the
+tmpdir, such as a cache at `path.join(os.tmpdir(), "veyyon-my-cache")`, the file that
+created it will remove it at the end of that file, while another test file running in
+another worker may still be using it. A unique name cannot be shared and has no such
+hazard, so prefer `mkdtemp`; if you do need a shared fixed name, make the code that reads it
+recreate it on demand.
+
+When it cannot remove something, it says so, on stderr, naming the path and the reason:
+
+```
+temp-dir-janitor: 1 scratch directory could not be removed and is left behind:
+  /tmp/veyyon-example-a1b2c3: EACCES: permission denied, rm '/tmp/veyyon-example-a1b2c3'
+```
+
+Treat that line as a finding rather than noise. It is the only signal that a run left
+something on disk, and the hook deliberately does not throw: teardown runs after the last
+test, so a throw there is attributed to whichever file finished last and blames the wrong
+suite. The message was absent for a while, because the hook called the removal and threw
+away its report, which meant a directory it could not collect was left behind with nothing
+anywhere naming it. `temp-dir-janitor-reports-what-it-cannot-collect.test.ts` pins it.
+
+Two cases the recording cannot see, both of which you own:
+
+- A directory another process created that yours only reopens. Nothing in your process made
+  it, so nothing collects it.
+- A process killed with `SIGKILL`, which runs no hook at all.
+
+### Do not add per-suite temp cleanup by default
+
+The janitor is the one owner of this. A new suite should call `mkdtemp` and stop there: an
+`afterAll` that removes what the janitor already removes is a second mechanism for one job,
+and the two drift the moment somebody changes one of them.
+
+This is worth stating because it has been got wrong once already, by reading a leak on a
+developer's disk as a missing `afterAll` and adding one to thirty-odd files. Two things made
+that reading look right and both are traps. The first is that a suite calling `removeWithRetries`
+in an `afterEach` does not match a grep for `rmSync`, so a file that already cleans up reads
+as a file that never did. The second is that `/tmp` on a working machine holds directories
+from months of runs, including runs from before the janitor existed, so its contents say
+nothing about whether today's run leaks. Measure a single run instead: list `/tmp/veyyon-*`
+before and after and `comm` the two.
+
+Write cleanup yourself only when the directory has to be gone BEFORE the file ends, which is
+rare, or when the tree is not under `os.tmpdir()` and so is outside what the janitor will
+touch. `packages/coding-agent/test/helpers/tracked-temp-dir.ts` is there for those cases:
+`useTrackedTempDirs(prefix)` returns a factory that registers its own removal, and
+`useTrackedTempDirFactory()` is the same thing for a suite that names each directory after
+the case that made it.
+
+For both, `scripts/ci-test-ts.ts` sweeps before a run: for every prefix in
+`TEST_TEMP_DIR_PREFIXES` it removes matching directories in `os.tmpdir()` that nothing has
+written to for six hours. Six hours is longer than any run here, so the sweep can only ever
+reach scratch whose owner is gone, and it reports what it removed rather than doing it
+quietly.
+
+The prefix list matters more than it looks. It held `veyyon-` alone while `/tmp` carried
+14,364 `pi-` directories from the coding-agent suite, so the sweep ran, reported a clean
+reclaim, and left the larger half of the stranded scratch on disk. If you introduce a new
+prefix, add it there. Keep it distinctive: the sweep identifies another process's leftovers
+by name and age, so a generic prefix such as `test-` would reach directories that are not
+ours.
+
+This exists because it was once absent. `/tmp` accumulated 38,600 stranded `veyyon-*`
+directories totalling 240 GB and the root filesystem reached 100% full with 18 MB free, at
+which point nothing on the machine could build or test. 233 test files call `mkdtempSync`
+across 405 call sites and 102 of them never removed anything, so a single full run leaked
+over 1,700 directories. The largest were around 290 MB each: a CLI spawned with a fresh
+`HOME` stages the native addon into that home.
+
 ### Layer one: every test child gets a disposable home
 
 `scripts/ci-test-ts.ts` spawns each test process with `HOME` pointing at a fresh
