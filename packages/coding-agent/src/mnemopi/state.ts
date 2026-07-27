@@ -5,6 +5,7 @@ import type { Mnemopi, RecallResult } from "@veyyon/mnemopi";
 import type * as MnemopiCoreNs from "@veyyon/mnemopi/core";
 import type { LocalModelInitializer } from "@veyyon/mnemopi/core";
 // Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
+import { assistantTextFromUnknown } from "@veyyon/ai/utils/message-text";
 import * as logger from "@veyyon/utils/logger";
 import { escapeRegExp } from "@veyyon/utils/regex";
 import {
@@ -810,7 +811,7 @@ function flattenAgentMessages(messages: AgentMessage[]): Array<{ role: "user" | 
 	const out: Array<{ role: "user" | "assistant"; content: string }> = [];
 	for (const message of messages) {
 		if (!("role" in message) || (message.role !== "user" && message.role !== "assistant")) continue;
-		const content = message.role === "user" ? userText(message.content) : assistantText(message.content);
+		const content = message.role === "user" ? userText(message.content) : assistantTextFromUnknown(message.content);
 		if (content.trim()) out.push({ role: message.role, content });
 	}
 	return out;
@@ -832,13 +833,4 @@ function userText(content: unknown): string {
 // possibly-untyped persisted message content (raw JSON off disk), so it cannot
 // use the typed @veyyon/ai assistantText owner, which requires an
 // AssistantMessage. Mirrors userText's null/non-object guard.
-function assistantText(content: unknown): string {
-	if (!Array.isArray(content)) return "";
-	const parts: string[] = [];
-	for (const block of content) {
-		if (!block || typeof block !== "object") continue;
-		const maybe = block as { type?: unknown; text?: unknown };
-		if (maybe.type === "text" && typeof maybe.text === "string") parts.push(maybe.text);
-	}
-	return parts.join("\n");
-}
+

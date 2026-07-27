@@ -13,6 +13,7 @@
  * pass.
  */
 /// <reference types="./bun-imports.d.ts" />
+import { assistantTextBlocksFromUnknown } from "@veyyon/ai/utils/message-text";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
@@ -547,17 +548,19 @@ export async function measureForcedAdoption(model: string): Promise<ForcedAdopti
 }
 
 /** Concatenate the visible text of every assistant turn. */
+/**
+ * Every assistant text block across a transcript, joined.
+ *
+ * The per-message extraction is `assistantTextBlocksFromUnknown` in `@veyyon/ai`, which
+ * owns the rule for what counts as assistant text. This used to hand-roll the same walk,
+ * so a new content-block shape would have made the benchmark silently read less of each
+ * response than the model produced.
+ */
 function assistantText(messages: readonly AgentMessage[]): string {
 	const parts: string[] = [];
 	for (const message of messages as ReadonlyArray<{ role: string; content?: unknown }>) {
-		if (message.role !== "assistant" || !Array.isArray(message.content)) {
-			continue;
-		}
-		for (const part of message.content as Array<Record<string, unknown>>) {
-			if (part && part.type === "text" && typeof part.text === "string") {
-				parts.push(part.text);
-			}
-		}
+		if (message.role !== "assistant") continue;
+		parts.push(...assistantTextBlocksFromUnknown(message.content));
 	}
 	return parts.join("\n");
 }
