@@ -792,6 +792,7 @@ its own gate:
 | Linux | `scripts/installer-environment-matrix.test.ts` | `install.sh --local` once per shell/XDG combination in `environments.toml` |
 | Windows | `scripts/install-tests/e2e.test.ps1` (CI job `install_ps1_e2e`) | `install.ps1 -Local` end to end: install, reinstall, uninstall |
 | Windows | `scripts/install-tests/functions.test.ps1` (CI job `install_ps1_functions`) | The pure helpers, with nothing installed |
+| Linux, by hand | `scripts/install-tests/stress.sh` | Real downloads in ~39 adversarial environments, in a disposable container |
 
 The Windows end-to-end test edits the user PATH and the CurrentUserAllHosts
 PowerShell profile for real, because the installer does and testing a fake would
@@ -808,6 +809,44 @@ $env:VEYYON_INSTALL_E2E = "1"; pwsh -File scripts/install-tests/e2e.test.ps1
 installs the binary the checkout has already built rather than downloading a
 release, which is what lets the real installer run in CI with no published
 release and no network.
+
+## The adversarial install matrix
+
+`scripts/install-tests/stress.sh` asks a different question from the gates above.
+Those prove the install works in the environments it was written for; this one
+puts it in environments nobody designs for and reports what breaks. It drives
+about 39 cases: three shells, four hostile `$HOME` names, three terminal widths
+plus a terminal with no width tools at all, a read-only install directory, a
+read-only rc, a full disk, a shadowed `PATH`, two concurrent installs, a SIGINT
+mid-copy, a killed installer's staging file, a missing `$HOME`, six hostile
+environment variables, two umasks, a symlinked install directory, a tampered
+download, a missing release, no network at all, a double uninstall, and a
+reinstall over a running install.
+
+It is not in CI and not in `bun test`. It performs real installs, including real
+downloads of a 300 MB binary, and several cases deliberately break the machine
+they run on: they make directories read-only, kill installers mid-copy, and
+tamper with a downloaded file. Run it in a container you are willing to throw
+away:
+
+```console
+$ docker run -d --name veyyon-stress ubuntu:24.04 sleep infinity
+$ docker exec veyyon-stress bash -c 'apt-get update -qq && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+    curl ca-certificates dash bash util-linux ncurses-bin && useradd -m tester'
+$ docker cp scripts/install.sh veyyon-stress:/home/tester/install.sh
+$ docker cp scripts/install-tests/stress.sh veyyon-stress:/home/tester/stress.sh
+$ docker exec -u tester veyyon-stress bash /home/tester/stress.sh
+```
+
+A case that cannot run in your container reports `SKIP` and is counted
+separately. A skip is never counted as a pass, because a skip counted as a pass
+is the same defect the matrix exists to find in the product.
+
+When a case fails, fix the installer and then encode the failure where it will be
+checked on every commit: an environment goes in `environments.toml`, and a
+behaviour goes in `scripts/install-tests/functions.test.sh`. The matrix finds
+things; it is not where they are locked down.
 
 ## Adding an environment to the install matrix
 
