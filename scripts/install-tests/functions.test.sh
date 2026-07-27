@@ -837,12 +837,30 @@ check "the closing advice uses the binary name when the alias is not ours" \
     "$( ( ALIAS_IS_OURS=0; print_next_steps | grep -c 'Launch in any repository: veyyon$' ) )" "1"
 check "no line tells the user to run a foreign vey" \
     "$( ( ALIAS_IS_OURS=0; print_next_steps | grep -c '\bvey\b' ) )" "0"
-# Every line of the block moves together, so the setup and doctor hints cannot
-# name a different command than the launch line.
-check "setup and doctor hints follow the same command" \
+# Every line of the block moves together, so steps 2 and 3 cannot name a
+# different command than the launch line.
+check "the later steps follow the same command" \
     "$( ( ALIAS_IS_OURS=0; print_next_steps | grep -c '^  [23]\..* veyyon ' ) )" "2"
 check "launch_command is the single owner of that choice" \
     "$( ( ALIAS_IS_OURS=1; launch_command ) )" "vey"
+
+# Step 3 read "Run system diagnostics: <cmd> plugin doctor". There is no `doctor`
+# command; `plugin doctor` reports on plugins alone and on a fresh install prints
+# three slots all "not created yet". A user following the installer's own third
+# step was told they were checking their system and shown a report about a
+# subsystem they had never used. Found by dogfooding the real install in a clean
+# container (BACKLOG INSTALL-DOGFOOD-2). These pin the label to the command.
+check "step 3 no longer claims to run system diagnostics" \
+    "$( ( ALIAS_IS_OURS=1; print_next_steps | grep -ci 'diagnostic' ) )" "0"
+check "step 3 does not send a fresh install into the plugin subsystem" \
+    "$( ( ALIAS_IS_OURS=1; print_next_steps | grep -c 'plugin doctor' ) )" "0"
+check "step 3 names the command list, and names it exactly" \
+    "$( ( ALIAS_IS_OURS=1; print_next_steps | grep -c '^  3\. See every command: *vey --help$' ) )" "1"
+# Each step is a label, then a command. A step whose label promises something the
+# command does not do is the bug above; asserting the shape of all three keeps a
+# future edit from reintroducing it silently in a different step.
+check "every step is exactly one label and one command" \
+    "$( ( ALIAS_IS_OURS=1; print_next_steps | grep -c '^  [123]\. [A-Z][^:]*: *vey\b' ) )" "3"
 
 # --- do_uninstall: a `vey` the installer never created is not ours to delete ---
 # link_alias refuses to overwrite a `vey` the user owns, and install_completions

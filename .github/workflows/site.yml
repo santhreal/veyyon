@@ -1,5 +1,7 @@
 # Website sync: the site rebuilds and redeploys from `main`, so what is in the
-# repository is what veyyon.dev serves.
+# repository is what veyyon.dev and get.veyyon.dev serve. Two Pages projects, both
+# deployed here, and the served install scripts are then compared byte for byte
+# against `scripts/` so "deployed" and "current" cannot drift apart silently.
 #
 # This is how a technical report becomes a blog post. You write it as Markdown in
 # `website/blog/<slug>.md` (readable on GitHub as-is), open a pull request, and
@@ -72,6 +74,24 @@ jobs:
               CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
               CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
            run: bunx wrangler@latest pages deploy website --project-name veyyon --branch main --commit-dirty=true
+         # get.veyyon.dev is a SEPARATE Pages project fed by a separate tree
+         # (website-get/: the two install scripts and a root rewrite), staged by
+         # the build step above. This workflow already triggers on
+         # `scripts/install.sh`, and until now it deployed only veyyon.dev — so an
+         # installer change merged to main updated the docs about the installer and
+         # left the installer itself on whatever the last release had published.
+         # That is how get.veyyon.dev came to serve a script hundreds of lines
+         # behind main. Both trees deploy together now; ci.yml still redeploys both
+         # on a release, and the two overlap harmlessly.
+         - name: Deploy to Cloudflare Pages (project veyyon-get → get.veyyon.dev)
+           if: ${{ env.IS_MAIN == 'true' && env.HAS_CF_TOKEN == 'true' }}
+           env:
+              CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+              CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+           run: bunx wrangler@latest pages deploy website-get --project-name veyyon-get --branch main --commit-dirty=true
+         - name: Verify get.veyyon.dev serves THIS repository's install scripts
+           if: ${{ env.IS_MAIN == 'true' && env.HAS_CF_TOKEN == 'true' }}
+           run: bun scripts/verify-deployed-installers.ts
          # A missing token must never look like a successful publish: say so loudly
          # so the fix is "add the secret", not "wonder why the post never appeared".
          - name: Warn when the deploy was skipped for a missing token
