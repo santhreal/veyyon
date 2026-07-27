@@ -30,6 +30,20 @@ export const HOST_LLM_TIMEOUT_SECONDS = 15.0;
 
 export type VecType = "float32" | "int8" | "bit";
 
+/**
+ * The width assumed for a model this table does not list.
+ *
+ * Named rather than written as a bare `384` at each site, because both resolvers
+ * (`embeddingDim` here and `embeddingDimFor` in `core/embeddings.ts`) have to fall
+ * back to the SAME number: they size the same vectors, and two different guesses
+ * would corrupt the store rather than merely disagree. It is the dimension of the
+ * default model, so an unlisted model behaves like the default instead of failing.
+ */
+export const FALLBACK_EMBEDDING_DIM = 384;
+
+/**
+ * Dimension by embedding model name. THE one table; `core/embeddings.ts` imports it.
+ */
 export const EMBEDDING_DIMS: Readonly<Record<string, number>> = {
 	"BAAI/bge-small-en-v1.5": 384,
 	"BAAI/bge-base-en-v1.5": 768,
@@ -77,7 +91,7 @@ export function embeddingModel(env: Env = process.env): string {
 export function embeddingDim(env: Env = process.env): number {
 	const explicit = envInt("MNEMOPI_EMBEDDING_DIM", NaN, env);
 	if (Number.isFinite(explicit)) return explicit;
-	return EMBEDDING_DIMS[embeddingModel(env)] ?? 384;
+	return EMBEDDING_DIMS[embeddingModel(env)] ?? FALLBACK_EMBEDDING_DIM;
 }
 
 export function embeddingApiKey(env: Env = process.env): string {
