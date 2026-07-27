@@ -5,7 +5,7 @@ description: Use when creating a new veyyon marketplace. Covers marketplace.json
 
 # Authoring Marketplaces
 
-A marketplace is a Git repository (or local directory) that contains a catalog file at either `.veyyon-plugin/marketplace.json` (preferred for veyyon-specific catalogs) or `.claude-plugin/marketplace.json` (Claude Code-compatible; used as the fallback). Anyone can author one. Users add it with `/marketplace add owner/repo` and then install individual plugins from it.
+A marketplace is a Git repository (or local directory) that contains a catalog file at either `.veyyon-plugin/marketplace.json` (preferred for veyyon-specific catalogs) or `.claude-plugin/marketplace.json` (Claude Code-compatible; used as the fallback). Anyone can author one. Users add it with `veyyon plugin marketplace add owner/repo` and then install individual plugins from it.
 
 ## Minimum viable marketplace
 
@@ -37,8 +37,8 @@ my-marketplace/
 Push to GitHub. Users install with:
 
 ```
-/marketplace add your-github-username/my-marketplace
-/marketplace install my-plugin@my-marketplace
+veyyon plugin marketplace add your-github-username/my-marketplace
+veyyon plugin install my-plugin@my-marketplace
 ```
 
 ## marketplace.json schema
@@ -206,17 +206,17 @@ my-plugin/
   README.md                ← recommended: description + usage
 ```
 
-> Note: extension modules declared via `package.json` `veyyon.extensions` (legacy `omp`/`pi`) are **not** loaded from marketplace installs: that mechanism only applies to npm-installed or `veyyon plugin link`ed plugins. Ship marketplace plugin behavior through the conventional directories above.
+> Note: extension modules declared via `package.json` `veyyon.extensions` (legacy `omp`/`pi`) load from marketplace installs exactly as they do from npm-installed or `veyyon plugin link`ed plugins: the install symlinks the cached plugin into the runtime `node_modules` tree that the extension loader enumerates.
 
 ## Install command
 
 ```
-/marketplace install name@marketplace-name
-/marketplace install --force name@marketplace-name     # reinstall
-/marketplace install --scope project name@marketplace  # project-scoped
+veyyon plugin install name@marketplace-name
+veyyon plugin install --force name@marketplace-name     # reinstall
+veyyon plugin install --scope project name@marketplace  # project-scoped
 ```
 
-CLI equivalent:
+Add the marketplace first:
 
 ```
 veyyon plugin marketplace add owner/repo
@@ -248,13 +248,13 @@ Invalid: `-bad-start`, `bad-end-`, `.dot-start`, `Under_score`, `HAS_CAPS`
 1. Create `marketplace.json` at `.veyyon-plugin/marketplace.json` (veyyon-only) or `.claude-plugin/marketplace.json` (shared with Claude Code) in a new Git repo.
 2. Add plugin entries pointing to subdirectories (or external sources).
 3. Push to GitHub.
-4. Share the `owner/repo` string. Users add it with `/marketplace add owner/repo`.
-5. When you update the catalog, users run `/marketplace update your-marketplace-name` to pull the latest.
+4. Share the `owner/repo` string. Users add it with `veyyon plugin marketplace add owner/repo`.
+5. When you update the catalog, users run `veyyon plugin marketplace update your-marketplace-name` to pull the latest.
 
 To test locally before publishing:
 
 ```
-/marketplace add ./path/to/my-marketplace
+veyyon plugin marketplace add ./path/to/my-marketplace
 ```
 
 Local path sources also accept `~/` and absolute paths.

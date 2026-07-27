@@ -38,7 +38,7 @@ The ground is **pitch black**. On it, two colors do two jobs, the same system th
 - **Silver is structure**: wordmark, labels, hairlines, progress, primary text hierarchy: `#C6CBD4` / bright `#E6E9EE` (same value on both surfaces).
 - **Ember is the single accent**: the sun: `#F0862E`, carried on the website by links, hover `#FB9E44`, and the focus ring; in the TUI (titanium) by links, the accent border, list bullets, and the selection glow (`emberDim #B8632A`, `emberGlow #241510`). One accent per view; never a primary fill.
 
-Green, amber, and red only when meaning fits (success, warning, error): `#7FB98A` / `#C9A24B` / `#C96F6E` on both surfaces. Ember is the brand accent and stays distinct from the amber warning color. `website/site.css` `:root` is the canonical token source; the titanium theme mirrors it, locked by `test/brand-conformance.test.ts` (site.css parity test).
+Green, amber, and red only when meaning fits (success, warning, error): `#7FB98A` / `#C9A24B` / `#D1706E` on both surfaces. Ember is the brand accent and stays distinct from the amber warning color. `website/site.css` `:root` is the canonical token source; the titanium theme mirrors it, locked by `test/brand-conformance.test.ts` (site.css parity test).
 
 **Every background is pure black `#000000`.** Hierarchy comes from silver hairlines, text weight, and the ember accent, not raised panels or tinted fills. No cyan/purple/rainbow chrome. No gradients. Sharp edges. The only permitted glow is the ember selection tint (`emberGlow`).
 
@@ -58,4 +58,4 @@ Session welcome is a single hero card (not a dual-column dashboard): wordmark, o
 
 See also: [Themes and identity](../handbook/src/using/themes.md), [TUI design language](./tui-design-language.md).
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `179635884f50` on 2026-07-25.*

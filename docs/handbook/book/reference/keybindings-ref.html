@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -196,41 +196,49 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="keybindings-reference"><a class="header" href="#keybindings-reference">Keybindings reference</a></h1>
-<p>Quick lookup for the default Veyyon TUI shortcuts. For the full guide on customizing, remapping, and Vim mode, see <a href="../features/keybindings.html">Keybindings and Vim mode</a>.</p>
-<h2 id="global"><a class="header" href="#global">Global</a></h2>
+<p>Quick lookup for the default Veyyon TUI shortcuts. Every row below is taken from the default
+binding tables in code (<code>KEYBINDINGS</code> in <code>config/keybindings.ts</code> and <code>TUI_KEYBINDINGS</code> in
+<code>@veyyon/tui</code>), so it matches what a fresh profile does. Run <strong><code>/hotkeys</code></strong> in a session for the
+live list after your remaps. For the full guide on customizing, see
+<a href="../features/keybindings.html">Keybindings and Vim mode</a>.</p>
+<h2 id="app"><a class="header" href="#app">App</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Binding</th><th>Action</th></tr>
 </thead>
 <tbody>
-<tr><td><code>ctrl-t</code></td><td>Open transcript scrollback</td></tr>
-<tr><td><code>ctrl-g</code></td><td>Open external editor for the current draft</td></tr>
-<tr><td><code>ctrl-o</code></td><td>Copy the last agent response to the clipboard</td></tr>
-<tr><td><code>ctrl-l</code></td><td>Clear TUI history</td></tr>
-<tr><td><code>alt-r</code></td><td>Toggle raw scrollback mode</td></tr>
-<tr><td>(unbound)</td><td>Toggle Vim mode</td></tr>
-<tr><td>(unbound)</td><td>Toggle Fast mode</td></tr>
+<tr><td><code>esc</code></td><td>Interrupt the current operation (<code>app.interrupt</code>)</td></tr>
+<tr><td><code>ctrl+c</code></td><td>Clear screen or cancel (<code>app.clear</code>)</td></tr>
+<tr><td><code>ctrl+d</code></td><td>Exit the application (<code>app.exit</code>)</td></tr>
+<tr><td><code>ctrl+z</code></td><td>Suspend the application (<code>app.suspend</code>)</td></tr>
+<tr><td><code>ctrl+b</code></td><td>Move the running foreground command to a background job (<code>app.bash.background</code>); active only while a foreground <code>bash</code> call is waiting, otherwise it keeps its editor meaning (cursor left)</td></tr>
+<tr><td><code>ctrl+l</code></td><td>Reset the terminal display (<code>app.display.reset</code>)</td></tr>
+<tr><td><code>shift+tab</code></td><td>Cycle thinking level (<code>app.thinking.cycle</code>)</td></tr>
+<tr><td><code>ctrl+t</code></td><td>Toggle thinking mode (<code>app.thinking.toggle</code>)</td></tr>
+<tr><td><code>ctrl+p</code> / <code>shift+ctrl+p</code></td><td>Cycle model forward / backward (<code>app.model.cycleForward</code> / <code>app.model.cycleBackward</code>)</td></tr>
+<tr><td><code>alt+m</code></td><td>Select model (<code>app.model.select</code>)</td></tr>
+<tr><td><code>alt+p</code></td><td>Select a temporary model for the current session (<code>app.model.selectTemporary</code>)</td></tr>
+<tr><td><code>ctrl+o</code></td><td>Expand tool output (<code>app.tools.expand</code>)</td></tr>
+<tr><td><code>ctrl+g</code></td><td>Open the draft in an external editor (<code>app.editor.external</code>)</td></tr>
+<tr><td><code>ctrl+q</code> or <code>ctrl+enter</code></td><td>Send a follow-up message (<code>app.message.followUp</code>)</td></tr>
+<tr><td><code>alt+r</code></td><td>Retry the last failed assistant turn (<code>app.retry</code>)</td></tr>
+<tr><td><code>alt+up</code></td><td>Dequeue a queued message back into the editor (<code>app.message.dequeue</code>)</td></tr>
+<tr><td><code>alt+shift+p</code></td><td>Toggle plan mode (<code>app.plan.toggle</code>)</td></tr>
+<tr><td><code>alt+a</code></td><td>Open the agent hub (<code>app.agents.hub</code>)</td></tr>
+<tr><td><code>ctrl+r</code></td><td>Search prompt history (<code>app.history.search</code>)</td></tr>
+<tr><td><code>alt+shift+l</code></td><td>Copy the current line (<code>app.clipboard.copyLine</code>)</td></tr>
+<tr><td><code>alt+shift+c</code></td><td>Copy the whole prompt (<code>app.clipboard.copyPrompt</code>)</td></tr>
+<tr><td><code>ctrl+v</code> (<code>alt+v</code> fallback on Windows, <code>super+v</code> on macOS)</td><td>Paste from the clipboard, image preferred (<code>app.clipboard.pasteImage</code>)</td></tr>
+<tr><td><code>ctrl+shift+v</code> or <code>alt+shift+v</code></td><td>Paste clipboard text raw, no collapse (<code>app.clipboard.pasteTextRaw</code>)</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="chat"><a class="header" href="#chat">Chat</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Binding</th><th>Action</th></tr>
-</thead>
-<tbody>
-<tr><td><code>esc</code></td><td>Interrupt the running turn</td></tr>
-<tr><td><code>alt-,</code> or <code>shift-down</code></td><td>Decrease reasoning effort</td></tr>
-<tr><td><code>alt-.</code> or <code>shift-up</code></td><td>Increase reasoning effort</td></tr>
-<tr><td><code>shift-tab</code></td><td>Cycle reasoning effort (<code>app.thinking.cycle</code>)</td></tr>
-<tr><td><code>ctrl-t</code></td><td>Toggle reasoning on and off (<code>app.thinking.toggle</code>)</td></tr>
-<tr><td><code>alt-up</code> or <code>shift-left</code></td><td>Edit the most recently queued message</td></tr>
-</tbody>
-</table>
-</div>
-<p>You can also set the effort by name with the <code>/thinking</code> command (its alias is <code>/effort</code>). With no argument it opens a picker; <code>/thinking high</code> sets the level directly. The choice persists with the active profile.</p>
+<p>You can also set the effort by name with the <code>/thinking</code> command (its alias is <code>/effort</code>). With no
+argument it opens a picker; <code>/thinking high</code> sets the level directly. The choice persists with the
+active profile.</p>
+<p>Unbound by default, remappable: <code>app.session.new</code>, <code>app.session.tree</code>, <code>app.session.fork</code>,
+<code>app.session.resume</code>, and <code>app.stt.toggle</code> (speech-to-text; hold <code>Space</code> to record by default).</p>
 <h2 id="composer"><a class="header" href="#composer">Composer</a></h2>
 <div class="table-wrapper">
 <table>
@@ -238,12 +246,10 @@
 <tr><th>Binding</th><th>Action</th></tr>
 </thead>
 <tbody>
-<tr><td><code>enter</code></td><td>Submit the current message</td></tr>
-<tr><td><code>tab</code></td><td>Queue the current message while a task is running</td></tr>
-<tr><td><code>alt-enter</code></td><td>Queue the current message as a follow-up turn</td></tr>
-<tr><td><code>?</code> or <code>shift-?</code></td><td>Toggle the composer shortcut helper</td></tr>
-<tr><td><code>ctrl-r</code></td><td>Open reverse history search or move to the previous match</td></tr>
-<tr><td><code>ctrl-s</code></td><td>Move to the next match in reverse history search</td></tr>
+<tr><td><code>enter</code></td><td>Submit the current message (<code>tui.input.submit</code>)</td></tr>
+<tr><td><code>shift+enter</code> or <code>ctrl+j</code></td><td>Insert a new line (<code>tui.input.newLine</code>)</td></tr>
+<tr><td><code>tab</code></td><td>Autocomplete (<code>tui.input.tab</code>)</td></tr>
+<tr><td><code>ctrl+c</code></td><td>Copy the current selection (<code>tui.input.copy</code>)</td></tr>
 </tbody>
 </table>
 </div>
@@ -254,86 +260,43 @@
 <tr><th>Binding</th><th>Action</th></tr>
 </thead>
 <tbody>
-<tr><td><code>ctrl-j</code>, <code>ctrl-m</code>, <code>enter</code>, <code>shift-enter</code>, <code>alt-enter</code></td><td>Insert a new line</td></tr>
-<tr><td><code>left</code> or <code>ctrl-b</code></td><td>Move cursor left</td></tr>
-<tr><td><code>right</code> or <code>ctrl-f</code></td><td>Move cursor right</td></tr>
-<tr><td><code>up</code> or <code>ctrl-p</code></td><td>Move cursor up</td></tr>
-<tr><td><code>down</code> or <code>ctrl-n</code></td><td>Move cursor down</td></tr>
-<tr><td><code>alt-b</code>, <code>alt-left</code>, <code>ctrl-left</code></td><td>Move cursor left by one word</td></tr>
-<tr><td><code>alt-f</code>, <code>alt-right</code>, <code>ctrl-right</code></td><td>Move cursor right by one word</td></tr>
-<tr><td><code>home</code> or <code>ctrl-a</code></td><td>Move cursor to the start of the line</td></tr>
-<tr><td><code>end</code> or <code>ctrl-e</code></td><td>Move cursor to the end of the line</td></tr>
-<tr><td><code>backspace</code>, <code>shift-backspace</code>, <code>ctrl-h</code></td><td>Delete the character to the left</td></tr>
-<tr><td><code>delete</code>, <code>shift-delete</code>, <code>ctrl-d</code></td><td>Delete the character to the right</td></tr>
-<tr><td><code>alt-backspace</code>, <code>ctrl-backspace</code>, <code>ctrl-shift-backspace</code>, <code>ctrl-w</code>, <code>ctrl-alt-h</code></td><td>Delete the word to the left</td></tr>
-<tr><td><code>alt-delete</code>, <code>ctrl-delete</code>, <code>ctrl-shift-delete</code>, <code>alt-d</code></td><td>Delete the word to the right</td></tr>
-<tr><td><code>ctrl-u</code></td><td>Delete from the cursor to the start of the line</td></tr>
-<tr><td><code>ctrl-k</code></td><td>Delete from the cursor to the end of the line</td></tr>
-<tr><td><code>ctrl-y</code></td><td>Paste the deleted text buffer</td></tr>
+<tr><td><code>up</code> / <code>down</code></td><td>Move cursor up / down</td></tr>
+<tr><td><code>left</code> or <code>ctrl+b</code></td><td>Move cursor left</td></tr>
+<tr><td><code>right</code> or <code>ctrl+f</code></td><td>Move cursor right</td></tr>
+<tr><td><code>alt+left</code>, <code>ctrl+left</code>, or <code>alt+b</code></td><td>Move cursor left by one word</td></tr>
+<tr><td><code>alt+right</code>, <code>ctrl+right</code>, or <code>alt+f</code></td><td>Move cursor right by one word</td></tr>
+<tr><td><code>home</code> or <code>ctrl+a</code></td><td>Move cursor to the start of the line</td></tr>
+<tr><td><code>end</code> or <code>ctrl+e</code></td><td>Move cursor to the end of the line</td></tr>
+<tr><td><code>ctrl+]</code> / <code>ctrl+alt+]</code></td><td>Jump forward / backward to a character</td></tr>
+<tr><td><code>page-up</code> / <code>page-down</code></td><td>Page up / down</td></tr>
+<tr><td><code>backspace</code></td><td>Delete the character to the left</td></tr>
+<tr><td><code>delete</code> or <code>ctrl+d</code></td><td>Delete the character to the right</td></tr>
+<tr><td><code>ctrl+w</code>, <code>alt+backspace</code>, <code>ctrl+backspace</code>, or <code>super+alt+backspace</code></td><td>Delete the word to the left</td></tr>
+<tr><td><code>alt+delete</code>, <code>alt+d</code>, <code>super+alt+delete</code>, or <code>super+alt+d</code></td><td>Delete the word to the right</td></tr>
+<tr><td><code>ctrl+u</code></td><td>Delete from the cursor to the start of the line</td></tr>
+<tr><td><code>ctrl+k</code></td><td>Delete from the cursor to the end of the line</td></tr>
+<tr><td><code>ctrl+y</code> / <code>alt+y</code></td><td>Yank / yank-pop the kill buffer</td></tr>
+<tr><td><code>ctrl+-</code> or <code>ctrl+_</code></td><td>Undo</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="pager"><a class="header" href="#pager">Pager</a></h2>
+<h2 id="lists-and-selectors"><a class="header" href="#lists-and-selectors">Lists and selectors</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Binding</th><th>Action</th></tr>
 </thead>
 <tbody>
-<tr><td><code>up</code> or <code>k</code></td><td>Scroll up one row</td></tr>
-<tr><td><code>down</code> or <code>j</code></td><td>Scroll down one row</td></tr>
-<tr><td><code>page-up</code>, <code>shift-space</code>, or <code>ctrl-b</code></td><td>Scroll up one page</td></tr>
-<tr><td><code>page-down</code>, <code>space</code>, or <code>ctrl-f</code></td><td>Scroll down one page</td></tr>
-<tr><td><code>ctrl-u</code></td><td>Scroll up half a page</td></tr>
-<tr><td><code>ctrl-d</code></td><td>Scroll down half a page</td></tr>
-<tr><td><code>home</code></td><td>Jump to the beginning</td></tr>
-<tr><td><code>end</code></td><td>Jump to the end</td></tr>
-<tr><td><code>q</code> or <code>ctrl-c</code></td><td>Close the pager</td></tr>
-<tr><td><code>ctrl-t</code></td><td>Close the transcript view</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="list"><a class="header" href="#list">List</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Binding</th><th>Action</th></tr>
-</thead>
-<tbody>
-<tr><td><code>up</code>, <code>ctrl-p</code>, <code>ctrl-k</code>, <code>k</code></td><td>Move selection up</td></tr>
-<tr><td><code>down</code>, <code>ctrl-n</code>, <code>ctrl-j</code>, <code>j</code></td><td>Move selection down</td></tr>
-<tr><td><code>left</code> or <code>ctrl-h</code></td><td>Move selection left</td></tr>
-<tr><td><code>right</code> or <code>ctrl-l</code></td><td>Move selection right</td></tr>
-<tr><td><code>page-up</code> or <code>ctrl-b</code></td><td>Move up one page</td></tr>
-<tr><td><code>page-down</code> or <code>ctrl-f</code></td><td>Move down one page</td></tr>
-<tr><td><code>home</code></td><td>Jump to the first item</td></tr>
-<tr><td><code>end</code></td><td>Jump to the last item</td></tr>
-<tr><td><code>enter</code></td><td>Accept the current selection</td></tr>
-<tr><td><code>esc</code></td><td>Cancel and close the list</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="approval"><a class="header" href="#approval">Approval</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Binding</th><th>Action</th></tr>
-</thead>
-<tbody>
-<tr><td><code>ctrl-a</code> or <code>ctrl-shift-a</code></td><td>Open the fullscreen approval view</td></tr>
-<tr><td><code>o</code></td><td>Open the requesting thread</td></tr>
-<tr><td><code>y</code></td><td>Approve the current request</td></tr>
-<tr><td><code>a</code></td><td>Approve similar requests for the rest of the session</td></tr>
-<tr><td><code>p</code></td><td>Approve similar requests matching the command prefix</td></tr>
-<tr><td><code>d</code></td><td>Deny the request</td></tr>
-<tr><td><code>esc</code> or <code>n</code></td><td>Decline the request and prompt for feedback</td></tr>
-<tr><td><code>c</code></td><td>Cancel the elicitation prompt</td></tr>
+<tr><td><code>up</code> / <code>down</code></td><td>Move the selection up / down</td></tr>
+<tr><td><code>page-up</code> / <code>page-down</code></td><td>Move the selection by one page</td></tr>
+<tr><td><code>enter</code></td><td>Confirm the selection</td></tr>
+<tr><td><code>esc</code> or <code>ctrl+c</code></td><td>Cancel and close</td></tr>
 </tbody>
 </table>
 </div>
 <h2 id="vim-mode"><a class="header" href="#vim-mode">Vim mode</a></h2>
 <p>Modal (vim-style) composer editing does not exist. There is no <code>/vim</code> command or
-<code>toggle_vim_mode</code> action; the composer uses the standard bindings above.</p>
+<code>toggle_vim_mode</code> action; the composer uses the bindings above.</p>
 <h2 id="customizing-real-path-keybindingsyml"><a class="header" href="#customizing-real-path-keybindingsyml">Customizing (real path: keybindings.yml)</a></h2>
 <p>Custom bindings are <strong>shipped</strong>, but the config surface is its own file, not a <code>tui.keymap</code> block in
 <code>config.yml</code>. Set bindings by action ID in <strong><code>~/.veyyon/profiles/default/agent/keybindings.yml</code></strong> (YAML map of action ID
@@ -343,11 +306,11 @@ all valid values:</p>
 app.history.search: []   # disables the action
 app.clipboard.copyLine: [Ctrl+C, Alt+C]
 </code></pre>
-<p>Action IDs are namespaced (<code>app.model.cycleForward</code>, <code>app.plan.toggle</code>, <code>tui.select.pageUp</code>, …), not the
-<code>global</code>/<code>clear_terminal</code>-style context keys shown in older drafts of this page. Older flat legacy names
-and <code>keybindings.json</code> files migrate automatically to the namespaced <code>.yml</code> form on load. Run
-<strong><code>/hotkeys</code></strong> in a session to see active chords.</p>
-<p>Customize bindings in the flat <code>keybindings.yml</code> under the agent dir (see above). Full action-ID list and Vim mode: <a href="../features/keybindings.html">Keybindings and Vim mode</a> and repository <a href="../../../keybindings.html"><code>docs/keybindings.md</code></a>.</p>
+<p>Action IDs are namespaced (<code>app.model.cycleForward</code>, <code>app.plan.toggle</code>, <code>tui.select.pageUp</code>, …). Older
+flat legacy names and <code>keybindings.json</code> files migrate automatically to the namespaced <code>.yml</code> form on
+load. Run <strong><code>/hotkeys</code></strong> in a session to see active chords.</p>
+<p>Full action-ID list and status-line gestures: <a href="../features/keybindings.html">Keybindings and Vim mode</a>
+and repository <a href="../../../keybindings.html"><code>docs/keybindings.md</code></a>.</p>
 
                     </main>
 

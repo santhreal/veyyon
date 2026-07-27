@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -267,7 +267,7 @@ $ veyyon
 <tr><th>Mode</th><th>Runs without asking</th><th>Prompts you for</th></tr>
 </thead>
 <tbody>
-<tr><td><code>plan</code></td><td><code>read</code> (it proposes, but does not write)</td><td>everything that writes or runs</td></tr>
+<tr><td><code>plan</code></td><td><code>read</code> (it proposes, but does not write)</td><td><code>write</code> only inside an active plan-mode session; <code>write</code> and <code>exec</code> are otherwise denied</td></tr>
 <tr><td><code>ask</code></td><td><code>read</code></td><td><code>write</code> and <code>exec</code></td></tr>
 <tr><td><code>auto-edit</code></td><td><code>read</code> and <code>write</code></td><td><code>exec</code></td></tr>
 <tr><td><code>yolo</code> (default)</td><td>all tiers</td><td>nothing, unless a per-tool override or a bash safety rule applies</td></tr>

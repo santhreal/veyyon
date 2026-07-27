@@ -31,13 +31,13 @@ The difference is who supplies the next prompt and whether a TUI is attached.
 
 A session is the unit of interactive work. Start one with `veyyon` in the repository you want to change. The session records every turn, tool call, approval, edit, and verification result.
 
-Sessions are stored as append-only rollout JSONL files. Each line is an entry with an `id` and a `parent_id`. Those two fields make the file a tree, not just a log. The session never rewrites history. It only appends new entries or pointer moves.
+Sessions are stored as append-only rollout JSONL files. Each line is an entry with an `id` and a `parentId`. Those two fields make the file a tree, not just a log. The session never rewrites history. It only appends new entries or pointer moves.
 
 ## What a turn is
 
 A turn is one user request plus the agent loop that responds to it. The loop calls the model, dispatches any tool calls, and produces the final reply. A turn ends when the model stops or when the harness decides to stop it.
 
-While a turn runs you can steer it with `Enter` or queue a follow-up with `Tab` or `alt+enter`. A queued follow-up becomes a new turn after the current one finishes. Interrupting with `Esc` aborts the turn and returns queued messages to the composer.
+While a turn runs you can steer it with `Enter` or queue a follow-up with `ctrl+q` or `ctrl+enter`. A queued follow-up becomes a new turn after the current one finishes. Interrupting with `Esc` aborts the turn and returns queued messages to the composer.
 
 ## Threads and the active leaf
 
@@ -56,13 +56,9 @@ Compaction preserves the goal card, active user instructions, recent turns, and 
 
 Prefer `/compact` when you need a summary to retain state. Prefer the `/new` command when prior transcript is no longer useful and you want a clean session without summarization. See [Slash commands](../reference/slash-commands.md).
 
-## Rollout and the state database
+## The rollout
 
-Session history is kept in two layers.
-
-The **rollout** is the append-only JSONL file. Every event is one line: a user message, an agent response, a tool call, a compaction, a goal update, or a leaf move. The rollout is the source of truth, and it is never rewritten, which is what makes branching and resume safe and auditable.
-
-The **state database** is a local SQLite index that mirrors thread metadata, goal cards, and queued follow-ups. It exists so listing sessions and resuming one do not require replaying the entire rollout log. It is a cache built from the rollout, not a second source of truth.
+Session history lives in one layer: the append-only JSONL rollout. Every event is one line: a user message, an agent response, a tool call, a compaction, a goal update, or a branch summary. The rollout is the only source of truth, and it is never rewritten, which is what makes branching and resume safe and auditable. Listing sessions and resuming one read the rollout's header lines directly; goal cards persist as rollout entries. There is no separate session-state database.
 
 ## How the pieces relate
 
@@ -70,7 +66,6 @@ The **state database** is a local SQLite index that mirrors thread metadata, goa
 - A **thread** is a path through the session's tree of turns.
 - A **turn** is one step on that path.
 - The **rollout** is the append-only log that holds every turn, branch, and system event.
-- The **state database** is the runtime index for resume and active metadata.
 - The **goal card** is a separate context slot that carries the current objective across turns and compactions. See [Goal state and long sessions](../context/goal-state.md).
 
 ## Where the details live

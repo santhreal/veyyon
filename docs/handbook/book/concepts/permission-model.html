@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -220,10 +220,10 @@ you know which tier a tool is in, the mode tells you whether it runs.</p>
 <tr><th>Mode</th><th>Auto-approves</th><th>Prompts for</th></tr>
 </thead>
 <tbody>
-<tr><td><code>plan</code></td><td>read</td><td>write, exec</td></tr>
+<tr><td><code>plan</code></td><td>read</td><td>write with an active plan-mode session; write and exec are otherwise denied</td></tr>
 <tr><td><code>ask</code></td><td>read</td><td>write, exec</td></tr>
 <tr><td><code>auto-edit</code></td><td>read + write</td><td>exec</td></tr>
-<tr><td><code>yolo</code></td><td>all tiers</td><td>nothing (unless a per-tool override or a bash safety rule applies)</td></tr>
+<tr><td><code>yolo</code></td><td>all tiers</td><td>nothing (unless a per-tool override applies)</td></tr>
 </tbody>
 </table>
 </div>
@@ -277,11 +277,47 @@ tools:
 </code></pre>
 <p>Here the mode is <code>auto-edit</code>, so writes run without asking. The override then pulls <code>bash</code>
 back to <code>prompt</code>, so commands still stop for your approval.</p>
-<h2 id="execpolicy"><a class="header" href="#execpolicy">Execpolicy</a></h2>
-<p>Within the exec tier, <code>.rules</code> files refine which shell commands may auto-run. You keep
-them at the user level and per project. A project directory you have not trusted yet is
-treated as untrusted: its project-local rules, config, and hooks stay disabled until you
-trust the directory.</p>
+<h2 id="critical-bash-commands"><a class="header" href="#critical-bash-commands">Critical bash commands</a></h2>
+<p>Within the exec tier, a guard (<code>packages/coding-agent/src/tools/bash-guard.ts</code>) forces a prompt in
+<code>plan</code>, <code>ask</code>, and <code>auto-edit</code>, even over a per-tool <code>allow</code>. It has two halves.</p>
+<p>The first half judges what a command would DELETE, and it judges the paths after expansion rather
+than the command as text. A tilde and <code>$HOME</code> are resolved, so <code>rm -rf ~/</code> and <code>rm -rf "$HOME"/</code>
+are recognized as the home directory. Every target is judged, not just the first, so
+<code>rm -rf tests/ /</code> is caught. Recursive deletes of the home directory, of any directory containing
+it, of the system directories, and of the directories that hold your credentials all stop for
+approval. So does a recursive delete whose target the guard cannot resolve, such as
+<code>rm -rf "$dir"/*</code>: if <code>$dir</code> is empty that command starts at the root, and nothing in the command
+text says whether it is.</p>
+<p>The same half stops a truncating redirect into a directory that holds credentials, because
+<code>echo x &gt; ~/.ssh/id_ed25519</code> destroys a private key as thoroughly as a delete does. Appending with
+<code>&gt;&gt;</code> is left alone, since that is how you add a key to <code>authorized_keys</code>.</p>
+<p>Deletes inside your workspace are not affected. <code>rm -rf node_modules</code>, <code>rm -rf dist</code>, and
+<code>rm -rf /tmp/build-1234</code> run without a prompt, and so does a delete inside a protected directory
+that does not hold credentials, such as <code>rm -rf ~/.config/some-app</code>. Ordinary redirects, such as
+<code>bun test &gt; /tmp/results.txt</code>, are not affected either.</p>
+<p>The second half is a pattern list (<code>CRITICAL_BASH_PATTERNS</code>, in the same file) for the shapes that
+are about text rather than paths: fork bombs, disk destruction, writes to system credential files,
+remote-fetch piped to a shell, and host control commands.</p>
+<p>Both halves ship with Veyyon and cannot be narrowed. You can widen the first half with
+<code>tools.protectedPaths</code>, a list of absolute paths (a leading <code>~</code> is expanded) that a recursive
+delete must also stop for:</p>
+<pre><code class="language-yaml">tools:
+  protectedPaths:
+    - /mnt/photos
+    - ~/Documents
+</code></pre>
+<p>That setting only adds. Nothing in the built-in judgement reads configuration, so no value you
+write there can stop the guard refusing your home directory, the system roots, or your credentials.
+An entry that is not an absolute or <code>~</code>-relative path is ignored, because resolving it against a
+guessed working directory would protect somewhere other than what you wrote.</p>
+<p>These commands stop for approval in <code>yolo</code> too, and the <code>/yolo</code> session bypass does not lift them.
+That is the one place <code>yolo</code> is not absolute, and it is deliberate: without it, the commands the
+guard considers most dangerous would be the ones most likely to run in the mode that skips the
+check. To turn the floor off, set <code>tools.approval.bash</code> to <code>allow</code>, which is read as a decision you
+made on purpose. Setting it to <code>deny</code> remains a hard block.</p>
+<p>The guard reasons about what a command will do, and that reasoning can be wrong: a shell function,
+an <code>eval</code>, or a script invoked by name defeats any parser. Treat it as a seatbelt, not as
+containment.</p>
 <h2 id="on-deny"><a class="header" href="#on-deny">On deny</a></h2>
 <p>When a tool is denied, or a policy check fails, Veyyon returns an error to the model. It
 does not retry with more permission. An error never escalates what the model is allowed to

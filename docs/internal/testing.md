@@ -9,8 +9,8 @@ From the repo root (or `--cwd=packages/coding-agent` for package-local runs):
 
 | Command | What runs |
 | --- | --- |
-| `bun run check` | The gate: type check (TS + Rust) and lint, in parallel. Run this before every push. |
-| `bun run check:ts` | `tsc --noEmit` across every package. Despite the name it runs no Biome; `bun run check:tools` is the Biome gate. |
+| `bun run check` | The gate: type check, TS and Rust, in parallel (`check:ts` + `check:rs`). Run this before every push. |
+| `bun run check:ts` | `tsgo --noEmit` across every package. Despite the name it runs no Biome; `bun run check:tools` is the Biome gate. |
 | `bun run test` | The local TS test runner (`scripts/ci-test-ts.ts local`). |
 | `bun run test:ts` | Full local TypeScript suite (`local-ts`). |
 | `bun run ci:test:ts:workspace` | The exact workspace bucket CI runs. |
@@ -248,9 +248,20 @@ bun scripts/find-order-polluter.ts packages/coding-agent/test/victim.test.ts --n
 ```
 
 The script proves two premises before it searches, and refuses rather than guess if
-either fails: the victim passes alone, and it fails with the whole candidate list in
-front of it. Then it halves the list, keeping the half that still reproduces, and prints
-the file plus a two-file command you can run yourself.
+either fails: the victim passes alone, and it fails with a window of candidates in front
+of it. The window GROWS rather than starting at the whole list: the last 64 files before
+the victim, then 128, then 256, up to `--max-window` (200 by default). A leak reaches the
+victim from just before it, so the window that reproduces is usually the first one, and
+you get an answer in seconds instead of after a run of all 1,887 files. Reaching the cap
+is reported as a refusal, never as "no polluter found". Then it halves the window, keeping
+the half that still reproduces, and prints the file plus a two-file command you can run
+yourself.
+
+Do not add `--parallel=1` to it. The flag gives every file a fresh module registry, so
+nothing leaks between files and the search finds nothing no matter what is wrong. The
+script's header explains this and `scripts/find-order-polluter.test.ts` pins the behavior
+against bun directly, so a future edit that adds the flag fails a test instead of quietly
+returning clean answers.
 
 Order is the part that needs care. Bun runs the files given on the command line in that
 order, and a leak only reaches the victim from a file that ran BEFORE it — so the
@@ -578,6 +589,121 @@ workstation, making it unusable while the run proceeded. If you want fanout, ask
 for it explicitly with `VEYYON_TEST_CONCURRENCY=8` (or `all`), and prefer that on a
 machine you are not using for anything else.
 
+### What a full run's memory is actually made of
+
+A full run of `packages/coding-agent/test` is killed by the kernel at about 13.4 GB when it is run
+with `--parallel=1`. The flag is the reason, so start there before you go looking for a leak. The
+same 1,887 files run to completion under bun's default parallelism, peaking at 2.31 GB across the
+whole process tree, so "nobody can run the suite locally" is true only of the serial mode.
+
+**The two run modes have completely different memory behavior.** Bun's default runs test files in
+worker processes and recycles them, so what a file retains dies with its worker. `--parallel=1` runs
+every file in one process, so what a file retains is held until the run ends. The same 60 files peak
+at 0.76 GB by default and at 4.62 GB with `--parallel=1`, and the same eight probe files peak at
+0.16 GB by default and at 0.52 GB with the flag. A ceiling measured in one mode tells you nothing
+about the other.
+
+**Under `--parallel=1`, every test file gets a fresh module registry.** This is the mechanism behind
+everything else in this section, and it is the opposite of what the flag sounds like. Write a module
+with a counter, import it from two test files, and the second file sees the counter at one and the
+first file's writes absent. At the default parallelism the second file sees what the first left,
+because files that land in the same worker share its realm. So `--parallel=1` does not mean "one
+shared process"; it means "one process, one realm per file, and every realm kept". Two consequences
+that matter more than the memory:
+
+- Order-dependent failures do NOT reproduce under `--parallel=1`. Nothing leaks between files, so a
+  search for the polluter finds nothing and reports the suite clean. `scripts/find-order-polluter.ts`
+  therefore runs at the default parallelism on purpose, and its header says so at the top.
+- The retained realms are the memory. One per file, about 76 MB each.
+
+**So workspace source is re-instantiated for every test file.** Measure it with a
+`--preload` that reports `process.memoryUsage.rss()` from an `afterAll`, which bun runs after each
+file, over N probe files that differ only in their test name. RSS in MB after each of eight files:
+
+| probe | series |
+| --- | --- |
+| no imports | 41 44 45 47 49 51 52 54 |
+| `arktype` from `node_modules` | 106 127 144 163 166 170 170 173 |
+| `@veyyon/coding-agent/sdk` | 260 335 387 431 485 540 593 647 |
+| `session/agent-session` | 232 286 343 388 427 475 522 564 |
+
+The `node_modules` package flattens, so that graph is instantiated once and cached. Workspace source
+does not flatten: it is a straight line at 47 to 56 MB per file with no sign of settling. Across the
+first 60 real files of the sorted suite the slope is 75.8 MB per file, and 1,887 files at that slope
+is about 143 GB, which is the kill you see.
+
+Three things it is NOT, each measured so you do not spend a day on them:
+
+- Not collectable garbage. `Bun.gc(true)` in the same `afterAll` reclaims none of it (643 MB without
+  it, 672 MB with it, over the same eight files). The graphs are rooted.
+- Not the specifier form. `../../src/session/agent-session` and
+  `@veyyon/coding-agent/session/agent-session` give the same series to within one percent, so it is
+  not `exports` or symlink resolution producing two cache keys.
+- Not one bad file. The per-file cost is close to uniform across the 60 files measured.
+
+So under `--parallel=1` the cost really is per-file graph size times file count, and trimming what a
+test file imports reduces it directly. Under the default it does not, because the union one worker
+holds is bounded: every test file in the package together reaches 1,902 distinct source modules.
+Retained state (sessions, opened databases, temp workspaces, registered listeners, module-level
+caches that grow as file after file adds entries) is worth fixing on its own terms and is what would
+show up in a default run, but it is not what the `--parallel=1` kill is made of. `BACKLOG.md` carries
+the open row.
+
+**The gate.** `scripts/check-test-memory.ts` takes both measurements over a fixed sample of 60 files
+and fails when either ceiling is exceeded. Run it yourself with `bun run scripts/check-test-memory.ts`,
+or with `--report` to print both numbers and assert nothing. It runs nightly in `.github/workflows/leak-sweep.yml` rather than per commit, because it runs the
+sample twice and each run takes minutes. `scripts/check-test-memory.test.ts` pins the arithmetic:
+the slope is least squares over one process's series, not `(last - first) / n`, so a single file that
+allocates and frees does not become the trend, and the peak is per process, so four workers are never
+added into one worker's number.
+
+Two things that are still worth doing, for reasons other than the total:
+
+- **Import from the leaf that owns the symbol.** A file that pulls a barrel for one symbol makes the
+  dependency graph say something false about what it depends on, and it makes an import cycle easy
+  to create by accident. `validateRelativePath` cost 378 modules that way and `namespaceSessionId`
+  510. This is an architecture argument, not a memory one.
+- **Keep the hot entry points from growing without anyone noticing.** `no-import-cycles.test.ts`
+  caps how many modules a named entry point reaches; add an entry when a module becomes something
+  many suites import. `test-suite-module-reach.test.ts` caps the suite's total reach and how many
+  files are individually heavy. Read the header of that file before treating either number as a
+  memory prediction: it says plainly what the numbers do and do not mean.
+
+**Every one of these ceilings is an upper bound, so a gate that resolves LESS passes.** This is the
+one failure mode to understand before you write or edit one. A specifier the walk cannot resolve
+contributes nothing: the walk stops there, the count comes back smaller, and the assertion holds
+while measuring a graph smaller than the one that ships. It is not hypothetical. Four gates each
+carried a hand-written list of workspace packages, and two of them listed `@veyyon/agent`, which is
+not the name of any package here: the directory is `packages/agent` and the package is
+`@veyyon/agent-core`. Every one of the 569 imports of it resolved to nothing, and so did
+`@veyyon/mnemopi`, `@veyyon/stats`, `@veyyon/natives` and `@veyyon/tool-render`.
+`packages/coding-agent/src/thinking.ts` was pinned at 12 modules with a comment calling it "nearly a
+leaf"; it was 407, because it named the `@veyyon/agent-core` barrel.
+
+So do not write that list. `workspaceModuleReachResolution(repoRoot)` from
+`@veyyon/utils/module-reach-workspace` derives it from every package's `exports` field, and
+`packages/utils/test/module-reach-workspace.test.ts` asserts that no workspace package is missing
+from it. Pass a `createModuleReachCache()` when your gate walks many entries over one graph: the walk
+re-reads each file otherwise, and the suite-total gate went from minutes to about a second with one
+shared memo.
+
+Two mechanical rules, both easy to get wrong:
+
+- **`import type` is free; `import { type X }` is not.** A statement that begins `import type` is
+  erased, so it costs nothing at runtime and neither ratchet counts it. The inline form still emits
+  the import and still instantiates the module. When you remove the last value specifier from a
+  mixed clause, convert the whole statement to `import type` rather than leaving the inline markers
+  behind.
+- **Reach for the package that OWNS the value, not the one that re-exports it.** `Effort` is
+  declared in `@veyyon/catalog/effort`, a module of about ten lines, and `@veyyon/ai` re-exports it
+  through `types.ts`. Twenty-eight test files imported it from `@veyyon/ai` and named a 300-module
+  barrel for a string enum. Importing `@veyyon/catalog/effort` names one module and says what the
+  file actually depends on.
+
+Before assuming a package's importers need its barrel, list them: most files that name a package are
+naming it for a type, and those already cost nothing. Of the 262 test files that mention
+`@veyyon/ai`, only 74 import a value from it.
+
 ## Fixtures and regression corpus
 
 Prefer data-driven cases over copy-pasted `it` bodies. Closing a bug should add a
@@ -591,6 +717,7 @@ narrative comment.
 | `packages/coding-agent/test/helpers/corpus-loader.ts` | Load/validate corpus (rejects missing expect / weak contract text) |
 | `packages/<pkg>/test/fixtures/` | Local JSON/JSONL/TOML tables for one package |
 | `packages/coding-agent/test/helpers/integration-workspace.ts` | Multi-file trees for edit/grep/glob/hashline: a REAL temp workspace driven through the real agent loop, not a checked-in tree |
+| `packages/coding-agent/test/helpers/subagent-session.ts` | The fake `AgentSession` a `runSubprocess` test spawns, plus the message and yield-event builders |
 | `packages/hashline/test/*` | Model for pure contract + adversarial multi-file suites |
 | `packages/coding-agent/test/rpc-command-contracts.test.ts` | RPC frame id/parse/background contracts (no provider keys) |
 | `crates/*/tests/fixtures/` | Shared inputs for native crate tests |
@@ -600,6 +727,41 @@ the runner knows, and exact `expect`. Shape-only rows fail at load time.
 
 Name files and ids for the **behavior** (`list-limit-equals-ceiling`,
 `rpc-unknown-command-drops-id`), never for an implementation strategy or port.
+
+### Testing a subagent run
+
+`runSubprocess` runs an agent in-process. It calls `createAgentSession`, prompts the
+session, and reads the session's EVENTS to decide what happened, so a test drives it by
+deciding what the child emits. Use the shared fake rather than writing another session
+literal:
+
+```ts
+import { createMockSession, createSessionResult, yieldSuccessEvent } from "../helpers/subagent-session";
+
+const session = createMockSession(({ emit }) => {
+	emit(yieldSuccessEvent({ ok: true }));
+});
+vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
+
+const result = await runSubprocess(options);
+```
+
+The callback runs on every `prompt`, and its `promptIndex` tells you which one, so you can
+answer the task and a later reminder differently. `pushTurn(message)` pushes a message and
+emits its `message_end`, which is the pair the request accounting counts.
+
+When a test needs to observe how the executor drove the child, call
+`createMockSessionHandle` instead: the handle carries the prompts it received, the steering
+notices it was sent, and the abort and dispose counts. Reach for an option only when a
+specific executor read depends on it, and each option's doc comment says which read that
+is. Two examples: `hangUntilAbort` makes `prompt` and `waitForIdle` wait for an abort, which
+is how a stalled provider stream is modelled for the wall-clock and hard-budget guards, and
+`argotSession` gives the child a loaded codec, which is what the return boundary expands
+handles through.
+
+Every suite that drives `runSubprocess` uses this helper. Adding a member to a private copy
+instead means the next executor change breaks a fake nobody knows about, which is how a
+missing `yield` handler once surfaced as seventeen unrelated-looking failures.
 
 ## Suite map (where contracts live)
 
@@ -749,8 +911,4 @@ Wiring you can't exercise in-process (worker spawn, install flow) is covered by 
 runtime smoke probe (`veyyon --smoke-test`) and the install-test scripts, not by a
 source grep.
 
-This page carries no verification stamp. It was last read against the tree on
-2026-07-21; the isolation, tripwire, and preload sections were re-checked
-against the code on 2026-07-25, as was the TUI frame-settling section. Stamping it means asserting every claim on the
-page, which nobody has done yet; see `scripts/check-doc-freshness.ts` for the
-form a stamp takes and what it promises.
+*Verified against `36bd44ad4d0ec6a81a94b2eb37b81d7157cbcc5b` on 2026-07-26.*

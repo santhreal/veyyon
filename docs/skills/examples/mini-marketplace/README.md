@@ -5,8 +5,8 @@ A minimal Veyyon marketplace catalog that demonstrates the `marketplace.json` fo
 ## Install command
 
 ```
-/marketplace add ./docs/skills/examples/mini-marketplace
-/marketplace install my-plugin@example-marketplace
+veyyon plugin marketplace add ./docs/skills/examples/mini-marketplace
+veyyon plugin install my-plugin@example-marketplace
 ```
 
 Or from the CLI:
@@ -35,4 +35,4 @@ mini-marketplace/
     index.ts              ← extension entry point
 ```
 
-Published and local marketplaces use the same catalog location. veyyon loads `.veyyon-plugin/marketplace.json` first and falls back to `.claude-plugin/marketplace.json` (the Claude Code-compatible path this example ships) inside the marketplace root. Point `/marketplace add` at this folder to load the example.
+Published and local marketplaces use the same catalog location. veyyon loads `.veyyon-plugin/marketplace.json` first and falls back to `.claude-plugin/marketplace.json` (the Claude Code-compatible path this example ships) inside the marketplace root. Point `veyyon plugin marketplace add` at this folder to load the example.

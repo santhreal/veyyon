@@ -75,7 +75,7 @@ Project-level bases:
 
 ## Profiles
 
-A named profile (`veyyon --profile <name>`, the `--alias` shortcut, `/profile <name>` in the TUI, or `VEYYON_PROFILE`) selects which profile agent dir is active. The default profile is `~/.veyyon/profiles/default/agent/`; profile `<name>` is `~/.veyyon/profiles/<name>/agent/`. Paths written in this document as `~/.veyyon/profiles/default/agent/...` mean the **active** profile's agent directory.
+A named profile (`veyyon --profile <name>`, `/profile <name>` in the TUI, or `VEYYON_PROFILE`) selects which profile agent dir is active. The default profile is `~/.veyyon/profiles/default/agent/`; profile `<name>` is `~/.veyyon/profiles/<name>/agent/`. Paths written in this document as `~/.veyyon/profiles/default/agent/...` mean the **active** profile's agent directory.
 
 The relocation is uniform across the native provider (`builtin.ts`) and the generic `config.ts` helpers, so it covers slash commands, rules, prompts, instructions, hooks, tools, extensions, settings, skills, and MCP, plus the top-level `SYSTEM.md` / `RULES.md` / `AGENTS.md` files and runtime state (sessions, blobs, `agent.db`). A profile sees only its own Veyyon config, never the default profile's `~/.veyyon/profiles/default/agent`.
 
@@ -228,12 +228,12 @@ Native provider (`id: native`) reads native config from:
 ### Directory admission rules
 
 - Slash commands, rules, prompts, instructions, hooks, tools, extensions, extension modules, and settings use a project/user root only when the root directory exists and is non-empty.
-- Skills scan `<ancestor>/.veyyon/skills` for each ancestor from the current working directory up to the repo root/home boundary, plus `~/.veyyon/profiles/default/agent/skills`, without requiring the root `.veyyon` directory itself to be non-empty.
+- Skills are loaded only from the active profile's agent dir (`~/.veyyon/profiles/<name>/agent/skills`). Project-local `.veyyon/skills` directories are deliberately not scanned, so no repository can inject skills into a session by ambient autodiscovery.
 - `SYSTEM.md` and `AGENTS.md` read user-level files directly and use nearest-ancestor project `.veyyon` lookup for project files, but the project `.veyyon` directory must be non-empty. See [`docs/system-prompt-customization.md`](./system-prompt-customization.md) for the full `SYSTEM.md` / `APPEND_SYSTEM.md` contract (replace vs. append, templating).
 
 ### Scope-specific loading
 
-- Skills: `<ancestor>/.veyyon/skills/*/SKILL.md` and `~/.veyyon/profiles/default/agent/skills/*/SKILL.md`
+- Skills: `~/.veyyon/profiles/<profile>/agent/skills/*/SKILL.md` only (project `.veyyon/skills` is not scanned)
 - Slash commands: `commands/*.md`
 - Rules: `rules/*.{md,mdc}`
 - Prompts: `prompts/*.md`

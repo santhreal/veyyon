@@ -74,6 +74,8 @@ Turn on **Bash Stall Detection** to catch a command that has gone quiet. When a 
 
 ## Other builtins
 
-Includes `web_search`, `github`, `lsp`, `ast_edit`, `ast_grep`, `checkpoint`, `rewind`, `resolve`,
-`manage_skill`, `launch`, `inspect_image`, `generate_image`, `tts`, `report_finding`, and MCP tools
-(`mcp__*`). Extension hooks may register more.
+`web_search`, `github`, `lsp`, `ast_edit`, `ast_grep`, `checkpoint`, `rewind`, `resolve`,
+`set_cwd`, `manage_skill`, `launch`, `inspect_image`, `argot_load`, `argot_unload`,
+`generate_image`, `tts`, and MCP tools (`mcp__*`). Extension hooks may register more.
+`goal`, `yield`, and `report_finding` are hidden session-lifecycle tools with no user-facing
+spec. The full per-tool specs live under [`docs/tools/`](../../../tools/).

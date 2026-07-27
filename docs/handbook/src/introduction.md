@@ -23,7 +23,7 @@ If you only want to get to work, read [Install](./using/install.md), sign in, an
 
 ## What Veyyon is
 
-Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi). The CLI, the TUI, the tools, the providers, and the session loop are TypeScript running on Bun. The hot paths, meaning grep, PTY, and hashline patch application, are Rust natives in `@veyyon/natives`.
+Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi). The CLI, the TUI, the tools, the providers, and the session loop are TypeScript running on Bun. The hot paths, meaning grep, glob, PTY, and tree-sitter parsing, are Rust natives in `@veyyon/natives`. The hashline edit engine itself is TypeScript in `@veyyon/hashline`, with native helpers for block resolution.
 
 A few facts you will reach for often:
 

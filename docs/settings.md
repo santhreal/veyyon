@@ -15,7 +15,7 @@ Settings are stored as plain YAML mappings. Every key, its type, default, and en
 |---|---|---|---|
 | Global | `~/.veyyon/profiles/default/agent/config.yml` | The main persistent settings file for the active profile. Always loaded. | `/settings`, `veyyon config set`, and `veyyon config reset` write here. |
 | Global legacy | `~/.veyyon/profiles/default/agent/settings.json` | Migrated into `config.yml` once, only when `config.yml` does not yet exist. | Not written after migration; the original is renamed to `settings.json.bak`. |
-| Machine-global (all profiles) | `~/.veyyon/config.yml` | A small set of values shared by every profile: `defaultProfile` (which profile a bare `vey` launches) and `profileSharing` (whether provider credentials are shared across profiles). Read live. | The **Global** tab of `/settings`, or `veyyon profile default` for `defaultProfile`. These keys never land in a profile's own `config.yml`. |
+| Machine-global (all profiles) | `~/.veyyon/config.yml` | A small set of values shared by every profile: `defaultProfile` (which profile a bare `vey` launches), `profileSharing` (whether provider credentials are shared across profiles), and the auth-broker keys `authBrokerUrl` / `authBrokerToken`. Read live. | The **Global** tab of `/settings`, or `veyyon profile default` for `defaultProfile`. These keys never land in a profile's own `config.yml`. |
 | Project | `<cwd>/.veyyon/config.yml` (plus `.veyyon/settings.json`) | Loaded when the process working directory has a non-empty `.veyyon/`. | Read-only from settings commands; edit the file by hand. |
 | Project legacy | `<cwd>/.veyyon/settings.json` | Still read; project `config.yml` is merged on top of it. | Not written by settings commands. |
 | CLI overlay | Any file passed with `--config <file>` | Loaded after global and project settings, for that one process. Repeatable. | Never persisted. |
@@ -85,12 +85,13 @@ This only controls the startup splash animation. It does not rerun setup or chan
 | `veyyon config list` | Print every setting grouped by tab, with its current value and type. `--json` emits an object keyed by setting path with `{ value, type, description }`. |
 | `veyyon config get <key>` | Print the effective value of one key. Unknown keys exit non-zero. `--json` emits `{ key, value, type, description }`. |
 | `veyyon config set <key> <value>` | Parse `<value>` against the key's schema type and write it to the global `config.yml`. |
-| `veyyon config reset <key>` | Write the key's schema **default** back to the global config (this persists the default, it does not delete the key). |
+| `veyyon config reset <key>` | Remove the key from the global `config.yml`, so the schema default (or a project-level value) applies again. Reset deletes the key; it does not write the default into the file. |
 | `veyyon config path` | Print the active agent directory (honors `VEYYON_CODING_AGENT_DIR`). |
+| `veyyon config init-xdg` | Create the XDG data/state/cache directories Veyyon uses on Linux/macOS. |
 
 A setting that has been replaced by another is **retired**: it stays readable and settable so an existing config keeps working, and the migration on load can read it, but `veyyon config list` leaves it out and `veyyon config get`/`set` name the key that governs the behavior now. The retired keys today are `compaction.thresholdTokens` and `compaction.thresholdPercent` (replaced by `compaction.threshold`) and `defaultThinkingLevel` (replaced by `defaultEffort`).
 
-`veyyon config` with no subcommand, or `--help`, prints the help and lists settings. The `--json` flag is accepted by `list`, `get`, `set`, and `reset`.
+`veyyon config` with no subcommand is an alias for `veyyon config list`; `--help` prints the help. The `--json` flag is accepted by `list`, `get`, `set`, and `reset`.
 
 ### Value parsing
 
@@ -281,8 +282,8 @@ Only string values are kept; malformed scoped entries are ignored. Path scoping 
 
 | Entry kind | Example ids | Effect |
 |---|---|---|
-| Model providers | `anthropic`, `openai`, `gemini`, `groq`, `ollama`, `openrouter` | Removes those backends from model selection, even when credentials are available. See [Providers](./providers.md). |
-| Discovery sources | `native`, `claude`, `codex`, `gemini`, `github`, `opencode`, `cursor`, `agents-md` | Stops that source from contributing context files, MCP servers, commands, skills, hooks, tools, prompts, or settings. See [Context files](./context-files.md). |
+| Model providers | `anthropic`, `openai`, `google`, `groq`, `ollama`, `openrouter` | Removes those backends from model selection, even when credentials are available. See [Providers](./providers.md). |
+| Discovery sources | `native`, `claude`, `codex`, `gemini`, `github`, `opencode`, `cursor`, `agents`, `agents-md` | Stops that source from contributing context files, MCP servers, commands, skills, hooks, tools, prompts, or settings. See [Context files](./context-files.md). |
 
 Most provider-control use cases list model provider ids. Disabling the `claude` discovery source is different from disabling the `anthropic` model provider, one stops Claude-format config discovery, the other stops the Anthropic model backend.
 
@@ -499,14 +500,14 @@ tools:
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `tools.approvalMode` | enum | `yolo` | Canonical: `plan` (read auto; write/exec ask; plan-mode semantics), `ask` (read auto; write/exec ask), `auto-edit` (read+write auto; exec ask), `yolo` (all tiers auto). Legacy aliases still accepted: `always-ask` → `ask`, `write` → `auto-edit`. Override per run with `--approval-mode` / `--auto-approve` / `--yolo`. |
+| `tools.approvalMode` | enum | `yolo` | Canonical: `plan` (read auto; write asks with an active plan-mode session, otherwise write/exec denied), `ask` (read auto; write/exec ask), `auto-edit` (read+write auto; exec ask), `yolo` (all tiers auto). Legacy aliases still accepted: `always-ask` → `ask`, `write` → `auto-edit`. Override per run with `--approval-mode` / `--auto-approve` / `--yolo`. |
 | `tools.approval` | record | `{}` | Per-tool policy keyed by tool name; each value is `allow`, `deny`, or `prompt`. e.g. `veyyon config set tools.approval '{"bash":"prompt"}'`. |
 | `tools.discoveryMode` | enum | `auto` | `auto`, `off`, `mcp-only`, `all`. Controls dynamic tool discovery. |
 | `tools.essentialOverride` | array | `[]` | Tool names kept available even when tools are narrowed. |
 | `tools.maxTimeout` | number | `0` | Max tool runtime in seconds; `0` = no cap. |
 | `tools.intentTracing` | boolean | `true` | Record per-call intent strings. |
 | `tools.outputMaxColumns` | number | `768` | Per-line byte cap for streaming output; `0` disables. |
-| `tools.artifactSpillThreshold` | number | `50` | KB of tool output above which output spills to an artifact. |
+| `tools.artifactSpillThreshold` | number | `50` | KB of tool output above which output spills to an artifact, for every tool including the streaming ones (bash, eval, ssh, interactive shell). The result keeps a window plus the `artifact://` id that reads the full text back. |
 | `tools.artifactHeadBytes` | number | `20` | KB of head kept inline on spill; `0` = tail-only. |
 | `tools.artifactTailBytes` | number | `20` | KB of tail kept inline on spill. |
 | `tools.artifactTailLines` | number | `500` | Max tail lines kept inline on spill. |
@@ -519,19 +520,38 @@ Everything about spawned agents lives here, under `subagent.`: whether this sess
 delegates at all, which agent types it may use, what model and effort they run, and
 the limits and isolation they run under. In `/settings` it is the **Subagents** tab.
 
-Out of the box you get one agent type, the general-purpose worker, and delegation is
-available but never pushed. The bundled specialists (`scout`, `reviewer`, `designer`,
-`librarian`, `sonic`) ship not offered: each one you enable adds its description to
-every request, so you pay for the ones you actually use and nothing else.
+#### Three settings, three different questions
+
+Subagents are governed by three settings, and mixing them up is the usual source of
+confusion, so read this table before you change anything. Each one answers a question
+the other two cannot.
+
+| Setting | The question it answers | Default |
+|---|---|---|
+| `subagent.enabled` | May this session use subagents **at all**? | `true` |
+| `subagent.delegation` | Is the model **encouraged** to fan work out, and how hard? | `preferred` |
+| `subagent.agents` | **Which** agents may it use? | `task` only |
+
+Read them top to bottom. `subagent.enabled` is the master switch: turn it off and
+there are no subagents, the `task` tool is not built, and the other two settings stop
+mattering. Leave it on and `subagent.delegation` decides how much the prompt pushes,
+while `subagent.agents` decides what there is to push work to.
+
+**Turning delegation down does not forbid delegation.** This is the distinction that
+matters most. `subagent.delegation: allowed` means the model still has the `task`
+tool and will still spawn a subagent when that is the sensible move; it simply is not
+asked to. The only setting that takes the ability away is `subagent.enabled`. If you
+want subagents gone, set that one, not this one.
 
 ```yaml
 subagent:
-  delegation: allowed          # off | allowed | preferred | required
+  enabled: true                # master switch; false removes subagents entirely
+  delegation: preferred        # allowed | preferred | required
   model: openai/gpt-5:high     # optional; unset means inherit your model
   thinkingLevel: medium        # optional; unset means inherit your effort
   agents:
     scout:
-      enabled: true            # offer the scout to the model
+      enabled: true            # let the model choose the scout
     reviewer:
       enabled: true
       model: anthropic/claude-opus-4-5   # this agent only
@@ -540,46 +560,118 @@ subagent:
     mode: none
 ```
 
+Out of the box you get one agent type, the general-purpose worker, and the prompt
+encourages fanning work out to it. The bundled specialists (`scout`, `reviewer`,
+`designer`, `librarian`, `sonic`) ship disabled: each one you enable adds its
+description to every request, so you pay for the ones you actually use and nothing
+else. They stay listed while disabled, each with a line saying what it is for, so you
+can see what is available before you turn anything on.
+
+#### Subagents on or off
+
+`subagent.enabled` is a boolean and it is the only kill switch. When it is `false`:
+
+- the `task` tool is not built, so the model cannot spawn anything;
+- every delegation instruction leaves the system prompt;
+- `subagent.delegation` and `subagent.agents` are still stored, still editable, and
+  take effect again the moment you turn this back on.
+
+Earlier releases spelled this as `subagent.delegation: off`, which made one setting
+answer two questions: whether subagents existed, and how hard to push them. An
+existing `delegation: off` is migrated to `enabled: false` with `delegation` left at
+its default, because "off" was how you turned subagents off.
+
 #### Delegation
 
-`subagent.delegation` sets how hard this session pushes work out to subagents:
+`subagent.delegation` sets how hard this session pushes work out. It never removes
+the ability to delegate; for that, see `subagent.enabled` above.
 
 | Value | Behavior |
 |---|---|
-| `off` | No delegation. The `task` tool is not offered at all, and every delegation instruction leaves the prompt. |
-| `allowed` | The default. The tool is available and the model decides when to use it. |
-| `preferred` | The prompt asks the model to fan substantial work out rather than doing it alone. |
+| `allowed` | The tool is offered and nothing asks for it. The model delegates when it judges that delegation helps. |
+| `preferred` | The default. The prompt asks the model to fan substantial work out rather than doing it alone. |
 | `required` | The same, plus a first-turn reminder that delegation is the default here. |
 
-The delegation instructions follow the agents you have enabled. With only the worker
-offered, the prompt says nothing about choosing an agent type, and nothing tells the
-model to send research to a `scout` it cannot spawn.
+#### What the model is told to delegate
+
+The prompt does not carry a fixed list of delegable work. **The agents you enable are
+the instruction.** That is the whole mechanism, and it is why the Agents table is a
+delegation setting rather than a cosmetic one.
+
+With only the worker enabled, the guidance is about splitting execution across
+parallel workers and keeping bulk reading out of your session's context. Nothing tells
+the model to send research to a `scout` it cannot spawn, and nothing tells it to send
+a review to a `reviewer` that does not exist. Enable the `reviewer` and you have said
+reviews are delegable here; the prompt then names it. Enable the `scout` and bulk
+exploration becomes something it is told to route away from its own context.
+
+This is also the answer to "why did it delegate my audit?". If a specialist for that
+work is enabled, the model has been told the work is delegable. If none is, and it
+still fans out, that is a prompt bug rather than a settings question — file it.
+
+**Context preservation, not a cheaper model.** A subagent usually runs the same model
+you are on (see [Which model a subagent runs](#which-model-a-subagent-runs)). What
+delegation buys is a separate context window: bulk reading, wide searches, and long
+tool output stay out of your session and come back as a summary. Nothing about
+delegation implies the subagent is less capable than you.
+
+#### When the two settings disagree
+
+`subagent.delegation` and the Agents table are one question with two answers, and one
+resolver reads both. If you disable every agent there is nothing to delegate to, so
+the strength you pick has no effect until you enable at least one: the prompt stops
+asking for delegation, the first-turn reminder is not injected, and both agent
+surfaces say so in a line above the table. If `subagent.enabled` is off, the same line
+says that instead, because turning agents on would change nothing until you turn
+subagents back on. Neither setting is hidden behind the other — you need all three
+while setting up a session — but none pretends the others do not exist.
 
 #### Agents
 
 `subagent.agents` holds one row per agent, keyed by agent name. Two surfaces edit it
 rather than hand-written config: the **Agents** row in `/settings` → Subagents, which
 lists every discovered agent with the model it resolves to and opens one agent at a
-time to set its state, model and effort; and `/agents`, where `space` cycles a row's
-state next to the agent files themselves. Both read the same resolver, so they cannot
+time to set its state, model and effort; and `/agents`, where `space` toggles a row
+next to the agent files themselves. Both read the same resolver, so they cannot
 disagree about a row.
 
-Three states this key can express:
+An agent is either enabled or disabled. There is no third state:
 
 | `enabled` | Meaning |
 |---|---|
-| absent | The shipped default. The worker and every agent you wrote yourself are offered; the bundled specialists are not. |
-| `true` | Offered to the model: listed in the `task` tool description and choosable on the model's own initiative. |
-| `false` | Blocked. The agent is refused even when something names it outright, and the refusal says which setting to change. |
+| absent | The shipped default: the worker and every agent you wrote yourself are enabled, the bundled specialists are disabled. |
+| `true` | Enabled. The agent is listed in the `task` tool description, and the model may choose it. |
+| `false` | Disabled. The model may not choose it, and a spawn that tries is refused with the setting named. |
 
-An agent that is merely *not offered* still runs when a caller names it. That is what
-keeps the built-in flows working with the specialists off: `/review` asks for
-`agent: "reviewer"` by name, and so can you. Blocking is the stronger choice, and it
-is the only one that refuses a named spawn.
+#### What "disabled" governs, and what it does not
+
+Disabling an agent stops **the model** from choosing it. It does not stop **you**.
+
+That distinction is the whole rule, and it is worth stating plainly because an earlier
+version of veyyon got it wrong. There used to be a middle state, shown as "not offered
+but still runs when named", which meant a row could read as off while the agent went on
+running. Nobody could tell what the switch did. Enabled now means the model may pick the
+agent on its own initiative, disabled means it may not, and that is all it means.
+
+Slash commands are you asking, so they are unaffected. Running `/review` is a request
+for a review, not a suggestion that the model consider reviewing, so `/review` spawns
+its `reviewer` even though `reviewer` ships disabled. A command declares the agents its
+prompt names, and that declaration is granted for that one turn only:
+
+| Command | Agent it names | Works with the agent disabled |
+|---|---|---|
+| `/review` | `reviewer` | yes |
+
+Two limits keep this narrow. The grant lasts for the turn the command starts and no
+longer, so the model cannot reach a disabled agent on the next turn. And it comes from
+the command's own definition, not from anything computed while the command runs, so the
+list above is the complete list. If you ask for an agent in plain prose instead of
+through a command ("use the scout agent"), that is the model choosing, and a disabled
+scout is refused.
 
 A row may also carry `model` and `thinkingLevel` for that agent alone.
 
-#### Models
+#### Which model a subagent runs
 
 Four things can name the model a subagent runs. The first one that names a model wins:
 
@@ -602,13 +694,34 @@ reported with the setting and the accepted levels, then ignored, and the next la
 decides. It is never rounded to a neighbouring effort: running at an effort you did not
 choose costs money and would not show up anywhere.
 
-Both agent surfaces show, for the selected agent, the pattern it will use, the model
-that resolves to, and the setting that decided — so an override that was outranked is
-visible instead of merely disappointing.
+Both agent surfaces name, for the selected agent, the model it will run on and the
+setting that decided — so an override that was outranked is visible instead of merely
+disappointing. In `/agents` that is one line, `Runs on:`. Press `m` there to walk the
+four stages in full (the default pattern, what it resolves to, the override, and the
+effective pattern), which is what you need when an override is not doing what you
+expected. It is behind a key because on a fresh install those four stages all say the
+same thing.
+
+#### The three views in `/agents`
+
+`/agents` opens the Agent Control Center. Move between its three views with the left
+and right arrows, or with `tab`:
+
+| View | What it answers |
+|---|---|
+| Live | Which agents are running right now, and what each one is doing. Press `enter` on a row to open a lens on that agent, `esc` to come back. |
+| Room | Every agent's turns woven into one conversation, your session labelled `Main` and each subagent under a call sign such as `Kestrel`. Press `ctrl+r` to re-read it. |
+| Agents | The configuration list: every agent that was discovered, enabled or not, with what it is for, an enable toggle (`space`), and a model override (`enter`). |
+
+The card opens on Live when something is running and on Agents when nothing is. Live
+only ever lists agents that exist in this session, so a disabled specialist cannot
+appear there — it was never spawned. To read further back than the Room holds, open a
+single agent's full transcript from the Agent Hub.
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `subagent.delegation` | enum | `allowed` | `off`, `allowed`, `preferred`, `required`. See above. |
+| `subagent.enabled` | boolean | `true` | The master switch. `false` removes subagents entirely: no `task` tool, no delegation guidance. See above. |
+| `subagent.delegation` | enum | `preferred` | `allowed`, `preferred`, `required`. How hard the prompt pushes; it never removes the ability to delegate. See above. |
 | `subagent.agents` | record | `{}` | One row per agent: `enabled`, `model`, `thinkingLevel`. Edit in the Agents row of the Subagents tab, or in `/agents`. |
 | `subagent.model` | string | unset | Model for every subagent that has no model of its own. Unset means inherit: subagents follow the model you are working with. May carry a `:effort` suffix, and an explicit suffix wins over the agent's own default. |
 | `subagent.thinkingLevel` | string | unset | Blanket subagent effort, picked from `off`, `minimal`..`max`, `auto`. Unset means inherit. |
@@ -836,7 +949,7 @@ searxng:
 
 | Key | Type | Default | Values / notes |
 |---|---|---|---|
-| `providers.webSearch` | enum | `auto` | `auto` plus the configured search providers (`perplexity`, `gemini`, `anthropic`, `codex`, `zai`, `exa`, `jina`, `kagi`, `tavily`, `brave`, `kimi`, `parallel`, `synthetic`, `searxng`). |
+| `providers.webSearch` | enum | `auto` | `auto` plus the configured search providers (`perplexity`, `gemini`, `anthropic`, `codex`, `xai`, `zai`, `exa`, `tinyfish`, `jina`, `kagi`, `tavily`, `firecrawl`, `brave`, `kimi`, `parallel`, `synthetic`, `searxng`, `startpage`, `duckduckgo`, `ecosia`, `google`, `mojeek`, `public`). |
 | `providers.webSearchGeminiModel` | string | _(unset)_ | Gemini model ID for Google Search grounding when `web_search` uses Gemini; defaults to `gemini-2.5-flash`, overridden by `GEMINI_SEARCH_MODEL`. |
 | `providers.image` | enum | `auto` | `auto`, `openai`, `antigravity`, `xai`, `gemini`, `openrouter`. |
 | `providers.fetch` | enum | `auto` | `auto`, `native`, `trafilatura`, `lynx`, `parallel`, `jina`. |
@@ -936,9 +1049,9 @@ Arrays replace; they do not append. If a project sets `disabledProviders`, `enab
 
 `veyyon config set` and `veyyon config reset` always write the global `config.yml` under the active agent directory. Run `veyyon config path` to print it. For project-local settings, edit `<repo>/.veyyon/config.yml` directly.
 
-### `veyyon config reset` did not remove my key
+### `veyyon config reset` removed my global override
 
-`reset` writes the schema **default** value into the global config, it persists the default rather than deleting the key. To stop overriding a project value from global config, delete the key from `~/.veyyon/profiles/default/agent/config.yml` by hand.
+That is what reset does: it deletes the key from the global `config.yml` so the schema default (or a project-level value) applies. To keep a custom value, run `veyyon config set <key> <value>` again.
 
 ### A `--config` overlay fails at startup
 

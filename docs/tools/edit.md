@@ -154,7 +154,7 @@ DEL 20
 ## Limits & Caps
 - File snapshot tags are exactly four uppercase-hex chars: content-derived hashes (`computeFileHash()`) recorded in the per-session snapshot store.
 - The visible mismatch report shows 2 lines of context on each side (`MISMATCH_CONTEXT`) in `packages/hashline/src/messages.ts`.
-- Stale-anchor recovery uses `fuzzFactor: 0` in `packages/hashline/src/recovery.ts`.
+- Stale-anchor recovery line-maps snapshots with `Diff.diffArrays` in `packages/hashline/src/recovery.ts`.
 - `HL_FILE_PREFIX` is `[`, `HL_FILE_SUFFIX` is `]`, `HL_PAYLOAD_REPLACE` is `+`, `HL_RANGE_SEP` is `.=`, `HL_FILE_HASH_SEP` is `#`, and hunk keyword constants are `SWAP` / `DEL` / `INS` (`packages/hashline/src/format.ts`).
 
 ## Errors
@@ -198,7 +198,7 @@ DEL 20
 - Stale snapshot tag: the `Patcher` first attempts snapshot-based recovery. When recovery cannot prove a valid result it throws `MismatchError`, which distinguishes recognized-but-drifted hashes from never-recorded hashes. The error includes the current file hash plus context around each anchor.
 - No-op edit:
   - `Edits to <path> parsed and applied cleanly, but produced no change: your body row(s) are byte-identical to the file at the targeted lines. The bug is somewhere else — re-read the file before issuing another edit. Do NOT widen the payload or add lines; verify the anchor first.`
-  - After `NOOP_HARD_LIMIT = 3` consecutive byte-identical no-ops of the same payload on the same file, the soft text result escalates to a `ToolError` (`STOP. Edits to <path> have been a byte-identical no-op N times in a row …`) from `packages/coding-agent/src/edit/hashline/noop-loop-guard.ts`.
+  - After `NOOP_HARD_LIMIT = 3` (from `packages/coding-agent/src/edit/hashline/noop-loop-guard.ts`) consecutive byte-identical no-ops of the same payload on the same file, the soft text result escalates to a `ToolError` (`STOP. Edits to <path> have been a byte-identical no-op N times in a row …`) built by `noChangeLoopDiagnostic()` in `packages/coding-agent/src/edit/hashline/execute.ts`.
 - Recovery failure is silent internally: if cache-based merge cannot prove a valid result, the mismatch error is surfaced unchanged.
 
 ## Warnings

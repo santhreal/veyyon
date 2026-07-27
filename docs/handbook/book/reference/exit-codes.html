@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -218,6 +218,18 @@
 success.</li>
 <li>A signal death is surfaced as a distinct non-zero code, never swallowed.</li>
 </ul>
+<p>The most useful distinction for a script is the one between <code>1</code> and <code>2</code>. A <code>1</code> means the invocation
+was valid and the attempt failed, so a retry may succeed. A <code>2</code> means the command line itself was
+wrong, so an identical retry cannot succeed. Check for <code>2</code> before you loop:</p>
+<pre><code class="language-bash">veyyon --print "$prompt"
+status=$?
+if [ "$status" -eq 2 ]; then
+  echo "fix the command line before retrying" &gt;&amp;2
+  exit 2
+fi
+</code></pre>
+<p>These codes come from one place in the source, <code>packages/coding-agent/src/cli/exit-codes.ts</code>, and a
+test asserts that this table and that module agree. If you add a code, add it to both.</p>
 <p>For the machine-readable event stream (including per-turn and per-tool outcomes), use the
 Agent Client Protocol mode (<code>veyyon acp</code>); see the <a href="./cli.html">CLI reference</a>.</p>
 

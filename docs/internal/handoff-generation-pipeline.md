@@ -29,8 +29,8 @@ Does not cover:
 ## Trigger path
 
 1. `/handoff` is declared in builtin slash command metadata (`slash-commands/builtin-registry.ts`) with optional inline hint: `[focus instructions]`.
-2. In interactive input handling (`InputController`), submit text matching `/handoff` or `/handoff ...` is intercepted before normal prompt submission.
-3. The editor is cleared and `handleHandoffCommand(customInstructions?)` is called.
+2. In interactive input handling (`InputController`), submit text matching `/handoff` or `/handoff ...` is routed through `executeBuiltinSlashCommand(...)` before normal prompt submission.
+3. The builtin's TUI handler clears the editor and calls `handleHandoffCommand(customInstructions?)`.
 4. `CommandController.handleHandoffCommand` performs a preflight guard using current entries:
    - Counts `type === "message"` entries.
    - If `< 2`, it warns: `Nothing to hand off (no messages yet)` and returns.
@@ -88,12 +88,12 @@ No agent-loop events are used for capture. The handoff path no longer waits for 
 
 ### 3) Cancellation checks
 
-Cancellation throws `Error("Handoff cancelled")`; a completed generation with no text returns `undefined`.
+Cancellation throws `Error("Handoff cancelled")`; an empty generated document throws a generation error.
 
 - caller signal aborts `#handoffAbortController`
 - `completeSimple(...)` receives the abort signal
 - aborted handoff signal or the provider's `RequestAbortError` (whose `name` is still `AbortError`) is normalized to `Error("Handoff cancelled")`
-- empty generated text returns `undefined`
+- an empty generated document throws from `generateHandoffFromContext` instead of returning `undefined`
 
 `AgentSession.handoff()` always clears `#handoffAbortController` in `finally`.
 
@@ -179,7 +179,7 @@ Auto-triggered handoffs can additionally write a timestamped `handoff-*.md` arti
 - Calls `await session.handoff(customInstructions)`.
 - If result is `undefined`: `showError("Handoff cancelled")`.
 - On success:
-  - `rebuildChatFromMessages()` (loads new session context, including injected handoff)
+  - clears transient session UI and calls `renderInitialMessages()` (loads new session context, including injected handoff)
   - invalidates status line and editor top border
   - reloads todos
   - appends success chat line: `New session started with handoff context`
@@ -217,7 +217,7 @@ Current UI classification:
   - any other thrown error from `handoff()` / `generateHandoff()` / provider request path
   - UI shows `Handoff failed: ...`
 
-Additional nuance: if generation completes but no text is returned, or an extension cancels via `session_before_switch`, `handoff()` returns `undefined` and the controller reports **cancelled**, not **failed**.
+Additional nuance: if an extension cancels via `session_before_switch`, `handoff()` returns `undefined` and the controller reports **cancelled**, not **failed**. An empty generated document throws inside `generateHandoffFromContext`, so it is reported as **failed**.
 
 ## Short-session and minimum-content guardrails
 
@@ -237,7 +237,7 @@ High-level state flow:
 3. `#handoffAbortController` created (`isGeneratingHandoff = true`).
 4. `generateHandoff(...)` issues one `instrumentedCompleteSimple(...)` request with live system prompt, tools, message history, current thinking level, and trailing handoff prompt.
 5. Assistant response text blocks are joined; tool-call blocks are discarded.
-6. If missing text → return `undefined`; if aborted → cancellation error path.
+6. If the generated document is empty → generation error; if aborted → cancellation error path.
 7. If present:
    - flush old session
    - cancel async jobs
@@ -251,8 +251,8 @@ High-level state flow:
 ## Known assumptions and limitations
 
 - No structural validation checks that generated markdown follows the requested section format.
-- Missing generated text is reported as cancellation in controller UX.
+- An empty generated document surfaces as a failure in controller UX, not as cancellation.
 - Manual handoff has no streaming visibility; a cancellable loader is shown until the UI updates after generation completes.
 - Auto-triggered handoffs can write a timestamped `handoff-*.md` artifact when `compaction.handoffSaveToDisk` is enabled; write failure is logged and does not fail the handoff.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `f46fcdb58b933aa498313fd7672a0b29828e860b` on 2026-07-25.*

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -196,7 +196,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="install"><a class="header" href="#install">Install</a></h1>
-<p>Veyyon installs as a single self-contained binary. The installer downloads it, links a short <code>vey</code> launch command next to it, and runs a quick self-check. Under the hood Veyyon is a TypeScript and Bun agent loop, with Rust natives handling the hot paths: grep, the file walker, the shell and PTY, and hashline edits. The prebuilt binary bundles all of that, so you do not need Bun, Node, or a package manager to run it.</p>
+<p>Veyyon installs as a single self-contained binary. The installer downloads it, links a short <code>vey</code> launch command next to it, and runs a quick self-check. Under the hood Veyyon is a TypeScript and Bun agent loop, with Rust natives handling the hot paths: grep, the file walker, the shell and PTY, and tree-sitter block resolution for hashline block edits. The prebuilt binary bundles all of that, so you do not need Bun, Node, or a package manager to run it.</p>
 <h2 id="install-on-linux-or-macos"><a class="header" href="#install-on-linux-or-macos">Install on Linux or macOS</a></h2>
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh
 </code></pre>
@@ -217,10 +217,11 @@
 <p>On Linux the installer checks which C library your system uses before it downloads anything. The published binaries are built against glibc, so on a musl system (Alpine and similar) the installer stops and tells you to install from source instead. It stops rather than continuing because a musl system would install the binary cleanly and then fail to start it, with a “not found” error from the dynamic loader about a file that is plainly there.</p>
 <h2 id="install-a-specific-version-or-from-source"><a class="header" href="#install-a-specific-version-or-from-source">Install a specific version, or from source</a></h2>
 <p>The installer takes a few options. Pass them after <code>-- </code> when you pipe the script:</p>
-<pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11   # a specific release
-$ curl -fsSL https://get.veyyon.dev | sh -s -- --source        # build from a git checkout
+<pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --binary --ref v1.0.11   # a specific release binary
+$ curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11           # build that ref from a git checkout (implies --source)
+$ curl -fsSL https://get.veyyon.dev | sh -s -- --source                # build the default branch from a git checkout
 </code></pre>
-<p><code>--source</code> is for running an unreleased branch or contributing. It keeps a real checkout under <code>~/.veyyon/src</code>, installs the workspace once with Bun, and links a launcher that runs Veyyon straight from TypeScript, so there is no separate build step. A source install needs <strong>Bun</strong> and <strong>Git</strong>; the installer installs Bun for you when it is missing. It also needs <strong><a href="https://git-lfs.com">git-lfs</a></strong> when the checkout tracks files through Git LFS, and it stops with that message rather than continuing: without git-lfs those files are written as small pointer text files, which look present and then fail at runtime. If nothing in the checkout is LFS-tracked, git-lfs is not required and the installer does not ask for it. The native addon is provisioned automatically: the installer (and the launcher, if the addon ever goes missing) downloads the prebuilt addon for your platform from the matching release, and falls back to a local Rust build only when no prebuilt exists. On Windows the same options are <code>-Source</code>, <code>-Binary</code>, <code>-Ref</code>, and <code>-Uninstall</code>. Pass them with the scriptblock form, for example <code>&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source</code> (see the header of <code>install.ps1</code>).</p>
+<p><code>--source</code> is for running an unreleased branch or contributing. It keeps a real checkout under <code>~/.veyyon/src</code>, installs the workspace once with Bun, and links a launcher that runs Veyyon straight from TypeScript, so there is no separate build step. A source install needs <strong>Bun</strong> and <strong>Git</strong>; the installer installs Bun for you when it is missing. It also needs <strong><a href="https://git-lfs.com">git-lfs</a></strong> when the checkout tracks files through Git LFS, and it stops with that message rather than continuing: without git-lfs those files are written as small pointer text files, which look present and then fail at runtime. If nothing in the checkout is LFS-tracked, git-lfs is not required and the installer does not ask for it. The native addon is provisioned automatically: the installer (and the launcher, if the addon ever goes missing) downloads the prebuilt addon for your platform from the matching release, and falls back to a local Rust build only when no prebuilt exists. On Windows the same options are <code>-Source</code>, <code>-Binary</code>, <code>-Ref</code>, <code>-Local</code>, and <code>-Uninstall</code>. Pass them with the scriptblock form, for example <code>&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source</code> (see the header of <code>install.ps1</code>). <code>-Local</code> (and <code>--local</code> on Linux and macOS) installs the binary a checkout has already built instead of downloading a release, which is what you want when you are working on Veyyon itself or installing on a machine with no network.</p>
 <p>If you would rather clone and drive the workspace yourself:</p>
 <pre><code class="language-console">$ git clone https://github.com/santhreal/veyyon.git
 $ cd veyyon
@@ -233,7 +234,7 @@ $ bun dev --version
 $ vey plugin doctor
 $ vey plugin doctor --fix
 </code></pre>
-<p><code>vey plugin doctor</code> checks plugin health and warns you when an optional external binary (<code>sd</code>, <code>sg</code>, or <code>git</code>) or a common API key is missing. For interactive diagnostics, use <code>/debug</code> in the TUI. See <a href="../features/doctor.html">Diagnostics</a>.</p>
+<p><code>vey plugin doctor</code> checks plugin installation health (directories, manifests, entry paths, enabled features). Binary and provider-key checks live in <code>vey setup status</code>. For interactive diagnostics, use <code>/debug</code> in the TUI. See <a href="../features/doctor.html">Diagnostics</a>.</p>
 <h3 id="relocate-the-config-directory"><a class="header" href="#relocate-the-config-directory">Relocate the config directory</a></h3>
 <p>On Unix, Veyyon uses <code>~/.veyyon</code> by default. Two environment variables let you move it. <code>VEYYON_CONFIG_DIR</code> renames the home-relative config directory, and <code>VEYYON_CODING_AGENT_DIR</code> relocates the agent base, which holds <code>config.yml</code>, <code>agent.db</code>, your sessions, and more.</p>
 <pre><code class="language-console">$ export VEYYON_CODING_AGENT_DIR=/path/to/veyyon-agent
@@ -243,7 +244,7 @@ $ vey plugin doctor
 <h2 id="first-credentials"><a class="header" href="#first-credentials">First credentials</a></h2>
 <p>On the first interactive launch, the first-run setup (or <code>veyyon setup</code>) walks you through sign-in and API keys. Inside a session you have three ways to manage credentials: open the panel again with <code>/setup</code> or <code>/providers</code>, run <code>/login</code> (or <code>/login &lt;provider&gt;</code>) for OAuth and key entry, or export the provider’s environment variable and skip the interactive step. See <a href="./authentication.html">Authentication</a> and <a href="./configuring-providers.html">Configuring providers</a>.</p>
 <h2 id="updating"><a class="header" href="#updating">Updating</a></h2>
-<p>Veyyon keeps itself current. On startup it checks veyyon.dev for a newer
+<p>Veyyon keeps itself current. On startup it checks GitHub Releases for a newer
 version, and if it finds one it downloads the new binary in the background:</p>
 <pre><code class="language-text">veyyon 1.2.0 installed · restart to use it
 </code></pre>
@@ -318,8 +319,8 @@ install that can actually perform the move, so you will not see it on a source
 checkout.</p>
 <p>Veyyon is distributed only two ways, and it updates the way it was installed. A
 binary install (the <code>curl</code> installer from veyyon.dev) replaces its own binary
-with the newer one it fetches from veyyon.dev; veyyon.dev serves the signed
-release and propagates automatically from GitHub Releases, so that is the only
+with the newer one it fetches from GitHub Releases, the same place the
+installer’s download comes from; veyyon.dev hosts only the installer script, so GitHub Releases is the only
 place a binary ever comes from. Before it keeps the new binary it runs the same
 two checks the installer runs: the binary reports the version the release
 claims, and a real search confirms the native addon loads. If either fails the

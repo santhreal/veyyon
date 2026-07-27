@@ -21,7 +21,7 @@ export default function myHook(veyyon: HookAPI): void {
 }
 ```
 
-The default export must be a plain function (not async, not a class). It receives a `HookAPI` instance and must register all handlers synchronously during execution.
+The default export must be a function (not a class). It receives a `HookAPI` instance and registers all handlers when called; the loader awaits its return value, so an `async` factory is awaited before the hook is considered loaded.
 
 Alternatively, using `ExtensionAPI` (preferred):
 

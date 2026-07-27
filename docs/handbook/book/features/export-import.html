@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -197,34 +197,21 @@
                     <main>
                         <h1 id="export-and-import"><a class="header" href="#export-and-import">Export and import</a></h1>
 <h2 id="session-export"><a class="header" href="#session-export">Session export</a></h2>
-<p><code>/export</code> writes the current session transcript. Target format depends on the extension:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Target</th><th>Format</th></tr>
-</thead>
-<tbody>
-<tr><td><code>.jsonl</code> or default</td><td>Native session JSONL (append-only entries)</td></tr>
-<tr><td><code>.html</code> / <code>.htm</code></td><td>Standalone offline HTML transcript</td></tr>
-</tbody>
-</table>
-</div>
-<p>Paths resolve relative to the working directory, <code>~/</code>, or absolute paths. Directory targets receive
-the default session filename inside the folder.</p>
+<p><code>/export [path]</code> writes the current session transcript as a standalone offline HTML file. With no
+argument it writes <code>veyyon-session-&lt;session&gt;.html</code> in the working directory.</p>
+<p>The path is used as given (relative paths resolve against the process working directory). There is no
+<code>~</code> expansion or directory fallback, so pass a full file path ending in <code>.html</code>.</p>
 <h2 id="migration-from-claude-code"><a class="header" href="#migration-from-claude-code">Migration from Claude Code</a></h2>
-<p><code>/import</code> is <strong>not</strong> in the builtin slash registry; Claude migration may be available through setup
-flows or extensions. When import runs, it merges compatible settings from <code>.claude/</code> into Veyyon’s
-config tree (<code>.veyyon/</code>, <code>~/.veyyon/profiles/default/agent/</code>), including MCP, hooks, skills, and agents.</p>
-<p>Import works on <strong>local</strong> sessions; no background daemon is required.</p>
+<p><code>/import</code> is <strong>not</strong> in the builtin slash registry; Claude migration runs through the setup wizard’s
+import scene. It offers user-level foreign skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> instruction files and
+copies the selected ones into the active profile.</p>
 <p>Typical migrated items:</p>
 <ul>
-<li>Settings from <code>.claude/settings.json</code> → <code>config.yml</code></li>
-<li>MCP servers → <code>mcp.json</code></li>
-<li>Hooks → TypeScript modules under <code>.veyyon/hooks/</code> (or agent <code>hooks/</code>) loaded via the extension path</li>
 <li>Skills → the active profile’s <code>skills</code> directory (<code>~/.veyyon/profiles/&lt;profile&gt;/agent/skills</code>)</li>
-<li>Subagents → <code>.veyyon/agents</code></li>
-<li><code>CLAUDE.md</code> → <code>AGENTS.md</code></li>
+<li><code>CLAUDE.md</code>/<code>AGENTS.md</code> content → appended to the profile <code>AGENTS.md</code> under an <code>&lt;!-- imported from … --&gt;</code> marker</li>
 </ul>
+<p>Ambient loading of foreign <code>.claude</code> configuration is a separate opt-in (<code>discovery.importForeignConfig</code>,
+default off).</p>
 <p>See <a href="../using/migration-guide.html">Migration guide</a>.</p>
 
                     </main>

@@ -80,7 +80,7 @@ Normalization:
 - frontmatter parsed via `parseFrontmatter`
 - `content` = body (frontmatter stripped)
 - `globs`, `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, and `repeatGap` are parsed by `buildRuleFromMarkdown`
-- top-level `RULES.md` is synthesized as rule name `RULES` and forced to `alwaysApply: true`
+- top-level `RULES.md` is synthesized as rule name `RULES` for the user file and `RULES@project` for the project file, and forced to `alwaysApply: true`
 
 Important caveat: `condition` values that look like file globs are converted into `tool:edit(...)` / `tool:write(...)` scope shorthands with catch-all condition `.*`.
 
@@ -140,7 +140,7 @@ All providers use `parseFrontmatter` (`utils/frontmatter.ts`) with these semanti
 
 1. Frontmatter is parsed only when content starts with `---` and has a closing `\n---`.
 2. Body is trimmed after frontmatter extraction.
-3. If YAML parse fails:
+3. If YAML parse fails, the parser retries once after quoting ambiguous plain scalars; if that still fails:
    - warning is logged,
    - parser falls back to simple `key: value` line parsing (`^([\w-]+):\s*(.*)$`).
 
@@ -285,4 +285,4 @@ Implications:
 3. Rule selection for `rule://` includes rulebook, always-apply, and registered TTSR rules (so a triggered TTSR rule can be re-read), but not rules that registered no condition and carry neither a description nor `alwaysApply`.
 4. Discovery warnings (`loadCapability("rules").warnings`) are produced but `createAgentSession` does not currently surface/log them in this path.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `36bd44ad4d0ec6a81a94b2eb37b81d7157cbcc5b` on 2026-07-26.*

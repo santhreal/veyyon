@@ -20,11 +20,11 @@ Also opens via:
 
 | Mode | Shows |
 | --- | --- |
-| `default` | Conversation nodes; hides label/custom/model_change/thinking bookkeeping |
-| `no-tools` | `default` plus hides tool-result-only assistant messages |
+| `default` | Conversation nodes; hides label/custom/model_change/thinking bookkeeping and tool-call-only assistant messages |
+| `no-tools` | `default` plus hides tool-result messages |
 | `user-only` | User messages only |
 | `labeled-only` | Entries with labels |
-| `all` | Every entry type |
+| `all` | Every entry type except tool-call-only assistant messages (hidden in all modes unless error/aborted or the current leaf) |
 
 Search is fuzzy, case-insensitive, AND across tokens.
 

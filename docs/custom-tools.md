@@ -49,7 +49,7 @@ CustomTool.execute(toolCallId, params, onUpdate, ctx, signal)
    - Claude config (`~/.claude/tools`, `.claude/tools`)
    - Codex config (`~/.codex/tools`, `.codex/tools`)
    - Claude marketplace plugin cache provider
-2. Installed plugin manifests (`~/.veyyon/profiles/default/plugins/node_modules/*` via plugin loader)
+2. Installed plugin manifests (`~/.veyyon/profiles/<profile>/plugins/node_modules/*` via plugin loader; a project root `<anchor>/.veyyon/plugins` is enumerated the same way)
 3. Explicit configured paths passed to the loader
 
 ### Important behavior
@@ -126,7 +126,7 @@ From `types.ts` and `loader.ts`:
 - `ui`: UI context (can be no-op in headless modes)
 - `hasUI`: `false` in non-interactive flows
 - `logger`: shared file logger
-- `typebox`: zod-backed compatibility shim for legacy TypeBox-style schemas
+- `typebox`: self-contained compatibility shim for legacy TypeBox-style schemas (legacy/compat, prefer `arktype` or `zod` for new tools)
 - `zod`: injected `zod/v4` module (canonical for new schemas)
 - `pi`: injected `@veyyon/coding-agent` exports
 - `pushPendingAction(action)`: register a preview action for hidden `resolve` tool (`docs/internal/resolve-tool-runtime.md`)

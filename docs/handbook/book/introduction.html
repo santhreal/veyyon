@@ -50,7 +50,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-578177b6.js"></script>
@@ -217,7 +217,7 @@
 </div>
 <p>If you only want to get to work, read <a href="./using/install.html">Install</a>, sign in, and go to <a href="./using/getting-started.html">Getting started</a>. Come back to the concept chapters when something surprises you. They explain why Veyyon behaves the way it does, which is usually faster than guessing.</p>
 <h2 id="what-veyyon-is"><a class="header" href="#what-veyyon-is">What Veyyon is</a></h2>
-<p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a>. The CLI, the TUI, the tools, the providers, and the session loop are TypeScript running on Bun. The hot paths, meaning grep, PTY, and hashline patch application, are Rust natives in <code>@veyyon/natives</code>.</p>
+<p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a>. The CLI, the TUI, the tools, the providers, and the session loop are TypeScript running on Bun. The hot paths, meaning grep, glob, PTY, and tree-sitter parsing, are Rust natives in <code>@veyyon/natives</code>. The hashline edit engine itself is TypeScript in <code>@veyyon/hashline</code>, with native helpers for block resolution.</p>
 <p>A few facts you will reach for often:</p>
 <ul>
 <li>Install with <code>curl -fsSL https://get.veyyon.dev | sh</code> (or <code>irm https://veyyon.dev/install.ps1 | iex</code> on Windows), or run <code>bun setup &amp;&amp; bun dev</code> from a source checkout.</li>

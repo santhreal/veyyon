@@ -34,7 +34,7 @@ The params object **is** a single op, the discriminator and its fields live at t
 | `list` | `{ phase: string; items: string[] }[]` | For `init` (unless a flat `items` list is given) | Full replacement payload. Each `items` array has `minItems: 1`. |
 | `task` | `string` | For `start`; for task-targeted `done`/`drop`/`rm` | Exact task content match. |
 | `phase` | `string` | For `append`; for phase-targeted `done`/`drop`/`rm`; optional for a flat `init` | Exact phase name match, except `append` lazily creates a missing phase and a flat `init` synthesizes one (default `Tasks`). |
-| `items` | `string[]` | For `append`; or as a flat `init` payload | Tasks to append, or the full task list for a flat `init`. `minItems: 1`. |
+| `items` | `string[]` | For `append`; or as a flat `init` payload | Tasks to append, or the full task list for a flat `init`. The schema carries no `minItems` on this field (a stray `items: []` on an op that ignores it is not a hard rejection); non-empty is enforced per op at runtime. |
 
 ## Outputs
 The tool returns a single-shot `AgentToolResult`:
@@ -116,7 +116,7 @@ The same file also exposes non-tool helpers used by `/todo`:
 ## Limits & Caps
 - `init.list`: applies to a single op (`todoSchema`). The params object carries exactly one op.
 - `init.list[*].items`: `minItems: 1`.
-- `append.items`: `minItems: 1`.
+- `append.items`: non-empty enforced per op at runtime (`Missing items for append operation`); the schema carries no `minItems` on the flat `items` field.
 - Renderer collapsed preview: `PREVIEW_LIMITS.COLLAPSED_ITEMS = 8` (`packages/coding-agent/src/tools/render-utils.ts`).
 - Auto-clear delay: `tasks.todoClearDelay` default `60` seconds; `< 0` disables auto-clear, `0` clears immediately. Display-only: applied by the TUI widget (`packages/coding-agent/src/modes/interactive-mode.ts`); the setting is inert at the session level.
 - Tool execution mode: `concurrency = "exclusive"`, `strict = true`, `loadMode = "discoverable"`.

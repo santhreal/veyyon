@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -205,7 +205,7 @@ vey --version
 <p>If it is missing, the one-command installer wires up your PATH, shell completions, and the <code>vey</code> alias:</p>
 <pre><code class="language-shell">curl -fsSL https://get.veyyon.dev | sh
 </code></pre>
-<p>You can also pin a version with <code>curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11</code>, or build from source with <code>bun setup &amp;&amp; bun dev</code> in the repository root. See <a href="./install.html">Install</a>.</p>
+<p>You can also pin a release binary with <code>curl -fsSL https://get.veyyon.dev | sh -s -- --binary --ref v1.0.11</code> (a bare <code>--ref</code> builds that ref from source), or build from source with <code>bun setup &amp;&amp; bun dev</code> in the repository root. See <a href="./install.html">Install</a>.</p>
 <h2 id="check-the-environment"><a class="header" href="#check-the-environment">Check the environment</a></h2>
 <pre><code class="language-shell">veyyon plugin doctor
 </code></pre>
@@ -220,14 +220,14 @@ vey
 <h2 id="ask-for-a-small-edit"><a class="header" href="#ask-for-a-small-edit">Ask for a small edit</a></h2>
 <pre><code class="language-text">&gt; Add a name argument to greet() in greet.py, default 'world'.
 </code></pre>
-<p>Veyyon reads the file, proposes an <code>edit</code> or hashline change, and may pause for approval depending on <code>tools.approvalMode</code>. Press <code>y</code> to accept when it prompts you.</p>
+<p>Veyyon reads the file, proposes an <code>edit</code> or hashline change, and may pause for approval depending on <code>tools.approvalMode</code>. Choose <strong>Approve</strong> (or <strong>Deny</strong>) and press Enter when it prompts you.</p>
 <h2 id="composer-conveniences"><a class="header" href="#composer-conveniences">Composer conveniences</a></h2>
 <p>A few keys do a lot in the composer:</p>
 <ul>
-<li><code>@</code> completes file, skill, and plugin names.</li>
+<li><code>@</code> completes file paths (fuzzy file references).</li>
 <li><code>/</code> opens the slash commands, such as <code>/help</code>, <code>/tree</code>, and <code>/settings</code>.</li>
 <li><code>Esc</code> interrupts a running turn.</li>
-<li><code>?</code> shows shortcut hints when the composer is empty.</li>
+<li><code>/hotkeys</code> lists the active keyboard shortcuts.</li>
 </ul>
 <h2 id="next-steps"><a class="header" href="#next-steps">Next steps</a></h2>
 <ul>

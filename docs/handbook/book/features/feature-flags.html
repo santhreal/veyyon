@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -200,7 +200,8 @@
 per-plugin feature gates managed with the <strong>plugin</strong> subcommand.</p>
 <h2 id="settings-schema-flags-features"><a class="header" href="#settings-schema-flags-features">Settings-schema flags (<code>features.*</code>)</a></h2>
 <p>Registered flags live in <code>config.yml</code> under dotted <code>features.*</code> keys and appear in
-<strong>Settings › Interaction</strong> in the TUI. Unknown keys are rejected.</p>
+<strong>Settings › Interaction</strong> in the TUI. Unknown keys are preserved verbatim (they may belong to a
+newer build or another tool); only schema-declared keys are type-checked.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -214,8 +215,8 @@ per-plugin feature gates managed with the <strong>plugin</strong> subcommand.</p
 <pre><code class="language-yaml">features:
   unexpectedStopDetection: true
 </code></pre>
-<p>Per-run override:</p>
-<pre><code class="language-console">$ veyyon -c features.unexpectedStopDetection=true "long refactor; keep going until done"
+<p>Per-run override: put the same YAML in a file and load it as an overlay:</p>
+<pre><code class="language-console">$ veyyon --config ./flag-overlay.yml "long refactor; keep going until done"
 </code></pre>
 <h2 id="plugin-feature-gates"><a class="header" href="#plugin-feature-gates">Plugin feature gates</a></h2>
 <p>Plugins can declare named features that you toggle per plugin:</p>

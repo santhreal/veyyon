@@ -10,7 +10,7 @@
   - `packages/coding-agent/src/utils/zip.ts`: the unified ZIP/tar wrapper: detect `archive.ext:inner/path`, index archives, list/read entries.
   - `packages/coding-agent/src/tools/sqlite-reader.ts`: detect SQLite targets, parse selectors, render tables.
   - `packages/coding-agent/src/tools/fetch.ts`: URL parsing, fetch/render pipeline, URL cache/artifacts.
-  - `packages/coding-agent/src/internal-urls/router.ts`: resolve `agent://`, `artifact://`, `history://`, `issue://`, `local://`, `mcp://`, `memory://`, `veyyon://`, `pr://`, `rule://`, `skill://`, and `vault://`.
+  - `packages/coding-agent/src/internal-urls/router.ts`: resolve `agent://`, `artifact://`, `history://`, `issue://`, `local://`, `mcp://`, `memory://`, `pr://`, `rule://`, `skill://`, `ssh://`, `vault://`, and `veyyon://`.
   - `packages/coding-agent/src/edit/notebook.ts`: convert `.ipynb` to editable `# %% [...] cell:N` text.
   - `packages/coding-agent/src/utils/file-display-mode.ts`: decide hashline vs line-number vs raw display.
   - `packages/coding-agent/src/workspace-tree.ts`: render directory trees.
@@ -197,7 +197,7 @@ URL selectors are parsed separately in `packages/coding-agent/src/tools/fetch.ts
 
 ### Internal URLs
 - `read` does not resolve these itself; it delegates to `InternalUrlRouter.instance().resolve()`.
-- Registered protocols are outside this file, but the router in `packages/coding-agent/src/internal-urls/router.ts` is built for `agent://`, `artifact://`, `history://`, `issue://`, `local://`, `mcp://`, `memory://`, `veyyon://`, `pr://`, `rule://`, `skill://`, and `vault://`.
+- Registered protocols are outside this file, but the router in `packages/coding-agent/src/internal-urls/router.ts` is built for `agent://`, `artifact://`, `history://`, `issue://`, `local://`, `mcp://`, `memory://`, `pr://`, `rule://`, `skill://`, `ssh://`, `vault://`, and `veyyon://`.
 - `#handleInternalUrl()` behavior:
   - parses the URL with `parseInternalUrl()` so colons inside the host segment are legal
   - for `agent://`, treats non-root path extraction or `?q=` extraction as a special no-pagination mode
@@ -255,7 +255,9 @@ Notes: ...
 ## Limits & Caps
 - Shared text truncation defaults from `packages/coding-agent/src/session/streaming-output.ts`:
   - `DEFAULT_MAX_LINES = 3000`
-  - `DEFAULT_MAX_BYTES = 50 * 1024`
+  - `DEFAULT_MAX_BYTES = 50 KB`, compiled rather than configured. `read` is the one tool exempt from
+    artifact spilling (`tools.artifactSpillThreshold` does not apply to it): it is bounded by LINES,
+    so a byte spill would return fewer lines than the caller asked for.
 - Local text open-ended default line limit: `read.defaultLimit`, clamped to `[1, DEFAULT_MAX_LINES]`.
 - Explicit line ranges add `1` leading and `3` trailing context lines on the constrained sides (`RANGE_LEADING_CONTEXT_LINES` / `RANGE_TRAILING_CONTEXT_LINES`). The result discloses the padding it added on its last line.
 - File streaming chunk size: `8 * 1024` bytes (`READ_CHUNK_SIZE`).

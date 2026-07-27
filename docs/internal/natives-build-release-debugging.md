@@ -39,7 +39,7 @@ Root scripts include `build:native` as `bun --cwd=packages/natives run build`.
 - `--platform`
 - `--no-js`
 - `--dts index.d.ts`
-- `--profile local` for non-CI local native builds, otherwise `--profile ci`
+- `--profile local` for non-CI, non-cross local native builds, otherwise `--profile ci`
 - `-o <isolated temp output dir>`
 - optional `--target <CROSS_TARGET>` plus `--cross-compile` (napi picks the `cargo-zigbuild` or `cargo-xwin` backend from the target) for cross builds
 
@@ -143,6 +143,17 @@ Typical local loop:
 1. Build addon: `bun --cwd=packages/natives run build`.
 2. Loader resolves platform npm leaf-package candidates (`@veyyon/natives-<platform>-<arch>`, when resolvable), then package-local `native/` and executable-dir fallback candidates.
 3. Generated declarations in `native/index.d.ts` describe the public TS API.
+
+The build also regenerates `native/embedded-addons.<tag>.tar.gz` from the addon it just produced, by
+running `embed-native.ts` as its last step. That used to belong only to `gen:native`, which meant a
+`build` left the archive at whatever a previous run had written. The two artifacts then disagreed
+silently, and a compiled binary kept loading the OLD addon out of `~/.veyyon/natives/<version>/`
+while the corrected one sat in the tree. If the refresh fails, the build fails with it rather than
+finishing on a half-updated pair.
+
+To answer "which binary am I actually running", set `VEYYON_DEBUG_STARTUP=1` and read the
+`native:require:` marker. It prints the resolved absolute path, so the extracted cache copy and an
+in-tree build are distinguishable; it used to print the bare file name, which is identical for both.
 
 ## Shipped/compiled binary workflow
 
@@ -291,4 +302,4 @@ Workspaces that hardlinked a `.node` before GC retain access via the kernel inod
 
 Trigger an automatic miss by editing any path in the key set: a single touched byte under `crates/`, `Cargo.lock`, `Cargo.toml`, `rust-toolchain.toml`, or `packages/natives/` shifts the tree hash and forces a fresh build at the next populate.
 
-*Verified against `707a0016` on 2026-07-24.*
+*Verified against `f46fcdb58b933aa498313fd7672a0b29828e860b` on 2026-07-25.*

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -211,10 +211,11 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 <tr><td><code>/rename &lt;title&gt;</code></td><td>Rename session</td></tr>
 <tr><td><code>/move &lt;dir&gt;</code></td><td>Relocate the session (including its saved session file) to another working directory and re-root project settings, plugins, commands, and capabilities there</td></tr>
 <tr><td><code>/cwd [path]</code></td><td>Bare prints the current session cwd; with a path, re-roots the live session at that directory after validating it exists. Reloads the same project-scoped state as <code>/move</code> (project settings, plugins, slash commands, capabilities, ssh tool, system-prompt framing) but does not relocate the session file. Session-scoped only; does not write profile <code>session.workdir</code></td></tr>
-<tr><td><code>/export [path]</code></td><td>Export session JSONL or HTML</td></tr>
+<tr><td><code>/export [path]</code></td><td>Export the session as a standalone HTML file</td></tr>
 <tr><td><code>/dump</code></td><td>Dump debug artifacts</td></tr>
 <tr><td><code>/session info</code>, <code>/session delete</code></td><td>Session metadata or delete</td></tr>
 <tr><td><code>/profile [name]</code>, <code>/profiles</code></td><td>Bare opens the profile picker (switch, rename, create, delete); <code>/profile &lt;name&gt;</code> switches (relaunches as a fresh session); <code>/profile new &lt;name&gt;</code> opens the copy picker; <code>/profile &lt;name&gt; rename to &lt;new&gt;</code> sets a display name; <code>/profile rm &lt;name&gt;</code> deletes after a confirmation</td></tr>
+<tr><td><code>/welcome</code></td><td>Show the full welcome screen (actions, recent sessions)</td></tr>
 <tr><td><code>/exit</code>, <code>/quit</code>, <code>/pause</code></td><td>Leave or pause</td></tr>
 </tbody>
 </table>
@@ -227,7 +228,7 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 </thead>
 <tbody>
 <tr><td><code>/model [id]</code></td><td>Select the <strong>interactive</strong> model only (no role cycle; roles live in settings)</td></tr>
-<tr><td><code>/switch</code></td><td>Same interactive model picker</td></tr>
+<tr><td><code>/switch</code></td><td>Try a model for this session only, without saving it as default (same as alt+p)</td></tr>
 <tr><td><code>/fast on|off|status</code></td><td>Fast mode</td></tr>
 <tr><td><code>/thinking [level]</code> (<code>/effort</code>)</td><td>Set reasoning effort; no argument opens the picker</td></tr>
 <tr><td><code>/yolo on|off|status</code></td><td>Remove ALL permission prompts for this session (explicit deny and plan mode still block; needs confirmation)</td></tr>
@@ -240,7 +241,7 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 <tr><td><code>/settings</code>, <code>/setup</code></td><td>Settings UI; <code>/setup</code> / <code>/providers</code> opens provider sign-in</td></tr>
 <tr><td><code>/statusline</code></td><td>Settings UI, jumped to Status Line (preset/segments/separator)</td></tr>
 <tr><td><code>/reload-plugins</code></td><td>Reload extensions</td></tr>
-<tr><td><code>/force</code></td><td>Force-submit queued work</td></tr>
+<tr><td><code>/force &lt;tool&gt; [prompt]</code></td><td>Force the next turn to use a specific tool</td></tr>
 </tbody>
 </table>
 </div>
@@ -260,7 +261,9 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 <tr><td><code>/todo …</code></td><td>Todo list CRUD</td></tr>
 <tr><td><code>/browser …</code></td><td>Browser tool mode</td></tr>
 <tr><td><code>/memory …</code></td><td>Memory backend view/stats/clear/enqueue</td></tr>
-<tr><td><code>/copy</code></td><td>Copy last response</td></tr>
+<tr><td><code>/copy</code></td><td>Pick text or code from the conversation to copy</td></tr>
+<tr><td><code>/lsp</code></td><td>Show language server status</td></tr>
+<tr><td><code>/cockpit</code></td><td>Live multi-agent cockpit (status, model per agent, drill-in)</td></tr>
 </tbody>
 </table>
 </div>
@@ -286,12 +289,14 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 </thead>
 <tbody>
 <tr><td><code>/mcp …</code></td><td>MCP server management</td></tr>
+<tr><td><code>/mcp notifications</code></td><td>Show notification capabilities and subscriptions</td></tr>
 <tr><td><code>/plugins …</code></td><td>Plugin browser</td></tr>
 <tr><td><code>/extensions</code></td><td>Extension dashboard</td></tr>
-<tr><td><code>/agents</code></td><td>Switch agent threads</td></tr>
+<tr><td><code>/agents</code></td><td>Open the Agent Control Center (subagent definitions)</td></tr>
 <tr><td><code>/ssh …</code></td><td>SSH host setup</td></tr>
 <tr><td><code>/hotkeys</code></td><td>Active keybinding chords</td></tr>
-<tr><td><code>/collab …</code>, <code>/join</code>, <code>/leave</code>, <code>/share</code></td><td>Collab sessions</td></tr>
+<tr><td><code>/collab …</code>, <code>/join</code>, <code>/leave</code></td><td>Live collab sessions</td></tr>
+<tr><td><code>/share</code></td><td>Share the session via an encrypted link (share server or secret gist)</td></tr>
 </tbody>
 </table>
 </div>
@@ -303,12 +308,13 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 </thead>
 <tbody>
 <tr><td><code>/btw</code></td><td>Ephemeral side question</td></tr>
-<tr><td><code>/tan</code>, <code>/omfg</code></td><td>Background agent spawns</td></tr>
+<tr><td><code>/tan</code></td><td>Run a full background agent on tangential work</td></tr>
+<tr><td><code>/omfg</code></td><td>Forge a TTSR rule from a complaint to stop a recurring behavior</td></tr>
 <tr><td><code>/vibe</code></td><td>Toggle vibe mode (director + <code>vibe_*</code> worker tools)</td></tr>
 <tr><td><code>/retry</code></td><td>Retry failed turn</td></tr>
 <tr><td><code>/debug</code></td><td>Debug overlays</td></tr>
 <tr><td><code>/queue</code></td><td>Queue follow-up message</td></tr>
-<tr><td><code>/drop</code></td><td>Drop queued message</td></tr>
+<tr><td><code>/drop</code></td><td>Delete the current session and start a new one (dequeuing a queued message is the <code>alt+up</code> chord, not a slash command)</td></tr>
 </tbody>
 </table>
 </div>

@@ -23,10 +23,10 @@
 | --- | --- | --- | --- |
 | `command` | `string` | Yes | Shell command text to execute. A leading `cd <path> && ...` is rewritten into `cwd` only when `cwd` was omitted. |
 | `env` | `Record<string, string>` | No | Extra environment variables. Keys must match `^[A-Za-z_][A-Za-z0-9_]*$` or the tool throws. Values go through internal-URL expansion and are passed as environment values, not shell text. |
-| `timeout` | `number` | No | Timeout in seconds. Default `300`; clamped to `1..3600` by `clampTimeout("bash", ...)`. |
+| `timeout` | `number` | No | Timeout in seconds. Default `300`; clamped to `1..3600` by `clampTimeout("bash", ...)`. `0` is an explicit no-deadline contract (reported as `details.timeoutDisabled`), not clamped to `1`. |
 | `cwd` | `string` | No | Working directory, resolved against `session.cwd` via `resolveToCwd`. Must exist and be a directory. |
 | `pty` | `boolean` | No | Request PTY mode. Default `false`. PTY is used only when `pty: true`, `VEYYON_NO_PTY !== "1"`, and the tool context has a UI. |
-| `async` | `boolean` | No | Background execution request. Present only when `async.enabled` is true for the session. Returns immediately with a job id instead of waiting; it does not extend the effective `timeout`, so jobs are still killed after the clamped `1..3600` second budget. |
+| `async` | `boolean` | No | Background execution request. Present only when `async.enabled` is true for the session. Returns immediately with a job id instead of waiting; it does not extend the effective `timeout`, so jobs are still killed after the clamped `1..3600` second budget unless `timeout: 0` disabled the deadline. |
 
 ## Outputs
 The tool returns a single `text` content block plus optional `details`.
@@ -42,7 +42,7 @@ The tool returns a single `text` content block plus optional `details`.
   - non-zero exits return a tool result marked `isError` with output plus `Command exited with code <n>`; they are not thrown.
 - Success, background start (`async: true`, auto-background, or stall):
   - `content[0].text`: optional preview tail, timeout notice if any, then a background notice. Auto-background/explicit uses the plain "delivered automatically" line; a stall uses a "may be stuck" line naming the job id and the `job` tool `cancel: ["<jobId>"]` path.
-  - `details.async`: `{ state: "running", jobId, type: "bash", reason?: "threshold" | "stall" | "manual" }`. `reason` is set only when a still-running call was backgrounded by a timer or by the operator's background key.
+  - `details.async`: `{ state: "running", jobId, type: "bash", reason?: "threshold" | "stall" | "manual" }`. `reason` is always present on background-start details and defaults to `"threshold"` (explicit `async: true` included); `"stall"` and `"manual"` mark backgrounding by the idle-output watcher and the operator's background key.
 - Background progress / completion:
   - delivered through `onUpdate` / async job manager, not the initial return.
   - running updates contain tail text and `details.async.state: "running"` only after the job is considered backgrounded.
@@ -109,7 +109,7 @@ model. `eval` keeps your copy raw.
 11. Local non-PTY and PTY paths allocate an output artifact first when `session.allocateOutputArtifact` is available. The artifact path/id are passed into the sink so large output can spill to disk.
 12. `executeBash()` loads shell settings, optional shell snapshot, and shell minimizer settings, then runs via a persistent native `Shell` session or one-shot `executeShell()`. `docs/internal/bash-tool-runtime.md` covers that path in detail.
 13. `runInteractiveBashPty()` creates a `PtySession`, overlays an xterm-backed console UI, forwards user key input into the PTY, captures output through `OutputSink`, and kills the PTY on dismiss/dispose.
-14. Client-terminal bridge mode calls `session.getClientBridge().createTerminal(...)`, emits `terminalId` updates, polls output until exit/timeout/abort, maps signal exits to `137`, and releases the handle in `finally`.
+14. Client-terminal bridge mode calls `session.getClientBridge().createTerminal(...)`, emits `terminalId` updates, polls output until exit/timeout/abort, maps signal exits to `128 + <signal number>` for the terminating signal, and releases the handle in `finally`.
 15. On completion, `#buildCompletedResult()` formats `(no output)` when needed, attaches truncation metadata from the output summary, appends wall-time/timeout/exit notices, and re-checks unfinished status before returning.
 16. On timeout, missing exit status, or cancellation, the tool throws with captured output included when available.
 
@@ -167,9 +167,10 @@ model. `eval` keeps your copy raw.
 - Auto-background default threshold: `60_000ms` (`DEFAULT_AUTO_BACKGROUND_THRESHOLD_MS` in `packages/coding-agent/src/tools/bash.ts`), further capped to `timeoutMs - 1000` by `#resolveAutoBackgroundWaitMs()`.
 - Stall-detection default window: `30_000ms` (`DEFAULT_STALL_DETECTION_MS` in `packages/coding-agent/src/tools/bash.ts`), capped to `timeoutMs - 1000` by `#resolveStallWaitMs()`. Both timers share the `#resolveWaitMs()` clamp. The stall watcher polls idle time on a `500ms` cap.
 - Non-PTY executor timeout: `executeBash()` arms a host-side timer at `max(1_000, timeoutMs)` that aborts the run and quarantines the persistent shell session; the same timeout is also passed to the native run as `timeoutMs` (`packages/coding-agent/src/exec/bash-executor.ts`).
-- In-memory output tail cap: `50 * 1024` bytes (`DEFAULT_MAX_BYTES` in `packages/coding-agent/src/session/streaming-output.ts`). Once exceeded, the sink keeps only the tail window in memory.
+- In-memory output tail cap: 50 KB by default, set by `tools.artifactSpillThreshold`. Once exceeded, the sink keeps only the tail window in memory.
 - Streaming callback throttle in `executeBash()`: `50ms` between `onChunk` calls when streaming is enabled.
 - TUI collapsed preview: `10` visual lines (`BASH_DEFAULT_PREVIEW_LINES`) when rendered inline in the agent UI; this is a renderer cap, not a tool output cap.
+- Interactive execution block (`bash-execution.ts`, the `!` prefix path rather than the tool renderer): `20` collapsed lines (`EXECUTION_PREVIEW_LINES`), each line clamped to `4000` terminal **columns** (`EXECUTION_MAX_DISPLAY_COLUMNS`, so ANSI codes are not counted and a wide character counts as two), and at most `100` lines retained while streaming (`EXECUTION_STREAMING_LINE_CAP`). Dropped lines are reported as `… N earlier lines dropped while streaming`, kept separate from the `… N more lines (ctrl+o to expand)` hint because expanding cannot bring back a dropped line. All three come from `modes/components/execution-shared.ts` and are shared with the eval block.
 
 ## Errors
 - Input validation:
@@ -199,6 +200,9 @@ model. `eval` keeps your copy raw.
   - `find|fd|locate` with name/type/glob flags -> `glob`
   - `sed -i`, `perl -i`, `awk -i inplace` -> `edit`
   - `echo|printf|cat <<` with redirection -> `write`
+  - `nohup` / trailing `&` background syntax -> `launch`
+  - dev servers, watchers, and debuggers (`bun|npm|pnpm|yarn dev|start`, `vite`, `next dev`, `nuxt dev`, `nodemon`, `lldb`, `gdb`, `tail -f`, `docker compose up` without `-d`) -> `launch`
+  - `--watch`/`-w` invocations -> `launch`
 - PTY mode is ignored in non-UI contexts and when `VEYYON_NO_PTY=1` (gated by `canUseInteractiveBashPty()`); the tool falls back to non-PTY execution and appends a `pty requested but unavailable in this environment; ran without a terminal` notice.
 - Non-PTY runs merge `NON_INTERACTIVE_ENV` with `env` via `buildNonInteractiveEnv()`; PTY runs instead inherit the user environment with `TERM=xterm-256color` prepended before the custom `env` values.
 - When the shell minimizer rewrites output inside `executeBash()`, the visible output is replaced with minimized text and a `[raw output: artifact://<id>]` footer may be appended if `onMinimizedSave` persisted the original text.

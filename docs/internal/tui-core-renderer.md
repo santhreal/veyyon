@@ -453,6 +453,4 @@ thumb) and the attributes the terminal presents, through
 `VirtualTerminal#getViewportRowFaintColumns`. A byte assertion alone would still
 pass if a later reset in the same row cancelled the dim.
 
-This page carries no verification stamp. It was written against the scroll-tape
-change on 2026-07-24; see `scripts/check-doc-freshness.ts` for the form a stamp
-takes and what it promises.
+*Verified against `36bd44ad4d0ec6a81a94b2eb37b81d7157cbcc5b` on 2026-07-26.*

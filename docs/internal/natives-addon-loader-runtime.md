@@ -20,11 +20,11 @@ The loader is intentionally narrow:
 - On Windows `node_modules` installs, stage addon files into the versioned cache to avoid locked-DLL update failures.
 - Attempt candidates in deterministic order and return the first addon that `require(...)` loads and validates.
 
-For install and compiled-binary paths, the loader verifies a release sentinel export named from `package.json#version` (for example `__veyyonNativesV16_0_3`). Workspace-dev loads skip this validation so a local checkout can rebuild after a pull. The loader does not validate the full export surface; stale same-version or incomplete binaries still surface as missing members or native errors at use sites.
+For install and compiled-binary paths, the loader verifies a release sentinel export named from `package.json#version` (for example `__veyyonNativesV16_0_3`). Workspace-dev loads downgrade a sentinel mismatch to a loud one-time warning, so a local checkout keeps booting until the next rebuild after a pull. The loader does not validate the full export surface; stale same-version or incomplete binaries still surface as missing members or native errors at use sites.
 
 ## Runtime inputs and derived state
 
-At module initialization, `native/index.js` computes:
+`native/index.js` binds lazy accessors and does no probing at import time. When the first native class or function is touched, `loadNative()` runs `initLoaderContext()`, which computes:
 
 - **Platform tag**: `${process.platform}-${process.arch}` (for example `darwin-arm64`).
 - **Package version**: from `packages/natives/package.json`.
@@ -99,8 +99,9 @@ Candidates are grouped by directory class, in order:
 
 1. `<leafPackageDir>/<filename>` for every filename (omitted when `leafPackageDir` is `null`)
 2. `<nativeDir>/<filename>` then `<execDir>/<filename>`, per filename
+3. `<versionedDir>/<filename>` for every filename, as a trailing fallback
 
-The leaf package dir comes first so the optional-dependency binary published with the release is preferred over any `.node` left in the core package's `native/` (e.g. a stale local-dev build).
+The leaf package dir comes first so the optional-dependency binary published with the release is preferred over any `.node` left in the core package's `native/` (e.g. a stale local-dev build). The trailing versioned-cache fallback lets a source checkout whose gitignored `native/*.node` is missing still boot from an addon a prior standalone install staged into the per-version cache; the version-sentinel check rejects a stale copy.
 
 On Windows installs where `nativeDir` is inside a `node_modules` segment (`shouldStageNodeModulesAddon`), `<versionedDir>/<filename>` staging candidates are prepended ahead of the leaf candidates so a locked `node_modules` binary can be sidestepped during `bun install -g` updates. The staged file is copied from `leafPackageDir ?? nativeDir` before probing.
 
@@ -158,16 +159,54 @@ Init
   -> (Windows non-compiled node_modules install and no embedded candidate?)
        yes -> stage leaf/core addon to versionedDir (record errors, continue)
        no  -> skip staging
-  -> For each runtime candidate in order:
+  -> loadFirstUsableAddon: for each runtime candidate in order:
        require(candidate)
-       -> sentinel validation passes or is workspace-dev: return addon exports (READY)
-       -> failure: record error, continue
+       -> require threw, path absent (MODULE_NOT_FOUND/ENOENT): record error, continue quietly
+       -> require threw, file present: record error, WARN on stderr, continue
+       -> loaded: validate the sentinel OUTSIDE the try
+            -> passes or is workspace-dev: return addon exports (READY)
+            -> rejects: the throw propagates, no further candidate is tried
   -> none loaded:
        if unsupported platform tag -> throw Unsupported platform
        else -> throw Failed to load (tried-path diagnostics + hints)
 ```
 
+### Why validation runs outside the try
+
+`loadFirstUsableAddon` calls `validateLoadedBindings` after the `try` that wraps `require`, and that
+placement is the contract. The sentinel gate is written to fail closed: for an installed user it throws
+rather than boot a `.node` built for a different release. When the call sat inside the loop's single
+`try`, the `catch` recorded the message and moved to the next candidate, which turned a deliberate
+refusal into a fallback. Because the candidate list ends with the extracted cache copy under
+`~/.veyyon/natives/<version>/`, there was always somewhere to fall through to, so a developer who had
+just rebuilt kept running the old addon with nothing but a startup marker to say so.
+
+The tests live in `packages/natives/test/addon-candidate-loop.test.ts`, which drives the loop with a
+fake `requireAddon` and `validate` so the decision is checked without a real `dlopen`.
+
+### Absent candidates are quiet, present ones are not
+
+The loader probes several install layouts and only one of them exists on any given host, so a
+`MODULE_NOT_FOUND` or `ENOENT` is the expected answer for most candidates and passes without comment.
+A candidate that exists and will not load is different: a truncated download, a build for the wrong
+architecture, a missing `libstdc++`. `classifyCandidateFailure` splits the two, and a `broken` result
+writes one warning to stderr naming the file, the reason, and the fact that a different copy is now
+running. The loader still continues, because a corrupt copy must not brick a boot when a good one
+exists, but it can never do so silently.
+
 ## Failure behavior and diagnostics
+
+### Finding out which addon loaded
+
+Set `VEYYON_DEBUG_STARTUP=1` and read the `native:require:` marker. It prints the RESOLVED ABSOLUTE
+PATH of each candidate as the loader tries it, so the last one before `native:loadNative:done` is the
+addon in use.
+
+The absolute path is the point. A copy extracted into `~/.veyyon/natives/<version>/` and a fresh
+in-tree build carry the same file name, and the marker used to print only that name, so the two were
+indistinguishable in the one place a developer looks. The version sentinel does not separate them
+either: both are the same release. `bun --cwd=packages/natives run build` now refreshes the embedded
+archive so the pair cannot drift, but when you are debugging a load, read the path.
 
 ### Unsupported platform
 
@@ -182,7 +221,8 @@ If all candidates fail and `platformTag` is not supported, the loader throws:
 If the platform is supported but no candidate can be loaded, the final error includes:
 
 - `Failed to load veyyon_natives native addon for <platformTag>` or `<platformTag> (<variant>)`
-- every attempted path with the corresponding `require(...)` or sentinel-validation error
+- every attempted path with the corresponding `require(...)` error, plus the pre-loop staging errors
+  from embedded extraction or Windows staging ahead of them
 - mode-specific remediation hints
 
 ### Compiled-binary startup failures
@@ -196,10 +236,10 @@ Compiled mode diagnostics include:
 
 ### Non-compiled startup failures
 
-Normal package/runtime diagnostics include:
+Source-install/runtime diagnostics include:
 
-- reinstall hint (`bun install @veyyon/natives`),
-- local rebuild command (`bun --cwd=packages/natives run build`),
-- optional x64 variant build hint (`TARGET_VARIANT=baseline|modern bun --cwd=packages/natives run build`).
+- provisioning hint (`bun --cwd=packages/natives run ensure`, which downloads the addon from this checkout's own release or builds it locally),
+- local rebuild command (`bun --cwd=packages/natives run build`) with the optional x64 variant hint (`TARGET_VARIANT=baseline|modern`),
+- standalone-binary reinstall hint (`curl -fsSL https://get.veyyon.dev | sh`).
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `f46fcdb58b933aa498313fd7672a0b29828e860b` on 2026-07-25.*

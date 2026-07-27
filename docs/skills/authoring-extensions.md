@@ -81,7 +81,7 @@ veyyon loads extension modules from these sources:
    - `<cwd>/.veyyon/extensions/`
    - `~/.veyyon/profiles/default/agent/extensions/`
    - legacy extension paths listed in `.veyyon/settings.json#extensions` or `~/.veyyon/profiles/default/agent/settings.json#extensions`
-2. Installed plugins under `~/.veyyon/profiles/default/plugins/node_modules` (`veyyon plugin install` npm/git specs, or `veyyon plugin link`) via their `veyyon.extensions` manifests (legacy `omp.extensions`/`pi.extensions` still accepted). Marketplace cache installs do not feed extension modules: they surface skills/commands/hooks/tools/MCP only.
+2. Installed plugins under `~/.veyyon/profiles/default/plugins/node_modules` (`veyyon plugin install` npm/git/marketplace specs, or `veyyon plugin link`) via their `veyyon.extensions` manifests (legacy `omp.extensions`/`pi.extensions` still accepted). Marketplace installs are symlinked into the same `node_modules` tree, so their `veyyon.extensions` manifests load extension modules too.
 3. Explicit configured paths passed by the CLI (`veyyon --extension ./my-ext.ts`, also `-e`; `--hook` is treated as an alias) and by the `extensions:` setting in config.
 
 The runtime de-duplicates by resolved absolute path, first seen wins.

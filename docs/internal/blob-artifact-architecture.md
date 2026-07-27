@@ -128,7 +128,7 @@ Behavior:
 1. Every chunk is sanitized with `sanitizeWithOptionalSixelPassthrough(..., sanitizeText)` and appended to in-memory accounting.
 2. Optional live `onChunk` receives sanitized pre-column-cap chunks, throttled if configured.
 3. A per-line column cap can drop bytes from long lines in the LLM-facing buffer; when this happens, artifact mirroring starts so the on-disk file keeps the full sanitized stream.
-4. When the in-memory tail buffer would exceed spill threshold (`DEFAULT_MAX_BYTES`, 50KB), sink marks output truncated and starts artifact mirroring if an artifact path is available.
+4. When the in-memory tail buffer would exceed spill threshold (50KB by default, set by `tools.artifactSpillThreshold`), sink marks output truncated and starts artifact mirroring if an artifact path is available.
 5. If a file sink is opened, it first writes the current buffer, then all queued/subsequent sanitized chunks.
 6. In-memory buffer is trimmed to a tail window, or to head + elision marker + tail when head retention is configured.
 7. `dump()` returns summary including `artifactId` only when file sink creation succeeded.
@@ -209,7 +209,7 @@ Blob implications after fork:
 
 ### Move to new cwd
 
-`SessionManager.moveTo()` renames both session file and artifact directory to the new default session directory, with rollback logic if a later step fails. This preserves artifact identity while relocating session scope.
+`SessionManager.moveTo()` relocates both session file and artifact directory with rollback logic if a later step fails, but the destination depends on how storage was chosen: an explicit `targetSessionDir` wins; a session created with an explicit `sessionDir` stays pinned in place; a managed cwd-encoded directory is re-derived for the new cwd under the same sessions root; anything else re-roots into the default session directory for the new cwd. This preserves artifact identity while relocating session scope.
 
 ## Failure handling and fallback paths
 

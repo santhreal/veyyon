@@ -77,7 +77,7 @@ Terminology follows [`natives-architecture.md`](./natives-architecture.md):
   - Non-content modes do not collect context.
 - Output modes:
   - `content` -> one `GrepMatch` per hit.
-  - `count` and `filesWithMatches` map to count-style entries (`lineNumber=0`, `line=""`, `matchCount` set).
+  - `count` maps to count-style entries (`lineNumber=0`, `line=""`, `matchCount` set); `filesWithMatches` emits one entry per file with `lineNumber=0`, `line=""`, and `matchCount` omitted.
   - `offset` and `maxCount` are applied during aggregation across sorted file results.
   - Directory searches use parallel filesystem walking/searching, then aggregate per-file results to preserve global offset/limit semantics in the returned result and callback stream.
 
@@ -127,7 +127,7 @@ Terminology follows [`natives-architecture.md`](./natives-architecture.md):
 3. Scoring:
    - exact / starts-with / contains / subsequence-based fuzzy score;
    - separator/punctuation-normalized scoring path;
-   - directory bonus and deterministic tie-break (`score desc`, then `path asc`).
+   - directory bonus (+10) and deterministic ordering: `score` desc, then path-depth asc (shallower paths first), then `path` asc.
 4. Symlink entries are excluded from fuzzy results.
 
 ### Failure behavior

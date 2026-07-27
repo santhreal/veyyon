@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -209,7 +209,8 @@ Launches a review flow over a chosen target and uses the review tool surface (<c
 See the command help in-session and <code>docs/handbook</code> task guides for example prompts.</p>
 <h2 id="advisor"><a class="header" href="#advisor">Advisor</a></h2>
 <p>The advisor is a second model role that reads each main-agent turn and can inject notes
-(aside, concern, or blocker). Enable with <code>--advisor</code> or the advisor settings/role.
+(nit, concern, or blocker). Enable with <code>--advisor</code> or the <code>advisor.enabled</code> setting; assign its
+model via the advisor role.
 Uses its own context and model assignment when configured.</p>
 <h2 id="plan-review"><a class="header" href="#plan-review">Plan review</a></h2>
 <p>Inside plan mode, <code>/plan-review</code> reopens review of the current plan file. See <a href="./plan-mode.html">Plan mode</a>.</p>

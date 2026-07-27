@@ -95,12 +95,20 @@ All project clients may observe the same managed process. Input is one shared st
 ## Cross-instance lifecycle
 Every veyyon session registers its process in the canonical project scope. The first `launch` call starts a detached broker over a private socket; later `launch` calls from any registered veyyon process connect to the same broker and see the same names, logs, and state.
 
-Runtime data lives under `~/.veyyon/run/daemons/<project-hash>/`:
-- `broker.sock` (or a Windows named pipe)
-- a mode-0600 authentication token
-- broker PID metadata
-- per-managed-process launch metadata and logs
-- live veyyon process-presence records
+Runtime data lives under `~/.veyyon/profiles/<profile>/run/daemons/<project-hash>/`:
+
+| Path | What it holds |
+| --- | --- |
+| `broker.sock` | The broker's listening socket. On Windows there is no file here: the broker listens on the named pipe `\\.\pipe\veyyon-daemon-<project-hash>` instead. |
+| `broker.token` | The shared secret, mode `0600`. The first client to need it creates it; the broker reads it at startup and rejects a request that does not present it. |
+| `broker.pid` | The lease that elects one broker per project. A process claims the broker role by creating this file exclusively, and a stale file whose PID is dead is reclaimed by the next starter. |
+| `clients/<pid>-<uuid>.json` | One entry per live veyyon process holding the project open. |
+| `daemons/<name>/meta.json` | One managed process's persisted snapshot and spec, reread when a broker recovers. |
+| `daemons/<name>/output.log` | That process's captured output. |
+| `daemons/<name>/output.previous.log` | The log kept from before the last rotation. `logs` reads both files so a request spanning a rotation is still answered in order. |
+| `daemons/<name>/process.pid` | That process's PID. Distinct from `broker.pid`, which is the broker's own lease. |
+
+These names are a contract between separate processes, so they are declared in exactly one place in the source (`src/launch/paths.ts`) and every reader and writer asks it for a path. Renaming one is a break for any broker already running against the old layout.
 
 After the last tool socket disconnects, the broker checks the project-presence records. Live veyyon PIDs keep non-persistent managed processes running even when those veyyon instances have not called `launch`; dead PIDs are removed. Once no veyyon process remains, the broker waits three seconds, stops every non-persistent managed process, and exits. This PID check still works when an veyyon process is killed without JavaScript cleanup.
 

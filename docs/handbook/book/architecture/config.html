@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -202,7 +202,7 @@ layered YAML/JSON from the project and user agent directories.</p>
 <ul>
 <li>Resolve config roots (<code>.veyyon</code>, plus Claude/Codex/Gemini compatibility paths)</li>
 <li>Merge project + user settings; apply <strong>profiles</strong> (<code>veyyon --profile &lt;name&gt;</code>)</li>
-<li>Validate against <code>settings-schema.ts</code>; support CLI <code>-c key=value</code> overrides</li>
+<li>Validate against <code>settings-schema.ts</code>; support <code>--config &lt;file&gt;</code> YAML overlay files (repeatable)</li>
 <li>Feed resolved settings to sessions, tools, and discovery (skills, hooks, MCP, extensions)</li>
 </ul>
 <h2 id="public-boundary"><a class="header" href="#public-boundary">Public boundary</a></h2>

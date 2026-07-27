@@ -10,7 +10,7 @@
   - `packages/coding-agent/src/session/agent-session.ts`: session discovery mode, corpus assembly, activation, cache invalidation.
   - `packages/coding-agent/src/sdk.ts`: initial hiding of discoverable built-ins and prompt-time discoverable summary.
   - `packages/coding-agent/src/tools/index.ts`: tool-session discovery hooks, essential/discoverable load modes, registry wiring.
-  - `packages/coding-agent/src/config/settings-schema.ts`: `tools.discoveryMode` and legacy `mcp.discoveryMode` settings.
+  - `packages/coding-agent/src/config/settings-domains/tools.ts`: `tools.discoveryMode` and legacy `mcp.discoveryMode` settings.
 
 ## Inputs
 
@@ -61,6 +61,7 @@
 - Discovery-mode gating:
   - `tools.discoveryMode = "auto"` (default): when the registered tool set has more than 40 tools, searches hidden MCP tools only; otherwise discovery stays off.
   - `tools.discoveryMode = "all"`: searches hidden discoverable built-ins plus hidden MCP tools.
+    - Two built-ins survive hiding under `"all"` because a request without them contradicts the prompt: `todo` when `todo.eager` is not `default` (a forced named tool_choice must reference a tool that is present, or the provider rejects the request), and `task` at `subagent.delegation` `preferred` or `required`. At `allowed` `task` is hidden like the rest and you activate it from here.
   - `tools.discoveryMode = "mcp-only"`: searches hidden MCP tools only.
   - legacy `mcp.discoveryMode = true`: same as MCP-only.
 - Search-index source:
@@ -103,7 +104,7 @@
 ## Errors
 - `execute()` throws `ToolError` for unavailable discovery hooks, disabled discovery mode, empty trimmed query, and non-positive/non-integer `limit`.
 - `searchDiscoverableTools()` throws `Error("Query must contain at least one letter or number.")` if tokenization produces no letter/number tokens; `execute()` catches `Error` and rethrows `ToolError(error.message)`.
-- Empty corpus is not an error; search returns `[]`, activation is skipped, and the renderer message becomes either `No discoverable tools are currently loaded.` or `No matching tools found.`
+- An empty corpus is refused, not answered: `execute()` throws `ToolError("The discoverable-tool inventory is empty …")`. Zero matches on a non-empty corpus return normally and the renderer shows `No matching tools found.`
 - `getDiscoverableToolsForDescription()` and `getDiscoverableToolSearchIndexForExecution()` swallow discovery-hook/cache errors and fall back to an empty corpus or rebuilt index.
 
 ## Notes
@@ -113,6 +114,6 @@
   - Built-in entries appear only in `"all"` mode and only for registry tools whose `loadMode === "discoverable"` and are not currently active.
   - Hidden/internal built-ins are intentionally excluded from the built-in corpus: `resolve`, `yield`, `report_finding`, `report_tool_issue` are called out in the `#collectDiscoverableBuiltinTools()` comment.
 - `DiscoverableToolSource` includes `"extension"` and `"custom"`, but `AgentSession.getDiscoverableTools()` currently assembles only built-in and MCP sources.
-- On startup, `packages/coding-agent/src/sdk.ts` resolves `"auto"` after the full registry exists and injects `search_tool_bm25` when the count exceeds 40. It hides non-essential discoverable built-ins only in `tools.discoveryMode = "all"`. Tools whose class is marked as `loadMode === "essential"` (defaults are `read`, `bash`, `edit`, `write`, `glob`, and `eval`) are always active; they survive hiding regardless of configuration. `tools.essentialOverride` can be used to treat additional discoverable tools as essential (active on startup) or to explicitly specify the active essential list.
+- On startup, `packages/coding-agent/src/sdk.ts` resolves `"auto"` after the full registry exists and injects `search_tool_bm25` when the count exceeds 40. It hides non-essential discoverable built-ins only in `tools.discoveryMode = "all"`. Tools whose class is marked as `loadMode === "essential"` (defaults are `read`, `bash`, `launch`, `edit`, `write`, `glob`, and `eval`) are always active; they survive hiding regardless of configuration. `tools.essentialOverride` can be used to treat additional discoverable tools as essential (active on startup) or to explicitly specify the active essential list.
 - Query tokenization is simple and deterministic: Unicode is NFKD-normalized, combining marks are dropped, acronym/camelCase and digit-to-capital boundaries are split, non-letter/non-number characters become spaces, tokens are lowercased, and only non-empty tokens survive.
 - Scores are rounded differently by surface: `details.tools[].score` keeps 6 decimals; the TUI line renders 3.

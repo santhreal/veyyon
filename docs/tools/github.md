@@ -85,7 +85,7 @@ The tool returns a single text result built by `buildTextResult()` in `packages/
 
 If `repo` is omitted, `gh` repository resolution is used.
 
-Single-issue and single-PR reads live in the `issue://<N>` / `pr://<N>` URL schemes (see `docs/tools/read.md`). They share `~/.veyyon/cache/github-cache.db` (override via `VEYYON_GITHUB_CACHE_DB`) and the `github.cache.softTtlSec` / `github.cache.hardTtlSec` / `github.cache.enabled` settings. The cache retains rendered Markdown plus the raw JSON payload returned by `gh`, including private bodies, comments, reviews, and review comments when comments are enabled; rows are scoped by the local GitHub credential fingerprint. Root and repo-scoped reads (`issue://`, `pr://owner/repo`) issue a live `gh issue list` / `gh pr list` for browsing; query params `state`, `limit`, `author`, `label` pass through to `gh` (`issue://` accepts `state=open|closed|all`; `pr://` also accepts `merged`). PR diffs ride the same cache under `pr://<N>/diff[/…]`: the listing, full diff, and per-file slices all share one `pr-diff` row keyed by repo and PR number.
+Single-issue and single-PR reads live in the `issue://<N>` / `pr://<N>` URL schemes (see `docs/tools/read.md`). They share `~/.veyyon/profiles/<name>/cache/github-cache.db` (override via `VEYYON_GITHUB_CACHE_DB`) and the `github.cache.softTtlSec` / `github.cache.hardTtlSec` / `github.cache.enabled` settings. The cache retains rendered Markdown plus the raw JSON payload returned by `gh`, including private bodies, comments, reviews, and review comments when comments are enabled; rows are scoped by the local GitHub credential fingerprint. Root and repo-scoped reads (`issue://`, `pr://owner/repo`) issue a live `gh issue list` / `gh pr list` for browsing; query params `state`, `limit`, `author`, `label` pass through to `gh` (`issue://` accepts `state=open|closed|all`; `pr://` also accepts `merged`). PR diffs ride the same cache under `pr://<N>/diff[/…]`: the listing, full diff, and per-file slices all share one `pr-diff` row keyed by repo and PR number.
 
 ### `pr_create`
 
@@ -122,10 +122,11 @@ Worktree and metadata behavior:
   - `branch.pr-<number>.remote`
   - `branch.pr-<number>.merge`
   - `branch.pr-<number>.pushRemote`
-  - `branch.pr-<number>.ompPrHeadRef`
-  - `branch.pr-<number>.ompPrUrl`
-  - `branch.pr-<number>.ompPrIsCrossRepository`
-  - `branch.pr-<number>.ompPrMaintainerCanModify`
+  - `branch.pr-<number>.veyyonPrHeadRef`
+  - `branch.pr-<number>.veyyonPrUrl`
+  - `branch.pr-<number>.veyyonPrIsCrossRepository`
+  - `branch.pr-<number>.veyyonPrMaintainerCanModify`
+  (legacy `ompPr*` keys are honored as a read fallback)
 - If `refs/heads/pr-<number>` already exists at a different commit, checkout fails unless `force=true`, in which case `git branch --force` resets it to the fetched PR head.
 - If a matching worktree already exists, the tool reuses it and reports `reused: true`.
 
@@ -139,7 +140,7 @@ Worktree and metadata behavior:
 | Batching | None |
 | Output | `# Pushed Pull Request Branch` summary with local branch, remote, remote branch, remote URL, PR URL, and force-with-lease flag. `sourceUrl = prUrl` when known. |
 
-Push target resolution reads the `branch.<name>.ompPrHeadRef`, `pushRemote`/`remote`, `ompPrUrl`, `ompPrMaintainerCanModify`, and `ompPrIsCrossRepository` git-config keys written by `pr_checkout`. If the current checked-out branch matches the target branch, the source ref is `HEAD`; otherwise it pushes `refs/heads/<branch>`. The refspec is `HEAD:refs/heads/<headRef>` or `refs/heads/<branch>:refs/heads/<headRef>`.
+Push target resolution reads the `branch.<name>.veyyonPrHeadRef`, `pushRemote`/`remote`, `veyyonPrUrl`, `veyyonPrMaintainerCanModify`, and `veyyonPrIsCrossRepository` git-config keys written by `pr_checkout` (legacy `ompPr*` keys honored as fallback). If the current checked-out branch matches the target branch, the source ref is `HEAD`; otherwise it pushes `refs/heads/<branch>`. The refspec is `HEAD:refs/heads/<headRef>` or `refs/heads/<branch>:refs/heads/<headRef>`.
 
 ### `search_issues`
 
@@ -239,7 +240,15 @@ Watch flow:
   - `gh-renderer` provides compact headers for all ops and a custom live watch view for `run_watch`.
 - Background work / cancellation
   - `run_watch` loops until success/failure and uses `scheduler.wait()` between polls.
-  - `GithubTool.execute()` is wrapped in `untilAborted()`; `git.github.run()` forwards the abort signal into `Bun.spawn()`.
+  - Read-only ops (`repo_view`, the `search_*` family, `run_watch`) are wrapped in `untilAborted()`, so cancelling
+    one returns immediately. The three ops that write (`pr_create`, `pr_checkout`, `pr_push`, listed in
+    `MUTATING_GITHUB_OPS`) are awaited instead: they thread the signal into every git call, so a cancellation still
+    takes effect, and awaiting them is what lets the tool report where it stopped. Racing them left git mutations
+    running after the tool had already rejected.
+  - A cancelled `pr_checkout` fails with `ToolAbortError` naming each worktree that was already created, its branch,
+    and the PRs that were not reached. Those worktrees are left in place; remove them with `git worktree remove` if
+    you do not want them.
+  - `git.github.run()` forwards the abort signal into `Bun.spawn()`.
 
 ## Limits & Caps
 - Search result default: `10` (`SEARCH_LIMIT_DEFAULT` in `packages/coding-agent/src/tools/gh.ts`).
@@ -269,7 +278,7 @@ Watch flow:
   - invalid `run` format
   - `fill` combined with `title` or `body`
   - missing git repo / branch / HEAD context for checkout, push, or watch
-  - `pr_push` on a branch without `ompPrHeadRef` metadata
+  - `pr_push` on a branch without `veyyonPrHeadRef` (or legacy `ompPrHeadRef`) push metadata
   - conflicting existing worktree path or branch without `force`
 - `run_watch` treats failed-job log fetches specially: missing log content does not fail the watch; it marks that log `available: false` and prints `Log tail unavailable.` / `Full log unavailable.`.
 - `pr_create` swallows only the post-create best-effort `gh pr view` refresh; the create step itself still fails normally.

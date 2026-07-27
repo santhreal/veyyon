@@ -5,17 +5,17 @@ Discover, install, and manage plugins from Git, local, or catalog sources. Catal
 ## Quick start
 
 ```
-/marketplace add anthropics/claude-plugins-official
-/marketplace install wordpress.com@claude-plugins-official
+veyyon plugin marketplace add anthropics/claude-plugins-official
+veyyon plugin install wordpress.com@claude-plugins-official
 ```
 
-In the TUI, `/marketplace` with no arguments opens the interactive plugin browser. In non-TUI command handling, `/marketplace` lists configured marketplaces; use `/marketplace discover` to browse.
+The interactive `/marketplace` TUI was removed from Veyyon. Manage marketplaces and marketplace plugins through the `veyyon plugin` CLI. Inside the TUI, `/plugins list` shows installed npm/link plugins.
 
 ## Concepts
 
 A **marketplace** is a Git repository (or local directory) containing a catalog file at `.veyyon-plugin/marketplace.json` (preferred) or `.claude-plugin/marketplace.json` (Claude Code-compatible fallback). The catalog lists available plugins with their sources, descriptions, and metadata.
 
-A **plugin** is a directory containing Claude/Veyyon plugin content such as skills, commands, agents, hooks, tools, MCP servers, or LSP servers. Extension modules (`package.json` `veyyon.extensions` entry points; legacy `omp`/`pi` keys still accepted) are not loaded from marketplace installs, they only load for npm-installed or `veyyon plugin link`ed plugins. Plugins are identified by `name@marketplace` (e.g. `code-review@claude-plugins-official`).
+A **plugin** is a directory containing Claude/Veyyon plugin content such as skills, commands, agents, hooks, tools, MCP servers, or LSP servers. Extension modules (`package.json` `veyyon.extensions` entry points; legacy `omp`/`pi` keys still accepted) load from marketplace installs just as they do from npm-installed or `veyyon plugin link`ed plugins, because the install symlinks the cached plugin into the runtime `node_modules` tree. Plugins are identified by `name@marketplace` (e.g. `code-review@claude-plugins-official`).
 
 **Scopes**: marketplace plugins can be installed at two scopes:
 
@@ -26,43 +26,18 @@ Enabled project-scoped installs shadow enabled user-scoped installs of the same 
 
 ## Commands
 
-### Interactive mode
-
-| Command        | Effect                                    |
-| -------------- | ----------------------------------------- |
-| `/marketplace` | Open interactive plugin browser (install) |
-
-### Marketplace management
-
-| Command                      | Effect                                       |
-| ---------------------------- | -------------------------------------------- |
-| `/marketplace add <source>`  | Add a marketplace source                     |
-| `/marketplace remove <name>` | Remove a marketplace                         |
-| `/marketplace update [name]` | Re-fetch catalog(s); omit name to update all |
-| `/marketplace list`          | List configured marketplaces                 |
-
-### Plugin operations
-
-| Command                                                                   | Effect                                             |
-| ------------------------------------------------------------------------- | -------------------------------------------------- |
-| `/marketplace discover [marketplace]`                                     | Browse available plugins                           |
-| `/marketplace install [--force] [--scope user\|project] name@marketplace` | Install a plugin                                   |
-| `/marketplace uninstall [--scope user\|project] name@marketplace`         | Uninstall a plugin; no args opens the TUI selector |
-| `/marketplace installed`                                                  | List installed marketplace plugins                 |
-| `/marketplace upgrade [--scope user\|project] [name@marketplace]`         | Upgrade one or all plugins                         |
-| `/plugins list`                                                           | List npm/link and marketplace plugins              |
-| `/plugins enable [--scope user\|project] name@marketplace`                | Enable a marketplace plugin                        |
-| `/plugins disable [--scope user\|project] name@marketplace`               | Disable a marketplace plugin                       |
-
-### CLI equivalents
-
-The same operations are available from the command line:
+Marketplace management:
 
 ```
 veyyon plugin marketplace add <source>
 veyyon plugin marketplace remove <name>
 veyyon plugin marketplace update [name]
 veyyon plugin marketplace list
+```
+
+Plugin operations:
+
+```
 veyyon plugin discover [marketplace]
 veyyon plugin install [--force] [--scope user|project] name@marketplace
 veyyon plugin uninstall [--scope user|project] name@marketplace
@@ -73,7 +48,7 @@ veyyon plugin disable [--scope user|project] name@marketplace
 
 ## Marketplace sources
 
-When you run `/marketplace add <source>`, the system classifies the source:
+When you run `veyyon plugin marketplace add <source>`, the system classifies the source:
 
 | Source format                   | Type                                               | Example                                |
 | ------------------------------- | -------------------------------------------------- | -------------------------------------- |
@@ -206,7 +181,7 @@ Current installer behavior rejects npm marketplace sources with `npm plugin sour
 ```
 ~/.veyyon/
   marketplaces.json              # Registry of added marketplaces
-  plugins/
+  profiles/<profile>/plugins/
     installed_plugins.json       # User-scoped marketplace plugins (version: 2)
     cache/
       marketplaces/<name>/       # Cached marketplace clone/catalog

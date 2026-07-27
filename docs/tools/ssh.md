@@ -48,7 +48,7 @@ Failure behavior:
 ## Flow
 1. `loadSshTool()` in `packages/coding-agent/src/tools/ssh.ts` calls `loadCapability(sshCapability.id, { cwd: session.cwd })` to discover hosts.
 2. `packages/coding-agent/src/discovery/ssh.ts` loads host entries from, in this order: project managed ssh config, user managed ssh config, `ssh.json` in the repo root, `.ssh.json` in the repo root.
-3. `getSSHConfigPath("project")` and `getSSHConfigPath("user")` in `packages/utils/src/dirs.ts` resolve those managed files to `.veyyon/ssh.json` in the project and `~/.veyyon/profiles/default/agent/ssh.json` in the user config dir. This tool does not read `~/.ssh/config`.
+3. `getSSHConfigPath("project")` and `getSSHConfigPath("user")` in `packages/utils/src/dirs.ts` resolve those managed files to `.veyyon/ssh.json` in the project and `~/.veyyon/profiles/<active-profile>/agent/ssh.json` in the user config dir (`profiles/default` when no named profile is active). This tool does not read `~/.ssh/config`.
 4. Capability loading deduplicates by host name with first item winning; provider order is priority-sorted and the SSH JSON provider registers at priority `5`.
 5. `loadHosts()` in `packages/coding-agent/src/tools/ssh.ts` builds `hostsByName` and drops later duplicates again with `if (!hostsByName.has(host.name))`.
 6. Tool description text is built from `packages/coding-agent/src/prompts/tools/ssh.md` plus an `Available hosts:` list. Each host entry calls `getCachedHostInfoSync()` to show detected shell/OS when cached; otherwise it renders `detecting...`.
@@ -96,10 +96,10 @@ Failure behavior:
 
 ## Limits & Caps
 - Timeout defaults/clamps: `default=60`, `min=1`, `max=3600` in `packages/coding-agent/src/tools/tool-timeouts.ts`.
-- Output tail window: `DEFAULT_MAX_BYTES = 50 * 1024` in `packages/coding-agent/src/session/streaming-output.ts`.
+- Output tail window: 50 KB by default, set by `tools.artifactSpillThreshold`.
 - Output sink spill threshold defaults to the same `50 KiB`; once exceeded, only the tail remains in memory.
 - SSH master reuse persistence: `ControlPersist=3600` in `packages/coding-agent/src/ssh/connection-manager.ts` and `packages/coding-agent/src/ssh/sshfs-mount.ts`.
-- SSH host info schema version: `HOST_INFO_VERSION = 2` in `packages/coding-agent/src/ssh/connection-manager.ts`; stale cache entries are reprobed.
+- SSH host info schema version: `HOST_INFO_VERSION = 4` in `packages/coding-agent/src/ssh/connection-manager.ts`; stale cache entries are reprobed.
 - Streaming tail buffer compacts after more than `10` pending chunks (`MAX_PENDING`) before trimming.
 
 ## Errors

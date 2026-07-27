@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -216,9 +216,10 @@ active profile is selected by its own variable:</p>
 <tr><td><code>VEYYON_PROFILE</code></td><td>Selects the active named profile (<code>~/.veyyon/profiles/&lt;name&gt;/agent</code>).</td></tr>
 <tr><td><code>VEYYON_PACKAGE_DIR</code></td><td>Override package directory for bundled assets (Nix/Guix).</td></tr>
 <tr><td><code>VEYYON_NO_PTY</code></td><td>Set to <code>1</code> to disable PTY-based interactive bash.</td></tr>
-<tr><td><code>VEYYON_NO_TITLE</code></td><td>Set to disable auto terminal-title updates.</td></tr>
+<tr><td><code>VEYYON_NO_TITLE</code></td><td>Set to disable model-generated session auto-titling (the terminal window title then falls back to the directory name).</td></tr>
+<tr><td><code>VEYYON_PIPED_STDIN_WAIT_MS</code></td><td>Milliseconds <code>veyyon -p "prompt"</code> waits for the first byte of piped stdin when a prompt is already on the command line (default <code>10000</code>). Only the wait before the first byte is bounded, so slow producers are still read in full. Set <code>0</code> to wait indefinitely.</td></tr>
 <tr><td><code>VEYYON_WORKTREE_DIR</code></td><td>Absolute path for agent-managed git worktrees (default profile path <code>~/.veyyon/profiles/&lt;name&gt;/wt</code>; also settable via the <code>worktree.base</code> setting). <code>~</code> is expanded; a relative value is ignored.</td></tr>
-<tr><td><code>VEYYON_GITHUB_CACHE_DB</code></td><td>Full path override for the GitHub view cache database (default <code>~/.veyyon/cache/github-cache.db</code>).</td></tr>
+<tr><td><code>VEYYON_GITHUB_CACHE_DB</code></td><td>Full path override for the GitHub view cache database (default <code>~/.veyyon/profiles/&lt;name&gt;/cache/github-cache.db</code>).</td></tr>
 </tbody>
 </table>
 </div>
@@ -312,10 +313,13 @@ into <code>RequestInit.tls.ca</code> itself).</p>
 <p>There is no <code>VEYYON_NON_INTERACTIVE</code> or <code>VEYYON_INSTALL_URL</code>; the install scripts (<code>scripts/install.sh</code>,
 <code>scripts/install.ps1</code>) do not read those names today.</p>
 <h2 id="mcp"><a class="header" href="#mcp">MCP</a></h2>
-<p>Any MCP server names its own bearer-token secret via <code>[mcp_servers.&lt;name&gt;].bearer_token_env_var</code> in
-<code>config.yml</code>, this points at <em>any</em> env var you choose (for example plain <code>GITHUB_PERSONAL_ACCESS_TOKEN</code>),
-not a fixed <code>VEYYON_*</code> name. There is no <code>VEYYON_GITHUB_PERSONAL_ACCESS_TOKEN</code> or <code>VEYYON_CONNECTORS_TOKEN</code>
-convention in the current runtime.</p>
+<p>An MCP server that needs a bearer token takes it as a literal header in <code>mcp.json</code>
+(<code>mcpServers.&lt;name&gt;.headers.Authorization</code>) or via <code>/mcp add --token</code>, so the secret can live in any
+env var you expand yourself (for example plain <code>GITHUB_PERSONAL_ACCESS_TOKEN</code>), not a fixed
+<code>VEYYON_*</code> name. There is no <code>VEYYON_GITHUB_PERSONAL_ACCESS_TOKEN</code> or <code>VEYYON_CONNECTORS_TOKEN</code>
+convention in the current runtime. A <code>bearer_token_env_var</code> field is honored only when importing
+servers from a Codex <code>config.toml</code>, where the token is materialized into an Authorization header at
+import time.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -326,7 +330,6 @@ convention in the current runtime.</p>
 </tbody>
 </table>
 </div>
-<p>See <a href="../using/configuration.html">Configuration</a> for <code>bearer_token_env_var</code> examples.</p>
 <h2 id="remote-auth-broker-optional"><a class="header" href="#remote-auth-broker-optional">Remote auth broker (optional)</a></h2>
 <p>Real, shipped <code>VEYYON_*</code> variables that switch credential resolution from local SQLite to a remote
 broker host:</p>
@@ -351,7 +354,7 @@ broker host:</p>
 <tr><th>Variable</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>VEYYON_REPAIR_DISABLE</code></td><td>Truthy disables the shipped tool-call schema repair (see <a href="../repair/overview.html">Repair overview</a>) at the tool-dispatch seam.</td></tr>
+<tr><td><code>VEYYON_REPAIR_DISABLE</code></td><td>Set to <code>1</code>, <code>true</code>, or <code>yes</code> to disable the shipped tool-call schema repair (see <a href="../repair/overview.html">Repair overview</a>) at the tool-dispatch seam.</td></tr>
 </tbody>
 </table>
 </div>
@@ -391,8 +394,8 @@ for the real <code>VEYYON_*</code>-prefixed TUI flags.</p>
 </tbody>
 </table>
 </div>
-<p>Config values can also be overridden per run with <code>-c key=value</code>, which is usually clearer than an
-environment variable; see the <a href="./cli.html">CLI reference</a>.</p>
+<p>Config values can also be overridden per run with one or more <code>--config &lt;file&gt;</code> overlays (repeatable,
+never persisted); see the <a href="./cli.html">CLI reference</a>.</p>
 
                     </main>
 

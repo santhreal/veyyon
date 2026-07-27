@@ -12,7 +12,7 @@ Hashline avoids re-emitting large surrounding context when anchors are available
 
 ## Harness overhead
 
-CLI/TUI and session loop: TypeScript on Bun. Grep, PTY/shell, hashline apply: Rust natives. Streaming returns tokens as they arrive.
+CLI/TUI and session loop: TypeScript on Bun. Grep, glob, PTY/shell, and tree-sitter parsing: Rust natives in `@veyyon/natives`; hashline apply is TypeScript in `@veyyon/hashline`. Streaming returns tokens as they arrive.
 
 ## Measurement
 

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -208,8 +208,8 @@ default and the path Veyyon optimizes for.</p>
 <li><strong><code>read</code> or <code>grep</code></strong> records a whole-file snapshot and prints <code>[relative/path#TAG]</code> plus
 <code>LINE:content</code> rows (<code>TAG</code> is a four-hex snapshot id).</li>
 <li>The model sends <strong><code>edit</code></strong> with an <code>input</code> string: one or more <code>[PATH#TAG]</code> sections and hashline
-ops (<code>SWAP N.=M:</code>, <code>DEL N.=M</code>, <code>INS.POST N:</code>, block ops <code>SWAP.BLK</code> / <code>DEL.BLK</code> / <code>INS.BLK.POST</code>,
-plus <code>INS.HEAD</code> / <code>INS.TAIL</code>).</li>
+ops (<code>SWAP N.=M:</code>, <code>DEL N.=M</code>, <code>INS.PRE N:</code> / <code>INS.POST N:</code> / <code>INS.HEAD</code> / <code>INS.TAIL</code>, block ops
+<code>SWAP.BLK</code> / <code>DEL.BLK</code> / <code>INS.BLK.POST</code>, plus whole-file <code>REM</code> and <code>MV DEST</code>).</li>
 <li><strong><code>@veyyon/hashline</code></strong> parses, verifies the tag against the snapshot store, applies ops, and
 returns a fresh <code>[path#TAG]</code> header plus a compact diff preview.</li>
 <li><strong><code>write</code></strong> can create or overwrite whole files; in hashline display mode it also mints snapshot

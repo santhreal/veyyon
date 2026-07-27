@@ -17,7 +17,7 @@ If it is missing, the one-command installer wires up your PATH, shell completion
 curl -fsSL https://get.veyyon.dev | sh
 ```
 
-You can also pin a version with `curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11`, or build from source with `bun setup && bun dev` in the repository root. See [Install](./install.md).
+You can also pin a release binary with `curl -fsSL https://get.veyyon.dev | sh -s -- --binary --ref v1.0.11` (a bare `--ref` builds that ref from source), or build from source with `bun setup && bun dev` in the repository root. See [Install](./install.md).
 
 ## Check the environment
 
@@ -46,16 +46,16 @@ After setup, you should see the TUI composer, the model indicator, and your work
 > Add a name argument to greet() in greet.py, default 'world'.
 ```
 
-Veyyon reads the file, proposes an `edit` or hashline change, and may pause for approval depending on `tools.approvalMode`. Press `y` to accept when it prompts you.
+Veyyon reads the file, proposes an `edit` or hashline change, and may pause for approval depending on `tools.approvalMode`. Choose **Approve** (or **Deny**) and press Enter when it prompts you.
 
 ## Composer conveniences
 
 A few keys do a lot in the composer:
 
-- `@` completes file, skill, and plugin names.
+- `@` completes file paths (fuzzy file references).
 - `/` opens the slash commands, such as `/help`, `/tree`, and `/settings`.
 - `Esc` interrupts a running turn.
-- `?` shows shortcut hints when the composer is empty.
+- `/hotkeys` lists the active keyboard shortcuts.
 
 ## Next steps
 

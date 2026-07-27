@@ -151,7 +151,7 @@ An agent can be discoverable but still unavailable to run because of execution g
 
 ### Disabled-agent settings
 
-`TaskTool.#executeSync` checks `subagent.agents.<name>.enabled` after resolving the agent, through `isSubagentSpawnable`. Only an explicit `false` refuses; a merely unadvertised agent (the default for every bundled specialist) still runs when a caller names it, which is what keeps `/review` working with the specialists off. A refusal names the setting and lists the offered agents.
+`TaskTool.#executeSync` checks `subagent.agents.<name>.enabled` after resolving the agent, through `isSubagentEnabled` — one predicate, and the same one that decides what goes in the tool description, so the set the model is offered and the set it may spawn cannot diverge. A disabled agent is refused, and the refusal names the setting and lists the enabled agents. The one thing that also passes is a per-turn grant: a `/` command declares the agents its prompt names (`CustomCommand.spawnsAgents`), the session grants them for the turn that prompt starts, and `TaskTool` consults `session.agentGrantedThisTurn`. That is how `/review` spawns `reviewer` on a stock install where every specialist is disabled. There used to be a second predicate, `isSubagentSpawnable`, under which any named spawn ran; it made `enabled: false` the only real off switch and left a user-visible state reading "not offered but still runs when named".
 
 ### Parent spawn policy
 
@@ -189,4 +189,4 @@ When parent plan mode is enabled, `TaskTool.#runSpawn` builds an `effectiveAgent
 
 The same `effectiveAgent` is used for subprocess launch, model/thinking overrides, and output-schema selection.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `f46fcdb58b933aa498313fd7672a0b29828e860b` on 2026-07-25.*

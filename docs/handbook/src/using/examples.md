@@ -64,8 +64,7 @@ enabled. See [Compaction and memory](../context/compaction-memory.md).
 Run the package test gate for the area you changed.
 ```
 
-Example: `bun run test` in `packages/coding-agent` or the project's documented `cargo_full` / CI
-script from `STANDARD.md` when touching Rust natives.
+Example: `bun run test` in `packages/coding-agent`, or the Rust + TypeScript CI matrix documented in `CONTRIBUTING.md` when touching Rust natives.
 
 ## Use the model/provider contract
 

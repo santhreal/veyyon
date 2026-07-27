@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -199,7 +199,7 @@
 <p>Hooks run at points in the session lifecycle (before/after tools, session start, compaction, and related events). They are <strong>TypeScript modules</strong> that default-export a factory and register handlers with <code>pi.on(...)</code>.</p>
 <p>Reference: <a href="./hooks.html">Hooks</a> and repository <code>docs/hooks.md</code>.</p>
 <h2 id="minimal-example"><a class="header" href="#minimal-example">Minimal example</a></h2>
-<p>Place a file under a discovered hooks directory (for example <code>.veyyon/hooks/policy.ts</code>):</p>
+<p>Place a file under a discovered hooks directory (for example <code>.veyyon/hooks/pre/policy.ts</code>):</p>
 <pre><code class="language-ts">import type { HookAPI } from "@veyyon/coding-agent/extensibility/hooks";
 
 export default function (pi: HookAPI): void {

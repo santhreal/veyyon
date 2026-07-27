@@ -78,7 +78,8 @@ Each turn the harness builds a request that includes:
    tool guidance). See [Execution-order prompts](../models/prompts.md).
 2. **User and project instructions** (`AGENTS.md` / `SYSTEM.md` layers and any session steers).
 3. **Tool schemas** the model is allowed to call on this turn (bash, edit/write, web search, MCP tools,
-   skills, and so on), filtered by approval mode, `disallowed_tools`, and feature flags.
+   skills, and so on), filtered by feature flags, harness-profile allowlists, and plan-mode narrowing.
+   A per-tool `deny` policy does not filter this list; it refuses the call at dispatch.
 4. **Conversation context** for the active thread, possibly compacted.
 
 The model is expected to call tools using the schemas it was given. When arguments are almost right but
@@ -96,7 +97,7 @@ the same; only the transport differs.
 
 Default edit mode is **hashline** (`edit.mode: hashline`). When `edit.mode` is `apply_patch`, the
 provider wire form is derived from the API kind by default; an optional catalog override can pin the
-tool shape to `function`, `freeform`, or `none`. The Function form keeps structured edits available
+tool shape to `function` or `freeform`. The Function form keeps structured edits available
 on chat-wire endpoints (Ollama, LM Studio, DeepSeek, and similar). See [The hashline edit engine](../edit/engine.md)
 for the default edit wire format.
 
@@ -120,7 +121,7 @@ If something fails, ask which side owns it:
 - Config rejected at load, malformed `models.yml`, missing key → harness / your config.
 - HTTP 401 / 429 / empty model list → provider or key.
 - Patch applied but tests red → harness did its job; the change still needs work.
-- Approval or execpolicy denial → permission model, not the model provider.
+- Approval or critical-pattern denial → permission model, not the model provider.
 
 ## Provider data at load time
 

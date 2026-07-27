@@ -62,9 +62,7 @@ Single-shot result.
 3. `conflict://...` paths are handled next by the merge-conflict resolver. Scope reads such as `conflict://<id>/ours` are rejected as read-only; writable conflict URIs must omit the scope.
 4. It calls `#resolveArchiveWritePath()` next. That uses `parseArchivePathCandidates()` from `packages/coding-agent/src/utils/zip.ts`, checks candidate archive files on disk (longest match first), and falls back to the shortest candidate archive path even when the archive file does not exist yet.
 5. Archive writes call `enforcePlanModeWrite(..., { op: exists ? "update" : "create" })`, then `#writeArchiveEntry()`.
-   - The parent directory of the archive file is created with `fs.mkdir(..., { recursive: true })`.
-   - `.zip` archives are read with `unzip()`, the target entry is replaced in an in-memory map, and the archive is reframed with `zip()` + `Bun.write()` (both from `packages/coding-agent/src/utils/zip.ts`, over `node:zlib`).
-   - `.tar`, `.tar.gz`, and `.tgz` archives are read with `Bun.Archive`, existing entries are copied into an object map, the target entry is replaced, and `Bun.Archive.write()` rewrites the archive.
+   - Existing entries are loaded with `readArchiveEntries()`, the target entry is replaced in an in-memory map, and the archive is rewritten whole with `writeArchive()` (both in `packages/coding-agent/src/utils/zip.ts`) via `atomicWriteFileWith()`, which streams to a temp file and renames over the original only on success.
    - `invalidateFsScanAfterWrite()` runs on the archive file path.
 6. If the path is not treated as an archive, `execute()` calls `#resolveSqliteWritePath()`. That uses `parseSqlitePathCandidates()` and `isSqliteFile()` from `packages/coding-agent/src/tools/sqlite-reader.ts`. Existing non-SQLite files suppress the SQLite path interpretation.
 7. SQLite writes call `enforcePlanModeWrite(..., { op: "update" })`, then `#writeSqliteRow()`.
@@ -76,7 +74,7 @@ Single-shot result.
 8. Otherwise the tool treats `path` as a plain filesystem file.
    - `enforcePlanModeWrite(..., { op: "create" })` runs before path resolution.
    - Existing files are checked by `assertEditableFile()` to block overwriting detected generated files.
-   - ACP bridge writeTextFile is tried first when available; otherwise the session’s writethrough callback writes content. With LSP enabled and `lsp.formatOnWrite` / `lsp.diagnosticsOnWrite` settings on, `createLspWritethrough()` may format content, sync it through LSP servers, save it, and collect diagnostics. Otherwise `writethroughNoop()` writes directly with `Bun.write()` or `file.write()`.
+   - ACP bridge writeTextFile is tried first when available; otherwise the session’s writethrough callback writes content. With LSP enabled and `lsp.formatOnWrite` / `lsp.diagnosticsOnWrite` settings on, `createLspWritethrough()` may format content, sync it through LSP servers, save it, and collect diagnostics. Otherwise `writethroughNoop()` writes via `commitFileContentAtomic()` → `atomicWriteFilePreservingMode()` (crash-atomic temp + rename).
    - `maybeMarkExecutableForShebang()` may chmod the file executable when content starts with `#!`.
    - `invalidateFsScanAfterWrite()` runs on the file path.
 9. The tool returns a text result and optional diagnostics / executable metadata.
@@ -85,7 +83,7 @@ Single-shot result.
 ### Plain file path
 - Target is any path that does not resolve as an archive selector and does not resolve as an existing-or-new SQLite selector.
 - Existing files are overwritten.
-- `write.ts` does not call `fs.mkdir()` on this path; explicit parent-directory creation only exists in the archive branch, but `Bun.write()` itself creates missing parent directories for plain file writes.
+- Plain file writes get parent-directory creation from the atomic writer (`atomicWriteFileWith` mkdirs the parent with `{ recursive: true }`), not from `Bun.write()`.
 
 Example:
 
@@ -145,7 +143,7 @@ content: ""
 - Filesystem
   - Creates or overwrites plain files.
   - Rewrites entire archive files when writing an archive entry.
-  - Explicitly creates parent directories (via `fs.mkdir`) for archive files only; plain file writes get parent directories from `Bun.write()`.
+  - Explicitly creates parent directories (via `fs.mkdir(..., { recursive: true })` inside `atomicWriteFileWith`) for both archive and plain file writes.
   - Mutates existing SQLite databases; never creates a new SQLite DB.
   - Resolves conflict markers in files for `conflict://...` writes.
   - May chmod a shebang file executable after a successful plain-file write.
@@ -186,7 +184,7 @@ content: ""
 ## Notes
 - Archive path detection runs before SQLite detection. A path that matches an archive selector is never treated as SQLite.
 - SQLite detection declines when an existing file with a `.sqlite` / `.db` suffix is present but does not have SQLite magic bytes; then the path falls back to a plain file write.
-- ZIP entry content is encoded with `new TextEncoder().encode(content)` in `#writeArchiveEntry()`. Non-ZIP archive writes pass the string directly to `Bun.Archive.write()`.
+- Entry content is passed as a string to `writeArchive()`, which encodes string members as UTF-8 for all archive formats.
 - The prompt forbids two common anti-patterns: using `write` for routine edits that should use `edit`, and creating `*.md` / `README` files unless explicitly requested. It also forbids emojis unless requested.
 - Plain file and internal URL writes report `cleanContent.length` as “bytes”, which is UTF-16 code units in JS, not an on-disk byte measurement.
 - `stripWriteContent()` only removes hashline prefixes when the session’s file display mode has `hashLines` enabled; otherwise content is written unchanged.

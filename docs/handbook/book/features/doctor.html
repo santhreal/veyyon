@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -196,15 +196,14 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="diagnostics-and-health"><a class="header" href="#diagnostics-and-health">Diagnostics and health</a></h1>
-<p>Diagnostics are split across plugin doctor, TUI <code>/debug</code>, and memory commands. There is no single
+<p>Diagnostics are split across <code>veyyon setup status</code>, plugin doctor, TUI <code>/debug</code>, and memory commands. There is no single
 <code>veyyon doctor</code> binary that covers install, auth, and plugins in one pass.</p>
 <h2 id="plugin-doctor"><a class="header" href="#plugin-doctor">Plugin doctor</a></h2>
 <pre><code class="language-console">$ veyyon plugin doctor
 $ veyyon plugin doctor --fix
 </code></pre>
 <p>Checks plugin installation health. With <code>--fix</code>, it attempts automatic repairs where implemented.</p>
-<p>Additional plugin-environment checks warn when optional external binaries (<code>sd</code>, <code>sg</code>, <code>git</code>) or common
-API keys are missing, these are warnings, not hard failures.</p>
+<p>A separate System Health Check runs under <code>veyyon setup status</code> (and <code>veyyon setup status --json</code>): it checks <code>vey</code>, <code>veyyon</code>, and <code>git</code> on PATH (a missing <code>git</code> is an error, the others warnings) plus provider authentication (OAuth or one of <code>GEMINI_API_KEY</code> / <code>OPENAI_API_KEY</code> / <code>ANTHROPIC_API_KEY</code> / <code>KIMI_API_KEY</code>, missing = warning).</p>
 <h2 id="tui-debug"><a class="header" href="#tui-debug">TUI debug</a></h2>
 <pre><code class="language-text">/debug
 </code></pre>
@@ -213,11 +212,12 @@ API keys are missing, these are warnings, not hard failures.</p>
 <pre><code class="language-text">/memory diagnose
 /memory stats
 </code></pre>
-<p>Operate the mnemopi memory backend from the TUI. See <a href="./memory.html">Memory</a>.</p>
+<p>Run diagnostics and statistics on the configured memory backend (<code>memory.backend</code>: mnemopi, hindsight, local) from the TUI. See <a href="./memory.html">Memory</a>.</p>
 <h2 id="checking-install-health"><a class="header" href="#checking-install-health">Checking install health</a></h2>
 <p>There is no single <code>veyyon doctor</code> command. Diagnostics are spread across a few surfaces:</p>
 <ol>
 <li><code>veyyon --version</code> and a normal interactive session start.</li>
+<li><code>veyyon setup status</code> for the install and auth health check.</li>
 <li><code>veyyon plugin doctor</code> for extension health.</li>
 <li><code>/debug</code> and <code>/memory diagnose</code> inside the TUI.</li>
 <li><a href="../using/troubleshooting.html">Troubleshooting</a> for common setup failures.</li>

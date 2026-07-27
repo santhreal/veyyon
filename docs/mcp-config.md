@@ -74,6 +74,7 @@ Top-level keys:
 
 - `$schema`: optional JSON Schema URL for tooling
 - `mcpServers`: map of server name to server config
+- `enabledServers`: user-level list that overrides a discovered server's `enabled: false` flag (for example when the source config is owned by another tool such as `opencode.json`); `disabledServers` still wins
 - `disabledServers`: user-level denylist used to turn off discovered servers by name; runtime loading reads this list from the active profile's user MCP file (`~/.veyyon/profiles/default/agent/mcp.json`, or `~/.veyyon/profiles/<name>/agent/mcp.json` under a named profile)
 
 Server names must match `^[a-zA-Z0-9_.-]{1,100}$`.
@@ -240,7 +241,7 @@ profile for untrusted checkouts.
 
 Use this when the MCP server requires explicit OAuth client settings.
 
-`prompt` controls the OAuth `prompt` parameter sent with the authorization request. It defaults to `"consent"` so the provider always shows its consent/account screen, without it, a provider with an active browser session silently re-approves the same account, making it impossible to switch accounts or workspaces when reauthorizing (e.g. to use a different Linear workspace per Veyyon profile). Set it to `""` to omit the parameter for providers that reject it, or to another value the provider understands (e.g. `"select_account"`).
+`prompt` controls the OAuth `prompt` parameter sent with the authorization request. By default the parameter is omitted, matching the reference MCP SDK, except when the granted scopes include `offline_access`: OIDC Core requires `prompt=consent` to issue refresh-token access, so Veyyon sends `consent` for those requests. Without a consent prompt, a provider with an active browser session silently re-approves the same account, making it impossible to switch accounts or workspaces when reauthorizing (e.g. to use a different Linear workspace per Veyyon profile). Set it to `""` to omit the parameter for providers that reject it, or to another value the provider understands (e.g. `"select_account"`).
 
 Slack is the clearest current example. Slack's MCP server is hosted at `https://mcp.slack.com/mcp`, uses Streamable HTTP, and requires confidential OAuth with your Slack app's client credentials.
 
@@ -489,6 +490,27 @@ The JSON is valid, but the server may still be unreachable. Use `/mcp test <name
 ### The server exists in another tool's config but not in Veyyon
 
 Run `/mcp list`. Veyyon discovers many third-party MCP files, but project-level loading can also be disabled via the `mcp.enableProjectConfig` setting, and a user-level `disabledServers` entry can suppress a server by name.
+
+### A call fails with a protocol error rather than a timeout
+
+JSON-RPC lets a server answer with `"id": null` when it cannot tell which request an error belongs
+to. A parse error is the usual case: the server could not read the request well enough to find its
+id, so it has nothing to attribute the failure to.
+
+Veyyon surfaces that answer instead of waiting. Every call in flight on that connection fails with
+the server's own code and message, for example:
+
+```
+MCP error -32700: Parse error
+```
+
+The alternative would be to ignore a reply that names no request, and then every pending call sits
+until its timeout and reports that the server did not answer. That is the opposite of what
+happened: the server answered, and told you exactly what was wrong.
+
+A `-32700` means the bytes Veyyon sent were not valid JSON to that server, so report it with the
+server name and the tool you called. It is a bug in the server or in the transport, not something a
+config change fixes.
 
 ## References
 

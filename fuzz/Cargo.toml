@@ -1,0 +1,186 @@
+# The fuzzing suite. See `docs/internal/fuzzing.md` for how to run it.
+#
+# WHY THIS IS A SEPARATE WORKSPACE. Every target here is a `bin` that links
+# libFuzzer, which supplies its own `main` and needs `-Zsanitizer=address` and a
+# nightly toolchain to build at all. If this package were a member of the root
+# workspace, a plain `cargo build --workspace` would try to link those binaries
+# without the sanitizer flags and fail, so the ordinary build would break for
+# everyone who never runs a fuzzer. Detaching it costs one duplicated `[patch]`
+# section (below) and keeps `cargo build --workspace` meaning what it always did.
+[package]
+name = "veyyon-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "MIT"
+authors = ["santhreal"]
+repository = "https://github.com/santhreal/veyyon"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+# Mirrors the root `Cargo.toml`. Cargo only honours `[patch]` at a workspace
+# root, so a detached workspace that depends on `veyyon-shell` has to repeat it
+# or the vendored `brush-core` is bypassed and the build resolves a different
+# shell core than the one that ships. Keep the two in sync; the paths are
+# relative to this file.
+[patch.crates-io]
+brush-core = { path = "../crates/vendor/brush-core" }
+brush-builtins = { path = "../crates/vendor/brush-builtins" }
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+
+# Direct dependency because the targets construct `Edit` values and name
+# `MatchStrictness` and `SupportLang` variants. Feature flags mirror the root
+# `Cargo.toml` exactly: a fuzzer built against a differently-featured copy of the
+# matcher is not testing the code that ships.
+ast-grep-core = { version = "0.39", default-features = false, features = ["tree-sitter"] }
+
+veyyon-ast = { path = "../crates/veyyon-ast" }
+veyyon-diff-kernel = { path = "../crates/veyyon-diff-kernel" }
+veyyon-glob = { path = "../crates/veyyon-glob" }
+veyyon-iso = { path = "../crates/veyyon-iso" }
+veyyon-keys = { path = "../crates/veyyon-keys" }
+veyyon-shell = { path = "../crates/veyyon-shell" }
+veyyon-text = { path = "../crates/veyyon-text" }
+veyyon-uu-diff = { path = "../crates/veyyon-uu-diff" }
+veyyon-uu-grep = { path = "../crates/veyyon-uu-grep" }
+veyyon-uutils-ctx = { path = "../crates/veyyon-uutils-ctx" }
+veyyon-walker = { path = "../crates/veyyon-walker" }
+
+# Fuzzers spend all their time in the code under test, so it is compiled
+# optimized. `debug = 1` keeps line tables, which is what turns a crash artifact
+# into a stack trace naming the function that panicked.
+[profile.release]
+opt-level = 3
+debug = 1
+overflow-checks = true
+
+# `overflow-checks` on the profile above is the point of the whole build: a
+# release build normally wraps on integer overflow, so an index computation that
+# wraps to a huge value reads as a plain out-of-bounds panic somewhere else
+# entirely, or as silently wrong output. Turning them on makes the fuzzer stop
+# at the arithmetic that was actually wrong.
+
+[[bin]]
+name = "walker_path_order"
+path = "fuzz_targets/walker_path_order.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "walker_glob"
+path = "fuzz_targets/walker_glob.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ast_apply_edits"
+path = "fuzz_targets/ast_apply_edits.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ast_parse_and_match"
+path = "fuzz_targets/ast_parse_and_match.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "minimizer_filters"
+path = "fuzz_targets/minimizer_filters.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "minimizer_lint_condense"
+path = "fuzz_targets/minimizer_lint_condense.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "keys_parse"
+path = "fuzz_targets/keys_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "glob_patterns"
+path = "fuzz_targets/glob_patterns.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ast_block_range"
+path = "fuzz_targets/ast_block_range.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "text_measure"
+path = "fuzz_targets/text_measure.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "diff_kernel_unified"
+path = "fuzz_targets/diff_kernel_unified.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "iso_git_diff_parse"
+path = "fuzz_targets/iso_git_diff_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "uu_diff_argv"
+path = "fuzz_targets/uu_diff_argv.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "uutils_ctx_scope"
+path = "fuzz_targets/uutils_ctx_scope.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "uu_grep_argv"
+path = "fuzz_targets/uu_grep_argv.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "minimizer_detect"
+path = "fuzz_targets/minimizer_detect.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "minimizer_primitives"
+path = "fuzz_targets/minimizer_primitives.rs"
+test = false
+doc = false
+bench = false

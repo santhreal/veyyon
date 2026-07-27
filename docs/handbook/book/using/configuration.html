@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -227,7 +227,7 @@ $ veyyon config path                     # print the active agent directory
 <ul>
 <li><strong>Persistent Profile Default (<code>session.workdir</code>)</strong>: Configures the default working directory for a profile across all future sessions. Set interactively via <code>/settings</code> (Interaction › Profile) or in <code>~/.veyyon/profiles/&lt;profile&gt;/agent/config.yml</code>.</li>
 <li><strong>Ephemeral Session Re-root (<code>set_cwd</code> tool / <code>/cwd</code>)</strong>: Re-roots the active session’s working directory temporarily. It never writes <code>session.workdir</code>.</li>
-<li><strong>Prompt Cache Protection</strong>: Working directory changes mid-session update path resolution, but the rendered System Prompt header (<code>&lt;workstation&gt;</code>) remains frozen until context compaction. Mutating system prompt headers mid-session prior to compaction invalidates LLM prefix prompt caches, causing 100% cache-miss token inflation.</li>
+<li><strong>What a re-root costs</strong>: the system prompt names the working directory and carries that project’s context files and workspace tree, so a re-root rebuilds it. That rebuild invalidates the provider’s prefix prompt cache, and the next request re-reads the whole context as fresh input. It is done anyway because the alternative is worse: a frozen header tells the model it is working in the directory it just left, so it follows the previous project’s <code>AGENTS.md</code> and resolves relative paths against a directory it has moved out of. Moving is worth paying for; being lied to about where you are is not. The rebuild happens once per move, in every mode, and a re-root to the directory already in force does nothing at all.</li>
 </ul>
 <h3 id="your-comments-and-formatting-survive-a-save"><a class="header" href="#your-comments-and-formatting-survive-a-save">Your comments and formatting survive a save</a></h3>
 <p><code>config.yml</code> is yours to edit by hand, and veyyon writes to the same file when you change a
@@ -324,7 +324,7 @@ and change the setting again, and nothing further is reported.</p>
 <tr><td>Choose the model you talk to</td><td><code>--model</code> / <code>/model</code> (persisted as <code>modelRoles.default</code>)</td></tr>
 <tr><td>Model for spawned subagents</td><td><code>subagent.model</code> (Subagents tab)</td></tr>
 <tr><td>Model for context compaction</td><td><code>compaction.model</code></td></tr>
-<tr><td>Named model assignments (optional)</td><td><code>modelRoles</code>, per profile (settings → Models → Roles)</td></tr>
+<tr><td>Named model assignments (optional)</td><td><code>modelRoles</code>, per profile (settings → Model → Roles)</td></tr>
 <tr><td>Add a local or BYOK provider</td><td>a <code>providers:</code> entry in <code>models.yml</code> (see <a href="./models.html">Models</a>)</td></tr>
 </tbody>
 </table>
@@ -339,7 +339,7 @@ subagent:
 compaction:
   model: openai/gpt-5-mini        # optional; else inherit interactive
 </code></pre>
-<p><code>/model</code> changes the interactive model (persists to <code>modelRoles.default</code> when saved as default). <code>/status</code> shows effective models. Role list and Ctrl+P cycling: <a href="./roles-and-profiles.html">Models, roles, and profiles</a>.</p>
+<p><code>/model</code> changes the interactive model (persists to <code>modelRoles.default</code> when saved as default) and shows the current one. <code>/session info</code> shows session stats. Role list and Ctrl+P cycling: <a href="./roles-and-profiles.html">Models, roles, and profiles</a>.</p>
 <h2 id="stay-safe-approvals"><a class="header" href="#stay-safe-approvals">Stay safe (approvals)</a></h2>
 <div class="table-wrapper">
 <table>
@@ -392,7 +392,7 @@ separate OS shell sandbox, the approval mode is the only boundary; see
 </table>
 </div>
 <pre><code class="language-yaml">compaction:
-  thresholdPercent: 80
+  threshold: "80%"
   strategy: handoff
   model: openai/gpt-5-mini
 
@@ -413,12 +413,14 @@ the token saving comes from.</p>
 <pre><code class="language-yaml">argot:
   enabled: true
 </code></pre>
-<p>The default is <code>false</code>. You do not write or commit any dictionary, and veyyon
-does not guess which project you mean: the agent decides. When Argot is on and
-the model is allowed to write shorthand (see the next section), the system
-prompt teaches it the notation and gives it two tools, <code>argot_load</code> and
-<code>argot_unload</code>. Starting work in a project, the agent calls <code>argot_load</code> on that
-folder. veyyon resolves the folder to its project root (the nearest <code>.git</code>, or a
+<p>The default is <code>false</code>. You do not write or commit any dictionary. When Argot is
+on and the model is allowed to write shorthand (see the next section), veyyon
+loads the folder you started the session in, and the system prompt teaches the
+model the notation and gives it two tools, <code>argot_load</code> and <code>argot_unload</code>, so it
+can load further projects itself. You can turn the startup load off and leave
+every load to the agent, described under
+<a href="#choose-when-a-project-is-loaded">Choose when a project is loaded</a> below.</p>
+<p>Loading a folder resolves it to its project root (the nearest <code>.git</code>, or a
 <code>.argot</code> marker for a project with no git), reads the project’s files (the ones
 git tracks, or a walk of the tree for a <code>.argot</code> project), proposes handles for
 the strings that would save the most tokens, and keeps the result in a local
@@ -433,14 +435,14 @@ from (the git commit for a git project, or a signature of the file listing for a
 project with a <code>.argot</code> marker). A new commit reads a new entry, built from the
 new tree; the old entry is never rewritten. Nothing depends on a handle keeping
 its name across states, because veyyon expands every handle before it reaches the
-saved transcript, so an entry never has to agree with an older one. Once the
-agent has loaded a project, veyyon lists its handles in the system prompt, and
-the model writes them from then on. A session where the agent never loads
-anything simply writes full strings, exactly as if Argot were off.</p>
+saved transcript, so an entry never has to agree with an older one. Once a
+project is loaded, veyyon lists its handles in the system prompt, and the model
+writes them from then on. A session where nothing is ever loaded simply writes
+full strings, exactly as if Argot were off.</p>
 <h3 id="you-never-see-a-handle"><a class="header" href="#you-never-see-a-handle">You never see a handle</a></h3>
 <p>Shorthand is for the model, not for you. Everywhere veyyon shows you what the
-model wrote, it shows the full text. If the model writes <code>§conn</code>, you read
-<code>packages/server/src/database/connection.ts</code>.</p>
+model wrote, it shows the full text. If the model writes <code>§conn</code>, you read the
+full path it stands for, such as “packages/server/src/database/connection.ts”.</p>
 <p>That holds for every surface, not only the reply text:</p>
 <ul>
 <li>the answer as it streams in, and the finished message</li>
@@ -466,8 +468,9 @@ handle.</p>
 models allowed to do so:</p>
 <pre><code class="language-yaml">argot:
   enabled: true
-  models:
-    - anthropic/claude-opus-4
+  encode:
+    models:
+      - anthropic/claude-opus-4
 </code></pre>
 <p>A model on this list is taught the notation; a model left off never is. The list
 is empty by default, so turning Argot on without naming a model stays inert. This
@@ -475,6 +478,39 @@ lets you keep shorthand on for a model you trust to recall the dictionary and of
 for one you are still measuring. Expansion never depends on this list: a handle
 already written expands whatever model is active, so switching models never
 leaves a raw handle behind.</p>
+<p>The two settings under <code>encode</code> are the two that decide whether a model is taught
+to write shorthand: this list, and the context cutoff described below. Everything
+else about Argot sits directly under <code>argot</code>, because it decides whether the
+feature runs, when a dictionary is built, how large it is, and what a subagent
+starts with. The split is there to make one thing obvious: nothing under <code>encode</code>
+affects reading. A handle already in the conversation expands whatever these hold.</p>
+<p>If you have <code>argot.models</code> or <code>argot.disableAboveTokens</code> in a config from an
+earlier version, you do not have to change anything. veyyon moves them under
+<code>encode</code> the first time it reads the file, keeps the value, and drops the old key
+the next time it saves.</p>
+<h3 id="choose-when-a-project-is-loaded"><a class="header" href="#choose-when-a-project-is-loaded">Choose when a project is loaded</a></h3>
+<p>A dictionary has to be built before any handle exists, and there are two ways
+that happens. veyyon loads the folder you started the session in, once, in the
+background as the session comes up; and the model loads any further project it
+moves into by calling <code>argot_load</code> itself. The first of those is what
+<code>argot.autoload</code> controls:</p>
+<pre><code class="language-yaml">argot:
+  enabled: true
+  encode:
+    models:
+      - anthropic/claude-opus-4
+  autoload: false
+</code></pre>
+<p>The default is <code>true</code>, so the project you launched in is ready without the model
+spending a turn on it. Set it to <code>false</code> when you want every load to be a
+deliberate act by the agent: a session then starts with no dictionary, and stays
+that way until the model calls <code>argot_load</code>. That is the setting to reach for on
+a machine where the first walk of a very large repository is expensive enough
+that you would rather pay it only when shorthand is actually wanted.</p>
+<p>Turning it off changes when a dictionary is built, never whether a handle
+expands. The startup load runs in the background, so a session never waits on it
+either way; when it finishes it refreshes the system prompt to teach the handles,
+which is the same thing <code>argot_load</code> does.</p>
 <h3 id="size-the-dictionary"><a class="header" href="#size-the-dictionary">Size the dictionary</a></h3>
 <p>The generated dictionary is packed under a token budget: handles are added in
 value order until the next one would breach it, so the budget decides how many
@@ -484,8 +520,9 @@ preamble longer every turn. A smaller budget keeps the preamble cheap and teache
 only the most central strings. Set it with <code>argot.tokenBudget</code>:</p>
 <pre><code class="language-yaml">argot:
   enabled: true
-  models:
-    - anthropic/claude-opus-4
+  encode:
+    models:
+      - anthropic/claude-opus-4
   tokenBudget: 2000
 </code></pre>
 <p>The default is <code>1000</code>. Changing the budget generates a new dictionary: the cache
@@ -498,9 +535,10 @@ produces an empty dictionary.</p>
 stop teaching shorthand once the context passes a token threshold:</p>
 <pre><code class="language-yaml">argot:
   enabled: true
-  models:
-    - anthropic/claude-opus-4
-  disableAboveTokens: 400000
+  encode:
+    models:
+      - anthropic/claude-opus-4
+    disableAboveTokens: 400000
 </code></pre>
 <p>Past the threshold the model writes in full instead of risking a garbled handle.
 Handles written earlier still expand losslessly, because the cutoff stops only
@@ -511,8 +549,9 @@ size.</p>
 or none. Set that with <code>argot.subagents</code>:</p>
 <pre><code class="language-yaml">argot:
   enabled: true
-  models:
-    - anthropic/claude-opus-4
+  encode:
+    models:
+      - anthropic/claude-opus-4
   subagents: fresh
 </code></pre>
 <p>The three values are:</p>
@@ -545,8 +584,9 @@ next <code>argot_load</code> regenerates it.</p>
 bash:
   enabled: false
 </code></pre>
-<p>Plan mode and agent definitions can narrow the tool set further. Enforcement removes the tool from both
-the model-visible set and the dispatch registry.</p>
+<p>Plan mode and agent definitions can narrow the tool set further. <code>enabled: false</code> removes the tool from both
+the model-visible set and the dispatch registry; <code>tools.approval.*: deny</code> keeps the tool visible but
+refuses every call with an error naming the policy.</p>
 <h2 id="set-the-default-working-directory"><a class="header" href="#set-the-default-working-directory">Set the default working directory</a></h2>
 <p>Each profile can pin a default session working directory so launches from <code>$HOME</code>
 (or any other directory) still root tools at the right project:</p>

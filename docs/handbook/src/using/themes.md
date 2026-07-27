@@ -6,9 +6,9 @@ Veyyon's interface is built around near-black, near-white, and a persistent **Ve
 
 | File | Name | Notes |
 | --- | --- | --- |
-| `defaults/titanium.json` | Titanium | **Default dark theme.** Pitch black `#000000`, silver `#C6CBD4`, ember accent `#F0862E`, matches the website tokens (`website/site.css`) |
-| `dark.json` | Veyyon Dark | Pitch black `#000000` / `#FAFAFA` / silver `#B8BDC7`; predates the ember accent |
-| `light.json` | Light | **Default light theme.** Titanium's inverse: white `#FFFFFF` ground, dark-silver structure `#5C6470`, ember accent (`#F0862E` chrome, `#B65E14` links), see `docs/internal/design.md` "Light ground" |
+| `dark.json` | Veyyon Dark | **Default dark theme.** Pitch black `#000000` / `#FAFAFA` / silver `#B8BDC7`; predates the ember accent |
+| `light.json` | Light | **Default light theme.** White `#FFFFFF` ground with dark-silver structure `#5C6470`, see `docs/internal/design.md` "Light ground" |
+| `defaults/titanium.json` | Titanium | The brand theme: pitch black `#000000`, silver `#C6CBD4`, ember accent `#F0862E`, matches the website tokens (`website/site.css`) |
 
 A larger bundled catalog ships under `modes/theme/defaults/` and is selectable from the theme picker.
 

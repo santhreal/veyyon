@@ -56,7 +56,7 @@ while `custom` messages pass through as developer messages with their raw conten
 
 Compaction/context maintenance can run in six ways:
 
-1. **Manual context compaction**: `/compact [instructions]` calls `AgentSession.compact(...)`.
+1. **Manual context compaction**: `/compact [summary|handoff] [focus]` calls `AgentSession.compact(...)`.
 2. **Automatic overflow recovery**: after a same-model assistant error that matches context overflow.
 3. **Automatic incomplete-output recovery**: after a same-model assistant message ends with `stopReason === "length"` (OpenAI/Codex `response.incomplete`).
 4. **Automatic threshold maintenance**: after a successful turn when context exceeds the resolved threshold.
@@ -154,7 +154,7 @@ Sessions compacted by the old engine still open without loss. The removed engine
 
 ### Display transcript
 
-Compaction no longer visually restarts the conversation. The TUI renders the **display transcript** (`buildSessionContext({ transcript: true })` / `AgentSession.buildTranscriptSessionContext()`): every path entry in chronological order, with each compaction shown inline as a slim divider, `── 📷 compacted · ctrl+o ──`, at the point it fired. Expanding (ctrl+o) reveals the summary. Only the LLM context resets at the compaction boundary; the scrollback above the divider stays intact, including across session resume.
+By default the live TUI collapses pre-compaction history: `display.collapseCompacted` defaults to `true`, so only the latest compacted tail renders live above the summary divider and the scrollback is cleared at the compaction point. Set `display.collapseCompacted` to `false` to keep the full **display transcript** inline instead (`buildSessionContext({ transcript: true })` / `AgentSession.buildTranscriptSessionContext()`): every path entry in chronological order, with each compaction shown as a slim divider, `── 📷 compacted · ctrl+o ──`, at the point it fired. Expanding (ctrl+o) reveals the summary. In the collapsed default the LLM context and the visible transcript reset together; in the inline mode only the LLM context resets, and the scrollback above the divider stays intact, including across session resume.
 
 ### Pre-compaction pruning
 
@@ -450,8 +450,12 @@ From `settings-schema.ts`:
 
 - `compaction.enabled` = `true`
 - `compaction.strategy` = `"summary"` (schema: `"summary"` | `"handoff"`; default `"summary"`). Summary rewrites old history into an in-place LLM summary; handoff uses an LLM transfer into a new session. A stored `snap` from the removed image-archive engine normalizes to `summary` on load.
-- `compaction.reserveTokens` = `16384`
+- `compaction.reserveTokens` = unset (absent key). When unset the compaction layer falls back to `DEFAULT_RESERVE_TOKENS` = `16384`, and small-window recovery may substitute a proportional 15%-of-window reserve when the default does not fit the window (`resolveBudgetReserveTokens`).
 - `compaction.keepRecentTokens` = `20000`
+- `compaction.supersedeReads` = `true` (drop earlier file reads that a later read of the same file makes redundant)
+- `compaction.dropUseless` = `true`
+- `compaction.handoffSaveToDisk` = `false` (also write the handoff packet to disk)
+- `compaction.modelContextWindow` = unset (absent key); overrides the window size the compaction budget resolves against
 - `compaction.autoContinue` = `true`
 - `compaction.midTurnEnabled` = `true`
 - `compaction.remoteEndpoint` = `undefined`

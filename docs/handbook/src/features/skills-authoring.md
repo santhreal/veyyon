@@ -21,8 +21,6 @@ A skill directory may contain additional files:
 ```
 my-skill/
 ├── SKILL.md
-├── agents/
-│   └── openai.yaml
 └── scripts/, references/, assets/ ...optional
 ```
 
@@ -36,8 +34,6 @@ Every `SKILL.md` must begin with a YAML frontmatter block between `---` lines.
 ---
 name: my-skill
 description: Describe what this skill does and when to use it.
-metadata:
-  short-description: Short summary shown in skill lists.
 ---
 ```
 
@@ -45,7 +41,8 @@ The frontmatter fields are:
 
 * `name`: The skill identifier. Optional; defaults to the parent directory name. Use lowercase letters, digits, and hyphens. Keep it under 64 characters.
 * `description`: A clear explanation of what the skill does and when it should be triggered. This is the main signal the model uses to decide whether to invoke the skill.
-* `metadata.short-description`: A short summary shown in the TUI and other skill lists. Optional; keep it to one line.
+* `enabled`: Set to `false` to skip the skill at load time.
+* `hide` / `disableModelInvocation`: Either one hides the skill from the model-facing list.
 
 Be specific in the description. A vague description makes the skill less likely to be selected at the right moment.
 
@@ -77,43 +74,6 @@ Use this skill when the user asks for a review of a code change or pull request.
 Do not leave comments on external platforms unless the user explicitly asks for it.
 ```
 
-## Optional agents/openai.yaml
-
-The `agents/openai.yaml` file controls how the skill appears in the TUI and how it may be invoked. It is optional but recommended for skills that users interact with directly.
-
-Example:
-
-```yaml
-interface:
-  display_name: "Code Review"
-  short_description: "Review code for quality and correctness"
-  brand_color: "#C6CBD4"
-  default_prompt: "Review the current diff"
-dependencies:
-  tools:
-    - type: "command"
-      value: "git diff"
-      description: "Inspect local changes"
-policy:
-  allow_implicit_invocation: true
-  products:
-    - veyyon
-```
-
-Available fields:
-
-* `interface`: Presentation settings.
-  * `display_name`: Name shown in the TUI skill list.
-  * `short_description`: One-line description shown in the TUI.
-  * `icon_small` / `icon_large`: Paths to optional icons relative to the skill directory.
-  * `brand_color`: A hex color or color name for the skill chip.
-  * `default_prompt`: Pre-filled text when the skill is opened from the TUI.
-* `dependencies`: Tools the skill needs.
-  * `tools`: A list of dependency blocks. Each block may specify `type`, `value`, `description`, `transport`, `command`, and `url`.
-* `policy`: Invocation restrictions.
-  * `allow_implicit_invocation`: Whether the skill may be suggested or injected automatically. Defaults to `true`. Set to `false` to require explicit selection.
-  * `products`: A list of product names that may load this skill (for example, `veyyon`). If omitted, the skill loads for all products that support it.
-
 ## Configuring in config.yml
 
 There is no registration step: a skill placed in any discovered directory (see
@@ -136,16 +96,7 @@ skills:
     - internal-*
 ```
 
-Enable or disable individual skills by name or by absolute path:
-
-```yaml
-skills:
-  config:
-    - name: my-skill
-      enabled: true
-    - path: /home/user/.veyyon/profiles/default/agent/skills/other-skill/SKILL.md
-      enabled: false
-```
+`includeSkills` is the allowlist twin: when it is non-empty, only matching skills load.
 
 ## Worked example: a profile skill
 
@@ -163,8 +114,6 @@ Create `onboarding-check/SKILL.md` in that directory:
 ---
 name: onboarding-check
 description: Review the project for missing onboarding files and recommend improvements.
-metadata:
-  short-description: Check onboarding completeness.
 ---
 
 # Onboarding check
@@ -177,19 +126,6 @@ Use this skill when the user asks whether the project is ready for a new contrib
 4. Suggest concrete additions that would help a new contributor start quickly.
 
 Report the result as a short checklist with `done` or `missing` for each item.
-```
-
-Create `onboarding-check/agents/openai.yaml` in the same directory:
-
-```yaml
-interface:
-  display_name: "Onboarding Check"
-  short_description: "Check project onboarding completeness"
-  default_prompt: "Is this project ready for a new contributor?"
-policy:
-  allow_implicit_invocation: true
-  products:
-    - veyyon
 ```
 
 No registration is needed, a skill under the active profile's `skills` directory is
@@ -206,7 +142,7 @@ skills:
 
 In the TUI, you can invoke the skill in two ways:
 
-1. Open `/extensions`, find **Onboarding Check** in the skills list, and invoke it from there (or type its name as a slash command directly when `skills.enableSkillCommands` is on).
+1. Open `/extensions` to confirm the skill is enabled, then invoke it with `/skill:onboarding-check` (available when `skills.enableSkillCommands` is on).
 2. Type a natural request such as "Is this project ready for a new contributor?" in the composer. The model reads the skill description and selects the skill automatically when the request matches.
 
 From a command-line invocation, refer to the skill by its name. The exact command depends on the Veyyon CLI version; run `veyyon --help` or see the [CLI reference](../reference/cli.md) for the current syntax.

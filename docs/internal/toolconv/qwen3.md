@@ -197,6 +197,8 @@ message.tool_calls = [
 - **Robustness:** the format is prompt/template-driven, so malformed output is possible (truncated JSON, missing `</tool_call>`, prose mixed into a call, an array serialized as a string). Production parsers should tolerate and, on failure, fall back to treating the text as content. Named / `required` tool_choice routes through vLLM's structured-outputs backend for guaranteed-parseable arguments.
 - **Version/scope:** this `hermes` template covers `Qwen3-*`, `Qwen2.5-*`, and `QwQ-32B`. It does **not** cover `Qwen3-Coder`, which uses a different XML scheme parsed by vLLM's `qwen3_xml` parser: a separate convention.
 
+- **Where the tags live in this repo.** `<tool_call>`, `</tool_call>`, `<tool_response>`, `</tool_response>`, `<think>` and `</think>` are declared once, in `packages/ai/src/dialect/wire-tags.ts`, and shared with the `hermes` and `glm` dialects that speak the same envelope. The prompt in `packages/ai/src/prompts/dialect/qwen3.md` spells them out for the model, so a tag change is two edits: the module and that prompt. `packages/ai/test/dialect-wire-tags-have-one-owner.test.ts` round-trips a rendered call through the scanner and fails if the two ends drift.
+
 ## Sources
 
 - Qwen function-calling guide: https://qwen.readthedocs.io/en/latest/framework/function_call.html

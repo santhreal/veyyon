@@ -34,8 +34,30 @@ For the common case, a provider is **one catalog entry + one def file + one regi
 2. **Create `packages/ai/src/registry/<id>.ts`** exporting one
    `export const <camelId>Provider = { … } as const satisfies ProviderDefinition;`
    with the auth fields (`login`, …). Plain env-var names live in the catalog
-   entry's `envVars`; set `envKeys` only for computed resolvers (Foundry/ADC/
-   Bedrock-style probes).
+   entry's `envVars`. A definition carries no env-key field: if the provider needs
+   a computed resolver (a Foundry/ADC/Bedrock-style probe) or has no catalog entry
+   at all, add it to `PROVIDER_ENV_KEY_OVERRIDES` in
+   `packages/ai/src/provider-env-keys.ts`, which is the one place such a rule is
+   written and the one module `getEnvApiKey` reads. Do not restate a catalog
+   `envVars` value there: a string override that repeats the catalog for the same
+   id is one fact in two places, and `packages/ai/test/provider-env-keys.test.ts`
+   fails on it.
+
+   A base URL works the same way. Read it from the catalog entry, from
+   configuration, or from a discovery response. If the provider needs a host
+   the code decides, meaning the one a request goes to when nobody configured
+   anything, add it to `packages/catalog/src/provider-endpoints.ts` and import
+   it. That module has no imports, so taking a host from it costs one module.
+   Do not write the URL as a literal in your provider: the Google Cloud Code
+   host was retyped in six modules under four names before the owner existed,
+   and `packages/catalog/test/provider-endpoints.test.ts` now fails if a host
+   literal appears anywhere else.
+
+   If your provider's OAuth flow redirects back to the default loopback path,
+   omit `callbackPath` or import `DEFAULT_CALLBACK_PATH` from
+   `packages/ai/src/registry/oauth/callback-server.ts`. Write a path literal
+   only when the provider has registered a different redirect URI, as
+   `openai-codex`, `google-antigravity` and `google-gemini-cli` each have.
 3. **Add it to the `ALL` array** in `packages/ai/src/registry/registry.ts`
    (one import + one array entry). `ALL` order is the `/login` list order for
    loginable providers.
@@ -71,12 +93,13 @@ from the catalog table and `OAuthProvider` from the registry.
 | `specialModelManager` | Bespoke runtime factory (`google-antigravity` / `google-gemini-cli` / `openai-codex`); excluded from `PROVIDER_DESCRIPTORS`. |
 
 **Registry definition** (`ProviderDefinition`, see
-`packages/ai/src/registry/types.ts`):
+`packages/ai/src/registry/types.ts`). Env-key rules are not here: they live in
+`packages/ai/src/provider-env-keys.ts`, because a definition costs 121 modules
+and answering "which variable holds the key" must not.
 
 | Field | Effect |
 |---|---|
 | `id`, `name` | Required. `name` shows in the `/login` list. |
-| `envKeys` | Computed env fallback for `getEnvApiKey`, overriding the catalog entry's `envVars`: a var name string or a `() => string \| undefined` resolver. Omit when `envVars` covers it. |
 | `login` | Interactive login. Present ⇒ member of `OAuthProvider`, shown in `/login`, dispatchable via `AuthStorage.login`. Returns an api-key `string` or `OAuthCredentials`. |
 | `refreshToken` | OAuth refresher; omit for static-token providers (the dispatch returns credentials unchanged). |
 | `storeCredentialsAs` | Store credentials under a different provider id (e.g. `openai-codex-device` ⇒ `openai-codex`). |

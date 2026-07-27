@@ -1,6 +1,6 @@
 # Install
 
-Veyyon installs as a single self-contained binary. The installer downloads it, links a short `vey` launch command next to it, and runs a quick self-check. Under the hood Veyyon is a TypeScript and Bun agent loop, with Rust natives handling the hot paths: grep, the file walker, the shell and PTY, and hashline edits. The prebuilt binary bundles all of that, so you do not need Bun, Node, or a package manager to run it.
+Veyyon installs as a single self-contained binary. The installer downloads it, links a short `vey` launch command next to it, and runs a quick self-check. Under the hood Veyyon is a TypeScript and Bun agent loop, with Rust natives handling the hot paths: grep, the file walker, the shell and PTY, and tree-sitter block resolution for hashline block edits. The prebuilt binary bundles all of that, so you do not need Bun, Node, or a package manager to run it.
 
 ## Install on Linux or macOS
 
@@ -43,8 +43,9 @@ On Linux the installer checks which C library your system uses before it downloa
 The installer takes a few options. Pass them after `-- ` when you pipe the script:
 
 ```console
-$ curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11   # a specific release
-$ curl -fsSL https://get.veyyon.dev | sh -s -- --source        # build from a git checkout
+$ curl -fsSL https://get.veyyon.dev | sh -s -- --binary --ref v1.0.11   # a specific release binary
+$ curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11           # build that ref from a git checkout (implies --source)
+$ curl -fsSL https://get.veyyon.dev | sh -s -- --source                # build the default branch from a git checkout
 ```
 
 `--source` is for running an unreleased branch or contributing. It keeps a real checkout under `~/.veyyon/src`, installs the workspace once with Bun, and links a launcher that runs Veyyon straight from TypeScript, so there is no separate build step. A source install needs **Bun** and **Git**; the installer installs Bun for you when it is missing. It also needs **[git-lfs](https://git-lfs.com)** when the checkout tracks files through Git LFS, and it stops with that message rather than continuing: without git-lfs those files are written as small pointer text files, which look present and then fail at runtime. If nothing in the checkout is LFS-tracked, git-lfs is not required and the installer does not ask for it. The native addon is provisioned automatically: the installer (and the launcher, if the addon ever goes missing) downloads the prebuilt addon for your platform from the matching release, and falls back to a local Rust build only when no prebuilt exists. On Windows the same options are `-Source`, `-Binary`, `-Ref`, `-Local`, and `-Uninstall`. Pass them with the scriptblock form, for example `& ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source` (see the header of `install.ps1`). `-Local` (and `--local` on Linux and macOS) installs the binary a checkout has already built instead of downloading a release, which is what you want when you are working on Veyyon itself or installing on a machine with no network.
@@ -68,7 +69,7 @@ $ vey plugin doctor
 $ vey plugin doctor --fix
 ```
 
-`vey plugin doctor` checks plugin health and warns you when an optional external binary (`sd`, `sg`, or `git`) or a common API key is missing. For interactive diagnostics, use `/debug` in the TUI. See [Diagnostics](../features/doctor.md).
+`vey plugin doctor` checks plugin installation health (directories, manifests, entry paths, enabled features). Binary and provider-key checks live in `vey setup status`. For interactive diagnostics, use `/debug` in the TUI. See [Diagnostics](../features/doctor.md).
 
 ### Relocate the config directory
 
@@ -87,7 +88,7 @@ On the first interactive launch, the first-run setup (or `veyyon setup`) walks y
 
 ## Updating
 
-Veyyon keeps itself current. On startup it checks veyyon.dev for a newer
+Veyyon keeps itself current. On startup it checks GitHub Releases for a newer
 version, and if it finds one it downloads the new binary in the background:
 
 ```text
@@ -186,8 +187,8 @@ checkout.
 
 Veyyon is distributed only two ways, and it updates the way it was installed. A
 binary install (the `curl` installer from veyyon.dev) replaces its own binary
-with the newer one it fetches from veyyon.dev; veyyon.dev serves the signed
-release and propagates automatically from GitHub Releases, so that is the only
+with the newer one it fetches from GitHub Releases, the same place the
+installer's download comes from; veyyon.dev hosts only the installer script, so GitHub Releases is the only
 place a binary ever comes from. Before it keeps the new binary it runs the same
 two checks the installer runs: the binary reports the version the release
 claims, and a real search confirms the native addon loads. If either fails the

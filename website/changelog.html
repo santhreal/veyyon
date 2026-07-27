@@ -83,6 +83,9 @@
 			<div class="sec">
 				<span class="tag fix">Fixed</span>
 				<ul class="notes">
+				<li>The Essential Tools Override setting description now names the real default list. It showed six tools (<span class="inline">read, bash, edit, write, glob, eval</span>) while the actual always-loaded default has seven, <span class="inline">launch</span> included, so an operator writing an override list from the description would have silently dropped process launching.</li>
+				<li><span class="inline">bench/session-tree-nav.bench.ts</span> runs again. <span class="inline">buildSessionContext</span> moved to <span class="inline">session/session-context.ts</span> and the <span class="inline">SessionEntry</span> union to <span class="inline">session-entries.ts</span>, and the script still imported both from <span class="inline">session-manager</span>, so it died on a SyntaxError and published nothing while saying nothing about it. It reports 0.0460ms per navigation before the dedupe fix against 0.0071ms after, an 84.6% reduction, and it uses the shared bench harness instead of its own timing loop now that the harness runs the warmup this script always knew it needed.</li>
+				<li><span class="inline">veyyon bench/throughput &lt;TAB&gt;</span> completes model ids again, and completes a comma-separated list of them. The completion generator keys its positional tables by <span class="inline">&lt;command&gt;.&lt;arg&gt;</span>, and the benchmark's was listed under <span class="inline">bench</span> while the command registers as <span class="inline">bench/throughput</span>, so the key matched nothing and the positional fell through to "no candidates". The argument is also declared repeatable and was pinned to a single value, which stopped offering candidates after the first selector. A key that matches no command cannot fail on its own, so every key in those tables is now checked against the real command list and the arguments each command declares.</li>
 				<li>A provider whose model discovery produced no catalog now says why, for every provider rather than only the ones that failed by throwing. The registry keeps per-provider discovery state and reported a reason only when discovery THREW, so a returned <span class="inline">null</span> was silent: an endpoint that refused the connection, one that answered 401, and one that answered with an unrecognized payload all left the same result, a picker missing models you pay for with nothing anywhere explaining it. The reason arrives with a stage, which is what decides where to look: <span class="inline">request</span> at the network, <span class="inline">status</span> at credentials, <span class="inline">body</span> or <span class="inline">payload</span> at whether the endpoint still speaks the protocol. It goes through the same reporter as a thrown failure, so it is deduplicated per provider instead of repeating on every refresh, and an endpoint that answers with an empty list still produces nothing.</li>
 				<li>A harness profile now refuses a <span class="inline">promptSectionOrder</span> or <span class="inline">tools</span> list containing an entry that is not a name, instead of dropping that entry and applying the rest. A misspelled section name already rejected the whole list, with a comment explaining that a silently dropped entry would apply an order the operator did not write; a non-string entry three lines above hit a <span class="inline">continue</span> and did exactly that. <span class="inline">tools</span> matters more, since it DENIES tools: <span class="inline">tools: [read, 42, bash]</span> gave the model two tools instead of three with nothing naming the one that vanished. A <span class="inline">harness-profiles.yml</span> that cannot be read or parsed is also reported now, with the path and the reason: the loader had an <span class="inline">ENOENT</span> branch and a fallthrough that both returned no profiles, so a YAML syntax error dropped every per-model profile and started the agent on the defaults in silence.</li>
 				<li>A <span class="inline">/proc/cpuinfo</span> that exists and cannot be read is now reported at the same volume as the GPU cache beside it. Both omit a line from the prompt's environment section, and both are the same fact — the file is there and the read failed — but one warned while the other used <span class="inline">logger.debug</span>, a level nobody runs with. A missing file stays silent, since it is Linux-only and absent in some containers.</li>
@@ -228,6 +231,7 @@
 				<h2 id="v1-0-37"><a href="#v1-0-37">1.0.37</a></h2>
 				<span class="date">2026-07-24</span>
 				<span class="pill">latest</span>
+				<a class="gh-link" href="https://github.com/santhreal/veyyon/releases/tag/v1.0.37">View on GitHub ↗</a>
 			</div>
 			<div class="sec">
 				<span class="tag fix">Fixed</span>
@@ -243,6 +247,7 @@
 			<div class="release-head">
 				<h2 id="v1-0-36"><a href="#v1-0-36">1.0.36</a></h2>
 				<span class="date">2026-07-24</span>
+				<a class="gh-link" href="https://github.com/santhreal/veyyon/releases/tag/v1.0.36">View on GitHub ↗</a>
 			</div>
 			<div class="sec">
 				<span class="tag fix">Fixed</span>
@@ -256,6 +261,7 @@
 			<div class="release-head">
 				<h2 id="v1-0-35"><a href="#v1-0-35">1.0.35</a></h2>
 				<span class="date">2026-07-24</span>
+				<span class="pill pending">pending release</span>
 			</div>
 			<div class="sec">
 				<span class="tag add">Added</span>
@@ -275,6 +281,7 @@
 			<div class="release-head">
 				<h2 id="v1-0-34"><a href="#v1-0-34">1.0.34</a></h2>
 				<span class="date">2026-07-24</span>
+				<span class="pill pending">pending release</span>
 			</div>
 			<div class="sec">
 				<span class="tag fix">Fixed</span>
@@ -289,6 +296,7 @@
 			<div class="release-head">
 				<h2 id="v1-0-33"><a href="#v1-0-33">1.0.33</a></h2>
 				<span class="date">2026-07-24</span>
+				<span class="pill pending">pending release</span>
 			</div>
 			<div class="sec">
 				<span class="tag chg">Changed</span>
@@ -311,6 +319,7 @@
 			<div class="release-head">
 				<h2 id="v1-0-32"><a href="#v1-0-32">1.0.32</a></h2>
 				<span class="date">2026-07-24</span>
+				<span class="pill pending">pending release</span>
 			</div>
 			<div class="sec">
 				<span class="tag chg">Changed</span>
@@ -332,6 +341,7 @@
 			<div class="release-head">
 				<h2 id="v1-0-31"><a href="#v1-0-31">1.0.31</a></h2>
 				<span class="date">2026-07-24</span>
+				<span class="pill pending">pending release</span>
 			</div>
 			<div class="sec">
 				<span class="tag chg">Changed</span>
@@ -351,6 +361,7 @@
 			<div class="release-head">
 				<h2 id="v1-0-30"><a href="#v1-0-30">1.0.30</a></h2>
 				<span class="date">2026-07-24</span>
+				<span class="pill pending">pending release</span>
 			</div>
 			<div class="sec">
 				<span class="tag fix">Fixed</span>
@@ -364,6 +375,7 @@
 			<div class="release-head">
 				<h2 id="v1-0-29"><a href="#v1-0-29">1.0.29</a></h2>
 				<span class="date">2026-07-24</span>
+				<span class="pill pending">pending release</span>
 			</div>
 			<div class="sec">
 				<span class="tag chg">Changed</span>
@@ -384,6 +396,7 @@
 			<div class="release-head">
 				<h2 id="v1-0-28"><a href="#v1-0-28">1.0.28</a></h2>
 				<span class="date">2026-07-24</span>
+				<span class="pill pending">pending release</span>
 			</div>
 			<div class="sec">
 				<span class="tag chg">Changed</span>
@@ -404,6 +417,7 @@
 			<div class="release-head">
 				<h2 id="v1-0-27"><a href="#v1-0-27">1.0.27</a></h2>
 				<span class="date">2026-07-24</span>
+				<a class="gh-link" href="https://github.com/santhreal/veyyon/releases/tag/v1.0.27">View on GitHub ↗</a>
 			</div>
 			<div class="sec">
 				<span class="tag chg">Changed</span>
@@ -423,6 +437,7 @@
 			<div class="release-head">
 				<h2 id="v1-0-26"><a href="#v1-0-26">1.0.26</a></h2>
 				<span class="date">2026-07-24</span>
+				<a class="gh-link" href="https://github.com/santhreal/veyyon/releases/tag/v1.0.26">View on GitHub ↗</a>
 			</div>
 			<div class="sec">
 				<span class="tag chg">Changed</span>
@@ -443,6 +458,7 @@
 			<div class="release-head">
 				<h2 id="v1-0-25"><a href="#v1-0-25">1.0.25</a></h2>
 				<span class="date">2026-07-24</span>
+				<a class="gh-link" href="https://github.com/santhreal/veyyon/releases/tag/v1.0.25">View on GitHub ↗</a>
 			</div>
 			<div class="sec">
 				<span class="tag add">Added</span>
@@ -471,6 +487,7 @@
 			<div class="release-head">
 				<h2 id="v1-0-24"><a href="#v1-0-24">1.0.24</a></h2>
 				<span class="date">2026-07-24</span>
+				<a class="gh-link" href="https://github.com/santhreal/veyyon/releases/tag/v1.0.24">View on GitHub ↗</a>
 			</div>
 			<div class="sec">
 				<span class="tag add">Added</span>

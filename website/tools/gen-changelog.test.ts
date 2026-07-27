@@ -323,6 +323,40 @@ describe("renderRootChangelog", () => {
 		expect(gen.renderRootChangelog(SAMPLE).startsWith("# Changelog\n")).toBe(true);
 	});
 
+	/**
+	 * The root file says it is generated, right where somebody about to edit it will look.
+	 *
+	 * WHY THIS IS ASSERTED. The root changelog reads like a hand-written file and it is the first
+	 * one a contributor opens, so entries got written directly into it -- twice in a single day --
+	 * and the next regeneration deletes them. `sync-root-changelog.ts` refuses to overwrite a
+	 * bullet no package claims, which catches the mistake, but only after the writing. The banner
+	 * is the half that prevents it, and it has to name the actual destination and the command, or
+	 * it is a warning without a way forward.
+	 */
+	it("says it is generated and where entries belong instead", () => {
+		const root = gen.renderRootChangelog(SAMPLE);
+		const banner = root.split("\n")[2];
+
+		expect(banner.startsWith("> **Generated file.**")).toBe(true);
+		expect(banner).toContain("packages/*/CHANGELOG.md");
+		expect(banner).toContain("bun scripts/sync-root-changelog.ts");
+		// Above the first release heading, so it cannot be scrolled past.
+		expect(root.indexOf(banner)).toBeLessThan(root.indexOf("## [Unreleased]"));
+	});
+
+	/**
+	 * And the banner is not mistaken for a changelog entry. The orphan check parses `- ` bullets
+	 * under `## [Unreleased]`; a banner that parsed as one would make every regeneration report a
+	 * bullet no package claims and refuse to write, which is the guard eating itself.
+	 */
+	it("writes the banner as a blockquote, not a bullet", () => {
+		const root = gen.renderRootChangelog(SAMPLE);
+		const bannerLine = root.split("\n").find(line => line.includes("**Generated file.**"));
+
+		expect(bannerLine?.startsWith("-")).toBe(false);
+		expect(bannerLine?.startsWith(">")).toBe(true);
+	});
+
 	it("keeps the whole file when there is no fork heading (all-veyyon history)", () => {
 		// Defensive: a source with no upstream merge is entirely veyyon's, so nothing
 		// is dropped; the credit note is still appended for provenance.

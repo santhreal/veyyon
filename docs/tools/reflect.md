@@ -87,7 +87,7 @@ Mnemopi:
 - Throws `Hindsight backend is not initialised for this session.` when `memory.backend == "hindsight"` but no state exists.
 - Hindsight HTTP and fetch failures become `HindsightError` with `statusCode` and parsed `details` when available.
 - Hindsight `ensureBankExists(...)` failures are silent to the tool caller; only the later reflect request can fail visibly.
-- Mnemopi recall target failures inside `collectScopedRecallResults(...)` are caught per bank and logged only when `mnemopi.debug` is enabled; if all targets fail, the tool can return the no-information text.
+- Mnemopi recall target failures inside `collectScopedRecallResults(...)` are caught per bank and logged unconditionally with `logger.warn`; if all targets fail, it throws `Memory recall failed: none of the configured banks could be read (...)`, which the tool rethrows as an error. The no-information text is returned only when recall succeeds with zero results.
 - Non-`Error` failures caught by the tool are normalized to `new Error(String(err))` before rethrow.
 
 ## Notes

@@ -49,8 +49,7 @@ $ export OPENAI_API_KEY=sk-...
 $ veyyon --model openai/gpt-5
 ```
 
-Managed OpenAI sign-in is also available with `/login openai` inside the TUI, so no key is pasted into
-the shell. See [Authentication](./authentication.md).
+OpenAI is API-key only: export `OPENAI_API_KEY` or pin `apiKey` in `models.yml`. See [Authentication](./authentication.md).
 
 ## DeepSeek
 

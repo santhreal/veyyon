@@ -6,7 +6,7 @@ Reference: [Hooks](./hooks.md) and repository `docs/hooks.md`.
 
 ## Minimal example
 
-Place a file under a discovered hooks directory (for example `.veyyon/hooks/policy.ts`):
+Place a file under a discovered hooks directory (for example `.veyyon/hooks/pre/policy.ts`):
 
 ```ts
 import type { HookAPI } from "@veyyon/coding-agent/extensibility/hooks";

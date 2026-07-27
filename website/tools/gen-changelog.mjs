@@ -449,6 +449,10 @@ function veyyonEntries(entries, forkPointVersion) {
  *   kept so existing callers and tests do not have to change) or an ordered list
  *   of `{ name, md }` package changelogs.
  */
+/** Says where entries belong, at the top of the file people mistake for the source. */
+const ROOT_GENERATED_BANNER =
+	"> **Generated file.** This changelog is assembled from every `packages/*/CHANGELOG.md`. Add your entry to the Unreleased section of the changelog for the package you changed, then run `bun scripts/sync-root-changelog.ts`. An entry written here is deleted by the next regeneration.";
+
 export function renderRootChangelog(sources, { forkPointVersion = FORK_POINT_VERSION } = {}) {
 	const list = typeof sources === "string" ? [{ name: "coding-agent", md: sources }] : sources;
 
@@ -476,7 +480,12 @@ export function renderRootChangelog(sources, { forkPointVersion = FORK_POINT_VER
 		}
 	}
 
-	const parts = ["# Changelog", ""];
+	// The banner is load-bearing, not decoration. This file looks hand-written and it is the
+	// first changelog a visitor opens, so contributors wrote entries straight into it and the
+	// next regeneration deleted them. `sync-root-changelog.ts` refuses to write over an
+	// unclaimed bullet now, which catches it, but only AFTER the entry has been written in the
+	// wrong place -- twice in one day. Saying so at the top is the part that stops it happening.
+	const parts = ["# Changelog", "", ROOT_GENERATED_BANNER, ""];
 	for (const version of [...byVersion.keys()].sort(compareVersionsDesc)) {
 		const sections = byVersion.get(version);
 		const date = dates.get(version);

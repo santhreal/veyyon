@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -238,7 +238,7 @@
 </ol>
 <p><code>write</code> strips pasted hashline prefixes when appropriate, and can mint new tags after a whole-file write.</p>
 <h2 id="safety"><a class="header" href="#safety">Safety</a></h2>
-<p>Edits honor the approval mode, just as <code>bash</code> does. A denied tool is removed from the model’s tool list through <code>disallowed_tools</code> or plan mode, so the model cannot call it at all.</p>
+<p>Edits honor the approval mode, just as <code>bash</code> does. A <code>tools.approval.&lt;tool&gt;: deny</code> policy keeps the tool in the model’s list but refuses every call at dispatch with an error naming the policy. Tools leave the model’s list via <code>&lt;tool&gt;.enabled: false</code>, harness-profile allowlists, <code>tools.discoveryMode</code> (BM25 hiding), extension or agent tool-set overrides, or agent definitions. Plan mode keeps the list and blocks mutations at approval time.</p>
 <p>Hashline is the primary write path, and <code>apply_patch</code> is a compatibility mode. There is no single V4A applier that routes every mutation through a <code>make_update_patch</code> envelope.</p>
 
                     </main>

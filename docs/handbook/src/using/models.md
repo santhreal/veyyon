@@ -48,12 +48,13 @@ selectable when it is not in `disabledProviders` **and** it is keyless or has re
 
 | Provider id | Notes |
 | --- | --- |
-| `anthropic`, `openai`, `google`, `groq`, … | Cloud providers; sign in with `/login <id>` or set the env var. |
+| `anthropic`, `openai`, `google`, `groq`, … | Cloud providers; set the env var. Some (for example `anthropic`) also support `/login <id>`; see [providers](../../../providers.md). |
 | `amazon-bedrock` | Uses the AWS credential chain (`AWS_PROFILE`, instance role, …). |
 | `ollama`, `lm-studio`, `llama.cpp` | Local engines, discovered automatically and keyless by default. |
 
-Once a provider is available, model ids come from its discovery endpoint, there is no hardcoded BYOK
-allowlist. Failed discovery returns an error; it does not invent an empty catalog.
+Once a provider is available, model ids come from a bundled static catalog, merged with live
+discovery for providers that expose a `/models` endpoint. Failed discovery returns an error; it does
+not invent an empty catalog.
 
 ## Local models: Ollama and LM Studio
 
@@ -81,14 +82,14 @@ explicit `models.yml` entry for one of these ids replaces its built-in discovery
 | `/model` (or restart with `--model`) | The **interactive** model for subsequent turns | The subagent and compaction models |
 
 Switching the interactive model mid-session never blends through a fallback chain into the subagent or
-compaction model. `/status` shows all effective models. `veyyon plugin doctor` warns about missing
-external binaries and keys.
+compaction model. `/model` shows the current interactive model; `/session info` shows session stats.
+`veyyon plugin doctor` checks plugin installation health.
 
 ```console
 $ veyyon --model openai/gpt-5
 # later, inside the TUI:
 /model deepseek/deepseek-chat
-/status
+/session info
 ```
 
 ## Model selection
@@ -124,15 +125,25 @@ and model roles. See [Execution-order prompts](../models/prompts.md) and
 
 ### Harness profiles
 
-Optional overrides in `config.yml` or `~/.veyyon/profiles/default/agent/harness-profiles.yml`:
+Optional overrides in `config.yml` or `~/.veyyon/profiles/default/agent/harness-profiles.yml`. The two files take different shapes: `config.yml` nests under `harness:` (the `harness.profiles` setting), while `harness-profiles.yml` reads a top-level `profiles:` map (a top-level `harness:` key there is silently dropped).
 
 ```yaml
+# config.yml
 harness:
   profiles:
     "openai/gpt-4.1":
       repair: true
       tools: ["read", "edit", "grep", "bash", "write"]
       promptSectionOrder: ["tool-policy", "delivery-contract"]
+```
+
+```yaml
+# harness-profiles.yml
+profiles:
+  "openai/gpt-4.1":
+    repair: true
+    tools: ["read", "edit", "grep", "bash", "write"]
+    promptSectionOrder: ["tool-policy", "delivery-contract"]
 ```
 
 Keys: exact `provider/model-id` or `provider/*`. See [Per-model repair posture](../repair/per-model.md).

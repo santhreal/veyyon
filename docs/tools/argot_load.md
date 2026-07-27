@@ -45,7 +45,7 @@ A single text block plus structured `details`.
 ## Side Effects
 - Session state: adds the project's handles to the session's teach set, so they appear in the prompt's handle table from the next turn.
 - Filesystem: reads the project to build its dictionary, and writes a cache entry outside the repository when one does not already exist. The dictionary is never committed to the repo, and no working tree is modified.
-- Approval: read-tier. The tool reads a repository and mutates only a local cache and the teach set.
+- Approval: write-tier. Loading reads a project tree (possibly outside the session cwd) and writes the generated dictionary into the cache directory, so non-yolo approval modes prompt.
 
 ## Errors
 - `folder_path is required` when the argument is empty or whitespace only.

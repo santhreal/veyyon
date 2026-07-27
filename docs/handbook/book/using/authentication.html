@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -205,7 +205,7 @@ tracks its own credentials. Those credentials are shared across profiles by defa
 <p>Use the interactive slash commands inside a session:</p>
 <ul>
 <li><code>/login</code>: opens the OAuth/key selector.</li>
-<li><code>/login &lt;provider&gt;</code>: jumps straight to one provider, e.g. <code>/login anthropic</code>, <code>/login openai</code>.</li>
+<li><code>/login &lt;provider&gt;</code>: jumps straight to one provider, e.g. <code>/login anthropic</code>, <code>/login github-copilot</code>.</li>
 <li><code>/login &lt;redirect-url&gt;</code>: completes an OAuth flow that needs a pasted callback URL.</li>
 <li><code>/logout</code>: opens the provider selector to remove stored credentials.</li>
 </ul>
@@ -220,8 +220,8 @@ $ veyyon auth-broker logout
 <p><code>import</code> and <code>migrate</code> are also available. See <a href="../models/providers.html">Providers</a> and <code>docs/secrets.md</code>
 for the broker model.</p>
 <h2 id="using-an-environment-variable-instead"><a class="header" href="#using-an-environment-variable-instead">Using an environment variable instead</a></h2>
-<p>Every provider reads one or more environment variables, so a key already exported in your shell (or in
-a <code>.env</code> file) is used without an interactive sign-in.</p>
+<p>Every API-key provider reads one or more environment variables, so a key already exported in your shell (or in
+a <code>.env</code> file) is used without an interactive sign-in. OAuth-only providers (for example <code>google-antigravity</code>, <code>google-gemini-cli</code>, <code>kimi-code</code>) take no key variable: sign in with <code>/login</code>.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -248,9 +248,10 @@ from <code>&lt;cwd&gt;/.env</code>, <code>~/.veyyon/profiles/default/agent/.env<
 <ol>
 <li>A runtime <code>--api-key</code> for the current process (never persisted).</li>
 <li>A <code>models.yml</code> <code>apiKey</code> on a custom provider.</li>
-<li>A stored API key in the auth store.</li>
 <li>A stored OAuth credential (refreshed as needed).</li>
+<li>A stored API key in the auth store (persisted by <code>/login</code>).</li>
 <li>The provider’s environment variable (including <code>.env</code>).</li>
+<li>Any other stored API-key credential, then a custom-provider resolver fallback.</li>
 </ol>
 <p>Stored credentials live in a machine-wide auth store at <code>~/.veyyon/shared-auth/agent.db</code> (or the configured
 auth-broker snapshot in broker mode). <code>VEYYON_CODING_AGENT_DIR</code> relocates the agent base for a profile’s own

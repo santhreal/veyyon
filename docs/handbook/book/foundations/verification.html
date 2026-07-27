@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -202,7 +202,7 @@
 <li><strong>Hashline edit path</strong>: round-trip: generated patches apply to the intended content; mismatches fail with the expected error surface.</li>
 <li><strong>Tool-call repair</strong>: unit and conformance cases in <code>packages/coding-agent/test/repair/schema-repair.test.ts</code> (clean / repaired / unrepairable, alias ambiguity, strict <code>additionalProperties</code>).</li>
 <li><strong>Tool-output bounds</strong>: truncation limits behave as configured and remain visible to the model.</li>
-<li><strong>Architecture gates</strong>: layering, re-exports, and related repo checks (see project CI / <code>STANDARD.md</code> where applicable).</li>
+<li><strong>Architecture gates</strong>: layering, import cycles, and module-reach checks in <code>packages/coding-agent/test/architecture/</code>.</li>
 </ul>
 <h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>

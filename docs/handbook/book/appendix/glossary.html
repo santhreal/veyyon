@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
+            window.path_to_searchindex_js = "../searchindex-5a517aa6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-578177b6.js"></script>
@@ -202,7 +202,7 @@
 <p><strong>apply_patch</strong>: Edit mode (<code>edit.mode: apply_patch</code>) for a Codex-style <code>*** Begin Patch … *** End Patch</code> envelope. Default edit mode is <strong>hashline</strong> via the <code>edit</code> tool. Apply-patch shares approval policy with other write paths.</p>
 </li>
 <li>
-<p><strong>approval mode</strong>: The autonomy control (<code>tools.approvalMode</code>) for tool tiers: <code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code> (legacy <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>). There is no OS command sandbox; the mode (plus execpolicy) is the boundary.</p>
+<p><strong>approval mode</strong>: The autonomy control (<code>tools.approvalMode</code>) for tool tiers: <code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code> (legacy <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>). There is no OS command sandbox; the mode, per-tool <code>tools.approval</code> overrides, and hard-coded critical bash patterns are the boundary.</p>
 </li>
 <li>
 <p><strong>model catalog</strong>: Bundled provider/model data plus <code>models.yml</code> / <code>models.yaml</code> custom entries. There is no separate <code>backends.toml</code> subsystem.</p>
@@ -220,7 +220,7 @@
 <p><strong>goal state</strong>: A structured goal card on the session (session-backed). Holds the objective and lifecycle fields, injected outside the raw conversation tail so compaction does not drop intent.</p>
 </li>
 <li>
-<p><strong>hook</strong>: A TypeScript module that default-exports a factory and registers handlers with <code>pi.on(...)</code> (events such as <code>tool_call</code>, <code>tool_result</code>, <code>session</code>). Can block tools, inject context, or register commands. See <a href="../features/hooks.html">Hooks</a>.</p>
+<p><strong>hook</strong>: A TypeScript module that default-exports a factory and registers handlers with <code>pi.on(...)</code> (events such as <code>tool_call</code>, <code>tool_result</code>, <code>session_start</code>). Can block tools, inject context, or register commands. See <a href="../features/hooks.html">Hooks</a>.</p>
 </li>
 <li>
 <p><strong>MCP</strong>: Model Context Protocol. Veyyon is an MCP <strong>client</strong> that connects to external MCP servers and exposes their tools as <code>mcp__…</code>. Editor embedding uses ACP (<code>veyyon acp</code>), which is a different protocol.</p>
@@ -232,7 +232,7 @@
 <p><strong>personality</strong>: Style-only system prompt block. Built-ins include <code>default</code>, <code>pragmatic</code>, <code>friendly</code>, and <code>none</code>.</p>
 </li>
 <li>
-<p><strong>plugin</strong>: A directory with a <code>.veyyon-plugin/plugin.json</code> manifest that can add skills, MCP servers, hooks, and related assets. Plugins are discovered through marketplaces.</p>
+<p><strong>plugin</strong>: A directory with a <code>.claude-plugin/plugin.json</code> manifest (or a <code>package.json</code> carrying the <code>veyyon</code> manifest) that can add skills, MCP servers, hooks, and related assets. Plugins are discovered through marketplaces, npm installs, or <code>veyyon plugin link</code>.</p>
 </li>
 <li>
 <p><strong>profile</strong>: A directory under <code>~/.veyyon/profiles/&lt;name&gt;/</code> (including <code>default</code>) holding agent settings, sessions, MCP, skills, and related state. Activate with <code>--profile</code>, <code>VEYYON_PROFILE</code>, or <code>/profile</code> (relaunch).</p>
@@ -244,16 +244,16 @@
 <p><strong>repair</strong>: Schema-based coercion of malformed tool-call arguments before validation; ambiguous cases return an error tool result (no dispatch). See <a href="../repair/overview.html">Repair</a>.</p>
 </li>
 <li>
-<p><strong>repair cascade</strong>: The ordered set of sound transforms the repair engine applies to a tool call. Each rule returns a coerced value, a rule name for telemetry, and a coaching hint.</p>
+<p><strong>repair cascade</strong>: The ordered set of sound transforms the repair engine applies to a tool call (parse leniency, alias/typo key repair, strict unknown-key rejection, ambiguity guard). The engine returns a status (<code>clean</code> / <code>repaired</code> / <code>unrepairable</code>), the coerced arguments, and coaching hints; an unrepairable call returns an error tool result without dispatch.</p>
 </li>
 <li>
-<p><strong>rollout</strong>: The append-only JSONL log of a session’s entries. Each entry carries an <code>id</code> and <code>parent_id</code>; a <code>leaf_move</code> line branches the active leaf to any earlier entry without rewriting history.</p>
+<p><strong>rollout</strong>: The append-only JSONL log of a session’s entries. Each entry carries an <code>id</code> and a <code>parentId</code>. Branching moves the in-memory leaf; the next appended entry’s <code>parentId</code> (and an optional <code>branch_summary</code> entry) records the move without rewriting history.</p>
 </li>
 <li>
-<p><strong>session</strong>: The unit of interactive work in Veyyon. A session records turns, tool activity, approvals, edits, and verification output,</p>
+<p><strong>session</strong>: The unit of interactive work in Veyyon. A session records turns, tool activity, approvals, edits, and verification output.</p>
 </li>
 <li>
-<p><strong>skill</strong>: Filesystem package with a <code>SKILL.md</code>. Discovered from profile/project skill dirs, managed-skills, plugins, and optional foreign-tool layouts. Metadata enters the system prompt; body is read via <code>skill://</code>.</p>
+<p><strong>skill</strong>: Filesystem package with a <code>SKILL.md</code>. Loaded only from an explicit allowlist: the active profile’s skills directory, veyyon-managed skills, and plugin-bundled skills. Foreign-tool layouts never contribute skills. Metadata enters the system prompt; body is read via <code>skill://</code>.</p>
 </li>
 <li>
 <p><strong>thread / active leaf</strong>: A thread is a linear sequence of messages within a session. The active leaf is the currently selected tip of the session tree that receives the next turn; branching moves the leaf without erasing sibling history.</p>

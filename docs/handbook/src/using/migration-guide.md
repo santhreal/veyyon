@@ -17,13 +17,13 @@ This guide walks through upgrading Veyyon and recovering when an upgrade does no
 
 ## Config schema updates
 
-Profile settings live in `~/.veyyon/profiles/<name>/agent/config.yml` (default profile: `profiles/default/agent/config.yml`). Global cross-profile keys (for example `defaultProfile`) live in `~/.veyyon/config.yml`. The binary validates settings against the schema and reports file, key, and line on failure.
+Profile settings live in `~/.veyyon/profiles/<name>/agent/config.yml` (default profile: `profiles/default/agent/config.yml`). Global cross-profile keys (for example `defaultProfile`) live in `~/.veyyon/config.yml`. The binary validates settings against the schema and reports the file, the dotted setting key, and the reason on failure.
 
 ### Common schema changes
 
-- **New required keys** are added when a new feature is on by default. The error message names the missing key and the section it belongs in. Add it to the profile `config.yml` or disable the related feature if you do not need it.
-- **Renamed fields** are reported as unknown keys. The old name is usually accepted during a short migration window, but you should rename it to the current spelling.
-- **Removed fields** are reported as unknown keys but do not stop Veyyon from starting, so an upgrade does not immediately break an old config. Delete the key once you see it reported to keep the file clean.
+- **New keys** arrive with a schema default, so a missing key is never an error; the default applies until you set your own value.
+- **Renamed fields** are migrated automatically where a migration exists, and the file is rewritten in the new spelling.
+- **Removed or unknown fields** are preserved silently and never block startup (they may belong to a newer build or another tool). Delete them yourself to keep the file clean.
 
 ### Updating your config
 
@@ -62,7 +62,7 @@ Never delete `sessions/` to fix a state problem. Rollouts are the durable histor
 If the new binary does not work for you, you can go back to the previous version without losing data.
 
 1. Close all Veyyon processes.
-2. Restore the previous binary. Run `veyyon rollback` to pick an earlier version, or re-run the `curl` installer with `--ref v<version>` to pin one from veyyon.dev; a source checkout goes back with `git checkout` and a rebuild.
+2. Restore the previous binary. Run `veyyon rollback` to pick an earlier version, or re-run the `curl` installer with `--binary --ref v<version>` to pin that release binary (fetched from GitHub Releases; a bare `--ref` builds that ref from source instead); a source checkout goes back with `git checkout` and a rebuild.
 3. Restore profile `config.yml` (and global `~/.veyyon/config.yml` if you changed it) from the backup you made before upgrading, if the new version modified settings the old version cannot read.
 4. Leave agent-dir `sessions/`, archives, and SQLite stores in place. Rollout files are forward-compatible for recent releases; the old binary can rebuild indexes when needed.
 5. Start Veyyon and run `veyyon plugin doctor` to confirm the environment is healthy.
@@ -78,8 +78,9 @@ veyyon --version
 veyyon plugin doctor
 ```
 
-`veyyon plugin doctor` checks extension health and warns about missing optional binaries or provider
-keys; it exits non-zero when a check reports an error. Start a normal interactive session and run
+`veyyon plugin doctor` checks plugin installation health (directories, manifests, entry paths, enabled
+features); it exits non-zero when a check reports an error. Binary and provider-key checks live in
+`veyyon setup status`. Start a normal interactive session and run
 `/debug` and `/memory diagnose` to confirm the runtime and memory backend are working.
 
 Treat every failed check as actionable. Fix the reported line, then re-run. If a check fails after a

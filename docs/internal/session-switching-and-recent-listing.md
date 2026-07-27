@@ -33,13 +33,13 @@ It focuses on current implementation behavior, including fallback paths and cave
 There are two different listing pipelines:
 
 1. `getRecentSessions(sessionDir, limit)` (welcome/summary view)
-   - Reads only a 4KB prefix (`readTextSlices(..., 4096, 0)[0]`) from each file.
+   - Reads a 4KB prefix (`readTextSlices(..., 4096, 0)[0]`) from each file, escalating once to a bounded 1 MiB read (`SESSION_LIST_ESCALATED_PREFIX_BYTES`) when the prefix hides the first user message in a larger file.
    - Parses header + earliest user text preview.
    - Returns lightweight `RecentSessionInfo` (`path`, `name`, `timeAgo`); `name` and `timeAgo` are computed eagerly (`sessionDisplayName` / `formatTimeAgo`), not lazy getters.
    - Sorts by file `mtime` descending.
 
 2. `SessionManager.list(...)` / `SessionManager.listAll()` (resume pickers and ID matching)
-   - Reads a 4KB prefix plus a bounded 32 KiB tail in one `readTextSlices(...)` call per file, not the full JSONL file.
+   - Reads a 4KB prefix plus, for `list`/`listAll` (which pass `withStatus`), a bounded 32 KiB tail in one `readTextSlices(...)` call per file, not the full JSONL file; when the prefix contains no user message in a larger file, one bounded escalated read of up to 1 MiB recovers the display fields.
    - Builds `SessionInfo` objects (`id`, `cwd`, `title`, `messageCount`, `firstMessage`, `allMessagesText`, timestamps, lifecycle status).
    - Uses prefix parsing plus marker counting for list text, and tail parsing for the final-message lifecycle status; later messages beyond the prefix may not be present in `allMessagesText`.
    - Sorts by `modified` descending.
@@ -102,8 +102,8 @@ No match -> throws error (`Session "..." not found.`).
 Handled after initial session-manager construction:
 
 1. list local sessions with `SessionManager.list(cwd, parsed.sessionDir)`
-2. if empty: preload `SessionManager.listAll()` and open the picker in all-projects scope; print `No sessions found` and exit early only when the global list is also empty
-3. open TUI picker (`selectSession`, with optional preloaded `allSessions`/`startInAllScope`)
+2. if empty: preload `SessionManager.listAll()` (used to print `No sessions found` and exit early only when the global list is also empty, and to make the picker's Tab switch instant); the picker still opens in current-folder scope
+3. open TUI picker (`selectSession`, with optional preloaded `allSessions`)
 4. if canceled: print `No session selected` and exit early
 5. if selected: when the session belongs to another project, switch the process into that project's directory (`setProjectDir`, cache resets, settings reload) first; then `SessionManager.open(selected.path)`
 
@@ -115,7 +115,7 @@ Uses `SessionManager.continueRecent(...)` directly (breadcrumb-first behavior ab
 
 ## CLI picker (`src/cli/session-picker.ts`)
 
-`selectSession(sessions, { allSessions?, startInAllScope? })` creates a standalone TUI with `SessionSelectorComponent` and resolves exactly once:
+`selectSession(sessions, { allSessions? })` creates a standalone TUI with `SessionSelectorComponent` and resolves exactly once:
 
 - selection -> resolves selected `SessionInfo` (caller uses `.path` / `.cwd`)
 - cancel (Esc) -> resolves `null`
@@ -127,8 +127,8 @@ Uses `SessionManager.continueRecent(...)` directly (breadcrumb-first behavior ab
 
 Flow:
 
-1. fetch sessions from current session dir via `SessionManager.list(currentCwd, currentSessionDir)`; if empty, preload `SessionManager.listAll()` and open in all-projects scope
-2. mount `SessionSelectorComponent` in editor area using `showSelector(...)`, wired with `loadAllSessions: () => SessionManager.listAll()` and a `history.db` prompt matcher
+1. fetch sessions from current session dir via `SessionManager.list(currentCwd, currentSessionDir)`; the selector always opens in current-folder scope, an empty list renders `No sessions in current folder. Press Tab to view all.`, and Tab loads all-projects lazily via `SessionManager.listAll()`
+2. mount `SessionSelectorComponent` as a fullscreen alternate-screen overlay via `ctx.ui.showOverlay(...)`, wired with `loadAllSessions: () => SessionManager.listAll()` and a `history.db` prompt matcher
 3. callbacks:
    - select -> close selector and call `handleResumeSession(sessionPath)`
    - cancel -> restore editor and rerender

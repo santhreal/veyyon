@@ -2,31 +2,24 @@
 
 ## Session export
 
-`/export` writes the current session transcript. Target format depends on the extension:
+`/export [path]` writes the current session transcript as a standalone offline HTML file. With no
+argument it writes `veyyon-session-<session>.html` in the working directory.
 
-| Target | Format |
-| --- | --- |
-| `.jsonl` or default | Native session JSONL (append-only entries) |
-| `.html` / `.htm` | Standalone offline HTML transcript |
-
-Paths resolve relative to the working directory, `~/`, or absolute paths. Directory targets receive
-the default session filename inside the folder.
+The path is used as given (relative paths resolve against the process working directory). There is no
+`~` expansion or directory fallback, so pass a full file path ending in `.html`.
 
 ## Migration from Claude Code
 
-`/import` is **not** in the builtin slash registry; Claude migration may be available through setup
-flows or extensions. When import runs, it merges compatible settings from `.claude/` into Veyyon's
-config tree (`.veyyon/`, `~/.veyyon/profiles/default/agent/`), including MCP, hooks, skills, and agents.
-
-Import works on **local** sessions; no background daemon is required.
+`/import` is **not** in the builtin slash registry; Claude migration runs through the setup wizard's
+import scene. It offers user-level foreign skills and `CLAUDE.md`/`AGENTS.md` instruction files and
+copies the selected ones into the active profile.
 
 Typical migrated items:
 
-- Settings from `.claude/settings.json` → `config.yml`
-- MCP servers → `mcp.json`
-- Hooks → TypeScript modules under `.veyyon/hooks/` (or agent `hooks/`) loaded via the extension path
 - Skills → the active profile's `skills` directory (`~/.veyyon/profiles/<profile>/agent/skills`)
-- Subagents → `.veyyon/agents`
-- `CLAUDE.md` → `AGENTS.md`
+- `CLAUDE.md`/`AGENTS.md` content → appended to the profile `AGENTS.md` under an `<!-- imported from … -->` marker
+
+Ambient loading of foreign `.claude` configuration is a separate opt-in (`discovery.importForeignConfig`,
+default off).
 
 See [Migration guide](../using/migration-guide.md).
