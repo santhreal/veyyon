@@ -176,6 +176,55 @@ function enclosingPackage(relFile: string): string | undefined {
 }
 
 /**
+ * Paths the repository itself declares are generated, asked of `.gitignore`.
+ *
+ * A doc that names a build output names something no clean checkout contains:
+ * `packages/deepswe-bench/runs/` appears on the first benchmark run,
+ * `packages/natives/native/.build/` when napi-rs compiles, and
+ * `tool-views.generated.js` when `bun run gen:tool-views` does. The gate reported
+ * all of them as rot, and they are the opposite: a doc telling you where the
+ * build will put something is doing its job.
+ *
+ * `.gitignore` is asked rather than a second list being kept here, because the
+ * repository already answers "is this generated?" in exactly one place, and a
+ * list maintained beside it would drift the first time a build output moved. A
+ * single `git check-ignore` call, batched over every candidate, so the gate stays
+ * one process.
+ *
+ * This is NOT the ratchet baseline. The baseline is a promise to remove a dead
+ * path; this is a statement that the path is alive and produced by a build.
+ *
+ * A directory that is not a git repository declares nothing generated, so the
+ * answer there is an empty set. That is the accurate answer to the question and
+ * not a fallback: the tests below build a doc tree in a temp directory with no
+ * `.git`, and every path in it is exactly as tracked as it looks.
+ */
+function ignoredPaths(rootDir: string, candidates: readonly string[]): Set<string> {
+	if (candidates.length === 0) return new Set();
+	const probe = Bun.spawnSync(["git", "-C", rootDir, "rev-parse", "--is-inside-work-tree"], {
+		stdout: "ignore",
+		stderr: "ignore",
+	});
+	if (probe.exitCode !== 0) return new Set();
+	const run = Bun.spawnSync(["git", "check-ignore", "--stdin"], {
+		cwd: rootDir,
+		stdin: new TextEncoder().encode(`${candidates.join("\n")}\n`),
+	});
+	// git exits 1 when nothing matched, which is an answer and not a failure. Any
+	// other code means git could not be asked, and a gate that cannot ask must
+	// report what it saw rather than quietly passing everything.
+	if (run.exitCode !== 0 && run.exitCode !== 1) {
+		throw new Error(`git check-ignore failed (exit ${run.exitCode}): ${new TextDecoder().decode(run.stderr)}`);
+	}
+	return new Set(
+		new TextDecoder()
+			.decode(run.stdout)
+			.split("\n")
+			.filter(line => line !== ""),
+	);
+}
+
+/**
  * Whether `target`, as written in `relFile`, names something that exists.
  *
  * Two bases, in the order a reader would try them: the repo root, then the package
@@ -263,6 +312,20 @@ export function checkDocPaths(rootDir: string, relFiles: string[]): PathCheckRes
 			});
 		}
 	}
+	// A doc naming a build output names something a clean checkout does not have,
+	// which is the doc doing its job rather than rot. Asked once, in a batch,
+	// after the scan, so the common case costs nothing.
+	//
+	// Both spellings are offered, the same two `resolvesFor` tries: a package
+	// README naming its own build output writes it package-relative, and asking
+	// only the root-relative form would report it as rot.
+	const spellings = (d: DeadPath): string[] => {
+		const target = withoutLocator(d.target);
+		const pkg = enclosingPackage(d.file);
+		return pkg === undefined ? [target] : [target, `${pkg}/${target}`];
+	};
+	const generated = ignoredPaths(rootDir, result.dead.flatMap(spellings));
+	result.dead = result.dead.filter(d => !spellings(d).some(s => generated.has(s)));
 	return result;
 }
 

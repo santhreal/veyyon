@@ -15,7 +15,7 @@
  * everything, or a matcher that finds nothing at all, both report a clean run.
  * So every rule below is pinned from BOTH sides, with real values.
  */
-import { afterAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -166,6 +166,90 @@ describe("checkDocPaths", () => {
 		write("packages/a/src/dir/keep.ts", "export {};\n");
 		write("docs/four.md", "see `packages/a/src/dir/` and `packages/a/src/real.ts:12`\n");
 		expect(checkDocPaths(root, ["docs/four.md"]).dead).toEqual([]);
+	});
+});
+
+describe("a doc naming a build output", () => {
+	/**
+	 * WHY THIS SUITE EXISTS. A doc that says where the build puts something names
+	 * a path no clean checkout contains, and the gate reported five of those as
+	 * rot: the benchmark's `runs/` and `repo-cache/`, napi-rs's `.build/`, and the
+	 * two references to `tool-views.generated.js`. Every one of them was the doc
+	 * doing its job. Silencing them through the ratchet baseline would have been
+	 * wrong twice over: the baseline is a promise to REMOVE a dead path, and these
+	 * paths are alive.
+	 *
+	 * The repository already answers "is this generated?" in exactly one place, so
+	 * the gate asks `.gitignore` rather than keeping a second list beside it.
+	 */
+	const gitRoot = fs.mkdtempSync(path.join(os.tmpdir(), "doc-paths-git-"));
+	afterAll(() => fs.rmSync(gitRoot, { recursive: true, force: true }));
+
+	function writeIn(rel: string, content: string): void {
+		const abs = path.join(gitRoot, rel);
+		fs.mkdirSync(path.dirname(abs), { recursive: true });
+		fs.writeFileSync(abs, content);
+	}
+
+	beforeAll(() => {
+		Bun.spawnSync(["git", "init", "-q", gitRoot]);
+		writeIn(".gitignore", "packages/bench/out.generated.js\npackages/bench/runs/\n");
+	});
+
+	it("passes a path .gitignore declares generated, even though it does not exist", () => {
+		writeIn("docs/gen.md", "bundled into `packages/bench/out.generated.js` by the build\n");
+		expect(checkDocPaths(gitRoot, ["docs/gen.md"]).dead).toEqual([]);
+	});
+
+	it("passes an ignored directory the same way", () => {
+		writeIn("docs/dir.md", "trial output lands in `packages/bench/runs/`\n");
+		expect(checkDocPaths(gitRoot, ["docs/dir.md"]).dead).toEqual([]);
+	});
+
+	/**
+	 * The gate has to keep failing on ordinary rot, or teaching it about build
+	 * outputs would have turned it off. A path that is neither present nor
+	 * declared generated is still a doc pointing at nothing.
+	 */
+	it("still fails a path that is neither present nor declared generated", () => {
+		writeIn("docs/rot.md", "see `scripts/moved-away.ts`\n");
+		const dead = checkDocPaths(gitRoot, ["docs/rot.md"]).dead;
+		expect(dead).toHaveLength(1);
+		expect(dead[0]?.target).toBe("scripts/moved-away.ts");
+	});
+
+	/**
+	 * A path that EXISTS and is also ignored never reaches the ignore question:
+	 * it resolved on the filesystem. Worth pinning, because a build output that
+	 * happens to be present locally must not be reported differently from one
+	 * that is not.
+	 */
+	it("passes an ignored path that happens to exist locally", () => {
+		writeIn("packages/bench/out.generated.js", "// built\n");
+		writeIn("docs/present.md", "bundled into `packages/bench/out.generated.js`\n");
+		expect(checkDocPaths(gitRoot, ["docs/present.md"]).dead).toEqual([]);
+	});
+
+	/**
+	 * A package README writes its own build output package-relative, because that
+	 * is how its reader runs it, so the ignore question is asked in both
+	 * spellings the same way `resolvesFor` tries both. Asking only the
+	 * root-relative form reported every in-package README naming a build artifact
+	 * as rot.
+	 */
+	it("passes an in-package doc naming its own build output relatively", () => {
+		writeIn("packages/bench/README.md", "the bundle is written to `out.generated.js`\n");
+		expect(checkDocPaths(gitRoot, ["packages/bench/README.md"]).dead).toEqual([]);
+	});
+
+	/**
+	 * A directory with no repository declares nothing generated, so the honest
+	 * answer is that nothing is exempt, and every other suite in this file relies
+	 * on it: they build their doc tree in a bare temp directory.
+	 */
+	it("exempts nothing when the tree is not a git repository", () => {
+		write("docs/nogit.md", "see `scripts/absent.ts`\n");
+		expect(checkDocPaths(root, ["docs/nogit.md"]).dead).toHaveLength(1);
 	});
 });
 
