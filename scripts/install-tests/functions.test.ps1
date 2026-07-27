@@ -840,9 +840,28 @@ Remove-Item Function:Global:Invoke-WebRequest -ErrorAction SilentlyContinue
 # install must not be able to fail because somebody else on the same address
 # installed veyyon sixty times this hour. Comment lines are excluded, since the
 # comment above the lookup names the API host to explain why it is not called.
+$ps1Text = Get-Content (Join-Path $root "scripts/install.ps1") -Raw
 $ps1Code = (Get-Content (Join-Path $root "scripts/install.ps1")) | Where-Object { $_ -notmatch '^\s*#' }
 Check "the Windows installer makes no api.github.com request at all" `
     (@($ps1Code | Where-Object { $_ -match 'api\.github\.com' }).Count) "0"
+
+# --- Uninstall-Veyyon: the terminals already open have not caught up ---
+# A PATH entry lives in the registry and reaches a process when that process
+# starts, so every terminal already open still holds the entry the uninstall just
+# removed, and `veyyon` there answers with a path the user can see is gone. The
+# message is printed only when a PATH entry was actually taken out; an uninstall
+# that touched no PATH has nothing to restart for. Asserted on the source rather
+# than by running an uninstall, which would edit the machine's real PATH.
+$uninstallFn = $ps1Text.Substring($ps1Text.IndexOf("function Uninstall-Veyyon {"))
+$uninstallFn = $uninstallFn.Substring(0, $uninstallFn.IndexOf("`n}"))
+Check "the uninstall says open terminals keep the old entry" `
+    ($uninstallFn -match 'open terminals keep the old PATH entry until they restart') "True"
+Check "it says so only when a PATH entry was removed" `
+    ($uninstallFn -match 'if \(\$pathEntryRemoved\)') "True"
+Check "the flag is set where the entry is actually removed" `
+    ($uninstallFn -match '\$pathEntryRemoved = \$true') "True"
+Check "and starts false, so a no-op uninstall stays quiet" `
+    ($uninstallFn -match '\$pathEntryRemoved = \$false') "True"
 
 Write-Host ""
 # A run that recorded nothing is a broken harness, not a pass: fail closed rather
