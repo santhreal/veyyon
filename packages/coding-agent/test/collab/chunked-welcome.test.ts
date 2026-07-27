@@ -18,6 +18,7 @@ import { COLLAB_PROTO, type CollabFrame, parseCollabLink } from "@veyyon/coding-
 import { CollabSocket } from "@veyyon/coding-agent/collab/relay-client";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import type { SessionEntry } from "@veyyon/coding-agent/session/session-entries";
+import type { WireSessionEntry } from "@veyyon/wire";
 import { installInMemoryRelay, uninstallInMemoryRelay } from "./helpers/in-memory-relay";
 
 // In-memory transport: shared FakeWebSocket + InMemoryRelay harness (see
@@ -192,7 +193,7 @@ describe("collab chunked welcome (#3144)", () => {
 		// The chunk train starts immediately after the welcome and the host
 		// queues every chunk synchronously, so no other directed frame may
 		// interleave between them.
-		const chunks: { entries: SessionEntry[]; final: boolean }[] = [];
+		const chunks: { entries: WireSessionEntry[]; final: boolean }[] = [];
 		for (let i = welcomeIdx + 1; i < frames.length; i++) {
 			const f = frames[i];
 			if (f?.t !== "snapshot-chunk") {
@@ -207,7 +208,7 @@ describe("collab chunked welcome (#3144)", () => {
 		expect(chunks.at(-1)?.final).toBe(true);
 		expect(chunks.slice(0, -1).every(c => !c.final)).toBe(true);
 
-		const flattened: SessionEntry[] = [];
+		const flattened: WireSessionEntry[] = [];
 		for (const chunk of chunks) flattened.push(...chunk.entries);
 		expect(flattened.length).toBe(snapshot.entries.length);
 		expect(flattened.map(e => e.id)).toEqual(snapshot.entries.map(e => e.id));

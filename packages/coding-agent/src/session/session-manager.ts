@@ -12,6 +12,7 @@ import {
 	stringifyJson,
 	toError,
 } from "@veyyon/utils";
+import { sessionFileName, sessionFileStem } from "@veyyon/utils/session-file";
 import { ArtifactManager } from "./artifacts";
 import { type BlobPutOptions, type BlobPutResult, BlobStore } from "./blob-store";
 import {
@@ -71,7 +72,6 @@ import {
 } from "./session-storage";
 import { type SessionTitleUpdate, serializeTitleSlot } from "./session-title-slot";
 
-const JSONL_SUFFIX_LENGTH = ".jsonl".length;
 const DRAFT_ONLY_SESSION_MARKER = ".draft-only-session";
 
 function mintSessionId(): string {
@@ -87,7 +87,7 @@ function fileSafeTimestamp(iso: string): string {
 }
 
 function artifactsDirectoryFor(sessionFile: string | undefined): string | null {
-	return sessionFile ? sessionFile.slice(0, -JSONL_SUFFIX_LENGTH) : null;
+	return sessionFile ? sessionFileStem(sessionFile) : null;
 }
 
 /**
@@ -104,7 +104,7 @@ function resolveBreadcrumbToInteractiveRoot(sessionFile: string): string {
 	// Walk up while the containing dir is itself a session's artifacts dir
 	// (`<dir>.jsonl` exists). Capped to defend against pathological layouts.
 	for (let depth = 0; depth < 8; depth++) {
-		const parentSessionFile = `${path.dirname(current)}.jsonl`;
+		const parentSessionFile = sessionFileName(path.dirname(current));
 		if (!fs.existsSync(parentSessionFile)) return current;
 		current = parentSessionFile;
 	}
@@ -506,6 +506,9 @@ export class SessionManager {
 
 	#scheduleDiskWork(work: () => Promise<void>, options: DiskQueueOptions = {}): Promise<void> {
 		const epoch = options.epoch ?? this.#diskEpoch;
+		// The PREVIOUS disk write's failure was already delivered to its own caller and latched in
+		// `#diskFailure`, which the work below rethrows for anyone who has not opted out. Chaining onto the
+		// caught copy is what keeps one bad write from rejecting every later one.
 		const scheduled = this.#diskTail
 			.catch(() => undefined)
 			.then(async () => {
@@ -517,6 +520,8 @@ export class SessionManager {
 		const reported = scheduled.catch(err => {
 			throw this.#noteDiskFailure(err);
 		});
+		// `reported` is returned and carries the failure (and `#noteDiskFailure` records it); the tail only
+		// orders the next write.
 		this.#diskTail = reported.catch(() => undefined);
 		return reported;
 	}
@@ -538,7 +543,16 @@ export class SessionManager {
 	#closeWriterEventually(): void {
 		const writer = this.#writer;
 		this.#writer = undefined;
-		if (writer) void writer.close().catch(() => undefined);
+		// Nobody awaits this close, so a failure here used to vanish -- and this writer holds the session's
+		// JSONL: a close that fails can mean buffered entries never reached disk. Reported so a truncated
+		// session file has an explanation.
+		if (writer) {
+			void writer.close().catch((error: unknown) => {
+				logger.warn("session writer close failed; buffered entries may be lost", {
+					error: errorMessage(error),
+				});
+			});
+		}
 	}
 
 	async #closeWriterHandle(): Promise<void> {
@@ -808,7 +822,7 @@ export class SessionManager {
 		if (this.#persist) {
 			this.#sessionFile =
 				forcedSessionFile ??
-				path.join(this.#sessionDir, `${fileSafeTimestamp(timestamp)}_${this.#sessionId}.jsonl`);
+				path.join(this.#sessionDir, sessionFileName(`${fileSafeTimestamp(timestamp)}_${this.#sessionId}`));
 			this.#rememberBreadcrumb(this.#cwd, this.#sessionFile);
 		} else {
 			this.#sessionFile = undefined;
@@ -885,7 +899,7 @@ export class SessionManager {
 
 		if (this.#artifactManager && this.#artifactManagerSessionFile === sessionFile) return this.#artifactManager;
 
-		this.#artifactManager = new ArtifactManager(sessionFile.slice(0, -JSONL_SUFFIX_LENGTH));
+		this.#artifactManager = new ArtifactManager(sessionFileStem(sessionFile));
 		this.#artifactManagerSessionFile = sessionFile;
 		return this.#artifactManager;
 	}
@@ -1056,7 +1070,10 @@ export class SessionManager {
 
 		const timestamp = nowIso();
 		this.#sessionId = mintSessionId();
-		this.#sessionFile = path.join(this.#sessionDir, `${fileSafeTimestamp(timestamp)}_${this.#sessionId}.jsonl`);
+		this.#sessionFile = path.join(
+			this.#sessionDir,
+			sessionFileName(`${fileSafeTimestamp(timestamp)}_${this.#sessionId}`),
+		);
 		this.#header = {
 			type: "session",
 			version: CURRENT_SESSION_VERSION,
@@ -1889,7 +1906,10 @@ export class SessionManager {
 
 		const timestamp = nowIso();
 		const newSessionId = mintSessionId();
-		const newSessionFile = path.join(this.#sessionDir, `${fileSafeTimestamp(timestamp)}_${newSessionId}.jsonl`);
+		const newSessionFile = path.join(
+			this.#sessionDir,
+			sessionFileName(`${fileSafeTimestamp(timestamp)}_${newSessionId}`),
+		);
 		const header: SessionHeader = {
 			type: "session",
 			version: CURRENT_SESSION_VERSION,
@@ -1986,7 +2006,7 @@ export class SessionManager {
 			timestamp,
 			cwd: path.resolve(cwd),
 		};
-		const file = path.join(sessionDir, `${fileSafeTimestamp(timestamp)}_${id}.jsonl`);
+		const file = path.join(sessionDir, sessionFileName(`${fileSafeTimestamp(timestamp)}_${id}`));
 		storage.writeTextSync(file, `${serializeTitleSlot({ updatedAt: timestamp })}${JSON.stringify(header)}\n`);
 		return file;
 	}

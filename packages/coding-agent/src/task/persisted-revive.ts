@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 
 import type { ModelRegistry } from "../config/model-registry";
 import type { Settings } from "../config/settings";
-import { MCPManager } from "../mcp/manager";
+import { mcpManagerInstance } from "../mcp/manager-instance";
 import type { PersistedSubagentReviverFactory } from "../registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 // Loaded on demand where the revive happens. See the note in `./executor`: a
@@ -59,6 +59,9 @@ export function createPersistedSubagentReviverFactory(
 		try {
 			await fs.stat(peek.cwd);
 		} catch {
+			// The recorded workspace is unreachable (deleted worktree, moved directory, unmounted share),
+			// which is the second half of the condition documented above: reviving a session whose cwd is
+			// gone would run its tools against the wrong tree, so it stays transcript-only via history://.
 			return undefined;
 		}
 		const init = peek.init;
@@ -83,7 +86,7 @@ export function createPersistedSubagentReviverFactory(
 			if (artifactManager) reopened.adoptArtifactManager(artifactManager);
 			// Reuse the parent's live MCP connections via proxy tools (no
 			// re-discovery), exactly as the executor does for live subagents.
-			const mcpManager = MCPManager.instance();
+			const mcpManager = mcpManagerInstance();
 			const mcpProxyTools = mcpManager ? createMCPProxyTools(mcpManager) : [];
 			const { createAgentSession } = await import("../sdk");
 			const { session } = await createAgentSession({

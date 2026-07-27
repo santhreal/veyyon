@@ -8,9 +8,8 @@ import * as zodModule from "zod/v4";
 import { hookCapability } from "../../capability/hook";
 import type { Hook } from "../../discovery";
 import { loadCapability } from "../../discovery";
-// Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
-import * as PiCodingAgent from "../../index";
 import type { CustomMessagePayload } from "../../session/messages";
+import { loadCodingAgentApi } from "../coding-agent-api";
 import * as typebox from "../typebox";
 import { resolvePath, withExitGuard } from "../utils";
 import { execCommand } from "./runner";
@@ -125,7 +124,7 @@ async function createHookAPI(
 		// HookAPI.arktype is typed as the arktype `Type` constructor; expose it from the module namespace.
 		arktype: arktype.Type,
 		zod: zodModule,
-		pi: PiCodingAgent,
+		pi: await loadCodingAgentApi(),
 	} as HookAPI;
 
 	return {

@@ -65,9 +65,9 @@ export type WorkerInitPayload =
 			recover?: boolean;
 	  };
 
-export type ToolReply = { ok: true; value: unknown } | { ok: false; error: RunErrorPayload };
+export type ToolReply = { ok: true; value: unknown } | { ok: false; error: TabRunErrorPayload };
 
-export type WorkerInbound =
+export type TabWorkerInbound =
 	| { type: "init"; payload: WorkerInitPayload }
 	| { type: "run"; id: string; name: string; code: string; timeoutMs: number; session: SessionSnapshot }
 	| { type: "abort"; id: string; expectedCleanup?: boolean }
@@ -87,7 +87,7 @@ export interface RunResultOk {
 	screenshots: ScreenshotResult[];
 }
 
-export interface RunErrorPayload {
+export interface TabRunErrorPayload {
 	name: string;
 	message: string;
 	stack?: string;
@@ -95,17 +95,17 @@ export interface RunErrorPayload {
 	isAbort: boolean;
 }
 
-export type WorkerOutbound =
+export type TabWorkerOutbound =
 	| { type: "ready"; info: ReadyInfo }
-	| { type: "init-failed"; error: RunErrorPayload }
+	| { type: "init-failed"; error: TabRunErrorPayload }
 	| { type: "result"; id: string; ok: true; payload: RunResultOk }
-	| { type: "result"; id: string; ok: false; error: RunErrorPayload }
+	| { type: "result"; id: string; ok: false; error: TabRunErrorPayload }
 	| { type: "tool-call"; id: string; runId: string; name: string; args: unknown }
 	| { type: "log"; level: "debug" | "warn" | "error"; msg: string; meta?: Record<string, unknown> }
 	| { type: "closed" };
 
-export interface Transport {
-	send(msg: WorkerOutbound | WorkerInbound, transferList?: Transferable[]): void;
-	onMessage(handler: (msg: WorkerOutbound | WorkerInbound) => void): () => void;
+export interface TabWorkerTransport {
+	send(msg: TabWorkerOutbound | TabWorkerInbound, transferList?: Transferable[]): void;
+	onMessage(handler: (msg: TabWorkerOutbound | TabWorkerInbound) => void): () => void;
 	close(): void;
 }

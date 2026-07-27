@@ -13,7 +13,9 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { errorMessage, isEnoent } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
+import { isEnoent } from "@veyyon/utils/fs-error";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import { applyQuery, pathToQuery } from "./json-query";
 import { artifactsDirsFromRegistry } from "./registry-helpers";
 import type { InternalResource, InternalUrl, ProtocolHandler, UrlCompletion } from "./types";

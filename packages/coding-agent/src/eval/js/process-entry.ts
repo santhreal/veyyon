@@ -2,12 +2,12 @@
 // not happen before profile bootstrap (see process-entry-import.test.ts).
 import * as postmortem from "@veyyon/utils/postmortem";
 import { WorkerCore } from "./worker-core";
-import type { WorkerInbound, WorkerOutbound } from "./worker-protocol";
+import type { EvalWorkerInbound, EvalWorkerOutbound } from "./worker-protocol";
 
 /** Start the JavaScript evaluator inside a subprocess IPC transport. */
 export function startJsEvalProcess(transport: {
-	send(message: WorkerOutbound): void;
-	onMessage(handler: (message: WorkerInbound) => void): () => void;
+	send(message: EvalWorkerOutbound): void;
+	onMessage(handler: (message: EvalWorkerInbound) => void): () => void;
 }): void {
 	new WorkerCore(
 		{

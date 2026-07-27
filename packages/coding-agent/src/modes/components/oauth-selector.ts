@@ -11,7 +11,8 @@ import {
 	ScrollView,
 	type SgrMouseEvent,
 } from "@veyyon/tui";
-import { settings } from "../../config/settings";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { settings } from "../../config/settings-instance";
 import { theme } from "../../modes/theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import type { AuthStorage, CredentialOriginKind } from "../../session/auth-storage";

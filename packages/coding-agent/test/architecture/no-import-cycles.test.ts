@@ -67,50 +67,33 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { moduleGraph, moduleSpecifiersIn, resolveModuleSpecifier } from "@veyyon/utils/module-reach";
 
 const SRC = path.join(import.meta.dir, "..", "..", "src");
 
 /**
  * Bare side-effect imports: `import "./x";`.
  */
-const SIDE_EFFECT_IMPORT_RE = /(?:^|\n)[ \t]*import\s+["']([^"']+)["']/g;
-
 /**
- * `import ... from "x"` and `export ... from "x"`, INCLUDING the multi-line
- * braced form, which is most of them in this codebase.
+ * THE WALK IS NOT DEFINED HERE. `@veyyon/utils/module-reach` owns the specifier extraction and the
+ * resolution, and `packages/utils/test/module-reach.test.ts` tests both against fixtures with known
+ * answers. This file had its own copy, and so did three other architecture gates, each resolving a
+ * slightly different set of specifiers.
  *
- * The clause matcher is `[\s\S]*?`, not `[^;\n]*?`. An earlier version used the
- * latter and silently skipped every import whose specifier list wrapped onto its
- * own lines, which is the house style here: it reported `tools/search-scope` as
- * importing four modules when it imports five, and it would have missed a cycle
- * closed by any multi-line import. Non-greedy, so it stops at the FIRST `from`
- * clause and cannot run past the end of one statement into the next.
+ * A cycle gate is as blind to an under-resolving walker as a ceiling is, and in the same direction: a
+ * missing resolution rule is a missing EDGE, a missing edge is a path that does not exist, and a cycle
+ * through it reads as absent. Nothing fails. So the resolver is shared and tested where it can be
+ * caught, and what stays here is what belongs to this gate: Tarjan, the entry points, the ceilings.
  *
- * `import type` / `export type` are excluded because they are erased and cost
- * nothing at runtime. `await import(...)` is excluded because deferring an import
- * is one of the sanctioned fixes here, and it genuinely does break the component:
- * the module is not instantiated until the call runs.
+ * `import type` and `export type` are excluded because they are erased and cost nothing at runtime, and
+ * `await import(...)` is excluded because deferring an import is one of the sanctioned fixes here. Both
+ * exclusions live in the shared walk, so this gate and the reach ratchets cannot disagree about what an
+ * import is.
+ *
+ * NO RESOLUTION IS PASSED, on purpose. This measures THIS package's internal graph: a cycle has to run
+ * through `packages/coding-agent/src` to be one this gate can act on, and pulling `@veyyon/utils` into
+ * every count would bury the numbers the ceilings are set from.
  */
-const FROM_IMPORT_RE = /(?:^|\n)[ \t]*(?:import|export)\s+(?!type[\s{*])[\s\S]*?\sfrom\s*["']([^"']+)["']/g;
-
-/** Every module specifier `source` imports at runtime. */
-function specifiersIn(source: string): string[] {
-	const found: string[] = [];
-	for (const match of source.matchAll(SIDE_EFFECT_IMPORT_RE)) if (match[1]) found.push(match[1]);
-	for (const match of source.matchAll(FROM_IMPORT_RE)) if (match[1]) found.push(match[1]);
-	return found;
-}
-
-/** Resolve a relative specifier to a file on disk, or undefined for a package. */
-function resolveSpecifier(fromFile: string, specifier: string): string | undefined {
-	if (!specifier.startsWith(".")) return undefined;
-	const base = path.resolve(path.dirname(fromFile), specifier);
-	const candidates = [base, `${base}.ts`, `${base}.tsx`, path.join(base, "index.ts"), path.join(base, "index.tsx")];
-	for (const candidate of candidates) {
-		if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
-	}
-	return undefined;
-}
 
 interface Graph {
 	edges: Map<string, string[]>;
@@ -119,19 +102,7 @@ interface Graph {
 
 /** Every module statically reachable from `entry`, with its outgoing edges. */
 function buildGraph(entry: string): Graph {
-	const edges = new Map<string, string[]>();
-	const stack = [path.resolve(entry)];
-	while (stack.length > 0) {
-		const file = stack.pop()!;
-		if (edges.has(file)) continue;
-		const out: string[] = [];
-		for (const specifier of specifiersIn(fs.readFileSync(file, "utf-8"))) {
-			const resolved = resolveSpecifier(file, specifier);
-			if (resolved) out.push(resolved);
-		}
-		edges.set(file, out);
-		stack.push(...out);
-	}
+	const edges = moduleGraph(entry);
 	return { edges, moduleCount: edges.size };
 }
 
@@ -208,6 +179,18 @@ const ACYCLIC_ENTRIES = [
 	["config/model-resolver", "config/model-resolver.ts"],
 	["internal-urls", "internal-urls/index.ts"],
 	["session/agent-session", "session/agent-session.ts"],
+	// Added after a full runner pass failed six chunks with two errors of one shape:
+	// `Export named 'formatOutputNotice' not found in module tools/output-meta.ts` and
+	// `Export named 'wrapSteeringForModel' not found in module session/messages.ts`. Both
+	// names exist in the source, and a name that is present at rest and absent at
+	// resolution time is what a re-export through a module caught mid-initialization looks
+	// like. The failure reached the operator, not just the test: `veyyon token` and
+	// `veyyon usage` printed the SyntaxError where their own output belonged. These four
+	// entries are the graphs those two modules sit in.
+	["session/messages", "session/messages.ts"],
+	["session/steering-envelope", "session/steering-envelope.ts"],
+	["tools/output-meta", "tools/output-meta.ts"],
+	["tools/output-notice", "tools/output-notice.ts"],
 ] as const;
 
 /**
@@ -230,17 +213,67 @@ const ACYCLIC_ENTRIES = [
  * The ceilings are today's counts plus a little slack, so ordinary work does not
  * trip them, and a change that adds a hundred modules to a hot path does.
  */
+/**
+ * RE-RATCHETED 2026-07-26, and the reason is that most of these had stopped guarding anything.
+ *
+ * Every ceiling here was set right after the cut that motivated it, and then the graphs kept shrinking
+ * as later cuts landed while the numbers stayed where they were. Measured against reality:
+ * `config/settings` was 36 against a ceiling of 160, `tools/index` 65 against 200,
+ * `config/model-registry` 49 against 165, `tools/plan-mode-guard` 47 against 160, `discovery` 110
+ * against 240, `tools/path-utils` 2 against 20. A ceiling at four times the real number permits a
+ * module to quadruple its graph without failing, which is the same outcome as deleting the row: the
+ * gate is green either way and nobody looks. Leaving a ratchet loose after a real reduction is exactly
+ * the move the header warns against, just spread over several changes instead of one.
+ *
+ * Each is now `measured + roughly ten to fifteen percent`, rounded, with the measurement recorded next
+ * to it. That is room for a handful of ordinary imports and no room for a new subtree. When one fails,
+ * the fix is essentially always to import from the owning leaf rather than from a barrel; raising the
+ * number is the move that guarantees nobody looks again.
+ */
 const GRAPH_SIZE_CEILINGS = [
+	// Measured 2026-07-26 at 1. Exact on purpose: it reads a file and holds no dependency.
 	["config/auth-state", "config/auth-state.ts", 1],
-	["config/model-resolver", "config/model-resolver.ts", 12],
-	["tools/path-utils", "tools/path-utils.ts", 20],
-	["config/settings", "config/settings.ts", 160],
-	["modes/theme/theme", "modes/theme/theme.ts", 170],
-	["tools/index", "tools/index.ts", 200],
-	["config/model-registry", "config/model-registry.ts", 165],
-	["discovery", "discovery/index.ts", 240],
-	["internal-urls", "internal-urls/index.ts", 520],
-	["session/agent-session", "session/agent-session.ts", 760],
+	// Measured 2026-07-26 at 7.
+	["config/model-resolver", "config/model-resolver.ts", 10],
+	// Measured 2026-07-26 at 2, down from the 51-MB-per-realm component it used to sit inside. This is
+	// the module imported for small helpers throughout the package, so it is the most leveraged number
+	// in the list.
+	["tools/path-utils", "tools/path-utils.ts", 6],
+	// Measured 2026-07-26 at 36, down from 139 when the light/dark classifier left
+	// `modes/theme/builtin-themes` for `modes/theme/theme-luminance` and stopped dragging one JSON
+	// module per bundled theme. ~1,500 test files import `Settings`, so this is the second most
+	// leveraged.
+	["config/settings", "config/settings.ts", 45],
+	// Measured 2026-07-26 at 145. The engine legitimately owns the theme JSON.
+	["modes/theme/theme", "modes/theme/theme.ts", 160],
+	// Measured 2026-07-26 at 65.
+	["tools/index", "tools/index.ts", 80],
+	// Measured 2026-07-26 at 49.
+	["config/model-registry", "config/model-registry.ts", 60],
+	// Measured 2026-07-26 at 110.
+	["discovery", "discovery/index.ts", 130],
+	// Measured 2026-07-26 at 488. Close to its ceiling already, and the protocol registry is inherent.
+	["internal-urls", "internal-urls/index.ts", 500],
+	// Measured 2026-07-26 at 595. The composition root, so it reaches most of the package by design.
+	["session/agent-session", "session/agent-session.ts", 610],
+	// The five modules the barrel-import sweep made cheap. Each one is here because it was
+	// hundreds of modules for a reason that had nothing to do with what it does, and because the
+	// regression is invisible without a number: `import { resolveLocalRoot } from "../internal-urls"`
+	// is the obvious line to write and costs the whole protocol registry, while
+	// `from "../internal-urls/local-protocol"` costs seven. Prefer the owning leaf over a barrel
+	// whenever the barrel is a FEATURE rather than a namespace.
+	// Measured 2026-07-26 at 7, against the whole protocol registry it used to cost.
+	["internal-urls/local-protocol", "internal-urls/local-protocol.ts", 12],
+	// Measured 2026-07-26 at 8.
+	["eval/backend", "eval/backend.ts", 12],
+	// Measured 2026-07-26 at 18.
+	["eval/js/tool-bridge", "eval/js/tool-bridge.ts", 25],
+	// Measured 2026-07-26 at 47.
+	["tools/plan-mode-guard", "tools/plan-mode-guard.ts", 60],
+	// Measured 2026-07-26 at 183.
+	["utils/image-vision-fallback", "utils/image-vision-fallback.ts", 200],
+	// Measured 2026-07-26 at 199.
+	["lsp/index", "lsp/index.ts", 215],
 ] as const;
 
 describe("hot import graphs are acyclic", () => {
@@ -285,7 +318,16 @@ describe("hot import graphs are acyclic", () => {
 		const graph = buildGraph(path.join(SRC, "discovery/index.ts"));
 
 		// A real, sizeable graph, not one module and not zero.
-		expect(graph.moduleCount).toBeGreaterThan(100);
+		//
+		// LOWERED from 100 to 50, measured at 80 on 2026-07-26. The probe genuinely shrank rather than the
+		// walk breaking: `discovery/claude.ts` and `discovery/opencode.ts` read two settings each and had
+		// imported `config/settings.ts`, the 95-module store that loads `config.yml` and opens `agent.db`,
+		// to do it. They read `config/settings-instance.ts` now, which owns the slot and imports nothing.
+		//
+		// The floor is deliberately well under the current number rather than pinned just below it. This
+		// case exists to prove the graph is really walked, and a floor tracking the measurement would turn a
+		// non-vacuity check into a second ceiling that every honest cut has to come back and edit.
+		expect(graph.moduleCount).toBeGreaterThan(50);
 		// And the detector is not simply returning nothing: fed a graph with a known
 		// two-node cycle it reports it.
 		const a = path.join(SRC, "a.ts");
@@ -301,10 +343,58 @@ describe("hot import graphs are acyclic", () => {
 	});
 });
 
+describe("the graph is this package's own, which is what the ceilings are set from", () => {
+	/**
+	 * WHY THIS EXISTS. `buildGraph` calls the shared walk with NO resolution, and that single omission
+	 * decides what every number in this file means. With no resolution, a specifier that is not relative
+	 * resolves to nothing, so the walk stops at this package's edge and each ceiling counts modules under
+	 * `packages/coding-agent/src` only.
+	 *
+	 * Hand a resolution table to the same call and every count jumps by the whole of `@veyyon/utils`,
+	 * `@veyyon/ai` and the rest. Two things then break at once: every ceiling here is suddenly wrong in a
+	 * direction that reads as a real regression, and Tarjan starts reporting components that run through
+	 * other packages, which this gate cannot act on and whose fix does not live here. The test asserts the
+	 * resolver's behaviour at the seam rather than trusting the prose above it.
+	 */
+	it("resolves nothing outside this package, because no resolution table is passed", () => {
+		const settings = path.join(SRC, "config/settings.ts");
+
+		expect(resolveModuleSpecifier(settings, "@veyyon/utils")).toBeUndefined();
+		expect(resolveModuleSpecifier(settings, "@veyyon/utils/dirs")).toBeUndefined();
+		expect(resolveModuleSpecifier(settings, "@veyyon/ai")).toBeUndefined();
+		expect(resolveModuleSpecifier(settings, "node:fs")).toBeUndefined();
+	});
+
+	/**
+	 * And the other half of the same contract: a RELATIVE specifier does resolve, to the absolute path of
+	 * the file it names. If this stopped working the graph would collapse to one node per entry, every
+	 * ceiling would pass by a mile, and the cycle search would have nothing to search.
+	 */
+	it("resolves a relative specifier to the file it names", () => {
+		const settings = path.join(SRC, "config/settings.ts");
+
+		expect(resolveModuleSpecifier(settings, "../modes/theme/theme-luminance")).toBe(
+			path.join(SRC, "modes/theme/theme-luminance.ts"),
+		);
+	});
+
+	/**
+	 * A CEILING IS AN UPPER BOUND, so it is blind in exactly one direction: it stays green when the walk
+	 * under-resolves and reports less than reality. That is not hypothetical here. Every ceiling in
+	 * `GRAPH_SIZE_CEILINGS` was re-measured on 2026-07-26 and most had drifted to three or four times the
+	 * real graph, which permits a module to quadruple its imports without failing. This case pins the
+	 * smallest entry in the list exactly, so an under-resolving walk fails somewhere instead of quietly
+	 * lowering every number at once.
+	 */
+	it("counts config/auth-state as exactly one module, its own", () => {
+		expect(buildGraph(path.join(SRC, "config/auth-state.ts")).moduleCount).toBe(1);
+	});
+});
+
 describe("the specific edges that closed the two cycles stay gone", () => {
 	/** The static specifiers this file imports. */
 	function staticImports(relative: string): string[] {
-		return specifiersIn(fs.readFileSync(path.join(SRC, relative), "utf-8"));
+		return moduleSpecifiersIn(fs.readFileSync(path.join(SRC, relative), "utf-8"));
 	}
 
 	/**
@@ -319,11 +409,24 @@ describe("the specific edges that closed the two cycles stay gone", () => {
 		expect(imports.some(specifier => specifier.includes("internal-urls"))).toBe(false);
 	});
 
-	/** The same for the settings/theme edge, for the same reason. */
+	/**
+	 * The same for the settings/theme edge, for the same reason.
+	 *
+	 * EXACT specifiers, not a substring. `includes("modes/theme/theme")` also matches
+	 * `modes/theme/theme-luminance`, which is the classifier leaf settings is SUPPOSED to import: it
+	 * carries the light/dark answer as a table so settings does not drag the hundred embedded theme
+	 * JSON modules for one boolean. A substring test failed the moment that leaf was named, reporting
+	 * the cycle was back when the opposite had happened. The same collision existed in
+	 * `test/config/settings-theme-decoupling.test.ts` and is fixed the same way there.
+	 */
 	it("keeps config/settings out of the theme barrel", () => {
 		const imports = staticImports("config/settings.ts");
 
-		expect(imports.some(specifier => specifier.includes("modes/theme/theme"))).toBe(false);
+		expect(imports).not.toContain("../modes/theme/theme");
+		expect(imports).not.toContain("../modes/theme/shimmer");
+		expect(imports).not.toContain("../modes/theme/theme-class");
+		// And the leaf it does import, so this is not satisfied by settings dropping the classifier.
+		expect(imports).toContain("../modes/theme/theme-luminance");
 	});
 
 	/**

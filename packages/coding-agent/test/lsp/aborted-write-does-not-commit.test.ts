@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { promises as fsp, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { promises as fsp, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { writethroughNoop } from "@veyyon/coding-agent/lsp";
 import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makeAbortedWriteDir = useTrackedTempDirs("veyyon-aborted-write-");
 
 /**
  * A cancelled write must not change the file.
@@ -30,7 +36,7 @@ describe("a file write that was aborted before it committed", () => {
 	const original = "the original contents\nsecond line\n";
 
 	beforeEach(() => {
-		dir = mkdtempSync(path.join(tmpdir(), "veyyon-aborted-write-"));
+		dir = makeAbortedWriteDir();
 		target = path.join(dir, "file.txt");
 		writeFileSync(target, original, "utf-8");
 	});

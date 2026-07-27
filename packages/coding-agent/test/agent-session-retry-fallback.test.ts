@@ -2,9 +2,10 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
 import { Agent } from "@veyyon/agent-core";
-import { type AssistantMessage, Effort, type Model, type ProviderSessionState } from "@veyyon/ai";
+import type { AssistantMessage, Model, ProviderSessionState } from "@veyyon/ai";
 import { createMockModel } from "@veyyon/ai/providers/mock";
 import { buildModel } from "@veyyon/catalog/build";
+import { Effort } from "@veyyon/catalog/effort";
 import { writeModelCache } from "@veyyon/catalog/model-cache";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";

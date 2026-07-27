@@ -21,17 +21,15 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import type { AssistantMessage } from "@veyyon/ai";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { CreateAgentSessionResult } from "@veyyon/coding-agent/sdk";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
-import type { AgentSession, AgentSessionEvent, PromptOptions } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSession, AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
 import { runSubprocess } from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition, AgentProgress } from "@veyyon/coding-agent/task/types";
-import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { ArgotSession, type Vocabulary } from "argot";
 import { useIsolatedAgentDir } from "./helpers/isolated-agent-dir";
+import { createAssistantStopMessage, createMockSession, createSessionResult } from "./helpers/subagent-session";
 
 // The executor opens a session file for the child it spawns, under the agent dir.
 // Without this the writes land in the developer's real `~/.veyyon`, the real-data
@@ -57,26 +55,6 @@ function childCodec(): ArgotSession {
 	return s;
 }
 
-function assistantText(text: string): AssistantMessage {
-	return {
-		role: "assistant",
-		content: text ? [{ type: "text", text }] : [],
-		api: "openai-responses",
-		provider: "openai",
-		model: "mock",
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
-		stopReason: "stop",
-		timestamp: Date.now(),
-	};
-}
-
 /** Emit a streamed assistant text delta, the event the executor decodes for the preview. */
 function textDelta(delta: string): AgentSessionEvent {
 	return {
@@ -86,51 +64,18 @@ function textDelta(delta: string): AgentSessionEvent {
 	} as unknown as AgentSessionEvent;
 }
 
+/**
+ * The scripted child, on the shared fake.
+ *
+ * `argotSession` is the whole point here: the codec belongs to the CHILD, and the executor must
+ * expand its handles through it before anything reaches the parent's display. A child with no codec
+ * is the `off` case, where handle-shaped text is literal.
+ */
 function mockChildSession(args: {
 	codec?: ArgotSession;
 	onPrompt: (p: { promptIndex: number; emit: (event: AgentSessionEvent) => void }) => void;
 }): AgentSession {
-	const listeners: Array<(event: AgentSessionEvent) => void> = [];
-	const state = { messages: [] as AssistantMessage[] };
-	let promptIndex = 0;
-	const emit = (event: AgentSessionEvent) => {
-		for (const listener of listeners) listener(event);
-	};
-	const session = {
-		state,
-		agent: { state: { systemPrompt: ["test"] } },
-		model: undefined,
-		extensionRunner: undefined,
-		sessionManager: { appendSessionInit: () => {} },
-		getActiveToolNames: () => ["read", "yield"],
-		setActiveToolsByName: async () => {},
-		getArgotSession: () => args.codec,
-		subscribe: (listener: (event: AgentSessionEvent) => void) => {
-			listeners.push(listener);
-			return () => {
-				const i = listeners.indexOf(listener);
-				if (i >= 0) listeners.splice(i, 1);
-			};
-		},
-		prompt: async (_text: string, _options?: PromptOptions) => {
-			promptIndex += 1;
-			args.onPrompt({ promptIndex, emit });
-		},
-		waitForIdle: async () => {},
-		getLastAssistantMessage: () => state.messages[state.messages.length - 1],
-		abort: async () => {},
-		dispose: async () => {},
-	};
-	return session as unknown as AgentSession;
-}
-
-function sessionResult(session: AgentSession): CreateAgentSessionResult {
-	return {
-		session,
-		extensionsResult: {} as unknown as CreateAgentSessionResult["extensionsResult"],
-		setToolUIContext: () => {},
-		eventBus: new EventBus(),
-	};
+	return createMockSession(args.onPrompt, { argotSession: args.codec });
 }
 
 const baseAgent: AgentDefinition = { name: "task", description: "test", systemPrompt: "test", source: "bundled" };
@@ -205,7 +150,7 @@ describe("Argot subagent streaming display seam through the real runSubprocess e
 				}
 			},
 		});
-		vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(sessionResult(session));
+		vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
 
 		await runChild("stream-split", onProgress, snapshots);
 
@@ -234,7 +179,7 @@ describe("Argot subagent streaming display seam through the real runSubprocess e
 				}
 			},
 		});
-		vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(sessionResult(session));
+		vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
 
 		await runChild("stream-short", onProgress, snapshots);
 
@@ -252,12 +197,12 @@ describe("Argot subagent streaming display seam through the real runSubprocess e
 			codec: childCodec(),
 			onPrompt: ({ promptIndex, emit }) => {
 				if (promptIndex === 1) {
-					const msg = assistantText("the entrypoint is §dbconn for sure");
+					const msg = createAssistantStopMessage("the entrypoint is §dbconn for sure");
 					emit({ type: "message_end", message: msg } as AgentSessionEvent);
 				}
 			},
 		});
-		vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(sessionResult(session));
+		vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
 
 		await runChild("stream-fullcontent", onProgress, snapshots);
 
@@ -280,7 +225,7 @@ describe("Argot subagent streaming display seam through the real runSubprocess e
 				}
 			},
 		});
-		vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(sessionResult(session));
+		vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
 
 		await runChild("stream-off", onProgress, snapshots);
 

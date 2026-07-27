@@ -1,6 +1,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { $which, getRemoteHostDir, getSshControlDir, isEnoent, logger, postmortem, ptree } from "@veyyon/utils";
+import { getRemoteHostDir, getSshControlDir } from "@veyyon/utils/dirs";
+import { isEnoent } from "@veyyon/utils/fs-error";
+// Owners, not the `@veyyon/utils` barrel: 6 modules against 74.
+import * as logger from "@veyyon/utils/logger";
+import * as postmortem from "@veyyon/utils/postmortem";
+import * as ptree from "@veyyon/utils/ptree";
+import { $which } from "@veyyon/utils/which";
 import { buildSshTarget, sanitizeHostName } from "./utils";
 
 export interface SSHConnectionTarget {

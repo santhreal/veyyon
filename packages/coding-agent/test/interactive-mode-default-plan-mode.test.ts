@@ -1,7 +1,8 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { Agent, type AgentTool } from "@veyyon/agent-core";
-import { type Api, Effort, type Model } from "@veyyon/ai";
+import type { Api, Model } from "@veyyon/ai";
+import { Effort } from "@veyyon/catalog/effort";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";

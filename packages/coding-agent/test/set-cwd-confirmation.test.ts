@@ -37,6 +37,25 @@ describe("set_cwd result confirmation", () => {
 		return session;
 	}
 
+	/**
+	 * The result text with every sentence about RULE FILES removed.
+	 *
+	 * The word "unchanged" is legitimate in one place and forbidden in another, and the two are one
+	 * sentence apart. "The rule files in effect are unchanged." is a true, useful statement about which
+	 * AGENTS.md/CLAUDE.md govern the session. "Session cwd unchanged: X" is the sentence that drove the
+	 * retry loop this suite exists for. A blanket `not.toContain("unchanged")` cannot tell them apart, so
+	 * it either fails on the harmless sentence or has to be dropped, and dropping it would leave the
+	 * original bug free to come back. Dropping the rules sentences and asserting on the remainder keeps the
+	 * ban aimed at the CWD wording, which is the part that must never read as failure.
+	 */
+	function cwdWordingOnly(text: string): string {
+		// Sentence-level, not line-level: the no-op result is ONE line that ends with the rules sentence.
+		return text
+			.split(/(?<=\.)\s+|\n/)
+			.filter(sentence => !/rule/i.test(sentence))
+			.join(" ");
+	}
+
 	async function run(session: ToolSession, path: string): Promise<{ text: string; details: unknown }> {
 		const tool = new SetCwdTool(session);
 		const result = await tool.execute("call-1", { path });
@@ -62,7 +81,9 @@ describe("set_cwd result confirmation", () => {
 		const { text } = await run(session, "/already/here");
 
 		expect(text).toContain("Session cwd is /already/here");
-		expect(text).not.toContain("unchanged");
+		expect(cwdWordingOnly(text)).not.toContain("unchanged");
+		// And specifically not the sentence that caused it, in any spacing.
+		expect(text).not.toMatch(/cwd\s+unchanged/i);
 	});
 
 	it("tells the caller not to retry a no-op", async () => {
@@ -103,7 +124,91 @@ describe("set_cwd result confirmation", () => {
 
 		const { details } = await run(session, "/target");
 
-		expect(details).toEqual({ previous: "/start", cwd: "/target", requested: "/target" });
+		// `toMatchObject`, not `toEqual`: the result also carries the rule-file change, asserted below.
+		expect(details).toMatchObject({ previous: "/start", cwd: "/target", requested: "/target" });
+	});
+
+	/**
+	 * The rule-file keys are part of the details contract, so they are asserted rather than merely
+	 * tolerated: a re-root that reports no rule change when the rules DID change is the failure the
+	 * tracking exists to prevent, and only the details carry that machine-readable answer.
+	 *
+	 * The expected values are computed from the same loader the tool uses instead of being hardcoded,
+	 * because neither `/start` nor `/target` exists yet `rulesUnchanged` is legitimately non-zero: user-level
+	 * rule files apply in every directory, including ones that are not there. Hardcoding a zero here would
+	 * pin the developer's own home directory into the suite. What is genuinely fixed is the DIFFERENCE:
+	 * moving between two ruleless directories gains nothing and drops nothing, and the shared count is
+	 * exactly the set both directories see.
+	 */
+	it("reports the rule-file change in the details", async () => {
+		const { loadProjectContextFiles } = await import("@veyyon/coding-agent/system-prompt");
+		const [atStart, atTarget] = await Promise.all([
+			loadProjectContextFiles({ cwd: "/start" }),
+			loadProjectContextFiles({ cwd: "/target" }),
+		]);
+		const session = makeSession("/start");
+
+		const { details } = await run(session, "/target");
+
+		expect(details).toMatchObject({
+			rulesApplied: [],
+			rulesDropped: [],
+			// Every file in effect at `/target` was already in effect at `/start`, so all of them are shared.
+			rulesUnchanged: atTarget.length,
+		});
+		expect(atStart.map(file => file.path)).toEqual(atTarget.map(file => file.path));
+	});
+
+	/**
+	 * A no-op reported `rulesUnchanged: 0`, and that was simply untrue.
+	 *
+	 * The re-root branch computed its rule counts from the loader; the `cwd === previous` branch asserted an
+	 * empty rule state of its own instead, hardcoding zero applied, zero dropped and zero unchanged. But
+	 * user-level rule files (`~/.veyyon/AGENTS.md` and friends) are in effect from every directory, so a
+	 * session that never moved still has rules governing it. A caller reading the details of a no-op saw a
+	 * count that said no rules were in play at all, one field away from a re-root that would have counted the
+	 * same files correctly. Two branches of one tool disagreeing about the same fact is the inconsistency
+	 * this pins: whatever the truth about rule files is, both branches now get it from the same place.
+	 *
+	 * The count is computed from the real loader rather than hardcoded, for the reason the re-root case above
+	 * gives: a literal number here would pin whoever ran the suite last into it.
+	 */
+	it("reports the real rule-file state for a no-op, not an empty one", async () => {
+		const { loadProjectContextFiles } = await import("@veyyon/coding-agent/system-prompt");
+		const inEffect = await loadProjectContextFiles({ cwd: "/already/here" });
+		const session = makeSession("/already/here");
+
+		const { details } = await run(session, "/already/here");
+
+		expect(details).toMatchObject({
+			previous: "/already/here",
+			cwd: "/already/here",
+			// Nothing moved, so nothing can be gained or lost; everything in effect is shared with itself.
+			rulesApplied: [],
+			rulesDropped: [],
+			rulesUnchanged: inEffect.length,
+		});
+	});
+
+	/**
+	 * And the sentence a reader sees agrees with those counts.
+	 *
+	 * The old no-op text ended in a hand-written "The rule files in effect are unchanged.", a second copy of
+	 * a sentence the shared describer already produces. Both branches now take that wording from the one
+	 * owner, so the prose cannot drift away from the numbers beside it.
+	 */
+	it("describes the rule files in effect for a no-op in the same words as a re-root", async () => {
+		const noop = await run(makeSession("/already/here"), "/already/here");
+		const moved = await run(makeSession("/start"), "/target");
+
+		const rulesSentence = (text: string) =>
+			text
+				.split(/\n+/)
+				.filter(line => /rule/i.test(line))
+				.join("\n");
+
+		expect(rulesSentence(noop.text)).not.toBe("");
+		expect(rulesSentence(noop.text)).toBe(rulesSentence(moved.text));
 	});
 
 	it("trims a padded path before resolving and echoes the trimmed value", async () => {
@@ -111,7 +216,7 @@ describe("set_cwd result confirmation", () => {
 
 		const { details } = await run(session, "  /target  ");
 
-		expect(details).toEqual({ previous: "/start", cwd: "/target", requested: "/target" });
+		expect(details).toMatchObject({ previous: "/start", cwd: "/target", requested: "/target" });
 	});
 
 	it("still fails loudly on an empty path rather than reporting a no-op", async () => {
@@ -143,6 +248,6 @@ describe("set_cwd result confirmation", () => {
 		const { text, details } = await run(session, "/target");
 
 		expect(text).toContain("Session cwd is now /private/target");
-		expect(details).toEqual({ previous: "/start", cwd: "/private/target", requested: "/target" });
+		expect(details).toMatchObject({ previous: "/start", cwd: "/private/target", requested: "/target" });
 	});
 });

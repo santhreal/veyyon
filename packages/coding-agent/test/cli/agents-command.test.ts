@@ -4,9 +4,12 @@
  * --user/--project together is rejected.
  */
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
+
+const makeTempDir1 = useTrackedTempDirs("veyyon-agents-dir-");
+const makeTempDir2 = useTrackedTempDirs("veyyon-agents-home-");
 
 const cliPath = path.resolve(import.meta.dir, "../../src/cli.ts");
 
@@ -38,7 +41,7 @@ async function runAgents(
 
 describe("veyyon agents unpack", () => {
 	it("writes every bundled agent as frontmatter markdown, then skips on rerun and rewrites with --force", async () => {
-		const home = mkdtempSync(path.join(tmpdir(), "veyyon-agents-home-"));
+		const home = makeTempDir2();
 		const env = makeEnv(home);
 
 		const first = await runAgents(env, ["unpack", "--json"]);
@@ -78,8 +81,8 @@ describe("veyyon agents unpack", () => {
 	}, 30_000);
 
 	it("unpacks into an explicit --dir relative to the project", async () => {
-		const home = mkdtempSync(path.join(tmpdir(), "veyyon-agents-home-"));
-		const target = mkdtempSync(path.join(tmpdir(), "veyyon-agents-dir-"));
+		const home = makeTempDir2();
+		const target = makeTempDir1();
 		const { stdout, exitCode } = await runAgents(makeEnv(home), ["unpack", "--dir", target, "--json"]);
 		expect(exitCode).toBe(0);
 		const result = JSON.parse(stdout) as { targetDir: string; written: string[] };
@@ -88,7 +91,7 @@ describe("veyyon agents unpack", () => {
 	}, 30_000);
 
 	it("rejects --user together with --project", async () => {
-		const home = mkdtempSync(path.join(tmpdir(), "veyyon-agents-home-"));
+		const home = makeTempDir2();
 		const { stderr, exitCode } = await runAgents(makeEnv(home), ["unpack", "--user", "--project"]);
 		expect(exitCode).toBe(1);
 		expect(stderr).toContain("either --user or --project");

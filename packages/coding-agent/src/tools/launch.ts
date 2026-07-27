@@ -15,7 +15,7 @@ import { daemonClientForProject } from "../launch/client";
 import type { DaemonOperation, DaemonRpcResult, DaemonSnapshot, DaemonSpec, DaemonState } from "../launch/protocol";
 import { renderTerminalOutput } from "../launch/terminal-output";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
-import { PROMPTS } from "../prompts/registry";
+import { toolsPrompts } from "../prompts/tools/rows";
 import { framedBlock, outputBlockContentWidth, renderStatusLine } from "../tui";
 import type { ToolSession } from ".";
 import { foldToolOutputBookkeeping } from "./output-fold";
@@ -357,7 +357,7 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 	readonly label = "Launch";
 	readonly loadMode = "essential";
 	readonly summary = "Launch and control shared long-running project processes";
-	readonly description = prompt.render(PROMPTS["tools/launch"].text);
+	readonly description = prompt.render(toolsPrompts["tools/launch"].text);
 	readonly parameters = launchSchema;
 	readonly strict = true;
 	readonly examples: readonly ToolExample<LaunchParams>[] = [

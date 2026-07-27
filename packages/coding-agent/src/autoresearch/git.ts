@@ -1,4 +1,4 @@
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import type { ExtensionAPI } from "../extensibility/extensions";
 import * as git from "../utils/git";
 import * as jj from "../utils/jj";
@@ -122,11 +122,23 @@ export function relativizeGitPathToWorkDir(repoRelativePath: string, workDirPref
 	return normalizePathSpec(normalizedPath.slice(normalizedPrefix.length + 1));
 }
 
+/**
+ * The prefix from the repository root to `workDir`.
+ *
+ * `""` is a real value here -- it is what a work directory that IS the repository root returns -- so a
+ * failure answering `""` claims exactly that, and every status path is then resolved against the wrong
+ * directory. Reported for that reason; the value is still returned, because the caller's path filtering
+ * degrades to repository-relative paths rather than failing outright.
+ */
 async function readGitWorkDirPrefix(api: ExtensionAPI, workDir: string): Promise<string> {
 	void api;
 	try {
 		return await git.show.prefix(workDir);
-	} catch {
+	} catch (err) {
+		logger.warn("Git work-directory prefix could not be read; paths will be treated as repository-relative", {
+			workDir,
+			error: errorMessage(err),
+		});
 		return "";
 	}
 }

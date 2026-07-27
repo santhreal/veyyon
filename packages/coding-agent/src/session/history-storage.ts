@@ -2,7 +2,7 @@ import { Database, type Statement } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { AsyncDrain, getHistoryDbPath, logger, NON_ALNUM_RUN_RE } from "@veyyon/utils";
-import { escapeLike, tableExists } from "@veyyon/utils/sqlite";
+import { escapeLike, SQLITE_NOW_EPOCH, tableExists } from "@veyyon/utils/sqlite";
 
 export interface HistoryEntry {
 	id: number;
@@ -20,8 +20,6 @@ type HistoryRow = {
 	cwd: string | null;
 	session_id: string | null;
 };
-
-const SQLITE_NOW_EPOCH = "CAST(strftime('%s','now') AS INTEGER)";
 
 export class HistoryStorage {
 	#db: Database;

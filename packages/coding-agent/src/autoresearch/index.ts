@@ -3,7 +3,7 @@ import * as path from "node:path";
 import type { AutocompleteItem } from "@veyyon/tui";
 import { errorMessage, logger, prompt } from "@veyyon/utils";
 import type { ExtensionContext, ExtensionFactory } from "../extensibility/extensions";
-import { PROMPTS } from "../prompts/registry";
+import { autoresearchPrompts } from "../prompts/autoresearch/rows";
 import * as git from "../utils/git";
 import { createDashboardController } from "./dashboard";
 import { ensureAutoresearchBranch } from "./git";
@@ -201,7 +201,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 				dashboard.updateWidget(ctx, runtime);
 				await api.setActiveTools([...new Set([...api.getActiveTools(), ...EXPERIMENT_TOOL_NAMES])]);
 				api.sendUserMessage(
-					prompt.render(PROMPTS["autoresearch/command-resume"].text, {
+					prompt.render(autoresearchPrompts["autoresearch/command-resume"].text, {
 						branch_status_line: branchStatusLine,
 						has_resume_context: resumeContext.length > 0,
 						resume_context: resumeContext,
@@ -277,7 +277,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		api.sendMessage(
 			{
 				customType: "autoresearch-resume",
-				content: prompt.render(PROMPTS["autoresearch/resume-message"].text, {
+				content: prompt.render(autoresearchPrompts["autoresearch/resume-message"].text, {
 					has_pending_run: Boolean(pendingRun),
 				}),
 				display: false,
@@ -358,7 +358,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 				: "Heads up: you are not on a dedicated `autoresearch/*` branch. `log_experiment discard` will only revert run-modified files, not reset to baseline — so harness files written before `init_experiment` may not survive a discard. Clean the worktree and re-run `/autoresearch` if you want full revert safety.";
 			return {
 				systemPrompt: [
-					prompt.render(PROMPTS["autoresearch/prompt-setup"].text, {
+					prompt.render(autoresearchPrompts["autoresearch/prompt-setup"].text, {
 						base_system_prompt: basePrompt,
 						has_goal: goal.trim().length > 0,
 						goal,
@@ -373,7 +373,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		}
 		return {
 			systemPrompt: [
-				prompt.render(PROMPTS["autoresearch/prompt"].text, {
+				prompt.render(autoresearchPrompts["autoresearch/prompt"].text, {
 					base_system_prompt: basePrompt,
 					has_goal: goal.trim().length > 0,
 					goal,
@@ -525,6 +525,14 @@ function bestKeptResult(
 	return best;
 }
 
+/**
+ * The current branch name, or null when there is not one.
+ *
+ * Null is the ordinary answer and not a swallowed failure: a detached HEAD has no branch, and a directory
+ * that is not a repository has none either, which is the state autoresearch checks for before deciding
+ * whether a session applies. The caller treats null as "no autoresearch session for this branch", which
+ * is the conservative direction: nothing is started or logged against a branch that could not be named.
+ */
 async function tryReadBranch(cwd: string): Promise<string | null> {
 	try {
 		return (await git.branch.current(cwd)) ?? null;

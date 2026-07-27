@@ -10,15 +10,12 @@
  */
 import { describe, expect, it } from "bun:test";
 import { getThemeByName, highlightCode } from "@veyyon/coding-agent/modes/theme/theme";
-
-// Minimal LCG (kept local; this package has no shared adversarial-string helper).
-function lcg(seed: number): () => number {
-	let s = seed >>> 0;
-	return () => {
-		s = (s * 1664525 + 1013904223) >>> 0;
-		return s / 0x1_0000_0000;
-	};
-}
+// The fuzz driver is shared, not copied. This file carried a byte-identical
+// `lcg` because the only implementation lived under `packages/tui/test/`, which is
+// not importable from here; two copies of a seeded RNG mean "the same seed" stops
+// meaning the same stream the moment either is tuned. The FRAGMENTS below stay
+// local on purpose -- they are code-flavored, not the shared width-adversarial pool.
+import { fuzzStrings } from "@veyyon/utils/adversarial-strings";
 
 // Code-flavored adversarial fragments: unbalanced delimiters, unterminated
 // strings/comments, keywords, operators, unicode/wide/emoji identifiers, control
@@ -82,13 +79,19 @@ function buildCode(rand: () => number): string {
 	return out;
 }
 
+/**
+ * Sources that broke the highlighter before, replayed first on every run and under every seed.
+ *
+ * Empty is the honest state. Add the string a failure's `corpus entry:` line prints, with a comment
+ * naming the bug it locks out; see `docs/internal/fuzzing.md`.
+ */
+const HIGHLIGHT_CORPUS: readonly string[] = [];
+
 describe("highlightCode fuzz", () => {
 	it("never throws and always returns a string array on adversarial code", async () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
-		const rand = lcg(0x11_9c_0de);
-		for (let iter = 0; iter < 6000; iter++) {
-			const code = buildCode(rand);
+		fuzzStrings({ seed: 0x11_9c_0de, iterations: 6000, corpus: HIGHLIGHT_CORPUS, build: buildCode }, (code, rand) => {
 			const lang = LANGS[Math.floor(rand() * LANGS.length)];
 			let lines: string[];
 			try {
@@ -101,7 +104,7 @@ describe("highlightCode fuzz", () => {
 			// Contract: the highlighted line count matches the source line count
 			// (styling is added inline, never adds/drops lines).
 			expect(lines.length).toBe(code.split("\n").length);
-		}
+		});
 	});
 
 	it("deeply nested code does not overflow the highlighter", async () => {

@@ -2,7 +2,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import type { Api, AssistantMessage, Model } from "@veyyon/ai";
 import * as ai from "@veyyon/ai";
-import { Effort } from "@veyyon/ai";
+import { Effort } from "@veyyon/catalog/effort";
 import { TempDir } from "@veyyon/utils";
 import { $ } from "bun";
 import type { ModelRegistry } from "../../config/model-registry";

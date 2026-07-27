@@ -1,4 +1,7 @@
 import { errorMessage, isAbortError, logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/utils";
+// Coding-agent binary/bundle workers route through the CLI entrypoint with a
+// hidden argv mode, so compiled/npm builds only need one JavaScript entry.
+import { registerOwnedResourceDisposer } from "../../session/owned-resources";
 import {
 	createWorkerHandle,
 	createWorkerSubprocess,
@@ -15,15 +18,13 @@ import { attachSessionOwner } from "../executor-base";
 import { shouldDetachKernel } from "../py/spawn-options";
 import { callSessionTool, type JsStatusEvent } from "./tool-bridge";
 import { WorkerCore } from "./worker-core";
-// Coding-agent binary/bundle workers route through the CLI entrypoint with a
-// hidden argv mode, so compiled/npm builds only need one JavaScript entry.
 import type {
+	EvalRunErrorPayload,
+	EvalWorkerInbound,
+	EvalWorkerOutbound,
+	EvalWorkerTransport,
 	JsDisplayOutput,
-	RunErrorPayload,
 	SessionSnapshot,
-	Transport,
-	WorkerInbound,
-	WorkerOutbound,
 } from "./worker-protocol";
 
 export { rewriteImports, wrapCode } from "./shared/rewrite-imports";
@@ -37,8 +38,8 @@ export interface VmRunState {
 
 interface WorkerHandle {
 	mode: "process" | "worker" | "inline";
-	send(msg: WorkerInbound): void;
-	onMessage(handler: (msg: WorkerOutbound) => void): () => void;
+	send(msg: EvalWorkerInbound): void;
+	onMessage(handler: (msg: EvalWorkerOutbound) => void): () => void;
 	onError(handler: (error: Error) => void): () => void;
 	close(): Promise<boolean>;
 	terminate(): Promise<void>;
@@ -132,6 +133,9 @@ export async function executeInVmContext(options: {
 		// produces a fresh context, so a follow-up `reset: true` cell should
 		// just wait for it rather than failing the user-visible call.
 		const inFlight = resettingSessions.get(options.sessionKey);
+		// Another caller owns this reset and is awaiting `resetPromise` itself, so its failure is reported
+		// there. Here the only thing that matters is that the reset has SETTLED before running on the
+		// context: if it failed, `acquireSession` below starts a fresh one and fails with its own reason.
 		if (inFlight) await inFlight.catch(() => undefined);
 		else {
 			const resetPromise = resetVmContext(options.sessionKey);
@@ -149,6 +153,9 @@ export async function executeInVmContext(options: {
 		// Internal coordination: wait for any in-flight reset to settle and
 		// then run on the freshly-rebuilt context.
 		const inFlight = resettingSessions.get(options.sessionKey);
+		// Another caller owns this reset and is awaiting `resetPromise` itself, so its failure is reported
+		// there. Here the only thing that matters is that the reset has SETTLED before running on the
+		// context: if it failed, `acquireSession` below starts a fresh one and fails with its own reason.
 		if (inFlight) await inFlight.catch(() => undefined);
 	}
 	const session = await acquireSession(
@@ -163,6 +170,7 @@ export async function executeInVmContext(options: {
 }
 
 export async function resetVmContext(sessionKey: string): Promise<void> {
+	// A start that failed leaves nothing to reset, and its failure belongs to the caller awaiting the start.
 	const session = sessions.get(sessionKey) ?? (await startingSessions.get(sessionKey)?.catch(() => undefined));
 	if (!session) return;
 	sessions.delete(sessionKey);
@@ -234,7 +242,26 @@ export async function smokeTestJsEvalWorker(): Promise<void> {
 			throw new Error("JS eval worker smoke fell back from the isolated subprocess");
 		}
 	} finally {
-		await worker.terminate().catch(() => undefined);
+		await terminateJsWorker(worker, "smoke-test");
+	}
+}
+
+/**
+ * Terminate a JS eval worker, in one place.
+ *
+ * Every caller is tearing the session down: the startup smoke test in its `finally`, a forced kill, and the
+ * graceful path's fallback after `close()` declined. None of them can throw, because each either raises its
+ * own error (the smoke test's "fell back from the isolated subprocess") or is killing a session that is
+ * already marked dead and whose pending calls have already been rejected.
+ *
+ * A terminate that fails is still worth a line: a subprocess-mode worker that will not stop keeps a
+ * JavaScript runtime alive for the rest of the session, holding its cwd and any file handles it opened.
+ */
+async function terminateJsWorker(worker: Pick<WorkerHandle, "terminate">, context: string): Promise<void> {
+	try {
+		await worker.terminate();
+	} catch (error) {
+		logger.warn("JS eval worker did not terminate", { context, error: errorMessage(error) });
 	}
 }
 
@@ -399,7 +426,7 @@ async function initWorker(session: JsSession, snapshot: SessionSnapshot, timeout
 	}
 }
 
-function handleSessionMessage(session: JsSession, msg: WorkerOutbound): void {
+function handleSessionMessage(session: JsSession, msg: EvalWorkerOutbound): void {
 	switch (msg.type) {
 		case "text": {
 			const pending = session.pending.get(msg.runId);
@@ -427,7 +454,10 @@ function handleSessionMessage(session: JsSession, msg: WorkerOutbound): void {
 	}
 }
 
-async function handleToolCall(session: JsSession, msg: Extract<WorkerOutbound, { type: "tool-call" }>): Promise<void> {
+async function handleToolCall(
+	session: JsSession,
+	msg: Extract<EvalWorkerOutbound, { type: "tool-call" }>,
+): Promise<void> {
 	const pending = session.pending.get(msg.runId);
 	if (!pending) {
 		safeSend(session, {
@@ -453,7 +483,7 @@ async function handleToolCall(session: JsSession, msg: Extract<WorkerOutbound, {
 	}
 }
 
-function settlePending(session: JsSession, msg: Extract<WorkerOutbound, { type: "result" }>): void {
+function settlePending(session: JsSession, msg: Extract<EvalWorkerOutbound, { type: "result" }>): void {
 	const pending = session.pending.get(msg.runId);
 	if (!pending || pending.settled) return;
 	pending.settled = true;
@@ -482,14 +512,18 @@ async function killSession(session: JsSession, error: Error, options: { force: b
 	}
 	session.pending.clear();
 	if (options.force) {
-		await session.worker.terminate().catch(() => undefined);
+		await terminateJsWorker(session.worker, "kill-forced");
 		return;
 	}
-	if (await session.worker.close().catch(() => false)) return;
-	await session.worker.terminate().catch(() => undefined);
+	// `close()` resolving false means the worker declined to shut down cleanly, which is an expected outcome
+	// and not a failure; a THROW means the close could not be attempted, and both lead to the same terminate
+	// below, so the distinction changes nothing here. The terminate reports for both.
+	const closed = await session.worker.close().catch(() => false);
+	if (closed) return;
+	await terminateJsWorker(session.worker, "kill-graceful-fallback");
 }
 
-function safeSend(session: JsSession, msg: WorkerInbound): void {
+function safeSend(session: JsSession, msg: EvalWorkerInbound): void {
 	if (session.state !== "alive") return;
 	try {
 		session.worker.send(msg);
@@ -504,7 +538,7 @@ function reasonToError(reason: unknown, fallback: string): Error {
 	return new ToolAbortError(fallback);
 }
 
-function errorFromPayload(payload: RunErrorPayload): Error {
+function errorFromPayload(payload: EvalRunErrorPayload): Error {
 	if (payload.isAbort) {
 		const err = new ToolAbortError(payload.message || "Execution aborted");
 		if (payload.stack) err.stack = payload.stack;
@@ -517,7 +551,7 @@ function errorFromPayload(payload: RunErrorPayload): Error {
 	return error;
 }
 
-function toErrorPayload(error: unknown): RunErrorPayload {
+function toErrorPayload(error: unknown): EvalRunErrorPayload {
 	if (error instanceof Error) {
 		return {
 			name: error.name,
@@ -562,7 +596,7 @@ function spawnBunWorker(): WorkerHandle {
 }
 
 function spawnJsProcess(): WorkerHandle {
-	const spawned = createWorkerSubprocess<WorkerOutbound>({
+	const spawned = createWorkerSubprocess<EvalWorkerOutbound>({
 		spawnCommand: resolveWorkerSpawnCmd(JS_EVAL_PROCESS_ARG),
 		env: workerEnvFromParent(),
 		exitLabel: "JS eval worker",
@@ -570,7 +604,7 @@ function spawnJsProcess(): WorkerHandle {
 		reportCleanExit: true,
 		unref: false,
 	});
-	const base = createWorkerHandle<WorkerInbound, WorkerOutbound>(spawned, message =>
+	const base = createWorkerHandle<EvalWorkerInbound, EvalWorkerOutbound>(spawned, message =>
 		safeSendIpc(spawned.proc, message, "js-eval"),
 	);
 	return {
@@ -609,7 +643,7 @@ function wrapBunWorker(worker: Worker): WorkerHandle {
 			worker.postMessage(msg);
 		},
 		onMessage(handler) {
-			const wrap = (event: MessageEvent): void => handler(event.data as WorkerOutbound);
+			const wrap = (event: MessageEvent): void => handler(event.data as EvalWorkerOutbound);
 			worker.addEventListener("message", wrap);
 			return () => worker.removeEventListener("message", wrap);
 		},
@@ -656,7 +690,7 @@ function wrapBunWorker(worker: Worker): WorkerHandle {
 			});
 			worker.addEventListener("close", onClose);
 			timeout = setTimeout(() => finish(false), workerCloseTimeoutMs);
-			worker.postMessage({ type: "close" } satisfies WorkerInbound);
+			worker.postMessage({ type: "close" } satisfies EvalWorkerInbound);
 			return await closed;
 		},
 		async terminate() {
@@ -677,9 +711,9 @@ function errorFromWorkerEvent(event: ErrorEvent): Error {
  * infinite loops because user code runs on the main thread.
  */
 function spawnInlineWorker(): WorkerHandle {
-	const hostListeners = new Set<(message: WorkerOutbound) => void>();
-	const workerListeners = new Set<(message: WorkerInbound) => void>();
-	const workerTransport: Transport = {
+	const hostListeners = new Set<(message: EvalWorkerOutbound) => void>();
+	const workerListeners = new Set<(message: EvalWorkerInbound) => void>();
+	const workerTransport: EvalWorkerTransport = {
 		send: msg =>
 			queueMicrotask(() => {
 				for (const listener of hostListeners) listener(msg);
@@ -733,3 +767,16 @@ function spawnInlineWorker(): WorkerHandle {
 		},
 	};
 }
+
+/**
+ * Wire this subsystem into the session's owner-scoped cleanup.
+ *
+ * Registered at module scope rather than called by name from `agent-session.dispose()`, which is
+ * what used to happen. See `session/owned-resources.ts` for why load-time registration is safe
+ * here: a kernel cannot exist unless this module was loaded to create it.
+ */
+registerOwnedResourceDisposer({
+	name: "js-eval-contexts",
+	scope: "eval-kernel-owner",
+	dispose: disposeVmContextsByOwner,
+});

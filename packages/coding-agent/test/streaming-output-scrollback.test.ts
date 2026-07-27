@@ -1,7 +1,6 @@
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import type { AssistantMessage } from "@veyyon/ai";
 import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/assistant-message";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
 import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { evalToolRenderer } from "@veyyon/coding-agent/tools/eval-render";
@@ -9,6 +8,7 @@ import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";
 import { type Component, TUI } from "@veyyon/tui";
 import { settleFrames } from "../../tui/test/helpers/settle-frames";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal";
+import { createToolExecution } from "./helpers/tool-execution";
 
 // Long, path-like output that wraps at the box's inner width — the case that
 // made a fixed 10-line preview overflow the viewport once committed.
@@ -177,7 +177,7 @@ describe("streaming tool output never sprays duplicate scrollback banners", () =
 		const transcript = new TranscriptContainer();
 		transcript.addChild(new StaticBlock(["user: run the build"]));
 		transcript.addChild(new LiveBarrier(["assistant: still working in a parallel tool…"]));
-		const bash = new ToolExecutionComponent("bash", { command: "build.sh" }, {}, undefined, tui, process.cwd());
+		const bash = createToolExecution("bash", { command: "build.sh" }, {}, undefined, tui, process.cwd());
 		transcript.addChild(bash);
 		tui.addChild(transcript);
 		tui.addChild(new Footer(6));
@@ -300,7 +300,7 @@ describe("streaming tool output never sprays duplicate scrollback banners", () =
 		const term = new VirtualTerminal(60, rows);
 		const tui = new TUI(term);
 		const transcript = new TranscriptContainer();
-		const component = new ToolExecutionComponent(
+		const component = createToolExecution(
 			"eval",
 			{ code: "probeLines.forEach(console.log)", language: "js" },
 			{},

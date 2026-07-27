@@ -1,4 +1,6 @@
-import { errorMessage, isThenable, logger } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
+import * as logger from "@veyyon/utils/logger";
+import { errorMessage, isThenable } from "@veyyon/utils/type-guards";
 
 /**
  * Send a message to a Bun subprocess over IPC, neutralizing both the

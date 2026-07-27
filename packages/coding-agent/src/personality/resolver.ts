@@ -14,7 +14,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { CONFIG_DIR_NAME, getProjectDir, isEnoent, logger } from "@veyyon/utils";
-import { PROMPTS } from "../prompts/registry";
+import { sessionPrompts } from "../prompts/session/rows";
 
 /** Reserved sentinel that disables the personality block; never a valid file name. */
 export const NONE_PERSONALITY = "none";
@@ -24,9 +24,9 @@ export const DEFAULT_PERSONALITY_NAME = "default";
 
 /** Built-in tone specs, keyed by name. The seed tier of the merged catalog. */
 export const BUILTIN_PERSONALITIES: Readonly<Record<string, string>> = {
-	default: PROMPTS["session/personalities/default"].text.trim(),
-	friendly: PROMPTS["session/personalities/friendly"].text.trim(),
-	pragmatic: PROMPTS["session/personalities/pragmatic"].text.trim(),
+	default: sessionPrompts["session/personalities/default"].text.trim(),
+	friendly: sessionPrompts["session/personalities/friendly"].text.trim(),
+	pragmatic: sessionPrompts["session/personalities/pragmatic"].text.trim(),
 };
 
 /** Short descriptions for built-in personalities, surfaced in the settings UI. */

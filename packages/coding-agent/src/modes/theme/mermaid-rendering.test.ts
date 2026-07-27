@@ -3,7 +3,8 @@ import { Markdown } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils";
 import { Settings } from "../../config/settings";
 import { buildSystemPrompt } from "../../system-prompt";
-import { getMarkdownTheme, getThemeByName, setMarkdownMermaidRendering, setThemeInstance } from "./theme";
+import { getMarkdownTheme, setMarkdownMermaidRendering } from "./markdown-theme";
+import { getThemeByName, setThemeInstance } from "./theme";
 
 const workspaceTree = {
 	rootPath: "/tmp/project",

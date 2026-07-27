@@ -1,9 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isEnoent, isProcessAlive, postmortem } from "@veyyon/utils";
-import { canonicalProjectDir, daemonRuntimeDir } from "./paths";
-
-const CLIENTS_DIR = "clients";
+import { canonicalProjectDir, daemonPresenceDir, daemonPresenceEntryPath, daemonRuntimeDir } from "./paths";
 
 /** Handle keeping one veyyon process registered in a project daemon scope. */
 export interface DaemonProjectPresence {
@@ -17,10 +15,10 @@ export async function registerDaemonProjectPresence(
 ): Promise<DaemonProjectPresence> {
 	const canonical = await canonicalProjectDir(projectDir);
 	const runtimeDir = runtimeOverride ?? daemonRuntimeDir(canonical);
-	const clientsDir = path.join(runtimeDir, CLIENTS_DIR);
+	const clientsDir = daemonPresenceDir(runtimeDir);
 	await fs.mkdir(clientsDir, { recursive: true, mode: 0o700 });
 	const id = `${process.pid}-${crypto.randomUUID()}`;
-	const presencePath = path.join(clientsDir, `${id}.json`);
+	const presencePath = daemonPresenceEntryPath(clientsDir, id);
 	await Bun.write(presencePath, JSON.stringify({ pid: process.pid, id, projectDir: canonical }));
 	await fs.chmod(presencePath, 0o600);
 	let closed = false;
@@ -36,7 +34,7 @@ export async function registerDaemonProjectPresence(
 
 /** Return whether a registered veyyon process in this runtime directory is still alive. */
 export async function hasLiveDaemonProjectPresence(runtimeDir: string): Promise<boolean> {
-	const clientsDir = path.join(runtimeDir, CLIENTS_DIR);
+	const clientsDir = daemonPresenceDir(runtimeDir);
 	let entries: string[];
 	try {
 		entries = await fs.readdir(clientsDir);

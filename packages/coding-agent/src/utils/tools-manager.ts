@@ -1,17 +1,15 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	$which,
-	APP_NAME,
-	bareVersion,
-	errorMessage,
-	getToolsDir,
-	isCancellation,
-	logger,
-	ptree,
-	TempDir,
-} from "@veyyon/utils";
+import { isCancellation } from "@veyyon/utils/abortable";
+import { APP_NAME, getToolsDir } from "@veyyon/utils/dirs";
+// Owners, not the `@veyyon/utils` barrel: 8 modules against 74.
+import * as logger from "@veyyon/utils/logger";
+import * as ptree from "@veyyon/utils/ptree";
+import { bareVersion } from "@veyyon/utils/semver";
+import { TempDir } from "@veyyon/utils/temp";
+import { errorMessage } from "@veyyon/utils/type-guards";
+import { $which } from "@veyyon/utils/which";
 import { throwIfAborted } from "../tools/tool-errors";
 import { scopedTimeoutSignal } from "./fetch-timeout";
 import { extractArchive } from "./zip";
@@ -69,6 +67,9 @@ async function writeResponseBody(
 		completed = true;
 	} finally {
 		if (!completed) {
+			// This branch runs only while an error from the loop above is already propagating, and that error
+			// is the one the caller must see. Each teardown step is attempted independently and its own failure
+			// is discarded so it cannot replace the download failure with a misleading cleanup message.
 			await reader.cancel().catch(() => {});
 			await Promise.resolve(sink.end()).catch(() => {});
 			await fs.promises.rm(dest, { force: true }).catch(() => {});

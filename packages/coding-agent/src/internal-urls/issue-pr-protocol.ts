@@ -17,18 +17,24 @@
  * - `issue://owner/repo?state=closed&limit=20` — list options pass through to
  *   `gh`.
  */
-import { errorMessage, formatCount } from "@veyyon/utils";
+// Owners, not the barrel: 2 modules against 74.
+import { formatCount } from "@veyyon/utils/format";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import type { Settings } from "../config/settings";
 import { AgentRegistry } from "../registry/agent-registry";
+// The FETCHERS, not the `github` tool. `../tools/gh` is the tool: 38 ops, the run-watch poller, PR
+// checkout, and `PROMPTS` for its own description, which is 352 modules. This handler wants six names
+// and now pays 188 for them. `../tools/gh` re-exports every one, so both spellings compile and only one
+// is honest about what it needs.
 import {
 	getOrFetchIssue,
 	getOrFetchPr,
 	getOrFetchPrDiff,
 	githubIssueJsonWithStateReasonFallback,
 	type PrDiffFile,
-	parsePositiveDecimalInt,
 	resolveDefaultRepoMemoized,
-} from "../tools/gh";
+} from "../tools/gh-fetch";
+import { parsePositiveDecimalInt } from "../tools/gh-format";
 import { type CacheStatus, formatFreshnessNote } from "../tools/github-cache";
 import * as git from "../utils/git";
 import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext } from "./types";

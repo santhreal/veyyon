@@ -2,7 +2,8 @@
  * Simple text input component for hooks.
  */
 import { Container, Input, Markdown, matchesKey, Spacer, Text, type TUI } from "@veyyon/tui";
-import { getMarkdownTheme, theme } from "../../modes/theme/theme";
+import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
+import { theme } from "../../modes/theme/theme";
 import { matchesAppInterrupt } from "../../modes/utils/keybinding-matchers";
 import { CountdownTimer } from "./countdown-timer";
 import { DynamicBorder } from "./dynamic-border";

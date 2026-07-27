@@ -1,3 +1,4 @@
+import { SGR_FG_RESET } from "@veyyon/tui/ansi";
 import { maskNonProse } from "./markdown-prose";
 import { theme } from "./theme/theme";
 
@@ -10,8 +11,6 @@ import { theme } from "./theme/theme";
  *   derived values to animate a shimmer. Defaults to `0` (the static
  *   sent-bubble palette). */
 export type KeywordHighlighter = (text: string, resetTo?: string, phase?: number) => string;
-
-const FG_RESET = "\x1b[39m";
 
 /** Declarative spec for {@link createGradientHighlighter}. */
 export interface GradientHighlightSpec {
@@ -79,7 +78,7 @@ export function createGradientHighlighter(spec: GradientHighlightSpec): KeywordH
 		return `${out}${resetTo}`;
 	};
 
-	return (text: string, resetTo: string = FG_RESET, phase: number = 0): string => {
+	return (text: string, resetTo: string = SGR_FG_RESET, phase: number = 0): string => {
 		if (!probe.test(text)) return text;
 		// Wrap phase into [0, 1) so negative inputs and values ≥ 1 stay well-defined.
 		const wrappedPhase = ((phase % 1) + 1) % 1;

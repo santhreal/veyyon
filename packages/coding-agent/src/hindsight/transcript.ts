@@ -7,8 +7,11 @@
  * surviving message's `TextContent` parts are joined with newlines.
  */
 
-import { type AssistantMessage, assistantTextBlocks } from "@veyyon/ai";
-import { contentText } from "@veyyon/utils";
+import type { AssistantMessage } from "@veyyon/ai";
+// The block extractor from the module that defines it (1 module) rather than the barrel (346).
+import { assistantTextBlocks } from "@veyyon/ai/utils/message-text";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
+import { contentText } from "@veyyon/utils/content-text";
 import type { SessionEntry } from "../session/session-entries";
 import { type HindsightMessage, hasSubstantiveContent } from "./content";
 

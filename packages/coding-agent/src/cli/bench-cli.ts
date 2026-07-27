@@ -27,7 +27,7 @@ import {
 } from "../config/model-resolver";
 import { buildServiceTierByFamily, serviceTierForAllFamilies, serviceTierSettingToTier } from "../config/service-tier";
 import type { Settings } from "../config/settings";
-import { PROMPTS } from "../prompts/registry";
+import { benchPrompts } from "../prompts/bench/rows";
 import {
 	concreteThinkingLevel,
 	resolveThinkingLevelForModel,
@@ -40,7 +40,7 @@ const DEFAULT_RUNS = 10;
 const DEFAULT_PAR = 4;
 const DEFAULT_MAX_TOKENS = 512;
 const ERROR_WIDTH = 110;
-const BENCH_PROMPT = PROMPTS["bench/throughput"].text.trim();
+const BENCH_PROMPT = benchPrompts["bench/throughput"].text.trim();
 
 export interface BenchCommandArgs {
 	models: string[];

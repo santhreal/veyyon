@@ -21,9 +21,11 @@
 
 import { describe, expect, it } from "bun:test";
 import type { Dirent } from "node:fs";
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
+
+const makeTempDir = useTrackedTempDirs("veyyon-profile-size-");
 
 const cliPath = path.resolve(import.meta.dir, "../../src/cli.ts");
 
@@ -111,7 +113,7 @@ describe("profile list --json size accounting", () => {
 		// The healthy path, asserted as a difference rather than an absolute: `profile new` seeds
 		// a tree whose size is not this suite's business, but the delta from one added file is
 		// exactly its length, which is what proves the walk is measuring and not estimating.
-		const home = mkdtempSync(path.join(tmpdir(), "veyyon-profile-size-"));
+		const home = makeTempDir();
 		const env = makeEnv(home);
 		await runProfile(env, ["new", "measured"]);
 
@@ -127,7 +129,7 @@ describe("profile list --json size accounting", () => {
 	}, 60_000);
 
 	it("counts bytes in nested directories, so the walk is recursive and not one level deep", async () => {
-		const home = mkdtempSync(path.join(tmpdir(), "veyyon-profile-size-"));
+		const home = makeTempDir();
 		const env = makeEnv(home);
 		await runProfile(env, ["new", "nested"]);
 
@@ -146,7 +148,7 @@ describe("profile list --json size accounting", () => {
 		// fail with EACCES, and every byte beneath it vanishes from the total. Skipped on
 		// Windows, where the mode bits do not produce this.
 		if (process.platform === "win32") return;
-		const home = mkdtempSync(path.join(tmpdir(), "veyyon-profile-size-"));
+		const home = makeTempDir();
 		const env = makeEnv(home);
 		await runProfile(env, ["new", "blocked"]);
 
@@ -179,7 +181,7 @@ describe("profile list --json size accounting", () => {
 		// The other direction: `bytesComplete` tracks the current walk, so a fixed permission bit
 		// is reflected immediately and the previously hidden bytes appear in the total.
 		if (process.platform === "win32") return;
-		const home = mkdtempSync(path.join(tmpdir(), "veyyon-profile-size-"));
+		const home = makeTempDir();
 		const env = makeEnv(home);
 		await runProfile(env, ["new", "recovered"]);
 
@@ -201,7 +203,7 @@ describe("profile list --json size accounting", () => {
 		// The load-bearing silence. A profile can be listed before anything is written into it,
 		// and an absent root is a real answer of zero rather than a measurement failure. If this
 		// warned, `bytesComplete: false` would be the normal case and would stop meaning anything.
-		const home = mkdtempSync(path.join(tmpdir(), "veyyon-profile-size-"));
+		const home = makeTempDir();
 		const env = makeEnv(home);
 		const rows = await listRows(env);
 

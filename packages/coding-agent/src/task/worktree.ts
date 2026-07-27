@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as natives from "@veyyon/natives";
-import { errorMessage, getWorktreeDir, logger, Snowflake } from "@veyyon/utils";
+import { errorMessage, getWorktreeDir, isEnoent, logger, Snowflake } from "@veyyon/utils";
 import * as git from "../utils/git";
 import * as jj from "../utils/jj";
 import { mapWithConcurrencyLimit } from "./parallel";
@@ -57,8 +57,32 @@ export function getGitNoIndexNullPath(): string {
 	return GIT_NO_INDEX_NULL_PATH;
 }
 
+/**
+ * Whether `dir` is itself a git repository, i.e. whether it holds a `.git` entry.
+ *
+ * A missing `.git` is the ordinary answer for almost every directory, so ENOENT is a plain "no". Any
+ * OTHER error means the question could not be answered -- an unreadable parent, a permission-restricted
+ * mount, an I/O failure -- and answering "no" there is not a guess, it is wrong in the dangerous
+ * direction: the walk would descend into a repository it failed to recognise and fold that repository's
+ * files into the task snapshot as if they were the parent's. So an unanswerable check is reported and
+ * treated as a repository boundary: the caller stops rather than reaching into a tree it cannot inspect.
+ */
+async function isGitRepoDir(dir: string): Promise<{ isRepo: boolean; inspectable: boolean }> {
+	try {
+		await fs.access(path.join(dir, ".git"));
+		return { isRepo: true, inspectable: true };
+	} catch (error) {
+		if (isEnoent(error)) return { isRepo: false, inspectable: true };
+		logger.warn("Could not tell whether a directory is a nested git repository; treating it as a boundary", {
+			dir,
+			error: errorMessage(error),
+		});
+		return { isRepo: false, inspectable: false };
+	}
+}
+
 /** Find nested git repositories (non-submodule) under the given root. */
-async function discoverNestedRepos(repoRoot: string): Promise<string[]> {
+export async function discoverNestedRepos(repoRoot: string): Promise<string[]> {
 	// Get submodule paths so we can exclude them
 	const submodulePaths = new Set(await git.ls.submodules(repoRoot));
 
@@ -68,7 +92,14 @@ async function discoverNestedRepos(repoRoot: string): Promise<string[]> {
 		let entries: Dirent[];
 		try {
 			entries = await fs.readdir(dir, { withFileTypes: true });
-		} catch {
+		} catch (error) {
+			// A directory that cannot be listed hides everything under it, including nested repositories
+			// that would then be snapshotted as ordinary files. There is nothing to do about it here --
+			// the walk cannot see inside -- but it must not be invisible (Law 10).
+			logger.warn("Could not list a directory while looking for nested git repositories", {
+				dir,
+				error: errorMessage(error),
+			});
 			return;
 		}
 		for (const entry of entries) {
@@ -76,18 +107,15 @@ async function discoverNestedRepos(repoRoot: string): Promise<string[]> {
 			if (!entry.isDirectory()) continue;
 			const full = path.join(dir, entry.name);
 			const rel = path.relative(repoRoot, full);
-			// Check if this directory is itself a git repo
-			const gitDir = path.join(full, ".git");
-			let hasGit = false;
-			try {
-				await fs.access(gitDir);
-				hasGit = true;
-			} catch {}
-			if (hasGit && !submodulePaths.has(rel)) {
+			const { isRepo, inspectable } = await isGitRepoDir(full);
+			if (isRepo && !submodulePaths.has(rel)) {
 				result.push(rel);
 				// Don't recurse into nested repos — they manage their own tree
 				continue;
 			}
+			// An uninspectable directory is a boundary too: descending would risk snapshotting a
+			// repository we failed to identify. It is reported by `isGitRepoDir`, not skipped quietly.
+			if (!inspectable) continue;
 			await walk(full);
 		}
 	}
@@ -896,12 +924,10 @@ export async function mergeTaskBranches(
 					} catch {
 						/* no state to abort */
 					}
+					// The tail was `errorMessage(cursor)` from `@veyyon/utils` written out by hand; only the
+					// GitCommandError branch is specific to this call site.
 					const stderr =
-						cursor instanceof git.GitCommandError
-							? cursor.result.stderr.trim()
-							: cursor instanceof Error
-								? cursor.message
-								: String(cursor);
+						cursor instanceof git.GitCommandError ? cursor.result.stderr.trim() : errorMessage(cursor);
 					failed.push(branchName);
 					conflictResult = {
 						merged,

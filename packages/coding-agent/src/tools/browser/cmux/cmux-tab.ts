@@ -400,10 +400,14 @@ export class CmuxTab {
 		if (typeof urlResult.url === "string" && urlResult.url.length > 0) {
 			this.#lastUrl = urlResult.url;
 		}
+		// Geometry is read by evaluating in the page, which fails while it is navigating; the caller's requested
+		// viewport is the documented default and is what `#lastViewport` keeps in that case.
 		const geometry = await this.#readGeometry().catch(() => undefined);
 		this.#lastViewport = geometry
 			? { width: geometry.innerWidth, height: geometry.innerHeight, deviceScaleFactor: geometry.dpr }
 			: viewport;
+		// Called for its side effect of refreshing `#lastTitle`; a page with no title yet leaves the previous
+		// one in place, and the returned string is deliberately unused.
 		await this.title().catch(() => "");
 		return {
 			url: this.#lastUrl,

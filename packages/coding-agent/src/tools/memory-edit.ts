@@ -1,8 +1,9 @@
 import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
 import { clampLow } from "@veyyon/utils";
 import { type } from "arktype";
-import { PROMPTS } from "../prompts/registry";
+import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from ".";
+import { throwIfAborted } from "./tool-errors";
 
 const memoryEditSchema = type({
 	op: type("'update' | 'forget' | 'invalidate'").describe("memory edit operation"),
@@ -18,7 +19,7 @@ export class MemoryEditTool implements AgentTool<typeof memoryEditSchema> {
 	readonly name = "memory_edit";
 	readonly approval = "read" as const;
 	readonly label = "Memory Edit";
-	readonly description = PROMPTS["tools/memory-edit"].text;
+	readonly description = toolsPrompts["tools/memory-edit"].text;
 	readonly parameters = memoryEditSchema;
 	readonly strict = true;
 	readonly loadMode = "discoverable";
@@ -32,7 +33,19 @@ export class MemoryEditTool implements AgentTool<typeof memoryEditSchema> {
 		return new MemoryEditTool(session);
 	}
 
-	async execute(_id: string, params: MemoryEditParams): Promise<AgentToolResult> {
+	/**
+	 * Apply one memory edit, refusing outright if the operator has already cancelled.
+	 *
+	 * There is nothing to interrupt once it starts: `editScopedMemory` is a single synchronous
+	 * store call, so this tool has no partway state and no resource to release. What it did
+	 * lack was the entry check -- it took no signal at all, so an edit issued before the
+	 * operator pressed Escape was applied afterwards regardless, and a memory edit is not a
+	 * read: it changes what the agent will recall in every later turn. It is deliberately NOT
+	 * wrapped in `untilAborted` (which the reading memory tools use), because racing a mutation
+	 * rejects the caller while the write lands anyway.
+	 */
+	async execute(_id: string, params: MemoryEditParams, signal?: AbortSignal): Promise<AgentToolResult> {
+		throwIfAborted(signal);
 		const state = this.session.getMnemopiSessionState?.();
 		if (!state) {
 			throw new Error("Mnemopi backend is not initialised for this session.");

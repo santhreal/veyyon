@@ -1,14 +1,14 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { buildTabBarTabs } from "@veyyon/coding-agent/modes/components/extensions/extension-dashboard";
 import { ExtensionList } from "@veyyon/coding-agent/modes/components/extensions/extension-list";
-import type { Extension } from "@veyyon/coding-agent/modes/components/extensions/types";
+import type { ExtensionRow } from "@veyyon/coding-agent/modes/components/extensions/types";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(async () => {
 	await initTheme(false);
 });
 
-function skill(name: string, state: Extension["state"] = "active"): Extension {
+function skill(name: string, state: ExtensionRow["state"] = "active"): ExtensionRow {
 	return {
 		id: `skill:${name}`,
 		kind: "skill",
@@ -27,7 +27,7 @@ function skill(name: string, state: Extension["state"] = "active"): Extension {
  * line indices therefore are: 0 search, 1 blank, 2 header, 3 alpha, 4 beta,
  * 5 gamma. `hitTest` maps those lines to absolute list-item indices.
  */
-function buildList(onToggle: (id: string, enabled: boolean) => void, onSelect: (ext: Extension | null) => void) {
+function buildList(onToggle: (id: string, enabled: boolean) => void, onSelect: (ext: ExtensionRow | null) => void) {
 	const list = new ExtensionList([skill("alpha"), skill("beta"), skill("gamma")], {
 		masterSwitchProvider: null,
 		onSelectionChange: onSelect,
@@ -54,7 +54,7 @@ describe("ExtensionList mouse routing", () => {
 
 	test("clicking a row selects its extension; clicking the selected row toggles it", () => {
 		const toggles: Array<{ id: string; enabled: boolean }> = [];
-		let selected: Extension | null = null;
+		let selected: ExtensionRow | null = null;
 		const list = buildList(
 			(id, enabled) => toggles.push({ id, enabled }),
 			ext => {

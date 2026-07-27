@@ -1,8 +1,8 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { TUI } from "@veyyon/tui";
+import { createToolExecution } from "../../helpers/tool-execution";
 
 // Contract under test: live tool previews that render a pending/running status
 // must keep the spinner glyph tied to the shared tool-frame ticker. This covers
@@ -22,7 +22,7 @@ describe("ToolExecutionComponent live preview spinners", () => {
 		vi.useFakeTimers();
 		const requestRender = vi.fn();
 		const requestComponentRender = vi.fn();
-		const component = new ToolExecutionComponent(
+		const component = createToolExecution(
 			"eval",
 			{ language: "py", code: "import time\ntime.sleep(10)" },
 			{},
@@ -50,7 +50,7 @@ describe("ToolExecutionComponent live preview spinners", () => {
 		vi.useFakeTimers();
 		const requestRender = vi.fn();
 		const requestComponentRender = vi.fn();
-		const component = new ToolExecutionComponent(
+		const component = createToolExecution(
 			"ssh",
 			{ host: "example.test", command: "sleep 10" },
 			{},
@@ -78,7 +78,7 @@ describe("ToolExecutionComponent live preview spinners", () => {
 		vi.useFakeTimers();
 		const requestRender = vi.fn();
 		const requestComponentRender = vi.fn();
-		const component = new ToolExecutionComponent(
+		const component = createToolExecution(
 			"bash",
 			{ command: "sleep 600" },
 			{},
@@ -102,7 +102,7 @@ describe("ToolExecutionComponent live preview spinners", () => {
 		vi.useFakeTimers();
 		const requestRender = vi.fn();
 		const requestComponentRender = vi.fn();
-		const component = new ToolExecutionComponent(
+		const component = createToolExecution(
 			"bash",
 			{ command: "sleep 600", async: true },
 			{},
@@ -136,7 +136,7 @@ describe("ToolExecutionComponent live preview spinners", () => {
 		vi.useFakeTimers();
 		const requestRender = vi.fn();
 		const requestComponentRender = vi.fn();
-		const component = new ToolExecutionComponent(
+		const component = createToolExecution(
 			"github",
 			{ op: "run_watch", run: "12345" },
 			{},
@@ -163,7 +163,7 @@ describe("ToolExecutionComponent live preview spinners", () => {
 		// A renderResult-only custom tool renders the static tool-name label
 		// while pending, so the spinner interval must not start.
 		const tool = { name: "ext_tool", renderResult: () => undefined };
-		const component = new ToolExecutionComponent(
+		const component = createToolExecution(
 			"ext_tool",
 			{ input: 1 },
 			{},

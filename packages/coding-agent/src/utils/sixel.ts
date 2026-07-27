@@ -1,8 +1,11 @@
-import { $env, $flag } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
+
+import { BEL, ST } from "@veyyon/tui/ansi";
+import { $env, $flag } from "@veyyon/utils/env";
 
 const SIXEL_START_REGEX = /\x1bP(?:[0-9;]*)q/u;
-const SIXEL_END_SEQUENCE = "\x1b\\";
-const SIXEL_END_BELL = "\x07";
+// A Sixel payload is a DCS string, so it closes with the standard String Terminator.
+const SIXEL_END_SEQUENCE = ST;
 const SIXEL_SEQUENCE_REGEX = /\x1bP(?:[0-9;]*)q[\s\S]*?(?:\x1b\\|\x07)/gu;
 const SIXEL_PLACEHOLDER_PREFIX = "__OMP_SIXEL_SEQUENCE_";
 
@@ -34,7 +37,7 @@ export function getSixelLineMask(lines: string[]): boolean[] {
 			inSequence = true;
 		}
 		const isSixelLine = inSequence;
-		if (inSequence && (line.includes(SIXEL_END_SEQUENCE) || line.includes(SIXEL_END_BELL))) {
+		if (inSequence && (line.includes(SIXEL_END_SEQUENCE) || line.includes(BEL))) {
 			inSequence = false;
 		}
 		return isSixelLine;

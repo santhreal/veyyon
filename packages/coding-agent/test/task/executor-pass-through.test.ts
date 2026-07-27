@@ -11,73 +11,28 @@ import type { Rule } from "@veyyon/coding-agent/capability/rule";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolPathWithSource } from "@veyyon/coding-agent/extensibility/custom-tools";
-import type { LoadExtensionsResult } from "@veyyon/coding-agent/extensibility/extensions/types";
-import type { CreateAgentSessionResult } from "@veyyon/coding-agent/sdk";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
-import type { AgentSession, AgentSessionEvent, PromptOptions } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { runSubprocess } from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
-import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
+import { createMockSession, createSessionResult, yieldSuccessEvent } from "../helpers/subagent-session";
 
 // Spawning a task writes a session (and, for worktree runs, a checkout) under the
 // ACTIVE PROFILE's agent dir, so without this the suite creates them inside the
 // developer's real `~/.veyyon/profiles/<profile>/agent`.
 useIsolatedAgentDir();
 
-function createMockSession(onPrompt: (params: { emit: (event: AgentSessionEvent) => void }) => void): AgentSession {
-	const listeners: Array<(event: AgentSessionEvent) => void> = [];
-	const emit = (event: AgentSessionEvent) => {
-		for (const listener of listeners) listener(event);
-	};
-	const session = {
-		state: { messages: [] },
-		agent: { state: { systemPrompt: ["test"] } },
-		model: undefined,
-		extensionRunner: undefined,
-		sessionManager: { appendSessionInit: () => {} },
-		getActiveToolNames: () => ["read", "yield"],
-		setActiveToolsByName: async (_toolNames: string[]) => {},
-		subscribe: (listener: (event: AgentSessionEvent) => void) => {
-			listeners.push(listener);
-			return () => {
-				const index = listeners.indexOf(listener);
-				if (index >= 0) listeners.splice(index, 1);
-			};
-		},
-		prompt: async (_text: string, _options?: PromptOptions) => {
-			onPrompt({ emit });
-		},
-		waitForIdle: async () => {},
-		getLastAssistantMessage: () => undefined,
-		abort: async () => {},
-		dispose: async () => {},
-	};
-	return session as unknown as AgentSession;
-}
-
+/**
+ * A session that answers the first prompt with a successful yield, which is all these tests need: the
+ * subject is what `runSubprocess` PASSES to `createAgentSession`, not how the run ends. The fake and
+ * the yield event both come from the shared helper, so a member the executor starts reading is added
+ * in one place rather than in each executor suite's private copy.
+ */
 function yieldEmittingSession(): AgentSession {
 	return createMockSession(({ emit }) => {
-		emit({
-			type: "tool_execution_end",
-			toolCallId: "tool-pass-through",
-			toolName: "yield",
-			result: {
-				content: [{ type: "text", text: "Result submitted." }],
-				details: { status: "success", data: { ok: true } },
-			},
-			isError: false,
-		});
+		emit(yieldSuccessEvent({ ok: true }, "tool-pass-through"));
 	});
-}
-
-function createSessionResult(session: AgentSession): CreateAgentSessionResult {
-	return {
-		session,
-		extensionsResult: { extensions: [], errors: [], runtime: {} as unknown } as unknown as LoadExtensionsResult,
-		setToolUIContext: () => {},
-		eventBus: new EventBus(),
-	};
 }
 
 const baseAgent: AgentDefinition = {

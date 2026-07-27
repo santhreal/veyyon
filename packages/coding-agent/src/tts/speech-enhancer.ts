@@ -15,15 +15,16 @@
  *   mechanical {@link SpeakableStream} cleanup — speech never blocks on the
  *   model.
  */
-import { assistantText, completeSimple } from "@veyyon/ai";
+import { completeSimple } from "@veyyon/ai";
+import { assistantText } from "@veyyon/ai/utils/message-text";
 import { errorMessage, logger, prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
-import { PROMPTS } from "../prompts/registry";
+import { sideChannelPrompts } from "../prompts/side-channel/rows";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 
-const SYSTEM_PROMPT = prompt.render(PROMPTS["side-channel/speech-rewrite"].text);
+const SYSTEM_PROMPT = prompt.render(sideChannelPrompts["side-channel/speech-rewrite"].text);
 // Rewrite budget: a paragraph in, a spoken paragraph (usually shorter) out.
 // Always reserve enough room to survive backends that ignore `disableReasoning`
 // (e.g. Qwen3 via llama.cpp catalogued `reasoning: false` but still emitting

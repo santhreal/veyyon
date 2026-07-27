@@ -12,11 +12,11 @@ import {
 	ensureNumericMetricMap,
 	formatNum,
 	formatPercentChange,
+	gitStatusPorcelain,
+	gitWorkDirPrefix,
 	mergeAsi,
 	pathMatchesSpec,
 	sanitizeAsi,
-	tryGitPrefix,
-	tryGitStatus,
 } from "../helpers";
 import {
 	buildExperimentState,
@@ -97,21 +97,35 @@ export function createLogExperimentTool(
 			const onAutoresearchBranch = branchName !== null;
 
 			let allModified: string[];
-			if (onAutoresearchBranch) {
+			try {
 				// On a dedicated autoresearch branch every iteration starts from a clean
 				// worktree (init_experiment baseline + previous keep commit / discard reset),
 				// so any currently-dirty path is the agent's iteration change. Off-branch we
 				// can't tell user dirt apart from agent edits, so we keep the (lossy)
 				// preRunDirtyPaths filter.
-				const statusText = await tryGitStatus(ctx.cwd);
-				const workDirPrefix = await tryGitPrefix(ctx.cwd);
-				allModified = parseWorkDirDirtyPaths(statusText, workDirPrefix);
-			} else {
-				const { modifiedTracked, modifiedUntracked } = await detectModifiedPaths(
-					ctx.cwd,
-					pendingRun.preRunDirtyPaths,
-				);
-				allModified = [...modifiedTracked, ...modifiedUntracked];
+				if (onAutoresearchBranch) {
+					const statusText = await gitStatusPorcelain(ctx.cwd);
+					const workDirPrefix = await gitWorkDirPrefix(ctx.cwd);
+					allModified = parseWorkDirDirtyPaths(statusText, workDirPrefix);
+				} else {
+					const { modifiedTracked, modifiedUntracked } = await detectModifiedPaths(
+						ctx.cwd,
+						pendingRun.preRunDirtyPaths,
+					);
+					allModified = [...modifiedTracked, ...modifiedUntracked];
+				}
+			} catch (err) {
+				// Refusing to log is the right answer: every field this run would record -- modified paths,
+				// scope deviations, and whether a discard has anything to revert -- is derived from this
+				// status, so logging without it would write an experiment result that is confidently empty.
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Error: git status failed, so this run was not logged: ${errorMessage(err)}`,
+						},
+					],
+				};
 			}
 			const scopeDeviations = computeScopeDeviations(allModified, session);
 
@@ -357,8 +371,17 @@ async function revertFailedExperiment(
 		}
 	}
 
-	const statusText = await tryGitStatus(cwd);
-	const workDirPrefix = await tryGitPrefix(cwd);
+	// A status this cannot read used to parse as "no dirty paths", so the revert reported "nothing to
+	// revert" and returned success while the experiment's changes stayed in the tree -- the one outcome a
+	// discard must never produce. The caller surfaces this error to the agent instead.
+	let statusText: string;
+	let workDirPrefix: string;
+	try {
+		statusText = await gitStatusPorcelain(cwd);
+		workDirPrefix = await gitWorkDirPrefix(cwd);
+	} catch (err) {
+		return { error: `git status failed, so nothing was reverted: ${errorMessage(err)}` };
+	}
 	const { tracked, untracked } = computeRunModifiedPaths(preRunDirtyPaths, statusText, workDirPrefix);
 	const total = tracked.length + untracked.length;
 	if (total === 0) return { note: "nothing to revert" };
@@ -379,12 +402,18 @@ async function revertFailedExperiment(
 	return { note: `reverted ${formatCount("file", total)}` };
 }
 
+/**
+ * The paths this run changed. Failures propagate: an unreadable status used to parse as "nothing
+ * changed", which recorded the experiment with an empty modified-path list and made the
+ * scope-deviation check pass vacuously, so an experiment that touched an `off_limits` file was logged
+ * as staying inside its scope.
+ */
 async function detectModifiedPaths(
 	cwd: string,
 	preRunDirtyPaths: string[],
 ): Promise<{ modifiedTracked: string[]; modifiedUntracked: string[] }> {
-	const statusText = await tryGitStatus(cwd);
-	const workDirPrefix = await tryGitPrefix(cwd);
+	const statusText = await gitStatusPorcelain(cwd);
+	const workDirPrefix = await gitWorkDirPrefix(cwd);
 	const { tracked, untracked } = computeRunModifiedPaths(preRunDirtyPaths, statusText, workDirPrefix);
 	return { modifiedTracked: tracked, modifiedUntracked: untracked };
 }

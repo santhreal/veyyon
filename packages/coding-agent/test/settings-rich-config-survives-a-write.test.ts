@@ -55,9 +55,18 @@ async function makeAgentDir(): Promise<string> {
 	return dir;
 }
 
-/** Settings writes are queued, so a write is only observable after it drains. */
-async function settle(): Promise<void> {
-	await new Promise(resolve => setTimeout(resolve, 300));
+/**
+ * Wait for a settings write to actually reach disk.
+ *
+ * Settings batches saves behind a timer, so the file is only observable after that save runs. This used to
+ * be a fixed 300ms sleep, which is a race dressed up as a wait: under the load of a full suite run the save
+ * had not finished, the config on disk still had none of the new keys, and the corpus assertion failed with
+ * `added: []` -- at a different seed each time and never when the file was run alone. `flush()` cancels the
+ * pending timer, awaits an in-progress save and forces one if anything is still modified, so it returns when
+ * the write is genuinely done rather than when a guessed interval has passed.
+ */
+async function settle(settings: Settings): Promise<void> {
+	await settings.flush();
 }
 
 /** Seed a config, load it, write one unrelated setting, and return the file. */
@@ -75,7 +84,7 @@ async function roundTrip(options: { config?: string; mode?: number; symlinked?: 
 
 	const settings = await Settings.loadIsolated({ agentDir });
 	await settings.set("topP", 0.9);
-	await settle();
+	await settle(settings);
 
 	const text = await fs.readFile(configPath, "utf8");
 	return { agentDir, configPath, text, parsed: (YAML.parse(text) ?? {}) as Record<string, unknown> };
@@ -193,7 +202,7 @@ describe("a project settings file alongside the global one", () => {
 
 		const settings = await Settings.loadIsolated({ agentDir, cwd: projectDir });
 		await settings.set("topP", 0.9);
-		await settle();
+		await settle(settings);
 
 		const global = YAML.parse(await fs.readFile(path.join(agentDir, "config.yml"), "utf8"));
 		expect(global.temperature).toBe(0.7); // the global value, not the project's 0.1
@@ -211,7 +220,7 @@ describe("a project settings file alongside the global one", () => {
 
 		const settings = await Settings.loadIsolated({ agentDir, cwd: projectDir });
 		await settings.set("topP", 0.9);
-		await settle();
+		await settle(settings);
 
 		expect(await fs.readFile(projectPath, "utf8")).toBe(before);
 	});

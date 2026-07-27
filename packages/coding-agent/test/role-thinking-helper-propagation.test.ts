@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as ai from "@veyyon/ai";
-import { Effort } from "@veyyon/ai";
+import { Effort } from "@veyyon/catalog/effort";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { generateCommitMessage } from "@veyyon/coding-agent/utils/commit-message-generator";
 import { generateSessionTitle } from "@veyyon/coding-agent/utils/title-generator";

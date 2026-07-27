@@ -1,5 +1,7 @@
 import * as path from "node:path";
-import { isEnoent, isRecord } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
+import { isEnoent } from "@veyyon/utils/fs-error";
+import { isRecord } from "@veyyon/utils/type-guards";
 
 export type NotebookCellType = "code" | "markdown" | "raw";
 

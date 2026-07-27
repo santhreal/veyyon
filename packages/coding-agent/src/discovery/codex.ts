@@ -25,7 +25,7 @@ import type { Skill } from "../capability/skill";
 import { skillCapability } from "../capability/skill";
 import type { SlashCommand } from "../capability/slash-command";
 import { slashCommandCapability } from "../capability/slash-command";
-import type { CustomTool } from "../capability/tool";
+import type { DiscoveredCustomTool } from "../capability/tool";
 import { toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
 
@@ -387,7 +387,7 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 // Tools (tools/)
 // =============================================================================
 
-async function loadTools(ctx: LoadContext): Promise<LoadResult<CustomTool>> {
+async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomTool>> {
 	const userToolsDir = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "tools");
 	const codexDir = getProjectCodexDir(ctx);
 	const projectToolsDir = path.join(codexDir, "tools");
@@ -400,7 +400,7 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<CustomTool>> {
 				path,
 				level,
 				_source: source,
-			} as CustomTool;
+			} as DiscoveredCustomTool;
 		};
 
 	const results = await Promise.all([
@@ -513,7 +513,7 @@ registerProvider<Hook>(hookCapability.id, {
 	load: loadHooks,
 });
 
-registerProvider<CustomTool>(toolCapability.id, {
+registerProvider<DiscoveredCustomTool>(toolCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
 	description: "Load custom tools from ~/.codex/tools and .codex/tools/",

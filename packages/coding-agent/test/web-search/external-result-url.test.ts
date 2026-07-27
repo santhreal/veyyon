@@ -38,7 +38,9 @@ describe("an anchor pointing at another site", () => {
 
 	/** Protocol-relative hrefs are common in scraped markup and must resolve against the base's scheme. */
 	it("resolves a protocol-relative href against the base", () => {
-		expect(resolveExternalResultUrl("//docs.rust-lang.org/book/", HOME, OWN)).toBe("https://docs.rust-lang.org/book/");
+		expect(resolveExternalResultUrl("//docs.rust-lang.org/book/", HOME, OWN)).toBe(
+			"https://docs.rust-lang.org/book/",
+		);
 	});
 
 	/** Plain http is a real result, not something to filter: the rule is http(s), not https-only. */

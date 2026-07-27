@@ -1,4 +1,5 @@
-import { clampLow } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
+import { clampLow } from "@veyyon/utils/math";
 
 export interface ToolTimeoutConfig {
 	/** Default timeout in seconds when agent omits the field */

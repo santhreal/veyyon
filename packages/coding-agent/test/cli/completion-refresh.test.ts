@@ -51,6 +51,7 @@ describe("completion paths mirror the installer that wrote the files", () => {
 		expect(completionsDirFor("fish", xdg)).toBe("/conf/fish/completions");
 	});
 
+	// biome-ignore lint/suspicious/noTemplateCurlyInString: quotes install.sh; the ${VAR:-default} is shell source under test.
 	it("treats an empty XDG variable as unset, matching ${VAR:-default}", () => {
 		// `${XDG_DATA_HOME:-...}` falls back on empty as well as unset; `??` would
 		// not, and would resolve completions to a path starting at "/".
@@ -69,8 +70,11 @@ describe("completion paths mirror the installer that wrote the files", () => {
 		// The two implementations are in different languages and cannot share code,
 		// so the shell source is asserted directly: a change to one that is not
 		// mirrored in the other fails here rather than in a user's shell.
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: quotes install.sh; the ${VAR:-default} is shell source under test.
 		expect(installSh).toContain('bash) echo "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"');
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: quotes install.sh; the ${VAR:-default} is shell source under test.
 		expect(installSh).toContain('zsh)  echo "${XDG_DATA_HOME:-$HOME/.local/share}/zsh/site-functions"');
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: quotes install.sh; the ${VAR:-default} is shell source under test.
 		expect(installSh).toContain('fish) echo "${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions"');
 		expect(installSh).toContain('bash) echo "$2"');
 		expect(installSh).toContain('zsh)  echo "_$2"');

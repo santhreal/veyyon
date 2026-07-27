@@ -10,14 +10,14 @@ import type { ModelRegistry } from "../config/model-registry";
 
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
-import { PROMPTS } from "../prompts/registry";
+import { titlesPrompts } from "../prompts/titles/rows";
 import { formatTitleUserMessage } from "../tiny/message-preproc";
 import { isTinyTitleLocalModelKey, ONLINE_TINY_TITLE_MODEL_KEY } from "../tiny/models";
 import { isLowSignalTitleInput, normalizeGeneratedTitle } from "../tiny/text";
 import { tinyTitleClient } from "../tiny/title-client";
 
-const TITLE_SYSTEM_PROMPT = prompt.render(PROMPTS["titles/system"].text);
-const TITLE_MARKER_INSTRUCTION = prompt.render(PROMPTS["titles/marker-instruction"].text);
+const TITLE_SYSTEM_PROMPT = prompt.render(titlesPrompts["titles/system"].text);
+const TITLE_MARKER_INSTRUCTION = prompt.render(titlesPrompts["titles/marker-instruction"].text);
 
 const DEFAULT_TERMINAL_TITLE = "vey";
 const TERMINAL_TITLE_CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/g;

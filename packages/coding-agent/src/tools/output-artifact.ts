@@ -1,6 +1,8 @@
-import { errorMessage, logger } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
+import * as logger from "@veyyon/utils/logger";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import type { Settings } from "../config/settings";
-import { type InlineByteCapOptions, resolveInlineCap } from "../session/streaming-output";
+import { DEFAULT_MAX_BYTES, type InlineByteCapOptions, resolveInlineCap } from "../session/streaming-output";
 import type { ToolSession } from "./index";
 
 /**
@@ -35,11 +37,42 @@ export interface InlinePricingSource {
  */
 export function inlineOutputPricing(
 	session: InlinePricingSource,
-): Pick<InlineByteCapOptions, "turnIndex" | "floorFraction"> {
+): Pick<InlineByteCapOptions, "turnIndex" | "floorFraction" | "maxBytes"> {
 	return {
 		turnIndex: session.getTurnIndex?.(),
 		floorFraction: session.settings?.get("tools.inlineOutputFloor"),
+		maxBytes: configuredInlineMaxBytes(session.settings?.get("tools.artifactSpillThreshold")),
 	};
+}
+
+/**
+ * The configured inline budget in BYTES, or `undefined` to take the compiled
+ * default.
+ *
+ * `tools.artifactSpillThreshold` is in kilobytes, and it is the ONE setting that
+ * answers "how many bytes of tool output stay in the conversation". It used to
+ * answer it for the centralised spill only, while every streaming tool priced
+ * itself against a compiled 50KB constant nothing could reach; the two agreed
+ * only because both happened to be 50KB, so lowering the setting moved the
+ * centralised path and left bash, eval, ssh and the interactive shell where they
+ * were. Reading it here is what makes the setting mean what its description says.
+ *
+ * A threshold of zero or less is not a preference for a very small budget, it is
+ * one that elides every tool result down to its ellipsis, and a non-finite one
+ * propagates a NaN into every byte comparison downstream so that nothing spills
+ * at all. Both are refused, and refused OUT LOUD: a silently corrected setting is
+ * one whose value in the file disagrees with the value in effect, with nothing an
+ * operator can see (Law 10). A refusal falls back to the compiled default, which
+ * is the same answer as not setting it.
+ */
+function configuredInlineMaxBytes(configuredKb: number | undefined): number | undefined {
+	if (configuredKb === undefined) return undefined;
+	if (Number.isFinite(configuredKb) && configuredKb > 0) return configuredKb * 1024;
+	logger.warn("tools.artifactSpillThreshold is not a positive number of KB; using the compiled default instead", {
+		configuredKb,
+		usingBytes: DEFAULT_MAX_BYTES,
+	});
+	return undefined;
 }
 
 /**
@@ -53,7 +86,14 @@ export function inlineOutputPricing(
  * priced one way as a grep result and another as a bash result.
  */
 export function inlineBudgetFor(session: InlinePricingSource, maxBytes?: number): number {
-	return resolveInlineCap({ ...inlineOutputPricing(session), maxBytes });
+	// Conditional, not `{ ...pricing, maxBytes }`: spreading an absent argument
+	// writes `maxBytes: undefined` OVER the configured budget, so every caller
+	// that does not pass one -- which is all of them -- would silently get the
+	// compiled default, and `tools.artifactSpillThreshold` would go on reaching
+	// only the centralised path it already reached.
+	// A caller that DOES pass one is bounding its output for a reason of its own
+	// and still wins.
+	return resolveInlineCap({ ...inlineOutputPricing(session), ...(maxBytes !== undefined ? { maxBytes } : {}) });
 }
 
 /**

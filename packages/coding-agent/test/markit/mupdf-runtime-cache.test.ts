@@ -5,6 +5,13 @@ import * as path from "node:path";
 import { materializeEmbeddedMupdf } from "@veyyon/coding-agent/markit/converters/pdf/extract";
 import { __resetDirsFromEnvForTests, getAgentDir, removeWithRetries, setAgentDir } from "@veyyon/utils";
 import { guardDestructivePath } from "../../../utils/test/helpers/destructive-guard";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makeMupdfCacheDir = useTrackedTempDirs("veyyon-mupdf-cache-");
 
 /**
  * CACHE-2: the materialized mupdf runtime must never be imported half-written.
@@ -40,7 +47,7 @@ describe("the materialized mupdf runtime cache", () => {
 	const MUPDF_WASM_JS = 'export const marker = "real mupdf-wasm.js";\n';
 
 	beforeEach(() => {
-		root = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-mupdf-cache-"));
+		root = makeMupdfCacheDir();
 		assetDir = path.join(root, "assets");
 		fs.mkdirSync(assetDir, { recursive: true });
 		const mupdfJs = path.join(assetDir, "mupdf.js");

@@ -17,18 +17,25 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { removeWithRetries } from "@veyyon/utils";
 import * as YAML from "yaml";
 import { guardDestructivePath } from "../../../utils/test/helpers/destructive-guard";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makeFlatDottedKeysDir = useTrackedTempDirs("veyyon-flat-dotted-keys-");
+const makeFlatDottedProjectDir = useTrackedTempDirs("veyyon-flat-dotted-project-");
 
 describe("flat dotted setting keys", () => {
 	let agentDir = "";
 
 	beforeEach(() => {
-		agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-flat-dotted-keys-"));
+		agentDir = makeFlatDottedKeysDir();
 	});
 
 	afterEach(async () => {
@@ -175,7 +182,7 @@ describe("flat dotted setting keys", () => {
 	 * that the funnel is shared rather than reimplemented per source.
 	 */
 	test("a project config's flat key is readable too", async () => {
-		const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-flat-dotted-project-"));
+		const projectDir = makeFlatDottedProjectDir();
 		try {
 			fs.mkdirSync(path.join(projectDir, ".veyyon"), { recursive: true });
 			fs.writeFileSync(

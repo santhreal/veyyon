@@ -1,6 +1,8 @@
 import * as fs from "node:fs/promises";
 import type { ImageContent, Model } from "@veyyon/ai";
-import { formatBytes, readImageMetadata, SUPPORTED_IMAGE_MIME_TYPES } from "@veyyon/utils";
+import { formatBytes } from "@veyyon/utils/format";
+// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
+import { readImageMetadata, SUPPORTED_IMAGE_MIME_TYPES } from "@veyyon/utils/mime";
 import { resolveReadPath } from "../tools/path-utils";
 import { formatDimensionNote, type ImageResizeOptions, resizeImage } from "./image-resize";
 
@@ -89,6 +91,10 @@ export async function ensureSupportedImageInput(image: ImageContent): Promise<Im
 		const data = await new Bun.Image(bytes).png().toBase64();
 		return { type: "image", data, mimeType: "image/png" };
 	} catch {
+		// The conversion is the test: an unsupported MIME type reaches here, and if the bytes are not an
+		// image this decoder understands, they cannot be sent to a model either. Null tells the caller to
+		// refuse the attachment, which it reports to the user with the MIME type -- so the failure is not
+		// swallowed, it is answered where the user can act on it.
 		return null;
 	}
 }

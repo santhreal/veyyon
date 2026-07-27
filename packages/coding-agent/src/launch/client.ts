@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { isEexist, isEnoent, postmortem } from "@veyyon/utils";
 import { resolveWorkerSpawnCmd, workerEnvFromParent } from "../subprocess/worker-client";
-import { canonicalProjectDir, daemonBrokerEndpoint, daemonRuntimeDir } from "./paths";
+import { canonicalProjectDir, daemonBrokerEndpoint, daemonBrokerTokenPath, daemonRuntimeDir } from "./paths";
 import {
 	DAEMON_BROKER_WORKER_ARG,
 	DAEMON_IDLE_GRACE_ENV,
@@ -22,7 +22,6 @@ import {
 // relay connect timeout in collab/host.ts, which crosses the network.
 const BROKER_CONNECT_TIMEOUT_MS = 10_000;
 const CONNECT_RETRY_MS = 50;
-const TOKEN_FILE = "broker.token";
 
 interface PendingRequest {
 	operation: DaemonOperation;
@@ -49,7 +48,7 @@ export interface DaemonBrokerClient {
 
 async function readOrCreateToken(runtimeDir: string): Promise<string> {
 	await fs.mkdir(runtimeDir, { recursive: true, mode: 0o700 });
-	const tokenPath = path.join(runtimeDir, TOKEN_FILE);
+	const tokenPath = daemonBrokerTokenPath(runtimeDir);
 	const tokenFile = Bun.file(tokenPath);
 	for (let attempt = 0; attempt < 100; attempt++) {
 		try {

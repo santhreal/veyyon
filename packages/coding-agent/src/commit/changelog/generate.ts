@@ -4,7 +4,7 @@ import { completeSimple, validateToolCall } from "@veyyon/ai";
 import { prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { ChangelogGenerationResult } from "../../commit/types";
-import { PROMPTS } from "../../prompts/registry";
+import { commitPrompts } from "../../prompts/commit/rows";
 import { toReasoningEffort } from "../../thinking";
 import { extractTextContent, extractToolCall, parseJsonPayload } from "../utils";
 
@@ -47,7 +47,7 @@ export async function generateChangelogEntries({
 	stat,
 	diff,
 }: ChangelogPromptInput): Promise<ChangelogGenerationResult> {
-	const userContent = prompt.render(PROMPTS["commit/changelog-user"].text, {
+	const userContent = prompt.render(commitPrompts["commit/changelog-user"].text, {
 		changelog_path: changelogPath,
 		is_package_changelog: isPackageChangelog,
 		existing_entries: existingEntries,
@@ -57,7 +57,7 @@ export async function generateChangelogEntries({
 	const response = await completeSimple(
 		model,
 		{
-			systemPrompt: [prompt.render(PROMPTS["commit/changelog-system"].text)],
+			systemPrompt: [prompt.render(commitPrompts["commit/changelog-system"].text)],
 			messages: [{ role: "user", content: userContent, timestamp: Date.now() }],
 			tools: [changelogTool],
 		},

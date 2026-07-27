@@ -19,7 +19,8 @@
  * SSH provider via `import "./discovery"` (sdk.ts) / `initializeWithSettings`
  * (main.ts) before any tool resolves.
  */
-import { formatCount } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
+import { formatCount } from "@veyyon/utils/format";
 import * as capability from "../capability";
 import { type SSHHost, sshCapability } from "../capability/ssh";
 import type { SSHConnectionTarget } from "../ssh/connection-manager";

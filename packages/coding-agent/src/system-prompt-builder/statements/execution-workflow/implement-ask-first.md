@@ -1,0 +1,1 @@
+- Ask before destructive commands or deleting code you didn't write.

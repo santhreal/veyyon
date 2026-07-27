@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { StatusLineSegmentId } from "@veyyon/coding-agent/config/settings-schema";
@@ -12,6 +11,21 @@ import { getSessionAccentAnsi, getSessionAccentHex } from "@veyyon/coding-agent/
 import { visibleWidth } from "@veyyon/tui";
 import { getProjectDir, setProjectDir, stripAnsi } from "@veyyon/utils";
 import { useFullColor } from "./helpers/theme-assertions";
+import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makeOverflowVeryLongDirectoryNameForTestingDir = useTrackedTempDirs(
+	"veyyon-overflow-very-long-directory-name-for-testing-",
+);
+const makeOverflowAVeryLongWorktreeDirectoryNameHereDir = useTrackedTempDirs(
+	"veyyon-overflow-a-very-long-worktree-directory-name-here-",
+);
+const makeShortDir = useTrackedTempDirs("veyyon-short-");
+const makeNarrowOvfDir = useTrackedTempDirs("veyyon-narrow-ovf-");
+const makeStatuslineOverflowDir = useTrackedTempDirs("veyyon-statusline-overflow-");
 
 const originalProjectDir = getProjectDir();
 
@@ -167,7 +181,7 @@ describe("path segment truncation at varying maxLength", () => {
 	let tmpDir: string;
 
 	beforeAll(() => {
-		tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-overflow-very-long-directory-name-for-testing-"));
+		tmpDir = makeOverflowVeryLongDirectoryNameForTestingDir();
 		setProjectDir(tmpDir);
 	});
 
@@ -203,7 +217,7 @@ describe("overflow: path shrinks before git is dropped", () => {
 
 	beforeAll(() => {
 		// Long dir name guarantees the path segment is wide
-		tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-overflow-a-very-long-worktree-directory-name-here-"));
+		tmpDir = makeOverflowAVeryLongWorktreeDirectoryNameHereDir();
 		setProjectDir(tmpDir);
 	});
 
@@ -315,7 +329,7 @@ describe("overflow: path shrinks before git is dropped", () => {
 
 	it("shrinks a short path when maxLength exceeds actual path length", () => {
 		// Short dir name — rendered path is well under the configured maxLength.
-		const shortDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-short-"));
+		const shortDir = makeShortDir();
 		setProjectDir(shortDir);
 		try {
 			const maxLength = 160;
@@ -342,7 +356,7 @@ describe("overflow: path shrinks before git is dropped", () => {
 		}
 	});
 	it("preserves git when overflow is only 1-2 columns", () => {
-		const shortDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-narrow-ovf-"));
+		const shortDir = makeNarrowOvfDir();
 		setProjectDir(shortDir);
 		try {
 			const ctx = createCtx({ pathMaxLength: 80, branch: "main" });
@@ -372,7 +386,7 @@ describe("overflow: path shrinks before git is dropped", () => {
 
 describe("overflow: path survives before model", () => {
 	it("drops the model segment before the cwd path when both cannot fit", () => {
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-statusline-overflow-"));
+		const root = makeStatuslineOverflowDir();
 		const cwd = path.join(root, "cwdxyz");
 		fs.mkdirSync(cwd);
 		setProjectDir(cwd);

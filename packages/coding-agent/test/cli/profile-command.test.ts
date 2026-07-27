@@ -4,9 +4,11 @@
  * refuses a nonexistent name — and the JSON listing shape.
  */
 import { describe, expect, it } from "bun:test";
-import { existsSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync } from "node:fs";
 import * as path from "node:path";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
+
+const makeTempDir = useTrackedTempDirs("veyyon-profile-home-");
 
 const cliPath = path.resolve(import.meta.dir, "../../src/cli.ts");
 
@@ -38,7 +40,7 @@ async function runProfile(
 
 describe("veyyon profile", () => {
 	it("new creates a profile, list shows it, rm --yes removes it", async () => {
-		const home = mkdtempSync(path.join(tmpdir(), "veyyon-profile-home-"));
+		const home = makeTempDir();
 		const env = makeEnv(home);
 
 		const created = await runProfile(env, ["new", "work"]);
@@ -71,7 +73,7 @@ describe("veyyon profile", () => {
 	}, 30_000);
 
 	it("rm without --yes refuses and leaves the profile intact", async () => {
-		const home = mkdtempSync(path.join(tmpdir(), "veyyon-profile-home-"));
+		const home = makeTempDir();
 		const env = makeEnv(home);
 		await runProfile(env, ["new", "keepme"]);
 		const { stderr, exitCode } = await runProfile(env, ["rm", "keepme"]);
@@ -81,7 +83,7 @@ describe("veyyon profile", () => {
 	}, 30_000);
 
 	it("refuses to create a duplicate or remove default/nonexistent profiles", async () => {
-		const home = mkdtempSync(path.join(tmpdir(), "veyyon-profile-home-"));
+		const home = makeTempDir();
 		const env = makeEnv(home);
 		await runProfile(env, ["new", "dup"]);
 		const dup = await runProfile(env, ["new", "dup"]);
@@ -97,7 +99,7 @@ describe("veyyon profile", () => {
 	}, 30_000);
 
 	it("new --from blank seeds an empty agent tree", async () => {
-		const home = mkdtempSync(path.join(tmpdir(), "veyyon-profile-home-"));
+		const home = makeTempDir();
 		const env = makeEnv(home);
 		const { stdout, exitCode } = await runProfile(env, ["new", "bounty", "--from", "blank", "--json"]);
 		expect(exitCode).toBe(0);

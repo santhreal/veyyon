@@ -1056,7 +1056,7 @@ export interface ExtensionAPI {
 	/** File logger for error/warning/debug messages */
 	logger: typeof PiLogger;
 
-	/** Injected zod-backed typebox shim for legacy `Type.Object(...)` parameter authoring. */
+	/** Injected legacy typebox shim for `Type.Object(...)` parameter authoring (prefer `arktype`). */
 	typebox: typeof TypeBox;
 
 	/** Injected arktype module for arktype-authored extension tools (canonical going forward). */
@@ -1464,8 +1464,17 @@ export interface ExtensionCommandContextActions {
 /** Full runtime = state + actions. */
 export interface ExtensionRuntime extends ExtensionRuntimeState, ExtensionActions {}
 
-/** Loaded extension with all registered items. */
-export interface Extension {
+/**
+ * A veyyon extension module that has been executed, with everything it registered.
+ *
+ * LOADED is the distinguishing word. `ManifestExtension`
+ * (`capability/extension.ts`) is a Gemini-style extension directory found on disk
+ * and never executed, and `ExtensionRow`
+ * (`modes/components/extensions/types.ts`) is a dashboard row that normalizes every
+ * capability kind. All three were called `Extension`, so an editor auto-import
+ * picked whichever it offered and nothing compared them.
+ */
+export interface LoadedExtension {
 	path: string;
 	resolvedPath: string;
 	label?: string;
@@ -1480,7 +1489,7 @@ export interface Extension {
 
 /** Result of loading extensions. */
 export interface LoadExtensionsResult {
-	extensions: Extension[];
+	extensions: LoadedExtension[];
 	errors: Array<{ path: string; error: string }>;
 	runtime: ExtensionRuntime;
 }

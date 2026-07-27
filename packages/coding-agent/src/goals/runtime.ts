@@ -1,5 +1,5 @@
 import { escapeXmlText, prompt, Snowflake } from "@veyyon/utils";
-import { PROMPTS } from "../prompts/registry";
+import { goalsPrompts } from "../prompts/goals/rows";
 import type { Goal, GoalBudgetSteering, GoalModeState, GoalRuntimeEvent, GoalTokenUsage } from "./state";
 
 export interface GoalRuntimeHost {
@@ -77,10 +77,10 @@ export function goalTokenDelta(current: GoalTokenUsage, baseline: GoalTokenUsage
 export function renderGoalPrompt(kind: GoalPromptKind, goal: Goal): string {
 	const template =
 		kind === "active"
-			? PROMPTS["goals/goal-mode-active"].text
+			? goalsPrompts["goals/goal-mode-active"].text
 			: kind === "continuation"
-				? PROMPTS["goals/goal-continuation"].text
-				: PROMPTS["goals/goal-budget-limit"].text;
+				? goalsPrompts["goals/goal-continuation"].text
+				: goalsPrompts["goals/goal-budget-limit"].text;
 	return prompt.render(template, {
 		objective: escapeXmlText(goal.objective),
 		tokensUsed: String(goal.tokensUsed),
@@ -150,6 +150,8 @@ export class GoalRuntime {
 			() => promise,
 			() => promise,
 		);
+		// Waiting for the previous accounting turn to SETTLE, not for it to succeed: its failure belongs to the
+		// caller that started it, and this turn's own accounting is independent of whether that one worked.
 		await previous.catch(() => {});
 		try {
 			return await fn();

@@ -1,9 +1,12 @@
 import type { AgentToolUpdateCallback } from "@veyyon/agent-core";
-import { capTextBytes, clampLow, sanitizeText, truncateHeadBytes, truncateTailBytes } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
+import { capTextBytes, truncateHeadBytes, truncateTailBytes } from "@veyyon/utils/byte-truncate";
+import { clampLow } from "@veyyon/utils/math";
+import { sanitizeText } from "@veyyon/utils/sanitize-text";
 
-export { type ByteTruncationResult, truncateHeadBytes, truncateTailBytes } from "@veyyon/utils";
+export { type ByteTruncationResult, truncateHeadBytes, truncateTailBytes } from "@veyyon/utils/byte-truncate";
 
-import { DEFAULT_INLINE_FLOOR_FRACTION } from "../config/settings-domains/shared";
+import { DEFAULT_INLINE_FLOOR_FRACTION, DEFAULT_INLINE_OUTPUT_MAX_BYTES } from "../config/settings-domains/shared";
 import { formatBytes } from "../tools/render-utils";
 import { sanitizeWithOptionalSixelPassthrough } from "../utils/sixel";
 
@@ -12,7 +15,16 @@ import { sanitizeWithOptionalSixelPassthrough } from "../utils/sixel";
 // =============================================================================
 
 export const DEFAULT_MAX_LINES = 3000;
-export const DEFAULT_MAX_BYTES = 50 * 1024; // 50KB
+/**
+ * The compiled inline output budget, 50KB.
+ *
+ * The number itself is owned by `DEFAULT_INLINE_OUTPUT_MAX_BYTES` in the
+ * settings domains, next to the floor fraction it pairs with, because
+ * `tools.artifactSpillThreshold` configures it and a schema default that is a
+ * second literal drifts from the compiled one the first time either is tuned.
+ * This name stays because it is what every caller and every tool doc says.
+ */
+export const DEFAULT_MAX_BYTES = DEFAULT_INLINE_OUTPUT_MAX_BYTES;
 export const DEFAULT_MAX_COLUMN = 512; // Max chars per grep match line
 
 /**

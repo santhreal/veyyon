@@ -18,10 +18,15 @@ import {
 	BaseKernel,
 	DEFAULT_KERNEL_STARTUP_TIMEOUT_MS,
 	getRemainingTimeMs,
-	type KernelRuntimeEnv,
+	KERNEL_INTERRUPT_ESCALATION_MS,
+	KERNEL_SHUTDOWN_GRACE_MS,
+	type KernelEnvPatch,
+	type KernelExecuteOptions,
 	type KernelStartOptions,
+	kernelIpcTraceEnvVar,
+	kernelRunnerCacheDir,
+	releaseKernel,
 } from "../kernel-base";
-import type { KernelDisplayOutput } from "../py/display";
 import { hostHasInheritableConsole, shouldDetachKernel, shouldHideKernelWindow } from "../py/spawn-options";
 import { RUBY_PRELUDE } from "./prelude";
 import RUNNER_SCRIPT from "./runner.rb" with { type: "text" };
@@ -33,15 +38,15 @@ import {
 	resolveRubyRuntime,
 } from "./runtime";
 
-export type { KernelExecuteResult, KernelRuntimeEnv, KernelShutdownResult } from "../kernel-base";
+export type { KernelExecuteOptions, KernelExecuteResult, KernelRuntimeEnv, KernelShutdownResult } from "../kernel-base";
 export type { KernelDisplayOutput, PythonStatusEvent } from "../py/display";
 export { renderKernelDisplay } from "../py/display";
 
-const TRACE_IPC = $flag("VEYYON_RUBY_IPC_TRACE");
+const TRACE_IPC = $flag(kernelIpcTraceEnvVar("RUBY"));
 
 // Cache the runner script on disk so the subprocess loads it normally. Cached
 // per script hash so installs don't race across versions.
-const RUNNER_CACHE_DIR = path.join(os.tmpdir(), "veyyon-ruby-runner");
+const RUNNER_CACHE_DIR = kernelRunnerCacheDir(os.tmpdir(), "ruby");
 let RUNNER_SCRIPT_PATH: string | null = null;
 
 async function ensureRunnerScript(): Promise<string> {
@@ -56,25 +61,9 @@ async function ensureRunnerScript(): Promise<string> {
 	return target;
 }
 
-const SHUTDOWN_GRACE_MS = 1_000;
 const STARTUP_TIMEOUT_MS = DEFAULT_KERNEL_STARTUP_TIMEOUT_MS;
 // How long to wait after SIGINT for the runner to emit `done` before escalating
 // to a full subprocess shutdown so the host queue unblocks instead of hanging.
-const INTERRUPT_ESCALATION_MS = 5_000;
-
-export interface KernelExecuteOptions {
-	id?: string;
-	/** Runtime working directory applied immediately before this request executes. */
-	cwd?: string;
-	/** Managed runtime environment variables applied immediately before this request executes. */
-	env?: KernelRuntimeEnv;
-	signal?: AbortSignal;
-	onChunk?: (text: string) => Promise<void> | void;
-	onDisplay?: (output: KernelDisplayOutput) => Promise<void> | void;
-	timeoutMs?: number;
-	silent?: boolean;
-	storeHistory?: boolean;
-}
 
 export interface RubyKernelAvailability {
 	ok: boolean;
@@ -142,8 +131,8 @@ export class RubyKernel extends BaseKernel<KernelExecuteOptions> {
 			languageName: "Ruby",
 			traceIpc: TRACE_IPC,
 			exitPayload: JSON.stringify({ type: "exit" }),
-			interruptEscalationMs: INTERRUPT_ESCALATION_MS,
-			shutdownGraceMs: SHUTDOWN_GRACE_MS,
+			interruptEscalationMs: KERNEL_INTERRUPT_ESCALATION_MS,
+			shutdownGraceMs: KERNEL_SHUTDOWN_GRACE_MS,
 			buildPayload: (code, msgId, opts) =>
 				JSON.stringify({
 					id: msgId,
@@ -213,24 +202,39 @@ export class RubyKernel extends BaseKernel<KernelExecuteOptions> {
 			await kernel.executeWithBudget(RUBY_PRELUDE, startup.signal, startupBudget, "Ruby kernel prelude");
 			return kernel;
 		} catch (err) {
-			await kernel.shutdown({ timeoutMs: SHUTDOWN_GRACE_MS }).catch(() => {});
+			await releaseKernel(kernel, "ruby-kernel-startup-failed", { timeoutMs: KERNEL_SHUTDOWN_GRACE_MS });
 			throw err;
 		}
 	}
 }
 
-function buildInitScript(cwd: string, env?: Record<string, string | undefined>): string {
-	const envPayload: Record<string, string> = {};
-	for (const key in env) {
-		const value = env[key];
-		if (value !== undefined) envPayload[key] = value;
-	}
+/**
+ * The `cd` + env preamble prepended to a Ruby execution request.
+ *
+ * `null` CLEARS a variable and `undefined` leaves it alone, which is the contract
+ * {@link KernelEnvPatch} documents and the Python runner already honoured. This
+ * function used to take `Record<string, string | undefined>` and test only
+ * `value !== undefined`, so a `null` fell through to `ENV["k"] = null` -- and `null`
+ * is not a Ruby literal, so the whole preamble raised a NameError and took the user's
+ * actual code down with it.
+ *
+ * Exported so the regression suite can assert the emitted bytes directly. The
+ * alternative is a live kernel, which needs the interpreter installed and would not
+ * run in CI, and this contract is precisely about what text gets generated.
+ */
+export function buildInitScript(cwd: string, env?: KernelEnvPatch): string {
 	// JSON string literals are valid Ruby string literals. Emit one
 	// `ENV["k"] = "v"` per key — a `{"k":"v"}` object literal would parse as a
 	// SYMBOL-keyed hash in Ruby (`:"k" => "v"`), which `ENV[]=` rejects.
 	const lines = [`__veyyon_init_cwd = ${JSON.stringify(cwd)}`, "Dir.chdir(__veyyon_init_cwd) rescue nil"];
-	for (const key in envPayload) {
-		lines.push(`ENV[${JSON.stringify(key)}] = ${JSON.stringify(envPayload[key])}`);
+	for (const key in env) {
+		const value = env[key];
+		if (value === undefined) continue;
+		lines.push(
+			value === null
+				? `ENV.delete(${JSON.stringify(key)})`
+				: `ENV[${JSON.stringify(key)}] = ${JSON.stringify(value)}`,
+		);
 	}
 	lines.push("$LOAD_PATH.delete(__veyyon_init_cwd)", "$LOAD_PATH.unshift(__veyyon_init_cwd)");
 	return lines.join("\n");

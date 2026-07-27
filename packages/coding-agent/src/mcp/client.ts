@@ -3,9 +3,11 @@
  *
  * Handles connection initialization, tool listing, and tool calling.
  */
+
 import * as path from "node:path";
 import * as url from "node:url";
 import { errorMessage, getProjectDir, logger, withTimeout } from "@veyyon/utils";
+import { MCP_PROTOCOL_VERSION } from "./protocol-version";
 import { describeMCPTimeout, isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "./timeout";
 import { MAX_TOOL_LIST_PAGES, validateToolListPage } from "./tool-list-validation";
 import { createHttpTransport } from "./transports/http";
@@ -39,7 +41,6 @@ import type {
 } from "./types";
 
 /** MCP protocol version we support */
-const PROTOCOL_VERSION = "2025-03-26";
 
 /** Client info sent during initialization */
 const CLIENT_INFO = {
@@ -98,7 +99,7 @@ async function initializeConnection(
 	},
 ): Promise<MCPInitializeResult> {
 	const params: MCPInitializeParams = {
-		protocolVersion: PROTOCOL_VERSION,
+		protocolVersion: MCP_PROTOCOL_VERSION,
 		capabilities: {
 			roots: { listChanged: false },
 		},
@@ -194,7 +195,7 @@ export async function connectToServer(
 		// If withTimeout rejected (timeout/abort) while connect() was still pending,
 		// the transport may be alive with an open SSE listener. Close it.
 		if (transport) {
-			void transport.close().catch(() => {});
+			closeTransportDetached(transport, name, "connect-timeout");
 		}
 		throw error;
 	}
@@ -293,6 +294,33 @@ export async function callTool(
  */
 export async function disconnectServer(connection: MCPServerConnection): Promise<void> {
 	await connection.transport.close();
+}
+
+/**
+ * Close a transport on a path that cannot report the close's own failure, in one place.
+ *
+ * The callers are all tearing a connection down: a connect that timed out with the transport possibly
+ * alive, a server being replaced by a reconnect, a reconnect abandoned because the manager was reset, a
+ * tool-list that failed after the handshake. Each either throws its own error, which is the one the
+ * operator needs, or is deliberately not awaited because a close can take the transport's full timeout
+ * (an HTTP DELETE at 30s by default) and blocking the reconnect loop on it is worse than not knowing.
+ *
+ * Not knowing is still the wrong default, because a close that fails leaves a zombie: an open SSE
+ * listener, or a stdio subprocess that outlives every reference to it. So the failure is reported with the
+ * server it belonged to, and the caller keeps its own control flow.
+ */
+export function closeTransportDetached(
+	transport: Pick<MCPServerConnection["transport"], "close">,
+	server: string,
+	context: string,
+): void {
+	void transport.close().catch((error: unknown) => {
+		logger.warn("MCP transport close failed; it may be left open", {
+			path: `mcp:${server}`,
+			context,
+			error: errorMessage(error),
+		});
+	});
 }
 
 /**

@@ -1,11 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { removeWithRetries } from "@veyyon/utils";
 import * as YAML from "yaml";
 import { guardDestructivePath } from "../../utils/test/helpers/destructive-guard";
+import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makeSettingsPreserveDir = useTrackedTempDirs("veyyon-settings-preserve-");
 
 /**
  * SETC-3: writing one setting must not delete the rest of the user's config.
@@ -33,7 +39,7 @@ describe("writing a setting preserves everything else in the file", () => {
 	let agentDir = "";
 
 	beforeEach(() => {
-		agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-settings-preserve-"));
+		agentDir = makeSettingsPreserveDir();
 	});
 
 	afterEach(async () => {

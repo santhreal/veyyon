@@ -12,11 +12,12 @@ import * as zodModule from "zod/v4";
 import { getConfigDirs } from "../../config";
 import { execCommand } from "../../exec/exec";
 // Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
-import * as PiCodingAgent from "../../index";
+import { loadCodingAgentApi } from "../coding-agent-api";
 import * as typebox from "../typebox";
 import { GreenCommand } from "./bundled/ci-green";
 import { ReviewCommand } from "./bundled/review";
 import type {
+	BundledCommandAPI,
 	CustomCommand,
 	CustomCommandAPI,
 	CustomCommandFactory,
@@ -148,7 +149,7 @@ export interface LoadCustomCommandsOptions {
 /**
  * Load bundled commands (shipped with veyyon).
  */
-function loadBundledCommands(sharedApi: CustomCommandAPI): LoadedCustomCommand[] {
+function loadBundledCommands(sharedApi: BundledCommandAPI): LoadedCustomCommand[] {
 	const bundled: LoadedCustomCommand[] = [];
 
 	// Add bundled commands here
@@ -181,26 +182,40 @@ export async function loadCustomCommands(options: LoadCustomCommandsOptions = {}
 	const errors: Array<{ path: string; error: string }> = [];
 	const seenNames = new Set<string>();
 
-	// Shared API object - all commands get the same instance
-	const sharedApi: CustomCommandAPI = {
+	// Shared API object - all commands get the same instance.
+	//
+	// Built WITHOUT `pi` first. That field is the whole package barrel, which re-exports every mode and
+	// every component, and this function runs on every launch to register the two bundled commands --
+	// neither of which uses it, since they import this repository directly. So the barrel is loaded only
+	// when a project actually ships a custom command whose author expects `api.pi`.
+	const bundledApi: BundledCommandAPI = {
 		cwd,
 		exec: (command: string, args: string[], execOptions) =>
 			execCommand(command, args, execOptions?.cwd ?? cwd, execOptions),
 		typebox,
 		arktype,
 		zod: zodModule,
-		pi: PiCodingAgent,
 	};
 
 	// 1. Load bundled commands first (lowest priority - can be overridden)
-	for (const loaded of loadBundledCommands(sharedApi)) {
+	for (const loaded of loadBundledCommands(bundledApi)) {
 		seenNames.add(loaded.command.name);
 		commands.push(loaded);
 	}
 
+	// One object for every author-written command, so a command that mutates the API sees what its
+	// neighbours see. Absent entirely when there are none, which is the case that skips the barrel.
+	const sharedApi: CustomCommandAPI | undefined =
+		paths.length > 0 ? { ...bundledApi, pi: await loadCodingAgentApi() } : undefined;
+
 	// 2. Load user/project commands (can override bundled)
 	for (const { path: commandPath, source } of paths) {
-		const { commands: loadedCommands, error } = await loadCommandModule(commandPath, cwd, sharedApi);
+		// `sharedApi` is defined whenever `paths` is non-empty, which is the only way this loop runs.
+		const { commands: loadedCommands, error } = await loadCommandModule(
+			commandPath,
+			cwd,
+			sharedApi as CustomCommandAPI,
+		);
 
 		if (error) {
 			errors.push({ path: commandPath, error });

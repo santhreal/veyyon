@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { buildPathTree, isUrlLikePath, type PathTreeInput, walkPathTree } from "@veyyon/utils";
+import { buildPathTree, isUrlLikePath, type PathTreeInput, walkPathTree } from "@veyyon/utils/path-tree";
 
 // =============================================================================
 // Grouped file output (grep / ast-grep / ast-edit / lsp diagnostics)

@@ -5,7 +5,7 @@ import { errorMessage, logger, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
-import { PROMPTS } from "../prompts/registry";
+import { toolsPrompts } from "../prompts/tools/rows";
 import { resolveEffectiveToolDiscoveryMode } from "../tool-discovery/mode";
 import {
 	buildDiscoverableToolSearchIndex,
@@ -174,7 +174,7 @@ export function renderSearchToolBm25Description(discoverableTools: DiscoverableT
 	const builtinToolNames = filterBySource(discoverableTools, "builtin")
 		.map(t => t.name)
 		.sort();
-	return prompt.render(PROMPTS["tools/search-tool-bm25"].text, {
+	return prompt.render(toolsPrompts["tools/search-tool-bm25"].text, {
 		discoverableToolCount: summary.toolCount,
 		discoverableMCPServerSummaries: summary.servers.map(formatDiscoverableToolServerSummary),
 		hasDiscoverableMCPServers: summary.servers.length > 0,

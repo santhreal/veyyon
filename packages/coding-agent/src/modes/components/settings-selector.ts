@@ -1,5 +1,6 @@
 import { AUTO_COMPACTION_THRESHOLD, parseCompactionThreshold, type ThinkingLevel } from "@veyyon/agent-core";
-import { type Api, type Effort, type Model, THINKING_EFFORTS } from "@veyyon/ai";
+import type { Api, Effort, Model } from "@veyyon/ai";
+import { THINKING_EFFORTS } from "@veyyon/catalog/effort";
 import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
 import {
 	type Component,
@@ -58,7 +59,10 @@ import { getCurrentThemeName, getSelectListTheme, getSettingsListTheme, theme } 
 import { BUILTIN_PERSONALITY_DESCRIPTIONS, NONE_PERSONALITY } from "../../personality/resolver";
 import { discoverAgents } from "../../task/discovery";
 import {
+	delegationBlockedNotice,
+	isSubagentEnableDefaulted,
 	nextSubagentEnableValue,
+	resolveDelegation,
 	resolveSubagentModel,
 	resolveSubagentThinkingLevel,
 	SUBAGENT_ENABLE_STATE_LABEL,
@@ -81,10 +85,10 @@ import {
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_SETTINGS,
-	planModalChrome,
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
+	planModalChrome,
 	renderModalShell,
 	SETTINGS_BROWSE_SHORTCUTS,
 	SETTINGS_FILTER_SHORTCUTS,
@@ -907,6 +911,23 @@ class SubagentAgentsSubmenu extends Container {
 			return;
 		}
 
+		// Whether this table has any effect is decided by `subagent.delegation` as
+		// well, and that setting is a row the reader is not looking at right now. So
+		// the panel says when nothing will be delegated, from the one resolver that
+		// reads both — the same sentence `/agents` shows, for the same reason.
+		const blocked = delegationBlockedNotice(
+			resolveDelegation(
+				settings,
+				this.#agents
+					.filter(agent => subagentEnableState(agent, this.#row(agent.name).enabled) === "on")
+					.map(agent => agent.name),
+			),
+		);
+		if (blocked) {
+			this.addChild(new Text(theme.fg("warning", `  ${blocked}`), 0, 0));
+			this.addChild(new Spacer(1));
+		}
+
 		const items: SelectItem[] = this.#agents.map(agent => ({
 			value: agent.name,
 			label: agent.name,
@@ -954,8 +975,13 @@ class SubagentAgentsSubmenu extends Container {
 		const items: SelectItem[] = [
 			{
 				value: AGENT_ROW_OFFERED,
-				label: "Offered",
-				description: SUBAGENT_ENABLE_STATE_LABEL[subagentEnableState(agent, row.enabled)],
+				label: "Enabled",
+				// "(default)" is a provenance hint and nothing more: it says the row has
+				// not been chosen yet, never that the agent behaves differently. Pairing
+				// "no row" with its own behaviour is exactly the state this area removed.
+				description: `${SUBAGENT_ENABLE_STATE_LABEL[subagentEnableState(agent, row.enabled)]}${
+					isSubagentEnableDefaulted(row.enabled) ? theme.fg("dim", " (default)") : ""
+				}`,
 			},
 			{ value: AGENT_ROW_MODEL, label: "Model", description: this.#modelSummary(agent) },
 			{
@@ -978,7 +1004,7 @@ class SubagentAgentsSubmenu extends Container {
 		this.#selectList.onSelect = item => {
 			switch (item.value) {
 				case AGENT_ROW_OFFERED:
-					this.#writeRow(name, { ...row, enabled: nextSubagentEnableValue(row.enabled) });
+					this.#writeRow(name, { ...row, enabled: nextSubagentEnableValue(agent, row.enabled) });
 					this.#showAgentEditor(name);
 					break;
 				case AGENT_ROW_MODEL:

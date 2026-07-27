@@ -4,10 +4,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentTool } from "@veyyon/agent-core";
 import { EDIT_MODE_STRATEGIES, type PerFileDiffPreview } from "@veyyon/coding-agent/edit";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { TUI } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
+import { createToolExecution } from "./helpers/tool-execution";
 
 // The reveal controller pushes streamed args at ~30fps; a whole-file diff can
 // outlast a frame. The component must coalesce those ticks into one compute at a
@@ -78,7 +78,7 @@ describe("streaming edit preview coalescing", () => {
 
 		// Construction kicks off compute #0 for the first chunk; it stays in flight
 		// (mock returns an unresolved promise) so we can race a newer chunk against it.
-		const component = new ToolExecutionComponent(
+		const component = createToolExecution(
 			"edit",
 			{ path: file, edits: [{ old_text: "const a = 1;", new_text: "a" }] },
 			{},

@@ -8,11 +8,11 @@ import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallb
 import type { AuthStorage } from "@veyyon/ai";
 import { formatCount, prompt, truncate } from "@veyyon/utils";
 import { type } from "arktype";
-import { settings } from "../../config/settings";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { settings } from "../../config/settings-instance";
 import type { CustomTool, CustomToolContext, RenderResultOptions } from "../../extensibility/custom-tools/types";
 import type { Theme } from "../../modes/theme/theme";
-import { PROMPTS } from "../../prompts/registry";
-import { discoverAuthStorage } from "../../session/auth-broker-config";
+import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "../../tools";
 import { formatAge } from "../../tools/render-utils";
 import { throwIfAborted } from "../../tools/tool-errors";
@@ -28,6 +28,26 @@ import {
 import { renderSearchCall, renderSearchResult, type SearchRenderDetails } from "./render";
 import type { SearchProviderId, SearchResponse } from "./types";
 import { SearchProviderError } from "./types";
+
+/**
+ * Open the credential store, loading the module that knows how ON DEMAND.
+ *
+ * `session/auth-broker-config.ts` reaches 347 modules: the broker client, the remote store, the snapshot
+ * cache and the SQLite credential store underneath them. Every one of those is needed to RUN a search and
+ * none of them is needed to DEFINE one, and a static import made this file, which eighteen web-search
+ * providers sit behind, carry all of it from the moment it was parsed.
+ *
+ * The three call sites below are already `async` and only run when a search executes, so the await costs
+ * nothing they were not already paying, and the module is cached after the first one. The same technique is
+ * what took the tool registry off the boot graph; see `tools/index.ts`.
+ *
+ * NOT a fallback: if the module fails to load, this rejects and the search reports it, exactly as a static
+ * import that failed to resolve would.
+ */
+async function discoverAuthStorage(): Promise<AuthStorage> {
+	const { discoverAuthStorage: discover } = await import("../../session/auth-broker-config");
+	return discover();
+}
 
 /** Web search tool parameters schema */
 export const webSearchSchema = type({
@@ -170,7 +190,7 @@ async function executeSearch(
 				query: params.query,
 				limit: params.limit,
 				recency: params.recency,
-				systemPrompt: PROMPTS["tools/web-search-system"].text,
+				systemPrompt: toolsPrompts["tools/web-search-system"].text,
 				maxOutputTokens: params.max_tokens,
 				numSearchResults: params.num_search_results,
 				temperature: params.temperature,
@@ -272,7 +292,7 @@ export class WebSearchTool implements AgentTool<typeof webSearchSchema, SearchRe
 
 	constructor(session: ToolSession) {
 		this.#session = session;
-		this.description = prompt.render(PROMPTS["tools/web-search"].text);
+		this.description = prompt.render(toolsPrompts["tools/web-search"].text);
 	}
 
 	async execute(
@@ -292,7 +312,7 @@ export class WebSearchTool implements AgentTool<typeof webSearchSchema, SearchRe
 export const webSearchCustomTool: CustomTool<typeof webSearchSchema, SearchRenderDetails> = {
 	name: "web_search",
 	label: "Web Search",
-	description: prompt.render(PROMPTS["tools/web-search"].text),
+	description: prompt.render(toolsPrompts["tools/web-search"].text),
 	parameters: webSearchSchema,
 
 	approval: "read",

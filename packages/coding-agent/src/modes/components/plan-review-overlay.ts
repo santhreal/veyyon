@@ -29,7 +29,8 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { getMarkdownTheme, theme } from "../theme/theme";
+import { getMarkdownTheme } from "../theme/markdown-theme";
+import { theme } from "../theme/theme";
 import {
 	matchesAppExternalEditor,
 	matchesSelectCancel,

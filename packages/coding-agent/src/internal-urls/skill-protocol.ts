@@ -10,25 +10,23 @@
 import type * as fsTypes from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent } from "@veyyon/utils";
-import { getActiveSkills } from "../extensibility/skills";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
+import { isEnoent } from "@veyyon/utils/fs-error";
+// The slot, not the loader: `../extensibility/skills` discovers and parses skills and reaches 365
+// modules, and this handler only reads which ones are active.
+import { getActiveSkills } from "../extensibility/active-skills";
 import { getContentType } from "./content-type";
 import { buildDirectoryResource, isWithinRoot } from "./filesystem-resource";
+import { validateRelativePath } from "./relative-path";
 import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext, UrlCompletion } from "./types";
 
 /**
- * Validate that a path is safe (no traversal, no absolute paths).
+ * Re-exported from its leaf so the four other schemes that call it do not import this handler.
+ *
+ * This module reaches 378 modules through `extensibility/skills`; the check itself imports only
+ * `node:path`. It is still named here because `internal-urls/index` re-exports this file.
  */
-export function validateRelativePath(relativePath: string): void {
-	if (path.isAbsolute(relativePath)) {
-		throw new Error("Absolute paths are not allowed in skill:// URLs");
-	}
-
-	const normalized = path.normalize(relativePath);
-	if (normalized.startsWith("..") || normalized.includes("/../") || normalized.includes("/..")) {
-		throw new Error("Path traversal (..) is not allowed in skill:// URLs");
-	}
-}
+export { validateRelativePath } from "./relative-path";
 
 /**
  * Handler for skill:// URLs.

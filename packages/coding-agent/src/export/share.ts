@@ -465,9 +465,13 @@ async function uploadToServer(sealed: Uint8Array, base: string): Promise<string>
 		throw new Error(`Share upload to ${base} failed: ${errorMessage(err)}`);
 	}
 	if (!res.ok) {
+		// The non-ok STATUS is the failure and it is already in the thrown message; the body is extra context,
+		// so a body that cannot be read just leaves the message without it.
 		const detail = (await res.text().catch(() => "")).trim().slice(0, 200);
 		throw new Error(`Share upload to ${base} failed: HTTP ${res.status}${detail ? ` (${detail})` : ""}`);
 	}
+	// A body that is not JSON fails the id check below and throws "server returned no usable id", which is the
+	// accurate description of a 200 response this client cannot use.
 	const body = (await res.json().catch(() => null)) as { id?: unknown } | null;
 	const id = body && typeof body.id === "string" ? body.id : "";
 	if (!/^[A-Za-z0-9_-]{10,64}$/.test(id)) {

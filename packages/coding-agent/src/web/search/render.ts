@@ -7,7 +7,8 @@
 import type { Component } from "@veyyon/tui";
 import { Markdown, Text } from "@veyyon/tui";
 import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import { getMarkdownTheme, type Theme } from "../../modes/theme/theme";
+import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
+import type { Theme } from "../../modes/theme/theme";
 import {
 	formatAge,
 	formatCount,

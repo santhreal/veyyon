@@ -1,9 +1,9 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { AgentTool } from "@veyyon/agent-core";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { Text, type TUI } from "@veyyon/tui";
+import { createToolExecution } from "./helpers/tool-execution";
 
 /**
  * Contract under test (tool-result render memoization):
@@ -56,14 +56,7 @@ describe("ToolExecutionComponent tool-result render memoization", () => {
 		const shapeSpy = vi.spyOn(tool, "renderResult");
 		const ui = { requestRender() {}, requestComponentRender() {} } as unknown as TUI;
 
-		const component = new ToolExecutionComponent(
-			"custom_render",
-			{},
-			{},
-			tool as unknown as AgentTool,
-			ui,
-			process.cwd(),
-		);
+		const component = createToolExecution("custom_render", {}, {}, tool as unknown as AgentTool, ui, process.cwd());
 
 		// No result yet: the shaping pass has not run.
 		expect(shapeSpy).toHaveBeenCalledTimes(0);
@@ -110,7 +103,7 @@ describe("ToolExecutionComponent tool-result render memoization", () => {
 		const callSpy = vi.spyOn(tool, "renderCall");
 		const ui = { requestRender() {}, requestComponentRender() {} } as unknown as TUI;
 
-		const component = new ToolExecutionComponent(
+		const component = createToolExecution(
 			"custom_render",
 			{ cmd: "A" },
 			{},
@@ -154,14 +147,7 @@ describe("ToolExecutionComponent tool-result render memoization", () => {
 		const requestComponentRender = vi.fn();
 		const ui = { requestRender, requestComponentRender } as unknown as TUI;
 
-		const component = new ToolExecutionComponent(
-			"custom_render",
-			{},
-			{},
-			tool as unknown as AgentTool,
-			ui,
-			process.cwd(),
-		);
+		const component = createToolExecution("custom_render", {}, {}, tool as unknown as AgentTool, ui, process.cwd());
 
 		// A partial result shapes once; a flood of invalidate()s must not re-shape.
 		component.updateResult(finalResult("RUNNING"), true);

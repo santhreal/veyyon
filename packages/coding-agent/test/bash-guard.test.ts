@@ -66,6 +66,7 @@ describe("the shapes that have destroyed a home directory", () => {
 	it("refuses a recursive delete of $HOME in every spelling", () => {
 		expect(refuses("rm -rf $HOME")).toBe(true);
 		expect(refuses('rm -rf "$HOME"/')).toBe(true);
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: ${HOME} is the shell spelling under test, not a template literal.
 		expect(refuses("rm -rf ${HOME}")).toBe(true);
 	});
 
@@ -75,6 +76,7 @@ describe("the shapes that have destroyed a home directory", () => {
 	 * of the whole home.
 	 */
 	it("refuses a recursive delete of the directories that hold credentials", () => {
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: ${HOME} is the shell spelling under test, not a template literal.
 		expect(refuses("rm -rf ${HOME}/.config")).toBe(true);
 		expect(refuses("rm -rf ~/.ssh")).toBe(true);
 		expect(refuses("rm -rf ~/.gnupg")).toBe(true);
@@ -171,6 +173,7 @@ describe("the twelve shapes as one table", () => {
 			"rm -rf ~",
 			"rm -rf $HOME",
 			'rm -rf "$HOME"/',
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: ${HOME} is the shell spelling under test, not a template literal.
 			"rm -rf ${HOME}/.config",
 			"rm -rf tests/patches/plan/ ~/",
 			"rm -rf tests/ /",
@@ -430,6 +433,7 @@ describe("the same command spelled differently", () => {
 	 * normalizer is what makes these one question rather than seven.
 	 */
 	it("reads every spelling of the same path", () => {
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: ${HOME} is the shell spelling under test, not a template literal.
 		for (const path of ["~", "~/", "~//", "~/.", "~/./", "$HOME", "${HOME}", '"$HOME"', "~/../agent"]) {
 			expect(refuses(`rm -rf ${path}`)).toBe(true);
 		}
@@ -557,6 +561,7 @@ describe("expanding a word", () => {
 		expect(expandWord({ text: "~", literal: false }, HOME).text).toBe(HOME);
 		expect(expandWord({ text: "~/.ssh", literal: false }, HOME).text).toBe(`${HOME}/.ssh`);
 		expect(expandWord({ text: "$HOME/x", literal: false }, HOME).text).toBe(`${HOME}/x`);
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: ${HOME} is the shell spelling under test, not a template literal.
 		expect(expandWord({ text: "${HOME}/x", literal: false }, HOME).text).toBe(`${HOME}/x`);
 	});
 
@@ -575,6 +580,7 @@ describe("expanding a word", () => {
 	 */
 	it("reports an expansion it cannot resolve as unknown", () => {
 		expect(expandWord({ text: "$dir/x", literal: false }, HOME).unknown).toBe(true);
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: ${HOME} is the shell spelling under test, not a template literal.
 		expect(expandWord({ text: "${dir}/x", literal: false }, HOME).unknown).toBe(true);
 		expect(expandWord({ text: "$(pwd)", literal: false }, HOME).unknown).toBe(true);
 		expect(expandWord({ text: "~otheruser/x", literal: false }, HOME).unknown).toBe(true);
@@ -627,6 +633,7 @@ describe("finding out where home is", () => {
 		expect(refuses("rm -rf ~", "")).toBe(true);
 		expect(refuses("rm -rf ~/", "")).toBe(true);
 		expect(refuses("rm -rf $HOME", "")).toBe(true);
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: ${HOME} is the shell spelling under test, not a template literal.
 		expect(refuses("rm -rf ${HOME}/.config", "")).toBe(true);
 	});
 

@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { Effort } from "@veyyon/ai";
+import { Effort } from "@veyyon/catalog/effort";
 import { QueueModeSelectorComponent } from "@veyyon/coding-agent/modes/components/queue-mode-selector";
 import { ThemeSelectorComponent } from "@veyyon/coding-agent/modes/components/theme-selector";
 import { ThinkingSelectorComponent } from "@veyyon/coding-agent/modes/components/thinking-selector";

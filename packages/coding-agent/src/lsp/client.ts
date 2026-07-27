@@ -1117,6 +1117,8 @@ async function shutdownClientInstance(client: LspClient): Promise<void> {
 		() => false,
 	);
 	if (shutdownCompleted) {
+		// A notification that cannot be written means the connection is already gone, which is the same
+		// situation as the server never exiting: `client.proc.kill()` below is the fallback for both.
 		await sendNotification(client, "exit", undefined).catch(() => {});
 		if (await waitForExit(client, EXIT_TIMEOUT_MS)) return;
 	}
@@ -1189,6 +1191,9 @@ export async function sendRequest(
 		if (client.pendingRequests.has(id)) {
 			client.pendingRequests.delete(id);
 		}
+		// Best-effort courtesy to the server: the request is already deleted from `pendingRequests` and the
+		// caller is rejected with the abort reason below, so a cancel that cannot be written costs only some
+		// wasted work on a server that is very likely gone anyway.
 		void sendNotification(client, "$/cancelRequest", { id }).catch(() => {});
 		if (timeout) clearTimeout(timeout);
 		cleanup();

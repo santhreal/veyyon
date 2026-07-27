@@ -1,7 +1,9 @@
 import type { AuthStorage } from "@veyyon/ai";
-import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthProvider } from "@veyyon/ai/oauth/types";
+// The derived provider set from the registry that derives it (164 modules) rather than the
+// barrel (346), which additionally brings the streaming engine and every transport.
+import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai/registry/derived";
 import { type Component, type Focusable, Input, matchesKey, type SgrMouseEvent, wrapTextWithAnsi } from "@veyyon/tui";
 import { errorMessage, getActiveAuthDbPath } from "@veyyon/utils";
 import { copyToClipboard } from "../../../utils/clipboard";

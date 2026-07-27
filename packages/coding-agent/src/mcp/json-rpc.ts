@@ -6,6 +6,7 @@
  */
 import { logger, tryParseJson } from "@veyyon/utils";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
+import type { JsonRpcResponse } from "./types";
 
 /** Hard ceiling on a single MCP HTTP request when the caller provides no signal. */
 const MCP_DEFAULT_TIMEOUT_MS = 60_000;
@@ -48,17 +49,14 @@ export function parseSSE(text: string): unknown {
 	return tryParseJson(text);
 }
 
-/** JSON-RPC 2.0 response structure */
-export interface JsonRpcResponse<T = unknown> {
-	jsonrpc: "2.0";
-	id: string | number;
-	result?: T;
-	error?: {
-		code: number;
-		message: string;
-		data?: unknown;
-	};
-}
+/**
+ * Re-exported so callers of {@link callMcp} do not have to know it is declared next door.
+ *
+ * This module used to declare its OWN `JsonRpcResponse`, one directory from `types.ts`'s, with
+ * the error object inline rather than naming `JsonRpcError`. The transports used one and this
+ * helper the other, so an editor's auto-import decided which contract a caller read.
+ */
+export type { JsonRpcResponse } from "./types";
 
 /** Options controlling a single MCP JSON-RPC HTTP request. */
 export interface CallMcpOptions {

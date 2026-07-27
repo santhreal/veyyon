@@ -2,8 +2,10 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage, urlScheme } from "@veyyon/utils";
 import type { Skill } from "../extensibility/skills";
-import { type LocalProtocolOptions, resolveLocalUrlToPath } from "../internal-urls";
-import { validateRelativePath } from "../internal-urls/skill-protocol";
+// The owning module, not the `internal-urls` barrel: the barrel re-exports every protocol
+// handler and reaches hundreds of modules.
+import { type LocalProtocolOptions, resolveLocalUrlToPath } from "../internal-urls/local-protocol";
+import { validateRelativePath } from "../internal-urls/relative-path";
 import type { InternalResource, ResolveContext } from "../internal-urls/types";
 import { normalizeLocalScheme } from "./path-utils";
 import { ToolError } from "./tool-errors";

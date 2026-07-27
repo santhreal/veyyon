@@ -1,8 +1,7 @@
 import type { ImageContent } from "@veyyon/ai";
+import { BEL, ST } from "@veyyon/tui/ansi";
 
 const OSC5522_PREFIX = "\x1b]5522;";
-const OSC_TERMINATOR_ST = "\x1b\\";
-const OSC_TERMINATOR_BEL = "\x07";
 const PASTE_EVENT_NAME_BASE64 = Buffer.from("Paste event", "utf8").toString("base64");
 
 const IMAGE_MIME_PRIORITY = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
@@ -42,13 +41,16 @@ export interface EnhancedPasteHandlers {
 }
 
 export function isOsc5522Packet(data: string): boolean {
-	return data.startsWith(OSC5522_PREFIX) && (data.endsWith(OSC_TERMINATOR_ST) || data.endsWith(OSC_TERMINATOR_BEL));
+	return data.startsWith(OSC5522_PREFIX) && (data.endsWith(ST) || data.endsWith(BEL));
 }
 
 function decodeBase64Utf8(value: string): string | undefined {
 	try {
 		return Buffer.from(value, "base64").toString("utf8");
 	} catch {
+		// The payload of a terminal paste escape sequence, which arrives from whatever the terminal chose to
+		// send. Undefined means "this packet carried no text", and the caller falls back to treating the
+		// sequence as ordinary input rather than pasting a mojibake string it invented.
 		return undefined;
 	}
 }
@@ -65,7 +67,7 @@ function parseMetadata(raw: string): Map<string, string> {
 
 export function parseOsc5522Packet(data: string): Osc5522Packet | undefined {
 	if (!isOsc5522Packet(data)) return undefined;
-	const bodyEnd = data.endsWith(OSC_TERMINATOR_BEL) ? data.length - 1 : data.length - OSC_TERMINATOR_ST.length;
+	const bodyEnd = data.endsWith(BEL) ? data.length - 1 : data.length - ST.length;
 	const body = data.slice(OSC5522_PREFIX.length, bodyEnd);
 	const separator = body.indexOf(";");
 	const metadataRaw = separator === -1 ? body : body.slice(0, separator);
@@ -221,10 +223,10 @@ export class EnhancedPasteController {
 			metadata.push(`pw=${state.pw}`, `name=${PASTE_EVENT_NAME_BASE64}`);
 		}
 		if (state.kittyDotPayload) {
-			this.#handlers.write(`${OSC5522_PREFIX}${metadata.join(":")};${encodedMime}${OSC_TERMINATOR_BEL}`);
+			this.#handlers.write(`${OSC5522_PREFIX}${metadata.join(":")};${encodedMime}${BEL}`);
 			return;
 		}
 		metadata.push(`mime=${encodedMime}`);
-		this.#handlers.write(`${OSC5522_PREFIX}${metadata.join(":")}${OSC_TERMINATOR_BEL}`);
+		this.#handlers.write(`${OSC5522_PREFIX}${metadata.join(":")}${BEL}`);
 	}
 }

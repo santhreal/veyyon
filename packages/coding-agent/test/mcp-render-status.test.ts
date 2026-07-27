@@ -5,12 +5,12 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { renderMCPResult } from "@veyyon/coding-agent/mcp/render";
 import { DeferredMCPTool, MCPTool, type MCPToolDetails } from "@veyyon/coding-agent/mcp/tool-bridge";
 import type { MCPServerConnection, MCPToolDefinition, MCPTransport } from "@veyyon/coding-agent/mcp/types";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { theme as activeTheme, getThemeByName, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { formatOutputNotice, type OutputMeta } from "@veyyon/coding-agent/tools/output-meta";
 import { formatStatusIcon } from "@veyyon/coding-agent/tools/render-utils";
 import { TUI } from "@veyyon/tui";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal";
+import { createToolExecution } from "./helpers/tool-execution";
 
 beforeAll(async () => {
 	resetSettingsForTest();
@@ -94,7 +94,7 @@ async function renderCompletedMCPTool(isError: boolean): Promise<string> {
 	const mcpTool = makeTool();
 	const tool = makeAgentTool(mcpTool);
 	const tui = new TUI(new VirtualTerminal(120, 20));
-	const component = new ToolExecutionComponent(tool.name, { query: "level:error" }, {}, tool, tui);
+	const component = createToolExecution(tool.name, { query: "level:error" }, {}, tool, tui);
 
 	component.updateResult(
 		{

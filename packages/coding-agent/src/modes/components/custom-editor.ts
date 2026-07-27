@@ -1,10 +1,11 @@
 import { fileURLToPath } from "node:url";
 import type { ImageContent } from "@veyyon/ai";
 import { addKeyAliases, canonicalKeyId, Editor, type KeyId, parseKey, parseKittySequence } from "@veyyon/tui";
-import { BracketedPasteHandler } from "@veyyon/tui/bracketed-paste";
+import { BracketedPasteHandler, PASTE_END, PASTE_START } from "@veyyon/tui/bracketed-paste";
 import { hasUriScheme } from "@veyyon/utils";
 import type { AppKeybinding } from "../../config/keybindings";
-import { isSettingsInitialized, settings } from "../../config/settings";
+// The slot leaf, not the 94-module store: this file reads values, it does not fill them.
+import { isSettingsInitialized, settings } from "../../config/settings-instance";
 import { imageReferenceHyperlink, PLACEHOLDER_REGEX, renderPlaceholders } from "../image-references";
 import { hasMagicKeyword, highlightMagicKeywords } from "../magic-keywords";
 import { isQueuedMessageList, parseQueueShorthand, QUEUE_LIST_MARKER_RE } from "../queue-input";
@@ -65,8 +66,6 @@ function buildMatchKeys(keys: readonly KeyId[]): Set<string> {
 	return matchKeys;
 }
 
-const BRACKETED_PASTE_START = "\x1b[200~";
-const BRACKETED_PASTE_END = "\x1b[201~";
 const BRACKETED_IMAGE_PATH_REGEX = /\.(?:png|jpe?g|gif|webp)$/i;
 const SHELL_ESCAPED_PATH_CHAR_REGEX = /\\([\\\s'"()[\]{}&;<>|?*!$`])/g;
 const FILE_URI_REGEX = /^file:\/\//i;
@@ -222,10 +221,10 @@ export function extractPastePathsFromText(text: string): string[] | undefined {
 }
 
 export function extractBracketedPastePaths(data: string): string[] | undefined {
-	if (!data.startsWith(BRACKETED_PASTE_START)) return undefined;
-	const endIndex = data.indexOf(BRACKETED_PASTE_END, BRACKETED_PASTE_START.length);
-	if (endIndex === -1 || endIndex + BRACKETED_PASTE_END.length !== data.length) return undefined;
-	return extractExplicitPathSegments(data.slice(BRACKETED_PASTE_START.length, endIndex));
+	if (!data.startsWith(PASTE_START)) return undefined;
+	const endIndex = data.indexOf(PASTE_END, PASTE_START.length);
+	if (endIndex === -1 || endIndex + PASTE_END.length !== data.length) return undefined;
+	return extractExplicitPathSegments(data.slice(PASTE_START.length, endIndex));
 }
 
 export function extractBracketedImagePastePaths(data: string): string[] | undefined {

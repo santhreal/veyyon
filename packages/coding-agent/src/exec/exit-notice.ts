@@ -1,4 +1,5 @@
-import { signalName } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
+import { signalName } from "@veyyon/utils/signal-exit";
 
 /**
  * The one place the "how this command ended" notice is worded.

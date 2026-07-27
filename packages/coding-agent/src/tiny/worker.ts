@@ -6,7 +6,7 @@ import type {
 	StoppingCriteria as TransformersStoppingCriteria,
 } from "@huggingface/transformers";
 import { clamp, errorMessage, getTinyModelsCacheDir, prompt } from "@veyyon/utils";
-import { PROMPTS } from "../prompts/registry";
+import { titlesPrompts } from "../prompts/titles/rows";
 import {
 	errorText,
 	formatOnnxRuntimeCudaDiagnostics,
@@ -36,7 +36,7 @@ const TITLE_MAX_NEW_TOKENS = 20;
 const STOP_DECODE_WINDOW_TOKENS = 32;
 const MEMORY_COMPLETION_DEFAULT_MAX_NEW_TOKENS = 256;
 const COMPLETION_MAX_NEW_TOKENS = 1024;
-const TINY_TITLE_SYSTEM_PROMPT = prompt.render(PROMPTS["titles/system"].text);
+const TINY_TITLE_SYSTEM_PROMPT = prompt.render(titlesPrompts["titles/system"].text);
 
 const tinyModelDevicePreference = resolveTinyModelDevicePreference();
 const tinyModelDtypeOverride = resolveTinyModelDtypeOverride();

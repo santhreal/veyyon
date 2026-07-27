@@ -9,8 +9,8 @@ import { type } from "arktype";
 import { resolveConfiguredModelPatterns } from "../config/model-resolver";
 import type { LocalProtocolOptions } from "../internal-urls";
 import { registerArtifactsDir } from "../internal-urls/registry-helpers";
-import { MCPManager } from "../mcp/manager";
-import { PROMPTS } from "../prompts/registry";
+import { mcpManagerInstance } from "../mcp/manager-instance";
+import { subagentPrompts } from "../prompts/subagent/rows";
 import { MAIN_AGENT_ID } from "../registry/agent-registry";
 import * as taskDiscovery from "../task/discovery";
 // `../task/executor` and `../task/isolation-runner` are loaded inside
@@ -30,7 +30,7 @@ import { AgentOutputManager } from "../task/output-manager";
 import { resolveSpawnPolicy } from "../task/spawn-policy";
 import {
 	filterEnabledAgents,
-	isSubagentSpawnable,
+	isSubagentEnabled,
 	resolveSubagentModel,
 	resolveSubagentThinkingLevel,
 	subagentModelSourceLabel,
@@ -44,8 +44,11 @@ import type { JsStatusEvent } from "./js/shared/types";
 // Import review tools for side effects (registers subagent tool handlers).
 import "../tools/review";
 
-/** Synthetic bridge name reserved for the `agent()` helper across both runtimes. */
-export const EVAL_AGENT_BRIDGE_NAME = "__agent__";
+/**
+ * Re-exported from its leaf, so a caller that only needs to RECOGNIZE the name does not load this
+ * module and the 475 behind it. See `eval/agent-bridge-name.ts`.
+ */
+export { EVAL_AGENT_BRIDGE_NAME } from "./agent-bridge-name";
 
 /**
  * Hard recursion ceiling for eval-driven subagents. The user setting
@@ -169,17 +172,20 @@ function assertSpawnAllowed(session: ToolSession, agentName: string): void {
 }
 
 /**
- * Refuse an `agent()` call for an agent the operator turned off.
+ * Refuse an `agent()` call for a disabled agent.
  *
- * An `agent()` call always names its agent, so the bar is `isSubagentSpawnable`:
- * only an explicit `enabled: false` refuses. A bundled specialist that is merely
- * unadvertised runs, exactly as it does through the `task` tool.
+ * The same bar the `task` tool applies, and for the same reason: an `agent()`
+ * call inside eval is the MODEL choosing, so a disabled agent is refused. Naming
+ * the agent outright does not raise the bar — that used to be the loophole, and
+ * it made the setting mean nothing on this path. A `/` command's turn-scoped
+ * grant still passes, so a command that drives eval keeps working.
  */
 function assertAgentEnabled(session: ToolSession, agent: AgentDefinition, agents: AgentDefinition[]): void {
-	if (isSubagentSpawnable(session.settings, agent)) return;
+	if (isSubagentEnabled(session.settings, agent)) return;
+	if (session.agentGrantedThisTurn?.(agent.name)) return;
 	const available = filterEnabledAgents(session.settings, agents).map(candidate => candidate.name);
 	throw new ToolError(
-		`Agent "${agent.name}" is turned off (subagent.agents.${agent.name}.enabled is false). Turn it back on via /agents or the Subagents settings tab, or use a different agent type.${available.length > 0 ? ` Available: ${available.join(", ")}` : ""}`,
+		`Agent "${agent.name}" is disabled (subagent.agents.${agent.name}.enabled is false), so it cannot be chosen. Enable it via /agents or the Subagents settings tab, or use a different agent type.${available.length > 0 ? ` Enabled: ${available.join(", ")}` : ""}`,
 	);
 }
 
@@ -190,7 +196,7 @@ function assertNotPlanMode(session: ToolSession): void {
 }
 
 function renderSubagentPrompt(assignment: string): string {
-	return prompt.render(PROMPTS["subagent/user-prompt"].text, { assignment: assignment.trim() });
+	return prompt.render(subagentPrompts["subagent/user-prompt"].text, { assignment: assignment.trim() });
 }
 
 function trimToUndefined(value: string | undefined): string | undefined {
@@ -389,7 +395,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		getSessionId: options.session.getSessionId ?? (() => null),
 	};
 	const parentArtifactManager = options.session.getArtifactManager?.() ?? undefined;
-	const mcpManager = options.session.mcpManager ?? MCPManager.instance();
+	const mcpManager = options.session.mcpManager ?? mcpManagerInstance();
 	const { sessionFile, artifactsDir, unregisterArtifactsDir, tempArtifactsDir } = await getArtifacts(options.session);
 	const outputManager = getOutputManager(options.session);
 	const id = await outputManager.allocate(outputIdBase(parsed.label, agentName));

@@ -1,10 +1,11 @@
-import { type AssistantMessage, assistantText, completeSimple, type Model } from "@veyyon/ai";
+import { type AssistantMessage, completeSimple, type Model } from "@veyyon/ai";
+import { assistantText } from "@veyyon/ai/utils/message-text";
 import { errorMessage, logger, prompt } from "@veyyon/utils";
 
 import type { ModelRegistry } from "../config/model-registry";
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
-import { PROMPTS } from "../prompts/registry";
+import { turnControlPrompts } from "../prompts/turn-control/rows";
 import { isTinyMemoryLocalModelKey, ONLINE_MEMORY_MODEL_KEY } from "../tiny/models";
 import { tinyModelClient } from "../tiny/title-client";
 import { REASONING_SAFE_MAX_TOKENS } from "./classifier-tokens";
@@ -16,7 +17,7 @@ import { REASONING_SAFE_MAX_TOKENS } from "./classifier-tokens";
  * bare `Message:` header with nothing under it, which told the model to judge
  * text that was not there.
  */
-const CLASSIFIER_SYSTEM_PROMPT = prompt.render(PROMPTS["turn-control/unexpected-stop-classifier"].text, {});
+const CLASSIFIER_SYSTEM_PROMPT = prompt.render(turnControlPrompts["turn-control/unexpected-stop-classifier"].text, {});
 
 /**
  * The answer is a single word. OpenAI-compatible endpoints reject values below
@@ -117,7 +118,9 @@ async function classifyLocal(
 	if (!isTinyMemoryLocalModelKey(modelKey)) {
 		throw new Error(`unexpected-stop: unsupported local classifier model: ${modelKey}`);
 	}
-	const builtPrompt = prompt.render(PROMPTS["turn-control/unexpected-stop-classifier"].text, { message: text });
+	const builtPrompt = prompt.render(turnControlPrompts["turn-control/unexpected-stop-classifier"].text, {
+		message: text,
+	});
 	const output = await tinyModelClient.complete(modelKey, builtPrompt, {
 		maxTokens: ANSWER_MAX_TOKENS,
 		signal: deps.signal,

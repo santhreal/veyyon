@@ -1,7 +1,12 @@
 /**
  * CLI argument parsing and help display
  */
-import { APP_NAME, CONFIG_DIR_NAME, logger, pluralize } from "@veyyon/utils";
+// Subpath imports, never the `@veyyon/utils` barrel: the barrel re-exports `env.ts`, which parses the agent
+// `.env` AT IMPORT TIME. This module is in `cli.ts`'s static graph, so pulling the barrel here would load the
+// DEFAULT profile's `.env` before `--profile` has even been parsed (pinned by profile-cli.test.ts).
+import { APP_NAME, CONFIG_DIR_NAME } from "@veyyon/utils/dirs";
+import { pluralize } from "@veyyon/utils/format";
+import * as logger from "@veyyon/utils/logger";
 import chalk from "chalk";
 import { CLI_THINKING_LEVELS, type ConfiguredThinkingLevel, parseCliThinkingLevel } from "../thinking";
 import { BUILTIN_TOOL_NAMES, normalizeToolNames } from "../tools/builtin-names";

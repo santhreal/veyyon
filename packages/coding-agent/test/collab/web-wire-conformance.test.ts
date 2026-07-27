@@ -47,7 +47,7 @@ import type {
 	DeveloperMessage as WireDeveloperMessage,
 	MessageEntry as WireMessageEntry,
 	ModelChangeEntry as WireModelChangeEntry,
-	SessionHeader as WireSessionHeader,
+	WireSessionHeader,
 	ThinkingLevelChangeEntry as WireThinkingLevelChangeEntry,
 	ToolResultMessage as WireToolResultMessage,
 	UserMessage as WireUserMessage,

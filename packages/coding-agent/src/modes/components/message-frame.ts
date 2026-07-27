@@ -11,7 +11,8 @@
 import type { TextContent } from "@veyyon/ai";
 import type { Box, Component } from "@veyyon/tui";
 import { Markdown, Spacer, TERMINAL, Text } from "@veyyon/tui";
-import { getMarkdownTheme, type Theme, theme } from "../../modes/theme/theme";
+import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
+import { type Theme, theme } from "../../modes/theme/theme";
 import { groundHairlineHex, groundTintFgAnsi } from "../theme/ground-tints";
 import { reportRendererFailure } from "./renderer-failure";
 

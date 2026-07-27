@@ -1,10 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { isPathWithinCwd, resolveToCwd } from "@veyyon/coding-agent/tools/path-utils";
 import { removeWithRetries } from "@veyyon/utils";
 import { guardDestructivePath } from "../../../utils/test/helpers/destructive-guard";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makePathControlDir = useTrackedTempDirs("veyyon-path-control-");
 
 const NUL = String.fromCharCode(0);
 const NEWLINE = String.fromCharCode(10);
@@ -45,7 +51,7 @@ describe("control characters in tool paths", () => {
 	let cwd = "";
 
 	beforeEach(() => {
-		cwd = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-path-control-"));
+		cwd = makePathControlDir();
 	});
 
 	afterEach(async () => {

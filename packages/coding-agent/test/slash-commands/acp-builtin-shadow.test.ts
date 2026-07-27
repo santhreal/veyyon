@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { ACP_BUILTIN_RESERVED_NAMES, isAcpBuiltinShadowedName } from "@veyyon/coding-agent/slash-commands/acp-builtins";
+import {
+	ACP_BUILTIN_RESERVED_NAMES,
+	isAcpBuiltinShadowedName,
+} from "@veyyon/coding-agent/slash-commands/text-mode-builtins";
 
 /**
  * isAcpBuiltinShadowedName gates whether an extension slash command is advertised to ACP

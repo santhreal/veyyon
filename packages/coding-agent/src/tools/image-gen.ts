@@ -1,8 +1,15 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentToolResult } from "@veyyon/agent-core";
-import { type ApiKey, type FetchImpl, getEnvApiKey, type Model, withAuth } from "@veyyon/ai";
+import type { ApiKey, FetchImpl, Model } from "@veyyon/ai";
+import { withAuth } from "@veyyon/ai/auth-retry";
+import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { ProviderHttpError } from "@veyyon/ai/error";
+import {
+	ANTIGRAVITY_ENDPOINTS,
+	ANTIGRAVITY_PRIMARY_ENDPOINT,
+	ANTIGRAVITY_SANDBOX_ENDPOINT,
+} from "@veyyon/catalog/provider-endpoints";
 import {
 	CODEX_BASE_URL,
 	getCodexAccountId,
@@ -25,10 +32,11 @@ import { type } from "arktype";
 import packageJson from "../../package.json" with { type: "json" };
 import { isAuthenticated } from "../config/auth-state";
 import type { ModelRegistry } from "../config/model-registry";
-import { settings } from "../config/settings";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { settings } from "../config/settings-instance";
 import type { CustomTool } from "../extensibility/custom-tools/types";
 import { resolveXAIHttpCredentials, veyyonXAIUserAgent } from "../lib/xai-http";
-import { PROMPTS } from "../prompts/registry";
+import { toolsPrompts } from "../prompts/tools/rows";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 import { resolveReadPath } from "./path-utils";
 
@@ -42,8 +50,6 @@ const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 const OPENAI_IMAGE_OUTPUT_FORMAT = "webp";
 const OPENAI_IMAGE_MIME_TYPE = "image/webp";
 
-const DEFAULT_ANTIGRAVITY_ENDPOINT_PROD = "https://daily-cloudcode-pa.googleapis.com";
-const DEFAULT_ANTIGRAVITY_ENDPOINT_SANDBOX = "https://daily-cloudcode-pa.sandbox.googleapis.com";
 const IMAGE_SYSTEM_INSTRUCTION =
 	"You are an AI image generator. Generate images based on user descriptions. Focus on creating high-quality, visually appealing images that match the user's request.";
 
@@ -1090,7 +1096,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 	label: "GenerateImage",
 	strict: false,
 	approval: "write",
-	description: prompt.render(PROMPTS["tools/image-gen"].text),
+	description: prompt.render(toolsPrompts["tools/image-gen"].text),
 	parameters: imageGenSchema,
 	async execute(_toolCallId, params, _onUpdate, ctx, signal) {
 		return untilAborted(signal, async () => {
@@ -1212,13 +1218,13 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 								resolvedImages,
 							);
 
-							let endpoints = [DEFAULT_ANTIGRAVITY_ENDPOINT_PROD, DEFAULT_ANTIGRAVITY_ENDPOINT_SANDBOX];
+							let endpoints: string[] = [...ANTIGRAVITY_ENDPOINTS];
 							try {
 								const mode = settings.get("providers.antigravityEndpoint");
 								if (mode === "production") {
-									endpoints = [DEFAULT_ANTIGRAVITY_ENDPOINT_PROD];
+									endpoints = [ANTIGRAVITY_PRIMARY_ENDPOINT];
 								} else if (mode === "sandbox") {
-									endpoints = [DEFAULT_ANTIGRAVITY_ENDPOINT_SANDBOX];
+									endpoints = [ANTIGRAVITY_SANDBOX_ENDPOINT];
 								}
 							} catch {
 								// Ignored

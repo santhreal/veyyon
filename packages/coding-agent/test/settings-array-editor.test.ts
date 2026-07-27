@@ -7,7 +7,7 @@
  *   had NO branch for `type:"array"`, so every array setting fell through to
  *   `return null` and was silently dropped from the settings screen. That hid every
  *   operator-facing array knob that declares a real label — most damagingly
- *   `argot.models`, the allowlist without which Argot is permanently inert: a user
+ *   `argot.encode.models`, the allowlist without which Argot is permanently inert: a user
  *   could enable Argot but never reach the setting that activates it. The bug was
  *   surfaced by the Argot settings screenshot showing "4 matches" for 5 settings.
  *
@@ -52,9 +52,9 @@ function parseArrayFromEdit(raw: string): unknown[] {
 }
 
 describe("array settings with a ui block are reachable in the settings UI", () => {
-	it("argot.models (the Argot allowlist) now yields a text SettingDef, not null", () => {
+	it("argot.encode.models (the Argot allowlist) now yields a text SettingDef, not null", () => {
 		invalidateSettingDefsCache();
-		const def = getSettingDef("argot.models");
+		const def = getSettingDef("argot.encode.models");
 		expect(def).toBeDefined();
 		expect(def?.type).toBe("text");
 		expect(def?.label).toBe("Argot Models");

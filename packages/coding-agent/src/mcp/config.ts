@@ -10,10 +10,10 @@ import type { SourceMeta } from "../capability/types";
 import type { MCPServer } from "../discovery";
 import { loadCapability } from "../discovery";
 import { readDisabledServers, readEnabledServers } from "./config-writer";
+import type { MCPServerConfig } from "./types";
 // Re-exported below: `validateServerConfig` moved to `./validate` so the writer
 // can validate without importing this loader, which was a cycle.
 import { validateServerConfig } from "./validate";
-import type { MCPServerConfig } from "./types";
 
 /** Options for loading MCP configs */
 export interface LoadMCPConfigsOptions {

@@ -1,15 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
+import type { AssistantMessage } from "@veyyon/ai";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { LoadExtensionsResult } from "@veyyon/coding-agent/extensibility/extensions/types";
-import type { CreateAgentSessionResult } from "@veyyon/coding-agent/sdk";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
 import type { AgentSession, AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
 import { formatResultOutputFallback } from "@veyyon/coding-agent/task";
 import { runSubprocess } from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
-import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
+import {
+	createAssistantStopMessage,
+	createMockSessionHandle,
+	createSessionResult,
+	type MockSessionHandle,
+	yieldSuccessEvent,
+} from "../helpers/subagent-session";
 
 // Spawning a task writes a session (and, for worktree runs, a checkout) under the
 // ACTIVE PROFILE's agent dir, so without this the suite creates them inside the
@@ -31,103 +36,57 @@ useIsolatedAgentDir();
  *    of the parent seeing "(no output)" and redoing the work.
  */
 
-interface SteerCall {
-	content: string;
-	options?: { deliverAs?: "steer" | "followUp" };
-}
-
 interface FakeSessionConfig {
-	/** Events pushed to the executor's subscriber on the next microtask. */
+	/** Events delivered to the executor's subscriber during the child's turn. */
 	events?: AgentSessionEvent[];
-	/** When true, prompt/waitForIdle hang until abort() is called. */
+	/** When true, prompt/waitForIdle hang until a guard aborts the session. */
 	hang?: boolean;
-	/** Returned from getLastAssistantMessage (salvage source). */
-	lastAssistantMessage?: unknown;
+	/**
+	 * The message `getLastAssistantMessage` answers with, which is the salvage source.
+	 *
+	 * Deliberately separate from {@link FakeSessionConfig.events}: the `message_end` events below are
+	 * raw events that the executor counts, and the salvage read is a different question (what the
+	 * child last said), so a suite sets the two independently.
+	 */
+	lastAssistantMessage?: AssistantMessage;
 }
 
-interface FakeSessionHandle {
-	session: AgentSession;
-	steerCalls: SteerCall[];
-	abortCalls: () => number;
-}
-
-function assistantMessageEnd(text: string, usage?: Record<string, number>): AgentSessionEvent {
+/**
+ * One counted assistant turn.
+ *
+ * The default usage is nonzero because the executor reports a run's tokens and the salvage summary
+ * quotes them; a turn with no usage would make "N tok" unverifiable.
+ */
+function assistantMessageEnd(text: string, usage?: Partial<AssistantMessage["usage"]>): AgentSessionEvent {
 	return {
 		type: "message_end",
-		message: {
-			role: "assistant",
-			content: text ? [{ type: "text", text }] : [],
-			usage: usage ?? { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15 },
-		},
+		message: createAssistantStopMessage(text, "stop", usage ?? { input: 10, output: 5, totalTokens: 15 }),
 	} as unknown as AgentSessionEvent;
 }
 
 function yieldToolEnd(): AgentSessionEvent {
-	return {
-		type: "tool_execution_end",
-		toolCallId: "tool-yield",
-		toolName: "yield",
-		result: {
-			content: [{ type: "text", text: "Result submitted." }],
-			details: { status: "success", data: { ok: true } },
-		},
-		isError: false,
-	} as AgentSessionEvent;
+	return yieldSuccessEvent({ ok: true });
 }
 
-function createFakeSession(config: FakeSessionConfig = {}): FakeSessionHandle {
-	let abortCount = 0;
-	const steerCalls: SteerCall[] = [];
-	const { promise: hang, resolve: releaseHang } = Promise.withResolvers<void>();
-	if (!config.hang) releaseHang();
-
-	const session: Partial<AgentSession> = {
-		state: { messages: [] } as never,
-		agent: { state: { systemPrompt: ["test"] } } as never,
-		extensionRunner: undefined as never,
-		sessionManager: { appendSessionInit: () => {} } as never,
-		getActiveToolNames: () => ["read", "yield"],
-		setActiveToolsByName: async (_names: string[]) => {},
-		subscribe: (listener: (event: AgentSessionEvent) => void) => {
-			if (config.events?.length) {
-				const events = config.events;
-				queueMicrotask(() => {
-					for (const event of events) listener(event);
-				});
-			}
-			return () => {};
+/**
+ * The shared fake, configured for this suite's shape.
+ *
+ * The session itself comes from `test/helpers/subagent-session.ts`; only the "replay a fixed event
+ * list" arrangement is local, because these tests describe a child by the turns it burns rather than
+ * by reacting to what the executor asked it.
+ */
+function createFakeSession(config: FakeSessionConfig = {}): MockSessionHandle {
+	return createMockSessionHandle(
+		({ emit, state }) => {
+			if (config.lastAssistantMessage) state.messages.push(config.lastAssistantMessage);
+			for (const event of config.events ?? []) emit(event);
 		},
-		prompt: async () => {
-			await hang;
-			return true;
-		},
-		waitForIdle: async () => {
-			await hang;
-		},
-		sendUserMessage: async (content, options) => {
-			steerCalls.push({ content: String(content), options });
-		},
-		getLastAssistantMessage: () => (config.lastAssistantMessage ?? undefined) as never,
-		abort: async () => {
-			abortCount += 1;
-			releaseHang();
-		},
-		dispose: async () => {},
-	};
-	return {
-		session: session as AgentSession,
-		steerCalls,
-		abortCalls: () => abortCount,
-	};
+		{ hangUntilAbort: config.hang },
+	);
 }
 
 function mockCreateAgentSession(session: AgentSession) {
-	return vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue({
-		session,
-		extensionsResult: {} as unknown as LoadExtensionsResult,
-		setToolUIContext: () => {},
-		eventBus: new EventBus(),
-	} satisfies CreateAgentSessionResult);
+	return vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
 }
 
 const baseAgent: AgentDefinition = {
@@ -292,11 +251,7 @@ describe("runSubprocess request guards", () => {
 				// counts a request and tokens without producing output chunks.
 				assistantMessageEnd("", { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, totalTokens: 150 }),
 			],
-			lastAssistantMessage: {
-				role: "assistant",
-				stopReason: "aborted",
-				content: [{ type: "text", text: "Reading   the\n\tconfig loader before patching" }],
-			},
+			lastAssistantMessage: createAssistantStopMessage("Reading   the\n\tconfig loader before patching", "aborted"),
 		});
 		mockCreateAgentSession(handle.session);
 
@@ -317,11 +272,7 @@ describe("runSubprocess request guards", () => {
 		const longText = `start-marker ${"x".repeat(700)}`;
 		const handle = createFakeSession({
 			hang: true,
-			lastAssistantMessage: {
-				role: "assistant",
-				stopReason: "aborted",
-				content: [{ type: "text", text: longText }],
-			},
+			lastAssistantMessage: createAssistantStopMessage(longText, "aborted"),
 		});
 		mockCreateAgentSession(handle.session);
 

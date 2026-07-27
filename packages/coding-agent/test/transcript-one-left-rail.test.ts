@@ -25,9 +25,9 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { BashExecutionComponent } from "@veyyon/coding-agent/modes/components/bash-execution";
 import { COMPOSER_INSET_COLS, resolveComposerAccents } from "@veyyon/coding-agent/modes/components/composer-chrome";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { Component, TUI } from "@veyyon/tui";
+import { createToolExecution } from "./helpers/tool-execution";
 
 const WIDTHS = [72, 120, 200];
 const uiStub = { requestRender() {}, requestComponentRender() {} } as unknown as TUI;
@@ -58,7 +58,7 @@ function bashBlock(exitCode: number): Component {
 
 /** A tool card: the block that used to render flush at column 0. */
 function toolBlock(isError: boolean): Component {
-	const block = new ToolExecutionComponent("read", { path: "src/parser.ts" }, {}, undefined, uiStub);
+	const block = createToolExecution("read", { path: "src/parser.ts" }, {}, undefined, uiStub);
 	block.updateResult({ content: [{ type: "text", text: "export function parse() {}" }], isError } as never, false);
 	return block;
 }

@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import { CURSOR_MARKER } from "@veyyon/tui";
+import { PASTE_END, PASTE_START } from "@veyyon/tui/bracketed-paste";
 import { setKittyProtocolActive } from "@veyyon/tui/keys";
 import { $ } from "bun";
 import { getDefaultPasteImageKeys } from "../../config/keybindings";
@@ -28,11 +29,9 @@ function makeEditor() {
 const REPEAT_GAP_MS = 30;
 /** A gap above the threshold — looks like a deliberate keypress. */
 const TAP_GAP_MS = SPACE_REPEAT_MAX_GAP_MS + 80;
-const BRACKETED_PASTE_START = "\x1b[200~";
-const BRACKETED_PASTE_END = "\x1b[201~";
 
 function bracketedPaste(text: string): string {
-	return `${BRACKETED_PASTE_START}${text}${BRACKETED_PASTE_END}`;
+	return `${PASTE_START}${text}${PASTE_END}`;
 }
 
 /** Feed `count` spaces `gapMs` apart on the fake clock. The first space of a run has no prior

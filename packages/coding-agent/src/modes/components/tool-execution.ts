@@ -19,7 +19,9 @@ import { EDIT_MODE_STRATEGIES, type EditMode, type PerFileDiffPreview } from "..
 import type { Theme } from "../../modes/theme/theme";
 import { getThemeEpoch, theme } from "../../modes/theme/theme";
 import { BASH_DEFAULT_PREVIEW_LINES } from "../../tools/bash";
-import { EVAL_DEFAULT_PREVIEW_LINES } from "../../tools/eval";
+// From the renderer that owns the number, not from `tools/eval`, which is the tool that RUNS a cell: reading
+// a preview height should not instantiate the Python kernel machinery.
+import { EVAL_DEFAULT_PREVIEW_LINES } from "../../tools/eval-render";
 import { isWaitingPollDetails } from "../../tools/job";
 import {
 	formatArgsInline,
@@ -628,6 +630,20 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 				// stop it the instant the block leaves the repaintable region.
 				if (this.#maybeFreezeBackgroundTask()) return;
 				const now = performance.now();
+				// The active theme is a live module binding, read fresh each tick so a theme switch takes
+				// effect mid-spin. It is normally a Theme by the time anything renders, and if it is not,
+				// this tick must not be where that is discovered 12 times a second: a throw inside a timer
+				// callback has no handler, so it surfaces as an unhandled error attributed to whatever is
+				// running at the time -- which is how one missing theme cost 12 failures in three unrelated
+				// suites. Stop the animation and say so instead, loudly and once.
+				if (!Array.isArray(theme?.spinnerFrames)) {
+					logger.warn("Spinner stopped: the active theme has no spinner frames", {
+						tool: this.#toolName,
+						theme: theme === undefined ? "unset" : "no spinnerFrames",
+					});
+					this.stopAnimation();
+					return;
+				}
 				const frameCount = theme.spinnerFrames.length;
 				this.#spinnerFrame = sharedSpinnerFrame(frameCount, now);
 				this.#renderState.spinnerFrame = this.#spinnerFrame;

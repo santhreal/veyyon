@@ -1,12 +1,26 @@
+/**
+ * The display clamp as a user meets it: driven through the execution components rather than against the helper.
+ *
+ * The helper itself is covered by `modes/components/execution-display-clamp.test.ts`. This suite exists for the
+ * WIRING, and for the grapheme cases that only make sense against real text: wide glyphs, emoji including a ZWJ
+ * family sequence, combining marks, and ANSI-decorated output.
+ *
+ * The limit is imported rather than declared. It used to be a local `MAX_DISPLAY_LINE_CHARS = 4000` here, which
+ * was a fourth copy of a value the two components also each declared, and a test carrying its own copy of the
+ * number under test can only ever agree with itself.
+ */
+
 import { beforeEach, describe, expect, it } from "bun:test";
 import { BashExecutionComponent } from "@veyyon/coding-agent/modes/components/bash-execution";
+import { EvalExecutionComponent } from "@veyyon/coding-agent/modes/components/eval-execution";
+import { EXECUTION_MAX_DISPLAY_COLUMNS } from "@veyyon/coding-agent/modes/components/execution-shared";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { TUI } from "@veyyon/tui";
 import { visibleWidth } from "@veyyon/tui";
 
-const MAX_DISPLAY_LINE_CHARS = 4000;
+const MAX_DISPLAY_LINE_CHARS = EXECUTION_MAX_DISPLAY_COLUMNS;
 
-describe("BashExecutionComponent #clampDisplayLine", () => {
+describe("the execution display clamp through the bash component", () => {
 	const ui = { requestRender: () => {}, requestComponentRender: () => {} } as unknown as TUI;
 
 	beforeEach(async () => {
@@ -244,5 +258,70 @@ describe("BashExecutionComponent #clampDisplayLine", () => {
 			expect(visibleWidth("\x1b[7m")).toBe(0);
 			expect(visibleWidth("a\x1b[7mb")).toBe(2);
 		});
+	});
+});
+
+/**
+ * The parity block, and the point of the whole change: the same input through either component produces the same
+ * clamped output.
+ *
+ * Before the unification these two disagreed. Eval measured `line.length`, so a styled line was truncated while
+ * it still displayed short of the limit, and a wide-character line sailed past a limit it exceeded. Each case
+ * below is a string where the old implementations gave DIFFERENT answers, so this block would have failed.
+ */
+describe("the bash and eval components clamp identically", () => {
+	const ui = { requestRender: () => {}, requestComponentRender: () => {} } as unknown as TUI;
+
+	beforeEach(async () => {
+		const theme = await getThemeByName("dark");
+		expect(theme).toBeDefined();
+		setThemeInstance(theme!);
+	});
+
+	function bothOutputs(input: string): { bash: string; evaluated: string } {
+		const bash = new BashExecutionComponent("test", ui, false);
+		bash.appendOutput(input);
+		bash.setComplete(0, false);
+		const evaluated = new EvalExecutionComponent("test", ui, false);
+		evaluated.appendOutput(input);
+		evaluated.setComplete(0, false);
+		return { bash: bash.getOutput(), evaluated: evaluated.getOutput() };
+	}
+
+	/** A styled line whose escape bytes push its code-unit length over the limit while it displays far under it. */
+	it("agrees on a styled line that only a code-unit count would truncate", () => {
+		const styled = "\x1b[32mgreen\x1b[0m".repeat(400);
+		expect(styled.length).toBeGreaterThan(MAX_DISPLAY_LINE_CHARS);
+		expect(visibleWidth(styled)).toBeLessThan(MAX_DISPLAY_LINE_CHARS);
+		const { bash, evaluated } = bothOutputs(styled);
+		expect(evaluated).toBe(bash);
+		expect(bash).not.toContain("omitted");
+	});
+
+	/** A wide-character line whose code-unit length is under the limit while its column count is over it. */
+	it("agrees on a wide-character line that a code-unit count would let through", () => {
+		const wide = "日本語".repeat(800);
+		expect(wide.length).toBeLessThan(MAX_DISPLAY_LINE_CHARS);
+		expect(visibleWidth(wide)).toBeGreaterThan(MAX_DISPLAY_LINE_CHARS);
+		const { bash, evaluated } = bothOutputs(wide);
+		expect(evaluated).toBe(bash);
+		expect(bash).toContain("visible columns omitted");
+	});
+
+	/** And on plain overlong ASCII, where both used to agree on the cut but printed different notes. */
+	it("agrees on plain overlong output, note included", () => {
+		const plain = "a".repeat(MAX_DISPLAY_LINE_CHARS + 123);
+		const { bash, evaluated } = bothOutputs(plain);
+		expect(evaluated).toBe(bash);
+		expect(bash).toContain("[123 visible columns omitted]");
+		expect(bash).not.toContain("chars omitted");
+	});
+
+	/** Short output is untouched by both, so parity is not an artefact of both truncating everything. */
+	it("agrees on short output by leaving it alone", () => {
+		const short = "make: nothing to be done";
+		const { bash, evaluated } = bothOutputs(short);
+		expect(bash).toBe(short);
+		expect(evaluated).toBe(short);
 	});
 });

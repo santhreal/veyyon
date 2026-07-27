@@ -2,12 +2,17 @@ import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { errorMessage, formatBytes, formatCount, isEnoent, logger } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 18 modules against 74. `logger` is a namespace re-export
+// (`export * as logger from "./logger"`), so it is imported as one here.
+import { formatBytes, formatCount } from "@veyyon/utils/format";
+import { isEnoent } from "@veyyon/utils/fs-error";
+import * as logger from "@veyyon/utils/logger";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import { AgentRegistry } from "../registry/agent-registry";
 import { getContentType } from "./content-type";
 import { buildDirectoryResource, ensureWithinRoot as ensureWithinRootShared } from "./filesystem-resource";
 import { parseInternalUrl } from "./parse";
-import { validateRelativePath } from "./skill-protocol";
+import { validateRelativePath } from "./relative-path";
 import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext, UrlCompletion } from "./types";
 
 export interface LocalProtocolOptions {
@@ -217,7 +222,7 @@ function extractRelativePath(url: InternalUrl): string {
 		throw new Error(`Invalid URL encoding in local:// path: ${url.href}`);
 	}
 	try {
-		validateRelativePath(decoded);
+		validateRelativePath(decoded, "local");
 	} catch (error) {
 		throw toLocalValidationError(error);
 	}

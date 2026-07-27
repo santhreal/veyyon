@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { removeWithRetries } from "@veyyon/utils";
+import { readPipeText, removeWithRetries } from "@veyyon/utils";
 import { type HermeticSpawnEnv, hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
 
 /**
@@ -35,6 +35,16 @@ describe("the CLI under LC_ALL=C", () => {
 
 	const cliEntry = path.join(import.meta.dir, "..", "..", "src", "cli.ts");
 
+	/**
+	 * Budget for a test that spawns the real CLI TWICE, serially.
+	 *
+	 * Every differential here needs both an ambient-locale run and an `LC_ALL=C` run, and a cold `bun` start
+	 * of the entry point takes over a second on its own. The default per-test budget left almost no headroom,
+	 * so on a loaded machine these failed as timeouts rather than as comparisons -- and a timeout with an
+	 * empty stdout is indistinguishable from the real encoding bug this file exists to catch.
+	 */
+	const SPAWN_PAIR_BUDGET_MS = 20_000;
+
 	/** Non-ASCII spanning the three cases that break differently: accented Latin
 	 * (single non-ASCII byte pair), CJK (three-byte sequences), and an emoji
 	 * (surrogate pair in UTF-16, four bytes in UTF-8). */
@@ -56,7 +66,7 @@ describe("the CLI under LC_ALL=C", () => {
 
 	/** Run the CLI once and return its stdout plus exit code. `locale` replaces the
 	 * inherited locale variables when given. */
-	async function run(args: string[], locale?: "C"): Promise<{ stdout: string; exitCode: number }> {
+	async function run(args: string[], locale?: "C"): Promise<{ stdout: string; exitCode: number; stderr?: string }> {
 		const env = { ...(hermetic as HermeticSpawnEnv).env };
 		if (locale === "C") {
 			env.LC_ALL = "C";
@@ -70,7 +80,17 @@ describe("the CLI under LC_ALL=C", () => {
 			stderr: "pipe",
 			env,
 		});
-		const [stdout, exitCode] = await Promise.all([new Response(proc.stdout as ReadableStream).text(), proc.exited]);
+		// stderr is read and attached to a FAILED run rather than discarded. A dead spawn otherwise arrives as
+		// an empty stdout, which every assertion here would then compare or search without a word about why,
+		// and an empty string is the one result that can look like agreement between two locales.
+		const [stdout, stderr, exitCode] = await Promise.all([
+			readPipeText(proc.stdout),
+			readPipeText(proc.stderr),
+			proc.exited,
+		]);
+		if (exitCode !== 0) {
+			return { stdout, exitCode, stderr };
+		}
 		return { stdout, exitCode };
 	}
 
@@ -81,23 +101,32 @@ describe("the CLI under LC_ALL=C", () => {
 		 * output encoding at all, the box drawing and any non-ASCII in the
 		 * descriptions is where it would show first.
 		 */
-		it("`--help` produces the same bytes", async () => {
-			const ambient = await run(["--help"]);
-			const posix = await run(["--help"], "C");
+		it(
+			"`--help` produces the same bytes",
+			async () => {
+				const ambient = await run(["--help"]);
+				const posix = await run(["--help"], "C");
 
-			expect(ambient.exitCode).toBe(0);
-			expect(posix.exitCode).toBe(0);
-			expect(posix.stdout).toBe(ambient.stdout);
-		});
+				expect(ambient.exitCode).toBe(0);
+				expect(posix.exitCode).toBe(0);
+				expect(posix.stdout).toContain("veyyon");
+				expect(posix.stdout).toBe(ambient.stdout);
+			},
+			SPAWN_PAIR_BUDGET_MS,
+		);
 
 		/** `--version` is short and exact, so a difference here is unambiguous. */
-		it("`--version` produces the same bytes", async () => {
-			const ambient = await run(["--version"]);
-			const posix = await run(["--version"], "C");
+		it(
+			"`--version` produces the same bytes",
+			async () => {
+				const ambient = await run(["--version"]);
+				const posix = await run(["--version"], "C");
 
-			expect(posix.stdout).toBe(ambient.stdout);
-			expect(posix.stdout.trim()).not.toBe("");
-		});
+				expect(posix.stdout.trim()).not.toBe("");
+				expect(posix.stdout).toBe(ambient.stdout);
+			},
+			SPAWN_PAIR_BUDGET_MS,
+		);
 	});
 
 	describe("non-ASCII content survives the round trip", () => {
@@ -133,18 +162,38 @@ describe("the CLI under LC_ALL=C", () => {
 			expect(posix.stdout).toContain("ascii body");
 		});
 
-		/** The differential for content: the same read under both locales must
-		 * produce the same bytes, which is a stronger statement than "the string
-		 * appears" because it also catches a locale-dependent line ending or a
-		 * differently-truncated line. */
-		it("the same read under both locales produces the same bytes", async () => {
-			const file = path.join(projectDir, "notes.txt");
-			await fs.writeFile(file, `${NON_ASCII}\nsecond line\n`);
+		/**
+		 * The differential for content: the same read under both locales must produce the same bytes, which is
+		 * a stronger statement than "the string appears" because it also catches a locale-dependent line ending
+		 * or a differently-truncated line.
+		 *
+		 * Both runs are asserted to have SUCCEEDED and to actually contain the content before they are compared.
+		 * A bare `toBe` between two stdouts passes when both are empty, so a spawn that died -- the CLI failing
+		 * to start, a killed process, an entry point that moved -- would read as "the locales agree". That is
+		 * the shape this file exists to disprove, and it was seen failing as an empty second stdout, which is
+		 * consistent with both a real round-trip bug and a spawn that never finished.
+		 *
+		 * The budget is explicit because this is the only test here that spawns the CLI TWICE, serially: each
+		 * cold `bun` start of the real entry point takes over a second, so the default per-test budget left
+		 * almost no headroom on a loaded machine and the failure presented as a timeout rather than as a
+		 * comparison.
+		 */
+		it(
+			"the same read under both locales produces the same bytes",
+			async () => {
+				const file = path.join(projectDir, "notes.txt");
+				await fs.writeFile(file, `${NON_ASCII}\nsecond line\n`);
 
-			const ambient = await run(["read", file]);
-			const posix = await run(["read", file], "C");
+				const ambient = await run(["read", file]);
+				const posix = await run(["read", file], "C");
 
-			expect(posix.stdout).toBe(ambient.stdout);
-		});
+				expect(ambient.exitCode).toBe(0);
+				expect(posix.exitCode).toBe(0);
+				expect(ambient.stdout).toContain(NON_ASCII);
+				expect(ambient.stdout).toContain("second line");
+				expect(posix.stdout).toBe(ambient.stdout);
+			},
+			SPAWN_PAIR_BUDGET_MS,
+		);
 	});
 });

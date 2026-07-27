@@ -1,13 +1,13 @@
 import * as path from "node:path";
 import { Text } from "@veyyon/tui";
-import { errorMessage, formatCount } from "@veyyon/utils";
+import { errorMessage, formatCount, logger } from "@veyyon/utils";
 import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
 import type { Theme } from "../../modes/theme/theme";
 import { replaceTabs, truncateToWidth } from "../../tools/render-utils";
 import * as git from "../../utils/git";
 import { parseWorkDirDirtyPaths, tryReadHeadSha } from "../git";
-import { dedupeStrings, normalizePathSpec } from "../helpers";
+import { dedupeStrings, gitStatusPorcelain, gitWorkDirPrefix, normalizePathSpec } from "../helpers";
 import { buildExperimentState } from "../state";
 import { openAutoresearchStorage, type SessionRow } from "../storage";
 import type { AutoresearchToolFactoryOptions, ExperimentState } from "../types";
@@ -240,13 +240,26 @@ function renderInitCall(name: string, theme: Theme): string {
 	return `${theme.fg("toolTitle", theme.bold("init_experiment"))} ${theme.fg("accent", truncateToWidth(replaceTabs(name), 100))}`;
 }
 
+/**
+ * Whether the worktree has changes that need committing before a baseline is recorded.
+ *
+ * FAILS CLOSED: a status that cannot be read answers TRUE, not false. The caller commits the harness
+ * changes when this is true, and warns that "discard may not preserve uncommitted harness files" when the
+ * commit fails -- so answering false on a failure quietly took the branch that loses work, and the
+ * baseline was recorded at a HEAD that did not contain the harness. Answering true instead attempts the
+ * commit, and a commit that cannot run produces the warning the reader needs to see.
+ */
 async function detectPendingChanges(cwd: string): Promise<boolean> {
 	try {
-		const statusText = await git.status(cwd, { porcelainV1: true, untrackedFiles: "all", z: true });
-		const workDirPrefix = await git.show.prefix(cwd).catch(() => "");
+		const statusText = await gitStatusPorcelain(cwd);
+		const workDirPrefix = await gitWorkDirPrefix(cwd);
 		return parseWorkDirDirtyPaths(statusText, workDirPrefix).length > 0;
-	} catch {
-		return false;
+	} catch (err) {
+		logger.warn("Git status failed while checking for harness changes; assuming there are some", {
+			cwd,
+			error: errorMessage(err),
+		});
+		return true;
 	}
 }
 

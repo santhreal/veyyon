@@ -1,5 +1,7 @@
 import type { AgentMessage } from "@veyyon/agent-core";
-import { assistantText as joinAssistantText, type ToolCall } from "@veyyon/ai";
+import type { ToolCall } from "@veyyon/ai";
+// The text join from the module that defines it (1 module) rather than the barrel (346).
+import { assistantText as joinAssistantText } from "@veyyon/ai/utils/message-text";
 import { formatCount } from "@veyyon/utils";
 
 /** A fenced code block extracted from assistant markdown. */

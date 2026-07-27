@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import { detectIndentFromContent, resolveFormatOptions } from "@veyyon/coding-agent/lsp/format-options";
-import { getProjectDir, removeWithRetries, Snowflake, setProjectDir } from "@veyyon/utils";
+import { getProjectDir, removeWithRetries, setProjectDir } from "@veyyon/utils";
+import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makeFormatOptionsDir = useTrackedTempDirs("veyyon-format-options-");
 
 /**
  * Regression coverage for issue #2329 — the LSP format-on-write path used to
@@ -61,8 +67,7 @@ describe("resolveFormatOptions", () => {
 
 	beforeEach(async () => {
 		previousProjectDir = getProjectDir();
-		tempDir = path.join(os.tmpdir(), "veyyon-format-options", Snowflake.next());
-		await fs.mkdir(tempDir, { recursive: true });
+		tempDir = makeFormatOptionsDir();
 		setProjectDir(tempDir);
 	});
 

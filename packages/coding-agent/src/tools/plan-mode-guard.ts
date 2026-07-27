@@ -1,12 +1,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { HL_FILE_HASH_LENGTH, HL_FILE_HASH_SEP, HL_FILE_PREFIX, HL_FILE_SUFFIX } from "@veyyon/hashline";
-import {
-	type LocalProtocolOptions,
-	resolveLocalRoot,
-	resolveLocalUrlToPath,
-	resolveVaultUrlToPath,
-} from "../internal-urls";
+// The owning modules, not the `../internal-urls` barrel. The barrel re-exports every protocol
+// handler, and the MCP and skill ones alone reach several hundred modules; a guard that resolves
+// two URL schemes has no reason to pay for all of them.
+import { type LocalProtocolOptions, resolveLocalRoot, resolveLocalUrlToPath } from "../internal-urls/local-protocol";
+import { resolveVaultUrlToPath } from "../internal-urls/vault-protocol";
 import type { ToolSession } from ".";
 import { normalizeLocalScheme, resolveToCwd } from "./path-utils";
 import { ToolError } from "./tool-errors";

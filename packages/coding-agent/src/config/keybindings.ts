@@ -9,16 +9,13 @@ import {
 	TUI_KEYBINDINGS,
 	KeybindingsManager as TuiKeybindingsManager,
 } from "@veyyon/tui";
-import {
-	atomicWriteFileSync,
-	getActiveProfile,
-	getAgentDir,
-	getProfileRootDir,
-	isEnoent,
-	logger,
-	quarantineUnparseableFileSync,
-	syncYamlTextToSettings,
-} from "@veyyon/utils";
+import { atomicWriteFileSync } from "@veyyon/utils/atomic-write";
+import { getActiveProfile, getAgentDir, getProfileRootDir } from "@veyyon/utils/dirs";
+import { isEnoent } from "@veyyon/utils/fs-error";
+// Owners, not the `@veyyon/utils` barrel: 6 modules against 74.
+import * as logger from "@veyyon/utils/logger";
+import { quarantineUnparseableFileSync } from "@veyyon/utils/quarantine-file";
+import { syncYamlTextToSettings } from "@veyyon/utils/yaml-sync";
 import { JSONC, YAML } from "bun";
 
 /**

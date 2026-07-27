@@ -27,7 +27,7 @@ import { type Prompt, promptCapability } from "../capability/prompt";
 import { type Rule, ruleCapability } from "../capability/rule";
 import { type Skill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
-import { type CustomTool, toolCapability } from "../capability/tool";
+import { type DiscoveredCustomTool, toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult } from "../capability/types";
 import { buildRuleFromMarkdown, createSourceMeta, loadFilesFromDir, scanSkillsFromDir } from "./helpers";
 import { resolvePluginStdioPaths } from "./substitute-plugin-root";
@@ -178,13 +178,13 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 
 const TOOL_EXTENSIONS = ["json", "md", "ts", "js", "sh", "bash", "py"];
 
-async function loadTools(ctx: LoadContext): Promise<LoadResult<CustomTool>> {
+async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomTool>> {
 	const roots = await listVeyyonExtensionRoots(ctx);
 	const perRoot = await Promise.all(
 		roots.map(async root => {
 			const toolsDir = path.join(root.path, "tools");
 			const [filesResult, entries] = await Promise.all([
-				loadFilesFromDir<CustomTool>(ctx, toolsDir, PROVIDER_ID, root.level, {
+				loadFilesFromDir<DiscoveredCustomTool>(ctx, toolsDir, PROVIDER_ID, root.level, {
 					extensions: TOOL_EXTENSIONS,
 					transform: (name, content, filePath, source) => {
 						if (name.endsWith(".json")) {
@@ -223,7 +223,7 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<CustomTool>> {
 				.filter(e => !e.name.startsWith(".") && e.isDirectory())
 				.map(e => path.join(toolsDir, e.name, "index.ts"));
 			const indexContents = await Promise.all(indexCandidates.map(p => readFile(p)));
-			const indexItems: CustomTool[] = [];
+			const indexItems: DiscoveredCustomTool[] = [];
 			for (let i = 0; i < indexCandidates.length; i++) {
 				if (indexContents[i] === null) continue;
 				const indexPath = indexCandidates[i];
@@ -241,7 +241,7 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<CustomTool>> {
 		}),
 	);
 
-	const items: CustomTool[] = [];
+	const items: DiscoveredCustomTool[] = [];
 	const warnings: string[] = [];
 	for (const { filesResult, indexItems } of perRoot) {
 		items.push(...filesResult.items, ...indexItems);
@@ -372,7 +372,7 @@ registerProvider<Hook>(hookCapability.id, {
 	load: loadHooks,
 });
 
-registerProvider<CustomTool>(toolCapability.id, {
+registerProvider<DiscoveredCustomTool>(toolCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
 	description: DESCRIPTION,

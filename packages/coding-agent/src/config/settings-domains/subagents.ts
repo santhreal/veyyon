@@ -18,6 +18,12 @@
  *     but disabled, because most sessions need a general delegate and nothing
  *     else, and every extra agent type costs tokens in the tool description and
  *     invites spawns nobody asked for.
+ *  3. ENABLED GOVERNS THE MODEL, NOT YOU. A disabled agent is one the model may
+ *     not choose. It does not disable the `/` commands that name that agent:
+ *     running `/review` is you asking for a review, and the command grants its
+ *     own agent for that turn. There is deliberately no third state between on
+ *     and off — an earlier design had one, labelled "not offered but still runs
+ *     when named", and nobody could tell what the switch did.
  */
 
 import { configuredThinkingLevelOptions } from "../../thinking";
@@ -43,8 +49,10 @@ export interface SubagentAgentSettings {
  * The one bundled agent enabled out of the box: the general-purpose delegate.
  *
  * Bundled specialists (scout, reviewer, librarian, designer, sonic) stay off
- * until the operator turns them on. A user-authored agent under
- * `.veyyon/agents/` is on by default — writing the file is the opt-in.
+ * until the operator turns them on. They are still LISTED while off, each with a
+ * line saying what it is for, because an agent you cannot see is one you will
+ * never enable. A user-authored agent under `.veyyon/agents/` is on by default —
+ * writing the file is the opt-in.
  */
 export const DEFAULT_ENABLED_BUNDLED_AGENT = "task";
 
@@ -53,21 +61,37 @@ export const SUBAGENTS_SETTINGS = {
 	// Delegation
 	// ────────────────────────────────────────────────────────────────────────
 
+	"subagent.enabled": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "subagents",
+			group: "Delegation",
+			label: "Subagents",
+			description:
+				"Whether this session may use subagents at all. Off removes the task tool and every delegation instruction from the prompt, so nothing can be spawned. This is the only setting that takes the ability away: Task Delegation below decides how hard the model is PUSHED to delegate, never whether it may. Your delegation strength and Agents table are kept while this is off and take effect again when you turn it back on.",
+			keywords: ["subagent", "spawn", "delegate", "off", "disable"],
+		},
+	},
+
 	"subagent.delegation": {
 		type: "enum",
-		values: ["off", "allowed", "preferred", "required"] as const,
-		default: "allowed",
+		values: ["allowed", "preferred", "required"] as const,
+		default: "preferred",
 		ui: {
 			tab: "subagents",
 			group: "Delegation",
 			label: "Task Delegation",
 			description:
-				"Whether this session delegates work to spawned subagents, and how strongly. Off removes the task tool and every delegation instruction from the prompt; allowed offers it and lets the model judge; preferred asks the model to fan substantial work out; required also adds a first-turn reminder. The prompt text follows this setting and the agents you have enabled — a disabled agent is never advertised.",
+				"How hard this session pushes work out to subagents. It never removes the ability to delegate — at `allowed` the model still has the task tool and still spawns a subagent when that is the sensible move, it is simply not asked to. To remove subagents entirely, use the Subagents switch above. WHAT gets delegated is decided by the Agents table, not here: the agents you enable are the instruction, so enabling the reviewer is how you say reviews are delegable. With no agent enabled there is nothing to delegate to and the strength you pick has no effect.",
 			keywords: ["subagent", "spawn", "fan out", "parallel", "eager"],
 			options: [
-				{ value: "off", label: "Off", description: "No task tool, no delegation guidance" },
-				{ value: "allowed", label: "Allowed", description: "Default — the model decides when to delegate" },
-				{ value: "preferred", label: "Preferred", description: "Prompt asks for substantial work to be delegated" },
+				{ value: "allowed", label: "Allowed", description: "Offered, never asked for — the model decides" },
+				{
+					value: "preferred",
+					label: "Preferred",
+					description: "Default — prompt asks for substantial work to be delegated",
+				},
 				{
 					value: "required",
 					label: "Required",
@@ -108,7 +132,7 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Agents",
 			label: "Agents",
 			description:
-				"Which agent types this session offers, and the model and effort each one runs. Every row is optional: an agent with no row is offered if it is one of yours (or the general worker) and merely unlisted if it is a bundled specialist — unlisted still runs when something names it outright. Blocking an agent refuses it even by name. A per-agent model wins over the blanket Subagent Model; blank inherits.",
+				"Which agent types the model may choose, and the model and effort each one runs. Enabled means the model can pick that agent on its own; disabled means it cannot, and nothing runs behind your back. Every row is optional: with no row, the general worker and any agent you wrote are enabled, and the bundled specialists are disabled. Turning an agent off does not disable the `/` commands that name it — `/review` is you asking for a review, so it still spawns its reviewer. A per-agent model wins over the blanket Subagent Model; blank inherits.",
 			keywords: ["agents", "scout", "reviewer", "librarian", "designer", "sonic", "enable", "disable", "per-agent"],
 		},
 	},

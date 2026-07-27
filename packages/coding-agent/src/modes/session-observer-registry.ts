@@ -1,5 +1,7 @@
-import type { AgentProgress, SubagentLifecyclePayload, SubagentProgressPayload } from "../task";
-import { TASK_SUBAGENT_LIFECYCLE_CHANNEL, TASK_SUBAGENT_PROGRESS_CHANNEL } from "../task";
+// `../task/types`, the module that DECLARES these, not the `../task` barrel that re-exports them: the
+// barrel is the whole task subsystem, 1,406 modules, and this file subscribes to two channels by name.
+import type { AgentProgress, SubagentLifecyclePayload, SubagentProgressPayload } from "../task/types";
+import { TASK_SUBAGENT_LIFECYCLE_CHANNEL, TASK_SUBAGENT_PROGRESS_CHANNEL } from "../task/types";
 import type { EventBus } from "../utils/event-bus";
 
 export interface ObservableSession {

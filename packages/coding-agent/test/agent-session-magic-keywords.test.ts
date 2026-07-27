@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Agent, type AgentTool } from "@veyyon/agent-core";
-import { Effort } from "@veyyon/ai";
+import { Effort } from "@veyyon/catalog/effort";
 import { getBundledModel } from "@veyyon/catalog/models";
 import * as autoThinkingClassifier from "@veyyon/coding-agent/auto-thinking/classifier";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";

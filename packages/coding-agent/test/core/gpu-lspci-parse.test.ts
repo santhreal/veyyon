@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { selectGpuFromLspci } from "../../src/system-prompt";
+import { selectGpuFromLspci } from "../../src/utils/host-environment";
 
 /**
  * GPU name extraction from `lspci` output feeds the `GPU:` line of the system

@@ -14,6 +14,8 @@
  * Legacy entries from before the encoding change keep working because git still
  * tracks them by branch name. This command exists to GC them on demand.
  */
+
+import type { Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage, formatCount, getWorktreesDir, isEnoent } from "@veyyon/utils";
@@ -35,6 +37,14 @@ export interface WorktreeEntry {
 	branch?: string;
 	/** When set, the entry is unhealthy and `veyyon worktree clear` will remove it. */
 	orphanReason?: string;
+	/**
+	 * When set, something on disk could not be READ, so this entry's health is unknown.
+	 *
+	 * Kept strictly separate from `orphanReason`: an entry with an unknown state must never be deleted, and
+	 * `clear` selects its targets by `orphanReason` alone. The text names the path and the underlying error so
+	 * the operator can fix the permission or remount the volume and re-run.
+	 */
+	undeterminedReason?: string;
 }
 
 export interface ListWorktreesOptions {
@@ -62,7 +72,11 @@ export async function listWorktrees(options: ListWorktreesOptions): Promise<void
 	let live = 0;
 	let orphaned = 0;
 	for (const entry of entries) {
-		const tag = entry.orphanReason ? chalk.yellow("orphaned") : chalk.green("live    ");
+		const tag = entry.orphanReason
+			? chalk.yellow("orphaned")
+			: entry.undeterminedReason
+				? chalk.red("unknown ")
+				: chalk.green("live    ");
 		const detail = formatEntryDetail(entry);
 		console.log(`${tag}  ${entry.path}`);
 		if (detail) console.log(`          ${chalk.dim(detail)}`);
@@ -167,8 +181,13 @@ async function scanWorktrees(): Promise<WorktreeEntry[]> {
 	const entries: WorktreeEntry[] = [];
 	for (const name of topLevel) {
 		const dir = path.join(root, name);
-		const stat = await fs.stat(dir).catch(() => null);
-		if (!stat?.isDirectory()) continue;
+		const stat = await statPath(dir);
+		if (!stat) {
+			// Unreadable, so its kind is unknown and it must not be swept. Surfaced, never dropped.
+			entries.push({ path: dir, kind: "stray", undeterminedReason: `cannot stat ${dir}` });
+			continue;
+		}
+		if (!stat.found?.isDirectory()) continue;
 
 		const direct = await classifyDir(dir);
 		if (direct) {
@@ -186,8 +205,13 @@ async function scanWorktrees(): Promise<WorktreeEntry[]> {
 		let nested = 0;
 		for (const child of children) {
 			const childDir = path.join(dir, child);
-			const childStat = await fs.stat(childDir).catch(() => null);
-			if (!childStat?.isDirectory()) continue;
+			const childStat = await statPath(childDir);
+			if (!childStat) {
+				entries.push({ path: childDir, kind: "stray", undeterminedReason: `cannot stat ${childDir}` });
+				nested += 1;
+				continue;
+			}
+			if (!childStat.found?.isDirectory()) continue;
 			const childClassified = await classifyDir(childDir);
 			if (childClassified) {
 				entries.push(childClassified);
@@ -205,15 +229,43 @@ async function scanWorktrees(): Promise<WorktreeEntry[]> {
 	return entries;
 }
 
+/**
+ * Stat a path, distinguishing "not there" from "could not look".
+ *
+ * This distinction decides whether files get DELETED. `veyyon worktree clear` removes every entry that
+ * carries an `orphanReason`, and each orphan verdict below is reached by failing to stat something: a
+ * missing `.git`, a parent repo that no longer tracks the worktree, a parent repo that is gone. When a
+ * blanket `.catch(() => null)` collapsed both cases, a stat that failed for any other reason -- EACCES on
+ * the parent repo, or a network volume that was briefly unreachable, which is the normal state of a repo
+ * living on a mount -- read as "missing", and a LIVE worktree was reported as "parent repo missing" and
+ * then deleted. Returning `undefined` for the unreadable case lets each caller fail closed toward keeping
+ * the user's files.
+ */
+async function statPath(target: string): Promise<{ found: Stats | null } | undefined> {
+	try {
+		return { found: await fs.stat(target) };
+	} catch (error) {
+		if (isEnoent(error)) return { found: null };
+		return undefined;
+	}
+}
+
 async function classifyDir(dir: string): Promise<WorktreeEntry | null> {
 	const gitEntry = path.join(dir, ".git");
-	const gitStat = await fs.stat(gitEntry).catch(() => null);
-	if (gitStat?.isFile()) {
+	const gitStat = await statPath(gitEntry);
+	if (!gitStat) {
+		return { path: dir, kind: "stray", undeterminedReason: `cannot stat ${gitEntry}` };
+	}
+	if (gitStat.found?.isFile()) {
 		return classifyPrCheckout(dir, gitEntry);
 	}
 	for (const mountDir of TASK_ISOLATION_MOUNT_DIRS) {
-		const mountStat = await fs.stat(path.join(dir, mountDir)).catch(() => null);
-		if (!mountStat?.isDirectory()) continue;
+		const mountPath = path.join(dir, mountDir);
+		const mountStat = await statPath(mountPath);
+		if (!mountStat) {
+			return { path: dir, kind: "task-isolation", undeterminedReason: `cannot stat ${mountPath}` };
+		}
+		if (!mountStat.found?.isDirectory()) continue;
 		return {
 			path: dir,
 			kind: "task-isolation",
@@ -243,8 +295,17 @@ async function classifyPrCheckout(dir: string, gitEntry: string): Promise<Worktr
 	const parentRepo = path.dirname(path.dirname(path.dirname(parentGitDir)));
 	const branch = await readWorktreeBranch(path.join(parentGitDir, "HEAD"));
 
-	const parentDirStat = await fs.stat(parentGitDir).catch(() => null);
-	if (!parentDirStat?.isDirectory()) {
+	const parentDirStat = await statPath(parentGitDir);
+	if (!parentDirStat) {
+		return {
+			path: dir,
+			kind: "pr-checkout",
+			parentRepo,
+			branch,
+			undeterminedReason: `cannot stat ${parentGitDir}`,
+		};
+	}
+	if (!parentDirStat.found?.isDirectory()) {
 		return {
 			path: dir,
 			kind: "pr-checkout",
@@ -253,8 +314,17 @@ async function classifyPrCheckout(dir: string, gitEntry: string): Promise<Worktr
 			orphanReason: "parent repo no longer tracks this worktree",
 		};
 	}
-	const parentRepoStat = await fs.stat(parentRepo).catch(() => null);
-	if (!parentRepoStat?.isDirectory()) {
+	const parentRepoStat = await statPath(parentRepo);
+	if (!parentRepoStat) {
+		return {
+			path: dir,
+			kind: "pr-checkout",
+			parentRepo,
+			branch,
+			undeterminedReason: `cannot stat ${parentRepo}`,
+		};
+	}
+	if (!parentRepoStat.found?.isDirectory()) {
 		return {
 			path: dir,
 			kind: "pr-checkout",
@@ -266,6 +336,14 @@ async function classifyPrCheckout(dir: string, gitEntry: string): Promise<Worktr
 	return { path: dir, kind: "pr-checkout", parentRepo, branch };
 }
 
+/**
+ * The branch a worktree has checked out, or undefined when it has none to name.
+ *
+ * Undefined already covers a detached HEAD, which the regex declines to match, so a HEAD file that cannot
+ * be read reaches the same answer the listing already handles by showing the worktree without a branch.
+ * The worktree itself is still listed, which matters more: hiding it because its HEAD was unreadable
+ * would leave a directory on disk that the tool claims does not exist.
+ */
 async function readWorktreeBranch(headFile: string): Promise<string | undefined> {
 	try {
 		const head = (await fs.readFile(headFile, "utf8")).trim();
@@ -290,5 +368,6 @@ function formatEntryDetail(entry: WorktreeEntry): string {
 		parts.push("unrecognized contents");
 	}
 	if (entry.orphanReason) parts.push(entry.orphanReason);
+	if (entry.undeterminedReason) parts.push(entry.undeterminedReason);
 	return parts.join(" — ");
 }

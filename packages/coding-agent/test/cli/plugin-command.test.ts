@@ -4,14 +4,15 @@
  * package must NOT report "Uninstalled" (bun uninstall exits 0 for it).
  */
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
 import * as path from "node:path";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
+
+const makeTempDir = useTrackedTempDirs("veyyon-plugin-home-");
 
 const cliPath = path.resolve(import.meta.dir, "../../src/cli.ts");
 
 function makeEnv(): Record<string, string | undefined> {
-	const home = mkdtempSync(path.join(tmpdir(), "veyyon-plugin-home-"));
+	const home = makeTempDir();
 	const env: Record<string, string | undefined> = { ...process.env, HOME: home, NO_COLOR: "1" };
 	for (const key of ["VEYYON_CODING_AGENT_DIR", "VEYYON_CONFIG_DIR", "VEYYON_PROFILE"]) {
 		delete env[key];

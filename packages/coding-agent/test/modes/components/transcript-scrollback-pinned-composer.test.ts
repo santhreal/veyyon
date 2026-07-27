@@ -105,133 +105,170 @@ function content(term: VirtualTerminal): string[] {
 	);
 }
 
+/**
+ * Per-case timeout for this suite, well above bun's 5s default.
+ *
+ * MEASURED 2026-07-25, after the "stops at the oldest row" case timed out at
+ * 5000ms inside a full `test/modes/components/` run while passing alone. It is
+ * not a hung wait and not a fixed sleep: every case drives the PRODUCTION
+ * scheduler and awaits a real frame per input event -- fourteen turns plus forty
+ * wheel events is about fifty awaited frames -- so alone each case costs 0.5s to
+ * 1.2s, and a loaded machine multiplies that until it crosses the default. The
+ * cost is inherent to testing the real interactive path, which is the whole
+ * point of this suite; coalescing the settles is what let queued wheel events
+ * move the frozen-view snapshot, which is the bug the settle-per-event exists to
+ * prevent. So the headroom is stated here rather than paid for by making the
+ * coverage weaker. A case that exceeds THIS is a genuine hang, not load.
+ */
+const SCROLLBACK_CASE_TIMEOUT_MS = 30_000;
+
 describe("reading history with the real transcript mounted", () => {
-	it("keeps the composer on screen and scrolls back to the first turn", async () => {
-		const { term, tui, settle } = await conversation(14);
-		try {
-			// Precondition: this is the virtualized state — history is in the
-			// terminal's scrollback and on the engine's tape, not in the frame.
-			expect(tui.scrollTapeRows).toBeGreaterThan(HEIGHT);
-			const bottom = view(term)[HEIGHT - 1];
+	it(
+		"keeps the composer on screen and scrolls back to the first turn",
+		async () => {
+			const { term, tui, settle } = await conversation(14);
+			try {
+				// Precondition: this is the virtualized state — history is in the
+				// terminal's scrollback and on the engine's tape, not in the frame.
+				expect(tui.scrollTapeRows).toBeGreaterThan(HEIGHT);
+				const bottom = view(term)[HEIGHT - 1];
 
-			for (let i = 0; i < 40; i++) {
+				for (let i = 0; i < 40; i++) {
+					term.sendInput(WHEEL_UP);
+					await settle();
+				}
+
+				expect(tui.virtualScrollActive).toBe(true);
+				expect(content(term)[0]).toBe("› turn 0"); // the first turn of the session
+				// The composer is still the bottom row, unchanged.
+				expect(view(term)[HEIGHT - 1]).toBe(bottom);
+			} finally {
+				tui.stop();
+				await term.flush();
+			}
+		},
+		SCROLLBACK_CASE_TIMEOUT_MS,
+	);
+
+	it(
+		"stops at the oldest row instead of drifting, and stays frozen there",
+		async () => {
+			// The clamp boundary with the real container: once the view is at the top of
+			// the tape, more ticks are a no-op — they must not resume following, shift
+			// the region, or move the composer.
+			const { term, tui, settle } = await conversation(14);
+			try {
+				for (let i = 0; i < 40; i++) {
+					term.sendInput(WHEEL_UP);
+					await settle();
+				}
+				const atTop = content(term);
+				const bottom = view(term)[HEIGHT - 1];
+				expect(atTop[0]).toBe("› turn 0");
+
+				for (let i = 0; i < 5; i++) {
+					term.sendInput(WHEEL_UP);
+					await settle();
+				}
+				expect(content(term)).toEqual(atTop);
+				expect(view(term)[HEIGHT - 1]).toBe(bottom);
+				expect(tui.virtualScrollActive).toBe(true);
+			} finally {
+				tui.stop();
+				await term.flush();
+			}
+		},
+		SCROLLBACK_CASE_TIMEOUT_MS,
+	);
+
+	it(
+		"renders the composer zone byte-identically frozen and following",
+		async () => {
+			// The second half of the report: the prompt must not CHANGE either. The
+			// band keeps its own chips, so both footer rows match byte for byte.
+			const { term, tui, settle } = await conversation(14);
+			try {
+				const following = term.getViewport().slice(HEIGHT - 2);
+				expect(Bun.stripANSI(following[0]!)).toContain("ask anything");
+
 				term.sendInput(WHEEL_UP);
 				await settle();
+
+				expect(tui.virtualScrollActive).toBe(true);
+				expect(term.getViewport().slice(HEIGHT - 2)).toEqual(following);
+				expect(Bun.stripANSI(following.join("\n"))).toContain("interrupt");
+				expect(Bun.stripANSI(following.join("\n"))).not.toContain("rows up");
+			} finally {
+				tui.stop();
+				await term.flush();
 			}
+		},
+		SCROLLBACK_CASE_TIMEOUT_MS,
+	);
 
-			expect(tui.virtualScrollActive).toBe(true);
-			expect(content(term)[0]).toBe("› turn 0"); // the first turn of the session
-			// The composer is still the bottom row, unchanged.
-			expect(view(term)[HEIGHT - 1]).toBe(bottom);
-		} finally {
-			tui.stop();
-			await term.flush();
-		}
-	});
+	it(
+		"holds the frozen history still while the transcript keeps compacting",
+		async () => {
+			// The container drops committed rows on quiet frames too, so a view read
+			// from the live frame would slide under the reader on every repaint.
+			const { term, tui, settle } = await conversation(14);
+			try {
+				for (let i = 0; i < 6; i++) {
+					term.sendInput(WHEEL_UP);
+					await settle();
+				}
+				// Freeze only once the scroll has actually engaged. This suite has flaked
+				// under a loaded full-package run (once in ~20000 tests, green 3/3 alone),
+				// and the two candidate causes are very different: either the wheel input
+				// had not taken effect when the snapshot was captured, or a later repaint
+				// genuinely moved the view. Asserting the state here separates them, so
+				// the next occurrence reports which one it was instead of an opaque
+				// row-array mismatch.
+				expect(tui.virtualScrollActive).toBe(true);
+				const frozen = content(term).slice(0, HEIGHT - 2);
 
-	it("stops at the oldest row instead of drifting, and stays frozen there", async () => {
-		// The clamp boundary with the real container: once the view is at the top of
-		// the tape, more ticks are a no-op — they must not resume following, shift
-		// the region, or move the composer.
-		const { term, tui, settle } = await conversation(14);
-		try {
-			for (let i = 0; i < 40; i++) {
-				term.sendInput(WHEEL_UP);
-				await settle();
+				for (let i = 0; i < 3; i++) {
+					tui.requestRender();
+					await settle();
+				}
+				expect(content(term).slice(0, HEIGHT - 2)).toEqual(frozen);
+				expect(tui.virtualScrollActive).toBe(true);
+			} finally {
+				tui.stop();
+				await term.flush();
 			}
-			const atTop = content(term);
-			const bottom = view(term)[HEIGHT - 1];
-			expect(atTop[0]).toBe("› turn 0");
+		},
+		SCROLLBACK_CASE_TIMEOUT_MS,
+	);
 
-			for (let i = 0; i < 5; i++) {
-				term.sendInput(WHEEL_UP);
-				await settle();
-			}
-			expect(content(term)).toEqual(atTop);
-			expect(view(term)[HEIGHT - 1]).toBe(bottom);
-			expect(tui.virtualScrollActive).toBe(true);
-		} finally {
-			tui.stop();
-			await term.flush();
-		}
-	});
+	it(
+		"keeps new turns out of the frozen view and follows again on submit",
+		async () => {
+			// Streaming while you read: the region holds, the composer stays live, and
+			// the host's submit hook returns to the tail with the new turn on screen.
+			const { term, tui, transcript, settle } = await conversation(14);
+			try {
+				for (let i = 0; i < 6; i++) {
+					term.sendInput(WHEEL_UP);
+					await settle();
+				}
+				const frozen = content(term)[0];
 
-	it("renders the composer zone byte-identically frozen and following", async () => {
-		// The second half of the report: the prompt must not CHANGE either. The
-		// band keeps its own chips, so both footer rows match byte for byte.
-		const { term, tui, settle } = await conversation(14);
-		try {
-			const following = term.getViewport().slice(HEIGHT - 2);
-			expect(Bun.stripANSI(following[0]!)).toContain("ask anything");
-
-			term.sendInput(WHEEL_UP);
-			await settle();
-
-			expect(tui.virtualScrollActive).toBe(true);
-			expect(term.getViewport().slice(HEIGHT - 2)).toEqual(following);
-			expect(Bun.stripANSI(following.join("\n"))).toContain("interrupt");
-			expect(Bun.stripANSI(following.join("\n"))).not.toContain("rows up");
-		} finally {
-			tui.stop();
-			await term.flush();
-		}
-	});
-
-	it("holds the frozen history still while the transcript keeps compacting", async () => {
-		// The container drops committed rows on quiet frames too, so a view read
-		// from the live frame would slide under the reader on every repaint.
-		const { term, tui, settle } = await conversation(14);
-		try {
-			for (let i = 0; i < 6; i++) {
-				term.sendInput(WHEEL_UP);
-				await settle();
-			}
-			// Freeze only once the scroll has actually engaged. This suite has flaked
-			// under a loaded full-package run (once in ~20000 tests, green 3/3 alone),
-			// and the two candidate causes are very different: either the wheel input
-			// had not taken effect when the snapshot was captured, or a later repaint
-			// genuinely moved the view. Asserting the state here separates them, so
-			// the next occurrence reports which one it was instead of an opaque
-			// row-array mismatch.
-			expect(tui.virtualScrollActive).toBe(true);
-			const frozen = content(term).slice(0, HEIGHT - 2);
-
-			for (let i = 0; i < 3; i++) {
+				transcript.addChild(new Block(["› turn 99", "", "  reply body for turn 99", ""]));
 				tui.requestRender();
 				await settle();
-			}
-			expect(content(term).slice(0, HEIGHT - 2)).toEqual(frozen);
-			expect(tui.virtualScrollActive).toBe(true);
-		} finally {
-			tui.stop();
-			await term.flush();
-		}
-	});
+				expect(content(term)[0]).toBe(frozen); // the stream did not move the view
+				expect(tui.virtualScrollNewRows).toBeGreaterThan(0);
 
-	it("keeps new turns out of the frozen view and follows again on submit", async () => {
-		// Streaming while you read: the region holds, the composer stays live, and
-		// the host's submit hook returns to the tail with the new turn on screen.
-		const { term, tui, transcript, settle } = await conversation(14);
-		try {
-			for (let i = 0; i < 6; i++) {
-				term.sendInput(WHEEL_UP);
+				tui.scrollToLiveTail();
 				await settle();
+				expect(tui.virtualScrollActive).toBe(false);
+				expect(view(term).join("\n")).toContain("turn 99");
+			} finally {
+				tui.stop();
+				await term.flush();
 			}
-			const frozen = content(term)[0];
-
-			transcript.addChild(new Block(["› turn 99", "", "  reply body for turn 99", ""]));
-			tui.requestRender();
-			await settle();
-			expect(content(term)[0]).toBe(frozen); // the stream did not move the view
-			expect(tui.virtualScrollNewRows).toBeGreaterThan(0);
-
-			tui.scrollToLiveTail();
-			await settle();
-			expect(tui.virtualScrollActive).toBe(false);
-			expect(view(term).join("\n")).toContain("turn 99");
-		} finally {
-			tui.stop();
-			await term.flush();
-		}
-	});
+		},
+		SCROLLBACK_CASE_TIMEOUT_MS,
+	);
 });

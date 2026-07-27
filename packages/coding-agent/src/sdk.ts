@@ -9,26 +9,23 @@ import {
 	type ThinkingLevel,
 } from "@veyyon/agent-core";
 import type { Context, CredentialDisabledEvent, Message, Model, SimpleStreamOptions } from "@veyyon/ai";
-import type { Dialect } from "@veyyon/ai/dialect";
 import {
 	getOpenAICodexTransportDetails,
 	prewarmOpenAICodexResponses,
 } from "@veyyon/ai/providers/openai-codex-responses";
-import { FALLBACK_DIALECT, preferredDialect } from "@veyyon/catalog/identity";
 import type { Component } from "@veyyon/tui";
 import {
 	$env,
-	$flag,
 	errorMessage,
 	getAgentDir,
 	getProjectDir,
 	logger,
 	postmortem,
+	prefetch,
 	prompt,
 	Snowflake,
 	setProjectDir,
 } from "@veyyon/utils";
-import { INTENT_FIELD } from "@veyyon/wire";
 import {
 	discoverAdvisorConfigs,
 	discoverWatchdogFiles,
@@ -43,6 +40,7 @@ import { type Rule, ruleCapability, setActiveRules } from "./capability/rule";
 import { bucketRules } from "./capability/rule-buckets";
 import { shouldEnableAppendOnlyContext } from "./config/append-only-context-mode";
 import { isAuthenticated, kNoAuth } from "./config/auth-state";
+import { resolveDialect } from "./config/dialect-format";
 import { resolveEffort, withLegacyDefaultEffort } from "./config/effort-resolver";
 import { shouldInlineToolDescriptors } from "./config/inline-tool-descriptors-mode";
 import { ModelRegistry } from "./config/model-registry";
@@ -63,9 +61,16 @@ import { loadPromptTemplates as loadPromptTemplatesInternal, type PromptTemplate
 import { buildServiceTierByFamily } from "./config/service-tier";
 import { Settings, type SkillsSettings } from "./config/settings";
 import { CursorExecHandlers } from "./cursor";
+import { DEFAULT_PLAN_FILE_URL } from "./plan-mode/plan-file-url";
+import { resolveGateInputs, resolveIntentField } from "./system-prompt-builder/gate-inputs";
 import "./discovery";
 import { type ArgotGate, type ArgotSession, renderPreamble, shouldEncode } from "argot";
-import { collectArgotLoadedRoots, createArgotSession, rearmArgotForDecode } from "./argot-cache";
+import {
+	collectArgotLoadedRoots,
+	createArgotSession,
+	rearmArgotForDecode,
+	shouldAutoloadArgotAtStartup,
+} from "./argot-cache";
 import { buildArgotGate, expandToolArguments } from "./argot-wire";
 import { DEFAULT_MODEL_SLOT } from "./config/model-roles";
 import { optionalNumber } from "./config/optional-number";
@@ -120,7 +125,7 @@ import {
 import { MCP_CONNECTION_STATUS_EVENT_CHANNEL, type McpConnectionStatusEvent } from "./mcp/startup-events";
 import { createSessionMemoryRuntimeContext, resolveMemoryBackend } from "./memory-backend";
 import type { MnemopiSessionState } from "./mnemopi/state";
-import { PROMPTS } from "./prompts/registry";
+import { toolsPrompts } from "./prompts/tools/rows";
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "./registry/agent-registry";
 import { createRepairToolCallArgumentsHook } from "./repair/agent-hook";
@@ -143,12 +148,12 @@ import {
 	LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE,
 	replaceLlmImagesWithText,
 	USER_INTERRUPT_LABEL,
-	wrapSteeringForModel,
 } from "./session/messages";
 import { clampProviderContextImages } from "./session/provider-image-budget";
 import { getRestorableSessionModels } from "./session/session-context";
 import { SessionManager } from "./session/session-manager";
 import { createSettingsAwareStreamFn } from "./session/settings-stream-fn";
+import { wrapSteeringForModel } from "./session/steering-envelope";
 import { closeAllConnections } from "./ssh/connection-manager";
 import { unmountAll } from "./ssh/sshfs-mount";
 import {
@@ -160,7 +165,7 @@ import {
 import { ARGOT_HANDLES_BANNER } from "./system-prompt-builder/section-registry";
 import { AgentOutputManager } from "./task/output-manager";
 import { wrapStreamFnWithProviderConcurrency } from "./task/provider-concurrency";
-import { delegationPreferred, delegationRequired, enabledSubagentNames } from "./task/subagent-settings";
+import { delegationStrength } from "./task/subagent-settings";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,
@@ -192,10 +197,9 @@ import {
 	type Tool,
 	type ToolSession,
 } from "./tools";
-import { normalizeToolName, normalizeToolNames } from "./tools/builtin-names";
+import { normalizeToolName, normalizeToolNames, TOOL } from "./tools/builtin-names";
 import { ToolContextStore } from "./tools/context";
 import { getImageGenTools, isImageProviderPreference, setPreferredImageProvider } from "./tools/image-gen";
-import { isIrcEnabled } from "./tools/irc-enabled";
 import { wrapToolWithMetaNotice } from "./tools/output-meta";
 import { queueResolveHandler } from "./tools/resolve";
 import { renderSearchToolBm25Description, SearchToolBm25Tool } from "./tools/search-tool-bm25";
@@ -256,7 +260,7 @@ function buildAsyncResultBatchMessage(entries: AsyncResultEntry[]): CustomMessag
 	return {
 		role: "custom",
 		customType: "async-result",
-		content: prompt.render(PROMPTS["tools/async-result"].text, {
+		content: prompt.render(toolsPrompts["tools/async-result"].text, {
 			multiple: jobs.length > 1,
 			jobs,
 		}),
@@ -292,7 +296,7 @@ function buildLateDiagnosticsBatchMessage(
 	return {
 		role: "custom",
 		customType: LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE,
-		content: prompt.render(PROMPTS["tools/lsp-late-diagnostic"].text, {
+		content: prompt.render(toolsPrompts["tools/lsp-late-diagnostic"].text, {
 			multiple: files.length > 1,
 			files,
 		}),
@@ -349,7 +353,7 @@ function createPendingMCPTool(name: string): Tool {
 			properties: {},
 			additionalProperties: true,
 		},
-		approval: "write",
+		approval: "write", // not-a-tool-name: approval tier
 		intent: "omit",
 		mcpServerName: serverName,
 		mcpToolName,
@@ -628,6 +632,7 @@ export interface CreateAgentSessionOptions {
 export function isSubagentSession(options: Pick<CreateAgentSessionOptions, "taskDepth" | "parentTaskPrefix">): boolean {
 	return (options.taskDepth ?? 0) > 0 || Boolean(options.parentTaskPrefix);
 }
+
 /**
  * Whether another session in THIS process spawned this one, and therefore already
  * owns the process-global singletons it should inherit rather than replace.
@@ -676,21 +681,10 @@ export interface CreateAgentSessionResult {
 	eventBus: EventBus;
 }
 
-export type DialectFormat = "auto" | "native" | Dialect;
-
-export function resolveDialect(
-	format: DialectFormat,
-	model: (Pick<Model, "supportsTools"> & Partial<Pick<Model, "id">>) | undefined,
-): Dialect | undefined {
-	if (format === "native") return undefined;
-	if (format === "auto") {
-		if (model?.supportsTools !== false) return undefined;
-		if (!model.id) return "glm";
-		const preferred = preferredDialect(model.id);
-		return preferred === FALLBACK_DIALECT ? "glm" : preferred;
-	}
-	return format;
-}
+// `DialectFormat` and `resolveDialect` moved to `config/dialect-format.ts` so
+// `system-prompt-builder/gate-inputs.ts` can ask the same question without importing this
+// module, which imports it. Re-exported here because both are published from this entry point.
+export { type DialectFormat, resolveDialect } from "./config/dialect-format";
 
 // Re-exports
 
@@ -941,9 +935,11 @@ function createCustomToolContext(ctx: ExtensionContext): CustomToolContext {
 	};
 }
 
+// The sdk's own marker is a symbol, so it cannot collide with a property a user put on their tool. The
+// legacy shim's string twin is its own module's, since the shim STAMPS it and this only reads it.
+import { LEGACY_TOOL_DEFINITION_MARKER } from "./extensibility/legacy-tool-marker";
+
 const TOOL_DEFINITION_MARKER = Symbol("__isToolDefinition");
-/** String twin of {@link TOOL_DEFINITION_MARKER} set by the legacy-pi-coding-agent shim. */
-const LEGACY_TOOL_DEFINITION_MARKER = "__isToolDefinition";
 
 function isCustomTool(tool: CustomTool | ToolDefinition): tool is CustomTool {
 	// Converted tools carry a hidden marker: the sdk's symbol
@@ -1244,20 +1240,22 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	// inherit the parent's resolved values via options.
 	const STARTUP_SCAN_DEADLINE_MS = 5000;
 	const includeWorkspaceTree = settings.get("includeWorkspaceTree") ?? false;
-	const workspaceTreePromise: Promise<WorkspaceTree> = options.workspaceTree
-		? Promise.resolve(options.workspaceTree)
-		: includeWorkspaceTree
-			? logger.time("buildWorkspaceTree", () => buildWorkspaceTree(cwd, { timeoutMs: STARTUP_SCAN_DEADLINE_MS }))
-			: Promise.resolve({ rootPath: cwd, rendered: "", truncated: false, totalLines: 0, agentsMdFiles: [] });
-	workspaceTreePromise.catch(() => {});
+	const workspaceTreePromise: Promise<WorkspaceTree> = prefetch(
+		options.workspaceTree
+			? Promise.resolve(options.workspaceTree)
+			: includeWorkspaceTree
+				? logger.time("buildWorkspaceTree", () => buildWorkspaceTree(cwd, { timeoutMs: STARTUP_SCAN_DEADLINE_MS }))
+				: Promise.resolve({ rootPath: cwd, rendered: "", truncated: false, totalLines: 0, agentsMdFiles: [] }),
+	);
 
 	// Independent discoveries that depend only on cwd/agentDir — kicked off in parallel and awaited
 	// at their respective consumer sites. Their work can overlap with model resolution, secret loading,
 	// session-context build, tool creation, MCP discovery, and extension discovery.
-	const contextFilesPromise = options.contextFiles
-		? Promise.resolve(options.contextFiles)
-		: logger.time("discoverContextFiles", discoverContextFiles, cwd, agentDir);
-	contextFilesPromise.catch(() => {});
+	const contextFilesPromise = prefetch(
+		options.contextFiles
+			? Promise.resolve(options.contextFiles)
+			: logger.time("discoverContextFiles", discoverContextFiles, cwd, agentDir),
+	);
 	const activeRepoContextPromise = logger.time("resolveActiveRepoContext", async () => {
 		try {
 			return await resolveActiveRepoContext(cwd);
@@ -1268,29 +1266,33 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			return null;
 		}
 	});
-	activeRepoContextPromise.catch(() => {});
-	const watchdogFilesPromise = logger.time("discoverWatchdogFiles", () => discoverWatchdogFiles(cwd, agentDir));
-	watchdogFilesPromise.catch(() => {});
-	const advisorConfigsPromise = logger.time("discoverAdvisorConfigs", () => discoverAdvisorConfigs(cwd, agentDir));
-	advisorConfigsPromise.catch(() => {});
-	const promptTemplatesPromise = options.promptTemplates
-		? Promise.resolve(options.promptTemplates)
-		: logger.time("discoverPromptTemplates", discoverPromptTemplates, cwd, agentDir);
-	promptTemplatesPromise.catch(() => {});
-	const slashCommandsPromise = options.slashCommands
-		? Promise.resolve(options.slashCommands)
-		: logger.time("discoverSlashCommands", discoverSlashCommands, cwd);
-	slashCommandsPromise.catch(() => {});
+	const watchdogFilesPromise = prefetch(
+		logger.time("discoverWatchdogFiles", () => discoverWatchdogFiles(cwd, agentDir)),
+	);
+	const advisorConfigsPromise = prefetch(
+		logger.time("discoverAdvisorConfigs", () => discoverAdvisorConfigs(cwd, agentDir)),
+	);
+	const promptTemplatesPromise = prefetch(
+		options.promptTemplates
+			? Promise.resolve(options.promptTemplates)
+			: logger.time("discoverPromptTemplates", discoverPromptTemplates, cwd, agentDir),
+	);
+	const slashCommandsPromise = prefetch(
+		options.slashCommands
+			? Promise.resolve(options.slashCommands)
+			: logger.time("discoverSlashCommands", discoverSlashCommands, cwd),
+	);
 	const skillsSettings = settings.getGroup("skills");
 	const disabledExtensionIds = settings.get("disabledExtensions") ?? [];
 	const discoveredSkillsPromise =
 		options.skills === undefined
-			? logger.time("discoverSkills", discoverSkills, cwd, agentDir, {
-					...skillsSettings,
-					disabledExtensions: disabledExtensionIds,
-				})
+			? prefetch(
+					logger.time("discoverSkills", discoverSkills, cwd, agentDir, {
+						...skillsSettings,
+						disabledExtensions: disabledExtensionIds,
+					}),
+				)
 			: undefined;
-	discoveredSkillsPromise?.catch(() => {});
 
 	// Initialize provider preferences from settings
 	const excludedWebSearchProviders = settings.get("providers.webSearchExclude");
@@ -1386,8 +1388,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	// in the argot SDK (shouldEncode) so every harness gates the same way.
 	const argotGate: ArgotGate = buildArgotGate(
 		argotEnabled,
-		settings.get("argot.models") ?? [],
-		settings.get("argot.disableAboveTokens"),
+		settings.get("argot.encode.models") ?? [],
+		settings.get("argot.encode.disableAboveTokens"),
 	);
 	// Live context size (prompt tokens the model last saw), refreshed each turn
 	// from usage so the cutoff tracks the growing context. 0 until the first
@@ -1750,7 +1752,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			enableLsp,
 			get hasEditTool() {
 				const requestedToolNames = options.toolNames ? normalizeToolNames(options.toolNames) : undefined;
-				return !requestedToolNames || requestedToolNames.includes("edit");
+				return !requestedToolNames || requestedToolNames.includes(TOOL.edit);
 			},
 			skipPythonPreflight: options.skipPythonPreflight,
 			contextFiles,
@@ -1782,7 +1784,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			getServiceTierByFamily: () => session?.serviceTierByFamily,
 			getImageAttachments: () => session?.getImageAttachments() ?? [],
 			getPlanModeState: () => session?.getPlanModeState(),
-			getPlanReferencePath: () => session?.getPlanReferencePath() ?? "local://PLAN.md",
+			getPlanReferencePath: () => session?.getPlanReferencePath() ?? DEFAULT_PLAN_FILE_URL,
 			getGoalModeState: () => session?.getGoalModeState(),
 			getGoalRuntime: () => session?.goalRuntime,
 			getUsageStatistics: () => sessionManager.getUsageStatistics(),
@@ -2027,7 +2029,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		}
 
 		// Add web search tools
-		if (options.toolNames?.includes("web_search")) {
+		if (options.toolNames?.includes(TOOL.web_search)) {
 			customTools.push(...getSearchTools());
 		}
 
@@ -2536,7 +2538,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			toolRegistry.set(tool.name, tool);
 			builtInRegistryToolNames.add(tool.name);
 		}
-		if (!toolRegistry.has("goal") && settings.get("goal.enabled")) {
+		if (!toolRegistry.has(TOOL.goal) && settings.get("goal.enabled")) {
 			const goalTool = await logger.time("createTools:goal:session", HIDDEN_TOOLS.goal, toolSession);
 			if (goalTool) {
 				toolRegistry.set(goalTool.name, wrapToolWithMetaNotice(goalTool));
@@ -2562,8 +2564,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			toolRegistry.set(tool.name, new ExtensionToolWrapper(tool, extensionRunner));
 		}
 		if (model?.provider === "cursor") {
-			toolRegistry.delete("edit");
-			builtInRegistryToolNames.delete("edit");
+			toolRegistry.delete(TOOL.edit);
+			builtInRegistryToolNames.delete(TOOL.edit);
 		}
 
 		// `resolve` is hidden but must stay in the registry whenever any code path can invoke it:
@@ -2575,9 +2577,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const planModeAvailable = settings.get("plan.enabled");
 		const needsResolveTool = hasDeferrableTools || planModeAvailable;
 		if (!needsResolveTool) {
-			toolRegistry.delete("resolve");
-			builtInRegistryToolNames.delete("resolve");
-		} else if (!toolRegistry.has("resolve")) {
+			toolRegistry.delete(TOOL.resolve);
+			builtInRegistryToolNames.delete(TOOL.resolve);
+		} else if (!toolRegistry.has(TOOL.resolve)) {
 			const resolveTool = await logger.time("createTools:resolve:session", HIDDEN_TOOLS.resolve, toolSession);
 			if (resolveTool) {
 				toolRegistry.set(resolveTool.name, wrapToolWithMetaNotice(resolveTool));
@@ -2592,7 +2594,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			settings,
 			countToolsForAutoDiscovery(toolRegistry.keys()),
 		);
-		if (effectiveDiscoveryMode !== "off" && !toolRegistry.has("search_tool_bm25")) {
+		if (effectiveDiscoveryMode !== "off" && !toolRegistry.has(TOOL.search_tool_bm25)) {
 			const searchTool: Tool = new SearchToolBm25Tool(toolSession);
 			toolRegistry.set(
 				searchTool.name,
@@ -2617,21 +2619,21 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			effectiveDiscoveryMode = projectedMode;
 			mcpDiscoveryEnabled = true;
 			liveSession.enableMCPDiscovery();
-			if (!toolRegistry.has("search_tool_bm25")) {
+			if (!toolRegistry.has(TOOL.search_tool_bm25)) {
 				const searchTool: Tool = new SearchToolBm25Tool(toolSession);
 				toolRegistry.set(
 					searchTool.name,
 					new ExtensionToolWrapper(wrapToolWithMetaNotice(searchTool), extensionRunner) as Tool,
 				);
 			}
-			if (!liveSession.getActiveToolNames().includes("search_tool_bm25")) {
-				await liveSession.setActiveToolsByName([...liveSession.getActiveToolNames(), "search_tool_bm25"]);
+			if (!liveSession.getActiveToolNames().includes(TOOL.search_tool_bm25)) {
+				await liveSession.setActiveToolsByName([...liveSession.getActiveToolNames(), TOOL.search_tool_bm25]);
 			}
 			return true;
 		}
 
 		const reloadSshTool = async (): Promise<AgentTool | null> => {
-			if (!requestedToolNameSet.has("ssh")) return null;
+			if (!requestedToolNameSet.has(TOOL.ssh)) return null;
 			const { loadSshTool } = await import("./tools/ssh");
 			const sshTool = (await loadSshTool({
 				...toolSession,
@@ -2655,11 +2657,15 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// like the rest of the prune machinery this is fixed for the session, so a
 		// mid-session model switch keeps the start-time decision.
 		const inlineToolDescriptors = shouldInlineToolDescriptors(settings.get("inlineToolDescriptors"), model?.id);
-		const eagerTasks = delegationPreferred(settings);
-		const eagerTasksAlways = delegationRequired(settings);
-		const intentField = $flag("VEYYON_INTENT_TRACING", settings.get("tools.intentTracing"))
-			? INTENT_FIELD
-			: undefined;
+		// A RESOLVER, not a captured constant, and that is the whole reason
+		// `tools.intentTracing` is a live prompt gate. Read once here, every later
+		// `rebuildSystemPrompt` re-read the session-start value, so flipping the setting
+		// mid-session changed the settings UI and nothing else: the prompt kept its old
+		// text and the tool schemas kept their old shape, with nothing to say so. The two
+		// reads have to move together -- a prompt explaining an intent field the schemas
+		// do not carry is worse than one that omits it -- which is why the agent option
+		// below takes the same resolver rather than a value.
+		const intentTracingEnabled = () => resolveIntentField(settings) !== undefined;
 		const includeWorkspaceTree = settings.get("includeWorkspaceTree") ?? false;
 		const rebuildSystemPrompt = async (
 			toolNames: string[],
@@ -2682,7 +2688,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			const discoverableToolsForDesc: DiscoverableTool[] = [...discoverableBuiltinTools, ...discoverableMCPTools];
 			const discoverableToolSummary = summarizeDiscoverableTools(discoverableToolsForDesc);
 			const hasDiscoverableTools =
-				mcpDiscoveryEnabled && toolNames.includes("search_tool_bm25") && discoverableToolsForDesc.length > 0;
+				mcpDiscoveryEnabled && toolNames.includes(TOOL.search_tool_bm25) && discoverableToolsForDesc.length > 0;
 			const promptTools = buildSystemPromptToolMetadata(tools, {
 				search_tool_bm25: { description: renderSearchToolBm25Description(discoverableToolsForDesc) },
 			});
@@ -2690,7 +2696,15 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			// re-running discovery here: it already filtered its discovered set
 			// through `subagent.agents`, and the prompt must describe exactly the
 			// agents the tool will accept. Absent when delegation is off.
-			const subagentNames = enabledSubagentNames(tools.get("task"));
+			// Every settings-fed prompt gate, from the ONE resolver the inspection path
+			// (`veyyon prompt`) also calls. These twelve reads used to live here and nowhere else,
+			// which is how the inspection path came to render a prompt no session sends.
+			// `system-prompt-builder/gate-inputs.ts` says what each read is and why.
+			const gateInputs = resolveGateInputs(settings, {
+				tools,
+				model: agent?.state.model ?? model,
+				taskDepth: options.taskDepth ?? 0,
+			});
 			const memoryBackend = await resolveMemoryBackend(settings);
 			const memoryInstructions = await memoryBackend.buildDeveloperInstructions(agentDir, settings, session);
 
@@ -2708,8 +2722,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			// enable that never built them, or a same-named custom tool while auto-learn
 			// is off all get no guidance.
 			const autoLearnInstructions = buildAutoLearnInstructions({
-				manageSkill: builtInToolNames.includes("manage_skill"),
-				learn: builtInToolNames.includes("learn"),
+				manageSkill: builtInToolNames.includes(TOOL.manage_skill),
+				learn: builtInToolNames.includes(TOOL.learn),
 			});
 			const appendParts: string[] = [];
 			if (memoryInstructions) appendParts.push(memoryInstructions);
@@ -2730,9 +2744,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				}
 				appendPrompt = parts.join("\n\n");
 			}
-			// Owned/in-band tool dialects (non-native) require the catalog as `# Tool:`
-			// sections; native tool calling lets the compact name list suffice.
-			const nativeTools = resolveDialect(settings.get("tools.format"), agent?.state.model ?? model) === undefined;
 			if (options.appendSystemPrompt) {
 				appendPrompt = appendPrompt
 					? `${appendPrompt}\n\n${options.appendSystemPrompt}`
@@ -2751,6 +2762,25 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				argotActiveModel !== undefined &&
 				shouldEncode(argotGate, { model: argotActiveModel, contextTokens: argotContextTokens });
 			const defaultPrompt = await buildSystemPromptInternal({
+				...gateInputs,
+				// TWO OVERRIDES, each for a reason the registry records.
+				//
+				// `inlineToolDescriptors` and `includeWorkspaceTree` are captured once at session
+				// start, and `gate-registry.ts` lists both as frozen. The resolver reads them fresh,
+				// which is right for an inspection of the current configuration and wrong here:
+				// `inlineToolDescriptors` also drives `pruneToolDescriptions` for the whole session.
+				// Taking them from the closure is what makes the registry's "frozen" true.
+				//
+				// `intentField` USED TO BE HERE and is not any more. It was pinned because the intent
+				// field's presence in every tool schema was fixed at session start, so a fresh read
+				// would have described a shape the schemas did not have. The agent now resolves that
+				// per turn (`intentTracing` above), so the fresh value from `gateInputs` is the
+				// correct one and the gate is live.
+				inlineToolDescriptors,
+				includeWorkspaceTree,
+				// A subagent gets no personality regardless of the setting. That is a fact about
+				// this caller, not about the configuration, so it does not belong in the resolver.
+				personality: agentKind === "sub" ? "none" : gateInputs.personality,
 				cwd,
 				resolvedCustomPrompt: options.customSystemPrompt,
 				skills,
@@ -2761,27 +2791,14 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				alwaysApplyRules,
 				resolvedAppendSystemPrompt: appendPrompt,
 				skillsSettings: settings.getGroup("skills"),
-				inlineToolDescriptors,
-				nativeTools,
-				intentField,
 				mcpDiscoveryMode: hasDiscoverableTools,
 				mcpDiscoveryServerSummaries: discoverableToolSummary.servers.map(formatDiscoverableToolServerSummary),
-				eagerTasks,
-				eagerTasksAlways,
-				taskBatch: settings.get("subagent.batch"),
-				taskMaxConcurrency: settings.get("subagent.maxConcurrency"),
-				taskIrcEnabled: isIrcEnabled(settings, options.taskDepth ?? 0),
-				subagentNames,
 				secretsEnabled,
 				argotPreamble: argotCanEncode ? renderPreamble({ tools: true }) : undefined,
 				argotHandles: argotCanEncode && argot.loaded ? argot.promptFragment() : undefined,
 				workspaceTree: workspaceTreePromise,
-				includeWorkspaceTree,
 				memoryRootEnabled: memoryBackend.id === "local",
 				model: getActiveModelString(),
-				includeModelInPrompt: settings.get("includeModelInPrompt"),
-				personality: agentKind === "sub" ? "none" : settings.get("personality"),
-				renderMermaid: settings.get("tui.renderMermaid"),
 				activeRepoContext,
 				sectionOrder: resolvePromptSectionOrderForModel(settings, agent?.state.model ?? model),
 			});
@@ -2795,6 +2812,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					: options.systemPrompt;
 			return {
 				systemPrompt: typeof customPrompt === "string" ? [customPrompt] : customPrompt,
+				// The caller replaced the assembled prompt, so no statement produced these blocks.
+				statementContext: null,
 			};
 		};
 
@@ -2808,9 +2827,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		if (
 			options.requireYieldTool === true &&
 			explicitlyRequestedToolNames &&
-			!explicitlyRequestedToolNames.includes("yield")
+			!explicitlyRequestedToolNames.includes(TOOL.yield)
 		) {
-			explicitlyRequestedToolNames.push("yield");
+			explicitlyRequestedToolNames.push(TOOL.yield);
 		}
 		// Auto-learn builtins are force-included into the registry by `createTools`
 		// for enabled top-level sessions (tools/index.ts), but — like `yield` above —
@@ -2820,7 +2839,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// same-named custom/extension tool is never force-activated when auto-learn is
 		// off) to keep guidance, controller, and the active set consistent.
 		if (explicitlyRequestedToolNames) {
-			for (const name of ["manage_skill", "learn"]) {
+			for (const name of [TOOL.manage_skill, TOOL.learn]) {
 				if (builtInToolNames.includes(name) && !explicitlyRequestedToolNames.includes(name)) {
 					explicitlyRequestedToolNames.push(name);
 				}
@@ -2838,7 +2857,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const defaultInactiveToolNames = new Set(
 			registeredTools.filter(tool => tool.definition.defaultInactive).map(tool => tool.definition.name),
 		);
-		const requestedActiveToolNames = normalizedRequested.filter(name => name !== "goal");
+		const requestedActiveToolNames = normalizedRequested.filter(name => name !== TOOL.goal);
 		const initialRequestedActiveToolNames = options.toolNames
 			? requestedActiveToolNames
 			: requestedActiveToolNames.filter(name => !defaultInactiveToolNames.has(name));
@@ -2901,11 +2920,16 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			// possible and the Eager Tasks prompt section renders, even though nothing
 			// forces a `task` tool_choice.
 			const forceActive = new Set<string>();
-			if (settings.get("todo.eager") !== "default" && settings.get("todo.enabled") && toolRegistry.has("todo")) {
-				forceActive.add("todo");
+			if (settings.get("todo.eager") !== "default" && settings.get("todo.enabled") && toolRegistry.has(TOOL.todo)) {
+				forceActive.add(TOOL.todo);
 			}
-			if (delegationPreferred(settings) && toolRegistry.has("task")) {
-				forceActive.add("task");
+			// Strength alone here, deliberately: this runs before the task tool has
+			// discovered anything, so the enabled-agent set is not knowable yet.
+			// Keeping `task` active costs one tool slot and is what lets the prompt
+			// decide honestly later, once `resolveDelegation` can see both inputs.
+			const strength = delegationStrength(settings);
+			if ((strength === "preferred" || strength === "required") && toolRegistry.has(TOOL.task)) {
+				forceActive.add(TOOL.task);
 			}
 			initialToolNames = filterInitialToolsForDiscoveryAll(initialToolNames, {
 				loadModeOf: name => toolRegistry.get(name)?.loadMode,
@@ -3107,7 +3131,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				return result;
 			},
 			repairToolCallArguments: createRepairToolCallArgumentsHook(settings, () => agent.state.model),
-			intentTracing: !!intentField,
+			// The RESOLVER, so the schemas follow the setting on the next turn. `Agent` calls
+			// it when it builds the provider context and again when it builds the loop config,
+			// both of which happen per turn.
+			intentTracing: intentTracingEnabled,
 			instrumentation: settings.get("session.instrumentation"),
 			pruneToolDescriptions: inlineToolDescriptors,
 			// Re-resolved with the active model on every request so mid-session
@@ -3300,10 +3327,18 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		});
 		hasSession = true;
 
-		if (argotEnabled && argot !== undefined && !argot.loaded) {
+		if (
+			shouldAutoloadArgotAtStartup({
+				enabled: argotEnabled,
+				autoload: settings.get("argot.autoload"),
+				argot,
+			}) &&
+			argot !== undefined
+		) {
 			// The adoption path auto-loads the launch project so the feature works
 			// out of the box; argot_load remains the way to teach additional
-			// projects. The load runs in the background: the first dictionary
+			// projects, and `argot.autoload` off leaves every load to it. The load
+			// runs in the background: the first dictionary
 			// generation in a project walks the repo, and awaiting it inline
 			// would block session construction on large trees. The completed load
 			// refreshes the base system prompt to teach the handles — the same

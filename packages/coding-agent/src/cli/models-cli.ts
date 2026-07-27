@@ -18,7 +18,9 @@ import chalk from "chalk";
 import { ModelRegistry } from "../config/model-registry";
 import { Settings } from "../config/settings";
 import { discoverAndLoadExtensions, loadExtensions } from "../extensibility/extensions";
-import { discoverAuthStorage } from "../sdk";
+// `session/auth-broker-config`, which OWNS this, not the `sdk` barrel that re-exports it: the barrel is
+// the whole application and this file wants one function.
+import { discoverAuthStorage } from "../session/auth-broker-config";
 import { EventBus } from "../utils/event-bus";
 
 export type ModelsAction = "ls" | "find" | "refresh";

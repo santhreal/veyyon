@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -29,6 +29,27 @@ describe("AsyncJobManager singleton across concurrent top-level sessions", () =>
 	afterAll(() => {
 		sharedAuthStorage.close();
 		removeSyncWithRetries(sharedTempDir);
+	});
+
+	/**
+	 * Every test here reasons about who OWNS the process-wide manager, and ownership is decided at
+	 * construction: `createAgentSession` builds a manager only when `AsyncJobManager.instance()` is empty,
+	 * and clears the singleton on dispose only when it is still the one that session built. So a manager
+	 * left installed by an earlier suite silently inverts this whole file: the "primary" session below
+	 * constructs nothing, owns nothing, and clears nothing, while `instance()` keeps returning the stranger's
+	 * manager. The assertions still read as if they were about ownership, and the last one -- that the
+	 * singleton is empty once the owner disposes -- fails for a reason that is nowhere in this file.
+	 *
+	 * That is exactly how this suite failed: green alone, red inside the full `packages/coding-agent` run,
+	 * because `sdk-preloaded-extensions-isolation.test.ts` created a top-level session and never disposed it.
+	 * Checking here turns "a neighbour leaked" into a message that says so, instead of a confusing assertion
+	 * failure about a manager this file never created.
+	 */
+	beforeEach(() => {
+		expect(
+			AsyncJobManager.instance(),
+			"an earlier suite left an AsyncJobManager installed; every ownership assertion in this file is meaningless until it disposes its top-level session",
+		).toBeUndefined();
 	});
 
 	afterEach(async () => {
@@ -153,6 +174,37 @@ describe("AsyncJobManager singleton across concurrent top-level sessions", () =>
 			expect(primaryManager!.getAllJobs().length).toBe(primaryJobCountBefore);
 		} finally {
 			await primary.dispose();
+		}
+	}, 60000);
+
+	/**
+	 * The rule the two paragraphs above depend on, asserted directly instead of inferred from the tests
+	 * that happen to exercise it: a top-level session that finds a manager already installed ADOPTS it and
+	 * never takes ownership. It must not construct a second manager (nothing would route to it), must not
+	 * replace the installed one (background completions would stop reaching the session that owns them,
+	 * issue #1923), and must not clear the singleton when it disposes.
+	 *
+	 * Worth pinning as behavior rather than as suite hygiene, because a real process does hit this: the
+	 * agent-creation architect in `agent-dashboard.ts` spins up a second top-level session while the first
+	 * is live, and a regression here breaks its `bash`/`task` async paths with nothing in the log.
+	 */
+	it("adopts an already-installed manager instead of owning it", async () => {
+		const stranger = new AsyncJobManager({
+			maxRunningJobs: 1,
+			// No jobs are registered on it, so completions cannot happen; the callback is required.
+			onJobComplete: async () => {},
+		});
+		AsyncJobManager.setInstance(stranger);
+		try {
+			const session = await spawnTopLevelSession();
+
+			expect(AsyncJobManager.instance()).toBe(stranger);
+			await session.dispose();
+
+			// Still installed: this session never owned it, so disposing it must not take it away.
+			expect(AsyncJobManager.instance()).toBe(stranger);
+		} finally {
+			await stranger.dispose({ timeoutMs: 3_000 });
 		}
 	}, 60000);
 

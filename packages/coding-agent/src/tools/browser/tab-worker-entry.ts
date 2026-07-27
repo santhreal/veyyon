@@ -1,6 +1,6 @@
 import { parentPort } from "node:worker_threads";
 import { consumeWorkerInbox } from "@veyyon/utils/worker-host";
-import type { Transport, WorkerInbound, WorkerOutbound } from "./tab-protocol";
+import type { TabWorkerInbound, TabWorkerOutbound, TabWorkerTransport } from "./tab-protocol";
 import { WorkerCore } from "./tab-worker";
 
 if (!parentPort) throw new Error("tab-worker-entry: missing parentPort");
@@ -11,13 +11,13 @@ const port = parentPort;
 // directly (test/SDK fallback), this module's top-level runs synchronously at
 // worker start, so the direct `parentPort.on` below wins the flush on its own.
 const inbox = consumeWorkerInbox();
-const transport: Transport = {
+const transport: TabWorkerTransport = {
 	send(msg, transferList) {
 		port.postMessage(msg, transferList ?? []);
 	},
 	onMessage(handler) {
-		if (inbox) return inbox.bind(data => handler(data as WorkerOutbound | WorkerInbound));
-		const wrap = (message: unknown): void => handler(message as WorkerOutbound | WorkerInbound);
+		if (inbox) return inbox.bind(data => handler(data as TabWorkerOutbound | TabWorkerInbound));
+		const wrap = (message: unknown): void => handler(message as TabWorkerOutbound | TabWorkerInbound);
 		port.on("message", wrap);
 		return () => port.off("message", wrap);
 	},

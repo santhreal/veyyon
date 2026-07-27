@@ -7,18 +7,14 @@
  * credentials produced no usage report are listed too, so the output
  * always covers the full credential pool.
  */
-import {
-	type AuthStorage,
-	resolveUsedFraction,
-	type UsageHistoryEntry,
-	type UsageLimit,
-	type UsageReport,
-	type UsageUnit,
-} from "@veyyon/ai";
+import type { AuthStorage, UsageHistoryEntry, UsageLimit, UsageReport, UsageUnit } from "@veyyon/ai";
+import { resolveUsedFraction } from "@veyyon/ai/usage";
 import { clamp01, DAY_MS, formatCount, formatDuration, formatNumber, pluralize, sanitizeText } from "@veyyon/utils";
 import chalk from "chalk";
 import { ModelRegistry } from "../config/model-registry";
-import { discoverAuthStorage } from "../sdk";
+// `session/auth-broker-config`, which OWNS this, not the `sdk` barrel that re-exports it: the barrel is
+// the whole application and this file wants one function.
+import { discoverAuthStorage } from "../session/auth-broker-config";
 import { formatProviderName } from "../slash-commands/helpers/format";
 
 const BAR_WIDTH = 28;

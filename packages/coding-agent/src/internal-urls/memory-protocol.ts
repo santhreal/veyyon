@@ -1,11 +1,18 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { errorMessage, getAgentDir, isEnoent } from "@veyyon/utils";
-import { getMemoryRoot } from "../memories";
+// Owners, not the `@veyyon/utils` barrel: 17 modules against 74. `@veyyon/utils/dirs` is safe to name
+// directly now that it imports `@veyyon/utils/dotenv-home` itself, so the resolver sees a user's
+// `$HOME/.env` before it caches a path, whichever module reached it first.
+import { getAgentDir } from "@veyyon/utils/dirs";
+import { isEnoent } from "@veyyon/utils/fs-error";
+import { errorMessage } from "@veyyon/utils/type-guards";
+// The path layout, not the memory subsystem: `../memories` reaches 558 modules because it asks a model
+// to summarise a session, and `getMemoryRoot` is a path join. `../memories/paths` is 76.
+import { getMemoryRoot } from "../memories/paths";
 import { getMnemopiSessionState, type MnemopiScopedMemoryHit, type MnemopiSessionState } from "../mnemopi/state";
 import { AgentRegistry } from "../registry/agent-registry";
 import { buildDirectoryResource, ensureWithinRoot as ensureWithinRootShared } from "./filesystem-resource";
-import { validateRelativePath } from "./skill-protocol";
+import { validateRelativePath } from "./relative-path";
 import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext, UrlCompletion } from "./types";
 
 const DEFAULT_MEMORY_FILE = "memory_summary.md";
@@ -67,7 +74,7 @@ export function resolveMemoryUrlToPath(url: InternalUrl, memoryRoot: string): st
 	}
 
 	try {
-		validateRelativePath(relativePath);
+		validateRelativePath(relativePath, "memory");
 	} catch (error) {
 		throw toMemoryValidationError(error);
 	}

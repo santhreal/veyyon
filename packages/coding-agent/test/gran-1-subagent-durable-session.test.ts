@@ -35,6 +35,7 @@ import { runSubprocess } from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
 import { getSessionsDir, Snowflake, setAgentDir } from "@veyyon/utils";
 import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
+import { createMockSession, yieldSuccessEvent } from "./helpers/subagent-session";
 
 function model(provider: string, id: string): Model<Api> {
 	return buildModel({
@@ -51,37 +52,14 @@ function model(provider: string, id: string): Model<Api> {
 	});
 }
 
-/** A minimal session whose prompt() immediately yields, so no real model runs. */
+/**
+ * A child that immediately yields, so no real model runs and the run ends as a completion.
+ *
+ * The session comes from `test/helpers/subagent-session.ts`; nothing here is special about it,
+ * because this suite's subject is where the child's TRANSCRIPT lands, not how it behaves.
+ */
 function createYieldingSession(): AgentSession {
-	const listeners: Array<(event: { type: string; [key: string]: unknown }) => void> = [];
-	const session = {
-		agent: { state: { systemPrompt: ["test"] } },
-		state: { messages: [] },
-		extensionRunner: undefined,
-		sessionManager: { appendSessionInit: () => {} },
-		getActiveToolNames: () => ["yield"],
-		setActiveToolsByName: async () => {},
-		subscribe: (listener: (event: { type: string; [key: string]: unknown }) => void) => {
-			listeners.push(listener);
-			return () => {};
-		},
-		prompt: async () => {
-			for (const listener of listeners) {
-				listener({
-					type: "tool_execution_end",
-					toolCallId: "tool-yield",
-					toolName: "yield",
-					result: { content: [{ type: "text", text: "Result submitted." }], details: { status: "success" } },
-					isError: false,
-				});
-			}
-		},
-		waitForIdle: async () => {},
-		getLastAssistantMessage: () => undefined,
-		abort: async () => {},
-		dispose: async () => {},
-	};
-	return session as unknown as AgentSession;
+	return createMockSession(({ emit }) => emit(yieldSuccessEvent(undefined)), { activeToolNames: ["yield"] });
 }
 
 const AGENT: AgentDefinition = { name: "task", description: "test", systemPrompt: "test", source: "bundled" };

@@ -28,9 +28,11 @@ Memory backends are selected via `memory.backend` (Settings → Memory, or profi
 2. Set `memory.backend = "hindsight"` and `hindsight.apiUrl = "http://localhost:8888"` (or your Cloud URL).
 3. Optional environment overrides (env wins over settings):
    - `HINDSIGHT_API_URL`, `HINDSIGHT_API_TOKEN` — connection
-   - `HINDSIGHT_BANK_ID`, `HINDSIGHT_DYNAMIC_BANK_ID`, `HINDSIGHT_AGENT_NAME` — bank addressing
+   - `HINDSIGHT_BANK_ID`, `HINDSIGHT_SCOPING` — bank addressing
    - `HINDSIGHT_AUTO_RECALL`, `HINDSIGHT_AUTO_RETAIN`, `HINDSIGHT_RETAIN_MODE` — lifecycle
    - `HINDSIGHT_RECALL_BUDGET`, `HINDSIGHT_RECALL_MAX_TOKENS` — recall sizing
    - `HINDSIGHT_BANK_MISSION`, `HINDSIGHT_DEBUG`
+
+   The full override list, including recall/retain/reflect timeouts and sizing knobs, is in `packages/coding-agent/src/hindsight/config.ts`; the `hindsight.*` settings keys are in [docs/settings-reference.md](../../docs/settings-reference.md).
 
 Switching backends mid-session is honoured on the next system-prompt rebuild and the next `/memory` slash command. Existing users with `memories.enabled = true|false` are migrated to `memory.backend = "local"|"off"` exactly once on first launch.

@@ -8,14 +8,15 @@
  */
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { logger } from "@veyyon/utils";
 import { clearPluginRootsAndCaches, getPreloadedPluginRoots, injectPluginDirRoots } from "../../src/discovery/helpers";
+import { useTrackedTempDirFactory } from "../helpers/tracked-temp-dir";
 
-function makeTempDir(prefix: string): string {
-	return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-}
+// Nothing deleted these: the prefix varies per case, so this file named a directory
+// after each one and left every one of them in `/tmp`. `useTrackedTempDirFactory` is
+// the prefix-per-call form of the same tracking the rest of the tree uses.
+const makeTempDir = useTrackedTempDirFactory();
 
 async function inject(dir: string): Promise<void> {
 	// cwd points at an empty tempdir so no ambient project registry contributes roots.

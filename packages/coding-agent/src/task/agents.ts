@@ -3,10 +3,12 @@
  *
  * Agents are embedded at build time via Bun's import with { type: "text" }.
  */
-import { Effort } from "@veyyon/ai";
+// The effort ladder from its owner (`@veyyon/catalog/effort`, 1 module) rather than the
+// `@veyyon/ai` barrel that re-exports it (346).
+import { Effort } from "@veyyon/catalog/effort";
 import { parseFrontmatter, prompt } from "@veyyon/utils";
 import { parseAgentFields } from "../discovery/helpers";
-import { PROMPTS } from "../prompts/registry";
+import { agentsPrompts } from "../prompts/agents/rows";
 // Embed agent markdown files at build time
 import { AUTO_THINKING } from "../thinking";
 
@@ -31,14 +33,14 @@ interface EmbeddedAgentDef {
 function buildAgentContent(def: EmbeddedAgentDef): string {
 	const body = prompt.render(def.template);
 	if (!def.frontmatter) return body;
-	return prompt.render(PROMPTS["agents/frontmatter"].text, { ...def.frontmatter, body });
+	return prompt.render(agentsPrompts["agents/frontmatter"].text, { ...def.frontmatter, body });
 }
 
 const EMBEDDED_AGENT_DEFS: EmbeddedAgentDef[] = [
-	{ fileName: "scout.md", template: PROMPTS["agents/scout"].text },
-	{ fileName: "designer.md", template: PROMPTS["agents/designer"].text },
-	{ fileName: "reviewer.md", template: PROMPTS["agents/reviewer"].text },
-	{ fileName: "librarian.md", template: PROMPTS["agents/librarian"].text },
+	{ fileName: "scout.md", template: agentsPrompts["agents/scout"].text },
+	{ fileName: "designer.md", template: agentsPrompts["agents/designer"].text },
+	{ fileName: "reviewer.md", template: agentsPrompts["agents/reviewer"].text },
+	{ fileName: "librarian.md", template: agentsPrompts["agents/librarian"].text },
 	{
 		fileName: "task.md",
 		frontmatter: {
@@ -47,7 +49,7 @@ const EMBEDDED_AGENT_DEFS: EmbeddedAgentDef[] = [
 			spawns: "*",
 			thinkingLevel: AUTO_THINKING,
 		},
-		template: PROMPTS["agents/task"].text,
+		template: agentsPrompts["agents/task"].text,
 	},
 	{
 		fileName: "sonic.md",
@@ -56,7 +58,7 @@ const EMBEDDED_AGENT_DEFS: EmbeddedAgentDef[] = [
 			description: "Low-reasoning agent for strictly mechanical updates or data collection only",
 			thinkingLevel: Effort.Medium,
 		},
-		template: PROMPTS["agents/task"].text,
+		template: agentsPrompts["agents/task"].text,
 	},
 ];
 

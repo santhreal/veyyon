@@ -13,41 +13,62 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { configureProviderMaxInFlightRequests } from "@veyyon/ai/stream";
+// The caps' own module, not the streaming engine that reads them. `@veyyon/ai/stream` re-exports
+// this setter and importing it there cost 285 modules for one function; ~530 test files import
+// `Settings`, so this file's graph is the most leveraged one in the package.
+import { configureProviderMaxInFlightRequests } from "@veyyon/ai/provider-inflight-limits";
+import { atomicWriteFile } from "@veyyon/utils/atomic-write";
 import {
-	atomicWriteFile,
-	errorMessage,
-	expandTilde,
 	findShadowedGlobalConfigFiles,
 	getAgentDbPath,
 	getAgentDir,
 	getLastChangelogVersionPath,
 	getProjectDir,
-	isEnoent,
-	isRecord,
-	logger,
 	MAIN_CONFIG_FILENAMES,
-	procmgr,
-	type QuarantinedFile,
-	quarantineUnparseableFile,
 	setWorktreesDir,
-	syncYamlTextToSettings,
-	withFileLock,
-} from "@veyyon/utils";
+} from "@veyyon/utils/dirs";
+import { withFileLock } from "@veyyon/utils/file-lock";
+import { isEnoent } from "@veyyon/utils/fs-error";
+// Owners, not the `@veyyon/utils` barrel, because that is this repository's rule and this is the module
+// 528 test files reach. It bought NO modules, and that is worth stating so nobody re-measures it hoping:
+// repointing a file removes the barrel edge only when that file was the LAST path to it, and this closure
+// still reaches the barrel elsewhere, so `config/settings.ts` reads 136 before and after. The rule is
+// still right -- the edge is gone from HERE, and the next file in the closure that stops naming the barrel
+// gets the whole 82 rather than none of it. Naming `dirs` directly is safe: it applies the
+// directory-location keys from `$HOME/.env` itself, which is what `packages/utils/src/dotenv-home.ts`
+// exists for.
+import * as logger from "@veyyon/utils/logger";
+import { expandTilde } from "@veyyon/utils/path";
+import * as procmgr from "@veyyon/utils/procmgr";
+import { type QuarantinedFile, quarantineUnparseableFile } from "@veyyon/utils/quarantine-file";
+import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
+import { syncYamlTextToSettings } from "@veyyon/utils/yaml-sync";
 import { JSONC, YAML } from "bun";
 import { type Settings as SettingsCapabilityItem, settingsCapability } from "../capability/settings";
 import type { ModelRole } from "../config/model-roles";
-// The bundled-theme leaf, NOT `../modes/theme/theme`. The barrel imports
-// `./shimmer`, which imports this file, and that cycle had to be instantiated as
-// one unit: importing `config/settings` anywhere cost 51 MB, paid once per test
-// file because the runner gives each one a fresh realm. `isLightTheme` is the
-// only thing the migration below needs, and it has no engine behind it.
-import { isLightTheme } from "../modes/theme/builtin-themes";
+// The classifier leaf, NOT `../modes/theme/theme` and NOT `../modes/theme/builtin-themes`. The barrel
+// imports `./shimmer`, which imports this file, and that cycle had to be instantiated as one unit:
+// importing `config/settings` anywhere cost 51 MB, paid once per test file because the runner gives each
+// one a fresh realm. `builtin-themes` breaks the cycle but statically embeds one JSON module per bundled
+// theme, so reaching through it cost this file 103 modules of theme data nothing here reads, and cost
+// them again to every one of the ~1,500 files that import `Settings`. `theme-luminance` owns the same
+// boolean as a table and carries no theme JSON.
+import { isLightTheme } from "../modes/theme/theme-luminance";
 import { AgentStorage } from "../session/agent-storage";
 import { normalizeToolName } from "../tools/builtin-names";
 import { type EditMode, normalizeEditMode } from "../utils/edit-mode";
 import { type CompactionStrategySetting, migrateCompactionStrategyValue } from "./compaction-strategy";
+import { UNSET_NUMBER } from "./optional-number";
 import { GLOBAL_SETTING_BINDINGS } from "./settings-domains/global";
+// The slot, not a second copy of it: this module FILLS the slot that `./settings-instance.ts` owns, and
+// that leaf is what a caller reads when it wants a value rather than the store. See its doc for the split.
+import {
+	runSettingsTestResetHooks,
+	setSettingsInstance,
+	setSettingsInstancePromise,
+	settingsInstancePromise,
+	settingsOrThrow,
+} from "./settings-instance";
 import {
 	type BashInterceptorRule,
 	describeSettingTypeMismatch,
@@ -144,13 +165,14 @@ const SETTING_PATH_SEGMENTS: Record<SettingPath, readonly string[]> = Object.fro
 ) as unknown as Record<SettingPath, readonly string[]>;
 
 /**
- * The value optional numeric settings used to store to mean "unset", and the
- * paths that stored it. Unset is an absent key now (see {@link Settings.unset});
- * this pair exists only so the load migration can drop the old sentinel, and the
- * path list is derived from the schema so a new optional numeric setting is
- * covered without being registered anywhere else.
+ * The paths that used to store `-1` to mean "unset". Unset is an absent key now (see
+ * {@link Settings.unset}); this list exists only so the load migration can drop the old
+ * sentinel, and it is derived from the schema so a new optional numeric setting is covered
+ * without being registered anywhere else. The number itself is {@link UNSET_NUMBER}, owned
+ * by `config/optional-number.ts` -- this file used to declare its own `-1` beside it, which
+ * is two names for one encoding and exactly the duplication that made the sentinel hard to
+ * remove in the first place.
  */
-const LEGACY_UNSET_SENTINEL = -1;
 
 /**
  * Migration numbers stamped into the global config as `settingsMigrationVersion`.
@@ -188,7 +210,7 @@ export function stripLegacyUnsetSentinels(raw: RawSettings): string[] {
 	if (appliedMigrationVersion(raw) >= SETTINGS_MIGRATION_VERSION_UNSET_ABSENT_KEY) return [];
 	const removed: string[] = [];
 	for (const segments of LEGACY_UNSET_SENTINEL_PATHS) {
-		if (getByPath(raw, segments) !== LEGACY_UNSET_SENTINEL) continue;
+		if (getByPath(raw, segments) !== UNSET_NUMBER) continue;
 		deleteByPath(raw, segments);
 		removed.push(segments.join("."));
 	}
@@ -453,26 +475,28 @@ export class Settings {
 	 * Call once at startup before accessing `settings`.
 	 */
 	static init(options: SettingsOptions = {}): Promise<Settings> {
-		if (globalInstancePromise) return globalInstancePromise;
+		const inFlight = settingsInstancePromise();
+		if (inFlight) return inFlight;
 
+		// The promise recorded in the slot is the one that FILLS the slot, not the bare load. They are not
+		// interchangeable: the bare load settles first, so a second caller awaiting it could resume before
+		// `globalInstance` was set and see `isSettingsInitialized()` return false straight after `await
+		// Settings.init()`. Recording the derived promise also makes `init()` return the same object every
+		// time, which is what makes "a second init joins the first" checkable rather than merely likely.
 		const instance = new Settings(options);
-		const promise = instance.#load();
-		globalInstancePromise = promise;
-
-		return promise.then(
-			instance => {
-				globalInstance = instance;
-				clearBoundSettingsMethods();
-				globalInstancePromise = Promise.resolve(instance);
-				return instance;
+		const ready = instance.#load().then(
+			loaded => {
+				setSettingsInstance(loaded);
+				return loaded;
 			},
 			error => {
-				globalInstance = null;
-				globalInstancePromise = null;
-				clearBoundSettingsMethods();
+				setSettingsInstance(null);
+				setSettingsInstancePromise(null);
 				throw error;
 			},
 		);
+		setSettingsInstancePromise(ready);
+		return ready;
 	}
 
 	/**
@@ -507,10 +531,7 @@ export class Settings {
 	 * Throws if not initialized.
 	 */
 	static get instance(): Settings {
-		if (!globalInstance) {
-			throw new Error("Settings not initialized. Call Settings.init() first.");
-		}
-		return globalInstance;
+		return settingsOrThrow();
 	}
 
 	// ─────────────────────────────────────────────────────────────────────────
@@ -1526,12 +1547,26 @@ export class Settings {
 
 		const eager = take(["task", "eager"]);
 		if (typeof eager === "string") {
-			// `task.eager` had three values; `subagent.delegation` adds `off` BELOW all
-			// of them. The old bottom value must land on `allowed`, not `off`: someone
-			// with eager delegation switched off still delegated by hand, and mapping
-			// them onto `off` would take the task tool away entirely.
+			// `task.eager` had three values and all three still delegate, so the old
+			// bottom value lands on `allowed`: someone with eager delegation switched
+			// off still delegated by hand, and taking the task tool away would change
+			// what their sessions can do.
 			const delegation = eager === "always" ? "required" : eager === "preferred" ? "preferred" : "allowed";
 			setNew(["delegation"], delegation);
+		}
+
+		// `subagent.delegation: off` was the kill switch before `subagent.enabled`
+		// existed, so one setting answered two questions: whether subagents exist, and
+		// how hard to push them. Someone who wrote `off` was turning subagents OFF —
+		// that is the half to preserve — so it becomes `enabled: false` and the
+		// strength falls back to its default, ready for when they turn it back on.
+		// Deleted rather than left in place because `off` is no longer a legal value:
+		// leaving it would fail validation and read as a corrupt config.
+		if (read(["subagent", "delegation"]) === "off") {
+			deleteByPath(raw, ["subagent", "delegation"]);
+			if (read(["subagent", "enabled"]) === undefined) {
+				setByPath(raw, ["subagent", "enabled"], false);
+			}
 		}
 
 		for (const [legacy, next] of [
@@ -2155,6 +2190,49 @@ export class Settings {
 		if (tierTouched) raw.tier = tierObj;
 		delete raw.fastModeScope;
 
+		// argot.models / argot.disableAboveTokens -> argot.encode.*
+		//
+		// The two keys that gate ENCODING are grouped under the sub-feature they
+		// belong to, the way `read.summarize.*` and `bash.autoBackground.*` are.
+		// They are the only two of Argot's six settings that decide whether the
+		// model is taught to WRITE shorthand; `enabled`, `autoload`, `tokenBudget`
+		// and `subagents` decide whether the feature runs, when a dictionary is
+		// built, how large it is, and what a child agent starts with. Reading a
+		// flat `argot.models` gave no hint that it governs one side of the feature
+		// while decoding is unconditional, which is the distinction an operator has
+		// to hold to predict what turning it off does.
+		//
+		// The nested spelling always wins and the flat one is dropped without being
+		// read, which is what makes this a fixed point: re-running it on its own
+		// output changes nothing, and it has to be, because it runs on every load of
+		// every source. `argot` keeps its other keys, so no empty husk is possible.
+		// Both spellings have to be folded. `#expandDottedSettingKeys` above only expands
+		// REGISTERED paths, and these two are retired, so a literal `argot.models:` key
+		// written flat in a config file survives it untouched and would otherwise sit in
+		// the tree forever with nothing reading it.
+		for (const key of ["models", "disableAboveTokens"] as const) {
+			const flat = `argot.${key}`;
+			if (!(flat in raw)) continue;
+			if (getByPath(raw, ["argot", "encode", key]) === undefined) {
+				setByPath(raw, ["argot", "encode", key], raw[flat]);
+			}
+			delete raw[flat];
+		}
+
+		const argotObj = raw.argot as Record<string, unknown> | undefined;
+		if (argotObj) {
+			for (const key of ["models", "disableAboveTokens"] as const) {
+				if (!(key in argotObj)) continue;
+				// Resolved per key, not once: moving the first key CREATES the block, and a
+				// stale `undefined` captured before that would make the second key replace
+				// the block instead of joining it, silently dropping the first value.
+				const encode = isRecord(argotObj.encode) ? argotObj.encode : {};
+				if (!(key in encode)) encode[key] = argotObj[key];
+				argotObj.encode = encode;
+				delete argotObj[key];
+			}
+		}
+
 		return raw;
 	}
 
@@ -2363,16 +2441,71 @@ type SettingHook<P extends SettingPath> = (value: SettingValue<P>, prev: Setting
  *
  * @typeParam A - argument tuple forwarded to each listener on `fire`.
  */
+/**
+ * Every signal declared in this module, in declaration order.
+ *
+ * The registry exists so there is ONE place that knows the full set. Without it, clearing the
+ * signals meant naming all nine at the reset site, and a tenth signal added later would silently
+ * not be cleared -- which is the failure mode this whole mechanism was leaking through.
+ */
+const SETTING_SIGNALS: SettingSignal<never[]>[] = [];
+
 class SettingSignal<A extends unknown[] = []> {
 	#listeners = new Set<(...args: A) => void>();
+	/**
+	 * Subscribers registered once at module import, which `clear` deliberately keeps.
+	 *
+	 * WHY THE TWO SETS ARE NOT ONE. Clearing every listener on `resetSettingsForTest` fixed a real
+	 * leak -- a subscription made in one test file stayed alive for the whole process -- and broke
+	 * something else in the same move: `modes/theme/theme` subscribes at ITS OWN IMPORT and never
+	 * unsubscribes, because there is nothing to unsubscribe from a module. Clearing that one meant
+	 * the first reset in a process permanently disconnected the theme engine from settings, so
+	 * `symbolPreset` and `colorBlindMode` stopped applying for every later file. Import-time
+	 * subscribers therefore say so, and only per-instance subscriptions -- the ones an owner is
+	 * expected to release -- are the leak the reset is guarding against.
+	 */
+	#permanent = new Set<(...args: A) => void>();
 
-	constructor(private readonly label: string) {}
+	constructor(private readonly label: string) {
+		SETTING_SIGNALS.push(this as unknown as SettingSignal<never[]>);
+	}
 
-	/** Subscribe `cb`; returns an unsubscribe function. */
-	on(cb: (...args: A) => void): () => void {
-		this.#listeners.add(cb);
+	/**
+	 * How many RELEASABLE listeners are attached. Used by the leak guard in the test suite.
+	 *
+	 * Import-time subscribers are excluded on purpose: there is exactly one per process and it can
+	 * never be released, so counting it would make every leak threshold a moving target.
+	 */
+	get listenerCount(): number {
+		return this.#listeners.size;
+	}
+
+	/** How many import-time subscribers are attached. One per importing module, and it stays. */
+	get permanentListenerCount(): number {
+		return this.#permanent.size;
+	}
+
+	/** The signal's name, so a leak report can say WHICH signal is holding listeners. */
+	get name(): string {
+		return this.label;
+	}
+
+	/** Drop every releasable listener, keeping import-time ones. Only `resetSettingsForTest` calls this. */
+	clear(): void {
+		this.#listeners.clear();
+	}
+
+	/**
+	 * Subscribe `cb`; returns an unsubscribe function.
+	 *
+	 * Pass `{ permanent: true }` only from a module's own import, where the subscription lasts as
+	 * long as the process and no owner exists to release it.
+	 */
+	on(cb: (...args: A) => void, options?: { readonly permanent?: boolean }): () => void {
+		const set = options?.permanent ? this.#permanent : this.#listeners;
+		set.add(cb);
 		return () => {
-			this.#listeners.delete(cb);
+			set.delete(cb);
 		};
 	}
 
@@ -2384,7 +2517,7 @@ class SettingSignal<A extends unknown[] = []> {
 	 * rest.
 	 */
 	fire(...args: A): void {
-		for (const cb of [...this.#listeners]) {
+		for (const cb of [...this.#permanent, ...this.#listeners]) {
 			try {
 				cb(...args);
 			} catch (err) {
@@ -2463,20 +2596,26 @@ const autoThemeMappingSignal = new SettingSignal<[slot: "dark" | "light", themeN
  * Subscribe to `theme.dark` / `theme.light` changes. Returns an unsubscribe
  * function. `modes/theme/theme` subscribes at its own import.
  */
-export const onAutoThemeMappingChanged = (cb: (slot: "dark" | "light", themeName: string) => void) =>
-	autoThemeMappingSignal.on(cb);
+export const onAutoThemeMappingChanged = (
+	cb: (slot: "dark" | "light", themeName: string) => void,
+	options?: { readonly permanent?: boolean },
+) => autoThemeMappingSignal.on(cb, options);
 
 /** Fires when `symbolPreset` changes at runtime. */
 const symbolPresetSignal = new SettingSignal<[preset: "unicode" | "nerd" | "ascii"]>("symbolPreset");
 
 /** Subscribe to `symbolPreset` changes. Returns an unsubscribe function. */
-export const onSymbolPresetChanged = (cb: (preset: "unicode" | "nerd" | "ascii") => void) => symbolPresetSignal.on(cb);
+export const onSymbolPresetChanged = (
+	cb: (preset: "unicode" | "nerd" | "ascii") => void,
+	options?: { readonly permanent?: boolean },
+) => symbolPresetSignal.on(cb, options);
 
 /** Fires when `colorBlindMode` changes at runtime. */
 const colorBlindModeSignal = new SettingSignal<[enabled: boolean]>("colorBlindMode");
 
 /** Subscribe to `colorBlindMode` changes. Returns an unsubscribe function. */
-export const onColorBlindModeChanged = (cb: (enabled: boolean) => void) => colorBlindModeSignal.on(cb);
+export const onColorBlindModeChanged = (cb: (enabled: boolean) => void, options?: { readonly permanent?: boolean }) =>
+	colorBlindModeSignal.on(cb, options);
 
 /** Fires when `provider.appendOnlyContext` changes at runtime. */
 const appendOnlyModeSignal = new SettingSignal<[value: string]>("provider.appendOnlyContext");
@@ -2522,55 +2661,65 @@ export const onHindsightScopeChanged = (cb: () => void) => hindsightScopeSignal.
 // Global Singleton
 // ═══════════════════════════════════════════════════════════════════════════
 
-let globalInstance: Settings | null = null;
-let globalInstancePromise: Promise<Settings> | null = null;
-let boundSettingsInstance: Settings | null = null;
-let boundSettingsMethods = new Map<PropertyKey, unknown>();
-
-function clearBoundSettingsMethods(): void {
-	boundSettingsInstance = null;
-	boundSettingsMethods = new Map<PropertyKey, unknown>();
-}
-
-export function isSettingsInitialized(): boolean {
-	return globalInstance !== null;
-}
+/**
+ * Teardown a downstream module asks `resetSettingsForTest` to run.
+ *
+ * The registry lives in `./settings-instance.ts` with the slot, and is re-exported here because this is
+ * the name callers import. A module that only REGISTERS should import the leaf: `modes/theme/markdown-theme.ts`
+ * registers one hook and paid 95 modules of settings store for the privilege.
+ *
+ * @internal
+ */
+export { registerSettingsTestResetHook } from "./settings-instance";
 
 /**
  * Reset the global singleton for testing.
+ *
+ * The signal listeners go too, and that is the point rather than a detail. A `SettingSignal`
+ * subscription lives at module scope, so it outlives the `Settings` instance it was made against
+ * and outlives the test file that made it. Anything that subscribed and did not unsubscribe stayed
+ * attached for the rest of the process, and the next write to that setting called it -- a callback
+ * closed over a torn-down instance, still free to write to the theme, the symbol preset or the
+ * colour-blind flag, all of which are module-scope state of their own.
+ *
+ * That is cumulative rather than order-dependent, which is why it looked like nothing: a suite
+ * passes alone and passes after two hundred predecessors, then fails somewhere past a thousand,
+ * with a different case each run. The mermaid renderer producing NO output at all in a large run is
+ * the recognisable shape of it, since what it renders depends on exactly this state.
+ *
+ * A listener that outlives its owner is a leak in a long session too, not only under a test runner;
+ * `settingSignalListenerCounts` exists so a guard test can prove the set returns to empty.
+ *
  * @internal
  */
 export function resetSettingsForTest(): void {
-	globalInstance = null;
-	globalInstancePromise = null;
-	clearBoundSettingsMethods();
+	setSettingsInstance(null);
+	setSettingsInstancePromise(null);
 	configureProviderMaxInFlightRequests(undefined);
+	for (const signal of SETTING_SIGNALS) signal.clear();
+	runSettingsTestResetHooks();
 }
 
 /**
- * The global settings singleton.
- * Must call `Settings.init()` before using.
+ * How many listeners each setting signal currently holds, keyed by signal name.
+ *
+ * For the leak guard: a suite that subscribes and tears down should leave every count at zero, and
+ * a non-zero count names the signal rather than leaving the reader to find it.
+ *
+ * @internal
  */
-export const settings = new Proxy({} as Settings, {
-	get(_target, prop) {
-		if (!globalInstance) {
-			throw new Error("Settings not initialized. Call Settings.init() first.");
-		}
-		if (boundSettingsInstance !== globalInstance) {
-			clearBoundSettingsMethods();
-			boundSettingsInstance = globalInstance;
-		}
-		const value = (globalInstance as unknown as Record<PropertyKey, unknown>)[prop];
-		if (typeof value === "function") {
-			const cached = boundSettingsMethods.get(prop);
-			if (cached) return cached;
-			const bound = value.bind(globalInstance);
-			boundSettingsMethods.set(prop, bound);
-			return bound;
-		}
-		return value;
-	},
-});
+export function settingSignalListenerCounts(): Record<string, number> {
+	return Object.fromEntries(SETTING_SIGNALS.map(signal => [signal.name, signal.listenerCount]));
+}
+
+/**
+ * The global settings singleton and the check for whether it exists yet.
+ *
+ * Both live in `./settings-instance.ts`, which owns the slot and imports nothing at runtime, and are
+ * re-exported here because this is the name every caller already imports. A caller that needs only the
+ * value should import the leaf directly: reaching it through this module costs 94 modules of store.
+ */
+export { isSettingsInitialized, settings } from "./settings-instance";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Helpers

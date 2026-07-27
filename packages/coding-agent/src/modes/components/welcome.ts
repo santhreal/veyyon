@@ -10,9 +10,17 @@ import {
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
 import { APP_NAME, clamp01, DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault } from "@veyyon/utils";
-import { isSettingsInitialized, settings } from "../../config/settings";
+// The slot leaf, not the 94-module store: this file reads values, it does not fill them.
+import { isSettingsInitialized, settings } from "../../config/settings-instance";
 import { transitionsEnabled } from "../../modes/theme/shimmer";
 import { theme } from "../../modes/theme/theme";
+
+// The forced-tip state and the post-update message live in `launch-tip.ts`, which `main.ts` can import
+// without pulling this component (and the whole TUI) into the static boot graph. Re-exported here so the
+// welcome card stays the one place a reader looks for anything about welcome tips.
+export { clearLaunchTip, setLaunchTip, updateInstalledTip } from "./launch-tip";
+
+import { takeLaunchTip } from "./launch-tip";
 import { sunMark } from "./sun";
 import tipsText from "./tips.txt" with { type: "text" };
 
@@ -94,50 +102,6 @@ export function pickWeightedTip(tips: readonly string[], r: number): string {
 		if (acc < 0) return tips[i] ?? "";
 	}
 	return tips[tips.length - 1] ?? "";
-}
-
-/**
- * A tip this launch must show instead of a random one.
- *
- * The post-update notice used to be its own transcript block above the welcome
- * card: a second piece of chrome saying a small thing, in a place reserved for
- * conversation. It is a tip in every respect — one line, once, about something
- * you can do next — so it belongs in the slot that already exists for exactly
- * that, and the card stays one card.
- *
- * "Forced" rather than "added to the corpus" because the launch after an update
- * is the ONLY launch where this is worth the slot. A weighted entry would show
- * it at random for weeks and miss the launch it was written for.
- */
-let forcedTip: string | undefined;
-
-/**
- * Make the next welcome render show `tip` in place of a random one.
- *
- * One-shot: {@link WelcomeComponent.tip} clears it after reading, so a second
- * welcome in the same process (`/welcome`, a resumed session) gets the ordinary
- * rotation rather than repeating a stale announcement.
- */
-export function setLaunchTip(tip: string): void {
-	forcedTip = tip;
-}
-
-/** Drop a pending forced tip. Exists so a test cannot leak one into the next. */
-export function clearLaunchTip(): void {
-	forcedTip = undefined;
-}
-
-/**
- * The one-line hint shown on the first launch after an update.
- *
- * It has to carry three things and stay one line: WHAT happened (the version,
- * so the number in a bug report is the one you are running), WHERE the notes
- * are, and — the part that was missing entirely — that this is CONTROLLABLE.
- * Auto-update has been switchable in `/settings` all along and nothing ever
- * said so, which is why updates felt like something done to you.
- */
-export function updateInstalledTip(version: string): string {
-	return `Updated to ${APP_NAME} ${version} · /changelog · roll back or turn auto-update off in /settings`;
 }
 
 /** Static silver-bright tag — no rainbow, no motion (brand: restrained chrome). */
@@ -223,11 +187,10 @@ export class WelcomeComponent implements Component {
 	) {}
 
 	get tip(): string | undefined {
-		if (this.#selectedTip === undefined && forcedTip !== undefined) {
+		if (this.#selectedTip === undefined) {
 			// Read once and clear, so the announcement belongs to this launch and
 			// not to every welcome the process renders afterwards.
-			this.#selectedTip = forcedTip;
-			forcedTip = undefined;
+			this.#selectedTip = takeLaunchTip();
 		}
 		if (this.#selectedTip === undefined) {
 			if (theme.getSymbolPreset() === "unicode" && Math.random() < 0.1) {

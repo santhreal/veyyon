@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import { errorMessage, isTimeoutError, logger, Snowflake } from "@veyyon/utils";
 import type { Subprocess } from "bun";
 import { type KernelDisplayOutput, renderKernelDisplay } from "./py/display";
@@ -14,6 +15,16 @@ export type KernelRuntimeEnv = Record<string, string | null>;
  */
 export type KernelEnvPatch = Record<string, string | null | undefined>;
 
+/**
+ * One request to a language kernel, shared by every kernel in `eval/`.
+ *
+ * THE one declaration. Ruby and Julia each carried their own copy and the three had
+ * drifted: the base grew `onDisplay`, Ruby's copy narrowed `env` to
+ * `KernelRuntimeEnv` (no `undefined`, so no "leave this one alone"), and Julia's
+ * widened it to `Record<string, string | undefined>` (no `null`, so no "clear this
+ * one"). Each kernel silently supported a different set of options, and a caller
+ * reading any one declaration learned the wrong contract for the other two.
+ */
 export interface KernelExecuteOptions {
 	id?: string;
 	/** Runtime working directory applied immediately before this request executes. */
@@ -26,7 +37,6 @@ export interface KernelExecuteOptions {
 	timeoutMs?: number;
 	silent?: boolean;
 	storeHistory?: boolean;
-	allowStdin?: boolean;
 }
 
 export interface KernelExecuteResult {
@@ -134,6 +144,48 @@ interface PendingExecution {
  */
 export const DEFAULT_KERNEL_STARTUP_TIMEOUT_MS = 10_000;
 
+/**
+ * How long a kernel subprocess gets to exit on its own after being asked to shut down, before it is killed.
+ *
+ * One second is the whole budget an interpreter gets to flush and unwind. It was declared four times, once
+ * in each of the three language kernels and again in the Julia executor's session reset, so a language whose
+ * shutdown needed longer would have been given it in one place and killed at one second in another.
+ */
+export const KERNEL_SHUTDOWN_GRACE_MS = 1_000;
+
+/**
+ * How long an interrupt is given to land before the kernel is terminated instead.
+ *
+ * This is the budget behind Ctrl-C in an eval cell: send the interrupt, and if the interpreter is still
+ * running after this, stop being polite. Five seconds across every language, because the number describes a
+ * user's patience rather than anything about the interpreter, and it was written out once per language.
+ */
+export const KERNEL_INTERRUPT_ESCALATION_MS = 5_000;
+
+/**
+ * The environment variable that turns on IPC tracing for one language's kernel, `VEYYON_<LANG>_IPC_TRACE`.
+ *
+ * A user types this name, so the convention is part of the product and not an implementation detail. Each
+ * kernel built the string itself, which left nothing stating the convention and no reason a fourth language
+ * would follow it. `language` is the uppercase name used in the variable (`PYTHON`, `RUBY`, `JULIA`), which
+ * is not always the directory name: the directories are `py`, `rb` and `jl`.
+ */
+export function kernelIpcTraceEnvVar(language: string): string {
+	return `VEYYON_${language}_IPC_TRACE`;
+}
+
+/**
+ * Where one language's kernel caches its generated runner script, `<tmpdir>/veyyon-<language>-runner`.
+ *
+ * Same reasoning as {@link kernelIpcTraceEnvVar}: three kernels each joined this path themselves, so the
+ * layout under the temp directory was a coincidence rather than a rule, and a stale-runner cleanup that
+ * wanted to find all of them had nothing to ask. `language` is the lowercase name in the directory
+ * (`python`, `ruby`, `julia`).
+ */
+export function kernelRunnerCacheDir(tmpDir: string, language: string): string {
+	return path.join(tmpDir, `veyyon-${language}-runner`);
+}
+
 export function getRemainingTimeMs(deadlineMs?: number): number | undefined {
 	if (deadlineMs === undefined) return undefined;
 	return Math.max(0, deadlineMs - Date.now());
@@ -205,6 +257,35 @@ export interface SessionKernel<TExecuteOptions extends KernelExecuteOptions = Ke
 	// implementation (including every fake) without checking anything.
 	isAlive(): boolean;
 	shutdown(options?: KernelShutdownOptions): Promise<KernelShutdownResult>;
+}
+
+/**
+ * Shut a kernel down while tearing a session down, in one place.
+ *
+ * Every teardown path reaches this: a session being replaced, a session evicted for idleness, a startup
+ * that failed after the subprocess was already running, a shutdown of the whole executor. None of them can
+ * usefully throw. The paths that replace a session go on to start the new one, and the startup-failure path
+ * rethrows the error that made it give up, which is the error the operator needs rather than the shutdown
+ * that followed it.
+ *
+ * Both ways it can go wrong are reported, because both leave a language runtime running. A throw means the
+ * shutdown could not be attempted, and an unconfirmed result means the runner never acknowledged it and did
+ * not exit within its grace period, so the subprocess outlives the session that owned it. Discarding either
+ * one leaks a Python, Ruby or Julia process per session with nothing in the log to explain the memory.
+ */
+export async function releaseKernel(
+	kernel: Pick<SessionKernel, "shutdown">,
+	context: string,
+	options?: KernelShutdownOptions,
+): Promise<void> {
+	try {
+		const result = await kernel.shutdown(options);
+		if (!result.confirmed) {
+			logger.warn("kernel shutdown was not confirmed", { context });
+		}
+	} catch (error) {
+		logger.warn("kernel shutdown failed", { context, error: errorMessage(error) });
+	}
 }
 
 /**

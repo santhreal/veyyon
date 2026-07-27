@@ -28,24 +28,33 @@
  * template that is not there.
  */
 import * as path from "node:path";
+import { agentCorePrompts } from "@veyyon/agent-core/prompts/registry";
+import { aiPrompts } from "@veyyon/ai/prompts/registry";
+import { hashlinePrompts } from "@veyyon/hashline/prompts/registry";
 import { prompt } from "@veyyon/utils";
+// The benchmark harness is private and has no exports map, so its descriptor is reached
+// by relative path. The alternative is spelling its directory out here as a literal, and
+// a hand-maintained copy of this list is exactly the defect below: it went stale.
+import { editBenchmarkPrompts } from "../../metaharness/adapters/edit/prompts/registry";
+import { codingAgentPrompts } from "../src/prompts/registry";
 
 /**
  * Directories holding prompt templates, relative to the repository root.
  *
- * One per package that owns prompts, each with a `registry.ts` beside it that
- * imports every file in the tree. This list used to name five directories
- * because prompts lived wherever their consumer did (`src/commit/prompts`,
- * `src/commit/agentic/prompts`, `src/compaction/prompts`, and so on), which is
- * the same scatter that let 120 of 143 prompts go unregistered. They now live in
- * their package's one prompts tree, so this list shrinks as prompts consolidate
- * rather than growing as they spread.
+ * TAKEN FROM THE REGISTRIES, not written here. This was a hand-maintained list, and it
+ * had gone stale in the way a hand-maintained list does: three directories, under a doc
+ * comment claiming one per package that owns prompts, while `@veyyon/ai`'s fourteen
+ * prompts and `@veyyon/hashline`'s one were missing from the inventory entirely. An
+ * inventory whose own scope is wrong is worse than no inventory, because it looks
+ * authoritative: "no template exists without a module that renders it" was true only of
+ * the directories it happened to know about.
+ *
+ * Each registry states its directory once, as the path its ids are relative to, so this
+ * list now grows when a package adopts a registry rather than when somebody remembers.
  */
-const PROMPT_DIRS = [
-	"packages/coding-agent/src/prompts",
-	"packages/agent/src/prompts",
-	"packages/metaharness/adapters/edit/prompts",
-] as const;
+const PROMPT_DIRS = [codingAgentPrompts, agentCorePrompts, aiPrompts, hashlinePrompts, editBenchmarkPrompts].map(
+	registry => registry.dir,
+);
 
 /** Roots scanned for modules that import a template. */
 const SOURCE_ROOTS = ["packages"] as const;
@@ -106,16 +115,50 @@ async function listFiles(root: string, extension: string): Promise<string[]> {
 const MD_IMPORT = /from\s+"([^"]+\.md)"/g;
 
 /**
- * A registry lookup: `PROMPTS["turn-control/auto-continue"]`, in either package.
+ * The row tables the coding agent's prompt directories own: `side-channel` gives `sideChannelPrompts`.
  *
- * This is what a renderer looks like now. Every prompt is imported exactly once,
- * by its package's `registry.ts`, so following `.md` imports would report the
- * registry as the sole renderer of all 176 prompts and tell you nothing. The
- * useful question, "which module actually uses this prompt", is answered by the
- * id, and the id is the file's path under its prompts directory, so a lookup
- * resolves back to a file without a second table.
+ * Read off the registry's own ids, which is the one place the directory set is stated. A hand-written
+ * list of twenty-one names would go stale the first time a directory is added, and going stale here is
+ * silent: the new directory's consumers simply stop being reported as renderers.
  */
-const REGISTRY_LOOKUP = /\b(?:PROMPTS|AGENT_PROMPTS)\[\s*"([^"]+)"\s*\]/g;
+function rowTableNames(): string[] {
+	const directories = new Set(codingAgentPrompts.ids.map(id => id.split("/")[0] as string));
+	return [...directories]
+		.sort()
+		.map(directory => `${directory.replace(/-(\w)/g, (_all, letter: string) => letter.toUpperCase())}Prompts`);
+}
+
+/**
+ * A registry lookup: `PROMPTS["turn-control/auto-continue"]`, in any package, or
+ * `toolsPrompts["tools/read"]`, which is the coding agent's per-directory row table.
+ *
+ * This is what a renderer looks like now. A prompt is imported exactly once, by the
+ * registry module that owns it, so following `.md` imports would report that registry
+ * as the sole renderer of all 176 prompts and tell you nothing. The useful question,
+ * "which module actually uses this prompt", is answered by the id, and the id is the
+ * file's path under its prompts directory, so a lookup resolves back to a file
+ * without a second table.
+ *
+ * THE TABLE NAME IS A PATTERN, NOT A LIST, and it has been narrowed wrongly twice.
+ * First it named two tables literally (`PROMPTS|AGENT_PROMPTS`), so `AI_PROMPTS`,
+ * `HASHLINE_PROMPTS` and `EDIT_BENCHMARK_PROMPTS` went unseen and their templates were
+ * reported as rendered only by their own registry. Then it accepted only SCREAMING_CASE,
+ * and the coding agent's registry was split into one `rows.ts` per prompt directory, whose
+ * tables are camelCase (`toolsPrompts`, `sideChannelPrompts`): 95 modules stopped being
+ * recognised as renderers of the prompt they render, and the inventory said the system
+ * prompt was rendered by its own row module and two tests.
+ *
+ * The camelCase half is DERIVED rather than widened to any `\w*Prompts`, because a bare
+ * suffix match would also claim an ordinary local named `userPrompts` and record it as
+ * rendering whatever string it is indexed by, which then surfaces as an import naming a
+ * template that does not exist. A row table's name comes from its directory, and the
+ * directories come from the registry, so the accepted names are the ones that exist.
+ * `prompt-inventory.test.ts` pins every table name in the repository against this pattern.
+ */
+export const REGISTRY_LOOKUP = new RegExp(
+	`\\b(?:(?:[A-Z][A-Z_]*_)?PROMPTS|${rowTableNames().join("|")})\\[\\s*"([^"]+)"\\s*\\]`,
+	"g",
+);
 
 /** Prompts directories keyed for id resolution, longest first so nesting is safe. */
 const PROMPT_DIRS_BY_DEPTH = [...PROMPT_DIRS].sort((a, b) => b.length - a.length);
@@ -148,8 +191,9 @@ async function collectRenderers(repoRoot: string): Promise<Map<string, Set<strin
 				record(file ?? path.join(PROMPT_DIRS[0], `${match[1]}.md`), source);
 			}
 
-			// Direct `.md` imports still count, so a package that has not adopted a
-			// registry yet (metaharness) is not reported as having zero renderers.
+			// Direct `.md` imports still count. Every package that ships prompts has a
+			// registry now, so the only module that reaches a template this way is the
+			// registry itself, and counting it is right: the import IS the registration.
 			if (!text.includes('.md"')) continue;
 			for (const match of text.matchAll(MD_IMPORT)) {
 				const specifier = match[1] as string;

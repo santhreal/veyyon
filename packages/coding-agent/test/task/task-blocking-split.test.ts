@@ -50,11 +50,26 @@ const scoutAgent: AgentDefinition = {
 	blocking: true,
 };
 
+/**
+ * `scout` is a BUNDLED agent, and only the general-purpose `task` delegate ships enabled
+ * (`subagentEnabledByDefault`), so a session that does not turn it on refuses every scout spawn with
+ * "Agent \"scout\" is disabled". Nothing here is about enablement, so the fixture enables it the way
+ * an operator does, with a `subagent.agents` row, rather than by pretending the agent is
+ * user-authored: a project-sourced fixture would be enabled by default and would stop reproducing
+ * the shipped scout, which is bundled AND blocking.
+ */
+const BLOCKING_AGENT_ENABLED = { "subagent.agents": { scout: { enabled: true } } } as const;
+
 function createSession(options: { manager?: AsyncJobManager; settings?: Record<string, unknown> } = {}): ToolSession {
 	return makeToolSession({
 		cwd: "/tmp",
 		hasUI: false,
-		settings: Settings.isolated(options.settings ?? { "async.enabled": true, "subagent.batch": true }),
+		settings: Settings.isolated({
+			"async.enabled": true,
+			"subagent.batch": true,
+			...BLOCKING_AGENT_ENABLED,
+			...options.settings,
+		}),
 		getSessionFile: () => null,
 		getSessionSpawns: () => "*",
 		getAgentId: () => null,
@@ -251,6 +266,69 @@ describe("task per-item blocking split", () => {
 		expect(result.details?.async).toBeUndefined();
 		expect(result.details?.results.map(r => r.id).sort()).toEqual(["ScoutA", "ScoutB"]);
 		expect(manager.getAllJobs()).toHaveLength(0);
+	});
+
+	/**
+	 * The enablement gate runs BEFORE the split, and it fails closed.
+	 *
+	 * This suite was red for a full session because its fixture assumed a bundled `scout` was
+	 * spawnable: only `task` ships enabled, so every scout item was refused and the two mixed-batch
+	 * tests timed out waiting for spawns that were never going to start. The timeout said "spawns
+	 * never started" and named no cause, which is what made it expensive to read.
+	 *
+	 * What must hold is the refusal itself: a disabled blocking agent is REFUSED by name, not quietly
+	 * demoted to the async path where it would run detached and the caller would never see its result.
+	 * A silent demotion is the worse failure of the two, because the call still looks like it worked.
+	 */
+	it("refuses a disabled blocking agent by name instead of demoting it to a background job", async () => {
+		mockDiscovery();
+		const executed: string[] = [];
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			executed.push(options.id ?? "?");
+			return makeResult(options.id ?? "?", options.agent.name);
+		});
+
+		const manager = createManager();
+		const tool = await TaskTool.create(
+			createSession({ manager, settings: { "subagent.agents": { scout: { enabled: false } } } }),
+		);
+
+		const result = await tool.execute("tc-scout-disabled", {
+			context: "ctx",
+			tasks: [{ name: "ScoutOff", agent: "scout", task: "Research." }],
+		} as TaskParams);
+
+		const text = firstText(result);
+		expect(text).toContain('Agent "scout" is disabled');
+		expect(text).toContain("subagent.agents.scout.enabled");
+		expect(executed).toEqual([]);
+		expect(manager.getAllJobs()).toHaveLength(0);
+	});
+
+	/**
+	 * The mirror of the test above, on the same call shape as the mixed batch: enabling the row is what
+	 * makes the blocking half run, so the fixture's one setting is load-bearing and is asserted here
+	 * rather than assumed by four other tests.
+	 */
+	it("runs a blocking agent inline once its row enables it", async () => {
+		mockDiscovery();
+		const executed: string[] = [];
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			executed.push(options.id ?? "?");
+			return makeResult(options.id ?? "?", options.agent.name);
+		});
+
+		const tool = await TaskTool.create(createSession({ manager: createManager() }));
+
+		const result = await tool.execute("tc-scout-enabled", {
+			context: "ctx",
+			tasks: [{ name: "ScoutOn", agent: "scout", task: "Research." }],
+		} as TaskParams);
+
+		expect(executed).toEqual(["ScoutOn"]);
+		expect(firstText(result)).toContain("ScoutOn output.");
+		expect(result.details?.results.map(r => r.id)).toEqual(["ScoutOn"]);
+		expect(result.details?.async).toBeUndefined();
 	});
 
 	it("returns inline results and reports the failure when async scheduling fails", async () => {

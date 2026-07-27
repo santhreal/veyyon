@@ -1,0 +1,1 @@
+- **Concurrency cap:** At most {{pluralize MAX_CONCURRENCY "subagent" "subagents"}} run at once in this session — anything beyond that just queues, so a {{#if taskBatch}}`tasks[]` batch{{else}}set of parallel `task` calls{{/if}} larger than {{MAX_CONCURRENCY}} only delays results. Keep the fan-out at or under the cap.

@@ -610,6 +610,8 @@ async function applyTargetUserAgentOverride(target: Target, override: UserAgentO
 	try {
 		await sendUserAgentOverride(wrapSession(session), override);
 	} finally {
+		// The CDP session is a scratch session created two lines above for one override; detaching from a target
+		// that has already gone fails, and rethrowing here would replace the override's own error.
 		await session.detach().catch(() => undefined);
 	}
 }

@@ -1,6 +1,7 @@
 import { Container, Markdown } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils";
-import { getMarkdownTheme, theme } from "../../modes/theme/theme";
+import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
+import { theme } from "../../modes/theme/theme";
 import { imageReferenceHyperlink, renderPlaceholders } from "../image-references";
 import { highlightMagicKeywords } from "../magic-keywords";
 

@@ -11,10 +11,10 @@ import type { ModelRegistry } from "../config/model-registry";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
 import MODEL_PRIO from "../priority.json" with { type: "json" };
-import { PROMPTS } from "../prompts/registry";
+import { commitPrompts } from "../prompts/commit/rows";
 import { concreteThinkingLevel, toReasoningEffort } from "../thinking";
 
-const COMMIT_SYSTEM_PROMPT = prompt.render(PROMPTS["commit/message-system"].text);
+const COMMIT_SYSTEM_PROMPT = prompt.render(commitPrompts["commit/message-system"].text);
 const MAX_DIFF_CHARS = 4000;
 // Cover the "backend ignores `disableReasoning`" case unconditionally: the
 // static `model.reasoning` catalog flag can't distinguish a thinking model

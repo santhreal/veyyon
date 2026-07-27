@@ -2,17 +2,28 @@ import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { Message, UserMessage } from "@veyyon/ai";
 import { logger } from "@veyyon/utils";
+import {
+	ADVISOR_TRANSCRIPT_FILENAME,
+	ADVISOR_TRANSCRIPT_STEM,
+	isSessionFileName,
+	sessionFileName,
+	sessionFileStem,
+} from "@veyyon/utils/session-file";
 import { SessionManager } from "../session/session-manager";
 
 /**
- * Reserved transcript stem for advisor session files. Chosen so it cannot
- * collide with a task subagent's `<id>.jsonl` (task ids are reserved against
- * this exact stem in {@link AgentOutputManager}).
+ * The advisor transcript naming contract, owned by `@veyyon/utils/session-file` and re-exported here.
+ *
+ * It lives there because `@veyyon/stats` classifies a transcript as the advisor's by matching this name and
+ * cannot import the coding agent, so it had declared the same filename itself. The stem is chosen so it
+ * cannot collide with a task subagent's `<id>.jsonl` (task ids are reserved against this exact stem in
+ * {@link AgentOutputManager}).
  */
-export const ADVISOR_TRANSCRIPT_STEM = "__advisor";
-export const ADVISOR_TRANSCRIPT_FILENAME = `${ADVISOR_TRANSCRIPT_STEM}.jsonl`;
-
-const JSONL_SUFFIX = ".jsonl";
+export {
+	ADVISOR_TRANSCRIPT_FILENAME,
+	ADVISOR_TRANSCRIPT_STEM,
+	isAdvisorTranscriptName,
+} from "@veyyon/utils/session-file";
 
 /**
  * Transcript filename for an advisor: `__advisor.jsonl` for the legacy/default
@@ -20,15 +31,7 @@ const JSONL_SUFFIX = ".jsonl";
  * separator keeps named files out of the output manager's `-<n>` bump namespace.
  */
 export function advisorTranscriptFilename(slug: string): string {
-	return slug ? `${ADVISOR_TRANSCRIPT_STEM}.${slug}${JSONL_SUFFIX}` : ADVISOR_TRANSCRIPT_FILENAME;
-}
-
-/** Whether a filename is any advisor transcript (`__advisor.jsonl` or `__advisor.<slug>.jsonl`). */
-export function isAdvisorTranscriptName(name: string): boolean {
-	return (
-		name === ADVISOR_TRANSCRIPT_FILENAME ||
-		(name.startsWith(`${ADVISOR_TRANSCRIPT_STEM}.`) && name.endsWith(JSONL_SUFFIX))
-	);
+	return slug ? sessionFileName(`${ADVISOR_TRANSCRIPT_STEM}.${slug}`) : ADVISOR_TRANSCRIPT_FILENAME;
 }
 
 /**
@@ -105,8 +108,8 @@ export class AdvisorTranscriptRecorder {
 				return;
 		}
 		const sessionFile = this.resolveSessionFile();
-		if (!sessionFile?.endsWith(JSONL_SUFFIX)) return;
-		const file = path.join(sessionFile.slice(0, -JSONL_SUFFIX.length), this.#filename);
+		if (!sessionFile || !isSessionFileName(sessionFile)) return;
+		const file = path.join(sessionFileStem(sessionFile), this.#filename);
 		const cwd = this.resolveCwd();
 		this.#enqueue(async () => {
 			if (file !== this.#file) {
@@ -153,6 +156,8 @@ export class AdvisorTranscriptRecorder {
 
 	#enqueueResult(work: () => Promise<void>): Promise<void> {
 		const next = this.#queue.then(work, work);
+		// `next` is returned and carries the failure to the caller; the queue copy must resolve so one failed
+		// record does not reject every later one. Note `then(work, work)`: the queue continues either way.
 		this.#queue = next.catch(() => {});
 		return next;
 	}

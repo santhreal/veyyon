@@ -280,7 +280,11 @@ describe("discovering override files on disk", () => {
 			readFile: async (file: string) => {
 				const dir = file.slice(0, file.lastIndexOf("/"));
 				const name = file.slice(file.lastIndexOf("/") + 1);
-				return tree[dir]?.[name] ?? null;
+				const content = tree[dir]?.[name];
+				// The reader throws rather than answering with a sentinel, matching the
+				// real one: a file the listing just named cannot be quietly skipped.
+				if (content === undefined) throw Object.assign(new Error(`ENOENT: ${file}`), { code: "ENOENT" });
+				return content;
 			},
 		};
 	}
@@ -303,6 +307,74 @@ describe("discovering override files on disk", () => {
 		const files = await loadSectionOverrideFiles({ cwd: "/repo", ...fakeFs({}) });
 
 		expect(files).toEqual([]);
+	});
+
+	/**
+	 * A directory that exists and cannot be read is NOT the same fact as one that is
+	 * not there, and the loader used to answer both with an empty list.
+	 *
+	 * The failure it caused is total and silent: a `PROMPT_SECTIONS` the process
+	 * cannot open (root-owned after a `sudo` edit, a broken symlink, a path that is a
+	 * file) drops every override the user wrote, and the agent runs the shipped prompt
+	 * with nothing logged. That is the exact false confidence this module's own header
+	 * says it exists to prevent, so it is refused rather than reported (Law 10).
+	 */
+	it("refuses a directory that exists but cannot be read", async () => {
+		const denied = async () => {
+			throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+		};
+
+		await expect(loadSectionOverrideFiles({ cwd: "/repo", listDir: denied })).rejects.toThrow(
+			/cannot read .*PROMPT_SECTIONS.*permission denied/,
+		);
+	});
+
+	/**
+	 * And the message has to say what the consequence would have been, because the
+	 * symptom the user would otherwise chase is "my override stopped working" with no
+	 * connection to a permission bit.
+	 */
+	it("says the overrides would not have been applied", async () => {
+		const denied = async () => {
+			throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+		};
+
+		await expect(loadSectionOverrideFiles({ cwd: "/repo", listDir: denied })).rejects.toThrow(/would not be applied/);
+	});
+
+	/**
+	 * The other half of the split. `ENOTDIR` means a component of the path is not a
+	 * directory, so nothing can exist below it — the same fact as `ENOENT` reached
+	 * differently, and `isMissingPath` owns that judgement rather than this loader
+	 * deciding it again.
+	 */
+	it("treats ENOTDIR as absence, like a missing directory", async () => {
+		const notADir = async () => {
+			throw Object.assign(new Error("ENOTDIR: not a directory"), { code: "ENOTDIR" });
+		};
+
+		expect(await loadSectionOverrideFiles({ cwd: "/repo", listDir: notADir })).toEqual([]);
+	});
+
+	/**
+	 * A file the LISTING just named is a different case from a missing directory: it
+	 * exists, it was written to change the prompt, and skipping it left the operator
+	 * with a file on disk that had quietly stopped doing anything. The reader used to
+	 * answer any failure with `null` and the loop dropped it without a word.
+	 */
+	it("refuses a listed file it cannot read", async () => {
+		const projectDir = "/repo/.veyyon";
+
+		await expect(
+			loadSectionOverrideFiles({
+				cwd: "/repo",
+				projectConfigDir: projectDir,
+				listDir: async (dir: string) => (dir.includes(".veyyon") ? ["role.append.md"] : []),
+				readFile: async () => {
+					throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+				},
+			}),
+		).rejects.toThrow(/cannot read prompt section override .*role\.append\.md.*permission denied/);
 	});
 
 	it("throws on a markdown file naming a section that does not exist", async () => {

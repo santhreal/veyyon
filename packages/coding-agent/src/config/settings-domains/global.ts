@@ -12,6 +12,7 @@
  * settings UI and the CLI can never disagree.
  */
 
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import {
 	DEFAULT_PROFILE_DIR_NAME,
 	readGlobalAuthBrokerSafe,
@@ -21,7 +22,7 @@ import {
 	writeGlobalAuthBrokerUrl,
 	writeGlobalDefaultProfile,
 	writeGlobalProfileSharing,
-} from "@veyyon/utils";
+} from "@veyyon/utils/dirs";
 
 /**
  * What the settings UI shows for a stored auth-broker token. The plaintext is

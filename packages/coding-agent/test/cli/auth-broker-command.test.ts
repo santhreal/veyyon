@@ -4,9 +4,10 @@
  * new token only with --regenerate).
  */
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
 import * as path from "node:path";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
+
+const makeTempDir = useTrackedTempDirs("veyyon-broker-home-");
 
 const cliPath = path.resolve(import.meta.dir, "../../src/cli.ts");
 
@@ -40,7 +41,7 @@ async function runBroker(
 
 describe("veyyon auth-broker offline", () => {
 	it("status without a configured broker explains how to enable one", async () => {
-		const env = makeEnv(mkdtempSync(path.join(tmpdir(), "veyyon-broker-home-")));
+		const env = makeEnv(makeTempDir());
 		const { stdout, exitCode } = await runBroker(env, ["status"]);
 		expect(exitCode).toBe(0);
 		expect(stdout).toContain("No auth-broker configured");
@@ -48,7 +49,7 @@ describe("veyyon auth-broker offline", () => {
 	}, 30_000);
 
 	it("list --json returns the OAuth provider catalog", async () => {
-		const env = makeEnv(mkdtempSync(path.join(tmpdir(), "veyyon-broker-home-")));
+		const env = makeEnv(makeTempDir());
 		const { stdout, exitCode } = await runBroker(env, ["list", "--json"]);
 		expect(exitCode).toBe(0);
 		const providers = JSON.parse(stdout) as { id: string; name: string }[];
@@ -63,7 +64,7 @@ describe("veyyon auth-broker offline", () => {
 	}, 30_000);
 
 	it("token is stable across calls and --regenerate mints a new one", async () => {
-		const env = makeEnv(mkdtempSync(path.join(tmpdir(), "veyyon-broker-home-")));
+		const env = makeEnv(makeTempDir());
 		const first = await runBroker(env, ["token"]);
 		expect(first.exitCode).toBe(0);
 		const token = first.stdout.trim();

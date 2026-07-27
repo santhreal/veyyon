@@ -10,15 +10,19 @@
  * retry / TTSR / compaction skip paths in `agent-session.ts`.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import type { AssistantMessage } from "@veyyon/ai";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import { TERMINAL } from "@veyyon/tui";
+import { useTrackedTempDirs } from "../../helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makeAbortguardDir = useTrackedTempDirs("veyyon-abortguard-");
 
 beforeAll(() => {
 	initTheme();
@@ -26,7 +30,7 @@ beforeAll(() => {
 
 beforeEach(async () => {
 	resetSettingsForTest();
-	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-abortguard-"));
+	const tempDir = makeAbortguardDir();
 	await Settings.init({ inMemory: true, cwd: tempDir });
 });
 

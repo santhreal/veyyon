@@ -24,7 +24,6 @@ import type {
 	ContextEvent,
 	ContextEventResult,
 	ContextUsage,
-	Extension,
 	ExtensionActions,
 	ExtensionCommandContext,
 	ExtensionCommandContextActions,
@@ -38,6 +37,7 @@ import type {
 	ExtensionUIContext,
 	InputEvent,
 	InputEventResult,
+	LoadedExtension,
 	MessageRenderer,
 	RegisteredCommand,
 	RegisteredTool,
@@ -250,7 +250,7 @@ export class ExtensionRunner {
 	#pendingCredentialDisabled: CredentialDisabledEvent[] = [];
 
 	constructor(
-		private readonly extensions: Extension[],
+		private readonly extensions: LoadedExtension[],
 		private readonly runtime: ExtensionRuntime,
 		private readonly cwd: string,
 		private readonly sessionManager: SessionManager,
@@ -381,7 +381,7 @@ export class ExtensionRunner {
 	 * runner exists — e.g. the CLI resolving `@file`/flag args before session
 	 * creation — share this exact logic instead of duplicating it.
 	 */
-	static aggregateFlags(extensions: readonly Extension[]): Map<string, ExtensionFlag> {
+	static aggregateFlags(extensions: readonly LoadedExtension[]): Map<string, ExtensionFlag> {
 		const allFlags = new Map<string, ExtensionFlag>();
 		for (const ext of extensions) {
 			for (const [name, flag] of ext.flags) {
@@ -581,7 +581,7 @@ export class ExtensionRunner {
 		handler: (event: TEvent, ctx: ExtensionContext) => Promise<TResult | undefined> | TResult | undefined,
 		event: TEvent,
 		ctx: ExtensionContext,
-		ext: Extension,
+		ext: LoadedExtension,
 		timeoutMs: number,
 	): Promise<TResult | undefined> {
 		try {
@@ -762,7 +762,7 @@ export class ExtensionRunner {
 						});
 						return {
 							block: true,
-							reason: `Extension ${ext.path} timed out after ${timeoutMs}ms`,
+							reason: `LoadedExtension ${ext.path} timed out after ${timeoutMs}ms`,
 						};
 					}
 
@@ -781,7 +781,7 @@ export class ExtensionRunner {
 						error: message,
 						stack,
 					});
-					return { block: true, reason: `Extension ${ext.path} failed: ${message}` };
+					return { block: true, reason: `LoadedExtension ${ext.path} failed: ${message}` };
 				}
 			}
 		}

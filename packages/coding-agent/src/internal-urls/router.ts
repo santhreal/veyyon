@@ -5,7 +5,8 @@
  * `InternalUrlRouter.instance()`. Handlers are stateless; per-session and
  * shared state lives in `./state.ts`.
  */
-import { urlScheme } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
+import { urlScheme } from "@veyyon/utils/url";
 import { AgentProtocolHandler } from "./agent-protocol";
 import { ArtifactProtocolHandler } from "./artifact-protocol";
 import { HistoryProtocolHandler } from "./history-protocol";

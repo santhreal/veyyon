@@ -1,0 +1,5 @@
+
+<personality>
+{{personality}}
+</personality>
+

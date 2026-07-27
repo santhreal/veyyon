@@ -1,17 +1,29 @@
 /**
- * AgentDashboard - dedicated control center for Task subagent configuration.
+ * AgentDashboard - the Agent Control Center.
  *
- * Layout:
- * - Top: source tabs (All, Project, User, Bundled)
- * - Body: two-column view (agent list + inspector)
+ * Three views, one card:
+ * - Live: every agent running in this process right now and what each is doing.
+ *   Enter opens a lens on one agent; Esc leaves the lens.
+ * - Room: every agent's turns interleaved into one conversation, the driving
+ *   session labelled `Main` and each subagent under a stable call sign.
+ * - Agents: the configuration list -- every discovered agent, enabled or not,
+ *   with a one-line description, an enable toggle, and a model override.
  *
- * Controls:
+ * WHY THESE THREE. The top strip used to filter the configuration list by where
+ * an agent's file lives (All / Project / User / Bundled). That is not something
+ * anyone opens this card to find out -- it does not say whether an agent is on,
+ * what it costs, or what it is doing -- and with a handful of agents installed
+ * every tab showed nearly the same rows. The strip now switches between three
+ * genuinely different questions, and the source of an agent survives as a dim
+ * badge on its row, which is all it was ever worth.
+ *
+ * Controls (list views):
  * - Up/Down or j/k: move selection
- * - Tab / Shift+Tab or Left/Right: switch source tab
- * - Space: enable/disable selected agent
- * - Enter: edit model override for selected agent
- * - N: start agent creation flow
- * - Esc: clear search (if any) or close dashboard
+ * - Tab / Shift+Tab or Left/Right: switch view
+ * - Space: enable/disable selected agent (Agents view)
+ * - Enter: open the lens (Live view) or edit the model override (Agents view)
+ * - N: start agent creation flow (Agents view)
+ * - Esc: leave the lens, clear the search, or close the card
  * - Ctrl+R: reload discovered agents
  */
 import * as fs from "node:fs/promises";
@@ -34,7 +46,7 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
-import { clampLow, errorMessage, isEnoent, prompt } from "@veyyon/utils";
+import { clampLow, errorMessage, formatAge, isEnoent, prompt } from "@veyyon/utils";
 import { YAML } from "bun";
 import { getConfigDirs } from "../../config";
 import type { ModelRegistry } from "../../config/model-registry";
@@ -42,12 +54,16 @@ import { formatModelString, resolveConfiguredModelPatterns, resolveModelOverride
 import { DEFAULT_MODEL_SLOT } from "../../config/model-roles";
 import { Settings } from "../../config/settings";
 import type { SubagentAgentSettings } from "../../config/settings-domains/subagents";
-import { PROMPTS } from "../../prompts/registry";
+import { subagentPrompts } from "../../prompts/subagent/rows";
+import { AgentRegistry } from "../../registry/agent-registry";
 import { createAgentSession } from "../../sdk";
+import { parseSessionEntries } from "../../session/session-loader";
 import { discoverAgents } from "../../task/discovery";
 import {
+	delegationBlockedNotice,
 	nextSubagentEnableValue,
 	type ResolvedSubagentModel,
+	resolveDelegation,
 	resolveSubagentModel,
 	SUBAGENT_ENABLE_STATE_LABEL,
 	type SubagentEnableState,
@@ -65,6 +81,16 @@ import {
 	matchesSelectUp,
 } from "../utils/keybinding-matchers";
 import {
+	collectLiveAgents,
+	type LiveAgent,
+	MAIN_CALL_SIGN,
+	mergeRoomMessages,
+	type RoomMessage,
+	roomMessagesFrom,
+	runningAgents,
+} from "./agent-activity";
+import { agentStatusGlyph, agentStatusWord } from "./agent-status-display";
+import {
 	applyModalReveal,
 	computeModalDims,
 	hitTestModalChrome,
@@ -78,26 +104,31 @@ import {
 } from "./modal-shell";
 import { clampSelection, handleTabSwitchKey, searchableChar } from "./selector-helpers";
 
-type SourceTabId = "all" | AgentSource;
-type AgentScope = "project" | "user";
+/** Which of the card's three views is showing. */
+type ViewId = "live" | "room" | "agents";
 
-interface SourceTab {
-	id: SourceTabId;
+interface ViewTab {
+	id: ViewId;
 	label: string;
+	/** Rows behind the tab, so the strip says how much is there before you switch. */
 	count: number;
 }
+
+const VIEW_ORDER: readonly ViewId[] = ["live", "room", "agents"];
+
+type AgentScope = "project" | "user";
 
 interface DashboardAgent extends AgentDefinition {
 	/**
 	 * The agent's `subagent.agents.<name>.enabled` value VERBATIM, including
 	 * `undefined` for "no row".
 	 *
-	 * Three states, not two: an absent row means the shipped default, and for a
-	 * bundled specialist that default is "not offered to the model, but still runs
-	 * when a command or you name it outright" — which is what keeps `/review`
-	 * working with the specialists off. Collapsing that to a boolean is what made
-	 * the old dashboard claim an agent was disabled while a second setting still
-	 * held a model for it.
+	 * Two states are shown and three are stored: `true`, `false`, and "no row",
+	 * which means the shipped default. The third is not a third BEHAVIOUR — a
+	 * disabled agent is disabled, whichever way it got there — it is how an agent
+	 * left alone keeps tracking the default if the default later changes. Writing
+	 * it back verbatim is what stops the dashboard from inventing an explicit
+	 * choice the operator never made.
 	 */
 	enabled?: boolean;
 	overrideModel?: string;
@@ -115,15 +146,14 @@ function enableStateOf(agent: DashboardAgent): SubagentEnableState {
  */
 function enableStateDisplay(state: SubagentEnableState): { symbol: string; label: string; dim: boolean } {
 	const label = SUBAGENT_ENABLE_STATE_LABEL[state];
-	switch (state) {
-		case "on":
-		case "default-on":
-			return { symbol: theme.fg("success", theme.status.enabled), label: theme.fg("success", label), dim: false };
-		case "default-off":
-			return { symbol: theme.fg("warning", theme.status.disabled), label: theme.fg("warning", label), dim: true };
-		case "off":
-			return { symbol: theme.fg("dim", theme.status.disabled), label: theme.fg("dim", label), dim: true };
+	if (state === "on") {
+		return { symbol: theme.fg("success", theme.status.enabled), label: theme.fg("success", label), dim: false };
 	}
+	// One disabled look, because there is one disabled meaning. The old vocabulary
+	// had two — a warning-coloured "not offered (default)" and a dim "blocked" —
+	// which spent the reader's attention on a distinction that changed nothing
+	// about whether the agent runs.
+	return { symbol: theme.fg("dim", theme.status.disabled), label: theme.fg("dim", label), dim: true };
 }
 
 interface ModelResolution {
@@ -156,16 +186,52 @@ const SOURCE_LABEL: Record<AgentSource, string> = {
 	bundled: "Bundled",
 };
 
-/** ModalShell footer chips for the list/inspector view. */
+/** ModalShell footer chips for the Agents (configuration) view. */
 const AGENT_LIST_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "up/down navigate" },
 	{ label: "space toggle" },
 	{ label: "enter override" },
 	{ label: "n new agent" },
-	{ label: "left/right source" },
+	{ label: "m model breakdown" },
+	{ label: "left/right view" },
 	{ label: "ctrl+r reload" },
 	{ label: "esc close", clickable: true, id: "close" },
 ];
+
+/** ModalShell footer chips for the Live roster. */
+const LIVE_SHORTCUTS: readonly ModalShortcut[] = [
+	{ label: "up/down navigate" },
+	{ label: "enter open lens" },
+	{ label: "left/right view" },
+	{ label: "esc close", clickable: true, id: "close" },
+];
+
+/** ModalShell footer chips inside a single agent's lens. */
+const LENS_SHORTCUTS: readonly ModalShortcut[] = [
+	{ label: "esc back to live", clickable: true, id: "close" },
+	{ label: "left/right view" },
+];
+
+/** ModalShell footer chips for the Room transcript. */
+const ROOM_SHORTCUTS: readonly ModalShortcut[] = [
+	{ label: "up/down scroll" },
+	{ label: "left/right view" },
+	{ label: "ctrl+r reload" },
+	{ label: "esc close", clickable: true, id: "close" },
+];
+
+/**
+ * Turns held in the Room view.
+ *
+ * A cap, not a page: the room reads from the bottom, so this bounds the work of
+ * re-reading every agent's session file on refresh without ever hiding the part
+ * being watched. Older turns stay in the full transcript, which is what the
+ * Agent Hub's per-agent viewer is for.
+ */
+const ROOM_MESSAGE_LIMIT = 300;
+
+/** Lines of one turn shown in the Room before it is elided. */
+const ROOM_TURN_PREVIEW_LINES = 6;
 
 /** ModalShell footer chips for create/edit sub-views, which carry their own inline hint line. */
 const AGENT_SUBVIEW_SHORTCUTS: readonly ModalShortcut[] = [{ label: "esc cancel", clickable: true, id: "close" }];
@@ -320,6 +386,8 @@ class AgentInspectorPane implements Component {
 		private readonly effectivePatterns: string[],
 		private readonly effectiveResolution: ModelResolution | undefined,
 		private readonly effectiveModel: ResolvedSubagentModel | undefined,
+		/** Show the four-stage model resolution walk (the `m` key). */
+		private readonly showBreakdown: boolean,
 	) {}
 
 	render(width: number): readonly string[] {
@@ -329,34 +397,37 @@ class AgentInspectorPane implements Component {
 
 		const lines: string[] = [];
 		const display = enableStateDisplay(enableStateOf(this.agent));
-		const state = `${display.symbol} ${display.label}`;
 
 		lines.push(theme.bold(theme.fg("accent", replaceTabs(this.agent.name))));
+		lines.push(theme.fg("dim", `${SOURCE_LABEL[this.agent.source]} agent`));
 		lines.push("");
-		lines.push(`${theme.fg("muted", "Status:")} ${state}`);
-		lines.push(`${theme.fg("muted", "Source:")} ${SOURCE_LABEL[this.agent.source]}`);
+		lines.push(`${display.symbol} ${display.label}`);
 		lines.push("");
 
-		lines.push(`${theme.fg("muted", "Default pattern:")} ${replaceTabs(joinPatterns(this.defaultPatterns))}`);
-		lines.push(
-			`${theme.fg("muted", "Default resolves:")} ${this.defaultResolution ? this.#formatResolution(this.defaultResolution) : theme.fg("dim", "(unresolved)")}`,
-		);
-		lines.push(
-			`${theme.fg("muted", "Override:")} ${this.agent.overrideModel ? theme.fg("warning", replaceTabs(this.agent.overrideModel)) : theme.fg("dim", "(none)")}`,
-		);
-		lines.push(`${theme.fg("muted", "Effective pattern:")} ${replaceTabs(joinPatterns(this.effectivePatterns))}`);
-		lines.push(
-			`${theme.fg("muted", "Effective:")} ${this.effectiveResolution ? this.#formatResolution(this.effectiveResolution) : theme.fg("dim", "(unresolved)")}`,
-		);
-		// WHICH setting decided, always shown. Four layers can name a subagent's
-		// model, and an operator who cannot see which one answered has no way to
-		// tell an override that took effect from one that was outranked — the exact
-		// confusion this settings area exists to end.
-		if (this.effectiveModel) {
-			lines.push(
-				`${theme.fg("muted", "Decided by:")} ${theme.fg("dim", subagentModelSourceLabel(this.effectiveModel.source, this.agent.name))}`,
-			);
+		// WHAT IT IS FOR, high and in full. A specialist has to be discoverable
+		// BEFORE it is enabled, and the description is the only thing that says
+		// what it does — it used to sit last, under seven lines of model plumbing,
+		// where an operator deciding whether to turn the agent on never reached it.
+		if (this.agent.description) {
+			for (const wrapped of wrapTextWithAnsi(replaceTabs(this.agent.description), Math.max(10, width - 2))) {
+				lines.push(truncateToWidth(wrapped, width));
+			}
+			lines.push("");
 		}
+
+		// ONE model line: the model it will run on, and the setting that decided.
+		// The pane used to spend five lines walking the same fact through its
+		// resolution stages — `Default pattern`, `Default resolves`, `Override`,
+		// `Effective pattern`, `Effective` — which on a stock install are pairwise
+		// identical, so the reader paid five lines to learn one thing.
+		const runsOn = this.effectiveResolution
+			? this.#formatResolution(this.effectiveResolution)
+			: theme.fg("dim", "(unresolved)");
+		const decidedBy = this.effectiveModel
+			? theme.fg("dim", ` · ${subagentModelSourceLabel(this.effectiveModel.source, this.agent.name)}`)
+			: "";
+		lines.push(`${theme.fg("muted", "Runs on:")} ${runsOn}${decidedBy}`);
+
 		if (this.effectiveModel?.unresolved) {
 			const { source, value } = this.effectiveModel.unresolved;
 			lines.push(
@@ -367,18 +438,29 @@ class AgentInspectorPane implements Component {
 			);
 		}
 
-		if (this.agent.filePath) {
+		// The breakdown stays reachable, behind a key. It earns its space exactly
+		// when the stages DISAGREE — an override that took effect, or one that was
+		// outranked by a higher layer — and that is a question you ask on purpose.
+		if (this.showBreakdown) {
 			lines.push("");
-			lines.push(theme.fg("muted", "Path:"));
-			lines.push(theme.fg("dim", `  ${replaceTabs(shortenPath(this.agent.filePath))}`));
-		}
-
-		if (this.agent.description) {
-			lines.push("");
-			lines.push(theme.fg("muted", "Description:"));
-			for (const wrapped of wrapTextWithAnsi(replaceTabs(this.agent.description), Math.max(10, width - 2))) {
-				lines.push(truncateToWidth(wrapped, width));
+			lines.push(`${theme.fg("muted", "Default pattern:")} ${replaceTabs(joinPatterns(this.defaultPatterns))}`);
+			lines.push(
+				`${theme.fg("muted", "Default resolves:")} ${this.defaultResolution ? this.#formatResolution(this.defaultResolution) : theme.fg("dim", "(unresolved)")}`,
+			);
+			lines.push(
+				`${theme.fg("muted", "Override:")} ${this.agent.overrideModel ? theme.fg("warning", replaceTabs(this.agent.overrideModel)) : theme.fg("dim", "(none)")}`,
+			);
+			lines.push(`${theme.fg("muted", "Effective pattern:")} ${replaceTabs(joinPatterns(this.effectivePatterns))}`);
+			if (this.agent.filePath) {
+				lines.push(
+					`${theme.fg("muted", "Path:")} ${theme.fg("dim", replaceTabs(shortenPath(this.agent.filePath)))}`,
+				);
 			}
+			lines.push("");
+			lines.push(theme.fg("dim", "m: hide model breakdown"));
+		} else {
+			lines.push("");
+			lines.push(theme.fg("dim", "m: model breakdown"));
 		}
 
 		return lines;
@@ -386,6 +468,240 @@ class AgentInspectorPane implements Component {
 
 	#formatResolution(resolution: ModelResolution): string {
 		return formatResolution(resolution);
+	}
+
+	invalidate(): void {}
+}
+
+/**
+ * Seconds between two epoch-millisecond stamps, for {@link formatAge}.
+ *
+ * `formatAge` takes SECONDS and appends " ago" itself. Handing it milliseconds
+ * showed a four-second-old agent as "1h ago" and a two-minute-old one as "1d
+ * ago", and appending a second " ago" at the call site read as "51m ago ago".
+ * One helper so both surfaces convert once and neither restates the unit.
+ */
+function ageSeconds(now: number, at: number): number {
+	return Math.max(0, Math.round((now - at) / 1000));
+}
+
+/**
+ * The Live roster: one row per agent that exists in this process right now.
+ *
+ * Deliberately NOT the configuration list. The old inspector listed every
+ * discovered agent whether or not it had ever run, so a stock install showed
+ * five specialists that were disabled and idle, presented with the same weight
+ * as the one agent actually doing work. This pane only ever shows agents that
+ * exist, which means a disabled specialist cannot appear in it at all -- not by
+ * a filter that could drift, but because a disabled agent is never spawned and
+ * so never registers.
+ */
+class LiveRosterPane implements Component {
+	constructor(
+		private readonly agents: readonly LiveAgent[],
+		private readonly selectedIndex: number,
+		private readonly scrollOffset: number,
+		private readonly maxVisible: number,
+		private readonly now: number,
+	) {}
+
+	render(width: number): readonly string[] {
+		if (this.agents.length === 0) {
+			return [
+				theme.fg("muted", "  Nothing running."),
+				"",
+				theme.fg("dim", "  Subagents appear here the moment they spawn."),
+				theme.fg("dim", "  Configure which ones the model may choose in the Agents view."),
+			];
+		}
+
+		const rows: string[] = [];
+		const start = this.scrollOffset;
+		const end = Math.min(start + this.maxVisible, this.agents.length);
+		for (let i = start; i < end; i++) {
+			const agent = this.agents[i];
+			const selected = i === this.selectedIndex;
+			const glyph = agentStatusGlyph(agent.status);
+			const name = theme.bold(replaceTabs(agent.callSign));
+			const status = theme.fg("dim", agentStatusWord(agent.status));
+			const age = theme.fg("dim", formatAge(ageSeconds(this.now, agent.lastActivity)));
+			// The activity gist IS the answer to "what is it doing", so it gets the
+			// rest of the row rather than a truncated column of its own.
+			const doing = agent.activity
+				? theme.fg("muted", replaceTabs(agent.activity))
+				: theme.fg("dim", replaceTabs(agent.displayName));
+			let line = ` ${glyph} ${name} ${status} ${age}  ${doing}`;
+			if (selected) line = theme.bg("selectedBg", theme.fg("accent", line));
+			rows.push(truncateToWidth(line, width));
+		}
+
+		const sv = new ScrollView(rows, {
+			height: rows.length,
+			scrollbar: "auto",
+			totalRows: this.agents.length,
+			theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+		});
+		sv.setScrollOffset(this.scrollOffset);
+		return sv.render(width);
+	}
+
+	invalidate(): void {}
+}
+
+/**
+ * One agent, up close: the lens Enter opens over the Live roster.
+ *
+ * Everything here is already true somewhere else in the process -- the point is
+ * that it is true in ONE place a reader can look at while the agent is running,
+ * instead of spread across a status line count, a roster row, and a session file
+ * path nobody has.
+ */
+class AgentLensPane implements Component {
+	constructor(
+		private readonly agent: LiveAgent,
+		private readonly now: number,
+	) {}
+
+	render(width: number): readonly string[] {
+		const lines: string[] = [];
+		const agent = this.agent;
+		// The id only earns a place when it says something the call sign does not.
+		// For the driving session the two are the same word, and `Main (Main)` reads
+		// as a bug in the header.
+		const id = agent.id === agent.callSign ? "" : ` ${theme.fg("dim", `(${replaceTabs(agent.id)})`)}`;
+		lines.push(
+			`${theme.bold(theme.fg("accent", replaceTabs(agent.callSign)))}${id}  ${agentStatusGlyph(agent.status)} ${agentStatusWord(agent.status)}`,
+		);
+		lines.push("");
+
+		// WHAT IT IS DOING, first. The lens is opened mid-run to answer that one
+		// question, and it used to sit below five lines of metadata -- which put it
+		// past the card's body budget on a normal terminal, so the one line worth
+		// opening the lens for was the line that got clipped off the bottom.
+		// A finished agent has no current work, and the registry clears the gist when
+		// it leaves `running`, so say that rather than leave the last thing it did
+		// sitting there looking live.
+		const doing = agent.activity ?? (agent.status === "running" ? "(no activity reported yet)" : "(finished)");
+		for (const wrapped of wrapTextWithAnsi(replaceTabs(doing), Math.max(10, width - 2))) {
+			lines.push(truncateToWidth(wrapped, width));
+		}
+		lines.push("");
+		lines.push(`${theme.fg("muted", "Task:")} ${replaceTabs(agent.displayName)}`);
+		lines.push("");
+
+		lines.push(
+			`${theme.fg("muted", "Model:")} ${agent.model ? replaceTabs(agent.model) : theme.fg("dim", "(unknown)")} ${theme.fg("dim", `· ${agent.kind}`)}`,
+		);
+		lines.push(
+			`${theme.fg("muted", "Started:")} ${formatAge(ageSeconds(this.now, agent.createdAt))} ${theme.fg("dim", "·")} ${theme.fg("muted", "last activity")} ${formatAge(ageSeconds(this.now, agent.lastActivity))}`,
+		);
+		if (agent.sessionFile) {
+			lines.push(
+				`${theme.fg("muted", "Transcript:")} ${theme.fg("dim", replaceTabs(shortenPath(agent.sessionFile)))}`,
+			);
+		}
+		return lines;
+	}
+
+	invalidate(): void {}
+}
+
+/**
+ * The Room: every agent's turns in one conversation.
+ *
+ * The tab this replaced filtered the configuration list down to "Bundled",
+ * which told you which agents shipped with the product -- a fact that never
+ * changes and that nobody needs a tab for. A multi-agent run, on the other
+ * hand, is genuinely hard to follow: each subagent's words live in its own
+ * session file, and the only way to read the run as it happened was to open
+ * them one at a time. This is that run as a single thread, each speaker under
+ * the call sign the Live roster gives them.
+ */
+class RoomPane implements Component {
+	constructor(
+		private readonly messages: readonly RoomMessage[],
+		/**
+		 * Rows scrolled past, or `"tail"` for "stay on the newest".
+		 *
+		 * `"tail"` is a state, not the number that happens to mean the bottom right
+		 * now. How many rows a room occupies depends on the width it wraps at and the
+		 * height it is measured against, and both are only final at RENDER time -- a
+		 * number computed earlier (when the transcript read finished, at a stale card
+		 * geometry) put the view four turns short of the end, under a scrollbar drawn
+		 * at the bottom. So the tail resolves here, where the rows exist.
+		 */
+		private readonly scrollOffset: number | "tail",
+		private readonly maxVisible: number,
+		private readonly loading: boolean,
+		/** Report the resolved start row back, so scrolling up has a number to leave from. */
+		private readonly onResolvedStart?: (start: number) => void,
+	) {}
+
+	/** Rendered rows for the whole room, before scrolling. Shared by render and the scroll bounds. */
+	static layout(messages: readonly RoomMessage[], width: number): string[] {
+		const rows: string[] = [];
+		let lastSpeaker: string | null = null;
+		for (const message of messages) {
+			// One header per consecutive run by the same speaker: a name repeated
+			// above every turn is how a chat log turns into a wall.
+			if (message.speaker !== lastSpeaker) {
+				if (rows.length > 0) rows.push("");
+				// The driving session is the one speaker a reader needs to pick out at a
+				// glance -- it is where their own words are, and where the run is being
+				// steered from -- so it is bold and accented while the call signs stay
+				// muted. Rendering both bold made every header look the same, which is
+				// the failure mode of a chat log with six participants.
+				const who =
+					message.speaker === MAIN_CALL_SIGN
+						? theme.bold(theme.fg("accent", message.speaker))
+						: theme.fg("muted", message.speaker);
+				const role = theme.fg("dim", message.role === "user" ? "prompt" : "says");
+				rows.push(`${who} ${role}`);
+				lastSpeaker = message.speaker;
+			}
+			const wrapped: string[] = [];
+			for (const raw of message.text.split("\n")) {
+				for (const line of wrapTextWithAnsi(replaceTabs(raw), Math.max(10, width - 4))) {
+					wrapped.push(line);
+				}
+			}
+			const shown = wrapped.slice(0, ROOM_TURN_PREVIEW_LINES);
+			for (const line of shown) rows.push(truncateToWidth(`  ${line}`, width));
+			if (wrapped.length > shown.length) {
+				rows.push(theme.fg("dim", `  … ${wrapped.length - shown.length} more lines`));
+			}
+		}
+		return rows;
+	}
+
+	render(width: number): readonly string[] {
+		if (this.loading) return [theme.fg("muted", "  Reading transcripts…")];
+		if (this.messages.length === 0) {
+			return [
+				theme.fg("muted", "  Nothing said yet."),
+				"",
+				theme.fg("dim", "  Every agent's turns land here as one conversation,"),
+				theme.fg("dim", `  the driving session as ${MAIN_CALL_SIGN} and each subagent under a call sign.`),
+			];
+		}
+		const rows = RoomPane.layout(this.messages, width);
+		// Pre-sliced, because passing `totalRows` puts ScrollView in the mode where
+		// the CALLER windows and the component only draws the bar. Handing it the
+		// whole room with an offset set rendered the first screen under a scrollbar
+		// parked at the bottom: the bar said "you are at the end" over the opening
+		// of the conversation.
+		const maxStart = Math.max(0, rows.length - this.maxVisible);
+		const start = this.scrollOffset === "tail" ? maxStart : Math.min(this.scrollOffset, maxStart);
+		this.onResolvedStart?.(start);
+		const windowed = rows.slice(start, start + this.maxVisible);
+		const sv = new ScrollView(windowed, {
+			height: windowed.length,
+			scrollbar: "auto",
+			totalRows: rows.length,
+			theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+		});
+		sv.setScrollOffset(start);
+		return sv.render(width);
 	}
 
 	invalidate(): void {}
@@ -427,10 +743,43 @@ export class AgentDashboard extends Container {
 	#settingsManager: Settings | null = null;
 	#allAgents: DashboardAgent[] = [];
 	#filteredAgents: DashboardAgent[] = [];
-	#tabs: SourceTab[] = [{ id: "all", label: "All", count: 0 }];
-	#activeTabIndex = 0;
+	#activeView: ViewId = "live";
 	#selectedIndex = 0;
 	#scrollOffset = 0;
+
+	/** Live roster, refreshed from the process-global registry on every change. */
+	#liveAgents: LiveAgent[] = [];
+	#liveSelectedIndex = 0;
+	#liveScrollOffset = 0;
+	/** Agent id the lens is open on, or null while the roster is showing. */
+	#lensAgentId: string | null = null;
+	#registryUnsubscribe: (() => void) | null = null;
+
+	#roomMessages: RoomMessage[] = [];
+	/** Rows scrolled past, or `"tail"` while the room follows the newest turn. */
+	#roomScrollOffset: number | "tail" = "tail";
+	/** Start row the pane last resolved, so leaving the tail has a number to leave from. */
+	#roomResolvedStart = 0;
+	#roomLoading = false;
+	#roomError: string | null = null;
+	/**
+	 * Room reads are serialized by generation, not cancelled.
+	 *
+	 * Reading every agent's session file is async, so a second refresh can start
+	 * before the first finishes and land its (older) result last. The generation
+	 * counter makes a stale read drop its own result instead of overwriting a
+	 * newer one, which would show a room that silently rewinds.
+	 */
+	#roomGeneration = 0;
+
+	/**
+	 * Whether the inspector walks the four model-resolution stages.
+	 *
+	 * Off by default and sticky while the card is open: someone comparing an
+	 * override across several agents wants it open for all of them, and someone
+	 * who never needs it never sees it.
+	 */
+	#showModelBreakdown = false;
 	#searchQuery = "";
 	#loading = true;
 	#loadError: string | null = null;
@@ -493,8 +842,81 @@ export class AgentDashboard extends Container {
 
 	async #init(): Promise<void> {
 		this.#settingsManager = this.settings ?? (await Settings.init());
+		this.#refreshLiveAgents();
+		// The card opens on whatever there is to see. With a subagent in flight the
+		// live picture is the reason it was opened; with nothing running the card is
+		// being used to configure, so it opens on the configuration list. Nothing is
+		// hidden either way — the strip shows all three views with their counts.
+		this.#activeView = this.#liveAgents.some(agent => agent.status === "running") ? "live" : "agents";
+		this.#registryUnsubscribe = AgentRegistry.global().onChange(() => {
+			this.#refreshLiveAgents();
+			this.#rebuildAndRender();
+		});
 		await this.#reloadData();
 		this.#buildLayout();
+	}
+
+	/**
+	 * Drop the registry subscription.
+	 *
+	 * The registry is process-global and outlives every card opened against it, so
+	 * a card that closed without unsubscribing would keep rebuilding a layout
+	 * nobody is looking at for the rest of the session, once per agent event.
+	 */
+	dispose(): void {
+		this.#registryUnsubscribe?.();
+		this.#registryUnsubscribe = null;
+	}
+
+	#refreshLiveAgents(): void {
+		this.#liveAgents = collectLiveAgents(AgentRegistry.global().list());
+		if (this.#lensAgentId && !this.#liveAgents.some(agent => agent.id === this.#lensAgentId)) {
+			// The agent the lens was open on was released. Fall back to the roster
+			// rather than render a lens over nothing.
+			this.#lensAgentId = null;
+		}
+		this.#liveSelectedIndex = clampLow(this.#liveSelectedIndex, 0, Math.max(0, this.#liveAgents.length - 1));
+	}
+
+	#lensAgent(): LiveAgent | null {
+		if (!this.#lensAgentId) return null;
+		return this.#liveAgents.find(agent => agent.id === this.#lensAgentId) ?? null;
+	}
+
+	/**
+	 * Rebuild the room from every agent's session file.
+	 *
+	 * Read at the edge, merged by the pure helpers in `agent-activity`: a file
+	 * that cannot be read contributes nothing and is reported, because a room
+	 * silently missing one speaker's half of the conversation is worse than one
+	 * that says a transcript could not be read.
+	 */
+	async #reloadRoom(): Promise<void> {
+		const generation = ++this.#roomGeneration;
+		this.#roomLoading = true;
+		this.#roomError = null;
+		this.#rebuildAndRender();
+
+		const streams: RoomMessage[][] = [];
+		const failed: string[] = [];
+		for (const agent of this.#liveAgents) {
+			if (!agent.sessionFile) continue;
+			try {
+				const content = await Bun.file(agent.sessionFile).text();
+				streams.push(roomMessagesFrom(agent, parseSessionEntries(content)));
+			} catch (error) {
+				failed.push(`${agent.callSign}: ${errorMessage(error)}`);
+			}
+		}
+		if (generation !== this.#roomGeneration) return;
+
+		this.#roomMessages = mergeRoomMessages(streams, ROOM_MESSAGE_LIMIT);
+		this.#roomError = failed.length > 0 ? `Could not read ${failed.length} transcript(s) — ${failed[0]}` : null;
+		this.#roomLoading = false;
+		// A conversation is read from the bottom, so a fresh room starts there --
+		// as the STATE "tail", resolved at render time against the real geometry.
+		this.#roomScrollOffset = "tail";
+		this.#rebuildAndRender();
 	}
 
 	async #reloadData(): Promise<void> {
@@ -504,7 +926,6 @@ export class AgentDashboard extends Container {
 
 		try {
 			const selectedName = this.#selectedAgent()?.name;
-			const activeTabId = this.#tabs[this.#activeTabIndex]?.id ?? "all";
 			const { agents } = await discoverAgents(this.cwd);
 			const settings = this.#settingsManager;
 
@@ -526,9 +947,6 @@ export class AgentDashboard extends Container {
 					};
 				});
 
-			this.#tabs = this.#buildTabs(this.#allAgents);
-			const nextTabIndex = this.#tabs.findIndex(tab => tab.id === activeTabId);
-			this.#activeTabIndex = nextTabIndex >= 0 ? nextTabIndex : 0;
 			this.#applyFilters();
 
 			if (selectedName) {
@@ -541,8 +959,6 @@ export class AgentDashboard extends Container {
 		} catch (error) {
 			this.#allAgents = [];
 			this.#filteredAgents = [];
-			this.#tabs = [{ id: "all", label: "All", count: 0 }];
-			this.#activeTabIndex = 0;
 			this.#selectedIndex = 0;
 			this.#scrollOffset = 0;
 			this.#loadError = errorMessage(error);
@@ -552,38 +968,38 @@ export class AgentDashboard extends Container {
 		}
 	}
 
-	#buildTabs(agents: DashboardAgent[]): SourceTab[] {
-		const tabs: SourceTab[] = [{ id: "all", label: "All", count: agents.length }];
-		const counts: Record<AgentSource, number> = { project: 0, user: 0, bundled: 0 };
-
-		for (const agent of agents) {
-			counts[agent.source] += 1;
-		}
-
-		for (const source of ["project", "user", "bundled"] as const) {
-			if (counts[source] > 0) {
-				tabs.push({ id: source, label: SOURCE_LABEL[source], count: counts[source] });
-			}
-		}
-
-		return tabs;
+	/**
+	 * The view strip: three questions, with how much sits behind each.
+	 *
+	 * Live counts what is RUNNING rather than what is registered, because an idle
+	 * or parked agent is history, and a count that includes history never returns
+	 * to zero once the session has spawned anything.
+	 */
+	#viewTabs(): ViewTab[] {
+		return [
+			{ id: "live", label: "Live", count: runningAgents(this.#liveAgents).length },
+			{ id: "room", label: "Room", count: this.#roomMessages.length },
+			{ id: "agents", label: "Agents", count: this.#allAgents.length },
+		];
 	}
 
 	#selectedAgent(): DashboardAgent | null {
 		return this.#filteredAgents[this.#selectedIndex] ?? null;
 	}
 
+	/**
+	 * Apply the search box to the configuration list.
+	 *
+	 * There is no source filter any more: every discovered agent is always in this
+	 * list, and where its file came from is a dim badge on the row. Filtering by
+	 * source hid agents behind a distinction that changes nothing about what they
+	 * do, and the search box already covers the case where someone genuinely wants
+	 * only their project's agents — `project` is one of the fields it matches.
+	 */
 	#applyFilters(): void {
-		const activeTab = this.#tabs[this.#activeTabIndex] ?? this.#tabs[0];
-		const tabFiltered =
-			activeTab.id === "all" ? this.#allAgents : this.#allAgents.filter(agent => agent.source === activeTab.id);
-
-		if (!this.#searchQuery) {
-			this.#filteredAgents = tabFiltered;
-		} else {
-			this.#filteredAgents = tabFiltered.filter(agent => matchAgent(agent, this.#searchQuery));
-		}
-
+		this.#filteredAgents = this.#searchQuery
+			? this.#allAgents.filter(agent => matchAgent(agent, this.#searchQuery))
+			: this.#allAgents;
 		this.#clampSelection();
 	}
 
@@ -619,6 +1035,8 @@ export class AgentDashboard extends Container {
 		if (this.#createSpec || this.#createInput || this.#createGenerating || this.#editInput) {
 			return AGENT_SUBVIEW_SHORTCUTS;
 		}
+		if (this.#activeView === "live") return this.#lensAgent() ? LENS_SHORTCUTS : LIVE_SHORTCUTS;
+		if (this.#activeView === "room") return ROOM_SHORTCUTS;
 		return AGENT_LIST_SHORTCUTS;
 	}
 
@@ -710,19 +1128,24 @@ export class AgentDashboard extends Container {
 	}
 
 	/**
-	 * Cycle this agent through the three states `space` can express: the shipped
-	 * default, offered to the model, blocked outright.
+	 * Turn this agent on or off. Two states, because there are two.
 	 *
-	 * A two-state toggle cannot say all three, and the middle one matters: a bundled
-	 * specialist at its default is kept out of the tool description (that is the
-	 * token saving) yet still runs when `/review` or you name it. Blocking is a
-	 * separate, stronger choice, and it must be reachable from here rather than only
-	 * by hand-editing `config.yml`.
+	 * This used to cycle three ways — shipped default, offered, blocked — and the
+	 * middle stop was a state where the agent stayed out of the tool description
+	 * "yet still runs when /review or you name it". That is what made the switch
+	 * unreadable: a user pressing `space` until it said off had not turned it off.
+	 * Enabled now means the model may choose this agent and disabled means it may
+	 * not, and a `/` command that names an agent is granted for that turn by the
+	 * command itself, so `/review` needs no state of its own here.
+	 *
+	 * The toggle always writes an explicit value rather than clearing back to the
+	 * default: clearing would be a keypress that changes nothing a reader can see,
+	 * and an explicit choice survives a change to the shipped default.
 	 */
 	#toggleSelectedAgent(): void {
 		const selected = this.#selectedAgent();
 		if (!selected) return;
-		selected.enabled = nextSubagentEnableValue(selected.enabled);
+		selected.enabled = nextSubagentEnableValue(selected, selected.enabled);
 		this.#persistAgentRows();
 		this.#buildLayout();
 	}
@@ -855,8 +1278,8 @@ export class AgentDashboard extends Container {
 			throw new Error("No available model to generate agent specification.");
 		}
 
-		const systemPrompt = prompt.render(PROMPTS["subagent/agent-creation-architect"].text, {});
-		const userPrompt = prompt.render(PROMPTS["subagent/agent-creation-user"].text, { request: description });
+		const systemPrompt = prompt.render(subagentPrompts["subagent/agent-creation-architect"].text, {});
+		const userPrompt = prompt.render(subagentPrompts["subagent/agent-creation-user"].text, { request: description });
 
 		const { session } = await createAgentSession({
 			cwd: this.cwd,
@@ -958,16 +1381,49 @@ export class AgentDashboard extends Container {
 		return matches;
 	}
 
-	#switchTab(direction: 1 | -1): void {
-		if (this.#tabs.length === 0) return;
-		this.#activeTabIndex = (this.#activeTabIndex + direction + this.#tabs.length) % this.#tabs.length;
-		this.#selectedIndex = 0;
-		this.#scrollOffset = 0;
-		this.#applyFilters();
+	/**
+	 * Move to the next view.
+	 *
+	 * Switching always leaves the lens: the lens is a layer inside Live, and
+	 * coming back to Live to find yourself still inside an agent you opened
+	 * several views ago is the kind of hidden state that makes Esc unpredictable.
+	 */
+	#switchView(direction: 1 | -1): void {
+		const index = VIEW_ORDER.indexOf(this.#activeView);
+		this.#activeView = VIEW_ORDER[(index + direction + VIEW_ORDER.length) % VIEW_ORDER.length];
+		this.#lensAgentId = null;
+		if (this.#activeView === "live") this.#refreshLiveAgents();
+		if (this.#activeView === "room" && !this.#roomLoading && this.#roomMessages.length === 0) {
+			void this.#reloadRoom();
+		}
 		this.#buildLayout();
 	}
 
 	#moveSelection(delta: -1 | 1): void {
+		if (this.#activeView === "live") {
+			if (this.#liveAgents.length === 0) return;
+			this.#liveSelectedIndex = clampLow(this.#liveSelectedIndex + delta, 0, this.#liveAgents.length - 1);
+			const next = clampSelection(
+				this.#liveSelectedIndex,
+				this.#liveScrollOffset,
+				this.#liveAgents.length,
+				this.#computeBodyHeight(),
+			);
+			this.#liveSelectedIndex = next.selectedIndex;
+			this.#liveScrollOffset = next.scrollOffset;
+			this.#buildLayout();
+			return;
+		}
+		if (this.#activeView === "room") {
+			// Leaving the tail starts from wherever the tail actually resolved to,
+			// which only the pane knows: scrolling up one row from the bottom must
+			// move one row, not jump to a number computed at some earlier geometry.
+			const from = this.#roomScrollOffset === "tail" ? this.#roomResolvedStart : this.#roomScrollOffset;
+			const next = clampLow(from + delta, 0, Number.MAX_SAFE_INTEGER);
+			this.#roomScrollOffset = next >= this.#roomResolvedStart && delta > 0 ? "tail" : next;
+			this.#buildLayout();
+			return;
+		}
 		if (this.#filteredAgents.length === 0) return;
 		this.#selectedIndex = clampLow(this.#selectedIndex + delta, 0, this.#filteredAgents.length - 1);
 		this.#clampSelection();
@@ -1020,10 +1476,9 @@ export class AgentDashboard extends Container {
 
 	#renderTabBar(): string {
 		const parts: string[] = [" "];
-		for (let i = 0; i < this.#tabs.length; i++) {
-			const tab = this.#tabs[i];
+		for (const tab of this.#viewTabs()) {
 			const label = `${tab.label} (${tab.count})`;
-			if (i === this.#activeTabIndex) {
+			if (tab.id === this.#activeView) {
 				parts.push(theme.bg("selectedBg", ` ${label} `));
 			} else {
 				parts.push(theme.fg("muted", ` ${label} `));
@@ -1116,6 +1571,55 @@ export class AgentDashboard extends Container {
 		this.addChild(new Text(theme.fg("dim", " Enter: save  Tab: toggle scope  R: regenerate  Esc: cancel"), 0, 0));
 	}
 
+	/**
+	 * One sentence when nothing will be delegated, from the ONE resolver that
+	 * reads both deciding settings, or `undefined` when delegation is possible.
+	 */
+	#delegationNotice(): string | undefined {
+		const settings = this.#settingsManager;
+		if (!settings) return undefined;
+		const enabled = this.#allAgents.filter(agent => enableStateOf(agent) === "on").map(agent => agent.name);
+		return delegationBlockedNotice(resolveDelegation(settings, enabled));
+	}
+
+	/** Live roster, or the lens when one is open on a single agent. */
+	#buildLiveView(): void {
+		const lens = this.#lensAgent();
+		const now = Date.now();
+		if (lens) {
+			this.addChild(new AgentLensPane(lens, now));
+			return;
+		}
+		this.addChild(
+			new LiveRosterPane(
+				this.#liveAgents,
+				this.#liveSelectedIndex,
+				this.#liveScrollOffset,
+				this.#computeBodyHeight(),
+				now,
+			),
+		);
+	}
+
+	/** The merged conversation, scrolled to wherever the reader left it. */
+	#buildRoomView(): void {
+		if (this.#roomError) {
+			this.addChild(new Text(theme.fg("error", replaceTabs(this.#roomError)), 0, 0));
+			this.addChild(new Spacer(1));
+		}
+		this.addChild(
+			new RoomPane(
+				this.#roomMessages,
+				this.#roomScrollOffset,
+				this.#computeBodyHeight(),
+				this.#roomLoading,
+				start => {
+					this.#roomResolvedStart = start;
+				},
+			),
+		);
+	}
+
 	/** Rebuild layout and request a TUI render pass (for use after async state changes). */
 	#rebuildAndRender(): void {
 		this.#buildLayout();
@@ -1142,6 +1646,10 @@ export class AgentDashboard extends Container {
 			this.#renderCreateReview();
 		} else if (this.#createInput || this.#createGenerating) {
 			this.#renderCreateInput();
+		} else if (this.#activeView === "live") {
+			this.#buildLiveView();
+		} else if (this.#activeView === "room") {
+			this.#buildRoomView();
 		} else if (this.#editInput && this.#editingAgentName) {
 			const editingAgent = this.#allAgents.find(agent => agent.name === this.#editingAgentName) ?? null;
 			const draft = this.#editInput.getValue();
@@ -1213,6 +1721,16 @@ export class AgentDashboard extends Container {
 			this.addChild(new Spacer(1));
 			this.addChild(new Text(theme.fg("dim", " Enter: save  Esc: cancel"), 0, 0));
 		} else {
+			// Say when this whole table has no effect, and why. The two settings that
+			// decide whether anything is delegated are `subagent.delegation` and this
+			// table, and an operator toggling rows here cannot see the other one — so
+			// a table that will delegate nothing says so rather than implying it is
+			// about to run six agents.
+			const blocked = this.#delegationNotice();
+			if (blocked) {
+				this.addChild(new Text(theme.fg("warning", replaceTabs(blocked)), 0, 0));
+				this.addChild(new Spacer(1));
+			}
 			const selected = this.#selectedAgent();
 			const defaultModel = selected ? this.#defaultModelFor(selected) : undefined;
 			const defaultPatterns = defaultModel?.patterns ?? [];
@@ -1235,6 +1753,7 @@ export class AgentDashboard extends Container {
 				effectivePatterns,
 				effectiveResolution,
 				effectiveModel,
+				this.#showModelBreakdown,
 			);
 			const bodyHeight = this.#computeBodyHeight();
 			this.addChild(new TwoColumnBody(listPane, inspector, bodyHeight));
@@ -1265,6 +1784,13 @@ export class AgentDashboard extends Container {
 		}
 		if (this.#editInput) {
 			this.#cancelModelEdit();
+			return;
+		}
+		// The lens is a layer inside Live, so Esc leaves the lens before it leaves
+		// the card. Anything else would make opening an agent a one-way trip.
+		if (this.#lensAgentId) {
+			this.#lensAgentId = null;
+			this.#buildLayout();
 			return;
 		}
 		if (this.#searchQuery.length > 0) {
@@ -1383,11 +1909,15 @@ export class AgentDashboard extends Container {
 		}
 
 		if (matchesKey(data, "ctrl+r")) {
+			if (this.#activeView === "room") {
+				void this.#reloadRoom();
+				return;
+			}
 			void this.#reloadData();
 			return;
 		}
 
-		if (handleTabSwitchKey(data, direction => this.#switchTab(direction))) {
+		if (handleTabSwitchKey(data, direction => this.#switchView(direction))) {
 			return;
 		}
 
@@ -1397,6 +1927,23 @@ export class AgentDashboard extends Container {
 		}
 		if (matchesSelectDown(data) || matchesKey(data, "j")) {
 			this.#moveSelection(1);
+			return;
+		}
+
+		// Live and Room own their remaining keys. Falling through would let `space`
+		// silently toggle an agent in the configuration list while the reader is
+		// looking at a transcript.
+		if (this.#activeView === "live") {
+			if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "\n") {
+				const selected = this.#liveAgents[this.#liveSelectedIndex];
+				if (selected) {
+					this.#lensAgentId = selected.id;
+					this.#buildLayout();
+				}
+			}
+			return;
+		}
+		if (this.#activeView === "room") {
 			return;
 		}
 
@@ -1410,6 +1957,13 @@ export class AgentDashboard extends Container {
 		}
 		if (data.toLowerCase() === "n") {
 			this.#beginCreateFlow();
+			return;
+		}
+		// Same idiom as `n`: a bare letter that acts instead of typing into the
+		// search box. The footer chip is what makes it discoverable.
+		if (data.toLowerCase() === "m") {
+			this.#showModelBreakdown = !this.#showModelBreakdown;
+			this.#buildLayout();
 			return;
 		}
 

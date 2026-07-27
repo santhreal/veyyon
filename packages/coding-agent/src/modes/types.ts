@@ -73,19 +73,19 @@ export type SubmittedUserInput = {
 	started: boolean;
 };
 
-export type TodoStatus = "pending" | "in_progress" | "completed" | "abandoned";
+/**
+ * The todo vocabulary, owned by the tool that writes it.
+ *
+ * These three used to be declared here AS WELL, and the copies had drifted: this file's
+ * `TodoItem` carried `details?: string` and `notes?: string[]`, which the todo tool's arktype
+ * schema has no concept of and no code path ever writes. `interactive-mode.ts` imported this
+ * wider copy and drew a superscript note count from `todo.notes?.length ?? 0`, so the marker was
+ * unreachable: the value it counted could not exist. The narrow copy is the real shape because it
+ * is the one the writer produces, so the tool owns the names and this module re-exports them.
+ */
+import type { TodoItem, TodoPhase } from "../tools/todo";
 
-export type TodoItem = {
-	content: string;
-	status: TodoStatus;
-	details?: string;
-	notes?: string[];
-};
-
-export type TodoPhase = {
-	name: string;
-	tasks: TodoItem[];
-};
+export type { TodoItem, TodoPhase, TodoStatus } from "../tools/todo";
 
 export interface InteractiveModeInitOptions {
 	suppressWelcomeIntro?: boolean;

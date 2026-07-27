@@ -15,6 +15,7 @@
  */
 
 import { padLineToWidth } from "@veyyon/tui";
+import { SGR_RESET } from "@veyyon/tui/ansi";
 import { clamp01 } from "@veyyon/utils";
 
 /**
@@ -96,8 +97,6 @@ const EMBER_256 = [52, 88, 130, 166, 208, 214, 220, 223] as const;
  * this many column-steps of distance makes the sun render visually round.
  */
 const CELL_ASPECT = 2.1;
-
-const RESET = "\x1b[0m";
 
 export interface Ripple {
 	/** Centre in cells. */
@@ -212,7 +211,7 @@ export function renderSunField(o: SunFieldOptions): string[] {
 
 			if (val <= 0.12) {
 				if (open) {
-					line += RESET + bgPrefix;
+					line += SGR_RESET + bgPrefix;
 					open = false;
 					lastBand = -1;
 				}
@@ -227,7 +226,7 @@ export function renderSunField(o: SunFieldOptions): string[] {
 			}
 			line += GLYPH[band];
 		}
-		if (open || bgPrefix) line += RESET;
+		if (open || bgPrefix) line += SGR_RESET;
 		out.push(line);
 	}
 	return out;
@@ -384,8 +383,8 @@ export function renderSunsetField(o: SunsetFieldOptions): string[] {
 			// The horizon: one hot line the sun melts into.
 			out.push(
 				trueColor
-					? `\x1b[38;2;251;192;109m${"─".repeat(cols)}${RESET}`
-					: `\x1b[38;5;220m${"─".repeat(cols)}${RESET}`,
+					? `\x1b[38;2;251;192;109m${"─".repeat(cols)}${SGR_RESET}`
+					: `\x1b[38;5;220m${"─".repeat(cols)}${SGR_RESET}`,
 			);
 			continue;
 		}
@@ -398,7 +397,7 @@ export function renderSunsetField(o: SunsetFieldOptions): string[] {
 		for (const cell of grid[y]) {
 			if (cell.kind === "sky" && cell.band < 0) {
 				if (lastKey !== "reset") {
-					line += RESET;
+					line += SGR_RESET;
 					lastKey = "reset";
 				}
 				line += " ";
@@ -406,12 +405,12 @@ export function renderSunsetField(o: SunsetFieldOptions): string[] {
 			}
 			const key = `${cell.kind}:${cell.band}`;
 			if (key !== lastKey) {
-				line += RESET + (cell.kind === "sky" ? skyBg(trueColor, cell.band) : fg(trueColor, cell.band));
+				line += SGR_RESET + (cell.kind === "sky" ? skyBg(trueColor, cell.band) : fg(trueColor, cell.band));
 				lastKey = key;
 			}
 			line += cell.kind === "sky" ? " " : GLYPH[cell.band];
 		}
-		out.push(line + RESET);
+		out.push(line + SGR_RESET);
 	}
 	return out;
 }
@@ -455,7 +454,7 @@ export function renderEmberField(o: {
 			}
 			line += GLYPH[band];
 		}
-		out.push(line + RESET);
+		out.push(line + SGR_RESET);
 	}
 	return out;
 }

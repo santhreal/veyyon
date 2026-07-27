@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
-import { Effort } from "@veyyon/ai";
+import { Effort } from "@veyyon/catalog/effort";
 import { parseArgs } from "@veyyon/coding-agent/cli/args";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 

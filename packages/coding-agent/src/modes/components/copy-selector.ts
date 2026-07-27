@@ -10,7 +10,8 @@ import {
 	visibleWidth,
 } from "@veyyon/tui";
 import { replaceTabs } from "../../tools/render-utils";
-import { highlightCode, theme } from "../theme/theme";
+import { highlightCode } from "../theme/highlight";
+import { theme } from "../theme/theme-binding";
 import type { CopyTarget } from "../utils/copy-targets";
 import {
 	matchesSelectCancel,

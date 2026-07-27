@@ -11,7 +11,10 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { atomicWriteFileSync, errorMessage, getAgentDir } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
+import { atomicWriteFileSync } from "@veyyon/utils/atomic-write";
+import { getAgentDir } from "@veyyon/utils/dirs";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import type * as mupdf from "mupdf";
 import { type EmbeddedMupdfModuleFiles, loadEmbeddedMupdfModuleFiles } from "../../../utils/mupdf-wasm-embed";
 import type { ImageRegion, PageContent, Segment, TextBox } from "./types";

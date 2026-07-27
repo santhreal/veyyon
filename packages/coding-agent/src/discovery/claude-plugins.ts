@@ -13,7 +13,7 @@ import { type Hook, hookCapability } from "../capability/hook";
 import { type MCPServer, mcpCapability } from "../capability/mcp";
 import { type Skill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
-import { type CustomTool, toolCapability } from "../capability/tool";
+import { type DiscoveredCustomTool, toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult } from "../capability/types";
 import {
 	type ClaudePluginRoot,
@@ -356,8 +356,8 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 // Custom Tools
 // =============================================================================
 
-async function loadTools(ctx: LoadContext): Promise<LoadResult<CustomTool>> {
-	const items: CustomTool[] = [];
+async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomTool>> {
+	const items: DiscoveredCustomTool[] = [];
 	const warnings: string[] = [];
 
 	const { roots, warnings: rootWarnings } = await listClaudePluginRoots(ctx.home, ctx.cwd);
@@ -366,7 +366,7 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<CustomTool>> {
 	const results = await Promise.all(
 		roots.map(async root => {
 			const toolsDir = path.join(root.path, "tools");
-			return loadFilesFromDir<CustomTool>(ctx, toolsDir, PROVIDER_ID, root.scope, {
+			return loadFilesFromDir<DiscoveredCustomTool>(ctx, toolsDir, PROVIDER_ID, root.scope, {
 				transform: (name, _content, filePath, source) => {
 					const toolName = name.replace(/\.(ts|js|sh|bash|py)$/, "");
 					return {
@@ -515,7 +515,7 @@ registerProvider<Hook>(hookCapability.id, {
 	load: loadHooks,
 });
 
-registerProvider<CustomTool>(toolCapability.id, {
+registerProvider<DiscoveredCustomTool>(toolCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
 	description: "Load custom tools from Claude Code marketplace plugins",

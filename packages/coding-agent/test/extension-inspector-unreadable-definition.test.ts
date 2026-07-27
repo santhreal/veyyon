@@ -16,7 +16,7 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { InspectorPanel } from "@veyyon/coding-agent/modes/components/extensions/inspector-panel";
-import type { Extension, ExtensionKind } from "@veyyon/coding-agent/modes/components/extensions/types";
+import type { ExtensionKind, ExtensionRow } from "@veyyon/coding-agent/modes/components/extensions/types";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 const WIDTH = 120;
@@ -25,7 +25,7 @@ beforeAll(async () => {
 	await initTheme();
 });
 
-function extension(kind: ExtensionKind, raw: unknown): Extension {
+function extension(kind: ExtensionKind, raw: unknown): ExtensionRow {
 	return {
 		id: `${kind}:probe`,
 		kind,
@@ -35,11 +35,11 @@ function extension(kind: ExtensionKind, raw: unknown): Extension {
 		source: { provider: "test", providerName: "test", level: "user" },
 		state: "active",
 		raw,
-	} as Extension;
+	} as ExtensionRow;
 }
 
 /** Rendered panel with styling removed and wrapped rows re-joined. */
-function panelText(ext: Extension): string {
+function panelText(ext: ExtensionRow): string {
 	const panel = new InspectorPanel();
 	panel.setExtension(ext);
 	return panel

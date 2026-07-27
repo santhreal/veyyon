@@ -3,7 +3,7 @@ import type { Api, ApiKey, Model } from "@veyyon/ai";
 import { completeSimple } from "@veyyon/ai";
 import { prompt } from "@veyyon/utils";
 import type { ConventionalAnalysis, FileObservation } from "../../commit/types";
-import { PROMPTS } from "../../prompts/registry";
+import { commitPrompts } from "../../prompts/commit/rows";
 import { toReasoningEffort } from "../../thinking";
 import { createConventionalAnalysisTool, parseConventionalAnalysisResponse } from "../shared-llm";
 
@@ -28,7 +28,7 @@ export async function runReducePhase({
 	scopeCandidates,
 	typesDescription,
 }: ReducePhaseInput): Promise<ConventionalAnalysis> {
-	const userContent = prompt.render(PROMPTS["commit/reduce-user"].text, {
+	const userContent = prompt.render(commitPrompts["commit/reduce-user"].text, {
 		types_description: typesDescription,
 		observations: observations.flatMap(obs => obs.observations.map(line => `- ${obs.file}: ${line}`)).join("\n"),
 		stat,
@@ -37,7 +37,7 @@ export async function runReducePhase({
 	const response = await completeSimple(
 		model,
 		{
-			systemPrompt: [prompt.render(PROMPTS["commit/reduce-system"].text)],
+			systemPrompt: [prompt.render(commitPrompts["commit/reduce-system"].text)],
 			messages: [{ role: "user", content: userContent, timestamp: Date.now() }],
 			tools: [ReduceTool],
 		},

@@ -12,87 +12,36 @@ import type {
 	AgentToolUpdateCallback,
 } from "@veyyon/agent-core";
 import type { ImageContent, Static, TextContent, TSchema } from "@veyyon/ai";
-import { errorMessage, logger, pluralize } from "@veyyon/utils";
-import { getDefault, type Settings } from "../config/settings";
-import { formatGroupedDiagnosticMessages } from "../lsp/utils";
+// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
+import * as logger from "@veyyon/utils/logger";
+import { errorMessage } from "@veyyon/utils/type-guards";
+// `getDefault` from the SCHEMA that owns it, not through the store's re-export: the store is 95 modules
+// and the schema is 60, and this file only needs to know what a setting defaults to. `Settings` is a
+// type here, so naming the store for it is free.
+import type { Settings } from "../config/settings";
+import { getDefault } from "../config/settings-schema";
 import type { Theme } from "../modes/theme/theme";
 import { type OutputSummary, type TruncationResult, truncateMiddle, truncateTail } from "../session/streaming-output";
 import { inlineBudgetFor } from "./output-artifact";
-import { formatBytes, wrapBrackets } from "./render-utils";
+import { wrapBrackets } from "./render-utils";
 import { renderError } from "./tool-errors";
 
-/**
- * Truncation metadata for the output notice.
- */
-export interface TruncationMeta {
-	direction: "head" | "tail" | "middle";
-	truncatedBy: "lines" | "bytes" | "middle";
-	totalLines: number;
-	totalBytes: number;
-	outputLines: number;
-	outputBytes: number;
-	maxBytes?: number;
-	/** Line range shown (1-indexed, inclusive). Omitted for middle elision. */
-	shownRange?: { start: number; end: number };
-	/** Head/tail line ranges shown when direction === "middle". */
-	headRange?: { start: number; end: number };
-	tailRange?: { start: number; end: number };
-	/** Bytes elided from the middle. */
-	elidedBytes?: number;
-	/** Lines elided from the middle. */
-	elidedLines?: number;
-	/** Artifact ID if full output was saved */
-	artifactId?: string;
-	/** Next offset for pagination (head truncation only) */
-	nextOffset?: number;
-	/**
-	 * The output was truncated by something upstream that did not report how much
-	 * it dropped, so `totalLines` and `totalBytes` describe only what survived.
-	 *
-	 * The ACP `terminal/output` response is the case that forced this: it carries
-	 * `{output, truncated}` and no pre-truncation size at all. Without this flag
-	 * the kept size doubles as the total, and every consumer then computes an
-	 * elision of zero and prints "Showing lines 1-N of N", which tells the agent
-	 * it is looking at the whole output at the exact moment it is not.
-	 */
-	elidedAmountUnknown?: boolean;
-}
+export type { DiagnosticMeta, LimitsMeta, OutputMeta, SourceMeta, TruncationMeta } from "./output-notice";
+// The notice text and the metadata shape moved to their own module so `session/messages.ts` could
+// append a notice without reaching the tool layer. Re-exported here because every existing caller asks
+// this file for them, and forwarding costs nothing: that module imports two formatters and the
+// diagnostic renderer.
+export {
+	formatFullOutputReference,
+	formatOutputNotice,
+	formatTruncationMetaNotice,
+	stripGeneratedOutputNotice,
+	stripOutputNotice,
+	stripRawOutputArtifactNotice,
+} from "./output-notice";
 
-/**
- * Source resolution info for the output.
- */
-export type SourceMeta =
-	| { type: "path"; value: string }
-	| { type: "url"; value: string }
-	| { type: "internal"; value: string };
-
-/**
- * LSP diagnostic info (for edit/write tools).
- */
-export interface DiagnosticMeta {
-	summary: string;
-	messages: string[];
-}
-
-/**
- * Limit-specific notices.
- */
-export interface LimitsMeta {
-	matchLimit?: { reached: number; suggestion: number };
-	resultLimit?: { reached: number; suggestion: number };
-	headLimit?: { reached: number; suggestion: number };
-	columnTruncated?: { maxColumn: number };
-}
-
-/**
- * Structured metadata for tool outputs.
- */
-export interface OutputMeta {
-	truncation?: TruncationMeta;
-	source?: SourceMeta;
-	diagnostics?: DiagnosticMeta;
-	limits?: LimitsMeta;
-}
+import type { OutputMeta, TruncationMeta } from "./output-notice";
+import { formatFullOutputReference, formatOutputNotice, formatTruncationMetaNotice } from "./output-notice";
 
 // =============================================================================
 // OutputMetaBuilder - Fluent API for building OutputMeta
@@ -413,116 +362,6 @@ export function outputMeta(): OutputMetaBuilder {
 // Notice formatting
 // =============================================================================
 
-export function formatFullOutputReference(artifactId: string): string {
-	return `Read artifact://${artifactId} for full output`;
-}
-
-const RAW_OUTPUT_ARTIFACT_PREFIX = "[raw output: artifact://";
-const RAW_OUTPUT_ARTIFACT_SUFFIX = "]";
-
-/** Remove the trailing bash raw-output artifact footer while preserving its artifact id. */
-export function stripRawOutputArtifactNotice(text: string): { text: string; artifactId?: string } {
-	const trimmed = text.trimEnd();
-	const lineStart = trimmed.lastIndexOf("\n");
-	const candidateStart = lineStart === -1 ? 0 : lineStart + 1;
-	if (
-		!trimmed.startsWith(RAW_OUTPUT_ARTIFACT_PREFIX, candidateStart) ||
-		!trimmed.endsWith(RAW_OUTPUT_ARTIFACT_SUFFIX)
-	) {
-		return { text };
-	}
-
-	const idStart = candidateStart + RAW_OUTPUT_ARTIFACT_PREFIX.length;
-	const idEnd = trimmed.length - RAW_OUTPUT_ARTIFACT_SUFFIX.length;
-	if (idStart === idEnd) return { text };
-	for (let i = idStart; i < idEnd; i++) {
-		const code = trimmed.charCodeAt(i);
-		if (code < 48 || code > 57) return { text };
-	}
-
-	const artifactId = trimmed.slice(idStart, idEnd);
-	return {
-		text: trimmed.slice(0, lineStart === -1 ? 0 : lineStart).trimEnd(),
-		artifactId,
-	};
-}
-
-function isGeneratedOutputNoticeLine(line: string): boolean {
-	if (!line.startsWith("[") || !line.endsWith("]")) return false;
-	const body = line.slice(1, -1);
-	return (
-		body.startsWith("Showing ") ||
-		/^\d+ matches limit reached\. Use limit=\d+ for more/u.test(body) ||
-		/^\d+ results limit reached\. Use limit=\d+ for more/u.test(body) ||
-		body.startsWith("Some lines truncated to ")
-	);
-}
-
-/** Remove a trailing generated output notice when metadata is unavailable. */
-export function stripGeneratedOutputNotice(text: string): string {
-	const trimmed = text.trimEnd();
-	const lineStart = trimmed.lastIndexOf("\n");
-	const candidateStart = lineStart === -1 ? 0 : lineStart + 1;
-	if (!isGeneratedOutputNoticeLine(trimmed.slice(candidateStart))) return text;
-	return trimmed.slice(0, lineStart === -1 ? 0 : lineStart).trimEnd();
-}
-
-export function formatTruncationMetaNotice(truncation: TruncationMeta): string {
-	let notice: string;
-
-	if (truncation.direction === "middle") {
-		const head = truncation.headRange;
-		const tail = truncation.tailRange;
-		const totalLines = truncation.totalLines;
-		const elidedBytes = truncation.elidedBytes ?? Math.max(0, truncation.totalBytes - truncation.outputBytes);
-		const elidedLines = truncation.elidedLines ?? Math.max(0, totalLines - truncation.outputLines);
-		const headPart = head ? `lines ${head.start}-${head.end}` : "";
-		const tailPart = tail ? `${tail.start}-${tail.end}` : "";
-		if (headPart && tailPart) {
-			notice = `Showing ${headPart} and ${tailPart} of ${totalLines}; ${elidedLines.toLocaleString()} middle ${pluralize("line", elidedLines)} (${formatBytes(elidedBytes)}) elided`;
-		} else {
-			notice = `Showing ${truncation.outputLines} of ${totalLines} lines; middle elided`;
-		}
-		if (truncation.artifactId != null) {
-			notice += `. ${formatFullOutputReference(truncation.artifactId)}`;
-		}
-		return notice;
-	}
-
-	if (truncation.elidedAmountUnknown) {
-		// No range and no total: both would be invented. What the agent needs to
-		// know is that the tail it is reading is not the whole output, and that
-		// asking for a byte count would be answering a question nobody measured.
-		notice = `Output was truncated before veyyon received it; ${formatBytes(truncation.outputBytes)} kept, elided amount not reported`;
-		if (truncation.artifactId != null) {
-			notice += `. ${formatFullOutputReference(truncation.artifactId)}`;
-		}
-		return notice;
-	}
-
-	const range = truncation.shownRange;
-	if (range && range.end >= range.start) {
-		notice = `Showing lines ${range.start}-${range.end} of ${truncation.totalLines}`;
-	} else {
-		notice = `Showing ${truncation.outputLines} of ${truncation.totalLines} lines`;
-	}
-
-	if (truncation.truncatedBy === "bytes") {
-		const maxBytes = truncation.maxBytes ?? truncation.outputBytes;
-		notice += ` (${formatBytes(maxBytes)} limit)`;
-	}
-
-	if (truncation.nextOffset != null) {
-		notice += `. Use :${truncation.nextOffset} to continue`;
-	}
-
-	if (truncation.artifactId != null) {
-		notice += `. ${formatFullOutputReference(truncation.artifactId)}`;
-	}
-
-	return notice;
-}
-
 /**
  * Format styled artifact reference with warning color and brackets.
  * For TUI rendering of truncation warnings.
@@ -535,44 +374,6 @@ export function formatStyledArtifactReference(artifactId: string, theme: Theme):
  * Format notices from OutputMeta for LLM consumption.
  * Returns empty string if no notices needed.
  */
-export function formatOutputNotice(meta: OutputMeta | undefined): string {
-	if (!meta) return "";
-
-	const parts: string[] = [];
-
-	// Truncation notice
-	if (meta.truncation) {
-		parts.push(formatTruncationMetaNotice(meta.truncation));
-	}
-
-	// Limit notices
-	if (meta.limits?.matchLimit) {
-		const l = meta.limits.matchLimit;
-		parts.push(`${l.reached} matches limit reached. Use limit=${l.suggestion} for more`);
-	}
-	if (meta.limits?.resultLimit) {
-		const l = meta.limits.resultLimit;
-		parts.push(`${l.reached} results limit reached. Use limit=${l.suggestion} for more`);
-	}
-	if (meta.limits?.headLimit) {
-		const l = meta.limits.headLimit;
-		parts.push(`${l.reached} results limit reached. Use limit=${l.suggestion} for more`);
-	}
-	if (meta.limits?.columnTruncated) {
-		parts.push(`Some lines truncated to ${meta.limits.columnTruncated.maxColumn} chars`);
-	}
-
-	// Diagnostics
-	let diagnosticsNotice = "";
-	if (meta.diagnostics && meta.diagnostics.messages.length > 0) {
-		const d = meta.diagnostics;
-		diagnosticsNotice = `\n\nLSP Diagnostics (${d.summary}):\n${formatGroupedDiagnosticMessages(d.messages)}`;
-	}
-
-	const notice = parts.length ? `\n\n[${parts.join(". ")}]` : "";
-	return notice + diagnosticsNotice;
-}
-
 /**
  * Format a styled truncation warning message.
  * Returns null if no truncation metadata present.
@@ -581,32 +382,6 @@ export function formatStyledTruncationWarning(meta: OutputMeta | undefined, them
 	if (!meta?.truncation) return null;
 	const message = formatTruncationMetaNotice(meta.truncation);
 	return theme.fg("warning", wrapBrackets(message, theme));
-}
-
-/**
- * Strip the trailing notice that {@link appendOutputNotice} bakes into the
- * LLM-facing content body. Renderers should call this before printing
- * `result.content` text in the TUI, because they emit a styled warning line of
- * their own; without this, users see the same `[Showing lines …]` string twice
- * (once verbatim from the body, once as the styled `⟨…⟩` warning).
- *
- * Safe to call eagerly: returns the input unchanged when no notice is present
- * (e.g. during streaming, before {@link wrappedExecute} runs).
- */
-export function stripOutputNotice(text: string, meta: OutputMeta | undefined): string {
-	const notice = formatOutputNotice(meta);
-	if (!notice) return text;
-	// Trim trailing whitespace from `text` and from the notice itself so we
-	// match regardless of whether: (a) the caller already trimEnd()'d, (b)
-	// extra blank lines slipped in after the notice (diagnostics blocks add
-	// `\n\n` between sections, OutputSink may pad), or (c) neither. Returns
-	// the prefix before the notice so the caller can re-trim as needed.
-	const trimmedText = text.trimEnd();
-	const trimmedNotice = notice.trimEnd();
-	if (trimmedText.endsWith(trimmedNotice)) {
-		return trimmedText.slice(0, -trimmedNotice.length);
-	}
-	return text;
 }
 
 // =============================================================================
@@ -643,15 +418,16 @@ const kUnwrappedExecute = Symbol("OutputMeta.UnwrappedExecute");
 // =============================================================================
 
 /** Resolved artifact spill config sourced from the session settings (or schema defaults). */
+/**
+ * The head/tail WINDOW a spilled result keeps. Not the threshold that decides
+ * whether it spills: `tools.artifactSpillThreshold` is read once, in
+ * `inlineOutputPricing`, because it is the same question every streaming tool
+ * asks and a second read here is how the two answers came to disagree.
+ */
 function getSpillConfig(s: Settings | undefined) {
-	type Path =
-		| "tools.artifactSpillThreshold"
-		| "tools.artifactTailBytes"
-		| "tools.artifactTailLines"
-		| "tools.artifactHeadBytes";
+	type Path = "tools.artifactTailBytes" | "tools.artifactTailLines" | "tools.artifactHeadBytes";
 	const get = <P extends Path>(path: P) => s?.get(path) ?? getDefault(path);
 	return {
-		threshold: get("tools.artifactSpillThreshold") * 1024,
 		tailBytes: get("tools.artifactTailBytes") * 1024,
 		tailLines: get("tools.artifactTailLines"),
 		headBytes: get("tools.artifactHeadBytes") * 1024,
@@ -700,16 +476,13 @@ async function spillLargeResultToArtifact(
 	// median of 1,688 characters and a maximum of 11,974, comfortably inside the
 	// threshold, so the exemption is about the contract and not about the bytes.
 	if (toolName === "read") return result;
-	const { threshold: flatThreshold, tailBytes, tailLines, headBytes } = getSpillConfig(context?.settings);
-	// Priced through the same owner every streaming tool uses, with the configured
-	// threshold as the ceiling. Without this the centralised path was a SECOND
-	// answer to "how many bytes may stay inline": flat 50KB here, turn-scaled
-	// there, for no reason anyone chose. A host with no notion of turns has no
-	// `getTurnIndex`, gets the flat ceiling back, and is unaffected.
-	const threshold = inlineBudgetFor(
-		{ getTurnIndex: context?.getTurnIndex, settings: context?.settings },
-		flatThreshold,
-	);
+	const { tailBytes, tailLines, headBytes } = getSpillConfig(context?.settings);
+	// Priced through the same owner every streaming tool uses, and with no ceiling
+	// passed: `inlineOutputPricing` reads `tools.artifactSpillThreshold` itself, so
+	// passing it again here would only be a second way to spell the same read. A
+	// host with no notion of turns has no `getTurnIndex` and gets the flat
+	// threshold back, unaffected by the turn curve.
+	const threshold = inlineBudgetFor({ getTurnIndex: context?.getTurnIndex, settings: context?.settings });
 
 	// Skip if tool already saved an artifact
 	const existingMeta = (result.details as { meta?: OutputMeta } | undefined)?.meta;

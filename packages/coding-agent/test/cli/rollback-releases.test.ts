@@ -16,7 +16,6 @@
  *      fail loudly, never reinstall latest and print success (Law 10).
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import * as os from "node:os";
 import * as path from "node:path";
 import {
 	getAllReleases,
@@ -26,6 +25,7 @@ import {
 	rollbackToVersion,
 	rollbackUnsupportedReason,
 } from "@veyyon/coding-agent/cli/update-cli";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -224,8 +224,15 @@ describe("rollbackToVersion guards", () => {
 });
 
 describe("version move history", () => {
+	// The history file's PARENT is what leaks here: `recordVersionMove` creates the
+	// directory on the way to writing the file, and this used to hand it a path under
+	// `os.tmpdir()` that nothing ever deleted, one per case. Making the directory up
+	// front through the tracked factory means the same path is used and the same code
+	// path is exercised, and the directory goes away with the file.
+	const makeHistoryDir = useTrackedTempDirs("veyyon-rollback-history-");
+
 	function tempHistory(): string {
-		return path.join(os.tmpdir(), `veyyon-rollback-history-${process.pid}-${Math.random()}`, "update-history.json");
+		return path.join(makeHistoryDir(), "update-history.json");
 	}
 
 	it("records a move and reads it back whole", async () => {

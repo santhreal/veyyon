@@ -10,7 +10,7 @@ import { collapseWhitespace, errorMessage, logger } from "@veyyon/utils";
 import type { ThemeColor } from "../../../modes/theme/color";
 import { theme } from "../../../modes/theme/theme";
 import { shortenPath } from "../../../tools/render-utils";
-import type { Extension, ExtensionState } from "./types";
+import type { ExtensionRow, ExtensionState } from "./types";
 
 /** Structural views over extension payloads whose concrete shape varies by source (zod tool, wire tool, MCP config, skill). Each renderer narrows `unknown` once to the optional fields it reads. */
 interface ToolDefView {
@@ -55,9 +55,9 @@ function unreadableRows(subject: string, error: unknown): string[] {
 }
 
 export class InspectorPanel implements Component {
-	#extension: Extension | null = null;
+	#extension: ExtensionRow | null = null;
 
-	setExtension(extension: Extension | null): void {
+	setExtension(extension: ExtensionRow | null): void {
 		this.#extension = extension;
 	}
 
@@ -119,7 +119,7 @@ export class InspectorPanel implements Component {
 		return lines;
 	}
 
-	#renderPreview(ext: Extension, width: number): string[] {
+	#renderPreview(ext: ExtensionRow, width: number): string[] {
 		const lines: string[] = [];
 		let content: string[] = [];
 
@@ -314,7 +314,7 @@ export class InspectorPanel implements Component {
 		return lines;
 	}
 
-	#renderDefaultPreview(ext: Extension, width: number): string[] {
+	#renderDefaultPreview(ext: ExtensionRow, width: number): string[] {
 		const lines: string[] = [];
 
 		// Show trigger pattern if present

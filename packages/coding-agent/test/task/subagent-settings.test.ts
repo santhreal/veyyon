@@ -30,15 +30,18 @@ import { ThinkingLevel } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getSettingsForTab, invalidateSettingDefsCache } from "@veyyon/coding-agent/modes/components/settings-defs";
 import {
+	delegationBlockedNotice,
 	delegationEnabled,
-	delegationPreferred,
-	delegationRequired,
 	delegationStrength,
 	filterEnabledAgents,
-	isSubagentAdvertised,
-	isSubagentSpawnable,
+	isSubagentEnableDefaulted,
+	isSubagentEnabled,
+	nextSubagentEnableValue,
+	resolveDelegation,
 	resolveSubagentModel,
 	resolveSubagentThinkingLevel,
+	SUBAGENT_ENABLE_STATE_LABEL,
+	type SubagentEnableState,
 	subagentEnabledByDefault,
 	subagentEnableState,
 	subagentModelSourceLabel,
@@ -118,7 +121,7 @@ describe("subagent defaults: only the general worker ships offered", () => {
 	it("offers a specialist the operator turned on", () => {
 		const settings = Settings.isolated({ "subagent.agents": { scout: { enabled: true } } });
 
-		expect(isSubagentAdvertised(settings, bundled("scout"))).toBe(true);
+		expect(isSubagentEnabled(settings, bundled("scout"))).toBe(true);
 		expect(filterEnabledAgents(settings, [bundled("task"), bundled("scout")]).map(a => a.name)).toEqual([
 			"task",
 			"scout",
@@ -126,57 +129,91 @@ describe("subagent defaults: only the general worker ships offered", () => {
 	});
 });
 
-describe("subagent enable states: offered, blocked, and default", () => {
+describe("subagent enable states: on, off, and nothing in between", () => {
 	/**
-	 * Three states, not two.
+	 * TWO states, and the count is the fix.
 	 *
-	 * "Not offered" and "blocked" are different answers to different questions,
-	 * and conflating them breaks something real either way: treat default-off as
-	 * blocked and `/review` (whose prompt says `agent: "reviewer"`) stops working
-	 * on a stock install; treat blocked as merely unadvertised and an operator who
-	 * said no gets the agent anyway.
+	 * There were four (`on` / `default-on` / `default-off` / `off`) over two
+	 * predicates, and the gap between them was a user-visible state that read "Not
+	 * offered (default) — still runs when named". A switch labelled off that still
+	 * runs is not a switch, and an operator who pressed `space` until the row said
+	 * off had not turned the agent off. Enabled now means the model may choose this
+	 * agent; disabled means it may not; there is no third behaviour to discover.
+	 *
+	 * What used to justify the middle state — `/review` naming `reviewer` on a
+	 * stock install — is solved where it belongs, by the command declaring the
+	 * agent it names for that turn. See the grant tests below.
 	 */
-	it("keeps a default-off specialist spawnable when something names it outright", () => {
+	it("has exactly two states, and one label for each", () => {
+		const states: SubagentEnableState[] = ["on", "off"];
+		expect(Object.keys(SUBAGENT_ENABLE_STATE_LABEL).sort()).toEqual([...states].sort());
+		expect(SUBAGENT_ENABLE_STATE_LABEL.on).toBe("Enabled");
+		expect(SUBAGENT_ENABLE_STATE_LABEL.off).toBe("Disabled");
+	});
+
+	/**
+	 * The regression that names the removed behaviour outright. A bundled
+	 * specialist with no row is DISABLED, full stop — it is not "unadvertised but
+	 * spawnable", and no caller may treat it as spawnable on the model's behalf.
+	 */
+	it("reports a default-off specialist as disabled, with nothing spawnable behind it", () => {
 		const settings = Settings.isolated();
 		const reviewer = bundled("reviewer");
 
-		expect(isSubagentAdvertised(settings, reviewer)).toBe(false);
-		expect(isSubagentSpawnable(settings, reviewer)).toBe(true);
-		expect(subagentEnableState(reviewer, subagentSettingsFor(settings, "reviewer").enabled)).toBe("default-off");
+		expect(isSubagentEnabled(settings, reviewer)).toBe(false);
+		expect(subagentEnableState(reviewer, subagentSettingsFor(settings, "reviewer").enabled)).toBe("off");
+		expect(isSubagentEnableDefaulted(subagentSettingsFor(settings, "reviewer").enabled)).toBe(true);
 	});
 
-	/** `enabled: false` is the operator saying no, and it refuses even a named spawn. */
-	it("blocks a spawn for an agent explicitly turned off", () => {
+	/** `enabled: false` and "no row on a specialist" now agree, because they mean the same thing. */
+	it("reports an explicitly disabled agent the same way as a defaulted one", () => {
 		const settings = Settings.isolated({ "subagent.agents": { reviewer: { enabled: false } } });
 		const reviewer = bundled("reviewer");
 
-		expect(isSubagentAdvertised(settings, reviewer)).toBe(false);
-		expect(isSubagentSpawnable(settings, reviewer)).toBe(false);
+		expect(isSubagentEnabled(settings, reviewer)).toBe(false);
 		expect(subagentEnableState(reviewer, subagentSettingsFor(settings, "reviewer").enabled)).toBe("off");
+		// The only difference is provenance, which surfaces may show as "(default)"
+		// and which must never change what the agent does.
+		expect(isSubagentEnableDefaulted(subagentSettingsFor(settings, "reviewer").enabled)).toBe(false);
 	});
 
-	/** A user agent turned off is blocked too: same key, same meaning, either source. */
-	it("blocks a user-authored agent turned off", () => {
+	/** A user agent turned off is disabled too: same key, same meaning, either source. */
+	it("disables a user-authored agent turned off", () => {
 		const settings = Settings.isolated({ "subagent.agents": { mine: { enabled: false } } });
 		const mine = userAgent("mine");
 
-		expect(isSubagentSpawnable(settings, mine)).toBe(false);
+		expect(isSubagentEnabled(settings, mine)).toBe(false);
 		expect(subagentEnableState(mine, subagentSettingsFor(settings, "mine").enabled)).toBe("off");
 	});
 
-	/** An untouched agent reports the shipped default, so the UI can say "(default)". */
-	it("reports the shipped default when the agent has no row", () => {
+	/** An untouched agent follows the shipped default, and reports that it is untouched. */
+	it("follows the shipped default when the agent has no row", () => {
 		const settings = Settings.isolated();
 
-		expect(subagentEnableState(bundled("task"), subagentSettingsFor(settings, "task").enabled)).toBe("default-on");
-		expect(subagentEnableState(userAgent("mine"), subagentSettingsFor(settings, "mine").enabled)).toBe("default-on");
+		expect(subagentEnableState(bundled("task"), subagentSettingsFor(settings, "task").enabled)).toBe("on");
+		expect(subagentEnableState(userAgent("mine"), subagentSettingsFor(settings, "mine").enabled)).toBe("on");
+		expect(isSubagentEnableDefaulted(subagentSettingsFor(settings, "task").enabled)).toBe(true);
 	});
 
-	/** An `enabled: true` row on an already-default-on agent still reads as an explicit choice. */
-	it("distinguishes an explicit yes from the default yes", () => {
-		const settings = Settings.isolated({ "subagent.agents": { task: { enabled: true } } });
+	/**
+	 * The toggle writes an explicit value every time, in both directions.
+	 *
+	 * The old cycle had three stops and could land back on "unset", a keypress that
+	 * changed nothing a reader could see. Writing explicitly also means the choice
+	 * survives a change to the shipped default, which a cleared row would not.
+	 */
+	it("toggles both ways and always writes an explicit value", () => {
+		const scout = bundled("scout");
+		const task = bundled("task");
 
-		expect(subagentEnableState(bundled("task"), subagentSettingsFor(settings, "task").enabled)).toBe("on");
+		// Defaulted-off → on → off, never back to undefined.
+		expect(nextSubagentEnableValue(scout, undefined)).toBe(true);
+		expect(nextSubagentEnableValue(scout, true)).toBe(false);
+		expect(nextSubagentEnableValue(scout, false)).toBe(true);
+
+		// And the toggle reads the agent's OWN default, so a defaulted-on agent
+		// turns off on the first press rather than needing two.
+		expect(nextSubagentEnableValue(task, undefined)).toBe(false);
 	});
 
 	/** A garbage row must not crash a reader or be mistaken for a real row. */
@@ -184,7 +221,8 @@ describe("subagent enable states: offered, blocked, and default", () => {
 		const settings = Settings.isolated({ "subagent.agents": { scout: "yes" } });
 
 		expect(subagentSettingsFor(settings, "scout")).toEqual({});
-		expect(isSubagentSpawnable(settings, bundled("scout"))).toBe(true);
+		// Falls back to the shipped default, which for a specialist is off.
+		expect(isSubagentEnabled(settings, bundled("scout"))).toBe(false);
 	});
 });
 
@@ -626,40 +664,162 @@ describe("subagent effort choices", () => {
 	});
 });
 
-describe("delegation strength", () => {
-	/** Delegation is available but never pushed, which is the shipped default. */
-	it("defaults to allowed", () => {
-		const settings = Settings.isolated();
+describe("delegation strength answers with the agent table, not on its own", () => {
+	/**
+	 * WHY THIS SUITE READS THIS WAY (SUBAGENT-DELEGATION-IGNORES-THE-AGENT-TABLE).
+	 * `subagent.delegation` and the `subagent.agents` table each decide whether any
+	 * work leaves the main session, and they used to be computed apart. So
+	 * `required` with every agent disabled still injected a first-turn "delegate
+	 * substantial work" reminder, telling the model to hand work to nothing it was
+	 * allowed to spawn. Each setting was individually correct and the pair was
+	 * incoherent, which is exactly what makes a settings screen feel arbitrary.
+	 * `resolveDelegation` takes both inputs, so every assertion below passes the
+	 * enabled-agent set alongside the strength.
+	 */
+	const WORKER = ["task"];
 
-		expect(delegationStrength(settings)).toBe("allowed");
+	/**
+	 * Subagents on, delegation encouraged, worker only — the shipped defaults, which
+	 * the settings doc states as a promise to the operator. Pinned here so a change to
+	 * any of the three has to be deliberate rather than a schema edit nobody noticed.
+	 */
+	it("defaults to preferred with subagents on", () => {
+		const settings = Settings.isolated();
+		const state = resolveDelegation(settings, WORKER);
+
+		expect(delegationStrength(settings)).toBe("preferred");
 		expect(delegationEnabled(settings)).toBe(true);
-		expect(delegationPreferred(settings)).toBe(false);
-		expect(delegationRequired(settings)).toBe(false);
+		expect(state.possible).toBe(true);
+		expect(state.preferred).toBe(true);
+		expect(state.required).toBe(false);
+		expect(delegationBlockedNotice(state)).toBeUndefined();
 	});
 
-	/** `off` removes the task tool entirely rather than describing a tool nobody may use. */
-	it("reports off as no delegation at all", () => {
-		const settings = Settings.isolated({ "subagent.delegation": "off" });
+	/**
+	 * `subagent.enabled: false` removes the task tool entirely rather than describing
+	 * a tool nobody may use. This is the ONLY setting that does: the strength dial
+	 * cannot, which is the distinction the two settings exist to keep apart.
+	 */
+	it("reports subagents-off as no delegation at all, and names the setting that stopped it", () => {
+		const settings = Settings.isolated({ "subagent.enabled": false });
+		const state = resolveDelegation(settings, WORKER);
 
 		expect(delegationEnabled(settings)).toBe(false);
-		expect(delegationPreferred(settings)).toBe(false);
-		expect(delegationRequired(settings)).toBe(false);
+		expect(state.possible).toBe(false);
+		expect(state.blockedBy).toBe("subagents-off");
+		expect(state.preferred).toBe(false);
+		expect(state.required).toBe(false);
+		expect(delegationBlockedNotice(state)).toBe(
+			"Subagents are off, so nothing here runs until you turn them back on.",
+		);
+	});
+
+	/**
+	 * The headline of the split, stated as its own case because it was the bug: the
+	 * LOWEST delegation strength still delegates. `allowed` means the model keeps the
+	 * task tool and decides for itself, so nothing here is blocked and no notice is
+	 * shown. While one setting carried both jobs there was no way to express this —
+	 * turning delegation down took the tool away — and it is the state most sessions
+	 * want.
+	 */
+	it("keeps delegation possible at the lowest strength, because strength never forbids", () => {
+		const settings = Settings.isolated({ "subagent.delegation": "allowed" });
+		const state = resolveDelegation(settings, WORKER);
+
+		expect(delegationEnabled(settings)).toBe(true);
+		expect(state.possible).toBe(true);
+		expect(state.blockedBy).toBeUndefined();
+		expect(delegationBlockedNotice(state)).toBeUndefined();
+		// Allowed is not a push: neither prompt flag is set.
+		expect(state.preferred).toBe(false);
+		expect(state.required).toBe(false);
+	});
+
+	/**
+	 * And the master switch beats the dial in both directions: `required` with
+	 * subagents off delegates nothing, rather than injecting a first-turn reminder to
+	 * hand work to a tool that was never built.
+	 */
+	it("lets the master switch override the strongest strength", () => {
+		const settings = Settings.isolated({ "subagent.enabled": false, "subagent.delegation": "required" });
+		const state = resolveDelegation(settings, WORKER);
+
+		expect(state.strength).toBe("required");
+		expect(state.possible).toBe(false);
+		expect(state.required).toBe(false);
+		expect(state.blockedBy).toBe("subagents-off");
+	});
+
+	/** The defaults the docs promise: subagents on, delegation encouraged. */
+	it("defaults to subagents on and delegation preferred", () => {
+		const settings = Settings.isolated({});
+		const state = resolveDelegation(settings, WORKER);
+
+		expect(delegationEnabled(settings)).toBe(true);
+		expect(state.strength).toBe("preferred");
+		expect(state.possible).toBe(true);
+		expect(state.preferred).toBe(true);
+		expect(state.required).toBe(false);
 	});
 
 	/** `preferred` asks the prompt to push work out, without the first-turn reminder. */
 	it("reports preferred as a push without the reminder", () => {
 		const settings = Settings.isolated({ "subagent.delegation": "preferred" });
+		const state = resolveDelegation(settings, WORKER);
 
-		expect(delegationEnabled(settings)).toBe(true);
-		expect(delegationPreferred(settings)).toBe(true);
-		expect(delegationRequired(settings)).toBe(false);
+		expect(state.possible).toBe(true);
+		expect(state.preferred).toBe(true);
+		expect(state.required).toBe(false);
 	});
 
 	/** `required` is the strongest: the push plus the eager first-turn prelude. */
 	it("reports required as a push plus the reminder", () => {
-		const settings = Settings.isolated({ "subagent.delegation": "required" });
+		const state = resolveDelegation(Settings.isolated({ "subagent.delegation": "required" }), WORKER);
 
-		expect(delegationPreferred(settings)).toBe(true);
-		expect(delegationRequired(settings)).toBe(true);
+		expect(state.preferred).toBe(true);
+		expect(state.required).toBe(true);
+	});
+
+	/**
+	 * THE HEADLINE. With nothing to delegate to, the strongest setting available
+	 * pushes nothing -- this is the assertion that fails if the two settings are
+	 * ever computed apart again. The old behaviour was a first-turn reminder to
+	 * delegate substantial work in a session that could not spawn anything.
+	 */
+	it("pushes nothing when no agent is enabled, however hard the strength is turned up", () => {
+		for (const strength of ["allowed", "preferred", "required"] as const) {
+			const state = resolveDelegation(Settings.isolated({ "subagent.delegation": strength }), []);
+
+			expect(state.strength, `${strength} keeps its own value`).toBe(strength);
+			expect(state.possible, `${strength} cannot delegate with no agent`).toBe(false);
+			expect(state.preferred).toBe(false);
+			expect(state.required).toBe(false);
+			expect(state.blockedBy).toBe("no-enabled-agents");
+		}
+	});
+
+	/**
+	 * And it says WHICH setting to go fix, naming the strength that is being
+	 * overruled. An operator looking at a delegation control that reads `required`
+	 * while nothing delegates needs to be sent to the other setting, not left to
+	 * guess between the two.
+	 */
+	it("names the strength being overruled when the agent table is what stopped it", () => {
+		const state = resolveDelegation(Settings.isolated({ "subagent.delegation": "required" }), []);
+
+		expect(delegationBlockedNotice(state)).toBe(
+			'No agent is enabled, so there is nothing to delegate to and "required" has no effect.',
+		);
+	});
+
+	/**
+	 * The master switch outranks the agent table in the reason it reports: with
+	 * subagents off the tool is not offered at all, so enabling agents changes
+	 * nothing, and sending the operator to the agent table first would waste the trip.
+	 */
+	it("reports subagents-off first when both would block", () => {
+		const state = resolveDelegation(Settings.isolated({ "subagent.enabled": false }), []);
+
+		expect(state.blockedBy).toBe("subagents-off");
 	});
 });

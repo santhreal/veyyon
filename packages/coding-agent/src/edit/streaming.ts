@@ -14,10 +14,7 @@
  */
 
 import {
-	ABORT_MARKER,
-	BEGIN_PATCH_MARKER,
 	containsRecognizableHashlineOperations,
-	END_PATCH_MARKER,
 	type PatchSection as HashlineInputSection,
 	Patch as HashlinePatch,
 	type SnapshotStore,
@@ -25,6 +22,16 @@ import {
 import { errorMessage } from "@veyyon/utils";
 import type { Theme } from "../modes/theme/theme";
 import { type EditMode, resolveEditMode } from "../utils/edit-mode";
+import {
+	ABORT_MARKER,
+	ADD_FILE_MARKER,
+	BEGIN_PATCH_MARKER,
+	DELETE_FILE_MARKER,
+	END_PATCH_MARKER,
+	EOF_MARKER,
+	MOVE_TO_MARKER,
+	UPDATE_FILE_MARKER,
+} from "./apply-patch/markers";
 import { computeEditDiff, type DiffError, type DiffResult } from "./diff";
 import { computeHashlineDiff, computeHashlineSectionDiff } from "./hashline/diff";
 import { type ApplyPatchEntry, expandApplyPatchToEntries, expandApplyPatchToPreviewEntries } from "./modes/apply-patch";
@@ -305,6 +312,10 @@ function splitApplyPatchPerFile(input: string): EditMatcherEntry[] {
 		try {
 			entries = expandApplyPatchToPreviewEntries({ input });
 		} catch {
+			// This runs on a PARTIAL envelope while the model is still streaming it, so both parsers failing
+			// means "not enough text to tell which files are touched yet" -- the state of every apply_patch
+			// before its first complete hunk. The empty list only suppresses the per-file highlighting for
+			// this frame; the next frame carries more text and the completed patch is validated by the tool.
 			return [];
 		}
 	}
@@ -484,22 +495,22 @@ function buildApplyPatchNaturalOrderPreviews(input: string): PerFileDiffPreview[
 		if (trimmedEnd === BEGIN_PATCH_MARKER || trimmedEnd === END_PATCH_MARKER || trimmedEnd === ABORT_MARKER) {
 			continue;
 		}
-		if (trimmedEnd.startsWith("*** Add File: ")) {
-			currentPath = trimmedEnd.slice("*** Add File: ".length);
+		if (trimmedEnd.startsWith(ADD_FILE_MARKER)) {
+			currentPath = trimmedEnd.slice(ADD_FILE_MARKER.length).trimStart();
 			ensure(currentPath);
 			continue;
 		}
-		if (trimmedEnd.startsWith("*** Delete File: ")) {
-			currentPath = trimmedEnd.slice("*** Delete File: ".length);
+		if (trimmedEnd.startsWith(DELETE_FILE_MARKER)) {
+			currentPath = trimmedEnd.slice(DELETE_FILE_MARKER.length).trimStart();
 			ensure(currentPath);
 			continue;
 		}
-		if (trimmedEnd.startsWith("*** Update File: ")) {
-			currentPath = trimmedEnd.slice("*** Update File: ".length);
+		if (trimmedEnd.startsWith(UPDATE_FILE_MARKER)) {
+			currentPath = trimmedEnd.slice(UPDATE_FILE_MARKER.length).trimStart();
 			ensure(currentPath);
 			continue;
 		}
-		if (trimmedEnd.startsWith("*** Move to:") || trimmedEnd.startsWith("*** End of File")) {
+		if (trimmedEnd.startsWith(MOVE_TO_MARKER) || trimmedEnd.startsWith(EOF_MARKER)) {
 			continue;
 		}
 		if (!currentPath) continue;

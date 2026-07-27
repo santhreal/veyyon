@@ -13,8 +13,8 @@ import {
 	parseSearchPath,
 	parseSearchPathPreferringLiteral,
 	partitionExistingPaths,
-	resolveExplicitSearchPaths,
 	type ResolvedSearchTarget,
+	resolveExplicitSearchPaths,
 	resolveToCwd,
 } from "./path-utils";
 import { ToolError } from "./tool-errors";
@@ -44,7 +44,6 @@ import { ToolError } from "./tool-errors";
  * KEEP THIS MODULE DOWNSTREAM. It may import `./path-utils`; nothing in
  * `./path-utils` may import it back, or the cycle returns.
  */
-
 
 /** Local file materialized from a readable external URL for shared tool-scope resolution. */
 export interface ResolvedExternalSearchUrl {

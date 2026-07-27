@@ -2,12 +2,15 @@
  * Get the API key or OAuth token for a provider.
  */
 
-import { PROVIDER_REGISTRY } from "@veyyon/ai";
+// The registry itself (163 modules) rather than the barrel (346).
+import { PROVIDER_REGISTRY } from "@veyyon/ai/registry";
 import { Args, Command, Flags } from "@veyyon/utils/cli";
 import chalk from "chalk";
 import { isAuthenticated } from "../config/auth-state";
 import { ModelRegistry } from "../config/model-registry";
-import { discoverAuthStorage } from "../sdk";
+// `session/auth-broker-config`, which OWNS this, not the `sdk` barrel that re-exports it: the barrel is
+// the whole application and this file wants one function.
+import { discoverAuthStorage } from "../session/auth-broker-config";
 import { getAvailableAuthMethods } from "../web/search/providers/perplexity-auth";
 
 export default class Token extends Command {

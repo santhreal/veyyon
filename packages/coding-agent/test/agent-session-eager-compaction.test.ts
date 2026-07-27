@@ -176,13 +176,19 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 		);
 		const sessionManager = SessionManager.inMemory(tempDir.path());
 
-		const mockTaskTool: AgentTool = {
+		// `enabledAgentNames` is what makes this a task tool that can actually spawn something.
+		// Delegation strength resolves against it (`enabledSubagentNames`), so a mock without it
+		// describes a session where every `task` call would be refused, and `subagent.delegation:
+		// "required"` correctly produces no reminder to re-inject. See the negative twin in
+		// `agent-session-eager-task.test.ts`.
+		const mockTaskTool = {
 			name: "task",
 			label: "Task",
 			description: "Mock task tool",
 			parameters: type({}),
 			execute: async () => ({ content: [{ type: "text" as const, text: "ok" }] }),
-		};
+			enabledAgentNames: ["general", "scout"],
+		} as AgentTool;
 		const mockBashTool: AgentTool = {
 			name: "bash",
 			label: "Bash",

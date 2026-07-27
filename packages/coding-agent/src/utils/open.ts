@@ -27,6 +27,9 @@ function getExistingWslLocalPath(urlOrPath: string): string | undefined {
 
 		return result.stdout.toString().trim() || undefined;
 	} catch {
+		// Best effort by design: this only translates a path for a Windows helper when running under WSL, and
+		// undefined means "no Windows path for this", which the caller answers by opening the original path
+		// with the Linux handler. Nothing is lost that the fallback does not cover.
 		return undefined;
 	}
 }

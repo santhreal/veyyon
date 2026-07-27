@@ -11,11 +11,11 @@ import { theme } from "../../../modes/theme/theme";
 import { matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
 import { clampSelection, contentRowWidth, renderScrollableList, searchableChar } from "../selector-helpers";
 import { applyFilter } from "./state-manager";
-import type { Extension, ExtensionKind, ExtensionState } from "./types";
+import type { ExtensionKind, ExtensionRow, ExtensionState } from "./types";
 
 export interface ExtensionListCallbacks {
 	/** Called when selection changes */
-	onSelectionChange?: (extension: Extension | null) => void;
+	onSelectionChange?: (extension: ExtensionRow | null) => void;
 	/** Called when extension is toggled */
 	onToggle?: (extensionId: string, enabled: boolean) => void;
 	/** Called when master switch is toggled */
@@ -30,7 +30,7 @@ const DEFAULT_MAX_VISIBLE = 15;
 type ListItem =
 	| { type: "master"; providerId: string; providerName: string; enabled: boolean }
 	| { type: "kind-header"; kind: ExtensionKind; label: string; icon: string; count: number }
-	| { type: "extension"; item: Extension };
+	| { type: "extension"; item: ExtensionRow };
 
 export class ExtensionList implements Component {
 	#listItems: ListItem[] = [];
@@ -45,7 +45,7 @@ export class ExtensionList implements Component {
 	#visibleCount = 0;
 
 	constructor(
-		private extensions: Extension[],
+		private extensions: ExtensionRow[],
 		private readonly callbacks: ExtensionListCallbacks = {},
 		maxVisible?: number,
 	) {
@@ -59,7 +59,7 @@ export class ExtensionList implements Component {
 		this.#clampSelection();
 	}
 
-	setExtensions(extensions: Extension[]): void {
+	setExtensions(extensions: ExtensionRow[]): void {
 		this.extensions = extensions;
 		this.#rebuildList();
 		this.#clampSelection();
@@ -84,7 +84,7 @@ export class ExtensionList implements Component {
 		this.#notifySelectionChange();
 	}
 
-	getSelectedExtension(): Extension | null {
+	getSelectedExtension(): ExtensionRow | null {
 		const item = this.#listItems[this.#selectedIndex];
 		return item?.type === "extension" ? item.item : null;
 	}
@@ -200,7 +200,7 @@ export class ExtensionList implements Component {
 		return truncateToWidth(line, width);
 	}
 
-	#renderExtensionRow(ext: Extension, isSelected: boolean, width: number, masterDisabled: boolean): string {
+	#renderExtensionRow(ext: ExtensionRow, isSelected: boolean, width: number, masterDisabled: boolean): string {
 		// When master is disabled, all items appear dimmed
 		const effectivelyDisabled = masterDisabled || ext.state === "disabled";
 
@@ -325,7 +325,7 @@ export class ExtensionList implements Component {
 		}
 
 		// ALL view: Group by kind with headers
-		const byKind = new Map<ExtensionKind, Extension[]>();
+		const byKind = new Map<ExtensionKind, ExtensionRow[]>();
 		for (const ext of filtered) {
 			const list = byKind.get(ext.kind) ?? [];
 			list.push(ext);

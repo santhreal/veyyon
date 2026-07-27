@@ -18,15 +18,13 @@ import type {
 	CollabUiRequest,
 	CollabUiRequestDraft,
 	CollabUiResponseValue,
-	AgentEvent as WireAgentEvent,
-	SessionEntry as WireSessionEntry,
+	WireSessionEntry,
 } from "@veyyon/wire";
 import type { InteractiveModeContext } from "../modes/types";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import { type AgentRef, AgentRegistry } from "../registry/agent-registry";
 import type { AgentSessionEvent } from "../session/agent-session";
 import { stripImagesFromMessage, USER_INTERRUPT_LABEL } from "../session/messages";
-import type { SessionEntry as StoredSessionEntry } from "../session/session-entries";
 import { TASK_SUBAGENT_LIFECYCLE_CHANNEL, TASK_SUBAGENT_PROGRESS_CHANNEL } from "../task/types";
 import { generateRoomKey, generateWriteToken, importRoomKey } from "./crypto";
 import { collabDisplayName } from "./display-name";
@@ -42,6 +40,10 @@ import {
 	formatCollabWebLink,
 	generateRoomId,
 	parseCollabLink,
+	toWireAgentEvent,
+	toWireModel,
+	toWireSessionEntry,
+	toWireSessionHeader,
 } from "./protocol";
 import { CollabSocket } from "./relay-client";
 import { shrinkForReplication } from "./replication-shrink";
@@ -60,45 +62,11 @@ const STATE_DEBOUNCE_MS = 100;
 const AGENTS_DEBOUNCE_MS = 100;
 const STREAMING_STATE_INTERVAL_MS = 2000;
 const WELCOME_IMAGE_STRIP_THRESHOLD = 24 * 1024 * 1024;
-const WIRE_AGENT_EVENT_TYPES: Record<WireAgentEvent["type"], true> = {
-	agent_start: true,
-	agent_end: true,
-	turn_start: true,
-	turn_end: true,
-	message_start: true,
-	message_update: true,
-	message_end: true,
-	tool_execution_start: true,
-	tool_execution_update: true,
-	tool_execution_end: true,
-	notice: true,
-	auto_compaction_start: true,
-	auto_compaction_end: true,
-	auto_retry_start: true,
-	auto_retry_end: true,
-	thinking_level_changed: true,
-};
-
-const WIRE_SESSION_ENTRY_TYPES: Record<WireSessionEntry["type"], true> = {
-	message: true,
-	custom_message: true,
-	compaction: true,
-	branch_summary: true,
-	model_change: true,
-	thinking_level_change: true,
-};
 const COLLAB_BUS_CHANNELS = [
 	TASK_SUBAGENT_LIFECYCLE_CHANNEL,
 	TASK_SUBAGENT_PROGRESS_CHANNEL,
 ] as const satisfies readonly BusChannel[];
 
-function isWireAgentEvent(event: AgentSessionEvent): event is AgentSessionEvent & WireAgentEvent {
-	return event.type in WIRE_AGENT_EVENT_TYPES;
-}
-
-function isWireSessionEntry(entry: StoredSessionEntry): entry is StoredSessionEntry & WireSessionEntry {
-	return entry.type in WIRE_SESSION_ENTRY_TYPES;
-}
 // How long the host waits for the REMOTE relay websocket to open. Crosses the
 // network, so it is deliberately more generous than the loopback broker budget
 // in launch/client.ts.
@@ -294,7 +262,8 @@ export class CollabHost {
 		}
 
 		this.#unsubscribe = this.#ctx.session.subscribe(event => {
-			if (isWireAgentEvent(event)) this.#broadcast({ t: "event", event: shrinkForReplication(event) });
+			const wireEvent = toWireAgentEvent(event);
+			if (wireEvent) this.#broadcast({ t: "event", event: shrinkForReplication(wireEvent) });
 			this.#onEventForState(event);
 		});
 		const bus = this.#ctx.eventBus;
@@ -305,7 +274,8 @@ export class CollabHost {
 		}
 		this.#registryUnsubscribe = AgentRegistry.global().onChange(() => this.#scheduleAgentsBroadcast());
 		this.#ctx.sessionManager.onEntryAppended = entry => {
-			if (isWireSessionEntry(entry)) this.#broadcast({ t: "entry", entry: shrinkForReplication(entry) });
+			const wire = toWireSessionEntry(entry);
+			if (wire) this.#broadcast({ t: "entry", entry: shrinkForReplication(wire) });
 			// Model/thinking/title changes land as entries while idle; refresh
 			// guest state promptly (debounce + JSON diff dedupe).
 			this.#scheduleStateBroadcast();
@@ -418,14 +388,18 @@ export class CollabHost {
 			}
 			logger.info("collab welcome exceeded size threshold; stripped images", { stripped });
 		}
-		const entries = snapshot.entries.filter(isWireSessionEntry);
+		// Projected, not merely filtered. The type guard this replaced narrowed the TYPE and left
+		// every undeclared field on the VALUE, and a guest persists what it receives.
+		// `toWireSessionEntry` answers undefined for an entry no guest renders, so the filter and
+		// the projection are one step and an unprojected entry cannot be broadcast.
+		const entries = snapshot.entries.map(toWireSessionEntry).filter(entry => entry !== undefined);
 		const socket = this.#socket;
 		if (!socket) return;
 		socket.send(
 			{
 				t: "welcome",
 				proto: COLLAB_PROTO,
-				header: snapshot.header,
+				header: toWireSessionHeader(snapshot.header),
 				state: this.#buildState(),
 				agents: this.#snapshotAgents(),
 				entryCount: entries.length,
@@ -458,7 +432,7 @@ export class CollabHost {
 	 * finalize the replica. An empty snapshot still emits one `final` chunk
 	 * so the guest never blocks on a missing terminator.
 	 */
-	#sendSnapshotChunks(entries: (StoredSessionEntry & WireSessionEntry)[], fromPeer: number): void {
+	#sendSnapshotChunks(entries: WireSessionEntry[], fromPeer: number): void {
 		const socket = this.#socket;
 		if (!socket) return;
 		if (entries.length === 0) {
@@ -467,7 +441,7 @@ export class CollabHost {
 		}
 		let i = 0;
 		while (i < entries.length) {
-			const batch: (StoredSessionEntry & WireSessionEntry)[] = [];
+			const batch: WireSessionEntry[] = [];
 			let batchBytes = 0;
 			while (i < entries.length) {
 				const entry = entries[i];
@@ -558,7 +532,7 @@ export class CollabHost {
 			queuedMessageCount: session.queuedMessageCount,
 			sessionName: session.sessionName,
 			cwd: this.#ctx.sessionManager.getCwd(),
-			model: session.model,
+			model: session.model ? toWireModel(session.model) : undefined,
 			thinkingLevel: session.thinkingLevel,
 			contextUsage: {
 				tokens,

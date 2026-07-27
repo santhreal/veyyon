@@ -573,6 +573,9 @@ function buildWellKnownUrls(wellKnownPath: string, baseUrl: string): URL[] {
 	try {
 		parsed = new URL(baseUrl);
 	} catch {
+		// No candidate URLs can be built from a base the URL parser rejects. The empty list is not a
+		// "nothing to discover" answer: every caller treats zero candidates as a discovery failure and
+		// reports it, so the operator sees the unusable server URL rather than a silent OAuth skip.
 		return [];
 	}
 

@@ -1,5 +1,6 @@
 import type { DataType } from "@huggingface/transformers";
-import { $env } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
+import { $env } from "@veyyon/utils/env";
 
 /** ONNX quantization / precision for local tiny models (transformers.js `dtype`). */
 export type TinyModelDtype = DataType;

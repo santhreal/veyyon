@@ -10,6 +10,12 @@ import {
 	parseJsonlLenient,
 	toError,
 } from "@veyyon/utils";
+import {
+	SESSION_BACKUP_EXTENSION,
+	SESSION_FILE_EXTENSION,
+	sessionBackupPrimaryName,
+	sessionFileStem,
+} from "@veyyon/utils/session-file";
 import { contentText } from "./content-text";
 import { computeDefaultSessionDir } from "./session-paths";
 import { FileSessionStorage, type SessionStorage } from "./session-storage";
@@ -613,7 +619,7 @@ function compareSessionsByRecency(a: SessionInfo, b: SessionInfo): number {
 export async function recoverOrphanedBackups(sessionDir: string, storage: SessionStorage): Promise<void> {
 	let backups: string[];
 	try {
-		backups = storage.listFilesSync(sessionDir, "*.bak");
+		backups = storage.listFilesSync(sessionDir, `*${SESSION_BACKUP_EXTENSION}`);
 	} catch {
 		return;
 	}
@@ -622,13 +628,10 @@ export async function recoverOrphanedBackups(sessionDir: string, storage: Sessio
 	const candidates = new Map<string, { backup: string; mtimeMs: number }>();
 	for (const backup of backups) {
 		const name = path.basename(backup);
-		// Expect "<primary>.<snowflake>.bak" where <primary> ends in ".jsonl".
-		if (!name.endsWith(".bak")) continue;
-		const trimmed = name.slice(0, -".bak".length);
-		const dotIdx = trimmed.lastIndexOf(".");
-		if (dotIdx <= 0) continue;
-		const primaryName = trimmed.slice(0, dotIdx);
-		if (!primaryName.endsWith(".jsonl")) continue;
+		// `<primary>.<snowflake>.bak`, read back through the inverse of the function that writes it. This
+		// parse used to be hand-rolled here, one file away from the template in `session-storage.ts`.
+		const primaryName = sessionBackupPrimaryName(name);
+		if (!primaryName) continue;
 		const primaryPath = path.join(sessionDir, primaryName);
 		let mtimeMs = 0;
 		try {
@@ -666,7 +669,7 @@ async function scanSessionDir(
 ): Promise<SessionInfo[]> {
 	try {
 		await recoverOrphanedBackups(sessionDir, storage);
-		const files = storage.listFilesSync(sessionDir, "*.jsonl");
+		const files = storage.listFilesSync(sessionDir, `*${SESSION_FILE_EXTENSION}`);
 		return await collectSessionsFromFiles(files, storage, withStatus);
 	} catch (error) {
 		// The whole-directory version of the same rule, and the worse one: this path
@@ -686,7 +689,7 @@ async function scanSessionDirReadOnly(
 	withStatus: boolean,
 ): Promise<SessionInfo[]> {
 	try {
-		const files = storage.listFilesSync(sessionDir, "*.jsonl");
+		const files = storage.listFilesSync(sessionDir, `*${SESSION_FILE_EXTENSION}`);
 		return await collectSessionsFromFiles(files, storage, withStatus);
 	} catch (error) {
 		if (!isEnoent(error)) {
@@ -723,7 +726,7 @@ export function listSessionsReadOnly(sessionDir: string, storage: SessionStorage
 export async function listAllSessions(storage: SessionStorage = new FileSessionStorage()): Promise<SessionInfo[]> {
 	const sessionsRoot = path.join(getDefaultAgentDir(), "sessions");
 	try {
-		const files = await Array.fromAsync(new Bun.Glob("*/*.jsonl").scan(sessionsRoot), name =>
+		const files = await Array.fromAsync(new Bun.Glob(`*/*${SESSION_FILE_EXTENSION}`).scan(sessionsRoot), name =>
 			path.join(sessionsRoot, name),
 		);
 		return await collectSessionsFromFiles(files, storage, true);
@@ -780,7 +783,7 @@ function sessionMatchesResumeArg(session: SessionInfo, sessionArg: string): bool
 		return true;
 	}
 
-	const fileName = path.basename(session.path, ".jsonl").toLowerCase();
+	const fileName = sessionFileStem(path.basename(session.path)).toLowerCase();
 	if (fileName.startsWith(normalizedArg)) {
 		return true;
 	}

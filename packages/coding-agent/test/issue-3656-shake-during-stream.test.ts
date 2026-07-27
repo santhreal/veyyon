@@ -5,7 +5,7 @@ import type { AssistantMessage } from "@veyyon/ai";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/assistant-message";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
@@ -14,6 +14,7 @@ import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { TempDir } from "@veyyon/utils";
+import { createToolExecution } from "./helpers/tool-execution";
 
 /**
  * Regression for issue #3656 — running `/shake` (or any mid-stream rebuild)
@@ -103,7 +104,7 @@ describe("issue #3656 /shake mid-stream preserves the in-flight assistant turn",
 		pendingTool: ToolExecutionComponent;
 	} {
 		const streamingComponent = new AssistantMessageComponent();
-		const pendingTool = new ToolExecutionComponent(
+		const pendingTool = createToolExecution(
 			"bash",
 			{ command: "echo hi" },
 			{},

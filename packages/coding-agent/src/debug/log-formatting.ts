@@ -35,6 +35,9 @@ export function parseDebugLogTimestampMs(line: string): number | undefined {
 		const timestampMs = Date.parse(timestamp);
 		return Number.isFinite(timestampMs) ? timestampMs : undefined;
 	} catch {
+		// Log lines are arbitrary text: a line that is not JSON, or JSON without a timestamp, has no time to
+		// report and undefined says exactly that. The caller keeps the line and renders it without a
+		// timestamp, so nothing is dropped for being unparseable.
 		return undefined;
 	}
 }
@@ -53,6 +56,8 @@ export function parseDebugLogPid(line: string): number | undefined {
 
 		return Number.isFinite(pid) ? pid : undefined;
 	} catch {
+		// Same as the timestamp reader above: no pid to report for a line that does not carry one, and the
+		// line is still shown.
 		return undefined;
 	}
 }

@@ -1,4 +1,4 @@
-import { PROMPTS } from "../prompts/registry";
+import { subagentPrompts } from "../prompts/subagent/rows";
 import { magicKeywordRegex } from "./magic-keyword-boundary";
 import { keywordInProse } from "./markdown-prose";
 
@@ -21,7 +21,7 @@ import { keywordInProse } from "./markdown-prose";
 const ORCHESTRATE_WORD = magicKeywordRegex("orchestrate");
 
 /** Hidden system notice appended after a user message that mentions "orchestrate". */
-export const ORCHESTRATE_NOTICE: string = PROMPTS["subagent/orchestrate-notice"].text.trim();
+export const ORCHESTRATE_NOTICE: string = subagentPrompts["subagent/orchestrate-notice"].text.trim();
 
 /**
  * Whether `text` contains the standalone keyword "orchestrate" (lowercase,

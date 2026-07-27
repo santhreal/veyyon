@@ -85,8 +85,22 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 		const blockZero = systemPrompt[0] as string;
 
 		expect({ sha: sha(blockZero), length: blockZero.length }).toEqual({
-			sha: "ae952af26fba457e",
-			length: 10_333,
+			// Updated 2026-07-26, deliberately, for the statement migration: block 0 is now assembled
+			// from the 68 statement rows instead of the copy of each section in `system-prompt.md`.
+			// ONE BYTE shorter (10_333 -> 10_332), and the byte is a blank line.
+			//
+			// Not a wording change. The statement suites assert ZERO word-level differences across a
+			// 33-point gate matrix, and enumerate every whitespace delta with its measured size in both
+			// directions, so this digest moving by one while the words hold is the expected shape. The
+			// cause is documented there and in `docs/system-prompt-customization.md`: `format` deletes a
+			// run of two or more blank lines entirely, the old template put UNCONDITIONAL blank lines
+			// between conditional blocks, and a statement instead owns the separation that follows it,
+			// so the spacing no longer depends on which unrelated blocks are absent.
+			//
+			// The one-time cost this gate exists to surface is real and was accepted: every conversation
+			// re-reads its prefix once after the release.
+			sha: "e62749925eb7f82b",
+			length: 10_332,
 		});
 	});
 

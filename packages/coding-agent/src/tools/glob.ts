@@ -10,7 +10,7 @@ import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { InternalUrlRouter } from "../internal-urls";
 import type { Theme } from "../modes/theme/theme";
-import { PROMPTS } from "../prompts/registry";
+import { toolsPrompts } from "../prompts/tools/rows";
 import { type TruncationResult, truncateHead } from "../session/streaming-output";
 import { Ellipsis, fileHyperlink, renderFileList, renderStatusLine, renderTreeList, truncateToWidth } from "../tui";
 import { isTimeoutError, scopedTimeoutSignal } from "../utils/fetch-timeout";
@@ -145,7 +145,7 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 	) {
 		this.#customOps = options?.operations;
 		this.#rootPathAlias = options?.rootPathAlias === true;
-		this.description = prompt.render(PROMPTS["tools/glob"].text);
+		this.description = prompt.render(toolsPrompts["tools/glob"].text);
 	}
 
 	async execute(

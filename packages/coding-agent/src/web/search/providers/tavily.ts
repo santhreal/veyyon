@@ -4,7 +4,9 @@
  * Uses Tavily's agent-focused search API to return structured results with an
  * optional synthesized answer.
  */
-import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/ai";
+import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
+import { withAuth } from "@veyyon/ai/auth-retry";
+import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { asRecord } from "@veyyon/utils";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";

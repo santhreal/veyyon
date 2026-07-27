@@ -4,14 +4,15 @@
  * `--json` stays machine-friendly — a well-formed empty payload at exit 0.
  */
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
 import * as path from "node:path";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
+
+const makeTempDir = useTrackedTempDirs("veyyon-usage-home-");
 
 const cliPath = path.resolve(import.meta.dir, "../../src/cli.ts");
 
 function makeEnv(): Record<string, string | undefined> {
-	const home = mkdtempSync(path.join(tmpdir(), "veyyon-usage-home-"));
+	const home = makeTempDir();
 	const env: Record<string, string | undefined> = {
 		...process.env,
 		HOME: home,

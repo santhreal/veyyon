@@ -4,10 +4,12 @@
 // the `providers.tts` switch.
 
 import type { AgentToolResult } from "@veyyon/agent-core";
-import { type ApiKey, withAuth } from "@veyyon/ai";
+import type { ApiKey } from "@veyyon/ai";
+import { withAuth } from "@veyyon/ai/auth-retry";
 import { ProviderHttpError } from "@veyyon/ai/error";
 import { type } from "arktype";
-import { settings } from "../config/settings";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { settings } from "../config/settings-instance";
 import type { CustomTool, CustomToolContext } from "../extensibility/custom-tools/types";
 import { resolveXAIHttpCredentials, veyyonXAIUserAgent } from "../lib/xai-http";
 import { DEFAULT_TTS_LOCAL_MODEL_KEY, DEFAULT_TTS_VOICE, isTtsLocalModelKey, KOKORO_VOICES } from "../tts/models";

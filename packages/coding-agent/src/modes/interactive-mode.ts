@@ -2,6 +2,7 @@
  * Interactive mode for the coding agent.
  * Handles TUI rendering and user interaction, delegating business logic to AgentSession.
  */
+
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
@@ -83,7 +84,9 @@ import type { Skill } from "../extensibility/skills";
 import { loadSlashCommands } from "../extensibility/slash-commands";
 import { type GuidedGoalMessage, newGuidedGoalSessionId, runGuidedGoalTurn } from "../goals/guided-setup";
 import type { Goal, GoalModeState } from "../goals/state";
-import { listLocalPlanFileUrls, resolveLocalUrlToPath } from "../internal-urls";
+// The owning module, not the `internal-urls` barrel: the barrel re-exports every protocol
+// handler and reaches hundreds of modules.
+import { listLocalPlanFileUrls, resolveLocalUrlToPath } from "../internal-urls/local-protocol";
 import { LSP_STARTUP_EVENT_CHANNEL, type LspStartupEvent } from "../lsp/startup-events";
 import type { MCPManager } from "../mcp";
 import {
@@ -97,7 +100,8 @@ import {
 	resolveApprovedPlan,
 	resolvePlanTitle,
 } from "../plan-mode/approved-plan";
-import { PROMPTS } from "../prompts/registry";
+import { DEFAULT_PLAN_FILE_URL } from "../plan-mode/plan-file-url";
+import { planModePrompts } from "../prompts/plan-mode/rows";
 import { type AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 import {
 	type AgentSession,
@@ -193,6 +197,7 @@ import { createSessionTeardown, type SessionTeardown } from "./session-teardown"
 import { runProviderSetupWizard } from "./setup-wizard/lazy";
 import { interruptHint } from "./shared";
 import { setDetectedTerminalGround } from "./theme/ground-tints";
+import { setMarkdownMermaidRendering } from "./theme/markdown-theme";
 import { clearMermaidCache } from "./theme/mermaid-cache";
 import {
 	lavaText,
@@ -209,7 +214,6 @@ import {
 	getSymbolTheme,
 	onTerminalAppearanceChange,
 	onThemeChange,
-	setMarkdownMermaidRendering,
 	theme,
 } from "./theme/theme";
 import type {
@@ -313,28 +317,6 @@ export function computeEditorMaxHeight(terminalRows: number): number {
 	const rows = Number.isFinite(terminalRows) && terminalRows > 0 ? terminalRows : EDITOR_FALLBACK_ROWS;
 	const comfortable = clampLow(rows - EDITOR_RESERVED_ROWS, EDITOR_MAX_HEIGHT_MIN, EDITOR_MAX_HEIGHT_MAX);
 	return clampLow(comfortable, EDITOR_MIN_RENDERED_ROWS, rows - EDITOR_MIN_CHROME_ROWS);
-}
-
-const HUD_NOTE_SUP_DIGITS: Record<string, string> = {
-	"0": "\u2070",
-	"1": "\u00b9",
-	"2": "\u00b2",
-	"3": "\u00b3",
-	"4": "\u2074",
-	"5": "\u2075",
-	"6": "\u2076",
-	"7": "\u2077",
-	"8": "\u2078",
-	"9": "\u2079",
-};
-
-function formatHudNoteMarker(count: number): string {
-	if (count <= 0) return "";
-	const sub = String(count)
-		.split("")
-		.map(d => HUD_NOTE_SUP_DIGITS[d] ?? d)
-		.join("");
-	return theme.fg("dim", chalk.italic(` \u207a${sub}`));
 }
 
 type GoalSubcommand = "set" | "show" | "pause" | "resume" | "drop" | "budget";
@@ -1844,17 +1826,16 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	#formatTodoLine(todo: TodoItem, prefix: string, matched: boolean): string {
 		const checkbox = theme.checkbox;
-		const marker = formatHudNoteMarker(todo.notes?.length ?? 0);
 		switch (todo.status) {
 			case "completed":
-				return theme.fg("success", `${prefix}${checkbox.checked} ${chalk.strikethrough(todo.content)}`) + marker;
+				return theme.fg("success", `${prefix}${checkbox.checked} ${chalk.strikethrough(todo.content)}`);
 			case "in_progress":
-				return theme.fg("accent", `${prefix}${checkbox.unchecked} ${todo.content}`) + marker;
+				return theme.fg("accent", `${prefix}${checkbox.unchecked} ${todo.content}`);
 			case "abandoned":
-				return theme.fg("error", `${prefix}${checkbox.unchecked} ${chalk.strikethrough(todo.content)}`) + marker;
+				return theme.fg("error", `${prefix}${checkbox.unchecked} ${chalk.strikethrough(todo.content)}`);
 			default:
-				if (matched) return theme.fg("accent", `${prefix}${checkbox.unchecked} ${todo.content}`) + marker;
-				return theme.fg("dim", `${prefix}${checkbox.unchecked} ${todo.content}`) + marker;
+				if (matched) return theme.fg("accent", `${prefix}${checkbox.unchecked} ${todo.content}`);
+				return theme.fg("dim", `${prefix}${checkbox.unchecked} ${todo.content}`);
 		}
 	}
 
@@ -2109,7 +2090,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	async #getPlanFilePath(): Promise<string> {
-		return this.session.getPlanReferencePath() || "local://PLAN.md";
+		return this.session.getPlanReferencePath() || DEFAULT_PLAN_FILE_URL;
 	}
 
 	#resolvePlanFilePath(planFilePath: string): string {
@@ -2964,7 +2945,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				// past the cancel guard — see the comment at the cancel branch.
 				// Cancellation skips the synthetic-prompt dispatch (operator's explicit
 				// abort is honored); failure proceeds best-effort — approval intent stands.
-				const compactionPrompt = prompt.render(PROMPTS["plan-mode/compact-instructions"].text, {
+				const compactionPrompt = prompt.render(planModePrompts["plan-mode/compact-instructions"].text, {
 					planFilePath: options.planFilePath,
 				});
 				// Pin the plan reference path BEFORE compaction so any user messages
@@ -3040,7 +3021,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// markPlanReferenceSent fires only on the dispatch path so the synthetic
 		// plan-approved prompt is the source of the reference injection.
 		this.session.markPlanReferenceSent();
-		const planModePrompt = prompt.render(PROMPTS["plan-mode/approved"].text, {
+		const planModePrompt = prompt.render(planModePrompts["plan-mode/approved"].text, {
 			planFilePath: options.planFilePath,
 			contextPreserved: options.preserveContext === true,
 		});

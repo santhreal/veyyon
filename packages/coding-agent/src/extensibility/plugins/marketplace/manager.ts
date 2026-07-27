@@ -10,7 +10,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { DAY_MS, isEnoent, logger, pathIsWithin } from "@veyyon/utils";
+import { DAY_MS, isEnoent, logger, pathIsWithin, removeTempPath } from "@veyyon/utils";
 import { normalizePluginRuntimeConfig } from "../runtime-config";
 import type { PluginRuntimeConfig } from "../types";
 
@@ -96,7 +96,7 @@ export class MarketplaceManager {
 
 		if (existingNames.has(catalog.name)) {
 			if (clonePath) {
-				await fs.rm(clonePath, { recursive: true, force: true }).catch(() => {});
+				await removeTempPath(clonePath, "marketplace-duplicate-name");
 			}
 			throw new Error(`Marketplace "${catalog.name}" already exists`);
 		}
@@ -307,7 +307,7 @@ export class MarketplaceManager {
 		} finally {
 			// Clean up temp clone dirs created by resolvePluginSource; leave user-supplied local dirs alone
 			if (tempCloneRoot) {
-				await fs.rm(tempCloneRoot, { recursive: true, force: true }).catch(() => {});
+				await removeTempPath(tempCloneRoot, "marketplace-temp-clone-root");
 			}
 		}
 

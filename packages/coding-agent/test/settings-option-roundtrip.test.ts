@@ -102,7 +102,7 @@ describe("settings UI option values round-trip through their setter (HSL-2)", ()
  * The shape of "default" changed here: an optional numeric setting stores NO
  * value when unset (an absent key, restored by the shared `Default` row) rather
  * than the old `-1` sentinel, which stole a value the provider accepts. Knobs
- * whose `-1` means something they name — `argot.disableAboveTokens` "Off",
+ * whose `-1` means something they name — `argot.encode.disableAboveTokens` "Off",
  * `providers.stream*TimeoutSeconds` "Auto" — keep it as a real default.
  */
 describe("numeric defaults are consistent and reachable (HSL-1)", () => {
@@ -138,7 +138,7 @@ describe("numeric defaults are consistent and reachable (HSL-1)", () => {
 
 	/** A numeric knob must always offer a way back to its default, whether that
 	 * default is an absent key (the `Default` row, which unsets) or an explicit
-	 * `-1` that means something the setting names (`argot.disableAboveTokens` uses
+	 * `-1` that means something the setting names (`argot.encode.disableAboveTokens` uses
 	 * -1 for "Off", `providers.stream*TimeoutSeconds` for "Auto"). */
 	it("every numeric submenu exposes an option that restores its default", () => {
 		const broken: string[] = [];

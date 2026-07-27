@@ -1,4 +1,5 @@
 import type { ElementHandle, JSHandle, Page } from "puppeteer-core";
+import { releaseHandle } from "../handle-release";
 import ariaBundle from "./aria-snapshot.bundle.txt" with { type: "text" };
 // `aria-snapshot.bundle.txt` is a generated, committed artifact: Playwright's
 // injected ARIA-snapshot sources (pinned, Apache-2.0) bundled to a CJS module.
@@ -60,7 +61,7 @@ export async function resolveAriaRefHandle(page: Page, ref: string): Promise<Ele
 	const handle = (await page.evaluateHandle(evaluateResolveRef as never, ref as never)) as JSHandle;
 	const element = handle.asElement();
 	if (!element) {
-		await handle.dispose().catch(() => undefined);
+		await releaseHandle(handle);
 		return null;
 	}
 	return element as ElementHandle;

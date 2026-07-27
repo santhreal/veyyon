@@ -5,7 +5,7 @@ import type { NumstatEntry } from "../../../commit/types";
 import type { ModelRegistry } from "../../../config/model-registry";
 import type { Settings } from "../../../config/settings";
 import type { CustomTool, CustomToolContext } from "../../../extensibility/custom-tools/types";
-import { PROMPTS } from "../../../prompts/registry";
+import { commitAgenticPrompts } from "../../../prompts/commit-agentic/rows";
 import type { AuthStorage } from "../../../session/auth-storage";
 import { TaskTool } from "../../../task";
 import type { TaskParams } from "../../../task/types";
@@ -77,7 +77,7 @@ export function createAnalyzeFileTool(options: {
 			const analyses = await Promise.all(
 				params.files.map((file, index) => {
 					const relatedFiles = formatRelatedFiles(params.files, file, numstat);
-					const assignment = prompt.render(PROMPTS["commit-agentic/analyze-file"].text, {
+					const assignment = prompt.render(commitAgenticPrompts["commit-agentic/analyze-file"].text, {
 						file,
 						goal: params.goal,
 						related_files: relatedFiles,

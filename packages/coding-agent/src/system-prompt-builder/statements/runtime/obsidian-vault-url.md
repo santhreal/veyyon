@@ -1,0 +1,1 @@
+- `vault://<vault>/<path>`: Obsidian vault (read/edit). `vault://` lists vaults; `vault://_/…` targets the active vault. File ops `?op=outline|backlinks|links|tags|properties|tasks|base|…`; vault ops `?op=search&q=…|daily|tasks|orphans|unresolved|bases|…`.

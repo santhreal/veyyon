@@ -85,7 +85,12 @@ describe("AssistantMessageComponent mermaid markdown", () => {
 			return width;
 		};
 		const boxRows = rendered.split("\n").filter(line => /[┌│└]/.test(line));
-		expect(boxRows.length).toBeGreaterThanOrEqual(3);
+		// Report WHAT was rendered, not just how many rows matched. This case fails intermittently
+		// inside large runs (BACKLOG: RETRY-FALLBACK-FLAKES-UNDER-A-FULL-RUN) and a bare `0` says
+		// nothing about whether the renderer produced nothing, produced the fenced source, or drew the
+		// diagram with ASCII box characters because something earlier in the process changed the
+		// symbol preset. Those want three different fixes.
+		expect(boxRows.length, `rendered:\n${JSON.stringify(rendered)}`).toBeGreaterThanOrEqual(3);
 		expect(new Set(boxRows.map(displayCols)).size).toBe(1);
 	});
 

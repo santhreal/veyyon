@@ -8,14 +8,13 @@
  * Used by the plan-mode model-tier slider ({@link HookSelectorComponent}) and
  * the ctrl+p role-cycle status so both surfaces read identically.
  */
+
+import { SGR_BG_RESET, SGR_FG_RESET, SGR_INTENSITY_RESET } from "@veyyon/tui/ansi";
 import { type ThemeColor, theme } from "../theme/theme";
 
 export interface TrackSegment {
 	label: string;
 }
-
-const FG_RESET = "\x1b[39m";
-const BG_RESET = "\x1b[49m";
 
 /** Vivid theme colors for position-based segment coloring, in preference
  *  order. Themes alias many of these to the same value (titanium maps most of
@@ -78,12 +77,12 @@ export function renderSegmentTrack(segments: TrackSegment[], activeIndex: number
 		const color = palette[i % palette.length];
 		const fg = theme.getFgAnsi(color);
 		if (i !== activeIndex) {
-			track += `${fg}${segment.label}${FG_RESET}`;
+			track += `${fg}${segment.label}${SGR_FG_RESET}`;
 			return;
 		}
 		const bg = fg.replace("\x1b[38;", "\x1b[48;");
-		const label = `${bg}${theme.getContrastFgAnsi(color)}\x1b[1m ${segment.label} \x1b[22m${BG_RESET}`;
-		track += `${fg}${capLeft}${label}${fg}${capRight}${FG_RESET}`;
+		const label = `${bg}${theme.getContrastFgAnsi(color)}\x1b[1m ${segment.label} ${SGR_INTENSITY_RESET}${SGR_BG_RESET}`;
+		track += `${fg}${capLeft}${label}${fg}${capRight}${SGR_FG_RESET}`;
 	});
 	return track;
 }

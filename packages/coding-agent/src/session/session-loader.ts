@@ -1,5 +1,9 @@
 import type { AgentMessage } from "@veyyon/agent-core";
-import { getBlobsDir, isEnoent, logger, parseJsonlLenient } from "@veyyon/utils";
+import { getBlobsDir } from "@veyyon/utils/dirs";
+import { isEnoent } from "@veyyon/utils/fs-error";
+// Owners, not the `@veyyon/utils` barrel: 4 modules against 74.
+import * as logger from "@veyyon/utils/logger";
+import { parseJsonlLenient } from "@veyyon/utils/stream";
 import {
 	BlobStore,
 	isBlobRef,

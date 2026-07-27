@@ -1,5 +1,9 @@
 import type { AssistantMessage } from "@veyyon/ai";
-import { type as t, validateToolCall } from "@veyyon/ai";
+import { validateToolCall } from "@veyyon/ai/utils/validation";
+// The owners, not the barrel. `type` is `@veyyon/ai`'s re-export of arktype, so
+// naming arktype is naming the same module; `validateToolCall` is one function
+// over a tool list. Together they were costing the whole streaming stack.
+import { type as t } from "arktype";
 import type { ChangelogCategory, ConventionalAnalysis } from "./types";
 import { extractTextContent, extractToolCall, normalizeAnalysis, parseJsonPayload } from "./utils";
 

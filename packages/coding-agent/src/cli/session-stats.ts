@@ -15,7 +15,8 @@
  */
 
 import type { AssistantMessage, ToolCallMetrics, ToolResultMessage } from "@veyyon/ai";
-import { type InstrumentationLevel, instrumentationRank } from "@veyyon/ai";
+// The rank from the module that defines it (1 module) rather than the barrel (346).
+import { type InstrumentationLevel, instrumentationRank } from "@veyyon/ai/instrumentation";
 import { clamp } from "@veyyon/utils";
 import type { FileEntry, SessionHeader, SessionMessageEntry } from "../session/session-entries";
 

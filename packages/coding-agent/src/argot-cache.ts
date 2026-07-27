@@ -131,6 +131,34 @@ export function createArgotSession(init: ArgotSessionInit): ArgotSession | undef
 }
 
 /**
+ * Decide whether the session loads its launch folder itself, or leaves every load
+ * to the agent's `argot_load` calls. This is the ONE owner of that decision: the
+ * SDK reads it rather than spelling the conditions out at the call site, so the
+ * `argot.autoload` setting cannot end up meaning one thing here and another
+ * thing in a second startup path.
+ *
+ * Three conditions, and each is a different reason not to walk a repository:
+ * `enabled` off means the feature is off entirely, so there is no codec to arm;
+ * an `argot` session that is already `loaded` came back from a resume with its
+ * roots re-armed, and loading again would rebuild a dictionary the session
+ * already has; and `autoload` off is the user asking that a dictionary be built
+ * only when the model deliberately asks for one.
+ *
+ * What this does NOT decide is whether a handle expands. Decoding is
+ * unconditional once any dictionary is loaded, so a session that skips the
+ * startup load still expands every handle the model writes after its own
+ * `argot_load` — turning autoload off shifts WHEN the dictionary is built, and
+ * nothing else.
+ */
+export function shouldAutoloadArgotAtStartup(state: {
+	enabled: boolean;
+	autoload: boolean;
+	argot: ArgotSession | undefined;
+}): boolean {
+	return state.enabled && state.autoload && state.argot !== undefined && !state.argot.loaded;
+}
+
+/**
  * Collect the project roots a persisted branch previously loaded through the
  * `argot_load` tool. The tool result's details carry the resolved root, so the
  * branch itself is the record of what the model chose to load — resume re-arms

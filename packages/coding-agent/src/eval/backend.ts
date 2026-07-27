@@ -1,4 +1,6 @@
-import { buildEvalUrlRoots, type LocalProtocolOptions } from "../internal-urls";
+// The owning module, not the `internal-urls` barrel: the barrel re-exports every protocol
+// handler and reaches hundreds of modules.
+import { buildEvalUrlRoots, type LocalProtocolOptions } from "../internal-urls/local-protocol";
 import type { ToolSession } from "../tools";
 import type { EvalDisplayOutput, EvalLanguage, EvalStatusEvent } from "./types";
 

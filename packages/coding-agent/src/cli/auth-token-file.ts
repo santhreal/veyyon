@@ -1,7 +1,7 @@
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getConfigRootDir, isEnoent } from "@veyyon/utils";
+import { getConfigRootDir, isEnoent, logger } from "@veyyon/utils";
 
 /**
  * The bearer-token file a local auth service authenticates its clients with.
@@ -21,6 +21,18 @@ import { getConfigRootDir, isEnoent } from "@veyyon/utils";
  * This module is the one owner, and it takes the gateway's behaviour in both cases: create exclusively,
  * at `0600`, and treat losing the create race as success by reading the winner's token.
  */
+/**
+ * How long a caller that lost the create race waits for the winner to write the token.
+ *
+ * The window is one `writeFile` wide, so this is generous by orders of magnitude on purpose: the cost of
+ * waiting slightly too long is a few milliseconds at service startup, and the cost of giving up too early
+ * is two live tokens and a client that gets rejected by the service that issued its token.
+ */
+const TOKEN_RACE_TIMEOUT_MS = 2_000;
+
+/** Poll interval while waiting out the create-then-write window. */
+const TOKEN_RACE_POLL_MS = 2;
+
 export class AuthTokenFile {
 	readonly #fileName: string;
 
@@ -95,13 +107,42 @@ export class AuthTokenFile {
 		if (existing) return existing;
 		const token = generateAuthToken();
 		if (await this.createExclusive(token)) return token;
-		// Another invocation won the create race; its token is the real one.
-		const fromRace = await this.read();
+		// Another invocation won the create race; its token is the real one. Reading it can lose a second,
+		// narrower race: `O_CREAT | O_EXCL` makes the file EXIST before its contents are written, so a
+		// loser that reads in that window sees an empty file, and `read()` reports empty as "no token".
+		// Treating that as no token is what made ten concurrent callers converge on TWO tokens -- the
+		// loser fell through and minted its own, and a client holding the winner's token is then rejected
+		// by the service that handed it out. So wait for the winner to finish writing.
+		const fromRace = await this.#readWhileCreatorWrites();
 		if (fromRace) return fromRace;
-		// The file existed at EEXIST and was gone by the read, so something removed it in between.
-		// Writing unconditionally is the last resort: the caller must not be handed an empty token.
+		// Still empty after the wait: either something removed the file between EEXIST and the read, or a
+		// creator died between creating it and writing to it and left an empty file behind. Either way the
+		// caller must not be handed an empty token, so this invocation takes ownership -- loudly, because
+		// it invalidates any client that somehow holds a token from the file this replaces (Law 10).
+		logger.warn("Auth token file existed but stayed empty; minting a replacement token", {
+			path: this.path(),
+			waitedMs: TOKEN_RACE_TIMEOUT_MS,
+		});
 		await this.write(token);
 		return token;
+	}
+
+	/**
+	 * Re-read the token file until the invocation that created it has written its contents.
+	 *
+	 * Bounded and short: the gap being waited out is one `writeFile` between `O_CREAT` and the bytes
+	 * landing, so it closes in microseconds in practice. The timeout exists for the case that never
+	 * closes -- a creator that died in that window -- where the caller must fall through rather than hang
+	 * a service startup on a file nobody is going to finish.
+	 */
+	async #readWhileCreatorWrites(): Promise<string | null> {
+		const deadline = Date.now() + TOKEN_RACE_TIMEOUT_MS;
+		for (;;) {
+			const token = await this.read();
+			if (token) return token;
+			if (Date.now() >= deadline) return null;
+			await Bun.sleep(TOKEN_RACE_POLL_MS);
+		}
 	}
 
 	/**

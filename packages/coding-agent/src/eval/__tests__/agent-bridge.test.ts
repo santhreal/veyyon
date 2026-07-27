@@ -70,6 +70,20 @@ interface SessionOptions {
 	agentId?: string;
 }
 
+/**
+ * The bundled specialists this suite spawns, enabled.
+ *
+ * Only the general-purpose `task` delegate ships enabled (`subagentEnabledByDefault`,
+ * `DEFAULT_ENABLED_BUNDLED_AGENT`), and `runEvalAgent` refuses a disabled agent by name before it
+ * spawns anything: `Agent "reviewer" is disabled (subagent.agents.reviewer.enabled is false)`. Two
+ * tests here name `reviewer`, so without this row they fail on enablement rather than on the
+ * routing they are about. Enabled the way an operator does rather than by making the fixture agent
+ * user-authored, which would be enabled by default and would stop reproducing a bundled specialist.
+ */
+const SPECIALISTS_ENABLED = {
+	"subagent.agents": { reviewer: { enabled: true } },
+} as const;
+
 function makeSession(options: SessionOptions = {}): ToolSession {
 	const settings =
 		options.settings ??
@@ -77,6 +91,7 @@ function makeSession(options: SessionOptions = {}): ToolSession {
 			"async.enabled": false,
 			"subagent.isolation.mode": "none",
 			"subagent.enableLsp": true,
+			...SPECIALISTS_ENABLED,
 		});
 	const artifactsDir = options.artifactsDir ?? null;
 	return {

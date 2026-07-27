@@ -21,12 +21,14 @@ import {
 import type { BunFile } from "bun";
 import { theme } from "../modes/theme/theme-binding";
 import type { Theme } from "../modes/theme/theme-class";
-import { PROMPTS } from "../prompts/registry";
+import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from "../tools";
 import { truncateForPrompt } from "../tools/approval";
 import { formatPathRelativeToCwd, resolveToCwd } from "../tools/path-utils";
+// The leaf, not `tools/tool-result`: that module builds results and reaches 151 modules through
+// `tools/output-meta`, and this only prepends a string to one already built.
+import { prependResultNotice } from "../tools/result-notice";
 import { ToolAbortError, ToolError, throwIfAborted } from "../tools/tool-errors";
-import { prependResultNotice } from "../tools/tool-result";
 import { clampTimeout, formatTimeoutClampNotice } from "../tools/tool-timeouts";
 import { isTimeoutError, scopedTimeoutSignal } from "../utils/fetch-timeout";
 import {
@@ -599,6 +601,10 @@ function parseGoWorkspaceBuildPatterns(output: string): string[] {
 	try {
 		parsed = JSON.parse(output);
 	} catch {
+		// `go work edit -json` prints nothing but JSON when it succeeds, and the caller only reaches here when
+		// the command exited zero, so unparseable output means a Go version whose format this does not know.
+		// The empty list means "no workspace patterns", which the caller answers by falling back to the
+		// single-module patterns -- a narrower build scope, not a wrong one.
 		return [];
 	}
 
@@ -1274,11 +1280,16 @@ async function fetchDiagnosticsWithDeferral(args: {
 	}
 	// Slow server: deliver late via the deferred channel; nothing inline. The
 	// deferred sink (edit tool) applies its own dedup, so pass the raw result.
+	// Nothing awaits this, so a failure here used to mean the deferred diagnostics simply never arrived: the
+	// edit reported no problems and the user could not tell that the fetch had failed rather than come back
+	// clean. Reported so a server that keeps failing this late fetch is visible.
 	void fetchPromise
 		.then(diagnostics => {
 			if (diagnostics && !deferred.signal.aborted) deferred.onDeferredDiagnostics(diagnostics);
 		})
-		.catch(() => {});
+		.catch((error: unknown) => {
+			logger.warn("deferred LSP diagnostics fetch failed; none were delivered", { error: errorMessage(error) });
+		});
 	return undefined;
 }
 
@@ -1557,7 +1568,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 	readonly strict = true;
 
 	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(PROMPTS["tools/lsp"].text);
+		this.description = prompt.render(toolsPrompts["tools/lsp"].text);
 	}
 
 	static createIf(session: ToolSession): LspTool | null {

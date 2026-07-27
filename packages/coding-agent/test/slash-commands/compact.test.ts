@@ -2,11 +2,9 @@ import { describe, expect, it, vi } from "bun:test";
 import type { CompactOptions } from "@veyyon/coding-agent/extensibility/extensions/types";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import type { CompactMode } from "@veyyon/coding-agent/session/compact-modes";
-import {
-	ACP_BUILTIN_SLASH_COMMANDS,
-	executeAcpBuiltinSlashCommand,
-} from "@veyyon/coding-agent/slash-commands/acp-builtins";
+import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/acp-builtins";
 import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
+import { ACP_BUILTIN_SLASH_COMMANDS } from "@veyyon/coding-agent/slash-commands/text-mode-builtins";
 import type { SlashCommandRuntime } from "@veyyon/coding-agent/slash-commands/types";
 
 function acpRuntime() {

@@ -33,6 +33,7 @@ import { CollabSocket } from "@veyyon/coding-agent/collab/relay-client";
 import { MAX_REPLICATED_PAYLOAD_BYTES, shrinkForReplication } from "@veyyon/coding-agent/collab/replication-shrink";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import type { SessionEntry } from "@veyyon/coding-agent/session/session-entries";
+import type { WireSessionEntry } from "@veyyon/wire";
 
 interface RelayData {
 	role: "host" | "guest";
@@ -262,7 +263,7 @@ describe("collab replication shrinking (#3739)", () => {
 		if (welcome?.t !== "welcome") throw new Error("expected welcome frame");
 		expect(welcome.entryCount).toBe(snapshot.entries.length);
 
-		const chunkEntries: SessionEntry[] = [];
+		const chunkEntries: WireSessionEntry[] = [];
 		for (const f of frames) if (f.t === "snapshot-chunk") chunkEntries.push(...f.entries);
 		expect(chunkEntries.map(e => e.id)).toEqual(snapshot.entries.map(e => e.id));
 

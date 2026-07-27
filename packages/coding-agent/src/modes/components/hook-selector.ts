@@ -21,7 +21,8 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
-import { getMarkdownTheme, type ThemeColor, theme } from "../../modes/theme/theme";
+import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
+import { type ThemeColor, theme } from "../../modes/theme/theme";
 import {
 	matchesAppExternalEditor,
 	matchesSelectCancel,

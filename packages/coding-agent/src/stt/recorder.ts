@@ -221,6 +221,8 @@ export async function awaitStartupMarker(
 	try {
 		while (Date.now() < deadline) {
 			const readPromise = reader.read();
+			// The read's failure still reaches the `await Promise.race` below and propagates from there; this
+			// only marks it handled for the case where the timeout branch wins and nobody awaits the read.
 			readPromise.catch(() => {});
 			const timeoutPromise = Bun.sleep(deadline - Date.now()).then(() => ({ done: true, value: undefined }));
 			const { done, value } = await Promise.race([readPromise, timeoutPromise]);
@@ -235,6 +237,19 @@ export async function awaitStartupMarker(
 	return { started: output.includes(marker), output };
 }
 
+/**
+ * Delete the temp PowerShell recording script, reporting a failure instead of leaking it silently.
+ *
+ * Both callers run where they cannot usefully throw: one after the process has already exited, one while
+ * raising the startup failure that is the error the operator needs. A script left in the temp directory is
+ * still worth a line, because it accumulates one file per recording attempt.
+ */
+function removeRecordingScript(scriptPath: string): void {
+	fs.unlink(scriptPath).catch((error: unknown) => {
+		logger.warn("STT temp recording script could not be deleted", { file: scriptPath, error: errorMessage(error) });
+	});
+}
+
 async function startPowerShellRecording(outputPath: string): Promise<RecordingHandle> {
 	// Write script to temp file — avoids quoting/escaping issues with -Command
 	const scriptPath = path.join(os.tmpdir(), `veyyon-stt-record-${Snowflake.next()}.ps1`);
@@ -247,7 +262,7 @@ async function startPowerShellRecording(outputPath: string): Promise<RecordingHa
 	});
 
 	proc.exited.then(() => {
-		fs.unlink(scriptPath).catch(() => {});
+		removeRecordingScript(scriptPath);
 	});
 
 	// Wait for "RECORDING" on stdout to confirm it started. PowerShell + Add-Type is slow.
@@ -261,7 +276,7 @@ async function startPowerShellRecording(outputPath: string): Promise<RecordingHa
 			stderrText = await readPipeText(proc.stderr);
 		}
 		// Clean up temp script
-		fs.unlink(scriptPath).catch(() => {});
+		removeRecordingScript(scriptPath);
 		throw new Error(
 			`PowerShell audio recording failed to start: ${stderrText.trim() || output.trim() || "(no output)"}`,
 		);

@@ -1,4 +1,5 @@
 import { errorMessage, getProjectDir, logger } from "@veyyon/utils";
+import { registerOwnedResourceDisposer } from "../../session/owned-resources";
 import type { ToolSession } from "../../tools";
 import {
 	attachSessionOwner,
@@ -11,12 +12,11 @@ import {
 	type KernelMode,
 	normalizeSessionCwd,
 } from "../executor-base";
+import { KERNEL_SHUTDOWN_GRACE_MS, releaseKernel } from "../kernel-base";
 import { ensureKernelToolBridge, type KernelToolBridgeInfo } from "../kernel-tool-bridge";
 import type { EvalDisplayOutput, EvalStatusEvent } from "../types";
 import { checkJuliaKernelAvailability, JuliaKernel } from "./kernel";
 import { resolveExplicitJuliaRuntime } from "./runtime";
-
-const SHUTDOWN_GRACE_MS = 1_000;
 
 export interface JuliaExecutorOptions {
 	cwd?: string;
@@ -293,26 +293,30 @@ async function replaceSessionKernel(session: JuliaSession, cwd: string, options:
 	});
 	const oldKernel = session.kernel;
 	const remaining = getRemainingTimeoutMs(options.deadlineMs);
-	await oldKernel
-		.shutdown(remaining !== undefined ? { timeoutMs: Math.max(0, remaining) } : undefined)
-		.catch(() => undefined);
+	await releaseKernel(
+		oldKernel,
+		"julia-session-kernel-replaced",
+		remaining !== undefined ? { timeoutMs: Math.max(0, remaining) } : undefined,
+	);
 	if (sessions.get(session.sessionKey) !== session) {
 		throw new JuliaExecutionCancelledError(false);
 	}
 	requireRemainingTimeoutMs(options.deadlineMs);
 	const nextKernel = await startKernel(cwd, options);
 	if (sessions.get(session.sessionKey) !== session) {
-		await nextKernel.shutdown().catch(() => undefined);
+		await releaseKernel(nextKernel, "julia-session-superseded-while-starting");
 		throw new JuliaExecutionCancelledError(false);
 	}
 	session.kernel = nextKernel;
 }
 
 async function resetSession(sessionKey: string): Promise<void> {
+	// A session still starting whose start FAILED has nothing to reset, and its failure is reported to whoever
+	// awaits the start; `undefined` here means exactly "there is no session", same as an absent key.
 	const session = sessions.get(sessionKey) ?? (await startingSessions.get(sessionKey)?.promise.catch(() => undefined));
 	if (!session) return;
 	sessions.delete(sessionKey);
-	await session.kernel.shutdown({ timeoutMs: SHUTDOWN_GRACE_MS }).catch(() => undefined);
+	await releaseKernel(session.kernel, "julia-session-reset", { timeoutMs: KERNEL_SHUTDOWN_GRACE_MS });
 }
 
 export async function disposeAllJuliaKernelSessions(): Promise<void> {
@@ -452,7 +456,7 @@ async function executePerCall(code: string, cwd: string, options: JuliaExecutorO
 	try {
 		return await executeWithKernel(kernel, code, { ...options, cwd });
 	} finally {
-		await kernel.shutdown().catch(() => undefined);
+		await releaseKernel(kernel, "julia-one-shot-finished");
 	}
 }
 
@@ -470,6 +474,9 @@ async function executeOnSession(code: string, cwd: string, options: JuliaExecuto
 	}
 	if (options.reset) {
 		const inFlight = resettingSessions.get(sessionKey);
+		// Another caller owns this reset and is awaiting `resetPromise` itself, so its failure is reported
+		// there. Here the only thing that matters is that the reset has SETTLED before running on the
+		// context: if it failed, `acquireSession` below starts a fresh one and fails with its own reason.
 		if (inFlight) await inFlight.catch(() => undefined);
 		else {
 			const resetPromise = resetSession(sessionKey);
@@ -485,6 +492,9 @@ async function executeOnSession(code: string, cwd: string, options: JuliaExecuto
 		}
 	} else {
 		const inFlight = resettingSessions.get(sessionKey);
+		// Another caller owns this reset and is awaiting `resetPromise` itself, so its failure is reported
+		// there. Here the only thing that matters is that the reset has SETTLED before running on the
+		// context: if it failed, `acquireSession` below starts a fresh one and fails with its own reason.
 		if (inFlight) await inFlight.catch(() => undefined);
 	}
 	const session = await acquireSession(sessionKey, sessionId, cwd, options);
@@ -554,3 +564,16 @@ export async function executeJulia(code: string, options?: JuliaExecutorOptions)
 		throw err;
 	}
 }
+
+/**
+ * Wire this subsystem into the session's owner-scoped cleanup.
+ *
+ * Registered at module scope rather than called by name from `agent-session.dispose()`, which is
+ * what used to happen. See `session/owned-resources.ts` for why load-time registration is safe
+ * here: a kernel cannot exist unless this module was loaded to create it.
+ */
+registerOwnedResourceDisposer({
+	name: "julia-kernels",
+	scope: "eval-kernel-owner",
+	dispose: disposeJuliaKernelSessionsByOwner,
+});

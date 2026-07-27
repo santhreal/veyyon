@@ -29,11 +29,17 @@ import { parseInternalUrl } from "../internal-urls/parse";
 import { createLspWritethrough, type FileDiagnosticsResult, type WritethroughCallback, writethroughNoop } from "../lsp";
 import { DeferredDiagnostics } from "../lsp/deferred-diagnostics";
 import { getDiagnosticsLedger } from "../lsp/diagnostics-ledger";
-import { getLanguageFromPath, highlightCode, type Theme } from "../modes/theme/theme";
-import { PROMPTS } from "../prompts/registry";
+import { highlightCode } from "../modes/theme/highlight";
+import type { Theme } from "../modes/theme/theme-class";
+import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from "../sdk";
-import { fileHyperlink, framedBlock, renderStatusLine } from "../tui";
+// Owners, not the local `../tui` barrel: it re-exports `./file-list`, and that module took
+// `getLanguageFromPath` from the theme ENGINE, so three names cost 282 modules of presentation layer.
+import { fileHyperlink } from "../tui/hyperlink";
+import { framedBlock } from "../tui/output-block";
+import { renderStatusLine } from "../tui/status-line";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
+import { getLanguageFromPath } from "../utils/lang-from-path";
 import {
 	type ArchiveMemberContent,
 	archiveFormatFromPath,
@@ -471,7 +477,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 						: undefined,
 				})
 			: writethroughNoop;
-		this.description = prompt.render(PROMPTS["tools/write"].text);
+		this.description = prompt.render(toolsPrompts["tools/write"].text);
 	}
 
 	async #resolveArchiveWritePath(writePath: string): Promise<ResolvedArchiveWritePath | null> {

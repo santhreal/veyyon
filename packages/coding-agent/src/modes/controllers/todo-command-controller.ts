@@ -407,6 +407,8 @@ export class TodoCommandController {
 			this.ctx.showWarning(`Failed to open external editor: ${errorMessage(error)}`);
 		} finally {
 			if (fileHandle) {
+				// The temp file has already been read (or the read failed and was reported above); a close that
+				// fails in this `finally` must not replace that report, and the descriptor dies with the process.
 				await fileHandle.close().catch(() => {});
 			}
 			this.ctx.ui.start();

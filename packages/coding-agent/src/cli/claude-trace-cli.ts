@@ -389,6 +389,10 @@ function isBackgroundModelRequest(message: ParsedHttpMessage): boolean {
 		const parsed = JSON.parse(decodeBody(message.headers, message.body)) as { model?: unknown };
 		return typeof parsed.model === "string" && parsed.model.toLowerCase().includes("haiku");
 	} catch {
+		// The body of a captured HTTP request, which may be gzipped, chunked, or truncated mid-capture. False
+		// means "not the background warmup call", and it is the SAFE direction: a request that cannot be
+		// inspected is kept in the trace rather than dropped from it, and a trace with one extra request is
+		// recoverable while a silently dropped one is not.
 		return false;
 	}
 }

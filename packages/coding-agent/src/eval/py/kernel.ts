@@ -17,7 +17,12 @@ import {
 	BaseKernel,
 	DEFAULT_KERNEL_STARTUP_TIMEOUT_MS,
 	getRemainingTimeMs,
+	KERNEL_INTERRUPT_ESCALATION_MS,
+	KERNEL_SHUTDOWN_GRACE_MS,
 	type KernelStartOptions,
+	kernelIpcTraceEnvVar,
+	kernelRunnerCacheDir,
+	releaseKernel,
 } from "../kernel-base";
 import { PYTHON_PRELUDE } from "./prelude";
 import RUNNER_SCRIPT from "./runner.py" with { type: "text" };
@@ -41,11 +46,11 @@ export type {
 export type { KernelDisplayOutput, PythonStatusEvent } from "./display";
 export { renderKernelDisplay } from "./display";
 
-const TRACE_IPC = $flag("VEYYON_PYTHON_IPC_TRACE");
+const TRACE_IPC = $flag(kernelIpcTraceEnvVar("PYTHON"));
 
 // Cache the runner script on disk so the subprocess loads it normally. Cached
 // per script hash so installs don't race across versions.
-const RUNNER_CACHE_DIR = path.join(os.tmpdir(), "veyyon-python-runner");
+const RUNNER_CACHE_DIR = kernelRunnerCacheDir(os.tmpdir(), "python");
 let RUNNER_SCRIPT_PATH: string | null = null;
 
 async function ensureRunnerScript(): Promise<string> {
@@ -60,7 +65,6 @@ async function ensureRunnerScript(): Promise<string> {
 	return target;
 }
 
-const SHUTDOWN_GRACE_MS = 1_000;
 const STARTUP_TIMEOUT_MS = DEFAULT_KERNEL_STARTUP_TIMEOUT_MS;
 // How long to wait after SIGINT for the runner to emit `done`. If the cell is
 // stuck in code that ignores Python signals (e.g. a C extension holding the
@@ -68,7 +72,6 @@ const STARTUP_TIMEOUT_MS = DEFAULT_KERNEL_STARTUP_TIMEOUT_MS;
 // instead of hanging the session forever. The grace window is intentionally
 // generous: a clean interrupt is far preferable to losing the persistent
 // kernel's state, so we only kill as a last-resort recovery path.
-const INTERRUPT_ESCALATION_MS = 5_000;
 
 export interface PythonKernelAvailability {
 	ok: boolean;
@@ -156,8 +159,8 @@ export class PythonKernel extends BaseKernel {
 			languageName: "Python",
 			traceIpc: TRACE_IPC,
 			exitPayload: JSON.stringify({ type: "exit" }),
-			interruptEscalationMs: INTERRUPT_ESCALATION_MS,
-			shutdownGraceMs: SHUTDOWN_GRACE_MS,
+			interruptEscalationMs: KERNEL_INTERRUPT_ESCALATION_MS,
+			shutdownGraceMs: KERNEL_SHUTDOWN_GRACE_MS,
 			buildPayload: (code, msgId, opts) =>
 				JSON.stringify({
 					id: msgId,
@@ -225,7 +228,7 @@ export class PythonKernel extends BaseKernel {
 			await kernel.executeWithBudget(PYTHON_PRELUDE, startup.signal, startupBudget, "Python kernel prelude");
 			return kernel;
 		} catch (err) {
-			await kernel.shutdown({ timeoutMs: SHUTDOWN_GRACE_MS }).catch(() => {});
+			await releaseKernel(kernel, "python-kernel-startup-failed", { timeoutMs: KERNEL_SHUTDOWN_GRACE_MS });
 			throw err;
 		}
 	}

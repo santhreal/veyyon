@@ -2,7 +2,8 @@ import { describe, expect, it } from "bun:test";
 import { type AgentMessage, filterProviderReplayMessages } from "@veyyon/agent-core";
 import type { ImageContent, Message, TextContent } from "@veyyon/ai";
 import { inferCopilotInitiator } from "@veyyon/ai/providers/github-copilot-headers";
-import { convertToLlm, SKILL_PROMPT_MESSAGE_TYPE, wrapSteeringForModel } from "@veyyon/coding-agent/session/messages";
+import { convertToLlm, SKILL_PROMPT_MESSAGE_TYPE } from "@veyyon/coding-agent/session/messages";
+import { wrapSteeringForModel } from "@veyyon/coding-agent/session/steering-envelope";
 
 function expectAttribution(message: Message | undefined, expected: "user" | "agent" | undefined): void {
 	expect(message).toBeDefined();

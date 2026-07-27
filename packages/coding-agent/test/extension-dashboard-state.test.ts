@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { applyDisabledExtensionsToState } from "@veyyon/coding-agent/modes/components/extensions/state-manager";
-import type { DashboardState, Extension } from "@veyyon/coding-agent/modes/components/extensions/types";
+import type { DashboardState, ExtensionRow } from "@veyyon/coding-agent/modes/components/extensions/types";
 
-function extension(overrides: Partial<Extension> & Pick<Extension, "id">): Extension {
+function extension(overrides: Partial<ExtensionRow> & Pick<ExtensionRow, "id">): ExtensionRow {
 	return {
 		kind: "skill",
 		name: overrides.id.replace(/^skill:/, ""),
@@ -15,7 +15,10 @@ function extension(overrides: Partial<Extension> & Pick<Extension, "id">): Exten
 	};
 }
 
-function dashboardState(extensions: Extension[], selected: Extension | null = extensions[0] ?? null): DashboardState {
+function dashboardState(
+	extensions: ExtensionRow[],
+	selected: ExtensionRow | null = extensions[0] ?? null,
+): DashboardState {
 	return {
 		tabs: [{ id: "all", label: "ALL", enabled: true, count: extensions.length }],
 		activeTabIndex: 0,

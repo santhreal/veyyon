@@ -1,11 +1,13 @@
+import { SGR_INTENSITY_RESET } from "@veyyon/tui/ansi";
 import { DEFAULT_TAB_WIDTH, sanitizeText } from "@veyyon/utils";
 import * as Diff from "diff";
-import { getLanguageFromPath, highlightCode, theme } from "../../modes/theme/theme";
 import { type CodeFrameMarker, formatCodeFrameLine, replaceTabs } from "../../tools/render-utils";
+import { getLanguageFromPath } from "../../utils/lang-from-path";
+import { highlightCode } from "../theme/highlight";
+import { theme } from "../theme/theme-binding";
 
 /** SGR dim on / normal intensity — additive, preserves fg/bg colors. */
 const DIM = "\x1b[2m";
-const DIM_OFF = "\x1b[22m";
 
 /**
  * Visualize leading whitespace (indentation) with dim glyphs.
@@ -21,13 +23,13 @@ function visualizeIndent(text: string): string {
 	const tabWidth = DEFAULT_TAB_WIDTH;
 	const leftPadding = Math.floor(tabWidth / 2);
 	const rightPadding = Math.max(0, tabWidth - leftPadding - 1);
-	const tabMarker = `${DIM}${" ".repeat(leftPadding)}→${" ".repeat(rightPadding)}${DIM_OFF}`;
+	const tabMarker = `${DIM}${" ".repeat(leftPadding)}→${" ".repeat(rightPadding)}${SGR_INTENSITY_RESET}`;
 	let visible = "";
 	for (const ch of indent) {
 		if (ch === "\t") {
 			visible += tabMarker;
 		} else {
-			visible += `${DIM}·${DIM_OFF}`;
+			visible += `${DIM}·${SGR_INTENSITY_RESET}`;
 		}
 	}
 	return `${visible}${replaceTabs(rest)}`;

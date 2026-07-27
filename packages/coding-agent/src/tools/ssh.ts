@@ -9,7 +9,7 @@ import { loadCapability } from "../discovery";
 import { formatExitCodeNotice } from "../exec/exit-notice";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
-import { PROMPTS } from "../prompts/registry";
+import { toolsPrompts } from "../prompts/tools/rows";
 import { DEFAULT_MAX_BYTES, streamTailUpdates, TailBuffer } from "../session/streaming-output";
 import type { SSHHostInfo } from "../ssh/connection-manager";
 import { ensureHostInfo, getCachedHostInfoSync } from "../ssh/connection-manager";
@@ -63,7 +63,7 @@ function formatHostEntry(host: SSHHost): string {
 }
 
 function formatDescription(hosts: SSHHost[]): string {
-	const baseDescription = prompt.render(PROMPTS["tools/ssh"].text);
+	const baseDescription = prompt.render(toolsPrompts["tools/ssh"].text);
 	if (hosts.length === 0) {
 		return baseDescription;
 	}

@@ -363,6 +363,8 @@ async function ensureSherpaModelFiles(
 		const key = role as keyof typeof spec.files;
 		const filename = spec.files[key];
 		const dest = path.join(dir, filename);
+		// A probe for "is this model file already downloaded". Anything that is not a readable non-empty file is
+		// re-downloaded, so a stat failure costs a download and never a missing or truncated model.
 		const present = await fs
 			.stat(dest)
 			.then(stats => stats.size > 0)

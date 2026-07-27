@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effort } from "@veyyon/ai";
+import { Effort } from "@veyyon/catalog/effort";
 import { parseAgentFields } from "@veyyon/coding-agent/discovery/helpers";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 

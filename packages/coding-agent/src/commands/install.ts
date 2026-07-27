@@ -36,6 +36,9 @@ export function looksLikeLocalPath(target: string, cwd?: string): boolean {
 	try {
 		return existsSync(cwd ? path.resolve(cwd, target) : path.resolve(target));
 	} catch {
+		// `path.resolve` throws only for arguments that are not strings, which the signature rules out, so
+		// this is defence in depth rather than a known failure path. False keeps the bare name on the REMOTE
+		// branch, which is where a name that is not a local directory belongs anyway.
 		return false;
 	}
 }

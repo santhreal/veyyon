@@ -7,8 +7,12 @@
  * Run: bun packages/coding-agent/bench/session-tree-nav.bench.ts
  */
 
-import type { SessionEntry } from "../src/session/session-manager";
-import { buildSessionContext } from "../src/session/session-manager";
+import { makeBench } from "@veyyon/utils/bench-harness";
+// Both moved out of `session-manager.ts` (the context builder to `session-context.ts`, the entry union to
+// `session-entries.ts`), which this script had not followed, so it had stopped running at all -- the same
+// way the parse-key bench had. A bench that cannot start publishes nothing and says nothing about it.
+import { buildSessionContext } from "../src/session/session-context";
+import type { SessionEntry } from "../src/session/session-entries";
 
 // ─── Synthetic session ───────────────────────────────────────────────────────
 
@@ -71,17 +75,11 @@ function buildEntries(): SessionEntry[] {
 const WARMUP = 20;
 const ITERATIONS = 200;
 
-function bench(name: string, fn: () => void): number {
-	// Warmup
-	for (let i = 0; i < WARMUP; i++) fn();
-
-	const start = Bun.nanoseconds();
-	for (let i = 0; i < ITERATIONS; i++) fn();
-	const elapsed = (Bun.nanoseconds() - start) / 1e6;
-	const perOp = elapsed / ITERATIONS;
-	console.log(`  ${name}: ${elapsed.toFixed(2)}ms total  ${perOp.toFixed(4)}ms/op`);
-	return perOp;
-}
+// The shared harness, which runs the warmup this script used to run for itself. It was the only bench that
+// already knew a cold first iteration distorts the reading, and that is now the default for every one of
+// them. `bench` returns total elapsed milliseconds, so the per-navigation figures below divide by
+// ITERATIONS rather than being handed a per-op number.
+const bench = makeBench(ITERATIONS, { warmup: WARMUP });
 
 // ─── Run ──────────────────────────────────────────────────────────────────────
 
@@ -103,6 +101,6 @@ const oneWalk = bench("one walk    [AFTER  — dedupe fix]    ", () => {
 	buildSessionContext(entries, leafId);
 });
 
-const savedMs = twoWalks - oneWalk;
-const pctSaved = ((savedMs / twoWalks) * 100).toFixed(1);
+const savedMs = (twoWalks - oneWalk) / ITERATIONS;
+const pctSaved = (((twoWalks - oneWalk) / twoWalks) * 100).toFixed(1);
 console.log(`\n  Saved ${savedMs.toFixed(4)}ms/navigation (${pctSaved}% reduction per navigate)\n`);

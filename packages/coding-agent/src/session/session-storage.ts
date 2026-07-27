@@ -1,7 +1,13 @@
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
-import { hasFsCode, isEnoent, logger, peekFileEnds, Snowflake, toError } from "@veyyon/utils";
+import { hasFsCode, isEnoent } from "@veyyon/utils/fs-error";
+// Owners, not the `@veyyon/utils` barrel: 5 modules against 74.
+import * as logger from "@veyyon/utils/logger";
+import { peekFileEnds } from "@veyyon/utils/peek-file";
+import { sessionBackupName } from "@veyyon/utils/session-file";
+import { Snowflake } from "@veyyon/utils/snowflake";
+import { toError } from "@veyyon/utils/type-guards";
 import { overlayTitleSlotContent, type SessionTitleUpdate, serializeTitleSlot } from "./session-title-slot";
 
 const utf8Decoder = new TextDecoder("utf-8");
@@ -340,7 +346,7 @@ export class FileSessionStorage implements SessionStorage {
 		commitGuard?: () => boolean,
 	): void {
 		const dir = path.resolve(targetPath, "..");
-		const backupPath = path.join(dir, `${path.basename(targetPath)}.${Snowflake.next()}.bak`);
+		const backupPath = path.join(dir, sessionBackupName(path.basename(targetPath), Snowflake.next()));
 		try {
 			this.renameSync(targetPath, backupPath);
 		} catch (moveAsideError) {

@@ -179,6 +179,7 @@ describe("an authorization-server document whose issuer cannot be parsed", () =>
 	 * They are listed individually because every one of them is something a real gateway has emitted:
 	 * an empty-ish value, a bare host with no scheme, and a template that was never substituted.
 	 */
+	// biome-ignore lint/suspicious/noTemplateCurlyInString: an unsubstituted template is exactly the bad issuer value this rejects.
 	it.each([["issuer.example.com"], ["${ISSUER_URL}"], ["https://"], ["/relative/issuer"]])(
 		"refuses the unverifiable issuer %p",
 		async issuer => {

@@ -20,8 +20,8 @@ import { errorMessage, logger, prompt, Snowflake } from "@veyyon/utils";
 import type { AsyncJob, AsyncJobManager } from "../async/job-manager";
 import type { LocalProtocolOptions } from "../internal-urls";
 import { registerArtifactsDir } from "../internal-urls/registry-helpers";
-import { MCPManager } from "../mcp/manager";
-import { PROMPTS } from "../prompts/registry";
+import { mcpManagerInstance } from "../mcp/manager-instance";
+import { toolsPrompts } from "../prompts/tools/rows";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 import { getBundledAgent } from "../task/agents";
@@ -542,7 +542,7 @@ export class VibeSessionRegistry {
 			authStorage: session.authStorage,
 			modelRegistry: session.modelRegistry,
 			settings: session.settings,
-			mcpManager: session.mcpManager ?? MCPManager.instance(),
+			mcpManager: session.mcpManager ?? mcpManagerInstance(),
 			contextFiles: session.contextFiles?.filter(file => path.basename(file.path).toLowerCase() !== "agents.md"),
 			skills: [...(session.skills ?? [])],
 			workspaceTree: session.workspaceTree,
@@ -694,7 +694,7 @@ export class VibeSessionRegistry {
 		let text: string;
 		try {
 			text = prompt
-				.render(PROMPTS["tools/vibe-turn-result"].text, {
+				.render(toolsPrompts["tools/vibe-turn-result"].text, {
 					id: record.id,
 					cli: record.cli,
 					turn: turnIndex,

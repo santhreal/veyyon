@@ -62,6 +62,8 @@ async function callSessionToolPromptOnAbort(
 	const signal = entry.signal;
 	if (!signal) return await call;
 	if (signal.aborted) {
+		// The cell was interrupted before this call could be awaited, and the abort error thrown on the next
+		// line is what the cell reports; the in-flight call's own failure has nowhere left to go.
 		void call.catch(() => {});
 		throw new Error(`bridge call ${JSON.stringify(name)} aborted: eval cell was interrupted`);
 	}

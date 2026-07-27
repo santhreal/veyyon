@@ -1,7 +1,7 @@
 import { parentPort } from "node:worker_threads";
 import { consumeWorkerInbox } from "@veyyon/utils/worker-host";
 import { WorkerCore } from "./worker-core";
-import type { Transport, WorkerInbound, WorkerOutbound } from "./worker-protocol";
+import type { EvalWorkerInbound, EvalWorkerOutbound, EvalWorkerTransport } from "./worker-protocol";
 
 if (!parentPort) throw new Error("js worker-entry: missing parentPort");
 
@@ -11,11 +11,11 @@ const port = parentPort;
 // directly (test/SDK fallback), this module's top-level runs synchronously at
 // worker start, so the direct `parentPort.on` below wins the flush on its own.
 const inbox = consumeWorkerInbox();
-const transport: Transport = {
-	send: (msg: WorkerOutbound) => port.postMessage(msg),
+const transport: EvalWorkerTransport = {
+	send: (msg: EvalWorkerOutbound) => port.postMessage(msg),
 	onMessage: handler => {
-		if (inbox) return inbox.bind(data => handler(data as WorkerInbound));
-		const wrap = (data: unknown): void => handler(data as WorkerInbound);
+		if (inbox) return inbox.bind(data => handler(data as EvalWorkerInbound));
+		const wrap = (data: unknown): void => handler(data as EvalWorkerInbound);
 		port.on("message", wrap);
 		return () => port.off("message", wrap);
 	},

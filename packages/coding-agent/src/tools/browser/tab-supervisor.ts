@@ -1,5 +1,6 @@
 import { errorMessage, isCancellation, logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/utils";
 import { callSessionTool } from "../../eval/js/tool-bridge";
+import { registerOwnedResourceDisposer } from "../../session/owned-resources";
 import { logWorkerMessage } from "../../subprocess/worker-log";
 import { raceWithTimeout } from "../../utils/fetch-timeout";
 import { webpExclusionForModel } from "../../utils/image-loading";
@@ -21,14 +22,14 @@ import {
 } from "./registry";
 import type {
 	ReadyInfo,
-	RunErrorPayload,
 	RunResultOk,
 	SessionSnapshot,
+	TabRunErrorPayload,
+	TabWorkerInbound,
+	TabWorkerOutbound,
+	TabWorkerTransport,
 	Transferable,
-	Transport,
-	WorkerInbound,
 	WorkerInitPayload,
-	WorkerOutbound,
 } from "./tab-protocol";
 import { targetIdForPage, targetIdForTarget } from "./target-id";
 
@@ -36,11 +37,32 @@ import { targetIdForPage, targetIdForTarget } from "./target-id";
 // hidden argv mode, so compiled/npm builds only need one JavaScript entry.
 
 interface WorkerHandle {
-	send(msg: WorkerInbound, transferList?: Transferable[]): void;
-	onMessage(handler: (msg: WorkerOutbound) => void): () => void;
+	send(msg: TabWorkerInbound, transferList?: Transferable[]): void;
+	onMessage(handler: (msg: TabWorkerOutbound) => void): () => void;
 	onError(handler: (error: Error) => void): () => void;
 	terminate(): Promise<void>;
 	readonly mode: "worker" | "inline";
+}
+
+/**
+ * Terminate a tab worker, in one place.
+ *
+ * Every caller reaches this while tearing a tab down, either because the tab was released or because the
+ * worker stopped answering and is being replaced. None of them can usefully throw: the release has already
+ * removed the tab, and the recycle paths raise their own error describing why the recycle failed, which is
+ * the error the operator needs rather than the terminate that came after it.
+ *
+ * The failure is still reported, because it is not free. A terminate fails either because the worker has
+ * already exited, which is harmless, or because it is alive and refusing to stop, and in the second case
+ * the tab is dropped from the registry while the process keeps running. That is a leaked worker for the
+ * lifetime of the session, so it is logged with the reason and the site that was tearing down.
+ */
+async function terminateWorker(worker: WorkerHandle, context: string): Promise<void> {
+	try {
+		await worker.terminate();
+	} catch (error) {
+		logger.warn("browser tab worker did not terminate", { context, mode: worker.mode, error: errorMessage(error) });
+	}
 }
 
 export type DialogPolicy = "accept" | "dismiss";
@@ -254,7 +276,7 @@ async function acquireTabImpl(
 		// `BuildMessage`-class failures arrive asynchronously via the worker's `error` event,
 		// after `spawnTabWorker`'s synchronous try/catch has already returned. Fall back to
 		// the inline worker here so module-resolution failures don't poison every tab open.
-		await worker.terminate().catch(() => undefined);
+		await terminateWorker(worker, "open-init-failed");
 		if (worker.mode === "inline") {
 			if (tempHold || browser.refCount === 0) await releaseBrowser(browser, { kill: false });
 			throw error;
@@ -266,7 +288,7 @@ async function acquireTabImpl(
 		try {
 			info = await initializeTabWorker(worker, initPayload, opts.timeoutMs + GRACE_MS);
 		} catch (inlineError) {
-			await worker.terminate().catch(() => undefined);
+			await terminateWorker(worker, "open-inline-failed");
 			if (tempHold || browser.refCount === 0) await releaseBrowser(browser, { kill: false });
 			const finalError = new ToolError(
 				`Failed to start browser tab worker (inline fallback also failed): ${errorMessage(inlineError)}`,
@@ -281,7 +303,9 @@ async function acquireTabImpl(
 	// browser refCount (which `holdBrowser` below would take) never grows for
 	// a tab nobody is waiting for.
 	if (opts.signal?.aborted) {
-		await worker.terminate().catch(() => undefined);
+		await terminateWorker(worker, "open-aborted");
+		// The browser release runs while an abort is already being raised; its own failure must not
+		// replace `ToolAbortError`, and the refCount it adjusts is dropped with the browser anyway.
 		if (tempHold) await releaseBrowser(browser, { kill: false }).catch(() => undefined);
 		throw new ToolAbortError("Browser tab open aborted");
 	}
@@ -376,6 +400,8 @@ async function acquireCmuxTab(
 		return { tab, created: true };
 	} catch (error) {
 		if (ownsSurface && surfaceId) {
+			// Rolling back the surface we created while the open error is already propagating; that error is what
+			// the caller needs, and a close that fails means the surface is already gone with the browser.
 			await browser.client.request("surface.close", { surface_id: surfaceId }).catch(() => undefined);
 		}
 		throw error;
@@ -557,7 +583,7 @@ export async function releaseTab(name: string, opts: ReleaseTabOptions = {}): Pr
 			forced = true;
 		}
 	}
-	await tab.worker.terminate().catch(() => undefined);
+	await terminateWorker(tab.worker, "release-tab");
 	if (forced && tab.kindTag === "headless") await closeOrphanTarget(tab);
 	await releaseBrowser(tab.browser, { kill: opts.kill ?? false });
 	tabs.delete(name);
@@ -635,7 +661,7 @@ async function buildInitPayload(browser: PuppeteerBrowserHandle, opts: AcquireTa
 	};
 }
 
-function handleTabMessage(tab: WorkerTabSession, msg: WorkerOutbound): void {
+function handleTabMessage(tab: WorkerTabSession, msg: TabWorkerOutbound): void {
 	if (msg.type === "result") {
 		const pending = tab.pending.get(msg.id);
 		if (!pending) return;
@@ -660,7 +686,7 @@ function handleTabMessage(tab: WorkerTabSession, msg: WorkerOutbound): void {
 
 async function dispatchToolCall(
 	tab: WorkerTabSession,
-	msg: Extract<WorkerOutbound, { type: "tool-call" }>,
+	msg: Extract<TabWorkerOutbound, { type: "tool-call" }>,
 ): Promise<void> {
 	const pending = tab.pending.get(msg.runId);
 	if (!pending?.session.cwd) {
@@ -697,7 +723,7 @@ async function dispatchToolCall(
 	}
 }
 
-function safeSend(tab: WorkerTabSession, msg: WorkerInbound): void {
+function safeSend(tab: WorkerTabSession, msg: TabWorkerInbound): void {
 	if (tab.state !== "alive") return;
 	try {
 		tab.worker.send(msg);
@@ -706,7 +732,7 @@ function safeSend(tab: WorkerTabSession, msg: WorkerInbound): void {
 	}
 }
 
-function toErrorPayload(error: unknown): RunErrorPayload {
+function toErrorPayload(error: unknown): TabRunErrorPayload {
 	if (error instanceof Error) {
 		return {
 			name: error.name,
@@ -724,7 +750,7 @@ function toErrorPayload(error: unknown): RunErrorPayload {
 
 async function recycleTimedOutWorkerTab(tab: WorkerTabSession, timeoutMs: number): Promise<void> {
 	const oldWorker = tab.worker;
-	await oldWorker.terminate().catch(() => undefined);
+	await terminateWorker(oldWorker, "recycle-timed-out");
 	const browserWSEndpoint = tab.browser.browser.wsEndpoint();
 	if (!browserWSEndpoint) throw new ToolError("Browser websocket endpoint is unavailable");
 	const payload: WorkerInitPayload = {
@@ -744,7 +770,7 @@ async function recycleTimedOutWorkerTab(tab: WorkerTabSession, timeoutMs: number
 		tab.state = "alive";
 		worker.onMessage(msg => handleTabMessage(tab, msg));
 	} catch (error) {
-		await worker.terminate().catch(() => undefined);
+		await terminateWorker(worker, "recycle-spawn-failed");
 		worker = await spawnInlineWorker();
 		try {
 			const info = await initializeTabWorker(worker, payload, timeoutMs);
@@ -753,7 +779,7 @@ async function recycleTimedOutWorkerTab(tab: WorkerTabSession, timeoutMs: number
 			tab.state = "alive";
 			worker.onMessage(msg => handleTabMessage(tab, msg));
 		} catch (inlineError) {
-			await worker.terminate().catch(() => undefined);
+			await terminateWorker(worker, "recycle-inline-failed");
 			const finalError = new ToolError(
 				`Failed to recycle timed-out browser tab worker (inline fallback also failed): ${errorMessage(inlineError)}`,
 			);
@@ -776,7 +802,7 @@ async function forceKillTab(name: string, reason: string): Promise<void> {
 		tabs.delete(name);
 		return;
 	}
-	await tab.worker.terminate().catch(() => undefined);
+	await terminateWorker(tab.worker, "force-kill");
 	if (tab.kindTag === "headless") await closeOrphanTarget(tab);
 	await releaseBrowser(tab.browser, { kill: false });
 	tabs.delete(name);
@@ -784,6 +810,10 @@ async function forceKillTab(name: string, reason: string): Promise<void> {
 
 async function closeOrphanTarget(tab: WorkerTabSession): Promise<void> {
 	for (const target of tab.browser.browser.targets()) {
+		// Closing an orphaned target after its worker died. Each step tolerates the target already being gone,
+		// which is the common case: an id that cannot be read cannot match, a target that will not hand over a
+		// page has nothing to close, and a close that fails means it closed itself first. Nothing depends on the
+		// outcome -- the tab is already out of the registry.
 		if ((await targetIdForTarget(target).catch(() => "")) !== tab.targetId) continue;
 		const page = await target.page().catch(() => null);
 		await page?.close().catch(() => undefined);
@@ -808,7 +838,7 @@ function expandBrowserScreenshotDir(session: ToolSession): string | undefined {
 	return value ? expandPath(value) : undefined;
 }
 
-function errorFromPayload(payload: RunErrorPayload): Error {
+function errorFromPayload(payload: TabRunErrorPayload): Error {
 	const error = payload.isAbort
 		? new ToolAbortError()
 		: payload.isToolError
@@ -841,7 +871,7 @@ function wrapBunWorker(worker: Worker): WorkerHandle {
 			worker.postMessage(msg, { transfer: transferList ?? [] });
 		},
 		onMessage(handler) {
-			const wrap = (event: MessageEvent): void => handler(event.data as WorkerOutbound);
+			const wrap = (event: MessageEvent): void => handler(event.data as TabWorkerOutbound);
 			worker.addEventListener("message", wrap);
 			return () => worker.removeEventListener("message", wrap);
 		},
@@ -868,15 +898,15 @@ function wrapBunWorker(worker: Worker): WorkerHandle {
  * infinite loops because user code runs on the main thread.
  */
 async function spawnInlineWorker(): Promise<WorkerHandle> {
-	const hostListeners = new Set<(message: WorkerOutbound) => void>();
-	const workerListeners = new Set<(message: WorkerInbound) => void>();
-	const workerTransport: Transport = {
+	const hostListeners = new Set<(message: TabWorkerOutbound) => void>();
+	const workerListeners = new Set<(message: TabWorkerInbound) => void>();
+	const workerTransport: TabWorkerTransport = {
 		send: msg =>
 			queueMicrotask(() => {
-				for (const listener of hostListeners) listener(msg as WorkerOutbound);
+				for (const listener of hostListeners) listener(msg as TabWorkerOutbound);
 			}),
 		onMessage: handler => {
-			const typed = handler as (message: WorkerInbound) => void;
+			const typed = handler as (message: TabWorkerInbound) => void;
 			workerListeners.add(typed);
 			return () => workerListeners.delete(typed);
 		},
@@ -939,3 +969,18 @@ function errorFromWorkerEvent(event: ErrorEvent): Error {
 	if (event.message) return new Error(event.message);
 	return new Error("Unknown tab worker error");
 }
+
+/**
+ * Wire tab release into the session's owner-scoped cleanup.
+ *
+ * Keyed by the SESSION id, not the eval-kernel owner id: `ownerSessionId` is stamped at
+ * `acquireTab` creation and never on reuse, so a subagent re-driving a tab another session opened
+ * does not take teardown responsibility from the creator. Bounded, because teardown talks to a
+ * live CDP connection and a broken close must not stall `/exit` (issue #3963).
+ */
+registerOwnedResourceDisposer({
+	name: "browser-tabs",
+	scope: "session",
+	timeoutMs: 3_000,
+	dispose: ownerId => releaseTabsForOwner(ownerId, { kill: true }),
+});

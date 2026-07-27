@@ -4,8 +4,11 @@ import type { LoadedCustomCommand } from "../extensibility/custom-commands";
 import type { ExtensionRunner } from "../extensibility/extensions";
 import { getSkillSlashCommandName, type Skill } from "../extensibility/skills";
 import { type FileSlashCommand, loadSlashCommands } from "../extensibility/slash-commands";
-import { ACP_BUILTIN_RESERVED_NAMES, isAcpBuiltinShadowedName } from "./acp-builtins";
-import { BUILTIN_SLASH_COMMANDS_INTERNAL } from "./builtin-registry";
+import {
+	ACP_BUILTIN_RESERVED_NAMES,
+	isAcpBuiltinShadowedName,
+	TEXT_MODE_BUILTIN_DECLARATIONS,
+} from "./text-mode-builtins";
 
 export type AvailableSlashCommandSource = "builtin" | "skill" | "extension" | "custom" | "mcp_prompt" | "file";
 
@@ -40,15 +43,18 @@ export async function buildAvailableSlashCommands(
 		commands.push(command);
 	};
 
-	for (const command of BUILTIN_SLASH_COMMANDS_INTERNAL) {
-		if (!command.handle) continue;
-		const hint = command.acpInputHint ?? command.inlineHint;
+	// The builtins come from their DECLARATIONS, not from the assembled registry. Every field read
+	// here is metadata, and the one runtime question, "can a text client drive this", is declared as
+	// `textMode` and type-checked against the handler table. Reading it off `command.handle` instead
+	// cost this module 959 modules, the whole application behind 67 handler bodies.
+	for (const declaration of TEXT_MODE_BUILTIN_DECLARATIONS) {
+		const hint = declaration.acpInputHint ?? declaration.inlineHint;
 		appendCommand({
-			name: command.name,
-			aliases: command.aliases,
-			description: command.acpDescription ?? command.description,
+			name: declaration.name,
+			aliases: declaration.aliases ? [...declaration.aliases] : undefined,
+			description: declaration.acpDescription ?? declaration.description,
 			input: hint ? { hint } : undefined,
-			subcommands: command.subcommands,
+			subcommands: declaration.subcommands?.map(sub => ({ ...sub })),
 			source: "builtin",
 		});
 	}

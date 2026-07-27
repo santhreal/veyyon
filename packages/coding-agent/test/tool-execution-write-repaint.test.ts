@@ -1,9 +1,10 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { type Component, TUI } from "@veyyon/tui";
 import { StressRenderScheduler } from "../../tui/test/render-stress-scheduler";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal";
+import { createToolExecution } from "./helpers/tool-execution";
 
 function writeArgs(lineCount: number) {
 	return {
@@ -47,7 +48,7 @@ describe("ToolExecutionComponent write repaint seam", () => {
 	function makeComponent(args: unknown) {
 		const resetDisplay = vi.fn();
 		const ui = { requestRender() {}, requestComponentRender() {}, resetDisplay } as unknown as TUI;
-		const component = new ToolExecutionComponent("write", args, {}, undefined, ui);
+		const component = createToolExecution("write", args, {}, undefined, ui);
 		components.push(component);
 		resetDisplay.mockClear();
 		return { component, resetDisplay };
@@ -101,7 +102,7 @@ describe("ToolExecutionComponent write repaint seam", () => {
 		const term = new VirtualTerminal(80, 8, 1_000);
 		const scheduler = new StressRenderScheduler();
 		const tui = new TUI(term, undefined, { renderScheduler: scheduler });
-		const component = new ToolExecutionComponent("write", writeArgs(20), {}, undefined, tui);
+		const component = createToolExecution("write", writeArgs(20), {}, undefined, tui);
 		components.push(component);
 		tui.addChild(component);
 		tui.addChild(new Footer(5));

@@ -3,7 +3,8 @@ import { Container, Image, type ImageBudget, ImageProtocol, Markdown, Spacer, TE
 import { formatNumber } from "@veyyon/utils";
 import chalk from "chalk";
 import type { AssistantThinkingRenderer } from "../../extensibility/extensions/types";
-import { getMarkdownTheme, theme } from "../../modes/theme/theme";
+import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
+import { theme } from "../../modes/theme/theme";
 import { getPreviewLines, resolveImageOptions, TRUNCATE_LENGTHS } from "../../tools/render-utils";
 import { canonicalizeMessage, formatThinkingForDisplay, hasDisplayableThinking } from "../../utils/thinking-display";
 import { resolveAssistantErrorPresentation } from "../utils/transcript-render-helpers";

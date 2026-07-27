@@ -84,18 +84,54 @@ describe("the source keeps no top-level read of the registry", () => {
 	 * because the values would be identical. The hazard is the top-level READ,
 	 * not the value, so the source itself is what has to be checked.
 	 *
-	 * Read line by line and ignore indented lines: a read inside a function body
-	 * is fine and is the whole point of the fix. Only a read at column zero of a
-	 * statement runs during module evaluation.
+	 * What counts as a read is the whole difficulty, and the first version of this
+	 * check got it wrong in the direction that costs a refactor: it flagged any
+	 * top-level declaration whose LINE mentioned the registry, so
+	 * `const names = once(() => BANNERED_SECTIONS.map(...))` failed even though the
+	 * mention is inside a callback that has not run yet. A deferred read is the fix,
+	 * not a violation of it, and a check that forbids the honest spelling pushes the
+	 * next person back toward the eager one.
+	 *
+	 * So the mention is an offender only when nothing on the line defers it. `=>` or
+	 * `function` before the reference means the body runs on call; anything else at
+	 * the top level runs during module evaluation.
 	 */
-	it("references the imported registry only from inside function bodies", async () => {
-		const source = await Bun.file(sourcePath).text();
-		const offenders = source
+	function eagerRegistryReads(source: string): string[] {
+		return source
 			.split("\n")
 			.filter(line => /^(?:export\s+)?(?:const|let|var)\s/.test(line))
-			.filter(line => /\bBANNERED_(?:TEMPLATE_)?SECTIONS\b/.test(line));
+			.filter(line => {
+				const at = line.search(/\bBANNERED_(?:TEMPLATE_)?SECTIONS\b/);
+				if (at === -1) return false;
+				const before = line.slice(0, at);
+				return !/=>|\bfunction\b/.test(before);
+			});
+	}
 
-		expect(offenders).toEqual([]);
+	it("references the imported registry only from deferred bodies", async () => {
+		expect(eagerRegistryReads(await Bun.file(sourcePath).text())).toEqual([]);
+	});
+
+	/**
+	 * The check is not vacuous, and it is not so loose that it accepts the hazard it
+	 * exists to catch. Asserted on synthetic lines rather than on the real file,
+	 * because the real file is meant to have none of them: without this, a regex that
+	 * silently stopped matching anything would leave the suite green forever.
+	 */
+	it("catches an eager read while accepting a deferred one", () => {
+		const eager = [
+			"const names = BANNERED_SECTIONS.map(s => s.id);",
+			"export const table = bannerTable(BANNERED_TEMPLATE_SECTIONS);",
+			"let ids = [...BANNERED_SECTIONS];",
+		].join("\n");
+		const deferred = [
+			"const names = once(() => BANNERED_SECTIONS.map(s => s.id));",
+			"export const table = once(function () { return bannerTable(BANNERED_TEMPLATE_SECTIONS); });",
+			"const ids = () => BANNERED_SECTIONS.map(s => s.id);",
+		].join("\n");
+
+		expect(eagerRegistryReads(eager)).toHaveLength(3);
+		expect(eagerRegistryReads(deferred)).toEqual([]);
 	});
 
 	/**

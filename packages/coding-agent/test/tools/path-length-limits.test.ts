@@ -20,11 +20,17 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { resolveToCwd } from "@veyyon/coding-agent/tools/path-utils";
 import { removeWithRetries } from "@veyyon/utils";
 import { guardDestructivePath } from "../../../utils/test/helpers/destructive-guard";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makePathLengthRealDir = useTrackedTempDirs("veyyon-path-length-real-");
 
 const CWD = "/tmp/project";
 
@@ -188,7 +194,7 @@ describe("the limits match what the filesystem actually enforces", () => {
 	let dir = "";
 
 	beforeEach(() => {
-		dir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-path-length-real-"));
+		dir = makePathLengthRealDir();
 	});
 
 	afterEach(async () => {

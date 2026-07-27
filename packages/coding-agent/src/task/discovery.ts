@@ -20,7 +20,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { logger } from "@veyyon/utils";
+import { logger, readdirIfPresent } from "@veyyon/utils";
 import { isProviderEnabled } from "../capability";
 import { findAllNearestProjectConfigDirs, getConfigDirs } from "../config";
 import { listClaudePluginRoots } from "../discovery/helpers";
@@ -40,7 +40,10 @@ export interface DiscoveryResult {
  * Load agents from a directory.
  */
 async function loadAgentsFromDir(dir: string, source: AgentSource): Promise<AgentDefinition[]> {
-	const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+	// Agent directories are optional at every level (no `.veyyon/agents`, no project dir), so a MISSING one
+	// contributes no agents and says nothing. One that exists and cannot be listed is a different thing --
+	// the user's subagents disappear from `/agents` with no sign of why -- and the shared owner reports it.
+	const entries = await readdirIfPresent(dir, "agent definitions");
 	const files = entries
 		.filter(entry => (entry.isFile() || entry.isSymbolicLink()) && entry.name.endsWith(".md"))
 		.sort((a, b) => a.name.localeCompare(b.name))

@@ -1,11 +1,20 @@
 import type { ConventionalAnalysis } from "../../commit/types";
 
-export interface ValidationResult {
+/**
+ * The outcome of validating one part of a conventional-commit message.
+ *
+ * Named for what it validates. `PluginSettingValidationResult`
+ * (`extensibility/plugins/manager.ts`) was also called `ValidationResult` and is
+ * NOT the same shape: it reports a single optional `error`, this one reports every
+ * `errors` it found, and a caller that read the wrong one silently saw no errors at
+ * all. `JsonSchemaValidationResult` is a third, already correctly named.
+ */
+export interface CommitValidationResult {
 	valid: boolean;
 	errors: string[];
 }
 
-export function validateSummary(summary: string, maxChars: number): ValidationResult {
+export function validateSummary(summary: string, maxChars: number): CommitValidationResult {
 	const errors: string[] = [];
 	if (!summary.trim()) {
 		errors.push("Summary is empty");
@@ -22,7 +31,7 @@ export function validateSummary(summary: string, maxChars: number): ValidationRe
 	return { valid: errors.length === 0, errors };
 }
 
-export function validateScope(scope: string | null): ValidationResult {
+export function validateScope(scope: string | null): CommitValidationResult {
 	if (!scope) return { valid: true, errors: [] };
 	const errors: string[] = [];
 	const segments = scope.split("/");
@@ -44,7 +53,7 @@ export function validateScope(scope: string | null): ValidationResult {
 	return { valid: errors.length === 0, errors };
 }
 
-export function validateAnalysis(analysis: ConventionalAnalysis): ValidationResult {
+export function validateAnalysis(analysis: ConventionalAnalysis): CommitValidationResult {
 	const errors: string[] = [];
 	const scopeResult = validateScope(analysis.scope);
 	if (!scopeResult.valid) {

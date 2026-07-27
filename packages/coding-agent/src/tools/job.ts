@@ -7,7 +7,7 @@ import type { AsyncJob, AsyncJobManager } from "../async";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { shimmerEnabled, shimmerText } from "../modes/theme/shimmer";
 import type { Theme } from "../modes/theme/theme";
-import { PROMPTS } from "../prompts/registry";
+import { toolsPrompts } from "../prompts/tools/rows";
 import { Ellipsis, Hasher, type RenderCache, renderStatusLine, renderTreeList, truncateToWidth } from "../tui";
 import type { ToolSession } from "./index";
 import {
@@ -107,7 +107,7 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 	readonly interruptible = true;
 	readonly loadMode = "discoverable";
 	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(PROMPTS["tools/job"].text);
+		this.description = prompt.render(toolsPrompts["tools/job"].text);
 	}
 
 	async execute(

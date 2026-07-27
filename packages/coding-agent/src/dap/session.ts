@@ -244,6 +244,20 @@ function buildSummary(session: DapSession): DapSessionSummary {
 	};
 }
 
+/**
+ * Report a teardown request that the debug adapter refused or never answered.
+ *
+ * `terminate()` cannot rethrow these (see the call site), and silence here is how a debuggee outlives the
+ * session that owned it with nothing in the log to say so.
+ */
+function reportTerminateFailure(session: DapSession, request: "terminate" | "disconnect", error: unknown): void {
+	logger.warn("DAP teardown request failed; the debuggee may still be running", {
+		session: session.id,
+		request,
+		error: errorMessage(error),
+	});
+}
+
 export class DapSessionManager {
 	#sessions = new Map<string, DapSession>();
 	#activeSessionId: string | null = null;
@@ -367,6 +381,9 @@ export class DapSessionManager {
 				client.sendRequest("attach", attachArguments, signal, timeoutMs),
 				attachFailure,
 			);
+			// Passive guard only: `attachFailure` captures the rejection for `throwPreferredDapStartError`
+			// below, which chooses between the attach failure and the handshake failure. Without this, a
+			// rejection arriving before that code awaits would surface as an unhandled rejection.
 			attachPromise.catch(() => {});
 			try {
 				await this.#completeConfigurationHandshake(session, signal, timeoutMs);
@@ -860,6 +877,9 @@ export class DapSessionManager {
 		// same chunk as the response and would otherwise be dispatched before
 		// the waiter subscribes, burning the whole timeout.
 		const stoppedPromise = session.client.waitForEvent<DapStoppedEventBody>("stopped", undefined, signal, timeoutMs);
+		// Subscribed early on purpose (see above), so nothing awaits it yet; the guard keeps an early timeout
+		// or abort from becoming an unhandled rejection. `untilAborted(signal, stoppedPromise)` below still
+		// receives the real failure.
 		stoppedPromise.catch(() => {});
 		await this.#sendRequestWithConfig(session, "pause", { threadId } satisfies DapPauseArguments, signal, timeoutMs);
 		if (!isStopped()) {
@@ -998,17 +1018,24 @@ export class DapSessionManager {
 		if (!session) return null;
 		session.lastUsedAt = Date.now();
 		if (session.status !== "terminated") {
+			// Neither request may throw out of `terminate()`: the session is being torn down either way, and the
+			// caller gets the summary. But a failure here is not nothing -- `disconnect` carries
+			// `terminateDebuggee: true`, so if it fails the DEBUGGEE may still be running while this session is
+			// marked terminated, and `#disposeSession` then closes the adapter that could have stopped it. So
+			// each failure is reported with the request that failed.
 			if (session.capabilities?.supportsTerminateRequest) {
 				await untilAborted(
 					signal,
-					session.client.sendRequest("terminate", undefined, signal, timeoutMs).catch(() => undefined),
+					session.client
+						.sendRequest("terminate", undefined, signal, timeoutMs)
+						.catch((error: unknown) => reportTerminateFailure(session, "terminate", error)),
 				);
 			}
 			await untilAborted(
 				signal,
 				session.client
 					.sendRequest("disconnect", { terminateDebuggee: true }, signal, timeoutMs)
-					.catch(() => undefined),
+					.catch((error: unknown) => reportTerminateFailure(session, "disconnect", error)),
 			);
 		}
 		session.status = "terminated";
@@ -1432,7 +1459,14 @@ export class DapSessionManager {
 			this.#activeSessionId = null;
 		}
 		this.#sessions.delete(session.id);
-		void session.client.dispose().catch(() => {});
+		// The session is already removed and no caller is waiting, but a client that will not dispose leaves the
+		// debug adapter process running for the rest of the session, so the reason is logged.
+		void session.client.dispose().catch((error: unknown) => {
+			logger.warn("DAP client did not dispose; the adapter process may be left running", {
+				session: session.id,
+				error: errorMessage(error),
+			});
+		});
 	}
 }
 

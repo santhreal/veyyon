@@ -367,6 +367,8 @@ export class RpcInputDispatcher {
 				() => this.#dispatchSerialCommand(command),
 				() => this.#dispatchSerialCommand(command),
 			);
+			// `task` is tracked in `#tasks` and its failure is handled by the dispatcher itself; the tail only
+			// serializes the next command, so it must settle rather than inherit the rejection.
 			this.#tail = task.catch(() => {});
 			this.#tasks.add(task);
 			void task.finally(() => {

@@ -177,6 +177,16 @@ describe("AgentSession auto-compaction progress guard", () => {
 		return overflowAssistant([{ type: "text" as const, text: "prompt is too long" }]);
 	}
 
+	/**
+	 * Notices, in emission order.
+	 *
+	 * The "no dead-end warning" assertions below compare the MESSAGE LIST against `[]` rather than a count
+	 * against 0, because two different code paths emit a warning starting with the same fragment: the
+	 * pre-pass site, when `prepareCompaction` returns nothing to compact, and the post-pass site, when the
+	 * tiered rescue could not restore headroom. Their remedy wording differs. A count assertion reports only
+	 * "expected 0, received 1" and leaves you unable to tell which path fired, which is exactly the
+	 * information needed when one of these fails only under a full-suite run.
+	 */
 	function collectNotices() {
 		const notices: { level: string; message: string; source?: string }[] = [];
 		session.subscribe(event => {
@@ -392,7 +402,19 @@ describe("AgentSession auto-compaction progress guard", () => {
 	it("auto-continues (no warning) when compaction creates headroom", async () => {
 		// The auto-continue path runs #scheduleAutoContinuePrompt → #promptWithMessage
 		// → agent.prompt. Stub both prompt and continue so no real agent loop runs.
-		const promptSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined as never);
+		//
+		// THE SPY RESOLVES A DEFERRED, and the case awaits that rather than only awaiting idleness. The
+		// continuation is SCHEDULED as a post-prompt task, and `waitForIdle` resolves as soon as nothing is
+		// pending, so if the schedule has not landed yet when the wait runs there is nothing to wait for and
+		// the spy has not been called. That passes on an idle machine and failed once under a full
+		// 1,891-file run, which is a test waiting on the wrong signal rather than a product defect: a real
+		// caller awaits `waitForIdle` after its own `prompt`, and the task is registered before that
+		// resolves. Waiting for the submission is waiting for the thing this case is about.
+		const { promise: submitted, resolve: onSubmitted } = Promise.withResolvers<void>();
+		const promptSpy = vi.spyOn(session.agent, "prompt").mockImplementation(async () => {
+			onSubmitted();
+			return undefined as never;
+		});
 		vi.spyOn(session.agent, "continue").mockResolvedValue();
 		// Residual context drops well under the threshold: real reduction happened.
 		vi.spyOn(session, "getContextUsage").mockReturnValue({ tokens: 1000, contextWindow: 200000, percent: 0.5 });
@@ -410,12 +432,16 @@ describe("AgentSession auto-compaction progress guard", () => {
 
 		await compactionDone;
 		await session.waitForIdle();
+		// A BOUND ON FAILURE, not a settle: a healthy run has already resolved `submitted` by here, and a
+		// regression gives up after this and fails on the assertion below with a readable count rather than
+		// on a test timeout with none.
+		await Promise.race([submitted, Bun.sleep(5_000)]);
 
 		// Headroom was created, so the guard scheduled the agent-authored
 		// continuation prompt and stayed silent.
 		expect(promptSpy).toHaveBeenCalledTimes(1);
 		const noProgress = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes(NO_PROGRESS_FRAGMENT));
-		expect(noProgress.length).toBe(0);
+		expect(noProgress.map(n => n.message)).toEqual([]);
 	});
 
 	it("rebases the in-flight prompt snapshot so mid-run compaction is not misread as a dead-end", async () => {
@@ -484,7 +510,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 		expect(promptSpy).toHaveBeenCalledTimes(2);
 		expect(continueSpy).not.toHaveBeenCalled();
 		const noProgress = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes(NO_PROGRESS_FRAGMENT));
-		expect(noProgress.length).toBe(0);
+		expect(noProgress.map(n => n.message)).toEqual([]);
 	});
 	/**
 	 * Seed several large prior turns into the session branch so `prepareCompaction`
@@ -544,7 +570,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 
 		expect(continueSpy).toHaveBeenCalledTimes(1);
 		const noProgress = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes(NO_PROGRESS_FRAGMENT));
-		expect(noProgress.length).toBe(0);
+		expect(noProgress.map(n => n.message)).toEqual([]);
 	});
 
 	it("removes the visible overflow error before retrying after compaction", async () => {
@@ -870,7 +896,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 
 		expect(continueSpy).toHaveBeenCalledTimes(1);
 		const noProgress = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes(NO_PROGRESS_FRAGMENT));
-		expect(noProgress.length).toBe(0);
+		expect(noProgress.map(n => n.message)).toEqual([]);
 	});
 
 	it("retries a near-16k-window overflow when the default reserve leaves no usable budget", async () => {
@@ -928,7 +954,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 
 		expect(continueSpy).toHaveBeenCalledTimes(1);
 		const noProgress = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes(NO_PROGRESS_FRAGMENT));
-		expect(noProgress.length).toBe(0);
+		expect(noProgress.map(n => n.message)).toEqual([]);
 	});
 
 	it("pauses an overflow retry when it only fits after ignoring a configured reserve", async () => {
@@ -1121,7 +1147,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 
 		expect(promptSpy).toHaveBeenCalledTimes(1);
 		const noProgress = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes(NO_PROGRESS_FRAGMENT));
-		expect(noProgress.length).toBe(0);
+		expect(noProgress.map(n => n.message)).toEqual([]);
 	});
 
 	it("pauses (single warning) when an overflow recovery still does not fit the window", async () => {
@@ -1192,7 +1218,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 		expect(shakeSpy).toHaveBeenCalledWith("elide", expect.anything());
 		expect(promptSpy).toHaveBeenCalledTimes(1);
 		const noProgress = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes(NO_PROGRESS_FRAGMENT));
-		expect(noProgress.length).toBe(0);
+		expect(noProgress.map(n => n.message)).toEqual([]);
 		const recovery = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes("dead-end recovery"));
 		expect(recovery.length).toBe(1);
 		expect(recovery[0].level).toBe("info");
@@ -1282,7 +1308,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 		expect(dropSpy).toHaveBeenCalledTimes(1);
 		expect(promptSpy).toHaveBeenCalledTimes(1);
 		const noProgress = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes(NO_PROGRESS_FRAGMENT));
-		expect(noProgress.length).toBe(0);
+		expect(noProgress.map(n => n.message)).toEqual([]);
 		const recovery = notices.filter(
 			n => n.source === NOTICE_SOURCE && n.message.includes("dropped 2 attached images"),
 		);

@@ -3,10 +3,12 @@
  *
  * Creates a .tar.gz archive with session data, logs, system info, and optional profiling data.
  */
+
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { WorkProfile } from "@veyyon/natives";
 import { APP_NAME, getLogPath, getLogsDir, getReportsDir, isEnoent } from "@veyyon/utils";
+import { isSessionFileName, sessionFileName, sessionFileStem } from "@veyyon/utils/session-file";
 import { writeArchive } from "../utils/zip";
 import type { CpuProfile, HeapSnapshot } from "./profiler";
 import { collectSystemInfo, sanitizeEnv } from "./system-info";
@@ -21,6 +23,16 @@ const MAX_LOG_LINES = 5000;
 // else entirely).
 const MAX_BUNDLED_LOG_TAIL_BYTES = 2 * 1024 * 1024;
 /** Read last N lines from a file, reading at most `maxBytes` from the tail. */
+/**
+ * What the copied session transcript is called INSIDE a debug bundle.
+ *
+ * A fixed entry name rather than the transcript's own filename, so a bundle always has the same layout
+ * whatever session produced it. Named once because it is written twice, as the archive key and as the
+ * manifest entry, and a bundle whose manifest lists a name the archive does not hold is a bundle the
+ * reader cannot open.
+ */
+const SESSION_BUNDLE_ENTRY = "session.jsonl";
+
 async function readLastLines(filePath: string, n: number, maxBytes = MAX_BUNDLED_LOG_TAIL_BYTES): Promise<string> {
 	try {
 		const file = Bun.file(filePath);
@@ -127,8 +139,8 @@ export async function createReportBundle(options: ReportBundleOptions): Promise<
 	if (options.sessionFile) {
 		try {
 			const sessionContent = await Bun.file(options.sessionFile).text();
-			data["session.jsonl"] = sessionContent;
-			files.push("session.jsonl");
+			data[SESSION_BUNDLE_ENTRY] = sessionContent;
+			files.push(SESSION_BUNDLE_ENTRY);
 		} catch {
 			// Session file might not exist yet
 		}
@@ -139,7 +151,7 @@ export async function createReportBundle(options: ReportBundleOptions): Promise<
 
 		// Look for subagent sessions in the same directory
 		const sessionDir = path.dirname(options.sessionFile);
-		const sessionBasename = path.basename(options.sessionFile, ".jsonl");
+		const sessionBasename = sessionFileStem(path.basename(options.sessionFile));
 		await addSubagentSessions(data, files, sessionDir, sessionBasename);
 	}
 
@@ -214,7 +226,7 @@ async function addSubagentSessions(
 	try {
 		const entries = await fs.readdir(sessionDir, { withFileTypes: true });
 		const sessionFiles = entries
-			.filter(e => e.isFile() && e.name.endsWith(".jsonl") && e.name !== `${parentBasename}.jsonl`)
+			.filter(e => e.isFile() && isSessionFileName(e.name) && e.name !== sessionFileName(parentBasename))
 			.map(e => e.name);
 
 		// Limit to most recent 10 subagent sessions

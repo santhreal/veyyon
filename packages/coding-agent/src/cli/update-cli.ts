@@ -23,6 +23,7 @@ import {
 	isValidSemver,
 	logger,
 	readPipeText,
+	removeTempPath,
 	tryWithFileLock,
 	VERSION,
 } from "@veyyon/utils";
@@ -117,6 +118,14 @@ export interface BinaryReplacementOptions {
 	verifyInstalledVersion: (expectedVersion: string) => Promise<InstalledVersionVerification>;
 }
 
+/**
+ * The canonical path behind `p`, or undefined when there is nothing there to canonicalize.
+ *
+ * Undefined is the ordinary answer: this asks about paths that may not exist yet, which is the whole
+ * point of an installer probing where a binary would go. The callers compare paths for identity, and
+ * comparing against undefined answers "not the same file", which is the conservative direction for an
+ * update that must not overwrite a target it cannot identify.
+ */
 function tryRealpath(p: string): string | undefined {
 	try {
 		return fs.realpathSync.native(p);
@@ -611,7 +620,7 @@ export async function probeSearchWorks(binPath: string, label: string): Promise<
 	} catch (err) {
 		return errorMessage(err);
 	} finally {
-		await fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
+		await removeTempPath(dir, "update-staging-dir");
 	}
 }
 
@@ -1079,6 +1088,9 @@ const defaultReadCheckoutVersion: CheckoutVersionReader = async checkoutRoot => 
 		const version = (JSON.parse(raw) as { version?: unknown }).version;
 		return typeof version === "string" && version.length > 0 ? version : undefined;
 	} catch {
+		// Missing, unreadable or unparseable all mean the checkout version is UNKNOWN, which is the
+		// contract on `CheckoutVersionReader` above: the caller must treat unknown as a verification
+		// failure, never as agreement, so nothing is lost by collapsing the three cases here.
 		return undefined;
 	}
 };

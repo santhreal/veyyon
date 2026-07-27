@@ -11,6 +11,7 @@ import type {
 } from "../../mcp/types";
 import { toJsonRpcError } from "../../mcp/types";
 import { createMCPTimeout, getNeverAbortSignal, resolveMCPTimeoutMs } from "../timeout";
+import { describeJsonRpcError, isUnattributableError, rejectAllPending } from "../unattributable-error";
 import { reportUndeliveredServerResponse } from "./server-response-delivery";
 
 interface MCPTimeoutOperation {
@@ -162,7 +163,27 @@ export class LegacySseTransport implements MCPTransport {
 	}
 
 	#dispatchMessage(message: JsonRpcMessage): void {
-		if ("id" in message && ("result" in message || "error" in message)) {
+		// An error the server could not attribute to a request (`"id": null`), which the spec
+		// requires for a parse error. `this.#pending.get(null)` misses, so it used to fall past
+		// every branch below and be dropped, and each caller waited out its timeout and reported
+		// that the server had not answered. The connection cannot parse what we send, so every
+		// request on it is dead.
+		if (isUnattributableError(message)) {
+			const error = message.error as { code: number; message: string };
+			const failed = rejectAllPending(this.#pending, error, request => {
+				request.operation.clear();
+				if (request.abortHandler) request.operation.signal?.removeEventListener("abort", request.abortHandler);
+			});
+			logger.warn("MCP server reported an error it could not attribute to a request", {
+				server: this.#config.url,
+				code: error.code,
+				message: error.message,
+				failedRequests: failed,
+			});
+			this.onError?.(new Error(describeJsonRpcError(error)));
+			return;
+		}
+		if ("id" in message && message.id != null && ("result" in message || "error" in message)) {
 			const pending = this.#pending.get(message.id);
 			if (pending) {
 				this.#pending.delete(message.id);

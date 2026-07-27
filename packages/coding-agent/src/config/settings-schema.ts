@@ -1,4 +1,5 @@
-import { isRecord } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
+import { isRecord } from "@veyyon/utils/type-guards";
 import { UNSET_NUMBER_OPTION_VALUE } from "./optional-number";
 import { APPEARANCE_SETTINGS } from "./settings-domains/appearance";
 import { CONTEXT_SETTINGS } from "./settings-domains/context";

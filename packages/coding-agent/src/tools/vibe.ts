@@ -13,7 +13,7 @@
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import { formatCount, prompt } from "@veyyon/utils";
 import { type } from "arktype";
-import { PROMPTS } from "../prompts/registry";
+import { toolsPrompts } from "../prompts/tools/rows";
 import { MAIN_AGENT_ID } from "../registry/agent-registry";
 import {
 	type VibeCli,
@@ -87,7 +87,7 @@ export class VibeSpawnTool implements AgentTool<typeof vibeSpawnSchema, VibeTool
 	readonly parameters = vibeSpawnSchema;
 	readonly strict = true;
 	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(PROMPTS["tools/vibe-spawn"].text);
+		this.description = prompt.render(toolsPrompts["tools/vibe-spawn"].text);
 	}
 
 	async execute(_toolCallId: string, params: typeof vibeSpawnSchema.infer): Promise<AgentToolResult<VibeToolDetails>> {
@@ -108,7 +108,7 @@ export class VibeSendTool implements AgentTool<typeof vibeSendSchema, VibeToolDe
 	readonly parameters = vibeSendSchema;
 	readonly strict = true;
 	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(PROMPTS["tools/vibe-send"].text);
+		this.description = prompt.render(toolsPrompts["tools/vibe-send"].text);
 	}
 
 	async execute(_toolCallId: string, params: typeof vibeSendSchema.infer): Promise<AgentToolResult<VibeToolDetails>> {
@@ -135,7 +135,7 @@ export class VibeWaitTool implements AgentTool<typeof vibeWaitSchema, VibeToolDe
 	readonly strict = true;
 	readonly interruptible = true;
 	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(PROMPTS["tools/vibe-wait"].text);
+		this.description = prompt.render(toolsPrompts["tools/vibe-wait"].text);
 	}
 
 	async execute(
@@ -206,7 +206,7 @@ export class VibeKillTool implements AgentTool<typeof vibeKillSchema, VibeToolDe
 	readonly parameters = vibeKillSchema;
 	readonly strict = true;
 	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(PROMPTS["tools/vibe-kill"].text);
+		this.description = prompt.render(toolsPrompts["tools/vibe-kill"].text);
 	}
 
 	async execute(_toolCallId: string, params: typeof vibeKillSchema.infer): Promise<AgentToolResult<VibeToolDetails>> {
@@ -232,7 +232,7 @@ export class VibeListTool implements AgentTool<typeof vibeListSchema, VibeToolDe
 	readonly parameters = vibeListSchema;
 	readonly strict = true;
 	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(PROMPTS["tools/vibe-list"].text);
+		this.description = prompt.render(toolsPrompts["tools/vibe-list"].text);
 	}
 
 	async execute(): Promise<AgentToolResult<VibeToolDetails>> {

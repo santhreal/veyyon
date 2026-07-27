@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { ThinkingLevel } from "@veyyon/agent-core";
+import type { Model } from "@veyyon/ai";
 import * as ai from "@veyyon/ai";
-import { Effort, type Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
+import { Effort } from "@veyyon/catalog/effort";
 import { getBundledModel } from "@veyyon/catalog/models";
 import {
 	classifyDifficulty,

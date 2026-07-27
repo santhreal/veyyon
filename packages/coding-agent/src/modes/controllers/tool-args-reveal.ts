@@ -1,5 +1,7 @@
 import type { Component } from "@veyyon/tui";
 import { parseStreamingJson, parseStreamingJsonThrottled, STREAMING_JSON_PARSE_MIN_GROWTH } from "@veyyon/utils";
+import type { ArgotSession } from "argot";
+import { expandToolArguments } from "../../argot-wire";
 import { nextStep, STREAMING_REVEAL_FRAME_MS } from "./streaming-reveal";
 
 /** Minimal component surface the reveal pushes frames into. */
@@ -12,9 +14,27 @@ type ToolArgsRevealComponent = Component & {
 // long payload updates preview args at reveal cadence instead of stalling for
 // STREAMING_JSON_PARSE_MIN_GROWTH bytes at a time. Nested-array modes (edit
 // patch/replace `edits[].diff`) still fall through to the throttled parse.
+// `path`/`file_path` are here for two reasons that happen to want the same
+// thing. A preview's TITLE is the path, and it arrived only when the throttled
+// full parse first recovered it, so a long payload drew an untitled block for
+// its opening bytes; `edit/renderer.ts` still carries a regex fallback that
+// slices the path straight out of the raw buffer for exactly that window. And
+// the extractor's values are argot-expanded while that raw slice is not, so a
+// path carrying a handle rendered as the handle until the parse caught up.
+// KEYED BY TOOL NAME, USED BY RENDERER. `tools/renderers.ts` binds one renderer
+// object to several tool names, so a list written for one name silently leaves
+// its siblings on the throttled parse and on the raw slice. `apply_patch` shares
+// `editToolRenderer` with `edit` and was missing exactly that way: same renderer,
+// same title path, same handle in the preview, no entry. The shared list is one
+// const referenced twice rather than two lists that agree today, and
+// `tool-args-reveal-keys-follow-the-renderer.test.ts` walks the renderer table and
+// fails if any two names sharing a renderer stop sharing their keys.
+const EDIT_RENDERER_STREAMING_KEYS: readonly string[] = ["path", "file_path", "input", "_input"];
+
 const STREAMING_STRING_KEYS_BY_TOOL: Record<string, readonly string[]> = {
-	write: ["content"],
-	edit: ["input", "_input"],
+	write: ["path", "file_path", "content"],
+	edit: EDIT_RENDERER_STREAMING_KEYS,
+	apply_patch: EDIT_RENDERER_STREAMING_KEYS,
 	eval: ["code"],
 };
 
@@ -314,6 +334,8 @@ type RevealEntry = {
 	/** JSON string fields decoded incrementally between full JSON parses. */
 	streamingStringKeys: readonly string[];
 	stringExtractor: StreamingJsonStringExtractor | undefined;
+	/** The session's argot codec, when one is armed. See {@link StreamedToolArgsSource.argot}. */
+	argot: ArgotSession | undefined;
 };
 
 /** Clamp a slice end into `text`, never splitting a surrogate pair: a prefix
@@ -331,6 +353,8 @@ type ToolArgsRevealTarget = {
 	rawInput: boolean;
 	exposeRawPartialJson: boolean;
 	streamingStringKeys?: readonly string[];
+	/** The session's argot codec, when one is armed. See {@link StreamedToolArgsSource.argot}. */
+	argot?: ArgotSession;
 };
 
 type DisplayArgsStep = {
@@ -358,28 +382,32 @@ function resetDisplayState(entry: RevealEntry): void {
 function displayArgsForPrefix(entry: RevealEntry, prefix: string, forceParse = false): DisplayArgsStep {
 	if (entry.rawInput) {
 		if (prefix === entry.displayPrefix) return { args: entry.displayArgs, changed: false };
-		const args = { input: prefix, __partialJson: prefix };
+		// Raw text, not JSON: see the same branch in `decodeStreamedToolArgs`.
+		const text = expandStreamedPreviewText(entry.argot, prefix);
+		const args = { input: text, __partialJson: text };
 		entry.displayArgs = args;
+		// The RAW prefix is what the change check compares, so the unexpanded one is
+		// kept: comparing expanded text would re-render whenever a dictionary loaded.
 		entry.displayPrefix = prefix;
 		return { args, changed: true };
 	}
 
 	let parsedChanged = false;
 	if (forceParse || (prefix.length > 0 && prefix.length < STREAMING_JSON_PARSE_MIN_GROWTH)) {
-		entry.parsedArgs = parseStreamingJson<Record<string, unknown>>(prefix);
+		entry.parsedArgs = expandStreamedValues(entry.argot, parseStreamingJson<Record<string, unknown>>(prefix));
 		entry.parsedLen = prefix.length;
 		parsedChanged = true;
 	} else {
 		const throttled = parseStreamingJsonThrottled<Record<string, unknown>>(prefix, entry.parsedLen);
 		if (throttled) {
-			entry.parsedArgs = throttled.value;
+			entry.parsedArgs = expandStreamedValues(entry.argot, throttled.value);
 			entry.parsedLen = throttled.parsedLen;
 			parsedChanged = true;
 		}
 	}
 	const extracted = entry.stringExtractor?.update(prefix);
 	if (extracted?.changed) {
-		entry.parsedArgs = { ...entry.parsedArgs, ...extracted.values };
+		entry.parsedArgs = { ...entry.parsedArgs, ...expandStreamedValues(entry.argot, extracted.values) };
 		parsedChanged = true;
 	}
 
@@ -403,7 +431,58 @@ type StreamedToolArgsSource = {
 	fullArgs?: Record<string, unknown>;
 	/** See {@link streamingStringKeysForTool}. */
 	streamingStringKeys?: readonly string[];
+	/**
+	 * The session's argot codec, when one is armed.
+	 *
+	 * A streaming preview renders arguments that have NOT reached the tool yet, so
+	 * they still carry `§handle` fragments: expansion happens at seam 1, just
+	 * before execution. Without this the preview of a write or an edit shows the
+	 * handle instead of the text it stands for, for as long as the call streams.
+	 *
+	 * Undefined when argot is off, and `expandStreamedValues` is identity while the
+	 * codec has no dictionary loaded, so the inert path is byte-for-byte unchanged.
+	 */
+	argot?: ArgotSession;
 };
+
+/**
+ * Expand handles in decoded argument VALUES, never in the buffer they came from.
+ *
+ * THE CONSTRAINT THAT SHAPES THIS. A handle can expand to text containing `"`,
+ * `\` or a newline. Expanding the raw partial JSON as TEXT would splice those
+ * bytes inside the string literal they sit in and corrupt the very JSON the next
+ * frame has to parse. So expansion happens strictly AFTER a value leaves the
+ * partial-JSON layer, which is the same rule seam 1 follows: `expandToolArguments`
+ * maps parsed string values, it does not rewrite a request body.
+ *
+ * Routed through `expandToolArguments` rather than calling `argot.expand` here so
+ * the expansion rule has one owner; see `src/argot-wire.ts`.
+ */
+function expandStreamedValues(
+	argot: ArgotSession | undefined,
+	values: Record<string, unknown>,
+): Record<string, unknown> {
+	return argot ? expandToolArguments(argot, values) : values;
+}
+
+/**
+ * Expand handles in a string a `__partialJson` extractor already pulled out.
+ *
+ * Used only for a CUSTOM tool's stream, where `__partialJson` carries raw text
+ * rather than JSON, so both it and `input` are values and neither can be
+ * corrupted by expansion. Module-private on purpose: a caller outside this file
+ * holding a raw buffer would be holding JSON, and expanding that is the one
+ * thing this whole arrangement exists to prevent.
+ *
+ * A handle still arriving at the buffer's edge stays raw for at most one frame,
+ * because the next frame carries more bytes and the frame after that is the
+ * wholesale expansion at execution. This is not a fallback: nothing is skipped
+ * and nothing degrades, the text simply has not been received yet.
+ */
+function expandStreamedPreviewText(argot: ArgotSession | undefined, text: string): string {
+	if (!argot?.loaded) return text;
+	return argot.expand(text);
+}
 
 /**
  * One-shot decode of a streamed tool-call argument buffer into display args —
@@ -416,12 +495,25 @@ type StreamedToolArgsSource = {
  */
 export function decodeStreamedToolArgs(partialJson: string, source: StreamedToolArgsSource): Record<string, unknown> {
 	if (source.rawInput) {
-		return { input: partialJson, __partialJson: partialJson };
+		// A custom tool's stream is raw TEXT, not JSON, so both fields are values and
+		// expanding them cannot corrupt a structure. This is the one place
+		// `__partialJson` is safe to expand, and it has to be: `tool-execution.ts`
+		// recovers a missing `input` from that field directly.
+		const text = expandStreamedPreviewText(source.argot, partialJson);
+		return { input: text, __partialJson: text };
 	}
-	const parsed = parseStreamingJson<Record<string, unknown>>(partialJson);
+	const parsed = expandStreamedValues(
+		source.argot,
+		parseStreamingJson<Record<string, unknown>>(partialJson) as Record<string, unknown>,
+	);
 	const args: Record<string, unknown> = source.fullArgs ? { ...source.fullArgs, ...parsed } : { ...parsed };
 	const extracted = createStringExtractor(source.streamingStringKeys)?.update(partialJson);
-	if (extracted) Object.assign(args, extracted.values);
+	if (extracted) Object.assign(args, expandStreamedValues(source.argot, extracted.values));
+	// The RAW prefix stays raw on purpose: it is JSON, and expanding it would splice
+	// a quote or a newline into the string literal a handle sits in. A renderer that
+	// slices a field out of it therefore sees the WIRE form, which is why every field
+	// a renderer surfaces belongs in `streamingStringKeys` above: those values are
+	// decoded and expanded here, and a renderer prefers them over its own slice.
 	args.__partialJson = partialJson;
 	return args;
 }
@@ -461,7 +553,7 @@ export class ToolArgsRevealController {
 	 * STREAMING_JSON_PARSE_MIN_GROWTH bytes behind.
 	 */
 	setTarget(id: string, partialJson: string, target: ToolArgsRevealTarget): Record<string, unknown> {
-		const { rawInput, exposeRawPartialJson, streamingStringKeys } = target;
+		const { rawInput, exposeRawPartialJson, streamingStringKeys, argot } = target;
 		let entry = this.#entries.get(id);
 		if (!entry) {
 			entry = {
@@ -476,6 +568,7 @@ export class ToolArgsRevealController {
 				displayPrefix: "",
 				streamingStringKeys: streamingStringKeys ?? [],
 				stringExtractor: createStringExtractor(streamingStringKeys),
+				argot,
 			};
 			this.#entries.set(id, entry);
 		} else {
@@ -490,6 +583,9 @@ export class ToolArgsRevealController {
 				entry.streamingStringKeys = streamingStringKeys ?? [];
 				entry.stringExtractor = createStringExtractor(streamingStringKeys);
 			}
+			// The codec is armed once per session but the entry outlives a settings
+			// change, so it is refreshed rather than captured at creation.
+			entry.argot = argot;
 			// Streams only append; a non-prefix target means a rewind — snap into range.
 			if (!partialJson.startsWith(entry.target)) {
 				entry.revealed = Math.min(entry.revealed, partialJson.length);

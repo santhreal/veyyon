@@ -8,7 +8,9 @@
  */
 import * as os from "node:os";
 import * as path from "node:path";
-import { getProjectDir, logger } from "@veyyon/utils";
+import { getProjectDir } from "@veyyon/utils/dirs";
+// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
+import * as logger from "@veyyon/utils/logger";
 
 import type { Settings } from "../config/settings";
 import { clearCache as clearFsCache, findRepoRoot, cacheStats as fsCacheStats, invalidate as invalidateFs } from "./fs";

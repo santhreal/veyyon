@@ -29,10 +29,20 @@ export type ExtensionState = "active" | "disabled" | "shadowed";
 export type DisabledReason = "provider-disabled" | "item-disabled" | "shadowed";
 
 /**
- * Unified extension representation for the dashboard.
- * Normalizes all capability types into a common shape.
+ * One row in the Extension Control Center, normalizing every capability kind
+ * into a common shape.
+ *
+ * A ROW, not an extension. Most of what appears here is not an extension at all:
+ * a skill, a rule, an MCP server, and a slash command each become a row, and the
+ * dashboard's whole job is to present them uniformly. It was called `Extension`,
+ * which collided with two other things in this package that mean something
+ * different -- `ManifestExtension` (`capability/extension.ts`) is a Gemini-style
+ * extension directory on disk, and `LoadedExtension`
+ * (`extensibility/extensions/types.ts`) is a veyyon extension module that has been
+ * executed and has registered handlers. An editor auto-import offered whichever it
+ * found first, and nothing compared the three.
  */
-export interface Extension {
+export interface ExtensionRow {
 	/** Unique ID: `${kind}:${name}` */
 	id: string;
 	/** Extension kind */
@@ -126,11 +136,11 @@ export interface DashboardState {
 	activeTabIndex: number;
 
 	/** All extensions (unfiltered) */
-	extensions: Extension[];
+	extensions: ExtensionRow[];
 	/** Extensions filtered by active tab */
-	tabFiltered: Extension[];
+	tabFiltered: ExtensionRow[];
 	/** Extensions filtered by search (applied after tab filter) */
-	searchFiltered: Extension[];
+	searchFiltered: ExtensionRow[];
 	/** Current search query */
 	searchQuery: string;
 
@@ -140,7 +150,7 @@ export interface DashboardState {
 	scrollOffset: number;
 
 	/** Currently selected extension for inspector */
-	selected: Extension | null;
+	selected: ExtensionRow | null;
 }
 
 /**
@@ -177,7 +187,7 @@ export function parseExtensionId(id: string): { kind: ExtensionKind; name: strin
 /**
  * Map SourceMeta to extension source shape.
  */
-export function sourceFromMeta(meta: SourceMeta): Extension["source"] {
+export function sourceFromMeta(meta: SourceMeta): ExtensionRow["source"] {
 	return {
 		provider: meta.provider,
 		providerName: meta.providerName,

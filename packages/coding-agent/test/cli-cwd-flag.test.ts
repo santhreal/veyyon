@@ -1,10 +1,18 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { parseArgs } from "@veyyon/coding-agent/cli/args";
 import { applyStartupCwd } from "@veyyon/coding-agent/cli/startup-cwd";
 import { getProjectDir, normalizePathForComparison, setProjectDir } from "@veyyon/utils";
+import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makeCwdLaunchDir = useTrackedTempDirs("veyyon-cwd-launch-");
+const makeCwdTargetDir = useTrackedTempDirs("veyyon-cwd-target-");
+const makeCwdRelDir = useTrackedTempDirs("veyyon-cwd-rel-");
 
 const originalProjectDir = getProjectDir();
 
@@ -33,8 +41,8 @@ describe("parseArgs — --cwd flag", () => {
 		expect(result.messages).toEqual(["hello"]);
 	});
 	it("applies --cwd before session lookup callers read the project directory", async () => {
-		const launchDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-cwd-launch-"));
-		const targetDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-cwd-target-"));
+		const launchDir = makeCwdLaunchDir();
+		const targetDir = makeCwdTargetDir();
 		setProjectDir(launchDir);
 
 		const parsed = parseArgs(["--cwd", targetDir, "--continue"]);
@@ -46,7 +54,7 @@ describe("parseArgs — --cwd flag", () => {
 	});
 
 	it("normalizes a relative --cwd target to the resolved absolute path", async () => {
-		const launchDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-cwd-rel-"));
+		const launchDir = makeCwdRelDir();
 		const childName = "repo";
 		const childDir = path.join(launchDir, childName);
 		fs.mkdirSync(childDir);

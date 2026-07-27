@@ -19,7 +19,7 @@ import * as path from "node:path";
 import { tryParseJson } from "@veyyon/utils";
 import { registerProvider } from "../capability";
 import { type ContextFile, contextFileCapability } from "../capability/context-file";
-import { type Extension, type ExtensionManifest, extensionCapability } from "../capability/extension";
+import { type ExtensionManifest, extensionCapability, type ManifestExtension } from "../capability/extension";
 import { type ExtensionModule, extensionModuleCapability } from "../capability/extension-module";
 import { readDirEntries, readFile } from "../capability/fs";
 import { type MCPServer, mcpCapability } from "../capability/mcp";
@@ -165,8 +165,8 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 // Extensions
 // =============================================================================
 
-async function loadExtensions(ctx: LoadContext): Promise<LoadResult<Extension>> {
-	const items: Extension[] = [];
+async function loadExtensions(ctx: LoadContext): Promise<LoadResult<ManifestExtension>> {
+	const items: ManifestExtension[] = [];
 	const warnings: string[] = [];
 
 	// User-level: ~/.gemini/extensions/*/gemini-extension.json
@@ -188,7 +188,10 @@ async function loadExtensions(ctx: LoadContext): Promise<LoadResult<Extension>> 
 	return { items, warnings };
 }
 
-async function loadExtensionsFromDir(extensionsDir: string, level: "user" | "project"): Promise<LoadResult<Extension>> {
+async function loadExtensionsFromDir(
+	extensionsDir: string,
+	level: "user" | "project",
+): Promise<LoadResult<ManifestExtension>> {
 	const entries = await readDirEntries(extensionsDir);
 	const dirEntries = entries.filter(entry => entry.isDirectory());
 
@@ -201,7 +204,7 @@ async function loadExtensionsFromDir(extensionsDir: string, level: "user" | "pro
 		}),
 	);
 
-	const items: Extension[] = [];
+	const items: ManifestExtension[] = [];
 	const warnings: string[] = [];
 
 	for (const { entry, extPath, manifestPath, content } of results) {

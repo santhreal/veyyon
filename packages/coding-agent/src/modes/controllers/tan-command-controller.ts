@@ -1,8 +1,9 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { assistantText } from "@veyyon/ai";
+import { assistantText } from "@veyyon/ai/utils/message-text";
 import { errorMessage, prompt, Snowflake } from "@veyyon/utils";
-import { PROMPTS } from "../../prompts/registry";
+import { sessionFileName } from "@veyyon/utils/session-file";
+import { sideChannelPrompts } from "../../prompts/side-channel/rows";
 import { AgentRegistry, MAIN_AGENT_ID } from "../../registry/agent-registry";
 import * as sdk from "../../sdk";
 import type { AgentSession } from "../../session/agent-session";
@@ -91,7 +92,7 @@ export class TanCommandController {
 		const enableLsp = this.ctx.settings.get("subagent.enableLsp") !== false;
 		const agentRegistry = AgentRegistry.global();
 		const cloneId = `Tan-${Snowflake.next()}`;
-		const cloneFile = path.join(sessionDir, `${cloneId}.jsonl`);
+		const cloneFile = path.join(sessionDir, sessionFileName(cloneId));
 		const label = `/tan ${previewWork(trimmedWork)}`;
 
 		await this.ctx.sessionManager.ensureOnDisk();
@@ -153,7 +154,7 @@ export class TanCommandController {
 						const injectContextSwitch = () => {
 							clone?.agent.appendMessage({
 								role: "developer",
-								content: PROMPTS["side-channel/tan-context-switch"].text,
+								content: sideChannelPrompts["side-channel/tan-context-switch"].text,
 								attribution: "agent",
 								timestamp: Date.now(),
 							});
@@ -210,7 +211,10 @@ export class TanCommandController {
 			return;
 		}
 
-		const content = prompt.render(PROMPTS["side-channel/background-tan-dispatch"].text, { jobId, work: trimmedWork });
+		const content = prompt.render(sideChannelPrompts["side-channel/background-tan-dispatch"].text, {
+			jobId,
+			work: trimmedWork,
+		});
 		// /tan is meant to run alongside an active session. While the parent turn is
 		// still streaming, queue the dispatch breadcrumb for the next turn rather than
 		// steering the in-flight response; when idle this same call appends + persists

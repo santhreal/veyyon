@@ -1,13 +1,21 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import { DEFAULT_MAX_BYTES } from "@veyyon/coding-agent/session/streaming-output";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { BashTool } from "@veyyon/coding-agent/tools/bash";
 import { useIsolatedGlobalSettings } from "./helpers/isolated-global-settings";
 import { makeToolSession } from "./helpers/tool-session";
+import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makeBashTimeoutSpillDir = useTrackedTempDirs("bash-timeout-spill-");
+const makeBashCancelSpillDir = useTrackedTempDirs("bash-cancel-spill-");
+const makeBashCompleteSpillDir = useTrackedTempDirs("bash-complete-spill-");
+const makeBashTimeoutSmallDir = useTrackedTempDirs("bash-timeout-small-");
 
 // TW-7: a command that emits more than the inline byte budget and then times
 // out (or is cancelled) must route its output through the SAME artifact-spill
@@ -84,7 +92,7 @@ async function readReferencedArtifact(
 
 describe("BashTool timeout/cancel output spill (TW-7)", () => {
 	it("bounds a >50KB timed-out command and offloads the full output to an artifact", async () => {
-		const artifactDir = mkdtempSync(path.join(tmpdir(), "bash-timeout-spill-"));
+		const artifactDir = makeBashTimeoutSpillDir();
 		const { session, idToPath } = makeArtifactSession(artifactDir);
 		const tool = new BashTool(session);
 
@@ -121,7 +129,7 @@ describe("BashTool timeout/cancel output spill (TW-7)", () => {
 	}, 15_000);
 
 	it("bounds a >50KB cancelled command and offloads the full output to an artifact", async () => {
-		const artifactDir = mkdtempSync(path.join(tmpdir(), "bash-cancel-spill-"));
+		const artifactDir = makeBashCancelSpillDir();
 		const { session, idToPath } = makeArtifactSession(artifactDir);
 		const tool = new BashTool(session);
 		const controller = new AbortController();
@@ -167,7 +175,7 @@ describe("BashTool timeout/cancel output spill (TW-7)", () => {
 	}, 20_000);
 
 	it("keeps the completed oversized path bounded with a recoverable artifact", async () => {
-		const artifactDir = mkdtempSync(path.join(tmpdir(), "bash-complete-spill-"));
+		const artifactDir = makeBashCompleteSpillDir();
 		const { session, idToPath } = makeArtifactSession(artifactDir);
 		const tool = new BashTool(session);
 
@@ -188,7 +196,7 @@ describe("BashTool timeout/cancel output spill (TW-7)", () => {
 	}, 15_000);
 
 	it("leaves a small timed-out command's output inline with no artifact footer", async () => {
-		const artifactDir = mkdtempSync(path.join(tmpdir(), "bash-timeout-small-"));
+		const artifactDir = makeBashTimeoutSmallDir();
 		const { session } = makeArtifactSession(artifactDir);
 		const tool = new BashTool(session);
 

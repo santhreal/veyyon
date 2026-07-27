@@ -1,13 +1,22 @@
-import { logger } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
+import * as logger from "@veyyon/utils/logger";
 
 /**
- * A log line a worker sent to its supervisor.
+ * The CONTENT of a log line a worker sent to its supervisor: level, text, meta.
  *
  * Structural rather than tied to one worker's message union, because the two
  * supervisors that receive these (the JS eval context manager and the browser tab
- * supervisor) each define their own `WorkerOutbound`.
+ * supervisor) each define their own outbound union.
+ *
+ * A PAYLOAD, not a message. `WorkerLogMessage` in `worker-client.ts` is this plus
+ * the `type: "log"` discriminator that makes it a member of an outbound union, and
+ * that is the only difference between them. Both were called `WorkerLogMessage` in
+ * sibling modules of this directory, with two byte-identical copies of
+ * {@link logWorkerMessage} to go with them, so which one you got depended on which
+ * file your editor imported from -- and the two shapes are not interchangeable:
+ * only one of them narrows an outbound union.
  */
-export interface WorkerLogMessage {
+export interface WorkerLogPayload {
 	level: "debug" | "warn" | "error";
 	msg: string;
 	meta?: Record<string, unknown>;
@@ -24,7 +33,7 @@ export interface WorkerLogMessage {
  * dropped: a line worth sending is worth seeing, and losing it silently is worse
  * than logging it too loudly.
  */
-export function logWorkerMessage(msg: WorkerLogMessage): void {
+export function logWorkerMessage(msg: WorkerLogPayload): void {
 	if (msg.level === "debug") logger.debug(msg.msg, msg.meta);
 	else if (msg.level === "warn") logger.warn(msg.msg, msg.meta);
 	else logger.error(msg.msg, msg.meta);

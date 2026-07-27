@@ -5,16 +5,21 @@
  * with an opaque synthesis error.
  */
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { DIR_OVERRIDE_ENV_KEYS } from "@veyyon/utils";
 import { KOKORO_VOICES, TTS_LOCAL_MODELS } from "../../src/tts/models";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makeSayVoicesDir = useTrackedTempDirs("veyyon-say-voices-");
 
 const cliPath = path.resolve(import.meta.dir, "../../src/cli.ts");
 
 async function runSay(args: string[], stdin?: string): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-	const home = mkdtempSync(path.join(tmpdir(), "veyyon-say-voices-"));
+	const home = makeSayVoicesDir();
 	// HOME alone isolates a CHILD process: `os.homedir()` reads it at startup, so the
 	// config root lands under this temp home. The dir overrides are STRIPPED rather than
 	// set: `VEYYON_CONFIG_DIR` names the directory under the home, so the absolute value

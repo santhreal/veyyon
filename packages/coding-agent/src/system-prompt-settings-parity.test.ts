@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Skill } from "./extensibility/skills";
-import { PROMPTS } from "./prompts/registry";
+import { sessionPrompts } from "./prompts/session/rows";
 import { buildSystemPrompt } from "./system-prompt";
 import { RUNTIME_SECTIONS } from "./system-prompt-builder/section-registry";
 import type { ActiveRepoContext } from "./utils/active-repo-context";
@@ -352,15 +352,66 @@ describe("system prompt settings parity: delegation (the regression this harness
 	});
 
 	/**
-	 * With only the general worker spawnable there is no agent TYPE to choose, so
-	 * the advice to match a slice to a specialist is pure noise. It appears as soon
-	 * as any second agent does.
+	 * The enabled agents ARE the delegation policy, and this is the bullet that says
+	 * so, so it has to say the right thing in both directions.
+	 *
+	 * The prompt used to carry a hardcoded category list ("...tests, INVESTIGATIONS
+	 * — MUST be decomposed and delegated"), which meant every session was told to
+	 * delegate audits whether or not an agent suited to that work existed. A
+	 * hardcoded list cannot follow a setting, so it was wrong in every session that
+	 * did not happen to match it. The list is gone and this gate replaces it: with
+	 * specialists enabled the operator has named what belongs to a subagent, and
+	 * with only the worker there is no agent TYPE to choose, so the model is told to
+	 * delegate for parallelism and context rather than to hand off a kind of work.
+	 *
+	 * Both branches are asserted because the `{{else}}` is the half that stops the
+	 * model inventing a specialist policy from nothing.
 	 */
 	it(`${asserted("hasSubagentSpecialists")} toggles the agent-typing gate`, async () => {
 		const specialists = await renderBlock0({ subagentNames: ["task", "reviewer"] });
 		const workerOnly = await renderBlock0({ subagentNames: ["task"] });
-		expect(specialists).toContain("Pick the agent type per slice");
-		expect(workerOnly).not.toContain("Pick the agent type per slice");
+
+		expect(specialists).toContain("The listed agents are what the operator wants delegated");
+		expect(specialists).not.toContain("Only the general worker exists here");
+
+		expect(workerOnly).toContain("Only the general worker exists here");
+		expect(workerOnly).not.toContain("The listed agents are what the operator wants delegated");
+	});
+
+	/**
+	 * The retired category list must not come back, in either wording.
+	 *
+	 * This is the regression itself rather than a proxy for it: "investigations" in
+	 * the MUST-delegate list is what sent the main agent off to delegate audits, and
+	 * the same sentence appears twice in the template (the `required` branch and the
+	 * softer `preferred` one), so a fix applied to one and not the other would leave
+	 * the bug live for half of all sessions. Both strengths are rendered.
+	 */
+	it(`${asserted("eagerTasks")} never names investigations as work that must be delegated`, async () => {
+		const required = await renderBlock0({ eagerTasks: true, eagerTasksAlways: true });
+		const preferred = await renderBlock0({ eagerTasks: true, eagerTasksAlways: false });
+
+		for (const rendered of [required, preferred]) {
+			expect(rendered).not.toContain("investigations—MUST be decomposed");
+			expect(rendered).not.toContain("tests, and investigations are strong candidates");
+		}
+		// The surrounding guidance must survive: a gate that swallowed the whole
+		// paragraph would pass the two checks above for the wrong reason.
+		expect(required).toContain("MUST be decomposed and delegated");
+		expect(preferred).toContain("are strong candidates");
+	});
+
+	/**
+	 * And the reason to delegate is stated as context preservation, not as a cheaper
+	 * or lesser model. A subagent usually runs the model the session is on, so prose
+	 * implying otherwise teaches the model to reserve real work for itself and hand
+	 * out scraps — the opposite of what delegation is for.
+	 */
+	it("frames a subagent as a separate context rather than a lesser model", async () => {
+		const rendered = await renderBlock0({});
+
+		expect(rendered).toContain("SEPARATE CONTEXT, not a lesser model");
+		expect(rendered).toContain("never because the work is beneath you");
 	});
 
 	it(`${asserted("useCodexTaskPrompt")} switches delegation to the Codex policy for gpt-5.6`, async () => {
@@ -484,7 +535,7 @@ describe("system prompt settings parity: coverage contract", () => {
 	 * failure — exactly the silent-drop class this whole harness exists to stop.
 	 */
 	it("accounts for every gating identifier present in the shipped template", () => {
-		const found = extractGatingIdentifiers(PROMPTS["session/system-prompt"].text);
+		const found = extractGatingIdentifiers(sessionPrompts["session/system-prompt"].text);
 		// Guard against an extractor regression silently returning nothing, which
 		// would make the "unaccounted" check pass vacuously. These gates are known
 		// to exist in the template; if the extractor stops finding them it is broken.

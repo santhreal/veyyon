@@ -54,12 +54,15 @@ import { runExtensionCompact } from "../../extensibility/extensions/compact-hand
 import { getSessionSlashCommands } from "../../extensibility/extensions/get-commands-handler";
 import { buildSkillPromptMessage, parseSkillInvocation } from "../../extensibility/skills";
 import { loadSlashCommands } from "../../extensibility/slash-commands";
-import { listLocalPlanFileUrls, resolveLocalUrlToPath } from "../../internal-urls";
+// The owning module, not the `internal-urls` barrel: the barrel re-exports every protocol
+// handler and reaches hundreds of modules.
+import { listLocalPlanFileUrls, resolveLocalUrlToPath } from "../../internal-urls/local-protocol";
 import { MCPManager } from "../../mcp/manager";
 import type { MCPServerConfig } from "../../mcp/types";
 import { loadAllExtensions } from "../../modes/components/extensions/state-manager";
 import { theme } from "../../modes/theme/theme";
 import { type PlanApprovalDetails, resolveApprovedPlan } from "../../plan-mode/approved-plan";
+import { DEFAULT_PLAN_FILE_URL } from "../../plan-mode/plan-file-url";
 import type { AgentSession, AgentSessionEvent } from "../../session/agent-session";
 import { BlobStore, resolveImageDataSync } from "../../session/blob-store";
 import { isSilentAbort, SKILL_PROMPT_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "../../session/messages";
@@ -91,7 +94,6 @@ import { ACP_TERMINAL_AUTH_FLAG } from "./terminal-auth";
 
 const ACP_DEFAULT_MODE_ID = "default";
 const ACP_PLAN_MODE_ID = "plan";
-const DEFAULT_PLAN_FILE_URL = "local://PLAN.md";
 const APPROVE_OPTION = "Approve and execute";
 const REFINE_OPTION = "Refine plan";
 const MODE_CONFIG_ID = "mode";

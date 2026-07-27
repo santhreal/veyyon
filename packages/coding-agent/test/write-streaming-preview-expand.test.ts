@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import {
 	decodeStreamedToolArgs,
 	streamingStringKeysForTool,
@@ -7,6 +6,7 @@ import {
 import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
 import { writeToolRenderer } from "@veyyon/coding-agent/tools/write";
 import type { TUI } from "@veyyon/tui";
+import { createToolExecution } from "./helpers/tool-execution";
 
 const stripAnsi = (s: string): string => s.replace(/\u001b\[[0-9;]*m/g, "");
 const hasLine = (lines: readonly string[], n: number): boolean =>
@@ -28,7 +28,7 @@ describe("write streaming preview honors Ctrl+O expansion", () => {
 		const content = Array.from({ length: lineCount }, (_, i) => `line ${i + 1}`).join("\n");
 		// No updateResult() -> the call stays pending, exercising the streaming
 		// `renderCall` path (formatStreamingContent), not the merged result render.
-		return new ToolExecutionComponent("write", { file_path: "/tmp/foo.ts", content }, {}, undefined, uiStub);
+		return createToolExecution("write", { file_path: "/tmp/foo.ts", content }, {}, undefined, uiStub);
 	}
 
 	async function getUiTheme() {
@@ -198,7 +198,7 @@ describe("write streaming preview honors Ctrl+O expansion", () => {
 		});
 		// No updateResult() -> pending, exercising the streaming renderCall path
 		// that reads args.content.
-		const comp = new ToolExecutionComponent("write", renderArgs, {}, undefined, uiStub);
+		const comp = createToolExecution("write", renderArgs, {}, undefined, uiStub);
 
 		const rendered = stripAnsi(comp.render(100).join("\n"));
 		expect(rendered).toContain("GROWN_TAIL_SENTINEL");

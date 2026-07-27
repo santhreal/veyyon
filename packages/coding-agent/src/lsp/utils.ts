@@ -1,8 +1,9 @@
-export { truncate } from "@veyyon/utils";
+export { truncate } from "@veyyon/utils/format";
 
 import * as fs from "node:fs/promises";
 import path from "node:path";
-import { isEnoent } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
+import { isEnoent } from "@veyyon/utils/fs-error";
 import { theme } from "../modes/theme/theme-binding";
 import type { Theme } from "../modes/theme/theme-class";
 import { formatGroupedFiles } from "../tools/grouped-file-output";

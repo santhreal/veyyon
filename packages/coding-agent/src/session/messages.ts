@@ -11,13 +11,12 @@ import {
 	type CompactionSummaryMessage,
 	convertMessageToLlm,
 } from "@veyyon/agent-core/compaction/messages";
-import type { AssistantMessage, ImageContent, Message, MessageAttribution, TextContent, UserMessage } from "@veyyon/ai";
+import type { AssistantMessage, ImageContent, Message, MessageAttribution, TextContent } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
-import { isRecord, prompt } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
+import { isRecord } from "@veyyon/utils/type-guards";
 import { formatExitCodeNotice } from "../exec/exit-notice";
-import { PROMPTS } from "../prompts/registry";
 import { ToolAbortError } from "../tools/tool-errors";
-import { contentText } from "./content-text";
 
 export {
 	type BranchSummaryMessage,
@@ -27,8 +26,11 @@ export {
 	createCustomMessage,
 } from "@veyyon/agent-core/compaction/messages";
 
-import type { OutputMeta } from "../tools/output-meta";
-import { formatOutputNotice } from "../tools/output-meta";
+// The notice text, not the tool layer that builds it: `../tools/output-meta` reaches 177 modules
+// because it owns the builder, the tool wrapper and the spill configuration, and appending a notice to
+// a message needs none of them. `../tools/output-notice` owns the wording and the metadata shape.
+import type { OutputMeta } from "../tools/output-notice";
+import { formatOutputNotice } from "../tools/output-notice";
 
 export const SKILL_PROMPT_MESSAGE_TYPE = "skill-prompt";
 export const LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE = "lsp-late-diagnostic";
@@ -358,64 +360,6 @@ export function normalizeCustomMessagePayload<T = unknown>(
 	};
 }
 
-function isSteeringUserMessage(message: AgentMessage | undefined): message is UserMessage & { steering: true } {
-	return message?.role === "user" && message.steering === true;
-}
-
-function userMessageWithoutSteering(message: UserMessage): UserMessage {
-	const { steering, ...rest } = message;
-	void steering;
-	return rest;
-}
-
-function renderSteeringEnvelope(message: string): string {
-	return prompt.render(PROMPTS["steering/user-interjection"].text, { message });
-}
-
-function getArrayContentImages(content: (TextContent | ImageContent)[]): ImageContent[] {
-	let images: ImageContent[] | undefined;
-	for (const part of content) {
-		if (part.type !== "image") continue;
-		if (images === undefined) images = [];
-		images.push(part);
-	}
-	return images ?? [];
-}
-
-function wrapSteeringUserMessage(message: UserMessage): UserMessage {
-	if (typeof message.content === "string") {
-		if (message.content.length === 0) return message;
-		return { ...userMessageWithoutSteering(message), content: renderSteeringEnvelope(message.content) };
-	}
-
-	const text = contentText(message.content);
-	if (text.length === 0) return message;
-	const content: (TextContent | ImageContent)[] = [{ type: "text", text: renderSteeringEnvelope(text) }];
-	content.push(...getArrayContentImages(message.content));
-	return { ...userMessageWithoutSteering(message), content };
-}
-
-export function wrapSteeringForModel(messages: AgentMessage[]): AgentMessage[] {
-	// Wrap EVERY steering message, not just a trailing run. The wire bytes of a
-	// steering message must be a pure function of the message itself, independent
-	// of its position in the array. When only the trailing steer was wrapped, the
-	// same persisted message was sent enveloped while it was the tail and raw once
-	// the assistant's reply buried it — rewriting already-cached prefix bytes and
-	// busting the provider prompt cache from that message onward on the next turn.
-	let wrappedMessages: AgentMessage[] | undefined;
-	for (let i = 0; i < messages.length; i++) {
-		const message = messages[i];
-		if (!isSteeringUserMessage(message)) continue;
-		const wrappedMessage = wrapSteeringUserMessage(message);
-		if (wrappedMessage === message) continue;
-		if (wrappedMessages === undefined) {
-			wrappedMessages = messages.slice();
-		}
-		wrappedMessages[i] = wrappedMessage;
-	}
-	return wrappedMessages ?? messages;
-}
-
 /** Result of filtering image blocks out of a `(TextContent | ImageContent)[]` array. */
 interface StripContentResult {
 	content: (TextContent | ImageContent)[];
@@ -624,6 +568,13 @@ export interface FileMentionMessage {
 	files: Array<{
 		path: string;
 		content: string;
+		/**
+		 * Set on a collab GUEST's replica, where the body was deliberately not sent: a mention's full
+		 * text is never drawn, so shipping it would put every mentioned file on every viewer's disk.
+		 * Distinct from an empty `content`, which means the file really was empty — the difference is
+		 * what stops an export printing a blank `<file>` block as though it had read one.
+		 */
+		contentNotReplicated?: boolean;
 		lineCount?: number;
 		/** File size in bytes, if known. */
 		byteSize?: number;

@@ -4,7 +4,11 @@
  * Tools should throw these instead of returning error text.
  * The agent loop catches and renders them appropriately.
  */
-import { errorMessage, isAbortError } from "@veyyon/utils";
+// Subpath imports, not the `@veyyon/utils` barrel: the barrel loads dotenv at import time, and this
+// module is reachable from `eval/js/process-entry`, which must not read a `.env` before profile
+// bootstrap (pinned by `eval/__tests__/process-entry-import.test.ts`).
+import { isAbortError } from "@veyyon/utils/abortable";
+import { errorMessage } from "@veyyon/utils/type-guards";
 
 /**
  * Base error for tool execution failures.

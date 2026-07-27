@@ -1,6 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { buildSystemPrompt as buildSdkSystemPrompt } from "@veyyon/coding-agent/sdk";
@@ -12,6 +10,14 @@ import {
 } from "@veyyon/coding-agent/system-prompt";
 import { createTools, type Tool, type ToolSession } from "@veyyon/coding-agent/tools";
 import { cleanupTempHome } from "./helpers/temp-home-cleanup";
+import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makePiPromptInvDir = useTrackedTempDirs("pi-prompt-inv-");
+const makePiPromptInvHomeDir = useTrackedTempDirs("pi-prompt-inv-home-");
 
 const EMPTY_TREE = {
 	rootPath: "",
@@ -57,8 +63,8 @@ describe("system prompt tool inventory", () => {
 	let originalHome: string | undefined;
 
 	beforeEach(() => {
-		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-prompt-inv-"));
-		tempHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-prompt-inv-home-"));
+		tempDir = makePiPromptInvDir();
+		tempHomeDir = makePiPromptInvHomeDir();
 		originalHome = process.env.HOME;
 		process.env.HOME = tempHomeDir;
 	});

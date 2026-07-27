@@ -122,10 +122,16 @@ describe("EvalTool cancellation", () => {
 		expect(err.message).toContain("Eval cancelled: load fixtures started and did NOT finish");
 	});
 
-	it("falls back to the ordinal and the language when the cell has no title", async () => {
+	it("falls back to naming the language when the cell has no title", async () => {
 		// The title is optional, and a cancellation message that trails off into
 		// nothing when it is absent is the case that actually reaches an operator
 		// most often, since the model does not always set one.
+		//
+		// The fallback names the RUNTIME rather than an ordinal. A call carries
+		// exactly one cell, so "cell 1" was counting to one -- it read as though a
+		// sequence had been interrupted partway and invited the reader to ask which
+		// of the other cells had run. The language is the fact that is actually
+		// actionable here: it says which kernel is holding the half-mutated state.
 		const tool = new EvalTool(makeSession());
 		const controller = new AbortController();
 		const running = tool.execute(
@@ -137,7 +143,9 @@ describe("EvalTool cancellation", () => {
 		controller.abort();
 
 		const err = (await running.catch(e => e)) as Error;
-		expect(err.message).toContain("Eval cancelled: cell 1 (js) started and did NOT finish");
+		expect(err.message).toContain("Eval cancelled: the js cell started and did NOT finish");
+		// And it does not fall back to counting a sequence that cannot exist.
+		expect(err.message).not.toContain("cell 1");
 	});
 
 	it("says so plainly when the cancelled cell had produced no output", async () => {

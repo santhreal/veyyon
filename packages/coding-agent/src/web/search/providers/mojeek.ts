@@ -87,11 +87,16 @@ async function solveCaptcha(page: Page, signal: AbortSignal): Promise<void> {
 	const checkbox = await untilAborted(signal, () => page.$("altcha-widget input[type=checkbox]"));
 	if (!checkbox) return;
 
+	// Subscribed before the click so the navigation cannot be missed. A captcha that resolves without
+	// navigating is a normal outcome, so a timeout here is not a failure; the selector wait below is what
+	// decides whether results actually appeared.
 	const navigation = page
 		.waitForNavigation({ waitUntil: "domcontentloaded", timeout: CAPTCHA_SOLVE_TIMEOUT_MS })
 		.catch(() => null);
 	await untilAborted(signal, () => checkbox.click());
 	await untilAborted(signal, () => navigation);
+	// Last chance for results to render after the captcha; a timeout leaves the page as it is and the caller's
+	// `isRobotPage` check reports the captcha as unsolved.
 	await untilAborted(signal, () =>
 		page.waitForSelector("ul.results-standard li", { timeout: CAPTCHA_SOLVE_TIMEOUT_MS }).catch(() => null),
 	);

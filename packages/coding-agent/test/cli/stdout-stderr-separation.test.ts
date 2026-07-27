@@ -33,7 +33,7 @@ const cliEntry = path.join(repoRoot, "src", "cli.ts");
 
 /** Any ANSI escape sequence: colour, cursor movement, erase, mode set. */
 // Matching raw escape bytes is the point, so the class is deliberate.
-const ANSI = /\[[0-9;?]*[A-Za-z]/u;
+const ANSI = /\x1b\[[0-9;?]*[A-Za-z]/u;
 
 interface SpawnResult {
 	code: number;
@@ -177,7 +177,7 @@ describe("piped output carries no terminal control bytes", () => {
 		const result = await runCli(["--help"]);
 		// Cursor up/down/forward/back, position, erase-in-line, erase-in-display.
 		// Matching raw escape bytes is the point, so the class is deliberate.
-		const CURSOR = /\[[0-9;]*[ABCDHJKfsu]/u;
+		const CURSOR = /\x1b\[[0-9;]*[ABCDHJKfsu]/u;
 
 		expect(CURSOR.test(result.stdout)).toBe(false);
 	}, 60_000);

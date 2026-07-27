@@ -129,9 +129,15 @@ async function swap(staged: Staged): Promise<void> {
 	await sweepStaleBackups(staged.binaryPath);
 }
 
-/** Settings writes are queued, so a write is only observable after it drains. */
-async function settle(): Promise<void> {
-	await new Promise(resolve => setTimeout(resolve, 300));
+/**
+ * Wait for a settings write to actually reach disk.
+ *
+ * `flush()`, not a fixed sleep: Settings batches saves behind a timer, and a guessed interval is a race that
+ * only loses under load. The sibling corpus suite (`settings-rich-config-survives-a-write.test.ts`) failed
+ * exactly that way in full-suite runs while passing alone, so both use the real drain.
+ */
+async function settle(settings: Settings): Promise<void> {
+	await settings.flush();
 }
 
 describe("a real binary swap and the config beside it", () => {
@@ -221,7 +227,7 @@ describe("the sequence a user actually lives through", () => {
 
 		const settings = await Settings.loadIsolated({ agentDir: staged.agentDir });
 		await settings.set("topP", 0.9);
-		await settle();
+		await settle(settings);
 
 		const after = await fs.readFile(staged.configPath, "utf8");
 		const parsed = YAML.parse(after) as Record<string, unknown>;

@@ -1,4 +1,4 @@
-import { PROMPTS } from "../prompts/registry";
+import { turnControlPrompts } from "../prompts/turn-control/rows";
 import { magicKeywordRegex } from "./magic-keyword-boundary";
 import { keywordInProse } from "./markdown-prose";
 
@@ -20,7 +20,7 @@ import { keywordInProse } from "./markdown-prose";
 const ULTRATHINK_WORD = magicKeywordRegex("ultrathink");
 
 /** Hidden system notice appended after a user message that mentions "ultrathink". */
-export const ULTRATHINK_NOTICE: string = PROMPTS["turn-control/ultrathink-notice"].text.trim();
+export const ULTRATHINK_NOTICE: string = turnControlPrompts["turn-control/ultrathink-notice"].text.trim();
 
 /**
  * Whether `text` contains the standalone keyword "ultrathink" (lowercase,
