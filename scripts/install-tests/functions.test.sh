@@ -1655,6 +1655,12 @@ check "the lookup retries like every other fetch" \
     "$(curl_args_of_lookup | grep -c -- '--retry ')" "1"
 check "the lookup cannot hang forever" \
     "$(curl_args_of_lookup | grep -c -- '--max-time 60')" "1"
+# Headers only. The tag is in the URL curl ends up at, so the release page's body
+# is a few hundred kilobytes fetched and discarded on every single install.
+check "the lookup asks for headers only" \
+    "$(curl_args_of_lookup | grep -c -- '-fsSIL')" "1"
+check "and still follows the redirect, which is where the answer is" \
+    "$(curl_args_of_lookup | grep -c -- 'L')" "1"
 
 # --- release_tag_exists: a bad --ref is named as a bad ref ---
 # Asking for a tag that does not exist and asking for a tag with no build for
@@ -1664,6 +1670,10 @@ check "a reachable tag page means the tag exists" \
     "$( ( curl() { return 0; }; release_tag_exists v1.0.0; echo $? ) )" "0"
 check "a 404 on the tag page means it does not" \
     "$( ( curl() { return 22; }; if release_tag_exists v0.0.0-nope; then echo exists; else echo absent; fi ) )" "absent"
+check "the existence check asks for headers only too" \
+    "$( ( curl() { printf '%s\n' "$*" > "$SANDBOX/exists-args"; }
+  release_tag_exists v1.0.0 >/dev/null 2>&1
+  grep -c -- '-fsSI' "$SANDBOX/exists-args" ) )" "1"
 check "the check is silent on both paths" \
     "$( ( curl() { printf 'noise\n'; return 0; }; release_tag_exists v1.0.0 ) )" ""
 

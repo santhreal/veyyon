@@ -319,7 +319,10 @@ has() { command -v "$1" >/dev/null 2>&1; }
 # `-o /dev/null -w %{url_effective}` asks curl where it ENDED UP rather than for
 # the page body, so nothing is parsed out of HTML.
 resolve_latest_tag() {
-    _rlt_url=$(curl -fsSL -o /dev/null -w '%{url_effective}' $CURL_RETRY \
+    # -I asks for headers only. The tag is in the URL curl ends up at, so the
+    # release page's body is a few hundred kilobytes nobody reads; -L still
+    # follows the redirect to find it.
+    _rlt_url=$(curl -fsSIL -o /dev/null -w '%{url_effective}' $CURL_RETRY \
         --connect-timeout 10 --max-time 60 "https://github.com/${REPO}/releases/latest" 2>/dev/null) || return 1
     # A redirect that did not land on a tag page means GitHub answered with
     # something other than a release — an interstitial, a moved repo, a captive
@@ -338,7 +341,8 @@ resolve_latest_tag() {
 # not exist" apart from "that release has no build for your platform", which are
 # the same curl failure on the asset URL and very different things to be told.
 release_tag_exists() {
-    curl -fsSL -o /dev/null $CURL_RETRY --connect-timeout 10 --max-time 60 \
+    # Headers only: the question is whether the page is there, not what is on it.
+    curl -fsSI -o /dev/null $CURL_RETRY --connect-timeout 10 --max-time 60 \
         "https://github.com/${REPO}/releases/tag/$1" >/dev/null 2>&1
 }
 
