@@ -51,10 +51,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-bae4794e.js";
+            window.path_to_searchindex_js = "searchindex-e059680e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-2e8c749f.js"></script>
+        <script src="toc-5cf6de48.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -678,6 +678,16 @@ names the new version and points at what you can do about it:</p>
 </code></pre>
 <p>You see it once per update, on the first launch after it. <code>/changelog</code> opens the
 release notes on the web rather than printing them into your terminal.</p>
+<p>The check costs one request to <code>github.com</code>, and no request to the GitHub API.
+It reads the newest version out of where <code>https://github.com/santhreal/veyyon/releases/latest</code>
+redirects to, the same way the installer does, because the API is capped at 60
+requests an hour per address and that cap is shared by everyone behind it. A
+laptop is nowhere near it; an office, a CI fleet or a container host running
+several agents spent it on startup checks alone, and then every machine behind
+that address reported that it could not check for updates. Nothing here needs a
+token, and setting one changes nothing.</p>
+<p>The one thing that still asks the API is the version list behind <code>veyyon rollback</code>, because a list of every published version has no redirect to read it
+from. That runs when you open the picker, not on startup.</p>
 <p>Two settings control this, both on by default:</p>
 <div class="table-wrapper">
 <table>
@@ -1610,7 +1620,7 @@ OpenAI-compatible endpoints.</li>
 <h2 id="interactive-surfaces"><a class="header" href="#interactive-surfaces">Interactive surfaces</a></h2>
 <p>These are the parts of the TUI you touch every session:</p>
 <ul>
-<li><a href="#multi-agent-monitoring">Status line and multi-agent UI</a> covers the status segments, <code>/cockpit</code>, jobs, and the swarm view.</li>
+<li><a href="#multi-agent-monitoring">Status line and multi-agent UI</a> covers the status segments, the Agent Control Center (<code>/agents</code>), jobs, and the swarm view.</li>
 <li><a href="#keybindings">Keybindings</a> covers the chords.</li>
 <li>The composer gives you prompt history, <code>@</code> and <code>/</code> completion, and <code>Esc</code> to interrupt. See <a href="#quickstart">Quickstart</a> and <a href="#keybindings">Keybindings</a>.</li>
 <li><a href="#web-search">Web search</a> covers searching from inside a session.</li>
@@ -1643,7 +1653,7 @@ OpenAI-compatible endpoints.</li>
 </table>
 </div>
 <h2 id="recipes"><a class="header" href="#recipes">Recipes</a></h2>
-<p>For worked examples, see the <a href="#task-guides">Task guides</a>. For the full command and setting reference, see <a href="#reference">Reference</a>.</p>
+<p>For worked examples, see the <a href="#task-guides">Task guides</a>. For the full command and setting reference, see <a href="#reference-1">Reference</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="editing-and-repair"><a class="header" href="#editing-and-repair">Editing and repair</a></h1>
 <p>Editing reliably is the core of a coding agent, so it is worth understanding how Veyyon does it. The default edit surface is hashline. In practice that means three things work together: numbered lines that come back from <code>read</code> and <code>grep</code>, snapshot tags that identify a known state of a file, and the <code>edit</code> tool with its <code>SWAP</code>, <code>DEL</code>, and <code>INS</code> operations.</p>
@@ -1815,6 +1825,161 @@ instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in
 <li><a href="#configuration-4">Configuration</a></li>
 <li><a href="#tool-call-repair">Repair</a></li>
 </ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="secrets"><a class="header" href="#secrets">Secrets</a></h1>
+<p>You often need the agent to run a command that requires a credential. A deploy needs a token. A database query needs a password. The straightforward way is to paste the value into the chat, and then the value is in the model provider’s logs, in your transcript file, and in any session you later share.</p>
+<p>Veyyon can keep the value out of all three while the command still works. This page shows you how.</p>
+<h2 id="turning-it-on"><a class="header" href="#turning-it-on">Turning it on</a></h2>
+<p>Secret protection is off by default. Turn it on in <code>/settings</code>, or write it into <code>config.yml</code>:</p>
+<pre><code class="language-yaml">secrets:
+  enabled: true
+</code></pre>
+<p>Restart the session. Secrets are collected once at startup.</p>
+<h2 id="your-first-secret"><a class="header" href="#your-first-secret">Your first secret</a></h2>
+<p>If the credential is already an environment variable, you have nothing to declare. Veyyon treats an environment variable as secret when its value is 8 characters or longer and its name ends with, or has an underscore after, one of <code>KEY</code>, <code>SECRET</code>, <code>TOKEN</code>, <code>PASSWORD</code>, <code>PASS</code>, <code>AUTH</code>, <code>CREDENTIAL</code>, <code>PRIVATE</code>, or <code>OAUTH</code>.</p>
+<p>That boundary matters, so read it as a whole word rather than a substring. <code>DEPLOY_TOKEN</code>, <code>API_KEY</code>, and <code>KEY_FILE</code> are detected. <code>TOKENIZER</code> and <code>PASSPHRASE</code> are not, because the keyword runs into the rest of the name. If a variable is not detected, declare it in a file as shown below rather than assuming it is covered.</p>
+<p>So a shell that already has this:</p>
+<pre><code class="language-bash">export DEPLOY_TOKEN=ghp_R2d2c3poIHRva2VuIGV4YW1wbGU
+</code></pre>
+<p>needs no configuration. Start veyyon and that value is protected.</p>
+<h2 id="what-the-model-sees"><a class="header" href="#what-the-model-sees">What the model sees</a></h2>
+<p>Every occurrence of the value is replaced before the text leaves your machine. Suppose a file you read contains the token. The model does not receive this:</p>
+<pre><code class="language-text">DEPLOY_TOKEN=ghp_R2d2c3poIHRva2VuIGV4YW1wbGU
+</code></pre>
+<p>It receives this:</p>
+<pre><code class="language-text">DEPLOY_TOKEN=#K7QN#
+</code></pre>
+<p><code>#K7QN#</code> is a <strong>placeholder</strong>: a short opaque token that stands in for one secret value. The same secret always gets the same placeholder within a session, so the model can tell two different secrets apart.</p>
+<p>The model is told that placeholders are opaque strings. It does not know the value and cannot ask for it.</p>
+<h2 id="using-a-secret-in-a-command"><a class="header" href="#using-a-secret-in-a-command">Using a secret in a command</a></h2>
+<p>This is the part that makes the feature useful rather than merely defensive. The model can put a placeholder into a command, and veyyon substitutes the real value before the command runs.</p>
+<p>The model writes:</p>
+<pre><code class="language-bash">curl -H "Authorization: Bearer #K7QN#" https://api.example.com/deploy
+</code></pre>
+<p>The command that actually executes carries the real token. The substitution happens locally, after the model has produced the command and before the shell sees it. The model never learns the value, and the request still authenticates.</p>
+<h2 id="the-vault-storing-a-credential-with-secret"><a class="header" href="#the-vault-storing-a-credential-with-secret">The vault: storing a credential with <code>/secret</code></a></h2>
+<p>Environment detection covers credentials that are already in your shell. For anything else, hand it to the vault. A vault entry is encrypted on disk, has a name, and expires.</p>
+<p>The safest form reads the value out of your environment, so the credential is never typed and never enters your scrollback:</p>
+<pre><code class="language-text">/secret add github-token --from-env GITHUB_PAT
+</code></pre>
+<p>You can also pass the value directly. It works, and veyyon tells you plainly that the value is now in your scrollback:</p>
+<pre><code class="language-text">/secret add github-token ghp_your_token_here
+</code></pre>
+<p>Either way the model is shown a placeholder built from the name:</p>
+<pre><code class="language-text">Stored GITHUB_TOKEN in the profile vault, 1d left.
+The model sees #GITHUB_TOKEN# and never the value.
+</code></pre>
+<p>The agent is told, in that same turn, that a credential exists and that it should write <code>#GITHUB_TOKEN#</code> where the value belongs. It is never told the value and cannot ask for it.</p>
+<h3 id="seeing-and-removing-what-you-stored"><a class="header" href="#seeing-and-removing-what-you-stored">Seeing and removing what you stored</a></h3>
+<pre><code class="language-text">/secret list                      names, scopes and lifetimes, never values
+/secret rm github-token           remove it
+/secret extend github-token --ttl 7d
+</code></pre>
+<p><code>list</code> shows no part of any value. A prefix of a credential is still a disclosure.</p>
+<h3 id="lifetimes"><a class="header" href="#lifetimes">Lifetimes</a></h3>
+<p>Every entry expires. The default is one day, which you can change in <code>/settings</code> under Secret Lifetime, or per entry:</p>
+<pre><code class="language-text">/secret add deploy-key --from-env DEPLOY_KEY --ttl 30m
+/secret add signing-key --from-env SIGNING_KEY --ttl never
+</code></pre>
+<p>Lifetimes are written as <code>30m</code>, <code>12h</code>, <code>7d</code>, <code>2w</code>, or <code>never</code>. Weeks are accepted and reported back in days.</p>
+<p><strong>Expiry deletes the value.</strong> It does not merely stop hiding it. That distinction matters: if an expired secret simply stopped being obfuscated, the value would start flowing to the model provider at the moment its protection lapsed, which is the opposite of what you asked for. Expiry is also checked when a secret is used, so a session left open overnight cannot spend a credential whose lifetime ended while you were away.</p>
+<p>If a command still refers to a secret that has expired, the placeholder stays visible in the command rather than being replaced with nothing. A command that fails loudly is better than one that runs without a credential it needed.</p>
+<h3 id="scope"><a class="header" href="#scope">Scope</a></h3>
+<p>An entry belongs to one scope and is invisible from the others:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scope</th><th>Where it lives</th><th>Use it for</th></tr>
+</thead>
+<tbody>
+<tr><td><code>profile</code> (default)</td><td>the active profile’s agent directory</td><td>credentials for one line of work</td></tr>
+<tr><td><code>project</code></td><td><code>&lt;project&gt;/.veyyon/vault.json</code></td><td>credentials for one repository</td></tr>
+<tr><td><code>global</code></td><td><code>~/.veyyon/vault.json</code></td><td>credentials you want everywhere</td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-text">/secret add scan-token --from-env SCAN_TOKEN --scope project
+</code></pre>
+<p>Profile is the default because that is usually the boundary you want. A credential you use for one kind of work should not be reachable from a session you opened in another profile.</p>
+<p>When the same name exists in more than one scope, the narrowest wins, and <code>/secret rm</code> removes the one that is in effect. Run it again to remove the next one out.</p>
+<h3 id="encryption-and-what-it-does-not-do"><a class="header" href="#encryption-and-what-it-does-not-do">Encryption, and what it does not do</a></h3>
+<p>Vault files are encrypted with AES-256-GCM. The key is a 32 byte file at <code>~/.veyyon/vault.key</code>, mode 0600, created on first use. It never lives inside a project directory.</p>
+<p>That placement is the whole point. It means a <strong>project-scoped vault can sit in a directory you commit, back up, or export over a network share, and the file is worthless on its own.</strong> The key stays on the machine.</p>
+<p>What it does not protect against is someone who is already running as you. The key is readable by your own account by design, because the alternative is a passphrase prompt every session, and a credential store nobody turns on protects nothing. If you need to defend against a compromised account, use a hardware token or an external secret manager.</p>
+<p>Two failure modes are deliberately loud rather than quiet:</p>
+<ul>
+<li>A vault file present with <strong>no readable key</strong> stops the session. It is never treated as an empty vault, because “empty” would mean every secret in it silently stops being protected.</li>
+<li>A vault whose contents have been <strong>modified</strong> is refused rather than decrypted. GCM authenticates, so tampering is detected.</li>
+</ul>
+<p>On POSIX systems, a key file that other users can read is refused, with the <code>chmod</code> that fixes it. Windows does not express access through mode bits, so that check does not run there.</p>
+<h2 id="declaring-secrets-yourself"><a class="header" href="#declaring-secrets-yourself">Declaring secrets yourself</a></h2>
+<p>Environment variable detection covers the common case. For anything else, list entries in a <code>secrets.yml</code> file. Two locations are read:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Level</th><th>Path</th><th>Use for</th></tr>
+</thead>
+<tbody>
+<tr><td>Global</td><td><code>&lt;agent dir&gt;/secrets.yml</code></td><td>Credentials you use everywhere</td></tr>
+<tr><td>Project</td><td><code>&lt;project&gt;/.veyyon/secrets.yml</code></td><td>Credentials specific to one repository</td></tr>
+</tbody>
+</table>
+</div>
+<p>A minimal file protects one literal value:</p>
+<pre><code class="language-yaml">- type: plain
+  content: sk-proj-abc123def456
+</code></pre>
+<p>A <code>regex</code> entry protects anything matching a pattern, which is how you cover credentials you have not seen yet:</p>
+<pre><code class="language-yaml">- type: regex
+  content: "AKIA[0-9A-Z]{16}"
+</code></pre>
+<p>Patterns always scan globally. You do not need the <code>g</code> flag.</p>
+<h2 id="the-two-modes"><a class="header" href="#the-two-modes">The two modes</a></h2>
+<p>Each entry chooses what happens to the value.</p>
+<p><code>obfuscate</code>, the default, is <strong>reversible</strong>. The value becomes a placeholder on the way out and the placeholder becomes the value again on the way back in. Use it when the agent needs to work with the credential.</p>
+<p><code>replace</code> is <strong>one way</strong>. The value is swapped for a fixed or generated string and nothing restores it. Use it when the agent has no business using the credential at all and you only want it out of the context:</p>
+<pre><code class="language-yaml">- type: plain
+  content: hunter2
+  mode: replace
+  replacement: "********"
+</code></pre>
+<h2 id="the-8-character-minimum"><a class="header" href="#the-8-character-minimum">The 8-character minimum</a></h2>
+<p><code>obfuscate</code> mode replaces every occurrence of the value. A three-character secret would blank out fragments of unrelated words, so short values are not obfuscated.</p>
+<p>Veyyon refuses them rather than ignoring them. A plain <code>obfuscate</code> entry under 8 characters stops startup with an error naming the entry and the fix. This is deliberate: a session that starts cleanly while sending your declared secret to the provider in plain text is worse than a session that will not start.</p>
+<p>The fix is <code>mode: replace</code>, which is one way and has no minimum.</p>
+<p>A regex match under the floor behaves differently. A short match usually means the pattern reached into ordinary prose, so the match is skipped and the over-matching pattern is reported once. If short matches really are secret, say so on the entry:</p>
+<pre><code class="language-yaml">- type: regex
+  content: "\\b[0-9]{6}\\b"
+  minLength: 6
+</code></pre>
+<p>A malformed or unreadable <code>secrets.yml</code> also stops startup. A missing one does not, because nothing was declared.</p>
+<h2 id="where-the-value-goes"><a class="header" href="#where-the-value-goes">Where the value goes</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Destination</th><th>Sees the real value?</th></tr>
+</thead>
+<tbody>
+<tr><td>Model provider</td><td>No, a placeholder</td></tr>
+<tr><td>Session transcript on disk</td><td>No, a placeholder</td></tr>
+<tr><td>A session you <code>/share</code></td><td>No, a placeholder</td></tr>
+<tr><td>The vault file on disk</td><td>No, encrypted</td></tr>
+<tr><td><code>secrets.yml</code> on disk</td><td>Yes, it is a plain file you wrote</td></tr>
+<tr><td>Your terminal</td><td>Yes, restored for display</td></tr>
+<tr><td>A command the agent runs</td><td>Yes, substituted before execution</td></tr>
+</tbody>
+</table>
+</div>
+<p>Your terminal shows real values because you already know them. The transcript stores placeholders, so resuming a session later reads correctly and copying a transcript elsewhere does not carry the credential.</p>
+<h2 id="what-this-does-not-protect"><a class="header" href="#what-this-does-not-protect">What this does not protect</a></h2>
+<p>Be clear about the boundary.</p>
+<p><strong>The two stores differ on disk.</strong> Vault entries added with <code>/secret</code> are encrypted. <code>secrets.yml</code> is a plain file: it holds declarations you wrote, in the clear, and anyone who can read it has those credentials. If a value needs to be encrypted at rest, put it in the vault rather than in <code>secrets.yml</code>.</p>
+<p><strong>A command the agent runs receives the real value.</strong> So a command that prints the credential prints it for real. Its output is obfuscated again before it goes back to the model, but it reached the process, and anything that process wrote elsewhere is outside veyyon’s reach.</p>
+<p><strong>Protection begins when the value is known.</strong> A credential that entered the context before you enabled the setting, or before you stored it, is already in that session’s history. Storing it now does not retroactively clean the transcript.</p>
+<p><strong>An inline <code>/secret add</code> is visible on screen.</strong> The obfuscator protects what leaves for the provider; it cannot scrub your terminal. Use <code>--from-env</code> when you care.</p>
+<h2 id="reference"><a class="header" href="#reference">Reference</a></h2>
+<p>The field-by-field schema, the merge rules between the two files, and the interaction with environment detection are in <code>docs/secrets.md</code>.</p>
+<p>For provider credentials specifically, <code>veyyon</code> keeps OAuth tokens and API keys in its own credential store rather than in your context. See <a href="#signing-in">Signing in</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="models-and-providers"><a class="header" href="#models-and-providers">Models and providers</a></h1>
 <p>You choose an endpoint and a model id. Veyyon then calls that provider’s API directly with your credentials. The endpoint can be a local server, a hosted API, or any OpenAI-compatible gateway.</p>
@@ -2123,8 +2288,9 @@ work to, and collects a report from. The parent spawns it with the <code>task</c
 subagent has its own context window, so bulk reading and long grinding work stay out
 of the conversation you are having.</p>
 <p>Everything about them is configured in one place: the <strong>Subagents</strong> tab in
-<code>/settings</code>, backed by the <code>subagent.*</code> settings. <code>/agents</code> opens the same agent
-table with a live view of what each agent will run.</p>
+<code>/settings</code>, backed by the <code>subagent.*</code> settings. <code>/agents</code> is the live picture of a
+run in progress: which agents are working right now and what they are saying to each
+other. It does not configure anything.</p>
 <h2 id="what-you-get-out-of-the-box"><a class="header" href="#what-you-get-out-of-the-box">What you get out of the box</a></h2>
 <p>One agent type, the general-purpose worker, and delegation that the prompt asks for:</p>
 <pre><code class="language-yaml">subagent:
@@ -2135,7 +2301,7 @@ to and your subagents follow it.</p>
 <p>Veyyon also ships five specialists (<code>scout</code>, <code>reviewer</code>, <code>designer</code>, <code>librarian</code>,
 <code>sonic</code>), and they are <strong>disabled</strong> by default. Each agent type you enable adds its
 description to every request you send for the rest of the session, so you pay for the
-ones you use and nothing else. Enable one in the Subagents tab or with <code>/agents</code>.</p>
+ones you use and nothing else. Enable one in the Subagents tab.</p>
 <h2 id="how-hard-to-push"><a class="header" href="#how-hard-to-push">How hard to push</a></h2>
 <p><code>subagent.delegation</code> decides how hard this session is pushed to delegate:</p>
 <div class="table-wrapper">
@@ -2157,15 +2323,13 @@ tool and every delegation instruction from the prompt, so nothing can be spawned
 in the prompt talks about picking an agent type, and nothing tells the model to send
 research to a <code>scout</code> it cannot spawn.</p>
 <h2 id="choosing-agents"><a class="header" href="#choosing-agents">Choosing agents</a></h2>
-<p><code>subagent.agents</code> holds one row per agent name. Two places edit it, and both show
-the same thing:</p>
-<ul>
-<li><strong><code>/settings</code> → Subagents → Agents.</strong> Every discovered agent, with its state, the
-model it resolves to, and the setting that decided. Enter opens one agent to set
-its state, model and effort, or reset it back to defaults.</li>
-<li><strong><code>/agents</code>.</strong> The same rows next to the agent files themselves, so this is where
-you write a new agent. <code>space</code> toggles a row on or off.</li>
-</ul>
+<p><code>subagent.agents</code> holds one row per agent name, and one screen edits it:
+<strong><code>/settings</code> → Subagents → Agents</strong>. It lists every discovered agent with its state,
+the model it resolves to, and the setting that decided. Enter opens one agent to set
+its state, model and effort, or reset it back to defaults.</p>
+<p>To add an agent, write the file: drop a markdown definition in your own or the
+project’s <code>agents/</code> directory, or start from the shipped ones by running
+<code>veyyon agents unpack</code>. A new agent is offered as soon as the file exists.</p>
 <p>A row has two states:</p>
 <div class="table-wrapper">
 <table>
@@ -2232,7 +2396,7 @@ your own session instead when you want that project’s configuration to apply.<
 <p>The full key list is in the <a href="../../settings.html#subagents">settings reference</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="multi-agent-monitoring"><a class="header" href="#multi-agent-monitoring">Multi-agent monitoring</a></h1>
-<p>The interactive TUI is the main surface for one session. Status line, session tree, background jobs, <code>/cockpit</code>, and optional swarm orchestration cover multi-agent work.</p>
+<p>The interactive TUI is the main surface for one session. Status line, session tree, background jobs, the Agent Control Center, and optional swarm orchestration cover multi-agent work.</p>
 <h2 id="status-line"><a class="header" href="#status-line">Status line</a></h2>
 <p>Configure under <strong>Settings → Appearance → Status Line</strong> (<code>/statusline</code> jumps to this group), or in <code>config.yml</code>:</p>
 <div class="table-wrapper">
@@ -2283,16 +2447,22 @@ detached|BISECT      bisecting
 <tr><td><code>/branch</code></td><td>Branch a new session file from an earlier user message</td></tr>
 <tr><td><code>/fork</code></td><td>Duplicate the current session into a new file</td></tr>
 <tr><td><code>/session info</code></td><td>Session metadata and stats</td></tr>
-<tr><td><code>/agents</code></td><td>Task subagent definitions (bundled/project/user)</td></tr>
-<tr><td><code>/cockpit</code></td><td>Live multi-agent monitor: status, model per agent, drill-in transcript (alias <code>/hub</code>; keybinding <code>app.agents.hub</code>)</td></tr>
+<tr><td><code>/agents</code></td><td>Agent Control Center: the live roster (agent type, status, activity; Enter opens one agent’s session) and the Comms stream of agent-to-agent messages</td></tr>
 <tr><td><code>/jobs</code></td><td>List background async tool jobs</td></tr>
 </tbody>
 </table>
 </div>
-<p>The inline task widget also shows the model each subagent runs on, right in its status line, so you can see which model every launched subagent used without opening the cockpit. To hide it, turn off <code>subagent.showResolvedModelBadge</code> (Subagents settings).</p>
+<p><code>/cockpit</code> and <code>/hub</code> are aliases of <code>/agents</code>, as is the <code>app.agents.hub</code> keybinding and a double-tap of the left arrow on an empty composer. They used to open a separate screen with its own roster and its own drill-in, which meant “which agents are running” had two answers that could disagree with each other. They all open the one card now.</p>
+<h3 id="the-live-roster"><a class="header" href="#the-live-roster">The Live roster</a></h3>
+<p>Each row is one agent that exists right now: a status glyph, its call sign, the TYPE of agent it was spawned from (<code>reviewer</code>, <code>scout</code>), its status, how long since it last did anything, and what it is doing. Rows sit in spawn order, oldest first, with your own session at the top. The row you are on is marked two ways, a cursor glyph in the first column and a band across the whole row, so it stays readable on a terminal that renders no colour. Agents from earlier runs of the same session appear too, marked <code>parked</code>, because their transcripts are still on disk even though this process never started them.</p>
+<p>Press Enter on a row and the main view becomes that agent’s session: the transcript, the composer, and the status line all point at it, so you read what it is doing and then answer it. Press Esc there to come back to your own session. Opening a parked agent revives it on the way in. Press <code>x</code> to stop an agent, which aborts the turn in flight before releasing the session.</p>
+<p>Clicking a row does the same thing as Enter on it, and clicking a name in the view strip switches to that view. Opening an agent is reversible with Esc, so a click opens rather than only moving the cursor. The scroll wheel moves whatever the arrow keys move: the roster cursor on Live, the stream on Comms.</p>
+<p>Two agents open a read-only transcript instead of handing the main view over. An advisor is observability-only and is not an addressable peer, so there is nothing on the other end to receive a reply. A collab guest’s agents live on the host, so there is no local session to point at.</p>
+<p>The inline task widget also shows the model each subagent runs on, right in its status line, so you can see which model every launched subagent used without opening the Control Center. To show the same badge on the roster, keep <code>subagent.showResolvedModelBadge</code> on (Subagents settings); turning it off hides it in both places.</p>
 <p>Session files are append-only JSONL under the active profile’s agent <code>sessions/</code> directory. See <a href="#sessions">Sessions</a>.</p>
 <h2 id="inter-agent-messaging"><a class="header" href="#inter-agent-messaging">Inter-agent messaging</a></h2>
-<p>Subagents and the main agent use the <code>irc</code> tool (<code>send</code>, <code>wait</code>, <code>inbox</code>, <code>list</code>) over a process-global mailbox. <code>/btw</code> is an ephemeral side question; <code>/tan</code> spawns a background agent for tangential work. (<code>/omfg</code> is unrelated: it forges a TTSR rule from a complaint to stop a recurring behavior.)</p>
+<p>Subagents and the main agent use the <code>irc</code> tool (<code>send</code>, <code>wait</code>, <code>inbox</code>, <code>list</code>) over a process-global mailbox. The <strong>Comms</strong> view of <code>/agents</code> streams that traffic as it happens, oldest first, including the messages that failed to reach their recipient and the reason they did not land. Long messages are folded to their first few lines with a count of what was hidden; <code>ctrl+o</code> unfolds every message in the view, and pressing it again folds them back. Both ends of a message are labelled with the call sign the Live roster shows for that agent, so you follow a conversation by who is speaking rather than by an id you have to look up on the other view. An agent that has since been released has no call sign left to show, so its messages print its id instead.</p>
+<p>The view reads the message bus, not the session files. A subagent’s transcript records what THAT agent received, so a view built from transcripts would show each half of a conversation in a different file and would never show a message that failed to arrive at all. <code>/btw</code> is an ephemeral side question; <code>/tan</code> spawns a background agent for tangential work. (<code>/omfg</code> is unrelated: it forges a TTSR rule from a complaint to stop a recurring behavior.)</p>
 <h2 id="swarm-extension"><a class="header" href="#swarm-extension">Swarm extension</a></h2>
 <p><code>@veyyon/swarm-extension</code> runs multi-agent DAG workflows from YAML (<code>pipeline</code>, <code>parallel</code>, or <code>sequential</code>). Standalone: <code>veyyon-swarm path/to/swarm.yaml</code>. In the TUI, add the package to <code>extensions</code>, then:</p>
 <pre><code class="language-text">/swarm run path/to/swarm.yaml
@@ -3606,7 +3776,7 @@ these primary fields:</p>
 </div>
 <p><code>summary</code> rewrites old history into an in-place LLM summary; <code>handoff</code> writes a structured session transfer.
 Run on demand with <code>/compact</code>. See <a href="#compaction-and-project-memory">Compaction and project memory</a>.</p>
-<h2 id="what-the-model-sees"><a class="header" href="#what-the-model-sees">What the model sees</a></h2>
+<h2 id="what-the-model-sees-1"><a class="header" href="#what-the-model-sees-1">What the model sees</a></h2>
 <p>Recalled or summarized memory is <strong>background context</strong>, not instructions. Current user messages,
 tool output, and repo state win on conflict. The agent should cite memory paths when memory changes
 a plan and pair citations with fresh repo evidence.</p>
@@ -4604,7 +4774,7 @@ rollback, compare your <code>config.yml</code> against the backup from before th
 <li><a href="#diagnostics-and-health">Diagnostics and health</a> covers the diagnostics surface in detail.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="reference"><a class="header" href="#reference">Reference</a></h1>
+<h1 id="reference-1"><a class="header" href="#reference-1">Reference</a></h1>
 <p>This part is the lookup desk: command flags, environment variables, exit codes, and the files Veyyon creates on your system. Use it when you need the exact name of a flag, the location of a config file, or the meaning of a return code.</p>
 <ul>
 <li><a href="#cli-reference">CLI reference</a>: the <code>veyyon</code> command and every subcommand, plus common flags and config overrides.</li>
@@ -4767,6 +4937,7 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 <tr><td><code>/guided-goal</code></td><td>Guided goal wizard</td></tr>
 <tr><td><code>/loop</code></td><td>Loop mode controls</td></tr>
 <tr><td><code>/prewalk</code></td><td>Prewalk edit path</td></tr>
+<tr><td><code>/secret</code></td><td>Store a credential the agent uses by placeholder and never sees. <code>add</code>, <code>list</code>, <code>rm</code>, <code>extend</code>. See <a href="#secrets">Secrets</a></td></tr>
 <tr><td><code>/settings</code>, <code>/setup</code></td><td>Settings UI; <code>/setup</code> / <code>/providers</code> opens provider sign-in</td></tr>
 <tr><td><code>/statusline</code></td><td>Settings UI, jumped to Status Line (preset/segments/separator)</td></tr>
 <tr><td><code>/reload-plugins</code></td><td>Reload extensions</td></tr>
@@ -4792,7 +4963,6 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 <tr><td><code>/memory …</code></td><td>Memory backend view/stats/clear/enqueue</td></tr>
 <tr><td><code>/copy</code></td><td>Pick text or code from the conversation to copy</td></tr>
 <tr><td><code>/lsp</code></td><td>Show language server status</td></tr>
-<tr><td><code>/cockpit</code></td><td>Live multi-agent cockpit (status, model per agent, drill-in)</td></tr>
 </tbody>
 </table>
 </div>
@@ -4821,7 +4991,7 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 <tr><td><code>/mcp notifications</code></td><td>Show notification capabilities and subscriptions</td></tr>
 <tr><td><code>/plugins …</code></td><td>Plugin browser</td></tr>
 <tr><td><code>/extensions</code></td><td>Extension dashboard</td></tr>
-<tr><td><code>/agents</code></td><td>Open the Agent Control Center (subagent definitions)</td></tr>
+<tr><td><code>/agents</code> (aliases <code>/cockpit</code>, <code>/hub</code>)</td><td>Open the Agent Control Center: live agent roster and the agent-to-agent comms stream</td></tr>
 <tr><td><code>/ssh …</code></td><td>SSH host setup</td></tr>
 <tr><td><code>/hotkeys</code></td><td>Active keybinding chords</td></tr>
 <tr><td><code>/collab …</code>, <code>/join</code>, <code>/leave</code></td><td>Live collab sessions</td></tr>
@@ -4976,7 +5146,7 @@ live list after your remaps. For the full guide on customizing, see
 <tr><td><code>alt+r</code></td><td>Retry the last failed assistant turn (<code>app.retry</code>)</td></tr>
 <tr><td><code>alt+up</code></td><td>Dequeue a queued message back into the editor (<code>app.message.dequeue</code>)</td></tr>
 <tr><td><code>alt+shift+p</code></td><td>Toggle plan mode (<code>app.plan.toggle</code>)</td></tr>
-<tr><td><code>alt+a</code></td><td>Open the agent hub (<code>app.agents.hub</code>)</td></tr>
+<tr><td><code>alt+a</code></td><td>Open the Agent Control Center (<code>app.agents.hub</code>)</td></tr>
 <tr><td><code>ctrl+r</code></td><td>Search prompt history (<code>app.history.search</code>)</td></tr>
 <tr><td><code>alt+shift+l</code></td><td>Copy the current line (<code>app.clipboard.copyLine</code>)</td></tr>
 <tr><td><code>alt+shift+c</code></td><td>Copy the whole prompt (<code>app.clipboard.copyPrompt</code>)</td></tr>
