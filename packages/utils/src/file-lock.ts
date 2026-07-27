@@ -46,16 +46,29 @@ function writeLockInfoSync(lockPath: string, token: string): void {
 	fsSync.writeFileSync(`${lockPath}/info`, JSON.stringify(buildLockInfo(token)));
 }
 
+/**
+ * Read a lock's `info` file, or `null` when there is nothing readable there.
+ *
+ * `null` covers three cases on purpose -- the lock directory does not exist, the `info` file is missing
+ * (an owner that died mid-acquire), or its contents are unreadable or truncated -- and `decideStale`
+ * below is what makes collapsing them safe: with no info it falls back to the lock DIRECTORY's mtime,
+ * so a lock that is mid-acquire is left alone and one whose directory is older than `staleMs` is
+ * reaped. The distinction that matters is therefore made from the directory, not from this return
+ * value, which is why nothing here needs to tell an absent info file from a corrupt one.
+ *
+ * The sync twin below exists for exit-path teardown, which cannot await, and answers identically for
+ * the same reason.
+ */
 async function readLockInfo(lockPath: string): Promise<LockInfo | null> {
 	try {
 		const content = await fs.readFile(`${lockPath}/info`, "utf-8");
 		return tryParseJson<LockInfo>(content);
 	} catch {
-		// Missing/unreadable lock file (readFile throws) — no lock held.
 		return null;
 	}
 }
 
+/** Sync {@link readLockInfo}, for teardown paths that cannot await. Same `null` contract. */
 function readLockInfoSync(lockPath: string): LockInfo | null {
 	try {
 		const content = fsSync.readFileSync(`${lockPath}/info`, "utf-8");

@@ -2,27 +2,29 @@
  * No transport abstraction - calls streamSimple via the loop.
  */
 import { isPromise } from "node:util/types";
-import {
-	type ApiKey,
-	type AssistantMessage,
-	type AssistantMessageEvent,
-	type Context,
-	type CursorExecHandlers,
-	type CursorToolResultHandler,
-	type Effort,
-	type ImageContent,
-	type InstrumentationLevel,
-	type Message,
-	type Model,
-	type ProviderSessionState,
-	type ServiceTier,
-	type SimpleStreamOptions,
-	streamSimple,
-	type TextContent,
-	type ThinkingBudgets,
-	type ToolChoice,
-	type ToolResultMessage,
+import type {
+	ApiKey,
+	AssistantMessage,
+	AssistantMessageEvent,
+	Context,
+	CursorExecHandlers,
+	CursorToolResultHandler,
+	Effort,
+	ImageContent,
+	InstrumentationLevel,
+	Message,
+	Model,
+	ProviderSessionState,
+	ServiceTier,
+	SimpleStreamOptions,
+	TextContent,
+	ThinkingBudgets,
+	ToolChoice,
+	ToolResultMessage,
 } from "@veyyon/ai";
+// One runtime name, from the module that declares it: eighteen types alongside it are erased and
+// free, and taking the nineteenth from the entry point was buying the whole package for it.
+import { streamSimple } from "@veyyon/ai/stream";
 import type { HarmonyAuditEvent } from "@veyyon/ai/utils/harmony-leak";
 import { preferredDialect } from "@veyyon/catalog/identity";
 import { emptyUsage, getBundledModel } from "@veyyon/catalog/models";
@@ -244,8 +246,17 @@ export interface AgentOptions {
 	 */
 	transformToolCallArguments?: (args: Record<string, unknown>, toolName: string) => Record<string, unknown>;
 
-	/** Enable intent tracing schema injection/stripping in the harness. */
-	intentTracing?: boolean;
+	/**
+	 * Enable intent tracing schema injection/stripping in the harness.
+	 *
+	 * A FUNCTION when the value can change mid-session, which is what a settings-backed flag is. Both
+	 * places the agent reads it -- the provider context it builds per request and the loop config it
+	 * builds per turn -- call the resolver then, so flipping `tools.intentTracing` takes effect on the
+	 * next turn instead of at the next process start. A plain boolean is still accepted for a caller
+	 * whose answer genuinely cannot change; it is normalized to a resolver once, in the constructor, so
+	 * nothing downstream has to know which form arrived.
+	 */
+	intentTracing?: boolean | (() => boolean);
 	/**
 	 * How densely each tool call records a study record on its result message.
 	 * Forwarded verbatim to the loop config (see {@link AgentLoopConfig.instrumentation}).
@@ -393,7 +404,7 @@ export class Agent {
 	#preferWebsockets?: boolean;
 	#transformToolCallArguments?: (args: Record<string, unknown>, toolName: string) => Record<string, unknown>;
 	#repairToolCallArguments?: AgentLoopConfig["repairToolCallArguments"];
-	#intentTracing: boolean;
+	#resolveIntentTracing: () => boolean;
 	#instrumentation: InstrumentationLevel;
 	#pruneToolDescriptions: boolean;
 	#dialect?: ConfiguredDialect;
@@ -474,7 +485,8 @@ export class Agent {
 		this.#preferWebsockets = opts.preferWebsockets;
 		this.#transformToolCallArguments = opts.transformToolCallArguments;
 		this.#repairToolCallArguments = opts.repairToolCallArguments;
-		this.#intentTracing = opts.intentTracing === true;
+		this.#resolveIntentTracing =
+			typeof opts.intentTracing === "function" ? opts.intentTracing : () => opts.intentTracing === true;
 		this.#instrumentation = opts.instrumentation ?? "off";
 		this.#pruneToolDescriptions = opts.pruneToolDescriptions === true;
 		this.#dialect = opts.dialect;
@@ -738,7 +750,11 @@ export class Agent {
 			? []
 			: (normalizeTools(
 					this.#state.tools,
-					this.#intentTracing,
+					// Resolved HERE, per request, not captured at construction: this is the read that
+					// decides whether every tool schema carries the intent field, and the system prompt
+					// explains that field. A prompt that describes a field the schemas do not carry is
+					// worse than one that omits it, so the two reads have to see the same answer.
+					this.#resolveIntentTracing(),
 					preferredDialect(model.id),
 					this.#pruneToolDescriptions,
 				) ?? []);
@@ -1189,7 +1205,7 @@ export class Agent {
 			getCwd: this.#cwdResolver,
 			transformToolCallArguments: this.#transformToolCallArguments,
 			repairToolCallArguments: this.#repairToolCallArguments,
-			intentTracing: this.#intentTracing,
+			intentTracing: this.#resolveIntentTracing(),
 			instrumentation: this.#instrumentation,
 			pruneToolDescriptions: this.#pruneToolDescriptions,
 			dialect: this.#dialect,
@@ -1316,17 +1332,16 @@ export class Agent {
 			}
 		} catch (err) {
 			const stoppedForAbort = this.#abortController?.signal.aborted === true;
-			const errorMessage = stoppedForAbort
-				? abortReasonText(this.#abortController?.signal)
-				: err instanceof Error
-					? err.message
-					: String(err);
-			const shouldEmitVisibleOutputBlockedError = !stoppedForAbort && isAnthropicOutputBlockedError(errorMessage);
+			// `errorMessage(err)` from `@veyyon/utils`, which this file already imports. The two tail branches
+			// here were that helper hand-rolled, and the local const SHADOWED the import, so the copy was the
+			// only version reachable in this scope. The local is named for what it holds instead.
+			const failureMessage = stoppedForAbort ? abortReasonText(this.#abortController?.signal) : errorMessage(err);
+			const shouldEmitVisibleOutputBlockedError = !stoppedForAbort && isAnthropicOutputBlockedError(failureMessage);
 			const assistantPartial = partial?.role === "assistant" ? partial : undefined;
 			const hadAssistantStart = assistantPartial !== undefined;
 			const errorMsg: AssistantMessage =
 				shouldEmitVisibleOutputBlockedError && assistantPartial
-					? { ...assistantPartial, stopReason: "error", errorMessage }
+					? { ...assistantPartial, stopReason: "error", errorMessage: failureMessage }
 					: {
 							role: "assistant",
 							content: [{ type: "text", text: "" }],
@@ -1335,7 +1350,7 @@ export class Agent {
 							model: model.id,
 							usage: emptyUsage(),
 							stopReason: stoppedForAbort ? "aborted" : "error",
-							errorMessage,
+							errorMessage: failureMessage,
 							timestamp: Date.now(),
 						};
 
@@ -1346,13 +1361,13 @@ export class Agent {
 				}
 				this.#state.streamMessage = null;
 				this.appendMessage(errorMsg);
-				this.#state.error = errorMessage;
+				this.#state.error = failureMessage;
 				this.#emit({ type: "message_end", message: errorMsg });
 				this.#emit({ type: "turn_end", message: errorMsg, toolResults: [] });
 				this.#emit({ type: "agent_end", messages: [errorMsg] });
 			} else {
 				this.appendMessage(errorMsg);
-				this.#state.error = errorMessage;
+				this.#state.error = failureMessage;
 				this.#emit({ type: "agent_end", messages: [errorMsg] });
 			}
 		} finally {

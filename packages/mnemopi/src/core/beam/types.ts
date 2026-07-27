@@ -1,22 +1,29 @@
 import type { Database } from "bun:sqlite";
 
-export type JsonPrimitive = string | number | boolean | null;
-export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
-export type Metadata = Record<string, JsonValue>;
+// JSON and `Metadata` come from the package's own type module, which takes JSON from
+// `@veyyon/utils`. They were declared here as well, identically, and this module's
+// consumers import them from `./types`, so the re-export keeps every call site while
+// removing the second declaration.
+export type { JsonPrimitive, JsonValue, Metadata } from "../../types";
+
+import type { JsonValue, Metadata, StoredVeracity, Veracity } from "../../types";
 
 export type MemoryScope = "global" | "session" | "channel" | string;
 export type TrustTier = "STATED" | "OBSERVED" | "INFERRED" | "SYSTEM" | string;
-export type Veracity =
-	| "unknown"
-	| "likely_true"
-	| "true"
-	| "false"
-	| "stated"
-	| "inferred"
-	| "tool"
-	| "imported"
-	| "contested"
-	| string;
+/**
+ * Veracity, from the one module that owns the vocabulary, and the wide read-row spelling
+ * beside it.
+ *
+ * This file declared a nine-member union ending in `| string`, and that trailing member made
+ * the other nine decoration: `"stated" | string` IS `string` to the compiler, so nothing was
+ * checked and no editor offered the values either. `"contested"` lived only in that list,
+ * which is how it survived: no producer wrote it, no weight table scored it, and recall's
+ * `??` chain gave it an unlabelled memory's 0.8. It is gone.
+ *
+ * Rows out of SQLite keep a wide type, because the column has no CHECK constraint, but they
+ * say so now by name instead of by widening the vocabulary.
+ */
+export type { StoredVeracity, Veracity };
 
 export interface BeamPluginManager {
 	emit?(event: BeamEvent): void | Promise<void>;
@@ -195,7 +202,7 @@ export interface MemoryRow {
 	session_id: string;
 	importance: number;
 	metadata_json: string | null;
-	veracity: Veracity;
+	veracity: StoredVeracity;
 	memory_type?: string | null;
 	recall_count?: number;
 	last_recalled?: string | null;

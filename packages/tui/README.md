@@ -157,7 +157,7 @@ Multi-line text editor with autocomplete, file completion, and paste handling.
 ```typescript
 interface SymbolTheme {
 	cursor: string;
-	ellipsis: string;
+	inputCursor: string;
 	boxRound: {
 		topLeft: string;
 		topRight: string;
@@ -216,7 +216,7 @@ editor.borderColor = (s) => chalk.blue(s); // Change border dynamically
 - Multi-line editing with word wrap
 - Slash command autocomplete (type `/`)
 - File path autocomplete (press `Tab`)
-- Large paste handling (>10 lines creates `[paste #1 +50 lines]` marker)
+- Large paste handling (>10 lines creates `[Paste #1, +50 lines]` marker)
 - Horizontal lines above/below editor
 - Fake cursor rendering (hidden real cursor)
 
@@ -225,7 +225,7 @@ editor.borderColor = (s) => chalk.blue(s); // Change border dynamically
 - `Enter` - Submit
 - `Shift+Enter`, `Ctrl+Enter`, or `Alt+Enter` - New line (terminal-dependent, Alt+Enter most reliable)
 - `Tab` - Autocomplete
-- `Ctrl+K` - Delete line
+- `Ctrl+K` - Delete to end of line
 - `Alt+D` / `Alt+Delete` - Delete word forward
 - `Ctrl+A` / `Ctrl+E` - Line start/end
 - `Ctrl+-` - Undo last edit
@@ -278,7 +278,7 @@ md.setText("Updated markdown");
 **Features:**
 
 - Headings, bold, italic, code blocks, lists, links, blockquotes
-- HTML tags rendered as plain text
+- HTML normalized for the terminal (entities decoded; hr/blockquote/lists/code rendered structurally; other tags dropped)
 - Optional syntax highlighting via `highlightCode`
 - Padding support
 - Render caching for performance
@@ -376,8 +376,8 @@ interface SettingItem {
 }
 
 interface SettingsListTheme {
-	label: (text: string, selected: boolean) => string;
-	value: (text: string, selected: boolean) => string;
+	label: (text: string, selected: boolean, changed: boolean) => string;
+	value: (text: string, selected: boolean, changed: boolean) => string;
 	description: (text: string) => string;
 	cursor: string;
 	hint: (text: string) => string;
@@ -539,7 +539,7 @@ interface Terminal {
 **Built-in implementations:**
 
 - `ProcessTerminal` - Uses `process.stdin/stdout`
-- `VirtualTerminal` - For testing (uses ghostty-web)
+- `VirtualTerminal` - Test-only helper at `test/virtual-terminal.ts` (uses ghostty-web; not a package export)
 
 ## Utilities
 
@@ -688,18 +688,18 @@ See `test/chat-simple.ts` for a complete chat interface example with:
 Run it:
 
 ```bash
-npx tsx test/chat-simple.ts
+bun test/chat-simple.ts
 ```
 
 ## Development
 
 ```bash
 # Install dependencies (from monorepo root)
-npm install
+bun install
 
 # Run type checking
-npm run check
+bun run check
 
 # Run the demo
-npx tsx test/chat-simple.ts
+bun test/chat-simple.ts
 ```

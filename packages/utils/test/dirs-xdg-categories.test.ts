@@ -11,7 +11,6 @@ import {
 	getSessionsDir,
 	getStatsDbPath,
 } from "@veyyon/utils/dirs";
-import { Snowflake } from "@veyyon/utils/snowflake";
 
 function restoreEnv(key: string, value: string | undefined): void {
 	if (value === undefined) delete process.env[key];
@@ -52,11 +51,10 @@ describe("XDG category roots stay separate", () => {
 		delete process.env.VEYYON_PROFILE;
 		delete process.env.VEYYON_CODING_AGENT_DIR;
 
-		tempRoot = path.join(os.tmpdir(), "veyyon-xdg-categories", Snowflake.next());
+		tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-xdg-categories-"));
 		// Point the config root at an empty temp tree so no global defaultProfile is
 		// found. A named profile keys XDG on the profile subdirectory instead, which
 		// is a different code path from the one under test here.
-		fs.mkdirSync(tempRoot, { recursive: true });
 		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), tempRoot);
 		dataHome = path.join(tempRoot, "data");
 		stateHome = path.join(tempRoot, "state");
@@ -129,8 +127,7 @@ describe("XDG roots are only adopted once they exist", () => {
 		for (const key of KEYS) saved[key] = process.env[key];
 		delete process.env.VEYYON_PROFILE;
 		delete process.env.VEYYON_CODING_AGENT_DIR;
-		tempRoot = path.join(os.tmpdir(), "veyyon-xdg-absent", Snowflake.next());
-		fs.mkdirSync(tempRoot, { recursive: true });
+		tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-xdg-absent-"));
 		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), tempRoot);
 	});
 

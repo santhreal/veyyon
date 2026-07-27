@@ -22,6 +22,7 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@veyyon/tui/utils";
+import type { JsonValue } from "@veyyon/utils";
 import { setTerminalHeadless } from "@veyyon/utils";
 import { StressRenderScheduler } from "./render-stress-scheduler";
 import { VirtualTerminal } from "./virtual-terminal";
@@ -118,8 +119,9 @@ const ENV_KEYS = [
 	"WSL_INTEROP",
 ] as const;
 type EnvKey = (typeof ENV_KEYS)[number];
-type JsonPrimitive = string | number | boolean | null;
-type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+// JSON comes from `@veyyon/utils`, which owns the declaration. This harness had its own
+// identical copy, so a change to what the repository means by JSON would have reached it
+// only if somebody remembered this file.
 type JsonObject = { [key: string]: JsonValue };
 
 export type OperationKind =

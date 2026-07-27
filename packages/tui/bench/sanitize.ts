@@ -285,7 +285,7 @@ function jsSanitizeText(text: string): string {
 const ITERATIONS = 2000;
 
 const bigPlain = "hello world ".repeat(500);
-const bigAnsi = ("\x1b[31mred\x1b[0m " + "lorem ipsum dolor ".repeat(20)).repeat(5);
+const bigAnsi = `\x1b[31mred\x1b[0m ${"lorem ipsum dolor ".repeat(20)}`.repeat(5);
 const samples = {
 	plain: "hello world this is a plain ASCII string with some words",
 	ansi: "\x1b[31mred text\x1b[0m and \x1b[4munderlined content\x1b[24m with emoji 😅😅",

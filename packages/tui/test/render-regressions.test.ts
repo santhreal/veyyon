@@ -158,6 +158,31 @@ async function settle(term: VirtualTerminal, tui: TUI): Promise<void> {
 	await settleFrames(term, tui);
 }
 
+/**
+ * Wall-clock ceiling for a case that drives `rounds` resize-and-settle rounds against the real scheduler.
+ *
+ * WHY A DERIVED BUDGET AND NOT A NUMBER PER TEST. Each round costs one real throttle window (~33 ms), so
+ * the wall clock of a storm case is work rather than a wait, and it scales with the round count. Writing
+ * that budget out by hand per test gave three unrelated numbers (5 s, then 15 s, then 20 s, then 30 s) that
+ * each had to be discovered by a red run: the 80-round case failed at 5046 ms against the 5 s default and
+ * took every open dependabot PR down with it on 2026-07-24, and the 220-round case below then blew a 30 s
+ * ceiling in a full-workspace run while finishing in 3.2 s on its own. Same bug twice, because the budget
+ * had no single owner.
+ *
+ * WHY THE MULTIPLIER IS 12. Isolated, a round lands in ~15 ms, half the throttle window. In a full
+ * `bun test packages` run (4,128 files in parallel) the timers land roughly ten times later, which is what
+ * turned 3.2 s into more than 30 s. Twelve throttle windows per round leaves headroom above that measured
+ * skew without becoming unbounded.
+ *
+ * THIS IS NOT A PERFORMANCE GATE. Nothing here asserts a duration; the assertions are on scrollback growth
+ * and viewport content. A timeout that fires means the machine was too busy to hand the scheduler its
+ * timers, which is a false red, so the ceiling is set to make that outcome rare rather than to measure
+ * anything.
+ */
+function stormBudgetMs(rounds: number): number {
+	return Math.max(15_000, rounds * 33 * 12);
+}
+
 // Outside a multiplexer a resize paints the viewport immediately and defers the
 // authoritative full replay (rewrap + ED3 + history rebuild) until the drag has
 // been quiet for the resize settle window (120 ms). Tests asserting the settled
@@ -968,134 +993,140 @@ describe("TUI terminal-state regressions", () => {
 				tui.stop();
 			}
 		});
-		it("streaming content under aggressive resize keeps a single consistent viewport", async () => {
-			const term = new VirtualTerminal(80, 18);
-			const tui = new TUI(term);
-			const source = [
-				"doesnt matter",
-				"",
-				"doesnt matter",
-				"",
-				"doesnt matter",
-				"",
-				"",
-				"",
-				"",
-				"doesnt matter",
-				"",
-				"doesnt matter",
-				"",
-				"",
-				"Operation aborted",
-				"",
-				"Operation aborted",
-				"",
-				"┌──────────────┐",
-				"",
-				"┌──────────────┐",
-				"│              │",
-				"┌──────────────┐",
-				"│              │",
-				"│ coding-agent │",
-				"│              │",
-				"│ coding-agent │",
-				"┌──────────────┐",
-				"│              │",
-				"│ coding-agent │",
-				"│              │",
-				"└───────┬──────┘",
-				"        │",
-				"        │",
-				"        ├─────────┬─────────┬────────┬──────┬──────────────┬──────────────┐",
-				"        │         │         │        │      │              │              │",
-				"        ▼         │         ▼        │      ▼              ▼              ▼",
-				"┌──────────────┐  │  ┌────────────┐  │  ┌───────┐     ┌─────────┐     ┌───────┐",
-				"│    agent     │  │  │    tui     │  │  │ utils │     │ natives │     │ stats │",
-				"└───────┬──────┘  │  └──────┬─────┘  │  └───────┘     └────┬────┘     └───────┘",
-				"        ├─────────┘         └────────┘                     │",
-				"        ▼                                                  │",
-				"┌──────────────┐     ┌────────────┐                        │",
-				"│      ai      │     │ veyyon-natives │◄───────────────────────┘",
-				"└──────────────┘     └────────────┘",
-			];
-			const working: string[] = [];
-			const component = new MutableLinesComponent(working);
-			tui.addChild(component);
+		it(
+			"streaming content under aggressive resize keeps a single consistent viewport",
+			async () => {
+				const term = new VirtualTerminal(80, 18);
+				const tui = new TUI(term);
+				const source = [
+					"doesnt matter",
+					"",
+					"doesnt matter",
+					"",
+					"doesnt matter",
+					"",
+					"",
+					"",
+					"",
+					"doesnt matter",
+					"",
+					"doesnt matter",
+					"",
+					"",
+					"Operation aborted",
+					"",
+					"Operation aborted",
+					"",
+					"┌──────────────┐",
+					"",
+					"┌──────────────┐",
+					"│              │",
+					"┌──────────────┐",
+					"│              │",
+					"│ coding-agent │",
+					"│              │",
+					"│ coding-agent │",
+					"┌──────────────┐",
+					"│              │",
+					"│ coding-agent │",
+					"│              │",
+					"└───────┬──────┘",
+					"        │",
+					"        │",
+					"        ├─────────┬─────────┬────────┬──────┬──────────────┬──────────────┐",
+					"        │         │         │        │      │              │              │",
+					"        ▼         │         ▼        │      ▼              ▼              ▼",
+					"┌──────────────┐  │  ┌────────────┐  │  ┌───────┐     ┌─────────┐     ┌───────┐",
+					"│    agent     │  │  │    tui     │  │  │ utils │     │ natives │     │ stats │",
+					"└───────┬──────┘  │  └──────┬─────┘  │  └───────┘     └────┬────┘     └───────┘",
+					"        ├─────────┘         └────────┘                     │",
+					"        ▼                                                  │",
+					"┌──────────────┐     ┌────────────┐                        │",
+					"│      ai      │     │ veyyon-natives │◄───────────────────────┘",
+					"└──────────────┘     └────────────┘",
+				];
+				const working: string[] = [];
+				const component = new MutableLinesComponent(working);
+				tui.addChild(component);
 
-			const expectedViewport = (width: number, height: number): string[] => {
-				const rendered = working.map(line => line.slice(0, width));
-				const top = Math.max(0, rendered.length - height);
-				const viewport = rendered.slice(top, top + height);
-				while (viewport.length < height) viewport.push("");
-				return viewport.map(line => line.trimEnd());
-			};
+				const expectedViewport = (width: number, height: number): string[] => {
+					const rendered = working.map(line => line.slice(0, width));
+					const top = Math.max(0, rendered.length - height);
+					const viewport = rendered.slice(top, top + height);
+					while (viewport.length < height) viewport.push("");
+					return viewport.map(line => line.trimEnd());
+				};
 
-			try {
-				tui.start();
-				await settle(term, tui);
+				try {
+					tui.start();
+					await settle(term, tui);
 
-				let nextLine = 0;
-				let finalWidth = term.columns;
-				let finalHeight = term.rows;
-				for (let i = 0; i < 180; i++) {
-					if (i % 3 === 0 && nextLine < source.length) {
-						working.push(source[nextLine++]!);
-						component.setLines(working);
+					let nextLine = 0;
+					let finalWidth = term.columns;
+					let finalHeight = term.rows;
+					for (let i = 0; i < 180; i++) {
+						if (i % 3 === 0 && nextLine < source.length) {
+							working.push(source[nextLine++]!);
+							component.setLines(working);
+						}
+
+						finalWidth = i % 2 === 0 ? 79 : 80;
+						finalHeight = i % 4 < 2 ? 17 : 18;
+						term.resize(finalWidth, finalHeight);
+						tui.requestRender();
+						await settle(term, tui);
 					}
 
-					finalWidth = i % 2 === 0 ? 79 : 80;
-					finalHeight = i % 4 < 2 ? 17 : 18;
-					term.resize(finalWidth, finalHeight);
-					tui.requestRender();
-					await settle(term, tui);
+					expect(visible(term)).toEqual(expectedViewport(finalWidth, finalHeight));
+				} finally {
+					tui.stop();
 				}
-
-				expect(visible(term)).toEqual(expectedViewport(finalWidth, finalHeight));
-			} finally {
-				tui.stop();
-			}
-		}, 15_000);
+			},
+			stormBudgetMs(180),
+		);
 		// 80 resize-and-settle rounds, each awaiting a real scheduler hop and a
 		// timer, so like the storm above the wall clock is work rather than a wait.
-		// This one failed on CI at 5046ms against the 5s default, which is a budget
-		// missed by 46ms, not a hang, and it took unrelated PRs down with it: the
-		// dependabot bumps open on 2026-07-24 were all red on these two cases and
-		// nothing else.
-		it("forced renders during resize storm stay stable under cursor relocation", async () => {
-			const term = new VirtualTerminal(80, 18);
-			const tui = new TUI(term);
-			const lines = Array.from({ length: 40 }, (_v, i) => `row-${i}`);
-			const component = new MutableLinesComponent(lines);
-			tui.addChild(component);
+		// The ceiling comes from `stormBudgetMs`, which records why these cases need
+		// one at all.
+		it(
+			"forced renders during resize storm stay stable under cursor relocation",
+			async () => {
+				const term = new VirtualTerminal(80, 18);
+				const tui = new TUI(term);
+				const lines = Array.from({ length: 40 }, (_v, i) => `row-${i}`);
+				const component = new MutableLinesComponent(lines);
+				tui.addChild(component);
 
-			const expectedViewport = (width: number, height: number): string[] => {
-				const rendered = lines.map(line => line.slice(0, width));
-				const top = Math.max(0, rendered.length - height);
-				const viewport = rendered.slice(top, top + height);
-				while (viewport.length < height) viewport.push("");
-				return viewport.map(line => line.trimEnd());
-			};
+				const expectedViewport = (width: number, height: number): string[] => {
+					const rendered = lines.map(line => line.slice(0, width));
+					const top = Math.max(0, rendered.length - height);
+					const viewport = rendered.slice(top, top + height);
+					while (viewport.length < height) viewport.push("");
+					return viewport.map(line => line.trimEnd());
+				};
 
-			try {
-				tui.start();
-				await settle(term, tui);
-
-				let finalWidth = term.columns;
-				let finalHeight = term.rows;
-				for (let i = 0; i < 80; i++) {
-					finalWidth = i % 2 === 0 ? 79 : 80;
-					finalHeight = i % 3 === 0 ? 17 : 18;
-					term.resize(finalWidth, finalHeight);
-					term.write("\x1b[18;1H");
-					tui.requestRender(true);
+				try {
+					tui.start();
 					await settle(term, tui);
-				}
 
-				expect(visible(term)).toEqual(expectedViewport(finalWidth, finalHeight));
-			} finally {
-				tui.stop();
-			}
-		}, 20_000);
+					let finalWidth = term.columns;
+					let finalHeight = term.rows;
+					for (let i = 0; i < 80; i++) {
+						finalWidth = i % 2 === 0 ? 79 : 80;
+						finalHeight = i % 3 === 0 ? 17 : 18;
+						term.resize(finalWidth, finalHeight);
+						term.write("\x1b[18;1H");
+						tui.requestRender(true);
+						await settle(term, tui);
+					}
+
+					expect(visible(term)).toEqual(expectedViewport(finalWidth, finalHeight));
+				} finally {
+					tui.stop();
+				}
+			},
+			stormBudgetMs(80),
+		);
 
 		it("shrink then grow keeps tail anchored to latest rows", async () => {
 			const term = new VirtualTerminal(24, 6);
@@ -1137,74 +1168,78 @@ describe("TUI terminal-state regressions", () => {
 		// about a fifth of a second. Under a full parallel sweep that 5s stretches
 		// past 3x. 30s is that measured cost with room for the contention, and a
 		// genuine hang (no progress at all) still fails inside it.
-		it("mixed width/height resize storm keeps scrollback bounded for static content", async () => {
-			const term = new VirtualTerminal(80, 18);
-			const tui = new TUI(term);
-			const lines = [
-				"doesnt matter",
-				"",
-				"doesnt matter",
-				"",
-				"doesnt matter",
-				"",
-				"",
-				"",
-				"",
-				"doesnt matter",
-				"",
-				"doesnt matter",
-				"",
-				"",
-				"Operation aborted",
-				"",
-				"Operation aborted",
-				"",
-				"┌──────────────┐",
-				"",
-				"┌──────────────┐",
-				"│              │",
-				"┌──────────────┐",
-				"│              │",
-				"│ coding-agent │",
-				"│              │",
-				"│ coding-agent │",
-				"┌──────────────┐",
-				"│              │",
-				"│ coding-agent │",
-				"│              │",
-				"└───────┬──────┘",
-				"        │",
-				"        │",
-				"        ├─────────┬─────────┬────────┬──────┬──────────────┬──────────────┐",
-				"        │         │         │        │      │              │              │",
-				"        ▼         │         ▼        │      ▼              ▼              ▼",
-				"┌──────────────┐  │  ┌────────────┐  │  ┌───────┐     ┌─────────┐     ┌───────┐",
-				"│    agent     │  │  │    tui     │  │  │ utils │     │ natives │     │ stats │",
-				"└───────┬──────┘  │  └──────┬─────┘  │  └───────┘     └────┬────┘     └───────┘",
-				"        ├─────────┘         └────────┘                     │",
-				"        ▼                                                  │",
-				"┌──────────────┐     ┌────────────┐                        │",
-				"│      ai      │     │ veyyon-natives │◄───────────────────────┘",
-				"└──────────────┘     └────────────┘",
-			];
-			tui.addChild(new MutableLinesComponent(lines));
+		it(
+			"mixed width/height resize storm keeps scrollback bounded for static content",
+			async () => {
+				const term = new VirtualTerminal(80, 18);
+				const tui = new TUI(term);
+				const lines = [
+					"doesnt matter",
+					"",
+					"doesnt matter",
+					"",
+					"doesnt matter",
+					"",
+					"",
+					"",
+					"",
+					"doesnt matter",
+					"",
+					"doesnt matter",
+					"",
+					"",
+					"Operation aborted",
+					"",
+					"Operation aborted",
+					"",
+					"┌──────────────┐",
+					"",
+					"┌──────────────┐",
+					"│              │",
+					"┌──────────────┐",
+					"│              │",
+					"│ coding-agent │",
+					"│              │",
+					"│ coding-agent │",
+					"┌──────────────┐",
+					"│              │",
+					"│ coding-agent │",
+					"│              │",
+					"└───────┬──────┘",
+					"        │",
+					"        │",
+					"        ├─────────┬─────────┬────────┬──────┬──────────────┬──────────────┐",
+					"        │         │         │        │      │              │              │",
+					"        ▼         │         ▼        │      ▼              ▼              ▼",
+					"┌──────────────┐  │  ┌────────────┐  │  ┌───────┐     ┌─────────┐     ┌───────┐",
+					"│    agent     │  │  │    tui     │  │  │ utils │     │ natives │     │ stats │",
+					"└───────┬──────┘  │  └──────┬─────┘  │  └───────┘     └────┬────┘     └───────┘",
+					"        ├─────────┘         └────────┘                     │",
+					"        ▼                                                  │",
+					"┌──────────────┐     ┌────────────┐                        │",
+					"│      ai      │     │ veyyon-natives │◄───────────────────────┘",
+					"└──────────────┘     └────────────┘",
+				];
+				tui.addChild(new MutableLinesComponent(lines));
 
-			try {
-				tui.start();
-				await settle(term, tui);
-				const before = term.getScrollBuffer().length;
-
-				for (let i = 0; i < 220; i++) {
-					term.resize(i % 2 === 0 ? 79 : 80, i % 3 === 0 ? 17 : 18);
+				try {
+					tui.start();
 					await settle(term, tui);
-				}
+					const before = term.getScrollBuffer().length;
 
-				const after = term.getScrollBuffer().length;
-				expect(after - before).toBeLessThan(120);
-			} finally {
-				tui.stop();
-			}
-		}, 30_000);
+					for (let i = 0; i < 220; i++) {
+						term.resize(i % 2 === 0 ? 79 : 80, i % 3 === 0 ? 17 : 18);
+						await settle(term, tui);
+					}
+
+					const after = term.getScrollBuffer().length;
+					expect(after - before).toBeLessThan(120);
+				} finally {
+					tui.stop();
+				}
+			},
+			stormBudgetMs(220),
+		);
 
 		it("keeps appended rows contiguous when a height grow coincides with new content", async () => {
 			// A terminal resize fires requestRender(), and streamed content fires

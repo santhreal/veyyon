@@ -8,7 +8,6 @@ import {
 	normalizeProfileName,
 	resolveStartupProfile,
 } from "@veyyon/utils/dirs";
-import { Snowflake } from "@veyyon/utils/snowflake";
 
 /**
  * PROF-5: a profile name is attacker-adjacent input — it arrives from an env var
@@ -39,8 +38,7 @@ describe("a profile name can never escape the profiles root", () => {
 	beforeEach(() => {
 		for (const key of KEYS) saved[key] = process.env[key];
 		for (const key of KEYS) delete process.env[key];
-		tempRoot = path.join(os.tmpdir(), "veyyon-profile-containment", Snowflake.next());
-		fs.mkdirSync(tempRoot, { recursive: true });
+		tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-profile-containment-"));
 		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), tempRoot);
 		__resetDirsFromEnvForTests();
 	});

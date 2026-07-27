@@ -1,4 +1,4 @@
-import type { AgentSnapshot, SessionEntry, SubagentProgressPayload } from "@veyyon/wire";
+import type { AgentSnapshot, SubagentProgressPayload, WireSessionEntry } from "@veyyon/wire";
 import { OctagonX, RotateCcw, SendHorizontal, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
@@ -22,7 +22,7 @@ export function AgentDrawer(props: {
 	onClose(): void;
 }): ReactNode {
 	const { agent, progress, client, readOnly, host, onClose } = props;
-	const [entries, setEntries] = useState<readonly SessionEntry[]>([]);
+	const [entries, setEntries] = useState<readonly WireSessionEntry[]>([]);
 	const [fetchError, setFetchError] = useState<string | null>(null);
 	// Transcript lines the poller could not parse. Counted rather than listed:
 	// the count is what tells you the transcript you are reading is incomplete,
@@ -52,7 +52,7 @@ export function AgentDrawer(props: {
 		let inFlight = false;
 		let cursor = 0;
 		let carry = "";
-		let acc: readonly SessionEntry[] = [];
+		let acc: readonly WireSessionEntry[] = [];
 		let timer: Timer | null = null;
 		const stopPolling = () => {
 			if (timer !== null) {

@@ -1,6 +1,25 @@
 import type { ImageContent, MessageAttribution, ServiceTierByFamily, TextContent, ToolResultMessage } from "@veyyon/ai";
 import type { AgentMessage } from "../types";
 
+/**
+ * The session-entry vocabulary, owned here and nowhere else.
+ *
+ * WHY THIS FILE IS THE OWNER. These are the shapes a session file is made of, and they were
+ * written out TWICE: once here and once in `@veyyon/coding-agent`'s
+ * `src/session/session-entries.ts`, along with two copies of the `SessionEntry` union over
+ * them. Twelve of the fifteen were byte-identical, which is the dangerous state rather than
+ * the safe one -- nothing tells a reader the other copy exists, so a field lands in one of
+ * them. Three had already drifted exactly that way: the coding agent's
+ * `ThinkingLevelChangeEntry` had grown a `configured` field and its `SessionInitEntry` a
+ * `spawns` and a `readSummarize`, none of which this copy knew about, so compaction reading
+ * a session the coding agent wrote saw a type missing fields the file actually contained.
+ *
+ * The direction is forced: the coding agent depends on this package and not the reverse, so
+ * the shared shapes live here and the coding agent re-exports them under the same names. Its
+ * own additions arrive through {@link CustomCompactionSessionEntries}, the declaration-merging
+ * hook that was already wired for exactly that purpose. Add a field HERE, not in a second copy.
+ */
+
 export interface SessionEntryBase {
 	type: string;
 	id: string;
@@ -16,6 +35,12 @@ export interface SessionMessageEntry extends SessionEntryBase {
 export interface ThinkingLevelChangeEntry extends SessionEntryBase {
 	type: "thinking_level_change";
 	thinkingLevel?: string | null;
+	/**
+	 * The user-configured selector at the time of this change: `"auto"` when auto
+	 * mode was active, otherwise the concrete level. Absent on entries written
+	 * before auto-mode persistence existed; readers fall back to `thinkingLevel`.
+	 */
+	configured?: string | null;
 }
 
 export interface ModelChangeEntry extends SessionEntryBase {
@@ -113,6 +138,10 @@ export interface SessionInitEntry extends SessionEntryBase {
 	tools: string[];
 	/** Output schema if structured output was requested */
 	outputSchema?: unknown;
+	/** Spawn allowlist the subagent ran with ("" = none, "*" = any, else CSV); absent on pre-spawns files. */
+	spawns?: string;
+	/** The agent's `readSummarize` setting (`false` = read summarization disabled); absent uses the session default. */
+	readSummarize?: boolean;
 }
 
 export interface ModeChangeEntry extends SessionEntryBase {
@@ -123,6 +152,20 @@ export interface ModeChangeEntry extends SessionEntryBase {
 	data?: Record<string, unknown>;
 }
 
+/**
+ * Entry shapes a consuming package adds to {@link SessionEntry}, by declaration merging.
+ *
+ * A package that persists its own entry kinds augments this interface rather than
+ * redeclaring the union, which is what keeps one union over one vocabulary:
+ *
+ * ```ts
+ * declare module "@veyyon/agent-core/compaction/entries" {
+ *     interface CustomCompactionSessionEntries {
+ *         subagentSpawn: SubagentSpawnEntry;
+ *     }
+ * }
+ * ```
+ */
 export interface CustomCompactionSessionEntries {}
 
 export type SessionEntry =

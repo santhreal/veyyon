@@ -17,6 +17,7 @@ export * from "./file-lock";
 export * from "./format";
 export * from "./frontmatter";
 export * from "./fs-error";
+export * from "./fs-optional";
 export * from "./glob";
 export * from "./json";
 export * from "./json-parse";
@@ -28,7 +29,13 @@ export * from "./lines";
 export * as logger from "./logger";
 export * from "./loop-phase";
 export * from "./math";
-export * from "./mermaid-ascii";
+// NOT re-exported: `./mermaid-ascii`.
+//
+// The vendored diagram renderer is 35 modules, a third of everything this barrel reaches, and it
+// has exactly one consumer (`coding-agent/src/modes/theme/mermaid-cache.ts`). Every file that
+// imports `@veyyon/utils` for `errorMessage` or `logger` was instantiating a Mermaid parser, and
+// the test runner gives each file its own realm, so that cost is paid per file rather than once:
+// 664 test files import this barrel. Import it as `@veyyon/utils/mermaid-ascii` instead.
 export * from "./mime";
 export * from "./path";
 export * from "./path-tree";
@@ -37,6 +44,7 @@ export * as postmortem from "./postmortem";
 export * from "./process-liveness";
 export * as procmgr from "./procmgr";
 export * as prompt from "./prompt";
+export * from "./prompt-registry";
 export * as ptree from "./ptree";
 export { ChildProcess, Exception, NonZeroExitError, ProcessAbortError } from "./ptree";
 export * from "./quarantine-file";
@@ -54,6 +62,7 @@ export * from "./stderr-guard";
 export * from "./stream";
 export * from "./string-case";
 export * from "./string-length";
+export * from "./strings";
 export * from "./strip-ansi";
 export * from "./tab-spacing";
 export * from "./temp";

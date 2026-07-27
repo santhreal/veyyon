@@ -12,7 +12,10 @@
  */
 import { describe, expect, it } from "bun:test";
 import { Ellipsis, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@veyyon/tui";
-import { buildString, lcg } from "./helpers/adversarial-strings";
+// `fuzzStrings` for the cases whose input IS the adversarial string, so they get shrinking and a
+// corpus; the raw generator for the last case, which assembles tokens under a width constraint
+// rather than drawing one string.
+import { fuzzSeed, fuzzStrings, lcg } from "@veyyon/utils/adversarial-strings";
 
 // Content on which the two independent width oracles — the Rust-native
 // truncateToWidth and the JS visibleWidth (Bun.stringWidth + corrections) —
@@ -49,11 +52,26 @@ function buildSafeString(rand: () => number): string {
 
 const WIDTHS = [0, 1, 2, 3, 5, 8, 13, 40, 200, -1, -100, 2 ** 31, Number.MAX_SAFE_INTEGER, 0.5, Number.NaN];
 
+/**
+ * Inputs that broke these primitives before, replayed first on every run and under every seed.
+ *
+ * Empty is the honest state. Add the string a failure's `corpus entry:` line prints, with a comment
+ * naming the bug it locks out; see `docs/internal/fuzzing.md`.
+ */
+const VISIBLE_WIDTH_CORPUS: readonly string[] = [];
+
+/** Same, for the `truncateToWidth` no-throw invariant. See {@link VISIBLE_WIDTH_CORPUS}. */
+const TRUNCATE_CORPUS: readonly string[] = [];
+
+/** Same, for the narrower safe-alphabet width-cap property. See {@link VISIBLE_WIDTH_CORPUS}. */
+const TRUNCATE_SAFE_CORPUS: readonly string[] = [];
+
+/** Same, for the `wrapTextWithAnsi` no-throw invariant. See {@link VISIBLE_WIDTH_CORPUS}. */
+const WRAP_CORPUS: readonly string[] = [];
+
 describe("width-math fuzz invariants", () => {
 	it("visibleWidth never throws and returns a finite non-negative integer", () => {
-		const rand = lcg(0x1234_5678);
-		for (let iter = 0; iter < 6000; iter++) {
-			const s = buildString(rand);
+		fuzzStrings({ seed: 0x1234_5678, iterations: 6000, corpus: VISIBLE_WIDTH_CORPUS }, s => {
 			let w: number;
 			try {
 				w = visibleWidth(s);
@@ -63,20 +81,18 @@ describe("width-math fuzz invariants", () => {
 			if (!Number.isInteger(w) || w < 0) {
 				throw new Error(`visibleWidth(${JSON.stringify(s)}) = ${w} (not a non-negative integer)`);
 			}
-		}
+		});
 	});
 
 	it("truncateToWidth never throws on adversarial input (full fragment pool)", () => {
-		const rand = lcg(0x0bad_f00d);
-		for (let iter = 0; iter < 6000; iter++) {
-			const s = buildString(rand);
+		fuzzStrings({ seed: 0x0bad_f00d, iterations: 6000, corpus: TRUNCATE_CORPUS }, (s, rand) => {
 			const w = WIDTHS[Math.floor(rand() * WIDTHS.length)]!;
 			try {
 				truncateToWidth(s, w, Ellipsis.Omit);
 			} catch (e) {
 				throw new Error(`truncateToWidth(${JSON.stringify(s)}, ${w}) threw: ${e}`);
 			}
-		}
+		});
 	});
 
 	it("truncateToWidth never exceeds the target width on realistic content (Omit)", () => {
@@ -88,21 +104,22 @@ describe("width-math fuzz invariants", () => {
 		// divergence is tracked for a native fix; the no-throw test above still
 		// fuzzes those inputs. This property guards the realistic surface: text,
 		// wide graphemes, combining/zero-width marks, emoji, and well-formed ANSI.
-		const rand = lcg(0x0bad_f00d);
-		for (let iter = 0; iter < 6000; iter++) {
-			const s = buildSafeString(rand);
-			const w = WIDTHS[Math.floor(rand() * WIDTHS.length)]!;
-			const out = truncateToWidth(s, w, Ellipsis.Omit);
-			// Mirror truncateToWidth's own normalization: widths at/above INT32_MAX
-			// (incl. Infinity) are capped there rather than wrapping through `| 0`.
-			const target = w >= 0x7fff_ffff ? 0x7fff_ffff : Math.max(0, w | 0);
-			const outWidth = visibleWidth(out);
-			if (outWidth > target) {
-				throw new Error(
-					`truncateToWidth(${JSON.stringify(s)}, ${w}) -> width ${outWidth} > target ${target}: ${JSON.stringify(out)}`,
-				);
-			}
-		}
+		fuzzStrings(
+			{ seed: 0x0bad_f00d, iterations: 6000, corpus: TRUNCATE_SAFE_CORPUS, build: buildSafeString },
+			(s, rand) => {
+				const w = WIDTHS[Math.floor(rand() * WIDTHS.length)]!;
+				const out = truncateToWidth(s, w, Ellipsis.Omit);
+				// Mirror truncateToWidth's own normalization: widths at/above INT32_MAX
+				// (incl. Infinity) are capped there rather than wrapping through `| 0`.
+				const target = w >= 0x7fff_ffff ? 0x7fff_ffff : Math.max(0, w | 0);
+				const outWidth = visibleWidth(out);
+				if (outWidth > target) {
+					throw new Error(
+						`truncateToWidth(${JSON.stringify(s)}, ${w}) -> width ${outWidth} > target ${target}: ${JSON.stringify(out)}`,
+					);
+				}
+			},
+		);
 	});
 
 	it("truncateToWidth returns the full text for unbounded widths (no 2^31 wrap)", () => {
@@ -130,9 +147,7 @@ describe("width-math fuzz invariants", () => {
 	});
 
 	it("wrapTextWithAnsi never throws for positive widths", () => {
-		const rand = lcg(0xfeed_face);
-		for (let iter = 0; iter < 4000; iter++) {
-			const s = buildString(rand);
+		fuzzStrings({ seed: 0xfeed_face, iterations: 4000, corpus: WRAP_CORPUS }, (s, rand) => {
 			const w = [1, 2, 3, 8, 40][Math.floor(rand() * 5)]!;
 			try {
 				const lines = wrapTextWithAnsi(s, w);
@@ -140,7 +155,7 @@ describe("width-math fuzz invariants", () => {
 			} catch (e) {
 				throw new Error(`wrapTextWithAnsi(${JSON.stringify(s)}, ${w}) threw: ${e}`);
 			}
-		}
+		});
 	});
 
 	it("wrapTextWithAnsi keeps each line within the width on realistic content", () => {
@@ -151,7 +166,7 @@ describe("width-math fuzz invariants", () => {
 		// width surface (see SAFE_FRAGMENTS) so the check is about wrapping, not the
 		// native/JS width-oracle divergence.
 		const wrapFragments = SAFE_FRAGMENTS.filter(f => f !== " ");
-		const rand = lcg(0xc0ffee11);
+		const rand = lcg(fuzzSeed(0xc0ffee11));
 		for (let iter = 0; iter < 5000; iter++) {
 			const width = [1, 2, 3, 5, 8, 13, 40][Math.floor(rand() * 7)]!;
 			// Build space-separated tokens each no wider than `width` so no token is

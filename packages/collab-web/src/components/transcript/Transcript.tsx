@@ -1,4 +1,10 @@
-import type { AssistantMessage, ImageContent, SessionEntry, TextContent, ToolResultMessage } from "@veyyon/wire";
+import type {
+	ImageContent,
+	TextContent,
+	WireAssistantMessage,
+	WireSessionEntry,
+	WireToolResultMessage,
+} from "@veyyon/wire";
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
@@ -10,8 +16,8 @@ import { ToolCard } from "./ToolCard";
 import "./transcript.css";
 
 export interface TranscriptProps {
-	entries: readonly SessionEntry[];
-	stream: AssistantMessage | null;
+	entries: readonly WireSessionEntry[];
+	stream: WireAssistantMessage | null;
 	streamDone: boolean;
 	activeTools: ReadonlyMap<string, ActiveTool>;
 	working: boolean;
@@ -91,8 +97,8 @@ function AssistantBody({
 	pending,
 	host,
 }: {
-	message: AssistantMessage;
-	results: ReadonlyMap<string, ToolResultMessage>;
+	message: WireAssistantMessage;
+	results: ReadonlyMap<string, WireToolResultMessage>;
 	active: ReadonlyMap<string, ActiveTool>;
 	/** Still streaming — suppress stop-reason chips on the partial message. */
 	pending: boolean;
@@ -146,8 +152,8 @@ function AssistantBody({
 }
 
 interface EntryRowProps {
-	entry: SessionEntry;
-	results: ReadonlyMap<string, ToolResultMessage>;
+	entry: WireSessionEntry;
+	results: ReadonlyMap<string, WireToolResultMessage>;
 	active: ReadonlyMap<string, ActiveTool>;
 	host?: ToolRenderHost;
 }
@@ -246,7 +252,7 @@ export function Transcript(props: TranscriptProps): ReactNode {
 	const { entries, stream, streamDone, activeTools, working, compact, host } = props;
 
 	const results = useMemo(() => {
-		const map = new Map<string, ToolResultMessage>();
+		const map = new Map<string, WireToolResultMessage>();
 		for (const entry of entries) {
 			if (entry.type === "message" && entry.message.role === "toolResult") {
 				map.set(entry.message.toolCallId, entry.message);

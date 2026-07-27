@@ -299,7 +299,7 @@ function dedupeGuardSets(sets: readonly (readonly string[])[]): readonly (readon
 	const seen = new Set<string>();
 	const unique: string[][] = [];
 	for (const set of normalized) {
-		const key = set.join(" ");
+		const key = set.join("\x00");
 		if (seen.has(key)) continue;
 		seen.add(key);
 		unique.push(set);

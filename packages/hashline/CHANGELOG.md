@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `HASHLINE_PROMPTS` in `src/prompts/registry.ts` registers the patch language description, and `requireHashlinePrompt` looks it up by an id held in a variable. The description is what teaches a model to write a hashline edit, and it was reachable only as the published `@veyyon/hashline/prompt.md` asset, so `veyyon prompt --prompts` had no row for it: every other tool's description was listable and the edit tool's was not. The raw subpath is unchanged and still published, for anyone embedding hashline in their own agent who would rather import the file than a row.
+
 ### Fixed
 
 - A patch to a file reached through a chain of symlinks now lands on the real file. The write followed one hop, so with `entry.ts` linking to `middle.ts` linking to the real file, it replaced `middle.ts` with a regular file: the link was destroyed and the file you keep never received the edit. Both halves were silent, because reading back through `entry.ts` returned the new bytes. The whole chain is followed now and every link survives.

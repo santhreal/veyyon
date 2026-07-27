@@ -2,7 +2,40 @@ import * as fs from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as logger from "./logger";
 import { sleepSync } from "./sleep";
+import { errorMessage } from "./type-guards";
+
+/**
+ * Remove a temporary file or directory on a path that must not fail because of the removal.
+ *
+ * This is the shape that appears wherever code writes to a temp path and then either renames it into place
+ * or throws: a failed clone is deleted before the clone error is raised, a rename that failed deletes its
+ * temp file before recording the reason, a finished playback deletes its wav in a `finally`. In all of them
+ * the operation's own error or result is what the caller needs, and a removal that threw would replace it
+ * with something about the cleanup instead.
+ *
+ * What it must NOT do is stay quiet. These paths live in the system temp directory or a cache directory, and
+ * one that cannot be removed stays there for good, accumulating an entry per failed attempt until a disk
+ * fills with nothing to explain it. So the removal never throws and always reports, naming path and reason.
+ *
+ * `force: true` means a path that does not exist is not a failure, which is what every caller wants: cleanup
+ * may run after a partial failure where the temp path was never created.
+ *
+ * @param target Absolute path to remove.
+ * @param context Short label for the call site, e.g. `"completion-write-failed"`, so a log line is traceable.
+ */
+export async function removeTempPath(target: string, context: string): Promise<void> {
+	try {
+		await fsPromises.rm(target, { recursive: true, force: true });
+	} catch (error) {
+		logger.warn("temp path could not be removed; it is left behind", {
+			path: target,
+			context,
+			error: errorMessage(error),
+		});
+	}
+}
 
 export class TempDir {
 	#path: string;
@@ -50,19 +83,32 @@ export class TempDir {
 		return path.join(this.#path, ...paths);
 	}
 
+	// Dispose must not throw: it runs as a scope exits, often while an error is already
+	// propagating, and a removal failure would replace that error with one about cleanup.
+	// It must not be SILENT either, which is what it used to be. A `using` block whose
+	// removal fails leaves a directory in the system temp directory for good, and an
+	// empty catch means nothing anywhere says so: the only symptom is a disk filling up
+	// with directories nobody can account for. So the failure is reported the same way
+	// `removeTempPath` reports its own, naming the path and the reason (Law 10).
 	async [Symbol.asyncDispose](): Promise<void> {
 		try {
 			await this.remove();
-		} catch {
-			// Ignore cleanup errors
+		} catch (error) {
+			logger.warn("temp directory could not be removed on dispose; it is left behind", {
+				path: this.#path,
+				error: errorMessage(error),
+			});
 		}
 	}
 
 	[Symbol.dispose](): void {
 		try {
 			this.removeSync();
-		} catch {
-			// Ignore cleanup errors
+		} catch (error) {
+			logger.warn("temp directory could not be removed on dispose; it is left behind", {
+				path: this.#path,
+				error: errorMessage(error),
+			});
 		}
 	}
 }

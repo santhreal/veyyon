@@ -2,15 +2,26 @@ import { collapseWhitespace, isRecord } from "@veyyon/utils";
 import { envBool, envInt, envString } from "../util/env";
 import { getDiagnostics, safeForLog } from "./extraction/diagnostics";
 import { callHostLlm, getHostLlmBackend } from "./llm-backends";
-import {
-	callConfiguredCompletion,
-	callLocalLlm,
-	callRemoteLlm,
-	cleanOutput,
-	configuredLlmWillHandleCall,
-	llmAvailable,
-	type RemoteLlmOptions,
-} from "./local-llm";
+import type { RemoteLlmOptions } from "./local-llm";
+// The questions come statically, the CALLS come on demand. Asking whether an LLM is configured, and
+// cleaning what one returned, is configuration and text; performing the call reaches the streaming
+// engine, 299 modules. Extraction asks far more often than it calls, and the memory engine sits
+// behind extraction through `beam/consolidate.ts`, so a static import here put a provider on the
+// graph of every module that can remember something. See {@link llmClient}.
+import { cleanOutput, configuredLlmWillHandleCall, llmAvailable } from "./local-llm-config";
+
+/**
+ * Load the half of the LLM client that performs calls.
+ *
+ * NOT a fallback and nothing degrades: a load failure REJECTS, and every call site here already runs
+ * inside a `try` that records the failure through `diag.recordFailure` before falling through, which
+ * is the same path a provider error takes. The module is cached after the first call, so this costs
+ * one resolution on the first extraction that actually reaches a model.
+ */
+function llmClient() {
+	return import("./local-llm");
+}
+
 import { getMnemopiRuntimeOptions } from "./runtime-options";
 
 function llmEnabled(): boolean {
@@ -317,35 +328,36 @@ async function tryHostExtraction(prompt: string): Promise<[boolean, string | nul
 	return [true, text === "" ? null : text];
 }
 
-async function localFallback(
-	prompt: string,
-	sourceText: string,
-	diag = getDiagnostics(),
-): Promise<ExtractedFactCategories> {
+/**
+ * Run the pattern extractor: the ONE owner of the `local` tier.
+ *
+ * This tier used to open by calling `callLocalLlm`, a one-line `return null` with a `_prompt` it did
+ * not read, alongside a `localGgufAvailable(): false` whose return TYPE said it could never be
+ * anything else. There was no GGUF loader anywhere to make either one true. So every extraction that
+ * reached this tier attempted a backend that did not exist, wrote `model_not_loaded` into the
+ * diagnostics, and then ran the pattern extractor that was always going to do the work. An operator
+ * reading those diagnostics saw a missing model where nothing had ever tried to load one, which is
+ * worse than an absent tier: it names a cause that cannot be acted on. Deleted rather than
+ * implemented, because a local GGUF backend is a feature to build, not a stub to keep warm.
+ *
+ * `emptyReason` is the failure reason recorded when the extractor finds nothing. The two call paths
+ * differ there and only there: reaching here after a model produced no usable output is an empty
+ * result, while reaching here because no LLM was configured at all is
+ * `llm_unavailable_at_call_site`. Both paths ran their own copy of this bookkeeping before, which is
+ * how they came to disagree about `recordCall`.
+ */
+function patternFallback(sourceText: string, diag = getDiagnostics(), emptyReason?: string): ExtractedFactCategories {
 	diag.recordAttempt("local");
-	try {
-		const raw = await callLocalLlm(prompt);
-		if (raw !== null) {
-			const extracted = parseExtractedFactCategories(cleanOutput(raw));
-			const count = countExtractedFactCategories(extracted);
-			if (count > 0) {
-				diag.recordSuccess("local", count);
-				diag.recordCall({ succeeded: true });
-				return extracted;
-			}
-			diag.recordNoOutput("local");
-		}
-	} catch (exc) {
-		diag.recordFailure("local", exc, "local_llm_raised");
-		diag.recordCall({ succeeded: false });
-		return emptyFactCategories();
-	}
-	diag.recordFailure("local", undefined, "model_not_loaded");
 	const heuristic = heuristicExtractFacts(sourceText);
 	if (heuristic.length > 0) {
 		diag.recordSuccess("local", heuristic.length);
 		diag.recordCall({ succeeded: true });
 		return { ...emptyFactCategories(), facts: heuristic };
+	}
+	if (emptyReason !== undefined) {
+		diag.recordFailure("local", undefined, emptyReason);
+		diag.recordCall({ succeeded: false });
+		return emptyFactCategories();
 	}
 	diag.recordCall({ succeeded: false, allEmpty: true });
 	return emptyFactCategories();
@@ -369,7 +381,7 @@ export async function extractFactCategories(
 	if (configuredLlmWillHandleCall()) {
 		diag.recordAttempt("host");
 		try {
-			const raw = await callConfiguredCompletion(prompt, 0, { maxTokens: llmMaxTokens() });
+			const raw = await (await llmClient()).callConfiguredCompletion(prompt, 0, { maxTokens: llmMaxTokens() });
 			if (typeof raw === "string" && raw.trim() !== "") {
 				const extracted = parseExtractedFactCategories(raw);
 				const count = countExtractedFactCategories(extracted);
@@ -386,7 +398,7 @@ export async function extractFactCategories(
 			console.warn(`extractFacts: configured completion raised: ${safeForLog(exc)}`);
 			return emptyFactCategories();
 		}
-		return localFallback(prompt, text, diag);
+		return patternFallback(text, diag);
 	}
 
 	try {
@@ -403,7 +415,7 @@ export async function extractFactCategories(
 				}
 			}
 			diag.recordNoOutput("host");
-			return localFallback(prompt, text, diag);
+			return patternFallback(text, diag);
 		}
 	} catch (exc) {
 		diag.recordAttempt("host");
@@ -414,21 +426,12 @@ export async function extractFactCategories(
 	}
 
 	if (!llmAvailable()) {
-		diag.recordAttempt("local");
-		const heuristic = heuristicExtractFacts(text);
-		if (heuristic.length > 0) {
-			diag.recordSuccess("local", heuristic.length);
-			diag.recordCall({ succeeded: true });
-			return { ...emptyFactCategories(), facts: heuristic };
-		}
-		diag.recordFailure("local", undefined, "llm_unavailable_at_call_site");
-		diag.recordCall({ succeeded: false });
-		return emptyFactCategories();
+		return patternFallback(text, diag, "llm_unavailable_at_call_site");
 	}
 
 	diag.recordAttempt("remote");
 	try {
-		const raw = await callRemoteLlm(prompt, 0, options);
+		const raw = await (await llmClient()).callRemoteLlm(prompt, 0, options);
 		if (raw !== null) {
 			const extracted = parseExtractedFactCategories(cleanOutput(raw));
 			const count = countExtractedFactCategories(extracted);
@@ -444,7 +447,7 @@ export async function extractFactCategories(
 		console.warn(`extractFacts: remote LLM raised: ${safeForLog(exc)}`);
 	}
 
-	return localFallback(prompt, text, diag);
+	return patternFallback(text, diag);
 }
 
 /** Extract legacy flat fact strings from text. */

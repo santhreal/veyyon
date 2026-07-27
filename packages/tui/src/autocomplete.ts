@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fuzzyFind } from "@veyyon/natives";
-import { getProjectDir } from "@veyyon/utils";
+import { getProjectDir } from "@veyyon/utils/dirs";
 import { isSubsequenceMatch, subsequenceScore } from "./fuzzy";
 
 const PATH_DELIMITERS = new Set([" ", "\t", '"', "'", "="]);

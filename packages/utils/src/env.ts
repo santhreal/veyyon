@@ -1,43 +1,27 @@
-import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getAgentDir, getConfigRootDir, refreshDirsFromEnv } from "./dirs";
-import { isMissingPath } from "./fs-error";
+// Phase one, for its side effect: the environment scrub and `$HOME/.env`, already applied by the time
+// `./dirs` above resolved anything. Importing it here is not what makes it run for the resolver -- `dirs.ts`
+// imports it itself -- but this module reads the key set it exports, and naming it states the ordering.
+import { homeDotenvInjectedKeys } from "./dotenv-home";
+import {
+	isMacosMallocStackLoggingEnvName,
+	isSafeEnvName,
+	isSafeEnvValue,
+	parseEnvFile as parseEnvFileWithReporter,
+	type UnreadableEnvFileReporter,
+} from "./dotenv-parse";
 import * as logger from "./logger";
 import { errorMessage } from "./type-guards";
 
+export {
+	isMacosMallocStackLoggingEnvName,
+	isSafeEnvName,
+	isSafeEnvValue,
+	isValidEnvName,
+} from "./dotenv-parse";
 export * from "./worker-host";
-
-const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
-
-/**
- * Strict shell-identifier shape. Used for dotenv keys we accept into
- * `Bun.env` — those should be referenceable as `$NAME` from POSIX shells,
- * so we reject anything outside `[A-Za-z_][A-Za-z0-9_]*`.
- */
-export function isValidEnvName(name: string): boolean {
-	return ENV_NAME_RE.test(name);
-}
-
-/**
- * The only names that are genuinely unsafe to forward to a native `execve`
- * spawn: empty, containing `=` (would corrupt the `KEY=VALUE` framing) or
- * NUL (terminates the C string mid-entry). Windows ships standard variables
- * whose names contain parentheses (e.g. `ProgramFiles(x86)`, `CommonProgramFiles(x86)`)
- * — those MUST survive the scrub so downstream resolvers (Git Bash discovery
- * in `procmgr.ts`, etc.) can still read them.
- */
-export function isSafeEnvName(name: string): boolean {
-	return name.length > 0 && !name.includes("=") && !name.includes("\0");
-}
-
-export function isSafeEnvValue(value: string): boolean {
-	return !value.includes("\0");
-}
-
-export function isMacosMallocStackLoggingEnvName(name: string): boolean {
-	return name === "MallocStackLogging" || name === "MallocStackLoggingNoCompact";
-}
 
 export function filterProcessEnv(env: Record<string, string | undefined>): Record<string, string> {
 	const result: Record<string, string> = {};
@@ -70,60 +54,39 @@ export function filterChildShellEnv(
 }
 
 /**
- * Parses a .env file synchronously and extracts key-value string pairs.
- * Ignores lines that are empty or start with '#'. Trims whitespace.
- * Allows values to be quoted with single or double quotes.
- * Returns an object of key-value pairs.
+ * Report an unreadable `.env` through the logger, which phase two has and phase one does not.
  *
- * Four candidate paths are probed on startup (cwd, agent dir, config root, home)
- * and most of them are absent, so a missing file says nothing. A file that EXISTS
- * and cannot be read is reported: it is usually the one holding the user's API
- * keys, and the symptom of dropping it silently is an authentication failure
- * nobody can trace back to a permission bit (Law 10).
+ * A missing file is silent (three of the four locations normally do not exist). A file that EXISTS and
+ * cannot be read is reported with its path: it is usually the one holding the user's API keys, and the
+ * symptom of dropping it silently is an authentication failure nobody can trace back to a permission bit.
+ */
+const reportUnreadableEnvFile: UnreadableEnvFileReporter = (filePath, error) => {
+	logger.warn("Environment file exists but could not be read; none of its variables were applied.", {
+		path: filePath,
+		error: errorMessage(error),
+	});
+};
+
+/**
+ * Parse a `.env` file into key-value pairs, reporting an unreadable one through the logger.
+ *
+ * The parsing itself and the rules about which names and values may enter the environment live in
+ * `./dotenv-parse`, which is the module both application phases share. This is the phase-two spelling of
+ * it, kept because callers outside this package name `parseEnvFile` and because the reporter is not
+ * something a caller should have to choose.
  */
 export function parseEnvFile(filePath: string): Record<string, string> {
-	const result: Record<string, string> = {};
-	try {
-		const content = fs.readFileSync(filePath, "utf-8");
-		for (const line of content.split("\n")) {
-			const trimmed = line.trim();
-			// Skip comments and blank lines
-			if (!trimmed || trimmed.startsWith("#")) continue;
-
-			const eqIndex = trimmed.indexOf("=");
-			if (eqIndex === -1) continue;
-
-			const key = trimmed.slice(0, eqIndex).trim();
-			if (!isValidEnvName(key)) continue;
-
-			let value = trimmed.slice(eqIndex + 1).trim();
-
-			// Remove surrounding quotes (" or ')
-			if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-				value = value.slice(1, -1);
-			}
-			if (!isSafeEnvValue(value)) continue;
-
-			result[key] = value;
-		}
-	} catch (error) {
-		if (!isMissingPath(error)) {
-			logger.warn("Environment file exists but could not be read; none of its variables were applied.", {
-				path: filePath,
-				error: errorMessage(error),
-			});
-		}
-	}
-
-	return result;
+	return parseEnvFileWithReporter(filePath, reportUnreadableEnvFile);
 }
 
-// Eagerly parse the user's $HOME/.env and the current project's .env (from cwd)
-const homeEnv = parseEnvFile(path.join(os.homedir(), ".env"));
-const configRootEnv = parseEnvFile(path.join(getConfigRootDir(), ".env"));
-const agentEnv = parseEnvFile(path.join(getAgentDir(), ".env"));
-const projectEnv = parseEnvFile(path.join(process.cwd(), ".env"));
-
+// The environment scrub: names and values that cannot survive a native `execve` come out of `Bun.env`
+// before anything is added to it. A key containing `=` corrupts the `KEY=VALUE` framing of a spawn, and
+// macOS's malloc-logging variables make every child process print diagnostics.
+//
+// IT LIVES HERE AND NOT IN PHASE ONE, deliberately. Importing `./dirs` must not mutate the caller's
+// environment -- `profiles.test.ts`'s "dirs module import behavior" pins that inherited
+// `MallocStackLogging` survives importing the path resolver -- and `./dirs` imports phase one. A program
+// that wants the environment scrubbed asks for the environment, which is this module.
 for (const key of Object.keys(Bun.env)) {
 	const value = Bun.env[key];
 	if (!isSafeEnvName(key) || isMacosMallocStackLoggingEnvName(key) || value === undefined || !isSafeEnvValue(value)) {
@@ -131,11 +94,25 @@ for (const key of Object.keys(Bun.env)) {
 	}
 }
 
+// Phase two: all four layers, now that the resolver exists and `<configRoot>` and `<agentDir>` are known.
+// Phase one already applied the DIRECTORY-LOCATION keys out of `$HOME/.env` -- that is what let the paths
+// below be resolved with the user's overrides in place -- and deliberately nothing else, so the home layer
+// is read again here for the rest of it.
+const homeEnv = parseEnvFile(path.join(os.homedir(), ".env"));
+const configRootEnv = parseEnvFile(path.join(getConfigRootDir(), ".env"));
+const agentEnv = parseEnvFile(path.join(getAgentDir(), ".env"));
+const projectEnv = parseEnvFile(path.join(process.cwd(), ".env"));
+
+// Highest priority first. A key already in `Bun.env` wins, EXCEPT one that phase one injected from
+// `$HOME/.env`: home is the lowest-priority layer and only happens to have been applied first, so these
+// three files may displace it. Displacing removes the key from the set, so the next (lower-priority) file
+// cannot displace it again and the original order survives the split.
 for (const file of [projectEnv, agentEnv, configRootEnv, homeEnv]) {
 	for (const key in file) {
-		if (!isMacosMallocStackLoggingEnvName(key) && !Bun.env[key]) {
-			Bun.env[key] = file[key];
-		}
+		if (isMacosMallocStackLoggingEnvName(key)) continue;
+		if (Bun.env[key] && !homeDotenvInjectedKeys.has(key)) continue;
+		Bun.env[key] = file[key];
+		homeDotenvInjectedKeys.delete(key);
 	}
 }
 

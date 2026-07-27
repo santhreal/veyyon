@@ -24,7 +24,7 @@ const id = memory.remember("The deployment target is stable-cluster.", {
 	veracity: "true",
 });
 
-const results = memory.recall("deployment target", 5);
+const results = await memory.recall("deployment target", 5);
 console.log(id, results[0]?.content);
 
 memory.close();

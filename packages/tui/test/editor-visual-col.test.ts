@@ -18,7 +18,7 @@
 import { describe, expect, it } from "bun:test";
 import { maxSegmentVisualCol, offsetAtVisualCol, visualColAtOffset } from "@veyyon/tui/components/editor";
 import { getSegmenter, visibleWidth } from "@veyyon/tui/utils";
-import { lcg } from "./helpers/adversarial-strings";
+import { fuzzSeed, lcg } from "@veyyon/utils/adversarial-strings";
 
 /** Grapheme-cluster boundaries (code-unit indices, incl. 0 and length). */
 function boundaries(text: string): Set<number> {
@@ -96,7 +96,7 @@ describe("visual-col mapping — invariants (fuzz)", () => {
 	}
 
 	it("offsetAtVisualCol always lands on a grapheme boundary; both maps stay monotonic", () => {
-		const rand = lcg(0x2b_9d_f0_01);
+		const rand = lcg(fuzzSeed(0x2b_9d_f0_01));
 		for (let iter = 0; iter < 15_000; iter++) {
 			const text = build(rand);
 			const bounds = boundaries(text);
@@ -135,7 +135,7 @@ describe("visual-col mapping — invariants (fuzz)", () => {
 		// invariant that always holds (and that vertical nav depends on) is that
 		// the *column* survives the round-trip, and the recovered offset is itself
 		// a grapheme boundary.
-		const rand = lcg(0x77_c0_ff_ee);
+		const rand = lcg(fuzzSeed(0x77_c0_ff_ee));
 		for (let iter = 0; iter < 8000; iter++) {
 			const text = build(rand);
 			const bounds = boundaries(text);

@@ -186,7 +186,12 @@ const LOCAL_NORMALIZE_BASE_URL = /function\s+normalizeBaseUrl\s*\(/;
 // strip in a production `.ts` source fails the lock and must import the owner
 // instead. (utils/src/url.ts is the owner and always allowed.)
 const INLINE_STRIP_GRANDFATHERED = new Set<string>([]);
-const INLINE_STRIP = /replace\(\/\\\/\+\$\//;
+// Whitespace-tolerant between `replace(` and the pattern. It was not, and that is exactly how one slipped
+// through: the formatter wrapped `mnemopi/src/core/extraction/client.ts`'s call across three lines, so
+// `replace(` and `/\/+$/` were no longer adjacent and the lock read the file as clean. The site had been
+// there all along and only became visible when an unrelated edit pulled the call back onto one line. A lock
+// that a line break defeats is a lock that reports what the formatter did, not what the code does.
+const INLINE_STRIP = /replace\(\s*\/\\\/\+\$\//;
 
 // Strip-ONE `X.endsWith("/") ? X.slice(0, -1) : X` variants. On a base URL these
 // diverge from strip-all on doubled slashes ("http://x//"), so every URL
@@ -195,7 +200,11 @@ const INLINE_STRIP = /replace\(\/\\\/\+\$\//;
 // not a URL, and the doubled-slash case never arises: keep them local. Any NEW
 // strip-one URL normalizer fails this lock — call trimTrailingSlashes instead.
 const STRIPONE_GRANDFATHERED = new Set<string>(["tui/src/autocomplete.ts", "utils/src/path-tree.ts"]);
-const STRIPONE = /endsWith\("\/"\) \? \w+(?:\.\w+)*\.slice\(0, ?-1\)/;
+// Whitespace-tolerant for the same reason `INLINE_STRIP` is: this required single spaces around the `?`
+// and the whole ternary on one line, so a formatter wrapping it would have hidden a new violation the
+// same way one was hidden in mnemopi. Re-scanned in the widened form, it still finds exactly the two
+// grandfathered sites and nothing else, so widening it did not quietly forgive anything.
+const STRIPONE = /endsWith\("\/"\)\s*\?\s*\w+(?:\.\w+)*\s*\.slice\(\s*0,\s*-1\s*\)/;
 
 // Bare-`scheme://` literal lock. Matches the two unified forms only — the RFC
 // scheme charset immediately followed by `:\/\/` and then the regex-literal
@@ -224,6 +233,39 @@ const URI_LITERAL = /\[a-z\]\[a-z0-9\+\.-\]\*:\//;
 // the src-only scan never saw it. The inline-pattern checks (INLINE_STRIP/
 // STRIPONE) stay src-only: those regexes legitimately match test assertions
 // constructing expected values, so scanning tests would false-flag.
+describe("the trailing-slash lock's own detector", () => {
+	/**
+	 * THE DETECTOR CATCHES A WRAPPED CALL, which is the regression this case exists for.
+	 *
+	 * `INLINE_STRIP` required `replace(` and `/\/+$/` to be adjacent. A real site in
+	 * `mnemopi/src/core/extraction/client.ts` had been wrapped across three lines by the formatter, so the
+	 * lock read that file as clean for as long as it stayed wrapped, and only reported it when an unrelated
+	 * edit pulled the call back onto one line. The violation never moved; only its formatting did.
+	 *
+	 * Asserted against literal source text rather than against the repository, because the repository is
+	 * clean now and a scan of clean files cannot tell a working detector from a broken one.
+	 */
+	it("matches the strip however the formatter breaks the line", () => {
+		const oneLine = 'const base = raw.replace(/\\/+$/, "");';
+		const wrapped = ["const base = raw.replace(", "\t/\\/+$/,", '\t"",', ");"].join("\n");
+		const spaced = 'const base = raw.replace( /\\/+$/, "");';
+
+		expect(INLINE_STRIP.test(oneLine), "one line").toBeTrue();
+		expect(INLINE_STRIP.test(wrapped), "wrapped by the formatter").toBeTrue();
+		expect(INLINE_STRIP.test(spaced), "a single space").toBeTrue();
+	});
+
+	/**
+	 * And it does NOT match a different `replace`, so the widened pattern did not become a rule against
+	 * calling `replace` at all. A lock that flags everything gets grandfathered into uselessness.
+	 */
+	it("ignores replaces that are not the trailing-slash strip", () => {
+		expect(INLINE_STRIP.test('name.replace(/\\s+/g, "-")')).toBeFalse();
+		expect(INLINE_STRIP.test('name.replace(/^\\/+/, "")')).toBeFalse();
+		expect(INLINE_STRIP.test("value.replace(pattern, fallback)")).toBeFalse();
+	});
+});
+
 describe("trimTrailingSlashes source lock", () => {
 	it("no production source defines a local trimTrailingSlash variant outside utils/src/url.ts", async () => {
 		const offenders: string[] = [];

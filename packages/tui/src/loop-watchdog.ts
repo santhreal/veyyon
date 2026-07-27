@@ -1,5 +1,6 @@
 import { performance } from "node:perf_hooks";
-import { logger, takeRecentLoopPhase } from "@veyyon/utils";
+import * as logger from "@veyyon/utils/logger";
+import { takeRecentLoopPhase } from "@veyyon/utils/loop-phase";
 
 export interface LoopWatchdogOptions {
 	/** How far ahead each probe tick is scheduled, in ms. Default 250. */

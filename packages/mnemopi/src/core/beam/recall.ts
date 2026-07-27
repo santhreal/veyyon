@@ -14,6 +14,7 @@ import { adjustWeights, classifyIntent } from "../query-intent";
 import { CORE_QUERY_STOP_WORDS, getSynonyms, normalizeQuery, STOP_WORDS as QUERY_STOP_WORDS } from "../synonyms";
 import { extractTemporal } from "../temporal-parser";
 import { cosineScorer, decodeEmbeddingJson } from "../vector-math";
+import { weightForVeracity } from "../veracity";
 import type { BeamMemoryState, RecallEnhancedOptions, RecallOptions, RecallResult } from "./types";
 
 type DbValue = string | number | null | Uint8Array;
@@ -65,17 +66,6 @@ type RecallMmrItem = {
 	readonly score?: number;
 	readonly result: RecallResult;
 	readonly [key: string]: unknown;
-};
-
-const VERACITY_WEIGHTS: Record<string, number> = {
-	stated: 1.0,
-	true: 1.0,
-	likely_true: 1.0,
-	unknown: 0.8,
-	inferred: 0.7,
-	imported: 0.6,
-	tool: 0.5,
-	false: 0,
 };
 
 /**
@@ -608,8 +598,11 @@ function scoreCandidate(
 		temporalScore = Math.max(temporalScore, eventBoost);
 		score *= 1 + temporalWeight * temporalScore;
 	}
-	const veracity = stringOrEmpty(candidate.row.veracity) || "unknown";
-	const veracityWeight = VERACITY_WEIGHTS[veracity] ?? VERACITY_WEIGHTS.unknown ?? 0.8;
+	// Was a private eight-value table plus `?? VERACITY_WEIGHTS.unknown ?? 0.8`. The chain
+	// scored any value outside that table exactly like an unlabelled memory, without a word,
+	// which is what `contested` got for the whole time it was a member of the union in
+	// `./types`. `weightForVeracity` reads the one vocabulary and names what it does not know.
+	const veracityWeight = weightForVeracity(candidate.row.veracity);
 	const degradationTier = candidate.tierLabel === "episodic" ? numberOrDefault(candidate.row.tier, 1) : undefined;
 	if (candidate.tierLabel === "episodic") {
 		const tierWeight = degradationTier === 1 ? 1 : degradationTier === 2 ? 0.85 : 0.7;

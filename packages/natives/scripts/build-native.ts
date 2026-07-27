@@ -219,6 +219,37 @@ function resolveBuildOutputDirPrefix(profileLabel: string): string {
 	return path.join(nativeDir, ".build", `${buildTarget}-${variantLabel}-${profileLabel}-`);
 }
 
+/**
+ * Rebuild `native/embedded-addons.<platform>.tar.gz` from the addon that was just built.
+ *
+ * A rebuild has to BE a rebuild. This step used to belong only to `gen:native`, so `build:native`
+ * left the archive at whatever a previous run had written, and the two artifacts drifted apart with
+ * nothing to say so. A compiled binary loads the addon it extracted from the ARCHIVE, not the one in
+ * the tree, so a corrected `.node` could sit in `native/` while every probe kept getting the old
+ * behaviour out of `~/.veyyon/natives/<version>/` — and the startup marker printed the same file
+ * name either way, which is what made it cost hours instead of minutes to see.
+ *
+ * Run as a subprocess rather than imported because `embed-native.ts` is a top-level script that does
+ * its work on load; importing it would make its failure modes this script's control flow.
+ */
+async function refreshEmbeddedArchive(): Promise<void> {
+	console.log("Refreshing embedded addon archive…");
+	// `--stub-metadata`: refresh the archive, leave `embedded-addon.js` as the checked-in
+	// stub. Without it a rebuild leaves the source tree claiming to be a compiled binary,
+	// and every CLI run in that checkout then stages 290 MB into whatever `HOME` it is
+	// given. See the flag's own comment in embed-native.ts.
+	const result = await $`bun ${path.join(import.meta.dir, "embed-native.ts")} --stub-metadata`.nothrow().quiet();
+	if (result.exitCode !== 0) {
+		const stderr = result.stderr.toString().trim();
+		throw new Error(
+			`Failed to refresh the embedded addon archive${stderr ? `:\n${stderr}` : ""}\n` +
+				"The addon in native/ is newer than embedded-addons.<platform>.tar.gz, so a compiled " +
+				"binary would keep loading the previous build. Re-run `bun run gen:native` once the " +
+				"cause above is fixed.",
+		);
+	}
+}
+
 async function installGeneratedBindings(outputDir: string): Promise<void> {
 	const sourcePath = path.join(outputDir, "index.d.ts");
 	const destPath = path.join(nativeDir, "index.d.ts");
@@ -529,6 +560,8 @@ try {
 	await installGeneratedBindings(buildOutputDir);
 
 	await generateEnumExports();
+
+	await refreshEmbeddedArchive();
 
 	console.log("Build complete.");
 } finally {

@@ -3,23 +3,16 @@
  */
 import { describe, expect, it } from "bun:test";
 import { applyEdits, parsePatch } from "@veyyon/hashline";
+import { lcgUint32 } from "@veyyon/utils/adversarial-strings";
 
 function apply(text: string, patch: string): string {
 	return applyEdits(text, parsePatch(patch).edits).text;
 }
 
-function lcg(seed: number): () => number {
-	let s = seed;
-	return () => {
-		s = (s * 1664525 + 1013904223) >>> 0;
-		return s;
-	};
-}
-
 describe("applyEdits continue depth seeds 81 through 90", () => {
 	for (let seed = 81; seed <= 90; seed++) {
 		it(`seed=${seed}`, () => {
-			const next = lcg(seed);
+			const next = lcgUint32(seed);
 			let t = "w\nx\ny\nz";
 			for (let i = 0; i < 30; i++) {
 				const n = t === "" ? 0 : t.split("\n").length;

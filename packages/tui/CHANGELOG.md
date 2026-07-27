@@ -2,7 +2,68 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The desktop notifier and the OSC 99 application field read `APP_DISPLAY_NAME` from `@veyyon/utils/app-identity` instead of each declaring the product's name.
+
+- `src/ansi.ts` also owns `BEL`, `SGR_BG_RESET`, `SGR_INTENSITY_RESET` and `OSC66`, each derived from `ESC` or `CSI` rather than respelling the introducer. Those four sequences were declared eight times under eight names across this package and `@veyyon/coding-agent`. Two of the eight were actively wrong about what they held: `\x1b[22m` was `BOLD_CLOSE` in the shimmer and `DIM_OFF` in the diff renderer, and it cancels BOTH intensities, so emitting the one called `DIM_OFF` after dim text nested inside a bold run also drops the bold and the rest of the line silently loses weight. There is no sequence that turns off only one. `\x1b]66;` was `OSC66_PREFIX` in the writer and `OSC66_LINE_PREFIX` in the detector, a pair that has to match byte for byte or every wide grapheme on the line is mis-measured. One-off inline attributes such as a bold opener around a label stay with their feature, since nothing else has to agree with them; this module holds the bytes whose duplication has a consequence.
+
+- `ansi.ts` owns `CSI`, the `ESC [` control-sequence introducer, and both SGR resets are derived from it rather than spelling `\x1b[` again. `packages/metaharness/src/runner.ts` had called the introducer `ESC`, so one name meant `\x1b` in one package and `\x1b[` in the other, and its `${ESC}0m` read as an escape byte followed by the text "0m" when it was a complete SGR reset. That constant is now `CSI` there too.
+
+- `src/ansi.ts` owns the ANSI escape primitives: `ESC`, `OSC`, `ST`, `SGR_RESET` and `SGR_FG_RESET`. Those five byte strings were declared sixteen times across this package and `@veyyon/coding-agent` under eleven names. `\x1b[0m` was `SEGMENT_RESET` in `tui.ts` and `deccara.ts`, `RESET` in two coding-agent modules and `RESERVED_IMAGE_ROW` in `components/image.ts`; `\x1b[39m` was `FG_RESET` three times and `ANSI_FG_RESET` once; `\x1b\\` was `ST`, `OSC_TERMINATOR_ST` and `SIXEL_END_SEQUENCE`; `\x1b]` was `OSC` and `OSC_INTRODUCER`. Eleven names for five values is worse than eleven copies of one name, because a grep for any single name finds a minority of the sites that emit those bytes and nothing points at the rest. Feature-specific sequences stay with their feature (mouse tracking, kitty graphics, the bracketed-paste markers); this module holds only what more than one module needs and has no imports, so reaching for a primitive is cheaper than retyping it. `utils/qrcode.ts` in `@veyyon/coding-agent` is exempt on purpose, since its own doc makes being dependency-free part of what it is, and the exemption is recorded in `test/ansi-owner.test.ts` rather than left implicit.
+
+- `PASTE_START` and `PASTE_END` are exported from `src/bracketed-paste.ts`, beside the paste byte cap that module already owned. The two byte strings that define the protocol were declared in four modules: here, in `stdin-buffer.ts` under different names, and twice more in `@veyyon/coding-agent`'s custom editor and its test. Three detectors read the same terminal input at different layers, so a copy edited to a different sequence makes one layer stop recognising a paste while the others still do, and the symptom is escape bytes leaking into the editor rather than any error.
+
+- Every `@veyyon/utils` helper this package uses comes from the module that owns it: `$env`, `$flag`, `isBunTestRuntime` and `isTerminalHeadless` from `@veyyon/utils/env`, `getProjectDir` and `getDebugLogPath` from `/dirs`, `clamp` and friends from `/math`, the loop-phase trio from `/loop-phase`, `errorMessage` from `/type-guards`, `logger` and `postmortem` as namespaces from their own modules, and six more. Eleven files each took one or two names and paid 82 modules for them, so the barrel was on this package's graph no matter which component you imported. `@veyyon/tui`'s own barrel is 70 modules instead of 119, which every consumer of a TUI component pays.
+
 ### Fixed
+
+- Shift+Enter matches a `shift+enter` binding again on terminals that send it as a bare line feed.
+  Under the Kitty keyboard protocol, plain Enter arrives as CR or as the CSI-u sequence for codepoint
+  13, never as a lone 0x0A, so a bare line feed from a Kitty-capable terminal is the iTerm2-style
+  Shift+Enter mapping. The pure-TypeScript parser drew that distinction and the native one did not, and
+  it turned out to be the only answer the `kittyProtocolActive` argument ever changed: 128 single bytes
+  and generated Kitty, legacy CSI and SS3 sequences agree in both modes apart from this byte. The
+  effect was that only the message editor still behaved correctly, through a raw byte comparison of its
+  own, while anything matching the `tui.input.newLine` binding saw plain Enter. `keys.ts` now rewrites
+  the ambiguous byte to the canonical Shift+Enter sequence and lets the native parser answer it, so
+  aliases like `shift+return` and modifier naming keep one owner.
+
+- What a lone line feed means to a component has one name, `isLoneLineFeed`, instead of seven raw byte
+  comparisons. Three terminals send this byte for three different keys, so components accommodate it
+  deliberately: a multiline editor inserts a newline whichever protocol mode is active, because
+  terminals that map Shift+Enter to a line feed without negotiating Kitty exist, and a single-line
+  field submits, because it has nothing to insert. That policy cannot move into the parser without
+  breaking one of those terminals, but it can stop being four unexplained comparisons in one file, two
+  of them meaning newline and two meaning submit. Behaviour is unchanged, and now pinned per component
+  and per mode by `test/line-feed-across-components.test.ts`.
+
+- Parsing a keypress no longer crosses into native code twice for the same key. The native parser
+  costs a flat ~150ns per call, essentially all of it FFI and string marshalling, which made it about
+  3x slower than the TypeScript parser it replaced on the single bytes that dominate ordinary typing,
+  even though it is about 2.9x faster on real Kitty sequences. `parseKey` and `matchesKey` now answer
+  short input out of a memo, so the second and every later press of a key is a map lookup. The parser
+  itself is unchanged: native remains the only definition of what a key means, and the memo only stops
+  asking it a question it has already answered. On the mixed 35-sample bench, `native/parseKey` goes
+  from 0.76x of the TypeScript baseline to 2.66x (174ns to 53ns per call) and matching goes from 0.33x
+  to parity; the Kitty-only bench is unchanged at 2.78x.
+
+  This is sound because both native entry points are pure functions of `(data, keyId, kittyActive)`,
+  and that is asserted rather than assumed: `test/key-memo.test.ts` compares memoized answers against
+  fresh native answers across all 128 single bytes, a set of legacy CSI, SS3 and Kitty sequences, both
+  protocol modes, and a mutated `WT_SESSION`. A native build that grew hidden state fails there
+  instead of quietly answering with a stale key. Input longer than 24 bytes skips the memo, so a paste
+  cannot evict the keys you are typing.
+
+- The two key-parser benches no longer disagree for an unexplained reason, and neither of them was
+  wrong. `bench/parse-key.ts` reported the native matcher as slower than the TypeScript one while
+  `bench/kitty-sequence.ts` reported it faster, which was blamed on the shared harness timing its
+  first iteration. Both are warm now, and both still say what they said. Per CALL the two reconcile:
+  native costs about 174ns on parse-key's 35 mixed samples and about 134ns on kitty-sequence's six
+  Kitty-only ones, so it is roughly flat at the FFI floor, while TypeScript costs 57ns on the mixed
+  set and 387ns per Kitty sequence, scaling with the work. Native wins by about 2.9x on real Kitty
+  sequences and loses by about 3x on the single-byte keypresses that dominate ordinary typing. The
+  two scripts measure different input mixes, which is the whole difference.
 
 - Shifted keypad operators are covered by a test for the first time, and the keypad fast path says
   why it exists. Both `parseKey` and `matchesKey` consult a keypad decoder ahead of the native

@@ -1,4 +1,4 @@
-import type { ToolResultMessage } from "@veyyon/wire";
+import type { WireToolResultMessage } from "@veyyon/wire";
 import type { ReactNode } from "react";
 import { memo } from "react";
 import { messageText } from "../../lib/format";
@@ -9,7 +9,7 @@ export interface ToolCardProps {
 	name: string;
 	args: unknown;
 	intent?: string;
-	result?: ToolResultMessage;
+	result?: WireToolResultMessage;
 	running?: boolean;
 	partialResult?: unknown;
 	host?: ToolRenderHost;

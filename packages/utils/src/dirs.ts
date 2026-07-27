@@ -16,7 +16,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { YAML } from "bun";
 import { engines, version } from "../package.json" with { type: "json" };
+import { APP_DIRECTORY_SLUG } from "./app-identity";
+// FIRST, for its side effect: the environment scrub and `$HOME/.env`. Every path this module caches at
+// load is decided by `VEYYON_CODING_AGENT_DIR` and the `XDG_*` variables, so a user who sets one of those
+// in `$HOME/.env` has to be heard before the first `DirResolver` is built. `./dotenv-home` imports nothing
+// that can reach this file, which is why the `.env` layers needing a resolved directory stay in `./env`.
+import "./dotenv-home";
 import { atomicWriteFileSync } from "./atomic-write";
+import { AGENT_DIR_ENV_KEYS, CONFIG_DIR_ENV_KEYS, PROFILE_ENV_KEYS } from "./dir-env-keys";
 import { withFileLockSync } from "./file-lock";
 import { isMissingPath } from "./fs-error";
 import { isUuid } from "./regex";
@@ -26,7 +33,14 @@ import { errorMessage, isRecord } from "./type-guards";
 import { syncYamlTextToSettings } from "./yaml-sync";
 
 /** App name (e.g. "veyyon") */
-export const APP_NAME: string = "veyyon";
+/**
+ * The lowercase slug used in filesystem paths.
+ *
+ * Read from `app-identity.ts`, which also owns the capitalized `APP_DISPLAY_NAME` a person reads. The two used
+ * to share this name across packages, and a slug in a notification title or a capitalized name in a path is
+ * the kind of mistake nothing reports.
+ */
+export const APP_NAME: string = APP_DIRECTORY_SLUG;
 
 /**
  * The short launch alias installed next to the binary. Both installers create it
@@ -89,7 +103,6 @@ export const VERSION: string = version;
 export const MIN_BUN_VERSION: string = engines.bun.replace(/[^0-9.]/g, "");
 
 const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
-const PROFILE_ENV_KEYS = ["VEYYON_PROFILE"] as const;
 
 /**
  * Names Windows treats as reserved device aliases. Matches the basename
@@ -146,23 +159,9 @@ function pickProcessEnv(...keys: readonly string[]): string | undefined {
 	return undefined;
 }
 
-/** Env key accepted for the agent-dir override. */
-const AGENT_DIR_ENV_KEYS = ["VEYYON_CODING_AGENT_DIR"] as const;
-
-/** Env key accepted for the config-dir-name override. */
-const CONFIG_DIR_ENV_KEYS = ["VEYYON_CONFIG_DIR"] as const;
-
-/**
- * Every env key that redirects veyyon directory resolution (agent dir,
- * profile, config-dir name). Tests spawning children that must resolve dirs
- * from a controlled location (e.g. XDG_* pointing at a temp root) strip these
- * so overrides inherited from the developer/CI environment cannot leak in.
- */
-export const DIR_OVERRIDE_ENV_KEYS: readonly string[] = [
-	...AGENT_DIR_ENV_KEYS,
-	...PROFILE_ENV_KEYS,
-	...CONFIG_DIR_ENV_KEYS,
-];
+// The list has one owner, `./dir-env-keys`, because `./dotenv-home` needs it too and cannot import this
+// module (this module imports IT). Re-exported here because callers have always taken it from `dirs`.
+export { DIR_OVERRIDE_ENV_KEYS } from "./dir-env-keys";
 
 /** One owner for reading the agent-dir override from the environment. */
 function readAgentDirEnv(): string | undefined {

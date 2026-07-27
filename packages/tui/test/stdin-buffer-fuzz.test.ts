@@ -14,7 +14,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { setKittyProtocolActive } from "@veyyon/tui/keys";
 import { StdinBuffer } from "@veyyon/tui/stdin-buffer";
-import { lcg } from "./helpers/adversarial-strings";
+import { fuzzStrings } from "@veyyon/utils/adversarial-strings";
 
 // Byte-level fragments spanning every branch of resolveEscapeEnd: ESC intro,
 // CSI/SS3, SGR + X10 mouse, OSC/DCS/APC intros and terminators, kitty CSU,
@@ -82,6 +82,17 @@ function chunkify(s: string, rand: () => number): string[] {
 	return chunks;
 }
 
+/**
+ * Streams that broke the splitter before, replayed first on every run and under every seed.
+ *
+ * Empty is the honest state. Add the string a failure's `corpus entry:` line prints, with a comment
+ * naming the bug it locks out; see `docs/internal/fuzzing.md`.
+ */
+const STREAM_CORPUS: readonly string[] = [];
+
+/** Same, for the escape-free conservation property. See {@link STREAM_CORPUS}. */
+const PLAIN_STREAM_CORPUS: readonly string[] = [];
+
 describe("StdinBuffer fuzz", () => {
 	let buffer: StdinBuffer;
 	let emitted: string[];
@@ -104,58 +115,70 @@ describe("StdinBuffer fuzz", () => {
 	});
 
 	it("never throws and never buffers more than was fed, on adversarial chunked streams", () => {
-		const rand = lcg(0x57d1_9b00);
-		for (let iter = 0; iter < 6000; iter++) {
-			emitted = [];
-			pastes = [];
-			buffer.clear();
-			const stream = buildStream(rand, 40);
-			const chunks = chunkify(stream, rand);
-			let fedSoFar = 0;
-			for (const chunk of chunks) {
+		fuzzStrings(
+			{ seed: 0x57d1_9b00, iterations: 6000, corpus: STREAM_CORPUS, build: rand => buildStream(rand, 40) },
+			(stream, rand) => {
+				emitted = [];
+				pastes = [];
+				buffer.clear();
+				const chunks = chunkify(stream, rand);
+				let fedSoFar = 0;
+				for (const chunk of chunks) {
+					try {
+						buffer.process(chunk);
+					} catch (e) {
+						throw new Error(
+							`process threw on stream ${JSON.stringify(stream)} chunk ${JSON.stringify(chunk)}: ${e}`,
+						);
+					}
+					fedSoFar += chunk.length;
+					// The pending buffer can never hold more than the bytes fed so far —
+					// a violation means the splitter duplicated input into its buffer.
+					if (buffer.getBuffer().length > fedSoFar) {
+						throw new Error(
+							`buffer (${buffer.getBuffer().length}) exceeds bytes fed (${fedSoFar}) on stream ${JSON.stringify(stream)}`,
+						);
+					}
+				}
 				try {
-					buffer.process(chunk);
+					buffer.flush();
 				} catch (e) {
-					throw new Error(
-						`process threw on stream ${JSON.stringify(stream)} chunk ${JSON.stringify(chunk)}: ${e}`,
-					);
+					throw new Error(`flush threw on stream ${JSON.stringify(stream)}: ${e}`);
 				}
-				fedSoFar += chunk.length;
-				// The pending buffer can never hold more than the bytes fed so far —
-				// a violation means the splitter duplicated input into its buffer.
-				if (buffer.getBuffer().length > fedSoFar) {
-					throw new Error(
-						`buffer (${buffer.getBuffer().length}) exceeds bytes fed (${fedSoFar}) on stream ${JSON.stringify(stream)}`,
-					);
-				}
-			}
-			try {
-				buffer.flush();
-			} catch (e) {
-				throw new Error(`flush threw on stream ${JSON.stringify(stream)}: ${e}`);
-			}
-		}
+			},
+		);
 	});
 
 	it("conserves plain (escape-free, marker-free) input byte-for-byte in order", () => {
 		// With no ESC and no paste markers, no escape/paste/kitty-dedup path is
 		// reachable, so every input code unit must be emitted exactly once, in
 		// order: the concatenation of emitted sequences equals the input.
-		const rand = lcg(0x1234_abcd);
 		const plainPool = ["a", "Z", "9", " ", "\n", "\t", "一", "Ａ", "\u{1f600}", "0", ";", "~", "<", ">"];
-		for (let iter = 0; iter < 4000; iter++) {
-			emitted = [];
-			buffer.clear();
-			const n = Math.floor(rand() * 40);
-			let stream = "";
-			for (let i = 0; i < n; i++) stream += plainPool[Math.floor(rand() * plainPool.length)];
-			for (const chunk of chunkify(stream, rand)) buffer.process(chunk);
-			for (const seq of buffer.flush()) emitted.push(seq);
-			const joined = emitted.join("");
-			if (joined !== stream) {
-				throw new Error(`plain conservation failed: fed ${JSON.stringify(stream)} got ${JSON.stringify(joined)}`);
-			}
-		}
+		fuzzStrings(
+			{
+				seed: 0x1234_abcd,
+				iterations: 4000,
+				corpus: PLAIN_STREAM_CORPUS,
+				build: rand => {
+					const n = Math.floor(rand() * 40);
+					let out = "";
+					for (let i = 0; i < n; i++) out += plainPool[Math.floor(rand() * plainPool.length)];
+					return out;
+				},
+			},
+			(stream, rand) => {
+				emitted = [];
+				buffer.clear();
+				for (const chunk of chunkify(stream, rand)) buffer.process(chunk);
+				for (const seq of buffer.flush()) emitted.push(seq);
+				const joined = emitted.join("");
+				if (joined !== stream) {
+					throw new Error(
+						`plain conservation failed: fed ${JSON.stringify(stream)} got ${JSON.stringify(joined)}`,
+					);
+				}
+			},
+		);
 	});
 
 	it("keeps the buffer bounded against a long unterminated OSC payload", () => {

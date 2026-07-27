@@ -13,7 +13,7 @@
 import { describe, it } from "bun:test";
 import { Markdown } from "@veyyon/tui/components/markdown";
 import { Text } from "@veyyon/tui/components/text";
-import { buildString, lcg } from "./helpers/adversarial-strings";
+import { buildString, fuzzSeed, lcg } from "@veyyon/utils/adversarial-strings";
 import { defaultMarkdownTheme } from "./test-themes.js";
 
 // A spread of realistic terminal widths plus a couple of tight ones.
@@ -27,7 +27,7 @@ function shuffledStorm(rand: () => number, length: number): number[] {
 
 describe("resize-storm cache correctness", () => {
 	it("Text: a resized instance renders each width identically to a fresh one", () => {
-		const rand = lcg(0x5e_51_2e_00);
+		const rand = lcg(fuzzSeed(0x5e_51_2e_00));
 		for (let iter = 0; iter < 3000; iter++) {
 			const content = buildString(rand);
 			const resized = new Text(content, 1, 0);
@@ -42,7 +42,7 @@ describe("resize-storm cache correctness", () => {
 	});
 
 	it("Markdown: a resized instance renders each width identically to a fresh one", () => {
-		const rand = lcg(0x5e_51_2e_11);
+		const rand = lcg(fuzzSeed(0x5e_51_2e_11));
 		for (let iter = 0; iter < 2000; iter++) {
 			const content = buildString(rand);
 			const resized = new Markdown(content, 0, 0, defaultMarkdownTheme);
@@ -59,7 +59,7 @@ describe("resize-storm cache correctness", () => {
 	it("Markdown streaming cache: append-then-resize matches a fresh render of the final text", () => {
 		// transientRenderCache freezes a stable prefix as text grows; a width change
 		// mid-stream must not serve a frame wrapped at the old width.
-		const rand = lcg(0x5e_51_2e_22);
+		const rand = lcg(fuzzSeed(0x5e_51_2e_22));
 		for (let iter = 0; iter < 1500; iter++) {
 			const streamed = new Markdown("", 0, 0, defaultMarkdownTheme);
 			streamed.transientRenderCache = true;

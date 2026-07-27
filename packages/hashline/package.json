@@ -39,6 +39,7 @@
   },
   "devDependencies": {
     "@types/bun": "catalog:",
+    "@veyyon/utils": "catalog:",
     "fast-check": "catalog:"
   },
   "engines": {

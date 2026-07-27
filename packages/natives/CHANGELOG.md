@@ -2,7 +2,35 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The searcher has one construction site. `SearcherBuilder` has eleven settings and a caller that forgets one gets the library's default without being told, which is how three engines ended up with three different answers to whether a search computes line numbers: nobody wrote `line_number(false)`, so every content search paid for line numbers whether or not it printed any. The three flag vocabularies stay separate, since GNU `grep`, `rg` and the N-API tools spell the same ideas differently on purpose, and all three now translate into one `SearcherSpec` whose defaults are asserted field by field against the library's own.
+
+- The compiled pattern has one owner. The N-API `grep`/`search` tools, the `grep` shell builtin and the `rg` shell builtin had each declared their own `enum CompiledMatcher { Rust(..), Pcre(..) }` and their own copy of the PCRE2 `utf`/`ucp`/`jit` defaults. All three now use `veyyon-grep-kernel`, a plain library crate so the type can be tested and fuzzed at all, which the cdylib addon cannot be. The defaults matter more than the enum: `utf` and `ucp` decide whether `\w` means a word character or an ASCII word character, so two engines that set them differently return different results for the same pattern and neither reports a problem. A differential suite runs 44 pattern/haystack pairs through both engines and asserts the full match offsets agree, since a pattern that the Rust engine rejects falls back to PCRE2 without telling the caller.
+
 ### Fixed
+
+- Two shell-builtin search modes reported the wrong answer to a script. `grep -L` and `rg --files-without-match` list the files that did NOT match, so a file that matches produces no output, and both exited 0 for it anyway: success, for a run whose entire output was empty. `if grep -L pattern file; then` is how a script asks the question, and it was getting the opposite boolean. Both now exit 1 when nothing is listed and 0 when something is, which is what GNU grep and ripgrep do. Separately, `rg -q` printed a line: before-context lines are written ahead of the match that selects them, and quiet was missing from the suppression predicate, so `rg -q -C1` wrote one line before stopping. A mode whose whole contract is to print nothing now prints nothing.
+
+- The fresh-HOME cost gate no longer counts Bun's own install cache. It weighed the whole redirected `HOME`, and `$HOME/.bun` is 4.1 MB on a first run because the case points `HOME` at a `bun` process, so the gate failed at 4.4 MB on a clean checkout while reporting that the native addon was being staged. The remedy it named did not work, which is worse than a plain failure. The walk skips `$HOME/.bun` and weighs everything else, including the `$HOME/.veyyon/natives/` a staged addon lands in; veyyon's own first-run footprint measures 644 KB, the bound is 2 MB, and the failure message prints the ten heaviest files so the two causes are distinguishable.
+- Text that follows a stray escape introducer is drawn again. The ANSI scanner behind
+  `visibleWidth`, `wrapTextWithAnsi`, `truncateToWidth`, `sliceWithWidth` and `extractSegments`
+  answered a `CSI` by searching the rest of the line for anything that looked like a terminator, so a
+  single `ESC [` left in a program's output made every character up to the next punctuation mark
+  measure as zero cells: the text was in the buffer and rendered as nothing. Every branch now follows
+  the ECMA-48 grammar and stops at the first byte the grammar does not allow.
+
+- A truncated line no longer prints a stray `0m` and loses its colour reset. When the line was cut
+  just after an escape the scanner could not classify, the introducer stayed in the output and
+  swallowed the `ESC [ 0 m` that truncation appends, leaving the reset's own characters behind as
+  text and letting the colour run into the next row. Escapes that begin no valid sequence are now
+  removed once, before measuring or copying, which is what a terminal does with them.
+
+- An overlay drawn over wide text lands in the column it was asked for. `extractSegments` included a
+  grapheme that merely started before the overlay column, so a tab or a two-cell character straddling
+  that column pushed the overlay to the right and cost a cell of the text after it. A grapheme now has
+  to end at or before the column to be part of the segment before it, and the caller pads the gap, the
+  same answer strict slicing already gave.
 
 - Fixed the in-process `rm` builtin treating an empty path operand as the shell working directory, so `rm -rf ""` recursively deleted the current directory instead of rejecting the operand. An empty operand reached `veyyon_uutils_ctx::resolve`, which joins `""` onto the cwd and yields the cwd itself; the builtin now rejects empty operands before resolution, matching GNU `rm` (ENOENT, silent under `-f`) and leaving the cwd untouched (Closes #51).
 

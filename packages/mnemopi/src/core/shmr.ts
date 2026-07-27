@@ -32,7 +32,11 @@ export const SHMR_MIN_CLUSTER_SIZE = envInt("MNEMOPI_SHMR_MIN_CLUSTER_SIZE", 2);
  */
 const HASH_EMBEDDING_DIM = 384;
 
-export type Vector = Float32Array;
+// Same as `core/embeddings.ts`: the dense `Float32Array` this module builds, defined once
+// in `../types` and re-exported under the name this module has always used.
+import type { DenseVector as Vector } from "../types";
+
+export type { DenseVector as Vector } from "../types";
 export interface ShmrItem {
 	readonly fact_id?: string;
 	readonly subject?: string;

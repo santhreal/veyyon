@@ -8,11 +8,16 @@ import {
 	wrapTextWithAnsi as nativeWrapTextWithAnsi,
 	type SliceResult,
 } from "@veyyon/natives";
-import { clamp, collapseWhitespace, DEFAULT_TAB_WIDTH } from "@veyyon/utils";
+import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
+import { clamp } from "@veyyon/utils/math";
+import { DEFAULT_TAB_WIDTH } from "@veyyon/utils/tab-spacing";
 
 export { Ellipsis } from "@veyyon/natives";
 
-export { clamp, clampLow, DEFAULT_TAB_WIDTH } from "@veyyon/utils";
+export { clamp, clampLow } from "@veyyon/utils/math";
+export { DEFAULT_TAB_WIDTH } from "@veyyon/utils/tab-spacing";
+
+import { ESC, OSC, OSC66 } from "./ansi";
 
 export type HangulCompatibilityJamoWidth = "platform" | "unicode" | 1 | 2;
 
@@ -279,9 +284,6 @@ export function getSegmenter(): Intl.Segmenter {
 // cells, but the payload is visible and scales by the `s=` factor, so each is
 // added back so width matches the native truncate/slice/wrap helpers.
 const OSC66_SPAN_REGEX = /\x1b\]66;([^;]*);([\s\S]*?)(?:\x07|\x1b\\)/g;
-const OSC66_PREFIX = "\x1b]66;";
-const ESC = "\x1b";
-const OSC_INTRODUCER = "\x1b]";
 
 /**
  * One OSC sequence: `ESC ] <ps> ; <payload>` up to its terminator, which is
@@ -420,14 +422,14 @@ export function visibleWidth(str: string): number {
 	// Strip OSC sequences before measuring: they draw nothing, and an OSC 8
 	// hyperlink measured at its escape length rather than its label length is
 	// what pushed Markdown table columns out of place (upstream #6282).
-	const strippedStr = str.includes(OSC_INTRODUCER) ? str.replace(OSC_SEQUENCE_REGEX, "") : str;
+	const strippedStr = str.includes(OSC) ? str.replace(OSC_SEQUENCE_REGEX, "") : str;
 	let width = Bun.stringWidth(strippedStr, STRING_WIDTH_OPTS);
 
 	if (tabCount > 0) width += tabCount * DEFAULT_TAB_WIDTH;
 
 	// OSC 66: add back each stripped span as `scale * (explicit w ?? payload
 	// width)`. Matched rather than replaced to avoid reallocating the string.
-	if (str.includes(OSC66_PREFIX, i)) {
+	if (str.includes(OSC66, i)) {
 		OSC66_SPAN_REGEX.lastIndex = 0;
 		for (let m = OSC66_SPAN_REGEX.exec(str); m !== null; m = OSC66_SPAN_REGEX.exec(str)) {
 			let scale = 1;

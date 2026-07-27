@@ -1,4 +1,4 @@
-import { popLoopPhase, pushLoopPhase } from "@veyyon/utils";
+import { popLoopPhase, pushLoopPhase } from "@veyyon/utils/loop-phase";
 import { fuzzyFilter, matchPositions } from "../fuzzy";
 import { getKeybindings } from "../keybindings";
 import { extractPrintableText } from "../keys";

@@ -42,7 +42,7 @@ class Composer implements Component, Focusable {
 	setUseTerminalCursor(): void {}
 	handleInput(): void {}
 	render(): readonly string[] {
-		return [">" + CURSOR_MARKER];
+		return [`>${CURSOR_MARKER}`];
 	}
 }
 

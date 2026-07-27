@@ -52,6 +52,8 @@ async function listFiles(rootDir: string, subPath = ""): Promise<string[]> {
 		} else if (entry.isFile()) {
 			files.push(relativePath);
 		} else if (entry.isSymbolicLink()) {
+			// A dangling symlink cannot be stat'd, and that IS the answer here: it does not point at a file, so
+			// it is not one of the fixture's files. `null` therefore means "skip", not "something went wrong".
 			const stats = await fs.stat(absolutePath).catch(() => null);
 			if (stats?.isFile()) {
 				files.push(relativePath);
@@ -79,6 +81,9 @@ export async function loadTasksFromDir(fixturesDir: string): Promise<EditTask[]>
 			throw new Error(`Missing prompt.md for ${entry.name}`);
 		}
 
+		// Both stats fail CLOSED on the very next line: an unstattable path cannot be a directory, so the
+		// fixture is rejected by name whatever the reason was. Reporting the stat error instead would say
+		// `ENOENT` where "Missing input directory for <fixture>" is the sentence the operator needs.
 		const inputDirStat = await fs.stat(inputDir).catch(() => null);
 		if (!inputDirStat?.isDirectory()) {
 			throw new Error(`Missing input directory for ${entry.name}`);
@@ -132,6 +137,9 @@ export async function validateFixturesFromDir(fixturesPath: string): Promise<Fix
 			issues.push({ taskId, message: "prompt.md is empty" });
 		}
 
+		// The same fail-closed pair as `loadTasksFromDir`, reporting into the issue list rather than throwing:
+		// an unstattable path cannot be a directory, and the recorded issue names the fixture and what is
+		// missing, which is what a validation report is for.
 		const inputDirStat = await fs.stat(inputDir).catch(() => null);
 		if (!inputDirStat?.isDirectory()) {
 			issues.push({ taskId, message: "input directory is missing" });

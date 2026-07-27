@@ -17,7 +17,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { Markdown } from "@veyyon/tui/components/markdown";
-import { buildString, FRAGMENTS, lcg } from "./helpers/adversarial-strings";
+import { buildString, FRAGMENTS, fuzzStrings } from "@veyyon/utils/adversarial-strings";
 import { defaultMarkdownTheme } from "./test-themes.js";
 
 // Markdown-flavored structural tokens layered on the generic fragment pool.
@@ -67,32 +67,52 @@ function buildMarkdown(rand: () => number): string {
 const render = (src: string, width = 80): readonly string[] =>
 	new Markdown(src, 0, 0, defaultMarkdownTheme).render(width);
 
+/**
+ * Sources that broke the renderer before, replayed first on every run and under every seed.
+ *
+ * Empty is the honest state. Add the string a failure's `corpus entry:` line prints, with a comment
+ * naming the bug it locks out; see `docs/internal/fuzzing.md`.
+ */
+const MARKDOWN_CORPUS: readonly string[] = [];
+
+/** Same, for the prose-with-fragments shape. See {@link MARKDOWN_CORPUS}. */
+const SPLICED_PROSE_CORPUS: readonly string[] = [];
+
 describe("markdown fuzz invariants", () => {
 	// 30s timeouts on the fuzz/deep-nesting loops: on a saturated gate machine
 	// (parallel=4 full run) wall-clock triples vs isolated and races bun's 5s default.
 	it("render never throws on adversarial input", () => {
-		const rand = lcg(0x4d_d0_11_00);
-		for (let iter = 0; iter < 8000; iter++) {
-			const s = buildMarkdown(rand);
-			try {
-				const lines = render(s, 40 + Math.floor(rand() * 80));
-				expect(Array.isArray(lines)).toBe(true);
-			} catch (e) {
-				throw new Error(`render(${JSON.stringify(s)}) threw: ${e}`);
-			}
-		}
+		fuzzStrings(
+			{ seed: 0x4d_d0_11_00, iterations: 8000, corpus: MARKDOWN_CORPUS, build: buildMarkdown },
+			(s, rand) => {
+				try {
+					const lines = render(s, 40 + Math.floor(rand() * 80));
+					expect(Array.isArray(lines)).toBe(true);
+				} catch (e) {
+					throw new Error(`render(${JSON.stringify(s)}) threw: ${e}`);
+				}
+			},
+		);
 	}, 30_000);
 
 	it("render never throws when the payload is prose spliced with adversarial fragments", () => {
-		const rand = lcg(0x9e_37_79_b9);
-		for (let iter = 0; iter < 4000; iter++) {
-			const s = `# Heading ${buildString(rand)}\n\n> ${buildMarkdown(rand)}\n\n- ${buildString(rand)}`;
-			try {
-				render(s);
-			} catch (e) {
-				throw new Error(`render(${JSON.stringify(s)}) threw: ${e}`);
-			}
-		}
+		fuzzStrings(
+			{
+				seed: 0x9e_37_79_b9,
+				iterations: 4000,
+				corpus: SPLICED_PROSE_CORPUS,
+				// The shape a model's answer actually has: real block structure with adversarial
+				// fragments inside it, rather than fragments alone.
+				build: rand => `# Heading ${buildString(rand)}\n\n> ${buildMarkdown(rand)}\n\n- ${buildString(rand)}`,
+			},
+			s => {
+				try {
+					render(s);
+				} catch (e) {
+					throw new Error(`render(${JSON.stringify(s)}) threw: ${e}`);
+				}
+			},
+		);
 	}, 30_000);
 });
 

@@ -1123,39 +1123,128 @@ export function lazyNativeClass(name) {
 	);
 }
 
+/**
+ * Why a candidate `.node` did not load, which decides whether trying the next one is honest.
+ *
+ * The distinction is the whole point. A path that does not exist is EXPECTED on most candidates: the
+ * loader probes several locations on purpose, and `resolveLoaderCandidates` documents the source-tree
+ * cache path as a deliberate trailing fallback for a synced tree whose gitignored `native/*.node` is
+ * missing. A file that EXISTS and fails to load is a different thing entirely: something is wrong with
+ * the binary in front of us, and quietly loading a different one is how "my rebuild had no effect"
+ * happens with nothing in the log to explain it.
+ *
+ * @param {unknown} error
+ * @returns {"absent" | "broken"}
+ */
+export function classifyCandidateFailure(error) {
+	const code = /** @type {{ code?: unknown }} */ (error)?.code;
+	if (code === "MODULE_NOT_FOUND" || code === "ENOENT") return "absent";
+	return "broken";
+}
+
+/**
+ * The message printed when a present addon is skipped, kept next to the classification so the text and
+ * the rule cannot drift.
+ *
+ * @param {{ candidate: string; reason: string }} skipped
+ */
+export function brokenAddonSkippedMessage({ candidate, reason }) {
+	return (
+		`[veyyon] warning: the native addon at ${candidate} exists but could not be loaded, ` +
+		`so the loader is trying another copy. This is how a stale binary silently wins: ` +
+		`if you just rebuilt, that rebuild is NOT what is running.\n  reason: ${reason}\n`
+	);
+}
+
+/**
+ * Load the first candidate that both loads AND validates, or report why none did.
+ *
+ * FAIL CLOSED ON A REJECTED ADDON, which is the rule this function exists to state. `validate` runs
+ * OUTSIDE the try on purpose: it is what refuses an addon built for a different release, and its throw
+ * must reach the caller rather than being caught and turned into "try the next path". It used to sit
+ * inside the loop's single catch, so a sentinel mismatch on the in-tree build silently fell through to
+ * whatever the per-version cache happened to hold. The check was written to fail closed and the loop
+ * quietly converted it into a fallback, which is the Law 10 shape aimed at developers: the addon that
+ * loaded was not the addon that was built, and the only clue was a startup marker naming a path
+ * nobody reads.
+ *
+ * Effects are injected so the decision is testable without a real `dlopen`: this is the exact gate a
+ * "my native change did nothing" investigation lands on.
+ *
+ * @param {{
+ *   candidates: string[];
+ *   requireAddon: (candidate: string) => Record<string, unknown>;
+ *   validate: (bindings: Record<string, unknown>, candidate: string) => void;
+ *   onBrokenAddon?: (skipped: { candidate: string; reason: string }) => void;
+ *   initialErrors?: string[];
+ * }} input
+ * @returns {{ bindings?: Record<string, unknown>; candidate?: string; errors: string[] }}
+ */
+export function loadFirstUsableAddon({ candidates, requireAddon, validate, onBrokenAddon, initialErrors = [] }) {
+	const errors = [...initialErrors];
+	for (const candidate of candidates) {
+		/** @type {Record<string, unknown>} */
+		let bindings;
+		try {
+			bindings = requireAddon(candidate);
+		} catch (err) {
+			const reason = err instanceof Error ? err.message : String(err);
+			errors.push(`${candidate}: ${reason}`);
+			// A present-but-unloadable addon is announced. Continuing is still right (a corrupt file
+			// must not brick a boot when a good copy exists) but it can never be silent.
+			if (classifyCandidateFailure(err) === "broken") onBrokenAddon?.({ candidate, reason });
+			continue;
+		}
+		validate(bindings, candidate);
+		return { bindings, candidate, errors };
+	}
+	return { errors };
+}
+
 export function loadNative() {
 	startupMarker("native:loadNative:start");
 	const ctx = initLoaderContext();
 	const require_ = createRequire(import.meta.url);
 
-	const errors = [];
-	const embeddedCandidate = maybeExtractEmbeddedAddon(ctx, errors);
-	const stagedCandidate = embeddedCandidate ? null : maybeStageNodeModulesAddon(ctx, errors);
+	const setupErrors = [];
+	const embeddedCandidate = maybeExtractEmbeddedAddon(ctx, setupErrors);
+	const stagedCandidate = embeddedCandidate ? null : maybeStageNodeModulesAddon(ctx, setupErrors);
 	const prepended = [embeddedCandidate, stagedCandidate].filter(c => typeof c === "string");
 	const runtimeCandidates = prepended.length > 0 ? [...prepended, ...ctx.candidates] : ctx.candidates;
 
-	for (const candidate of runtimeCandidates) {
-		try {
-			startupMarker(`native:require:${path.basename(candidate)}`);
-			const bindings = require_(candidate);
-			validateLoadedBindings(ctx, bindings, candidate);
-			installNativeTokioRuntime(bindings);
-	        {
-				const pruned = cleanupStaleNativeVersions({ nativesDir: ctx.nativesDir, currentVersion: ctx.packageVersion });
-				if (pruned.removed.length > 0) startupMarker(`native:cleanupStaleVersions:removed:${pruned.removed.length}`);
-				// A cache that cannot be removed never comes back on its own, and the
-				// user is the only one who can fix it. Saying nothing is how ~150MB per
-				// past version went missing without a word.
-				for (const failure of pruned.failed) {
-					console.error(`veyyon natives: could not remove the stale addon cache at ${failure.dir}: ${failure.reason}`);
-				}
+	const { bindings, errors } = loadFirstUsableAddon({
+		candidates: runtimeCandidates,
+		initialErrors: setupErrors,
+		requireAddon: candidate => {
+			// The RESOLVED path, not the basename. The extracted cache copy under
+			// ~/.veyyon/natives/<version>/ and a fresh in-tree build have the same file name, so a
+			// basename marker read identically for both and a developer chasing "my rebuild had no
+			// effect" had nothing to go on. Answering "which binary am I actually running" has to
+			// take one line.
+			startupMarker(`native:require:${path.resolve(candidate)}`);
+			return require_(candidate);
+		},
+		validate: (loaded, candidate) => validateLoadedBindings(ctx, loaded, candidate),
+		onBrokenAddon: skipped => {
+			startupMarker(`native:skippedBrokenAddon:${path.resolve(skipped.candidate)}`);
+			try {
+				fs.writeSync(2, brokenAddonSkippedMessage(skipped));
+			} catch {
+				// stderr unavailable; the warning is best-effort but must never break the load.
 			}
-			startupMarker("native:loadNative:done");
-			return bindings;
-		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
-			errors.push(`${candidate}: ${message}`);
+		},
+	});
+	if (bindings !== undefined) {
+		installNativeTokioRuntime(bindings);
+		const pruned = cleanupStaleNativeVersions({ nativesDir: ctx.nativesDir, currentVersion: ctx.packageVersion });
+		if (pruned.removed.length > 0) startupMarker(`native:cleanupStaleVersions:removed:${pruned.removed.length}`);
+		// A cache that cannot be removed never comes back on its own, and the user is the only one who
+		// can fix it. Saying nothing is how ~150MB per past version went missing without a word.
+		for (const failure of pruned.failed) {
+			console.error(`veyyon natives: could not remove the stale addon cache at ${failure.dir}: ${failure.reason}`);
 		}
+		startupMarker("native:loadNative:done");
+		return bindings;
 	}
 
 	if (!SUPPORTED_PLATFORMS.includes(ctx.platformTag)) {

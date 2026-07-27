@@ -10,6 +10,21 @@ import type { Database } from "bun:sqlite";
  * broken or closed handle, and reporting that as "table missing" would silently
  * disable whole features (a scan path skipped, a rebuild never run).
  */
+/**
+ * SQLite expression for the current time as whole seconds since the Unix epoch, for use inside a SQL string.
+ *
+ * Not a bound parameter: it evaluates in the database, so an `INSERT ... DEFAULT` and an `UPDATE ... SET`
+ * in the same statement agree on one timestamp and no clock is read in JavaScript.
+ *
+ * SECONDS, not milliseconds, and that is the whole reason this has one home. Three modules across two
+ * packages each carried their own copy of this exact string and each writes a column another module reads:
+ * `auth_credentials.updated_at`, `model_perf.updated_at`, the history tables. A copy edited to `'%s'` in
+ * milliseconds, or to `strftime('%J')`, would put values a thousand times out of range into one table while
+ * the readers kept interpreting them as seconds, and nothing would throw. Everything comparing those
+ * columns, expiry checks and ranking windows included, would quietly be wrong.
+ */
+export const SQLITE_NOW_EPOCH = "CAST(strftime('%s','now') AS INTEGER)";
+
 export function tableExists(db: Database, table: string): boolean {
 	return (
 		db.query("SELECT 1 FROM sqlite_master WHERE type IN ('table','view') AND name = ? LIMIT 1").get(table) !== null

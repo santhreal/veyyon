@@ -2,16 +2,15 @@
  * Proxy stream function for apps that route LLM calls through a server.
  * The server manages auth and proxies requests to LLM providers.
  */
-import {
-	type AssistantMessage,
-	type AssistantMessageEvent,
-	type Context,
-	EventStream,
-	type FetchImpl,
-	type Model,
-	type SimpleStreamOptions,
-	type StopReason,
-	type ToolCall,
+import type {
+	AssistantMessage,
+	AssistantMessageEvent,
+	Context,
+	FetchImpl,
+	Model,
+	SimpleStreamOptions,
+	StopReason,
+	ToolCall,
 } from "@veyyon/ai";
 import {
 	clearStreamingPartialJson,
@@ -19,6 +18,11 @@ import {
 	type StreamingPartialJsonCarrier,
 	setStreamingPartialJson,
 } from "@veyyon/ai/utils/block-symbols";
+// The owner, not the barrel: `EventStream` was the ONE runtime name this file took
+// from `@veyyon/ai`, and taking it from there cost 264 modules of streaming engine,
+// provider registry and model catalogue for a 42-module class. Everything else above
+// is a type, and type imports are erased.
+import { EventStream } from "@veyyon/ai/utils/event-stream";
 import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
 import { errorMessage, parseStreamingJson, readSseJson } from "@veyyon/utils";
 
@@ -110,6 +114,9 @@ export function streamProxy(model: Model, context: Context, options: ProxyStream
 		const abortHandler = () => {
 			const body = response?.body;
 			if (body) {
+				// The user aborted, so there is no caller left to tell. A stream that refuses to cancel -- most
+				// often because it has already ended -- changes nothing about the abort that is in progress, and
+				// the abort's own error is what surfaces to the caller.
 				body.cancel("Request aborted by user").catch(() => {});
 			}
 		};

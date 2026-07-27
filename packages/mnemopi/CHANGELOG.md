@@ -4,6 +4,71 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A memory recorded as `false` now stays out of recall results. `Veracity` was declared five
+  times in this package with different value sets, and the narrowest of them validated writes:
+  `clampVeracity("false")` returned `"unknown"`, so a fact something had checked and rejected
+  was rewritten to unlabelled on the way in and scored 0.8 instead of 0 on the way out, which
+  is most of the way to being retrieved normally. The same clamp demoted `true` and
+  `likely_true` from 1.0 to 0.8, `aggregateVeracity(["true", "true"])` returned `"unknown"`
+  because the guard filtered both inputs out before counting them, and each of those printed a
+  warning about a value this package writes itself. `remember()` had a sixth private table that
+  omitted `likely_true` and clamped it away with no warning at all. The vocabulary now lives in
+  `core/veracity.ts` and is derived from the weight table, so a value cannot exist without a
+  weight, and the read path indexes that table instead of falling through
+  `?? VERACITY_WEIGHTS.unknown ?? 0.8`. The five weights that were already live are unchanged,
+  so an existing store is not re-ranked.
+- `contested` is gone from the veracity vocabulary. It was a member of the nine-value union in
+  `core/beam/types.ts` and appeared nowhere else: nothing wrote it, no table weighted it, and it
+  reached recall's fallback chain and scored exactly like an unlabelled memory.
+- The `onnxruntime-node` peer pin is back to the version `fastembed` actually links against. It read `1.26.0` while `fastembed@2.1.0` declares an exact `onnxruntime-node: 1.21.0`, so a consumer that installed what the manifest asked for provided an ORT the native addon does not link, which shows up as a load failure at the first embed rather than as an install error. The pin is `1.21.0` again, and the test that guards the pairing now reads fastembed's own declared dependency instead of a hardcoded number, so the next fastembed bump either agrees or fails the check.
+
+### Changed
+
+- Remembering something no longer loads a model provider. The memory LLM client answered two questions in one module: whether an LLM is configured and how to build a prompt, which is configuration and text, and how to send that prompt, which is a round trip through the streaming engine. Fact extraction asks the first kind on every path and the memory engine sits behind extraction, so a provider was on the graph of every module that can remember something. The configuration half is now `core/local-llm-config.ts` and extraction loads the calling half only when it actually calls a model. `core/extraction.ts` went from 307 modules to 89, `core/beam/index.ts` from 341 to 144, and the MCP server from 406 to 148. A failed load rejects and is recorded like any provider error, so nothing degrades quietly.
+
+- Two modules stopped importing far more than they use. `diagnose.ts` runs schema and integrity checks and took `initBeam` from the memory-engine barrel, 402 modules for a helper declared in `core/beam/schema.ts` that reaches one; it went from 403 modules to 92. `core/local-llm.ts` split its mixed `@veyyon/ai` clause into a type-only import plus the three modules that declare the functions it calls, going from 369 to 306 and taking `core/extraction.ts` from 370 to 307 with it.
+
+- The embedding client and the extraction client name the modules that declare what they use, `@veyyon/ai/auth-retry` for the retry wrapper and `@veyyon/ai/utils/openrouter-headers` for the header builder, instead of the `@veyyon/ai` entry point. Two small helpers were carrying the whole streaming engine, and because this package's modules import each other the cost landed everywhere: `embeddings.ts` went from 369 modules to 110, `extraction/client.ts` from 367 to 105, and recall, the orchestrator and shmr from the high 300s to 124, 125 and 114.
+
+- The OpenRouter base URL is trimmed with `trimTrailingSlashes` from `@veyyon/utils`, which this file already imported and then hand-rolled a line later.
+
+- The OpenRouter host is read from `@veyyon/catalog/provider-endpoints`. It was declared three times in this package: as `DEFAULT_EMBEDDING_API_URL` in `config.ts`, again inline as the last term of the env-var chain in `core/embeddings.ts`, and as `OPENROUTER_BASE_URL` in `core/extraction/client.ts`. `config.ts` re-exports its published name from the owner.
+
+- `core/banks.ts` reads the database filename from `config.ts`, which already exported it, instead of declaring a second copy. Two code paths opening different files is not something a filename typo announces.
+
+- A veracity read back out of the database is typed `StoredVeracity` (any string) rather than
+  the closed `Veracity`. The column is `TEXT` with no CHECK constraint, so a row from an older
+  version or an imported store can hold anything, and the old type said otherwise while ending
+  in `| string`, which collapsed the union to `string` and checked nothing. Values handed IN are
+  the closed vocabulary and are clamped at the facade and MCP boundaries.
+
+- The `memory_remember` and shared-memory MCP tools declare the eight veracity values as an
+  `enum` with a generated description. The schema said only "Confidence label" and named no
+  values, so a model guessed a word and the guess was clamped to `unknown`, costing the memory
+  its weight.
+
+- `Vector` means one thing again. It was declared four times inside this package with three different meanings: the wide `Float32Array | readonly number[]` in `types.ts`, a dense `Float32Array` in both `core/embeddings.ts` and `core/shmr.ts`, and a plain `number[]` in `core/beam/helpers.ts`. Which one you got depended on which module you imported from, and the wide one accepts plain arrays in places that then require the dense one. `types.ts` now declares both `Vector`, what you may hand to this package, and `DenseVector`, what it produces; the two modules that meant the dense one re-export it under the name they always used, so nothing they publish changes.
+
+- `JsonValue`, `JsonPrimitive` and `Metadata` are declared once. This package declared JSON three times, in `src/types.ts`, `src/core/beam/types.ts` and `src/mcp-tools.ts`, and `Metadata` twice; every copy was the same type, which is what made them easy to keep adding and impossible to notice. The two type modules now re-export from `src/types.ts`, which takes JSON from `@veyyon/utils`, so every existing import path still works. `JsonScalar` stays as an alias of `JsonPrimitive` because it is exported from a published package; `JsonPrimitive` is the spelling new code should use.
+
+### Removed
+
+- Removed the local-GGUF LLM tier, which had no implementation behind it. `callLocalLlm` was a
+  one-line `return null` with a `_prompt` it did not read, and `localGgufAvailable` was declared
+  `(): false`, so its return type said it could never be anything else. Nothing in the package
+  loaded a GGUF model, and the README has said local GGUF is unavailable since 1.0.0. Fact
+  extraction still ran the tier around those stubs: every extraction that reached it recorded an
+  attempt, called the stub, and wrote a `model_not_loaded` failure into the diagnostics before
+  falling through to the pattern extractor that was always going to do the work. Reading those
+  diagnostics, an operator saw a missing model where nothing had ever tried to load one, which is a
+  cause that cannot be acted on. The tier is gone, the diagnostics now report only the tiers that
+  exist, and the `local` tier means the pattern extractor. `MNEMOPI_FORCE_LOCAL` keeps its spelling
+  and its effect, suppressing the remote backend, since renaming it would silently re-enable network
+  calls for anyone who had set it; it never selected a local backend.
+- Removed three directory barrels that nothing imported, `src/core/migrations/index.ts`, `src/dr/index.ts` and `src/migrations/index.ts`, together with the whole `src/migrations/` directory. Both files in it only re-exported `src/core/migrations/e6-triplestore-split.ts`, so the migration's public surface was declared in three places at once and none of them was the one callers used. Import the module directly: `@veyyon/mnemopi/core/migrations/e6-triplestore-split` for the triplestore-split migration and `@veyyon/mnemopi/dr/recovery` for disaster recovery, which is what the tests and `core/beam` already did. The removed subpaths (`@veyyon/mnemopi/dr/index`, `@veyyon/mnemopi/migrations/*`, `@veyyon/mnemopi/core/migrations/index`) resolved through the wildcard export rather than a declared entry.
+
 ## [16.3.9] - 2026-07-06
 
 ### Fixed

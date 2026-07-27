@@ -15,6 +15,7 @@
  *
  * The relay never sees plaintext: payloads stay sealed end to end.
  */
+import { RELAY_FATAL_CLOSE_REASONS } from "@veyyon/wire/relay";
 import { rewriteEnvelopePeer, unpackEnvelope } from "../src/lib/link";
 
 const ROOM_PATH_RE = /^\/r\/([A-Za-z0-9_-]{10,64})$/;
@@ -64,7 +65,7 @@ export function startLocalRelay(port = 0): LocalRelay {
 				const { roomId, role } = ws.data;
 				if (role === "host") {
 					if (rooms.has(roomId)) {
-						ws.close(4009, "a host is already connected for this room");
+						ws.close(4009, RELAY_FATAL_CLOSE_REASONS[4009] as string);
 						return;
 					}
 					rooms.set(roomId, { host: ws, guests: new Map(), nextPeerId: 1 });
@@ -72,7 +73,7 @@ export function startLocalRelay(port = 0): LocalRelay {
 				}
 				const room = rooms.get(roomId);
 				if (!room) {
-					ws.close(4004, "no such room");
+					ws.close(4004, RELAY_FATAL_CLOSE_REASONS[4004] as string);
 					return;
 				}
 				const peerId = room.nextPeerId++;
@@ -109,7 +110,7 @@ export function startLocalRelay(port = 0): LocalRelay {
 					const closure = JSON.stringify({ t: "room-closed" });
 					for (const guest of room.guests.values()) {
 						guest.send(closure);
-						guest.close(4001, "room closed");
+						guest.close(4001, RELAY_FATAL_CLOSE_REASONS[4001] as string);
 					}
 					room.guests.clear();
 					return;
@@ -128,7 +129,7 @@ export function startLocalRelay(port = 0): LocalRelay {
 				const closure = JSON.stringify({ t: "room-closed" });
 				for (const guest of room.guests.values()) {
 					guest.send(closure);
-					guest.close(4001, "room closed");
+					guest.close(4001, RELAY_FATAL_CLOSE_REASONS[4001] as string);
 				}
 				room.host.close(1001, "relay shutting down");
 			}

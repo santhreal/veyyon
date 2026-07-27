@@ -115,6 +115,10 @@ export async function requestRemoteCompaction(
 		});
 
 		if (!response.ok) {
+			// The STATUS is the failure being reported, and the body is extra context for it. A body that
+			// cannot be read (already consumed, connection dropped mid-read) must not replace an HTTP 500 with
+			// a read error, so it degrades to empty -- and the warning below still names the endpoint and the
+			// status, so nothing about the failure is lost, only the detail that was never readable.
 			const errorText = await response.text().catch(() => "");
 			logger.warn("Remote summarizer failed", {
 				endpoint,

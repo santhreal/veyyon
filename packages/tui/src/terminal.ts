@@ -1,15 +1,10 @@
 import { dlopen, FFIType, ptr } from "bun:ffi";
 import * as fs from "node:fs";
-import {
-	$env,
-	errorMessage,
-	isBunTestRuntime,
-	isTerminalHeadless,
-	logger,
-	postmortem,
-	restoreTerminalStderr,
-	suppressTerminalStderr,
-} from "@veyyon/utils";
+import { $env, isBunTestRuntime, isTerminalHeadless } from "@veyyon/utils/env";
+import * as logger from "@veyyon/utils/logger";
+import * as postmortem from "@veyyon/utils/postmortem";
+import { restoreTerminalStderr, suppressTerminalStderr } from "@veyyon/utils/stderr-guard";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import { setKittyProtocolActive } from "./keys";
 import { OSC11_RESET_BACKGROUND_SEQUENCE, osc11SetBackgroundSequence, oscChannelTo8Bit } from "./paint-ground";
 import { StdinBuffer } from "./stdin-buffer";

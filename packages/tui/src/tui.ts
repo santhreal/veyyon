@@ -17,7 +17,11 @@
  */
 import * as fs from "node:fs";
 import { performance } from "node:perf_hooks";
-import { $flag, errorMessage, getDebugLogPath, logger } from "@veyyon/utils";
+import { getDebugLogPath } from "@veyyon/utils/dirs";
+import { $flag } from "@veyyon/utils/env";
+import * as logger from "@veyyon/utils/logger";
+import { errorMessage } from "@veyyon/utils/type-guards";
+import { SGR_RESET } from "./ansi";
 import { DEFAULT_MAX_INLINE_IMAGES, ImageBudget } from "./components/image";
 import { planDeccaraFills } from "./deccara";
 import { isKeyRelease, matchesKey } from "./keys";
@@ -45,7 +49,6 @@ import {
 	visibleWidth,
 } from "./utils";
 
-const SEGMENT_RESET = "\x1b[0m";
 /**
  * Per-line terminator written after every non-image content row. It closes both
  * SGR state and any in-flight OSC 8 hyperlink so styles/links cannot bleed
@@ -2991,7 +2994,7 @@ export class TUI extends Container {
 		const afterPad = Math.max(0, afterTarget - base.afterWidth);
 
 		// Compose result
-		const r = SEGMENT_RESET;
+		const r = SGR_RESET;
 		const result =
 			base.before +
 			" ".repeat(beforePad) +
@@ -3094,7 +3097,7 @@ export class TUI extends Container {
 	#terminalLine(line: string): string {
 		if (TERMINAL.isImageLine(line)) return line;
 		const coalesced = coalesceAdjacentSgr(line);
-		return coalesced + (line.includes("\x1b]8;") ? LINE_TERMINATOR : SEGMENT_RESET);
+		return coalesced + (line.includes("\x1b]8;") ? LINE_TERMINATOR : SGR_RESET);
 	}
 
 	/**
@@ -3707,7 +3710,7 @@ export class TUI extends Container {
 			i = next;
 		}
 
-		return output + SEGMENT_RESET;
+		return output + SGR_RESET;
 	}
 
 	#ansiSequenceEnd(line: string, start: number): number {
@@ -3812,7 +3815,7 @@ export class TUI extends Container {
 		// history baked into the committed row. Erase the line first instead
 		// (rewrites always start at column 1, so EL-to-end clears the whole
 		// row); the leading reset keeps BCE on the default background.
-		return SEGMENT_RESET + ERASE_TO_END_OF_LINE + terminalLine;
+		return SGR_RESET + ERASE_TO_END_OF_LINE + terminalLine;
 	}
 
 	/**

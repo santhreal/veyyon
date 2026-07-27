@@ -163,3 +163,40 @@ export function staleAddonMessage(stale: StaleAddon, version: string): string;
 
 /** `owner/repo` for a package.json `repository.url`; fails closed to `santhreal/veyyon` when missing or unparseable. */
 export function repoSlugFromRepositoryUrl(raw: string | null | undefined): string;
+
+/**
+ * Whether a candidate failed because it is not there or because it is broken.
+ *
+ * `absent` is an ordinary probe result and the loop moves on quietly; `broken`
+ * means a file exists where the addon should be and cannot be loaded, which is
+ * announced. The two used to be indistinguishable, which is how a corrupt binary
+ * read as "not installed".
+ */
+export function classifyCandidateFailure(error: unknown): "absent" | "broken";
+
+/** The warning printed when a present addon is skipped, kept beside the classification. */
+export function brokenAddonSkippedMessage(skipped: { candidate: string; reason: string }): string;
+
+/**
+ * Load the first candidate that both loads AND validates, or report why none did.
+ *
+ * `validate` runs OUTSIDE the try on purpose: it is what refuses an addon built
+ * for another release, and its throw must reach the caller instead of becoming
+ * "try the next path".
+ */
+export function loadFirstUsableAddon(input: {
+	candidates: string[];
+	requireAddon: (candidate: string) => Record<string, unknown>;
+	validate: (bindings: Record<string, unknown>, candidate: string) => void;
+	onBrokenAddon?: (skipped: { candidate: string; reason: string }) => void;
+	initialErrors?: string[];
+}): { bindings?: Record<string, unknown>; candidate?: string; errors: string[] };
+
+/** The loaded bindings, loading them on first call and once only. */
+export function native(): Record<string, unknown>;
+
+/** A function export that resolves its native binding on FIRST CALL, so importing for types alone loads no addon. */
+export function lazyNativeFn(name: string): (...args: unknown[]) => unknown;
+
+/** A class export that resolves its native binding on first construct or property access. */
+export function lazyNativeClass(name: string): new (...args: unknown[]) => unknown;

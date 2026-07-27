@@ -6,6 +6,8 @@
 
 ### Changed
 
+- The browser socket and the dev relay take the fatal close codes and the reconnect send bound from `@veyyon/wire/relay` instead of each declaring them. The dev relay mattered most: it is what PRODUCES the codes, and it spelled the four reason strings inline as it closed sockets, so a relay and a client could disagree about the reason for a code with nothing to catch it.
+
 - Frame sealing comes from `@veyyon/wire`. This client carried a full copy of the AES-256-GCM
   layout, described in its own header as a browser-safe mirror of the host's, which is the shape of
   duplication that goes wrong quietly: the host seals what this opens, and a disagreement about the
