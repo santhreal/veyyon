@@ -90,6 +90,7 @@ describe("doctor verifies the installed binary is the version the release claims
 
 	it("both strip a leading v from the tag before comparing", () => {
 		// Tags are `v1.0.37`; `--version` reports `veyyon/1.0.37`.
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: quotes install.sh; the ${...} is shell source under test.
 		expect(installSh).toContain('want="${want_tag#v}"');
 		expect(installPs1).toContain("$want = $ExpectedTag -replace '^v', ''");
 	});
@@ -268,6 +269,7 @@ describe("a release that cannot run is refused before it touches the system", ()
 	it("the two runs are the same function, told which phase they are in", () => {
 		// One implementation of "does the addon load", not a preflight copy that
 		// drifts from the post-install check.
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: quotes install.sh; the ${...} is shell source under test.
 		expect(installSh).toContain('_dn_bin="$1"; _dn_phase="${2:-installed}"');
 		expect(installSh).toContain('doctor_natives "$bin"');
 		expect(installSh).toContain('ok "native addon loads ($_dn_phase)');

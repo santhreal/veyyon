@@ -14,40 +14,62 @@ const RUST_AFFECTING_FILE_NAMES = [
 	"rustfmt.toml",
 	".rustfmt.toml",
 ] as const satisfies readonly string[];
+// `--all-targets` on every clippy run, so the lint gate compiles tests, benches and examples too.
+// Without it clippy builds libs and bins only, and a test target that does not compile is invisible
+// to `lint:rs`, `check:rs` and every pre-push hook built on them: it surfaces later, in `test:rs`,
+// as a build failure rather than a lint one. That is how five `ScopeIo` literals across the vendored
+// uutils sat broken after the struct gained a field, with two green gates in front of them.
 const TASK_COMMANDS = {
 	"check:rs": [
 		["cargo", "fmt", "--all", "--", "--check"],
-		["cargo", "clippy", "--workspace", "--", "-D", "warnings"],
+		["cargo", "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"],
 	],
 	"fix:rs": [
 		["cargo", "fmt", "--all"],
-		["cargo", "clippy", "--workspace", "--fix", "--allow-dirty", "--no-deps", "--allow-staged", "--allow-no-vcs"],
+		[
+			"cargo",
+			"clippy",
+			"--workspace",
+			"--all-targets",
+			"--fix",
+			"--allow-dirty",
+			"--no-deps",
+			"--allow-staged",
+			"--allow-no-vcs",
+		],
 	],
 	"fmt:rs": [["cargo", "fmt", "--all"]],
-	"lint:rs": [["cargo", "clippy", "--workspace", "--", "-D", "warnings"]],
+	"lint:rs": [["cargo", "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"]],
 	"test:rs": [["cargo", "nextest", "run", "--workspace", "--status-level=fail", "--final-status-level=fail"]],
 } as const satisfies Record<string, readonly (readonly string[])[]>;
+
+/** The command list each task runs, exported so the gate's own shape can be asserted. */
+export const RUST_TASK_COMMANDS: Readonly<Record<string, readonly (readonly string[])[]>> = TASK_COMMANDS;
 
 type RustTaskName = keyof typeof TASK_COMMANDS;
 
 const repoRoot = path.join(import.meta.dir, "..");
-const cargoBinary = await resolveCargoBinary();
-const taskName = process.argv[2];
+let cargoBinary = "cargo";
 
-if (!isRustTaskName(taskName)) {
-	console.error(`Unknown Rust task: ${taskName ?? "(missing)"}`);
-	process.exit(1);
-}
+if (import.meta.main) {
+	cargoBinary = await resolveCargoBinary();
+	const taskName = process.argv[2];
 
-if (taskName !== "fmt:rs" && !(isCI() || (await hasRustAffectingChanges()))) {
-	console.log(`Skipping ${taskName} (not in CI and no Rust-affecting changes were found).`);
-	process.exit(0);
-}
+	if (!isRustTaskName(taskName)) {
+		console.error(`Unknown Rust task: ${taskName ?? "(missing)"}`);
+		process.exit(1);
+	}
 
-for (const command of TASK_COMMANDS[taskName]) {
-	const exitCode = await runCommand(command);
-	if (exitCode !== 0) {
-		process.exit(exitCode);
+	if (taskName !== "fmt:rs" && !(isCI() || (await hasRustAffectingChanges(taskName)))) {
+		console.log(`Skipping ${taskName} (not in CI and no Rust-affecting changes were found).`);
+		process.exit(0);
+	}
+
+	for (const command of TASK_COMMANDS[taskName]) {
+		const exitCode = await runCommand(command);
+		if (exitCode !== 0) {
+			process.exit(exitCode);
+		}
 	}
 }
 
@@ -62,7 +84,7 @@ function isCI(): boolean {
 	return normalized !== "" && normalized !== "0" && normalized !== "false";
 }
 
-async function hasRustAffectingChanges(): Promise<boolean> {
+async function hasRustAffectingChanges(taskName: RustTaskName): Promise<boolean> {
 	const result = await $`git status --porcelain -z`.cwd(repoRoot).quiet().nothrow();
 	if (result.exitCode !== 0) {
 		const stderr = result.stderr.toString().trim();

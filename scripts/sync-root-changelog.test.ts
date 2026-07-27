@@ -297,6 +297,53 @@ describe("unreleasedBullets", () => {
 
 		expect(unreleasedBullets(md)).toEqual(["first line second line"]);
 	});
+
+	/**
+	 * THE REGRESSION, and it is the guard eating itself.
+	 *
+	 * The heading was located with an unanchored `indexOf("## [Unreleased]")`, so any PROSE that
+	 * mentions the heading matched before the heading did. The first text to do that was the root
+	 * file's own new "generated file" banner, which names the section a contributor should write
+	 * in: the search landed inside the banner, the block ended one line later at the real heading,
+	 * and this function answered "no entries" for a file full of them. That answer silently
+	 * disables the orphan check -- every entry on disk reads as unclaimed -- so the writer refuses
+	 * to regenerate at all. A heading is a line, so the pattern is anchored to a line.
+	 */
+	it("ignores prose that merely mentions the heading", () => {
+		const md = [
+			"# Changelog",
+			"",
+			"> Add your entry under `## [Unreleased]` in the package changelog, not here.",
+			"",
+			"## [Unreleased]",
+			"",
+			"### Added",
+			"",
+			"- the real entry",
+			"",
+		].join("\n");
+
+		expect(unreleasedBullets(md)).toEqual(["the real entry"]);
+	});
+
+	/** A dated or annotated Unreleased heading is still the Unreleased heading. */
+	it("matches an unreleased heading that carries a suffix", () => {
+		const md = "# Changelog\n\n## [Unreleased] - unreleased\n\n### Fixed\n\n- entry\n";
+
+		expect(unreleasedBullets(md)).toEqual(["entry"]);
+	});
+
+	/**
+	 * And the banner the renderer actually emits is parsed correctly, not just a hand-written
+	 * lookalike. Asserting against the real render is what makes this a check on the pair rather
+	 * than on a fixture that can drift away from the banner it stands in for.
+	 */
+	it("reads the unreleased entries out of the real generated root", () => {
+		const bullets = unreleasedBullets(buildRootChangelog());
+
+		expect(bullets.length).toBeGreaterThan(20);
+		expect(bullets.every(bullet => !bullet.includes("Generated file."))).toBe(true);
+	});
 });
 
 describe("committed root CHANGELOG.md", () => {

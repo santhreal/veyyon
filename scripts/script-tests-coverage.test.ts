@@ -15,14 +15,18 @@
  *
  * `repoScriptTests` is not the only runner: the docs workflow runs the doc-gate suites
  * itself, on a path filter, so those are covered without being in the list. The check
- * is therefore "covered by SOMETHING named here", and the workflow files are read for
- * their `bun test` arguments rather than duplicated as a second hand-kept list, which
- * would have exactly the drift problem this file exists to catch.
+ * is therefore "covered by SOMETHING", and the workflows are read for their `bun test`
+ * arguments rather than duplicated as a second hand-kept list. WHICH workflows to read
+ * was itself a hand-kept list of two files here, which is the same drift one level up:
+ * `check-test-memory.test.ts` is run by `leak-sweep.yml` and read as run by nothing,
+ * for months. `runner-references.ts` now owns the question and walks the directory, so
+ * a new workflow counts the day it lands.
  */
 import { describe, expect, it } from "bun:test";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import * as path from "node:path";
 import { repoScriptTests } from "./ci-test-ts";
+import { workflowFiles, workflowTestPaths } from "./runner-references";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 
@@ -41,19 +45,6 @@ function findTestFiles(dir: string, acc: string[] = []): string[] {
 		else if (entry.endsWith(".test.ts")) acc.push(relative);
 	}
 	return acc;
-}
-
-/** Workflows that run suites directly, outside `repoScriptTests`. */
-const WORKFLOWS = [".github/workflows/docs.yml", ".github/workflows/hashline-soak.yml"] as const;
-
-/** Every `*.test.ts` path a workflow passes to `bun test`. */
-function workflowTestPaths(): string[] {
-	const found: string[] = [];
-	for (const workflow of WORKFLOWS) {
-		const text = readFileSync(path.join(REPO_ROOT, workflow), "utf8");
-		for (const match of text.matchAll(/[\w./-]+\.test\.ts/g)) found.push(match[0]);
-	}
-	return found;
 }
 
 const onDisk = ROOTS.flatMap(root => findTestFiles(root)).sort();
@@ -85,6 +76,21 @@ describe("the repo-level test list", () => {
 		expect(fromWorkflows).toContain("scripts/check-doc-links.test.ts");
 		expect(fromWorkflows).toContain("scripts/check-doc-freshness.test.ts");
 		expect(fromWorkflows).toContain("scripts/gen-settings-reference.test.ts");
+	});
+
+	/**
+	 * EVERY workflow is read, not a chosen few.
+	 *
+	 * The bug this replaced: the two workflows named here were a hand-kept list, so
+	 * `check-test-memory.test.ts` counted as unrun while `leak-sweep.yml` ran it on
+	 * every sweep. Both halves are asserted, the file being found and the suite it
+	 * runs being covered, because finding the file is worthless if the extraction
+	 * misses what it names.
+	 */
+	it("reads suites out of every workflow, not a chosen few", () => {
+		expect(workflowFiles()).toContain(".github/workflows/leak-sweep.yml");
+		expect(workflowTestPaths()).toContain("scripts/check-test-memory.test.ts");
+		expect(covered.has("scripts/check-test-memory.test.ts")).toBe(true);
 	});
 
 	/** The other direction: a dead entry looks like coverage and provides none, and

@@ -32,7 +32,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { listTrackedMarkdown } from "./check-doc-links";
+import { listTrackedMarkdown, readIfPresent } from "./check-doc-links";
 
 export interface DeadPath {
 	file: string;
@@ -225,8 +225,6 @@ export const DEAD_PATH_BASELINE: readonly string[] = Object.freeze([
 	"docs/context-files.md:151:docs/setup.md",
 	"docs/context-files.md:158:.github/copilot-instructions.md",
 	"docs/context-files.md:217:.github/copilot-instructions.md",
-	"docs/environment-variables.md:328:examples/",
-	"docs/handbook/src/using/configuration.md:278:packages/server/src/database/connection.ts",
 	"docs/internal/toolconv/deepseek.md:101:assets/search_tool_trajectory.html",
 	"packages/coding-agent/src/prompts/skills/user-invocation.md:8:scripts/foo.js",
 	"website/blog/argot.md:12:packages/server/src/database/connection.ts",
@@ -242,12 +240,12 @@ export function checkDocPaths(rootDir: string, relFiles: string[]): PathCheckRes
 	const result: PathCheckResult = { filesChecked: 0, pathsChecked: 0, skippedInFence: 0, dead: [] };
 	for (const rel of relFiles) {
 		const abs = path.join(rootDir, rel);
-		let markdown: string;
-		try {
-			markdown = fs.readFileSync(abs, "utf8");
-		} catch {
-			continue;
-		}
+		// Was a bare `catch { continue }`, which skipped a file for ANY reason -- including a permissions
+		// error -- and reported a clean pass over a document nobody read. `readIfPresent` skips only a file
+		// that has been deleted since it was listed (the index-vs-worktree race every doc walk here has) and
+		// rethrows anything else.
+		const markdown = readIfPresent(abs);
+		if (markdown === undefined) continue;
 		result.filesChecked += 1;
 		for (const found of extractCodeSpanPaths(markdown)) {
 			if (found.inFence) {

@@ -58,7 +58,18 @@ veyyon-*.html
 # Generated files
 packages/coding-agent/src/export/html/tool-views.generated.js
 packages/natives/npm/
+# The three files `coding-agent/scripts/embed-mupdf-wasm.ts --generate` copies next
+# to `src/utils/mupdf-wasm-embed.ts`. All three, not just the wasm: the two JS
+# copies were trackable, so a broad `git add` committed 130KB of vendored mupdf
+# into a path whose own header says "Do not edit or commit". `--reset` deletes
+# them, but a build that dies in between leaves them on disk.
 packages/coding-agent/src/utils/mupdf-wasm.wasm
+packages/coding-agent/src/utils/mupdf-embedded.js
+packages/coding-agent/src/utils/mupdf-wasm-embedded.js
+# Scratch scripts written while measuring what an import costs (module counts per
+# entry point). They are one-off probes against a specific investigation, not an
+# instrument anyone re-runs, so they stay out of the tree and out of a broad add.
+.measure-tmp/
 /runs/
 python/omp-rpc/src/omp_rpc.egg-info/
 # parallel-agent worktrees

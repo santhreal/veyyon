@@ -17,8 +17,8 @@
 // CI gate: .github/workflows/docs.yml.
 
 import { spawnSync } from "node:child_process";
-import * as fs from "node:fs";
 import * as path from "node:path";
+import { readIfPresent } from "./check-doc-links";
 
 export interface Stamp {
 	sha: string;
@@ -74,12 +74,15 @@ export function checkFreshness(root: string, files: string[]): FreshnessResult {
 		// `git ls-files` reports the index; a file deleted (or renamed away) in the
 		// working tree but not yet committed would crash the read. That is tree
 		// state, not doc staleness — surface it loudly and keep checking the rest.
-		if (!fs.existsSync(abs)) {
+		// One step rather than existsSync-then-read, because the tree can change in between; either way a
+		// file that is not there is reported through `missing`, which is loud, instead of vanishing from the
+		// count. Any other read failure still throws.
+		const markdown = readIfPresent(abs);
+		if (markdown === undefined) {
 			result.missing.push(file);
 			continue;
 		}
 		result.filesChecked++;
-		const markdown = fs.readFileSync(abs, "utf-8");
 		const stamp = parseStamp(markdown);
 		if (!stamp) {
 			const lines = markdown.trimEnd().split("\n");

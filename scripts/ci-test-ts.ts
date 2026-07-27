@@ -234,10 +234,17 @@ export const repoScriptTests = [
 	"scripts/link-veyyon.test.ts",
 	"scripts/docs-book-pin.test.ts",
 	"scripts/install-methods-coverage.test.ts",
+	"scripts/read-if-present.test.ts",
+	"scripts/fuzz.test.ts",
+	"scripts/fuzz-triage.test.ts",
+	"scripts/a-source-file-that-reads-as-binary-is-invisible.test.ts",
+	"scripts/barrel-files-are-imported.test.ts",
 	"scripts/workspace-typecheck-coverage.test.ts",
 	"scripts/workspace-test-coverage.test.ts",
 	"scripts/tool-renderer-coverage.test.ts",
 	"scripts/workspace-catalog-pins.test.ts",
+	"scripts/workspace-manifests.test.ts",
+	"scripts/chunk-composition.test.ts",
 	"scripts/package-map-coverage.test.ts",
 	"scripts/root-layout.test.ts",
 	"scripts/sync-root-changelog.test.ts",
@@ -263,6 +270,7 @@ export const repoScriptTests = [
 	"scripts/release-binaries-bytecode.test.ts",
 	"scripts/fix-changelogs.test.ts",
 	"scripts/require-changelog.test.ts",
+	"scripts/run-rs-task.test.ts",
 	"scripts/jules-port-manager.test.ts",
 	"scripts/upstream-radar.test.ts",
 	"scripts/release-sentinel.test.ts",
@@ -674,7 +682,9 @@ async function runTestCommand(testCommand: TestCommand): Promise<void> {
 	const exitCode = await proc.exited;
 	clearTimeout(killTimer);
 	if (exitCode !== 0) {
-		throw new Error(`${testCommand.label} failed with exit code ${exitCode}: ${renderedCommand}`);
+		const files = chunkTestFiles(renderedCommand);
+		const composition = files.length > 1 ? `\n${files.length} files in this chunk:\n  ${files.join("\n  ")}` : "";
+		throw new Error(`${testCommand.label} failed with exit code ${exitCode}: ${renderedCommand}${composition}`);
 	}
 }
 
@@ -872,6 +882,24 @@ export function extractFailingTests(output: string): FailingTest[] {
 // without per-test markers (no parseable failures) the raw log is replayed as a
 // fallback in quiet mode. The banner repeats below so it stays visible whether
 // you scroll to the top or the bottom of the failures.
+/**
+ * The test files a command was given, extracted from the command itself.
+ *
+ * A chunk is a slice of a bucket's sorted file list, and WHICH files landed in it
+ * is the first thing an investigation needs: a suite that passes alone and fails
+ * in chunk 109 is failing because of what else is in that process. The runner used
+ * to print the whole command on one line, so recovering the composition meant
+ * reconstructing the partition by hand from the runner source, which cost an hour
+ * on the mupdf-warnings suite (see the PDF chunk row in BACKLOG.md). The command
+ * already carries the answer; nothing needed to be threaded through, only printed.
+ */
+export function chunkTestFiles(command: string): string[] {
+	// Two alternatives because `shellQuote` wraps a path holding a shell character:
+	// quoted paths may contain spaces, bare ones may not.
+	const pattern = /(?:^|\s)(?:'([^']+\.test\.tsx?)'|([\w./@-]+\.test\.tsx?))(?=\s|$)/g;
+	return [...command.matchAll(pattern)].map(match => match[1] ?? match[2]);
+}
+
 export function formatChunkFailure(failure: ChunkOutcome, replayOutput: boolean): string {
 	const lines: string[] = [];
 	lines.push(
@@ -879,6 +907,13 @@ export function formatChunkFailure(failure: ChunkOutcome, replayOutput: boolean)
 		style.bold(style.red(`✗ ${failure.label} (exit ${failure.exitCode})`)),
 		style.dim(`$ ${failure.command}`),
 	);
+	const files = chunkTestFiles(failure.command);
+	// The composition, not just the command: a suite that passes alone and fails here
+	// is failing because of what shares its process, and that list is the whole lead.
+	if (files.length > 1) {
+		lines.push(style.dim(`  ${files.length} files in this chunk:`));
+		for (const file of files) lines.push(style.dim(`    ${file}`));
+	}
 	const failing = extractFailingTests(failure.output);
 	// Fully attributed only when every failure carries its own bun block;
 	// otherwise (no markers, or a marker with no preceding frame — timeouts,

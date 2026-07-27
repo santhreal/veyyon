@@ -277,12 +277,15 @@ Argot is the codec that lets the model write short `§handle` tokens; veyyon exp
 | Command | What it does |
 | --- | --- |
 | `bun run check` | Type check TS **and** Rust in parallel (`check:ts` + `check:rs`). The release preflight runs this. |
+| `bun run check:rs` / `lint:rs` | `cargo fmt --check` and `cargo clippy --workspace --all-targets -D warnings`. `--all-targets` is what makes these compile tests and benches as well as libs and bins; without it a test file that does not build passes both gates and only fails later in `test:rs`. |
 | `bun run check:ts` | Workspace `tsc --noEmit` across every package. Despite the name it runs no Biome. |
 | `bun run check:tools` | `biome check`: formatting, import order, and error-level lint rules. CI gate. |
 | `bun run lint` / `lint:ts` | `biome lint` only, so it sees neither formatting nor import order. Its warnings are advisory; fix real bugs, don't contort for style. |
 | `bun run test` | Local TS test runner (`scripts/ci-test-ts.ts local`). |
 | `bun run ci:test:ts:workspace` | The exact workspace test bucket CI runs. |
 | `bun run ci:build:native` | Build the `veyyon_natives` addon — required before tests that touch native paths. |
+
+`suspicious/noTemplateCurlyInString` flags a plain string containing `${...}`, on the theory you meant a template literal. A test that quotes source text from another language (`install.sh`, the generated PowerShell completions, a GitHub Actions expression) trips it on bytes that are the fixture itself. Suppress those one site at a time with a `biome-ignore` line naming what the `${...}` really is, rather than turning the rule off for tests: the rule still catches a genuinely missed template in the test's own code.
 
 **Commit conventions** (only when the user asks you to commit):
 - Commit in **logical chunks**, one concern per commit — never one giant `git add -A`. Stage only the paths you changed.
@@ -327,6 +330,7 @@ Location: `packages/*/CHANGELOG.md` (per package).
 - Don't flag changelog section order or formatting in reviews or PRs — `bun run release` runs `fix-changelogs` which normalizes everything automatically.
 
 **Enforced (`changelog` CI job on every push to `main` and every PR).** `bun run changelog:check` fails when a change to a publishable package's shipped source lands without a bullet under that package's `## [Unreleased]` section. It runs on the direct-to-main push (base: the branch tip before the push) as well as on PRs, because changes land directly on `main` here; a PR-only gate would never fire and shipped source would reach releases undocumented. This is what makes releases safe to cut at any time: a change can never land without reaching the changelog. Tests, fixtures, docs, `package.json`, and `tsconfig*.json` are not "shipped source" and never trigger it. The release bump commit (`chore: bump version to ...`) is exempt. Run it locally before pushing with `CHANGELOG_BASE=origin/main bun run changelog:check`.
+- Every publishable package must own a `CHANGELOG.md`. A package with none used to be skipped by the gate, which meant its source shipped with nothing checking it at all, and two packages sat that way for several releases before anyone noticed. The gate now fails and names the file to create. A package that is genuinely not published says so with `"private": true` in its `package.json`.
 - Escape hatch for a change with genuinely no user-facing effect (a pure internal refactor): put `[skip changelog]` in a commit message to waive the whole change, or `[skip changelog: <package>]` (bare name, dir, or `@veyyon/<name>`) to waive one package. The waiver lives in git history, so it is a conscious, reviewable decision, never a silent skip.
 
 **Attribution:**

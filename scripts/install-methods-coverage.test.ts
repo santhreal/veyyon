@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { existingOnly } from "./check-doc-links";
+import { existingOnly, readIfPresent } from "./check-doc-links";
 
 /**
  * Locks the release gate to the install methods veyyon actually ships, and locks
@@ -135,7 +135,12 @@ describe("the npm/tarball topology stays deleted", () => {
 		for (const rel of markdownFiles(repoRoot)) {
 			// The changelog is a historical record; rewriting it would falsify it.
 			if (rel.endsWith("CHANGELOG.md")) continue;
-			const text = fs.readFileSync(path.join(repoRoot, rel), "utf8");
+			// `existingOnly` above filters the index listing, but the tree can still change between that
+			// filter and this read (a parallel checkout, a rebase, a generator run). `readIfPresent` skips
+			// only a file that has since been DELETED -- which cannot document an install method -- and still
+			// throws on anything else, so a permissions problem cannot quietly shrink this scan.
+			const text = readIfPresent(path.join(repoRoot, rel));
+			if (text === undefined) continue;
 			for (const [i, line] of text.split("\n").entries()) {
 				if (/^\s*(?:npm|bun|pnpm|yarn)\s+(?:i|add|install)\s+@veyyon\//.test(line)) {
 					offenders.push(`${rel}:${i + 1}: ${line.trim()}`);

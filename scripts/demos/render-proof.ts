@@ -12,6 +12,16 @@
  * judged on one ground has been half judged. For a before/after, run the pair and
  * compare the four images.
  *
+ * FORCE THE COLOUR ON. A renderer piped into this script has no TTY on stdout, and
+ * several shells here also export `NO_COLOR`, so the theme emits plain text and the
+ * proof comes out monochrome. It still looks like a proof, which is the dangerous
+ * part: a colourless image cannot show a fill, a contrast, or a selection-highlight
+ * bug, and those are most of what a proof is for. Run the renderer as:
+ *
+ *     env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-<surface>.ts … | bun scripts/demos/render-proof.ts …
+ *
+ * If the image has no colour in it anywhere, the capture is wrong, not the component.
+ *
  * Why not capture a terminal: a capture renders on the capturing terminal's ground,
  * strips or distorts styling, and drops trailing styled cells, which is precisely
  * the information a fill or spacing change lives in. These images come from the

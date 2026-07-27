@@ -147,7 +147,13 @@ describe("the catalog versions the migration was verified against", () => {
 		"@types/react-dom": "^19.2.3",
 		"@types/bun": "^1.3.14",
 		"fast-check": "4.9.0",
-		"onnxruntime-node": "1.26.0",
+		// Moved 1.26.0 -> 1.21.0 deliberately, which is the review this table exists to force.
+		// `fastembed@2.1.0` declares an exact `onnxruntime-node: 1.21.0` and its native addon links
+		// against the ORT it ships with, so the catalog installing 1.26.0 meant the tree developed
+		// against one ORT while `@veyyon/mnemopi` advertised a peer of the other. The peer pin, the
+		// catalog and fastembed's own dependency are one version now; `fastembed-runtime.test.ts`
+		// reads that dependency rather than a literal, so the next fastembed bump reports the pair.
+		"onnxruntime-node": "1.21.0",
 		fastembed: "2.1.0",
 	};
 

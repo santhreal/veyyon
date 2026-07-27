@@ -23,7 +23,7 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { existingOnly } from "./check-doc-links";
+import { existingOnly, readIfPresent } from "./check-doc-links";
 
 export interface BadImport {
 	file: string;
@@ -168,7 +168,9 @@ function typeExportsOf(packageDir: string, dirs: Map<string, string>, seen = new
 				continue;
 			}
 			if (!entry.name.endsWith(".ts") && !entry.name.endsWith(".tsx")) continue;
-			const text = fs.readFileSync(full, "utf8");
+			// Same race one directory down: `readdir` listed it, a parallel checkout may have moved it.
+			const text = readIfPresent(full);
+			if (text === undefined) continue;
 			for (const match of text.matchAll(
 				/export\s+(?:declare\s+)?(?:type|interface|class|enum)\s+([A-Za-z_$][\w$]*)/g,
 			)) {
@@ -229,8 +231,10 @@ export async function checkDocImports(repoRoot: string, files?: readonly string[
 
 	for (const rel of files ?? documentationFiles(repoRoot)) {
 		const abs = path.join(repoRoot, rel);
-		if (!fs.existsSync(abs)) continue;
-		const raw = fs.readFileSync(abs, "utf8");
+		// One step, not existsSync-then-read: the tree can change between them, and a doc deleted since it
+		// was listed cannot document an import. Any other read failure still throws.
+		const raw = readIfPresent(abs);
+		if (raw === undefined) continue;
 		const text = rel.endsWith(".md") ? fencedOnly(raw) : raw;
 		result.filesChecked += 1;
 

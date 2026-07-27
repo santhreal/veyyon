@@ -18,6 +18,13 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import {
+	DEFAULT_MAX_WINDOW,
+	findReproducingWindow,
+	parseArgs,
+	parseTargetFailures,
+	windowSizes,
+} from "./find-order-polluter";
 
 const SCRIPT = path.join(import.meta.dir, "find-order-polluter.ts");
 
@@ -101,7 +108,7 @@ describe("find-order-polluter", () => {
 		expect(exitCode).toBe(0);
 		expect(text).toContain(`Polluter: ${leak}`);
 		expect(text).toContain("premise 1 ok: the target passes alone");
-		expect(text).toContain("premise 2 ok: the target fails with the full candidate list");
+		expect(text).toContain("premise 2 ok: the target fails with the last");
 	});
 
 	it("names a leaker that sorts AFTER the innocents, not just the first file it tried", async () => {
@@ -156,7 +163,8 @@ describe("find-order-polluter", () => {
 		const { text, exitCode } = await runScript(target);
 
 		expect(exitCode).toBe(1);
-		expect(text).toContain("The target PASSES with every candidate in front of it");
+		expect(text).toContain("The target PASSES with the last");
+		expect(text).toContain("That is every candidate");
 		expect(text).not.toContain("Polluter:");
 	});
 
@@ -221,5 +229,204 @@ describe("find-order-polluter", () => {
 
 		expect(exitCode).toBe(2);
 		expect(text).toContain("no other test files found");
+	});
+});
+
+/**
+ * The growing window, which is what makes the search runnable at all.
+ *
+ * WHY IT EXISTS. The old search ran the WHOLE candidate list as its second premise, which on the
+ * coding-agent package means running 1,887 test files before the search has started. The window
+ * starts at the last 64 candidates and doubles instead, so a nearby polluter (which is most of
+ * them, since a leak reaches the target from just before it) answers in seconds. The cap is a time
+ * budget, and reaching it is a refusal rather than a clean bill of health.
+ */
+describe("the growing window", () => {
+	/** Doubling from the first size, and stopping exactly on the limit. */
+	it("doubles up to the smaller of the candidate count and the cap", () => {
+		expect(windowSizes(1000, 200)).toEqual([64, 128, 200]);
+		expect(windowSizes(1000, 1000)).toEqual([64, 128, 256, 512, 1000]);
+	});
+
+	/**
+	 * Never more files than allowed.
+	 *
+	 * The cap is a memory budget, so a search that overshot it by one doubling would be the OOM
+	 * this window exists to avoid.
+	 */
+	it("never proposes a window past the cap or past the candidates", () => {
+		for (const [count, cap] of [
+			[1887, 200],
+			[10, 200],
+			[64, 64],
+			[65, 200],
+			[1, 200],
+		] as const) {
+			const sizes = windowSizes(count, cap);
+			expect(Math.max(...sizes)).toBeLessThanOrEqual(Math.min(count, cap));
+			expect(sizes.at(-1)).toBe(Math.min(count, cap));
+		}
+	});
+
+	/** A short list is one attempt, not a doubling sequence that overshoots it. */
+	it("is a single attempt when there are fewer candidates than the first window", () => {
+		expect(windowSizes(9, 200)).toEqual([9]);
+		expect(windowSizes(1, 200)).toEqual([1]);
+	});
+
+	/** Sizes only grow, so each attempt strictly contains the last. */
+	it("proposes strictly increasing sizes", () => {
+		const sizes = windowSizes(5000, 5000);
+		for (let index = 1; index < sizes.length; index++) expect(sizes[index]!).toBeGreaterThan(sizes[index - 1]!);
+	});
+
+	/** The window is the LAST N candidates, because a leak reaches the target from just before it. */
+	it("searches the suffix of the candidate list", async () => {
+		const candidates = Array.from({ length: 300 }, (_, i) => `f${i}.test.ts`);
+		const seen: string[][] = [];
+		const search = await findReproducingWindow(
+			async files => {
+				seen.push(files);
+				return files.includes("f200.test.ts") ? "t.test.ts:\n(fail) boom\n" : "t.test.ts:\n(pass) fine\n";
+			},
+			candidates,
+			{ target: "t.test.ts", dir: ".", maxWindow: 200 },
+		);
+
+		expect(search.tried).toEqual([64, 128]);
+		expect(search.window).toHaveLength(128);
+		expect(search.window?.at(0)).toBe("f172.test.ts");
+		expect(search.window?.at(-1)).toBe("f299.test.ts");
+		expect(seen[0]?.at(0)).toBe("f236.test.ts");
+	});
+
+	/**
+	 * A search that hit the cap reports no window, so the caller can refuse.
+	 *
+	 * THE FAILURE THIS LOCKS OUT. Returning the last window as if it were the answer would report
+	 * "no polluter in this ordering" for a suite whose polluter is simply further back than the cap,
+	 * which reads as a clean bill of health for an unexamined 1,700 files.
+	 */
+	it("reports nothing rather than a window when the cap is reached first", async () => {
+		const candidates = Array.from({ length: 1000 }, (_, i) => `f${i}.test.ts`);
+		const search = await findReproducingWindow(
+			async files => (files.includes("f0.test.ts") ? "t.test.ts:\n(fail) boom\n" : "t.test.ts:\n(pass) fine\n"),
+			candidates,
+			{ target: "t.test.ts", dir: ".", maxWindow: 200 },
+		);
+
+		expect(search.window).toBeNull();
+		expect(search.tried).toEqual([64, 128, 200]);
+	});
+});
+
+/**
+ * Reading bun's output, which decides every branch of the search.
+ *
+ * A parser that counted a CANDIDATE's failure as the target's would bisect toward whichever file is
+ * broken on its own, and the reader would be sent to an innocent file.
+ */
+describe("reading the target's failures out of a run", () => {
+	const output =
+		"packages/x/test/a-candidate.test.ts:\n(fail) a candidate of its own accord\n" +
+		"packages/x/test/z-victim.test.ts:\n(fail) sees a clean global\n(pass) a neighbour that is fine\n";
+
+	/** Only the target's section counts. */
+	it("ignores failures reported for other files", () => {
+		expect(parseTargetFailures(output, "packages/x/test/z-victim.test.ts")).toEqual(["sees a clean global"]);
+	});
+
+	/** `--name` narrows the parsed result, never the run. */
+	it("keeps only the named test when a name is given", () => {
+		expect(parseTargetFailures(output, "packages/x/test/z-victim.test.ts", "clean global")).toEqual([
+			"sees a clean global",
+		]);
+		expect(parseTargetFailures(output, "packages/x/test/z-victim.test.ts", "no such test")).toEqual([]);
+	});
+
+	/** A clean run is no failures, which is what "the target passed" means. */
+	it("finds nothing in a run where the target passed", () => {
+		expect(
+			parseTargetFailures(
+				"packages/x/test/z-victim.test.ts:\n(pass) sees a clean global\n",
+				"packages/x/test/z-victim.test.ts",
+			),
+		).toEqual([]);
+	});
+
+	/** A leading `./` on the target is the same target. */
+	it("matches a target written with a leading ./", () => {
+		expect(parseTargetFailures(output, "./packages/x/test/z-victim.test.ts")).toEqual(["sees a clean global"]);
+	});
+});
+
+describe("the arguments", () => {
+	/** The cap has a default, so the common invocation stays one word long. */
+	it("defaults the window cap and derives the directory from the target", () => {
+		const options = parseArgs(["packages/x/test/z.test.ts"]);
+		expect(options.maxWindow).toBe(DEFAULT_MAX_WINDOW);
+		expect(options.dir).toBe("packages/x/test");
+	});
+
+	/** And it can be raised for a polluter that is genuinely far back. */
+	it("takes an explicit window cap", () => {
+		expect(parseArgs(["z.test.ts", "--dir", "d", "--max-window", "800"]).maxWindow).toBe(800);
+	});
+});
+
+/**
+ * The assumption the whole search rests on, pinned against bun itself.
+ *
+ * WHY THIS IS HERE AND NOT SOMEWHERE ELSE. `--parallel=1` reads like the flag that makes this tool
+ * correct: one process, files in the order given, nothing to interleave. It does the opposite, and
+ * the failure is silent -- the search runs, finds nothing, and reports the suite clean. Measured
+ * 2026-07-26 and locked here so the next person to reach for the flag sees why it was not used.
+ *
+ * The same mechanism explains the memory kill recorded in `BACKLOG.md`: one module registry per
+ * file, all of them retained, about 76 MB each over 1,887 files.
+ */
+describe("what bun shares between test files", () => {
+	/** Two files importing one module, and a module-level counter that either crosses or does not. */
+	function sharedStateFixtures(): { first: string; second: string } {
+		fixture("shared-module.ts", "export const state = { loads: 0, seen: [] as string[] };\nstate.loads += 1;\n");
+		const first = fixture(
+			"a-first.test.ts",
+			`import { expect, it } from "bun:test";\nimport { state } from "./shared-module";\nstate.seen.push("a");\n` +
+				`it("ran first", () => { expect(state.seen).toContain("a"); });\n`,
+		);
+		const second = fixture(
+			"z-second.test.ts",
+			`import { expect, it } from "bun:test";\nimport { state } from "./shared-module";\n` +
+				`it("sees what the first file left", () => { expect(state.seen).toEqual(["a"]); });\n`,
+		);
+		return { first, second };
+	}
+
+	async function runBoth(files: string[], flags: string[]): Promise<string> {
+		const proc = Bun.spawn(["bun", "test", ...flags, ...files], { stdout: "pipe", stderr: "pipe" });
+		const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+		await proc.exited;
+		return stdout + stderr;
+	}
+
+	/**
+	 * The default shares a realm between the files a worker runs, which is the condition an
+	 * order-dependent failure needs to exist at all.
+	 */
+	it("shares module state between files at the default parallelism", async () => {
+		const { first, second } = sharedStateFixtures();
+		const text = await runBoth([first, second], []);
+		expect(text).toContain(" 2 pass");
+		expect(text).not.toContain("(fail) sees what the first file left");
+	});
+
+	/**
+	 * `--parallel=1` gives every file a fresh module registry, so nothing leaks and the search
+	 * would find nothing no matter what is wrong.
+	 */
+	it("gives every file a fresh module registry under --parallel=1", async () => {
+		const { first, second } = sharedStateFixtures();
+		const text = await runBoth([first, second], ["--parallel=1"]);
+		expect(text).toContain("(fail) sees what the first file left");
 	});
 });

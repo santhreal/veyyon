@@ -118,12 +118,39 @@ export function extractLinks(markdown: string): FoundLink[] {
 	return found;
 }
 
+/**
+ * Read a listed file, or `undefined` when it has been deleted since it was listed.
+ *
+ * WHY THIS IS NOT A CATCH-ALL. Every doc walk here does two steps -- list the markdown files, then read
+ * each one -- and the tree can change in between: `git ls-files` reports the INDEX, so it includes a doc
+ * deleted in the working tree, and a parallel session moving prompt files, a rebase, or a generator run
+ * can remove one after the listing too. That killed the install-methods gate twice with a raw ENOENT
+ * naming a file that was not the test's subject, which reads exactly like a real finding until you get
+ * to the stack. A file that no longer exists cannot document or link anything, so skipping it is the
+ * right answer.
+ *
+ * ONLY ENOENT is tolerated. Swallowing every IO error would let a permissions problem quietly shrink the
+ * scan and report a clean pass over files nobody read, which is the silent fallback this repo bans, so
+ * anything else still throws.
+ */
+export function readIfPresent(absPath: string): string | undefined {
+	try {
+		return fs.readFileSync(absPath, "utf8");
+	} catch (error) {
+		if ((error as { code?: string }).code === "ENOENT") return undefined;
+		throw error;
+	}
+}
+
 export function checkDocLinks(rootDir: string, relFiles: string[]): LinkCheckResult {
 	const anchorCache = new Map<string, Set<string>>();
 	const anchorsFor = (absPath: string): Set<string> => {
 		let anchors = anchorCache.get(absPath);
 		if (!anchors) {
-			anchors = collectAnchors(fs.readFileSync(absPath, "utf8"));
+			// A target file that vanished between the link check and this read has no anchors to offer; the
+			// link to it is reported as dead by the existence check that ran first, so an empty set here
+			// cannot hide a broken anchor.
+			anchors = collectAnchors(readIfPresent(absPath) ?? "");
 			anchorCache.set(absPath, anchors);
 		}
 		return anchors;
@@ -138,8 +165,9 @@ export function checkDocLinks(rootDir: string, relFiles: string[]): LinkCheckRes
 	};
 	for (const rel of relFiles) {
 		const abs = path.join(rootDir, rel);
-		if (!fs.existsSync(abs)) continue;
-		const markdown = fs.readFileSync(abs, "utf8");
+		// `existsSync` then read is still two steps; `readIfPresent` closes the window between them.
+		const markdown = readIfPresent(abs);
+		if (markdown === undefined) continue;
 		result.filesChecked++;
 		for (const { target, line } of extractLinks(markdown)) {
 			// `$VAR`/`$$$X` targets are template or grep-rule placeholders, not links.

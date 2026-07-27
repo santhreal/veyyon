@@ -26,6 +26,8 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { runnerSources } from "./runner-references";
+
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const PACKAGES_DIR = join(REPO_ROOT, "packages");
 
@@ -172,16 +174,12 @@ const REPO_SCRIPT_TESTS = (() => {
 	return block ? [...block[1].matchAll(/"([^"]+)"/g)].map(match => match[1] as string) : [];
 })();
 
-/** Every place a repo-level suite can legitimately be run from. */
+/** Every place a repo-level suite can legitimately be run from, as one text to
+ * search. `runner-references.ts` owns which files those are, so this lock and
+ * `script-tests-coverage.test.ts` cannot disagree about whether a workflow
+ * exists. */
 function otherRunnerSources(): string {
-	const parts = [readFileSync(join(REPO_ROOT, "package.json"), "utf8")];
-	const workflows = join(REPO_ROOT, ".github", "workflows");
-	try {
-		for (const entry of readdirSync(workflows)) parts.push(readFileSync(join(workflows, entry), "utf8"));
-	} catch {
-		// No workflows directory in a source checkout without CI config.
-	}
-	return parts.join("\n");
+	return runnerSources().join("\n");
 }
 
 describe("every repo-level test suite is actually run by something", () => {
