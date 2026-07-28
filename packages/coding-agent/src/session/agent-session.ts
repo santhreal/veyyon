@@ -11469,6 +11469,7 @@ export class AgentSession {
 							extraContext: compactionPrep.hookContext,
 							remoteInstructions: this.#baseSystemPrompt.join("\n\n"),
 							convertToLlm: messages => this.#convertToLlmForSideRequest(messages),
+							obfuscateProviderText: text => this.#obfuscator?.obfuscate(text) ?? text,
 							codexCompaction,
 						},
 						compactionCandidates,
@@ -12552,6 +12553,7 @@ export class AgentSession {
 				sessionId: this.sessionId,
 				metadataResolver: (provider: string) => this.agent.metadataForProvider(provider),
 				signal: controller.signal,
+				obfuscateProviderText: text => this.#obfuscator?.obfuscate(text) ?? text,
 			});
 		} finally {
 			clearTimeout(timeout);
@@ -13837,6 +13839,10 @@ export class AgentSession {
 						sessionId: this.sessionId,
 						promptCacheKey: this.sessionId,
 						providerSessionState: this.#providerSessionState,
+						// Resolve the current runtime inside the callback. compact()
+						// invokes it after each credential await and immediately
+						// before every local or remote physical attempt.
+						obfuscateProviderText: text => this.#obfuscator?.obfuscate(text) ?? text,
 						// Route every summarization HTTP request through the
 						// session's side-stream transport so the provider
 						// concurrency cap (e.g. providers.ollama-cloud.maxConcurrency)
@@ -13902,14 +13908,19 @@ export class AgentSession {
 				messages: compactMessages,
 			})) as { context?: string[]; prompt?: string; preserveData?: Record<string, unknown> } | undefined;
 
-			hookContext = result?.context;
-			hookPrompt = result?.prompt;
+			// The hook may have awaited arbitrary extension work. Sanitize its
+			// raw text as soon as control returns, before any later formatting.
+			hookContext = result?.context?.map(context => this.#obfuscateTextForProvider(context) ?? context);
+			hookPrompt = this.#obfuscateTextForProvider(result?.prompt);
 			preserveData = result?.preserveData;
 		}
 
 		const memoryBackendContext = await this.#collectMemoryBackendContext(preparation);
 		if (memoryBackendContext) {
-			hookContext = hookContext ? [...hookContext, memoryBackendContext] : [memoryBackendContext];
+			// Memory backends are async and can race a secret-runtime refresh.
+			// Resolve the authoritative runtime only after their await completes.
+			const providerContext = this.#obfuscateTextForProvider(memoryBackendContext) ?? memoryBackendContext;
+			hookContext = hookContext ? [...hookContext, providerContext] : [providerContext];
 		}
 
 		if (hookCompaction) {
@@ -14406,6 +14417,7 @@ export class AgentSession {
 									sessionId: this.sessionId,
 									promptCacheKey: this.sessionId,
 									providerSessionState: this.#providerSessionState,
+									obfuscateProviderText: text => this.#obfuscator?.obfuscate(text) ?? text,
 									codexCompaction,
 								},
 							);
