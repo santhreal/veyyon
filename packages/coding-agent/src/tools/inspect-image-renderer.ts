@@ -1,5 +1,6 @@
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
+import { formatMoreLines } from "@veyyon/utils/format";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
 import { framedBlock, renderStatusLine } from "../tui";
@@ -115,7 +116,7 @@ export const inspectImageToolRenderer = {
 			if (outputLines.length > maxLines) {
 				const remaining = outputLines.length - maxLines;
 				const hint = formatExpandHint(uiTheme, options.expanded, true);
-				bodyLines.push(`${uiTheme.fg("dim", `… ${remaining} more lines`)}${hint ? ` ${hint}` : ""}`);
+				bodyLines.push(`${uiTheme.fg("dim", `… ${formatMoreLines(remaining)}`)}${hint ? ` ${hint}` : ""}`);
 			}
 
 			return {

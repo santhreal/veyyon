@@ -2,14 +2,23 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
-import { type AutocompleteItem, Spacer } from "@veyyon/tui";
-import { APP_NAME, CHANGELOG_URL, collapseWhitespace, getProjectDir, setProjectDir, truncate } from "@veyyon/utils";
+import { type AutocompleteItem, DEFAULT_MASK_CHAR, Spacer } from "@veyyon/tui";
+import {
+	APP_NAME,
+	CHANGELOG_URL,
+	collapseWhitespace,
+	getActiveProfile,
+	getAgentDir,
+	getGlobalConfigRootDir,
+	getProjectDir,
+	listProfiles,
+	truncate,
+} from "@veyyon/utils";
 import { COLLAB_GUEST_ALLOWED_COMMANDS, CollabGuestLink } from "../collab/guest";
 import { CollabHost } from "../collab/host";
 import { DEFAULT_EFFORT_POINTER } from "../config/effort-resolver";
 import { modelResolutionFailureMessage } from "../config/model-resolution-failure";
 import { expandRoleAlias, getModelMatchPreferences, resolveCliModel } from "../config/model-resolver";
-import { applyProviderGlobalsFromSettings } from "../config/provider-globals";
 import { PRIORITY_TIER_COMMAND_LABEL, PRIORITY_TIER_LABEL } from "../config/service-tier";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
@@ -41,6 +50,7 @@ import { formatDurationCoarse } from "./helpers/format";
 import { handleMcpAcp } from "./helpers/mcp";
 import { commandConsumed, errorMessage, parseSlashCommand, parseSubcommand, usage } from "./helpers/parse";
 import { describeRedeemOutcome, type ResetUsageAccount, toResetUsageAccounts } from "./helpers/reset-usage";
+import { maskedPromptTitle, runSecretCommandForSurface } from "./helpers/secret";
 import { handleSshAcp } from "./helpers/ssh";
 import { handleTodoAcp } from "./helpers/todo";
 import { buildUsageReportText } from "./helpers/usage-report";
@@ -703,7 +713,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 					serverUrl: runtime.settings.get("share.serverUrl"),
 					store: runtime.settings.get("share.store"),
 					state: runtime.session.state,
-					obfuscator: runtime.settings.get("share.redactSecrets") ? runtime.session.obfuscator : undefined,
+					obfuscator: runtime.settings.get("share.redactSecrets") ? runtime.session.providerRedactor : undefined,
 				});
 				const lines = [`Share URL: ${result.url}`];
 				if (result.gistUrl) lines.push(`Gist: ${result.gistUrl}`);
@@ -719,6 +729,83 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			runtime.ctx.editor.setText("");
 		},
 	},
+	/**
+	 * `/secret`: store a credential the agent can use without ever seeing it.
+	 *
+	 * A thin adapter. Every rule lives in `secrets/secret-command.ts`, which is pure and tested
+	 * without a session, so the security-relevant behaviour is not reachable only through a
+	 * live TUI. This function parses, runs, then reconciles the two things a stored secret
+	 * touches: the running obfuscator (so the value is protected without a restart) and the
+	 * model's context (so the agent learns the placeholder exists).
+	 */
+	secret: {
+		/**
+		 * Say the state in the autocomplete row, so `/secret` answers "is this on, and what is in it"
+		 * without running `/secret list` first.
+		 *
+		 * Read from the LIVE runtime rather than the settings snapshot, because the runtime is what
+		 * decides whether a placeholder is actually being substituted right now. Counting is done
+		 * from the obfuscator's named secrets, which is in memory: an autocomplete description is
+		 * rendered on a keystroke and cannot go to disk for a vault read. Names are counted, never
+		 * listed, since the row is as wide as the terminal and a name list belongs in `list`.
+		 */
+		getTuiAutocompleteDescription: runtime => {
+			const base = "Store a credential the agent can use without ever seeing it";
+			const session = runtime.ctx.session;
+			if (!session?.secretsEnabled) return `${base} · protection off, adding one turns it on`;
+			const stored = session.obfuscator?.namedSecretNames().length ?? 0;
+			if (stored === 0) return `${base} · protection on, none stored yet`;
+			return `${base} · protection on, ${stored} stored`;
+		},
+		/**
+		 * Text and ACP: no terminal to hide anything on, so there is no prompt. `--from-env` is the
+		 * form that never types the credential at all, and `runSecretCommand` says so when a value
+		 * is missing rather than reading one into the scrollback.
+		 */
+		handle: async (command, runtime) => {
+			// Let failures cross the ACP boundary. Print mode can then exit unsuccessfully and RPC
+			// can return a failed response instead of emitting error prose followed by success.
+			const outcome = await runSecretCommandForSurface(command.args ?? "", {
+				session: runtime.session,
+				sessionManager: runtime.sessionManager,
+				settings: runtime.settings,
+				cwd: runtime.cwd,
+				globalConfigRoot: getGlobalConfigRootDir(),
+				agentDir: getAgentDir(),
+			});
+			await runtime.output(outcome.message);
+			return commandConsumed();
+		},
+		/**
+		 * The TUI, which CAN hide what is typed, so `/secret add NAME` opens a masked field.
+		 *
+		 * THE EDITOR IS CLEARED BEFORE THE VALUE IS READ, not after. Clearing afterwards would
+		 * leave the credential in the input buffer for as long as the prompt is open, and a
+		 * cancelled prompt would leave it there for good. The prompt is a local dialog, never
+		 * raced against a collab guest, so a masked field cannot be answered from another machine.
+		 */
+		handleTui: async (command, runtime) => {
+			const ctx = runtime.ctx;
+			ctx.editor.setText("");
+			try {
+				const outcome = await runSecretCommandForSurface(command.args ?? "", {
+					session: ctx.session,
+					sessionManager: ctx.sessionManager,
+					settings: ctx.settings,
+					cwd: ctx.sessionManager.getCwd(),
+					globalConfigRoot: getGlobalConfigRootDir(),
+					agentDir: getAgentDir(),
+					promptForValue: name =>
+						ctx.showHookInput(maskedPromptTitle(name), undefined, { mask: DEFAULT_MASK_CHAR }),
+				});
+				if (!outcome.cancelled) ctx.showStatus(outcome.message);
+			} catch (error) {
+				ctx.showWarning(errorMessage(error));
+			}
+			return commandConsumed();
+		},
+	},
+
 	collab: {
 		getTuiAutocompleteDescription: runtime => {
 			if (runtime.ctx.collabHost) {
@@ -1143,15 +1230,13 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			runtime.ctx.editor.setText("");
 		},
 	},
+	// `/cockpit` and `/hub` reach this same handler as aliases of `/agents`: one
+	// roster, one drill-in. They were separate overlays that showed the same
+	// registry through two different renderings and could disagree about what was
+	// running.
 	agents: {
 		handleTui: (_command, runtime) => {
 			runtime.ctx.showAgentsDashboard();
-			runtime.ctx.editor.setText("");
-		},
-	},
-	cockpit: {
-		handleTui: (_command, runtime) => {
-			runtime.ctx.showAgentHub();
 			runtime.ctx.editor.setText("");
 		},
 	},
@@ -1502,15 +1587,14 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				return usage(`Directory does not exist: ${resolvedPath}`, runtime);
 			}
 			try {
-				await runtime.sessionManager.moveTo(resolvedPath);
+				// One owner moves storage and every cwd-derived runtime input as a
+				// transaction. A failed re-scope rolls the storage move back.
+				await runtime.session.moveToCwd(resolvedPath);
 			} catch (err) {
 				return usage(`Move failed: ${errorMessage(err)}`, runtime);
 			}
-			setProjectDir(resolvedPath);
-			await runtime.settings.reloadForCwd(resolvedPath);
-			applyProviderGlobalsFromSettings(runtime.settings);
-			// Reload plugin/capability caches so the next prompt sees commands and
-			// capabilities scoped to the new cwd.
+			// Protocol modes still need to re-advertise their cwd-local command
+			// surface after the shared session re-scope has completed.
 			await runtime.reloadPlugins();
 			await runtime.notifyConfigChanged?.();
 			await runtime.notifyTitleChanged?.();
@@ -1568,7 +1652,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 	profile: {
 		handleTui: async (command, runtime) => {
 			runtime.ctx.editor.setText("");
-			const [{ parseProfileCommand, runProfileCommand }, { resolveVeyyonCommand }] = await Promise.all([
+			const [{ parseProfileCommand, runProfileSlashCommand }, { resolveVeyyonCommand }] = await Promise.all([
 				import("./profile-command"),
 				import("../task/veyyon-command"),
 			]);
@@ -1591,7 +1675,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				},
 			};
 			try {
-				await runProfileCommand(parseProfileCommand(command.args), port);
+				await runProfileSlashCommand(parseProfileCommand(command.args), port);
 			} catch (error) {
 				ctx.showError(errorMessage(error));
 			}
@@ -1819,7 +1903,6 @@ function buildProfileArgumentCompletions(): (prefix: string) => Promise<Autocomp
 	return async (argumentPrefix: string) => {
 		const prefix = argumentPrefix.trimStart();
 		if (prefix.includes(" ")) return null;
-		const { listProfiles, getActiveProfile } = await import("@veyyon/utils");
 		const { readProfileDisplayName } = await import("../cli/profile-cli");
 		const active = getActiveProfile() ?? "default";
 		const items: AutocompleteItem[] = [];
@@ -1955,6 +2038,7 @@ function buildDirectoryCompletionDisplayValue(prefix: string, absoluteValue: str
  */
 export const BUILTIN_SLASH_COMMAND_CATEGORIES: Readonly<Record<string, string>> = {
 	settings: "setup",
+	secret: "setup",
 	statusline: "setup",
 	welcome: "setup",
 	lsp: "setup",
@@ -1996,7 +2080,6 @@ export const BUILTIN_SLASH_COMMAND_CATEGORIES: Readonly<Record<string, string>> 
 	agents: "workspace",
 	jobs: "workspace",
 	usage: "workspace",
-	cockpit: "workspace",
 	todo: "context",
 	context: "context",
 	memory: "context",

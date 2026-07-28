@@ -1,7 +1,7 @@
 /**
  * Contracts: AdvisorTranscriptRecorder persists the advisor agent's turns to a
  * subagent-style JSONL (`<session>/__advisor.jsonl`) so the advisor model's usage
- * is attributed in stats and its transcript shows in the Agent Hub.
+ * is attributed in stats and its transcript shows in the Agent Control Center.
  *
  * - Assistant turns land as `{type:"message", message:{role:"assistant", usage}}`
  *   entries — exactly the shape the stats parser reads for usage.

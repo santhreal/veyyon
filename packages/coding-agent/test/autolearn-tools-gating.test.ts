@@ -128,7 +128,8 @@ describe("manage_skill execute", () => {
 		await removeWithRetries(tempHome);
 	});
 
-	const tool = () => ManageSkillTool.createIf(makeSession({ "autolearn.enabled": true }))!;
+	const tool = (extra: Partial<ToolSession> = {}) =>
+		ManageSkillTool.createIf(makeSession({ "autolearn.enabled": true }, extra))!;
 
 	it("create writes the managed SKILL.md; delete removes it", async () => {
 		const file = path.join(getManagedSkillsDir(), "demo", "SKILL.md");
@@ -168,9 +169,8 @@ describe("manage_skill execute", () => {
 				level: "user",
 			},
 		};
-		setActiveSkills([authored]);
 
-		const result = await tool().execute("c", {
+		const result = await tool({ skills: [authored] }).execute("c", {
 			action: "create",
 			name: "demo",
 			description: "When to demo.",
@@ -184,6 +184,38 @@ describe("manage_skill execute", () => {
 		expect(text).not.toContain("Created");
 		// Nothing was written, so the managed skill can never surface.
 		expect(await Bun.file(path.join(getManagedSkillsDir(), "demo", "SKILL.md")).exists()).toBe(false);
+	});
+
+	/**
+	 * A second top-level session can replace the process-global compatibility
+	 * snapshot. Managed-skill writes must consult the ToolSession that invoked
+	 * them, not reject a name owned only by that unrelated session.
+	 */
+	it("ignores authored skills from another top-level session", async () => {
+		const foreign: Skill = {
+			name: "foreign-only",
+			description: "Owned by another session.",
+			filePath: path.join(tempHome, "foreign", "SKILL.md"),
+			baseDir: path.join(tempHome, "foreign"),
+			source: "native:user",
+			_source: {
+				provider: "native",
+				providerName: "Veyyon",
+				path: path.join(tempHome, "foreign", "SKILL.md"),
+				level: "user",
+			},
+		};
+		setActiveSkills([foreign]);
+
+		const result = await tool({ skills: [] }).execute("session-owned-create", {
+			action: "create",
+			name: "foreign-only",
+			description: "Safe in this session.",
+			body: "# Local",
+		});
+
+		expect(result.isError).not.toBe(true);
+		expect(await Bun.file(path.join(getManagedSkillsDir(), "foreign-only", "SKILL.md")).exists()).toBe(true);
 	});
 });
 
@@ -240,6 +272,40 @@ describe("learn execute", () => {
 		});
 		expect(remembered).toHaveLength(1);
 		expect(await Bun.file(path.join(getManagedSkillsDir(), "worker-host", "SKILL.md")).exists()).toBe(true);
+	});
+
+	/**
+	 * `learn` persists memory before its optional managed-skill write, but the
+	 * shadow decision still belongs to the invoking session. An empty global
+	 * snapshot must not make it write a skill that this session's authored skill
+	 * will immediately hide.
+	 */
+	it("uses the calling session's authored skills for its optional managed write", async () => {
+		const session = learnSession();
+		session.skills = [
+			{
+				name: "worker-host",
+				description: "Authored in this session.",
+				filePath: path.join(tempHome, "authored", "worker-host", "SKILL.md"),
+				baseDir: path.join(tempHome, "authored", "worker-host"),
+				source: "native:user",
+				_source: {
+					provider: "native",
+					providerName: "Veyyon",
+					path: path.join(tempHome, "authored", "worker-host", "SKILL.md"),
+					level: "user",
+				},
+			},
+		];
+
+		const result = await new LearnTool(session).execute("session-owned-shadow", {
+			memory: "Use the worker host entry pattern.",
+			skill: { action: "create", name: "worker-host", description: "Spawn workers.", body: "# Worker host" },
+		});
+
+		expect(result.isError).toBe(true);
+		expect(remembered).toHaveLength(1);
+		expect(await Bun.file(path.join(getManagedSkillsDir(), "worker-host", "SKILL.md")).exists()).toBe(false);
 	});
 
 	it("surfaces a partial-outcome error when the skill name is invalid", async () => {

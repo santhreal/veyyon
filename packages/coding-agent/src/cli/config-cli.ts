@@ -153,6 +153,10 @@ function getTypeDisplay(def: CliSettingDef): string {
 			return "(array)";
 		case "record":
 			return "(record)";
+		case "modelChain":
+			// Says what it accepts rather than what it stores: both spellings are
+			// valid, and "(string)" told the reader the list form was not.
+			return "(model chain: pattern, or comma-separated, or a list)";
 		default:
 			return "(string)";
 	}

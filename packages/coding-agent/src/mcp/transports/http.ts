@@ -6,6 +6,7 @@
  */
 import * as AIError from "@veyyon/ai/error";
 import { isAbortError, logger, readSseJson, Snowflake } from "@veyyon/utils";
+import { isRecord } from "@veyyon/utils/type-guards";
 import type {
 	JsonRpcError,
 	JsonRpcMessage,
@@ -54,7 +55,7 @@ export async function rebuildMCPToolCallParamsForAttempt(
 	params: Record<string, unknown> | undefined,
 ): Promise<Record<string, unknown> | undefined> {
 	const args = params?.arguments;
-	if (typeof args !== "object" || args === null || Array.isArray(args)) return params;
+	if (!isRecord(args)) return params;
 	const attemptFactory = (args as MCPToolArgsWithAttemptFactory)[mcpToolArgsAttemptFactory];
 	if (!attemptFactory) return params;
 	return { ...params, arguments: await attemptFactory() };

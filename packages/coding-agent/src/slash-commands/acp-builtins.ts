@@ -1,4 +1,3 @@
-import { lookupBuiltinSlashCommand } from "./builtin-registry";
 import { parseSlashCommand } from "./helpers/parse";
 import type { AcpBuiltinSlashCommandResult, SlashCommandRuntime } from "./types";
 
@@ -25,6 +24,19 @@ export type { AcpBuiltinSlashCommandResult } from "./types";
  *   sent to the model.
  *
  * This is the one thing here that genuinely needs the handlers, because it RUNS one.
+ *
+ * AND IT LOADS THEM ONLY WHEN IT RUNS ONE. `./builtin-registry` is 740 modules: every builtin's
+ * handler, and behind them the settings store, the MCP client and the session store. This function
+ * is called on EVERY message in print and ACP mode, and almost every message is a prompt rather than
+ * a command, so a static import made `veyyon -p "hello"` pay for the entire command surface to find
+ * out the text did not start with a slash. `modes/print-mode.ts` reached 960 modules against a
+ * ceiling of 250 that was measured when this edge did not exist.
+ *
+ * The order is what makes the deferral safe rather than a guess: `parseSlashCommand` is a leaf with
+ * one type import, so the question "is this a command at all" is answered for free, and the registry
+ * is loaded only after the answer is yes. A message that IS a command still runs exactly as it did,
+ * which is why this is a deferral and not a fallback: nothing is skipped, and nothing is quietly
+ * answered by a cheaper path.
  */
 export async function executeAcpBuiltinSlashCommand(
 	text: string,
@@ -32,6 +44,7 @@ export async function executeAcpBuiltinSlashCommand(
 ): Promise<AcpBuiltinSlashCommandResult> {
 	const parsed = parseSlashCommand(text);
 	if (!parsed) return false;
+	const { lookupBuiltinSlashCommand } = await import("./builtin-registry");
 	const command = lookupBuiltinSlashCommand(parsed.name);
 	if (!command?.handle) return false;
 	const result = await command.handle(parsed, runtime);

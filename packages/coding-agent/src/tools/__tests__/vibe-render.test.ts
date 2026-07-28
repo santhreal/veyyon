@@ -13,13 +13,13 @@
  * 4. Every emitted line respects the render width (sanitized, truncated).
  */
 import { beforeAll, describe, expect, it } from "bun:test";
+import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { Settings } from "../../config/settings";
 import { getThemeByName, setThemeInstance, type Theme } from "../../modes/theme/theme";
 import type { VibeScreenSnapshot } from "../../vibe/runtime";
 import { createVibeToolRenderer, type VibeToolDetails } from "../vibe";
 
-const strip = (lines: readonly string[]): string[] =>
-	lines.map(line => line.replace(/\x1b\]8;[^\x1b\x07]*(?:\x07|\x1b\\)/g, "").replace(/\x1b\[[0-9;]*m/g, ""));
+const strip = (lines: readonly string[]): string[] => lines.map(line => stripAnsi(line));
 
 function makeScreen(overrides: Partial<VibeScreenSnapshot> = {}): VibeScreenSnapshot {
 	return {

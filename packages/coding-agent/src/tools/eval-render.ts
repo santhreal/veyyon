@@ -11,7 +11,7 @@
  */
 import type { Component } from "@veyyon/tui";
 import { Markdown, Text } from "@veyyon/tui";
-import { formatCount, formatNumber } from "@veyyon/utils";
+import { formatCount, formatMoreLines, formatNumber } from "@veyyon/utils";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
 import type { EvalCellResult, EvalLanguage, EvalStatusEvent, EvalToolDetails } from "../eval/types";
@@ -20,6 +20,7 @@ import { formatContextUsage } from "../modes/components/status-line/context-thre
 import { truncateToVisualLines } from "../modes/components/visual-truncate";
 import { getMarkdownTheme } from "../modes/theme/markdown-theme";
 import type { Theme } from "../modes/theme/theme";
+import { expandHintSuffix } from "../modes/utils/key-hint";
 import { markFramedBlockComponent, outputBlockContentWidth, renderCodeCell } from "../tui";
 import {
 	JSON_TREE_MAX_DEPTH_COLLAPSED,
@@ -362,7 +363,7 @@ function formatStatusEventExpanded(event: EvalStatusEvent, theme: Theme): string
 		}
 		const totalLines = String(preview).split("\n").length;
 		if (totalLines > maxLines) {
-			lines.push(`   ${theme.fg("dim", `… ${totalLines - maxLines} more lines`)}`);
+			lines.push(`   ${theme.fg("dim", `… ${formatMoreLines(totalLines - maxLines)}`)}`);
 		}
 	};
 
@@ -598,7 +599,7 @@ export const evalToolRenderer = {
 						const outputLines = [...outputContent.lines];
 						if (!expanded && outputContent.hiddenCount > 0) {
 							outputLines.push(
-								uiTheme.fg("dim", `… ${outputContent.hiddenCount} more lines (ctrl+o to expand)`),
+								uiTheme.fg("dim", `… ${formatMoreLines(outputContent.hiddenCount)}${expandHintSuffix()}`),
 							);
 						}
 						if (statusLines.length > 0) {
@@ -728,7 +729,7 @@ export const evalToolRenderer = {
 					outputLines.push("");
 					const skippedLine = uiTheme.fg(
 						"dim",
-						`… (${cachedSkipped} earlier lines, showing ${cachedLines.length} of ${cachedSkipped + cachedLines.length}) (ctrl+o to expand)`,
+						`… (${cachedSkipped} earlier lines, showing ${cachedLines.length} of ${cachedSkipped + cachedLines.length})${expandHintSuffix()}`,
 					);
 					outputLines.push(truncateToWidth(skippedLine, width));
 				}

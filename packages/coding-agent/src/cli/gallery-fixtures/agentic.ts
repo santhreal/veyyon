@@ -316,7 +316,7 @@ export const agenticFixtures: Record<string, GalleryFixture> = {
 		},
 		errorResult: {
 			isError: true,
-			content: [{ type: "text", text: "IRC list failed: agent hub is unavailable." }],
+			content: [{ type: "text", text: "IRC list failed: the agent registry is unavailable." }],
 			details: { op: "list" } satisfies IrcDetails,
 		},
 	},

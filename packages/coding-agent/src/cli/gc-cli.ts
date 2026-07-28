@@ -15,6 +15,8 @@ import {
 	isProcessAlive,
 	logger,
 	MINUTE_MS,
+	pathExistsOrThrow,
+	statIfPresentOrThrow,
 } from "@veyyon/utils";
 import { SESSION_BACKUP_EXTENSION, SESSION_FILE_EXTENSION } from "@veyyon/utils/session-file";
 import { tableExists } from "@veyyon/utils/sqlite";
@@ -252,25 +254,12 @@ function codeOf(error: unknown): string | undefined {
 		: undefined;
 }
 
-async function pathExists(target: string): Promise<boolean> {
-	try {
-		await fs.stat(target);
-		return true;
-	} catch (error) {
-		if (codeOf(error) === "ENOENT") return false;
-		throw error;
-	}
-}
-
-async function statIfPresent(target: string) {
-	try {
-		return await fs.stat(target);
-	} catch (error) {
-		if (codeOf(error) === "ENOENT") return null;
-		throw error;
-	}
-}
-
+// `pathExists` and `statIfPresent` used to be defined right here, with those exact names and the
+// OPPOSITE contract to `@veyyon/utils`'s exported pair: these threw on a non-ENOENT failure, while the
+// shared ones report the fault and answer "absent". Throwing is the contract gc needs, because every
+// caller below uses the answer to authorise a DELETE or an archive move, where acting on a wrong
+// "absent" destroys something. Both contracts now have one owner each in `fs-optional.ts`, named for
+// what they do, so importing the wrong one is a visible choice rather than an invisible downgrade.
 async function readTextIfPresent(file: string): Promise<string> {
 	try {
 		if (file.endsWith(COMPRESSED_SESSION_SUFFIX)) {
@@ -350,7 +339,7 @@ async function collectBlobCandidates(blobDir: string): Promise<BlobCandidate[]> 
 		const hash = match?.[1];
 		if (!hash) continue;
 		const file = path.join(blobDir, entry);
-		const stat = await statIfPresent(file);
+		const stat = await statIfPresentOrThrow(file);
 		if (!stat) continue;
 		if (!stat.isFile()) continue;
 		const candidate = byHash.get(hash) ?? { hash, paths: [], bytes: 0, mtimeMs: stat.mtimeMs };
@@ -549,9 +538,9 @@ async function moveSessionWithArtifacts(candidate: ArchiveCandidate): Promise<vo
 	const legacyDestSession = destSession.endsWith(".gz") ? destSession.slice(0, -".gz".length) : `${destSession}.gz`;
 	const sourceArtifacts = sessionArtifactsPath(sourceSession);
 	const destArtifacts = sessionArtifactsPath(destSession);
-	if (await pathExists(destSession)) throw new Error(`archive destination exists: ${destSession}`);
-	if (await pathExists(legacyDestSession)) throw new Error(`archive destination exists: ${legacyDestSession}`);
-	if ((await pathExists(sourceArtifacts)) && (await pathExists(destArtifacts))) {
+	if (await pathExistsOrThrow(destSession)) throw new Error(`archive destination exists: ${destSession}`);
+	if (await pathExistsOrThrow(legacyDestSession)) throw new Error(`archive destination exists: ${legacyDestSession}`);
+	if ((await pathExistsOrThrow(sourceArtifacts)) && (await pathExistsOrThrow(destArtifacts))) {
 		throw new Error(`archive artifacts destination exists: ${destArtifacts}`);
 	}
 
@@ -559,7 +548,7 @@ async function moveSessionWithArtifacts(candidate: ArchiveCandidate): Promise<vo
 	try {
 		await gzipSessionFile(sourceSession, destSession);
 		moved.push({ source: sourceSession, destination: destSession, compressed: true });
-		if (await pathExists(sourceArtifacts)) {
+		if (await pathExistsOrThrow(sourceArtifacts)) {
 			await movePath(sourceArtifacts, destArtifacts);
 			moved.push({ source: sourceArtifacts, destination: destArtifacts });
 		}
@@ -630,7 +619,7 @@ async function cleanupHistoryRowsForArchivedSessions(
 	result: ArchiveGcResult,
 ): Promise<void> {
 	const dbPath = getHistoryDbPath(options.agentDir);
-	if (!(await pathExists(dbPath))) return;
+	if (!(await pathExistsOrThrow(dbPath))) return;
 
 	const cleanupIds = new Set(archivedSessionIds);
 	try {
@@ -736,7 +725,7 @@ async function checkpointWal(dbPath: string, apply: boolean): Promise<WalCheckpo
 		log: 0,
 		checkpointedFrames: 0,
 	};
-	if (!apply || !(await pathExists(dbPath))) return result;
+	if (!apply || !(await pathExistsOrThrow(dbPath))) return result;
 
 	const db = new Database(dbPath);
 	let checkpointAttempted = false;
@@ -809,7 +798,7 @@ function sameGcLockStat(left: Omit<GcLockSnapshot, "text">, right: Omit<GcLockSn
 }
 
 async function readGcLockSnapshot(lockPath: string): Promise<GcLockSnapshot | null> {
-	const stat = await statIfPresent(lockPath);
+	const stat = await statIfPresentOrThrow(lockPath);
 	if (!stat) return null;
 
 	let lockText = "";
@@ -820,7 +809,7 @@ async function readGcLockSnapshot(lockPath: string): Promise<GcLockSnapshot | nu
 		throw error;
 	}
 
-	const afterStat = await statIfPresent(lockPath);
+	const afterStat = await statIfPresentOrThrow(lockPath);
 	if (!afterStat) return null;
 	const before = gcLockStatSnapshot(stat);
 	const after = gcLockStatSnapshot(afterStat);
@@ -829,7 +818,7 @@ async function readGcLockSnapshot(lockPath: string): Promise<GcLockSnapshot | nu
 }
 
 async function gcLockSnapshotStillCurrent(lockPath: string, snapshot: GcLockSnapshot): Promise<boolean> {
-	const stat = await statIfPresent(lockPath);
+	const stat = await statIfPresentOrThrow(lockPath);
 	return stat ? sameGcLockStat(snapshot, gcLockStatSnapshot(stat)) : false;
 }
 

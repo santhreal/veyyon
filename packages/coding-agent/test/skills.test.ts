@@ -3,17 +3,11 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import "@veyyon/coding-agent/discovery";
-import {
-	loadSkills,
-	loadSkillsFromDir,
-	parseSkillInvocation,
-	type Skill,
-} from "@veyyon/coding-agent/extensibility/skills";
+import { loadSkills, loadSkillsFromDir, parseSkillInvocation } from "@veyyon/coding-agent/extensibility/skills";
 import { removeWithRetries } from "@veyyon/utils";
 import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides, setAgentDir } from "@veyyon/utils/dirs";
 
 const fixturesDir = path.resolve(import.meta.dirname, "fixtures/skills");
-const collisionFixturesDir = path.resolve(import.meta.dirname, "fixtures/skills-collision");
 
 const longSkillName = "this-is-a-very-long-skill-name-that-exceeds-the-sixty-four-character-limit-set-by-the-standard";
 const expectedFixtureSkillOrder: string[] = [
@@ -186,6 +180,34 @@ describe("skills", () => {
 			expect(skill?.source).toBe("native:user");
 		});
 
+		/**
+		 * Capability discovery keeps the losing item in `result.all` specifically
+		 * so the skill loader can explain why a valid configured file disappeared.
+		 * Exercise the real native-versus-explicit-plugin path rather than
+		 * reimplementing the collision map in the test.
+		 */
+		it("warns when an explicit plugin skill is shadowed by an authored profile skill", async () => {
+			const pluginRoot = path.join(tempHome, "configured-plugin");
+			await writeSkill(agentSkillsDir, "calendar", "Profile calendar.");
+			await writeSkill(path.join(pluginRoot, "skills"), "calendar", "Plugin calendar.");
+			await fs.mkdir(path.join(tempCwd, ".veyyon"), { recursive: true });
+			await fs.writeFile(
+				path.join(tempCwd, ".veyyon", "settings.json"),
+				JSON.stringify({ extensions: [pluginRoot] }),
+			);
+
+			const { skills, warnings } = await loadSkills({ cwd: tempCwd });
+			const calendar = skills.filter(skill => skill.name === "calendar");
+			const losingPath = path.join(pluginRoot, "skills", "calendar", "SKILL.md");
+
+			expect(calendar).toHaveLength(1);
+			expect(calendar[0]?.filePath).toBe(path.join(agentSkillsDir, "calendar", "SKILL.md"));
+			expect(warnings).toContainEqual({
+				skillPath: losingPath,
+				message: expect.stringMatching(/name collision: "calendar".*skipping this one/),
+			});
+		});
+
 		it("never loads foreign ~/.claude, ~/.codex, or ~/.agents skills", async () => {
 			await writeSkill(agentSkillsDir, "profile-skill", "A skill in the active profile.");
 			for (const [dir, name] of [
@@ -295,54 +317,6 @@ describe("skills", () => {
 			expect(skills.map(s => s.name)).toEqual(expectedFixtureSkillOrder);
 			expect(skills.every(s => s.source === "native:user")).toBe(true);
 		});
-	});
-});
-
-describe("collision handling", () => {
-	it("should detect name collisions and keep first skill", async () => {
-		// Load from first directory
-		const first = await loadSkillsFromDir({
-			dir: path.join(collisionFixturesDir, "first"),
-			source: "first",
-		});
-
-		const second = await loadSkillsFromDir({
-			dir: path.join(collisionFixturesDir, "second"),
-			source: "second",
-		});
-
-		// Both directories should have loaded one skill each
-		expect(first.skills).toHaveLength(1);
-		expect(second.skills).toHaveLength(1);
-
-		// Both have the same name "calendar"
-		expect(first.skills[0].name).toBe("calendar");
-		expect(second.skills[0].name).toBe("calendar");
-
-		// Simulate the collision behavior from loadSkills()
-		const skillMap = new Map<string, Skill>();
-		const collisionWarnings: Array<{ skillPath: string; message: string }> = [];
-
-		for (const skill of first.skills) {
-			skillMap.set(skill.name, skill);
-		}
-
-		for (const skill of second.skills) {
-			const existing = skillMap.get(skill.name);
-			if (existing) {
-				collisionWarnings.push({
-					skillPath: skill.filePath,
-					message: `name collision: "${skill.name}" already loaded from ${existing.filePath}`,
-				});
-			} else {
-				skillMap.set(skill.name, skill);
-			}
-		}
-
-		expect(skillMap.size).toBe(1);
-		expect(skillMap.get("calendar")?.source).toBe("first");
-		expect(collisionWarnings).toHaveLength(1);
-		expect(collisionWarnings[0].message).toContain("name collision");
 	});
 });
 

@@ -162,8 +162,20 @@ describe("the split kept one set of commands", () => {
 		);
 	});
 
-	/** A floor on the count, so the case above cannot pass by both sides being empty. */
-	it("there are the 67 builtins the split started from", () => {
+	/**
+	 * A floor on the count, so the case above cannot pass by both sides being empty.
+	 *
+	 * The split started from 67, went to 66, and is now 67 again. Both moves are recorded because
+	 * the number is only useful if a change to it has to be justified:
+	 *
+	 *   - DOWN to 66: `/cockpit` (with its `/hub` alias) was folded into `/agents` as an alias when
+	 *     the Agent Hub overlay and the Agent Control Center stopped being two screens. A command
+	 *     that becomes an alias of another leaves the set of NAMES unchanged and the set of
+	 *     DECLARATIONS one shorter, which is exactly what this number counts.
+	 *   - UP to 67: `/secret` was added, storing a credential the agent can reference by
+	 *     placeholder without ever seeing its value.
+	 */
+	it("there are the 67 builtins the declarations hold", () => {
 		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(67);
 	});
 

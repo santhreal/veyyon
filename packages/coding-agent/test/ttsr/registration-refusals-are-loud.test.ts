@@ -290,3 +290,24 @@ describe("a rule that is accepted", () => {
 		expect(m.checkDelta("a needle here", { source: "tool", toolName: "read" }).map(r => r.name)).toEqual(["a-rule"]);
 	});
 });
+
+describe("replacing a project rule set", () => {
+	/**
+	 * A cwd move must remove source-project matchers before destination rules are
+	 * registered. Resetting only stream buffers leaves the old matcher live.
+	 */
+	it("clears registered matchers and accepts the same name from the new project", () => {
+		const m = manager();
+		expect(m.addRule(rule({ content: "source", condition: ["source-needle"] }))).toBe(true);
+
+		m.clearRules();
+
+		expect(m.getRules()).toEqual([]);
+		expect(m.hasRules()).toBe(false);
+		expect(m.checkDelta("source-needle", { source: "tool", toolName: "read" })).toEqual([]);
+		expect(m.addRule(rule({ content: "destination", condition: ["destination-needle"] }))).toBe(true);
+		expect(m.checkDelta("destination-needle", { source: "tool", toolName: "read" }).map(r => r.content)).toEqual([
+			"destination",
+		]);
+	});
+});

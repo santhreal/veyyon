@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "bun:test";
 import type { AgentMessage, AgentTelemetryConfig } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai";
 import type { TUI } from "@veyyon/tui";
+import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { type } from "arktype";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
@@ -2455,7 +2456,7 @@ describe("advisor", () => {
 	});
 
 	describe("createAdvisorMessageCard", () => {
-		const strip = (lines: readonly string[]): string => lines.join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+		const strip = (lines: readonly string[]): string => stripAnsi(lines.join("\n"));
 
 		it("renders the advisor header, severity badge, and note text", async () => {
 			const uiTheme = await getThemeByName("dark");
@@ -2674,7 +2675,7 @@ describe("advisor", () => {
 			requestRender: () => {},
 			notify: () => {},
 		};
-		const strip = (lines: readonly string[]): string => lines.join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+		const strip = (lines: readonly string[]): string => stripAnsi(lines.join("\n"));
 		const make = (doc: WatchdogConfigDoc, extra?: Partial<AdvisorConfigDeps>): AdvisorConfigOverlayComponent =>
 			new AdvisorConfigOverlayComponent({} as unknown as TUI, { ...deps, ...extra }, "project", doc, callbacks);
 		const fullHeight = Math.max(14, process.stdout.rows || 40);

@@ -44,7 +44,7 @@ import { bucketRules, type RuleBuckets } from "./capability/rule-buckets";
 import { shouldEnableAppendOnlyContext } from "./config/append-only-context-mode";
 import { isAuthenticated, kNoAuth } from "./config/auth-state";
 import { resolveDialect } from "./config/dialect-format";
-import { resolveEffort, withLegacyDefaultEffort } from "./config/effort-resolver";
+import { type EffortSource, resolveEffort, withLegacyDefaultEffort } from "./config/effort-resolver";
 import { shouldInlineToolDescriptors } from "./config/inline-tool-descriptors-mode";
 import { ModelRegistry } from "./config/model-registry";
 import { modelResolutionFailureMessage } from "./config/model-resolution-failure";
@@ -146,6 +146,7 @@ import {
 } from "./secrets";
 import { buildExpansionRecord, SecretAuditLog, secretAuditPath } from "./secrets/audit";
 import { buildEnvSecretPattern, loadEnvSecretKeywords } from "./secrets/env-keywords";
+import { setSecretsNoticeSink } from "./secrets/notices";
 import { expiryWarnings } from "./secrets/secret-command";
 import { resolveVaultLocations, SecretVault } from "./secrets/vault";
 import { loadOrCreateVaultKey } from "./secrets/vault-crypto";
@@ -441,8 +442,10 @@ export interface CreateAgentSessionOptions {
 	modelPatternFallbackRole?: string;
 	/** Thinking selector. Default: from settings, else unset */
 	thinkingLevel?: ConfiguredThinkingLevel;
+	/** Internal precedence source for the initial effort selection. */
+	thinkingSource?: EffortSource;
 	/** Models available for cycling (Ctrl+P in interactive mode) */
-	scopedModels?: Array<{ model: Model; thinkingLevel?: ThinkingLevel }>;
+	scopedModels?: Array<{ model: Model; thinkingLevel?: ConfiguredThinkingLevel }>;
 	/** Prewalk from the starting model to a fast/cheap target at the first edit/write once the todo list exists. */
 	prewalk?: Prewalk;
 	/** Force read-only plan mode at start, auto-approve on the model's first resolve call, then switch to execute. */
@@ -1270,6 +1273,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		}
 	});
 	let detachFaultSink: (() => void) | undefined;
+	let detachSecretsNoticeSink: (() => void) | undefined;
 	let sessionManager!: SessionManager;
 	let agent!: Agent;
 	let session!: AgentSession;
@@ -1404,6 +1408,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// one, and defaulted to stderr rather than to nothing: a caller that supplies no surface gets
 		// its warnings in the wrong place, never dropped.
 		const operatorNotices = options.operatorNotices ?? new OperatorNotices(stderrNoticeSink);
+		// Key and vault conditions are raised from deep inside the secrets subsystem
+		// and cannot be returned. See secrets/notices.ts for why this is a sink.
+		// Same lifetime rule as the fault sink below: it closes over this session's notices, so it is
+		// detached wherever that one is. Left attached it would post a later process's key-directory
+		// or vault-binding notice into a channel belonging to a session that has already gone.
+		setSecretsNoticeSink(message => operatorNotices.warn("secrets", message));
+		detachSecretsNoticeSink = () => setSecretsNoticeSink(undefined);
 		for (const legacyFile of await findLegacyPromptFiles({ cwd, agentDir })) {
 			operatorNotices.warn("system-prompt", describeLegacyPromptFile(legacyFile));
 		}
@@ -1506,6 +1517,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				revision,
 				cwd: normalizedCwd,
 				expansionObfuscator,
+				redactionObfuscator: redactor,
 				hasRedactions: redactor?.hasSecrets() ?? false,
 				obfuscateText: (text: string) => redactor?.obfuscate(text) ?? text,
 				obfuscateMessages: (messages: Message[]) => (redactor ? obfuscateMessages(redactor, messages) : messages),
@@ -1686,42 +1698,38 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 		const taskDepth = options.taskDepth ?? 0;
 
-		// Resolves the session/agent thinking level using the same precedence we
-		// apply at startup: explicit option → persisted session entry → restored
-		// model selector suffix → default role's explicit selector → selected
-		// model's defaultLevel → global settings default. Run again after extension
-		// role reclaim so the final model's own defaults aren't masked by an earlier
-		// fallback model's.
+		// Resolve one effort axis and remember its source so model switches can
+		// preserve session overrides while re-evaluating per-model defaults.
+		let thinkingSource: EffortSource = "model-default";
 		const pickInitialThinkingLevel = (selectedModel: Model | undefined): ConfiguredThinkingLevel | undefined => {
-			let level = options.thinkingLevel;
-			if (level === undefined && hasExistingSession && hasThinkingEntry) {
-				level =
+			if (options.thinkingLevel !== undefined) {
+				thinkingSource = options.thinkingSource ?? "session";
+				return options.thinkingLevel;
+			}
+			if (hasExistingSession && hasThinkingEntry) {
+				thinkingSource = "session";
+				return (
 					parseConfiguredThinkingLevel(existingSession.configuredThinkingLevel) ??
-					parseThinkingLevel(existingSession.thinkingLevel);
+					parseThinkingLevel(existingSession.thinkingLevel)
+				);
 			}
-			if (level === undefined && !hasThinkingEntry && restoredSessionThinkingLevel !== undefined) {
-				level = restoredSessionThinkingLevel;
+			if (!hasThinkingEntry && restoredSessionThinkingLevel !== undefined) {
+				thinkingSource = "session";
+				return restoredSessionThinkingLevel;
 			}
-			if (level === undefined && !hasExplicitModel && !hasThinkingEntry && defaultRoleSpec.explicitThinkingLevel) {
-				level = defaultRoleSpec.thinkingLevel;
+			if (!hasExplicitModel && !hasThinkingEntry && defaultRoleSpec.explicitThinkingLevel) {
+				thinkingSource = "selector";
+				return defaultRoleSpec.thinkingLevel;
 			}
-			if (level === undefined && selectedModel?.thinking?.defaultLevel !== undefined) {
-				level = selectedModel.thinking.defaultLevel;
-			}
-			if (level === undefined) {
-				// The profile's Default Effort list, through the ONE resolver: this model's
-				// row first, then the any-model row (which is where a legacy
-				// `defaultThinkingLevel` migrates to). Reading the retired enum directly
-				// here is what let a per-model default be ignored.
-				level = resolveEffort({
-					modelSelector: selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : undefined,
-					defaultEffort: withLegacyDefaultEffort(
-						settings.get("defaultEffort"),
-						settings.get("defaultThinkingLevel"),
-					),
-				}).level;
-			}
-			return level;
+			const saved = resolveEffort({
+				modelSelector: selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : undefined,
+				defaultEffort: withLegacyDefaultEffort(
+					settings.get("defaultEffort"),
+					settings.get("defaultThinkingLevel"),
+				),
+			});
+			thinkingSource = saved.source;
+			return saved.level ?? selectedModel?.thinking?.defaultLevel;
 		};
 		let thinkingLevel = pickInitialThinkingLevel(model);
 		let autoThinking = thinkingLevel === AUTO_THINKING;
@@ -3739,6 +3747,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			agent,
 			pruneToolDescriptions: inlineToolDescriptorsForModel,
 			thinkingLevel: autoThinking ? AUTO_THINKING : effectiveThinkingLevel,
+			thinkingSource,
 			prewalk: options.prewalk,
 			planYolo: options.planYolo,
 			serviceTierByFamily: initialServiceTierByFamily,
@@ -3983,6 +3992,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 								// nothing renders, and in a process that opens sessions in sequence the count grows
 								// by one per session forever.
 								detachFaultSink?.();
+								detachSecretsNoticeSink?.();
 								unregisterUnlessParked();
 								unsubscribeCredentialDisabled?.();
 							}
@@ -4183,6 +4193,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// throw anywhere after it would otherwise leave a sink pointing at notices for a session that
 		// never started. Idempotent, so the `session.dispose()` below detaching again is harmless.
 		detachFaultSink?.();
+		detachSecretsNoticeSink?.();
 		try {
 			if (hasSession) {
 				await session.dispose();

@@ -727,6 +727,21 @@ export class TtsrManager {
 		}
 	}
 
+	/**
+	 * Remove every monitored rule before a working-directory re-scope installs
+	 * the destination rule set. Injection history remains session-scoped so a
+	 * once-only rule does not fire again merely because the session moved away
+	 * and back.
+	 */
+	clearRules(): void {
+		this.#rules.clear();
+		this.#buffers.clear();
+		this.#lastAstSnapshots.clear();
+		this.#lastMatchedPath.clear();
+		this.#canMatchText = false;
+		this.#canMatchThinking = false;
+	}
+
 	/** Reset stream buffers (called on new turn). */
 	resetBuffer(): void {
 		this.#buffers.clear();

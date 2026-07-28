@@ -1,3 +1,17 @@
+/**
+ * Manual probe: does a real RPC session record checkpoints, branch, and reload?
+ *
+ * Not a test, and it cannot be one: it drives `src/cli.ts` as a child process
+ * against a LIVE provider, so it needs a key and it costs money and time. The
+ * automated coverage of the same paths is in `test/session/` and the RPC suites,
+ * against fakes.
+ *
+ * Run with: bun test/probes/rpc-session-checkpoints.ts
+ * Needs: one provider key in the environment (ANTHROPIC_API_KEY, OPENAI_API_KEY,
+ * GEMINI_API_KEY / GOOGLE_API_KEY, XAI_API_KEY, ZAI_API_KEY or
+ * PERPLEXITY_API_KEY). Exits 0 on success and prints FAIL with the reason on
+ * failure, so it can be dropped into a shell pipeline.
+ */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -35,7 +49,7 @@ function getLastAssistant(messages: AgentMessage[]): Extract<AgentMessage, { rol
 
 async function main() {
 	const sessionDir = path.join(os.tmpdir(), `veyyon-checkpoint-rpc-qa-${Date.now()}`);
-	const projectRoot = path.join(import.meta.dir, "..");
+	const projectRoot = path.join(import.meta.dir, "../..");
 	const client = new RpcClient({
 		cliPath: path.join(projectRoot, "src/cli.ts"),
 		cwd: projectRoot,

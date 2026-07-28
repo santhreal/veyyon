@@ -494,8 +494,40 @@ describe("ModelHub roles list windowing", () => {
 		setThemeInstance(theme);
 	});
 
+	/** Fallback chains, each on its own model so every rendered row is unique. */
+	const CHAIN_COUNT = 8;
+
+	/**
+	 * Enough chains that the roles list overflows the card at 40 rows.
+	 *
+	 * The row COUNT is what forces the window, not the terminal height. Sizing
+	 * the overflow by "the card happens to be short at this height" made these
+	 * tests stop windowing the moment the shell stopped shrinking its card, and
+	 * a windowing test that no longer overflows passes for the wrong reason.
+	 */
 	function chainSettings(): Settings {
-		return Settings.isolated({ "retry.fallbackChains": { "test/*": ["test/model-a"] } });
+		const chains: Record<string, string[]> = {};
+		for (let i = 0; i < CHAIN_COUNT; i++) chains[`test/pattern-${i}`] = [`test/model-${i}`];
+		return Settings.isolated({ "retry.fallbackChains": chains });
+	}
+
+	/** Every model a chain points at, so no row renders as an unknown id. */
+	function chainModels(): Model[] {
+		return Array.from({ length: CHAIN_COUNT }, (_, i) => makeModel("test", `model-${i}`));
+	}
+
+	/** The rows the roles view draws, top to bottom, for {@link chainSettings}. */
+	function chainRowLabels(): string[] {
+		const rows = ["SMOL", "SLOW", "VISION", "PLAN", "DESIGNER", "COMMIT", "TINY", "ADVISOR", "+ New role…"];
+		for (let i = 0; i < CHAIN_COUNT; i++) rows.push(`test/pattern-${i}`, `↳ test/model-${i}`);
+		rows.push("+ New fallback…");
+		return rows;
+	}
+
+	function rolesHub(rows: number): ModelHubComponent {
+		const hub = makeHub({ rows, settings: chainSettings(), models: chainModels() });
+		enterRolesView(hub);
+		return hub;
 	}
 
 	/**
@@ -504,8 +536,7 @@ describe("ModelHub roles list windowing", () => {
 	 * budget, and the cursor could sit on one that was not on screen.
 	 */
 	test("wrapping the selection to the last row scrolls it into view", () => {
-		const hub = makeHub({ rows: 40, settings: chainSettings() });
-		enterRolesView(hub);
+		const hub = rolesHub(40);
 		expect(plain(hub.render(220)).join("\n")).not.toContain("+ New fallback…");
 
 		hub.handleInput(UP); // wraps past the end
@@ -514,8 +545,7 @@ describe("ModelHub roles list windowing", () => {
 
 	/** Coming back to the top scrolls back, so the window is not one-way. */
 	test("returning to the first row scrolls the window back to the start", () => {
-		const hub = makeHub({ rows: 40, settings: chainSettings() });
-		enterRolesView(hub);
+		const hub = rolesHub(40);
 		hub.handleInput(UP); // last row
 		expect(plain(hub.render(220)).join("\n")).toContain("+ New fallback…");
 
@@ -534,8 +564,7 @@ describe("ModelHub roles list windowing", () => {
 	 * changed".
 	 */
 	test("an overflowing roles list draws the scrollbar track and thumb", () => {
-		const hub = makeHub({ rows: 40, settings: chainSettings() });
-		enterRolesView(hub);
+		const hub = rolesHub(40);
 		const frame = plain(hub.render(220)).join("\n");
 		expect(frame).toContain("█"); // thumb
 		expect(frame).toContain("│"); // track
@@ -543,8 +572,7 @@ describe("ModelHub roles list windowing", () => {
 
 	/** And it is absent when everything fits, so the bar means what it says. */
 	test("a list that fits draws no scrollbar", () => {
-		const hub = makeHub({ rows: 60, settings: chainSettings() });
-		enterRolesView(hub);
+		const hub = rolesHub(60);
 		const rolesPane = plain(hub.render(220))
 			.filter(line => line.includes("SMOL") || line.includes("+ New fallback…"))
 			.join("\n");
@@ -553,8 +581,7 @@ describe("ModelHub roles list windowing", () => {
 
 	/** The thumb tracks the window, so it is not painted at a fixed position. */
 	test("the thumb moves when the window scrolls", () => {
-		const hub = makeHub({ rows: 40, settings: chainSettings() });
-		enterRolesView(hub);
+		const hub = rolesHub(40);
 		const thumbRows = (): number[] =>
 			plain(hub.render(220))
 				.map((line, i) => (line.includes("█") ? i : -1))
@@ -569,13 +596,9 @@ describe("ModelHub roles list windowing", () => {
 
 	/** A tall terminal has room for everything, so no window is applied at all. */
 	test("a tall terminal shows the whole list with no scrolling", () => {
-		const hub = makeHub({ rows: 60, settings: chainSettings() });
-		enterRolesView(hub);
-		const frame = plain(hub.render(220)).join("\n");
-		expect(frame).toContain("SMOL");
-		expect(frame).toContain("+ New role…");
-		expect(frame).toContain("↳ test/model-a");
-		expect(frame).toContain("+ New fallback…");
+		const frame = plain(rolesHub(60).render(220)).join("\n");
+		const missing = chainRowLabels().filter(label => !frame.includes(label));
+		expect(missing).toEqual([]);
 	});
 
 	/**
@@ -583,24 +606,9 @@ describe("ModelHub roles list windowing", () => {
 	 * to hold, and it is asserted for every row rather than the two ends.
 	 */
 	test("every row in the list is on screen while it is selected", () => {
-		const hub = makeHub({ rows: 40, settings: chainSettings() });
-		enterRolesView(hub);
-		const labels = [
-			"SMOL",
-			"SLOW",
-			"VISION",
-			"PLAN",
-			"DESIGNER",
-			"COMMIT",
-			"TINY",
-			"ADVISOR",
-			"+ New role…",
-			"test/*",
-			"↳ test/model-a",
-			"+ New fallback…",
-		];
+		const hub = rolesHub(40);
 		const offScreen: string[] = [];
-		for (const label of labels) {
+		for (const label of chainRowLabels()) {
 			const frame = plain(hub.render(220));
 			const row = frame.find(line => line.includes(label));
 			// The cursor glyph marks the selected row; find it and confirm it is

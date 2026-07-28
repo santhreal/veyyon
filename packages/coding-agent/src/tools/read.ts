@@ -17,7 +17,7 @@ import { Text } from "@veyyon/tui";
 import { isAbortError, isCancellation, isTimeoutError, untilAborted } from "@veyyon/utils/abortable";
 import { isProbablyBinary, isProbablyBinaryHeader } from "@veyyon/utils/binary";
 import { getRemoteDir } from "@veyyon/utils/dirs";
-import { formatCount } from "@veyyon/utils/format";
+import { formatCount, formatMoreLines } from "@veyyon/utils/format";
 import { isMissingPath } from "@veyyon/utils/fs-error";
 import * as logger from "@veyyon/utils/logger";
 import { type ImageMetadata, readImageMetadata } from "@veyyon/utils/mime";
@@ -1539,7 +1539,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			} else {
 				outputText = formatLineEntries(buildLineEntries(endLine), startLineDisplay);
 			}
-			outputText += `\n\n[${remaining} more lines in ${options.entityLabel}. Use :${nextOffset} to continue]`;
+			outputText += `\n\n[${formatMoreLines(remaining)} in ${options.entityLabel}. Use :${nextOffset} to continue]`;
 		} else {
 			if (options.raw === true) {
 				rawSeenLines = contiguousLineNumbers(startLineDisplay, endLine - startLine);
@@ -2863,7 +2863,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 
 						outputText = formatBracketAwareText() ?? formatText(truncation.content, startLineDisplay);
 						outputText += reachedEof
-							? `\n\n[${totalFileLines - (startLine + userLimitedLines)} more lines in file. Use :${nextOffset} to continue]`
+							? `\n\n[${formatMoreLines(totalFileLines - (startLine + userLimitedLines))} in file. Use :${nextOffset} to continue]`
 							: `\n\n[More lines in file (${formatBytes(fileSize)} total; not scanned to EOF). Use :${nextOffset} to continue]`;
 						details = {};
 						sourcePath = absolutePath;
@@ -3205,7 +3205,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			} else if (startLine + collectedLines.length < totalFileLines || !reachedEof) {
 				const nextOffset = startLine + collectedLines.length + 1;
 				outputText += reachedEof
-					? `\n\n[${totalFileLines - (startLine + collectedLines.length)} more lines in artifact. Use ${artifactUrl}:${nextOffset} to continue]`
+					? `\n\n[${formatMoreLines(totalFileLines - (startLine + collectedLines.length))} in artifact. Use ${artifactUrl}:${nextOffset} to continue]`
 					: `\n\n[More lines in artifact (${formatBytes(artifact.size)} total; not scanned to EOF). Use ${artifactUrl}:${nextOffset} to continue]`;
 			}
 		}
@@ -3418,7 +3418,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			let text = sliced;
 			if (end < allLines.length) {
 				const remaining = allLines.length - end;
-				text += `\n\n[${remaining} more lines in listing. Use :${end + 1} to continue]`;
+				text += `\n\n[${formatMoreLines(remaining)} in listing. Use :${end + 1} to continue]`;
 			}
 			resultBuilder.text(text);
 			if (tree.truncated) {

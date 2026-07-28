@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { atomicWriteFileSync, getAgentDir, isEnoent, logger } from "@veyyon/utils";
+import { atomicWriteFileSync, getAgentDir, isEnoent, logger, pathStateSync, reportFault } from "@veyyon/utils";
 import { ArkErrors, type Type } from "arktype";
 import { JSONC, YAML } from "bun";
 
@@ -154,6 +154,16 @@ export class ConfigFile<T> implements IConfigFile<T> {
 	#resolvedSchema?: Type;
 	#cache?: LoadResult<T>;
 	#auxValidate?: (value: T) => void;
+	/**
+	 * Whether the unreadable-base fault has been reported for this instance.
+	 *
+	 * `#resolveReadPath` runs on every `tryLoad` and every `getMtimeMs`, and `getMtimeMs` is what a
+	 * config watcher polls, so reporting per call would put the same line in the log on a timer. The
+	 * operator channel collapses identical notices by text, but the file log does not. One report per
+	 * instance per state change is the honest amount: the fault is a property of the file, not of the
+	 * poll.
+	 */
+	#reportedUnreadable = false;
 
 	constructor(
 		readonly id: string,
@@ -184,7 +194,12 @@ export class ConfigFile<T> implements IConfigFile<T> {
 	 */
 	#ensureMigrated(): void {
 		if (!this.#jsonMigrationPath) return;
-		if (this.#yamlFallbackPath && !fs.existsSync(this.#basePath) && fs.existsSync(this.#yamlFallbackPath)) {
+		const baseState = pathStateSync(this.#basePath);
+		// An unreadable base is a base that IS there, so a migration must not run against it. The probe
+		// was `!fs.existsSync(this.#basePath)`, which reads unreadable as absent, so the one state where
+		// writing is unsafe was the state that let the write through.
+		if (baseState === "unreadable") return;
+		if (this.#yamlFallbackPath && baseState === "absent" && fs.existsSync(this.#yamlFallbackPath)) {
 			return;
 		}
 		migrateJsonToYml(this.#jsonMigrationPath, this.#basePath);
@@ -204,11 +219,46 @@ export class ConfigFile<T> implements IConfigFile<T> {
 		return result;
 	}
 
+	/**
+	 * Which file to read: the base path, or the YAML fallback when the base is genuinely not there.
+	 *
+	 * FALLING BACK IS ONLY CORRECT FOR AN ABSENT BASE, and `fs.existsSync` cannot express that: it
+	 * answers `false` for a path that exists and cannot be reached exactly as it does for one that is not
+	 * there. The three-state probe separates them, and an unreadable base RESOLVES TO ITSELF so the read
+	 * that follows fails on the file the operator meant rather than succeeding against another one.
+	 *
+	 * HOW NARROW THE WRONG-FILE CASE ACTUALLY IS, because the first version of this comment claimed more
+	 * than the code could do and the tests said so. `<name>.yml` and `<name>.yaml` are derived from one
+	 * `configPath`, so they always share a directory: an unsearchable directory takes both down and the
+	 * fallback is unreachable anyway, and a `chmod 000` FILE still stats fine through its parent, which
+	 * is why {@link pathStateSync} calls it `present`. The resolution that genuinely changes is a
+	 * SYMLINKED base pointing somewhere unreachable, where the fallback beside the link is readable and
+	 * used to win silently.
+	 *
+	 * THE REPORT IS THE PART THAT MATTERS IN EVERY CASE. An unreachable base already produced a
+	 * `ConfigError`, but nothing put it in front of an operator: `logger.warn` is file-only, and
+	 * `getMtimeMs` turns the same failure into a throw a watcher swallows. The fault channel is the one
+	 * surface that reaches a person, and "your config exists and could not be read" is the sentence that
+	 * stops them hunting for a syntax error in a file that was never opened.
+	 */
 	#resolveReadPath(): string {
-		if (fs.existsSync(this.#basePath)) {
+		const baseState = pathStateSync(this.#basePath);
+		if (baseState === "present") {
+			this.#reportedUnreadable = false;
 			return this.#basePath;
 		}
-		if (this.#yamlFallbackPath && fs.existsSync(this.#yamlFallbackPath)) {
+		if (baseState === "unreadable") {
+			if (!this.#reportedUnreadable) {
+				this.#reportedUnreadable = true;
+				reportFault({
+					source: "config",
+					text: `${this.#basePath} exists but could not be read, so this config is not being loaded and no fallback is being used in its place. Check its permissions and whether its filesystem is mounted.`,
+					context: { path: this.#basePath, config: this.id },
+				});
+			}
+			return this.#basePath;
+		}
+		if (this.#yamlFallbackPath && pathStateSync(this.#yamlFallbackPath) === "present") {
 			return this.#yamlFallbackPath;
 		}
 		return this.#basePath;

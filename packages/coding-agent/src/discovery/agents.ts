@@ -1,8 +1,8 @@
 /**
  * Agents (standard) Provider
  *
- * Loads skills, rules, prompts, commands, context files, and system prompts
- * from .agent/ and .agents/ directories at both user (~/) and project levels.
+ * Loads skills, rules, prompts, commands, and context files from .agent/ and
+ * .agents/ directories at both user (~/) and project levels.
  * Project-level discovery walks up from cwd to repoRoot.
  */
 import * as path from "node:path";
@@ -13,7 +13,6 @@ import { type Prompt, promptCapability } from "../capability/prompt";
 import { type Rule, ruleCapability } from "../capability/rule";
 import { type Skill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
-import { type SystemPrompt, systemPromptCapability } from "../capability/system-prompt";
 import type { LoadContext, LoadResult } from "../capability/types";
 import {
 	buildRuleFromMarkdown,
@@ -203,28 +202,4 @@ registerProvider<ContextFile>(contextFileCapability.id, {
 	description: "Load AGENTS.md from .agent and .agents (project walk-up + user home)",
 	priority: PRIORITY,
 	load: loadContextFiles,
-});
-
-// System Prompt (SYSTEM.md)
-async function loadSystemPrompt(ctx: LoadContext): Promise<LoadResult<SystemPrompt>> {
-	const load = async (filePath: string, level: "user" | "project"): Promise<SystemPrompt | null> => {
-		const content = await readFile(filePath);
-		if (!content) return null;
-		return { path: filePath, content, level, _source: createSourceMeta(PROVIDER_ID, filePath, level) };
-	};
-
-	const results = await Promise.all([
-		...getProjectPathCandidates(ctx, "SYSTEM.md").map(p => load(p, "project")),
-		...getUserPathCandidates(ctx, "SYSTEM.md").map(p => load(p, "user")),
-	]);
-
-	return { items: results.filter((r): r is SystemPrompt => r !== null), warnings: [] };
-}
-
-registerProvider<SystemPrompt>(systemPromptCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load SYSTEM.md from .agent and .agents (project walk-up + user home)",
-	priority: PRIORITY,
-	load: loadSystemPrompt,
 });

@@ -10,6 +10,7 @@ import {
 	markSetupWizardComplete,
 	runSetupWizard,
 	type SetupScene,
+	type SetupSceneController,
 	type SetupSceneHost,
 	selectSetupScenes,
 } from "@veyyon/coding-agent/modes/setup-wizard";
@@ -429,12 +430,14 @@ describe("setup wizard scene footer copy", () => {
 });
 
 describe("setup wizard theme previews", () => {
-	it("restores the selected glyph preset after previewing ANSI-safe mode", async () => {
-		await initTheme(false, "nerd", false, "titanium", "light");
-		const settings = Settings.isolated({ symbolPreset: "nerd", colorBlindMode: false });
+	/** Mount the theme scene against an isolated profile, and report what it finished with. */
+	async function mountThemeScene(settings: Settings): Promise<{
+		controller: SetupSceneController;
+		finished: string[];
+	}> {
 		const setupScene = ALL_SCENES.find(scene => scene.id === "theme");
 		expect(setupScene).toBeDefined();
-
+		const finished: string[] = [];
 		const host = {
 			ctx: {
 				settings,
@@ -444,19 +447,62 @@ describe("setup wizard theme previews", () => {
 				},
 			},
 			requestRender: () => {},
-			finish: () => {},
+			finish: (result: string) => finished.push(result),
 			setFocus: () => {},
 			restoreFocus: () => {},
 		} as unknown as SetupSceneHost;
+		return { controller: setupScene!.mount(host), finished };
+	}
 
-		const controller = setupScene!.mount(host);
-		controller.handleInput?.("5");
+	/**
+	 * Skipping the step puts back the glyph preset a preview changed.
+	 *
+	 * This is the guarantee that makes previewing safe to do at all: the step
+	 * repaints the live theme as you move through it, so a user who arrives with
+	 * Nerd Font glyphs, turns ASCII on to look at it, and then presses Esc must
+	 * get their glyphs back. Nothing else covers it. The test this replaced
+	 * asserted the same restore against an "ANSI-safe" ROW that ended the step,
+	 * which is the design the toggles removed; see
+	 * `test/modes/setup-wizard/theme-scene-modifiers-compose.test.ts`.
+	 */
+	it("restores the glyph preset when the step is skipped after previewing ASCII", async () => {
+		await initTheme(false, "nerd", false, "titanium", "light");
+		const settings = Settings.isolated({ symbolPreset: "nerd", colorBlindMode: false });
+		const { controller, finished } = await mountThemeScene(settings);
+
+		// Row 6 is the ASCII toggle. The digit only moves the cursor onto it;
+		// enter is what flips it, which is the whole point of a toggle.
+		controller.handleInput?.("6");
+		await Bun.sleep(20);
+		expect(theme.getSymbolPreset()).toBe("nerd");
+
+		controller.handleInput?.("\r");
 		await Bun.sleep(20);
 		expect(theme.getSymbolPreset()).toBe("ascii");
 
-		controller.handleInput?.("2");
+		controller.handleInput?.("\x1b");
 		await Bun.sleep(20);
+		expect(finished).toEqual(["skipped"]);
+		expect(theme.getSymbolPreset()).toBe("nerd");
 		expect(settings.get("symbolPreset")).toBe("nerd");
+	});
+
+	/**
+	 * And moving the cursor onto a theme row does not lose it either.
+	 *
+	 * The preview reapplies the modifiers before it loads a theme, so a theme
+	 * whose own file says nothing about glyphs cannot reset them. Without that
+	 * order, arrowing through the list would silently drop the user back to the
+	 * default preset partway down.
+	 */
+	it("keeps the glyph preset while previewing a theme row", async () => {
+		await initTheme(false, "nerd", false, "titanium", "light");
+		const settings = Settings.isolated({ symbolPreset: "nerd", colorBlindMode: false });
+		const { controller } = await mountThemeScene(settings);
+
+		controller.handleInput?.("3");
+		await Bun.sleep(20);
+
 		expect(theme.getSymbolPreset()).toBe("nerd");
 	});
 });

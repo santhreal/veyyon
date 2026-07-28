@@ -16,7 +16,7 @@ import { isEnoent } from "@veyyon/utils/fs-error";
 // modules, and this handler only reads which ones are active.
 import { getActiveSkills } from "../extensibility/active-skills";
 import { getContentType } from "./content-type";
-import { buildDirectoryResource, isWithinRoot } from "./filesystem-resource";
+import { buildDirectoryResource, ensureWithinRoot } from "./filesystem-resource";
 import { validateRelativePath } from "./relative-path";
 import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext, UrlCompletion } from "./types";
 
@@ -58,25 +58,27 @@ export class SkillProtocolHandler implements ProtocolHandler {
 			const relativePath = decodeURIComponent(urlPath.slice(1));
 			validateRelativePath(relativePath);
 			targetPath = path.join(skill.baseDir, relativePath);
-
-			const resolvedPath = path.resolve(targetPath);
-			const resolvedBaseDir = path.resolve(skill.baseDir);
-			if (!isWithinRoot(resolvedPath, resolvedBaseDir)) {
-				throw new Error("Path traversal is not allowed");
-			}
 		} else {
 			targetPath = context?.pathOnly === true ? skill.baseDir : skill.filePath;
 		}
 
-		let stats: fsTypes.Stats;
+		let resolvedBaseDir: string;
+		let resolvedTargetPath: string;
 		try {
-			stats = await fs.stat(targetPath);
+			[resolvedBaseDir, resolvedTargetPath] = await Promise.all([
+				fs.realpath(skill.baseDir),
+				fs.realpath(targetPath),
+			]);
 		} catch (error) {
 			if (isEnoent(error)) {
 				throw new Error(`File not found: ${targetPath}`);
 			}
 			throw error;
 		}
+		ensureWithinRoot(resolvedTargetPath, resolvedBaseDir, "skill");
+		targetPath = resolvedTargetPath;
+
+		const stats: fsTypes.Stats = await fs.stat(targetPath);
 
 		if (stats.isDirectory()) {
 			return buildDirectoryResource(url.href, targetPath);
@@ -96,8 +98,8 @@ export class SkillProtocolHandler implements ProtocolHandler {
 		};
 	}
 
-	async complete(): Promise<UrlCompletion[]> {
-		return getActiveSkills().map(skill => ({
+	async complete(_query?: string, context?: ResolveContext): Promise<UrlCompletion[]> {
+		return (context?.skills ?? getActiveSkills()).map(skill => ({
 			value: skill.name,
 			...(skill.description ? { description: skill.description } : {}),
 		}));

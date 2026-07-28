@@ -3,7 +3,7 @@ import { errorMessage } from "@veyyon/utils";
  * Manage self-contained Veyyon profiles.
  */
 import { Args, Command, Flags } from "@veyyon/utils/cli";
-import { PROFILE_ACTIONS, type ProfileAction, type ProfileCommandArgs, runProfileCommand } from "../cli/profile-cli";
+import { PROFILE_ACTIONS, type ProfileAction, type ProfileCommandArgs, runProfileCliCommand } from "../cli/profile-cli";
 
 export default class Profile extends Command {
 	static description = "List, create, or remove self-contained profiles";
@@ -54,7 +54,7 @@ export default class Profile extends Command {
 			clear: flags.clear,
 		};
 		try {
-			await runProfileCommand(cmd);
+			await runProfileCliCommand(cmd);
 		} catch (error) {
 			const message = errorMessage(error);
 			console.error(message);

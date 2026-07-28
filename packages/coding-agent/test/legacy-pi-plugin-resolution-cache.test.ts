@@ -1,3 +1,17 @@
+/**
+ * Plugin discovery and legacy-dependency resolution are cached, and the caches
+ * clear together.
+ *
+ * Filed as issue #4197: repeated discovery for one cwd and home re-walked the
+ * filesystem on every call, and the legacy bare-dependency rewrite re-resolved
+ * its fallback package each time. Both are pure functions of the tree, so the
+ * cost was pure waste on a path that runs on every extension load.
+ *
+ * The pair matters more than either half: a cached discovery served after the
+ * plugin caches clear would hand back plugins that are no longer installed, so
+ * each case asserts the value is reused AND that clearing the plugin caches
+ * makes the next call do the work again.
+ */
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";

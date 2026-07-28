@@ -266,7 +266,7 @@ describe("createAgentSession MCP discovery prompt gating", () => {
 
 		expect(session.getActiveToolNames()).toContain("mcp__github_create_issue");
 		expect(session.getSelectedMCPToolNames()).toEqual(["mcp__github_create_issue"]);
-		expect(session.systemPrompt.join("\n")).toContain("mcp__github_create_issue");
+		expect(session.systemPrompt.join("\n")).not.toContain("mcp__github_create_issue");
 
 		await session.activateDiscoveredMCPTools(["mcp__slack_post_message"]);
 
@@ -432,7 +432,7 @@ describe("createAgentSession MCP discovery prompt gating", () => {
 			expect(resumedSession.getActiveToolNames()).toEqual(
 				expect.arrayContaining(["read", "search_tool_bm25", "mcp__slack_post_message"]),
 			);
-			expect(resumedSession.systemPrompt.join("\n")).toContain("mcp__slack_post_message");
+			expect(resumedSession.systemPrompt.join("\n")).not.toContain("mcp__slack_post_message");
 			expect(fs.readFileSync(sessionFile!, "utf8")).toBe(persistedBeforeResume);
 			expect(fs.statSync(sessionFile!).mtimeMs).toBe(persistedMtimeBeforeResume);
 		} finally {

@@ -24,8 +24,8 @@ import { runChangelogFlow } from "./changelog";
 import { runMapReduceAnalysis, shouldUseMapReduce } from "./map-reduce";
 import { formatCommitMessage } from "./message";
 import { resolvePrimaryModel, resolveSmolModel } from "./model-selection";
-import type { CommitCommandArgs, ConventionalAnalysis } from "./types";
 import type { ResolveObfuscateProviderText } from "./shared-llm";
+import type { CommitCommandArgs, ConventionalAnalysis } from "./types";
 
 const RECENT_COMMITS_COUNT = 8;
 let typesDescription: string | undefined;

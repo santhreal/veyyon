@@ -12,6 +12,7 @@ import {
 	errorMessage,
 	logger,
 	once,
+	pathExists,
 	prompt,
 	readPipeText,
 	trimTrailingSlashes,
@@ -656,20 +657,35 @@ async function resolveGoWorkspaceDiagnosticsCommand(cwd: string, signal?: AbortS
 	}
 }
 
-/** Detect project type from root markers */
+/**
+ * Detect the project type from the marker files in its root.
+ *
+ * The markers are probed with `pathExists` rather than `fs.existsSync`. This runs on the
+ * diagnostics path while a session is live, and the probes are SEQUENTIAL by design (the
+ * order encodes precedence, a Go workspace outranks a single Go module), so a synchronous
+ * version stops the event loop once per marker, up to six times in a row, before the tool
+ * has done any work. On a cold or network filesystem that is a visible stall in the TUI.
+ * `pathExists` also reports a path that exists and cannot be stat'd instead of reading it
+ * as absent, which for a marker file means the project is misdetected rather than silently
+ * skipped.
+ *
+ * The order is load-bearing and must not be reordered into a parallel probe: `go.work`
+ * outranks `go.mod` because a workspace member has both, and `Cargo.toml` outranks the rest
+ * because a Rust project with a `tsconfig.json` for its docs site is still a Rust project.
+ */
 async function detectProjectType(cwd: string, signal?: AbortSignal): Promise<ProjectType> {
 	// Check for Rust (Cargo.toml)
-	if (fs.existsSync(path.join(cwd, "Cargo.toml"))) {
+	if (await pathExists(path.join(cwd, "Cargo.toml"), "a Rust project root")) {
 		return { type: "rust", command: ["cargo", "check", "--message-format=short"], description: "Rust (cargo check)" };
 	}
 
 	// Check for TypeScript (tsconfig.json)
-	if (fs.existsSync(path.join(cwd, "tsconfig.json"))) {
+	if (await pathExists(path.join(cwd, "tsconfig.json"), "a TypeScript project root")) {
 		return { type: "typescript", command: ["npx", "tsc", "--noEmit"], description: "TypeScript (tsc --noEmit)" };
 	}
 
 	// Check for Go workspaces before single-module Go projects.
-	if (fs.existsSync(path.join(cwd, "go.work"))) {
+	if (await pathExists(path.join(cwd, "go.work"), "a Go workspace root")) {
 		return {
 			type: "go",
 			command: await resolveGoWorkspaceDiagnosticsCommand(cwd, signal),
@@ -678,12 +694,15 @@ async function detectProjectType(cwd: string, signal?: AbortSignal): Promise<Pro
 	}
 
 	// Check for Go (go.mod)
-	if (fs.existsSync(path.join(cwd, "go.mod"))) {
+	if (await pathExists(path.join(cwd, "go.mod"), "a Go module root")) {
 		return { type: "go", command: ["go", "build", "./..."], description: "Go (go build)" };
 	}
 
 	// Check for Python (pyproject.toml or pyrightconfig.json)
-	if (fs.existsSync(path.join(cwd, "pyproject.toml")) || fs.existsSync(path.join(cwd, "pyrightconfig.json"))) {
+	if (
+		(await pathExists(path.join(cwd, "pyproject.toml"), "a Python project root")) ||
+		(await pathExists(path.join(cwd, "pyrightconfig.json"), "a Python project root"))
+	) {
 		return { type: "python", command: ["pyright"], description: "Python (pyright)" };
 	}
 
@@ -1589,14 +1608,14 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 		const clampNotice = formatTimeoutClampNotice("lsp", params.timeout, timeoutSec);
 		const operationTimeout = scopedTimeoutSignal(timeoutSec * 1000, signal);
 		try {
-			const result = await this.executeWithSignal(params, operationTimeout.signal, signal, timeoutSec);
+			const result = await this.#executeWithSignal(params, operationTimeout.signal, signal, timeoutSec);
 			return clampNotice ? prependResultNotice(result, clampNotice) : result;
 		} finally {
 			operationTimeout.cancel();
 		}
 	}
 
-	private async executeWithSignal(
+	async #executeWithSignal(
 		params: LspParams,
 		signal: AbortSignal,
 		callerSignal: AbortSignal | undefined,

@@ -1,7 +1,7 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
 import type { Component } from "@veyyon/tui";
-import { prompt } from "@veyyon/utils";
+import { formatMoreLines, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { SSHHost } from "../capability/ssh";
 import { sshCapability } from "../capability/ssh";
@@ -9,6 +9,7 @@ import { loadCapability } from "../discovery";
 import { formatExitCodeNotice } from "../exec/exit-notice";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
+import { expandHintSuffix } from "../modes/utils/key-hint";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { DEFAULT_MAX_BYTES, streamTailUpdates, TailBuffer } from "../session/streaming-output";
 import type { SSHHostInfo } from "../ssh/connection-manager";
@@ -354,7 +355,7 @@ export const sshToolRenderer = {
 							outputLines.push(
 								uiTheme.fg(
 									"dim",
-									`… (${skippedCount} earlier lines, showing ${visualLines.length} of ${totalVisualLines}) (ctrl+o to expand)`,
+									`… (${skippedCount} earlier lines, showing ${visualLines.length} of ${totalVisualLines})${expandHintSuffix()}`,
 								),
 							);
 						}
@@ -369,7 +370,7 @@ export const sshToolRenderer = {
 						const remaining = outputLinesRaw.length - maxLines;
 						outputLines.push(...displayLines.map(line => uiTheme.fg("toolOutput", line)));
 						if (remaining > 0) {
-							outputLines.push(uiTheme.fg("dim", `… (${remaining} more lines) (ctrl+o to expand)`));
+							outputLines.push(uiTheme.fg("dim", `… (${formatMoreLines(remaining)})${expandHintSuffix()}`));
 						}
 					}
 				}

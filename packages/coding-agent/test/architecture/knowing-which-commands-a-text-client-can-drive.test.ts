@@ -99,12 +99,66 @@ describe("the text-mode view is a leaf", () => {
 	});
 
 	/**
-	 * And dispatch DOES still reach them, which is the half that should. A split that cut this too
-	 * would have moved the dispatcher somewhere it cannot run a handler.
+	 * And dispatch still LOADS them, at the moment it runs one. A split that cut this too would have
+	 * moved the dispatcher somewhere it cannot run a handler, so the edge is what is asserted, not
+	 * the absence of one.
+	 *
+	 * It is a dynamic import since 2026-07-27, which is why this no longer checks a static specifier
+	 * or a reach above 500. `executeAcpBuiltinSlashCommand` runs on EVERY message in print and ACP
+	 * mode and almost every message is a prompt, so a static edge made `veyyon -p "hello"` load 740
+	 * modules of command handlers to discover the text has no slash in it: `modes/print-mode.ts`
+	 * measured 960 against a ceiling of 250. It measures 227 now.
+	 *
+	 * The order in the source is the contract: `parseSlashCommand` is a leaf, so "is this a command
+	 * at all" is answered before anything is loaded, and the registry arrives only once the answer is
+	 * yes. Nothing is skipped when it is yes, which is what separates a deferral from a fallback.
 	 */
-	it("acp-builtins still reaches the handlers, because it runs them", () => {
-		expect(reach("slash-commands/acp-builtins.ts")).toBeGreaterThan(500);
-		expect(moduleSpecifiersIn(source("slash-commands/acp-builtins.ts"))).toContain("./builtin-registry");
+	it("acp-builtins loads the handlers when it runs one, and not before", () => {
+		const text = source("slash-commands/acp-builtins.ts");
+
+		// Statically cheap: no edge to the registry at all.
+		expect(moduleSpecifiersIn(text)).not.toContain("./builtin-registry");
+		// Measured at 92, from 941. What is left is the parse leaf, the types and the metadata view
+		// this module re-exports; the 740 modules of handlers are behind the deferred edge below.
+		expect(reach("slash-commands/acp-builtins.ts")).toBeLessThanOrEqual(100);
+		// And the deferred edge is there, inside the function that runs a command, after the parse.
+		expect(text).toContain('const { lookupBuiltinSlashCommand } = await import("./builtin-registry");');
+		const parseAt = text.indexOf("const parsed = parseSlashCommand(text);");
+		const loadAt = text.indexOf('await import("./builtin-registry")');
+
+		expect(parseAt).toBeGreaterThan(-1);
+		expect(loadAt).toBeGreaterThan(parseAt);
+	});
+
+	/**
+	 * The behaviour behind the deferral, driven rather than read: a real command still runs, and a
+	 * plain prompt is still refused. Without this the assertions above are satisfied by a dispatcher
+	 * that loads the registry and then does nothing with it.
+	 */
+	it("still runs a real builtin and still declines a plain prompt", async () => {
+		const { executeAcpBuiltinSlashCommand } = await import("@veyyon/coding-agent/slash-commands/acp-builtins");
+		const lines: string[] = [];
+		const runtime = { output: (text: string) => lines.push(text) } as never;
+
+		// Not a command: refused before anything is loaded.
+		expect(await executeAcpBuiltinSlashCommand("just a prompt", runtime)).toBe(false);
+		// A command shape with no such builtin: the registry IS loaded, and says no.
+		expect(await executeAcpBuiltinSlashCommand("/definitely-not-a-command", runtime)).toBe(false);
+		// A real text-mode builtin: loaded and run. `/thinking` with no argument reports the current
+		// level and the choices, which is the smallest handler that needs nothing but the two session
+		// reads stubbed below, so the assertion is about dispatch rather than about a command's state.
+		const withSession = {
+			output: (text: string) => lines.push(text),
+			session: {
+				configuredThinkingLevel: () => "high",
+				getAvailableThinkingLevels: () => ["low", "medium", "high"],
+			},
+		} as never;
+		const result = await executeAcpBuiltinSlashCommand("/thinking", withSession);
+
+		expect(result).toEqual({ consumed: true });
+		expect(lines.join("\n")).toContain("Effort: high");
+		expect(lines.join("\n")).toContain("low, medium, high");
 	});
 });
 
@@ -139,13 +193,17 @@ describe("the declared flag and the handler table agree", () => {
 	});
 
 	/**
-	 * The counts, pinned. 28 of the 67 builtins are drivable from text; the rest are TUI surfaces such
+	 * The counts, pinned. 29 of the 67 builtins are drivable from text; the rest are TUI surfaces such
 	 * as `/settings`, `/cockpit` and `/quit` that an ACP client cannot render. A change to either
 	 * number is a real product change and should be a deliberate edit here.
+	 *
+	 * Both numbers last moved when `/secret` was added: it is text-drivable on purpose, because its
+	 * recommended form (`--from-env`) never needs a terminal to type a value into, and a headless
+	 * client is exactly where reading a credential out of the environment is the only sane option.
 	 */
-	it("28 of the 67 builtins are text-drivable", () => {
+	it("29 of the 67 builtins are text-drivable", () => {
 		expect(DECLARATIONS.length).toBe(67);
-		expect(TEXT_MODE_BUILTIN_DECLARATIONS.length).toBe(28);
+		expect(TEXT_MODE_BUILTIN_DECLARATIONS.length).toBe(29);
 	});
 
 	/**

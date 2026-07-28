@@ -1,3 +1,13 @@
+/**
+ * Worked example: driving the agent through `RpcClient` from another process.
+ *
+ * This is the answer to "how do I embed veyyon", kept runnable so it cannot rot
+ * into pseudocode the way an example in a document does. It reads prompts from
+ * stdin and streams events back, which is why it is a script rather than a test.
+ *
+ * Run with: bun test/probes/rpc-client-example.ts
+ * Needs: an Anthropic key in the environment, since it names an Anthropic model.
+ */
 import * as path from "node:path";
 import * as readline from "node:readline";
 import { RpcClient } from "@veyyon/coding-agent/modes/rpc/rpc-client";
@@ -9,7 +19,7 @@ import { RpcClient } from "@veyyon/coding-agent/modes/rpc/rpc-client";
 
 async function main() {
 	const client = new RpcClient({
-		cliPath: path.join(import.meta.dir, "../src/cli.ts"),
+		cliPath: path.join(import.meta.dir, "../../src/cli.ts"),
 		provider: "anthropic",
 		model: "claude-sonnet-4-20250514",
 		args: ["--no-session"],

@@ -41,6 +41,9 @@ describe("coding-agent Mnemopi online smol boundary", () => {
 			set obfuscator(next: SecretObfuscator) {
 				obfuscator = next;
 			},
+			// The live redaction authority the sanitizer actually calls. Reads the same mutable
+			// binding as the getter above, so a swap mid-request still has to be observed.
+			obfuscateProviderText: (text: string) => obfuscator.obfuscate(text),
 			sessionManager: { getCwd: () => "/tmp", getEntries: () => [] },
 			subscribe: () => () => {},
 			emitNotice: () => {},
@@ -60,24 +63,22 @@ describe("coding-agent Mnemopi online smol boundary", () => {
 			finalPayload = String(init?.body);
 			return new Response("", { status: 200 });
 		};
-		vi.spyOn(ai, "completeSimple").mockImplementation(
-			async (_model, context, options?: SimpleStreamOptions) => {
-				providerContext = JSON.stringify(context);
-				obfuscator = new SecretObfuscator([
-					{ type: "plain", content: afterKeySecret },
-					{ type: "plain", content: retrySecret },
-				]);
-				if (options?.fetch === undefined) throw new Error("Expected final-attempt fetch wrapper");
-				await options.fetch("http://provider.test/v1/messages", {
-					method: "POST",
-					body: JSON.stringify({ context }),
-				});
-				return {
-					stopReason: "stop",
-					content: [{ type: "text", text: "smol result" }],
-				} as never;
-			},
-		);
+		vi.spyOn(ai, "completeSimple").mockImplementation(async (_model, context, options?: SimpleStreamOptions) => {
+			providerContext = JSON.stringify(context);
+			obfuscator = new SecretObfuscator([
+				{ type: "plain", content: afterKeySecret },
+				{ type: "plain", content: retrySecret },
+			]);
+			if (options?.fetch === undefined) throw new Error("Expected final-attempt fetch wrapper");
+			await options.fetch("http://provider.test/v1/messages", {
+				method: "POST",
+				body: JSON.stringify({ context }),
+			});
+			return {
+				stopReason: "stop",
+				content: [{ type: "text", text: "smol result" }],
+			} as never;
+		});
 
 		try {
 			await mnemopiBackend.start({

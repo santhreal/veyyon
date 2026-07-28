@@ -178,7 +178,6 @@ export async function applyChangelogProposals({
 	return updated;
 }
 
-
 function formatExistingEntries(entries: Record<string, string[]>): string {
 	const lines: string[] = [];
 	for (const section of CHANGELOG_SECTIONS) {

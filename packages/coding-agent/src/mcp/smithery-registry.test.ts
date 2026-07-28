@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { searchSmitheryRegistry, SmitheryRegistryError } from "./smithery-registry";
+import { SmitheryRegistryError, searchSmitheryRegistry } from "./smithery-registry";
 
 type FetchInput = string | URL | Request;
 type FetchInit = RequestInit | BunFetchRequestInit;
@@ -81,10 +81,7 @@ describe("searchSmitheryRegistry", () => {
 
 		expect(results).toEqual([]);
 		expect(resolverCalls).toBe(2);
-		expect(urls.map(url => url.searchParams.get("q"))).toEqual([
-			"safe-1-raw secret",
-			"safe-2-raw secret",
-		]);
+		expect(urls.map(url => url.searchParams.get("q"))).toEqual(["safe-1-raw secret", "safe-2-raw secret"]);
 	});
 
 	it("fails closed before fetch when the keyword transform rejects", async () => {
@@ -337,11 +334,11 @@ describe("searchSmitheryRegistry", () => {
 	 * request instead of a deterministic capped page.
 	 */
 	it("caps the upstream registry page size at the documented maximum", async () => {
-		let pageSize: string | null = null;
+		const pageSizes: Array<string | null> = [];
 		const fetchStub = Object.assign(
 			async (input: FetchInput) => {
 				const url = new URL(String(input));
-				pageSize = url.searchParams.get("pageSize");
+				pageSizes.push(url.searchParams.get("pageSize"));
 				return Response.json({ servers: [] });
 			},
 			{ preconnect: globalThis.fetch.preconnect },
@@ -350,9 +347,7 @@ describe("searchSmitheryRegistry", () => {
 
 		await searchSmitheryRegistry("filesystem", { limit: 100 });
 
-		// Annotated because the only write is inside the fetch stub, which the compiler cannot see runs:
-		// it narrows `pageSize` to its initializer type `null` and then rejects the string.
-		expect<string | null>(pageSize).toBe("100");
+		expect(pageSizes).toEqual(["100"]);
 	});
 
 	/**

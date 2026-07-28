@@ -21,6 +21,7 @@ import {
 	type SessionHeader,
 	type SessionTitleSlotEntry,
 } from "./session-entries";
+import { checkSessionEntryShape } from "./session-entry-shape";
 import { migrateToCurrentVersion } from "./session-migrations";
 import { isImageBlock, isImageDataPayload } from "./session-persistence";
 import { FileSessionStorage, type SessionStorage } from "./session-storage";
@@ -74,7 +75,7 @@ export function parseSessionContent(
 } {
 	const { body, slot } = splitTitleSlot(content);
 	let skipped = 0;
-	const entries = parseJsonlLenient<RawFileEntry>(body, {
+	const decoded = parseJsonlLenient<RawFileEntry>(body, {
 		onSkip: skip => {
 			skipped += 1;
 			logger.warn("Skipped a malformed session record on load (data lost)", {
@@ -83,7 +84,24 @@ export function parseSessionContent(
 				snippet: skip.snippet,
 			});
 		},
-	}) as FileEntry[];
+	});
+	// Decoding is not validating. A line that decodes to the WRONG SHAPE used to
+	// sail through to readers that dereference fields it does not have, and one
+	// such line took the whole transcript down. It costs its own row instead.
+	const entries: FileEntry[] = [];
+	for (const value of decoded) {
+		const shape = checkSessionEntryShape(value);
+		if (!shape.ok) {
+			skipped += 1;
+			logger.warn("Dropped a session record that decoded to the wrong shape (data lost)", {
+				source: context?.source,
+				problem: shape.problem,
+				snippet: JSON.stringify(value).slice(0, 200),
+			});
+			continue;
+		}
+		entries.push(value as FileEntry);
+	}
 	if (skipped > 0) {
 		logger.warn("Session load dropped malformed records", { source: context?.source, skipped });
 	}
@@ -110,8 +128,18 @@ export async function loadEntriesFromFileStream(filePath: string): Promise<{
 	const drain = () => {
 		while (buffer.length > 0) {
 			const { values, error, read, done } = Bun.JSONL.parseChunk(buffer);
-			if (values.length > 0) {
-				for (const value of values) entries.push(value as FileEntry);
+			for (const value of values) {
+				const shape = checkSessionEntryShape(value);
+				if (!shape.ok) {
+					skipped += 1;
+					logger.warn("Dropped a session record that decoded to the wrong shape (data lost)", {
+						source: filePath,
+						problem: shape.problem,
+						snippet: JSON.stringify(value).slice(0, 200),
+					});
+					continue;
+				}
+				entries.push(value as FileEntry);
 			}
 			if (error) {
 				// `read > 0` means parseChunk consumed good record(s) (already pushed

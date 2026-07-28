@@ -48,8 +48,12 @@ export type VibeCli = "fast" | "good";
  * model: resolution goes through {@link resolveSubagentModel} exactly like a
  * `task` spawn, so the operator's Subagents settings decide — the agent row
  * first, then the blanket subagent model, then the session's own model.
+ *
+ * File-private: the mapping is read once, by `spawn` below. Exporting it invited
+ * a second caller to resolve an agent name without going through spawn, which is
+ * where the model-resolution comment above would stop being true.
  */
-export const VIBE_CLI_AGENT: Record<VibeCli, string> = {
+const VIBE_CLI_AGENT: Record<VibeCli, string> = {
 	fast: "sonic",
 	good: "task",
 };
@@ -147,6 +151,14 @@ export interface VibeScreenSnapshot {
 	lastActivityAt: number;
 }
 
+/**
+ * What `VibeSessionRegistry.spawn` resolves to.
+ *
+ * Exported although nothing imports it today, unlike the two symbols above:
+ * `spawn` is a public method of an exported class, so this name is part of the
+ * declaration this package publishes and a caller that wants to hold the result
+ * in a typed binding needs it.
+ */
 export interface VibeSpawnOutcome {
 	id: string;
 	jobId: string;
@@ -196,8 +208,16 @@ function mergeTrace(turn: VibeTurn, progress: AgentProgress): void {
 	}
 }
 
-/** Thrown from a turn job body so the job manager marks the job failed while carrying the formatted result. */
-export class VibeTurnError extends Error {}
+/**
+ * Thrown from a turn job body so the job manager marks the job failed while
+ * carrying the formatted result.
+ *
+ * File-private: it is thrown and caught inside this module, and it appears in no
+ * signature, so a caller has nothing to do with it. A `catch` outside this file
+ * would be reaching into how a turn reports failure, which is what the outcome
+ * types are for.
+ */
+class VibeTurnError extends Error {}
 
 /**
  * Process-global registry of vibe worker sessions, scoped per owner agent id

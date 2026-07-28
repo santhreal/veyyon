@@ -1,4 +1,5 @@
 import { enoentError, toError } from "@veyyon/utils";
+import type { PathState } from "@veyyon/utils/fs-optional";
 import type {
 	SessionStorage,
 	SessionStorageStat,
@@ -125,6 +126,17 @@ export class IndexedSessionStorage implements SessionStorage {
 
 	existsSync(path: string): boolean {
 		return this.#index.has(path);
+	}
+
+	/**
+	 * Two answers, for the same reason as the in-memory backend: an index cannot be unreachable.
+	 *
+	 * The third state exists for the filesystem, where a path can be present and unreadable at once. Here
+	 * the index either holds the path or it does not, and a synthesized `unreadable` would be a claim about
+	 * a failure this backend cannot have.
+	 */
+	existsStateSync(path: string): PathState {
+		return this.#index.has(path) ? "present" : "absent";
 	}
 
 	writeTextSync(path: string, content: string): void {

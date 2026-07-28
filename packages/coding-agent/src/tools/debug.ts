@@ -9,7 +9,7 @@ import type {
 } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
 import { type Component, Text } from "@veyyon/tui";
-import { isEnoent, prompt } from "@veyyon/utils";
+import { formatMoreLines, isEnoent, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import {
 	type DapBreakpointRecord,
@@ -645,7 +645,10 @@ export const debugToolRenderer = {
 				const remaining = rawLines.length - displayedLines.length;
 				if (remaining > 0) {
 					displayedLines.push(
-						theme.fg("muted", `… ${remaining} more lines ${formatExpandHint(theme, options.expanded, true)}`),
+						theme.fg(
+							"muted",
+							`… ${formatMoreLines(remaining)} ${formatExpandHint(theme, options.expanded, true)}`,
+						),
 					);
 				}
 				return outputBlock.render(
@@ -734,14 +737,14 @@ export class DebugTool implements AgentTool<typeof debugSchema, DebugToolDetails
 		const clampNotice = formatTimeoutClampNotice("debug", params.timeout, timeoutSec);
 		const timeout = scopedTimeoutSignal(timeoutSec * 1000, signal);
 		try {
-			const result = await this.executeWithSignal(params, timeout.signal, timeoutSec);
+			const result = await this.#executeWithSignal(params, timeout.signal, timeoutSec);
 			return clampNotice ? prependResultNotice(result, clampNotice) : result;
 		} finally {
 			timeout.cancel();
 		}
 	}
 
-	private async executeWithSignal(
+	async #executeWithSignal(
 		params: DebugParams,
 		combinedSignal: AbortSignal,
 		timeoutSec: number,

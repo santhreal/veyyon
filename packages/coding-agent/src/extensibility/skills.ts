@@ -19,8 +19,6 @@ import type { SkillPromptDetails } from "../session/messages";
 // The active-skill snapshot lives in its own leaf so a reader does not have to import the loader.
 export { getActiveSkills, resetActiveSkillsForTests, setActiveSkills } from "./active-skills";
 
-import { getActiveSkills } from "./active-skills";
-
 /**
  * Skills load ONLY from these Veyyon-native providers, every one rooted under
  * the active profile's agent dir (`~/.veyyon/profiles/<name>/agent`):
@@ -71,18 +69,17 @@ export interface LoadSkillsResult {
 }
 
 /**
- * Whether `name` is already claimed by an active authored (non-managed) skill.
+ * Whether `name` is already claimed by an authored (non-managed) skill in the
+ * calling session.
  *
  * Managed (auto-learn) skills resolve dead-last in discovery, so an authored
  * skill of the same name always wins (see `loadSkills`) and a managed skill
  * written under an authored name is silently dropped — it never surfaces.
- * `manage_skill` create consults this to refuse the write up front instead of
- * reporting a false "Created" for a skill that can never appear.
+ * The caller must supply its own skill set: consulting the process-global
+ * compatibility snapshot here leaks names between concurrent top-level sessions.
  */
-export function isNameClaimedByAuthoredSkill(name: string): boolean {
-	return getActiveSkills().some(
-		skill => skill.name === name && skill._source?.provider !== MANAGED_SKILLS_PROVIDER_ID,
-	);
+export function isNameClaimedByAuthoredSkill(name: string, skills: readonly Skill[]): boolean {
+	return skills.some(skill => skill.name === name && skill._source?.provider !== MANAGED_SKILLS_PROVIDER_ID);
 }
 
 export interface LoadSkillsFromDirOptions {
@@ -172,18 +169,16 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 	const disabledSkillNames = new Set(
 		(disabledExtensions ?? []).filter(id => id.startsWith("skill:")).map(id => id.slice(6)),
 	);
-	// Select authored skills from the pre-dedup superset. `loadCapability`
-	// dedupes before this pass, so keep the first occurrence of each name (the
-	// providers are already scoped to the active profile by the allowlist).
-	const seenAuthoredSkillNames = new Set<string>();
+	// Select authored skills from the pre-dedup superset. Keep same-name
+	// candidates until the map pass below: `result.items` is already deduped, but
+	// `result.all` is deliberately used so distinct files with one name can emit
+	// an operator-visible collision warning. Exact-file aliases are deduped by
+	// realpath immediately before that warning.
 	const filteredSkills = result.all.filter(capSkill => {
 		if (capSkill._source.provider === MANAGED_SKILLS_PROVIDER_ID) return false;
 		if (disabledSkillNames.has(capSkill.name)) return false;
 		if (matchesIgnorePatterns(capSkill.name)) return false;
-		if (!matchesIncludePatterns(capSkill.name)) return false;
-		if (seenAuthoredSkillNames.has(capSkill.name)) return false;
-		seenAuthoredSkillNames.add(capSkill.name);
-		return true;
+		return matchesIncludePatterns(capSkill.name);
 	});
 
 	// Batch resolve all real paths in parallel
@@ -213,6 +208,7 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 				skillPath: capSkill.path,
 				message: `name collision: "${capSkill.name}" already loaded from ${existing.filePath}, skipping this one`,
 			});
+			realPathSet.add(resolvedPath);
 		} else {
 			skillMap.set(capSkill.name, {
 				name: capSkill.name,

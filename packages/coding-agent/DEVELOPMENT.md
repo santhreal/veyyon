@@ -52,6 +52,31 @@ createAgentSession(...)        ── src/sdk.ts → AgentSession
 and dispatches the hidden `__veyyon_worker_*` argv selectors before loading the command
 registry (see `AGENTS.md` → *Worker scripts*).
 
+### The three command trees
+
+A user-facing verb such as `profile` reaches the code through three directories, and each
+owns a different part of the job:
+
+| Tree | Owns | Writes to |
+|---|---|---|
+| `src/commands/` | Parsing argv for one subcommand and routing into the implementation. | Nothing directly. |
+| `src/cli/` | The implementation a subcommand runs. | The process streams. |
+| `src/slash-commands/` | The in-session `/verb`, parsed from what the user typed in the TUI. | A port the TUI supplies. |
+
+Name every export for the tree it lives in. Two trees must not export the same name, and
+`test/architecture/command-surfaces-do-not-share-names.test.ts` fails when they do. The
+rule exists because `runProfileCommand` was declared in both `cli/profile-cli.ts` and
+`slash-commands/profile-command.ts`: the signatures differ enough that importing the wrong
+one cannot compile, so nothing ever failed, and the whole cost fell on the reader. A call
+site said nothing about which surface it drove, and two test files each had a
+`runProfileCommand` in scope meaning a different function. They are `runProfileCliCommand`
+and `runProfileSlashCommand` now.
+
+Having two surfaces for one verb is correct and is not what the rule objects to. The CLI
+writes to a stream and the slash command writes through a port, and merging them would put
+a TUI concept in the CLI. If a name genuinely has to be shared, give it one owner and
+re-export it; a re-export is not a second declaration and the check allows it.
+
 ## Source layout (`src/`)
 
 Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),

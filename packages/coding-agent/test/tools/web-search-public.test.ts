@@ -171,6 +171,54 @@ describe("Public Web aggregate provider", () => {
 		expect(response.sources).toEqual([]);
 	});
 
+	/**
+	 * A cancelled aggregate used to swallow each engine's abort and wait for the
+	 * aggregate deadline, eventually returning an empty success or a provider
+	 * failure. The caller's exact abort reason must win even when transports
+	 * ignore their signal.
+	 */
+	it("propagates caller cancellation immediately when engines ignore abort", async () => {
+		setExcludedSearchProviders(NON_TEST_ENGINES);
+		const fetchMock: FetchImpl = () => Promise.withResolvers<Response>().promise;
+		const controller = new AbortController();
+		const reason = new Error("cancel public fan-out");
+		const search = searchPublicWeb(
+			{ ...makeParams("cancelled fan-out", fetchMock), signal: controller.signal },
+			{ softMs: 100, hardMs: 200 },
+		);
+
+		controller.abort(reason);
+
+		await expect(search).rejects.toBe(reason);
+	});
+
+	/**
+	 * Concurrent engine failures used to be appended in settlement order, so
+	 * identical searches produced different user-facing failure text depending
+	 * on network timing. Failure summaries must retain configured engine order.
+	 */
+	it("reports concurrent engine failures in deterministic engine order", async () => {
+		setExcludedSearchProviders(NON_TEST_ENGINES);
+		const fetchMock: FetchImpl = async input => {
+			const url = typeof input === "string" ? input : input.toString();
+			if (url.includes("google.com")) {
+				for (let turn = 0; turn < 100; turn++) await Promise.resolve();
+				return new Response(GOOGLE_CHALLENGE, { status: 200 });
+			}
+			return new Response(DDG_CHALLENGE, { status: 200 });
+		};
+
+		let failure: unknown;
+		try {
+			await searchPublicWeb(makeParams("ordered failures", fetchMock));
+		} catch (error) {
+			failure = error;
+		}
+		expect(failure).toBeInstanceOf(SearchProviderError);
+		const message = (failure as SearchProviderError).message;
+		expect(message.indexOf("google:")).toBeLessThan(message.indexOf("duckduckgo:"));
+	});
+
 	it("fails with an aggregated provider-tagged error when every engine fails", async () => {
 		setExcludedSearchProviders(NON_TEST_ENGINES);
 		const fetchMock = makeFetchMock({ ddg: DDG_CHALLENGE, google: GOOGLE_CHALLENGE });

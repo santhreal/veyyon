@@ -7,8 +7,8 @@ import { toReasoningEffort } from "../../thinking";
 import {
 	completeCommitSimple,
 	createConventionalAnalysisTool,
-	type ResolveObfuscateProviderText,
 	parseConventionalAnalysisResponse,
+	type ResolveObfuscateProviderText,
 } from "../shared-llm";
 
 const ReduceTool = createConventionalAnalysisTool("Synthesize file observations into a conventional commit analysis.");

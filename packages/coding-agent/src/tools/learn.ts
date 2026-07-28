@@ -109,7 +109,11 @@ export class LearnTool implements AgentTool<typeof learnSchema> {
 			} catch {
 				safeSkillName = undefined;
 			}
-			if (params.skill.action === "create" && safeSkillName && isNameClaimedByAuthoredSkill(safeSkillName)) {
+			if (
+				params.skill.action === "create" &&
+				safeSkillName &&
+				isNameClaimedByAuthoredSkill(safeSkillName, this.session.skills ?? [])
+			) {
 				return {
 					content: [
 						{

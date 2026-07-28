@@ -119,8 +119,15 @@ export async function formatProfileList(): Promise<string> {
 	return lines.join("\n");
 }
 
-/** Dispatch a parsed intent against the port. */
-export async function runProfileCommand(intent: ProfileIntent, port: ProfileCommandPort): Promise<void> {
+/**
+ * Dispatch a parsed `/profile` intent against the port the TUI supplies.
+ *
+ * Named for its SURFACE. The CLI has its own dispatcher for the same verb,
+ * `runProfileCliCommand` in `cli/profile-cli.ts`; see the note there for why one
+ * name meaning two functions was worth splitting even though the signatures
+ * differ enough that a wrong import cannot compile.
+ */
+export async function runProfileSlashCommand(intent: ProfileIntent, port: ProfileCommandPort): Promise<void> {
 	switch (intent.kind) {
 		case "usage":
 			port.showError(intent.message);

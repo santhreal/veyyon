@@ -5,7 +5,7 @@
  * broadcasting entries/events/state to guests through the relay. Guests prompt
  * and abort through us; the host machine runs the agent and tools. The host's
  * subagent ecosystem is mirrored too: task EventBus traffic (observer HUD),
- * agent-registry snapshots (Agent Hub table), hub chat/kill/revive commands,
+ * agent-registry snapshots (the Agent Control Center roster), hub chat/kill/revive commands,
  * and incremental subagent-transcript reads.
  */
 

@@ -7,7 +7,7 @@
  * EventController.handleEvent, state → status-line overrides plus real
  * model/thinking state applied to the replica agent. The host's subagent
  * ecosystem is mirrored too: agent snapshots populate a local AgentRegistry
- * (Agent Hub), EventBus traffic (observer HUD) is republished, and hub
+ * (the Agent Control Center), EventBus traffic (observer HUD) is republished, and hub
  * actions (chat/kill/revive/transcript reads) round-trip over the wire.
  * Host ask dialogs (`ui-request` select/editor) present through the same
  * hook selector/editor seam and answer with `ui-response`; `ui-request-end`
@@ -20,7 +20,7 @@ import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { ImageContent } from "@veyyon/ai";
 import { getConfigRootDir, logger } from "@veyyon/utils";
 import { SNAPSHOT_PROGRESS_TIMEOUT_MS, TRANSCRIPT_TIMEOUT_MS, WELCOME_TIMEOUT_MS } from "@veyyon/wire";
-import type { AgentHubRemote, AgentHubRemoteTranscript } from "../modes/components/agent-hub";
+import type { AgentTranscriptRemote, AgentTranscriptRemoteRead } from "../modes/components/agent-transcript-viewer";
 import type { InteractiveModeContext } from "../modes/types";
 import { AgentRegistry } from "../registry/agent-registry";
 import type { AgentSessionEvent } from "../session/agent-session";
@@ -186,11 +186,11 @@ export class CollabGuestLink {
 	readonly agentRegistry = new AgentRegistry();
 	/** Per-agent `hasSessionFile` from the last snapshot; gates remote transcript fetches. */
 	#agentHasTranscript = new Map<string, boolean>();
-	#pendingTranscripts = new Map<number, (r: AgentHubRemoteTranscript | null) => void>();
+	#pendingTranscripts = new Map<number, (r: AgentTranscriptRemoteRead | null) => void>();
 	/** Host `ui-request`s presented (or queued) locally, keyed by reqId; aborting dismisses. */
 	#pendingUiRequests = new Map<number, AbortController>();
 	#nextReqId = 1;
-	readonly #hubRemote: AgentHubRemote = {
+	readonly #agentRemote: AgentTranscriptRemote = {
 		chat: (id, text) => {
 			if (this.#rejectReadOnly()) return;
 			this.#socket?.send({ t: "agent-cmd", cmd: "chat", agentId: id, text });
@@ -209,7 +209,7 @@ export class CollabGuestLink {
 				return Promise.resolve(null);
 			}
 			const reqId = this.#nextReqId++;
-			const { promise, resolve } = Promise.withResolvers<AgentHubRemoteTranscript | null>();
+			const { promise, resolve } = Promise.withResolvers<AgentTranscriptRemoteRead | null>();
 			const timer = setTimeout(() => {
 				this.#pendingTranscripts.delete(reqId);
 				resolve(null);
@@ -223,9 +223,9 @@ export class CollabGuestLink {
 		},
 	};
 
-	/** Agent Hub actions routed to the host over the wire. */
-	get hubRemote(): AgentHubRemote {
-		return this.#hubRemote;
+	/** Agent actions routed to the host over the wire (a guest has no local sessions). */
+	get agentRemote(): AgentTranscriptRemote {
+		return this.#agentRemote;
 	}
 
 	/** True when this guest joined through a read-only (view) link. */
@@ -517,7 +517,7 @@ export class CollabGuestLink {
 			}
 			case "bus":
 				// Mirrored host EventBus traffic (task subagent lifecycle/progress)
-				// feeding the observer HUD and Agent Hub progress columns.
+				// feeding the observer HUD and the Agent Control Center's activity column.
 				this.#ctx.eventBus?.emit(frame.channel, frame.data);
 				break;
 			case "agents":

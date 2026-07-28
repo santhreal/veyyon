@@ -1,5 +1,5 @@
 import { errorMessage, formatNumber } from "@veyyon/utils";
-import { computeContextBreakdown } from "../../modes/utils/context-usage";
+import { computeContextBreakdown } from "../../session/context-usage";
 import type { SlashCommandRuntime } from "../types";
 import { renderAsciiBar } from "./format";
 

@@ -10,7 +10,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/acp-builtins";
-import { removeWithRetries, setProjectDir } from "@veyyon/utils";
+import { removeWithRetries } from "@veyyon/utils";
 
 interface FakeAcpBuiltinSession {
 	fastMode: boolean;
@@ -44,6 +44,7 @@ interface FakeAcpBuiltinSession {
 	setTodoPhases(phases: Array<{ name: string; tasks: Array<{ content: string; status: string }> }>): void;
 	refreshBaseSystemPrompt(): Promise<void>;
 	refreshSshTool(options?: { activateIfAvailable?: boolean }): Promise<void>;
+	moveToCwd(cwd: string): Promise<string>;
 	getToolByName(name: string): unknown;
 	compact(args?: string): Promise<void>;
 	getContextUsage(): { tokens?: number; contextWindow: number } | undefined;
@@ -139,6 +140,10 @@ function createRuntime() {
 			this._todoPhases = phases;
 		},
 		async refreshBaseSystemPrompt() {},
+		async moveToCwd(cwd: string) {
+			await fakeSessionManager!.moveTo(cwd);
+			return fakeSessionManager!.getCwd();
+		},
 		getAsyncJobSnapshot: () => null,
 		formatSessionAsText: () => "",
 		dumpLlmRequestToTmpDir: async () => undefined,
@@ -744,11 +749,10 @@ describe("wave 3 commands", () => {
 		expect(output[0]).toContain("does not exist");
 	});
 
-	it("/move: relocates the current session instead of switching to an empty target session", async () => {
+	it("/move: relocates storage and cwd-scoped runtime through one transaction owner", async () => {
 		const { output, runtime, session, fakeSessionManager } = createRuntime();
 		const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-move-target-"));
-		const originalProjectDir = process.cwd();
-		const reloadForCwd = spyOn(runtime.settings, "reloadForCwd");
+		const moveToCwd = spyOn(session, "moveToCwd");
 		let configNotified = 0;
 		runtime.notifyConfigChanged = () => {
 			configNotified++;
@@ -762,11 +766,27 @@ describe("wave 3 commands", () => {
 			expect(fakeSessionManager.getCwd()).toBe(targetDir);
 			expect(session._switchedTo).toBeUndefined();
 			expect(session._movedFromEmptySessionFile).toBeUndefined();
-			expect(reloadForCwd).toHaveBeenCalledWith(targetDir);
+			expect(moveToCwd).toHaveBeenCalledTimes(1);
+			expect(moveToCwd).toHaveBeenCalledWith(targetDir);
 			expect(configNotified).toBe(1);
 			expect(output[0]).toContain(`Moved to ${targetDir}.`);
 		} finally {
-			setProjectDir(originalProjectDir);
+			await fs.rm(targetDir, { recursive: true, force: true });
+		}
+	});
+
+	it("/move: reports a failed transaction and keeps the original cwd", async () => {
+		const { output, runtime, session, fakeSessionManager } = createRuntime();
+		const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-move-rescope-failure-"));
+		spyOn(session, "moveToCwd").mockRejectedValue(new Error("secret refresh failed"));
+
+		try {
+			const result = await executeAcpBuiltinSlashCommand(`/move ${targetDir}`, runtime);
+
+			expect(result).toEqual({ consumed: true });
+			expect(fakeSessionManager.getCwd()).toBe("/tmp/project");
+			expect(output).toEqual(["Move failed: secret refresh failed"]);
+		} finally {
 			await fs.rm(targetDir, { recursive: true, force: true });
 		}
 	});

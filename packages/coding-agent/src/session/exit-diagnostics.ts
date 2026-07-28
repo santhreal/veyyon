@@ -175,15 +175,27 @@ function truncateSummaryField(value: string): string {
  * resume warning actually renders (`command`/`path`), truncated. Returns
  * `undefined` when the arguments carry neither, so callers can omit `args`
  * entirely instead of persisting an empty object.
+ *
+ * PASS `redact` ON ANY PATH THAT PERSISTS THE RESULT. The arguments reaching a
+ * running tool are post-expansion: `#GITHUB_TOKEN#` has already become the
+ * credential, because that is the whole point of expansion. Writing them to the
+ * session file verbatim puts the plaintext credential next to the encrypted
+ * vault, and from there into `/share`, exports, backups and bug reports.
+ * Redaction runs before truncation so a placeholder is never cut in half and a
+ * long command can never keep a raw prefix of a value the redactor replaced.
  */
-export function summarizeToolArguments(args: unknown): ToolArgumentSummary | undefined {
+export function summarizeToolArguments(
+	args: unknown,
+	redact?: (text: string) => string,
+): ToolArgumentSummary | undefined {
 	if (!isRecord(args)) return undefined;
+	const project = (value: string): string => truncateSummaryField(redact ? redact(value) : value);
 	const summary: ToolArgumentSummary = {};
 	if (typeof args.command === "string" && args.command.length > 0) {
-		summary.command = truncateSummaryField(args.command);
+		summary.command = project(args.command);
 	}
 	if (typeof args.path === "string" && args.path.length > 0) {
-		summary.path = truncateSummaryField(args.path);
+		summary.path = project(args.path);
 	}
 	return summary.command !== undefined || summary.path !== undefined ? summary : undefined;
 }

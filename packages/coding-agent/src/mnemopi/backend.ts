@@ -3,9 +3,9 @@ import * as path from "node:path";
 import { type ApiKeyResolver, completeSimple, type FetchImpl } from "@veyyon/ai";
 import { hostMatchesUrl } from "@veyyon/catalog/hosts";
 import type { Mnemopi } from "@veyyon/mnemopi";
+import type { MnemopiLlmCompleteOptions, MnemopiLlmPayloadHook } from "@veyyon/mnemopi/core/runtime-options";
 import type * as MnemopiDiagnoseNs from "@veyyon/mnemopi/diagnose";
 import type { DiagnosticSummary } from "@veyyon/mnemopi/diagnose";
-import type { MnemopiLlmCompleteOptions, MnemopiLlmPayloadHook } from "@veyyon/mnemopi/core/runtime-options";
 import { clampLow, logger } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
@@ -475,7 +475,7 @@ async function resolveMnemopiProviderOptions(
 	session: AgentSession,
 	sessionId: string,
 ): Promise<MnemopiProviderOptions> {
-	const sanitizeProviderText = (text: string): string => session.obfuscator?.obfuscate(text) ?? text;
+	const sanitizeProviderText = (text: string): string => session.obfuscateProviderText(text);
 	const base: MnemopiProviderOptions = {
 		noEmbeddings: config.providerOptions.noEmbeddings,
 		embeddingModel: config.providerOptions.embeddingModel,
@@ -558,7 +558,8 @@ async function resolveMnemopiProviderOptions(
 				);
 				return message.content
 					.filter(
-						(block): block is Extract<(typeof message.content)[number], { type: "text" }> => block.type === "text",
+						(block): block is Extract<(typeof message.content)[number], { type: "text" }> =>
+							block.type === "text",
 					)
 					.map(block => block.text)
 					.join("\n")
@@ -579,10 +580,7 @@ async function resolveMnemopiProviderOptions(
 	}
 }
 
-function createMnemopiAttemptFetch(
-	baseFetch: FetchImpl,
-	onPayload: MnemopiLlmPayloadHook,
-): FetchImpl {
+function createMnemopiAttemptFetch(baseFetch: FetchImpl, onPayload: MnemopiLlmPayloadHook): FetchImpl {
 	const attemptFetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
 		let requestInput = input;
 		let requestInit = init;

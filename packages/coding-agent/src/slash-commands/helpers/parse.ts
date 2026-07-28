@@ -36,6 +36,44 @@ export function parseSlashCommand(text: string): ParsedSlashCommand | null {
 }
 
 /**
+ * What a slash COMMAND may be called, as opposed to a path that merely starts with `/`.
+ *
+ * A leading slash is ambiguous: `/etc/hosts is broken` is an ordinary message about a file, while
+ * `/secret list` is a command. The separator is what distinguishes them. A command name is a single
+ * segment of letters, digits, underscores and hyphens beginning with a letter, so anything
+ * containing a `/` is a path and anything beginning with a digit is prose.
+ */
+const COMMAND_NAME_RE = /^[A-Za-z][A-Za-z0-9_-]*$/;
+
+/**
+ * The name of a command-shaped slash invocation that nothing was able to handle.
+ *
+ * Called after every resolver has had its turn (builtins, extension commands, custom commands,
+ * file-based commands, prompt templates). A remaining command-shaped `/name` is a command the user
+ * meant and this build does not have: a typo, a command from a newer version, or one belonging to an
+ * extension that failed to load. Sending it to the model instead is the failure this exists to
+ * prevent, and it is not hypothetical: `/secret list` typed into a build without that command was
+ * forwarded as prose, and the model went looking through the filesystem for secrets files.
+ *
+ * RETURNS THE NAME ONLY, NEVER THE ARGUMENTS. A mistyped `/secrt add DB_PASSWORD hunter2` must
+ * produce an error naming `secrt` and nothing else, because the argument tail of a miss on a
+ * credential command is a credential. See {@link isSensitiveSlashCommand}.
+ */
+export function unresolvedSlashCommandName(text: string): string | undefined {
+	const parsed = parseSlashCommand(text);
+	if (!parsed) return undefined;
+	return COMMAND_NAME_RE.test(parsed.name) ? parsed.name : undefined;
+}
+
+/** The message shown for a command nothing could handle. Carries the name, never the arguments. */
+export function unknownSlashCommandMessage(name: string): string {
+	return (
+		`Unknown command "/${name}". Nothing handled it, so it was not sent to the model. ` +
+		`Type / to see the commands this build has, or drop the leading slash to send it as a message.`
+	);
+}
+
+/**
  * Whether a submitted slash command can carry a credential or bearer token.
  *
  * All callers share the canonical slash parser above, including its colon

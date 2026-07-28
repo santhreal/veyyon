@@ -2,7 +2,15 @@
  * Bordered output container with optional header and sections.
  */
 import type { Component } from "@veyyon/tui";
-import { ImageProtocol, padding, TERMINAL, visibleWidth, wrapTextWithAnsi } from "@veyyon/tui";
+import {
+	ImageProtocol,
+	padding,
+	reopenBackgroundAfterResets,
+	TERMINAL,
+	visibleWidth,
+	wrapTextWithAnsi,
+} from "@veyyon/tui";
+import { SGR_BG_RESET } from "@veyyon/tui/ansi";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
 import { getSixelLineMask } from "../utils/sixel";
 import type { State } from "./types";
@@ -80,10 +88,7 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 		// Keep block background stable even if inner content contains SGR resets (e.g. "\x1b[0m"),
 		// which would otherwise clear the outer background mid-line.
 		return (text: string) => {
-			const stabilized = text
-				.replace(/\x1b\[(?:0)?m/g, m => `${m}${bgAnsi}`)
-				.replace(/\x1b\[49m/g, m => `${m}${bgAnsi}`);
-			return `${bgAnsi}${stabilized}\x1b[49m`;
+			return `${bgAnsi}${reopenBackgroundAfterResets(text, bgAnsi)}${SGR_BG_RESET}`;
 		};
 	})();
 

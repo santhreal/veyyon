@@ -1,5 +1,6 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
-import { type Api, type ApiKey, type AssistantMessage, type Model, validateToolCall } from "@veyyon/ai";
+import type { Api, ApiKey, AssistantMessage, Model } from "@veyyon/ai";
+import { validateToolCall } from "@veyyon/ai/utils/validation";
 import { prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { CommitSummary } from "../../commit/types";

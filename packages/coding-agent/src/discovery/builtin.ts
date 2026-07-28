@@ -1,7 +1,7 @@
 /**
  * Builtin Provider (.veyyon)
  *
- * Primary provider for Veyyon native configs. Supports all capabilities.
+ * Primary provider for Veyyon native configuration.
  */
 
 import * as path from "node:path";
@@ -22,7 +22,6 @@ import { type Rule, ruleCapability } from "../capability/rule";
 import { type Settings, settingsCapability } from "../capability/settings";
 import { type Skill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
-import { type SystemPrompt, systemPromptCapability } from "../capability/system-prompt";
 import { type DiscoveredCustomTool, toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult } from "../capability/types";
 import { expandTilde } from "../tools/path-utils";
@@ -91,10 +90,9 @@ function getAncestorDirs(cwd: string, stopAt?: string | null): Array<{ dir: stri
 /**
  * The nearest ancestor `.veyyon/` directory, walking up from `cwd`.
  *
- * Exported because it defines where PROJECT-level configuration lives, and
- * anything that adds a project-level file has to look in the same place
- * `SYSTEM.md` does. A second walk-up with its own rules would put two
- * project-level surfaces in two different directories.
+ * Exported because it defines where project-level Veyyon configuration lives.
+ * New project-level surfaces must reuse this walk-up rather than inventing a
+ * second directory-resolution contract.
  */
 export async function findNearestProjectConfigDir(
 	cwd: string,
@@ -236,46 +234,6 @@ registerProvider<MCPServer>(mcpCapability.id, {
 	description: DESCRIPTION,
 	priority: PRIORITY,
 	load: loadMCPServers,
-});
-
-// System Prompt (SYSTEM.md)
-async function loadSystemPrompt(ctx: LoadContext): Promise<LoadResult<SystemPrompt>> {
-	const items: SystemPrompt[] = [];
-
-	const userPath = path.join(getAgentDir(), "SYSTEM.md");
-	const userContent = await readFile(userPath);
-	if (userContent) {
-		items.push({
-			path: userPath,
-			content: userContent,
-			level: "user",
-			_source: createSourceMeta(PROVIDER_ID, userPath, "user"),
-		});
-	}
-
-	const nearestProjectConfigDir = await findNearestProjectConfigDir(ctx.cwd, ctx.repoRoot);
-	if (nearestProjectConfigDir) {
-		const projectPath = path.join(nearestProjectConfigDir.dir, "SYSTEM.md");
-		const projectContent = await readFile(projectPath);
-		if (projectContent) {
-			items.push({
-				path: projectPath,
-				content: projectContent,
-				level: "project",
-				_source: createSourceMeta(PROVIDER_ID, projectPath, "project"),
-			});
-		}
-	}
-
-	return { items, warnings: [] };
-}
-
-registerProvider<SystemPrompt>(systemPromptCapability.id, {
-	id: PROVIDER_ID,
-	displayName: APP_DISPLAY_NAME,
-	description: "Custom system prompt from SYSTEM.md",
-	priority: PRIORITY,
-	load: loadSystemPrompt,
 });
 
 // Skills

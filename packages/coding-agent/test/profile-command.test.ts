@@ -22,7 +22,7 @@ import {
 	CREATE_NEW_LABEL,
 	type ProfileCommandPort,
 	parseProfileCommand,
-	runProfileCommand,
+	runProfileSlashCommand,
 } from "@veyyon/coding-agent/slash-commands/profile-command";
 import { profileExists, removeWithRetries, setProfile } from "@veyyon/utils";
 import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
@@ -136,7 +136,7 @@ function makePort(
 	return port;
 }
 
-describe("runProfileCommand effects", () => {
+describe("runProfileSlashCommand effects", () => {
 	let tempHome: string;
 	// `setProfile(theOldProfile)` is not an inverse: it EXPORTS `VEYYON_PROFILE` (and the
 	// profile's agent dir) even when neither was set before, so this file used to hand every
@@ -166,7 +166,7 @@ describe("runProfileCommand effects", () => {
 	it("switches to an existing profile by relaunching under VEYYON_PROFILE", async () => {
 		await createProfile("work", "blank");
 		const port = makePort();
-		await runProfileCommand(parseProfileCommand("work"), port);
+		await runProfileSlashCommand(parseProfileCommand("work"), port);
 		expect(port.relaunched).toEqual([{ VEYYON_PROFILE: "work" }]);
 		expect(port.shutdownCalls).toBe(1);
 		expect(port.statuses).toHaveLength(1);
@@ -175,7 +175,7 @@ describe("runProfileCommand effects", () => {
 
 	it("reports an error and does not relaunch for an unknown switch target", async () => {
 		const port = makePort();
-		await runProfileCommand(parseProfileCommand("ghost"), port);
+		await runProfileSlashCommand(parseProfileCommand("ghost"), port);
 		expect(port.relaunched).toHaveLength(0);
 		expect(port.shutdownCalls).toBe(0);
 		expect(port.errors).toHaveLength(1);
@@ -185,7 +185,7 @@ describe("runProfileCommand effects", () => {
 	it("renames a profile by writing its display name", async () => {
 		await createProfile("work", "blank");
 		const port = makePort();
-		await runProfileCommand(parseProfileCommand("work rename to Renamed"), port);
+		await runProfileSlashCommand(parseProfileCommand("work rename to Renamed"), port);
 		expect(await readProfileDisplayName("work")).toBe("Renamed");
 		expect(port.statuses).toHaveLength(1);
 		expect(port.statuses[0]).toContain('Renamed profile "work" to "Renamed"');
@@ -199,7 +199,7 @@ describe("runProfileCommand effects", () => {
 		const port = makePort();
 		// Rename "work" to the display "spare": /profile spare would resolve to the
 		// spare DIRECTORY, never this profile — the rename still applies but warns.
-		await runProfileCommand(parseProfileCommand("work rename to spare"), port);
+		await runProfileSlashCommand(parseProfileCommand("work rename to spare"), port);
 		expect(await readProfileDisplayName("work")).toBe("spare");
 		const status = port.statuses.find(s => s.includes('Renamed profile "work" to "spare"'));
 		expect(status).toBeDefined();
@@ -211,9 +211,9 @@ describe("runProfileCommand effects", () => {
 		await createProfile("work", "blank");
 		await createProfile("spare", "blank");
 		// Give spare a display name, then rename work to the same display name.
-		await runProfileCommand(parseProfileCommand("spare rename to Shared"), makePort());
+		await runProfileSlashCommand(parseProfileCommand("spare rename to Shared"), makePort());
 		const port = makePort();
-		await runProfileCommand(parseProfileCommand("work rename to Shared"), port);
+		await runProfileSlashCommand(parseProfileCommand("work rename to Shared"), port);
 		expect(await readProfileDisplayName("work")).toBe("Shared");
 		const status = port.statuses.find(s => s.includes('Renamed profile "work" to "Shared"'));
 		expect(status).toBeDefined();
@@ -235,7 +235,7 @@ describe("runProfileCommand effects", () => {
 				},
 			],
 		}));
-		await runProfileCommand(parseProfileCommand("rm scratch"), port);
+		await runProfileSlashCommand(parseProfileCommand("rm scratch"), port);
 		expect(profileExists("scratch")).toBe(false);
 		expect(port.statuses).toHaveLength(1);
 		expect(port.statuses[0]).toContain('Deleted profile "scratch"');
@@ -255,7 +255,7 @@ describe("runProfileCommand effects", () => {
 				},
 			],
 		}));
-		await runProfileCommand(parseProfileCommand("delete scratch"), port);
+		await runProfileSlashCommand(parseProfileCommand("delete scratch"), port);
 		expect(profileExists("scratch")).toBe(true);
 		expect(port.statuses).toHaveLength(1);
 		expect(port.statuses[0]).toContain("Deletion cancelled");
@@ -263,7 +263,7 @@ describe("runProfileCommand effects", () => {
 
 	it("refuses to remove the default profile", async () => {
 		const port = makePort();
-		await runProfileCommand(parseProfileCommand("rm default"), port);
+		await runProfileSlashCommand(parseProfileCommand("rm default"), port);
 		expect(port.errors).toHaveLength(1);
 		expect(port.errors[0]).toContain("Cannot remove the default profile");
 	});
@@ -282,7 +282,7 @@ describe("runProfileCommand effects", () => {
 				},
 			],
 		}));
-		await runProfileCommand(parseProfileCommand("new fresh"), port);
+		await runProfileSlashCommand(parseProfileCommand("new fresh"), port);
 		expect(profileExists("fresh")).toBe(true);
 		expect(port.statuses).toHaveLength(1);
 		expect(port.statuses[0]).toContain('Created profile "fresh"');
@@ -305,7 +305,7 @@ describe("runProfileCommand effects", () => {
 				],
 			};
 		});
-		await runProfileCommand(parseProfileCommand(""), port);
+		await runProfileSlashCommand(parseProfileCommand(""), port);
 		expect(port.editorText).toContain("/profile new ");
 	});
 });

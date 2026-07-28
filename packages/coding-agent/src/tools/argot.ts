@@ -51,8 +51,18 @@ export interface ArgotUnloadDetails {
 	requested: string;
 }
 
+/**
+ * The session's Argot codec, when the session has one.
+ *
+ * `ToolSession.getArgotSession` is optional and returns an optional, so the type
+ * of "a codec that is definitely there" is two `NonNullable`s deep around a
+ * `ReturnType`. Written inline it read as noise in the one signature that needs
+ * it.
+ */
+type ArgotSession = NonNullable<ReturnType<NonNullable<ToolSession["getArgotSession"]>>>;
+
 /** Read the session's Argot codec, or fail loud when Argot is off for this session. */
-function requireArgot(session: ToolSession): NonNullable<ReturnType<NonNullable<ToolSession["getArgotSession"]>>> {
+function requireArgot(session: ToolSession): ArgotSession {
 	const argot = session.getArgotSession?.();
 	if (argot === undefined) {
 		throw new ToolError(
