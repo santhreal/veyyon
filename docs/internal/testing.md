@@ -793,7 +793,7 @@ its own gate:
 | Windows | `scripts/install-tests/e2e.test.ps1` (CI job `install_ps1_e2e`) | `install.ps1 -Local` end to end: install, reinstall, reinstall over a quoted PATH entry, uninstall |
 | Windows, on push to main | `scripts/install-tests/e2e.test.ps1 -Mode Binary` (CI job `install_ps1_binary`) | The same run against the newest published release, which is the default install |
 | Windows | `scripts/install-tests/functions.test.ps1` (CI job `install_ps1_functions`) | The pure helpers, with nothing installed |
-| Linux, by hand | `scripts/install-tests/stress.sh` | Real downloads in ~42 adversarial environments, in a disposable container |
+| Linux, by hand | `scripts/install-tests/stress.sh` | Real downloads in ~44 adversarial environments, in a disposable container |
 
 The Windows end-to-end test edits the user PATH and the CurrentUserAllHosts
 PowerShell profile for real, because the installer does and testing a fake would
@@ -826,12 +826,13 @@ release and no network.
 `scripts/install-tests/stress.sh` asks a different question from the gates above.
 Those prove the install works in the environments it was written for; this one
 puts it in environments nobody designs for and reports what breaks. It drives
-about 42 cases: three shells, four hostile `$HOME` names, three terminal widths
+about 44 cases: three shells, four hostile `$HOME` names, three terminal widths
 plus a terminal with no width tools at all, a read-only install directory, a
 read-only rc, a full disk, a shadowed `PATH`, two concurrent installs, a SIGINT
 mid-copy, a killed installer's staging file, a missing `$HOME`, six hostile
 environment variables, two umasks, a symlinked install directory, a tampered
-download, a missing release, no network at all, a double uninstall, a reinstall
+download, a missing release, a `--ref` spelled without its leading `v`, a machine
+with no curl installed, no network at all, a double uninstall, a reinstall
 over a running install, and the three things a second install is most likely to
 get wrong: a duplicated `PATH` entry, completions that an uninstall left behind
 or a reinstall failed to rewrite, and a doctor that warns because the previous
