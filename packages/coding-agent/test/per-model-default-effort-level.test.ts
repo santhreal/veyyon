@@ -44,6 +44,7 @@ describe("per-model default effort", () => {
 		settings: Settings,
 		initialLevel: Effort = Effort.Low,
 		thinkingSource: EffortSource = "model-default",
+		scopedModels?: Array<{ model: Model; thinkingLevel?: Effort; explicitThinkingLevel?: boolean }>,
 	) {
 		const agent = new Agent({
 			initialState: {
@@ -65,6 +66,7 @@ describe("per-model default effort", () => {
 			modelRegistry,
 			thinkingLevel: initialLevel,
 			thinkingSource,
+			scopedModels,
 		});
 	}
 
@@ -142,5 +144,58 @@ describe("per-model default effort", () => {
 
 		expect(session.thinkingLevel).toBe(Effort.High);
 		expect(session.sessionThinkingOverride).toBeUndefined();
+	});
+
+	/** A CLI/model-selector effort is local to that selector, not a session override. */
+	it("lets a later model switch leave the initial selector effort behind", async () => {
+		const opus = getOpus();
+		const settings = Settings.isolated({
+			defaultEffort: { [`${opus.provider}/${opus.id}`]: Effort.High },
+		});
+		await createSession(getSonnet(), settings, Effort.Low, "selector");
+
+		await session.setModel(opus);
+
+		expect(session.thinkingLevel).toBe(Effort.High);
+		expect(session.sessionThinkingOverride).toBeUndefined();
+	});
+
+	/**
+	 * Unsuffixed scope entries must consult settings at switch time. The operator
+	 * may edit Default Effort after startup; a scoped snapshot must not stay stale.
+	 */
+	it("re-reads a changed per-model default when cycling to an unsuffixed scoped model", async () => {
+		const sonnet = getSonnet();
+		const opus = getOpus();
+		const opusKey = `${opus.provider}/${opus.id}`;
+		const settings = Settings.isolated({ defaultEffort: { [opusKey]: Effort.Low } });
+		await createSession(sonnet, settings, Effort.Low, "model-default", [
+			{ model: sonnet, explicitThinkingLevel: false },
+			{ model: opus, explicitThinkingLevel: false },
+		]);
+		settings.override("defaultEffort", { [opusKey]: Effort.High });
+
+		await session.cycleModel();
+
+		expect(session.model?.id).toBe(opus.id);
+		expect(session.thinkingLevel).toBe(Effort.High);
+	});
+
+	/** Explicit scoped suffixes retain selector precedence over later row edits. */
+	it("keeps an explicit scoped effort pinned while cycling after a row edit", async () => {
+		const sonnet = getSonnet();
+		const opus = getOpus();
+		const opusKey = `${opus.provider}/${opus.id}`;
+		const settings = Settings.isolated({ defaultEffort: { [opusKey]: Effort.Low } });
+		await createSession(sonnet, settings, Effort.Low, "model-default", [
+			{ model: sonnet, explicitThinkingLevel: false },
+			{ model: opus, thinkingLevel: Effort.High, explicitThinkingLevel: true },
+		]);
+		settings.override("defaultEffort", { [opusKey]: Effort.Minimal });
+
+		await session.cycleModel();
+
+		expect(session.model?.id).toBe(opus.id);
+		expect(session.thinkingLevel).toBe(Effort.High);
 	});
 });

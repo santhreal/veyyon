@@ -1,26 +1,25 @@
 /**
- * The secrets notice sink is a process global, so its lifetime has to be managed by hand.
+ * Secrets notice registrations are process-global, so each session owns an identity-bound detach
+ * token.
  *
  * WHY THIS EXISTS. A few secrets conditions cannot be reported by returning: a key directory that
  * was left group-writable and has been tightened, a vault still sealed under a superseded binding.
  * They fire deep inside `pinKeyRoot` and the vault read path, reached from every `SecretVault`
- * method, so they are raised through a module-level sink rather than a parameter threaded into a
- * dozen signatures. That makes the sink shared state, and shared state that closes over ONE
- * session's `OperatorNotices` will keep that session's notices reachable after it is gone and post
- * later conditions into a channel nothing renders. `attachFaultSink` next to it in `sdk.ts` already
- * had this rule and a comment explaining it; this one was added without the detach.
+ * method, so they are raised through module-level registrations rather than a parameter threaded
+ * into a dozen signatures.
  *
- * WHAT IS ASSERTED. The module contract on its own (deliver, replace, detach, never throw when
- * absent), then the wiring: a live session receives a condition, and the same condition raised
- * after that session is disposed reaches nothing.
+ * WHAT IS ASSERTED. Registrations accumulate, each detach token removes only its own sink, and two
+ * overlapping SDK sessions continue independently when the earlier session is disposed. The last
+ * case is the regression: a singleton setter let the second session replace the first, then let
+ * either session's disposal detach the surviving session.
  */
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
-import { noteSecretsCondition, setSecretsNoticeSink } from "@veyyon/coding-agent/secrets/notices";
+import { attachSecretsNoticeSink, noteSecretsCondition } from "@veyyon/coding-agent/secrets/notices";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
@@ -45,19 +44,17 @@ afterAll(async () => {
 	await registryRoot.remove();
 });
 
-// Every test in this file installs a sink. Leaving one attached would leak into whatever runs next
-// in the same process, which is the failure the file is about.
-afterEach(() => setSecretsNoticeSink(undefined));
-
 describe("the secrets notice sink module", () => {
-	/** The plain case: an installed sink receives the message verbatim. */
-	it("delivers a condition to the installed sink", () => {
+	/** The plain case: an attached sink receives the message verbatim. */
+	it("delivers a condition to an attached sink", () => {
 		const seen: string[] = [];
-		setSecretsNoticeSink(message => seen.push(message));
-
-		noteSecretsCondition("the key directory was tightened");
-
-		expect(seen).toEqual(["the key directory was tightened"]);
+		const detach = attachSecretsNoticeSink(message => seen.push(message));
+		try {
+			noteSecretsCondition("the key directory was tightened");
+			expect(seen).toEqual(["the key directory was tightened"]);
+		} finally {
+			detach();
+		}
 	});
 
 	/**
@@ -69,51 +66,131 @@ describe("the secrets notice sink module", () => {
 		expect(() => noteSecretsCondition("nobody is listening")).not.toThrow();
 	});
 
-	/** Detaching stops delivery, which is the whole point of the handle `sdk.ts` holds. */
-	it("stops delivering once detached", () => {
+	/**
+	 * Tokens identify registrations rather than callback functions. Registering the same function
+	 * twice creates two lifetimes, and either token removes only its own registration.
+	 */
+	it("keeps overlapping registration tokens independent", () => {
 		const seen: string[] = [];
-		setSecretsNoticeSink(message => seen.push(message));
-		setSecretsNoticeSink(undefined);
+		const sharedSink = (message: string) => seen.push(message);
+		const detachFirst = attachSecretsNoticeSink(sharedSink);
+		const detachSecond = attachSecretsNoticeSink(sharedSink);
+		try {
+			noteSecretsCondition("both registrations are alive");
+			detachFirst();
+			detachFirst();
+			noteSecretsCondition("only the second registration remains");
 
-		noteSecretsCondition("after detach");
-
-		expect(seen).toEqual([]);
-	});
-
-	/** A replacement takes over completely, so two sessions cannot both receive one condition. */
-	it("replaces rather than accumulates sinks", () => {
-		const first: string[] = [];
-		const second: string[] = [];
-		setSecretsNoticeSink(message => first.push(message));
-		setSecretsNoticeSink(message => second.push(message));
-
-		noteSecretsCondition("only the second");
-
-		expect(first).toEqual([]);
-		expect(second).toEqual(["only the second"]);
+			expect(seen).toEqual([
+				"both registrations are alive",
+				"both registrations are alive",
+				"only the second registration remains",
+			]);
+		} finally {
+			detachFirst();
+			detachSecond();
+		}
 	});
 });
 
-describe("the sink a session installs", () => {
+describe("the registrations installed by overlapping SDK sessions", () => {
 	/**
-	 * The regression. A disposed session's notices must not still be the destination: the sink
-	 * closes over them, so without an explicit detach the object stays reachable and every later
-	 * condition in the process is posted to a surface that no longer exists.
+	 * The regression end to end. Starting session B must not replace session A, and disposing A
+	 * must remove only A's registration rather than detaching B's still-live notice surface.
 	 */
-	it("is detached when the session is disposed", async () => {
+	it("preserves the later session when the earlier session is disposed", async () => {
 		const root = TempDir.createSync("secrets-notice-sink-");
+		try {
+			const projectA = path.resolve(root.join("project-a"));
+			const projectB = path.resolve(root.join("project-b"));
+			const agentDirA = path.resolve(root.join("agent-a"));
+			const agentDirB = path.resolve(root.join("agent-b"));
+			await fs.mkdir(projectA, { recursive: true });
+			await fs.mkdir(projectB, { recursive: true });
+			const noticesA = new OperatorNotices();
+			const noticesB = new OperatorNotices();
+			const common = {
+				settings: Settings.isolated(),
+				modelRegistry,
+				disableExtensionDiscovery: true,
+				extensions: [],
+				skills: [],
+				contextFiles: [],
+				promptTemplates: [],
+				slashCommands: [],
+				enableMCP: false,
+				enableLsp: false,
+				skipPythonPreflight: true,
+			};
+			const { session: sessionA } = await createAgentSession({
+				...common,
+				cwd: projectA,
+				agentDir: agentDirA,
+				sessionManager: SessionManager.inMemory(projectA),
+				operatorNotices: noticesA,
+			});
+			const { session: sessionB } = await createAgentSession({
+				...common,
+				cwd: projectB,
+				agentDir: agentDirB,
+				sessionManager: SessionManager.inMemory(projectB),
+				operatorNotices: noticesB,
+			});
+			try {
+				noteSecretsCondition("while both sessions are alive");
+				expect(noticesA.pending().map(notice => notice.text)).toContain("while both sessions are alive");
+				expect(noticesB.pending().map(notice => notice.text)).toContain("while both sessions are alive");
+
+				await sessionA.dispose();
+				noteSecretsCondition("after the earlier session is gone");
+
+				expect(noticesA.pending().map(notice => notice.text)).not.toContain("after the earlier session is gone");
+				expect(noticesB.pending().map(notice => notice.text)).toContain("after the earlier session is gone");
+			} finally {
+				await sessionA.dispose();
+				await sessionB.dispose();
+			}
+		} finally {
+			await root.remove();
+		}
+	});
+
+	/**
+	 * A supplied manager predates SDK construction, so passing the notice channel only to the
+	 * default-manager factory misses it. The SDK must attach its channel to the selected manager
+	 * before a later transcript load discovers recoverable data loss.
+	 */
+	it("attaches operator notices to an externally supplied session manager", async () => {
+		const root = TempDir.createSync("sdk-supplied-manager-notices-");
 		try {
 			const project = path.resolve(root.join("project"));
 			const agentDir = path.resolve(root.join("agent"));
+			const sessionDir = path.resolve(root.join("sessions"));
 			await fs.mkdir(project, { recursive: true });
-			const operatorNotices = new OperatorNotices();
+			const suppliedManager = SessionManager.create(project, sessionDir);
+			const currentHeader = suppliedManager.getHeader();
+			if (currentHeader === undefined) throw new Error("expected the supplied manager to have a session header");
+			const header = JSON.stringify(currentHeader);
+			const secretPayload = "DO-NOT-ECHO-SDK-ATTACHMENT-CONTENT";
+			const malformedFile = path.join(sessionDir, "recoverable-malformed.jsonl");
+			await fs.writeFile(
+				malformedFile,
+				`${header}\n${JSON.stringify({
+					type: "message",
+					id: "malformed",
+					parentId: null,
+					timestamp: new Date().toISOString(),
+					message: secretPayload,
+				})}\n`,
+			);
+			const notices = new OperatorNotices();
 			const { session } = await createAgentSession({
 				cwd: project,
 				agentDir,
-				sessionManager: SessionManager.inMemory(project),
+				sessionManager: suppliedManager,
+				operatorNotices: notices,
 				settings: Settings.isolated(),
 				modelRegistry,
-				operatorNotices,
 				disableExtensionDiscovery: true,
 				extensions: [],
 				skills: [],
@@ -124,16 +201,16 @@ describe("the sink a session installs", () => {
 				enableLsp: false,
 				skipPythonPreflight: true,
 			});
+			try {
+				await suppliedManager.setSessionFile(malformedFile);
 
-			noteSecretsCondition("while the session is alive");
-			const delivered = operatorNotices.pending().filter(notice => notice.source === "secrets");
-			expect(delivered.map(notice => notice.text)).toContain("while the session is alive");
-
-			await session.dispose();
-			noteSecretsCondition("after the session is gone");
-
-			const after = operatorNotices.pending().filter(notice => notice.source === "secrets");
-			expect(after.map(notice => notice.text)).not.toContain("after the session is gone");
+				const recovery = notices.all().filter(notice => notice.text.includes(malformedFile));
+				expect(recovery).toHaveLength(1);
+				expect(recovery[0]?.text).toContain("a message entry has no `message` object");
+				expect(recovery[0]?.text).not.toContain(secretPayload);
+			} finally {
+				await session.dispose();
+			}
 		} finally {
 			await root.remove();
 		}

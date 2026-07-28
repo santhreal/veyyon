@@ -11,9 +11,10 @@
  * Product constraint: Veyyon stays transcript + composer; overlays float on
  * top. This is not a full-screen TUI conversion.
  */
-import { clamp, clampLow, padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { clamp, clampLow, type Keybinding, padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { transitionsEnabled } from "../theme/shimmer";
 import { theme } from "../theme/theme";
+import { actionKeyHint } from "../utils/key-hint";
 import { emberTick } from "./composer-chrome";
 import { bottomBorder, divider, fit, row, topBorder } from "./overlay-box";
 
@@ -265,8 +266,10 @@ export function computeModalDims(areaWidth: number, areaHeight: number, sizing: 
 
 /** One footer chip. `clickable` marks action vs inert hint (mouse targets). */
 export interface ModalShortcut {
-	/** Display like "esc close" or "enter change" — first token is the key. */
+	/** Display text. When `keybindings` is present, the live bound keys are prepended at render time. */
 	label: string;
+	/** Actions that trigger this shortcut. Unbound actions are omitted; an entirely unbound chip disappears. */
+	keybindings?: readonly Keybinding[];
 	clickable?: boolean;
 	id?: string;
 }
@@ -311,7 +314,17 @@ export function layoutShortcutRows(
 	hoveredId?: string | null,
 ): ShortcutLayoutRow[] {
 	if (width <= 0 || shortcuts.length === 0) return [];
-	const chips = shortcuts.map(s => ({
+	const resolvedShortcuts: ModalShortcut[] = [];
+	for (const shortcut of shortcuts) {
+		if (!shortcut.keybindings) {
+			resolvedShortcuts.push(shortcut);
+			continue;
+		}
+		const keys = shortcut.keybindings.map(actionKeyHint).filter(Boolean);
+		if (keys.length === 0) continue;
+		resolvedShortcuts.push({ ...shortcut, label: `${keys.join("/")} ${shortcut.label}` });
+	}
+	const chips = resolvedShortcuts.map(s => ({
 		id: s.id,
 		clickable: Boolean(s.clickable && s.id),
 		plain: s.label,
@@ -763,9 +776,9 @@ export const SETTINGS_SUBPANE_SHORTCUTS: readonly ModalShortcut[] = [
 
 /** Shared chips for simple list pickers (theme/thinking/queue/…). */
 export const SELECT_LIST_SHORTCUTS: readonly ModalShortcut[] = [
-	{ label: "up/down navigate" },
-	{ label: "enter select", clickable: true, id: "confirm" },
-	{ label: "esc close", clickable: true, id: "close" },
+	{ label: "navigate", keybindings: ["tui.select.up", "tui.select.down"] },
+	{ label: "select", keybindings: ["tui.select.confirm"], clickable: true, id: "confirm" },
+	{ label: "close", keybindings: ["tui.select.cancel"], clickable: true, id: "close" },
 ];
 
 // --- Open reveal (TOUCH-5) ---------------------------------------------------

@@ -7,6 +7,7 @@
  */
 import { type Component, matchesKey, padding, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { isProviderEnabled } from "../../../discovery";
+import { withIcon } from "../../../modes/theme/icon-label";
 import { theme } from "../../../modes/theme/theme";
 import { matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
 import { clampSelection, renderScrollableList, searchableChar, selectionBand } from "../selector-helpers";
@@ -171,11 +172,10 @@ export class ExtensionList implements Component {
 		const checkbox = item.enabled
 			? theme.fg("success", theme.checkbox.checked)
 			: theme.fg("dim", theme.checkbox.unchecked);
-		const icon = theme.icon.package;
-		const label = `Enable ${item.providerName}`;
+		const label = withIcon(theme.icon.package, `Enable ${item.providerName}`);
 		const badge = theme.fg("warning", "(Master Switch)");
 
-		let line = `${checkbox} ${icon} ${label}  ${badge}`;
+		let line = `${checkbox} ${label}  ${badge}`;
 
 		if (isSelected) {
 			return selectionBand(theme.bold(theme.fg("accent", line)), width);
@@ -189,7 +189,7 @@ export class ExtensionList implements Component {
 
 	#renderKindHeader(item: ListItem & { type: "kind-header" }, isSelected: boolean, width: number): string {
 		const countBadge = theme.fg("muted", `(${item.count})`);
-		const line = `${item.icon} ${item.label} ${countBadge}`;
+		const line = `${withIcon(item.icon, item.label)} ${countBadge}`;
 
 		if (isSelected) {
 			return selectionBand(theme.bold(theme.fg("accent", line)), width);

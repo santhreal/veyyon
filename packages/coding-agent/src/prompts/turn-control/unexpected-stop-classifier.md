@@ -14,6 +14,5 @@ Not an unexpected stop:
 {{#if message}}
 Message:
 {{message}}
-
 {{/if}}
 Answer with a single word: YES if this is an unexpected stop, NO otherwise.

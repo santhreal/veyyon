@@ -288,6 +288,16 @@ describe("template expansion fallback", () => {
 		expect(result).toBe("Do: sample input text");
 	});
 
+	/**
+	 * File commands share the canonical slash parser with builtins. Command
+	 * boundaries are whitespace, not only ASCII spaces, so pasted tab/newline
+	 * separators must resolve the command and preserve its argument tail.
+	 */
+	test.each(["\t", "\n"])("expands slash commands separated from arguments by %j", separator => {
+		const result = expandSlash(`/test-command${separator}sample input`, "Do: $ARGUMENTS");
+		expect(result).toBe("Do: sample input");
+	});
+
 	test("should not append fallback text when Handlebars arguments consumes args", () => {
 		const result = expandPrompt("/test-template sample input text", "Do: {{arguments}}");
 		expect(result).toBe("Do: sample input text");

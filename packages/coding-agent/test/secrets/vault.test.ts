@@ -294,6 +294,28 @@ describe("storing and reading", () => {
 	});
 
 	/**
+	 * A lone surrogate cannot be encoded to UTF-8 without replacement, so accepting it would let
+	 * the in-memory entry differ from the authenticated bytes. Refuse before locking or replacing
+	 * an existing vault, and prove the previously persisted credential remains readable.
+	 */
+	it("rejects an ill-formed UTF-16 add without replacing persisted state", async () => {
+		await withVault(async (vault, locations) => {
+			await vault.add({ name: "github-token", value: VALUE });
+			const vaultPath = vaultPathFor(locations, "profile");
+			const before = await fs.readFile(vaultPath, "utf8");
+
+			await expect(
+				vault.add({ name: "poison", value: `credential-prefix-\uD800-credential-suffix` }),
+			).rejects.toThrow(/ill-formed UTF-16/);
+
+			expect(await fs.readFile(vaultPath, "utf8")).toBe(before);
+			expect(await vault.load()).toEqual([
+				expect.objectContaining({ name: "GITHUB_TOKEN", value: VALUE, scope: "profile" }),
+			]);
+		});
+	});
+
+	/**
 	 * Nothing readable is written to disk.
 	 *
 	 * The claim the whole feature rests on, asserted against the actual file rather than
@@ -1284,6 +1306,39 @@ describe("a vault whose key is gone", () => {
 			);
 
 			await expect(vault.load()).rejects.toThrow(/contains an invalid entry/);
+		});
+	});
+
+	/**
+	 * JSON can authenticate a `\ud800` escape even though parsing it creates an ill-formed JS
+	 * string. That value must stop at the vault read boundary rather than entering a refreshed
+	 * obfuscator, and a failed read must leave the authenticated ciphertext byte-identical.
+	 */
+	it("rejects authenticated ill-formed UTF-16 without mutating the vault", async () => {
+		await withVault(async (vault, locations, clock) => {
+			const key = await loadOrCreateVaultKey(locations.globalConfigRoot);
+			const vaultPath = vaultPathFor(locations, "profile");
+			await fs.mkdir(locations.profileDir, { recursive: true });
+			const directoryStat = await fs.lstat(locations.profileDir);
+			const canonicalVaultPath = path.join(await fs.realpath(locations.profileDir), path.basename(vaultPath));
+			const comparablePath = process.platform === "win32" ? canonicalVaultPath.toLowerCase() : canonicalVaultPath;
+			const plaintext = JSON.stringify({
+				entries: [
+					{
+						name: "POISON_TOKEN",
+						value: `credential-prefix-\uD800-credential-suffix`,
+						createdAt: clock.now,
+						expiresAt: clock.now + DAY,
+					},
+				],
+			});
+			const sealedText = JSON.stringify(
+				sealVault(key, plaintext, `profile\0${comparablePath}\0${directoryStat.dev}\0${directoryStat.ino}`),
+			);
+			await fs.writeFile(vaultPath, sealedText, { mode: 0o600 });
+
+			await expect(vault.load()).rejects.toThrow(/ill-formed UTF-16/);
+			expect(await fs.readFile(vaultPath, "utf8")).toBe(sealedText);
 		});
 	});
 

@@ -1229,7 +1229,10 @@ class DefaultEffortSubmenu extends Container {
 
 	/** The stored rows, with a legacy global default folded in as the `*` row. */
 	#rows(): Record<string, string> {
-		return withLegacyDefaultEffort(settings.get("defaultEffort"), settings.get("defaultThinkingLevel"));
+		return withLegacyDefaultEffort(
+			settings.isConfigured("defaultEffort") ? settings.get("defaultEffort") : undefined,
+			settings.get("defaultThinkingLevel"),
+		);
 	}
 
 	#showRows(): void {
@@ -2754,7 +2757,10 @@ export class SettingsSelectorComponent implements Component {
 
 	/** Row-count summary for the settings row, e.g. `any model · high, 2 models`. */
 	#formatDefaultEffortValue(): string {
-		const rows = withLegacyDefaultEffort(settings.get("defaultEffort"), settings.get("defaultThinkingLevel"));
+		const rows = withLegacyDefaultEffort(
+			settings.isConfigured("defaultEffort") ? settings.get("defaultEffort") : undefined,
+			settings.get("defaultThinkingLevel"),
+		);
 		const any = rows[ANY_MODEL_EFFORT_KEY];
 		const perModel = Object.keys(rows).filter(key => key !== ANY_MODEL_EFFORT_KEY).length;
 		const parts: string[] = [];

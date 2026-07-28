@@ -19,7 +19,11 @@
  * nothing when nothing expires.
  */
 import { describe, expect, it } from "bun:test";
-import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
+import {
+	describeSecretExpiry,
+	type SecretExpiryEvent,
+	SecretObfuscator,
+} from "@veyyon/coding-agent/secrets/obfuscator";
 
 const VALUE = "ghp_R2d2c3poIHRva2VuIGV4YW1wbGU";
 const OTHER = "sk-live-qrstuvwxyzabcdefghij";
@@ -41,7 +45,7 @@ function build(options: { entries: Array<{ name: string; value: string; expiresA
 			name: entry.name,
 			expiresAt: entry.expiresAt,
 		})),
-		{ now: () => now, onExpiry: name => expired.push(name) },
+		{ now: () => now, onExpiry: event => expired.push(event.name) },
 	);
 	return { obfuscator, expired, setNow: at => (now = at) };
 }
@@ -96,6 +100,29 @@ describe("a secret whose lifetime has run out", () => {
 		for (let i = 0; i < 5; i++) obfuscator.deobfuscate("use #GITHUB_TOKEN#");
 
 		expect(expired).toEqual(["GITHUB_TOKEN"]);
+	});
+
+	/**
+	 * Runtime expiry revokes an in-memory mapping and performs no vault I/O. Its structured state
+	 * and operator wording must say the ciphertext remains; only an event from an operation that
+	 * actually removed persisted data may claim deletion.
+	 */
+	it("reports truthful persisted-deletion state and wording", () => {
+		let now = START;
+		let expiry: SecretExpiryEvent | undefined;
+		const obfuscator = new SecretObfuscator(
+			[{ type: "plain", content: VALUE, name: "GITHUB_TOKEN", expiresAt: START + HOUR }],
+			{ now: () => now, onExpiry: event => (expiry = event) },
+		);
+		now = START + HOUR;
+
+		expect(obfuscator.deobfuscate("#GITHUB_TOKEN#")).toBe("#GITHUB_TOKEN#");
+		expect(expiry).toEqual({ name: "GITHUB_TOKEN", persistedCiphertextRemoved: false });
+		expect(describeSecretExpiry(expiry!)).toContain("has not yet been deleted from the vault");
+		expect(describeSecretExpiry(expiry!)).not.toContain("was deleted from the vault");
+		expect(describeSecretExpiry({ name: "GITHUB_TOKEN", persistedCiphertextRemoved: true })).toContain(
+			"was deleted from the vault",
+		);
 	});
 
 	/** Reported as gone by `hasNamedSecret`, so a caller cannot see a live secret the other path refuses. */

@@ -26,6 +26,7 @@ import {
 	sanitizeRehydratedOpenAIResponsesAssistantMessage,
 	stripInternalDetailsFields,
 } from "./messages";
+import type { OperatorNotices } from "./operator-notices";
 import { type BuildSessionContextOptions, buildSessionContext, type SessionContext } from "./session-context";
 import {
 	type BranchSummaryEntry,
@@ -344,6 +345,11 @@ export type ReadonlySessionManager = Pick<
 	| "putBlobSync"
 >;
 
+export interface SessionManagerNoticeOptions {
+	/** Operator-visible channel for non-fatal session-load data loss. */
+	operatorNotices?: OperatorNotices;
+}
+
 interface SessionManagerStateSnapshot {
 	cwd: string;
 	sessionDir: string;
@@ -385,6 +391,7 @@ export class SessionManager {
 	readonly #persist: boolean;
 	readonly #storage: SessionStorage;
 	readonly #blobs: BlobStore;
+	#operatorNotices: OperatorNotices | undefined;
 
 	#sessionId = "";
 	#sessionName: string | undefined;
@@ -471,6 +478,7 @@ export class SessionManager {
 		persist: boolean,
 		storage: SessionStorage,
 		sessionDirPinned = false,
+		operatorNotices?: OperatorNotices,
 	) {
 		// The session cwd is the single authority every tool resolves against, so it
 		// must be absolute from the start; a relative seed would make later
@@ -480,6 +488,7 @@ export class SessionManager {
 		this.#sessionDirPinned = sessionDirPinned;
 		this.#persist = persist;
 		this.#storage = storage;
+		this.#operatorNotices = operatorNotices;
 		this.#blobs = new BlobStore(getBlobsDir());
 
 		if (persist && sessionDir) this.#storage.ensureDirSync(sessionDir);
@@ -1016,7 +1025,9 @@ export class SessionManager {
 		this.#rememberBreadcrumb(this.#cwd, resolvedSessionFile);
 
 		const titleSlot = await readTitleSlotFromFile(resolvedSessionFile, this.#storage);
-		const fileEntries = await loadEntriesFromFile(resolvedSessionFile, this.#storage);
+		const fileEntries = await loadEntriesFromFile(resolvedSessionFile, this.#storage, {
+			operatorNotices: this.#operatorNotices,
+		});
 		if (fileEntries.length === 0) {
 			// Explicit but empty/missing path (e.g. --session flag): start fresh but
 			// keep the requested path and materialize the header immediately.
@@ -1167,87 +1178,78 @@ export class SessionManager {
 					: computeDefaultSessionDir(resolvedCwd, this.#storage));
 
 		let sessionFileExisted = false;
+		const previousCwd = this.#cwd;
+		const previousSessionDir = this.#sessionDir;
+		const previousSessionFile = this.#sessionFile;
+		const previousHeaderCwd = this.#header.cwd;
+		const previousArtifactManager = this.#artifactManager;
+		const previousArtifactManagerSessionFile = this.#artifactManagerSessionFile;
+		const previousForceFileCreation = this.#forceFileCreation;
+		const previousFileIsCurrent = this.#fileIsCurrent;
+		const previousRewriteRequired = this.#rewriteRequired;
+		const previousDiskFailure = this.#diskFailure;
+		const previousDiskFailureLogged = this.#diskFailureLogged;
+		let oldSessionFile: string | undefined;
+		let newSessionFile: string | undefined;
+		let storageMoved = false;
 
-		if (this.#persist && this.#sessionFile) {
-			this.#storage.ensureDirSync(nextSessionDir);
-			await this.#drainAndCloseWriter();
-			this.#clearDiskError();
+		try {
+			if (this.#persist && this.#sessionFile) {
+				this.#storage.ensureDirSync(nextSessionDir);
+				await this.#drainAndCloseWriter();
+				this.#clearDiskError();
 
-			const oldSessionFile = this.#sessionFile;
-			const newSessionFile = path.join(nextSessionDir, path.basename(oldSessionFile));
-			const oldArtifactsDir = artifactsDirectoryFor(oldSessionFile)!;
-			const newArtifactsDir = artifactsDirectoryFor(newSessionFile)!;
-			const sessionPathChanged = path.resolve(oldSessionFile) !== path.resolve(newSessionFile);
-			const artifactPathChanged = path.resolve(oldArtifactsDir) !== path.resolve(newArtifactsDir);
-			// `!== "absent"` so an UNREACHABLE old file counts as present.
-			//
-			// Skipping is the dangerous branch. This flag decides two things: whether to rename the file
-			// into the new directory, and, at the end of this method, whether to rewrite there. `#sessionFile`
-			// is repointed either way, so a `false` from an unreachable old file did BOTH nothing: the
-			// transcript stayed orphaned at the old path and the session carried on believing it had no file,
-			// which with no assistant message to force a rewrite means the operator's history is gone from
-			// their point of view, with nothing failing. Treating it as present makes the manager attempt
-			// that work instead, and whichever step cannot proceed (the rename when the directory really
-			// changes, the atomic rewrite otherwise) fails with the real errno, rolls back, and rethrows. A
-			// `setCwd` that reports EACCES is recoverable; one that succeeds into an amnesiac session is not.
-			// This is the contract `pathExistsOrThrow` names: a probe whose false branch loses something.
-			sessionFileExisted = this.#storage.existsStateSync(oldSessionFile) !== "absent";
-
-			let sessionMoved = false;
-			let artifactsMoved = false;
-
-			try {
-				if (sessionFileExisted && sessionPathChanged) {
-					await fs.promises.rename(oldSessionFile, newSessionFile);
-					sessionMoved = true;
+				oldSessionFile = this.#sessionFile;
+				newSessionFile = path.join(nextSessionDir, path.basename(oldSessionFile));
+				sessionFileExisted = this.#storage.existsStateSync(oldSessionFile) !== "absent";
+				if (oldSessionFile !== newSessionFile) {
+					await this.#storage.moveSessionWithArtifacts(oldSessionFile, newSessionFile);
+					storageMoved = true;
 				}
-
-				if (artifactPathChanged) {
-					try {
-						const artifactStat = await fs.promises.stat(oldArtifactsDir);
-						if (artifactStat.isDirectory()) {
-							await fs.promises.rename(oldArtifactsDir, newArtifactsDir);
-							artifactsMoved = true;
-						}
-					} catch (err) {
-						if (!isEnoent(err)) throw err;
-					}
-				}
-			} catch (err) {
-				if (artifactsMoved) {
-					try {
-						await fs.promises.rename(newArtifactsDir, oldArtifactsDir);
-					} catch (rollbackErr) {
-						throw new Error(`Failed to move artifacts and rollback: ${errorMessage(rollbackErr)}`);
-					}
-				}
-
-				if (sessionMoved) {
-					try {
-						await fs.promises.rename(newSessionFile, oldSessionFile);
-					} catch (rollbackErr) {
-						throw new Error(`Failed to move session file and rollback: ${errorMessage(rollbackErr)}`);
-					}
-				}
-
-				throw err;
+				this.#sessionFile = newSessionFile;
+				this.#artifactManager = null;
+				this.#artifactManagerSessionFile = null;
 			}
 
-			this.#sessionFile = newSessionFile;
-			this.#artifactManager = null;
-			this.#artifactManagerSessionFile = null;
-		}
+			this.#cwd = resolvedCwd;
+			this.#sessionDir = nextSessionDir;
+			this.#header.cwd = resolvedCwd;
 
-		this.#cwd = resolvedCwd;
-		this.#sessionDir = nextSessionDir;
-		this.#header.cwd = resolvedCwd;
+			// The relocation is not committed until the header naming the new cwd
+			// has been published. If that final rewrite fails, the catch below
+			// restores both backend paths and every in-memory authority.
+			const hasAssistant = this.#historyContainsAssistantMessage();
+			if (this.#persist && this.#sessionFile && (sessionFileExisted || hasAssistant)) {
+				this.#forceFileCreation = true;
+				await this.#rewriteAtomically();
+			}
+		} catch (error) {
+			let rollbackError: Error | undefined;
+			if (storageMoved && oldSessionFile && newSessionFile) {
+				try {
+					await this.#storage.moveSessionWithArtifacts(newSessionFile, oldSessionFile);
+				} catch (failure) {
+					rollbackError = toError(failure);
+				}
+			}
 
-		// Rewrite at the new location when the file already existed (update cwd) or
-		// there is in-memory output worth materializing; otherwise stay lazy.
-		const hasAssistant = this.#historyContainsAssistantMessage();
-		if (this.#persist && this.#sessionFile && (sessionFileExisted || hasAssistant)) {
-			this.#forceFileCreation = true;
-			await this.#rewriteAtomically();
+			this.#cwd = previousCwd;
+			this.#sessionDir = previousSessionDir;
+			this.#sessionFile = previousSessionFile;
+			this.#header.cwd = previousHeaderCwd;
+			this.#artifactManager = previousArtifactManager;
+			this.#artifactManagerSessionFile = previousArtifactManagerSessionFile;
+			this.#forceFileCreation = previousForceFileCreation;
+			this.#fileIsCurrent = previousFileIsCurrent;
+			this.#rewriteRequired = previousRewriteRequired;
+			this.#diskFailure = previousDiskFailure;
+			this.#diskFailureLogged = previousDiskFailureLogged;
+			this.#diskTail = Promise.resolve();
+
+			if (rollbackError) {
+				throw new AggregateError([toError(error), rollbackError], "Session move and rollback failed");
+			}
+			throw error;
 		}
 
 		if (this.#sessionFile) this.#rememberBreadcrumb(resolvedCwd, this.#sessionFile);
@@ -1378,6 +1380,17 @@ export class SessionManager {
 	}
 
 	/**
+	 * Attach the operator-visible channel used by later session loads.
+	 *
+	 * Hosts that supply an already-constructed manager call this once their
+	 * shared UI channel exists. Repeating the attachment is harmless and simply
+	 * makes the most recent host channel authoritative.
+	 */
+	setOperatorNotices(operatorNotices?: OperatorNotices): void {
+		this.#operatorNotices = operatorNotices;
+	}
+
+	/**
 	 * Re-root this session's working directory in place.
 	 *
 	 * Unlike {@link moveTo}, this does NOT relocate session storage or artifacts —
@@ -1426,21 +1439,34 @@ export class SessionManager {
 		}
 
 		const previous = path.resolve(this.#cwd);
+		const previousHeaderCwd = this.#header.cwd;
+		const previousForceFileCreation = this.#forceFileCreation;
+		const previousFileIsCurrent = this.#fileIsCurrent;
+		const previousRewriteRequired = this.#rewriteRequired;
+		const previousDiskFailure = this.#diskFailure;
+		const previousDiskFailureLogged = this.#diskFailureLogged;
 		this.#cwd = resolvedCwd;
 		this.#header.cwd = resolvedCwd;
 
 		// Persist the updated header cwd when a session file already exists so
 		// resume/adoption sees the live root. Storage location is unchanged.
-		//
-		// `!== "absent"` so an UNREACHABLE file counts as present, for the reason `moveTo` above
-		// gives at length: skipping is the branch that loses something. The live session's cwd has
-		// already changed by the time this runs, so a `false` here leaves the header on disk naming
-		// the OLD root while every tool resolves against the new one, and the next resume or
-		// adoption opens the session in the wrong directory with nothing having failed. Attempting
-		// the rewrite instead surfaces the real errno, which is a `setCwd` the caller can retry.
-		if (this.#persist && this.#sessionFile && this.#storage.existsStateSync(this.#sessionFile) !== "absent") {
-			this.#forceFileCreation = true;
-			await this.#rewriteAtomically();
+		try {
+			if (this.#persist && this.#sessionFile && this.#storage.existsStateSync(this.#sessionFile) !== "absent") {
+				this.#forceFileCreation = true;
+				await this.#rewriteAtomically();
+			}
+		} catch (error) {
+			// Atomic persistence leaves the old transcript intact. Restore the
+			// matching in-memory authority as well, so a rejected cwd change never
+			// splits live tool resolution from the resumable header.
+			this.#cwd = previous;
+			this.#header.cwd = previousHeaderCwd;
+			this.#forceFileCreation = previousForceFileCreation;
+			this.#fileIsCurrent = previousFileIsCurrent;
+			this.#rewriteRequired = previousRewriteRequired;
+			this.#diskFailure = previousDiskFailure;
+			this.#diskFailureLogged = previousDiskFailureLogged;
+			throw error;
 		}
 
 		this.#notifyCwdListeners(previous, resolvedCwd);
@@ -2066,9 +2092,14 @@ export class SessionManager {
 	 * stays pinned across a cwd change rather than being redirected to the global
 	 * sessions root.
 	 */
-	static create(cwd: string, sessionDir?: string, storage: SessionStorage = new FileSessionStorage()): SessionManager {
+	static create(
+		cwd: string,
+		sessionDir?: string,
+		storage: SessionStorage = new FileSessionStorage(),
+		options?: SessionManagerNoticeOptions,
+	): SessionManager {
 		const dir = sessionDir ?? SessionManager.getDefaultSessionDir(cwd, undefined, storage);
-		const manager = new SessionManager(cwd, dir, true, storage, sessionDir !== undefined);
+		const manager = new SessionManager(cwd, dir, true, storage, sessionDir !== undefined, options?.operatorNotices);
 		manager.#resetToNewSession();
 		return manager;
 	}
@@ -2109,13 +2140,15 @@ export class SessionManager {
 		cwd: string,
 		sessionDir?: string,
 		storage: SessionStorage = new FileSessionStorage(),
-		options?: { suppressBreadcrumb?: boolean; sessionFile?: string },
+		options?: { suppressBreadcrumb?: boolean; sessionFile?: string; operatorNotices?: OperatorNotices },
 	): Promise<SessionManager> {
 		const dir = sessionDir ?? SessionManager.getDefaultSessionDir(cwd, undefined, storage);
-		const manager = new SessionManager(cwd, dir, true, storage, sessionDir !== undefined);
+		const manager = new SessionManager(cwd, dir, true, storage, sessionDir !== undefined, options?.operatorNotices);
 		manager.#suppressBreadcrumb = options?.suppressBreadcrumb === true;
 
-		const sourceEntries = structuredClone(await loadEntriesFromFile(sourcePath, storage)) as FileEntry[];
+		const sourceEntries = structuredClone(
+			await loadEntriesFromFile(sourcePath, storage, { operatorNotices: options?.operatorNotices }),
+		) as FileEntry[];
 		migrateToCurrentVersion(sourceEntries);
 		await resolveBlobRefsInEntries(sourceEntries, manager.#blobs);
 
@@ -2151,9 +2184,9 @@ export class SessionManager {
 		filePath: string,
 		sessionDir?: string,
 		storage: SessionStorage = new FileSessionStorage(),
-		options?: { initialCwd?: string; suppressBreadcrumb?: boolean },
+		options?: { initialCwd?: string; suppressBreadcrumb?: boolean; operatorNotices?: OperatorNotices },
 	): Promise<SessionManager> {
-		const loaded = await loadEntriesFromFile(filePath, storage);
+		const loaded = await loadEntriesFromFile(filePath, storage, { operatorNotices: options?.operatorNotices });
 		const header = loaded.find(entry => entry.type === "session") as SessionHeader | undefined;
 		// Resume into the session's recorded cwd only when that directory still
 		// exists. A deleted project dir would make the constructor's #cwd — and the
@@ -2168,7 +2201,7 @@ export class SessionManager {
 			(recordedCwd && !recordedCwdUsable
 				? SessionManager.getDefaultSessionDir(cwd, undefined, storage)
 				: path.dirname(path.resolve(filePath)));
-		const manager = new SessionManager(cwd, dir, true, storage, sessionDir !== undefined);
+		const manager = new SessionManager(cwd, dir, true, storage, sessionDir !== undefined, options?.operatorNotices);
 		manager.#suppressBreadcrumb = options?.suppressBreadcrumb === true;
 		await manager.setSessionFile(filePath);
 		return manager;
@@ -2246,6 +2279,7 @@ export class SessionManager {
 		cwd: string,
 		sessionDir?: string,
 		storage: SessionStorage = new FileSessionStorage(),
+		options?: SessionManagerNoticeOptions,
 	): Promise<SessionManager> {
 		const dir = sessionDir ?? SessionManager.getDefaultSessionDir(cwd, undefined, storage);
 		const resolvedCwd = path.resolve(cwd);
@@ -2300,6 +2334,7 @@ export class SessionManager {
 					// recorded cwd, which would no-op moveTo when it equals `cwd`.
 					const manager = await SessionManager.open(breadcrumb.sessionFile, undefined, storage, {
 						initialCwd: breadcrumbCwd,
+						operatorNotices: options?.operatorNotices,
 					});
 					await manager.moveTo(cwd, sessionDir);
 					return manager;
@@ -2311,7 +2346,7 @@ export class SessionManager {
 
 		if (chosenSession === undefined) chosenSession = await findMostRecentSession(dir, storage);
 
-		const manager = new SessionManager(cwd, dir, true, storage, sessionDir !== undefined);
+		const manager = new SessionManager(cwd, dir, true, storage, sessionDir !== undefined, options?.operatorNotices);
 		if (chosenSession) await manager.setSessionFile(chosenSession);
 		else manager.#resetToNewSession();
 		return manager;

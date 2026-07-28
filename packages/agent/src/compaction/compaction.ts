@@ -33,6 +33,7 @@ import type { AgentTelemetry } from "../telemetry";
 import { ThinkingLevel } from "../thinking";
 import type { AgentMessage } from "../types";
 import type { CompactionEntry, SessionEntry } from "./entries";
+import { CompactionCancelledError } from "./errors";
 import { hasLegacyArchive, legacyArchiveSourceText, stripLegacyArchive } from "./legacy-snapcompact-archive";
 import { type ConvertToLlm, createBranchSummaryMessage, createCustomMessage, defaultConvertToLlm } from "./messages";
 import { LEGACY_REMOTE_PRESERVE_KEYS, requestRemoteCompaction } from "./remote-summarizer";
@@ -70,6 +71,7 @@ import {
 	SUMMARIZATION_SYSTEM_PROMPT,
 	serializeConversationForSummary,
 	stripReadSelector,
+	transformMessagesForSummary,
 	upsertFileOperations,
 } from "./utils";
 
@@ -609,6 +611,15 @@ function sanitizeCompactionProviderText(text: string, options: SummaryOptions | 
 	}
 }
 
+function transformSummarySourceMessages(messages: Message[], options: SummaryOptions | undefined): Message[] {
+	if (!options?.obfuscateProviderText) return messages;
+	return transformMessagesForSummary(messages, text => sanitizeCompactionProviderText(text, options));
+}
+
+function throwIfCompactionCancelled(response: AssistantMessage): void {
+	if (response.stopReason === "aborted") throw new CompactionCancelledError();
+}
+
 function buildCompactionProviderContext(
 	systemPrompt: string,
 	promptText: string,
@@ -666,7 +677,10 @@ export async function generateSummary(
 	// Serialize conversation to text so model doesn't try to continue it
 	// Convert to LLM messages first (handles custom app messages when caller provides a transformer).
 	const llmMessages = (options?.convertToLlm ?? defaultConvertToLlm)(currentMessages);
-	const conversationText = serializeConversationForSummary(llmMessages, preferredDialect(model.id));
+	const conversationText = serializeConversationForSummary(
+		transformSummarySourceMessages(llmMessages, options),
+		preferredDialect(model.id),
+	);
 
 	// Build the prompt with conversation wrapped in tags
 	let promptText = `<conversation>\n${conversationText}\n</conversation>\n\n`;
@@ -723,6 +737,7 @@ export async function generateSummary(
 				},
 				{ telemetry: options?.telemetry, oneshotKind: "compaction_summary", completeImpl: options?.completeImpl },
 			);
+			throwIfCompactionCancelled(attemptResponse);
 			if (attemptResponse.stopReason === "error") {
 				throw createSummarizationError("Summarization failed", attemptResponse, options);
 			}
@@ -866,6 +881,7 @@ export async function generateHandoffFromContext(
 		);
 	}
 
+	throwIfCompactionCancelled(response);
 	if (response.stopReason === "error") {
 		throw createSummarizationError("Handoff generation failed", response);
 	}
@@ -943,7 +959,10 @@ async function generateShortSummary(
 ): Promise<string> {
 	const maxTokens = Math.min(512, Math.floor(0.2 * reserveTokens));
 	const llmMessages = (options?.convertToLlm ?? defaultConvertToLlm)(recentMessages);
-	const conversationText = serializeConversationForSummary(llmMessages, preferredDialect(model.id));
+	const conversationText = serializeConversationForSummary(
+		transformSummarySourceMessages(llmMessages, options),
+		preferredDialect(model.id),
+	);
 
 	let promptText = `<conversation>\n${conversationText}\n</conversation>\n\n`;
 	if (historySummary) {
@@ -998,6 +1017,7 @@ async function generateShortSummary(
 					completeImpl: options?.completeImpl,
 				},
 			);
+			throwIfCompactionCancelled(attemptResponse);
 			if (attemptResponse.stopReason === "error") {
 				throw createSummarizationError("Short summary failed", attemptResponse, options);
 			}
@@ -1334,7 +1354,10 @@ async function generateTurnPrefixSummary(
 	const maxTokens = Math.floor(0.5 * reserveTokens); // Smaller budget for turn prefix
 
 	const llmMessages = (options?.convertToLlm ?? defaultConvertToLlm)(messages);
-	const conversationText = serializeConversationForSummary(llmMessages, preferredDialect(model.id));
+	const conversationText = serializeConversationForSummary(
+		transformSummarySourceMessages(llmMessages, options),
+		preferredDialect(model.id),
+	);
 	const promptText = `<conversation>\n${conversationText}\n</conversation>\n\n${TURN_PREFIX_SUMMARIZATION_PROMPT}`;
 
 	const response = await withAuth(
@@ -1362,6 +1385,7 @@ async function generateTurnPrefixSummary(
 					completeImpl: options?.completeImpl,
 				},
 			);
+			throwIfCompactionCancelled(attemptResponse);
 			if (attemptResponse.stopReason === "error") {
 				throw createSummarizationError("Turn prefix summarization failed", attemptResponse, options);
 			}

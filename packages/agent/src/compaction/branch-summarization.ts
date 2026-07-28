@@ -233,6 +233,100 @@ const MAX_PROVIDER_TRANSFORM_NODES = 100_000;
 const MAX_PROVIDER_TRANSFORM_KEYS = 100_000;
 const MAX_PROVIDER_TRANSFORM_STRING_CHARS = 16 * 1024 * 1024;
 
+const PROVIDER_PROTOCOL_STRING_FIELDS: Record<string, true> = {
+	api: true,
+	call_id: true,
+	callId: true,
+	customWireName: true,
+	detail: true,
+	finish_reason: true,
+	finishReason: true,
+	id: true,
+	item_id: true,
+	itemId: true,
+	mime_type: true,
+	mimeType: true,
+	model: true,
+	name: true,
+	provider: true,
+	response_id: true,
+	responseId: true,
+	role: true,
+	status: true,
+	stop_reason: true,
+	stopReason: true,
+	tool_call_id: true,
+	toolCallId: true,
+	toolName: true,
+	type: true,
+};
+
+const OPAQUE_PROVIDER_STRING_FIELDS: Record<string, true> = {
+	data: true,
+	encrypted_content: true,
+	encryptedContent: true,
+	signature: true,
+	textSignature: true,
+	thinkingSignature: true,
+	thoughtSignature: true,
+};
+
+const PROVIDER_PROTOCOL_KEYS: Record<string, true> = {
+	...PROVIDER_PROTOCOL_STRING_FIELDS,
+	...OPAQUE_PROVIDER_STRING_FIELDS,
+	anthropic_version: true,
+	arguments: true,
+	args: true,
+	cache_control: true,
+	content: true,
+	contents: true,
+	function: true,
+	function_call: true,
+	generationConfig: true,
+	input: true,
+	instructions: true,
+	max_completion_tokens: true,
+	max_output_tokens: true,
+	max_tokens: true,
+	messages: true,
+	metadata: true,
+	parallel_tool_calls: true,
+	prompt: true,
+	reasoning: true,
+	safetySettings: true,
+	stream: true,
+	system: true,
+	system_instruction: true,
+	temperature: true,
+	text: true,
+	thinking: true,
+	timestamp: true,
+	tool_choice: true,
+	tool_config: true,
+	tools: true,
+	top_p: true,
+	usage: true,
+};
+
+const TOOL_ARGUMENT_OBJECT_TYPES: Record<string, true> = {
+	custom_tool_call: true,
+	function_call: true,
+	toolCall: true,
+	tool_use: true,
+};
+
+function isToolArgumentField(parent: object, key: string): boolean {
+	if (key === "arguments" || key === "args") return true;
+	if (key !== "input") return false;
+	const type = Object.getOwnPropertyDescriptor(parent, "type");
+	return (
+		type !== undefined &&
+		"value" in type &&
+		typeof type.value === "string" &&
+		TOOL_ARGUMENT_OBJECT_TYPES[type.value] === true
+	);
+}
+
 interface ProviderTransformTraversal {
 	ancestors: WeakSet<object>;
 	nodes: number;
@@ -262,11 +356,13 @@ function transformProviderText(
 }
 
 /**
- * Clone provider-bound JSON while transforming every string value and object
- * key. The strict traversal limits bound work over persisted/provider-shaped
- * data; cycles, accessors, symbols, exotic objects, and key collisions fail
- * closed. Binary buffers/views contain no transformable string surface and are
- * deliberately passed through unchanged.
+ * Clone provider-bound JSON while transforming free-text string values and
+ * user-authored data keys. Provider protocol keys, roles, discriminants,
+ * statuses, identifiers, and opaque signatures remain byte-for-byte intact.
+ * The strict traversal limits bound work over persisted/provider-shaped data;
+ * cycles, accessors, symbols, transformed-key collisions, and exotic objects
+ * fail closed. Binary buffers/views contain no transformable string surface and
+ * are deliberately passed through unchanged.
  */
 function transformProviderValue<T>(value: T, transform: ObfuscateProviderText): T {
 	const traversal: ProviderTransformTraversal = {
@@ -290,11 +386,24 @@ function transformProviderValueBounded<T>(
 	transform: ObfuscateProviderText,
 	traversal: ProviderTransformTraversal,
 	depth: number,
+	protocolShape: boolean = true,
+	parentKey?: string,
 ): T {
 	if (depth > MAX_PROVIDER_TRANSFORM_DEPTH) throw providerTextTransformError();
 	traversal.nodes += 1;
 	if (traversal.nodes > MAX_PROVIDER_TRANSFORM_NODES) throw providerTextTransformError();
-	if (typeof value === "string") return transformProviderText(value, transform, traversal) as T;
+	if (typeof value === "string") {
+		if (protocolShape && parentKey !== undefined && OPAQUE_PROVIDER_STRING_FIELDS[parentKey] === true) {
+			const checked = transformProviderText(value, transform, traversal);
+			if (checked !== value) throw providerTextTransformError();
+			return value;
+		}
+		return (
+			protocolShape && parentKey !== undefined && PROVIDER_PROTOCOL_STRING_FIELDS[parentKey] === true
+				? value
+				: transformProviderText(value, transform, traversal)
+		) as T;
+	}
 	if (value === null || typeof value !== "object") return value;
 
 	if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) return value;
@@ -312,7 +421,14 @@ function transformProviderValueBounded<T>(
 				const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
 				if (!descriptor) continue;
 				if (!("value" in descriptor)) throw providerTextTransformError();
-				transformed[index] = transformProviderValueBounded(descriptor.value, transform, traversal, depth + 1);
+				transformed[index] = transformProviderValueBounded(
+					descriptor.value,
+					transform,
+					traversal,
+					depth + 1,
+					protocolShape,
+					parentKey,
+				);
 			}
 			return transformed as T;
 		}
@@ -325,10 +441,20 @@ function transformProviderValueBounded<T>(
 			if (!descriptor.enumerable) continue;
 			traversal.keys += 1;
 			if (traversal.keys > MAX_PROVIDER_TRANSFORM_KEYS) throw providerTextTransformError();
-			const transformedKey = transformProviderText(key, transform, traversal);
+			const transformedKey =
+				protocolShape && PROVIDER_PROTOCOL_KEYS[key] === true
+					? key
+					: transformProviderText(key, transform, traversal);
 			if (Object.hasOwn(transformed, transformedKey)) throw providerTextTransformError();
 			Object.defineProperty(transformed, transformedKey, {
-				value: transformProviderValueBounded(descriptor.value, transform, traversal, depth + 1),
+				value: transformProviderValueBounded(
+					descriptor.value,
+					transform,
+					traversal,
+					depth + 1,
+					protocolShape && !isToolArgumentField(value, key),
+					key,
+				),
 				enumerable: true,
 				configurable: true,
 				writable: true,

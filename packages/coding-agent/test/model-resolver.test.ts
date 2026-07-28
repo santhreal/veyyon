@@ -828,6 +828,23 @@ describe("resolveConfiguredModelPatterns — role expansion", () => {
 
 		expect(resolveConfiguredModelPatterns("@designer", settings)).toEqual(["openai/gpt-4o"]);
 	});
+
+	/**
+	 * An effort on the alias is the caller's selector, so it replaces rather
+	 * than stacks on top of efforts stored in the aliased fallback chain.
+	 */
+	test("replaces existing valid effort suffixes when an alias overrides effort", () => {
+		const settings = Settings.isolated({
+			modelRoles: {
+				slow: ["anthropic/claude-sonnet-4-5:high", "openai/gpt-4o:max"],
+			},
+		});
+
+		expect(resolveConfiguredModelPatterns("@slow:low", settings)).toEqual([
+			"anthropic/claude-sonnet-4-5:low",
+			"openai/gpt-4o:low",
+		]);
+	});
 });
 
 /**

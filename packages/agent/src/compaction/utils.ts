@@ -171,6 +171,96 @@ export function truncateToolResultForSummary(text: string): string {
 	return `${text.slice(0, TOOL_RESULT_MAX_CHARS)}\n\n[... ${truncatedChars} more characters truncated]`;
 }
 
+type SummaryTextTransform = (text: string) => string;
+
+function transformJsonStringValues(
+	value: unknown,
+	transform: SummaryTextTransform,
+	seen: WeakMap<object, unknown>,
+): unknown {
+	if (typeof value === "string") return transform(value);
+	if (value === null || typeof value !== "object") return value;
+	if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) return value;
+
+	const prior = seen.get(value);
+	if (prior !== undefined) return prior;
+
+	if (Array.isArray(value)) {
+		const transformed: unknown[] = [];
+		seen.set(value, transformed);
+		for (const item of value) transformed.push(transformJsonStringValues(item, transform, seen));
+		return transformed;
+	}
+
+	const transformed: Record<string, unknown> = {};
+	seen.set(value, transformed);
+	for (const [key, item] of Object.entries(value)) {
+		// Tool argument keys are user-authored JSON data, not provider protocol
+		// shape. Redact them before JSON serialization, and reject collisions
+		// instead of silently overwriting one argument with another.
+		const transformedKey = transform(key);
+		if (Object.hasOwn(transformed, transformedKey)) {
+			throw new Error("Summary text transformation produced colliding tool argument keys");
+		}
+		Object.defineProperty(transformed, transformedKey, {
+			value: transformJsonStringValues(item, transform, seen),
+			enumerable: true,
+			configurable: true,
+			writable: true,
+		});
+	}
+	return transformed;
+}
+
+/**
+ * Clone summary-bound messages while transforming only provider-visible prose.
+ *
+ * Roles, content discriminants, tool identifiers/names, statuses, signatures,
+ * opaque provider replay payloads, and provider protocol keys stay byte-for-byte
+ * intact. Tool argument keys and string values are transformed recursively
+ * before serialization, so a secret crossing a JSON-escaping or truncation
+ * boundary cannot leave a raw fragment behind.
+ */
+export function transformMessagesForSummary(messages: Message[], transform: SummaryTextTransform): Message[] {
+	return messages.map(message => {
+		if (message.role === "user" || message.role === "developer") {
+			const content =
+				typeof message.content === "string"
+					? transform(message.content)
+					: message.content.map(block =>
+							block.type === "text" ? { ...block, text: transform(block.text) } : block,
+						);
+			return { ...message, content };
+		}
+
+		if (message.role === "assistant") {
+			const content = message.content.map(block => {
+				if (block.type === "text") return { ...block, text: transform(block.text) };
+				if (block.type === "thinking") return { ...block, thinking: transform(block.thinking) };
+				if (block.type === "toolCall") {
+					return {
+						...block,
+						arguments: transformJsonStringValues(block.arguments, transform, new WeakMap()) as Record<
+							string,
+							unknown
+						>,
+						...(block.intent === undefined ? {} : { intent: transform(block.intent) }),
+					};
+				}
+				return block;
+			});
+			return { ...message, content };
+		}
+
+		return {
+			...message,
+			content: message.content.map(block =>
+				block.type === "text" ? { ...block, text: transform(block.text) } : block,
+			),
+		};
+	});
+}
+
 const HARMONY_CONTROL_TOKEN_RE = /<\|(start|end|message|channel|constrain|return|call)\|>/g;
 
 /**

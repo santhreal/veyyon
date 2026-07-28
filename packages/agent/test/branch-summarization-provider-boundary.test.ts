@@ -331,6 +331,52 @@ describe("branch summary provider boundary", () => {
 		expect(dispatches).toBe(0);
 	});
 	/**
+	 * Regression: provider-bound redaction used to transform every string and
+	 * object key. A secret equal to a protocol literal therefore changed
+	 * `role: "assistant"`, while a secret equal to `messages` renamed the request
+	 * field. Only free-text content may be transformed.
+	 */
+	test("preserves protocol keys and discriminants while redacting colliding free text", async () => {
+		const roleSecret = "assistant";
+		const keySecret = "messages";
+		let transformedPayload: Record<string, unknown> | undefined;
+		let capturedContext: Context | undefined;
+
+		await generateBranchSummary(
+			[
+				{
+					type: "message",
+					id: "collision-user",
+					parentId: null,
+					timestamp: new Date(0).toISOString(),
+					message: { role: "user", content: `${roleSecret} ${keySecret}`, timestamp: 0 },
+				},
+			],
+			{
+				model: MODEL,
+				apiKey: "static-key",
+				signal: new AbortController().signal,
+				resolveObfuscateProviderText: () => text =>
+					text.replaceAll(roleSecret, "#ROLE#").replaceAll(keySecret, "#KEY#"),
+				completeImpl: async (model, context, options) => {
+					capturedContext = context;
+					transformedPayload = (await options.onPayload?.(
+						{ messages: [{ role: "assistant", content: `${roleSecret} ${keySecret}` }] },
+						model,
+					)) as Record<string, unknown>;
+					return assistant();
+				},
+			},
+		);
+
+		expect(capturedContext?.messages[0]?.role).toBe("user");
+		expect(contextText(capturedContext as Context)).toContain("#ROLE# #KEY#");
+		expect(transformedPayload).toEqual({
+			messages: [{ role: "assistant", content: "#ROLE# #KEY#" }],
+		});
+	});
+
+	/**
 	 * Regression: a shared object is a valid acyclic provider payload; a global
 	 * visited set would misclassify its second reference as a cycle. Binary views
 	 * have no string surface and must pass through deliberately without cloning.
@@ -392,10 +438,86 @@ describe("branch summary provider boundary", () => {
 	});
 
 	/**
-	 * Regression: two distinct provider keys can collapse to one redacted key;
-	 * forwarding that object would silently overwrite a tool argument.
+	 * Regression: provider protocol keys are shape, not free text. Redaction must
+	 * leave them byte-for-byte intact even when a transform matches the key.
 	 */
-	test("rejects transformed key collisions with the fixed error", async () => {
+	test("preserves provider payload object keys", async () => {
+		let transformedPayload: Record<string, unknown> | undefined;
+		await generateBranchSummary(branchEntries(), {
+			model: MODEL,
+			apiKey: "static-key",
+			signal: new AbortController().signal,
+			resolveObfuscateProviderText: () => text => text.replaceAll("messages", "#KEY#"),
+			completeImpl: async (model, _context, options) => {
+				transformedPayload = (await options.onPayload?.({ messages: [{ content: "messages" }] }, model)) as Record<
+					string,
+					unknown
+				>;
+				return assistant();
+			},
+		});
+
+		expect(transformedPayload).toEqual({ messages: [{ content: "#KEY#" }] });
+	});
+
+	/**
+	 * Signed/encrypted replay fields and binary text are opaque protocol bytes.
+	 * A non-matching sanitizer may inspect them, but must not rewrite them.
+	 */
+	test("preserves safe encrypted content, signatures, and data byte-for-byte", async () => {
+		const opaque = {
+			encrypted_content: "encrypted-safe",
+			encryptedContent: "encrypted-camel-safe",
+			signature: "signature-safe",
+			data: "YmFzZTY0LXNhZmU=",
+		};
+		let transformedPayload: unknown;
+
+		await generateBranchSummary(branchEntries(), {
+			model: MODEL,
+			apiKey: "static-key",
+			signal: new AbortController().signal,
+			resolveObfuscateProviderText: () => text => text.replaceAll(RAW_MARKER, "#OPAQUE#"),
+			completeImpl: async (model, _context, options) => {
+				transformedPayload = await options.onPayload?.({ items: [opaque] }, model);
+				return assistant();
+			},
+		});
+
+		expect(transformedPayload).toEqual({ items: [opaque] });
+	});
+
+	for (const field of ["encrypted_content", "signature", "data"] as const) {
+		/**
+		 * An active secret inside opaque bytes cannot be safely redacted without
+		 * invalidating the replay/signature. The request must fail closed.
+		 */
+		test(`rejects secret-bearing opaque ${field} without exposing it`, async () => {
+			let reachedWire = false;
+			const request = generateBranchSummary(branchEntries(), {
+				model: MODEL,
+				apiKey: "static-key",
+				signal: new AbortController().signal,
+				resolveObfuscateProviderText: () => text => text.replaceAll(RAW_MARKER, "#OPAQUE#"),
+				completeImpl: async (model, _context, options) => {
+					await options.onPayload?.({ items: [{ [field]: `opaque-${RAW_MARKER}` }] }, model);
+					reachedWire = true;
+					return assistant();
+				},
+			});
+			const error = await request.catch((caught: unknown) => caught);
+
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error).message).toBe("Branch summary provider text transformation failed.");
+			expect((error as Error).message).not.toContain(RAW_MARKER);
+			expect(reachedWire).toBe(false);
+		});
+	}
+	/**
+	 * Regression: redacting two user-authored data keys to one name must fail
+	 * closed instead of silently overwriting a tool/provider data field.
+	 */
+	test("rejects transformed data-key collisions with the fixed error", async () => {
 		const replacement = "#COLLISION#";
 		const request = generateBranchSummary(branchEntries(), {
 			model: MODEL,

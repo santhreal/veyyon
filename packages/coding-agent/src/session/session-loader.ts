@@ -3,7 +3,7 @@ import { getBlobsDir } from "@veyyon/utils/dirs";
 import { isEnoent } from "@veyyon/utils/fs-error";
 // Owners, not the `@veyyon/utils` barrel: 4 modules against 74.
 import * as logger from "@veyyon/utils/logger";
-import { parseJsonlLenient } from "@veyyon/utils/stream";
+import { readLines } from "@veyyon/utils/stream";
 import {
 	BlobStore,
 	isBlobRef,
@@ -12,10 +12,10 @@ import {
 	resolveImageDataUrl,
 	resolveTextBlobRef,
 } from "./blob-store";
+import type { OperatorNotices } from "./operator-notices";
 import { buildSessionContext } from "./session-context";
 import {
 	type FileEntry,
-	type RawFileEntry,
 	SESSION_TITLE_SLOT_BYTES,
 	type SessionEntry,
 	type SessionHeader,
@@ -34,11 +34,42 @@ import {
 
 const STREAM_LOAD_THRESHOLD_BYTES = 8 * 1024 * 1024;
 
-function splitTitleSlot(content: string): { body: string; slot: SessionTitleUpdate | undefined } {
+export interface SessionLoadOptions {
+	source?: string;
+	operatorNotices?: OperatorNotices;
+}
+
+interface SessionRecordIssue {
+	line: number;
+	byteOffset: number;
+	problem: string;
+}
+
+export class CorruptSessionFileError extends Error {
+	readonly path: string;
+
+	constructor(filePath: string, problem: string) {
+		super(`Cannot load corrupt session ${filePath}: ${problem}`);
+		this.name = "CorruptSessionFileError";
+		this.path = filePath;
+	}
+}
+
+function splitTitleSlot(content: string): {
+	body: string;
+	slot: SessionTitleUpdate | undefined;
+	startLine: number;
+	startByteOffset: number;
+} {
 	const slot = titleUpdateFromSlot(parseTitleSlotFromContent(content));
-	if (!slot) return { body: content, slot: undefined };
+	if (!slot) return { body: content, slot: undefined, startLine: 1, startByteOffset: 1 };
 	const newlineIndex = content.indexOf("\n");
-	return { body: content.slice(newlineIndex + 1), slot };
+	return {
+		body: content.slice(newlineIndex + 1),
+		slot,
+		startLine: 2,
+		startByteOffset: Buffer.byteLength(content.slice(0, newlineIndex + 1), "utf-8") + 1,
+	};
 }
 
 function foldTitleSlot(entries: FileEntry[], slot: SessionTitleUpdate | undefined): FileEntry[] {
@@ -58,6 +89,19 @@ function foldTitleSlot(entries: FileEntry[], slot: SessionTitleUpdate | undefine
 	return entries;
 }
 
+function emitDroppedRecordNotice(options: SessionLoadOptions, issues: readonly SessionRecordIssue[]): void {
+	if (!options.operatorNotices || issues.length === 0) return;
+	const shown = issues.slice(0, 5);
+	const details = shown.map(issue => `line ${issue.line}, byte ${issue.byteOffset}: ${issue.problem}`).join("; ");
+	const remainder = issues.length - shown.length;
+	options.operatorNotices.warn(
+		"session",
+		`Skipped ${issues.length} malformed record${issues.length === 1 ? "" : "s"} while loading ${
+			options.source ?? "(unknown session)"
+		}: ${details}${remainder > 0 ? `; and ${remainder} more` : ""}.`,
+	);
+}
+
 /**
  * Parse session JSONL while stripping and folding the optional fixed title slot.
  *
@@ -68,146 +112,123 @@ function foldTitleSlot(entries: FileEntry[], slot: SessionTitleUpdate | undefine
  */
 export function parseSessionContent(
 	content: string,
-	context?: { source?: string },
+	context: SessionLoadOptions = {},
 ): {
 	entries: FileEntry[];
 	titleSlot: SessionTitleUpdate | undefined;
 } {
-	const { body, slot } = splitTitleSlot(content);
-	let skipped = 0;
-	const decoded = parseJsonlLenient<RawFileEntry>(body, {
-		onSkip: skip => {
-			skipped += 1;
-			logger.warn("Skipped a malformed session record on load (data lost)", {
-				source: context?.source,
-				offset: skip.offset,
-				snippet: skip.snippet,
-			});
-		},
-	});
-	// Decoding is not validating. A line that decodes to the WRONG SHAPE used to
-	// sail through to readers that dereference fields it does not have, and one
-	// such line took the whole transcript down. It costs its own row instead.
+	const { body, slot, startLine, startByteOffset } = splitTitleSlot(content);
 	const entries: FileEntry[] = [];
-	for (const value of decoded) {
-		const shape = checkSessionEntryShape(value);
-		if (!shape.ok) {
-			skipped += 1;
-			logger.warn("Dropped a session record that decoded to the wrong shape (data lost)", {
-				source: context?.source,
-				problem: shape.problem,
-				snippet: JSON.stringify(value).slice(0, 200),
-			});
-			continue;
+	const issues: SessionRecordIssue[] = [];
+	let line = startLine;
+	let byteOffset = startByteOffset;
+
+	for (const rawLine of body.split("\n")) {
+		const lineBytes = Buffer.byteLength(rawLine, "utf-8");
+		if (rawLine.trim().length > 0) {
+			let value: unknown;
+			try {
+				value = JSON.parse(rawLine);
+			} catch {
+				issues.push({ line, byteOffset, problem: "invalid JSON" });
+				logger.warn("Skipped a malformed session record on load (data lost)", {
+					source: context.source,
+					offset: byteOffset,
+				});
+				line += 1;
+				byteOffset += lineBytes + 1;
+				continue;
+			}
+
+			const shape = checkSessionEntryShape(value);
+			if (!shape.ok) {
+				issues.push({ line, byteOffset, problem: shape.problem });
+				logger.warn("Dropped a session record that decoded to the wrong shape (data lost)", {
+					source: context.source,
+					offset: byteOffset,
+					problem: shape.problem,
+				});
+			} else {
+				entries.push(value as FileEntry);
+			}
 		}
-		entries.push(value as FileEntry);
+		line += 1;
+		byteOffset += lineBytes + 1;
 	}
-	if (skipped > 0) {
-		logger.warn("Session load dropped malformed records", { source: context?.source, skipped });
+
+	if (issues.length > 0) {
+		logger.warn("Session load dropped malformed records", { source: context.source, skipped: issues.length });
+		emitDroppedRecordNotice(context, issues);
 	}
 	return { entries: foldTitleSlot(entries, slot), titleSlot: slot };
 }
 
 /** Exported for testing — the ≥8MiB streaming path (works on any file size). */
-export async function loadEntriesFromFileStream(filePath: string): Promise<{
+export async function loadEntriesFromFileStream(
+	filePath: string,
+	options: SessionLoadOptions = {},
+): Promise<{
 	entries: FileEntry[];
 	titleSlot: SessionTitleUpdate | undefined;
 }> {
 	const entries: FileEntry[] = [];
+	const issues: SessionRecordIssue[] = [];
 	let titleSlot: SessionTitleUpdate | undefined;
-	let sawFirstLine = false;
-	let skipped = 0;
-	// Byte buffer (NOT a decoded string): multibyte UTF-8 sequences that straddle
-	// a stream-chunk boundary stay intact, and Bun.JSONL.parseChunk accepts typed
-	// arrays directly. Only the unconsumed remainder is held (≤ one record + a
-	// chunk), so the ≥8MiB memory guard is preserved (the file is never fully
-	// loaded into memory).
-	let buffer: Uint8Array = new Uint8Array();
+	let line = 1;
+	let byteOffset = 1;
 	const decoder = new TextDecoder();
 
-	const drain = () => {
-		while (buffer.length > 0) {
-			const { values, error, read, done } = Bun.JSONL.parseChunk(buffer);
-			for (const value of values) {
-				const shape = checkSessionEntryShape(value);
-				if (!shape.ok) {
-					skipped += 1;
-					logger.warn("Dropped a session record that decoded to the wrong shape (data lost)", {
-						source: filePath,
-						problem: shape.problem,
-						snippet: JSON.stringify(value).slice(0, 200),
-					});
+	try {
+		for await (const lineBytes of readLines(Bun.file(filePath).stream())) {
+			const text = decoder.decode(lineBytes);
+			if (line === 1) {
+				const slot = parseTitleSlotLine(text.trim());
+				if (slot) {
+					titleSlot = titleUpdateFromSlot(slot);
+					line += 1;
+					byteOffset += lineBytes.byteLength + 1;
 					continue;
 				}
-				entries.push(value as FileEntry);
 			}
-			if (error) {
-				// `read > 0` means parseChunk consumed good record(s) (already pushed
-				// above) and the error belongs to the NEXT record — `read` points at the
-				// delimiter before it. Skip past the delimiter WITHOUT counting: the
-				// malformed record resurfaces at the head (`read === 0`) on the next pass,
-				// where it is counted and logged exactly once. Counting here as well is
-				// what double-reported every malformed line. The skip is never silent
-				// (Law 10) — it is logged loudly at the head, with a final total below.
-				const isHeadError = read === 0;
-				const nextNewline = buffer.indexOf(0x0a, read);
-				if (nextNewline === -1) break; // rest of the bad line not yet received
-				if (isHeadError) {
-					skipped += 1;
+
+			if (text.trim().length > 0) {
+				let value: unknown;
+				try {
+					value = JSON.parse(text);
+				} catch {
+					issues.push({ line, byteOffset, problem: "invalid JSON" });
 					logger.warn("Skipped a malformed session record on streaming load (data lost)", {
 						source: filePath,
-						snippet: decoder.decode(buffer.subarray(0, Math.min(nextNewline, 200))),
+						offset: byteOffset,
 					});
+					line += 1;
+					byteOffset += lineBytes.byteLength + 1;
+					continue;
 				}
-				buffer = buffer.subarray(nextNewline + 1);
-				continue;
-			}
-			if (read === 0) break; // incomplete record awaiting more data
-			buffer = buffer.subarray(read);
-			if (done) {
-				buffer = new Uint8Array();
-				break;
-			}
-		}
-	};
 
-	try {
-		for await (const chunk of Bun.file(filePath).stream()) {
-			buffer = buffer.length === 0 ? chunk : Buffer.concat([buffer, chunk]);
-			// The optional fixed-width title slot is a physical first line that is
-			// NOT JSON; peel it before the parser would (correctly) reject it. The
-			// first line ends at a '\n' byte, so it is a complete UTF-8 sequence and
-			// safe to decode. A non-slot first line is a real entry and is left for
-			// the parser; a blank first line is left for the parser to skip.
-			if (!sawFirstLine) {
-				const newline = buffer.indexOf(0x0a);
-				if (newline !== -1) {
-					sawFirstLine = true;
-					const firstLine = decoder.decode(buffer.subarray(0, newline)).trim();
-					if (firstLine) {
-						const slot = parseTitleSlotLine(firstLine);
-						if (slot) {
-							titleSlot = titleUpdateFromSlot(slot);
-							buffer = buffer.subarray(newline + 1);
-						}
-					}
+				const shape = checkSessionEntryShape(value);
+				if (!shape.ok) {
+					issues.push({ line, byteOffset, problem: shape.problem });
+					logger.warn("Dropped a session record that decoded to the wrong shape (data lost)", {
+						source: filePath,
+						offset: byteOffset,
+						problem: shape.problem,
+					});
+				} else {
+					entries.push(value as FileEntry);
 				}
 			}
-			drain();
+			line += 1;
+			byteOffset += lineBytes.byteLength + 1;
 		}
-		// A trailing record without a final newline: terminate it so the parser
-		// can complete it (readline yielded it; parseChunk needs the delimiter).
-		if (buffer.length > 0 && buffer[buffer.length - 1] !== 0x0a) {
-			buffer = Buffer.concat([buffer, new Uint8Array([0x0a])]);
-		}
-		drain();
 	} catch (err) {
 		if (isEnoent(err)) return { entries: [], titleSlot: undefined };
 		throw err;
 	}
 
-	if (skipped > 0) {
-		logger.warn("Session streaming load dropped malformed records", { source: filePath, skipped });
+	if (issues.length > 0) {
+		logger.warn("Session streaming load dropped malformed records", { source: filePath, skipped: issues.length });
+		emitDroppedRecordNotice({ ...options, source: options.source ?? filePath }, issues);
 	}
 	return { entries: foldTitleSlot(entries, titleSlot), titleSlot };
 }
@@ -237,25 +258,30 @@ export function parseSessionEntries(content: string): FileEntry[] {
 export async function loadEntriesFromFile(
 	filePath: string,
 	storage: SessionStorage = new FileSessionStorage(),
+	options: SessionLoadOptions = {},
 ): Promise<FileEntry[]> {
 	let loaded: { entries: FileEntry[]; titleSlot: SessionTitleUpdate | undefined };
+	let size: number;
 	try {
 		const stat = storage.statSync(filePath);
+		size = stat.size;
 		loaded =
 			storage instanceof FileSessionStorage && stat.size >= STREAM_LOAD_THRESHOLD_BYTES
-				? await loadEntriesFromFileStream(filePath)
-				: parseSessionContent(await storage.readText(filePath), { source: filePath });
+				? await loadEntriesFromFileStream(filePath, { ...options, source: options.source ?? filePath })
+				: parseSessionContent(await storage.readText(filePath), { ...options, source: options.source ?? filePath });
 	} catch (err) {
 		if (isEnoent(err)) return [];
 		throw err;
 	}
 	const { entries } = loaded;
 
-	// Validate session header
-	if (entries.length === 0) return entries;
+	if (size === 0) return [];
+	if (entries.length === 0) {
+		throw new CorruptSessionFileError(filePath, "the non-empty file has no readable session header");
+	}
 	const header = entries[0] as SessionHeader;
 	if (header.type !== "session" || typeof header.id !== "string") {
-		return [];
+		throw new CorruptSessionFileError(filePath, "the first readable record is not a session header");
 	}
 
 	return entries;

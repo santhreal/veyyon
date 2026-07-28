@@ -146,7 +146,8 @@ import {
 } from "./secrets";
 import { buildExpansionRecord, SecretAuditLog, secretAuditPath } from "./secrets/audit";
 import { buildEnvSecretPattern, loadEnvSecretKeywords } from "./secrets/env-keywords";
-import { setSecretsNoticeSink } from "./secrets/notices";
+import { attachSecretsNoticeSink } from "./secrets/notices";
+import { describeSecretExpiry } from "./secrets/obfuscator";
 import { expiryWarnings } from "./secrets/secret-command";
 import { resolveVaultLocations, SecretVault } from "./secrets/vault";
 import { loadOrCreateVaultKey } from "./secrets/vault-crypto";
@@ -444,8 +445,13 @@ export interface CreateAgentSessionOptions {
 	thinkingLevel?: ConfiguredThinkingLevel;
 	/** Internal precedence source for the initial effort selection. */
 	thinkingSource?: EffortSource;
-	/** Models available for cycling (Ctrl+P in interactive mode) */
-	scopedModels?: Array<{ model: Model; thinkingLevel?: ConfiguredThinkingLevel }>;
+	/** Models available for cycling (Ctrl+P in interactive mode). */
+	scopedModels?: Array<{
+		model: Model;
+		thinkingLevel?: ConfiguredThinkingLevel;
+		/** True only when this entry carried an explicit `:effort` suffix. */
+		explicitThinkingLevel?: boolean;
+	}>;
 	/** Prewalk from the starting model to a fast/cheap target at the first edit/write once the todo list exists. */
 	prewalk?: Prewalk;
 	/** Force read-only plan mode at start, auto-approve on the model's first resolve call, then switch to execute. */
@@ -1369,11 +1375,21 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			setPreferredImageProvider(imageProvider);
 		}
 
+		// The operator-visible channel for non-fatal startup and runtime problems. Construct it
+		// before the session manager so load-time recovery notices use the same surface as secrets
+		// and filesystem faults. Default to stderr rather than dropping warnings.
+		const operatorNotices = options.operatorNotices ?? new OperatorNotices(stderrNoticeSink);
+
 		sessionManager =
 			options.sessionManager ??
 			logger.time("sessionManager", () =>
-				SessionManager.create(cwd, SessionManager.getDefaultSessionDir(cwd, agentDir)),
+				SessionManager.create(cwd, SessionManager.getDefaultSessionDir(cwd, agentDir), undefined, {
+					operatorNotices,
+				}),
 			);
+		// A caller-supplied manager was constructed before this SDK surface existed. Attach the
+		// selected session's channel now so later setSessionFile/load recovery is still visible.
+		sessionManager.setOperatorNotices(operatorNotices);
 		const providerSessionId = options.providerSessionId ?? sessionManager.getSessionId();
 		const forkCacheShapeChanged =
 			options.model !== undefined ||
@@ -1404,17 +1420,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// key is resolved lazily per request via ModelRegistry.resolver.
 		const hasModelAuth = (candidate: Model): boolean => modelRegistry.hasConfiguredAuth(candidate);
 
-		// The operator-visible channel for a non-fatal problem. Built before anything that can raise
-		// one, and defaulted to stderr rather than to nothing: a caller that supplies no surface gets
-		// its warnings in the wrong place, never dropped.
-		const operatorNotices = options.operatorNotices ?? new OperatorNotices(stderrNoticeSink);
 		// Key and vault conditions are raised from deep inside the secrets subsystem
 		// and cannot be returned. See secrets/notices.ts for why this is a sink.
-		// Same lifetime rule as the fault sink below: it closes over this session's notices, so it is
-		// detached wherever that one is. Left attached it would post a later process's key-directory
-		// or vault-binding notice into a channel belonging to a session that has already gone.
-		setSecretsNoticeSink(message => operatorNotices.warn("secrets", message));
-		detachSecretsNoticeSink = () => setSecretsNoticeSink(undefined);
+		// Each registration is identity-bound: overlapping sessions all receive process-global
+		// conditions, and disposing this session removes only its own notice surface.
+		detachSecretsNoticeSink = attachSecretsNoticeSink(message => operatorNotices.warn("secrets", message));
 		for (const legacyFile of await findLegacyPromptFiles({ cwd, agentDir })) {
 			operatorNotices.warn("system-prompt", describeLegacyPromptFile(legacyFile));
 		}
@@ -1475,12 +1485,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			const nextObfuscator = new SecretObfuscator([...envEntries, ...fileEntries, ...vaultEntries], {
 				placeholderKey,
 				onRejection: rejection => operatorNotices.warn("secrets", describeSecretRejection(rejection)),
-				onExpiry: name =>
-					operatorNotices.warn(
-						"secrets",
-						`#${name}# has expired and is no longer being substituted. Its value was deleted, so ` +
-							`store it again with /secret add ${name} --from-env <VAR> if you still need it.`,
-					),
+				onExpiry: expiry => operatorNotices.warn("secrets", describeSecretExpiry(expiry)),
 			});
 			return { obfuscator: nextObfuscator, vault, vaultRevision, auditLog };
 		};
@@ -1723,7 +1728,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			}
 			const saved = resolveEffort({
 				modelSelector: selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : undefined,
-				defaultEffort: withLegacyDefaultEffort(settings.get("defaultEffort"), settings.get("defaultThinkingLevel")),
+				defaultEffort: withLegacyDefaultEffort(
+					settings.isConfigured("defaultEffort") ? settings.get("defaultEffort") : undefined,
+					settings.get("defaultThinkingLevel"),
+				),
 			});
 			thinkingSource = saved.source;
 			return saved.level ?? selectedModel?.thinking?.defaultLevel;

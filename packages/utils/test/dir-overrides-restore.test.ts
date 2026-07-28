@@ -302,8 +302,8 @@ describe("restoreDirOverrides and the pre-profile baseline", () => {
 	/** A baseline that was absent comes back absent, so the snapshot cannot silently
 	 *  invent an override for a process that never had one. */
 	it("restores an absent baseline as absent", () => {
-		delete process.env.VEYYON_CODING_AGENT_DIR;
 		setProfile(undefined);
+		delete process.env.VEYYON_CODING_AGENT_DIR;
 		__resetProfileSnapshotForTests();
 		const snapshot = captureDirOverrides();
 		expect(snapshot.preProfileAgentDir).toBeUndefined();

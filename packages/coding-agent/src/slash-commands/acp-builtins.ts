@@ -47,6 +47,7 @@ export async function executeAcpBuiltinSlashCommand(
 	const { lookupBuiltinSlashCommand } = await import("./builtin-registry");
 	const command = lookupBuiltinSlashCommand(parsed.name);
 	if (!command?.handle) return false;
+	if (parsed.args.length > 0 && !command.allowArgs) return false;
 	const result = await command.handle(parsed, runtime);
 	if (result === undefined) return { consumed: true };
 	return result;

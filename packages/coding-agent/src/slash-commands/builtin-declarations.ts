@@ -154,6 +154,7 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		aliases: ["models"],
 		description: "Switch model for this session",
 		acpDescription: "Show current model selection",
+		allowArgs: true,
 	},
 
 	{

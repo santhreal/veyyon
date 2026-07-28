@@ -241,6 +241,59 @@ describe("a lease whose expansion authority has been revoked", () => {
 			await dispose(fixture);
 		}
 	});
+
+	/**
+	 * Provider JSON field names are outbound strings too. Hooks can construct
+	 * dynamic provider payloads, so a credential in a key must be protected at
+	 * the same real AgentSession seam as a credential in a value.
+	 */
+	it("redacts secret-bearing provider JSON keys after the final hook", async () => {
+		const injectKey: ExtensionFactory = api => {
+			api.on("before_provider_request", event => ({
+				...(event.payload as Record<string, unknown>),
+				[A_VALUE]: "key carried the secret",
+			}));
+		};
+		const fixture = await createFixture(injectKey);
+		try {
+			fixture.settings.set("secrets.enabled", true);
+			await fixture.session.refreshSecrets();
+
+			const options = await fixture.session.prepareSimpleStreamOptions({ apiKey: "unused" });
+			const outbound = (await options.onPayload?.({ kind: "request" })) as Record<string, unknown>;
+
+			expect(Object.keys(outbound)).not.toContain(A_VALUE);
+			expect(outbound["#A_TOKEN#"]).toBe("key carried the secret");
+		} finally {
+			await dispose(fixture);
+		}
+	});
+
+	/**
+	 * Key protection is fail-closed: if redaction would collapse two provider
+	 * fields into one, AgentSession must reject the request instead of choosing a
+	 * value and silently sending an ambiguous payload.
+	 */
+	it("rejects provider-key collisions created by final-seam redaction", async () => {
+		const injectCollision: ExtensionFactory = api => {
+			api.on("before_provider_request", () => ({
+				[A_VALUE]: "raw-key",
+				"#A_TOKEN#": "already-protected-key",
+			}));
+		};
+		const fixture = await createFixture(injectCollision);
+		try {
+			fixture.settings.set("secrets.enabled", true);
+			await fixture.session.refreshSecrets();
+
+			const options = await fixture.session.prepareSimpleStreamOptions({ apiKey: "unused" });
+			await expect(options.onPayload?.({ kind: "request" })).rejects.toThrow(
+				"AgentSession provider payload confidentiality transform failed.",
+			);
+		} finally {
+			await dispose(fixture);
+		}
+	});
 });
 
 describe("no outbound seam reads the expansion authority", () => {

@@ -139,9 +139,15 @@ describe("the Windows binary install stages its download", () => {
 		// A bare `.download` file verifies correctly but cannot be invoked inside
 		// the native self-test pipeline.
 		expect(installPs1).toContain("$StagingPath = New-BinaryStagingPath -Dir $InstallDir -BinName $BinName");
-		expect(installPs1).toContain('return Join-Path $Dir ".$BinName.$PID.download.exe"');
+		expect(installPs1).toContain('return Join-Path $Dir ".$BinName.$PID.$Kind.exe"');
 		expect(installPs1).toContain("-OutFile $StagingPath");
 		expect(installPs1).not.toContain("-OutFile $OutPath");
+	});
+
+	it("stages a local build with an executable suffix before running the same preflight", () => {
+		expect(installPs1).toContain(
+			'$StagingPath = New-BinaryStagingPath -Dir $InstallDir -BinName $BinName -Kind "local"',
+		);
 	});
 
 	it("discards the staged file on every verification failure, never the install", () => {
@@ -180,17 +186,18 @@ describe("the Windows binary install stages its download", () => {
 		);
 	});
 
-	it("sweeps a staged download a killed install left behind, not only `.old` files", () => {
-		// Only the uninstall used to reclaim `.download` staging files, so every
-		// killed install left another full copy of the binary (~100 MB) hidden in
-		// the install directory and the user had no command to get it back short
-		// of uninstalling. install.sh's sweep_stale_staging is the POSIX half.
+	it("sweeps files a killed download or local install left behind", () => {
+		// Only uninstall used to reclaim staging files, so every killed install
+		// left another full copy of the binary (~100 MB) hidden in the install
+		// directory. install.sh's sweep_stale_staging is the POSIX half.
 		const fn = installPs1.slice(installPs1.indexOf("function Clear-StaleInstallArtifacts {"));
 		const body = fn.slice(0, fn.indexOf("\nfunction "));
 		expect(body).toContain('-Filter ".$BinName.*.download"');
 		expect(body).toContain('-Filter ".$BinName.*.download.exe"');
+		expect(body).toContain('-Filter ".$BinName.*.local"');
+		expect(body).toContain('-Filter ".$BinName.*.local.exe"');
 		expect(installSh).toContain("sweep_stale_staging() {");
-		// Both install paths sweep before staging their own file, not just one.
+		// Both POSIX install paths sweep before staging their own file.
 		expect(installSh.match(/^\s*sweep_stale_staging$/gm)?.length).toBe(2);
 	});
 
@@ -237,6 +244,8 @@ describe("the Windows binary install stages its download", () => {
 		expect(body).toContain('-Filter "*.old"');
 		expect(body).toContain('-Filter ".$BinName.*.download"');
 		expect(body).toContain('-Filter ".$BinName.*.download.exe"');
+		expect(body).toContain('-Filter ".$BinName.*.local"');
+		expect(body).toContain('-Filter ".$BinName.*.local.exe"');
 	});
 });
 

@@ -204,7 +204,7 @@ const CONDITIONS: Record<string, () => boolean> = {
 			() =>
 				resolveEffort({
 					defaultEffort: withLegacyDefaultEffort(
-						Settings.instance.get("defaultEffort"),
+						Settings.instance.isConfigured("defaultEffort") ? Settings.instance.get("defaultEffort") : undefined,
 						Settings.instance.get("defaultThinkingLevel"),
 					),
 				}).level === AUTO_THINKING,

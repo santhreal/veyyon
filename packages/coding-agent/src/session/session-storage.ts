@@ -7,7 +7,7 @@ import { type PathState, pathStateSync } from "@veyyon/utils/fs-optional";
 // Owners, not the `@veyyon/utils` barrel: 5 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import { peekFileEnds } from "@veyyon/utils/peek-file";
-import { sessionBackupName } from "@veyyon/utils/session-file";
+import { sessionBackupName, sessionFileStem } from "@veyyon/utils/session-file";
 import { Snowflake } from "@veyyon/utils/snowflake";
 import { toError } from "@veyyon/utils/type-guards";
 import { overlayTitleSlotContent, type SessionTitleUpdate, serializeTitleSlot } from "./session-title-slot";
@@ -78,6 +78,8 @@ export interface SessionStorage {
 	updateSessionTitle(path: string, update: SessionTitleUpdate): Promise<void>;
 	statSync(path: string): SessionStorageStat;
 	listFilesSync(dir: string, pattern: string): string[];
+	/** List matching files at any depth below `dir`. Paths are returned in the backend's namespace. */
+	listFilesRecursiveSync(dir: string, pattern: string): string[];
 
 	exists(path: string): Promise<boolean>;
 	readText(path: string): Promise<string>;
@@ -86,6 +88,12 @@ export interface SessionStorage {
 	writeText(path: string, content: string): Promise<void>;
 	writeTextAtomic(path: string, content: string, options?: WriteTextAtomicOptions): Promise<void>;
 	rename(path: string, nextPath: string): Promise<void>;
+	/**
+	 * Relocate a session transcript and every artifact beneath its sibling
+	 * artifact directory as one logical operation. Implementations MUST restore
+	 * the source if any part of the relocation fails.
+	 */
+	moveSessionWithArtifacts(path: string, nextPath: string): Promise<void>;
 	unlink(path: string): Promise<void>;
 	deleteSessionWithArtifacts(sessionPath: string): Promise<void>;
 	openWriter(path: string, options?: { flags?: "a" | "w"; onError?: (err: Error) => void }): SessionStorageWriter;
@@ -331,6 +339,20 @@ export class FileSessionStorage implements SessionStorage {
 		}
 	}
 
+	listFilesRecursiveSync(dir: string, pattern: string): string[] {
+		try {
+			return Array.from(new Bun.Glob(`**/${pattern}`).scanSync(dir)).map(name => path.join(dir, name));
+		} catch (err) {
+			if (isEnoent(err)) return [];
+			logger.warn("Session directory tree could not be listed; some sessions are invisible to this run", {
+				dir,
+				pattern,
+				error: toError(err).message,
+			});
+			return [];
+		}
+	}
+
 	async exists(path: string): Promise<boolean> {
 		try {
 			await fs.promises.access(path);
@@ -486,6 +508,47 @@ export class FileSessionStorage implements SessionStorage {
 			await fs.promises.rename(path, nextPath);
 		} catch (err) {
 			throw toError(err);
+		}
+	}
+
+	async moveSessionWithArtifacts(sourcePath: string, targetPath: string): Promise<void> {
+		const sourceArtifacts = sessionFileStem(sourcePath);
+		const targetArtifacts = sessionFileStem(targetPath);
+		const sessionPathChanged = path.resolve(sourcePath) !== path.resolve(targetPath);
+		const artifactPathChanged = path.resolve(sourceArtifacts) !== path.resolve(targetArtifacts);
+		this.ensureDirSync(path.dirname(targetPath));
+
+		let sessionMoved = false;
+		let artifactsMoved = false;
+		try {
+			if (sessionPathChanged && this.existsStateSync(sourcePath) !== "absent") {
+				await this.rename(sourcePath, targetPath);
+				sessionMoved = true;
+			}
+			if (artifactPathChanged && this.existsStateSync(sourceArtifacts) !== "absent") {
+				await this.rename(sourceArtifacts, targetArtifacts);
+				artifactsMoved = true;
+			}
+		} catch (error) {
+			const rollbackErrors: Error[] = [];
+			if (artifactsMoved) {
+				try {
+					await this.rename(targetArtifacts, sourceArtifacts);
+				} catch (rollbackError) {
+					rollbackErrors.push(toError(rollbackError));
+				}
+			}
+			if (sessionMoved) {
+				try {
+					await this.rename(targetPath, sourcePath);
+				} catch (rollbackError) {
+					rollbackErrors.push(toError(rollbackError));
+				}
+			}
+			if (rollbackErrors.length > 0) {
+				throw new AggregateError([toError(error), ...rollbackErrors], "Session relocation and rollback failed");
+			}
+			throw error;
 		}
 	}
 
@@ -810,6 +873,17 @@ export class MemorySessionStorage implements SessionStorage {
 		return files;
 	}
 
+	listFilesRecursiveSync(dir: string, pattern: string): string[] {
+		const prefix = dir.endsWith("/") ? dir : `${dir}/`;
+		const files: string[] = [];
+		for (const filePath of this.#files.keys()) {
+			if (!filePath.startsWith(prefix)) continue;
+			if (!matchesPattern(path.basename(filePath), pattern)) continue;
+			files.push(filePath);
+		}
+		return files;
+	}
+
 	exists(path: string): Promise<boolean> {
 		return Promise.resolve(this.existsSync(path));
 	}
@@ -842,6 +916,23 @@ export class MemorySessionStorage implements SessionStorage {
 		if (!entry) return Promise.reject(new Error(`File not found: ${path}`));
 		this.#files.set(nextPath, entry);
 		this.#files.delete(path);
+		return Promise.resolve();
+	}
+
+	moveSessionWithArtifacts(sourcePath: string, targetPath: string): Promise<void> {
+		const sourceArtifacts = sessionFileStem(sourcePath);
+		const targetArtifacts = sessionFileStem(targetPath);
+		const artifactPrefix = `${sourceArtifacts}/`;
+		const moves: Array<[string, string, MemoryFileEntry]> = [];
+		for (const [filePath, entry] of this.#files) {
+			if (filePath === sourcePath) {
+				moves.push([filePath, targetPath, entry]);
+			} else if (filePath.startsWith(artifactPrefix)) {
+				moves.push([filePath, `${targetArtifacts}/${filePath.slice(artifactPrefix.length)}`, entry]);
+			}
+		}
+		for (const [source] of moves) this.#files.delete(source);
+		for (const [, target, entry] of moves) this.#files.set(target, entry);
 		return Promise.resolve();
 	}
 
