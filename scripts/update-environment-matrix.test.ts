@@ -215,7 +215,7 @@ describe.each(cases.map(c => [c.name, c] as const))("update an install in %s", (
 		expect(litter).toEqual([]);
 	});
 
-	if (rcRel !== undefined) {
+	if (rcRel !== undefined && rcBefore !== undefined) {
 		it(`does not touch ${rcRel}`, () => {
 			// An updater has no business editing a shell rc: the installer already
 			// put the directory on PATH, the directory has not moved, and the file

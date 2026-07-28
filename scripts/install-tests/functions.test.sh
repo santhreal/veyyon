@@ -4,6 +4,15 @@
 # Sources install.sh with VEYYON_INSTALL_SOURCED=1 so main() does not run.
 #
 # Run: sh scripts/install-tests/functions.test.sh
+#
+# Every `case` pattern written inside a `$( )` here carries a leading `(`, as in
+# `case "$x" in (foo) ...`. It is POSIX-optional syntax and it is not decoration:
+# macOS `/bin/sh` is bash 3.2, whose command-substitution parser takes the `)`
+# that ends a case pattern as the `)` that ends the substitution. The whole file
+# then dies at run time with `syntax error near unexpected token 'newline'`,
+# naming a line that is perfectly valid sh. That is exactly how this suite failed
+# on both macOS runners the day they were added, while passing on every Linux
+# shell. Do not strip the parens.
 set -u
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -533,7 +542,7 @@ check "no bash installed reports unknown, not a failure" "$?" "2"
 
 # The hint has to name the actual directory and the actual file to edit, or the
 # warning is a dead end.
-check "the zsh hint names the dir and the rc file" "$( ( _hint=$(completions_enable_hint zsh "/some/site-functions"); case "$_hint" in *"/some/site-functions"*"~/.zshrc"*) echo yes ;; *) echo "$_hint" ;; esac ) )" "yes"
+check "the zsh hint names the dir and the rc file" "$( ( _hint=$(completions_enable_hint zsh "/some/site-functions"); case "$_hint" in (*"/some/site-functions"*"~/.zshrc"*) echo yes ;; (*) echo "$_hint" ;; esac ) )" "yes"
 check "the bash hint names the package to install" "$( completions_enable_hint bash "/x" | grep -c 'bash-completion package' )" "1"
 
 # End to end: the warning reaches the user's screen, and does not appear when
@@ -544,12 +553,12 @@ check "an unloaded zsh dir produces a visible warning" "$( ( _h="$SANDBOX/comp-w
   fakebin="$_h/bin/veyyon"
   printf '#!/bin/sh\ncase "$1" in\n  completions) [ "$2" = "--help" ] && exit 0; echo "# completions for $2"; exit 0 ;;\nesac\nexit 1\n' > "$fakebin"
   chmod +x "$fakebin"
-  has() { case "$1" in zsh|bash) return 0 ;; *) command -v "$1" >/dev/null 2>&1 ;; esac; }
+  has() { case "$1" in (zsh|bash) return 0 ;; (*) command -v "$1" >/dev/null 2>&1 ;; esac; }
   zsh() { printf '/usr/share/zsh/functions\n'; }
   BASH_COMPLETION_LOADERS="$SANDBOX/definitely-absent-loader"
   unset BASH_COMPLETION_USER_DIR
   out=$(install_completions "$fakebin" 2>&1)
-  case "$out" in *"zsh does not load"*) echo warned ;; *) echo missing ;; esac ) )" "warned"
+  case "$out" in (*"zsh does not load"*) echo warned ;; (*) echo missing ;; esac ) )" "warned"
 
 check "a loaded zsh dir produces no such warning" "$( ( _h="$SANDBOX/comp-quiet"
   export HOME="$_h"; export XDG_DATA_HOME="$_h/share"; export XDG_CONFIG_HOME="$_h/config"
@@ -557,12 +566,12 @@ check "a loaded zsh dir produces no such warning" "$( ( _h="$SANDBOX/comp-quiet"
   fakebin="$_h/bin/veyyon"
   printf '#!/bin/sh\ncase "$1" in\n  completions) [ "$2" = "--help" ] && exit 0; echo "# completions for $2"; exit 0 ;;\nesac\nexit 1\n' > "$fakebin"
   chmod +x "$fakebin"
-  has() { case "$1" in zsh|bash) return 0 ;; *) command -v "$1" >/dev/null 2>&1 ;; esac; }
+  has() { case "$1" in (zsh|bash) return 0 ;; (*) command -v "$1" >/dev/null 2>&1 ;; esac; }
   zsh() { printf '%s\n' "$(completions_dir_for zsh)"; }
   BASH_COMPLETION_LOADERS="$SANDBOX/definitely-absent-loader"
   export BASH_COMPLETION_USER_DIR="$_h/share/bash-completion"
   out=$(install_completions "$fakebin" 2>&1)
-  case "$out" in *"does not load"*) echo warned ;; *) echo quiet ;; esac ) )" "quiet"
+  case "$out" in (*"does not load"*) echo warned ;; (*) echo quiet ;; esac ) )" "quiet"
 
 # The check is advisory: an unloaded directory must not fail the install, since
 # the binary itself is fine and the user can fix their rc afterwards.
@@ -572,7 +581,7 @@ check "a loaded zsh dir produces no such warning" "$( ( _h="$SANDBOX/comp-quiet"
   fakebin="$_h/bin/veyyon"
   printf '#!/bin/sh\ncase "$1" in\n  completions) [ "$2" = "--help" ] && exit 0; echo "# c"; exit 0 ;;\nesac\nexit 1\n' > "$fakebin"
   chmod +x "$fakebin"
-  has() { case "$1" in zsh|bash) return 0 ;; *) command -v "$1" >/dev/null 2>&1 ;; esac; }
+  has() { case "$1" in (zsh|bash) return 0 ;; (*) command -v "$1" >/dev/null 2>&1 ;; esac; }
   zsh() { printf '/usr/share/zsh/functions\n'; }
   BASH_COMPLETION_LOADERS="$SANDBOX/definitely-absent-loader"
   unset BASH_COMPLETION_USER_DIR
@@ -748,7 +757,7 @@ check "a truncated rewrite says the file is untouched and names the partial" \
   export HOME="$_h"
   rc="$_h/.bashrc"
   printf '%s\n' "one" "two" "three" "# added by the veyyon installer" 'export PATH="/opt/veyyon:$PATH"' "five" > "$rc"
-  count_lines() { case "$1" in *veyyon-uninstall*) echo 1 ;; *) command awk 'END { print NR }' "$1" ;; esac; }
+  count_lines() { case "$1" in (*veyyon-uninstall*) echo 1 ;; (*) command awk 'END { print NR }' "$1" ;; esac; }
   remove_path_line_from_rc "$rc" "/opt/veyyon" 2>&1 | grep -c "your file is untouched" ) )" "1"
 
 check "the refusal names the expected length and the partial file" \
@@ -756,7 +765,7 @@ check "the refusal names the expected length and the partial file" \
   export HOME="$_h"
   rc="$_h/.bashrc"
   printf '%s\n' "one" "two" "three" "# added by the veyyon installer" 'export PATH="/opt/veyyon:$PATH"' "five" > "$rc"
-  count_lines() { case "$1" in *veyyon-uninstall*) echo 1 ;; *) command awk 'END { print NR }' "$1" ;; esac; }
+  count_lines() { case "$1" in (*veyyon-uninstall*) echo 1 ;; (*) command awk 'END { print NR }' "$1" ;; esac; }
   remove_path_line_from_rc "$rc" "/opt/veyyon" 2>&1 | grep -c "has 1 lines, expected 5" ) )" "1"
 
 check "a refused rewrite leaves the rc byte-for-byte intact" \
@@ -765,7 +774,7 @@ check "a refused rewrite leaves the rc byte-for-byte intact" \
   rc="$_h/.bashrc"
   printf '%s\n' "one" "two" "three" "# added by the veyyon installer" 'export PATH="/opt/veyyon:$PATH"' "five" > "$rc"
   _snapshot=$(command cat "$rc")
-  count_lines() { case "$1" in *veyyon-uninstall*) echo 1 ;; *) command awk 'END { print NR }' "$1" ;; esac; }
+  count_lines() { case "$1" in (*veyyon-uninstall*) echo 1 ;; (*) command awk 'END { print NR }' "$1" ;; esac; }
   remove_path_line_from_rc "$rc" "/opt/veyyon" >/dev/null 2>&1
   [ "$_snapshot" = "$(command cat "$rc")" ] && echo intact || echo changed ) )" "intact"
 
@@ -1738,7 +1747,7 @@ check "the refusal does not blame the network" \
 check "an exact tag is returned as given, with no second lookup" \
     "$( ( curl() { return 0; }; resolve_ref_tag v1.0.37 ) )" "v1.0.37"
 check "a bare version resolves to the published v-prefixed tag" \
-    "$( ( curl() { case "$*" in *releases/tag/v1.0.37) return 0 ;; *) return 22 ;; esac; }
+    "$( ( curl() { case "$*" in (*releases/tag/v1.0.37) return 0 ;; (*) return 22 ;; esac; }
   resolve_ref_tag 1.0.37 ) )" "v1.0.37"
 check "a bare version whose v-tag does not exist is still refused" \
     "$( ( curl() { return 22; }; if resolve_ref_tag 1.0.37; then echo resolved; else echo refused; fi ) )" "refused"
@@ -1759,7 +1768,7 @@ check "a commit sha gets no v-prefixed second try" \
   wc -l < "$SANDBOX/ref-sha" | tr -d ' ' ) )" "1"
 # A prerelease spelled without the v is still a version.
 check "a prerelease version resolves too" \
-    "$( ( curl() { case "$*" in *releases/tag/v2.0.0-rc.1) return 0 ;; *) return 22 ;; esac; }
+    "$( ( curl() { case "$*" in (*releases/tag/v2.0.0-rc.1) return 0 ;; (*) return 22 ;; esac; }
   resolve_ref_tag 2.0.0-rc.1 ) )" "v2.0.0-rc.1"
 # The refusal path must print nothing: the caller reads stdout as the tag, so a
 # stray line would be installed as a version.
@@ -1930,7 +1939,7 @@ if command -v git >/dev/null 2>&1; then
 
     # A checkout with no LFS-tracked file at all.
     check "no LFS-tracked file is reported for a plain checkout" "$(lfs_tracked_file "$_r")" ""
-    ( has() { case "$1" in git-lfs) return 1 ;; *) command -v "$1" >/dev/null 2>&1 ;; esac; }
+    ( has() { case "$1" in (git-lfs) return 1 ;; (*) command -v "$1" >/dev/null 2>&1 ;; esac; }
       fetch_lfs_assets "$_r" >/dev/null 2>&1 )
     check "a plain checkout installs fine without git-lfs" "$?" "0"
 
@@ -1940,7 +1949,7 @@ if command -v git >/dev/null 2>&1; then
     printf '*.wasm filter=lfs diff=lfs merge=lfs -text\n' > .gitattributes
     git add .gitattributes && git commit -qm attrs 2>/dev/null
     check "a declaration matching no file is not LFS-tracked content" "$(lfs_tracked_file "$_r")" ""
-    ( has() { case "$1" in git-lfs) return 1 ;; *) command -v "$1" >/dev/null 2>&1 ;; esac; }
+    ( has() { case "$1" in (git-lfs) return 1 ;; (*) command -v "$1" >/dev/null 2>&1 ;; esac; }
       fetch_lfs_assets "$_r" >/dev/null 2>&1 )
     check "an unmatched LFS declaration does not block the install" "$?" "0"
 
@@ -1949,7 +1958,7 @@ if command -v git >/dev/null 2>&1; then
     git add shipped.wasm && git commit -qm wasm 2>/dev/null
     check "a matching file is reported as LFS-tracked" "$(lfs_tracked_file "$_r")" "shipped.wasm"
 
-    _out=$( ( has() { case "$1" in git-lfs) return 1 ;; *) command -v "$1" >/dev/null 2>&1 ;; esac; }
+    _out=$( ( has() { case "$1" in (git-lfs) return 1 ;; (*) command -v "$1" >/dev/null 2>&1 ;; esac; }
             fetch_lfs_assets "$_r" ) 2>&1 )
     check "a checkout needing LFS without git-lfs stops the install" "$?" "1"
     # The message has to name the consequence and the fix, not just say no.
