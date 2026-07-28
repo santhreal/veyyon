@@ -1,5 +1,5 @@
-import type { Api, Model } from "@veyyon/ai";
-import { getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
+import type { Model } from "@veyyon/ai";
+import { type GeneratedProvider, getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
 import type { ModelRegistry } from "../../packages/coding-agent/src/config/model-registry";
 import {
 	buildAuthAwareBrowserItems,
@@ -8,8 +8,8 @@ import {
 import { sortModelItems } from "../../packages/coding-agent/src/modes/components/model-browser";
 
 const ITERATIONS = 25;
-const models = getBundledProviders().flatMap(
-	provider => getBundledModels(provider) as Model<Api>[],
+const models: Model[] = getBundledProviders().flatMap(provider =>
+	getBundledModels(provider as GeneratedProvider),
 );
 const registry = {
 	isKeylessProvider: () => false,
@@ -37,7 +37,17 @@ for (let i = 1; i < ITERATIONS; i += 1) cached = cachedAuthAwareBrowserItems(mod
 const cachedMs = performance.now() - cachedStart;
 
 const projection = (rows: typeof baseline) =>
-	rows.map(row => ({ selector: row.selector, label: row.label, badge: row.badge, badgeColor: row.badgeColor }));
+	rows.map(row => ({
+		provider: row.provider,
+		id: row.id,
+		selector: row.selector,
+		name: row.model.name,
+		labelColor: row.labelColor,
+		badge: row.badge,
+		badgeColor: row.badgeColor,
+		virtualLabel: row.virtualLabel,
+		virtualDetail: row.virtualDetail,
+	}));
 if (!Bun.deepEquals(projection(baseline), projection(cached))) {
 	throw new Error("Cached model selector projection changed row ordering or badges");
 }
