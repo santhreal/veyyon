@@ -9,6 +9,7 @@
  */
 import { Container, Editor, matchesKey, Spacer, Text, type TUI } from "@veyyon/tui";
 import { getEditorTheme, theme } from "../../modes/theme/theme";
+import { actionKeyHint } from "../../modes/utils/key-hint";
 import {
 	matchesAppExternalEditor,
 	matchesAppFollowUp,
@@ -77,10 +78,18 @@ export class HookEditorComponent extends Container {
 
 		this.addChild(new Spacer(1));
 
-		// Hint
-		const hint = this.#promptStyle
-			? "enter or ctrl+q submit  esc cancel  ctrl+g external editor"
-			: "ctrl+q/ctrl+enter submit  esc cancel  ctrl+g external editor";
+		// Hint. Both chords named here are remappable (`app.message.followUp` and
+		// `app.editor.external`), and the handlers read them, so writing them out
+		// meant a rebind left this footer naming keys that do nothing.
+		const submit = actionKeyHint("app.message.followUp");
+		const external = actionKeyHint("app.editor.external");
+		const hint = [
+			this.#promptStyle ? `enter${submit ? ` or ${submit}` : ""} submit` : `${submit || "enter"} submit`,
+			"esc cancel",
+			external ? `${external} external editor` : "",
+		]
+			.filter(Boolean)
+			.join("  ");
 		this.addChild(new Text(theme.fg("dim", hint), HOOK_EDITOR_TEXT_PAD_COLS, 0));
 
 		this.addChild(new Spacer(1));

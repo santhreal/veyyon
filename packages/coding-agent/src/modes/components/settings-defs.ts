@@ -260,10 +260,15 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 		return { ...base, type: "submenu", options };
 	}
 
+	// A chain setting is edited by picking models, never by typing a type name.
+	// This used to be a hardcoded pair of paths inside the string branch, so a
+	// third chain setting would have silently become a text box; it derives from
+	// the schema now.
+	if (schemaType === "modelChain") {
+		return { ...base, type: "modelSelector" };
+	}
+
 	if (schemaType === "string") {
-		if (path === "subagent.model" || path === "compaction.model") {
-			return { ...base, type: "modelSelector" };
-		}
 		if (path === "compaction.threshold") {
 			return { ...base, type: "compactionThreshold", options: options && options !== "runtime" ? options : [] };
 		}

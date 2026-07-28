@@ -1,7 +1,5 @@
 import { AUTO_COMPACTION_THRESHOLD, parseCompactionThreshold, type ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, Effort, Model } from "@veyyon/ai";
-import { THINKING_EFFORTS } from "@veyyon/catalog/effort";
-import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
 import {
 	type Component,
 	Container,
@@ -30,7 +28,11 @@ import {
 import { clamp, errorMessage, VERSION } from "@veyyon/utils";
 import { ANY_MODEL_EFFORT_KEY, withLegacyDefaultEffort } from "../../config/effort-resolver";
 import type { ModelRegistry } from "../../config/model-registry";
-import { extractExplicitThinkingSelector, resolveModelRoleValue } from "../../config/model-resolver";
+import {
+	extractExplicitThinkingSelector,
+	normalizeModelPatternList,
+	resolveModelRoleValue,
+} from "../../config/model-resolver";
 import {
 	DEFAULT_MODEL_SLOT,
 	getRoleInfo,
@@ -55,6 +57,7 @@ import type {
 	SubmenuOption,
 } from "../../config/settings-schema";
 import { isUnsetNumberPath, SETTING_TABS, TAB_METADATA } from "../../config/settings-schema";
+import { withIcon } from "../../modes/theme/icon-label";
 import { getCurrentThemeName, getSelectListTheme, getSettingsListTheme, theme } from "../../modes/theme/theme";
 import { BUILTIN_PERSONALITY_DESCRIPTIONS, NONE_PERSONALITY } from "../../personality/resolver";
 import { discoverAgents } from "../../task/discovery";
@@ -75,6 +78,7 @@ import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,
 	configuredThinkingLevelOptions,
+	hasConfigurableThinkingEffort,
 	INHERIT_EFFORT_OPTION_VALUE,
 } from "../../thinking";
 import { getTabBarTheme } from "../shared";
@@ -88,6 +92,7 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
+	modalNeedsCompactPadding,
 	planModalChrome,
 	renderModalShell,
 	SETTINGS_BROWSE_SHORTCUTS,
@@ -657,6 +662,34 @@ export function barePickerSelector(raw: string | undefined, models: ReadonlyArra
 }
 
 /**
+ * Append or replace one chain position without allowing the same logical model
+ * to occupy two fallback slots under different effort suffixes.
+ */
+export function replaceModelChainEntry(
+	chain: readonly string[],
+	index: number | null,
+	value: string,
+	models: ReadonlyArray<Model<Api>>,
+): string[] | undefined {
+	const trimmed = value.trim();
+	if (trimmed === "") return undefined;
+	const bare = barePickerSelector(trimmed, models);
+	const duplicate = chain.some(
+		(candidate, candidateIndex) =>
+			candidateIndex !== index && barePickerSelector(candidate, models) === bare,
+	);
+	if (duplicate) return undefined;
+	const next = [...chain];
+	if (index === null) {
+		next.push(trimmed);
+		return next;
+	}
+	if (!Number.isInteger(index) || index < 0 || index >= next.length) return undefined;
+	next[index] = trimmed;
+	return next;
+}
+
+/**
  * Role list → reusable {@link ModelSelectorPanel} for each role.
  * Assignments write through `settings.setModelRole` (profile-scoped).
  */
@@ -733,12 +766,11 @@ class ModelRolesSubmenu extends Container {
 			},
 			{
 				onPick: (model, selector) => {
-					const efforts = getSupportedEfforts(model);
-					if (efforts.length === 0) {
+					if (!hasConfigurableThinkingEffort(model)) {
 						this.#persistRole(role, selector);
 						return;
 					}
-					this.#showEffortPicker(role, selector, efforts);
+					this.#showEffortPicker(role, selector, model);
 					this.requestRender?.();
 				},
 				onClear: () => {
@@ -756,11 +788,11 @@ class ModelRolesSubmenu extends Container {
 		this.addChild(panel);
 	}
 
-	#showEffortPicker(role: string, selector: string, efforts: readonly Effort[]): void {
+	#showEffortPicker(role: string, selector: string, model: Model): void {
 		this.#selectList = renderEffortStep(
 			this,
 			selector,
-			efforts,
+			model,
 			value => this.#persistRole(role, value),
 			() => {
 				this.#showModelPicker(role);
@@ -880,7 +912,14 @@ class SubagentAgentsSubmenu extends Container {
 		if (resolved.unresolved) return theme.fg("error", `${resolved.unresolved.value} matches no model`);
 		const pattern = resolved.patterns[0];
 		if (!pattern) return theme.fg("dim", "no model resolved");
-		const summary = formatSelectorSummary(pattern);
+		// The column used to print `patterns[0]` and drop the rest, so an agent
+		// with three configured models looked identical to one with a single
+		// model and there was no way to tell a chain had been configured at all.
+		const fallbacks = resolved.patterns.length - 1;
+		const summary =
+			fallbacks > 0
+				? `${formatSelectorSummary(pattern)} ${theme.fg("dim", `+${fallbacks} fallback${fallbacks === 1 ? "" : "s"}`)}`
+				: formatSelectorSummary(pattern);
 		return resolved.source === "inherit"
 			? theme.fg("dim", `inherit · ${summary}`)
 			: `${summary} ${theme.fg("dim", `· ${subagentModelSourceLabel(resolved.source, agent.name)}`)}`;
@@ -1057,15 +1096,14 @@ class SubagentAgentsSubmenu extends Container {
 				},
 				{
 					onPick: (model, selector) => {
-						const efforts = getSupportedEfforts(model);
-						if (efforts.length === 0) {
+						if (!hasConfigurableThinkingEffort(model)) {
 							this.#persistAgentModel(name, selector);
 							return;
 						}
 						this.#selectList = renderEffortStep(
 							this,
 							selector,
-							efforts,
+							model,
 							value => this.#persistAgentModel(name, value),
 							() => {
 								this.#showAgentModelPicker(name);
@@ -1110,16 +1148,24 @@ class SubagentAgentsSubmenu extends Container {
 			),
 		);
 		this.addChild(new Spacer(1));
+		const resolvedModel = resolveSubagentModel({
+			settings,
+			agentName: name,
+			agentModel: this.#agent(name)?.model,
+			activeModelPattern: this.activeModelPattern,
+		});
+		const bareSelector = barePickerSelector(resolvedModel.patterns[0], this.models as Model<Api>[]);
+		const model = this.models.find(candidate => `${candidate.provider}/${candidate.id}` === bareSelector);
 
 		// The same rows as the blanket Subagent Effort setting, from the one effort
 		// vocabulary — a second list here is how two surfaces come to disagree about
 		// which levels exist. Only the inherit row's wording differs, because here it
 		// falls back to that blanket setting first.
-		const items: SelectItem[] = configuredThinkingLevelOptions().map(option =>
-			option.value === INHERIT_EFFORT_OPTION_VALUE
-				? { value: option.value, label: "Inherit", description: "Follow Subagent Effort, then the session" }
-				: { value: option.value, label: option.label, description: option.description },
-		);
+		const items: SelectItem[] = configuredThinkingLevelOptions({
+			model,
+			inheritLabel: "Inherit",
+			inheritDescription: "Follow Subagent Effort, then the session",
+		}).map(option => ({ ...option }));
 		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
 		this.#selectList.onSelect = item => {
 			this.#writeRow(name, { ...this.#row(name), thinkingLevel: item.value || undefined });
@@ -1147,6 +1193,15 @@ class SubagentAgentsSubmenu extends Container {
 /** Synthetic list id for the "add a model" row: not a settings key, and never a
  *  model selector, so it cannot collide with a real row. */
 const ADD_EFFORT_ROW = "\u0000add-effort-row";
+
+/**
+ * Synthetic list ids for the model-chain picker, on the same NUL-prefixed rule
+ * as the row above: a model selector can never start with NUL, so an action row
+ * can never be mistaken for a chain entry.
+ */
+const CHAIN_ENTRY_PREFIX = "\u0000chain-entry:";
+const CHAIN_ADD_ROW = "\u0000chain-add-row";
+const CHAIN_CLEAR_ROW = "\u0000chain-clear-row";
 
 /**
  * The profile's Default Effort list: rows of model to effort, plus one "any
@@ -1261,13 +1316,10 @@ class DefaultEffortSubmenu extends Container {
 
 	#showEffortPicker(key: string, picked?: Model): void {
 		const model = picked ?? this.models.find(m => `${m.provider}/${m.id}` === key);
-		// The any-model row is not a model, so its choices are every effort veyyon
-		// knows; a model row offers what that model supports.
-		const efforts = key === ANY_MODEL_EFFORT_KEY || !model ? [...THINKING_EFFORTS] : [...getSupportedEfforts(model)];
 		this.#selectList = renderEffortStep(
 			this,
 			key === ANY_MODEL_EFFORT_KEY ? "any model" : key,
-			efforts,
+			key === ANY_MODEL_EFFORT_KEY ? undefined : model,
 			value => this.#persist(key, value),
 			() => {
 				this.#showRows();
@@ -1359,12 +1411,11 @@ class DefaultModelSubmenu extends Container {
 			},
 			{
 				onPick: (model, selector) => {
-					const efforts = getSupportedEfforts(model);
-					if (efforts.length === 0) {
+					if (!hasConfigurableThinkingEffort(model)) {
 						this.#persist(selector);
 						return;
 					}
-					this.#showEffortPicker(selector, efforts);
+					this.#showEffortPicker(selector, model);
 					this.requestRender?.();
 				},
 				onClear: () => {
@@ -1378,11 +1429,11 @@ class DefaultModelSubmenu extends Container {
 		this.addChild(panel);
 	}
 
-	#showEffortPicker(selector: string, efforts: readonly Effort[]): void {
+	#showEffortPicker(selector: string, model: Model): void {
 		this.#selectList = renderEffortStep(
 			this,
 			selector,
-			efforts,
+			model,
 			value => this.#persist(value),
 			() => {
 				this.#showModelPicker();
@@ -1407,86 +1458,188 @@ class DefaultModelSubmenu extends Container {
 }
 
 /**
- * Two-step picker for a single-model settings slot (`compaction.model`,
- * `subagent.model`): pick a model, then pick a thinking effort for it. The
- * effort rides the stored selector as a `:level` suffix (via
- * {@link renderEffortStep}), the same encoding the advisor model
- * assignment uses, so the one stored value both persists per profile and is
- * applied at run time: the compaction candidate resolver and the subagent
- * spawner each parse the suffix back into a thinking level. Models with no
- * supported efforts skip the second step and persist the bare selector.
+ * Ordered-chain picker for a model settings slot (`compaction.model`,
+ * `subagent.model`).
+ *
+ * Both slots have always accepted a CHAIN rather than one model: the stored
+ * value goes through {@link normalizeModelPatternList}, which splits on commas,
+ * and each consumer tries the entries in order until one works (compaction skips
+ * a candidate that is unauthenticated or whose window is too small; a subagent
+ * retries on the next entry when its model errors). Only the picker was
+ * single-slot, so the feature existed and was unreachable.
+ *
+ * The list is the chain, in order. Entry one is the choice; the rest are
+ * fallbacks. Adding an entry runs the same two steps as before, pick a model
+ * then pick a thinking effort, and the effort rides the stored selector as a
+ * `:level` suffix (via {@link renderEffortStep}), which is the encoding the
+ * compaction candidate resolver and the subagent spawner already parse back out.
+ * Models with no supported efforts skip the second step and store the bare
+ * selector.
+ *
+ * Persisted as ONE comma-separated string, because that is what these settings
+ * are schema-typed as, and it is the encoding every reader has always accepted.
  */
-class ModelEffortSubmenu extends Container {
+export class ModelChainSubmenu extends Container {
 	#selectList: SelectList | undefined;
+	#chain: string[];
 
 	constructor(
 		private readonly path: SettingPath,
 		private readonly registry: ModelRegistry,
 		private readonly models: ReadonlyArray<Model>,
 		private readonly title: string,
-		private readonly currentSelector: string | undefined,
+		current: string | undefined,
 		private readonly done: (value?: string) => void,
 		private readonly onChange: (value: string | undefined) => void,
 		private readonly requestRender?: () => void,
 	) {
 		super();
-		this.#showModelPicker();
+		this.#chain = normalizeModelPatternList(current);
+		// An empty chain has no row to edit, so open directly on the picker.
+		if (this.#chain.length === 0) this.#showModelPicker(null);
+		else this.#showChain();
 	}
 
-	#showModelPicker(): void {
+	#showChain(): void {
 		this.clear();
 		this.#selectList = undefined;
+		this.addChild(new Text(theme.bold(theme.fg("accent", this.title)), 0, 0));
+		this.addChild(new Spacer(1));
+		this.addChild(
+			new Text(theme.fg("muted", "Tried in order. The rest are used when the one above cannot run."), 0, 0),
+		);
+		this.addChild(new Spacer(1));
+
+		const items: SelectItem[] = this.#chain.map((selector, index) => ({
+			value: `${CHAIN_ENTRY_PREFIX}${index}`,
+			label: `${index + 1}. ${formatSelectorSummary(selector)}`,
+			description: index === 0 ? "first choice" : "fallback",
+		}));
+		items.push({ value: CHAIN_ADD_ROW, label: "Add fallback…", description: "pick a model, then its effort" });
+		items.push({ value: CHAIN_CLEAR_ROW, label: "Clear (inherit)", description: "follow the main model" });
+
+		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
+		this.#selectList.onSelect = item => {
+			if (item.value === CHAIN_ADD_ROW) this.#showModelPicker(null);
+			else if (item.value === CHAIN_CLEAR_ROW) this.#clear();
+			else this.#showModelPicker(Number(item.value.slice(CHAIN_ENTRY_PREFIX.length)));
+			this.requestRender?.();
+		};
+		this.#selectList.onCancel = () => this.done(this.#chain[0]);
+		this.addChild(this.#selectList);
+		this.addChild(new Spacer(1));
+		this.addChild(new Text(theme.fg("dim", "  Enter edits · Del removes · Esc to go back"), 0, 0));
+	}
+
+	/** Remove the highlighted model without affecting the rest of the chain. */
+
+	#removeSelectedRow(): void {
+		const value = this.#selectList?.getSelectedItem?.()?.value;
+		if (!value?.startsWith(CHAIN_ENTRY_PREFIX)) return;
+		const index = Number(value.slice(CHAIN_ENTRY_PREFIX.length));
+		if (!Number.isInteger(index) || index < 0 || index >= this.#chain.length) return;
+		this.#chain.splice(index, 1);
+		this.#persistChain();
+	}
+
+	#showModelPicker(index: number | null): void {
+		this.clear();
+		this.#selectList = undefined;
+		const current = index === null ? undefined : this.#chain[index];
+		const position = index === 0 ? "first choice" : index === null ? `fallback ${this.#chain.length + 1}` : `fallback ${index + 1}`;
 		const panel = new ModelSelectorPanel(
 			settings,
 			this.registry,
 			this.models,
 			{
-				title: this.title,
-				description: "Searchable catalog · auth / local / no auth shown on each row.",
-				currentSelector: this.currentSelector || undefined,
+				title: this.#chain.length === 0 ? this.title : `${this.title} · ${position}`,
+				description: index === null ? "Pick a model to append to the chain." : "Pick a replacement for this position.",
+				currentSelector: barePickerSelector(current, this.models as Model<Api>[]) || undefined,
 				allowClear: true,
+				clearLabel:
+					index !== null
+						? "(remove this position)"
+						: this.#chain.length === 0
+							? "(inherit main model)"
+							: "(cancel adding fallback)",
 			},
 			{
 				onPick: (model, selector) => {
-					const efforts = getSupportedEfforts(model);
-					if (efforts.length === 0) {
-						this.#persist(selector);
+					if (!hasConfigurableThinkingEffort(model)) {
+						this.#store(selector, index);
 						return;
 					}
-					this.#showEffortPicker(selector, efforts);
+					this.#showEffortPicker(selector, model, index);
 					this.requestRender?.();
 				},
-				onClear: () => {
-					settings.set(this.path, undefined as never);
-					this.onChange(undefined);
-					this.done("inherit");
+				onClear: () => this.#clearPicker(index),
+				onCancel: () => {
+					if (this.#chain.length === 0) this.done();
+					else this.#showChain();
+					this.requestRender?.();
 				},
-				onCancel: () => this.done(),
 			},
 		);
 		this.addChild(panel);
 	}
 
-	#showEffortPicker(selector: string, efforts: readonly Effort[]): void {
+	#showEffortPicker(selector: string, model: Model, index: number | null): void {
 		this.#selectList = renderEffortStep(
 			this,
 			selector,
-			efforts,
-			value => this.#persist(value),
+			model,
+			value => this.#store(value, index),
 			() => {
-				this.#showModelPicker();
+				this.#showModelPicker(index);
 				this.requestRender?.();
 			},
 		);
 	}
 
-	#persist(value: string): void {
-		settings.set(this.path, value as never);
-		this.onChange(value);
-		this.done(value);
+	/** Append a new model or replace one position, never duplicating a logical model. */
+	#store(value: string, index: number | null): void {
+		const next = replaceModelChainEntry(this.#chain, index, value, this.models as Model<Api>[]);
+		if (!next) {
+			this.#showChain();
+			this.requestRender?.();
+			return;
+		}
+		this.#chain = next;
+		this.#persistChain();
+	}
+
+	#clearPicker(index: number | null): void {
+		if (index !== null && Number.isInteger(index) && index >= 0 && index < this.#chain.length) {
+			this.#chain.splice(index, 1);
+			this.#persistChain();
+		} else if (this.#chain.length === 0) {
+			this.#clear();
+		} else {
+			this.#showChain();
+			this.requestRender?.();
+		}
+	}
+
+	#clear(): void {
+		this.#chain = [];
+		settings.set(this.path, undefined as never);
+		this.onChange(undefined);
+		this.done("inherit");
+	}
+
+	#persistChain(): void {
+		const value = this.#chain.join(",");
+		settings.set(this.path, (value === "" ? undefined : value) as never);
+		this.onChange(value === "" ? undefined : value);
+		this.#showChain();
+		this.requestRender?.();
 	}
 
 	handleInput(data: string): void {
+		if (this.#selectList && (matchesKey(data, "delete") || matchesKey(data, "backspace"))) {
+			this.#removeSelectedRow();
+			return;
+		}
 		if (this.#selectList) {
 			this.#selectList.handleInput(data);
 			return;
@@ -1789,8 +1942,7 @@ export class SettingsSelectorComponent implements Component {
 	 */
 	render(width: number): readonly string[] {
 		const termHeight = Math.max(14, process.stdout.rows || 40);
-		const compact = termHeight < 24;
-		const sizing = withCompact(MODAL_SIZING_SETTINGS, compact);
+		const sizing = withCompact(MODAL_SIZING_SETTINGS, modalNeedsCompactPadding(termHeight, MODAL_SIZING_SETTINGS));
 		const dims = computeModalDims(width, termHeight, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;
@@ -2152,7 +2304,12 @@ export class SettingsSelectorComponent implements Component {
 			empty.push({ id, label: `${icon} ${meta.label}`, short: icon, muted: true });
 		}
 		// Plugins hosts its own UI; it is not part of the schema-backed search.
-		empty.push({ id: "plugins", label: `${theme.icon.package} Plugins`, short: theme.icon.package, muted: true });
+		empty.push({
+			id: "plugins",
+			label: withIcon(theme.icon.package, "Plugins"),
+			short: theme.icon.package,
+			muted: true,
+		});
 		return [...matched, ...empty];
 	}
 
@@ -2557,16 +2714,19 @@ export class SettingsSelectorComponent implements Component {
 		// `SettingValue<SettingPath>` collapses to never for the full path union;
 		// widen and narrow by runtime type instead.
 		const current: unknown = settings.get(path);
-		const rawCurrent = typeof current === "string" ? current.trim() : undefined;
-		const currentSelector = barePickerSelector(rawCurrent, ctx.models as Model<Api>[]);
+		// The RAW value, not a bare selector: this slot holds an ordered chain and
+		// `barePickerSelector` collapses it to its first entry, which is how the
+		// picker used to silently drop every fallback the user had configured.
+		const rawCurrent =
+			typeof current === "string" ? current.trim() : Array.isArray(current) ? current.join(",") : undefined;
 		const label =
 			path === "subagent.model" ? "Subagent Model" : path === "compaction.model" ? "Compaction Model" : String(path);
-		return new ModelEffortSubmenu(
+		return new ModelChainSubmenu(
 			path,
 			ctx.registry,
 			ctx.models,
 			label,
-			currentSelector || undefined,
+			rawCurrent || undefined,
 			done,
 			value => this.callbacks.onChange(path, value),
 			this.context.requestRender,

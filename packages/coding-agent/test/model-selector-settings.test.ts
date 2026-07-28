@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { formatModelAuthBadge, resolveModelAuthStatus } from "@veyyon/coding-agent/modes/components/model-selector";
+import { buildModel } from "@veyyon/catalog/build";
+import {
+	cachedAuthAwareBrowserItems,
+	formatModelAuthBadge,
+	resolveModelAuthStatus,
+} from "@veyyon/coding-agent/modes/components/model-selector";
 import {
 	DEFAULT_MODEL_SETTING_ID,
 	getSettingsForTab,
@@ -94,5 +99,53 @@ describe("model auth badges", () => {
 			authStorage: { hasAuth: () => false },
 		};
 		expect(resolveModelAuthStatus(missing as never, model as never)).toBe("unauthenticated");
+	});
+});
+
+describe("model selector catalog projection", () => {
+	/**
+	 * Opening model editors repeatedly must reuse catalog search rows while
+	 * recomputing authentication, otherwise a long fallback chain pays the full
+	 * catalog sort on every position and a newly connected provider stays stale.
+	 */
+	it("caches static catalog work but refreshes auth badges", () => {
+		const model = buildModel({
+			id: "cached-model",
+			name: "Cached model",
+			api: "openai-completions",
+			provider: "test",
+			baseUrl: "https://example.test",
+			reasoning: false,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 10_000,
+			maxTokens: 1_000,
+		});
+		let nameReads = 0;
+		Object.defineProperty(model, "name", {
+			configurable: true,
+			get: () => {
+				nameReads += 1;
+				return "Cached model";
+			},
+		});
+		let authenticated = false;
+		const registry = {
+			isKeylessProvider: () => false,
+			hasConfiguredAuth: () => authenticated,
+			authStorage: { hasAuth: () => authenticated },
+		};
+		const models = [model];
+
+		const first = cachedAuthAwareBrowserItems(models, registry as never);
+		const readsAfterFirstProjection = nameReads;
+		authenticated = true;
+		const second = cachedAuthAwareBrowserItems(models, registry as never);
+
+		expect(first[0]?.badge).toBe("no auth");
+		expect(second[0]?.badge).toBe("auth");
+		expect(nameReads).toBe(readsAfterFirstProjection);
+		expect(first).not.toBe(second);
+		expect(first[0]).not.toBe(second[0]);
 	});
 });

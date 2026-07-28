@@ -320,7 +320,7 @@ describe("TanCommandController", () => {
 		expect(opts?.providerSessionId).toMatch(/^parent-session:tan:/);
 	});
 
-	it("parks the finished tan in the registry so it stays visible in the Agent Hub", async () => {
+	it("parks the finished tan in the registry so it stays visible in the Agent Control Center", async () => {
 		const harness = createContext();
 		vi.spyOn(SessionManager, "forkFrom").mockResolvedValue(harness.cloneManager);
 		const appendSessionInit = vi.fn();

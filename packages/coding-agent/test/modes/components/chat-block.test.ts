@@ -2,24 +2,24 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { ChatBlock, type ChatBlockHost } from "@veyyon/coding-agent/modes/components/chat-block";
 import type { Component } from "@veyyon/tui";
 
-/** Concrete subclass exposing the protected lifecycle seams for assertions. */
+/** Concrete subclass exercising the lifecycle seams for assertions. */
 class TestBlock extends ChatBlock {
 	mountCount = 0;
 	cleanupCount = 0;
 
-	protected override onMount(): void {
+	override onMount(): void {
 		this.mountCount++;
 		this.onCleanup(() => {
 			this.cleanupCount++;
 		});
 	}
 
-	/** Public proxy for the protected requestRender. */
+	/** Named proxy for `requestRender`, so a case reads as what it is asking for. */
 	ping(): void {
 		this.requestRender();
 	}
 
-	/** Public proxy for the protected onCleanup. */
+	/** Named proxy for `onCleanup`, so a case reads as what it is asking for. */
 	register(cleanup: () => void): void {
 		this.onCleanup(cleanup);
 	}
@@ -126,7 +126,7 @@ describe("ChatBlock lifecycle", () => {
 
 	it("tears down a timer effect started in onMount when finished", async () => {
 		class TimerBlock extends ChatBlock {
-			protected override onMount(): void {
+			override onMount(): void {
 				const id = setInterval(() => this.requestRender(), 5);
 				this.onCleanup(() => clearInterval(id));
 			}

@@ -12,7 +12,6 @@
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
-import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
 import { getCatalogProviderEntry } from "@veyyon/catalog/provider-models";
 import {
 	type Component,
@@ -33,7 +32,11 @@ import { clampLow, errorMessage } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";
 import { getKnownRoleIds, getRoleInfo, ROLE_INHERIT_LABEL } from "../../config/model-roles";
 import type { Settings } from "../../config/settings";
-import { AUTO_THINKING, type ConfiguredThinkingLevel, getConfiguredThinkingLevelMetadata } from "../../thinking";
+import {
+	type ConfiguredThinkingLevel,
+	configuredThinkingLevelsForModel,
+	getConfiguredThinkingLevelMetadata,
+} from "../../thinking";
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import {
@@ -44,6 +47,7 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
+	modalNeedsCompactPadding,
 	planModalChrome,
 	renderModalShell,
 	withCompact,
@@ -59,6 +63,7 @@ import {
 } from "./model-browser";
 import { fit } from "./overlay-box";
 import { renderSegmentTrack } from "./segment-track";
+import { selectionBand } from "./selector-helpers";
 
 /**
  * A row of the Roles view: a role, a model/wildcard chain-key header, one of a
@@ -813,7 +818,7 @@ export class ModelHubComponent implements Component {
 	}
 
 	#thinkingOptionsFor(model: Model): ConfiguredThinkingLevel[] {
-		return [ThinkingLevel.Inherit, ThinkingLevel.Off, AUTO_THINKING, ...getSupportedEfforts(model)];
+		return [ThinkingLevel.Inherit, ...configuredThinkingLevelsForModel(model)];
 	}
 
 	#openRoleStrip(item: ModelBrowserItem): void {
@@ -1603,7 +1608,7 @@ export class ModelHubComponent implements Component {
 				if (lineWidth < width) line += " ".repeat(width - lineWidth);
 			}
 			if (hovered) {
-				line = theme.bg("selectedBg", line);
+				line = selectionBand(line, width);
 			}
 			lines.push(line);
 		}
@@ -1664,13 +1669,8 @@ export class ModelHubComponent implements Component {
 
 	/** Clamp a roles row to `width`; the bg band is reserved for mouse hover. */
 	#finishRolesRow(line: string, width: number, hovered: boolean): string {
-		let out = truncateToWidth(line, width);
-		if (hovered) {
-			const w = visibleWidth(out);
-			if (w < width) out += " ".repeat(width - w);
-			return theme.bg("selectedBg", out);
-		}
-		return out;
+		if (hovered) return selectionBand(line, width);
+		return truncateToWidth(line, width);
 	}
 
 	#renderRolesView(fullWidth: number, rows: number): string[] {
@@ -1781,7 +1781,7 @@ export class ModelHubComponent implements Component {
 				value = theme.fg("dim", info.unsetLabel ?? ROLE_INHERIT_LABEL);
 			}
 
-			// Quick-cycle membership badge (`⟳2` = second stop of the ctrl+p cycle).
+			// Quick-cycle membership badge (`◐2` = second stop of the ctrl+p cycle).
 			const cycleIndex = cycleOrder.indexOf(role);
 			const cycleStyled = cycleIndex >= 0 ? theme.fg("accent", `${theme.icon.loop}${cycleIndex + 1}`) : "";
 
@@ -2055,8 +2055,7 @@ export class ModelHubComponent implements Component {
 	 */
 	render(width: number): string[] {
 		const height = Math.max(16, this.#tui.terminal?.rows || process.stdout.rows || 40);
-		const compact = height < 24;
-		const sizing = withCompact(MODAL_SIZING_LARGE, compact);
+		const sizing = withCompact(MODAL_SIZING_LARGE, modalNeedsCompactPadding(height, MODAL_SIZING_LARGE));
 		const dims = computeModalDims(width, height, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;

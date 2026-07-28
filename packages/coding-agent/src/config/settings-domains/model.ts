@@ -166,12 +166,12 @@ export const MODEL_SETTINGS = {
 			group: "Prompt",
 			label: "Inline Tool Descriptors",
 			description:
-				"Render full tool descriptors in the system prompt and strip top-level/nested descriptions from provider tool schemas so descriptor text is sent once. Auto enables this for Gemini models and disables it otherwise",
+				"Render full tool descriptors in the system prompt and strip top-level/nested descriptions from provider tool schemas so descriptor text is sent once. Auto follows the active model, enabling this for Gemini and disabling it otherwise",
 			options: [
 				{
 					value: "auto",
 					label: "Auto",
-					description: "Inline descriptors for Gemini models; keep them in tool schemas otherwise",
+					description: "Follow model switches: inline for Gemini, use provider tool schemas otherwise",
 				},
 				{ value: "on", label: "On", description: "Always inline descriptors in the system prompt" },
 				{ value: "off", label: "Off", description: "Keep descriptors in provider tool schemas only" },

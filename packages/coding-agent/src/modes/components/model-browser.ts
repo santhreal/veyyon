@@ -13,6 +13,7 @@ import { buildModel } from "@veyyon/catalog/build";
 import { getModelPricing, modelsAreEqual } from "@veyyon/catalog/models";
 import {
 	type Component,
+	Ellipsis,
 	fuzzyRank,
 	Input,
 	matchesKey,
@@ -36,6 +37,7 @@ import {
 	matchesSelectPageUp,
 	matchesSelectUp,
 } from "../utils/keybinding-matchers";
+import { selectionBand } from "./selector-helpers";
 
 /** One selectable row. `selector` is a canonical model key or host-specific virtual key. */
 export interface ModelBrowserItem {
@@ -824,9 +826,8 @@ export class ModelBrowser implements Component {
 			const name = selected ? theme.fg("accent", item.virtualLabel) : theme.fg("muted", item.virtualLabel);
 			const currentMark =
 				item.selector === this.#currentSelector ? ` ${theme.fg("success", theme.status.enabled)}` : "";
-			const text = truncateToWidth(`${prefix}${name}${currentMark}`, width);
-			const line = text + " ".repeat(Math.max(0, width - visibleWidth(text)));
-			return hovered ? theme.bg("selectedBg", line) : line;
+			const line = `${prefix}${name}${currentMark}`;
+			return hovered ? selectionBand(line, width) : truncateToWidth(line, width, Ellipsis.Omit, true);
 		}
 		const disabled = this.#isDisabled(item);
 		const prefix = selected && this.#focused ? `${theme.fg("accent", theme.nav.cursor)} ` : "  ";
@@ -860,9 +861,9 @@ export class ModelBrowser implements Component {
 		// The bg band is reserved for the mouse: it marks hover, nothing else.
 		// Keyboard selection is the cursor glyph + accent name.
 		if (hovered && !disabled) {
-			line = theme.bg("selectedBg", line);
+			return selectionBand(line, width);
 		}
-		return line;
+		return truncateToWidth(line, width);
 	}
 
 	#detailLines(width: number): [string, string] {

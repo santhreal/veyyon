@@ -7,6 +7,7 @@
  * popup, this module decides whether there are candidates to show.
  */
 import { type AutocompleteItem, isSubsequenceMatch, subsequenceScore } from "@veyyon/tui";
+import type { Skill } from "../extensibility/skills";
 import { InternalUrlRouter } from "../internal-urls/router";
 
 /** Upper bound on candidates surfaced in the dropdown. */
@@ -62,15 +63,15 @@ export function extractInternalUrlContext(textBeforeCursor: string): InternalUrl
 export async function getInternalUrlSuggestions(
 	textBeforeCursor: string,
 	cwd?: string,
+	skills?: readonly Skill[],
 ): Promise<{ items: AutocompleteItem[]; prefix: string } | null> {
 	const ctx = extractInternalUrlContext(textBeforeCursor);
 	if (!ctx) return null;
 
-	const candidates = await InternalUrlRouter.instance().complete(
-		ctx.scheme,
-		ctx.query,
-		cwd === undefined ? undefined : { cwd },
-	);
+	const candidates = await InternalUrlRouter.instance().complete(ctx.scheme, ctx.query, {
+		...(cwd === undefined ? {} : { cwd }),
+		...(skills === undefined ? {} : { skills }),
+	});
 	if (!candidates || candidates.length === 0) return null;
 
 	const query = ctx.query.toLowerCase();

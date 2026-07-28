@@ -1,9 +1,11 @@
 import { beforeAll, describe, expect, it } from "bun:test";
+import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
 import { QueueModeSelectorComponent } from "@veyyon/coding-agent/modes/components/queue-mode-selector";
 import { ThemeSelectorComponent } from "@veyyon/coding-agent/modes/components/theme-selector";
 import { ThinkingSelectorComponent } from "@veyyon/coding-agent/modes/components/thinking-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { ConfiguredThinkingLevel } from "@veyyon/coding-agent/thinking";
 import type { SgrMouseEvent } from "@veyyon/tui";
 
 beforeAll(async () => {
@@ -41,24 +43,41 @@ describe("inline-picker wrapper routeMouse offset", () => {
 		expect(selected).toBe("alpha");
 	});
 
-	it("ThinkingSelectorComponent ignores the border row and selects the first level below it", () => {
-		let selected: Effort | undefined;
-		const levels = [Effort.Low, Effort.High];
+	/** Thinking's new Default row must preserve the same one-line border offset as native variants. */
+	it("ThinkingSelectorComponent ignores the border row and selects Default below it", () => {
+		let selected: ConfiguredThinkingLevel | undefined = Effort.High;
+		let selections = 0;
+		const model = buildModel({
+			id: "two-tier",
+			name: "Two tier",
+			api: "openai-completions",
+			provider: "test",
+			baseUrl: "https://example.test",
+			reasoning: true,
+			thinking: { mode: "effort", efforts: [Effort.Low, Effort.High] },
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 10_000,
+			maxTokens: 1_000,
+		});
 		const component = new ThinkingSelectorComponent(
 			Effort.Low,
-			levels,
+			model,
 			value => {
 				selected = value;
+				selections += 1;
 			},
 			() => {},
 		);
 		component.render(80);
 
 		component.routeMouse(leftClick(0), 0, 0);
-		expect(selected).toBeUndefined();
+		expect(selections).toBe(0);
+		expect(selected).toBe(Effort.High);
 
 		component.routeMouse(leftClick(1), 1, 0);
-		expect(selected).toBe(Effort.Low);
+		expect(selections).toBe(1);
+		expect(selected).toBeUndefined();
 	});
 
 	it("QueueModeSelectorComponent ignores the border row and selects the first mode below it", () => {

@@ -1,6 +1,8 @@
 import { Box, Container, Spacer, Text } from "@veyyon/tui";
 import type { Rule } from "../../capability/rule";
+import { withIcon } from "../../modes/theme/icon-label";
 import { theme } from "../../modes/theme/theme";
+import { actionKeyHint } from "../utils/key-hint";
 
 /** Collapsed view shows at most this many rules before eliding the rest. */
 const MAX_COLLAPSED_RULES = 4;
@@ -53,6 +55,17 @@ export class TtsrNotificationComponent extends Container {
 		return this.#expanded;
 	}
 
+	/**
+	 * How this block names the expand gesture, or `""` when nothing is bound to it.
+	 *
+	 * Read at rebuild time rather than at construction, because a rebind takes
+	 * effect on the next render and this block outlives one: it merges later rules
+	 * into itself through {@link addRules} while it is still the transcript tail.
+	 */
+	#expandHint(): string {
+		return actionKeyHint("app.tools.expand");
+	}
+
 	#rebuild(): void {
 		this.#box.clear();
 		// fg colors conflict with inverse, so styling inside the block is limited
@@ -65,7 +78,7 @@ export class TtsrNotificationComponent extends Container {
 	}
 
 	#rebuildSingle(rule: Rule): void {
-		const header = `${theme.icon.warning} Injecting rule: ${theme.bold(rule.name)}  ${theme.icon.rewind}`;
+		const header = withIcon(theme.icon.warning, `Injecting rule: ${theme.bold(rule.name)}  ${theme.icon.rewind}`);
 		this.#box.addChild(new Text(header, 0, 0));
 
 		const desc = (rule.description || rule.content)?.trim();
@@ -83,13 +96,14 @@ export class TtsrNotificationComponent extends Container {
 
 		this.#box.addChild(new Spacer(1));
 		this.#box.addChild(new Text(theme.italic(displayText), 0, 0));
-		if (truncated) {
-			this.#box.addChild(new Text(theme.italic(" (ctrl+o to expand)"), 0, 0));
+		const hint = this.#expandHint();
+		if (truncated && hint) {
+			this.#box.addChild(new Text(theme.italic(` (${hint} to expand)`), 0, 0));
 		}
 	}
 
 	#rebuildMulti(): void {
-		const header = `${theme.icon.warning} Injecting ${this.#rules.length} rules:  ${theme.icon.rewind}`;
+		const header = withIcon(theme.icon.warning, `Injecting ${this.#rules.length} rules:  ${theme.icon.rewind}`);
 		this.#box.addChild(new Text(header, 0, 0));
 		this.#box.addChild(new Spacer(1));
 
@@ -114,10 +128,13 @@ export class TtsrNotificationComponent extends Container {
 		}
 
 		const hidden = this.#rules.length - visible.length;
+		const hint = this.#expandHint();
+		// The COUNT is stated whether or not there is a key to name: a block that
+		// hides four rules silently reads as a block with one rule in it.
 		if (hidden > 0) {
-			this.#box.addChild(new Text(theme.italic(`… +${hidden} more (ctrl+o to expand)`), 0, 0));
-		} else if (elidedDetail) {
-			this.#box.addChild(new Text(theme.italic(" (ctrl+o to expand)"), 0, 0));
+			this.#box.addChild(new Text(theme.italic(`… +${hidden} more${hint ? ` (${hint} to expand)` : ""}`), 0, 0));
+		} else if (elidedDetail && hint) {
+			this.#box.addChild(new Text(theme.italic(` (${hint} to expand)`), 0, 0));
 		}
 	}
 }

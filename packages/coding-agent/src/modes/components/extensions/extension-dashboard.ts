@@ -37,6 +37,7 @@ import {
 	MODAL_SIZING_LARGE,
 	ModalRevealDriver,
 	type ModalShellGeometry,
+	modalNeedsCompactPadding,
 	planModalChrome,
 	renderModalShell,
 	withCompact,
@@ -173,7 +174,7 @@ export class ExtensionDashboard implements Component {
 	 */
 	render(width: number): readonly string[] {
 		const height = Math.max(14, this.#terminalRows());
-		const sizing = withCompact(MODAL_SIZING_LARGE, height < 24);
+		const sizing = withCompact(MODAL_SIZING_LARGE, modalNeedsCompactPadding(height, MODAL_SIZING_LARGE));
 		const dims = computeModalDims(width, height, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;

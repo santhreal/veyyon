@@ -14,6 +14,7 @@ import {
 	visibleWidth,
 } from "@veyyon/tui";
 import { clampLow, errorMessage, formatBytes } from "@veyyon/utils";
+import { withIcon } from "../../modes/theme/icon-label";
 import { theme } from "../../modes/theme/theme";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import type { SessionInfo, SessionStatus } from "../../session/session-listing";
@@ -26,6 +27,7 @@ import {
 	MODAL_SIZING_LARGE,
 	ModalRevealDriver,
 	type ModalShellGeometry,
+	modalNeedsCompactPadding,
 	planModalChrome,
 	renderModalShell,
 	withCompact,
@@ -624,7 +626,7 @@ class SessionList implements Component {
 				metadata += ` ${dot} ${status}`;
 			}
 			if (session.parentSessionPath) {
-				metadata += ` ${dot} ${dim(`${theme.icon.branch} fork`)}`;
+				metadata += ` ${dot} ${dim(withIcon(theme.icon.branch, "fork"))}`;
 			}
 			if (this.#showCwd && session.cwd) {
 				metadata += ` ${dot} ${dim(shortenPath(session.cwd))}`;
@@ -960,7 +962,10 @@ export class SessionSelectorComponent extends Container {
 	 */
 	render(width: number): readonly string[] {
 		const termHeight = Math.max(14, this.#getTerminalRows());
-		const sizing = withCompact(MODAL_SIZING_LARGE, termHeight < 24 || !this.#fillHeight);
+		const sizing = withCompact(
+			MODAL_SIZING_LARGE,
+			modalNeedsCompactPadding(termHeight, MODAL_SIZING_LARGE) || !this.#fillHeight,
+		);
 		const dims = computeModalDims(width, termHeight, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;

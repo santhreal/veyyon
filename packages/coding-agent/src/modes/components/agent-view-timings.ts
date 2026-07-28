@@ -1,18 +1,19 @@
 /**
- * The interaction timings the Agent Hub and the Subagent Inbox share.
+ * The interaction timings of the agent surfaces.
  *
- * These two views are separate components with separate render loops, and a user moves between them without
- * being told they are different screens. So a cadence that differs between them is a felt inconsistency: the
- * same relative-time column refreshing at two rates, the same double-tap gesture needing two different
- * rhythms. All three were declared in both files with the same values, and the inbox's own comment on the
- * gesture window said "matching the hub", which names the coupling without doing anything about it.
+ * These began as three constants declared twice, once in the Agent Hub overlay and once in the Subagent Inbox,
+ * with the inbox's own comment on the gesture window reading "matching the hub", which names the coupling
+ * without doing anything about it. Both views are gone: the Agent Control Center replaced them. The module
+ * stays because the coupling did. The card owns two of the numbers and the input controller owns the third, so
+ * the same three values still span more than one file, and a card whose age column advanced at one rate while
+ * the gesture that opens it used a different rhythm would be the same felt inconsistency one level over.
  *
  * `agent-status-display.ts` is not the home for these. Its doc makes it the owner of the AgentStatus VISUAL
  * language, colours and glyphs, and it imports the theme engine to do that; a timing constant has no business
- * dragging the theme engine along. This module has no imports, so both views pay one module.
+ * dragging the theme engine along. This module has no imports, so every caller pays one module.
  *
- * A per-view timing that genuinely differs stays in that view. These three are here because they are the same
- * decision, not because they happen to be equal today.
+ * A timing that genuinely belongs to one surface stays in that surface. These three are here because more than
+ * one file has to agree on them, not because they happen to be equal today.
  */
 
 /**
@@ -32,9 +33,10 @@ export const AGENT_VIEW_AGE_TICK_MS = 5_000;
 export const AGENT_VIEW_DATA_CHANGE_COALESCE_MS = 100;
 
 /**
- * How long after a left-arrow press a second one counts as the "close this view" double tap.
+ * How long after a left-arrow press a second one counts as the double tap that opens the Agent Control Center,
+ * or that leaves a focused subagent for the main session.
  *
- * The gesture is the same in both views, so the window has to be too: a user who learns the rhythm in one
- * view uses it in the other, and a shorter window in one of them reads as the gesture not working.
+ * One window for both, because a user who learns the rhythm going in uses the same rhythm coming out, and a
+ * shorter window on one end reads as the gesture not working rather than as two separate gestures.
  */
 export const AGENT_VIEW_LEFT_TAP_WINDOW_MS = 500;

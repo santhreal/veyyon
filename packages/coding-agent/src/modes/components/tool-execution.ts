@@ -14,7 +14,7 @@ import {
 	Text,
 	type TUI,
 } from "@veyyon/tui";
-import { clampLow, getProjectDir, logger, sanitizeText } from "@veyyon/utils";
+import { clampLow, formatMoreLines, getProjectDir, logger, sanitizeText } from "@veyyon/utils";
 import { EDIT_MODE_STRATEGIES, type EditMode, type PerFileDiffPreview } from "../../edit";
 import type { Theme } from "../../modes/theme/theme";
 import { getThemeEpoch, theme } from "../../modes/theme/theme";
@@ -1370,7 +1370,9 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 
 		if (outputLines.length > maxOutputLines) {
 			const remaining = outputLines.length - maxOutputLines;
-			lines.push(`${theme.fg("dim", `… ${remaining} more lines`)} ${formatExpandHint(theme, this.#expanded, true)}`);
+			lines.push(
+				`${theme.fg("dim", `… ${formatMoreLines(remaining)}`)} ${formatExpandHint(theme, this.#expanded, true)}`,
+			);
 		} else if (!this.#expanded) {
 			lines.push(formatExpandHint(theme, this.#expanded, true));
 		}

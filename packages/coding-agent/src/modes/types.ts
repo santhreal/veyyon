@@ -387,7 +387,7 @@ export interface InteractiveModeContext {
 	showAdvisorConfigure(): void;
 	showHistorySearch(): void;
 	showExtensionsDashboard(): void;
-	showAgentsDashboard(): void;
+	showAgentsDashboard(options?: { requireContent?: boolean }): void;
 	showModelSelector(options?: { temporaryOnly?: boolean }): void;
 	showThinkingSelector(): void;
 	showPluginSelector(mode?: "install" | "uninstall"): void;
@@ -402,7 +402,6 @@ export interface InteractiveModeContext {
 	showProviderSetup(): Promise<void>;
 	showHookConfirm(title: string, message: string): Promise<boolean>;
 	showDebugSelector(): Promise<void>;
-	showAgentHub(options?: { requireContent?: boolean; armCloseTap?: boolean }): void;
 	resetObserverRegistry(): void;
 
 	// Input handling
@@ -463,7 +462,15 @@ export interface InteractiveModeContext {
 		dialogOptions?: ExtensionUIDialogOptions,
 	): Promise<ExtensionAskDialogResult | undefined>;
 	hideHookSelector(): void;
-	showHookInput(title: string, placeholder?: string): Promise<string | undefined>;
+	/**
+	 * One line of text from the operator. `undefined` = cancelled.
+	 *
+	 * `inputOptions.mask` renders each character as that one instead of itself, which is how a
+	 * credential is entered without it landing in the scrollback. Local only: unlike the selector
+	 * and editor dialogs, this one is never raced against a collab guest, so a masked prompt
+	 * cannot be answered from another machine.
+	 */
+	showHookInput(title: string, placeholder?: string, inputOptions?: { mask?: string }): Promise<string | undefined>;
 	hideHookInput(): void;
 	showHookEditor(
 		title: string,

@@ -489,18 +489,6 @@ export const APPEARANCE_SETTINGS = {
 		},
 	},
 
-	"display.subagentInbox": {
-		type: "boolean",
-		default: false,
-		ui: {
-			tab: "experimental",
-			group: "Display",
-			label: "Subagent Inbox",
-			description:
-				"opencode-style split: a live per-agent sidebar plus the focused agent's detail pane, instead of the modal agent hub. Off by default while the layout is refined.",
-		},
-	},
-
 	"display.smoothStreaming": {
 		type: "boolean",
 		default: true,

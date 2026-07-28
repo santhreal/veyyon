@@ -138,6 +138,7 @@ import { getSessionAccentAnsi, getSessionAccentHex } from "../utils/session-colo
 import { messageHasDisplayableThinking } from "../utils/thinking-display";
 import { popTerminalTitle, pushTerminalTitle, setSessionTerminalTitle } from "../utils/title-generator";
 import { VibeSessionRegistry } from "../vibe/runtime";
+import { modelBadgeFromSelector } from "./components/agent-model-badge";
 import type { AssistantMessageComponent } from "./components/assistant-message";
 import type { BashExecutionComponent } from "./components/bash-execution";
 import { ChatBlock, type ChatBlockHost } from "./components/chat-block";
@@ -387,8 +388,21 @@ const SUBAGENT_OBSERVER_UI_COALESCE_MS = 100;
  * parent turn and its inline tool block already renders progress live, and
  * eval `agent()` spawns are rendered by their own eval cell tree.
  * Returns an empty array when nothing is running so the container can clear.
+ *
+ * Each row ends with the model the agent is actually running on, the same badge
+ * the inline task widget and the `/agents` roster print, via the one
+ * {@link modelBadgeFromSelector} formatter. `showModelBadge` is
+ * `subagent.showResolvedModelBadge`, read by the caller rather than here so the
+ * renderer stays a pure function of its arguments (the Agent Hub takes the same
+ * flag the same way). A badge that would leave the description less than
+ * {@link TRUNCATE_LENGTHS.SHORT} columns is dropped instead of wrapping the row:
+ * the roster drops it on a narrow card for the same reason.
  */
-export function renderSubagentHudLines(sessions: ObservableSession[], columns: number): string[] {
+export function renderSubagentHudLines(
+	sessions: ObservableSession[],
+	columns: number,
+	showModelBadge = true,
+): string[] {
 	const running = sessions.filter(
 		session => session.kind === "subagent" && session.status === "active" && session.detached === true,
 	);
@@ -404,9 +418,27 @@ export function renderSubagentHudLines(sessions: ObservableSession[], columns: n
 			renderItem: session => {
 				const displayId = formatTaskId(session.id);
 				let line = `${dot} ${theme.fg("accent", theme.bold(displayId))}`;
+				const resolvedModel = session.progress?.resolvedModel;
+				// Capped at 30 columns exactly as the inline task widget caps it
+				// (`appendAgentStats`), so a long provider id cannot eat the row.
+				let badge =
+					showModelBadge && resolvedModel ? truncateToWidth(modelBadgeFromSelector(resolvedModel, theme), 30) : "";
+				// A dim arrow when this is not the model the agent started on. The
+				// badge alone says what it runs on and cannot say that it is not
+				// what you picked, which is the question behind "why is this one
+				// slower than the others".
+				if (badge !== "" && session.progress?.fellBackFrom) badge = `${theme.fg("dim", "↓")}${badge}`;
+				let badgeWidth = badge === "" ? 0 : visibleWidth(badge) + visibleWidth(theme.sep.dot);
+				// The badge is fixed cost, so it comes out of the row budget before the
+				// description does. When what is left cannot hold a readable
+				// description the badge goes rather than the row wrapping.
+				if (badge !== "" && columns - visibleWidth(displayId) - badgeWidth - 10 < TRUNCATE_LENGTHS.SHORT) {
+					badge = "";
+					badgeWidth = 0;
+				}
 				const description = session.description?.trim() || session.progress?.description?.trim();
 				if (description) {
-					const budget = Math.max(TRUNCATE_LENGTHS.SHORT, columns - visibleWidth(displayId) - 10);
+					const budget = Math.max(TRUNCATE_LENGTHS.SHORT, columns - visibleWidth(displayId) - badgeWidth - 10);
 					line += `${theme.fg("accent", ":")} ${theme.fg("accent", truncateToWidth(replaceTabs(description), budget))}`;
 				} else {
 					// No spawn description: fall back to a muted task preview, same as
@@ -416,13 +448,14 @@ export function renderSubagentHudLines(sessions: ObservableSession[], columns: n
 						line += ` ${theme.fg("muted", truncateToWidth(replaceTabs(taskPreview), TRUNCATE_LENGTHS.SHORT))}`;
 					}
 				}
+				if (badge !== "") line += `${theme.sep.dot}${badge}`;
 				return line;
 			},
 		},
 		theme,
 	);
 	if (hiddenCount > 0) {
-		rows.push(theme.fg("dim", `… ${hiddenCount} more running — open Agent Hub for full list`));
+		rows.push(theme.fg("dim", `… ${hiddenCount} more running — /agents for the full roster`));
 	}
 	return ["", theme.bold(theme.fg("accent", "Subagents")), ...rows.map(line => ` ${line}`)];
 }
@@ -2078,7 +2111,11 @@ export class InteractiveMode implements InteractiveModeContext {
 	 */
 	#renderSubagentList(): void {
 		this.subagentContainer.clear();
-		const lines = renderSubagentHudLines(this.#observerRegistry.getSessions(), this.ui.terminal.columns);
+		const lines = renderSubagentHudLines(
+			this.#observerRegistry.getSessions(),
+			this.ui.terminal.columns,
+			settings.get("subagent.showResolvedModelBadge"),
+		);
 		if (lines.length === 0) return;
 		this.subagentContainer.addChild(new Text(lines.join("\n"), 1, 0));
 	}
@@ -4462,10 +4499,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		await this.#selectorController.showDebugSelector();
 	}
 
-	showAgentHub(options?: { requireContent?: boolean; armCloseTap?: boolean }): void {
-		this.#selectorController.showAgentHub(this.#observerRegistry, options);
-	}
-
 	resetObserverRegistry(): void {
 		this.#observerRegistry.resetSessions();
 		this.#observerRegistry.setMainSession(this.sessionManager.getSessionFile() ?? undefined);
@@ -4550,8 +4583,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		void this.#selectorController.showExtensionsDashboard();
 	}
 
-	showAgentsDashboard(): void {
-		void this.#selectorController.showAgentsDashboard();
+	showAgentsDashboard(options?: { requireContent?: boolean }): void {
+		this.#selectorController.showAgentsDashboard(this.#observerRegistry, options);
 	}
 
 	showModelSelector(options?: { temporaryOnly?: boolean }): void {
@@ -4793,8 +4826,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		return this.#extensionUiController.showAskDialog(questions, dialogOptions);
 	}
 
-	showHookInput(title: string, placeholder?: string): Promise<string | undefined> {
-		return this.#extensionUiController.showHookInput(title, placeholder);
+	showHookInput(title: string, placeholder?: string, inputOptions?: { mask?: string }): Promise<string | undefined> {
+		return this.#extensionUiController.showHookInput(title, placeholder, undefined, inputOptions);
 	}
 
 	hideHookInput(): void {

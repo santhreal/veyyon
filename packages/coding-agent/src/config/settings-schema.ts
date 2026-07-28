@@ -265,6 +265,27 @@ interface StringDef extends SettingDefBase {
 	ui?: UiString;
 }
 
+/**
+ * An ORDERED CHAIN of model patterns, written either way.
+ *
+ * `"opus,sonnet"` and `["opus", "sonnet"]` are the same chain, and every reader
+ * goes through `normalizeModelPatternList`, which splits a comma string and
+ * flattens a list into the same array. The comma string is what a CLI flag and
+ * the settings text box produce; the YAML list is what a hand-written config
+ * uses, because a list of models reads as a list.
+ *
+ * This type exists because declaring the setting a `string` made the validator
+ * disagree with every reader: a config written as a list was reported as a value
+ * that "does not match its declared type" and shown as invalid, while the runtime
+ * read it perfectly well. The docs show the list form for `subagent.model`, so the
+ * documented spelling was the one being flagged.
+ */
+interface ModelChainDef extends SettingDefBase {
+	type: "modelChain";
+	default: string | string[] | undefined;
+	ui?: UiString;
+}
+
 interface NumberDef extends SettingDefBase {
 	type: "number";
 	default: number | undefined;
@@ -293,10 +314,42 @@ interface RecordDef<T> extends SettingDefBase {
 type SettingDef =
 	| BooleanDef
 	| StringDef
+	| ModelChainDef
 	| NumberDef
 	| EnumDef<readonly string[]>
 	| ArrayDef<unknown>
 	| RecordDef<unknown>;
+
+/** The `type` tag a setting definition carries. */
+export type SettingType = SettingDef["type"];
+
+/**
+ * The same tags as data, with one row per kind.
+ *
+ * A corpus test walks the schema at runtime and has to know which tags are real,
+ * and the list it kept of its own drifted both ways: it named an `"object"` kind
+ * the schema never had, and it did not name `"modelChain"` the day that kind
+ * arrived. `Record<SettingType, true>` is what stops that. Adding a definition
+ * kind without a row here is a compile error, and a row for a kind that does not
+ * exist is a compile error too.
+ */
+const SETTING_TYPE_ROWS: Readonly<Record<SettingType, true>> = {
+	boolean: true,
+	string: true,
+	modelChain: true,
+	number: true,
+	enum: true,
+	array: true,
+	record: true,
+};
+
+/** Every type tag a setting can carry, in declaration order. */
+export const SETTING_TYPES = Object.keys(SETTING_TYPE_ROWS) as readonly SettingType[];
+
+/** True when `value` is a type tag the schema actually uses. */
+export function isSettingType(value: string): value is SettingType {
+	return Object.hasOwn(SETTING_TYPE_ROWS, value);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Schema Definition
@@ -380,21 +433,23 @@ type SettingValueFor<P extends SettingPath> = Schema[P] extends { type: "boolean
 	? boolean | undefined
 	: Schema[P] extends { type: "boolean" }
 		? boolean
-		: Schema[P] extends { type: "string" }
-			? string | undefined
-			: Schema[P] extends { type: "number"; default: undefined }
-				? number | undefined
-				: Schema[P] extends { type: "number" }
-					? number
-					: Schema[P] extends { type: "enum"; values: infer V }
-						? V extends readonly string[]
-							? V[number]
-							: never
-						: Schema[P] extends { type: "array"; default: infer D }
-							? D
-							: Schema[P] extends { type: "record"; default: infer D }
+		: Schema[P] extends { type: "modelChain" }
+			? string | string[] | undefined
+			: Schema[P] extends { type: "string" }
+				? string | undefined
+				: Schema[P] extends { type: "number"; default: undefined }
+					? number | undefined
+					: Schema[P] extends { type: "number" }
+						? number
+						: Schema[P] extends { type: "enum"; values: infer V }
+							? V extends readonly string[]
+								? V[number]
+								: never
+							: Schema[P] extends { type: "array"; default: infer D }
 								? D
-								: never;
+								: Schema[P] extends { type: "record"; default: infer D }
+									? D
+									: never;
 
 /** Get the default value for a setting path */
 export function getDefault<P extends SettingPath>(path: P): SettingValue<P> {
@@ -447,7 +502,7 @@ export function isSettingPath(path: string): path is SettingPath {
 }
 
 /** Get the type of a setting */
-export function getType(path: SettingPath): SettingDef["type"] {
+export function getType(path: SettingPath): SettingType {
 	return SETTINGS_SCHEMA[path].type;
 }
 
@@ -500,6 +555,20 @@ export function describeSettingTypeMismatch(path: string, value: unknown): strin
 			return typeof value === "number" && Number.isFinite(value) ? undefined : mismatch("a finite number");
 		case "string":
 			return typeof value === "string" ? undefined : mismatch("a string");
+		case "modelChain":
+			// Both encodings of one chain. A list of models is the readable way to
+			// write one and the way the handbook shows it, and a comma string is what
+			// a CLI flag and the settings text box produce, so refusing either would
+			// refuse a config the runtime reads correctly. An array with a non-string
+			// in it is still wrong, and saying so names the element.
+			if (typeof value === "string") return undefined;
+			if (Array.isArray(value)) {
+				const bad = value.findIndex(entry => typeof entry !== "string");
+				return bad === -1
+					? undefined
+					: `${path}: expected model patterns, found ${describeValueType(value[bad])} at index ${bad} (${JSON.stringify(value)})`;
+			}
+			return mismatch("a model pattern, or a list of them");
 		case "enum": {
 			const values = def.values ?? [];
 			if (typeof value === "string" && values.includes(value)) return undefined;

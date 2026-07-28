@@ -37,14 +37,14 @@ export abstract class ChatBlock extends Container {
 	 * and register their teardown with {@link onCleanup}. Default: no-op (a block
 	 * whose content is fixed at construction needs no mount work).
 	 */
-	protected onMount(): void {}
+	onMount(): void {}
 
 	/**
 	 * Register a teardown to run on {@link finish}/{@link dispose}, à la a
 	 * `useEffect` cleanup. If the block is already disposed the cleanup runs
 	 * immediately so callers never leak.
 	 */
-	protected onCleanup(cleanup: () => void): void {
+	onCleanup(cleanup: () => void): void {
 		if (this.#disposed) {
 			cleanup();
 			return;
@@ -53,12 +53,12 @@ export abstract class ChatBlock extends Container {
 	}
 
 	/** Ask the host to repaint this block. No-op before mount or after dispose. */
-	protected requestRender(): void {
+	requestRender(): void {
 		this.#host?.requestComponentRender(this);
 	}
 
 	/** True between {@link mount} and {@link finish}/{@link dispose}. */
-	protected get active(): boolean {
+	get active(): boolean {
 		return this.#active;
 	}
 

@@ -1,15 +1,17 @@
 /**
- * ONE-PLACE lock for the timings the Agent Hub and the Subagent Inbox share.
+ * ONE-PLACE lock for the timings the agent surfaces share.
  *
- * Why this suite exists: all three were declared in both components with the same values, and the inbox's own
- * comment on the gesture window read "matching the hub", which names the coupling without doing anything about
- * it. The two views are separate components with separate render loops and a user moves between them without
- * being told they are different screens, so a cadence that drifts is a felt inconsistency rather than an
- * abstract duplication: the same relative-time column refreshing at two rates, or the same double-tap needing
- * two different rhythms, and the second one reads to a user as the gesture not working.
+ * Why this suite exists: all three were declared in both the Agent Hub overlay and the Subagent Inbox with the
+ * same values, and the inbox's own comment on the gesture window read "matching the hub", which names the
+ * coupling without doing anything about it. Both views were replaced by the Agent Control Center, and the
+ * coupling outlived them: the card owns the age tick and the coalesce window, and the input controller owns the
+ * double-tap window for the gesture that opens the card. That is still more than one file agreeing on the same
+ * three numbers, which is exactly the condition under which a copy drifts, and a drifted copy is felt rather
+ * than abstract: the same relative-time column refreshing at two rates, or a gesture that needs one rhythm to
+ * open a view and another to leave it, which reads to a user as the gesture not working.
  *
  * These pin the values, the reasoning behind each one where the number is a judgement about perception rather
- * than about cost, and that neither component declares its own copy again.
+ * than about cost, and that no consumer declares its own copy again.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -20,10 +22,37 @@ import {
 	AGENT_VIEW_LEFT_TAP_WINDOW_MS,
 } from "@veyyon/coding-agent/modes/components/agent-view-timings";
 
-const COMPONENTS_DIR = path.resolve(import.meta.dir, "../src/modes/components");
-const VIEWS = ["agent-hub.ts", "subagent-inbox.ts"];
-const OWNER = "agent-view-timings.ts";
-const RETIRED_NAMES = ["AGE_TICK_MS", "DATA_CHANGE_RENDER_COALESCE_MS", "LEFT_TAP_WINDOW_MS"];
+const SRC_DIR = path.resolve(import.meta.dir, "../src");
+const COMPONENTS_DIR = path.join(SRC_DIR, "modes/components");
+const OWNER = path.join(COMPONENTS_DIR, "agent-view-timings.ts");
+
+/** Every file that consumes a shared timing, and the names it must take from the owner. */
+const CONSUMERS = [
+	{
+		file: path.join(COMPONENTS_DIR, "agent-dashboard.ts"),
+		proves: "class AgentDashboard",
+		names: ["AGENT_VIEW_AGE_TICK_MS", "AGENT_VIEW_DATA_CHANGE_COALESCE_MS"],
+		importer: /from "\.\/agent-view-timings";/,
+	},
+	{
+		file: path.join(SRC_DIR, "modes/controllers/input-controller.ts"),
+		proves: "class InputController",
+		names: ["AGENT_VIEW_LEFT_TAP_WINDOW_MS"],
+		importer: /from "\.\.\/\.\.\/modes\/components\/agent-view-timings";/,
+	},
+] as const;
+
+/**
+ * Names a consumer must never declare again. The first three are the per-view copies this module replaced; the
+ * fourth is the input controller's own 500ms literal, which restated the gesture window under a local name for
+ * as long as the two views owned the shared one.
+ */
+const RETIRED_NAMES = [
+	"AGE_TICK_MS",
+	"DATA_CHANGE_RENDER_COALESCE_MS",
+	"LEFT_TAP_WINDOW_MS",
+	"LEFT_DOUBLE_TAP_MAX_GAP_MS",
+];
 
 describe("the shared agent-view timings", () => {
 	/**
@@ -43,8 +72,8 @@ describe("the shared agent-view timings", () => {
 		expect(AGENT_VIEW_DATA_CHANGE_COALESCE_MS).toBe(100);
 	});
 
-	/** The double-tap window for the left-left close gesture, identical in both views by construction. */
-	it("accepts a second left arrow within 500ms as the close gesture", () => {
+	/** The double-tap window for the left-left gesture, identical going in and coming out by construction. */
+	it("accepts a second left arrow within 500ms as the gesture", () => {
 		expect(AGENT_VIEW_LEFT_TAP_WINDOW_MS).toBe(500);
 	});
 
@@ -76,44 +105,56 @@ describe("the shared agent-view timings", () => {
 
 describe("timing ownership", () => {
 	/**
-	 * The ratchet. None of the three old names may be declared in either view again, and the check is keyed on
-	 * the declaration rather than on a mention so a comment about the history is still allowed.
+	 * The ratchet. No consumer may declare any retired timing name again, and the check is keyed on the
+	 * declaration rather than on a mention so a comment about the history is still allowed.
 	 */
-	it("declares no retired timing name in either view", async () => {
+	it("declares no retired timing name in any consumer", async () => {
 		const offenders: string[] = [];
-		for (const view of VIEWS) {
-			const text = await Bun.file(path.join(COMPONENTS_DIR, view)).text();
+		for (const consumer of CONSUMERS) {
+			const text = await Bun.file(consumer.file).text();
 			for (const name of RETIRED_NAMES) {
-				if (new RegExp(`^\\s*const ${name}\\b`, "m").test(text)) offenders.push(`${view} declares ${name}`);
+				if (new RegExp(`^\\s*const ${name}\\b`, "m").test(text)) {
+					offenders.push(`${path.basename(consumer.file)} declares ${name}`);
+				}
 			}
 		}
 		expect(offenders).toEqual([]);
 	});
 
-	/** The positive half: both views take all three from the owner. */
-	it("has both views importing all three from the owner", async () => {
-		for (const view of VIEWS) {
-			const text = await Bun.file(path.join(COMPONENTS_DIR, view)).text();
-			expect(text).toMatch(/from "\.\/agent-view-timings";/);
-			for (const name of [
-				"AGENT_VIEW_AGE_TICK_MS",
-				"AGENT_VIEW_DATA_CHANGE_COALESCE_MS",
-				"AGENT_VIEW_LEFT_TAP_WINDOW_MS",
-			]) {
-				expect(text).toContain(name);
-			}
+	/** The positive half: every consumer takes the names it uses from the owner rather than restating them. */
+	it("has every consumer importing its timings from the owner", async () => {
+		for (const consumer of CONSUMERS) {
+			const text = await Bun.file(consumer.file).text();
+			expect(text).toMatch(consumer.importer);
+			for (const name of consumer.names) expect(text).toContain(name);
 		}
 	});
 
 	/**
-	 * The non-vacuity twin: prove the two files being read are the components in question, so a rename or a
-	 * move cannot leave the ratchet passing over the wrong content.
+	 * Utilization: every exported timing has at least one non-test consumer. When the two views were deleted,
+	 * the gesture window briefly had none while the input controller kept its own 500ms literal, which is a
+	 * shared constant that no longer shares anything and a duplicate hiding behind a different name.
 	 */
-	it("reads the two components it claims to", async () => {
-		const hub = await Bun.file(path.join(COMPONENTS_DIR, "agent-hub.ts")).text();
-		const inbox = await Bun.file(path.join(COMPONENTS_DIR, "subagent-inbox.ts")).text();
-		expect(hub).toContain("class AgentHubOverlayComponent");
-		expect(inbox).toContain("SubagentInbox");
+	it("has a real consumer for every exported timing", async () => {
+		const texts = await Promise.all(CONSUMERS.map(consumer => Bun.file(consumer.file).text()));
+		for (const name of [
+			"AGENT_VIEW_AGE_TICK_MS",
+			"AGENT_VIEW_DATA_CHANGE_COALESCE_MS",
+			"AGENT_VIEW_LEFT_TAP_WINDOW_MS",
+		]) {
+			expect(texts.some(text => text.includes(name))).toBeTrue();
+		}
+	});
+
+	/**
+	 * The non-vacuity twin: prove the files being read are the modules in question, so a rename or a move
+	 * cannot leave the ratchet passing over the wrong content.
+	 */
+	it("reads the consumers it claims to", async () => {
+		for (const consumer of CONSUMERS) {
+			const text = await Bun.file(consumer.file).text();
+			expect(text).toContain(consumer.proves);
+		}
 	});
 
 	/**
@@ -123,7 +164,7 @@ describe("timing ownership", () => {
 	 * in this codebase already removed from every code renderer.
 	 */
 	it("imports nothing, so a timing costs one module and never the theme engine", async () => {
-		const owner = await Bun.file(path.join(COMPONENTS_DIR, OWNER)).text();
+		const owner = await Bun.file(OWNER).text();
 		expect(owner).not.toMatch(/^\s*import\s/m);
 		expect(owner).not.toMatch(/\bfrom\s+"/);
 		const statusDisplay = await Bun.file(path.join(COMPONENTS_DIR, "agent-status-display.ts")).text();

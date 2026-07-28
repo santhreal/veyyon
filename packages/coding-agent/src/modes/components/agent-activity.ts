@@ -1,6 +1,6 @@
 /**
- * The live side of the Agent Control Center: who is running, what they are
- * doing, and what everyone said.
+ * The live side of the Agent Control Center: who is running and what each one
+ * is called.
  *
  * WHY THIS MODULE EXISTS. The Control Center used to open on a strip of source
  * tabs -- All, Project, User, Bundled -- which answered a question nobody asks.
@@ -11,15 +11,12 @@
  * what this module computes.
  *
  * Everything here is PURE and file-system free: it takes the process-global
- * {@link AgentRegistry}'s refs and already-parsed session entries, and returns
- * plain rows and messages. The reading of session files stays at the edge, in
- * the dashboard, which keeps every rule below directly assertable in a unit
- * test with real values rather than through a rendered frame.
+ * {@link AgentRegistry}'s refs and returns plain rows, which keeps every rule
+ * below directly assertable in a unit test with real values rather than through
+ * a rendered frame.
  */
-import type { AgentMessage } from "@veyyon/agent-core";
 import type { AgentKind, AgentRef, AgentStatus } from "../../registry/agent-registry";
 import { MAIN_AGENT_ID } from "../../registry/agent-registry";
-import type { FileEntry } from "../../session/session-entries";
 
 /**
  * Call signs handed to subagents, in order.
@@ -73,9 +70,16 @@ export interface LiveAgent {
 	id: string;
 	kind: AgentKind;
 	status: AgentStatus;
+	/** Spawning agent, when it is not the driving session. Nested runs read as a tree. */
+	parentId?: string;
 	/** Stable, human-readable label: {@link MAIN_CALL_SIGN} or a call sign. */
 	callSign: string;
-	/** The registry's own label, kept for the lens where the full name matters. */
+	/**
+	 * The registry's own label. For a task subagent this is the AGENT TYPE it was
+	 * spawned from (`reviewer`, `scout`): `task/executor.ts` registers it as
+	 * `agent.name`, which is why the roster can name the type without a second
+	 * lookup.
+	 */
 	displayName: string;
 	model?: string;
 	/** Short gist of current work. Present only while `status === "running"`. */
@@ -91,14 +95,24 @@ export interface LiveAgent {
  *
  * Spawn order, not recency: call signs are assigned from this order, so a
  * recency sort would rename agents as they worked, and a name that moves is
- * worse than no name. `id` breaks exact-tie timestamps so the order is total
- * and two runs of the same roster never disagree.
+ * worse than no name.
+ *
+ * TIES FALL BACK TO REGISTRATION ORDER, not to the id. `createdAt` is a
+ * millisecond clock and a fan-out registers its whole fleet inside one tick, so
+ * ties are the COMMON case here rather than the edge one. Comparing ids there
+ * sorted them as text, which puts `10-Sub` between `1-Sub` and `2-Sub`: twenty
+ * agents spawned in order were listed 1, 10, 11, 12, 2, 3, and the call signs
+ * assigned from that order were scrambled with them. `Array.prototype.sort` has
+ * been stable since ES2019 and `AgentRegistry.list()` returns its `Map` in
+ * insertion order, so returning 0 here keeps the registration order the
+ * registry already has, which is the spawn order this function is trying to
+ * express. The order is still total and two runs of the same roster still
+ * agree; they now agree on the right answer.
  */
 function rosterOrder(a: AgentRef, b: AgentRef): number {
 	if (a.id === MAIN_AGENT_ID) return -1;
 	if (b.id === MAIN_AGENT_ID) return 1;
-	if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
-	return a.id.localeCompare(b.id);
+	return a.createdAt - b.createdAt;
 }
 
 /**
@@ -130,6 +144,7 @@ export function collectLiveAgents(refs: readonly AgentRef[]): LiveAgent[] {
 			id: ref.id,
 			kind: ref.kind,
 			status: ref.status,
+			parentId: ref.parentId,
 			callSign,
 			displayName: ref.displayName,
 			model: ref.model,
@@ -141,83 +156,23 @@ export function collectLiveAgents(refs: readonly AgentRef[]): LiveAgent[] {
 	});
 }
 
-/** Agents with a turn in flight, in roster order. */
-export function runningAgents(agents: readonly LiveAgent[]): LiveAgent[] {
-	return agents.filter(agent => agent.status === "running");
-}
-
-/** One turn in the room view. */
-export interface RoomMessage {
-	/** Call sign of whoever produced it. */
-	speaker: string;
-	agentId: string;
-	role: "user" | "assistant";
-	/** Epoch milliseconds, from the session entry's own timestamp. */
-	at: number;
-	text: string;
-}
-
 /**
- * Plain text of a message, blocks flattened, or `""` when it carries none.
+ * The agent TYPE behind a roster row: the name of the agent definition it was
+ * spawned from (`reviewer`, `scout`, `task`).
  *
- * Tool calls, thinking blocks, and images collapse to nothing on purpose: the
- * room is a conversation view, and a turn that only called a tool has nothing
- * to say in it. The live roster already shows tool activity, per agent, as it
- * happens.
- */
-export function messageText(message: AgentMessage): string {
-	const content = (message as { content?: unknown }).content;
-	if (typeof content === "string") return content.trim();
-	if (!Array.isArray(content)) return "";
-	return content
-		.map(block => {
-			if (!block || typeof block !== "object") return "";
-			if (!("type" in block) || (block as { type?: unknown }).type !== "text") return "";
-			const text = (block as { text?: unknown }).text;
-			return typeof text === "string" ? text : "";
-		})
-		.filter(text => text.length > 0)
-		.join("\n")
-		.trim();
-}
-
-/**
- * The turns one agent contributed to the room.
+ * {@link LiveAgent.displayName} carries it, because the task executor registers
+ * a subagent under `agent.name`. Two rows have no type to show and return the
+ * empty string rather than repeating what the reader already has: the driving
+ * session registers as `main` and would print that word twice under the call
+ * sign `Main`, and an agent persisted by an earlier run registers under its own
+ * id as the label.
  *
- * Only `user` and `assistant` entries survive, and only when they carry text.
- * An entry with an unparseable timestamp is dropped rather than merged at epoch
- * zero, where it would silently pin itself to the top of every room forever.
+ * It lives here rather than in the card that renders it because it is a pure
+ * rule about a roster row, assertable against real values without a frame.
  */
-export function roomMessagesFrom(agent: LiveAgent, entries: readonly FileEntry[]): RoomMessage[] {
-	const out: RoomMessage[] = [];
-	for (const entry of entries) {
-		if (entry.type !== "message") continue;
-		const message = (entry as { message?: AgentMessage }).message;
-		if (!message) continue;
-		const role = (message as { role?: unknown }).role;
-		if (role !== "user" && role !== "assistant") continue;
-		const text = messageText(message);
-		if (!text) continue;
-		const at = Date.parse(entry.timestamp);
-		if (!Number.isFinite(at)) continue;
-		out.push({ speaker: agent.callSign, agentId: agent.id, role, at, text });
-	}
-	return out;
-}
-
-/**
- * Interleave every agent's turns into one conversation, newest last.
- *
- * `limit` keeps the TAIL, because a room is read from the bottom: the useful
- * thing about a long multi-agent run is what just happened, not how it opened.
- * Ties break on `agentId` so two turns written in the same millisecond keep a
- * stable order across renders instead of flickering.
- */
-export function mergeRoomMessages(streams: readonly RoomMessage[][], limit: number): RoomMessage[] {
-	const merged = streams.flat().sort((a, b) => {
-		if (a.at !== b.at) return a.at - b.at;
-		return a.agentId.localeCompare(b.agentId);
-	});
-	if (limit <= 0 || merged.length <= limit) return merged;
-	return merged.slice(merged.length - limit);
+export function agentType(agent: LiveAgent): string {
+	const type = agent.displayName.trim();
+	if (!type || type === agent.id) return "";
+	if (type.toLowerCase() === agent.callSign.toLowerCase()) return "";
+	return type;
 }

@@ -2,11 +2,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import {
 	type Keybinding,
-	type KeybindingDefinitions,
 	type KeybindingsConfig,
 	type KeyId,
 	setKeybindings,
-	TUI_KEYBINDINGS,
 	KeybindingsManager as TuiKeybindingsManager,
 } from "@veyyon/tui";
 import { atomicWriteFileSync } from "@veyyon/utils/atomic-write";
@@ -19,221 +17,17 @@ import { syncYamlTextToSettings } from "@veyyon/utils/yaml-sync";
 import { JSONC, YAML } from "bun";
 
 /**
- * Application-level keybindings (coding agent specific).
- * Values are always `true` — used for declaration merging.
+ * The table itself lives in `keybinding-defs.ts`, a leaf that imports only the
+ * TUI types. This module owns the manager, the `keybindings.yml` loader and the
+ * legacy-name migration, so it reaches yaml, atomic writes, the quarantine path
+ * and the profile resolver, and a UI component that only needs the defaults
+ * should not pull all of that in at import time. Re-exported here so every
+ * existing importer of this module is unaffected.
  */
-interface AppKeybindings {
-	"app.interrupt": true;
-	"app.clear": true;
-	"app.exit": true;
-	"app.suspend": true;
-	"app.display.reset": true;
-	"app.thinking.cycle": true;
-	"app.thinking.toggle": true;
-	"app.model.cycleForward": true;
-	"app.model.cycleBackward": true;
-	"app.model.select": true;
-	"app.model.selectTemporary": true;
-	"app.tools.expand": true;
-	"app.editor.external": true;
-	"app.message.followUp": true;
-	"app.retry": true;
-	"app.message.dequeue": true;
-	"app.clipboard.pasteImage": true;
-	"app.clipboard.pasteTextRaw": true;
-	"app.clipboard.copyLine": true;
-	"app.clipboard.copyPrompt": true;
-	"app.agents.hub": true;
-	"app.session.new": true;
-	"app.session.tree": true;
-	"app.session.fork": true;
-	"app.session.resume": true;
-	"app.session.observe": true;
-	"app.session.togglePath": true;
-	"app.session.toggleSort": true;
-	"app.session.rename": true;
-	"app.session.delete": true;
-	"app.session.deleteNoninvasive": true;
-	"app.tree.foldOrUp": true;
-	"app.tree.unfoldOrDown": true;
-	"app.plan.toggle": true;
-	"app.history.search": true;
-	"app.stt.toggle": true;
-	"app.bash.background": true;
-}
+export { type AppKeybinding, getDefaultPasteImageKeys, KEYBINDINGS } from "./keybinding-defs";
 
-export type AppKeybinding = keyof AppKeybindings;
-
-declare module "@veyyon/tui" {
-	interface Keybindings extends AppKeybindings {}
-}
-
-/**
- * Resolve default image-paste shortcuts for the current terminal platform.
- */
-export function getDefaultPasteImageKeys(platform: NodeJS.Platform = process.platform): KeyId[] {
-	if (platform === "win32") return ["ctrl+v", "alt+v"];
-	if (platform === "darwin") return ["ctrl+v", "super+v"];
-	return ["ctrl+v"];
-}
-
-/**
- * All keybindings definitions: TUI + app-specific.
- */
-export const KEYBINDINGS = {
-	...TUI_KEYBINDINGS,
-	"app.interrupt": {
-		defaultKeys: "escape",
-		description: "Interrupt current operation",
-	},
-	"app.clear": {
-		defaultKeys: "ctrl+c",
-		description: "Clear screen or cancel",
-	},
-	"app.exit": {
-		defaultKeys: "ctrl+d",
-		description: "Exit application",
-	},
-	"app.suspend": {
-		defaultKeys: "ctrl+z",
-		description: "Suspend application",
-	},
-	"app.bash.background": {
-		defaultKeys: "ctrl+b",
-		description: "Move the running foreground command to a background job",
-	},
-	"app.display.reset": {
-		defaultKeys: "ctrl+l",
-		description: "Reset terminal display",
-	},
-	"app.thinking.cycle": {
-		defaultKeys: "shift+tab",
-		description: "Cycle thinking level",
-	},
-	"app.thinking.toggle": {
-		defaultKeys: "ctrl+t",
-		description: "Toggle thinking mode",
-	},
-	"app.model.cycleForward": {
-		defaultKeys: "ctrl+p",
-		description: "Cycle to next model",
-	},
-	"app.model.cycleBackward": {
-		defaultKeys: "shift+ctrl+p",
-		description: "Cycle to previous model",
-	},
-	"app.model.select": {
-		defaultKeys: "alt+m",
-		description: "Select model",
-	},
-	"app.model.selectTemporary": {
-		defaultKeys: "alt+p",
-		description: "Select temporary model for current session",
-	},
-	"app.tools.expand": {
-		defaultKeys: "ctrl+o",
-		description: "Expand tools",
-	},
-	"app.editor.external": {
-		defaultKeys: "ctrl+g",
-		description: "Open external editor",
-	},
-	"app.message.followUp": {
-		// Ctrl+Enter is preserved for terminals that deliver it (Kitty/iTerm2/WezTerm/Ghostty),
-		// but Windows Terminal does not emit a distinct event for Ctrl+Enter — Ctrl+Q is listed
-		// first so the default binding works there without remapping (#1903).
-		defaultKeys: ["ctrl+q", "ctrl+enter"],
-		description: "Send follow-up message",
-	},
-	"app.retry": {
-		defaultKeys: "alt+r",
-		description: "Retry last failed assistant turn",
-	},
-	"app.message.dequeue": {
-		defaultKeys: "alt+up",
-		description: "Dequeue message",
-	},
-	"app.clipboard.pasteImage": {
-		defaultKeys: getDefaultPasteImageKeys(),
-		description: "Paste image or text from clipboard",
-	},
-	"app.clipboard.pasteTextRaw": {
-		defaultKeys: ["ctrl+shift+v", "alt+shift+v"],
-		description: "Paste text from clipboard as raw text (no collapse)",
-	},
-	"app.clipboard.copyLine": {
-		defaultKeys: "alt+shift+l",
-		description: "Copy current line",
-	},
-	"app.clipboard.copyPrompt": {
-		defaultKeys: "alt+shift+c",
-		description: "Copy prompt",
-	},
-	"app.session.new": {
-		defaultKeys: [],
-		description: "Create new session",
-	},
-	"app.session.tree": {
-		defaultKeys: [],
-		description: "Show session tree",
-	},
-	"app.session.fork": {
-		defaultKeys: [],
-		description: "Fork session",
-	},
-	"app.session.resume": {
-		defaultKeys: [],
-		description: "Resume session",
-	},
-	"app.agents.hub": {
-		defaultKeys: "alt+a",
-		description: "Open the agent hub",
-	},
-	"app.session.observe": {
-		defaultKeys: "ctrl+s",
-		description: "Open the agent hub",
-	},
-	"app.session.togglePath": {
-		defaultKeys: "ctrl+p",
-		description: "Toggle session path display",
-	},
-	"app.session.toggleSort": {
-		defaultKeys: "ctrl+s",
-		description: "Toggle session sort order",
-	},
-	"app.session.rename": {
-		defaultKeys: "ctrl+r",
-		description: "Rename session",
-	},
-	"app.session.delete": {
-		defaultKeys: "ctrl+d",
-		description: "Delete session",
-	},
-	"app.session.deleteNoninvasive": {
-		defaultKeys: "ctrl+backspace",
-		description: "Delete session (non-invasive)",
-	},
-	"app.tree.foldOrUp": {
-		defaultKeys: ["ctrl+left", "alt+left"],
-		description: "Fold or move up",
-	},
-	"app.tree.unfoldOrDown": {
-		defaultKeys: ["ctrl+right", "alt+right"],
-		description: "Unfold or move down",
-	},
-	"app.plan.toggle": {
-		defaultKeys: "alt+shift+p",
-		description: "Toggle plan mode",
-	},
-	"app.history.search": {
-		defaultKeys: "ctrl+r",
-		description: "Search history",
-	},
-	"app.stt.toggle": {
-		defaultKeys: [],
-		description: "Toggle speech-to-text (default gesture: hold Space)",
-	},
-} as const satisfies KeybindingDefinitions;
+import type { AppKeybinding } from "./keybinding-defs";
+import { KEYBINDINGS } from "./keybinding-defs";
 
 /**
  * Migration map from old keybinding names to new namespaced IDs.
@@ -294,7 +88,6 @@ const KEYBINDING_NAME_MIGRATIONS = {
 	newLine: "tui.input.newLine",
 	submit: "tui.input.submit",
 	tab: "tui.input.tab",
-	copy: "tui.input.copy",
 	// TUI select (old names for backward compatibility)
 	selectUp: "tui.select.up",
 	selectDown: "tui.select.down",
@@ -302,8 +95,6 @@ const KEYBINDING_NAME_MIGRATIONS = {
 	selectPageDown: "tui.select.pageDown",
 	selectConfirm: "tui.select.confirm",
 	selectCancel: "tui.select.cancel",
-	// Upstream additional migrations
-	toggleSessionNamedFilter: "app.session.togglePath",
 } as const satisfies Record<string, Keybinding>;
 
 /**

@@ -206,6 +206,128 @@ describe("subagent HUD lines", () => {
 		expect(activeIds()).toEqual(["SelectorSurfaces", "BlastRadius", "VariantsSurvey"]);
 	});
 
+	/**
+	 * The HUD showed no model at all: you could see four agents running and had
+	 * no way to tell which model any of them was on without opening `/agents`.
+	 * The badge comes from `modelBadgeFromSelector`, the one formatter, so the
+	 * provider prefix is stripped and the thinking level renders as a word
+	 * rather than the raw `anthropic/sonnet-4-6:high` selector the executor
+	 * reports.
+	 */
+	it("ends each row with the model the agent is running on", () => {
+		const out = render([
+			makeSession({
+				id: "AuthLoader",
+				description: "Refactoring the auth flow",
+				progress: makeProgress({ id: "AuthLoader", resolvedModel: "anthropic/claude-sonnet-4-5:high" }),
+			}),
+		]);
+		expect(out).toContain("AuthLoader: Refactoring the auth flow");
+		expect(out).toContain("claude-sonnet-4-5");
+		expect(out).not.toContain("anthropic/");
+		expect(out).not.toContain(":high");
+	});
+
+	/**
+	 * `subagent.showResolvedModelBadge` is the ONE gate for this badge on every
+	 * surface that prints it (inline task widget, `/agents` roster, this HUD).
+	 * Turning it off has to hide it here too, or the setting lies about what it
+	 * controls.
+	 */
+	it("hides the badge when subagent.showResolvedModelBadge is off", () => {
+		const sessions = [
+			makeSession({
+				id: "AuthLoader",
+				description: "Refactoring the auth flow",
+				progress: makeProgress({ id: "AuthLoader", resolvedModel: "anthropic/claude-sonnet-4-5:high" }),
+			}),
+		];
+		expect(Bun.stripANSI(renderSubagentHudLines(sessions, 120, false).join("\n"))).not.toContain("claude-sonnet-4-5");
+		expect(Bun.stripANSI(renderSubagentHudLines(sessions, 120, false).join("\n"))).toContain(
+			"AuthLoader: Refactoring the auth flow",
+		);
+	});
+
+	/**
+	 * An agent that has not reported a model yet (spawned, no first response)
+	 * must render exactly as it did before the badge existed: no separator, no
+	 * empty slot, no trailing whitespace.
+	 */
+	it("renders no badge and no separator when the agent has reported no model", () => {
+		const out = render([makeSession({ id: "AuthLoader", description: "Refactoring the auth flow" })]);
+		const row = out.split("\n").find(line => line.includes("AuthLoader")) ?? "";
+		expect(row.trimStart()).toMatch(/AuthLoader: Refactoring the auth flow$/);
+	});
+
+	/**
+	 * An agent that fell back to another entry in its model chain is marked, so
+	 * "why is this one slower than its peers" is answerable from the HUD. The
+	 * badge alone reads as a deliberate choice; the arrow says it was not.
+	 */
+	it("marks an agent that fell back to a later model in its chain", () => {
+		const plain = render([
+			makeSession({
+				id: "AuthLoader",
+				description: "work",
+				progress: makeProgress({ id: "AuthLoader", resolvedModel: "anthropic/claude-sonnet-4-5" }),
+			}),
+		]);
+		const fellBack = render([
+			makeSession({
+				id: "AuthLoader",
+				description: "work",
+				progress: makeProgress({
+					id: "AuthLoader",
+					resolvedModel: "anthropic/claude-sonnet-4-5",
+					fellBackFrom: "anthropic/claude-opus-4-1",
+				}),
+			}),
+		]);
+		expect(plain).not.toContain("↓");
+		expect(fellBack).toContain("↓claude-sonnet-4-5");
+	});
+
+	/**
+	 * The badge is fixed cost and the description is elastic, so the badge comes
+	 * out of the row budget first: it survives a long description, the
+	 * description truncates around it, and the row still fits the viewport.
+	 */
+	it("keeps the badge and truncates the description when the row is crowded", () => {
+		const out = render(
+			[
+				makeSession({
+					id: "AuthLoader",
+					description: `start ${"x".repeat(300)} end`,
+					progress: makeProgress({ id: "AuthLoader", resolvedModel: "anthropic/claude-sonnet-4-5" }),
+				}),
+			],
+			120,
+		);
+		expect(out).toContain("claude-sonnet-4-5");
+		expect(out).not.toContain("end");
+		for (const line of out.split("\n")) expect(Bun.stringWidth(line)).toBeLessThanOrEqual(120);
+	});
+
+	/**
+	 * On a narrow terminal the badge is dropped rather than wrapping the row,
+	 * the same rule the `/agents` roster applies to a narrow card. A wrapped HUD
+	 * row pushes the composer down and is worse than not knowing the model.
+	 */
+	it("drops the badge instead of wrapping the row on a narrow terminal", () => {
+		const out = render(
+			[
+				makeSession({
+					id: "AuthLoader",
+					description: "Refactoring the auth flow",
+					progress: makeProgress({ id: "AuthLoader", resolvedModel: "anthropic/claude-sonnet-4-5" }),
+				}),
+			],
+			60,
+		);
+		expect(out).not.toContain("claude-sonnet-4-5");
+		for (const line of out.split("\n")) expect(Bun.stringWidth(line)).toBeLessThanOrEqual(60);
+	});
+
 	it("renders the first eight active detached subagents and summarizes the rest", () => {
 		const active = Array.from({ length: 10 }, (_, index) =>
 			makeSession({

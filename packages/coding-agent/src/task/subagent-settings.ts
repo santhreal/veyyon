@@ -134,7 +134,7 @@ export function delegationBlockedNotice(state: DelegationState): string | undefi
  * Defends against a missing table as well as a missing row: the schema default is
  * `{}`, but a caller can hold settings that answer `undefined` for everything (the
  * test stub does, and so does a read of a path the running build has not
- * registered), and indexing `undefined` here took down the whole `/agents` view
+ * registered), and indexing `undefined` here took down the whole Agents table
  * with "undefined is not an object" where an empty row is the right answer.
  */
 export function subagentSettingsFor(settings: Settings, name: string): SubagentAgentSettings {
@@ -204,7 +204,7 @@ export type SubagentEnableState =
 	| "off";
 
 /**
- * The state above, for display on `/agents` and in the Subagents tab.
+ * The state above, for display in the Subagents settings tab.
  *
  * Takes the row value directly rather than reading settings, so an editor holding
  * an unsaved value gets the same answer as the saved one — a second copy of this
@@ -226,10 +226,9 @@ export function isSubagentEnableDefaulted(configured: boolean | undefined): bool
 }
 
 /**
- * The words each state is shown as, owned here because two surfaces render it:
- * `/agents` and the Agents table in the Subagents settings tab. Each applies its
- * own colour; only the wording is shared, so the two cannot describe the same row
- * differently.
+ * The words each state is shown as, owned here rather than by the Agents table
+ * that renders them, so the spawn path and the screen describing it cannot
+ * describe the same row differently.
  */
 export const SUBAGENT_ENABLE_STATE_LABEL: Record<SubagentEnableState, string> = {
 	on: "Enabled",
@@ -259,6 +258,8 @@ export function nextSubagentEnableValue(agent: AgentDefinition, configured: bool
  */
 export interface EnabledSubagentSource {
 	readonly enabledAgentNames: string[];
+	/** The subset set up to investigate rather than to change things. See `task/agent-role.ts`. */
+	readonly investigativeAgentNames: string[];
 }
 
 /**
@@ -271,7 +272,32 @@ export interface EnabledSubagentSource {
  * tool then refuses.
  */
 export function enabledSubagentNames(spawner: unknown): string[] {
-	const names = (spawner as Partial<EnabledSubagentSource> | undefined)?.enabledAgentNames;
+	return readNameList(spawner, "enabledAgentNames");
+}
+
+/**
+ * The enabled agent types set up to INVESTIGATE rather than to change things, or `[]` when there is
+ * no task tool.
+ *
+ * Asked separately from {@link enabledSubagentNames} because the prompt needs a different answer from
+ * it: whether delegation is possible at all is one question, and whether AUDIT work may be delegated
+ * is another. Conflating them is what shipped "use `task` to map unknown code" to sessions whose only
+ * enabled agent was a worker set up to edit files.
+ */
+export function investigativeSubagentNames(spawner: unknown): string[] {
+	return readNameList(spawner, "investigativeAgentNames");
+}
+
+/**
+ * Read one of the spawner's name lists defensively.
+ *
+ * The spawner is `unknown` because the prompt build receives whatever the tool registry holds, which
+ * may be a test stub, a tool from a build that predates the property, or nothing at all. Every element
+ * is type-checked rather than trusted, so a malformed list degrades to the names that ARE strings
+ * instead of putting `undefined` into prompt prose.
+ */
+function readNameList(spawner: unknown, key: keyof EnabledSubagentSource): string[] {
+	const names = (spawner as Partial<EnabledSubagentSource> | undefined)?.[key];
 	return Array.isArray(names) ? names.filter((name): name is string => typeof name === "string") : [];
 }
 

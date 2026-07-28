@@ -13,6 +13,7 @@ import { formatCount, formatNumber, isRecord, sanitizeText } from "@veyyon/utils
 import { settings } from "../config/settings-instance";
 import { EXIT_CODE_NOTICE_RE } from "../exec/exit-notice";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
+import { modelBadgeFromSelector } from "../modes/components/agent-model-badge";
 import { formatContextUsage } from "../modes/components/status-line/context-thresholds";
 import { getMarkdownTheme } from "../modes/theme/markdown-theme";
 import type { Theme } from "../modes/theme/theme";
@@ -115,8 +116,11 @@ function appendAgentStats(
 	if (opts.cost > 0) {
 		line += `${theme.sep.dot}${theme.fg("statusLineCost", `$${opts.cost.toFixed(2)}`)}`;
 	}
+	// One badge formatter for every surface that shows a subagent's model: the
+	// widget used to print the raw `provider/id:level` selector while the agent
+	// roster printed `id ◒ level`, so the same agent read two ways.
 	if (opts.resolvedModel && opts.showResolvedModelBadge) {
-		line += `${theme.sep.dot}${theme.fg("dim", truncateToWidth(replaceTabs(opts.resolvedModel), 30))}`;
+		line += `${theme.sep.dot}${truncateToWidth(modelBadgeFromSelector(opts.resolvedModel, theme), 30)}`;
 	}
 	return line;
 }

@@ -21,6 +21,7 @@
  * accident, and that is pinned too.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
+import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { Settings } from "../../../config/settings";
 import type { AgentSession } from "../../../session/agent-session";
 import { getThemeByName, setThemeInstance } from "../../theme/theme";
@@ -78,7 +79,7 @@ function footline(settings: Record<string, unknown>, width = 120): string {
 	statusLine.updateSettings(settings as never);
 	const line = statusLine.renderQuietLine(width);
 	if (!line) throw new Error("no footline rendered");
-	return line.replace(/\x1b\[[0-9;]*m/g, "");
+	return stripAnsi(line);
 }
 
 /** The gauge's own glyph: the one part of the line that is unmistakably the gauge. */

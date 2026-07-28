@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
+import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { Settings } from "../../../config/settings";
 import type { AgentSession } from "../../../session/agent-session";
 import { getThemeByName, setThemeInstance } from "../../theme/theme";
@@ -80,7 +81,7 @@ describe("StatusLineComponent", () => {
 		// Let's get the border and see if Prewalk is rendered.
 		const border = statusLine.getTopBorder(100);
 		// SGR codes might be included, so we check if the stripped content contains "Prewalk"
-		const stripped = border.content.replace(/\x1b\[[0-9;]*m/g, "");
+		const stripped = stripAnsi(border.content);
 		expect(stripped).toContain("Prewalk");
 	});
 });

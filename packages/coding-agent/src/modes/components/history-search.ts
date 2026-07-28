@@ -26,11 +26,12 @@ import {
 	MODAL_SIZING_MEDIUM,
 	ModalRevealDriver,
 	type ModalShellGeometry,
+	modalNeedsCompactPadding,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
 	withCompact,
 } from "./modal-shell";
-import { centeredWindow, contentRowWidth, renderScrollableList } from "./selector-helpers";
+import { centeredWindow, renderScrollableList, selectionBand } from "./selector-helpers";
 
 /** Visible result rows; also the jump distance for PageUp/PageDown. */
 const MAX_VISIBLE = 10;
@@ -121,38 +122,38 @@ class HistoryResultsList implements Component {
 
 		const { startIndex, endIndex } = centeredWindow(this.#selectedIndex, this.#results.length, this.#maxVisible);
 
-		const rowWidth = contentRowWidth(width, this.#results.length, this.#maxVisible);
-		const rows: string[] = [];
+		lines.push(
+			...renderScrollableList(
+				{ width, visibleRows: endIndex - startIndex, totalRows: this.#results.length, scrollOffset: startIndex },
+				rowWidth => {
+					const rows: string[] = [];
+					for (let i = startIndex; i < endIndex; i++) {
+						const entry = this.#results[i];
+						const isSelected = i === this.#selectedIndex;
 
-		for (let i = startIndex; i < endIndex; i++) {
-			const entry = this.#results[i];
-			const isSelected = i === this.#selectedIndex;
+						const timeStr = relativeTime(entry.created_at);
+						const timeWidth = visibleWidth(timeStr);
+						const showTime = rowWidth >= gutterWidth + 12 + timeWidth;
 
-			const timeStr = relativeTime(entry.created_at);
-			const timeWidth = visibleWidth(timeStr);
-			const showTime = rowWidth >= gutterWidth + 12 + timeWidth;
+						const promptBudget = Math.max(4, rowWidth - gutterWidth - (showTime ? timeWidth + 1 : 0));
+						const normalized = collapseWhitespace(entry.prompt);
+						const plain = truncateToWidth(normalized, promptBudget);
+						const highlighted = highlightTokens(plain, this.#tokens);
 
-			const promptBudget = Math.max(4, rowWidth - gutterWidth - (showTime ? timeWidth + 1 : 0));
-			const normalized = collapseWhitespace(entry.prompt);
-			const plain = truncateToWidth(normalized, promptBudget);
-			const highlighted = highlightTokens(plain, this.#tokens);
+						const cursor = isSelected ? theme.fg("accent", cursorSymbol) : padding(gutterWidth);
+						let line = cursor + (isSelected ? theme.bold(highlighted) : highlighted);
 
-			const cursor = isSelected ? theme.fg("accent", cursorSymbol) : padding(gutterWidth);
-			let line = cursor + (isSelected ? theme.bold(highlighted) : highlighted);
+						if (showTime) {
+							// Pad the prompt region so the timestamp sits flush right with a one-cell gap.
+							line = `${truncateToWidth(line, rowWidth - timeWidth - 1, Ellipsis.Unicode, true)} ${theme.fg("dim", timeStr)}`;
+						}
 
-			if (showTime) {
-				// Pad the prompt region so the timestamp sits flush right with a one-cell gap.
-				line = `${truncateToWidth(line, rowWidth - timeWidth - 1, Ellipsis.Unicode, true)} ${theme.fg("dim", timeStr)}`;
-			}
-
-			rows.push(
-				isSelected
-					? theme.bg("selectedBg", truncateToWidth(line, rowWidth, Ellipsis.Omit, true))
-					: truncateToWidth(line, rowWidth),
-			);
-		}
-
-		lines.push(...renderScrollableList(rows, { width, totalRows: this.#results.length, scrollOffset: startIndex }));
+						rows.push(isSelected ? selectionBand(line, rowWidth) : truncateToWidth(line, rowWidth));
+					}
+					return rows;
+				},
+			),
+		);
 		return lines;
 	}
 }
@@ -312,7 +313,7 @@ export class HistorySearchComponent implements Component {
 
 	render(width: number): readonly string[] {
 		const height = process.stdout.rows || 40;
-		const sizing = withCompact(MODAL_SIZING_MEDIUM, height < 24);
+		const sizing = withCompact(MODAL_SIZING_MEDIUM, modalNeedsCompactPadding(height, MODAL_SIZING_MEDIUM));
 		const dims = computeModalDims(width, height, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;

@@ -25,7 +25,7 @@ export type AgentStatus = "running" | "idle" | "parked" | "aborted";
 /**
  * - `main`/`sub`: the user-facing agent tree (driving agent + task subagents).
  * - `advisor`: a passive review transcript persisted like a subagent for usage
- *   attribution and Agent Hub observability, but never a peer — hidden from
+ *   attribution and Control Center observability, but never a peer — hidden from
  *   agent-facing rosters (`irc`, `history://`) and not messageable/revivable.
  */
 export type AgentKind = "main" | "sub" | "advisor";

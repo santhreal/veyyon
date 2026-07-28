@@ -1,5 +1,5 @@
 /**
- * Locks the ONE-PLACE agent-status visual language: the glyph form (Agent Hub
+ * Locks the ONE-PLACE agent-status visual language: the glyph form (Agent Control Center
  * roster) and the word form (transcript viewer header) must derive the SAME
  * color from the single owner for every status. This is the regression guard for
  * the pre-unification bug where the hub and viewer disagreed on status colors —

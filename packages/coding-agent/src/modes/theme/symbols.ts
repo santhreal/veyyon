@@ -96,6 +96,7 @@ export type SymbolKey =
 	| "icon.pi"
 	| "icon.ghost"
 	| "icon.agents"
+	| "icon.unread"
 	| "icon.job"
 	| "icon.cache"
 	| "icon.cacheMiss"
@@ -237,6 +238,24 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	// A bare stroke matching ✓/✗ — this used to be the literal word "warn",
 	// which leaked as text ("warn interrupted" in the resume dialog).
 	"status.warning": "!",
+	// FONT COVERAGE CONTRACT: this preset is what a user WITHOUT a Nerd Font
+	// sees, so every glyph in it has to exist in the monospace fonts a plain
+	// terminal actually falls back to. The bar is DejaVu Sans Mono and FreeMono,
+	// the two broad-repertoire monospace faces shipped nearly everywhere. Noto
+	// Sans Mono is deliberately NOT the bar: its repertoire stops at Latin,
+	// Greek and Cyrillic, so it lacks even ✓ and ✗ and leans on fontconfig to
+	// fall back to Noto Sans Symbols.
+	//
+	// Six picks failed that bar and were replaced on 2026-07-27. `⟳` (U+27F3)
+	// was the RUNNING status, and DejaVu does not have it, so every busy agent
+	// row in the Agent Control Center rendered a tofu box; it is `◐` now, which
+	// joins the `●`/`◦` circle family the other status marks already use.
+	// `⤵`/`⤴` (U+2935/U+2934) were the token in/out icons in the status line and
+	// exist in none of the three fonts checked; they are `↓`/`↑`. `⧉` (U+29C9)
+	// is `◫`, `⎇` (U+2387) is `◈` and `⦸` (U+29B8) is `⊗`.
+	//
+	// `every-unicode-glyph-exists-in-a-plain-monospace-font.test.ts` is the
+	// ratchet: a codepoint added here fails until it is measured and listed.
 	// WIDTH CONTRACT: every status glyph must be unambiguously ONE cell wide.
 	// East-Asian-ambiguous codepoints (ⓘ U+24D8) and emoji-presentation
 	// codepoints (⏳ U+231B, ⏹ U+23F9) render TWO cells in many terminal
@@ -245,12 +264,12 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	// 2026-07-22). Replacements come from narrow-safe ranges only.
 	"status.info": "i",
 	"status.pending": "⋯",
-	"status.disabled": "⦸",
+	"status.disabled": "⊗",
 	// House block style (see docs/internal/tui-design-language.md "Blockiness"):
 	// a bare presence marker is a square, not a circle. `▪` = present/on/done,
 	// `▫` = shadowed/auto. Kept distinct from the `■`/`□` checkbox squares.
 	"status.enabled": "▪",
-	"status.running": "⟳",
+	"status.running": "◐",
 	// ◦ pairs with the ● active mark as its unfilled state. The former ◌
 	// (U+25CC DOTTED CIRCLE) is the combining-mark placeholder glyph and
 	// reads as a rendering artifact in many fonts.
@@ -326,7 +345,7 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"icon.pause": "‖",
 	"icon.loop": "↻",
 	"icon.folder": "",
-	"icon.worktree": "⧉",
+	"icon.worktree": "◫",
 	"icon.search": "⌕",
 	// Ephemeral mark: the house "shadowed" square (see status.shadowed). The
 	// old 🗑 read as "this session is garbage"; its ◌ replacement (U+25CC
@@ -345,11 +364,14 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"icon.pi": "",
 	"icon.ghost": "",
 	"icon.agents": "",
+	// Unread agent-to-agent messages waiting on a roster row. `✉` is in every
+	// broad monospace face, unlike the `⧉` this row used to hard-code inline.
+	"icon.unread": "✉",
 	"icon.job": "",
 	"icon.cache": "",
 	"icon.cacheMiss": "⊘",
-	"icon.input": "⤵",
-	"icon.output": "⤴",
+	"icon.input": "↓",
+	"icon.output": "↑",
 	"icon.throughput": "",
 	"icon.host": "",
 	"icon.profile": "",
@@ -384,7 +406,7 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"thinking.high": "high",
 	"thinking.xhigh": "xhigh",
 	"thinking.max": "max",
-	"thinking.autoPending": "⟳",
+	"thinking.autoPending": "◐",
 	// Checkboxes
 	"checkbox.checked": "■",
 	"checkbox.unchecked": "□",
@@ -468,7 +490,7 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"tool.bash": ">",
 	"tool.ssh": "⇄",
 	"tool.lsp": "",
-	"tool.gh": "⎇",
+	"tool.gh": "◈",
 	"tool.webSearch": "⌕",
 	"tool.exa": "",
 	"tool.browser": "N",
@@ -644,6 +666,7 @@ export const NERD_SYMBOLS: SymbolMap = {
 	"icon.ghost": "\u{f02a0}",
 	// pick:  | alt: 
 	"icon.agents": "\uf0c0",
+	"icon.unread": "\uf0e0",
 	// pick:  (nf-fa-gear) | alt:
 	"icon.job": "\uf013",
 	// pick:  | alt:  
@@ -897,6 +920,7 @@ export const ASCII_SYMBOLS: SymbolMap = {
 	"icon.pi": "pi",
 	"icon.ghost": "@",
 	"icon.agents": "AG",
+	"icon.unread": "msg",
 	"icon.job": "bg",
 	"icon.output": "out:",
 	"icon.throughput": "tok/s:",

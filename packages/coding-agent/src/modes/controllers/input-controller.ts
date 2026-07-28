@@ -24,8 +24,8 @@ import type { InteractiveModeContext } from "../../modes/types";
 import { turnControlPrompts } from "../../prompts/turn-control/rows";
 import { USER_INTERRUPT_LABEL } from "../../session/messages";
 import { executeBuiltinSlashCommand } from "../../slash-commands/builtin-registry";
-import type { TuiSlashCommandHostContext } from "../../slash-commands/types";
 import { isSensitiveSlashCommand, normalizeSubmittedPrompt } from "../../slash-commands/helpers/parse";
+import type { TuiSlashCommandHostContext } from "../../slash-commands/types";
 import { isTinyTitleLocalModelKey } from "../../tiny/models";
 import { isLowSignalTitleInput } from "../../tiny/text";
 import { tinyTitleClient } from "../../tiny/title-client";
@@ -904,10 +904,7 @@ export class InputController {
 					this.ctx.session.model,
 					provider => this.ctx.session.agent.metadataForProvider(provider),
 					this.ctx.session.titleSystemPrompt,
-					providerText => {
-						const obfuscator = this.ctx.session.obfuscator;
-						return obfuscator?.hasSecrets() ? obfuscator.obfuscate(providerText) : providerText;
-					},
+					providerText => this.ctx.session.obfuscateProviderText(providerText),
 				)
 					.then(async title => {
 						// Re-check: a concurrent attempt for an earlier message may have

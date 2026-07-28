@@ -22,6 +22,7 @@
  */
 
 import { truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import type { Theme } from "../theme/theme";
 
 /** Visible cells of glowing trail at the newest edge. A little longer than a
@@ -96,7 +97,7 @@ export function paintHotTail(
 	const paddingLen = row.length - row.replace(/ +$/, "").length;
 	const padding = row.slice(row.length - paddingLen);
 	const body = row.slice(0, row.length - paddingLen);
-	const plain = body.replace(/\x1b\[[0-9;]*m/g, "");
+	const plain = stripAnsi(body);
 	const width = visibleWidth(plain);
 	if (width === 0) return row;
 	const tip = Math.min(TRAIL_CELLS, width);

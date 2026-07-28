@@ -1,18 +1,25 @@
 /**
- * Regression: the fullscreen transcript viewer must align the header, body, and
- * footer on a single shared gutter. The transcript components carry their own
- * 1-column left pad, so the viewer must NOT add a second outer gutter to body
- * rows — doing so shifted the content one column right of the "Agent Hub" title
- * (the reported "first char off / title shift"). Scrolling must also move the
- * visible window.
+ * The read-only transcript drill-in: the fallback the Agent Control Center opens
+ * for the two agents it cannot hand the main view over to, an advisor transcript
+ * and a collab guest whose sessions live on the host.
+ *
+ * Regression: the fullscreen viewer must align its header, body, and footer on a
+ * single shared gutter. The transcript components carry their own 1-column left
+ * pad, so the viewer must NOT add a second outer gutter to body rows: doing so
+ * shifted the content one column right of the title (the reported "first char
+ * off / title shift"). Scrolling must also move the visible window, and the
+ * remote path has to survive every way a host transcript can misbehave (a
+ * header-only first fetch, an oversized entry, rotation under the byte cursor).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import type { AgentHubRemote } from "@veyyon/coding-agent/modes/components/agent-hub";
-import { AgentTranscriptViewer } from "@veyyon/coding-agent/modes/components/agent-transcript-viewer";
+import {
+	type AgentTranscriptRemote,
+	AgentTranscriptViewer,
+} from "@veyyon/coding-agent/modes/components/agent-transcript-viewer";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { CURRENT_SESSION_VERSION } from "@veyyon/coding-agent/session/session-entries";
@@ -137,7 +144,7 @@ function messageLine(id: string, content: string): string {
 	});
 }
 
-function makeViewer(file: string, remote?: AgentHubRemote, ui?: TUI) {
+function makeViewer(file: string, remote?: AgentTranscriptRemote, ui?: TUI) {
 	const agents = new AgentRegistry();
 	agents.register({
 		id: "Main/advisor",
@@ -203,7 +210,7 @@ describe("AgentTranscriptViewer", () => {
 			viewer.render(80); // populate the scroll view before navigating
 			viewer.handleInput("g"); // scroll to top so the first message is visible
 			const lines = viewer.render(80).map(l => Bun.stripANSI(l));
-			const titleLine = lines.find(l => l.includes("Agent Hub"));
+			const titleLine = lines.find(l => l.includes("Transcript"));
 			const bodyLine = lines.find(l => l.includes("PROMPTMARKER"));
 			expect(titleLine).toBeDefined();
 			expect(bodyLine).toBeDefined();
@@ -378,7 +385,7 @@ describe("AgentTranscriptViewer", () => {
 			timestamp: TS,
 			cwd: "/tmp",
 		})}\n`;
-		const remote: AgentHubRemote = {
+		const remote: AgentTranscriptRemote = {
 			chat: () => {},
 			kill: () => {},
 			revive: () => {},
@@ -457,7 +464,7 @@ describe("AgentTranscriptViewer", () => {
 		})}\n`;
 		const transcript = Buffer.from(oversizedLine, "utf-8");
 		const calls: number[] = [];
-		const remote: AgentHubRemote = {
+		const remote: AgentTranscriptRemote = {
 			chat: () => {},
 			kill: () => {},
 			revive: () => {},
@@ -502,7 +509,7 @@ describe("AgentTranscriptViewer", () => {
 		const beforeSize = Buffer.byteLength(before, "utf-8");
 		const error = "transcript entry exceeds transcript fetch cap (4194304 bytes)";
 		const calls: number[] = [];
-		const remote: AgentHubRemote = {
+		const remote: AgentTranscriptRemote = {
 			chat: () => {},
 			kill: () => {},
 			revive: () => {},
@@ -541,7 +548,7 @@ describe("AgentTranscriptViewer", () => {
 		const afterSize = Buffer.byteLength(after, "utf-8");
 
 		let phase: "initial" | "rotated" | "post" = "initial";
-		const remote: AgentHubRemote = {
+		const remote: AgentTranscriptRemote = {
 			chat: () => {},
 			kill: () => {},
 			revive: () => {},

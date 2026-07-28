@@ -184,10 +184,43 @@ export function planModalChrome(input: {
 	};
 }
 
-/** Compact strip: reclaim vertical margin when the terminal is short. */
+/**
+ * Rows a modal keeps even when its margins would take more.
+ *
+ * 24 because that is the classic terminal height, and it is exactly what the
+ * compact path already hands the card. Matching it is what makes the boundary
+ * continuous: one row taller than compact must not be a smaller card.
+ */
+const MODAL_MIN_TALL_ROWS = 24;
+
+/**
+ * Whether a card at this height is space-starved and should shed its padding.
+ *
+ * The old test was `areaHeight <= 24`, read straight off the terminal, and it
+ * put a step in the middle of ordinary window sizes: a 24-row terminal gave a
+ * full-screen card with no padding, and a 25-row terminal gave a card the same
+ * height that spent four of its rows on padding, so growing the window by one
+ * row cost four rows of list. The question is not how tall the TERMINAL is. It
+ * is whether the card has room to spare, and it does not while its height is
+ * still pinned to the floor by {@link MODAL_MIN_TALL_ROWS}.
+ */
+export function modalNeedsCompactPadding(areaHeight: number, sizing: ModalSizing): boolean {
+	return areaHeight - 2 * sizing.vMargin <= MODAL_MIN_TALL_ROWS;
+}
+
+/**
+ * Compact strip: shed the padding a card cannot afford.
+ *
+ * It used to zero `vMargin` as well, which is what made leaving compact mode a
+ * cliff rather than a step: a compact card took the WHOLE screen, so the first
+ * height that stopped being compact dropped it by two full margins at once (14
+ * rows for LARGE) and the list lost more than half its rows. The margin is now
+ * handled continuously by the floor in {@link computeModalDims}, which already
+ * gives a short terminal its whole screen, so this only sheds padding.
+ */
 export function withCompact(sizing: ModalSizing, compact: boolean): ModalSizing {
 	if (!compact) return sizing;
-	return { ...sizing, vMargin: 0, hPad: 1, vPad: 0 };
+	return { ...sizing, hPad: 1, vPad: 0 };
 }
 
 export interface ModalDims {
@@ -207,7 +240,22 @@ export function computeModalDims(areaWidth: number, areaHeight: number, sizing: 
 	const maxWidth = clamp(areaWidth - 4, 0, sizing.maxWidth);
 	const preferred = Math.floor(areaWidth * sizing.widthPct);
 	const modalWidth = Math.min(areaWidth, clampLow(preferred, sizing.minWidth, maxWidth));
-	const modalHeight = Math.max(0, areaHeight - 2 * sizing.vMargin);
+	// A margin is breathing room, never a squeeze. Subtracting `vMargin` from both
+	// ends unconditionally made the card SHRINK as the terminal grew: at 24 rows
+	// the compact path takes the whole screen, and at 25 rows the full LARGE margin
+	// (7 each end) left an 11-row card whose body had no room for a single list row
+	// at all. Opening a list surface on a 25-to-30-row terminal, which is an
+	// ordinary split pane, showed an empty box. The floor keeps the card at
+	// MODAL_MIN_TALL_ROWS (or the whole screen when the screen is smaller than
+	// that), so height is monotonic in terminal height and the compact boundary is
+	// a step of zero rows instead of thirteen.
+	// The floor rises with the padding the card carries. A card that sheds its
+	// padding (the compact path) needs only the base floor; one that pays for
+	// padding is given four rows of height per row of padding BEFORE it starts
+	// paying, so switching the padding on can never cost the body a row. Without
+	// that, the body dropped three rows at the one height where padding came back.
+	const floorRows = Math.min(areaHeight, MODAL_MIN_TALL_ROWS + 4 * sizing.vPad);
+	const modalHeight = Math.max(areaHeight - 2 * sizing.vMargin, floorRows);
 	if (modalWidth < 20 || modalHeight < 6) return null;
 	const leftPad = Math.max(0, Math.floor((areaWidth - modalWidth) / 2));
 	const topPad = Math.max(0, Math.floor((areaHeight - modalHeight) / 2));

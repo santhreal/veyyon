@@ -9,7 +9,7 @@ import { type Component, matchesKey, padding, truncateToWidth, visibleWidth } fr
 import { isProviderEnabled } from "../../../discovery";
 import { theme } from "../../../modes/theme/theme";
 import { matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
-import { clampSelection, contentRowWidth, renderScrollableList, searchableChar } from "../selector-helpers";
+import { clampSelection, renderScrollableList, searchableChar, selectionBand } from "../selector-helpers";
 import { applyFilter } from "./state-manager";
 import type { ExtensionKind, ExtensionRow, ExtensionState } from "./types";
 
@@ -132,35 +132,36 @@ export class ExtensionList implements Component {
 		const startIdx = this.#scrollOffset;
 		const endIdx = Math.min(startIdx + this.#maxVisible, this.#listItems.length);
 
-		// Reserve the rightmost column for the scrollbar when overflowing
-		const rowWidth = contentRowWidth(width, this.#listItems.length, this.#maxVisible);
-
-		// Render visible items
-		const rows: string[] = [];
-		for (let i = startIdx; i < endIdx; i++) {
-			const listItem = this.#listItems[i];
-			const isSelected = this.#focused && i === this.#selectedIndex;
-			const isHovered = this.#focused && i === this.#hoveredIndex && !isSelected;
-
-			let rowStr: string;
-			if (listItem.type === "master") {
-				rowStr = this.#renderMasterSwitch(listItem, isSelected, rowWidth);
-			} else if (listItem.type === "kind-header") {
-				rowStr = this.#renderKindHeader(listItem, isSelected, rowWidth);
-			} else {
-				rowStr = this.#renderExtensionRow(listItem.item, isSelected, rowWidth, masterDisabled);
-			}
-			if (isHovered) rowStr = theme.bg("selectedBg", rowStr);
-			rows.push(rowStr);
-		}
-		this.#visibleCount = rows.length;
-
 		lines.push(
-			...renderScrollableList(rows, {
-				width,
-				totalRows: this.#listItems.length,
-				scrollOffset: this.#scrollOffset,
-			}),
+			...renderScrollableList(
+				{
+					width,
+					visibleRows: endIdx - startIdx,
+					totalRows: this.#listItems.length,
+					scrollOffset: this.#scrollOffset,
+				},
+				rowWidth => {
+					const rows: string[] = [];
+					for (let i = startIdx; i < endIdx; i++) {
+						const listItem = this.#listItems[i];
+						const isSelected = this.#focused && i === this.#selectedIndex;
+						const isHovered = this.#focused && i === this.#hoveredIndex && !isSelected;
+
+						let rowStr: string;
+						if (listItem.type === "master") {
+							rowStr = this.#renderMasterSwitch(listItem, isSelected, rowWidth);
+						} else if (listItem.type === "kind-header") {
+							rowStr = this.#renderKindHeader(listItem, isSelected, rowWidth);
+						} else {
+							rowStr = this.#renderExtensionRow(listItem.item, isSelected, rowWidth, masterDisabled);
+						}
+						if (isHovered) rowStr = selectionBand(rowStr, rowWidth);
+						rows.push(rowStr);
+					}
+					this.#visibleCount = rows.length;
+					return rows;
+				},
+			),
 		);
 
 		return lines;
@@ -177,9 +178,9 @@ export class ExtensionList implements Component {
 		let line = `${checkbox} ${icon} ${label}  ${badge}`;
 
 		if (isSelected) {
-			line = theme.bold(theme.fg("accent", line));
-			line = theme.bg("selectedBg", line);
-		} else if (!item.enabled) {
+			return selectionBand(theme.bold(theme.fg("accent", line)), width);
+		}
+		if (!item.enabled) {
 			line = theme.fg("dim", line);
 		}
 
@@ -188,16 +189,13 @@ export class ExtensionList implements Component {
 
 	#renderKindHeader(item: ListItem & { type: "kind-header" }, isSelected: boolean, width: number): string {
 		const countBadge = theme.fg("muted", `(${item.count})`);
-		let line = `${item.icon} ${item.label} ${countBadge}`;
+		const line = `${item.icon} ${item.label} ${countBadge}`;
 
 		if (isSelected) {
-			line = theme.bold(theme.fg("accent", line));
-			line = theme.bg("selectedBg", line);
-		} else {
-			line = theme.fg("muted", line);
+			return selectionBand(theme.bold(theme.fg("accent", line)), width);
 		}
 
-		return truncateToWidth(line, width);
+		return truncateToWidth(theme.fg("muted", line), width);
 	}
 
 	#renderExtensionRow(ext: ExtensionRow, isSelected: boolean, width: number, masterDisabled: boolean): string {
@@ -235,9 +233,10 @@ export class ExtensionList implements Component {
 			}
 		}
 
-		// Apply selection background
+		// The band covers the whole row so the highlight keeps its shape as the
+		// cursor moves between a short name and a long one.
 		if (isSelected) {
-			line = theme.bg("selectedBg", line);
+			return selectionBand(line, width);
 		}
 
 		return truncateToWidth(line, width);

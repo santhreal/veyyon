@@ -1,3 +1,4 @@
+import { THINKING_EFFORTS } from "@veyyon/catalog/effort";
 import { scope } from "arktype";
 
 // Schema construction is deferred behind modelsConfigSchemas(): even with the
@@ -22,7 +23,14 @@ function buildModelsConfigSchemas() {
 		"order?": "string[]",
 	});
 
+	// `"+": "reject"` because every key here NAMES a thinking level, and a key
+	// that names no level cannot do anything. ArkType allows undeclared keys by
+	// default, so `{ hihg: "minimal" }` used to validate, be carried into the
+	// config, and then never match: the remap silently did not happen and the
+	// level went to the server verbatim, which is the failure the map exists to
+	// prevent. Rejecting names the offending key at load instead.
 	const ReasoningEffortMapSchema = type({
+		"+": "reject",
 		"minimal?": "string",
 		"low?": "string",
 		"medium?": "string",
@@ -80,13 +88,42 @@ function buildModelsConfigSchemas() {
 		'"openai-completions" | "openai-responses" | "openai-codex-responses" | "azure-openai-responses" | "anthropic-messages" | "google-generative-ai" | "google-gemini-cli" | "google-vertex"',
 	);
 
+	// ArkType infers a literal union only from a literal definition, so the six
+	// levels are spelled here rather than built from `THINKING_EFFORTS`: a
+	// generated string would infer as `string` and every `defaultLevel` in this
+	// file would stop being checked. The guard below makes the spelling safe.
 	const EffortSchema = type('"minimal" | "low" | "medium" | "high" | "xhigh" | "max"');
 
 	const ThinkingControlModeSchema = type(
 		'"effort" | "budget" | "google-level" | "anthropic-adaptive" | "anthropic-budget-effort"',
 	);
 
-	const EFFORT_ORDER = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
+	/**
+	 * Fail closed if the schema's literals and the ladder in
+	 * `@veyyon/catalog/effort` disagree.
+	 *
+	 * Adding a level to the owner and forgetting this file is not a compile
+	 * error, and the result is not an error at runtime either: the new level
+	 * would be rejected as an unknown value, so a user's models config would fail
+	 * to load with a message naming their file rather than ours. This throws at
+	 * schema-build time instead, which happens the first time any models config
+	 * loads, and says which side is behind.
+	 */
+	for (const effort of THINKING_EFFORTS) {
+		if (EffortSchema(effort) instanceof type.errors) {
+			throw new Error(
+				`models config schema does not accept the effort level "${effort}". ` +
+					`@veyyon/catalog/effort owns the ladder (${THINKING_EFFORTS.join(", ")}); add the level to ` +
+					`EffortSchema and ReasoningEffortMapSchema in packages/coding-agent/src/config/models-config-schema.ts.`,
+			);
+		}
+	}
+
+	// The ladder itself is not restated. `THINKING_EFFORTS` is `readonly Effort[]`
+	// and TypeScript does not consider a string-enum member assignable to its own
+	// literal type, so the cast is what bridges the enum to ArkType's inferred
+	// union; the loop above is what makes it true rather than assumed.
+	const EFFORT_ORDER = THINKING_EFFORTS as readonly (typeof EffortSchema.infer)[];
 
 	/**
 	 * Accepts the canonical `efforts` vocabulary plus the legacy

@@ -8,6 +8,7 @@ import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 function strip(s: string): string {
 	return stripVTControlCharacters(s);
@@ -38,23 +39,13 @@ let geometryStub: { restore(): void } | undefined;
 beforeEach(async () => {
 	resetSettingsForTest();
 	await Settings.init({ inMemory: true });
-	geometryStub = stubStdoutGeometry(40);
+	geometryStub = stubStdoutGeometry({ rows: 40 });
 });
 
 afterEach(() => {
 	geometryStub?.restore();
 	geometryStub = undefined;
 });
-
-function stubStdoutGeometry(rows: number): { restore(): void } {
-	const rowsDesc = Object.getOwnPropertyDescriptor(process.stdout, "rows");
-	Object.defineProperty(process.stdout, "rows", { configurable: true, get: () => rows, set: () => {} });
-	return {
-		restore() {
-			if (rowsDesc) Object.defineProperty(process.stdout, "rows", rowsDesc);
-		},
-	};
-}
 
 function createSelector(
 	onCancel: () => void = () => {},

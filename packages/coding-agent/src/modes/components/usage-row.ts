@@ -1,6 +1,7 @@
 import type { Usage } from "@veyyon/ai";
 import { Container, Spacer, Text } from "@veyyon/tui";
 import { formatDuration, formatNumber } from "@veyyon/utils";
+import { withIcon } from "../../modes/theme/icon-label";
 import { theme } from "../../modes/theme/theme";
 import { tokensPerSecond } from "./status-line/token-rate";
 
@@ -24,13 +25,13 @@ import { tokensPerSecond } from "./status-line/token-rate";
 export function createUsageRowBlock(usage: Usage, durationMs?: number, ttftMs?: number): Container {
 	const totalInput = usage.input + usage.cacheWrite;
 	const parts: string[] = [];
-	parts.push(`${theme.icon.input} ${formatNumber(totalInput)}`);
-	parts.push(`${theme.icon.output} ${formatNumber(usage.output)}`);
+	parts.push(withIcon(theme.icon.input, formatNumber(totalInput)));
+	parts.push(withIcon(theme.icon.output, formatNumber(usage.output)));
 	if (usage.cacheRead > 0) {
-		parts.push(`${theme.icon.cache} ${formatNumber(usage.cacheRead)}`);
+		parts.push(withIcon(theme.icon.cache, formatNumber(usage.cacheRead)));
 	}
 	if (durationMs !== undefined && durationMs > 0) {
-		parts.push(`${theme.icon.time} ${formatDuration(durationMs)}`);
+		parts.push(withIcon(theme.icon.time, formatDuration(durationMs)));
 	}
 	if (ttftMs && ttftMs > 0) {
 		parts.push(`ttft ${(ttftMs / 1000).toFixed(1)}s`);
@@ -42,7 +43,7 @@ export function createUsageRowBlock(usage: Usage, durationMs?: number, ttftMs?: 
 	// status line so both surfaces publish the same number under the same rule.
 	const tokPerSec = tokensPerSecond(usage.output, durationMs);
 	if (tokPerSec !== null) {
-		parts.push(`${theme.icon.throughput} ${tokPerSec.toFixed(1)}/s`);
+		parts.push(withIcon(theme.icon.throughput, `${tokPerSec.toFixed(1)}/s`));
 	}
 	const block = new Container();
 	block.addChild(new Spacer(1));

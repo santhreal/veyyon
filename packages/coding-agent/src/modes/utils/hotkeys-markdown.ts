@@ -1,10 +1,19 @@
-import type { AppKeybinding, KeybindingsManager } from "../../config/keybindings";
+import type { Keybinding } from "@veyyon/tui";
+import type { KeybindingsManager } from "../../config/keybindings";
 
 export interface HotkeysMarkdownBindings {
 	keybindings: Pick<KeybindingsManager, "getDisplayString">;
 }
 
-function appKey(bindings: HotkeysMarkdownBindings, action: AppKeybinding): string {
+/**
+ * The live chord for an action, or `Disabled` when the user unbound it.
+ *
+ * This takes the whole `Keybinding` union rather than only the `app.*` half. The
+ * editor and composer rows used to hardcode their chords, so `/hotkeys` printed
+ * `Ctrl+U` at a user who had rebound `tui.editor.deleteToLineStart` to something
+ * else, in a panel whose entire purpose is showing what the keys are RIGHT NOW.
+ */
+function key(bindings: HotkeysMarkdownBindings, action: Keybinding): string {
 	return bindings.keybindings.getDisplayString(action) || "Disabled";
 }
 
@@ -14,45 +23,45 @@ export function buildHotkeysMarkdown(bindings: HotkeysMarkdownBindings): string 
 		"| Key | Action |",
 		"|-----|--------|",
 		"| `Arrow keys` | Move cursor / browse history (Up when empty) |",
-		"| `Option+Left/Right` | Move by word |",
-		"| `Ctrl+A` / `Home` / `Cmd+Left` | Start of line |",
-		"| `Ctrl+E` / `End` / `Cmd+Right` | End of line |",
+		`| \`${key(bindings, "tui.editor.cursorWordLeft")}\` / \`${key(bindings, "tui.editor.cursorWordRight")}\` | Move by word |`,
+		`| \`${key(bindings, "tui.editor.cursorLineStart")}\` | Start of line |`,
+		`| \`${key(bindings, "tui.editor.cursorLineEnd")}\` | End of line |`,
 		"",
 		"**Editing**",
 		"| Key | Action |",
 		"|-----|--------|",
-		"| `Enter` | Send message |",
-		"| `Shift+Enter` / `Alt+Enter` | New line |",
-		"| `Ctrl+W` / `Option+Backspace` | Delete word backwards |",
-		"| `Ctrl+U` | Delete to start of line |",
-		"| `Ctrl+K` | Delete to end of line |",
-		`| \`${appKey(bindings, "app.clipboard.copyLine")}\` | Copy current line |`,
-		`| \`${appKey(bindings, "app.clipboard.copyPrompt")}\` | Copy whole prompt |`,
+		`| \`${key(bindings, "tui.input.submit")}\` | Send message |`,
+		`| \`${key(bindings, "tui.input.newLine")}\` / \`Alt+Enter\` | New line |`,
+		`| \`${key(bindings, "tui.editor.deleteWordBackward")}\` | Delete word backwards |`,
+		`| \`${key(bindings, "tui.editor.deleteToLineStart")}\` | Delete to start of line |`,
+		`| \`${key(bindings, "tui.editor.deleteToLineEnd")}\` | Delete to end of line |`,
+		`| \`${key(bindings, "app.clipboard.copyLine")}\` | Copy current line |`,
+		`| \`${key(bindings, "app.clipboard.copyPrompt")}\` | Copy whole prompt |`,
 		"",
 		"**Other**",
 		"| Key | Action |",
 		"|-----|--------|",
-		"| `Tab` | Path completion / accept autocomplete |",
-		`| \`${appKey(bindings, "app.interrupt")}\` | Cancel autocomplete / interrupt active work |`,
-		`| \`${appKey(bindings, "app.clear")}\` | Clear editor (first) / exit (second) |`,
-		`| \`${appKey(bindings, "app.exit")}\` | Exit (when editor is empty) |`,
-		`| \`${appKey(bindings, "app.suspend")}\` | Suspend to background |`,
-		`| \`${appKey(bindings, "app.bash.background")}\` | Move the running foreground command to a background job |`,
-		`| \`${appKey(bindings, "app.display.reset")}\` | Reset terminal display |`,
-		`| \`${appKey(bindings, "app.thinking.cycle")}\` | Cycle thinking level |`,
-		`| \`${appKey(bindings, "app.model.cycleForward")}\` | Cycle role models (slow/default/smol) |`,
-		`| \`${appKey(bindings, "app.model.cycleBackward")}\` | Cycle role models (backward) |`,
-		`| \`${appKey(bindings, "app.model.selectTemporary")}\` | Select model (temporary) |`,
-		`| \`${appKey(bindings, "app.model.select")}\` | Select model (set roles) |`,
-		`| \`${appKey(bindings, "app.plan.toggle")}\` | Toggle plan mode |`,
-		`| \`${appKey(bindings, "app.history.search")}\` | Search prompt history |`,
-		`| \`${appKey(bindings, "app.tools.expand")}\` | Toggle tool output expansion |`,
-		`| \`${appKey(bindings, "app.thinking.toggle")}\` | Toggle thinking block visibility |`,
-		`| \`${appKey(bindings, "app.editor.external")}\` | Edit message in external editor |`,
-		`| \`${appKey(bindings, "app.retry")}\` | Retry last failed assistant turn |`,
-		`| \`${appKey(bindings, "app.clipboard.pasteImage")}\` | Paste image or text from clipboard |`,
+		`| \`${key(bindings, "tui.input.tab")}\` | Path completion / accept autocomplete |`,
+		`| \`${key(bindings, "app.interrupt")}\` | Cancel autocomplete / interrupt active work |`,
+		`| \`${key(bindings, "app.clear")}\` | Clear editor (first) / exit (second) |`,
+		`| \`${key(bindings, "app.exit")}\` | Exit (when editor is empty) |`,
+		`| \`${key(bindings, "app.suspend")}\` | Suspend to background |`,
+		`| \`${key(bindings, "app.bash.background")}\` | Move the running foreground command to a background job |`,
+		`| \`${key(bindings, "app.display.reset")}\` | Reset terminal display |`,
+		`| \`${key(bindings, "app.thinking.cycle")}\` | Cycle thinking level |`,
+		`| \`${key(bindings, "app.model.cycleForward")}\` | Cycle role models (slow/default/smol) |`,
+		`| \`${key(bindings, "app.model.cycleBackward")}\` | Cycle role models (backward) |`,
+		`| \`${key(bindings, "app.model.selectTemporary")}\` | Select model (temporary) |`,
+		`| \`${key(bindings, "app.model.select")}\` | Select model (set roles) |`,
+		`| \`${key(bindings, "app.plan.toggle")}\` | Toggle plan mode |`,
+		`| \`${key(bindings, "app.history.search")}\` | Search prompt history |`,
+		`| \`${key(bindings, "app.tools.expand")}\` | Toggle tool output expansion |`,
+		`| \`${key(bindings, "app.thinking.toggle")}\` | Toggle thinking block visibility |`,
+		`| \`${key(bindings, "app.editor.external")}\` | Edit message in external editor |`,
+		`| \`${key(bindings, "app.retry")}\` | Retry last failed assistant turn |`,
+		`| \`${key(bindings, "app.clipboard.pasteImage")}\` | Paste image or text from clipboard |`,
 		"| Hold `Space` | Speech-to-text (push-to-talk): hold to record, release to transcribe |",
-		`| \`${appKey(bindings, "app.agents.hub")}\` / \`${appKey(bindings, "app.session.observe")}\` / double-tap \`←\` (empty editor) | Open the agent hub |`,
+		`| \`${key(bindings, "app.agents.hub")}\` / \`${key(bindings, "app.session.observe")}\` / double-tap \`←\` (empty editor) | Open the Agent Control Center |`,
 		"| `#<number>` | GitHub issue/PR reference (e.g. `#3164` → `pr://`/`issue://`) |",
 		"| `#` / `#<text>` | Prompt actions (copy / undo / move cursor) |",
 		"| `/` | Slash commands |",

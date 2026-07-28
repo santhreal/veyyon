@@ -1,6 +1,7 @@
 import { Text } from "@veyyon/tui";
 import type { BackgroundTanDispatchDetails, CustomMessage } from "../../session/messages";
 import { replaceTabs } from "../../tools/render-utils";
+import { withIcon } from "../theme/icon-label";
 import { theme } from "../theme/theme";
 import { TranscriptBlock } from "./transcript-container";
 
@@ -23,7 +24,7 @@ export function createBackgroundTanDispatchBlock(message: CustomMessage<unknown>
 	const jobId = details?.jobId ?? "unknown";
 	const work = details?.work ? previewWork(details.work) : undefined;
 	const line = [
-		theme.fg("muted", `${theme.icon.output} Tangent dispatched`),
+		theme.fg("muted", withIcon(theme.icon.output, "Tangent dispatched")),
 		theme.fg("dim", "[task]"),
 		theme.fg("accent", jobId),
 		work ? theme.fg("dim", `${theme.format.dash} ${work}`) : undefined,

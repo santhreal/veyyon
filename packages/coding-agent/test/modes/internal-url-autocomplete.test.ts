@@ -87,6 +87,19 @@ describe("internal-url-autocomplete", () => {
 			expect(result!.items.map(i => i.value).sort()).toEqual(["skill://humanizer", "skill://react", "skill://tla"]);
 		});
 
+		/**
+		 * Multiple top-level SDK sessions share one compatibility snapshot. A
+		 * session-aware completion request must never list whichever session
+		 * happened to replace that process-global slot most recently.
+		 */
+		it("prefers the calling session's skills over the global snapshot", async () => {
+			const result = await getInternalUrlSuggestions("skill://", undefined, [
+				skill("session-owned", "Only this session"),
+			]);
+
+			expect(result?.items.map(i => i.value)).toEqual(["skill://session-owned"]);
+		});
+
 		it("fuzzy-filters candidates by the typed query", async () => {
 			const result = await getInternalUrlSuggestions("skill://hum");
 			expect(result!.items.map(i => i.value)).toEqual(["skill://humanizer"]);
@@ -214,7 +227,12 @@ describe("internal-url-autocomplete", () => {
 
 	describe("PromptActionAutocompleteProvider integration", () => {
 		it("returns url suggestions before falling back to file/emoji completion", async () => {
-			const provider = new PromptActionAutocompleteProvider([], process.cwd(), []);
+			const provider = new PromptActionAutocompleteProvider(
+				[],
+				process.cwd(),
+				[],
+				[skill("humanizer", "Remove AI tells")],
+			);
 			const line = "look at skill://hum";
 			const result = await provider.getSuggestions([line], 0, line.length);
 			expect(result?.prefix).toBe("skill://hum");
@@ -222,7 +240,12 @@ describe("internal-url-autocomplete", () => {
 		});
 
 		it("applies the selected url candidate in place", async () => {
-			const provider = new PromptActionAutocompleteProvider([], process.cwd(), []);
+			const provider = new PromptActionAutocompleteProvider(
+				[],
+				process.cwd(),
+				[],
+				[skill("humanizer", "Remove AI tells")],
+			);
 			const line = "look at skill://hum";
 			const result = await provider.getSuggestions([line], 0, line.length);
 			const applied = provider.applyCompletion([line], 0, line.length, result!.items[0]!, result!.prefix);

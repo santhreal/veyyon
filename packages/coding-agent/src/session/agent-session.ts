@@ -197,6 +197,11 @@ import {
 	resolveCompactionEngineAction,
 	toAgentCompactionSettings,
 } from "../config/compaction-strategy";
+import {
+	type EffortSource,
+	resolveEffort,
+	withLegacyDefaultEffort,
+} from "../config/effort-resolver";
 import type { ModelRegistry } from "../config/model-registry";
 import {
 	extractExplicitThinkingSelector,
@@ -321,12 +326,14 @@ import {
 	type SecretObfuscator,
 } from "../secrets/obfuscator";
 import { PENDING_PLACEHOLDER_RE } from "../secrets/placeholder";
+import { unknownSlashCommandMessage, unresolvedSlashCommandName } from "../slash-commands/helpers/parse";
 import { invalidateHostMetadata } from "../ssh/connection-manager";
 import { usesCodexTaskPrompt } from "../task/prompt-policy";
 import { enabledSubagentNames, resolveDelegation } from "../task/subagent-settings";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,
+	configuredThinkingLevelsForModel,
 	clampAutoThinkingEffort,
 	concreteThinkingLevel,
 	parseConfiguredThinkingLevel,
@@ -381,6 +388,9 @@ import {
 } from "./codex-auto-reset";
 import { findCompactMode } from "./compact-modes";
 import { type ContentBlockLike, contentText } from "./content-text";
+// The accounting, not the drawing. Both of these used to be imported from `modes/`, which put the
+// terminal UI on the session engine's graph and cost the layering gate a standing exception each.
+import { computeNonMessageBreakdown, computeNonMessageTokens, computeStoredMessagesTokens } from "./context-usage";
 import {
 	collectPendingToolCalls,
 	createInterruptedTurnAbortMessage,
@@ -413,15 +423,7 @@ import {
 import { OperatorNotices, stderrNoticeSink } from "./operator-notices";
 import { disposeOwnedResources } from "./owned-resources";
 import { normalizeRoots, relativizePathsUnderRoots } from "./relativize-paths";
-// The accounting, not the drawing. Both of these used to be imported from `modes/`, which put the
-// terminal UI on the session engine's graph and cost the layering gate a standing exception each.
-import {
-	computeNonMessageBreakdown,
-	computeNonMessageTokens,
-	computeStoredMessagesTokens,
-} from "./context-usage";
 import type { BuildSessionContextOptions, SessionContext } from "./session-context";
-import { parseTurnBudget } from "./turn-budget";
 import { getLatestCompactionEntry, getRestorableSessionModels } from "./session-context";
 import { formatSessionDumpText } from "./session-dump-format";
 import type {
@@ -436,6 +438,7 @@ import { formatSessionHistoryMarkdown } from "./session-history-format";
 import { cleanupEmptyMoveSession, type SessionManager } from "./session-manager";
 import type { ShakeMode, ShakeResult } from "./shake-types";
 import { ToolChoiceQueue } from "./tool-choice-queue";
+import { parseTurnBudget } from "./turn-budget";
 import { planTurnPersistence, sameMessageContent, sessionMessagePersistenceKey } from "./turn-persistence";
 import { classifyUnexpectedStop, isUnexpectedStopCandidate } from "./unexpected-stop-classifier";
 import { YieldQueue } from "./yield-queue";
@@ -865,6 +868,17 @@ export interface SecretRuntimeLease {
 	readonly cwd: string;
 	/** Live expansion authority. Undefined when expansion is disabled. */
 	readonly expansionObfuscator: SecretObfuscator | undefined;
+	/**
+	 * Redaction-only authority, which outlives expansion.
+	 *
+	 * This is a different object from `expansionObfuscator` and outlives it on
+	 * purpose: a disable or a cwd move off the vault ends expansion while the
+	 * redaction tombstones stay, so a value the model has already seen as a
+	 * placeholder can never travel back to a provider as plaintext. Prefer the
+	 * `obfuscate*` closures below; this object is exposed for the few consumers
+	 * that hold a redactor themselves rather than calling through the lease.
+	 */
+	readonly redactionObfuscator: SecretObfuscator | undefined;
 	/** True when the redaction-only authority still carries live values or tombstones. */
 	readonly hasRedactions: boolean;
 	obfuscateText(text: string): string;
@@ -899,9 +913,11 @@ export interface AgentSessionConfig {
 	 */
 	bypassAllApprovals?: boolean;
 	/** Models to cycle through with Ctrl+P (from --models flag) */
-	scopedModels?: Array<{ model: Model; thinkingLevel?: ThinkingLevel }>;
+	scopedModels?: Array<{ model: Model; thinkingLevel?: ConfiguredThinkingLevel }>;
 	/** Initial session thinking selector. */
 	thinkingLevel?: ConfiguredThinkingLevel;
+	/** Origin of the initial selector, used to distinguish a session override from a saved default. */
+	thinkingSource?: EffortSource;
 	/** Prewalk from the starting model to a fast/cheap target at the first edit/write once the todo list exists. */
 	prewalk?: Prewalk;
 	/** Force read-only plan mode at start, auto-approve on the model's first
@@ -1018,9 +1034,7 @@ export interface AgentSessionConfig {
 	 * Reload and atomically replace the complete secret runtime for a cwd.
 	 * The SDK owns config/env/vault loading; the session owns when lifecycle changes require it.
 	 */
-	refreshSecretRuntime?: (
-		cwd: string,
-	) => Promise<SecretRuntimeLease | SecretObfuscator | undefined>;
+	refreshSecretRuntime?: (cwd: string) => Promise<SecretRuntimeLease | SecretObfuscator | undefined>;
 	/** Argot shorthand codec (experimental); expands handles before display/tools. */
 	argot?: ArgotSession;
 	/** Inherited eval executor session id from a parent agent. */
@@ -1897,9 +1911,11 @@ export class AgentSession {
 
 	readonly configWarnings: string[] = [];
 
-	#scopedModels: Array<{ model: Model; thinkingLevel?: ThinkingLevel }>;
+	#scopedModels: Array<{ model: Model; thinkingLevel?: ConfiguredThinkingLevel }>;
 	/** Effective, metadata-clamped thinking level applied to the agent (never `auto`). */
 	#thinkingLevel: ThinkingLevel | undefined;
+	/** Explicit session-only choice. Undefined lets selector and saved per-model defaults apply. */
+	#sessionThinkingOverride: ConfiguredThinkingLevel | undefined;
 	/** True when the user configured `auto`; the effective level is resolved per turn. */
 	#autoThinking: boolean = false;
 	/** The level `auto` last resolved to (for UI); undefined until a turn is classified. */
@@ -2226,9 +2242,7 @@ export class AgentSession {
 	#secretRuntime: SecretRuntimeLease | undefined;
 	#leaseSecretRuntime: (() => Promise<SecretRuntimeLease>) | undefined;
 	#resolveSecretRuntimeLeaseForContext: ((context: Context) => SecretRuntimeLease | undefined) | undefined;
-	#refreshSecretRuntime:
-		| ((cwd: string) => Promise<SecretRuntimeLease | SecretObfuscator | undefined>)
-		| undefined;
+	#refreshSecretRuntime: ((cwd: string) => Promise<SecretRuntimeLease | SecretObfuscator | undefined>) | undefined;
 	#argot: ArgotSession | undefined;
 	/** Per-streaming-message argot display decoder (seam 3); reset on each assistant message_start. */
 	#argotStreamDisplay: ArgotStreamDisplayDecoder | undefined;
@@ -2739,6 +2753,7 @@ export class AgentSession {
 		this.#isSubagent = config.isSubagent === true;
 		this.#asyncJobManager = config.asyncJobManager ?? config.ownedAsyncJobManager;
 		this.#scopedModels = config.scopedModels ?? [];
+		this.#sessionThinkingOverride = config.thinkingSource === "session" ? config.thinkingLevel : undefined;
 		if (config.thinkingLevel === AUTO_THINKING) {
 			// `auto` is session-level: keep the flag and show a provisional concrete
 			// level (the agent's initial effort was already set by the caller) until
@@ -3419,11 +3434,17 @@ export class AgentSession {
 				// so two SessionManagers never hold the same file at once.
 				this.#advisorRecorderClosed,
 			);
+			// Resolved per advisor delta, not captured here: the advisor outlives every
+			// secret refresh, so a snapshot would redact only what was configured when
+			// the advisor started and would send a `/secret add`ed value in plaintext.
+			const liveRedactor = (): SecretObfuscator | undefined => this.providerRedactor;
 			const runtime = new AdvisorRuntime(advisorAgentFacade, {
 				snapshotMessages: () => this.agent.state.messages,
 				enqueueAdvice: (note, severity) => this.#routeAdvice(advisorRef, note, severity),
 				maintainContext: incomingTokens => this.#maintainAdvisorContext(advisorRef, incomingTokens),
-				obfuscator: this.#obfuscator,
+				get obfuscator(): SecretObfuscator | undefined {
+					return liveRedactor();
+				},
 				beginAdvisorUpdate: () => advisorRef.emissionGuard.beginUpdate(),
 				onTurnError: async error => {
 					// Mirror the auth-gateway's usage-limit remedy: the in-stream a/b/c
@@ -3959,6 +3980,52 @@ export class AgentSession {
 	}
 
 	/**
+	 * Whether anything outbound still needs hiding, live value or tombstone.
+	 *
+	 * Read this instead of `#obfuscator?.hasSecrets()` on any redaction path.
+	 * `#obfuscator` is the EXPANSION authority and is undefined the moment
+	 * expansion stops (a `/secret disable`, or a cwd move off the vault), while
+	 * the runtime lease deliberately keeps a redaction-only obfuscator alive
+	 * across exactly those transitions. A value the model has already seen as a
+	 * placeholder must never travel back to a provider as plaintext because
+	 * expansion was switched off after the fact.
+	 */
+	get #hasProviderRedactions(): boolean {
+		return this.#secretRuntime?.hasRedactions ?? this.#obfuscator?.hasSecrets() ?? false;
+	}
+
+	/**
+	 * The live redaction authority, for a consumer that must hold the object.
+	 *
+	 * Read through a getter rather than captured at construction: a consumer that
+	 * snapshots the redactor keeps redacting whatever was configured the moment it
+	 * was built, so a secret added mid-session by `/secret add` never reaches it,
+	 * and a session that started with no secrets at all never redacts anything.
+	 *
+	 * READ THIS, NOT `obfuscator`, ON ANY PATH THAT HIDES A VALUE. `obfuscator` is
+	 * the expansion authority, so it is undefined after a `/secret disable` or a
+	 * cwd move off the vault, and a redaction path that reads it stops redacting
+	 * at exactly the moment the operator asked for less exposure, not more. Use
+	 * `obfuscator` only to expand a placeholder or to mutate expansion state.
+	 */
+	get providerRedactor(): SecretObfuscator | undefined {
+		return this.#secretRuntime?.redactionObfuscator ?? this.#obfuscator;
+	}
+
+	/** Live session-lifetime provider redactor for a whole context. */
+	#obfuscateContextForProvider(context: Context): Context {
+		const runtime = this.#secretRuntime;
+		return runtime ? runtime.obfuscateContext(context) : obfuscateProviderContext(this.#obfuscator, context);
+	}
+
+	/** Live session-lifetime provider redactor for already-converted messages. */
+	#obfuscateMessagesForProvider(messages: Message[]): Message[] {
+		const runtime = this.#secretRuntime;
+		if (runtime) return runtime.obfuscateMessages(messages);
+		return this.#obfuscator ? obfuscateMessages(this.#obfuscator, messages) : messages;
+	}
+
+	/**
 	 * Install the SDK coordinator's winning snapshot in the session view.
 	 *
 	 * This method is synchronous on purpose: the coordinator updates its closure
@@ -3990,6 +4057,7 @@ export class AgentSession {
 			revision: 0,
 			cwd: this.sessionManager.getCwd(),
 			expansionObfuscator: obfuscator,
+			redactionObfuscator: obfuscator,
 			hasRedactions: obfuscator?.hasSecrets() ?? false,
 			obfuscateText: text => obfuscator?.obfuscate(text) ?? text,
 			obfuscateMessages: messages => (obfuscator ? obfuscateMessages(obfuscator, messages) : messages),
@@ -4176,9 +4244,18 @@ export class AgentSession {
 		};
 		// The assistant message already persists the full arguments; store only
 		// the command/path projection the resume warning renders.
-		const args = summarizeToolArguments(event.args);
+		//
+		// REDACTED, because `event.args` are post-expansion. The assistant message
+		// holds the placeholder the model wrote; this event holds what the tool was
+		// actually handed, which for `#GITHUB_TOKEN#` is the credential itself. The
+		// session file must never carry it: the vault is encrypted at rest and this
+		// entry sits beside it in the same directory, and it travels through
+		// `/share` and exports. The intent goes through the same redactor because
+		// the model can quote an argument back into it.
+		const redact = (text: string): string => this.obfuscateProviderText(text);
+		const args = summarizeToolArguments(event.args, redact);
 		if (args) data.args = args;
-		if (event.intent) data.intent = event.intent;
+		if (event.intent) data.intent = redact(event.intent);
 		this.sessionManager.appendCustomEntry(TOOL_EXECUTION_START_CUSTOM_TYPE, data);
 	}
 
@@ -7388,6 +7465,11 @@ export class AgentSession {
 		return this.#autoThinking ? AUTO_THINKING : this.#thinkingLevel;
 	}
 
+	/** Session-only effort choice, excluding selector and saved per-model defaults. */
+	get sessionThinkingOverride(): ConfiguredThinkingLevel | undefined {
+		return this.#sessionThinkingOverride;
+	}
+
 	/** True when `auto` thinking mode is active. */
 	get isAutoThinking(): boolean {
 		return this.#autoThinking;
@@ -8331,7 +8413,7 @@ export class AgentSession {
 			modelRegistry: this.#modelRegistry,
 			model: this.model,
 			isIdle: () => !this.isStreaming,
-			obfuscateProviderText: text => this.#obfuscator?.obfuscate(text) ?? text,
+			obfuscateProviderText: text => this.obfuscateProviderText(text),
 			hasQueuedMessages: () => this.queuedMessageCount > 0,
 			abort: () => {
 				this.agent.abort();
@@ -8504,12 +8586,12 @@ export class AgentSession {
 	}
 
 	#obfuscateTextForProvider(text: string | undefined): string | undefined {
-		if (!text || !this.#obfuscator?.hasSecrets()) return text;
-		return this.#obfuscator.obfuscate(text);
+		if (!text || !this.#hasProviderRedactions) return text;
+		return this.obfuscateProviderText(text);
 	}
 
 	#obfuscatePreparationForProvider(preparation: CompactionPreparation): CompactionPreparation {
-		if (!this.#obfuscator?.hasSecrets()) return preparation;
+		if (!this.#hasProviderRedactions) return preparation;
 		const previousSummary = this.#obfuscateTextForProvider(preparation.previousSummary);
 		// `compact()` folds a prior legacy image-archive's plaintext into the
 		// summarization prompt on the legacy-archive→summary migration, so the
@@ -8535,9 +8617,8 @@ export class AgentSession {
 	#obfuscatePreservedArchiveText(
 		preserveData: Record<string, unknown> | undefined,
 	): Record<string, unknown> | undefined {
-		const obfuscator = this.#obfuscator;
-		if (!obfuscator?.hasSecrets() || !hasLegacyArchive(preserveData)) return preserveData;
-		return redactLegacyArchiveText(preserveData, value => obfuscator.obfuscate(value));
+		if (!this.#hasProviderRedactions || !hasLegacyArchive(preserveData)) return preserveData;
+		return redactLegacyArchiveText(preserveData, value => this.obfuscateProviderText(value));
 	}
 
 	#deobfuscateFromProvider(text: string): string {
@@ -8555,8 +8636,7 @@ export class AgentSession {
 	}
 
 	#convertToLlmForSideRequest(messages: AgentMessage[]): Message[] {
-		const converted = convertToLlm(messages);
-		return this.#obfuscator?.hasSecrets() ? obfuscateMessages(this.#obfuscator, converted) : converted;
+		return this.#obfuscateMessagesForProvider(convertToLlm(messages));
 	}
 
 	/** Convert session messages using the same pre-LLM pipeline as the active session. */
@@ -8685,7 +8765,7 @@ export class AgentSession {
 	}
 
 	/** Scoped models for cycling (from --models flag) */
-	get scopedModels(): ReadonlyArray<{ model: Model; thinkingLevel?: ThinkingLevel }> {
+	get scopedModels(): ReadonlyArray<{ model: Model; thinkingLevel?: ConfiguredThinkingLevel }> {
 		return this.#scopedModels;
 	}
 
@@ -9263,6 +9343,20 @@ export class AgentSession {
 
 		// Expand file-based prompt templates if requested
 		const expandedText = expandPromptTemplates ? expandPromptTemplate(text, [...this.#promptTemplates]) : text;
+
+		// Every resolver has now had its turn: builtins upstream in the dispatcher,
+		// then extension, custom, file-based commands and prompt templates above. A
+		// text that STILL reads as `/name` is a command this build does not have,
+		// and forwarding it to the model is the wrong answer to a typo. It is also
+		// the bug this refusal was written for: `/secret list`, typed into a build
+		// that predated the command, was sent as prose and the model began grepping
+		// the filesystem for secrets files. Synthetic prompts are exempt because an
+		// agent-authored turn is never a user reaching for a command.
+		if (expandPromptTemplates && !options?.synthetic && expandedText === text) {
+			const unresolved = unresolvedSlashCommandName(text);
+			// The name only. The argument tail of a miss on `/secret add` is a credential.
+			if (unresolved !== undefined) throw new Error(unknownSlashCommandMessage(unresolved));
+		}
 
 		// Magic keywords ("ultrathink", "orchestrate"): append hidden system notices after the
 		// user's message that steer this turn. User-authored prompts only — synthetic /
@@ -10401,7 +10495,7 @@ export class AgentSession {
 			this.model,
 			provider => this.agent.metadataForProvider(provider),
 			this.#titleSystemPrompt,
-			text => this.#obfuscator?.obfuscate(text) ?? text,
+			text => this.obfuscateProviderText(text),
 		);
 		if (!title) return;
 		if (this.sessionManager.getSessionId() !== sessionId) return;
@@ -10718,7 +10812,7 @@ export class AgentSession {
 		role: string = DEFAULT_MODEL_SLOT,
 		options?: {
 			selector?: string;
-			thinkingLevel?: ThinkingLevel;
+			thinkingLevel?: ConfiguredThinkingLevel;
 			persist?: boolean;
 			currentContextTokens?: number;
 		},
@@ -10746,9 +10840,9 @@ export class AgentSession {
 		}
 		this.settings.getStorage()?.recordModelUsage(`${targetModel.provider}/${targetModel.id}`);
 
-		// Re-apply thinking for the newly selected model. Prefer the model's
-		// configured defaultLevel; otherwise preserve the current level (or auto).
-		this.#reapplyThinkingLevel(targetModel.thinking?.defaultLevel);
+		// Apply the session override, explicit selector variant, saved per-model
+		// default, or model default in that order.
+		this.#reapplyThinkingLevel(options?.thinkingLevel);
 		await this.#syncAfterModelChange(previousEditMode);
 		return { switched: true };
 	}
@@ -10781,13 +10875,7 @@ export class AgentSession {
 		);
 		this.settings.getStorage()?.recordModelUsage(`${targetModel.provider}/${targetModel.id}`);
 
-		// Apply explicit thinking level if given; otherwise prefer the model's
-		// configured defaultLevel; otherwise re-clamp the current level (or auto).
-		if (thinkingLevel !== undefined) {
-			this.setThinkingLevel(thinkingLevel);
-		} else {
-			this.#reapplyThinkingLevel(targetModel.thinking?.defaultLevel);
-		}
+		this.#reapplyThinkingLevel(thinkingLevel);
 		await this.#syncAfterModelChange(previousEditMode);
 	}
 
@@ -10869,10 +10957,9 @@ export class AgentSession {
 	 * settings. Shared with role cycling and the plan-approval model slider.
 	 */
 	async applyRoleModel(entry: ResolvedRoleModel): Promise<void> {
-		await this.setModel(entry.model, entry.role);
-		if (entry.explicitThinkingLevel && entry.thinkingLevel !== undefined) {
-			this.setThinkingLevel(entry.thinkingLevel);
-		}
+		await this.setModel(entry.model, entry.role, {
+			thinkingLevel: entry.explicitThinkingLevel ? entry.thinkingLevel : undefined,
+		});
 	}
 
 	/**
@@ -10896,9 +10983,9 @@ export class AgentSession {
 		return { model: next.model, thinkingLevel: this.thinkingLevel, role: next.role };
 	}
 
-	async #getScopedModelsWithApiKey(): Promise<Array<{ model: Model; thinkingLevel?: ThinkingLevel }>> {
+	async #getScopedModelsWithApiKey(): Promise<Array<{ model: Model; thinkingLevel?: ConfiguredThinkingLevel }>> {
 		const apiKeysByProvider = new Map<string, string | undefined>();
-		const result: Array<{ model: Model; thinkingLevel?: ThinkingLevel }> = [];
+		const result: Array<{ model: Model; thinkingLevel?: ConfiguredThinkingLevel }> = [];
 
 		for (const scoped of this.#scopedModels) {
 			const provider = scoped.model.provider;
@@ -10938,8 +11025,8 @@ export class AgentSession {
 		this.sessionManager.appendModelChange(`${next.model.provider}/${next.model.id}`);
 		this.settings.getStorage()?.recordModelUsage(`${next.model.provider}/${next.model.id}`);
 
-		// Apply the scoped model's configured thinking level, preserving auto.
-		this.setThinkingLevel(this.#autoThinking ? AUTO_THINKING : next.thinkingLevel);
+		// Apply the scoped selector pin or this model's saved/default effort.
+		this.#reapplyThinkingLevel(next.thinkingLevel);
 		await this.#syncAfterModelChange(previousEditMode);
 
 		return { model: next.model, thinkingLevel: this.thinkingLevel, isScoped: true };
@@ -10990,18 +11077,41 @@ export class AgentSession {
 	// Thinking Level Management
 	// =========================================================================
 
+	#resolvedEffortForModel(
+		model: Model | undefined,
+		selectorLevel?: ConfiguredThinkingLevel,
+	): ConfiguredThinkingLevel | undefined {
+		const resolved = resolveEffort({
+			sessionOverride: this.#sessionThinkingOverride,
+			selectorLevel,
+			modelSelector: model ? `${model.provider}/${model.id}` : undefined,
+			defaultEffort: withLegacyDefaultEffort(
+				this.settings.get("defaultEffort"),
+				this.settings.get("defaultThinkingLevel"),
+			),
+		});
+		return resolved.level ?? model?.thinking?.defaultLevel;
+	}
+
 	#applyThinkingLevelToAgent(level: ThinkingLevel | undefined): void {
 		this.agent.setThinkingLevel(toReasoningEffort(level));
 		this.agent.setDisableReasoning(shouldDisableReasoning(level));
 	}
 
 	/**
-	 * Set the thinking level. `auto` enables per-turn classification; the selector
-	 * itself is never written to the session log, but resolved concrete levels are
-	 * persisted when real user turns are classified so resumed sessions keep the
-	 * last resolved effort instead of reverting to pending auto.
+	 * Set the thinking level. Public calls create a session override; internal
+	 * model routing passes `resolved` so per-model defaults remain eligible on
+	 * the next switch. `auto` resolves to a concrete effort for each turn.
 	 */
-	setThinkingLevel(level: ConfiguredThinkingLevel | undefined, persist: boolean = false): void {
+	setThinkingLevel(
+		level: ConfiguredThinkingLevel | undefined,
+		persist: boolean = false,
+		source: "session" | "resolved" = "session",
+	): void {
+		if (source === "session") {
+			this.#sessionThinkingOverride = level;
+			if (level === undefined) level = this.#resolvedEffortForModel(this.model);
+		}
 		if (level === AUTO_THINKING) {
 			const provisional = resolveProvisionalAutoLevel(this.model);
 			const wasAuto = this.#autoThinking;
@@ -11043,27 +11153,20 @@ export class AgentSession {
 		}
 	}
 
-	/**
-	 * Re-apply the active thinking selection after a model change. Preserves `auto`
-	 * (re-clamping the provisional level to the new model); otherwise re-applies the
-	 * preferred default or the current effective level.
-	 */
-	#reapplyThinkingLevel(preferredDefault?: ThinkingLevel): void {
-		this.setThinkingLevel(this.#autoThinking ? AUTO_THINKING : (preferredDefault ?? this.#thinkingLevel));
+	/** Apply the current session override, selector pin, or saved model default after a model switch. */
+	#reapplyThinkingLevel(selectorLevel?: ConfiguredThinkingLevel): void {
+		this.setThinkingLevel(this.#resolvedEffortForModel(this.model, selectorLevel), false, "resolved");
 	}
 
 	/**
-	 * Cycle to next thinking level: off → auto → minimal..max → off.
-	 * @returns New selector, or undefined if model doesn't support thinking
+	 * Cycle through the active model's named effort variants.
+	 *
+	 * Models with different provider vocabularies keep different valid lists;
+	 * the shared control and ordering stay the same.
 	 */
 	cycleThinkingLevel(): ConfiguredThinkingLevel | undefined {
-		if (!this.model?.reasoning) return undefined;
-
-		const levels: ConfiguredThinkingLevel[] = [
-			ThinkingLevel.Off,
-			AUTO_THINKING,
-			...this.getAvailableThinkingLevels(),
-		];
+		const levels = configuredThinkingLevelsForModel(this.model);
+		if (levels.length === 0) return undefined;
 		const configured = this.configuredThinkingLevel();
 		const currentLevel = configured === ThinkingLevel.Inherit ? ThinkingLevel.Off : configured;
 		const currentIndex = currentLevel ? levels.indexOf(currentLevel) : -1;
@@ -11110,7 +11213,7 @@ export class AgentSession {
 					sessionId: this.sessionId,
 					signal: controller.signal,
 					metadataResolver: provider => this.agent.metadataForProvider(provider),
-					obfuscateProviderText: text => this.#obfuscator?.obfuscate(text) ?? text,
+					obfuscateProviderText: text => this.obfuscateProviderText(text),
 				});
 			} catch (error) {
 				classificationError = errorMessage(error);
@@ -11686,7 +11789,7 @@ export class AgentSession {
 							extraContext: compactionPrep.hookContext,
 							remoteInstructions: this.#baseSystemPrompt.join("\n\n"),
 							convertToLlm: messages => this.#convertToLlmForSideRequest(messages),
-							obfuscateProviderText: text => this.#obfuscator?.obfuscate(text) ?? text,
+							obfuscateProviderText: text => this.obfuscateProviderText(text),
 							codexCompaction,
 						},
 						compactionCandidates,
@@ -11924,7 +12027,7 @@ export class AgentSession {
 				model.provider,
 			);
 			const rawHandoffText = await generateHandoffFromContext(
-				obfuscateProviderContext(this.#obfuscator, handoffContext),
+				this.#obfuscateContextForProvider(handoffContext),
 				model,
 				{
 					streamOptions: handoffStreamOptions,
@@ -12770,7 +12873,7 @@ export class AgentSession {
 				sessionId: this.sessionId,
 				metadataResolver: (provider: string) => this.agent.metadataForProvider(provider),
 				signal: controller.signal,
-				obfuscateProviderText: text => this.#obfuscator?.obfuscate(text) ?? text,
+				obfuscateProviderText: text => this.obfuscateProviderText(text),
 			});
 		} finally {
 			clearTimeout(timeout);
@@ -13796,7 +13899,7 @@ export class AgentSession {
 		role: string,
 		model: Model,
 		selectorOverride?: string,
-		thinkingLevelOverride?: ThinkingLevel,
+		thinkingLevelOverride?: ConfiguredThinkingLevel,
 	): string {
 		const modelKey = selectorOverride ?? `${model.provider}/${model.id}`;
 		if (thinkingLevelOverride !== undefined) {
@@ -14059,7 +14162,7 @@ export class AgentSession {
 						// Resolve the current runtime inside the callback. compact()
 						// invokes it after each credential await and immediately
 						// before every local or remote physical attempt.
-						obfuscateProviderText: text => this.#obfuscator?.obfuscate(text) ?? text,
+						obfuscateProviderText: text => this.obfuscateProviderText(text),
 						// Route every summarization HTTP request through the
 						// session's side-stream transport so the provider
 						// concurrency cap (e.g. providers.ollama-cloud.maxConcurrency)
@@ -14634,7 +14737,7 @@ export class AgentSession {
 									sessionId: this.sessionId,
 									promptCacheKey: this.sessionId,
 									providerSessionState: this.#providerSessionState,
-									obfuscateProviderText: text => this.#obfuscator?.obfuscate(text) ?? text,
+									obfuscateProviderText: text => this.obfuscateProviderText(text),
 									codexCompaction,
 								},
 							);
@@ -15342,7 +15445,7 @@ export class AgentSession {
 		this.#setModelWithProviderSessionReset(candidate);
 		this.sessionManager.appendModelChange(candidateSelector, EPHEMERAL_MODEL_CHANGE_ROLE);
 		this.settings.getStorage()?.recordModelUsage(candidateSelector);
-		this.setThinkingLevel(nextThinkingLevel);
+		this.setThinkingLevel(nextThinkingLevel, false, "resolved");
 		if (!this.#activeRetryFallback) {
 			this.#activeRetryFallback = {
 				role,
@@ -15507,7 +15610,7 @@ export class AgentSession {
 		this.#setModelWithProviderSessionReset(primaryModel);
 		this.sessionManager.appendModelChange(primarySelector, EPHEMERAL_MODEL_CHANGE_ROLE);
 		this.settings.getStorage()?.recordModelUsage(primarySelector);
-		this.setThinkingLevel(thinkingToApply);
+		this.setThinkingLevel(thinkingToApply, false, "resolved");
 		this.#clearActiveRetryFallback();
 	}
 
@@ -16468,7 +16571,7 @@ export class AgentSession {
 		let providerReplyText = "";
 		let emittedReplyText = "";
 		let assistantMessage: AssistantMessage | undefined;
-		const stream = await this.#sideStreamFn(model, obfuscateProviderContext(this.#obfuscator, context), options);
+		const stream = await this.#sideStreamFn(model, this.#obfuscateContextForProvider(context), options);
 		for await (const event of stream) {
 			if (event.type === "text_delta") {
 				providerReplyText += event.delta;

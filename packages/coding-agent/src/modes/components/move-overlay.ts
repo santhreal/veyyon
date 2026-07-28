@@ -29,6 +29,7 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
+	modalNeedsCompactPadding,
 	renderModalShell,
 	withCompact,
 } from "./modal-shell";
@@ -284,7 +285,7 @@ export class MoveOverlay implements Component, Focusable {
 
 	render(width: number): readonly string[] {
 		const height = process.stdout.rows || 40;
-		const sizing = withCompact(MODAL_SIZING_MEDIUM, height < 24);
+		const sizing = withCompact(MODAL_SIZING_MEDIUM, modalNeedsCompactPadding(height, MODAL_SIZING_MEDIUM));
 		const dims = computeModalDims(width, height, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;

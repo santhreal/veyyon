@@ -8,6 +8,7 @@ import * as git from "../utils/git";
 import { createDashboardController } from "./dashboard";
 import { ensureAutoresearchBranch } from "./git";
 import { formatNum } from "./helpers";
+import { AUTORESEARCH_OVERLAY_KEY, AUTORESEARCH_TOGGLE_KEY } from "./shortcuts";
 import {
 	buildExperimentState,
 	createExperimentState,
@@ -221,7 +222,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		},
 	});
 
-	api.registerShortcut("ctrl+x", {
+	api.registerShortcut(AUTORESEARCH_TOGGLE_KEY, {
 		description: "Toggle autoresearch dashboard",
 		handler(ctx): void {
 			const runtime = getRuntime(ctx);
@@ -234,7 +235,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		},
 	});
 
-	api.registerShortcut("ctrl+shift+x", {
+	api.registerShortcut(AUTORESEARCH_OVERLAY_KEY, {
 		description: "Show autoresearch dashboard overlay",
 		handler(ctx): Promise<void> {
 			return dashboard.showOverlay(ctx, getRuntime(ctx));

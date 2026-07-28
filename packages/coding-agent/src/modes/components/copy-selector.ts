@@ -9,6 +9,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
+import { formatMoreLines } from "@veyyon/utils/format";
 import { replaceTabs } from "../../tools/render-utils";
 import { highlightCode } from "../theme/highlight";
 import { theme } from "../theme/theme-binding";
@@ -28,6 +29,7 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
+	modalNeedsCompactPadding,
 	planModalChrome,
 	renderModalShell,
 	withCompact,
@@ -242,7 +244,7 @@ export class CopySelectorComponent implements Component {
 			if (k < visibleCount) {
 				out.push(isCode ? wrapped[k]! : theme.fg("muted", wrapped[k]!));
 			} else if (k === visibleCount && hasMore) {
-				out.push(theme.fg("dim", `… ${wrapped.length - visibleCount} more lines`));
+				out.push(theme.fg("dim", `… ${formatMoreLines(wrapped.length - visibleCount)}`));
 			} else {
 				out.push("");
 			}
@@ -252,7 +254,7 @@ export class CopySelectorComponent implements Component {
 
 	render(width: number): readonly string[] {
 		const height = process.stdout.rows || 40;
-		const sizing = withCompact(MODAL_SIZING_LARGE, height < 24);
+		const sizing = withCompact(MODAL_SIZING_LARGE, modalNeedsCompactPadding(height, MODAL_SIZING_LARGE));
 		const dims = computeModalDims(width, height, sizing);
 		if (!dims) {
 			return Array.from({ length: height }, () => padding(width));
