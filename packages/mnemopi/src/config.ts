@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { hostMatchesUrl } from "@veyyon/catalog/hosts";
 import { OPENROUTER_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { trimTrailingSlashes } from "@veyyon/utils";
+import { getMnemopiRuntimeOptions } from "./core/runtime-options";
 import {
 	type Env,
 	envBool,
@@ -92,14 +93,44 @@ export function beamOptimizationsEnabled(env: Env = process.env): boolean {
 	return envTruthy("MNEMOPI_BEAM_OPTIMIZATIONS", env);
 }
 
+/**
+ * The embedding model in force right now.
+ *
+ * THE ONE RESOLVER. It reads the active `withMnemopiRuntimeOptions` scope first and
+ * the environment second, which is the order `core/embeddings.ts` uses when it picks
+ * the model to embed WITH. This function used to read the environment alone, so a
+ * caller who set `embeddings.model` on a runtime scope had the embedder produce one
+ * width while `binary-vectors.ts`, which sizes packed vectors from `embeddingDim()`
+ * below, packed a different one. Nothing checked the two against each other, so a
+ * mismatch did not error: it wrote vectors that decode to noise and surfaced as
+ * similarity scores quietly getting worse.
+ *
+ * Reading the scope from `config.ts` costs one module (`node:async_hooks`) and no
+ * cycle: `core/runtime-options.ts` imports nothing from here.
+ */
 export function embeddingModel(env: Env = process.env): string {
+	const scoped = getMnemopiRuntimeOptions()?.embeddings?.model;
+	if (scoped !== undefined) return scoped;
 	return envString("MNEMOPI_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL, env);
 }
 
-export function embeddingDim(env: Env = process.env): number {
+/**
+ * The width `modelName` produces, with `MNEMOPI_EMBEDDING_DIM` overriding the table.
+ *
+ * Separate from {@link embeddingDim} because two callers ask two different questions:
+ * this one asks about a NAMED model, the other about the model currently in force.
+ * They must not answer differently for the same name, which is why the override and
+ * the fallback live here once rather than at each site.
+ */
+export function embeddingDimFor(modelName: string, env: Env = process.env): number {
 	const explicit = envInt("MNEMOPI_EMBEDDING_DIM", NaN, env);
 	if (Number.isFinite(explicit)) return explicit;
-	return EMBEDDING_DIMS[embeddingModel(env)] ?? FALLBACK_EMBEDDING_DIM;
+	return EMBEDDING_DIMS[modelName] ?? FALLBACK_EMBEDDING_DIM;
+}
+
+/** The width the model in force produces. Scope-aware, because {@link embeddingModel} is. */
+export function embeddingDim(env: Env = process.env): number {
+	return embeddingDimFor(embeddingModel(env), env);
 }
 
 export function embeddingApiKey(env: Env = process.env): string {

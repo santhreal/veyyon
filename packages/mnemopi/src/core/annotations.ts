@@ -180,25 +180,25 @@ export class AnnotationStore {
 	readonly dbPath: string;
 	readonly db: Database;
 	readonly conn: Database;
-	private readonly ownsConnection: boolean;
+	readonly #ownsConnection: boolean;
 
 	constructor(options: AnnotationStoreOptions | string = {}) {
 		if (typeof options === "string") {
 			this.dbPath = options;
 			this.db = openDatabase(options);
-			this.ownsConnection = true;
+			this.#ownsConnection = true;
 		} else {
 			const shared = options.conn ?? options.db;
 			this.dbPath = options.dbPath ?? options.db_path ?? dbPath();
 			this.db = shared ?? openDatabase(this.dbPath);
-			this.ownsConnection = shared === undefined;
+			this.#ownsConnection = shared === undefined;
 		}
 		this.conn = this.db;
 		initAnnotationsWithConn(this.db);
 	}
 
 	close(): void {
-		if (this.ownsConnection) closeQuietly(this.db);
+		if (this.#ownsConnection) closeQuietly(this.db);
 	}
 
 	add(memoryId: string, kind: string, value: string, source = "", confidence = 1.0): number {

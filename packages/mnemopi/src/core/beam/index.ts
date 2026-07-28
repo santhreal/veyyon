@@ -340,7 +340,7 @@ export class BeamMemory implements BeamMemoryState {
 	importFromDict(data: Record<string, unknown>, force = false): ImportStats {
 		return importFromDict(this, data, force);
 	}
-	protected emitEvent(type: string, data: Omit<BeamEvent, "type" | "sessionId" | "timestamp"> = {}): void {
+	#emitEvent(type: string, data: Omit<BeamEvent, "type" | "sessionId" | "timestamp"> = {}): void {
 		const event: BeamEvent = {
 			...data,
 			type,
@@ -351,7 +351,7 @@ export class BeamMemory implements BeamMemoryState {
 		void this.pluginManager?.emit?.(event);
 	}
 
-	protected metadataJson(metadata: Metadata | null | undefined): string | null {
+	#metadataJson(metadata: Metadata | null | undefined): string | null {
 		return metadata == null ? null : JSON.stringify(metadata);
 	}
 }

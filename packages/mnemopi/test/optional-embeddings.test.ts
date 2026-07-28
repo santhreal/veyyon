@@ -183,6 +183,21 @@ describe("optional embeddings", () => {
 		});
 	});
 
+	/**
+	 * Why: a malformed availability probe must not leak `undefined` through a
+	 * public boolean API and accidentally bypass strict availability checks.
+	 */
+	it("treats a non-boolean availability result as unavailable", async () => {
+		await withEnv({ MNEMOPI_NO_EMBEDDINGS: undefined }, async () => {
+			const malformedAvailability = (() => undefined) as unknown as () => boolean;
+			setEmbeddingProviderForTests({
+				embed: streamRows(() => [[1]]),
+				available: malformedAvailability,
+			});
+			expect(await available()).toBe(false);
+		});
+	});
+
 	it("returns null instead of throwing when the provider fails", async () => {
 		await withEnv({ MNEMOPI_NO_EMBEDDINGS: undefined }, async () => {
 			setEmbeddingProviderForTests({

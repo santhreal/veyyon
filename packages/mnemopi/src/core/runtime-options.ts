@@ -113,12 +113,9 @@ export interface ResolvedMnemopiRuntimeOptions {
 	debug?: boolean;
 }
 
-const runtimeOptionsStorage = new AsyncLocalStorage<ResolvedMnemopiRuntimeOptions>();
+const runtimeOptionsStorage = new AsyncLocalStorage<ResolvedMnemopiRuntimeOptions | undefined>();
 
 export function withMnemopiRuntimeOptions<T>(options: ResolvedMnemopiRuntimeOptions | undefined, fn: () => T): T {
-	if (options === undefined) {
-		return fn();
-	}
 	return runtimeOptionsStorage.run(options, fn);
 }
 

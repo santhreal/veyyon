@@ -73,14 +73,14 @@ export class MemoryCompressor {
 	compress(content: string, method = "dict"): readonly [string, CompressionStats] {
 		const originalSize = utf8Size(content);
 		if (method === "auto") {
-			let [compressed, stats] = this.dictCompress(content);
-			if (stats.savingsPercent < 5) [compressed, stats] = this.rleCompress(content);
+			let [compressed, stats] = this.#dictCompress(content);
+			if (stats.savingsPercent < 5) [compressed, stats] = this.#rleCompress(content);
 			return [compressed, stats];
 		}
 
-		if (method === "dict") return this.dictCompress(content);
-		if (method === "rle") return this.rleCompress(content);
-		if (method === "semantic") return this.semanticCompressSingle(content);
+		if (method === "dict") return this.#dictCompress(content);
+		if (method === "rle") return this.#rleCompress(content);
+		if (method === "semantic") return this.#semanticCompressSingle(content);
 		return [
 			content,
 			new CompressionStats({
@@ -92,7 +92,7 @@ export class MemoryCompressor {
 		];
 	}
 
-	private dictCompress(content: string): readonly [string, CompressionStats] {
+	#dictCompress(content: string): readonly [string, CompressionStats] {
 		const originalSize = utf8Size(content);
 		let compressed = content;
 		for (const phrase in this.dictionary) {
@@ -105,7 +105,7 @@ export class MemoryCompressor {
 		return [compressed, new CompressionStats({ originalSize, compressedSize, ratio, method: "dict" })];
 	}
 
-	private rleCompress(content: string): readonly [string, CompressionStats] {
+	#rleCompress(content: string): readonly [string, CompressionStats] {
 		const originalSize = utf8Size(content);
 		if (content.length === 0) {
 			return [content, new CompressionStats({ originalSize: 0, compressedSize: 0, ratio: 1.0, method: "rle" })];
@@ -130,7 +130,7 @@ export class MemoryCompressor {
 		return [compressedString, new CompressionStats({ originalSize, compressedSize, ratio, method: "rle" })];
 	}
 
-	private semanticCompressSingle(content: string): readonly [string, CompressionStats] {
+	#semanticCompressSingle(content: string): readonly [string, CompressionStats] {
 		const originalSize = utf8Size(content);
 		const compressed = originalSize > 500 ? `${content.slice(0, 250)} [...] ${content.slice(-100)}` : content;
 		const compressedSize = utf8Size(compressed);

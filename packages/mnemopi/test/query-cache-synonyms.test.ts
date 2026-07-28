@@ -97,6 +97,18 @@ describe("QueryCache", () => {
 		expect(qc.get("password database the is what")?.[0]?.content).toBe("test");
 	});
 
+	/**
+	 * Why: one-character terms such as C and R identify different languages;
+	 * dropping them from normalized keys aliases unrelated cached queries.
+	 */
+	it("keeps one-character terms in the exact cache identity", () => {
+		const qc = cache({ maxSize: 100 });
+		qc.put("C language", [{ content: "C result" }]);
+
+		expect(qc.get("R language")).toBeNull();
+		expect(qc.get("C language")?.[0]?.content).toBe("C result");
+	});
+
 	it("matches high-confidence embeddings and composite embedding plus keyword overlap", () => {
 		const qc = cache({ maxSize: 100 });
 		qc.put("alpha beta", [{ content: "vector", score: 0.8 }], [1, 0, 0]);

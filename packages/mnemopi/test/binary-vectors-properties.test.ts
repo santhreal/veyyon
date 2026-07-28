@@ -22,7 +22,7 @@ import { describe, expect, it } from "bun:test";
 import fc from "fast-check";
 import {
 	BITS_PER_BYTE,
-	EMBEDDING_DIM,
+	configuredEmbeddingDim,
 	hammingDistance,
 	informationTheoreticScore,
 	maximallyInformativeBinarization,
@@ -111,16 +111,19 @@ describe("quantizeInt8", () => {
 
 describe("maximallyInformativeBinarization", () => {
 	/**
-	 * The byte count follows from the dimension alone, capped at `EMBEDDING_DIM`. A longer
-	 * embedding producing a longer buffer would make `hammingDistance` count the overflow bits as
-	 * differences against every stored vector.
+	 * The byte count follows from the embedding's OWN width, at every width.
+	 *
+	 * It used to be capped at the configured dimension, and this property was written
+	 * around the cap (`min(values.length, EMBEDDING_DIM)`), so it asserted the
+	 * truncation rather than catching it. The generator deliberately runs past the
+	 * configured width, which is the half that would have failed.
 	 */
-	it("emits exactly the bytes the capped dimension needs", () => {
+	it("emits exactly the bytes the embedding's own dimension needs", () => {
 		fc.assert(
-			fc.property(fc.array(component, { maxLength: EMBEDDING_DIM + 32 }), values => {
-				const dim = Math.min(values.length, EMBEDDING_DIM);
-
-				expect(maximallyInformativeBinarization(values).length).toBe(Math.ceil(dim / BITS_PER_BYTE));
+			fc.property(fc.array(component, { maxLength: configuredEmbeddingDim() + 32 }), values => {
+				expect(maximallyInformativeBinarization(values).length).toBe(
+					Math.ceil(values.length / BITS_PER_BYTE),
+				);
 			}),
 			RUNS,
 		);

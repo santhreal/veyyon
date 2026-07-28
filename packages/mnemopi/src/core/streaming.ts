@@ -148,31 +148,31 @@ export type MemoryEventHandler = (event: MemoryEvent) => void;
 type EventWaiter = (result: IteratorResult<MemoryEvent>) => void;
 
 export class StreamIterator implements AsyncIterable<MemoryEvent>, AsyncIterator<MemoryEvent> {
-	private readonly queue: MemoryEvent[] = [];
-	private readonly waiters: EventWaiter[] = [];
-	private closed = false;
+	readonly #queue: MemoryEvent[] = [];
+	readonly #waiters: EventWaiter[] = [];
+	#closed = false;
 	constructor(
 		private readonly stream: MemoryStream,
 		private readonly eventTypes: readonly EventType[] | null = null,
 	) {}
 	push(event: MemoryEvent): void {
-		if (this.closed || (this.eventTypes !== null && !this.eventTypes.includes(event.eventType))) return;
-		const waiter = this.waiters.shift();
+		if (this.#closed || (this.eventTypes !== null && !this.eventTypes.includes(event.eventType))) return;
+		const waiter = this.#waiters.shift();
 		if (waiter !== undefined) waiter({ value: event, done: false });
-		else this.queue.push(event);
+		else this.#queue.push(event);
 	}
 	next(): Promise<IteratorResult<MemoryEvent>> {
-		const value = this.queue.shift();
+		const value = this.#queue.shift();
 		if (value !== undefined) return Promise.resolve({ value, done: false });
-		if (this.closed) return Promise.resolve({ value: undefined, done: true });
+		if (this.#closed) return Promise.resolve({ value: undefined, done: true });
 		const { promise, resolve } = Promise.withResolvers<IteratorResult<MemoryEvent>>();
-		this.waiters.push(resolve);
+		this.#waiters.push(resolve);
 		return promise;
 	}
 	return(): Promise<IteratorResult<MemoryEvent>> {
-		this.closed = true;
+		this.#closed = true;
 		this.stream.removeIterator(this);
-		while (this.waiters.length > 0) this.waiters.shift()?.({ value: undefined, done: true });
+		while (this.#waiters.length > 0) this.#waiters.shift()?.({ value: undefined, done: true });
 		return Promise.resolve({ value: undefined, done: true });
 	}
 	[Symbol.asyncIterator](): AsyncIterator<MemoryEvent> {
@@ -181,33 +181,33 @@ export class StreamIterator implements AsyncIterable<MemoryEvent>, AsyncIterator
 }
 
 export class MemoryStream {
-	private readonly callbacks = new Map<EventType, MemoryEventHandler[]>();
-	private readonly anyCallbacks: MemoryEventHandler[] = [];
-	private readonly buffer: MemoryEvent[] = [];
-	private readonly iterators = new Set<StreamIterator>();
+	readonly #callbacks = new Map<EventType, MemoryEventHandler[]>();
+	readonly #anyCallbacks: MemoryEventHandler[] = [];
+	readonly #buffer: MemoryEvent[] = [];
+	readonly #iterators = new Set<StreamIterator>();
 	constructor(private readonly maxBuffer = 1000) {
-		for (const eventType of Object.values(EventType)) this.callbacks.set(eventType, []);
+		for (const eventType of Object.values(EventType)) this.#callbacks.set(eventType, []);
 	}
 	on(eventType: EventType, callback: MemoryEventHandler): void {
-		this.callbacks.get(eventType)?.push(callback);
+		this.#callbacks.get(eventType)?.push(callback);
 	}
 	onAny(callback: MemoryEventHandler): void {
-		this.anyCallbacks.push(callback);
+		this.#anyCallbacks.push(callback);
 	}
 	off(eventType: EventType, callback: MemoryEventHandler): void {
-		const callbacks = this.callbacks.get(eventType);
+		const callbacks = this.#callbacks.get(eventType);
 		if (callbacks === undefined) return;
 		const index = callbacks.indexOf(callback);
 		if (index >= 0) callbacks.splice(index, 1);
 	}
 	offAny(callback: MemoryEventHandler): void {
-		const index = this.anyCallbacks.indexOf(callback);
-		if (index >= 0) this.anyCallbacks.splice(index, 1);
+		const index = this.#anyCallbacks.indexOf(callback);
+		if (index >= 0) this.#anyCallbacks.splice(index, 1);
 	}
 	emit(event: MemoryEvent): void {
-		this.buffer.push(event);
-		if (this.buffer.length > this.maxBuffer) this.buffer.splice(0, this.buffer.length - this.maxBuffer);
-		for (const callback of this.callbacks.get(event.eventType) ?? []) {
+		this.#buffer.push(event);
+		if (this.#buffer.length > this.maxBuffer) this.#buffer.splice(0, this.#buffer.length - this.maxBuffer);
+		for (const callback of this.#callbacks.get(event.eventType) ?? []) {
 			try {
 				callback(event);
 			} catch (error) {
@@ -220,7 +220,7 @@ export class MemoryStream {
 				});
 			}
 		}
-		for (const callback of this.anyCallbacks) {
+		for (const callback of this.#anyCallbacks) {
 			try {
 				callback(event);
 			} catch (error) {
@@ -231,24 +231,24 @@ export class MemoryStream {
 				});
 			}
 		}
-		for (const iterator of this.iterators) iterator.push(event);
+		for (const iterator of this.#iterators) iterator.push(event);
 	}
 	listen(eventTypes: readonly EventType[] | null = null): StreamIterator {
 		const iterator = new StreamIterator(this, eventTypes);
-		this.iterators.add(iterator);
+		this.#iterators.add(iterator);
 		return iterator;
 	}
 	removeIterator(iterator: StreamIterator): void {
-		this.iterators.delete(iterator);
+		this.#iterators.delete(iterator);
 	}
 	getBuffer(eventTypes: readonly EventType[] | null = null, since: string | null = null): MemoryEvent[] {
-		let events = this.buffer.slice();
+		let events = this.#buffer.slice();
 		if (eventTypes !== null) events = events.filter(event => eventTypes.includes(event.eventType));
 		if (since !== null) events = events.filter(event => event.timestamp >= since);
 		return events;
 	}
 	clearBuffer(): void {
-		this.buffer.length = 0;
+		this.#buffer.length = 0;
 	}
 }
 
@@ -312,34 +312,34 @@ function checkpointRoot(host: MemoryHost): string {
 
 export class DeltaSync {
 	readonly checkpointDir: string;
-	private readonly db: Database;
+	readonly #db: Database;
 	constructor(
 		readonly mnemopi: MemoryHost,
 		checkpointDir?: string,
 	) {
-		this.db = databaseOf(mnemopi);
+		this.#db = databaseOf(mnemopi);
 		this.checkpointDir = checkpointDir ?? checkpointRoot(mnemopi);
 		mkdirSync(this.checkpointDir, { recursive: true });
 	}
-	private checkpointPath(peerId: string, table: DeltaTable): string {
+	#checkpointPath(peerId: string, table: DeltaTable): string {
 		return join(this.checkpointDir, `${peerId}.${table}.json`);
 	}
-	private legacyCheckpointPath(peerId: string): string {
+	#legacyCheckpointPath(peerId: string): string {
 		return join(this.checkpointDir, `${peerId}.json`);
 	}
 	getCheckpoint(peerId: string, table: DeltaTable = "working_memory"): SyncCheckpoint | null {
 		assertDeltaTable(table);
-		const path = this.checkpointPath(peerId, table);
+		const path = this.#checkpointPath(peerId, table);
 		if (existsSync(path)) return SyncCheckpoint.fromJSON(readFileSync(path, "utf8"));
 		if (table === "working_memory") {
-			const legacyPath = this.legacyCheckpointPath(peerId);
+			const legacyPath = this.#legacyCheckpointPath(peerId);
 			if (existsSync(legacyPath)) return SyncCheckpoint.fromJSON(readFileSync(legacyPath, "utf8"));
 		}
 		return null;
 	}
 	saveCheckpoint(checkpoint: SyncCheckpoint, table: DeltaTable = "working_memory"): void {
 		assertDeltaTable(table);
-		writeFileSync(this.checkpointPath(checkpoint.peerId, table), checkpoint.toJson());
+		writeFileSync(this.#checkpointPath(checkpoint.peerId, table), checkpoint.toJson());
 	}
 	setCheckpoint(peerId: string, checkpoint: SyncCheckpoint, table: DeltaTable = "working_memory"): void {
 		assertDeltaTable(table);
@@ -351,7 +351,7 @@ export class DeltaSync {
 		assertDeltaTable(table);
 		const checkpoint = this.getCheckpoint(peerId, table);
 		const minRowid = checkpoint?.lastRowid ?? 0;
-		return this.db
+		return this.#db
 			.query(`SELECT rowid, * FROM ${QUALIFIED_TABLE_NAMES[table]} WHERE rowid > ? ORDER BY rowid ASC`)
 			.all(minRowid) as Record<string, unknown>[];
 	}
@@ -375,7 +375,7 @@ export class DeltaSync {
 			}
 			const remoteRowid = typeof row.rowid === "number" ? row.rowid : 0;
 			if (remoteRowid > maxRowid) maxRowid = remoteRowid;
-			const exists = this.db.query(`SELECT 1 FROM ${qname} WHERE id = ?`).get(id) !== null;
+			const exists = this.#db.query(`SELECT 1 FROM ${qname} WHERE id = ?`).get(id) !== null;
 			if (exists) {
 				const entries: [string, SQLQueryBindings][] = [];
 				for (const key in row) {
@@ -392,7 +392,7 @@ export class DeltaSync {
 				}
 				const setSql = entries.map(([key]) => `${key} = ?`).join(", ");
 				const params: SQLQueryBindings[] = [...entries.map(([, value]) => value), id];
-				this.db.run(`UPDATE ${qname} SET ${setSql} WHERE id = ?`, params);
+				this.#db.run(`UPDATE ${qname} SET ${setSql} WHERE id = ?`, params);
 				updated++;
 			} else {
 				const entries: [string, SQLQueryBindings][] = [];
@@ -411,7 +411,7 @@ export class DeltaSync {
 				const columns = entries.map(([key]) => key);
 				const placeholders = sqlPlaceholders(columns.length);
 				const params: SQLQueryBindings[] = entries.map(([, value]) => value);
-				this.db.run(`INSERT INTO ${qname} (${columns.join(", ")}) VALUES (${placeholders})`, params);
+				this.#db.run(`INSERT INTO ${qname} (${columns.join(", ")}) VALUES (${placeholders})`, params);
 				inserted++;
 			}
 		}

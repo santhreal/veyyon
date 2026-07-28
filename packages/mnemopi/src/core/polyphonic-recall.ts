@@ -206,7 +206,7 @@ export class PolyphonicRecallEngine {
 		const temporalResults = this.temporalVoice(query);
 		const combined = this.combineVoices(vectorResults, graphResults, factResults, temporalResults);
 		const reranked = this.diversityRerank(combined, topK);
-		return this.hydrateResults(this.assembleContext(reranked, contextBudget));
+		return this.#hydrateResults(this.assembleContext(reranked, contextBudget));
 	}
 
 	vectorVoice(queryEmbedding: readonly number[] | Float32Array | null): VoiceRecallResult[] {
@@ -465,10 +465,10 @@ export class PolyphonicRecallEngine {
 		if (this.ownsConnection) closeQuietly(this.db);
 	}
 
-	private hydrateResults(results: readonly PolyphonicResult[]): PolyphonicMemoryResult[] {
+	#hydrateResults(results: readonly PolyphonicResult[]): PolyphonicMemoryResult[] {
 		const hydrated: PolyphonicMemoryResult[] = [];
 		for (const result of results) {
-			const row = this.lookupMemory(result.memoryId);
+			const row = this.#lookupMemory(result.memoryId);
 			if (row === null) continue;
 			const rowMetadata = parseMetadata(row.metadata_json);
 			const voiceScores = sortedVoiceScores(result.voiceScores);
@@ -486,7 +486,7 @@ export class PolyphonicRecallEngine {
 		return hydrated;
 	}
 
-	private lookupMemory(memoryId: string): MemoryHydrationRow | null {
+	#lookupMemory(memoryId: string): MemoryHydrationRow | null {
 		const now = new Date().toISOString();
 		const working = this.db
 			.query(`

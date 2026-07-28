@@ -363,9 +363,20 @@ function buildWhere(
 		clauses.push(`${prefix}source = ?`);
 		params.push(options.source);
 	}
+	// `topic` FAILS CLOSED rather than filtering something else. Neither `working_memory` nor
+	// `episodic_memory` has a topic column (only the `memoria_*` tables do), and this clause used
+	// to push `source = ?` bound to the topic value. That is a silent alias with two consequences,
+	// both invisible to the caller: `{ topic: "x" }` alone returned memories whose SOURCE is "x",
+	// which is a plausible-looking result set that answers a different question, and
+	// `{ source: "a", topic: "b" }` emitted `source = 'a' AND source = 'b'`, a self-contradicting
+	// filter that is always empty and reads as "no memories match" rather than as a bug.
 	if (options.topic) {
-		clauses.push(`${prefix}source = ?`);
-		params.push(options.topic);
+		throw new Error(
+			`recall() was given topic ${JSON.stringify(options.topic)}, but working and episodic memory have no ` +
+				"topic column, so the filter cannot be applied. Filter on `source` if that is what you meant, " +
+				"or query the memoria_preferences / memoria_instructions tables, which are the ones that carry " +
+				"a topic.",
+		);
 	}
 	if (options.veracity) {
 		clauses.push(`${prefix}veracity = ?`);

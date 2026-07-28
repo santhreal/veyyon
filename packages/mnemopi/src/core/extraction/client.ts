@@ -6,10 +6,10 @@ import { withAuth } from "@veyyon/ai/auth-retry";
 import * as AIError from "@veyyon/ai/error";
 import { OPENROUTER_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { trimTrailingSlashes, withScopedTimeoutSignal } from "@veyyon/utils";
-
+import { isRecord } from "@veyyon/utils/type-guards";
+import { getMnemopiRuntimeOptions, type MnemopiProviderTextSanitizer } from "../runtime-options";
 import { getDiagnostics } from "./diagnostics";
 import { EXTRACTION_SYSTEM_PROMPT, EXTRACTION_USER_TEMPLATE } from "./prompts";
-import { getMnemopiRuntimeOptions, type MnemopiProviderTextSanitizer } from "../runtime-options";
 
 export const DEFAULT_EXTRACTION_MODEL = process.env.MNEMOPI_EXTRACTION_MODEL || "google/gemini-2.5-flash";
 export const OPENROUTER_BASE_URL = trimTrailingSlashes(process.env.OPENROUTER_BASE_URL || OPENROUTER_API_ENDPOINT);
@@ -94,7 +94,7 @@ export class ExtractionClient {
 		const models = [this.model, ...FALLBACK_MODELS.filter(m => m !== this.model)];
 		let lastError: unknown = null;
 
-		for (const model of models) {
+		for (const [modelIndex, model] of models.entries()) {
 			try {
 				// withAuth re-resolves the key on 401/usage-limit (force-refresh,
 				// then sibling rotation) when `apiKey` is a resolver; the 429
@@ -109,8 +109,13 @@ export class ExtractionClient {
 							const flags = AIError.classify(exc);
 							if (AIError.is(flags, AIError.Flag.UsageLimit) || AIError.is(flags, AIError.Flag.Transient)) {
 								rateLimitError = exc;
-								await Bun.sleep(Math.min(RATE_LIMIT_BACKOFF_MAX_MS, RATE_LIMIT_BACKOFF_BASE_MS * 2 ** attempt));
-								continue;
+								if (attempt + 1 < 3) {
+									await Bun.sleep(
+										Math.min(RATE_LIMIT_BACKOFF_MAX_MS, RATE_LIMIT_BACKOFF_BASE_MS * 2 ** attempt),
+									);
+									continue;
+								}
+								break;
 							}
 							throw exc;
 						}
@@ -124,7 +129,7 @@ export class ExtractionClient {
 			} catch (exc) {
 				lastError = exc;
 			}
-			await Bun.sleep(FALLBACK_MODEL_DELAY_MS);
+			if (modelIndex + 1 < models.length) await Bun.sleep(FALLBACK_MODEL_DELAY_MS);
 		}
 
 		diag.recordFailure("cloud", lastError, "all_models_failed");
@@ -203,9 +208,22 @@ export class ExtractionClient {
 			if (jsonStart >= 0 && jsonEnd > jsonStart) {
 				const facts = JSON.parse(response.slice(jsonStart, jsonEnd)) as unknown;
 				if (Array.isArray(facts)) {
-					diag.recordSuccess("cloud", facts.length);
-					diag.recordCall({ succeeded: true });
-					return facts as ExtractedFact[];
+					// EVERY ENTRY HAS TO BE AN OBJECT, and the array being an array is not enough.
+					// A model that returns `[{"subject":"Ada"},null,"not a fact",[]]` produced valid
+					// JSON and invalid facts, and the cast below asserted the element type without
+					// anyone having checked it, so the nulls and strings reached storage and failed
+					// there instead: a decoding fault reported as a database fault, one layer away
+					// from the provider that caused it. Refused as a whole rather than filtered,
+					// because a response this malformed is not a response some of whose facts can be
+					// trusted (Law 10: fail closed, do not quietly keep the parts that parsed).
+					if (facts.every(fact => isRecord(fact))) {
+						diag.recordSuccess("cloud", facts.length);
+						diag.recordCall({ succeeded: true });
+						return facts as ExtractedFact[];
+					}
+					diag.recordFailure("cloud", undefined, "invalid_facts_response");
+					diag.recordCall({ succeeded: false, allEmpty: true });
+					return [];
 				}
 			}
 			diag.recordFailure("cloud", undefined, "no_facts_in_response");
