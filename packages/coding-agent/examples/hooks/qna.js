@@ -8,6 +8,7 @@
  */
 import { complete } from "@veyyon/ai";
 import { BorderedLoader } from "@veyyon/coding-agent";
+import { mapJsonStrings } from "@veyyon/coding-agent/secrets/obfuscator";
 const SYSTEM_PROMPT = `You are a question extractor. Given text from a conversation, extract any questions that need answering and format them for the user to fill in.
 
 Output format:
@@ -68,12 +69,25 @@ export default function (pi) {
                 // Do the work
                 const doExtract = async () => {
                     const apiKey = await ctx.modelRegistry.getApiKey(ctx.model);
-                    const userMessage = {
-                        role: "user",
-                        content: [{ type: "text", text: lastAssistantText }],
-                        timestamp: Date.now(),
+                    if (!apiKey)
+                        return null;
+                    const sanitizeLive = (text) => ctx.obfuscateProviderText(text);
+                    const providerContext = { messages: [] };
+                    const buildAttemptContext = () => {
+                        const userMessage = {
+                            role: "user",
+                            content: [{ type: "text", text: sanitizeLive(lastAssistantText) }],
+                            timestamp: Date.now(),
+                        };
+                        providerContext.systemPrompt = [sanitizeLive(SYSTEM_PROMPT)];
+                        providerContext.messages = [userMessage];
                     };
-                    const response = await complete(ctx.model, { systemPrompt: [SYSTEM_PROMPT], messages: [userMessage] }, { apiKey, signal: loader.signal });
+                    buildAttemptContext();
+                    const response = await complete(ctx.model, providerContext, {
+                        apiKey,
+                        signal: loader.signal,
+                        onPayload: payload => mapJsonStrings(payload, sanitizeLive),
+                    });
                     if (response.stopReason === "aborted") {
                         return null;
                     }

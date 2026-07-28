@@ -1446,6 +1446,8 @@ export interface ExtensionContextActions {
 	getContextUsage: () => ContextUsage | undefined;
 	compact: (instructionsOrOptions?: string | CompactOptions) => Promise<void>;
 	getSystemPrompt: () => string[];
+	/** Live redaction-only transform for provider-bound extension and hook strings. */
+	obfuscateProviderText?: (text: string) => string;
 }
 
 /** Actions for ExtensionCommandContext (ctx.* in command handlers). */

@@ -1,10 +1,11 @@
 import { instrumentedCompleteSimple, resolveTelemetry } from "@veyyon/agent-core";
-import type { Tool } from "@veyyon/ai";
+import type { ApiKey, Context, Tool } from "@veyyon/ai";
 import { isRecord, prompt, Snowflake } from "@veyyon/utils";
 import { extractTextContent, extractToolCall, parseJsonPayload } from "../commit/utils";
 import { goalsPrompts } from "../prompts/goals/rows";
 import type { AgentSession } from "../session/agent-session";
 import { concreteThinkingLevel, shouldDisableReasoning, toReasoningEffort } from "../thinking";
+import { mapJsonStrings } from "../secrets/obfuscator";
 
 const RESPOND_TOOL_NAME = "respond";
 
@@ -75,6 +76,18 @@ function parseToolArguments(value: unknown): unknown {
 	return typeof value === "string" ? parseJsonPayload(value) : value;
 }
 
+function refreshGuidedContextForApiKey(apiKey: ApiKey, refresh: () => void): ApiKey {
+	// Static credentials still use the same builder. Resolver-backed credentials rebuild after
+	// every awaited resolution, including the credential selected for an authentication retry.
+	refresh();
+	if (typeof apiKey === "string") return apiKey;
+	return async context => {
+		const resolved = await apiKey(context);
+		refresh();
+		return resolved;
+	};
+}
+
 export async function runGuidedGoalTurn(
 	session: AgentSession,
 	options: GuidedGoalTurnOptions,
@@ -93,33 +106,51 @@ export async function runGuidedGoalTurn(
 		throw new Error("No plan, slow, or current session model is available for /guided-goal.");
 	}
 
-	const apiKey = await session.modelRegistry.getApiKey(resolved.model, session.sessionId);
+	let apiKey: string | undefined;
+	try {
+		apiKey = await session.modelRegistry.getApiKey(resolved.model, session.sessionId);
+	} catch {
+		throw new Error("Could not resolve credentials for the guided goal request.");
+	}
 	if (!apiKey) {
 		throw new Error(`No API key for ${resolved.model.provider}/${resolved.model.id}`);
 	}
 
-	const userPrompt = prompt.render(goalsPrompts["goals/guided-goal-interview"].text, {
-		messages: options.messages.map(message => ({ label: message.role.toUpperCase(), content: message.content })),
-	});
-	// Secret obfuscation: route the user-authored transcript through the session obfuscator the
-	// same way normal turns do, so an API key / secret typed into the rough goal or an answer is
-	// never sent verbatim to the plan/slow provider. Deobfuscated again below before display/use.
-	const obfuscator = session.obfuscator;
-	const promptText = obfuscator?.hasSecrets() ? obfuscator.obfuscate(userPrompt) : userPrompt;
+	const rawSystemPrompt = prompt.render(goalsPrompts["goals/guided-goal-system"].text);
+	const sanitizeLive = (text: string): string => session.obfuscateProviderText(text);
+	const providerContext: Context = { messages: [] };
+	const refreshProviderContext = (): void => {
+		// Retain the raw interview transcript until the physical attempt. Each complete field is
+		// sanitized before prompt rendering so later projection cannot split a secret.
+		const providerMessages = options.messages.map(message => ({
+			label: message.role.toUpperCase(),
+			content: sanitizeLive(message.content),
+		}));
+		const userPrompt = prompt.render(goalsPrompts["goals/guided-goal-interview"].text, {
+			messages: providerMessages,
+		});
+		providerContext.systemPrompt = [sanitizeLive(rawSystemPrompt)];
+		providerContext.messages = [
+			{ role: "user", content: [{ type: "text", text: sanitizeLive(userPrompt) }], timestamp: Date.now() },
+		];
+		providerContext.tools = [RESPOND_TOOL];
+	};
 	const thinkingLevel = concreteThinkingLevel(resolved.thinkingLevel);
 	const response = await instrumentedCompleteSimple(
 		resolved.model,
+		providerContext,
 		{
-			systemPrompt: [prompt.render(goalsPrompts["goals/guided-goal-system"].text)],
-			messages: [{ role: "user", content: [{ type: "text", text: promptText }], timestamp: Date.now() }],
-			tools: [RESPOND_TOOL],
-		},
-		{
-			apiKey: session.modelRegistry.resolver(resolved.model, session.sessionId),
+			apiKey: refreshGuidedContextForApiKey(
+				session.modelRegistry.resolver(resolved.model, session.sessionId),
+				refreshProviderContext,
+			),
 			signal: options.signal,
 			reasoning: toReasoningEffort(thinkingLevel),
 			disableReasoning: shouldDisableReasoning(thinkingLevel),
 			toolChoice: { type: "tool", name: RESPOND_TOOL_NAME },
+			// Provider adapters may introduce another serialized string surface. Walk the final
+			// payload with the then-current session runtime for every physical send.
+			onPayload: payload => mapJsonStrings(payload, sanitizeLive),
 			// Route through the session's provider transport so websocket-only Codex
 			// models (gpt-5.6-luna/sol/terra) get a websocket session instead of
 			// falling back to SSE — the Codex SSE /responses endpoint does not serve
@@ -138,7 +169,7 @@ export async function runGuidedGoalTurn(
 	);
 
 	if (response.stopReason === "error") {
-		throw new Error(response.errorMessage ?? "guided goal request failed");
+		throw new Error(sanitizeLive(response.errorMessage ?? "guided goal request failed"));
 	}
 	if (response.stopReason === "aborted") {
 		throw new Error("guided goal request aborted");
@@ -156,8 +187,8 @@ export async function runGuidedGoalTurn(
 		result = parseGuidedGoalPayload(parseJsonPayload(text));
 	}
 
-	// Reverse the obfuscation: restore any secret placeholders the model echoed back before the
-	// question/objective is shown or the goal is started.
+	// Reverse the current runtime's placeholders before the result is shown or started.
+	const obfuscator = session.obfuscator;
 	if (!obfuscator?.hasSecrets()) return result;
 	if (result.kind === "question") {
 		return {

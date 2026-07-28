@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, spyOn, vi } from "bun:test"
 import * as path from "node:path";
 import * as core from "@veyyon/agent-core";
 import { ThinkingLevel } from "@veyyon/agent-core";
-import type { Api, Model } from "@veyyon/ai";
+import type { Api, ApiKey, Context, Model, SimpleStreamOptions } from "@veyyon/ai";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { runGuidedGoalTurn } from "@veyyon/coding-agent/goals/guided-setup";
@@ -47,6 +47,7 @@ function createSession(options?: {
 		sessionId: "session-1",
 		preferWebsockets: true,
 		providerSessionState: new Map(),
+		obfuscateProviderText: (text: string) => text,
 		agent: { telemetry: undefined },
 	} as unknown as AgentSession;
 }
@@ -260,7 +261,11 @@ describe("guided goal setup", () => {
 			obfuscate: (text: string) => text.replaceAll("SECRET123", "#S0#"),
 			deobfuscate: (text: string) => text.replaceAll("#S0#", "SECRET123"),
 		};
-		const session = { ...createSession(), obfuscator } as unknown as AgentSession;
+		const session = {
+			...createSession(),
+			obfuscator,
+			obfuscateProviderText: (text: string) => obfuscator.obfuscate(text),
+		} as unknown as AgentSession;
 		const complete = spyOn(core, "instrumentedCompleteSimple").mockResolvedValue(
 			// The model echoes the obfuscated placeholder back inside its objective.
 			mockResponse({ kind: "ready", objective: "Rotate the key #S0# and redeploy." }) as never,
@@ -278,6 +283,84 @@ describe("guided goal setup", () => {
 
 		// The objective is restored to the real secret before the goal starts.
 		expect(result).toEqual({ kind: "ready", objective: "Rotate the key SECRET123 and redeploy." });
+	});
+
+	it("rebuilds and recursively sanitizes each guided-goal credential attempt", async () => {
+		// Why: the interview remains raw in memory while credentials resolve. A runtime swapped
+		// during that await (or a 401 retry) must protect both the rebuilt context and nested final
+		// payload strings; a one-time pre-projection transform is stale.
+		const marker = `GUIDED_ATTEMPT_BOUNDARY_START_${"X".repeat(160)}_GUIDED_ATTEMPT_BOUNDARY_END`;
+		const runtime = (replacement: string) => ({
+			hasSecrets: () => true,
+			obfuscate: (text: string) => text.replaceAll(marker, replacement),
+			deobfuscate: (text: string) => text.replaceAll(replacement, marker),
+		});
+		let currentObfuscator:
+			| {
+					hasSecrets: () => boolean;
+					obfuscate: (text: string) => string;
+					deobfuscate: (text: string) => string;
+			  }
+			| undefined;
+		const base = createSession();
+		let session!: AgentSession;
+		let resolutions = 0;
+		const modelRegistry = {
+			...(base.modelRegistry as object),
+			getApiKey: async () => "preflight-key",
+			resolver: () =>
+				(async () => {
+					resolutions += 1;
+					currentObfuscator = runtime(resolutions === 1 ? "#GUIDED_FIRST#" : "#GUIDED_CURRENT#");
+					return `attempt-key-${resolutions}`;
+				}) as ApiKey,
+		};
+		session = {
+			...base,
+			modelRegistry,
+			get obfuscator() {
+				return currentObfuscator;
+			},
+			obfuscateProviderText: (text: string) => currentObfuscator?.obfuscate(text) ?? text,
+		} as unknown as AgentSession;
+		const contexts: string[] = [];
+		const payloads: string[] = [];
+		spyOn(core, "instrumentedCompleteSimple").mockImplementation(
+			async (_model: Model, context: Context, request?: SimpleStreamOptions) => {
+				if (typeof request?.apiKey === "function") {
+					await request.apiKey({ lastChance: false, error: undefined });
+					contexts.push(JSON.stringify(context));
+					payloads.push(
+						JSON.stringify(
+							request.onPayload?.({
+								context,
+								nested: { [marker]: [`payload-${marker}`] },
+							}),
+						),
+					);
+					await request.apiKey({ lastChance: false, error: new Error("401") });
+					contexts.push(JSON.stringify(context));
+					payloads.push(JSON.stringify(request.onPayload?.({ context, nested: marker })));
+				}
+				return mockResponse({ kind: "ready", objective: "Use #GUIDED_CURRENT#." }) as never;
+			},
+		);
+
+		const result = await runGuidedGoalTurn(session, {
+			messages: [{ role: "user", content: `prefix-${marker}-suffix` }],
+		});
+
+		expect(contexts).toHaveLength(2);
+		expect(contexts[0]).toContain("#GUIDED_FIRST#");
+		expect(contexts[1]).toContain("#GUIDED_CURRENT#");
+		expect(payloads[0]).toContain("#GUIDED_FIRST#");
+		expect(payloads[1]).toContain("#GUIDED_CURRENT#");
+		for (const capture of [...contexts, ...payloads]) {
+			expect(capture).not.toContain(marker);
+			expect(capture).not.toContain("GUIDED_ATTEMPT_BOUNDARY_START");
+			expect(capture).not.toContain("GUIDED_ATTEMPT_BOUNDARY_END");
+		}
+		expect(result).toEqual({ kind: "ready", objective: `Use ${marker}.` });
 	});
 
 	it("salvages the latest guided objective when the turn cap ends on a question without one", async () => {

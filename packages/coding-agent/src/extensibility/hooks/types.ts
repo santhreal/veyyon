@@ -188,6 +188,14 @@ export interface HookContext {
 	modelRegistry: ModelRegistry;
 	/** Current model (may be undefined if no model is selected yet) */
 	model: Model | undefined;
+	/**
+	 * Live final-seam transform for hook-owned provider request strings.
+	 *
+	 * Hooks retain raw local inputs until credentials resolve, invoke this before any lossy
+	 * projection, and invoke it again from the provider's onPayload callback. The implementation
+	 * dereferences the owning session runtime on every call.
+	 */
+	obfuscateProviderText(text: string): string;
 	/** Whether the agent is idle (not streaming) */
 	isIdle(): boolean;
 	/** Abort the current agent operation (fire-and-forget, does not wait) */

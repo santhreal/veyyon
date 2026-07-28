@@ -400,7 +400,7 @@ async function runPhase1(options: {
 			produced: 0,
 			usage: emptyCost(),
 		};
-		const obfuscateProviderText = (text: string): string => session.obfuscator?.obfuscate(text) ?? text;
+		const obfuscateProviderText = (text: string): string => session.obfuscateProviderText(text);
 
 		await runWithConcurrency(claims, config.stage1Concurrency, async claim => {
 			const result = await runStage1Job({
@@ -560,7 +560,7 @@ async function runPhase2(options: {
 			}
 		}, config.phase2HeartbeatSeconds * 1000);
 
-		const obfuscateProviderText = (text: string): string => session.obfuscator?.obfuscate(text) ?? text;
+		const obfuscateProviderText = (text: string): string => session.obfuscateProviderText(text);
 
 		try {
 			const consolidated = await runConsolidationModel({
@@ -711,10 +711,7 @@ function extractMemoryMessageText(message: Record<string, unknown>): string {
 	return text.join("\n");
 }
 
-function extractPersistableMessages(
-	payload: string,
-	sanitize: (text: string) => string,
-): PersistableMemoryMessage[] {
+function extractPersistableMessages(payload: string): PersistableMemoryMessage[] {
 	const rows = parseJsonlLenient(payload);
 	if (!Array.isArray(rows)) return [];
 	const messages: PersistableMemoryMessage[] = [];
@@ -724,13 +721,14 @@ function extractPersistableMessages(
 		if (!isPersistableMemoryRole(role)) continue;
 
 		// The memory model is a text-only summarizer. Project the untrusted persisted message onto
-		// this allowlist before encoding: image bytes, provider replay payloads, tool arguments,
-		// details, signatures, and arbitrary nested fields must never cross the provider boundary.
-		const text = sanitize(extractMemoryMessageText(row.message));
+		// this raw allowlist before any provider attempt. Image bytes, provider replay payloads,
+		// tool arguments, details, signatures, and arbitrary nested fields are discarded here;
+		// allowlisted strings stay raw until the per-attempt builder sanitizes them.
+		const text = extractMemoryMessageText(row.message);
 		if (role === "toolResult") {
 			const toolName = row.message.toolName;
 			if (toolName !== "bash" && toolName !== "eval" && toolName !== "read" && toolName !== "grep") continue;
-			if (text.length === 0 || text.length > 32_000) continue;
+			if (text.length === 0) continue;
 			messages.push({ role, toolName, text });
 			continue;
 		}
@@ -760,25 +758,33 @@ async function runStage1Job(options: {
 	const sanitize = options.obfuscateProviderText ?? ((text: string) => text);
 	try {
 		const rolloutRaw = await Bun.file(claim.rolloutPath).text();
-		const persisted = extractPersistableMessages(rolloutRaw, sanitize);
-		const serializedItems = JSON.stringify(persisted);
+		const rawPersisted = extractPersistableMessages(rolloutRaw);
 		const budgetTokens = Math.min(
 			config.phase1InputTokenLimit,
 			Math.floor(modelMaxTokens * config.rolloutPayloadPercent),
 		);
-		const truncatedItems = truncateByApproxTokens(serializedItems, budgetTokens);
 		const rawSystemPrompt = memoriesPrompts["memories/stage_one_system"].text;
-		const rawInputPrompt = prompt.render(memoriesPrompts["memories/stage_one_input"].text, {
-			thread_id: sanitize(claim.threadId),
-			response_items_json: truncatedItems,
-		});
 		const providerContext: Context = { messages: [] };
 		const refreshProviderContext = (): void => {
+			// Rebuild from the raw allowlisted projection after every credential await. Sanitizing
+			// each complete string before JSON serialization and head-tail truncation prevents
+			// either lossy step from splitting a secret into no-longer-matchable fragments.
+			const providerItems = rawPersisted.flatMap(item => {
+				const text = sanitize(item.text);
+				if (item.role === "toolResult" && text.length > 32_000) return [];
+				return [{ ...item, text }];
+			});
+			const serializedItems = JSON.stringify(providerItems);
+			const truncatedItems = truncateByApproxTokens(serializedItems, budgetTokens);
+			const inputPrompt = prompt.render(memoriesPrompts["memories/stage_one_input"].text, {
+				thread_id: sanitize(claim.threadId),
+				response_items_json: truncatedItems,
+			});
 			providerContext.systemPrompt = [sanitize(rawSystemPrompt)];
 			providerContext.messages = [
 				{
 					role: "user",
-					content: [{ type: "text", text: sanitize(rawInputPrompt) }],
+					content: [{ type: "text", text: sanitize(inputPrompt) }],
 					timestamp: Date.now(),
 				},
 			];
@@ -953,20 +959,22 @@ async function runConsolidationModel(options: {
 }> {
 	const { memoryRoot, model, apiKey } = options;
 	const sanitize = options.obfuscateProviderText ?? ((text: string) => text);
-	const rawMemories = sanitize(await Bun.file(path.join(memoryRoot, "raw_memories.md")).text());
-	const rolloutSummaries = sanitize(await readRolloutSummaries(memoryRoot));
+	// Keep the complete source strings intact across awaited I/O. The attempt builder below
+	// resolves the live sanitizer only after credentials and before truncation/rendering.
+	const rawMemories = await Bun.file(path.join(memoryRoot, "raw_memories.md")).text();
+	const rawRolloutSummaries = await readRolloutSummaries(memoryRoot);
 	const rawSystemPrompt = memoriesPrompts["memories/consolidation_system"].text;
-	const rawInput = prompt.render(memoriesPrompts["memories/consolidation"].text, {
-		raw_memories: truncateByApproxTokens(rawMemories, 20_000),
-		rollout_summaries: truncateByApproxTokens(rolloutSummaries, 12_000),
-	});
 	const providerContext: Context = { messages: [] };
 	const refreshProviderContext = (): void => {
+		const input = prompt.render(memoriesPrompts["memories/consolidation"].text, {
+			raw_memories: truncateByApproxTokens(sanitize(rawMemories), 20_000),
+			rollout_summaries: truncateByApproxTokens(sanitize(rawRolloutSummaries), 12_000),
+		});
 		providerContext.systemPrompt = [sanitize(rawSystemPrompt)];
 		providerContext.messages = [
 			{
 				role: "user",
-				content: [{ type: "text", text: sanitize(rawInput) }],
+				content: [{ type: "text", text: sanitize(input) }],
 				timestamp: Date.now(),
 			},
 		];
