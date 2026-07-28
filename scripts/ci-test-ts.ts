@@ -254,6 +254,7 @@ export const repoScriptTests = [
 	"scripts/installer-alias-parity.test.ts",
 	"scripts/installer-completions-parity.test.ts",
 	"scripts/installer-doctor-parity.test.ts",
+	"scripts/installer-help-parity.test.ts",
 	"scripts/installer-lfs-parity.test.ts",
 	"scripts/installer-no-clobber.test.ts",
 	"scripts/installer-source-parity.test.ts",
@@ -263,6 +264,10 @@ export const repoScriptTests = [
 	// scripts/install-tests/environments.toml, so it is slower than the parity
 	// suites above and belongs in the same gate rather than a nightly.
 	"scripts/installer-environment-matrix.test.ts",
+	// The same environments, updated rather than installed. Same reasoning: it
+	// runs the real installer once per case and then the real binary swap over
+	// it, so it is slow, and it gates the same product surface.
+	"scripts/update-environment-matrix.test.ts",
 	"scripts/pre-push-hook.test.ts",
 	"scripts/inline-functions.test.ts",
 	"scripts/differential-conformance.test.ts",

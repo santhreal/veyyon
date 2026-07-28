@@ -26,211 +26,40 @@
  * install.sh makes`, which reads the probes back out of install.sh, so a new probe
  * cannot be added without this suite failing rather than silently exercising a
  * shorter path than a real install.
+ *
+ * The disposable environment and the install itself live in
+ * `scripts/install-tests/environment-matrix-harness.ts`, shared with the update
+ * matrix so both suites assert against the same install.
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import environments from "./install-tests/environments.toml";
+import {
+	type EnvironmentCase,
+	cleanupEnvironmentMatrixTempRoots,
+	environmentCases as cases,
+	installSh,
+	makeCheckout,
+	PATH_MARKER,
+	pathLineFor,
+	rcTargetFor,
+	repoRoot,
+	runInstall,
+	STAND_IN_BINARY,
+} from "./install-tests/environment-matrix-harness";
 
-const repoRoot = path.resolve(import.meta.dir, "..");
-const installSh = path.join(repoRoot, "scripts", "install.sh");
 const installShSource = fs.readFileSync(installSh, "utf8");
 
-const PATH_MARKER = "# added by the veyyon installer";
-
-/** One environment from the Tier-B matrix. */
-interface EnvironmentCase {
-	name: string;
-	shell: string;
-	home_dir: string;
-	install_dir: string;
-	env?: Record<string, string>;
-	pre_files?: Record<string, string>;
-	pre_symlinks?: Record<string, string>;
-	expect_rc?: string;
-	expect_completions?: string[];
-	expect_absent?: string[];
-	expect_rc_stays_symlink?: boolean;
-	install_dir_on_path?: boolean;
-}
-
-const cases = (environments as { case: EnvironmentCase[] }).case;
-
-/**
- * What the installer runs the binary for, and what it expects back.
- *
- * install.sh probes the binary four times during a `--local` install. The
- * stand-in answers exactly these and nothing else, and `grep` really searches so
- * doctor's native self-test is answered with a real match rather than a canned
- * line that would pass even if the installer stopped pointing it at a file.
- */
-const STAND_IN_BINARY = `#!/bin/sh
-# Stand-in for the compiled veyyon, used by scripts/installer-environment-matrix.test.ts.
-set -u
-case "\${1:-}" in
-	--version) echo "veyyon 9.9.9"; exit 0 ;;
-	completions)
-		case "\${2:-}" in
-			--help) echo "usage: veyyon completions <bash|zsh|fish>"; exit 0 ;;
-			bash) echo "complete -F _veyyon veyyon vey"; exit 0 ;;
-			zsh) echo "#compdef veyyon vey"; exit 0 ;;
-			fish) echo "complete -c veyyon"; exit 0 ;;
-			*) echo "unknown shell" >&2; exit 2 ;;
-		esac ;;
-	grep)
-		[ "\${2:-}" = "--help" ] && { echo "usage: veyyon grep <pattern> <path>"; exit 0; }
-		exec grep -rl -- "$2" "$3" ;;
-	*) echo "unknown command: \${1:-}" >&2; exit 2 ;;
-esac
-`;
-
+/** Roots made by the kill cases below, which build their own environment. */
 const tempRoots: string[] = [];
 
 afterAll(() => {
 	for (const root of tempRoots.splice(0)) {
 		fs.rmSync(root, { recursive: true, force: true });
 	}
+	cleanupEnvironmentMatrixTempRoots();
 });
-
-/** A disposable checkout whose `dist/vey` is the stand-in binary. */
-function makeCheckout(root: string): string {
-	const checkout = path.join(root, "checkout");
-	fs.mkdirSync(path.join(checkout, "dist"), { recursive: true });
-	const binary = path.join(checkout, "dist", "vey");
-	fs.writeFileSync(binary, STAND_IN_BINARY, { mode: 0o755 });
-	return checkout;
-}
-
-interface InstallRun {
-	exitCode: number;
-	output: string;
-	home: string;
-	installDir: string;
-	checkout: string;
-	env: Record<string, string>;
-}
-
-/**
- * Run the real installer for one case, in a $HOME that exists only for it.
- *
- * A reinstall passes the first run back in: re-staging the case's `pre_files`
- * would rewrite the rc the first install just appended to, so the second run
- * would be starting from a clean rc and "adds nothing on a second install" would
- * pass no matter what the installer did.
- */
-function runInstall(testCase: EnvironmentCase, previous?: InstallRun): InstallRun {
-	if (previous) {
-		const rerun = Bun.spawnSync(["sh", installSh, "--local"], {
-			cwd: previous.checkout,
-			env: previous.env,
-			stderr: "pipe",
-			stdout: "pipe",
-		});
-		return { ...previous, exitCode: rerun.exitCode, output: `${rerun.stdout.toString()}${rerun.stderr.toString()}` };
-	}
-	const root = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-env-matrix-"));
-	tempRoots.push(root);
-	const home = path.join(root, testCase.home_dir);
-	fs.mkdirSync(home, { recursive: true });
-	// What the case ASKS for, which is what the installer is handed, and what the
-	// installer RESOLVES it to, which is what every assertion below compares
-	// against. They differ when a case spells the directory with a trailing
-	// slash: `install_dir()` strips it, because the PATH membership test and the
-	// rc line are string comparisons and `.local/bin/` would not match the entry
-	// the installer itself wrote. Mirroring that here rather than normalizing the
-	// input keeps the trailing-slash spelling actually under test.
-	const requestedInstallDir = testCase.install_dir.startsWith("/")
-		? testCase.install_dir
-		: path.join(home, testCase.install_dir);
-	const installDir = normalizeInstallDir(requestedInstallDir);
-	const checkout = makeCheckout(root);
-
-	for (const [rel, content] of Object.entries(testCase.pre_files ?? {})) {
-		const target = path.join(home, rel);
-		fs.mkdirSync(path.dirname(target), { recursive: true });
-		fs.writeFileSync(target, content);
-	}
-	for (const [rel, target] of Object.entries(testCase.pre_symlinks ?? {})) {
-		const link = path.join(home, rel);
-		fs.mkdirSync(path.dirname(link), { recursive: true });
-		fs.symlinkSync(target.replace("$HOME", home), link);
-	}
-
-	// A PATH holding the system tools the installer needs, and deliberately NOT
-	// the install dir unless the case asks for it: that is the difference between
-	// "write the rc line" and "there is nothing to do".
-	const basePath = "/usr/local/bin:/usr/bin:/bin";
-	const env: Record<string, string> = {
-		HOME: home,
-		SHELL: testCase.shell,
-		VEYYON_INSTALL_DIR: requestedInstallDir,
-		PATH: testCase.install_dir_on_path ? `${installDir}:${basePath}` : basePath,
-		TMPDIR: path.join(root, "tmp"),
-	};
-	fs.mkdirSync(env.TMPDIR, { recursive: true });
-	for (const [key, value] of Object.entries(testCase.env ?? {})) {
-		env[key] = value.replaceAll("$HOME", home);
-	}
-	if (testCase.install_dir_on_path) fs.mkdirSync(installDir, { recursive: true });
-
-	const run = Bun.spawnSync(["sh", installSh, "--local"], { cwd: checkout, env, stderr: "pipe", stdout: "pipe" });
-	return {
-		exitCode: run.exitCode,
-		output: `${run.stdout.toString()}${run.stderr.toString()}`,
-		home,
-		installDir,
-		checkout,
-		env,
-	};
-}
-
-/**
- * Where an rc's bytes actually live: through the case's symlink when it has one.
- *
- * One owner for this, because a dotfiles case has to be read at the link's target
- * and every rc assertion needs the same answer.
- */
-function rcTargetFor(testCase: EnvironmentCase, rcRel: string, home: string): string {
-	const linked = testCase.pre_symlinks?.[rcRel];
-	return linked === undefined ? path.join(home, rcRel) : linked.replaceAll("$HOME", home);
-}
-
-/**
- * The directory as install.sh's `shell_single_quote` writes it.
- *
- * Single quotes, with a literal quote closed, escaped and reopened, which is the
- * only way to put one inside single quotes in POSIX sh.
- */
-function shellSingleQuote(value: string): string {
-	return `'${value.replaceAll("'", "'\\''")}'`;
-}
-
-/**
- * The PATH line install.sh writes for this rc, per its `path_line_for`.
- *
- * The directory is quoted, and that is the point of the spelling rather than a
- * detail of it: written into a double-quoted string, a home directory containing
- * `$` expanded when the profile was sourced and put a nonsense entry on PATH, so
- * `veyyon` was not found in a shell whose profile plainly named the right
- * directory. A backtick or a backslash is the same bug.
- */
-/**
- * The directory `install_dir()` resolves a request to: trailing slashes stripped,
- * with `/` left alone because there the slash IS the directory. Kept in step with
- * install.sh by `functions.test.sh`, which asserts the same cases against the
- * shell function itself.
- */
-function normalizeInstallDir(dir: string): string {
-	let value = dir;
-	while (value.endsWith("/") && value !== "/") value = value.slice(0, -1);
-	return value;
-}
-
-function pathLineFor(rc: string, installDir: string): string {
-	const quoted = shellSingleQuote(installDir);
-	return rc.endsWith("config.fish") ? `fish_add_path ${quoted}` : `export PATH=${quoted}:"$PATH"`;
-}
 
 describe("the stand-in binary answers every probe install.sh makes", () => {
 	/**
@@ -285,7 +114,7 @@ describe.each(cases.map(c => [c.name, c] as const))("install into %s", (_name, t
 	it("passes doctor's native self-test on the installed binary", () => {
 		// The install is not finished when the file lands; doctor is what proves
 		// the thing that landed runs and can search.
-		expect(first.output).toContain("veyyon runs — veyyon 9.9.9");
+		expect(first.output).toContain("veyyon runs — veyyon/9.9.9");
 		expect(first.output).toContain("native addon loads (installed)");
 	});
 

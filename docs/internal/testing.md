@@ -779,6 +779,7 @@ missing `yield` handler once surfaced as seventeen unrelated-looking failures.
 | Natives | `packages/natives/test/`, `crates/veyyon-*/` |
 | Install / binary smoke | `scripts/install-tests/`, `veyyon --smoke-test` |
 | Install per environment | `scripts/installer-environment-matrix.test.ts` + `scripts/install-tests/environments.toml` |
+| Update per environment | `scripts/update-environment-matrix.test.ts` (same TOML, shared harness) |
 | Regression corpus | `packages/coding-agent/test/corpus/regressions/` |
 
 ## Installer gates per platform
@@ -790,6 +791,7 @@ its own gate:
 |---|---|---|
 | Linux, macOS | `scripts/install-tests/run-ci.sh` (CI job `install_methods`, matrixed over `ubuntu-22.04`, `macos-14` and `macos-15-intel`) | `install.sh --local` end to end: install, reinstall, uninstall, plus the no-clobber rules for a `vey` the user already owns |
 | Linux | `scripts/installer-environment-matrix.test.ts` | `install.sh --local` once per shell/XDG combination in `environments.toml` |
+| Linux | `scripts/update-environment-matrix.test.ts` | A real binary swap and completions refresh over each of those same installs |
 | Windows | `scripts/install-tests/e2e.test.ps1` (CI job `install_ps1_e2e`) | `install.ps1 -Local` end to end: install, reinstall, reinstall over a quoted PATH entry, uninstall |
 | Windows, on push to main | `scripts/install-tests/e2e.test.ps1 -Mode Binary` (CI job `install_ps1_binary`) | The same run against the newest published release, which is the default install |
 | Windows | `scripts/install-tests/functions.test.ps1` (CI job `install_ps1_functions`) | The pure helpers, with nothing installed |
@@ -900,6 +902,34 @@ under test is the installer's handling of the environment, and a 100 MB build pe
 would make the matrix unrunnable. The stand-in cannot silently fall behind, because one
 test reads the probes back out of `install.sh` and fails if the installer starts asking
 the binary for something the stand-in does not answer.
+
+## The update matrix runs on the same environments
+
+`scripts/update-environment-matrix.test.ts` takes each install the matrix above
+produced and updates it, so the same TOML covers both halves of the product. An
+update is where an environment does its damage quietly: the binary swap succeeds and
+reports the new version, and what breaks is everything around it, an rc the updater
+touched, a second PATH entry, a `vey` link left pointing at the file that was replaced,
+or completion scripts still describing the previous version in a shell whose completion
+directory the updater resolved differently from the installer.
+
+Both suites share one harness, `scripts/install-tests/environment-matrix-harness.ts`,
+which owns the case type, the stand-in binary, the disposable `$HOME`, and the install
+run. Neither suite names a shell or an XDG variable, so adding an environment is still
+one TOML edit and it covers the update too.
+
+The update runs the shipped `replaceBinaryForUpdate`, `refreshCompletionsForInstalledBinary`
+and `sweepStaleBackups` for real, in a CHILD process carrying the case's environment.
+The child is not a convenience: the completion paths are resolved from `process.env`
+when the module runs, so a child started with the case's `HOME` and `XDG_*` is the only
+way to ask where THAT environment's completion files live rather than where this
+machine's are.
+
+After every case: the binary is the new version's bytes and still executable, the rc
+is byte-identical to what the install left (an updater has no business editing it),
+the install directory holds exactly one entry on `$PATH`, `vey` still resolves to the
+binary, every completion file the install wrote has been rewritten from the NEW binary,
+and the sweep leaves no backup or staging file behind.
 
 ## Waiting for a TUI frame
 
