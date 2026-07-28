@@ -4,6 +4,18 @@
 
 ### Changed
 
+- Every file in `src/` imports the `@veyyon/utils` names it uses from the module that declares them.
+  Eighty-nine took them from the package barrel instead, mostly one or two at a time (`isRecord`
+  twenty-one times, `logger` seventeen, `errorMessage` sixteen), and the barrel is eighty-one leaves,
+  so a predicate cost the whole utility package. That is what put the barrel on the coding agent's
+  file-reading module graph and turned a landed reach cut red. Nothing about behaviour changes;
+  `providers/anthropic.ts` reaches 191 modules where it reached 253.
+
+- The Google OAuth flow holds its config in an ES `#` private field rather than behind a `private`
+  keyword the compiler throws away. No public API changed.
+
+- The OpenAI reasoning-effort fallback reads the thinking ladder from `@veyyon/catalog/effort` instead of restating it three times. `openai-reasoning-fallback.ts` held the six levels as a list, as a lookup table and as a rank table, all written by hand. That module decides what to RETRY with after a server rejects an effort, so a table that had not learned about a new level could not offer it as a fallback: a model whose only allowed value was the new one fell through to no reasoning at all, and the request then succeeded. `none` stays declared locally as `NO_REASONING_VALUE`, because it means do-not-reason and putting it on the ladder would make it a step the clamp helpers could stop at.
+
 - The Claude Code version this client identifies itself as comes from `@veyyon/catalog/wire/anthropic`. Three modules build a user-agent from it and build deliberately different ones, so the version is the only part that has to agree, and it was declared in the Anthropic provider: 310 modules for a string. The OAuth controller went from 313 modules to 106 and the usage client from 313 to 127. A drift between the three was never an error, only three requests carrying fingerprints that disagree with each other.
 
 - `dialect/wire-tags.ts` owns `CODE_FENCE`, the bare markdown fence. `gemini.ts` called it `FENCE` and `deepseek.ts` called it `CODE_FENCE`, and both dialects SCAN for it rather than emit it: DeepSeek closes a tool call's arguments at the last fence in its raw-argument buffer, Gemini closes a code block at the first one. A copy that drifted would not raise anything, it would make one dialect stop finding the end of a block and swallow the rest of the stream as arguments, which surfaces as a tool call with garbage parameters. Fences that carry an info string stay with their dialect, because the string is the dialect's own convention rather than shared vocabulary.
@@ -27,7 +39,6 @@
 
 - Asking which environment variable holds a provider's key no longer loads the provider registry. `getEnvApiKey` was split out of `stream.ts` for exactly this reason and still cost 158 modules, because the OVERRIDES hung on the provider definitions: three credential probes (Bedrock's five credential shapes, Vertex ADC, Anthropic's variable order under Foundry) plus a handful of string keys, read off `PROVIDER_REGISTRY`, which is 121 modules of login flows, transports and model lists and was 95 of them marginal on this lookup. `src/provider-env-keys.ts` owns those rules now at 23 modules, and `registry/types.ts` no longer declares an `envKeys` field, so a provider's env-key rule has exactly one home and one reader. `env-api-key.ts` 158 -> 65, and downstream in `@veyyon/coding-agent`, where eighteen web-search providers and the fetcher import it: `web/parallel.ts` 164 -> 72, `tools/fetch.ts` 368 -> 282, `tools/read.ts` 542 -> 468. Two duplicates went with it: `KeyResolver` was declared identically in `registry/types.ts` and in `env-api-key.ts`, and `gitlab-duo-agent` declared `envKeys: "GITLAB_TOKEN"` while the catalog already said `envVars: ["GITLAB_TOKEN"]` for the same id, with the override silently winning. `test/provider-env-keys.test.ts` (26 cases) drives every branch of every probe from the real environment, including the boundaries a rewrite gets wrong (an AWS access key with no secret, ADC credentials with no project or no location, the Foundry order with all three variables set), and ratchets both duplicates shut.
 
-### Changed
 
 - The sqlite credential store moved out of `auth-storage.ts` into `src/auth-storage-sqlite.ts`, and the
   row types and row logic into `src/auth-credential-rows.ts`. One 7,800-line module used to hold three
@@ -73,27 +84,6 @@
 
 - Every prompt this package sends is registered in `src/prompts/registry.ts`, and the fourteen `.md` files moved from `src/dialect/` and `src/providers/` to `src/prompts/dialect/` and `src/prompts/provider/`. They were imported by relative path from the modules that used them, so the package could not say what text it puts in a model's system prompt without a glob, and `veyyon prompt --prompts` listed none of it. Each dialect definition now takes its guide from its registry row, and `dialect-prompt-registry.test.ts` asserts per dialect that the guide it ships is the row named for it and is no other dialect's, which is the failure a coverage check cannot see: handing the Gemma model GLM's syntax compiles, renders, and produces calls the scanner drops.
 
-### Fixed
-
-- A cache that cannot be read or written now says so once instead of behaving like a permanently cold
-  cache. Every `AuthStorage` cache method answered a database failure by acting as though the cache were
-  empty: a failed read is a miss, a failed write is a value not kept. That behaviour is right, since a
-  cache is an optimization and nothing should fail a request over it, but it was silent, so a read-only
-  or corrupt `auth.db`, a full disk, or a locked file made every model-catalog and OAuth-metadata lookup
-  miss and every write vanish while the process looked merely slow. The first failure of each operation
-  now warns with the underlying error and later ones are debug, because a broken database fails on every
-  call and one warning per call would bury it. A failed `deleteCachePrefix` is reported for a second
-  reason: it leaves stale rows the caller believes it invalidated.
-
-- The auth-gateway no longer reports a failed generation as a completed response. `encodeStream` builds its terminal SSE frame from the stream's final assistant message, and when no `done` event arrived it asked the stream for its result and swallowed a rejection to `null`. Every reader after that treated the null as "there was no final message" rather than as an error, so the status became `completed`, the output became whatever text had already streamed, and usage became null: a generation that failed partway through was announced to the client as a success carrying half an answer, which is the one failure a client cannot detect or retry. The path is reachable by design, since a stream that ends without a terminal value rejects with "Stream ended without a final result" -- what an upstream connection dropping mid-stream looks like from here. It now emits `response.failed` with the real reason, and the items that did stream stay attached so a truncated answer can still be inspected. An explicit `error` event still fails with its own message, and a stream that delivers a final message still completes.
-
-- A GCE metadata server that refuses a token is reported. `fetchMetadataToken` answered a refused status and "not running on GCE at all" with the same `undefined`, and the error the caller raises offers "run on a GCE or Cloud Run instance with a service account" as one of three fixes, which is exactly the wrong advice for an instance whose metadata server answered 403. The status and URL are now warned where they are still known; not being on GCE stays silent, since that is every laptop.
-
-- Tool-call arguments that cannot be used are no longer dropped in silence. The DeepSeek, Harmony and Kimi dialects and the GitLab Duo provider each had their own copy of the same parse, and each answered a failure with an empty object, which is also what a call that takes no arguments produces. So a stream cut mid-arguments, or a model emitting a bare string or an array, ran the tool with nothing and nothing said so. There is one owner now, and it names the source, the tool, and an excerpt of what arrived; the empty object is still returned, because refusing the call belongs to the tool's own argument validation.
-
-- Usage history that cannot be read is now reported instead of appearing as usage you never had. Both the history and the cost queries answered any database failure with an empty list, so an unreadable database presented as a clean slate and the cost totals read as zero.
-
-### Changed
 
 - An OAuth refresh no longer trusts a credential row purely because it sits under the right id. The peer-rotation
   check re-reads the row by a bare numeric id to see whether another process already rotated the token, and nothing
@@ -119,7 +109,44 @@
 
 - SigV4 signing and the auth-broker snapshot cache take their WebCrypto byte coercion from `asStrictBytes` in `@veyyon/utils` rather than each defining it. It decides whether a `Uint8Array` has to be copied before `crypto.subtle` reads it, and `crypto.subtle` reads the whole backing buffer, so getting it wrong signs or decrypts bytes the caller did not name. Four packages had a private copy of the same three-line condition. No behaviour change.
 
+- Values that go on a provider's wire are declared once, in the catalog that owns them. Three had a second declaration in a package that consumes it, under the same name and with the same value, so the owner was being bypassed rather than read. Devin's IDE and extension versions are sent as request metadata by model discovery and by the chat provider, each from its own pair, so a bump would have left the two halves of one session identifying themselves as different clients. Antigravity's `fetchAvailableModels` path was spelled by discovery and by the usage reader; a path change would have 404ed whichever copy was not updated, and a usage reader that cannot reach its endpoint reports no quota information rather than a wrong URL. The Codex base URL is imported from the catalog by six modules and was respelled as a bare literal by web search, which would have kept posting to the old host under the user's real credentials after a move.
+
+- The placeholder an errored tool result carries when the tool produced no output is one sentence, and `packages/ai/src/types.ts` owns it beside the `ToolResultMessage` type it belongs to. It was declared in the agent loop, which fills it in where an untyped tool result enters, and again in the Anthropic provider, which fills it in on the way to a wire that rejects an empty content array. Same event, same sentence, two copies: an edit to either produced a transcript wording one failure two ways depending on which layer noticed it first.
+
+- The credential-validation timeout and Google's Code Assist tier ids each have one owner. `VALIDATION_TIMEOUT_MS` is exported from `registry/api-key-validation.ts`, and Xiaomi's regional key check imports it instead of holding its own budget under the same name, so the deadline that decides when a hung validation becomes a rejected key is one number. `TIER_FREE`, `TIER_LEGACY` and `TIER_STANDARD` moved to `registry/oauth/google-oauth-shared.ts`, the module that already exists for the two Google providers: `legacy-tier` is what both fall back to when a response names no tier, and a drift between their private copies would have put them on two different defaults while each file still read correctly on its own.
+
+  `packages/catalog/test/a-wire-constant-has-one-declaration.test.ts` scans every `packages/*/src` rather than one package, because a per-package lock is what all three slipped through: each copy was the only declaration in its own package. It asserts the real values, exactly one declaration per name across the workspace (a re-export or an import does not count, a second `const` does), that each consumer imports from the catalog, and for the Codex host the half a name-based lock cannot see, that nobody writes `https://chatgpt.com/backend-api` as a literal outside its owner.
+
 ### Fixed
+
+- Cancelling a request no longer turns into a crashed run. `resolveApiKeyOnce` checked the abort signal
+  before it looked at the key at all, so an already-cancelled request threw `signal.reason` even when
+  there was no key to resolve and nothing to cancel. Its caller in the agent loop resolves credentials
+  while preparing a request and then renders cancellation as an assistant message with
+  `stopReason: "aborted"`; the throw unwound past that, and a user's own interrupt surfaced as a bare
+  `AbortError`. A single resolve does no retrying and no waiting of its own, so it forwards the signal
+  to a resolver, which can cancel its own I/O, and leaves the decision about what a cancellation means
+  to whoever owns the signal. `withAuth` keeps the check, because it owns a retry loop that would
+  otherwise keep minting credentials for a user who has left.
+
+- A cache that cannot be read or written now says so once instead of behaving like a permanently cold
+  cache. Every `AuthStorage` cache method answered a database failure by acting as though the cache were
+  empty: a failed read is a miss, a failed write is a value not kept. That behaviour is right, since a
+  cache is an optimization and nothing should fail a request over it, but it was silent, so a read-only
+  or corrupt `auth.db`, a full disk, or a locked file made every model-catalog and OAuth-metadata lookup
+  miss and every write vanish while the process looked merely slow. The first failure of each operation
+  now warns with the underlying error and later ones are debug, because a broken database fails on every
+  call and one warning per call would bury it. A failed `deleteCachePrefix` is reported for a second
+  reason: it leaves stale rows the caller believes it invalidated.
+
+- The auth-gateway no longer reports a failed generation as a completed response. `encodeStream` builds its terminal SSE frame from the stream's final assistant message, and when no `done` event arrived it asked the stream for its result and swallowed a rejection to `null`. Every reader after that treated the null as "there was no final message" rather than as an error, so the status became `completed`, the output became whatever text had already streamed, and usage became null: a generation that failed partway through was announced to the client as a success carrying half an answer, which is the one failure a client cannot detect or retry. The path is reachable by design, since a stream that ends without a terminal value rejects with "Stream ended without a final result" -- what an upstream connection dropping mid-stream looks like from here. It now emits `response.failed` with the real reason, and the items that did stream stay attached so a truncated answer can still be inspected. An explicit `error` event still fails with its own message, and a stream that delivers a final message still completes.
+
+- A GCE metadata server that refuses a token is reported. `fetchMetadataToken` answered a refused status and "not running on GCE at all" with the same `undefined`, and the error the caller raises offers "run on a GCE or Cloud Run instance with a service account" as one of three fixes, which is exactly the wrong advice for an instance whose metadata server answered 403. The status and URL are now warned where they are still known; not being on GCE stays silent, since that is every laptop.
+
+- Tool-call arguments that cannot be used are no longer dropped in silence. The DeepSeek, Harmony and Kimi dialects and the GitLab Duo provider each had their own copy of the same parse, and each answered a failure with an empty object, which is also what a call that takes no arguments produces. So a stream cut mid-arguments, or a model emitting a bare string or an array, ran the tool with nothing and nothing said so. There is one owner now, and it names the source, the tool, and an excerpt of what arrived; the empty object is still returned, because refusing the call belongs to the tool's own argument validation.
+
+- Usage history that cannot be read is now reported instead of appearing as usage you never had. Both the history and the cost queries answered any database failure with an empty list, so an unreadable database presented as a clean slate and the cost totals read as zero.
+
 
 - An empty entity tag on a broker snapshot request read as generation 0 instead of as no generation. `Number("")` is 0, so `If-None-Match: ""`, or a header an intermediary blanked, matched a store that was still at its first generation: with `?wait=` set, the broker then long-polled for up to 30 seconds waiting for a change instead of immediately serving the snapshot the client did not have, on every poll. The same hole was in the client's reading of the response `ETag`, where a blanked tag reset its generation to 0 and made it re-download the snapshot it already held. An empty or whitespace-only tag is now no generation, which falls back to sending the snapshot in full. Found while collapsing the two copies of the parser below.
 

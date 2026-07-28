@@ -39,6 +39,7 @@ import { isAbortError } from "@veyyon/utils/abortable";
 import { tryParseJson } from "@veyyon/utils/json";
 import { parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/utils/json-parse";
 import * as logger from "@veyyon/utils/logger";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import * as AIError from "../error";
 import type {
@@ -770,7 +771,7 @@ function devinRetryDelayMs(
 	if (isAbortError(error)) return undefined;
 	if (!AIError.isProviderRetryableError(error)) return undefined;
 
-	const message = error instanceof Error ? error.message : String(error);
+	const message = errorMessage(error);
 	const statedResetMs = parseDevinRateLimitResetMs(message);
 	if (statedResetMs !== undefined) {
 		// One second of slack, because waiting until the exact stated instant races the server's own
