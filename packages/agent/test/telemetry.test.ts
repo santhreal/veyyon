@@ -271,6 +271,18 @@ describe("detectGatewayFromHeaders", () => {
 		});
 	});
 
+	/**
+	 * Prevents adapters that preserve HTTP header casing from silently dropping
+	 * otherwise valid gateway identity and routing attributes.
+	 */
+	it("matches gateway headers case-insensitively", () => {
+		expect(detectGatewayFromHeaders({ "X-LiteLLM-Call-ID": "lc", "X-LiteLLM-Model-Group": "prod" })).toEqual({
+			name: "litellm",
+			callId: "lc",
+			routedTo: "prod",
+		});
+	});
+
 	it("stamps gateway attributes onto the chat span via finishChatSpan", async () => {
 		const telemetry = telemetryFor({});
 		const span = startChatSpan(telemetry, MODEL, { stepNumber: 0, request: {} });
@@ -347,6 +359,29 @@ describe("failChatSpan", () => {
 		expect(s.status.code).toBe(SpanStatusCode.ERROR);
 		expect(s.status.message).toBe("stream collapsed");
 		expect(s.attributes[GenAIAttr.ErrorType]).toBe("Error");
+	});
+
+	/**
+	 * Prevents provider-stream failures from bypassing the documented span-end
+	 * lifecycle hook merely because no AssistantMessage was finalized.
+	 */
+	it("fires onSpanEnd exactly once for a failed provider stream", () => {
+		let calls = 0;
+		const telemetry = telemetryFor({
+			onSpanEnd: ({ span, kind }) => {
+				calls += 1;
+				expect(kind).toBe("chat");
+				span.setAttribute("test.failed_span_end", true);
+			},
+		});
+		const span = startChatSpan(telemetry, MODEL, { stepNumber: 0, request: {} });
+
+		failChatSpan(telemetry, span, { errorObject: new Error("stream collapsed") });
+
+		expect(calls).toBe(1);
+		const failed = onlySpan();
+		expect(failed.attributes["test.failed_span_end"]).toBe(true);
+		expect(failed.status.code).toBe(SpanStatusCode.ERROR);
 	});
 });
 
@@ -484,6 +519,34 @@ describe("recordManualChatTelemetry", () => {
 		]);
 		expect(attrs[PiGenAIAttr.GatewayName]).toBe("helicone");
 	});
+
+	/**
+	 * Prevents manually recorded cancelled calls from losing both their
+	 * terminal error semantics and the matching span-end lifecycle callback.
+	 */
+	it("ends an aborted manual chat with exact cancellation attributes and one end hook", async () => {
+		let calls = 0;
+		const telemetry = telemetryFor({
+			onSpanEnd: ({ span }) => {
+				calls += 1;
+				span.setAttribute("test.manual_span_end", true);
+			},
+		});
+
+		await recordManualChatTelemetry(telemetry, {
+			model: MODEL,
+			stepNumber: 2,
+			finishReason: "aborted",
+		});
+
+		expect(calls).toBe(1);
+		const cancelled = onlySpan();
+		expect(cancelled.attributes["test.manual_span_end"]).toBe(true);
+		expect(cancelled.attributes[GenAIAttr.ResponseFinishReasons]).toEqual(["error"]);
+		expect(cancelled.attributes[GenAIAttr.ErrorType]).toBe("aborted");
+		expect(cancelled.status.code).toBe(SpanStatusCode.ERROR);
+		expect(cancelled.status.message).toBe("aborted");
+	});
 });
 
 describe("execute_tool spans", () => {
@@ -607,6 +670,29 @@ describe("invoke_agent lifecycle and aggregates", () => {
 			.find(s => s.attributes[GenAIAttr.OperationName] === GenAIOperation.InvokeAgent);
 		expect(invokeSpan?.attributes[PiGenAIAggregateAttr.ToolsCount]).toBe(1);
 		expect(invokeSpan?.attributes[PiGenAIAggregateAttr.ToolsSkippedCount]).toBe(1);
+	});
+
+	/**
+	 * Prevents spanless cancelled/error tool calls from disappearing from the
+	 * run-level error taxonomy while still appearing in status counters.
+	 */
+	it("classifies every spanless non-ok tool in aggregate errors", () => {
+		const telemetry = telemetryFor({});
+		const root = startInvokeAgentSpan(telemetry, MODEL);
+		recordSkippedTool(telemetry, { toolCallId: "tc-s", toolName: "read", status: "skipped" });
+		recordSkippedTool(telemetry, { toolCallId: "tc-a", toolName: "write", status: "aborted" });
+		recordSkippedTool(telemetry, { toolCallId: "tc-e", toolName: "shell", status: "error" });
+
+		const snapshot = finishInvokeAgentSpan(telemetry, root, { stepCount: 0 });
+
+		expect(snapshot?.summary.errors).toEqual({
+			total: 3,
+			byType: { tool_aborted: 1, tool_error: 1, tool_skipped: 1 },
+		});
+		const invokeSpan = exporter
+			.getFinishedSpans()
+			.find(span => span.attributes[GenAIAttr.OperationName] === GenAIOperation.InvokeAgent);
+		expect(invokeSpan?.attributes[PiGenAIAggregateAttr.ErrorsCount]).toBe(3);
 	});
 
 	it("applies a renamed agent name from normalizeAgentName", () => {

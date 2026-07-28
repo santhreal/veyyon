@@ -297,7 +297,7 @@ export class AgentRunCollector {
 			toolName: record.toolName,
 			status: record.status,
 			latencyMs: 0,
-			errorType: undefined,
+			errorType: record.status === "ok" ? undefined : `tool_${record.status}`,
 		});
 	}
 

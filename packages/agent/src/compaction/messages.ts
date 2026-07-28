@@ -180,7 +180,7 @@ export function convertMessageToLlm(message: AgentMessage): Message | undefined 
 			}
 			case "branchSummary":
 				return {
-					role: "user",
+					role: "developer",
 					content: [
 						{
 							type: "text" as const,
@@ -192,7 +192,7 @@ export function convertMessageToLlm(message: AgentMessage): Message | undefined 
 				};
 			case "compactionSummary":
 				return {
-					role: "user",
+					role: "developer",
 					content:
 						message.blocks !== undefined
 							? [{ type: "text" as const, text: message.summary }, ...message.blocks]

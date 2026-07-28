@@ -1518,6 +1518,13 @@ export function failChatSpan(
 ): void {
 	if (!span) return;
 	applyGatewayAttributes(span, options.responseHeaders, options.baseUrl);
+	safeOnSpanEnd(telemetry, {
+		span,
+		kind: "chat",
+		model: undefined,
+		agent: normalizedTelemetryAgent(telemetry),
+		conversationId: telemetry?.conversationId,
+	});
 	const err = options.errorObject;
 	if (err instanceof Error) {
 		span.recordException(err);
@@ -1588,27 +1595,32 @@ export function detectGatewayFromHeaders(
 	headers: Readonly<Record<string, string>> | undefined,
 ): GatewayHeaderDetection | undefined {
 	if (!headers) return undefined;
-	const litellmCallId = headers["x-litellm-call-id"];
+	const normalizedHeaders: Readonly<Record<string, string>> = Object.keys(headers).some(
+		key => key !== key.toLowerCase(),
+	)
+		? Object.fromEntries(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]))
+		: headers;
+	const litellmCallId = normalizedHeaders["x-litellm-call-id"];
 	if (litellmCallId) {
 		return {
 			name: "litellm",
 			callId: litellmCallId,
-			routedTo: headers["x-litellm-model-id"] ?? headers["x-litellm-model-group"],
+			routedTo: normalizedHeaders["x-litellm-model-id"] ?? normalizedHeaders["x-litellm-model-group"],
 		};
 	}
-	const heliconeId = headers["helicone-id"];
+	const heliconeId = normalizedHeaders["helicone-id"];
 	if (heliconeId) {
-		return { name: "helicone", callId: heliconeId, routedTo: headers["helicone-target-provider"] };
+		return { name: "helicone", callId: heliconeId, routedTo: normalizedHeaders["helicone-target-provider"] };
 	}
-	const portkeyId = headers["x-portkey-trace-id"] ?? headers["x-portkey-request-id"];
+	const portkeyId = normalizedHeaders["x-portkey-trace-id"] ?? normalizedHeaders["x-portkey-request-id"];
 	if (portkeyId) {
 		return {
 			name: "portkey",
 			callId: portkeyId,
-			routedTo: headers["x-portkey-llm-provider"] ?? headers["x-portkey-provider"],
+			routedTo: normalizedHeaders["x-portkey-llm-provider"] ?? normalizedHeaders["x-portkey-provider"],
 		};
 	}
-	const openRouterGenerationId = headers["x-generation-id"];
+	const openRouterGenerationId = normalizedHeaders["x-generation-id"];
 	if (openRouterGenerationId?.startsWith("gen-")) {
 		// OpenRouter does not surface the upstream provider in response headers
 		// (only the body's `provider` field carries it), so `routedTo` is left
@@ -1931,7 +1943,17 @@ export async function recordManualChatTelemetry(
 		if (responseToolCalls) span.setAttribute(PiGenAIAttr.ResponseToolCalls, responseToolCalls);
 	}
 	applyTerminalStatus(span, options.finishReason, undefined);
-	if (options.endSpan ?? options.span === undefined) span.end();
+	if (options.endSpan ?? options.span === undefined) {
+		safeOnSpanEnd(telemetry, {
+			span,
+			kind: "chat",
+			model: options.model,
+			agent: normalizedTelemetryAgent(telemetry),
+			conversationId: telemetry?.conversationId,
+			stepNumber: options.stepNumber,
+		});
+		span.end();
+	}
 	return span;
 }
 

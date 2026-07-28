@@ -266,8 +266,12 @@ export interface AgentOptions {
 	 * Strip tool descriptions from provider-bound tool specs (top-level + nested
 	 * schema annotations). Use when the full catalog is rendered into the system
 	 * prompt so descriptions are not duplicated on the wire. Native tool calling only.
+	 *
+	 * A function is resolved against the active model for every request, so a
+	 * model switch can move descriptors between the prompt and native schemas
+	 * without retaining the previous model's less efficient representation.
 	 */
-	pruneToolDescriptions?: boolean;
+	pruneToolDescriptions?: boolean | ((model: Model) => boolean);
 	/**
 	 * Owned tool-calling dialect. Undefined keeps provider-native tool calling.
 	 * A function form is re-evaluated with the active model on every request, so
@@ -406,7 +410,7 @@ export class Agent {
 	#repairToolCallArguments?: AgentLoopConfig["repairToolCallArguments"];
 	#resolveIntentTracing: () => boolean;
 	#instrumentation: InstrumentationLevel;
-	#pruneToolDescriptions: boolean;
+	#resolvePruneToolDescriptions: (model: Model) => boolean;
 	#dialect?: ConfiguredDialect;
 	#abortOnFabricatedToolResult?: boolean;
 	#getToolChoice?: () => ToolChoiceDirective | undefined;
@@ -488,7 +492,10 @@ export class Agent {
 		this.#resolveIntentTracing =
 			typeof opts.intentTracing === "function" ? opts.intentTracing : () => opts.intentTracing === true;
 		this.#instrumentation = opts.instrumentation ?? "off";
-		this.#pruneToolDescriptions = opts.pruneToolDescriptions === true;
+		this.#resolvePruneToolDescriptions =
+			typeof opts.pruneToolDescriptions === "function"
+				? opts.pruneToolDescriptions
+				: () => opts.pruneToolDescriptions === true;
 		this.#dialect = opts.dialect;
 		this.#abortOnFabricatedToolResult = opts.abortOnFabricatedToolResult;
 		this.#getToolChoice = opts.getToolChoice;
@@ -756,7 +763,7 @@ export class Agent {
 					// worse than one that omits it, so the two reads have to see the same answer.
 					this.#resolveIntentTracing(),
 					preferredDialect(model.id),
-					this.#pruneToolDescriptions,
+					this.#resolvePruneToolDescriptions(model),
 				) ?? []);
 		let context: Context = { systemPrompt, messages, tools };
 		if (this.#transformProviderContext) context = await this.#transformProviderContext(context, model);
@@ -1207,7 +1214,7 @@ export class Agent {
 			repairToolCallArguments: this.#repairToolCallArguments,
 			intentTracing: this.#resolveIntentTracing(),
 			instrumentation: this.#instrumentation,
-			pruneToolDescriptions: this.#pruneToolDescriptions,
+			pruneToolDescriptions: this.#resolvePruneToolDescriptions(model),
 			dialect: this.#dialect,
 			abortOnFabricatedToolResult: this.#abortOnFabricatedToolResult,
 			appendOnlyContext: this.#appendOnlyContext,
