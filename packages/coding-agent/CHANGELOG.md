@@ -4,6 +4,18 @@
 
 ### Changed
 
+- The bounded JSON walk moved out of the secret obfuscator into `src/json-transform.ts`.
+  `mapJsonStrings` rewrites every string in a JSON value, keys included, and three callers want
+  three different rewrites: the obfuscator's placeholders, the argot token dictionary, and whatever
+  transform the session applies at the outbound provider seam. Only the first is about secrets, but
+  it lived in `secrets/obfuscator.ts`, which reaches 65 modules including an 18-module JSON Schema
+  validator (the obfuscator redacts tool schemas). So `provider-boundary.ts` imported one function
+  and got all of it, and since every module that can make an outbound request reaches that seam, so
+  did they: reading a local file loaded a schema validator. The walk now reaches two modules,
+  `provider-boundary.ts` reaches three where it reached 66, and `tools/read.ts` is 24 modules
+  lighter. Import it from `@veyyon/coding-agent/json-transform`; the obfuscator re-exports the same
+  function, so nothing that already worked stops working.
+
 - `veyyon -p` starts without loading the slash-command handlers. Text and ACP mode dispatch every
   message through `executeAcpBuiltinSlashCommand`, and that function imported the builtin registry
   statically: 740 modules of handlers, and behind them the settings store, the MCP client and the
@@ -211,6 +223,12 @@
 - Vault storage now pins open physical scope and key directories for every transaction. Kernel no-replace and exchange publication preserves a racing destination, key creation uses one crash-atomic winner, and interrupted key stages recover idempotently under concurrent readers. Vault authentication includes the canonical path and physical scope-directory identity. Runtime revisions include inode, time, link, permission, and ownership changes. Existing key and vault permissions fail closed on POSIX and Windows, and write preflight rejects encoded plaintext over 6,291,402 bytes before encryption.
 
 - SDK hosts can set `globalConfigRoot` in `createAgentSession()` to isolate the cross-profile vault and machine key from the host user's Veyyon data. The omitted default remains `getGlobalConfigRootDir()`. Secret runtime setup now captures one root for creation and refresh, and records the vault revision after key initialization so the first provider attempt does not misread key creation as an external vault change.
+
+- Bold, italic, underline, strikethrough, and inverse attributes no longer disappear when color detection is disabled or unavailable. The theme emits its attribute-specific SGR pairs directly, so markdown emphasis, reasoning text, selected tabs, and wrapped inverse diffs remain readable without relying on color support.
+
+- Compaction retry messages marked `queueOnly` remain in the user queue rather than starting an idle turn. Image-bearing skill retries preserve their user attribution and queue label after canonical image normalization.
+
+- Secret runtime refresh now follows the session manager's authoritative working directory. A request that retained an older scope cannot supersede an in-flight move back to that scope, while unchanged vault revisions reuse the exact existing lease. SDK disposal now shares one transaction across concurrent callers, forwards the first caller's shutdown options, and detaches listeners and registries even when audit flushing fails.
 
 - A misspelled key in a model's `compat.reasoningEffortMap` is now reported when the config loads instead of being accepted and ignored. The map remaps a thinking level to whatever string a given OpenAI-compatible server calls it, so every key names a level; a key that names none, `hihg` for `high`, validated, was carried into the config, and then never matched, so the remap silently did not happen and the level went to the provider verbatim. That is the exact failure the map exists to prevent, and nothing about it was visible: the config loaded, the request succeeded, and the effort was wrong. The schema rejects undeclared keys and names the offending one.
 

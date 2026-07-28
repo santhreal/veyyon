@@ -447,3 +447,5 @@ session.subscribe((event) => {
 await session.prompt("Find all TODO comments in this repo and propose fixes.");
 await session.dispose();
 ```
+
+Call `session.dispose()` once when the host no longer needs the session. Repeated or concurrent calls share the first disposal transaction. The first call's shutdown options are authoritative, and cleanup still detaches SDK listeners if audit flushing reports an error.
