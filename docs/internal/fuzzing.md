@@ -152,7 +152,7 @@ leaked context would silently give the next builtin the previous one's working d
 
 ## The TypeScript fuzzers
 
-`cargo-fuzz` covers the Rust crates. The TypeScript side has its own set, hand-rolled: about a dozen
+`cargo-fuzz` covers the Rust crates. The TypeScript side has its own set, hand-rolled: about ten
 suites named `*-fuzz.test.ts` that build adversarial strings from the shared pool in
 `packages/utils/src/adversarial-strings.ts` and run a few thousand iterations against a parser or a
 renderer.
@@ -441,3 +441,5 @@ one that ships.
 
 The suite is not part of `bun run check` and does not gate a commit. It is a campaign you run
 deliberately, usually for hours, usually on a machine with cores to spare.
+
+*Verified against `ad7ede4a` on 2026-07-28.*

@@ -107,8 +107,10 @@ This keeps key parsing/editor mechanics in `packages/tui` and mode semantics in 
 `TUI.requestRender()` coalesces render requests and rate-limits ordinary frames:
 
 - forced renders (`requestRender(true, ...)`) schedule an immediate frame and force a full window rewrite; with `clearScrollback`, they trigger a destructive full paint (ED3 outside multiplexers)
-- ordinary renders schedule through `#scheduleRender()` and respect `TUI.#MIN_RENDER_INTERVAL_MS`
+- ordinary renders schedule through `#scheduleRender()` and respect `TUI.#MIN_RENDER_INTERVAL_MS` (30fps)
 - repeated requests while a render is pending collapse into the same scheduled frame
+- the cadence is adaptive, not fixed. `#scheduleRender()` takes the largest of three delays: the 30fps cadence, twice the cost of the LAST frame, and any input grace window still open. The second one exists because the plain cadence collapses to zero as soon as a frame takes longer than the interval, which busy-loops the CPU through a run of slow frames; it is capped at `#MAX_ADAPTIVE_RENDER_MS` (200ms, about 5fps), below which the UI reads as dead and no further saving is worth it.
+- `Ctrl+C` and `Escape` open a one-frame grace window (`#INPUT_RENDER_GRACE_MS`) before the next ordinary repaint, so a double-press gesture can drain its queued input first. Only those two keys: delaying every key would put a frame of latency on ordinary navigation.
 - `requestComponentRender(component)` requests on behalf of a single self-contained change (spinner frame, blink): when every request in the coalesced frame is component-scoped and the frame is quiet (no resize, overlays, inline images, forced repaint, or root-list change), compose re-renders only the root subtrees containing the requesting components and reuses every other root child's previous rows and seam report; any unsafe condition or concurrent full request downgrades to a full compose
 
 `#doRender()` pipeline:
@@ -145,7 +147,8 @@ Resize events are event-driven from `ProcessTerminal` to `TUI.requestRender()`.
 Effects:
 
 - A resize is an explicit user gesture: outside multiplexers the engine erases and replays (`ED3` + full paint) so history rewraps at the new geometry; the commit ledger restarts from the replayed frame.
-- Inside terminal multiplexers, resize repaints the visible window in place after a settle debounce (issue #2088); pane history keeps its old wrap, like any shell output, because pane scrollback cannot be erased safely.
+- Inside terminal multiplexers, resize repaints the visible window in place after a 50ms settle debounce (`#MULTIPLEXER_RESIZE_DEBOUNCE_MS`, issue #2088); pane history keeps its old wrap, like any shell output, because pane scrollback cannot be erased safely. The host gets SIGWINCH before the multiplexer has finished repainting the pane, so a forced render on each one races the catch-up paint and the user sees a flash.
+- Outside a multiplexer a drag is not repainted authoritatively while it is moving. The full replay is O(history) twice over (markdown re-lexes every block at each distinct width, then the whole transcript goes back through native scrollback), and at drag rates it is recomputed dozens of times a second and thrown away. During the drag the engine composes and paints ONLY the viewport (`#renderResizeViewport`), a throwaway frame that never touches the commit ledger, and the authoritative replay fires once the drag has been quiet for `#RESIZE_VIEWPORT_SETTLE_MS` (120ms).
 - Terminals that re-report their size when the alternate screen buffer is toggled (Warp reports a height one row different for the alt buffer) take the in-place path too. The non-multiplexer fast path borrows the alternate screen for drag frames, so on these terminals each alt enter/leave emits a fresh resize event, which re-enters the fast path: a self-sustaining loop that floods ED3 full repaints with stable geometry. `resizeRepaintsInPlace()` (covering multiplexers and these terminals; overridable via `VEYYON_TUI_RESIZE_IN_PLACE`) routes them through the in-place repaint, which never touches the alt buffer.
 - Overlay visibility can depend on terminal dimensions (`OverlayOptions.visible`); focus is corrected when overlays become non-visible after resize.
 
@@ -227,4 +230,4 @@ Throttled/debounced paths:
 
 The runtime therefore mixes event-driven state transitions with bounded render cadence to keep interactivity responsive without repaint storms.
 
-*Verified against `72090e75` on 2026-07-20.*
+*Verified against `ad7ede4a` on 2026-07-28.*

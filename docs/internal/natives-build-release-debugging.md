@@ -302,4 +302,4 @@ Workspaces that hardlinked a `.node` before GC retain access via the kernel inod
 
 Trigger an automatic miss by editing any path in the key set: a single touched byte under `crates/`, `Cargo.lock`, `Cargo.toml`, `rust-toolchain.toml`, or `packages/natives/` shifts the tree hash and forces a fresh build at the next populate.
 
-*Verified against `f46fcdb58b933aa498313fd7672a0b29828e860b` on 2026-07-25.*
+*Verified against `ad7ede4a` on 2026-07-28.*
