@@ -424,6 +424,28 @@ try {
     $InstallDir = $binDir
     Uninstall-Veyyon | Out-Null
     Check "uninstall swept the addon staged beside the binary" (Test-Path (Join-Path $binDir "veyyon_natives.win32-x64-msvc.node")) "False"
+
+    # `veyyon update` stages at `<binary>.new` and keeps the binary it replaces as
+    # `<binary>.<timestamp>.<pid>.bak` until the new one has proved itself. Windows
+    # cannot unlink a running process image, so that backup routinely outlives the
+    # update, and a killed update leaves the staged file. Neither is dot-prefixed,
+    # so the `*.old` and `.veyyon.*.download` sweeps never matched them and
+    # uninstall reported success while leaving a few hundred megabytes named
+    # `veyyon.exe.new` in a directory the user was told is now empty. Mirrors the
+    # same assertions in functions.test.sh.
+    $updDir = Join-Path $nativesSandbox "update-leftovers"
+    New-Item -ItemType Directory -Force -Path $updDir | Out-Null
+    "STAGED" | Set-Content -NoNewline -Path (Join-Path $updDir "veyyon.exe.new")
+    "PREVIOUS" | Set-Content -NoNewline -Path (Join-Path $updDir "veyyon.exe.1753660000.4242.bak")
+    "LEGACY" | Set-Content -NoNewline -Path (Join-Path $updDir "veyyon.exe.bak")
+    # Not ours: a copy somebody saved by hand under a name of their own.
+    "MINE" | Set-Content -NoNewline -Path (Join-Path $updDir "veyyon.exe.mine.bak")
+    $InstallDir = $updDir
+    Uninstall-Veyyon | Out-Null
+    Check "uninstall removes a staged update download" (Test-Path (Join-Path $updDir "veyyon.exe.new")) "False"
+    Check "uninstall removes a timestamped update backup" (Test-Path (Join-Path $updDir "veyyon.exe.1753660000.4242.bak")) "False"
+    Check "uninstall removes the legacy fixed-name backup" (Test-Path (Join-Path $updDir "veyyon.exe.bak")) "False"
+    Check "a hand-named backup survives uninstall" ((Get-Content -Raw (Join-Path $updDir "veyyon.exe.mine.bak")).Trim()) "MINE"
 } finally {
     $env:USERPROFILE = $origUserProfile
     $env:XDG_DATA_HOME = $origXdg

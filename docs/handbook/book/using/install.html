@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-3a4c9bf7.js";
+            window.path_to_searchindex_js = "../searchindex-a10535e5.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -490,6 +490,13 @@ export PATH='/home/you/.local/bin':"$PATH"
   your shell keeps the old PATH entry until it reloads: exec $SHELL -l
 </code></pre>
 <p>Without that, typing <code>veyyon</code> straight after uninstalling answers “No such file or directory” for a path you can see is gone, which reads as a half-finished uninstall.</p>
+<p>It also reclaims what an UPDATE may have left. An update stages the new binary
+beside the old one and keeps the one it replaces as a backup until the new one
+has proved itself, and on Windows that backup cannot be deleted while the process
+holding it is still running, so a <code>veyyon.new</code> or a <code>veyyon.&lt;numbers&gt;.bak</code> can
+outlive the update that made it. Uninstall removes those too, so the install
+directory is left empty rather than holding a few hundred megabytes you have no
+name for.</p>
 <p>Two things it deliberately leaves behind. If you already had your own <code>vey</code> command, the installer never created that alias in the first place (it says so at install time and tells you to launch with <code>veyyon</code>), so uninstall does not touch it or its completion file. And if your source checkout has uncommitted edits or commits on a local branch that is on no remote, it is moved to <code>~/.veyyon/src.bak-&lt;timestamp&gt;</code> instead of being deleted, so nothing you wrote is lost.</p>
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --uninstall
 </code></pre>
