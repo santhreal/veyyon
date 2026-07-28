@@ -788,7 +788,7 @@ its own gate:
 
 | Platform | Gate | What it drives |
 |---|---|---|
-| Linux, macOS | `scripts/install-tests/run-ci.sh` (CI job `install_methods`, matrixed over `ubuntu-22.04` and `macos-14`) | `install.sh --local` end to end: install, reinstall, uninstall, plus the no-clobber rules for a `vey` the user already owns |
+| Linux, macOS | `scripts/install-tests/run-ci.sh` (CI job `install_methods`, matrixed over `ubuntu-22.04`, `macos-14` and `macos-15-intel`) | `install.sh --local` end to end: install, reinstall, uninstall, plus the no-clobber rules for a `vey` the user already owns |
 | Linux | `scripts/installer-environment-matrix.test.ts` | `install.sh --local` once per shell/XDG combination in `environments.toml` |
 | Windows | `scripts/install-tests/e2e.test.ps1` (CI job `install_ps1_e2e`) | `install.ps1 -Local` end to end: install, reinstall, reinstall over a quoted PATH entry, uninstall |
 | Windows, on push to main | `scripts/install-tests/e2e.test.ps1 -Mode Binary` (CI job `install_ps1_binary`) | The same run against the newest published release, which is the default install |
@@ -887,8 +887,13 @@ expect_completions = [".config/fish/completions/veyyon.fish"]
 
 `pre_files` seeds files under the disposable `$HOME` before installing, `pre_symlinks`
 seeds links (a `$HOME` in either is expanded), `expect_absent` lists paths that must not
-be created, and `install_dir_on_path` puts the install directory on `$PATH` so the
-installer has nothing to add and must leave every rc alone.
+be created, `install_dir_on_path` puts the install directory on `$PATH` so the
+installer has nothing to add and must leave every rc alone, and
+`expect_rc_stays_symlink` asserts the rc is still a symlink afterwards and that the PATH
+line landed in the file the link points at. That last one is the case a dotfile manager
+produces: rc files are symlinks into a repository, and an installer that appends by
+replacing the link with a regular file silently detaches the user's dotfiles from their
+repository.
 
 The installed binary is a stand-in script rather than the compiled `veyyon`: what is
 under test is the installer's handling of the environment, and a 100 MB build per case
@@ -965,4 +970,4 @@ Wiring you can't exercise in-process (worker spawn, install flow) is covered by 
 runtime smoke probe (`veyyon --smoke-test`) and the install-test scripts, not by a
 source grep.
 
-*Verified against `36bd44ad4d0ec6a81a94b2eb37b81d7157cbcc5b` on 2026-07-26.*
+*Verified against `e3d4fea2de73192763399d8cb64ef5e03b095a81` on 2026-07-27.*
