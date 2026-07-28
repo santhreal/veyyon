@@ -268,6 +268,8 @@ export interface AgentTelemetryWarning {
 	readonly code:
 		| "resolve_attributes_failed"
 		| "content_serializer_failed"
+		| "text_sanitizer_failed"
+		| "text_sanitizer_key_collision"
 		| "on_cost_delta_failed"
 		| "on_chat_usage_failed"
 		| "cost_estimator_failed"
@@ -361,6 +363,12 @@ export interface AgentTelemetryConfig {
 	readonly normalizeAgentName?: (name: string | undefined) => string | undefined;
 	/** Override the default bounded JSON serializers used by summary capture. */
 	readonly contentSerializer?: TelemetryContentSerializer;
+	/**
+	 * Final fail-closed transform for every dynamic string crossing into an
+	 * OTEL span, including names, attribute keys/values, events, exceptions,
+	 * status messages, and serialized content.
+	 */
+	readonly textSanitizer?: (text: string) => string;
 	/**
 	 * Called immediately after a span starts. Use to stamp request-side
 	 * context (user id, deployment id, route name) without forking the loop.
@@ -483,10 +491,325 @@ function startSpan(
 	if (dynamicAttributes) Object.assign(attrs, dynamicAttributes);
 	if (options.attributes) Object.assign(attrs, options.attributes);
 
+	const textSanitizer = telemetry.config.textSanitizer
+		? createTelemetryTextSanitizer(telemetry)
+		: undefined;
+	const spanName = textSanitizer ? textSanitizer.sanitizeText(name) || kind : name;
+	const initialAttributes = textSanitizer ? textSanitizer.sanitizeSpanAttributes(attrs) : attrs;
 	const ctx = options.parent ? trace.setSpan(context.active(), options.parent) : context.active();
-	const span = telemetry.tracer.startSpan(name, { kind: options.spanKind, attributes: attrs }, ctx);
+	const rawSpan = telemetry.tracer.startSpan(spanName, { kind: options.spanKind, attributes: initialAttributes }, ctx);
+	const span = textSanitizer ? wrapSpanWithTextSanitizer(telemetry, rawSpan, textSanitizer) : rawSpan;
 	safeOnSpanStart(telemetry, { ...attrCtx, span });
 	return span;
+}
+
+interface TelemetryTextSanitizer {
+	sanitizeText(text: string): string | undefined;
+	sanitizeSpanAttributes(attributes: Attributes): Attributes;
+	sanitizeException(exception: Parameters<Span["recordException"]>[0]): Parameters<Span["recordException"]>[0] | undefined;
+}
+
+/**
+ * Exact schema keys owned by this module. These keys are protocol, not
+ * caller-provided text, so they must never be rewritten by `textSanitizer`.
+ */
+const FIXED_TELEMETRY_ATTRIBUTE_KEYS: Record<string, true> = {
+	"gen_ai.provider.name": true,
+	"gen_ai.operation.name": true,
+	"gen_ai.conversation.id": true,
+	"gen_ai.output.type": true,
+	"gen_ai.agent.id": true,
+	"gen_ai.agent.name": true,
+	"gen_ai.agent.description": true,
+	"gen_ai.request.model": true,
+	"gen_ai.request.max_tokens": true,
+	"gen_ai.request.temperature": true,
+	"gen_ai.request.top_p": true,
+	"gen_ai.request.top_k": true,
+	"gen_ai.request.frequency_penalty": true,
+	"gen_ai.request.presence_penalty": true,
+	"gen_ai.request.stop_sequences": true,
+	"gen_ai.request.seed": true,
+	"gen_ai.request.choice.count": true,
+	"gen_ai.request.stream": true,
+	"gen_ai.response.model": true,
+	"gen_ai.response.id": true,
+	"gen_ai.response.finish_reasons": true,
+	"gen_ai.response.time_to_first_chunk": true,
+	"gen_ai.usage.input_tokens": true,
+	"gen_ai.usage.output_tokens": true,
+	"gen_ai.usage.cache_read.input_tokens": true,
+	"gen_ai.usage.cache_creation.input_tokens": true,
+	"gen_ai.usage.reasoning.output_tokens": true,
+	"gen_ai.tool.call.id": true,
+	"gen_ai.tool.name": true,
+	"gen_ai.tool.description": true,
+	"gen_ai.tool.type": true,
+	"gen_ai.tool.call.arguments": true,
+	"gen_ai.tool.call.result": true,
+	"gen_ai.tool.definitions": true,
+	"gen_ai.input.messages": true,
+	"gen_ai.output.messages": true,
+	"gen_ai.system_instructions": true,
+	"error.type": true,
+	"openai.request.service_tier": true,
+	"openai.response.service_tier": true,
+	"pi.gen_ai.agent.step.number": true,
+	"pi.gen_ai.agent.step.count": true,
+	"pi.gen_ai.request.reasoning.effort": true,
+	"pi.gen_ai.request.tool.choice": true,
+	"pi.gen_ai.request.available_tools": true,
+	"pi.gen_ai.request.messages": true,
+	"pi.gen_ai.response.text": true,
+	"pi.gen_ai.response.tool_calls": true,
+	"pi.gen_ai.response.upstream_provider": true,
+	"pi.gen_ai.usage.total_tokens": true,
+	"pi.gen_ai.usage.server_tool_requests": true,
+	"pi.gen_ai.cost.estimated_usd": true,
+	"pi.gen_ai.cost.input_usd": true,
+	"pi.gen_ai.cost.output_usd": true,
+	"pi.gen_ai.cost.unavailable_reason": true,
+	"pi.gen_ai.tool.status": true,
+	"pi.gen_ai.tool.call.intent": true,
+	"pi.gen_ai.handoff.from_agent.name": true,
+	"pi.gen_ai.handoff.from_agent.id": true,
+	"pi.gen_ai.handoff.to_agent.name": true,
+	"pi.gen_ai.handoff.to_agent.id": true,
+	"pi.gen_ai.oneshot.kind": true,
+	"pi.gen_ai.gateway.name": true,
+	"pi.gen_ai.gateway.endpoint": true,
+	"pi.gen_ai.gateway.call_id": true,
+	"pi.gen_ai.gateway.routed_to": true,
+	"pi.gen_ai.agent.chats.count": true,
+	"pi.gen_ai.agent.chats.total_latency_ms": true,
+	"pi.gen_ai.agent.tools.count": true,
+	"pi.gen_ai.agent.tools.ok.count": true,
+	"pi.gen_ai.agent.tools.error.count": true,
+	"pi.gen_ai.agent.tools.skipped.count": true,
+	"pi.gen_ai.agent.tools.blocked.count": true,
+	"pi.gen_ai.agent.tools.timeout.count": true,
+	"pi.gen_ai.agent.tools.aborted.count": true,
+	"pi.gen_ai.agent.tools.total_latency_ms": true,
+	"pi.gen_ai.agent.tools.invoked": true,
+	"pi.gen_ai.agent.tools.available": true,
+	"pi.gen_ai.agent.tools.unused": true,
+	"pi.gen_ai.agent.usage.input_tokens.total": true,
+	"pi.gen_ai.agent.usage.output_tokens.total": true,
+	"pi.gen_ai.agent.usage.cache_read.input_tokens.total": true,
+	"pi.gen_ai.agent.usage.cache_creation.input_tokens.total": true,
+	"pi.gen_ai.agent.usage.reasoning.output_tokens.total": true,
+	"pi.gen_ai.agent.usage.total_tokens.total": true,
+	"pi.gen_ai.agent.cost.estimated_usd.total": true,
+	"pi.gen_ai.agent.errors.count": true,
+};
+
+function emitTextSanitizerFailure(telemetry: AgentTelemetry): void {
+	emitTelemetryWarning(telemetry, {
+		code: "text_sanitizer_failed",
+		message: "textSanitizer threw; omitting dynamic telemetry text",
+	});
+}
+
+function emitTextSanitizerKeyCollision(telemetry: AgentTelemetry): void {
+	emitTelemetryWarning(telemetry, {
+		code: "text_sanitizer_key_collision",
+		message: "textSanitizer produced a colliding attribute key; omitting dynamic telemetry attribute",
+	});
+}
+
+function createTelemetryTextSanitizer(telemetry: AgentTelemetry): TelemetryTextSanitizer {
+	const sanitize = telemetry.config.textSanitizer;
+	const dynamicKeyOwners = new Map<string, string>();
+
+	const sanitizeText = (text: string): string | undefined => {
+		if (!sanitize) return text;
+		try {
+			return sanitize(text);
+		} catch {
+			emitTextSanitizerFailure(telemetry);
+			return undefined;
+		}
+	};
+
+	const sanitizeAttributeValue = (value: AttributeValue): AttributeValue | undefined => {
+		if (typeof value === "string") return sanitizeText(value);
+		if (!Array.isArray(value) || value.length === 0 || typeof value[0] !== "string") return value;
+		const sanitized: string[] = [];
+		for (const item of value as string[]) {
+			const text = sanitizeText(item);
+			if (text === undefined) return undefined;
+			sanitized.push(text);
+		}
+		return sanitized;
+	};
+
+	const sanitizeSpanAttributes = (attributes: Attributes): Attributes => {
+		const candidates: Array<{
+			readonly originalKey: string;
+			readonly sanitizedKey: string;
+			readonly value: AttributeValue;
+			readonly fixed: boolean;
+		}> = [];
+		const keysInBatch = new Map<string, string>();
+		const collidingKeys = new Set<string>();
+
+		for (const [originalKey, value] of Object.entries(attributes)) {
+			if (value == null) continue;
+			const fixed = FIXED_TELEMETRY_ATTRIBUTE_KEYS[originalKey] === true;
+			const sanitizedKey = fixed ? originalKey : sanitizeText(originalKey);
+			if (!sanitizedKey) continue;
+			if (!fixed && FIXED_TELEMETRY_ATTRIBUTE_KEYS[sanitizedKey] === true) {
+				emitTextSanitizerKeyCollision(telemetry);
+				continue;
+			}
+			const previousKey = keysInBatch.get(sanitizedKey);
+			if (previousKey !== undefined && previousKey !== originalKey) {
+				collidingKeys.add(sanitizedKey);
+				continue;
+			}
+			const previousOwner = dynamicKeyOwners.get(sanitizedKey);
+			if (!fixed && previousOwner !== undefined && previousOwner !== originalKey) {
+				emitTextSanitizerKeyCollision(telemetry);
+				continue;
+			}
+			const sanitizedValue = sanitizeAttributeValue(value);
+			if (sanitizedValue === undefined) continue;
+			keysInBatch.set(sanitizedKey, originalKey);
+			candidates.push({ originalKey, sanitizedKey, value: sanitizedValue, fixed });
+		}
+
+		const sanitizedAttributes: Attributes = {};
+		for (const candidate of candidates) {
+			if (collidingKeys.has(candidate.sanitizedKey)) continue;
+			sanitizedAttributes[candidate.sanitizedKey] = candidate.value;
+			if (!candidate.fixed) dynamicKeyOwners.set(candidate.sanitizedKey, candidate.originalKey);
+		}
+		for (const _key of collidingKeys) emitTextSanitizerKeyCollision(telemetry);
+		return sanitizedAttributes;
+	};
+
+	const sanitizeException = (
+		exception: Parameters<Span["recordException"]>[0],
+	): Parameters<Span["recordException"]>[0] | undefined => {
+		if (typeof exception === "string") return sanitizeText(exception);
+		const source = exception as { readonly code?: string | number; readonly message?: string; readonly name?: string; readonly stack?: string };
+		const sanitized: { code?: string | number; message?: string; name?: string; stack?: string } = {};
+		if (typeof source.code === "number") {
+			sanitized.code = source.code;
+		} else if (typeof source.code === "string") {
+			const code = sanitizeText(source.code);
+			if (code !== undefined) sanitized.code = code;
+		}
+		if (typeof source.message === "string") {
+			const message = sanitizeText(source.message);
+			if (message !== undefined) sanitized.message = message;
+		}
+		if (typeof source.name === "string") {
+			const name = sanitizeText(source.name);
+			if (name !== undefined) sanitized.name = name;
+		}
+		if (typeof source.stack === "string") {
+			const stack = sanitizeText(source.stack);
+			if (stack !== undefined) sanitized.stack = stack;
+		}
+		return Object.keys(sanitized).length > 0
+			? (sanitized as Parameters<Span["recordException"]>[0])
+			: undefined;
+	};
+
+	return { sanitizeText, sanitizeSpanAttributes, sanitizeException };
+}
+
+const sanitizedSpanWrappers = new WeakMap<AgentTelemetry, WeakMap<Span, Span>>();
+
+function wrapSpanWithTextSanitizer(
+	telemetry: AgentTelemetry,
+	rawSpan: Span,
+	textSanitizer = createTelemetryTextSanitizer(telemetry),
+): Span {
+	let wrappers = sanitizedSpanWrappers.get(telemetry);
+	if (!wrappers) {
+		wrappers = new WeakMap();
+		sanitizedSpanWrappers.set(telemetry, wrappers);
+	}
+	const existing = wrappers.get(rawSpan);
+	if (existing) return existing;
+
+	const wrappedSpan: Span = {
+		spanContext: () => rawSpan.spanContext(),
+		setAttribute(key, value) {
+			const attributes = textSanitizer.sanitizeSpanAttributes({ [key]: value });
+			if (Object.keys(attributes).length > 0) rawSpan.setAttributes(attributes);
+			return wrappedSpan;
+		},
+		setAttributes(attributes) {
+			const sanitized = textSanitizer.sanitizeSpanAttributes(attributes);
+			if (Object.keys(sanitized).length > 0) rawSpan.setAttributes(sanitized);
+			return wrappedSpan;
+		},
+		addEvent(name, attributesOrStartTime, startTime) {
+			const sanitizedName = textSanitizer.sanitizeText(name);
+			if (sanitizedName === undefined) return wrappedSpan;
+			if (
+				attributesOrStartTime !== null &&
+				typeof attributesOrStartTime === "object" &&
+				!Array.isArray(attributesOrStartTime) &&
+				!(attributesOrStartTime instanceof Date)
+			) {
+				rawSpan.addEvent(
+					sanitizedName,
+					textSanitizer.sanitizeSpanAttributes(attributesOrStartTime),
+					startTime,
+				);
+			} else {
+				rawSpan.addEvent(sanitizedName, attributesOrStartTime, startTime);
+			}
+			return wrappedSpan;
+		},
+		addLink(link) {
+			rawSpan.addLink({
+				...link,
+				attributes: link.attributes
+					? textSanitizer.sanitizeSpanAttributes(link.attributes)
+					: undefined,
+			});
+			return wrappedSpan;
+		},
+		addLinks(links) {
+			rawSpan.addLinks(
+				links.map(link => ({
+					...link,
+					attributes: link.attributes
+						? textSanitizer.sanitizeSpanAttributes(link.attributes)
+						: undefined,
+				})),
+			);
+			return wrappedSpan;
+		},
+		setStatus(status) {
+			if (status.message === undefined) {
+				rawSpan.setStatus(status);
+				return wrappedSpan;
+			}
+			const message = textSanitizer.sanitizeText(status.message);
+			rawSpan.setStatus(message === undefined ? { code: status.code } : { ...status, message });
+			return wrappedSpan;
+		},
+		updateName(name) {
+			const sanitizedName = textSanitizer.sanitizeText(name);
+			if (sanitizedName !== undefined) rawSpan.updateName(sanitizedName);
+			return wrappedSpan;
+		},
+		end: endTime => rawSpan.end(endTime),
+		isRecording: () => rawSpan.isRecording(),
+		recordException(exception, time) {
+			const sanitized = textSanitizer.sanitizeException(exception);
+			if (sanitized !== undefined) rawSpan.recordException(sanitized, time);
+		},
+	};
+	wrappers.set(rawSpan, wrappedSpan);
+	wrappers.set(wrappedSpan, wrappedSpan);
+	return wrappedSpan;
 }
 
 function buildTelemetryAttributeContext(
@@ -768,9 +1091,9 @@ function applyContentCaptureForRequest(telemetry: AgentTelemetry, span: Span, re
 	const requestMessages = serializeRequestMessagesForTelemetry(telemetry, request);
 	if (requestMessages) span.setAttribute(PiGenAIAttr.RequestMessages, requestMessages);
 	if (telemetry.contentCapture !== "full") return;
-	const systemInstructions = serializeFullSystemInstructionsForTelemetry(request);
+	const systemInstructions = serializeFullSystemInstructionsForTelemetry(telemetry, request);
 	if (systemInstructions) span.setAttribute(GenAIAttr.SystemInstructions, systemInstructions);
-	const inputMessages = serializeFullInputMessagesForTelemetry(request);
+	const inputMessages = serializeFullInputMessagesForTelemetry(telemetry, request);
 	if (inputMessages) span.setAttribute(GenAIAttr.InputMessages, inputMessages);
 }
 
@@ -780,7 +1103,7 @@ function applyContentCaptureForResponse(telemetry: AgentTelemetry, span: Span, m
 	const responseToolCalls = serializeResponseToolCallsForTelemetry(telemetry, message);
 	if (responseToolCalls) span.setAttribute(PiGenAIAttr.ResponseToolCalls, responseToolCalls);
 	if (telemetry.contentCapture === "full") {
-		const outputMessages = serializeFullOutputMessagesForTelemetry(message);
+		const outputMessages = serializeFullOutputMessagesForTelemetry(telemetry, message);
 		if (outputMessages) span.setAttribute(GenAIAttr.OutputMessages, outputMessages);
 	}
 }
@@ -795,26 +1118,36 @@ function serializeRequestMessagesForTelemetry(
 	request: ChatRequestSnapshot,
 ): string | undefined {
 	const serializer = telemetry.config.contentSerializer?.requestMessages;
-	if (serializer) return callContentSerializer(telemetry, "requestMessages", () => serializer(request));
-	const messages: TelemetryMessageSummary[] = [];
-	for (const text of normalizeSystemPromptParts(request.systemPrompt))
-		messages.push({ role: "system", content: summarizeTelemetryValue(text) });
-	if (request.messages) {
-		for (const message of request.messages) {
-			messages.push({ role: message.role, content: summarizeTelemetryValue(message.content) });
+	let serialized: string | undefined;
+	if (serializer) {
+		serialized = callContentSerializer(telemetry, "requestMessages", () => serializer(request));
+	} else {
+		const messages: TelemetryMessageSummary[] = [];
+		for (const text of normalizeSystemPromptParts(request.systemPrompt))
+			messages.push({ role: "system", content: summarizeTelemetryValue(text) });
+		if (request.messages) {
+			for (const message of request.messages) {
+				messages.push({ role: message.role, content: summarizeTelemetryValue(message.content) });
+			}
 		}
+		serialized = messages.length === 0 ? undefined : stringifyJsonAttribute(limitTelemetryMessages(messages));
 	}
-	return messages.length === 0 ? undefined : stringifyJsonAttribute(limitTelemetryMessages(messages));
+	return serialized;
 }
 
 function serializeResponseTextForTelemetry(telemetry: AgentTelemetry, message: AssistantMessage): string | undefined {
 	const serializer = telemetry.config.contentSerializer?.responseText;
-	if (serializer) return callContentSerializer(telemetry, "responseText", () => serializer(message));
-	const texts: string[] = [];
-	for (const part of message.content) {
-		if (part.type === "text") texts.push(part.text);
+	let serialized: string | undefined;
+	if (serializer) {
+		serialized = callContentSerializer(telemetry, "responseText", () => serializer(message));
+	} else {
+		const texts: string[] = [];
+		for (const part of message.content) {
+			if (part.type === "text") texts.push(part.text);
+		}
+		serialized = texts.length === 0 ? undefined : stringifyJsonAttribute(summarizeTelemetryTexts(texts));
 	}
-	return texts.length === 0 ? undefined : stringifyJsonAttribute(summarizeTelemetryTexts(texts));
+	return serialized;
 }
 
 function serializeResponseToolCallsForTelemetry(
@@ -822,18 +1155,23 @@ function serializeResponseToolCallsForTelemetry(
 	message: AssistantMessage,
 ): string | undefined {
 	const serializer = telemetry.config.contentSerializer?.responseToolCalls;
-	if (serializer) return callContentSerializer(telemetry, "responseToolCalls", () => serializer(message));
-	const toolCalls: TelemetryToolCallSummary[] = [];
-	for (const part of message.content) {
-		if (part.type === "toolCall") {
-			toolCalls.push({
-				input: summarizeTelemetryValue(part.arguments),
-				toolCallId: part.id,
-				toolName: part.name,
-			});
+	let serialized: string | undefined;
+	if (serializer) {
+		serialized = callContentSerializer(telemetry, "responseToolCalls", () => serializer(message));
+	} else {
+		const toolCalls: TelemetryToolCallSummary[] = [];
+		for (const part of message.content) {
+			if (part.type === "toolCall") {
+				toolCalls.push({
+					input: summarizeTelemetryValue(part.arguments),
+					toolCallId: part.id,
+					toolName: part.name,
+				});
+			}
 		}
+		serialized = toolCalls.length === 0 ? undefined : stringifyJsonAttribute(limitTelemetryToolCalls(toolCalls));
 	}
-	return toolCalls.length === 0 ? undefined : stringifyJsonAttribute(limitTelemetryToolCalls(toolCalls));
+	return serialized;
 }
 
 interface TelemetryMessageSummary {
@@ -865,19 +1203,30 @@ interface OtelOutputMessage extends OtelInputMessage {
 	readonly finish_reason: string;
 }
 
-function serializeFullSystemInstructionsForTelemetry(request: ChatRequestSnapshot): string | undefined {
+function serializeFullSystemInstructionsForTelemetry(
+	_telemetry: AgentTelemetry,
+	request: ChatRequestSnapshot,
+): string | undefined {
 	const systemPrompt = normalizeSystemPromptParts(request.systemPrompt);
 	if (systemPrompt.length === 0) return undefined;
-	return stringifyJsonAttribute(systemPrompt.map(text => ({ type: "text", content: text }) satisfies OtelMessagePart));
+	return stringifyJsonAttribute(
+		systemPrompt.map(text => ({ type: "text", content: text }) satisfies OtelMessagePart),
+	);
 }
 
-function serializeFullInputMessagesForTelemetry(request: ChatRequestSnapshot): string | undefined {
+function serializeFullInputMessagesForTelemetry(
+	_telemetry: AgentTelemetry,
+	request: ChatRequestSnapshot,
+): string | undefined {
 	const messages = request.messages;
 	if (!messages || messages.length === 0) return undefined;
 	return stringifyJsonAttribute(messages.map(messageToOtelInputMessage));
 }
 
-function serializeFullOutputMessagesForTelemetry(message: AssistantMessage): string | undefined {
+function serializeFullOutputMessagesForTelemetry(
+	_telemetry: AgentTelemetry,
+	message: AssistantMessage,
+): string | undefined {
 	return stringifyJsonAttribute([assistantMessageToOtelOutputMessage(message)]);
 }
 
@@ -978,6 +1327,7 @@ function callContentSerializer(
 		return undefined;
 	}
 }
+
 
 function limitTelemetryMessages(messages: readonly TelemetryMessageSummary[]): TelemetryMessageSummary[] {
 	const limited = messages.slice(0, MAX_TELEMETRY_MESSAGE_COUNT);
@@ -1081,16 +1431,20 @@ function stringifyJsonAttribute(value: unknown): string | undefined {
 
 function serializeToolCallArgumentsForTelemetry(telemetry: AgentTelemetry, args: unknown): string | undefined {
 	const serializer = telemetry.config.contentSerializer?.toolCallArguments;
-	if (serializer) return callContentSerializer(telemetry, "toolCallArguments", () => serializer(args));
-	return telemetry.contentCapture === "full" ? safeJson(args) : stringifyJsonAttribute(summarizeTelemetryValue(args));
+	return serializer
+		? callContentSerializer(telemetry, "toolCallArguments", () => serializer(args))
+		: telemetry.contentCapture === "full"
+			? safeJson(args)
+			: stringifyJsonAttribute(summarizeTelemetryValue(args));
 }
 
 function serializeToolCallResultForTelemetry(telemetry: AgentTelemetry, result: unknown): string | undefined {
 	const serializer = telemetry.config.contentSerializer?.toolCallResult;
-	if (serializer) return callContentSerializer(telemetry, "toolCallResult", () => serializer(result));
-	return telemetry.contentCapture === "full"
-		? safeJson(result)
-		: stringifyJsonAttribute(summarizeTelemetryValue(result));
+	return serializer
+		? callContentSerializer(telemetry, "toolCallResult", () => serializer(result))
+		: telemetry.contentCapture === "full"
+			? safeJson(result)
+			: stringifyJsonAttribute(summarizeTelemetryValue(result));
 }
 
 /**
@@ -1520,7 +1874,7 @@ export async function recordManualChatTelemetry(
 	telemetry: AgentTelemetry | undefined,
 	options: ManualChatTelemetryOptions,
 ): Promise<Span | undefined> {
-	const span =
+	const candidate =
 		options.span ??
 		startSpan(telemetry, "chat", `chat ${options.model.id}`, {
 			spanKind: SpanKind.CLIENT,
@@ -1529,6 +1883,7 @@ export async function recordManualChatTelemetry(
 			stepNumber: options.stepNumber,
 			attributes: options.attributes,
 		});
+	const span = candidate && telemetry?.config.textSanitizer ? wrapSpanWithTextSanitizer(telemetry, candidate) : candidate;
 	if (!span) return undefined;
 	if (options.span && options.attributes) span.setAttributes(options.attributes);
 	if (options.stepNumber != null) span.setAttribute(PiGenAIAttr.AgentStepNumber, options.stepNumber);
