@@ -925,6 +925,54 @@ Check "a child-process install says nothing about other terminals" `
 Check "neither form mentions restarting when PATH was untouched" `
     (@((& { $PSCommandPath = ""; Get-NextStepsLines }) | Where-Object { $_ -match 'Restart|Terminals already open' }).Count) "0"
 
+# --- Resolve-RefTag: the `v` a person leaves off a version --------------------
+# Releases are tagged `v1.0.37` and `-Ref 1.0.37` is what people type: the same
+# version, one character short of a tag that exists. Refusing it states a true
+# fact and leaves the user guessing which of the two spellings this project uses.
+# The `v` form is tried as a SECOND lookup and the caller announces what it
+# resolved to, so the version being installed is the version on screen. Mirrors
+# resolve_ref_tag in install.sh.
+#
+# Test-ReleaseTagExists is shadowed here so the resolution is exercised without a
+# network: it records what it was asked for, which is how the "no second guess"
+# cases are asserted at all.
+$Script:TagLookups = @()
+function Test-ReleaseTagExists {
+    param([string]$Tag)
+    $Script:TagLookups += $Tag
+    return ($Tag -eq "v1.0.37" -or $Tag -eq "v2.0.0-rc.1")
+}
+
+$Script:TagLookups = @()
+Check "an exact tag is returned as given" (Resolve-RefTag "v1.0.37") "v1.0.37"
+Check "an exact tag costs one lookup" ($Script:TagLookups.Count) "1"
+
+$Script:TagLookups = @()
+Check "a bare version resolves to the published v-prefixed tag" (Resolve-RefTag "1.0.37") "v1.0.37"
+Check "the bare version was tried first, then the v form" (($Script:TagLookups -join ',')) "1.0.37,v1.0.37"
+
+$Script:TagLookups = @()
+Check "a prerelease version resolves too" (Resolve-RefTag "2.0.0-rc.1") "v2.0.0-rc.1"
+
+$Script:TagLookups = @()
+Check "a bare version with no published v-tag is refused" (Resolve-RefTag "9.9.9") ""
+Check "and it stopped after the two spellings" (($Script:TagLookups -join ',')) "9.9.9,v9.9.9"
+
+# A branch or a commit is not a version, so no `v` is bolted onto it: `vmain` and
+# `vd83e6259` are tags nobody has, and asking costs a round trip before the same
+# refusal.
+$Script:TagLookups = @()
+Check "a branch name gets no v-prefixed second try" (Resolve-RefTag "main") ""
+Check "the branch cost exactly one lookup" ($Script:TagLookups.Count) "1"
+
+$Script:TagLookups = @()
+Check "a commit sha gets no v-prefixed second try" (Resolve-RefTag "d83e6259") ""
+Check "the sha cost exactly one lookup" ($Script:TagLookups.Count) "1"
+
+$Script:TagLookups = @()
+Check "a v-prefixed tag that does not exist is refused without a second guess" (Resolve-RefTag "v9.9.9") ""
+Check "the missing v-tag cost exactly one lookup" ($Script:TagLookups.Count) "1"
+
 # --- Get-TagFromRedirect: the release lookup no longer needs the GitHub API ---
 # api.github.com allows 60 requests an hour per IP without a token, shared by
 # everyone behind the same address, and the install spent one of them on every
