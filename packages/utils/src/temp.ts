@@ -115,13 +115,33 @@ export class TempDir {
 
 const kTempDir = os.tmpdir();
 
+/**
+ * Turn a caller's prefix into the absolute path `mkdtemp` gets.
+ *
+ * A BARE NAME MEANS THE SYSTEM TEMP DIRECTORY, which is what every caller has always meant and
+ * what this function used not to do. `mkdtemp` resolves a relative path against `process.cwd()`,
+ * so `TempDir.createSync("secret-runtime-lifecycle-")` created its directory INSIDE THE REPOSITORY,
+ * silently, and left it there when a test crashed before cleanup. Forty-six of them had accumulated
+ * across the tree, thirty-six from one suite, and sixteen call sites were written this way. The
+ * escape hatch was a leading `@`, which is undiscoverable: the safe spelling looked like a typo and
+ * the dangerous one looked normal, so the trap was set for whoever wrote the next test.
+ *
+ * An ABSOLUTE path is still honoured exactly as given, because that is a caller stating where it
+ * wants the directory rather than naming one. That is the only way to opt out now, and no caller in
+ * this repository uses it, so nothing that was working changes.
+ *
+ * The leading `@` is still accepted and still means the same thing, since it is written at fifty-odd
+ * call sites and they are all correct. It is redundant now rather than load-bearing.
+ */
 function normalizePrefix(prefix?: string): string {
 	if (!prefix) {
 		return `${kTempDir}${path.sep}pi-temp-`;
 	} else if (prefix.startsWith("@")) {
 		return path.join(kTempDir, prefix.slice(1));
+	} else if (path.isAbsolute(prefix)) {
+		return prefix;
 	}
-	return prefix;
+	return path.join(kTempDir, prefix);
 }
 
 const kRemoveOptions = { recursive: true, force: true } as const;

@@ -121,3 +121,41 @@ export function stringifyJsonSafe(value: unknown, space?: string | number): stri
 	}
 	return `[unserializable ${describeType(value)}]`;
 }
+
+function isPlainObject(val: object): val is Record<string, unknown> {
+	return Object.getPrototypeOf(val) === Object.prototype || Array.isArray(val);
+}
+
+/**
+ * Deep-copy a JSON-shaped value, falling back to a stringify round trip.
+ *
+ * It used to be DEFINED in `index.ts`, the barrel, which is the one file in the
+ * package that is supposed to own nothing. Anything that wanted this one function
+ * had to import the barrel, and the barrel is eighty-one leaves: five files in
+ * `@veyyon/ai` were pulling all of them in for a deep copy, which is what put the
+ * barrel on `tools/read.ts`'s module graph and turned a landed reach cut red.
+ *
+ * `structuredClone` is tried first and only for plain objects and arrays, because it
+ * is the faster path and the only one that preserves a value JSON cannot express. It
+ * still throws on a nested non-cloneable (a function, a class instance, a proxy),
+ * hence the round trip underneath: this helper's contract is "the JSON-equivalent
+ * copy", so dropping to `JSON.parse(JSON.stringify(...))` is the right answer rather
+ * than a silent degrade. Anything holding a symbol key or a function value comes back
+ * without it either way, which every caller here relies on.
+ */
+export function structuredCloneJSON<T>(value: T): T {
+	// primitives|null|undefined, copy
+	if (!value || typeof value !== "object") {
+		return value;
+	}
+
+	// deep clone
+	if (isPlainObject(value)) {
+		try {
+			return structuredClone(value);
+		} catch {
+			// might still fail due to nested structures
+		}
+	}
+	return JSON.parse(JSON.stringify(value)) as T;
+}

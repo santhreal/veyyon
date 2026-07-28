@@ -6,7 +6,55 @@
 
 ### Fixed
 
+- `TempDir` puts its directory in the system temp directory when you give it a bare name. It used to
+  hand the prefix straight to `mkdtemp`, which resolves a relative path against `process.cwd()`, so
+  `TempDir.createSync("secret-runtime-lifecycle-")` created its scratch directory inside the
+  repository and left it there whenever a suite crashed before cleanup. Forty-six of them had
+  accumulated. The escape hatch was a leading `@`, which is the wrong way round for a trap: the safe
+  spelling looked like a typo and the dangerous one looked ordinary, so every call site written
+  without reading `normalizePrefix` got the bad one. An absolute prefix is still honoured exactly as
+  given, and the `@` spelling still works and still strips the sigil.
+
+### Added
+
+- `string-length.ts` owns two more measurements beside `codePointLength`: `utf8ByteLength(value,
+  start?, end?)`, the number of bytes a string encodes to (optionally over a code-unit range, so a
+  caller rewriting a long string can measure a span without allocating it), and
+  `isWellFormedUtf16(value)`, whether every surrogate in it is part of a pair. Both were private
+  helpers inside an 1,800-line secrets module in `@veyyon/coding-agent`, and `isWellFormedUtf16` had
+  a second copy in the module next door. Neither is about secrets: one is the size a string takes on
+  the wire and the other is whether it survives being encoded at all. Both are used as security
+  bounds, so both are now tested differentially against `TextEncoder` and
+  `String.prototype.isWellFormed`.
+
+### Changed
+
+- `file-lock.ts` asks `type-guards` and `json` the questions they own. It wrote out its own
+  `isRecord` (`value === null || typeof value !== "object" || Array.isArray(value)`) and its own
+  `tryParseJson` (a try/catch around `JSON.parse`), which is two more answers to two questions this
+  package already answers once each. The decoder's try/catch stays, and is now visibly about the
+  decoder: `TextDecoder` is `fatal`, so a lock file holding bytes that are not UTF-8 really does
+  throw, and that is a different failure from JSON that will not parse.
+
+- `structuredCloneJSON` moved from `index.ts` to `json.ts`. The barrel re-exports about eighty leaf
+  modules and its whole value is that nobody has to import it: ask for `errorMessage` and you get one
+  module, not eighty. That only holds while every name has a leaf to come from, and this one did not,
+  so a deep copy cost the whole package. Five files in `@veyyon/ai` were paying it. Import it from
+  `@veyyon/utils/json`; the barrel still re-exports it, so nothing that already worked stops working.
+
+### Added
+
+- `formatMoreLines(count)` in `format.ts`, the one owner of the "N more lines" phrase every collapsed
+  block prints. Nineteen surfaces wrote it inline, so all nineteen said "1 more lines" whenever a fold
+  hid exactly one line. It returns the counted phrase only, without the ellipsis or the expand hint,
+  because callers frame it differently.
+
+- `pathExists(target, what)` in `fs-optional.ts`: the async answer to "is it there". It replaces `fs.existsSync` at call sites inside an `async` function, where the synchronous version stops the event loop for the length of a stat and the probes are usually sequential, so the cost multiplies by however many paths are checked in a row. It also reports what `existsSync` cannot: a path that exists and cannot be stat'd answers `false` there, making a permissions problem indistinguishable from absence, and this logs the path and the reason before answering.
+
+### Fixed
+
 - File-lock recovery no longer lets an old stale-lock reaper delete a newer writer's lock. The reaper carries the owner token it observed and removes the lock only while that owner still matches. An aged ownerless lock is recoverable after its publication grace period, malformed owner metadata is refused, and a valid replacement owner survives a delayed cleanup.
+
 - `stripAnsi` removes a CSI sequence written with colon subparameters. The parameter class was `[0-9;?]`, but the spec's parameter bytes are the whole `0x30-0x3f` range, so `:` `<` `=` `>` were not matched: a true-color SGR of the form `ESC [ 38:2:255:0:0 m`, which libvte and several test runners emit, left `38:2:255:0:0m` behind as visible text in captured output. The class is now the spec's, and the three byte classes are disjoint so the pattern accepts exactly what a greedy scanner accepts. The behaviour is pinned against `fixtures/ansi-strip-corpus.json`, which the Rust `strip_ansi` in the shell minimizer reads too, so the two implementations answer the same cases instead of drifting apart.
 
 - `SQLITE_NOW_EPOCH` is exported from `src/sqlite.ts`. The expression `CAST(strftime('%s','now') AS INTEGER)` was declared in three modules across `@veyyon/ai` and `@veyyon/coding-agent`, each writing a column another module reads, and it had to land here because neither package can own a value both of them write. The unit is what makes a copy dangerous: an edit to milliseconds, or to a Julian day, puts values a thousand times out of range into one table while every reader keeps interpreting them as seconds, and nothing throws. `test/sqlite.test.ts` asserts what SQLite actually computes rather than the string, since the string is interpolated into SQL: seconds bracketed against the JavaScript clock, `typeof` integer with the bare `strftime` TEXT as the control, usable as a column DEFAULT, and one value per statement so a row cannot look edited the moment it is created.
