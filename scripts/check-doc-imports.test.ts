@@ -247,6 +247,96 @@ describe("checkDocImports", () => {
 	});
 });
 
+/**
+ * A package that cannot be IMPORTED here is not a broken document.
+ *
+ * `runtimeExportsOf` swallowed the load error and answered null, and the checker
+ * then reported "cannot load <specifier>" once per documented symbol. On a fresh
+ * CI checkout `@veyyon/coding-agent` needs a generated build artifact and a native
+ * addon that `bun install` alone does not produce, so twenty-two correct lines of
+ * documentation were reported as broken, the actual cause appeared nowhere, and
+ * the fix anybody would try from that message is to edit prose that is right.
+ *
+ * The declared types answer the question the gate asks, so the check continues
+ * against them — and the load failure is reported once, with its reason, because
+ * an entry point that stopped importing is a finding of its own.
+ */
+describe("a package that cannot be imported in this environment", () => {
+	/** A package directory with types and no loadable entry point at all. */
+	async function withUnloadablePackage(
+		files: Record<string, string>,
+		run: (repoRoot: string, rel: string[]) => Promise<void>,
+	): Promise<void> {
+		using tempDir = TempDir.createSync("@veyyon-doc-imports-unloadable-");
+		const root = tempDir.path();
+		const pkg = path.join(root, "packages", "ghost");
+		fs.mkdirSync(path.join(pkg, "src"), { recursive: true });
+		fs.writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name: "@veyyon/ghost-package" }));
+		fs.writeFileSync(path.join(pkg, "src", "types.ts"), "export interface GhostOptions { a: 1 }\n");
+		for (const [rel, contents] of Object.entries(files)) {
+			fs.mkdirSync(path.join(root, path.dirname(rel)), { recursive: true });
+			fs.writeFileSync(path.join(root, rel), contents);
+		}
+		await run(root, Object.keys(files));
+	}
+
+	it("reads the exports from the declared types instead of condemning the doc", async () => {
+		await withUnloadablePackage(
+			{
+				"docs/x.md": ["```ts", 'import type { GhostOptions } from "@veyyon/ghost-package";', "```"].join("\n"),
+			},
+			async (root, rel) => {
+				expect((await checkDocImports(root, rel)).bad).toEqual([]);
+			},
+		);
+	});
+
+	it("reports the load failure once, with the reason, rather than once per symbol", async () => {
+		await withUnloadablePackage(
+			{
+				"docs/x.md": [
+					"```ts",
+					'import type { GhostOptions } from "@veyyon/ghost-package";',
+					'import type { GhostOptions as G2 } from "@veyyon/ghost-package";',
+					"```",
+				].join("\n"),
+			},
+			async (root, rel) => {
+				const result = await checkDocImports(root, rel);
+
+				expect(result.unloadable).toHaveLength(1);
+				expect(result.unloadable[0]?.specifier).toBe("@veyyon/ghost-package");
+				// The reason must be the runtime's own words; an empty string here would
+				// leave the reader exactly where the swallowed catch did.
+				expect(result.unloadable[0]?.reason.length).toBeGreaterThan(0);
+			},
+		);
+	});
+
+	/**
+	 * The line that keeps this from becoming a hole: with NO types either, there is
+	 * no evidence at all, and passing would mean the gate stops checking whatever
+	 * package it cannot import.
+	 */
+	it("still reports a finding when there are no types to fall back to", async () => {
+		using tempDir = TempDir.createSync("@veyyon-doc-imports-nothing-");
+		const root = tempDir.path();
+		const pkg = path.join(root, "packages", "empty");
+		fs.mkdirSync(pkg, { recursive: true });
+		fs.writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name: "@veyyon/empty-package" }));
+		fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+		fs.writeFileSync(
+			path.join(root, "docs", "x.md"),
+			["```ts", 'import { Nothing } from "@veyyon/empty-package";', "```"].join("\n"),
+		);
+
+		const result = await checkDocImports(root, ["docs/x.md"]);
+
+		expect(result.bad).toHaveLength(1);
+		expect(result.bad[0]?.reason).toContain("declares no types either");
+	});
+});
+
 describe("documentationFiles", () => {
 	/** The gate must cover the surfaces the breakage was on: package READMEs, doc
 	 *  pages, and runnable examples. */

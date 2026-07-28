@@ -47,6 +47,18 @@ export interface ImportCheckResult {
 	 * silent-skip this gate is against.
 	 */
 	unknownPackages: string[];
+	/**
+	 * Package entry points that could not be imported in this environment, with
+	 * the reason, once each.
+	 *
+	 * Not a documentation failure and not silence either. `@veyyon/coding-agent`
+	 * needs a generated build artifact and a native addon on a fresh checkout, and
+	 * when it could not load, every symbol the docs named was reported as broken
+	 * while the one real cause was reported nowhere. The declared types still
+	 * answer whether a documented name exists, so the check continues; this is
+	 * what makes the environment problem visible instead of blaming the prose.
+	 */
+	unloadable: Array<{ specifier: string; reason: string }>;
 	bad: BadImport[];
 }
 
@@ -161,7 +173,18 @@ function typeExportsOf(packageDir: string, dirs: Map<string, string>, seen = new
 	const stack = [path.join(packageDir, "src")];
 	while (stack.length > 0) {
 		const dir = stack.pop() as string;
-		for (const entry of fs.readdirSync(dir, { withFileTypes: true }).values()) {
+		// A package with no `src/` is unusual but legal (a pure re-export package, a
+		// package still being created), and `readdirSync` on it threw ENOENT and took
+		// the whole gate down with a message about a directory rather than about any
+		// document. It has no declared types, which is an answer, not a crash. The
+		// same read can also race a parallel checkout moving the directory.
+		let entries: fs.Dirent[];
+		try {
+			entries = fs.readdirSync(dir, { withFileTypes: true });
+		} catch {
+			continue;
+		}
+		for (const entry of entries.values()) {
 			const full = path.join(dir, entry.name);
 			if (entry.isDirectory()) {
 				if (entry.name !== "node_modules") stack.push(full);
@@ -192,13 +215,27 @@ function typeExportsOf(packageDir: string, dirs: Map<string, string>, seen = new
 	return names;
 }
 
-/** Runtime exports of a package entry point, or null when it cannot be loaded. */
-async function runtimeExportsOf(packageName: string, subpath: string | undefined): Promise<Set<string> | null> {
+/**
+ * Runtime exports of a package entry point, or why it could not be loaded.
+ *
+ * The reason used to be discarded (`catch { return null }`), and every symbol the
+ * doc named was then reported as "cannot load <specifier>". That is a message
+ * about the docs for a problem in the environment: on a fresh CI checkout
+ * `@veyyon/coding-agent` needs a generated build artifact and a native addon that
+ * `bun install` alone does not produce, so twenty-two perfectly correct lines of
+ * documentation were reported as broken and the actual cause — one import throwing
+ * — never appeared anywhere. Keep the error; the caller reports it once per
+ * package instead of once per symbol.
+ */
+async function runtimeExportsOf(
+	packageName: string,
+	subpath: string | undefined,
+): Promise<{ names: Set<string> } | { loadError: string }> {
 	const specifier = subpath ? `${packageName}/${subpath}` : packageName;
 	try {
-		return new Set(Object.keys((await import(specifier)) as Record<string, unknown>));
-	} catch {
-		return null;
+		return { names: new Set(Object.keys((await import(specifier)) as Record<string, unknown>)) };
+	} catch (err) {
+		return { loadError: err instanceof Error ? err.message : String(err) };
 	}
 }
 
@@ -226,8 +263,14 @@ export function documentationFiles(repoRoot: string): string[] {
 export async function checkDocImports(repoRoot: string, files?: readonly string[]): Promise<ImportCheckResult> {
 	const dirs = packageDirs(repoRoot);
 	const typeCache = new Map<string, Set<string>>();
-	const runtimeCache = new Map<string, Set<string> | null>();
-	const result: ImportCheckResult = { filesChecked: 0, importsChecked: 0, unknownPackages: [], bad: [] };
+	const runtimeCache = new Map<string, { names: Set<string> } | { loadError: string }>();
+	const result: ImportCheckResult = {
+		filesChecked: 0,
+		importsChecked: 0,
+		unknownPackages: [],
+		unloadable: [],
+		bad: [],
+	};
 
 	for (const rel of files ?? documentationFiles(repoRoot)) {
 		const abs = path.join(repoRoot, rel);
@@ -263,23 +306,32 @@ export async function checkDocImports(repoRoot: string, files?: readonly string[
 			if (!runtimeCache.has(cacheKey)) {
 				runtimeCache.set(cacheKey, await runtimeExportsOf(packageName, subpath));
 			}
-			const runtime = runtimeCache.get(cacheKey) ?? null;
+			const loaded = runtimeCache.get(cacheKey);
+			const runtime = loaded && "names" in loaded ? loaded.names : null;
+			if (loaded && "loadError" in loaded && !result.unloadable.some(u => u.specifier === specifier)) {
+				// Once per package, with the reason. The declared types below still
+				// answer the question this gate asks, so a package that cannot be
+				// imported here does not condemn the documentation that names it —
+				// but it is never swallowed either, because an entry point that stopped
+				// loading is itself a finding somebody has to see.
+				result.unloadable.push({ specifier, reason: loaded.loadError });
+			}
 			if (!typeCache.has(packageName)) typeCache.set(packageName, typeExportsOf(packageDir, dirs));
 			const types = typeCache.get(packageName) as Set<string>;
 
 			for (const name of parseImportedNames(match[1])) {
 				result.importsChecked += 1;
-				if (runtime === null) {
+				if (runtime === null && types.size === 0) {
 					result.bad.push({
 						file: rel,
 						line,
 						specifier,
 						name,
-						reason: `cannot load ${specifier} to verify its exports`,
+						reason: `cannot load ${specifier} to verify its exports, and it declares no types either`,
 					});
 					continue;
 				}
-				if (runtime.has(name) || types.has(name)) continue;
+				if (runtime?.has(name) || types.has(name)) continue;
 				result.bad.push({
 					file: rel,
 					line,
@@ -302,6 +354,15 @@ if (import.meta.main) {
 	);
 	for (const specifier of result.unknownPackages) {
 		console.error(`  unknown package specifier (not under packages/): ${specifier}`);
+	}
+	// Loud, and not fatal. The declared types still answered every question this
+	// gate asks, so the documentation is not at fault; but an entry point that
+	// stopped importing is something somebody has to see, and it used to be
+	// swallowed and re-reported as a documentation error.
+	for (const unloadable of result.unloadable) {
+		console.error(
+			`  could not import ${unloadable.specifier} here, so its exports were read from its types instead: ${unloadable.reason}`,
+		);
 	}
 	for (const bad of result.bad) {
 		console.error(`${bad.file}:${bad.line}: ${bad.reason}`);
