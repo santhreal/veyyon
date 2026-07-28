@@ -26,7 +26,7 @@
  * what an environment decides is where those bytes land and what else moves with
  * them, which starts at the swap.
  */
-import { afterAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -41,6 +41,8 @@ import {
 	rcTargetFor,
 	repoRoot,
 	runInstall,
+	standInBinary,
+	STAND_IN_BINARY,
 	UPDATED_STAND_IN_BINARY,
 	UPDATED_VERSION,
 } from "./install-tests/environment-matrix-harness";
@@ -72,8 +74,9 @@ interface UpdateRun {
  * them, because the sweep matches on those names: a test that invented its own
  * spelling would assert that a sweep it never exercised leaves nothing behind.
  */
-function runUpdate(install: InstallRun): UpdateRun {
+function runUpdate(install: InstallRun, toVersion: string = UPDATED_VERSION): UpdateRun {
 	const target = path.join(install.installDir, "veyyon");
+	const binary = standInBinary(toVersion);
 	const script = `
 import {
 	refreshCompletionsForInstalledBinary,
@@ -87,13 +90,13 @@ import * as fs from "node:fs";
 const target = ${JSON.stringify(target)};
 const temp = target + ".new";
 const backup = target + "." + Date.now() + "." + process.pid + ".bak";
-fs.writeFileSync(temp, ${JSON.stringify(UPDATED_STAND_IN_BINARY)}, { mode: 0o755 });
+fs.writeFileSync(temp, ${JSON.stringify(binary)}, { mode: 0o755 });
 
 const verified = await replaceBinaryForUpdate({
 	targetPath: target,
 	tempPath: temp,
 	backupPath: backup,
-	expectedVersion: ${JSON.stringify(UPDATED_VERSION)},
+	expectedVersion: ${JSON.stringify(toVersion)},
 	verifyInstalledVersion: expected => verifyBinaryVersion(target, expected),
 });
 if (!verified.ok) throw new Error("the swap did not verify: " + JSON.stringify(verified));
@@ -277,4 +280,58 @@ describe.each(cases.map(c => [c.name, c] as const))("update an install in %s", (
 			expect(fs.existsSync(path.join(install.home, rel)), `${rel} must not be created`).toBe(false);
 		});
 	}
+
+	/**
+	 * Then back down again, to the version that was installed to begin with.
+	 *
+	 * `veyyon rollback` reaches the same swap through `installRelease`, so a
+	 * rollback is an update whose target version is older. That direction is worth
+	 * asserting separately because the thing a user rolls back FROM is a broken
+	 * release, and finding that the completions still describe it, or that the
+	 * install directory now holds two backups, is finding it at the worst moment.
+	 */
+	describe("and then rolled back to the version it started on", () => {
+		// In `beforeAll`, not at collection time: everything above asserts the state
+		// the UPDATE left, and a rollback run while the suite is still being built
+		// would undo all of it before the first assertion executed.
+		let rollback: UpdateRun;
+		beforeAll(() => {
+			rollback = runUpdate(install, INSTALLED_VERSION);
+		});
+
+		it("puts the original bytes back, executable, reporting the original version", () => {
+			expect(rollback.exitCode).toBe(0);
+			expect(fs.readFileSync(binary, "utf8")).toBe(STAND_IN_BINARY);
+			expect(fs.statSync(binary).mode & 0o111).toBe(0o111);
+			const run = Bun.spawnSync([binary, "--version"], { env: install.env });
+			expect(run.stdout.toString().trim()).toBe(`veyyon/${INSTALLED_VERSION}`);
+		});
+
+		for (const before of completionsBefore) {
+			it(`restores the completion at ${before.rel} to the rolled-back version`, () => {
+				// Byte-identical to what the install wrote, which is stronger than
+				// "it no longer says 9.9.10": a rollback that regenerated from the
+				// wrong binary would also stop saying that.
+				expect(fs.readFileSync(path.join(install.home, before.rel), "utf8")).toBe(before.content);
+			});
+		}
+
+		it("leaves the rc and the install directory as clean as the update did", () => {
+			// Two swaps in a row is where litter accumulates: each stages a temp and
+			// moves a backup aside, and the second is the one that finds the first's
+			// leftovers in its way.
+			const litter = fs
+				.readdirSync(install.installDir)
+				.filter(name => name.endsWith(".bak") || name.endsWith(".new") || name.startsWith(".veyyon."));
+			expect(litter).toEqual([]);
+			if (rcRel !== undefined && rcBefore !== undefined) {
+				expect(fs.readFileSync(rcTargetFor(testCase, rcRel, install.home), "utf8")).toBe(rcBefore);
+			}
+		});
+
+		it("creates nothing new under the home either", () => {
+			const created = [...filesUnder(install.home)].filter(file => !filesBefore.has(file));
+			expect(created).toEqual([]);
+		});
+	});
 });

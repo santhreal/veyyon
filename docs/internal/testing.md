@@ -951,6 +951,13 @@ the install directory holds exactly one entry on `$PATH`, `vey` still resolves t
 binary, every completion file the install wrote has been rewritten from the NEW binary,
 and the sweep leaves no backup or staging file behind.
 
+Each case then rolls BACK to the version it started on, which is the same swap with an
+older target because `veyyon rollback` reaches it through `installRelease`. The
+completion files have to become byte-identical to what the install wrote, which is
+stronger than "they no longer name the newer version": a rollback that regenerated from
+the wrong binary would also stop naming it. That second swap is also where litter
+accumulates, so the install directory is checked again afterwards.
+
 ## Waiting for a TUI frame
 
 A suite that drives a real `TUI` against a `VirtualTerminal` has to wait for the
