@@ -69,7 +69,8 @@ describe("utf8ByteLength", () => {
 	 */
 	it("charges one, two, three and four bytes by code-point range", () => {
 		expect(utf8ByteLength("a")).toBe(1);
-		expect(utf8ByteLength("")).toBe(1);
+		// Escaped, not literal: a raw DEL byte in a source file makes the whole file read as binary.
+		expect(utf8ByteLength("\u007f")).toBe(1);
 		expect(utf8ByteLength("")).toBe(2);
 		expect(utf8ByteLength("߿")).toBe(2);
 		expect(utf8ByteLength("ࠀ")).toBe(3);
