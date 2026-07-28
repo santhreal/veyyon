@@ -16,6 +16,9 @@ interface PatternAnalysis {
 	hasVariableQuantifier: boolean;
 	/** Whether this expression contains an alternation. */
 	hasAlternation: boolean;
+	/** Source shapes of variably quantified atoms at the consuming boundaries. */
+	startsWithVariableAtom: string | undefined;
+	endsWithVariableAtom: string | undefined;
 }
 
 /**
@@ -92,6 +95,7 @@ class PatternSafetyParser {
 	constructor(
 		private readonly pattern: string,
 		private readonly unicodeSets: boolean,
+		private readonly ignoreCase: boolean,
 	) {}
 
 	parse(): PatternAnalysis {
@@ -124,6 +128,8 @@ class PatternSafetyParser {
 				Math.max(...branches.map(branch => branch.variableWidthAlternations)),
 			hasVariableQuantifier: branches.some(branch => branch.hasVariableQuantifier),
 			hasAlternation: branches.length > 1 || branches.some(branch => branch.hasAlternation),
+			startsWithVariableAtom: mergeBoundaryAtoms(branches.map(branch => branch.startsWithVariableAtom)),
+			endsWithVariableAtom: mergeBoundaryAtoms(branches.map(branch => branch.endsWithVariableAtom)),
 		};
 	}
 
@@ -134,16 +140,34 @@ class PatternSafetyParser {
 		let variableWidthAlternations = 0;
 		let hasVariableQuantifier = false;
 		let hasAlternation = false;
+		let startsWithVariableAtom: string | undefined;
+		let endsWithVariableAtom: string | undefined;
+		let hasConsumingAtom = false;
 		while (this.#index < this.pattern.length) {
 			const current = this.pattern[this.#index];
 			if (current === "|" || current === ")") break;
 			const atom = this.#parseQuantifiedAtom();
+			if (
+				hasConsumingAtom &&
+				endsWithVariableAtom !== undefined &&
+				atom.startsWithVariableAtom !== undefined &&
+				variableAtomsMayOverlap(endsWithVariableAtom, atom.startsWithVariableAtom, this.ignoreCase)
+			) {
+				throw new Error(
+					"concatenated variable quantifiers cannot be proven safe from catastrophic backtracking",
+				);
+			}
 			nullable &&= atom.nullable;
 			minimumWidth += atom.minimumWidth;
 			maximumWidth += atom.maximumWidth;
 			variableWidthAlternations += atom.variableWidthAlternations;
 			hasVariableQuantifier ||= atom.hasVariableQuantifier;
 			hasAlternation ||= atom.hasAlternation;
+			if (atom.maximumWidth > 0) {
+				if (!hasConsumingAtom) startsWithVariableAtom = atom.startsWithVariableAtom;
+				endsWithVariableAtom = atom.endsWithVariableAtom;
+				hasConsumingAtom = true;
+			}
 		}
 		return {
 			nullable,
@@ -152,11 +176,15 @@ class PatternSafetyParser {
 			variableWidthAlternations,
 			hasVariableQuantifier,
 			hasAlternation,
+			startsWithVariableAtom,
+			endsWithVariableAtom,
 		};
 	}
 
 	#parseQuantifiedAtom(): PatternAnalysis {
+		const atomStart = this.#index;
 		const atom = this.#parseAtom();
+		const atomSource = this.pattern.slice(atomStart, this.#index);
 		const quantifier = this.#readQuantifier();
 		if (!quantifier) return atom;
 		if (atom.nullable) {
@@ -171,13 +199,16 @@ class PatternSafetyParser {
 			throw new Error("a repeated alternation cannot be proven safe from catastrophic backtracking");
 		}
 
+		const variable = quantifier.minimum !== quantifier.maximum;
 		return {
 			nullable: quantifier.minimum === 0,
 			minimumWidth: multiplyWidth(atom.minimumWidth, quantifier.minimum),
 			maximumWidth: multiplyWidth(atom.maximumWidth, quantifier.maximum),
 			variableWidthAlternations: atom.variableWidthAlternations,
-			hasVariableQuantifier: atom.hasVariableQuantifier || quantifier.minimum !== quantifier.maximum,
+			hasVariableQuantifier: atom.hasVariableQuantifier || variable,
 			hasAlternation: atom.hasAlternation,
+			startsWithVariableAtom: variable ? atomSource : atom.startsWithVariableAtom,
+			endsWithVariableAtom: variable ? atomSource : atom.endsWithVariableAtom,
 		};
 	}
 
@@ -222,7 +253,16 @@ class PatternSafetyParser {
 		if (this.pattern[this.#index] !== ")") throw new Error("group has no closing parenthesis");
 		this.#index++;
 		this.#depth--;
-		return assertion ? { ...inner, nullable: true, minimumWidth: 0, maximumWidth: 0 } : inner;
+		return assertion
+			? {
+					...inner,
+					nullable: true,
+					minimumWidth: 0,
+					maximumWidth: 0,
+					startsWithVariableAtom: undefined,
+					endsWithVariableAtom: undefined,
+				}
+			: inner;
 	}
 
 	#parseEscape(): PatternAnalysis {
@@ -243,7 +283,10 @@ class PatternSafetyParser {
 		while (this.#index < this.pattern.length) {
 			const current = this.pattern[this.#index++];
 			if (current === "\\") {
-				this.#index++;
+				const escaped = this.pattern[this.#index++];
+				if (this.unicodeSets && escaped === "q" && this.pattern[this.#index] === "{") {
+					throw new Error("Unicode-set string atoms cannot be proven safe from catastrophic backtracking");
+				}
 				continue;
 			}
 			if (this.unicodeSets && current === "[") {
@@ -297,6 +340,8 @@ const ZERO_WIDTH: PatternAnalysis = {
 	variableWidthAlternations: 0,
 	hasVariableQuantifier: false,
 	hasAlternation: false,
+	startsWithVariableAtom: undefined,
+	endsWithVariableAtom: undefined,
 };
 
 const CONSUMING: PatternAnalysis = {
@@ -306,13 +351,71 @@ const CONSUMING: PatternAnalysis = {
 	variableWidthAlternations: 0,
 	hasVariableQuantifier: false,
 	hasAlternation: false,
+	startsWithVariableAtom: undefined,
+	endsWithVariableAtom: undefined,
 };
+
+function mergeBoundaryAtoms(atoms: Array<string | undefined>): string | undefined {
+	const present = atoms.filter((atom): atom is string => atom !== undefined);
+	if (present.length === 0) return undefined;
+	return present.every(atom => atom === present[0]) ? present[0] : "*";
+}
+
+interface SimpleAtomDomain {
+	kind: "literal" | "class";
+	value: string;
+	inverted: boolean;
+}
+
+function simpleAtomDomain(atom: string): SimpleAtomDomain | undefined {
+	if (atom.length === 1 && atom !== ".") return { kind: "literal", value: atom, inverted: false };
+	if (atom.length !== 2 || atom[0] !== "\\") return undefined;
+	const escaped = atom[1];
+	const category = escaped.toLowerCase();
+	if (category === "d" || category === "s" || category === "w") {
+		return { kind: "class", value: category, inverted: escaped !== category };
+	}
+	if (/[^A-Za-z0-9]/.test(escaped)) return { kind: "literal", value: escaped, inverted: false };
+	return undefined;
+}
+
+function atomDomainMatches(domain: SimpleAtomDomain, character: string, ignoreCase: boolean): boolean {
+	if (domain.kind === "literal") {
+		return ignoreCase
+			? domain.value.toLocaleLowerCase("en-US") === character.toLocaleLowerCase("en-US")
+			: domain.value === character;
+	}
+	let matches: boolean;
+	if (domain.value === "d") matches = character >= "0" && character <= "9";
+	else if (domain.value === "s") matches = /\s/.test(character);
+	else matches = /[A-Za-z0-9_]/.test(character);
+	return domain.inverted ? !matches : matches;
+}
+
+function variableAtomsMayOverlap(left: string, right: string, ignoreCase: boolean): boolean {
+	if (left === "*" || right === "*" || left === "." || right === "." || left === right) return true;
+	const leftDomain = simpleAtomDomain(left);
+	const rightDomain = simpleAtomDomain(right);
+	if (leftDomain === undefined || rightDomain === undefined) return true;
+	if (leftDomain.kind === "literal") return atomDomainMatches(rightDomain, leftDomain.value, ignoreCase);
+	if (rightDomain.kind === "literal") return atomDomainMatches(leftDomain, rightDomain.value, ignoreCase);
+	for (let code = 0; code < 128; code++) {
+		const character = String.fromCharCode(code);
+		if (
+			atomDomainMatches(leftDomain, character, ignoreCase) &&
+			atomDomainMatches(rightDomain, character, ignoreCase)
+		) {
+			return true;
+		}
+	}
+	return false;
+}
 
 function validatePatternSafety(pattern: string, flags: string): void {
 	if (pattern.length > MAX_PATTERN_LENGTH) {
 		throw new Error(`pattern exceeds the ${MAX_PATTERN_LENGTH}-character bounded safety limit`);
 	}
-	const analysis = new PatternSafetyParser(pattern, flags.includes("v")).parse();
+	const analysis = new PatternSafetyParser(pattern, flags.includes("v"), flags.includes("i")).parse();
 	if (analysis.nullable) {
 		throw new Error("the pattern can match without consuming input; a zero-width match protects no secret value");
 	}

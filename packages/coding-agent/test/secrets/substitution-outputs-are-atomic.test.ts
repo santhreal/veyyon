@@ -41,51 +41,47 @@ describe("substitution outputs are atomic", () => {
 	});
 
 	/**
-	 * Replace-mode aliases are one-way terminal output. A later regex that happens to match an alias
-	 * must not wrap it in a reversible placeholder and change the configured wire representation.
+	 * A literal alias captured by a regex would either change on the next call or globally shadow
+	 * genuine regex matches, so the ambiguous pair is refused independent of rule order.
 	 */
-	it("protects literal replacement aliases from regex reinterpretation", () => {
-		const obfuscator = new SecretObfuscator(
-			[
-				{
-					type: "plain",
-					content: "literal-source-secret",
-					mode: "replace",
-					replacement: "alias-12345678",
-				},
-				{ type: "regex", content: "alias-[0-9]{8}" },
-			],
-			{ placeholderKey: PLACEHOLDER_KEY },
-		);
-
-		const outbound = obfuscator.obfuscate("literal-source-secret");
-		expect(outbound).toBe("alias-12345678");
-		expect(obfuscator.deobfuscate(outbound)).toBe("alias-12345678");
+	it("rejects a literal alias captured by a regex rule", () => {
+		expect(
+			() =>
+				new SecretObfuscator(
+					[
+						{
+							type: "plain",
+							content: "literal-source-secret",
+							mode: "replace",
+							replacement: "alias-12345678",
+						},
+						{ type: "regex", content: "alias-[0-9]{8}" },
+					],
+					{ placeholderKey: PLACEHOLDER_KEY },
+				),
+		).toThrow(/alias captured by another secret rule/i);
 	});
 
 	/**
-	 * Earlier regex entries also emit terminal output. Later entries cannot reinterpret a custom
-	 * alias, while a genuine copy of the same text elsewhere remains eligible for the later rule.
+	 * Regex-produced aliases have the same cross-call identity contract. A different regex that
+	 * captures the alias makes that contract ambiguous and is rejected at construction.
 	 */
-	it("protects regex aliases by provenance rather than by global value", () => {
-		const obfuscator = new SecretObfuscator(
-			[
-				{
-					type: "regex",
-					content: "source-[0-9]{8}",
-					mode: "replace",
-					replacement: "alias-12345678",
-				},
-				{ type: "regex", content: "alias-[0-9]{8}" },
-			],
-			{ placeholderKey: PLACEHOLDER_KEY },
-		);
-
-		const outbound = obfuscator.obfuscate("source-87654321 and alias-12345678");
-		const [protectedAlias, genuineAliasPlaceholder] = outbound.split(" and ");
-		expect(protectedAlias).toBe("alias-12345678");
-		expect(genuineAliasPlaceholder).toMatch(/^#0[A-F0-9]{24}#$/);
-		expect(obfuscator.deobfuscate(outbound)).toBe("alias-12345678 and alias-12345678");
+	it("rejects a regex alias captured by a different regex rule", () => {
+		expect(
+			() =>
+				new SecretObfuscator(
+					[
+						{
+							type: "regex",
+							content: "source-[0-9]{8}",
+							mode: "replace",
+							replacement: "alias-12345678",
+						},
+						{ type: "regex", content: "alias-[0-9]{8}" },
+					],
+					{ placeholderKey: PLACEHOLDER_KEY },
+				),
+		).toThrow(/alias captured by another secret rule/i);
 	});
 
 	/**
