@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { atomicWriteFile, atomicWriteFileSync, removeWithRetries } from "@veyyon/utils";
+import { atomicWriteFile, atomicWriteFileSync, atomicWriteFileWith, removeWithRetries } from "@veyyon/utils";
 
 /**
  * What an atomic write does when the target is NOT an ordinary file (ENV-6,
@@ -142,6 +142,40 @@ describe("atomic writes against special file types", () => {
 			expect(fs.existsSync(at("missing-dir"))).toBe(false);
 		});
 
+		/**
+		 * When a two-link chain ended in a missing file, realpath failed and the
+		 * old single-hop fallback renamed over the intermediate link. The write
+		 * must fail at the missing terminal directory with every link intact.
+		 */
+		it("preserves every link in a chain whose final target is dangling", async () => {
+			const first = at("first");
+			const second = at("second");
+			await fsp.symlink(at("missing-dir/target.yml"), first);
+			await fsp.symlink("first", second);
+
+			await expect(atomicWriteFile(second, "new\n")).rejects.toThrow(path.join("missing-dir", "target.yml"));
+
+			expect((await fsp.lstat(first)).isSymbolicLink()).toBe(true);
+			expect((await fsp.lstat(second)).isSymbolicLink()).toBe(true);
+			expect(fs.existsSync(at("missing-dir"))).toBe(false);
+		});
+
+		/**
+		 * The blocking resolver had the same one-hop dangling fallback, so it
+		 * could destroy the intermediate link even after the async path was fixed.
+		 */
+		it("the sync writer preserves a dangling chain too", async () => {
+			const first = at("sync-first");
+			const second = at("sync-second");
+			await fsp.symlink(at("missing-sync/target.yml"), first);
+			await fsp.symlink("sync-first", second);
+
+			expect(() => atomicWriteFileSync(second, "new\n")).toThrow(path.join("missing-sync", "target.yml"));
+
+			expect((await fsp.lstat(first)).isSymbolicLink()).toBe(true);
+			expect((await fsp.lstat(second)).isSymbolicLink()).toBe(true);
+			expect(fs.existsSync(at("missing-sync"))).toBe(false);
+		});
 		/** A file inside a symlinked DIRECTORY is an ordinary write: the directory
 		 * link is not the target, so nothing about it changes. This is the layout a
 		 * dotfile manager produces for a whole config folder. */
@@ -210,6 +244,31 @@ describe("atomic writes against special file types", () => {
 
 			expect(fs.lstatSync(fifo).isFIFO()).toBe(true);
 			expect((await fsp.lstat(link)).isSymbolicLink()).toBe(true);
+		});
+
+		/**
+		 * A target can change after initial validation while a producer is busy.
+		 * Previously a FIFO raced into the destination at that point was silently
+		 * destroyed by rename; the final pre-rename check must preserve it.
+		 */
+		it("refuses a special destination raced in while a producer is running", async () => {
+			const target = at("raced-target");
+			await fsp.writeFile(target, "old\n");
+
+			await expect(
+				atomicWriteFileWith(
+					target,
+					async tmpPath => {
+						await fsp.rm(target);
+						expect(Bun.spawnSync(["mkfifo", target]).exitCode).toBe(0);
+						await fsp.writeFile(tmpPath, "new\n");
+					},
+					{ fsync: false },
+				),
+			).rejects.toThrow(/named pipe/);
+
+			expect(fs.lstatSync(target).isFIFO()).toBe(true);
+			expect(fs.readdirSync(dir).filter(name => name.endsWith(".tmp"))).toEqual([]);
 		});
 
 		/** The control that keeps every refusal above meaningful: an ordinary file

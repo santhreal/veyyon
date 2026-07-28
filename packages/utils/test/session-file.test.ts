@@ -4,7 +4,7 @@
  *
  * WHY THIS SUITE EXISTS. The extension is a WRITER-AND-SCANNER contract. `session/session-manager.ts` builds
  * `<timestamp>_<id>.jsonl`; `session/session-listing.ts`, `cli/gc-cli.ts`, `export/html`, `debug/report-bundle.ts`,
- * `modes/components/agent-hub.ts`, `internal-urls/registry-helpers.ts` and `@veyyon/stats`'s parser all
+ * `registry/persisted-subagents.ts`, `internal-urls/registry-helpers.ts` and `@veyyon/stats`'s parser all
  * DISCOVER transcripts by matching it. It was spelled inline at dozens of sites in four packages, plus three
  * constants that shared no name: `JSONL_SUFFIX`, `SESSION_SUFFIX` and `JSONL_SUFFIX_LENGTH`, the last of which
  * was the value expressed as a number so a grep for the extension never found it. `tools/read.ts` had a fourth
@@ -172,7 +172,7 @@ describe("the session backup naming", () => {
 	});
 
 	/**
-	 * A backup is NOT itself a transcript, which is what keeps it out of every session listing. The Agent Hub
+	 * A backup is NOT itself a transcript, which is what keeps it out of every session listing. The Agent Control Center
 	 * and HTML export both rely on this: a backup appearing as a session would show the user a duplicate of a
 	 * session they already have, dated from a crash.
 	 */
@@ -257,7 +257,7 @@ describe("the advisor transcript naming", () => {
 		expect(isAdvisorTranscriptName("__advisor")).toBeFalse();
 	});
 
-	/** The slug, which the Agent Hub shows: empty for the default advisor, the name for a named one. */
+	/** The slug, which the Agent Control Center shows: empty for the default advisor, the name for a named one. */
 	it("reads the slug of a named advisor and empty for the default", () => {
 		expect(advisorTranscriptSlug("__advisor.jsonl")).toBe("");
 		expect(advisorTranscriptSlug("__advisor.reviewer.jsonl")).toBe("reviewer");
