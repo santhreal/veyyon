@@ -3,13 +3,21 @@
  */
 import * as path from "node:path";
 
-import { type Api, type AssistantMessage, completeSimple, type Model } from "@veyyon/ai";
+import {
+	type Api,
+	type ApiKeyResolver,
+	type AssistantMessage,
+	completeSimple,
+	type Context,
+	type Model,
+} from "@veyyon/ai";
 import { StreamMarkupHealing } from "@veyyon/ai/utils/stream-markup-healing";
-import { $env, errorMessage, isTerminalHeadless, logger, prompt } from "@veyyon/utils";
+import { $env, isTerminalHeadless, logger, prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
+import { isSecretPlaceholder, PLACEHOLDER_RE } from "../secrets/placeholder";
 import { titlesPrompts } from "../prompts/titles/rows";
 import { formatTitleUserMessage } from "../tiny/message-preproc";
 import { isTinyTitleLocalModelKey, ONLINE_TINY_TITLE_MODEL_KEY } from "../tiny/models";
@@ -31,6 +39,46 @@ const TERMINAL_TITLE_CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/g;
 // ceiling costs nothing when thinking is genuinely suppressed and keeps the
 // `<title>` marker output reachable when it isn't (issue #4355).
 const TITLE_MAX_TOKENS = 1024;
+
+const PLACEHOLDER_SHIELD_START = 0xe100;
+const PLACEHOLDER_SHIELD_END = 0xf8ff;
+
+/**
+ * Run lossy title preprocessing while treating every real secret placeholder
+ * as one indivisible token. Same-width padding preserves the truncation budget;
+ * any half retained around an elision is removed, while the one-character
+ * marker expands back only as a complete placeholder.
+ */
+function withAtomicSecretPlaceholders(text: string, transform: (value: string) => string): string {
+	const unavailable = new Set(text);
+	let nextCodePoint = PLACEHOLDER_SHIELD_START;
+	const allocateShield = (): string => {
+		while (nextCodePoint <= PLACEHOLDER_SHIELD_END) {
+			const candidate = String.fromCharCode(nextCodePoint++);
+			if (!unavailable.has(candidate)) {
+				unavailable.add(candidate);
+				return candidate;
+			}
+		}
+		throw new Error("Too many distinct secret placeholders to preprocess safely.");
+	};
+	const padding = allocateShield();
+	const shields = new Map<string, string>();
+	const shielded = text.replace(PLACEHOLDER_RE, candidate => {
+		if (!isSecretPlaceholder(candidate)) return candidate;
+		let shield = shields.get(candidate);
+		if (!shield) {
+			shield = allocateShield();
+			shields.set(candidate, shield);
+		}
+		return shield + padding.repeat(candidate.length - 1);
+	});
+	let transformed = transform(shielded).split(padding).join("");
+	for (const [placeholder, shield] of shields) {
+		transformed = transformed.split(shield).join(placeholder);
+	}
+	return transformed;
+}
 
 /** Matches the title the model wraps in `<title>...</title>`. */
 const TITLE_MARKER_GLOBAL_RE = /<title>([\s\S]*?)<\/title>|<title\s*\/>|<title>\s*$/gi;
@@ -102,7 +150,6 @@ export async function generateSessionTitle(
 		return null;
 	}
 
-	const customTitleSystemPrompt = customSystemPrompt?.trim() || undefined;
 	const tinyModel = settings.get("providers.tinyModel");
 	if (tinyModel === ONLINE_TINY_TITLE_MODEL_KEY) {
 		return generateTitleOnline(
@@ -113,7 +160,7 @@ export async function generateSessionTitle(
 			currentModel,
 			metadataResolver,
 			undefined,
-			customTitleSystemPrompt,
+			customSystemPrompt,
 			obfuscateProviderText,
 		);
 	}
@@ -132,6 +179,7 @@ export async function generateSessionTitle(
 		});
 		return null;
 	}
+	const customTitleSystemPrompt = customSystemPrompt?.trim() || undefined;
 	try {
 		const localTitle = customTitleSystemPrompt
 			? await tinyTitleClient.generate(tinyModel, firstMessage, {
@@ -147,11 +195,11 @@ export async function generateSessionTitle(
 			return null;
 		}
 		return localTitle;
-	} catch (err) {
+	} catch {
 		logger.warn("title-generator: local tiny model errored; skipping (no online fallback)", {
 			sessionId,
 			model: tinyModel,
-			error: errorMessage(err),
+			reason: "local-error",
 		});
 		return null;
 	}
@@ -174,21 +222,6 @@ export async function generateTitleOnline(
 		return null;
 	}
 
-	const rawCustomTitleSystemPrompt = customSystemPrompt?.trim() || undefined;
-	const customTitleSystemPrompt =
-		rawCustomTitleSystemPrompt && obfuscateProviderText
-			? obfuscateProviderText(rawCustomTitleSystemPrompt)
-			: rawCustomTitleSystemPrompt;
-	// The model is always asked to wrap the title in `<title>...</title>` and
-	// the title is parsed from text. A forced `set_title` tool call was the old
-	// scheme, but hosts that ignore or reject forced `tool_choice` then echoed
-	// the prompt's `{"title": ...}` JSON example verbatim as the session title;
-	// markers work uniformly everywhere.
-	const systemPrompt = customTitleSystemPrompt
-		? [customTitleSystemPrompt, TITLE_MARKER_INSTRUCTION]
-		: [TITLE_SYSTEM_PROMPT];
-	const formattedUserMessage = formatTitleUserMessage(firstMessage);
-	const userMessage = obfuscateProviderText ? obfuscateProviderText(formattedUserMessage) : formattedUserMessage;
 	const modelName = `${model.provider}/${model.id}`;
 	const modelContext = {
 		sessionId,
@@ -209,32 +242,56 @@ export async function generateTitleOnline(
 		// account_uuid rather than the snapshot-at-call-site value.
 		const metadata = metadataResolver?.(model.provider);
 
+		const requestContext: Context = { systemPrompt: [], messages: [] };
+		const refreshProviderContext = (): void => {
+			// Sanitize the raw fields before title cleanup/truncation. Applying the
+			// transform after formatTitleUserMessage can strand a secret prefix at
+			// either side of its middle-elision boundary.
+			const sanitize = obfuscateProviderText ?? ((text: string) => text);
+			const providerFirstMessage = sanitize(firstMessage);
+			const providerCustomPrompt = customSystemPrompt ? sanitize(customSystemPrompt).trim() || undefined : undefined;
+			requestContext.systemPrompt = providerCustomPrompt
+				? [providerCustomPrompt, sanitize(TITLE_MARKER_INSTRUCTION)]
+				: [sanitize(TITLE_SYSTEM_PROMPT)];
+			requestContext.messages = [
+				{
+					role: "user",
+					content: withAtomicSecretPlaceholders(providerFirstMessage, formatTitleUserMessage),
+					timestamp: Date.now(),
+				},
+			];
+		};
+		// Materialize once only after the credential/metadata awaits. completeSimple
+		// mocks and transports without a resolver still receive the protected form.
+		refreshProviderContext();
+		const resolveApiKey = registry.resolver(model, sessionId);
+		const resolveAttemptApiKey: ApiKeyResolver = async options => {
+			const key = await resolveApiKey(options);
+			// Auth retries resolve credentials before every physical attempt. Re-read
+			// the live transform at that same seam and rebuild from raw input so a
+			// runtime refresh cannot leave a stale request snapshot.
+			refreshProviderContext();
+			return key;
+		};
+
 		// Title generation is a 3-7 word task, but the ceiling has to survive
 		// backends that ignore `disableReasoning` (see TITLE_MAX_TOKENS above).
 		const maxTokens = TITLE_MAX_TOKENS;
 		logger.debug("title-generator: request", { ...modelContext, maxTokens });
 
-		const response = await completeSimple(
-			model,
-			{
-				systemPrompt,
-				messages: [{ role: "user", content: userMessage, timestamp: Date.now() }],
-			},
-			{
-				apiKey: registry.resolver(model, sessionId),
-				maxTokens,
-				disableReasoning: true,
-				metadata,
-				signal,
-			},
-		);
+		const response = await completeSimple(model, requestContext, {
+			apiKey: resolveAttemptApiKey,
+			maxTokens,
+			disableReasoning: true,
+			metadata,
+			signal,
+		});
 
 		if (response.stopReason === "error") {
 			logger.warn("title-generator: response error", {
 				...modelContext,
 				reason: "provider-response-error",
 				stopReason: response.stopReason,
-				errorMessage: response.errorMessage,
 			});
 			return null;
 		}
@@ -259,11 +316,10 @@ export async function generateTitleOnline(
 		});
 
 		return title;
-	} catch (err) {
+	} catch {
 		logger.warn("title-generator: error", {
 			...modelContext,
 			reason: "exception",
-			error: errorMessage(err),
 		});
 		return null;
 	}

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import type { Api, Model } from "@veyyon/ai";
+import type { Api, ApiKeyResolver, Model } from "@veyyon/ai";
 import * as ai from "@veyyon/ai";
 import { type GeneratedProvider, getBundledModel } from "@veyyon/catalog/models";
 import { generateSessionTitle } from "@veyyon/coding-agent/utils/title-generator";
@@ -97,6 +97,113 @@ describe("title generator", () => {
 		expect(title).toBe("Secure title generation");
 		expect(providerContent).toContain(placeholder);
 		expect(providerContent).not.toContain(secret);
+	});
+
+	it("keeps a complete placeholder when a secret straddles title truncation", async () => {
+		const model = getModelOrThrow("claude-sonnet-4-5");
+		const secret = "TITLE_BOUNDARY_SECRET_ABCDEF";
+		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const placeholder = obfuscator.obfuscate(secret);
+		const completeSimpleMock = vi.spyOn(ai, "completeSimple").mockResolvedValue({
+			stopReason: "stop",
+			content: [{ type: "text", text: "<title>Boundary title</title>" }],
+		} as never);
+
+		// Why: preprocessing the raw value first used to retain only a secret
+		// prefix; preprocessing an unshielded placeholder also shortened its hex.
+		await generateSessionTitle(
+			`${"a".repeat(1300)}${secret}${"z".repeat(1800)}`,
+			createRegistry(model),
+			createSettings(model),
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			text => obfuscator.obfuscate(text),
+		);
+
+		const request = completeSimpleMock.mock.calls[0]?.[1] as { messages: Array<{ content: string }> };
+		expect(request.messages[0]?.content).toContain(placeholder);
+		expect(request.messages[0]?.content).not.toContain(secret);
+	});
+
+	it("re-reads the title sanitizer after credential resolution", async () => {
+		const model = getModelOrThrow("claude-sonnet-4-5");
+		const secret = "TITLE_NEW_RUNTIME_SECRET_B881";
+		const placeholder = "#TITLE_RUNTIME_SECRET#";
+		let sanitize = (text: string) => text;
+		const registry = {
+			...createRegistry(model),
+			getApiKey: async () => {
+				sanitize = text => text.replaceAll(secret, placeholder);
+				return "test-key";
+			},
+		} as never;
+		const completeSimpleMock = vi.spyOn(ai, "completeSimple").mockResolvedValue({
+			stopReason: "stop",
+			content: [{ type: "text", text: "<title>Fresh runtime</title>" }],
+		} as never);
+
+		// Why: replan title generation awaits credential refresh, which may install
+		// a new secret runtime before the request is physically materialized.
+		await generateSessionTitle(
+			`Investigate ${secret}`,
+			registry,
+			createSettings(model),
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			text => sanitize(text),
+		);
+
+		const request = completeSimpleMock.mock.calls[0]?.[1] as { messages: Array<{ content: string }> };
+		expect(request.messages[0]?.content).toContain(placeholder);
+		expect(request.messages[0]?.content).not.toContain(secret);
+	});
+
+	it("re-sanitizes the title context for a credential retry", async () => {
+		const model = getModelOrThrow("claude-sonnet-4-5");
+		const secret = "TITLE_RETRY_SECRET_883";
+		const placeholder = "#TITLE_RETRY_SECRET#";
+		let sanitize = (text: string) => text;
+		let attempt = 0;
+		const captures: string[] = [];
+		const registry = {
+			...createRegistry(model),
+			resolver: () => async () => {
+				attempt++;
+				if (attempt === 2) sanitize = text => text.replaceAll(secret, placeholder);
+				return `test-key-${attempt}`;
+			},
+		} as never;
+		vi.spyOn(ai, "completeSimple").mockImplementation(async (_model, context, options) => {
+			const resolveKey = options?.apiKey as ApiKeyResolver;
+			await resolveKey({ lastChance: false, error: undefined });
+			captures.push(JSON.stringify(context));
+			await resolveKey({ lastChance: true, error: new Error("401"), previousKey: "test-key-1" });
+			captures.push(JSON.stringify(context));
+			return {
+				stopReason: "stop",
+				content: [{ type: "text", text: "<title>Retry title</title>" }],
+			} as never;
+		});
+
+		// Why: completeSimple can retry after auth refresh without returning to
+		// this helper; the mutable context must therefore refresh in its resolver.
+		await generateSessionTitle(
+			`Investigate ${secret}`,
+			registry,
+			createSettings(model),
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			text => sanitize(text),
+		);
+
+		expect(captures[1]).toContain(placeholder);
+		expect(captures[1]).not.toContain(secret);
 	});
 
 	it.each([
@@ -366,9 +473,9 @@ describe("title generator", () => {
 				provider: model.provider,
 				id: model.id,
 				reason: "exception",
-				error: "credential lookup failed",
 			}),
 		);
+		expect(JSON.stringify(warnSpy.mock.calls)).not.toContain("credential lookup failed");
 	});
 
 	it("uses a reasoning-safe output budget for reasoning models", async () => {
