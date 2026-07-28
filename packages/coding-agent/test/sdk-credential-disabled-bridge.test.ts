@@ -9,9 +9,14 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ExtensionError, ExtensionFactory, LoadedExtension } from "@veyyon/coding-agent/extensibility/extensions";
 import { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions";
 import { ExtensionRuntime } from "@veyyon/coding-agent/extensibility/extensions/loader";
+import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
+import { SecretAuditLog } from "@veyyon/coding-agent/secrets/audit";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
+import { postmortem, removeSyncWithRetries, Snowflake } from "@veyyon/utils";
+import { useIsolatedConfigRoot } from "./helpers/isolated-agent-dir";
+
+useIsolatedConfigRoot();
 
 interface SessionDirs {
 	cwd: string;
@@ -563,6 +568,74 @@ describe("createAgentSession credential_disabled subscription", () => {
 				error: "boom",
 			});
 		} finally {
+			authStorage.close();
+		}
+	});
+	/**
+	 * The SDK dispose wrapper owns global lifecycle teardown and listener cleanup in
+	 * addition to AgentSession.dispose(); concurrent callers must share that whole
+	 * transaction, and the first caller's shutdown reason must reach the session.
+	 */
+	it("runs the SDK disposal transaction once and forwards the first caller's options", async () => {
+		const dirs = makeDirs("dispose-once");
+		const authStorage = await AuthStorage.create(path.join(dirs.agentDir, "agent.db"));
+		const lifecycleDispose = vi.spyOn(AgentLifecycleManager.global(), "dispose").mockResolvedValue(undefined);
+		const { session } = await createAgentSession(baseOptions(dirs, authStorage));
+		session.sessionManager.appendMessage({
+			role: "assistant",
+			content: [],
+			timestamp: Date.now(),
+		} as never);
+
+		const first = session.dispose({ reason: postmortem.Reason.SIGTERM });
+		const second = session.dispose({ reason: postmortem.Reason.EXIT });
+
+		expect(second).toBe(first);
+		await Promise.all([first, second]);
+		expect(lifecycleDispose).toHaveBeenCalledTimes(1);
+		const exits = session.sessionManager
+			.getEntries()
+			.filter(entry => entry.type === "custom" && entry.customType === "session_exit");
+		expect(exits).toHaveLength(1);
+		expect(exits[0]?.type === "custom" ? exits[0].data : undefined).toMatchObject({
+			reason: postmortem.Reason.SIGTERM,
+			kind: "signal",
+		});
+		authStorage.close();
+	});
+
+	/**
+	 * A failed audit-log flush may reject disposal, but it must not skip the
+	 * listener detachment that prevents disposed sessions from receiving later
+	 * credential lifecycle events.
+	 */
+	it("detaches SDK listeners even when the secret audit flush fails", async () => {
+		const dirs = makeDirs("dispose-flush-failure");
+		const authStorage = await AuthStorage.create(path.join(dirs.agentDir, "agent.db"));
+		const ext = makeRecordingExtension();
+		const settings = Settings.isolated({
+			"secrets.enabled": true,
+			"secrets.auditLog": true,
+		});
+		const { session } = await createAgentSession({
+			...baseOptions(dirs, authStorage, [ext.factory]),
+			settings,
+		});
+		initializeRunnerForTest(session.extensionRunner);
+		vi.spyOn(AgentLifecycleManager.global(), "dispose").mockResolvedValue(undefined);
+		const flush = vi.spyOn(SecretAuditLog.prototype, "flush").mockRejectedValue(new Error("audit flush failed"));
+
+		try {
+			await expect(session.dispose()).rejects.toThrow("audit flush failed");
+			expect(flush).toHaveBeenCalledTimes(1);
+
+			failOAuthRefresh();
+			await authStorage.set("anthropic", [expiredOAuth()]);
+			await authStorage.getApiKey("anthropic", "after-failed-dispose");
+			await drainCredentialDisabledDispatch();
+			expect(ext.events).toHaveLength(0);
+		} finally {
+			flush.mockRestore();
 			authStorage.close();
 		}
 	});

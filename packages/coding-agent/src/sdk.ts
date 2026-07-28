@@ -1513,7 +1513,12 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				obfuscatePayload: (payload: unknown) => obfuscateProviderPayload(payload, redactor),
 				assertFreshForExpansion: () => {
 					if (!vault || vaultRevision === undefined || vault.revision() === vaultRevision) return;
-					if (!pendingSecretRuntime || pendingSecretRuntime.cwd !== normalizedCwd) {
+					// A lease may outlive a cwd transition because one admitted
+					// request keeps its immutable authority. Such an old lease must
+					// refuse expansion, but it must not supersede the destination
+					// refresh by scheduling work for the directory being left.
+					const stillCurrent = path.resolve(sessionManager.getCwd()) === normalizedCwd;
+					if (stillCurrent && (!pendingSecretRuntime || pendingSecretRuntime.cwd !== normalizedCwd)) {
 						void refreshSecretRuntime(normalizedCwd).catch(error => {
 							logger.warn("Failed to refresh a stale secret runtime", {
 								cwd: normalizedCwd,
@@ -1831,7 +1836,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					capturedVaultRevision !== undefined &&
 					secretVault.revision() !== capturedVaultRevision
 				) {
-					return await refreshSecretRuntime(secretRuntimeCwd);
+					return await refreshSecretRuntime(sessionManager.getCwd());
 				}
 				return secretRuntimeLease;
 			}
@@ -3946,36 +3951,45 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		agentRegistry.attachSession(resolvedAgentId, session, sessionManager.getSessionFile() ?? null);
 		{
 			const originalDispose = session.dispose.bind(session);
-			session.dispose = async () => {
-				try {
-					// Reject new session work (eval starts) the moment disposal
-					// begins — the lifecycle await below opens an async gap before
-					// AgentSession.dispose() would otherwise set its guards.
-					session.beginDispose();
-					if (agentKind === "main") {
-						// Top-level teardown owns the global agent lifecycle: park timers,
-						// adopted subagent sessions, revivers. Tear it down while shared
-						// resources (kernels, MCP, LSP) are still live. Subagent disposal
-						// must NOT touch the global lifecycle.
-						await AgentLifecycleManager.global().dispose();
-					}
-					await originalDispose();
-				} finally {
-					// The expansion log queues its appends so a tool call is never blocked by a
-					// write, which means an exit that does not wait for the queue loses whichever
-					// records were still in it, and loses them silently. Flushed here rather than
-					// left to the event loop because quitting the TUI ends the process rather than
-					// waiting for pending work: the last credential an agent used is exactly the
-					// one an incident asks about.
-					await secretAuditLog?.flush();
-					// Stop routing machine faults into this session's notices. Left attached, the sink
-					// keeps a disposed `OperatorNotices` reachable and posts later faults into a channel
-					// nothing renders, and in a process that opens sessions in sequence the count grows
-					// by one per session forever.
-					detachFaultSink?.();
-					unregisterUnlessParked();
-					unsubscribeCredentialDisabled?.();
+			let disposeCall: Promise<void> | undefined;
+			session.dispose = options => {
+				if (!disposeCall) {
+					disposeCall = (async () => {
+						try {
+							// Reject new session work (eval starts) the moment disposal
+							// begins — the lifecycle await below opens an async gap before
+							// AgentSession.dispose() would otherwise set its guards.
+							session.beginDispose();
+							if (agentKind === "main") {
+								// Top-level teardown owns the global agent lifecycle: park timers,
+								// adopted subagent sessions, revivers. Tear it down while shared
+								// resources (kernels, MCP, LSP) are still live. Subagent disposal
+								// must NOT touch the global lifecycle.
+								await AgentLifecycleManager.global().dispose();
+							}
+							await originalDispose(options);
+						} finally {
+							// The expansion log queues its appends so a tool call is never blocked by a
+							// write, which means an exit that does not wait for the queue loses whichever
+							// records were still in it, and loses them silently. Flushed here rather than
+							// left to the event loop because quitting the TUI ends the process rather than
+							// waiting for pending work: the last credential an agent used is exactly the
+							// one an incident asks about.
+							try {
+								await secretAuditLog?.flush();
+							} finally {
+								// Stop routing machine faults into this session's notices. Left attached, the sink
+								// keeps a disposed `OperatorNotices` reachable and posts later faults into a channel
+								// nothing renders, and in a process that opens sessions in sequence the count grows
+								// by one per session forever.
+								detachFaultSink?.();
+								unregisterUnlessParked();
+								unsubscribeCredentialDisabled?.();
+							}
+						}
+					})();
 				}
+				return disposeCall;
 			};
 		}
 

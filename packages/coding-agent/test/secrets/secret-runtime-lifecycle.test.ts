@@ -8,7 +8,7 @@
  * provider hook. Exact outbound payloads are asserted so merely changing a status flag cannot
  * make the suite pass while the credential still leaves the process.
  */
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -16,10 +16,10 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
 import { createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/sdk";
 import { SecretVault } from "@veyyon/coding-agent/secrets/vault";
-import { runSecretCommandForSurface } from "@veyyon/coding-agent/slash-commands/helpers/secret";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { runSecretCommandForSurface } from "@veyyon/coding-agent/slash-commands/helpers/secret";
 import { createPersistedSubagentReviverFactory } from "@veyyon/coding-agent/task/persisted-revive";
 import { TempDir } from "@veyyon/utils";
 import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
@@ -186,7 +186,6 @@ describe("live secret runtime toggles", () => {
 			await disposeFixture(fixture);
 		}
 	});
-
 });
 
 describe("runtime replacement", () => {
@@ -220,6 +219,139 @@ describe("runtime replacement", () => {
 			await disposeFixture(fixture);
 		}
 	});
+	/**
+	 * A vault revision check is the provider-admission fast path: unchanged
+	 * revisions must keep the exact immutable authority, while one external
+	 * mutation must atomically replace it before the next request is admitted.
+	 */
+	it("reuses an unchanged lease and refreshes exactly when the vault revision changes", async () => {
+		const fixture = await createRuntimeFixture();
+		try {
+			fixture.settings.set("secrets.enabled", true);
+			await fixture.session.refreshSecrets({ refreshPrompt: false });
+			const initial = await fixture.session.leaseSecretRuntime();
+
+			expect(await fixture.session.leaseSecretRuntime()).toBe(initial);
+			await fixture.vaultA.add({
+				name: "LATE_TOKEN",
+				value: ADDED_WHILE_OFF_VALUE,
+				scope: "project",
+			});
+
+			const refreshed = await fixture.session.leaseSecretRuntime();
+			expect(refreshed).not.toBe(initial);
+			expect(refreshed.revision).toBeGreaterThan(initial.revision);
+			expect(refreshed.expansionObfuscator?.deobfuscate("#LATE_TOKEN#")).toBe(ADDED_WHILE_OFF_VALUE);
+			expect(await fixture.session.leaseSecretRuntime()).toBe(refreshed);
+		} finally {
+			await disposeFixture(fixture);
+		}
+	});
+
+	/**
+	 * Provider admission must wait behind a refresh without exposing its candidate,
+	 * and a completion carrying an older lease must not overwrite the committed
+	 * authority after the refresh wins.
+	 */
+	it("keeps prior authority during refresh and rejects a stale lease completion", async () => {
+		const fixture = await createRuntimeFixture();
+		const originalLoad = SecretVault.prototype.load;
+		const loadStarted = Promise.withResolvers<void>();
+		const releaseLoad = Promise.withResolvers<void>();
+		let blockNextLoad = true;
+		const loadSpy = vi.spyOn(SecretVault.prototype, "load").mockImplementation(async function () {
+			if (blockNextLoad) {
+				blockNextLoad = false;
+				loadStarted.resolve();
+				await releaseLoad.promise;
+			}
+			return originalLoad.call(this);
+		});
+		try {
+			const prior = await fixture.session.leaseSecretRuntime();
+			expect(prior.expansionObfuscator).toBeUndefined();
+			fixture.settings.set("secrets.enabled", true);
+
+			const refresh = fixture.session.refreshSecrets({ refreshPrompt: false });
+			await loadStarted.promise;
+			expect(fixture.session.obfuscator).toBeUndefined();
+
+			let admitted = false;
+			const admission = fixture.session.leaseSecretRuntime().then(runtime => {
+				admitted = true;
+				return runtime;
+			});
+			await Promise.resolve();
+			expect(admitted).toBe(false);
+
+			releaseLoad.resolve();
+			await refresh;
+			const current = await admission;
+			expect(current.revision).toBeGreaterThan(prior.revision);
+			expect(current.expansionObfuscator?.deobfuscate("#A_TOKEN#")).toBe(PROJECT_A_VALUE);
+
+			fixture.session.installSecretRuntime(prior);
+			expect(await fixture.session.leaseSecretRuntime()).toBe(current);
+			expect(fixture.session.obfuscator?.deobfuscate("#A_TOKEN#")).toBe(PROJECT_A_VALUE);
+		} finally {
+			loadSpy.mockRestore();
+			releaseLoad.resolve();
+			await disposeFixture(fixture);
+		}
+	});
+
+	/**
+	 * An already-admitted request may retain the source-project lease while a cwd
+	 * move loads the destination. If that old vault changes, its freshness check
+	 * must refuse expansion without superseding the destination refresh.
+	 */
+	it("does not let a stale source lease cancel an in-flight cwd refresh", async () => {
+		const fixture = await createRuntimeFixture();
+		try {
+			fixture.settings.set("secrets.enabled", true);
+			await fixture.session.refreshSecrets({ refreshPrompt: false });
+			const sourceLease = await fixture.session.leaseSecretRuntime();
+			await fixture.vaultA.add({
+				name: "LATE_TOKEN",
+				value: ADDED_WHILE_OFF_VALUE,
+				scope: "project",
+			});
+
+			const originalLoad = SecretVault.prototype.load;
+			const destinationLoadStarted = Promise.withResolvers<void>();
+			const releaseDestinationLoad = Promise.withResolvers<void>();
+			let blockNextLoad = true;
+			const guardedLoadSpy = vi.spyOn(SecretVault.prototype, "load").mockImplementation(async function () {
+				if (blockNextLoad) {
+					blockNextLoad = false;
+					destinationLoadStarted.resolve();
+					await releaseDestinationLoad.promise;
+				}
+				return originalLoad.call(this);
+			});
+			try {
+				const moving = fixture.session.setCwd(fixture.projectB);
+				await destinationLoadStarted.promise;
+				expect(() => sourceLease.assertFreshForExpansion()).toThrow(
+					"Secret expansion was refused because the vault changed",
+				);
+				expect(guardedLoadSpy).toHaveBeenCalledTimes(1);
+
+				releaseDestinationLoad.resolve();
+				await moving;
+				const destinationLease = await fixture.session.leaseSecretRuntime();
+				expect(destinationLease.cwd).toBe(fixture.projectB);
+				expect(destinationLease.expansionObfuscator?.deobfuscate("#B_TOKEN#")).toBe(PROJECT_B_VALUE);
+				expect(guardedLoadSpy).toHaveBeenCalledTimes(1);
+			} finally {
+				guardedLoadSpy.mockRestore();
+				releaseDestinationLoad.resolve();
+			}
+		} finally {
+			await disposeFixture(fixture);
+		}
+	});
+
 	it("revokes a mutated name if runtime reconciliation fails", async () => {
 		const fixture = await createRuntimeFixture();
 		try {
@@ -316,7 +448,6 @@ describe("runtime replacement", () => {
 			expect(persisted?.cwd).toBe(fixture.projectA);
 			expect((await fs.stat(persisted!.cwd)).isDirectory()).toBe(true);
 
-
 			const factory = createPersistedSubagentReviverFactory({
 				session: fixture.session,
 				authStorage,
@@ -338,7 +469,7 @@ describe("runtime replacement", () => {
 			expect(revive).toBeFunction();
 			await fixture.session.setCwd(fixture.projectB);
 			expect(fixture.session.obfuscator?.hasNamedSecret("B_TOKEN")).toBe(true);
-			expect(await fs.readFile(sessionFile!, "utf8")).toContain("\"type\":\"session_init\"");
+			expect(await fs.readFile(sessionFile!, "utf8")).toContain('"type":"session_init"');
 			expect((await SessionManager.peekSessionInit(sessionFile!))?.init?.systemPrompt).toBe("Persisted child");
 
 			revived = await revive!();
@@ -374,7 +505,6 @@ describe("runtime replacement", () => {
 			await disposeFixture(fixture);
 		}
 	});
-
 });
 
 describe("the final mutable provider hook boundary", () => {
