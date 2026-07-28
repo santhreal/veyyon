@@ -165,7 +165,7 @@ interface TailMessage {
 }
 
 function isToolCallBlock(block: unknown): boolean {
-	return typeof block === "object" && block !== null && (block as { type?: unknown }).type === "toolCall";
+	return typeof block === "object" && block !== null && "type" in block && block.type === "toolCall";
 }
 
 function statusFromTailMessage(message: TailMessage): SessionStatus {
@@ -754,9 +754,14 @@ export function listSessionsReadOnly(sessionDir: string, storage: SessionStorage
 export async function listAllSessions(storage: SessionStorage = new FileSessionStorage()): Promise<SessionInfo[]> {
 	const sessionsRoot = path.join(getDefaultAgentDir(), "sessions");
 	try {
-		const files = await Array.fromAsync(new Bun.Glob(`*/*${SESSION_FILE_EXTENSION}`).scan(sessionsRoot), name =>
-			path.join(sessionsRoot, name),
-		);
+		// Backups are indexed records too. Recover every project bucket before
+		// enumerating primaries, so a crash during an indexed/backend rewrite is
+		// globally resumable even when no local filesystem mirror exists.
+		const backups = storage.listFilesRecursiveSync(sessionsRoot, `*${SESSION_BACKUP_EXTENSION}`);
+		const backupDirs = new Set(backups.map(backup => path.dirname(backup)));
+		await Promise.all(Array.from(backupDirs, sessionDir => recoverOrphanedBackups(sessionDir, storage)));
+
+		const files = storage.listFilesRecursiveSync(sessionsRoot, `*${SESSION_FILE_EXTENSION}`);
 		return await collectSessionsFromFiles(files, storage, true);
 	} catch (err) {
 		if (isEnoent(err)) return [];

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	CompactionSummaryMessageComponent,
@@ -7,15 +8,20 @@ import {
 } from "@veyyon/coding-agent/modes/components/compaction-summary-message";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { CustomMessage } from "@veyyon/coding-agent/session/messages";
+import { getKeybindings, setKeybindings } from "@veyyon/tui";
+
+const originalKeybindings = getKeybindings();
 
 beforeAll(async () => {
 	resetSettingsForTest();
 	await Settings.init({ inMemory: true });
 	await initTheme(false);
+	setKeybindings(new KeybindingsManager());
 });
 
 afterAll(() => {
 	resetSettingsForTest();
+	setKeybindings(originalKeybindings);
 });
 
 function makeHandoffMessage(content: CustomMessage<unknown>["content"]): CustomMessage<unknown> {
@@ -43,6 +49,54 @@ describe("compaction summary divider", () => {
 		expect(collapsed).toContain("compacted");
 		expect(collapsed).toContain("ctrl+o");
 		expect(collapsed).not.toContain("The parser fix is complete.");
+	});
+
+	/**
+	 * The divider names the chord currently bound to the same expand action its
+	 * host handles. Rebinding after the component exists also invalidates the
+	 * cached divider text on the next render.
+	 */
+	it("follows the live expand keybinding", () => {
+		const previous = getKeybindings();
+		const component = new CompactionSummaryMessageComponent({
+			role: "compactionSummary",
+			summary: "Summary",
+			tokensBefore: 1,
+			timestamp: Date.now(),
+		});
+		try {
+			setKeybindings(new KeybindingsManager({ "app.tools.expand": "alt+e" }));
+			expect(Bun.stripANSI(component.render(80).join("\n"))).toContain("alt+e");
+			setKeybindings(new KeybindingsManager({ "app.tools.expand": "ctrl+x" }));
+			const rebound = Bun.stripANSI(component.render(80).join("\n"));
+			expect(rebound).toContain("ctrl+x");
+			expect(rebound).not.toContain("alt+e");
+		} finally {
+			setKeybindings(previous);
+		}
+	});
+
+	/**
+	 * An unbound expand action cannot be invoked, so the divider keeps its
+	 * semantic label but drops both the nonexistent chord and its separator.
+	 */
+	it("omits the expand hint when the action is unbound", () => {
+		const previous = getKeybindings();
+		try {
+			setKeybindings(new KeybindingsManager({ "app.tools.expand": [] }));
+			const component = new CompactionSummaryMessageComponent({
+				role: "compactionSummary",
+				summary: "Summary",
+				tokensBefore: 1,
+				timestamp: Date.now(),
+			});
+			const collapsed = Bun.stripANSI(component.render(80).join("\n"));
+			expect(collapsed).toContain("compacted");
+			expect(collapsed).not.toContain("ctrl+o");
+			expect(collapsed).not.toContain("·");
+		} finally {
+			setKeybindings(previous);
+		}
 	});
 
 	/** Expanding the divider reveals summary prose but never its private provider delimiter. */

@@ -988,7 +988,14 @@ function resolveConfiguredRolePattern(
 		return undefined;
 	}
 
-	return thinkingLevel ? resolved.map(pattern => `${pattern}:${thinkingLevel}`) : resolved;
+	if (!thinkingLevel) return resolved;
+	return resolved.map(pattern => {
+		// The alias suffix is the selector nearest the caller and therefore
+		// replaces a valid suffix stored on the aliased role. Appending produced
+		// `model:high:low`, leaving two contradictory selectors in one value.
+		const existing = splitThinkingSuffix(pattern, -1, MAX_THINKING_SUFFIX_OPTIONS);
+		return `${existing.base}:${thinkingLevel}`;
+	});
 }
 
 /**

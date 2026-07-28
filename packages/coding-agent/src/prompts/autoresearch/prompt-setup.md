@@ -23,8 +23,8 @@ Working directory: `{{working_dir}}`
 Write `./autoresearch.sh` at the working directory. It is the canonical benchmark entrypoint and MUST:
 
 - exit 0 on success and non-zero on failure;
-- print the primary metric as a single line `METRIC <name>=<value>`;
-- print any secondary metrics as additional `METRIC <name>=<value>` lines;
+- print the primary metric as a single line `METRIC <name≥<value>`;
+- print any secondary metrics as additional `METRIC <name≥<value>` lines;
 - run the same workload deterministically every time (no live network, no time-of-day dependencies, fixed seeds where applicable).
 
 You MAY edit anything else needed to make `autoresearch.sh` work — benchmark binaries, `Cargo.toml`, `package.json`, helper scripts, fixtures. All those edits are part of the harness baseline and will be committed for you when you call `init_experiment` on an autoresearch branch.

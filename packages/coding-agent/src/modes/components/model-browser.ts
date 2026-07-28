@@ -25,7 +25,7 @@ import {
 import { clampLow, formatNumber } from "@veyyon/utils";
 import { resolveEffort, withLegacyDefaultEffort } from "../../config/effort-resolver";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../../config/model-resolver";
-import { getKnownRoleIds, getRoleInfo, MODEL_ROLE_IDS } from "../../config/model-roles";
+import { DEFAULT_MODEL_SLOT, getKnownRoleIds, getRoleInfo, MODEL_ROLE_IDS } from "../../config/model-roles";
 import type { Settings } from "../../config/settings";
 import type { ModelPerfStats } from "../../session/agent-storage";
 import { AUTO_THINKING, type ConfiguredThinkingLevel } from "../../thinking";
@@ -85,18 +85,20 @@ export type RoleAssignments = Record<string, RoleAssignment | undefined>;
 export function resolveRoleAssignments(settings: Settings, allModels: ReadonlyArray<Model>): RoleAssignments {
 	const resolvedThinkingLevel = (
 		role: string,
+		model: Model,
 		resolved: { explicitThinkingLevel: boolean; thinkingLevel?: ConfiguredThinkingLevel },
 	): ConfiguredThinkingLevel => {
 		if (resolved.explicitThinkingLevel && resolved.thinkingLevel !== undefined) {
 			return resolved.thinkingLevel;
 		}
 		if (role === "default") {
-			// Shown as the default role's effort: the Default Effort list through the
-			// ONE resolver, not the retired profile-wide enum.
+			// Shown as the default role's effort: resolve against the concrete
+			// assignment so a model-specific row displays exactly what runtime uses.
 			return (
 				resolveEffort({
+					modelSelector: `${model.provider}/${model.id}`,
 					defaultEffort: withLegacyDefaultEffort(
-						settings.get("defaultEffort"),
+						settings.isConfigured("defaultEffort") ? settings.get("defaultEffort") : undefined,
 						settings.get("defaultThinkingLevel"),
 					),
 				}).level ?? ThinkingLevel.Inherit
@@ -109,14 +111,14 @@ export function resolveRoleAssignments(settings: Settings, allModels: ReadonlyAr
 	const matchPreferences = getModelMatchPreferences(settings);
 	const catalog = [...allModels];
 
-	for (const role of getKnownRoleIds(settings)) {
+	for (const role of [DEFAULT_MODEL_SLOT, ...getKnownRoleIds(settings)]) {
 		const roleValue = settings.getModelRole(role);
 		if (!roleValue) continue;
 		const resolved = resolveModelRoleValue(roleValue, catalog, { settings, matchPreferences });
 		if (resolved.model) {
 			roles[role] = {
 				model: resolved.model,
-				thinkingLevel: resolvedThinkingLevel(role, resolved),
+				thinkingLevel: resolvedThinkingLevel(role, resolved.model, resolved),
 			};
 		}
 	}

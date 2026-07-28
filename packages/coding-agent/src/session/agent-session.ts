@@ -313,6 +313,7 @@ import { sessionPrompts } from "../prompts/session/rows";
 import { sideChannelPrompts } from "../prompts/side-channel/rows";
 import { steeringPrompts } from "../prompts/steering/rows";
 import { turnControlPrompts } from "../prompts/turn-control/rows";
+import { transformProviderPayload } from "../provider-boundary";
 import { AgentRegistry } from "../registry/agent-registry";
 import {
 	deobfuscateAssistantContent,
@@ -322,7 +323,11 @@ import {
 	type SecretObfuscator,
 } from "../secrets/obfuscator";
 import { PENDING_PLACEHOLDER_RE } from "../secrets/placeholder";
-import { unknownSlashCommandMessage, unresolvedSlashCommandName } from "../slash-commands/helpers/parse";
+import {
+	parseSlashCommand,
+	unknownSlashCommandMessage,
+	unresolvedSlashCommandName,
+} from "../slash-commands/helpers/parse";
 import { invalidateHostMetadata } from "../ssh/connection-manager";
 import { usesCodexTaskPrompt } from "../task/prompt-policy";
 import { enabledSubagentNames, resolveDelegation } from "../task/subagent-settings";
@@ -908,8 +913,13 @@ export interface AgentSessionConfig {
 	 * `deny` and plan mode still block. Toggle at runtime with `/yolo`.
 	 */
 	bypassAllApprovals?: boolean;
-	/** Models to cycle through with Ctrl+P (from --models flag) */
-	scopedModels?: Array<{ model: Model; thinkingLevel?: ConfiguredThinkingLevel }>;
+	/** Models to cycle through with Ctrl+P (from --models flags). */
+	scopedModels?: Array<{
+		model: Model;
+		thinkingLevel?: ConfiguredThinkingLevel;
+		/** True only when this entry carried an explicit `:effort` suffix. */
+		explicitThinkingLevel?: boolean;
+	}>;
 	/** Initial session thinking selector. */
 	thinkingLevel?: ConfiguredThinkingLevel;
 	/** Origin of the initial selector, used to distinguish a session override from a saved default. */
@@ -1781,25 +1791,14 @@ function mergeLlmCompactionPreserveData(
 }
 
 /**
- * Redact every string value in a provider payload after mutable request hooks.
- * The payload is mutated in place to avoid a full second allocation at the final seam.
- * A frozen secret-bearing replacement throws rather than being sent unsanitized.
+ * Redact every string in a provider payload, object keys included, after
+ * mutable request hooks. The bounded shared walker rejects transformed-key
+ * collisions and unsupported/cyclic payloads; the boundary converts every
+ * walker failure into a fail-closed confidentiality error.
  */
 export function obfuscateProviderPayload(value: unknown, obfuscator: SecretObfuscator | undefined): unknown {
 	if (!obfuscator?.hasSecrets()) return value;
-	const seen = new WeakSet<object>();
-	const visit = (node: unknown): unknown => {
-		if (typeof node === "string") return obfuscator.obfuscate(node);
-		if (node === null || typeof node !== "object" || seen.has(node)) return node;
-		seen.add(node);
-		const target = node as Record<string, unknown>;
-		for (const [key, item] of Object.entries(target)) {
-			const mapped = visit(item);
-			if (mapped !== item) target[key] = mapped;
-		}
-		return node;
-	};
-	return visit(value);
+	return transformProviderPayload(value, text => obfuscator.obfuscate(text), "AgentSession provider payload");
 }
 
 type MessageEndPersistenceSlot = {
@@ -1907,7 +1906,11 @@ export class AgentSession {
 
 	readonly configWarnings: string[] = [];
 
-	#scopedModels: Array<{ model: Model; thinkingLevel?: ConfiguredThinkingLevel }>;
+	#scopedModels: Array<{
+		model: Model;
+		thinkingLevel?: ConfiguredThinkingLevel;
+		explicitThinkingLevel?: boolean;
+	}>;
 	/** Effective, metadata-clamped thinking level applied to the agent (never `auto`). */
 	#thinkingLevel: ThinkingLevel | undefined;
 	/** Explicit session-only choice. Undefined lets selector and saved per-model defaults apply. */
@@ -8760,8 +8763,12 @@ export class AgentSession {
 		return this.sessionManager.getSessionName();
 	}
 
-	/** Scoped models for cycling (from --models flag) */
-	get scopedModels(): ReadonlyArray<{ model: Model; thinkingLevel?: ConfiguredThinkingLevel }> {
+	/** Scoped models for cycling (from --models flags). */
+	get scopedModels(): ReadonlyArray<{
+		model: Model;
+		thinkingLevel?: ConfiguredThinkingLevel;
+		explicitThinkingLevel?: boolean;
+	}> {
 		return this.#scopedModels;
 	}
 
@@ -9333,7 +9340,10 @@ export class AgentSession {
 			// Try file-based slash commands (markdown files from commands/ directories)
 			// Only if text still starts with "/" (wasn't transformed by custom command)
 			if (text.startsWith("/")) {
-				text = expandSlashCommand(text, this.#slashCommands);
+				const parsed = parseSlashCommand(text);
+				const canonicalInvocation =
+					parsed === null ? text : `/${parsed.name}${parsed.args.length > 0 ? ` ${parsed.args}` : ""}`;
+				text = expandSlashCommand(canonicalInvocation, this.#slashCommands);
 			}
 		}
 
@@ -9741,10 +9751,10 @@ export class AgentSession {
 	async #tryExecuteExtensionCommand(text: string): Promise<boolean> {
 		if (!this.#extensionRunner) return false;
 
-		// Parse command name and args
-		const spaceIndex = text.indexOf(" ");
-		const commandName = spaceIndex === -1 ? text.slice(1) : text.slice(1, spaceIndex);
-		const args = spaceIndex === -1 ? "" : text.slice(spaceIndex + 1);
+		const parsed = parseSlashCommand(text);
+		if (!parsed) return false;
+		const commandName = parsed.name;
+		const args = parsed.args;
 
 		const command = this.#extensionRunner.getCommand(commandName);
 		if (!command) return false;
@@ -9832,10 +9842,10 @@ export class AgentSession {
 	async #tryExecuteCustomCommand(text: string): Promise<string | null> {
 		if (this.#customCommands.length === 0 && this.#mcpPromptCommands.length === 0) return null;
 
-		// Parse command name and args
-		const spaceIndex = text.indexOf(" ");
-		const commandName = spaceIndex === -1 ? text.slice(1) : text.slice(1, spaceIndex);
-		const argsString = spaceIndex === -1 ? "" : text.slice(spaceIndex + 1);
+		const parsed = parseSlashCommand(text);
+		if (!parsed) return null;
+		const commandName = parsed.name;
+		const argsString = parsed.args;
 
 		// Find matching command
 		const loaded =
@@ -10095,8 +10105,9 @@ export class AgentSession {
 	#throwIfExtensionCommand(text: string): void {
 		if (!this.#extensionRunner) return;
 
-		const spaceIndex = text.indexOf(" ");
-		const commandName = spaceIndex === -1 ? text.slice(1) : text.slice(1, spaceIndex);
+		const parsed = parseSlashCommand(text);
+		if (!parsed) return;
+		const commandName = parsed.name;
 		const command = this.#extensionRunner.getCommand(commandName);
 
 		if (command) {
@@ -10979,9 +10990,19 @@ export class AgentSession {
 		return { model: next.model, thinkingLevel: this.thinkingLevel, role: next.role };
 	}
 
-	async #getScopedModelsWithApiKey(): Promise<Array<{ model: Model; thinkingLevel?: ConfiguredThinkingLevel }>> {
+	async #getScopedModelsWithApiKey(): Promise<
+		Array<{
+			model: Model;
+			thinkingLevel?: ConfiguredThinkingLevel;
+			explicitThinkingLevel?: boolean;
+		}>
+	> {
 		const apiKeysByProvider = new Map<string, string | undefined>();
-		const result: Array<{ model: Model; thinkingLevel?: ConfiguredThinkingLevel }> = [];
+		const result: Array<{
+			model: Model;
+			thinkingLevel?: ConfiguredThinkingLevel;
+			explicitThinkingLevel?: boolean;
+		}> = [];
 
 		for (const scoped of this.#scopedModels) {
 			const provider = scoped.model.provider;
@@ -11021,8 +11042,9 @@ export class AgentSession {
 		this.sessionManager.appendModelChange(`${next.model.provider}/${next.model.id}`);
 		this.settings.getStorage()?.recordModelUsage(`${next.model.provider}/${next.model.id}`);
 
-		// Apply the scoped selector pin or this model's saved/default effort.
-		this.#reapplyThinkingLevel(next.thinkingLevel);
+		// An unsuffixed scoped entry re-reads the current saved per-model default;
+		// only an explicit scope suffix is a selector pin.
+		this.#reapplyThinkingLevel(next.explicitThinkingLevel ? next.thinkingLevel : undefined);
 		await this.#syncAfterModelChange(previousEditMode);
 
 		return { model: next.model, thinkingLevel: this.thinkingLevel, isScoped: true };
@@ -11082,7 +11104,7 @@ export class AgentSession {
 			selectorLevel,
 			modelSelector: model ? `${model.provider}/${model.id}` : undefined,
 			defaultEffort: withLegacyDefaultEffort(
-				this.settings.get("defaultEffort"),
+				this.settings.isConfigured("defaultEffort") ? this.settings.get("defaultEffort") : undefined,
 				this.settings.get("defaultThinkingLevel"),
 			),
 		});

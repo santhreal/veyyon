@@ -35,7 +35,6 @@ import { buildInitialMessage } from "./cli/initial-message";
 import { selectSession } from "./cli/session-picker";
 import { announceAutoChdir, applySessionWorkdir, applyStartupCwd } from "./cli/startup-cwd";
 import { getLatestRelease, type ReleaseInfo, runAutoUpdate } from "./cli/update-cli";
-import { resolveEffort, withLegacyDefaultEffort } from "./config/effort-resolver";
 import { ModelRegistry } from "./config/model-registry";
 import { modelResolutionFailureMessage } from "./config/model-resolution-failure";
 import {
@@ -1021,6 +1020,7 @@ export async function buildSessionOptions(
 			});
 			if (!parsed.thinking && resolved.thinkingLevel) {
 				options.thinkingLevel = resolved.thinkingLevel;
+				options.thinkingSource = "selector";
 			}
 		}
 	} else if (scopedModels.length > 0 && !parsed.continue && !parsed.resume) {
@@ -1047,6 +1047,7 @@ export async function buildSessionOptions(
 				// Apply explicit thinking level from remembered role value
 				if (!parsed.thinking && rememberedSpec.explicitThinkingLevel && rememberedSpec.thinkingLevel) {
 					options.thinkingLevel = rememberedSpec.thinkingLevel;
+					options.thinkingSource = "selector";
 				}
 			}
 		}
@@ -1124,21 +1125,15 @@ export async function buildSessionOptions(
 		options.thinkingSource = "selector";
 	}
 
-	// Scoped models for Ctrl+P cycling: each gets the effort the ONE resolver says
-	// applies to THAT model, so `--model a,b` can carry per-model efforts from the
-	// Default Effort list instead of one profile-wide value for every slot.
+	// Scoped models retain selector provenance instead of baking the current
+	// saved default into startup state. Unsuffixed entries therefore re-read
+	// Default Effort on every Ctrl+P switch, while an explicit suffix remains a
+	// selector-level pin.
 	if (scopedModels.length > 0) {
-		const rows = withLegacyDefaultEffort(
-			activeSettings.get("defaultEffort"),
-			activeSettings.get("defaultThinkingLevel"),
-		);
 		options.scopedModels = scopedModels.map(scopedModel => ({
 			model: scopedModel.model,
-			thinkingLevel: resolveEffort({
-				selectorLevel: scopedModel.explicitThinkingLevel ? scopedModel.thinkingLevel : undefined,
-				modelSelector: `${scopedModel.model.provider}/${scopedModel.model.id}`,
-				defaultEffort: rows,
-			}).level,
+			thinkingLevel: scopedModel.thinkingLevel,
+			explicitThinkingLevel: scopedModel.explicitThinkingLevel,
 		}));
 	}
 

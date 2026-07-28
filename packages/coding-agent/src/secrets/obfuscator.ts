@@ -64,6 +64,24 @@ export interface SecretEntry {
 	expiresAt?: number | null;
 }
 
+/** State reported when a live runtime revokes one expired credential. */
+export interface SecretExpiryEvent {
+	name: string;
+	/** Whether the persisted encrypted entry was removed as part of this same operation. */
+	persistedCiphertextRemoved: boolean;
+}
+
+/** Operator wording derived from what the expiry operation actually changed. */
+export function describeSecretExpiry(event: SecretExpiryEvent): string {
+	const persistedState = event.persistedCiphertextRemoved
+		? "Its encrypted value was deleted from the vault."
+		: "Its encrypted value has not yet been deleted from the vault; a successful vault refresh will prune it.";
+	return (
+		`#${event.name}# has expired and its in-memory expansion has been revoked. ${persistedState} ` +
+		`Store it again with /secret add ${event.name} --from-env <VAR> if you still need it.`
+	);
+}
+
 /** How a caller hears about secrets the obfuscator could not protect. */
 export interface SecretObfuscatorOptions {
 	/**
@@ -78,12 +96,11 @@ export interface SecretObfuscatorOptions {
 	/**
 	 * Called once per name when a lifetime lapses and the secret stops being substituted.
 	 *
-	 * A credential that silently stops working produces the most confusing possible failure: the
-	 * agent's command runs with `#GITHUB_TOKEN#` in it verbatim, the API returns 401, and nothing
-	 * anywhere says the lifetime ran out. This is the channel that makes the expiry loud (Law 10),
-	 * and the caller wires it to an operator notice.
+	 * The event distinguishes in-memory revocation from persisted deletion. Runtime expiry cannot
+	 * perform vault I/O, so it reports `persistedCiphertextRemoved: false`; notice wording must not
+	 * claim the ciphertext is gone until a vault operation actually removed it.
 	 */
-	onExpiry?: (name: string) => void;
+	onExpiry?: (event: SecretExpiryEvent) => void;
 	/**
 	 * Clock, injected so an expiry test does not sleep.
 	 *
@@ -413,7 +430,7 @@ export class SecretObfuscator {
 	#rejections: SecretRejection[] = [];
 	#reportedOvermatch = new Set<number>();
 	#onRejection: ((rejection: SecretRejection) => void) | undefined;
-	#onExpiry: ((name: string) => void) | undefined;
+	#onExpiry: ((event: SecretExpiryEvent) => void) | undefined;
 	#now: () => number;
 	#expiryByPlaceholder = new Map<string, number>();
 	#nextExpiryAt = Number.POSITIVE_INFINITY;
@@ -820,7 +837,7 @@ export class SecretObfuscator {
 		for (const [placeholder, at] of this.#expiryByPlaceholder) {
 			if (at > now) continue;
 			this.#forgetPlaceholder(placeholder, false);
-			this.#onExpiry?.(placeholder.slice(1, -1));
+			this.#onExpiry?.({ name: placeholder.slice(1, -1), persistedCiphertextRemoved: false });
 		}
 		this.#recomputeNextExpiry();
 	}

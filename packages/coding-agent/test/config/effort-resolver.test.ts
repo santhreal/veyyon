@@ -135,10 +135,12 @@ describe("migrating the retired global default", () => {
 		});
 	});
 
-	it("keeps per-model rows while adding the migrated any-model row", () => {
+	it("treats a present per-model list as authoritative over the legacy enum", () => {
+		// The replacement setting's presence is the migration marker. Filling a
+		// missing `*` row here would resurrect a legacy value after the operator
+		// deliberately chose model-only defaults.
 		expect(withLegacyDefaultEffort({ [OPUS]: ThinkingLevel.XHigh }, ThinkingLevel.Medium)).toEqual({
 			[OPUS]: ThinkingLevel.XHigh,
-			[ANY_MODEL_EFFORT_KEY]: ThinkingLevel.Medium,
 		});
 	});
 
@@ -151,8 +153,10 @@ describe("migrating the retired global default", () => {
 		});
 	});
 
-	it("migrates auto, which is the level that needed the list", () => {
-		expect(withLegacyDefaultEffort({}, AUTO_THINKING)).toEqual({ [ANY_MODEL_EFFORT_KEY]: AUTO_THINKING });
+	it("treats an explicitly stored empty list as a deliberate cleared default", () => {
+		// Deleting the Any Model row persists `{}`. It must stay empty on the very
+		// next settings render instead of synthesizing stale legacy `auto` again.
+		expect(withLegacyDefaultEffort({}, AUTO_THINKING)).toEqual({});
 	});
 
 	it("adds nothing when the legacy value is absent or junk", () => {

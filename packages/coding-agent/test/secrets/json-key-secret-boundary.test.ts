@@ -105,7 +105,7 @@ describe("JSON object keys share the secret boundary with values", () => {
 
 		const outbound = mapJsonStrings(original, value => obfuscator.obfuscate(value));
 		expect(Object.hasOwn(outbound, "__proto__")).toBe(true);
-		expect(outbound["__proto__"]).toBe("#JSON_KEY_SECRET#");
+		expect(Reflect.get(outbound, "__proto__")).toBe("#JSON_KEY_SECRET#");
 		expect(Object.getPrototypeOf(outbound)).toBe(Object.prototype);
 	});
 

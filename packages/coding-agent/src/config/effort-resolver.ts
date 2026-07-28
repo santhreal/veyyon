@@ -94,22 +94,21 @@ export function resolveEffort(inputs: EffortInputs): ResolvedEffort {
 }
 
 /**
- * Migrate a legacy profile-wide `defaultThinkingLevel` into a `*` row.
+ * Read the retired profile-wide `defaultThinkingLevel` as a `*` row only when
+ * the replacement `defaultEffort` setting is absent.
  *
- * Returns the rows unchanged when the list already carries a `*` row: the list
- * is the newer, user-edited surface, so it wins over the enum it replaced.
- * Called on read rather than as a one-shot rewrite so a settings file shared
- * with an older veyyon keeps working in both directions.
+ * Presence is authoritative, including an explicitly stored empty object. That
+ * distinction is what lets deleting the Any Model row stick: folding the legacy
+ * enum into every present object would immediately recreate a row the operator
+ * just removed.
  */
 export function withLegacyDefaultEffort(
 	rows: DefaultEffortList | undefined,
 	legacyLevel: string | null | undefined,
 ): DefaultEffortList {
-	const list = { ...(rows ?? {}) };
-	if (list[ANY_MODEL_EFFORT_KEY] !== undefined) return list;
+	if (rows !== undefined) return { ...rows };
 	const parsed = rowLevel(legacyLevel ?? undefined);
-	if (parsed !== undefined) list[ANY_MODEL_EFFORT_KEY] = parsed;
-	return list;
+	return parsed === undefined ? {} : { [ANY_MODEL_EFFORT_KEY]: parsed };
 }
 
 /** Human summary of a row's value for a settings list, e.g. `high` or `auto`. */

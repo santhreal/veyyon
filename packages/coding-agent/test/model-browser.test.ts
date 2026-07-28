@@ -1,8 +1,14 @@
 import { beforeAll, describe, expect, test } from "bun:test";
+import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { buildBrowserItems, ModelBrowser, sortModelItems } from "@veyyon/coding-agent/modes/components/model-browser";
+import {
+	buildBrowserItems,
+	ModelBrowser,
+	resolveRoleAssignments,
+	sortModelItems,
+} from "@veyyon/coding-agent/modes/components/model-browser";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 function makeModel(provider: string, id: string): Model {
@@ -29,6 +35,23 @@ function makeBrowser(models: Model[], mruOrder: string[]): ModelBrowser {
 	browser.setItems(items);
 	return browser;
 }
+
+describe("default-role effort display", () => {
+	test("shows the assigned model's own Default Effort row", () => {
+		// Runtime resolves Default Effort with a concrete provider/id. The browser
+		// must pass the same selector or it skips this row and falsely shows Inherit.
+		const model = makeModel("openai", "gpt-5");
+		const settings = Settings.isolated({
+			modelRoles: { default: "openai/gpt-5" },
+			defaultEffort: { "openai/gpt-5": ThinkingLevel.High },
+		});
+
+		expect(resolveRoleAssignments(settings, [model]).default).toMatchObject({
+			model,
+			thinkingLevel: ThinkingLevel.High,
+		});
+	});
+});
 
 describe("ModelBrowser search ranking", () => {
 	test("an exact query match outranks the MRU model", () => {

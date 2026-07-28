@@ -181,7 +181,7 @@ describe("expiry and key invariants", () => {
 		const expired: string[] = [];
 		const obfuscator = new SecretObfuscator(
 			[{ type: "plain", content: "already-expired-secret", name: "EXPIRED_TOKEN", expiresAt: 100 }],
-			{ placeholderKey: KEY, now: () => 100, onExpiry: name => expired.push(name) },
+			{ placeholderKey: KEY, now: () => 100, onExpiry: event => expired.push(event.name) },
 		);
 		expect(obfuscator.namedSecretNames()).toEqual([]);
 		expect(expired).toEqual(["EXPIRED_TOKEN"]);
@@ -200,7 +200,7 @@ describe("expiry and key invariants", () => {
 		const obfuscator = new SecretObfuscator(entries, {
 			placeholderKey: KEY,
 			now: () => now,
-			onExpiry: name => expired.push(name),
+			onExpiry: event => expired.push(event.name),
 		});
 		now = 15;
 		expect(obfuscator.namedSecretNames()).toHaveLength(1_000);

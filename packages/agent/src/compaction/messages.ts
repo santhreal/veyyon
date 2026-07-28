@@ -12,10 +12,29 @@ import type { AgentMessage } from "../types";
 
 const COMPACTION_SUMMARY_TEMPLATE = AGENT_PROMPTS["compaction/compaction-summary-context"].text;
 const BRANCH_SUMMARY_TEMPLATE = AGENT_PROMPTS["compaction/branch-summary-context"].text;
-const SUMMARY_PRESENTATION_TAG = /<\/?summary\b(?:\s[^>]*)?\s*\/?>/gi;
+const SUMMARY_PRESENTATION_TAG = /<\/?summary\b(?:\s[^>]*)?>/gi;
 
 function withoutSummaryPresentationTags(summary: string): string {
-	return summary.replace(SUMMARY_PRESENTATION_TAG, "").trim();
+	const text = summary.trim();
+	SUMMARY_PRESENTATION_TAG.lastIndex = 0;
+	const firstTag = SUMMARY_PRESENTATION_TAG.exec(text);
+	if (firstTag?.index !== 0 || firstTag[0].startsWith("</") || /\/\s*>$/.test(firstTag[0])) {
+		return text;
+	}
+
+	SUMMARY_PRESENTATION_TAG.lastIndex = 0;
+	let depth = 0;
+	for (let tag = SUMMARY_PRESENTATION_TAG.exec(text); tag; tag = SUMMARY_PRESENTATION_TAG.exec(text)) {
+		if (tag[0].startsWith("</")) {
+			depth -= 1;
+			if (depth !== 0) continue;
+			const tagEnd = tag.index + tag[0].length;
+			return tagEnd === text.length ? text.slice(firstTag[0].length, tag.index).trim() : text;
+		}
+		if (!/\/\s*>$/.test(tag[0])) depth += 1;
+	}
+
+	return text;
 }
 
 export interface CustomMessage<T = unknown> {

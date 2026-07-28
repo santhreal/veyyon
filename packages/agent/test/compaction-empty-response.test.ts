@@ -1,13 +1,16 @@
 import { afterEach, describe, expect, test, vi } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
 import {
+	CompactionCancelledError,
 	type CompactionPreparation,
 	compact,
 	createFileOps,
 	DEFAULT_COMPACTION_SETTINGS,
 	generateHandoff,
+	generateHandoffFromContext,
+	generateSummary,
 } from "@veyyon/agent-core/compaction";
-import type { AssistantMessage, Model } from "@veyyon/ai";
+import type { AssistantMessage, Context, Model } from "@veyyon/ai";
 import * as ai from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog/models";
 
@@ -49,6 +52,10 @@ function makeEmptyStop(text?: string): AssistantMessage {
 	} as AssistantMessage;
 }
 
+function makeAborted(text?: string): AssistantMessage {
+	return { ...makeEmptyStop(text), stopReason: "aborted" };
+}
+
 function makeUserMessage(text: string): AgentMessage {
 	return { role: "user", content: text, timestamp: Date.now() };
 }
@@ -70,6 +77,12 @@ function makePreparation(): CompactionPreparation {
 		fileOps: createFileOps(),
 		settings: { ...DEFAULT_COMPACTION_SETTINGS },
 	};
+}
+
+async function expectCanonicalCancellation(request: Promise<unknown>): Promise<void> {
+	const error = await request.catch((caught: unknown) => caught);
+	expect(error).toBeInstanceOf(CompactionCancelledError);
+	expect((error as Error).message).toBe("Compaction cancelled");
 }
 
 afterEach(() => {
@@ -125,4 +138,97 @@ describe("an empty model response is never accepted as a compaction result", () 
 
 		expect(document).toContain("Ship the fix.");
 	});
+});
+
+describe("aborted compaction completions always use the canonical cancellation error", () => {
+	const abortedOutputs = [
+		{ label: "empty", text: undefined },
+		{ label: "partial", text: "partial summary that must never be accepted" },
+	] as const;
+
+	for (const output of abortedOutputs) {
+		/**
+		 * `generateSummary` replaces real history. An aborted response must not
+		 * become success merely because the provider emitted partial text first.
+		 */
+		test(`generateSummary rejects ${output.label} aborted output`, async () => {
+			await expectCanonicalCancellation(
+				generateSummary(
+					[makeUserMessage("history")],
+					getModel(),
+					1024,
+					"test-key",
+					undefined,
+					undefined,
+					undefined,
+					{
+						completeImpl: async () => makeAborted(output.text),
+					},
+				),
+			);
+		});
+
+		/**
+		 * The cache-preserving handoff entry point is public and can be invoked
+		 * directly by a host, so it owns the same typed cancellation contract.
+		 */
+		test(`generateHandoffFromContext rejects ${output.label} aborted output`, async () => {
+			const context: Context = {
+				systemPrompt: ["system"],
+				messages: [{ role: "user", content: "history", timestamp: Date.now() }],
+			};
+			await expectCanonicalCancellation(
+				generateHandoffFromContext(context, getModel(), {
+					streamOptions: { apiKey: "test-key" },
+					completeImpl: async () => makeAborted(output.text),
+				}),
+			);
+		});
+
+		/** The convenience handoff export must propagate the same sentinel. */
+		test(`generateHandoff rejects ${output.label} aborted output`, async () => {
+			await expectCanonicalCancellation(
+				generateHandoff([makeUserMessage("history")], getModel(), "test-key", {
+					systemPrompt: ["system"],
+					completeImpl: async () => makeAborted(output.text),
+				}),
+			);
+		});
+
+		/** `compact` must stop before its short-summary fan-out after cancellation. */
+		test(`compact rejects ${output.label} aborted history-summary output`, async () => {
+			await expectCanonicalCancellation(
+				compact(makePreparation(), getModel(), "test-key", undefined, undefined, {
+					completeImpl: async () => makeAborted(output.text),
+				}),
+			);
+		});
+
+		/** A late abort from the private short-summary path must also escape typed. */
+		test(`compact rejects ${output.label} aborted short-summary output`, async () => {
+			let calls = 0;
+			await expectCanonicalCancellation(
+				compact(makePreparation(), getModel(), "test-key", undefined, undefined, {
+					completeImpl: async () => {
+						calls += 1;
+						return calls === 1 ? makeEmptyStop("history summary") : makeAborted(output.text);
+					},
+				}),
+			);
+			expect(calls).toBe(2);
+		});
+
+		/** Split-turn prefix summarization is another destructive compact fan-out. */
+		test(`compact rejects ${output.label} aborted turn-prefix output`, async () => {
+			const splitPreparation = makePreparation();
+			splitPreparation.messagesToSummarize = [];
+			splitPreparation.turnPrefixMessages = [makeUserMessage("partial current turn")];
+			splitPreparation.isSplitTurn = true;
+			await expectCanonicalCancellation(
+				compact(splitPreparation, getModel(), "test-key", undefined, undefined, {
+					completeImpl: async () => makeAborted(output.text),
+				}),
+			);
+		});
+	}
 });

@@ -49,15 +49,38 @@ describe("renderCompactionSummaryContext", () => {
 	});
 });
 
-/** Nested and attributed wrappers from a prior model must not re-enter any provider request. */
+/**
+ * Legacy sessions may persist one presentation wrapper around the entire
+ * summary. Embedded HTML/JSX/XML summary elements are user content and must
+ * survive conversion.
+ */
 describe("summary presentation tag sanitization", () => {
-	it("strips every summary presentation tag from model-generated summary text", () => {
+	it("removes one attributed enclosing legacy wrapper", () => {
 		const rendered = renderCompactionSummaryContext(
-			'<SUMMARY data-source="model"><summary>prior model outlined the fix</summary></SUMMARY>',
+			'<SUMMARY data-source="model">prior model outlined the fix</SUMMARY>',
 		);
 		expect(rendered).toContain("prior model outlined the fix");
 		expect(rendered.toLowerCase()).not.toContain("<summary");
 		expect(rendered.toLowerCase()).not.toContain("</summary>");
+	});
+
+	it("preserves embedded HTML, JSX, and XML summary elements", () => {
+		const embedded =
+			'HTML <summary>details</summary>; JSX <summary id="jsx">component</summary>; XML <summary kind="xml">node</summary>.';
+		expect(renderCompactionSummaryContext(embedded)).toContain(embedded);
+		expect(renderBranchSummaryContext(embedded)).toContain(embedded);
+	});
+
+	it("removes only the enclosing wrapper and preserves a nested summary element", () => {
+		const rendered = renderCompactionSummaryContext(
+			'<summary data-source="legacy">before <summary id="embedded">details</summary> after</summary>',
+		);
+		expect(rendered).toContain('before <summary id="embedded">details</summary> after');
+	});
+
+	it("preserves sibling summary elements that do not form one enclosing wrapper", () => {
+		const siblings = "<summary>first</summary> connective text <summary>second</summary>";
+		expect(renderCompactionSummaryContext(siblings)).toContain(siblings);
 	});
 });
 

@@ -446,6 +446,19 @@ describe("ACP builtin slash commands", () => {
 		expect(output[0]?.toLowerCase()).toContain("acp");
 	});
 
+	/**
+	 * Dispatch honors each declaration's argument contract: a tail cannot turn a
+	 * no-argument reset into a handled command, while `/model <id>` remains a
+	 * real invocation rather than falling through as prompt text.
+	 */
+	it("rejects argument tails for /fresh but accepts them for /model", async () => {
+		const { output, runtime } = createRuntime();
+
+		expect(await executeAcpBuiltinSlashCommand("/fresh tail", runtime)).toBe(false);
+		expect(await executeAcpBuiltinSlashCommand("/model some-model-id", runtime)).toEqual({ consumed: true });
+		expect(output[0]).toContain("Unknown model");
+	});
+
 	it("model: applies known id and emits both title + config change notifications", async () => {
 		const { output, runtime, session } = createRuntime();
 		const available = [{ provider: "anthropic", id: "claude-3-5-sonnet", contextWindow: 200_000 }];

@@ -103,7 +103,7 @@ describe("redaction tombstones", () => {
 			[{ type: "plain", content: secret, name: "EXPIRING_TOKEN", expiresAt: 20 }],
 			{
 				now: () => now,
-				onExpiry: placeholder => expired.push(placeholder),
+				onExpiry: event => expired.push(event.name),
 				placeholderKey: new Uint8Array(32).fill(4),
 			},
 		);

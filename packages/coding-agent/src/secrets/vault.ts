@@ -32,6 +32,7 @@ import {
 	verifyOwnerOnlyWindowsAcl,
 	withFileLock,
 } from "@veyyon/utils";
+import { isWellFormedUtf16 } from "@veyyon/utils/string-length";
 import { moveNoReplace, replaceWithRollback } from "./atomic-path";
 import { noteSecretsCondition } from "./notices";
 import {
@@ -148,6 +149,18 @@ function parseVaultFile(plaintext: string, scope: VaultScope, vaultPath: string)
 		throw new Error(
 			`The decrypted ${scope} vault at ${safeText(vaultPath)} has an invalid structure. Refusing to read it.`,
 		);
+	}
+	for (const entry of value.entries) {
+		if (
+			entry !== null &&
+			typeof entry === "object" &&
+			(("name" in entry && typeof entry.name === "string" && !isWellFormedUtf16(entry.name)) ||
+				("value" in entry && typeof entry.value === "string" && !isWellFormedUtf16(entry.value)))
+		) {
+			throw new Error(
+				`The decrypted ${scope} vault at ${safeText(vaultPath)} contains ill-formed UTF-16. Refusing to read it.`,
+			);
+		}
 	}
 	if (!value.entries.every(isVaultEntry)) {
 		throw new Error(
@@ -1338,6 +1351,9 @@ export class SecretVault {
 		pin: VaultScopePin,
 		expected: VaultFileSnapshot | null,
 	): Promise<void> {
+		if (entries.some(entry => !isWellFormedUtf16(entry.name) || !isWellFormedUtf16(entry.value))) {
+			throw new Error(`The ${scope} vault contains ill-formed UTF-16. Refusing to seal or replace it.`);
+		}
 		await verifyVaultScopePin(scope, pin);
 		const vaultPath = vaultPathFor(this.#locations, scope);
 		const plaintextBytes = vaultPlaintextByteLength(entries);
@@ -1377,6 +1393,9 @@ export class SecretVault {
 		ttl?: number | null;
 	}): Promise<ScopedVaultEntry> {
 		const scope = options.scope ?? "profile";
+		if (!isWellFormedUtf16(options.value)) {
+			throw new Error("This secret contains ill-formed UTF-16. Refusing to store it.");
+		}
 		if (options.value.length === 0) throw new Error("A secret cannot be empty.");
 		if (options.value.length > MAX_VAULT_PLAINTEXT_BYTES) {
 			throw new Error(

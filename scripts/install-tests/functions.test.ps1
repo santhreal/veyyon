@@ -578,21 +578,31 @@ try {
     $executableStage = New-BinaryStagingPath -Dir $executableStageSandbox -BinName $BinName
     Check "the binary staging path keeps exe as its final extension" ([System.IO.Path]::GetExtension($executableStage)) ".exe"
     Check "the binary staging path remains unique to this installer" ([System.IO.Path]::GetFileName($executableStage)) ".$BinName.$PID.download.exe"
+    $localExecutableStage = New-BinaryStagingPath -Dir $executableStageSandbox -BinName $BinName -Kind "local"
+    Check "the local staging path keeps exe as its final extension" ([System.IO.Path]::GetExtension($localExecutableStage)) ".exe"
+    Check "the local staging path remains unique to this installer" ([System.IO.Path]::GetFileName($localExecutableStage)) ".$BinName.$PID.local.exe"
 
     $hostExecutable = (Get-Process -Id $PID).Path
     Copy-Item -LiteralPath $hostExecutable -Destination $executableStage
+    Copy-Item -LiteralPath $hostExecutable -Destination $localExecutableStage
     $pipelineOutput = (& $executableStage -NoProfile -Command "Write-Output pipeline-ok" 2>&1 | Out-String).Trim()
-    Check "an executable staged in a spaced path runs in the middle of a pipeline" $pipelineOutput "pipeline-ok"
+    Check "a download staged in a spaced path runs in the middle of a pipeline" $pipelineOutput "pipeline-ok"
+    $localPipelineOutput = (& $localExecutableStage -NoProfile -Command "Write-Output local-pipeline-ok" 2>&1 | Out-String).Trim()
+    Check "a local build staged in a spaced path runs in the middle of a pipeline" $localPipelineOutput "local-pipeline-ok"
 
-    # Cleanup accepts the new executable suffix and the legacy bare suffix, but
-    # rejects a similarly named file with no numeric owner PID.
+    # Cleanup accepts both executable staging kinds and their legacy bare
+    # suffixes, but rejects a similarly named file with no numeric owner PID.
     $legacyStage = Join-Path $executableStageSandbox ".$BinName.2147483647.download"
+    $legacyLocalStage = Join-Path $executableStageSandbox ".$BinName.2147483647.local"
     $foreignStage = Join-Path $executableStageSandbox ".$BinName.mine.download.exe"
     Set-Content -LiteralPath $legacyStage -Value "legacy"
+    Set-Content -LiteralPath $legacyLocalStage -Value "legacy-local"
     Set-Content -LiteralPath $foreignStage -Value "foreign"
     Clear-StaleInstallArtifacts -Dir $executableStageSandbox -BaseName "$BinName.exe" -BinName $BinName *> $null
-    Check "stale cleanup removes the executable staging form" (Test-Path $executableStage) "False"
-    Check "stale cleanup still removes the legacy staging form" (Test-Path $legacyStage) "False"
+    Check "stale cleanup removes the executable download staging form" (Test-Path $executableStage) "False"
+    Check "stale cleanup removes the executable local staging form" (Test-Path $localExecutableStage) "False"
+    Check "stale cleanup still removes the legacy download staging form" (Test-Path $legacyStage) "False"
+    Check "stale cleanup still removes the legacy local staging form" (Test-Path $legacyLocalStage) "False"
     Check "stale cleanup preserves similarly named files without an owner PID" (Test-Path $foreignStage) "True"
 } finally {
     Remove-Item -Recurse -Force $executableStageSandbox -ErrorAction SilentlyContinue

@@ -1,5 +1,6 @@
 import { enoentError, toError } from "@veyyon/utils";
 import type { PathState } from "@veyyon/utils/fs-optional";
+import { sessionFileStem } from "@veyyon/utils/session-file";
 import type {
 	SessionStorage,
 	SessionStorageStat,
@@ -200,6 +201,19 @@ export class IndexedSessionStorage implements SessionStorage {
 		return out;
 	}
 
+	listFilesRecursiveSync(dir: string, pattern: string): string[] {
+		const prefix = dir.endsWith("/") ? dir : `${dir}/`;
+		const out: string[] = [];
+		for (const filePath of this.#index.keys()) {
+			if (!filePath.startsWith(prefix)) continue;
+			const relative = filePath.slice(prefix.length);
+			const name = relative.slice(Math.max(relative.lastIndexOf("/"), relative.lastIndexOf("\\")) + 1);
+			if (!matchesGlob(name, pattern)) continue;
+			out.push(filePath);
+		}
+		return out;
+	}
+
 	exists(path: string): Promise<boolean> {
 		return Promise.resolve(this.existsSync(path));
 	}
@@ -293,6 +307,67 @@ export class IndexedSessionStorage implements SessionStorage {
 			this.#restoreIndex(dst, dstPrevious);
 			this.#index.set(src, entry);
 			throw toError(err);
+		}
+	}
+
+	async moveSessionWithArtifacts(src: string, dst: string): Promise<void> {
+		const sourceArtifacts = sessionFileStem(src);
+		const targetArtifacts = sessionFileStem(dst);
+		const artifactPrefix = `${sourceArtifacts}/`;
+		const moves: Array<{ src: string; dst: string; entry: IndexEntry }> = [];
+		for (const [filePath, entry] of this.#index) {
+			if (filePath === src) {
+				if (src !== dst) moves.push({ src: filePath, dst, entry });
+			} else if (filePath.startsWith(artifactPrefix)) {
+				const target = `${targetArtifacts}/${filePath.slice(artifactPrefix.length)}`;
+				if (filePath !== target) moves.push({ src: filePath, dst: target, entry });
+			}
+		}
+		if (moves.length === 0) return;
+
+		const allPaths = moves.flatMap(move => [move.src, move.dst]);
+		for (const filePath of allPaths) await this.#awaitPath(filePath);
+		const previous = new Map<string, IndexEntry | undefined>();
+		for (const filePath of allPaths) previous.set(filePath, this.#index.get(filePath));
+		for (const move of moves) this.#index.delete(move.src);
+		for (const move of moves) this.#index.set(move.dst, { ...move.entry });
+
+		try {
+			await this.#enqueuePaths(
+				allPaths,
+				async () => {
+					const completed: typeof moves = [];
+					try {
+						for (const move of moves) {
+							await this.#backend.move(move.src, move.dst, move.entry.mtimeMs);
+							completed.push(move);
+						}
+					} catch (error) {
+						const rollbackErrors: Error[] = [];
+						for (let index = completed.length - 1; index >= 0; index--) {
+							const move = completed[index];
+							try {
+								await this.#backend.move(move.dst, move.src, move.entry.mtimeMs);
+							} catch (rollbackError) {
+								rollbackErrors.push(toError(rollbackError));
+							}
+						}
+						if (rollbackErrors.length > 0) {
+							throw new AggregateError(
+								[toError(error), ...rollbackErrors],
+								"Indexed session relocation rollback failed",
+							);
+						}
+						throw error;
+					}
+				},
+				{ trackDrain: false },
+			);
+		} catch (error) {
+			for (const filePath of allPaths) {
+				this.#restoreIndex(filePath, previous.get(filePath));
+			}
+			throw toError(error);
 		}
 	}
 

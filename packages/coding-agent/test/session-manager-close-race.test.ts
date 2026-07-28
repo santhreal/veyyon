@@ -97,6 +97,9 @@ class CloseHoldingStorage implements SessionStorage {
 	listFilesSync(dir: string, pattern: string): string[] {
 		return this.#inner.listFilesSync(dir, pattern);
 	}
+	listFilesRecursiveSync(dir: string, pattern: string): string[] {
+		return this.#inner.listFilesRecursiveSync(dir, pattern);
+	}
 	exists(p: string): Promise<boolean> {
 		return this.#inner.exists(p);
 	}
@@ -114,6 +117,9 @@ class CloseHoldingStorage implements SessionStorage {
 	}
 	rename(p: string, nextPath: string): Promise<void> {
 		return this.#inner.rename(p, nextPath);
+	}
+	moveSessionWithArtifacts(p: string, nextPath: string): Promise<void> {
+		return this.#inner.moveSessionWithArtifacts(p, nextPath);
 	}
 	unlink(p: string): Promise<void> {
 		return this.#inner.unlink(p);

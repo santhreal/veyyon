@@ -67,6 +67,19 @@ describe("recognising a call that carries a credential", () => {
 	});
 
 	/**
+	 * Inspect raw strings, not their JSON serialization. Quotes, slashes, backslashes, tabs, and
+	 * newlines all change representation when serialized; the complete credential must still be
+	 * detected both as an object key and as a value before any escaping can split that comparison.
+	 */
+	it("finds escaped-character credentials in raw JSON keys and values", () => {
+		const escaped = 'credential-"slash/and\\backslash-tab\t-newline\n-end';
+		const escapedContext = redactorFor({ ESCAPED_TOKEN: escaped });
+
+		expect(secretUseApprovalReason({ [escaped]: "ordinary value" }, escapedContext)).toContain("ESCAPED_TOKEN");
+		expect(secretUseApprovalReason({ payload: escaped }, escapedContext)).toContain("ESCAPED_TOKEN");
+	});
+
+	/**
 	 * An unnamed secret is counted, not printed.
 	 *
 	 * A value placeholder's body is an HMAC token that means nothing to a human, and the count is
@@ -137,7 +150,7 @@ describe("failing closed on arguments it cannot read", () => {
 	 * be looked at, which is the wrong direction for a control whose whole job is noticing a
 	 * credential.
 	 */
-	it("requires approval when the arguments cannot be serialized", () => {
+	it("requires approval when the bounded walk encounters a cycle", () => {
 		const circular: Record<string, unknown> = { command: "ls" };
 		circular.self = circular;
 		expect(secretUseApprovalReason(circular, context)).toBe(
@@ -145,11 +158,11 @@ describe("failing closed on arguments it cannot read", () => {
 		);
 	});
 
-	/** A getter that throws is the other way serialization fails, and it fails the same way. */
-	it("requires approval when serializing throws", () => {
+	/** Accessors are outside the bounded JSON domain and must fail closed without being invoked. */
+	it("requires approval when the bounded walk encounters an accessor", () => {
 		const hostile = {
 			get command(): string {
-				throw new Error("no");
+				throw new Error("must not run");
 			},
 		};
 		expect(secretUseApprovalReason(hostile, context)).toContain("could not be inspected");

@@ -2,16 +2,18 @@ import { Box, type Component, Markdown } from "@veyyon/tui";
 import { withIcon } from "../../modes/theme/icon-label";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { theme } from "../../modes/theme/theme";
+import { actionKeyHint } from "../../modes/utils/key-hint";
 import type { BranchSummaryMessage, CompactionSummaryMessage, CustomMessage } from "../../session/messages";
 
 interface SummaryDividerOptions {
 	label: () => string;
 	detailMarkdown: () => string;
+	hint: () => string;
 }
 
 class SummaryDividerComponent implements Component {
 	#expanded = false;
-	#cache?: { width: number; lines: string[] };
+	#cache?: { width: number; hint: string; lines: string[] };
 	#detail?: Box;
 
 	constructor(private readonly options: SummaryDividerOptions) {}
@@ -30,22 +32,24 @@ class SummaryDividerComponent implements Component {
 
 	render(width: number): readonly string[] {
 		width = Math.max(1, width);
-		if (this.#cache?.width === width) {
+		const hint = this.options.hint();
+		if (this.#cache?.width === width && this.#cache.hint === hint) {
 			return this.#cache.lines;
 		}
 		const lines = this.#expanded
-			? ["", this.#divider(width), "", ...this.#detailBox().render(width)]
-			: ["", this.#divider(width), ""];
-		this.#cache = { width, lines };
+			? ["", this.#divider(width, hint), "", ...this.#detailBox().render(width)]
+			: ["", this.#divider(width, hint), ""];
+		this.#cache = { width, hint, lines };
 		return lines;
 	}
 
-	#divider(width: number): string {
+	#divider(width: number, keyHint: string): string {
 		const rule = theme.tree.horizontal;
 		const label = this.options.label();
-		// sep.dot ships pre-padded (" · "); trim so the hint joins with single spaces.
-		const hint = `${theme.sep.dot.trim()} ctrl+o`;
-		const plainWidth = Bun.stringWidth(`${label} ${hint}`, { countAnsiEscapeCodes: false });
+		// sep.dot ships pre-padded (" · "); trim so a bound hint joins with single spaces.
+		const hint = keyHint ? `${theme.sep.dot.trim()} ${keyHint}` : "";
+		const content = hint ? `${label} ${hint}` : label;
+		const plainWidth = Bun.stringWidth(content, { countAnsiEscapeCodes: false });
 		// ` label hint ` framed by rules on both sides.
 		const remaining = width - plainWidth - 2;
 		if (remaining < 4) {
@@ -54,11 +58,8 @@ class SummaryDividerComponent implements Component {
 		}
 		const left = Math.floor(remaining / 2);
 		const right = remaining - left;
-		return (
-			theme.fg("dim", rule.repeat(left)) +
-			` ${theme.fg("muted", label)} ${theme.fg("dim", hint)} ` +
-			theme.fg("dim", rule.repeat(right))
-		);
+		const styledContent = hint ? `${theme.fg("muted", label)} ${theme.fg("dim", hint)}` : theme.fg("muted", label);
+		return `${theme.fg("dim", rule.repeat(left))} ${styledContent} ${theme.fg("dim", rule.repeat(right))}`;
 	}
 
 	#detailBox(): Box {
@@ -96,6 +97,7 @@ export class CompactionSummaryMessageComponent implements Component {
 					? withIcon(theme.icon.camera, `compacted ${theme.fg("warning", theme.icon.warning)}`)
 					: withIcon(theme.icon.camera, "compacted"),
 			detailMarkdown: () => this.#detailMarkdown(),
+			hint: () => actionKeyHint("app.tools.expand"),
 		});
 	}
 
@@ -132,6 +134,7 @@ export class HandoffSummaryMessageComponent implements Component {
 		this.#divider = new SummaryDividerComponent({
 			label: () => withIcon(theme.icon.context, "handoff"),
 			detailMarkdown: () => this.#detailMarkdown(),
+			hint: () => actionKeyHint("app.tools.expand"),
 		});
 	}
 
@@ -175,6 +178,7 @@ export class BranchSummaryMessageComponent implements Component {
 		this.#divider = new SummaryDividerComponent({
 			label: () => withIcon(theme.icon.branch, "branch"),
 			detailMarkdown: () => `**Branch summary**\n\n${this.message.summary}`,
+			hint: () => actionKeyHint("app.tools.expand"),
 		});
 	}
 

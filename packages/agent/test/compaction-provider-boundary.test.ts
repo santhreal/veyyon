@@ -212,4 +212,95 @@ describe("compaction provider confidentiality boundary", () => {
 		expect(caught.message).not.toContain(HOOK_SECRET);
 		expect(completeImpl).not.toHaveBeenCalled();
 	});
+
+	it("redacts a tool-result secret before the 2,000-character summary cutoff", async () => {
+		// WHY: truncating first leaves the first three secret bytes in the prompt,
+		// after which a whole-secret replacement can no longer recognize them.
+		const cutoffSecret = "QZV_BOUNDARY_SECRET_91d2";
+		const preparationAtBoundary = preparation();
+		preparationAtBoundary.messagesToSummarize = [
+			{
+				role: "toolResult",
+				toolCallId: "boundary-call",
+				toolName: "read",
+				content: [{ type: "text", text: `${"x".repeat(1997)}${cutoffSecret}:tail` }],
+				isError: false,
+				timestamp: Date.now(),
+			},
+		];
+		const captures: string[] = [];
+
+		await compact(preparationAtBoundary, modelFixture(), "test-key", undefined, undefined, {
+			obfuscateProviderText: text => text.replaceAll(cutoffSecret, "#CUT#"),
+			completeImpl: async (_model, context) => {
+				captures.push(contextText(context));
+				return assistant(captures.length === 1 ? "long summary" : "short summary");
+			},
+		});
+
+		// The replacement itself straddles the cutoff and may be truncated; the
+		// security contract is that no prefix of the original secret survives.
+		expect(captures[0]).toContain(`${"x".repeat(1997)}#CU`);
+		expect(captures[0]).not.toContain(cutoffSecret);
+		expect(captures[0]).not.toContain(cutoffSecret.slice(0, 3));
+	});
+
+	it("redacts escaped-character secrets in tool-argument keys before dialect serialization", async () => {
+		// WHY: quotes, backslashes, and newlines are escaped by transcript
+		// serializers. Redacting only the rendered prompt can no longer match the
+		// original secret once those bytes have changed.
+		const escapedKeySecret = 'ESCAPED_KEY_"quote\\slash\nline_2f8a';
+		const keyPreparation = preparation();
+		keyPreparation.messagesToSummarize = [
+			{
+				...assistant(""),
+				content: [
+					{ type: "toolCall", id: "escaped-call", name: "read", arguments: { [escapedKeySecret]: "safe" } },
+				],
+				stopReason: "toolUse",
+			},
+		];
+		const captures: string[] = [];
+
+		await compact(keyPreparation, modelFixture(), "test-key", undefined, undefined, {
+			obfuscateProviderText: text => text.replaceAll(escapedKeySecret, "#ESCAPED_KEY#"),
+			completeImpl: async (_model, context) => {
+				captures.push(contextText(context));
+				return assistant(captures.length === 1 ? "long summary" : "short summary");
+			},
+		});
+
+		expect(captures[0]).toContain("#ESCAPED_KEY#");
+		expect(captures[0]).not.toContain(escapedKeySecret);
+		expect(captures[0]).not.toContain("ESCAPED_KEY_");
+	});
+
+	it("rejects colliding redacted tool-argument keys before provider dispatch", async () => {
+		const argumentSecret = "ARGUMENT_KEY_SECRET_41ad";
+		const replacement = "#ARGUMENT_KEY#";
+		const collisionPreparation = preparation();
+		collisionPreparation.messagesToSummarize = [
+			{
+				...assistant(""),
+				content: [
+					{
+						type: "toolCall",
+						id: "collision-call",
+						name: "read",
+						arguments: { [argumentSecret]: 1, [replacement]: 2 },
+					},
+				],
+				stopReason: "toolUse",
+			},
+		];
+		const completeImpl = vi.fn(async () => assistant("must not dispatch"));
+
+		await expect(
+			compact(collisionPreparation, modelFixture(), "test-key", undefined, undefined, {
+				obfuscateProviderText: text => text.replaceAll(argumentSecret, replacement),
+				completeImpl,
+			}),
+		).rejects.toThrow("Summary text transformation produced colliding tool argument keys");
+		expect(completeImpl).not.toHaveBeenCalled();
+	});
 });

@@ -3,6 +3,7 @@ import { slashCommandCapability } from "../capability/slash-command";
 import { appendInlineArgsFallback, templateUsesInlineArgPlaceholders } from "../config/prompt-templates";
 import type { SlashCommand } from "../discovery";
 import { loadCapability } from "../discovery";
+import { parseSlashCommand } from "../slash-commands/helpers/parse";
 import { EMBEDDED_COMMAND_TEMPLATES } from "../task/commands";
 import { parseCommandArgs, substituteArgs } from "../utils/command-args";
 
@@ -111,11 +112,11 @@ export async function loadSlashCommands(options: LoadSlashCommandsOptions = {}):
  * Returns the expanded content or the original text if not a slash command.
  */
 export function expandSlashCommand(text: string, fileCommands: FileSlashCommand[]): string {
-	if (!text.startsWith("/")) return text;
+	const parsed = parseSlashCommand(text);
+	if (!parsed) return text;
 
-	const spaceIndex = text.indexOf(" ");
-	const commandName = spaceIndex === -1 ? text.slice(1) : text.slice(1, spaceIndex);
-	const argsString = spaceIndex === -1 ? "" : text.slice(spaceIndex + 1);
+	const commandName = parsed.name;
+	const argsString = parsed.args;
 
 	const fileCommand = fileCommands.find(cmd => cmd.name === commandName);
 	if (fileCommand) {
