@@ -588,7 +588,11 @@ jobs:
          - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
          - uses: ./.github/actions/bun-install
          - name: Build the native addon and the binary
-           shell: pwsh
+           # bash, not pwsh: the bun-install action puts bun on PATH for the
+           # runner's bash shell, and a pwsh step does not inherit it, so this
+           # step died with "The term 'bun' is not recognized" and took the whole
+           # Windows end-to-end job with it. Only the test step below needs pwsh.
+           shell: bash
            run: |
               bun --cwd=packages/natives run build
               bun --cwd=packages/coding-agent run build
