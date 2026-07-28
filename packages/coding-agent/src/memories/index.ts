@@ -2,8 +2,7 @@ import type { Database } from "bun:sqlite";
 import type * as fsNode from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { AgentMessage } from "@veyyon/agent-core";
-import { type ApiKey, completeSimple, type Model } from "@veyyon/ai";
+import { type ApiKey, completeSimple, type Context, type Model } from "@veyyon/ai";
 import { Effort } from "@veyyon/catalog/effort";
 import { clampThinkingLevelForModel } from "@veyyon/catalog/model-thinking";
 import { emptyCost } from "@veyyon/catalog/models";
@@ -401,8 +400,7 @@ async function runPhase1(options: {
 			produced: 0,
 			usage: emptyCost(),
 		};
-		const obfuscator = session.obfuscator;
-		const obfuscateProviderText = obfuscator ? (text: string) => obfuscator.obfuscate(text) : undefined;
+		const obfuscateProviderText = (text: string): string => session.obfuscator?.obfuscate(text) ?? text;
 
 		await runWithConcurrency(claims, config.stage1Concurrency, async claim => {
 			const result = await runStage1Job({
@@ -562,8 +560,7 @@ async function runPhase2(options: {
 			}
 		}, config.phase2HeartbeatSeconds * 1000);
 
-		const obfuscator = session.obfuscator;
-		const obfuscateProviderText = obfuscator ? (text: string) => obfuscator.obfuscate(text) : undefined;
+		const obfuscateProviderText = (text: string): string => session.obfuscator?.obfuscate(text) ?? text;
 
 		try {
 			const consolidated = await runConsolidationModel({
@@ -690,34 +687,54 @@ async function collectThreads(session: AgentSession, currentThreadId?: string): 
 	return threads;
 }
 
-function shouldPersistResponseItemForMemories(message: AgentMessage): boolean {
-	const role = (message as { role: string }).role;
-	if (role === "system" || role === "developer" || role === "user" || role === "assistant") {
-		return true;
-	}
-	if (role !== "toolResult") return false;
-	const toolName = (message as { toolName?: string }).toolName;
-	if (toolName === "bash" || toolName === "eval" || toolName === "read" || toolName === "grep") {
-		const text = extractMessageText(message);
-		return text.length > 0 && text.length <= 32_000;
-	}
-	return false;
+type PersistableMemoryRole = "system" | "developer" | "user" | "assistant" | "toolResult";
+
+interface PersistableMemoryMessage {
+	role: PersistableMemoryRole;
+	text: string;
+	toolName?: "bash" | "eval" | "read" | "grep";
 }
 
-function extractPersistableMessages(payload: string): AgentMessage[] {
+function isPersistableMemoryRole(role: unknown): role is PersistableMemoryRole {
+	return role === "system" || role === "developer" || role === "user" || role === "assistant" || role === "toolResult";
+}
+
+function extractMemoryMessageText(message: Record<string, unknown>): string {
+	const content = message.content;
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	const text: string[] = [];
+	for (const item of content) {
+		if (!isRecord(item) || item.type !== "text" || typeof item.text !== "string") continue;
+		text.push(item.text);
+	}
+	return text.join("\n");
+}
+
+function extractPersistableMessages(
+	payload: string,
+	sanitize: (text: string) => string,
+): PersistableMemoryMessage[] {
 	const rows = parseJsonlLenient(payload);
 	if (!Array.isArray(rows)) return [];
-	const messages: AgentMessage[] = [];
+	const messages: PersistableMemoryMessage[] = [];
 	for (const row of rows) {
-		if (!row || typeof row !== "object") continue;
-		const entry = row as Record<string, unknown>;
-		if (entry.type !== "message") continue;
-		const maybeMessage = entry.message;
-		if (!maybeMessage || typeof maybeMessage !== "object") continue;
-		const message = maybeMessage as AgentMessage;
-		if (shouldPersistResponseItemForMemories(message)) {
-			messages.push(message);
+		if (!isRecord(row) || row.type !== "message" || !isRecord(row.message)) continue;
+		const role = row.message.role;
+		if (!isPersistableMemoryRole(role)) continue;
+
+		// The memory model is a text-only summarizer. Project the untrusted persisted message onto
+		// this allowlist before encoding: image bytes, provider replay payloads, tool arguments,
+		// details, signatures, and arbitrary nested fields must never cross the provider boundary.
+		const text = sanitize(extractMemoryMessageText(row.message));
+		if (role === "toolResult") {
+			const toolName = row.message.toolName;
+			if (toolName !== "bash" && toolName !== "eval" && toolName !== "read" && toolName !== "grep") continue;
+			if (text.length === 0 || text.length > 32_000) continue;
+			messages.push({ role, toolName, text });
+			continue;
 		}
+		messages.push({ role, text });
 	}
 	return messages;
 }
@@ -740,39 +757,41 @@ async function runStage1Job(options: {
 	| { kind: "failed"; reason: string }
 > {
 	const { claim, model, apiKey, modelMaxTokens, config } = options;
+	const sanitize = options.obfuscateProviderText ?? ((text: string) => text);
 	try {
 		const rolloutRaw = await Bun.file(claim.rolloutPath).text();
-		const persisted = extractPersistableMessages(rolloutRaw);
+		const persisted = extractPersistableMessages(rolloutRaw, sanitize);
 		const serializedItems = JSON.stringify(persisted);
 		const budgetTokens = Math.min(
 			config.phase1InputTokenLimit,
 			Math.floor(modelMaxTokens * config.rolloutPayloadPercent),
 		);
 		const truncatedItems = truncateByApproxTokens(serializedItems, budgetTokens);
-		const inputPrompt = prompt.render(memoriesPrompts["memories/stage_one_input"].text, {
-			thread_id: claim.threadId,
+		const rawSystemPrompt = memoriesPrompts["memories/stage_one_system"].text;
+		const rawInputPrompt = prompt.render(memoriesPrompts["memories/stage_one_input"].text, {
+			thread_id: sanitize(claim.threadId),
 			response_items_json: truncatedItems,
 		});
-
-		const sanitize = options.obfuscateProviderText ?? ((text: string) => text);
-		const providerSystemPrompt = sanitize(memoriesPrompts["memories/stage_one_system"].text);
-		const providerInputPrompt = sanitize(inputPrompt);
-		const response = await completeSimple(
-			model,
-			{
-				systemPrompt: [providerSystemPrompt],
-				messages: [{ role: "user", content: [{ type: "text", text: providerInputPrompt }], timestamp: Date.now() }],
-			},
-			{
-				apiKey,
-				metadata: options.metadata,
-				maxTokens: clampLow(Math.floor(modelMaxTokens * 0.2), 1024, 4096),
-				reasoning: clampThinkingLevelForModel(model, Effort.Low),
-			},
-		);
+		const providerContext: Context = { messages: [] };
+		const refreshProviderContext = (): void => {
+			providerContext.systemPrompt = [sanitize(rawSystemPrompt)];
+			providerContext.messages = [
+				{
+					role: "user",
+					content: [{ type: "text", text: sanitize(rawInputPrompt) }],
+					timestamp: Date.now(),
+				},
+			];
+		};
+		const response = await completeSimple(model, providerContext, {
+			apiKey: refreshProviderContextForApiKey(apiKey, refreshProviderContext),
+			metadata: options.metadata,
+			maxTokens: clampLow(Math.floor(modelMaxTokens * 0.2), 1024, 4096),
+			reasoning: clampThinkingLevelForModel(model, Effort.Low),
+		});
 
 		if (response.stopReason === "error") {
-			return { kind: "failed", reason: response.errorMessage || "stage1 model error" };
+			return { kind: "failed", reason: sanitize(response.errorMessage || "stage1 model error") };
 		}
 		const text = response.content
 			.filter((c): c is { type: "text"; text: string } => c.type === "text")
@@ -804,7 +823,7 @@ async function runStage1Job(options: {
 			usage: response.usage,
 		};
 	} catch (error) {
-		return { kind: "failed", reason: String(error) };
+		return { kind: "failed", reason: sanitize(String(error)) };
 	}
 }
 
@@ -933,31 +952,33 @@ async function runConsolidationModel(options: {
 	}>;
 }> {
 	const { memoryRoot, model, apiKey } = options;
-	const rawMemories = await Bun.file(path.join(memoryRoot, "raw_memories.md")).text();
-	const rolloutSummaries = await readRolloutSummaries(memoryRoot);
-	const input = prompt.render(memoriesPrompts["memories/consolidation"].text, {
+	const sanitize = options.obfuscateProviderText ?? ((text: string) => text);
+	const rawMemories = sanitize(await Bun.file(path.join(memoryRoot, "raw_memories.md")).text());
+	const rolloutSummaries = sanitize(await readRolloutSummaries(memoryRoot));
+	const rawSystemPrompt = memoriesPrompts["memories/consolidation_system"].text;
+	const rawInput = prompt.render(memoriesPrompts["memories/consolidation"].text, {
 		raw_memories: truncateByApproxTokens(rawMemories, 20_000),
 		rollout_summaries: truncateByApproxTokens(rolloutSummaries, 12_000),
 	});
-
-	const sanitize = options.obfuscateProviderText ?? ((text: string) => text);
-	const providerSystemPrompt = sanitize(memoriesPrompts["memories/consolidation_system"].text);
-	const providerInput = sanitize(input);
-	const response = await completeSimple(
-		model,
-		{
-			systemPrompt: [providerSystemPrompt],
-			messages: [{ role: "user", content: [{ type: "text", text: providerInput }], timestamp: Date.now() }],
-		},
-		{
-			apiKey,
-			metadata: options.metadata,
-			maxTokens: 8192,
-			reasoning: clampThinkingLevelForModel(model, Effort.Medium),
-		},
-	);
+	const providerContext: Context = { messages: [] };
+	const refreshProviderContext = (): void => {
+		providerContext.systemPrompt = [sanitize(rawSystemPrompt)];
+		providerContext.messages = [
+			{
+				role: "user",
+				content: [{ type: "text", text: sanitize(rawInput) }],
+				timestamp: Date.now(),
+			},
+		];
+	};
+	const response = await completeSimple(model, providerContext, {
+		apiKey: refreshProviderContextForApiKey(apiKey, refreshProviderContext),
+		metadata: options.metadata,
+		maxTokens: 8192,
+		reasoning: clampThinkingLevelForModel(model, Effort.Medium),
+	});
 	if (response.stopReason === "error") {
-		throw new Error(response.errorMessage || "phase2 model error");
+		throw new Error(sanitize(response.errorMessage || "phase2 model error"));
 	}
 	const text = response.content
 		.filter((c): c is { type: "text"; text: string } => c.type === "text")
@@ -1285,17 +1306,16 @@ function sanitizeSkillRelativePath(rawPath: string): string | undefined {
 	return parts.join("/");
 }
 
-function extractMessageText(message: AgentMessage): string {
-	const content = (message as { content?: unknown }).content;
-	if (typeof content === "string") return content;
-	if (!Array.isArray(content)) return "";
-	return content
-		.map(item => {
-			if (item.type === "text") return item.text;
-			if (item.type === "toolCall") return `${item.toolName} ${JSON.stringify(item.arguments)}`;
-			return "";
-		})
-		.join("\n");
+function refreshProviderContextForApiKey(apiKey: ApiKey, refresh: () => void): ApiKey {
+	// Populate once for static keys and test seams. Resolver-backed keys refresh again only after
+	// every awaited credential resolution, immediately before completeSimple starts that attempt.
+	refresh();
+	if (typeof apiKey === "string") return apiKey;
+	return async context => {
+		const resolved = await apiKey(context);
+		refresh();
+		return resolved;
+	};
 }
 
 function truncateByApproxTokens(text: string, tokenLimit: number): string {
