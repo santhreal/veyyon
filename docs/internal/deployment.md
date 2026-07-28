@@ -78,9 +78,28 @@ So, before you commit a rebuild:
   Never sweep it into an unrelated commit.
 - Check `git status docs/handbook/src/` first. An untracked page or a `SUMMARY.md`
   entry you did not write means a rename is in flight, and your rebuild will bundle
-  it. Wait for it to land.
+  it.
 - If the rebuild deletes a chapter you did not remove, that is the signal. Stop and
   find out whose change you are carrying.
+
+When someone else's sources are in flight and you still need to publish yours,
+build from a detached worktree at the commit you are pushing. That is the only way
+to get the book the freshness gate will rebuild, because the gate builds from what
+is committed and nothing else:
+
+```
+git worktree add --detach /tmp/bookwt HEAD
+cd /tmp/bookwt/docs/handbook && mdbook build
+cd -
+rsync -a --delete /tmp/bookwt/docs/handbook/book/ docs/handbook/book/
+git worktree remove --force /tmp/bookwt
+```
+
+Commit your source change first, then run this, then commit the book. A rebuild
+done in a dirty tree looks right locally and fails the gate, which is what happened
+on 2026-07-28: the book carried a page whose markdown was not committed, so CI
+rebuilt 99 files differently and reported the book stale against sources that were
+never wrong.
 
 ### Technical reports and the blog
 
@@ -282,4 +301,4 @@ merge lands:
 4. `bun run site:deploy`.
 5. If `install.sh`/`install.ps1` changed, also deploy `veyyon-get`.
 
-*Verified against `ce7c4c68` on 2026-07-25.*
+*Verified against `1c16624f` on 2026-07-28.*
