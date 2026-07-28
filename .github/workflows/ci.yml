@@ -584,6 +584,11 @@ jobs:
       #
       # Push-to-main only: it downloads a published release on every run and needs
       # one to exist.
+      #
+      # Deliberately NOT a `needs` of release_binary, unlike install_methods. This
+      # job reports on the release that is ALREADY out; making it gate the next
+      # one would mean a broken published binary blocks the release that fixes it,
+      # which is exactly backwards.
       name: "Published release install (${{ matrix.os }})"
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       strategy:
