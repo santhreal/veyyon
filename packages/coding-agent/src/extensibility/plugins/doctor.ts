@@ -60,10 +60,15 @@ export async function runDoctorChecks(): Promise<DoctorCheck[]> {
 	return checks;
 }
 
+/** `1 warning`, `2 warnings`. The summary line read "1 warnings" for a year. */
+function count(n: number, noun: string): string {
+	return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
 export function formatDoctorResults(checks: DoctorCheck[]): string {
 	// Note: This function returns plain text without theming as it may be called outside TUI context.
 	// For TUI usage, the plugin CLI handler applies theme colors.
-	const lines: string[] = ["System Health Check", "=".repeat(40), ""];
+	const lines: string[] = ["System health", ""];
 
 	for (const check of checks) {
 		const icon =
@@ -77,9 +82,19 @@ export function formatDoctorResults(checks: DoctorCheck[]): string {
 
 	const errors = checks.filter(c => c.status === "error").length;
 	const warnings = checks.filter(c => c.status === "warning").length;
+	const ok = checks.length - errors - warnings;
 
 	lines.push("");
-	lines.push(`Summary: ${checks.length - errors - warnings} ok, ${warnings} warnings, ${errors} errors`);
+	// The verdict, not a tally. "13 ok, 1 warnings, 0 errors" made the reader do
+	// the arithmetic to find out whether anything was actually wrong, and the
+	// counts that are zero are the ones nobody needs to read.
+	if (errors > 0) {
+		lines.push(`${count(errors, "check")} failed. ${count(ok, "check")} passed.`);
+	} else if (warnings > 0) {
+		lines.push(`Everything works. ${count(warnings, "warning")} worth reading.`);
+	} else {
+		lines.push(`Everything works. ${count(ok, "check")} passed.`);
+	}
 
 	return lines.join("\n");
 }
