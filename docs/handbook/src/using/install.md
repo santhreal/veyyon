@@ -283,6 +283,17 @@ npm, Homebrew, or other package-manager channel to go through. If an update
 fails, Veyyon says so and tells you to retry with `veyyon update`; it never
 fails quietly and leaves you on an old version without a word.
 
+Veyyon works out which of the two you have by following the `veyyon` on your
+PATH to what it really runs. A symlink is followed, and so is a small wrapper
+script that hands off to something else: if what it hands off to is a checkout's
+launcher, the install is a source install and gets the source update. That
+matters if you keep your own wrapper in front of a checkout, to set an
+environment variable or pick a different interpreter, because without following
+it Veyyon would treat the wrapper as a binary and overwrite it with a downloaded
+release, leaving your checkout orphaned. A wrapper is recognized on either
+platform: a `.cmd` or `.bat` file, or any file starting with `#!`. The release
+binary itself is never read looking for one.
+
 If the same version fails to install twice, the cause is usually the machine
 rather than the release: a binary owned by another user, a read-only image, or a
 directory that needs elevated permissions to write. Veyyon reports that failure

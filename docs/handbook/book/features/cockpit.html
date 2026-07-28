@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Cockpit - The Veyyon Harness Handbook</title>
+        <title>Multi-agent monitoring - The Veyyon Harness Handbook</title>
 
 
         <!-- Custom HTML head -->
@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-acf1a7e2.js";
+            window.path_to_searchindex_js = "../searchindex-da180b34.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-2e8c749f.js"></script>
+        <script src="../toc-5cf6de48.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -196,7 +196,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="multi-agent-monitoring"><a class="header" href="#multi-agent-monitoring">Multi-agent monitoring</a></h1>
-<p>The interactive TUI is the main surface for one session. Status line, session tree, background jobs, <code>/cockpit</code>, and optional swarm orchestration cover multi-agent work.</p>
+<p>The interactive TUI is the main surface for one session. Status line, session tree, background jobs, the Agent Control Center, and optional swarm orchestration cover multi-agent work.</p>
 <h2 id="status-line"><a class="header" href="#status-line">Status line</a></h2>
 <p>Configure under <strong>Settings → Appearance → Status Line</strong> (<code>/statusline</code> jumps to this group), or in <code>config.yml</code>:</p>
 <div class="table-wrapper">
@@ -247,16 +247,23 @@ detached|BISECT      bisecting
 <tr><td><code>/branch</code></td><td>Branch a new session file from an earlier user message</td></tr>
 <tr><td><code>/fork</code></td><td>Duplicate the current session into a new file</td></tr>
 <tr><td><code>/session info</code></td><td>Session metadata and stats</td></tr>
-<tr><td><code>/agents</code></td><td>Task subagent definitions (bundled/project/user)</td></tr>
-<tr><td><code>/cockpit</code></td><td>Live multi-agent monitor: status, model per agent, drill-in transcript (alias <code>/hub</code>; keybinding <code>app.agents.hub</code>)</td></tr>
+<tr><td><code>/agents</code></td><td>Agent Control Center: the live roster (agent type, status, activity; Enter opens one agent’s session) and the Comms stream of agent-to-agent messages</td></tr>
 <tr><td><code>/jobs</code></td><td>List background async tool jobs</td></tr>
 </tbody>
 </table>
 </div>
-<p>The inline task widget also shows the model each subagent runs on, right in its status line, so you can see which model every launched subagent used without opening the cockpit. To hide it, turn off <code>subagent.showResolvedModelBadge</code> (Subagents settings).</p>
+<p><code>/cockpit</code> and <code>/hub</code> are aliases of <code>/agents</code>, as is the <code>app.agents.hub</code> keybinding and a double-tap of the left arrow on an empty composer. They used to open a separate screen with its own roster and its own drill-in, which meant “which agents are running” had two answers that could disagree with each other. They all open the one card now.</p>
+<h3 id="the-live-roster"><a class="header" href="#the-live-roster">The Live roster</a></h3>
+<p>Each row is one agent that exists right now: a status glyph, its call sign, the TYPE of agent it was spawned from (<code>reviewer</code>, <code>scout</code>), its status, how long since it last did anything, and what it is doing. Rows sit in spawn order, oldest first, with your own session at the top. The row you are on is marked two ways, a cursor glyph in the first column and a band across the whole row, so it stays readable on a terminal that renders no colour. Agents from earlier runs of the same session appear too, marked <code>parked</code>, because their transcripts are still on disk even though this process never started them.</p>
+<p>Press Enter on a row and the main view becomes that agent’s session: the transcript, the composer, and the status line all point at it, so you read what it is doing and then answer it. Press Esc there to come back to your own session. Opening a parked agent revives it on the way in. Press <code>x</code> to stop an agent, which aborts the turn in flight before releasing the session.</p>
+<p>Clicking a row does the same thing as Enter on it, and clicking a name in the view strip switches to that view. Opening an agent is reversible with Esc, so a click opens rather than only moving the cursor. The scroll wheel moves whatever the arrow keys move: the roster cursor on Live, the stream on Comms. Page up and page down move by a screenful, on either view.</p>
+<p>The roster is a table, so you can scan a column instead of reading every row: the status, the age, the model and the activity each start at the same place on every line. A name long enough to crowd the row out is truncated rather than paid for by every other row, and the model badge is dropped when the card is too narrow to show enough of it to recognise.</p>
+<p>Two agents open a read-only transcript instead of handing the main view over. An advisor is observability-only and is not an addressable peer, so there is nothing on the other end to receive a reply. A collab guest’s agents live on the host, so there is no local session to point at.</p>
+<p>The inline task widget also shows the model each subagent runs on, right in its status line, so you can see which model every launched subagent used without opening the Control Center. To show the same badge on the roster, keep <code>subagent.showResolvedModelBadge</code> on (Subagents settings); turning it off hides it in both places.</p>
 <p>Session files are append-only JSONL under the active profile’s agent <code>sessions/</code> directory. See <a href="../using/sessions.html">Sessions</a>.</p>
 <h2 id="inter-agent-messaging"><a class="header" href="#inter-agent-messaging">Inter-agent messaging</a></h2>
-<p>Subagents and the main agent use the <code>irc</code> tool (<code>send</code>, <code>wait</code>, <code>inbox</code>, <code>list</code>) over a process-global mailbox. <code>/btw</code> is an ephemeral side question; <code>/tan</code> spawns a background agent for tangential work. (<code>/omfg</code> is unrelated: it forges a TTSR rule from a complaint to stop a recurring behavior.)</p>
+<p>Subagents and the main agent use the <code>irc</code> tool (<code>send</code>, <code>wait</code>, <code>inbox</code>, <code>list</code>) over a process-global mailbox. The <strong>Comms</strong> view of <code>/agents</code> streams that traffic as it happens, oldest first, including the messages that failed to reach their recipient and the reason they did not land. Long messages are folded to their first few lines with a count of what was hidden; <code>ctrl+o</code> unfolds every message in the view, and pressing it again folds them back. Both ends of a message are labelled with the call sign the Live roster shows for that agent, so you follow a conversation by who is speaking rather than by an id you have to look up on the other view. An agent that has since been released has no call sign left to show, so its messages print its id instead.</p>
+<p>The view reads the message bus, not the session files. A subagent’s transcript records what THAT agent received, so a view built from transcripts would show each half of a conversation in a different file and would never show a message that failed to arrive at all. <code>/btw</code> is an ephemeral side question; <code>/tan</code> spawns a background agent for tangential work. (<code>/omfg</code> is unrelated: it forges a TTSR rule from a complaint to stop a recurring behavior.)</p>
 <h2 id="swarm-extension"><a class="header" href="#swarm-extension">Swarm extension</a></h2>
 <p><code>@veyyon/swarm-extension</code> runs multi-agent DAG workflows from YAML (<code>pipeline</code>, <code>parallel</code>, or <code>sequential</code>). Standalone: <code>veyyon-swarm path/to/swarm.yaml</code>. In the TUI, add the package to <code>extensions</code>, then:</p>
 <pre><code class="language-text">/swarm run path/to/swarm.yaml

@@ -179,21 +179,72 @@ function endsWithSourceLauncher(p: string): boolean {
 }
 
 /**
- * Read a shim file. Fails closed: an unreadable shim yields "", which classifies
- * as `binary` only after the launcher checks below have already missed, so a
- * misread can never silently upgrade a path to `source`.
+ * How much of a candidate shim we are willing to read.
+ *
+ * A shim is two or three lines. The path on PATH may instead be the standalone
+ * release binary, which is over a hundred megabytes, and this classification runs
+ * on every update check — so read a bounded prefix rather than the whole file. A
+ * forwarding line that does not fit in the first four kilobytes is not a shim any
+ * installer or any person writes.
+ */
+const SHIM_READ_LIMIT = 4096;
+
+/**
+ * Read the first {@link SHIM_READ_LIMIT} bytes of a shim file. Fails closed: an
+ * unreadable shim yields "", which classifies as `binary` only after the launcher
+ * checks below have already missed, so a misread can never silently upgrade a
+ * path to `source`.
  */
 function defaultReadShim(p: string): string {
+	let fd: number | undefined;
 	try {
-		return fs.readFileSync(p, "utf8");
+		fd = fs.openSync(p, "r");
+		const buffer = Buffer.alloc(SHIM_READ_LIMIT);
+		const read = fs.readSync(fd, buffer, 0, SHIM_READ_LIMIT, 0);
+		return buffer.subarray(0, read).toString("utf8");
 	} catch {
 		return "";
+	} finally {
+		if (fd !== undefined) {
+			try {
+				fs.closeSync(fd);
+			} catch {
+				// The classification is already decided; a close failure changes nothing.
+			}
+		}
 	}
 }
 
-/** The forwarded target inside a generated `.cmd` shim: its first quoted token. */
-function defaultReadShimForward(shimBody: string): string | undefined {
-	return /"([^"]+)"/.exec(shimBody)?.[1];
+/**
+ * Every path a shim could be forwarding execution to.
+ *
+ * Both shapes are covered because both exist in the wild. The generated Windows
+ * shim quotes its target (`@echo off` then `"C:\...\veyyon" %*`), and a POSIX
+ * wrapper someone writes by hand execs it, quoted or not
+ * (`exec /home/u/src/.../veyyon "$@"`). Every candidate is checked against the
+ * launcher tail, so an extra non-target token costs nothing and a missed one
+ * would misclassify a source install as a binary.
+ */
+function shimForwardTargets(shimBody: string): string[] {
+	const targets: string[] = [];
+	for (const match of shimBody.matchAll(/"([^"\r\n]+)"/g)) targets.push(match[1] as string);
+	for (const match of shimBody.matchAll(/^\s*exec\s+([^\s"'\r\n]+)/gm)) targets.push(match[1] as string);
+	return targets;
+}
+
+/**
+ * Could this path hold a forwarding shim rather than the binary itself?
+ *
+ * Only a `.cmd`/`.bat` (the generated Windows shim) or a file whose first two
+ * bytes are `#!` (any POSIX script). The shebang check is what keeps the
+ * standalone release binary out: its bytes are never scanned for a path that
+ * happens to look like the launcher, so no ELF or Mach-O image can talk its way
+ * into being classified `source`.
+ */
+function looksLikeShim(resolvedPath: string, body: string): boolean {
+	const lower = resolvedPath.toLowerCase();
+	if (lower.endsWith(".cmd") || lower.endsWith(".bat")) return true;
+	return body.startsWith("#!");
 }
 
 export function resolveUpdateMethod(
@@ -202,15 +253,18 @@ export function resolveUpdateMethod(
 ): UpdateMethod {
 	const resolved = tryRealpath(veyyonPath) ?? veyyonPath;
 	if (endsWithSourceLauncher(resolved)) return "source";
-	// A Windows source install puts a `.cmd` shim on PATH that FORWARDS to the
-	// in-checkout launcher. It is a real file, not a symlink, so realpath stops at
-	// the shim and the tail never matches — the install used to be classified
-	// `binary`, and `veyyon update` would then overwrite the shim with a
-	// downloaded .exe, silently converting a source install into a binary one and
-	// orphaning the checkout. Read the shim and classify by what it forwards to.
-	if (resolved.toLowerCase().endsWith(".cmd")) {
-		const forwarded = defaultReadShimForward(readShim(resolved));
-		if (forwarded) {
+	// A source install can reach the checkout through a FORWARDING SHIM rather
+	// than a symlink, and realpath stops at the shim, so the tail never matches.
+	// On Windows that shim is what `install.sh --source` itself writes; on POSIX
+	// it is what a person writes when they want their own wrapper (extra env, a
+	// different interpreter) in front of the checkout. Either way the install used
+	// to be classified `binary`, and `veyyon update` would then overwrite the shim
+	// with a downloaded release binary — silently converting a source install into
+	// a binary one and orphaning the checkout. Read the shim and classify by what
+	// it forwards to.
+	const body = readShim(resolved);
+	if (looksLikeShim(resolved, body)) {
+		for (const forwarded of shimForwardTargets(body)) {
 			const forwardedResolved = tryRealpath(forwarded) ?? forwarded;
 			if (endsWithSourceLauncher(forwardedResolved)) return "source";
 		}
