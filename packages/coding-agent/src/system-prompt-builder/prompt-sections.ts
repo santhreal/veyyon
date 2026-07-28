@@ -1,20 +1,11 @@
 /**
- * The SYSTEM PROMPT'S sections: which names it has, and how its parts are ordered.
+ * System-prompt section discovery and ordering.
  *
- * Everything here is specific to one document. `prompts/session/system-prompt.md` is
- * organized into banner sections (`ROLE\n====`, `RUNTIME\n====`, ...); this module
- * derives their names from the registry, supplies the banner table that names them,
- * and owns the reordering a harness profile asks for. Both the prompt builder
- * (`system-prompt.ts`) and per-model profiles (`harness/model-profile.ts`) share
- * these without an import cycle.
- *
- * WHAT IS NOT HERE, and used to be. The parser itself moved to `banner-grammar.ts`.
- * This file's header called it "section machinery for the default system-prompt
- * template" while exporting the one splitter that cuts EVERY bannered prompt in the
- * product, and that mislabelling is what let the splitter close over this prompt's
- * banner table — so the subagent prompt, same grammar, had most of its sections
- * folded away without a word. Universal machinery belongs with the grammar; what
- * stays here is the part that is genuinely about this one prompt.
+ * Static sections are assembled from statement modules and bannered by the
+ * section registry before this module sees them. Runtime sections are emitted
+ * separately. This module derives both vocabularies from the registry, uses the
+ * shared banner parser, and applies harness-profile ordering without crossing
+ * the provider-cache boundary between static and volatile parts.
  */
 import { logger, once } from "@veyyon/utils";
 import { bannerTable, leadingBannerName, type RenderedSection, splitBanneredDocument } from "./banner-grammar";
@@ -64,12 +55,10 @@ export type PromptSectionName = string;
 export const promptSectionNames: () => readonly string[] = once(() => BANNERED_SECTIONS.map(b => b.id));
 
 /**
- * The subset that lives in the template FILE.
+ * Bannered sections in the static cached-prefix document.
  *
- * {@link applyPromptSectionOrder} works on one rendered document, so a caller
- * reordering just the template can only name these. The whole-prompt entry point
- * is {@link applyPromptSectionOrderToParts}, which accepts every name in
- * {@link promptSectionNames} because it can see the runtime sections too.
+ * {@link applyPromptSectionOrder} can reorder only this one document.
+ * {@link applyPromptSectionOrderToParts} can also reorder runtime parts.
  */
 export const templateSectionNames: () => readonly string[] = once(() => BANNERED_TEMPLATE_SECTIONS.map(b => b.id));
 
@@ -164,21 +153,13 @@ export function applyPromptSectionOrder(rendered: string, order: readonly string
 }
 
 /**
- * Reorder the sections of a fully assembled prompt — template AND runtime.
+ * Reorder sections across the fully assembled prompt.
  *
- * `buildSystemPrompt` returns the prompt as parts: `parts[0]` is the rendered
- * template (many banner sections in one string) and each later part is a single
- * runtime section carrying its own banner. That split is a CACHING contract —
- * the template prefix stays byte-stable so a provider can cache it, and a
- * volatile section like the handle table must not sit inside it.
- *
- * So ordering is applied in both places from ONE list: template sections are
- * permuted within `parts[0]`, and the runtime parts are permuted among
- * themselves, each by its rank in `order`. `parts[0]` stays first regardless,
- * because moving a runtime section ahead of it would drop volatile text into the
- * cached prefix and invalidate it on every dictionary load. A name that matches
- * neither is reported loudly and skipped, exactly as the single-document path
- * does — never silently ignored.
+ * `parts[0]` is the static statement-assembled cached prefix. Each later part is
+ * one volatile runtime section. Ordering applies within both groups from one
+ * requested list, but runtime sections remain after `parts[0]` so a changing
+ * handle table cannot invalidate the provider-cached prefix. Unknown or
+ * unhonored names are reported rather than silently ignored.
  */
 export function applyPromptSectionOrderToParts(
 	parts: readonly string[],
@@ -226,7 +207,7 @@ export function applyPromptSectionOrderToParts(
 	const crossing = order.filter((name, index) => runtimeNames.has(name) && index < lastTemplateAt);
 	if (crossing.length > 0) {
 		logger.warn(
-			"harness promptSectionOrder asks a runtime section to precede a template section; it will stay after the cached prefix",
+			"harness promptSectionOrder asks a runtime section to precede a static section; it will stay after the cached prefix",
 			{
 				sections: crossing,
 				reason:

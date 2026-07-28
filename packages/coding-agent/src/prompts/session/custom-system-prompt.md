@@ -1,6 +1,3 @@
-{{#if systemPromptCustomization}}
-{{systemPromptCustomization}}
-{{/if}}
 {{customPrompt}}
 {{#if appendPrompt}}
 {{appendPrompt}}

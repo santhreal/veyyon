@@ -1,1 +1,1 @@
-{{#has tools "edit"}}- Surgical edits → `{{toolRefs.edit}}`.{{/has}}
+- Surgical edits → `{{toolRefs.edit}}`.

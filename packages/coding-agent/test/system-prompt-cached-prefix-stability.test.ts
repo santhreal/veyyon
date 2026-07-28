@@ -50,7 +50,7 @@ type BuildOptions = Parameters<typeof buildSystemPrompt>[0];
  * about the machine running the test. Anything that varies by host (the workspace
  * tree, discovered context files, the active model) is pinned to empty here.
  */
-const fixedOptions = (): BuildOptions =>
+const fixedOptions = (): BuildOptions & { toolNames: string[] } =>
 	({
 		toolNames: ["read", "write", "bash"],
 		contextFiles: [],
@@ -58,7 +58,7 @@ const fixedOptions = (): BuildOptions =>
 		rules: [],
 		workspaceTree: EMPTY_TREE,
 		activeRepoContext: null,
-	}) as BuildOptions;
+	}) as BuildOptions & { toolNames: string[] };
 
 const sha = (text: string): string => createHash("sha256").update(text).digest("hex").slice(0, 16);
 
@@ -85,23 +85,67 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 		const blockZero = systemPrompt[0] as string;
 
 		expect({ sha: sha(blockZero), length: blockZero.length }).toEqual({
-			// Updated 2026-07-26, deliberately, for the statement migration: block 0 is now assembled
-			// from the 68 statement rows instead of the copy of each section in `system-prompt.md`.
-			// ONE BYTE shorter (10_333 -> 10_332), and the byte is a blank line.
+			// Updated 2026-07-27, deliberately, for the redundancy trim: 731 bytes SHORTER
+			// (10_332 -> 9_601), and every one of them was a line the prompt already said somewhere else.
 			//
-			// Not a wording change. The statement suites assert ZERO word-level differences across a
-			// 33-point gate matrix, and enumerate every whitespace delta with its measured size in both
-			// directions, so this digest moving by one while the words hold is the expected shape. The
-			// cause is documented there and in `docs/system-prompt-customization.md`: `format` deletes a
-			// run of two or more blank lines entirely, the old template put UNCONDITIONAL blank lines
-			// between conditional blocks, and a statement instead owns the separation that follows it,
-			// so the spacing no longer depends on which unrelated blocks are absent.
+			// WHAT WENT, and why each was a duplicate rather than a cut. `<contract>` lost "NEVER
+			// fabricate outputs. Claims about code, tools, tests, docs, or sources MUST be grounded",
+			// which `<evidence-and-output>` states verbatim two sections later; it also lost "NEVER yield
+			// unless the deliverable is complete" and "NEVER punt half-solved work back", both already
+			// carried by `<completeness>` and by the `<critical>` line saying there is no stopping
+			// condition other than completion. `<yielding>` lost the two items that restated
+			// `<completeness>` and `<evidence-and-output>`. `# 3. Decompose` lost the sentence
+			// re-explaining the cleanup phase that `# 6. Cleanup` defines directly below it.
 			//
-			// The one-time cost this gate exists to surface is real and was accepted: every conversation
-			// re-reads its prefix once after the release.
-			sha: "e62749925eb7f82b",
-			length: 10_332,
+			// NOT the delegation gating, which is the change this digest looks like it should be. The
+			// fixture grants `toolNames: ["read","write","bash"]` and therefore no `task` tool, so the
+			// whole delegation section is closed in this render: block 0 is byte-identical with and
+			// without `subagentNames`, measured both ways at this digest. A future change to delegation
+			// prose will not move this number, and if it does, something is rendering that section
+			// unconditionally.
+			//
+			// The zero-prose cutover originally used `String.replace(slot, body)`.
+			// That treats `$&`, `$`` and `$'` inside BODY as replacement tokens.
+			// The LaTeX guidance contains `$` followed by a backtick, so three
+			// literal bytes disappeared from the prompt. Direct registry-order
+			// assembly restores them (9_598 -> 9_601) without changing policy.
+			//
+			// The one-time cost this gate exists to surface is real and was accepted:
+			// every conversation re-reads its prefix once after the release.
+			sha: "00dcb881cd93ade9",
+			length: 9_601,
 		});
+	});
+
+	/**
+	 * The digest above cannot be moved by delegation prose, which is why it is safe to read a
+	 * failure of it as "the shared prompt text changed".
+	 *
+	 * This exists because the digest bump beside it was misdiagnosed for exactly this reason. The
+	 * delegation section had just been put behind `hasSpawnableSubagent`, and a 731-byte drop in
+	 * block 0 is about the size of that section, so the gating looked like the obvious cause and was
+	 * not. `fixedOptions()` grants no `task` tool, so the section is closed no matter what the
+	 * subagent configuration says, and the bytes came from the redundancy trim instead.
+	 *
+	 * Pinning it turns that measurement into a standing fact. If someone renders delegation prose
+	 * unconditionally, or moves it out from behind the task-tool gate, this fails and names the
+	 * reason rather than leaving the next reader to re-derive it from a digest that moved.
+	 */
+	it("renders an identical block 0 whether or not subagents are configured", async () => {
+		const bare = await buildSystemPrompt(fixedOptions());
+		const withAgents = await buildSystemPrompt({
+			...fixedOptions(),
+			subagentNames: ["task", "scout"],
+		} as BuildOptions);
+
+		const blockZero = bare.systemPrompt[0] as string;
+
+		// Non-vacuity: the fixture must really withhold the task tool, or this passes because the
+		// option was ignored rather than because the section is gated.
+		expect(fixedOptions().toolNames).not.toContain("task");
+		expect(blockZero).not.toContain("Delegation gates:");
+
+		expect(sha(withAgents.systemPrompt[0] as string)).toBe(sha(blockZero));
 	});
 
 	/**

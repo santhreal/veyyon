@@ -1,12 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { dedupeAlwaysApplyRules, dedupePromptSource, promptSourceContainsRule } from "../../src/system-prompt";
+import { dedupeAlwaysApplyRules, promptSourceContainsRule } from "../../src/system-prompt";
 
 /**
- * Pure-function unit tests for prompt-source deduplication. (The end-to-end
- * assembly path is covered separately by test/system-prompt-dedup.test.ts; this
- * suite pins the matcher itself.) Prompt-source deduplication decides whether a rule or a prompt block is
- * already present in another prompt source and should therefore be dropped from
- * the assembled system prompt. Getting this wrong is a capability bug in both
+ * Pure-function unit tests for prompt-source deduplication. The end-to-end
+ * assembly path is covered separately by test/system-prompt-dedup.test.ts.
+ * This suite pins whether an always-apply rule is already present in a prompt
+ * source and should therefore be dropped from the assembled system prompt.
+ * Getting this wrong is a capability bug in both
  * directions: a false positive silently DROPS an instruction the model should
  * see, and a false negative repeats the same text (noise). The matcher is
  * deliberately conservative (exact block match, contiguous run), so these tests
@@ -94,25 +94,5 @@ describe("dedupeAlwaysApplyRules", () => {
 	it("returns an empty array for undefined or empty rule input", () => {
 		expect(dedupeAlwaysApplyRules(undefined, ["x"])).toEqual([]);
 		expect(dedupeAlwaysApplyRules([], ["x"])).toEqual([]);
-	});
-});
-
-describe("dedupePromptSource", () => {
-	it("returns empty string when the source is contained in another source", () => {
-		expect(dedupePromptSource("X", ["intro\n\nX"])).toBe("");
-	});
-
-	it("returns the source unchanged when it is not contained elsewhere", () => {
-		expect(dedupePromptSource("X", ["unrelated"])).toBe("X");
-	});
-
-	it("returns empty string for an empty, null, or whitespace-only source", () => {
-		expect(dedupePromptSource("", ["x"])).toBe("");
-		expect(dedupePromptSource(null, ["x"])).toBe("");
-		expect(dedupePromptSource("   ", ["x"])).toBe("");
-	});
-
-	it("trims the returned source (firstNonEmpty normalization)", () => {
-		expect(dedupePromptSource("  keep me  ", ["unrelated"])).toBe("keep me");
 	});
 });

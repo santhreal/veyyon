@@ -53,16 +53,15 @@ function captureWarnings(run: () => void): Warning[] {
 
 describe("an order that crosses the caching boundary is reported", () => {
 	/**
-	 * The case that was silent. `shorthand` is asked for before `role`; it cannot
-	 * move ahead of the template block, so the request is not honoured and the
-	 * caller has to be told which section stayed put.
+	 * `shorthand` is requested before `role`, but it cannot move ahead of the
+	 * static cached-prefix block. The caller must be told which section stayed.
 	 */
-	it("warns when a runtime section is asked to precede a template section", () => {
+	it("warns when a runtime section is asked to precede a static section", () => {
 		const warnings = captureWarnings(() =>
 			applyPromptSectionOrderToParts([TEMPLATE, SHORTHAND], ["shorthand", "role", "runtime"]),
 		);
 
-		const crossing = warnings.find(warning => warning.message.includes("precede a template section"));
+		const crossing = warnings.find(warning => warning.message.includes("precede a static section"));
 		expect(crossing, `no warning was emitted; got ${JSON.stringify(warnings)}`).toBeDefined();
 		// It must NAME the section, or the operator cannot tell which part of their
 		// order was dropped.

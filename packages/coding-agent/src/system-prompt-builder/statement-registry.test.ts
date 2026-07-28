@@ -1,12 +1,10 @@
 /**
- * The statement registry's own contracts: the rows, the condition vocabulary, and the rules that
- * keep the migration honest.
+ * The statement registry's contracts: row identity, condition vocabulary,
+ * granularity, banner ownership, and complete static-section coverage.
  *
- * WHY THIS SUITE EXISTS, and it is separate from `statement-assembly.test.ts` on purpose. That
- * suite is the byte-identity gate: it proves the assembled text equals the template's. It cannot
- * prove the registry is well formed, because a registry can produce correct bytes today and still
- * be shaped so that the next section converted goes wrong. The rules this suite checks are the ones
- * stated in `statement-registry.ts`'s header, and a rule documented but unchecked is a comment.
+ * This suite checks registry structure. `statement-assembly.test.ts` separately
+ * renders the complete modular prompt across the gate matrix, while
+ * `statement-wiring.test.ts` proves those modules reach production assembly.
  *
  * These are the claims, each of which was a real way to get it wrong:
  *
@@ -37,7 +35,6 @@ import {
 	not,
 	PROMPT_STATEMENT_IDS,
 	PROMPT_STATEMENTS,
-	SECTION_FIDELITY,
 	SESSION_FACT_VARIABLES,
 	STATEMENT_SECTIONS,
 	type StatementCondition,
@@ -224,23 +221,21 @@ describe("the condition vocabulary evaluates as the template does", () => {
 	});
 
 	it("requires every nested condition under `whenAll`", () => {
-		const inventoryList = allOf(when("toolInfo"), when("toolListMode"));
+		const delegationGates = allOf(contains("tools", "task"), when("hasSpawnableSubagent"));
 
-		expect(conditionHolds(inventoryList, { toolInfo: [{ name: "read" }], toolListMode: true })).toBe(true);
-		expect(conditionHolds(inventoryList, { toolInfo: [{ name: "read" }], toolListMode: false })).toBe(false);
-		expect(conditionHolds(inventoryList, { toolInfo: [], toolListMode: true })).toBe(false);
+		expect(conditionHolds(delegationGates, { tools: ["task"], hasSpawnableSubagent: true })).toBe(true);
+		expect(conditionHolds(delegationGates, { tools: ["task"], hasSpawnableSubagent: false })).toBe(false);
+		expect(conditionHolds(delegationGates, { tools: [], hasSpawnableSubagent: true })).toBe(false);
 	});
 
 	it("expresses `A and not B`, the shape a flat variable list could not say", () => {
-		// The template's line 77: with tool info present and list mode off, the pre-rendered
-		// inventory is what renders. This is the exact reason the forms compose.
-		const inventoryText = allOf(when("toolInfo"), not(when("toolListMode")));
+		// Full descriptors render only when at least one tool exists and native
+		// schema mode is off. This is the exact reason the forms compose.
+		const inventoryText = allOf(when("hasTools"), not(when("toolListMode")));
 
-		expect(conditionHolds(inventoryText, { toolInfo: [{ name: "read" }], toolListMode: false })).toBe(true);
-		expect(conditionHolds(inventoryText, { toolInfo: [{ name: "read" }], toolListMode: true })).toBe(false);
-		// And with no tools at all, NEITHER arm renders, which a bare `not` would have got wrong by
-		// rendering the inventory into a session that has no tools.
-		expect(conditionHolds(inventoryText, { toolInfo: [], toolListMode: false })).toBe(false);
+		expect(conditionHolds(inventoryText, { hasTools: true, toolListMode: false })).toBe(true);
+		expect(conditionHolds(inventoryText, { hasTools: true, toolListMode: true })).toBe(false);
+		expect(conditionHolds(inventoryText, { hasTools: false, toolListMode: false })).toBe(false);
 	});
 
 	it("accepts any nested condition under `whenAny`", () => {
@@ -254,14 +249,14 @@ describe("the condition vocabulary evaluates as the template does", () => {
 
 	it("nests to any depth, so a three-level template block is expressible", () => {
 		const deep = allOf(
-			when("toolInfo"),
+			when("hasTools"),
 			anyOf(when("mcpDiscoveryMode"), allOf(when("toolListMode"), not(when("x")))),
 		);
 
-		expect(conditionHolds(deep, { toolInfo: [1], mcpDiscoveryMode: true })).toBe(true);
-		expect(conditionHolds(deep, { toolInfo: [1], toolListMode: true })).toBe(true);
-		expect(conditionHolds(deep, { toolInfo: [1], toolListMode: true, x: true })).toBe(false);
-		expect(conditionHolds(deep, { toolInfo: [1] })).toBe(false);
+		expect(conditionHolds(deep, { hasTools: true, mcpDiscoveryMode: true })).toBe(true);
+		expect(conditionHolds(deep, { hasTools: true, toolListMode: true })).toBe(true);
+		expect(conditionHolds(deep, { hasTools: true, toolListMode: true, x: true })).toBe(false);
+		expect(conditionHolds(deep, { hasTools: true })).toBe(false);
 	});
 
 	it("reads an empty `whenAll` as always and an empty `whenAny` as never", () => {
@@ -330,26 +325,27 @@ describe("the builders construct exactly what a literal would", () => {
 	});
 
 	it("evaluates a built condition and its literal twin the same way", () => {
-		const built = allOf(when("toolInfo"), not(when("toolListMode")));
+		const built = allOf(when("hasTools"), not(when("toolListMode")));
 		const literal: StatementCondition = {
 			kind: "whenAll",
 			conditions: [
-				{ kind: "when", variable: "toolInfo" },
+				{ kind: "when", variable: "hasTools" },
 				{ kind: "not", condition: { kind: "when", variable: "toolListMode" } },
 			],
 		};
 
-		for (const context of [{ toolInfo: [1], toolListMode: false }, { toolInfo: [1], toolListMode: true }, {}]) {
+		for (const context of [{ hasTools: true, toolListMode: false }, { hasTools: true, toolListMode: true }, {}]) {
 			expect(conditionHolds(built, context)).toBe(conditionHolds(literal, context));
 		}
 	});
 });
 
-describe("the migration's progress is stated, not inferred", () => {
-	it("pins which sections are assembled from statements", () => {
-		// Derived from the rows, and pinned here so half-converting a section is a visible change
-		// rather than a quiet one. Update this list when a section converts; that edit IS the record
-		// that it did.
+describe("the statement registry completely owns static prompt text", () => {
+	/**
+	 * The static section set is explicit so adding or removing a prompt region is
+	 * a reviewed registry change rather than an accidental row-side effect.
+	 */
+	it("pins every section assembled from statements", () => {
 		expect([...STATEMENT_SECTIONS]).toEqual([
 			"conventions",
 			"role",
@@ -360,31 +356,11 @@ describe("the migration's progress is stated, not inferred", () => {
 		]);
 	});
 
-	it("declares a migration fidelity for every converted section, and for no others", () => {
-		// `SECTION_FIDELITY` is what keeps `runtime`'s three reviewed blank-line differences from
-		// reading as "the byte gate is looser now". A converted section with no declared fidelity
-		// would be exactly that: a section nobody decided about.
-		expect(Object.keys(SECTION_FIDELITY).sort()).toEqual([...STATEMENT_SECTIONS].sort());
-	});
-
-	it("holds every section that is not byte-exact to a stated reason", () => {
-		// Only `runtime` is spacing-normalized today, and it is the one section whose template
-		// interleaves unconditional blank lines between conditional blocks. A second section landing
-		// here should be a decision, so this pins the current set.
-		const normalized = Object.entries(SECTION_FIDELITY)
-			.filter(([, fidelity]) => fidelity !== "byte-exact")
-			.map(([section]) => section);
-
-		expect(normalized.sort()).toEqual(["delivery-contract", "execution-workflow", "runtime", "tool-policy"]);
-	});
-
-	it("covers every section the document declares, with none left over", () => {
-		// THE INVARIANT THAT REPLACED THE CONVERSION FLAG, and it is checked at module load as
-		// well as here. Every template section's text comes from these statements, so a section
-		// with no rows would fall through to the frozen pre-migration copy in system-prompt.md
-		// and ship stale text with nothing reporting it. Asserted from the SECTION registry so
-		// this cannot pass by agreeing with itself: adding a section there without statements
-		// must fail, which is the direction the old rows-derived list could not detect.
+	/**
+	 * Every static section declared by the section registry must own statements.
+	 * The outer slot template has no prose fallback for an uncovered section.
+	 */
+	it("covers every static section the document declares", () => {
 		const declared: string[] = SYSTEM_PROMPT_SECTIONS.filter(section => section.source === "template").map(
 			section => section.id,
 		);

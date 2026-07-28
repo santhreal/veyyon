@@ -81,15 +81,16 @@ describe("the inventory describes what it found", () => {
 		}
 	});
 
-	it("reads the shipped system prompt's contract correctly", () => {
-		// One known template checked against known values, so the suite fails if
-		// the analysis silently degrades to returning nothing for everything —
-		// which would satisfy every structural assertion above.
-		const entry = inventory.templates.find(t => t.file.endsWith("prompts/session/system-prompt.md"));
+	/**
+	 * The zero-prose outer template must expose exactly its structural slot.
+	 * Statement files are inventoried separately and own all prompt variables.
+	 */
+	it("reads the modular system prompt scaffold contract correctly", () => {
+		const entry = inventory.templates.find(template => template.file.endsWith("prompts/session/system-prompt.md"));
 
 		expect(entry).toBeDefined();
-		expect(entry?.required).toContain("toolRefs");
-		expect(entry?.optional).toContain("secretsEnabled");
+		expect(entry?.required).toEqual(["templateSections"]);
+		expect(entry?.optional).toEqual([]);
 		expect(entry?.renderers).toContain("packages/coding-agent/src/system-prompt-builder/default-template.ts");
 	});
 });

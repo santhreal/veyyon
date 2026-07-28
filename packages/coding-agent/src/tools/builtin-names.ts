@@ -43,6 +43,44 @@ export const BUILTIN_TOOL_NAMES = [
 export type BuiltinToolName = (typeof BUILTIN_TOOL_NAMES)[number];
 
 /**
+ * Tools that EDIT THE WORKSPACE, which is what separates work from investigation.
+ *
+ * WHY THIS LIST AND NOT ANOTHER. An agent's tool grant is the honest statement of what kind of work it
+ * is for: `scout` grants `read, grep, glob, web_search` and `reviewer` grants those plus `bash`, `lsp`
+ * and `ast_grep`, and neither can change a file. `task`, `sonic` and `designer` restrict nothing and
+ * are expected to edit. So "may this agent write to the tree" derives the investigative/executing
+ * distinction from data the agent already declares, rather than from a hardcoded roster of names that
+ * a user-authored agent could never join.
+ *
+ * `bash` IS DELIBERATELY ABSENT, and it is the entry that decides whether this list is useful. `bash`
+ * can obviously write, so a "can it possibly mutate" reading would put it in and then classify
+ * `reviewer` and `librarian` as executing agents, which is the opposite of what they are: both grant
+ * `bash` to RUN things while reading, an lsp query or a grep or a test. This predicate answers what an
+ * agent is FOR, as declared by its file-editing grant. It is not a security boundary and must never be
+ * used as one; that is what the sandbox is for.
+ *
+ * NOT the same question as `MID_RUN_TODO_NUDGE_MUTATING_TOOLS` in `session/agent-session.ts`, which
+ * counts what has LANDED as work and therefore does include `bash`. Two lists because there are two
+ * questions; each is named for its own, and neither is a copy of the other.
+ *
+ * `rewind` IS ABSENT FOR A DIFFERENT REASON THAN `bash`, and it is worth stating so the next reader
+ * does not add it. It restores the workspace to a checkpoint, so it plainly writes; but `RewindTool`
+ * and `CheckpointTool` both `createIf` only for a top-level session (`tools/checkpoint.ts:73,119`), so
+ * a SUBAGENT cannot receive either one however its `tools:` line reads. Putting it here would classify
+ * an agent by a grant that never takes effect.
+ */
+export const WORKSPACE_WRITING_TOOL_NAMES = ["edit", "write", "ast_edit", "memory_edit", "manage_skill"] as const;
+
+export type WorkspaceWritingToolName = (typeof WORKSPACE_WRITING_TOOL_NAMES)[number];
+
+const WORKSPACE_WRITING_TOOL_SET: ReadonlySet<string> = new Set(WORKSPACE_WRITING_TOOL_NAMES);
+
+/** Whether `name` is a tool that edits the workspace. Alias-tolerant via {@link normalizeToolNames}. */
+export function isWorkspaceWritingTool(name: string): boolean {
+	return WORKSPACE_WRITING_TOOL_SET.has(normalizeToolNames([name])[0] ?? name);
+}
+
+/**
  * Tools that exist but are not offered by default: they are added by a caller that knows it needs
  * them, or by a mode that turns one on.
  *
@@ -56,6 +94,27 @@ export const HIDDEN_TOOL_NAMES = ["yield", "report_finding", "report_tool_issue"
 export type HiddenToolName = (typeof HIDDEN_TOOL_NAMES)[number];
 
 export type ToolNameLiteral = BuiltinToolName | HiddenToolName;
+
+// Declared here and not beside `isWorkspaceWritingTool`, which is its only caller's neighbour, because
+// it reads `HIDDEN_TOOL_NAMES` and a module-level `const` that names a `const` declared further down
+// the file throws on import rather than resolving to it.
+const KNOWN_TOOL_NAME_SET: ReadonlySet<string> = new Set<string>([...BUILTIN_TOOL_NAMES, ...HIDDEN_TOOL_NAMES]);
+
+/**
+ * Whether this tool is one THIS BUILD ships, so something can be said about what it does.
+ *
+ * The complement is the interesting half: an MCP tool (`mcp__<server>__<tool>`) or a plugin-provided
+ * tool is a name whose capabilities live in another process. `mcp__github__create_pull_request` and
+ * `mcp__github__list_issues` are indistinguishable from here, so any classifier that reasons about what
+ * an agent can DO has to treat an unknown name as unknown rather than as harmless. `task/agent-role.ts`
+ * uses it for exactly that.
+ *
+ * Alias-tolerant for the same reason as its neighbours: `search` and `find` are legacy spellings of
+ * tools this build still ships, and reading them as unknown third-party tools would be wrong.
+ */
+export function isKnownToolName(name: string): boolean {
+	return KNOWN_TOOL_NAME_SET.has(normalizeToolNames([name])[0] ?? name);
+}
 
 /**
  * Every tool name, as a named constant.

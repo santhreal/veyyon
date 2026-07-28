@@ -1,8 +1,8 @@
 /**
  * SYSPROMPT-3: the assembled system prompt must be readable without running a session.
  *
- * The system prompt is a program, not a document: it is assembled from 68 named
- * statements, roughly half of them conditional, so whole regions appear or
+ * The system prompt is a program, not a document: it is assembled from named
+ * statements, many conditional, so whole regions appear or
  * vanish with the live tool set, the settings, the workspace and the model's
  * harness profile. Reading the rules tells you what could ship. Before this
  * inspection existed the only way to see what DID ship was to start a session
@@ -232,11 +232,9 @@ describe("what each rule costs", () => {
 	/**
 	 * The reconciliation the `InspectedStatement.bytes` doc comment claims, measured.
 	 *
-	 * `section bytes = banner + sum of statement bytes + separator`. The banner belongs to the
-	 * assembler rather than to any statement, and the separator is the one newline
-	 * `statementSectionOverrides` adds after every section but the last. This is the test that makes
-	 * the marginal measurement trustworthy: if it fails, either the pricing is wrong or one of those
-	 * two conventions changed, and both are reasons the numbers stop adding up.
+	 * `section bytes = banner + sum of statement bytes + boundary`. The banner belongs to the
+	 * assembler rather than to any statement. Sections normally own the separator newline that
+	 * follows them; runtime owns none when native schemas suppress its terminal inventory statement.
 	 */
 	it("adds up to the section, once the banner and the separator are accounted for", () => {
 		const last = STATEMENT_SECTIONS[STATEMENT_SECTIONS.length - 1];
@@ -245,7 +243,7 @@ describe("what each rule costs", () => {
 			const priced = inspection.statements.filter(statement => statement.section === section);
 			const sum = priced.reduce((total, statement) => total + statement.bytes, 0);
 			const banner = Buffer.byteLength(prompt.render(sectionBanner(section), {}), "utf8");
-			const separator = section === last ? 0 : 1;
+			const separator = section === last || section === "runtime" ? 0 : 1;
 			const actual = inspection.sections.find(entry => entry.id === section);
 			if (actual === undefined) throw new Error(`${section} is not in this prompt at all`);
 
@@ -326,6 +324,47 @@ describe("what each rule costs", () => {
 			const row = PROMPT_STATEMENTS.find(entry => entry.id === statement.id);
 			if (row === undefined) throw new Error(`${statement.id} is priced but not registered`);
 			expect(statement.purpose, `${statement.id} lost its purpose`).toBe(row.purpose);
+		}
+	});
+});
+
+describe("inspection follows effective overrides", () => {
+	/**
+	 * An ablated statement is absent from both the provider blocks and the cost
+	 * rows. Pricing the shipped text would describe a prompt nobody received.
+	 */
+	it("prices the effective statement arm rather than registered source text", async () => {
+		const previous = process.env.VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS;
+		process.env.VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS = JSON.stringify({ "role/principles": null });
+		try {
+			const armed = await inspectSystemPrompt({ toolNames: ["read"] });
+			const principle = armed.statements.find(statement => statement.id === "role/principles");
+
+			expect(armed.blocks.join("\n")).not.toContain("Optimize for correctness first");
+			expect(principle).toMatchObject({ present: false, bytes: 0, tokens: 0, text: "" });
+		} finally {
+			if (previous === undefined) delete process.env.VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS;
+			else process.env.VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS = previous;
+		}
+	});
+
+	/**
+	 * Once a complete section body is replaced, none of its shipped statement
+	 * rows can honestly claim to be present in that body.
+	 */
+	it("marks shipped statements absent for a whole-section replacement", async () => {
+		const previous = process.env.VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS;
+		process.env.VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS = JSON.stringify({ role: "REPLACED ROLE BODY" });
+		try {
+			const armed = await inspectSystemPrompt({ toolNames: ["read"] });
+			const role = armed.statements.filter(statement => statement.section === "role");
+
+			expect(armed.blocks.join("\n")).toContain("REPLACED ROLE BODY");
+			expect(role.length).toBeGreaterThan(0);
+			expect(role.every(statement => !statement.present && statement.bytes === 0)).toBe(true);
+		} finally {
+			if (previous === undefined) delete process.env.VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS;
+			else process.env.VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS = previous;
 		}
 	});
 });

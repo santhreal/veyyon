@@ -6,7 +6,6 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	buildSystemPrompt,
 	loadProjectContextFiles,
-	loadSystemPromptFiles,
 	type SystemPromptToolMetadata,
 } from "@veyyon/coding-agent/system-prompt";
 import { escapeRegExp } from "@veyyon/utils";
@@ -38,7 +37,7 @@ const READ_TOOL = new Map<string, SystemPromptToolMetadata>([
 	],
 ]);
 
-describe("SYSTEM.md prompt assembly", () => {
+describe("prompt source isolation and deduplication", () => {
 	let tempDir = "";
 	let tempHomeDir = "";
 	let originalHome: string | undefined;
@@ -52,26 +51,22 @@ describe("SYSTEM.md prompt assembly", () => {
 
 	afterEach(cleanupTempHome(() => ({ tempDir, tempHomeDir, originalHome })));
 
-	it("renders SYSTEM.md exactly once when it is used as the custom base prompt", async () => {
+	/**
+	 * A repository file must not bypass the assembled system prompt. This locks
+	 * out the removed SYSTEM.md discovery path while proving the default role and
+	 * workflow sections still reach the model.
+	 */
+	it("ignores project SYSTEM.md and keeps assembled prompt sections", async () => {
 		const projectDir = path.join(tempDir, "project");
 		const systemDir = path.join(projectDir, ".veyyon");
-		const systemPrompt = "You are the project SYSTEM prompt.";
+		const removedPrompt = "REMOVED PROJECT SYSTEM PROMPT";
 		fs.mkdirSync(systemDir, { recursive: true });
-		fs.writeFileSync(path.join(systemDir, "SYSTEM.md"), systemPrompt);
+		fs.writeFileSync(path.join(systemDir, "SYSTEM.md"), removedPrompt);
 
-		const { systemPrompt: renderedPrompt } = await buildSystemPrompt({
+		const { systemPrompt } = await buildSystemPrompt({
 			cwd: projectDir,
-			customPrompt: systemPrompt,
 			contextFiles: [],
-			skills: [
-				{
-					name: "focused-work",
-					description: "Focused work instructions",
-					filePath: "skills/focused-work/SKILL.md",
-					baseDir: "skills/focused-work",
-					source: "test",
-				},
-			],
+			skills: [],
 			rules: [],
 			toolNames: ["read"],
 			tools: READ_TOOL,
@@ -84,10 +79,10 @@ describe("SYSTEM.md prompt assembly", () => {
 			},
 		});
 
-		const promptText = renderedPrompt.join("\n\n");
-		const matches = promptText.match(new RegExp(escapeRegExp(systemPrompt), "g")) ?? [];
-		expect(matches).toHaveLength(1);
-		expect(promptText).toContain('<skill name="focused-work">');
+		const promptText = systemPrompt.join("\n\n");
+		expect(promptText).not.toContain(removedPrompt);
+		expect(promptText).toContain("ROLE\n==============");
+		expect(promptText).toContain("EXECUTION WORKFLOW\n==============");
 	});
 
 	it("does not resolve already-loaded prompt text as a path", async () => {
@@ -119,46 +114,41 @@ describe("SYSTEM.md prompt assembly", () => {
 		expect(promptText).not.toContain("File content that must not replace the prompt.");
 	});
 
-	it("suppresses discovered SYSTEM.md while preserving the project footer", async () => {
+	/**
+	 * APPEND_SYSTEM.md duplicated AGENTS.md but covered fewer scopes. This proves
+	 * the removed append file stays inert while a real project AGENTS.md is still
+	 * discovered and rendered with its exact path and content.
+	 */
+	it("ignores APPEND_SYSTEM.md while preserving discovered AGENTS.md", async () => {
 		const projectDir = path.join(tempDir, "project");
-		const appendPrompt = "Extra append instructions";
+		const removedAppend = "REMOVED APPEND PROMPT";
+		const agentsContent = "PROJECT AGENTS INSTRUCTIONS";
+		const agentsPath = path.join(projectDir, "AGENTS.md");
 		fs.mkdirSync(path.join(projectDir, ".veyyon"), { recursive: true });
-		fs.writeFileSync(path.join(projectDir, ".veyyon", "SYSTEM.md"), "Discovered project SYSTEM prompt");
+		fs.writeFileSync(path.join(projectDir, ".veyyon", "APPEND_SYSTEM.md"), removedAppend);
+		fs.writeFileSync(agentsPath, agentsContent);
 
+		const contextFiles = await loadProjectContextFiles({ cwd: projectDir });
 		const { systemPrompt } = await buildSystemPrompt({
 			cwd: projectDir,
-			resolvedCustomPrompt: "CLI custom prompt",
-			resolvedAppendSystemPrompt: appendPrompt,
-			contextFiles: [],
+			contextFiles,
 			skills: [],
 			rules: [],
 			toolNames: ["read"],
 			tools: READ_TOOL,
-			includeWorkspaceTree: true,
 			workspaceTree: {
 				rootPath: projectDir,
-				rendered: ".\n  - nested/",
+				rendered: "",
 				truncated: false,
-				totalLines: 2,
-				agentsMdFiles: ["nested/AGENTS.md"],
+				totalLines: 0,
+				agentsMdFiles: [],
 			},
 		});
 
 		const promptText = systemPrompt.join("\n\n");
-		const normalizedProjectDir = projectDir.replace(/\\/g, "/");
-		const appendMatches = promptText.match(new RegExp(escapeRegExp(appendPrompt), "g")) ?? [];
-		expect(systemPrompt).toHaveLength(2);
-		expect(promptText).toContain("CLI custom prompt");
-		expect(promptText).toContain("<workspace-tree>");
-		expect(promptText).toContain("<dir-context>");
-		expect(promptText).toMatch(
-			new RegExp(
-				`^Today is [^,\\n]+, and the current working directory is '${escapeRegExp(normalizedProjectDir)}'\\.$`,
-				"m",
-			),
-		);
-		expect(appendMatches).toHaveLength(1);
-		expect(promptText).not.toContain("Discovered project SYSTEM prompt");
+		expect(promptText).not.toContain(removedAppend);
+		expect(promptText).toContain(`<file path="${agentsPath}">`);
+		expect(promptText).toContain(agentsContent);
 	});
 
 	it("renders active child repo context in the main system prompt", async () => {
@@ -186,14 +176,34 @@ describe("SYSTEM.md prompt assembly", () => {
 		expect(promptText).toContain("Paths under `active-project/` are the active project");
 	});
 
-	it("prefers project SYSTEM.md over user SYSTEM.md", async () => {
+	/**
+	 * Removing precedence is not enough if either level can still become a custom
+	 * base. This adversarial pair keeps both the old project and user locations
+	 * inert in the same prompt build.
+	 */
+	it("ignores project and profile SYSTEM.md files together", async () => {
 		const projectDir = path.join(tempDir, "project");
+		const agentDir = path.join(tempHomeDir, ".veyyon", "profiles", "default", "agent");
+		const projectPrompt = "REMOVED PROJECT SYSTEM PROMPT";
+		const profilePrompt = "REMOVED PROFILE SYSTEM PROMPT";
 		fs.mkdirSync(path.join(projectDir, ".veyyon"), { recursive: true });
-		fs.mkdirSync(path.join(tempHomeDir, ".veyyon", "agent"), { recursive: true });
-		fs.writeFileSync(path.join(tempHomeDir, ".veyyon", "agent", "SYSTEM.md"), "User SYSTEM prompt");
-		fs.writeFileSync(path.join(projectDir, ".veyyon", "SYSTEM.md"), "Project SYSTEM prompt");
+		fs.mkdirSync(agentDir, { recursive: true });
+		fs.writeFileSync(path.join(projectDir, ".veyyon", "SYSTEM.md"), projectPrompt);
+		fs.writeFileSync(path.join(agentDir, "SYSTEM.md"), profilePrompt);
 
-		await expect(loadSystemPromptFiles({ cwd: projectDir })).resolves.toBe("Project SYSTEM prompt");
+		const { systemPrompt } = await buildSystemPrompt({
+			cwd: projectDir,
+			agentDir,
+			contextFiles: [],
+			skills: [],
+			rules: [],
+			toolNames: [],
+		});
+		const promptText = systemPrompt.join("\n\n");
+
+		expect(promptText).not.toContain(projectPrompt);
+		expect(promptText).not.toContain(profilePrompt);
+		expect(promptText).toContain("ROLE\n==============");
 	});
 	it("drops identical explicit context entries even when file names differ", async () => {
 		const farPath = path.join(tempDir, "far", "AGENTS.md");

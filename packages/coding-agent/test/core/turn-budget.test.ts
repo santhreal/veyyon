@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseTurnBudget } from "@veyyon/coding-agent/modes/turn-budget";
+import { parseTurnBudget } from "@veyyon/coding-agent/session/turn-budget";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 
 describe("parseTurnBudget", () => {

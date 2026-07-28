@@ -60,6 +60,15 @@ describe("what counts as a banner", () => {
 	});
 
 	/**
+	 * A banner underline is a run of equals signs, not an arbitrary line that
+	 * merely begins with one. Otherwise ordinary prose can manufacture a section.
+	 */
+	it("refuses trailing text after the underline run", () => {
+		expect(isBannerUnderline("====not-an-underline")).toBe(false);
+		expect(leadingBannerName("ROLE\n====not-an-underline\nbody")).toBeUndefined();
+	});
+
+	/**
 	 * The prose a refused file is shown has to state the width the code enforces.
 	 *
 	 * Derived from BEHAVIOUR rather than compared to a constant: the shortest

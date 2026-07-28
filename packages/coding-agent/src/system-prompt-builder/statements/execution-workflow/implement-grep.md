@@ -1,1 +1,1 @@
-{{#has tools "grep"}}- Grep instead of guessing.{{/has}}
+- Grep instead of guessing.

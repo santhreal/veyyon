@@ -4,7 +4,7 @@
  * WHY THIS EXISTS. Until now there were three ways to influence the prompt and
  * none of them was this:
  *
- *   - `--system-prompt` / `SYSTEM.md` replaces the ENTIRE template. Every
+ *   - `--system-prompt` replaces the ENTIRE template. Every
  *     section goes with it, including the ones you wanted to keep and every
  *     settings-gated branch inside them. That is why prompt customization has
  *     in practice meant forking the whole prompt and then falling behind it.
@@ -16,17 +16,15 @@
  *     cannot change their content.
  *
  * So a user who wanted to add one rule to the delivery contract had to replace
- * all 272 lines of the template to do it. This closes that gap with a file
- * surface that sits next to `SYSTEM.md`, in the same project and user
- * locations, and resolves through the same registry.
+ * all 272 lines of the template to do it. This closes that gap with a native
+ * file surface in the active profile and nearest project `.veyyon` directory.
  *
- * REPLACE VS APPEND, and why append is the one that matters. A replacement has
- * to carry its section's banner and, realistically, starts as a copy of the
- * shipped text — so it inherits the same drift problem as forking, just
- * smaller. Appending does not: the shipped section stays exactly as shipped,
- * including conditionals added to it later, and your text follows it. Most
- * customization is additive, so append is the path most people should take and
- * the one that survives upgrades.
+ * REPLACE VS APPEND, and why append is the one that matters. Both file forms
+ * contain body text only; the registry adds the section banner. A replacement
+ * still starts, realistically, as a copy of the shipped body and inherits the
+ * smaller version of whole-prompt drift. An append keeps the shipped section,
+ * including future conditions, and places operator text after it. Most
+ * customization is additive, so append survives upgrades better.
  *
  * FAILING LOUDLY IS THE POINT. A file named after a section that does not exist
  * is a typo, and silently ignoring it would leave the operator believing a
@@ -36,10 +34,13 @@
  */
 import * as path from "node:path";
 import { errorMessage, getAgentDir, isMissingPath, kebabToCamel } from "@veyyon/utils";
-import { DEFAULT_TEMPLATE_SECTIONS, type DefaultTemplateSections, resolveSectionOverrides } from "./default-template";
-import { TEMPLATE_SECTION_IDS } from "./section-registry";
+import { assertNoRegisteredBanners, bannerTable } from "./banner-grammar";
+import { type DefaultTemplateSections, resolveSectionOverrides } from "./default-template";
+import { SYSTEM_PROMPT_SECTIONS, TEMPLATE_SECTION_IDS } from "./section-registry";
 
-/** Directory holding per-section override files, beside `SYSTEM.md`. */
+const SYSTEM_SECTION_BANNERS = bannerTable(SYSTEM_PROMPT_SECTIONS);
+
+/** Directory holding persistent per-section override files. */
 export const PROMPT_SECTIONS_DIR = "PROMPT_SECTIONS";
 
 /** Suffix marking a file as additive rather than replacing. */
@@ -189,28 +190,21 @@ async function readOverrideFile(readFile: (file: string) => Promise<string>, fil
 /**
  * Fold discovered files into an override map for `assembleDefaultTemplate`.
  *
- * Precedence is per section and per mode: a project-level file beats a
- * user-level one for the SAME section and mode, so a repository can override a
- * personal default without having to restate the others. A replace and an
- * append for one section compose — the replacement supplies the section, the
- * append follows it — because refusing that combination would make the two
- * mechanisms mutually exclusive for no reason.
+ * Precedence is per section and mode. A project-level file beats a user-level
+ * file for the same section and mode. Replace and append files compose because
+ * replacement supplies the body and append extends that assembled section.
  *
- * Replacements are validated by {@link resolveSectionOverrides}, which requires
- * the section's banner so a replacement cannot silently collapse two sections
- * into one. Appends are exempt: they follow text that already carries the
- * banner, so demanding a second one would produce a duplicate heading.
+ * Replacement files contain body text only. `resolveSectionOverrides` adds the
+ * registry-owned banner. Append files are also body-only and follow whichever
+ * complete section wins, replacement first and shipped statement assembly
+ * otherwise.
  *
- * `assembled` is the text each converted section currently has, which the caller
- * gets from `statementSectionOverrides`. An append needs it because appending
- * produces a whole-section override, and a whole-section override beats the
- * statements: appending to the wrong base therefore replaces the section with
- * that base. Omit a section from `assembled` only when it is not assembled from
- * statements at all.
+ * `assembled` is required because every shipped section comes from statements.
+ * There is no template-prose fallback.
  */
 export function applySectionOverrides(
 	files: readonly SectionOverrideFile[],
-	assembled: Partial<DefaultTemplateSections> = {},
+	assembled: DefaultTemplateSections,
 ): Partial<DefaultTemplateSections> {
 	const winner = new Map<string, SectionOverrideFile>();
 	for (const file of files) {
@@ -228,19 +222,13 @@ export function applySectionOverrides(
 
 	for (const file of winner.values()) {
 		if (file.mode !== "append") continue;
+		const addition = file.content.trimEnd();
+		if (addition === "") continue;
+		assertNoRegisteredBanners(addition, SYSTEM_SECTION_BANNERS, `prompt section append override ${file.path}`);
 		const key = kebabToCamel(file.id) as keyof DefaultTemplateSections;
-		// WHAT AN APPEND APPENDS TO, in precedence order, and the middle one is the fix for a real
-		// defect. A `replace` file in the same override set wins, since the operator has said what the
-		// section is. Otherwise the base is the ASSEMBLED section, which for a converted section is
-		// the statement registry's output and is the only text a session actually sends. It used to go
-		// straight to `DEFAULT_TEMPLATE_SECTIONS`, the copy sliced out of `system-prompt.md`, so an
-		// operator appending one line to `role.md` silently reverted the rest of ROLE to the template
-		// copy: the append result becomes a section override, and a section override beats the
-		// statements. That was invisible only because the two copies are byte-identical today, and it
-		// would have started deleting statement edits the moment they diverged. `DEFAULT_TEMPLATE_SECTIONS`
-		// remains the base for a section that has NOT been converted, which is what the caller omits
-		// from `assembled`.
-		const base = resolved[key] ?? assembled[key] ?? DEFAULT_TEMPLATE_SECTIONS[key];
+		// A replacement in the same override set wins. Otherwise append to the
+		// complete statement-assembled section supplied by the caller.
+		const base = resolved[key] ?? assembled[key];
 		// The addition goes INSIDE the section, one blank line after its text and
 		// before whatever trailing whitespace the section already ended with.
 		//
@@ -252,16 +240,17 @@ export function applySectionOverrides(
 		// all end the same way.
 		const trailing = /\s*$/.exec(base)?.[0] ?? "";
 		const body = base.slice(0, base.length - trailing.length);
-		resolved[key] = `${body}\n\n${file.content.replace(/\s+$/, "")}${trailing}`;
+		resolved[key] = `${body}\n\n${addition}${trailing}`;
 	}
 	return resolved;
 }
 
-/** Discover and fold in one call. */
+/** Discover and fold in one call against the complete statement assembly. */
 export async function loadPromptSectionOverrides(
 	options: LoadSectionOverridesOptions,
+	assembled: DefaultTemplateSections,
 ): Promise<Partial<DefaultTemplateSections>> {
-	return applySectionOverrides(await loadSectionOverrideFiles(options));
+	return applySectionOverrides(await loadSectionOverrideFiles(options), assembled);
 }
 
 /** Thin adapters: every judgement about failure lives at the call site above. */

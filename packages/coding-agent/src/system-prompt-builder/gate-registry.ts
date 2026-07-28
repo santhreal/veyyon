@@ -31,16 +31,12 @@
  * setting, so registering a gate is what makes it take effect and there is no second list to
  * forget. A row is a decision recorded once, in the place a reader looks for it.
  *
- * FROZEN GATES ARE STATED, NOT IMPLIED. Some gates cannot follow a mid-session flip at all,
- * because `sdk.ts` reads them into a closure constant BEFORE `rebuildSystemPrompt` is
- * defined, so every later rebuild re-reads the same captured value. That was true of five
- * gates and was recorded only in a prose aside in `session/agent-session.ts`. Each one now
- * declares itself frozen and says why, because the two reasons are not the same thing:
- * `inlineToolDescriptors` is frozen deliberately (the whole prune machinery is fixed at
- * session start, so a mid-session model switch keeps the start-time decision), while
- * `includeWorkspaceTree` is frozen only because its read sits above the closure boundary.
- * The first is a design decision. The second is an accident, and naming it as one is the
- * point: `gate-registry.test.ts` pins the frozen list so it cannot grow in silence.
+ * FROZEN GATES ARE STATED, NOT IMPLIED. A gate that cannot follow a
+ * mid-session flip declares itself frozen and says why. `includeWorkspaceTree`
+ * remains frozen by placement because `sdk.ts` reads it above the rebuild
+ * closure. `inlineToolDescriptors` is live: prompt placement and provider
+ * schema pruning resolve from the active model together on every request.
+ * `gate-registry.test.ts` pins the frozen list so it cannot grow in silence.
  *
  * NAMING THE ACCIDENT IS WHAT FIXED ONE. `tools.intentTracing` carried a
  * `frozen-by-placement` row whose `because` said moving the read was not enough on its own,
@@ -152,9 +148,15 @@ export const PROMPT_GATES = [
 	},
 	{
 		setting: "subagent.agents",
-		variables: ["subagentNames", "hasSubagentSpecialists"],
+		variables: [
+			"subagentNames",
+			"hasSpawnableSubagent",
+			"hasSubagentSpecialists",
+			"investigativeSubagentNames",
+			"hasInvestigativeSubagent",
+		],
 		renders:
-			"which specialists delegation prose names, so it cannot route work to an agent this session cannot spawn",
+			"whether delegation prose is emitted at all, which specialists it names, so it cannot route work to an agent this session cannot spawn, and whether audit work may be delegated at all rather than done inline",
 		liveness: { kind: "live" },
 	},
 	{
@@ -178,11 +180,7 @@ export const PROMPT_GATES = [
 		setting: "inlineToolDescriptors",
 		variables: ["toolListMode"],
 		renders: "whether tool descriptors are inlined into the prompt body",
-		liveness: {
-			kind: "frozen-by-design",
-			because:
-				"the prune machinery is fixed at session start so a mid-session model switch keeps the start-time decision; see the comment above the read in sdk.ts",
-		},
+		liveness: { kind: "live" },
 	},
 	{
 		setting: "includeWorkspaceTree",

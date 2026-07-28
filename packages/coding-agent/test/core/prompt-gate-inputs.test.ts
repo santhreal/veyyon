@@ -32,7 +32,6 @@ import {
 } from "@veyyon/coding-agent/system-prompt-builder/gate-registry";
 import { inspectSystemPrompt } from "@veyyon/coding-agent/system-prompt-builder/prompt-inspect";
 import { statementById } from "@veyyon/coding-agent/system-prompt-builder/statement-registry";
-import { words } from "./statement-matrix";
 
 /**
  * A task tool with two spawnable agents.
@@ -62,6 +61,7 @@ const FLIPS: Readonly<Record<string, unknown>> = {
 	"subagent.agents": {},
 	includeModelInPrompt: false,
 	"tools.format": "hermes",
+	inlineToolDescriptors: true,
 	// Defaults to TRUE, so the flip is off and the statement leaves the prompt.
 	"tools.intentTracing": false,
 };
@@ -130,9 +130,12 @@ type GateClaim =
 	| {
 			readonly kind: "wording";
 			readonly statement: string;
-			/** Text present without the flip. `null` when the flip only ADDS text. */
 			readonly inTheBaseline: string | null;
-			/** Text the flip produces. `null` when the flip only REMOVES text. */
+			readonly underTheFlip: string | null;
+	  }
+	| {
+			readonly kind: "literal";
+			readonly inTheBaseline: string | null;
 			readonly underTheFlip: string | null;
 	  };
 
@@ -148,20 +151,28 @@ const CLAIMS: Readonly<Record<string, GateClaim>> = {
 			{ id: "tool-policy/delegation-preferred", underTheFlip: "absent" },
 		],
 	},
-	// `hermes` turns off `toolListMode`, which swaps the inventory statement for the descriptor one.
-	// Only the list arm has literal text of its own (`# Tool Inventory`); the text arm is a bare
-	// `{{toolInventory}}`, so its absence is what is checkable and its presence is not.
-	"tools.format": { kind: "presence", statements: [{ id: "runtime/tool-inventory-list", underTheFlip: "absent" }] },
+	// Native providers omit prompt descriptors because their schemas already carry
+	// them. Both settings below can switch the same live gate back to inline text.
+	"tools.format": { kind: "literal", inTheBaseline: null, underTheFlip: "# Tool: task" },
+	inlineToolDescriptors: { kind: "literal", inTheBaseline: null, underTheFlip: "# Tool: task" },
 	// Intra-line arms. Quoted because the derived signature is the invariant half of the sentence.
+	//
+	// BOTH OF THESE NAME `delegation-gates` NOW, and they used to name two other statements. The
+	// delegation trim consolidated the gates list: `tool-policy/delegation-sequence` was deleted and its
+	// `irc` sentence folded into the Sequence-dependencies bullet, and the concurrency cap's own
+	// `taskBatch` arm went away when that line was shortened to "Larger fan-out only queues", leaving the
+	// Parallelize bullet as the one place `taskBatch` chooses wording. A wording claim therefore rots in
+	// two ways, not one: the quoted arm can be reworded, and the statement holding it can move. The
+	// suite's own checks catch both, one by name and one by quotation.
 	"subagent.batch": {
 		kind: "wording",
-		statement: "tool-policy/delegation-concurrency-cap",
-		inTheBaseline: "`tasks[]` batch larger than",
-		underTheFlip: "set of parallel `task` calls larger than",
+		statement: "tool-policy/delegation-gates",
+		inTheBaseline: ", in one `tasks[]` batch",
+		underTheFlip: ", in parallel calls",
 	},
 	"subagent.maxRecursionDepth": {
 		kind: "wording",
-		statement: "tool-policy/delegation-sequence",
+		statement: "tool-policy/delegation-gates",
 		inTheBaseline: "have B ask A via `irc`",
 		underTheFlip: null,
 	},
@@ -183,6 +194,11 @@ const CLAIMS: Readonly<Record<string, GateClaim>> = {
 		statements: [{ id: "tool-policy/intent-field", underTheFlip: "absent" }],
 	},
 };
+
+/** Normalize whitespace so signatures compare words rather than Markdown layout. */
+function words(text: string): string {
+	return text.replace(/\s+/g, " ").trim();
+}
 
 /**
  * The longest run of literal text in a statement, which is what identifies it in a rendered prompt.
@@ -219,9 +235,8 @@ describe("every live gate reaches the rendered prompt", () => {
 	const settingsDriven = LIVE_PROMPT_GATE_SETTINGS.filter(setting => !REACHES_THE_PROMPT_VIA_THE_TOOL.has(setting));
 
 	it.each(settingsDriven)("changes the prompt when %s changes", async setting => {
-		// The end-to-end check. Before the fix this failed for all eight: the resolver's value
-		// existed and nothing carried it to the assembler. It now says WHICH text moves, so a flip
-		// that reaches the assembler and changes the wrong thing fails here too.
+		// End-to-end: each settings flip must change the specific statement,
+		// wording, or generated descriptor claimed below.
 		const flipped = await renderUnder({ [setting]: FLIPS[setting] });
 		const claim = CLAIMS[setting];
 
@@ -261,6 +276,20 @@ describe("every live gate reaches the rendered prompt", () => {
 			return;
 		}
 
+		if (claim.kind === "literal") {
+			for (const [text, side] of [
+				[claim.inTheBaseline, "baseline"],
+				[claim.underTheFlip, "flipped"],
+			] as const) {
+				if (text === null) continue;
+				const present = side === "baseline" ? baseline : flipped;
+				const absent = side === "baseline" ? flipped : baseline;
+				expect(occurrences(present, text), `${setting}: "${text}" missing from the ${side} prompt`).toBe(1);
+				expect(occurrences(absent, text), `${setting}: "${text}" should not be in the other prompt`).toBe(0);
+			}
+			return;
+		}
+
 		// Wording: the statement stays and the sentence inside it changes, so both are asserted.
 		// Checking only the new arm would pass if the statement vanished and the arm turned up
 		// somewhere else entirely.
@@ -292,6 +321,13 @@ describe("every live gate reaches the rendered prompt", () => {
 				}
 				continue;
 			}
+			if (claim.kind === "literal") {
+				expect(
+					claim.inTheBaseline !== null || claim.underTheFlip !== null,
+					`${setting} claims a literal change with no text on either side`,
+				).toBe(true);
+				continue;
+			}
 			expect(
 				statementById(claim.statement),
 				`${setting} names ${claim.statement}, which is not registered`,
@@ -310,7 +346,7 @@ describe("every live gate reaches the rendered prompt", () => {
 			const covered = Object.hasOwn(FLIPS, setting) || REACHES_THE_PROMPT_VIA_THE_TOOL.has(setting);
 			expect(covered, `${setting} is a live gate with no coverage here`).toBe(true);
 		}
-		expect(settingsDriven.length).toBe(9);
+		expect(settingsDriven.length).toBe(10);
 	});
 
 	it("renders a real prompt, so the comparisons are not between two empty strings", () => {
@@ -365,23 +401,158 @@ describe("delegation is resolved against the agents that can actually be spawned
 		expect(gates.eagerTasksAlways).toBe(true);
 	});
 
-	it("names the scout only when a scout can be spawned", async () => {
+	it("names a read-only agent only when one can be spawned", async () => {
 		// The tool-borne half of `subagent.agents`, asserted on the actual clause rather than on a
-		// byte difference. `subagentNames` gates exactly one thing in the template: the aside in
-		// "Spawn-one-then-wait is a bug" that permits a lone spawn when it is a read-only scout.
-		// Naming a scout to a session that cannot spawn one is an instruction it can only fail.
-		const withScout = new Map<string, unknown>([
-			["task", { name: "task", enabledAgentNames: ["scout", "worker"], description: "delegate work" }],
+		// byte difference: the aside in "Spawn-one-then-wait is a bug" that permits a lone spawn when
+		// it is read-only. Naming an agent to a session that cannot spawn one is an instruction it can
+		// only fail.
+		//
+		// GATED ON THE ROLE, NOT ON THE NAME `scout`. The clause used to be `{{#has subagentNames
+		// "scout"}}`, which named one bundled agent as the yardstick and so could never be satisfied by
+		// a user-authored read-only agent, however obviously read-only its `tools:` line was. The
+		// stubs therefore carry `investigativeAgentNames`, which the task tool derives from each
+		// enabled agent's tool grant (`task/agent-role.ts`).
+		const withReadOnly = new Map<string, unknown>([
+			[
+				"task",
+				{
+					name: "task",
+					enabledAgentNames: ["scout", "worker"],
+					investigativeAgentNames: ["scout"],
+					description: "delegate work",
+				},
+			],
 		]);
-		const withoutScout = new Map<string, unknown>([
-			["task", { name: "task", enabledAgentNames: ["worker"], description: "delegate work" }],
+		const withoutReadOnly = new Map<string, unknown>([
+			[
+				"task",
+				{
+					name: "task",
+					enabledAgentNames: ["worker"],
+					investigativeAgentNames: [],
+					description: "delegate work",
+				},
+			],
 		]);
 
-		const named = await renderUnder({}, withScout);
-		const notNamed = await renderUnder({}, withoutScout);
+		const named = await renderUnder({}, withReadOnly);
+		const notNamed = await renderUnder({}, withoutReadOnly);
 
-		expect(named).toContain("read-only `scout`");
-		expect(notNamed).not.toContain("read-only `scout`");
+		expect(named).toContain("read-only agent (`scout`)");
+		expect(notNamed).not.toContain("read-only agent");
+	});
+
+	/**
+	 * AUDIT WORK IS NOT DELEGATED WHEN NOTHING IS TYPED FOR IT.
+	 *
+	 * The bug this pins: the delegation prose instructed the model to delegate exploration and review
+	 * regardless of which agents were enabled. It shipped "Use `{{toolRefs.task}}` to map unknown code
+	 * instead of reading file after file yourself" and "multi-subsystem investigation" with no gate at
+	 * all, and on a stock install the only enabled bundled agent is `task`, whose own description is
+	 * "General-purpose subagent with full capabilities for delegated multi-step tasks". So the prompt
+	 * actively routed audits into a WORKER. A task is real work: running code, reads and writes,
+	 * changes. An audit is a different kind of work, and with no agent set up for it the honest
+	 * instruction is to do it inline.
+	 *
+	 * Asserted on the rendered prose in both directions, because a gate that is present but always
+	 * true reads identically in the source and fixes nothing.
+	 */
+	it("keeps audits inline when no read-only agent is enabled", async () => {
+		const executorsOnly = new Map<string, unknown>([
+			[
+				"task",
+				{
+					name: "task",
+					enabledAgentNames: ["worker", "sonic"],
+					investigativeAgentNames: [],
+					description: "delegate work",
+				},
+			],
+		]);
+
+		const rendered = await renderUnder({}, executorsOnly);
+
+		expect(rendered).toContain("audits inline");
+		// The clause that pointed audits at a worker is gone, not merely softened: it named the agent,
+		// so its absence is asserted on the naming rather than on a sentence that can be reworded.
+		expect(rendered).not.toContain("read-only agent");
+		expect(rendered).not.toContain("`scout`");
+	});
+
+	/** And restores them when an investigative agent IS enabled, so the gate is not just an off switch. */
+	it("delegates audits when a read-only agent is enabled", async () => {
+		const withReadOnly = new Map<string, unknown>([
+			[
+				"task",
+				{
+					name: "task",
+					enabledAgentNames: ["worker", "scout"],
+					investigativeAgentNames: ["scout"],
+					description: "delegate work",
+				},
+			],
+		]);
+
+		const rendered = await renderUnder({}, withReadOnly);
+
+		expect(rendered).toContain("read-only agent (`scout`)");
+		expect(rendered).not.toContain("audits inline");
+	});
+
+	/**
+	 * A SECOND EXECUTOR IS NOT A REASON TO DELEGATE AUDITS.
+	 *
+	 * `sonic` is "Low-reasoning agent for strictly mechanical updates or data collection only", another
+	 * executor, and `hasSubagentSpecialists` used to be `some(name => name !== "task")`, so enabling it
+	 * made the prompt claim a kind-of-work specialist existed. The two questions are genuinely
+	 * different and this pins the divergence: `sonic` DOES give the model a second type to match a
+	 * slice against, and does NOT make handing off an audit sensible.
+	 */
+	it("offers type-matching for a second executor while still keeping audits inline", async () => {
+		const twoExecutors = new Map<string, unknown>([
+			[
+				"task",
+				{
+					name: "task",
+					enabledAgentNames: ["worker", "sonic"],
+					investigativeAgentNames: [],
+					description: "delegate work",
+				},
+			],
+		]);
+
+		const rendered = await renderUnder({}, twoExecutors);
+
+		expect(rendered).toContain("Match agent types");
+		expect(rendered).toContain("audits inline");
+	});
+
+	/**
+	 * With exactly one agent enabled, the prompt says so by name rather than calling it "the general
+	 * worker".
+	 *
+	 * The else branch used to read "Only the general worker exists here", which is a guess about WHICH
+	 * agent is enabled rather than a statement of the fact the gate actually knows. A session with only
+	 * `scout` enabled and `task` off has no general worker at all, and was told it did.
+	 */
+	it("names the single enabled agent instead of assuming it is the worker", async () => {
+		const scoutOnly = new Map<string, unknown>([
+			[
+				"task",
+				{
+					name: "task",
+					enabledAgentNames: ["scout"],
+					investigativeAgentNames: ["scout"],
+					description: "delegate work",
+				},
+			],
+		]);
+
+		const rendered = await renderUnder({}, scoutOnly);
+
+		expect(rendered).toContain("One agent type is enabled");
+		expect(rendered).toContain("(`scout`)");
+		expect(rendered).not.toContain("general worker exists here");
 	});
 
 	/**
@@ -469,7 +640,11 @@ describe("the builder's omitted-option defaults against a default-configured ses
 		const omitted = await renderWithNoGateOptions();
 		const explicit = await inspectSystemPrompt({
 			...OMITTED_GATE_DEFAULTS,
+			// Both name lists are `readonly` in the table and mutable in the options, so each is copied
+			// rather than spread. The table is deliberately readonly: it is shared, and a caller that
+			// pushed onto a default would change what every later omitting caller renders.
 			subagentNames: [...OMITTED_GATE_DEFAULTS.subagentNames],
+			investigativeSubagentNames: [...OMITTED_GATE_DEFAULTS.investigativeSubagentNames],
 			tools: TOOLS as never,
 			toolNames: [...TOOLS.keys()],
 			model: MODEL.id,

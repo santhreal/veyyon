@@ -3,6 +3,10 @@
 {{#if model}}- Model: {{model}}{{/if}}
 </workstation>
 
+<agent-configuration>
+{{#list agentConfiguration prefix="- " join="\n"}}{{label}}: {{value}}{{/list}}
+</agent-configuration>
+
 {{#if contextFiles.length}}
 <context>
 You MUST follow the context files below for all tasks:

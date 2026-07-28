@@ -1,1 +1,1 @@
-{{#has tools "lsp"}}- Code intelligence → `{{toolRefs.lsp}}`.{{/has}}
+- Code intelligence → `{{toolRefs.lsp}}`.

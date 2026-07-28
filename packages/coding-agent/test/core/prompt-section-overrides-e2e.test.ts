@@ -91,7 +91,7 @@ describe("an append file written into a project", () => {
 	});
 });
 
-describe("a bad override file written into a project", () => {
+describe("project override files fail closed and frame bodies", () => {
 	it("fails the build loudly rather than assembling without it", async () => {
 		// The silent-failure case, end to end. An operator who mistypes a section
 		// name must be told, not left running the shipped prompt while believing
@@ -107,11 +107,17 @@ describe("a bad override file written into a project", () => {
 		}
 	});
 
-	it("rejects a replacement that drops its banner", async () => {
+	it("adds the registry banner to a body-only replacement", async () => {
+		// Replacement files own prose only. The production build must frame that
+		// body exactly once rather than requiring the old full-section file shape.
 		const file = path.join(projectDir, ".veyyon", "PROMPT_SECTIONS", "role.md");
 		await fs.writeFile(file, "You are a pirate.");
 		try {
-			await expect(inspectSystemPrompt({ toolNames: ["read"], cwd: projectDir })).rejects.toThrow(/banner/);
+			const inspection = await inspectSystemPrompt({ toolNames: ["read"], cwd: projectDir });
+			const role = inspection.sections.find(section => section.id === "role");
+
+			expect(role?.text).toContain("You are a pirate.");
+			expect(role?.text.match(/^ROLE$/gm)).toHaveLength(1);
 		} finally {
 			await fs.rm(file, { force: true });
 		}

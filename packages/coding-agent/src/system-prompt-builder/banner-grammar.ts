@@ -85,7 +85,7 @@ const MIN_BANNER_UNDERLINE = "====";
 
 /** Whether a line is the `====` rule under a banner name. */
 export function isBannerUnderline(line: string | undefined): boolean {
-	return line?.startsWith(MIN_BANNER_UNDERLINE) === true;
+	return line !== undefined && /^={4,}\r?$/.test(line);
 }
 
 /**
@@ -243,6 +243,25 @@ export function splitBanneredDocument(
 		regions.push({ name: entry.name, text: document.slice(bounds[i + 1], bounds[i + 2]) });
 	}
 	return regions;
+}
+
+/**
+ * Refuse body text that would be parsed as one or more registered sections.
+ *
+ * Section and statement overrides are prose-only surfaces. Letting one carry a
+ * registered banner gives that prose structural authority: inspection and
+ * ordering then treat the injected bytes as a second section. The grammar owns
+ * recognition, so every override surface delegates the same check here.
+ */
+export function assertNoRegisteredBanners(text: string, banners: Record<string, string>, label: string): void {
+	const found = splitBanneredDocument(text, { banners })
+		.filter(region => region.name !== "preamble")
+		.map(region => region.name);
+	if (found.length === 0) return;
+	throw new Error(
+		`${label} must contain body text only, without registered section banners; ` +
+			`found ${found.map(id => `"${id}"`).join(", ")}. The section registry adds that banner automatically.`,
+	);
 }
 
 /**

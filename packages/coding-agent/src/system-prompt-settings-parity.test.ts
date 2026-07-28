@@ -1,29 +1,35 @@
 import { describe, expect, it } from "bun:test";
 import type { Skill } from "./extensibility/skills";
-import { sessionPrompts } from "./prompts/session/rows";
 import { buildSystemPrompt } from "./system-prompt";
 import { RUNTIME_SECTIONS } from "./system-prompt-builder/section-registry";
+import { PROMPT_STATEMENTS, type StatementCondition } from "./system-prompt-builder/statement-registry";
 import type { ActiveRepoContext } from "./utils/active-repo-context";
 
 /**
  * Settings-parity harness for the default system prompt.
  *
- * WHY THIS EXISTS: prompt experiments edit the monolithic template
- * (`prompts/session/system-prompt.md`) by hand. A variant that silently drops a
- * `{{#if <setting>}}` branch renders that setting useless with ZERO other test
- * failure. That is exactly how delegation settings (`taskIrcEnabled`,
- * `eagerTasksAlways`) were rendered dead during prompt experiments: the setting
- * still parsed, still flowed into the render data, but the template no longer
- * had a branch that consumed it.
+ * WHY THIS EXISTS: prompt experiments can alter or remove a statement condition.
+ * A variant that silently drops a setting-backed condition renders that setting
+ * useless with zero other failure. That is how delegation settings
+ * (`taskIrcEnabled`, `eagerTasksAlways`) were once rendered dead: the setting
+ * still parsed and reached prompt inputs, but no emitted statement consumed it.
  *
- * Each test below pins that a specific user setting, when toggled, changes the
- * rendered prompt at a concrete anchor string lifted verbatim from the template.
- * If the shipped template stops honoring a setting (a dropped branch in an
- * experiment, a bad merge, a refactor regression), the matching test goes red.
+ * Each test below pins that toggling one user setting changes the rendered
+ * prompt at a concrete anchor. If statement wiring stops honoring that setting,
+ * the matching test fails.
  *
- * The final GATING_PROPS coverage test fails if a new gating setting is added
- * to the enumerated contract without a parity assertion here, so the harness
- * cannot silently fall behind the template.
+ * The final GATING_PROPS coverage test fails when a new gating setting enters
+ * the enumerated contract without a parity assertion here.
+ *
+ * ANCHOR ON DATA AND HEADINGS, NOT ON COPIED SENTENCES. Every assertion here is an anchor string, and
+ * the first version of the delegation block quoted whole clauses ("Spawn-one-then-wait is a bug", "The
+ * listed agents are what the operator wants delegated"). A prose pass that compressed the same bullets
+ * without touching a single gate turned eleven of these red at once, which teaches nothing and trains a
+ * reader to re-anchor without checking whether the gate still holds. So prefer, in this order: the
+ * VALUES the test itself supplied and the template interpolates back (`` (`scout`) ``, `` (`task`) ``,
+ * "At most 3 subagents"), a section HEADING ("## Delegation gates:"), and a distinctive short phrase
+ * only when neither is available. The sibling harness in `test/core/prompt-gate-inputs.test.ts` derives
+ * its signatures from the statement text for the same reason; the same discipline by hand here.
  */
 
 /** Empty workspace tree so the builder skips discovery and stays deterministic. */
@@ -54,6 +60,20 @@ async function renderBlock0(overrides: Parameters<typeof buildSystemPrompt>[0] =
 		...overrides,
 	});
 	return result.systemPrompt[0];
+}
+
+/**
+ * Render with one spawnable agent, which is what the delegation prose requires.
+ *
+ * `OMITTED_GATE_DEFAULTS.subagentNames` is empty, and the guidance is gated on
+ * `hasSpawnableSubagent`: with nothing to spawn the whole block is suppressed on purpose, because
+ * the agent-typing bullet interpolated that empty list and read "Only one agent type is enabled
+ * here (``)" while telling the model to fan work out. A test about `taskBatch`, the concurrency
+ * cap or the `irc` hint is not a test of that gate, so it declares the agent rather than asserting
+ * into a section its own defaults switched off. Stated once here so the precondition has one home.
+ */
+async function renderDelegating(overrides: Parameters<typeof buildSystemPrompt>[0] = {}): Promise<string> {
+	return renderBlock0({ subagentNames: ["task"], ...overrides });
 }
 
 /**
@@ -113,7 +133,10 @@ const GATING_PROPS = [
 	"taskMaxConcurrency",
 	"taskIrcEnabled",
 	"subagentNames",
+	"hasSpawnableSubagent",
 	"hasSubagentSpecialists",
+	"investigativeSubagentNames",
+	"hasInvestigativeSubagent",
 	"hasRead",
 	"hasEdit",
 	"hasWrite",
@@ -176,13 +199,13 @@ describe("system prompt settings parity: role & runtime", () => {
 		expect(await renderBlock0({ memoryRootEnabled: false })).not.toContain("memory://root");
 	});
 
-	it(`${asserted("toolListMode")} renders the compact tool inventory heading AND a tool row`, async () => {
-		// nativeTools default true + inlineToolDescriptors default false => list mode.
-		// Assert a row follows the heading, so a dropped {{#each toolInfo}} body
-		// (heading with no rows) is caught, not just the heading gate.
-		const out = await renderBlock0({});
-		expect(out).toContain("# Tool Inventory");
-		expect(out).toMatch(/# Tool Inventory\n- /);
+	it(`${asserted("toolListMode")} omits inline descriptors when native schemas carry tools`, async () => {
+		const listMode = await renderBlock0({ nativeTools: true, inlineToolDescriptors: false });
+		const inlineMode = await renderBlock0({ nativeTools: true, inlineToolDescriptors: true });
+
+		expect(listMode).not.toContain("# Tool: read");
+		expect(inlineMode).toContain("# Tool: read");
+		expect(inlineMode).toContain("Parameters:");
 	});
 
 	it(`${asserted("mcpDiscoveryMode")} toggles the <discovery-notice>`, async () => {
@@ -299,9 +322,9 @@ describe("system prompt settings parity: delegation (the regression this harness
 	it(`${asserted("eagerTasks")} toggles the delegation-mode paragraph`, async () => {
 		const on = await renderBlock0({ eagerTasks: true, eagerTasksAlways: false });
 		const off = await renderBlock0({ eagerTasks: false });
-		expect(on).toContain("Delegation is preferred here");
-		expect(off).not.toContain("Delegation is preferred here");
-		expect(off).not.toContain("Delegation is the default here");
+		expect(on).toContain("Delegation is preferred");
+		expect(off).not.toContain("Delegation is preferred");
+		expect(off).not.toContain("Delegation is the default");
 	});
 
 	it(`${asserted("eagerTasksAlways")} escalates preferred delegation to mandatory`, async () => {
@@ -309,30 +332,30 @@ describe("system prompt settings parity: delegation (the regression this harness
 		const preferred = await renderBlock0({ eagerTasks: true, eagerTasksAlways: false });
 		expect(always).toContain("Delegation is the default here, not the exception");
 		expect(always).toContain("MUST fan the work out");
-		expect(preferred).toContain("Delegation is preferred here");
-		expect(preferred).not.toContain("Delegation is the default here");
+		expect(preferred).toContain("Delegation is preferred");
+		expect(preferred).not.toContain("Delegation is the default");
 	});
 
 	it(`${asserted("taskBatch")} selects the batched vs parallel-calls call shape`, async () => {
-		const batched = await renderBlock0({ taskBatch: true });
-		const parallel = await renderBlock0({ taskBatch: false });
-		expect(batched).toContain("batched into one `tasks[]` array");
-		expect(batched).not.toContain("as parallel calls in one message");
-		expect(parallel).toContain("as parallel calls in one message");
-		expect(parallel).not.toContain("batched into one `tasks[]` array");
+		const batched = await renderDelegating({ taskBatch: true });
+		const parallel = await renderDelegating({ taskBatch: false });
+		expect(batched).toContain("`tasks[]`");
+		expect(batched).not.toContain("parallel calls");
+		expect(parallel).toContain("parallel calls");
+		expect(parallel).not.toContain("`tasks[]`");
 	});
 
 	it(`${asserted("taskMaxConcurrency")} toggles the concurrency cap and renders the number`, async () => {
-		const capped = await renderBlock0({ taskMaxConcurrency: 3 });
-		const uncapped = await renderBlock0({ taskMaxConcurrency: 0 });
+		const capped = await renderDelegating({ taskMaxConcurrency: 3 });
+		const uncapped = await renderDelegating({ taskMaxConcurrency: 0 });
 		expect(capped).toContain("Concurrency cap:");
 		expect(capped).toContain("At most 3 subagents");
 		expect(uncapped).not.toContain("Concurrency cap:");
 	});
 
 	it(`${asserted("taskIrcEnabled")} toggles the irc cross-agent coordination hint`, async () => {
-		expect(await renderBlock0({ taskIrcEnabled: true })).toContain("ask A via `irc`");
-		expect(await renderBlock0({ taskIrcEnabled: false })).not.toContain("ask A via `irc`");
+		expect(await renderDelegating({ taskIrcEnabled: true })).toContain("ask A via `irc`");
+		expect(await renderDelegating({ taskIrcEnabled: false })).not.toContain("ask A via `irc`");
 	});
 
 	/**
@@ -341,14 +364,98 @@ describe("system prompt settings parity: delegation (the regression this harness
 	 * that hard-codes `scout` tells the model to route research to an agent absent
 	 * from the `task` description — an instruction it can only fail to follow.
 	 */
-	it(`${asserted("subagentNames")} names the scout only when the scout is on offer`, async () => {
-		const withScout = await renderBlock0({ subagentNames: ["task", "scout"] });
-		const workerOnly = await renderBlock0({ subagentNames: ["task"] });
-		expect(withScout).toContain("read-only `scout`");
-		expect(workerOnly).not.toContain("scout");
+	it(`${asserted("subagentNames")} names the read-only agent only when one is on offer`, async () => {
+		const withScout = await renderBlock0({
+			subagentNames: ["task", "scout"],
+			investigativeSubagentNames: ["scout"],
+		});
+		const workerOnly = await renderBlock0({ subagentNames: ["task"], investigativeSubagentNames: [] });
+		expect(withScout).toContain("read-only agent (`scout`)");
+		// The BACKTICKED name, not the bare word: the no-agent branch ends "...exist to execute, not
+		// scout", using the word in its ordinary sense, so a bare substring check fails on English
+		// prose while the gate is working perfectly. What must be absent is the agent REFERENCE.
+		expect(workerOnly).not.toContain("`scout`");
 		// The rule the clause hangs off must survive either way, or the gate has
 		// swallowed the whole bullet rather than just the specialist reference.
-		expect(workerOnly).toContain("Spawn-one-then-wait is a bug");
+		expect(workerOnly).toContain("## Delegation gates:");
+	});
+
+	/**
+	 * The clause is gated on the ROLE, not on the name `scout`.
+	 *
+	 * It used to be `{{#has subagentNames "scout"}}`, which named one bundled agent as the yardstick for
+	 * every other, so a user-authored read-only agent could never satisfy it however plainly its
+	 * `tools:` line said what it was. The role is derived from that tool grant
+	 * (`task/agent-role.ts`), so a differently-named read-only agent gets named here.
+	 */
+	it(`${asserted("investigativeSubagentNames")} names a read-only agent that is not called scout`, async () => {
+		const custom = await renderBlock0({
+			subagentNames: ["task", "auditor"],
+			investigativeSubagentNames: ["auditor"],
+		});
+
+		expect(custom).toContain("read-only agent (`auditor`)");
+		expect(custom).not.toContain("`scout`");
+	});
+
+	/**
+	 * AUDIT DELEGATION IS OFF WITH NO AGENT TYPED FOR IT, which is the other half of the fix the
+	 * `hasSubagentSpecialists` doc below describes.
+	 *
+	 * That pass removed the hardcoded "INVESTIGATIONS MUST be delegated" category list, and three
+	 * ungated bullets survived it in `delegation-subagent-value.md`: "Use `task` to map unknown code
+	 * instead of reading file after file yourself", the bulk-reading rationale, and "multi-subsystem
+	 * investigation". So every session was still told to delegate audits, by a different sentence. On a
+	 * stock install the only enabled agent is `task`, a worker with full edit capability, so the prompt
+	 * pointed audits at an agent that exists to change code.
+	 *
+	 * Both directions asserted, because a gate that is always true reads the same in the source.
+	 */
+	it(`${asserted("hasInvestigativeSubagent")} toggles whether audits may be delegated`, async () => {
+		const withReadOnly = await renderBlock0({
+			subagentNames: ["task", "scout"],
+			investigativeSubagentNames: ["scout"],
+		});
+		const executorsOnly = await renderBlock0({
+			subagentNames: ["task", "sonic"],
+			investigativeSubagentNames: [],
+		});
+
+		expect(withReadOnly).toContain("read-only agent (`scout`)");
+		expect(withReadOnly).not.toContain("audits inline");
+
+		expect(executorsOnly).toContain("audits inline");
+		expect(executorsOnly).not.toContain("read-only agent");
+		expect(executorsOnly).not.toContain("`scout`");
+	});
+
+	/**
+	 * WITH NOTHING SPAWNABLE THE DELEGATION GUIDANCE IS NOT EMITTED AT ALL.
+	 *
+	 * The task tool is built whenever `subagent.enabled` is on, and it stays built with every agent
+	 * row disabled on purpose: an ephemeral `/` command naming an agent grants it for that turn. So
+	 * `contains("tools", "task")` was true while `subagentNames` was empty, and the agent-typing
+	 * bullet interpolated the empty list into a sentence that stated a falsehood and pointed at
+	 * nothing: "**Only one agent type is enabled here** (``), so delegate for parallel execution".
+	 * The rest of the block told the model to fan work out to agents it could not name.
+	 *
+	 * Asserted on the literal empty-backticks render, because that exact string is the bug: a
+	 * `not.toContain("Only one agent type")` alone would also pass if the gate merely swapped which
+	 * wrong sentence appeared. The positive direction pins that a real agent still gets the guidance,
+	 * since suppressing delegation prose for everyone would satisfy the negative half by itself.
+	 */
+	it(`${asserted("hasSpawnableSubagent")} suppresses delegation prose when no agent can be spawned`, async () => {
+		const nothingSpawnable = await renderBlock0({ subagentNames: [], investigativeSubagentNames: [] });
+		const oneWorker = await renderBlock0({ subagentNames: ["task"], investigativeSubagentNames: [] });
+
+		expect(nothingSpawnable).not.toContain("(``)");
+		expect(nothingSpawnable).not.toContain("## Delegation gates:");
+		expect(nothingSpawnable).not.toContain("One agent type is enabled");
+		expect(nothingSpawnable).not.toContain("separate context");
+
+		expect(oneWorker).toContain("One agent type is enabled** (`task`)");
+		expect(oneWorker).toContain("## Delegation gates:");
+		expect(oneWorker).toContain("separate context");
 	});
 
 	/**
@@ -368,14 +475,39 @@ describe("system prompt settings parity: delegation (the regression this harness
 	 * model inventing a specialist policy from nothing.
 	 */
 	it(`${asserted("hasSubagentSpecialists")} toggles the agent-typing gate`, async () => {
-		const specialists = await renderBlock0({ subagentNames: ["task", "reviewer"] });
-		const workerOnly = await renderBlock0({ subagentNames: ["task"] });
+		const specialists = await renderBlock0({
+			subagentNames: ["task", "reviewer"],
+			investigativeSubagentNames: ["reviewer"],
+		});
+		const workerOnly = await renderBlock0({ subagentNames: ["task"], investigativeSubagentNames: [] });
 
-		expect(specialists).toContain("The listed agents are what the operator wants delegated");
-		expect(specialists).not.toContain("Only the general worker exists here");
+		expect(specialists).toContain("Match agent types");
+		expect(specialists).not.toContain("One agent type is enabled");
 
-		expect(workerOnly).toContain("Only the general worker exists here");
-		expect(workerOnly).not.toContain("The listed agents are what the operator wants delegated");
+		expect(workerOnly).toContain("One agent type is enabled** (`task`)");
+		expect(workerOnly).not.toContain("Match agent types");
+	});
+
+	/**
+	 * A SECOND EXECUTOR OPENS THIS GATE AND NOT THE AUDIT ONE.
+	 *
+	 * The predicate was `subagentNames.some(name => name !== DEFAULT_ENABLED_BUNDLED_AGENT)`, which asked
+	 * "is anything other than `task` enabled" and named one agent as the yardstick for all the others:
+	 * `sonic`, another executor, satisfied it and made the prompt claim a kind-of-work specialist
+	 * existed. It counts now, because the gate is about having more than one TYPE to match a slice to.
+	 *
+	 * `sonic` legitimately does give the model that second type, and legitimately does not make handing
+	 * off an audit sensible, so the two gates must disagree here. This is the case that proves they are
+	 * two questions rather than one asked twice.
+	 */
+	it("opens type-matching for a second executor while audits stay inline", async () => {
+		const twoExecutors = await renderBlock0({
+			subagentNames: ["task", "sonic"],
+			investigativeSubagentNames: [],
+		});
+
+		expect(twoExecutors).toContain("Match agent types");
+		expect(twoExecutors).toContain("audits inline");
 	});
 
 	/**
@@ -397,8 +529,14 @@ describe("system prompt settings parity: delegation (the regression this harness
 		}
 		// The surrounding guidance must survive: a gate that swallowed the whole
 		// paragraph would pass the two checks above for the wrong reason.
-		expect(required).toContain("MUST be decomposed and delegated");
-		expect(preferred).toContain("are strong candidates");
+		//
+		// Anchored on "MUST be delegated" and not on the older "MUST be decomposed and delegated":
+		// the sentence now reads "Everything else that clears the delegation gates ... MUST be
+		// delegated", because naming the gates is what replaced the hardcoded category list. The
+		// shorter anchor is a substring of both wordings, so it survives that edit and still fails if
+		// the paragraph disappears.
+		expect(required).toContain("MUST be delegated");
+		expect(preferred).toContain("Delegation is preferred");
 	});
 
 	/**
@@ -408,10 +546,10 @@ describe("system prompt settings parity: delegation (the regression this harness
 	 * out scraps — the opposite of what delegation is for.
 	 */
 	it("frames a subagent as a separate context rather than a lesser model", async () => {
-		const rendered = await renderBlock0({});
+		const rendered = await renderDelegating({});
 
-		expect(rendered).toContain("SEPARATE CONTEXT, not a lesser model");
-		expect(rendered).toContain("never because the work is beneath you");
+		expect(rendered).toContain("separate context");
+		expect(rendered).toContain("not because work is lesser");
 	});
 
 	it(`${asserted("useCodexTaskPrompt")} switches delegation to the Codex policy for gpt-5.6`, async () => {
@@ -432,19 +570,14 @@ describe("system prompt settings parity: delivery contract", () => {
 });
 
 /**
- * Extract every gating identifier the template actually branches on, straight
- * from the shipped template text. Covers `{{#if}}`/`{{#unless}}`/`{{#when}}`/
- * `{{#ifAny}}` bare identifiers (with a trailing `.length` stripped) and every
- * `tools "X"` presence check (from both `#has` and `includes`), keyed as
- * `tools:X`. Quoted strings and helper keywords are dropped so only real gate
- * inputs remain.
+ * Extract wording-level Handlebars gates from statement modules.
  *
- * `{{#each}}` and `{{#list}}` are deliberately NOT scanned as gates: they are
- * content renderers, not boolean branches, and each is wrapped in an `{{#if
- * X.length}}` that IS scanned (skills/rules/alwaysApplyRules/toolInfo/
- * mcpDiscoveryServerSummaries). A dropped loop BODY is caught instead by the
- * toggle tests asserting the item content renders (skill name, rule name/glob,
- * generic-rule content, discoverable-server name), not by this scan.
+ * Whole-statement conditions are structured registry data and are added by
+ * {@link addConditionIdentifiers}. Statement Markdown still owns intra-statement
+ * `{{#if}}`, `{{#unless}}`, `{{#when}}`, and tool-presence checks.
+ *
+ * `{{#each}}` and `{{#list}}` are content renderers rather than branches. Toggle
+ * tests assert their rendered item values separately.
  */
 function extractGatingIdentifiers(template: string): Set<string> {
 	const ids = new Set<string>();
@@ -462,11 +595,30 @@ function extractGatingIdentifiers(template: string): Set<string> {
 	return ids;
 }
 
+/** Add the registry identifier for every leaf in one whole-statement condition. */
+function addConditionIdentifiers(condition: StatementCondition, ids: Set<string>): void {
+	switch (condition.kind) {
+		case "always":
+			return;
+		case "when":
+			ids.add(condition.variable);
+			return;
+		case "whenContains":
+			ids.add(`${condition.collection}:${condition.member}`);
+			return;
+		case "whenAll":
+		case "whenAny":
+			for (const nested of condition.conditions) addConditionIdentifiers(nested, ids);
+			return;
+		case "not":
+			addConditionIdentifiers(condition.condition, ids);
+	}
+}
+
 /**
- * Maps each template gating identifier to the enumerated GATING_PROP it belongs
- * to. Aliases are resolved here (the template branches on `intentTracing` but
- * the caller option is `intentField`; `hasMemoryRoot` <- `memoryRootEnabled`;
- * `MAX_CONCURRENCY` <- `taskMaxConcurrency`; `tools:X` <- `hasX`).
+ * Maps each statement gating identifier to the enumerated GATING_PROP it belongs
+ * to. Aliases resolve structured conditions and wording-level Handlebars names
+ * to the caller option that controls them.
  */
 const IDENTIFIER_TO_PROP: Record<string, (typeof GATING_PROPS)[number]> = {
 	renderMermaid: "renderMermaid",
@@ -486,7 +638,10 @@ const IDENTIFIER_TO_PROP: Record<string, (typeof GATING_PROPS)[number]> = {
 	MAX_CONCURRENCY: "taskMaxConcurrency",
 	taskIrcEnabled: "taskIrcEnabled",
 	subagentNames: "subagentNames",
+	hasSpawnableSubagent: "hasSpawnableSubagent",
 	hasSubagentSpecialists: "hasSubagentSpecialists",
+	investigativeSubagentNames: "investigativeSubagentNames",
+	hasInvestigativeSubagent: "hasInvestigativeSubagent",
 	useCodexTaskPrompt: "useCodexTaskPrompt",
 	"tools:read": "hasRead",
 	"tools:edit": "hasEdit",
@@ -511,14 +666,14 @@ const IDENTIFIER_TO_PROP: Record<string, (typeof GATING_PROPS)[number]> = {
 const EXCLUDED_IDENTIFIERS: Record<string, string> = {
 	hasObsidian: "env-derived from the live Obsidian vault registry, not a buildSystemPrompt caller option",
 	label: "loop-local variable inside {{#each tools}}, not a global gating setting",
-	toolInfo: "structural: gates whether the tool-inventory renders at all, entangled with the asserted toolListMode",
+	hasTools: "structural: gates tool-dependent runtime guidance, entangled with the asserted toolListMode",
 };
 
 describe("system prompt settings parity: coverage contract", () => {
 	/**
 	 * Every enumerated gating setting MUST have a toggle assertion above. Adding a
-	 * new `{{#if <setting>}}` to the template without extending both GATING_PROPS
-	 * and a parity test fails here, so the harness cannot fall behind the prompt.
+	 * new statement gate without extending both GATING_PROPS and a parity test
+	 * fails here, so the harness cannot fall behind the prompt.
 	 */
 	it("asserts a parity test for every enumerated gating setting", () => {
 		const missing = GATING_PROPS.filter(name => !ASSERTED.has(name));
@@ -526,19 +681,15 @@ describe("system prompt settings parity: coverage contract", () => {
 	});
 
 	/**
-	 * The strong guard: scan the SHIPPED template for every gating identifier it
-	 * actually branches on, and require each to be either mapped to a tested
-	 * GATING_PROP or explicitly excluded with a reason. This is what catches the
-	 * hole the enumerated-list test cannot: a conditional added to the template
-	 * that nobody remembered to enumerate. Without this, a setting like
-	 * `hasMCPDiscoveryServers` could gate real text with ZERO coverage and ZERO
-	 * failure — exactly the silent-drop class this whole harness exists to stop.
+	 * Account for every gate in both modular sources: structured statement
+	 * conditions and wording-level Handlebars inside statement Markdown.
 	 */
-	it("accounts for every gating identifier present in the shipped template", () => {
-		const found = extractGatingIdentifiers(sessionPrompts["session/system-prompt"].text);
-		// Guard against an extractor regression silently returning nothing, which
-		// would make the "unaccounted" check pass vacuously. These gates are known
-		// to exist in the template; if the extractor stops finding them it is broken.
+	it("accounts for every gating identifier in the statement modules", () => {
+		const found = extractGatingIdentifiers(PROMPT_STATEMENTS.map(statement => statement.text).join("\n"));
+		for (const statement of PROMPT_STATEMENTS) addConditionIdentifiers(statement.condition, found);
+
+		// Guard against an extractor or registry traversal returning only a narrow
+		// subset, which would make the unaccounted check pass vacuously.
 		expect(found.has("taskIrcEnabled")).toBe(true);
 		expect(found.has("hasMCPDiscoveryServers")).toBe(true);
 		expect(found.has("tools:task")).toBe(true);
@@ -550,7 +701,7 @@ describe("system prompt settings parity: coverage contract", () => {
 	});
 
 	/** Every identifier mapping must point at a real, enumerated gating prop. */
-	it("maps every template identifier to an enumerated gating prop", () => {
+	it("maps every statement identifier to an enumerated gating prop", () => {
 		for (const prop of Object.values(IDENTIFIER_TO_PROP)) {
 			expect(GATING_PROPS).toContain(prop);
 		}
@@ -558,10 +709,10 @@ describe("system prompt settings parity: coverage contract", () => {
 
 	/**
 	 * Every mapped prop must also carry a toggle assertion. Combined with the
-	 * template scan above, this closes the loop: template gate -> mapped prop ->
-	 * asserted toggle, with no link allowed to be missing.
+	 * modular-source scan above, this closes the loop: statement gate, mapped
+	 * prop, asserted toggle.
 	 */
-	it("has a toggle assertion for every prop a template identifier maps to", () => {
+	it("has a toggle assertion for every prop a statement identifier maps to", () => {
 		const mappedProps = new Set(Object.values(IDENTIFIER_TO_PROP));
 		const unasserted = [...mappedProps].filter(prop => !ASSERTED.has(prop));
 		expect(unasserted).toEqual([]);
