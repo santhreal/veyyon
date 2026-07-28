@@ -1051,6 +1051,40 @@ Check "the flag is set where the entry is actually removed" `
 Check "and starts false, so a no-op uninstall stays quiet" `
     ($uninstallFn -match '\$pathEntryRemoved = \$false') "True"
 
+# --- Invoke-Doctor: a binary that will not START has to say why ---
+# The published Windows exe failed to run on a clean runner and the installer
+# reported only "'veyyon --version' failed" - no exit code, no message, because
+# stderr went to $null. The line the operating system writes about why an
+# executable will not start IS the diagnosis, and without it the user's only
+# possible next step is a bug report nobody can act on either. These drive the
+# real function against stub binaries rather than reading the source, because a
+# message that exists in the file and never reaches the screen is the same defect.
+$doctorDir = Join-Path ([System.IO.Path]::GetTempPath()) ("veyyon-doctor-test-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $doctorDir -Force | Out-Null
+try {
+    $loud = Join-Path $doctorDir "loud.cmd"
+    Set-Content -Path $loud -Value "@echo off`r`necho The code execution cannot proceed because VCRUNTIME140.dll was not found 1>&2`r`nexit /b 127"
+    $caught = ""
+    try { Invoke-Doctor -Command $loud } catch { $caught = "$_" }
+    Check "a binary that cannot start is fatal" ($caught -ne "") "True"
+    Check "the failure carries the exit status" ($caught -match 'exit 127') "True"
+    Check "the failure carries what the system said" ($caught -match 'VCRUNTIME140\.dll was not found') "True"
+
+    # Silence is its own answer and must not read as a missing message.
+    $silent = Join-Path $doctorDir "silent.cmd"
+    Set-Content -Path $silent -Value "@echo off`r`nexit /b 3"
+    $caught = ""
+    try { Invoke-Doctor -Command $silent } catch { $caught = "$_" }
+    Check "a silent failure still names the exit status" ($caught -match 'exit 3') "True"
+    Check "a silent failure says it printed nothing" ($caught -match 'printed nothing') "True"
+
+    # The capture file is temporary and must not survive either path.
+    Check "the stderr capture is cleaned up" `
+        (@(Get-ChildItem ([System.IO.Path]::GetTempPath()) -Filter "veyyon-doctor-*.err" -ErrorAction SilentlyContinue).Count) "0"
+} finally {
+    Remove-Item -Recurse -Force $doctorDir -ErrorAction SilentlyContinue
+}
+
 Write-Host ""
 # A run that recorded nothing is a broken harness, not a pass: fail closed rather
 # than report "0 passed, 0 failed" and exit 0 (mirrors functions.test.sh).

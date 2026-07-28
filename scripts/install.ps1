@@ -878,15 +878,31 @@ function Invoke-Doctor {
     Write-Host ""
     Write-Host "doctor:"
     $ver = $null
+    $why = ""
+    $status = $null
+    # stderr is KEPT, in its own file rather than discarded. It used to go to
+    # $null, and when a published binary failed to start on a clean Windows image
+    # the installer said only "'veyyon --version' failed" — no exit code, no
+    # message, nothing to act on. Separate rather than merged because the version
+    # parse below reads this output, and a warning on stderr carrying digits
+    # would otherwise be read as the version.
+    $errFile = Join-Path ([System.IO.Path]::GetTempPath()) ("veyyon-doctor-" + [guid]::NewGuid().ToString("N") + ".err")
     try {
-        $ver = & $Command --version 2>$null
+        $ver = (& $Command --version 2>$errFile | Out-String).Trim()
+        $status = $LASTEXITCODE
+        if (Test-Path $errFile) { $why = (Get-Content -Raw $errFile).Trim() }
     } catch {
         $ver = $null
+        $why = "$_"
+    } finally {
+        Remove-Item -Force $errFile -ErrorAction SilentlyContinue
     }
-    if ($LASTEXITCODE -eq 0 -and $ver) {
+    if ($status -eq 0 -and $ver) {
         Write-Host "OK  $BinName runs - $ver" -ForegroundColor Green
     } else {
-        throw "$BinName did not run after install ('$Command --version' failed)"
+        $exit = if ($null -eq $status) { "no exit code (the process could not be started)" } else { "exit $status" }
+        $detail = if ($why) { " It said: $why" } else { " It printed nothing." }
+        throw "$BinName did not run after install: '$Command --version' gave $exit.$detail"
     }
     # The checksum proved the bytes match the published asset; this proves the
     # published asset is the version the release claims. A release that uploaded
