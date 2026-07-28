@@ -112,9 +112,15 @@ describe("listing a directory that may not be there", () => {
 
 		expect(result).toEqual([]);
 		expect(warnings).toHaveLength(1);
-		expect(warnings[0]?.[0]).toBe(
-			"Could not list a directory while looking for agent definitions; continuing without it",
-		);
+		// THE FILE LOG STILL GETS IT, which is what this assertion is for. The report now goes through
+		// `reportFault`, so it also reaches an attached operator surface, and `reportFault` writes the log
+		// line FIRST and unconditionally: attaching a sink can only add reach, never replace the record a
+		// later reader diagnoses from. The wording changed with the routing, and deliberately. "Could not
+		// list a directory" names the syscall; what an operator needs is what they have LOST, because the
+		// empty array they are about to see is indistinguishable from "nothing configured".
+		expect(warnings[0]?.[0]).toContain("agent definitions");
+		expect(warnings[0]?.[0]).toContain("could not be listed");
+		expect(warnings[0]?.[0]).toContain("continuing without any");
 		const [, context] = warnings[0] ?? [];
 		expect(context).toMatchObject({ dir, what: "agent definitions" });
 		// Pulled out of the array first rather than read through `warnings[0]?.[1].error`.
@@ -179,7 +185,11 @@ describe("stat-ing a path that may not be there", () => {
 
 		expect(result).toBeUndefined();
 		expect(warnings).toHaveLength(1);
-		expect(warnings[0]?.[0]).toBe("Could not stat a path while looking for a plan file; treating it as absent");
+		// Same routing change as above. "Treating it as absent" is kept in the wording because it is the
+		// dangerous part: the caller behaves as though the path is not there, so the operator has to be
+		// told the absent answer is a guess rather than a fact.
+		expect(warnings[0]?.[0]).toContain("a plan file");
+		expect(warnings[0]?.[0]).toContain("treated as absent");
 		expect(warnings[0]?.[1]).toMatchObject({ path: file, what: "a plan file" });
 	});
 });
