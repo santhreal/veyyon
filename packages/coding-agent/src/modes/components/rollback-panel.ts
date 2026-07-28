@@ -114,7 +114,11 @@ export class RollbackPanelComponent implements Component {
 			...new Text(theme.fg("warning", `Could not read the published versions: ${this.#state.reason}`), 1, 1).render(
 				width,
 			),
-			...new Text(theme.fg("dim", "Esc to go back. Check your connection and open it again."), 1, 0).render(width),
+			// Not "check your connection": the commonest failure here is GitHub's
+			// per-address API limit, where the connection is fine and the advice
+			// would send the operator looking in the wrong place. The reason above
+			// already says what to do, so this line only says how to retry.
+			...new Text(theme.fg("dim", "Esc to go back, then open it again to retry."), 1, 0).render(width),
 		];
 	}
 

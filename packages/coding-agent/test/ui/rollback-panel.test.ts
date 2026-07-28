@@ -147,6 +147,50 @@ describe("when the release list cannot be read", () => {
 		expect(h.panel.render(80).join("\n")).toContain("Esc");
 	});
 
+	/**
+	 * The version list is the only thing that still spends GitHub's API budget,
+	 * and that budget belongs to the ADDRESS, so the commonest failure here is a
+	 * rate limit somebody else caused while the connection is perfectly fine.
+	 * Telling that operator to "check your connection" sends them to look in the
+	 * one place the answer is not. The reason line already carries the advice, so
+	 * the line under it only says how to retry.
+	 */
+	it("does not blame the connection, which is usually fine", async () => {
+		const h = harness({
+			listReleases: async () => {
+				throw new Error("HTTP 403 Forbidden — GitHub is rate-limiting this address");
+			},
+		});
+		await settle();
+
+		const rendered = h.panel.render(80).join("\n");
+		expect(rendered).toContain("rate-limiting this address");
+		expect(rendered).not.toContain("Check your connection");
+		expect(rendered).toContain("open it again to retry");
+	});
+
+	/**
+	 * A long reason has to be readable in a narrow terminal: the rate-limit
+	 * message names the limit, what still works and what does not, and a panel
+	 * that let it run off the edge would hide the half that says what to do.
+	 */
+	it("wraps a long reason inside the width it was given", async () => {
+		const h = harness({
+			listReleases: async () => {
+				throw new Error(
+					"Failed to fetch the release list from https://api.github.com/repos/santhreal/veyyon/releases: " +
+						"HTTP 403 Forbidden — GitHub is rate-limiting this address (the limit is per address and shared)",
+				);
+			},
+		});
+		await settle();
+
+		for (const line of h.panel.render(48)) {
+			// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping SGR sequences is the point
+			expect(line.replace(/\x1b\[[0-9;]*m/g, "").length).toBeLessThanOrEqual(48);
+		}
+	});
+
 	it("still closes on Esc", async () => {
 		const h = harness({
 			listReleases: async () => {
