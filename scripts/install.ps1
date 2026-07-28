@@ -767,9 +767,14 @@ function Test-RunsInCallersSession {
 }
 
 function Write-NextSteps {
-    param([switch]$NeedsRestart)
+    # $InCallersSession is PASSED rather than resolved here, because
+    # $PSCommandPath is an automatic variable a test cannot shadow: a test that
+    # tried would silently exercise only the branch its own file puts it in, and
+    # the other branch would ship unproven. The call sites read the real answer
+    # once; the tests drive both branches directly.
+    param([switch]$NeedsRestart, [switch]$InCallersSession)
     $cmd = Get-LaunchCommand
-    $inCallersSession = Test-RunsInCallersSession
+    $inCallersSession = [bool]$InCallersSession
     Write-Host ""
     Write-Host "OK  Installation complete." -ForegroundColor Green
     Write-Host ""
@@ -1154,7 +1159,7 @@ function Install-FromSource {
     Install-Completions -BinPath $shim
     Invoke-Doctor -Command $shim
 
-    Write-NextSteps -NeedsRestart:$needsRestart
+    Write-NextSteps -NeedsRestart:$needsRestart -InCallersSession:(Test-RunsInCallersSession)
 }
 
 # Parse a `.sha256` sidecar body ("<64-hex>  <filename>") into the lowercased hash.
@@ -1383,7 +1388,7 @@ function Install-Binary {
     Install-Completions -BinPath $OutPath
     Invoke-Doctor -Command $OutPath -ExpectedTag $Latest
 
-    Write-NextSteps -NeedsRestart:$needsRestart
+    Write-NextSteps -NeedsRestart:$needsRestart -InCallersSession:(Test-RunsInCallersSession)
 }
 
 function Install-LocalBinary {
@@ -1442,7 +1447,7 @@ function Install-LocalBinary {
     # carries, and there is no release to compare it against.
     Invoke-Doctor -Command $OutPath
 
-    Write-NextSteps -NeedsRestart:$needsRestart
+    Write-NextSteps -NeedsRestart:$needsRestart -InCallersSession:(Test-RunsInCallersSession)
 }
 
 function Uninstall-Veyyon {
