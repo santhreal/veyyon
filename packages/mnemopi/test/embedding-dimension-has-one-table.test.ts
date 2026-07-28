@@ -15,13 +15,16 @@
  * agree for every listed model and for an unlisted one, and no second table may
  * reappear in the package source.
  *
- * WHAT THESE TESTS DO NOT CLAIM. The two resolvers still resolve the MODEL NAME
- * differently: `embeddingDimFor` is called with `DEFAULT_MODEL`, which consults the
- * active `withMnemopiRuntimeOptions` scope, and `config.embeddingDim()` reads only
- * `MNEMOPI_EMBEDDING_MODEL`. That divergence is real but latent, because no caller
- * sets a scope model today. It is filed as `EMBED-DIM-TWO-RESOLVERS` and is deliberately
- * out of scope here: unifying the tables is safe and removes the drift hazard, while
- * changing name resolution changes behavior on a live path.
+ * THE NAME-RESOLUTION HALF IS ALSO CLOSED NOW. The two resolvers used to resolve the
+ * MODEL NAME differently as well: the embedder's consulted the active
+ * `withMnemopiRuntimeOptions` scope and `config.embeddingDim()` read
+ * `MNEMOPI_EMBEDDING_MODEL` alone, so a scope naming a wider model moved the embedder
+ * and left the packer behind. `config.embeddingModel()` is the one resolver, and
+ * `embeddingDimFor` here is a re-export of the one in `../src/config`, which is why
+ * the cross-resolver assertions below now compare a function against itself and are
+ * kept anyway: they fail loudly if a second implementation is reintroduced under the
+ * old name. The scope behaviour itself is covered by
+ * `embedding-width-has-one-resolver.test.ts`.
  */
 
 import { describe, expect, it } from "bun:test";

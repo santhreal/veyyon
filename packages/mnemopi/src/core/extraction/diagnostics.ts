@@ -88,14 +88,14 @@ function errorRepr(exc: unknown): string {
 }
 
 export class ExtractionDiagnostics {
-	private tierStats: Record<ExtractionTier, MutableTierStats> = emptyTierStats();
-	private totalCalls = 0;
-	private totalSuccesses = 0;
-	private totalFailures = 0;
-	private totalEmpty = 0;
-	private createdAt = new Date().toISOString();
+	#tierStats: Record<ExtractionTier, MutableTierStats> = emptyTierStats();
+	#totalCalls = 0;
+	#totalSuccesses = 0;
+	#totalFailures = 0;
+	#totalEmpty = 0;
+	#createdAt = new Date().toISOString();
 
-	private validateTier(tier: string): asserts tier is ExtractionTier {
+	#validateTier(tier: string): asserts tier is ExtractionTier {
 		if (!isTier(tier)) {
 			throw new Error(
 				`unknown extraction tier ${JSON.stringify(tier)}; valid tiers: ${EXTRACTION_TIERS.join(", ")}`,
@@ -104,20 +104,20 @@ export class ExtractionDiagnostics {
 	}
 
 	recordAttempt(tier: ExtractionTier): void {
-		this.validateTier(tier);
-		this.tierStats[tier].attempts += 1;
+		this.#validateTier(tier);
+		this.#tierStats[tier].attempts += 1;
 	}
 	recordSuccess(tier: ExtractionTier, _factCount = 0): void {
-		this.validateTier(tier);
-		this.tierStats[tier].successes += 1;
+		this.#validateTier(tier);
+		this.#tierStats[tier].successes += 1;
 	}
 	recordNoOutput(tier: ExtractionTier): void {
-		this.validateTier(tier);
-		this.tierStats[tier].no_output += 1;
+		this.#validateTier(tier);
+		this.#tierStats[tier].no_output += 1;
 	}
 	recordFailure(tier: ExtractionTier, exc?: unknown, reason?: string): void {
-		this.validateTier(tier);
-		const stats = this.tierStats[tier];
+		this.#validateTier(tier);
+		const stats = this.#tierStats[tier];
 		stats.failures += 1;
 		const sample: ErrorSample = { at: new Date().toISOString(), type: "unspecified", msg: "" };
 		if (exc !== undefined && exc !== null) {
@@ -136,22 +136,22 @@ export class ExtractionDiagnostics {
 		}
 	}
 	recordCall(opts: { succeeded: boolean; allEmpty?: boolean }): void {
-		this.totalCalls += 1;
+		this.#totalCalls += 1;
 		if (opts.succeeded) {
-			this.totalSuccesses += 1;
+			this.#totalSuccesses += 1;
 		} else if (opts.allEmpty === true) {
-			this.totalEmpty += 1;
+			this.#totalEmpty += 1;
 		} else {
-			this.totalFailures += 1;
+			this.#totalFailures += 1;
 		}
 	}
 	successRate(): number {
-		return this.totalCalls === 0 ? 0 : this.totalSuccesses / this.totalCalls;
+		return this.#totalCalls === 0 ? 0 : this.#totalSuccesses / this.#totalCalls;
 	}
 	snapshot(): ExtractionStatsSnapshot {
 		const byTier = {} as Record<ExtractionTier, TierStatsSnapshot>;
 		for (const tier of EXTRACTION_TIERS) {
-			const stats = this.tierStats[tier];
+			const stats = this.#tierStats[tier];
 			byTier[tier] = {
 				attempts: stats.attempts,
 				successes: stats.successes,
@@ -161,13 +161,13 @@ export class ExtractionDiagnostics {
 			};
 		}
 		return {
-			created_at: this.createdAt,
+			created_at: this.#createdAt,
 			snapshot_at: new Date().toISOString(),
 			totals: {
-				calls: this.totalCalls,
-				successes: this.totalSuccesses,
-				failures: this.totalFailures,
-				empty: this.totalEmpty,
+				calls: this.#totalCalls,
+				successes: this.#totalSuccesses,
+				failures: this.#totalFailures,
+				empty: this.#totalEmpty,
 				success_rate: this.successRate(),
 			},
 			by_tier: byTier,
@@ -175,12 +175,12 @@ export class ExtractionDiagnostics {
 	}
 
 	reset(): void {
-		this.tierStats = emptyTierStats();
-		this.totalCalls = 0;
-		this.totalSuccesses = 0;
-		this.totalFailures = 0;
-		this.totalEmpty = 0;
-		this.createdAt = new Date().toISOString();
+		this.#tierStats = emptyTierStats();
+		this.#totalCalls = 0;
+		this.#totalSuccesses = 0;
+		this.#totalFailures = 0;
+		this.#totalEmpty = 0;
+		this.#createdAt = new Date().toISOString();
 	}
 }
 

@@ -42,68 +42,68 @@ function isRecallTier(tier: string): tier is RecallTier {
 }
 
 export class RecallDiagnostics {
-	private tierStats: Record<RecallTier, TierStats>;
-	private totalCalls: number;
-	private callsUsingWmFallback: number;
-	private callsUsingEmFallback: number;
-	private callsTrulyEmpty: number;
-	private createdAt: string;
+	#tierStats: Record<RecallTier, TierStats>;
+	#totalCalls: number;
+	#callsUsingWmFallback: number;
+	#callsUsingEmFallback: number;
+	#callsTrulyEmpty: number;
+	#createdAt: string;
 
 	constructor() {
-		this.tierStats = newTierStats();
-		this.totalCalls = 0;
-		this.callsUsingWmFallback = 0;
-		this.callsUsingEmFallback = 0;
-		this.callsTrulyEmpty = 0;
-		this.createdAt = new Date().toISOString();
+		this.#tierStats = newTierStats();
+		this.#totalCalls = 0;
+		this.#callsUsingWmFallback = 0;
+		this.#callsUsingEmFallback = 0;
+		this.#callsTrulyEmpty = 0;
+		this.#createdAt = new Date().toISOString();
 	}
 
-	private static validateTier(tier: string): asserts tier is RecallTier {
+	static #validateTier(tier: string): asserts tier is RecallTier {
 		if (!isRecallTier(tier)) {
 			throw new Error(`unknown recall tier ${JSON.stringify(tier)}; valid tiers: ${JSON.stringify(RECALL_TIERS)}`);
 		}
 	}
 
 	recordTierHits(tier: RecallTier | string, hitCount: number): void {
-		RecallDiagnostics.validateTier(tier);
+		RecallDiagnostics.#validateTier(tier);
 		if (hitCount < 0) throw new Error(`hit_count must be >= 0, got ${hitCount}`);
-		const stats = this.tierStats[tier];
+		const stats = this.#tierStats[tier];
 		if (hitCount > 0) stats.callsWithHits++;
 		stats.totalHits += hitCount;
 	}
 	recordFallbackUsed(options: { readonly wm?: boolean; readonly em?: boolean } = {}): void {
-		if (options.wm === true) this.callsUsingWmFallback++;
-		if (options.em === true) this.callsUsingEmFallback++;
+		if (options.wm === true) this.#callsUsingWmFallback++;
+		if (options.em === true) this.#callsUsingEmFallback++;
 	}
 	recordCall(options: { readonly trulyEmpty?: boolean; readonly truly_empty?: boolean } = {}): void {
-		this.totalCalls++;
-		if (options.trulyEmpty === true || options.truly_empty === true) this.callsTrulyEmpty++;
+		this.#totalCalls++;
+		if (options.trulyEmpty === true || options.truly_empty === true) this.#callsTrulyEmpty++;
 	}
 	fallbackRate(): { readonly wm: number; readonly em: number } {
-		if (this.totalCalls === 0) return { wm: 0.0, em: 0.0 };
+		if (this.#totalCalls === 0) return { wm: 0.0, em: 0.0 };
 		return {
-			wm: Math.min(1.0, this.callsUsingWmFallback / this.totalCalls),
-			em: Math.min(1.0, this.callsUsingEmFallback / this.totalCalls),
+			wm: Math.min(1.0, this.#callsUsingWmFallback / this.#totalCalls),
+			em: Math.min(1.0, this.#callsUsingEmFallback / this.#totalCalls),
 		};
 	}
 	snapshot(): RecallDiagnosticsSnapshot {
 		const rates = this.fallbackRate();
 		const byTier = {} as Record<RecallTier, TierStatsSnapshot>;
 		for (const tier of RECALL_TIERS) {
-			const stats = this.tierStats[tier];
+			const stats = this.#tierStats[tier];
 			byTier[tier] = {
 				calls_with_hits: stats.callsWithHits,
 				total_hits: stats.totalHits,
 			};
 		}
 		return {
-			created_at: this.createdAt,
+			created_at: this.#createdAt,
 			snapshot_at: new Date().toISOString(),
 			totals: {
-				calls: this.totalCalls,
-				calls_using_wm_fallback: this.callsUsingWmFallback,
-				calls_using_em_fallback: this.callsUsingEmFallback,
-				calls_truly_empty: this.callsTrulyEmpty,
+				calls: this.#totalCalls,
+				calls_using_wm_fallback: this.#callsUsingWmFallback,
+				calls_using_em_fallback: this.#callsUsingEmFallback,
+				calls_truly_empty: this.#callsTrulyEmpty,
 				wm_fallback_rate: rates.wm,
 				em_fallback_rate: rates.em,
 			},
@@ -112,12 +112,12 @@ export class RecallDiagnostics {
 	}
 
 	reset(): void {
-		this.tierStats = newTierStats();
-		this.totalCalls = 0;
-		this.callsUsingWmFallback = 0;
-		this.callsUsingEmFallback = 0;
-		this.callsTrulyEmpty = 0;
-		this.createdAt = new Date().toISOString();
+		this.#tierStats = newTierStats();
+		this.#totalCalls = 0;
+		this.#callsUsingWmFallback = 0;
+		this.#callsUsingEmFallback = 0;
+		this.#callsTrulyEmpty = 0;
+		this.#createdAt = new Date().toISOString();
 	}
 }
 

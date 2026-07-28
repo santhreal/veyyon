@@ -68,6 +68,72 @@ describe("fastembed model cache repair", () => {
 		}
 	});
 
+	/**
+	 * Why: concurrent initialization of the same model must share one repair and
+	 * create its directory, or duplicate downloads race to overwrite cache files.
+	 */
+	it("coalesces concurrent repairs into a newly created model directory", async () => {
+		const cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "mnemopi-fastembed-concurrent-"));
+		const requested: string[] = [];
+		const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+			Object.assign(
+				async (input: string | URL | Request) => {
+					requested.push(String(input));
+					return new Response(`body:${path.basename(String(input))}`);
+				},
+				{ preconnect: globalThis.fetch.preconnect },
+			),
+		);
+
+		try {
+			expect(
+				await Promise.all([
+					ensureFastembedModelSidecars("fast-bge-small-en", cacheDir),
+					ensureFastembedModelSidecars("fast-bge-small-en", cacheDir),
+				]),
+			).toEqual([true, true]);
+			expect(requested).toHaveLength(4);
+			expect(new Set(requested).size).toBe(4);
+			expect(await Bun.file(path.join(cacheDir, "fast-bge-small-en", "config.json")).text()).toBe(
+				"body:config.json",
+			);
+		} finally {
+			fetchSpy.mockRestore();
+			await fs.rm(cacheDir, { recursive: true, force: true });
+		}
+	});
+
+	/**
+	 * Why: an aborted shared repair must be evicted from the in-flight cache so a
+	 * later initializer can retry instead of inheriting the cancelled rejection.
+	 */
+	it("retries after a shared sidecar repair is cancelled", async () => {
+		const cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "mnemopi-fastembed-abort-"));
+		let calls = 0;
+		const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+			Object.assign(
+				async (input: string | URL | Request) => {
+					calls += 1;
+					if (calls === 1) throw new DOMException("cancelled", "AbortError");
+					return new Response(`body:${path.basename(String(input))}`);
+				},
+				{ preconnect: globalThis.fetch.preconnect },
+			),
+		);
+
+		try {
+			await expect(ensureFastembedModelSidecars("fast-bge-base-en", cacheDir)).rejects.toHaveProperty(
+				"name",
+				"AbortError",
+			);
+			expect(await ensureFastembedModelSidecars("fast-bge-base-en", cacheDir)).toBe(true);
+			expect(calls).toBe(5);
+		} finally {
+			fetchSpy.mockRestore();
+			await fs.rm(cacheDir, { recursive: true, force: true });
+		}
+	});
+
 	it("reports unsupported fastembed cache names without network access", async () => {
 		const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
 			Object.assign(

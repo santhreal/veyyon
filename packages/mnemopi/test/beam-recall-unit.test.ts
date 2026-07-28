@@ -624,16 +624,66 @@ describe("beam recall free functions", () => {
 		expect(ids).not.toContain("fact");
 	});
 
-	it("filters the topic option against the source column (see FINDING-RECALL-TOPIC-EQ-SOURCE)", async () => {
-		// buildWhere maps `topic` onto `source = ?`; there is no topic column on
-		// working/episodic memory. This locks the current behavior so a fix is a
-		// visible test change, not a silent regression.
+	/**
+	 * `topic` refuses instead of quietly filtering a different column.
+	 *
+	 * Working and episodic memory have no topic column; only the `memoria_*` tables do. The clause
+	 * used to push `source = ?` bound to the topic value, and both of its outcomes looked like
+	 * data rather than like a bug. `{ topic: "chat" }` alone returned every memory whose SOURCE is
+	 * "chat", a plausible result set answering a different question, and `{ source, topic }`
+	 * together emitted `source = 'a' AND source = 'b'`, which is always empty and reads as "you
+	 * have no memories like that".
+	 *
+	 * The old behavior was pinned by a characterization test saying a fix should be a visible test
+	 * change rather than a silent regression. This is that change.
+	 */
+	it("refuses a topic filter rather than aliasing it onto source", async () => {
 		const beam = makeBeam();
 		insertTagged(beam, "chat", "coffee tagged chat", { source: "chat", veracity: "true", memoryType: "fact" });
 		insertTagged(beam, "email", "coffee tagged email", { source: "email", veracity: "true", memoryType: "fact" });
 
-		const ids = (await recall(beam, "coffee", 10, { topic: "chat" })).map(row => row.id);
+		expect(recall(beam, "coffee", 10, { topic: "chat" })).rejects.toThrow(/no\s+topic column/);
+		expect(recall(beam, "coffee", 10, { topic: "chat" })).rejects.toThrow(/"chat"/);
+	});
+
+	/**
+	 * And the error says what to do instead, because the caller's intent is guessable but not ours
+	 * to guess: a `source` filter and a `memoria_*` query are different answers to "filter by topic".
+	 */
+	it("names both alternatives in the refusal", async () => {
+		const beam = makeBeam();
+		insertTagged(beam, "chat", "coffee tagged chat", { source: "chat", veracity: "true", memoryType: "fact" });
+
+		expect(recall(beam, "coffee", 10, { topic: "anything" })).rejects.toThrow(/`source`/);
+		expect(recall(beam, "coffee", 10, { topic: "anything" })).rejects.toThrow(/memoria_preferences/);
+	});
+
+	/**
+	 * The positive twin: `source` still filters, so the refusal did not take the working case with it.
+	 *
+	 * Without this, deleting the clause entirely would satisfy both assertions above.
+	 */
+	it("still filters on source, which is the column that exists", async () => {
+		const beam = makeBeam();
+		insertTagged(beam, "chat", "coffee tagged chat", { source: "chat", veracity: "true", memoryType: "fact" });
+		insertTagged(beam, "email", "coffee tagged email", { source: "email", veracity: "true", memoryType: "fact" });
+
+		const ids = (await recall(beam, "coffee", 10, { source: "chat" })).map(row => row.id);
 		expect(ids).toContain("chat");
 		expect(ids).not.toContain("email");
+	});
+
+	/**
+	 * An absent or empty topic is not a filter and must not refuse.
+	 *
+	 * `toRecallOptions` normalizes a missing `topic` to `null`, so every ordinary recall passes the
+	 * key with a null value. A guard written as `"topic" in options` would reject all of them.
+	 */
+	it("ignores a null or empty topic", async () => {
+		const beam = makeBeam();
+		insertTagged(beam, "chat", "coffee tagged chat", { source: "chat", veracity: "true", memoryType: "fact" });
+
+		expect((await recall(beam, "coffee", 10, { topic: null })).map(row => row.id)).toContain("chat");
+		expect((await recall(beam, "coffee", 10, { topic: "" })).map(row => row.id)).toContain("chat");
 	});
 });

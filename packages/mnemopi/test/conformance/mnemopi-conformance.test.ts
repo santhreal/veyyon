@@ -11,7 +11,7 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { assertConformance } from "@veyyon/utils";
-import { EMBEDDING_DIM } from "../../src/core/binary-vectors";
+import { configuredEmbeddingDim } from "../../src/core/binary-vectors";
 import {
 	binarizeAsArray,
 	cosineSimilarity,
@@ -48,7 +48,7 @@ describe("mnemopi conformance corpus", () => {
 		// binarizeAsArray clamps to EMBEDDING_DIM (env-overridable). The corpus
 		// uses inputs of at most 32 dims, so any environment with a smaller
 		// override would silently change oracle behavior: fail loudly instead.
-		expect(EMBEDDING_DIM).toBeGreaterThanOrEqual(32);
+		expect(configuredEmbeddingDim()).toBeGreaterThanOrEqual(32);
 	});
 
 	test("every recorded vector replays exactly against the TS implementation", () => {

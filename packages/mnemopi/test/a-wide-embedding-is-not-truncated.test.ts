@@ -27,7 +27,7 @@
 import { describe, expect, it } from "bun:test";
 import {
 	BinaryVectorStore,
-	EMBEDDING_DIM,
+	configuredEmbeddingDim,
 	hammingDistance,
 	maximallyInformativeBinarization,
 } from "@veyyon/mnemopi/core/binary-vectors";
@@ -45,7 +45,7 @@ describe("the premise these tests rest on", () => {
 	 * instead of silent.
 	 */
 	it("runs against the narrow default width the bug depended on", () => {
-		expect(EMBEDDING_DIM).toBe(384);
+		expect(configuredEmbeddingDim()).toBe(384);
 	});
 });
 

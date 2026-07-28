@@ -207,10 +207,10 @@ export class EpisodicGraph {
 		this.dbPath = options.dbPath ?? ":memory:";
 		this.db = options.db ?? openDatabase(this.dbPath);
 		this.ownsConnection = options.db === undefined;
-		this.initTables();
+		this.#initTables();
 	}
 
-	private initTables(): void {
+	#initTables(): void {
 		this.db.run(`
 			CREATE TABLE IF NOT EXISTS gists (
 				id TEXT PRIMARY KEY,
@@ -261,12 +261,12 @@ export class EpisodicGraph {
 	extractGist(content: string, memoryId: string): Gist {
 		return {
 			id: `gist_${memoryId}`,
-			text: this.createSummary(content),
+			text: this.#createSummary(content),
 			timestamp: toUtcIso(),
-			participants: this.extractParticipants(content),
-			location: this.extractLocation(content),
-			emotion: this.extractEmotion(content),
-			timeScope: this.extractTemporalScope(content),
+			participants: this.#extractParticipants(content),
+			location: this.#extractLocation(content),
+			emotion: this.#extractEmotion(content),
+			timeScope: this.#extractTemporalScope(content),
 		};
 	}
 	extractFacts(content: string, memoryId: string): Fact[] {
@@ -418,9 +418,9 @@ export class EpisodicGraph {
 		return rows.map(rowToGist);
 	}
 	scoreMemoryLink(sourceMemoryId: string, targetMemoryId: string): number {
-		const left = this.memoryFeatures(sourceMemoryId);
-		const right = this.memoryFeatures(targetMemoryId);
-		return this.scoreFeatures(left, right);
+		const left = this.#memoryFeatures(sourceMemoryId);
+		const right = this.#memoryFeatures(targetMemoryId);
+		return this.#scoreFeatures(left, right);
 	}
 	ingestMemory(content: string, memoryId: string, options: IngestOptions = {}): IngestResult {
 		const sessionId = options.sessionId ?? "default";
@@ -432,7 +432,7 @@ export class EpisodicGraph {
 		const edges: GraphEdge[] = [];
 		const timestamp = toUtcIso();
 
-		const previousMemoryIds = linkExisting ? this.knownMemoryIds(memoryId) : [];
+		const previousMemoryIds = linkExisting ? this.#knownMemoryIds(memoryId) : [];
 		this.storeGist(gist, memoryId);
 		const gistEdge = { source: memoryId, target: gist.id, edgeType: "ctx", weight: 1, timestamp };
 		this.addEdge(gistEdge);
@@ -454,7 +454,7 @@ export class EpisodicGraph {
 		if (linkExisting) {
 			const sourceTokens = contentTokenSet(content);
 			for (const otherId of previousMemoryIds) {
-				const otherContent = this.memoryContent(otherId);
+				const otherContent = this.#memoryContent(otherId);
 				const lexicalScore = Math.round(jaccardIndex(sourceTokens, contentTokenSet(otherContent)) * 1000) / 1000;
 				let wroteCtxEdge = false;
 				if (lexicalScore >= minLinkScore) {
@@ -478,7 +478,7 @@ export class EpisodicGraph {
 					edges.push(ctxEdge);
 					wroteCtxEdge = true;
 				}
-				const entityScore = this.entityOverlapScore(memoryId, otherId);
+				const entityScore = this.#entityOverlapScore(memoryId, otherId);
 				if (entityScore > 0) {
 					const edge = {
 						source: memoryId,
@@ -490,7 +490,7 @@ export class EpisodicGraph {
 					this.addEdge(edge);
 					edges.push(edge);
 				}
-				const contextualScore = Math.max(lexicalScore, entityScore, this.temporalContextScore(memoryId, otherId));
+				const contextualScore = Math.max(lexicalScore, entityScore, this.#temporalContextScore(memoryId, otherId));
 				if (!wroteCtxEdge && contextualScore >= minLinkScore) {
 					const ctxEdge = {
 						source: memoryId,
@@ -508,21 +508,21 @@ export class EpisodicGraph {
 		return { memoryId, gist, facts, edges };
 	}
 	getStats(): GraphStats {
-		const gists = this.count("gists");
-		const facts = this.count("facts");
-		const edges = this.count("graph_edges");
+		const gists = this.#count("gists");
+		const facts = this.#count("facts");
+		const edges = this.#count("graph_edges");
 		return { gists, facts, edges, totalNodes: gists + facts };
 	}
 	close(): void {
 		if (this.ownsConnection) closeQuietly(this.db);
 	}
 
-	private count(table: "gists" | "facts" | "graph_edges"): number {
+	#count(table: "gists" | "facts" | "graph_edges"): number {
 		const row = this.db.query(`SELECT COUNT(*) AS count FROM ${table}`).get() as CountRow;
 		return row.count;
 	}
 
-	private extractParticipants(content: string): string[] {
+	#extractParticipants(content: string): string[] {
 		const names = Array.from(content.matchAll(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g), match => match[1] ?? "");
 		const pronouns = Array.from(
 			content.matchAll(/\b(I|you|we|they|he|she|it|me|us|them|him|her)\b/gi),
@@ -531,7 +531,7 @@ export class EpisodicGraph {
 		return unique([...names, ...pronouns], 5);
 	}
 
-	private extractTemporalScope(content: string): string | null {
+	#extractTemporalScope(content: string): string | null {
 		const patterns: readonly [RegExp, string][] = [
 			[/\b(yesterday|today|tomorrow|now|soon|later|earlier)\b/i, "point_in_time"],
 			[/\b(last\s+week|last\s+month|last\s+year|next\s+week)\b/i, "point_in_time"],
@@ -546,7 +546,7 @@ export class EpisodicGraph {
 		return null;
 	}
 
-	private extractLocation(content: string): string | null {
+	#extractLocation(content: string): string | null {
 		const properPlace =
 			/\b(?:at|in|from)\s+([A-Z][a-zA-Z\s]+?)(?:\s+(?:yesterday|today|tomorrow|now|last|next|on|at)\b|$)/i.exec(
 				content,
@@ -556,7 +556,7 @@ export class EpisodicGraph {
 		return genericPlace?.[1] ?? null;
 	}
 
-	private extractEmotion(content: string): string | null {
+	#extractEmotion(content: string): string | null {
 		const lower = content.toLocaleLowerCase();
 		if (
 			["happy", "excited", "great", "awesome", "love", "enjoy", "glad", "pleased"].some(word => lower.includes(word))
@@ -568,13 +568,13 @@ export class EpisodicGraph {
 		return null;
 	}
 
-	private createSummary(content: string): string {
+	#createSummary(content: string): string {
 		const firstSentence = content.split(/[.!?]+/, 1)[0]?.trim() ?? "";
 		if (firstSentence.length > 10) return firstSentence.slice(0, 100);
 		return content.slice(0, 100).trim();
 	}
 
-	private knownMemoryIds(exclude: string): string[] {
+	#knownMemoryIds(exclude: string): string[] {
 		const ids = new Set<string>();
 		const gistRows = this.db
 			.query("SELECT DISTINCT memory_id FROM gists WHERE memory_id IS NOT NULL AND memory_id != ?")
@@ -597,7 +597,7 @@ export class EpisodicGraph {
 		return [...ids];
 	}
 
-	private memoryContent(memoryId: string): string {
+	#memoryContent(memoryId: string): string {
 		// Standalone EpisodicGraph users may not have Beam tables; gate instead of
 		// catching so a broken handle propagates rather than degrading to gist text.
 		if (tableExists(this.db, "working_memory")) {
@@ -618,7 +618,7 @@ export class EpisodicGraph {
 		return gist?.text ?? "";
 	}
 
-	private entityOverlapScore(sourceMemoryId: string, targetMemoryId: string): number {
+	#entityOverlapScore(sourceMemoryId: string, targetMemoryId: string): number {
 		const leftRows = this.db
 			.query("SELECT subject, object FROM facts WHERE source_msg_id = ?")
 			.all(sourceMemoryId) as FactRow[];
@@ -630,7 +630,7 @@ export class EpisodicGraph {
 		return Math.round(overlapScore(left, right) * 1000) / 1000;
 	}
 
-	private temporalContextScore(sourceMemoryId: string, targetMemoryId: string): number {
+	#temporalContextScore(sourceMemoryId: string, targetMemoryId: string): number {
 		const left = this.db.query("SELECT time_scope FROM gists WHERE memory_id = ?").get(sourceMemoryId) as {
 			time_scope: string | null;
 		} | null;
@@ -642,7 +642,7 @@ export class EpisodicGraph {
 		return left.time_scope === right.time_scope ? DEFAULT_LINK_THRESHOLD : 0;
 	}
 
-	private memoryFeatures(memoryId: string): Set<string> {
+	#memoryFeatures(memoryId: string): Set<string> {
 		const gistRows = this.db.query("SELECT * FROM gists WHERE memory_id = ?").all(memoryId) as GistRow[];
 		const factRows = this.db.query("SELECT * FROM facts WHERE source_msg_id = ?").all(memoryId) as FactRow[];
 		const features: (string | null)[] = [];
@@ -656,7 +656,7 @@ export class EpisodicGraph {
 		return lowerSet(features);
 	}
 
-	private scoreFeatures(left: Set<string>, right: Set<string>): number {
+	#scoreFeatures(left: Set<string>, right: Set<string>): number {
 		return Math.round(overlapScore(left, right) * 1000) / 1000;
 	}
 }

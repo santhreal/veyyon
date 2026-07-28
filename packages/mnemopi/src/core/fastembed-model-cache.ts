@@ -1,3 +1,4 @@
+import { mkdir } from "node:fs/promises";
 import * as path from "node:path";
 
 const FASTEMBED_MODEL_SIDECARS = [
@@ -6,6 +7,7 @@ const FASTEMBED_MODEL_SIDECARS = [
 	"tokenizer_config.json",
 	"special_tokens_map.json",
 ] as const;
+const sidecarRepairs = new Map<string, Promise<boolean>>();
 
 /**
  * Every local model mnemopi can run, with both names it answers to.
@@ -36,8 +38,8 @@ const FASTEMBED_MODELS: ReadonlyArray<{ readonly hfRepo: string; readonly fastem
  * for a model mnemopi cannot run locally.
  *
  * Read this rather than importing `fastembed` to resolve a name: that module eagerly
- * loads the `onnxruntime-node` native addon, which segfaults in some runtimes. This file
- * imports nothing but `node:path`, so consulting it is always safe.
+ * loads `onnxruntime-node`, which can fail in unsupported runtimes. This file imports
+ * only Node built-ins, so consulting it is always safe.
  */
 export const FASTEMBED_ID_BY_HF_REPO: Readonly<Record<string, string>> = Object.fromEntries(
 	FASTEMBED_MODELS.map(model => [model.hfRepo, model.fastembedId]),
@@ -49,11 +51,24 @@ export const HF_REPO_BY_FASTEMBED_ID: Readonly<Record<string, string>> = Object.
 );
 
 /** Download missing config/tokenizer sidecars into a fastembed model cache directory. */
-export async function ensureFastembedModelSidecars(model: string, cacheDir = "local_cache"): Promise<boolean> {
+export function ensureFastembedModelSidecars(model: string, cacheDir = "local_cache"): Promise<boolean> {
 	const repo = HF_REPO_BY_FASTEMBED_ID[model];
-	if (repo === undefined) return false;
+	if (repo === undefined) return Promise.resolve(false);
 
-	const modelDir = path.join(cacheDir, model);
+	const modelDir = path.resolve(cacheDir, model);
+	const pending = sidecarRepairs.get(modelDir);
+	if (pending !== undefined) return pending;
+
+	let repair: Promise<boolean>;
+	repair = repairFastembedModelSidecars(model, repo, modelDir).finally(() => {
+		if (sidecarRepairs.get(modelDir) === repair) sidecarRepairs.delete(modelDir);
+	});
+	sidecarRepairs.set(modelDir, repair);
+	return repair;
+}
+
+async function repairFastembedModelSidecars(model: string, repo: string, modelDir: string): Promise<boolean> {
+	await mkdir(modelDir, { recursive: true });
 	for (const fileName of FASTEMBED_MODEL_SIDECARS) {
 		const target = path.join(modelDir, fileName);
 		if (await Bun.file(target).exists()) continue;

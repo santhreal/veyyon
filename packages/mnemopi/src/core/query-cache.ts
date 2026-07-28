@@ -39,6 +39,7 @@ interface CacheRow {
 	readonly normalized: string;
 	readonly embedding_json: string | null;
 	readonly results_json: string;
+	readonly created_at_epoch: number | null;
 }
 
 export function isEnhancedRecallEnabled(env: Env = process.env): boolean {
@@ -98,12 +99,33 @@ export class QueryCache {
 		`);
 
 		try {
-			const rows = db.query("SELECT normalized, embedding_json, results_json FROM query_cache").all() as CacheRow[];
+			const rows = db
+				.query(`
+					SELECT
+						normalized,
+						embedding_json,
+						results_json,
+						unixepoch(created_at) AS created_at_epoch
+					FROM query_cache
+					ORDER BY last_hit ASC, normalized ASC
+				`)
+				.all() as CacheRow[];
 			const now = Date.now() / 1000;
 			for (const row of rows) {
 				try {
-					const results = JSON.parse(row.results_json) as QueryCacheResult[];
-					this.#rememberKey(row.normalized, now);
+					if (
+						row.created_at_epoch === null ||
+						!Number.isFinite(row.created_at_epoch) ||
+						now - row.created_at_epoch > this.ttlSeconds
+					) {
+						this.#deleteKey(row.normalized, true);
+						continue;
+					}
+					const results: unknown = JSON.parse(row.results_json);
+					if (!Array.isArray(results)) {
+						throw new Error("Persisted query-cache results are not an array.");
+					}
+					this.#rememberKey(row.normalized, row.created_at_epoch);
 					this.#tier1.set(row.normalized, results);
 					this.#tier4.set(row.normalized, results);
 					const embedding = decodeEmbeddingJson(row.embedding_json);
@@ -111,9 +133,10 @@ export class QueryCache {
 						this.#tier23.set(row.normalized, { embedding, results });
 					}
 				} catch {
-					// Match Python's best-effort persistence loading: corrupt rows are ignored.
+					this.#deleteKey(row.normalized, true);
 				}
 			}
+			this.#evictIfNeeded();
 		} catch {
 			// Keep an in-memory cache if persistence loading fails after schema setup.
 		}
@@ -244,7 +267,7 @@ export class QueryCache {
 	normalize(query: string): string {
 		const words: string[] = [];
 		for (const rawWord of query.split(/\s+/)) {
-			if (rawWord.length > 1) words.push(rawWord.toLowerCase());
+			if (rawWord.length !== 0) words.push(rawWord.toLowerCase());
 		}
 		return words.sort().join(" ");
 	}

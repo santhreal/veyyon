@@ -67,17 +67,21 @@ let localModelInitializer: LocalModelInitializer = defaultLocalModelInitializer;
 let localModelInitializerGeneration = 0;
 let apiCallCount = 0;
 const queryCache = new LRUCache<string, Vector>({ max: QUERY_CACHE_MAX });
+const pendingQueryEmbeddings = new Map<string, Promise<Vector | null>>();
 // Per-process HMAC prevents low-entropy query text from being recovered by
 // precomputed/dictionary hashing if a heap or cache-key dump is inspected.
 const queryCacheHmacKey = randomBytes(32);
+let queryCacheGeneration = 0;
 
 // Runtime object identities are process-local cache scope components. A
 // behavior-versioned sanitizer epoch is still mandatory: the same function can
 // close over a mutable obfuscator and change output without changing identity.
 const providerIds = new WeakMap<object, number>();
 const sanitizerIds = new WeakMap<object, number>();
+const credentialIds = new WeakMap<object, number>();
 let nextProviderId = 1;
 let nextSanitizerId = 1;
+let nextCredentialId = 1;
 
 async function defaultLocalModelInitializer(options: LocalModelInitOptions): Promise<LocalEmbeddingModel> {
 	const { FlagEmbedding } = await loadFastembed();
@@ -118,7 +122,7 @@ function sanitizeEmbeddingProviderText(text: string): string {
  */
 function queryCacheKey(text: string): string | null {
 	const active = activeEmbeddingOptions();
-	const provider = active?.provider as object | undefined;
+	const provider = active?.provider;
 	let providerId = 0;
 	if (provider !== undefined) {
 		const existing = providerIds.get(provider);
@@ -132,6 +136,7 @@ function queryCacheKey(text: string): string | null {
 
 	const model = defaultModel();
 	let sanitizerScope = "local";
+	let credentialScope = "local";
 	if (provider === undefined && providerOverride === null && isApiModel(model)) {
 		const sanitizer = active?.sanitizeProviderText;
 		if (sanitizer !== undefined) {
@@ -145,15 +150,28 @@ function queryCacheKey(text: string): string | null {
 		} else {
 			sanitizerScope = "none";
 		}
+		const apiKey = embeddingApiKey();
+		if (typeof apiKey === "function") {
+			let credentialId = credentialIds.get(apiKey);
+			if (credentialId === undefined) {
+				credentialId = nextCredentialId++;
+				credentialIds.set(apiKey, credentialId);
+			}
+			credentialScope = `resolver:${credentialId}`;
+		} else {
+			credentialScope = createHmac("sha256", queryCacheHmacKey).update(apiKey, "utf8").digest("hex");
+		}
 	}
 
 	const textDigest = createHmac("sha256", queryCacheHmacKey).update(text, "utf8").digest("hex");
 	return [
+		queryCacheGeneration,
 		providerId,
 		model,
 		embeddingBaseUrl(),
 		effectiveMaxInputChars(),
 		sanitizerScope,
+		credentialScope,
 		textDigest,
 	].join("::");
 }
@@ -318,13 +336,36 @@ export function isApiModel(modelName: string): boolean {
  */
 export { embeddingDimFor } from "../config";
 
-/** Drain an embedding stream (a custom provider or fastembed) into a `Float32Array` matrix. */
-async function collectMatrix(batches: EmbeddingOutput): Promise<EmbeddingMatrix> {
+function toEmbeddingVector(row: unknown): Vector {
+	if (
+		!Array.isArray(row) ||
+		row.length === 0 ||
+		!row.every(value => typeof value === "number" && Number.isFinite(value))
+	) {
+		throw new Error("Mnemopi embedding provider returned an invalid vector row.");
+	}
+	const vector = new Float32Array(row);
+	if (!vector.every(Number.isFinite)) {
+		throw new Error("Mnemopi embedding provider returned a vector outside the Float32 range.");
+	}
+	return vector;
+}
+/** Drain and validate an embedding stream into a matrix matching the requested inputs exactly. */
+async function collectMatrix(batches: EmbeddingOutput, expectedRows: number): Promise<EmbeddingMatrix> {
 	const rows: Vector[] = [];
 	for await (const batch of batches) {
-		for (const row of batch) {
-			rows.push(new Float32Array(row));
+		if (!Array.isArray(batch)) {
+			throw new Error("Mnemopi embedding provider returned a non-array batch.");
 		}
+		for (const row of batch) {
+			if (rows.length >= expectedRows) {
+				throw new Error("Mnemopi embedding provider returned more vectors than requested.");
+			}
+			rows.push(toEmbeddingVector(row));
+		}
+	}
+	if (rows.length !== expectedRows) {
+		throw new Error(`Mnemopi embedding provider returned ${rows.length} vectors for ${expectedRows} inputs.`);
 	}
 	return rows;
 }
@@ -369,11 +410,13 @@ async function getLocalModel(): Promise<LocalEmbeddingModel | null> {
 
 	mkdirSync(cacheDir, { recursive: true });
 	const initializer = localModelInitializer;
-	const loading = initializer({
-		model: modelName,
-		cacheDir,
-		showDownloadProgress: false,
-	});
+	const loading = Promise.resolve().then(() =>
+		initializer({
+			model: modelName,
+			cacheDir,
+			showDownloadProgress: false,
+		}),
+	);
 	localModelPromises.set(cacheKey, loading);
 	try {
 		return await loading;
@@ -448,13 +491,29 @@ async function embedApi(texts: readonly string[]): Promise<EmbeddingMatrix | nul
 				reportEmbeddingFailure(`the embeddings endpoint returned HTTP ${response.status}`, baseUrl);
 				return null;
 			}
-			const { data: rows } = (await response.json()) as { data?: Array<{ embedding: number[] }> };
-			if (rows === undefined) {
+			const payload: unknown = await response.json();
+			if (
+				payload === null ||
+				typeof payload !== "object" ||
+				!("data" in payload) ||
+				!Array.isArray(payload.data)
+			) {
 				reportEmbeddingFailure("the embeddings endpoint returned a response with no `data` array", baseUrl);
 				return null;
 			}
+			if (payload.data.length !== texts.length) {
+				throw new Error(
+					`Mnemopi embeddings endpoint returned ${payload.data.length} vectors for ${texts.length} inputs.`,
+				);
+			}
+			const vectors = payload.data.map(row => {
+				if (row === null || typeof row !== "object" || !("embedding" in row)) {
+					throw new Error("Mnemopi embeddings endpoint returned a row with no `embedding` vector.");
+				}
+				return toEmbeddingVector(row.embedding);
+			});
 			apiCallCount += 1;
-			return rows.map(row => new Float32Array(row.embedding));
+			return vectors;
 		});
 	} catch (error) {
 		const status = extractHttpStatusFromError(error);
@@ -487,7 +546,7 @@ async function providerAvailable(provider: EmbeddingProvider): Promise<boolean> 
 		return true;
 	}
 	try {
-		return await provider.available();
+		return (await provider.available()) === true;
 	} catch {
 		// A provider whose own availability check throws is not available, which is the answer this asks for.
 		// Quiet here on purpose: the caller that then tries to embed reports the loss through
@@ -498,7 +557,9 @@ async function providerAvailable(provider: EmbeddingProvider): Promise<boolean> 
 
 export function setEmbeddingProviderForTests(provider: EmbeddingProvider | null | undefined): void {
 	providerOverride = provider ?? null;
+	queryCacheGeneration += 1;
 	queryCache.clear();
+	pendingQueryEmbeddings.clear();
 }
 
 export const setEmbeddingProvider = setEmbeddingProviderForTests;
@@ -506,7 +567,9 @@ export const setEmbeddingProvider = setEmbeddingProviderForTests;
 export function setLocalModelInitializerForTests(initializer: LocalModelInitializer | null | undefined): void {
 	localModelInitializer = initializer ?? defaultLocalModelInitializer;
 	localModelInitializerGeneration += 1;
+	queryCacheGeneration += 1;
 	queryCache.clear();
+	pendingQueryEmbeddings.clear();
 }
 
 /**
@@ -524,8 +587,10 @@ export function resetEmbeddingProviderForTests(): void {
 	localModelPromises.clear();
 	localModelInitializer = defaultLocalModelInitializer;
 	localModelInitializerGeneration += 1;
+	queryCacheGeneration += 1;
 	apiCallCount = 0;
 	queryCache.clear();
+	pendingQueryEmbeddings.clear();
 }
 
 export const resetEmbeddingStateForTests = resetEmbeddingProviderForTests;
@@ -564,19 +629,34 @@ export async function embedQuery(text: string): Promise<Vector | null> {
 		return null;
 	}
 	const key = queryCacheKey(text);
-	if (key !== null) {
-		const cached = queryCache.get(key);
-		if (cached !== undefined) {
-			return cached.slice();
+	if (key === null) {
+		const vectors = await embed([text]);
+		return vectors?.[0] ?? null;
+	}
+	const cached = queryCache.get(key);
+	if (cached !== undefined) {
+		return cached.slice();
+	}
+	const pending = pendingQueryEmbeddings.get(key);
+	if (pending !== undefined) {
+		const vector = await pending;
+		return vector?.slice() ?? null;
+	}
+	const loading = (async () => {
+		const vectors = await embed([text]);
+		const vector = vectors?.[0] ?? null;
+		if (vector !== null && queryCacheKey(text) === key) {
+			queryCache.set(key, vector.slice());
 		}
+		return vector;
+	})();
+	pendingQueryEmbeddings.set(key, loading);
+	try {
+		const vector = await loading;
+		return vector?.slice() ?? null;
+	} finally {
+		if (pendingQueryEmbeddings.get(key) === loading) pendingQueryEmbeddings.delete(key);
 	}
-	const vectors = await embed([text]);
-	const vector = vectors?.[0] ?? null;
-	const storeKey = queryCacheKey(text);
-	if (vector !== null && storeKey !== null) {
-		queryCache.set(storeKey, vector.slice());
-	}
-	return vector;
 }
 
 export async function embed(texts: readonly string[]): Promise<EmbeddingMatrix | null> {
@@ -587,7 +667,7 @@ export async function embed(texts: readonly string[]): Promise<EmbeddingMatrix |
 	if (activeProvider !== undefined) {
 		texts = capInputs(texts);
 		try {
-			return await collectMatrix(await activeProvider.embed(texts));
+			return await collectMatrix(await activeProvider.embed(texts), texts.length);
 		} catch (error) {
 			// Null makes every caller fall back to keyword-only search, which is the same thing "embeddings are
 			// switched off" produces, so a provider that is failing looked exactly like a provider nobody
@@ -599,7 +679,7 @@ export async function embed(texts: readonly string[]): Promise<EmbeddingMatrix |
 	if (providerOverride !== null) {
 		texts = capInputs(texts);
 		try {
-			return await collectMatrix(await providerOverride.embed(texts));
+			return await collectMatrix(await providerOverride.embed(texts), texts.length);
 		} catch (error) {
 			// Same loss through the override path, which tests and embedders set: silent null here made a
 			// broken override indistinguishable from embeddings being disabled.
@@ -614,9 +694,9 @@ export async function embed(texts: readonly string[]): Promise<EmbeddingMatrix |
 		return embedApi(texts);
 	}
 	texts = capInputs(texts);
-	if (texts.length === 1) {
-		const key = queryCacheKey(texts[0] ?? "");
-		const cached = key === null ? undefined : queryCache.get(key);
+	const localCacheKey = texts.length === 1 ? queryCacheKey(texts[0] ?? "") : null;
+	if (localCacheKey !== null) {
+		const cached = queryCache.get(localCacheKey);
 		if (cached !== undefined) {
 			return [cached.slice()];
 		}
@@ -626,12 +706,15 @@ export async function embed(texts: readonly string[]): Promise<EmbeddingMatrix |
 		return null;
 	}
 	try {
-		const vectors = await collectMatrix(model.embed([...texts]));
+		const vectors = await collectMatrix(model.embed([...texts]), texts.length);
 		if (vectors.length === 1) {
 			const vector = vectors[0];
-			const key = queryCacheKey(texts[0] ?? "");
-			if (vector !== undefined && key !== null) {
-				queryCache.set(key, vector.slice());
+			if (
+				vector !== undefined &&
+				localCacheKey !== null &&
+				queryCacheKey(texts[0] ?? "") === localCacheKey
+			) {
+				queryCache.set(localCacheKey, vector.slice());
 			}
 		}
 		return vectors;

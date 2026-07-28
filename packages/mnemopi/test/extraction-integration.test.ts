@@ -91,6 +91,27 @@ describe("extraction integration", () => {
 		expect(getExtractionStats().by_tier.cloud.successes).toBe(1);
 	});
 
+	/**
+	 * Why: JSON arrays containing nulls or primitives are malformed provider output,
+	 * not `ExtractedFact[]`; accepting them moves the failure into downstream storage.
+	 */
+	it("rejects a cloud fact array containing non-object entries", async () => {
+		const fetchMock: FetchImpl = async () =>
+			Response.json({
+				choices: [{ message: { content: '[{"subject":"Ada"},null,"not a fact",[]]' } }],
+			});
+		const client = new ExtractionClient({
+			apiKey: "sk-test",
+			baseUrl: "http://openrouter.test/api/v1",
+			fetch: fetchMock,
+		});
+
+		expect(await client.extractFacts([{ role: "user", content: "Ada prefers tea." }])).toEqual([]);
+		const cloud = getExtractionStats().by_tier.cloud;
+		expect(cloud.failures).toBe(1);
+		expect(cloud.error_samples.some(sample => sample.reason === "invalid_facts_response")).toBe(true);
+	});
+
 	it("records malformed cloud JSON as a diagnostic failure", async () => {
 		const fetchMock: FetchImpl = async () =>
 			new Response(JSON.stringify({ choices: [{ message: { content: "Here: [oops, not json]" } }] }), {
@@ -151,6 +172,10 @@ describe("extraction integration", () => {
 		expect(remote.error_samples.some(sample => sample.msg.includes("connection reset by peer"))).toBe(true);
 	});
 
+	/**
+	 * Why: backoff is only between physical attempts or models; sleeping after
+	 * the final failed attempt delays the deterministic empty fallback for no work.
+	 */
 	it("uses millisecond-scale rate-limit and fallback backoff delays", async () => {
 		const originalSleep = Bun.sleep;
 		const delays: number[] = [];
@@ -177,8 +202,7 @@ describe("extraction integration", () => {
 			Bun.sleep = originalSleep;
 		}
 
-		expect(delays.slice(0, 3)).toEqual([1000, 2000, 4000]);
-		expect(delays.every(delay => delay >= 1000)).toBe(true);
+		expect(delays).toEqual([1000, 2000, 1000, 1000, 2000]);
 	});
 
 	// Regression: the extraction user prompt is built by substituting the raw

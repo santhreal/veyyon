@@ -7,8 +7,27 @@ import { closeQuietly, type DatabasePath, openDatabase } from "../db";
 export { cosineSimilarity } from "./vector-math";
 
 export const BITS_PER_BYTE = 8;
-export const EMBEDDING_DIM = embeddingDim();
-export const BYTES_PER_VECTOR = Math.ceil(EMBEDDING_DIM / BITS_PER_BYTE);
+
+/**
+ * The configured width, ASKED FOR rather than frozen.
+ *
+ * These were module constants, evaluated once when this file was first imported.
+ * That made them wrong in two ways at once. A `withMnemopiRuntimeOptions` scope
+ * naming a different embedding model could not move them, whenever it was entered,
+ * so the packer stayed on the process's startup model while the embedder followed
+ * the scope. And a test that set `MNEMOPI_EMBEDDING_DIM` after import got the old
+ * value, which is why the override had to be applied through a helper that reloads
+ * the module. Both resolvers now answer at the moment of the call, from the one
+ * owner in `../config`.
+ */
+export function configuredEmbeddingDim(): number {
+	return embeddingDim();
+}
+
+/** Bytes one packed vector of the configured width occupies, at one bit per dimension. */
+export function bytesPerVector(dim: number = configuredEmbeddingDim()): number {
+	return Math.ceil(dim / BITS_PER_BYTE);
+}
 
 const POPCOUNT_TABLE = new Uint8Array(256);
 for (let i = 0; i < POPCOUNT_TABLE.length; i += 1) {
@@ -186,7 +205,7 @@ function hammingDistanceForDimension(
 	return distance;
 }
 
-export function informationTheoreticScore(distance: number, dim: number = EMBEDDING_DIM): number {
+export function informationTheoreticScore(distance: number, dim: number = configuredEmbeddingDim()): number {
 	if (dim <= 0) {
 		return 0;
 	}
@@ -212,7 +231,7 @@ export class BinaryVectorStore {
 			CREATE TABLE IF NOT EXISTS ${this.tableName} (
 				memory_id TEXT PRIMARY KEY,
 				binary_vector BLOB NOT NULL,
-				original_dim INTEGER DEFAULT ${EMBEDDING_DIM},
+				original_dim INTEGER DEFAULT ${configuredEmbeddingDim()},
 				magnitude REAL DEFAULT 1.0,
 				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 			)
@@ -225,10 +244,35 @@ export class BinaryVectorStore {
 	static hammingDistance(binaryA: Uint8Array | ArrayBuffer, binaryB: Uint8Array | ArrayBuffer): number {
 		return hammingDistance(binaryA, binaryB);
 	}
-	static informationTheoreticScore(distance: number, dim: number = EMBEDDING_DIM): number {
+	static informationTheoreticScore(distance: number, dim: number = configuredEmbeddingDim()): number {
 		return informationTheoreticScore(distance, dim);
 	}
+	/**
+	 * Write one vector, at its own width, refusing a width that cannot be a vector.
+	 *
+	 * FAIL CLOSED, because the failure this replaces was invisible. A zero-length
+	 * embedding packs to an empty blob and records `original_dim = 0`, and `search`
+	 * then compares nothing against nothing: `hammingDistanceForDimension` returns 0
+	 * and `informationTheoreticScore` returns 0 for a zero width, so the row sits in
+	 * the store scoring against every query without ever having held a vector. An
+	 * embedder that failed and returned an empty array is the ordinary way to get
+	 * one, and nothing downstream would have said so. The message names the width
+	 * the configuration expects, because "you stored nothing" is not actionable on
+	 * its own.
+	 *
+	 * A width that merely DIFFERS from the configured one is not an error. Rows
+	 * carry `original_dim` and `search` compares at the narrower of the two, so a
+	 * store that outlived a model change keeps working; that is the whole reason the
+	 * old cap at a module constant was removed.
+	 */
 	storeVector(memoryId: string, embedding: readonly number[]): void {
+		if (embedding.length === 0) {
+			throw new Error(
+				`refusing to store an empty embedding for ${memoryId}: the configured model produces ` +
+					`${configuredEmbeddingDim()} dimensions, and a zero-width row scores against every query ` +
+					"without holding a vector",
+			);
+		}
 		const binary = maximallyInformativeBinarization(embedding);
 		this.conn
 			.query(
@@ -279,14 +323,19 @@ export class BinaryVectorStore {
 			)
 			.get() as StatsRow;
 		const count = row.count;
-		const bytesPerVector = row.avg_bytes ?? 0;
+		// The MEASURED average across the rows on disk, which is not the theoretical
+		// width below: a store holding rows from two models has an average between
+		// them. It was called `bytesPerVector`, which now shadows the function of that
+		// name, and a shadowed call reads as the theoretical figure while returning
+		// the measured one.
+		const measuredBytesPerVector = row.avg_bytes ?? 0;
 		return {
 			total_vectors: count,
-			avg_bytes_per_vector: bytesPerVector,
+			avg_bytes_per_vector: measuredBytesPerVector,
 			max_bytes: row.max_bytes ?? 0,
 			min_bytes: row.min_bytes ?? 0,
-			compression_ratio: BYTES_PER_VECTOR / (EMBEDDING_DIM * 4),
-			theoretical_size_mb: (count * BYTES_PER_VECTOR) / (1024 * 1024),
+			compression_ratio: bytesPerVector() / (configuredEmbeddingDim() * 4),
+			theoretical_size_mb: (count * bytesPerVector()) / (1024 * 1024),
 		};
 	}
 	close(): void {
