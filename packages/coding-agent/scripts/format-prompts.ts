@@ -17,10 +17,8 @@ import { prompt } from "@veyyon/utils";
 import { Glob } from "bun";
 
 const PROMPTS_DIR = `${import.meta.dir}/../src/prompts/`;
-const COMMIT_PROMPTS_DIR = `${import.meta.dir}/../src/commit/prompts/`;
-const AGENTIC_PROMPTS_DIR = `${import.meta.dir}/../src/commit/agentic/prompts/`;
 
-const PROMPT_DIRS = [PROMPTS_DIR, COMMIT_PROMPTS_DIR, AGENTIC_PROMPTS_DIR];
+const PROMPT_DIRS = [PROMPTS_DIR];
 
 const PROMPT_FORMAT_OPTIONS = {
 	renderPhase: "pre-render",
