@@ -9,6 +9,7 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets";
+import { loadOrCreateVaultKey } from "@veyyon/coding-agent/secrets/vault-crypto";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { getSessionsDir, removeSyncWithRetries, Snowflake } from "@veyyon/utils";
@@ -153,11 +154,14 @@ describe("createAgentSession session storage isolation", () => {
 			tempDirs.push(tempDir);
 			const cwd = path.join(tempDir, "project");
 			const agentDir = path.join(tempDir, "agent");
+			const globalConfigRoot = path.join(tempDir, "global");
+			fs.mkdirSync(globalConfigRoot, { recursive: true, mode: 0o700 });
 			fs.mkdirSync(cwd, { recursive: true });
 
 			const commonOptions = {
 				cwd,
 				agentDir,
+				globalConfigRoot,
 				modelRegistry: sharedModelRegistry,
 				settings: Settings.isolated({ "secrets.enabled": true }),
 				disableExtensionDiscovery: true,
@@ -197,6 +201,8 @@ describe("createAgentSession session storage isolation", () => {
 			tempDirs.push(tempDir);
 			const cwd = path.join(tempDir, "project");
 			const agentDir = path.join(tempDir, "agent");
+			const globalConfigRoot = path.join(tempDir, "global");
+			fs.mkdirSync(globalConfigRoot, { recursive: true, mode: 0o700 });
 			fs.mkdirSync(path.join(cwd, ".veyyon"), { recursive: true });
 			fs.writeFileSync(
 				path.join(cwd, ".veyyon", "secrets.yml"),
@@ -206,7 +212,10 @@ describe("createAgentSession session storage isolation", () => {
 			const model = getBundledModel("anthropic", "claude-sonnet-4-5");
 			if (!model) throw new Error("Expected anthropic model");
 
-			const obfuscator = new SecretObfuscator([{ type: "plain", content: "sdk-secret-token-123456" }]);
+			const placeholderKey = await loadOrCreateVaultKey(globalConfigRoot);
+			const obfuscator = new SecretObfuscator([{ type: "plain", content: "sdk-secret-token-123456" }], {
+				placeholderKey,
+			});
 			const initialManager = SessionManager.create(cwd, path.join(agentDir, "sessions"));
 			initialManager.appendMessage({
 				role: "assistant",
@@ -234,6 +243,7 @@ describe("createAgentSession session storage isolation", () => {
 			const { session } = await createAgentSession({
 				cwd,
 				agentDir,
+				globalConfigRoot,
 				modelRegistry: sharedModelRegistry,
 				sessionManager: resumedManager,
 				model,

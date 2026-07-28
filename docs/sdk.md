@@ -90,6 +90,7 @@ If omitted, it resolves:
 
 - `cwd`: `getProjectDir()`
 - `agentDir`: active profile agent dir via `getAgentDir()` (default `~/.veyyon/profiles/default/agent`; named profile `~/.veyyon/profiles/<name>/agent`)
+- `globalConfigRoot`: cross-profile vault/key root via `getGlobalConfigRootDir()` (normally `~/.veyyon`)
 - `authStorage`: `discoverAuthStorage(agentDir)`
 - `modelRegistry`: `new ModelRegistry(authStorage)` + background `refreshInBackground()` when the registry is not provided
 - `settings`: `await Settings.init({ cwd, agentDir })`
@@ -110,6 +111,27 @@ Typically you must provide only what you want to control:
   - `authStorage` + `modelRegistry` (if you own credential/model lifecycle)
   - `model` or `modelPattern` (if deterministic model selection matters)
   - `settings` (if you need isolated/test config)
+
+For a multi-tenant, test, or otherwise isolated SDK host, set `globalConfigRoot` to a private
+directory so the session cannot read or write the host user's cross-profile secret vault or vault
+key. The override affects vault/key resolution only; `agentDir` continues to control profile-local
+configuration. When omitted, `globalConfigRoot` defaults to `getGlobalConfigRootDir()` exactly as it
+does for the CLI.
+
+```ts
+import { chmod, mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { createAgentSession } from "@veyyon/coding-agent";
+
+const privateVaultRoot = await mkdtemp(path.join(tmpdir(), "veyyon-sdk-"));
+await chmod(privateVaultRoot, 0o700);
+
+const { session } = await createAgentSession({
+  globalConfigRoot: privateVaultRoot,
+  // Other isolated-host options...
+});
+```
 
 ## Session manager behavior (persistent vs in-memory)
 
