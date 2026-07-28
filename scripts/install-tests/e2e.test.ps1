@@ -68,6 +68,15 @@ function Get-UserPath {
     return [Environment]::GetEnvironmentVariable("Path", "User")
 }
 
+# How many entries of the user PATH name the install directory, comparing the way
+# the installer does rather than by raw string. A quoted or space-padded entry is
+# still that directory, and a test that missed one would pass while the machine
+# carried two copies.
+function Measure-InstallDirEntries {
+    param([string]$Dir)
+    return @((Get-UserPath) -split ';' | Where-Object { $_.Trim().Trim('"').Trim().TrimEnd('\') -ieq $Dir.TrimEnd('\') }).Count
+}
+
 # The profile install.ps1 writes to, resolved the same way Get-ProfilePath does.
 $profilePath = $PROFILE.CurrentUserAllHosts
 $completionScript = Join-Path (Split-Path -Parent $profilePath) "veyyon-completions.ps1"
@@ -143,6 +152,25 @@ try {
     Check "no staging files were left behind" ($litter.Count -eq 0)
 
     Write-Host ""
+    Write-Host "=== a PATH entry another tool rewrote as quoted ==="
+    # Windows PATH entries are legal quoted, and that is what installers write
+    # around a path containing a space, so an entry we wrote can come back to us
+    # wrapped. The presence check compared raw strings, so our own entry stopped
+    # matching the directory we were about to add: every reinstall appended a
+    # second copy, and the uninstall then recognized neither.
+    $quoted = (((Get-UserPath) -split ';') | ForEach-Object { if ($_ -eq $installDir) { '"' + $_ + '"' } else { $_ } }) -join ';'
+    [Environment]::SetEnvironmentVariable("Path", $quoted, "User")
+    Check "the quoted entry is in place before the reinstall" ((Measure-InstallDirEntries $installDir) -eq 1)
+
+    & pwsh -NoProfile -File $installer -Local
+    Check "the reinstall over a quoted entry exited 0" ($LASTEXITCODE -eq 0)
+    Check "no second entry was added beside the quoted one" ((Measure-InstallDirEntries $installDir) -eq 1)
+    # And it was left exactly as the other tool wrote it: recognizing an entry is
+    # not licence to rewrite the user's PATH into our preferred spelling.
+    Check "the quoted entry was not rewritten" `
+        (@((Get-UserPath) -split ';' | Where-Object { $_ -eq ('"' + $installDir + '"') }).Count -eq 1)
+
+    Write-Host ""
     Write-Host "=== uninstall ==="
     & pwsh -NoProfile -File $installer -Uninstall
     Check "the uninstaller exited 0" ($LASTEXITCODE -eq 0)
@@ -151,7 +179,10 @@ try {
     ExpectAbsent $aliasPath "the vey shim after uninstall"
     ExpectAbsent $completionScript "the completion script after uninstall"
 
-    Check "the install dir is off the user PATH" (-not ((Get-UserPath) -split ';' -contains $installDir))
+    # Normalized, not a raw -contains: the entry reaching this point is the QUOTED
+    # one written above, and a raw comparison would report it gone while it sat
+    # there.
+    Check "the install dir is off the user PATH" ((Measure-InstallDirEntries $installDir) -eq 0)
 
     $profileAfterUninstall = Get-Content -Raw -LiteralPath $profilePath
     Check "the profile dot-source line is gone" (-not ($profileAfterUninstall -match [regex]::Escape($completionScript)))
