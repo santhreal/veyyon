@@ -1,5 +1,13 @@
-import type { Api, ApiKey, AssistantMessage, Context, Model, SimpleStreamOptions } from "@veyyon/ai";
-import { completeSimple } from "@veyyon/ai";
+import {
+	type Api,
+	type ApiKey,
+	type AssistantMessage,
+	completeSimple,
+	type Context,
+	type Model,
+	type SimpleStreamOptions,
+	validateToolCall,
+} from "@veyyon/ai";
 // The owners, not the barrel. `type` is `@veyyon/ai`'s re-export of arktype, so
 // naming arktype is naming the same module; `validateToolCall` is one function
 // over a tool list. Together they were costing the whole streaming stack.

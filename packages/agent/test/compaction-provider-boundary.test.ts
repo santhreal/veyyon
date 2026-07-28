@@ -62,7 +62,7 @@ function preparation(remoteEndpoint?: string): CompactionPreparation {
 }
 
 function contextText(context: Context): string {
-	const parts = [...context.systemPrompt];
+	const parts = context.systemPrompt ? [...context.systemPrompt] : [];
 	for (const message of context.messages) {
 		if (typeof message.content === "string") {
 			parts.push(message.content);
@@ -129,7 +129,8 @@ describe("compaction provider confidentiality boundary", () => {
 		const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
 		let lateSecretIsLive = false;
 		const resolver: ApiKeyResolver = async context => (context.error ? "refreshed-key" : "initial-key");
-		const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+		const fetchImpl = vi.fn(
+			async (_input: Parameters<NonNullable<SimpleStreamOptions["fetch"]>>[0], init?: RequestInit) => {
 			if (typeof init?.body !== "string") throw new Error("Expected JSON request body");
 			bodies.push(init.body);
 			if (bodies.length === 1) {

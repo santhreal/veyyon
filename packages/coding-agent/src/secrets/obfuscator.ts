@@ -1086,14 +1086,8 @@ export function obfuscateMessages(obfuscator: SecretObfuscator, messages: Messag
 			return { ...message, content };
 		}
 
-		const content =
-			typeof message.content === "string"
-				? obfuscator.obfuscate(message.content)
-				: obfuscateTextBlocks(obfuscator, message.content);
-		if ("providerPayload" in message && message.providerPayload !== undefined) {
-			assertOpaqueProviderPayloadSafe(obfuscator, message.providerPayload);
-		}
 		if (message.role === "toolResult") {
+			const content = obfuscateTextBlocks(obfuscator, message.content);
 			const toolCallId = obfuscator.obfuscate(message.toolCallId);
 			const toolName = obfuscator.obfuscate(message.toolName);
 			if (
@@ -1106,6 +1100,11 @@ export function obfuscateMessages(obfuscator: SecretObfuscator, messages: Messag
 			changed = true;
 			return { ...message, content, toolCallId, toolName };
 		}
+
+		const content =
+			typeof message.content === "string"
+				? obfuscator.obfuscate(message.content)
+				: obfuscateTextBlocks(obfuscator, message.content);
 		if (content === message.content) return message;
 		changed = true;
 		return { ...message, content } as Message;

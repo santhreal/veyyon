@@ -171,7 +171,7 @@ describe("image provider confidentiality boundary", () => {
 		const fetchMock = (async () => {
 			fetchCalls++;
 			return new Response(JSON.stringify({ data: [] }));
-		}) as typeof fetch;
+		}) as unknown as typeof fetch;
 		const resolver: ApiKeyResolver = async () => "first-key";
 		let error: unknown;
 		try {

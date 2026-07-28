@@ -519,7 +519,7 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 						rawPrompt,
 						runtime.settings?.getCwd?.() ?? getProjectDir(),
 						runtime.settings?.getAgentDir?.() ?? getAgentDir(),
-						runtime.globalConfigRoot,
+						"globalConfigRoot" in runtime ? runtime.globalConfigRoot : undefined,
 					);
 	try {
 		const targets = resolveBenchModels(command.models, runtime.modelRegistry, runtime.settings, writeStderr);

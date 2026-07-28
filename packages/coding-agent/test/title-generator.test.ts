@@ -133,7 +133,7 @@ describe("title generator", () => {
 		const placeholder = "#TITLE_RUNTIME_SECRET#";
 		let sanitize = (text: string) => text;
 		const registry = {
-			...createRegistry(model),
+			...(createRegistry(model) as unknown as Record<string, unknown>),
 			getApiKey: async () => {
 				sanitize = text => text.replaceAll(secret, placeholder);
 				return "test-key";
@@ -170,7 +170,7 @@ describe("title generator", () => {
 		let attempt = 0;
 		const captures: string[] = [];
 		const registry = {
-			...createRegistry(model),
+			...(createRegistry(model) as unknown as Record<string, unknown>),
 			resolver: () => async () => {
 				attempt++;
 				if (attempt === 2) sanitize = text => text.replaceAll(secret, placeholder);
