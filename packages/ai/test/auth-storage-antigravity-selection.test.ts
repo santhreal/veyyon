@@ -16,6 +16,7 @@ import { type AuthCredentialStore, AuthStorage, SqliteAuthCredentialStore } from
 import * as oauthUtils from "@veyyon/ai/registry/oauth";
 import type { OAuthCredentials } from "@veyyon/ai/registry/oauth/types";
 import type { UsageLimit, UsageProvider, UsageReport } from "@veyyon/ai/usage";
+import { antigravityRankingStrategy } from "@veyyon/ai/usage/google-antigravity";
 import { removeWithRetries } from "../../utils/src/temp";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -102,6 +103,8 @@ describe("AuthStorage google-antigravity oauth ranking", () => {
 		store = await SqliteAuthCredentialStore.open(path.join(tempDir, "agent.db"));
 		authStorage = new AuthStorage(store, {
 			usageProviderResolver: provider => (provider === "google-antigravity" ? usageProvider : undefined),
+			rankingStrategyResolver: provider =>
+				provider === "google-antigravity" ? antigravityRankingStrategy : undefined,
 		});
 		usageByAccount.clear();
 		vi.spyOn(oauthUtils, "getOAuthApiKey").mockImplementation(async (_provider, credentials) => {

@@ -12,6 +12,11 @@ import type { AgentMessage } from "../types";
 
 const COMPACTION_SUMMARY_TEMPLATE = AGENT_PROMPTS["compaction/compaction-summary-context"].text;
 const BRANCH_SUMMARY_TEMPLATE = AGENT_PROMPTS["compaction/branch-summary-context"].text;
+const SUMMARY_PRESENTATION_TAG = /<\/?summary\b(?:\s[^>]*)?\s*\/?>/gi;
+
+function withoutSummaryPresentationTags(summary: string): string {
+	return summary.replace(SUMMARY_PRESENTATION_TAG, "").trim();
+}
 
 export interface CustomMessage<T = unknown> {
 	role: "custom";
@@ -82,11 +87,11 @@ function getPrunedToolResultContent(message: ToolResultMessage): (TextContent | 
 }
 
 export function renderBranchSummaryContext(summary: string): string {
-	return prompt.render(BRANCH_SUMMARY_TEMPLATE, { summary });
+	return prompt.render(BRANCH_SUMMARY_TEMPLATE, { summary: withoutSummaryPresentationTags(summary) });
 }
 
 export function renderCompactionSummaryContext(summary: string): string {
-	return prompt.render(COMPACTION_SUMMARY_TEMPLATE, { summary });
+	return prompt.render(COMPACTION_SUMMARY_TEMPLATE, { summary: withoutSummaryPresentationTags(summary) });
 }
 
 export function createBranchSummaryMessage(summary: string, fromId: string, timestamp: string): BranchSummaryMessage {
@@ -195,7 +200,14 @@ export function convertMessageToLlm(message: AgentMessage): Message | undefined 
 					role: "developer",
 					content:
 						message.blocks !== undefined
-							? [{ type: "text" as const, text: message.summary }, ...message.blocks]
+							? [
+									{ type: "text" as const, text: withoutSummaryPresentationTags(message.summary) },
+									...message.blocks.map(block =>
+										block.type === "text"
+											? { ...block, text: withoutSummaryPresentationTags(block.text) }
+											: block,
+									),
+								]
 							: [
 									{
 										type: "text" as const,

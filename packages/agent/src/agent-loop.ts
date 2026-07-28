@@ -27,15 +27,15 @@ import {
 	wrapInbandToolStream,
 } from "@veyyon/ai/dialect";
 import * as AIError from "@veyyon/ai/error";
-// The deep path, not the package entry point: this is one string beside the type it
-// fills in, and the entry point re-exports the whole of `@veyyon/ai`.
-import { EMPTY_ERROR_TOOL_RESULT_TEXT } from "@veyyon/ai/types";
 import {
 	captureAssistantTurnMetrics,
 	captureAssistantTurnRequest,
 	captureToolCallMetrics,
 } from "@veyyon/ai/instrumentation";
 import { streamSimple } from "@veyyon/ai/stream";
+// The deep path, not the package entry point: this is one string beside the type it
+// fills in, and the entry point re-exports the whole of `@veyyon/ai`.
+import { EMPTY_ERROR_TOOL_RESULT_TEXT } from "@veyyon/ai/types";
 import { type CursorExecResolvedCarrier, kCursorExecResolved } from "@veyyon/ai/utils/block-symbols";
 import { EventStream } from "@veyyon/ai/utils/event-stream";
 import {
@@ -901,7 +901,8 @@ async function runLoopBody(
 				// Park at the turn boundary while the process-wide pause gate is
 				// engaged (host /pause). An external abort releases the park so a
 				// cancelled run still unwinds while everything else stays frozen.
-				if (agentPauseGate.paused) await agentPauseGate.waitUntilResumed(signal);
+				const pauseGate = config.pauseGate ?? agentPauseGate;
+				if (pauseGate.paused) await pauseGate.waitUntilResumed(signal);
 				if (!firstTurn) {
 					stream.push({ type: "turn_start" });
 				} else {
@@ -2105,7 +2106,8 @@ async function executeToolCalls(
 		// Park before starting this tool while the process-wide pause gate is
 		// engaged. Tools already executing are unaffected (pausing never aborts);
 		// a batch interrupted mid-pause unwinds via the signal checks below.
-		if (agentPauseGate.paused) await agentPauseGate.waitUntilResumed(record.signal);
+		const pauseGate = config.pauseGate ?? agentPauseGate;
+		if (pauseGate.paused) await pauseGate.waitUntilResumed(record.signal);
 
 		const { toolCall, tool } = record;
 		let argsForExecution = toolCall.arguments as Record<string, unknown>;

@@ -343,6 +343,7 @@ function buildParams(
 		context,
 		strictResponsesPairing: true,
 		supportsImageDetailOriginal: model.compat.supportsImageDetailOriginal,
+		supportsDeveloperRole: model.compat.supportsDeveloperRole,
 		systemRole,
 		includeThinkingSignatures: true,
 		developerStringContent: true,

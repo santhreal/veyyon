@@ -3983,6 +3983,24 @@ function convertMessages(model: Model<"openai-codex-responses">, context: Contex
 				continue;
 			}
 
+			if (
+				msg.role === "developer" &&
+				Array.isArray(msg.content) &&
+				msg.content.some(item => item.type === "image")
+			) {
+				const textContent = normalizeInputMessageContent(
+					model,
+					msg.content.filter((item): item is TextContent => item.type === "text"),
+				);
+				const imageContent = normalizeInputMessageContent(
+					model,
+					msg.content.filter(item => item.type === "image"),
+				);
+				if (textContent.length > 0) messages.push({ role: "developer", content: textContent });
+				if (imageContent.length > 0) messages.push({ role: "user", content: imageContent });
+				msgIndex += 1;
+				continue;
+			}
 			const normalizedContent = normalizeInputMessageContent(model, msg.content);
 			if (normalizedContent.length === 0) continue;
 			messages.push({ role: msg.role, content: normalizedContent });

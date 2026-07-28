@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { type AuthCredentialStore, AuthStorage } from "@veyyon/ai/auth-storage";
+import "@veyyon/ai/usage/defaults";
 
 describe("issue 3555 Ollama usage registration", () => {
 	it("registers Ollama and Ollama Cloud in the default usage resolver", async () => {

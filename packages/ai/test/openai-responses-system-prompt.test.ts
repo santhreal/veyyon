@@ -144,6 +144,59 @@ describe("openai-responses system prompt routing", () => {
 				{ role: "developer", content: "Second." },
 			]);
 		});
+
+		/**
+		 * Agent-owned compaction context is an array of text blocks. It must
+		 * retain developer priority instead of being rewritten as a user turn.
+		 */
+		it("preserves text-block developer messages in the request input", async () => {
+			const context: Context = {
+				messages: [
+					{
+						role: "developer",
+						content: [{ type: "text", text: "Compacted context." }],
+						attribution: "agent",
+						timestamp: Date.now(),
+					},
+				],
+			};
+			const body = await captureRequestBody(o4MiniModel, context);
+
+			expect(body.input).toEqual([
+				{ role: "developer", content: [{ type: "input_text", text: "Compacted context." }] },
+			]);
+		});
+
+		/** Responses also restricts input images to user content; only attachments are demoted. */
+		it("splits image-bearing developer context without demoting its text", async () => {
+			const visionModel = buildModel({
+				...o4MiniModel,
+				api: "openai-responses",
+				input: ["text", "image"],
+			} as ModelSpec<"openai-responses">);
+			const context: Context = {
+				messages: [
+					{
+						role: "developer",
+						content: [
+							{ type: "text", text: "Compacted context." },
+							{ type: "image", mimeType: "image/png", data: "AAAA" },
+						],
+						attribution: "agent",
+						timestamp: Date.now(),
+					},
+				],
+			};
+			const body = await captureRequestBody(visionModel, context);
+
+			expect(body.input).toEqual([
+				{ role: "developer", content: [{ type: "input_text", text: "Compacted context." }] },
+				{
+					role: "user",
+					content: [{ type: "input_image", image_url: "data:image/png;base64,AAAA", detail: "auto" }],
+				},
+			]);
+		});
 	});
 
 	describe("reasoning model on custom proxy (instructions path)", () => {

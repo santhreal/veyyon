@@ -7,6 +7,7 @@ import {
 } from "@veyyon/ai/auth-storage";
 import type { UsageLimit, UsageReport } from "@veyyon/ai/usage";
 import * as claudeUsage from "@veyyon/ai/usage/claude";
+import { claudeRankingStrategy } from "@veyyon/ai/usage/claude";
 
 interface ObservableStore extends AuthCredentialStore {
 	cache: Map<string, { value: string; expiresAtSec: number }>;
@@ -131,6 +132,7 @@ describe("AuthStorage Claude Fable tier fallback", () => {
 		store = makeStore([oauthRow(1, "a@example.com"), oauthRow(2, "b@example.com"), oauthRow(3, "c@example.com")]);
 		storage = new AuthStorage(store, {
 			usageProviderResolver: provider => (provider === "anthropic" ? claudeUsage.claudeUsageProvider : undefined),
+			rankingStrategyResolver: provider => (provider === "anthropic" ? claudeRankingStrategy : undefined),
 		});
 		await storage.reload();
 	});

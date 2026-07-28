@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import "@veyyon/ai/usage/defaults";
 import { type AuthCredentialStore, AuthStorage } from "../src/auth-storage";
 import type { UsageFetchContext, UsageFetchParams } from "../src/usage";
 import { cursorUsageProvider, parseCursorUsage } from "../src/usage/cursor";
