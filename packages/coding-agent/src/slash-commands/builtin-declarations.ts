@@ -241,7 +241,7 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 				description: "Store a credential, prompting for the value with it hidden as you type",
 				usage: "/secret add <name> [--from-env <VAR>] [--ttl 7d] [--scope profile|project|global]",
 			},
-			{ name: "list", description: "Show stored secrets, never their values", usage: "/secret list" },
+			{ name: "list", description: "Show active secrets, never their values", usage: "/secret list" },
 			{ name: "rm", description: "Remove a stored secret", usage: "/secret rm <name>" },
 			{
 				name: "extend",

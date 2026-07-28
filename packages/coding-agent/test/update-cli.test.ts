@@ -313,13 +313,19 @@ describe("resolveUpdateMethod classifies binary vs source installs", () => {
 	 * The shebang gate. Without it the classifier would scan the standalone
 	 * release binary's own bytes for anything that looks like the launcher path,
 	 * and a release that happens to embed one of its own build paths would be
-	 * misclassified as a source install — the updater would then try to git-pull a
-	 * checkout that is not there. Only `#!` scripts and `.cmd`/`.bat` are read.
+	 * misclassified as a source install, and the updater would then try to git-pull
+	 * a checkout that is not there. Only `#!` scripts and `.cmd`/`.bat` are read.
+	 *
+	 * The NUL in the fixture is written `\x00`, not as a literal byte. A raw
+	 * control byte in source is invisible in every editor and diff, so the header
+	 * reads as `\x7fELF\x02\x01\x01"` with no separator at all and a reader cannot
+	 * see what is being tested. `scripts/a-source-file-that-reads-as-binary-is-invisible.test.ts`
+	 * catches it, which is how this one was found.
 	 */
 	it("never classifies a binary as source from bytes that merely contain the launcher path", () => {
 		const binary = "/home/u/.local/bin/veyyon";
 		const launcher = "/build/agent/packages/coding-agent/scripts/veyyon";
-		expect(resolveUpdateMethod(binary, () => `\x7fELF\x02\x01\x01 "${launcher}"`)).toBe("binary");
+		expect(resolveUpdateMethod(binary, () => `\x7fELF\x02\x01\x01\x00"${launcher}"`)).toBe("binary");
 	});
 
 	it("reads a real on-disk POSIX wrapper, not just an injected reader", () => {

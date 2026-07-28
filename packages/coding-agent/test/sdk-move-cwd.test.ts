@@ -84,6 +84,197 @@ describe("createAgentSession cwd after /move", () => {
 			await session.dispose();
 		}
 	});
+
+	/**
+	 * Calling the rebuild hook is not enough: its closure must read the live cwd
+	 * and rediscover destination AGENTS.md. The old closure rebuilt byte-for-byte
+	 * from startup captures while tools had already moved.
+	 */
+	it("rebuilds prompt bytes and project instructions for the moved directory", async () => {
+		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `pi-sdk-prompt-cwd-${Snowflake.next()}-`));
+		tempDirs.push(tempDir);
+		const cwdA = path.join(tempDir, "cwd-a");
+		const cwdB = path.join(tempDir, "cwd-b");
+		fs.mkdirSync(cwdA, { recursive: true });
+		fs.mkdirSync(cwdB, { recursive: true });
+		fs.writeFileSync(path.join(cwdA, "AGENTS.md"), "ORIGIN_AGENTS_MARKER\n");
+		fs.writeFileSync(path.join(cwdB, "AGENTS.md"), "DESTINATION_AGENTS_MARKER\n");
+
+		globals = beginSettingsTest();
+		setAgentDir(tempDir);
+		const sessionManager = SessionManager.create(cwdA, path.join(tempDir, "sessions"));
+		const { session } = await createAgentSession({
+			cwd: cwdA,
+			agentDir: tempDir,
+			sessionManager,
+			authStorage: await isolatedAuthStorage(tempDir),
+			settings: Settings.isolated({
+				"async.enabled": false,
+				"bash.autoBackground.enabled": false,
+				"bashInterceptor.enabled": false,
+			}),
+			model: getBundledModel("openai", "gpt-4o-mini"),
+			disableExtensionDiscovery: true,
+			skills: [],
+			rules: [],
+			promptTemplates: [],
+			slashCommands: [],
+			enableMCP: false,
+			enableLsp: false,
+			toolNames: ["read"],
+		});
+
+		try {
+			const before = session.agent.state.systemPrompt.join("\n\n");
+			expect(before).toContain(`the current working directory is '${cwdA}'`);
+			expect(before).toContain("ORIGIN_AGENTS_MARKER");
+			expect(before).not.toContain("DESTINATION_AGENTS_MARKER");
+
+			await session.setCwd(cwdB);
+
+			const after = session.agent.state.systemPrompt.join("\n\n");
+			expect(after).toContain(`the current working directory is '${cwdB}'`);
+			expect(after).toContain("DESTINATION_AGENTS_MARKER");
+			expect(after).not.toContain("ORIGIN_AGENTS_MARKER");
+			expect(after).not.toBe(before);
+		} finally {
+			await session.dispose();
+		}
+	});
+
+	/**
+	 * Project-installed extension skills are cwd-scoped. A move must replace the
+	 * live session and tool resolver inventory, not only repaint the prompt.
+	 */
+	it("replaces project extension skills when the session moves", async () => {
+		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `pi-sdk-skills-cwd-${Snowflake.next()}-`));
+		tempDirs.push(tempDir);
+		const cwdA = path.join(tempDir, "cwd-a");
+		const cwdB = path.join(tempDir, "cwd-b");
+		const agentDir = path.join(tempDir, "agent");
+
+		const installProjectSkill = (project: string, packageName: string, skillName: string): void => {
+			const pluginsDir = path.join(project, ".veyyon", "plugins");
+			const packageDir = path.join(pluginsDir, "node_modules", packageName);
+			const skillDir = path.join(packageDir, "skills", skillName);
+			fs.mkdirSync(path.join(packageDir, "src"), { recursive: true });
+			fs.mkdirSync(skillDir, { recursive: true });
+			fs.writeFileSync(
+				path.join(packageDir, "package.json"),
+				JSON.stringify({ name: packageName, veyyon: { extensions: ["./src/main.ts"] } }),
+			);
+			fs.writeFileSync(path.join(packageDir, "src", "main.ts"), "export default function () {}\n");
+			fs.writeFileSync(
+				path.join(skillDir, "SKILL.md"),
+				`---\nname: ${skillName}\ndescription: ${skillName} description\n---\n${skillName} body\n`,
+			);
+			fs.writeFileSync(
+				path.join(pluginsDir, "veyyon-plugins.lock.json"),
+				JSON.stringify({
+					plugins: { [packageName]: { version: "1.0.0", enabled: true, enabledFeatures: null } },
+					settings: {},
+				}),
+			);
+		};
+
+		installProjectSkill(cwdA, "project-a-skills", "only-a");
+		installProjectSkill(cwdB, "project-b-skills", "only-b");
+		fs.mkdirSync(agentDir, { recursive: true });
+
+		globals = beginSettingsTest();
+		setAgentDir(agentDir);
+		const sessionManager = SessionManager.create(cwdA, path.join(agentDir, "sessions"));
+		const { session } = await createAgentSession({
+			cwd: cwdA,
+			agentDir,
+			sessionManager,
+			authStorage: await isolatedAuthStorage(agentDir),
+			settings: Settings.isolated({
+				"async.enabled": false,
+				"bash.autoBackground.enabled": false,
+				"bashInterceptor.enabled": false,
+			}),
+			model: getBundledModel("openai", "gpt-4o-mini"),
+			disableExtensionDiscovery: true,
+			contextFiles: [],
+			rules: [],
+			promptTemplates: [],
+			slashCommands: [],
+			enableMCP: false,
+			enableLsp: false,
+			toolNames: ["read"],
+		});
+
+		try {
+			expect(session.skills.map(skill => skill.name)).toEqual(["only-a"]);
+
+			await session.setCwd(cwdB);
+
+			expect(session.skills.map(skill => skill.name)).toEqual(["only-b"]);
+		} finally {
+			await session.dispose();
+		}
+	});
+
+	/**
+	 * TTSR matchers are executable project policy. Keeping the source matcher
+	 * after a cwd move leaks policy even if the visible prompt has been rebuilt.
+	 */
+	it("replaces project TTSR rules when the session moves", async () => {
+		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `pi-sdk-rules-cwd-${Snowflake.next()}-`));
+		tempDirs.push(tempDir);
+		const cwdA = path.join(tempDir, "cwd-a");
+		const cwdB = path.join(tempDir, "cwd-b");
+		const agentDir = path.join(tempDir, "agent");
+
+		const writeRule = (project: string, name: string, condition: string): void => {
+			const rulePath = path.join(project, ".veyyon", "rules", `${name}.md`);
+			fs.mkdirSync(path.dirname(rulePath), { recursive: true });
+			fs.writeFileSync(
+				rulePath,
+				`---\ndescription: ${name}\ncondition: ${condition}\nscope: [text]\n---\n${name} body\n`,
+			);
+		};
+		writeRule(cwdA, "source-only", "SOURCE_TRIGGER");
+		writeRule(cwdB, "destination-only", "DESTINATION_TRIGGER");
+		fs.mkdirSync(agentDir, { recursive: true });
+
+		globals = beginSettingsTest();
+		setAgentDir(agentDir);
+		const sessionManager = SessionManager.create(cwdA, path.join(agentDir, "sessions"));
+		const { session } = await createAgentSession({
+			cwd: cwdA,
+			agentDir,
+			sessionManager,
+			authStorage: await isolatedAuthStorage(agentDir),
+			settings: Settings.isolated({
+				"async.enabled": false,
+				"bash.autoBackground.enabled": false,
+				"bashInterceptor.enabled": false,
+			}),
+			model: getBundledModel("openai", "gpt-4o-mini"),
+			disableExtensionDiscovery: true,
+			contextFiles: [],
+			skills: [],
+			promptTemplates: [],
+			slashCommands: [],
+			enableMCP: false,
+			enableLsp: false,
+			toolNames: ["read"],
+		});
+
+		try {
+			expect(session.ttsrManager?.getRules().map(rule => rule.name)).toContain("source-only");
+			expect(session.ttsrManager?.getRules().map(rule => rule.name)).not.toContain("destination-only");
+
+			await session.setCwd(cwdB);
+
+			expect(session.ttsrManager?.getRules().map(rule => rule.name)).toContain("destination-only");
+			expect(session.ttsrManager?.getRules().map(rule => rule.name)).not.toContain("source-only");
+		} finally {
+			await session.dispose();
+		}
+	});
 });
 
 // WHY THIS SUITE EXISTS (BACKLOG DOG-R2-8: the "false failure" report)

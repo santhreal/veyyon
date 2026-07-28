@@ -17,7 +17,6 @@ import "../capability/settings";
 import "../capability/skill";
 import "../capability/slash-command";
 import "../capability/ssh";
-import "../capability/system-prompt";
 import "../capability/tool";
 // Import providers (each registers itself on import)
 import "./agents-md";
@@ -75,7 +74,6 @@ export type { Settings } from "../capability/settings";
 export type { Skill, SkillFrontmatter } from "../capability/skill";
 export type { SlashCommand } from "../capability/slash-command";
 export type { SSHHost } from "../capability/ssh";
-export type { SystemPrompt } from "../capability/system-prompt";
 export type { DiscoveredCustomTool } from "../capability/tool";
 // Re-export types
 export type * from "../capability/types";

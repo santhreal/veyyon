@@ -57,11 +57,11 @@ export class PartialApplyPatchError extends ApplyPatchError {
 		/** The underlying failure. */
 		readonly cause: unknown,
 	) {
-		super(PartialApplyPatchError.formatMessage(affected, failedPath, unappliedPaths, cause));
+		super(PartialApplyPatchError.#formatMessage(affected, failedPath, unappliedPaths, cause));
 		this.name = "PartialApplyPatchError";
 	}
 
-	private static formatMessage(
+	static #formatMessage(
 		affected: ApplyCodexPatchResult["affected"],
 		failedPath: string,
 		unappliedPaths: string[],

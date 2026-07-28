@@ -405,41 +405,49 @@ describe("agents provider project-level discovery", () => {
 	});
 
 	// =========================================================================
-	// System Prompt (SYSTEM.md)
+	// Generic project path candidates
 	// =========================================================================
 
-	describe("system prompt (SYSTEM.md)", () => {
-		test("finds .agents/SYSTEM.md in monorepo root from sub-project cwd", async () => {
-			writeFile(path.join(repoRoot, ".agents", "SYSTEM.md"), "You are a coding assistant.");
+	describe("generic project path candidates", () => {
+		/**
+		 * Capabilities using nested files must find a repository-level candidate
+		 * from a package cwd without escaping the repository.
+		 */
+		test("finds a nested .agents file in the monorepo root", async () => {
+			writeFile(path.join(repoRoot, ".agents", "commands", "review.md"), "Review command");
 
-			const paths = getProjectPathCandidates(ctx, "SYSTEM.md");
+			const paths = getProjectPathCandidates(ctx, "commands", "review.md");
 			const results = await Promise.all(paths.map(p => readFile(p)));
 			const found = results.filter(r => r !== null);
-			expect(found).toHaveLength(1);
-			expect(found[0]).toContain("coding assistant");
+			expect(found).toEqual(["Review command"]);
 		});
 
-		test("finds SYSTEM.md at both sub-project and repo root", async () => {
-			writeFile(path.join(subProject, ".agents", "SYSTEM.md"), "# Local System");
-			writeFile(path.join(repoRoot, ".agents", "SYSTEM.md"), "# Root System");
+		/**
+		 * Local and repository candidates are both returned in prominence order,
+		 * so the consuming capability can apply its own precedence.
+		 */
+		test("finds local and repository copies of one nested path", async () => {
+			writeFile(path.join(subProject, ".agents", "commands", "review.md"), "Local command");
+			writeFile(path.join(repoRoot, ".agents", "commands", "review.md"), "Root command");
 
-			const paths = getProjectPathCandidates(ctx, "SYSTEM.md");
+			const paths = getProjectPathCandidates(ctx, "commands", "review.md");
 			const results = await Promise.all(paths.map(p => readFile(p)));
 			const found = results.filter(r => r !== null);
-			expect(found).toHaveLength(2);
-			expect(found[0]).toContain("Local System");
-			expect(found[1]).toContain("Root System");
+			expect(found).toEqual(["Local command", "Root command"]);
 		});
 
-		test("walk-up stops at repo root", async () => {
-			writeFile(path.join(tempDir, ".agents", "SYSTEM.md"), "# Above Repo");
-			writeFile(path.join(repoRoot, ".agents", "SYSTEM.md"), "# Root System");
+		/**
+		 * A same-shaped path above the repository must never become project
+		 * configuration for a nested package.
+		 */
+		test("stops generic path discovery at the repository root", async () => {
+			writeFile(path.join(tempDir, ".agents", "commands", "review.md"), "Above repository");
+			writeFile(path.join(repoRoot, ".agents", "commands", "review.md"), "Root command");
 
-			const paths = getProjectPathCandidates(ctx, "SYSTEM.md");
+			const paths = getProjectPathCandidates(ctx, "commands", "review.md");
 			const results = await Promise.all(paths.map(p => readFile(p)));
 			const found = results.filter(r => r !== null);
-			expect(found).toHaveLength(1);
-			expect(found[0]).toContain("Root System");
+			expect(found).toEqual(["Root command"]);
 		});
 	});
 });

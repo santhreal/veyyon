@@ -1,7 +1,7 @@
 /**
  * JSON tree rendering utilities shared across tool renderers.
  */
-import { isRecord } from "@veyyon/utils";
+import { formatMoreLines, isRecord } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import type { Theme } from "../modes/theme/theme";
 import { buildTreePrefix } from "../tui/utils";
@@ -154,7 +154,7 @@ export function renderJsonTreeLines(
 					if (strLines.length > maxStrLines) {
 						truncated = true;
 						pushLine(
-							`${continuePrefix}   ${theme.fg("dim", ` …(${strLines.length - maxStrLines} more lines)"`)}`,
+							`${continuePrefix}   ${theme.fg("dim", ` …(${formatMoreLines(strLines.length - maxStrLines)})"`)}`,
 						);
 					} else {
 						// Add closing quote to last line - need to modify the last pushed line

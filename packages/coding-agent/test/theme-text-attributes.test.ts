@@ -12,20 +12,29 @@
  *  1. Exact SGR bytes for each attribute, with the attribute-specific
  *     off-code (22/23/24/29/27), NOT a blanket reset — so attributes nest
  *     inside colored spans without killing the color.
- *  2. Attributes emit regardless of TTY detection (this test process has no
- *     TTY — exactly the environment chalk misread).
+ *  2. With the full ANSI policy selected, attributes emit regardless of TTY
+ *     detection (this test process has no TTY, exactly what chalk misread).
+ *     The explicit plain policy is covered separately by `ansi-policy.test.ts`.
  *  3. The markdown theme's bold/italic/strikethrough flow through the same
  *     owner, so **markdown emphasis** can never silently vanish again.
  */
-import { beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getMarkdownTheme } from "@veyyon/coding-agent/modes/theme/markdown-theme";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 
+let previousAnsiPolicy: AnsiPolicy;
 describe("theme text attributes", () => {
 	beforeAll(async () => {
+		previousAnsiPolicy = getAnsiPolicy();
+		setAnsiPolicy("full");
 		await Settings.init({ inMemory: true });
 		await initTheme();
+	});
+
+	afterAll(() => {
+		setAnsiPolicy(previousAnsiPolicy);
 	});
 
 	it("emits exact SGR pairs with attribute-specific off-codes", () => {

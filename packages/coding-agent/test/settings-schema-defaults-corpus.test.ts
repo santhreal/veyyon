@@ -5,6 +5,7 @@ import {
 	getDefault,
 	getEnumValues,
 	getType,
+	isSettingType,
 	SETTINGS_SCHEMA,
 	type SettingPath,
 } from "@veyyon/coding-agent/config/settings-schema";
@@ -23,8 +24,6 @@ import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } f
  */
 
 const ALL_PATHS = Object.keys(SETTINGS_SCHEMA) as SettingPath[];
-
-const KNOWN_TYPES = new Set(["boolean", "number", "string", "enum", "object", "array", "record"]);
 
 function isGlobalScoped(path: SettingPath): boolean {
 	const def = SETTINGS_SCHEMA[path] as { ui?: { scope?: string } };
@@ -64,7 +63,7 @@ describe("settings schema defaults corpus", () => {
 		const broken: string[] = [];
 		for (const path of ALL_PATHS) {
 			const t = getType(path);
-			if (!KNOWN_TYPES.has(t)) {
+			if (!isSettingType(t)) {
 				broken.push(`${path}: ${String(t)}`);
 			}
 		}

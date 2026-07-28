@@ -148,7 +148,7 @@ function stripDemotedThinkingForLlm(message: AssistantMessage): AssistantMessage
 export interface BackgroundTanDispatchDetails {
 	jobId: string;
 	work: string;
-	/** Forked clone session file, named `<agentId>.jsonl`; the Agent Hub reads its transcript. */
+	/** Forked clone session file, named `<agentId>.jsonl`; the Control Center reads its transcript. */
 	sessionFile: string;
 }
 
@@ -173,7 +173,7 @@ export interface SkillPromptDetails {
  *
  *  Consumers: `AgentSession.#handleAgentEvent` (stamper) writes this value;
  *  `EventController.#handleMessageEnd`, `AssistantMessageComponent`,
- *  `ui-helpers.addMessageToChat` (renderers), `AgentHubOverlayComponent
+ *  `ui-helpers.addMessageToChat` (renderers), `AgentDashboard
  *  #buildTranscriptLines`, `runPrintMode`, and `AcpAgent#replayAssistantMessage`
  *  (fallback error emission) read it via `isSilentAbort`. */
 export const SILENT_ABORT_MARKER = "__veyyon.silent_abort__";

@@ -1,6 +1,6 @@
 /**
  * Contracts: an advisor-kind registry ref is observability-only — present for the
- * Agent Hub, hidden from every agent-facing surface, and never messageable.
+ * Agent Control Center, hidden from every agent-facing surface, and never messageable.
  *
  * - `AgentRegistry.listVisibleTo` (irc roster / broadcast targets) excludes advisors.
  * - `IrcBus.send` to an advisor ref fails as non-messageable, without reviving it.

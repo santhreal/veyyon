@@ -22,8 +22,8 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { CompactionSettings } from "@veyyon/agent-core/compaction";
 import { resolveContextLimit } from "@veyyon/coding-agent/config/compaction-strategy";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { computeContextBreakdown } from "@veyyon/coding-agent/modes/utils/context-usage";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { computeContextBreakdown } from "@veyyon/coding-agent/session/context-usage";
 
 beforeAll(async () => {
 	resetSettingsForTest();

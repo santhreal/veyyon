@@ -43,13 +43,21 @@ describe("scoped memory recall when a bank cannot be read", () => {
 		};
 	}
 
+	/**
+	 * A real state whose banks are the fakes above.
+	 *
+	 * This used to be `Object.create(prototype)` plus an `Object.assign`, which
+	 * produces an object that is not an instance: the constructor never ran, so
+	 * it has no private fields and reading one throws. The class takes the bank
+	 * bundle as a constructor option now, so the test drives the real thing.
+	 */
 	function stateWith(...targets: ReturnType<typeof target>[]): MnemopiSessionState {
-		const state = Object.create(MnemopiSessionState.prototype) as MnemopiSessionState;
-		Object.assign(state, {
-			config: { recallLimit: 10, debug: false, bank: "retain" },
-			scoped: { recall: targets, retain: { bank: "retain" }, global: undefined },
+		return new MnemopiSessionState({
+			sessionId: "test-session",
+			config: { recallLimit: 10, debug: false, bank: "retain" } as never,
+			session: {} as never,
+			scoped: { recall: targets, retain: { bank: "retain" }, global: undefined } as never,
 		});
-		return state;
 	}
 
 	it("still returns the healthy banks' memories when one bank fails", async () => {

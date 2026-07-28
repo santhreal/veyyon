@@ -11,6 +11,7 @@ import {
 	isEnoent,
 	isRecord,
 	logger,
+	pathExistsQuietly,
 	stripWindowsExtendedLengthPathPrefix,
 } from "@veyyon/utils";
 import { registerPluginCacheInvalidator } from "../../discovery/helpers";
@@ -630,14 +631,15 @@ function toGraphImportSpecifier(resolvedPath: string, mtimeTag: string | null): 
  * a resolution walk that tries several. A permission error also lands here and reaches the same place,
  * because a path this process cannot examine is one it cannot load from either.
  */
-async function pathExists(p: string): Promise<boolean> {
-	try {
-		await fs.promises.stat(p);
-		return true;
-	} catch {
-		return false;
-	}
-}
+/**
+ * Why every path probe in this file is silent about a fault.
+ *
+ * These are resolution WALKS: `findPackageRoot` and the node_modules search climb directory by
+ * directory to the filesystem root, so a miss is the expected answer at nearly every step and a
+ * reported fault per step would bury a real one. Stated once and passed to each call, so the
+ * justification cannot drift between three probes that share it.
+ */
+const PROBE_IS_A_WALK = "a package-root walk climbs to the filesystem root, so most probes are misses by design";
 
 function hasSourceModuleExtension(p: string): boolean {
 	const ext = path.extname(p).toLowerCase();
@@ -682,7 +684,7 @@ async function findPackageRoot(importerPath: string): Promise<string | null> {
 			return cached;
 		}
 
-		if (await pathExists(path.join(dir, "package.json"))) {
+		if (await pathExistsQuietly(path.join(dir, "package.json"), PROBE_IS_A_WALK)) {
 			packageRootCache.set(path.dirname(importerPath), dir);
 			return dir;
 		}
@@ -889,7 +891,7 @@ async function findNodePackageRootUncached(packageName: string, importerPath: st
 	let dir = path.dirname(importerPath);
 	while (true) {
 		const candidate = path.join(dir, "node_modules", packageName);
-		if (await pathExists(path.join(candidate, "package.json"))) {
+		if (await pathExistsQuietly(path.join(candidate, "package.json"), PROBE_IS_A_WALK)) {
 			return candidate;
 		}
 		const parent = path.dirname(dir);
@@ -1093,7 +1095,7 @@ async function resolveExtensionNativeAddonUncached(specifier: string, importerPa
 		target =
 			typeof main === "string" && main.endsWith(NATIVE_ADDON_EXTENSION) ? path.resolve(packageRoot, main) : null;
 	}
-	if (!target || !(await pathExists(target))) {
+	if (!target || !(await pathExistsQuietly(target, PROBE_IS_A_WALK))) {
 		return null;
 	}
 	return realpathOrSelf(target);

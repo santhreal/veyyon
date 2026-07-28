@@ -197,6 +197,16 @@ export interface MnemopiSessionStateOptions {
 	aliasOf?: MnemopiSessionState;
 	lastRetainedTurn?: number;
 	hasRecalledForFirstTurn?: boolean;
+	/**
+	 * The banks to use, instead of opening them from `config`.
+	 *
+	 * The seam a test needs to drive recall against banks that fail on demand.
+	 * Without it the only way in was `Object.create(prototype)` plus an
+	 * `Object.assign`, which builds an object that is not an instance: it skips
+	 * the constructor, so it has no private fields at all and every read of one
+	 * throws. Injecting the bundle keeps the test on the real class.
+	 */
+	scoped?: MnemopiScopedResources;
 }
 
 export class MnemopiSessionState {
@@ -206,7 +216,7 @@ export class MnemopiSessionState {
 	readonly memory: Mnemopi;
 	readonly globalMemory?: Mnemopi;
 	readonly aliasOf?: MnemopiSessionState;
-	private readonly scoped: MnemopiScopedResources;
+	readonly #scoped: MnemopiScopedResources;
 	lastRetainedTurn: number;
 	hasRecalledForFirstTurn: boolean;
 	lastRecallSnippet?: string;
@@ -219,9 +229,18 @@ export class MnemopiSessionState {
 		this.aliasOf = options.aliasOf;
 		this.lastRetainedTurn = options.lastRetainedTurn ?? 0;
 		this.hasRecalledForFirstTurn = options.hasRecalledForFirstTurn ?? false;
-		this.scoped = options.aliasOf?.scoped ?? createScopedResources(options.config);
-		this.memory = this.scoped.retain.memory;
-		this.globalMemory = this.scoped.global?.memory;
+		// An alias shares the primary's banks rather than opening its own, and reads
+		// the sibling's field directly. Written as conditionals because an optional
+		// chain cannot carry a private name.
+		if (options.scoped) {
+			this.#scoped = options.scoped;
+		} else if (options.aliasOf) {
+			this.#scoped = options.aliasOf.#scoped;
+		} else {
+			this.#scoped = createScopedResources(options.config);
+		}
+		this.memory = this.#scoped.retain.memory;
+		this.globalMemory = this.#scoped.global?.memory;
 	}
 
 	setSessionId(sessionId: string): void {
@@ -235,11 +254,11 @@ export class MnemopiSessionState {
 	}
 
 	getScopedRecallTargets(): readonly MnemopiScopedMemory[] {
-		return this.scoped.recall;
+		return this.#scoped.recall;
 	}
 
 	getScopedRetainTarget(): MnemopiScopedMemory {
-		return this.scoped.retain;
+		return this.#scoped.retain;
 	}
 
 	/**
@@ -257,9 +276,9 @@ export class MnemopiSessionState {
 	 */
 	getScopedMemory(id: string): MnemopiScopedMemoryHit | null {
 		const targets = dedupeScopedTargets([
-			this.scoped.retain,
-			...this.scoped.recall,
-			...(this.scoped.global ? [this.scoped.global] : []),
+			this.#scoped.retain,
+			...this.#scoped.recall,
+			...(this.#scoped.global ? [this.#scoped.global] : []),
 		]);
 		for (const target of targets) {
 			const raw = target.memory.get(id) as MnemopiStoredMemoryRow | null;
@@ -292,9 +311,9 @@ export class MnemopiSessionState {
 		options: MnemopiMemoryEditOptions = {},
 	): MnemopiMemoryEditResult {
 		const targets = dedupeScopedTargets([
-			this.scoped.retain,
-			...this.scoped.recall,
-			...(this.scoped.global ? [this.scoped.global] : []),
+			this.#scoped.retain,
+			...this.#scoped.recall,
+			...(this.#scoped.global ? [this.#scoped.global] : []),
 		]);
 		let ineligible: MnemopiMemoryEditResult | undefined;
 		for (const target of targets) {
@@ -354,12 +373,12 @@ export class MnemopiSessionState {
 		const failed: Array<{ bank: string; error: unknown }> = [];
 		const sharedFallbackQuery = deriveSharedRecallFallbackQuery(
 			query,
-			this.scoped.retain.bank,
-			this.scoped.global?.bank,
+			this.#scoped.retain.bank,
+			this.#scoped.global?.bank,
 		);
-		for (const target of this.scoped.recall) {
+		for (const target of this.#scoped.recall) {
 			const queries =
-				target.bank === this.scoped.global?.bank && sharedFallbackQuery ? [query, sharedFallbackQuery] : [query];
+				target.bank === this.#scoped.global?.bank && sharedFallbackQuery ? [query, sharedFallbackQuery] : [query];
 			try {
 				for (const recallQuery of queries) {
 					const results = await target.memory.recallEnhanced(recallQuery, this.config.recallLimit, {
@@ -393,7 +412,7 @@ export class MnemopiSessionState {
 		// Every bank failing is not an empty result, it is a broken recall. Returning
 		// `[]` here makes the memory tools answer "No relevant memories found", which
 		// tells the model the search ran and came back clean. It did not run.
-		if (failed.length > 0 && failed.length === this.scoped.recall.length) {
+		if (failed.length > 0 && failed.length === this.#scoped.recall.length) {
 			const banks = failed.map(f => f.bank).join(", ");
 			throw new Error(
 				`Memory recall failed: none of the configured banks could be read (${banks}). ` +
@@ -424,10 +443,10 @@ export class MnemopiSessionState {
 
 	rememberInScope(memory: MnemopiRememberInput, options: MnemopiRememberOptions = {}): string | undefined {
 		try {
-			return this.scoped.retain.memory.remember(memory, options);
+			return this.#scoped.retain.memory.remember(memory, options);
 		} catch (error) {
 			logger.warn("Mnemopi: retain failed", {
-				bank: this.scoped.retain.bank,
+				bank: this.#scoped.retain.bank,
 				error: String(error),
 			});
 			return undefined;
@@ -563,7 +582,7 @@ export class MnemopiSessionState {
 	 */
 	async consolidate(): Promise<void> {
 		await this.forceRetainCurrentSession();
-		for (const memory of this.scoped.owned) {
+		for (const memory of this.#scoped.owned) {
 			await memory.flushExtractions();
 			memory.sleepAllSessions(false);
 		}
@@ -593,7 +612,7 @@ export class MnemopiSessionState {
 		this.unsubscribe = undefined;
 		if (this.aliasOf) return;
 		const closeOwned = (): void => {
-			for (const memory of this.scoped.owned) memory.close();
+			for (const memory of this.#scoped.owned) memory.close();
 		};
 		if (options.consolidate === false) {
 			closeOwned();

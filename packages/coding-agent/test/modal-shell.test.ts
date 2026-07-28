@@ -34,9 +34,20 @@ describe("ModalShell", () => {
 		expect(computeModalDims(80, 5, MODAL_SIZING_SETTINGS)).toBeNull();
 	});
 
-	it("withCompact strips vertical margin", () => {
+	/**
+	 * Compact sheds PADDING, and only padding.
+	 *
+	 * It used to zero `vMargin` as well, so a card that entered compact mode took
+	 * the whole screen and then gave two whole margins back the moment it left,
+	 * which is the height cliff pinned in
+	 * `modes/components/modal-shell-height-is-monotonic.test.ts`: a 24-row
+	 * terminal drew sixteen roster rows and a 25-row terminal drew none. The
+	 * margin is the card's relationship to the screen and does not change with
+	 * how tight the card is inside.
+	 */
+	it("withCompact strips the padding and keeps the margin", () => {
 		const c = withCompact(MODAL_SIZING_SETTINGS, true);
-		expect(c.vMargin).toBe(0);
+		expect(c.vMargin).toBe(MODAL_SIZING_SETTINGS.vMargin);
 		expect(c.hPad).toBe(1);
 		expect(c.vPad).toBe(0);
 	});

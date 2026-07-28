@@ -2,16 +2,13 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage, urlScheme } from "@veyyon/utils";
 import type { Skill } from "../extensibility/skills";
-// The owning module, not the `internal-urls` barrel: the barrel re-exports every protocol
+// Owners, not the `internal-urls` barrel: the barrel re-exports every protocol
 // handler and reaches hundreds of modules.
 import { type LocalProtocolOptions, resolveLocalUrlToPath } from "../internal-urls/local-protocol";
-import { validateRelativePath } from "../internal-urls/relative-path";
+import { InternalUrlRouter } from "../internal-urls/router";
 import type { InternalResource, ResolveContext } from "../internal-urls/types";
 import { normalizeLocalScheme } from "./path-utils";
 import { ToolError } from "./tool-errors";
-
-/** Regex to find skill:// tokens in command text. */
-const SKILL_URL_PATTERN = /'skill:\/\/[^'\s")`\\]+'|"skill:\/\/[^"\s')`\\]+"|skill:\/\/[^\s'")`\\]+/g;
 
 const INTERNAL_URL_PATTERN_INCLUDING_NORMALIZED_LOCAL =
 	/'(?:skill|agent|artifact|plan|memory|rule|local):\/\/[^'\s")`\\]+'|"(?:skill|agent|artifact|plan|memory|rule|local):\/\/[^"\s')`\\]+"|(?:skill|agent|artifact|plan|memory|rule|local):\/\/[^\s'")`\\]+|'local:\/[^'\s")`\\]+'|"local:\/[^"\s')`\\]+"|(?<![./\\\\\w-])local:\/[^\s'")`\\]+/g;
@@ -32,101 +29,6 @@ export interface InternalUrlExpansionOptions {
 	localOptions?: LocalProtocolOptions;
 	cwd?: string;
 	ensureLocalParentDirs?: boolean;
-}
-
-/**
- * Resolve a single skill:// URL to its absolute filesystem path.
- * Does NOT read file content or verify existence.
- */
-export function resolveSkillUrlToPath(url: string, skills: readonly Skill[]): string {
-	const parsed = /^skill:\/\/([^/?#]+)(\/[^?#]*)?(?:[?#].*)?$/.exec(url);
-	if (!parsed) {
-		throw new ToolError(`Invalid skill:// URL: ${url}`);
-	}
-
-	let rawSkillSegment = parsed[1];
-	if (!rawSkillSegment) {
-		throw new ToolError(`skill:// URL requires a skill name: ${url}`);
-	}
-	// Decode percent-encoded colons (%3A) used for namespaced skill names
-	try {
-		rawSkillSegment = decodeURIComponent(rawSkillSegment);
-	} catch {
-		// Leave as-is if decoding fails
-	}
-
-	// Resolve skill name by longest-prefix match against registered skills.
-	// This handles namespaced skills ("plugin:skill") where the URI may also
-	// carry a colon-delimited suffix (e.g., ":1-5" line range).
-	const { skill, suffix } = matchSkillName(rawSkillSegment, skills);
-	if (!skill) {
-		const available = skills.map(s => s.name);
-		const availableStr = available.length > 0 ? available.join(", ") : "none";
-		throw new ToolError(`Unknown skill: ${rawSkillSegment}. Available: ${availableStr}`);
-	}
-
-	// Combine any colon suffix (line range like ":1-5") with the path segment
-	const rawPath = (parsed[2] ?? "") + (suffix ? `/${suffix}` : "");
-	const hasRelativePath = rawPath !== "" && rawPath !== "/";
-
-	if (!hasRelativePath) {
-		return path.resolve(skill.baseDir);
-	}
-
-	let relativePath: string;
-	try {
-		relativePath = decodeURIComponent(rawPath.slice(1));
-	} catch {
-		throw new ToolError(`Invalid skill:// URL path encoding: ${url}`);
-	}
-	try {
-		validateRelativePath(relativePath);
-	} catch (err) {
-		const message = errorMessage(err);
-		throw new ToolError(message);
-	}
-
-	const targetPath = path.join(skill.baseDir, relativePath);
-	const resolvedPath = path.resolve(targetPath);
-	const resolvedBaseDir = path.resolve(skill.baseDir);
-	if (!resolvedPath.startsWith(resolvedBaseDir + path.sep) && resolvedPath !== resolvedBaseDir) {
-		throw new ToolError("Path traversal is not allowed in skill:// URLs");
-	}
-
-	return resolvedPath;
-}
-
-/**
- * Match a raw skill segment against registered skills using longest-prefix match.
- * Handles colons in both skill names (namespacing) and suffixes (line ranges).
- *
- * For "superpowers:brainstorming:1-5" with skill "superpowers:brainstorming":
- *   -> skill = superpowers:brainstorming, suffix = "1-5"
- * For "brainstorming" with skill "brainstorming":
- *   -> skill = brainstorming, suffix = undefined
- */
-function matchSkillName(
-	rawSegment: string,
-	skills: readonly Skill[],
-): { skill: Skill | undefined; suffix: string | undefined } {
-	// Exact match first (most common case)
-	const exact = skills.find(s => s.name === rawSegment);
-	if (exact) return { skill: exact, suffix: undefined };
-
-	// Try stripping colon-delimited suffixes from the right
-	let candidate = rawSegment;
-	while (true) {
-		const lastColon = candidate.lastIndexOf(":");
-		if (lastColon <= 0) break;
-		candidate = candidate.slice(0, lastColon);
-		const match = skills.find(s => s.name === candidate);
-		if (match) {
-			const suffix = rawSegment.slice(lastColon + 1);
-			return { skill: match, suffix };
-		}
-	}
-
-	return { skill: undefined, suffix: undefined };
 }
 
 function extractScheme(url: string): SupportedInternalScheme | undefined {
@@ -174,7 +76,7 @@ function shellEscape(p: string): string {
 async function resolveInternalUrlToPath(
 	rawUrl: string,
 	skills: readonly Skill[],
-	internalRouter?: InternalUrlResolver,
+	internalRouter: InternalUrlResolver,
 	localOptions?: LocalProtocolOptions,
 	ensureLocalParentDirs?: boolean,
 	cwd?: string,
@@ -183,10 +85,6 @@ async function resolveInternalUrlToPath(
 	const scheme = extractScheme(url);
 	if (!scheme) {
 		throw new ToolError(`Unsupported internal URL in bash command: ${url}`);
-	}
-
-	if (scheme === "skill") {
-		return resolveSkillUrlToPath(url, skills);
 	}
 
 	if (scheme === "local") {
@@ -202,7 +100,7 @@ async function resolveInternalUrlToPath(
 		return resolvedLocalPath;
 	}
 
-	if (!internalRouter?.canHandle(url)) {
+	if (!internalRouter.canHandle(url)) {
 		throw new ToolError(
 			`Cannot resolve ${scheme}:// URL in bash command: ${url}\n` +
 				"Internal URL router is unavailable for this protocol in the current session.",
@@ -211,7 +109,7 @@ async function resolveInternalUrlToPath(
 
 	let resource: InternalResource;
 	try {
-		resource = await internalRouter.resolve(url, { cwd, pathOnly: true });
+		resource = await internalRouter.resolve(url, { cwd, pathOnly: true, skills });
 	} catch (error) {
 		const message = errorMessage(error);
 		throw new ToolError(`Failed to resolve ${scheme}:// URL in bash command: ${url}\n${message}`);
@@ -225,23 +123,6 @@ async function resolveInternalUrlToPath(
 }
 
 /**
- * Expand all skill:// URIs in a bash command string.
- * Returns the command with URIs replaced by shell-escaped absolute paths.
- * Throws ToolError if any URI cannot be resolved.
- */
-export function expandSkillUrls(command: string, skills: readonly Skill[]): string {
-	if (skills.length === 0 || !command.includes("skill://")) {
-		return command;
-	}
-
-	return command.replace(SKILL_URL_PATTERN, token => {
-		const url = unquoteToken(token);
-		const resolvedPath = resolveSkillUrlToPath(url, skills);
-		return shellEscape(resolvedPath);
-	});
-}
-
-/**
  * Expand supported internal URLs in a bash command string to shell-escaped absolute paths.
  * Unresolvable URLs and literal mentions inside larger quoted text are left unchanged.
  * Supported schemes: skill://, agent://, artifact://, memory://, rule://, local://
@@ -251,6 +132,7 @@ export async function expandInternalUrls(command: string, options: InternalUrlEx
 
 	const matches = Array.from(command.matchAll(INTERNAL_URL_PATTERN_INCLUDING_NORMALIZED_LOCAL));
 	if (matches.length === 0) return command;
+	const internalRouter = options.internalRouter ?? InternalUrlRouter.instance();
 
 	let expanded = command;
 	for (let i = matches.length - 1; i >= 0; i--) {
@@ -268,7 +150,7 @@ export async function expandInternalUrls(command: string, options: InternalUrlEx
 			resolvedPath = await resolveInternalUrlToPath(
 				url,
 				options.skills,
-				options.internalRouter,
+				internalRouter,
 				options.localOptions,
 				options.ensureLocalParentDirs,
 				options.cwd,

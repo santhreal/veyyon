@@ -191,8 +191,10 @@ Loaded via symbolic link.
 
 		// session.skills should be empty
 		expect(session.skills).toEqual([]);
-		// No warnings since we didn't discover
-		expect(session.skillWarnings).toEqual([]);
+		// Nothing was discovered, so nothing could warn. Read through the operator channel, which
+		// is where a skill-loading problem now goes; the old `skillWarnings` getter it replaced was
+		// read by this test and by no production code at all.
+		expect(session.operatorNotices.all().filter(notice => notice.source === "skills")).toEqual([]);
 	});
 
 	it("should use provided skills when options.skills is explicitly set", async () => {
@@ -216,7 +218,7 @@ Loaded via symbolic link.
 
 		// session.skills should contain only the provided skill
 		expect(session.skills).toEqual([customSkill]);
-		// No warnings since we didn't discover
-		expect(session.skillWarnings).toEqual([]);
+		// Explicit skills skip discovery, so no skill notice can be raised.
+		expect(session.operatorNotices.all().filter(notice => notice.source === "skills")).toEqual([]);
 	});
 });

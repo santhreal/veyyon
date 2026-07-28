@@ -7,7 +7,7 @@
  *
  * Agents that are no longer in the `AgentRegistry` — one-shot helpers
  * unregistered after `finalizeSubagentLifecycle` (`keepAlive: false`, e.g. the
- * `eval` `agent()` bridge), agents released via the Agent Hub / vibe kill, or
+ * `eval` `agent()` bridge), agents released via the Agent Control Center / vibe kill, or
  * any agent after a session resume — remain reachable: `resolve`, `complete`,
  * and the index all fall back to scanning artifacts dirs for `<id>.jsonl`,
  * mirroring how `agent://` reads `.md` outputs straight off disk.
@@ -58,7 +58,7 @@ export class HistoryProtocolHandler implements ProtocolHandler {
 	async resolve(url: InternalUrl): Promise<InternalResource> {
 		const agentId = url.rawHost || url.hostname;
 		const registry = AgentRegistry.global();
-		// Advisor transcripts are observability-only — surfaced in the Agent Hub, never
+		// Advisor transcripts are observability-only — surfaced in the Agent Control Center, never
 		// in the agent-facing roster. Hide them from the index, lookup, and completions.
 		const visible = registry.list().filter(ref => ref.kind !== "advisor");
 

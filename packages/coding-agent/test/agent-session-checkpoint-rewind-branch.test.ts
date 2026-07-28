@@ -148,6 +148,7 @@ async function expectNoActiveCheckpointError(session: AgentSession): Promise<voi
 }
 
 describe("AgentSession checkpoint rewind branch context", () => {
+	/** Branch rewind context keeps agent-owned summaries out of the synthetic user channel. */
 	it("rebuilds active history through branch_summary before the post-rewind assistant turn", async () => {
 		const report = "findings: kept checkpoint; risks: stale signed thinking";
 		const { session, mock } = await createHarness([
@@ -177,12 +178,17 @@ describe("AgentSession checkpoint rewind branch context", () => {
 		const finalCall = mock.calls[2];
 		if (!finalCall) throw new Error("Expected final post-rewind provider call");
 		const summaryIndex = finalCall.context.messages.findIndex(
-			message => message.role === "user" && messageText(message).includes("summary of a branch"),
+			message => message.role === "developer" && messageText(message).includes("summary of a branch"),
 		);
 		const reportIndex = finalCall.context.messages.findIndex(
-			message => message.role === "developer" && messageText(message).includes(report),
+			message => message.role === "developer" && messageText(message).includes("Checkpoint completed."),
 		);
 		expect(summaryIndex).toBeGreaterThan(-1);
+		expect(
+			finalCall.context.messages.some(
+				message => message.role === "user" && messageText(message).includes("summary of a branch"),
+			),
+		).toBe(false);
 		expect(reportIndex).toBeGreaterThan(summaryIndex);
 		const reportMessage = finalCall.context.messages[reportIndex];
 		if (!reportMessage) throw new Error("Expected rewind report context");

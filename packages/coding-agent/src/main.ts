@@ -88,7 +88,6 @@ import { shouldShowStartupSplash } from "./startup-splash";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "./system-prompt";
 import { createPersistedSubagentReviverFactory } from "./task/persisted-revive";
 import { initTelemetryExport, isTelemetryExportEnabled } from "./telemetry-export";
-import { concreteThinkingLevel } from "./thinking";
 import type { LspStartupServerInfo } from "./tools";
 import { decideUpdateNotice, readLastChangelogVersion, writeLastChangelogVersion } from "./utils/changelog";
 import { EventBus } from "./utils/event-bus";
@@ -1114,6 +1113,7 @@ export async function buildSessionOptions(
 	// Thinking level
 	if (parsed.thinking) {
 		options.thinkingLevel = parsed.thinking;
+		options.thinkingSource = "session";
 	} else if (
 		scopedModels.length > 0 &&
 		scopedModels[0].explicitThinkingLevel === true &&
@@ -1121,6 +1121,7 @@ export async function buildSessionOptions(
 		!parsed.resume
 	) {
 		options.thinkingLevel = scopedModels[0].thinkingLevel;
+		options.thinkingSource = "selector";
 	}
 
 	// Scoped models for Ctrl+P cycling: each gets the effort the ONE resolver says
@@ -1133,15 +1134,11 @@ export async function buildSessionOptions(
 		);
 		options.scopedModels = scopedModels.map(scopedModel => ({
 			model: scopedModel.model,
-			// `auto` is a session-level concept only; per-scoped-model (Ctrl+P)
-			// overrides stay concrete, so coerce it to "unset" here.
-			thinkingLevel: concreteThinkingLevel(
-				resolveEffort({
-					selectorLevel: scopedModel.explicitThinkingLevel ? scopedModel.thinkingLevel : undefined,
-					modelSelector: `${scopedModel.model.provider}/${scopedModel.model.id}`,
-					defaultEffort: rows,
-				}).level,
-			),
+			thinkingLevel: resolveEffort({
+				selectorLevel: scopedModel.explicitThinkingLevel ? scopedModel.thinkingLevel : undefined,
+				modelSelector: `${scopedModel.model.provider}/${scopedModel.model.id}`,
+				defaultEffort: rows,
+			}).level,
 		}));
 	}
 

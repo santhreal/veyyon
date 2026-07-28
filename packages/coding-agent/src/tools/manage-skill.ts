@@ -45,11 +45,11 @@ export class ManageSkillTool implements AgentTool<typeof manageSkillSchema> {
 	readonly loadMode = "essential" as const;
 	readonly summary = "Create, update, or delete an isolated managed skill";
 
-	// No session state needed: createIf reads settings; writes target the
-	// home-based managed-skills dir directly.
+	constructor(private readonly session: ToolSession) {}
+
 	static createIf(session: ToolSession): ManageSkillTool | null {
 		if (!session.settings.get("autolearn.enabled")) return null;
-		return new ManageSkillTool();
+		return new ManageSkillTool(session);
 	}
 
 	async execute(_id: string, params: ManageSkillParams): Promise<AgentToolResult> {
@@ -72,7 +72,10 @@ export class ManageSkillTool implements AgentTool<typeof manageSkillSchema> {
 		// authored skill already claims writes a file that never surfaces. Refuse
 		// up front rather than report a false "Created". `sanitizeSkillName`
 		// normalizes to the on-disk name the discovery scan compares against.
-		if (params.action === "create" && isNameClaimedByAuthoredSkill(sanitizeSkillName(params.name))) {
+		if (
+			params.action === "create" &&
+			isNameClaimedByAuthoredSkill(sanitizeSkillName(params.name), this.session.skills ?? [])
+		) {
 			return {
 				content: [
 					{

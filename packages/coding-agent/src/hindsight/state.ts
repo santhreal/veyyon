@@ -341,7 +341,7 @@ export class HindsightSessionState {
 
 	#transformProviderText(text: string): string {
 		try {
-			return this.session.obfuscator?.obfuscate(text) ?? text;
+			return this.session.obfuscateProviderText(text);
 		} catch {
 			// The thrown diagnostic may contain the secret-bearing input.
 			throw new Error("Hindsight confidentiality transform failed.");

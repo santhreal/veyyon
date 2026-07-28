@@ -123,6 +123,7 @@ export async function searchPublicWeb(
 	params: SearchParams,
 	deadlines: PublicWebDeadlines = {},
 ): Promise<SearchResponse> {
+	params.signal?.throwIfAborted();
 	const softMs = deadlines.softMs ?? SOFT_DEADLINE_MS;
 	const hardMs = deadlines.hardMs ?? HARD_DEADLINE_MS;
 	const numResults = clampNumResults(params.numSearchResults ?? params.limit, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
@@ -141,8 +142,13 @@ export async function searchPublicWeb(
 	const signal = AbortSignal.any([hardTimeout.signal, straggler.signal]);
 
 	const responses: (SearchResponse | undefined)[] = new Array(engineIds.length);
-	const failures: { provider: { id: SearchProviderId; label: string }; error: unknown }[] = [];
+	const failures: ({ provider: { id: SearchProviderId; label: string }; error: unknown } | undefined)[] = new Array(
+		engineIds.length,
+	);
 	const firstSuccess = Promise.withResolvers<void>();
+	const callerAbort = Promise.withResolvers<never>();
+	const onCallerAbort = (): void => callerAbort.reject(params.signal?.reason);
+	params.signal?.addEventListener("abort", onCallerAbort, { once: true });
 	const all = Promise.all(
 		engineIds.map(async (id, index) => {
 			try {
@@ -150,17 +156,19 @@ export async function searchPublicWeb(
 				responses[index] = await provider.search({ ...params, signal });
 				firstSuccess.resolve();
 			} catch (error) {
-				failures.push({ provider: { id, label: id }, error });
+				failures[index] = { provider: { id, label: id }, error };
 			}
 		}),
 	);
 
 	try {
-		await Promise.race([all, Bun.sleep(softMs)]);
-		if (!responses.some(response => response !== undefined) && failures.length < engineIds.length) {
-			await Promise.race([all, firstSuccess.promise, Bun.sleep(Math.max(0, hardMs - softMs))]);
+		await Promise.race([all, Bun.sleep(softMs), callerAbort.promise]);
+		const failureCount = failures.reduce(count => count + 1, 0);
+		if (!responses.some(response => response !== undefined) && failureCount < engineIds.length) {
+			await Promise.race([all, firstSuccess.promise, Bun.sleep(Math.max(0, hardMs - softMs)), callerAbort.promise]);
 		}
 	} finally {
+		params.signal?.removeEventListener("abort", onCallerAbort);
 		straggler.abort();
 		hardTimeout.cancel();
 	}
@@ -172,10 +180,14 @@ export async function searchPublicWeb(
 		if (response) mergeSources(merged, response.sources);
 	}
 
-	if (merged.size === 0 && failures.length === engineIds.length) {
+	const orderedFailures = failures.filter(
+		(failure): failure is { provider: { id: SearchProviderId; label: string }; error: unknown } =>
+			failure !== undefined,
+	);
+	if (merged.size === 0 && orderedFailures.length === engineIds.length) {
 		throw new SearchProviderError(
 			"public",
-			`All public engines failed: ${formatSearchProviderFailures(failures)}`,
+			`All public engines failed: ${formatSearchProviderFailures(orderedFailures)}`,
 			503,
 		);
 	}

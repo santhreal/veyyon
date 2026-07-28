@@ -1,7 +1,9 @@
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
+import { reportFault } from "@veyyon/utils/fault-sink";
 import { hasFsCode, isEnoent } from "@veyyon/utils/fs-error";
+import { type PathState, pathStateSync } from "@veyyon/utils/fs-optional";
 // Owners, not the `@veyyon/utils` barrel: 5 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import { peekFileEnds } from "@veyyon/utils/peek-file";
@@ -49,6 +51,22 @@ export interface WriteTextAtomicOptions {
 export interface SessionStorage {
 	ensureDirSync(dir: string): void;
 	existsSync(path: string): boolean;
+	/**
+	 * Existence as THREE answers, for a caller that destroys something on `false`.
+	 *
+	 * {@link existsSync} collapses "not there" and "there but I cannot tell" into one `false`, which is the
+	 * right shape for a guard and the wrong shape for a decision to delete. `SessionManager`'s
+	 * draft-only cleanup is the caller that needs the difference: a draft in the session's ARTIFACTS
+	 * directory means "keep this session", and with a boolean an unreachable artifacts directory answered
+	 * "no draft" and the session was deleted along with the draft in it.
+	 *
+	 * Backed by `pathStateSync` for the filesystem. The in-memory and indexed backends answer from their
+	 * own index, where `unreadable` cannot occur: an index either holds a path or does not, and inventing a
+	 * third state there would be a lie about a data structure that has no such failure mode. That is why
+	 * this is a storage METHOD and not a direct call to `pathStateSync` at the call site, which would ask
+	 * the filesystem about a path those backends never wrote.
+	 */
+	existsStateSync(path: string): PathState;
 	writeTextSync(path: string, content: string): void;
 	/**
 	 * Update the current session title through the storage backend.
@@ -174,14 +192,71 @@ class FileSessionStorageWriter implements SessionStorageWriter {
 }
 
 export class FileSessionStorage implements SessionStorage {
+	/**
+	 * Paths already reported as unreachable, so a per-turn probe does not log per turn.
+	 *
+	 * Keyed by path rather than by a single flag: two different session files can be unreachable for two
+	 * different reasons, and collapsing them would report the first and hide the second.
+	 */
+	readonly #reportedUnreachable = new Set<string>();
+
 	ensureDirSync(dir: string): void {
 		if (!fs.existsSync(dir)) {
 			fs.mkdirSync(dir, { recursive: true });
 		}
 	}
 
+	/**
+	 * Whether the path is there, and a REPORT when the honest answer is "cannot tell".
+	 *
+	 * This one method backs eight probes in `SessionManager`: whether the session file is there before a
+	 * rewrite, whether a marker exists, whether an old file existed before a move, whether a draft is
+	 * already written. `fs.existsSync` answers `false` for a path that exists and cannot be reached
+	 * exactly as it does for one that is absent, so a session directory on a mount that has gone away, or
+	 * whose permissions changed, made every one of those probes say "not there" and the session behave as
+	 * though it had no history. Nothing failed, so nobody looked (Law 10).
+	 *
+	 * THE RETURN IS STILL `false`, DELIBERATELY, and that is the whole design of this change. Several
+	 * callers WRITE on the false branch, and each needs its own decision about whether a wrong answer
+	 * there is worse than failing: that is a per-site contract choice (`pathExistsOrThrow` is the shape
+	 * for the ones that overwrite) and it is recorded as its own task rather than guessed at here, in
+	 * session persistence, in one sweep. What this method can do safely today is stop the answer being
+	 * SILENT. Reach is added; no caller's control flow changes.
+	 *
+	 * EVERY CALLER PASSES A FILE, which is what makes that last sentence true. `pathStateSync` answers
+	 * `present` for any file it can stat, including one it could not open, so the boolean is identical to
+	 * `existsSync`'s for a file. It is STRICTER for a directory, which `existsSync` calls present even when
+	 * it cannot be traversed; that is the better answer, and no call site passes one today (all nine pass a
+	 * session file, a marker, a draft or an old path). A future caller handing this a directory gets the
+	 * stricter answer on purpose.
+	 */
 	existsSync(path: string): boolean {
-		return fs.existsSync(path);
+		const state = pathStateSync(path);
+		if (state === "unreadable" && !this.#reportedUnreachable.has(path)) {
+			this.#reportedUnreachable.add(path);
+			reportFault({
+				source: "session",
+				text: `${path} exists but could not be reached, so this session is being treated as though it were not there. Check the directory's permissions and whether its filesystem is mounted.`,
+				context: { path },
+			});
+		}
+		if (state === "present") this.#reportedUnreachable.delete(path);
+		return state === "present";
+	}
+
+	/** The filesystem's own three answers, reported the same way as {@link existsSync}. */
+	existsStateSync(path: string): PathState {
+		const state = pathStateSync(path);
+		if (state === "unreadable" && !this.#reportedUnreachable.has(path)) {
+			this.#reportedUnreachable.add(path);
+			reportFault({
+				source: "session",
+				text: `${path} exists but could not be reached, so what it holds is unknown. Check the directory's permissions and whether its filesystem is mounted.`,
+				context: { path },
+			});
+		}
+		if (state === "present") this.#reportedUnreachable.delete(path);
+		return state;
 	}
 
 	writeTextSync(fpath: string, content: string): void {
@@ -660,6 +735,17 @@ export class MemorySessionStorage implements SessionStorage {
 
 	existsSync(path: string): boolean {
 		return this.#files.has(path);
+	}
+
+	/**
+	 * An index has two answers, not three.
+	 *
+	 * `unreadable` is a filesystem state: a mount that went away, a directory that cannot be traversed. A
+	 * `Map` cannot be in that state, so answering anything but `present`/`absent` here would invent a
+	 * failure mode this backend does not have and make every caller handle it.
+	 */
+	existsStateSync(path: string): PathState {
+		return this.#files.has(path) ? "present" : "absent";
 	}
 
 	writeTextSync(path: string, content: string): void {

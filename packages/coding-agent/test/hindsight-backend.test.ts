@@ -73,6 +73,10 @@ function makeFakeSession(deps: FakeSessionDeps) {
 			for (const l of [...listeners]) l(event);
 		},
 		listenerCount: () => listeners.size,
+		// The live redaction authority. Hindsight routes every provider-bound string through it and
+		// converts a throw into a value-free failure, so a stub without it fails every test in this
+		// file with "confidentiality transform failed" rather than with the assertion under test.
+		obfuscateProviderText: (text: string) => text,
 	};
 	return session;
 }

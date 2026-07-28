@@ -1,22 +1,22 @@
 /**
  * Per-profile skill isolation contract.
  *
- * A profile is a whole separate config root (`~/.veyyon/profiles/<name>/agent`).
- * Every skill source veyyon OWNS resolves under `getAgentDir()`, which is
- * profile-scoped, so activating a profile physically re-homes:
- *   - native user skills       (`<agentDir>/skills`)
+ * A profile is a separate config root (`~/.veyyon/profiles/<name>/agent`).
+ * Veyyon's profile-owned skill sources resolve through `getAgentDir()`, so
+ * activating a profile physically re-homes:
+ *   - native authored skills (`<agentDir>/skills`)
  *   - managed/auto-learn skills (`<agentDir>/managed-skills`)
- *   - veyyon-plugins user roots    (`<agentDir>` extension roots)
+ *   - user extension/plugin roots configured or installed in that profile
  *
- * Two profiles therefore never share a skill directory. Project skills
- * (`.veyyon/skills` next to the code) stay shared across profiles by design, and
- * OTHER tools' skill dirs (`~/.claude/skills`, ...) are global to the machine —
- * they load by default as the shared base layer, and their per-profile
- * isolation is the per-profile `discovery.importForeignConfig` toggle
- * (default on), not a relocation of another tool's directory.
+ * Project-local `.veyyon/skills` is deliberately never scanned: opening a
+ * repository cannot ambiently inject instructions. Foreign-tool skill roots
+ * (`~/.claude/skills`, `~/.codex/skills`, etc.) are likewise excluded from the
+ * active skill loader. Explicit project/CLI extension packages may contribute
+ * skills through the `veyyon-plugins` provider; those are configured providers,
+ * not ambient project skill discovery.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { getManagedSkillsDir } from "@veyyon/coding-agent/autolearn/managed-skills";
 import {
 	__resetProfileSnapshotForTests,
@@ -37,14 +37,27 @@ function nativeUserSkillsDir(): string {
 // mode resolve to the override verbatim instead of profiles/default, so this file pins
 // the baseline (no override) for its own window and puts the whole snapshot back after.
 const dirOverrides = captureDirOverrides();
+const initialProfileEnv = process.env.VEYYON_PROFILE;
 
 beforeAll(() => {
 	delete process.env.VEYYON_CODING_AGENT_DIR;
+	delete process.env.VEYYON_PROFILE;
+	__resetProfileSnapshotForTests();
+	refreshDirsFromEnv();
+});
+beforeEach(() => {
+	delete process.env.VEYYON_CODING_AGENT_DIR;
+	delete process.env.VEYYON_PROFILE;
 	__resetProfileSnapshotForTests();
 	refreshDirsFromEnv();
 });
 
 afterAll(() => {
+	if (initialProfileEnv === undefined) {
+		delete process.env.VEYYON_PROFILE;
+	} else {
+		process.env.VEYYON_PROFILE = initialProfileEnv;
+	}
 	restoreDirOverrides(dirOverrides);
 	__resetProfileSnapshotForTests();
 	refreshDirsFromEnv();

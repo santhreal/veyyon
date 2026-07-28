@@ -357,7 +357,7 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 		});
 	}
 	/** All reuse-chain examples; the `examples` getter filters by enabled languages. */
-	private static readonly ALL_EXAMPLES: readonly ToolExample<typeof evalSchema.infer>[] = [
+	static readonly #ALL_EXAMPLES: readonly ToolExample<typeof evalSchema.infer>[] = [
 		{
 			caption: "First call — set up once",
 			call: {
@@ -401,7 +401,7 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 	];
 	get examples(): readonly ToolExample<typeof evalSchema.infer>[] {
 		const langs = new Set(this.#enabledLanguages());
-		return EvalTool.ALL_EXAMPLES.filter(ex => "call" in ex && langs.has(ex.call.language as EvalLanguageToken));
+		return EvalTool.#ALL_EXAMPLES.filter(ex => "call" in ex && langs.has(ex.call.language as EvalLanguageToken));
 	}
 	get parameters(): typeof evalSchema {
 		const langs = this.#enabledLanguages();

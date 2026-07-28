@@ -1,11 +1,12 @@
-import { afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { AssistantMessage } from "@veyyon/ai";
+import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/assistant-message";
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
 import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { evalToolRenderer } from "@veyyon/coding-agent/tools/eval-render";
 import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";
-import { type Component, TUI } from "@veyyon/tui";
+import { type Component, resetKeybindingsForTests, setKeybindings, TUI } from "@veyyon/tui";
 import { settleFrames } from "../../tui/test/helpers/settle-frames";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal";
 import { createToolExecution } from "./helpers/tool-execution";
@@ -162,7 +163,11 @@ describe("streaming tool output never sprays duplicate scrollback banners", () =
 	beforeAll(async () => {
 		await initTheme();
 	});
+	beforeEach(() => {
+		setKeybindings(KeybindingsManager.inMemory());
+	});
 	afterEach(() => {
+		resetKeybindingsForTests();
 		if (ORIGINAL_ROWS) Object.defineProperty(process.stdout, "rows", ORIGINAL_ROWS);
 		else Reflect.deleteProperty(process.stdout, "rows");
 	});

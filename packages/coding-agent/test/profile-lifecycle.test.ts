@@ -14,7 +14,7 @@ import {
 } from "@veyyon/utils";
 import { YAML } from "bun";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
-import { createProfile, removeProfile, runProfileCommand, writeProfileDisplayName } from "../src/cli/profile-cli";
+import { createProfile, removeProfile, runProfileCliCommand, writeProfileDisplayName } from "../src/cli/profile-cli";
 import { useIsolatedAgentDir } from "./helpers/isolated-agent-dir";
 
 // The code under test opens `AgentStorage`, which resolves `agent.db` under the
@@ -51,7 +51,7 @@ describe("profile lifecycle CLI", () => {
 		await createProfile("work", "blank");
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-		await runProfileCommand({ action: "list" });
+		await runProfileCliCommand({ action: "list" });
 
 		const output = logSpy.mock.calls.map(call => String(call[0] ?? "")).join("\n");
 		expect(output).toContain("default");
@@ -68,7 +68,7 @@ describe("profile lifecycle CLI", () => {
 			YAML.stringify({ "app.session.fork": "ctrl+f" }, null, 2),
 		);
 
-		await runProfileCommand({ action: "new", name: "work", from: "default" });
+		await runProfileCliCommand({ action: "new", name: "work", from: "default" });
 
 		const workConfig = YAML.parse(
 			await Bun.file(path.join(getProfileRootDir("work"), "agent", "config.yml")).text(),
@@ -132,6 +132,33 @@ describe("profile lifecycle CLI", () => {
 		const profilesDir = path.join(configRoot, "profiles");
 		const leftovers = (await fs.readdir(profilesDir)).filter(name => name.includes("work"));
 		expect(leftovers).toEqual([]);
+	});
+
+	/**
+	 * A selected instruction file with the wrong type is corrupted profile data,
+	 * not an absent optional item. Silently skipping it produces an incomplete
+	 * profile while reporting successful creation.
+	 */
+	it("refuses a profile whose AGENTS.md is a directory", async () => {
+		await createProfile("src", "blank");
+		await fs.mkdir(path.join(getProfileRootDir("src"), "agent", "AGENTS.md"));
+
+		await expect(createProfile("work", "src")).rejects.toThrow(/AGENTS\.md: expected a file/);
+		expect(profileExists("work")).toBe(false);
+	});
+
+	/**
+	 * Directory-backed profile items follow the symmetric contract. A file named
+	 * `skills` must not be mistaken for an absent skills directory.
+	 */
+	it("refuses a profile whose skills item is not a directory", async () => {
+		await createProfile("src", "blank");
+		const skillsPath = path.join(getProfileRootDir("src"), "agent", "skills");
+		await fs.rm(skillsPath, { recursive: true });
+		await Bun.write(skillsPath, "not a directory");
+
+		await expect(createProfile("work", "src")).rejects.toThrow(/skills: expected a directory/);
+		expect(profileExists("work")).toBe(false);
 	});
 
 	/**
@@ -353,7 +380,7 @@ describe("profile lifecycle CLI", () => {
 
 	it("clears the global launch default when its profile is removed", async () => {
 		await createProfile("work", "blank");
-		await runProfileCommand({ action: "default", name: "work" });
+		await runProfileCliCommand({ action: "default", name: "work" });
 		expect(resolveGlobalDefaultProfile()).toBe("work");
 
 		// Removing the launch-default profile (from the base profile, so it is not
@@ -366,7 +393,7 @@ describe("profile lifecycle CLI", () => {
 	it("leaves the launch default untouched when a different profile is removed", async () => {
 		await createProfile("work", "blank");
 		await createProfile("spare", "blank");
-		await runProfileCommand({ action: "default", name: "work" });
+		await runProfileCliCommand({ action: "default", name: "work" });
 		expect(resolveGlobalDefaultProfile()).toBe("work");
 
 		await removeProfile("spare", { yes: true });
@@ -451,22 +478,22 @@ describe("profile default command", () => {
 		await createProfile("work", "blank");
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-		await runProfileCommand({ action: "default", name: "work" });
+		await runProfileCliCommand({ action: "default", name: "work" });
 		expect(resolveGlobalDefaultProfile()).toBe("work");
 		// The write lands in the GLOBAL config root, not a profile.
 		const globalConfig = path.join(configRoot, "config.yml");
 		expect(await Bun.file(globalConfig).text()).toContain("defaultProfile: work");
 
 		logSpy.mockClear();
-		await runProfileCommand({ action: "default", json: true });
+		await runProfileCliCommand({ action: "default", json: true });
 		expect(JSON.parse(String(logSpy.mock.calls[0]?.[0]))).toEqual({ defaultProfile: "work" });
 
-		await runProfileCommand({ action: "default", clear: true });
+		await runProfileCliCommand({ action: "default", clear: true });
 		expect(resolveGlobalDefaultProfile()).toBeUndefined();
 	});
 
 	it("refuses a nonexistent profile", async () => {
-		await expect(runProfileCommand({ action: "default", name: "missing" })).rejects.toThrow(
+		await expect(runProfileCliCommand({ action: "default", name: "missing" })).rejects.toThrow(
 			'Profile "missing" does not exist',
 		);
 		expect(resolveGlobalDefaultProfile()).toBeUndefined();
@@ -496,16 +523,16 @@ describe("profile list launch-default marker", () => {
 
 	it("marks the global launch default in list output and JSON", async () => {
 		await createProfile("work", "blank");
-		await runProfileCommand({ action: "default", name: "work" });
+		await runProfileCliCommand({ action: "default", name: "work" });
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-		await runProfileCommand({ action: "list" });
+		await runProfileCliCommand({ action: "list" });
 		const text = logSpy.mock.calls.map(call => String(call[0] ?? "")).join("\n");
 		expect(text).toContain("[launch default]");
 		expect(text.split("\n").find(line => line.includes("[launch default]"))).toContain("work");
 
 		logSpy.mockClear();
-		await runProfileCommand({ action: "list", json: true });
+		await runProfileCliCommand({ action: "list", json: true });
 		const rows = JSON.parse(logSpy.mock.calls.map(call => String(call[0] ?? "")).join("\n")) as {
 			name: string;
 			launchDefault: boolean;

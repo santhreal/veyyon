@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { applyResolvedSystemPromptInputs, submitInteractiveInput } from "@veyyon/coding-agent/main";
 import type { SubmittedUserInput } from "@veyyon/coding-agent/modes/types";
 import type { CreateAgentSessionOptions } from "@veyyon/coding-agent/sdk";
-import { discoverTitleSystemPromptFile } from "@veyyon/coding-agent/system-prompt";
+import { buildSystemPrompt, discoverTitleSystemPromptFile } from "@veyyon/coding-agent/system-prompt";
 import { removeWithRetries } from "@veyyon/utils";
 
 const cleanupDirs: string[] = [];
@@ -38,7 +38,11 @@ describe("discoverTitleSystemPromptFile", () => {
 });
 
 describe("applyResolvedSystemPromptInputs", () => {
-	it("routes SYSTEM.md content through template-aware session options", () => {
+	/**
+	 * Resolved values from the two CLI flags must enter the template-aware fields,
+	 * not the SDK's whole-array replacement hook.
+	 */
+	it("routes both CLI prompt values through template-aware session options", () => {
 		const options: CreateAgentSessionOptions = {};
 
 		applyResolvedSystemPromptInputs(options, "project system prompt", "append prompt");
@@ -46,6 +50,41 @@ describe("applyResolvedSystemPromptInputs", () => {
 		expect(options.customSystemPrompt).toBe("project system prompt");
 		expect(options.appendSystemPrompt).toBe("append prompt");
 		expect(options.systemPrompt).toBeUndefined();
+	});
+
+	/**
+	 * The retained CLI contract replaces the stable base, appends the second
+	 * value once, and preserves the generated project footer end to end.
+	 */
+	it("renders both retained CLI prompt values through prompt assembly", async () => {
+		const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-cli-system-prompt-"));
+		cleanupDirs.push(projectDir);
+		const options: CreateAgentSessionOptions = {};
+		applyResolvedSystemPromptInputs(options, "CLI CUSTOM BASE", "CLI APPENDED INSTRUCTIONS");
+
+		const { systemPrompt } = await buildSystemPrompt({
+			cwd: projectDir,
+			resolvedCustomPrompt: options.customSystemPrompt,
+			resolvedAppendSystemPrompt: options.appendSystemPrompt,
+			contextFiles: [],
+			skills: [],
+			rules: [],
+			toolNames: [],
+			workspaceTree: {
+				rootPath: projectDir,
+				rendered: "",
+				truncated: false,
+				totalLines: 0,
+				agentsMdFiles: [],
+			},
+		});
+		const rendered = systemPrompt.join("\n\n");
+
+		expect(systemPrompt).toHaveLength(2);
+		expect(rendered.split("CLI CUSTOM BASE")).toHaveLength(2);
+		expect(rendered.split("CLI APPENDED INSTRUCTIONS")).toHaveLength(2);
+		expect(rendered).not.toContain("ROLE\n==============");
+		expect(rendered).toContain(`current working directory is '${projectDir}'`);
 	});
 });
 

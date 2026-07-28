@@ -64,7 +64,12 @@ function sessionFixtureJsonl(): string {
 			api: "anthropic-messages",
 			provider: "anthropic",
 			model: "test-model",
-			usage: {},
+			// A real usage, not `{}`. The loader validates the shape it promises,
+			// and an assistant turn whose `usage` carries no counters is the exact
+			// record that used to take the whole transcript down: every reader sums
+			// `usage.input` unguarded and gets NaN. The fixture wrote a shape no
+			// real session file has.
+			usage: { input: 12, output: 5, cacheRead: 0, cacheWrite: 0 },
 			stopReason: "stop",
 			timestamp: 2,
 		},

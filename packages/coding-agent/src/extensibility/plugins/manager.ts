@@ -11,6 +11,8 @@ import {
 	getProjectPluginOverridesPath,
 	isEnoent,
 	logger,
+	pathExists,
+	pathState,
 	readPipeText,
 } from "@veyyon/utils";
 import { type ManifestHolder, manifestFromPackageJson } from "../manifest-key";
@@ -885,58 +887,138 @@ export class PluginManager {
 
 	/**
 	 * Run health checks on the plugin system.
+	 *
+	 * Every probe here is `pathExists` rather than `fs.existsSync`. `doctor` walks each
+	 * installed plugin and checks its package, its tools entry, its hooks entry and every
+	 * extension entry, so the number of probes grows with the number of plugins: a
+	 * synchronous version blocks the event loop once per path, and this runs from the TUI as
+	 * well as from `veyyon plugin doctor`. It also matters for what doctor is FOR. A path
+	 * that exists but cannot be stat'd is exactly the kind of broken install doctor is meant
+	 * to surface, and `existsSync` reports it as absent, so a permissions problem was
+	 * reported as "not found" and the operator was sent looking for a missing file that is
+	 * right there.
+	 *
+	 * THE CHECKS THAT DECIDE "not installed yet" USE `pathState`, NOT `pathExists`, and that
+	 * distinction had to be made twice because the first attempt only half worked. Moving off
+	 * `existsSync` stopped the event-loop blocking, but `pathExists` returns a BOOLEAN, so an
+	 * unreadable plugins directory still arrived here as `false` and was reported as
+	 * "Not created yet (no plugins installed)" with status `ok`. The paragraph above described a fix
+	 * the return type had no room for. Doctor's entire output is the difference between not-installed
+	 * and installed-and-broken, so it is the one caller that cannot use a boolean. The per-plugin
+	 * probes below keep `pathExists`, because their absent branch is already an error and the two
+	 * answers lead to the same place there.
 	 */
 	async doctor(options: DoctorOptions = {}): Promise<DoctorCheck[]> {
 		const checks: DoctorCheck[] = [];
 
 		// Check 1: Plugins directory exists
 		const pluginsDir = getPluginsDir();
-		const pluginsDirExists = fs.existsSync(pluginsDir);
-		// A missing plugins tree is the normal fresh-install state, not a defect —
-		// report it ok so `plugin doctor` reads healthy before any plugin exists.
+		const pluginsDirState = await pathState(pluginsDir);
+		// A missing plugins tree is the normal fresh-install state, not a defect: report it ok so
+		// `plugin doctor` reads healthy before any plugin exists. A tree that is THERE and cannot be
+		// read is the opposite, and used to land in this same branch and read as healthy.
 		checks.push({
 			name: "plugins_directory",
-			status: "ok",
-			message: pluginsDirExists ? `Found at ${pluginsDir}` : "Not created yet (no plugins installed)",
+			status: pluginsDirState === "unreadable" ? "error" : "ok",
+			message:
+				pluginsDirState === "present"
+					? `Found at ${pluginsDir}`
+					: pluginsDirState === "absent"
+						? "Not created yet (no plugins installed)"
+						: `Exists at ${pluginsDir} but could not be read, so no plugin can load. Check its permissions and whether its filesystem is mounted.`,
 		});
 
 		// Check 2: package.json exists
+		//
+		// UNREADABLE AND CORRUPT ARE REPORTED, NOT THROWN. This used to rethrow everything that was not
+		// ENOENT, so a plugins `package.json` with a trailing comma, or one whose permissions had been
+		// mangled, made `veyyon plugin doctor` exit with a raw `SyntaxError` and no report at all. That is
+		// a health check crashing on exactly the ill health it exists to describe, and it takes the other
+		// checks down with it: the operator learns nothing about their plugins directory, their
+		// node_modules or any installed plugin, because the one file doctor could not read aborted the
+		// whole run before a single line was printed.
 		const pkgJsonPath = getPluginsPackageJson();
 		let pkg: { dependencies?: Record<string, string> };
+		let manifestProblem: string | undefined;
 		let hasPkgJson = true;
 		try {
 			pkg = await Bun.file(pkgJsonPath).json();
 		} catch (err) {
-			if (isEnoent(err)) {
-				hasPkgJson = false;
-				pkg = {};
-			} else {
-				throw err;
+			pkg = {};
+			hasPkgJson = false;
+			if (!isEnoent(err)) {
+				// `hasPkgJson` stays false so the node_modules check below does not demand an install
+				// against a dependency list nobody could read. The problem is not lost: it is its own
+				// error check, which is the honest report. Claiming "no plugins installed" here would
+				// hide an installed set that is merely unreadable.
+				manifestProblem = errorMessage(err);
 			}
 		}
 		checks.push({
 			name: "package_manifest",
-			status: "ok",
-			message: hasPkgJson ? "Found" : "Not created yet (no plugins installed)",
+			status: manifestProblem === undefined ? "ok" : "error",
+			message:
+				manifestProblem === undefined
+					? hasPkgJson
+						? "Found"
+						: "Not created yet (no plugins installed)"
+					: `${pkgJsonPath} could not be read (${manifestProblem}), so no plugin can be resolved. Fix or delete the file and reinstall.`,
 		});
 
 		// Check 3: node_modules exists
+		//
+		// `pathState` for the same reason as check 1: "not needed, nothing installed" and "there but
+		// unreadable" both used to arrive as `false`, and with no `package.json` the second one was
+		// reported as `ok`. The remedy differs completely, so the two answers cannot share a line.
 		const nodeModulesPath = getPluginsNodeModules();
-		const hasNodeModules = fs.existsSync(nodeModulesPath);
+		const nodeModulesState = await pathState(nodeModulesPath);
+		const hasNodeModules = nodeModulesState === "present";
 		checks.push({
 			name: "node_modules",
-			status: hasNodeModules ? "ok" : hasPkgJson ? "error" : "ok",
+			status: hasNodeModules ? "ok" : nodeModulesState === "unreadable" || hasPkgJson ? "error" : "ok",
 			message: hasNodeModules
 				? "Found"
-				: hasPkgJson
-					? "Missing (run npm install in plugins dir)"
-					: "Not needed (no plugins installed)",
+				: nodeModulesState === "unreadable"
+					? `Exists at ${nodeModulesPath} but could not be read, so no installed plugin can load. Check its permissions.`
+					: hasPkgJson
+						? "Missing (run npm install in plugins dir)"
+						: // "Not needed" is a claim about the dependency list, so it may only be made when that
+							// list was actually read. `hasPkgJson` is also false for an UNREADABLE manifest, and
+							// saying "no plugins installed" there states as fact the very thing the check above
+							// just said it could not determine, in a report the operator reads as a whole.
+							manifestProblem === undefined
+							? "Not needed (no plugins installed)"
+							: `Not present. Whether an install is needed is unknown, because ${pkgJsonPath} could not be read.`,
 		});
 
 		const deps = pkg.dependencies || {};
+		// BOTH READS ARE REPORTED, NOT PROPAGATED, and this is the third place in `doctor` that had to
+		// learn it. The runtime config and the installed-plugins registry are ordinary file reads that
+		// throw on anything but ENOENT, so an unreadable plugins directory made `veyyon plugin doctor`
+		// exit on an EACCES from `readInstalledPluginsRegistry` with no report at all, several checks
+		// after the one that had already diagnosed the cause. Doctor had the answer and threw it away.
+		//
+		// The shared readers keep throwing, deliberately: `install` and `uninstall` WRITE the registry
+		// back, and a write on top of a registry that could not be read loses whatever was in it. Only
+		// the read-only diagnostic downgrades a throw to a finding, which is the one caller where
+		// carrying on is more useful than stopping.
 		const [config, marketplaceRuntimeRealpaths] = await Promise.all([
-			this.#ensureConfigLoaded(),
-			this.#collectMarketplaceRuntimePackageRealpaths(),
+			this.#ensureConfigLoaded().catch(err => {
+				checks.push({
+					name: "plugin_config",
+					status: "error",
+					message: `The plugin runtime config could not be read (${errorMessage(err)}), so no plugin's enabled state is known. Every plugin below is reported from the manifest alone.`,
+				});
+				return normalizePluginRuntimeConfig({});
+			}),
+			this.#collectMarketplaceRuntimePackageRealpaths().catch(err => {
+				checks.push({
+					name: "installed_registry",
+					status: "error",
+					message: `${getInstalledPluginsRegistryPath()} could not be read (${errorMessage(err)}), so a marketplace plugin may be reported as missing when it is installed. Check the plugins directory's permissions.`,
+				});
+				return new Map<string, Set<string>>();
+			}),
 		]);
 		const installedNames = this.#collectInstalledNames(deps, config);
 
@@ -951,7 +1033,7 @@ export class PluginManager {
 				pluginPkg = await Bun.file(pluginPkgPath).json();
 			} catch (err) {
 				if (isEnoent(err)) {
-					if (!fs.existsSync(pluginPath)) {
+					if (!(await pathExists(pluginPath, `the installed plugin ${name}`))) {
 						if (fromDependencies) {
 							const fixed = options.fix ? await this.#fixMissingPlugin() : false;
 							checks.push({
@@ -994,7 +1076,7 @@ export class PluginManager {
 			// Check tools path exists if specified
 			if (manifest?.tools) {
 				const toolsPath = path.join(pluginPath, manifest.tools);
-				if (!fs.existsSync(toolsPath)) {
+				if (!(await pathExists(toolsPath, `the tools entry for plugin ${name}`))) {
 					checks.push({
 						name: `plugin:${name}:tools`,
 						status: "error",
@@ -1006,7 +1088,7 @@ export class PluginManager {
 			// Check hooks path exists if specified
 			if (manifest?.hooks) {
 				const hooksPath = path.join(pluginPath, manifest.hooks);
-				if (!fs.existsSync(hooksPath)) {
+				if (!(await pathExists(hooksPath, `the hooks entry for plugin ${name}`))) {
 					checks.push({
 						name: `plugin:${name}:hooks`,
 						status: "error",
@@ -1019,7 +1101,7 @@ export class PluginManager {
 			if (manifest?.extensions) {
 				for (const extensionPath of manifest.extensions) {
 					const resolvedExtensionPath = path.join(pluginPath, extensionPath);
-					if (!fs.existsSync(resolvedExtensionPath)) {
+					if (!(await pathExists(resolvedExtensionPath, `an extension entry for plugin ${name}`))) {
 						checks.push({
 							name: `plugin:${name}:extension:${extensionPath}`,
 							status: "error",

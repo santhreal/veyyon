@@ -15,7 +15,6 @@ import { type MCPServer, mcpCapability } from "../capability/mcp";
 import { type Settings, settingsCapability } from "../capability/settings";
 import { type Skill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
-import { type SystemPrompt, systemPromptCapability } from "../capability/system-prompt";
 import { type DiscoveredCustomTool, toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult } from "../capability/types";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
@@ -440,30 +439,6 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 }
 
 // =============================================================================
-// System Prompts
-// =============================================================================
-
-async function loadSystemPrompts(ctx: LoadContext): Promise<LoadResult<SystemPrompt>> {
-	const items: SystemPrompt[] = [];
-	const warnings: string[] = [];
-
-	const userBase = getUserClaude(ctx);
-	const userSystemMd = path.join(userBase, "SYSTEM.md");
-
-	const content = await readFile(userSystemMd);
-	if (content !== null) {
-		items.push({
-			path: userSystemMd,
-			content,
-			level: "user",
-			_source: createSourceMeta(PROVIDER_ID, userSystemMd, "user"),
-		});
-	}
-
-	return { items, warnings };
-}
-
-// =============================================================================
 // Settings
 // =============================================================================
 
@@ -575,12 +550,4 @@ registerProvider<Settings>(settingsCapability.id, {
 	description: "Load settings from .claude/settings.json",
 	priority: PRIORITY,
 	load: loadSettings,
-});
-
-registerProvider<SystemPrompt>(systemPromptCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load system prompt from .claude/SYSTEM.md",
-	priority: PRIORITY,
-	load: loadSystemPrompts,
 });

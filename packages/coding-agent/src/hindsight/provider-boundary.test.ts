@@ -244,6 +244,10 @@ function createStateHarness(configOverrides: Partial<HindsightConfig> = {}) {
 		get obfuscator() {
 			return runtime;
 		},
+		// The live redaction authority the state actually calls. A getter over the same mutable
+		// binding, not a snapshot, because every test here swaps the runtime mid-flight to prove the
+		// transform resolves it at the moment of use rather than at construction.
+		obfuscateProviderText: (text: string) => runtime?.obfuscate(text) ?? text,
 		getHindsightSessionState: () => currentState,
 		emitNotice: () => {},
 		sessionManager: { getEntries: () => [] },

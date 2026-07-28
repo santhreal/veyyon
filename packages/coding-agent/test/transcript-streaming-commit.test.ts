@@ -1,3 +1,12 @@
+/**
+ * What the transcript commits while an assistant message is still streaming.
+ *
+ * The rule: only the rows the live block DECLARES settled may be committed, and a
+ * row committed while a fenced diff is still open keeps its diff styling. Both
+ * halves regressed together, because a commit that runs ahead of the declared
+ * head reads styling from a fence the renderer has not finished parsing, and the
+ * result is a row that changes color after it has already scrolled past.
+ */
 import { describe, expect, it } from "bun:test";
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
 import { type Component, TUI } from "@veyyon/tui";

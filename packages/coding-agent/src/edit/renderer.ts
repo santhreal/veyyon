@@ -5,7 +5,8 @@
 import { HL_FILE_PREFIX, HL_FILE_SUFFIX, HL_MOVE_KEYWORD, HL_REM_KEYWORD } from "@veyyon/hashline";
 import type { Component } from "@veyyon/tui";
 import { sliceWithWidth, visibleWidth, wrapTextWithAnsi } from "@veyyon/tui";
-import { errorMessage, sanitizeText } from "@veyyon/utils";
+import { SGR_FG_RESET } from "@veyyon/tui/ansi";
+import { errorMessage, formatMoreLines, sanitizeText } from "@veyyon/utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { FileDiagnosticsResult } from "../lsp";
 import { renderDiff as renderDiffColored } from "../modes/components/diff";
@@ -409,7 +410,7 @@ function renderPlainTextPreview(text: string, uiTheme: Theme, _filePath?: string
 		preview += `${uiTheme.fg("toolOutput", truncateToWidth(replaceTabs(line), CALL_TEXT_PREVIEW_WIDTH))}\n`;
 	}
 	if (previewLines.length > CALL_TEXT_PREVIEW_LINES) {
-		preview += uiTheme.fg("dim", `… ${previewLines.length - CALL_TEXT_PREVIEW_LINES} more lines`);
+		preview += uiTheme.fg("dim", `… ${formatMoreLines(previewLines.length - CALL_TEXT_PREVIEW_LINES)}`);
 	}
 	return preview.trimEnd();
 }
@@ -459,7 +460,7 @@ function formatStreamingDiff(
 			const hiddenHunks = getDiffStats(allLines.slice(0, hiddenLines).join("\n")).hunks;
 			const remainder: string[] = [];
 			if (hiddenHunks > 0) remainder.push(`${hiddenHunks} more hunks`);
-			remainder.push(`${hiddenLines} more lines`);
+			remainder.push(formatMoreLines(hiddenLines));
 			rendered += `${uiTheme.fg("dim", `… (${remainder.join(", ")} above)`)}\n`;
 		}
 		rendered += renderDiffColored(visible.join("\n"), { filePath: rawPath });
@@ -669,7 +670,7 @@ function renderDiffSection(
 		if (!expanded && (hiddenHunks > 0 || hiddenLines > 0)) {
 			const remainder: string[] = [];
 			if (hiddenHunks > 0) remainder.push(`${hiddenHunks} more hunks`);
-			if (hiddenLines > 0) remainder.push(`${hiddenLines} more lines`);
+			if (hiddenLines > 0) remainder.push(formatMoreLines(hiddenLines));
 			text += uiTheme.fg("toolOutput", `\n… (${remainder.join(", ")}) ${formatExpandHint(uiTheme)}`);
 		}
 		return text;
@@ -682,7 +683,7 @@ function wrapEditRendererLine(line: string, width: number): string[] {
 
 	const startAnsi = line.match(/^((?:\x1b\[[0-9;]*m)*)/)?.[1] ?? "";
 	const bodyWithReset = line.slice(startAnsi.length);
-	const body = bodyWithReset.endsWith("\x1b[39m") ? bodyWithReset.slice(0, -"\x1b[39m".length) : bodyWithReset;
+	const body = bodyWithReset.endsWith(SGR_FG_RESET) ? bodyWithReset.slice(0, -SGR_FG_RESET.length) : bodyWithReset;
 	// Gutter shapes produced by formatCodeFrameLine: "-315│", " 313│", "+322│",
 	// plus the deduplicated forms "   +│" and "    │" whose repeated line number
 	// renderDiff blanked (single-line replacement pairs and insert-then-context

@@ -1,5 +1,6 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
-import { type Api, type ApiKey, type AssistantMessage, type Model, validateToolCall } from "@veyyon/ai";
+import type { Api, ApiKey, AssistantMessage, Model } from "@veyyon/ai";
+import { validateToolCall } from "@veyyon/ai/utils/validation";
 import { prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { ChangelogGenerationResult } from "../../commit/types";
@@ -55,8 +56,7 @@ export async function generateChangelogEntries({
 		model,
 		sanitize => {
 			const sanitizedDiff = sanitize(diff);
-			const diffForPrompt =
-				maxDiffChars === undefined ? sanitizedDiff : truncateDiff(sanitizedDiff, maxDiffChars);
+			const diffForPrompt = maxDiffChars === undefined ? sanitizedDiff : truncateDiff(sanitizedDiff, maxDiffChars);
 			const userContent = prompt.render(commitPrompts["commit/changelog-user"].text, {
 				changelog_path: sanitize(changelogPath),
 				is_package_changelog: isPackageChangelog,

@@ -33,6 +33,7 @@ import {
 	type WriteTextAtomicOptions,
 } from "@veyyon/coding-agent/session/session-storage";
 import type { SessionTitleUpdate } from "@veyyon/coding-agent/session/session-title-slot";
+import type { PathState } from "@veyyon/utils/fs-optional";
 
 class CloseHoldingStorage implements SessionStorage {
 	readonly #inner = new MemorySessionStorage();
@@ -80,6 +81,9 @@ class CloseHoldingStorage implements SessionStorage {
 	}
 	existsSync(p: string): boolean {
 		return this.#inner.existsSync(p);
+	}
+	existsStateSync(p: string): PathState {
+		return this.#inner.existsStateSync(p);
 	}
 	writeTextSync(p: string, content: string): void {
 		this.#inner.writeTextSync(p, content);

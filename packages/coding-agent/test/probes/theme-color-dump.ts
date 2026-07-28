@@ -1,3 +1,16 @@
+/**
+ * Manual probe: print every theme color, so a human can look at it.
+ *
+ * Kept because the question it answers is not assertable: whether the dark
+ * theme's colors are legible and distinguishable on a real terminal against a
+ * real background. The contracts that CAN be asserted -- that every color key is
+ * declared, that nothing renders undeclared, that the palette round-trips --
+ * belong to the theme suites and `test/helpers/theme-assertions.ts`.
+ *
+ * Run with: bun test/probes/theme-color-dump.ts
+ * Needs: a truecolor terminal. It sets COLORTERM itself, so a capture to a pipe
+ * shows the escapes rather than the colors.
+ */
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 
 // Initialize with dark theme explicitly

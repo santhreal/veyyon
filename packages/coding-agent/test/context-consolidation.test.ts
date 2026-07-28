@@ -8,9 +8,9 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { computeContextBreakdown } from "@veyyon/coding-agent/modes/utils/context-usage";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { computeContextBreakdown } from "@veyyon/coding-agent/session/context-usage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 

@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import type { AssistantMessage, Usage } from "@veyyon/ai";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
@@ -7,10 +7,11 @@ import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
 import { getResolvedThemeColors, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
-import type { TUI } from "@veyyon/tui";
+import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, type TUI } from "@veyyon/tui";
 
 const THINKING_MARKER = "REASONING TRACE MARKER";
 const ANSWER_MARKER = "FINAL ANSWER MARKER";
+let previousAnsiPolicy: AnsiPolicy;
 
 function zeroUsage(): Usage {
 	return {
@@ -82,10 +83,15 @@ function createFixture() {
 
 describe("thinking text visual distinctness", () => {
 	beforeAll(async () => {
-		// Headless test runs detect no color support and chalk strips the italic
-		// escape; force full styling so the render assertions see real output.
-		(await import("chalk")).default.level = 3;
+		// This suite verifies styling bytes, so it selects the full policy
+		// explicitly instead of relying on TTY or environment detection.
+		previousAnsiPolicy = getAnsiPolicy();
+		setAnsiPolicy("full");
 		await initTheme(false);
+	});
+
+	afterAll(() => {
+		setAnsiPolicy(previousAnsiPolicy);
 	});
 
 	beforeEach(async () => {

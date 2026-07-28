@@ -52,6 +52,72 @@ describe("SkillProtocolHandler resolve", () => {
 		});
 	});
 
+	/**
+	 * A child symlink must not turn an installed skill into an arbitrary-file
+	 * reader outside its directory.
+	 */
+	it("rejects a file symlink that escapes the skill root", async () => {
+		await withSkillDir(async skill => {
+			const outside = await fs.mkdtemp(path.join(os.tmpdir(), "skill-protocol-outside-"));
+			try {
+				const secret = path.join(outside, "secret.txt");
+				await fs.writeFile(secret, "outside");
+				await fs.symlink(secret, path.join(skill.baseDir, "escape.txt"));
+
+				await expect(
+					handler.resolve(parseInternalUrl("skill://demo/escape.txt"), { skills: [skill] }),
+				).rejects.toThrow(/skill:\/\/ URL escapes skill root/);
+			} finally {
+				await removeWithRetries(outside);
+			}
+		});
+	});
+
+	/**
+	 * Directory listings need the same realpath boundary as file reads; otherwise
+	 * a symlink exposes every filename in an outside directory.
+	 */
+	it("rejects a directory symlink that escapes the skill root", async () => {
+		await withSkillDir(async skill => {
+			const outside = await fs.mkdtemp(path.join(os.tmpdir(), "skill-protocol-outside-"));
+			try {
+				await fs.writeFile(path.join(outside, "secret.txt"), "outside");
+				await fs.symlink(outside, path.join(skill.baseDir, "escape-dir"));
+
+				await expect(
+					handler.resolve(parseInternalUrl("skill://demo/escape-dir"), { skills: [skill] }),
+				).rejects.toThrow(/skill:\/\/ URL escapes skill root/);
+			} finally {
+				await removeWithRetries(outside);
+			}
+		});
+	});
+
+	/**
+	 * A skill directory may itself be a symlink installed by the operator. The
+	 * boundary follows that root while still refusing child escapes.
+	 */
+	it("serves a skill whose declared root is a symlink", async () => {
+		await withSkillDir(async skill => {
+			const parent = await fs.mkdtemp(path.join(os.tmpdir(), "skill-protocol-link-"));
+			const linkedRoot = path.join(parent, "installed-skill");
+			try {
+				await fs.symlink(skill.baseDir, linkedRoot, "dir");
+				const linkedSkill = {
+					...skill,
+					baseDir: linkedRoot,
+					filePath: path.join(linkedRoot, "SKILL.md"),
+				};
+
+				const resource = await handler.resolve(parseInternalUrl("skill://demo"), { skills: [linkedSkill] });
+				expect(resource.content).toBe("# Demo skill\n");
+				expect(resource.sourcePath).toBe(await fs.realpath(skill.filePath));
+			} finally {
+				await removeWithRetries(parent);
+			}
+		});
+	});
+
 	it("never serves content above the skill baseDir for dot-segment URLs", async () => {
 		// WHATWG URL parsing collapses ../ (even percent-encoded) before resolve
 		// runs, so the escape lands inside baseDir and simply does not exist.

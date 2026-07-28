@@ -28,6 +28,7 @@ import { paintHotTail, shimmerPhase } from "../modes/components/follow";
 import { truncateToVisualLines } from "../modes/components/visual-truncate";
 import { highlightCode } from "../modes/theme/highlight";
 import type { Theme } from "../modes/theme/theme-class";
+import { expandHintSuffix } from "../modes/utils/key-hint";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { ClientBridgeTerminalExitStatus, ClientBridgeTerminalOutput } from "../session/client-bridge";
 import {
@@ -1622,7 +1623,7 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 								outputLines.push(
 									uiTheme.fg(
 										"dim",
-										`… (${result.skippedCount} earlier lines, showing ${result.visualLines.length} of ${result.skippedCount + result.visualLines.length}) (ctrl+o to expand)`,
+										`… (${result.skippedCount} earlier lines, showing ${result.visualLines.length} of ${result.skippedCount + result.visualLines.length})${expandHintSuffix()}`,
 									),
 								);
 							}

@@ -10,7 +10,7 @@
  * usually the larger of the two.
  */
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { estimateToolSchemaTokens } from "@veyyon/coding-agent/modes/utils/context-usage";
+import { estimateToolSchemaTokens } from "@veyyon/coding-agent/session/context-usage";
 import { formatInspectionTable, inspectSystemPrompt } from "@veyyon/coding-agent/system-prompt-builder/prompt-inspect";
 import { createTools, type Tool, type ToolSession } from "@veyyon/coding-agent/tools";
 import { estimateTokensFromText } from "@veyyon/utils";

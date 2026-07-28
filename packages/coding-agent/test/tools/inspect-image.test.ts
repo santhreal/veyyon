@@ -7,8 +7,8 @@ import { buildModel } from "@veyyon/catalog/build";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
-import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
+import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { InspectImageTool } from "@veyyon/coding-agent/tools/inspect-image";
@@ -363,7 +363,33 @@ describe("InspectImageTool", () => {
 		expect(resultOutput).toContain("Question:");
 		expect(resultOutput).toContain("What error text is visible?");
 		expect(resultOutput).toContain("openai/gpt-4o");
-		expect(resultOutput).toContain("more lines");
+		// Singular, because this fixture hides exactly one line. Every surface that
+		// folds output used to write `${n} more lines` inline and said "1 more lines"
+		// on the commonest case there is, a block that hid one line; they all read
+		// the counted phrase from `formatMoreLines` now.
+		expect(resultOutput).toContain("… 1 more line ");
+		expect(resultOutput).not.toContain("1 more lines");
+	});
+
+	/**
+	 * And the plural twin, so the fix is not "always singular". Without this a
+	 * helper that dropped the `s` entirely would pass the case above.
+	 */
+	it("counts more than one folded line in the plural", async () => {
+		const uiTheme = await getThemeByName("dark");
+		if (!uiTheme) throw new Error("dark theme missing");
+
+		const resultComponent = inspectImageToolRenderer.renderResult(
+			{
+				content: [{ type: "text", text: Array.from({ length: 9 }, (_, index) => `line ${index + 1}`).join("\n") }],
+				details: { model: "openai/gpt-4o", imagePath: "/tmp/screenshot.png", mimeType: "image/png" },
+			},
+			{ expanded: false, isPartial: false },
+			uiTheme,
+			{ path: "/tmp/screenshot.png", question: "What error text is visible?" },
+		);
+
+		expect(sanitizeText(resultComponent.render(100).join("\n"))).toContain("… 5 more lines ");
 	});
 
 	it("schema rejects unknown parameters", () => {

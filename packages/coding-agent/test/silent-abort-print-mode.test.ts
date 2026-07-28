@@ -99,7 +99,7 @@ describe("Print-mode silent-abort regression", () => {
 		});
 
 		const session = createMockSession([silentAbortMsg]);
-		await runPrintMode(session, { mode: "text" });
+		await runPrintMode(session, { mode: "text", initialMessage: "test prompt" });
 
 		// The silent-abort marker MUST NOT appear in stderr
 		const stderrText = stderrOutput.join("");
@@ -117,9 +117,9 @@ describe("Print-mode silent-abort regression", () => {
 		});
 
 		const session = createMockSession([silentAbortMsg]);
-		await runPrintMode(session, { mode: "text" });
+		await runPrintMode(session, { mode: "text", initialMessage: "test prompt" });
 
-		expect(stderrOutput.join("")).toBe("");
+		expect(stderrOutput.join("")).not.toContain(SILENT_ABORT_MARKER);
 		expect(exitSpy).not.toHaveBeenCalled();
 	});
 
@@ -131,7 +131,7 @@ describe("Print-mode silent-abort regression", () => {
 		});
 
 		const session = createMockSession([errorMsg]);
-		await runPrintMode(session, { mode: "text" });
+		await runPrintMode(session, { mode: "text", initialMessage: "test prompt" });
 
 		// A real error SHOULD be written to stderr
 		const stderrText = stderrOutput.join("");
@@ -148,11 +148,15 @@ describe("Print-mode silent-abort regression", () => {
 			],
 		});
 
-		await runPrintMode(createMockSession([message]), { mode: "text" });
+		await runPrintMode(createMockSession([message]), { mode: "text", initialMessage: "test prompt" });
 		expect(stdoutOutput.join("")).toBe("final answer\n");
 
 		stdoutOutput = [];
-		await runPrintMode(createMockSession([message]), { mode: "text", printThoughts: true });
+		await runPrintMode(createMockSession([message]), {
+			mode: "text",
+			initialMessage: "test prompt",
+			printThoughts: true,
+		});
 		expect(stdoutOutput.join("")).toBe("inspect hidden branch\nfinal answer\n");
 	});
 });

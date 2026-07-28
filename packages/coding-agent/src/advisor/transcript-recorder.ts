@@ -42,7 +42,7 @@ export function advisorTranscriptFilename(slug: string): string {
  * artifacts dir (`<session>/__advisor.jsonl`, `<session>/<SubId>/__advisor.jsonl`
  * for subagent advisors). That single file gives the advisor model proper usage
  * attribution in `veyyon stats` (the stats parser scans the session dir
- * recursively) and a read-only transcript in the Agent Hub, without making the
+ * recursively) and a read-only transcript in the Control Center, without making the
  * advisor a registered, messageable peer.
  *
  * The target is derived from the *session file* (`getSessionFile()`), never

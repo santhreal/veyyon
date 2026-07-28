@@ -11,7 +11,6 @@
  * Capabilities:
  * - mcps: From settings.json with mcpServers key
  * - context-files: GEMINI.md files
- * - system-prompt: system.md files for custom system prompt
  * - extensions: From extensions/STAR/gemini-extension.json manifests (STAR = wildcard)
  * - settings: From settings.json
  */
@@ -24,7 +23,6 @@ import { type ExtensionModule, extensionModuleCapability } from "../capability/e
 import { readDirEntries, readFile } from "../capability/fs";
 import { type MCPServer, mcpCapability } from "../capability/mcp";
 import { type Settings, settingsCapability } from "../capability/settings";
-import { type SystemPrompt, systemPromptCapability } from "../capability/system-prompt";
 import type { LoadContext, LoadResult } from "../capability/types";
 import {
 	buildExtensionModuleItems,
@@ -313,52 +311,6 @@ registerProvider(contextFileCapability.id, {
 	description: "Load GEMINI.md context files",
 	priority: PRIORITY,
 	load: loadContextFiles,
-});
-
-// =============================================================================
-// System Prompt
-// =============================================================================
-
-async function loadSystemPrompt(ctx: LoadContext): Promise<LoadResult<SystemPrompt>> {
-	const items: SystemPrompt[] = [];
-
-	// User-level: ~/.gemini/system.md
-	const userSystemMd = getUserPath(ctx, "gemini", "system.md");
-	if (userSystemMd) {
-		const content = await readFile(userSystemMd);
-		if (content) {
-			items.push({
-				path: userSystemMd,
-				content,
-				level: "user",
-				_source: createSourceMeta(PROVIDER_ID, userSystemMd, "user"),
-			});
-		}
-	}
-
-	// Project-level: .gemini/system.md
-	const projectSystemMd = getProjectPath(ctx, "gemini", "system.md");
-	if (projectSystemMd) {
-		const content = await readFile(projectSystemMd);
-		if (content) {
-			items.push({
-				path: projectSystemMd,
-				content,
-				level: "project",
-				_source: createSourceMeta(PROVIDER_ID, projectSystemMd, "project"),
-			});
-		}
-	}
-
-	return { items, warnings: [] };
-}
-
-registerProvider<SystemPrompt>(systemPromptCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load system.md custom system prompt files",
-	priority: PRIORITY,
-	load: loadSystemPrompt,
 });
 
 registerProvider(extensionCapability.id, {

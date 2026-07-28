@@ -15,7 +15,7 @@ function expectAttribution(message: Message | undefined, expected: "user" | "age
 }
 
 describe("convertToLlm compaction summary", () => {
-	it("appends a compaction summary's legacy image blocks after the summary text", () => {
+	it("sends a compaction summary as agent-owned developer context with legacy images", () => {
 		// Regression: the live session uses THIS converter (not agent-core's
 		// defaultConvertToLlm). A compaction summary may still carry legacy
 		// `images` (from an old persisted archive); dropping them here would
@@ -38,7 +38,7 @@ describe("convertToLlm compaction summary", () => {
 		const converted = convertToLlm(messages);
 
 		expect(converted).toHaveLength(1);
-		expect(converted[0]?.role).toBe("user");
+		expect(converted[0]?.role).toBe("developer");
 		const content = converted[0]?.content as Array<TextContent | ImageContent>;
 		expect(content).toHaveLength(3);
 		expect(content[0].type).toBe("text");

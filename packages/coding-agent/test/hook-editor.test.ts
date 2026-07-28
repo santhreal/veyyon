@@ -4,7 +4,7 @@ import { HookEditorComponent } from "@veyyon/coding-agent/modes/components/hook-
 import { ExtensionUiController } from "@veyyon/coding-agent/modes/controllers/extension-ui-controller";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
-import { setKeybindings, type TUI } from "@veyyon/tui";
+import { getKeybindings, setKeybindings, type TUI } from "@veyyon/tui";
 
 beforeAll(async () => {
 	const theme = await getThemeByName("dark");
@@ -359,9 +359,41 @@ describe("HookEditorComponent prompt-style mode", () => {
 		expect(lines[0]).toMatch(/^─+$/);
 		expect(lines.at(-1)).toMatch(/^─+$/);
 		expect(lines[4]?.startsWith("> ")).toBe(true);
-		expect(rendered).toContain(" enter or ctrl+q submit  esc cancel");
+		// Every chord the footer names is read from its binding rather than written
+		// out, so this is the live text. It names BOTH follow-up chords, which the
+		// old hardcoded string did not: `app.message.followUp` defaults to
+		// `["ctrl+q", "ctrl+enter"]` and `matchesAppFollowUp` has always accepted
+		// both, so the footer used to omit a chord that really submits.
+		expect(rendered).toContain(" enter or ctrl+q/ctrl+enter submit  esc cancel");
 		expect(rendered).not.toContain("shift+enter newline");
 		expect(rendered).toContain("ctrl+g external editor");
+	});
+
+	/**
+	 * The footer follows a remap, because both chords in it are remappable and the
+	 * handlers read them. A hardcoded footer told a user who had rebound either one
+	 * to press a key that no longer does anything, in the row that exists to say
+	 * which keys work here.
+	 */
+	it("names the rebound submit and external-editor chords", () => {
+		const previous = getKeybindings();
+		setKeybindings(
+			new KeybindingsManager({ "app.message.followUp": "alt+shift+j", "app.editor.external": "alt+shift+k" }),
+		);
+		try {
+			const component = new HookEditorComponent(createTui(), "Prompt", undefined, vi.fn(), vi.fn(), {
+				promptStyle: true,
+			});
+
+			const rendered = renderText(component);
+
+			expect(rendered).toContain("alt+shift+j submit");
+			expect(rendered).toContain("alt+shift+k external editor");
+			expect(rendered).not.toContain("ctrl+q");
+			expect(rendered).not.toContain("ctrl+g");
+		} finally {
+			setKeybindings(previous);
+		}
 	});
 
 	it("keeps the prompt gutter visible after typing in prompt-style mode", () => {

@@ -2,12 +2,13 @@
  * Profile lifecycle CLI: list, create, and remove self-contained profiles.
  */
 
-import type { Dirent } from "node:fs";
+import type { Dirent, Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
 	assertRemovableProfileDir,
 	atomicWriteFile,
+	errorMessage,
 	getActiveProfile,
 	getProfileRootDir,
 	isMissingPath,
@@ -62,8 +63,8 @@ export const PROFILE_COPY_ITEMS: readonly ProfileCopyItem[] = [
 	{
 		key: "agents",
 		label: "AGENTS.md",
-		description: "Agent instructions (AGENTS.md, SYSTEM.md, RULES.md)",
-		files: ["AGENTS.md", "SYSTEM.md", "RULES.md"],
+		description: "Profile-specific agent instructions",
+		files: ["AGENTS.md"],
 	},
 	{ key: "settings", label: "Settings", description: "All /settings values", files: [...MAIN_CONFIG_FILENAMES] },
 	{ key: "mcp", label: "MCP servers", description: "mcp.json server config", files: ["mcp.json"] },
@@ -205,24 +206,41 @@ async function ensureBlankAgentTree(agentDir: string): Promise<void> {
 
 async function copyIdentityFile(sourceAgentDir: string, targetAgentDir: string, filename: string): Promise<void> {
 	const sourcePath = path.join(sourceAgentDir, filename);
+	let stat: Stats;
 	try {
-		await fs.access(sourcePath);
-	} catch {
-		return;
+		stat = await fs.stat(sourcePath);
+	} catch (error) {
+		if (isMissingPath(error)) return;
+		throw new Error(`Cannot inspect profile seed file ${sourcePath}: ${errorMessage(error)}`, { cause: error });
+	}
+	if (!stat.isFile()) {
+		throw new Error(`Cannot copy profile seed item ${sourcePath}: expected a file`);
 	}
 	await fs.mkdir(targetAgentDir, { recursive: true });
-	await fs.copyFile(sourcePath, path.join(targetAgentDir, filename));
+	try {
+		await fs.copyFile(sourcePath, path.join(targetAgentDir, filename));
+	} catch (error) {
+		throw new Error(`Cannot copy profile seed file ${sourcePath}: ${errorMessage(error)}`, { cause: error });
+	}
 }
 
 async function copyIdentityDir(sourceAgentDir: string, targetAgentDir: string, dirname: string): Promise<void> {
 	const sourcePath = path.join(sourceAgentDir, dirname);
+	let stat: Stats;
 	try {
-		const stat = await fs.stat(sourcePath);
-		if (!stat.isDirectory()) return;
-	} catch {
-		return;
+		stat = await fs.stat(sourcePath);
+	} catch (error) {
+		if (isMissingPath(error)) return;
+		throw new Error(`Cannot inspect profile seed directory ${sourcePath}: ${errorMessage(error)}`, { cause: error });
 	}
-	await fs.cp(sourcePath, path.join(targetAgentDir, dirname), { recursive: true });
+	if (!stat.isDirectory()) {
+		throw new Error(`Cannot copy profile seed item ${sourcePath}: expected a directory`);
+	}
+	try {
+		await fs.cp(sourcePath, path.join(targetAgentDir, dirname), { recursive: true });
+	} catch (error) {
+		throw new Error(`Cannot copy profile seed directory ${sourcePath}: ${errorMessage(error)}`, { cause: error });
+	}
 }
 
 async function seedProfileAgentFrom(
@@ -436,7 +454,21 @@ export async function removeProfile(name: string, options: { yes?: boolean } = {
 	}
 }
 
-export async function runProfileCommand(args: ProfileCommandArgs): Promise<void> {
+/**
+ * Run `veyyon profile <action>` from parsed argv, writing to stdout.
+ *
+ * Named for its SURFACE, not for the verb. There is a second dispatcher for the
+ * same verb, `runProfileSlashCommand` in `slash-commands/profile-command.ts`,
+ * and until recently both were called `runProfileCommand`. They take different
+ * arguments and write to different places (this one to stdout, the other through
+ * a `ProfileCommandPort` the TUI owns), so nothing would have compiled if the
+ * wrong one were imported. That is the good case. The bad case is a reader:
+ * `runProfileCommand(...)` at a call site says nothing about which surface is
+ * about to be driven, and `test/profile-command.test.ts` and
+ * `test/profile-lifecycle.test.ts` both had `runProfileCommand` in scope meaning
+ * two different functions.
+ */
+export async function runProfileCliCommand(args: ProfileCommandArgs): Promise<void> {
 	switch (args.action) {
 		case "list": {
 			const profiles = listProfiles();

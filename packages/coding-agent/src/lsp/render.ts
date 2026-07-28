@@ -9,6 +9,7 @@
  */
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import { type Component, Text } from "@veyyon/tui";
+import { formatMoreLines } from "@veyyon/utils/format";
 import { highlightCode as highlightThemeCode } from "../modes/theme/highlight";
 import type { Theme } from "../modes/theme/theme-class";
 import {
@@ -263,7 +264,7 @@ function renderHover(
 	output += `\n ${theme.fg("mdCodeBlockBorder", v)} ${firstCodeLine}`;
 
 	if (codeLines.length > 1) {
-		output += `\n ${theme.fg("mdCodeBlockBorder", v)} ${theme.fg("muted", `… ${codeLines.length - 1} more lines`)}`;
+		output += `\n ${theme.fg("mdCodeBlockBorder", v)} ${theme.fg("muted", `… ${formatMoreLines(codeLines.length - 1)}`)}`;
 	}
 
 	if (afterCode) {

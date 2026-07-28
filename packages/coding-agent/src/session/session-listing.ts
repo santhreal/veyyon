@@ -614,6 +614,14 @@ function compareSessionsByRecency(a: SessionInfo, b: SessionInfo): number {
  * crash between the two renames in the EPERM-rewrite path does not leave the
  * user's last good state stranded outside the loader's view.
  *
+ * "MISSING" HERE MEANS ABSENT, NOT UNANSWERABLE, and the distinction is the
+ * difference between recovering a session and destroying one. `rename`
+ * overwrites its destination without asking, so the probe that decides whether
+ * to promote a backup is one whose false branch is destructive: answer "no
+ * primary" about a primary that is merely unreachable and this replaces a live
+ * session with a stale copy of it. `existsStateSync` separates the two, and
+ * anything other than a definite `absent` leaves the primary alone and says so.
+ *
  * Exported for testing.
  */
 export async function recoverOrphanedBackups(sessionDir: string, storage: SessionStorage): Promise<void> {
@@ -636,8 +644,15 @@ export async function recoverOrphanedBackups(sessionDir: string, storage: Sessio
 		let mtimeMs = 0;
 		try {
 			mtimeMs = storage.statSync(backup).mtimeMs;
-		} catch {
-			continue;
+		} catch (err) {
+			// A backup we cannot measure is still a backup. Dropping it here used to mean that the one
+			// copy of a session stayed stranded as a `.bak` and nothing said why, so the operator saw a
+			// session that had simply disappeared. It competes at mtime 0 instead: a backup with a
+			// readable mtime always wins the pick, and if this is the only candidate the promotion is
+			// still attempted and its own failure is reported below. ENOENT is the exception and stays
+			// quiet, because a backup that raced away between the glob and the stat is genuinely gone.
+			if (isEnoent(err)) continue;
+			recordUnreadableSession(backup, `session backup could not be measured: ${toError(err).message}`);
 		}
 		const existing = candidates.get(primaryPath);
 		if (!existing || mtimeMs > existing.mtimeMs) {
@@ -645,7 +660,20 @@ export async function recoverOrphanedBackups(sessionDir: string, storage: Sessio
 		}
 	}
 	for (const [primaryPath, { backup }] of candidates) {
-		if (storage.existsSync(primaryPath)) continue;
+		const primaryState = storage.existsStateSync(primaryPath);
+		if (primaryState === "present") continue;
+		if (primaryState === "unreadable") {
+			// REFUSE, because the destructive direction is the one we cannot take back. The primary is
+			// there as far as the filesystem is concerned and we just cannot reach it, so promoting the
+			// backup would `rename` over a session that may hold the operator's whole conversation. The
+			// backup keeps its `.bak` name and stays recoverable on the next scan, once whatever made the
+			// path unreachable is fixed.
+			recordUnreadableSession(
+				primaryPath,
+				"a session backup was left in place because the session it would replace could not be reached",
+			);
+			continue;
+		}
 		try {
 			await storage.rename(backup, primaryPath);
 			logger.warn("Recovered orphaned session backup", {

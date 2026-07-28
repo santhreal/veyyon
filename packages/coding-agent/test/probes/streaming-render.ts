@@ -1,7 +1,15 @@
 /**
- * Debug script to reproduce streaming rendering issues.
- * Uses real fixture data that caused the bug.
- * Run with: npx tsx test/streaming-render-debug.ts
+ * Manual probe: how does an assistant message with thinking and code RENDER
+ * while it streams?
+ *
+ * Written to reproduce a streaming-render bug and kept because the failure was
+ * visual: the frames are correct byte by byte and wrong to look at. It replays a
+ * real captured message (`test/fixtures/assistant-message-with-thinking-code.json`)
+ * through the actual component into a real terminal, one chunk at a time.
+ *
+ * Run with: bun test/probes/streaming-render.ts
+ * Needs: a terminal. It writes ANSI to stdout and sleeps between chunks, so it
+ * proves nothing when captured to a pipe.
  */
 import * as path from "node:path";
 import type { AssistantMessage } from "@veyyon/ai";
@@ -17,7 +25,7 @@ initTheme();
 async function main() {
 	// Load the real fixture that caused the bug
 	const fixtureMessage: AssistantMessage = JSON.parse(
-		await Bun.file(path.join(import.meta.dir, "fixtures/assistant-message-with-thinking-code.json")).text(),
+		await Bun.file(path.join(import.meta.dir, "../fixtures/assistant-message-with-thinking-code.json")).text(),
 	);
 
 	// Extract thinking and text content

@@ -5,6 +5,7 @@
  * showing args and output in JSON tree format similar to task tool.
  */
 import type { Component } from "@veyyon/tui";
+import { formatMoreLines } from "@veyyon/utils/format";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
 import {
@@ -140,7 +141,9 @@ export function renderMCPResult(
 
 			if (outputLines.length > maxOutputLines) {
 				const remaining = outputLines.length - maxOutputLines;
-				lines.push(`${theme.fg("dim", `… ${remaining} more lines`)} ${formatExpandHint(theme, expanded, true)}`);
+				lines.push(
+					`${theme.fg("dim", `… ${formatMoreLines(remaining)}`)} ${formatExpandHint(theme, expanded, true)}`,
+				);
 			} else if (!expanded) {
 				// Show expand hint when collapsed even if all lines shown (lines may be truncated)
 				lines.push(formatExpandHint(theme, expanded, true));

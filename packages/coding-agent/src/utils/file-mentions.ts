@@ -10,7 +10,7 @@ import path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { ImageContent } from "@veyyon/ai";
 import { formatHashlineHeader, formatNumberedLines, type SnapshotStore } from "@veyyon/hashline";
-import { formatAge, formatBytes, isProbablyBinary, readImageMetadata } from "@veyyon/utils";
+import { formatAge, formatBytes, isProbablyBinary, pathExistsQuietly, readImageMetadata } from "@veyyon/utils";
 import { canonicalSnapshotKey } from "../edit/file-snapshot-store";
 import { normalizeToLF } from "../edit/normalize";
 import type { FileMentionMessage } from "../session/messages";
@@ -56,14 +56,15 @@ function sanitizeMentionPath(rawPath: string): string | null {
  * process cannot stat, which reaches the same place -- a file the session cannot read is not a file it can
  * attach to the prompt.
  */
-async function pathExists(filePath: string): Promise<boolean> {
-	try {
-		await Bun.file(filePath).stat();
-		return true;
-	} catch {
-		return false;
-	}
-}
+/**
+ * Why this probe is silent about a fault.
+ *
+ * A half-typed `@`-mention is resolved against several candidates, so a miss is the ordinary answer
+ * and reporting each one would make the channel useless. A path this process cannot stat reaches the
+ * same place for the same reason: a file the session cannot read is not one it can attach.
+ */
+const MENTION_PROBE_IS_A_GUESS =
+	"an @-mention resolves against several candidate paths, so most probes are misses by design";
 
 async function resolveMentionPath(filePath: string, cwd: string): Promise<string | null> {
 	// Exact resolution only. The TUI @-selector inserts the real, complete path, so a
@@ -71,7 +72,7 @@ async function resolveMentionPath(filePath: string, cwd: string): Promise<string
 	// reference. Fuzzy/prefix guessing here previously dragged in unrelated same-named
 	// files; that disambiguation belongs to the selector's display, not post-send.
 	const absolutePath = resolveReadPath(filePath, cwd);
-	return (await pathExists(absolutePath)) ? filePath : null;
+	return (await pathExistsQuietly(absolutePath, MENTION_PROBE_IS_A_GUESS)) ? filePath : null;
 }
 
 function buildTextOutput(textContent: string): { output: string; lineCount: number } {
