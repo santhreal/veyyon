@@ -6,12 +6,12 @@
 # get all three right before the runner would accept the arm. This file is the
 # shortest thing that actually runs.
 #
-# HOW IT WORKS. `arms/<arm>.sections.yml` is a mapping of section name to the
-# FULL replacement text for that section. The runner stages it as
-# `sections/<arm>.json` and the agent reads those exact bytes through the
-# eval-only `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS` environment variable. It is not
-# a config key, so it cannot leak into a normal run, and `vey` prints a loud
-# warning whenever it is active.
+# HOW IT WORKS. `arms/<arm>.sections.yml` maps a section name to replacement
+# body text. The builder adds the registered section banner. The runner stages
+# the mapping as `sections/<arm>.json`, and the agent reads those exact bytes
+# through the eval-only `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS` environment
+# variable. It is not a config key, so it cannot leak into a normal run, and
+# `vey` prints a loud warning whenever it is active.
 #
 # The engine still renders every OTHER section, including the settings-gated
 # blocks, so this stays a single-variable change. That is the whole reason to
@@ -37,12 +37,10 @@
 #      would run the eval against the UNMODIFIED prompt while you believe your
 #      change is live: a false result with no signal that anything went wrong.
 #
-#   2. The replacement must LEAD WITH ITS SECTION BANNER, byte for byte. The
-#      banners are `ROLE\n==`, `RUNTIME\n==`, `TOOL POLICY\n==`,
-#      `EXECUTION WORKFLOW\n==`, and `DELIVERY CONTRACT\n==`. `conventions` is the
-#      one section with no banner, since it is whatever precedes ROLE. Dropping a
-#      banner would collapse two sections into one and let a later override target
-#      the wrong region, so it is refused.
+#   2. The replacement contains body text only. The builder owns and adds the
+#      registered banner. Including `DELIVERY CONTRACT\n==============` here is
+#      rejected because it would duplicate the banner and make the override's
+#      boundaries ambiguous.
 #
 # WHAT THIS PARTICULAR ARM TESTS. Whether a terser delivery contract shortens
 # the agent's prose without costing reward. It is a genuine question rather than
@@ -52,9 +50,6 @@
 # a reward guardrail). Treat the result as a real measurement, and read the
 # reward column before celebrating a token drop.
 deliveryContract: |
-  DELIVERY CONTRACT
-  ==============
-
   Report the outcome and nothing else. State what changed, in which files, and
   whether it is verified. If something is incomplete or unverified, say so
   plainly in one sentence.

@@ -812,35 +812,34 @@ bun run.ts --arms baseline,candidate-delivery-terse \
 builder's own validator, so the example is known to load rather than assumed to.
 
 The system prompt is benched one section at a time. The default prompt is built
-from named banner sections — `conventions`, `role`, `runtime`, `toolPolicy`,
-`executionWorkflow`, `deliveryContract` — and a per-section override swaps
-exactly one of them while every other section, and every `{{#if <setting>}}`
-conditional inside it, is reused byte-for-byte from the shipped prompt. That is
-why this is the only sanctioned way to bench a prompt change: overriding
+from named sections: `conventions`, `role`, `runtime`, `toolPolicy`,
+`executionWorkflow`, and `deliveryContract`. A per-section override swaps the
+body of exactly one section while every other section, banner, and
+`{{#if <setting>}}` conditional is reused byte-for-byte from the shipped prompt.
+This is the sanctioned way to bench a prompt change. Overriding
 `executionWorkflow` cannot touch the settings-gated delegation block in
-`toolPolicy`, so an eval can never silently override a setting the way a
-whole-prompt snapshot does.
+`toolPolicy`, so an eval cannot silently override a setting as a whole-prompt
+snapshot can.
 
-The override is EVAL-ONLY and uncontaminatable. It is not a config key and not a
-CLI flag: `vey` reads it exclusively from the `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS`
-environment variable (a JSON object of `section -> replacement text`), which the
-bench sets around a single arm and nothing else sets. A normal run — yours or
-production — has no way to reach the path, so no `config.yml` can shift a prompt
-section. When the var is present `vey` logs a loud warning that the prompt is not
-the production one; when it is absent the production prompt is used verbatim.
+The override is eval-only and uncontaminatable. It is not a config key or CLI
+flag. `vey` reads it exclusively from the
+`VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS` environment variable (a JSON object of
+`section -> replacement body text`), which the bench sets around one arm. A
+normal run cannot reach this path, so no `config.yml` can shift a prompt
+section. When the variable is present, `vey` logs a warning that the prompt is
+not the production one. When it is absent, the production prompt is used
+verbatim.
 
-Put the override in the candidate arm's `arms/<arm>.sections.yml` (a YAML mapping,
-authored for readability; `run.ts` compiles it to the JSON the env var carries).
-Each value MUST begin with that section's banner — `vey` rejects a banner-less
-override, an unknown section name, and a non-string value loudly, so a section
-change never fails silently:
+Put the override in the candidate arm's `arms/<arm>.sections.yml` (a YAML
+mapping, authored for readability; `run.ts` compiles it to the JSON the
+environment variable carries). Each value must contain body text only. `vey`
+adds the registered banner and rejects an override that repeats any registered
+banner. It also rejects unknown section names and non-string values:
 
 ```yaml
 # arms/candidate-lean-workflow.sections.yml
 executionWorkflow: |
-  EXECUTION WORKFLOW
-  ==============
-  # ... your compressed workflow section, banner included ...
+  Verify the requested behavior before you report completion.
 ```
 
 Workflow:
