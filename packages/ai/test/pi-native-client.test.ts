@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, type Mock, mock, spyOn } from "bun:test";
 import { streamPiNative } from "@veyyon/ai/providers/pi-native-client";
+import { streamSimple } from "@veyyon/ai/stream";
 import type { AssistantMessage, AssistantMessageEvent, Context, FetchImpl, Model, ModelSpec } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
 
@@ -196,6 +197,105 @@ describe("streamPiNative request shape", () => {
 		expect("providerSessionState" in body.options).toBe(false);
 		// And the legitimate options survive
 		expect(body.options.maxTokens).toBe(1024);
+	});
+
+	it("applies a fresh awaited payload replacement after auth resolution on every retry", async () => {
+		const rawContext: Context = {
+			systemPrompt: ["raw-secret"],
+			messages: [{ role: "user", content: "raw-message", timestamp: 0 }],
+		};
+		const sequence: string[] = [];
+		const rawPayloads: Array<Record<string, unknown>> = [];
+		const replacements: Array<Record<string, unknown>> = [];
+		const serializedBodies: string[] = [];
+		let fetchAttempt = 0;
+		const fetchImpl: FetchImpl = (async (_input, init) => {
+			fetchAttempt += 1;
+			sequence.push(`fetch-${fetchAttempt}`);
+			serializedBodies.push(String(init?.body));
+			if (fetchAttempt === 1) {
+				return new Response(
+					JSON.stringify({ error: { type: "authentication_error", message: "expired gateway bearer" } }),
+					{ status: 401, headers: { "Content-Type": "application/json" } },
+				);
+			}
+			return fakeResponse([{ type: "done", reason: "stop", message: baseAssistant() }]);
+		}) as FetchImpl;
+		let authAttempt = 0;
+		let hookAttempt = 0;
+
+		const stream = streamSimple(fakeModel(), rawContext, {
+			apiKey: async () => {
+				authAttempt += 1;
+				sequence.push(`auth-${authAttempt}`);
+				return `gateway-bearer-${authAttempt}`;
+			},
+			fetch: fetchImpl,
+			maxTokens: 1024,
+			onPayload: async payload => {
+				hookAttempt += 1;
+				sequence.push(`hook-${hookAttempt}`);
+				const raw = payload as Record<string, unknown>;
+				raw.mutatedIntermediate = `mutated-${hookAttempt}`;
+				rawPayloads.push(raw);
+				await Promise.resolve();
+				const replacement = {
+					modelId: raw.modelId,
+					context: {
+						systemPrompt: [`sanitized-${hookAttempt}`],
+						messages: [],
+					},
+					options: { maxTokens: 2048 + hookAttempt },
+					stream: raw.stream,
+					sanitizedAttempt: hookAttempt,
+				};
+				replacements.push(replacement);
+				return replacement;
+			},
+		});
+		await stream.result();
+
+		expect(sequence).toEqual(["auth-1", "hook-1", "fetch-1", "auth-2", "hook-2", "fetch-2"]);
+		expect(rawPayloads).toHaveLength(2);
+		expect(rawPayloads[0]).not.toBe(rawPayloads[1]);
+		expect(rawPayloads[0]?.options).not.toBe(rawPayloads[1]?.options);
+		expect(replacements[0]).not.toBe(replacements[1]);
+		expect(serializedBodies.map(body => JSON.parse(body))).toEqual(replacements);
+		expect(serializedBodies.join("\n")).not.toContain("raw-secret");
+		expect(serializedBodies.join("\n")).not.toContain("raw-message");
+		expect(serializedBodies.join("\n")).not.toContain("mutated-");
+		expect(serializedBodies[0]).toContain('"sanitizedAttempt":1');
+		expect(serializedBodies[1]).toContain('"sanitizedAttempt":2');
+	});
+
+	it("does not retry or fetch when the local payload hook rejects", async () => {
+		const sequence: string[] = [];
+		let authResolutions = 0;
+		let fetches = 0;
+		const fetchImpl: FetchImpl = (async () => {
+			fetches += 1;
+			sequence.push("fetch");
+			return fakeResponse([{ type: "done", reason: "stop", message: baseAssistant() }]);
+		}) as FetchImpl;
+
+		const stream = streamSimple(fakeModel(), baseContext, {
+			apiKey: async () => {
+				authResolutions += 1;
+				sequence.push("auth");
+				return `gateway-bearer-${authResolutions}`;
+			},
+			fetch: fetchImpl,
+			onPayload: async () => {
+				sequence.push("hook");
+				await Promise.resolve();
+				throw Object.assign(new Error("401 sanitizer rejection"), { status: 401 });
+			},
+		});
+
+		await expect(stream.result()).rejects.toThrow(/onPayload hook rejected/);
+		expect(sequence).toEqual(["auth", "hook"]);
+		expect(authResolutions).toBe(1);
+		expect(fetches).toBe(0);
 	});
 
 	it("normalizes trailing slashes on `baseUrl` so the endpoint never double-slashes", async () => {

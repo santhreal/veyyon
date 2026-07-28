@@ -1,6 +1,10 @@
 import { gunzipSync, gzipSync } from "node:zlib";
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
-import { normalizeDevinSessionToken } from "@veyyon/catalog/discovery/devin";
+import {
+	DEVIN_EXTENSION_VERSION,
+	DEVIN_IDE_VERSION,
+	normalizeDevinSessionToken,
+} from "@veyyon/catalog/discovery/devin";
 import {
 	ChatMessageRequestType,
 	GetChatMessageRequestSchema,
@@ -74,8 +78,6 @@ export interface DevinOptions extends StreamOptions {
 }
 
 const CHAT_MESSAGE_PATH = "/exa.api_server_pb.ApiServerService/GetChatMessage";
-const DEVIN_IDE_VERSION = "3.2.23";
-const DEVIN_EXTENSION_VERSION = "1.48.2";
 const DEVIN_AUTH_PATH = "/exa.auth_pb.AuthService/GetUserJwt";
 const DEVIN_DEFAULT_STOP_PATTERNS = ["<|user|>", "<|bot|>", "<|context_request|>", "<|endoftext|>", "<|end_of_turn|>"];
 
@@ -162,9 +164,19 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 			const apiKey = normalizeDevinSessionToken(options?.apiKey);
 			const auth = await fetchDevinAuthMetadata(apiKey, baseUrl, fetchImpl, options?.signal);
 			const chatBaseUrl = auth.baseUrl ?? baseUrl;
-			const request = buildDevinChatRequest(model, context, options, apiKey, auth.userJwt);
+			let request = buildDevinChatRequest(model, context, options, apiKey, auth.userJwt);
 			logger.debug("devin: sending chat request", { model: model.id, tools: context.tools?.length ?? 0 });
+			const resolvedApiKey = request.metadata?.apiKey ?? apiKey;
+			const resolvedUserJwt = request.metadata?.userJwt ?? auth.userJwt;
 
+			const replacementPayload = await options?.onPayload?.(request, model);
+			if (replacementPayload !== undefined) {
+				request = replacementPayload as typeof request;
+			}
+			const wireMetadata = create(MetadataSchema, request.metadata);
+			wireMetadata.apiKey = resolvedApiKey;
+			wireMetadata.userJwt = resolvedUserJwt;
+			request.metadata = wireMetadata;
 			const reqBytes = toBinary(GetChatMessageRequestSchema, request);
 			const gz = gzipSync(reqBytes);
 			const frame = Buffer.alloc(5 + gz.length);

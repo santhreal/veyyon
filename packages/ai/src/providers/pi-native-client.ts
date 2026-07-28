@@ -53,6 +53,16 @@ const NON_WIRE_KEYS = new Set<keyof SimpleStreamOptions>([
 const VEYYON_NATIVE_STREAM_IDLE_TIMEOUT_ERROR = "pi-native stream stalled while waiting for the next event";
 const VEYYON_NATIVE_STREAM_FIRST_EVENT_TIMEOUT_ERROR = "pi-native stream timed out while waiting for the first event";
 
+class PiNativePayloadHookError extends Error {
+	readonly rejection: unknown;
+
+	constructor(rejection: unknown) {
+		super("pi-native onPayload hook rejected");
+		this.name = "PiNativePayloadHookError";
+		this.rejection = rejection;
+	}
+}
+
 function isPiNativeProgressEvent(event: unknown): boolean {
 	if (typeof event !== "object" || event === null || !("type" in event)) return true;
 	return event.type !== "start";
@@ -177,12 +187,21 @@ export function streamPiNative<TApi extends Api>(
 				model as Model<Api>,
 				typeof options?.apiKey === "string" ? options.apiKey : undefined,
 			);
-			const body = JSON.stringify({
+			let bodyPayload: unknown = {
 				modelId: `${model.provider}/${model.id}`,
 				context,
 				options: buildWireOptions(options),
 				stream: true,
-			});
+			};
+			try {
+				const replacementPayload = await options?.onPayload?.(bodyPayload, model as Model<Api>);
+				if (replacementPayload !== undefined) bodyPayload = replacementPayload;
+			} catch (error) {
+				// Payload sanitization is a local policy decision, not an upstream authentication failure. Keep
+				// the rejection out of the auth-retry classifier even when its original error resembles a 401.
+				throw new PiNativePayloadHookError(error);
+			}
+			const body = JSON.stringify(bodyPayload);
 
 			response = await fetchImpl(url, { method: "POST", headers, body, signal: abortTracker.requestSignal });
 			if (!response.ok) {

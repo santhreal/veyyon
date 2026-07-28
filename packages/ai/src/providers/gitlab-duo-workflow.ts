@@ -1029,7 +1029,16 @@ async function runGitLabDuoWorkflow(
 		pendingSession.pendingActions = undefined;
 		const resumeResult = await resumeGitLabDuoWorkflowSocket(
 			{ fetchImpl, baseUrl, apiKey, workflowId: pendingSession.workflowId, state, providerSessionState },
-			() => runGitLabDuoWorkflowSocket(pendingSession.ws, pendingSession.startPayload, state, options, responses),
+			() =>
+				runGitLabDuoWorkflowSocket(
+					pendingSession.ws,
+					pendingSession.startPayload,
+					state,
+					options,
+					responses,
+					undefined,
+					model,
+				),
 		);
 		// A stall on the resumed socket means the server-side turn stopped advancing even
 		// after the tool result was returned. The helper already stopped that workflow and
@@ -1045,7 +1054,16 @@ async function runGitLabDuoWorkflow(
 		const sessionWorkflowId = session.workflowId;
 		const resumeResult = await resumeGitLabDuoWorkflowSocket(
 			{ fetchImpl, baseUrl, apiKey, workflowId: sessionWorkflowId, state, providerSessionState },
-			() => runGitLabDuoWorkflowSocket(session.ws, session.startPayload, state, options, undefined, replay),
+			() =>
+				runGitLabDuoWorkflowSocket(
+					session.ws,
+					session.startPayload,
+					state,
+					options,
+					undefined,
+					replay,
+					model,
+				),
 		);
 		// As with the action resume, a stall falls through to a fresh-workflow seed
 		// (the helper already stopped the stalled workflow and dropped `active`).
@@ -1176,6 +1194,8 @@ async function runGitLabDuoWorkflow(
 				goal,
 				restProjectId,
 				workflowDefinition,
+				model,
+				options.onPayload,
 				options.signal,
 			));
 		const availableModels = await fetchGitLabDuoWorkflowAvailableModels(
@@ -1342,7 +1362,15 @@ async function runGitLabDuoWorkflow(
 					},
 				};
 			}
-			lastSocketResult = await runGitLabDuoWorkflowSocket(ws, startPayload, state, options);
+			lastSocketResult = await runGitLabDuoWorkflowSocket(
+				ws,
+				startPayload,
+				state,
+				options,
+				undefined,
+				undefined,
+				model,
+			);
 			if (lastSocketResult === "approval") {
 				startPayload = buildGitLabDuoWorkflowApprovalStartRequest(startPayload);
 				state.lastApprovalStatus = undefined;
@@ -1369,6 +1397,8 @@ async function runGitLabDuoWorkflow(
 					goal,
 					restProjectId,
 					workflowDefinition,
+					model,
+					options.onPayload,
 					options.signal,
 				);
 				startPayload = { ...startPayload, workflowID: workflowId };
@@ -1397,6 +1427,8 @@ async function runGitLabDuoWorkflow(
 					goal,
 					restProjectId,
 					workflowDefinition,
+					model,
+					options.onPayload,
 					options.signal,
 				);
 				startPayload = { ...startPayload, workflowID: workflowId };
@@ -1424,6 +1456,8 @@ async function runGitLabDuoWorkflow(
 					goal,
 					restProjectId,
 					workflowDefinition,
+					model,
+					options.onPayload,
 					options.signal,
 				);
 				startPayload = { ...startPayload, workflowID: workflowId };
@@ -1452,6 +1486,8 @@ async function runGitLabDuoWorkflow(
 					goal,
 					restProjectId,
 					workflowDefinition,
+					model,
+					options.onPayload,
 					options.signal,
 				);
 				startPayload = { ...startPayload, workflowID: workflowId };
@@ -1722,9 +1758,11 @@ async function createGitLabDuoWorkflow(
 	baseUrl: string,
 	apiKey: string,
 	namespaceId: string,
-	goal?: string,
-	projectId?: string,
-	workflowDefinition: GitLabDuoWorkflowDefinition = GITLAB_DUO_WORKFLOW_DEFINITION,
+	goal: string | undefined,
+	projectId: string | undefined,
+	workflowDefinition: GitLabDuoWorkflowDefinition,
+	model: Model<"gitlab-duo-agent">,
+	onPayload: GitLabDuoWorkflowOptions["onPayload"],
 	signal?: AbortSignal,
 ): Promise<string> {
 	const body = buildGitLabDuoWorkflowCreateBody(namespaceId, {
@@ -1732,6 +1770,8 @@ async function createGitLabDuoWorkflow(
 		projectId,
 		workflowDefinition,
 	});
+	const replacementBody = await onPayload?.(body, model);
+	const outboundBody = replacementBody === undefined ? body : replacementBody;
 	// The fence spans the body read below, not just the fetch.
 	const restTimeout = gitLabDuoWorkflowRestTimeout(signal);
 	try {
@@ -1741,7 +1781,7 @@ async function createGitLabDuoWorkflow(
 				Authorization: `Bearer ${apiKey}`,
 				"content-type": "application/json",
 			},
-			body: JSON.stringify(body),
+			body: JSON.stringify(outboundBody),
 			signal: restTimeout.signal,
 		});
 		traceGitLabDuoWorkflow("workflow.create.response", {
@@ -1902,6 +1942,7 @@ export function runGitLabDuoWorkflowSocket(
 	options: GitLabDuoWorkflowOptions,
 	resumeResponse?: GitLabDuoWorkflowActionResponse | readonly GitLabDuoWorkflowActionResponse[],
 	replayMessages?: readonly unknown[],
+	model?: Model<"gitlab-duo-agent">,
 ): Promise<GitLabDuoWorkflowSocketResult> {
 	const { promise, resolve, reject } = Promise.withResolvers<GitLabDuoWorkflowSocketResult>();
 	let settled = false;
@@ -2008,6 +2049,25 @@ export function runGitLabDuoWorkflowSocket(
 			error => settle("closed", error),
 		);
 	};
+	const sendPayloads = (payloads: readonly unknown[]): void => {
+		const onPayload = options.onPayload;
+		if (!onPayload) {
+			for (const payload of payloads) {
+				ws.send(JSON.stringify(payload));
+			}
+			return;
+		}
+		void (async () => {
+			for (const payload of payloads) {
+				const replacementPayload = await onPayload(payload, model);
+				if (settled) return;
+				ws.send(JSON.stringify(replacementPayload === undefined ? payload : replacementPayload));
+			}
+		})().catch(error => {
+			close();
+			settle("closed", error);
+		});
+	};
 	if (replayMessages && replayMessages.length > 0) {
 		ws.onopen = null;
 		void (async () => {
@@ -2053,9 +2113,7 @@ export function runGitLabDuoWorkflowSocket(
 		// inline flow only ever has one.) DWS matches it by requestID to the awaiting
 		// outbox future and the workflow continues on the same connection.
 		const responses = Array.isArray(resumeResponse) ? resumeResponse : [resumeResponse];
-		for (const response of responses) {
-			ws.send(JSON.stringify(response));
-		}
+		sendPayloads(responses.map(response => structuredClone(response)));
 	} else {
 		ws.onopen = () => {
 			traceGitLabDuoWorkflow("websocket.open", {
@@ -2067,7 +2125,7 @@ export function runGitLabDuoWorkflowSocket(
 				mcpTools: startPayload.mcpTools.length,
 				preapprovedTools: startPayload.preapproved_tools.length,
 			});
-			ws.send(JSON.stringify({ startRequest: startPayload }));
+			sendPayloads([{ startRequest: structuredClone(startPayload) }]);
 		};
 	}
 	resetIdleTimer();
