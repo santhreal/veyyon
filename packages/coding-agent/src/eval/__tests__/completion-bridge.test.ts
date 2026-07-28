@@ -29,6 +29,7 @@ function makeModel(provider: string, id: string, extra: Partial<Model<Api>> = {}
 		cost: { input: 1, output: 1, cacheRead: 0, cacheWrite: 1 },
 		contextWindow: 128000,
 		maxTokens: 4096,
+		compat: {},
 		...extra,
 	} as Model<Api>;
 }
@@ -100,6 +101,65 @@ function assistant(opts: {
 		timestamp: Date.now(),
 	};
 }
+function createOpenAiTextResponse(text = "ok"): Response {
+	const events = [
+		{
+			type: "response.output_item.added",
+			item: { type: "message", id: "msg_1", role: "assistant", status: "in_progress", content: [] },
+		},
+		{ type: "response.content_part.added", part: { type: "output_text", text: "" } },
+		{ type: "response.output_text.delta", delta: text },
+		{
+			type: "response.output_item.done",
+			item: {
+				type: "message",
+				id: "msg_1",
+				role: "assistant",
+				status: "completed",
+				content: [{ type: "output_text", text }],
+			},
+		},
+		{
+			type: "response.completed",
+			response: {
+				status: "completed",
+				usage: { input_tokens: 3, output_tokens: 1, total_tokens: 4, input_tokens_details: { cached_tokens: 0 } },
+			},
+		},
+	];
+	return new Response(`${events.map(event => `data: ${JSON.stringify(event)}`).join("\n\n")}\n\n`, {
+		status: 200,
+		headers: { "content-type": "text/event-stream" },
+	});
+}
+function createOpenAiToolResponse(name: string, argumentsJson: string): Response {
+	const item = {
+		type: "function_call",
+		id: "fc_1",
+		call_id: "call_1",
+		name,
+		arguments: argumentsJson,
+	};
+	const events = [
+		{ type: "response.output_item.added", item: { ...item, arguments: "" } },
+		{ type: "response.function_call_arguments.delta", item_id: item.id, delta: argumentsJson },
+		{ type: "response.function_call_arguments.done", item_id: item.id, arguments: argumentsJson },
+		{ type: "response.output_item.done", item },
+		{
+			type: "response.completed",
+			response: {
+				status: "completed",
+				usage: { input_tokens: 3, output_tokens: 1, total_tokens: 4, input_tokens_details: { cached_tokens: 0 } },
+			},
+		},
+	];
+	return new Response(`${events.map(event => `data: ${JSON.stringify(event)}`).join("\n\n")}\n\n`, {
+		status: 200,
+		headers: { "content-type": "text/event-stream" },
+	});
+}
+
+
 
 async function runPythonCompletionInSubprocess(options: {
 	structured: boolean;
@@ -262,6 +322,216 @@ describe("runEvalCompletion", () => {
 			{ type: "text", text: `Use ${placeholder} in the answer` },
 		]);
 	});
+	it("sanitizes every schema string and keeps mapped property references aligned", async () => {
+		// WHY: schema metadata is part of the provider request even though it is
+		// not conversational text, and property names are referenced by required.
+		const secret = "SCHEMA_SECRET_789";
+		const replacement = "#SCHEMA_REDACTED#";
+		const propertyName = `answer_${secret}`;
+		const safePropertyName = `answer_${replacement}`;
+		const schema = {
+			type: "object",
+			title: `Title ${secret}`,
+			description: `Description ${secret}`,
+			examples: [{ [`example_${secret}`]: `Example ${secret}` }],
+			properties: {
+				[propertyName]: {
+					type: "string",
+					title: `Property title ${secret}`,
+					description: `Property description ${secret}`,
+					examples: [`Property example ${secret}`],
+					enum: [`Enum ${secret}`],
+					default: `Default ${secret}`,
+				},
+			},
+			required: [propertyName],
+		};
+		let capturedBody: Record<string, unknown> | undefined;
+		const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+			const body =
+				input instanceof Request
+					? await input.clone().text()
+					: typeof init?.body === "string"
+						? init.body
+						: "";
+			capturedBody = JSON.parse(body) as Record<string, unknown>;
+			return createOpenAiToolResponse("respond", JSON.stringify({ [safePropertyName]: "ok" }));
+		});
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		try {
+			await runEvalCompletion(
+				{ prompt: "q", model: "smol", schema },
+				{
+					session: makeSession({
+						obfuscateProviderText: text => text.replaceAll(secret, replacement),
+					}),
+				},
+			);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+
+		const tools = capturedBody?.tools as Array<{ parameters: Record<string, unknown> }> | undefined;
+		const parameters = tools?.[0]?.parameters;
+		expect(JSON.stringify(parameters)).not.toContain(secret);
+		expect(parameters).toMatchObject({
+			title: `Title ${replacement}`,
+			description: `Description ${replacement}`,
+			examples: [{ [`example_${replacement}`]: `Example ${replacement}` }],
+			required: [safePropertyName],
+			properties: {
+				[safePropertyName]: {
+					title: `Property title ${replacement}`,
+					description: `Property description ${replacement}`,
+					examples: [`Property example ${replacement}`],
+					enum: [`Enum ${replacement}`],
+					default: `Default ${replacement}`,
+				},
+			},
+		});
+	});
+
+	it("leaves benign schemas unchanged when no confidentiality resolver exists", async () => {
+		// WHY: local-only/no-secret sessions must retain the caller's exact schema
+		// semantics rather than requiring or inventing a remote redaction runtime.
+		const schema = {
+			type: "object",
+			properties: { answer: { type: "string", description: "A benign answer" } },
+			required: ["answer"],
+		};
+		const spy = vi
+			.spyOn(ai, "completeSimple")
+			.mockResolvedValue(assistant({ toolCall: { name: "respond", arguments: { answer: "ok" } } }));
+
+		await runEvalCompletion({ prompt: "q", model: "smol", schema }, { session: makeSession() });
+
+		const context = spy.mock.calls[0]?.[1] as { tools?: Array<{ parameters: Record<string, unknown> }> };
+		expect(context.tools?.[0]?.parameters).toEqual(schema);
+	});
+
+	it("uses a runtime installed while credential lookup is awaited", async () => {
+		// WHY: credential refresh is an await boundary. Sanitizing before it would
+		// leave newly authoritative prompt, system, and schema secrets exposed.
+		const secret = "EVAL_REFRESH_SECRET_314";
+		const replacement = "#REFRESHED#";
+		const session = makeSession({ obfuscateProviderText: text => text });
+		const mutableSession = session as unknown as { obfuscateProviderText?: (text: string) => string };
+		const registry = session.modelRegistry as unknown as { getApiKey: () => Promise<string> };
+		registry.getApiKey = async () => {
+			await Promise.resolve();
+			mutableSession.obfuscateProviderText = text => text.replaceAll(secret, replacement);
+			return "test-key";
+		};
+		const spy = vi
+			.spyOn(ai, "completeSimple")
+			.mockResolvedValue(assistant({ toolCall: { name: "respond", arguments: { ok: true } } }));
+
+		await runEvalCompletion(
+			{
+				prompt: `prompt ${secret}`,
+				system: `system ${secret}`,
+				model: "smol",
+				schema: { type: "object", description: `schema ${secret}` },
+			},
+			{ session },
+		);
+
+		const context = spy.mock.calls[0]?.[1];
+		expect(JSON.stringify(context)).not.toContain(secret);
+		expect(JSON.stringify(context)).toContain(replacement);
+	});
+
+	it("fails closed when redacted schema keys collide without echoing either secret", async () => {
+		// WHY: collapsing two properties would make required/property references
+		// ambiguous; including either original key in the error would leak it.
+		const firstSecret = "COLLISION_SECRET_ALPHA";
+		const secondSecret = "COLLISION_SECRET_BETA";
+		const session = makeSession({
+			obfuscateProviderText: text =>
+				text.replaceAll(firstSecret, "#REDACTED#").replaceAll(secondSecret, "#REDACTED#"),
+		});
+		const completeSpy = vi.spyOn(ai, "completeSimple");
+		let thrown: unknown;
+
+		try {
+			await runEvalCompletion(
+				{
+					prompt: "q",
+					model: "smol",
+					schema: {
+						type: "object",
+						properties: {
+							[`field_${firstSecret}`]: { type: "string" },
+							[`field_${secondSecret}`]: { type: "string" },
+						},
+					},
+				},
+				{ session },
+			);
+		} catch (error) {
+			thrown = error;
+		}
+
+		expect(thrown).toBeInstanceOf(ToolError);
+		expect(String(thrown)).not.toContain(firstSecret);
+		expect(String(thrown)).not.toContain(secondSecret);
+		expect(completeSpy).not.toHaveBeenCalled();
+	});
+
+	it("re-resolves confidentiality after a 401 before the second physical attempt", async () => {
+		// WHY: auth rotation can refresh the secret runtime together with the
+		// credential. Reusing attempt one's payload would expose the new secret.
+		const secret = "LATE_COMPLETION_SECRET_333";
+		const replacement = "#LATE_REDACTED#";
+		const session = makeSession({ obfuscateProviderText: text => text });
+		const mutableSession = session as unknown as { obfuscateProviderText?: (text: string) => string };
+		const registry = session.modelRegistry as unknown as {
+			resolver: () => (state: { error?: unknown }) => Promise<string>;
+		};
+		registry.resolver = () => async state => {
+			if (state.error) {
+				mutableSession.obfuscateProviderText = text => text.replaceAll(secret, replacement);
+				return "rotated-key";
+			}
+			return "initial-key";
+		};
+
+		const bodies: string[] = [];
+		const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+			const body =
+				input instanceof Request
+					? await input.clone().text()
+					: typeof init?.body === "string"
+						? init.body
+						: "";
+			bodies.push(body);
+			if (bodies.length === 1) {
+				return new Response(JSON.stringify({ error: { message: "Unauthorized" } }), {
+					status: 401,
+					headers: { "content-type": "application/json" },
+				});
+			}
+			return createOpenAiTextResponse();
+		});
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		try {
+			const result = await runEvalCompletion(
+				{ prompt: `send ${secret}`, system: `guard ${secret}`, model: "smol" },
+				{ session },
+			);
+			expect(result.text).toBe("ok");
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+
+		expect(bodies).toHaveLength(2);
+		expect(bodies[0]).toContain(secret);
+		expect(bodies[1]).not.toContain(secret);
+		expect(bodies[1]).toContain(replacement);
+	});
+
 
 	it("forces a respond tool call and returns its arguments in structured mode", async () => {
 		const spy = vi
