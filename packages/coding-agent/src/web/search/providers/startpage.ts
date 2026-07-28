@@ -1,5 +1,6 @@
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import { parseHTML } from "linkedom";
+import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults, collapseWhitespace, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
@@ -23,6 +24,7 @@ const STARTPAGE_HOME_URL = "https://www.startpage.com/";
 /** Hosts that belong to the engine itself, so a link back into it is not a result. Matched as the host or any subdomain. */
 const STARTPAGE_OWN_HOSTS: readonly string[] = ["startpage.com"];
 const STARTPAGE_SEARCH_URL = "https://www.startpage.com/sp/search";
+const STARTPAGE_TRANSFORM_BOUNDARY = "Startpage search";
 const MAX_NUM_RESULTS = 20;
 
 /**
@@ -109,11 +111,27 @@ function parseHtmlResults(html: string): ParsedResult[] {
  * any failure (network, non-OK status, challenge shell, markup drift) yields
  * `undefined` and the caller falls back to a direct GET.
  */
-async function fetchFormInputs(fetchImpl: FetchImpl, signal: AbortSignal): Promise<Record<string, string> | undefined> {
+async function fetchFormInputs(
+	fetchImpl: FetchImpl,
+	signal: AbortSignal,
+	resolveTransform: SearchParams["resolveProviderTextTransform"],
+): Promise<Record<string, string> | undefined> {
 	let page: LoadedHtmlPage;
 	try {
-		page = await browserFetch(STARTPAGE_HOME_URL, { fetch: fetchImpl, signal });
+		page = await browserFetch(
+			() => {
+				const transform = resolveProviderTextTransform(resolveTransform, STARTPAGE_TRANSFORM_BOUNDARY);
+				return { url: transform(STARTPAGE_HOME_URL) };
+			},
+			{ fetch: fetchImpl, signal },
+		);
 	} catch (error) {
+		if (
+			error instanceof Error &&
+			error.message === `${STARTPAGE_TRANSFORM_BOUNDARY} confidentiality transform failed.`
+		) {
+			throw error;
+		}
 		if (signal.aborted) throw error;
 		return undefined;
 	}
@@ -126,28 +144,68 @@ async function callStartpageHtml(params: SearchParams): Promise<string> {
 		const fetchImpl = params.fetch ?? fetch;
 		const withDate = params.recency ? RECENCY_TO_STARTPAGE_WITH_DATE[params.recency] : undefined;
 
-		const formInputs = await fetchFormInputs(fetchImpl, signal);
+		const formInputs = await fetchFormInputs(fetchImpl, signal, params.resolveProviderTextTransform);
 		let page: LoadedHtmlPage;
 		if (formInputs) {
-			const form = new URLSearchParams(formInputs);
-			form.set("query", params.query);
-			if (withDate) form.set("with_date", withDate);
-			page = await browserFetch(STARTPAGE_SEARCH_URL, {
-				fetch: fetchImpl,
-				signal,
-				referer: STARTPAGE_HOME_URL,
-				init: { method: "POST", body: form.toString() },
-				headers: { "Content-Type": "application/x-www-form-urlencoded" },
-			});
+			page = await browserFetch(
+				() => {
+					const transform = resolveProviderTextTransform(
+						params.resolveProviderTextTransform,
+						STARTPAGE_TRANSFORM_BOUNDARY,
+					);
+					const fields = transformProviderPayload(
+						{
+							...formInputs,
+							query: params.query,
+							...(withDate ? { with_date: withDate } : {}),
+						},
+						transform,
+						STARTPAGE_TRANSFORM_BOUNDARY,
+					) as Record<string, string>;
+					const form = new URLSearchParams(fields);
+					return {
+						url: transform(STARTPAGE_SEARCH_URL),
+						referer: transform(STARTPAGE_HOME_URL),
+						init: { method: "POST", body: form.toString() },
+						headers: transformProviderPayload(
+							{ "Content-Type": "application/x-www-form-urlencoded" },
+							transform,
+							STARTPAGE_TRANSFORM_BOUNDARY,
+						) as Record<string, string>,
+					};
+				},
+				{
+					fetch: fetchImpl,
+					signal,
+				},
+			);
 		} else {
-			const url = new URL(STARTPAGE_SEARCH_URL);
-			url.searchParams.set("query", params.query);
-			if (withDate) url.searchParams.set("with_date", withDate);
-			page = await browserFetch(url.href, {
-				fetch: fetchImpl,
-				signal,
-				referer: STARTPAGE_HOME_URL,
-			});
+			page = await browserFetch(
+				() => {
+					const transform = resolveProviderTextTransform(
+						params.resolveProviderTextTransform,
+						STARTPAGE_TRANSFORM_BOUNDARY,
+					);
+					const fields = transformProviderPayload(
+						{
+							query: params.query,
+							...(withDate ? { with_date: withDate } : {}),
+						},
+						transform,
+						STARTPAGE_TRANSFORM_BOUNDARY,
+					) as Record<string, string>;
+					const url = new URL(transform(STARTPAGE_SEARCH_URL));
+					for (const [key, value] of Object.entries(fields)) url.searchParams.set(key, value);
+					return {
+						url: url.href,
+						referer: transform(STARTPAGE_HOME_URL),
+					};
+				},
+				{
+					fetch: fetchImpl,
+					signal,
+				},
+			);
 		}
 
 		if (isChallengeResponse(page)) {

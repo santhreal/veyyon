@@ -12,6 +12,7 @@ import { type } from "arktype";
 import { settings } from "../../config/settings-instance";
 import type { CustomTool, CustomToolContext, RenderResultOptions } from "../../extensibility/custom-tools/types";
 import type { Theme } from "../../modes/theme/theme";
+import type { ProviderTextTransformResolver } from "../../provider-boundary";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "../../tools";
 import { formatAge } from "../../tools/render-utils";
@@ -129,6 +130,7 @@ interface ExecuteSearchOptions {
 	authStorage: AuthStorage;
 	sessionId?: string;
 	signal?: AbortSignal;
+	resolveProviderTextTransform?: ProviderTextTransformResolver;
 }
 
 /** Execute web search */
@@ -137,7 +139,7 @@ async function executeSearch(
 	params: SearchQueryParams,
 	options: ExecuteSearchOptions,
 ): Promise<{ content: Array<{ type: "text"; text: string }>; details: SearchRenderDetails }> {
-	const { authStorage, sessionId, signal } = options;
+	const { authStorage, sessionId, signal, resolveProviderTextTransform } = options;
 	const explicitProvider = params.provider;
 	let candidates: SearchProviderCandidate[];
 	if (explicitProvider && explicitProvider !== "auto") {
@@ -199,6 +201,7 @@ async function executeSearch(
 				sessionId,
 				antigravityEndpointMode,
 				geminiModel,
+				resolveProviderTextTransform,
 			});
 
 			if (!hasRenderableSearchContent(response)) {
@@ -255,7 +258,12 @@ async function executeSearch(
  */
 export async function runSearchQuery(
 	params: SearchQueryParams,
-	options: { authStorage?: AuthStorage; sessionId?: string; signal?: AbortSignal } = {},
+	options: {
+		authStorage?: AuthStorage;
+		sessionId?: string;
+		signal?: AbortSignal;
+		resolveProviderTextTransform?: ProviderTextTransformResolver;
+	} = {},
 ): Promise<{ content: Array<{ type: "text"; text: string }>; details: SearchRenderDetails }> {
 	const createdAuthStorage = options.authStorage ? undefined : await discoverAuthStorage();
 	const authStorage = options.authStorage ?? createdAuthStorage;
@@ -267,6 +275,7 @@ export async function runSearchQuery(
 			authStorage,
 			sessionId: options.sessionId,
 			signal: options.signal,
+			resolveProviderTextTransform: options.resolveProviderTextTransform,
 		});
 	} finally {
 		createdAuthStorage?.close();
@@ -304,7 +313,12 @@ export class WebSearchTool implements AgentTool<typeof webSearchSchema, SearchRe
 	): Promise<AgentToolResult<SearchRenderDetails>> {
 		const authStorage = this.#session.authStorage ?? (await discoverAuthStorage());
 		const sessionId = this.#session.getSessionId?.() ?? undefined;
-		return executeSearch(_toolCallId, params, { authStorage, sessionId, signal });
+		return executeSearch(_toolCallId, params, {
+			authStorage,
+			sessionId,
+			signal,
+			resolveProviderTextTransform: () => this.#session.obfuscateProviderText,
+		});
 	}
 }
 
@@ -325,7 +339,12 @@ export const webSearchCustomTool: CustomTool<typeof webSearchSchema, SearchRende
 	) {
 		const authStorage = ctx.modelRegistry?.authStorage ?? (await discoverAuthStorage());
 		const sessionId = ctx.sessionManager.getSessionId();
-		return executeSearch(toolCallId, params, { authStorage, sessionId, signal });
+		return executeSearch(toolCallId, params, {
+			authStorage,
+			sessionId,
+			signal,
+			resolveProviderTextTransform: () => ctx.obfuscateProviderText,
+		});
 	},
 
 	renderCall(args: SearchToolParams, options: RenderResultOptions, theme: Theme) {

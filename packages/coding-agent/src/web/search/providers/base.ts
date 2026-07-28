@@ -1,4 +1,5 @@
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
+import type { ProviderTextTransformResolver } from "../../../provider-boundary";
 import type { SearchProviderId, SearchResponse } from "../types";
 
 /**
@@ -37,6 +38,11 @@ export interface SearchParams {
 	googleSearch?: Record<string, unknown>;
 	codeExecution?: Record<string, unknown>;
 	urlContext?: Record<string, unknown>;
+	/**
+	 * Resolve the live final-seam transform again for every physical request.
+	 * Providers must retain raw fields until after credential/auth awaits.
+	 */
+	resolveProviderTextTransform?: ProviderTextTransformResolver;
 	/**
 	 * The single source of truth for credentials. Providers MUST consult this
 	 * handle exclusively (`getApiKey` for bearer-style auth, `getOAuthAccess`

@@ -37,8 +37,18 @@ export interface LoadedHtmlPage {
 	url: string;
 }
 
+export interface BrowserFetchAttempt {
+	url: string;
+	referer?: string;
+	init?: Omit<RequestInit, "headers" | "signal">;
+	headers?: Readonly<Record<string, string>>;
+}
+
+/** Builds request text at the final seam so every fetch/navigation attempt is fresh. */
+export type BrowserFetchAttemptFactory = () => BrowserFetchAttempt;
+
 interface BrowserFallbackOptions {
-	homeUrl?: string;
+	homeUrl?: () => string;
 	/**
 	 * A selector to wait for after navigation, so the page is read once its results
 	 * exist rather than as soon as the document loads.
@@ -60,27 +70,32 @@ export interface BrowserFetchOptions {
 	fetch?: FetchImpl;
 	signal: AbortSignal;
 	randomizeHeaders?: boolean;
-	referer?: string;
-	init?: Omit<RequestInit, "headers" | "signal">;
-	headers?: Readonly<Record<string, string>>;
 	browser?: BrowserFallbackOptions;
 }
 
-async function fetchHtmlPage(url: string, options: BrowserFetchOptions, fetchImpl: FetchImpl): Promise<LoadedHtmlPage> {
-	const response = await fetchImpl(url, {
-		...options.init,
+async function fetchHtmlPage(
+	attempt: BrowserFetchAttempt,
+	options: BrowserFetchOptions,
+	fetchImpl: FetchImpl,
+): Promise<LoadedHtmlPage> {
+	const response = await fetchImpl(attempt.url, {
+		...attempt.init,
 		headers: {
 			...buildBrowserNavigationHeaders({ randomized: options.randomizeHeaders }),
-			...(options.referer ? { Referer: options.referer, "Sec-Fetch-Site": "same-origin" } : {}),
-			...options.headers,
+			...(attempt.referer ? { Referer: attempt.referer, "Sec-Fetch-Site": "same-origin" } : {}),
+			...attempt.headers,
 		},
 		signal: options.signal,
 	});
-	return { html: await response.text(), status: response.status, url: response.url || url };
+	return {
+		html: await response.text(),
+		status: response.status,
+		url: response.url || attempt.url,
+	};
 }
 
 async function browseHtmlPage(
-	url: string,
+	createAttempt: BrowserFetchAttemptFactory,
 	options: BrowserFallbackOptions,
 	signal: AbortSignal,
 ): Promise<LoadedHtmlPage> {
@@ -109,14 +124,17 @@ async function browseHtmlPage(
 		await applyStealthPatches(handle.browser, activePage, handle.stealth);
 		if (homeUrl) {
 			await untilAborted(signal, () =>
-				activePage.goto(homeUrl, { waitUntil: "domcontentloaded", timeout: SEARCH_HARD_TIMEOUT_MS }),
+				activePage.goto(homeUrl(), { waitUntil: "domcontentloaded", timeout: SEARCH_HARD_TIMEOUT_MS }),
 			);
 		}
 		for (let attempt = 0; attempt < attempts; attempt++) {
 			if (attempt > 0 && options.retryDelayMs) await Bun.sleep(options.retryDelayMs);
 
 			const response = await untilAborted(signal, () =>
-				activePage.goto(url, { waitUntil: "domcontentloaded", timeout: SEARCH_HARD_TIMEOUT_MS }),
+				activePage.goto(createAttempt().url, {
+					waitUntil: "domcontentloaded",
+					timeout: SEARCH_HARD_TIMEOUT_MS,
+				}),
 			);
 			if (options.afterNavigation) await options.afterNavigation(activePage, signal);
 			if (ready) {
@@ -144,18 +162,22 @@ async function browseHtmlPage(
 }
 
 /** Fetch with a fresh browser profile, escalating rejected production responses to the stealth browser. */
-export async function browserFetch(url: string, options: BrowserFetchOptions): Promise<LoadedHtmlPage> {
+export async function browserFetch(
+	createAttempt: BrowserFetchAttemptFactory,
+	options: BrowserFetchOptions,
+): Promise<LoadedHtmlPage> {
 	const fetchImpl = options.fetch ?? fetch;
+	const firstAttempt = createAttempt();
 	let page: LoadedHtmlPage;
 	try {
-		page = await fetchHtmlPage(url, options, fetchImpl);
+		page = await fetchHtmlPage(firstAttempt, options, fetchImpl);
 	} catch (error) {
 		if (options.fetch || !options.browser) throw error;
-		return browseHtmlPage(url, options.browser, options.signal);
+		return browseHtmlPage(createAttempt, options.browser, options.signal);
 	}
 
 	if (!options.browser || options.fetch) return page;
 	const isSuccessful = page.status >= 200 && page.status < 300;
 	if (isSuccessful && !options.browser.shouldFallback(page)) return page;
-	return browseHtmlPage(url, options.browser, options.signal);
+	return browseHtmlPage(createAttempt, options.browser, options.signal);
 }

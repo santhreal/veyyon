@@ -9,6 +9,7 @@
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
+import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
 import { asRecord, tryParseJson } from "@veyyon/utils";
 // The two owners rather than the store that re-exports both: the slot leaf for the value, the schema for
 // the default. A web-search provider reading two settings paid 95 modules for the pair.
@@ -135,6 +136,7 @@ export interface ExaSearchParams {
 	 */
 	authStorage?: AuthStorage;
 	sessionId?: string;
+	resolveProviderTextTransform?: SearchParams["resolveProviderTextTransform"];
 }
 
 interface ExaSearchResult {
@@ -305,11 +307,11 @@ export function buildExaRequestBody(params: ExaSearchParams): Record<string, unk
 
 /** Call Exa Search API */
 async function callExaSearch(apiKey: string, params: ExaSearchParams): Promise<ExaSearchResponse> {
-	const body = buildExaRequestBody(params);
-
 	const fetchImpl = params.fetch ?? fetch;
 	await waitForExaSearchSlot(params.signal);
 	return withHardTimeout(params.signal, async hardSignal => {
+		const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, "Exa API search");
+		const body = transformProviderPayload(buildExaRequestBody(params), transform, "Exa API search");
 		const response = await fetchImpl(EXA_API_URL, {
 			method: "POST",
 			headers: {
@@ -324,7 +326,7 @@ async function callExaSearch(apiKey: string, params: ExaSearchParams): Promise<E
 			const errorText = await response.text();
 			const classified = classifyProviderHttpError("exa", response.status, errorText);
 			if (classified) throw classified;
-			throw new SearchProviderError("exa", `Exa API error (${response.status}): ${errorText}`, response.status);
+			throw new SearchProviderError("exa", `Exa API request failed (${response.status}).`, response.status);
 		}
 
 		return response.json() as Promise<ExaSearchResponse>;
@@ -349,6 +351,8 @@ async function callExaMcpSearch(params: ExaSearchParams): Promise<ExaSearchRespo
 	const fetchImpl = params.fetch ?? fetch;
 	await waitForExaSearchSlot(params.signal);
 	return withHardTimeout(params.signal, async hardSignal => {
+		const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, "Exa public MCP search");
+		const args = transformProviderPayload(buildExaMcpArgs(params), transform, "Exa public MCP search");
 		const response = await fetchImpl(`https://mcp.exa.ai/mcp?${query.toString()}`, {
 			method: "POST",
 			headers: {
@@ -361,13 +365,16 @@ async function callExaMcpSearch(params: ExaSearchParams): Promise<ExaSearchRespo
 				method: "tools/call",
 				params: {
 					name: "web_search_exa",
-					arguments: buildExaMcpArgs(params),
+					arguments: args,
 				},
 			}),
 			signal: hardSignal,
 		});
 		if (!response.ok) {
-			throw new Error(`MCP request failed: ${response.status} ${response.statusText}`);
+			const errorText = await response.text();
+			const classified = classifyProviderHttpError("exa", response.status, errorText);
+			if (classified) throw classified;
+			throw new SearchProviderError("exa", `Exa public MCP request failed (${response.status}).`, response.status);
 		}
 		const mcpResponse = parseSSE(await response.text()) as {
 			result?: {
@@ -382,7 +389,7 @@ async function callExaMcpSearch(params: ExaSearchParams): Promise<ExaSearchRespo
 			throw new Error("Failed to parse MCP response");
 		}
 		if (mcpResponse.error) {
-			throw new Error(`MCP error: ${mcpResponse.error.message}`);
+			throw new Error("Exa public MCP request failed.");
 		}
 		const responsePayload = normalizeExaMcpPayload(mcpResponse.result);
 		if (isSearchResponse(responsePayload)) {
@@ -397,6 +404,7 @@ async function callExaMcpSearch(params: ExaSearchParams): Promise<ExaSearchRespo
 		throw new Error("Exa MCP search returned unexpected response shape.");
 	});
 }
+
 
 /** Execute Exa web search */
 export async function searchExa(params: ExaSearchParams): Promise<SearchResponse> {
@@ -416,9 +424,18 @@ export async function searchExa(params: ExaSearchParams): Promise<SearchResponse
 	// or through ExaProvider.search. This mirrors the zai/brave/tavily pattern.
 	const resultCap = clampNumResults(params.num_results, SEARCH_DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
 	const cappedParams: ExaSearchParams = { ...params, num_results: resultCap };
-	const response = keyOrResolver
-		? await withAuth(keyOrResolver, key => callExaSearch(key, cappedParams), { signal: params.signal })
-		: await callExaMcpSearch(cappedParams);
+	let response: ExaSearchResponse;
+	if (keyOrResolver) {
+		try {
+			response = await withAuth(keyOrResolver, key => callExaSearch(key, cappedParams), { signal: params.signal });
+		} catch (error) {
+			if (params.signal?.aborted) throw error;
+			if (error instanceof Error && error.message.endsWith(" confidentiality transform failed.")) throw error;
+			response = await callExaMcpSearch(cappedParams);
+		}
+	} else {
+		response = await callExaMcpSearch(cappedParams);
+	}
 
 	// Convert to unified SearchResponse
 	const sources: SearchSource[] = [];
@@ -491,6 +508,7 @@ export class ExaProvider extends SearchProvider {
 			authStorage: params.authStorage,
 			sessionId: params.sessionId,
 			fetch: params.fetch,
+			resolveProviderTextTransform: params.resolveProviderTextTransform,
 		});
 	}
 }

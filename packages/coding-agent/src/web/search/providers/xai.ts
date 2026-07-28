@@ -1,6 +1,7 @@
 import type { ApiKey, ApiKeyResolver, AuthStorage } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { $env } from "@veyyon/utils";
+import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
 import type { SearchCitation, SearchResponse, SearchSource, SearchUsage } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
@@ -77,13 +78,15 @@ async function postXAIResponses(
 	body: Record<string, unknown>,
 	signal: AbortSignal,
 ): Promise<Response> {
+	const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, "xAI search request");
+	const requestBody = transformProviderPayload(body, transform, "xAI search request");
 	return (params.fetch ?? fetch)(XAI_RESPONSES_URL, {
 		method: "POST",
 		headers: {
 			"Content-Type": "application/json",
 			Authorization: `Bearer ${apiKey}`,
 		},
-		body: JSON.stringify(body),
+		body: JSON.stringify(requestBody),
 		signal,
 	});
 }
@@ -91,7 +94,7 @@ async function postXAIResponses(
 function throwXAIResponsesError(status: number, errorText: string): never {
 	const classified = classifyProviderHttpError("xai", status, errorText);
 	if (classified) throw classified;
-	throw new SearchProviderError("xai", `xAI Responses API error (${status}): ${errorText}`, status);
+	throw new SearchProviderError("xai", `xAI Responses API error (${status}).`, status);
 }
 
 async function callXAIResponses(apiKey: string, params: SearchParams): Promise<XAIResponsesResponse> {

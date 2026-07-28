@@ -271,6 +271,70 @@ describe("MCPTool.execute retry on connection error", () => {
 		expect(result.details?.provider).toBe("orig");
 		expect(result.details?.providerName).toBe("Original");
 	});
+
+	it("rebuilds reconnect attempts from raw args with the then-current transform", async () => {
+		const rawSecret = "reconnect-raw-secret";
+		const sentArgs: unknown[] = [];
+		const firstTransport = mockTransport(async (_method, params) => {
+			sentArgs.push(params?.arguments);
+			throw new Error("ECONNRESET");
+		});
+		const secondTransport = mockTransport(async (_method, params) => {
+			sentArgs.push(params?.arguments);
+			return toolCallResult("ok");
+		});
+		const context = {
+			obfuscateProviderText: (text: string) => text.replaceAll(rawSecret, "first-safe"),
+		} as Parameters<MCPTool["execute"]>[3];
+		const rawArgs = { nested: { token: rawSecret } };
+		const tool = new MCPTool(makeConnection(firstTransport), TOOL_DEF, async () => {
+			context.obfuscateProviderText = text => text.replaceAll(rawSecret, "second-safe");
+			return makeConnection(secondTransport);
+		});
+
+		await tool.execute("call-1", rawArgs, noop, context);
+
+		expect(sentArgs).toEqual([
+			{ nested: { token: "first-safe" } },
+			{ nested: { token: "second-safe" } },
+		]);
+		expect(rawArgs).toEqual({ nested: { token: rawSecret } });
+	});
+});
+
+describe("DeferredMCPTool.execute provider boundary", () => {
+	it("rebuilds reconnect attempts from raw args with the then-current transform", async () => {
+		const rawSecret = "deferred-reconnect-raw-secret";
+		const sentArgs: unknown[] = [];
+		const firstConnection = makeConnection(
+			mockTransport(async (_method, params) => {
+				sentArgs.push(params?.arguments);
+				throw new Error("Transport closed");
+			}),
+		);
+		const secondConnection = makeConnection(
+			mockTransport(async (_method, params) => {
+				sentArgs.push(params?.arguments);
+				return toolCallResult("ok");
+			}),
+		);
+		const context = {
+			obfuscateProviderText: (text: string) => text.replaceAll(rawSecret, "first-safe"),
+		} as Parameters<DeferredMCPTool["execute"]>[3];
+		const rawArgs = { nested: { token: rawSecret } };
+		const tool = new DeferredMCPTool("test-server", TOOL_DEF, async () => firstConnection, undefined, async () => {
+			context.obfuscateProviderText = text => text.replaceAll(rawSecret, "second-safe");
+			return secondConnection;
+		});
+
+		await tool.execute("call-1", rawArgs, undefined, context);
+
+		expect(sentArgs).toEqual([
+			{ nested: { token: "first-safe" } },
+			{ nested: { token: "second-safe" } },
+		]);
+		expect(rawArgs).toEqual({ nested: { token: rawSecret } });
+	});
 });
 
 describe("reconnect abort propagation", () => {

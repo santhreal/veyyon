@@ -7,6 +7,7 @@
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
+import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
@@ -30,6 +31,7 @@ export interface FirecrawlSearchParams {
 	recency?: SearchParams["recency"];
 	signal?: AbortSignal;
 	fetch?: FetchImpl;
+	resolveProviderTextTransform?: SearchParams["resolveProviderTextTransform"];
 }
 
 interface FirecrawlWebResult {
@@ -69,13 +71,15 @@ function buildRequestBody(params: FirecrawlSearchParams): Record<string, unknown
 
 async function callFirecrawlSearch(apiKey: string, params: FirecrawlSearchParams): Promise<FirecrawlSearchResponse> {
 	return withHardTimeout(params.signal, async hardSignal => {
+		const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, "Firecrawl search");
+		const body = transformProviderPayload(buildRequestBody(params), transform, "Firecrawl search");
 		const response = await (params.fetch ?? fetch)(FIRECRAWL_SEARCH_URL, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
 				Authorization: `Bearer ${apiKey}`,
 			},
-			body: JSON.stringify(buildRequestBody(params)),
+			body: JSON.stringify(body),
 			signal: hardSignal,
 		});
 
@@ -85,7 +89,7 @@ async function callFirecrawlSearch(apiKey: string, params: FirecrawlSearchParams
 			if (classified) throw classified;
 			throw new SearchProviderError(
 				"firecrawl",
-				`Firecrawl API error (${response.status}): ${errorText}`,
+				`Firecrawl API request failed (${response.status}).`,
 				response.status,
 			);
 		}
@@ -102,6 +106,7 @@ export async function searchFirecrawl(params: SearchParams): Promise<SearchRespo
 		recency: params.recency,
 		signal: params.signal,
 		fetch: params.fetch,
+		resolveProviderTextTransform: params.resolveProviderTextTransform,
 	};
 	const keyOrResolver: ApiKey = params.authStorage.resolver("firecrawl", {
 		sessionId: params.sessionId,

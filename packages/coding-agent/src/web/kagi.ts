@@ -8,6 +8,11 @@
  */
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
+import {
+	resolveProviderTextTransform,
+	transformProviderPayload,
+	type ProviderTextTransformResolver,
+} from "../provider-boundary";
 import { withHardTimeout } from "./search/providers/utils";
 
 const KAGI_SEARCH_URL = "https://kagi.com/api/v1/search";
@@ -98,54 +103,13 @@ export class KagiApiError extends Error {
 	}
 }
 
-function extractKagiErrorMessage(payload: unknown): string | null {
-	if (!payload || typeof payload !== "object") return null;
-	const record = payload as Record<string, unknown>;
 
-	for (const value of [record.message, record.detail]) {
-		if (typeof value === "string" && value.trim().length > 0) {
-			return value.trim();
-		}
-	}
-
-	if (typeof record.error === "string" && record.error.trim().length > 0) {
-		return record.error.trim();
-	}
-
-	if (Array.isArray(record.error)) {
-		for (const entry of record.error) {
-			if (!entry || typeof entry !== "object") continue;
-			const e = entry as Record<string, unknown>;
-			for (const value of [e.message, e.msg]) {
-				if (typeof value === "string" && value.trim().length > 0) {
-					return value.trim();
-				}
-			}
-		}
-	}
-
-	return null;
+function createKagiApiError(statusCode: number): KagiApiError {
+	return new KagiApiError(`Kagi API error (${statusCode})`, statusCode);
 }
 
-function createKagiApiError(statusCode: number, detail?: string): KagiApiError {
-	return new KagiApiError(
-		detail ? `Kagi API error (${statusCode}): ${detail}` : `Kagi API error (${statusCode})`,
-		statusCode,
-	);
-}
-
-function parseKagiErrorResponse(statusCode: number, responseText: string): KagiApiError {
-	const trimmed = responseText.trim();
-	if (trimmed.length === 0) {
-		return createKagiApiError(statusCode);
-	}
-
-	try {
-		const payload = JSON.parse(trimmed) as KagiErrorResponse;
-		return createKagiApiError(statusCode, extractKagiErrorMessage(payload) ?? trimmed);
-	} catch {
-		return createKagiApiError(statusCode, trimmed);
-	}
+function parseKagiErrorResponse(statusCode: number, _responseText: string): KagiApiError {
+	return createKagiApiError(statusCode);
 }
 
 // ---------------------------------------------------------------------------
@@ -158,6 +122,7 @@ export interface KagiSearchOptions {
 	sessionId?: string;
 	signal?: AbortSignal;
 	fetch?: FetchImpl;
+	resolveProviderTextTransform?: ProviderTextTransformResolver;
 }
 
 export interface KagiSearchSource {
@@ -241,12 +206,18 @@ export async function searchWithKagi(
 	authStorage: AuthStorage,
 ): Promise<KagiSearchResult> {
 	const fetchImpl = options.fetch ?? fetch;
-	const body = JSON.stringify(buildRequestBody(query, options));
 
 	return withHardTimeout(options.signal, async hardSignal => {
 		const response = await withAuth(
 			authStorage.resolver("kagi", { sessionId: options.sessionId }),
 			async apiKey => {
+				const transform = resolveProviderTextTransform(
+					options.resolveProviderTextTransform,
+					"Kagi search request",
+				);
+				const body = JSON.stringify(
+					transformProviderPayload(buildRequestBody(query, options), transform, "Kagi search request"),
+				);
 				const res = await fetchImpl(KAGI_SEARCH_URL, {
 					method: "POST",
 					headers: {
@@ -273,7 +244,7 @@ export async function searchWithKagi(
 		const payload = (await response.json()) as KagiSearchResponse;
 		if (payload.error && payload.error.length > 0) {
 			const first = payload.error[0];
-			throw createKagiApiError(first.code ?? response.status, extractKagiErrorMessage(payload) ?? first.message);
+			throw createKagiApiError(first.code ?? response.status);
 		}
 
 		const data = payload.data;

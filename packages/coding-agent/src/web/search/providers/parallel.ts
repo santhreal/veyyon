@@ -1,6 +1,7 @@
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
+import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
 import type { SearchResponse } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import {
@@ -24,6 +25,7 @@ async function searchWithAuthStorage(
 	params: {
 		signal?: AbortSignal;
 		fetch?: FetchImpl;
+		resolveProviderTextTransform?: SearchParams["resolveProviderTextTransform"];
 	},
 	authStorage: AuthStorage,
 	sessionId?: string,
@@ -44,6 +46,19 @@ async function searchWithAuthStorage(
 		keyOrResolver,
 		async key => {
 			return withHardTimeout(params.signal, async hardSignal => {
+				const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, "Parallel search");
+				const body = transformProviderPayload(
+					{
+						objective,
+						search_queries: queries,
+						mode: "fast",
+						excerpts: {
+							max_chars_per_result: 10_000,
+						},
+					},
+					transform,
+					"Parallel search",
+				);
 				const response = await (params.fetch ?? fetch)(PARALLEL_SEARCH_URL, {
 					method: "POST",
 					headers: {
@@ -52,14 +67,7 @@ async function searchWithAuthStorage(
 						"x-api-key": key,
 						"parallel-beta": PARALLEL_BETA_HEADER,
 					},
-					body: JSON.stringify({
-						objective,
-						search_queries: queries,
-						mode: "fast",
-						excerpts: {
-							max_chars_per_result: 10_000,
-						},
-					}),
+					body: JSON.stringify(body),
 					signal: hardSignal,
 				});
 
@@ -81,6 +89,7 @@ export async function searchParallel(
 		num_results?: number;
 		signal?: AbortSignal;
 		fetch?: FetchImpl;
+		resolveProviderTextTransform?: SearchParams["resolveProviderTextTransform"];
 	},
 	authStorage: AuthStorage,
 	sessionId?: string,
@@ -94,6 +103,7 @@ export async function searchParallel(
 			{
 				signal: params.signal,
 				fetch: params.fetch,
+				resolveProviderTextTransform: params.resolveProviderTextTransform,
 			},
 			authStorage,
 			sessionId,
@@ -107,10 +117,10 @@ export async function searchParallel(
 	} catch (err) {
 		if (err instanceof ParallelApiError) {
 			if (typeof err.statusCode === "number") {
-				const classified = classifyProviderHttpError("parallel", err.statusCode, err.message);
+				const classified = classifyProviderHttpError("parallel", err.statusCode, "");
 				if (classified) throw classified;
 			}
-			throw new SearchProviderError("parallel", err.message, err.statusCode);
+			throw new SearchProviderError("parallel", "Parallel search request failed.", err.statusCode);
 		}
 		throw err;
 	}
@@ -131,6 +141,7 @@ export class ParallelProvider extends SearchProvider {
 				num_results: params.numSearchResults ?? params.limit,
 				signal: params.signal,
 				fetch: params.fetch,
+				resolveProviderTextTransform: params.resolveProviderTextTransform,
 			},
 			params.authStorage,
 			params.sessionId,

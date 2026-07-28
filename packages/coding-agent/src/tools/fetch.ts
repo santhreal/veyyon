@@ -7,7 +7,7 @@ import type { FetchImpl, ImageContent, TextContent } from "@veyyon/ai";
 import { htmlToMarkdown } from "@veyyon/natives";
 import { type Component, Text } from "@veyyon/tui";
 import { isCancellation } from "@veyyon/utils/abortable";
-import { formatCount, truncate } from "@veyyon/utils/format";
+import { formatCount, formatMoreLines, truncate } from "@veyyon/utils/format";
 import { isEnoent } from "@veyyon/utils/fs-error";
 // Owners, not the `@veyyon/utils` barrel: 8 modules against 74.
 import * as logger from "@veyyon/utils/logger";
@@ -19,6 +19,10 @@ import { LRUCache } from "lru-cache/raw";
 import type { Settings } from "../config/settings";
 import { readEditableNotebookText } from "../edit/notebook";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
+import {
+	resolveProviderTextTransform,
+	type ProviderTextTransformResolver,
+} from "../provider-boundary";
 import { CONVERTIBLE_EXTENSIONS } from "../markit";
 import { theme } from "../modes/theme/theme-binding";
 import type { Theme } from "../modes/theme/theme-class";
@@ -824,6 +828,7 @@ export async function renderHtmlToText(
 	userSignal: AbortSignal | undefined,
 	storage: AgentStorage | null,
 	fetchOverride?: FetchImpl,
+	resolveTextTransform?: ProviderTextTransformResolver,
 ): Promise<{ content: string; ok: boolean; method: string }> {
 	// Scoped so the overall-budget timer is cleared on settle instead of
 	// staying armed like a bare AbortSignal.timeout.
@@ -865,6 +870,8 @@ export async function renderHtmlToText(
 			},
 			parallel: async () => {
 				if (!allowSecondaryReaders || !findParallelApiKey(storage)) return null;
+				const transform = resolveProviderTextTransform(resolveTextTransform, "Parallel remote reader");
+				if (transform(url) !== url) return null;
 				// Per-attempt budget for remote endpoints so one stall cannot consume
 				// the whole reader-mode budget and starve the local fallbacks; scoped
 				// so the timer is cleared when the attempt settles.
@@ -889,6 +896,8 @@ export async function renderHtmlToText(
 			},
 			jina: async () => {
 				if (!allowSecondaryReaders) return null;
+				const transform = resolveProviderTextTransform(resolveTextTransform, "Jina remote reader");
+				if (transform(url) !== url) return null;
 				const remoteTimeout = scopedTimeoutSignal(remoteBudgetMs, userSignal);
 				try {
 					const response = await fetchImpl(`https://r.jina.ai/${url}`, {
@@ -1347,6 +1356,7 @@ async function renderUrl(
 	storage: AgentStorage | null,
 	fetchOverride?: FetchImpl,
 	excludeWebP?: true,
+	resolveTextTransform?: ProviderTextTransformResolver,
 ): Promise<FetchRenderResult> {
 	const notes: string[] = [];
 	const fetchedAt = new Date().toISOString();
@@ -1708,6 +1718,7 @@ async function renderUrl(
 			signal,
 			storage,
 			fetchOverride,
+			resolveTextTransform,
 		);
 		if (!htmlResult.ok) {
 			notes.push("html rendering failed (no reader backend produced usable output)");
@@ -1983,6 +1994,7 @@ async function buildReadUrlCacheEntry(
 		storage,
 		session.fetch,
 		webpExclusionForModel(session.getActiveModel?.()),
+		() => session.obfuscateProviderText,
 	);
 	const output = buildUrlReadOutput(result, result.content);
 	const artifact = options?.ensureArtifact ? await persistReadUrlArtifact(session, output) : undefined;
@@ -2234,7 +2246,7 @@ export function renderReadUrlResult(
 						: [uiTheme.fg("dim", "(no content)")];
 				if (remaining > 0) {
 					const hint = formatExpandHint(uiTheme, expanded, true);
-					contentPreviewLines.push(uiTheme.fg("muted", `… ${remaining} more lines${hint ? ` ${hint}` : ""}`));
+					contentPreviewLines.push(uiTheme.fg("muted", `… ${formatMoreLines(remaining)}${hint ? ` ${hint}` : ""}`));
 				}
 				lastExpanded = expanded;
 				outputBlock.invalidate();

@@ -25,8 +25,10 @@ export async function searchKagi(params: {
 	authStorage: AuthStorage;
 	sessionId?: string;
 	fetch?: FetchImpl;
+	resolveProviderTextTransform?: SearchParams["resolveProviderTextTransform"];
 }): Promise<SearchResponse> {
 	const numResults = clampNumResults(params.num_results, SEARCH_DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
+	const fetchImpl = params.fetch ?? fetch;
 
 	try {
 		const result = await searchWithKagi(
@@ -36,7 +38,8 @@ export async function searchKagi(params: {
 				recency: params.recency,
 				sessionId: params.sessionId,
 				signal: params.signal,
-				fetch: params.fetch,
+				fetch: fetchImpl,
+				resolveProviderTextTransform: params.resolveProviderTextTransform,
 			},
 			params.authStorage,
 		);
@@ -51,10 +54,10 @@ export async function searchKagi(params: {
 	} catch (err) {
 		if (err instanceof KagiApiError) {
 			if (typeof err.statusCode === "number") {
-				const classified = classifyProviderHttpError("kagi", err.statusCode, err.message);
+				const classified = classifyProviderHttpError("kagi", err.statusCode, "");
 				if (classified) throw classified;
 			}
-			throw new SearchProviderError("kagi", err.message, err.statusCode);
+			throw new SearchProviderError("kagi", "Kagi search request failed.", err.statusCode);
 		}
 		throw err;
 	}
@@ -80,6 +83,7 @@ export class KagiProvider extends SearchProvider {
 			authStorage: params.authStorage,
 			sessionId: params.sessionId,
 			fetch: fetchImpl,
+			resolveProviderTextTransform: params.resolveProviderTextTransform,
 		});
 	}
 }

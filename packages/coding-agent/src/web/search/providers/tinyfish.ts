@@ -7,6 +7,7 @@
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
+import { resolveProviderTextTransform } from "../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
@@ -32,6 +33,7 @@ export interface TinyFishSearchParams {
 	page?: number;
 	signal?: AbortSignal;
 	fetch?: FetchImpl;
+	resolveProviderTextTransform?: SearchParams["resolveProviderTextTransform"];
 }
 
 interface TinyFishSearchResult {
@@ -57,19 +59,19 @@ export function findApiKey(
 }
 
 async function callTinyFishSearch(apiKey: string, params: TinyFishSearchParams): Promise<TinyFishSearchResponse> {
-	const url = new URL(TINYFISH_SEARCH_URL);
-	url.searchParams.set("query", params.query);
-	if (params.recency) {
-		url.searchParams.set("recency_minutes", String(RECENCY_MINUTES[params.recency]));
-	}
-	if (params.num_results !== undefined) {
-		url.searchParams.set("num_results", String(params.num_results));
-	}
-	if (params.page !== undefined) {
-		url.searchParams.set("page", String(params.page));
-	}
-
 	return withHardTimeout(params.signal, async hardSignal => {
+		const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, "TinyFish search");
+		const url = new URL(TINYFISH_SEARCH_URL);
+		url.searchParams.set("query", transform(params.query));
+		if (params.recency) {
+			url.searchParams.set("recency_minutes", String(RECENCY_MINUTES[params.recency]));
+		}
+		if (params.num_results !== undefined) {
+			url.searchParams.set("num_results", String(params.num_results));
+		}
+		if (params.page !== undefined) {
+			url.searchParams.set("page", String(params.page));
+		}
 		const response = await (params.fetch ?? fetch)(url, {
 			method: "GET",
 			headers: {
@@ -85,7 +87,7 @@ async function callTinyFishSearch(apiKey: string, params: TinyFishSearchParams):
 			if (classified) throw classified;
 			throw new SearchProviderError(
 				"tinyfish",
-				`TinyFish API error (${response.status}): ${errorText}`,
+				`TinyFish API request failed (${response.status}).`,
 				response.status,
 			);
 		}
@@ -120,6 +122,7 @@ export async function searchTinyFish(params: SearchParams): Promise<SearchRespon
 		recency: params.recency,
 		signal: params.signal,
 		fetch: params.fetch,
+		resolveProviderTextTransform: params.resolveProviderTextTransform,
 	};
 	const keyOrResolver: ApiKey = params.authStorage.resolver("tinyfish", {
 		sessionId: params.sessionId,

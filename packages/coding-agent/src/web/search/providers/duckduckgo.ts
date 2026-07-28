@@ -1,4 +1,5 @@
 import type { AuthStorage } from "@veyyon/ai";
+import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { decodeHtmlEntities } from "../../scrapers/types";
@@ -116,23 +117,44 @@ function isAnomalyResponse(html: string): boolean {
 }
 
 async function callDuckDuckGoHtml(params: SearchParams): Promise<string> {
-	const form = new URLSearchParams({ q: params.query, kl: "us-en" });
 	const df = params.recency ? RECENCY_TO_DDG_DF[params.recency] : undefined;
-	if (df) form.set("df", df);
-	// Add b: "" parameter as specified in the browser fetch template to match real browser form submission
-	form.set("b", "");
 
 	return withHardTimeout(params.signal, async hardSignal => {
-		const page = await browserFetch(DUCKDUCKGO_HTML_URL, {
-			fetch: params.fetch ?? fetch,
-			signal: hardSignal,
-			referer: "https://html.duckduckgo.com/",
-			init: {
-				method: "POST",
-				body: form.toString(),
+		const page = await browserFetch(
+			() => {
+				const boundary = "DuckDuckGo search";
+				const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, boundary);
+				const fields = transformProviderPayload(
+					{
+						q: params.query,
+						kl: "us-en",
+						...(df ? { df } : {}),
+						// Match the browser form submission shape.
+						b: "",
+					},
+					transform,
+					boundary,
+				) as Record<string, string>;
+				const form = new URLSearchParams(fields);
+				return {
+					url: transform(DUCKDUCKGO_HTML_URL),
+					referer: transform("https://html.duckduckgo.com/"),
+					init: {
+						method: "POST",
+						body: form.toString(),
+					},
+					headers: transformProviderPayload(
+						{ "Content-Type": "application/x-www-form-urlencoded" },
+						transform,
+						boundary,
+					) as Record<string, string>,
+				};
 			},
-			headers: { "Content-Type": "application/x-www-form-urlencoded" },
-		});
+			{
+				fetch: params.fetch ?? fetch,
+				signal: hardSignal,
+			},
+		);
 
 		const body = page.html;
 		if (page.status < 200 || page.status >= 300) {

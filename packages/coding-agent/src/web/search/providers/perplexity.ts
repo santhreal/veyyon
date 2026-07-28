@@ -23,6 +23,7 @@ import {
 	PERPLEXITY_WEB_ORIGIN,
 } from "@veyyon/catalog/wire/perplexity";
 import { $env, asRecord, readSseJson, tryParseJson } from "@veyyon/utils";
+import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
 import type {
 	PerplexityRequest,
 	PerplexitySearchResult,
@@ -254,6 +255,7 @@ export interface PerplexitySearchParams {
 	authStorage: AuthStorage;
 	sessionId?: string;
 	fetch?: FetchImpl;
+	resolveProviderTextTransform?: SearchParams["resolveProviderTextTransform"];
 }
 
 interface PerplexityApiStreamMetadata {
@@ -402,7 +404,7 @@ function throwPerplexityStreamError(message: AssistantMessage): never {
 	const details = message.errorMessage ?? "Perplexity API stream failed";
 	const classified = classifyProviderHttpError("perplexity", status, details);
 	if (classified) throw classified;
-	throw new SearchProviderError("perplexity", `Perplexity API error (${status}): ${details}`, status);
+	throw new SearchProviderError("perplexity", `Perplexity API request failed (${status}).`, status);
 }
 
 /** Call Perplexity API-key endpoint (or OpenRouter) through the shared OpenAI streaming providers. */
@@ -410,35 +412,43 @@ async function callPerplexityApi(
 	config: ApiConfig,
 	request: PerplexityRequest,
 	fetchImpl: FetchImpl | undefined,
-	signal?: AbortSignal,
+	signal: AbortSignal | undefined,
+	resolveTextTransform: SearchParams["resolveProviderTextTransform"],
 ): Promise<SearchResponse> {
 	return withHardTimeout(signal, async hardSignal => {
+		const transform = resolveProviderTextTransform(resolveTextTransform, "Perplexity API search");
+		const attemptRequest: PerplexityRequest = {
+			...request,
+			messages: request.messages.map(message =>
+				typeof message.content === "string" ? { ...message, content: transform(message.content) } : message,
+			),
+		};
 		const metadata: PerplexityApiStreamMetadata = {};
-		const context = buildPerplexityContext(request);
+		const context = buildPerplexityContext(attemptRequest);
 		const onSseEvent = (event: { data: string }): void => {
 			collectPerplexityMetadata(metadata, event.data);
 		};
 
 		const message = config.useResponses
 			? await drainAssistantStream(
-					streamOpenAIResponses(buildPerplexityResponsesModel(config, request), context, {
+					streamOpenAIResponses(buildPerplexityResponsesModel(config, attemptRequest), context, {
 						apiKey: config.apiKey,
-						maxTokens: request.max_tokens ?? undefined,
-						temperature: request.temperature ?? undefined,
+						maxTokens: attemptRequest.max_tokens ?? undefined,
+						temperature: attemptRequest.temperature ?? undefined,
 						signal: hardSignal,
 						fetch: fetchImpl,
-						extraBody: buildPerplexityExtraBody(request),
+						extraBody: buildPerplexityExtraBody(attemptRequest),
 						onSseEvent,
 					}),
 				)
 			: await drainAssistantStream(
-					streamOpenAICompletions(buildPerplexityCompletionsModel(config, request), context, {
+					streamOpenAICompletions(buildPerplexityCompletionsModel(config, attemptRequest), context, {
 						apiKey: config.apiKey,
-						maxTokens: request.max_tokens ?? undefined,
-						temperature: request.temperature ?? undefined,
+						maxTokens: attemptRequest.max_tokens ?? undefined,
+						temperature: attemptRequest.temperature ?? undefined,
 						signal: hardSignal,
 						fetch: fetchImpl,
-						onPayload: payload => applyPerplexityExtraBody(payload, request),
+						onPayload: payload => applyPerplexityExtraBody(payload, attemptRequest),
 						onSseEvent,
 					}),
 				);
@@ -525,7 +535,6 @@ async function callPerplexityAsk(
 	// "I don't have access to web-search tools in this turn", so ask-endpoint
 	// searches send the bare query. (The API-key path still uses system_prompt
 	// as a proper `system` message.)
-	const effectiveQuery = params.query;
 
 	const headers: Record<string, string> = {
 		"Content-Type": "application/json",
@@ -555,7 +564,6 @@ async function callPerplexityAsk(
 	}
 
 	const requestParams: Record<string, unknown> = {
-		query_str: effectiveQuery,
 		search_focus: "internet",
 		mode: "copilot",
 		model_preference: "experimental",
@@ -595,26 +603,40 @@ async function callPerplexityAsk(
 	}
 
 	return withHardTimeout(params.signal, async hardSignal => {
-		const requestInit = {
-			method: "POST",
-			headers,
-			body: JSON.stringify({
-				query_str: effectiveQuery,
-				params: requestParams,
-			}),
-			signal: hardSignal,
+		const buildRequestInit = () => {
+			const transform = resolveProviderTextTransform(
+				params.resolveProviderTextTransform,
+				"Perplexity browser search",
+			);
+			const requestBody = transformProviderPayload(
+				{
+					query_str: params.query,
+					params: {
+						...requestParams,
+						query_str: params.query,
+					},
+				},
+				transform,
+				"Perplexity browser search",
+			);
+			return {
+				method: "POST",
+				headers,
+				body: JSON.stringify(requestBody),
+				signal: hardSignal,
+			};
 		};
 
 		// The consumer ask endpoint intermittently drops the socket before sending an
-		// HTTP response (#5315). Retry the transport exactly once; once we hold an
-		// HTTP response (handled below) the outcome — including non-2xx — is final and
-		// never retried, so a real 401/429 is never papered over by a second attempt.
+		// HTTP response (#5315). Retry the transport exactly once; each physical
+		// attempt re-resolves and rebuilds from the raw query.
 		let response: Response;
+		const requestInit = buildRequestInit();
 		try {
 			response = await (params.fetch ?? fetch)(PERPLEXITY_OAUTH_ASK_URL, requestInit);
 		} catch (error) {
 			if (params.signal?.aborted) throw error;
-			response = await (params.fetch ?? fetch)(PERPLEXITY_OAUTH_ASK_URL, requestInit);
+			response = await (params.fetch ?? fetch)(PERPLEXITY_OAUTH_ASK_URL, buildRequestInit());
 		}
 
 		if (!response.ok) {
@@ -623,7 +645,7 @@ async function callPerplexityAsk(
 			if (classified) throw classified;
 			throw new SearchProviderError(
 				"perplexity",
-				`Perplexity ask API error (${response.status}): ${errorText}`,
+				`Perplexity ask API request failed (${response.status}).`,
 				response.status,
 			);
 		}
@@ -640,8 +662,7 @@ async function callPerplexityAsk(
 
 		for await (const event of readSseJson<PerplexityOAuthStreamEvent>(response.body, params.signal)) {
 			if (event.error_code) {
-				const message = event.error_message ?? event.error_code;
-				throw new SearchProviderError("perplexity", `Perplexity ask stream error: ${message}`, 400);
+				throw new SearchProviderError("perplexity", "Perplexity ask stream failed.", 400);
 			}
 
 			mergedEvent = mergeOAuthEventSnapshot(mergedEvent, event);
@@ -765,6 +786,7 @@ function applySourceLimit(result: SearchResponse, limit?: number): SearchRespons
 }
 
 /** Execute Perplexity web search */
+
 export async function searchPerplexity(params: PerplexitySearchParams): Promise<SearchResponse> {
 	const systemPrompt = params.system_prompt;
 	const messages: PerplexityRequest["messages"] = [];
@@ -795,17 +817,24 @@ export async function searchPerplexity(params: PerplexitySearchParams): Promise<
 	}
 
 	const authMethods = await getAvailableAuthMethods(params.authStorage, params.sessionId, { signal: params.signal });
-	let lastError: unknown;
+	let lastError: SearchProviderError | undefined;
 
 	for (const auth of authMethods) {
 		if (auth.type === "api_key") {
 			try {
-				const result = await callPerplexityApi(auth, request, params.fetch, params.signal);
+				const result = await callPerplexityApi(
+					auth,
+					request,
+					params.fetch,
+					params.signal,
+					params.resolveProviderTextTransform,
+				);
 				result.authMode = "api_key";
 				return applySourceLimit(result, params.num_results);
 			} catch (error) {
 				if (params.signal?.aborted) throw error;
-				lastError = error;
+				if (error instanceof Error && error.message.endsWith(" confidentiality transform failed.")) throw error;
+				if (error instanceof SearchProviderError) lastError = error;
 			}
 		} else {
 			// Use OAuth/cookies/anonymous path
@@ -832,7 +861,8 @@ export async function searchPerplexity(params: PerplexitySearchParams): Promise<
 				);
 			} catch (error) {
 				if (params.signal?.aborted) throw error;
-				lastError = error;
+				if (error instanceof Error && error.message.endsWith(" confidentiality transform failed.")) throw error;
+				if (error instanceof SearchProviderError) lastError = error;
 			}
 		}
 	}
@@ -886,6 +916,7 @@ export class PerplexityProvider extends SearchProvider {
 			authStorage: params.authStorage,
 			sessionId: params.sessionId,
 			fetch: params.fetch,
+			resolveProviderTextTransform: params.resolveProviderTextTransform,
 		});
 	}
 }

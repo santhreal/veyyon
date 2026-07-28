@@ -21,6 +21,11 @@ import {
 } from "@veyyon/ai";
 import { ANTHROPIC_WEB_SEARCH_TOOL } from "@veyyon/catalog/wire/anthropic";
 import { $env } from "@veyyon/utils";
+import {
+	resolveProviderTextTransform,
+	transformProviderPayload,
+	type ProviderTextTransformResolver,
+} from "../../../provider-boundary";
 import type {
 	AnthropicApiResponse,
 	AnthropicCitation,
@@ -45,6 +50,7 @@ export interface AnthropicSearchParams {
 	temperature?: number;
 	signal?: AbortSignal;
 	fetch?: FetchImpl;
+	resolveProviderTextTransform?: ProviderTextTransformResolver;
 }
 
 /**
@@ -99,6 +105,7 @@ async function callSearch(
 	temperature?: number,
 	signal?: AbortSignal,
 	fetchImpl: FetchImpl = fetch,
+	resolveTextTransform?: ProviderTextTransformResolver,
 ): Promise<AnthropicApiResponse> {
 	const url = buildAnthropicUrl(auth);
 	const headers = buildAnthropicSearchHeaders(auth);
@@ -133,10 +140,12 @@ async function callSearch(
 	// cch attestation like the streaming path instead of shipping `cch=00000`.
 	const doFetch = auth.isOAuth ? wrapFetchForCch(fetchImpl) : fetchImpl;
 	return withHardTimeout(signal, async hardSignal => {
+		const transform = resolveProviderTextTransform(resolveTextTransform, "Anthropic search request");
+		const requestBody = transformProviderPayload(body, transform, "Anthropic search request");
 		const response = await doFetch(url, {
 			method: "POST",
 			headers,
-			body: JSON.stringify(body),
+			body: JSON.stringify(requestBody),
 			signal: hardSignal,
 		});
 
@@ -146,7 +155,7 @@ async function callSearch(
 			if (classified) throw classified;
 			throw new SearchProviderError(
 				"anthropic",
-				`Anthropic API error (${response.status}): ${errorText}`,
+				`Anthropic API error (${response.status}).`,
 				response.status,
 			);
 		}
@@ -312,6 +321,7 @@ export async function searchAnthropic(
 				params.temperature,
 				params.signal,
 				params.fetch,
+				params.resolveProviderTextTransform,
 			);
 		},
 		{

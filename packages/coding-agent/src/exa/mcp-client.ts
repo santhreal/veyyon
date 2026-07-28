@@ -1,7 +1,12 @@
 import type { TSchema } from "@veyyon/ai";
-import { $env, asRecord, errorMessage, logger, tryParseJson } from "@veyyon/utils";
-import type { CustomTool, CustomToolResult } from "../extensibility/custom-tools/types";
+import { $env, asRecord, errorMessage, tryParseJson } from "@veyyon/utils";
+import type { CustomTool, CustomToolContext, CustomToolResult } from "../extensibility/custom-tools/types";
 import { type CallMcpOptions, callMCP } from "../mcp/json-rpc";
+import {
+	type ProviderTextTransformResolver,
+	resolveProviderTextTransform,
+	transformProviderPayload,
+} from "../provider-boundary";
 import type { ExaSearchResponse, MCPCallResponse, MCPTool, MCPToolsResponse, MCPToolWrapperConfig } from "./types";
 
 type MCPWrappedToolDetails = {
@@ -10,6 +15,10 @@ type MCPWrappedToolDetails = {
 	toolName?: string;
 	raw?: unknown;
 };
+
+export interface ProviderMcpCallOptions extends CallMcpOptions {
+	resolveProviderTextTransform?: ProviderTextTransformResolver;
+}
 
 /** Find EXA_API_KEY from Bun.env or .env files */
 export function findApiKey(): string | null {
@@ -67,8 +76,7 @@ export async function fetchExaTools(apiKey: string | null, toolNames: string[]):
 	const response = (await callMCP(url, "tools/list")) as MCPToolsResponse;
 
 	if (response.error) {
-		logger.error("MCP tools/list error", { toolNames, error: response.error });
-		throw new Error(`MCP error: ${response.error.message}`);
+		throw new Error("Exa MCP tools/list failed.");
 	}
 
 	return response.result?.tools ?? [];
@@ -80,8 +88,7 @@ export async function fetchWebsetsTools(apiKey: string): Promise<MCPTool[]> {
 	const response = (await callMCP(url, "tools/list")) as MCPToolsResponse;
 
 	if (response.error) {
-		logger.error("Websets MCP tools/list error", { error: response.error });
-		throw new Error(`MCP error: ${response.error.message}`);
+		throw new Error("Websets MCP tools/list failed.");
 	}
 
 	return response.result?.tools ?? [];
@@ -92,25 +99,26 @@ export async function callExaTool(
 	toolName: string,
 	args: Record<string, unknown>,
 	apiKey: string | null,
-	options?: CallMcpOptions,
+	options?: ProviderMcpCallOptions,
 ): Promise<unknown> {
 	const params = new URLSearchParams();
 	if (apiKey) params.set("exaApiKey", apiKey);
 	params.set("tools", toolName);
 	const url = `https://mcp.exa.ai/mcp?${params.toString()}`;
+	const transform = resolveProviderTextTransform(options?.resolveProviderTextTransform, "Exa MCP tools/call");
+	const outboundArgs = transformProviderPayload(args, transform, "Exa MCP tools/call") as Record<string, unknown>;
 	const response = (await callMCP(
 		url,
 		"tools/call",
 		{
 			name: toolName,
-			arguments: args,
+			arguments: outboundArgs,
 		},
 		options,
 	)) as MCPCallResponse;
 
 	if (response.error) {
-		logger.error("MCP tools/call error", { toolName, args, error: response.error });
-		throw new Error(`MCP error: ${response.error.message}`);
+		throw new Error("Exa MCP tools/call failed.");
 	}
 
 	return normalizeMcpToolPayload(response.result);
@@ -121,16 +129,18 @@ export async function callWebsetsTool(
 	apiKey: string,
 	toolName: string,
 	args: Record<string, unknown>,
+	options?: ProviderMcpCallOptions,
 ): Promise<unknown> {
 	const url = `https://websetsmcp.exa.ai/mcp?exaApiKey=${encodeURIComponent(apiKey)}`;
+	const transform = resolveProviderTextTransform(options?.resolveProviderTextTransform, "Websets MCP tools/call");
+	const outboundArgs = transformProviderPayload(args, transform, "Websets MCP tools/call") as Record<string, unknown>;
 	const response = (await callMCP(url, "tools/call", {
 		name: toolName,
-		arguments: args,
-	})) as MCPCallResponse;
+		arguments: outboundArgs,
+	}, options)) as MCPCallResponse;
 
 	if (response.error) {
-		logger.error("Websets MCP tools/call error", { toolName, args, error: response.error });
-		throw new Error(`MCP error: ${response.error.message}`);
+		throw new Error("Websets MCP tools/call failed.");
 	}
 
 	return normalizeMcpToolPayload(response.result);
@@ -272,9 +282,9 @@ export class MCPWrappedTool implements CustomTool<TSchema, MCPWrappedToolDetails
 	async execute(
 		_toolCallId: string,
 		params: unknown,
-		_onUpdate?: unknown,
-		_ctx?: unknown,
-		_signal?: AbortSignal,
+		_onUpdate: unknown,
+		ctx: CustomToolContext,
+		signal?: AbortSignal,
 	): Promise<CustomToolResult<MCPWrappedToolDetails>> {
 		try {
 			const apiKey = findApiKey();
@@ -286,9 +296,16 @@ export class MCPWrappedTool implements CustomTool<TSchema, MCPWrappedToolDetails
 				};
 			}
 
+			const resolveTransform = () => ctx.obfuscateProviderText;
 			const response = this.config.isWebsetsTool
-				? await callWebsetsTool(apiKey!, this.config.mcpToolName, params as Record<string, unknown>)
-				: await callExaTool(this.config.mcpToolName, params as Record<string, unknown>, apiKey);
+				? await callWebsetsTool(apiKey!, this.config.mcpToolName, params as Record<string, unknown>, {
+						signal,
+						resolveProviderTextTransform: resolveTransform,
+					})
+				: await callExaTool(this.config.mcpToolName, params as Record<string, unknown>, apiKey, {
+						signal,
+						resolveProviderTextTransform: resolveTransform,
+					});
 
 			if (isSearchResponse(response)) {
 				const formatted = formatSearchResults(response);

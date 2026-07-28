@@ -6,6 +6,7 @@
  */
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
+import { resolveProviderTextTransform } from "../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
@@ -29,6 +30,7 @@ export interface BraveSearchParams {
 	recency?: "day" | "week" | "month" | "year";
 	signal?: AbortSignal;
 	fetch?: FetchImpl;
+	resolveProviderTextTransform?: SearchParams["resolveProviderTextTransform"];
 }
 
 interface BraveSearchResult {
@@ -73,16 +75,16 @@ async function callBraveSearch(
 	params: BraveSearchParams,
 ): Promise<{ response: BraveSearchResponse; requestId?: string }> {
 	const numResults = clampNumResults(params.num_results, SEARCH_DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
-	const url = new URL(BRAVE_SEARCH_URL);
-	url.searchParams.set("q", params.query);
-	url.searchParams.set("count", String(numResults));
-	url.searchParams.set("extra_snippets", "true");
-	if (params.recency) {
-		url.searchParams.set("freshness", RECENCY_MAP[params.recency]);
-	}
-
 	const fetchImpl = params.fetch ?? fetch;
 	return withHardTimeout(params.signal, async hardSignal => {
+		const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, "Brave search");
+		const url = new URL(BRAVE_SEARCH_URL);
+		url.searchParams.set("q", transform(params.query));
+		url.searchParams.set("count", String(numResults));
+		url.searchParams.set("extra_snippets", "true");
+		if (params.recency) {
+			url.searchParams.set("freshness", RECENCY_MAP[params.recency]);
+		}
 		const response = await fetchImpl(url, {
 			headers: {
 				Accept: "application/json",
@@ -95,7 +97,7 @@ async function callBraveSearch(
 			const errorText = await response.text();
 			const classified = classifyProviderHttpError("brave", response.status, errorText);
 			if (classified) throw classified;
-			throw new SearchProviderError("brave", `Brave API error (${response.status}): ${errorText}`, response.status);
+			throw new SearchProviderError("brave", `Brave API request failed (${response.status}).`, response.status);
 		}
 
 		const data = (await response.json()) as BraveSearchResponse;
@@ -149,6 +151,7 @@ export class BraveProvider extends SearchProvider {
 			recency: params.recency,
 			signal: params.signal,
 			fetch: params.fetch,
+			resolveProviderTextTransform: params.resolveProviderTextTransform,
 		});
 	}
 }

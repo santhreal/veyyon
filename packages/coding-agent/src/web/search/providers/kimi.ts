@@ -7,6 +7,11 @@
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { $env } from "@veyyon/utils";
+import {
+	resolveProviderTextTransform,
+	transformProviderPayload,
+	type ProviderTextTransformResolver,
+} from "../../../provider-boundary";
 
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
@@ -29,6 +34,7 @@ export interface KimiSearchParams {
 	signal?: AbortSignal;
 	authStorage: AuthStorage;
 	sessionId?: string;
+	resolveProviderTextTransform?: ProviderTextTransformResolver;
 	fetch?: FetchImpl;
 }
 
@@ -87,10 +93,25 @@ async function callKimiSearch(
 		includeContent: boolean;
 		signal?: AbortSignal;
 		fetch?: FetchImpl;
+		resolveProviderTextTransform?: ProviderTextTransformResolver;
 	},
 ): Promise<{ response: KimiSearchResponse; requestId?: string }> {
 	const fetchImpl = params.fetch ?? fetch;
 	return withHardTimeout(params.signal, async hardSignal => {
+		const transform = resolveProviderTextTransform(
+			params.resolveProviderTextTransform,
+			"Kimi search request",
+		);
+		const requestBody = transformProviderPayload(
+			{
+				text_query: params.query,
+				limit: params.limit,
+				enable_page_crawling: params.includeContent,
+				timeout_seconds: DEFAULT_TIMEOUT_SECONDS,
+			},
+			transform,
+			"Kimi search request",
+		);
 		const response = await fetchImpl(resolveBaseUrl(), {
 			method: "POST",
 			headers: {
@@ -98,12 +119,7 @@ async function callKimiSearch(
 				"Content-Type": "application/json",
 				Authorization: `Bearer ${apiKey}`,
 			},
-			body: JSON.stringify({
-				text_query: params.query,
-				limit: params.limit,
-				enable_page_crawling: params.includeContent,
-				timeout_seconds: DEFAULT_TIMEOUT_SECONDS,
-			}),
+			body: JSON.stringify(requestBody),
 			signal: hardSignal,
 		});
 
@@ -113,7 +129,7 @@ async function callKimiSearch(
 			if (classified) throw classified;
 			throw new SearchProviderError(
 				"kimi",
-				`Kimi search API error (${response.status}): ${errorText}`,
+				`Kimi search API error (${response.status}).`,
 				response.status,
 			);
 		}
@@ -143,6 +159,7 @@ export async function searchKimi(params: KimiSearchParams): Promise<SearchRespon
 				includeContent: params.include_content ?? false,
 				signal: params.signal,
 				fetch: params.fetch,
+				resolveProviderTextTransform: params.resolveProviderTextTransform,
 			}),
 		{ signal: params.signal },
 	);
@@ -193,6 +210,7 @@ export class KimiProvider extends SearchProvider {
 			authStorage: params.authStorage,
 			sessionId: params.sessionId,
 			fetch: fetchImpl,
+			resolveProviderTextTransform: params.resolveProviderTextTransform,
 		});
 	}
 }

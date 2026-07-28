@@ -335,6 +335,7 @@ async function handleSmitherySearchCommand(rest: string, runtime: SlashCommandRu
 			limit: parsed.limit,
 			apiKey: apiKey ?? undefined,
 			includeSemantic: parsed.semantic,
+			resolveProviderTextTransform: () => text => runtime.session.obfuscateProviderText(text),
 		});
 		if (results.length === 0) {
 			await runtime.output(`No Smithery results found for "${parsed.keyword}".`);

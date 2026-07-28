@@ -12,6 +12,7 @@ import type {
 import { toJsonRpcError } from "../../mcp/types";
 import { createMCPTimeout, getNeverAbortSignal, resolveMCPTimeoutMs } from "../timeout";
 import { describeJsonRpcError, isUnattributableError, rejectAllPending } from "../unattributable-error";
+import { rebuildMCPToolCallParamsForAttempt } from "./http";
 import { reportUndeliveredServerResponse } from "./server-response-delivery";
 
 interface MCPTimeoutOperation {
@@ -329,10 +330,15 @@ export class LegacySseTransport implements MCPTransport {
 			Accept: "application/json, text/event-stream",
 			...this.#config.headers,
 		};
+		let retryBody: typeof body = body;
+		if ("params" in body) {
+			const retryParams = await rebuildMCPToolCallParamsForAttempt(body.params);
+			retryBody = { ...body, params: retryParams } as typeof body;
+		}
 		response = await fetch(endpointUrl, {
 			method: "POST",
 			headers,
-			body: JSON.stringify(body),
+			body: JSON.stringify(retryBody),
 			signal,
 		});
 		return response;

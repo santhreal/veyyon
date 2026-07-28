@@ -2,6 +2,7 @@ import type { AuthStorage } from "@veyyon/ai";
 import { errorMessage, untilAborted } from "@veyyon/utils";
 import { parseHTML } from "linkedom";
 import type { Page } from "puppeteer-core";
+import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults, collapseWhitespace, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
@@ -64,20 +65,28 @@ function parseHtmlResults(html: string): ParsedResult[] {
 	return results;
 }
 
-function buildSearchUrl(params: SearchParams, numResults: number): string {
-	const url = new URL(MOJEEK_SEARCH_URL);
-	url.searchParams.set("q", params.query);
-	url.searchParams.set("t", String(numResults));
-	url.searchParams.set("arc", "none");
-	url.searchParams.set("lang", "en");
-	url.searchParams.set("lb", "en");
-	url.searchParams.set("theme", "dark");
-	// Mojeek's `since` filter accepts the relative tokens day/week/month/year
-	// verbatim — the same vocabulary as `recency` (verified live: each window
-	// returns a near-disjoint, fresher result set). Dates reflect crawl or
-	// last-modification time per Mojeek's operator docs.
-	if (params.recency) url.searchParams.set("since", params.recency);
-	return url.href;
+function buildSearchAttempt(params: SearchParams, numResults: number): { url: string; referer: string } {
+	const boundary = "Mojeek search";
+	const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, boundary);
+	const fields = transformProviderPayload(
+		{
+			q: params.query,
+			t: String(numResults),
+			arc: "none",
+			lang: "en",
+			lb: "en",
+			theme: "dark",
+			...(params.recency ? { since: params.recency } : {}),
+		},
+		transform,
+		boundary,
+	) as Record<string, string>;
+	const url = new URL(transform(MOJEEK_SEARCH_URL));
+	for (const [key, value] of Object.entries(fields)) url.searchParams.set(key, value);
+	return {
+		url: url.href,
+		referer: transform(MOJEEK_HOME_URL),
+	};
 }
 
 /** Solve Mojeek's ALTCHA interstitial and wait for its verified redirect to populate results. */
@@ -113,16 +122,21 @@ function isRobotPage(page: LoadedHtmlPage): boolean {
 
 async function callMojeekHtml(params: SearchParams, numResults: number): Promise<string> {
 	return withHardTimeout(params.signal, async signal => {
-		const url = buildSearchUrl(params, numResults);
+		// The attempt builder retains the raw query and rebuilds after browser acquisition and retry delays.
 		let page: LoadedHtmlPage;
 		try {
-			page = await browserFetch(url, {
+			page = await browserFetch(() => buildSearchAttempt(params, numResults), {
 				fetch: params.fetch,
 				signal,
 				randomizeHeaders: false,
-				referer: MOJEEK_HOME_URL,
 				browser: {
-					homeUrl: MOJEEK_HOME_URL,
+					homeUrl: () => {
+						const transform = resolveProviderTextTransform(
+							params.resolveProviderTextTransform,
+							"Mojeek search",
+						);
+						return transform(MOJEEK_HOME_URL);
+					},
 					afterNavigation: solveCaptcha,
 					shouldFallback: isRobotPage,
 					attempts: 2,

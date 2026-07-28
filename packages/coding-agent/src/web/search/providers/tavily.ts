@@ -7,7 +7,7 @@
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
-import { asRecord } from "@veyyon/utils";
+import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults, dateToAgeSeconds } from "../utils";
@@ -28,6 +28,7 @@ export interface TavilySearchParams {
 	recency?: "day" | "week" | "month" | "year";
 	signal?: AbortSignal;
 	fetch?: FetchImpl;
+	resolveProviderTextTransform?: SearchParams["resolveProviderTextTransform"];
 }
 
 interface TavilySearchResult {
@@ -43,22 +44,6 @@ interface TavilySearchResponse {
 	request_id?: string | null;
 }
 
-function getErrorMessage(value: unknown): string | null {
-	if (typeof value === "string") {
-		const trimmed = value.trim();
-		return trimmed.length > 0 ? trimmed : null;
-	}
-
-	const record = asRecord(value);
-	if (!record) return null;
-
-	for (const key of ["detail", "error", "message"]) {
-		const message = getErrorMessage(record[key]);
-		if (message) return message;
-	}
-
-	return null;
-}
 
 /** Find Tavily API key through AuthStorage's unified refresh pipeline. */
 export async function findApiKey(
@@ -92,13 +77,15 @@ export function buildRequestBody(params: TavilySearchParams): Record<string, unk
 
 async function callTavilySearch(apiKey: string, params: TavilySearchParams): Promise<TavilySearchResponse> {
 	return withHardTimeout(params.signal, async hardSignal => {
+		const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, "Tavily search");
+		const body = transformProviderPayload(buildRequestBody(params), transform, "Tavily search");
 		const response = await (params.fetch ?? fetch)(TAVILY_SEARCH_URL, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
 				Authorization: `Bearer ${apiKey}`,
 			},
-			body: JSON.stringify(buildRequestBody(params)),
+			body: JSON.stringify(body),
 			signal: hardSignal,
 		});
 
@@ -106,17 +93,7 @@ async function callTavilySearch(apiKey: string, params: TavilySearchParams): Pro
 			const errorText = await response.text();
 			const classified = classifyProviderHttpError("tavily", response.status, errorText);
 			if (classified) throw classified;
-			let message = errorText.trim();
-			if (message.length === 0) {
-				message = response.statusText;
-			} else {
-				try {
-					message = getErrorMessage(JSON.parse(errorText)) ?? message;
-				} catch {
-					// Keep raw text fallback.
-				}
-			}
-			throw new SearchProviderError("tavily", `Tavily API error (${response.status}): ${message}`, response.status);
+			throw new SearchProviderError("tavily", `Tavily API request failed (${response.status}).`, response.status);
 		}
 
 		return (await response.json()) as TavilySearchResponse;
@@ -159,6 +136,7 @@ export async function searchTavily(params: SearchParams): Promise<SearchResponse
 		recency: params.recency,
 		signal: params.signal,
 		fetch: params.fetch,
+		resolveProviderTextTransform: params.resolveProviderTextTransform,
 	};
 	const keyOrResolver: ApiKey = params.authStorage.resolver("tavily", {
 		sessionId: params.sessionId,
