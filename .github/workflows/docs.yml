@@ -74,6 +74,15 @@ jobs:
       # registry for a `tsgo` package that does not exist there, and the whole job
       # was red for a reason that had nothing to do with the docs it checks.
       - run: bun install --frozen-lockfile
+      # `check-doc-imports` verifies a documented `import { X } from "@veyyon/..."`
+      # by actually importing the package and reading its exports, and importing
+      # `@veyyon/coding-agent` statically pulls in the gitignored build artifact
+      # src/export/html/tool-views.generated.js. Without it the import throws, the
+      # checker reports "cannot load" for every documented SDK symbol, and the
+      # failure names the docs rather than the missing artifact. The doc-examples
+      # job below generates it for the same reason.
+      - name: Generate tool views
+        run: bun --cwd=packages/coding-agent run gen:tool-views
       - name: Checker self-tests
         run: bun test scripts/check-doc-links.test.ts scripts/check-doc-freshness.test.ts scripts/check-doc-imports.test.ts scripts/check-doc-paths.test.ts scripts/gen-example-js.test.ts scripts/docs-book-pin.test.ts scripts/gen-settings-reference.test.ts scripts/settings-doc-coherence.test.ts
       # The two package maps (ARCHITECTURE.md, AGENTS.md) must describe every package
