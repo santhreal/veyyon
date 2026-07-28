@@ -280,8 +280,12 @@ describe("the gate runs the installer itself, not only what it installs", () => 
 		// ordinary literal the escapes are read twice, once by TypeScript and once
 		// by the reader, and the two disagree.
 		expect(installerE2e).toContain(String.raw`local path_line="export PATH='$installer_bin':\"\$PATH\""`);
-		expect(installerE2e).toContain('grep -Fqx "$path_line" "$installer_home/.bashrc"');
-		expect(installerE2e).toContain('grep -Fqx "# added by the veyyon installer" "$installer_home/.bashrc"');
+		expect(installerE2e).toContain('grep -Fqx "$path_line" "$rc"');
+		// The rc is DISCOVERED by its marker rather than named: bash reads
+		// `.bashrc` on Linux and `.bash_profile` on macOS, and pinning one spelling
+		// failed every macOS run about an install that had done the right thing.
+		expect(installerE2e).toContain('grep -Fqx "# added by the veyyon installer" "$candidate"');
+		expect(installerE2e).toContain("the PATH line is in more than one rc");
 	});
 
 	/** And the installer really writes that shape, so the gate is not pinned to a fiction. */
@@ -306,14 +310,14 @@ describe("the gate runs the installer itself, not only what it installs", () => 
 		expect(installerE2e).toContain('expect_absent "$installer_bin/veyyon"');
 		expect(installerE2e).toContain('expect_absent "$installer_home/.local/share/bash-completion/completions/vey"');
 		expect(installerE2e).toContain('expect_absent "$installer_home/.config/fish/completions/vey.fish"');
-		expect(installerE2e).toContain("uninstall left the PATH line in .bashrc");
+		expect(installerE2e).toContain('uninstall left the PATH line in $rc');
 	});
 
 	it("proves uninstall leaves the user's own rc content alone", () => {
 		// "Removes everything it added, and only what it added" is the documented
 		// contract; the second half is the one that costs a user their config.
-		expect(installerE2e).toContain('echo "alias ll=\'ls -la\'" >> "$installer_home/.bashrc"');
-		expect(installerE2e).toContain("uninstall removed the user's own .bashrc content");
+		expect(installerE2e).toContain('echo "alias ll=\'ls -la\'" >> "$rc"');
+		expect(installerE2e).toContain("uninstall removed the user's own rc content");
 	});
 
 	it("proves the install directory is empty afterwards, staging files included", () => {
