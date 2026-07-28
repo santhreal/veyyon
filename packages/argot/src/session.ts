@@ -60,9 +60,9 @@ export class ArgotSession {
 	/** The fixed notation block. Inject once, whether or not a dictionary exists. */
 	readonly preamble = ARGOT_PREAMBLE;
 
-	private readonly entries = new Map<string, Entry>();
-	private decoder: AgentDict = emptyDict();
-	private teacher: AgentDict = emptyDict();
+	readonly #entries = new Map<string, Entry>();
+	#decoder: AgentDict = emptyDict();
+	#teacher: AgentDict = emptyDict();
 
 	/**
 	 * Load a project's vocabulary under `key`, replacing any vocabulary already at
@@ -77,13 +77,13 @@ export class ArgotSession {
 	load(key: string, vocab: Vocabulary, opts?: { teach?: boolean }): void {
 		// Validate against every other key before mutating, so a conflict throws
 		// without half-applying. Rebuilding after the set cannot then throw.
-		const others = [...this.entries.entries()]
+		const others = [...this.#entries.entries()]
 			.filter(([existing]) => existing !== key)
 			.map(([, entry]) => entry.vocab);
 		unionVocabularies([...others, vocab]);
 
-		this.entries.set(key, { vocab, teach: opts?.teach ?? true });
-		this.rebuild();
+		this.#entries.set(key, { vocab, teach: opts?.teach ?? true });
+		this.#rebuild();
 	}
 
 	/**
@@ -93,12 +93,12 @@ export class ArgotSession {
 	 * or already not taught).
 	 */
 	unload(key: string): boolean {
-		const entry = this.entries.get(key);
+		const entry = this.#entries.get(key);
 		if (entry === undefined || !entry.teach) {
 			return false;
 		}
 		entry.teach = false;
-		this.rebuild();
+		this.#rebuild();
 		return true;
 	}
 
@@ -132,11 +132,11 @@ export class ArgotSession {
 	 * instead.
 	 */
 	loadVocab(vocab: Vocabulary): void {
-		this.entries.clear();
+		this.#entries.clear();
 		if (vocab.handles.size > 0) {
-			this.entries.set("", { vocab, teach: true });
+			this.#entries.set("", { vocab, teach: true });
 		}
-		this.rebuild();
+		this.#rebuild();
 	}
 
 	/**
@@ -147,12 +147,12 @@ export class ArgotSession {
 	 * start (after the {@link preamble}).
 	 */
 	promptFragment(): string {
-		return this.teacher.promptFragment();
+		return this.#teacher.promptFragment();
 	}
 
 	/** Restore every loaded handle to its expansion. Identity until one loads. */
 	expand(text: string): string {
-		return this.decoder.expand(text);
+		return this.#decoder.expand(text);
 	}
 
 	/**
@@ -169,7 +169,7 @@ export class ArgotSession {
 
 	/** Whether any vocabulary is loaded this session (taught or decode-only). */
 	get loaded(): boolean {
-		return this.entries.size > 0;
+		return this.#entries.size > 0;
 	}
 
 	/**
@@ -180,7 +180,7 @@ export class ArgotSession {
 	 * decoder uses.
 	 */
 	vocabulary(): Vocabulary {
-		return unionVocabularies([...this.entries.values()].map(entry => entry.vocab));
+		return unionVocabularies([...this.#entries.values()].map(entry => entry.vocab));
 	}
 
 	/**
@@ -210,18 +210,18 @@ export class ArgotSession {
 	 */
 	fork(): ArgotSession {
 		const copy = new ArgotSession();
-		for (const [key, entry] of this.entries) {
-			copy.entries.set(key, { vocab: entry.vocab, teach: entry.teach });
+		for (const [key, entry] of this.#entries) {
+			copy.#entries.set(key, { vocab: entry.vocab, teach: entry.teach });
 		}
-		copy.rebuild();
+		copy.#rebuild();
 		return copy;
 	}
 
 	/** Rebuild the decode and teach views from the current entries. */
-	private rebuild(): void {
-		const all = [...this.entries.values()].map(entry => entry.vocab);
-		const taught = [...this.entries.values()].filter(entry => entry.teach).map(entry => entry.vocab);
-		this.decoder = makeDict(unionVocabularies(all));
-		this.teacher = makeDict(unionVocabularies(taught));
+	#rebuild(): void {
+		const all = [...this.#entries.values()].map(entry => entry.vocab);
+		const taught = [...this.#entries.values()].filter(entry => entry.teach).map(entry => entry.vocab);
+		this.#decoder = makeDict(unionVocabularies(all));
+		this.#teacher = makeDict(unionVocabularies(taught));
 	}
 }
