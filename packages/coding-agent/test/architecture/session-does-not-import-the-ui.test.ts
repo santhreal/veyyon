@@ -42,8 +42,13 @@ const ALLOWED = new Map<string, string>([
 		"modes/workflow-keyword",
 		"Detection half of the `workflowz` keyword, plus the notice renderer. The gradient stays in `modes/workflow`.",
 	],
-	["modes/turn-budget", "Parses a turn budget out of message text. No rendering."],
-	["modes/utils/context-usage", "Computes context usage numbers. Formatting them is the caller's job."],
+	// `modes/turn-budget` and `modes/utils/context-usage` used to be here. Neither
+	// was a leaf of anything: the first is a directive parser and the second is token
+	// accounting, and both were in `modes/` only because the surfaces that DISPLAY
+	// them are. They live in `session/` now, which is what an entry on this list is
+	// supposed to become. The `/context` panel that draws the numbers stayed behind
+	// in `modes/utils/context-usage.ts` and imports them from `session/`, so the
+	// dependency points the way this suite says it should.
 ]);
 
 /*

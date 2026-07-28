@@ -296,12 +296,6 @@ import { IrcBus, type IrcMessage } from "../irc/bus";
 import { resolveMemoryBackend } from "../memory-backend";
 import { shutdownMnemopiEmbedClient } from "../mnemopi/embed-client";
 import { getMnemopiSessionState, type MnemopiSessionState, setMnemopiSessionState } from "../mnemopi/state";
-import { parseTurnBudget } from "../modes/turn-budget";
-import {
-	computeNonMessageBreakdown,
-	computeNonMessageTokens,
-	computeStoredMessagesTokens,
-} from "../modes/utils/context-usage";
 import { containsOrchestrate, ORCHESTRATE_NOTICE } from "../modes/orchestrate-keyword";
 import { theme } from "../modes/theme/theme-binding";
 import { containsUltrathink, ULTRATHINK_NOTICE } from "../modes/ultrathink-keyword";
@@ -419,7 +413,15 @@ import {
 import { OperatorNotices, stderrNoticeSink } from "./operator-notices";
 import { disposeOwnedResources } from "./owned-resources";
 import { normalizeRoots, relativizePathsUnderRoots } from "./relativize-paths";
+// The accounting, not the drawing. Both of these used to be imported from `modes/`, which put the
+// terminal UI on the session engine's graph and cost the layering gate a standing exception each.
+import {
+	computeNonMessageBreakdown,
+	computeNonMessageTokens,
+	computeStoredMessagesTokens,
+} from "./context-usage";
 import type { BuildSessionContextOptions, SessionContext } from "./session-context";
+import { parseTurnBudget } from "./turn-budget";
 import { getLatestCompactionEntry, getRestorableSessionModels } from "./session-context";
 import { formatSessionDumpText } from "./session-dump-format";
 import type {
