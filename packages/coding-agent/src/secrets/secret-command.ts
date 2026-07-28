@@ -93,7 +93,10 @@ export interface SecretCommandResult {
 	changed: boolean;
 }
 
-/** Text shown for `/secret` with no arguments, and for anything unparseable. */
+/** The two command-help surfaces have different safe credential-entry capabilities. */
+export type SecretCommandSurface = "tui" | "noninteractive";
+
+/** TUI help may describe masked entry and explicit inline entry. */
 export const SECRET_COMMAND_USAGE = [
 	"/secret add <name>                    prompt for the value, hidden as you type",
 	"/secret add <name> --from-env <VAR>   store the value of an environment variable",
@@ -106,6 +109,23 @@ export const SECRET_COMMAND_USAGE = [
 	"Options: --ttl 30m|12h|7d|2w|never   --scope profile|project|global",
 	"Lifetimes default to the secrets.defaultTtl setting. Scope defaults to profile.",
 ].join("\n");
+
+/** Noninteractive help exposes only environment-backed creation and management. */
+export const NONINTERACTIVE_SECRET_COMMAND_USAGE = [
+	"/secret add <name> --from-env <VAR>   store the value of an environment variable",
+	"/secret list                          show stored secrets, never their values",
+	"/secret rm <name>                     remove a secret",
+	"/secret extend <name> --ttl 7d        give a secret a fresh lifetime",
+	"/secret log [--limit 50]              show which secrets were used, and where",
+	"",
+	"Options: --ttl 30m|12h|7d|2w|never   --scope profile|project|global",
+	"Lifetimes default to the secrets.defaultTtl setting. Scope defaults to profile.",
+].join("\n");
+
+/** Select help that matches what the invoking surface can enter safely. */
+export function secretCommandUsage(surface: SecretCommandSurface): string {
+	return surface === "tui" ? SECRET_COMMAND_USAGE : NONINTERACTIVE_SECRET_COMMAND_USAGE;
+}
 
 /** Every option token the command grammar owns. */
 const SECRET_COMMAND_OPTIONS: Record<string, true> = {
@@ -121,7 +141,8 @@ const SECRET_COMMAND_OPTIONS: Record<string, true> = {
  * Throws on anything it cannot read rather than guessing, because every guess here is about a
  * credential's name, lifetime, or visibility.
  */
-export function parseSecretCommand(args: string): SecretCommandRequest {
+export function parseSecretCommand(args: string, surface: SecretCommandSurface = "tui"): SecretCommandRequest {
+	const usageText = secretCommandUsage(surface);
 	const tokens = [...args.matchAll(/\S+/gu)].map(match => ({
 		value: match[0],
 		start: match.index,
@@ -153,7 +174,7 @@ export function parseSecretCommand(args: string): SecretCommandRequest {
 							: (verb as SecretSubcommand);
 			break;
 		default:
-			throw new Error(`Unknown /secret subcommand "${tokens[0].value}".\n\n${SECRET_COMMAND_USAGE}`);
+			throw new Error(`Unknown /secret subcommand "${tokens[0].value}".\n\n${usageText}`);
 	}
 
 	const positional: string[] = [];
@@ -207,7 +228,7 @@ export function parseSecretCommand(args: string): SecretCommandRequest {
 
 		if (token.startsWith("--")) {
 			if (request.subcommand === "add" && request.name !== undefined) throw ambiguousInlineCredential();
-			throw new Error(`Unknown option "${token}".\n\n${SECRET_COMMAND_USAGE}`);
+			throw new Error(`Unknown option "${token}".\n\n${usageText}`);
 		}
 
 		if (request.subcommand === "add") {
@@ -233,8 +254,9 @@ export function parseSecretCommand(args: string): SecretCommandRequest {
 	}
 
 	if (request.subcommand !== "add" && positional.length > 0) request.name = positional[0];
-	refuseIrrelevantOptions(request);
-	refuseExtraWords(request, positional);
+
+	refuseIrrelevantOptions(request, usageText);
+	refuseExtraWords(request, positional, usageText);
 	return request;
 }
 
@@ -278,7 +300,7 @@ const SUBCOMMAND_SHAPES: Record<SecretSubcommand, { options: readonly string[]; 
  * The message names the option that does what the word was reaching for, where there is one, because
  * "too many arguments" does not tell somebody who typed `/secret log 50` to type `--limit 50`.
  */
-function refuseExtraWords(request: SecretCommandRequest, words: readonly string[]): void {
+function refuseExtraWords(request: SecretCommandRequest, words: readonly string[], usageText: string): void {
 	const shape = SUBCOMMAND_SHAPES[request.subcommand];
 	if (words.length <= shape.words) return;
 
@@ -289,7 +311,7 @@ function refuseExtraWords(request: SecretCommandRequest, words: readonly string[
 			: "";
 	throw new Error(
 		`/secret ${request.subcommand} takes ${shape.words === 0 ? "no arguments" : `${shape.words} argument(s)`}, ` +
-			`and "${extra}" would be ignored rather than used.${hint}\n\n${SECRET_COMMAND_USAGE}`,
+			`and "${extra}" would be ignored rather than used.${hint}\n\n${usageText}`,
 	);
 }
 
@@ -306,7 +328,7 @@ function refuseExtraWords(request: SecretCommandRequest, words: readonly string[
  * Refusing names the verb that does take the option, so the message teaches the right command
  * rather than just rejecting the wrong one.
  */
-function refuseIrrelevantOptions(request: SecretCommandRequest): void {
+function refuseIrrelevantOptions(request: SecretCommandRequest, usageText: string): void {
 	const allowed = SUBCOMMAND_SHAPES[request.subcommand].options;
 	const supplied: [string, boolean][] = [
 		["--from-env", request.fromEnv !== undefined],
@@ -322,7 +344,7 @@ function refuseIrrelevantOptions(request: SecretCommandRequest): void {
 		throw new Error(
 			`/secret ${request.subcommand} does not take ${option}, and ignoring it would look like it had ` +
 				`been applied. ${takenBy.map(verb => `/secret ${verb}`).join(" and ")} take${takenBy.length === 1 ? "s" : ""} it.` +
-				`\n\n${SECRET_COMMAND_USAGE}`,
+				`\n\n${usageText}`,
 		);
 	}
 }
@@ -339,11 +361,13 @@ export async function runSecretCommand(
 		now: number;
 		/** The expansion log, absent when audit recording is turned off. */
 		auditLog?: SecretAuditLog;
+		/** Help/error copy appropriate for the invoking surface. */
+		surface?: SecretCommandSurface;
 	},
 ): Promise<SecretCommandResult> {
 	switch (request.subcommand) {
 		case "help":
-			return { message: SECRET_COMMAND_USAGE, changed: false };
+			return { message: secretCommandUsage(context.surface ?? "tui"), changed: false };
 		case "add":
 			return await addSecret(request, context);
 		case "list":

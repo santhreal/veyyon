@@ -35,6 +35,39 @@ export function parseSlashCommand(text: string): ParsedSlashCommand | null {
 	};
 }
 
+/**
+ * Whether a submitted slash command can carry a credential or bearer token.
+ *
+ * All callers share the canonical slash parser above, including its colon
+ * separator. This deliberately classifies every `/secret` shape — help,
+ * management, malformed and future syntax — because a parser failure must not
+ * turn candidate credential bytes into durable history or a teardown draft.
+ */
+export function isSensitiveSlashCommand(text: string): boolean {
+	const parsed = parseSlashCommand(text.trimStart());
+	if (!parsed) return false;
+	if (parsed.name === "secret") return true;
+	if (parsed.name === "login" || parsed.name === "join") return parsed.text.length > parsed.name.length + 1;
+	if (parsed.name !== "mcp") return false;
+	const { verb, rest } = parseSubcommand(parsed.args);
+	return verb === "add" && /(?:^|\s)--token(?:\s|$)/.test(rest);
+}
+
+/**
+ * Normalize text at the editor submission boundary.
+ *
+ * Chat and unrelated slash commands keep the longstanding outer trim. A
+ * canonical `/secret` keeps every trailing code unit because its raw suffix may
+ * be an inline credential; only whitespace before the slash is navigation
+ * chrome rather than credential data. Prefix lookalikes such as `/secretive`
+ * remain ordinary chat and therefore remain trimmed.
+ */
+export function normalizeSubmittedPrompt(text: string): string {
+	const withoutLeadingWhitespace = text.trimStart();
+	const parsed = parseSlashCommand(withoutLeadingWhitespace);
+	return parsed?.name === "secret" ? withoutLeadingWhitespace : text.trim();
+}
+
 /** Mark a command as fully consumed in the ACP shape. */
 export function commandConsumed(): { consumed: true } {
 	return { consumed: true };

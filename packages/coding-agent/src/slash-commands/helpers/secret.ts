@@ -66,7 +66,8 @@ function locationsFor(port: SecretCommandPort): VaultLocations {
  * message.
  */
 export async function runSecretCommandForSurface(args: string, port: SecretCommandPort): Promise<SecretCommandOutcome> {
-	const request = parseSecretCommand(args);
+	const surface = port.promptForValue === undefined ? "noninteractive" : "tui";
+	const request = parseSecretCommand(args, surface);
 	if (request.subcommand === "add" && request.value !== undefined && port.promptForValue === undefined) {
 		throw new Error(
 			`This non-interactive client refuses inline credentials because they would be retained in command history. ` +
@@ -104,6 +105,7 @@ export async function runSecretCommandForSurface(args: string, port: SecretComma
 				: null,
 		now: Date.now(),
 		auditLog,
+		surface,
 	});
 
 	if (result.changed) {

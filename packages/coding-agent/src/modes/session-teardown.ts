@@ -10,6 +10,7 @@
  * is directly unit-testable without instantiating the full TUI stack.
  */
 import { logger, type postmortem } from "@veyyon/utils";
+import { isSensitiveSlashCommand } from "../slash-commands/helpers/parse";
 
 /** Dependencies the teardown captures at construction time. */
 export interface SessionTeardownDeps {
@@ -79,9 +80,13 @@ export function createSessionTeardown(deps: SessionTeardownDeps): SessionTeardow
 	let pending: Promise<void> | undefined;
 	const run = async (reason?: postmortem.Reason): Promise<void> => {
 		const draftText = deps.getDraftText();
+		// A command-shaped credential must never become a resume sidecar. Saving
+		// the empty string is intentional: it also unlinks any older ordinary
+		// draft instead of merely skipping this write and leaving stale text.
+		const persistedDraft = isSensitiveSlashCommand(draftText) ? "" : draftText;
 		deps.beginDispose();
 		try {
-			await deps.saveDraft(draftText);
+			await deps.saveDraft(persistedDraft);
 		} catch (err) {
 			logger.warn("Failed to save session draft during teardown", { error: String(err) });
 		}

@@ -227,6 +227,34 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		textMode: true,
 		description: "Share session via an encrypted link (share server or secret gist)",
 	},
+	{
+		name: "secret",
+		textMode: true,
+		description: "Store a credential the agent can use without ever seeing it",
+		acpDescription: "Manage credentials; new values are accepted only from environment variables",
+		allowArgs: true,
+		inlineHint: "[add|list|rm|extend|log] [name] [--from-env VAR] [--ttl 7d] [--scope profile]",
+		acpInputHint: "add <name> --from-env <VAR>",
+		subcommands: [
+			{
+				name: "add",
+				description: "Store a credential, prompting for the value with it hidden as you type",
+				usage: "/secret add <name> [--from-env <VAR>] [--ttl 7d] [--scope profile|project|global]",
+			},
+			{ name: "list", description: "Show stored secrets, never their values", usage: "/secret list" },
+			{ name: "rm", description: "Remove a stored secret", usage: "/secret rm <name>" },
+			{
+				name: "extend",
+				description: "Give a stored secret a fresh lifetime",
+				usage: "/secret extend <name> --ttl 7d",
+			},
+			{
+				name: "log",
+				description: "Show which secrets were used, in which command, and when",
+				usage: "/secret log [--limit 50]",
+			},
+		],
+	},
 
 	{
 		name: "collab",
@@ -360,14 +388,13 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	},
 
 	{
+		// `/cockpit` and `/hub` are ALIASES, not commands of their own. They opened a
+		// separate "Agent Hub" overlay that rendered the same registry a second way,
+		// so "which agents are running" had two answers that could disagree. One
+		// command, one description, one screen.
 		name: "agents",
-		description: "Open Agent Control Center dashboard",
-	},
-
-	{
-		name: "cockpit",
-		aliases: ["hub"],
-		description: "Live multi-agent cockpit (status, model per agent, drill-in)",
+		aliases: ["cockpit", "hub"],
+		description: "Agent Control Center: live agent roster and comms stream",
 	},
 
 	{
