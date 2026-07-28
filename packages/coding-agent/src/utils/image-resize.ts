@@ -42,6 +42,13 @@ const DEFAULT_MAX_BYTES = 500 * 1024;
 // documents as valid (200x200 = 64 visual tokens); undersized images are scaled up.
 const DEFAULT_MIN_DIMENSION = 200;
 
+/** Hard header ceilings enforced before Bun allocates a decoded pixel buffer. */
+export const MAX_IMAGE_INPUT_WIDTH = 16_384;
+export const MAX_IMAGE_INPUT_HEIGHT = 16_384;
+export const MAX_IMAGE_INPUT_PIXELS = 40_000_000;
+export const MAX_IMAGE_DECODED_BYTES = 128 * 1024 * 1024;
+const DECODED_BYTES_PER_PIXEL = 4;
+
 const DEFAULT_OPTIONS: Required<Omit<ImageResizeOptions, "excludeWebP">> = {
 	// Anthropic's "internal recommended size" — Claude internally caps images at
 	// 1568px on the longest edge before vision processing.
@@ -89,58 +96,21 @@ export async function canonicalizeImageContent(
 	options?: Pick<ImageResizeOptions, "excludeWebP">,
 ): Promise<CanonicalImage> {
 	try {
-		const inputBuffer = Uint8Array.fromBase64(img.data.trim());
-		const detected = parseImageMetadata(inputBuffer);
-		if (!detected) throw new Error("unsupported image type");
-
-		const metadata = await new Bun.Image(inputBuffer).metadata();
-		if (!Number.isFinite(metadata.width) || !Number.isFinite(metadata.height) || metadata.width < 1 || metadata.height < 1) {
-			throw new Error("invalid image dimensions");
-		}
-
-		let buffer: Uint8Array;
-		let mimeType: CanonicalImage["mimeType"];
-		switch (detected.mimeType) {
-			case "image/jpeg":
-				buffer = await new Bun.Image(inputBuffer).jpeg({ quality: 100 }).bytes();
-				mimeType = "image/jpeg";
-				break;
-			case "image/webp":
-				if (options?.excludeWebP) {
-					buffer = await new Bun.Image(inputBuffer).png().bytes();
-					mimeType = "image/png";
-				} else {
-					buffer = await new Bun.Image(inputBuffer).webp({ quality: 100 }).bytes();
-					mimeType = "image/webp";
-				}
-				break;
-			case "image/gif":
-				// Bun has no GIF encoder. A canonical PNG of the decoded first
-				// frame is provider-compatible and contains no GIF extensions.
-				buffer = await new Bun.Image(inputBuffer).png().bytes();
-				mimeType = "image/png";
-				break;
-			case "image/png":
-				buffer = await new Bun.Image(inputBuffer).png().bytes();
-				mimeType = "image/png";
-				break;
-		}
-
-		const outputMetadata = parseImageMetadata(buffer);
-		if (outputMetadata?.mimeType !== mimeType) throw new Error("image encoder returned an unexpected type");
+		const source = await inspectImageInput(img.data);
+		const outputMime = canonicalMimeType(source.mimeType, options?.excludeWebP === true);
+		const buffer = await encodeImage(source.inputBuffer, outputMime, undefined, undefined, 100);
+		assertEncodedImage(buffer, outputMime, source.width, source.height);
 
 		return {
 			buffer,
-			mimeType,
-			width: metadata.width,
-			height: metadata.height,
+			mimeType: outputMime,
+			width: source.width,
+			height: source.height,
 			get data() {
 				return Buffer.from(buffer).toBase64();
 			},
 		};
 	} catch {
-		// Do not include input bytes, labels, or decoder diagnostics: malformed
-		// image metadata can itself contain confidential text.
 		throw new Error("Image normalization failed: input is not a decodable supported image.");
 	}
 }
@@ -161,239 +131,317 @@ export async function canonicalizeImageContent(
  * off the JS thread when the terminal (`.bytes()`) is awaited.
  */
 export async function resizeImage(img: ImageContent, options?: ImageResizeOptions): Promise<ResizedImage> {
-	const excludeWebP = options?.excludeWebP ?? isWebPExcluded();
-	const opts = { ...DEFAULT_OPTIONS, ...options, excludeWebP };
-	const canonical = await canonicalizeImageContent(img, { excludeWebP });
-	const inputBuffer = canonical.buffer;
-
 	try {
-		const originalWidth = canonical.width;
-		const originalHeight = canonical.height;
-		const sourceMime = canonical.mimeType;
-
-		// Fast path: already within dimensions AND well under budget.
-		// Threshold is 1/4 of budget — if already that compact, don't re-encode.
-		// Avoids wasted work on tiny icons/diagrams while ensuring larger PNGs
-		// still get JPEG-compressed.
-		const originalSize = inputBuffer.length;
-		const comfortableSize = opts.maxBytes / 4;
-		// Clamp the floor to the caps so an unusually small max can't demand an
-		// impossible "≥ min and ≤ max" target.
+		const excludeWebP = options?.excludeWebP ?? isWebPExcluded();
+		const opts = { ...DEFAULT_OPTIONS, ...options, excludeWebP };
+		assertResizeOptions(opts);
+		const source = await inspectImageInput(img.data);
+		const originalWidth = source.width;
+		const originalHeight = source.height;
 		const minDimension = Math.min(opts.minDimension, opts.maxWidth, opts.maxHeight);
-		if (
-			originalWidth >= minDimension &&
-			originalHeight >= minDimension &&
-			originalWidth <= opts.maxWidth &&
-			originalHeight <= opts.maxHeight &&
-			originalSize <= comfortableSize &&
-			!(opts.excludeWebP && sourceMime === "image/webp")
-		) {
-			return {
-				buffer: inputBuffer,
-				mimeType: sourceMime,
-				originalWidth,
-				originalHeight,
-				width: originalWidth,
-				height: originalHeight,
-				wasResized: false,
-				get data() {
-					return Buffer.from(inputBuffer).toBase64();
-				},
-			};
-		}
+		const { width: targetWidth, height: targetHeight } = targetDimensions(
+			originalWidth,
+			originalHeight,
+			opts.maxWidth,
+			opts.maxHeight,
+			minDimension,
+		);
+		const dimensionsChanged = targetWidth !== originalWidth || targetHeight !== originalHeight;
 
-		// Calculate initial dimensions respecting max limits
-		let targetWidth = originalWidth;
-		let targetHeight = originalHeight;
-
-		if (targetWidth > opts.maxWidth) {
-			targetHeight = Math.round((targetHeight * opts.maxWidth) / targetWidth);
-			targetWidth = opts.maxWidth;
-		}
-		if (targetHeight > opts.maxHeight) {
-			targetWidth = Math.round((targetWidth * opts.maxHeight) / targetHeight);
-			targetHeight = opts.maxHeight;
-		}
-
-		// Lift undersized inputs up to the minimum. A uniform scale covers the
-		// common case (icons, the 1x1 chart) without distortion; an aspect ratio
-		// too extreme to satisfy both floor and cap falls back to stretching the
-		// lagging edge up to the floor via the default fit:"fill" resize.
-		if (targetWidth < minDimension || targetHeight < minDimension) {
-			const shortEdge = Math.min(targetWidth, targetHeight);
-			const upscale = Math.min(minDimension / shortEdge, opts.maxWidth / targetWidth, opts.maxHeight / targetHeight);
-			if (upscale > 1) {
-				targetWidth = Math.round(targetWidth * upscale);
-				targetHeight = Math.round(targetHeight * upscale);
+		// A within-bounds image is still re-encoded once so EXIF/container
+		// metadata never crosses the provider boundary. Oversized images skip
+		// this original-resolution canonicalization entirely: their very first
+		// decode pipeline includes the downsample.
+		if (!dimensionsChanged) {
+			const canonicalMime = canonicalMimeType(source.mimeType, excludeWebP);
+			const canonicalBuffer = await encodeImage(source.inputBuffer, canonicalMime, undefined, undefined, 100);
+			assertEncodedImage(canonicalBuffer, canonicalMime, originalWidth, originalHeight);
+			if (canonicalBuffer.length <= opts.maxBytes / 4) {
+				return resizedResult(
+					canonicalBuffer,
+					canonicalMime,
+					originalWidth,
+					originalHeight,
+					originalWidth,
+					originalHeight,
+					false,
+				);
 			}
-			targetWidth = Math.min(opts.maxWidth, Math.max(minDimension, targetWidth));
-			targetHeight = Math.min(opts.maxHeight, Math.max(minDimension, targetHeight));
 		}
 
-		// First-attempt encoder: try PNG and JPEG (+ WebP if not excluded) — return smallest.
-		// PNG wins for line art / few-color UI; JPEG wins for photographic content;
-		// WebP usually beats JPEG by 25–35% but is disabled when VEYYON_NO_WEBP is set
-		// because many local inference backends (llama.cpp STB) don't decode it.
 		async function encodeSmallest(
 			width: number,
 			height: number,
 			quality: number,
-		): Promise<{ buffer: Uint8Array; mimeType: string }> {
-			const candidates = await Promise.all([
-				new Bun.Image(inputBuffer)
-					.resize(width, height)
-					.png()
-					.bytes()
-					.then(b => ({ buffer: b, mimeType: "image/png" })),
-				new Bun.Image(inputBuffer)
-					.resize(width, height)
-					.jpeg({ quality })
-					.bytes()
-					.then(b => ({ buffer: b, mimeType: "image/jpeg" })),
-				...(opts.excludeWebP
-					? []
-					: [
-							new Bun.Image(inputBuffer)
-								.resize(width, height)
-								.webp({ quality })
-								.bytes()
-								.then(b => ({ buffer: b, mimeType: "image/webp" })),
-						]),
-			]);
-			return pickSmallest(...candidates);
+		): Promise<{ buffer: Uint8Array; mimeType: CanonicalImage["mimeType"] }> {
+			// Run decoders sequentially. Each native decoder is individually
+			// bounded, and sequencing prevents the format race from multiplying
+			// that decoded-allocation ceiling by three.
+			const candidates: Array<{ buffer: Uint8Array; mimeType: CanonicalImage["mimeType"] }> = [];
+			for (const mimeType of [
+				"image/png",
+				"image/jpeg",
+				...(excludeWebP ? [] : (["image/webp"] as const)),
+			] as const) {
+				const buffer = await encodeImage(source.inputBuffer, mimeType, width, height, quality);
+				assertEncodedImage(buffer, mimeType, width, height);
+				candidates.push({ buffer, mimeType });
+			}
+			return pickSmallest(...candidates) as { buffer: Uint8Array; mimeType: CanonicalImage["mimeType"] };
 		}
 
-		// Lossy encoder for quality/dimension fallback ladders. PNG is excluded since
-		// it's lossless and doesn't respond to quality parameters. WebP is included
-		// unless VEYYON_NO_WEBP is set (llama.cpp STB incompatibility).
 		async function encodeLossy(
 			width: number,
 			height: number,
 			quality: number,
-		): Promise<{ buffer: Uint8Array; mimeType: string }> {
-			const candidates = await Promise.all([
-				new Bun.Image(inputBuffer)
-					.resize(width, height)
-					.jpeg({ quality })
-					.bytes()
-					.then(b => ({ buffer: b, mimeType: "image/jpeg" })),
-				...(opts.excludeWebP
-					? []
-					: [
-							new Bun.Image(inputBuffer)
-								.resize(width, height)
-								.webp({ quality })
-								.bytes()
-								.then(b => ({ buffer: b, mimeType: "image/webp" })),
-						]),
-			]);
-			return pickSmallest(...candidates);
+		): Promise<{ buffer: Uint8Array; mimeType: CanonicalImage["mimeType"] }> {
+			const candidates: Array<{ buffer: Uint8Array; mimeType: CanonicalImage["mimeType"] }> = [];
+			for (const mimeType of [
+				"image/jpeg",
+				...(excludeWebP ? [] : (["image/webp"] as const)),
+			] as const) {
+				const buffer = await encodeImage(source.inputBuffer, mimeType, width, height, quality);
+				assertEncodedImage(buffer, mimeType, width, height);
+				candidates.push({ buffer, mimeType });
+			}
+			return pickSmallest(...candidates) as { buffer: Uint8Array; mimeType: CanonicalImage["mimeType"] };
 		}
-		// Quality ladder — more aggressive steps for tighter budgets
-		const qualitySteps = [70, 60, 50, 40];
-		const scaleSteps = [1.0, 0.75, 0.5, 0.35, 0.25];
 
-		let best: { buffer: Uint8Array; mimeType: string };
+		const qualitySteps = [70, 60, 50, 40];
+		const scaleSteps = [1, 0.75, 0.5, 0.35, 0.25];
 		let finalWidth = targetWidth;
 		let finalHeight = targetHeight;
-
-		// First attempt: resize to target, try PNG/JPEG (+ WebP), pick smallest
-		best = await encodeSmallest(targetWidth, targetHeight, opts.jpegQuality);
+		let best = await encodeSmallest(targetWidth, targetHeight, opts.jpegQuality);
 
 		if (best.buffer.length <= opts.maxBytes) {
-			return {
-				buffer: best.buffer,
-				mimeType: best.mimeType,
+			return resizedResult(
+				best.buffer,
+				best.mimeType,
 				originalWidth,
 				originalHeight,
-				width: finalWidth,
-				height: finalHeight,
-				wasResized: true,
-				get data() {
-					return Buffer.from(best.buffer).toBase64();
-				},
-			};
+				finalWidth,
+				finalHeight,
+				true,
+			);
 		}
 
-		// Still too large — lossy JPEG (+ WebP) ladder with decreasing quality
 		for (const quality of qualitySteps) {
 			best = await encodeLossy(targetWidth, targetHeight, quality);
-
 			if (best.buffer.length <= opts.maxBytes) {
-				return {
-					buffer: best.buffer,
-					mimeType: best.mimeType,
+				return resizedResult(
+					best.buffer,
+					best.mimeType,
 					originalWidth,
 					originalHeight,
-					width: finalWidth,
-					height: finalHeight,
-					wasResized: true,
-					get data() {
-						return Buffer.from(best.buffer).toBase64();
-					},
-				};
+					finalWidth,
+					finalHeight,
+					true,
+				);
 			}
 		}
 
-		// Still too large — reduce dimensions progressively with the lossy ladder
 		for (const scale of scaleSteps) {
 			finalWidth = Math.round(targetWidth * scale);
 			finalHeight = Math.round(targetHeight * scale);
-
-			if (finalWidth < 100 || finalHeight < 100) {
-				break;
-			}
+			if (finalWidth < 100 || finalHeight < 100) break;
 
 			for (const quality of qualitySteps) {
 				best = await encodeLossy(finalWidth, finalHeight, quality);
-
 				if (best.buffer.length <= opts.maxBytes) {
-					return {
-						buffer: best.buffer,
-						mimeType: best.mimeType,
+					return resizedResult(
+						best.buffer,
+						best.mimeType,
 						originalWidth,
 						originalHeight,
-						width: finalWidth,
-						height: finalHeight,
-						wasResized: true,
-						get data() {
-							return Buffer.from(best.buffer).toBase64();
-						},
-					};
+						finalWidth,
+						finalHeight,
+						true,
+					);
 				}
 			}
 		}
 
-		// Last resort: return smallest version we produced
-		return {
-			buffer: best.buffer,
-			mimeType: best.mimeType,
+		return resizedResult(
+			best.buffer,
+			best.mimeType,
 			originalWidth,
 			originalHeight,
-			width: finalWidth,
-			height: finalHeight,
-			wasResized: true,
-			get data() {
-				return Buffer.from(best.buffer).toBase64();
-			},
-		};
+			finalWidth,
+			finalHeight,
+			true,
+		);
 	} catch {
-		// Canonicalization above already proved decodeability and stripped
-		// metadata. If an optional resize encoder fails, the canonical image is
-		// the only safe fallback; the caller's original bytes never escape.
-		return {
-			buffer: canonical.buffer,
-			mimeType: canonical.mimeType,
-			originalWidth: canonical.width,
-			originalHeight: canonical.height,
-			width: canonical.width,
-			height: canonical.height,
-			wasResized: false,
-			get data() {
-				return canonical.data;
-			},
-		};
+		throw new Error("Image normalization failed: input is not a decodable supported image.");
 	}
+}
+
+interface InspectedImage {
+	inputBuffer: Uint8Array;
+	mimeType: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+	width: number;
+	height: number;
+}
+
+function checkedImageDimensions(width: unknown, height: unknown): { width: number; height: number } {
+	if (
+		typeof width !== "number" ||
+		typeof height !== "number" ||
+		!Number.isSafeInteger(width) ||
+		!Number.isSafeInteger(height) ||
+		width < 1 ||
+		height < 1 ||
+		width > MAX_IMAGE_INPUT_WIDTH ||
+		height > MAX_IMAGE_INPUT_HEIGHT
+	) {
+		throw new Error("invalid image dimensions");
+	}
+	const pixels = width * height;
+	if (!Number.isSafeInteger(pixels) || pixels > MAX_IMAGE_INPUT_PIXELS) {
+		throw new Error("image pixel count exceeds limit");
+	}
+	const decodedBytes = pixels * DECODED_BYTES_PER_PIXEL;
+	if (!Number.isSafeInteger(decodedBytes) || decodedBytes > MAX_IMAGE_DECODED_BYTES) {
+		throw new Error("decoded image allocation exceeds limit");
+	}
+	return { width, height };
+}
+
+async function inspectImageInput(data: string): Promise<InspectedImage> {
+	const inputBuffer = Uint8Array.fromBase64(data.trim());
+	const detected = parseImageMetadata(inputBuffer);
+	if (!detected) throw new Error("unsupported image type");
+	const trusted = checkedImageDimensions(detected.width, detected.height);
+	const native = await new Bun.Image(inputBuffer, {
+		maxPixels: MAX_IMAGE_INPUT_PIXELS,
+		autoOrient: true,
+	}).metadata();
+	const decoded = checkedImageDimensions(native.width, native.height);
+	const nativeMime = native.format === "jpeg" ? "image/jpeg" : `image/${native.format}`;
+	if (
+		nativeMime !== detected.mimeType ||
+		decoded.width !== trusted.width ||
+		decoded.height !== trusted.height
+	) {
+		throw new Error("image metadata mismatch");
+	}
+	return { inputBuffer, mimeType: detected.mimeType, ...trusted };
+}
+
+function canonicalMimeType(
+	sourceMime: InspectedImage["mimeType"],
+	excludeWebP: boolean,
+): CanonicalImage["mimeType"] {
+	if (sourceMime === "image/gif" || (sourceMime === "image/webp" && excludeWebP)) return "image/png";
+	return sourceMime;
+}
+
+async function encodeImage(
+	inputBuffer: Uint8Array,
+	mimeType: CanonicalImage["mimeType"],
+	width: number | undefined,
+	height: number | undefined,
+	quality: number,
+): Promise<Uint8Array> {
+	let pipeline = new Bun.Image(inputBuffer, {
+		maxPixels: MAX_IMAGE_INPUT_PIXELS,
+		autoOrient: true,
+	});
+	if (width !== undefined && height !== undefined) {
+		checkedImageDimensions(width, height);
+		pipeline = pipeline.resize(width, height);
+	}
+	switch (mimeType) {
+		case "image/jpeg":
+			return pipeline.jpeg({ quality }).bytes();
+		case "image/webp":
+			return pipeline.webp({ quality }).bytes();
+		case "image/png":
+			return pipeline.png().bytes();
+	}
+}
+
+function assertEncodedImage(
+	buffer: Uint8Array,
+	mimeType: CanonicalImage["mimeType"],
+	width: number,
+	height: number,
+): void {
+	const metadata = parseImageMetadata(buffer);
+	if (metadata?.mimeType !== mimeType || metadata.width !== width || metadata.height !== height) {
+		throw new Error("image encoder returned unexpected metadata");
+	}
+}
+
+function assertResizeOptions(options: Required<ImageResizeOptions>): void {
+	for (const [name, value] of [
+		["maxWidth", options.maxWidth],
+		["maxHeight", options.maxHeight],
+		["minDimension", options.minDimension],
+		["maxBytes", options.maxBytes],
+		["jpegQuality", options.jpegQuality],
+	] as const) {
+		if (!Number.isSafeInteger(value) || value < 1) throw new Error(`invalid image resize option: ${name}`);
+	}
+	if (
+		options.maxWidth > MAX_IMAGE_INPUT_WIDTH ||
+		options.maxHeight > MAX_IMAGE_INPUT_HEIGHT ||
+		options.jpegQuality > 100
+	) {
+		throw new Error("image resize option exceeds limit");
+	}
+}
+
+function targetDimensions(
+	originalWidth: number,
+	originalHeight: number,
+	maxWidth: number,
+	maxHeight: number,
+	minDimension: number,
+): { width: number; height: number } {
+	let width = originalWidth;
+	let height = originalHeight;
+	if (width > maxWidth) {
+		height = Math.max(1, Math.round((height * maxWidth) / width));
+		width = maxWidth;
+	}
+	if (height > maxHeight) {
+		width = Math.max(1, Math.round((width * maxHeight) / height));
+		height = maxHeight;
+	}
+	if (width < minDimension || height < minDimension) {
+		const shortEdge = Math.min(width, height);
+		const upscale = Math.min(minDimension / shortEdge, maxWidth / width, maxHeight / height);
+		if (upscale > 1) {
+			width = Math.round(width * upscale);
+			height = Math.round(height * upscale);
+		}
+		width = Math.min(maxWidth, Math.max(minDimension, width));
+		height = Math.min(maxHeight, Math.max(minDimension, height));
+	}
+	return checkedImageDimensions(width, height);
+}
+
+function resizedResult(
+	buffer: Uint8Array,
+	mimeType: CanonicalImage["mimeType"],
+	originalWidth: number,
+	originalHeight: number,
+	width: number,
+	height: number,
+	wasResized: boolean,
+): ResizedImage {
+	return {
+		buffer,
+		mimeType,
+		originalWidth,
+		originalHeight,
+		width,
+		height,
+		wasResized,
+		get data() {
+			return Buffer.from(buffer).toBase64();
+		},
+	};
 }
 
 /**

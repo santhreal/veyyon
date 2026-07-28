@@ -1,21 +1,46 @@
 import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
 import { type } from "arktype";
 import { toolsPrompts } from "../prompts/tools/rows";
+import {
+	MEMORY_RETAIN_MAX_BYTES,
+	MEMORY_RETAIN_MAX_ITEM_BYTES,
+	MEMORY_RETAIN_MAX_ITEMS,
+} from "../hindsight/state";
 import type { ToolSession } from ".";
 import { abortedPartway } from "./aborted-partway";
 import { throwIfAborted } from "./tool-errors";
 
 const memoryRetainSchema = type({
 	items: type({
-		content: type("string").describe("information to remember"),
-		"context?": type("string").describe("source context"),
+		content: type("string").atMostLength(MEMORY_RETAIN_MAX_ITEM_BYTES).describe("information to remember"),
+		"context?": type("string").atMostLength(MEMORY_RETAIN_MAX_ITEM_BYTES).describe("source context"),
 	})
 		.array()
 		.atLeastLength(1)
+		.atMostLength(MEMORY_RETAIN_MAX_ITEMS)
 		.describe("memories to retain"),
 });
 
 export type MemoryRetainParams = typeof memoryRetainSchema.infer;
+
+function assertMemoryRetainLimits(items: ReadonlyArray<{ content: string; context?: string }>): void {
+	if (items.length > MEMORY_RETAIN_MAX_ITEMS) {
+		throw new Error(`Retain accepts at most ${MEMORY_RETAIN_MAX_ITEMS} memories per call.`);
+	}
+	let totalBytes = 0;
+	for (const [index, item] of items.entries()) {
+		const bytes = Buffer.byteLength(item.content, "utf8") + Buffer.byteLength(item.context ?? "", "utf8");
+		if (bytes > MEMORY_RETAIN_MAX_ITEM_BYTES) {
+			throw new Error(
+				`Retain item ${index + 1} exceeds the ${MEMORY_RETAIN_MAX_ITEM_BYTES}-byte per-item limit.`,
+			);
+		}
+		totalBytes += bytes;
+		if (!Number.isSafeInteger(totalBytes) || totalBytes > MEMORY_RETAIN_MAX_BYTES) {
+			throw new Error(`Retain request exceeds the ${MEMORY_RETAIN_MAX_BYTES}-byte aggregate limit.`);
+		}
+	}
+}
 
 /** One item as the abort message names it: its context when it has one, else its opening words. */
 function itemLabel(item: { content: string; context?: string }, index: number): string {
@@ -82,6 +107,7 @@ export class MemoryRetainTool implements AgentTool<typeof memoryRetainSchema> {
 	 */
 	async execute(_id: string, params: MemoryRetainParams, signal?: AbortSignal): Promise<AgentToolResult> {
 		throwIfAborted(signal);
+		assertMemoryRetainLimits(params.items);
 		const backend = this.session.settings.get("memory.backend");
 		if (backend === "mnemopi") {
 			const state = this.session.getMnemopiSessionState?.();
@@ -123,18 +149,10 @@ export class MemoryRetainTool implements AgentTool<typeof memoryRetainSchema> {
 			throw new Error("Hindsight backend is not initialised for this session.");
 		}
 
-		// Push every item onto the session-owned queue and return immediately.
-		//
-		// Nothing is written to the store here, so a cancellation between items has nothing to
-		// report: the queue flushes later, and dropping the remaining items would be a silent
-		// partial retain. The entry check above is the whole cancellation contract for this
-		// backend.
-		// The queue flushes either when it reaches its batch threshold or when
-		// its debounce timer fires. If the eventual batch fails, the queue
-		// surfaces a UI-only warning notice — the LLM is not informed.
-		for (const item of params.items) {
-			state.enqueueRetain(item.content, item.context);
-		}
+		// Atomically enqueue the whole call. A full queue rejects before retaining
+		// any item, rather than reporting a partial success the caller cannot
+		// reconcile.
+		state.enqueueRetains(params.items);
 
 		const count = params.items.length;
 		const noun = count === 1 ? "memory" : "memories";

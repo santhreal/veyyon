@@ -302,4 +302,54 @@ describe("commit provider confidentiality boundary", () => {
 			expect(candidate).toContain(PLACEHOLDER);
 		}
 	});
+
+	/** Regression: retries used to resanitize every file body, making N files cost N² raw-content scans. */
+	it("sanitizes exactly four bounded fields per map attempt and only the current raw diff", async () => {
+		/**
+		 * Resource contract: N files with R physical attempts must cause 4NR
+		 * sanitizer calls (filename, current diff, bounded context metadata,
+		 * static system prompt), never N²R raw-diff scans.
+		 */
+		const fileCount = 4;
+		const retries = 2;
+		const files = Array.from({ length: fileCount }, (_, index) => ({
+			filename: `src/map-scale-${index}.ts`,
+			content: `RAW_CURRENT_DIFF_${index}_${"x".repeat(128 + index)}`,
+			additions: index + 1,
+			deletions: 0,
+			isBinary: false,
+		}));
+		const sanitizerInputs: string[] = [];
+		let physicalAttempts = 0;
+		vi.spyOn(ai, "completeSimple").mockImplementation(async () => {
+			physicalAttempts += 1;
+			if (physicalAttempts % retries !== 0) throw new Error("retry this physical attempt");
+			return assistantText("- bounded");
+		});
+
+		await runMapPhase({
+			model: { provider: "test", id: "map-scale-model" } as never,
+			apiKey: "key",
+			files,
+			config: { maxConcurrency: 1, maxRetries: retries, retryBackoffMs: 0 },
+			resolveObfuscateProviderText: () => text => {
+				sanitizerInputs.push(text);
+				return text;
+			},
+		});
+
+		expect(physicalAttempts).toBe(fileCount * retries);
+		expect(sanitizerInputs).toHaveLength(fileCount * retries * 4);
+		for (let attempt = 0; attempt < physicalAttempts; attempt += 1) {
+			const current = files[Math.floor(attempt / retries)]!;
+			const fields = sanitizerInputs.slice(attempt * 4, attempt * 4 + 4);
+			expect(fields[0]).toBe(current.filename);
+			expect(fields[1]).toBe(current.content);
+			expect(fields[2]).not.toContain("RAW_CURRENT_DIFF_");
+			expect(fields[3]).not.toContain("RAW_CURRENT_DIFF_");
+		}
+		for (const file of files) {
+			expect(sanitizerInputs.filter(value => value === file.content)).toHaveLength(retries);
+		}
+	});
 });

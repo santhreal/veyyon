@@ -16,6 +16,17 @@ const MAP_PHASE_TIMEOUT_MS = 120_000;
 const MAX_RETRIES = 3;
 const RETRY_BACKOFF_MS = 1000;
 
+interface ContextFileProjection {
+	filename: string;
+	additions: number;
+	deletions: number;
+	description: string;
+}
+
+type ContextProjection =
+	| { largeCommitFileCount: number; rankedFiles?: never }
+	| { largeCommitFileCount?: never; totalFileCount: number; rankedFiles: ContextFileProjection[] };
+
 export interface MapPhaseInput {
 	model: Model<Api>;
 	apiKey: ApiKey;
@@ -40,6 +51,8 @@ export async function runMapPhase({
 	resolveObfuscateProviderText,
 }: MapPhaseInput): Promise<FileObservation[]> {
 	const filtered = files.filter(file => !isExcludedFile(file.filename));
+	const contextProjection = buildContextProjection(filtered);
+	const observerSystemPrompt = prompt.render(commitPrompts["commit/file-observer-system"].text);
 	const maxFileTokens = config?.maxFileTokens ?? MAX_FILE_TOKENS;
 	const maxConcurrency = config?.maxConcurrency ?? MAX_CONCURRENCY;
 	const timeoutMs = config?.timeoutMs ?? MAP_PHASE_TIMEOUT_MS;
@@ -65,25 +78,20 @@ export async function runMapPhase({
 					completeCommitSimple(
 						model,
 						sanitize => {
-							const sanitizedFiles = filtered.map(candidate => ({
-								...candidate,
-								filename: sanitize(candidate.filename),
-								content: sanitize(candidate.content),
-							}));
-							const providerFile = sanitizedFiles[filtered.indexOf(file)];
-							if (!providerFile) throw new Error("Commit map input disappeared during provider projection");
-							const contextHeader = generateContextHeader(sanitizedFiles, providerFile.filename);
-							const truncated = truncateToTokenLimit(providerFile.content, maxFileTokens);
+							// A physical attempt touches only this file's raw payload. The
+							// bounded metadata projection was built once above, so retries
+							// never rescan unrelated file contents.
+							const providerFilename = sanitize(file.filename);
+							const truncated = truncateToTokenLimit(sanitize(file.content), maxFileTokens);
+							const contextHeader = sanitize(generateContextHeader(contextProjection, file.filename));
 							const userContent = prompt.render(commitPrompts["commit/file-observer-user"].text, {
-								filename: providerFile.filename,
+								filename: providerFilename,
 								diff: truncated,
 								context_header: contextHeader,
 							});
 							return {
-								systemPrompt: [sanitize(prompt.render(commitPrompts["commit/file-observer-system"].text))],
-								messages: [
-									{ role: "user", content: sanitize(userContent), timestamp: Date.now() },
-								],
+								systemPrompt: [sanitize(observerSystemPrompt)],
+								messages: [{ role: "user", content: userContent, timestamp: Date.now() }],
 							};
 						},
 						{
@@ -131,27 +139,37 @@ function parseObservations(message: AssistantMessage): string[] {
 	return lines.slice(0, 5);
 }
 
-function generateContextHeader(files: FileDiff[], currentFile: string): string {
-	if (files.length > 100) {
-		return `(Large commit with ${files.length} total files)`;
+function buildContextProjection(files: FileDiff[]): ContextProjection {
+	if (files.length > 100) return { largeCommitFileCount: files.length };
+
+	const rankedFiles = files
+		.map(file => ({
+			filename: file.filename,
+			additions: file.additions,
+			deletions: file.deletions,
+			description: inferFileDescription(file),
+		}))
+		.sort((a, b) => b.additions + b.deletions - (a.additions + a.deletions))
+		.slice(0, MAX_CONTEXT_FILES + 1);
+	return { totalFileCount: files.length, rankedFiles };
+}
+
+function generateContextHeader(projection: ContextProjection, currentFile: string): string {
+	if (projection.largeCommitFileCount !== undefined) {
+		return `(Large commit with ${projection.largeCommitFileCount} total files)`;
 	}
 
-	const otherFiles = files.filter(file => file.filename !== currentFile);
+	const otherFiles = projection.rankedFiles.filter(file => file.filename !== currentFile);
 	if (otherFiles.length === 0) return "";
 
-	const sorted = [...otherFiles].sort((a, b) => b.additions + b.deletions - (a.additions + a.deletions));
-	const toShow = sorted.length > MAX_CONTEXT_FILES ? sorted.slice(0, MAX_CONTEXT_FILES) : sorted;
-
+	const toShow = otherFiles.slice(0, MAX_CONTEXT_FILES);
 	const lines = ["OTHER FILES IN THIS CHANGE:"];
 	for (const file of toShow) {
 		const lineCount = file.additions + file.deletions;
-		const description = inferFileDescription(file);
-		lines.push(`- ${file.filename} (${lineCount} lines): ${description}`);
+		lines.push(`- ${file.filename} (${lineCount} lines): ${file.description}`);
 	}
-
-	if (toShow.length < sorted.length) {
-		lines.push(`[…${sorted.length - toShow.length} files elided…]`);
-	}
+	const elided = Math.max(0, projection.totalFileCount - 1 - toShow.length);
+	if (elided > 0) lines.push(`[…${elided} files elided…]`);
 
 	return lines.join("\n");
 }

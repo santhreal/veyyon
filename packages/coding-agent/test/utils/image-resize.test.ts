@@ -1,6 +1,16 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { once } from "node:events";
+import { createDeflate } from "node:zlib";
 import type { ResizedImage } from "@veyyon/coding-agent/utils/image-resize";
-import { formatDimensionNote, resizeImage } from "@veyyon/coding-agent/utils/image-resize";
+import {
+	canonicalizeImageContent,
+	formatDimensionNote,
+	MAX_IMAGE_DECODED_BYTES,
+	MAX_IMAGE_INPUT_HEIGHT,
+	MAX_IMAGE_INPUT_PIXELS,
+	MAX_IMAGE_INPUT_WIDTH,
+	resizeImage,
+} from "@veyyon/coding-agent/utils/image-resize";
 
 /**
  * formatDimensionNote is the coordinate-mapping hint appended to a downscaled image so
@@ -104,6 +114,62 @@ async function makeRedWebP(width: number, height: number): Promise<string> {
 		.webp({ quality: 90 })
 		.bytes();
 	return Buffer.from(upscaled).toBase64();
+}
+
+function pngCrc32(bytes: Uint8Array): number {
+	let crc = 0xffffffff;
+	for (const byte of bytes) {
+		crc ^= byte;
+		for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+	}
+	return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, data: Uint8Array): Buffer {
+	const payload = Buffer.concat([Buffer.from(type, "ascii"), data]);
+	const chunk = Buffer.alloc(12 + data.byteLength);
+	chunk.writeUInt32BE(data.byteLength, 0);
+	payload.copy(chunk, 4);
+	chunk.writeUInt32BE(pngCrc32(payload), chunk.length - 4);
+	return chunk;
+}
+
+async function makeCompressedMonochromePng(width: number, height: number): Promise<Buffer> {
+	// 1-bit grayscale keeps an 8192² fixture's streamed uncompressed row at
+	// 1,025 bytes instead of ever allocating a full decoded canvas.
+	const row = Buffer.alloc(1 + Math.ceil(width / 8));
+	const deflate = createDeflate({ level: 9 });
+	const compressed: Buffer[] = [];
+	deflate.on("data", chunk => compressed.push(Buffer.from(chunk)));
+	for (let y = 0; y < height; y += 1) {
+		if (!deflate.write(row)) await once(deflate, "drain");
+	}
+	deflate.end();
+	await once(deflate, "end");
+
+	const ihdr = Buffer.alloc(13);
+	ihdr.writeUInt32BE(width, 0);
+	ihdr.writeUInt32BE(height, 4);
+	ihdr[8] = 1;
+	ihdr[9] = 0;
+	return Buffer.concat([
+		Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+		pngChunk("IHDR", ihdr),
+		pngChunk("IDAT", Buffer.concat(compressed)),
+		pngChunk("IEND", Buffer.alloc(0)),
+	]);
+}
+
+function forgedPngHeader(width: number, height: number): Buffer {
+	const png = Buffer.alloc(33);
+	Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png, 0);
+	png.writeUInt32BE(13, 8);
+	png.write("IHDR", 12, "ascii");
+	png.writeUInt32BE(width, 16);
+	png.writeUInt32BE(height, 20);
+	png[24] = 8;
+	png[25] = 2;
+	return png;
 }
 
 // Fixtures are synthesized once and shared read-only — `resizeImage` never mutates
@@ -213,6 +279,55 @@ describe("resizeImage defaults", () => {
 	});
 });
 
+
+describe("image decoded-allocation boundary", () => {
+	/** Regression: a tiny compressed 8192² PNG previously allocated and re-encoded the full canvas. */
+	it("rejects a valid compressed 8192² PNG above the pixel ceiling before normalization", async () => {
+		/**
+		 * The fixture is a real PNG, not a forged header: Bun can probe it when
+		 * given an explicit 8192² native limit. resizeImage must reject it under
+		 * the lower application ceiling without producing a decoded canvas.
+		 */
+		const width = 8192;
+		const height = 8192;
+		const png = await makeCompressedMonochromePng(width, height);
+		expect(png.byteLength).toBeLessThan(100_000);
+		expect(await new Bun.Image(png, { maxPixels: width * height }).metadata()).toMatchObject({ width, height });
+		expect(MAX_IMAGE_INPUT_PIXELS).toBeLessThan(width * height);
+
+		await expect(
+			resizeImage({ type: "image", data: png.toBase64(), mimeType: "image/png" }),
+		).rejects.toThrow("Image normalization failed");
+	});
+
+	/** Negative control: the allocation guard must not reject or relabel ordinary supported images. */
+	it("canonicalizes an ordinary image from detected bytes and preserves its dimensions", async () => {
+		const canonical = await canonicalizeImageContent({ data: smallPng });
+		expect(canonical.mimeType).toBe("image/png");
+		expect(canonical.width).toBe(200);
+		expect(canonical.height).toBe(200);
+		expect(await new Bun.Image(canonical.buffer).metadata()).toMatchObject({
+			format: "png",
+			width: 200,
+			height: 200,
+		});
+	});
+
+	/** Regression: forged dimensions could overflow products or exceed native decoded-allocation bounds. */
+	it("fails closed on dimension, pixel-product, and decoded-byte ceilings", async () => {
+		const cases = [
+			forgedPngHeader(MAX_IMAGE_INPUT_WIDTH + 1, 1),
+			forgedPngHeader(1, MAX_IMAGE_INPUT_HEIGHT + 1),
+			forgedPngHeader(8000, Math.floor(MAX_IMAGE_INPUT_PIXELS / 8000) + 1),
+			forgedPngHeader(8000, Math.floor(MAX_IMAGE_DECODED_BYTES / 4 / 8000) + 1),
+		];
+		for (const png of cases) {
+			await expect(
+				resizeImage({ type: "image", data: png.toBase64(), mimeType: "image/png" }),
+			).rejects.toThrow("Image normalization failed");
+		}
+	});
+});
 describe("resizeImage decode boundary", () => {
 	it("rejects a forged PNG header instead of forwarding undecoded bytes", async () => {
 		// Header-only fallback used to treat IHDR dimensions as proof of an image,
