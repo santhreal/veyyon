@@ -28,7 +28,10 @@ import { dlopen, FFIType, ptr } from "bun:ffi";
  * with {@link getProcessStartIdentity}; a platform that cannot prove process
  * incarnation must fail closed rather than reap from a merely-live PID.
  */
+const MAX_PROCESS_ID = 0x7fffffff;
+
 export function isProcessAlive(pid: number): boolean {
+	if (!Number.isSafeInteger(pid) || pid <= 0 || pid > MAX_PROCESS_ID) return false;
 	try {
 		process.kill(pid, 0);
 		return true;
@@ -176,13 +179,17 @@ const DEFAULT_PROCESS_IDENTITY_DEPENDENCIES: ProcessIdentityDependencies = {
 function getLinuxProcessStartIdentity(pid: number, dependencies: ProcessIdentityDependencies): string | null {
 	const bootId = dependencies.readBoundedTextFile("/proc/sys/kernel/random/boot_id");
 	const stat = dependencies.readBoundedTextFile(`/proc/${pid}/stat`);
-	if (!bootId || !/^[0-9a-f-]{36}$/i.test(bootId) || !stat) return null;
+	if (!bootId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bootId) || !stat) {
+		return null;
+	}
 
 	// `comm` is parenthesized and may itself contain spaces or `)`, so split only
 	// after its final closing parenthesis. The remainder starts at proc field 3;
-	// field 22 (`starttime`) is therefore index 19.
+	// field 22 (`starttime`) is therefore index 19. Confirming field 1 prevents a
+	// malformed or substituted record from becoming an identity for another PID.
+	if (!stat.startsWith(`${pid} (`)) return null;
 	const commandEnd = stat.lastIndexOf(")");
-	if (commandEnd < 2 || stat[commandEnd + 1] !== " ") return null;
+	if (commandEnd < `${pid} (`.length || stat[commandEnd + 1] !== " ") return null;
 	const fields = stat.slice(commandEnd + 2).split(/\s+/);
 	const startTime = fields[19];
 	if (!startTime || !/^\d+$/.test(startTime)) return null;
@@ -192,17 +199,31 @@ function getLinuxProcessStartIdentity(pid: number, dependencies: ProcessIdentity
 function getDarwinProcessStartIdentity(pid: number, dependencies: ProcessIdentityDependencies): string | null {
 	const bootTime = dependencies.querySystem("/usr/sbin/sysctl", ["-n", "kern.boottime"]);
 	const processStart = dependencies.queryDarwinProcessStart(pid);
-	if (!bootTime || !processStart || !/^\d+\.\d+$/.test(processStart)) return null;
+	if (!bootTime || !processStart) return null;
+
 	const bootMatch = /\bsec\s*=\s*(\d+),\s*usec\s*=\s*(\d+)/.exec(bootTime);
-	if (!bootMatch) return null;
-	return `darwin:${bootMatch[1]}.${bootMatch[2]}:${processStart}`;
+	const processMatch = /^(\d+)\.(\d+)$/.exec(processStart);
+	if (!bootMatch || !processMatch) return null;
+	const bootSeconds = BigInt(bootMatch[1]!);
+	const bootMicroseconds = BigInt(bootMatch[2]!);
+	const processSeconds = BigInt(processMatch[1]!);
+	const processMicroseconds = BigInt(processMatch[2]!);
+	if (
+		bootSeconds < 1n ||
+		processSeconds < 1n ||
+		bootMicroseconds >= 1_000_000n ||
+		processMicroseconds >= 1_000_000n
+	) {
+		return null;
+	}
+	return `darwin:${bootSeconds}.${bootMicroseconds}:${processSeconds}.${processMicroseconds}`;
 }
 
 function getWindowsProcessStartIdentity(pid: number, dependencies: ProcessIdentityDependencies): string | null {
 	const processCreationFileTime = dependencies.queryWindowsProcessStart(pid);
-	return processCreationFileTime && /^\d{10,20}$/.test(processCreationFileTime)
-		? `win32:${processCreationFileTime}`
-		: null;
+	if (!processCreationFileTime || !/^\d{1,20}$/.test(processCreationFileTime)) return null;
+	const fileTime = BigInt(processCreationFileTime);
+	return fileTime > 0n && fileTime <= 0xffffffffffffffffn ? `win32:${fileTime}` : null;
 }
 
 /**
@@ -219,16 +240,20 @@ export function getProcessStartIdentity(
 	pid: number,
 	dependencies: ProcessIdentityDependencies = DEFAULT_PROCESS_IDENTITY_DEPENDENCIES,
 ): string | null {
-	if (!Number.isSafeInteger(pid) || pid <= 0 || pid > 0x7fffffff) return null;
-	switch (dependencies.platform) {
-		case "linux":
-			return getLinuxProcessStartIdentity(pid, dependencies);
-		case "darwin":
-			return getDarwinProcessStartIdentity(pid, dependencies);
-		case "win32":
-			return getWindowsProcessStartIdentity(pid, dependencies);
-		default:
-			return null;
+	if (!Number.isSafeInteger(pid) || pid <= 0 || pid > MAX_PROCESS_ID) return null;
+	try {
+		switch (dependencies.platform) {
+			case "linux":
+				return getLinuxProcessStartIdentity(pid, dependencies);
+			case "darwin":
+				return getDarwinProcessStartIdentity(pid, dependencies);
+			case "win32":
+				return getWindowsProcessStartIdentity(pid, dependencies);
+			default:
+				return null;
+		}
+	} catch {
+		return null;
 	}
 }
 

@@ -74,9 +74,132 @@ describe("isProcessAlive", () => {
 			process.kill = kill;
 		}
 	});
+	/** Invalid scalar and process-group IDs must not be mistaken for live individual processes. */
+	test("rejects invalid and process-group pids without probing the operating system", () => {
+		const kill = process.kill;
+		const probed: number[] = [];
+		try {
+			process.kill = pid => {
+				probed.push(pid);
+				return true;
+			};
+			for (const pid of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 0x80000000]) {
+				expect(isProcessAlive(pid)).toBe(false);
+				expect(getProcessStartIdentity(pid)).toBeNull();
+				expect(isProcessInstanceAlive(pid, null)).toBe(false);
+			}
+			expect(probed).toEqual([]);
+		} finally {
+			process.kill = kill;
+		}
+	});
+
 });
 
 describe("cross-platform process incarnation identity", () => {
+	/** Linux must parse field 22 after the comm terminator, even when comm contains spaces and `)`. */
+	test("linux proc stat parsing preserves the exact boot and start-tick identity", () => {
+		const bootId = "01234567-89ab-cdef-0123-456789abcdef";
+		const fields = ["S", ...Array.from({ length: 18 }, () => "0"), "987654"];
+		const dependencies: ProcessIdentityDependencies = {
+			platform: "linux",
+			readBoundedTextFile: filePath => {
+				if (filePath === "/proc/sys/kernel/random/boot_id") return bootId;
+				if (filePath === "/proc/4242/stat") return `4242 (worker ) name) ${fields.join(" ")}`;
+				return null;
+			},
+			querySystem: () => null,
+			queryDarwinProcessStart: () => null,
+			queryWindowsProcessStart: () => null,
+		};
+
+		expect(getProcessStartIdentity(4242, dependencies)).toBe(
+			"linux:01234567-89ab-cdef-0123-456789abcdef:987654",
+		);
+	});
+
+	/** A malformed boot UUID or proc record must remain unverifiable rather than identify the wrong PID. */
+	test("linux rejects malformed and substituted proc identity records", () => {
+		let bootId = "01234567-89ab-cdef-0123-456789abcdef";
+		let stat = `9999 (other) ${["S", ...Array.from({ length: 18 }, () => "0"), "123"].join(" ")}`;
+		const dependencies: ProcessIdentityDependencies = {
+			platform: "linux",
+			readBoundedTextFile: filePath =>
+				filePath === "/proc/sys/kernel/random/boot_id" ? bootId : stat,
+			querySystem: () => null,
+			queryDarwinProcessStart: () => null,
+			queryWindowsProcessStart: () => null,
+		};
+
+		expect(getProcessStartIdentity(4242, dependencies)).toBeNull();
+		stat = `4242 (owner) ${["S", ...Array.from({ length: 18 }, () => "0"), "123"].join(" ")}`;
+		bootId = "0123456789abcdef0123456789abcdef0123";
+		expect(getProcessStartIdentity(4242, dependencies)).toBeNull();
+	});
+
+	/** Out-of-range timeval microseconds must not create a plausible macOS process identity. */
+	test("darwin rejects malformed timevals and canonicalizes numeric fields", () => {
+		let bootTime = "{ sec = 001670000000, usec = 000123 }";
+		let processStart = "001672628645.000456";
+		const dependencies: ProcessIdentityDependencies = {
+			platform: "darwin",
+			readBoundedTextFile: () => null,
+			querySystem: () => bootTime,
+			queryDarwinProcessStart: () => processStart,
+			queryWindowsProcessStart: () => null,
+		};
+
+		expect(getProcessStartIdentity(4242, dependencies)).toBe(
+			"darwin:1670000000.123:1672628645.456",
+		);
+		processStart = "1672628645.1000000";
+		expect(getProcessStartIdentity(4242, dependencies)).toBeNull();
+		processStart = "1672628645.123456";
+		bootTime = "{ sec = 1670000000, usec = 1000000 }";
+		expect(getProcessStartIdentity(4242, dependencies)).toBeNull();
+	});
+
+	/** Windows FILETIME parsing must accept the uint64 domain but reject overflow and zero sentinels. */
+	test("win32 validates the complete unsigned FILETIME boundary", () => {
+		let processCreation = "00000000000000000001";
+		const dependencies: ProcessIdentityDependencies = {
+			platform: "win32",
+			readBoundedTextFile: () => null,
+			querySystem: () => null,
+			queryDarwinProcessStart: () => null,
+			queryWindowsProcessStart: () => processCreation,
+		};
+
+		expect(getProcessStartIdentity(5151, dependencies)).toBe("win32:1");
+		processCreation = "18446744073709551615";
+		expect(getProcessStartIdentity(5151, dependencies)).toBe("win32:18446744073709551615");
+		processCreation = "18446744073709551616";
+		expect(getProcessStartIdentity(5151, dependencies)).toBeNull();
+		processCreation = "0";
+		expect(getProcessStartIdentity(5151, dependencies)).toBeNull();
+	});
+
+	/** Identity I/O failures must fail closed so recovery cannot steal from a possibly-live owner. */
+	test("dependency errors remain unverifiable and preserve a live process instance", () => {
+		const dependencies: ProcessIdentityDependencies = {
+			platform: "linux",
+			readBoundedTextFile: () => {
+				throw new Error("procfs became unavailable");
+			},
+			querySystem: () => null,
+			queryDarwinProcessStart: () => null,
+			queryWindowsProcessStart: () => null,
+		};
+		const kill = process.kill;
+		try {
+			process.kill = () => true;
+			expect(getProcessStartIdentity(4242, dependencies)).toBeNull();
+			expect(isProcessInstanceAlive(4242, "linux:owner", dependencies)).toBe(true);
+		} finally {
+			process.kill = kill;
+		}
+	});
+
 	/** macOS keeps a live owner when boot/start match, but exposes PID reuse for orphan recovery. */
 	test("darwin boot and process-start queries distinguish a reused live PID", () => {
 		let processStart = "1672628645.123456";
