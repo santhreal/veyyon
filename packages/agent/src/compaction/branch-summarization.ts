@@ -156,7 +156,9 @@ export function collectEntriesForBranchSummary(
 	const entries: SessionEntry[] = [];
 	let current: string | null = oldLeafId;
 
-	while (current && current !== commonAncestorId) {
+	const visited = new Set<string>();
+	while (current && current !== commonAncestorId && !visited.has(current)) {
+		visited.add(current);
 		const entry = session.getEntry(current);
 		if (!entry) break;
 		entries.push(entry);
@@ -389,6 +391,9 @@ function prepareBranchEntriesForProvider(
 	// This ensures we capture cumulative file tracking from nested branch summaries
 	// Only extract from pi-generated summaries (fromExtension !== true), not extension-generated ones
 	for (const entry of entries) {
+		if (entry.type === "message") {
+			extractFileOpsFromMessage(entry.message, fileOps);
+		}
 		if (entry.type === "branch_summary" && !entry.fromExtension && entry.details) {
 			const details = entry.details as BranchSummaryDetails;
 			if (Array.isArray(details.readFiles)) {
@@ -409,10 +414,8 @@ function prepareBranchEntriesForProvider(
 		const rawMessage = getMessageFromEntry(entry);
 		if (!rawMessage) continue;
 
-		// File tracking is internal session state and must retain raw paths. The
-		// separately cloned provider message is transformed before any lossy
-		// token estimation, truncation, conversion, or serialization.
-		extractFileOpsFromMessage(rawMessage, fileOps);
+		// File tracking above retains raw paths. Clone and transform only the
+		// separately provider-bound message before lossy processing.
 		const message = transform ? transformProviderValue(rawMessage, transform) : rawMessage;
 		const tokens = estimateBranchSummaryTokens(message);
 
@@ -536,13 +539,15 @@ export async function generateBranchSummary(
 		return { error: response.errorMessage || "Summarization failed" };
 	}
 
-	let summary = response.content
-		.filter((c): c is { type: "text"; text: string } => c.type === "text")
+	const generatedSummary = response.content
+		.filter((c): c is { type: "text"; text: string } => c.type === "text" && typeof c.text === "string")
 		.map(c => c.text)
 		.join("\n");
 
-	// Prepend preamble to provide context about the branch summary
-	summary = BRANCH_SUMMARY_PREAMBLE + summary;
+	// A provider can successfully stop without emitting text. Treat whitespace
+	// the same way and do not let the non-empty preamble mask the fallback.
+	let summary =
+		generatedSummary.trim().length > 0 ? BRANCH_SUMMARY_PREAMBLE + generatedSummary : "No summary generated";
 
 	// Compute file lists and append to summary
 	const { readFiles, modifiedFiles } = computeFileLists(fileOps);

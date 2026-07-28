@@ -4,6 +4,9 @@
 
 ### Changed
 
+- `AgentOptions.pruneToolDescriptions` accepts a per-model resolver as well as the existing boolean. The agent resolves it for main and side requests, so a host can move descriptors between the prompt and native schemas when the active model changes without reconstructing the agent.
+- `compaction/compaction.ts` takes `Effort` from `@veyyon/catalog/effort` and `withAuth` from `@veyyon/ai/auth-retry`, the modules that declare them, so its `@veyyon/ai` import is type-only and the file carries no runtime edge to the barrel at all.
+
 - The agent loop and the `Agent` class name the modules that declare the functions they call rather than the `@veyyon/ai` entry point, which re-exports the model catalogue, every provider and the usage backends. Both stream, so both reach the streaming engine either way; what changed is that ten other names stopped arriving with the whole package attached. `agent-loop.ts` went from 378 modules to 321 and `agent.ts` from 380 to 323, and `compaction/utils.ts` from 198 to 164 by taking the dialect factory from its own module instead of the dialect barrel.
 
 - Importing a span attribute no longer imports a model provider. `telemetry.ts` is span vocabulary, and it is used across this package by code that never calls a model, but it also held `instrumentedCompleteSimple`, the one helper in it that runs a completion. That helper names the streaming engine, so an attribute constant cost the provider stack, the model catalogue and the error taxonomy: 281 of the file's 366 modules. The helper moved to `instrumented-complete.ts` and the remaining barrel imports were repointed at their owners, taking `telemetry.ts` from 366 modules to 9 and `compaction/branch-summarization.ts` from 394 to 333. `instrumentedCompleteSimple` is still exported under the same name from the package entry point, which is where callers already took it from.
@@ -17,9 +20,14 @@
 
 ### Fixed
 
+- Compaction and branch summaries now enter the provider request as agent-owned developer context,
+  not as synthetic user turns. Their persisted `compactionSummary` and `branchSummary` roles remain
+  unchanged, and their context templates explicitly forbid echoing the private `<summary>` delimiter.
+
 - A turn that ends in an error builds its message with the shared `errorMessage` helper. The two tail branches were that helper written out by hand, and the local `const errorMessage` holding the result shadowed the import, so the hand-rolled copy was the only version reachable in that scope. The local is named `failureMessage` now.
 
 - Compaction now protects hook output, memory context, turn prefixes, long and short summaries, local fallbacks, and remote summarizer bodies at the final provider boundary. Each physical attempt resolves the current secret transform after credential refresh, so an authentication retry cannot reuse text prepared with a stale runtime. Opaque provider replay state keeps its exact identity and is rejected rather than rewritten if it contains a live credential.
+
 - Fixed compaction doing nothing when the newest turn alone exceeded the keep-recent budget. One very large tool result at the end of a session was enough: the cut-point search found no boundary at or after the entry that blew the budget and fell back to keeping the whole session, so compaction reported nothing to do while the context meter sat at the ceiling. It now cuts to the newest valid boundary, which never separates a tool call from its result.
 - Fixed images in a user message counting as zero tokens. Every other message role already counted them, so a session of pasted screenshots under-reported its own size to the compaction trigger, the pruning budgets, and the context meter.
 

@@ -290,6 +290,29 @@ describe("collectEntriesForBranchSummary", () => {
 		expect(commonAncestorId).toBeNull();
 		expect(entries.map(e => e.id)).toEqual(["X"]);
 	});
+
+	/**
+	 * Prevents malformed parent cycles from repeatedly returning the same entry
+	 * forever when a branch no longer reaches its advertised root.
+	 */
+	test("terminates malformed parent cycles without duplicating entries", () => {
+		const cyclic = node("X", "X");
+		let reads = 0;
+		const session: ReadonlySessionManager = {
+			getBranch: leafId => (leafId === "X" ? [cyclic] : [node("target", null)]),
+			getEntry: id => {
+				reads += 1;
+				if (reads > 1) throw new Error(`re-read cyclic entry ${id}`);
+				return id === "X" ? cyclic : undefined;
+			},
+		};
+
+		const result = collectEntriesForBranchSummary(session, "X", "target");
+
+		expect(result.commonAncestorId).toBeNull();
+		expect(result.entries.map(entry => entry.id)).toEqual(["X"]);
+		expect(reads).toBe(1);
+	});
 });
 
 describe("prepareBranchEntries entry conversion", () => {
@@ -371,6 +394,43 @@ describe("prepareBranchEntries entry conversion", () => {
 		expect(fileOps.edited.has("src/skip-edit.ts")).toBe(false);
 	});
 
+	/**
+	 * Prevents an over-budget recent message from hiding file operations that
+	 * occurred earlier on the abandoned branch and are still needed in details.
+	 */
+	test("tracks file operations from entries excluded by the provider token budget", () => {
+		const entries: SessionEntry[] = [
+			{
+				type: "message",
+				id: "assistant-old",
+				parentId: null,
+				timestamp: new Date(0).toISOString(),
+				message: {
+					role: "assistant",
+					content: [{ type: "toolCall", id: "call-read", name: "read", arguments: { path: "src/older.ts:5-8" } }],
+					api: "mock",
+					provider: "mock",
+					model: "mock-model",
+					usage: ZERO_USAGE,
+					stopReason: "toolUse",
+					timestamp: 0,
+				},
+			},
+			{
+				type: "message",
+				id: "user-new",
+				parentId: "assistant-old",
+				timestamp: new Date(1).toISOString(),
+				message: { role: "user", content: "newest context ".repeat(1000), timestamp: 1 },
+			},
+		];
+
+		const { messages, fileOps } = prepareBranchEntries(entries, 10);
+
+		expect(messages).toEqual([]);
+		expect([...fileOps.read]).toEqual(["src/older.ts"]);
+	});
+
 	test("force-fits an over-budget summary entry when the log is still nearly empty", () => {
 		const entries: SessionEntry[] = [
 			{
@@ -426,6 +486,20 @@ describe("generateBranchSummary early returns", () => {
 
 	test("reports no content when there are no summarizable entries", async () => {
 		expect(await generateBranchSummary([], baseOptions)).toEqual({ summary: "No content to summarize" });
+	});
+
+	/**
+	 * Prevents the fixed branch preamble from hiding a successful provider
+	 * response that contains no usable summary text.
+	 */
+	test("maps an empty or whitespace-only provider response to the explicit fallback", async () => {
+		for (const text of ["", " \n\t "]) {
+			const result = await generateBranchSummary(oneUserEntry, {
+				...baseOptions,
+				completeImpl: async () => assistant({ content: [{ type: "text", text }] }),
+			});
+			expect(result).toEqual({ summary: "No summary generated", readFiles: [], modifiedFiles: [] });
+		}
 	});
 
 	test("surfaces an aborted summarization", async () => {

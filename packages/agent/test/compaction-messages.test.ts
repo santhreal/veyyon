@@ -34,6 +34,7 @@ describe("renderBranchSummaryContext", () => {
 		const rendered = renderBranchSummaryContext("we tried the async path and reverted");
 		expect(rendered).toContain("summary of a branch that this conversation came back from");
 		expect(rendered).toContain("<summary>\nwe tried the async path and reverted\n</summary>");
+		expect(rendered).toContain("NEVER reproduce them in a response");
 	});
 });
 
@@ -42,6 +43,7 @@ describe("renderCompactionSummaryContext", () => {
 		const rendered = renderCompactionSummaryContext("prior model outlined the fix");
 		expect(rendered).toContain("You MUST build on the work already done and NEVER duplicate it");
 		expect(rendered).toContain("<summary>\nprior model outlined the fix\n</summary>");
+		expect(rendered).toContain("NEVER reproduce them in a response");
 	});
 });
 
@@ -130,11 +132,11 @@ describe("convertMessageToLlm: compaction roles", () => {
 		});
 	});
 
-	it("renders a branchSummary into an agent-attributed user message", () => {
+	it("renders a branchSummary into an agent-attributed developer message", () => {
 		const converted = convertMessageToLlm(
 			agentMessage({ role: "branchSummary", summary: "the branch", fromId: "m1", timestamp: 4000 }),
 		);
-		expect(converted?.role).toBe("user");
+		expect(converted?.role).toBe("developer");
 		expect(attributionOf(converted)).toBe("agent");
 		expect(converted?.timestamp).toBe(4000);
 		const [block] = converted!.content as TextContent[];
@@ -146,7 +148,7 @@ describe("convertMessageToLlm: compaction roles", () => {
 		const converted = convertMessageToLlm(
 			agentMessage({ role: "compactionSummary", summary: "prior recap", tokensBefore: 10, timestamp: 5000 }),
 		);
-		expect(converted?.role).toBe("user");
+		expect(converted?.role).toBe("developer");
 		expect(attributionOf(converted)).toBe("agent");
 		const content = converted?.content as Array<TextContent | ImageContent>;
 		expect(content).toHaveLength(1);
@@ -242,7 +244,7 @@ describe("defaultConvertToLlm", () => {
 		const converted = defaultConvertToLlm(messages);
 		expect(converted).toHaveLength(2);
 		expect(converted[0]!.role).toBe("user");
-		expect(converted[1]!.role).toBe("user");
+		expect(converted[1]!.role).toBe("developer");
 		expect(attributionOf(converted[1])).toBe("agent");
 	});
 });

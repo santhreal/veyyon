@@ -27,6 +27,9 @@ import {
 	wrapInbandToolStream,
 } from "@veyyon/ai/dialect";
 import * as AIError from "@veyyon/ai/error";
+// The deep path, not the package entry point: this is one string beside the type it
+// fills in, and the entry point re-exports the whole of `@veyyon/ai`.
+import { EMPTY_ERROR_TOOL_RESULT_TEXT } from "@veyyon/ai/types";
 import {
 	captureAssistantTurnMetrics,
 	captureAssistantTurnRequest,
@@ -285,7 +288,6 @@ function snapshotAssistantMessageEvent(
  * (missing `content` array → crash on reload). We coerce at the single boundary where untyped
  * results enter the agent loop, so every downstream consumer can rely on the type.
  */
-const EMPTY_ERROR_TOOL_RESULT_TEXT = "Tool failed with no output.";
 
 function hasSubstantiveToolResultContent(content: AgentToolResult["content"]): boolean {
 	for (const block of content) {
