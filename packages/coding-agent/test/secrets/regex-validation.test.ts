@@ -103,6 +103,23 @@ describe("bounded catastrophic-backtracking defense", () => {
 		expect(() => compileSecretRegex(pattern)).toThrow(/catastrophic backtracking|cannot be proven safe/);
 	});
 
+	/**
+	 * Whitespace literals overlap `\s`; both a space and a tab must be recognized structurally so
+	 * compilation refuses the ambiguous adjacent repetitions without ever executing the pattern.
+	 */
+	it.each(["\\s+ +X", "\\s+\t+X"])("refuses whitespace class/literal overlap in %s", pattern => {
+		expect(() => compileSecretRegex(pattern)).toThrow(/concatenated variable quantifiers/i);
+	});
+
+	/**
+	 * Ignore-case changes whether differently-cased literal atoms overlap. Case-sensitive input is
+	 * disjoint, while the same source under `i` is refused during compilation.
+	 */
+	it("accounts for ignore-case when comparing adjacent literal repetitions", () => {
+		expect(() => compileSecretRegex("a+A+X")).not.toThrow();
+		expect(() => compileSecretRegex("a+A+X", "i")).toThrow(/concatenated variable quantifiers/i);
+	});
+
 	/** Backreferences have non-local width and are conservatively outside the validator's safe subset. */
 	it("refuses a backreference whose backtracking cannot be bounded structurally", () => {
 		expect(() => compileSecretRegex("([A-Za-z]+)\\1")).toThrow(/backreferences cannot be proven safe/);
