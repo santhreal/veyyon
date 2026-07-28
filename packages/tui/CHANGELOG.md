@@ -2,7 +2,72 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Transcript Markdown now treats `<summary>...</summary>` as a presentation wrapper and renders
+  only its body. Context summaries no longer expose their internal boundary tags after streaming
+  updates or transcript redraws; fenced code still shows literal tags.
+
+- `visibleWidth` no longer charges a tab that lives inside an OSC sequence. Tabs were counted over
+  the raw string while the width came from the string with OSC sequences removed, so a tab in a
+  hyperlink's target or in a window-title OSC was charged a full tab stop for text the terminal
+  never draws. A tab inside an OSC 66 text-sizing payload now scales with its span, like every
+  other cell in it, instead of being charged once at one tab stop no matter the scale.
+
+- OSC 66 metadata is read as a run of digits or not at all, which is the rule the Rust side has
+  always used. `Number.parseInt` took a numeric prefix, a leading sign and leading whitespace, so
+  `s=2x`, `w=+5` and `w= 5` were numbers here and malformed there. That one over-measured: the
+  native left a two-column line whole inside a four-column budget and the compositor padded it to
+  five, which is a line wider than the terminal.
+
+- A stripped OSC sequence leaves a zero-width `ESC \` behind rather than being deleted. Deleting it
+  joined the text on either side, and the native treats an escape as a grapheme break, so the join
+  could invent a cluster: a digit, a span, and a bare keycap combiner measured two cells here and
+  one natively. The pattern that adds an OSC 66 span back also reads a sequence the same way the
+  stripper does now, so a span cannot be stripped as one sequence and added back as a longer one.
+
+  Together these close the OSC 66 half of the two-width-oracle divergence. Well-formed spans, and
+  OSC sequences carrying tabs, join the fuzz suite's agreed surface. Malformed spans, meaning an
+  escape in the payload or no terminator, still differ, in the direction that clips a span rather
+  than overflowing a line; `visible-width-osc66-spans.test.ts` pins that as an open disagreement.
+
 ### Changed
+
+- `tui.input.copy` is removed from the keybinding table. The editor returns early on `ctrl+c` so the
+  app-level interrupt keeps working, and its own comment says it has no copy implementation, so the
+  binding only ever advertised a key that copies nothing and a remap that does nothing. The composer
+  still copies through `alt+shift+l` for the current line and `alt+shift+c` for the whole prompt.
+
+- `reopenBackgroundAfterResets` in `src/utils.ts` is the one owner of "keep a painted background
+  alive across the content's own resets". Three surfaces painted a ground under content they do
+  not control (the editor's quiet card, the setup wizard's canvas, the coding agent's output
+  block) and each re-emitted its background after inner resets differently: one handled
+  `\x1b[0m` and `\x1b[49m`, one handled only `\x1b[0m`, one handled both but dropped the
+  `\x1b[49m`, and none handled `\x1b[m`, the parameterless reset that means the same thing. Every
+  gap was a hole in that surface's ground from the reset to the end of the line, visible in one
+  surface and not the others.
+
+- Nine more inline copies of the reset bytes now import them. `\x1b[0m`, `\x1b[39m`, `\x1b[49m`
+  and `\x1b[22m` were written out again in the welcome screen, the theme colour resolver, the user
+  message renderer, the edit renderer and the status line, under names like `reset`,
+  `TRANSPARENT_BG_ANSI` and `keywordReset` or with no name at all. The ownership suite's ratchet
+  was keyed on the ELEVEN RETIRED NAMES, so it held those eleven down and let a twelfth copy under
+  a twelfth name straight through, which is how nine accumulated. It is keyed on the bytes now,
+  which cannot be evaded by naming, and it reads code lines only so the doc comments that explain
+  these constants stay writable.
+
+- `src/ansi.ts` owns the SGR sequence PATTERN and the parameterless reset `\x1b[m`. The pattern
+  `\x1b\[[0-9;:]*m` was written out four times under four names across this package and
+  `@veyyon/coding-agent`, and the fourth had already drifted: it spelled the parameter class `[0-9;]`
+  with no colon, so a truecolor SGR written with colon subparameters (`ESC [ 38:2:255:0:0 m`, which
+  libvte and several test runners emit) did not match at all and the terminal row being re-rendered
+  lost its colour. Callers take a fresh `RegExp` from `sgrSequence(flags)` rather than sharing one
+  object, because the four need `g`, `g`, `y` and `g` and a global or sticky regex carries `lastIndex`
+  between uses. Eleven more sites wrote an SGR strip inline, two of them in shipped code; those now
+  call `stripAnsi` from `@veyyon/utils`, which owns the full CSI and OSC grammar and is pinned against
+  its Rust twin, so a hyperlink or a private-mode sequence no longer counts as visible text. The class
+  stays narrower than that general grammar on purpose: `?` `<` `=` `>` are parameter bytes, and an
+  `ESC [ ?25 m` is not a colour change.
 
 - The desktop notifier and the OSC 99 application field read `APP_DISPLAY_NAME` from `@veyyon/utils/app-identity` instead of each declaring the product's name.
 
@@ -17,6 +82,38 @@
 - Every `@veyyon/utils` helper this package uses comes from the module that owns it: `$env`, `$flag`, `isBunTestRuntime` and `isTerminalHeadless` from `@veyyon/utils/env`, `getProjectDir` and `getDebugLogPath` from `/dirs`, `clamp` and friends from `/math`, the loop-phase trio from `/loop-phase`, `errorMessage` from `/type-guards`, `logger` and `postmortem` as namespaces from their own modules, and six more. Eleven files each took one or two names and paid 82 modules for them, so the barrel was on this package's graph no matter which component you imported. `@veyyon/tui`'s own barrel is 70 modules instead of 119, which every consumer of a TUI component pays.
 
 ### Fixed
+
+- A hostile image can no longer abort the process through the SIXEL encoder. `calculateImageFit`
+  clamps an image to 4096 terminal CELLS, and the SIXEL path multiplies cells by the cell's pixel
+  size before handing the product to the native encoder, which resizes to exactly those dimensions
+  and converts to RGBA. At the cell ceiling on an ordinary 10x20 cell that is 40960x81920 pixels, a
+  13 GB allocation inside Rust, and a Rust allocation failure aborts rather than throwing, so the
+  surrounding `try/catch` never sees it. Both the target and the source are now bounded before the
+  call, at 16777216 pixels: the target fails in the resize, and a small file whose header claims
+  gigapixels fails earlier, in the decode, before any resize could shrink it. The ceiling is four
+  times a 4K display, so no real image reaches it; past it the image is not drawn and the caller
+  falls back to the textual representation, which is what an encode failure already produced.
+
+- `visibleWidth` no longer measures a span wider than the width `truncateToWidth` cut it to, for the
+  largest class of disagreement between the two: zero-width marks. `Bun.stringWidth` charges a cell
+  for five enclosing marks (U+0488, U+0489, U+A670..U+A672), widens a cluster to two cells for any
+  U+20E3 when a keycap is specifically base + U+FE0F + U+20E3, and charges two for a U+FE0F that has
+  no visible base in front of it. It also deletes an escape sequence and measures the two sides as
+  one cluster, where the native engine treats the escape as a grapheme break, so `"9\x1b[0m\ufe0f\u20e3"`
+  was two cells here and one there. Truncation runs on the native engine and this measures the
+  result, so each disagreement meant a caller that sized a viewport by the cut wrote a cell past the
+  last column. Twenty-one of the twenty-eight measured divergences are gone; the seven that remain
+  are bare escapes and OSC 66 spans, which need the native side changed. Real keycaps stay two cells
+  wide, which is what every terminal renders and what a category-wide rule would have broken.
+
+- `visibleWidth` no longer charges cells for escape sequences that draw nothing. `Bun.stringWidth`
+  recognises CSI and OSC and nothing else, so a two-byte `ESC m`, a character-set designator like
+  `ESC ( B`, and a DCS, SOS, PM or APC string sequence all reached the width tables as text: the
+  string sequences were charged their entire payload. The native engine strips all of them and so
+  does every terminal, which made each one a disagreement between the oracle that cuts a span and the
+  oracle that measures it. Eleven of the nineteen escape-class disagreements are closed; the five that
+  remain are unterminated introducers such as `ESC [3`, where this side answers zero like a real
+  terminal and the native counts the bytes after the `ESC`.
 
 - Shift+Enter matches a `shift+enter` binding again on terminals that send it as a bare line feed.
   Under the Kitty keyboard protocol, plain Enter arrives as CR or as the CSI-u sequence for codepoint

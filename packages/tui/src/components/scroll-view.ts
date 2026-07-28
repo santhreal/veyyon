@@ -184,14 +184,30 @@ export class ScrollView implements Component {
 		// No cached layout to invalidate.
 	}
 
+	/**
+	 * Columns a caller may draw into at `width`, once the scrollbar has taken its
+	 * gutter.
+	 *
+	 * Exposed because the reserve is this component's rule, and a caller that
+	 * guessed it is wrong exactly when the guess matters. {@link render}
+	 * truncates every line it is given to this width, and a truncation that lands
+	 * inside a background fill drops the escape that CLOSES the fill, so the
+	 * colour runs on through the gutter and the bar. A caller that pads or fills a
+	 * row to full width asks for this width instead.
+	 */
+	contentWidth(width: number): number {
+		const safeWidth = Number.isFinite(width) ? Math.max(0, Math.trunc(width)) : 0;
+		// Two columns when the bar shows: one breathing-space gap + the bar
+		// itself — right-aligned content must never kiss the scrollbar glyph.
+		return Math.max(0, safeWidth - (safeWidth > 0 && this.#shouldRenderScrollbar() ? 2 : 0));
+	}
+
 	render(width: number): readonly string[] {
 		this.#clampScrollOffset();
 		const safeWidth = Number.isFinite(width) ? Math.max(0, Math.trunc(width)) : 0;
 		if (this.#height === 0) return [];
 		const showScrollbar = safeWidth > 0 && this.#shouldRenderScrollbar();
-		// Two columns when the bar shows: one breathing-space gap + the bar
-		// itself — right-aligned content must never kiss the scrollbar glyph.
-		const contentWidth = Math.max(0, safeWidth - (showScrollbar ? 2 : 0));
+		const contentWidth = this.contentWidth(safeWidth);
 		const thumb = showScrollbar ? this.#thumbRange() : undefined;
 		const lines: string[] = [];
 		for (let row = 0; row < this.#height; row++) {

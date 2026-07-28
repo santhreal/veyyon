@@ -21,7 +21,7 @@ import { getDebugLogPath } from "@veyyon/utils/dirs";
 import { $flag } from "@veyyon/utils/env";
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
-import { SGR_RESET } from "./ansi";
+import { SGR_RESET, sgrSequence } from "./ansi";
 import { DEFAULT_MAX_INLINE_IMAGES, ImageBudget } from "./components/image";
 import { planDeccaraFills } from "./deccara";
 import { isKeyRelease, matchesKey } from "./keys";
@@ -654,7 +654,7 @@ interface PreparedLine {
 	line: string;
 }
 
-const SGR_SEQUENCE = /\x1b\[[0-9;:]*m/g;
+const SGR_SEQUENCE = sgrSequence("g");
 
 // SGR coalescing. The renderer's component tree emits a styled span as
 // `<set-color>text<reset>`, so adjacent spans produce runs of byte-adjacent

@@ -830,6 +830,23 @@ export function calculateImageRows(
 // alters realistic output, only defuses the pathological case.
 const MAX_IMAGE_FIT_CELLS = 4096;
 
+/**
+ * Pixel ceiling for the SIXEL encoder, which is a different bound from the cell ceiling above.
+ *
+ * {@link MAX_IMAGE_FIT_CELLS} limits terminal CELLS, and the SIXEL path multiplies cells by the
+ * cell's pixel size before handing the result to the native encoder, which resizes to exactly
+ * those dimensions and converts to RGBA. At the cell ceiling with an ordinary 10x20 cell that is
+ * 40960x81920 pixels and a 13 GB buffer, and a Rust allocation failure aborts the process rather
+ * than throwing something JavaScript can catch. That is why this is a refusal before the call
+ * and not a wider try/catch.
+ *
+ * 16777216 is 4096x4096, four times a 4K display and far past anything a terminal can show, so no
+ * real image reaches it. Over the ceiling the image is not drawn and the caller falls back to the
+ * textual representation it already uses for terminals with no image protocol, which is the same
+ * answer an encode failure gives.
+ */
+const MAX_SIXEL_PIXELS = 16_777_216;
+
 export function calculateImageFit(
 	imageDimensions: ImageDimensions,
 	options: ImageRenderOptions,
@@ -1071,6 +1088,18 @@ export function renderImage(
 		try {
 			const targetWidthPx = Math.max(1, fit.columns * cellDims.widthPx);
 			const targetHeightPx = Math.max(1, fit.rows * cellDims.heightPx);
+			// The pixel bound the cell bound does not give you. `MAX_IMAGE_FIT_CELLS` caps CELLS, and
+			// the SIXEL encoder works in PIXELS: 4096 cells against a 10x20 cell is 40960x81920, and
+			// the native resizes to exactly that and takes it to RGBA, which is a 13 GB allocation
+			// inside Rust. An allocation failure there ABORTS the process, so this cannot be a
+			// try/catch and has to be a refusal before the call. Both the source and the target are
+			// checked, because they fail at different points: a small file whose header claims
+			// gigapixels blows up in `decode()`, before any resize can shrink it.
+			const targetPixels = targetWidthPx * targetHeightPx;
+			const sourcePixels = Math.max(1, imageDimensions.widthPx) * Math.max(1, imageDimensions.heightPx);
+			if (targetPixels > MAX_SIXEL_PIXELS || sourcePixels > MAX_SIXEL_PIXELS) {
+				return null;
+			}
 			const decoded = new Uint8Array(Buffer.from(base64Data, "base64"));
 			const sequence = encodeSixel(decoded, targetWidthPx, targetHeightPx);
 			return { sequence, rows: fit.rows };

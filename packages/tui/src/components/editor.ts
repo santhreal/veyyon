@@ -12,19 +12,9 @@ import { extractPrintableText, isLoneLineFeed, matchesKey } from "../keys";
 import { KillRing } from "../kill-ring";
 import type { SymbolTheme } from "../symbols";
 import { type Component, CURSOR_MARKER, type Focusable } from "../tui";
-import {
-	clampLow,
-	getSegmenter,
-	getWordNavKind,
-	moveWordLeft,
-	moveWordRight,
-	padding,
-	replaceTabs,
-	sliceByColumn,
-	truncateToWidth,
-	visibleWidth,
-} from "../utils";
+import { clampLow, getSegmenter, getWordNavKind, moveWordLeft, moveWordRight, padding, reopenBackgroundAfterResets, replaceTabs, sliceByColumn, truncateToWidth, visibleWidth } from "../utils";
 import { type SelectItem, SelectList, type SelectListLayoutOptions, type SelectListTheme } from "./select-list";
+import { SGR_BG_RESET } from "../ansi";
 
 const AUTOCOMPLETE_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
 	overflowSearch: false,
@@ -1096,13 +1086,13 @@ export class Editor implements Component, Focusable {
 		}
 
 		// The quiet card: paint the tonal ground under every input row (gutter
-		// mode only). Inner full resets (`\x1b[0m` — the reverse-video cursor)
-		// re-open the ground so the card stays continuous; `\x1b[49m` closes it
-		// at the row edge without disturbing foreground state.
+		// mode only). Inner resets (the reverse-video cursor's full reset among them)
+		// re-open the ground so the card stays continuous; the background reset closes
+		// it at the row edge without disturbing foreground state.
 		if (!borderVisible && this.#rowBackground) {
 			const ground = this.#rowBackground;
 			for (let i = 0; i < result.length; i++) {
-				result[i] = `${ground}${result[i]!.replaceAll("\x1b[0m", `\x1b[0m${ground}`)}\x1b[49m`;
+				result[i] = `${ground}${reopenBackgroundAfterResets(result[i]!, ground)}${SGR_BG_RESET}`;
 			}
 		}
 

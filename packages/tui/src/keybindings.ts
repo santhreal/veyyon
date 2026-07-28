@@ -31,7 +31,9 @@ export interface Keybindings {
 	"tui.input.newLine": true;
 	"tui.input.submit": true;
 	"tui.input.tab": true;
-	"tui.input.copy": true;
+	// No `tui.input.copy`. The editor has no copy implementation, and it returns
+	// early on `ctrl+c` so the app-level interrupt keeps working, so the binding
+	// only ever told `/hotkeys` about a key that copies nothing.
 	// Generic selection actions
 	"tui.select.up": true;
 	"tui.select.down": true;
@@ -121,7 +123,6 @@ export const TUI_KEYBINDINGS = {
 	"tui.input.newLine": { defaultKeys: ["shift+enter", "ctrl+j"], description: "Insert newline" },
 	"tui.input.submit": { defaultKeys: "enter", description: "Submit input" },
 	"tui.input.tab": { defaultKeys: "tab", description: "Tab / autocomplete" },
-	"tui.input.copy": { defaultKeys: "ctrl+c", description: "Copy selection" },
 	"tui.select.up": { defaultKeys: "up", description: "Move selection up" },
 	"tui.select.down": { defaultKeys: "down", description: "Move selection down" },
 	"tui.select.pageUp": { defaultKeys: "pageUp", description: "Selection page up" },

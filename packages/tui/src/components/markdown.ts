@@ -1,6 +1,6 @@
 import { LRUCache } from "lru-cache/raw";
 import { Marked, type Token, Tokenizer, type TokenizerAndRendererExtension, type Tokens } from "marked";
-import { OSC66 } from "../ansi";
+import { OSC66, SGR_RESET, sgrSequence } from "../ansi";
 import { latexToBlock } from "../latex-block";
 import { inlineMathSpanEnd, isBareMathEnvironment, latexToUnicode } from "../latex-to-unicode";
 import type { SymbolTheme } from "../symbols";
@@ -88,7 +88,7 @@ function createHtmlNormalizationState(): HtmlNormalizationState {
 }
 
 const HTML_COMMENT_REGEX = /<!--[\s\S]*?-->/g;
-const HTML_TAG_REGEX = /<\/?(?:br|p|ol|ul|li|span|text|code|hr|blockquote)\b(?:\s[^>]*)?\s*\/?>/gi;
+const HTML_TAG_REGEX = /<\/?(?:br|p|ol|ul|li|span|summary|text|code|hr|blockquote)\b(?:\s[^>]*)?\s*\/?>/gi;
 // Block-level HTML that needs structural (not just textual) rendering: standalone
 // `<hr>` becomes a rule and balanced `<blockquote>…</blockquote>` renders with
 // quote styling. Group 1 captures blockquote inner content; it is undefined for hr.
@@ -145,16 +145,16 @@ function normalizeHtmlForTerminal(
 		const index = match.index ?? 0;
 		const textBeforeTag = normalizeHtmlEntitiesForTerminal(withoutComments.slice(lastIndex, index));
 		const name = htmlTagName(tag);
-		// Most tags handled here are block-level. Inline contexts — span, text, and
-		// the content inside a `<code>` run — keep their surrounding whitespace
-		// verbatim because it is significant. For block-level tags, HTML formatting
+		// Most tags handled here are block-level. Inline contexts — span, summary,
+		// text, and the content inside a `<code>` run — keep their surrounding
+		// whitespace verbatim because it is significant. For block-level tags, HTML formatting
 		// whitespace between tags (e.g. the newlines and indentation in
 		// pretty-printed `<ul>\n  <li>…`) is not rendered content; appending it
 		// literally would leak source indentation before bullets and blank rows
 		// between items, so a whitespace-only slice is dropped. Text inside a
 		// `<code>` run is routed through `codeHook` so the inline-code theme is
 		// applied without leaking the raw `<code>`/`</code>` tags.
-		const isInlineTag = name === "span" || name === "text";
+		const isInlineTag = name === "span" || name === "summary" || name === "text";
 		if (isInlineTag || inCode || textBeforeTag.trim() !== "") {
 			output += inCode && codeHook ? codeHook(textBeforeTag) : textBeforeTag;
 			markCurrentHtmlItemContent(state, textBeforeTag);
@@ -166,6 +166,7 @@ function normalizeHtmlForTerminal(
 
 		switch (name) {
 			case "span":
+			case "summary":
 			case "text":
 				break;
 			case "code":
@@ -300,7 +301,7 @@ const TREE_BRANCH_CONNECTOR_RE = /[├┣╠└┗╚╰][─━═]/;
 /** Below this many content cells a hanging wrap degenerates; keep the plain wrap. */
 const MIN_TREE_CONTENT_WIDTH = 8;
 
-const SGR_SEQUENCE_STICKY = /\x1b\[[0-9;:]*m/y;
+const SGR_SEQUENCE_STICKY = sgrSequence("y");
 
 interface TreeGuidePrefix {
 	/** Index of the first char past the guide run (start of the node text). */
@@ -1915,7 +1916,7 @@ export class Markdown implements Component {
 			if (!quoteStylePrefix) {
 				return quoteStyle(line);
 			}
-			const lineWithReappliedStyle = line.replace(/\x1b\[0m/g, `\x1b[0m${quoteStylePrefix}`);
+			const lineWithReappliedStyle = line.replaceAll(SGR_RESET, `${SGR_RESET}${quoteStylePrefix}`);
 			return quoteStyle(lineWithReappliedStyle);
 		};
 		const quoteContentWidth = Math.max(1, width - 2);
