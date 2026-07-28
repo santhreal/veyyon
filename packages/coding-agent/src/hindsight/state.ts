@@ -223,6 +223,7 @@ export class HindsightSessionState {
 	/** Alias states delegate persistence config to a primary parent state. */
 	aliasOf?: HindsightSessionState;
 	readonly retainQueue: HindsightRetainQueue;
+	readonly #unregisterProviderTextTransform: () => void;
 
 	constructor(options: HindsightSessionStateOptions) {
 		this.sessionId = options.sessionId;
@@ -238,6 +239,9 @@ export class HindsightSessionState {
 		this.hasRecalledForFirstTurn = options.hasRecalledForFirstTurn ?? false;
 		this.aliasOf = options.aliasOf;
 		this.retainQueue = new HindsightRetainQueue(this);
+		this.#unregisterProviderTextTransform = this.client.registerProviderTextTransform(text =>
+			this.#transformProviderText(text),
+		);
 	}
 
 	setSessionId(sessionId: string): void {
@@ -256,6 +260,22 @@ export class HindsightSessionState {
 
 	async flushRetainQueue(): Promise<void> {
 		await this.retainQueue.flush();
+	}
+
+	#transformProviderText(text: string): string {
+		try {
+			return this.session.obfuscator?.obfuscate(text) ?? text;
+		} catch {
+			// The thrown diagnostic may contain the secret-bearing input.
+			throw new Error("Hindsight confidentiality transform failed.");
+		}
+	}
+
+	#transformProviderMessages(messages: HindsightMessage[]): HindsightMessage[] {
+		return messages.map(message => ({
+			role: this.#transformProviderText(message.role),
+			content: this.#transformProviderText(message.content),
+		}));
 	}
 
 	async recallForContext(query: string, signal?: AbortSignal): Promise<RecallOutcome> {
@@ -296,7 +316,9 @@ export class HindsightSessionState {
 			documentId = `${this.sessionId}-${retainedAt.getTime()}`;
 		}
 
-		const { transcript } = prepareRetentionTranscript(target, true);
+		// Transform raw fields before tag stripping/framing can split a secret;
+		// the client transforms the resulting payload again at physical send.
+		const { transcript } = prepareRetentionTranscript(this.#transformProviderMessages(target), true);
 		if (!transcript) return;
 
 		await ensureBankExists(this.client, this.bankId, this.config, this.banksSet);
@@ -358,8 +380,10 @@ export class HindsightSessionState {
 		const lastUser = messages.findLast(m => m.role === "user");
 		if (!lastUser) return;
 
-		const query = composeRecallQuery(lastUser.content, messages, this.config.recallContextTurns);
-		const truncated = truncateRecallQuery(query, lastUser.content, this.config.recallMaxQueryChars);
+		const providerMessages = this.#transformProviderMessages(messages);
+		const providerLatest = this.#transformProviderText(lastUser.content);
+		const query = composeRecallQuery(providerLatest, providerMessages, this.config.recallContextTurns);
+		const truncated = truncateRecallQuery(query, providerLatest, this.config.recallMaxQueryChars);
 		const { context, ok } = await this.recallForContext(truncated);
 		if (!ok) return;
 
@@ -377,10 +401,11 @@ export class HindsightSessionState {
 
 		if (!this.config.autoRecall || this.hasRecalledForFirstTurn) return undefined;
 
-		const latestPrompt = promptText.trim();
+		const providerPrompt = this.#transformProviderText(promptText);
+		const latestPrompt = providerPrompt.trim();
 		if (!latestPrompt) return undefined;
 
-		const history = extractMessages(this.session.sessionManager);
+		const history = this.#transformProviderMessages(extractMessages(this.session.sessionManager));
 		const queryMessages = [...history, { role: "user" as const, content: latestPrompt }];
 		const query = composeRecallQuery(latestPrompt, queryMessages, this.config.recallContextTurns);
 		const truncated = truncateRecallQuery(query, latestPrompt, this.config.recallMaxQueryChars);
@@ -398,8 +423,10 @@ export class HindsightSessionState {
 		const lastUser = messages.findLast(m => m.role === "user");
 		if (!lastUser) return undefined;
 
-		const query = composeRecallQuery(lastUser.content, messages, this.config.recallContextTurns);
-		const truncated = truncateRecallQuery(query, lastUser.content, this.config.recallMaxQueryChars);
+		const providerMessages = this.#transformProviderMessages(messages);
+		const providerLatest = this.#transformProviderText(lastUser.content);
+		const query = composeRecallQuery(providerLatest, providerMessages, this.config.recallContextTurns);
+		const truncated = truncateRecallQuery(query, providerLatest, this.config.recallMaxQueryChars);
 		const { context } = await this.recallForContext(truncated);
 		return context ?? undefined;
 	}
@@ -478,6 +505,7 @@ export class HindsightSessionState {
 		this.unsubscribe = undefined;
 		this.unsubscribeScope?.();
 		this.unsubscribeScope = undefined;
+		this.#unregisterProviderTextTransform();
 		this.retainQueue.dispose();
 	}
 
