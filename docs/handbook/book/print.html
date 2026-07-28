@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-475ba2c7.js";
+            window.path_to_searchindex_js = "searchindex-3a4c9bf7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-5cf6de48.js"></script>
@@ -790,7 +790,11 @@ with the newer one it fetches from GitHub Releases, the same place the
 installer’s download comes from; veyyon.dev hosts only the installer script, so GitHub Releases is the only
 place a binary ever comes from. Before it keeps the new binary it runs the same
 two checks the installer runs: the binary reports the version the release
-claims, and a real search confirms the native addon loads. If either fails the
+claims, and a real search confirms the native addon loads. The search check is
+skipped only for a version old enough not to have <code>veyyon grep</code> at all, which is
+possible when you roll back, and Veyyon confirms that is the reason by asking the
+binary for its own <code>--help</code> first. A binary that cannot answer that either is
+broken, not old, and is treated as a failure. If either check fails the
 previous binary goes back in place and the update reports why, so a release with
 no build for your platform cannot leave you with a binary that starts and then
 fails on your first command. “Why” is the binary’s own words: if the new binary

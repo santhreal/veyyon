@@ -728,7 +728,8 @@ export type SearchProbe = (binPath: string, label: string) => Promise<string | u
  * which is the failure this exists to catch. Exit codes cannot tell the two
  * apart here: Bun's shell reports a missing command as exit 1, the same code an
  * unknown subcommand produces. So executability is checked directly, before
- * anything is spawned.
+ * anything is spawned, and a failing `grep --help` is put to a second question
+ * rather than taken as proof of an old build (see below).
  */
 export async function probeSearchWorks(binPath: string, label: string): Promise<string | undefined> {
 	try {
@@ -737,7 +738,25 @@ export async function probeSearchWorks(binPath: string, label: string): Promise<
 		return `${label} is missing or not executable at ${binPath}.`;
 	}
 	const help = await $`${binPath} grep --help`.quiet().nothrow();
-	if (help.exitCode !== 0) return undefined;
+	if (help.exitCode !== 0) {
+		// "This build has no `grep`" was assumed from the exit code alone, which is
+		// also what a binary whose native addon fails to load on any real subcommand
+		// produces — the exact failure this probe exists to catch, silently reported
+		// as a working install (Law 10). Ask the binary a question every build can
+		// answer. If its own top-level help fails too, nothing is wrong with the
+		// SUBCOMMAND and the install is broken; only when top-level help works is
+		// "an older release that predates `grep`" the honest reading.
+		const topLevel = await $`${binPath} --help`.quiet().nothrow();
+		if (topLevel.exitCode !== 0) {
+			const said = `${help.stdout.toString()}${help.stderr.toString()}`.trim();
+			return (
+				`${label} could not run \`grep --help\` (exit ${help.exitCode}) and could not run ` +
+				`\`--help\` either (exit ${topLevel.exitCode}), so the install is broken rather than ` +
+				`older than the \`grep\` subcommand. Output was: ${said === "" ? "nothing" : said}`
+			);
+		}
+		return undefined;
+	}
 
 	const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "veyyon-update-check-"));
 	try {
