@@ -150,7 +150,12 @@ export function placeholdersIn(value: unknown, known: (placeholder: string) => b
 			return;
 		}
 		if (node !== null && typeof node === "object") {
-			for (const item of Object.values(node)) walk(item);
+			// Expansion maps JSON object KEYS as well as values. Scan in that same order or a
+			// placeholder used as a key is expanded into the tool call without an audit record.
+			for (const [key, item] of Object.entries(node)) {
+				walk(key);
+				walk(item);
+			}
 		}
 	};
 	walk(value);
@@ -356,6 +361,29 @@ function capJsonString(value: string, maxBytes: number): string {
 	return best;
 }
 
+/** Render decoded evidence without letting terminal control bytes alter the audit display. */
+function escapeTerminalControls(value: string): string {
+	return value.replace(/[\u0000-\u001f\u007f-\u009f]/gu, character => {
+		const code = character.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0");
+		return `\\u${code}`;
+	});
+}
+
+/**
+ * The encoder's JSON escapes protect the file format, not the terminal: JSON.parse restores control
+ * bytes. Normalise every decoded string before it reaches `/secret log`, including hand-edited or
+ * crash-damaged evidence that did not pass through this process's encoder.
+ */
+function terminalSafeRecord(record: SecretExpansionRecord): SecretExpansionRecord {
+	return {
+		...record,
+		secrets: record.secrets.map(escapeTerminalControls),
+		tool: escapeTerminalControls(record.tool),
+		command: escapeTerminalControls(record.command),
+		...(record.session === undefined ? {} : { session: escapeTerminalControls(record.session) }),
+	};
+}
+
 /** Parse a log back, skipping nothing silently: an unreadable line is reported as such. */
 export function decodeLog(text: string): { records: SecretExpansionRecord[]; malformed: number } {
 	const records: SecretExpansionRecord[] = [];
@@ -364,7 +392,7 @@ export function decodeLog(text: string): { records: SecretExpansionRecord[]; mal
 		if (line.trim().length === 0) continue;
 		try {
 			const parsed: unknown = JSON.parse(line);
-			if (isSecretExpansionRecord(parsed)) records.push(parsed);
+			if (isSecretExpansionRecord(parsed)) records.push(terminalSafeRecord(parsed));
 			else malformed++;
 		} catch {
 			malformed++;
@@ -413,11 +441,14 @@ function isSecretExpansionRecord(value: unknown): value is SecretExpansionRecord
 /** Reject paths an audit write must never follow or reinterpret. */
 function assertOwnedRegularFile(filePath: string, stats: Stats): void {
 	if (!stats.isFile()) {
-		throw new Error(`The secret audit path at ${filePath} is not a regular file.`);
+		throw new Error(`The secret audit path at ${escapeTerminalControls(filePath)} is not a regular file.`);
+	}
+	if (stats.nlink !== 1) {
+		throw new Error(`The secret audit file at ${escapeTerminalControls(filePath)} does not have exactly one hard link.`);
 	}
 	const currentUid = process.getuid?.();
 	if (currentUid !== undefined && stats.uid !== currentUid) {
-		throw new Error(`The secret audit file at ${filePath} is not owned by the current user.`);
+		throw new Error(`The secret audit file at ${escapeTerminalControls(filePath)} is not owned by the current user.`);
 	}
 }
 
@@ -439,7 +470,9 @@ async function secureExistingFile(filePath: string): Promise<Stats | null> {
 		const after = await fs.lstat(filePath);
 		assertOwnedRegularFile(filePath, after);
 		if (after.dev !== before.dev || after.ino !== before.ino || (after.mode & 0o7777) !== 0o600) {
-			throw new Error(`The secret audit file at ${filePath} could not be secured to mode 0600.`);
+			throw new Error(
+				`The secret audit file at ${escapeTerminalControls(filePath)} could not be secured to mode 0600.`,
+			);
 		}
 		return after;
 	}
@@ -447,7 +480,7 @@ async function secureExistingFile(filePath: string): Promise<Stats | null> {
 }
 
 /** Re-check the opened inode so a path swap cannot turn a verified file into the write target. */
-async function secureHandle(filePath: string, handle: FileHandle): Promise<void> {
+async function secureHandle(filePath: string, handle: FileHandle): Promise<Stats> {
 	let stats = await handle.stat();
 	assertOwnedRegularFile(filePath, stats);
 	if (process.platform !== "win32" && (stats.mode & 0o7777) !== 0o600) {
@@ -455,8 +488,38 @@ async function secureHandle(filePath: string, handle: FileHandle): Promise<void>
 		stats = await handle.stat();
 		assertOwnedRegularFile(filePath, stats);
 		if ((stats.mode & 0o7777) !== 0o600) {
-			throw new Error(`The secret audit file at ${filePath} could not be secured to mode 0600.`);
+			throw new Error(
+				`The secret audit file at ${escapeTerminalControls(filePath)} could not be secured to mode 0600.`,
+			);
 		}
+	}
+	return stats;
+}
+
+/** Whether an append needs a boundary before its first JSON byte. */
+async function handleNeedsLineSeparator(handle: FileHandle, stats: Stats): Promise<boolean> {
+	if (stats.size === 0) return false;
+	const lastByte = Buffer.allocUnsafe(1);
+	const { bytesRead } = await handle.read(lastByte, 0, 1, stats.size - 1);
+	if (bytesRead !== 1) throw new Error("The secret audit log's final byte could not be read.");
+	return lastByte[0] !== 0x0a;
+}
+
+/** Inspect a verified existing generation while the caller holds the audit lock. */
+async function existingFileNeedsLineSeparator(filePath: string): Promise<boolean> {
+	const flags = fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0);
+	let handle: FileHandle;
+	try {
+		handle = await fs.open(filePath, flags);
+	} catch (error) {
+		if (isEnoent(error)) return false;
+		throw error;
+	}
+	try {
+		const stats = await secureHandle(filePath, handle);
+		return await handleNeedsLineSeparator(handle, stats);
+	} finally {
+		await handle.close();
 	}
 }
 
@@ -479,7 +542,7 @@ export class SecretAuditLog {
 
 	/** Path being appended to, so `/secret log` can name the file it read. */
 	get path(): string {
-		return this.#logPath;
+		return escapeTerminalControls(this.#logPath);
 	}
 
 	/** Path of the kept previous generation. */
@@ -503,7 +566,8 @@ export class SecretAuditLog {
 			} catch (error) {
 				this.#notices?.error(
 					"secrets",
-					`The secret audit log at ${this.#logPath} could not be appended to (${String(error)}). ` +
+					`The secret audit log at ${escapeTerminalControls(this.#logPath)} could not be appended to ` +
+						`(${escapeTerminalControls(String(error))}). ` +
 						`Credentials are still protected, but their use is no longer being recorded.`,
 				);
 			}
@@ -512,18 +576,20 @@ export class SecretAuditLog {
 
 	/** Append through a verified 0600 regular-file handle while the cross-process lock is held. */
 	async #appendLine(line: string): Promise<void> {
-		const flags = fsConstants.O_APPEND | fsConstants.O_CREAT | fsConstants.O_WRONLY | (fsConstants.O_NOFOLLOW ?? 0);
+		const flags = fsConstants.O_APPEND | fsConstants.O_CREAT | fsConstants.O_RDWR | (fsConstants.O_NOFOLLOW ?? 0);
 		const handle = await fs.open(this.#logPath, flags, 0o600);
 		try {
-			await secureHandle(this.#logPath, handle);
-			const bytes = Buffer.from(line);
-			let offset = 0;
-			while (offset < bytes.length) {
-				const { bytesWritten } = await handle.write(bytes, offset, bytes.length - offset, null);
-				if (bytesWritten === 0) {
-					throw new Error("The secret audit append made no forward progress.");
+			const stats = await secureHandle(this.#logPath, handle);
+			const chunks = (await handleNeedsLineSeparator(handle, stats)) ? [Buffer.from("\n"), Buffer.from(line)] : [Buffer.from(line)];
+			for (const bytes of chunks) {
+				let offset = 0;
+				while (offset < bytes.length) {
+					const { bytesWritten } = await handle.write(bytes, offset, bytes.length - offset, null);
+					if (bytesWritten === 0) {
+						throw new Error("The secret audit append made no forward progress.");
+					}
+					offset += bytesWritten;
 				}
-				offset += bytesWritten;
 			}
 		} finally {
 			await handle.close();
@@ -542,7 +608,8 @@ export class SecretAuditLog {
 	 */
 	async #rotateIfFull(incomingBytes: number): Promise<void> {
 		const current = await secureExistingFile(this.#logPath);
-		const rotationNeeded = current !== null && current.size + incomingBytes > ROTATE_AT_BYTES;
+		const separatorBytes = current !== null && (await existingFileNeedsLineSeparator(this.#logPath)) ? 1 : 0;
+		const rotationNeeded = current !== null && current.size + separatorBytes + incomingBytes > ROTATE_AT_BYTES;
 		if (!rotationNeeded) {
 			// A stale previous generation is audit evidence too. Do not leave it permissive merely
 			// because this particular append did not need to replace it.
@@ -558,8 +625,9 @@ export class SecretAuditLog {
 		} catch (error) {
 			this.#notices?.warn(
 				"secrets",
-				`The secret audit log at ${this.#logPath} has reached ${current.size} bytes and could not be ` +
-					`rotated (${String(error)}). Use is still being recorded, in a file that will keep growing.`,
+				`The secret audit log at ${escapeTerminalControls(this.#logPath)} has reached ${current.size} bytes and ` +
+					`could not be rotated (${escapeTerminalControls(String(error))}). Use is still being recorded, ` +
+					`in a file that will keep growing.`,
 			);
 		}
 	}
@@ -588,7 +656,7 @@ export class SecretAuditLog {
 		try {
 			const parent = await fs.stat(parentDir);
 			if (!parent.isDirectory()) {
-				throw new Error(`The secret audit directory at ${parentDir} is not a directory.`);
+				throw new Error(`The secret audit directory at ${escapeTerminalControls(parentDir)} is not a directory.`);
 			}
 		} catch (error) {
 			if (isEnoent(error)) return { records: [], malformed: 0 };
@@ -614,14 +682,22 @@ export class SecretAuditLog {
 			const flags = fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0);
 			const handle = await fs.open(filePath, flags);
 			try {
-				await secureHandle(filePath, handle);
+				const stats = await secureHandle(filePath, handle);
+				if (stats.size > ROTATE_AT_BYTES) {
+					throw new Error(
+						`The secret audit generation is ${stats.size} bytes, above the ${ROTATE_AT_BYTES}-byte read limit.`,
+					);
+				}
 				return decodeLog(await handle.readFile("utf8"));
 			} finally {
 				await handle.close();
 			}
 		} catch (error) {
 			if (isEnoent(error)) return { records: [], malformed: 0 };
-			throw new Error(`The secret audit log at ${filePath} could not be read (${String(error)}).`);
+			throw new Error(
+				`The secret audit log at ${escapeTerminalControls(filePath)} could not be read ` +
+					`(${escapeTerminalControls(String(error))}).`,
+			);
 		}
 	}
 }

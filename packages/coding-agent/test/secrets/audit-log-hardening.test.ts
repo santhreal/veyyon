@@ -13,6 +13,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
+	buildExpansionRecord,
 	decodeLog,
 	encodeRecord,
 	MAX_RECORD_BYTES,
@@ -22,6 +23,7 @@ import {
 	SecretAuditLog,
 	type SecretExpansionRecord,
 } from "@veyyon/coding-agent/secrets/audit";
+import { renderLog } from "@veyyon/coding-agent/secrets/secret-command";
 import { OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
 
 let dir: string;
@@ -52,6 +54,25 @@ async function seedToSize(size: number): Promise<void> {
 	const bytes = Buffer.concat([line, Buffer.alloc(size - line.length - 1, 0x20), Buffer.from("\n")]);
 	await fs.writeFile(logPath, bytes, { mode: 0o600 });
 }
+
+describe("expansion parity", () => {
+	/**
+	 * Tool-argument expansion walks object keys as strings. The audit scanner must do the same or
+	 * a credential can reach a tool as a key while the detective record says nothing was used.
+	 */
+	it("records placeholders nested in JSON object keys", () => {
+		const args = { nested: { "#TOKEN_KEY#": "value" } };
+		const expansion = buildExpansionRecord({
+			args,
+			tool: "bash",
+			session: "session",
+			at: 1,
+			known: placeholder => placeholder === "#TOKEN_KEY#",
+		});
+
+		expect(expansion?.secrets).toEqual(["#TOKEN_KEY#"]);
+	});
+});
 
 describe("cross-process rotation", () => {
 	/**
@@ -182,6 +203,23 @@ describe("existing audit paths", () => {
 		expect(notices.all()[0].text).toContain("not a regular file");
 	});
 });
+	/** A hard link must not turn an unrelated owned inode into the audit append target. */
+	it("refuses a multiply linked owned file without chmodding or appending to it", async () => {
+		const unrelated = path.join(dir, "unrelated.txt");
+		await fs.writeFile(unrelated, "unchanged\n", { mode: 0o600 });
+		if (process.platform !== "win32") await fs.chmod(unrelated, 0o644);
+		await fs.link(unrelated, logPath);
+		const notices = new OperatorNotices();
+		const log = new SecretAuditLog(logPath, notices);
+
+		log.record(record(1));
+		await log.flush();
+
+		expect(await fs.readFile(unrelated, "utf8")).toBe("unchanged\n");
+		if (process.platform !== "win32") expect((await fs.stat(unrelated)).mode & 0o777).toBe(0o644);
+		expect(notices.all()[0]?.text).toContain("exactly one hard link");
+	});
+
 
 describe("malformed evidence", () => {
 	/** Truncation metadata is security evidence too: zero, fractional, or unmarked counts are invalid. */
@@ -225,6 +263,36 @@ describe("malformed evidence", () => {
 	});
 });
 
+describe("crash recovery and read bounds", () => {
+	/**
+	 * A crash or short write can leave a JSON fragment at EOF. The next complete record needs its
+	 * own line or it is swallowed into the fragment and both pieces become one malformed record.
+	 */
+	it("separates the first post-crash record from an incomplete tail", async () => {
+		await fs.writeFile(logPath, '{"at":1,"secrets":["#TOKEN_OLD#"]', { mode: 0o600 });
+		const log = new SecretAuditLog(logPath);
+
+		log.record(record(2, "survives the partial tail"));
+		await log.flush();
+
+		const result = await log.read();
+		expect(result.records.map(entry => entry.command)).toEqual(["survives the partial tail"]);
+		expect(result.malformed).toBe(1);
+		expect(await fs.readFile(logPath, "utf8")).toContain(']\n{"at":');
+	});
+
+	/**
+	 * `--limit` is applied after decoding, so the generation itself needs a hard byte ceiling before
+	 * readFile allocates it. Writer-degraded or hand-edited oversized evidence must fail loudly.
+	 */
+	it("refuses to allocate and parse an oversized generation", async () => {
+		await fs.writeFile(logPath, Buffer.alloc(ROTATE_AT_BYTES + 1, 0x20), { mode: 0o600 });
+		const log = new SecretAuditLog(logPath);
+
+		await expect(log.read({ limit: 1 })).rejects.toThrow(/above the .*read limit/);
+	});
+});
+
 describe("loud rotation degradation", () => {
 	/** Rotation failure is housekeeping failure: warn, retain the live file, and append the record. */
 	it("keeps appending when the rotation target is non-regular", async () => {
@@ -243,6 +311,30 @@ describe("loud rotation degradation", () => {
 		const warning = notices.all().find(notice => notice.severity === "warning");
 		expect(warning?.text).toContain("could not be rotated");
 		expect(warning?.text).toContain("still being recorded");
+	});
+});
+
+describe("terminal-safe decoded evidence", () => {
+	/**
+	 * JSON escapes keep control bytes out of the JSONL syntax, but JSON.parse restores them. Every
+	 * string read from evidence is made visible before `/secret log` hands it to a terminal.
+	 */
+	it("renders control bytes visibly instead of emitting terminal instructions", () => {
+		const control = "\u001b[2J\u001b[H";
+		const decoded = decodeLog(
+			encodeRecord({
+				at: 1,
+				secrets: ["#TOKEN_SAFE#"],
+				tool: `bash${control}spoofed`,
+				session: `session${control}`,
+				command: `command${control}`,
+			}),
+		);
+		const displayPath = new SecretAuditLog(path.join(dir, `audit${control}.jsonl`)).path;
+		const rendered = renderLog(decoded.records, { malformed: decoded.malformed, path: displayPath, now: 1 });
+
+		expect(rendered).not.toContain("\u001b");
+		expect(rendered).toContain("\\u001B[2J\\u001B[H");
 	});
 });
 
