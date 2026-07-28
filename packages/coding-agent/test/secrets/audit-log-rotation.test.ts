@@ -189,35 +189,24 @@ describe("reading across a rotation", () => {
 
 describe("a rotation that cannot happen", () => {
 	/**
-	 * The record is still written, and the operator is told.
-	 *
-	 * A rotation is housekeeping. Losing a record because the housekeeping failed would trade a
-	 * growing file for a hole in the evidence, which is the wrong way round. The notice is what
-	 * keeps this from being a silent degrade (Law 10): the log keeps working and keeps growing, and
-	 * the operator knows both.
+	 * A blocked rotation is a failed evidence write, not permission to exceed the cap. The live
+	 * generation remains byte-identical and the operator is told that the bounded record was lost.
 	 */
-	it("keeps recording, and raises a notice naming the size", async () => {
-		// A DIRECTORY at the rotation target makes `rename` fail while leaving the log writable.
+	it("stops before the cap and raises an error notice", async () => {
 		await fs.mkdir(`${logPath}${ROTATED_SUFFIX}`, { recursive: true });
 		const notices = new OperatorNotices(() => {});
 		const log = new SecretAuditLog(logPath, notices);
-
 		const entry = record(999);
 		await seedForRotation(entry);
+		const before = await fs.readFile(logPath);
+
 		await writeAll(log, [entry]);
 
-		const warning = notices.all().find(notice => notice.text.includes("could not be"));
-		expect(warning).toBeDefined();
-		expect(warning?.severity).toBe("warning");
-		expect(warning?.text).toContain("rotated");
-		expect(warning?.text).toContain("still being recorded");
-
-		// The point of the test: the last record landed anyway. Read as bytes rather than through
-		// `read()`, because the directory standing in for the rotated generation is itself an
-		// unreadable log and `read()` is right to complain about it. What is under test here is that
-		// the WRITE survived a failed rotation.
-		const text = await fs.readFile(logPath, "utf8");
-		expect(text).toContain("run 999");
+		const failure = notices.all().find(notice => notice.text.includes("could not be"));
+		expect(failure?.severity).toBe("error");
+		expect(failure?.text).toContain("not written");
+		expect(await fs.readFile(logPath)).toEqual(before);
+		expect((await fs.stat(logPath)).size).toBeLessThanOrEqual(ROTATE_AT_BYTES);
 	});
 });
 

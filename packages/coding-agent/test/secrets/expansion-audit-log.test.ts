@@ -97,13 +97,10 @@ describe("deciding what was spent", () => {
 	/** No secret means no record at all, so an ordinary session writes nothing. */
 	it("produces no record when no secret is involved", () => {
 		expect(
-			buildExpansionRecord({
-				args: { command: "ls -la" },
+			buildExpansionRecord({ args: { command: "ls -la" },
 				tool: "bash",
 				session: "s1",
-				at: 1000,
-				known: anyPlaceholder,
-			}),
+				at: 1000, known: anyPlaceholder, obfuscate: value => value }),
 		).toBeNull();
 	});
 });
@@ -111,13 +108,10 @@ describe("deciding what was spent", () => {
 describe("what a record contains", () => {
 	/** Exact fields, because a log is only useful if you can rely on its shape. */
 	it("records the placeholder, tool, session and command", () => {
-		const record = buildExpansionRecord({
-			args: { command: "curl -H 'Authorization: Bearer #GITHUB_TOKEN#' https://api.github.com" },
+		const record = buildExpansionRecord({ args: { command: "curl -H 'Authorization: Bearer #GITHUB_TOKEN#' https://api.github.com" },
 			tool: "bash",
 			session: "sess-42",
-			at: 1_700_000_000_000,
-			known: anyPlaceholder,
-		});
+			at: 1_700_000_000_000, known: anyPlaceholder, obfuscate: value => value });
 
 		expect(record).not.toBeNull();
 		expect(record!.secrets).toEqual(["#GITHUB_TOKEN#"]);
@@ -137,13 +131,10 @@ describe("what a record contains", () => {
 	 * arguments, so there is no redaction step that could be got wrong or reordered.
 	 */
 	it("holds the placeholder and not the credential", () => {
-		const record = buildExpansionRecord({
-			args: { command: "deploy --token #DEPLOY_TOKEN#" },
+		const record = buildExpansionRecord({ args: { command: "deploy --token #DEPLOY_TOKEN#" },
 			tool: "bash",
 			session: "s",
-			at: 0,
-			known: anyPlaceholder,
-		});
+			at: 0, known: anyPlaceholder, obfuscate: value => value });
 
 		expect(record!.command).toContain("#DEPLOY_TOKEN#");
 		expect(record!.command).not.toContain("ghp_realcredentialvalue");
@@ -151,13 +142,10 @@ describe("what a record contains", () => {
 
 	/** A session with no id still produces a record: the label is optional, the row is not. */
 	it("omits the session when there is none", () => {
-		const record = buildExpansionRecord({
-			args: { command: "echo #TOKEN_A#" },
+		const record = buildExpansionRecord({ args: { command: "echo #TOKEN_A#" },
 			tool: "bash",
 			session: undefined,
-			at: 0,
-			known: anyPlaceholder,
-		});
+			at: 0, known: anyPlaceholder, obfuscate: value => value });
 
 		expect(record!.session).toBeUndefined();
 		expect(record!.secrets).toEqual(["#TOKEN_A#"]);
@@ -165,13 +153,10 @@ describe("what a record contains", () => {
 
 	/** A long command is cut, and says it was cut. */
 	it("marks a truncated command as truncated", () => {
-		const record = buildExpansionRecord({
-			args: { command: `#TOKEN_A# ${"x".repeat(5000)}` },
+		const record = buildExpansionRecord({ args: { command: `#TOKEN_A# ${"x".repeat(5000)}` },
 			tool: "bash",
 			session: "s",
-			at: 0,
-			known: anyPlaceholder,
-		});
+			at: 0, known: anyPlaceholder, obfuscate: value => value });
 
 		expect(record!.truncated).toBe(true);
 		expect(record!.command.endsWith("…")).toBe(true);
@@ -187,26 +172,20 @@ describe("one record is one bounded line", () => {
 	 * becoming an unbounded line. Both properties are required.
 	 */
 	it("keeps an ordinary line under the byte cap", () => {
-		const record = buildExpansionRecord({
-			args: { command: "curl -H 'Authorization: Bearer #GITHUB_TOKEN#' https://api.github.com/user" },
+		const record = buildExpansionRecord({ args: { command: "curl -H 'Authorization: Bearer #GITHUB_TOKEN#' https://api.github.com/user" },
 			tool: "bash",
 			session: "sess-42",
-			at: 1_700_000_000_000,
-			known: anyPlaceholder,
-		});
+			at: 1_700_000_000_000, known: anyPlaceholder, obfuscate: value => value });
 
 		expect(Buffer.byteLength(encodeRecord(record!))).toBeLessThanOrEqual(MAX_RECORD_BYTES);
 	});
 
 	/** A pathological command is still under the cap, enforced on the ENCODED bytes. */
 	it("keeps a huge command under the byte cap", () => {
-		const record = buildExpansionRecord({
-			args: { command: `#TOKEN_A# ${"y".repeat(100_000)}` },
+		const record = buildExpansionRecord({ args: { command: `#TOKEN_A# ${"y".repeat(100_000)}` },
 			tool: "bash",
 			session: "s",
-			at: 0,
-			known: anyPlaceholder,
-		});
+			at: 0, known: anyPlaceholder, obfuscate: value => value });
 
 		expect(Buffer.byteLength(encodeRecord(record!))).toBeLessThanOrEqual(MAX_RECORD_BYTES);
 	});
@@ -219,13 +198,10 @@ describe("one record is one bounded line", () => {
 	 * is involved.
 	 */
 	it("keeps a multi-byte command under the byte cap", () => {
-		const record = buildExpansionRecord({
-			args: { command: `#TOKEN_A# ${"𝔘".repeat(50_000)}` },
+		const record = buildExpansionRecord({ args: { command: `#TOKEN_A# ${"𝔘".repeat(50_000)}` },
 			tool: "bash",
 			session: "s",
-			at: 0,
-			known: anyPlaceholder,
-		});
+			at: 0, known: anyPlaceholder, obfuscate: value => value });
 		const line = encodeRecord(record!);
 
 		expect(Buffer.byteLength(line)).toBeLessThanOrEqual(MAX_RECORD_BYTES);
@@ -235,13 +211,10 @@ describe("one record is one bounded line", () => {
 
 	/** Exactly one newline per record, or two records would parse as one. */
 	it("ends every line with exactly one newline", () => {
-		const record = buildExpansionRecord({
-			args: { command: "echo #TOKEN_A#" },
+		const record = buildExpansionRecord({ args: { command: "echo #TOKEN_A#" },
 			tool: "bash",
 			session: "s",
-			at: 0,
-			known: anyPlaceholder,
-		});
+			at: 0, known: anyPlaceholder, obfuscate: value => value });
 		const line = encodeRecord(record!);
 
 		expect(line.endsWith("\n")).toBe(true);
@@ -289,13 +262,10 @@ describe("writing the log", () => {
 	it("never writes a credential to disk", async () => {
 		const logPath = path.join(tempDir, SECRET_AUDIT_FILENAME);
 		const log = new SecretAuditLog(logPath);
-		const record = buildExpansionRecord({
-			args: { command: "curl -H 'Authorization: Bearer #GITHUB_TOKEN#'" },
+		const record = buildExpansionRecord({ args: { command: "curl -H 'Authorization: Bearer #GITHUB_TOKEN#'" },
 			tool: "bash",
 			session: "s",
-			at: 5,
-			known: anyPlaceholder,
-		});
+			at: 5, known: anyPlaceholder, obfuscate: value => value });
 		log.record(record!);
 		await log.flush();
 

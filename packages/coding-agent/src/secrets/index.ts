@@ -40,6 +40,20 @@ export {
 	SecretObfuscator,
 } from "./obfuscator";
 
+export {
+	buildExpansionRecord,
+	decodeLog,
+	encodeRecord,
+	MAX_RECORD_BYTES,
+	placeholdersIn,
+	ROTATE_AT_BYTES,
+	ROTATED_SUFFIX,
+	SECRET_AUDIT_FILENAME,
+	secretAuditPath,
+	SecretAuditLog,
+	type SecretExpansionRecord,
+} from "./audit";
+
 /**
  * Load secrets from the project's and the active profile's secrets.yml files.
  * Project entries override profile entries with matching content.
