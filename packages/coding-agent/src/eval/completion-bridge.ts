@@ -100,6 +100,51 @@ function reasoningForTier(tier: CompletionTier, model: Model<Api>): Effort | und
 }
 
 /**
+ * Clone provider-bound JSON metadata while applying the current confidentiality
+ * transform to every string value and object key.
+ *
+ * JSON Schema property names are references: the same transform is therefore
+ * applied to both `properties` keys and the corresponding `required` strings.
+ * If two distinct keys collapse to the same redacted name, forwarding either
+ * schema would silently change its meaning, so the request fails closed.
+ */
+function sanitizeProviderJson(
+	value: unknown,
+	sanitize: (text: string) => string,
+	ancestors = new WeakSet<object>(),
+): unknown {
+	if (typeof value === "string") return sanitize(value);
+	if (value === null || typeof value !== "object") return value;
+	if (ancestors.has(value)) {
+		throw new ToolError("completion() could not safely sanitize provider metadata.");
+	}
+
+	ancestors.add(value);
+	try {
+		if (Array.isArray(value)) {
+			return value.map(item => sanitizeProviderJson(item, sanitize, ancestors));
+		}
+
+		const sanitized: Record<string, unknown> = {};
+		for (const [key, nested] of Object.entries(value)) {
+			const sanitizedKey = sanitize(key);
+			if (Object.hasOwn(sanitized, sanitizedKey)) {
+				throw new ToolError("completion() could not safely sanitize provider metadata.");
+			}
+			Object.defineProperty(sanitized, sanitizedKey, {
+				value: sanitizeProviderJson(nested, sanitize, ancestors),
+				enumerable: true,
+				configurable: true,
+				writable: true,
+			});
+		}
+		return sanitized;
+	} finally {
+		ancestors.delete(value);
+	}
+}
+
+/**
  * Run a single stateless completion on behalf of an eval cell's `completion()` call.
  * Returns a `{ text, details }` value shaped like a {@link callSessionTool}
  * result so the existing bridge transport carries it to either runtime.
@@ -131,12 +176,24 @@ export async function runEvalCompletion(
 		);
 	}
 
-	const tools: Tool[] | undefined = schema
+	// Dereference the session callback at invocation time: credential resolution
+	// and auth retry may install a newer secret runtime while this request waits.
+	const sanitizeLive = (text: string): string => options.session.obfuscateProviderText?.(text) ?? text;
+	// Sanitize caller-controlled raw fields before provider adapters can perform
+	// any lossy normalization. The per-payload pass below repeats this at the
+	// final physical-send seam with the then-current runtime.
+	const providerPrompt = sanitizeLive(prompt);
+	const providerSystem = sanitizeLive(system ?? "You are a helpful assistant.");
+	const providerSchema = schema
+		? (sanitizeProviderJson(schema, sanitizeLive) as Record<string, unknown>)
+		: undefined;
+
+	const tools: Tool[] | undefined = providerSchema
 		? [
 				{
 					name: STRUCTURED_TOOL_NAME,
 					description: "Return your answer by calling this tool with the requested structured fields.",
-					parameters: schema,
+					parameters: providerSchema,
 					strict: false,
 				},
 			]
@@ -148,12 +205,12 @@ export async function runEvalCompletion(
 	// field on every Responses request and 400 with "Instructions are required"
 	// when it is missing. Fall back to a minimal default so `completion(prompt)` works
 	// without forcing every caller to pass a `system` prompt.
-	const sanitize = options.session.obfuscateProviderText ?? ((text: string) => text);
-	const systemPrompt = [sanitize(system ?? "You are a helpful assistant.")];
+	const systemPrompt = [providerSystem];
 
 	// Suspend eval timeout accounting while the model request owns control. The
 	// timeout clock restarts once the bridge returns to the cell runtime.
-	const providerPrompt = sanitize(prompt);
+	// `onPayload` is invoked after each credential resolution and for every
+	// auth retry, so a runtime swapped by a 401 protects the next wire body.
 	const response = await withBridgeTimeoutPause(options.emitStatus, () =>
 		instrumentedCompleteSimple(
 			model,
@@ -167,6 +224,7 @@ export async function runEvalCompletion(
 				signal: options.signal,
 				reasoning: reasoningForTier(finalTier, model),
 				toolChoice: schema ? { type: "tool", name: STRUCTURED_TOOL_NAME } : undefined,
+				onPayload: payload => sanitizeProviderJson(payload, sanitizeLive),
 			},
 			{ telemetry, oneshotKind: "eval_completion" },
 		),
