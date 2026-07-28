@@ -566,6 +566,38 @@ try {
     Remove-Item -Recurse -Force $aliasSandbox -ErrorAction SilentlyContinue
 }
 
+# --- New-BinaryStagingPath: the downloaded binary remains executable ---
+# Windows PowerShell 5.1 classifies a command path by its final extension. The
+# installer used `.download`, so checksum verification succeeded but the native
+# self-test failed before launch with CantActivateDocumentInPipeline. This drives
+# the exact invocation shape against a copy of the current PowerShell executable.
+$executableStageSandbox = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon executable stage $PID"
+if (Test-Path $executableStageSandbox) { Remove-Item -Recurse -Force $executableStageSandbox }
+try {
+    New-Item -ItemType Directory -Force -Path $executableStageSandbox | Out-Null
+    $executableStage = New-BinaryStagingPath -Dir $executableStageSandbox -BinName $BinName
+    Check "the binary staging path keeps exe as its final extension" ([System.IO.Path]::GetExtension($executableStage)) ".exe"
+    Check "the binary staging path remains unique to this installer" ([System.IO.Path]::GetFileName($executableStage)) ".$BinName.$PID.download.exe"
+
+    $hostExecutable = (Get-Process -Id $PID).Path
+    Copy-Item -LiteralPath $hostExecutable -Destination $executableStage
+    $pipelineOutput = (& $executableStage -NoProfile -Command "Write-Output pipeline-ok" 2>&1 | Out-String).Trim()
+    Check "an executable staged in a spaced path runs in the middle of a pipeline" $pipelineOutput "pipeline-ok"
+
+    # Cleanup accepts the new executable suffix and the legacy bare suffix, but
+    # rejects a similarly named file with no numeric owner PID.
+    $legacyStage = Join-Path $executableStageSandbox ".$BinName.2147483647.download"
+    $foreignStage = Join-Path $executableStageSandbox ".$BinName.mine.download.exe"
+    Set-Content -LiteralPath $legacyStage -Value "legacy"
+    Set-Content -LiteralPath $foreignStage -Value "foreign"
+    Clear-StaleInstallArtifacts -Dir $executableStageSandbox -BaseName "$BinName.exe" -BinName $BinName *> $null
+    Check "stale cleanup removes the executable staging form" (Test-Path $executableStage) "False"
+    Check "stale cleanup still removes the legacy staging form" (Test-Path $legacyStage) "False"
+    Check "stale cleanup preserves similarly named files without an owner PID" (Test-Path $foreignStage) "True"
+} finally {
+    Remove-Item -Recurse -Force $executableStageSandbox -ErrorAction SilentlyContinue
+}
+
 # --- Move-StagedBinaryIntoPlace: an empty download never becomes the binary ---
 # install.sh has refused a zero-byte staged file since finalize_binary existed;
 # the Windows side had no such guard. Invoke-WebRequest writes the file before it

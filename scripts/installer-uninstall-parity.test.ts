@@ -134,8 +134,12 @@ describe("uninstall clears addons staged beside the binary", () => {
  * the Windows half of that contract, plus the leftovers it introduces.
  */
 describe("the Windows binary install stages its download", () => {
-	it("downloads to a per-process staging path, not onto the installed binary", () => {
-		expect(installPs1).toContain('$StagingPath = Join-Path $InstallDir ".$BinName.$PID.download"');
+	it("downloads to an executable per-process staging path, not onto the installed binary", () => {
+		// Windows PowerShell classifies a command path by its final extension.
+		// A bare `.download` file verifies correctly but cannot be invoked inside
+		// the native self-test pipeline.
+		expect(installPs1).toContain("$StagingPath = New-BinaryStagingPath -Dir $InstallDir -BinName $BinName");
+		expect(installPs1).toContain('return Join-Path $Dir ".$BinName.$PID.download.exe"');
 		expect(installPs1).toContain("-OutFile $StagingPath");
 		expect(installPs1).not.toContain("-OutFile $OutPath");
 	});
@@ -184,6 +188,7 @@ describe("the Windows binary install stages its download", () => {
 		const fn = installPs1.slice(installPs1.indexOf("function Clear-StaleInstallArtifacts {"));
 		const body = fn.slice(0, fn.indexOf("\nfunction "));
 		expect(body).toContain('-Filter ".$BinName.*.download"');
+		expect(body).toContain('-Filter ".$BinName.*.download.exe"');
 		expect(installSh).toContain("sweep_stale_staging() {");
 		// Both install paths sweep before staging their own file, not just one.
 		expect(installSh.match(/^\s*sweep_stale_staging$/gm)?.length).toBe(2);
@@ -231,6 +236,7 @@ describe("the Windows binary install stages its download", () => {
 		const body = fn.slice(0, fn.indexOf("\nfunction "));
 		expect(body).toContain('-Filter "*.old"');
 		expect(body).toContain('-Filter ".$BinName.*.download"');
+		expect(body).toContain('-Filter ".$BinName.*.download.exe"');
 	});
 });
 
