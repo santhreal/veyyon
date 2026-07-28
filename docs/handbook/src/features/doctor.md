@@ -19,7 +19,7 @@ The install checks run first, because nothing below them can work if the install
 | `Native addon` | A real search returns a real match, so the native addon loaded. `--version` alone passes without it. |
 | `Install method` | Whether `veyyon update` swaps the binary or advances a source checkout. |
 | `vey alias` | The short name the rest of the documentation tells you to type resolves. |
-| `Shell completions` | Completion files are installed, and for which shells. |
+| `Shell completions` | Completion files are installed, and for which shells. On Windows that is the single script beside your PowerShell profile, since PowerShell has no directory it autoloads completions from. |
 
 None of them touches the network. A health check you cannot run when the network is what broke is not much of a health check.
 

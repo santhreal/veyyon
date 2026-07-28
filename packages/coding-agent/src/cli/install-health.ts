@@ -23,7 +23,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { $which, APP_NAME, VERSION } from "@veyyon/utils";
 import { completionEnvFrom, completionTargets } from "./completion-refresh";
-import { probeSearchWorks, resolveUpdateMethod, verifyBinaryVersion } from "./update-cli";
+import { probeSearchWorks, resolveUpdateMethod, verifyBinaryVersion, windowsCompletionTargets } from "./update-cli";
 
 /**
  * One answer about the install.
@@ -33,6 +33,12 @@ import { probeSearchWorks, resolveUpdateMethod, verifyBinaryVersion } from "./up
  * meaning here, and the two are consumed by different commands. Sharing the name
  * would tie an install question to a plugin lifecycle it has nothing to do with.
  */
+/** One completion script the installer could have written, and the shell it is for. */
+export interface CompletionFile {
+	shell: string;
+	filePath: string;
+}
+
 export interface InstallHealthCheck {
 	name: string;
 	status: "ok" | "warning" | "error";
@@ -88,6 +94,18 @@ export interface InstallHealthDeps {
 	probeSearch?: typeof probeSearchWorks;
 	/** The environment that decides where completion files live. */
 	env?: Record<string, string | undefined>;
+	/**
+	 * Every completion file the installer could have written on THIS platform.
+	 *
+	 * Windows has no directory a shell autoloads completions from, so the
+	 * installer writes one script beside the user's PowerShell profile and
+	 * dot-sources it. Looking for the POSIX layout there finds nothing and reports
+	 * "no completion files" on a Windows install where they are all present. The
+	 * updater already owns the question of where that file is, and asks PowerShell
+	 * itself rather than guessing at a Documents folder OneDrive may have moved, so
+	 * that answer is reused rather than restated.
+	 */
+	completionFiles?: () => Promise<CompletionFile[]> | CompletionFile[];
 }
 
 /**
@@ -190,8 +208,13 @@ export async function runInstallHealthChecks(deps: InstallHealthDeps = {}): Prom
 
 	// Completions are the one part of an install that fails silently: nothing goes
 	// wrong, Tab just stops offering anything, and there is no message anywhere.
-	const targets = completionTargets(completionEnvFrom(env), APP_NAME, ALIAS_NAME);
-	const present = targets.filter(target => exists(target.filePath));
+	const completionFiles =
+		deps.completionFiles ??
+		(async () =>
+			process.platform === "win32"
+				? await windowsCompletionTargets()
+				: completionTargets(completionEnvFrom(env), APP_NAME, ALIAS_NAME));
+	const present = (await completionFiles()).filter(file => exists(file.filePath));
 	if (present.length === 0) {
 		checks.push({
 			name: "Shell completions",
@@ -199,7 +222,7 @@ export async function runInstallHealthChecks(deps: InstallHealthDeps = {}): Prom
 			message: `No completion files found. Re-run the installer to write them, or use \`${APP_NAME} completions\`.`,
 		});
 	} else {
-		const shells = [...new Set(present.map(target => target.shell))].sort();
+		const shells = [...new Set(present.map(file => file.shell))].sort();
 		checks.push({
 			name: "Shell completions",
 			status: "ok",

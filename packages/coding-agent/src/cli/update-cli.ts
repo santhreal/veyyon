@@ -1145,7 +1145,7 @@ export async function updateViaBinaryAt(
  * the file is only rewritten when it already exists, so a wrong or missing
  * answer costs a stale completion, never a stray file.
  */
-async function windowsCompletionTargets(): Promise<CompletionTarget[]> {
+export async function windowsCompletionTargets(): Promise<CompletionTarget[]> {
 	if (process.platform !== "win32") return [];
 	const proc = await $`powershell -NoProfile -Command "$PROFILE.CurrentUserAllHosts"`.quiet().nothrow();
 	const profilePath = proc.stdout.toString().trim();
