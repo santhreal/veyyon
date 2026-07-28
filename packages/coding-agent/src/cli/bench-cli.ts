@@ -16,7 +16,7 @@ import type {
 import { resolveModelServiceTier, streamSimple } from "@veyyon/ai";
 import { buildModelProviderPriorityRank } from "@veyyon/catalog/identity";
 import { replaceTabs, truncateToWidth } from "@veyyon/tui";
-import { formatDuration } from "@veyyon/utils";
+import { formatDuration, getAgentDir, getProjectDir } from "@veyyon/utils";
 import chalk from "chalk";
 import type { ApiKeyResolverModel } from "../config/api-key-resolver";
 import {
@@ -28,6 +28,7 @@ import {
 import { buildServiceTierByFamily, serviceTierForAllFamilies, serviceTierSettingToTier } from "../config/service-tier";
 import type { Settings } from "../config/settings";
 import { benchPrompts } from "../prompts/bench/rows";
+import { loadStandaloneSecretRuntime } from "../secrets/standalone-runtime";
 import {
 	concreteThinkingLevel,
 	resolveThinkingLevelForModel,
@@ -65,6 +66,8 @@ export interface BenchModelRegistry {
 export interface BenchRuntime {
 	modelRegistry: BenchModelRegistry;
 	settings?: Settings;
+	/** Isolation override for standalone secret-vault resolution. */
+	globalConfigRoot?: string;
 	close?: () => void;
 }
 
@@ -184,6 +187,8 @@ interface BenchRequestOptions {
 	apiKey: ApiKeyResolver;
 	sessionId: string;
 	prompt: string;
+	/** Custom prompts are resolved from their raw bytes at the final stream dispatch seam. */
+	sanitizePrompt?: (rawPrompt: string) => Promise<string>;
 	maxTokens: number;
 	/** Explicit effort from a `:level` selector suffix; absent = provider default. */
 	reasoning?: Effort;
@@ -191,6 +196,31 @@ interface BenchRequestOptions {
 	disableReasoning?: boolean;
 	/** Requested service tier passed to `streamSimple`; absent omits the option. The provider layer applies scope/support gating before it reaches the wire. */
 	serviceTier?: ServiceTier;
+}
+
+/**
+ * Bench does not create a session, but a custom prompt crosses the same provider
+ * boundary. Reload every standalone secret source for every physical stream
+ * dispatch so a long or parallel bench never keeps using a stale confidentiality
+ * snapshot.
+ *
+ * The diagnostic is deliberately constant: source parsers can quote bytes from
+ * declarations, and those lines are exactly where operators put secret values.
+ */
+async function sanitizeBenchCustomPrompt(
+	rawPrompt: string,
+	cwd: string,
+	agentDir: string,
+	globalConfigRoot?: string,
+): Promise<string> {
+	try {
+		const obfuscator = await loadStandaloneSecretRuntime({ cwd, agentDir, globalConfigRoot });
+		return obfuscator.obfuscate(rawPrompt).trim();
+	} catch {
+		throw new Error(
+			"Refusing to send custom benchmark prompt because the secret protection runtime could not be loaded. Fix secrets.yml, env-keywords.yml, or the secret vault and retry.",
+		);
+	}
 }
 
 async function runBenchRequest(
@@ -203,11 +233,15 @@ async function runBenchRequest(
 	let firstTokenAt: number | undefined;
 	const providerSessionState = new Map<string, ProviderSessionState>();
 	try {
+		// Raw custom input is transformed before trim or any other lossy
+		// preprocessing, after every preceding await, and with no await between
+		// this transform and streamSimple.
+		const prompt = options.sanitizePrompt ? await options.sanitizePrompt(options.prompt) : options.prompt;
 		const context: Context = {
 			// Codex's Responses endpoint 400s with "Instructions are required" when no
 			// system prompt is present — same guard as eval's completion bridge.
 			systemPrompt: ["You are a helpful assistant."],
-			messages: [{ role: "user", content: options.prompt, timestamp: Date.now(), attribution: "user" }],
+			messages: [{ role: "user", content: prompt, timestamp: Date.now(), attribution: "user" }],
 		};
 		const stream = streamFn(model, context, {
 			apiKey: options.apiKey,
@@ -457,7 +491,9 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 	const maxTokens = normalizePositiveInteger("max-tokens", command.flags.maxTokens, DEFAULT_MAX_TOKENS);
 	const par =
 		command.flags.par !== undefined ? normalizePositiveInteger("par", command.flags.par, DEFAULT_PAR) : DEFAULT_PAR;
-	const prompt = command.flags.prompt?.trim() || BENCH_PROMPT;
+	const customPrompt =
+		command.flags.prompt !== undefined && command.flags.prompt.trim().length > 0 ? command.flags.prompt : undefined;
+	const prompt = customPrompt ?? BENCH_PROMPT;
 	const json = command.flags.json === true;
 	const randomSessionId = deps.randomSessionId ?? (() => Bun.randomUUIDv7());
 	const writeStdout = deps.writeStdout ?? ((text: string) => process.stdout.write(text));
@@ -475,6 +511,16 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 	}
 
 	const runtime = await (deps.createRuntime ?? createCliModelRuntime)();
+	const sanitizePrompt =
+		customPrompt === undefined
+			? undefined
+			: (rawPrompt: string) =>
+					sanitizeBenchCustomPrompt(
+						rawPrompt,
+						runtime.settings?.getCwd?.() ?? getProjectDir(),
+						runtime.settings?.getAgentDir?.() ?? getAgentDir(),
+						runtime.globalConfigRoot,
+					);
 	try {
 		const targets = resolveBenchModels(command.models, runtime.modelRegistry, runtime.settings, writeStderr);
 		// Explicit `--service-tier` (a single value broadcast across families) wins;
@@ -526,6 +572,7 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 						apiKey: runtime.modelRegistry.resolver(model, sessionId),
 						sessionId,
 						prompt,
+						sanitizePrompt,
 						maxTokens,
 						reasoning: toReasoningEffort(thinking),
 						disableReasoning: shouldDisableReasoning(thinking) ? true : undefined,
