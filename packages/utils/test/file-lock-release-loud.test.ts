@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
-import { writeFileSync } from "node:fs";
+import * as fsSync from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -55,26 +56,23 @@ describe("A lost or unreleasable file lock is reported", () => {
 	const releaseWarnings = () => warnings.filter(entry => entry.message.includes("could not remove the lock"));
 
 	/**
-	 * The core case, staged the way it actually happens: the lock goes stale, a
-	 * reaper or rival takes it, and our holder is still running. The rival's
-	 * token is written under the same path while we are inside the section.
+	 * The core case, staged as an external replacement or protocol violation:
+	 * the rival's token appears under the same pathname while our holder is
+	 * still inside the section.
 	 */
 	test("warns when another process took the lock before this holder finished", async () => {
+		const rivalToken = randomUUID();
 		await withFileLock(target(), async () => {
-			// Stand in for the rival process: same lock directory, different token.
-			await fs.writeFile(
-				path.join(lockPath(), "info"),
-				JSON.stringify({ pid: process.pid, timestamp: Date.now(), token: "rival-token" }),
-			);
+			const infoPath = path.join(lockPath(), "info");
+			const info = JSON.parse(await fs.readFile(infoPath, "utf8")) as Record<string, unknown>;
+			await fs.writeFile(infoPath, JSON.stringify({ ...info, token: rivalToken }));
 		});
 
 		const reported = lostWarnings();
 		expect(reported).toHaveLength(1);
 		expect(reported[0]?.message).toContain("not actually exclusive");
-		// The tunable that fixes it has to be in the message, or the reader has
-		// nothing to act on.
-		expect(reported[0]?.message).toContain("longer lock timeout");
-		expect(reported[0]?.fields.actualToken).toBe("rival-token");
+		expect(reported[0]?.message).toContain("check the guarded resource");
+		expect(reported[0]?.fields.actualToken).toBe(rivalToken);
 		expect(reported[0]?.fields.lockPath).toBe(lockPath());
 	});
 
@@ -84,15 +82,15 @@ describe("A lost or unreleasable file lock is reported", () => {
 	 * louder while wiping the rival's lock would be far worse than the original.
 	 */
 	test("leaves the other process's lock in place rather than wiping it", async () => {
+		const rivalToken = randomUUID();
 		await withFileLock(target(), async () => {
-			await fs.writeFile(
-				path.join(lockPath(), "info"),
-				JSON.stringify({ pid: process.pid, timestamp: Date.now(), token: "rival-token" }),
-			);
+			const infoPath = path.join(lockPath(), "info");
+			const info = JSON.parse(await fs.readFile(infoPath, "utf8")) as Record<string, unknown>;
+			await fs.writeFile(infoPath, JSON.stringify({ ...info, token: rivalToken }));
 		});
 
 		const info = JSON.parse(await fs.readFile(path.join(lockPath(), "info"), "utf8")) as { token: string };
-		expect(info.token).toBe("rival-token");
+		expect(info.token).toBe(rivalToken);
 	});
 
 	/**
@@ -116,16 +114,16 @@ describe("A lost or unreleasable file lock is reported", () => {
 	 * as blind as before, and they contend on the same locks.
 	 */
 	test("warns from the sync path on the same overlap", () => {
+		const rivalToken = randomUUID();
 		withFileLockSync(target(), () => {
-			writeFileSync(
-				path.join(lockPath(), "info"),
-				JSON.stringify({ pid: process.pid, timestamp: Date.now(), token: "rival-token-sync" }),
-			);
+			const infoPath = path.join(lockPath(), "info");
+			const info = JSON.parse(fsSync.readFileSync(infoPath, "utf8")) as Record<string, unknown>;
+			fsSync.writeFileSync(infoPath, JSON.stringify({ ...info, token: rivalToken }));
 		});
 
 		const reported = lostWarnings();
 		expect(reported).toHaveLength(1);
-		expect(reported[0]?.fields.actualToken).toBe("rival-token-sync");
+		expect(reported[0]?.fields.actualToken).toBe(rivalToken);
 	});
 
 	/**

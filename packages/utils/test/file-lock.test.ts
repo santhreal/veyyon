@@ -1,9 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, test } from "bun:test";
 import * as fsSync from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { __internalsForTesting, tryWithFileLock, withFileLock, withFileLockSync } from "../src/file-lock";
+import { getProcessStartIdentity } from "../src/process-liveness";
 import { removeWithRetries } from "../src/temp";
 
 const {
@@ -26,6 +28,22 @@ async function mkRoot(): Promise<string> {
 	return root;
 }
 
+function ownerInfo(overrides: Partial<{
+	pid: number;
+	timestamp: number;
+	token: string;
+	processIdentity: string | null;
+}> = {}) {
+	return {
+		version: 1 as const,
+		pid: process.pid,
+		timestamp: Date.now(),
+		token: randomUUID(),
+		processIdentity: getProcessStartIdentity(process.pid),
+		...overrides,
+	};
+}
+
 afterAll(async () => {
 	for (const root of ROOTS) {
 		await removeWithRetries(root).catch(() => {});
@@ -38,20 +56,16 @@ describe("file-lock token ownership (F1)", () => {
 		const target = path.join(root, "data.json");
 		const lockPath = getLockPath(target);
 
-		const token = await tryAcquireLock(lockPath);
-		expect(token).not.toBeNull();
-		expect(typeof token).toBe("string");
+		const lease = await tryAcquireLock(lockPath);
+		expect(lease).not.toBeNull();
+		if (lease === null) throw new Error("lock acquisition unexpectedly failed");
 
-		// A contender that lost a race calling release with a guessed/empty token
-		// must NOT remove the rightful owner's lock.
-		await releaseLock(lockPath, "not-the-real-token");
+		// A contender that lost a race calling release with a guessed token must
+		// not remove the rightful owner's pinned directory and owner record.
+		await releaseLock(lockPath, randomUUID());
+		expect((await readLockInfo(lockPath))?.token).toBe(lease.token);
 
-		const info = await readLockInfo(lockPath);
-		expect(info).not.toBeNull();
-		expect(info?.token).toBe(token!);
-
-		// The rightful owner can still release.
-		await releaseLock(lockPath, token!);
+		await releaseLock(lockPath, lease);
 		expect(await readLockInfo(lockPath)).toBeNull();
 	});
 
@@ -91,10 +105,11 @@ describe("file-lock token ownership (F1)", () => {
 		const root = await mkRoot();
 		const target = path.join(root, "published.json");
 		const lockPath = getLockPath(target);
-		const token = await tryAcquireLock(lockPath);
+		const lease = await tryAcquireLock(lockPath);
+		if (lease === null) throw new Error("lock acquisition unexpectedly failed");
 
-		expect(readLockInfo(lockPath)).resolves.toMatchObject({ pid: process.pid, token });
-		await releaseLock(lockPath, token!);
+		expect(readLockInfo(lockPath)).resolves.toMatchObject({ pid: process.pid, token: lease.token, version: 1 });
+		await releaseLock(lockPath, lease);
 	});
 
 	test("withFileLock serializes N concurrent writers without lost updates", async () => {
@@ -133,21 +148,17 @@ describe("file-lock sync twin", () => {
 		const target = path.join(root, "sync-owner.json");
 		const lockPath = getLockPath(target);
 
-		const token = tryAcquireLockSync(lockPath);
-		expect(token).not.toBeNull();
-		expect(typeof token).toBe("string");
+		const lease = tryAcquireLockSync(lockPath);
+		expect(lease).not.toBeNull();
+		if (lease === null) throw new Error("sync lock acquisition unexpectedly failed");
 
-		// A second sync acquire on a held lock returns null (EEXIST), never a token.
 		expect(tryAcquireLockSync(lockPath)).toBeNull();
+		expect(readLockInfoSync(lockPath)?.token).toBe(lease.token);
+		expect(readLockInfoSync(lockPath)?.pid).toBe(process.pid);
 
-		const info = readLockInfoSync(lockPath);
-		expect(info?.token).toBe(token!);
-		expect(info?.pid).toBe(process.pid);
-
-		// Wrong-token release is a no-op; right-token release clears the lock.
-		releaseLockSync(lockPath, "not-the-real-token");
-		expect(readLockInfoSync(lockPath)?.token).toBe(token!);
-		releaseLockSync(lockPath, token!);
+		releaseLockSync(lockPath, randomUUID());
+		expect(readLockInfoSync(lockPath)?.token).toBe(lease.token);
+		releaseLockSync(lockPath, lease);
 		expect(readLockInfoSync(lockPath)).toBeNull();
 	});
 
@@ -344,7 +355,7 @@ describe("tryWithFileLock", () => {
 		const lockPath = getLockPath(target);
 		await fs.mkdir(lockPath);
 		// pid 1 is alive, so use a pid that cannot be: liveness is what decides.
-		await Bun.write(`${lockPath}/info`, JSON.stringify({ pid: 0x7fffffff, timestamp: Date.now(), token: "x" }));
+		await Bun.write(`${lockPath}/info`, JSON.stringify(ownerInfo({ pid: 0x7fffffff, processIdentity: null })));
 
 		const result = await tryWithFileLock(target, async () => "reaped");
 
@@ -356,50 +367,105 @@ describe("tryWithFileLock", () => {
 		const target = path.join(root, "delayed-reaper.json");
 		const lockPath = getLockPath(target);
 		await fs.mkdir(lockPath);
-		await fs.writeFile(
-			path.join(lockPath, "info"),
-			JSON.stringify({ pid: 0x7fffffff, timestamp: Date.now(), token: "dead-owner" }),
-		);
+		const deadOwner = ownerInfo({ pid: 0x7fffffff, processIdentity: null });
+		await fs.writeFile(path.join(lockPath, "info"), JSON.stringify(deadOwner));
 
 		// Both contenders observe the same dead owner. A reaps it and acquires;
 		// B then resumes from its stale observation. Reaping with no/guessed
 		// ownership token would erase A's live lock here.
 		expect(await isLockStale(lockPath, Number.POSITIVE_INFINITY)).toBe(true);
 		expect(await isLockStale(lockPath, Number.POSITIVE_INFINITY)).toBe(true);
-		await releaseLock(lockPath, "dead-owner");
-		const freshToken = await tryAcquireLock(lockPath);
-		expect(freshToken).not.toBeNull();
-
-		await releaseLock(lockPath, "dead-owner");
-		if (freshToken === null) throw new Error("fresh lock acquisition unexpectedly failed"); expect((await readLockInfo(lockPath))?.token).toBe(freshToken);
-		await releaseLock(lockPath, freshToken!);
-	});
-
-	test("does not reap a live holder whose lock is younger than staleMs", async () => {
-		// The failure this guards: a staleMs shorter than the work lets a second
-		// caller reap a lock that is still legitimately held, and both run.
-		const root = await mkRoot();
-		const target = path.join(root, "live-owner.json");
-		const lockPath = getLockPath(target);
-		await fs.mkdir(lockPath);
-		await Bun.write(`${lockPath}/info`, JSON.stringify({ pid: process.pid, timestamp: Date.now(), token: "x" }));
-
-		expect(await tryWithFileLock(target, async () => "nope", { staleMs: 600_000 })).toEqual({ acquired: false });
-	});
-
-	test("reaps a live holder whose lock has aged past staleMs", async () => {
-		const root = await mkRoot();
-		const target = path.join(root, "aged.json");
-		const lockPath = getLockPath(target);
-		await fs.mkdir(lockPath);
-		await Bun.write(
-			`${lockPath}/info`,
-			JSON.stringify({ pid: process.pid, timestamp: Date.now() - 60_000, token: "x" }),
-		);
-
-		expect(await tryWithFileLock(target, async () => "taken", { staleMs: 1_000 })).toEqual({
-			acquired: true,
-			value: "taken",
+		const staleObservation = await __internalsForTesting.inspectLockDirectory(lockPath);
+		if (staleObservation === null) throw new Error("stale lock observation unexpectedly absent");
+		await __internalsForTesting.retireObservedLock(lockPath, staleObservation, {
+			kind: "stale",
+			staleMs: Number.POSITIVE_INFINITY,
 		});
+		const freshLease = await tryAcquireLock(lockPath);
+		if (freshLease === null) throw new Error("fresh lock acquisition unexpectedly failed");
+
+		// Resume the second reaper with the exact old inode observation. It must
+		// refuse the replacement owner rather than applying pathname-only rm.
+		await __internalsForTesting.retireObservedLock(lockPath, staleObservation, {
+			kind: "stale",
+			staleMs: Number.POSITIVE_INFINITY,
+		});
+		expect((await readLockInfo(lockPath))?.token).toBe(freshLease.token);
+		await releaseLock(lockPath, freshLease);
+	});
+
+	/** Regression: wall age must never let an async contender steal from the same live process incarnation. */
+	test("does not reap a live async holder even when its timestamp exceeds staleMs", async () => {
+		const root = await mkRoot();
+		const target = path.join(root, "aged-live-async.json");
+		const lockPath = getLockPath(target);
+		let contenderRan = false;
+
+		await withFileLock(target, async () => {
+			const infoPath = path.join(lockPath, "info");
+			const info = JSON.parse(await fs.readFile(infoPath, "utf8")) as Record<string, unknown>;
+			await fs.writeFile(infoPath, JSON.stringify({ ...info, timestamp: 0 }));
+			expect(
+				await tryWithFileLock(
+					target,
+					async () => {
+						contenderRan = true;
+					},
+					{ staleMs: 0 },
+				),
+			).toEqual({ acquired: false });
+		});
+		expect(contenderRan).toBe(false);
+	});
+
+	/** The synchronous twin must preserve a long-running live holder even at the zero timeout boundary. */
+	test("does not reap a live sync holder even when its timestamp exceeds staleMs", async () => {
+		const root = await mkRoot();
+		const target = path.join(root, "aged-live-sync.json");
+		const lockPath = getLockPath(target);
+		let contenderRan = false;
+
+		expect(
+			withFileLockSync(target, () => {
+				const infoPath = path.join(lockPath, "info");
+				const info = JSON.parse(fsSync.readFileSync(infoPath, "utf8")) as Record<string, unknown>;
+				fsSync.writeFileSync(infoPath, JSON.stringify({ ...info, timestamp: 0 }));
+				expect(() =>
+					withFileLockSync(
+						target,
+						() => {
+							contenderRan = true;
+						},
+						{ staleMs: 0, retries: 1, retryDelayMs: 0 },
+					),
+				).toThrow("Failed to acquire lock");
+				return "holder-finished";
+			}),
+		).toBe("holder-finished");
+		expect(contenderRan).toBe(false);
+	});
+
+	/** Proven dead and reused owners remain positively recoverable by the synchronous lifecycle. */
+	test("sync acquisition reaps dead and PID-reused infinite-lease owners", async () => {
+		for (const [name, info] of [
+			["dead", ownerInfo({ pid: 0x7fffffff, processIdentity: null })],
+			[
+				"reused",
+				ownerInfo({ processIdentity: "linux:00000000-0000-0000-0000-000000000000:1" }),
+			],
+		] as const) {
+			const root = await mkRoot();
+			const target = path.join(root, `${name}-sync.json`);
+			const lockPath = getLockPath(target);
+			fsSync.mkdirSync(lockPath);
+			fsSync.writeFileSync(path.join(lockPath, "info"), JSON.stringify(info));
+			expect(
+				withFileLockSync(target, () => `${name}-recovered`, {
+					staleMs: Number.POSITIVE_INFINITY,
+					retries: 2,
+					retryDelayMs: 0,
+				}),
+			).toBe(`${name}-recovered`);
+		}
 	});
 });
