@@ -1,6 +1,5 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
-import type { Api, ApiKey, AssistantMessage, Message, Model } from "@veyyon/ai";
-import { completeSimple } from "@veyyon/ai";
+import type { Api, ApiKey, AssistantMessage, Model } from "@veyyon/ai";
 import { prompt } from "@veyyon/utils";
 import type { FileDiff, FileObservation } from "../../commit/types";
 import { isExcludedFile } from "../../commit/utils/exclusions";
@@ -8,6 +7,7 @@ import { commitPrompts } from "../../prompts/commit/rows";
 import { mapWithConcurrencyLimit } from "../../task/parallel";
 import { toReasoningEffort } from "../../thinking";
 import { withScopedTimeoutSignal } from "../../utils/fetch-timeout";
+import { completeCommitSimple, type ResolveObfuscateProviderText } from "../shared-llm";
 import { MAX_FILE_TOKENS, truncateToTokenLimit } from "./utils";
 
 const MAX_CONTEXT_FILES = 20;
@@ -28,6 +28,7 @@ export interface MapPhaseInput {
 		maxRetries?: number;
 		retryBackoffMs?: number;
 	};
+	resolveObfuscateProviderText: ResolveObfuscateProviderText;
 }
 
 export async function runMapPhase({
@@ -36,9 +37,9 @@ export async function runMapPhase({
 	thinkingLevel,
 	files,
 	config,
+	resolveObfuscateProviderText,
 }: MapPhaseInput): Promise<FileObservation[]> {
 	const filtered = files.filter(file => !isExcludedFile(file.filename));
-	const systemPrompt = prompt.render(commitPrompts["commit/file-observer-system"].text);
 	const maxFileTokens = config?.maxFileTokens ?? MAX_FILE_TOKENS;
 	const maxConcurrency = config?.maxConcurrency ?? MAX_CONCURRENCY;
 	const timeoutMs = config?.timeoutMs ?? MAP_PHASE_TIMEOUT_MS;
@@ -58,27 +59,41 @@ export async function runMapPhase({
 			};
 		}
 
-		const contextHeader = generateContextHeader(filtered, file.filename);
-		const truncated = truncateToTokenLimit(file.content, maxFileTokens);
-		const userContent = prompt.render(commitPrompts["commit/file-observer-user"].text, {
-			filename: file.filename,
-			diff: truncated,
-			context_header: contextHeader,
-		});
-		const request = {
-			systemPrompt: [systemPrompt],
-			messages: [{ role: "user", content: userContent, timestamp: Date.now() }] as Message[],
-		};
-
 		const response = await withRetry(
 			() =>
 				withScopedTimeoutSignal(timeoutMs, timeoutSignal =>
-					completeSimple(model, request, {
-						apiKey,
-						maxTokens: 400,
-						reasoning: toReasoningEffort(thinkingLevel),
-						signal: timeoutSignal,
-					}),
+					completeCommitSimple(
+						model,
+						sanitize => {
+							const sanitizedFiles = filtered.map(candidate => ({
+								...candidate,
+								filename: sanitize(candidate.filename),
+								content: sanitize(candidate.content),
+							}));
+							const providerFile = sanitizedFiles[filtered.indexOf(file)];
+							if (!providerFile) throw new Error("Commit map input disappeared during provider projection");
+							const contextHeader = generateContextHeader(sanitizedFiles, providerFile.filename);
+							const truncated = truncateToTokenLimit(providerFile.content, maxFileTokens);
+							const userContent = prompt.render(commitPrompts["commit/file-observer-user"].text, {
+								filename: providerFile.filename,
+								diff: truncated,
+								context_header: contextHeader,
+							});
+							return {
+								systemPrompt: [sanitize(prompt.render(commitPrompts["commit/file-observer-system"].text))],
+								messages: [
+									{ role: "user", content: sanitize(userContent), timestamp: Date.now() },
+								],
+							};
+						},
+						{
+							apiKey,
+							maxTokens: 400,
+							reasoning: toReasoningEffort(thinkingLevel),
+							signal: timeoutSignal,
+						},
+						resolveObfuscateProviderText,
+					),
 				),
 			maxRetries,
 			retryBackoffMs,

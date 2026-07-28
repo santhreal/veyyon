@@ -1,11 +1,11 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, ApiKey, AssistantMessage, Model } from "@veyyon/ai";
-import { completeSimple, validateToolCall } from "@veyyon/ai";
 import { prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { ChangelogGenerationResult } from "../../commit/types";
 import { commitPrompts } from "../../prompts/commit/rows";
 import { toReasoningEffort } from "../../thinking";
+import { completeCommitSimple, type ResolveObfuscateProviderText } from "../shared-llm";
 import { extractTextContent, extractToolCall, parseJsonPayload } from "../utils";
 
 // Build the changelog entry schema with arktype
@@ -35,6 +35,8 @@ export interface ChangelogPromptInput {
 	existingEntries?: string;
 	stat: string;
 	diff: string;
+	maxDiffChars?: number;
+	resolveObfuscateProviderText: ResolveObfuscateProviderText;
 }
 
 export async function generateChangelogEntries({
@@ -46,26 +48,39 @@ export async function generateChangelogEntries({
 	existingEntries,
 	stat,
 	diff,
+	maxDiffChars,
+	resolveObfuscateProviderText,
 }: ChangelogPromptInput): Promise<ChangelogGenerationResult> {
-	const userContent = prompt.render(commitPrompts["commit/changelog-user"].text, {
-		changelog_path: changelogPath,
-		is_package_changelog: isPackageChangelog,
-		existing_entries: existingEntries,
-		stat,
-		diff,
-	});
-	const response = await completeSimple(
+	const response = await completeCommitSimple(
 		model,
-		{
-			systemPrompt: [prompt.render(commitPrompts["commit/changelog-system"].text)],
-			messages: [{ role: "user", content: userContent, timestamp: Date.now() }],
-			tools: [changelogTool],
+		sanitize => {
+			const sanitizedDiff = sanitize(diff);
+			const diffForPrompt =
+				maxDiffChars === undefined ? sanitizedDiff : truncateDiff(sanitizedDiff, maxDiffChars);
+			const userContent = prompt.render(commitPrompts["commit/changelog-user"].text, {
+				changelog_path: sanitize(changelogPath),
+				is_package_changelog: isPackageChangelog,
+				existing_entries: existingEntries === undefined ? undefined : sanitize(existingEntries),
+				stat: sanitize(stat),
+				diff: diffForPrompt,
+			});
+			return {
+				systemPrompt: [sanitize(prompt.render(commitPrompts["commit/changelog-system"].text))],
+				messages: [{ role: "user", content: sanitize(userContent), timestamp: Date.now() }],
+				tools: [changelogTool],
+			};
 		},
 		{ apiKey, maxTokens: 1200, reasoning: toReasoningEffort(thinkingLevel) },
+		resolveObfuscateProviderText,
 	);
 
 	const parsed = parseChangelogResponse(response);
 	return { entries: dedupeEntries(parsed.entries) };
+}
+
+function truncateDiff(diff: string, maxChars: number): string {
+	if (diff.length <= maxChars) return diff;
+	return `${diff.slice(0, maxChars)}\n[…${diff.length - maxChars}ch elided…]`;
 }
 
 function parseChangelogResponse(message: AssistantMessage): ChangelogGenerationResult {

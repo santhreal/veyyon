@@ -4,6 +4,7 @@ import { $env } from "@veyyon/utils";
 import { parseFileDiffs } from "../../commit/git/diff";
 import type { ConventionalAnalysis } from "../../commit/types";
 import { isExcludedFile } from "../../commit/utils/exclusions";
+import type { ResolveObfuscateProviderText } from "../shared-llm";
 import { runMapPhase } from "./map-phase";
 import { runReducePhase } from "./reduce-phase";
 import { estimateTokens, MAX_FILE_TOKENS } from "./utils";
@@ -30,6 +31,7 @@ export interface MapReduceInput {
 	scopeCandidates: string;
 	typesDescription?: string;
 	settings?: MapReduceSettings;
+	resolveObfuscateProviderText: ResolveObfuscateProviderText;
 }
 
 export function shouldUseMapReduce(diff: string, settings?: MapReduceSettings): boolean {
@@ -55,6 +57,7 @@ export async function runMapReduceAnalysis(input: MapReduceInput): Promise<Conve
 		thinkingLevel: input.smolThinkingLevel,
 		files: fileDiffs,
 		config: input.settings,
+		resolveObfuscateProviderText: input.resolveObfuscateProviderText,
 	});
 	return runReducePhase({
 		model: input.model,
@@ -64,5 +67,6 @@ export async function runMapReduceAnalysis(input: MapReduceInput): Promise<Conve
 		stat: input.stat,
 		scopeCandidates: input.scopeCandidates,
 		typesDescription: input.typesDescription,
+		resolveObfuscateProviderText: input.resolveObfuscateProviderText,
 	});
 }

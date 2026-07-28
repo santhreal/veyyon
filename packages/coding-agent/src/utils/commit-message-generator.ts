@@ -4,7 +4,6 @@
  */
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, Model } from "@veyyon/ai";
-import { completeSimple } from "@veyyon/ai";
 import { errorMessage, logger, prompt } from "@veyyon/utils";
 
 import type { ModelRegistry } from "../config/model-registry";
@@ -12,6 +11,7 @@ import { getModelMatchPreferences, resolveModelRoleValue } from "../config/model
 import type { Settings } from "../config/settings";
 import MODEL_PRIO from "../priority.json" with { type: "json" };
 import { commitPrompts } from "../prompts/commit/rows";
+import { completeCommitSimple, type ResolveObfuscateProviderText } from "../commit/shared-llm";
 import { concreteThinkingLevel, toReasoningEffort } from "../thinking";
 
 const COMMIT_SYSTEM_PROMPT = prompt.render(commitPrompts["commit/message-system"].text);
@@ -83,6 +83,7 @@ export async function generateCommitMessage(
 	diff: string,
 	registry: ModelRegistry,
 	settings: Settings,
+	resolveObfuscateProviderText: ResolveObfuscateProviderText,
 	sessionId?: string,
 ): Promise<string | null> {
 	const candidates = getSmolModelCandidates(registry, settings);
@@ -91,14 +92,11 @@ export async function generateCommitMessage(
 		return null;
 	}
 
-	const cleanDiff = filterDiffNoise(diff);
-	const truncatedDiff =
-		cleanDiff.length > MAX_DIFF_CHARS ? `${cleanDiff.slice(0, MAX_DIFF_CHARS)}\n… (truncated)` : cleanDiff;
-	if (!truncatedDiff.trim()) {
+	const initialDiff = filterDiffNoise((await resolveObfuscateProviderText())(diff));
+	if (!initialDiff.trim()) {
 		logger.debug("commit-msg-generator: diff is empty after noise filtering");
 		return null;
 	}
-	const userMessage = `<diff>\n${truncatedDiff}\n</diff>`;
 
 	for (const candidate of candidates) {
 		const apiKey = await registry.getApiKey(candidate.model, sessionId);
@@ -106,21 +104,36 @@ export async function generateCommitMessage(
 
 		try {
 			const maxTokens = COMMIT_MAX_TOKENS;
-			const response = await completeSimple(
+			const response = await completeCommitSimple(
 				candidate.model,
-				{
-					systemPrompt: [COMMIT_SYSTEM_PROMPT],
-					messages: [{ role: "user", content: userMessage, timestamp: Date.now() }],
+				sanitize => {
+					// Redact the whole raw diff before noise filtering or truncation:
+					// slicing first can leave an unrecognizable secret fragment.
+					const cleanDiff = filterDiffNoise(sanitize(diff));
+					const truncatedDiff =
+						cleanDiff.length > MAX_DIFF_CHARS
+							? `${cleanDiff.slice(0, MAX_DIFF_CHARS)}\n… (truncated)`
+							: cleanDiff;
+					const userMessage = `<diff>\n${truncatedDiff}\n</diff>`;
+					return {
+						systemPrompt: [sanitize(COMMIT_SYSTEM_PROMPT)],
+						messages: [{ role: "user", content: sanitize(userMessage), timestamp: Date.now() }],
+					};
 				},
 				{
 					apiKey: registry.resolver(candidate.model, sessionId),
 					maxTokens,
 					reasoning: toReasoningEffort(candidate.thinkingLevel),
 				},
+				resolveObfuscateProviderText,
 			);
 
 			if (response.stopReason === "error") {
-				logger.debug("commit-msg-generator: error", { model: candidate.model.id, error: response.errorMessage });
+				const sanitizeError = await resolveObfuscateProviderText();
+				logger.debug("commit-msg-generator: error", {
+					model: candidate.model.id,
+					error: sanitizeError(response.errorMessage ?? ""),
+				});
 				continue;
 			}
 
@@ -139,7 +152,7 @@ export async function generateCommitMessage(
 		} catch (err) {
 			logger.debug("commit-msg-generator: error", {
 				model: candidate.model.id,
-				error: errorMessage(err),
+				error: (await resolveObfuscateProviderText())(errorMessage(err)),
 			});
 		}
 	}

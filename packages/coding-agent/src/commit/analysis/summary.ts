@@ -1,11 +1,11 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, ApiKey, AssistantMessage, Model } from "@veyyon/ai";
-import { completeSimple, validateToolCall } from "@veyyon/ai";
 import { prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { CommitSummary } from "../../commit/types";
 import { commitPrompts } from "../../prompts/commit/rows";
 import { toReasoningEffort } from "../../thinking";
+import { completeCommitSimple, type ResolveObfuscateProviderText } from "../shared-llm";
 import { extractTextContent, extractToolCall } from "../utils";
 
 const SummaryToolSchema = type({
@@ -28,6 +28,7 @@ export interface SummaryInput {
 	stat: string;
 	maxChars: number;
 	userContext?: string;
+	resolveObfuscateProviderText: ResolveObfuscateProviderText;
 }
 
 /**
@@ -43,22 +44,31 @@ export async function generateSummary({
 	stat,
 	maxChars,
 	userContext,
+	resolveObfuscateProviderText,
 }: SummaryInput): Promise<CommitSummary> {
-	const systemPrompt = renderSummaryPrompt({ commitType, scope, maxChars });
-	const userPrompt = prompt.render(commitPrompts["commit/summary-user"].text, {
-		user_context: userContext,
-		details: details.join("\n"),
-		stat,
-	});
-
-	const response = await completeSimple(
+	const response = await completeCommitSimple(
 		model,
-		{
-			systemPrompt: [systemPrompt],
-			messages: [{ role: "user", content: userPrompt, timestamp: Date.now() }],
-			tools: [SummaryTool],
+		sanitize => {
+			const sanitizedCommitType = sanitize(commitType);
+			const sanitizedScope = scope === null ? null : sanitize(scope);
+			const systemPrompt = renderSummaryPrompt({
+				commitType: sanitizedCommitType,
+				scope: sanitizedScope,
+				maxChars,
+			});
+			const userPrompt = prompt.render(commitPrompts["commit/summary-user"].text, {
+				user_context: userContext === undefined ? undefined : sanitize(userContext),
+				details: details.map(detail => sanitize(detail)).join("\n"),
+				stat: sanitize(stat),
+			});
+			return {
+				systemPrompt: [sanitize(systemPrompt)],
+				messages: [{ role: "user", content: sanitize(userPrompt), timestamp: Date.now() }],
+				tools: [SummaryTool],
+			};
 		},
 		{ apiKey, maxTokens: 200, reasoning: toReasoningEffort(thinkingLevel) },
+		resolveObfuscateProviderText,
 	);
 
 	return parseSummaryFromResponse(response, commitType, scope);
