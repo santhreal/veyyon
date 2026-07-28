@@ -1,6 +1,7 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import { instrumentedCompleteSimple, resolveTelemetry } from "@veyyon/agent-core";
 import { type Api, completeSimple, type ImageContent, type Model, type ToolExample } from "@veyyon/ai";
+import { withAuth } from "@veyyon/ai/auth-retry";
 import { prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import { extractTextContent } from "../commit/utils";
@@ -229,28 +230,42 @@ export class InspectImageTool implements AgentTool<typeof inspectImageSchema, In
 			throw new ToolError("inspect_image only supports PNG, JPEG, GIF, and WEBP files detected by file content.");
 		}
 
-		const providerQuestion = this.session.obfuscateProviderText?.(params.question) ?? params.question;
-		const telemetry = resolveTelemetry(this.session.getTelemetry?.(), this.session.getSessionId?.() ?? undefined);
-		const response = await instrumentedCompleteSimple(
-			model,
-			{
+		const buildProviderContext = () => {
+			const providerQuestion = this.session.obfuscateProviderText?.(params.question) ?? params.question;
+			return {
 				systemPrompt: [prompt.render(toolsPrompts["tools/inspect-image-system"].text)],
 				messages: [
 					{
-						role: "user",
+						role: "user" as const,
 						content: [
-							{ type: "image", data: imageInput.data, mimeType: imageInput.mimeType },
-							{ type: "text", text: providerQuestion },
+							{ type: "image" as const, data: imageInput.data, mimeType: imageInput.mimeType },
+							{ type: "text" as const, text: providerQuestion },
 						],
 						timestamp: Date.now(),
 					},
 				],
-			},
+			};
+		};
+		const credential = modelRegistry.resolver(model, this.session.getSessionId?.() ?? undefined);
+		const telemetry = resolveTelemetry(this.session.getTelemetry?.(), this.session.getSessionId?.() ?? undefined);
+		const response = await instrumentedCompleteSimple(
+			model,
+			buildProviderContext(),
+			{ signal },
 			{
-				apiKey: modelRegistry.resolver(model, this.session.getSessionId?.() ?? undefined),
-				signal,
+				telemetry,
+				oneshotKind: "inspect_image",
+				completeImpl: (attemptModel, _staleContext, attemptOptions) =>
+					withAuth(
+						credential,
+						key =>
+							this.completeImageRequest(attemptModel, buildProviderContext(), {
+								...attemptOptions,
+								apiKey: key,
+							}),
+						{ signal },
+					),
 			},
-			{ telemetry, oneshotKind: "inspect_image", completeImpl: this.completeImageRequest },
 		);
 
 		if (response.stopReason === "error") {

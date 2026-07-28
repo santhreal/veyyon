@@ -213,8 +213,10 @@ describe("resizeImage defaults", () => {
 	});
 });
 
-describe("resizeImage decode fallback", () => {
-	it("reports PNG header dimensions when Bun.Image rejects after reading IHDR", async () => {
+describe("resizeImage decode boundary", () => {
+	it("rejects a forged PNG header instead of forwarding undecoded bytes", async () => {
+		// Header-only fallback used to treat IHDR dimensions as proof of an image,
+		// allowing arbitrary trailing bytes to cross the provider boundary.
 		const png = Buffer.alloc(33);
 		Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png, 0);
 		png.writeUInt32BE(13, 8);
@@ -224,17 +226,14 @@ describe("resizeImage decode fallback", () => {
 		png[24] = 8;
 		png[25] = 2;
 
-		const result = await resizeImage({ type: "image", data: png.toBase64(), mimeType: "image/png" });
-
-		expect(result.width).toBe(1900);
-		expect(result.height).toBe(2474);
-		expect(result.originalWidth).toBe(1900);
-		expect(result.originalHeight).toBe(2474);
-		expect(result.wasResized).toBe(false);
-		expect(result.buffer.length).toBe(png.length);
+		await expect(resizeImage({ type: "image", data: png.toBase64(), mimeType: "image/png" })).rejects.toThrow(
+			"Image normalization failed",
+		);
 	});
 
-	it("reports JPEG SOF dimensions when Bun.Image rejects after reading the header", async () => {
+	it("rejects a forged JPEG SOF instead of forwarding undecoded bytes", async () => {
+		// SOF dimensions are untrusted until a real decoder accepts the complete
+		// image; otherwise a MIME-shaped secret container could be replayed.
 		const jpeg = Buffer.alloc(12);
 		jpeg[0] = 0xff;
 		jpeg[1] = 0xd8;
@@ -246,14 +245,9 @@ describe("resizeImage decode fallback", () => {
 		jpeg.writeUInt16BE(1900, 9);
 		jpeg[11] = 3;
 
-		const result = await resizeImage({ type: "image", data: jpeg.toBase64(), mimeType: "image/jpeg" });
-
-		expect(result.width).toBe(1900);
-		expect(result.height).toBe(2474);
-		expect(result.originalWidth).toBe(1900);
-		expect(result.originalHeight).toBe(2474);
-		expect(result.wasResized).toBe(false);
-		expect(result.buffer.length).toBe(jpeg.length);
+		await expect(resizeImage({ type: "image", data: jpeg.toBase64(), mimeType: "image/jpeg" })).rejects.toThrow(
+			"Image normalization failed",
+		);
 	});
 });
 

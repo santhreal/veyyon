@@ -38,6 +38,7 @@ import type { CustomTool } from "../extensibility/custom-tools/types";
 import { resolveXAIHttpCredentials, veyyonXAIUserAgent } from "../lib/xai-http";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
+import { canonicalizeImageContent } from "../utils/image-resize";
 import { resolveReadPath } from "./path-utils";
 
 const DEFAULT_MODEL = "gemini-3-pro-image-preview";
@@ -128,6 +129,20 @@ function assemblePrompt(params: ImageGenParams): string {
 	}
 
 	return prompt;
+}
+
+function sanitizeImageGenParams(params: ImageGenParams, transform: (text: string) => string): ImageGenParams {
+	return {
+		...params,
+		subject: transform(params.subject),
+		action: params.action === undefined ? undefined : transform(params.action),
+		scene: params.scene === undefined ? undefined : transform(params.scene),
+		composition: params.composition === undefined ? undefined : transform(params.composition),
+		lighting: params.lighting === undefined ? undefined : transform(params.lighting),
+		style: params.style === undefined ? undefined : transform(params.style),
+		text: params.text === undefined ? undefined : transform(params.text),
+		changes: params.changes?.map(transform),
+	};
 }
 
 interface GeminiInlineData {
@@ -373,6 +388,17 @@ function toDataUrl(image: InlineImageData): string {
 	return `data:${image.mimeType};base64,${image.data}`;
 }
 
+async function canonicalizeProviderImage(data: string): Promise<InlineImageData> {
+	if (Buffer.byteLength(data, "base64") > MAX_IMAGE_SIZE) {
+		throw new Error("Image exceeds the provider input size limit.");
+	}
+	const canonical = await canonicalizeImageContent({ data });
+	if (canonical.buffer.byteLength > MAX_IMAGE_SIZE) {
+		throw new Error("Image exceeds the provider input size limit after normalization.");
+	}
+	return { data: canonical.data, mimeType: canonical.mimeType };
+}
+
 async function loadImageFromUrl(
 	imageUrl: string,
 	fetchImpl: FetchImpl,
@@ -615,13 +641,7 @@ async function loadImageFromPath(imagePath: string, cwd: string): Promise<Inline
 			throw new Error(`Image file too large: ${imagePath}`);
 		}
 
-		const metadata = parseImageMetadata(buffer);
-		const mimeType = metadata?.mimeType;
-		if (!mimeType) {
-			throw new Error(`Unsupported image type: ${imagePath}`);
-		}
-
-		return { data: buffer.toBase64(), mimeType };
+		return canonicalizeProviderImage(buffer.toBase64());
 	} catch (err) {
 		if (isEnoent(err)) throw new Error(`Image file not found: ${imagePath}`);
 		throw err;
@@ -635,14 +655,10 @@ async function resolveInputImage(input: ImageInput, cwd: string): Promise<Inline
 
 	if (input.data) {
 		const normalized = normalizeDataUrl(input.data.trim());
-		const mimeType = normalized.mimeType ?? input.mime_type;
-		if (!mimeType) {
-			throw new Error("mime_type is required when providing raw base64 data.");
-		}
 		if (!normalized.data) {
 			throw new Error("Image data is empty.");
 		}
-		return { data: normalized.data, mimeType };
+		return canonicalizeProviderImage(normalized.data);
 	}
 
 	throw new Error("input_images entries must include either path or data.");
@@ -1138,8 +1154,12 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 			try {
 				const fetchImpl = ctx.fetch ?? fetch;
 				const assembleProviderPrompt = (): string => {
-					const text = assemblePrompt(params);
-					return ctx.obfuscateProviderText?.(text) ?? text;
+					const transform = ctx.obfuscateProviderText;
+					if (!transform) return assemblePrompt(params);
+					// Each raw field is transformed before assemblePrompt strips
+					// punctuation, then the final physical payload is transformed
+					// again to catch secrets introduced by a concurrent refresh.
+					return transform(assemblePrompt(sanitizeImageGenParams(params, transform)));
 				};
 
 				if (provider === "openai" || provider === "openai-codex") {
@@ -1199,7 +1219,6 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 						throw new Error("Missing projectId in antigravity credentials");
 					}
 
-					const providerPrompt = assembleProviderPrompt();
 					const antigravityKey: ApiKey = ctx.modelRegistry.resolver("google-antigravity", {
 						sessionId,
 						modelId: DEFAULT_ANTIGRAVITY_MODEL,
@@ -1214,14 +1233,6 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 							const rotated = parseAntigravityCredentials(key);
 							const bearer = rotated?.accessToken ?? key;
 							const projectId = rotated?.projectId ?? apiKey.projectId!;
-							const requestBody = buildAntigravityRequest(
-								providerPrompt,
-								model,
-								projectId,
-								params.aspect_ratio,
-								params.image_size,
-								resolvedImages,
-							);
 
 							let endpoints: string[] = [...ANTIGRAVITY_ENDPOINTS];
 							try {
@@ -1242,6 +1253,16 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 								const endpoint = endpoints[i];
 								const isLastEndpoint = i === endpoints.length - 1;
 								try {
+									// Endpoint failover is a second physical attempt. Resolve the
+									// live sanitizer again instead of replaying a stale prompt.
+									const requestBody = buildAntigravityRequest(
+										assembleProviderPrompt(),
+										model,
+										projectId,
+										params.aspect_ratio,
+										params.image_size,
+										resolvedImages,
+									);
 									resp = await fetchImpl(`${endpoint}/v1internal:streamGenerateContent?alt=sse`, {
 										method: "POST",
 										headers: {
@@ -1330,7 +1351,6 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 						);
 					}
 
-					const providerPrompt = assembleProviderPrompt();
 					const aspectRatio = params.aspect_ratio ?? "1:1";
 					const xaiResolution = resolveXAIResolution(params.image_size);
 
@@ -1341,17 +1361,6 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 						);
 					}
 
-					const xaiBaseBody: XAIImageRequestBase = {
-						model: resolvedModel,
-						prompt: providerPrompt,
-						aspect_ratio: aspectRatio,
-						resolution: xaiResolution,
-						n: 1,
-						response_format: "b64_json",
-					};
-					const xaiBody: XAIImageRequestBody = isEdit
-						? buildXAIEditPayload(xaiBaseBody, resolvedImages)
-						: xaiBaseBody;
 					const xaiEndpoint = isEdit ? "/images/edits" : "/images/generations";
 
 					const xaiKey: ApiKey = ctx.modelRegistry.resolver(xaiCreds.provider, {
@@ -1362,6 +1371,17 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 					const xaiRawText = await withAuth(
 						xaiKey,
 						async key => {
+							const xaiBaseBody: XAIImageRequestBase = {
+								model: resolvedModel,
+								prompt: assembleProviderPrompt(),
+								aspect_ratio: aspectRatio,
+								resolution: xaiResolution,
+								n: 1,
+								response_format: "b64_json",
+							};
+							const xaiBody: XAIImageRequestBody = isEdit
+								? buildXAIEditPayload(xaiBaseBody, resolvedImages)
+								: xaiBaseBody;
 							const resp = await fetchImpl(`${xaiCreds.baseURL}${xaiEndpoint}`, {
 								method: "POST",
 								headers: {
@@ -1429,19 +1449,19 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 				}
 
 				if (provider === "openrouter") {
-					const contentParts: OpenRouterContentPart[] = [{ type: "text", text: assembleProviderPrompt() }];
-					for (const image of resolvedImages) {
-						contentParts.push({ type: "image_url", image_url: { url: toDataUrl(image) } });
-					}
 
-					const requestBody = {
-						model: resolvedModel,
-						messages: [{ role: "user" as const, content: contentParts }],
-					};
 
 					const rawText = await withAuth(
 						apiKey.apiKey,
 						async key => {
+							const contentParts: OpenRouterContentPart[] = [{ type: "text", text: assembleProviderPrompt() }];
+							for (const image of resolvedImages) {
+								contentParts.push({ type: "image_url", image_url: { url: toDataUrl(image) } });
+							}
+							const requestBody = {
+								model: resolvedModel,
+								messages: [{ role: "user" as const, content: contentParts }],
+							};
 							const resp = await fetchImpl("https://openrouter.ai/api/v1/chat/completions", {
 								method: "POST",
 								headers: {
@@ -1504,11 +1524,6 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 					};
 				}
 
-				const parts = [] as Array<{ text?: string; inlineData?: InlineImageData }>;
-				for (const image of resolvedImages) {
-					parts.push({ inlineData: image });
-				}
-				parts.push({ text: assembleProviderPrompt() });
 
 				const generationConfig: {
 					responseModalities: GeminiResponseModality[];
@@ -1524,14 +1539,19 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 					};
 				}
 
-				const requestBody = {
-					contents: [{ role: "user" as const, parts }],
-					generationConfig,
-				};
 
 				const rawText = await withAuth(
 					apiKey.apiKey,
 					async key => {
+						const parts = resolvedImages.map(image => ({ inlineData: image })) as Array<{
+							text?: string;
+							inlineData?: InlineImageData;
+						}>;
+						parts.push({ text: assembleProviderPrompt() });
+						const requestBody = {
+							contents: [{ role: "user" as const, parts }],
+							generationConfig,
+						};
 						const resp = await fetchImpl(
 							`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
 							{
