@@ -1,4 +1,18 @@
 #!/usr/bin/env python3
+"""
+Run OpenRouter fixture evaluations of the edit tool through veyyon RPC mode.
+
+Drives a real model against the edit fixtures and scores whether each edit
+variant applied cleanly, so a prompt or tool-schema change can be judged against
+models rather than against a unit test.
+
+Run:
+    OPENROUTER_API_KEY=... scripts/rate-edit-tool.py --help
+
+Hand-run and it costs money: every invocation makes live model calls. Not wired
+into any gate for that reason.
+"""
+
 from __future__ import annotations
 
 import argparse

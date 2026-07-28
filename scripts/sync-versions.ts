@@ -1,8 +1,20 @@
 #!/usr/bin/env bun
 
 /**
- * Syncs ALL @veyyon/* package dependency versions to match their current versions.
- * This ensures lockstep versioning across the monorepo.
+ * Syncs every `@veyyon/*` dependency range to the current version of the package
+ * it names, so the monorepo stays in lockstep.
+ *
+ * Run:
+ *     bun scripts/sync-versions.ts
+ *
+ * Hand-run after a version bump that `bun run release` did not perform, which is
+ * the only case it is for: the release pipeline already rewrites these ranges, so
+ * running this during a release would be redoing its work. It edits every
+ * package manifest under `packages/` in place and prints what it changed.
+ *
+ * This is about the INTERNAL `@veyyon/*` ranges only. Third-party versions have a
+ * different owner, the root `workspaces.catalog`, and are gated by
+ * `scripts/workspace-catalog-pins.test.ts`; do not teach this script about them.
  */
 
 import { readdirSync } from "node:fs";

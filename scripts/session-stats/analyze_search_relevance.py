@@ -18,6 +18,12 @@ Window: until the next user message, an end-of-session, or LOOKAHEAD calls,
 whichever comes first.
 
 Outputs scripts/session-stats/out/search-relevance.png.
+
+Run (populate the tables with sync.py first):
+    scripts/session-stats/sync.py
+    scripts/session-stats/analyze_search_relevance.py --help
+
+Hand-run against the operator's own `~/.veyyon/stats.db`.
 """
 
 from __future__ import annotations

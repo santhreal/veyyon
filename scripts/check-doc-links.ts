@@ -114,6 +114,14 @@ export function extractLinks(markdown: string): FoundLink[] {
 			if (target.startsWith("<") && target.endsWith(">")) target = target.slice(1, -1);
 			found.push({ target, line: i + 1 });
 		}
+		// HTML `<img src>`, which markdown files use whenever an image needs a width
+		// or an alignment attribute. Only `![]()` was collected before, so the
+		// README's side-by-side settings shots were outside the check entirely, and
+		// both of them pointed at files that had been renamed. An image that 404s is
+		// the most visible kind of broken link and it was the one kind not checked.
+		for (const img of line.matchAll(/<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']/gi)) {
+			found.push({ target: img[1], line: i + 1 });
+		}
 	}
 	return found;
 }

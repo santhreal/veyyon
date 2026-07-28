@@ -1,4 +1,18 @@
 #!/usr/bin/env python3
+"""
+Analyze small edit/ast_edit tool usage in session logs.
+
+Reads veyyon session JSONL from `~/.veyyon/sessions` and reports how often an
+edit call changed only a line or two, which is the signal that a cheaper tool
+or a wider default window would have done the same work in fewer round trips.
+
+Run:
+    scripts/analyze_small_edits.py --json
+    scripts/analyze_small_edits.py --since-days 7 --sample-size 50
+
+Hand-run. Nothing in CI calls it: it reads the operator's own session history,
+which does not exist on a build machine.
+"""
 
 from __future__ import annotations
 

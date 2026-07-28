@@ -6133,6 +6133,7 @@ dependencies = [
  "libc",
  "parking_lot",
  "rayon",
+ "veyyon-glob",
  "veyyon-test-scratch",
  "windows-sys 0.61.2",
 ]

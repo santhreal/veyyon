@@ -8,6 +8,15 @@ Subcommands:
   followups   — five hashline-edit detectors (port of cmd_followups.rs)
 
 Each subcommand reads from ~/.veyyon/stats.db. Run sync.py first.
+
+Run (populate the tables with sync.py first):
+    scripts/session-stats/sync.py
+    scripts/session-stats/analyze.py tools
+    scripts/session-stats/analyze.py edits
+    scripts/session-stats/analyze.py followups
+
+Hand-run. It reads the operator's own `~/.veyyon/stats.db`, which no build
+machine has, so nothing in CI calls it.
 """
 
 from __future__ import annotations
