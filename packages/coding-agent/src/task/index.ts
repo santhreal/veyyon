@@ -41,6 +41,7 @@ import { toolsPrompts } from "../prompts/tools/rows";
 import { truncateForPrompt } from "../tools/approval";
 import { isIrcEnabled } from "../tools/irc";
 import { formatBytes, formatDuration } from "../tools/render-utils";
+import { investigativeAgentNames } from "./agent-role";
 import { classifySubagentOutcome, describeSubagentBatch, summarizeSubagentBatch } from "./outcome";
 import { resolveSpawnPolicy } from "./spawn-policy";
 import {
@@ -636,6 +637,22 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	 */
 	get enabledAgentNames(): string[] {
 		return filterEnabledAgents(this.session.settings, this.#discoveredAgents).map(agent => agent.name);
+	}
+
+	/**
+	 * The enabled agents that are set up to INVESTIGATE rather than to change things.
+	 *
+	 * Read by the system prompt to decide whether audit work may be delegated at all.
+	 * Delegating exploration or review needs an agent typed for it, and on a stock
+	 * install there is none: the only enabled bundled agent is the general worker. The
+	 * prompt used to instruct the model to send investigation to it anyway, which is
+	 * how an audit ended up being run by an agent set up to edit code.
+	 *
+	 * Derived from the same filtered set as `enabledAgentNames`, so the two can never
+	 * disagree about what is spawnable here.
+	 */
+	get investigativeAgentNames(): string[] {
+		return investigativeAgentNames(filterEnabledAgents(this.session.settings, this.#discoveredAgents));
 	}
 
 	/** Dynamic description listing exactly the agents this session may spawn. */
@@ -1360,7 +1377,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				content: [
 					{
 						type: "text",
-						text: `Agent "${agentName}" is disabled (subagent.agents.${agentName}.enabled is false), so it cannot be chosen. Enable it via /agents or the Subagents settings tab, or use a different agent type.${enabled.length > 0 ? ` Enabled: ${enabled.join(", ")}` : ""}`,
+						text: `Agent "${agentName}" is disabled (subagent.agents.${agentName}.enabled is false), so it cannot be chosen. Enable it in the Subagents settings tab (/settings), or use a different agent type.${enabled.length > 0 ? ` Enabled: ${enabled.join(", ")}` : ""}`,
 					},
 				],
 				details: { projectAgentsDir, results: [], totalDurationMs: 0 },
@@ -1600,6 +1617,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				authStorage: this.session.authStorage,
 				modelRegistry: this.session.modelRegistry,
 				settings: this.session.settings,
+				obfuscateProviderText: this.session.obfuscateProviderText,
 				mcpManager,
 				contextFiles,
 				skills: availableSkills,

@@ -425,6 +425,8 @@ export interface ExtensionContext {
 	modelRegistry: ModelRegistry;
 	/** Calling session's `local://` root mapping for external tool bridges. */
 	localProtocolOptions?: LocalProtocolOptions;
+	/** Live final-seam redaction for provider-bound extension/custom-tool strings. */
+	obfuscateProviderText?: (text: string) => string;
 	/** Current model (may be undefined) */
 	model: Model | undefined;
 	/** Read-only model query facade: list / current / resolve / family. */

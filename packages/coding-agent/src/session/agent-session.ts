@@ -281,7 +281,7 @@ import type { CompactOptions, ContextUsage } from "../extensibility/extensions/t
 import { ExtensionToolWrapper } from "../extensibility/extensions/wrapper";
 import type { HookCommandContext } from "../extensibility/hooks/types";
 import type { RecoveredRetryError } from "../extensibility/shared-events";
-import type { Skill, SkillWarning } from "../extensibility/skills";
+import type { Skill } from "../extensibility/skills";
 import { expandSlashCommand, type FileSlashCommand } from "../extensibility/slash-commands";
 import { GoalRuntime } from "../goals/runtime";
 import type { Goal, GoalModeState } from "../goals/state";
@@ -328,6 +328,7 @@ import {
 	obfuscateProviderContext,
 	type SecretObfuscator,
 } from "../secrets/obfuscator";
+import { PENDING_PLACEHOLDER_RE } from "../secrets/placeholder";
 import { invalidateHostMetadata } from "../ssh/connection-manager";
 import { usesCodexTaskPrompt } from "../task/prompt-policy";
 import { enabledSubagentNames, resolveDelegation } from "../task/subagent-settings";
@@ -417,6 +418,7 @@ import {
 	stripImagesFromMessage,
 	USER_INTERRUPT_LABEL,
 } from "./messages";
+import { OperatorNotices, stderrNoticeSink } from "./operator-notices";
 import { disposeOwnedResources } from "./owned-resources";
 import { normalizeRoots, relativizePathsUnderRoots } from "./relativize-paths";
 import type { BuildSessionContextOptions, SessionContext } from "./session-context";
@@ -884,8 +886,15 @@ export interface AgentSessionConfig {
 	extensionRunner?: ExtensionRunner;
 	/** Loaded skills (already discovered by SDK) */
 	skills?: Skill[];
-	/** Skill loading warnings (already captured by SDK) */
-	skillWarnings?: SkillWarning[];
+	/**
+	 * Channel for non-fatal problems the operator must see.
+	 *
+	 * Replaces the old `skillWarnings` array, which was collected, threaded through here, and
+	 * exposed as a getter that no production code read: skill-loading problems were discarded in
+	 * silence while the field made it look as though somebody was showing them. Skill warnings now
+	 * arrive here as notices with `source: "skills"`, alongside everything else that needs saying.
+	 */
+	operatorNotices?: OperatorNotices;
 	/** Custom commands (TypeScript slash commands) */
 	customCommands?: LoadedCustomCommand[];
 	skillsSettings?: SkillsSettings;
@@ -963,6 +972,11 @@ export interface AgentSessionConfig {
 	ttsrManager?: TtsrManager;
 	/** Secret obfuscator for deobfuscating streaming edit content */
 	obfuscator?: SecretObfuscator;
+	/**
+	 * Reload and atomically replace the complete secret runtime for a cwd.
+	 * The SDK owns config/env/vault loading; the session owns when lifecycle changes require it.
+	 */
+	refreshSecretRuntime?: (cwd: string) => Promise<SecretObfuscator | undefined>;
 	/** Argot shorthand codec (experimental); expands handles before display/tools. */
 	argot?: ArgotSession;
 	/** Inherited eval executor session id from a parent agent. */
@@ -1036,10 +1050,10 @@ export interface AgentSessionConfig {
 	advisorConfigs?: AdvisorConfig[];
 	/**
 	 * Strip tool descriptions from provider-bound tool specs on side requests
-	 * (handoff). Must match the session-start value used to build the system
-	 * prompt so inline descriptors are not also sent through provider schemas.
+	 * (handoff). A resolver follows the active model so session dumps and side
+	 * requests use the same descriptor placement as the rebuilt system prompt.
 	 */
-	pruneToolDescriptions?: boolean;
+	pruneToolDescriptions?: boolean | ((model: Model) => boolean);
 	/**
 	 * Disconnect this session's OWNED MCP manager on dispose. Provided only when
 	 * the session created the manager (top-level sessions); subagents reuse a
@@ -1712,6 +1726,28 @@ function mergeLlmCompactionPreserveData(
 	return stripLegacyArchive(Object.keys(preserveData).length > 0 ? preserveData : undefined);
 }
 
+/**
+ * Redact every string value in a provider payload after mutable request hooks.
+ * The payload is mutated in place to avoid a full second allocation at the final seam.
+ * A frozen secret-bearing replacement throws rather than being sent unsanitized.
+ */
+export function obfuscateProviderPayload(value: unknown, obfuscator: SecretObfuscator | undefined): unknown {
+	if (!obfuscator?.hasSecrets()) return value;
+	const seen = new WeakSet<object>();
+	const visit = (node: unknown): unknown => {
+		if (typeof node === "string") return obfuscator.obfuscate(node);
+		if (node === null || typeof node !== "object" || seen.has(node)) return node;
+		seen.add(node);
+		const target = node as Record<string, unknown>;
+		for (const [key, item] of Object.entries(target)) {
+			const mapped = visit(item);
+			if (mapped !== item) target[key] = mapped;
+		}
+		return node;
+	};
+	return visit(value);
+}
+
 type MessageEndPersistenceSlot = {
 	readonly promise: Promise<void>;
 	persist: (persistMessage: () => void) => Promise<void>;
@@ -1985,7 +2021,7 @@ export class AgentSession {
 	#persistedMessageKeys: { anchor: string; keys: Set<string> } | undefined;
 
 	#skills: Skill[];
-	#skillWarnings: SkillWarning[];
+	readonly #operatorNotices: OperatorNotices;
 
 	// Custom commands (TypeScript slash commands)
 	#customCommands: LoadedCustomCommand[] = [];
@@ -2135,11 +2171,12 @@ export class AgentSession {
 	// unchanged — otherwise a mid-turn estimate would survive into idle.
 	#contextUsageRevision = 0;
 	#obfuscator: SecretObfuscator | undefined;
+	#refreshSecretRuntime: ((cwd: string) => Promise<SecretObfuscator | undefined>) | undefined;
 	#argot: ArgotSession | undefined;
 	/** Per-streaming-message argot display decoder (seam 3); reset on each assistant message_start. */
 	#argotStreamDisplay: ArgotStreamDisplayDecoder | undefined;
-	/** Session-start value of `inlineToolDescriptors`; drives handoff tool pruning. */
-	#pruneToolDescriptions = false;
+	/** Resolves the active model's inline-descriptor policy for session dumps. */
+	#resolvePruneToolDescriptions: (model: Model) => boolean = () => false;
 	#checkpointState: CheckpointState | undefined = undefined;
 	#pendingRewindReport: string | undefined = undefined;
 	#lastCompletedRewind: CompletedRewindState | undefined = undefined;
@@ -2154,6 +2191,8 @@ export class AgentSession {
 	#yieldTerminationPending = false;
 	#synchronouslyTerminatedYieldToolCallIds = new Set<string>();
 	#providerSessionState = new Map<string, ProviderSessionState>();
+	/** Compaction-fallback notices already emitted this session, keyed by their text. */
+	#announcedCompactionFallbacks = new Set<string>();
 	#hindsightSessionState: HindsightSessionState | undefined = undefined;
 	readonly rawSseDebugBuffer: RawSseDebugBuffer;
 
@@ -2669,7 +2708,7 @@ export class AgentSession {
 		this.#slashCommands = config.slashCommands ?? [];
 		this.#extensionRunner = config.extensionRunner;
 		this.#skills = config.skills ?? [];
-		this.#skillWarnings = config.skillWarnings ?? [];
+		this.#operatorNotices = config.operatorNotices ?? new OperatorNotices(stderrNoticeSink);
 		this.#customCommands = config.customCommands ?? [];
 		this.#skillsSettings = config.skillsSettings;
 		this.#modelRegistry = config.modelRegistry;
@@ -2684,7 +2723,10 @@ export class AgentSession {
 		this.#advisorContextPrompt = config.advisorContextPrompt;
 		this.#advisorConfigs = config.advisorConfigs;
 		this.#titleSystemPrompt = config.titleSystemPrompt;
-		this.#pruneToolDescriptions = config.pruneToolDescriptions === true;
+		this.#resolvePruneToolDescriptions =
+			typeof config.pruneToolDescriptions === "function"
+				? config.pruneToolDescriptions
+				: () => config.pruneToolDescriptions === true;
 		this.#validateRetryFallbackChains();
 		this.#validateApprovalModeSetting();
 		this.#toolRegistry = config.toolRegistry ?? new Map();
@@ -2743,7 +2785,10 @@ export class AgentSession {
 							thoughtSignatureMaxLength,
 							thinkingRetention,
 						};
-			return upstreamTransformProviderContext ? upstreamTransformProviderContext(next, model) : next;
+			const transformed = upstreamTransformProviderContext ? upstreamTransformProviderContext(next, model) : next;
+			return isPromise(transformed)
+				? transformed.then(value => obfuscateProviderContext(this.#obfuscator, value))
+				: obfuscateProviderContext(this.#obfuscator, transformed);
 		};
 		this.#transformProviderContext = canonicalizeProviderContext;
 		// Agent was constructed before AgentSession; install the wrapped hook so the
@@ -2877,6 +2922,7 @@ export class AgentSession {
 		);
 		this.#ttsrManager = config.ttsrManager;
 		this.#obfuscator = config.obfuscator;
+		this.#refreshSecretRuntime = config.refreshSecretRuntime;
 		this.#argot = config.argot;
 		this.#agentId = config.agentId;
 		this.#agentKind = config.agentKind ?? "main";
@@ -3266,7 +3312,7 @@ export class AgentSession {
 
 			// Persist this advisor's turns to `<session>/__advisor[.<slug>].jsonl`
 			// (resolved lazily so it follows session switches) for stats attribution
-			// and Agent Hub observability, without registering it as a peer.
+			// and Control Center observability, without registering it as a peer.
 			const recorder = new AdvisorTranscriptRecorder(
 				() => this.sessionManager.getSessionFile(),
 				() => this.sessionManager.getCwd(),
@@ -3802,6 +3848,18 @@ export class AgentSession {
 	/** Secret obfuscator, when secrets are configured; /share redaction reuses it. */
 	get obfuscator(): SecretObfuscator | undefined {
 		return this.#obfuscator;
+	}
+
+	/** Whether the authoritative live runtime currently has secret protection enabled. */
+	get secretsEnabled(): boolean {
+		return this.#obfuscator !== undefined;
+	}
+
+	/** Reload config/env/vault state, atomically replace the runtime, and refresh guidance. */
+	async refreshSecrets(options?: { refreshPrompt?: boolean }): Promise<void> {
+		if (!this.#refreshSecretRuntime) return;
+		this.#obfuscator = await this.#refreshSecretRuntime(this.sessionManager.getCwd());
+		if (options?.refreshPrompt !== false) await this.refreshBaseSystemPrompt();
 	}
 
 	/** Whether a TTSR abort is pending (stream was aborted to inject rules) */
@@ -6603,7 +6661,6 @@ export class AgentSession {
 	 */
 	async rescopeToCwd(cwd: string): Promise<void> {
 		if (this.#lastRescopedCwd === cwd) return;
-		this.#lastRescopedCwd = cwd;
 		// A SUBAGENT MAY NOT MOVE THE PROCESS. Everything above this line is
 		// per-session; everything in `#rescopeProcessToCwd` is process-global, and
 		// subagents are built in-process (`sdk.ts`), several can be in flight at
@@ -6617,11 +6674,17 @@ export class AgentSession {
 		// that reads `process.cwd()` directly: a spawned child process, a bare
 		// relative `fs` call, and any reader still consulting `getProjectDir()`.
 		if (!this.#isSubagent) await this.#rescopeProcessToCwd(cwd);
+		// Settings must be re-scoped first: the destination project may toggle
+		// protection, and its config/env/vault set completely replaces the source's.
+		await this.refreshSecrets({ refreshPrompt: false });
 		// Session-scoped, so it runs for every session. The base system prompt
 		// states the working directory verbatim, so a subagent that skipped this
 		// would go on naming the directory it just left.
 		await this.refreshSshTool({ activateIfAvailable: true });
 		await this.refreshBaseSystemPrompt();
+		// Mark success only after every re-scope step completes. A failed secret
+		// reload must remain retryable rather than being mistaken for completed work.
+		this.#lastRescopedCwd = cwd;
 	}
 
 	/**
@@ -7990,8 +8053,9 @@ export class AgentSession {
 	 *
 	 * Inputs NOT covered: tool input schemas; memory instructions read from disk;
 	 * and SDK-init-time closure constants in `sdk.ts` (`inlineToolDescriptors`,
-	 * `eagerTasks`, `intentField`, `mcpDiscoveryEnabled`, `secretsEnabled`). The
-	 * closure-captured ones cannot change at runtime regardless of skip behavior.
+	 * `eagerTasks`, `intentField`, `mcpDiscoveryEnabled`). The closure-captured
+	 * ones cannot change at runtime regardless of skip behavior. Secret guidance
+	 * is read from the live runtime and `refreshSecrets()` explicitly rebuilds it.
 	 * For everything else, callers must explicitly call `refreshBaseSystemPrompt()`
 	 * after side-effecting changes; see e.g. the memory hooks and
 	 * `#syncAfterModelChange`.
@@ -8057,6 +8121,7 @@ export class AgentSession {
 			modelRegistry: this.#modelRegistry,
 			model: this.model,
 			isIdle: () => !this.isStreaming,
+			obfuscateProviderText: text => this.#obfuscator?.obfuscate(text) ?? text,
 			hasQueuedMessages: () => this.queuedMessageCount > 0,
 			abort: () => {
 				this.agent.abort();
@@ -8271,7 +8336,7 @@ export class AgentSession {
 	#deobfuscatedProviderTextReadyForDelta(text: string): string {
 		const deobfuscated = this.#deobfuscateFromProvider(text);
 		if (!this.#obfuscator?.hasSecrets()) return deobfuscated;
-		const pendingPlaceholderStart = deobfuscated.match(/#[A-Z0-9]{0,4}$/);
+		const pendingPlaceholderStart = deobfuscated.match(PENDING_PLACEHOLDER_RE);
 		if (pendingPlaceholderStart?.index === undefined) return deobfuscated;
 		return deobfuscated.slice(0, pendingPlaceholderStart.index);
 	}
@@ -8323,18 +8388,17 @@ export class AgentSession {
 			preparedOptions.metadata = sessionMetadata;
 		}
 
-		if (sessionOnPayload) {
-			if (!options.onPayload) {
-				preparedOptions.onPayload = sessionOnPayload;
-			} else {
-				const requestOnPayload = options.onPayload;
-				preparedOptions.onPayload = async (payload, model) => {
-					const sessionPayload = await sessionOnPayload(payload, model);
-					const sessionResolvedPayload = sessionPayload ?? payload;
-					const requestPayload = await requestOnPayload(sessionResolvedPayload, model);
-					return requestPayload ?? sessionResolvedPayload;
-				};
-			}
+		if (sessionOnPayload && !options.onPayload) {
+			// The SDK session hook performs its own final sanitization after extension hooks.
+			preparedOptions.onPayload = sessionOnPayload;
+		} else if (sessionOnPayload || options.onPayload) {
+			const requestOnPayload = options.onPayload;
+			preparedOptions.onPayload = async (payload, model) => {
+				const sessionPayload = sessionOnPayload ? await sessionOnPayload(payload, model) : undefined;
+				const sessionResolvedPayload = sessionPayload ?? payload;
+				const requestPayload = requestOnPayload ? await requestOnPayload(sessionResolvedPayload, model) : undefined;
+				return obfuscateProviderPayload(requestPayload ?? sessionResolvedPayload, this.#obfuscator);
+			};
 		}
 
 		if (sessionOnResponse) {
@@ -10024,9 +10088,15 @@ export class AgentSession {
 		return this.#skills;
 	}
 
-	/** Skill loading warnings captured by SDK */
-	get skillWarnings(): readonly SkillWarning[] {
-		return this.#skillWarnings;
+	/**
+	 * Non-fatal problems the operator must see, from every subsystem that raises one.
+	 *
+	 * A live channel, not a record: whatever surface the session is running under attaches to
+	 * this and renders what arrives. It replaced `skillWarnings`, which was the same idea with no
+	 * consumer, so a skill that failed to load produced a field nobody read.
+	 */
+	get operatorNotices(): OperatorNotices {
+		return this.#operatorNotices;
 	}
 
 	getTodoPhases(): TodoPhase[] {
@@ -10097,6 +10167,7 @@ export class AgentSession {
 			this.model,
 			provider => this.agent.metadataForProvider(provider),
 			this.#titleSystemPrompt,
+			text => this.#obfuscator?.obfuscate(text) ?? text,
 		);
 		if (!title) return;
 		if (this.sessionManager.getSessionId() !== sessionId) return;
@@ -10805,6 +10876,7 @@ export class AgentSession {
 					sessionId: this.sessionId,
 					signal: controller.signal,
 					metadataResolver: provider => this.agent.metadataForProvider(provider),
+					obfuscateProviderText: text => this.#obfuscator?.obfuscate(text) ?? text,
 				});
 			} catch (error) {
 				classificationError = errorMessage(error);
@@ -13574,12 +13646,23 @@ export class AgentSession {
 			candidates.push(model);
 		};
 
-		for (const pattern of resolveCompactionModelPatterns(this.settings)) {
+		const configuredPatterns = resolveCompactionModelPatterns(this.settings);
+		for (const pattern of configuredPatterns) {
 			const resolved = resolveModelRoleValue(pattern, availableModels, {
 				settings: this.settings,
 				matchPreferences: getModelMatchPreferences(this.settings),
 			});
 			addCandidate(resolved.model);
+		}
+
+		// `configured-only` stops at the chain the user wrote down. With no chain
+		// configured, `compaction.model` means "inherit", so the one model they
+		// chose is the main model and that is where the list ends. Everything
+		// below is the `auto` tail: models nobody named, which is exactly what
+		// this strategy exists to refuse.
+		if (this.settings.get("compaction.modelFallbackStrategy") === "configured-only") {
+			if (configuredPatterns.length === 0) addCandidate(preferredModel ?? undefined);
+			return candidates;
 		}
 
 		if (preferredModel) {
@@ -13643,6 +13726,26 @@ export class AgentSession {
 		);
 	}
 
+	/**
+	 * Say so when compaction ran on anything other than the first candidate.
+	 *
+	 * A chain that quietly lands three models down is worse than no chain: the
+	 * summary that shapes the rest of the session was written by a model the user
+	 * did not expect, at a quality they did not choose, and the only trace of it
+	 * used to be a `debug` line nobody reads. Reported once per (from, to, reason)
+	 * so a session that fails over on every compaction says it once rather than
+	 * on every compaction.
+	 */
+	#announceCompactionFallback(candidates: Model[], used: Model, skipReasons: Map<string, string>): void {
+		const first = candidates[0];
+		if (!first || this.#getModelKey(first) === this.#getModelKey(used)) return;
+		const reason = skipReasons.get(this.#getModelKey(first)) ?? "it could not run the summary";
+		const message = `Compacted with ${used.provider}/${used.id}. ${first.provider}/${first.id} was skipped: ${reason}.`;
+		if (this.#announcedCompactionFallbacks.has(message)) return;
+		this.#announcedCompactionFallbacks.add(message);
+		this.emitNotice("warning", message, "compaction");
+	}
+
 	async #compactWithFallbackModel(
 		preparation: CompactionPreparation,
 		customInstructions: string | undefined,
@@ -13667,6 +13770,9 @@ export class AgentSession {
 			.concat(preparation.turnPrefixMessages)
 			.reduce((sum, msg) => sum + estimateTokens(msg), 0);
 		let skippedForWindow = 0;
+		// Why each earlier candidate was passed over, so landing further down the
+		// chain can be reported with the reason rather than as a silent swap.
+		const skipReasons = new Map<string, string>();
 
 		for (const candidate of candidates) {
 			const candidateWindow =
@@ -13675,6 +13781,10 @@ export class AgentSession {
 					: (candidate.contextWindow ?? 0);
 			if (candidateWindow > 0 && summarizePayloadTokens > candidateWindow) {
 				skippedForWindow++;
+				skipReasons.set(
+					this.#getModelKey(candidate),
+					`its context window holds ${candidateWindow} tokens and the summary needed ${summarizePayloadTokens}`,
+				);
 				logger.warn("compaction candidate skipped: summarization payload exceeds its context window", {
 					candidate: `${candidate.provider}/${candidate.id}`,
 					candidateWindow,
@@ -13683,10 +13793,13 @@ export class AgentSession {
 				continue;
 			}
 			const apiKey = await this.#modelRegistry.getApiKey(candidate, this.sessionId);
-			if (!apiKey) continue;
+			if (!apiKey) {
+				skipReasons.set(this.#getModelKey(candidate), "it is not authenticated");
+				continue;
+			}
 
 			try {
-				return await compact(
+				const compacted = await compact(
 					this.#obfuscatePreparationForProvider(preparation),
 					candidate,
 					this.#modelRegistry.resolver(candidate, this.sessionId),
@@ -13721,10 +13834,13 @@ export class AgentSession {
 						},
 					},
 				);
+				this.#announceCompactionFallback(candidates, candidate, skipReasons);
+				return compacted;
 			} catch (error) {
 				if (!AIError.is(AIError.classify(error, candidate.api), AIError.Flag.AuthFailed)) {
 					throw error;
 				}
+				skipReasons.set(this.#getModelKey(candidate), "its credentials were rejected");
 			}
 		}
 
@@ -17466,13 +17582,14 @@ export class AgentSession {
 	 * `### Tool Call`/`### Tool Result`).
 	 */
 	formatSessionAsText(): string {
+		const activeModel = this.model;
 		return formatSessionDumpText({
 			messages: this.messages,
 			systemPrompt: this.agent.state.systemPrompt,
 			model: this.agent.state.model,
 			thinkingLevel: this.#thinkingLevel,
 			tools: this.agent.state.tools,
-			inlineToolDescriptors: this.#pruneToolDescriptions,
+			inlineToolDescriptors: activeModel ? this.#resolvePruneToolDescriptions(activeModel) : false,
 		});
 	}
 

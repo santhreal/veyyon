@@ -105,6 +105,11 @@ export interface ToolSession {
 	 * Returns the resolved absolute path.
 	 */
 	setCwd?(resolvedPath: string, options?: { validate?: boolean }): Promise<string>;
+	/**
+	 * Redact one provider-bound string at the final tool-owned outbound seam.
+	 * The callback is live: callers must invoke it immediately before dispatch.
+	 */
+	obfuscateProviderText?: (text: string) => string;
 	/** Whether UI is available */
 	hasUI: boolean;
 	/**

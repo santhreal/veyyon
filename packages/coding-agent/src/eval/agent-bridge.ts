@@ -185,7 +185,7 @@ function assertAgentEnabled(session: ToolSession, agent: AgentDefinition, agents
 	if (session.agentGrantedThisTurn?.(agent.name)) return;
 	const available = filterEnabledAgents(session.settings, agents).map(candidate => candidate.name);
 	throw new ToolError(
-		`Agent "${agent.name}" is disabled (subagent.agents.${agent.name}.enabled is false), so it cannot be chosen. Enable it via /agents or the Subagents settings tab, or use a different agent type.${available.length > 0 ? ` Enabled: ${available.join(", ")}` : ""}`,
+		`Agent "${agent.name}" is disabled (subagent.agents.${agent.name}.enabled is false), so it cannot be chosen. Enable it in the Subagents settings tab (/settings), or use a different agent type.${available.length > 0 ? ` Enabled: ${available.join(", ")}` : ""}`,
 	);
 }
 
@@ -471,6 +471,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		authStorage: options.session.authStorage,
 		modelRegistry: options.session.modelRegistry,
 		settings: options.session.settings,
+		obfuscateProviderText: options.session.obfuscateProviderText,
 		// Eval `agent()` subagents are never wall-clock capped: the parent
 		// cell's idle watchdog is suspended for the whole bridge call
 		// (withBridgeTimeoutPause), so a long-running phase/recovery workflow

@@ -42,6 +42,8 @@ export interface SpeechEnhancerDeps {
 	registry: ModelRegistry;
 	sessionId: string;
 	metadataResolver?: (provider: string) => Record<string, unknown> | undefined;
+	/** Final outbound confidentiality boundary for provider-bound session text. */
+	obfuscateProviderText?: (text: string) => string;
 }
 
 /**
@@ -76,6 +78,8 @@ export class SpeechEnhancer {
 			if (!apiKey) return null;
 			// Resolve metadata after getApiKey so the session-sticky credential is recorded first.
 			const metadata = this.#deps.metadataResolver?.(model.provider);
+			const boundedBlock = boundBlock(block);
+			const providerBlock = this.#deps.obfuscateProviderText?.(boundedBlock) ?? boundedBlock;
 			const timeout = scopedTimeoutSignal(REWRITE_TIMEOUT_MS, signal);
 			let response: Awaited<ReturnType<typeof completeSimple>>;
 			try {
@@ -83,7 +87,7 @@ export class SpeechEnhancer {
 					model,
 					{
 						systemPrompt: [SYSTEM_PROMPT],
-						messages: [{ role: "user", content: boundBlock(block), timestamp: Date.now() }],
+						messages: [{ role: "user", content: providerBlock, timestamp: Date.now() }],
 					},
 					{
 						apiKey: registry.resolver(model, sessionId),

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import type { Model } from "@veyyon/ai";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import type { CustomToolContext } from "@veyyon/coding-agent/extensibility/custom-tools";
+import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import type { ReadonlySessionManager } from "@veyyon/coding-agent/session/session-manager";
 import {
 	getImageGenTools,
@@ -154,6 +155,75 @@ describe("imageGenTool", () => {
 		if (!savedPath) throw new Error("Expected generated image path");
 		expect(savedPath.endsWith(".webp")).toBe(true);
 		expect(await Bun.file(savedPath).bytes()).toEqual(Buffer.from("fake-webp"));
+	});
+
+	it("obfuscates every structured text field before the nested image provider request", async () => {
+		let requestBody: unknown;
+		const fetchMock: typeof fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+			requestBody = JSON.parse(String(init?.body));
+			return new Response(
+				JSON.stringify({
+					output: [{ type: "message", content: [{ type: "output_text", text: "No image needed." }] }],
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } },
+			);
+		}) as unknown as typeof fetch;
+		const model = {
+			api: "openai-responses",
+			provider: "openai",
+			id: "gpt-5.5",
+			name: "GPT 5.5",
+			baseUrl: "https://api.openai.com/v1",
+		} as Model;
+		const secret = "IMAGE_GEN_RAW_SECRET_123";
+		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const placeholder = obfuscator.obfuscate(secret);
+		const ctx: CustomToolContext = {
+			fetch: fetchMock,
+			sessionManager: {
+				getCwd: () => "/tmp",
+				getSessionId: () => "secret-image-session",
+			} as unknown as ReadonlySessionManager,
+			modelRegistry: {
+				getApiKey: async () => "test-openai-key",
+				getApiKeyForProvider: async () => undefined,
+				authStorage: { rotateSessionCredential: async () => false },
+				resolver: () => async () => "test-openai-key",
+			} as unknown as ModelRegistry,
+			model,
+			isIdle: () => true,
+			hasQueuedMessages: () => false,
+			abort: () => {},
+			obfuscateProviderText: text => obfuscator.obfuscate(text),
+		};
+
+		await imageGenTool.execute(
+			"call-secret-fields",
+			{
+				subject: `subject ${secret}`,
+				action: `action ${secret}`,
+				scene: `scene ${secret}`,
+				composition: `composition ${secret}`,
+				lighting: `lighting ${secret}`,
+				style: `style ${secret}`,
+				text: `text ${secret}`,
+				changes: [`change one ${secret}`, `change two ${secret}`],
+			},
+			undefined,
+			ctx,
+		);
+
+		const captured = JSON.stringify(requestBody);
+		expect(captured).not.toContain(secret);
+		expect(captured).toContain(`subject ${placeholder}`);
+		expect(captured).toContain(`action ${placeholder}`);
+		expect(captured).toContain(`scene ${placeholder}`);
+		expect(captured).toContain(`composition ${placeholder}`);
+		expect(captured).toContain(`lighting ${placeholder}`);
+		expect(captured).toContain(`style ${placeholder}`);
+		expect(captured).toContain(`text ${placeholder}`);
+		expect(captured).toContain(`change one ${placeholder}`);
+		expect(captured).toContain(`change two ${placeholder}`);
 	});
 
 	it("sends Codex hosted image requests with opaque proxy bearer keys", async () => {

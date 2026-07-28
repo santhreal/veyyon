@@ -3,6 +3,7 @@ import type { Api, Model } from "@veyyon/ai";
 import * as ai from "@veyyon/ai";
 import { type GeneratedProvider, getBundledModel } from "@veyyon/catalog/models";
 import { generateSessionTitle } from "@veyyon/coding-agent/utils/title-generator";
+import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import { logger } from "@veyyon/utils";
 
 function getModelOrThrow(id: string): Model<Api> {
@@ -68,6 +69,34 @@ describe("title generator", () => {
 		expect(request?.tools).toBeUndefined();
 		expect(options?.toolChoice).toBeUndefined();
 		expect(options?.disableReasoning).toBe(true);
+	});
+
+	it("redacts first-turn secrets at the online title provider boundary", async () => {
+		const model = getModelOrThrow("claude-sonnet-4-5");
+		const secret = "TITLE_PROVIDER_SECRET_49372";
+		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const placeholder = obfuscator.obfuscate(secret);
+		const completeSimpleMock = vi.spyOn(ai, "completeSimple").mockResolvedValue({
+			stopReason: "stop",
+			content: [{ type: "text", text: "<title>Secure title generation</title>" }],
+		} as never);
+
+		const title = await generateSessionTitle(
+			`Investigate title generation with credential ${secret}`,
+			createRegistry(model),
+			createSettings(model),
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			text => obfuscator.obfuscate(text),
+		);
+
+		const request = completeSimpleMock.mock.calls[0]?.[1] as { messages?: Array<{ content: string }> } | undefined;
+		const providerContent = request?.messages?.[0]?.content;
+		expect(title).toBe("Secure title generation");
+		expect(providerContent).toContain(placeholder);
+		expect(providerContent).not.toContain(secret);
 	});
 
 	it.each([

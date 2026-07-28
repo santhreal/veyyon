@@ -944,12 +944,12 @@ async function generateOpenAIHostedImage(
 	apiKey: string,
 	model: Model,
 	params: ImageGenParams,
+	promptText: string,
 	inputImages: InlineImageData[],
 	fetchImpl: FetchImpl,
 	signal: AbortSignal | undefined,
 	sessionId: string | undefined,
 ): Promise<OpenAIHostedImageResult> {
-	const promptText = assemblePrompt(params);
 	const stream = model.api === "openai-codex-responses" || model.provider === "openai-codex";
 	const requestBody = buildOpenAIHostedImageRequest(model, promptText, params, inputImages, stream);
 	const response = await fetchImpl(getOpenAIResponsesUrl(model), {
@@ -1137,6 +1137,10 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 			const requestSignal = requestTimeout.signal;
 			try {
 				const fetchImpl = ctx.fetch ?? fetch;
+				const assembleProviderPrompt = (): string => {
+					const text = assemblePrompt(params);
+					return ctx.obfuscateProviderText?.(text) ?? text;
+				};
 
 				if (provider === "openai" || provider === "openai-codex") {
 					if (!apiKey.model) {
@@ -1153,6 +1157,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 								key,
 								hostedModel,
 								params,
+								assembleProviderPrompt(),
 								resolvedImages,
 								fetchImpl,
 								requestSignal,
@@ -1194,7 +1199,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 						throw new Error("Missing projectId in antigravity credentials");
 					}
 
-					const prompt = assemblePrompt(params);
+					const providerPrompt = assembleProviderPrompt();
 					const antigravityKey: ApiKey = ctx.modelRegistry.resolver("google-antigravity", {
 						sessionId,
 						modelId: DEFAULT_ANTIGRAVITY_MODEL,
@@ -1210,7 +1215,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 							const bearer = rotated?.accessToken ?? key;
 							const projectId = rotated?.projectId ?? apiKey.projectId!;
 							const requestBody = buildAntigravityRequest(
-								prompt,
+								providerPrompt,
 								model,
 								projectId,
 								params.aspect_ratio,
@@ -1325,7 +1330,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 						);
 					}
 
-					const prompt = assemblePrompt(params);
+					const providerPrompt = assembleProviderPrompt();
 					const aspectRatio = params.aspect_ratio ?? "1:1";
 					const xaiResolution = resolveXAIResolution(params.image_size);
 
@@ -1338,7 +1343,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 
 					const xaiBaseBody: XAIImageRequestBase = {
 						model: resolvedModel,
-						prompt,
+						prompt: providerPrompt,
 						aspect_ratio: aspectRatio,
 						resolution: xaiResolution,
 						n: 1,
@@ -1424,8 +1429,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 				}
 
 				if (provider === "openrouter") {
-					const prompt = assemblePrompt(params);
-					const contentParts: OpenRouterContentPart[] = [{ type: "text", text: prompt }];
+					const contentParts: OpenRouterContentPart[] = [{ type: "text", text: assembleProviderPrompt() }];
 					for (const image of resolvedImages) {
 						contentParts.push({ type: "image_url", image_url: { url: toDataUrl(image) } });
 					}
@@ -1504,7 +1508,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 				for (const image of resolvedImages) {
 					parts.push({ inlineData: image });
 				}
-				parts.push({ text: assemblePrompt(params) });
+				parts.push({ text: assembleProviderPrompt() });
 
 				const generationConfig: {
 					responseModalities: GeminiResponseModality[];

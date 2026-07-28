@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as ai from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog/models";
+import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import { BlockAccumulator, SpeechEnhancer } from "@veyyon/coding-agent/tts/speech-enhancer";
 
 afterEach(() => {
@@ -42,6 +43,49 @@ describe("SpeechEnhancer rewriting", () => {
 
 		expect(rewritten).toBe("Spoken text");
 		expect(options).toMatchObject({ disableReasoning: true, maxTokens: 1536 });
+	});
+
+	it("obfuscates enhanced speech text immediately before the nested rewrite request", async () => {
+		const baseModel = getBundledModel("anthropic", "claude-sonnet-4-5");
+		if (!baseModel) throw new Error("Expected bundled Claude Sonnet 4.5 model");
+		const model = { ...baseModel, reasoning: false };
+		const settings = {
+			get() {
+				return undefined;
+			},
+			getModelRole(role: string) {
+				return role === "tiny" ? `${model.provider}/${model.id}` : undefined;
+			},
+			getStorage() {
+				return undefined;
+			},
+		} as never;
+		const registry = {
+			getAvailable: () => [model],
+			getApiKey: async () => "test-key",
+			resolver: () => async () => "test-key",
+		} as never;
+		const secret = "SPEECH_RAW_SECRET_123";
+		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const placeholder = obfuscator.obfuscate(secret);
+		const completeSimpleMock = vi.spyOn(ai, "completeSimple").mockResolvedValue({
+			stopReason: "stop",
+			content: [{ type: "text", text: "Safe speech" }],
+		} as never);
+
+		await new SpeechEnhancer({
+			settings,
+			registry,
+			sessionId: "session-secret",
+			obfuscateProviderText: text => obfuscator.obfuscate(text),
+		}).rewrite(`Speak ${secret} once`);
+
+		const providerContext = completeSimpleMock.mock.calls[0]?.[1] as {
+			messages: Array<{ content: string }>;
+		};
+		const captured = JSON.stringify(providerContext);
+		expect(captured).not.toContain(secret);
+		expect(providerContext.messages[0]?.content).toBe(`Speak ${placeholder} once`);
 	});
 });
 

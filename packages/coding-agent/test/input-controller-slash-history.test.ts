@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from "bun:test";
+import { afterEach, describe, expect, it, vi } from "bun:test";
 import type { ImageContent } from "@veyyon/ai";
-import { InputController } from "@veyyon/coding-agent/modes/controllers/input-controller";
+import { InputController, shouldSkipHistory } from "@veyyon/coding-agent/modes/controllers/input-controller";
 import { isQueuedMessageList, splitQueuedMessages } from "@veyyon/coding-agent/modes/queue-input";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import * as secretHelper from "@veyyon/coding-agent/slash-commands/helpers/secret";
 
 // Drives the real editor submit handler through the builtin slash dispatch
 // path. Before #3148 only a handful of commands recorded their text (each
@@ -23,6 +24,7 @@ function makeCtx(isStreaming = false) {
 		setText: (t: string) => {
 			text = t;
 		},
+		getExpandedText: () => text,
 		addToHistory,
 		pendingImages: [] as ImageContent[],
 		pendingImageLinks: [] as (string | undefined)[],
@@ -45,6 +47,8 @@ function makeCtx(isStreaming = false) {
 			followUp,
 			steer,
 		},
+		sessionManager: { getCwd: () => "/tmp" },
+		settings: {},
 		focusedAgentId: undefined,
 		collabGuest: undefined,
 		handleHotkeysCommand: vi.fn(),
@@ -91,6 +95,10 @@ function controllerFor(ctx: InteractiveModeContext) {
 	return controller;
 }
 
+afterEach(() => {
+	vi.restoreAllMocks();
+});
+
 describe("input controller — slash command history (#3148)", () => {
 	it("records a plain handled command (/hotkeys) that has no per-handler history call", async () => {
 		const { ctx, editor, addToHistory } = makeCtx();
@@ -121,6 +129,54 @@ describe("input controller — slash command history (#3148)", () => {
 		expect(handleMCPCommand).toHaveBeenCalledWith("/mcp add srv --url http://x --token sk-secret123");
 		// ...but the secret-bearing text is kept out of recallable history.
 		expect(addToHistory).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["inline plaintext", "/secret add API_TOKEN inline-history-secret"],
+		["environment lookup", "/secret add API_TOKEN --from-env HISTORY_SECRET_ENV"],
+	] as const)("does NOT record /secret add via %s on normal Enter", async (_case, command) => {
+		vi.spyOn(secretHelper, "runSecretCommandForSurface").mockResolvedValue({ message: "Stored secret" });
+		const { ctx, editor, addToHistory } = makeCtx();
+		controllerFor(ctx);
+
+		await editor.onSubmit?.(command);
+
+		expect(addToHistory).not.toHaveBeenCalled();
+	});
+
+	it("does NOT record malformed /secret input even when parsing rejects it", async () => {
+		const { ctx, editor, addToHistory } = makeCtx();
+		controllerFor(ctx);
+		const command = "/secret rm API_TOKEN malformed-history-secret";
+
+		await editor.onSubmit?.(command);
+
+		expect(addToHistory).not.toHaveBeenCalled();
+	});
+
+	it("does NOT record plaintext /secret input submitted through the follow-up operator path", async () => {
+		vi.spyOn(secretHelper, "runSecretCommandForSurface").mockResolvedValue({ message: "Stored secret" });
+		const { ctx, editor, addToHistory } = makeCtx(true);
+		const controller = controllerFor(ctx);
+		editor.setText("/secret add FOLLOW_UP_TOKEN follow-up-history-secret");
+
+		await controller.handleFollowUp();
+
+		expect(addToHistory).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		"/secret",
+		"/secret list",
+		"/secret:add API_TOKEN inline-history-secret",
+		"/secret unknown inline-history-secret",
+	])("excludes every /secret command shape from persistent history: %s", command => {
+		expect(shouldSkipHistory(command)).toBe(true);
+	});
+
+	it("does not suppress ordinary commands whose names merely share the prefix", () => {
+		expect(shouldSkipHistory("/secretary add meeting")).toBe(false);
+		expect(shouldSkipHistory("/hotkeys")).toBe(false);
 	});
 
 	it("routes /queue through the yield-only follow-up queue while streaming", async () => {

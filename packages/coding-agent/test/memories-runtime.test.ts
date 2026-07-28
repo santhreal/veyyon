@@ -11,6 +11,7 @@ import {
 	getMemoryRoot,
 	startMemoryStartupTask,
 } from "@veyyon/coding-agent/memories";
+import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import * as memoryStorage from "@veyyon/coding-agent/memories/storage";
 import { getAgentDbPath, Snowflake, TempDir } from "@veyyon/utils";
 
@@ -251,6 +252,65 @@ describe("memories runtime", () => {
 		expect(ai.completeSimple).toHaveBeenCalledTimes(2);
 		const phase2Prompt = completeSpy.mock.calls[1]?.[1];
 		expect(phase2Prompt?.systemPrompt?.[0]).toContain("memory-stage-two consolidator");
+	});
+
+	test("obfuscates stage-one and consolidation inputs at both nested provider boundaries", async () => {
+		const fx = await createFixture();
+		const secret = "MEMORY_RAW_SECRET_123";
+		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const placeholder = obfuscator.obfuscate(secret);
+		fx.session.obfuscator = obfuscator;
+		const rolloutPath = path.join(fx.sessionDir, "thread-secret.jsonl");
+		const rolloutRows = [
+			{ type: "session", id: "thread-secret", cwd: fx.agentDir },
+			{ type: "message", message: { role: "user", content: `remember ${secret}` } },
+		];
+		await fs.writeFile(rolloutPath, `${rolloutRows.map(row => JSON.stringify(row)).join("\n")}\n`);
+
+		const completeSpy = vi
+			.spyOn(ai, "completeSimple")
+			.mockResolvedValueOnce({
+				stopReason: "end_turn",
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify({
+							rollout_summary: `Used ${placeholder}`,
+							rollout_slug: "secret-rollout",
+							raw_memory: `Remember ${placeholder}`,
+						}),
+					},
+				],
+			} as never)
+			.mockResolvedValueOnce({
+				stopReason: "end_turn",
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify({
+							memory_md: `# Memory\n\nRemember ${placeholder}`,
+							memory_summary: `Uses ${placeholder}`,
+							skills: [],
+						}),
+					},
+				],
+			} as never);
+
+		startMemoryStartupTask({
+			session: fx.session,
+			settings: fx.settings,
+			modelRegistry: fx.modelRegistry,
+			agentDir: fx.agentDir,
+			taskDepth: 0,
+		});
+		await settle(fx.whenSettled, "secret-safe memory pipeline");
+
+		expect(completeSpy).toHaveBeenCalledTimes(2);
+		for (const call of completeSpy.mock.calls) {
+			const captured = JSON.stringify(call[1]);
+			expect(captured).not.toContain(secret);
+			expect(captured).toContain(placeholder);
+		}
 	});
 
 	test("clamps stage1 and phase2 reasoning effort against the model's supported range", async () => {

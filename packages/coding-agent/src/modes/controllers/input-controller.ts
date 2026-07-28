@@ -10,6 +10,7 @@ import { isSettingsInitialized, settings } from "../../config/settings-instance"
 // The owning module, not the `internal-urls` barrel: the barrel re-exports every protocol
 // handler and reaches hundreds of modules.
 import { resolveLocalRoot } from "../../internal-urls/local-protocol";
+import { AGENT_VIEW_LEFT_TAP_WINDOW_MS } from "../../modes/components/agent-view-timings";
 import { AssistantMessageComponent } from "../../modes/components/assistant-message";
 import { extractImagePathFromText } from "../../modes/components/custom-editor";
 import { renderSegmentTrack } from "../../modes/components/segment-track";
@@ -48,13 +49,12 @@ import type { SkillCommandHost } from "../skill-command";
  * Slash commands that may carry secrets in their arguments should never be
  * persisted to history.
  *
- * - /login accepts three callback forms (redirect URL, query string, raw auth
- *   code) — all can contain OAuth code=/state= params.
- * - /join <link> carries a 32-byte room key and optional write token.
- * - /mcp add --token <token> carries a bearer token.
+ * Every `/secret` form is excluded, including safe-looking subcommands and
+ * malformed input: parser failures and future syntax must not accidentally
+ * turn plaintext credentials into durable editor history.
  *
- * The command name is extracted the same way as parseSlashCommand() — splitting
- * on the earliest whitespace or colon — so /login:?code=... is correctly matched.
+ * Other sensitive commands are matched by the same command-name boundary as
+ * parseSlashCommand() — the earliest whitespace or colon.
  */
 export function shouldSkipHistory(slashText: string): boolean {
 	if (!slashText.startsWith("/")) return false;
@@ -65,6 +65,7 @@ export function shouldSkipHistory(slashText: string): boolean {
 	const sep = firstWs === -1 ? firstColon : firstColon === -1 ? firstWs : Math.min(firstWs, firstColon);
 	const name = sep === -1 ? body : body.slice(0, sep);
 	const hasArgs = sep !== -1;
+	if (name === "secret") return true;
 	// /login <anything> — parseCallbackInput() accepts redirect URLs, query
 	// strings (?code=...), and raw auth codes, all of which carry secrets.
 	if (name === "login" && hasArgs) return true;
@@ -152,16 +153,18 @@ const TINY_TITLE_PROGRESS_DONE_TTL_MS = 3_000;
 // events for seconds. Only reveal the bar once a still-incomplete event arrives after
 // this grace window, so an already-downloaded model never flashes the bar.
 const TINY_TITLE_PROGRESS_REVEAL_DELAY_MS = 1_000;
-// Double-tap ← on an empty editor opens the Agent Hub (and, in a focused
-// subagent view, ←← returns to the main session). The second tap must land
-// inside this window. The lower bound rejects terminal-synthesized arrow-key
-// bursts: "click to move cursor" / pointer features in iTerm2, WezTerm, kitty,
-// and tmux emit several arrow keys in a single stdin read (sub-millisecond
-// apart) on a stray click, which used to pop the hub with no key ever pressed.
-// Three or more rapid taps are likewise treated as a burst, not a gesture. A
-// deliberate human double-tap is always tens of milliseconds apart.
+// Double-tap ← on an empty editor opens the Agent Control Center (and, in a
+// focused subagent view, ←← returns to the main session). The upper bound is
+// AGENT_VIEW_LEFT_TAP_WINDOW_MS, imported rather than restated: it is the same
+// gesture window the agent views were built around, and a second copy of the
+// number here is how the two ends of one gesture drift apart. The lower bound
+// rejects terminal-synthesized arrow-key bursts: "click to move cursor" /
+// pointer features in iTerm2, WezTerm, kitty, and tmux emit several arrow keys
+// in a single stdin read (sub-millisecond apart) on a stray click, which used to
+// pop the card with no key ever pressed. Three or more rapid taps are likewise
+// treated as a burst, not a gesture. A deliberate human double-tap is always
+// tens of milliseconds apart.
 const LEFT_DOUBLE_TAP_MIN_GAP_MS = 40;
-const LEFT_DOUBLE_TAP_MAX_GAP_MS = 500;
 
 /**
  * The slice of `InteractiveModeContext` the input controller reads (H1-77). It
@@ -243,7 +246,7 @@ export class InputController {
 	#btwCopyListenerInstalled = false;
 	#goalDetailListenerInstalled = false;
 	// Tap counter for the double-← gesture; reset whenever a quiet gap
-	// (>= LEFT_DOUBLE_TAP_MAX_GAP_MS) starts a fresh sequence. See
+	// (>= AGENT_VIEW_LEFT_TAP_WINDOW_MS) starts a fresh sequence. See
 	// #detectLeftDoubleTap.
 	#leftTapCount = 0;
 	// Sequential index for `local://attachment-N` references created by large-paste and
@@ -567,23 +570,23 @@ export class InputController {
 			...this.ctx.keybindings.getKeys("app.session.observe"),
 		]);
 		for (const key of hubKeys) {
-			this.ctx.editor.setCustomKeyHandler(key, () => this.ctx.showAgentHub());
+			this.ctx.editor.setCustomKeyHandler(key, () => this.ctx.showAgentsDashboard());
 		}
 
-		// Double-tap left arrow on an empty editor: opens the agent hub from the
-		// main session, or returns the focused subagent view to the main session.
-		// Focused ←← intentionally matches Esc. From the main session the gesture
-		// stays inert when there are no subagents (requireContent); the explicit
-		// hub key still opens the empty roster. `armCloseTap` hands this gesture's
-		// tap state to the hub so the same ←← that opened it also arms its close —
-		// otherwise the hub's fresh detector demands a second ←← (issue #4780).
+		// Double-tap left arrow on an empty editor: opens the Agent Control Center
+		// from the main session, or returns the focused subagent view to the main
+		// session. Focused ←← intentionally matches Esc. From the main session the
+		// gesture stays inert when there are no subagents (requireContent); the
+		// explicit hub key still opens the empty roster. The card closes with Esc or
+		// the same key that opened it, so the gesture needs no close-tap handoff:
+		// inside the card the arrows switch views.
 		this.ctx.editor.onLeftAtStart = () => {
 			if (this.ctx.focusedAgentId) {
 				this.#handleFocusedLeftTap();
 				return;
 			}
 			if (this.#detectLeftDoubleTap()) {
-				this.ctx.showAgentHub({ requireContent: true, armCloseTap: true });
+				this.ctx.showAgentsDashboard({ requireContent: true });
 			}
 		};
 
@@ -614,16 +617,16 @@ export class InputController {
 	 * Detect a deliberate double-← gesture, rejecting terminal-synthesized arrow
 	 * bursts. Returns true only on the *second* tap of a fresh sequence when it
 	 * lands a human-plausible interval after the first
-	 * (`[LEFT_DOUBLE_TAP_MIN_GAP_MS, LEFT_DOUBLE_TAP_MAX_GAP_MS)`). Taps closer
+	 * (`[LEFT_DOUBLE_TAP_MIN_GAP_MS, AGENT_VIEW_LEFT_TAP_WINDOW_MS)`). Taps closer
 	 * than the lower bound, or any third-and-later tap before a quiet gap, are a
 	 * burst and never fire — so a stray click that makes the terminal emit a run
-	 * of ← keys can no longer pop the Agent Hub.
+	 * of ← keys can no longer pop the Agent Control Center.
 	 */
 	#detectLeftDoubleTap(): boolean {
 		const now = Date.now();
 		const sinceLast = now - this.ctx.lastLeftTapTime;
 		this.ctx.lastLeftTapTime = now;
-		if (sinceLast >= LEFT_DOUBLE_TAP_MAX_GAP_MS) {
+		if (sinceLast >= AGENT_VIEW_LEFT_TAP_WINDOW_MS) {
 			// Quiet gap: this tap starts a fresh sequence.
 			this.#leftTapCount = 1;
 			return false;
@@ -922,6 +925,10 @@ export class InputController {
 					this.ctx.session.model,
 					provider => this.ctx.session.agent.metadataForProvider(provider),
 					this.ctx.session.titleSystemPrompt,
+					providerText => {
+						const obfuscator = this.ctx.session.obfuscator;
+						return obfuscator?.hasSecrets() ? obfuscator.obfuscate(providerText) : providerText;
+					},
 				)
 					.then(async title => {
 						// Re-check: a concurrent attempt for an earlier message may have

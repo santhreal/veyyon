@@ -7,6 +7,7 @@ import { buildModel } from "@veyyon/catalog/build";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
+import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
@@ -43,6 +44,7 @@ interface CreateSessionOptions {
 	activeModel?: Model<"openai-responses">;
 	configureVisionRole?: boolean;
 	imageAttachments?: { label: string; uri: string; image: ImageContent }[];
+	obfuscateProviderText?: (text: string) => string;
 }
 
 interface CompleteSimpleStub {
@@ -78,6 +80,7 @@ function createSession(
 			authStorage: { rotateSessionCredential: async () => false },
 			resolver: () => async () => apiKey,
 		} as unknown as NonNullable<ToolSession["modelRegistry"]>,
+		obfuscateProviderText: options.obfuscateProviderText,
 	};
 	if (options.imageAttachments) {
 		session.getImageAttachments = () => options.imageAttachments ?? [];
@@ -154,6 +157,36 @@ describe("InspectImageTool", () => {
 		const contentParts = (Array.isArray(content) ? content : []) as Array<{ type: string; text?: string }>;
 		expect(contentParts[0]?.type).toBe("image");
 		expect(contentParts[1]).toEqual({ type: "text", text: "Extract visible UI labels." });
+	});
+
+	it("obfuscates the image question immediately before the nested vision request", async () => {
+		const imagePath = path.join(testDir, "secret-question.png");
+		fs.writeFileSync(imagePath, Buffer.from(TINY_PNG_BASE64, "base64"));
+		const secret = "VISION_RAW_SECRET_123";
+		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const placeholder = obfuscator.obfuscate(secret);
+		const stub = createCompleteSimpleSuccessStub("Safe answer");
+		const tool = new InspectImageTool(
+			createSession(testDir, visionModel, "test-key", Settings.isolated(), {
+				obfuscateProviderText: text => obfuscator.obfuscate(text),
+			}),
+			stub.fn,
+		);
+
+		await tool.execute("call-secret-question", {
+			path: imagePath,
+			question: `Inspect the account for ${secret}`,
+		});
+
+		const request = stub.calls[0]?.[1] as {
+			messages: Array<{ content: Array<{ type: string; text?: string }> }>;
+		};
+		const captured = JSON.stringify(request);
+		expect(captured).not.toContain(secret);
+		expect(request.messages[0]?.content[1]).toEqual({
+			type: "text",
+			text: `Inspect the account for ${placeholder}`,
+		});
 	});
 
 	it("resolves pasted image labels from current attachments without using cwd", async () => {

@@ -401,6 +401,8 @@ async function runPhase1(options: {
 			produced: 0,
 			usage: emptyCost(),
 		};
+		const obfuscator = session.obfuscator;
+		const obfuscateProviderText = obfuscator ? (text: string) => obfuscator.obfuscate(text) : undefined;
 
 		await runWithConcurrency(claims, config.stage1Concurrency, async claim => {
 			const result = await runStage1Job({
@@ -410,6 +412,7 @@ async function runPhase1(options: {
 				modelMaxTokens: computeModelTokenBudget(phase1Model, config),
 				config,
 				metadata: session.agent?.metadataForProvider(phase1Model.provider),
+				obfuscateProviderText,
 			});
 
 			if (result.kind === "failed") {
@@ -559,12 +562,16 @@ async function runPhase2(options: {
 			}
 		}, config.phase2HeartbeatSeconds * 1000);
 
+		const obfuscator = session.obfuscator;
+		const obfuscateProviderText = obfuscator ? (text: string) => obfuscator.obfuscate(text) : undefined;
+
 		try {
 			const consolidated = await runConsolidationModel({
 				memoryRoot,
 				model: phase2Model,
 				apiKey: modelRegistry.resolver(phase2Model, session.sessionId),
 				metadata: session.agent?.metadataForProvider(phase2Model.provider),
+				obfuscateProviderText,
 			});
 			await applyConsolidation(memoryRoot, consolidated);
 			if (heartbeatLostOwnership) {
@@ -722,6 +729,7 @@ async function runStage1Job(options: {
 	modelMaxTokens: number;
 	config: MemoryRuntimeConfig;
 	metadata?: Record<string, unknown>;
+	obfuscateProviderText?: (text: string) => string;
 }): Promise<
 	| {
 			kind: "output";
@@ -746,11 +754,14 @@ async function runStage1Job(options: {
 			response_items_json: truncatedItems,
 		});
 
+		const sanitize = options.obfuscateProviderText ?? ((text: string) => text);
+		const providerSystemPrompt = sanitize(memoriesPrompts["memories/stage_one_system"].text);
+		const providerInputPrompt = sanitize(inputPrompt);
 		const response = await completeSimple(
 			model,
 			{
-				systemPrompt: [memoriesPrompts["memories/stage_one_system"].text],
-				messages: [{ role: "user", content: [{ type: "text", text: inputPrompt }], timestamp: Date.now() }],
+				systemPrompt: [providerSystemPrompt],
+				messages: [{ role: "user", content: [{ type: "text", text: providerInputPrompt }], timestamp: Date.now() }],
 			},
 			{
 				apiKey,
@@ -909,6 +920,7 @@ async function runConsolidationModel(options: {
 	model: Model;
 	apiKey: ApiKey;
 	metadata?: Record<string, unknown>;
+	obfuscateProviderText?: (text: string) => string;
 }): Promise<{
 	memoryMd: string;
 	memorySummary: string;
@@ -928,11 +940,14 @@ async function runConsolidationModel(options: {
 		rollout_summaries: truncateByApproxTokens(rolloutSummaries, 12_000),
 	});
 
+	const sanitize = options.obfuscateProviderText ?? ((text: string) => text);
+	const providerSystemPrompt = sanitize(memoriesPrompts["memories/consolidation_system"].text);
+	const providerInput = sanitize(input);
 	const response = await completeSimple(
 		model,
 		{
-			systemPrompt: [memoriesPrompts["memories/consolidation_system"].text],
-			messages: [{ role: "user", content: [{ type: "text", text: input }], timestamp: Date.now() }],
+			systemPrompt: [providerSystemPrompt],
+			messages: [{ role: "user", content: [{ type: "text", text: providerInput }], timestamp: Date.now() }],
 		},
 		{
 			apiKey,

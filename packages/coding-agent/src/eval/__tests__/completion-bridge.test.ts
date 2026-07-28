@@ -7,6 +7,7 @@ import { TempDir } from "@veyyon/utils";
 import { $ } from "bun";
 import type { ModelRegistry } from "../../config/model-registry";
 import { Settings } from "../../config/settings";
+import { SecretObfuscator } from "../../secrets/obfuscator";
 import type { ToolSession } from "../../tools";
 import { ToolError } from "../../tools/tool-errors";
 import { EVAL_TIMEOUT_PAUSE_OP, EVAL_TIMEOUT_RESUME_OP } from "../bridge-timeout";
@@ -46,6 +47,7 @@ interface SessionOptions {
 	apiKey?: string | null;
 	activeModel?: string;
 	roles?: Partial<Record<"smol" | "default" | "slow", string>>;
+	obfuscateProviderText?: (text: string) => string;
 }
 
 function makeSession(opts: SessionOptions = {}): ToolSession {
@@ -64,6 +66,7 @@ function makeSession(opts: SessionOptions = {}): ToolSession {
 		settings,
 		modelRegistry,
 		getActiveModelString: () => opts.activeModel ?? "p/default",
+		obfuscateProviderText: opts.obfuscateProviderText,
 	} as unknown as ToolSession;
 }
 
@@ -228,6 +231,36 @@ describe("runEvalCompletion", () => {
 		await runEvalCompletion({ prompt: "q", model: "smol", system: "Be terse." }, { session: makeSession() });
 		const ctx = spy.mock.calls[0]?.[1] as { systemPrompt?: string[] };
 		expect(ctx.systemPrompt).toEqual(["Be terse."]);
+	});
+
+	it("obfuscates both prompt and explicit system text at the final provider boundary", async () => {
+		const secret = "EVAL_RAW_SECRET_123";
+		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const placeholder = obfuscator.obfuscate(secret);
+		const spy = vi.spyOn(ai, "completeSimple").mockResolvedValue(assistant({ text: "ok" }));
+		const session = makeSession({
+			obfuscateProviderText: text => obfuscator.obfuscate(text),
+		});
+
+		await runEvalCompletion(
+			{
+				prompt: `Use ${secret} in the answer`,
+				system: `Never repeat ${secret}`,
+				model: "smol",
+			},
+			{ session },
+		);
+
+		const providerContext = spy.mock.calls[0]?.[1] as {
+			systemPrompt: string[];
+			messages: Array<{ content: Array<{ type: string; text: string }> }>;
+		};
+		const captured = JSON.stringify(providerContext);
+		expect(captured).not.toContain(secret);
+		expect(providerContext.systemPrompt).toEqual([`Never repeat ${placeholder}`]);
+		expect(providerContext.messages[0]?.content).toEqual([
+			{ type: "text", text: `Use ${placeholder} in the answer` },
+		]);
 	});
 
 	it("forces a respond tool call and returns its arguments in structured mode", async () => {
