@@ -26,6 +26,7 @@ interface SessionLike {
 		getSessionId: () => string;
 		getCwd: () => string;
 	};
+	obfuscateProviderText: (text: string) => string;
 	settings: Settings;
 	model: Model;
 	modelRegistry: ModelRegistryLike;
@@ -110,6 +111,7 @@ describe("issue #846: phase1 stage1 failures must be logged", () => {
 				getSessionId: () => "current-thread",
 				getCwd: () => agentDir,
 			},
+			obfuscateProviderText: (text: string) => text,
 			settings,
 			model,
 			modelRegistry,
@@ -135,9 +137,8 @@ describe("issue #846: phase1 stage1 failures must be logged", () => {
 		const completeSpy = vi.spyOn(ai, "completeSimple");
 		const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
 
-		// Use a sessionish object that matches the AgentSession surface used by
-		// startMemoryStartupTask. The function only touches sessionManager.* and
-		// refreshBaseSystemPrompt.
+		// Use a sessionish object matching the AgentSession surfaces exercised by
+		// startup, including the provider-text transform seam.
 		startMemoryStartupTask({
 			session: session as unknown as Parameters<typeof startMemoryStartupTask>[0]["session"],
 			settings,

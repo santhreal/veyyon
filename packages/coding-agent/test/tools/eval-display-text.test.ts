@@ -89,7 +89,7 @@ describe("EvalTool display() text surfacing", () => {
 
 	it("surfaces displayed images to the model as ImageContent blocks, not inlined base64", async () => {
 		vi.spyOn(pyKernel, "checkPythonKernelAvailability").mockResolvedValue({ ok: true });
-		const base64 = Buffer.from([0, 1, 2, 3]).toString("base64");
+		const base64 = RED_1X1_PNG_BASE64;
 		vi.spyOn(evalIndex.jsBackend, "execute").mockResolvedValue(
 			baseResult({
 				displayOutputs: [{ type: "image", data: base64, mimeType: "image/png" }],
@@ -104,12 +104,18 @@ describe("EvalTool display() text surfacing", () => {
 
 		const imageBlocks = result.content.filter(c => c.type === "image");
 		expect(imageBlocks).toHaveLength(1);
-		expect(imageBlocks[0]).toMatchObject({ type: "image", data: base64, mimeType: "image/png" });
+		const image = imageBlocks[0];
+		expect(image).toMatchObject({ type: "image", mimeType: "image/webp" });
+		if (image?.type !== "image") throw new Error("Expected image content");
+		expect(image.data).not.toBe(base64);
+		const { width, height } = await new Bun.Image(Buffer.from(image.data, "base64")).metadata();
+		expect({ width, height }).toEqual({ width: 200, height: 200 });
 
 		const textBlocks = result.content.filter(c => c.type === "text");
 		const text = textBlocks.map(c => (c.type === "text" ? c.text : "")).join("\n");
-		expect(text).not.toContain(base64); // base64 must not leak into text channel
-		expect(text).toMatch(/displayed 1 image/);
+		expect(text).not.toContain(base64);
+		expect(text).not.toContain(image.data);
+		expect(text).toContain("display image 1: [Image: original 1x1, displayed at 200x200.");
 
 		// Image is in content, so details.images must be empty to avoid double-rendering.
 		expect(result.details?.images).toBeUndefined();
