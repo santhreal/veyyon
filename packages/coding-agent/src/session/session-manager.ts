@@ -983,7 +983,10 @@ export class SessionManager {
 		this.#diskTail = Promise.resolve();
 		this.#clearDiskError();
 
-		this.#cwd = snapshot.cwd;
+		// Resolved like every other write to this field. A snapshot normally round-trips a value that
+		// was already absolute, but it is plain data a caller can build, and this is the one assignment
+		// here that takes a cwd from outside the class.
+		this.#cwd = path.resolve(snapshot.cwd);
 		this.#sessionDir = snapshot.sessionDir;
 		this.#sessionFile = snapshot.sessionFile;
 		this.#fileIsCurrent = snapshot.onDisk;
@@ -1356,8 +1359,22 @@ export class SessionManager {
 		if (this.#diskFailure) throw this.#diskFailure;
 	}
 
+	/**
+	 * The session's working directory, ALWAYS as an absolute path.
+	 *
+	 * The constructor resolves its seed, but nothing kept the field resolved after that, and every
+	 * caller in the process reads the cwd through here: the two `ToolSession.cwd` getters in `sdk.ts`
+	 * return this directly, so a relative value reached every tool at once. It surfaced as `set_cwd`
+	 * answering `Session cwd is now . (previously .)` on a successful re-root, which tells the model
+	 * nothing and reads as a failure, and it is the harmless-looking half of a worse one: a relative
+	 * cwd makes `resolveToCwd(target, session.cwd)` rebase silently on `process.cwd()`, so the tools
+	 * and the session disagree about where the session is the moment those two differ.
+	 *
+	 * Resolved on the way OUT as well as on the way in, so no assignment anywhere in this class can
+	 * reintroduce it. `path.resolve` on an already-absolute path is a normalization, not a change.
+	 */
 	getCwd(): string {
-		return this.#cwd;
+		return path.resolve(this.#cwd);
 	}
 
 	/**
@@ -1394,11 +1411,21 @@ export class SessionManager {
 			}
 		}
 
+		// `resolvedCwd`, not `this.#cwd`. Both sides of the comparison are resolved, so returning the
+		// raw field here was the one path that could hand a caller a relative cwd it had just proved
+		// was the same directory: `set_cwd /abs/path/keyhog` on a session whose field held `.` matched,
+		// took this branch, and answered `Session cwd is . `, which is false twice over and reads as a
+		// failed call. The declared contract is "returns the resolved absolute path" and this is the
+		// same directory either way, so there is nothing to weigh.
 		if (resolvedCwd === path.resolve(this.#cwd)) {
-			return this.#cwd;
+			// The field is normalized, but the header is deliberately left alone: this branch is the
+			// no-move case, so there is no change to persist, and the header does not exist yet on a
+			// manager that has not been initialized.
+			this.#cwd = resolvedCwd;
+			return resolvedCwd;
 		}
 
-		const previous = this.#cwd;
+		const previous = path.resolve(this.#cwd);
 		this.#cwd = resolvedCwd;
 		this.#header.cwd = resolvedCwd;
 
