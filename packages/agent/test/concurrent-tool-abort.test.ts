@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from "bun:test";
-import { agentLoop, agentPauseGate } from "@veyyon/agent-core";
+import { describe, expect, it } from "bun:test";
+import { agentLoop } from "@veyyon/agent-core";
 import type { AgentContext, AgentLoopConfig, AgentMessage, AgentTool } from "@veyyon/agent-core/types";
 import type { Message } from "@veyyon/ai";
 import { createMockModel } from "@veyyon/ai/providers/mock";
@@ -42,10 +42,6 @@ function makeSlowTool(log: string[], delayMs: number): AgentTool {
 }
 
 describe("agent loop concurrent tools and abort", () => {
-	afterEach(() => {
-		agentPauseGate.resume();
-	});
-
 	it("empty tools array still produces an assistant message", async () => {
 		const mock = createMockModel({ responses: [{ content: ["no-tools-reply"] }] });
 		const context: AgentContext = { systemPrompt: ["Test"], messages: [], tools: [] };

@@ -22,7 +22,12 @@
 
 - Compaction and branch summaries now enter the provider request as agent-owned developer context,
   not as synthetic user turns. Their persisted `compactionSummary` and `branchSummary` roles remain
-  unchanged, and their context templates explicitly forbid echoing the private `<summary>` delimiter.
+  unchanged. New context contains no private `<summary>` delimiters for a model to echo.
+
+- `AgentLoopConfig.pauseGate` can scope pause state to one execution domain while retaining the
+  process-wide gate by default. Parallel and independently embedded loops no longer inherit another
+  domain's test or host pause, so aborts still become completed `aborted` messages with their exact
+  reason instead of escaping as rejected streams.
 
 - A turn that ends in an error builds its message with the shared `errorMessage` helper. The two tail branches were that helper written out by hand, and the local `const errorMessage` holding the result shadowed the import, so the hand-rolled copy was the only version reachable in that scope. The local is named `failureMessage` now.
 

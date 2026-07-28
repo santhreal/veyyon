@@ -1426,6 +1426,7 @@ export interface BuildResponsesInputOptions<TApi extends Api> {
 	};
 	includeThinkingSignatures?: boolean;
 	developerStringContent?: boolean;
+	supportsDeveloperRole?: boolean;
 	repairOrphanOutputs?: boolean;
 	/** Preserve assistant message item IDs from text signatures during fallback replay. */
 	preserveAssistantMessageIds?: boolean;
@@ -1485,6 +1486,26 @@ export function buildResponsesInput<TApi extends Api>(options: BuildResponsesInp
 				msgIndex++;
 				continue;
 			}
+			if (
+				msg.role === "developer" &&
+				options.supportsDeveloperRole &&
+				Array.isArray(msg.content) &&
+				msg.content.some(item => item.type === "image")
+			) {
+				const textContent = convertResponsesInputContent(
+					msg.content.filter((item): item is TextContent => item.type === "text"),
+					false,
+					supportsImageDetailOriginal,
+				);
+				const imageContent = convertResponsesInputContent(
+					msg.content.filter((item): item is ImageContent => item.type === "image"),
+					options.model.input.includes("image"),
+					supportsImageDetailOriginal,
+				);
+				if (textContent) messages.push({ role: "developer", content: textContent });
+				if (imageContent) messages.push({ role: "user", content: imageContent });
+				continue;
+			}
 			const content = convertResponsesInputContent(
 				msg.content,
 				options.model.input.includes("image"),
@@ -1492,7 +1513,7 @@ export function buildResponsesInput<TApi extends Api>(options: BuildResponsesInp
 			);
 			if (!content) continue;
 			messages.push({
-				role: "user",
+				role: msg.role === "developer" && options.supportsDeveloperRole ? "developer" : "user",
 				content:
 					options.developerStringContent && msg.role === "developer" && typeof msg.content === "string"
 						? msg.content.toWellFormed()

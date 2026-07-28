@@ -320,6 +320,43 @@ describe("openai-codex Responses Lite input shaping", () => {
 		});
 	});
 
+	/**
+	 * Codex rejects input_image in developer content. Preserve the agent-owned
+	 * text as developer context and move only the attachment to a user slot.
+	 */
+	it("splits image-bearing developer context into developer text and user images", () => {
+		const model = buildModel({
+			id: "gpt-5.5",
+			name: "GPT-5.5",
+			api: "openai-codex-responses",
+			provider: "openai-codex",
+			baseUrl: "https://chatgpt.com/backend-api/codex",
+			reasoning: true,
+			input: ["text", "image"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 200_000,
+			maxTokens: 100_000,
+		});
+		const messages = convertCodexResponsesMessages(model, {
+			messages: [
+				{
+					role: "developer",
+					attribution: "agent",
+					timestamp: Date.now(),
+					content: [
+						{ type: "text", text: "Compacted context." },
+						{ type: "image", mimeType: "image/png", data: "AAAA" },
+					],
+				},
+			],
+		});
+
+		expect(messages).toEqual([
+			{ role: "developer", content: [{ type: "input_text", text: "Compacted context." }] },
+			{ role: "user", content: [{ type: "input_image", image_url: "data:image/png;base64,AAAA", detail: "auto" }] },
+		]);
+	});
+
 	it("forces parallel_tool_calls off and moves tools into input under lite", async () => {
 		const model = createCodexModel("gpt-5.1-codex");
 		const tools = [{ type: "function", name: "shot", parameters: { type: "object" } }];

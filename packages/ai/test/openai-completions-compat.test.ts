@@ -380,6 +380,61 @@ describe("openai-completions compatibility", () => {
 		]);
 	});
 
+	/**
+	 * Compaction context uses text-block arrays, not strings. The array shape
+	 * must not silently demote agent-owned context when developer is supported.
+	 */
+	it("preserves text-block developer messages and downgrades only unsupported targets", () => {
+		const model: Model<"openai-completions"> = buildModel({
+			...gpt4oMiniSpec,
+			api: "openai-completions",
+			reasoning: true,
+		} as ModelSpec<"openai-completions">);
+		const context: Context = {
+			messages: [
+				{
+					role: "developer",
+					content: [{ type: "text", text: "Compacted context." }],
+					attribution: "agent",
+					timestamp: Date.now(),
+				},
+			],
+		};
+
+		expect(convertMessages(model, context, model.compat)[0]?.role).toBe("developer");
+		expect(convertMessages(model, context, { ...model.compat, supportsDeveloperRole: false })[0]?.role).toBe("user");
+	});
+
+	/** Chat-completions accepts image parts only on user messages, even when their text came from developer context. */
+	it("uses a user wire role for image-bearing developer messages", () => {
+		const model: Model<"openai-completions"> = buildModel({
+			...gpt4oMiniSpec,
+			api: "openai-completions",
+			reasoning: true,
+			input: ["text", "image"],
+		} as ModelSpec<"openai-completions">);
+		const messages = convertMessages(
+			model,
+			{
+				messages: [
+					{
+						role: "developer",
+						content: [
+							{ type: "text", text: "Compacted context." },
+							{ type: "image", mimeType: "image/png", data: "AAAA" },
+						],
+						attribution: "agent",
+						timestamp: Date.now(),
+					},
+				],
+			},
+			model.compat,
+		);
+
+		expect(messages[0]?.role).toBe("user");
+		expect(JSON.stringify(messages[0])).toContain("data:image/png;base64,AAAA");
+	});
+
 	it("defaults supportsDeveloperRole to off for non-OpenAI/Azure hosts", () => {
 		// Regression: Moonshot's Kimi chat template rejects the `developer` role
 		// with `400 Invalid request: tokenization failed` because `developer` is

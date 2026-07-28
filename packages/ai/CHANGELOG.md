@@ -119,6 +119,11 @@
 
 ### Fixed
 
+- OpenAI Responses and Chat Completions now preserve `developer` for agent-owned text-block context
+  instead of silently rewriting the array form as `user`. Responses and Codex split image-bearing
+  developer context into developer text plus user image attachments, which keeps instruction
+  provenance without sending `input_image` in a role those APIs reject.
+
 - Cancelling a request no longer turns into a crashed run. `resolveApiKeyOnce` checked the abort signal
   before it looked at the key at all, so an already-cancelled request threw `signal.reason` even when
   there was no key to resolve and nothing to cancel. Its caller in the agent loop resolves credentials

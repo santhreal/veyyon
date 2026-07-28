@@ -576,7 +576,7 @@ const streamOpenAIResponsesOnce = (
 						);
 						const fallbackParams = fallbackBuilt.params;
 						if (chainState && !chainState.disabled) fallbackParams.store = true;
-						let fallbackChained: OpenAIResponsesChainedParams =
+						const fallbackChained: OpenAIResponsesChainedParams =
 							chainState && !chainState.disabled
 								? buildOpenAIResponsesChainedParams(fallbackParams, chainState)
 								: { params: fallbackParams };
@@ -795,6 +795,7 @@ export function buildParams(
 		context,
 		strictResponsesPairing,
 		supportsImageDetailOriginal: model.compat.supportsImageDetailOriginal,
+		supportsDeveloperRole: policy.messages.supportsDeveloperRole,
 		nativeHistory: {
 			replay: shouldReplayNativeHistory,
 			filterReasoning: policy.reasoning.filterReasoningHistory,

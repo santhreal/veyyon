@@ -30,20 +30,34 @@ function attributionOf(message: Message | undefined): string | undefined {
 }
 
 describe("renderBranchSummaryContext", () => {
-	it("wraps the summary in the branch-return template", () => {
+	it("places the branch summary directly in agent-owned context without private delimiters", () => {
 		const rendered = renderBranchSummaryContext("we tried the async path and reverted");
 		expect(rendered).toContain("summary of a branch that this conversation came back from");
-		expect(rendered).toContain("<summary>\nwe tried the async path and reverted\n</summary>");
-		expect(rendered).toContain("NEVER reproduce them in a response");
+		expect(rendered).toContain("we tried the async path and reverted");
+		expect(rendered).not.toContain("<summary>");
+		expect(rendered).not.toContain("</summary>");
 	});
 });
 
 describe("renderCompactionSummaryContext", () => {
-	it("wraps the summary in the build-on-prior-work template", () => {
+	it("places the compaction summary directly in agent-owned context without private delimiters", () => {
 		const rendered = renderCompactionSummaryContext("prior model outlined the fix");
 		expect(rendered).toContain("You MUST build on the work already done and NEVER duplicate it");
-		expect(rendered).toContain("<summary>\nprior model outlined the fix\n</summary>");
-		expect(rendered).toContain("NEVER reproduce them in a response");
+		expect(rendered).toContain("prior model outlined the fix");
+		expect(rendered).not.toContain("<summary>");
+		expect(rendered).not.toContain("</summary>");
+	});
+});
+
+/** Nested and attributed wrappers from a prior model must not re-enter any provider request. */
+describe("summary presentation tag sanitization", () => {
+	it("strips every summary presentation tag from model-generated summary text", () => {
+		const rendered = renderCompactionSummaryContext(
+			'<SUMMARY data-source="model"><summary>prior model outlined the fix</summary></SUMMARY>',
+		);
+		expect(rendered).toContain("prior model outlined the fix");
+		expect(rendered.toLowerCase()).not.toContain("<summary");
+		expect(rendered.toLowerCase()).not.toContain("</summary>");
 	});
 });
 
@@ -132,7 +146,7 @@ describe("convertMessageToLlm: compaction roles", () => {
 		});
 	});
 
-	it("renders a branchSummary into an agent-attributed developer message", () => {
+	it("renders a branchSummary into agent-attributed developer context without private delimiters", () => {
 		const converted = convertMessageToLlm(
 			agentMessage({ role: "branchSummary", summary: "the branch", fromId: "m1", timestamp: 4000 }),
 		);
@@ -141,7 +155,9 @@ describe("convertMessageToLlm: compaction roles", () => {
 		expect(converted?.timestamp).toBe(4000);
 		const [block] = converted!.content as TextContent[];
 		expect(block.type).toBe("text");
-		expect(block.text).toContain("<summary>\nthe branch\n</summary>");
+		expect(block.text).toContain("the branch");
+		expect(block.text).not.toContain("<summary>");
+		expect(block.text).not.toContain("</summary>");
 	});
 
 	it("renders a blockless compactionSummary through the build-on-prior template", () => {
@@ -154,6 +170,28 @@ describe("convertMessageToLlm: compaction roles", () => {
 		expect(content).toHaveLength(1);
 		expect((content[0] as TextContent).text).toContain("NEVER duplicate it");
 		expect((content[0] as TextContent).text).toContain("prior recap");
+	});
+
+	/** Old image-archive sessions use the blocks branch and need the same delimiter stripping. */
+	it("keeps legacy blocks in developer context while stripping persisted summary wrappers", () => {
+		const blocks: Array<TextContent | ImageContent> = [
+			{ type: "text", text: "<SUMMARY data-old>old region</SUMMARY>" },
+			image,
+		];
+		const converted = convertMessageToLlm(
+			agentMessage({
+				role: "compactionSummary",
+				summary: "<summary>legacy recap</summary>",
+				tokensBefore: 10,
+				blocks,
+				timestamp: 5001,
+			}),
+		);
+		expect(converted?.role).toBe("developer");
+		expect(attributionOf(converted)).toBe("agent");
+		const content = converted?.content as Array<TextContent | ImageContent>;
+		expect(content).toEqual([{ type: "text", text: "legacy recap" }, { type: "text", text: "old region" }, image]);
+		expect(JSON.stringify(content).toLowerCase()).not.toContain("<summary");
 	});
 });
 

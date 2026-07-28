@@ -21,6 +21,7 @@ import type {
 } from "@veyyon/ai";
 import type { Dialect } from "@veyyon/ai/dialect";
 
+import type { AgentPauseGate } from "./pause";
 /**
  * Owned-dialect configuration: a fixed dialect, or a per-model resolver that is
  * re-evaluated with the active model on every request. `undefined` (value or
@@ -109,6 +110,13 @@ export interface SteeringQueueState {
  */
 export interface AgentLoopConfig extends SimpleStreamOptions {
 	model: Model;
+
+	/**
+	 * Pause boundary for this loop. Defaults to the process-wide gate used by
+	 * hosts; embedders with independent execution domains may inject a scoped
+	 * gate so pausing one domain cannot freeze another.
+	 */
+	pauseGate?: AgentPauseGate;
 
 	/**
 	 * When to interrupt tool execution for steering messages.

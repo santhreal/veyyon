@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { type AuthCredentialStore, AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai/auth-storage";
 import type { UsageProvider, UsageReport } from "@veyyon/ai/usage";
+import { zaiRankingStrategy } from "@veyyon/ai/usage/zai";
 import { removeWithRetries } from "../../utils/src/temp";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -29,6 +30,7 @@ describe("AuthStorage Z.AI API-key usage ranking", () => {
 		store = await SqliteAuthCredentialStore.open(path.join(tempDir, "agent.db"));
 		authStorage = new AuthStorage(store, {
 			usageProviderResolver: provider => (provider === "zai" ? usageProvider : undefined),
+			rankingStrategyResolver: provider => (provider === "zai" ? zaiRankingStrategy : undefined),
 			async configValueResolver(config) {
 				if (config === "ZAI_EXHAUSTED_REF") return "zai-exhausted";
 				if (config === "ZAI_HEALTHY_REF") return "zai-healthy";

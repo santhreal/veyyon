@@ -1843,10 +1843,17 @@ export function convertMessages(
 					} satisfies ChatCompletionContentPartText);
 				}
 				if (content.length === 0) continue;
-				params.push({
-					role: "user",
-					content,
-				});
+				if (msg.role === "developer" && role === "developer" && !msg.content.some(item => item.type === "image")) {
+					params.push({
+						role: "developer",
+						content: content
+							.filter((item): item is ChatCompletionContentPartText => item.type === "text")
+							.map(item => item.text)
+							.join("\n"),
+					});
+				} else {
+					params.push({ role: "user", content });
+				}
 			}
 		} else if (msg.role === "assistant") {
 			const assistantMsg: OpenAICompletionsAssistantMessageParam = {
