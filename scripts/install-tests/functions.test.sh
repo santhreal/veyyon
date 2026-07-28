@@ -224,6 +224,34 @@ check "vey resolves to veyyon" "$(readlink "$VEYYON_INSTALL_DIR/vey")" "$VEYYON_
   check "a broken link is repaired" "$(readlink "$_d/vey")" "$_d/veyyon"
   check "repairing a broken link is reported" "$(printf '%s' "$out" | grep -c "replaced a broken 'vey' link")" "1" )
 
+# --- install_dir: a trailing slash is not part of the directory ---------------
+# Everything downstream compares this path against one that carries no trailing
+# separator: the PATH membership test (`case ":$PATH:" in *":$dir:"*`), the rc
+# line the uninstall matches back byte-for-byte, and the shadow check's
+# `dir_of "$bin"`. `VEYYON_INSTALL_DIR=$HOME/.local/bin/` is a spelling a person
+# types, and it made the installer write a PATH entry it could not afterwards
+# recognize as its own, so a reinstall added a second one and the uninstall left
+# both behind. This is the POSIX half of the same rule Get-NormalizedPathEntry
+# enforces on Windows.
+( export VEYYON_INSTALL_DIR="/opt/veyyon/bin"
+  check "an ordinary install dir is unchanged" "$(install_dir)" "/opt/veyyon/bin" )
+( export VEYYON_INSTALL_DIR="/opt/veyyon/bin/"
+  check "one trailing slash is stripped" "$(install_dir)" "/opt/veyyon/bin" )
+( export VEYYON_INSTALL_DIR="/opt/veyyon/bin///"
+  check "several trailing slashes are stripped" "$(install_dir)" "/opt/veyyon/bin" )
+( export VEYYON_INSTALL_DIR="/"
+  check "the root directory keeps its slash" "$(install_dir)" "/" )
+( export VEYYON_INSTALL_DIR="//"
+  check "a doubled root still resolves to one slash" "$(install_dir)" "/" )
+( export VEYYON_INSTALL_DIR="/opt/vey yon/bin/"
+  check "a space in the path survives stripping" "$(install_dir)" "/opt/vey yon/bin" )
+( unset VEYYON_INSTALL_DIR
+  check "the default install dir is unchanged" "$(install_dir)" "$HOME/.local/bin" )
+( export HOME="/home/tester/"; unset VEYYON_INSTALL_DIR
+  check "a HOME with a trailing slash does not double the separator" "$(install_dir)" "/home/tester/.local/bin" )
+( export HOME="/"; unset VEYYON_INSTALL_DIR
+  check "HOME=/ yields one leading slash, not two" "$(install_dir)" "/.local/bin" )
+
 # --- completions_dir_for: per-shell XDG paths ---
 # The runner may export XDG_DATA_HOME/XDG_CONFIG_HOME (GitHub's does), so the
 # fallback assertions must unset them explicitly — otherwise "fish completions

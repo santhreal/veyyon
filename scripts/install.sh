@@ -42,7 +42,34 @@ PATH_RELOAD_RC=""
 # must be followed, and this path guards removals. It also collapses two names
 # for one thing: callers were setting INSTALL_DIR and VEYYON_INSTALL_DIR
 # together because it was not obvious which one was read.
-install_dir() { printf '%s' "${VEYYON_INSTALL_DIR:-$HOME/.local/bin}"; }
+#
+# A trailing slash is stripped, because everything downstream compares this
+# against a path that has none: the PATH membership test (`*":$dir:"*`), the rc
+# line the uninstall matches back byte-for-byte, and the shadow check's
+# `dir_of "$bin"`. `VEYYON_INSTALL_DIR=$HOME/.local/bin/` is a spelling a person
+# types, and it used to make the installer write a PATH entry it could not
+# afterwards recognize as its own — so a reinstall added a second one and the
+# uninstall left both behind. `/` keeps its slash: it is the directory, not a
+# trailing separator.
+install_dir() {
+    if [ -n "${VEYYON_INSTALL_DIR:-}" ]; then
+        _id_dir="$VEYYON_INSTALL_DIR"
+    else
+        # A HOME spelled with a trailing slash would otherwise build
+        # `/home/you//.local/bin`, which every tool resolves to the same
+        # directory and no string comparison recognizes as the one we wrote.
+        _id_home="$HOME"
+        while [ "${_id_home%/}" != "$_id_home" ] && [ "$_id_home" != "/" ]; do
+            _id_home="${_id_home%/}"
+        done
+        [ "$_id_home" = "/" ] && _id_home=""
+        _id_dir="$_id_home/.local/bin"
+    fi
+    while [ "${_id_dir%/}" != "$_id_dir" ] && [ "$_id_dir" != "/" ]; do
+        _id_dir="${_id_dir%/}"
+    done
+    printf '%s' "$_id_dir"
+}
 MIN_BUN_VERSION="1.3.14"
 
 # Retry transient network failures on every download (a dropped connection or a

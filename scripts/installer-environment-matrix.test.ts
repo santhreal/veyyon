@@ -133,9 +133,17 @@ function runInstall(testCase: EnvironmentCase, previous?: InstallRun): InstallRu
 	tempRoots.push(root);
 	const home = path.join(root, testCase.home_dir);
 	fs.mkdirSync(home, { recursive: true });
-	const installDir = testCase.install_dir.startsWith("/")
+	// What the case ASKS for, which is what the installer is handed, and what the
+	// installer RESOLVES it to, which is what every assertion below compares
+	// against. They differ when a case spells the directory with a trailing
+	// slash: `install_dir()` strips it, because the PATH membership test and the
+	// rc line are string comparisons and `.local/bin/` would not match the entry
+	// the installer itself wrote. Mirroring that here rather than normalizing the
+	// input keeps the trailing-slash spelling actually under test.
+	const requestedInstallDir = testCase.install_dir.startsWith("/")
 		? testCase.install_dir
 		: path.join(home, testCase.install_dir);
+	const installDir = normalizeInstallDir(requestedInstallDir);
 	const checkout = makeCheckout(root);
 
 	for (const [rel, content] of Object.entries(testCase.pre_files ?? {})) {
@@ -156,7 +164,7 @@ function runInstall(testCase: EnvironmentCase, previous?: InstallRun): InstallRu
 	const env: Record<string, string> = {
 		HOME: home,
 		SHELL: testCase.shell,
-		VEYYON_INSTALL_DIR: installDir,
+		VEYYON_INSTALL_DIR: requestedInstallDir,
 		PATH: testCase.install_dir_on_path ? `${installDir}:${basePath}` : basePath,
 		TMPDIR: path.join(root, "tmp"),
 	};
@@ -207,6 +215,18 @@ function shellSingleQuote(value: string): string {
  * `veyyon` was not found in a shell whose profile plainly named the right
  * directory. A backtick or a backslash is the same bug.
  */
+/**
+ * The directory `install_dir()` resolves a request to: trailing slashes stripped,
+ * with `/` left alone because there the slash IS the directory. Kept in step with
+ * install.sh by `functions.test.sh`, which asserts the same cases against the
+ * shell function itself.
+ */
+function normalizeInstallDir(dir: string): string {
+	let value = dir;
+	while (value.endsWith("/") && value !== "/") value = value.slice(0, -1);
+	return value;
+}
+
 function pathLineFor(rc: string, installDir: string): string {
 	const quoted = shellSingleQuote(installDir);
 	return rc.endsWith("config.fish") ? `fish_add_path ${quoted}` : `export PATH=${quoted}:"$PATH"`;
