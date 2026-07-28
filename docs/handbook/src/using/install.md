@@ -414,6 +414,14 @@ veyyon uninstalled.
 
 Without that, typing `veyyon` straight after uninstalling answers "No such file or directory" for a path you can see is gone, which reads as a half-finished uninstall.
 
+It also reclaims what an UPDATE may have left. An update stages the new binary
+beside the old one and keeps the one it replaces as a backup until the new one
+has proved itself, and on Windows that backup cannot be deleted while the process
+holding it is still running, so a `veyyon.new` or a `veyyon.<numbers>.bak` can
+outlive the update that made it. Uninstall removes those too, so the install
+directory is left empty rather than holding a few hundred megabytes you have no
+name for.
+
 Two things it deliberately leaves behind. If you already had your own `vey` command, the installer never created that alias in the first place (it says so at install time and tells you to launch with `veyyon`), so uninstall does not touch it or its completion file. And if your source checkout has uncommitted edits or commits on a local branch that is on no remote, it is moved to `~/.veyyon/src.bak-<timestamp>` instead of being deleted, so nothing you wrote is lost.
 
 ```console

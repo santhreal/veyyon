@@ -1514,6 +1514,33 @@ function Uninstall-Veyyon {
             $removed = $true
         }
     }
+    # `veyyon update` stages at `<binary>.new` and keeps the binary it replaces as
+    # `<binary>.<timestamp>.<pid>.bak` until the new one has proved itself. Windows
+    # cannot unlink a running process image, so that backup routinely outlives the
+    # update, and a killed update leaves the staged file. Neither matches the two
+    # patterns above (those are the INSTALLER's own staging), so an uninstall used
+    # to report success and leave a few hundred megabytes named `veyyon.exe.new`
+    # behind. Mirrors the same sweep in install.sh. The `\d`-only middle is what
+    # keeps a `veyyon.exe.mine.bak` somebody saved by hand out of it.
+    foreach ($f in @("$BinName.exe", "$BinName.cmd")) {
+        $staged = Join-Path $InstallDir "$f.new"
+        if (Test-Path $staged) {
+            Remove-Item -Force $staged -ErrorAction SilentlyContinue
+            if (-not (Test-Path $staged)) {
+                Write-Host "OK  removed $staged left by an interrupted update" -ForegroundColor Green
+                $removed = $true
+            }
+        }
+        $backupPattern = "^" + [regex]::Escape($f) + "(\.\d+)*\.bak$"
+        foreach ($b in @(Get-ChildItem -Path $InstallDir -Filter "$f*.bak" -File -ErrorAction SilentlyContinue)) {
+            if ($b.Name -notmatch $backupPattern) { continue }
+            Remove-Item -Force $b.FullName -ErrorAction SilentlyContinue
+            if (-not (Test-Path $b.FullName)) {
+                Write-Host "OK  removed update backup $($b.FullName)" -ForegroundColor Green
+                $removed = $true
+            }
+        }
+    }
     # A compiled binary probes for a staged addon next to itself; clear any
     # veyyon_natives.*.node left beside the removed binary so uninstall leaves no
     # orphaned native artifacts behind (mirrors the same sweep in install.sh).

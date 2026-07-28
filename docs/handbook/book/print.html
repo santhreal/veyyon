@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-3a4c9bf7.js";
+            window.path_to_searchindex_js = "searchindex-a10535e5.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-5cf6de48.js"></script>
@@ -902,6 +902,13 @@ export PATH='/home/you/.local/bin':"$PATH"
   your shell keeps the old PATH entry until it reloads: exec $SHELL -l
 </code></pre>
 <p>Without that, typing <code>veyyon</code> straight after uninstalling answers “No such file or directory” for a path you can see is gone, which reads as a half-finished uninstall.</p>
+<p>It also reclaims what an UPDATE may have left. An update stages the new binary
+beside the old one and keeps the one it replaces as a backup until the new one
+has proved itself, and on Windows that backup cannot be deleted while the process
+holding it is still running, so a <code>veyyon.new</code> or a <code>veyyon.&lt;numbers&gt;.bak</code> can
+outlive the update that made it. Uninstall removes those too, so the install
+directory is left empty rather than holding a few hundred megabytes you have no
+name for.</p>
 <p>Two things it deliberately leaves behind. If you already had your own <code>vey</code> command, the installer never created that alias in the first place (it says so at install time and tells you to launch with <code>veyyon</code>), so uninstall does not touch it or its completion file. And if your source checkout has uncommitted edits or commits on a local branch that is on no remote, it is moved to <code>~/.veyyon/src.bak-&lt;timestamp&gt;</code> instead of being deleted, so nothing you wrote is lost.</p>
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --uninstall
 </code></pre>
@@ -1972,8 +1979,13 @@ The model sees #GITHUB_TOKEN# and never the value.
 /secret extend DEPLOY_KEY --ttl 7d, or it will be deleted.
 </code></pre>
 <p>The thresholds are fractions of the lifetime rather than fixed times, so one rule fits every entry. A one-day secret is mentioned after twelve hours; a ninety-day secret is mentioned on day forty-five, not on day eighty-nine. Each warning names the command that prevents the loss, because expiry deletes the value and there is nothing to do about it afterwards.</p>
-<p><strong>Expiry deletes the value.</strong> It does not merely stop hiding it. That distinction matters: if an expired secret simply stopped being obfuscated, the value would start flowing to the model provider at the moment its protection lapsed, which is the opposite of what you asked for. Expiry is also checked when a secret is used, so a session left open overnight cannot spend a credential whose lifetime ended while you were away.</p>
-<p>If a command still refers to a secret that has expired, the placeholder stays visible in the command rather than being replaced with nothing. A command that fails loudly is better than one that runs without a credential it needed.</p>
+<p><strong>Expiry deletes the value.</strong> It does not merely stop hiding it. That distinction matters: if an expired secret simply stopped being obfuscated, the value would start flowing to the model provider at the moment its protection lapsed, which is the opposite of what you asked for.</p>
+<p>The deadline is enforced at the moment the credential is used, not only when a session starts. A session you leave open over a weekend stops substituting a one-day secret on the day it runs out, and tells you it has:</p>
+<pre><code class="language-text">Warning: secrets: #GITHUB_TOKEN# has expired and is no longer being substituted. Its value
+was deleted, so store it again with /secret add GITHUB_TOKEN --from-env &lt;VAR&gt; if you still
+need it.
+</code></pre>
+<p>If a command still refers to a secret that has expired, the placeholder stays visible in the command rather than being replaced with nothing. A command that fails loudly is better than one that runs without a credential it needed, and an empty <code>Authorization:</code> header reads like a request the agent meant to send unauthenticated.</p>
 <h3 id="scope"><a class="header" href="#scope">Scope</a></h3>
 <p>An entry belongs to one scope and is invisible from the others:</p>
 <div class="table-wrapper">

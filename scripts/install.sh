@@ -1247,6 +1247,30 @@ do_uninstall() {
         for n in "$d"/veyyon_natives.*.node; do
             [ -e "$n" ] && rm -f "$n" && { ok "removed $n"; removed=1; }
         done
+        # `veyyon update` stages at `<binary>.new` and keeps the binary it
+        # replaces as `<binary>.<timestamp>.<pid>.bak` until the new one has
+        # proved itself. On Windows that backup cannot be unlinked while the
+        # updating process is alive, and a killed update leaves the staged file,
+        # so either can outlive the update that made it. The sweep below only
+        # matches the INSTALLER's dot-prefixed staging, so an uninstall used to
+        # report success and leave a few hundred megabytes named `veyyon.new`
+        # behind. These are ours; reclaim them.
+        if [ -e "$d/$BIN_NAME.new" ]; then
+            rm -f "$d/$BIN_NAME.new" && { ok "removed $d/$BIN_NAME.new left by an interrupted update"; removed=1; }
+        fi
+        for b in "$d/$BIN_NAME".*.bak "$d/$BIN_NAME.bak"; do
+            # The glob is literal when nothing matches, and the middle must be the
+            # dot-separated numbers the updater writes, so a `veyyon.mine.bak` a
+            # person saved by hand is left alone.
+            [ -e "$b" ] || continue
+            _mid=${b#"$d/$BIN_NAME"}
+            _mid=${_mid%.bak}
+            case "$_mid" in
+                ("") ;;
+                (*[!0-9.]*) continue ;;
+            esac
+            rm -f "$b" && { ok "removed update backup $b"; removed=1; }
+        done
     done
     src=$(src_dir)
     if [ -d "$src" ]; then

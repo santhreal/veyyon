@@ -2256,6 +2256,54 @@ export HOME="$SANDBOX/home"
 unset VEYYON_INSTALL_DIR
 export VEYYON_INSTALL_DIR="$SANDBOX/bin"
 
+# --- uninstall reclaims what an UPDATE left, not only what an install left ---
+#
+# `veyyon update` stages at `<binary>.new` and keeps the binary it replaces as
+# `<binary>.<timestamp>.<pid>.bak` until the new one has proved itself. Windows
+# cannot unlink a running process image, so that backup routinely outlives the
+# update; a killed update leaves the staged file. Neither is dot-prefixed, so
+# `sweep_stale_staging` never matched them and `--uninstall` reported success
+# while leaving a few hundred megabytes named `veyyon.new` in a directory the
+# user was told is now empty. Each of these files is a full copy of the binary.
+( _h="$SANDBOX/uninstall-update-leftovers"
+  export HOME="$_h"
+  mkdir -p "$_h/bin"
+  export VEYYON_INSTALL_DIR="$_h/bin"
+  printf 'binary' > "$_h/bin/veyyon"
+  printf 'staged' > "$_h/bin/veyyon.new"
+  printf 'previous' > "$_h/bin/veyyon.1753660000.4242.bak"
+  printf 'legacy' > "$_h/bin/veyyon.bak"
+  out=$(do_uninstall 2>&1)
+  check "uninstall removes a staged update download" \
+      "$( [ -e "$_h/bin/veyyon.new" ] && echo present || echo absent )" "absent"
+  check "uninstall removes a timestamped update backup" \
+      "$( [ -e "$_h/bin/veyyon.1753660000.4242.bak" ] && echo present || echo absent )" "absent"
+  check "uninstall removes the legacy fixed-name backup" \
+      "$( [ -e "$_h/bin/veyyon.bak" ] && echo present || echo absent )" "absent"
+  check "the install directory is left empty" \
+      "$(ls -A "$_h/bin" | wc -l | tr -d ' ')" "0"
+  # A removal nobody is told about is indistinguishable from files vanishing.
+  check "the staged download is named when it is reclaimed" \
+      "$(printf '%s' "$out" | grep -c 'left by an interrupted update')" "1"
+  check "each backup is named when it is reclaimed" \
+      "$(printf '%s' "$out" | grep -c 'removed update backup')" "2" )
+
+( _h="$SANDBOX/uninstall-foreign-bak"
+  export HOME="$_h"
+  mkdir -p "$_h/bin"
+  export VEYYON_INSTALL_DIR="$_h/bin"
+  # Only the updater's shape is ours: an empty middle, or dot-separated numbers.
+  # A copy somebody saved by hand under a name of their own is not the
+  # installer's to delete, and `rm -f "$d/$BIN_NAME"*.bak` would have taken it.
+  printf 'binary' > "$_h/bin/veyyon"
+  printf 'mine' > "$_h/bin/veyyon.mine.bak"
+  printf 'theirs' > "$_h/bin/veyyon-other.bak"
+  do_uninstall >/dev/null 2>&1
+  check "a hand-named backup survives uninstall" "$(cat "$_h/bin/veyyon.mine.bak")" "mine"
+  check "a backup of a different command survives uninstall" "$(cat "$_h/bin/veyyon-other.bak")" "theirs" )
+export HOME="$SANDBOX/home"
+export VEYYON_INSTALL_DIR="$SANDBOX/bin"
+
 # --- color: the first thing anyone sees of veyyon, and only where it means something ---
 # The installer rendered in the same monochrome as any package manager, so
 # "✓ Installation complete." looked exactly like the twelve progress lines above
