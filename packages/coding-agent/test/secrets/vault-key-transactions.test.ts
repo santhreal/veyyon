@@ -5,7 +5,7 @@
  * on-disk winner and prove that interrupted publication never turns a partial or exposed file
  * into an accepted key.
  */
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -47,6 +47,45 @@ describe("vault key publication", () => {
 		expect((await fs.lstat(vaultKeyPath(root))).nlink).toBe(1);
 	});
 
+	/**
+	 * Abandoned-stage cleanup creates a mutation window after an existing key can be inspected.
+	 * The authoritative read must happen after that window so a replacement can never make the
+	 * function return stale bytes from an inode that is no longer reachable.
+	 */
+	it("returns the reachable key when it is replaced during crash-stage cleanup", async () => {
+		const root = await rootFixture();
+		const keyPath = vaultKeyPath(root);
+		const original = await loadOrCreateVaultKey(root);
+		const originalStat = await fs.lstat(keyPath);
+		const replacement = crypto.randomBytes(32);
+		const replacementPath = path.join(root, "replacement.key");
+		await fs.writeFile(replacementPath, replacement, { mode: 0o600, flag: "wx" });
+		const replacementStat = await fs.lstat(replacementPath);
+
+		const realOpendir = fs.opendir;
+		let swapped = false;
+		const opendirSpy = spyOn(fs, "opendir").mockImplementation(async (...args) => {
+			if (!swapped) {
+				swapped = true;
+				await fs.rename(replacementPath, keyPath);
+			}
+			return await Reflect.apply(realOpendir, fs, args);
+		});
+		let loaded: Buffer;
+		try {
+			loaded = await loadOrCreateVaultKey(root);
+		} finally {
+			opendirSpy.mockRestore();
+		}
+
+		expect(loaded).toEqual(replacement);
+		expect(await fs.readFile(keyPath)).toEqual(replacement);
+		const finalStat = await fs.lstat(keyPath);
+		expect(finalStat.ino).toBe(replacementStat.ino);
+		expect(finalStat.ino).not.toBe(originalStat.ino);
+		expect(replacement.equals(original)).toBe(false);
+	});
+
 	/** A crash after atomic publication leaves two links to complete bytes, which is recoverable. */
 	it("recovers a synced key published before its staging link was removed", async () => {
 		const root = await rootFixture();
@@ -84,6 +123,42 @@ describe("vault key publication", () => {
 		expect(winner.equals(abandoned)).toBe(false);
 		await expect(fs.lstat(staged)).rejects.toMatchObject({ code: "ENOENT" });
 		expect((await fs.readFile(vaultKeyPath(root))).equals(winner)).toBe(true);
+	});
+
+	/**
+	 * Cleanup's inode check and pathname removal are one CAS operation. A racing file installed
+	 * after the check must be restored byte-for-byte and reported as a conflict, never unlinked
+	 * under the identity of the abandoned stage that cleanup had already wiped.
+	 */
+	it("preserves a racing replacement of an unpublished crash stage", async () => {
+		const root = await rootFixture();
+		const staged = stagePath(root);
+		const displaced = path.join(root, "wiped-abandoned-stage");
+		const sentinel = crypto.randomBytes(32);
+		await fs.writeFile(staged, crypto.randomBytes(32), { mode: 0o600, flag: "wx" });
+
+		const realLstat = fs.lstat;
+		let stageChecks = 0;
+		let swapped = false;
+		const lstatSpy = spyOn(fs, "lstat").mockImplementation((async (...args: Parameters<typeof fs.lstat>) => {
+			const stat = await Reflect.apply(realLstat, fs, args);
+			if (!swapped && path.basename(String(args[0])) === path.basename(staged) && ++stageChecks === 2) {
+				await fs.rename(staged, displaced);
+				await fs.writeFile(staged, sentinel, { mode: 0o600, flag: "wx" });
+				swapped = true;
+			}
+			return stat;
+		}) as typeof fs.lstat);
+		try {
+			await expect(loadOrCreateVaultKey(root)).rejects.toThrow(/cleanup entry changed before removal/i);
+		} finally {
+			lstatSpy.mockRestore();
+		}
+
+		expect(swapped).toBe(true);
+		expect(await fs.readFile(staged)).toEqual(sentinel);
+		expect(await fs.readFile(displaced)).toEqual(Buffer.alloc(0));
+		await expect(fs.lstat(vaultKeyPath(root))).rejects.toMatchObject({ code: "ENOENT" });
 	});
 
 	/** An intermediate symlink cannot redirect first-use key creation outside the requested tree. */

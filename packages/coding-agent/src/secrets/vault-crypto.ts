@@ -39,6 +39,7 @@ import {
 	withFileLock,
 } from "@veyyon/utils";
 import { moveNoReplace } from "./atomic-path";
+import { noteSecretsCondition } from "./notices";
 
 /** Name of the key file inside the cross-profile config root. */
 export const VAULT_KEY_FILENAME = "vault.key";
@@ -71,6 +72,11 @@ interface KeyRootPin {
 	readonly root: string;
 	readonly ioRoot: string;
 	readonly handle: fs.FileHandle;
+	readonly dev: number;
+	readonly ino: number;
+}
+
+interface KeyRootIdentity {
 	readonly dev: number;
 	readonly ino: number;
 }
@@ -179,23 +185,101 @@ function assertKeyRootNotExposed(root: string, stat: Stats): void {
 		throw new Error(`The vault key directory at ${safeText(root)} is not owned by the current user.`);
 	}
 	if ((stat.mode & 0o022) !== 0) {
+		// An empty root of this shape was already tightened at `pinKeyRoot`, so reaching here means
+		// key bytes have been sitting in a directory other users could write to. Both halves of the
+		// remedy are stated: the mode, and the fact that a mode change cannot undo a read that has
+		// already happened. Printing only `chmod 700` would leave the operator believing a fixed
+		// mode meant a safe key.
 		throw new Error(
 			`The vault key directory at ${safeText(root)} is writable by other users ` +
-				`(mode ${(stat.mode & 0o777).toString(8)}). Run: chmod 700 ${safeText(root)}`,
+				`(mode ${(stat.mode & 0o777).toString(8)}), and a key is already stored in it. ` +
+				`Run: chmod 700 ${safeText(root)}. If this machine has other users, also treat the ` +
+				`credentials in that vault as exposed and store fresh values, because tightening the ` +
+				`directory now cannot undo a read that already happened.`,
 		);
 	}
 }
 
-async function hardenEmptyKeyRoot(root: string): Promise<void> {
+/**
+ * One sentence for an operator whose key directory was loose, and what it means for them.
+ *
+ * Says what was found and what was done, and nothing about rotating, because this notice is only
+ * ever raised for a directory that held no key. Telling every umask-002 user to rotate a credential
+ * they have not created yet would train them to ignore the notice, and the case that genuinely
+ * needs rotating is refused rather than announced.
+ */
+function describeKeyRootTightened(root: string, previousMode: string): string {
+	return (
+		`Your vault key directory at ${safeText(root)} was writable by other users (mode ${previousMode}). ` +
+		`It has been tightened to 700, which is the permission a private key directory needs. ` +
+		`No key was stored there yet, so nothing was exposed.`
+	);
+}
+
+/**
+ * Tighten a key root this user owns but that others could write to, before the check refuses it.
+ *
+ * WHY THIS EXISTS. `assertKeyRootNotExposed` refuses a group-writable or world-writable key
+ * directory, and the refusal is fatal: with `secrets.enabled` set, the whole session fails to start
+ * over a directory mode. `umask 002` is the default on Debian and Ubuntu, so `mkdir ~/.veyyon` there
+ * produces mode 775, and a user who has enabled secrets but not yet stored a key was locked out of
+ * their session over a directory veyyon itself had just created with the process umask. Nothing can
+ * have leaked from a directory with no key in it, so tightening it is a repair with no cost.
+ *
+ * ONLY WHEN NO KEY EXISTS YET. Once key bytes have sat in an open directory, tightening it would
+ * make an exposure look resolved when it is not: a directory others could write to is usually one
+ * they could read, and a mode change cannot undo a read that already happened. That case keeps the
+ * refusal, and the refusal names both remedies, including rotating.
+ *
+ * It is not a weakening. Tightening only ever REMOVES access, it runs only on a directory whose
+ * owner is this user, and `assertKeyRootNotExposed` still runs afterwards, so a chmod that does not
+ * take (an immutable directory, a filesystem that ignores modes) still fails closed exactly as
+ * before. {@link hardenEmptyKeyRoot} performs the same chmod on the creation path, where it also
+ * owns the Windows ACL and the key-appeared-while-hardening race; this one runs at `pinKeyRoot`, the
+ * chokepoint every read path passes through as well.
+ *
+ * It is also not silent. The operator is told what was found and what was changed.
+ */
+async function hardenLooseKeyRoot(root: string): Promise<void> {
+	if (process.platform === "win32") return;
+	let stat: Stats;
+	try {
+		stat = await fs.lstat(root);
+	} catch (error) {
+		if (isMissingPath(error)) return;
+		throw error;
+	}
+	if (!stat.isDirectory() || stat.isSymbolicLink()) return;
+	if ((stat.mode & 0o022) === 0) return;
+	// Never touch a directory belonging to someone else. That is the operator's to
+	// resolve, the chmod would fail anyway, and silently altering another user's
+	// directory is not a repair this process is entitled to make.
+	const effectiveUid = typeof process.geteuid === "function" ? process.geteuid() : undefined;
+	if (effectiveUid !== undefined && stat.uid !== effectiveUid) return;
+
+	// A key that has already sat in the open directory is not this function's to bless.
+	try {
+		await fs.lstat(vaultKeyPath(root));
+		return;
+	} catch (error) {
+		if (!isMissingPath(error)) throw error;
+	}
+	const previousMode = (stat.mode & 0o777).toString(8);
+	await fs.chmod(root, 0o700);
+	noteSecretsCondition(describeKeyRootTightened(root, previousMode));
+}
+
+async function hardenEmptyKeyRoot(root: string): Promise<KeyRootIdentity | null> {
 	await assertNoSymlinkPathComponents(root);
 	let rootStat: Stats;
 	try {
 		rootStat = await fs.lstat(root);
 	} catch (error) {
-		if (isMissingPath(error)) return;
+		if (isMissingPath(error)) return null;
 		throw error;
 	}
-	if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) return;
+	const identity = { dev: rootStat.dev, ino: rootStat.ino };
+	if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) return identity;
 	const effectiveUid = typeof process.geteuid === "function" ? process.geteuid() : undefined;
 	if (effectiveUid !== undefined && rootStat.uid !== effectiveUid) {
 		throw new Error(`The vault key directory at ${safeText(root)} is not owned by the current user.`);
@@ -203,7 +287,7 @@ async function hardenEmptyKeyRoot(root: string): Promise<void> {
 	const keyPath = vaultKeyPath(root);
 	try {
 		await fs.lstat(keyPath);
-		return;
+		return identity;
 	} catch (error) {
 		if (!isMissingPath(error)) throw error;
 	}
@@ -216,6 +300,7 @@ async function hardenEmptyKeyRoot(root: string): Promise<void> {
 	} catch (error) {
 		if (!isMissingPath(error)) throw error;
 	}
+	return identity;
 }
 
 function pinnedKeyPath(pin: KeyRootPin): string {
@@ -227,8 +312,11 @@ async function closeKeyRootPin(pin: KeyRootPin): Promise<void> {
 }
 
 /** Pin the config root inode before any key path or lock operation. */
-async function pinKeyRoot(globalConfigRoot: string): Promise<KeyRootPin | null> {
+async function pinKeyRoot(globalConfigRoot: string, expected?: KeyRootIdentity): Promise<KeyRootPin | null> {
 	await assertNoSymlinkPathComponents(globalConfigRoot);
+	// Repair the one condition this process is entitled to repair, before the
+	// checks below refuse the directory over it. See hardenLooseKeyRoot.
+	await hardenLooseKeyRoot(globalConfigRoot);
 	let before: Stats;
 	try {
 		before = await fs.lstat(globalConfigRoot);
@@ -238,6 +326,9 @@ async function pinKeyRoot(globalConfigRoot: string): Promise<KeyRootPin | null> 
 			`The vault key directory at ${safeText(globalConfigRoot)} could not be inspected safely ` +
 				`(${safeError(error)}).`,
 		);
+	}
+	if (expected !== undefined && !sameInode(expected, before)) {
+		throw new Error("The vault key directory changed while it was being hardened. Refusing to continue.");
 	}
 	if (before.isSymbolicLink()) {
 		throw new Error(`The vault key directory at ${safeText(globalConfigRoot)} is a symlink. Refusing to follow it.`);
@@ -343,19 +434,53 @@ function assertKeyNotExposed(keyPath: string, stat: Stats): void {
 }
 
 async function removePathIfSameInode(target: string, identity: Pick<Stats, "dev" | "ino">): Promise<boolean> {
+	let current: Stats;
 	try {
-		const current = await fs.lstat(target);
-		if (!current.isFile() || !sameInode(current, identity)) return false;
-		await fs.rm(target);
-		try {
-			await fs.lstat(target);
-			return false;
-		} catch (error) {
-			if (isMissingPath(error)) return true;
-			throw error;
-		}
+		current = await fs.lstat(target);
 	} catch (error) {
 		if (isMissingPath(error)) return false;
+		throw error;
+	}
+	if (!current.isFile() || !sameInode(current, identity)) return false;
+
+	const quarantinePath = `${target}.${crypto.randomUUID()}.removing`;
+	let moved: boolean;
+	try {
+		moved = moveNoReplace(target, quarantinePath);
+	} catch (error) {
+		try {
+			await fs.lstat(target);
+		} catch (pathError) {
+			if (isMissingPath(pathError)) return false;
+		}
+		throw error;
+	}
+	if (!moved) {
+		throw new Error("A vault key cleanup quarantine path already exists. Refusing to remove either entry.");
+	}
+
+	const quarantined = await fs.lstat(quarantinePath);
+	if (!quarantined.isFile() || !sameInode(quarantined, identity)) {
+		let restored: boolean;
+		try {
+			restored = moveNoReplace(quarantinePath, target);
+		} catch (error) {
+			throw new Error(
+				`A racing vault key cleanup entry could not be restored safely (${safeError(error)}). Refusing to continue.`,
+			);
+		}
+		if (!restored) {
+			throw new Error("A racing vault key cleanup entry was isolated but its original path is occupied.");
+		}
+		throw new Error("A vault key cleanup entry changed before removal. It was restored without deleting its bytes.");
+	}
+
+	await fs.rm(quarantinePath);
+	try {
+		await fs.lstat(quarantinePath);
+		return false;
+	} catch (error) {
+		if (isMissingPath(error)) return true;
 		throw error;
 	}
 }
@@ -459,17 +584,19 @@ async function cleanupUnpublishedStages(pin: KeyRootPin): Promise<void> {
 				if (isMissingPath(error)) continue;
 				throw error;
 			}
-			if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || stat.size !== KEY_BYTES) continue;
+			if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) continue;
 			assertKeyNotExposed(candidatePath, stat);
 			await verifyOwnerOnlyWindowsAcl(candidatePath);
-			const handle = await fs.open(candidatePath, fsConstants.O_RDWR | fsConstants.O_NOFOLLOW);
-			try {
-				const opened = await handle.stat();
-				if (!sameKeySnapshot(keySnapshot(stat), opened)) continue;
-				await handle.truncate(0);
-				await handle.sync();
-			} finally {
-				await handle.close();
+			if (stat.size > 0) {
+				const handle = await fs.open(candidatePath, fsConstants.O_RDWR | fsConstants.O_NOFOLLOW);
+				try {
+					const opened = await handle.stat();
+					if (!sameKeySnapshot(keySnapshot(stat), opened)) continue;
+					await handle.truncate(0);
+					await handle.sync();
+				} finally {
+					await handle.close();
+				}
 			}
 			changed = (await removePathIfSameInode(candidatePath, stat)) || changed;
 		}
@@ -581,8 +708,8 @@ function publicKeyError(error: unknown): Error {
 
 export async function loadOrCreateVaultKey(globalConfigRoot: string): Promise<Buffer> {
 	try {
-		await hardenEmptyKeyRoot(globalConfigRoot);
-		let pin = await pinKeyRoot(globalConfigRoot);
+		const hardenedRoot = await hardenEmptyKeyRoot(globalConfigRoot);
+		let pin = await pinKeyRoot(globalConfigRoot, hardenedRoot ?? undefined);
 		if (pin === null) {
 			await assertNoSymlinkPathComponents(globalConfigRoot);
 			await fs.mkdir(globalConfigRoot, { recursive: true, mode: 0o700 });
@@ -602,8 +729,8 @@ export async function loadOrCreateVaultKey(globalConfigRoot: string): Promise<Bu
 				keyPath,
 				async () => {
 					await verifyKeyRootPin(pin);
-					const existing = await readVaultKeyPinned(pin);
 					await cleanupUnpublishedStages(pin);
+					const existing = await readVaultKeyPinned(pin);
 					if (existing !== null) return existing;
 
 					const generated = crypto.randomBytes(KEY_BYTES);
@@ -663,6 +790,7 @@ export async function loadOrCreateVaultKey(globalConfigRoot: string): Promise<Bu
 						}
 						return reachable;
 					} finally {
+						generated.fill(0);
 						if (!published && stagedStat !== null) {
 							if (await removePathIfSameInode(temporaryPath, stagedStat).catch(() => false)) {
 								await syncDirectory(pin).catch(() => {});
@@ -727,6 +855,14 @@ export function sealVault(key: Buffer, plaintext: string, binding?: string): Sea
  * decrypted into garbage. Returning an empty vault on failure would silently stop
  * protecting every secret it held, which is the one outcome this module exists to prevent.
  */
+function decodeCanonicalBase64(value: string, field: string): Buffer {
+	const decoded = Buffer.from(value, "base64");
+	if (decoded.toString("base64") !== value) {
+		throw new Error(`This vault's ${field} is not canonical base64. The file is corrupt.`);
+	}
+	return decoded;
+}
+
 export function openVault(key: Buffer, sealed: SealedVault, binding?: string): string {
 	if (sealed.v === 1) {
 		throw new Error(
@@ -741,8 +877,8 @@ export function openVault(key: Buffer, sealed: SealedVault, binding?: string): s
 		);
 	}
 
-	const iv = Buffer.from(sealed.iv, "base64");
-	const tag = Buffer.from(sealed.tag, "base64");
+	const iv = decodeCanonicalBase64(sealed.iv, "nonce");
+	const tag = decodeCanonicalBase64(sealed.tag, "authentication tag");
 	if (iv.length !== IV_BYTES) {
 		throw new Error(`This vault's nonce is ${iv.length} bytes, expected ${IV_BYTES}. The file is corrupt.`);
 	}
@@ -756,7 +892,10 @@ export function openVault(key: Buffer, sealed: SealedVault, binding?: string): s
 		const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv, { authTagLength: TAG_BYTES });
 		decipher.setAAD(vaultAssociatedData(binding));
 		decipher.setAuthTag(tag);
-		return Buffer.concat([decipher.update(Buffer.from(sealed.ct, "base64")), decipher.final()]).toString("utf8");
+		return Buffer.concat([
+			decipher.update(decodeCanonicalBase64(sealed.ct, "ciphertext")),
+			decipher.final(),
+		]).toString("utf8");
 	} catch (error) {
 		throw new Error(
 			`This vault could not be decrypted (${escapeTerminalText(errorMessage(error))}). ` +

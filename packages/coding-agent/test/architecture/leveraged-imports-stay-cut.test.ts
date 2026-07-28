@@ -1,15 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import {
-	createModuleReachCache,
-	type ModuleReachResolution,
-	moduleReach,
-	moduleReachCount,
-	moduleSpecifiersIn,
-	withoutComments,
-} from "@veyyon/utils/module-reach";
-import { workspaceModuleReachResolution } from "@veyyon/utils/module-reach-workspace";
+import { moduleReachCount, moduleSpecifiersIn, withoutComments } from "@veyyon/utils/module-reach";
+import { PACKAGES, RESOLUTION, reach, reachedNames, SRC } from "../helpers/module-reach-gate";
 
 /**
  * Contracts: the modules the most test files import stay cheap ACROSS packages.
@@ -116,53 +109,7 @@ import { workspaceModuleReachResolution } from "@veyyon/utils/module-reach-works
  * These ceilings are architecture, not RAM.
  */
 
-const SRC = path.join(import.meta.dir, "..", "..", "src");
-const PACKAGES = path.join(SRC, "..", "..");
-
-/**
- * The workspace resolved to source, which is the entire point of this file, DERIVED from every package's
- * `exports` field rather than typed out here.
- *
- * Every entry is load-bearing in one direction: a specifier the table does not know resolves to nothing,
- * the walk stops, and the count comes back SMALLER. Every assertion below is an upper bound or a "does not
- * reach", so under-resolution makes all of them pass while measuring less than they claim.
- *
- * WHICH IS EXACTLY WHAT HAPPENED, and it is why the table is no longer written here. This gate listed
- * seven packages by hand and `test-suite-module-reach.test.ts` listed four of the same seven, and both
- * listed `@veyyon/agent` -- a name no package in this workspace has. The directory is `packages/agent`
- * and the package is `@veyyon/agent-core`, whose barrel is 406 modules, so all 569 `@veyyon/agent-core`
- * specifiers in the repository resolved to nothing in both gates. `@veyyon/mnemopi` (398 modules),
- * `@veyyon/stats` (365), `@veyyon/natives` and `@veyyon/tool-render` were unknown to every copy. Nothing
- * failed. `thinking.ts` was recorded at 6 modules and is 407.
- *
- * `@veyyon/utils/module-reach-workspace` now reads the `exports` map of every package manifest under
- * `packages/` and builds the table from it, so the gate resolves what the runtime resolves, a package that
- * adds a subpath export is covered without an edit, and a NEW package cannot join the workspace unresolved
- * and silently lower every ceiling in the repository. The derivation is tested, and the completeness check
- * that every workspace package is in the table lives with it, in
- * `packages/utils/test/module-reach-workspace.test.ts`.
- *
- * WHAT THIS MEANS FOR EVERY NUMBER RECORDED ABOVE. The cuts are real: each one removed a named edge, and
- * the before/after pairs were measured the same way, so the ratios hold. The ABSOLUTE values were low,
- * some of them by a factor of sixty, because the graph they walked stopped at four package boundaries.
- * Each ceiling below carries the re-measured number.
- */
-const RESOLUTION: ModuleReachResolution = workspaceModuleReachResolution(path.join(PACKAGES, ".."));
-
 const AI_SRC = path.join(PACKAGES, "ai/src");
-
-/** One memo for the whole gate: every entry below walks the same shared graph. See `ModuleReachCache`. */
-const CACHE = createModuleReachCache();
-
-function reach(relative: string): number {
-	return moduleReachCount(path.join(SRC, relative), RESOLUTION, CACHE);
-}
-
-function reachedNames(relative: string): string[] {
-	return [...moduleReach(path.join(SRC, relative), RESOLUTION, CACHE)]
-		.map(file => path.relative(PACKAGES, file))
-		.sort();
-}
 
 /** The runtime specifiers one module names, which is what a "does not import X" claim is about. */
 function runtimeImportsOf(absolute: string): string[] {
@@ -1043,8 +990,34 @@ describe("session/messages, which the session layer is mostly made of", () => {
  * and then `slice(0, -6)`, which is the transcript extension written twice, once as a string and once as its
  * length, in the module that has to agree with the session manager about both. The owner is a zero-import
  * leaf, so the cost is exactly one module and cannot grow.
+ *
+ * RAISED BY ONE AGAIN, to 443, for `session/operator-notices.ts`, and for the same reason the number is
+ * allowed to move at all: it is a ZERO-IMPORT LEAF, so the cost is exactly one module and cannot grow.
+ * `AgentSession` holds the operator-notice channel, so every graph that reaches the session reaches it. The
+ * thing it replaced was worse than an edge: warnings that had to reach a person went to a log file with no
+ * console transport, and `skillWarnings` was a getter nobody read. See DONE-SECRET-4 in the backlog.
+ *
+ * RAISED BY FOUR, to 447, and the interesting half of that is a cut of TWENTY-FOUR. This gate went red at
+ * 468 when the outbound confidentiality seam arrived: `tools/fetch.ts` imports `resolveProviderTextTransform`
+ * from `provider-boundary.ts`, which is correct (a fetcher sends text to a provider), and that module
+ * imported ONE function, `mapJsonStrings`, from `secrets/obfuscator.ts`. The obfuscator reaches 65 modules,
+ * 18 of them `@veyyon/ai/utils/schema` -- a JSON Schema validator, on the graph because the obfuscator
+ * redacts tool schemas through `toolWireSchema`. So reading a local file loaded a schema validator and the
+ * secret registry, and all 24 marginal modules were that one edge.
+ *
+ * `mapJsonStrings` was never about secrets. It is a bounded JSON walk with three callers wanting three
+ * different rewrites (the obfuscator's placeholders, `argot-wire.ts`'s token dictionary, the boundary's
+ * session transform), and it now lives in `src/json-transform.ts`, which imports `@veyyon/utils/string-length`
+ * and nothing else. `provider-boundary.ts` went from 66 modules to 3. The two string measurements it needed,
+ * `utf8ByteLength` and `isWellFormedUtf16`, moved to `string-length.ts` beside `codePointLength`, which also
+ * ended a second copy of `isWellFormedUtf16` that `secrets/placeholder.ts` was carrying.
+ *
+ * So the four are: the three modules the seam legitimately costs now (`provider-boundary.ts`,
+ * `json-transform.ts`, `string-length.ts`, the last two zero- and one-import leaves), plus one for
+ * `@veyyon/utils/terminal-safe`, which `utils/src/file-lock.ts` reaches to escape the attacker-supplied path
+ * it names in an error. That module imports nothing either. See the same entry on INTERNAL_URLS_CEILING.
  */
-const READ_CEILING = 442;
+const READ_CEILING = 447;
 /**
  * Measured at 205, down from 911 and from 418 before the `gh` split. It is a pure `export *` barrel, so
  * this is `./router` plus one, and the router is every handler at once.
@@ -1074,8 +1047,33 @@ const READ_CEILING = 442;
  *
  * AND THEN 191, one back, for the same zero-import `@veyyon/utils/session-file` leaf: `registry-helpers.ts`
  * scans an artifacts directory for transcripts and had the extension inline twice.
+ *
+ * AND THEN 192, one FORWARD, for `session/operator-notices.ts`. `AgentSession` holds the operator-notice
+ * channel, so anything reaching the session reaches it. The number is up by exactly one because that module
+ * imports NOTHING: it is a zero-edge leaf, deliberately, and the cost of the channel is the one module it
+ * is. Raised rather than routed around because the alternative was the state it replaced, where a warning
+ * that had to reach a person went to a log file with no console transport. See
+ * DONE-SECRET-4 in the backlog.
+ *
+ * AND THEN 194, two FORWARD, for the fault-reporting channel and the session-entry shape check. Both are the
+ * same kind of growth as `operator-notices.ts` above and both arrived from a session's own storage path:
+ * `session/session-storage.ts` reports a fault through `@veyyon/utils/fault-sink` and asks
+ * `@veyyon/utils/fs-optional` about a path, and `session/session-loader.ts` validates an entry through
+ * `session/session-entry-shape.ts`. The count is up by exactly two because `fault-sink.ts` and
+ * `session-entry-shape.ts` are the only NEW modules on the graph; `fs-optional.ts` was already on it. Raised
+ * rather than routed around for the reason the notice channel was: a load failure that has to reach a person
+ * cannot be reported by a module that has no way to report.
+ *
+ * AND THEN 195, one FORWARD, for `@veyyon/utils/terminal-safe`. `utils/src/file-lock.ts` puts the path it
+ * failed to lock into the error it throws and into the fields it logs, and a path is an ATTACKER-SUPPLIED
+ * STRING: a filename holding `\x1b[2J` clears the operator's screen when that error is printed, and one
+ * holding a CSI sequence can repaint the line above it. It escapes them through `escapeTerminalText` now,
+ * at eleven sites. `terminal-safe.ts` imports NOTHING, so the cost of that is the one module it is, and
+ * `internal-urls` pays it because `utils/src/dirs.ts` reaches the lock. Raised rather than routed around
+ * for the same reason as the two entries above: the alternative is not a cheaper graph, it is an error
+ * message that can drive the terminal it is printed to.
  */
-const INTERNAL_URLS_CEILING = 191;
+const INTERNAL_URLS_CEILING = 195;
 /**
  * Measured at 252, down from 517. Eighteen web-search providers sit behind this module, and it had a static
  * edge to `session/auth-broker-config.ts` (347 modules: the broker client, the remote store, the snapshot
@@ -1148,8 +1146,14 @@ const MEMORY_PROTOCOL_CEILING = 104;
  *
  * AND THEN 93, because reading `tui.hyperlinks` no longer means importing the thing that WRITES it. The
  * store is 95 modules and the slot it lives in is 1.
+ *
+ * 94 from 2026-07-27, and the extra one is `@veyyon/utils/json`. `file-lock.ts` had its own copy of
+ * `tryParseJson` written out as a try/catch around `JSON.parse`, which the source lock in
+ * `packages/utils/test/json.test.ts` reports; routing it at the owner costs exactly the module that
+ * owns it, since `json.ts` imports only `type-guards` and this graph already had that. A second
+ * answer to "parse it or give me null" is worse than one module.
  */
-const HYPERLINK_CEILING = 93;
+const HYPERLINK_CEILING = 94;
 
 /**
  * The slot leaf itself, measured at 1: it holds the process-global `Settings` slot, the proxy over it and the

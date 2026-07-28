@@ -20,15 +20,15 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { PROVIDERS_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/providers";
 import {
 	parseSecretCommand,
 	resolveDefaultTtl,
 	runSecretCommand,
 	SECRET_COMMAND_USAGE,
 } from "@veyyon/coding-agent/secrets/secret-command";
-import { parseSlashCommand } from "@veyyon/coding-agent/slash-commands/helpers/parse";
-import { PROVIDERS_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/providers";
 import { DEFAULT_TTL_MS, SecretVault } from "@veyyon/coding-agent/secrets/vault";
+import { parseSlashCommand } from "@veyyon/coding-agent/slash-commands/helpers/parse";
 
 const VALUE = "ghp_a_real_looking_credential";
 const DAY = 24 * 60 * 60 * 1000;
@@ -84,9 +84,20 @@ describe("parsing", () => {
 		expect(parseSecretCommand("renew TOKEN_A").subcommand).toBe("extend");
 	});
 
-	/** An unknown subcommand refuses and shows the usage rather than doing something else. */
-	it("refuses an unknown subcommand", () => {
-		expect(() => parseSecretCommand("frobnicate")).toThrow(/Unknown \/secret subcommand "frobnicate"/);
+	/**
+	 * An unknown subcommand refuses without echoing the candidate token. A misplaced credential
+	 * is still secret data even when it occupies the verb slot.
+	 */
+	it("refuses an unknown subcommand without echoing candidate bytes", () => {
+		const candidate = "credential-fragment-that-must-not-print";
+		let message = "";
+		try {
+			parseSecretCommand(candidate);
+		} catch (error) {
+			message = error instanceof Error ? error.message : String(error);
+		}
+		expect(message).toContain("Unknown /secret subcommand.");
+		expect(message).not.toContain(candidate);
 	});
 
 	/** Flags can surround the name until inline credential data starts, so safe forms stay flexible. */
@@ -186,6 +197,17 @@ describe("parsing", () => {
 	it("refuses a lifetime it cannot read", () => {
 		expect(() => parseSecretCommand("add --ttl 7dd TOKEN_A x")).toThrow(/needs a valid lifetime/);
 		expect(() => parseSecretCommand("add TOKEN_A --ttl")).toThrow(/needs a lifetime/);
+	});
+
+	/**
+	 * Zero and arithmetic-overflow lifetimes are boundaries, not alternate spellings of the
+	 * default. Both must refuse before a request can reach storage.
+	 */
+	it("refuses TTL boundary values instead of falling back", () => {
+		expect(() => parseSecretCommand("add --ttl 0m TOKEN_A x")).toThrow(/needs a valid lifetime/);
+		expect(() => parseSecretCommand("add --ttl 9007199254740991w TOKEN_A x")).toThrow(/needs a valid lifetime/);
+		expect(() => parseSecretCommand("extend TOKEN_A --ttl 0m")).toThrow(/expire immediately/);
+		expect(() => parseSecretCommand("extend TOKEN_A --ttl 9007199254740991w")).toThrow(/too large/);
 	});
 
 	/** An unknown scope refuses, naming the three that exist. */
@@ -421,7 +443,7 @@ describe("list", () => {
 		await withContext(async context => {
 			const result = await runSecretCommand(parseSecretCommand("list"), context);
 
-			expect(result.message).toContain("No secrets stored");
+			expect(result.message).toContain("No active secrets");
 			expect(result.message).toContain("--from-env");
 			expect(result.changed).toBe(false);
 		});
@@ -449,6 +471,25 @@ describe("list", () => {
 			expect(result.message).not.toContain(VALUE);
 			// Not even the first few characters.
 			expect(result.message).not.toContain(VALUE.slice(0, 8));
+		});
+	});
+
+	/**
+	 * Wider-scope duplicates remain stored but are shadowed. List must call its rows active rather
+	 * than claim it enumerates every stored copy, and it must show only the effective project row.
+	 */
+	it("labels and shows only the active entry for a duplicate name", async () => {
+		await withContext(async context => {
+			context.env.set("PROFILE", `${VALUE}_profile`);
+			context.env.set("PROJECT", `${VALUE}_project`);
+			await runSecretCommand(parseSecretCommand("add shared-token --from-env PROFILE --scope profile"), context);
+			await runSecretCommand(parseSecretCommand("add shared-token --from-env PROJECT --scope project"), context);
+
+			const result = await runSecretCommand(parseSecretCommand("list"), context);
+			expect(result.message).toContain("1 active secret(s):");
+			expect(result.message.match(/#SHARED_TOKEN#/g)).toHaveLength(1);
+			expect(result.message).toContain("#SHARED_TOKEN#  project");
+			expect(result.message).not.toContain("#SHARED_TOKEN#  profile");
 		});
 	});
 
@@ -481,13 +522,12 @@ describe("rm and extend", () => {
 		});
 	});
 
-	/** Removing something absent says so instead of claiming success. */
-	it("reports when there is nothing to remove", async () => {
+	/** Removing something absent is a failed state change, not a successful no-op. */
+	it("fails when there is nothing to remove", async () => {
 		await withContext(async context => {
-			const result = await runSecretCommand(parseSecretCommand("rm token-a"), context);
-
-			expect(result.message).toContain("No secret named TOKEN_A");
-			expect(result.changed).toBe(false);
+			await expect(runSecretCommand(parseSecretCommand("rm token-a"), context)).rejects.toThrow(
+				"No secret named TOKEN_A is stored. Run /secret list to see what is.",
+			);
 		});
 	});
 
@@ -498,7 +538,7 @@ describe("rm and extend", () => {
 		});
 	});
 
-	/** Extending reports the new lifetime in the units it will be listed in. */
+	/** Extending reports both the affected scope and the new lifetime, which matters when names overlap. */
 	it("extends a secret", async () => {
 		await withContext(async context => {
 			context.env.set("A", VALUE);
@@ -507,17 +547,51 @@ describe("rm and extend", () => {
 			const result = await runSecretCommand(parseSecretCommand("extend token-a --ttl 7d"), context);
 
 			expect(result.message).toContain("7d from now");
+			expect(result.message).toContain("in the profile vault");
 			expect((await context.vault.load())[0].expiresAt).toBe(context.now + 7 * DAY);
 		});
 	});
 
-	/** Extending something absent says so rather than creating it. */
-	it("reports when there is nothing to extend", async () => {
+	/**
+	 * Duplicate names resolve project before profile before global. Mutating by name must report
+	 * the effective scope it actually changed rather than implying every stored copy changed.
+	 */
+	it("extends and removes the effective duplicate name by scope precedence", async () => {
 		await withContext(async context => {
-			const result = await runSecretCommand(parseSecretCommand("extend token-a --ttl 7d"), context);
+			context.env.set("PROFILE", `${VALUE}_profile`);
+			context.env.set("PROJECT", `${VALUE}_project`);
+			await runSecretCommand(
+				parseSecretCommand("add shared-token --from-env PROFILE --scope profile --ttl 30m"),
+				context,
+			);
+			await runSecretCommand(
+				parseSecretCommand("add shared-token --from-env PROJECT --scope project --ttl 30m"),
+				context,
+			);
 
-			expect(result.message).toContain("No secret named TOKEN_A");
-			expect(result.changed).toBe(false);
+			const extended = await runSecretCommand(parseSecretCommand("extend shared-token --ttl 7d"), context);
+			expect(extended.message).toContain("in the project vault");
+			expect((await context.vault.load())[0]).toMatchObject({
+				scope: "project",
+				value: `${VALUE}_project`,
+				expiresAt: context.now + 7 * DAY,
+			});
+
+			const removed = await runSecretCommand(parseSecretCommand("rm shared-token"), context);
+			expect(removed.message).toBe("Removed SHARED_TOKEN from the project vault.");
+			expect((await context.vault.load())[0]).toMatchObject({
+				scope: "profile",
+				value: `${VALUE}_profile`,
+			});
+		});
+	});
+
+	/** Extending something absent is a failed state change, not a successful no-op. */
+	it("fails when there is nothing to extend", async () => {
+		await withContext(async context => {
+			await expect(runSecretCommand(parseSecretCommand("extend token-a --ttl 7d"), context)).rejects.toThrow(
+				"No secret named TOKEN_A is stored. Run /secret list to see what is.",
+			);
 		});
 	});
 });
@@ -584,5 +658,6 @@ describe("usage text", () => {
 		expect(SECRET_COMMAND_USAGE).toContain("--ttl");
 		expect(SECRET_COMMAND_USAGE).toContain("--scope");
 		expect(SECRET_COMMAND_USAGE).toContain("never");
+		expect(SECRET_COMMAND_USAGE).toContain("project overrides profile");
 	});
 });

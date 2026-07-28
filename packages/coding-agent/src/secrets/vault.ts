@@ -33,6 +33,7 @@ import {
 	withFileLock,
 } from "@veyyon/utils";
 import { moveNoReplace, replaceWithRollback } from "./atomic-path";
+import { noteSecretsCondition } from "./notices";
 import {
 	buildNamePlaceholder,
 	describeInvalidSecretName,
@@ -40,7 +41,14 @@ import {
 	MAX_SECRET_NAME_LENGTH,
 } from "./placeholder";
 import { canObfuscatePlainValue, MIN_OBFUSCATABLE_LENGTH, secretCharacterLength } from "./policy";
-import { isSealedVault, loadOrCreateVaultKey, openVault, readVaultKey, sealVault } from "./vault-crypto";
+import {
+	isSealedVault,
+	loadOrCreateVaultKey,
+	openVault,
+	readVaultKey,
+	type SealedVault,
+	sealVault,
+} from "./vault-crypto";
 
 /** Where an entry lives, and therefore who can see it. */
 export type VaultScope = "profile" | "project" | "global";
@@ -518,9 +526,84 @@ async function sameDisplacedSnapshot(
 	);
 }
 
-/** Authenticate the semantic scope and the exact pinned physical scope identity. */
+/**
+ * What a sealed vault is bound to: its scope and the exact path it was written for.
+ *
+ * DELIBERATELY NOT THE DIRECTORY'S DEVICE AND INODE. Those were in this binding for two days and the
+ * result was that every vault written by a shipped build became permanently undecryptable, because
+ * the authenticated data changed while the envelope stayed at version 2. The deeper problem is that
+ * an inode is not a property of the scope, it is a property of where the bytes physically sit today.
+ * It changes on a backup restore, a `cp -a`, a profile moved to another disk, a container bind
+ * mount, and any filesystem that reassigns inodes. Ciphertext bound to it does not survive any of
+ * those, and a credential store that cannot be restored from a backup is worse than one that was
+ * never encrypted, because the loss is silent until the day you need it.
+ *
+ * The protection dev/ino genuinely provides is against the directory being swapped underneath a
+ * live operation, and that is a RUNTIME question. It stays where it belongs, in {@link pinVaultScope}
+ * and {@link assertExpectedVaultPath}, which pin and re-check the inode across every read, lock, and
+ * replace. Nothing is weakened by keeping it out of the ciphertext.
+ */
 function vaultBinding(scope: VaultScope, pin: VaultScopePin): string {
+	return `${scope}\0${pin.canonicalVaultPath}`;
+}
+
+/**
+ * The binding builds between 2026-07-27 23:52 and this change wrote, kept so those vaults still open.
+ *
+ * Read-only and second in line. A vault that authenticates under it is re-sealed with the binding
+ * above on its next write, so the form disappears from disk on its own rather than becoming a
+ * permanent second format.
+ */
+function physicalVaultBinding(scope: VaultScope, pin: VaultScopePin): string {
 	return `${scope}\0${pin.canonicalVaultPath}\0${pin.directoryDev}\0${pin.directoryIno}`;
+}
+
+/**
+ * Tell the operator their vault is still sealed under the superseded binding.
+ *
+ * Named rather than inlined so the sentence has one home and reads the same wherever it surfaces.
+ * It carries the scope and the path and nothing from inside the vault.
+ */
+function noteSupersededVaultBinding(scope: VaultScope, vaultPath: string): void {
+	noteSecretsCondition(
+		`Your ${scope} vault at ${safeText(vaultPath)} was sealed by a build that bound it to the directory's ` +
+			`inode. That binding has been withdrawn because it did not survive a backup restore or a move. ` +
+			`The vault opened normally and is being re-sealed the next time it changes. Nothing is required of you.`,
+	);
+}
+
+/**
+ * Open a sealed vault under the current binding, falling back to the superseded one.
+ *
+ * NOT A SILENT FALLBACK. The second attempt is a one-way format migration with a bounded lifetime,
+ * not a degraded path: it is tried only after the current binding fails, it can only succeed on a
+ * vault this product itself wrote, it cannot weaken authentication (a forged or corrupt file fails
+ * both), and when it succeeds the operator is told and the vault is re-sealed under the current
+ * binding on its next write. The alternative is what dogfooding actually found: a hard startup
+ * failure telling the operator their key was wrong, their file was modified, or their vault had
+ * moved, when in truth the product had changed its own authenticated data underneath them.
+ */
+function openSealedVaultAcrossBindings(
+	key: Buffer,
+	parsed: SealedVault,
+	scope: VaultScope,
+	vaultPath: string,
+	pin: VaultScopePin,
+): string {
+	try {
+		return openVault(key, parsed, vaultBinding(scope, pin));
+	} catch (error) {
+		let migrated: string;
+		try {
+			migrated = openVault(key, parsed, physicalVaultBinding(scope, pin));
+		} catch {
+			// Report the FIRST failure. The fallback's error would describe an attempt
+			// the operator never asked for and cannot act on.
+			throw error;
+		}
+		noteSupersededVaultBinding(scope, vaultPath);
+		return migrated;
+	}
 }
 
 function scopeIdentity(pin: VaultScopePin): string {
@@ -686,12 +769,50 @@ async function assertExpectedVaultPath(
 }
 
 async function removePathIfSameInode(target: string, identity: Pick<Stats, "dev" | "ino">): Promise<void> {
+	let current: Stats;
 	try {
-		const current = await fs.lstat(target);
-		if (current.isFile() && sameInode(current, identity)) await fs.rm(target);
+		current = await fs.lstat(target);
 	} catch (error) {
-		if (!isMissingPath(error)) throw error;
+		if (isMissingPath(error)) return;
+		throw error;
 	}
+	if (!current.isFile() || !sameInode(current, identity)) return;
+
+	// Rename first so the pathname and inode are consumed in one kernel operation. An
+	// lstat-then-rm sequence can unlink a different file installed between those calls.
+	const quarantinePath = `${target}.${randomUUID()}.removing`;
+	let moved: boolean;
+	try {
+		moved = moveNoReplace(target, quarantinePath);
+	} catch (error) {
+		try {
+			await fs.lstat(target);
+		} catch (pathError) {
+			if (isMissingPath(pathError)) return;
+		}
+		throw error;
+	}
+	if (!moved) {
+		throw new Error("A vault cleanup quarantine path already exists. Refusing to remove either entry.");
+	}
+
+	const quarantined = await fs.lstat(quarantinePath);
+	if (!quarantined.isFile() || !sameInode(quarantined, identity)) {
+		let restored: boolean;
+		try {
+			restored = moveNoReplace(quarantinePath, target);
+		} catch (error) {
+			throw new Error(
+				`A racing vault cleanup entry could not be restored safely (${safeError(error)}). Refusing to continue.`,
+			);
+		}
+		if (!restored) {
+			throw new Error("A racing vault cleanup entry was isolated but its original path is occupied.");
+		}
+		throw new Error("A vault cleanup entry changed before removal. It was restored without deleting its bytes.");
+	}
+
+	await fs.rm(quarantinePath);
 }
 
 async function retireDisplacedVault(
@@ -869,6 +990,36 @@ function vaultPlaintextByteLength(entries: readonly VaultEntry[]): number {
 	return bytes;
 }
 
+/** Whether a transform preserved the complete ordered plaintext state. */
+function sameVaultEntries(left: readonly VaultEntry[], right: readonly VaultEntry[]): boolean {
+	return (
+		left.length === right.length &&
+		left.every(
+			(entry, index) =>
+				entry.name === right[index].name &&
+				entry.value === right[index].value &&
+				entry.createdAt === right[index].createdAt &&
+				entry.expiresAt === right[index].expiresAt,
+		)
+	);
+}
+
+/** Replace a named entry in place, collapsing malformed duplicates without reordering peers. */
+function replaceVaultEntry(entries: readonly VaultEntry[], replacement: VaultEntry): VaultEntry[] {
+	const next: VaultEntry[] = [];
+	let replaced = false;
+	for (const entry of entries) {
+		if (entry.name !== replacement.name) {
+			next.push(entry);
+		} else if (!replaced) {
+			next.push(replacement);
+			replaced = true;
+		}
+	}
+	if (!replaced) next.push(replacement);
+	return next;
+}
+
 function sealedVaultByteLength(plaintextBytes: number): number {
 	return SEALED_VAULT_FIXED_BYTES + 4 * Math.ceil(plaintextBytes / 3);
 }
@@ -927,6 +1078,7 @@ function vaultRevision(locations: VaultLocations): string {
 interface VaultReadResult {
 	readonly entries: VaultEntry[];
 	readonly snapshot: VaultFileSnapshot;
+	readonly sealedText: string;
 }
 
 export class SecretVault {
@@ -978,6 +1130,7 @@ export class SecretVault {
 	 * the vault is also what prunes it and a value cannot linger on disk after its lifetime.
 	 */
 	async load(): Promise<ScopedVaultEntry[]> {
+		const now = this.#now();
 		const byName = new Map<string, ScopedVaultEntry>();
 		for (const scope of VAULT_SCOPES) {
 			const vaultPath = vaultPathFor(this.#locations, scope);
@@ -987,7 +1140,10 @@ export class SecretVault {
 				// One physical file cannot carry two semantic scope bindings, so the widest
 				// configured owner reads it exactly once.
 				if ((await this.#scopePathOwner(scope, pin)) !== scope) continue;
-				for (const entry of await this.#loadScope(scope, pin)) {
+				for (const entry of await this.#loadScope(scope, pin, now)) {
+					// Map.set updates a value in place. Delete first so an override is ordered
+					// with the narrower scope that owns the winning value.
+					byName.delete(entry.name);
 					byName.set(entry.name, { ...entry, scope });
 				}
 			} finally {
@@ -998,16 +1154,16 @@ export class SecretVault {
 	}
 
 	/** Live entries in one pinned scope, pruning any that have expired. */
-	async #loadScope(scope: VaultScope, pin: VaultScopePin): Promise<VaultEntry[]> {
+	async #loadScope(scope: VaultScope, pin: VaultScopePin, now: number): Promise<VaultEntry[]> {
 		const read = await this.#readScopeRaw(scope, pin);
 		if (read === null) return [];
 		const all = read.entries;
-		const live = all.filter(entry => !isExpired(entry, this.#now()));
+		const live = all.filter(entry => !isExpired(entry, now));
 		if (live.length === all.length) return live;
 
 		// Re-read inside the lock so a concurrent add is not pruned with the expired entries.
 		return await this.#withScopeLocked(scope, entries => {
-			const stillLive = entries.filter(entry => !isExpired(entry, this.#now()));
+			const stillLive = entries.filter(entry => !isExpired(entry, now));
 			return { entries: stillLive, result: stillLive };
 		});
 	}
@@ -1104,12 +1260,13 @@ export class SecretVault {
 			);
 		}
 		await assertExpectedVaultPath(scope, vaultPath, pin, snapshot);
-		const plaintext = openVault(key, parsed, vaultBinding(scope, pin));
+		const plaintext = openSealedVaultAcrossBindings(key, parsed, scope, vaultPath, pin);
 		const entries = parseVaultFile(plaintext, scope, vaultPath).entries;
 		await assertExpectedVaultPath(scope, vaultPath, pin, snapshot);
 		return {
 			entries,
-			snapshot: { ...snapshot, contentHash: createHash("sha256").update(text).digest("hex") },
+			snapshot,
+			sealedText: text,
 		};
 	}
 
@@ -1153,7 +1310,16 @@ export class SecretVault {
 					await verifyVaultScopePin(scope, pin);
 					const read = await this.#readScopeRaw(scope, pin);
 					const { entries, result: transformed, write = true } = transform(read?.entries ?? [], read !== null);
-					if (write) await this.#writeScope(scope, entries, pin, read?.snapshot ?? null);
+					if (write && (read === null || !sameVaultEntries(entries, read.entries))) {
+						const expected =
+							read === null
+								? null
+								: {
+										...read.snapshot,
+										contentHash: createHash("sha256").update(read.sealedText).digest("hex"),
+									};
+						await this.#writeScope(scope, entries, pin, expected);
+					}
 					await verifyVaultScopePin(scope, pin);
 					return transformed;
 				},
@@ -1251,7 +1417,7 @@ export class SecretVault {
 					createdAt: now,
 					expiresAt: expiryFrom(now, ttl),
 				};
-				return { entries: [...existing.filter(e => e.name !== name), created], result: created };
+				return { entries: replaceVaultEntry(existing, created), result: created };
 			},
 			true,
 		);
@@ -1261,9 +1427,10 @@ export class SecretVault {
 	/** Remove one entry by name. Returns the scope it was removed from, or `null`. */
 	async remove(name: string): Promise<VaultScope | null> {
 		const wanted = normaliseSecretName(name);
+		const now = this.#now();
 		for (const scope of VAULT_SCOPES_NARROWEST_FIRST) {
 			const removed = await this.#withScopeLocked(scope, (current, exists) => {
-				const live = current.filter(entry => !isExpired(entry, this.#now()));
+				const live = current.filter(entry => !isExpired(entry, now));
 				const found = live.some(entry => entry.name === wanted);
 				const next = found ? live.filter(entry => entry.name !== wanted) : live;
 				return {
@@ -1286,9 +1453,9 @@ export class SecretVault {
 	async extend(name: string, ttl: number | null): Promise<ScopedVaultEntry | null> {
 		const wanted = normaliseSecretName(name);
 		if (ttl !== null) assertValidNumericTtl(ttl);
+		const now = this.#now();
 		for (const scope of VAULT_SCOPES_NARROWEST_FIRST) {
 			const updated = await this.#withScopeLocked<VaultEntry | null>(scope, (current, exists) => {
-				const now = this.#now();
 				const live = current.filter(entry => !isExpired(entry, now));
 				const target = live.find(entry => entry.name === wanted);
 				if (target === undefined) {
@@ -1298,9 +1465,12 @@ export class SecretVault {
 						write: exists && live.length !== current.length,
 					};
 				}
+				if (target.expiresAt === null && ttl === null) {
+					return { entries: live, result: target };
+				}
 				const next: VaultEntry = { ...target, createdAt: now, expiresAt: expiryFrom(now, ttl) };
 				return {
-					entries: [...live.filter(entry => entry.name !== wanted), next],
+					entries: replaceVaultEntry(live, next),
 					result: next,
 				};
 			});

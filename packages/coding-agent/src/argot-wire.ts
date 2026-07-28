@@ -19,12 +19,8 @@ import {
 	type StreamDecoder,
 	type Vocabulary,
 } from "argot";
-import {
-	type JsonWithOptionalFields,
-	mapAgentMessageStrings,
-	mapAssistantContentStrings,
-	mapJsonStrings,
-} from "./secrets/obfuscator";
+import { type JsonWithOptionalFields, mapJsonStrings } from "./json-transform";
+import { mapAgentMessageStrings, mapAssistantContentStrings } from "./secrets/obfuscator";
 import type { SessionContext } from "./session/session-context";
 
 /**

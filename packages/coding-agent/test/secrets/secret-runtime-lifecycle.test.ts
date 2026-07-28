@@ -259,7 +259,7 @@ describe("runtime replacement", () => {
 		const loadStarted = Promise.withResolvers<void>();
 		const releaseLoad = Promise.withResolvers<void>();
 		let blockNextLoad = true;
-		const loadSpy = vi.spyOn(SecretVault.prototype, "load").mockImplementation(async function () {
+		const loadSpy = vi.spyOn(SecretVault.prototype, "load").mockImplementation(async function (this: SecretVault) {
 			if (blockNextLoad) {
 				blockNextLoad = false;
 				loadStarted.resolve();
@@ -321,7 +321,9 @@ describe("runtime replacement", () => {
 			const destinationLoadStarted = Promise.withResolvers<void>();
 			const releaseDestinationLoad = Promise.withResolvers<void>();
 			let blockNextLoad = true;
-			const guardedLoadSpy = vi.spyOn(SecretVault.prototype, "load").mockImplementation(async function () {
+			const guardedLoadSpy = vi.spyOn(SecretVault.prototype, "load").mockImplementation(async function (
+				this: SecretVault,
+			) {
 				if (blockNextLoad) {
 					blockNextLoad = false;
 					destinationLoadStarted.resolve();

@@ -25,8 +25,9 @@
  * everyone who opens it, which is the wrong direction for a security control to be configurable in.
  */
 import * as path from "node:path";
-import { YAML } from "bun";
 import { isEnoent, isRecord } from "@veyyon/utils";
+import { errorMessage } from "@veyyon/utils/type-guards";
+import { parse as parseYaml } from "yaml";
 import bundledYaml from "./env-keywords.yml" with { type: "text" };
 
 /** Filename a user drops to extend the list. */
@@ -59,13 +60,21 @@ export const BUNDLED_ENV_KEYWORDS: readonly string[] = parseKeywords(bundledYaml
  * match `A.B` rather than acting as a pattern.
  */
 export function buildEnvSecretPattern(keywords: readonly string[]): RegExp {
-	if (keywords.length === 0) {
+	const normalized = new Set<string>();
+	for (const keyword of keywords) {
+		const trimmed = keyword.trim();
+		if (trimmed.length === 0) {
+			throw new Error("Refusing an empty environment-secret keyword, which would match every variable name.");
+		}
+		normalized.add(trimmed.toUpperCase());
+	}
+	if (normalized.size === 0) {
 		// Matches nothing, rather than an empty alternation that matches everything. An empty
 		// keyword list means "detect nothing", and the catastrophic reading of it is "detect every
 		// variable", which would send every environment value through the obfuscator.
 		return /(?!)/;
 	}
-	const escaped = keywords.map(keyword => keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+	const escaped = [...normalized].map(keyword => keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
 	return new RegExp(`(?:${escaped.join("|")})(?:_|$)`, "i");
 }
 
@@ -73,9 +82,9 @@ export function buildEnvSecretPattern(keywords: readonly string[]): RegExp {
 function parseKeywords(text: string, label: string): string[] {
 	let parsed: unknown;
 	try {
-		parsed = YAML.parse(text);
+		parsed = parseYaml(text);
 	} catch (error) {
-		throw new Error(`Refusing to start: ${label} is not valid YAML (${String(error)}).`);
+		throw new Error(`Refusing to start: ${label} is not valid YAML (${errorMessage(error).split("\n", 1)[0]}).`);
 	}
 	if (!isRecord(parsed)) {
 		throw new Error(`Refusing to start: ${label} must be a mapping with a "keywords" list.`);

@@ -6,7 +6,9 @@ Veyyon can keep the value away from the provider while the command still works. 
 
 ## Turning it on
 
-Secret protection is off by default. Turn it on in `/settings`, or write it into `config.yml`:
+Secret protection is off by default. The quickest way to turn it on is to store a credential: `/secret add` switches protection on and tells you it did, because a stored credential is only useful once the protection that substitutes it is running.
+
+To turn it on without storing anything, use `/settings`, or write it into `config.yml`:
 
 ```yaml
 secrets:
@@ -84,7 +86,7 @@ DEPLOY_TOKEN=#0A1B2C3D4E5F678901234567#
 
 The placeholder is stable across restarts on the same machine. It contains a keyed HMAC rather than a load-order index, so seeing it does not give the provider an offline dictionary test for the value. A named vault entry instead uses its readable name, such as `#GITHUB_TOKEN#`, so the model can choose the right credential.
 
-The model is told that placeholders are opaque strings. It does not know the value and cannot ask for it.
+The model is told two things about a placeholder: that putting one where a credential belongs is expected and works, and that it is opaque otherwise. It does not know the value and cannot ask for it.
 
 ## Using a secret in a command
 
@@ -97,6 +99,8 @@ curl -H "Authorization: Bearer #0A1B2C3D4E5F678901234567#" https://api.example.c
 ```
 
 The command that actually executes carries the real token. The substitution happens locally, after the model has produced the command and before the shell sees it. The model never learns the value, and the request still authenticates.
+
+The substituted command is not written down. Veyyon records one diagnostic entry per tool call so that a session interrupted mid-call can tell you on resume what was running, and that entry stores the placeholder form, not the substituted one. This matters because `/share` uploads the session file and backups copy it. What the command prints is a separate question, covered under [What this does not protect](#what-this-does-not-protect).
 
 ## The vault: storing a credential with `/secret`
 
@@ -397,7 +401,7 @@ Be clear about the boundary.
 
 **The two stores differ on disk.** Vault entries added with `/secret` are encrypted. `secrets.yml` is a plain file: it holds declarations you wrote, in the clear, and anyone who can read it has those credentials. If a value needs to be encrypted at rest, put it in the vault rather than in `secrets.yml`.
 
-**A command the agent runs receives the real value.** So a command that prints the credential prints it for real. Its output is obfuscated again before it goes back to the model, but it reached the process, and anything that process wrote elsewhere is outside veyyon's reach.
+**A command the agent runs receives the real value.** So a command that prints the credential prints it for real. Its output is obfuscated again before it goes back to the model, but it reached the process, and anything that process wrote elsewhere is outside veyyon's reach. That output is also saved to the session file as it was printed, so a command that echoes a credential puts it there. The arguments veyyon itself records are redacted, but it cannot redact what a command chose to print.
 
 **Protection begins when the value is known.** Once you enable protection or store a value, old local transcript text containing that value is sanitized on subsequent provider requests. The local transcript is not rewritten in place.
 

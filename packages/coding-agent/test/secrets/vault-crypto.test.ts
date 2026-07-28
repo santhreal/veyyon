@@ -20,6 +20,7 @@ import { describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { moveNoReplace } from "@veyyon/coding-agent/secrets/atomic-path";
 import {
 	isSealedVault,
 	loadOrCreateVaultKey,
@@ -61,6 +62,91 @@ describe("the vault key", () => {
 
 			expect(await loadOrCreateVaultKey(root)).toHaveLength(32);
 			await expect(fs.stat(lockPath)).rejects.toThrow();
+		});
+	});
+
+	/**
+	 * A crash can stop the first key write before all 32 bytes reach its staging inode.
+	 *
+	 * Ignoring that malformed stage leaves key material and an ever-growing residue in the config
+	 * root. The next transaction must remove it while still publishing one exact complete key.
+	 */
+	it("removes a partially written crash stage", async () => {
+		await withRoot(async root => {
+			const stagePath = path.join(
+				root,
+				`.${VAULT_KEY_FILENAME}.${process.pid}.00000000-0000-4000-8000-000000000001.tmp`,
+			);
+			await fs.writeFile(stagePath, Buffer.alloc(11, 0x5a), { mode: 0o600 });
+
+			const key = await loadOrCreateVaultKey(root);
+
+			expect(key).toHaveLength(32);
+			expect(Uint8Array.from(await fs.readFile(vaultKeyPath(root)))).toEqual(Uint8Array.from(key));
+			await expect(fs.lstat(stagePath)).rejects.toMatchObject({ code: "ENOENT" });
+		});
+	});
+
+	/**
+	 * Atomic no-replace reports `false` only for a real destination collision.
+	 *
+	 * Treating every kernel failure as a collision makes a missing source look like another writer
+	 * won, which sends key recovery down the wrong branch and hides the primitive's actual failure.
+	 */
+	it("distinguishes a no-replace collision from an operating-system failure", async () => {
+		await withRoot(async root => {
+			const stagedPath = path.join(root, "staged");
+			const destinationPath = path.join(root, "destination");
+			await fs.writeFile(stagedPath, "staged");
+			await fs.writeFile(destinationPath, "winner");
+
+			expect(moveNoReplace(stagedPath, destinationPath)).toBe(false);
+			expect(await fs.readFile(stagedPath, "utf8")).toBe("staged");
+			expect(await fs.readFile(destinationPath, "utf8")).toBe("winner");
+
+			const missingPath = path.join(root, "missing");
+			const unusedPath = path.join(root, "unused");
+			expect(() => moveNoReplace(missingPath, unusedPath)).toThrow(/operating-system error \d+/);
+			await expect(fs.lstat(missingPath)).rejects.toMatchObject({ code: "ENOENT" });
+			await expect(fs.lstat(unusedPath)).rejects.toMatchObject({ code: "ENOENT" });
+		});
+	});
+
+	/**
+	 * Hardening an empty directory must not authorize a replacement directory under the same name.
+	 *
+	 * Without carrying the pre-chmod inode into pinning, a rename during hardening makes first use
+	 * silently publish the machine-wide key into an unreviewed replacement directory.
+	 */
+	it("refuses a key directory replaced while it is being hardened", async () => {
+		if (process.platform === "win32") return;
+		await withRoot(async root => {
+			const displacedRoot = `${root}.displaced`;
+			const realChmod = fs.chmod;
+			let replaced = false;
+			const chmodSpy = spyOn(fs, "chmod").mockImplementation(async (...args) => {
+				if (!replaced && String(args[0]) === root) {
+					replaced = true;
+					await fs.rename(root, displacedRoot);
+					await fs.mkdir(root, { mode: 0o700 });
+				}
+				return await Reflect.apply(realChmod, fs, args);
+			});
+			try {
+				const failure = await loadOrCreateVaultKey(root).then(
+					() => undefined,
+					(error: unknown) => error,
+				);
+
+				expect(failure).toBeInstanceOf(Error);
+				expect((failure as Error).message).toMatch(/directory changed while it was being hardened/i);
+				expect(replaced).toBe(true);
+				await expect(fs.lstat(vaultKeyPath(root))).rejects.toMatchObject({ code: "ENOENT" });
+				await expect(fs.lstat(vaultKeyPath(displacedRoot))).rejects.toMatchObject({ code: "ENOENT" });
+			} finally {
+				chmodSpy.mockRestore();
+				await fs.rm(displacedRoot, { recursive: true, force: true });
+			}
 		});
 	});
 
@@ -161,7 +247,7 @@ describe("the vault key", () => {
 			await fs.writeFile(vaultKeyPath(actualRoot), Buffer.alloc(32, 7), { mode: 0o600 });
 			await fs.symlink(actualRoot, linkedRoot);
 
-			await expect(readVaultKey(linkedRoot)).rejects.toThrow(/key directory .* is a symlink/i);
+			await expect(readVaultKey(linkedRoot)).rejects.toThrow(/key (directory|path).*symlink/i);
 		});
 	});
 
@@ -196,7 +282,7 @@ describe("the vault key", () => {
 			const realOpen = fs.open;
 			let swapped = false;
 			const openSpy = spyOn(fs, "open").mockImplementation(async (...args) => {
-				if (!swapped && String(args[0]) === keyPath) {
+				if (!swapped && path.basename(String(args[0])) === VAULT_KEY_FILENAME) {
 					swapped = true;
 					await fs.rename(replacement, keyPath);
 				}
@@ -355,6 +441,20 @@ describe("sealing and opening", () => {
 
 			expect(() => openVault(key, { ...sealed, tag: tag.toString("base64") })).toThrow(/could not be decrypted/);
 		});
+	});
+
+	/**
+	 * Invalid base64 must not be normalized into authenticated bytes.
+	 *
+	 * Permissive decoders discard characters such as `!`; for an empty ciphertext that used to
+	 * preserve the authenticated byte sequence and let a textually modified envelope decrypt.
+	 */
+	it("rejects a non-base64 ciphertext even when it decodes to authenticated empty bytes", () => {
+		const key = Buffer.alloc(32, 0x42);
+		const sealed = sealVault(key, "");
+
+		expect(sealed.ct).toBe("");
+		expect(() => openVault(key, { ...sealed, ct: "!!!!" })).toThrow(/ciphertext is not canonical base64/i);
 	});
 
 	/**

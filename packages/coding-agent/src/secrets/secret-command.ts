@@ -101,25 +101,25 @@ export const SECRET_COMMAND_USAGE = [
 	"/secret add <name>                    prompt for the value, hidden as you type",
 	"/secret add <name> --from-env <VAR>   store the value of an environment variable",
 	"/secret add <name> <value>            store a value directly (visible on screen)",
-	"/secret list                          show stored secrets, never their values",
+	"/secret list                          show active secrets, never their values",
 	"/secret rm <name>                     remove a secret",
 	"/secret extend <name> --ttl 7d        give a secret a fresh lifetime",
 	"/secret log [--limit 50]              show which secrets were used, and where",
 	"",
 	"Options: --ttl 30m|12h|7d|2w|never   --scope profile|project|global",
-	"Lifetimes default to the secrets.defaultTtl setting. Scope defaults to profile.",
+	"Lifetimes default to the secrets.defaultTtl setting. Scope defaults to profile; project overrides profile, which overrides global.",
 ].join("\n");
 
 /** Noninteractive help exposes only environment-backed creation and management. */
 export const NONINTERACTIVE_SECRET_COMMAND_USAGE = [
 	"/secret add <name> --from-env <VAR>   store the value of an environment variable",
-	"/secret list                          show stored secrets, never their values",
+	"/secret list                          show active secrets, never their values",
 	"/secret rm <name>                     remove a secret",
 	"/secret extend <name> --ttl 7d        give a secret a fresh lifetime",
 	"/secret log [--limit 50]              show which secrets were used, and where",
 	"",
 	"Options: --ttl 30m|12h|7d|2w|never   --scope profile|project|global",
-	"Lifetimes default to the secrets.defaultTtl setting. Scope defaults to profile.",
+	"Lifetimes default to the secrets.defaultTtl setting. Scope defaults to profile; project overrides profile, which overrides global.",
 ].join("\n");
 
 /** Select help that matches what the invoking surface can enter safely. */
@@ -127,13 +127,26 @@ export function secretCommandUsage(surface: SecretCommandSurface): string {
 	return surface === "tui" ? SECRET_COMMAND_USAGE : NONINTERACTIVE_SECRET_COMMAND_USAGE;
 }
 
-/** Every option token the command grammar owns. */
-const SECRET_COMMAND_OPTIONS: Record<string, true> = {
-	"--from-env": true,
-	"--ttl": true,
-	"--limit": true,
-	"--scope": true,
+/**
+ * What each subcommand actually reads: its options, and how many bare words it takes.
+ *
+ * The ONE owner of that mapping, declared as data rather than checked with a chain of `if`s, so
+ * parsing, error messages and guards cannot describe different sets of rules. `add` has unbounded
+ * words because its second positional is the untouched credential suffix, not a word list.
+ */
+const SUBCOMMAND_SHAPES: Record<SecretSubcommand, { options: readonly string[]; words: number }> = {
+	add: { options: ["--from-env", "--ttl", "--scope"], words: Number.POSITIVE_INFINITY },
+	list: { options: [], words: 0 },
+	rm: { options: [], words: 1 },
+	extend: { options: ["--ttl"], words: 1 },
+	log: { options: ["--limit"], words: 0 },
+	help: { options: [], words: 0 },
 };
+
+/** Every known option, derived from its subcommand owners so the two cannot drift. */
+const SECRET_COMMAND_OPTIONS: Record<string, true> = Object.fromEntries(
+	Object.values(SUBCOMMAND_SHAPES).flatMap(shape => shape.options.map(option => [option, true] as const)),
+);
 
 /**
  * Parse a `/secret` argument line.
@@ -174,7 +187,7 @@ export function parseSecretCommand(args: string, surface: SecretCommandSurface =
 							: (verb as SecretSubcommand);
 			break;
 		default:
-			throw new Error(`Unknown /secret subcommand "${tokens[0].value}".\n\n${usageText}`);
+			throw new Error(`Unknown /secret subcommand.\n\n${usageText}`);
 	}
 
 	const positional: string[] = [];
@@ -182,6 +195,9 @@ export function parseSecretCommand(args: string, surface: SecretCommandSurface =
 	for (let i = 1; i < tokens.length; i++) {
 		const token = tokens[i].value;
 		if (SECRET_COMMAND_OPTIONS[token]) {
+			if (!SUBCOMMAND_SHAPES[request.subcommand].options.includes(token)) {
+				throw irrelevantOption(request.subcommand, token, usageText);
+			}
 			if (suppliedOptions.has(token)) {
 				throw new Error(`${token} may be supplied only once; duplicate security options are refused.`);
 			}
@@ -255,7 +271,6 @@ export function parseSecretCommand(args: string, surface: SecretCommandSurface =
 
 	if (request.subcommand !== "add" && positional.length > 0) request.name = positional[0];
 
-	refuseIrrelevantOptions(request, usageText);
 	refuseExtraWords(request, positional, usageText);
 	return request;
 }
@@ -267,26 +282,6 @@ function ambiguousInlineCredential(): Error {
 			`Put every option before the secret name, or use --from-env.`,
 	);
 }
-
-/**
- * What each subcommand actually reads: its options, and how many bare words it takes.
- *
- * The ONE owner of that mapping, declared as data rather than checked with a chain of `if`s, so the
- * usage text, the error messages and the guards cannot describe three different sets of rules.
- *
- * `words` is how many bare words the subcommand reads. `add` is UNBOUNDED, and that is not laziness:
- * its second argument is a credential, whose untouched raw suffix is retained so a passphrase keeps
- * repeated whitespace and quotes. Counting words for `add` would refuse
- * `/secret add gpg "my long pass phrase"` as five arguments when it is two.
- */
-const SUBCOMMAND_SHAPES: Record<SecretSubcommand, { options: readonly string[]; words: number }> = {
-	add: { options: ["--from-env", "--ttl", "--scope"], words: Number.POSITIVE_INFINITY },
-	list: { options: [], words: 0 },
-	rm: { options: [], words: 1 },
-	extend: { options: ["--ttl"], words: 1 },
-	log: { options: ["--limit"], words: 0 },
-	help: { options: [], words: 0 },
-};
 
 /**
  * Refuse a bare word the subcommand does not read.
@@ -315,38 +310,16 @@ function refuseExtraWords(request: SecretCommandRequest, words: readonly string[
 	);
 }
 
-/**
- * Refuse an option the subcommand does not read, instead of accepting and ignoring it.
- *
- * THE BUG THIS CLOSES. Every option parsed above was accepted for every verb, and each subcommand
- * then read only the fields it cared about, so `/secret extend NAME --scope global` reported
- * success and did nothing about the scope, and `/secret rm NAME --scope project` looked like it
- * removed the project copy while actually removing whichever one was in effect. That is a silent
- * no-op on a security command, which is the worst place for one: the operator comes away believing
- * a credential moved or was removed from somewhere it still exists.
- *
- * Refusing names the verb that does take the option, so the message teaches the right command
- * rather than just rejecting the wrong one.
- */
-function refuseIrrelevantOptions(request: SecretCommandRequest, usageText: string): void {
-	const allowed = SUBCOMMAND_SHAPES[request.subcommand].options;
-	const supplied: [string, boolean][] = [
-		["--from-env", request.fromEnv !== undefined],
-		["--ttl", request.ttl !== undefined],
-		["--scope", request.scope !== undefined],
-		["--limit", request.limit !== undefined],
-	];
-	for (const [option, wasGiven] of supplied) {
-		if (!wasGiven || allowed.includes(option)) continue;
-		const takenBy = (Object.keys(SUBCOMMAND_SHAPES) as SecretSubcommand[]).filter(subcommand =>
-			SUBCOMMAND_SHAPES[subcommand].options.includes(option),
-		);
-		throw new Error(
-			`/secret ${request.subcommand} does not take ${option}, and ignoring it would look like it had ` +
-				`been applied. ${takenBy.map(verb => `/secret ${verb}`).join(" and ")} take${takenBy.length === 1 ? "s" : ""} it.` +
-				`\n\n${usageText}`,
-		);
-	}
+/** Build the ownership error before parsing an option value the subcommand cannot use. */
+function irrelevantOption(subcommand: SecretSubcommand, option: string, usageText: string): Error {
+	const takenBy = (Object.keys(SUBCOMMAND_SHAPES) as SecretSubcommand[]).filter(candidate =>
+		SUBCOMMAND_SHAPES[candidate].options.includes(option),
+	);
+	return new Error(
+		`/secret ${subcommand} does not take ${option}, and ignoring it would look like it had ` +
+			`been applied. ${takenBy.map(verb => `/secret ${verb}`).join(" and ")} take${takenBy.length === 1 ? "s" : ""} it.` +
+			`\n\n${usageText}`,
+	);
 }
 
 /** Run a parsed request against a vault. */
@@ -388,6 +361,7 @@ async function addSecret(
 		readEnv: (name: string) => string | undefined;
 		defaultTtl: number | null;
 		now: number;
+		surface?: SecretCommandSurface;
 	},
 ): Promise<SecretCommandResult> {
 	if (request.fromEnv !== undefined && request.value !== undefined) {
@@ -411,8 +385,16 @@ async function addSecret(
 		typedOnScreen = request.maskedEntry !== true;
 	} else {
 		// Reached only where there is no terminal to mask. An interactive session opens a hidden
-		// field instead of showing this (see `needsValuePrompt`), so the advice here is for
-		// clients that cannot prompt at all.
+		// field instead (see `needsValuePrompt`). Non-interactive clients deliberately accept only
+		// environment-backed entry, so their refusal must not recommend an inline form the adapter
+		// will reject.
+		if (context.surface === "noninteractive") {
+			throw new Error(
+				`No value given, and this client cannot prompt for one without showing it. ` +
+					`Name an environment variable to read it from:\n` +
+					`  /secret add ${request.name ?? "<name>"} --from-env MY_TOKEN`,
+			);
+		}
 		throw new Error(
 			`No value given, and this client cannot prompt for one without showing it. ` +
 				`Name an environment variable to read it from:\n` +
@@ -448,7 +430,7 @@ async function addSecret(
 async function listSecrets(context: { vault: SecretVault; now: number }): Promise<SecretCommandResult> {
 	const entries = await context.vault.load();
 	if (entries.length === 0) {
-		return { message: "No secrets stored. Add one with /secret add <name> --from-env <VAR>.", changed: false };
+		return { message: "No active secrets. Add one with /secret add <name> --from-env <VAR>.", changed: false };
 	}
 
 	const rows = [...entries]
@@ -456,8 +438,9 @@ async function listSecrets(context: { vault: SecretVault; now: number }): Promis
 		.map(entry => `  #${entry.name}#  ${entry.scope}  ${describeTimeLeft(entry, context.now)}`);
 
 	// Values are deliberately absent, not truncated. A prefix of a credential is still a
-	// disclosure, and `list` exists to answer "what do I have", not "what is it".
-	return { message: [`${entries.length} secret(s):`, ...rows].join("\n"), changed: false };
+	// disclosure. `load` returns the effective entry for each name, so "active" is exact even
+	// when a wider-scope copy is shadowed by project/profile precedence.
+	return { message: [`${entries.length} active secret(s):`, ...rows].join("\n"), changed: false };
 }
 
 async function removeSecret(
@@ -468,7 +451,9 @@ async function removeSecret(
 
 	const scope = await context.vault.remove(request.name);
 	if (scope === null) {
-		return { message: `No secret named ${normaliseSecretName(request.name)} is stored.`, changed: false };
+		throw new Error(
+			`No secret named ${normaliseSecretName(request.name)} is stored. Run /secret list to see what is.`,
+		);
 	}
 	return { message: `Removed ${normaliseSecretName(request.name)} from the ${scope} vault.`, changed: true };
 }
@@ -482,10 +467,14 @@ async function extendSecret(
 	const ttl = request.ttl === undefined ? context.defaultTtl : request.ttl;
 	const entry = await context.vault.extend(request.name, ttl);
 	if (entry === null) {
-		return { message: `No secret named ${normaliseSecretName(request.name)} is stored.`, changed: false };
+		throw new Error(
+			`No secret named ${normaliseSecretName(request.name)} is stored. Run /secret list to see what is.`,
+		);
 	}
 	return {
-		message: `${entry.name} now lasts ${formatTtl(ttl)} from now (${describeTimeLeft(entry, context.now)}).`,
+		message:
+			`${entry.name} in the ${entry.scope} vault now lasts ${formatTtl(ttl)} from now ` +
+			`(${describeTimeLeft(entry, context.now)}).`,
 		changed: true,
 	};
 }

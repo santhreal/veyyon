@@ -4,12 +4,14 @@ Prevents sensitive values (API keys, tokens, passwords) from being sent to LLM p
 
 ## Enabling
 
-Disabled by default. Toggle via `/settings` UI or directly in `config.yml`:
+Disabled by default. `/secret add` turns it on for you, because storing a credential for the agent to use is the opt-in, and it says so in the confirmation. To turn it on without storing anything, use the `/settings` UI or `config.yml` directly:
 
 ```yaml
 secrets:
   enabled: true
 ```
+
+Nothing turns it back off on your behalf. `/secret rm` removes a credential and leaves protection where it is.
 
 ## How it works
 
@@ -27,6 +29,41 @@ Opaque authenticated replay fields are validated rather than mutated. A live sec
 3. Local display restoration expands only live reversible placeholders. Replace-mode substitutions are one-way. Expired and removed values lose expansion rights but retain forward redaction tombstones, so old transcript text cannot become provider-visible.
 
 4. Toggling secret protection and running `/secret` commands rebuilds the runtime immediately. A working-directory move loads the destination project scope transactionally and drops the source project's mappings. If loading fails, both the old directory and runtime are restored. Persisted subagents and resumed sessions initialize from their recorded directory. A same-directory refresh retains only forward redaction history for removed values.
+
+### Spending a secret asks first
+
+Substitution runs on tool arguments just before a tool executes, so the model can put
+`#GITHUB_TOKEN#` in a shell command and Veyyon supplies the credential it never showed the model.
+That is recorded by `secrets.auditLog`, which answers "which credential did this agent use, and
+where" after the fact.
+
+A call whose arguments carry a real credential also needs approval, in the same modes as the
+working-directory boundary: `plan`, `ask`, and `auto-edit`. The prompt names the secret and never
+shows its value, and it is added to whatever the tier already required, so it can only ask for more
+approval and never less. `yolo` opts out of all permission and opts out of this with it, so the
+shipped default asks nothing extra. A call that mentions a placeholder without expanding it, such
+as one made while `secrets.enabled` is false, carries no credential and does not ask. See
+[Approval modes](approval-mode.md).
+
+### What the session file records about the call
+
+Veyyon writes one diagnostic entry when a tool starts, so a session that dies mid-call can tell you
+on resume which call was still running. The entry keeps a truncated copy of the `command` or `path`
+argument and the model's stated intent.
+
+Those arguments are the expanded ones, because expansion has already happened by then. They are
+redacted before the entry is written, so the session file records `printf '%s' '#GITHUB_TOKEN#'`
+and never the credential. Redaction runs before truncation, so a value sitting across the
+200-character cut cannot leave a readable prefix behind. The redaction survives a `/secret disable`:
+the tombstone that keeps an old value hidden from providers keeps it out of this entry too.
+
+The full arguments the model wrote are persisted with the assistant message, and those hold the
+placeholder, since the model never saw anything else.
+
+What the command printed is a different matter. Tool output is saved as it was printed and
+redacted on its way to the provider, not on its way to disk, so a command that echoes a credential
+puts it in the session file. Veyyon redacts what it records itself; it cannot redact what a command
+chose to print.
 
 Two modes control what happens to each secret:
 
