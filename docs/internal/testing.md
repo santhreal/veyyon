@@ -792,6 +792,7 @@ its own gate:
 | Linux, macOS | `scripts/install-tests/run-ci.sh` (CI job `install_methods`, matrixed over `ubuntu-22.04`, `macos-14` and `macos-15-intel`) | `install.sh --local` end to end: install, reinstall, uninstall, plus the no-clobber rules for a `vey` the user already owns |
 | Linux | `scripts/installer-environment-matrix.test.ts` | `install.sh --local` once per shell/XDG combination in `environments.toml` |
 | Linux | `scripts/update-environment-matrix.test.ts` | A real binary swap and completions refresh over each of those same installs |
+| Any | `scripts/posix-shell-portability.test.ts` | The one bash 3.2 incompatibility that only shows up on macOS, linted rather than executed |
 | Windows | `scripts/install-tests/e2e.test.ps1` (CI job `install_ps1_e2e`) | `install.ps1 -Local` end to end: install, reinstall, reinstall over a quoted PATH entry, uninstall |
 | Windows, on push to main | `scripts/install-tests/e2e.test.ps1 -Mode Binary` (CI job `install_ps1_binary`) | The same run against the newest published release, which is the default install |
 | Windows | `scripts/install-tests/functions.test.ps1` (CI job `install_ps1_functions`) | The pure helpers, with nothing installed |
@@ -902,6 +903,25 @@ under test is the installer's handling of the environment, and a 100 MB build pe
 would make the matrix unrunnable. The stand-in cannot silently fall behind, because one
 test reads the probes back out of `install.sh` and fails if the installer starts asking
 the binary for something the stand-in does not answer.
+
+### Writing sh that survives macOS
+
+macOS `/bin/sh` is bash 3.2, and one of its incompatibilities has already turned both
+macOS gates red. Inside a command substitution, bash 3.2 reads the `)` that ends a
+`case` pattern as the `)` that ends the substitution, so a line of valid POSIX sh dies
+at run time with `syntax error near unexpected token 'newline'`. Nothing on Linux sees
+it: `sh -n` passes, `dash` passes, and the branch only has to be reached on a macOS
+runner for the whole file to fall over.
+
+Write the pattern with a leading `(`, which every shell accepts:
+
+```sh
+check "the hint names the rc file" "$( case "$hint" in (*.zshrc*) echo yes ;; (*) echo no ;; esac )"
+```
+
+`scripts/posix-shell-portability.test.ts` keeps them there. It is a lint rather than an
+execution test because reproducing the failure needs bash 3.2, which the Linux runners
+cannot install, so the choice is a lint or nothing.
 
 ## The update matrix runs on the same environments
 
