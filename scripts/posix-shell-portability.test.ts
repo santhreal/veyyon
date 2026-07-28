@@ -31,6 +31,8 @@ const SHELL_SCRIPTS = [
 	"scripts/install-tests/functions.test.sh",
 	"scripts/install-tests/run-ci.sh",
 	"scripts/install-tests/stress.sh",
+	"scripts/install-tests/installer-e2e-lib.sh",
+	"scripts/install-tests/published-release-e2e.sh",
 ];
 
 /**
