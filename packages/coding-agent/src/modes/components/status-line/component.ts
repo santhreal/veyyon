@@ -3,6 +3,7 @@ import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, UsageLimit, UsageReport } from "@veyyon/ai";
 import { type Component, padding, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { SGR_BG_RESET, SGR_INTENSITY_RESET, SGR_RESET } from "@veyyon/tui/ansi";
 import { formatClock, getProjectDir, scopedTimeoutSignal, withScopedTimeoutSignal } from "@veyyon/utils";
 import { resolveContextLimit } from "../../../config/compaction-strategy";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
@@ -14,10 +15,11 @@ import { type ActiveRepoContext, resolveActiveRepoContextSync } from "../../../u
 import * as git from "../../../utils/git";
 import { getSessionAccentAnsi, getSessionAccentHex } from "../../../utils/session-color";
 import { sanitizeStatusText } from "../../shared";
+import { withIcon } from "../../theme/icon-label";
 import { theme } from "../../theme/theme";
 import { canReuseCachedPr, createPrCacheContext, isSamePrCacheContext, type PrCacheContext } from "./git-utils";
 import { getPreset } from "./presets";
-import { renderSegment, type SegmentContext } from "./segments";
+import { focusExitBadge, renderSegment, type SegmentContext } from "./segments";
 import { getSeparator } from "./separators";
 import { calculateTokensPerSecond } from "./token-rate";
 import type {
@@ -1220,7 +1222,7 @@ export class StatusLineComponent implements Component {
 	#subagentBadgeText(): string | undefined {
 		if (this.#subagentCount === 0) return undefined;
 		const noun = this.#subagentCount === 1 ? "agent" : "agents";
-		return theme.fg("statusLineSubagents", `${theme.icon.agents} ${this.#subagentCount} ${noun}`);
+		return theme.fg("statusLineSubagents", withIcon(theme.icon.agents, `${this.#subagentCount} ${noun}`));
 	}
 
 	#buildStatusLine(width: number): string {
@@ -1250,7 +1252,7 @@ export class StatusLineComponent implements Component {
 		// set `statusLineBg: ""`. Powerline end caps need a contrasting fill to
 		// bridge the bar into the surrounding terminal; without one they read as
 		// stray glyphs, so the cap renderer drops them when the fill is empty.
-		const TRANSPARENT_BG_ANSI = "\x1b[49m";
+		const TRANSPARENT_BG_ANSI = SGR_BG_RESET;
 		const themeBgAnsi = theme.getBgAnsi("statusLineBg");
 		const bgAnsi = effectiveSettings.transparent ? TRANSPARENT_BG_ANSI : themeBgAnsi;
 		const transparentBg = bgAnsi === TRANSPARENT_BG_ANSI;
@@ -1281,7 +1283,7 @@ export class StatusLineComponent implements Component {
 
 		const runningBackgroundJobs = this.session.getAsyncJobSnapshot()?.running.length ?? 0;
 		if (runningBackgroundJobs > 0) {
-			rightParts.unshift(theme.fg("statusLineSubagents", `${theme.icon.job} ${runningBackgroundJobs}`));
+			rightParts.unshift(theme.fg("statusLineSubagents", withIcon(theme.icon.job, `${runningBackgroundJobs}`)));
 		}
 		if (subagentBadge) {
 			rightParts.unshift(subagentBadge);
@@ -1379,7 +1381,7 @@ export class StatusLineComponent implements Component {
 
 			let content = bgAnsi + fgAnsi;
 			content += ` ${parts.join(` ${sepAnsi}${sep}${fgAnsi} `)} `;
-			content += "\x1b[0m";
+			content += SGR_RESET;
 
 			if (capText) {
 				return direction === "right" ? capText + content : content + capText;
@@ -1407,12 +1409,28 @@ export class StatusLineComponent implements Component {
 	}
 
 	getTopBorder(width: number): { content: string; width: number } {
-		let content = this.#buildStatusLine(width);
+		// The focus badge is prefixed here rather than contributed by a segment, because focus is a
+		// mode of the whole view and must not depend on which status-line preset you run. It used to
+		// be the `pi` segment's focused branch, and `pi` is only in `full` and `nerd`: on `default`,
+		// `minimal`, `compact` and `ascii` the proxied bar was the unproxied bar with a dim on it, so
+		// the one thing telling you that you were inside an agent, and that Esc now leaves it, was a
+		// shade of grey.
+		const badge = this.#focusedAgentId ? focusExitBadge(this.#focusedAgentId) : "";
+		// The bar is built into what the badge leaves, so prefixing it cannot push the right group
+		// off the end. `#buildStatusLine` fills to the width it is given.
+		let content = this.#buildStatusLine(Math.max(0, width - visibleWidth(badge)));
 		if (this.#focusedAgentId && content) {
 			// Dim the whole bar while focus-proxied. Group/cap terminators emit full
 			// `\x1b[0m` resets that would cancel faint mid-bar, so re-open it after each.
-			content = `\x1b[2m${content.replaceAll("\x1b[0m", "\x1b[0m\x1b[2m")}\x1b[22m`;
+			// The dim OPENER stays inline: `@veyyon/tui/ansi` owns the bytes whose duplication has a
+			// consequence, and nothing else has to agree with this one. The two resets are shared.
+			const dim = "\x1b[2m";
+			content = `${dim}${content.replaceAll(SGR_RESET, `${SGR_RESET}${dim}`)}${SGR_INTENSITY_RESET}`;
 		}
+		// Outside the dim, deliberately. The dim says "this state is not your main session", and
+		// applying it to the badge would fade the one line of text that explains the state and names
+		// the way out of it, which is the opposite of what the dim is for.
+		content = badge + content;
 		return {
 			content,
 			width: visibleWidth(content),
@@ -1490,7 +1508,7 @@ export class StatusLineComponent implements Component {
 		const badgeParts: string[] = [];
 		if (subagentBadge) badgeParts.push(subagentBadge);
 		if (runningBackgroundJobs > 0) {
-			badgeParts.push(theme.fg("statusLineSubagents", `${theme.icon.job} ${runningBackgroundJobs}`));
+			badgeParts.push(theme.fg("statusLineSubagents", withIcon(theme.icon.job, `${runningBackgroundJobs}`)));
 		}
 		const badgeSlot = this.#animatedBadgeSlot(badgeParts);
 		if (badgeSlot !== null) capRight.unshift({ id: "badges", content: badgeSlot });
