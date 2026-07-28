@@ -33,7 +33,7 @@ irm https://veyyon.dev/install.ps1 | iex
 
 That works in both shells Windows ships: Windows PowerShell 5.1, which is what `powershell.exe` opens on a stock machine, and PowerShell 7. The installer enables TLS 1.2 before it fetches anything, because 5.1 still offers SSL 3.0 and TLS 1.0 by default and GitHub has required TLS 1.2 since 2018.
 
-Like the Unix installer, it never calls the GitHub API, and it puts the install directory at the front of your user `PATH`. A `PATH` entry reaches a program when that program starts, so terminals you already have open will not see `veyyon` until they restart. The closing steps say so.
+Like the Unix installer, it never calls the GitHub API, and it puts the install directory at the front of your user `PATH`. The one-liner above runs in the window you typed it in, so `veyyon` works there straight away, with no restart. A `PATH` entry reaches every other program when that program starts, so terminals you already have open elsewhere will not see it until they restart. The closing steps say which case you are in: run the installer as a file (`pwsh -File install.ps1`) and it is a separate process whose `PATH` change cannot reach your shell, so the first step is to open a new window.
 
 ## After install
 

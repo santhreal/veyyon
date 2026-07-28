@@ -746,21 +746,46 @@ function Get-LaunchCommand {
 # a PATH entry written to the registry reaches a process when that process
 # starts, so a terminal that is already open cannot see it, and leading with a
 # command that is not yet a command reads as a broken install.
+# Whether this script is running INSIDE the shell the user is typing in, rather
+# than in a child process of it.
+#
+# It decides whether the closing advice has to open with "restart your terminal".
+# The documented install is `irm https://veyyon.dev/install.ps1 | iex`, which
+# executes in the caller's own session: Add-ToPath sets $env:Path there, so the
+# command works in that window immediately and telling the user to restart first
+# is both wrong and the friction they hit before anything else. Run as
+# `pwsh -File install.ps1` it is a child process, its $env:Path dies with it, and
+# the restart is genuinely required.
+#
+# $PSCommandPath is the discriminator: a script invoked from a FILE (run or
+# dot-sourced) knows its own path, and code handed to Invoke-Expression as a
+# string has none.
+function Test-RunsInCallersSession {
+    return [string]::IsNullOrEmpty($PSCommandPath)
+}
+
 function Write-NextSteps {
     param([switch]$NeedsRestart)
     $cmd = Get-LaunchCommand
+    $inCallersSession = Test-RunsInCallersSession
     Write-Host ""
     Write-Host "OK  Installation complete." -ForegroundColor Green
     Write-Host ""
     Write-Host "Next steps:"
     $n = 0
-    if ($NeedsRestart) {
+    if ($NeedsRestart -and -not $inCallersSession) {
         $n++
         Write-Host ("  {0}. {1,-25} {2}" -f $n, "Restart your terminal:", "open a new window")
     }
     $n++; Write-Host ("  {0}. {1,-25} {2}" -f $n, "Launch in any repository:", $cmd)
     $n++; Write-Host ("  {0}. {1,-25} {2}" -f $n, "Connect API providers:", "$cmd setup")
     $n++; Write-Host ("  {0}. {1,-25} {2}" -f $n, "See every command:", "$cmd --help")
+    # Said either way, because the PATH entry is per-user and a terminal reads it
+    # when it starts: this window is fine and every other open one is not.
+    if ($NeedsRestart -and $inCallersSession) {
+        Write-Host ""
+        Write-Host "  This window is ready. Terminals already open elsewhere pick up $InstallDir when they restart."
+    }
 }
 
 # Add the install dir to the user PATH if it is not already there. Returns $true

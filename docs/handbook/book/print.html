@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5f87cdec.js";
+            window.path_to_searchindex_js = "searchindex-4d8de068.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-5cf6de48.js"></script>
@@ -627,7 +627,7 @@ by hand. See <a href="#model-and-provider-selection">Model and provider selectio
 <pre><code class="language-powershell">irm https://veyyon.dev/install.ps1 | iex
 </code></pre>
 <p>That works in both shells Windows ships: Windows PowerShell 5.1, which is what <code>powershell.exe</code> opens on a stock machine, and PowerShell 7. The installer enables TLS 1.2 before it fetches anything, because 5.1 still offers SSL 3.0 and TLS 1.0 by default and GitHub has required TLS 1.2 since 2018.</p>
-<p>Like the Unix installer, it never calls the GitHub API, and it puts the install directory at the front of your user <code>PATH</code>. A <code>PATH</code> entry reaches a program when that program starts, so terminals you already have open will not see <code>veyyon</code> until they restart. The closing steps say so.</p>
+<p>Like the Unix installer, it never calls the GitHub API, and it puts the install directory at the front of your user <code>PATH</code>. The one-liner above runs in the window you typed it in, so <code>veyyon</code> works there straight away, with no restart. A <code>PATH</code> entry reaches every other program when that program starts, so terminals you already have open elsewhere will not see it until they restart. The closing steps say which case you are in: run the installer as a file (<code>pwsh -File install.ps1</code>) and it is a separate process whose <code>PATH</code> change cannot reach your shell, so the first step is to open a new window.</p>
 <h2 id="after-install"><a class="header" href="#after-install">After install</a></h2>
 <pre><code class="language-console">$ vey --version
 </code></pre>
@@ -1864,13 +1864,21 @@ instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in
 <p>The command that actually executes carries the real token. The substitution happens locally, after the model has produced the command and before the shell sees it. The model never learns the value, and the request still authenticates.</p>
 <h2 id="the-vault-storing-a-credential-with-secret"><a class="header" href="#the-vault-storing-a-credential-with-secret">The vault: storing a credential with <code>/secret</code></a></h2>
 <p>Environment detection covers credentials that are already in your shell. For anything else, hand it to the vault. A vault entry is encrypted on disk, has a name, and expires.</p>
-<p>The safest form reads the value out of your environment, so the credential is never typed and never enters your scrollback:</p>
+<p>Name it and veyyon asks for the value with a field that shows nothing as you type:</p>
+<pre><code class="language-text">/secret add github-token
+</code></pre>
+<pre><code class="language-text">Paste the value for GITHUB_TOKEN. It is hidden as you type and stored encrypted.
+&gt; ••••••••••••••••••••
+  enter submit  esc cancel
+</code></pre>
+<p>Your composer is cleared before the field opens, so the value never enters the input buffer and never reaches your scrollback. Press escape and nothing is stored.</p>
+<p>If the credential is already an environment variable, read it from there and skip typing altogether. This is the only form that works in a client with no terminal to hide anything on, such as <code>--print</code> mode or an ACP editor:</p>
 <pre><code class="language-text">/secret add github-token --from-env GITHUB_PAT
 </code></pre>
-<p>You can also pass the value directly. It works, and veyyon tells you plainly that the value is now in your scrollback:</p>
+<p>You can also pass the value on the command line. It works, and veyyon tells you plainly that the value is now in your scrollback:</p>
 <pre><code class="language-text">/secret add github-token ghp_your_token_here
 </code></pre>
-<p>Either way the model is shown a placeholder built from the name:</p>
+<p>Any of the three shows the model a placeholder built from the name:</p>
 <pre><code class="language-text">Stored GITHUB_TOKEN in the profile vault, 1d left.
 The model sees #GITHUB_TOKEN# and never the value.
 </code></pre>
@@ -1917,6 +1925,25 @@ The model sees #GITHUB_TOKEN# and never the value.
 <li>A vault whose contents have been <strong>modified</strong> is refused rather than decrypted. GCM authenticates, so tampering is detected.</li>
 </ul>
 <p>On POSIX systems, a key file that other users can read is refused, with the <code>chmod</code> that fixes it. Windows does not express access through mode bits, so that check does not run there.</p>
+<h3 id="seeing-which-credential-was-used-where"><a class="header" href="#seeing-which-credential-was-used-where">Seeing which credential was used where</a></h3>
+<p>Hiding a value from the provider tells you what the agent could not see. It does not tell you what the agent did with what it could. <code>/secret log</code> answers that:</p>
+<pre><code class="language-text">/secret log
+</code></pre>
+<pre><code class="language-text">3 most recent use(s), oldest first:
+  12m ago  bash  #GITHUB_TOKEN#
+    {"command":"curl -H 'Authorization: Bearer #GITHUB_TOKEN#' https://api.github.com/user"}
+  4m ago  bash  #DEPLOY_KEY#
+    {"command":"scp -i #DEPLOY_KEY# build.tar deploy@host:/srv"}
+  just now  bash  #GITHUB_TOKEN# #DEPLOY_KEY#
+    {"command":"./release.sh --token #GITHUB_TOKEN# --key #DEPLOY_KEY#"}
+</code></pre>
+<p>Each line is one tool call that mentioned a secret: when it happened, which tool received it, which placeholders were substituted, and the command as the model wrote it. Pass <code>--limit 50</code> for more than the last twenty.</p>
+<p>The recorded command holds the <strong>placeholder</strong>, not the value, and that is a property of how the record is built rather than a promise about care taken. Veyyon writes the arguments as they were before substitution, which is the form in which every secret is still a placeholder, so there is no redaction step that could be got wrong and no way for a value to reach the file.</p>
+<p>Recording is on by default and writes to <code>secret-audit.jsonl</code> in your active profile’s directory. Turn it off under Record Secret Use in <code>/settings</code>:</p>
+<pre><code class="language-yaml">secrets:
+  auditLog: false
+</code></pre>
+<p>The file is append-only, mode 0600, and lives in the profile rather than the project, because a file naming which credentials you hold is not something to leave where a commit would pick it up. If veyyon cannot append to it, it says so and the command still runs: a full disk should not stop your work, and the value is still being protected either way. What it will not do is stop recording quietly, because a log with nothing in it would then be indistinguishable from a session that used nothing.</p>
 <h2 id="declaring-secrets-yourself"><a class="header" href="#declaring-secrets-yourself">Declaring secrets yourself</a></h2>
 <p>Environment variable detection covers the common case. For anything else, list entries in a <code>secrets.yml</code> file. Two locations are read:</p>
 <div class="table-wrapper">
@@ -1958,6 +1985,16 @@ The model sees #GITHUB_TOKEN# and never the value.
   minLength: 6
 </code></pre>
 <p>A malformed or unreadable <code>secrets.yml</code> also stops startup. A missing one does not, because nothing was declared.</p>
+<h2 id="when-something-cannot-be-protected"><a class="header" href="#when-something-cannot-be-protected">When something cannot be protected</a></h2>
+<p>Two kinds of problem can arise, and veyyon treats them differently on purpose.</p>
+<p>A problem that would mean a credential reaches the provider <strong>stops the session</strong>. A declared <code>obfuscate</code> entry under the minimum, a vault file whose key is missing, a <code>secrets.yml</code> that cannot be parsed: each of these is a refusal with the entry and the fix named. A session that starts cleanly while sending your secret out in plain text is worse than one that will not start.</p>
+<p>A problem that leaves protection intact but degrades something appears <strong>in your session as a warning</strong>, prefixed with the subsystem that raised it:</p>
+<pre><code class="language-text">Warning: secrets: pattern matched a 3-character value, under this entry's 8-character floor.
+Set "minLength" on the entry if short matches are real secrets, or tighten the pattern.
+</code></pre>
+<p>An over-matching pattern is the usual example. It is discovered while obfuscating a message rather than at startup, so it cannot be a refusal, and it is worth seeing because you cannot otherwise tell a working pattern from one that is quietly reaching into prose.</p>
+<p>In <code>--print</code> mode and other non-interactive clients the same warnings go to stderr, so a scripted run does not lose them.</p>
+<p>Nothing important goes only to the log file. That was the previous behaviour and it amounted to silence: the log has no console output by default, and nobody opens it.</p>
 <h2 id="where-the-value-goes"><a class="header" href="#where-the-value-goes">Where the value goes</a></h2>
 <div class="table-wrapper">
 <table>
@@ -1969,6 +2006,7 @@ The model sees #GITHUB_TOKEN# and never the value.
 <tr><td>Session transcript on disk</td><td>No, a placeholder</td></tr>
 <tr><td>A session you <code>/share</code></td><td>No, a placeholder</td></tr>
 <tr><td>The vault file on disk</td><td>No, encrypted</td></tr>
+<tr><td>The secret-use log</td><td>No, a placeholder</td></tr>
 <tr><td><code>secrets.yml</code> on disk</td><td>Yes, it is a plain file you wrote</td></tr>
 <tr><td>Your terminal</td><td>Yes, restored for display</td></tr>
 <tr><td>A command the agent runs</td><td>Yes, substituted before execution</td></tr>
@@ -1981,7 +2019,8 @@ The model sees #GITHUB_TOKEN# and never the value.
 <p><strong>The two stores differ on disk.</strong> Vault entries added with <code>/secret</code> are encrypted. <code>secrets.yml</code> is a plain file: it holds declarations you wrote, in the clear, and anyone who can read it has those credentials. If a value needs to be encrypted at rest, put it in the vault rather than in <code>secrets.yml</code>.</p>
 <p><strong>A command the agent runs receives the real value.</strong> So a command that prints the credential prints it for real. Its output is obfuscated again before it goes back to the model, but it reached the process, and anything that process wrote elsewhere is outside veyyon’s reach.</p>
 <p><strong>Protection begins when the value is known.</strong> A credential that entered the context before you enabled the setting, or before you stored it, is already in that session’s history. Storing it now does not retroactively clean the transcript.</p>
-<p><strong>An inline <code>/secret add</code> is visible on screen.</strong> The obfuscator protects what leaves for the provider; it cannot scrub your terminal. Use <code>--from-env</code> when you care.</p>
+<p><strong>A value you type on the command line is visible on screen.</strong> <code>/secret add NAME &lt;value&gt;</code> puts the credential in your scrollback, and the obfuscator cannot scrub a terminal after the fact. Use <code>/secret add NAME</code> on its own, which prompts with the value hidden, or <code>--from-env</code>.</p>
+<p><strong>The secret-use log records use, not intent.</strong> It tells you which credential went into which command. It cannot tell you what the command did with it once the process had it.</p>
 <h2 id="reference"><a class="header" href="#reference">Reference</a></h2>
 <p>The field-by-field schema, the merge rules between the two files, and the interaction with environment detection are in <code>docs/secrets.md</code>.</p>
 <p>For provider credentials specifically, <code>veyyon</code> keeps OAuth tokens and API keys in its own credential store rather than in your context. See <a href="#signing-in">Signing in</a>.</p>

@@ -894,6 +894,37 @@ $Script:AliasIsOurs = $true
 Check "the block uses the alias throughout when it is ours" `
     (@((Get-NextStepsLines) | Where-Object { $_ -match ": +vey( |$)" }).Count) "3"
 
+# --- the restart step is not shown to a window that already has the PATH entry -
+# The documented install is `irm https://veyyon.dev/install.ps1 | iex`, which runs
+# in the caller's OWN session: Add-ToPath sets $env:Path there, so the command
+# works in that window immediately. Opening the closing block with "restart your
+# terminal" is then wrong, and it is the first thing the user reads. Run as
+# `pwsh -File install.ps1` the installer is a child process, its $env:Path dies
+# with it, and the restart is genuinely required. $PSCommandPath tells the two
+# apart: a script invoked from a file knows its own path, a string handed to
+# Invoke-Expression has none.
+$Script:AliasIsOurs = $false
+Check "a script invoked from a file is not the caller's session" (Test-RunsInCallersSession) "False"
+Check "code with no backing file IS the caller's session" `
+    (& { $PSCommandPath = ""; Test-RunsInCallersSession }) "True"
+
+$piped = & { $PSCommandPath = ""; Get-NextStepsLines -NeedsRestart }
+Check "the one-liner install does not open with a restart" `
+    (@($piped | Where-Object { $_ -match 'Restart your terminal' }).Count) "0"
+Check "launching is step 1 there, since the command already works" `
+    (@($piped | Where-Object { $_ -match '^  1\. Launch in any repository: +veyyon$' }).Count) "1"
+Check "the one-liner install numbers three steps, not four" `
+    ((($piped | ForEach-Object { if ($_ -match '^  (\d+)\. ') { $Matches[1] } }) -join ' ')) "1 2 3"
+# The PATH entry is per-user and a terminal reads it when it starts, so the other
+# windows are still stale. That is a note, not a step: there is nothing to do in
+# this one.
+Check "it still says other open terminals are stale" `
+    (@($piped | Where-Object { $_ -match 'Terminals already open elsewhere' }).Count) "1"
+Check "a child-process install says nothing about other terminals" `
+    (@((Get-NextStepsLines -NeedsRestart) | Where-Object { $_ -match 'Terminals already open elsewhere' }).Count) "0"
+Check "neither form mentions restarting when PATH was untouched" `
+    (@((& { $PSCommandPath = ""; Get-NextStepsLines }) | Where-Object { $_ -match 'Restart|Terminals already open' }).Count) "0"
+
 # --- Get-TagFromRedirect: the release lookup no longer needs the GitHub API ---
 # api.github.com allows 60 requests an hour per IP without a token, shared by
 # everyone behind the same address, and the install spent one of them on every
