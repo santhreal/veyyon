@@ -4,6 +4,19 @@
 
 ### Fixed
 
+- Pasted terminal output no longer leaks into the behavior metrics as the user's prose.
+  `user-metrics.ts` stripped escape sequences with a local `/\x1b\[[0-9;]*m/g`, which accepts only a
+  CSI whose parameters are digits and semicolons and whose final byte is a letter. It missed
+  private-mode sequences (`ESC [ ?25l`, which brackets almost every interactive program's output),
+  colon subparameters, intermediate bytes, non-alphabetic finals, and OSC entirely, so a pasted
+  hyperlink left its whole target in the prose and a long one alone could push a message past the
+  three-line threshold that zeroes every signal. The strip now goes through
+  `@veyyon/utils/strip-ansi`, which owns the grammar, and it runs FIRST rather than last: the URL
+  rule is greedy to the next whitespace, so an OSC 8 target ran through its own terminator and took
+  the first word of the user's sentence with it. `stripStructuredContent` is exported so the
+  contract can be asserted on the prose body, which is the only place most of these leaks are
+  visible at all.
+
 - A sessions directory that cannot be read no longer looks like a user who has never run a session.
   Both session listers answered every failure with an empty list, so a permissions problem on the
   sessions directory, or on one project's folder inside it, produced a dashboard reporting zero of
