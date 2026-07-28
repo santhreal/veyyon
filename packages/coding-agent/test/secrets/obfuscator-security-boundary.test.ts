@@ -36,7 +36,7 @@ function assistant(content: AssistantMessage["content"], secretInReplay?: string
 
 describe("final provider secret boundary", () => {
 	/** Resumed assistant prose is re-sanitized after local display restoration, or a restart sends the raw credential back. */
-	it("re-obfuscates restored assistant text, tool arguments, and replay payloads", () => {
+	it("re-obfuscates restored assistant text and tool arguments", () => {
 		const secret = "resume-secret-value-123";
 		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret, name: "RESUME_TOKEN" }]);
 		const persisted = assistant([
@@ -44,13 +44,7 @@ describe("final provider secret boundary", () => {
 			{ type: "toolCall", id: "call-1", name: "run", arguments: { token: "#RESUME_TOKEN#" } },
 		]);
 		const restored = deobfuscateAssistantContent(obfuscator, persisted.content);
-		const [outbound] = obfuscateMessages(obfuscator, [
-			{
-				...persisted,
-				content: restored,
-				providerPayload: { type: "openaiResponsesHistory", items: [{ text: secret }] },
-			},
-		]);
+		const [outbound] = obfuscateMessages(obfuscator, [{ ...persisted, content: restored }]);
 
 		expect(JSON.stringify(restored)).toContain(secret);
 		expect(JSON.stringify(outbound)).not.toContain(secret);
@@ -68,7 +62,7 @@ describe("final provider secret boundary", () => {
 			systemPrompt: [`system ${secret}`],
 			messages: [
 				{ role: "developer", content: `developer ${secret}`, timestamp: 1 },
-				assistant([{ type: "text", text: `assistant ${secret}` }], secret),
+				assistant([{ type: "text", text: `assistant ${secret}` }]),
 				{ role: "user", content: `user ${secret}`, timestamp: 1 },
 				{
 					role: "toolResult",

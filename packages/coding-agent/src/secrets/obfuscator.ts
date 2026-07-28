@@ -856,7 +856,7 @@ export function deobfuscateAssistantContent(
 	content: AssistantMessage["content"],
 ): AssistantMessage["content"] {
 	if (!obfuscator.hasSecrets()) return content;
-	return mapAssistantContentStrings(content, s => obfuscator.deobfuscate(s));
+	return mapAssistantContentStrings(content, s => obfuscator.deobfuscate(s), { includeToolMetadata: true });
 }
 
 /**
@@ -875,6 +875,7 @@ export function deobfuscateAssistantContent(
  */
 export interface ContentWalkOptions {
 	readonly includeThinking?: boolean;
+	readonly includeToolMetadata?: boolean;
 }
 
 /**
@@ -906,11 +907,26 @@ export function mapAssistantContentStrings(
 		}
 		if (block.type === "toolCall") {
 			const args = mapJsonStrings(block.arguments as JsonWithOptionalFields, fn) as Record<string, unknown>;
+			const id = options?.includeToolMetadata ? fn(block.id) : block.id;
+			const name = options?.includeToolMetadata ? fn(block.name) : block.name;
+			const customWireName =
+				options?.includeToolMetadata && block.customWireName !== undefined
+					? fn(block.customWireName)
+					: block.customWireName;
 			const intent = block.intent === undefined ? undefined : fn(block.intent);
 			const rawBlock = block.rawBlock === undefined ? undefined : fn(block.rawBlock);
-			if (args === block.arguments && intent === block.intent && rawBlock === block.rawBlock) return block;
+			if (
+				args === block.arguments &&
+				id === block.id &&
+				name === block.name &&
+				customWireName === block.customWireName &&
+				intent === block.intent &&
+				rawBlock === block.rawBlock
+			) {
+				return block;
+			}
 			changed = true;
-			return { ...block, arguments: args, intent, rawBlock };
+			return { ...block, arguments: args, id, name, customWireName, intent, rawBlock };
 		}
 		return block;
 	});
@@ -943,12 +959,95 @@ export function obfuscateToolArguments(
 // Outbound obfuscation (local → provider)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Obfuscate `text` blocks of a content array; image and other blocks pass through. */
+/** Fail closed rather than modifying authenticated provider replay metadata or sending a secret in it. */
+function assertOpaqueProviderFieldSafe(
+	obfuscator: SecretObfuscator,
+	value: string | undefined,
+	field: string,
+): void {
+	if (value !== undefined && obfuscator.obfuscate(value) !== value) {
+		throw new Error(
+			`Refusing to send provider context because opaque ${field} metadata contains a configured secret.`,
+		);
+	}
+}
+
+/** Native replay payloads may contain authenticated or encrypted strings, so they are validation-only. */
+function assertOpaqueProviderPayloadSafe(
+	obfuscator: SecretObfuscator,
+	payload: unknown,
+): void {
+	if (mapJsonStrings(payload, text => obfuscator.obfuscate(text)) !== payload) {
+		throw new Error(
+			"Refusing to send provider context because opaque native replay metadata contains a configured secret.",
+		);
+	}
+}
+
+/** Obfuscate user/developer/tool-result blocks and validate opaque text signatures. */
 function obfuscateTextBlocks(
 	obfuscator: SecretObfuscator,
 	content: (TextContent | ImageContent)[],
 ): (TextContent | ImageContent)[] {
-	return mapTextBlockStrings(content, text => obfuscator.obfuscate(text));
+	let changed = false;
+	const result = content.map((block): TextContent | ImageContent => {
+		if (block.type !== "text") return block;
+		assertOpaqueProviderFieldSafe(obfuscator, block.textSignature, "text-signature");
+		const text = obfuscator.obfuscate(block.text);
+		if (text === block.text) return block;
+		changed = true;
+		return { ...block, text };
+	});
+	return changed ? result : content;
+}
+
+/** Obfuscate assistant replay fields while preserving authenticated bytes exactly. */
+function obfuscateAssistantContentForProvider(
+	obfuscator: SecretObfuscator,
+	content: AssistantMessage["content"],
+): AssistantMessage["content"] {
+	let changed = false;
+	const result = content.map((block): AssistantMessage["content"][number] => {
+		if (block.type === "text") {
+			assertOpaqueProviderFieldSafe(obfuscator, block.textSignature, "text-signature");
+			const text = obfuscator.obfuscate(block.text);
+			if (text === block.text) return block;
+			changed = true;
+			return { ...block, text };
+		}
+		if (block.type === "thinking") {
+			assertOpaqueProviderFieldSafe(obfuscator, block.thinkingSignature, "thinking-signature");
+			assertOpaqueProviderFieldSafe(obfuscator, block.itemId, "thinking-item");
+			const thinking = obfuscator.obfuscate(block.thinking);
+			if (thinking === block.thinking) return block;
+			if (block.thinkingSignature !== undefined || block.itemId !== undefined) {
+				throw new Error(
+					"Refusing to send provider context because signed thinking contains a configured secret.",
+				);
+			}
+			changed = true;
+			return { ...block, thinking };
+		}
+		if (block.type === "redactedThinking") {
+			assertOpaqueProviderFieldSafe(obfuscator, block.data, "redacted-thinking");
+			return block;
+		}
+		if (block.type === "fallback") {
+			const from = obfuscator.obfuscate(block.from.model);
+			const to = obfuscator.obfuscate(block.to.model);
+			if (from === block.from.model && to === block.to.model) return block;
+			changed = true;
+			return { ...block, from: { model: from }, to: { model: to } };
+		}
+		assertOpaqueProviderFieldSafe(obfuscator, block.thoughtSignature, "tool-thought-signature");
+		const [mapped] = mapAssistantContentStrings([block], text => obfuscator.obfuscate(text), {
+			includeToolMetadata: true,
+		});
+		if (mapped === block) return block;
+		changed = true;
+		return mapped;
+	});
+	return changed ? result : content;
 }
 
 /** Map `text` blocks through `fn`; image and other blocks pass through byte-identical. */
@@ -970,39 +1069,46 @@ export function mapTextBlockStrings(
 /**
  * Redact every mutable string field that can reach a provider request.
  *
- * Assistant text is included because resumed transcripts can contain locally restored
- * placeholders or hook-injected raw values. Thinking signatures remain byte-identical, since
- * providers authenticate them against the original thinking bytes.
+ * Authenticated signatures are never rewritten. If one itself contains a configured secret, or
+ * signed thinking would need rewriting, dispatch fails closed with a credential-free error.
  */
 export function obfuscateMessages(obfuscator: SecretObfuscator, messages: Message[]): Message[] {
 	if (!obfuscator.hasSecrets()) return messages;
 	let changed = false;
 	const result = messages.map((message): Message => {
 		if (message.role === "assistant") {
-			const content = mapAssistantContentStrings(message.content, text => obfuscator.obfuscate(text));
-			const providerPayload =
-				message.providerPayload === undefined
-					? undefined
-					: mapJsonStrings(message.providerPayload, text => obfuscator.obfuscate(text));
-			if (content === message.content && providerPayload === message.providerPayload) return message;
+			const content = obfuscateAssistantContentForProvider(obfuscator, message.content);
+			if (message.providerPayload !== undefined) {
+				assertOpaqueProviderPayloadSafe(obfuscator, message.providerPayload);
+			}
+			if (content === message.content) return message;
 			changed = true;
-			return { ...message, content, providerPayload };
+			return { ...message, content };
 		}
 
 		const content =
 			typeof message.content === "string"
 				? obfuscator.obfuscate(message.content)
 				: obfuscateTextBlocks(obfuscator, message.content);
-		const originalProviderPayload = "providerPayload" in message ? message.providerPayload : undefined;
-		const providerPayload =
-			originalProviderPayload === undefined
-				? undefined
-				: mapJsonStrings(originalProviderPayload, text => obfuscator.obfuscate(text));
-		if (content === message.content && providerPayload === originalProviderPayload) return message;
+		if ("providerPayload" in message && message.providerPayload !== undefined) {
+			assertOpaqueProviderPayloadSafe(obfuscator, message.providerPayload);
+		}
+		if (message.role === "toolResult") {
+			const toolCallId = obfuscator.obfuscate(message.toolCallId);
+			const toolName = obfuscator.obfuscate(message.toolName);
+			if (
+				content === message.content &&
+				toolCallId === message.toolCallId &&
+				toolName === message.toolName
+			) {
+				return message;
+			}
+			changed = true;
+			return { ...message, content, toolCallId, toolName };
+		}
+		if (content === message.content) return message;
 		changed = true;
-		return originalProviderPayload === undefined
-			? ({ ...message, content } as Message)
-			: ({ ...message, content, providerPayload } as Message);
+		return { ...message, content } as Message;
 	});
 	return changed ? result : messages;
 }
