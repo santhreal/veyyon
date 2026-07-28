@@ -34,7 +34,7 @@ function runInstaller(args: string[]): { stdout: string; stderr: string; status:
  * be compared. A flag missing from one side is a capability the other side's
  * users cannot discover.
  */
-const FLAGS: ReadonlyArray<{ concept: string; posix: string; windows: string }> = [
+const FLAGS: Array<{ concept: string; posix: string; windows: string }> = [
 	{ concept: "prebuilt binary", posix: "--binary", windows: "-Binary" },
 	{ concept: "build from a checkout", posix: "--source", windows: "-Source" },
 	{ concept: "install what this checkout built", posix: "--local", windows: "-Local" },
