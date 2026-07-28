@@ -197,7 +197,27 @@ describe.each(cases.map(c => [c.name, c] as const))("update an install in %s", (
 		expect(run.stdout.toString()).not.toContain(INSTALLED_VERSION);
 	});
 
-	it("keeps `vey` resolving to the updated binary", () => {
+	if (testCase.alias_is_foreign) {
+		it("still leaves the user's own `vey` alone, and still does not complete it", () => {
+			// An update regenerates the completion scripts, which is the second
+			// chance to bind a command that is not ours. The decision is not
+			// re-derived: `refreshCompletionsForInstalledBinary` reads the script the
+			// installer wrote and carries its --no-alias forward, so this is the
+			// assertion that the carry-forward actually happens.
+			expect(fs.lstatSync(alias).isSymbolicLink()).toBe(false);
+			const seeded = testCase.pre_files?.[`${testCase.install_dir}/vey`];
+			expect(seeded).toBeDefined();
+			expect(fs.readFileSync(alias, "utf8")).toBe(seeded as string);
+			const bash = fs.readFileSync(
+				path.join(install.home, ".local/share/bash-completion/completions/veyyon"),
+				"utf8",
+			);
+			expect(bash).toContain(UPDATED_VERSION);
+			expect(bash).not.toMatch(/^complete -F _veyyon veyyon vey\b/m);
+		});
+	}
+
+	it.skipIf(testCase.alias_is_foreign === true)("keeps `vey` resolving to the updated binary", () => {
 		// The swap is a rename over the target. A `vey` symlink that pointed at
 		// the file rather than the path would now dangle, or worse, resolve to
 		// the backup: the documented command would run the OLD version silently.

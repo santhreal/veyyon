@@ -898,7 +898,13 @@ expect_completions = [".config/fish/completions/veyyon.fish"]
 seeds links (a `$HOME` in either is expanded), `expect_absent` lists paths that must not
 be created, `install_dir_on_path` puts the install directory on `$PATH` so the
 installer has nothing to add and must leave every rc alone, and
-`expect_rc_stays_symlink` asserts the rc is still a symlink afterwards and that the PATH
+`alias_is_foreign` says the case seeds a `vey` in the install directory that the
+installer did not create, which inverts every assertion about our own alias: the file
+must survive install, reinstall, update and rollback byte for byte, and our completion
+scripts must stop binding the name. That last part is the half that is easy to miss,
+because declining to write the alias FILE leaves our own script completing both names
+and handing our subcommands to their tool. `expect_rc_stays_symlink` asserts the rc is
+still a symlink afterwards and that the PATH
 line landed in the file the link points at. That last one is the case a dotfile manager
 produces: rc files are symlinks into a repository, and an installer that appends by
 replacing the link with a regular file silently detaches the user's dotfiles from their
@@ -1033,4 +1039,4 @@ Wiring you can't exercise in-process (worker spawn, install flow) is covered by 
 runtime smoke probe (`veyyon --smoke-test`) and the install-test scripts, not by a
 source grep.
 
-*Verified against `e3d4fea2de73192763399d8cb64ef5e03b095a81` on 2026-07-27.*
+*Verified against `cc919bad` on 2026-07-27.*

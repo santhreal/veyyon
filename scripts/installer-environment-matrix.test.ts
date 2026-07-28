@@ -104,12 +104,34 @@ describe.each(cases.map(c => [c.name, c] as const))("install into %s", (_name, t
 		expect(fs.statSync(binary).mode & 0o111).toBe(0o111);
 	});
 
-	it("links `vey` at the installed binary", () => {
-		// The documented command is `vey`; an alias pointing anywhere else (or at
-		// a path that does not resolve) means the documented command is broken.
-		expect(fs.lstatSync(alias).isSymbolicLink()).toBe(true);
-		expect(fs.realpathSync(alias)).toBe(fs.realpathSync(binary));
-	});
+	if (testCase.alias_is_foreign) {
+		it("leaves a `vey` the user already owns exactly as it was", () => {
+			// `ln -sf` unlinks whatever is at the path first, which is how a user's
+			// own script in the install directory was destroyed with no warning and
+			// no way to get it back. Their file, byte for byte, and still not a
+			// symlink of ours.
+			expect(fs.lstatSync(alias).isSymbolicLink()).toBe(false);
+			const seeded = testCase.pre_files?.[`${testCase.install_dir}/vey`];
+			expect(seeded).toBeDefined();
+			expect(fs.readFileSync(alias, "utf8")).toBe(seeded as string);
+		});
+
+		it("stops binding that name in our own completion scripts", () => {
+			// The decisive half. Declining to write the alias FILE is not enough:
+			// every generated script normally completes both names, so ours would
+			// hand our subcommands to their tool.
+			const bash = path.join(first.home, ".local/share/bash-completion/completions/veyyon");
+			expect(fs.readFileSync(bash, "utf8")).not.toMatch(/^complete -F _veyyon veyyon vey\b/m);
+			expect(fs.readFileSync(bash, "utf8")).toContain("complete -F _veyyon veyyon");
+		});
+	} else {
+		it("links `vey` at the installed binary", () => {
+			// The documented command is `vey`; an alias pointing anywhere else (or at
+			// a path that does not resolve) means the documented command is broken.
+			expect(fs.lstatSync(alias).isSymbolicLink()).toBe(true);
+			expect(fs.realpathSync(alias)).toBe(fs.realpathSync(binary));
+		});
+	}
 
 	it("passes doctor's native self-test on the installed binary", () => {
 		// The install is not finished when the file lands; doctor is what proves
@@ -149,7 +171,14 @@ describe.each(cases.map(c => [c.name, c] as const))("install into %s", (_name, t
 			// Appending is the only sanctioned edit. A rewrite that reorders or
 			// drops a line the user wrote is unrecoverable data loss in a file
 			// they did not ask this installer to manage.
-			const before = testCase.pre_files?.[rcRel] ?? Object.values(testCase.pre_files ?? {})[0] ?? "";
+			// The rc's own seed, by its own key — not "whatever the first pre_file
+			// was". A case that seeds something else entirely (a `vey` in the
+			// install directory) would otherwise be told its rc started life as a
+			// shell script. A symlinked rc is seeded at the link's target, so that
+			// is where the key comes from.
+			const linked = testCase.pre_symlinks?.[rcRel];
+			const seedKey = linked === undefined ? rcRel : linked.replace("$HOME/", "");
+			const before = testCase.pre_files?.[seedKey] ?? "";
 			const after = fs.readFileSync(rcTargetFor(testCase, rcRel, first.home), "utf8");
 			if (before) expect(after.startsWith(before)).toBe(true);
 			expect(after).toBe(`${before}\n${PATH_MARKER}\n${pathLineFor(rcRel, first.installDir)}\n`);
