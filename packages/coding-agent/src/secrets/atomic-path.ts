@@ -26,26 +26,23 @@ function wideString(value: string): Buffer {
 const linuxRename =
 	process.platform === "linux"
 		? (() => {
-				let library;
-				try {
-					library = dlopen("libc.so.6", {
-						renameat2: {
-							args: [FFIType.i32, FFIType.ptr, FFIType.i32, FFIType.ptr, FFIType.u32],
-							returns: FFIType.i32,
-						},
-					});
-				} catch {
-					library = dlopen("libc.so", {
-						renameat2: {
-							args: [FFIType.i32, FFIType.ptr, FFIType.i32, FFIType.ptr, FFIType.u32],
-							returns: FFIType.i32,
-						},
-					});
-				}
+				const signature = {
+					renameat2: {
+						args: [FFIType.i32, FFIType.ptr, FFIType.i32, FFIType.ptr, FFIType.u32],
+						returns: FFIType.i32,
+					},
+				} as const;
+				const renameat2 = (() => {
+					try {
+						return dlopen("libc.so.6", signature).symbols.renameat2;
+					} catch {
+						return dlopen("libc.so", signature).symbols.renameat2;
+					}
+				})();
 				return (from: string, to: string, flags: number): boolean => {
 					const fromBytes = cString(from);
 					const toBytes = cString(to);
-					return library.symbols.renameat2(AT_FDCWD, ptr(fromBytes), AT_FDCWD, ptr(toBytes), flags) === 0;
+					return renameat2(AT_FDCWD, ptr(fromBytes), AT_FDCWD, ptr(toBytes), flags) === 0;
 				};
 			})()
 		: undefined;
