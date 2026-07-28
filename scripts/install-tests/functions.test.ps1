@@ -862,8 +862,8 @@ Check "the launch command is the binary when the alias is not ours" (Get-LaunchC
 # `Write-Host` does not go down the pipeline, so the output is captured through
 # the information stream (6) that Write-Host writes to.
 function Get-NextStepsLines {
-    param([switch]$NeedsRestart)
-    return @((Write-NextSteps -NeedsRestart:$NeedsRestart 6>&1) | ForEach-Object { "$_" })
+    param([switch]$NeedsRestart, [switch]$InCallersSession)
+    return @((Write-NextSteps -NeedsRestart:$NeedsRestart -InCallersSession:$InCallersSession 6>&1) | ForEach-Object { "$_" })
 }
 
 $Script:AliasIsOurs = $false
@@ -903,12 +903,16 @@ Check "the block uses the alias throughout when it is ours" `
 # with it, and the restart is genuinely required. $PSCommandPath tells the two
 # apart: a script invoked from a file knows its own path, a string handed to
 # Invoke-Expression has none.
+# $PSCommandPath is an automatic variable and cannot be shadowed from a test, so
+# the DETECTOR is checked for the case this file is actually in (dot-sourced from
+# a file, therefore not the caller's session) and the two BRANCHES are driven
+# directly through the switch Write-NextSteps takes. That is why the switch is a
+# parameter rather than a call to the detector inside the function: otherwise one
+# of the two branches would ship with no test at all.
 $Script:AliasIsOurs = $false
 Check "a script invoked from a file is not the caller's session" (Test-RunsInCallersSession) "False"
-Check "code with no backing file IS the caller's session" `
-    (& { $PSCommandPath = ""; Test-RunsInCallersSession }) "True"
 
-$piped = & { $PSCommandPath = ""; Get-NextStepsLines -NeedsRestart }
+$piped = Get-NextStepsLines -NeedsRestart -InCallersSession
 Check "the one-liner install does not open with a restart" `
     (@($piped | Where-Object { $_ -match 'Restart your terminal' }).Count) "0"
 Check "launching is step 1 there, since the command already works" `
@@ -923,7 +927,7 @@ Check "it still says other open terminals are stale" `
 Check "a child-process install says nothing about other terminals" `
     (@((Get-NextStepsLines -NeedsRestart) | Where-Object { $_ -match 'Terminals already open elsewhere' }).Count) "0"
 Check "neither form mentions restarting when PATH was untouched" `
-    (@((& { $PSCommandPath = ""; Get-NextStepsLines }) | Where-Object { $_ -match 'Restart|Terminals already open' }).Count) "0"
+    (@((Get-NextStepsLines -InCallersSession) | Where-Object { $_ -match 'Restart|Terminals already open' }).Count) "0"
 
 # --- Resolve-RefTag: the `v` a person leaves off a version --------------------
 # Releases are tagged `v1.0.37` and `-Ref 1.0.37` is what people type: the same

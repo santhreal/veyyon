@@ -110,7 +110,17 @@ expect_exists "$INSTALLER_HOME/.config/fish/completions/veyyon.fish" "fish compl
 expect_exists "$INSTALLER_HOME/.config/fish/completions/vey.fish" "fish completions for the alias"
 
 # The PATH line, with the marker that makes it recognizable on uninstall.
-grep -Fqx "export PATH=\"$INSTALLER_BIN:\$PATH\"" "$INSTALLER_HOME/.bashrc" || {
+#
+# The directory is SINGLE-quoted and `$PATH` is not. That is deliberate and is
+# the shape install.sh writes: a directory name containing `$`, a backtick or a
+# backslash would otherwise be expanded by the shell reading the rc, which is how
+# `export PATH="/home/a$PATH/bin:$PATH"` put a nonsense entry on PATH and left the
+# user with "command not found" in a shell whose rc plainly named the right
+# directory. This assertion matched the old double-quoted form and so failed
+# every run after the fix landed; matching the bytes exactly is the point, since
+# the uninstall recognizes its own line by them.
+PATH_LINE="export PATH='$INSTALLER_BIN':\"\$PATH\""
+grep -Fqx "$PATH_LINE" "$INSTALLER_HOME/.bashrc" || {
    echo "installer end-to-end: the PATH line is missing from .bashrc"
    exit 1
 }
@@ -125,7 +135,7 @@ echo "alias ll='ls -la'" >> "$INSTALLER_HOME/.bashrc"
 # Reinstalling over an existing install must be clean and idempotent: no
 # duplicate PATH line, no staging litter, no failure.
 installer_env sh "$ROOT_DIR/scripts/install.sh" --local
-path_lines="$(grep -Fxc "export PATH=\"$INSTALLER_BIN:\$PATH\"" "$INSTALLER_HOME/.bashrc" || true)"
+path_lines="$(grep -Fxc "$PATH_LINE" "$INSTALLER_HOME/.bashrc" || true)"
 [ "$path_lines" = "1" ] || {
    echo "installer end-to-end: reinstall wrote the PATH line $path_lines times, expected 1"
    exit 1
