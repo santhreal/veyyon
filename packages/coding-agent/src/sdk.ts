@@ -420,6 +420,8 @@ export interface CreateAgentSessionOptions {
 	cwd?: string;
 	/** Global config directory. Default: ~/.veyyon/profiles/default/agent */
 	agentDir?: string;
+	/** Cross-profile vault/key root override for isolated SDK hosts. Default: getGlobalConfigRootDir() */
+	globalConfigRoot?: string;
 	/** Spawns to allow. Default: "*" */
 	spawns?: string;
 
@@ -1232,6 +1234,7 @@ function buildMCPPromptCommands(manager: MCPManager): LoadedCustomCommand[] {
 export async function createAgentSession(options: CreateAgentSessionOptions = {}): Promise<CreateAgentSessionResult> {
 	const cwd = options.cwd ?? getProjectDir();
 	const agentDir = options.agentDir ?? getAgentDir();
+	const globalConfigRoot = options.globalConfigRoot ?? getGlobalConfigRootDir();
 	const eventBus = options.eventBus ?? new EventBus();
 
 	registerSshCleanup();
@@ -1277,690 +1280,695 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	const evalKernelOwnerId = `agent-session:${Snowflake.next()}`;
 	let mcpManager: MCPManager | undefined = options.mcpManager;
 	try {
-	const settings = await (options.settings ??
-		options.settingsManager ??
-		logger.time("settings", Settings.init, { cwd, agentDir }));
-	logger.time("initializeWithSettings", initializeWithSettings, settings);
-	if (!options.modelRegistry) {
-		modelRegistry.refreshInBackground();
-	}
-	// Kick off workspace tree discovery early. The native workspace scan returns
-	// both the rendered-tree input and the AGENTS.md directory-context index, so
-	// startup does not perform a second recursive filesystem search. Subagents
-	// inherit the parent's resolved values via options.
-	const STARTUP_SCAN_DEADLINE_MS = 5000;
-	const startupIncludeWorkspaceTree = settings.get("includeWorkspaceTree") ?? false;
-	const workspaceTreePromise: Promise<WorkspaceTree> = prefetch(
-		options.workspaceTree
-			? Promise.resolve(options.workspaceTree)
-			: startupIncludeWorkspaceTree
-				? logger.time("buildWorkspaceTree", () => buildWorkspaceTree(cwd, { timeoutMs: STARTUP_SCAN_DEADLINE_MS }))
-				: Promise.resolve({ rootPath: cwd, rendered: "", truncated: false, totalLines: 0, agentsMdFiles: [] }),
-	);
-
-	// Independent discoveries that depend only on cwd/agentDir — kicked off in parallel and awaited
-	// at their respective consumer sites. Their work can overlap with model resolution, secret loading,
-	// session-context build, tool creation, MCP discovery, and extension discovery.
-	const contextFilesPromise = prefetch(
-		options.contextFiles
-			? Promise.resolve(options.contextFiles)
-			: logger.time("discoverContextFiles", discoverContextFiles, cwd, agentDir),
-	);
-	const activeRepoContextPromise = logger.time("resolveActiveRepoContext", async () => {
-		try {
-			return await resolveActiveRepoContext(cwd);
-		} catch (err) {
-			// Null degrades the prompt's repo context (branch/status enrichment),
-			// so the operator must be able to see WHY it vanished: warn, not debug.
-			logger.warn("Failed to resolve active repo context", { err: String(err) });
-			return null;
+		const settings = await (options.settings ??
+			options.settingsManager ??
+			logger.time("settings", Settings.init, { cwd, agentDir }));
+		logger.time("initializeWithSettings", initializeWithSettings, settings);
+		if (!options.modelRegistry) {
+			modelRegistry.refreshInBackground();
 		}
-	});
-	const watchdogFilesPromise = prefetch(
-		logger.time("discoverWatchdogFiles", () => discoverWatchdogFiles(cwd, agentDir)),
-	);
-	const advisorConfigsPromise = prefetch(
-		logger.time("discoverAdvisorConfigs", () => discoverAdvisorConfigs(cwd, agentDir)),
-	);
-	const promptTemplatesPromise = prefetch(
-		options.promptTemplates
-			? Promise.resolve(options.promptTemplates)
-			: logger.time("discoverPromptTemplates", discoverPromptTemplates, cwd, agentDir),
-	);
-	const slashCommandsPromise = prefetch(
-		options.slashCommands
-			? Promise.resolve(options.slashCommands)
-			: logger.time("discoverSlashCommands", discoverSlashCommands, cwd),
-	);
-	const skillsSettings = settings.getGroup("skills");
-	const disabledExtensionIds = settings.get("disabledExtensions") ?? [];
-	const discoveredSkillsPromise =
-		options.skills === undefined
-			? prefetch(
-					logger.time("discoverSkills", discoverSkills, cwd, agentDir, {
-						...skillsSettings,
-						disabledExtensions: disabledExtensionIds,
-					}),
-				)
-			: undefined;
-
-	// Initialize provider preferences from settings
-	const excludedWebSearchProviders = settings.get("providers.webSearchExclude");
-	if (Array.isArray(excludedWebSearchProviders)) {
-		setExcludedSearchProviders(excludedWebSearchProviders.filter(isSearchProviderId));
-	}
-
-	const webSearchProvider = settings.get("providers.webSearch");
-	if (typeof webSearchProvider === "string" && isSearchProviderPreference(webSearchProvider)) {
-		setPreferredSearchProvider(webSearchProvider);
-	}
-
-	const imageProvider = settings.get("providers.image");
-	if (isImageProviderPreference(imageProvider)) {
-		setPreferredImageProvider(imageProvider);
-	}
-
-	sessionManager =
-		options.sessionManager ??
-		logger.time("sessionManager", () =>
-			SessionManager.create(cwd, SessionManager.getDefaultSessionDir(cwd, agentDir)),
+		// Kick off workspace tree discovery early. The native workspace scan returns
+		// both the rendered-tree input and the AGENTS.md directory-context index, so
+		// startup does not perform a second recursive filesystem search. Subagents
+		// inherit the parent's resolved values via options.
+		const STARTUP_SCAN_DEADLINE_MS = 5000;
+		const startupIncludeWorkspaceTree = settings.get("includeWorkspaceTree") ?? false;
+		const workspaceTreePromise: Promise<WorkspaceTree> = prefetch(
+			options.workspaceTree
+				? Promise.resolve(options.workspaceTree)
+				: startupIncludeWorkspaceTree
+					? logger.time("buildWorkspaceTree", () =>
+							buildWorkspaceTree(cwd, { timeoutMs: STARTUP_SCAN_DEADLINE_MS }),
+						)
+					: Promise.resolve({ rootPath: cwd, rendered: "", truncated: false, totalLines: 0, agentsMdFiles: [] }),
 		);
-	const providerSessionId = options.providerSessionId ?? sessionManager.getSessionId();
-	const forkCacheShapeChanged =
-		options.model !== undefined ||
-		options.modelPattern !== undefined ||
-		options.thinkingLevel !== undefined ||
-		options.systemPrompt !== undefined ||
-		options.customSystemPrompt !== undefined ||
-		options.appendSystemPrompt !== undefined ||
-		options.toolNames !== undefined ||
-		options.customTools !== undefined;
-	const inheritedPromptCacheKey = forkCacheShapeChanged
-		? undefined
-		: sessionManager.getHeader()?.providerPromptCacheKey;
-	const providerPromptCacheKey = options.providerPromptCacheKey ?? inheritedPromptCacheKey;
-	const providerPromptCacheKeySource =
-		options.providerPromptCacheKey !== undefined
-			? (options.providerPromptCacheKeySource ?? "explicit")
-			: providerPromptCacheKey !== undefined
-				? "fork"
-				: undefined;
-	// Startup model *selection* only needs to know whether auth is configured for
-	// a candidate's provider — never the resolved key bytes. Use the synchronous,
-	// side-effect-free probe (`hasConfiguredAuth`): it refreshes no OAuth tokens,
-	// executes no `!command` keys, and issues no auth-broker requests. Resolving the
-	// real key here (`getApiKey`) blocks resume on those network paths — a slow or
-	// unreachable OAuth/broker endpoint stalls startup for the full ~10s refresh
-	// timeout per candidate (observed as a hang in `restoreSessionModel`). The real
-	// key is resolved lazily per request via ModelRegistry.resolver.
-	const hasModelAuth = (candidate: Model): boolean => modelRegistry.hasConfiguredAuth(candidate);
 
-	// The operator-visible channel for a non-fatal problem. Built before anything that can raise
-	// one, and defaulted to stderr rather than to nothing: a caller that supplies no surface gets
-	// its warnings in the wrong place, never dropped.
-	const operatorNotices = options.operatorNotices ?? new OperatorNotices(stderrNoticeSink);
-	for (const legacyFile of await findLegacyPromptFiles({ cwd, agentDir })) {
-		operatorNotices.warn("system-prompt", describeLegacyPromptFile(legacyFile));
-	}
-
-	// Give `@veyyon/utils` somewhere to put a filesystem fault. Those helpers are free functions a
-	// layer below this one, so they cannot reach a per-session channel and had nothing but
-	// `logger.warn`, which is file-only: a subagents directory that exists and cannot be listed
-	// reported "no subagents" to the operator and the reason to a file nobody opens. Attached here
-	// rather than in each mode because every mode wants it and forgetting it is silent.
-	//
-	// Detached on dispose, and on the startup-failure path below, by the handle this returns. The
-	// sink closes over `operatorNotices`, so leaving it attached outlives the session it reports to.
-	detachFaultSink = attachFaultSink(fault => operatorNotices.warn(fault.source, fault.text));
-
-	// There is one loader for startup, runtime toggles, command reconciliation, and
-	// cwd moves. Replacing the complete runtime prevents project-scoped names and
-	// values from surviving a move into another project.
-	const loadSecretRuntime = async (runtimeCwd: string, runtimeSettings: Settings = settings) => {
-		if (!runtimeSettings.get("secrets.enabled")) {
-			return {
-				obfuscator: undefined,
-				vault: undefined,
-				auditLog: undefined,
-				vaultRevision: undefined,
-			};
-		}
-
-		const fileEntries = await logger.time("loadSecrets", loadSecrets, runtimeCwd, agentDir);
-		const envKeywords = await logger.time("loadEnvSecretKeywords", () =>
-			loadEnvSecretKeywords({ cwd: runtimeCwd, agentDir }),
+		// Independent discoveries that depend only on cwd/agentDir — kicked off in parallel and awaited
+		// at their respective consumer sites. Their work can overlap with model resolution, secret loading,
+		// session-context build, tool creation, MCP discovery, and extension discovery.
+		const contextFilesPromise = prefetch(
+			options.contextFiles
+				? Promise.resolve(options.contextFiles)
+				: logger.time("discoverContextFiles", discoverContextFiles, cwd, agentDir),
 		);
-		const envEntries = collectEnvSecrets(buildEnvSecretPattern(envKeywords));
-		const globalConfigRoot = getGlobalConfigRootDir();
-		const vaultLocations = resolveVaultLocations({
-			globalConfigRoot,
-			agentDir,
-			cwd: runtimeCwd,
-		});
-		const vault = new SecretVault(vaultLocations);
-		const auditLog = runtimeSettings.get("secrets.auditLog")
-			? new SecretAuditLog(secretAuditPath(vaultLocations), operatorNotices)
-			: undefined;
-		const liveVaultEntries = await logger.time("loadVault", () => vault.load());
-		const vaultRevision = vault.revision();
-		const vaultEntries: SecretEntry[] = liveVaultEntries.map(secret => ({
-			type: "plain",
-			content: secret.value,
-			name: secret.name,
-			expiresAt: secret.expiresAt,
-		}));
-
-		for (const warning of expiryWarnings(liveVaultEntries, Date.now())) {
-			operatorNotices.warn("secrets", warning);
-		}
-
-		const placeholderKey = await logger.time("loadSecretPlaceholderKey", () =>
-			loadOrCreateVaultKey(globalConfigRoot),
-		);
-		const nextObfuscator = new SecretObfuscator([...envEntries, ...fileEntries, ...vaultEntries], {
-			placeholderKey,
-			onRejection: rejection => operatorNotices.warn("secrets", describeSecretRejection(rejection)),
-			onExpiry: name =>
-				operatorNotices.warn(
-					"secrets",
-					`#${name}# has expired and is no longer being substituted. Its value was deleted, so ` +
-						`store it again with /secret add ${name} --from-env <VAR> if you still need it.`,
-				),
-		});
-		return { obfuscator: nextObfuscator, vault, vaultRevision, auditLog };
-	};
-
-	const initialSecretRuntime = await loadSecretRuntime(cwd);
-	let obfuscator = initialSecretRuntime.obfuscator;
-	let redactionObfuscator = obfuscator;
-	let secretVault = initialSecretRuntime.vault;
-	let capturedVaultRevision = initialSecretRuntime.vaultRevision;
-	let secretAuditLog = initialSecretRuntime.auditLog;
-	let secretRuntimeCwd = path.resolve(cwd);
-	let latestSecretRuntimeRequest = 0;
-	let pendingSecretRuntime:
-		| {
-				revision: number;
-				cwd: string;
-				work: Promise<SecretRuntimeLease | undefined>;
-		  }
-		| undefined;
-	let refreshSecretRuntime!: (runtimeCwd: string) => Promise<SecretRuntimeLease>;
-
-	const auditLogBySecretLease = new WeakMap<object, SecretAuditLog | undefined>();
-	const createSecretRuntimeLease = (
-		revision: number,
-		runtimeCwd: string,
-		expansionObfuscator: SecretObfuscator | undefined,
-		redactor: SecretObfuscator | undefined,
-		vault: SecretVault | undefined,
-		vaultRevision: string | undefined,
-		auditLog: SecretAuditLog | undefined,
-	): SecretRuntimeLease => {
-		const normalizedCwd = path.resolve(runtimeCwd);
-		const lease: SecretRuntimeLease = Object.freeze({
-			revision,
-			cwd: normalizedCwd,
-			expansionObfuscator,
-			hasRedactions: redactor?.hasSecrets() ?? false,
-			obfuscateText: (text: string) => redactor?.obfuscate(text) ?? text,
-			obfuscateMessages: (messages: Message[]) => (redactor ? obfuscateMessages(redactor, messages) : messages),
-			obfuscateContext: (context: Context) => (redactor ? obfuscateProviderContext(redactor, context) : context),
-			obfuscatePayload: (payload: unknown) => obfuscateProviderPayload(payload, redactor),
-			assertFreshForExpansion: () => {
-				if (!vault || vaultRevision === undefined || vault.revision() === vaultRevision) return;
-				if (!pendingSecretRuntime || pendingSecretRuntime.cwd !== normalizedCwd) {
-					void refreshSecretRuntime(normalizedCwd).catch(error => {
-						logger.warn("Failed to refresh a stale secret runtime", {
-							cwd: normalizedCwd,
-							error: errorMessage(error),
-						});
-					});
-				}
-				throw new Error(
-					"Secret expansion was refused because the vault changed in another session or process; retry after refresh.",
-				);
-			},
-		});
-		auditLogBySecretLease.set(lease, auditLog);
-		return lease;
-	};
-	let secretRuntimeLease = createSecretRuntimeLease(
-		0,
-		cwd,
-		obfuscator,
-		redactionObfuscator,
-		secretVault,
-		capturedVaultRevision,
-		secretAuditLog,
-	);
-
-	// Argot per-project shorthand codec (experimental). The launch project's
-	// dictionary auto-loads at startup (the adoption loop: works out of the
-	// box); additional projects are agent-driven through the argot_load tool.
-	// The dictionary lives in a local cache under the config root, never
-	// committed. The notation and the load-yourself instruction are taught
-	// through the system prompt (see argotPreamble below), the loaded handles
-	// through promptFragment. Expansion runs at the same two seams as secret
-	// deobfuscation — tool-call arguments before execution and assistant
-	// content before display — so the cheap handle stays in history (the
-	// token win) while everything outside history sees full text.
-	const argotEnabled = settings.get("argot.enabled") === true;
-	// A subagent (task-spawned child) follows the `argot.subagents` policy instead
-	// of always starting empty: `off` gets no codec, `fresh` gets its own empty
-	// session and loads its task's project itself, `inherit` forks the parent's
-	// codec. Correctness never rests on this (the boundary rule expands every
-	// emitted seam); the policy trades tokens.
-	const sessionIsSubagent = isSubagentSession(options);
-	const argot = createArgotSession({
-		enabled: argotEnabled,
-		isSubagent: sessionIsSubagent,
-		subagentMode: settings.get("argot.subagents"),
-		parentArgot: options.parentArgot,
-	});
-	// Encode gate: which models may WRITE shorthand and an optional context-size
-	// cutoff. Decoding (argot.expand at the tool-arg and display seams) is
-	// unconditional and lossless whatever this holds; the gate governs only
-	// whether the notation preamble is taught this turn. The policy itself lives
-	// in the argot SDK (shouldEncode) so every harness gates the same way.
-	const argotGate: ArgotGate = buildArgotGate(
-		argotEnabled,
-		settings.get("argot.encode.models") ?? [],
-		settings.get("argot.encode.disableAboveTokens"),
-	);
-	// Live context size (prompt tokens the model last saw), refreshed each turn
-	// from usage so the cutoff tracks the growing context. 0 until the first
-	// response, which keeps encoding on for a small starting context.
-	let argotContextTokens = 0;
-
-	// An abnormal process exit after a non-terminal message tail is durable
-	// evidence that the old process can no longer finish that turn. Preserve the
-	// partial transcript and append one terminal aborted assistant record before
-	// rebuilding runtime context. The helper is idempotent once that record exists.
-	let existingBranch = logger.time("getSessionBranch", () => sessionManager.getBranch());
-	const interruptedTurnAbort = createInterruptedTurnAbortMessage(existingBranch);
-	if (interruptedTurnAbort) {
-		sessionManager.appendMessage(interruptedTurnAbort);
-		existingBranch = logger.time("getRecoveredSessionBranch", () => sessionManager.getBranch());
-	}
-	let existingSession = logger.time("loadSessionContext", () =>
-		deobfuscateSessionContext(sessionManager.buildSessionContext(), obfuscator),
-	);
-	// Decode-only re-arm on resume. Persisted history keeps cheap handles (the
-	// token win), so a resumed branch can hold `§handle` tokens from argot_load
-	// calls in earlier sessions; the display/export seams can only expand them
-	// with those dictionaries loaded. The branch's own argot_load tool results
-	// name the exact projects the model chose, so resume re-arms those roots
-	// with teach:false — no walking, no guessing, and teaching stays
-	// agent-driven (the model re-decides by calling argot_load again).
-	if (argot !== undefined && existingBranch.length > 0) {
-		const argotRoots = collectArgotLoadedRoots(
-			existingBranch.flatMap(entry => (entry.type === "message" ? [entry.message] : [])),
-		);
-		if (argotRoots.length > 0) {
-			await rearmArgotForDecode(argot, argotRoots, undefined, settings.get("argot.tokenBudget"));
-		}
-	}
-	const hasExistingSession = existingBranch.length > 0;
-	const hasThinkingEntry = existingBranch.some(entry => entry.type === "thinking_level_change");
-	const hasServiceTierEntry = existingBranch.some(entry => entry.type === "service_tier_change");
-
-	const deferredModelPatterns = Array.isArray(options.modelPattern)
-		? options.modelPattern.map(pattern => pattern.trim()).filter(Boolean)
-		: options.modelPattern?.trim()
-			? [options.modelPattern.trim()]
-			: [];
-	const hasExplicitModel = options.model !== undefined || deferredModelPatterns.length > 0;
-	const modelMatchPreferences = getModelMatchPreferences(settings);
-	const allowedModels = await logger.time("resolveAllowedModels", () =>
-		resolveAllowedModels(modelRegistry, settings, modelMatchPreferences),
-	);
-	let defaultRoleSpec = logger.time("resolveDefaultModelRole", () =>
-		resolveModelRoleValue(settings.getModelRole(DEFAULT_MODEL_SLOT), allowedModels, {
-			settings,
-			matchPreferences: modelMatchPreferences,
-		}),
-	);
-	let model = options.model;
-	let modelFallbackMessage: string | undefined;
-	// Identify session model strings to restore in fallback order. We do an
-	// initial pass here so model-dependent setup (thinking-level resolution,
-	// host preconnect) can use the restored model; extension-registered
-	// providers aren't visible yet, so we retry the preferred candidates once
-	// extensions register below.
-	const sessionModelStrings =
-		!hasExplicitModel && hasExistingSession
-			? getRestorableSessionModels(existingSession.models, sessionManager.getLastModelChangeRole())
-			: [];
-	let restoredSessionModelIndex = -1;
-	let restoredSessionThinkingLevel: ConfiguredThinkingLevel | undefined;
-	if (!hasExplicitModel && !model && sessionModelStrings.length > 0) {
-		logger.time("restoreSessionModel", () => {
-			let failedSessionModel: string | undefined;
-			for (let i = 0; i < sessionModelStrings.length; i++) {
-				const sessionModelStr = sessionModelStrings[i];
-				const parsedModel = parseModelString(sessionModelStr, {
-					allowMaxSuffix: true,
-					allowAutoAlias: true,
-					isLiteralModelId: (provider, id) => modelRegistry.find(provider, id) !== undefined,
-				});
-				if (!parsedModel) {
-					failedSessionModel ??= sessionModelStr;
-					continue;
-				}
-
-				const restoredModel = modelRegistry.find(parsedModel.provider, parsedModel.id);
-				if (restoredModel && hasModelAuth(restoredModel)) {
-					model = restoredModel;
-					restoredSessionModelIndex = i;
-					restoredSessionThinkingLevel = parsedModel.thinkingLevel;
-					break;
-				}
-				failedSessionModel ??= sessionModelStr;
-			}
-			if (failedSessionModel) {
-				modelFallbackMessage = `Could not restore model ${failedSessionModel}`;
-			}
-		});
-	}
-
-	// If still no model, try settings default.
-	// Skip settings fallback when an explicit model was requested.
-	if (!hasExplicitModel && !model && defaultRoleSpec.model) {
-		const settingsDefaultModel = defaultRoleSpec.model;
-		logger.time("resolveSettingsDefaultModel", () => {
-			// defaultRoleSpec.model already comes from modelRegistry.getAvailable(),
-			// so re-validating auth here just repeats the expensive lookup path.
-			model = settingsDefaultModel;
-		});
-	}
-
-	const taskDepth = options.taskDepth ?? 0;
-
-	// Resolves the session/agent thinking level using the same precedence we
-	// apply at startup: explicit option → persisted session entry → restored
-	// model selector suffix → default role's explicit selector → selected
-	// model's defaultLevel → global settings default. Run again after extension
-	// role reclaim so the final model's own defaults aren't masked by an earlier
-	// fallback model's.
-	const pickInitialThinkingLevel = (selectedModel: Model | undefined): ConfiguredThinkingLevel | undefined => {
-		let level = options.thinkingLevel;
-		if (level === undefined && hasExistingSession && hasThinkingEntry) {
-			level =
-				parseConfiguredThinkingLevel(existingSession.configuredThinkingLevel) ??
-				parseThinkingLevel(existingSession.thinkingLevel);
-		}
-		if (level === undefined && !hasThinkingEntry && restoredSessionThinkingLevel !== undefined) {
-			level = restoredSessionThinkingLevel;
-		}
-		if (level === undefined && !hasExplicitModel && !hasThinkingEntry && defaultRoleSpec.explicitThinkingLevel) {
-			level = defaultRoleSpec.thinkingLevel;
-		}
-		if (level === undefined && selectedModel?.thinking?.defaultLevel !== undefined) {
-			level = selectedModel.thinking.defaultLevel;
-		}
-		if (level === undefined) {
-			// The profile's Default Effort list, through the ONE resolver: this model's
-			// row first, then the any-model row (which is where a legacy
-			// `defaultThinkingLevel` migrates to). Reading the retired enum directly
-			// here is what let a per-model default be ignored.
-			level = resolveEffort({
-				modelSelector: selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : undefined,
-				defaultEffort: withLegacyDefaultEffort(settings.get("defaultEffort"), settings.get("defaultThinkingLevel")),
-			}).level;
-		}
-		return level;
-	};
-	let thinkingLevel = pickInitialThinkingLevel(model);
-	let autoThinking = thinkingLevel === AUTO_THINKING;
-	// Concrete level the agent/session start with. With `auto` this is the
-	// provisional level shown until the first per-turn classification resolves;
-	// `auto` itself stays a session-only concept handled by AgentSession.
-	let effectiveThinkingLevel: ThinkingLevel | undefined = concreteThinkingLevel(thinkingLevel);
-	if (model) {
-		const resolvedModel = model;
-		effectiveThinkingLevel = logger.time("resolveThinkingLevelForModel", () =>
-			autoThinking
-				? resolveProvisionalAutoLevel(resolvedModel)
-				: resolveThinkingLevelForModel(resolvedModel, effectiveThinkingLevel),
-		);
-		// Fire-and-forget TLS+H2 handshake to the model's host so it overlaps
-		// with the rest of session setup (extension/skill load, tool registry,
-		// system prompt build). Without this, the first `fetch(...)` pays the
-		// full handshake serially — 100–300 ms transcontinental for
-		// api.anthropic.com from a residential IP. Every mode benefits
-		// (interactive, print, rpc, acp).
-		preconnectModelHost(model.baseUrl);
-	}
-
-	let skills: Skill[];
-	if (options.skills !== undefined) {
-		skills = options.skills;
-	} else {
-		const discovered = await (discoveredSkillsPromise ?? Promise.resolve({ skills: [], warnings: [] }));
-		skills = discovered.skills;
-		// Straight into the operator channel. These used to be collected into
-		// `AgentSession.skillWarnings`, a getter no production code read, so a skill that failed to
-		// load was discarded in silence and the channel looked live from the outside.
-		for (const warning of discovered.warnings) {
-			operatorNotices.warn("skills", `${warning.skillPath}: ${warning.message}`);
-		}
-	}
-
-	// Discover rules and bucket them in one pass to avoid repeated scans over large rule sets.
-	const { ttsrManager, rulebookRules, alwaysApplyRules, allRules } = await logger.time(
-		"discoverTtsrRules",
-		async () => {
-			const { TtsrManager } = await import("./export/ttsr");
-			const ttsrSettings = settings.getGroup("ttsr");
-			// `getCwd` is a live getter, not `cwd`: a rule with a `pathScope` compares the match
-			// against the CURRENT working directory, and `set_cwd` moves it mid-session.
-			const ttsrManager = new TtsrManager(ttsrSettings, { getCwd: () => sessionManager.getCwd() });
-			const rulesResult =
-				options.rules !== undefined
-					? { items: options.rules, warnings: undefined }
-					: await loadCapability<Rule>(ruleCapability.id, { cwd });
-			const { rulebookRules, alwaysApplyRules } = bucketRules(rulesResult.items, ttsrManager, {
-				builtinRules: ttsrSettings.builtinRules,
-				disabledRules: ttsrSettings.disabledRules,
-			});
-			if (existingSession.injectedTtsrRules.length > 0) {
-				ttsrManager.restoreInjected(existingSession.injectedTtsrRules);
-			}
-			return { ttsrManager, rulebookRules, alwaysApplyRules, allRules: rulesResult.items };
-		},
-	);
-
-	// Resolve contextFiles up-front (it's needed before tool creation). The
-	// workspace tree scan is slow on large repos and we MUST NOT block startup on
-	// it. On timeout we forward `undefined` to ToolSession; buildSystemPromptInternal
-	// will re-race the same promise through its own withDeadline path. Background
-	// work continues so caches still warm.
-	const raceWithDeadline = async <T>(name: string, work: Promise<T>): Promise<T | undefined> => {
-		let timedOut = false;
-		const result = await Promise.race([
-			work,
-			Bun.sleep(STARTUP_SCAN_DEADLINE_MS).then(() => {
-				timedOut = true;
-				return undefined;
-			}),
-		]);
-		if (timedOut) {
-			logger.warn("Startup scan exceeded deadline; deferring to system prompt fallback", {
-				name,
-				timeoutMs: STARTUP_SCAN_DEADLINE_MS,
-				cwd,
-			});
-		}
-		return result;
-	};
-	const [contextFiles, resolvedWorkspaceTree, activeRepoContext, watchdogFiles, discoveredAdvisors] =
-		await Promise.all([
-			contextFilesPromise,
-			raceWithDeadline("buildWorkspaceTree", workspaceTreePromise),
-			activeRepoContextPromise,
-			watchdogFilesPromise,
-			advisorConfigsPromise,
-		]);
-
-	let promptInputCwd = cwd;
-	let promptContextFiles = contextFiles;
-	let promptWorkspaceTree: WorkspaceTree | Promise<WorkspaceTree> = workspaceTreePromise;
-	let promptActiveRepoContext = activeRepoContext;
-	let promptSkills = skills;
-	let promptRulebookRules = rulebookRules;
-	let promptAlwaysApplyRules = alwaysApplyRules;
-
-	const leaseSecretRuntime = async (): Promise<SecretRuntimeLease> => {
-		for (;;) {
-			const pending = pendingSecretRuntime;
-			if (pending) {
-				await pending.work;
-				if (pendingSecretRuntime !== pending) continue;
-			}
-
-			if (
-				secretVault &&
-				capturedVaultRevision !== undefined &&
-				secretVault.revision() !== capturedVaultRevision
-			) {
-				return await refreshSecretRuntime(secretRuntimeCwd);
-			}
-			return secretRuntimeLease;
-		}
-	};
-
-	refreshSecretRuntime = (runtimeCwd: string): Promise<SecretRuntimeLease> => {
-		const revision = ++latestSecretRuntimeRequest;
-		const normalizedRuntimeCwd = path.resolve(runtimeCwd);
-		const work = (async (): Promise<SecretRuntimeLease | undefined> => {
-			const runtimeSettings =
-				normalizedRuntimeCwd === secretRuntimeCwd || path.resolve(settings.getCwd()) === normalizedRuntimeCwd
-					? settings
-					: await settings.cloneForCwd(normalizedRuntimeCwd);
-			const next = await loadSecretRuntime(normalizedRuntimeCwd, runtimeSettings);
-
-			const isAuthoritative = (): boolean =>
-				revision === latestSecretRuntimeRequest && path.resolve(sessionManager.getCwd()) === normalizedRuntimeCwd;
-			if (!isAuthoritative()) return undefined;
-
-			if (next.obfuscator && redactionObfuscator) {
-				// Expansion never crosses snapshots, but redaction tombstones cross
-				// every refresh, cwd move, and disable replacement.
-				next.obfuscator.retainRedactionsFrom(redactionObfuscator);
-			}
-			await secretAuditLog?.flush();
-			if (!isAuthoritative()) return undefined;
-
-			const nextRedactor = next.obfuscator ?? redactionObfuscator;
-			const nextLease = createSecretRuntimeLease(
-				revision,
-				normalizedRuntimeCwd,
-				next.obfuscator,
-				nextRedactor,
-				next.vault,
-				next.vaultRevision,
-				next.auditLog,
-			);
-
-			// One synchronous commit updates every SDK closure and the AgentSession
-			// view. No await is permitted in this block.
-			obfuscator = next.obfuscator;
-			redactionObfuscator = nextRedactor;
-			secretVault = next.vault;
-			capturedVaultRevision = next.vaultRevision;
-			secretAuditLog = next.auditLog;
-			secretRuntimeCwd = normalizedRuntimeCwd;
-			secretRuntimeLease = nextLease;
-			if (hasSession) session.installSecretRuntime(nextLease);
-			return nextLease;
-		})();
-		const pending = { revision, cwd: normalizedRuntimeCwd, work };
-		pendingSecretRuntime = pending;
-
-		return (async () => {
+		const activeRepoContextPromise = logger.time("resolveActiveRepoContext", async () => {
 			try {
-				const committed = await work;
-				if (committed) return committed;
-				if (pendingSecretRuntime === pending) pendingSecretRuntime = undefined;
-				return await leaseSecretRuntime();
-			} catch (error) {
-				if (revision !== latestSecretRuntimeRequest) return await leaseSecretRuntime();
-				throw error;
-			} finally {
-				if (pendingSecretRuntime === pending) pendingSecretRuntime = undefined;
+				return await resolveActiveRepoContext(cwd);
+			} catch (err) {
+				// Null degrades the prompt's repo context (branch/status enrichment),
+				// so the operator must be able to see WHY it vanished: warn, not debug.
+				logger.warn("Failed to resolve active repo context", { err: String(err) });
+				return null;
 			}
-		})();
-	};
-	const enableLsp = options.enableLsp ?? true;
-	const asyncMaxJobs = Math.min(100, Math.max(1, settings.get("async.maxJobs") ?? 100));
-	const ASYNC_INLINE_RESULT_MAX_CHARS = 12_000;
-	const ASYNC_PREVIEW_MAX_CHARS = 4_000;
-	const formatAsyncResultForFollowUp = async (result: string): Promise<string> => {
-		if (result.length <= ASYNC_INLINE_RESULT_MAX_CHARS) {
-			return result;
+		});
+		const watchdogFilesPromise = prefetch(
+			logger.time("discoverWatchdogFiles", () => discoverWatchdogFiles(cwd, agentDir)),
+		);
+		const advisorConfigsPromise = prefetch(
+			logger.time("discoverAdvisorConfigs", () => discoverAdvisorConfigs(cwd, agentDir)),
+		);
+		const promptTemplatesPromise = prefetch(
+			options.promptTemplates
+				? Promise.resolve(options.promptTemplates)
+				: logger.time("discoverPromptTemplates", discoverPromptTemplates, cwd, agentDir),
+		);
+		const slashCommandsPromise = prefetch(
+			options.slashCommands
+				? Promise.resolve(options.slashCommands)
+				: logger.time("discoverSlashCommands", discoverSlashCommands, cwd),
+		);
+		const skillsSettings = settings.getGroup("skills");
+		const disabledExtensionIds = settings.get("disabledExtensions") ?? [];
+		const discoveredSkillsPromise =
+			options.skills === undefined
+				? prefetch(
+						logger.time("discoverSkills", discoverSkills, cwd, agentDir, {
+							...skillsSettings,
+							disabledExtensions: disabledExtensionIds,
+						}),
+					)
+				: undefined;
+
+		// Initialize provider preferences from settings
+		const excludedWebSearchProviders = settings.get("providers.webSearchExclude");
+		if (Array.isArray(excludedWebSearchProviders)) {
+			setExcludedSearchProviders(excludedWebSearchProviders.filter(isSearchProviderId));
 		}
 
-		const preview = `${result.slice(0, ASYNC_PREVIEW_MAX_CHARS)}\n\n[Output truncated. Showing first ${ASYNC_PREVIEW_MAX_CHARS.toLocaleString()} characters.]`;
-		try {
-			const { path: artifactPath, id: artifactId } = await sessionManager.allocateArtifactPath("async");
-			if (artifactPath && artifactId) {
-				await Bun.write(artifactPath, result);
-				return `${preview}\nFull output: artifact://${artifactId}`;
+		const webSearchProvider = settings.get("providers.webSearch");
+		if (typeof webSearchProvider === "string" && isSearchProviderPreference(webSearchProvider)) {
+			setPreferredSearchProvider(webSearchProvider);
+		}
+
+		const imageProvider = settings.get("providers.image");
+		if (isImageProviderPreference(imageProvider)) {
+			setPreferredImageProvider(imageProvider);
+		}
+
+		sessionManager =
+			options.sessionManager ??
+			logger.time("sessionManager", () =>
+				SessionManager.create(cwd, SessionManager.getDefaultSessionDir(cwd, agentDir)),
+			);
+		const providerSessionId = options.providerSessionId ?? sessionManager.getSessionId();
+		const forkCacheShapeChanged =
+			options.model !== undefined ||
+			options.modelPattern !== undefined ||
+			options.thinkingLevel !== undefined ||
+			options.systemPrompt !== undefined ||
+			options.customSystemPrompt !== undefined ||
+			options.appendSystemPrompt !== undefined ||
+			options.toolNames !== undefined ||
+			options.customTools !== undefined;
+		const inheritedPromptCacheKey = forkCacheShapeChanged
+			? undefined
+			: sessionManager.getHeader()?.providerPromptCacheKey;
+		const providerPromptCacheKey = options.providerPromptCacheKey ?? inheritedPromptCacheKey;
+		const providerPromptCacheKeySource =
+			options.providerPromptCacheKey !== undefined
+				? (options.providerPromptCacheKeySource ?? "explicit")
+				: providerPromptCacheKey !== undefined
+					? "fork"
+					: undefined;
+		// Startup model *selection* only needs to know whether auth is configured for
+		// a candidate's provider — never the resolved key bytes. Use the synchronous,
+		// side-effect-free probe (`hasConfiguredAuth`): it refreshes no OAuth tokens,
+		// executes no `!command` keys, and issues no auth-broker requests. Resolving the
+		// real key here (`getApiKey`) blocks resume on those network paths — a slow or
+		// unreachable OAuth/broker endpoint stalls startup for the full ~10s refresh
+		// timeout per candidate (observed as a hang in `restoreSessionModel`). The real
+		// key is resolved lazily per request via ModelRegistry.resolver.
+		const hasModelAuth = (candidate: Model): boolean => modelRegistry.hasConfiguredAuth(candidate);
+
+		// The operator-visible channel for a non-fatal problem. Built before anything that can raise
+		// one, and defaulted to stderr rather than to nothing: a caller that supplies no surface gets
+		// its warnings in the wrong place, never dropped.
+		const operatorNotices = options.operatorNotices ?? new OperatorNotices(stderrNoticeSink);
+		for (const legacyFile of await findLegacyPromptFiles({ cwd, agentDir })) {
+			operatorNotices.warn("system-prompt", describeLegacyPromptFile(legacyFile));
+		}
+
+		// Give `@veyyon/utils` somewhere to put a filesystem fault. Those helpers are free functions a
+		// layer below this one, so they cannot reach a per-session channel and had nothing but
+		// `logger.warn`, which is file-only: a subagents directory that exists and cannot be listed
+		// reported "no subagents" to the operator and the reason to a file nobody opens. Attached here
+		// rather than in each mode because every mode wants it and forgetting it is silent.
+		//
+		// Detached on dispose, and on the startup-failure path below, by the handle this returns. The
+		// sink closes over `operatorNotices`, so leaving it attached outlives the session it reports to.
+		detachFaultSink = attachFaultSink(fault => operatorNotices.warn(fault.source, fault.text));
+
+		// There is one loader for startup, runtime toggles, command reconciliation, and
+		// cwd moves. Replacing the complete runtime prevents project-scoped names and
+		// values from surviving a move into another project.
+		const loadSecretRuntime = async (runtimeCwd: string, runtimeSettings: Settings = settings) => {
+			if (!runtimeSettings.get("secrets.enabled")) {
+				return {
+					obfuscator: undefined,
+					vault: undefined,
+					auditLog: undefined,
+					vaultRevision: undefined,
+				};
 			}
-		} catch (error) {
-			logger.warn("Failed to persist async follow-up artifact", {
-				error: errorMessage(error),
+
+			const fileEntries = await logger.time("loadSecrets", loadSecrets, runtimeCwd, agentDir);
+			const envKeywords = await logger.time("loadEnvSecretKeywords", () =>
+				loadEnvSecretKeywords({ cwd: runtimeCwd, agentDir }),
+			);
+			const envEntries = collectEnvSecrets(buildEnvSecretPattern(envKeywords));
+			const vaultLocations = resolveVaultLocations({
+				globalConfigRoot,
+				agentDir,
+				cwd: runtimeCwd,
+			});
+			const vault = new SecretVault(vaultLocations);
+			const auditLog = runtimeSettings.get("secrets.auditLog")
+				? new SecretAuditLog(secretAuditPath(vaultLocations), operatorNotices)
+				: undefined;
+			const liveVaultEntries = await logger.time("loadVault", () => vault.load());
+			const vaultEntries: SecretEntry[] = liveVaultEntries.map(secret => ({
+				type: "plain",
+				content: secret.value,
+				name: secret.name,
+				expiresAt: secret.expiresAt,
+			}));
+
+			for (const warning of expiryWarnings(liveVaultEntries, Date.now())) {
+				operatorNotices.warn("secrets", warning);
+			}
+
+			const placeholderKey = await logger.time("loadSecretPlaceholderKey", () =>
+				loadOrCreateVaultKey(globalConfigRoot),
+			);
+			const vaultRevision = vault.revision();
+			const nextObfuscator = new SecretObfuscator([...envEntries, ...fileEntries, ...vaultEntries], {
+				placeholderKey,
+				onRejection: rejection => operatorNotices.warn("secrets", describeSecretRejection(rejection)),
+				onExpiry: name =>
+					operatorNotices.warn(
+						"secrets",
+						`#${name}# has expired and is no longer being substituted. Its value was deleted, so ` +
+							`store it again with /secret add ${name} --from-env <VAR> if you still need it.`,
+					),
+			});
+			return { obfuscator: nextObfuscator, vault, vaultRevision, auditLog };
+		};
+
+		const initialSecretRuntime = await loadSecretRuntime(cwd);
+		let obfuscator = initialSecretRuntime.obfuscator;
+		let redactionObfuscator = obfuscator;
+		let secretVault = initialSecretRuntime.vault;
+		let capturedVaultRevision = initialSecretRuntime.vaultRevision;
+		let secretAuditLog = initialSecretRuntime.auditLog;
+		let secretRuntimeCwd = path.resolve(cwd);
+		let latestSecretRuntimeRequest = 0;
+		let pendingSecretRuntime:
+			| {
+					revision: number;
+					cwd: string;
+					work: Promise<SecretRuntimeLease | undefined>;
+			  }
+			| undefined;
+		let refreshSecretRuntime!: (runtimeCwd: string) => Promise<SecretRuntimeLease>;
+
+		const auditLogBySecretLease = new WeakMap<object, SecretAuditLog | undefined>();
+		const createSecretRuntimeLease = (
+			revision: number,
+			runtimeCwd: string,
+			expansionObfuscator: SecretObfuscator | undefined,
+			redactor: SecretObfuscator | undefined,
+			vault: SecretVault | undefined,
+			vaultRevision: string | undefined,
+			auditLog: SecretAuditLog | undefined,
+		): SecretRuntimeLease => {
+			const normalizedCwd = path.resolve(runtimeCwd);
+			const lease: SecretRuntimeLease = Object.freeze({
+				revision,
+				cwd: normalizedCwd,
+				expansionObfuscator,
+				hasRedactions: redactor?.hasSecrets() ?? false,
+				obfuscateText: (text: string) => redactor?.obfuscate(text) ?? text,
+				obfuscateMessages: (messages: Message[]) => (redactor ? obfuscateMessages(redactor, messages) : messages),
+				obfuscateContext: (context: Context) => (redactor ? obfuscateProviderContext(redactor, context) : context),
+				obfuscatePayload: (payload: unknown) => obfuscateProviderPayload(payload, redactor),
+				assertFreshForExpansion: () => {
+					if (!vault || vaultRevision === undefined || vault.revision() === vaultRevision) return;
+					if (!pendingSecretRuntime || pendingSecretRuntime.cwd !== normalizedCwd) {
+						void refreshSecretRuntime(normalizedCwd).catch(error => {
+							logger.warn("Failed to refresh a stale secret runtime", {
+								cwd: normalizedCwd,
+								error: errorMessage(error),
+							});
+						});
+					}
+					throw new Error(
+						"Secret expansion was refused because the vault changed in another session or process; retry after refresh.",
+					);
+				},
+			});
+			auditLogBySecretLease.set(lease, auditLog);
+			return lease;
+		};
+		let secretRuntimeLease = createSecretRuntimeLease(
+			0,
+			cwd,
+			obfuscator,
+			redactionObfuscator,
+			secretVault,
+			capturedVaultRevision,
+			secretAuditLog,
+		);
+
+		// Argot per-project shorthand codec (experimental). The launch project's
+		// dictionary auto-loads at startup (the adoption loop: works out of the
+		// box); additional projects are agent-driven through the argot_load tool.
+		// The dictionary lives in a local cache under the config root, never
+		// committed. The notation and the load-yourself instruction are taught
+		// through the system prompt (see argotPreamble below), the loaded handles
+		// through promptFragment. Expansion runs at the same two seams as secret
+		// deobfuscation — tool-call arguments before execution and assistant
+		// content before display — so the cheap handle stays in history (the
+		// token win) while everything outside history sees full text.
+		const argotEnabled = settings.get("argot.enabled") === true;
+		// A subagent (task-spawned child) follows the `argot.subagents` policy instead
+		// of always starting empty: `off` gets no codec, `fresh` gets its own empty
+		// session and loads its task's project itself, `inherit` forks the parent's
+		// codec. Correctness never rests on this (the boundary rule expands every
+		// emitted seam); the policy trades tokens.
+		const sessionIsSubagent = isSubagentSession(options);
+		const argot = createArgotSession({
+			enabled: argotEnabled,
+			isSubagent: sessionIsSubagent,
+			subagentMode: settings.get("argot.subagents"),
+			parentArgot: options.parentArgot,
+		});
+		// Encode gate: which models may WRITE shorthand and an optional context-size
+		// cutoff. Decoding (argot.expand at the tool-arg and display seams) is
+		// unconditional and lossless whatever this holds; the gate governs only
+		// whether the notation preamble is taught this turn. The policy itself lives
+		// in the argot SDK (shouldEncode) so every harness gates the same way.
+		const argotGate: ArgotGate = buildArgotGate(
+			argotEnabled,
+			settings.get("argot.encode.models") ?? [],
+			settings.get("argot.encode.disableAboveTokens"),
+		);
+		// Live context size (prompt tokens the model last saw), refreshed each turn
+		// from usage so the cutoff tracks the growing context. 0 until the first
+		// response, which keeps encoding on for a small starting context.
+		let argotContextTokens = 0;
+
+		// An abnormal process exit after a non-terminal message tail is durable
+		// evidence that the old process can no longer finish that turn. Preserve the
+		// partial transcript and append one terminal aborted assistant record before
+		// rebuilding runtime context. The helper is idempotent once that record exists.
+		let existingBranch = logger.time("getSessionBranch", () => sessionManager.getBranch());
+		const interruptedTurnAbort = createInterruptedTurnAbortMessage(existingBranch);
+		if (interruptedTurnAbort) {
+			sessionManager.appendMessage(interruptedTurnAbort);
+			existingBranch = logger.time("getRecoveredSessionBranch", () => sessionManager.getBranch());
+		}
+		let existingSession = logger.time("loadSessionContext", () =>
+			deobfuscateSessionContext(sessionManager.buildSessionContext(), obfuscator),
+		);
+		// Decode-only re-arm on resume. Persisted history keeps cheap handles (the
+		// token win), so a resumed branch can hold `§handle` tokens from argot_load
+		// calls in earlier sessions; the display/export seams can only expand them
+		// with those dictionaries loaded. The branch's own argot_load tool results
+		// name the exact projects the model chose, so resume re-arms those roots
+		// with teach:false — no walking, no guessing, and teaching stays
+		// agent-driven (the model re-decides by calling argot_load again).
+		if (argot !== undefined && existingBranch.length > 0) {
+			const argotRoots = collectArgotLoadedRoots(
+				existingBranch.flatMap(entry => (entry.type === "message" ? [entry.message] : [])),
+			);
+			if (argotRoots.length > 0) {
+				await rearmArgotForDecode(argot, argotRoots, undefined, settings.get("argot.tokenBudget"));
+			}
+		}
+		const hasExistingSession = existingBranch.length > 0;
+		const hasThinkingEntry = existingBranch.some(entry => entry.type === "thinking_level_change");
+		const hasServiceTierEntry = existingBranch.some(entry => entry.type === "service_tier_change");
+
+		const deferredModelPatterns = Array.isArray(options.modelPattern)
+			? options.modelPattern.map(pattern => pattern.trim()).filter(Boolean)
+			: options.modelPattern?.trim()
+				? [options.modelPattern.trim()]
+				: [];
+		const hasExplicitModel = options.model !== undefined || deferredModelPatterns.length > 0;
+		const modelMatchPreferences = getModelMatchPreferences(settings);
+		const allowedModels = await logger.time("resolveAllowedModels", () =>
+			resolveAllowedModels(modelRegistry, settings, modelMatchPreferences),
+		);
+		let defaultRoleSpec = logger.time("resolveDefaultModelRole", () =>
+			resolveModelRoleValue(settings.getModelRole(DEFAULT_MODEL_SLOT), allowedModels, {
+				settings,
+				matchPreferences: modelMatchPreferences,
+			}),
+		);
+		let model = options.model;
+		let modelFallbackMessage: string | undefined;
+		// Identify session model strings to restore in fallback order. We do an
+		// initial pass here so model-dependent setup (thinking-level resolution,
+		// host preconnect) can use the restored model; extension-registered
+		// providers aren't visible yet, so we retry the preferred candidates once
+		// extensions register below.
+		const sessionModelStrings =
+			!hasExplicitModel && hasExistingSession
+				? getRestorableSessionModels(existingSession.models, sessionManager.getLastModelChangeRole())
+				: [];
+		let restoredSessionModelIndex = -1;
+		let restoredSessionThinkingLevel: ConfiguredThinkingLevel | undefined;
+		if (!hasExplicitModel && !model && sessionModelStrings.length > 0) {
+			logger.time("restoreSessionModel", () => {
+				let failedSessionModel: string | undefined;
+				for (let i = 0; i < sessionModelStrings.length; i++) {
+					const sessionModelStr = sessionModelStrings[i];
+					const parsedModel = parseModelString(sessionModelStr, {
+						allowMaxSuffix: true,
+						allowAutoAlias: true,
+						isLiteralModelId: (provider, id) => modelRegistry.find(provider, id) !== undefined,
+					});
+					if (!parsedModel) {
+						failedSessionModel ??= sessionModelStr;
+						continue;
+					}
+
+					const restoredModel = modelRegistry.find(parsedModel.provider, parsedModel.id);
+					if (restoredModel && hasModelAuth(restoredModel)) {
+						model = restoredModel;
+						restoredSessionModelIndex = i;
+						restoredSessionThinkingLevel = parsedModel.thinkingLevel;
+						break;
+					}
+					failedSessionModel ??= sessionModelStr;
+				}
+				if (failedSessionModel) {
+					modelFallbackMessage = `Could not restore model ${failedSessionModel}`;
+				}
 			});
 		}
 
-		return preview;
-	};
-	// Only the first top-level session in a process owns an AsyncJobManager.
-	// Subagents inherit the parent's manager via `AsyncJobManager.instance()`
-	// (set below), and any additional top-level session spun up in-process
-	// (e.g. the agent-creation architect in `agent-dashboard.ts`) must share
-	// the live singleton — otherwise its dispose path would clobber the
-	// owning session's manager and break the `task`/`bash` async paths
-	// (issue #1923). The `instance()` guard means later sessions also skip
-	// constructing an orphaned manager that nothing would ever route to.
-	asyncJobManager =
-		!isInProcessChildSession(options) && !AsyncJobManager.instance()
-			? new AsyncJobManager({
-					maxRunningJobs: asyncMaxJobs,
-					onJobComplete: async (jobId, result, job) => {
-						if (!session || asyncJobManager!.isDeliverySuppressed(jobId)) return;
-						const formattedResult = await formatAsyncResultForFollowUp(result);
-						if (asyncJobManager!.isDeliverySuppressed(jobId)) return;
+		// If still no model, try settings default.
+		// Skip settings fallback when an explicit model was requested.
+		if (!hasExplicitModel && !model && defaultRoleSpec.model) {
+			const settingsDefaultModel = defaultRoleSpec.model;
+			logger.time("resolveSettingsDefaultModel", () => {
+				// defaultRoleSpec.model already comes from modelRegistry.getAvailable(),
+				// so re-validating auth here just repeats the expensive lookup path.
+				model = settingsDefaultModel;
+			});
+		}
 
-						const durationMs = job ? Math.max(0, Date.now() - job.startTime) : undefined;
-						session.yieldQueue.enqueue<AsyncResultEntry>("async-result", {
-							jobId,
-							result: formattedResult,
-							job,
-							durationMs,
-						});
-					},
-				})
-			: undefined;
+		const taskDepth = options.taskDepth ?? 0;
 
-	const scopedAsyncJobManager =
-		asyncJobManager ?? (isInProcessChildSession(options) ? AsyncJobManager.instance() : undefined);
+		// Resolves the session/agent thinking level using the same precedence we
+		// apply at startup: explicit option → persisted session entry → restored
+		// model selector suffix → default role's explicit selector → selected
+		// model's defaultLevel → global settings default. Run again after extension
+		// role reclaim so the final model's own defaults aren't masked by an earlier
+		// fallback model's.
+		const pickInitialThinkingLevel = (selectedModel: Model | undefined): ConfiguredThinkingLevel | undefined => {
+			let level = options.thinkingLevel;
+			if (level === undefined && hasExistingSession && hasThinkingEntry) {
+				level =
+					parseConfiguredThinkingLevel(existingSession.configuredThinkingLevel) ??
+					parseThinkingLevel(existingSession.thinkingLevel);
+			}
+			if (level === undefined && !hasThinkingEntry && restoredSessionThinkingLevel !== undefined) {
+				level = restoredSessionThinkingLevel;
+			}
+			if (level === undefined && !hasExplicitModel && !hasThinkingEntry && defaultRoleSpec.explicitThinkingLevel) {
+				level = defaultRoleSpec.thinkingLevel;
+			}
+			if (level === undefined && selectedModel?.thinking?.defaultLevel !== undefined) {
+				level = selectedModel.thinking.defaultLevel;
+			}
+			if (level === undefined) {
+				// The profile's Default Effort list, through the ONE resolver: this model's
+				// row first, then the any-model row (which is where a legacy
+				// `defaultThinkingLevel` migrates to). Reading the retired enum directly
+				// here is what let a per-model default be ignored.
+				level = resolveEffort({
+					modelSelector: selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : undefined,
+					defaultEffort: withLegacyDefaultEffort(
+						settings.get("defaultEffort"),
+						settings.get("defaultThinkingLevel"),
+					),
+				}).level;
+			}
+			return level;
+		};
+		let thinkingLevel = pickInitialThinkingLevel(model);
+		let autoThinking = thinkingLevel === AUTO_THINKING;
+		// Concrete level the agent/session start with. With `auto` this is the
+		// provisional level shown until the first per-turn classification resolves;
+		// `auto` itself stays a session-only concept handled by AgentSession.
+		let effectiveThinkingLevel: ThinkingLevel | undefined = concreteThinkingLevel(thinkingLevel);
+		if (model) {
+			const resolvedModel = model;
+			effectiveThinkingLevel = logger.time("resolveThinkingLevelForModel", () =>
+				autoThinking
+					? resolveProvisionalAutoLevel(resolvedModel)
+					: resolveThinkingLevelForModel(resolvedModel, effectiveThinkingLevel),
+			);
+			// Fire-and-forget TLS+H2 handshake to the model's host so it overlaps
+			// with the rest of session setup (extension/skill load, tool registry,
+			// system prompt build). Without this, the first `fetch(...)` pays the
+			// full handshake serially — 100–300 ms transcontinental for
+			// api.anthropic.com from a residential IP. Every mode benefits
+			// (interactive, print, rpc, acp).
+			preconnectModelHost(model.baseUrl);
+		}
 
-	const agentRegistry = options.agentRegistry ?? AgentRegistry.global();
-	const resolvedAgentId = options.agentId ?? options.parentTaskPrefix ?? MAIN_AGENT_ID;
-	const resolvedAgentDisplayName = options.agentDisplayName ?? (sessionIsSubagent ? "sub" : "main");
-	const agentKind = sessionIsSubagent ? ("sub" as const) : ("main" as const);
-	/**
-	 * Forget the agent ref on teardown — unless the agent is being parked (or is
-	 * already parked). Parking disposes the session but keeps the ref addressable
-	 * (history://, revive); only process teardown / explicit kill unregisters.
-	 */
-	unregisterUnlessParked = (): void => {
-		if (agentRegistry.get(resolvedAgentId)?.status === "parked") return;
-		if (AgentLifecycleManager.global().isParking(resolvedAgentId)) return;
-		agentRegistry.unregister(resolvedAgentId);
-	};
+		let skills: Skill[];
+		if (options.skills !== undefined) {
+			skills = options.skills;
+		} else {
+			const discovered = await (discoveredSkillsPromise ?? Promise.resolve({ skills: [], warnings: [] }));
+			skills = discovered.skills;
+			// Straight into the operator channel. These used to be collected into
+			// `AgentSession.skillWarnings`, a getter no production code read, so a skill that failed to
+			// load was discarded in silence and the channel looked live from the outside.
+			for (const warning of discovered.warnings) {
+				operatorNotices.warn("skills", `${warning.skillPath}: ${warning.message}`);
+			}
+		}
+
+		// Discover rules and bucket them in one pass to avoid repeated scans over large rule sets.
+		const { ttsrManager, rulebookRules, alwaysApplyRules, allRules } = await logger.time(
+			"discoverTtsrRules",
+			async () => {
+				const { TtsrManager } = await import("./export/ttsr");
+				const ttsrSettings = settings.getGroup("ttsr");
+				// `getCwd` is a live getter, not `cwd`: a rule with a `pathScope` compares the match
+				// against the CURRENT working directory, and `set_cwd` moves it mid-session.
+				const ttsrManager = new TtsrManager(ttsrSettings, { getCwd: () => sessionManager.getCwd() });
+				const rulesResult =
+					options.rules !== undefined
+						? { items: options.rules, warnings: undefined }
+						: await loadCapability<Rule>(ruleCapability.id, { cwd });
+				const { rulebookRules, alwaysApplyRules } = bucketRules(rulesResult.items, ttsrManager, {
+					builtinRules: ttsrSettings.builtinRules,
+					disabledRules: ttsrSettings.disabledRules,
+				});
+				if (existingSession.injectedTtsrRules.length > 0) {
+					ttsrManager.restoreInjected(existingSession.injectedTtsrRules);
+				}
+				return { ttsrManager, rulebookRules, alwaysApplyRules, allRules: rulesResult.items };
+			},
+		);
+
+		// Resolve contextFiles up-front (it's needed before tool creation). The
+		// workspace tree scan is slow on large repos and we MUST NOT block startup on
+		// it. On timeout we forward `undefined` to ToolSession; buildSystemPromptInternal
+		// will re-race the same promise through its own withDeadline path. Background
+		// work continues so caches still warm.
+		const raceWithDeadline = async <T>(name: string, work: Promise<T>): Promise<T | undefined> => {
+			let timedOut = false;
+			const result = await Promise.race([
+				work,
+				Bun.sleep(STARTUP_SCAN_DEADLINE_MS).then(() => {
+					timedOut = true;
+					return undefined;
+				}),
+			]);
+			if (timedOut) {
+				logger.warn("Startup scan exceeded deadline; deferring to system prompt fallback", {
+					name,
+					timeoutMs: STARTUP_SCAN_DEADLINE_MS,
+					cwd,
+				});
+			}
+			return result;
+		};
+		const [contextFiles, resolvedWorkspaceTree, activeRepoContext, watchdogFiles, discoveredAdvisors] =
+			await Promise.all([
+				contextFilesPromise,
+				raceWithDeadline("buildWorkspaceTree", workspaceTreePromise),
+				activeRepoContextPromise,
+				watchdogFilesPromise,
+				advisorConfigsPromise,
+			]);
+
+		let promptInputCwd = cwd;
+		let promptContextFiles = contextFiles;
+		let promptWorkspaceTree: WorkspaceTree | Promise<WorkspaceTree> = workspaceTreePromise;
+		let promptActiveRepoContext = activeRepoContext;
+		let promptSkills = skills;
+		let promptRulebookRules = rulebookRules;
+		let promptAlwaysApplyRules = alwaysApplyRules;
+
+		const leaseSecretRuntime = async (): Promise<SecretRuntimeLease> => {
+			for (;;) {
+				const pending = pendingSecretRuntime;
+				if (pending) {
+					await pending.work;
+					if (pendingSecretRuntime !== pending) continue;
+				}
+
+				if (
+					secretVault &&
+					capturedVaultRevision !== undefined &&
+					secretVault.revision() !== capturedVaultRevision
+				) {
+					return await refreshSecretRuntime(secretRuntimeCwd);
+				}
+				return secretRuntimeLease;
+			}
+		};
+
+		refreshSecretRuntime = (runtimeCwd: string): Promise<SecretRuntimeLease> => {
+			const revision = ++latestSecretRuntimeRequest;
+			const normalizedRuntimeCwd = path.resolve(runtimeCwd);
+			const work = (async (): Promise<SecretRuntimeLease | undefined> => {
+				const runtimeSettings =
+					normalizedRuntimeCwd === secretRuntimeCwd || path.resolve(settings.getCwd()) === normalizedRuntimeCwd
+						? settings
+						: await settings.cloneForCwd(normalizedRuntimeCwd);
+				const next = await loadSecretRuntime(normalizedRuntimeCwd, runtimeSettings);
+
+				const isAuthoritative = (): boolean =>
+					revision === latestSecretRuntimeRequest &&
+					path.resolve(sessionManager.getCwd()) === normalizedRuntimeCwd;
+				if (!isAuthoritative()) return undefined;
+
+				if (next.obfuscator && redactionObfuscator) {
+					// Expansion never crosses snapshots, but redaction tombstones cross
+					// every refresh, cwd move, and disable replacement.
+					next.obfuscator.retainRedactionsFrom(redactionObfuscator);
+				}
+				await secretAuditLog?.flush();
+				if (!isAuthoritative()) return undefined;
+
+				const nextRedactor = next.obfuscator ?? redactionObfuscator;
+				const nextLease = createSecretRuntimeLease(
+					revision,
+					normalizedRuntimeCwd,
+					next.obfuscator,
+					nextRedactor,
+					next.vault,
+					next.vaultRevision,
+					next.auditLog,
+				);
+
+				// One synchronous commit updates every SDK closure and the AgentSession
+				// view. No await is permitted in this block.
+				obfuscator = next.obfuscator;
+				redactionObfuscator = nextRedactor;
+				secretVault = next.vault;
+				capturedVaultRevision = next.vaultRevision;
+				secretAuditLog = next.auditLog;
+				secretRuntimeCwd = normalizedRuntimeCwd;
+				secretRuntimeLease = nextLease;
+				if (hasSession) session.installSecretRuntime(nextLease);
+				return nextLease;
+			})();
+			const pending = { revision, cwd: normalizedRuntimeCwd, work };
+			pendingSecretRuntime = pending;
+
+			return (async () => {
+				try {
+					const committed = await work;
+					if (committed) return committed;
+					if (pendingSecretRuntime === pending) pendingSecretRuntime = undefined;
+					return await leaseSecretRuntime();
+				} catch (error) {
+					if (revision !== latestSecretRuntimeRequest) return await leaseSecretRuntime();
+					throw error;
+				} finally {
+					if (pendingSecretRuntime === pending) pendingSecretRuntime = undefined;
+				}
+			})();
+		};
+		const enableLsp = options.enableLsp ?? true;
+		const asyncMaxJobs = Math.min(100, Math.max(1, settings.get("async.maxJobs") ?? 100));
+		const ASYNC_INLINE_RESULT_MAX_CHARS = 12_000;
+		const ASYNC_PREVIEW_MAX_CHARS = 4_000;
+		const formatAsyncResultForFollowUp = async (result: string): Promise<string> => {
+			if (result.length <= ASYNC_INLINE_RESULT_MAX_CHARS) {
+				return result;
+			}
+
+			const preview = `${result.slice(0, ASYNC_PREVIEW_MAX_CHARS)}\n\n[Output truncated. Showing first ${ASYNC_PREVIEW_MAX_CHARS.toLocaleString()} characters.]`;
+			try {
+				const { path: artifactPath, id: artifactId } = await sessionManager.allocateArtifactPath("async");
+				if (artifactPath && artifactId) {
+					await Bun.write(artifactPath, result);
+					return `${preview}\nFull output: artifact://${artifactId}`;
+				}
+			} catch (error) {
+				logger.warn("Failed to persist async follow-up artifact", {
+					error: errorMessage(error),
+				});
+			}
+
+			return preview;
+		};
+		// Only the first top-level session in a process owns an AsyncJobManager.
+		// Subagents inherit the parent's manager via `AsyncJobManager.instance()`
+		// (set below), and any additional top-level session spun up in-process
+		// (e.g. the agent-creation architect in `agent-dashboard.ts`) must share
+		// the live singleton — otherwise its dispose path would clobber the
+		// owning session's manager and break the `task`/`bash` async paths
+		// (issue #1923). The `instance()` guard means later sessions also skip
+		// constructing an orphaned manager that nothing would ever route to.
+		asyncJobManager =
+			!isInProcessChildSession(options) && !AsyncJobManager.instance()
+				? new AsyncJobManager({
+						maxRunningJobs: asyncMaxJobs,
+						onJobComplete: async (jobId, result, job) => {
+							if (!session || asyncJobManager!.isDeliverySuppressed(jobId)) return;
+							const formattedResult = await formatAsyncResultForFollowUp(result);
+							if (asyncJobManager!.isDeliverySuppressed(jobId)) return;
+
+							const durationMs = job ? Math.max(0, Date.now() - job.startTime) : undefined;
+							session.yieldQueue.enqueue<AsyncResultEntry>("async-result", {
+								jobId,
+								result: formattedResult,
+								job,
+								durationMs,
+							});
+						},
+					})
+				: undefined;
+
+		const scopedAsyncJobManager =
+			asyncJobManager ?? (isInProcessChildSession(options) ? AsyncJobManager.instance() : undefined);
+
+		const agentRegistry = options.agentRegistry ?? AgentRegistry.global();
+		const resolvedAgentId = options.agentId ?? options.parentTaskPrefix ?? MAIN_AGENT_ID;
+		const resolvedAgentDisplayName = options.agentDisplayName ?? (sessionIsSubagent ? "sub" : "main");
+		const agentKind = sessionIsSubagent ? ("sub" as const) : ("main" as const);
+		/**
+		 * Forget the agent ref on teardown — unless the agent is being parked (or is
+		 * already parked). Parking disposes the session but keeps the ref addressable
+		 * (history://, revive); only process teardown / explicit kill unregisters.
+		 */
+		unregisterUnlessParked = (): void => {
+			if (agentRegistry.get(resolvedAgentId)?.status === "parked") return;
+			if (AgentLifecycleManager.global().isParking(resolvedAgentId)) return;
+			agentRegistry.unregister(resolvedAgentId);
+		};
 		const getActiveModelString = (): string | undefined => {
 			const activeModel = agent?.state.model;
 			if (activeModel) return formatModelString(activeModel);
@@ -3499,9 +3507,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const telemetry: AgentTelemetryConfig = {
 			...(options.telemetry ?? {}),
 			textSanitizer: text =>
-				secretRuntimeLease.obfuscateText(
-					callerTelemetryTextSanitizer ? callerTelemetryTextSanitizer(text) : text,
-				),
+				secretRuntimeLease.obfuscateText(callerTelemetryTextSanitizer ? callerTelemetryTextSanitizer(text) : text),
 		};
 		// One warning per model when auto tool-format reroutes a non-tool-calling
 		// model onto an in-band text dialect — the operator must see the degrade.
