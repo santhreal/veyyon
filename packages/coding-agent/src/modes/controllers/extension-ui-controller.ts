@@ -436,6 +436,7 @@ export class ExtensionUiController {
 			getContextUsage: () => this.ctx.session.getContextUsage(),
 			compact: instructionsOrOptions => this.#compactSession(instructionsOrOptions),
 			getSystemPrompt: () => this.ctx.session.systemPrompt,
+			obfuscateProviderText: text => this.ctx.session.obfuscateProviderText(text),
 		};
 		const commandActions: ExtensionCommandContextActions = {
 			getContextUsage: () => this.ctx.session.getContextUsage(),
@@ -979,6 +980,13 @@ export class ExtensionUiController {
 		title: string,
 		placeholder?: string,
 		dialogOptions?: ExtensionUIDialogOptions,
+		/**
+		 * How the field renders, as opposed to how the dialog behaves. `mask` makes it a
+		 * credential field. Separate from `dialogOptions` for the same reason
+		 * {@link showHookEditor} keeps `editorOptions` separate: presentation is not an extension
+		 * API concern, and masking must not become something a remote extension can switch off.
+		 */
+		inputOptions?: { mask?: string },
 	): Promise<string | undefined> {
 		return this.#presentDialog(dialogOptions?.signal, settle => {
 			this.ctx.hookInput = new HookInputComponent(
@@ -990,6 +998,7 @@ export class ExtensionUiController {
 					timeout: dialogOptions?.timeout,
 					onTimeout: dialogOptions?.onTimeout,
 					tui: this.ctx.ui,
+					mask: inputOptions?.mask,
 				},
 			);
 			this.ctx.editorContainer.clear();

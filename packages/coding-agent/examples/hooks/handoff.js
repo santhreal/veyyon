@@ -14,6 +14,7 @@
 import { serializeConversation } from "@veyyon/agent-core";
 import { complete } from "@veyyon/ai";
 import { BorderedLoader, convertToLlm } from "@veyyon/coding-agent";
+import { mapJsonStrings } from "@veyyon/coding-agent/secrets/obfuscator";
 const SYSTEM_PROMPT = `You are a context transfer assistant. Given a conversation history and the user's goal for a new thread, generate a focused prompt that:
 
 1. Summarizes relevant context from the conversation (decisions made, approaches taken, key findings)
@@ -61,9 +62,8 @@ export default function (pi) {
                 ctx.ui.notify("No conversation to hand off", "error");
                 return;
             }
-            // Convert to LLM format and serialize
-            const llmMessages = convertToLlm(messages);
-            const conversationText = serializeConversation(llmMessages);
+            // Keep raw branch messages until the provider attempt; serialization happens only
+            // after every complete structured string has passed through the live transform.
             const currentSessionFile = ctx.sessionManager.getSessionFile();
             // Generate the handoff prompt with loader UI
             const result = await ctx.ui.custom((tui, theme, done) => {
@@ -71,17 +71,32 @@ export default function (pi) {
                 loader.onAbort = () => done(null);
                 const doGenerate = async () => {
                     const apiKey = await ctx.modelRegistry.getApiKey(ctx.model);
-                    const userMessage = {
-                        role: "user",
-                        content: [
-                            {
-                                type: "text",
-                                text: `## Conversation History\n\n${conversationText}\n\n## User's Goal for New Thread\n\n${goal}`,
-                            },
-                        ],
-                        timestamp: Date.now(),
+                    if (!apiKey)
+                        return null;
+                    const sanitizeLive = (text) => ctx.obfuscateProviderText(text);
+                    const providerContext = { messages: [] };
+                    const buildAttemptContext = () => {
+                        const providerMessages = mapJsonStrings(convertToLlm(messages), sanitizeLive);
+                        const conversationText = serializeConversation(providerMessages);
+                        const userMessage = {
+                            role: "user",
+                            content: [
+                                {
+                                    type: "text",
+                                    text: sanitizeLive(`## Conversation History\n\n${conversationText}\n\n## User's Goal for New Thread\n\n${sanitizeLive(goal)}`),
+                                },
+                            ],
+                            timestamp: Date.now(),
+                        };
+                        providerContext.systemPrompt = [sanitizeLive(SYSTEM_PROMPT)];
+                        providerContext.messages = [userMessage];
                     };
-                    const response = await complete(ctx.model, { systemPrompt: [SYSTEM_PROMPT], messages: [userMessage] }, { apiKey, signal: loader.signal });
+                    buildAttemptContext();
+                    const response = await complete(ctx.model, providerContext, {
+                        apiKey,
+                        signal: loader.signal,
+                        onPayload: payload => mapJsonStrings(payload, sanitizeLive),
+                    });
                     if (response.stopReason === "aborted") {
                         return null;
                     }
@@ -92,8 +107,7 @@ export default function (pi) {
                 };
                 doGenerate()
                     .then(done)
-                    .catch(err => {
-                    console.error("Handoff generation failed:", err);
+                    .catch(() => {
                     done(null);
                 });
                 return loader;

@@ -24,6 +24,7 @@ interface MemoryBoundaryFixture {
 		model: Model;
 		modelRegistry: MemoryModelRegistry;
 		obfuscator?: SecretObfuscator;
+		obfuscateProviderText: (text: string) => string;
 		refreshBaseSystemPrompt: () => Promise<void>;
 	};
 	modelRegistry: MemoryModelRegistry;
@@ -91,7 +92,7 @@ async function createFixture(overrides: Record<string, unknown> = {}): Promise<M
 	const whenSettled = new Promise<void>(resolve => {
 		resolveSettled = resolve;
 	});
-	const session = {
+	const session: MemoryBoundaryFixture["session"] = {
 		sessionId: "memory-boundary-session",
 		sessionManager: {
 			getSessionFile: () => sessionFile,
@@ -102,6 +103,7 @@ async function createFixture(overrides: Record<string, unknown> = {}): Promise<M
 		settings,
 		model,
 		modelRegistry,
+		obfuscateProviderText: (text: string) => session.obfuscator?.obfuscate(text) ?? text,
 		refreshBaseSystemPrompt: async () => resolveSettled(),
 	};
 	return { agentDir, sessionDir, settings, session, modelRegistry, whenSettled };
@@ -236,6 +238,41 @@ describe("memory provider boundary", () => {
 		expect(stageOnePayload).not.toContain(secret);
 		expect(stageOnePayload).not.toContain("MEMORY_BOUNDARY");
 		expect(stageOnePayload).not.toContain("SECRET_ABCDEF");
+	});
+
+	test("sanitizes a full allowlisted tool result before applying its size cap", async () => {
+		// Why: the 32k tool-result cap is another lossy boundary. Dropping/projecting first would
+		// prevent the current short placeholder from reaching stage one and can split a future
+		// chunked implementation's exact marker before the sanitizer sees it.
+		const fixture = await createFixture();
+		const secret = `MEMORY_TOOL_CHUNK_START_${"T".repeat(33_000)}_MEMORY_TOOL_CHUNK_END`;
+		await writeRollout(fixture, "tool-chunk-boundary", [
+			{ role: "toolResult", toolName: "bash", content: [{ type: "text", text: secret }] },
+		]);
+		fixture.modelRegistry.resolver = () => async () => {
+			fixture.session.obfuscator = new SecretObfuscator([
+				{ type: "plain", content: secret, name: "TOOL_CHUNK_CURRENT" },
+			]);
+			return "test-key";
+		};
+		let stageOnePayload = "";
+		vi.spyOn(ai, "completeSimple").mockImplementation(
+			async (_model: Model, context: Context, options?: SimpleStreamOptions) => {
+				await resolveApiKey(options?.apiKey);
+				if (isStageOne(context)) {
+					stageOnePayload = JSON.stringify(context);
+					return successfulStageOne("tool-chunk-boundary") as never;
+				}
+				return successfulPhaseTwo as never;
+			},
+		);
+
+		start(fixture);
+		await settle(fixture);
+		expect(stageOnePayload).toContain("#TOOL_CHUNK_CURRENT#");
+		expect(stageOnePayload).not.toContain(secret);
+		expect(stageOnePayload).not.toContain("MEMORY_TOOL_CHUNK_START");
+		expect(stageOnePayload).not.toContain("MEMORY_TOOL_CHUNK_END");
 	});
 
 	test("projects adversarial messages onto text only and omits image, binary, replay, and nested payloads", async () => {
@@ -380,17 +417,19 @@ describe("memory provider boundary", () => {
 		expect(phaseTwoPayload).toContain(obfuscatedPhaseTwoSecret);
 	});
 
-	test("re-sanitizes a request after every awaited credential resolution", async () => {
-		// Why: an auth retry is a new physical send and must honor secrets learned after the failed attempt.
-		const fixture = await createFixture();
-		const lateSecret = "MEMORY_RETRY_RUNTIME_SECRET_921";
-		await writeRollout(fixture, "retry-refresh", [{ role: "user", content: lateSecret }]);
+	test("rebuilds a truncated stage-one request with the runtime selected for each credential attempt", async () => {
+		// Why: if JSON projection/truncation runs before an awaited credential refresh, a marker
+		// crossing the head-tail cut becomes two fragments that an exact sanitizer cannot match.
+		const fixture = await createFixture({ "memories.phase1InputTokenLimit": 24 });
+		const lateSecret = `MEMORY_RETRY_RUNTIME_BOUNDARY_START_${"Q".repeat(120)}_BOUNDARY_END`;
+		await writeRollout(fixture, "retry-refresh", [
+			{ role: "user", content: `prefix-${lateSecret}-tail-${"z".repeat(160)}` },
+		]);
 		let underlyingResolutions = 0;
 		fixture.modelRegistry.resolver = () => async () => {
 			underlyingResolutions += 1;
-			if (underlyingResolutions === 2) {
-				fixture.session.obfuscator = new SecretObfuscator([{ type: "plain", content: lateSecret }]);
-			}
+			const name = underlyingResolutions === 1 ? "FIRST_ATTEMPT" : "CURRENT_ATTEMPT";
+			fixture.session.obfuscator = new SecretObfuscator([{ type: "plain", content: lateSecret, name }]);
 			return `test-key-${underlyingResolutions}`;
 		};
 		const attempts: string[] = [];
@@ -411,10 +450,63 @@ describe("memory provider boundary", () => {
 		start(fixture);
 		await settle(fixture);
 		expect(attempts).toHaveLength(2);
-		expect(attempts[0]).toContain(lateSecret);
-		expect(attempts[1]).not.toContain(lateSecret);
-		const obfuscatedLateSecret = fixture.session.obfuscator?.obfuscate(lateSecret);
-		if (obfuscatedLateSecret === undefined) throw new Error("runtime obfuscator was not installed");
-		expect(attempts[1]).toContain(obfuscatedLateSecret);
+		for (const attempt of attempts) {
+			expect(attempt).not.toContain(lateSecret);
+			expect(attempt).not.toContain("MEMORY_RETRY_RUNTIME_BOUNDARY");
+			expect(attempt).not.toContain("BOUNDARY_END");
+		}
+		expect(attempts[0]).toContain("#FIRST_ATTEMPT#");
+		expect(attempts[1]).toContain("#CURRENT_ATTEMPT#");
+	});
+
+	test("sanitizes phase-two source strings before truncation after credential resolution", async () => {
+		// Why: phase two has its own 80k-character head-tail projection. This raw marker is long
+		// enough to straddle that cut, while its current placeholder makes the sanitized source
+		// fit without truncation; only sanitize-before-project can preserve the whole placeholder.
+		const fixture = await createFixture();
+		const phaseTwoSecret = `PHASE_TWO_BOUNDARY_START_${"R".repeat(10_000)}_PHASE_TWO_BOUNDARY_END`;
+		const phaseTwoMemory = `${"a".repeat(43_000)}${phaseTwoSecret}${"b".repeat(25_000)}`;
+		await writeRollout(fixture, "phase-two-credential-boundary", [{ role: "user", content: "seed" }]);
+		let resolvingPhaseTwo = false;
+		fixture.modelRegistry.resolver = () => async () => {
+			if (resolvingPhaseTwo) {
+				fixture.session.obfuscator = new SecretObfuscator([
+					{ type: "plain", content: phaseTwoSecret, name: "PHASE_TWO_CURRENT" },
+				]);
+			}
+			return "test-key";
+		};
+		let phaseTwoPayload = "";
+		vi.spyOn(ai, "completeSimple").mockImplementation(
+			async (_model: Model, context: Context, options?: SimpleStreamOptions) => {
+				if (isStageOne(context)) {
+					await resolveApiKey(options?.apiKey);
+					return {
+						...successfulStageOne("phase-two-credential-boundary"),
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									rollout_summary: "Summary",
+									rollout_slug: "phase-two-credential-boundary",
+									raw_memory: phaseTwoMemory,
+								}),
+							},
+						],
+					} as never;
+				}
+				resolvingPhaseTwo = true;
+				await resolveApiKey(options?.apiKey);
+				phaseTwoPayload = JSON.stringify(context);
+				return successfulPhaseTwo as never;
+			},
+		);
+
+		start(fixture);
+		await settle(fixture);
+		expect(phaseTwoPayload).toContain("#PHASE_TWO_CURRENT#");
+		expect(phaseTwoPayload).not.toContain(phaseTwoSecret);
+		expect(phaseTwoPayload).not.toContain("PHASE_TWO_BOUNDARY_START");
+		expect(phaseTwoPayload).not.toContain("PHASE_TWO_BOUNDARY_END");
 	});
 });

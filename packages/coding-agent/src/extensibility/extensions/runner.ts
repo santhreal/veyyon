@@ -231,6 +231,7 @@ export class ExtensionRunner {
 	#getContextUsageFn: () => ContextUsage | undefined = () => undefined;
 	#compactFn: (instructionsOrOptions?: string | CompactOptions) => Promise<void> = async () => {};
 	#getSystemPromptFn: () => string[] = () => [];
+	#obfuscateProviderTextFn: (text: string) => string = text => text;
 	#newSessionHandler: NewSessionHandler = async () => ({ cancelled: false });
 	#branchHandler: BranchHandler = async () => ({ cancelled: false });
 	#navigateTreeHandler: NavigateTreeHandler = async () => ({ cancelled: false });
@@ -290,6 +291,7 @@ export class ExtensionRunner {
 		this.#hasPendingMessagesFn = contextActions.hasPendingMessages;
 		this.#shutdownHandler = contextActions.shutdown;
 		this.#getSystemPromptFn = contextActions.getSystemPrompt;
+		this.#obfuscateProviderTextFn = contextActions.obfuscateProviderText ?? (text => text);
 
 		// Command context actions (optional, only for interactive mode)
 		if (commandContextActions) {
@@ -541,6 +543,7 @@ export class ExtensionRunner {
 			shutdown: () => this.#shutdownHandler(),
 			getSystemPrompt: () => this.#getSystemPromptFn(),
 			localProtocolOptions: this.localProtocolOptions,
+			obfuscateProviderText: text => this.#obfuscateProviderTextFn(text),
 			memory: this.#getMemoryFn?.(),
 		};
 	}
@@ -790,14 +793,14 @@ export class ExtensionRunner {
 	}
 
 	async emitUserBash(event: UserBashEvent): Promise<UserBashEventResult | undefined> {
-		return this.emitUserEvent<UserBashEventResult>(event, "user_bash");
+		return this.#emitUserEvent<UserBashEventResult>(event, "user_bash");
 	}
 
 	async emitUserPython(event: UserPythonEvent): Promise<UserPythonEventResult | undefined> {
-		return this.emitUserEvent<UserPythonEventResult>(event, "user_python");
+		return this.#emitUserEvent<UserPythonEventResult>(event, "user_python");
 	}
 
-	private async emitUserEvent<R>(
+	async #emitUserEvent<R>(
 		event: UserBashEvent | UserPythonEvent,
 		eventName: "user_bash" | "user_python",
 	): Promise<R | undefined> {

@@ -14,6 +14,7 @@ import {
 	ExtensionRunner,
 	testSetExtensionHandlerTimeoutMs,
 } from "@veyyon/coding-agent/extensibility/extensions/runner";
+import { HookRunner } from "@veyyon/coding-agent/extensibility/hooks/runner";
 import { ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
 import { Type } from "@veyyon/coding-agent/extensibility/typebox";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
@@ -91,6 +92,69 @@ describe("ExtensionRunner", () => {
 		);
 
 		expect(runner.createContext().localProtocolOptions).toBe(localProtocolOptions);
+	});
+
+	it("keeps the provider text transform live in concrete extension contexts", async () => {
+		// Published hooks execute through ExtensionRunner. The context callback must dereference
+		// current session state on every call rather than capture the runtime present at initialize.
+		const result = await loadTestExtensions();
+		const runner = new ExtensionRunner(
+			result.extensions,
+			result.runtime,
+			tempDir.path(),
+			sessionManager,
+			modelRegistry,
+		);
+		let replacement = "#FIRST_RUNTIME#";
+		runner.initialize(
+			{
+				sendMessage: () => {},
+				sendUserMessage: () => {},
+				appendEntry: () => {},
+				setLabel: () => {},
+				getActiveTools: () => [],
+				getAllTools: () => [],
+				setActiveTools: async () => {},
+				getCommands: () => [],
+				setModel: async () => false,
+				getThinkingLevel: () => undefined,
+				setThinkingLevel: () => {},
+				getSessionName: () => undefined,
+				setSessionName: async () => {},
+			},
+			{
+				getModel: () => undefined,
+				isIdle: () => true,
+				abort: () => {},
+				hasPendingMessages: () => false,
+				shutdown: () => {},
+				getContextUsage: () => undefined,
+				compact: async () => {},
+				getSystemPrompt: () => [],
+				obfuscateProviderText: text => text.replaceAll("RUNNER_SECRET", replacement),
+			},
+		);
+
+		const context = runner.createContext();
+		expect(context.obfuscateProviderText?.("RUNNER_SECRET")).toBe("#FIRST_RUNTIME#");
+		replacement = "#CURRENT_RUNTIME#";
+		expect(context.obfuscateProviderText?.("RUNNER_SECRET")).toBe("#CURRENT_RUNTIME#");
+	});
+
+	it("keeps the provider text transform live in legacy hook contexts", () => {
+		let replacement = "#FIRST_HOOK_RUNTIME#";
+		const runner = new HookRunner([], tempDir.path(), sessionManager, modelRegistry);
+		runner.initialize({
+			getModel: () => undefined,
+			sendMessageHandler: async () => {},
+			appendEntryHandler: async () => {},
+			obfuscateProviderText: text => text.replaceAll("HOOK_SECRET", replacement),
+		});
+
+		const context = runner.createCommandContext();
+		expect(context.obfuscateProviderText("HOOK_SECRET")).toBe("#FIRST_HOOK_RUNTIME#");
+		replacement = "#CURRENT_HOOK_RUNTIME#";
+		expect(context.obfuscateProviderText("HOOK_SECRET")).toBe("#CURRENT_HOOK_RUNTIME#");
 	});
 
 	describe("shortcut conflicts", () => {

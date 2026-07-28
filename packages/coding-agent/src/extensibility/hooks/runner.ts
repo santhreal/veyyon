@@ -55,6 +55,7 @@ export class HookRunner {
 	#waitForIdleFn: () => Promise<void> = async () => {};
 	#abortFn: () => void = () => {};
 	#hasQueuedMessagesFn: () => boolean = () => false;
+	#obfuscateProviderTextFn: (text: string) => string = text => text;
 	#newSessionHandler: NewSessionHandler = async () => ({ cancelled: false });
 	#branchHandler: BranchHandler = async () => ({ cancelled: false });
 	#navigateTreeHandler: NavigateTreeHandler = async () => ({ cancelled: false });
@@ -94,6 +95,8 @@ export class HookRunner {
 		abort?: () => void;
 		/** Function to check if there are queued messages */
 		hasQueuedMessages?: () => boolean;
+		/** Live redaction-only transform for hook-owned provider requests */
+		obfuscateProviderText?: (text: string) => string;
 		/** UI context for interactive prompts */
 		uiContext?: HookUIContext;
 		/** Whether UI is available */
@@ -104,6 +107,7 @@ export class HookRunner {
 		this.#waitForIdleFn = options.waitForIdle ?? (async () => {});
 		this.#abortFn = options.abort ?? (() => {});
 		this.#hasQueuedMessagesFn = options.hasQueuedMessages ?? (() => false);
+		this.#obfuscateProviderTextFn = options.obfuscateProviderText ?? (text => text);
 		// Store session handlers for HookCommandContext
 		if (options.newSessionHandler) {
 			this.#newSessionHandler = options.newSessionHandler;
@@ -230,6 +234,7 @@ export class HookRunner {
 			sessionManager: this.sessionManager,
 			modelRegistry: this.modelRegistry,
 			model: this.#getModel(),
+			obfuscateProviderText: text => this.#obfuscateProviderTextFn(text),
 			isIdle: () => this.#isIdleFn(),
 			abort: () => this.#abortFn(),
 			hasQueuedMessages: () => this.#hasQueuedMessagesFn(),

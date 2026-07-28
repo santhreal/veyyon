@@ -14,10 +14,12 @@
  */
 
 import { serializeConversation } from "@veyyon/agent-core";
-import { complete } from "@veyyon/ai";
+import { complete, type Context, type Message } from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog";
 import type { HookAPI } from "@veyyon/coding-agent";
 import { convertToLlm } from "@veyyon/coding-agent";
+import { mapJsonStrings } from "@veyyon/coding-agent/secrets/obfuscator";
+
 
 export default function (pi: HookAPI) {
 	pi.on("session_before_compact", async (event, ctx) => {
@@ -33,8 +35,15 @@ export default function (pi: HookAPI) {
 			return;
 		}
 
-		// Resolve API key for the summarization model
-		const apiKey = await ctx.modelRegistry.getApiKey(model);
+		// Resolve credentials before projecting raw history. Credential failures stay generic:
+		// provider/auth diagnostics may echo sensitive source bytes.
+		let apiKey: string | undefined;
+		try {
+			apiKey = await ctx.modelRegistry.getApiKey(model);
+		} catch {
+			ctx.ui.notify("Could not resolve compaction credentials, using default compaction", "warning");
+			return;
+		}
 		if (!apiKey) {
 			ctx.ui.notify(`No API key for ${model.provider}, using default compaction`, "warning");
 			return;
@@ -50,20 +59,23 @@ export default function (pi: HookAPI) {
 			"info",
 		);
 
-		// Convert messages to readable text format
-		const conversationText = serializeConversation(convertToLlm(allMessages));
-
-		// Include previous summary context if available
-		const previousContext = previousSummary ? `\n\nPrevious session summary for context:\n${previousSummary}` : "";
-
-		// Build messages that ask for a comprehensive summary
-		const summaryMessages = [
-			{
-				role: "user" as const,
-				content: [
-					{
-						type: "text" as const,
-						text: `You are a conversation summarizer. Create a comprehensive summary of this conversation that captures:${previousContext}
+		// Keep the raw messages until a physical attempt. The builder first sanitizes every
+		// complete structured string, then performs the lossy conversation serialization.
+		const providerContext: Context = { messages: [] };
+		const sanitizeLive = (text: string): string => ctx.obfuscateProviderText(text);
+		const buildAttemptContext = (): void => {
+			const providerMessages = mapJsonStrings(convertToLlm(allMessages), sanitizeLive) as Message[];
+			const conversationText = serializeConversation(providerMessages);
+			const previousContext = previousSummary
+				? `\n\nPrevious session summary for context:\n${sanitizeLive(previousSummary)}`
+				: "";
+			providerContext.messages = [
+				{
+					role: "user",
+					content: [
+						{
+							type: "text",
+							text: sanitizeLive(`You are a conversation summarizer. Create a comprehensive summary of this conversation that captures:${previousContext}
 
 1. The main goals and objectives discussed
 2. Key decisions made and their rationale
@@ -78,16 +90,22 @@ Format the summary as structured markdown with clear sections.
 
 <conversation>
 ${conversationText}
-</conversation>`,
-					},
-				],
-				timestamp: Date.now(),
-			},
-		];
+</conversation>`),
+						},
+					],
+					timestamp: Date.now(),
+				},
+			];
+		};
+		buildAttemptContext();
 
 		try {
-			// Pass signal to honor abort requests (e.g., user cancels compaction)
-			const response = await complete(model, { messages: summaryMessages }, { apiKey, maxTokens: 8192, signal });
+			const response = await complete(model, providerContext, {
+				apiKey,
+				maxTokens: 8192,
+				signal,
+				onPayload: payload => mapJsonStrings(payload, sanitizeLive),
+			});
 
 			const summary = response.content
 				.filter((c): c is { type: "text"; text: string } => c.type === "text")
@@ -108,10 +126,8 @@ ${conversationText}
 					tokensBefore,
 				},
 			};
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			ctx.ui.notify(`Compaction failed: ${message}`, "error");
-			// Fall back to default compaction on error
+		} catch {
+			ctx.ui.notify("Compaction request failed, using default compaction", "error");
 			return;
 		}
 	});

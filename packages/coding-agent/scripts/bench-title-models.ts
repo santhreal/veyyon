@@ -22,22 +22,27 @@ import { Database } from "bun:sqlite";
  */
 import * as os from "node:os";
 import * as path from "node:path";
-import { prompt } from "@veyyon/utils";
+import { getAgentDir, getProjectDir, prompt } from "@veyyon/utils";
+import { Settings } from "../src/config/settings";
 import { promptText } from "../src/prompts/registry";
 import { preprocessTinyMessage } from "../src/tiny/message-preproc";
 import { isTinyTitleLocalModelKey } from "../src/tiny/models";
 import { normalizeGeneratedTitle } from "../src/tiny/text";
+import {
+	loadStandaloneSecretRuntime,
+	type StandaloneSecretRuntimeOptions,
+} from "../src/secrets/standalone-runtime";
 import { shutdownTinyTitleClient, tinyTitleClient } from "../src/tiny/title-client";
 
 /** A sampled prompt with the cleaned text actually fed to the models. */
-interface PreparedPrompt {
+export interface PreparedPrompt {
 	id: number;
 	raw: string;
 	input: string;
 }
 
 /** One title produced for one input by one model, with wall-clock latency. */
-interface BenchSample {
+export interface BenchSample {
 	id: number;
 	input: string;
 	title: string | null;
@@ -152,10 +157,20 @@ function parseChatTitle(text: string, sourceText: string): string | null {
 }
 
 /** Run one Ollama chat model over every prompt via the /api/chat endpoint. */
-async function runOllamaLane(baseUrl: string, model: string, prompts: PreparedPrompt[]): Promise<BenchSample[]> {
+export async function runOllamaLane(
+	baseUrl: string,
+	model: string,
+	prompts: PreparedPrompt[],
+	secretRuntime: StandaloneSecretRuntimeOptions,
+): Promise<BenchSample[]> {
 	const samples: BenchSample[] = [];
 	for (const item of prompts) {
 		const started = performance.now();
+		// This is the physical remote-attempt seam. Reload every live secret source, sanitize the
+		// complete raw history string, and only then apply tiny-message truncation/normalization.
+		// A future retry must execute this loop body again rather than reuse a prepared body.
+		const runtime = await loadStandaloneSecretRuntime(secretRuntime);
+		const providerInput = preprocessTinyMessage(runtime.obfuscate(item.raw));
 		const response = await fetch(new URL("/api/chat", baseUrl), {
 			method: "POST",
 			headers: { "content-type": "application/json" },
@@ -164,19 +179,19 @@ async function runOllamaLane(baseUrl: string, model: string, prompts: PreparedPr
 				stream: false,
 				keep_alive: "10m",
 				messages: [
-					{ role: "system", content: TITLE_PROMPT_WITH_EXAMPLES },
-					{ role: "user", content: `<user>\n${item.input}\n</user>` },
+					{ role: "system", content: runtime.obfuscate(TITLE_PROMPT_WITH_EXAMPLES) },
+					{ role: "user", content: `<user>\n${providerInput}\n</user>` },
 				],
 				options: { temperature: 0, num_predict: 32 },
 			}),
 		});
-		if (!response.ok) throw new Error(`Ollama ${response.status}: ${await response.text()}`);
+		if (!response.ok) throw new Error(`Ollama request failed with status ${response.status}`);
 		const payload = (await response.json()) as { message?: { content?: string } };
 		const raw = payload.message?.content ?? "";
 		samples.push({
 			id: item.id,
-			input: item.input,
-			title: parseChatTitle(raw, item.input),
+			input: providerInput,
+			title: parseChatTitle(raw, providerInput),
 			ms: performance.now() - started,
 		});
 	}
@@ -269,10 +284,18 @@ async function main(): Promise<void> {
 	];
 	if (config.ollamaUrl) {
 		const url = config.ollamaUrl;
+		const cwd = getProjectDir();
+		const agentDir = getAgentDir();
+		const settings = await Settings.loadReadOnly({ cwd, agentDir });
+		const secretRuntime: StandaloneSecretRuntimeOptions = {
+			cwd: settings.getCwd(),
+			agentDir: settings.getAgentDir(),
+			enabled: settings.get("secrets.enabled"),
+		};
 		for (const model of config.ollamaModels) {
 			laneTasks.push(
 				(async (): Promise<BenchLane> => {
-					const samples = await runOllamaLane(url, model, prepared);
+					const samples = await runOllamaLane(url, model, prepared, secretRuntime);
 					return { model: `${model}@ollama`, transport: "ollama", samples, summary: summarize(samples) };
 				})(),
 			);
@@ -332,4 +355,4 @@ async function main(): Promise<void> {
 	console.info(`\nWrote ${config.outPath}`);
 }
 
-await main();
+if (import.meta.main) await main();
