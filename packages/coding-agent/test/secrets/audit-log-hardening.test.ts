@@ -62,13 +62,10 @@ describe("expansion parity", () => {
 	 */
 	it("records placeholders nested in JSON object keys", () => {
 		const args = { nested: { "#TOKEN_KEY#": "value" } };
-		const expansion = buildExpansionRecord({
-			args,
+		const expansion = buildExpansionRecord({ args,
 			tool: "bash",
 			session: "session",
-			at: 1,
-			known: placeholder => placeholder === "#TOKEN_KEY#",
-		});
+			at: 1, known: placeholder => placeholder === "#TOKEN_KEY#", obfuscate: value => value });
 
 		expect(expansion?.secrets).toEqual(["#TOKEN_KEY#"]);
 	});
@@ -294,23 +291,37 @@ describe("crash recovery and read bounds", () => {
 });
 
 describe("loud rotation degradation", () => {
-	/** Rotation failure is housekeeping failure: warn, retain the live file, and append the record. */
-	it("keeps appending when the rotation target is non-regular", async () => {
-		const appended = record(9, "landed after failed rotation");
-		const line = encodeRecord(appended);
+	/**
+	 * Rotation obstruction must stop before the live generation crosses its cap. Removing the
+	 * obstruction lets the next append rotate the untouched readable generation and recover in
+	 * record order.
+	 */
+	it("preserves, reports, and recovers from a non-regular rotation target", async () => {
+		const blocked = record(9, "blocked until rotation recovers");
+		const recovered = record(10, "landed after rotation recovery");
+		const line = encodeRecord(blocked);
 		await seedToSize(ROTATE_AT_BYTES - Buffer.byteLength(line) + 1);
+		const before = await fs.readFile(logPath);
 		await fs.mkdir(`${logPath}${ROTATED_SUFFIX}`);
 		const notices = new OperatorNotices();
 		const log = new SecretAuditLog(logPath, notices);
 
-		log.record(appended);
+		log.record(blocked);
 		await log.flush();
 
-		const written = await fs.readFile(logPath, "utf8");
-		expect(written.endsWith(line)).toBe(true);
-		const warning = notices.all().find(notice => notice.severity === "warning");
-		expect(warning?.text).toContain("could not be rotated");
-		expect(warning?.text).toContain("still being recorded");
+		expect(await fs.readFile(logPath)).toEqual(before);
+		expect((await fs.stat(logPath)).size).toBeLessThanOrEqual(ROTATE_AT_BYTES);
+		const failure = notices.all().find(notice => notice.severity === "error");
+		expect(failure?.text).toContain("could not be appended");
+		expect(failure?.text).toContain("no longer being recorded");
+
+		await fs.rm(`${logPath}${ROTATED_SUFFIX}`, { recursive: true });
+		log.record(recovered);
+		await log.flush();
+
+		const result = await log.read();
+		expect(result.records.map(entry => entry.command)).toEqual(["seed", "landed after rotation recovery"]);
+		expect(notices.all().some(notice => notice.text.includes("recording has resumed"))).toBe(true);
 	});
 });
 
