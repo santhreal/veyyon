@@ -9,6 +9,7 @@ import { trimTrailingSlashes, withScopedTimeoutSignal } from "@veyyon/utils";
 
 import { getDiagnostics } from "./diagnostics";
 import { EXTRACTION_SYSTEM_PROMPT, EXTRACTION_USER_TEMPLATE } from "./prompts";
+import { getMnemopiRuntimeOptions, type MnemopiProviderTextSanitizer } from "../runtime-options";
 
 export const DEFAULT_EXTRACTION_MODEL = process.env.MNEMOPI_EXTRACTION_MODEL || "google/gemini-2.5-flash";
 export const OPENROUTER_BASE_URL = trimTrailingSlashes(process.env.OPENROUTER_BASE_URL || OPENROUTER_API_ENDPOINT);
@@ -37,6 +38,7 @@ export interface ExtractionClientOptions {
 	apiKey?: ApiKey | null;
 	baseUrl?: string | null;
 	fetch?: FetchImpl;
+	sanitizeProviderText?: MnemopiProviderTextSanitizer;
 }
 
 function authHeader(apiKey: string): Record<string, string> {
@@ -47,18 +49,43 @@ function authHeader(apiKey: string): Record<string, string> {
 	return headers;
 }
 
+function sanitizeBody(value: unknown, sanitize: MnemopiProviderTextSanitizer): unknown {
+	if (typeof value === "string") {
+		try {
+			return sanitize(value);
+		} catch {
+			throw new Error("Mnemopi provider text sanitization failed.");
+		}
+	}
+	if (Array.isArray(value)) return value.map(item => sanitizeBody(item, sanitize));
+	if (value === null || typeof value !== "object") return value;
+	const copy: Record<string, unknown> = {};
+	for (const [rawKey, child] of Object.entries(value)) {
+		let key: string;
+		try {
+			key = sanitize(rawKey);
+		} catch {
+			throw new Error("Mnemopi provider text sanitization failed.");
+		}
+		copy[key] = sanitizeBody(child, sanitize);
+	}
+	return copy;
+}
+
 export class ExtractionClient {
 	model: string;
 	apiKey: ApiKey;
 	baseUrl: string;
 	callCount = 0;
-	private readonly fetchImpl: FetchImpl;
+	readonly #fetchImpl: FetchImpl;
+	sanitizeProviderText: MnemopiProviderTextSanitizer | undefined;
 
 	constructor(opts: ExtractionClientOptions = {}) {
 		this.model = opts.model || DEFAULT_EXTRACTION_MODEL;
 		this.apiKey = opts.apiKey ?? process.env.OPENROUTER_API_KEY ?? "";
 		this.baseUrl = trimTrailingSlashes(opts.baseUrl || OPENROUTER_BASE_URL);
-		this.fetchImpl = opts.fetch ?? fetch;
+		this.#fetchImpl = opts.fetch ?? fetch;
+		this.sanitizeProviderText = opts.sanitizeProviderText;
 	}
 
 	async chat(messages: readonly ChatMessage[], temperature = 0, maxTokens = 4096): Promise<string> {
@@ -114,10 +141,13 @@ export class ExtractionClient {
 		// The fence spans the body read too: a stalled response stream is only
 		// interrupted by the armed signal, and the timer is cleared on settle.
 		const data = await withScopedTimeoutSignal(60000, async signal => {
-			const response = await this.fetchImpl(`${this.baseUrl}/chat/completions`, {
+			const rawBody = { model, messages, temperature, max_tokens: maxTokens };
+			const sanitize = this.sanitizeProviderText ?? getMnemopiRuntimeOptions()?.llm?.sanitizeProviderText;
+			const body = sanitize === undefined ? rawBody : sanitizeBody(rawBody, sanitize);
+			const response = await this.#fetchImpl(`${this.baseUrl}/chat/completions`, {
 				method: "POST",
 				headers: authHeader(apiKey),
-				body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens }),
+				body: JSON.stringify(body),
 				signal,
 			});
 			if (!response.ok) {

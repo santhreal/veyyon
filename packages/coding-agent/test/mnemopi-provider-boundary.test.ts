@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import type { Api, Model, SimpleStreamOptions } from "@veyyon/ai";
+import type { Api, FetchImpl, Model, SimpleStreamOptions } from "@veyyon/ai";
 import * as ai from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { Settings } from "@veyyon/coding-agent/config/settings";
@@ -15,6 +15,7 @@ afterEach(() => {
 });
 
 describe("coding-agent Mnemopi online smol boundary", () => {
+	/** Why: the real smol adapter must keep raw context behind the post-credential physical-attempt hook. */
 	it("reads the current session obfuscator after key lookup and at final payload dispatch", async () => {
 		const afterKeySecret = "MNEMOPI_SMOL_AFTER_KEY_SECRET_771";
 		const retrySecret = "MNEMOPI_SMOL_RETRY_SECRET_771";
@@ -55,6 +56,10 @@ describe("coding-agent Mnemopi online smol boundary", () => {
 		} as never;
 		let providerContext = "";
 		let finalPayload = "";
+		const physicalFetch: FetchImpl = async (_input, init) => {
+			finalPayload = String(init?.body);
+			return new Response("", { status: 200 });
+		};
 		vi.spyOn(ai, "completeSimple").mockImplementation(
 			async (_model, context, options?: SimpleStreamOptions) => {
 				providerContext = JSON.stringify(context);
@@ -62,9 +67,11 @@ describe("coding-agent Mnemopi online smol boundary", () => {
 					{ type: "plain", content: afterKeySecret },
 					{ type: "plain", content: retrySecret },
 				]);
-				const rawPayload = { messages: [{ role: "user", content: `${afterKeySecret} ${retrySecret} harmless` }] };
-				const transformed = (await options?.onPayload?.(rawPayload, model)) ?? rawPayload;
-				finalPayload = JSON.stringify(transformed);
+				if (options?.fetch === undefined) throw new Error("Expected final-attempt fetch wrapper");
+				await options.fetch("http://provider.test/v1/messages", {
+					method: "POST",
+					body: JSON.stringify({ context }),
+				});
 				return {
 					stopReason: "stop",
 					content: [{ type: "text", text: "smol result" }],
@@ -83,14 +90,14 @@ describe("coding-agent Mnemopi online smol boundary", () => {
 			const state = getMnemopiSessionState(session);
 			if (!state) throw new Error("Mnemopi state did not start");
 			const result = await withMnemopiRuntimeOptions(state.memory.runtimeOptions, () =>
-				complete(`extract ${afterKeySecret} ${retrySecret} harmless`),
+				complete(`extract ${afterKeySecret} ${retrySecret} harmless`, 0, { fetch: physicalFetch }),
 			);
 
 			// Why: the backend awaits a registry preflight before completeSimple,
 			// and provider auth retries happen after that context was first built.
 			expect(result).toBe("smol result");
 			expect(providerContext).not.toContain(afterKeySecret);
-			expect(providerContext).toContain(retrySecret);
+			expect(providerContext).not.toContain(retrySecret);
 			expect(finalPayload).not.toContain(afterKeySecret);
 			expect(finalPayload).not.toContain(retrySecret);
 			expect(finalPayload).toContain("harmless");

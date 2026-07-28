@@ -19,7 +19,12 @@ import { assistantText } from "@veyyon/ai/utils/message-text";
 import { withScopedTimeoutSignal } from "@veyyon/utils";
 import { envBool, envString } from "../util/env";
 import { safeForLog } from "./extraction/diagnostics";
-import { type CompleteOptions, callHostLlm } from "./llm-backends";
+import {
+	MNEMOPI_LLM_ATTEMPT_PLACEHOLDER,
+	type CompleteOptions,
+	callHostLlm,
+	getHostLlmBackend,
+} from "./llm-backends";
 import {
 	activeCustomCompletion,
 	activePiAiModel,
@@ -35,13 +40,18 @@ import {
 	llmMaxTokens,
 	llmModelName,
 } from "./local-llm-config";
-import { getMnemopiRuntimeOptions, type MnemopiLlmCompleteOptions } from "./runtime-options";
+import {
+	getMnemopiRuntimeOptions,
+	type MnemopiLlmCompleteOptions,
+	type MnemopiLlmPayloadHook,
+} from "./runtime-options";
 
 export * from "./local-llm-config";
 
 /** Transport override for {@link callRemoteLlm}, so a test can supply its own `fetch`. */
 export interface RemoteLlmOptions {
 	fetch?: FetchImpl;
+	onPayload?: MnemopiLlmPayloadHook;
 }
 
 function sanitizeLlmProviderText(text: string): string {
@@ -55,22 +65,72 @@ function sanitizeLlmProviderText(text: string): string {
 }
 
 /**
- * This is restricted to completeSimple's freshly built, one-message request.
- * It must not be reused for restored/native replay payloads whose authenticated
- * or encrypted fields are intentionally opaque.
- * Mutating in place also covers provider adapters that invoke onPayload but
- * ignore its replacement return value.
+ * Build a fresh projection from raw prompt state every time a physical online
+ * attempt invokes the hook. The placeholder is the only prompt text present
+ * before then, so an adapter that skips the hook cannot leak the raw context.
  */
-function sanitizeFreshLlmPayload(payload: unknown): unknown {
-	if (typeof payload === "string") return sanitizeLlmProviderText(payload);
-	if (Array.isArray(payload)) {
-		for (let index = 0; index < payload.length; index++) payload[index] = sanitizeFreshLlmPayload(payload[index]);
-		return payload;
-	}
-	if (payload === null || typeof payload !== "object") return payload;
-	const mutable = payload as Record<string, unknown>;
-	for (const [key, value] of Object.entries(mutable)) mutable[key] = sanitizeFreshLlmPayload(value);
-	return mutable;
+function createAttemptPayloadHook(buildPrompt: () => string): MnemopiLlmPayloadHook {
+	return payload => {
+		let providerPrompt: string | undefined;
+		const visit = (value: unknown): unknown => {
+			if (typeof value === "string") {
+				if (value === MNEMOPI_LLM_ATTEMPT_PLACEHOLDER) {
+					providerPrompt ??= buildPrompt();
+					return providerPrompt;
+				}
+				return sanitizeLlmProviderText(value);
+			}
+			if (Array.isArray(value)) {
+				for (let index = 0; index < value.length; index += 1) value[index] = visit(value[index]);
+				return value;
+			}
+			if (value === null || typeof value !== "object") return value;
+			const mutable = value as Record<string, unknown>;
+			for (const [key, child] of Object.entries(mutable)) mutable[key] = visit(child);
+			return mutable;
+		};
+		return visit(payload);
+	};
+}
+
+function createAttemptFetch(baseFetch: FetchImpl, onPayload: MnemopiLlmPayloadHook): FetchImpl {
+	const attemptFetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+		let requestInput = input;
+		let requestInit = init;
+		if (init?.body !== undefined && init.body !== null) {
+			if (typeof init.body !== "string") {
+				throw new Error("Mnemopi could not apply attempt-time sanitization to a non-JSON provider body.");
+			}
+			let payload: unknown;
+			try {
+				payload = JSON.parse(init.body) as unknown;
+			} catch {
+				throw new Error("Mnemopi could not apply attempt-time sanitization to an invalid provider body.");
+			}
+			requestInit = { ...init, body: JSON.stringify(await onPayload(payload)) };
+		} else if (input instanceof Request) {
+			let payload: unknown;
+			try {
+				payload = JSON.parse(await input.clone().text()) as unknown;
+			} catch {
+				throw new Error("Mnemopi could not apply attempt-time sanitization to an invalid provider request.");
+			}
+			requestInput = new Request(input, { body: JSON.stringify(await onPayload(payload)) });
+		} else {
+			throw new Error("Mnemopi online completion produced no interceptable request body.");
+		}
+		return baseFetch(requestInput, requestInit);
+	};
+	return attemptFetch as FetchImpl;
+}
+
+function configuredCompletionRequiresAttemptHook(): boolean {
+	const completion = activeCustomCompletion();
+	return (
+		getMnemopiRuntimeOptions()?.llm?.sanitizeProviderText !== undefined ||
+		completion?.online === true ||
+		activePiAiModel()?.transport === "pi-native"
+	);
 }
 
 export async function callConfiguredCompletion(
@@ -79,63 +139,89 @@ export async function callConfiguredCompletion(
 	opts: MnemopiLlmCompleteOptions = {},
 ): Promise<string | null> {
 	const completion = activeCustomCompletion();
-	const providerPrompt = sanitizeLlmProviderText(prompt);
+	const commonOptions = {
+		maxTokens: opts.maxTokens ?? llmMaxTokens(),
+		temperature,
+		timeout: opts.timeout,
+		provider: opts.provider,
+		model: opts.model,
+		fetch: opts.fetch,
+	};
 	if (completion !== undefined) {
-		const raw = await completion(providerPrompt, {
-			maxTokens: opts.maxTokens ?? llmMaxTokens(),
-			temperature,
-			timeout: opts.timeout,
-			provider: opts.provider,
-			model: opts.model,
-		});
+		if (!configuredCompletionRequiresAttemptHook()) {
+			const raw = await completion(prompt, commonOptions);
+			return typeof raw === "string" ? raw : null;
+		}
+		if (completion.supportsAttemptPayload !== true) {
+			throw new Error("Online Mnemopi completion does not support attempt-time payload sanitization.");
+		}
+
+		const hook = opts.onPayload ?? createAttemptPayloadHook(() => sanitizeLlmProviderText(prompt));
+		let applied = false;
+		const onPayload: MnemopiLlmPayloadHook = async payload => {
+			applied = true;
+			return await hook(payload);
+		};
+		const raw = await completion(MNEMOPI_LLM_ATTEMPT_PLACEHOLDER, { ...commonOptions, onPayload });
+		if (!applied) {
+			throw new Error("Online Mnemopi completion did not apply its attempt-time payload hook.");
+		}
 		return typeof raw === "string" ? raw : null;
 	}
+
 	const model = activePiAiModel();
 	if (model === undefined) {
 		return null;
 	}
-	// Do NOT swallow a model error to null here. Like the custom-completion path
-	// above (which already propagates), a throw from completeSimple (the provider
-	// crashed, rate-limited, or timed out) is a real failure and must reach the
-	// caller: extraction records it as configured_completion_raised, and
-	// summarization logs it and falls through. A `catch { return null }` would
-	// misreport a crashed model as "no output" (a Law 10 silent fallback).
+	const needsAttemptHook = configuredCompletionRequiresAttemptHook() || opts.onPayload !== undefined;
+	let physicalAttempts = 0;
+	const hook = opts.onPayload ?? createAttemptPayloadHook(() => sanitizeLlmProviderText(prompt));
+	const contextPrompt = needsAttemptHook ? MNEMOPI_LLM_ATTEMPT_PLACEHOLDER : prompt;
 	const message = await completeSimple(
 		model,
 		{
-			messages: [{ role: "user", content: providerPrompt, timestamp: Date.now() }],
+			messages: [{ role: "user", content: contextPrompt, timestamp: Date.now() }],
 		},
 		{
 			apiKey: llmApiKey() || undefined,
 			maxTokens: opts.maxTokens ?? llmMaxTokens(),
 			temperature,
-			onPayload: sanitizeFreshLlmPayload,
+			fetch: needsAttemptHook
+				? createAttemptFetch(opts.fetch ?? globalThis.fetch, async payload => {
+						physicalAttempts += 1;
+						return await hook(payload);
+					})
+				: opts.fetch,
 		},
 	);
+	if (needsAttemptHook && physicalAttempts === 0) {
+		throw new Error("Mnemopi SDK completion did not expose a physical attempt payload.");
+	}
 	return assistantText(message).trim() || null;
 }
 
-async function tryHostLlm(prompt: string, maxTokens: number, temperature: number): Promise<[boolean, string | null]> {
+async function tryHostLlm(
+	prompt: string,
+	maxTokens: number,
+	temperature: number,
+	onPayload?: MnemopiLlmPayloadHook,
+): Promise<[boolean, string | null]> {
 	if (!hostBackendWillHandleCall()) {
 		return [false, null];
 	}
 
 	try {
-		const raw = await callHostLlm(sanitizeLlmProviderText(prompt), {
+		const raw = await callHostLlm(prompt, {
 			maxTokens,
 			temperature,
 			timeout: 15,
 			provider: envString("MNEMOPI_HOST_LLM_PROVIDER").trim() || null,
 			model: envString("MNEMOPI_HOST_LLM_MODEL").trim() || null,
+			onPayload,
 		});
 		const text = typeof raw === "string" ? raw.trim() : "";
 		return [true, text === "" ? null : text];
 	} catch (exc) {
-		// The host backend threw. This is a real failure, not "no output":
-		// surface it loudly (never a silent swallow) and report the call as
-		// attempted-but-empty so summarization falls through to a local backend
-		// with the error on the record. A fallback is allowed only when it is
-		// loud and recall-preserving (Law 10).
 		console.warn(`mnemopi summarize: host LLM backend raised: ${safeForLog(exc)}`);
 		return [true, null];
 	}
@@ -191,12 +277,19 @@ export async function callRemoteLlm(
 			if (key !== "") {
 				headers.Authorization = `Bearer ${key}`;
 			}
-			// withAuth has resolved/refreshed credentials before entering this
-			// callback, and re-enters it for every auth retry. Build a new body
-			// here so a runtime sanitizer swap is authoritative for each send.
+			// Credentials are resolved before this callback, and every auth retry
+			// re-enters it. A summary hook reconstructs its capped/chunked prompt
+			// from raw memories here; ordinary calls sanitize their raw prompt here.
+			const projected =
+				options.onPayload === undefined
+					? sanitizeLlmProviderText(prompt)
+					: await options.onPayload(MNEMOPI_LLM_ATTEMPT_PLACEHOLDER);
+			if (typeof projected !== "string") {
+				throw new Error("Mnemopi LLM attempt hook did not return a string prompt.");
+			}
 			const body = JSON.stringify({
 				model: llmModelName(),
-				messages: [{ role: "user", content: sanitizeLlmProviderText(prompt) }],
+				messages: [{ role: "user", content: projected }],
 				max_tokens: llmMaxTokens(),
 				temperature,
 				stop: ["</s>", "<|user|>"],
@@ -242,29 +335,90 @@ function remoteBackendAllowed(): boolean {
 	return llmEnabled() && llmBaseUrl() !== "" && !envBool("MNEMOPI_FORCE_LOCAL", false);
 }
 
+interface SummaryAttemptState {
+	chunkCount: number;
+}
+
+function buildSummaryAttemptPrompt(
+	memories: readonly string[],
+	source: string,
+	chunkIndex: number,
+	hostPrompt: boolean,
+	online: boolean,
+	state: SummaryAttemptState,
+): string {
+	const sanitize = online ? getMnemopiRuntimeOptions()?.llm?.sanitizeProviderText : undefined;
+	const providerMemories = sanitize === undefined ? memories : memories.map(sanitizeLlmProviderText);
+	const providerSource = sanitize === undefined ? source : sanitizeLlmProviderText(source);
+	const chunks = chunkMemoriesByBudget(providerMemories, providerSource);
+	state.chunkCount = chunks.length;
+	const chunk = chunks[chunkIndex];
+	if (chunk === undefined) {
+		throw new Error("Mnemopi summary attempt has no input chunk after payload sanitization.");
+	}
+	return hostPrompt ? buildHostPrompt(chunk, providerSource) : buildPrompt(chunk, providerSource);
+}
+
+function summaryAttemptHook(
+	memories: readonly string[],
+	source: string,
+	chunkIndex: number,
+	hostPrompt: boolean,
+	state: SummaryAttemptState,
+): MnemopiLlmPayloadHook {
+	return createAttemptPayloadHook(() =>
+		buildSummaryAttemptPrompt(memories, source, chunkIndex, hostPrompt, true, state),
+	);
+}
+
 async function summarizeChunk(
 	memories: readonly string[],
-	source = "",
-	options: RemoteLlmOptions = {},
+	source: string,
+	chunkIndex: number,
+	state: SummaryAttemptState,
+	options: RemoteLlmOptions,
 ): Promise<string | null> {
-	const hostPrompt = buildHostPrompt(memories, source);
-	const prompt = buildPrompt(memories, source);
 	if (configuredLlmWillHandleCall()) {
+		if (configuredCompletionRequiresAttemptHook()) {
+			const rawContext = buildHostPrompt(memories, source);
+			return await summaryOrNull("configured completion", () =>
+				callConfiguredCompletion(rawContext, 0.3, {
+					maxTokens: llmMaxTokens(),
+					fetch: options.fetch,
+					onPayload: summaryAttemptHook(memories, source, chunkIndex, true, state),
+				}),
+			);
+		}
+		const prompt = buildSummaryAttemptPrompt(memories, source, chunkIndex, true, false, state);
 		return await summaryOrNull("configured completion", () =>
-			callConfiguredCompletion(hostPrompt, 0.3, { maxTokens: llmMaxTokens() }),
+			callConfiguredCompletion(prompt, 0.3, { maxTokens: llmMaxTokens(), fetch: options.fetch }),
 		);
 	}
-	const [attempted, hostText] = await tryHostLlm(hostPrompt, llmMaxTokens(), 0.3);
-	if (attempted) {
-		// The host backend answered, so it OWNS this call: a null here means it produced no usable
-		// text, not that another backend should be tried. There used to be a `callLocalLlm` attempt
-		// after this and after the remote branch below, both of them a `return null` stub with no
-		// loader behind them, so each one cleaned and inspected output that could not arrive.
-		return hostText;
+
+	if (hostBackendWillHandleCall()) {
+		const hostOnline = getHostLlmBackend()?.online === true;
+		const hostPrompt = hostOnline
+			? buildHostPrompt(memories, source)
+			: buildSummaryAttemptPrompt(memories, source, chunkIndex, true, false, state);
+		const [attempted, hostText] = await tryHostLlm(
+			hostPrompt,
+			llmMaxTokens(),
+			0.3,
+			hostOnline ? summaryAttemptHook(memories, source, chunkIndex, true, state) : undefined,
+		);
+		if (attempted) {
+			return hostText;
+		}
 	}
 
 	if (remoteBackendAllowed()) {
-		return await summaryOrNull("remote LLM", () => callRemoteLlm(prompt, 0.3, options));
+		const rawContext = buildPrompt(memories, source);
+		return await summaryOrNull("remote LLM", () =>
+			callRemoteLlm(rawContext, 0.3, {
+				...options,
+				onPayload: summaryAttemptHook(memories, source, chunkIndex, false, state),
+			}),
+		);
 	}
 
 	return null;
@@ -279,13 +433,13 @@ export async function summarizeMemories(
 		return null;
 	}
 
-	const sanitize = getMnemopiRuntimeOptions()?.llm?.sanitizeProviderText;
-	const providerMemories = sanitize === undefined ? memories : memories.map(sanitizeLlmProviderText);
-	const providerSource = sanitize === undefined ? source : sanitizeLlmProviderText(source);
-	const chunks = chunkMemoriesByBudget(providerMemories, providerSource);
 	const chunkSummaries: string[] = [];
-	for (const chunk of chunks) {
-		const summary = await summarizeChunk(chunk, providerSource, options);
+	let chunkCount = 1;
+	for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+		const state: SummaryAttemptState = { chunkCount: 0 };
+		const summary = await summarizeChunk(memories, source, chunkIndex, state, options);
+		if (state.chunkCount === 0) break;
+		chunkCount = state.chunkCount;
 		if (summary !== null) {
 			chunkSummaries.push(summary);
 		}
@@ -295,7 +449,14 @@ export async function summarizeMemories(
 		return null;
 	}
 	if (chunkSummaries.length > 1) {
-		const final = await summarizeChunk(chunkSummaries, `${providerSource} [chunked ${chunks.length} parts]`, options);
+		const state: SummaryAttemptState = { chunkCount: 0 };
+		const final = await summarizeChunk(
+			chunkSummaries,
+			`${source} [chunked ${chunkCount} parts]`,
+			0,
+			state,
+			options,
+		);
 		return final ?? chunkSummaries[0] ?? null;
 	}
 	return chunkSummaries[0] ?? null;
@@ -308,18 +469,19 @@ export async function complete(
 ): Promise<string | null> {
 	if (configuredLlmWillHandleCall()) {
 		return await summaryOrNull("configured completion", () =>
-			callConfiguredCompletion(prompt, temperature, { maxTokens: llmMaxTokens() }),
+			callConfiguredCompletion(prompt, temperature, {
+				maxTokens: llmMaxTokens(),
+				fetch: options.fetch,
+				onPayload: options.onPayload,
+			}),
 		);
 	}
-	const [attempted, hostText] = await tryHostLlm(prompt, llmMaxTokens(), temperature);
+	const [attempted, hostText] = await tryHostLlm(prompt, llmMaxTokens(), temperature, options.onPayload);
 	if (attempted) {
 		return hostText;
 	}
 	if (remoteBackendAllowed()) {
 		return await summaryOrNull("remote LLM", () => callRemoteLlm(prompt, temperature, options));
 	}
-	// No backend is configured. Null is the honest answer, and the caller (extraction, consolidation)
-	// records it as such. This used to `return callLocalLlm(prompt)`, which returned this same null
-	// through a function that read nothing.
 	return null;
 }

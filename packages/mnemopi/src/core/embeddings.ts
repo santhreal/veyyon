@@ -1,3 +1,4 @@
+import { createHmac, randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import type { ApiKey } from "@veyyon/ai";
 // The owners, not the barrel. Embedding a query needs a retry wrapper and one
@@ -61,18 +62,22 @@ export type LocalModelInitializer = (options: LocalModelInitOptions) => Promise<
 const QUERY_CACHE_MAX = 512;
 
 let providerOverride: EmbeddingProvider | null = null;
-let localModelPromise: Promise<LocalEmbeddingModel> | null = null;
+const localModelPromises = new Map<string, Promise<LocalEmbeddingModel>>();
 let localModelInitializer: LocalModelInitializer = defaultLocalModelInitializer;
+let localModelInitializerGeneration = 0;
 let apiCallCount = 0;
 const queryCache = new LRUCache<string, Vector>({ max: QUERY_CACHE_MAX });
+// Per-process HMAC prevents low-entropy query text from being recovered by
+// precomputed/dictionary hashing if a heap or cache-key dump is inspected.
+const queryCacheHmacKey = randomBytes(32);
 
-// Provider identity table for the cache key. Each unique `provider` object/function
-// (configured via `withMnemopiRuntimeOptions`) gets a stable integer id so the cache
-// scope reflects the runtime's actual embedding source. Two Mnemopi instances in the
-// same process using different providers/models hash to disjoint keys and never
-// collide on the same query text. `0` is the sentinel for "env-default fallback".
+// Runtime object identities are process-local cache scope components. A
+// behavior-versioned sanitizer epoch is still mandatory: the same function can
+// close over a mutable obfuscator and change output without changing identity.
 const providerIds = new WeakMap<object, number>();
+const sanitizerIds = new WeakMap<object, number>();
 let nextProviderId = 1;
+let nextSanitizerId = 1;
 
 async function defaultLocalModelInitializer(options: LocalModelInitOptions): Promise<LocalEmbeddingModel> {
 	const { FlagEmbedding } = await loadFastembed();
@@ -107,13 +112,11 @@ function sanitizeEmbeddingProviderText(text: string): string {
 }
 
 /**
- * Compose the per-query cache key. Includes the active provider's identity, the
- * resolved model name, and the API base URL so two `Mnemopi` instances in the same
- * process that point at different providers/models never share a cached query
- * vector. Provider identity comes from `providerIds` (WeakMap-assigned integer);
- * `0` is the sentinel for "no provider configured, fall back to env defaults".
+ * Compose the per-query cache key from every input that can change a vector.
+ * Live online sanitizers without a behavior epoch deliberately disable query
+ * caching: function identity cannot reveal changes inside a mutable closure.
  */
-function queryCacheKey(text: string): string {
+function queryCacheKey(text: string): string | null {
 	const active = activeEmbeddingOptions();
 	const provider = active?.provider as object | undefined;
 	let providerId = 0;
@@ -126,9 +129,33 @@ function queryCacheKey(text: string): string {
 			providerId = existing;
 		}
 	}
+
 	const model = defaultModel();
-	const apiUrl = active?.apiUrl ?? "";
-	return `${providerId}::${model}::${apiUrl}::${text}`;
+	let sanitizerScope = "local";
+	if (provider === undefined && providerOverride === null && isApiModel(model)) {
+		const sanitizer = active?.sanitizeProviderText;
+		if (sanitizer !== undefined) {
+			if (sanitizer.epoch === undefined) return null;
+			let sanitizerId = sanitizerIds.get(sanitizer);
+			if (sanitizerId === undefined) {
+				sanitizerId = nextSanitizerId++;
+				sanitizerIds.set(sanitizer, sanitizerId);
+			}
+			sanitizerScope = `${sanitizerId}:${String(sanitizer.epoch)}`;
+		} else {
+			sanitizerScope = "none";
+		}
+	}
+
+	const textDigest = createHmac("sha256", queryCacheHmacKey).update(text, "utf8").digest("hex");
+	return [
+		providerId,
+		model,
+		embeddingBaseUrl(),
+		effectiveMaxInputChars(),
+		sanitizerScope,
+		textDigest,
+	].join("::");
 }
 
 function inTestRuntime(): boolean {
@@ -319,25 +346,35 @@ function fastembedModelName(modelName: string): StandardEmbeddingModel | null {
 }
 
 async function getLocalModel(): Promise<LocalEmbeddingModel | null> {
-	if (isApiModel(defaultModel()) || embeddingsDisabled() || inTestRuntime()) {
+	const configuredModel = defaultModel();
+	if (isApiModel(configuredModel) || embeddingsDisabled() || inTestRuntime()) {
 		return null;
 	}
-	if (localModelPromise !== null) {
-		return localModelPromise;
-	}
 
-	const modelName = fastembedModelName(defaultModel());
+	const modelName = fastembedModelName(configuredModel);
 	if (modelName === null) {
 		return null;
 	}
 	const cacheDir = getFastembedCacheDir();
+	const generation = localModelInitializerGeneration;
+	const cacheKey = JSON.stringify([generation, modelName, cacheDir]);
+	const cached = localModelPromises.get(cacheKey);
+	if (cached !== undefined) {
+		try {
+			return await cached;
+		} catch {
+			return null;
+		}
+	}
+
 	mkdirSync(cacheDir, { recursive: true });
-	const loading = localModelInitializer({
+	const initializer = localModelInitializer;
+	const loading = initializer({
 		model: modelName,
 		cacheDir,
 		showDownloadProgress: false,
 	});
-	localModelPromise = loading;
+	localModelPromises.set(cacheKey, loading);
 	try {
 		return await loading;
 	} catch (error) {
@@ -345,7 +382,7 @@ async function getLocalModel(): Promise<LocalEmbeddingModel | null> {
 			model: modelName,
 			error: String(error),
 		});
-		if (localModelPromise === loading) localModelPromise = null;
+		if (localModelPromises.get(cacheKey) === loading) localModelPromises.delete(cacheKey);
 		return null;
 	}
 }
@@ -468,7 +505,7 @@ export const setEmbeddingProvider = setEmbeddingProviderForTests;
 
 export function setLocalModelInitializerForTests(initializer: LocalModelInitializer | null | undefined): void {
 	localModelInitializer = initializer ?? defaultLocalModelInitializer;
-	localModelPromise = null;
+	localModelInitializerGeneration += 1;
 	queryCache.clear();
 }
 
@@ -484,8 +521,9 @@ export const setLocalModelInitializer = setLocalModelInitializerForTests;
 
 export function resetEmbeddingProviderForTests(): void {
 	providerOverride = null;
-	localModelPromise = null;
+	localModelPromises.clear();
 	localModelInitializer = defaultLocalModelInitializer;
+	localModelInitializerGeneration += 1;
 	apiCallCount = 0;
 	queryCache.clear();
 }
@@ -526,14 +564,17 @@ export async function embedQuery(text: string): Promise<Vector | null> {
 		return null;
 	}
 	const key = queryCacheKey(text);
-	const cached = queryCache.get(key);
-	if (cached !== undefined) {
-		return cached;
+	if (key !== null) {
+		const cached = queryCache.get(key);
+		if (cached !== undefined) {
+			return cached.slice();
+		}
 	}
 	const vectors = await embed([text]);
 	const vector = vectors?.[0] ?? null;
-	if (vector !== null) {
-		queryCache.set(key, vector);
+	const storeKey = queryCacheKey(text);
+	if (vector !== null && storeKey !== null) {
+		queryCache.set(storeKey, vector.slice());
 	}
 	return vector;
 }
@@ -567,20 +608,17 @@ export async function embed(texts: readonly string[]): Promise<EmbeddingMatrix |
 		}
 	}
 	if (isApiModel(defaultModel())) {
-		// Exact-secret replacement must see each raw query/transcript before the
-		// head/tail cap can split it into fragments that no longer match. Keep
-		// this pre-cap projection raw-sized so a sanitizer added by a later key
-		// refresh can run against complete bytes inside embedApi as well.
-		const sanitize = activeEmbeddingOptions()?.sanitizeProviderText;
-		const providerTexts = sanitize === undefined ? texts : texts.map(sanitizeEmbeddingProviderText);
-		return embedApi(providerTexts);
+		// Keep raw bytes intact until embedApi's credential-resolved physical
+		// attempt. Sanitizing here would freeze an obsolete projection across an
+		// auth or transient retry, and clipping here could split exact secrets.
+		return embedApi(texts);
 	}
 	texts = capInputs(texts);
 	if (texts.length === 1) {
 		const key = queryCacheKey(texts[0] ?? "");
-		const cached = queryCache.get(key);
+		const cached = key === null ? undefined : queryCache.get(key);
 		if (cached !== undefined) {
-			return [cached];
+			return [cached.slice()];
 		}
 	}
 	const model = await getLocalModel();
@@ -591,8 +629,9 @@ export async function embed(texts: readonly string[]): Promise<EmbeddingMatrix |
 		const vectors = await collectMatrix(model.embed([...texts]));
 		if (vectors.length === 1) {
 			const vector = vectors[0];
-			if (vector !== undefined) {
-				queryCache.set(queryCacheKey(texts[0] ?? ""), vector);
+			const key = queryCacheKey(texts[0] ?? "");
+			if (vector !== undefined && key !== null) {
+				queryCache.set(key, vector.slice());
 			}
 		}
 		return vectors;
@@ -607,6 +646,11 @@ export async function embed(texts: readonly string[]): Promise<EmbeddingMatrix |
 
 export function getEmbeddingApiCallCountForTests(): number {
 	return apiCallCount;
+}
+
+/** Test-only cache-key visibility; values contain an HMAC digest, never raw query text. */
+export function getEmbeddingQueryCacheKeysForTests(): readonly string[] {
+	return [...queryCache.keys()];
 }
 
 // `DEFAULT_MODEL` and `EMBEDDING_DIM` used to be exported from here, evaluated once
