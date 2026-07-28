@@ -40,21 +40,21 @@ function isNameChar(ch: string): boolean {
  * when the message begins.
  */
 export class StreamDecoder {
-	private readonly expand: (text: string) => string;
-	private readonly sigil: string;
-	private readonly maxNameLen: number;
-	private readonly active: boolean;
-	private held = "";
+	readonly #expand: (text: string) => string;
+	readonly #sigil: string;
+	readonly #maxNameLen: number;
+	readonly #active: boolean;
+	#held = "";
 
 	constructor(vocab: Vocabulary) {
-		this.expand = makeExpander(vocab);
-		this.sigil = vocab.sigil;
-		this.active = vocab.handles.size > 0;
+		this.#expand = makeExpander(vocab);
+		this.#sigil = vocab.sigil;
+		this.#active = vocab.handles.size > 0;
 		let max = 0;
 		for (const name of vocab.handles.keys()) {
 			if (name.length > max) max = name.length;
 		}
-		this.maxNameLen = max;
+		this.#maxNameLen = max;
 	}
 
 	/**
@@ -67,16 +67,16 @@ export class StreamDecoder {
 	push(chunk: string): string {
 		// No handles loaded: nothing can ever match, so stream every chunk straight
 		// through and never buffer. This is the inert-session fast path.
-		if (!this.active) {
+		if (!this.#active) {
 			return chunk;
 		}
 		if (chunk === "") {
 			return "";
 		}
-		const buf = this.held + chunk;
-		const retain = this.retainStart(buf);
-		this.held = buf.slice(retain);
-		return this.expand(buf.slice(0, retain));
+		const buf = this.#held + chunk;
+		const retain = this.#retainStart(buf);
+		this.#held = buf.slice(retain);
+		return this.#expand(buf.slice(0, retain));
 	}
 
 	/**
@@ -87,22 +87,22 @@ export class StreamDecoder {
 	 * wrote. Leaves the decoder empty so it can be reused.
 	 */
 	flush(): string {
-		const tail = this.held;
-		this.held = "";
-		if (!this.active) {
+		const tail = this.#held;
+		this.#held = "";
+		if (!this.#active) {
 			return tail;
 		}
-		return this.expand(tail);
+		return this.#expand(tail);
 	}
 
 	/** Drop any buffered tail without emitting it (e.g. on an aborted stream). */
 	reset(): void {
-		this.held = "";
+		this.#held = "";
 	}
 
 	/** The buffered tail not yet emitted. For tests and diagnostics only. */
 	get pending(): string {
-		return this.held;
+		return this.#held;
 	}
 
 	/**
@@ -126,11 +126,11 @@ export class StreamDecoder {
 	 *   are only a prefix of it. The next chunk could complete the sigil into a
 	 *   handle start, so it is held. (A single-character sigil never hits this.)
 	 */
-	private retainStart(buf: string): number {
+	#retainStart(buf: string): number {
 		let holdAt = buf.length;
 
-		const sigilLen = this.sigil.length;
-		const lastSigil = buf.lastIndexOf(this.sigil);
+		const sigilLen = this.#sigil.length;
+		const lastSigil = buf.lastIndexOf(this.#sigil);
 		if (lastSigil >= 0) {
 			const tailStart = lastSigil + sigilLen;
 			let allName = true;
@@ -140,7 +140,7 @@ export class StreamDecoder {
 					break;
 				}
 			}
-			if (allName && buf.length - tailStart <= this.maxNameLen) {
+			if (allName && buf.length - tailStart <= this.#maxNameLen) {
 				holdAt = lastSigil;
 			}
 		}
@@ -148,7 +148,7 @@ export class StreamDecoder {
 		if (sigilLen > 1) {
 			// The longest trailing fragment that is a proper prefix of the sigil.
 			for (let k = sigilLen - 1; k >= 1; k--) {
-				if (buf.endsWith(this.sigil.slice(0, k))) {
+				if (buf.endsWith(this.#sigil.slice(0, k))) {
 					holdAt = Math.min(holdAt, buf.length - k);
 					break;
 				}
