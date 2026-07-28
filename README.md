@@ -24,6 +24,8 @@ Veyyon runs in your terminal and treats the machinery around your code, the lang
 
 Multi-provider catalog · 34 built-in tools (more optional and gated) · LSP and DAP · Rust natives on every hot path · and a per-project shorthand the model writes in.
 
+Veyyon started as a fork of oh-my-pi (MIT) on 17 July 2026 and has moved a long way since: **1,000+ commits**, a shorthand codec the model writes in, a credential and profile layer rebuilt on SQLite, compaction that drops duplicate bytes before it summarizes anything, and five new Rust crates under the natives addon. [What Veyyon adds](#what-veyyon-adds) is the specific list, item by item, with the code behind each one.
+
 ## Install it in one line
 
 **Linux / macOS**
@@ -86,21 +88,57 @@ registers itself when you run it. Add `. $HOME\veyyon-completions.ps1` to your
 
 Give two harnesses the same model weights and you get different outcomes, because the edit format, the tool surface, and the way the prompt is assembled all change how reliably the model lands a change. Veyyon leans on that: hashline edits instead of `str_replace`, summarized `read`, in-process search, a real language server, and per-model prompt assembly. Details are in the handbook [Mechanisms](docs/handbook/src/why/innovations.md) chapter.
 
-## New since the fork
+## What Veyyon adds
 
-Veyyon is a fork of oh-my-pi (MIT). Most of what follows in this README is the shared base both projects run on. This section is what the fork adds on top.
+Everything in this section landed after the fork import, across more than a thousand commits. Each item names the mechanism rather than the adjective, so you can go read the code behind it.
 
-### Argot: a shorthand the model writes in (experimental)
+### Argot: a shorthand the model writes in
 
-This is the largest thing the fork adds, and it is experimental: off by default, gated per model, and still being proven on live benches. When it is on, the agent loads the project it is working in with the `argot_load` tool, and Veyyon generates a dictionary for that project mapping short handles to the long strings it repeats: a full path, a canonical command, a fixed identifier. The model writes `§dbconn` where it would have written the whole string, and Veyyon restores every handle to its full text before anything runs or reaches your screen.
+The largest single addition, and still experimental: off by default, gated per model, and being proven on live benches. The agent loads a project with the `argot_load` tool, and Veyyon generates a dictionary for that project mapping short handles to the long strings it repeats: a full path, a canonical command, a fixed identifier. The model writes `§dbconn` where it would have written the whole string, and Veyyon restores every handle to its full text before anything runs or reaches your screen.
 
-The round trip is lossless. The model reads and writes less boilerplate, and nothing downstream, no tool, no file, no transcript, ever sees an unexpanded handle. Encoding is gated per model and by context size, so a large or unfamiliar context writes in full instead of risking a garbled handle; decoding always runs, so a handle can never leak. The dictionary is generated per project, kept in a local content-keyed cache, and never committed. See [Argot](docs/handbook/src/why/argot.md).
+The round trip is lossless. The model reads and writes less boilerplate, and nothing downstream, no tool, no file, no transcript, ever sees an unexpanded handle. Encoding is gated per model and by context size, so a large or unfamiliar context writes in full instead of risking a garbled handle. Decoding always runs, so a handle can never leak. The dictionary is generated per project, kept in a local content-keyed cache, and never committed. See [Argot](docs/handbook/src/why/argot.md), and the codec itself in [`@veyyon/argot`](packages/argot).
 
-The five `argot.*` settings live together on the **Experimental** settings tab (`/settings` → Experimental → Argot): the master toggle plus four dependent knobs that appear once it is on.
+The five `argot.*` settings sit together on the **Experimental** tab (`/settings` → Experimental → Argot): the master toggle plus four dependent knobs that appear once it is on.
 
-The fork also adds shared credentials and global config across profiles, a per-profile working directory, a unified auto-compaction threshold (auto, a percent of the window, or an absolute token amount, picked from a two-level drill-down in settings), artifact spill for oversized tool output, and atomic, serialized config writes. Each is covered in [Mechanisms](docs/handbook/src/why/innovations.md).
+### Context that shrinks before it summarizes
+
+- **A lossless first pass.** When the window fills, a Tier-0 pass drops tool results that are byte-identical to a newer copy. Nothing is paraphrased, so nothing is lost, and whatever survives is what compaction then has to condense. See [Compaction and project memory](docs/handbook/src/context/compaction-memory.md).
+- **An absolute-token threshold.** Compaction can trigger on a token count rather than only on a fraction of the window, so the trigger point stays put across models with different context sizes instead of moving every time you switch.
+- **Artifact spill.** Oversized tool output goes to an artifact the agent can read back, instead of being truncated into the transcript.
+
+### Credentials, profiles, and config
+
+- **Credentials live in SQLite, not a JSON lockfile.** Upstream keeps `auth.json` under `proper-lockfile`; Veyyon stores them in `agent.db` through `bun:sqlite`.
+- **Several keys per provider.** Round-robin selection with session affinity and per-credential backoff, so one rate-limited key does not stop the session and a mid-turn switch does not change models under you.
+- **One sign-in reaches every profile.** Providers and global settings are shared, rather than each profile holding its own copy.
+- **A profile can pin its own working directory**, and `set_cwd` re-roots a live session, so one install holds several projects without them bleeding into each other.
+- **Config writes are atomic and serialized.** One path, one swap, so two writers never tear a settings file.
+
+### The shell and tool layer
+
+- **Capability-based discovery.** `defineCapability`, `registerProvider`, `loadCapability`, and the skill capability replaced the upstream resource-loader and package-manager classes, so extensions register into one surface instead of several.
+- **Bash interception.** Destructive command patterns force an approval prompt even in a permissive mode (`bashInterceptor.enabled`, `bashInterceptor.patterns`).
+- **LSP writethrough** for format-on-save, so a formatter's edit lands through the same path as the agent's.
+- **A status line component** in place of the upstream footer data provider, and fuzzy path suggestions in `read`.
+- **Clipboard through the native addon** rather than a separate image-clipboard module and shelling out to `xclip`/`pbcopy`.
+
+### Five new crates under the addon
+
+The import came with eight Rust crates. There are thirteen now, and the five added since are there to give a shared answer one home:
+
+- **`veyyon-glob`** and **`veyyon-keys`**: the glob matcher behind the native binding, and Kitty keyboard protocol parsing with a perfect-hash lookup.
+- **`veyyon-text`**: ANSI-aware width, truncation, and column slicing over UTF-16, so the TUI and the natives measure a line the same way.
+- **`veyyon-diff-kernel`** and **`veyyon-grep-kernel`**: one owner each for what a diff line is and how a search pattern is compiled, so the `diff` and `grep` builtins, the isolation backend's patch output, and the search stack cannot drift into disagreeing about it.
+
+### Under the floor
+
+Choices that do not show up in a feature list but decide how the code ages: extensions load through native Bun `import()` instead of `jiti`; tools are built by `createTools(session)` off a `BUILTIN_TOOLS` registry rather than `createTool(cwd)` one at a time; the suites run on `bun:test` rather than vitest. The repo carries over 4,200 TypeScript test files and 2,400 Rust test functions today, across 10 CI workflows, with 92 handbook pages and 57 internal engineering docs.
+
+The complete divergence ledger, including the upstream patterns we deliberately do not port, is [`docs/internal/porting-from-pi-mono.md`](docs/internal/porting-from-pi-mono.md) §15. The mechanism-by-mechanism version is the handbook's [Mechanisms](docs/handbook/src/why/innovations.md) chapter.
 
 ## What it can do
+
+The product surface, as you meet it. Some of this is the base the fork was built on, some of it is the work above; the split is in [What Veyyon adds](#what-veyyon-adds) rather than repeated on every line here.
 
 ### 01 · The agent writes code that calls its own tools
 

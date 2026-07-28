@@ -7,6 +7,39 @@
 ### Fixed
 
 - Remote memory extraction, consolidation, summarization, and API embeddings now transform provider-bound text with the live secret runtime on every physical request. The transform runs before token caps and serialization, then runs again after credential refresh or retry backoff. Local, FastEmbed, and on-device paths remain byte-identical and never take the remote transform.
+
+- `recall()` refuses a `topic` filter instead of quietly applying it to the `source` column.
+  Working and episodic memory have no topic column, only the `memoria_*` tables do, and the clause
+  pushed `source = ?` bound to the topic value. Both outcomes looked like data rather than a bug:
+  `{ topic: "chat" }` returned every memory whose SOURCE is `chat`, a plausible result set
+  answering a different question, and `{ source, topic }` together emitted
+  `source = 'a' AND source = 'b'`, always empty, reading as "you have no memories like that". The
+  error names the value that was passed and both alternatives: filter on `source`, or query the
+  `memoria_preferences` and `memoria_instructions` tables, which do carry a topic. A null or empty
+  `topic` is not a filter and is still ignored, which is what every ordinary recall passes.
+
+- The vector packer and the embedder agree on how wide a vector is. Two resolvers answered that
+  question and they resolved the MODEL NAME differently: the embedder read the active
+  `withMnemopiRuntimeOptions` scope first and the environment second, while `config.embeddingDim()`
+  read `MNEMOPI_EMBEDDING_MODEL` alone, and it is the one `core/binary-vectors.ts` sized packed
+  vectors from. Under a scope naming a 1024-dimension model the embedder produced 1024 and the
+  packer assumed 384, with no width check anywhere between them, so the store filled with rows whose
+  recorded width was a lie and it surfaced as similarity scores quietly getting worse rather than as
+  an error. `config.embeddingModel()` is the one resolver now, and `embeddingDimFor` moved beside it
+  because those two copies had diverged as well, on where each read `MNEMOPI_EMBEDDING_DIM` from.
+
+- The width is asked for rather than frozen. `EMBEDDING_DIM` and `BYTES_PER_VECTOR` were module
+  constants evaluated the first time `core/binary-vectors.ts` was imported, so a runtime scope
+  entered afterwards could not move them however early it was entered. They are functions now.
+  `DEFAULT_MODEL` and `EMBEDDING_DIM` in `core/embeddings.ts` were the same trap with no importers
+  at all and are gone; ask `embeddingModel()` and `embeddingDim()`.
+
+- Storing an embedding with no dimensions fails instead of succeeding. A zero-length vector packs
+  to an empty blob and records a width of `0`, and search then compares nothing against nothing and
+  scores the row, so an embedder that failed and returned an empty array left rows in the store that
+  had never held a vector, scoring against every query, with nothing to say so. A width that merely
+  differs from the configured one is still stored: rows carry their own width and search compares at
+  the narrower of the two, which is what lets a store outlive a model change.
 - A memory recorded as `false` now stays out of recall results. `Veracity` was declared five
   times in this package with different value sets, and the narrowest of them validated writes:
   `clampVeracity("false")` returned `"unknown"`, so a fact something had checked and rejected
@@ -26,6 +59,11 @@
 - The `onnxruntime-node` peer pin is back to the version `fastembed` actually links against. It read `1.26.0` while `fastembed@2.1.0` declares an exact `onnxruntime-node: 1.21.0`, so a consumer that installed what the manifest asked for provided an ORT the native addon does not link, which shows up as a load failure at the first embed rather than as an install error. The pin is `1.21.0` again, and the test that guards the pairing now reads fastembed's own declared dependency instead of a hardcoded number, so the next fastembed bump either agrees or fails the check.
 
 ### Changed
+
+- Class privacy is `#` throughout `core/`. Sixty-seven fields and methods carried a `private` or
+  `protected` keyword, which TypeScript erases at build time, so every one of them was reachable at
+  runtime from anywhere holding the object. They are ES private fields now, enforced by the
+  workspace gate `scripts/class-privacy-is-the-hash.test.ts`. No public API changed.
 
 - Remembering something no longer loads a model provider. The memory LLM client answered two questions in one module: whether an LLM is configured and how to build a prompt, which is configuration and text, and how to send that prompt, which is a round trip through the streaming engine. Fact extraction asks the first kind on every path and the memory engine sits behind extraction, so a provider was on the graph of every module that can remember something. The configuration half is now `core/local-llm-config.ts` and extraction loads the calling half only when it actually calls a model. `core/extraction.ts` went from 307 modules to 89, `core/beam/index.ts` from 341 to 144, and the MCP server from 406 to 148. A failed load rejects and is recorded like any provider error, so nothing degrades quietly.
 

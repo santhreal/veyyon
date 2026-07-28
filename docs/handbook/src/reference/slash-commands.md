@@ -3,6 +3,26 @@
 Slash commands run inside an interactive Veyyon session. Type `/` in the composer to open the
 picker. Commands below are the **builtin** set; extensions may add more.
 
+A command nothing can handle is refused, not sent to the model. If you mistype a name, or type a
+command your installed build does not have, you get:
+
+```text
+Unknown command "/secrt". Nothing handled it, so it was not sent to the model. Type / to see the
+commands this build has, or drop the leading slash to send it as a message.
+```
+
+The refusal names the command and never repeats what followed it, because the tail of a mistyped
+`/secret add` is a credential.
+
+A message that merely begins with a filesystem path is prose, not a command, and is sent as usual:
+
+```text
+/etc/hosts is broken
+```
+
+The separator decides. A command name is one segment of letters, digits, underscores and hyphens
+starting with a letter, so anything holding a slash is a path.
+
 ## Session and navigation
 
 | Command | Purpose |
@@ -24,7 +44,7 @@ picker. Commands below are the **builtin** set; extensions may add more.
 
 | Command | Purpose |
 | --- | --- |
-| `/model [id]` | Select the **interactive** model only (no role cycle; roles live in settings) |
+| `/model [id]`, `/models` | Select the **interactive** model only (no role cycle; roles live in settings) |
 | `/switch` | Try a model for this session only, without saving it as default (same as alt+p) |
 | `/fast on\|off\|status` | Fast mode |
 | `/thinking [level]` (`/effort`) | Set reasoning effort; no argument opens the picker |
@@ -35,10 +55,11 @@ picker. Commands below are the **builtin** set; extensions may add more.
 | `/guided-goal` | Guided goal wizard |
 | `/loop` | Loop mode controls |
 | `/prewalk` | Prewalk edit path |
+| `/secret` | Store a credential the agent uses by placeholder and never sees. `add` (prompts with the value hidden), `list`, `rm`, `extend`, `log`. See [Secrets](../features/secrets.md) |
 | `/settings`, `/setup` | Settings UI; `/setup` / `/providers` opens provider sign-in |
 | `/statusline` | Settings UI, jumped to Status Line (preset/segments/separator) |
 | `/reload-plugins` | Reload extensions |
-| `/force <tool> [prompt]` | Force the next turn to use a specific tool |
+| `/force <tool> [prompt]` (`/force:`) | Force the next turn to use a specific tool |
 
 ## Tools, context, and jobs
 
@@ -55,7 +76,6 @@ picker. Commands below are the **builtin** set; extensions may add more.
 | `/memory …` | Memory backend view/stats/clear/enqueue |
 | `/copy` | Pick text or code from the conversation to copy |
 | `/lsp` | Show language server status |
-| `/cockpit` | Live multi-agent cockpit (status, model per agent, drill-in) |
 
 ## Auth and usage
 
@@ -73,8 +93,8 @@ picker. Commands below are the **builtin** set; extensions may add more.
 | `/mcp …` | MCP server management |
 | `/mcp notifications` | Show notification capabilities and subscriptions |
 | `/plugins …` | Plugin browser |
-| `/extensions` | Extension dashboard |
-| `/agents` | Open the Agent Control Center (subagent definitions) |
+| `/extensions`, `/status` | Extension Control Center dashboard. `/status` is an alias for it, not a session-status view |
+| `/agents` (aliases `/cockpit`, `/hub`) | Open the Agent Control Center: live agent roster and the agent-to-agent comms stream |
 | `/ssh …` | SSH host setup |
 | `/hotkeys` | Active keybinding chords |
 | `/collab …`, `/join`, `/leave` | Live collab sessions |

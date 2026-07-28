@@ -27,8 +27,9 @@ Primary compaction knobs (settings → Models → Compaction, or `config.yml`):
   - `summary`: rewrites old history into an in-place LLM summary on the current branch (the default).
   - `handoff`: writes a structured handoff summary that preserves the task, pending questions, and
     recent decisions, then continues from it (LLM transfer path).
-- **Model** (`compaction.model`): the model that performs LLM compaction / handoff. Unset uses your
-  interactive model. See [Models, roles, and profiles](../using/roles-and-profiles.md).
+- **Model** (`compaction.model`): the models that perform LLM compaction / handoff, tried in order.
+  Unset uses your interactive model. See [Fallback models](#fallback-models) below and
+  [Models, roles, and profiles](../using/roles-and-profiles.md).
 
 `/compact <focus>` steers a run with an "Additional focus:" directive. The most recent turns, user, assistant, and tool messages, are kept verbatim up to `compaction.keepRecentTokens` (default 20,000 tokens).
 
@@ -43,6 +44,40 @@ for them to select. If you type one, veyyon compacts with your configured type, 
 as focus text, and says which name you used and what to use instead. Your text is passed
 through exactly as you typed it, because a sentence that happens to start with "soft" is a
 reasonable thing to ask for.
+
+## Fallback models
+
+`compaction.model` is an ordered list, not one model:
+
+```yaml
+compaction:
+  model: anthropic/claude-opus-4-1,anthropic/claude-sonnet-4-5,anthropic/claude-haiku-4-5
+```
+
+Compaction tries the first entry. If you are not signed in to it, or its context window cannot
+hold the history being summarized, veyyon moves on to the second, then the third. A single model
+is still written the way you would expect (`model: anthropic/claude-sonnet-4-5`). In `/settings`,
+the compaction model row is the same list: add a fallback, and press Enter on any entry to move it
+up.
+
+Falling back is never quiet. When compaction runs on anything other than your first choice, you get
+a warning in the session naming both models and the reason:
+
+```text
+Compacted with anthropic/haiku-4-5. anthropic/opus-4-1 was skipped: it is not authenticated.
+```
+
+You see that once per distinct reason, not once per compaction.
+
+`compaction.modelFallbackStrategy` decides what happens after your list runs out:
+
+- `auto` (the default) keeps going: your main model, then each of your model roles, then the model
+  with the largest context window you have access to. Compaction almost never fails, at the cost of
+  possibly summarizing on a model you did not name.
+- `configured-only` stops at the models you listed. Compaction fails with the reason instead, which
+  is what you want when the summary quality matters more than the session continuing.
+
+With `compaction.model` unset, `configured-only` means your interactive model and nothing else.
 
 ## Shake and duplicate elision
 

@@ -5,8 +5,8 @@
 | Concept | Meaning |
 | --- | --- |
 | **Default model** | The model used for the main conversation, and the one a new session starts on. Chosen with `/model` or `--model`, or in `/settings` under Model. Persisted under `modelRoles.default`, which is a slot rather than a selectable role, so it does not appear in role pickers. |
-| **Role** | A named model assignment for a kind of work (`smol`, `plan`, `task`, …). Configured in `modelRoles` / settings → Model → Roles. |
-| **Slot overrides** | `subagent.model` and `compaction.model`, dedicated destinations that override the corresponding role or inherit the interactive model when unset. |
+| **Role** | A named model assignment for a kind of work (`smol`, `plan`, `advisor`, and others). Configure it in `modelRoles` or Settings → Model → Roles. |
+| **Slot override** | `subagent.model` or `compaction.model`, an ordered model chain for one subsystem. An unset slot inherits the interactive model. |
 | **Profile** | User config tree at `~/.veyyon/profiles/<name>/` (including `default`). |
 
 ## Interactive model
@@ -22,11 +22,10 @@ modelRoles:
   smol: openai/gpt-4.1-mini
   slow: anthropic/claude-opus-4-5:high
   plan: anthropic/claude-sonnet-5
-  task: deepseek/deepseek-chat
   advisor: anthropic/claude-sonnet-5:medium
 ```
 
-Role values may include a thinking suffix (`:minimal`, `:low`, `:medium`, `:high`, `:xhigh`, `:max`).
+Role values may include a thinking suffix (`:off`, `:auto`, `:minimal`, `:low`, `:medium`, `:high`, `:xhigh`, `:max`). The model picker shows only variants the selected model supports. If a provider publishes effort tiers as separate upstream IDs, Veyyon presents one logical model and routes the chosen effort to the matching ID.
 
 ## Built-in roles
 
@@ -58,17 +57,20 @@ To return an assigned role or slot to its unset state, open its picker in `/sett
 
 | Setting | Effect |
 | --- | --- |
-| `subagent.model` | Model for every subagent that has no model of its own. Unset → inherit interactive. A per-agent model in `subagent.agents` wins over it. |
-| `compaction.model` | Model for compaction/handoff. Unset → inherit interactive. |
+| `subagent.model` | Ordered model chain for every subagent that has no model of its own. The first entry is primary and later entries are fallbacks. An unset chain inherits the interactive model. A per-agent model in `subagent.agents` wins over it. |
+| `compaction.model` | Ordered model chain for compaction and handoff. An unset chain inherits the interactive model. |
 
 ```yaml
 subagent:
-  model: deepseek/deepseek-chat
+  model: deepseek/deepseek-chat:high,anthropic/claude-sonnet-5:low
 compaction:
-  model: openai/gpt-5-mini
+  model: openai/gpt-5-mini:low,anthropic/claude-haiku-4-5
   strategy: handoff
   threshold: "80%"
 ```
+
+In Settings, Enter edits the highlighted chain position. **Add fallback**
+appends a position. Delete removes only the highlighted position.
 
 ## Cycling roles (Ctrl+P)
 

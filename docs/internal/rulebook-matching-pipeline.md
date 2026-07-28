@@ -254,7 +254,7 @@ A body that renders to the empty string is never delivered; see `docs/internal/t
 
 `buildSystemPromptInternal` receives both `rules` (rulebook) and `alwaysApplyRules`.
 
-Always-apply rules are deduped against custom prompt sources (`dedupeAlwaysApplyRules` drops a rule whose content already appears in the SYSTEM/APPEND_SYSTEM customization) and rendered first, injecting their raw content directly into the prompt (inside a `<generic-rules>` block in the default template).
+Always-apply rules are deduped against the caller-supplied custom base, append value, and loaded context files. `dedupeAlwaysApplyRules` drops a rule whose content already appears verbatim in one of those sources. The remaining rules render first and inject their raw content into a `<generic-rules>` block in the default template.
 
 Rulebook rules are rendered in a `<domain-rules>` block as `- <name> (<globs>): <description>` lines; the URL list in the prompt documents `rule://<name>` and the workflow section tells the model to read relevant rules first. The custom-prompt template (`custom-system-prompt.md`) instead renders `<rule name="...">` entries with `<glob>` children under an explicit "You MUST read `rule://<name>`" instruction.
 

@@ -11,10 +11,13 @@ third-party attribution.
 - The TypeScript/Bun agent loop, TUI, and mode system (`packages/coding-agent`,
   `packages/agent`, `packages/tui`, `packages/ai`, `packages/catalog`, and
   most of `packages/*`).
-- The Rust native hot paths (`crates/pi-grep`, `crates/pi-pty`,
-  `crates/veyyon-shell`, `crates/hashline`-adjacent natives, and others under
-  `crates/`), including their vendored third-party dependencies under
-  `crates/vendor/`.
+- The Rust native hot paths, including their vendored third-party dependencies
+  under `crates/vendor/`. The crates were renamed after the fork, so the paths
+  here are the current ones: search lives in `crates/veyyon-grep-kernel` and
+  `crates/veyyon-uu-grep`, the shell and its output minimizer in
+  `crates/veyyon-shell`, and the PTY and the rest of the N-API surface in
+  `crates/veyyon-natives`. The hashline edit engine is TypeScript and lives in
+  `packages/hashline`, not in a crate.
 - The prompt/agent model, hashline edit engine, mnemopi memory system, and
   provider catalog that oh-my-pi shipped — these are the reasons this
   project forked oh-my-pi rather than starting from scratch (see

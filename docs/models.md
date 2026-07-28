@@ -435,13 +435,15 @@ Resolution precedence for exact selectors:
 
 ### Initial model selection priority
 
-`findInitialModel(...)` uses this order:
+`buildSessionOptions(...)` in `main.ts` decides the model a session starts on, in this order:
 
-1. explicit CLI provider+model
-2. first scoped model (if not resuming)
-3. saved default provider/model
-4. known provider defaults (e.g. OpenAI/Anthropic/etc.) among available models
-5. first available model
+1. an explicit `--model` (or the legacy `--provider` pair). A pattern that matches nothing is fatal, except for a bare id with no provider and no `:` suffix, which is carried as `options.modelPattern` and resolved again after extensions load, since an extension may register the provider it names.
+2. the scoped set from `--models`, when this is not a `--continue` or `--resume`. Inside that set the remembered `modelRoles.default` wins if it is there; if it is configured but unavailable, `fallbackForUnavailableDefault` substitutes and prints the reason; otherwise the first scoped model is used.
+3. otherwise nothing is pinned here, and the session resolves `modelRoles.default` through `resolveModelRoleValue` against the models that have a usable credential.
+
+A resumed session restores its own model rather than taking a CLI default, which is why step 2 is skipped under `--continue`/`--resume`.
+
+This used to name `findInitialModel(...)`, a function in `config/model-resolver.ts` with a different precedence. Nothing called it: `main.ts` had grown its own resolution and the two had drifted, so the documented order was one no session ever took. The dead copy is gone.
 
 ### Role aliases and settings
 
@@ -592,7 +594,7 @@ Reasoning / thinking:
 
 - `supportsReasoningEffort`: accept `reasoning_effort`. Default: auto (off for Grok, Z.ai/Zhipu, and Xiaomi MiMo).
 - `supportsReasoningParams`: whether request shaping may send reasoning params at all. Default: auto (off for GitHub Copilot chat-completions).
-- `reasoningEffortMap`: partial map from internal effort levels (`minimal|low|medium|high|xhigh|max`) to provider-specific strings (e.g. Fireworks GLM maps `minimal -> "none"`).
+- `reasoningEffortMap`: partial map from internal effort levels (`minimal|low|medium|high|xhigh|max`) to provider-specific strings (e.g. Fireworks GLM maps `minimal -> "none"`). Every key must name a level; a key that does not, such as a misspelled `hihg`, fails config validation and is reported by name. It used to be accepted and then never matched, so the remap silently did not happen and the level went to the provider unchanged.
 - `thinkingFormat`: request shape for thinking: `"openai"` (`reasoning_effort`), `"openrouter"` (`reasoning: { effort }`), `"zai"` (`thinking: { type: "enabled" }`), `"qwen"` (top-level `enable_thinking`), or `"qwen-chat-template"` (`chat_template_kwargs.enable_thinking`). Default: `"openai"`.
 - `reasoningContentField`: assistant field carrying chain-of-thought: `"reasoning_content"`, `"reasoning"`, or `"reasoning_text"`. Default: auto.
 - `requiresReasoningContentForToolCalls`: assistant tool-call turns must round-trip the reasoning field (DeepSeek-R1, Kimi, OpenRouter when reasoning is on). Default: `false`.

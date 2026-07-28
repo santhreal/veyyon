@@ -85,7 +85,7 @@ Guests with a full link can:
 - read the entire session (including the back-transcript at join time),
 - prompt the agent (rendered with their name badge on every participant's transcript; the LLM sees the prompt text verbatim: names are display-only),
 - interrupt the agent (Esc),
-- use the Agent Hub against the host's subagents: live table and progress, chat (steers the host's subagent), kill, revive, and transcript viewing (fetched from the host on demand).
+- use the Agent Control Center against the host's subagents: live roster and progress, chat (steers the host's subagent), kill, and transcript viewing (fetched from the host on demand). A guest reads a transcript rather than taking over a session, because the sessions live on the host.
 
 Guests with a view-only link can read everything live, back-transcript, streaming text, tool cards, subagent transcripts, but the host rejects prompting, interrupting, and agent control from them.
 
@@ -145,6 +145,6 @@ Hub topology, the host is authoritative, guests never peer:
 2. `event` frames: live agent events, fed straight into the guest's normal event controller; rendering is events-only to prevent double-render.
 3. `state` frames: debounced footer snapshots: streaming flag, the host's full model object and thinking level (applied to the guest's replica agent state, so model display and context-window math are native), host context numbers, and participants.
 4. `bus` frames: mirrored task-subagent lifecycle/progress EventBus traffic, republished on the guest's local bus so the subagent HUD and status-line count work natively.
-5. `agents` frames: agent-registry snapshots feeding a guest-local registry, so the Agent Hub table renders host subagents.
+5. `agents` frames: agent-registry snapshots feeding a guest-local registry, so the Agent Control Center roster renders host subagents.
 
 Guest→host: `hello`, `prompt`, `abort`, `agent-cmd` (hub chat/kill/revive), and `fetch-transcript` (incremental subagent-transcript reads answered by targeted `transcript` frames). The replica loads through the regular `/resume` machinery, so theming, ctrl+o, and transcript behavior are native by construction; the guest process never chdirs to host paths.

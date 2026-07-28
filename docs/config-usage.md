@@ -77,7 +77,7 @@ Project-level bases:
 
 A named profile (`veyyon --profile <name>`, `/profile <name>` in the TUI, or `VEYYON_PROFILE`) selects which profile agent dir is active. The default profile is `~/.veyyon/profiles/default/agent/`; profile `<name>` is `~/.veyyon/profiles/<name>/agent/`. Paths written in this document as `~/.veyyon/profiles/default/agent/...` mean the **active** profile's agent directory.
 
-The relocation is uniform across the native provider (`builtin.ts`) and the generic `config.ts` helpers, so it covers slash commands, rules, prompts, instructions, hooks, tools, extensions, settings, skills, and MCP, plus the top-level `SYSTEM.md` / `RULES.md` / `AGENTS.md` files and runtime state (sessions, blobs, `agent.db`). A profile sees only its own Veyyon config, never the default profile's `~/.veyyon/profiles/default/agent`.
+The relocation is uniform across the native provider (`builtin.ts`) and the generic `config.ts` helpers. It covers slash commands, sticky rules, prompts, instructions, hooks, tools, extensions, settings, skills, MCP, the top-level `RULES.md` and `AGENTS.md` files, `PROMPT_SECTIONS/`, and runtime state (sessions, blobs, `agent.db`). A profile sees only its own Veyyon config, never the default profile's `~/.veyyon/profiles/default/agent`.
 
 Keybindings get a one-time seed rather than a live merge: a new named profile copies the default profile's `~/.veyyon/profiles/default/agent/keybindings.*` once (at `profile new`, or on first launch of an older profile that has no keybindings file). After that the profile's own file is the only one read, later edits to the default profile's keybindings do not flow into other profiles.
 
@@ -229,7 +229,7 @@ Native provider (`id: native`) reads native config from:
 
 - Slash commands, rules, prompts, instructions, hooks, tools, extensions, extension modules, and settings use a project/user root only when the root directory exists and is non-empty.
 - Skills are loaded only from the active profile's agent dir (`~/.veyyon/profiles/<name>/agent/skills`). Project-local `.veyyon/skills` directories are deliberately not scanned, so no repository can inject skills into a session by ambient autodiscovery.
-- `SYSTEM.md` and `AGENTS.md` read user-level files directly and use nearest-ancestor project `.veyyon` lookup for project files, but the project `.veyyon` directory must be non-empty. See [`docs/system-prompt-customization.md`](./system-prompt-customization.md) for the full `SYSTEM.md` / `APPEND_SYSTEM.md` contract (replace vs. append, templating).
+- `AGENTS.md` reads the global cross-profile file and the active profile's first matching instruction file directly. Project context walks from the working directory to the repository root. `RULES.md` reads the active profile file and the nearest project `.veyyon` file. Persistent system-prompt changes use `PROMPT_SECTIONS/`. See [`docs/system-prompt-customization.md`](./system-prompt-customization.md).
 
 ### Scope-specific loading
 
@@ -246,7 +246,7 @@ Native provider (`id: native`) reads native config from:
 
 ### Nearest-project lookup nuance
 
-## For `SYSTEM.md` and `AGENTS.md`, native provider uses nearest-ancestor project `.veyyon` directory search (walk-up) and still requires the project `.veyyon` dir to be non-empty.
+The native provider uses nearest-ancestor project `.veyyon` directory search for project `AGENTS.md`, `RULES.md`, and `PROMPT_SECTIONS/`. The directory must be non-empty. Bare project `AGENTS.md` files use their own repository-bounded walk-up.
 
 ## 7) How major subsystems consume config
 
@@ -257,7 +257,7 @@ Native provider (`id: native`) reads native config from:
 
 ### Session title prompt override
 
-Create `TITLE_SYSTEM.md` in the same config locations as `SYSTEM.md` / `APPEND_SYSTEM.md`:
+Create `TITLE_SYSTEM.md` in a supported config base:
 
 ```text
 # ~/.veyyon/profiles/default/agent/TITLE_SYSTEM.md
@@ -265,8 +265,8 @@ Generate a session name using lowercase `<type>:<primary-objective>`.
 ```
 
 - Missing `TITLE_SYSTEM.md` keeps the bundled title prompts.
-- Discovery uses the same project-then-user config directory pattern as `SYSTEM.md`: project `.veyyon/TITLE_SYSTEM.md` first, then user `~/.veyyon/profiles/default/agent/TITLE_SYSTEM.md` and the other supported config bases.
-- The override replaces only the automatic session-title generation system prompt; normal `SYSTEM.md` / `APPEND_SYSTEM.md` prompt customization is unaffected.
+- Discovery checks project config bases first, including `.veyyon/TITLE_SYSTEM.md`, then the active profile's `agent/TITLE_SYSTEM.md` and the supported external-tool config bases.
+- The file replaces only the automatic session-title generation system prompt. The agent's own base prompt is assembled. Use `--system-prompt` or `--append-system-prompt` for a one-run override, or `PROMPT_SECTIONS/` for persistent section changes.
 - The online path asks the title model to wrap the title in `<title>...</title>` and parses it leniently from text (a plain sentence, a truncated/unclosed tag, or a stray `{"title": "..."}` JSON echo all still work). A `TITLE_SYSTEM.md` override gets the wrap-in-`<title>` instruction appended after it. The local tiny-title path keeps the `<title>...</title>` prefill/stop wrapper and uses this file as its system turn.
 
 ## Skills subsystem

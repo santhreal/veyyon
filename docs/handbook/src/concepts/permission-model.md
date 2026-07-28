@@ -84,11 +84,42 @@ When no interactive prompt is available, such as a headless or ACP run, a call t
 needs approval fails instead of proceeding. The error names the path that crossed the
 boundary, so you can see why the run stopped.
 
+## Secrets in arguments
+
+A tier does not tell you whether a call is about to spend a credential either. The
+secret-use boundary is the third question, asked the same way and in the same modes:
+
+> Do this call's arguments carry a stored secret?
+
+Your secrets reach a tool as real values. The model works with placeholders such as
+`#GITHUB_TOKEN#`, and Veyyon substitutes the credential just before the tool runs, so the
+model can use a secret it never reads. That substitution used to be recorded and never
+asked about: `secrets.auditLog` could tell you afterwards which credential an agent had
+spent, and nothing could ask you first.
+
+Now a call whose arguments carry a real credential asks for approval in `plan`, `ask`, and
+`auto-edit`, even when its tier would have allowed it. The prompt names the secret and
+never shows its value:
+
+```text
+Allow tool: bash
+Reason: This call uses stored secret: GITHUB_TOKEN. Approving it runs the call with the
+real credential.
+```
+
+As with the working-directory boundary, `yolo` turns permission off entirely and turns
+this off with it, so the shipped default asks nothing extra. A call that mentions a
+placeholder without expanding it, such as one made while `secrets.enabled` is false, is
+not carrying a credential and does not ask.
+
 ## Per-tool overrides
 
 When you want one tool to behave differently from its tier, name it under
 `tools.approval`. Each entry maps a tool to `allow`, `deny`, or `prompt`, and that choice
-wins for that tool no matter what the mode says.
+wins for that tool whatever the mode says, with one exception: while a plan-mode session is
+active, a per-tool `allow` does not let an exec-tier tool run. Plan mode is a cap rather
+than a default, so it outranks both the configured mode and the per-tool setting. A `deny`
+is a hard block in every direction.
 
 ```yaml
 # ~/.veyyon/profiles/default/agent/config.yml

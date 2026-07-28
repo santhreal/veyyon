@@ -32,6 +32,36 @@ Does not cover `/tree` UI rendering behavior beyond semantics that affect sessio
 - [`src/session/messages.ts`](../../packages/coding-agent/src/session/messages.ts): custom-message transformers
 - [`src/session/blob-store.ts`](../../packages/coding-agent/src/session/blob-store.ts): content-addressed blob store
 - [`src/session/history-storage.ts`](../../packages/coding-agent/src/session/history-storage.ts): prompt history (separate subsystem)
+- [`src/session/operator-notices.ts`](../../packages/coding-agent/src/session/operator-notices.ts): the one channel for a non-fatal problem the operator has to see (separate subsystem, see below)
+
+## Operator notices
+
+`OperatorNotices` is where a subsystem says "this is degraded, carry on" and reaches a person. Use it instead of `logger.warn` for anything an operator needs to act on. The default transport set is `{ file: true }` with no console transport (`logger.ts:219`), and a TUI cannot write to the console without corrupting its render, so a `logger.warn` at startup lands in a file nobody opens. Before this existed, refusing to start was the only reliably loud mechanism in the codebase.
+
+The contract, in the order it matters:
+
+- A notice **buffers until a sink attaches**, because notices are raised while a session is being built and the TUI does not exist yet. That is the normal case, not an edge one: startup is exactly when skills fail to load and secrets turn out to be unprotectable.
+- The **default sink is stderr**, so a caller that attaches nothing gets its notices in the wrong place rather than losing them. Interactive mode passes a sink-less collector to `createSession` and attaches its own after the first render; every other mode takes the default.
+- Identical notices **collapse** on severity, source and text, keeping the first timestamp. A problem detected once per turn would otherwise train the operator to ignore the channel, which ends in the same silence by another route.
+- Two severities only, `warning` and `error`. A third is never used honestly.
+- `all()` is the record, so a diagnostic or a test can read what was raised without a sink ever having been attached.
+
+Raise one with `session.operatorNotices.warn(source, text)`, where `source` is the subsystem in one lowercase word. `secrets`, `skills` and `filesystem` are the current callers. `AgentSession.skillWarnings` was the previous attempt: a getter that collected skill-loading problems and was read by no production code at all, which is worse than no channel, because the next person to need one reuses it and inherits the silence. The secrets subsystem's use of this channel is documented in [`secrets.md`](../secrets.md).
+
+### Reaching the channel from a lower layer
+
+`OperatorNotices` lives in `packages/coding-agent`, so `packages/utils` cannot import it, and the helpers that find most degradations there are free functions with no session handle. Those report through `reportFault` in `packages/utils/src/fault-sink.ts`, and the reporting direction is inverted: the low layer owns a sink, and whoever owns a surface attaches theirs. `sdk.ts` attaches one beside the `OperatorNotices` it builds, so every mode gets the reach without having to remember.
+
+What you need to know before using it:
+
+- Call `reportFault({ source, text, context })` from a low-layer helper that cannot throw and cannot reach a session. Use `OperatorNotices` directly whenever you do have a session.
+- `text` is what a person reads, so it names the consequence and the remedy. `context` is the structured detail for the file log, kept out of `text` because a JSON blob mid-sentence is how a channel becomes noise.
+- The **file log is written either way**, before any forwarding. Attaching a sink can only add reach, never remove the record, so no configuration reports a fault to fewer places than before.
+- The sink is **module-level**, which is the opposite of the per-session rule above and deliberate. These faults are properties of the machine rather than of a session: a directory that cannot be listed affects both sessions in a process, and identical notices collapse anyway.
+- A sink that throws does not break the caller, because these run inside helpers whose contract is to carry on. The throw is recorded on its own line.
+- Call `setFaultSink(undefined)` in test teardown. A sink that outlives the test that installed it collects another test's faults and reports them against the wrong subject.
+
+`fs-optional.ts` is the reason this exists. Its header promised that a directory that exists and cannot be listed "is not allowed to be silent", and it reported that with `logger.warn`, so an unreadable `~/.veyyon/agents` showed the operator "no subagents" and put the cause in a file nobody opens.
 
 ## On-Disk Layout
 

@@ -308,9 +308,11 @@ Every key below is defined in the settings schema; `veyyon config list` shows th
 
 ### Models
 
-`modelRoles`, `modelTags`, and `cycleOrder` work together. Role values may carry a thinking suffix (`:minimal`, `:low`, `:medium`, `:high`, `:xhigh`, `:max`). The same suffix works on `subagent.model` and `compaction.model`, so any model slot can run at a chosen effort.
+`modelRoles`, `modelTags`, and `cycleOrder` work together. Role values may carry a thinking suffix (`:off`, `:auto`, `:minimal`, `:low`, `:medium`, `:high`, `:xhigh`, `:max`). The same suffix works on `subagent.model` and `compaction.model`, so any model slot can run at a chosen effort.
 
-In the settings model pickers (`/settings`, or `/model` for the interactive model), picking a model that supports thinking efforts opens a second step where you choose the effort. The choice is stored as the `:level` suffix on that slot's selector and persists with the active profile. A model with no thinking efforts skips the step and stores the bare selector. Choosing the first row, `(model default thinking)`, stores no suffix and lets the model use its own default. The settings rows show a stored effort as a readable ` · high` rather than the raw `:high` token. To change the effort of the model you are talking to, use the `/thinking` command (its alias is `/effort`), or cycle it with Shift+Tab and toggle it with Ctrl+T.
+When you pick a model in `/settings`, Veyyon opens a separate effort step only if that model exposes configurable effort. The first row, **Model default**, stores no suffix. The remaining rows contain `auto`, `off` when the model permits it, and only the model's catalog-defined effort variants. For example, a low/high Gemini model does not show medium or xhigh. A fixed-reasoning model skips the effort step. Providers sometimes publish effort tiers as separate upstream model IDs. Veyyon collapses effort-only siblings into one logical model and routes the selected effort to the correct upstream ID.
+
+`compaction.model` and `subagent.model` are ordered chains. The first entry is the primary model and later entries are fallbacks. Enter edits the highlighted position, **Add fallback** appends a position, and Delete removes only the highlighted position. The settings rows show a stored effort as ` · high` instead of the raw `:high` suffix.
 
 The model you are working with (the main conversation) is persisted as **`modelRoles.default`**. That slot is not a selectable role: it is hidden from role pickers and stripped from `cycleOrder` on load. In the code it has one name, `DEFAULT_MODEL_SLOT`, and `interactive` is accepted as an alias for it wherever a role is passed. Selectable built-in roles: `smol`, `slow`, `vision`, `plan`, `designer`, `commit`, `tiny`, `advisor`. There is no `task` role: the model your subagents run lives in [Subagents](#subagents), which is its one owner.
 
@@ -373,6 +375,11 @@ by a model selector applies to that model; the `*` row applies to every model
 without its own. `/thinking` (and its `/effort` alias) changes only the current
 session and prints where the saved default lives, so trying an effort never
 rewrites your default.
+
+Choose **Default** in the session effort picker to clear the temporary override.
+Veyyon then applies the active model's saved row, the `*` row, or the model
+default according to the precedence below. Switching models re-evaluates these
+rows. A temporary session choice remains in force until you clear it.
 
 Effort is resolved in this order, highest first:
 
@@ -628,12 +635,12 @@ while setting up a session — but none pretends the others do not exist.
 
 #### Agents
 
-`subagent.agents` holds one row per agent, keyed by agent name. Two surfaces edit it
+`subagent.agents` holds one row per agent, keyed by agent name. One surface edits it
 rather than hand-written config: the **Agents** row in `/settings` → Subagents, which
 lists every discovered agent with the model it resolves to and opens one agent at a
-time to set its state, model and effort; and `/agents`, where `space` toggles a row
-next to the agent files themselves. Both read the same resolver, so they cannot
-disagree about a row.
+time to set its state, model and effort. `/agents` used to carry a second copy of the
+same table, so the same two facts had two homes that had to be kept in step; it is the
+live picture now and configures nothing.
 
 An agent is either enabled or disabled. There is no third state:
 
@@ -694,36 +701,38 @@ reported with the setting and the accepted levels, then ignored, and the next la
 decides. It is never rounded to a neighbouring effort: running at an effort you did not
 choose costs money and would not show up anywhere.
 
-Both agent surfaces name, for the selected agent, the model it will run on and the
-setting that decided — so an override that was outranked is visible instead of merely
-disappointing. In `/agents` that is one line, `Runs on:`. Press `m` there to walk the
-four stages in full (the default pattern, what it resolves to, the override, and the
-effective pattern), which is what you need when an override is not doing what you
-expected. It is behind a key because on a fresh install those four stages all say the
-same thing.
+The Agents table names, for the selected agent, the model it will run on and the
+setting that decided, so an override that was outranked is visible instead of merely
+disappointing. Open one agent to walk the four stages in full: the default pattern,
+what it resolves to, the override, and the effective pattern. That is what you need
+when an override is not doing what you expected.
 
-#### The three views in `/agents`
+#### The two views in `/agents`
 
-`/agents` opens the Agent Control Center. Move between its three views with the left
-and right arrows, or with `tab`:
+`/agents` opens the Agent Control Center, which is about a run in progress and
+configures nothing. Move between its two views with the left and right arrows, with
+`tab`, or by clicking a name in the strip at the top of the card:
 
 | View | What it answers |
 |---|---|
-| Live | Which agents are running right now, and what each one is doing. Press `enter` on a row to open a lens on that agent, `esc` to come back. |
-| Room | Every agent's turns woven into one conversation, your session labelled `Main` and each subagent under a call sign such as `Kestrel`. Press `ctrl+r` to re-read it. |
-| Agents | The configuration list: every agent that was discovered, enabled or not, with what it is for, an enable toggle (`space`), and a model override (`enter`). |
+| Live | Which agents exist right now, what type each one is (`reviewer`, `scout`, the definition it was spawned from), and what it is doing. Agents from earlier runs of the session appear too, marked `parked`. Press `enter` on a row, or click it, to open that agent's session in the main view: you read its transcript and can type to it, and `esc` returns you to your own session. Press `x` to stop an agent. |
+| Comms | The agent-to-agent messages, streaming as they are sent, including the ones that failed to reach their recipient and why. Long messages are folded to their first few lines with a count of what was hidden; `ctrl+o` unfolds them. |
 
-The card opens on Live when something is running and on Agents when nothing is. Live
-only ever lists agents that exist in this session, so a disabled specialist cannot
-appear there — it was never spawned. To read further back than the Room holds, open a
-single agent's full transcript from the Agent Hub.
+Live only ever lists agents that exist in this session, so a disabled specialist
+cannot appear there: it was never spawned. Which agents the model may choose, and
+what each one runs on, is configured in the Agents row of this tab.
+
+`/cockpit` and `/hub` are aliases of `/agents`, as are the `app.agents.hub` and
+`app.session.observe` keys and a double-tap of the left arrow on an empty composer.
+They used to open a separate screen with its own roster, which meant two answers to
+"which agents are running" that could disagree.
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `subagent.enabled` | boolean | `true` | The master switch. `false` removes subagents entirely: no `task` tool, no delegation guidance. See above. |
 | `subagent.delegation` | enum | `preferred` | `allowed`, `preferred`, `required`. How hard the prompt pushes; it never removes the ability to delegate. See above. |
-| `subagent.agents` | record | `{}` | One row per agent: `enabled`, `model`, `thinkingLevel`. Edit in the Agents row of the Subagents tab, or in `/agents`. |
-| `subagent.model` | string | unset | Model for every subagent that has no model of its own. Unset means inherit: subagents follow the model you are working with. May carry a `:effort` suffix, and an explicit suffix wins over the agent's own default. |
+| `subagent.agents` | record | `{}` | One row per agent: `enabled`, `model`, `thinkingLevel`. Edit in the Agents row of the Subagents tab. |
+| `subagent.model` | modelChain | unset | Models for every subagent that has no model of its own, tried in order, written as a comma-separated string or as a YAML list: the later entries are used when a run errors on the one in use. Unset means inherit: subagents follow the model you are working with. May carry a `:effort` suffix, and an explicit suffix wins over the agent's own default. A pattern that matches no model refuses the spawn rather than falling through to the next entry. |
 | `subagent.thinkingLevel` | string | unset | Blanket subagent effort, picked from `off`, `minimal`..`max`, `auto`. Unset means inherit. |
 | `subagent.batch` | boolean | `true` | Batch shape for the `task` tool: one call, many items. |
 | `subagent.maxConcurrency` | number | `32` | Subagents running at once. |
@@ -732,7 +741,7 @@ single agent's full transcript from the Agent Hub.
 | `subagent.idleTtlMs` | number | `420000` | How long an idle subagent stays in memory before being parked to disk. |
 | `subagent.softRequestBudget` | number | `200` | Requests after which a subagent is asked to wrap up; `0` disables the guard. |
 | `subagent.softRequestBudgetNotice` | boolean | `true` | Inject that wrap-up notice once. |
-| `subagent.showResolvedModelBadge` | boolean | `true` | Show each subagent's resolved model, and what decided it, on the agent surfaces. |
+| `subagent.showResolvedModelBadge` | boolean | `true` | Show each subagent's resolved model, and what decided it, on the task widget and the agent surfaces. |
 | `subagent.enableLsp` | boolean | `false` | Let subagents use the `lsp` tool. |
 | `subagent.isolation.mode` | enum | `none` | Filesystem isolation backend for subagents. See [Safety](./handbook/src/using/safety.md). |
 | `subagent.isolation.merge` | enum | `patch` | How isolated changes come back: `patch` or `branch`. |
@@ -846,7 +855,8 @@ memory:
 | `compaction.enabled` | boolean | `true` | Automatic conversation compaction. |
 | `compaction.midTurnEnabled` | boolean | `true` | Check thresholds at safe mid-turn tool-loop boundaries before the next provider request. |
 | `compaction.strategy` | enum | `summary` | `summary` (rewrite old history into an in-place LLM summary) or `handoff` (LLM handoff summary / new session transfer). |
-| `compaction.model` | string | unset | Model for handoff/LLM compaction; unset inherits the model you are working with (`modelRoles.default`). May carry a `:effort` suffix, applied on every compaction pass. |
+| `compaction.model` | modelChain | unset | Models for handoff/LLM compaction, tried in order, written as a comma-separated string or as a YAML list; unset inherits the model you are working with (`modelRoles.default`). Each may carry a `:effort` suffix, applied on every compaction pass. A candidate that is unauthenticated, or whose window cannot hold the summary, is skipped and the next one runs. |
+| `compaction.modelFallbackStrategy` | enum | `auto` | What to try after `compaction.model` runs out. `auto` also tries the main model, each model role, then the largest-window model available. `configured-only` stops at the models you listed and fails with the reason. Compacting on anything but your first choice is reported in the session, once per reason. |
 | `compaction.threshold` | string | `auto` | When auto-compaction triggers, with the unit in the value: `auto` uses `contextWindow - max(15% of contextWindow, reserveTokens)`; `85%` is a percent of the current model's window, so the trigger moves with the model; `170000` is an absolute token amount, the same trigger on every model. An absolute amount larger than the current model's window is honored up to `contextWindow - 1` and you get a one-time warning. Set it in `/settings` -> Model -> Auto-Compaction Threshold. |
 | `compaction.thresholdTokens` | number | `-1` | Retired, replaced by `compaction.threshold`. A value `> 0` in your global config is rewritten to `threshold: <amount>` on load and this key is dropped, so your trigger point does not change. Write an absolute amount as `threshold: 170000`. |
 | `compaction.thresholdPercent` | number | `-1` | Retired, replaced by `compaction.threshold`. A value `> 0` is rewritten to `threshold: <percent>%` on load (the token amount above wins when both are set) and this key is dropped. Write a percent as `threshold: 85%`. |

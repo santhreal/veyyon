@@ -20,7 +20,7 @@ Every evaluation comparison MUST vary **EXACTLY ONE independent variable** betwe
 
 **NEVER vary multiple factors in a single arm comparison.** If an arm alters the prompt AND the model AND a setting simultaneously, the benchmark is invalid because observed deltas cannot be attributed to a single cause.
 
-**NEVER replace the whole system prompt to test a prompt change.** A whole-prompt override (a custom `SYSTEM.md` / `--system-prompt` snapshot) freezes a point-in-time copy that no longer responds to settings, and it silently drops every settings-gated section it forgets to copy — the delegation block renders only when the delegation setting is on, so a hand-compressed snapshot that omits it inverts that setting invisibly. That is two hidden variables, not one. Override one named section instead; the engine renders all the others.
+**NEVER replace the whole system prompt to test a prompt change.** A `--system-prompt` snapshot freezes a point-in-time copy that no longer responds to settings. It also silently drops every settings-gated section it forgets to copy. For example, the delegation block renders only when delegation is enabled, so a hand-compressed snapshot that omits it inverts that setting invisibly. That is two hidden variables, not one. Override one named section instead; the engine renders all the others.
 
 The runner enforces five mechanical floors of this rule:
 

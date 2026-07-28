@@ -43,7 +43,7 @@ When a profile `<name>` is active, native Veyyon paths resolve under:
 ~/.veyyon/profiles/<name>/agent/
 ```
 
-That resolution is uniform across settings, sessions, blobs, slash commands, rules, prompts, hooks, tools, extensions, skills, MCP, keybindings, theme, and top-level instruction files (`SYSTEM.md`, `RULES.md`, `AGENTS.md`) discovered from the user agent dir. Operational state (logs, plugins, caches, worktrees) resolves under the profile root `~/.veyyon/profiles/<name>/` the same way. A profile never reads another profile's tree at runtime.
+That resolution is uniform across settings, sessions, blobs, slash commands, sticky rules, prompts, hooks, tools, extensions, skills, MCP, keybindings, theme, the profile `AGENTS.md`, `RULES.md`, and `PROMPT_SECTIONS/`. Operational state (logs, plugins, caches, worktrees) resolves under the profile root `~/.veyyon/profiles/<name>/` the same way. A profile never reads another profile's tree at runtime.
 
 **Provider credentials are the one exception:** by default they live in a machine-wide store (`~/.veyyon/shared-auth/agent.db`) that every profile reads, so you sign in once. Set `profileSharing: false` in the global `~/.veyyon/config.yml` (or toggle it on the **Global** tab of `/settings`) to give each profile its own private credential store instead. See [Signing in › Credentials are shared across profiles](../using/authentication.md#credentials-are-shared-across-profiles).
 
@@ -129,6 +129,8 @@ $ veyyon profile list --json
 A profile whose directory does not exist yet reports `"bytes": 0` with `"bytesComplete": true`: there is nothing there, which is a measurement rather than a failure.
 
 In the TUI, `/profile new <name>` (or `/profile create <name>`) opens a picker listing every carry-over item (AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings), each individually toggleable (all selected by default). The new profile is seeded from the **active** profile with exactly the chosen items. Deleting is available too: `/profile rm <name>` (or the picker's **Delete** action) removes a profile after a confirmation, and refuses the active and default profiles. See [TUI profile commands](#tui-profile-commands) for the full verb list.
+
+The instruction row copies only `AGENTS.md`. A profile switch never carries `RULES.md`; change it through settings or copy it manually when that is your intent.
 
 You can still create a profile implicitly by running `veyyon --profile <name>` once; use `profile new` when you want seeding without launching the TUI.
 

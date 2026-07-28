@@ -104,6 +104,15 @@ Failure transitions:
 - Invalid target dimensions throw.
 - SIXEL encoding failure throws with `Failed to encode SIXEL: ...`.
 
+There is one failure this function CANNOT report, and the caller has to prevent it. Step 3 resizes
+to exactly the requested dimensions and step 4 allocates an RGBA buffer for the result, so a large
+enough target asks Rust for an allocation it cannot make, and an allocation failure aborts the
+process instead of throwing. No `try/catch` on the JavaScript side sees it. Bound the input before
+you call: `packages/tui/src/terminal-capabilities.ts` refuses a target or a source over
+`MAX_SIXEL_PIXELS` (16777216, four times a 4K display), checking the pixel PRODUCT rather than each
+axis, because a 1x4000000000 image passes any per-axis limit. The source is checked as well as the
+target, since step 2 decodes before step 3 can shrink anything.
+
 ### HTML lifecycle
 
 1. `htmlToMarkdown(html, options)` schedules a blocking conversion task.
@@ -157,4 +166,4 @@ Failure transitions:
 - macOS appearance and power helpers intentionally return no-op/null behavior on unsupported platforms.
 - ProjFS is not exposed by this media/system native utility surface. Isolation backend selection, including any ProjFS support, lives in the separate `iso` subsystem.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `b4eef3caca3373925b82b41a1c9877be0c61e275` on 2026-07-27.*

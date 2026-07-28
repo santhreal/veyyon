@@ -51,7 +51,7 @@ carries forward here because no Codex source is present in this tree.
 
 ## MIT components (Rust natives)
 
-- `crates/pi-shell/NOTICE` documents the RTK-derived (`rtk-ai/rtk`, MIT)
+- `crates/veyyon-shell/NOTICE` documents the RTK-derived (`rtk-ai/rtk`, MIT)
   pytest-output-minimizer algorithm adapted in that crate.
 - `crates/vendor/*` contains vendored/patched copies of MIT-licensed Rust
   crates (uutils coreutils reimplementations `uu-*`, `brush-core` /

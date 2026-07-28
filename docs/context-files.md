@@ -13,7 +13,7 @@ Four similarly named things behave differently. Keep them straight:
 - **Discovery providers** are the config-source adapters (`native`, `claude`, `codex`, `gemini`, `opencode`, `github`, `agents`, `agents-md`) that know where each tool keeps its files. The same provider that contributes context files may also contribute MCP servers, slash commands, skills, hooks, tools, prompts, and settings.
 - **Model providers** are inference backends such as `anthropic`, `openai`, `google`, `groq`, `ollama`, and `openrouter`. They have nothing to do with context files except that both kinds of id share the one `disabledProviders` list: see "Disabling discovery providers" below and [Providers](./providers.md).
 
-Authoring **skills** and **rule** files (as opposed to the sticky `RULES.md`) is covered in [Skills](./skills.md). Customizing the system prompt with `SYSTEM.md` is covered in [System prompt customization](./system-prompt-customization.md).
+Authoring **skills** and **rule** files (as opposed to the sticky `RULES.md`) is covered in [Skills](./skills.md). Use `AGENTS.md` for additive instructions, `PROMPT_SECTIONS/` for persistent section changes, and the two CLI flags for one-run prompt replacement or appending. See [System prompt customization](./system-prompt-customization.md).
 
 ## Native `.veyyon` files
 
@@ -23,7 +23,7 @@ The native provider is the recommended format for new projects. It reads from yo
 |---|---|---|
 | `~/.veyyon/AGENTS.md` | Global User | Global cross-profile context for every session across all profiles. |
 | `~/.veyyon/profiles/<profile>/...` | Profile User | Active profile context. Scanned in descending priority order (first match wins; exactly 1 file loaded per profile):<br>1. `~/.veyyon/profiles/<profile>/agent/AGENTS.md` (Highest)<br>2. `~/.veyyon/profiles/<profile>/AGENTS.md`<br>3. `~/.veyyon/profiles/<profile>/agent/agent.md`<br>4. `~/.veyyon/profiles/<profile>/agent.md` (Lowest) |
-| `<encestor>/.veyyon/AGENTS.md` | Project | Project context. `veyyon` walks upward from the current directory to the repository root and uses the **nearest** non-empty `.veyyon/AGENTS.md`. Farther `.veyyon/AGENTS.md` files are not also included. Separately, every bare `<encestor>/AGENTS.md` and `<encestor>/CLAUDE.md` along the walk-up is collected too (see the `native` provider row below). |
+| `<ancestor>/.veyyon/AGENTS.md` | Project | Project context. `veyyon` walks upward from the current directory to the repository root and uses the **nearest** non-empty `.veyyon/AGENTS.md`. Farther `.veyyon/AGENTS.md` files are not also included. Separately, every bare `<ancestor>/AGENTS.md` and `<ancestor>/CLAUDE.md` along the walk-up is collected too (see the `native` provider row below). |
 | `~/.veyyon/profiles/<profile>/agent/RULES.md` | User | User-level sticky rule content. Loaded as an always-apply rule, not as a context file. |
 | `<ancestor>/.veyyon/RULES.md` | Project | Project sticky rule content. Same nearest-ancestor walk-up as above. Loaded as an always-apply rule. |
 Two details matter:

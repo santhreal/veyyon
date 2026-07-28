@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-94628b38.js";
+            window.path_to_searchindex_js = "../searchindex-cd679d79.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -367,7 +367,8 @@ broker host:</p>
 </thead>
 <tbody>
 <tr><td><code>NO_COLOR</code></td><td>When set (to any value), Veyyon renders without color; hierarchy comes through emphasis, spacing, and glyphs instead.</td></tr>
-<tr><td><code>TERM</code> / <code>COLORTERM</code></td><td>Read to detect terminal capabilities (truecolor, ANSI-256, ANSI-16) and pick the matching palette mapping.</td></tr>
+<tr><td><code>TERM</code> / <code>COLORTERM</code></td><td>Read to detect terminal capabilities and choose truecolor, ANSI-256, or ANSI-16 output. <code>TERM=dumb</code> disables every ANSI escape, including emphasis.</td></tr>
+<tr><td><code>FORCE_COLOR</code></td><td>A non-empty value other than <code>0</code> forces full ANSI output, overriding <code>NO_COLOR</code> and <code>TERM=dumb</code>.</td></tr>
 <tr><td><code>VEYYON_HARDWARE_CURSOR</code></td><td>Truthy enables hardware cursor mode.</td></tr>
 <tr><td><code>VEYYON_TUI_WRITE_LOG</code></td><td>When set, logs TUI writes to the given file (debugging).</td></tr>
 </tbody>

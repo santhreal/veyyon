@@ -5,7 +5,7 @@ Compaction and branch summaries are the two mechanisms that keep long sessions u
 - **Compaction** rewrites old history into a summary on the current branch.
 - **Branch summary** captures abandoned branch context during `/tree` navigation.
 
-Both are persisted as session entries and converted back into user-context messages when rebuilding LLM input.
+Both are persisted as session entries and converted into agent-attributed developer context when rebuilding LLM input.
 
 ## Key implementation files
 
@@ -43,12 +43,16 @@ When context is rebuilt (`buildSessionContext`):
 4. `branch_summary` entries are converted to `branchSummary` messages.
 5. `custom_message` entries are converted to `custom` messages.
 
-Those custom roles are then transformed into LLM-facing messages in `convertToLlm()`: `compactionSummary` and `branchSummary` become user messages rendered through the static templates
+`convertToLlm()` transforms these custom roles into LLM-facing messages. `compactionSummary` and
+`branchSummary` become agent-attributed developer messages rendered through these static templates:
 
 - `packages/agent/src/prompts/compaction/compaction-summary-context.md`
 - `packages/agent/src/prompts/compaction/branch-summary-context.md`
 
-while `custom` messages pass through as developer messages with their raw content (no template).
+The templates contain no private `<summary>` delimiters. A legacy or model-authored summary wrapper
+is removed before provider serialization. Image attachments use a user-compatible wire slot only
+when a provider rejects images in developer content. The summary text remains developer context.
+Other `custom` messages pass through as developer messages with their raw content and no template.
 
 ## Compaction pipeline
 
@@ -429,7 +433,7 @@ Post-navigation event exposing new/old leaf and optional summary entry.
 
 ## Which model compacts
 
-`compaction.model` (settings/`config.yml`, `--compaction-model` CLI, or the Compaction Model picker in `/settings`) selects the model used for LLM compaction and handoff generation. **Default: unset, compaction inherits the main session model live**, so switching the session model also switches the compactor. When set, `resolveCompactionModelPatterns` expands the value through the normal pattern/role resolution (role aliases like `"@smol"` and `:thinking` suffixes work), and auto compaction tries the resulting candidates in order. Legacy config keys `compaction.compactionModel` / top-level `compactionModel` are migrated to `compaction.model` on load.
+`compaction.model` (settings/`config.yml`, `--compaction-model` CLI, or the Compaction Model picker in `/settings`) selects the model used for LLM compaction and handoff generation. **Default: unset, compaction inherits the main session model live**, so switching the session model also switches the compactor. When set, `resolveCompactionModelPatterns` expands the value through the normal pattern/role resolution (role aliases like `"@smol"` and `:thinking` suffixes work), and auto compaction tries the resulting candidates in order. The value is a chain and can be written either way, as a comma-separated string (`opus,sonnet`) or as a YAML list; both normalize to the same ordered candidates. Legacy config keys `compaction.compactionModel` / top-level `compactionModel` are migrated to `compaction.model` on load.
 
 ## Runtime behavior and failure semantics
 

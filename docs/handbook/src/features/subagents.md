@@ -6,8 +6,9 @@ subagent has its own context window, so bulk reading and long grinding work stay
 of the conversation you are having.
 
 Everything about them is configured in one place: the **Subagents** tab in
-`/settings`, backed by the `subagent.*` settings. `/agents` opens the same agent
-table with a live view of what each agent will run.
+`/settings`, backed by the `subagent.*` settings. `/agents` is the live picture of a
+run in progress: which agents are working right now and what they are saying to each
+other. It does not configure anything.
 
 ## What you get out of the box
 
@@ -24,7 +25,7 @@ to and your subagents follow it.
 Veyyon also ships five specialists (`scout`, `reviewer`, `designer`, `librarian`,
 `sonic`), and they are **disabled** by default. Each agent type you enable adds its
 description to every request you send for the rest of the session, so you pay for the
-ones you use and nothing else. Enable one in the Subagents tab or with `/agents`.
+ones you use and nothing else. Enable one in the Subagents tab.
 
 ## How hard to push
 
@@ -44,16 +45,66 @@ The instructions follow what you have enabled. With only the worker offered, not
 in the prompt talks about picking an agent type, and nothing tells the model to send
 research to a `scout` it cannot spawn.
 
+### What counts as delegable work
+
+`subagent.delegation` decides how hard the model is pushed to delegate. Which *kind* of work it is
+pushed to delegate is decided by the agents you enable, and those are two different questions.
+
+The split is between doing the work and looking at it. Editing files, refactoring, adding a feature,
+writing tests: that is work, and any enabled agent can take it. Exploring unfamiliar code, reviewing
+a change, auditing a subsystem: that is investigation, and it only gets delegated when you have
+enabled an agent set up for it.
+
+An agent is set up for investigation when it grants no tool that edits your workspace. Veyyon reads
+that from the agent's own `tools:` line rather than from a list of names, so this works for agents you
+write yourself:
+
+```yaml
+# agents/auditor.md frontmatter
+name: auditor
+description: Reads a subsystem and reports what is wrong with it
+tools: read, grep, glob        # no edit, no write: an investigative agent
+```
+
+Of the bundled agents, `scout`, `reviewer` and `librarian` are investigative. `task`, `sonic` and
+`designer` are not: they restrict nothing, so they can edit. Granting `bash` does not make an agent an
+editor, which is why `reviewer` still counts as investigative: it runs commands in order to read.
+
+One case reads the other way, and it is worth knowing before you wonder why your agent is not being
+named. An agent that grants a tool Veyyon does not ship, such as an MCP tool or one a plugin adds, is
+treated as an editor. Veyyon cannot see what those tools do: `mcp__github__list_issues` and
+`mcp__github__create_pull_request` look the same from here, and MCP servers commonly expose file
+writes and commits. Calling the agent investigative would be a guess, and the cost of guessing wrong
+is that the model is told to send an audit to something that can push a branch. If you want an agent
+advertised as investigative, grant it built-in tools only:
+
+```yaml
+tools: read, grep, glob, lsp        # named agents, so this one is advertised
+tools: read, mcp__acme__search      # unrecognised tool: treated as an editor
+```
+
+With no investigative agent enabled, the prompt tells the model that exploration and review stay with
+it, and to map unknown code itself rather than spawn a worker to go and look. That is deliberate. The
+general worker exists to change code, and handing it an audit gets you a report from an agent set up
+to edit rather than to read. Enable `scout` if you would rather that work were delegated:
+
+```console
+$ veyyon config set subagent.agents.scout.enabled true
+```
+
+This is not a security boundary. An investigative agent that holds `bash` can still write a file if it
+decides to; use the [sandbox](./sandbox.md) when you need that enforced.
+
 ## Choosing agents
 
-`subagent.agents` holds one row per agent name. Two places edit it, and both show
-the same thing:
+`subagent.agents` holds one row per agent name, and one screen edits it:
+**`/settings` → Subagents → Agents**. It lists every discovered agent with its state,
+the model it resolves to, and the setting that decided. Enter opens one agent to set
+its state, model and effort, or reset it back to defaults.
 
-- **`/settings` → Subagents → Agents.** Every discovered agent, with its state, the
-  model it resolves to, and the setting that decided. Enter opens one agent to set
-  its state, model and effort, or reset it back to defaults.
-- **`/agents`.** The same rows next to the agent files themselves, so this is where
-  you write a new agent. `space` toggles a row on or off.
+To add an agent, write the file: drop a markdown definition in your own or the
+project's `agents/` directory, or start from the shipped ones by running
+`veyyon agents unpack`. A new agent is offered as soon as the file exists.
 
 A row has two states:
 
@@ -90,6 +141,38 @@ subagent:
 No bundled agent pins a model, so layer 4 is the normal case and `subagent.model`
 moves all of them together. `subagent.thinkingLevel` does the same for effort, and an
 explicit `:effort` suffix on a model pattern always wins over an agent's own default.
+
+### Fallback models
+
+Every one of those four places takes a list, not just one model:
+
+```yaml
+subagent:
+  model: anthropic/claude-opus-4-5,openai/gpt-5
+```
+
+The first entry is what subagents run on. The rest are held in reserve: when a run errors on the
+model in use, that agent retries on the next entry rather than failing. The settings picker writes
+the value for you: open the model row, add a fallback, and press Enter on any entry to move it up
+the list.
+
+A longer chain reads better as a list, and both spellings mean the same thing:
+
+```yaml
+subagent:
+  model:
+    - anthropic/claude-opus-4-5
+    - openai/gpt-5
+```
+
+Write it whichever way suits the file. `compaction.model` takes a chain the same two ways.
+
+A chain only covers errors at run time. A model pattern that matches nothing is still a
+configuration mistake, so veyyon refuses to spawn the agent and names the setting, rather than
+quietly running it on the next entry: a typo must not silently downgrade every subagent you spawn.
+
+In the `Subagents` block above the composer, an agent that fell back is marked with `↓` before its
+model badge, so you can tell a deliberate model from a retried one at a glance.
 
 Effort is chosen from a list — `off`, `minimal` through `max`, `auto`, or `Inherit` —
 in both places, so you cannot set a level that does not exist. If a hand-written config
