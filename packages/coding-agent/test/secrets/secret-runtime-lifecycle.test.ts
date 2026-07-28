@@ -13,11 +13,14 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
 import { createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/sdk";
 import { SecretVault } from "@veyyon/coding-agent/secrets/vault";
+import { runSecretCommandForSurface } from "@veyyon/coding-agent/slash-commands/helpers/secret";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { createPersistedSubagentReviverFactory } from "@veyyon/coding-agent/task/persisted-revive";
 import { TempDir } from "@veyyon/utils";
 import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
 
@@ -51,6 +54,7 @@ interface RuntimeFixture {
 	projectB: string;
 	vaultA: SecretVault;
 	vaultB: SecretVault;
+	agentDir: string;
 	settings: Settings;
 	session: AgentSession;
 }
@@ -92,7 +96,7 @@ async function createRuntimeFixture(extension?: ExtensionFactory): Promise<Runti
 		enableLsp: false,
 		skipPythonPreflight: true,
 	});
-	return { root, projectA, projectB, vaultA, vaultB, settings, session };
+	return { root, projectA, projectB, vaultA, vaultB, agentDir, settings, session };
 }
 
 async function disposeFixture(fixture: RuntimeFixture): Promise<void> {
@@ -145,6 +149,44 @@ describe("live secret runtime toggles", () => {
 			await disposeFixture(fixture);
 		}
 	});
+	it("applies settings-selector changes to the authoritative runtime", async () => {
+		const fixture = await createRuntimeFixture();
+		try {
+			const controller = new SelectorController({
+				session: fixture.session,
+				showError: (message: string) => {
+					throw new Error(message);
+				},
+			} as never);
+			const refresh = fixture.session.refreshSecrets.bind(fixture.session);
+			const apply = async (enabled: boolean): Promise<void> => {
+				const completed = Promise.withResolvers<void>();
+				fixture.session.refreshSecrets = async options => {
+					try {
+						await refresh(options);
+						completed.resolve();
+					} catch (error) {
+						completed.reject(error);
+						throw error;
+					}
+				};
+				fixture.settings.set("secrets.enabled", enabled);
+				controller.handleSettingChange("secrets.enabled", enabled);
+				await completed.promise;
+			};
+
+			await apply(true);
+			expect(fixture.session.secretsEnabled).toBe(true);
+			expect(fixture.session.obfuscator?.deobfuscate("#A_TOKEN#")).toBe(PROJECT_A_VALUE);
+
+			await apply(false);
+			expect(fixture.session.secretsEnabled).toBe(false);
+			expect(fixture.session.obfuscator).toBeUndefined();
+		} finally {
+			await disposeFixture(fixture);
+		}
+	});
+
 });
 
 describe("runtime replacement", () => {
@@ -178,6 +220,137 @@ describe("runtime replacement", () => {
 			await disposeFixture(fixture);
 		}
 	});
+	it("revokes a mutated name if runtime reconciliation fails", async () => {
+		const fixture = await createRuntimeFixture();
+		try {
+			fixture.settings.set("secrets.enabled", true);
+			await fixture.session.refreshSecrets();
+			await fs.writeFile(path.join(fixture.projectA, ".veyyon", "secrets.yml"), "not: an array\n");
+
+			await expect(
+				runSecretCommandForSurface("rm A_TOKEN", {
+					session: fixture.session,
+					sessionManager: fixture.session.sessionManager,
+					settings: fixture.settings,
+					cwd: fixture.projectA,
+					globalConfigRoot: getConfigRoot(),
+					agentDir: fixture.agentDir,
+				}),
+			).rejects.toThrow("must be a YAML array");
+
+			expect((await fixture.vaultA.load()).some(entry => entry.name === "A_TOKEN")).toBe(false);
+			expect(fixture.session.obfuscator?.hasNamedSecret("A_TOKEN")).toBe(false);
+			expect(fixture.session.obfuscator?.deobfuscate("#A_TOKEN#")).toBe("#A_TOKEN#");
+			expect(fixture.session.obfuscator?.obfuscate(PROJECT_A_VALUE)).not.toBe(PROJECT_A_VALUE);
+		} finally {
+			await disposeFixture(fixture);
+		}
+	});
+
+	it("rolls a failed cwd re-scope back and permits a corrected retry", async () => {
+		const fixture = await createRuntimeFixture();
+		try {
+			fixture.settings.set("secrets.enabled", true);
+			await fixture.session.refreshSecrets();
+			await fs.writeFile(path.join(fixture.projectB, ".veyyon", "secrets.yml"), "not: an array\n");
+
+			await expect(fixture.session.setCwd(fixture.projectB)).rejects.toThrow("must be a YAML array");
+			expect(fixture.session.sessionManager.getCwd()).toBe(fixture.projectA);
+			expect(fixture.session.obfuscator?.deobfuscate("#A_TOKEN#")).toBe(PROJECT_A_VALUE);
+			expect(fixture.session.obfuscator?.hasNamedSecret("B_TOKEN")).toBe(false);
+
+			await fs.writeFile(
+				path.join(fixture.projectB, ".veyyon", "secrets.yml"),
+				`- type: plain\n  content: ${CONFIG_B_VALUE}\n`,
+			);
+			await fixture.session.setCwd(fixture.projectB);
+			expect(fixture.session.sessionManager.getCwd()).toBe(fixture.projectB);
+			expect(fixture.session.obfuscator?.hasNamedSecret("A_TOKEN")).toBe(false);
+			expect(fixture.session.obfuscator?.deobfuscate("#B_TOKEN#")).toBe(PROJECT_B_VALUE);
+		} finally {
+			await disposeFixture(fixture);
+		}
+	});
+
+	it("revives a parked subagent with its persisted cwd scope, not the parent's live cwd", async () => {
+		const fixture = await createRuntimeFixture();
+		let revived: AgentSession | undefined;
+		try {
+			fixture.settings.set("secrets.enabled", true);
+			await fixture.session.refreshSecrets();
+
+			const childManager = SessionManager.create(
+				fixture.projectA,
+				path.join(fixture.root.path(), "persisted-child"),
+			);
+			childManager.appendSessionInit({
+				systemPrompt: "Persisted child",
+				task: "Check lifecycle scope",
+				tools: ["yield"],
+				spawns: "",
+			});
+			childManager.appendMessage({
+				role: "assistant",
+				content: [{ type: "text", text: "ready" }],
+				api: "anthropic-messages",
+				provider: "anthropic",
+				model: "fixture",
+				usage: {
+					input: 0,
+					output: 0,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 0,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				stopReason: "stop",
+				timestamp: Date.now(),
+			} as never);
+			await childManager.ensureOnDisk();
+			await childManager.flush();
+			const sessionFile = childManager.getSessionFile();
+			expect(sessionFile).toBeString();
+			await childManager.close();
+			const persisted = await SessionManager.peekSessionInit(sessionFile!);
+			expect(persisted?.init?.systemPrompt).toBe("Persisted child");
+			expect(persisted?.cwd).toBe(fixture.projectA);
+			expect((await fs.stat(persisted!.cwd)).isDirectory()).toBe(true);
+
+
+			const factory = createPersistedSubagentReviverFactory({
+				session: fixture.session,
+				authStorage,
+				modelRegistry,
+				settings: fixture.settings,
+				enableLsp: false,
+			});
+			const revive = await factory({
+				id: "Lifecycle-Revived",
+				displayName: "Lifecycle Revived",
+				kind: "sub",
+				parentId: "Main",
+				status: "parked",
+				session: null,
+				sessionFile: sessionFile!,
+				createdAt: Date.now(),
+				lastActivity: Date.now(),
+			});
+			expect(revive).toBeFunction();
+			await fixture.session.setCwd(fixture.projectB);
+			expect(fixture.session.obfuscator?.hasNamedSecret("B_TOKEN")).toBe(true);
+
+			revived = await revive!();
+
+			expect(revived.sessionManager.getCwd()).toBe(fixture.projectA);
+			expect(revived.obfuscator?.hasNamedSecret("A_TOKEN")).toBe(true);
+			expect(revived.obfuscator?.hasNamedSecret("B_TOKEN")).toBe(false);
+			expect(revived.obfuscator?.deobfuscate("#A_TOKEN#")).toBe(PROJECT_A_VALUE);
+		} finally {
+			await revived?.dispose();
+			await disposeFixture(fixture);
+		}
+	});
+
 });
 
 describe("the final mutable provider hook boundary", () => {

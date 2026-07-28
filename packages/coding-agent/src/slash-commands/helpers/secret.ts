@@ -106,7 +106,19 @@ export async function runSecretCommandForSurface(args: string, port: SecretComma
 		auditLog,
 	});
 
-	if (result.changed) await port.session.refreshSecrets();
+	if (result.changed) {
+		try {
+			await port.session.refreshSecrets();
+		} catch (error) {
+			// The vault write is already durable. Until a later successful reload,
+			// revoke the affected readable placeholder from the old runtime so a
+			// failed remove/rotation/extension cannot keep spending stale bytes.
+			if (request.name !== undefined) {
+				port.session.obfuscator?.forgetNamedSecret(normaliseSecretName(request.name));
+			}
+			throw error;
+		}
+	}
 
 	if (!port.session.secretsEnabled) {
 		// Said after the action and authoritative refresh rather than inferred from a settings

@@ -14,10 +14,10 @@ import { SessionManager } from "../session/session-manager";
 import { createMCPProxyTools, createSubagentSettings } from "./executor";
 
 /**
- * Ambient context the reviver needs at revive time. The top-level session is
- * kept LIVE (cwd / artifact manager read on demand) so a later `/new` or cwd
- * move is followed rather than snapshotted; auth/models/settings are
- * process-stable and captured by reference.
+ * Ambient context the reviver needs at revive time. The parent artifact
+ * manager is read live so a later `/new` is followed rather than snapshotted;
+ * the revived session's cwd comes from its own persisted header. Auth, models,
+ * and settings are process-stable and captured by reference.
  */
 export interface PersistedSubagentReviveContext {
 	session: AgentSession;
@@ -30,7 +30,7 @@ export interface PersistedSubagentReviveContext {
 
 /**
  * Build the factory the {@link AgentLifecycleManager} uses to cold-revive a
- * `parked` subagent ref restored from disk (Agent Hub scan, collab mirror, or a
+ * `parked` subagent ref restored from disk (the roster's persisted scan, collab mirror, or a
  * resumed process). Such a ref carries a sessionFile but no in-memory adoption —
  * the executor's live reviver closure died with the process/turn that spawned
  * it — so `ensureLive` (IRC sends, hub focus) would otherwise refuse it.
@@ -80,6 +80,7 @@ export function createPersistedSubagentReviverFactory(
 			// Re-open fresh on every revive: park closes the writer, so this takes
 			// the single-writer lock cleanly and restores the full message history.
 			const reopened = await SessionManager.open(sessionFile, undefined, undefined, {
+				initialCwd: peek.cwd,
 				suppressBreadcrumb: true,
 			});
 			const artifactManager = ctx.session.sessionManager.getArtifactManager();
@@ -90,7 +91,7 @@ export function createPersistedSubagentReviverFactory(
 			const mcpProxyTools = mcpManager ? createMCPProxyTools(mcpManager) : [];
 			const { createAgentSession } = await import("../sdk");
 			const { session } = await createAgentSession({
-				cwd: ctx.session.sessionManager.getCwd(),
+				cwd: peek.cwd,
 				authStorage: ctx.authStorage,
 				modelRegistry: ctx.modelRegistry,
 				settings: createSubagentSettings(
