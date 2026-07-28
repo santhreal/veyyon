@@ -7,6 +7,7 @@ import { Settings } from "../config/settings";
 import { commitPrompts } from "../prompts/commit/rows";
 // `session/auth-broker-config`, which OWNS this, not the `sdk` barrel that re-exports it: the barrel is
 // the whole application and this file wants one function.
+import { loadStandaloneSecretRuntime } from "../secrets/standalone-runtime";
 import { discoverAuthStorage } from "../session/auth-broker-config";
 import { loadProjectContextFiles } from "../system-prompt";
 import * as git from "../utils/git";
@@ -24,6 +25,7 @@ import { runMapReduceAnalysis, shouldUseMapReduce } from "./map-reduce";
 import { formatCommitMessage } from "./message";
 import { resolvePrimaryModel, resolveSmolModel } from "./model-selection";
 import type { CommitCommandArgs, ConventionalAnalysis } from "./types";
+import type { ResolveObfuscateProviderText } from "./shared-llm";
 
 const RECENT_COMMITS_COUNT = 8;
 let typesDescription: string | undefined;
@@ -50,6 +52,11 @@ async function runLegacyCommitCommand(args: CommitCommandArgs): Promise<void> {
 		return;
 	}
 	const settings = await Settings.init();
+	const standaloneRuntimeOptions = { cwd, agentDir: settings.getAgentDir() };
+	const resolveObfuscateProviderText: ResolveObfuscateProviderText = async () => {
+		const runtime = await loadStandaloneSecretRuntime(standaloneRuntimeOptions);
+		return text => runtime.obfuscate(text);
+	};
 	const commitSettings = settings.getGroup("commit");
 	const authStorage = await discoverAuthStorage();
 	const modelRegistry = new ModelRegistry(authStorage);
@@ -86,13 +93,17 @@ async function runLegacyCommitCommand(args: CommitCommandArgs): Promise<void> {
 			stagedFiles,
 			dryRun: args.dryRun,
 			maxDiffChars: commitSettings.changelogMaxDiffChars,
+			resolveObfuscateProviderText,
 		});
 	}
 
 	const diff = await git.diff(cwd, { cached: true });
 	const stat = await git.diff(cwd, { stat: true, cached: true });
 	const numstat = await git.diff.numstat(cwd, { cached: true });
-	const scopeCandidates = extractScopeCandidates(numstat).scopeCandidates;
+	const sanitizeNumstat = await resolveObfuscateProviderText();
+	const scopeCandidates = extractScopeCandidates(
+		numstat.map(entry => ({ ...entry, path: sanitizeNumstat(entry.path) })),
+	).scopeCandidates;
 	const recentCommits = await git.log.subjects(cwd, RECENT_COMMITS_COUNT);
 	const contextFiles = await loadProjectContextFiles({ cwd });
 	const formattedContextFiles = contextFiles.map(file => ({
@@ -114,6 +125,7 @@ async function runLegacyCommitCommand(args: CommitCommandArgs): Promise<void> {
 		smolApiKey,
 		smolThinkingLevel,
 		commitSettings,
+		resolveObfuscateProviderText,
 	});
 
 	const analysisValidation = validateAnalysis(analysis);
@@ -128,6 +140,7 @@ async function runLegacyCommitCommand(args: CommitCommandArgs): Promise<void> {
 		apiKey: primaryApiKey,
 		thinkingLevel: primaryThinkingLevel,
 		userContext: args.context,
+		resolveObfuscateProviderText,
 	});
 
 	const commitMessage = formatCommitMessage(analysis, summary.summary);
@@ -167,6 +180,7 @@ async function generateAnalysis(input: {
 		mapReduceMaxConcurrency: number;
 		changelogMaxDiffChars: number;
 	};
+	resolveObfuscateProviderText: ResolveObfuscateProviderText;
 }): Promise<ConventionalAnalysis> {
 	if (
 		shouldUseMapReduce(input.diff, {
@@ -194,6 +208,7 @@ async function generateAnalysis(input: {
 				maxConcurrency: input.commitSettings.mapReduceMaxConcurrency,
 				timeoutMs: input.commitSettings.mapReduceTimeoutMs,
 			},
+			resolveObfuscateProviderText: input.resolveObfuscateProviderText,
 		});
 	}
 
@@ -208,6 +223,7 @@ async function generateAnalysis(input: {
 		scopeCandidates: input.scopeCandidates,
 		stat: input.stat,
 		diff: input.diff,
+		resolveObfuscateProviderText: input.resolveObfuscateProviderText,
 	});
 }
 
@@ -218,6 +234,7 @@ async function generateSummaryWithRetry(input: {
 	apiKey: ApiKey;
 	thinkingLevel?: ThinkingLevel;
 	userContext?: string;
+	resolveObfuscateProviderText: ResolveObfuscateProviderText;
 }): Promise<{ summary: string }> {
 	let context = input.userContext;
 	for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -231,6 +248,7 @@ async function generateSummaryWithRetry(input: {
 			stat: input.stat,
 			maxChars: SUMMARY_MAX_CHARS,
 			userContext: context,
+			resolveObfuscateProviderText: input.resolveObfuscateProviderText,
 		});
 		const validation = validateSummary(result.summary, SUMMARY_MAX_CHARS);
 		if (validation.valid) {

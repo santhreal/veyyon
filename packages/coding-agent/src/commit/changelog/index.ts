@@ -4,6 +4,7 @@ import type { Api, ApiKey, Model } from "@veyyon/ai";
 import { logger } from "@veyyon/utils";
 import { CHANGELOG_CATEGORIES } from "../../commit/types";
 import * as git from "../../utils/git";
+import type { ResolveObfuscateProviderText } from "../shared-llm";
 import { detectChangelogBoundaries } from "./detect";
 import { generateChangelogEntries } from "./generate";
 import { parseUnreleasedSection } from "./parse";
@@ -50,6 +51,7 @@ export interface ChangelogFlowInput {
 	dryRun: boolean;
 	maxDiffChars?: number;
 	onProgress?: (message: string) => void;
+	resolveObfuscateProviderText: ResolveObfuscateProviderText;
 }
 
 export interface ChangelogProposalInput {
@@ -75,6 +77,7 @@ export async function runChangelogFlow({
 	dryRun,
 	maxDiffChars,
 	onProgress,
+	resolveObfuscateProviderText,
 }: ChangelogFlowInput): Promise<string[]> {
 	if (stagedFiles.length === 0) return [];
 	onProgress?.("Detecting changelog boundaries...");
@@ -85,18 +88,26 @@ export async function runChangelogFlow({
 	for (const boundary of boundaries) {
 		onProgress?.(`Generating entries for ${boundary.changelogPath}…`);
 		const diff = await git.diff(cwd, { cached: true, files: boundary.files });
-		if (!diff.trim()) continue;
+		const sanitizeDiff = await resolveObfuscateProviderText();
+		if (!sanitizeDiff(diff).trim()) continue;
 		const stat = await git.diff(cwd, { stat: true, cached: true, files: boundary.files });
-		const diffForPrompt = truncateDiff(diff, maxDiffChars ?? DEFAULT_MAX_DIFF_CHARS);
 		const changelogContent = await Bun.file(boundary.changelogPath).text();
+		const sanitizeProviderText = await resolveObfuscateProviderText();
 		let unreleased: { startLine: number; endLine: number; entries: Record<string, string[]> };
+		let providerUnreleased: { startLine: number; endLine: number; entries: Record<string, string[]> };
 		try {
 			unreleased = parseUnreleasedSection(changelogContent);
+			// The provider projection is derived only after the whole raw
+			// changelog has crossed the confidentiality boundary.
+			providerUnreleased = parseUnreleasedSection(sanitizeProviderText(changelogContent));
 		} catch (error) {
-			logger.warn("commit changelog parse skipped", { path: boundary.changelogPath, error: String(error) });
+			logger.warn("commit changelog parse skipped", {
+				path: sanitizeProviderText(boundary.changelogPath),
+				error: sanitizeProviderText(String(error)),
+			});
 			continue;
 		}
-		const existingEntries = formatExistingEntries(unreleased.entries);
+		const existingEntries = formatExistingEntries(providerUnreleased.entries);
 		const isPackageChangelog = path.resolve(boundary.changelogPath) !== path.resolve(cwd, "CHANGELOG.md");
 		const generated = await generateChangelogEntries({
 			model,
@@ -106,7 +117,9 @@ export async function runChangelogFlow({
 			isPackageChangelog,
 			existingEntries: existingEntries || undefined,
 			stat,
-			diff: diffForPrompt,
+			diff,
+			maxDiffChars: maxDiffChars ?? DEFAULT_MAX_DIFF_CHARS,
+			resolveObfuscateProviderText,
 		});
 		if (Object.keys(generated.entries).length === 0) continue;
 
@@ -165,10 +178,6 @@ export async function applyChangelogProposals({
 	return updated;
 }
 
-function truncateDiff(diff: string, maxChars: number): string {
-	if (diff.length <= maxChars) return diff;
-	return `${diff.slice(0, maxChars)}\n[…${diff.length - maxChars}ch elided…]`;
-}
 
 function formatExistingEntries(entries: Record<string, string[]>): string {
 	const lines: string[] = [];
