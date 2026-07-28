@@ -1,4 +1,4 @@
-import { $flag } from "@veyyon/utils";
+import { $flag } from "@veyyon/utils/env";
 import { upgradeJsonSchemaTo202012 } from "./draft";
 import { tryEnforceStrictSchema } from "./normalize";
 

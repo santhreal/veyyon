@@ -1,6 +1,7 @@
 import { emptyUsage } from "@veyyon/catalog/models";
 import { normalizeOllamaCloudBaseUrl } from "@veyyon/catalog/provider-models/ollama";
-import { fetchWithRetry, parseStreamingJson } from "@veyyon/utils";
+import { fetchWithRetry } from "@veyyon/utils/fetch-retry";
+import { parseStreamingJson } from "@veyyon/utils/json-parse";
 import * as AIError from "../error";
 import { getEnvApiKey } from "../stream";
 import type {

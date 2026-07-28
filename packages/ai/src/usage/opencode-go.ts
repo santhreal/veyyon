@@ -1,4 +1,4 @@
-import { DAY_MS, HOUR_MS } from "@veyyon/utils";
+import { DAY_MS, HOUR_MS } from "@veyyon/utils/time";
 import type { UsageCostHistoryEntry, UsageLimit, UsageProvider, UsageWindow } from "../usage";
 import { usageStatusFromUsedFraction } from "./shared";
 

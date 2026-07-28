@@ -14,17 +14,15 @@ import {
 	resolveWireModelId,
 } from "@veyyon/catalog/model-thinking";
 import { CODEX_BASE_URL } from "@veyyon/catalog/wire/codex";
-import {
-	$env,
-	atomicWriteFile,
-	errorMessage,
-	getConfigRootDir,
-	isEnoent,
-	isProcessAlive,
-	logger,
-	trimTrailingSlashes,
-	withExtraCaFetch,
-} from "@veyyon/utils";
+import { atomicWriteFile } from "@veyyon/utils/atomic-write";
+import { getConfigRootDir } from "@veyyon/utils/dirs";
+import { $env } from "@veyyon/utils/env";
+import { isEnoent } from "@veyyon/utils/fs-error";
+import * as logger from "@veyyon/utils/logger";
+import { isProcessAlive } from "@veyyon/utils/process-liveness";
+import { withExtraCaFetch } from "@veyyon/utils/tls-fetch";
+import { errorMessage } from "@veyyon/utils/type-guards";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { getCustomApi } from "./api-registry";
 import { createAuthRetryKeyState, isApiKeyResolver, resolveNextAuthRetryKey } from "./auth-retry";
 import { getEnvApiKey } from "./env-api-key";

@@ -1,4 +1,4 @@
-import { isRecord } from "@veyyon/utils";
+import { isRecord } from "@veyyon/utils/type-guards";
 import type { JsonObject } from "./types";
 
 export function areJsonValuesEqual(left: unknown, right: unknown): boolean {

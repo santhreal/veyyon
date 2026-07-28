@@ -1,4 +1,5 @@
-import { collapseWhitespace, setSafeProperty } from "@veyyon/utils";
+import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
+import { setSafeProperty } from "@veyyon/utils/type-guards";
 import { INTENT_FIELD } from "@veyyon/wire";
 import type { AssistantMessage, ToolCall, ToolResultMessage } from "../types";
 

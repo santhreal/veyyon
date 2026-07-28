@@ -12,7 +12,8 @@ import {
 	normalizeGitHubCopilotEnterpriseDomain,
 	OPENCODE_HEADERS,
 } from "@veyyon/catalog/wire/github-copilot";
-import { batched, DAY_MS } from "@veyyon/utils";
+import { batched } from "@veyyon/utils/array";
+import { DAY_MS } from "@veyyon/utils/time";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import { fetchGitHubCopilotJson } from "../../utils/github-copilot-http";

@@ -60,6 +60,28 @@ describe("An auth retry that gives up says why", () => {
 	});
 
 	/**
+	 * Logging is advisory on this error path; if a logger hook itself throws, it
+	 * must not replace the resolver outcome or escape as a second failure.
+	 */
+	it("does not let a failing warning hook escape resolver recovery", async () => {
+		// `spyOn` again rather than `vi.mocked`, which Bun's test API does not have: the
+		// beforeEach spy is already installed, and re-spying replaces its implementation.
+		vi.spyOn(logger, "warn").mockImplementation(() => {
+			throw new Error("logger hook failed");
+		});
+
+		const resolved = await resolveRetryKey(
+			() => {
+				throw new Error("credential resolver failed");
+			},
+			false,
+			authFailure(),
+		);
+
+		expect(resolved).toBeUndefined();
+	});
+
+	/**
 	 * Last-chance rotation is the attempt whose failure matters most, because
 	 * nothing comes after it. The flag has to reach the log or the operator cannot
 	 * tell a first-attempt refresh failure from the final give-up.

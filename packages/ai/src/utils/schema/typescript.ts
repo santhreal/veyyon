@@ -9,7 +9,7 @@
  * literal enums/consts, and descriptions survive.
  */
 
-import { isRecord } from "@veyyon/utils";
+import { isRecord } from "@veyyon/utils/type-guards";
 
 export interface JsonSchemaToTsOptions {
 	/** Indentation unit for nested object bodies. Default two spaces. */

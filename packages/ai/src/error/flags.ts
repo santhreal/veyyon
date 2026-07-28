@@ -89,8 +89,29 @@ const TIMEOUT_PATTERN = /\b(?:operation\s+)?timed?\s*out\b|\btimeout\b|\bstream 
 const TRANSIENT_ENVELOPE_PATTERN = /anthropic stream envelope error:/i;
 const TRANSIENT_ENVELOPE_BEFORE_START_PATTERN = /before message_start/i;
 export const STREAM_READ_ERROR_PATTERN = /stream[_ -]?read[_ -]?error/i;
+/**
+ * THE STATUS NUMBERS ARE WORD-BOUNDED, and they used to be bare.
+ *
+ * `429|500|502|503|504` with nothing around them matches those digits ANYWHERE in the message, so
+ * this classified as a transient transport failure any error whose text merely contained them:
+ * `invalid_argument: bad tool schema (trace ID: aaa503bbb)` was retried as a server fault, and so
+ * was `model 500m-params is not supported`. Devin puts a hex trace ID in every message it sends,
+ * which is how this surfaced, but the reach is every provider and every message with a digit run in
+ * it: a token count, a timestamp, a request id.
+ *
+ * It fails in the expensive direction. A permanent failure classified transient is retried through
+ * the whole budget with backoff before the operator is told anything, and for a rate limit that
+ * means burning real quota on a request that cannot succeed.
+ *
+ * THE GUARD IS `[\w-]`, NOT `\b`, and the hyphen is the whole reason. `\b` alone still matched
+ * `gpt-504-turbo` and every other hyphenated identifier, because a hyphen is a non-word character
+ * and therefore a word boundary; the model-name case is exactly where this class of false positive
+ * lives. Excluding a neighbouring hyphen as well as a neighbouring word character narrows nothing
+ * real, since every genuine rendering has whitespace, punctuation that is not a hyphen, or a string
+ * edge beside the number: `503`, `HTTP 503`, `status: 503`, `(503)`, `upstream/502`, `503.`
+ */
 export const TRANSIENT_TRANSPORT_PATTERN =
-	/overloaded|provider.?returned.?error|rate.?limit|too many requests|429|500|502|503|504|service.?unavailable|server.?error|internal.?error|retry your request|network.?error|connection.?error|connection.?refused|other side closed|fetch failed|upstream.?connect|upstream.?request.?failed|reset before headers|socket hang up|timed? out|timeout|terminated|retry delay|stream stall|no error details in response|HTTP2(?:StreamReset|RefusedStream|EnhanceYourCalm)|malformed.?function.?call/i;
+	/overloaded|provider.?returned.?error|rate.?limit|too many requests|(?<![\w-])(?:429|500|502|503|504)(?![\w-])|service.?unavailable|server.?error|internal.?error|retry your request|network.?error|connection.?error|connection.?refused|other side closed|fetch failed|upstream.?connect|upstream.?request.?failed|reset before headers|socket hang up|timed? out|timeout|terminated|retry delay|stream stall|no error details in response|HTTP2(?:StreamReset|RefusedStream|EnhanceYourCalm)|malformed.?function.?call/i;
 const AUTH_FAILURE_PATTERN =
 	/\b(?:401|403|unauthorized|forbidden|authentication|auth[_ ]?unavailable|no auth available|(?:invalid|no)[_ ]?api[_ ]?key)\b/i;
 const MALFORMED_FUNCTION_CALL_PATTERN = /\bmalformed.?function.?call\b/i;

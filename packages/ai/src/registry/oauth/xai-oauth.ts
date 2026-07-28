@@ -7,7 +7,9 @@
  * the discovered token endpoint until the user approves the login.
  */
 
-import { decodeJwtPayload, errorMessage, isRecord, scopedTimeoutSignal } from "@veyyon/utils";
+import { decodeJwtPayload } from "@veyyon/utils/jwt";
+import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
+import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import { type OAuthDeviceCodePollResult, pollOAuthDeviceCodeFlow } from "./device-code";

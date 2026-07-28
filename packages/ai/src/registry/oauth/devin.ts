@@ -1,5 +1,6 @@
 import { DEVIN_AUTH_ENDPOINT, DEVIN_WEBAPP_URL } from "@veyyon/catalog/provider-endpoints";
-import { DAY_MS, decodeJwtPayload } from "@veyyon/utils";
+import { decodeJwtPayload } from "@veyyon/utils/jwt";
+import { DAY_MS } from "@veyyon/utils/time";
 import * as AIError from "../../error";
 import { DEFAULT_CALLBACK_PATH, OAuthCallbackFlow } from "./callback-server";
 import { credentialExpiryFromJwtExp } from "./expiry";

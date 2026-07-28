@@ -1,6 +1,8 @@
+import { FETCH_AVAILABLE_MODELS_PATH } from "@veyyon/catalog/discovery/antigravity";
 import { ANTIGRAVITY_ENDPOINTS, ANTIGRAVITY_PRIMARY_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { getAntigravityUserAgent } from "@veyyon/catalog/wire/gemini-headers";
-import { DAY_MS, trimTrailingSlashes, WEEK_MS } from "@veyyon/utils";
+import { DAY_MS, WEEK_MS } from "@veyyon/utils/time";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import * as AIError from "../error";
 import type {
 	CredentialRankingContext,
@@ -45,8 +47,6 @@ interface AntigravityModelInfo {
 interface AntigravityUsageResponse {
 	models: Record<string, AntigravityModelInfo>;
 }
-
-const FETCH_AVAILABLE_MODELS_PATH = "/v1internal:fetchAvailableModels";
 
 interface AntigravityWindowDescriptor {
 	id: string;

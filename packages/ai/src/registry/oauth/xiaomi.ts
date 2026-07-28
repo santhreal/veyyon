@@ -8,9 +8,11 @@
  * login opens plan management so users copy the regional `tp-...` key.
  */
 
-import { isAbortError, scopedTimeoutSignal } from "@veyyon/utils";
+import { isAbortError } from "@veyyon/utils/abortable";
+import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
+import { VALIDATION_TIMEOUT_MS } from "../api-key-validation";
 import type { OAuthController } from "./types";
 
 const PROVIDER_ID = "xiaomi";
@@ -48,8 +50,6 @@ const TOKEN_PLAN_REGION_NAMES: Record<XiaomiTokenPlanRegion, string> = {
 function isTokenPlanKey(apiKey: string): boolean {
 	return apiKey.startsWith(TOKEN_PLAN_KEY_PREFIX);
 }
-
-const VALIDATION_TIMEOUT_MS = 15_000;
 
 async function validateXiaomiApiKey(
 	apiKey: string,

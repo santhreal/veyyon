@@ -1,4 +1,4 @@
-import { trimTrailingSlashes } from "@veyyon/utils";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { getOpenAICodexTransportDetails, type OpenAICodexTransportDetails } from "./providers/openai-codex-responses";
 import type { Api, Model, Provider, ProviderSessionState } from "./types";
 

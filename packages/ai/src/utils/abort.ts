@@ -30,8 +30,10 @@ export function createAbortSourceTracker(callerSignal?: AbortSignal): AbortSourc
 		requestAbortController,
 		requestSignal,
 		abortLocally(reason) {
-			localAbortReason = reason;
-			requestAbortController.abort(reason);
+			if (!requestAbortController.signal.aborted) {
+				localAbortReason = reason;
+				requestAbortController.abort(reason);
+			}
 			return reason;
 		},
 		getLocalAbortReason() {

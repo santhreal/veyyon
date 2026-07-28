@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { createRequestDebugSession } from "../src/utils/request-debug";
+import { createRequestDebugSession, wrapFetchForRequestDebug } from "../src/utils/request-debug";
 
 /**
  * `VEYYON_REQ_DEBUG` records every request and response to disk. It is an
@@ -199,5 +199,67 @@ describe("request debug log failures do not reach the caller", () => {
 		expect(dump.method).toBe("POST");
 		expect(dump.url).toBe("https://example.test/v1/messages");
 		expect(dump.bodyText).toBe("the exact request body");
+	});
+
+	/**
+	 * Request-log reservation happens before fetch so the request is durable, but
+	 * an observability failure must still yield to the real transport exactly once.
+	 */
+	test("a request log creation failure does not prevent or duplicate fetch", async () => {
+		const previousFlag = Bun.env.VEYYON_REQ_DEBUG;
+		Bun.env.VEYYON_REQ_DEBUG = "1";
+		const events: string[] = [];
+		const failure = Object.assign(new Error("EACCES: simulated"), { code: "EACCES" });
+		const openSpy = spyOn(fs, "open").mockImplementation(() => {
+			events.push("debug:open");
+			return Promise.reject(failure);
+		});
+		const wrapped = wrapFetchForRequestDebug(async () => {
+			events.push("fetch");
+			return new Response("provider response", { status: 200 });
+		});
+
+		try {
+			const response = await wrapped("https://example.test/v1/messages", { method: "POST" });
+
+			expect(await response.text()).toBe("provider response");
+			expect(events).toEqual(["debug:open", "fetch"]);
+		} finally {
+			openSpy.mockRestore();
+			if (previousFlag === undefined) delete Bun.env.VEYYON_REQ_DEBUG;
+			else Bun.env.VEYYON_REQ_DEBUG = previousFlag;
+		}
+	});
+
+	/**
+	 * If a response body is already locked, debug wrapping cannot tee it; the
+	 * opened log must still close once and the original response must survive.
+	 */
+	test("a locked response body closes the unused log and returns the original response", async () => {
+		const session = await createRequestDebugSession({ method: "GET", url: "https://example.test/locked" });
+		const events: string[] = [];
+		Object.defineProperty(session, "openResponseLog", {
+			configurable: true,
+			value: async () => {
+				events.push("open");
+				return {
+					write() {
+						events.push("write");
+					},
+					async close() {
+						events.push("close");
+					},
+				};
+			},
+		});
+		const response = new Response("provider bytes");
+		const reader = response.body!.getReader();
+
+		try {
+			expect(await session.wrapResponse(response)).toBe(response);
+			expect(events).toEqual(["open", "close"]);
+		} finally {
+			await reader.cancel();
+		}
 	});
 });

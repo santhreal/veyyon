@@ -1,5 +1,5 @@
 import { emptyUsage } from "@veyyon/catalog/models";
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import type { Api, Model } from "../types";
 
 export function createProviderErrorMessage(model: Model<Api>, err: unknown) {

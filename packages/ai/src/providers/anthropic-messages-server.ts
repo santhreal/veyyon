@@ -1,6 +1,7 @@
 import { Effort } from "@veyyon/catalog/effort";
 import { emptyUsage } from "@veyyon/catalog/models";
-import { errorMessage, isRecord, logger } from "@veyyon/utils";
+import * as logger from "@veyyon/utils/logger";
+import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
 import { type } from "arktype";
 import { captureRequestHeaders, resolvePromptCacheKey } from "../auth-gateway/http";
 import * as AIError from "../error";

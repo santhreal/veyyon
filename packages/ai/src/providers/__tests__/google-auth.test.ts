@@ -6,6 +6,17 @@ import * as path from "node:path";
 import type { FetchImpl } from "../../types";
 import { __resetVertexTokenCache, getVertexAccessToken } from "../google-auth";
 
+/**
+ * Google's OAuth wire strings, spelled out here ON PURPOSE. Do not import them.
+ *
+ * `google-auth.ts` declares the same two values, and a constants sweep flagged the
+ * pair as a duplicate to unify. It is not one. These are protocol constants fixed by
+ * Google and by RFC 7523, not a shared internal value: the test's job is to assert
+ * that the request body carries the bytes the spec requires, and importing the
+ * production constant would make it assert only that the code equals itself. A typo
+ * in `google-auth.ts` would then be copied into the expectation and the suite would
+ * stay green while every Vertex token request was rejected.
+ */
 const CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 const JWT_BEARER_GRANT = "urn:ietf:params:oauth:grant-type:jwt-bearer";
 

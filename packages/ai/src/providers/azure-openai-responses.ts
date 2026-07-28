@@ -1,4 +1,5 @@
-import { $env, trimTrailingSlashes } from "@veyyon/utils";
+import { $env } from "@veyyon/utils/env";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import * as AIError from "../error";
 import { getEnvApiKey } from "../stream";
 import type {
@@ -19,9 +20,10 @@ import {
 	getOpenAIStreamIdleTimeoutMs,
 	iterateWithIdleTimeout,
 } from "../utils/idle-iterator";
-import { OpenAIHttpError, postOpenAIStream } from "../utils/openai-http";
+import { OpenAIHttpError, type OpenAIStreamHandle, postOpenAIStream } from "../utils/openai-http";
+import { notifyProviderResponse } from "../utils/provider-response";
 import { sanitizeSchemaForOpenAIResponses, toolWireSchema } from "../utils/schema";
-import { resolveOpenAiSseEventName } from "../utils/sse-debug";
+import { notifyRawSseEvent, resolveOpenAiSseEventName } from "../utils/sse-debug";
 import { mapToOpenAIResponsesToolChoice } from "../utils/tool-choice";
 import {
 	applyOpenAIReasoningEffortFallback,
@@ -103,21 +105,18 @@ export const streamAzureOpenAIResponses: StreamFunction<"azure-openai-responses"
 		);
 		const { requestAbortController, requestSignal } = abortTracker;
 		const onSseEvent = options?.onSseEvent;
-		const rawSseObserver = onSseEvent
+		const modelSseObserver = onSseEvent ? (event: RawSseEvent) => onSseEvent(event, model) : undefined;
+		const rawSseObserver = modelSseObserver
 			? (event: RawSseEvent) => {
 					resolveOpenAiSseEventName(event);
-					onSseEvent(event, model);
+					notifyRawSseEvent(modelSseObserver, event);
 				}
 			: undefined;
 
 		try {
 			const apiKey = options?.apiKey || getEnvApiKey(model.provider) || "";
 			const { url, headers } = buildAzureResponsesRequest(model, apiKey, options);
-			let params = buildParams(model, context, options, deploymentName);
-			const replacementPayload = await options?.onPayload?.(params, model);
-			if (replacementPayload !== undefined) {
-				params = replacementPayload as typeof params;
-			}
+			const params = buildParams(model, context, options, deploymentName);
 			const idleTimeoutMs = options?.streamIdleTimeoutMs ?? getOpenAIStreamIdleTimeoutMs();
 			const firstEventTimeoutMs =
 				options?.streamFirstEventTimeoutMs ?? getOpenAIStreamFirstEventTimeoutMs(idleTimeoutMs);
@@ -131,13 +130,27 @@ export const streamAzureOpenAIResponses: StreamFunction<"azure-openai-responses"
 				url,
 				body: params,
 			};
-			const reasoningEffortFallbackKey = createOpenAIReasoningEffortFallbackKey(
+			let activeRequestParams = params;
+			let activeReasoningEffortFallbackKey = createOpenAIReasoningEffortFallbackKey(
 				"azure-responses",
 				url,
 				typeof params.model === "string" ? params.model : model.id,
 			);
+			const prepareRequest = async (): Promise<RequestInit> => {
+				const attemptParams = structuredClone(params);
+				const replacementPayload = await options?.onPayload?.(attemptParams, model);
+				const wireParams = replacementPayload !== undefined ? (replacementPayload as typeof params) : attemptParams;
+				activeRequestParams = wireParams;
+				activeReasoningEffortFallbackKey = createOpenAIReasoningEffortFallbackKey(
+					"azure-responses",
+					url,
+					typeof wireParams.model === "string" ? wireParams.model : model.id,
+				);
+				if (rawRequestDump) rawRequestDump.body = wireParams;
+				return { body: JSON.stringify(wireParams) };
+			};
 			const attemptedReasoningEffortFallbacks = new Set<string>();
-			let openaiStream: AsyncIterable<ResponseStreamEvent>;
+			let openaiHandle: OpenAIStreamHandle<ResponseStreamEvent>;
 			while (true) {
 				let requestTimeout: NodeJS.Timeout | undefined;
 				if (requestTimeoutMs !== undefined) {
@@ -151,34 +164,39 @@ export const streamAzureOpenAIResponses: StreamFunction<"azure-openai-responses"
 					if (requestTimeoutMs !== undefined) {
 						headersWithTimeout["X-Stainless-Timeout"] = Math.floor(requestTimeoutMs / 1000).toString();
 					}
-					const handle = await postOpenAIStream<ResponseStreamEvent>({
+					// Preserve payload capture for callers that intentionally use an
+					// already-aborted signal without issuing a physical request.
+					if (requestSignal.aborted) await prepareRequest();
+					openaiHandle = await postOpenAIStream<ResponseStreamEvent>({
 						url,
 						headers: headersWithTimeout,
-						body: params,
+						body: undefined,
 						signal: requestSignal,
 						fetch: options?.fetch,
+						prepareInit: prepareRequest,
 						// Transient 408/429/5xx get Retry-After-aware transport retries;
 						// the first-event watchdog aborts `requestSignal`, so retries
 						// cannot extend the caller's deadline.
 						onSseEvent: rawSseObserver,
 					});
-					openaiStream = handle.events;
 					break;
 				} catch (error) {
 					const capturedErrorResponse = error instanceof OpenAIHttpError ? error.captured : undefined;
 					const reasoningEffortFallback: OpenAIReasoningEffortFallback | undefined = !requestSignal.aborted
-						? resolveOpenAIReasoningEffortFallback(error, capturedErrorResponse, params)
+						? resolveOpenAIReasoningEffortFallback(error, capturedErrorResponse, activeRequestParams)
 						: undefined;
 					if (reasoningEffortFallback === undefined) throw error;
-					const retryMarker = `${reasoningEffortFallbackKey}:${String(reasoningEffortFallback)}`;
+					const retryMarker = `${activeReasoningEffortFallbackKey}:${String(reasoningEffortFallback)}`;
 					if (attemptedReasoningEffortFallbacks.has(retryMarker)) throw error;
 					attemptedReasoningEffortFallbacks.add(retryMarker);
 					applyOpenAIReasoningEffortFallback(params, reasoningEffortFallback);
 					rawRequestDump.body = params;
 				} finally {
-					if (requestTimeout !== undefined) clearTimeout(requestTimeout);
+					clearTimeout(requestTimeout);
 				}
 			}
+			await notifyProviderResponse(options, openaiHandle.response, model, openaiHandle.requestId);
+			const openaiStream = openaiHandle.events;
 			stream.push({ type: "start", partial: output });
 
 			const timedOpenaiStream = iterateWithIdleTimeout(openaiStream, {

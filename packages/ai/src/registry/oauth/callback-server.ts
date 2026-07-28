@@ -10,7 +10,7 @@
  * - generateAuthUrl(): Build provider-specific authorization URL
  * - exchangeToken(): Exchange authorization code for tokens
  */
-import { scopedTimeoutSignal } from "@veyyon/utils";
+import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import * as AIError from "../../error";
 import { renderOAuthResultHtml } from "./success-page";
 import type { OAuthController, OAuthCredentials } from "./types";

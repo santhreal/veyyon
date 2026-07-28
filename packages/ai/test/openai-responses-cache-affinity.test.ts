@@ -423,6 +423,115 @@ describe("openai-responses cache affinity", () => {
 		expect(captured.body?.prompt_cache_key).toBe("replacement-cache-key");
 	});
 
+	/** Regression: transport retries must invoke onPayload with a fresh baseline and preserve callback wire order. */
+	it("rebuilds every physical Responses attempt before the successful callbacks", async () => {
+		const order: string[] = [];
+		const bodies: Array<Record<string, unknown>> = [];
+		let payloadAttempt = 0;
+		const fetchMock: FetchImpl = async (_input, init) => {
+			const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+			bodies.push(body);
+			order.push(`fetch:${String(body.attempt)}`);
+			if (bodies.length === 1) {
+				return new Response("temporary", { status: 503, headers: { "retry-after": "0" } });
+			}
+			return createSseResponse([
+				{
+					type: "response.output_item.added",
+					item: { type: "message", id: "msg_retry", role: "assistant", status: "in_progress", content: [] },
+				},
+				{
+					type: "response.output_item.done",
+					item: {
+						type: "message",
+						id: "msg_retry",
+						role: "assistant",
+						status: "completed",
+						content: [{ type: "output_text", text: "Hello" }],
+					},
+				},
+				{
+					type: "response.completed",
+					response: {
+						id: "resp_retry",
+						status: "completed",
+						usage: {
+							input_tokens: 1,
+							output_tokens: 1,
+							total_tokens: 2,
+							input_tokens_details: { cached_tokens: 0 },
+						},
+					},
+				},
+			]);
+		};
+
+		const result = await streamOpenAIResponses(
+			model,
+			{ messages: [{ role: "user", content: "Say hello", timestamp: Date.now() }] },
+			{
+				apiKey: "test-key",
+				fetch: fetchMock,
+				onPayload: payload => {
+					payloadAttempt += 1;
+					order.push(`payload:${payloadAttempt}`);
+					return { ...(payload as Record<string, unknown>), attempt: payloadAttempt };
+				},
+				onResponse: response => {
+					order.push(`response:${response.status}`);
+				},
+				onSseEvent: () => {
+					order.push("sse");
+					throw new Error("diagnostic observer failure");
+				},
+			},
+		).result();
+
+		expect(result.stopReason).toBe("stop");
+		expect(bodies.map(body => body.attempt)).toEqual([1, 2]);
+		expect(order).toEqual([
+			"payload:1",
+			"fetch:1",
+			"payload:2",
+			"fetch:2",
+			"response:200",
+			"sse",
+			"sse",
+			"sse",
+		]);
+	});
+
+	/** Regression: a failing response hook is not a transport failure and must not consume or reopen the SSE body. */
+	it("fails once after response headers when onResponse rejects", async () => {
+		let fetchCalls = 0;
+		const onSseEvent = vi.fn();
+		const result = await streamOpenAIResponses(
+			model,
+			{ messages: [{ role: "user", content: "Say hello", timestamp: Date.now() }] },
+			{
+				apiKey: "test-key",
+				fetch: async () => {
+					fetchCalls += 1;
+					return createSseResponse([
+						{
+							type: "response.completed",
+							response: { status: "completed", usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } },
+						},
+					]);
+				},
+				onResponse: () => {
+					throw new Error("response hook exploded");
+				},
+				onSseEvent,
+			},
+		).result();
+
+		expect(fetchCalls).toBe(1);
+		expect(onSseEvent).not.toHaveBeenCalled();
+		expect(result.stopReason).toBe("error");
+		expect(result.errorMessage).toContain("response hook exploded");
+	});
+
 	it("reapplies onPayload replacements on stateful stale-chain retry", async () => {
 		const providerSessionState = new Map<string, ProviderSessionState>();
 		const requestBodies: Array<Record<string, unknown>> = [];

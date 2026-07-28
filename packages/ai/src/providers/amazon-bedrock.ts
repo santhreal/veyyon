@@ -10,7 +10,9 @@
 import type { Effort } from "@veyyon/catalog/effort";
 import { mapEffortToAnthropicAdaptiveEffort, requireSupportedEffort } from "@veyyon/catalog/model-thinking";
 import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
-import { $env, $flag, fetchWithRetry, parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/utils";
+import { $env, $flag } from "@veyyon/utils/env";
+import { fetchWithRetry } from "@veyyon/utils/fetch-retry";
+import { parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/utils/json-parse";
 import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
 import { AUTHENTICATED_API_KEY_SENTINEL } from "../provider-env-keys";
@@ -40,6 +42,7 @@ import {
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import type { RawHttpRequestDump } from "../utils/http-inspector";
 import { armPreResponseTimeout, getStreamFirstEventTimeoutMs } from "../utils/idle-iterator";
+import { notifyProviderResponse } from "../utils/provider-response";
 import { toolWireSchema } from "../utils/schema/wire";
 import { invalidateAwsCredentialCache, resolveAwsCredentials } from "./aws-credentials";
 import { decodeEventStream } from "./aws-eventstream";
@@ -323,11 +326,34 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 			// absolute `AbortSignal.timeout` would keep aborting the actively
 			// streaming body, not just a stalled time-to-first-byte (issue #2422).
 			const watchdog = armPreResponseTimeout(options.signal, firstEventTimeoutMs);
+			const transportFetch = options.fetch ?? globalThis.fetch.bind(globalThis);
+			let responseHookFailed = false;
+			let responseHookError: unknown;
+			const observedFetch = async (
+				input: string | URL | Request,
+				init?: RequestInit,
+			): Promise<Response> => {
+				const attemptResponse = await transportFetch(input, init);
+				try {
+					await notifyProviderResponse(
+						options,
+						attemptResponse,
+						model,
+						attemptResponse.headers.get("x-amzn-requestid") ?? attemptResponse.headers.get("x-request-id"),
+					);
+				} catch (error) {
+					// A response hook is part of the request contract, not a transport
+					// failure. Return a non-retryable sentinel so fetchWithRetry cannot
+					// multiply the callback failure into more physical attempts.
+					responseHookFailed = true;
+					responseHookError = error;
+					return new Response(null, { status: 400 });
+				}
+				return attemptResponse;
+			};
 			const prepareRequest = async (): Promise<RequestInit> => {
 				bearerToken = resolveBearerToken(options);
-				let credentials:
-					| { accessKeyId: string; secretAccessKey: string; sessionToken?: string }
-					| undefined;
+				let credentials: { accessKeyId: string; secretAccessKey: string; sessionToken?: string } | undefined;
 				if (!bearerToken) {
 					credentials = $flag("AWS_BEDROCK_SKIP_AUTH")
 						? { accessKeyId: "dummy-access-key", secretAccessKey: "dummy-secret-key" }
@@ -408,10 +434,11 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 				response = await fetchWithRetry(url, {
 					method: "POST",
 					signal: watchdog.signal,
-					fetch: options.fetch,
+					fetch: observedFetch,
 					timeout: false,
 					prepareInit: prepareRequest,
 				});
+				if (responseHookFailed) throw responseHookError;
 			} finally {
 				watchdog.clear();
 			}

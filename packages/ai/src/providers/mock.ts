@@ -43,7 +43,7 @@
  */
 
 import { emptyUsage } from "@veyyon/catalog/models";
-import { untilAborted } from "@veyyon/utils";
+import { untilAborted } from "@veyyon/utils/abortable";
 import { registerCustomApi } from "../api-registry";
 import * as AIError from "../error";
 import type {

@@ -778,6 +778,19 @@ export interface AssistantMessage {
 	request?: AssistantTurnRequest;
 }
 
+/**
+ * What an errored tool result says when the tool produced no output of its own.
+ *
+ * A user reads this line. It was declared twice, in `@veyyon/agent`'s loop (which
+ * fills it in at the boundary where an untyped tool result enters) and in
+ * `@veyyon/ai`'s Anthropic provider (which fills it in on the way to the wire,
+ * because the API rejects an empty content array). The two are the same sentence
+ * about the same event, so an edit to one produced a transcript where the same
+ * failure was worded two ways depending on which layer noticed it first. It lives
+ * here because this module owns {@link ToolResultMessage}, the shape being filled.
+ */
+export const EMPTY_ERROR_TOOL_RESULT_TEXT = "Tool failed with no output.";
+
 export interface ToolResultMessage<TDetails = unknown> {
 	role: "toolResult";
 	toolCallId: string;

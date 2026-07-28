@@ -1,4 +1,4 @@
-import { parseJsonWithRepair } from "@veyyon/utils";
+import { parseJsonWithRepair } from "@veyyon/utils/json-parse";
 import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
 import { mintToolCallId, parseToolArgsText, partialSuffixOverlapAny } from "./coercion";

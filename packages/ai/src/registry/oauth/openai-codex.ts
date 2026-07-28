@@ -3,7 +3,7 @@
  */
 
 import { type CodexTokenIdentity, OPENAI_HEADER_VALUES, readCodexTokenIdentity } from "@veyyon/catalog/wire/codex";
-import { withScopedTimeoutSignal } from "@veyyon/utils";
+import { withScopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import { isRecord } from "../../utils";

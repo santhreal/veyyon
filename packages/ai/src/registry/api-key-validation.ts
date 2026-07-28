@@ -29,7 +29,15 @@ type ModelListValidationOptions = {
 	fetch?: FetchImpl;
 };
 
-const VALIDATION_TIMEOUT_MS = 15_000;
+/**
+ * How long a credential check may take before it is abandoned.
+ *
+ * One owner because a validation that hangs is indistinguishable to the user from a
+ * rejected key: the dialog just sits there. `registry/oauth/xiaomi.ts` runs its own
+ * key check and held a second `15_000` under this same name, so a change here would
+ * have left one provider on a different budget with nothing to say which.
+ */
+export const VALIDATION_TIMEOUT_MS = 15_000;
 
 function normalizeAnthropicCompatibleBaseUrl(baseUrl: string): string {
 	const trimmed = trimTrailingSlashes(baseUrl.trim());

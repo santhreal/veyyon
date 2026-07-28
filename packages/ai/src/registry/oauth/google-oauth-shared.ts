@@ -5,12 +5,27 @@
  * credentials, scopes, endpoint constants, and project-discovery logic differ.
  */
 
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import * as AIError from "../../error";
 import { extractGoogleValidationUrl, formatGoogleValidationRequiredMessage } from "../../utils/google-validation";
 import { OAuthCallbackFlow } from "./callback-server";
 import { credentialExpiryFromExpiresIn } from "./expiry";
 import type { OAuthController, OAuthCredentials } from "./types";
+
+/**
+ * Google Code Assist tier ids, as the API spells them.
+ *
+ * ONE vocabulary for the two providers that speak this API. `legacy-tier` was
+ * declared in BOTH `google-gemini-cli.ts` and `google-antigravity.ts`, and it is the
+ * value each falls back to when the response names no tier, so a drift would have
+ * put two providers on two different default tiers while both files read correctly
+ * on their own. The other two ids live here with it rather than being left behind:
+ * they are the same vocabulary, and splitting a vocabulary across modules is how the
+ * duplicate appeared in the first place.
+ */
+export const TIER_FREE = "free-tier";
+export const TIER_LEGACY = "legacy-tier";
+export const TIER_STANDARD = "standard-tier";
 
 export interface GoogleOAuthFlowConfig {
 	clientId: string;
@@ -41,7 +56,7 @@ async function getUserEmail(accessToken: string): Promise<string | undefined> {
 }
 
 export class GoogleOAuthFlow extends OAuthCallbackFlow {
-	private readonly config: GoogleOAuthFlowConfig;
+	readonly #config: GoogleOAuthFlowConfig;
 
 	constructor(ctrl: OAuthController, config: GoogleOAuthFlowConfig) {
 		super(ctrl, {
@@ -49,33 +64,33 @@ export class GoogleOAuthFlow extends OAuthCallbackFlow {
 			callbackPath: config.callbackPath,
 			callbackHostname: "127.0.0.1",
 		});
-		this.config = config;
+		this.#config = config;
 	}
 
 	async generateAuthUrl(state: string, redirectUri: string): Promise<{ url: string; instructions?: string }> {
 		const authParams = new URLSearchParams({
-			client_id: this.config.clientId,
+			client_id: this.#config.clientId,
 			response_type: "code",
 			redirect_uri: redirectUri,
-			scope: this.config.scopes.join(" "),
+			scope: this.#config.scopes.join(" "),
 			state,
 			access_type: "offline",
 			prompt: "consent",
 		});
 
-		const url = `${this.config.authUrl}?${authParams.toString()}`;
+		const url = `${this.#config.authUrl}?${authParams.toString()}`;
 		return { url, instructions: "Complete the sign-in in your browser." };
 	}
 
 	async exchangeToken(code: string, _state: string, redirectUri: string): Promise<OAuthCredentials> {
 		this.ctrl.onProgress?.("Exchanging authorization code for tokens...");
 
-		const tokenResponse = await fetch(this.config.tokenUrl, {
+		const tokenResponse = await fetch(this.#config.tokenUrl, {
 			method: "POST",
 			headers: { "Content-Type": "application/x-www-form-urlencoded" },
 			body: new URLSearchParams({
-				client_id: this.config.clientId,
-				client_secret: this.config.clientSecret,
+				client_id: this.#config.clientId,
+				client_secret: this.#config.clientSecret,
 				code,
 				grant_type: "authorization_code",
 				redirect_uri: redirectUri,
@@ -101,7 +116,7 @@ export class GoogleOAuthFlow extends OAuthCallbackFlow {
 		const email = await getUserEmail(tokenData.access_token);
 		let projectId: string;
 		try {
-			projectId = await this.config.discoverProject(tokenData.access_token, this.ctrl.onProgress);
+			projectId = await this.#config.discoverProject(tokenData.access_token, this.ctrl.onProgress);
 		} catch (err) {
 			const validationUrl = extractGoogleValidationUrl(errorMessage(err));
 			if (!validationUrl) throw err;

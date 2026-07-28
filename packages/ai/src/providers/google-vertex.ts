@@ -1,4 +1,4 @@
-import { $env } from "@veyyon/utils";
+import { $env } from "@veyyon/utils/env";
 import * as AIError from "../error";
 import type { Context, Model, StreamFunction } from "../types";
 import type { AssistantMessageEventStream } from "../utils/event-stream";

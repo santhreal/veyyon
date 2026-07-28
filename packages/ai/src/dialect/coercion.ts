@@ -1,4 +1,6 @@
-import { errorMessage, getOwnProperty, isRecord, logger, parseJsonWithRepair, setSafeProperty } from "@veyyon/utils";
+import { parseJsonWithRepair } from "@veyyon/utils/json-parse";
+import * as logger from "@veyyon/utils/logger";
+import { errorMessage, getOwnProperty, isRecord, setSafeProperty } from "@veyyon/utils/type-guards";
 import { toolWireSchema } from "../utils/schema";
 import type { InbandTool } from "./types";
 

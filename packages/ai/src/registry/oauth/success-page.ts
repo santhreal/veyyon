@@ -13,7 +13,7 @@
  *   the provider's own screen.
  */
 
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import templateHtml from "./oauth.html" with { type: "text" };
 
 /**

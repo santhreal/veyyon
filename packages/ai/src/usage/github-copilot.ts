@@ -6,7 +6,7 @@
 
 import { toBoolean, toNumber } from "@veyyon/catalog/utils";
 import { OPENCODE_HEADERS } from "@veyyon/catalog/wire/github-copilot";
-import { trimTrailingSlashes } from "@veyyon/utils";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import * as AIError from "../error";
 import type {
 	UsageAmount,

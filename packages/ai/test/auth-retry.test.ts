@@ -106,6 +106,54 @@ describe("withAuth", () => {
 		);
 	});
 
+	/**
+	 * Initial credential resolution has no earlier auth failure to preserve, so a
+	 * resolver exception must remain the observable error rather than become "missing key".
+	 */
+	it("propagates an initial resolver failure without dispatching", async () => {
+		const resolverError = new Error("credential store is locked");
+		const attempts: string[] = [];
+
+		await expect(
+			withAuth(
+				() => {
+					throw resolverError;
+				},
+				async key => {
+					attempts.push(key);
+					return "unreachable";
+				},
+			),
+		).rejects.toBe(resolverError);
+		expect(attempts).toEqual([]);
+	});
+
+	/**
+	 * Pre-aborted work must stop before credential resolution and before the first
+	 * physical request, preserving the caller's exact cancellation reason.
+	 */
+	it("does no auth or transport work for a pre-aborted request", async () => {
+		const controller = new AbortController();
+		const reason = new Error("cancelled before auth");
+		controller.abort(reason);
+		const events: string[] = [];
+
+		await expect(
+			withAuth(
+				() => {
+					events.push("resolve");
+					return "k0";
+				},
+				async () => {
+					events.push("attempt");
+					return "unreachable";
+				},
+				{ signal: controller.signal },
+			),
+		).rejects.toBe(reason);
+		expect(events).toEqual([]);
+	});
+
 	it("refreshes the same account, then switches, in order", async () => {
 		const keys: string[] = [];
 		const contexts: ApiKeyResolveContext[] = [];
@@ -290,26 +338,32 @@ describe("withAuth", () => {
 		expect(resolveIndex).toBe(AUTH_RETRY_MAX_ATTEMPTS);
 	});
 
-	it("does not attempt a retry key resolved after abort", async () => {
+	/**
+	 * An abort that lands while resolving a retry key must prevent the next
+	 * attempt and outrank the stale auth failure from the completed attempt.
+	 */
+	it("preserves cancellation that lands during retry resolution", async () => {
 		const controller = new AbortController();
-		const keys: string[] = [];
+		const reason = new Error("cancelled during credential rotation");
+		const events: string[] = [];
 		const original = usageLimitError();
 
 		await expect(
 			withAuth(
 				ctx => {
+					events.push(ctx.error === undefined ? "resolve:initial" : "resolve:retry");
 					if (ctx.error === undefined) return "k0";
-					controller.abort();
+					controller.abort(reason);
 					return "k1";
 				},
 				async key => {
-					keys.push(key);
+					events.push(`attempt:${key}`);
 					throw original;
 				},
 				{ signal: controller.signal },
 			),
-		).rejects.toBe(original);
-		expect(keys).toEqual(["k0"]);
+		).rejects.toBe(reason);
+		expect(events).toEqual(["resolve:initial", "attempt:k0", "resolve:retry"]);
 	});
 
 	it("stops retrying when the resolver returns undefined", async () => {
@@ -581,6 +635,72 @@ describe("withOAuthAccess", () => {
 				throw dead;
 			}),
 		).rejects.toBe(dead);
+	});
+
+	/**
+	 * OAuth retries obey the same cancellation boundary as bearer retries: a
+	 * pre-aborted operation must not resolve storage or invoke the transport.
+	 */
+	it("does no OAuth work for a pre-aborted request", async () => {
+		const controller = new AbortController();
+		const reason = new Error("cancelled before OAuth");
+		controller.abort(reason);
+		const storage = fakeStorage({ initial: access("t1") });
+		const attempts: string[] = [];
+
+		await expect(
+			withOAuthAccess(
+				storage,
+				"prov",
+				async value => {
+					attempts.push(value.accessToken);
+					return "unreachable";
+				},
+				{ signal: controller.signal },
+			),
+		).rejects.toBe(reason);
+		expect(storage.calls).toEqual([]);
+		expect(attempts).toEqual([]);
+	});
+
+	/**
+	 * If cancellation lands during force-refresh, the fresh bearer must not be
+	 * attempted and the caller reason must beat the previous 401.
+	 */
+	it("preserves cancellation that lands during OAuth refresh", async () => {
+		const controller = new AbortController();
+		const reason = new Error("cancelled during OAuth refresh");
+		const calls: string[] = [];
+		const storage: OAuthAccessSource = {
+			async getOAuthAccess(_provider, _sessionId, options) {
+				if (options?.forceRefresh) {
+					calls.push("resolve:refresh");
+					controller.abort(reason);
+					return access("fresh");
+				}
+				calls.push("resolve:initial");
+				return access("stale");
+			},
+			async rotateSessionCredential() {
+				calls.push("rotate");
+				return true;
+			},
+		};
+		const attempts: string[] = [];
+
+		await expect(
+			withOAuthAccess(
+				storage,
+				"prov",
+				async value => {
+					attempts.push(value.accessToken);
+					throw authError();
+				},
+				{ signal: controller.signal },
+			),
+		).rejects.toBe(reason);
+		expect(calls).toEqual(["resolve:initial", "resolve:refresh"]);
+		expect(attempts).toEqual(["stale"]);
 	});
 
 	it("throws the missing-access message when no credential resolves", async () => {

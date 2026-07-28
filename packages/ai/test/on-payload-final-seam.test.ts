@@ -207,6 +207,87 @@ describe("onPayload is the final physical transport seam", () => {
 		});
 	});
 
+	/**
+	 * Regression: Bedrock's HTTP retry helper owns multiple physical attempts.
+	 * Every attempt must rebuild the hook-replaced body and announce its response
+	 * before the next payload is prepared, including retryable 5xx responses.
+	 */
+	it("orders Bedrock payload, fetch, and response hooks once per physical attempt", async () => {
+		const order: string[] = [];
+		const bodies: Array<Record<string, unknown>> = [];
+		let payloadAttempt = 0;
+		let fetchAttempt = 0;
+		const result = await streamBedrock(bedrockModel(), contextWithSecret(), {
+			bearerToken: "resolved-bedrock-credential",
+			fetch: asFetch(async (_input, init) => {
+				fetchAttempt++;
+				order.push(`fetch:${fetchAttempt}`);
+				bodies.push(JSON.parse(new TextDecoder().decode(bodyBytes(init?.body))) as Record<string, unknown>);
+				return new Response(fetchAttempt === 1 ? "retry" : "bad request", {
+					status: fetchAttempt === 1 ? 500 : 400,
+					headers: {
+						"retry-after": "0",
+						"x-amzn-requestid": `bedrock-request-${fetchAttempt}`,
+					},
+				});
+			}),
+			maxTokens: 64,
+			onPayload: async payload => {
+				payloadAttempt++;
+				order.push(`payload:${payloadAttempt}`);
+				await Promise.resolve();
+				return { ...(payload as Record<string, unknown>), payloadAttempt };
+			},
+			onResponse: response => {
+				order.push(`response:${response.status}:${response.requestId}`);
+			},
+		}).result();
+
+		expect(result.stopReason).toBe("error");
+		expect(result.errorStatus).toBe(400);
+		expect(order).toEqual([
+			"payload:1",
+			"fetch:1",
+			"response:500:bedrock-request-1",
+			"payload:2",
+			"fetch:2",
+			"response:400:bedrock-request-2",
+		]);
+		expect(bodies.map(body => body.payloadAttempt)).toEqual([1, 2]);
+	});
+
+	/**
+	 * Regression: a rejecting Bedrock response hook must not be mistaken for a
+	 * transient fetch error. Even when the received status is retryable, the hook
+	 * failure wins immediately and cannot create duplicate physical attempts.
+	 */
+	it("does not retry a Bedrock response-hook failure", async () => {
+		const order: string[] = [];
+		const result = await streamBedrock(bedrockModel(), contextWithSecret(), {
+			bearerToken: "resolved-bedrock-credential",
+			fetch: asFetch(async () => {
+				order.push("fetch");
+				return new Response("retryable upstream failure", {
+					status: 503,
+					headers: { "retry-after": "0", "x-amzn-requestid": "bedrock-hook-failure" },
+				});
+			}),
+			maxTokens: 64,
+			onPayload: () => {
+				order.push("payload");
+			},
+			onResponse: async response => {
+				order.push(`response:${response.status}:${response.requestId}`);
+				await Promise.resolve();
+				throw new Error("bedrock response hook rejected");
+			},
+		}).result();
+
+		expect(result.stopReason).toBe("error");
+		expect(result.errorMessage).toContain("bedrock response hook rejected");
+		expect(order).toEqual(["payload", "fetch", "response:503:bedrock-hook-failure"]);
+	});
+
 	it("serializes only the async Cursor replacement into the gRPC request", async () => {
 		const server = await startH2CaptureServer();
 		try {

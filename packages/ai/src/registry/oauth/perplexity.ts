@@ -17,7 +17,8 @@ import {
 	PERPLEXITY_NATIVE_APP_HEADERS,
 	PERPLEXITY_WEB_ORIGIN,
 } from "@veyyon/catalog/wire/perplexity";
-import { $env, decodeJwtPayload } from "@veyyon/utils";
+import { $env } from "@veyyon/utils/env";
+import { decodeJwtPayload } from "@veyyon/utils/jwt";
 import { $ } from "bun";
 import * as AIError from "../../error";
 import type { OAuthController, OAuthCredentials } from "./types";

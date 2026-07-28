@@ -5,7 +5,9 @@
  * `veyyon auth-broker status` (liveness checks). All endpoints except
  * `/v1/healthz` require a bearer token.
  */
-import { readSseEvents, scopedTimeoutSignal, trimTrailingSlashes } from "@veyyon/utils";
+import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
+import { readSseEvents } from "@veyyon/utils/stream";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { type } from "arktype";
 import type { AuthCredential } from "../auth-storage";
 import { formatGenerationTag, parseGenerationTag } from "./generation-tag";

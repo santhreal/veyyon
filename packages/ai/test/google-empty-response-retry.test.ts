@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { streamGoogle } from "@veyyon/ai/providers/google";
+import { streamGoogleGenAI } from "@veyyon/ai/providers/google-shared";
 import { streamGoogleGeminiCli } from "@veyyon/ai/providers/google-gemini-cli";
 import { streamGoogleVertex } from "@veyyon/ai/providers/google-vertex";
 import type { AssistantMessageEvent, Context, FetchImpl, Model } from "@veyyon/ai/types";
@@ -113,6 +114,139 @@ describe("Google empty-response retry (public + Vertex path)", () => {
 		expect(calls).toBe(3); // MAX_EMPTY_STREAM_RETRIES (2) + 1 initial attempt
 		expect(result.stopReason).toBe("error");
 		expect(result.errorMessage).toContain("empty response");
+	});
+
+	/**
+	 * Regression: empty-response retries used to hide every physical HTTP response from
+	 * `onResponse`, making request ids and rate-limit headers disappear even though the
+	 * same final payload was dispatched twice. The payload hook must finish before the
+	 * first fetch, and each response must be announced before its SSE frame is observed.
+	 */
+	it("announces each empty-response attempt in exact payload, response, and SSE order", async () => {
+		const order: string[] = [];
+		const bodies: unknown[] = [];
+		let calls = 0;
+		const fetchMock: FetchImpl = async (_input, init) => {
+			calls += 1;
+			order.push(`fetch:${calls}`);
+			bodies.push(JSON.parse(String(init?.body)));
+			const response = sse(genaiChunk(calls === 1 ? "" : "Done"));
+			response.headers.set("x-request-id", `request-${calls}`);
+			return response;
+		};
+
+		const stream = streamGoogle(genaiModel, context, {
+			apiKey: "k",
+			fetch: fetchMock,
+			onPayload: async payload => {
+				order.push("payload");
+				return {
+					...(payload as Record<string, unknown>),
+					contents: [{ role: "user", parts: [{ text: "hooked request" }] }],
+				};
+			},
+			onResponse: response => {
+				order.push(`response:${response.requestId}`);
+			},
+			onSseEvent: () => {
+				order.push(`sse:${calls}`);
+			},
+		});
+		const result = await stream.result();
+
+		expect(result.stopReason).toBe("stop");
+		expect(order).toEqual([
+			"payload",
+			"fetch:1",
+			"response:request-1",
+			"sse:1",
+			"fetch:2",
+			"response:request-2",
+			"sse:2",
+		]);
+		expect(bodies).toEqual([
+			{ contents: [{ role: "user", parts: [{ text: "hooked request" }] }] },
+			{ contents: [{ role: "user", parts: [{ text: "hooked request" }] }] },
+		]);
+	});
+
+	/**
+	 * Regression: the regional-to-global Vertex fallback is two physical attempts.
+	 * Both responses must reach `onResponse`, including the retry-triggering 404,
+	 * and each callback must precede observation of the successful SSE frame.
+	 */
+	it("announces both regional fallback responses before streaming the global response", async () => {
+		const order: string[] = [];
+		const fetchMock: FetchImpl = async input => {
+			const url = String(input);
+			order.push(`fetch:${url}`);
+			if (url === "https://regional.example/stream") {
+				return new Response('{"error":{"message":"not regional"}}', {
+					status: 404,
+					headers: { "x-request-id": "regional-request" },
+				});
+			}
+			const response = sse(genaiChunk("global"));
+			response.headers.set("x-request-id", "global-request");
+			return response;
+		};
+		const stream = streamGoogleGenAI({
+			model: genaiModel,
+			api: "google-generative-ai",
+			options: {
+				fetch: fetchMock,
+				onResponse: response => {
+					order.push(`response:${response.status}:${response.requestId}`);
+				},
+				onSseEvent: () => {
+					order.push("sse");
+				},
+			},
+			prepare: () => ({
+				params: { model: "gemini-2.5-pro", contents: [{ role: "user", parts: [{ text: "hi" }] }] },
+				url: "https://regional.example/stream",
+				fallbackUrl: "https://global.example/stream",
+				headers: {},
+			}),
+		});
+		const result = await stream.result();
+
+		expect(result.stopReason).toBe("stop");
+		expect(order).toEqual([
+			"fetch:https://regional.example/stream",
+			"response:404:regional-request",
+			"fetch:https://global.example/stream",
+			"response:200:global-request",
+			"sse",
+		]);
+	});
+
+	/**
+	 * Regression: response-hook failures occur after headers but before any body
+	 * consumption. They must win over a superficially successful SSE body, fire once,
+	 * and prevent raw SSE callbacks from reporting data that was never consumed.
+	 */
+	it("stops before SSE consumption when the response hook rejects", async () => {
+		const order: string[] = [];
+		const stream = streamGoogle(genaiModel, context, {
+			apiKey: "k",
+			fetch: async () => {
+				order.push("fetch");
+				return sse(genaiChunk("must not stream"));
+			},
+			onResponse: async () => {
+				order.push("response");
+				throw new Error("response observer rejected");
+			},
+			onSseEvent: () => {
+				order.push("sse");
+			},
+		});
+		const result = await stream.result();
+
+		expect(result.stopReason).toBe("error");
+		expect(result.errorMessage).toContain("response observer rejected");
+		expect(order).toEqual(["fetch", "response"]);
 	});
 
 	it("filters out empty text parts at stream end but preserves terminal thought signatures", async () => {

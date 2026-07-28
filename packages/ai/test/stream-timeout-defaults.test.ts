@@ -276,6 +276,128 @@ describe("iterateWithIdleTimeout", () => {
 		await Bun.sleep(5);
 		expect(upstreamClosed).toBe(true);
 	});
+
+	/**
+	 * Once cancellation is latched between yields, the wrapper must not issue one
+	 * more upstream pull before observing it; that pull can dispatch real work.
+	 */
+	it("does not pull upstream again after cancellation between items", async () => {
+		const controller = new AbortController();
+		const reason = new Error("caller cancelled");
+		let nextCalls = 0;
+		let returnCalls = 0;
+		const source: AsyncIterable<string> = {
+			[Symbol.asyncIterator]() {
+				return {
+					next() {
+						nextCalls += 1;
+						return Promise.resolve({ done: false as const, value: `item-${nextCalls}` });
+					},
+					return() {
+						returnCalls += 1;
+						return Promise.resolve({ done: true as const, value: undefined });
+					},
+				};
+			},
+		};
+		const wrapped = iterateWithIdleTimeout(source, {
+			idleTimeoutMs: 1_000,
+			errorMessage: "idle timeout",
+			abortSignal: controller.signal,
+		});
+
+		expect(await wrapped.next()).toEqual({ done: false, value: "item-1" });
+		controller.abort(reason);
+		await expect(wrapped.next()).rejects.toBe(reason);
+		expect({ nextCalls, returnCalls }).toEqual({ nextCalls: 1, returnCalls: 1 });
+	});
+
+	/**
+	 * A timeout notification hook is cleanup only: if it throws, the stable
+	 * StreamTimeoutError must still win and upstream close must still run once.
+	 */
+	it("preserves timeout error precedence when the timeout hook throws", async () => {
+		let timeoutHooks = 0;
+		let returnCalls = 0;
+		const source: AsyncIterable<string> = {
+			[Symbol.asyncIterator]() {
+				return {
+					next: () => new Promise<IteratorResult<string>>(() => {}),
+					return() {
+						returnCalls += 1;
+						return Promise.resolve({ done: true as const, value: undefined });
+					},
+				};
+			},
+		};
+
+		await expectRejectsWithMessage(async () => {
+			for await (const _item of iterateWithIdleTimeout(source, {
+				firstItemTimeoutMs: 5,
+				errorMessage: "idle timeout",
+				firstItemErrorMessage: "first progress timeout",
+				onFirstItemTimeout: () => {
+					timeoutHooks += 1;
+					throw new Error("timeout hook failed");
+				},
+			})) {
+				// Unreachable.
+			}
+		}, "first progress timeout");
+		expect({ timeoutHooks, returnCalls }).toEqual({ timeoutHooks: 1, returnCalls: 1 });
+	});
+
+	/**
+	 * Natural exhaustion is already a closed iterator; forwarding return() after
+	 * done duplicates upstream completion callbacks and cleanup side effects.
+	 */
+	it("does not close an already exhausted upstream iterator", async () => {
+		let returnCalls = 0;
+		const source: AsyncIterable<string> = {
+			[Symbol.asyncIterator]() {
+				return {
+					next: () => Promise.resolve({ done: true as const, value: undefined }),
+					return() {
+						returnCalls += 1;
+						return Promise.resolve({ done: true as const, value: undefined });
+					},
+				};
+			},
+		};
+
+		for await (const _item of iterateWithIdleTimeout(source, { errorMessage: "idle timeout" })) {
+			// Unreachable.
+		}
+		expect(returnCalls).toBe(0);
+	});
+
+	/**
+	 * A malformed upstream return() that throws synchronously must not replace
+	 * the source read error the consumer is already receiving.
+	 */
+	it("does not let synchronous close failure mask the source error", async () => {
+		const sourceError = new Error("source read failed");
+		let returnCalls = 0;
+		const source: AsyncIterable<string> = {
+			[Symbol.asyncIterator]() {
+				return {
+					next: () => Promise.reject(sourceError),
+					return() {
+						returnCalls += 1;
+						throw new Error("close failed");
+					},
+				};
+			},
+		};
+
+		const consume = async (): Promise<void> => {
+			for await (const _item of iterateWithIdleTimeout(source, { errorMessage: "idle timeout" })) {
+				// Unreachable.
+			}
+		};
+		await expect(consume()).rejects.toBe(sourceError);
+		expect(returnCalls).toBe(1);
+	});
 });
 
 describe("iterateWithTerminalGrace", () => {
@@ -347,5 +469,74 @@ describe("iterateWithTerminalGrace", () => {
 		expect(graceEnded).toBe(true);
 		await Bun.sleep(5);
 		expect(upstreamClosed).toBe(false); // parked mid-await; only the abort can release it
+	});
+
+	/**
+	 * Terminal grace expiry is a successful logical completion, so a failing
+	 * cleanup hook must not turn it into an error or run more than once.
+	 */
+	it("ends cleanly when the grace-end hook throws", async () => {
+		let nextCalls = 0;
+		let returnCalls = 0;
+		let graceCalls = 0;
+		let finishedAt: number | undefined;
+		const source: AsyncIterable<string> = {
+			[Symbol.asyncIterator]() {
+				return {
+					next() {
+						nextCalls += 1;
+						if (nextCalls === 1) return Promise.resolve({ done: false as const, value: "finish" });
+						return new Promise<IteratorResult<string>>(() => {});
+					},
+					return() {
+						returnCalls += 1;
+						return Promise.resolve({ done: true as const, value: undefined });
+					},
+				};
+			},
+		};
+
+		const seen: string[] = [];
+		for await (const item of iterateWithTerminalGrace(source, {
+			finishedAtMs: () => finishedAt,
+			graceMs: 5,
+			onGraceEnd: () => {
+				graceCalls += 1;
+				throw new Error("grace cleanup failed");
+			},
+		})) {
+			seen.push(item);
+			finishedAt = Date.now();
+		}
+
+		expect(seen).toEqual(["finish"]);
+		expect({ nextCalls, returnCalls, graceCalls }).toEqual({ nextCalls: 2, returnCalls: 1, graceCalls: 1 });
+	});
+
+	/**
+	 * A naturally exhausted terminal-grace source needs no return() call; doing
+	 * both invokes user cleanup twice relative to normal async iteration.
+	 */
+	it("does not return an already exhausted terminal-grace iterator", async () => {
+		let returnCalls = 0;
+		const source: AsyncIterable<string> = {
+			[Symbol.asyncIterator]() {
+				return {
+					next: () => Promise.resolve({ done: true as const, value: undefined }),
+					return() {
+						returnCalls += 1;
+						return Promise.resolve({ done: true as const, value: undefined });
+					},
+				};
+			},
+		};
+
+		for await (const _item of iterateWithTerminalGrace(source, {
+			finishedAtMs: () => undefined,
+			graceMs: 5,
+		})) {
+			// Unreachable.
+		}
+		expect(returnCalls).toBe(0);
 	});
 });

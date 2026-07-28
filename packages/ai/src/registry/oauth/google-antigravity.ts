@@ -10,10 +10,10 @@ import {
 	GOOGLE_OAUTH_AUTH_ENDPOINT,
 	GOOGLE_OAUTH_TOKEN_ENDPOINT,
 } from "@veyyon/catalog/wire/google-oauth";
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import * as AIError from "../../error";
 import { credentialExpiryFromExpiresIn } from "./expiry";
-import { runGoogleOAuthLogin } from "./google-oauth-shared";
+import { runGoogleOAuthLogin, TIER_LEGACY } from "./google-oauth-shared";
 import type { OAuthController, OAuthCredentials } from "./types";
 
 const decode = (s: string) => atob(s);
@@ -34,7 +34,6 @@ const SCOPES = [
 
 const AUTH_URL = GOOGLE_OAUTH_AUTH_ENDPOINT;
 const TOKEN_URL = GOOGLE_OAUTH_TOKEN_ENDPOINT;
-const TIER_LEGACY = "legacy-tier";
 const PROJECT_ONBOARD_MAX_ATTEMPTS = 5;
 const PROJECT_ONBOARD_INTERVAL_MS = 2000;
 

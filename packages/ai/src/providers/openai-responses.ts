@@ -1,5 +1,9 @@
 import { hostMatchesUrl } from "@veyyon/catalog/hosts";
-import { $flag, errorMessage, logger, structuredCloneJSON, trimTrailingSlashes } from "@veyyon/utils";
+import { $flag } from "@veyyon/utils/env";
+import { structuredCloneJSON } from "@veyyon/utils/json";
+import * as logger from "@veyyon/utils/logger";
+import { errorMessage } from "@veyyon/utils/type-guards";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import * as AIError from "../error";
 import { getEnvApiKey } from "../stream";
 import type {
@@ -31,7 +35,7 @@ import {
 	getOpenAIStreamIdleTimeoutMs,
 	iterateWithIdleTimeout,
 } from "../utils/idle-iterator";
-import { OpenAIHttpError, postOpenAIStream } from "../utils/openai-http";
+import { OpenAIHttpError, type OpenAIStreamHandle, postOpenAIStream } from "../utils/openai-http";
 import { notifyProviderResponse } from "../utils/provider-response";
 import { callWithCopilotModelRetry } from "../utils/retry";
 import {
@@ -41,7 +45,7 @@ import {
 	sanitizeSchemaForOpenAIResponses,
 	toolWireSchema,
 } from "../utils/schema";
-import { resolveOpenAiSseEventName } from "../utils/sse-debug";
+import { notifyRawSseEvent, resolveOpenAiSseEventName } from "../utils/sse-debug";
 import {
 	isForcedToolChoice,
 	mapToOpenAIResponsesToolChoice,
@@ -365,10 +369,11 @@ const streamOpenAIResponsesOnce = (
 		const firstEventTimeoutAbortError = new AIError.StreamTimeoutError(OPENAI_RESPONSES_FIRST_EVENT_TIMEOUT_MESSAGE);
 		const { requestAbortController, requestSignal } = abortTracker;
 		const onSseEvent = options?.onSseEvent;
-		const rawSseObserver = onSseEvent
+		const modelSseObserver = onSseEvent ? (event: RawSseEvent) => onSseEvent(event, model) : undefined;
+		const rawSseObserver = modelSseObserver
 			? (event: RawSseEvent) => {
 					resolveOpenAiSseEventName(event);
-					onSseEvent(event, model);
+					notifyRawSseEvent(modelSseObserver, event);
 				}
 			: undefined;
 
@@ -432,13 +437,13 @@ const streamOpenAIResponsesOnce = (
 				firstEventTimeoutMs !== undefined && firstEventTimeoutMs > 0 ? firstEventTimeoutMs : undefined;
 			const requestUrl = `${resolvedBaseUrl}/responses`;
 			const applyPayloadReplacement = async (requestParams: OpenAIResponsesSamplingParams) => {
-				const replacementPayload = await options?.onPayload?.(requestParams, model);
+				const attemptParams = structuredCloneJSON(requestParams);
+				const replacementPayload = await options?.onPayload?.(attemptParams, model);
 				const payload =
-					replacementPayload !== undefined ? (replacementPayload as OpenAIResponsesSamplingParams) : requestParams;
+					replacementPayload !== undefined ? (replacementPayload as OpenAIResponsesSamplingParams) : attemptParams;
 				applyReasoningEffortFallbackForRequest(payload);
 				return payload;
 			};
-			chained = { ...chained, params: await applyPayloadReplacement(chained.params) };
 			rawRequestDump = {
 				provider: model.provider,
 				api: output.api,
@@ -447,13 +452,22 @@ const streamOpenAIResponsesOnce = (
 				url: requestUrl,
 				body: chained.params,
 			};
-			const openResponsesStream = (requestParams: OpenAIResponsesSamplingParams) => {
-				activeReasoningEffortFallbackKey = createOpenAIReasoningEffortFallbackKey(
-					"responses",
-					resolvedBaseUrl,
-					typeof requestParams.model === "string" ? requestParams.model : model.id,
-				);
-				activeRequestParams = requestParams;
+			const openResponsesStream = async (requestParams: OpenAIResponsesSamplingParams, captureOnly = false) => {
+				const prepareRequest = async (): Promise<RequestInit> => {
+					const wireParams = await applyPayloadReplacement(requestParams);
+					activeReasoningEffortFallbackKey = createOpenAIReasoningEffortFallbackKey(
+						"responses",
+						resolvedBaseUrl,
+						typeof wireParams.model === "string" ? wireParams.model : model.id,
+					);
+					activeRequestParams = wireParams;
+					if (rawRequestDump) rawRequestDump.body = wireParams;
+					return { body: JSON.stringify(wireParams) };
+				};
+				if (captureOnly) {
+					await prepareRequest();
+					throw new AIError.RequestAbortError();
+				}
 				return callWithCopilotModelRetry(
 					async () => {
 						let requestTimeout: NodeJS.Timeout | undefined;
@@ -468,12 +482,13 @@ const streamOpenAIResponsesOnce = (
 							if (requestTimeoutMs !== undefined) {
 								headersWithTimeout["X-Stainless-Timeout"] = Math.floor(requestTimeoutMs / 1000).toString();
 							}
-							const { events, response, requestId } = await postOpenAIStream<ResponseStreamEvent>({
+							const handle = await postOpenAIStream<ResponseStreamEvent>({
 								url: requestUrl,
 								headers: headersWithTimeout,
-								body: requestParams,
+								body: undefined,
 								signal: requestSignal,
 								fetch: options?.fetch,
+								prepareInit: prepareRequest,
 								// Transient 408/429/5xx get Retry-After-aware transport
 								// retries; the first-event watchdog aborts `requestSignal`,
 								// so retries cannot extend the caller's deadline.
@@ -485,22 +500,24 @@ const streamOpenAIResponsesOnce = (
 								clearTimeout(requestTimeout);
 								requestTimeout = undefined;
 							}
-							await notifyProviderResponse(options, response, model, requestId);
-							return events;
+							return handle;
 						} finally {
-							if (requestTimeout !== undefined) clearTimeout(requestTimeout);
+							clearTimeout(requestTimeout);
 						}
 					},
 					{ provider: model.provider, signal: requestSignal },
 				);
 			};
-			let openaiStream: AsyncIterable<ResponseStreamEvent>;
+			// Copilot retry policy rejects a latched abort before invoking its
+			// callback, so preserve the payload-inspection contract outside it.
+			if (requestSignal.aborted) await openResponsesStream(chained.params, true);
+			let openaiHandle: OpenAIStreamHandle<ResponseStreamEvent>;
 			let strictRetryAvailable = true;
 			let activeStrictToolsApplied = builtParams.strictToolsApplied;
 			let forceDisableStrictTools = false;
 			while (true) {
 				try {
-					openaiStream = await openResponsesStream(chained.params);
+					openaiHandle = await openResponsesStream(chained.params);
 					if (pendingReasoningEffortFallback) {
 						rememberOpenAIReasoningEffortFallback(
 							providerSessionState,
@@ -564,10 +581,6 @@ const streamOpenAIResponsesOnce = (
 								? buildOpenAIResponsesChainedParams(fallbackParams, chainState)
 								: { params: fallbackParams };
 						sentPreviousResponseId = fallbackChained.previousResponseId;
-						fallbackChained = {
-							...fallbackChained,
-							params: await applyPayloadReplacement(fallbackChained.params),
-						};
 						chained = fallbackChained;
 						rawRequestDump.body = chained.params;
 						activeParams = fallbackParams;
@@ -609,13 +622,14 @@ const streamOpenAIResponsesOnce = (
 					// retry must be chainable next turn, and the consecutive stale-failure
 					// breaker only trips when each retry stores and the next turn re-chains.
 					currentParams.store = !zdrRejection;
-					const retryParams = await applyPayloadReplacement(currentParams);
-					chained = { params: retryParams };
-					rawRequestDump.body = retryParams;
+					chained = { params: currentParams };
+					rawRequestDump.body = currentParams;
 					activeParams = currentParams;
 					activeStrictToolsApplied = currentBuilt.strictToolsApplied;
 				}
 			}
+			await notifyProviderResponse(options, openaiHandle.response, model, openaiHandle.requestId);
+			const openaiStream = openaiHandle.events;
 			if (premiumRequestsTotal !== undefined) output.usage.premiumRequests = premiumRequestsTotal;
 			stream.push({ type: "start", partial: output });
 

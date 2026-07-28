@@ -12,7 +12,9 @@
  * Compared to AJV this is single-pass, synchronous, dependency-free, and
  * tolerates non-standard shapes (`nullable`) that LLM-emitted schemas carry.
  */
-import { codePointLength, isRecord, logger } from "@veyyon/utils";
+import * as logger from "@veyyon/utils/logger";
+import { codePointLength } from "@veyyon/utils/string-length";
+import { isRecord } from "@veyyon/utils/type-guards";
 import { areJsonValuesEqual } from "./equality";
 import { isMultipleOf } from "./multiple-of";
 

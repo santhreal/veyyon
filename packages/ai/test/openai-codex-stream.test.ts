@@ -1805,6 +1805,64 @@ describe("openai-codex streaming", () => {
 		expect(result.errorMessage).not.toContain("Body already used");
 	});
 
+	/** Regression: Codex SSE transport retries must rerun payload hooks and notify successful headers/events exactly once. */
+	it("rebuilds each physical Codex SSE retry in callback order", async () => {
+		const tempDir = TempDir.createSync("@pi-codex-stream-");
+		setAgentDir(tempDir.path());
+		const order: string[] = [];
+		const bodies: Array<Record<string, unknown>> = [];
+		let payloadAttempt = 0;
+		const fetchMock: FetchImpl = async (_input, init) => {
+			const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+			bodies.push(body);
+			order.push(`fetch:${String(body.test_attempt)}`);
+			if (bodies.length === 1) {
+				return new Response("temporary", { status: 503, headers: { "retry-after": "0" } });
+			}
+			return new Response(createStatefulCodexSse("Recovered", "resp_physical_retry"), {
+				status: 200,
+				headers: { "content-type": "text/event-stream", "x-request-id": "req_physical_retry" },
+			});
+		};
+
+		const result = await streamOpenAICodexResponses(
+			{ ...createCodexTestModel("https://chatgpt.com/backend-api"), preferWebsockets: false },
+			createCodexTestContext(),
+			{
+				apiKey: createCodexTestToken(),
+				fetch: fetchMock,
+				onPayload: payload => {
+					payloadAttempt += 1;
+					order.push(`payload:${payloadAttempt}`);
+					return { ...(payload as Record<string, unknown>), test_attempt: payloadAttempt };
+				},
+				onResponse: response => {
+					order.push(`response:${response.status}:${String(response.requestId)}`);
+				},
+				onSseEvent: () => {
+					order.push("sse");
+					throw new Error("diagnostic observer failure");
+				},
+			},
+		).result();
+
+		expect(result.stopReason).toBe("stop");
+		expect(bodies.map(body => body.test_attempt)).toEqual([1, 2]);
+		expect(order).toEqual([
+			"payload:1",
+			"fetch:1",
+			"payload:2",
+			"fetch:2",
+			"response:200:req_physical_retry",
+			"sse",
+			"sse",
+			"sse",
+			"sse",
+			"sse",
+			"sse",
+		]);
+	});
+
 	it("retries transient model_error SSE events before surfacing an error", async () => {
 		const tempDir = TempDir.createSync("@pi-codex-stream-");
 		setAgentDir(tempDir.path());

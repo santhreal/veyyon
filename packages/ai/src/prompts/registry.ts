@@ -19,7 +19,7 @@
  * template that carries them; `provider/` is text a single provider needs for a
  * reason that is not about syntax.
  */
-import { definePromptRegistry, type PromptEntry } from "@veyyon/utils";
+import { definePromptRegistry, type PromptEntry } from "@veyyon/utils/prompt-registry";
 import dialectAnthropic from "./dialect/anthropic.md" with { type: "text" };
 import dialectDeepseek from "./dialect/deepseek.md" with { type: "text" };
 import dialectGemini from "./dialect/gemini.md" with { type: "text" };

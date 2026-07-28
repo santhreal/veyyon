@@ -1,5 +1,7 @@
 import { toNumber } from "@veyyon/catalog/utils";
-import { clamp01, DAY_MS, formatCount, HOUR_MS, WEEK_MS } from "@veyyon/utils";
+import { formatCount } from "@veyyon/utils/format";
+import { clamp01 } from "@veyyon/utils/math";
+import { DAY_MS, HOUR_MS, WEEK_MS } from "@veyyon/utils/time";
 import type {
 	CredentialRankingStrategy,
 	UsageAmount,

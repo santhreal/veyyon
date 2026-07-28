@@ -1,4 +1,4 @@
-import { isRecord } from "@veyyon/utils";
+import { isRecord } from "@veyyon/utils/type-guards";
 import {
 	CCA_UNSUPPORTED_SCHEMA_FIELDS,
 	COMBINATOR_KEYS,
