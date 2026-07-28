@@ -266,7 +266,11 @@ with the newer one it fetches from GitHub Releases, the same place the
 installer's download comes from; veyyon.dev hosts only the installer script, so GitHub Releases is the only
 place a binary ever comes from. Before it keeps the new binary it runs the same
 two checks the installer runs: the binary reports the version the release
-claims, and a real search confirms the native addon loads. If either fails the
+claims, and a real search confirms the native addon loads. The search check is
+skipped only for a version old enough not to have `veyyon grep` at all, which is
+possible when you roll back, and Veyyon confirms that is the reason by asking the
+binary for its own `--help` first. A binary that cannot answer that either is
+broken, not old, and is treated as a failure. If either check fails the
 previous binary goes back in place and the update reports why, so a release with
 no build for your platform cannot leave you with a binary that starts and then
 fails on your first command. "Why" is the binary's own words: if the new binary

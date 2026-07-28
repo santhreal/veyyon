@@ -414,4 +414,71 @@ describe("probeSearchWorks", () => {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}
 	});
+
+	/**
+	 * The "this build predates `grep`" excuse, and the failure it used to swallow.
+	 *
+	 * A failing `grep --help` was read as "an older release that has no such
+	 * subcommand" from the exit code alone. That is also exactly what a binary
+	 * whose native addon fails to load on any real subcommand produces — the
+	 * precise failure this probe exists to catch — so the probe answered "works"
+	 * and the update kept a binary that cannot do anything (Law 10). The excuse now
+	 * has to survive a second question: can the binary answer its own top-level
+	 * `--help`? An old release can; a broken install cannot.
+	 */
+	it("excuses a build with no grep subcommand only when its own --help still works", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-probe-"));
+		const bin = path.join(dir, "veyyon");
+		// An older release: `grep` is not a command it knows, everything else is fine.
+		fs.writeFileSync(bin, '#!/bin/sh\n[ "$1" = "grep" ] && { echo "unknown command" >&2; exit 1; }\nexit 0\n', {
+			mode: 0o755,
+		});
+		try {
+			expect(await probeSearchWorks(bin, "The checkout")).toBeUndefined();
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("refuses a binary that fails grep --help and fails --help too", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-probe-"));
+		const bin = path.join(dir, "veyyon");
+		// A broken install: the addon fails to load, so every subcommand dies the
+		// same way. Under the old exit-code-only reading this passed as "an old
+		// build" and the update was kept.
+		fs.writeFileSync(bin, '#!/bin/sh\necho "failed to load native addon" >&2\nexit 1\n', { mode: 0o755 });
+		try {
+			const reason = await probeSearchWorks(bin, "The checkout");
+			expect(reason).toContain("the install is broken");
+			expect(reason).toContain("failed to load native addon");
+			expect(reason).toContain("The checkout");
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	/**
+	 * The excuse must not cost a spawn on the ordinary path. A working install
+	 * answers `grep --help` on the first try, so the disambiguating `--help` run
+	 * never happens and every update check stays at two spawns, not three.
+	 */
+	it("does not ask for --help when grep --help already succeeded", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-probe-"));
+		const bin = path.join(dir, "veyyon");
+		const log = path.join(dir, "invocations.log");
+		fs.writeFileSync(
+			bin,
+			`#!/bin/sh\necho "$*" >> ${log}\n[ "$2" = "--help" ] && exit 0\nshift\nprintf "%s/probe.txt:1: %s\\n" "$2" "$1"\n`,
+			{ mode: 0o755 },
+		);
+		try {
+			expect(await probeSearchWorks(bin, "The checkout")).toBeUndefined();
+			const invocations = fs.readFileSync(log, "utf8").trim().split("\n");
+			expect(invocations[0]).toBe("grep --help");
+			expect(invocations.some(line => line === "--help")).toBe(false);
+			expect(invocations).toHaveLength(2);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
 });
