@@ -8,18 +8,19 @@ import type { DoctorCheck } from "./types";
 export async function runDoctorChecks(): Promise<DoctorCheck[]> {
 	const checks: DoctorCheck[] = [];
 
-	// 1. Check core CLI binaries on PATH
-	const binaries = [
-		{ name: "vey", description: "Veyyon CLI alias" },
-		{ name: "veyyon", description: "Veyyon binary" },
-		{ name: "git", description: "Version control" },
-	];
+	// 1. Tools veyyon shells out to. `vey` and `veyyon` used to be checked here as
+	// well, by looking their names up on PATH and reporting "Found at <path>".
+	// `runInstallHealthChecks` now answers that question properly — it RUNS the
+	// binary — and running both printed the same two names twice with the weaker
+	// answer second. One owner: the install checks own veyyon's own commands, this
+	// owns the third-party tools.
+	const binaries = [{ name: "git", description: "Version control" }];
 
 	for (const bin of binaries) {
 		const path = $which(bin.name);
 		checks.push({
 			name: bin.name,
-			status: path ? "ok" : bin.name === "git" ? "error" : "warning",
+			status: path ? "ok" : "error",
 			message: path ? `Found at ${path}` : `${bin.description} not found on PATH`,
 		});
 	}

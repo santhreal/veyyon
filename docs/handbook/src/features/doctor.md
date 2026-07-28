@@ -1,7 +1,31 @@
 # Diagnostics and health
 
-Diagnostics are split across `veyyon setup status`, plugin doctor, TUI `/debug`, and memory commands. There is no single
-`veyyon doctor` binary that covers install, auth, and plugins in one pass.
+`veyyon setup status` is the health check. It answers two things in one pass: whether the install itself works, and whether you are signed in to a provider. Plugin health has its own command, and the TUI has its own debug tools.
+
+## System health
+
+```console
+$ veyyon setup status
+$ veyyon setup status --json
+```
+
+The install checks run first, because nothing below them can work if the install does not. They are the same questions the installer asks at the end of every install, asked of your machine as it is now:
+
+| Check | What it proves |
+| --- | --- |
+| `veyyon on PATH` | The shell can find it, and which file it found. |
+| `PATH copies` | Only one `veyyon` is on your PATH. A second one earlier on PATH keeps answering after an update writes the first, which is what makes an update look like it did nothing. |
+| `veyyon runs` | It executes and reports the version you are running. If it will not start, the check quotes what the system said. |
+| `Native addon` | A real search returns a real match, so the native addon loaded. `--version` alone passes without it. |
+| `Install method` | Whether `veyyon update` swaps the binary or advances a source checkout. |
+| `vey alias` | The short name the rest of the documentation tells you to type resolves. |
+| `Shell completions` | Completion files are installed, and for which shells. |
+
+None of them touches the network. A health check you cannot run when the network is what broke is not much of a health check.
+
+After the install checks come the credential checks: `git` on PATH (missing is an error), and provider authentication through OAuth or one of `GEMINI_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `KIMI_API_KEY` (missing is a warning).
+
+The command exits non-zero when any check reports an error, so you can gate a script on it. Warnings exit zero: they are worth reading, not worth stopping for.
 
 ## Plugin doctor
 
@@ -11,8 +35,6 @@ $ veyyon plugin doctor --fix
 ```
 
 Checks plugin installation health. With `--fix`, it attempts automatic repairs where implemented.
-
-A separate System Health Check runs under `veyyon setup status` (and `veyyon setup status --json`): it checks `vey`, `veyyon`, and `git` on PATH (a missing `git` is an error, the others warnings) plus provider authentication (OAuth or one of `GEMINI_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `KIMI_API_KEY`, missing = warning).
 
 ## TUI debug
 
@@ -31,19 +53,16 @@ Opens the debug tools selector in the interactive session.
 
 Run diagnostics and statistics on the configured memory backend (`memory.backend`: mnemopi, hindsight, local) from the TUI. See [Memory](./memory.md).
 
-## Checking install health
+## Which one to reach for
 
-There is no single `veyyon doctor` command. Diagnostics are spread across a few surfaces:
+1. `veyyon setup status` when veyyon itself is misbehaving: it covers the install and your credentials.
+2. `veyyon plugin doctor` when an extension is misbehaving.
+3. `/debug` and `/memory diagnose` inside a session.
+4. [Troubleshooting](../using/troubleshooting.md) for common setup failures.
 
-1. `veyyon --version` and a normal interactive session start.
-2. `veyyon setup status` for the install and auth health check.
-3. `veyyon plugin doctor` for extension health.
-4. `/debug` and `/memory diagnose` inside the TUI.
-5. [Troubleshooting](../using/troubleshooting.md) for common setup failures.
+## Exit status
 
-## Exit status (plugin doctor)
-
-`veyyon plugin doctor` exits non-zero when checks report `error` status. Warnings may still exit zero.
+Both `veyyon setup status` and `veyyon plugin doctor` exit non-zero when a check reports an error, and zero when the worst result is a warning.
 
 ## See also
 
