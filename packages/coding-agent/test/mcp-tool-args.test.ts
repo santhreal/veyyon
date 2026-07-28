@@ -289,7 +289,6 @@ describe("MCP tool arguments", () => {
 		expect(JSON.stringify(result)).not.toContain(rawSecret);
 	});
 
-
 	it("waits for DeferredMCPTool connection resolution before using the live transform", async () => {
 		const rawSecret = "deferred-raw-secret";
 		const calls: CapturedRequest[] = [];

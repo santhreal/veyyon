@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
 import * as fsSync from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -28,12 +28,14 @@ async function mkRoot(): Promise<string> {
 	return root;
 }
 
-function ownerInfo(overrides: Partial<{
-	pid: number;
-	timestamp: number;
-	token: string;
-	processIdentity: string | null;
-}> = {}) {
+function ownerInfo(
+	overrides: Partial<{
+		pid: number;
+		timestamp: number;
+		token: string;
+		processIdentity: string | null;
+	}> = {},
+) {
 	return {
 		version: 1 as const,
 		pid: process.pid,
@@ -449,10 +451,7 @@ describe("tryWithFileLock", () => {
 	test("sync acquisition reaps dead and PID-reused infinite-lease owners", async () => {
 		for (const [name, info] of [
 			["dead", ownerInfo({ pid: 0x7fffffff, processIdentity: null })],
-			[
-				"reused",
-				ownerInfo({ processIdentity: "linux:00000000-0000-0000-0000-000000000000:1" }),
-			],
+			["reused", ownerInfo({ processIdentity: "linux:00000000-0000-0000-0000-000000000000:1" })],
 		] as const) {
 			const root = await mkRoot();
 			const target = path.join(root, `${name}-sync.json`);

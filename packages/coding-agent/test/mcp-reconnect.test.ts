@@ -294,10 +294,7 @@ describe("MCPTool.execute retry on connection error", () => {
 
 		await tool.execute("call-1", rawArgs, noop, context);
 
-		expect(sentArgs).toEqual([
-			{ nested: { token: "first-safe" } },
-			{ nested: { token: "second-safe" } },
-		]);
+		expect(sentArgs).toEqual([{ nested: { token: "first-safe" } }, { nested: { token: "second-safe" } }]);
 		expect(rawArgs).toEqual({ nested: { token: rawSecret } });
 	});
 });
@@ -322,17 +319,20 @@ describe("DeferredMCPTool.execute provider boundary", () => {
 			obfuscateProviderText: (text: string) => text.replaceAll(rawSecret, "first-safe"),
 		} as Parameters<DeferredMCPTool["execute"]>[3];
 		const rawArgs = { nested: { token: rawSecret } };
-		const tool = new DeferredMCPTool("test-server", TOOL_DEF, async () => firstConnection, undefined, async () => {
-			context.obfuscateProviderText = text => text.replaceAll(rawSecret, "second-safe");
-			return secondConnection;
-		});
+		const tool = new DeferredMCPTool(
+			"test-server",
+			TOOL_DEF,
+			async () => firstConnection,
+			undefined,
+			async () => {
+				context.obfuscateProviderText = text => text.replaceAll(rawSecret, "second-safe");
+				return secondConnection;
+			},
+		);
 
 		await tool.execute("call-1", rawArgs, undefined, context);
 
-		expect(sentArgs).toEqual([
-			{ nested: { token: "first-safe" } },
-			{ nested: { token: "second-safe" } },
-		]);
+		expect(sentArgs).toEqual([{ nested: { token: "first-safe" } }, { nested: { token: "second-safe" } }]);
 		expect(rawArgs).toEqual({ nested: { token: rawSecret } });
 	});
 });

@@ -265,9 +265,7 @@ describe("remote Mnemopi provider confidentiality boundaries", () => {
 				};
 				// Why: the resolver exists in the embedding channel, but choosing
 				// fastembed or an on-device completion must not invoke or alter it.
-				expect(await withMnemopiRuntimeOptions(options, () => embed([raw]))).toEqual([
-					new Float32Array([1, 2]),
-				]);
+				expect(await withMnemopiRuntimeOptions(options, () => embed([raw]))).toEqual([new Float32Array([1, 2])]);
 				expect(await withMnemopiRuntimeOptions(options, () => complete(raw))).toBe("local result");
 				expect(embedded).toEqual([raw]);
 				expect(completed).toBe(raw);

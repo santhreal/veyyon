@@ -29,9 +29,7 @@ describe("reopenBackgroundAfterResets", () => {
 	 * not masked by the harder ones passing.
 	 */
 	it("re-opens the ground after a full reset", () => {
-		expect(reopenBackgroundAfterResets(`red${SGR_RESET}rest`, GROUND)).toBe(
-			`red${SGR_RESET}${GROUND}rest`,
-		);
+		expect(reopenBackgroundAfterResets(`red${SGR_RESET}rest`, GROUND)).toBe(`red${SGR_RESET}${GROUND}rest`);
 	});
 
 	/**
@@ -55,9 +53,7 @@ describe("reopenBackgroundAfterResets", () => {
 	 * here, because the ground that follows overrides it, and one rule reads better than two.
 	 */
 	it("re-opens the ground after a background reset, keeping the reset", () => {
-		expect(reopenBackgroundAfterResets(`x${SGR_BG_RESET}y`, GROUND)).toBe(
-			`x${SGR_BG_RESET}${GROUND}y`,
-		);
+		expect(reopenBackgroundAfterResets(`x${SGR_BG_RESET}y`, GROUND)).toBe(`x${SGR_BG_RESET}${GROUND}y`);
 	});
 
 	/**

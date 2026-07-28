@@ -152,9 +152,7 @@ describe("an embedding with no dimensions", () => {
 	it("says what width was expected", () => {
 		const store = new BinaryVectorStore();
 		try {
-			expect(() => store.storeVector("empty", [])).toThrow(
-				new RegExp(`${configuredEmbeddingDim()} dimensions`),
-			);
+			expect(() => store.storeVector("empty", [])).toThrow(new RegExp(`${configuredEmbeddingDim()} dimensions`));
 		} finally {
 			store.close();
 		}

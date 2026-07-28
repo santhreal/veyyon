@@ -329,10 +329,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 			const transportFetch = options.fetch ?? globalThis.fetch.bind(globalThis);
 			let responseHookFailed = false;
 			let responseHookError: unknown;
-			const observedFetch = async (
-				input: string | URL | Request,
-				init?: RequestInit,
-			): Promise<Response> => {
+			const observedFetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
 				const attemptResponse = await transportFetch(input, init);
 				try {
 					await notifyProviderResponse(

@@ -131,10 +131,7 @@ async function callMojeekHtml(params: SearchParams, numResults: number): Promise
 				randomizeHeaders: false,
 				browser: {
 					homeUrl: () => {
-						const transform = resolveProviderTextTransform(
-							params.resolveProviderTextTransform,
-							"Mojeek search",
-						);
+						const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, "Mojeek search");
 						return transform(MOJEEK_HOME_URL);
 					},
 					afterNavigation: solveCaptcha,

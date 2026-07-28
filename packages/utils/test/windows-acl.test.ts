@@ -194,9 +194,9 @@ describe("owner-only Windows ACL helpers", () => {
 			process.env.SystemRoot = systemRoot;
 			const child = createFakeChild();
 			const fake = createFakeSpawn(child);
-			await expect(
-				applyOwnerOnlyWindowsAcl("C:\\safe", { platform: "win32", spawn: fake.spawn }),
-			).rejects.toThrow(/drive-qualified/);
+			await expect(applyOwnerOnlyWindowsAcl("C:\\safe", { platform: "win32", spawn: fake.spawn })).rejects.toThrow(
+				/drive-qualified/,
+			);
 			expect(fake.calls).toHaveLength(0);
 		}
 	});

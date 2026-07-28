@@ -12,13 +12,13 @@
  * being left for the next addition to get wrong.
  */
 import { describe, expect, it } from "bun:test";
-import { BUILTIN_SLASH_COMMAND_DECLARATIONS } from "@veyyon/coding-agent/slash-commands/builtin-declarations";
-import { ACP_BUILTIN_SLASH_COMMANDS } from "@veyyon/coding-agent/slash-commands/text-mode-builtins";
 import {
 	parseSecretCommand,
 	SECRET_COMMAND_USAGE,
 	type SecretSubcommand,
 } from "@veyyon/coding-agent/secrets/secret-command";
+import { BUILTIN_SLASH_COMMAND_DECLARATIONS } from "@veyyon/coding-agent/slash-commands/builtin-declarations";
+import { ACP_BUILTIN_SLASH_COMMANDS } from "@veyyon/coding-agent/slash-commands/text-mode-builtins";
 
 const declaration = BUILTIN_SLASH_COMMAND_DECLARATIONS.find(command => command.name === "secret");
 

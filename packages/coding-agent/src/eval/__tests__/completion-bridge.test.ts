@@ -159,8 +159,6 @@ function createOpenAiToolResponse(name: string, argumentsJson: string): Response
 	});
 }
 
-
-
 async function runPythonCompletionInSubprocess(options: {
 	structured: boolean;
 	tempDir: TempDir;
@@ -349,11 +347,7 @@ describe("runEvalCompletion", () => {
 		let capturedBody: Record<string, unknown> | undefined;
 		const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
 			const body =
-				input instanceof Request
-					? await input.clone().text()
-					: typeof init?.body === "string"
-						? init.body
-						: "";
+				input instanceof Request ? await input.clone().text() : typeof init?.body === "string" ? init.body : "";
 			capturedBody = JSON.parse(body) as Record<string, unknown>;
 			return createOpenAiToolResponse("respond", JSON.stringify({ [safePropertyName]: "ok" }));
 		});
@@ -500,11 +494,7 @@ describe("runEvalCompletion", () => {
 		const bodies: string[] = [];
 		const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
 			const body =
-				input instanceof Request
-					? await input.clone().text()
-					: typeof init?.body === "string"
-						? init.body
-						: "";
+				input instanceof Request ? await input.clone().text() : typeof init?.body === "string" ? init.body : "";
 			bodies.push(body);
 			if (bodies.length === 1) {
 				return new Response(JSON.stringify({ error: { message: "Unauthorized" } }), {
@@ -531,7 +521,6 @@ describe("runEvalCompletion", () => {
 		expect(bodies[1]).not.toContain(secret);
 		expect(bodies[1]).toContain(replacement);
 	});
-
 
 	it("forces a respond tool call and returns its arguments in structured mode", async () => {
 		const spy = vi

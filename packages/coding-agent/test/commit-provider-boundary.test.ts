@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import * as ai from "@veyyon/ai";
 import type { AssistantMessage, Context } from "@veyyon/ai";
+import * as ai from "@veyyon/ai";
 import { generateConventionalAnalysis, generateSummary } from "@veyyon/coding-agent/commit/analysis";
 import { generateChangelogEntries } from "@veyyon/coding-agent/commit/changelog/generate";
 import { runMapPhase } from "@veyyon/coding-agent/commit/map-reduce/map-phase";
@@ -287,9 +287,7 @@ describe("commit provider confidentiality boundary", () => {
 		await runReducePhase({
 			model,
 			apiKey: "key",
-			observations: [
-				{ file: `src/${secret}.ts`, observations: [`changed ${secret}`], additions: 1, deletions: 0 },
-			],
+			observations: [{ file: `src/${secret}.ts`, observations: [`changed ${secret}`], additions: 1, deletions: 0 }],
 			stat: `stat ${secret}`,
 			scopeCandidates: `scope ${secret}`,
 			typesDescription: `types ${secret}`,

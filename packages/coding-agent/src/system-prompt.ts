@@ -59,9 +59,9 @@ import {
 import {
 	conditionHolds,
 	parseStatementOverridesJson,
-	statementById,
 	type StatementContext,
 	type StatementOverrides,
+	statementById,
 } from "./system-prompt-builder/statement-registry";
 import { normalizeConcurrencyLimit } from "./task/parallel";
 import { usesCodexTaskPrompt } from "./task/prompt-policy";

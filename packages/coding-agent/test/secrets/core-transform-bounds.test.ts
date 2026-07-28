@@ -1,18 +1,15 @@
 import { describe, expect, it } from "bun:test";
 import {
-	mapJsonStrings,
 	MAX_JSON_TRANSFORM_DEPTH,
 	MAX_JSON_TRANSFORM_NODES,
 	MAX_JSON_TRANSFORM_STRING_BYTES,
 	MAX_PLACEHOLDERS_PER_TEXT,
 	MAX_SECRET_MATCHES_PER_TEXT,
 	MAX_SECRET_VALUE_BYTES,
+	mapJsonStrings,
 	SecretObfuscator,
 } from "@veyyon/coding-agent/secrets/obfuscator";
-import {
-	isSecretPlaceholder,
-	MAX_SECRET_NAME_LENGTH,
-} from "@veyyon/coding-agent/secrets/placeholder";
+import { isSecretPlaceholder, MAX_SECRET_NAME_LENGTH } from "@veyyon/coding-agent/secrets/placeholder";
 import { compileSecretRegex } from "@veyyon/coding-agent/secrets/regex";
 
 const KEY = new Uint8Array(32).fill(17);
@@ -44,10 +41,9 @@ describe("deterministic one-way aliases", () => {
 		const literalAlias = literal.obfuscate("literal-source-secret");
 		expect(literal.obfuscate(literalAlias)).toBe(literalAlias);
 
-		const regex = new SecretObfuscator(
-			[{ type: "regex", content: "pin-[0-9]{8}", mode: "replace" }],
-			{ placeholderKey: KEY },
-		);
+		const regex = new SecretObfuscator([{ type: "regex", content: "pin-[0-9]{8}", mode: "replace" }], {
+			placeholderKey: KEY,
+		});
 		const regexAlias = regex.obfuscate("pin-12345678");
 		expect(regex.obfuscate(regexAlias)).toBe(regexAlias);
 	});
@@ -290,11 +286,12 @@ describe("bounded iterative JSON string mapping", () => {
 describe("match, placeholder, and output amplification limits", () => {
 	/** Match processing stops at the declared count instead of retaining a 100K replacement array. */
 	it("rejects huge regex match sets", () => {
-		const obfuscator = new SecretObfuscator(
-			[{ type: "regex", content: "x", mode: "replace", replacement: "*" }],
-			{ placeholderKey: KEY },
+		const obfuscator = new SecretObfuscator([{ type: "regex", content: "x", mode: "replace", replacement: "*" }], {
+			placeholderKey: KEY,
+		});
+		expect(() => obfuscator.obfuscate("x".repeat(MAX_SECRET_MATCHES_PER_TEXT + 1))).toThrow(
+			/too many regex matches/i,
 		);
-		expect(() => obfuscator.obfuscate("x".repeat(MAX_SECRET_MATCHES_PER_TEXT + 1))).toThrow(/too many regex matches/i);
 	});
 
 	/** Placeholder count is preflighted even when each individual expansion is small. */
@@ -317,20 +314,18 @@ describe("match, placeholder, and output amplification limits", () => {
 	/** Expansion size is computed from mapped values before String.replace can allocate the result. */
 	it("rejects placeholder output amplification", () => {
 		const value = "v".repeat(MAX_SECRET_VALUE_BYTES);
-		const obfuscator = new SecretObfuscator(
-			[{ type: "plain", content: value, name: "LARGE_TOKEN" }],
-			{ placeholderKey: KEY },
-		);
+		const obfuscator = new SecretObfuscator([{ type: "plain", content: value, name: "LARGE_TOKEN" }], {
+			placeholderKey: KEY,
+		});
 		expect(() => obfuscator.deobfuscate("#LARGE_TOKEN#".repeat(17))).toThrow(/output byte limit/i);
 	});
 
 	/** One-way replacement output is also preflighted before joining amplified chunks. */
 	it("rejects literal replacement output amplification", () => {
 		const replacement = "A".repeat(64 * 1024);
-		const obfuscator = new SecretObfuscator(
-			[{ type: "plain", content: "x", mode: "replace", replacement }],
-			{ placeholderKey: KEY },
-		);
+		const obfuscator = new SecretObfuscator([{ type: "plain", content: "x", mode: "replace", replacement }], {
+			placeholderKey: KEY,
+		});
 		expect(() => obfuscator.obfuscate("x".repeat(257))).toThrow(/output byte limit/i);
 	});
 });

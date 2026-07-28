@@ -221,16 +221,10 @@ describe("what the boundary must not block", () => {
 	/** With no redactor on the context nothing is configured to protect, so nothing changes. */
 	it("does not block when the session has no redactor", async () => {
 		const target = path.join(cwd, "no-redactor.txt");
-		await writeTool().execute(
-			"no-redactor",
-			{ path: target, content: TOKEN },
-			undefined,
-			undefined,
-			{
-				settings: Settings.isolated({ ...BASE_SETTINGS, "tools.approvalMode": "auto-edit" }),
-				sessionManager,
-			} as unknown as AgentToolContext,
-		);
+		await writeTool().execute("no-redactor", { path: target, content: TOKEN }, undefined, undefined, {
+			settings: Settings.isolated({ ...BASE_SETTINGS, "tools.approvalMode": "auto-edit" }),
+			sessionManager,
+		} as unknown as AgentToolContext);
 		expect(fs.readFileSync(target, "utf8")).toBe(TOKEN);
 	});
 });

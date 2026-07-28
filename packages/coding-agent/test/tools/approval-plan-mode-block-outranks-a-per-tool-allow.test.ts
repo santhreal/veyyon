@@ -53,7 +53,13 @@ describe("an active plan-mode session against a per-tool allow", () => {
 
 	/** The bypass documents the plan block as unliftable. That has to hold with a policy set too. */
 	it("is not lifted by the /yolo bypass", () => {
-		const r = resolveApproval(bash, {}, "plan", { bash: "allow" }, { planModeActive: true, bypassAllApprovals: true });
+		const r = resolveApproval(
+			bash,
+			{},
+			"plan",
+			{ bash: "allow" },
+			{ planModeActive: true, bypassAllApprovals: true },
+		);
 		expect(r.policy).toBe("deny");
 	});
 });

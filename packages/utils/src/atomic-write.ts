@@ -57,7 +57,6 @@ function nextTempPath(dir: string, targetBasename: string): string {
 	return path.join(dir, `.${targetBasename}.${process.pid}.${tempCounter}.tmp`);
 }
 
-
 function removeTempSync(tmpPath: string): void {
 	fs.rmSync(tmpPath, { force: true, recursive: true });
 }

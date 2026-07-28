@@ -183,7 +183,7 @@ describe("delayed auto-QA report confidentiality", () => {
 		const db = openReportDb();
 		try {
 			const secret = "REPORT_DELAYED_SECRET_65";
-			insertReport(db, `nested={\"${secret}\":\"${secret}\"}`);
+			insertReport(db, `nested={"${secret}":"${secret}"}`);
 			let current = (text: string) => text;
 			let captured = "";
 			const result = await flushGrievances(db, reportSettings(), {

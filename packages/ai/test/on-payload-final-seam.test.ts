@@ -1,17 +1,17 @@
+import { describe, expect, it } from "bun:test";
 import * as http2 from "node:http2";
 import { create, fromBinary } from "@bufbuild/protobuf";
-import { describe, expect, it } from "bun:test";
 import { streamBedrock } from "@veyyon/ai/providers/amazon-bedrock";
 import { sha256Hex } from "@veyyon/ai/providers/aws-sigv4";
 import { streamCursor } from "@veyyon/ai/providers/cursor";
 import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
 import type { Context, FetchImpl, Model } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 import {
 	AgentClientMessageSchema,
 	type AgentRunRequest,
 	AgentRunRequestSchema,
 } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
-import { buildModel } from "@veyyon/catalog/build";
 import { withEnv } from "./helpers";
 
 const ORIGINAL_SECRET = "raw-payload-secret";
@@ -21,9 +21,7 @@ function contextWithSecret(): Context {
 	return { messages: [{ role: "user", content: ORIGINAL_SECRET, timestamp: 0 }] };
 }
 
-function asFetch(
-	implementation: (input: string | URL | Request, init?: RequestInit) => Promise<Response>,
-): FetchImpl {
+function asFetch(implementation: (input: string | URL | Request, init?: RequestInit) => Promise<Response>): FetchImpl {
 	return Object.assign(implementation, { preconnect: fetch.preconnect });
 }
 

@@ -186,7 +186,6 @@ describe("when the release list cannot be read", () => {
 		await settle();
 
 		for (const line of h.panel.render(48)) {
-			// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping SGR sequences is the point
 			expect(line.replace(/\x1b\[[0-9;]*m/g, "").length).toBeLessThanOrEqual(48);
 		}
 	});

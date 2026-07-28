@@ -33,8 +33,14 @@ const TEST_ROOT = path.resolve(import.meta.dir);
 function rootEntries(): { files: string[]; dirs: string[] } {
 	const entries = readdirSync(TEST_ROOT, { withFileTypes: true });
 	return {
-		files: entries.filter(entry => entry.isFile()).map(entry => entry.name).sort(),
-		dirs: entries.filter(entry => entry.isDirectory()).map(entry => entry.name).sort(),
+		files: entries
+			.filter(entry => entry.isFile())
+			.map(entry => entry.name)
+			.sort(),
+		dirs: entries
+			.filter(entry => entry.isDirectory())
+			.map(entry => entry.name)
+			.sort(),
 	};
 }
 
@@ -90,9 +96,7 @@ describe("coding-agent test tree layout", () => {
 			expect(text.startsWith("/**"), `${name} should open with a doc comment`).toBe(true);
 			expect(header, `${name} should say how to run it`).toContain("Run with: bun test/probes/");
 			expect(header, `${name} should name what it needs`).toContain("Needs:");
-			expect(header.length, `${name}'s header should explain itself, not just name a command`).toBeGreaterThan(
-				200,
-			);
+			expect(header.length, `${name}'s header should explain itself, not just name a command`).toBeGreaterThan(200);
 		}
 	});
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
-import { $ } from "bun";
 import * as path from "node:path";
+import { $ } from "bun";
 
 /**
  * Every script under `scripts/` is either called by something automated, or says
@@ -119,9 +119,7 @@ async function hasAutomatedCaller(file: string): Promise<boolean> {
 	// path separator or a quote so a stem like `release` cannot match the word in
 	// a sentence.
 	const stem = base.replace(/\.[^.]+$/, "");
-	const hits = await $`git -C ${REPO_ROOT} grep -lE ${`["'./]${stem}["']`} -- ${"*.ts"} ${"*.js"}`
-		.nothrow()
-		.text();
+	const hits = await $`git -C ${REPO_ROOT} grep -lE ${`["'./]${stem}["']`} -- ${"*.ts"} ${"*.js"}`.nothrow().text();
 	return hits
 		.split("\n")
 		.map(line => line.trim())

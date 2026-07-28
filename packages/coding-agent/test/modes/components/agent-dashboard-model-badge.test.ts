@@ -20,7 +20,7 @@ import { SessionObserverRegistry } from "@veyyon/coding-agent/modes/session-obse
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentProgress } from "@veyyon/coding-agent/task/types";
-import { stubStdoutGeometry, type StubbedStdoutGeometry } from "../../helpers/stdout-geometry";
+import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 

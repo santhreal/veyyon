@@ -37,10 +37,7 @@ const runCi = fs.readFileSync(runCiPath, "utf8");
  * drifts. The checks below follow them: what matters is that the gate still makes
  * them, not which file the lines sit in.
  */
-const installerE2e = fs.readFileSync(
-	path.join(repoRoot, "scripts", "install-tests", "installer-e2e-lib.sh"),
-	"utf8",
-);
+const installerE2e = fs.readFileSync(path.join(repoRoot, "scripts", "install-tests", "installer-e2e-lib.sh"), "utf8");
 
 /** Files that existed only to build or publish the npm/tarball topology. */
 const removedNpmMachinery = [
@@ -310,7 +307,7 @@ describe("the gate runs the installer itself, not only what it installs", () => 
 		expect(installerE2e).toContain('expect_absent "$installer_bin/veyyon"');
 		expect(installerE2e).toContain('expect_absent "$installer_home/.local/share/bash-completion/completions/vey"');
 		expect(installerE2e).toContain('expect_absent "$installer_home/.config/fish/completions/vey.fish"');
-		expect(installerE2e).toContain('uninstall left the PATH line in $rc');
+		expect(installerE2e).toContain("uninstall left the PATH line in $rc");
 	});
 
 	it("proves uninstall leaves the user's own rc content alone", () => {

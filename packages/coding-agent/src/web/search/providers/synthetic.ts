@@ -65,11 +65,7 @@ async function callSyntheticSearch(
 			const errorText = await response.text();
 			const classified = classifyProviderHttpError("synthetic", response.status, errorText);
 			if (classified) throw classified;
-			throw new SearchProviderError(
-				"synthetic",
-				`Synthetic API error (${response.status}).`,
-				response.status,
-			);
+			throw new SearchProviderError("synthetic", `Synthetic API error (${response.status}).`, response.status);
 		}
 
 		return (await response.json()) as SyntheticSearchResponse;
@@ -85,14 +81,7 @@ export async function searchSynthetic(params: SearchParamsWithFetch): Promise<Se
 	const fetchImpl = params.fetch;
 	const data = await withAuth(
 		keyOrResolver,
-		key =>
-			callSyntheticSearch(
-				key,
-				params.query,
-				params.signal,
-				fetchImpl,
-				params.resolveProviderTextTransform,
-			),
+		key => callSyntheticSearch(key, params.query, params.signal, fetchImpl, params.resolveProviderTextTransform),
 		{
 			signal: params.signal,
 			missingKeyMessage:

@@ -112,10 +112,7 @@ async function callEcosiaHtml(params: SearchParams): Promise<string> {
 				signal,
 				browser: {
 					homeUrl: () => {
-						const transform = resolveProviderTextTransform(
-							params.resolveProviderTextTransform,
-							"Ecosia search",
-						);
+						const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, "Ecosia search");
 						return transform(ECOSIA_HOME_URL);
 					},
 					ready: { selector: 'article[data-test-id="organic-result"]' },

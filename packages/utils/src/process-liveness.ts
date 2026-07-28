@@ -1,6 +1,6 @@
-import * as fs from "node:fs";
-import { execFileSync } from "node:child_process";
 import { dlopen, FFIType, ptr } from "bun:ffi";
+import { execFileSync } from "node:child_process";
+import * as fs from "node:fs";
 
 /**
  * Whether the process with this pid still exists.
@@ -144,15 +144,7 @@ function queryWindowsProcessStartSync(pid: number): string | null {
 				const exit = new Uint32Array(2);
 				const kernel = new Uint32Array(2);
 				const user = new Uint32Array(2);
-				if (
-					!kernel32.symbols.GetProcessTimes(
-						handle,
-						ptr(creation),
-						ptr(exit),
-						ptr(kernel),
-						ptr(user),
-					)
-				) {
+				if (!kernel32.symbols.GetProcessTimes(handle, ptr(creation), ptr(exit), ptr(kernel), ptr(user))) {
 					return null;
 				}
 				const fileTime = (BigInt(creation[1]!) << 32n) | BigInt(creation[0]!);
@@ -208,12 +200,7 @@ function getDarwinProcessStartIdentity(pid: number, dependencies: ProcessIdentit
 	const bootMicroseconds = BigInt(bootMatch[2]!);
 	const processSeconds = BigInt(processMatch[1]!);
 	const processMicroseconds = BigInt(processMatch[2]!);
-	if (
-		bootSeconds < 1n ||
-		processSeconds < 1n ||
-		bootMicroseconds >= 1_000_000n ||
-		processMicroseconds >= 1_000_000n
-	) {
+	if (bootSeconds < 1n || processSeconds < 1n || bootMicroseconds >= 1_000_000n || processMicroseconds >= 1_000_000n) {
 		return null;
 	}
 	return `darwin:${bootSeconds}.${bootMicroseconds}:${processSeconds}.${processMicroseconds}`;

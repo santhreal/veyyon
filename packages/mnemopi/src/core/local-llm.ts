@@ -19,12 +19,7 @@ import { assistantText } from "@veyyon/ai/utils/message-text";
 import { withScopedTimeoutSignal } from "@veyyon/utils";
 import { envBool, envString } from "../util/env";
 import { safeForLog } from "./extraction/diagnostics";
-import {
-	MNEMOPI_LLM_ATTEMPT_PLACEHOLDER,
-	type CompleteOptions,
-	callHostLlm,
-	getHostLlmBackend,
-} from "./llm-backends";
+import { type CompleteOptions, callHostLlm, getHostLlmBackend, MNEMOPI_LLM_ATTEMPT_PLACEHOLDER } from "./llm-backends";
 import {
 	activeCustomCompletion,
 	activePiAiModel,
@@ -450,13 +445,7 @@ export async function summarizeMemories(
 	}
 	if (chunkSummaries.length > 1) {
 		const state: SummaryAttemptState = { chunkCount: 0 };
-		const final = await summarizeChunk(
-			chunkSummaries,
-			`${source} [chunked ${chunkCount} parts]`,
-			0,
-			state,
-			options,
-		);
+		const final = await summarizeChunk(chunkSummaries, `${source} [chunked ${chunkCount} parts]`, 0, state, options);
 		return final ?? chunkSummaries[0] ?? null;
 	}
 	return chunkSummaries[0] ?? null;

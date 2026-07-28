@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { CustomToolContext } from "@veyyon/coding-agent/extensibility/custom-tools";
 import { MCPTool } from "@veyyon/coding-agent/mcp/tool-bridge";
-import type { MCPServerConnection } from "@veyyon/coding-agent/mcp/types";
 import { HttpTransport, resolveSSEConnectTimeoutMs } from "@veyyon/coding-agent/mcp/transports/http";
+import type { MCPServerConnection } from "@veyyon/coding-agent/mcp/types";
 
 const encoder = new TextEncoder();
 const REQUEST_TIMEOUT_MS = 50;
@@ -142,18 +142,14 @@ describe("MCP Streamable HTTP auth replay provider boundary", () => {
 			inputSchema: { type: "object" },
 		});
 
-		const result = await tool.execute(
-			"call-1",
-			{ [`${rawSecret}-key`]: { value: rawSecret } },
-			undefined,
-			context,
-		);
+		const result = await tool.execute("call-1", { [`${rawSecret}-key`]: { value: rawSecret } }, undefined, context);
 
 		expect(result.isError).toBeFalsy();
-		expect((attempts[0]?.params as Record<string, unknown>).arguments).toEqual({
+		expect(attempts).toHaveLength(2);
+		expect((attempts[0]!.params as Record<string, unknown>).arguments).toEqual({
 			"first-safe-key": { value: "first-safe" },
 		});
-		expect((attempts[1]?.params as Record<string, unknown>).arguments).toEqual({
+		expect((attempts[1]!.params as Record<string, unknown>).arguments).toEqual({
 			"second-safe-key": { value: "second-safe" },
 		});
 	});

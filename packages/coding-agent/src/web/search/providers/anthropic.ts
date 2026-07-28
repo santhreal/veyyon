@@ -22,9 +22,9 @@ import {
 import { ANTHROPIC_WEB_SEARCH_TOOL } from "@veyyon/catalog/wire/anthropic";
 import { $env } from "@veyyon/utils";
 import {
+	type ProviderTextTransformResolver,
 	resolveProviderTextTransform,
 	transformProviderPayload,
-	type ProviderTextTransformResolver,
 } from "../../../provider-boundary";
 import type {
 	AnthropicApiResponse,
@@ -153,11 +153,7 @@ async function callSearch(
 			const errorText = await response.text();
 			const classified = classifyProviderHttpError("anthropic", response.status, errorText);
 			if (classified) throw classified;
-			throw new SearchProviderError(
-				"anthropic",
-				`Anthropic API error (${response.status}).`,
-				response.status,
-			);
+			throw new SearchProviderError("anthropic", `Anthropic API error (${response.status}).`, response.status);
 		}
 
 		return response.json() as Promise<AnthropicApiResponse>;

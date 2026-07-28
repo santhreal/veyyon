@@ -17,7 +17,6 @@
 import type { KeybindingDefinitions, KeyId } from "@veyyon/tui";
 import { TUI_KEYBINDINGS } from "@veyyon/tui";
 
-
 /**
  * Application-level keybindings (coding agent specific).
  * Values are always `true` — used for declaration merging.

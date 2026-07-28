@@ -20,14 +20,13 @@ import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { stubStdoutGeometry, type StubbedStdoutGeometry } from "../../helpers/stdout-geometry";
+import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 /** Right arrow: Live -> Comms. */
 const RIGHT = "\x1b[C";
 const UP = "\x1b[A";
 const DOWN = "\x1b[B";
-
 
 /** A recipient that accepts every delivery, so sends land as real traffic. */
 function acceptingSession(): AgentSession {

@@ -1,10 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Context } from "@veyyon/ai";
-import {
-	obfuscateProviderContext,
-	type SecretEntry,
-	SecretObfuscator,
-} from "@veyyon/coding-agent/secrets/obfuscator";
+import { obfuscateProviderContext, type SecretEntry, SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import { buildValuePlaceholder } from "@veyyon/coding-agent/secrets/placeholder";
 
 const KEY = new Uint8Array(32).fill(91);
@@ -44,7 +40,6 @@ describe("literal transform precedence", () => {
 	});
 });
 
-
 describe("direct declaration invariants", () => {
 	/** One readable name cannot deterministically mean two values in the same registry. */
 	it("refuses duplicate names with different values", () => {
@@ -79,10 +74,7 @@ describe("direct declaration invariants", () => {
 		[{ type: "plain", content: "unused-field-secret", replacement: "ignored" }, /replacement.*replace.*mode/i],
 		[{ type: "plain", content: "unused-field-secret", flags: "i" }, /flags.*plain secret/i],
 		[{ type: "plain", content: "unused-field-secret", minLength: 4 }, /minLength.*no reversible regex/i],
-		[
-			{ type: "regex", content: "token-[0-9]+", mode: "replace", minLength: 4 },
-			/minLength.*no reversible regex/i,
-		],
+		[{ type: "regex", content: "token-[0-9]+", mode: "replace", minLength: 4 }, /minLength.*no reversible regex/i],
 		[{ type: "regex", content: "token-[0-9]+", minLength: 0 }, /minLength.*whole number/i],
 		[{ type: "regex", content: "token-[0-9]+", name: "REGEX_TOKEN" }, /name.*reversible plain/i],
 		[{ type: "regex", content: "token-[0-9]+", expiresAt: 10 }, /expiry.*reversible plain/i],

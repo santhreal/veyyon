@@ -3,8 +3,8 @@ import type { ImageContent } from "@veyyon/ai";
 import { InputController, shouldSkipHistory } from "@veyyon/coding-agent/modes/controllers/input-controller";
 import { isQueuedMessageList, splitQueuedMessages } from "@veyyon/coding-agent/modes/queue-input";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
-import * as secretHelper from "@veyyon/coding-agent/slash-commands/helpers/secret";
 import { normalizeSubmittedPrompt } from "@veyyon/coding-agent/slash-commands/helpers/parse";
+import * as secretHelper from "@veyyon/coding-agent/slash-commands/helpers/secret";
 
 // Drives the real editor submit handler through the builtin slash dispatch
 // path. Before #3148 only a handful of commands recorded their text (each
@@ -165,7 +165,6 @@ describe("input controller — slash command history (#3148)", () => {
 
 		expect(addToHistory).not.toHaveBeenCalled();
 	});
-
 
 	/**
 	 * Inline credentials are raw suffixes, so normal Enter must not erase a

@@ -184,9 +184,7 @@ export async function runEvalCompletion(
 	// final physical-send seam with the then-current runtime.
 	const providerPrompt = sanitizeLive(prompt);
 	const providerSystem = sanitizeLive(system ?? "You are a helpful assistant.");
-	const providerSchema = schema
-		? (sanitizeProviderJson(schema, sanitizeLive) as Record<string, unknown>)
-		: undefined;
+	const providerSchema = schema ? (sanitizeProviderJson(schema, sanitizeLive) as Record<string, unknown>) : undefined;
 
 	const tools: Tool[] | undefined = providerSchema
 		? [

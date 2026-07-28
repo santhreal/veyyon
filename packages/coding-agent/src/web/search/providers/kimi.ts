@@ -8,9 +8,9 @@ import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { $env } from "@veyyon/utils";
 import {
+	type ProviderTextTransformResolver,
 	resolveProviderTextTransform,
 	transformProviderPayload,
-	type ProviderTextTransformResolver,
 } from "../../../provider-boundary";
 
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
@@ -98,10 +98,7 @@ async function callKimiSearch(
 ): Promise<{ response: KimiSearchResponse; requestId?: string }> {
 	const fetchImpl = params.fetch ?? fetch;
 	return withHardTimeout(params.signal, async hardSignal => {
-		const transform = resolveProviderTextTransform(
-			params.resolveProviderTextTransform,
-			"Kimi search request",
-		);
+		const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, "Kimi search request");
 		const requestBody = transformProviderPayload(
 			{
 				text_query: params.query,
@@ -127,11 +124,7 @@ async function callKimiSearch(
 			const errorText = await response.text();
 			const classified = classifyProviderHttpError("kimi", response.status, errorText);
 			if (classified) throw classified;
-			throw new SearchProviderError(
-				"kimi",
-				`Kimi search API error (${response.status}).`,
-				response.status,
-			);
+			throw new SearchProviderError("kimi", `Kimi search API error (${response.status}).`, response.status);
 		}
 
 		const data = (await response.json()) as KimiSearchResponse;

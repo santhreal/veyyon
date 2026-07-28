@@ -2,10 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import { searchWithKagi } from "@veyyon/coding-agent/web/kagi";
 import { searchDuckDuckGo } from "@veyyon/coding-agent/web/search/providers/duckduckgo";
-import {
-	resetExaSearchThrottleForTest,
-	searchExa,
-} from "@veyyon/coding-agent/web/search/providers/exa";
+import { resetExaSearchThrottleForTest, searchExa } from "@veyyon/coding-agent/web/search/providers/exa";
 import { searchGemini } from "@veyyon/coding-agent/web/search/providers/gemini";
 import { searchMojeek } from "@veyyon/coding-agent/web/search/providers/mojeek";
 import { searchTavily } from "@veyyon/coding-agent/web/search/providers/tavily";
@@ -211,8 +208,7 @@ describe("web-search physical request confidentiality boundaries", () => {
 			google_search: { [rawNestedKey]: { value: rawSecret } },
 			authStorage,
 			fetch: fetchImpl,
-			resolveProviderTextTransform: () => text =>
-				text.replaceAll(rawSecret, `[GEMINI_SAFE_${generation}]`),
+			resolveProviderTextTransform: () => text => text.replaceAll(rawSecret, `[GEMINI_SAFE_${generation}]`),
 		});
 
 		expect(bodies).toHaveLength(2);

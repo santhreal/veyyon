@@ -34,8 +34,8 @@
  * has stopped recording cannot look like a log with nothing to record.
  */
 import { constants as fsConstants, type Stats } from "node:fs";
-import * as fs from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
 	applyOwnerOnlyWindowsAcl,
@@ -258,7 +258,9 @@ function inspectAuditValue(
 				try {
 					item = Reflect.get(node, index);
 				} catch {
-					throw new Error("Refusing secret expansion because its audit evidence cannot materialise an array value.");
+					throw new Error(
+						"Refusing secret expansion because its audit evidence cannot materialise an array value.",
+					);
 				}
 				const capture = current.capture && state.snapshotSlots > 0;
 				if (capture) {
@@ -397,9 +399,9 @@ export function buildExpansionRecord(options: {
 	if (inspection.truncated && !command.endsWith("…")) {
 		command = prefixWithEllipsis(command, Math.min(command.length, MAX_COMMAND_CHARS - 1));
 	}
-	const protectedSecrets = inspection.secrets.slice(0, MAX_RECORDED_SECRETS).map(secret =>
-		protectMetadata(secret, options.obfuscate),
-	);
+	const protectedSecrets = inspection.secrets
+		.slice(0, MAX_RECORDED_SECRETS)
+		.map(secret => protectMetadata(secret, options.obfuscate));
 	const omittedSecrets = inspection.secrets.length - protectedSecrets.length;
 	const record: SecretExpansionRecord = {
 		at: options.at,
@@ -420,7 +422,9 @@ function protectMetadata(value: string, obfuscate: (value: string) => string): s
 	}
 	try {
 		const protectedText = obfuscate(value);
-		return typeof protectedText === "string" ? boundedPrefix(protectedText, MAX_FIELD_CHARS) : "[metadata unavailable]";
+		return typeof protectedText === "string"
+			? boundedPrefix(protectedText, MAX_FIELD_CHARS)
+			: "[metadata unavailable]";
 	} catch {
 		return "[metadata unavailable]";
 	}
@@ -598,7 +602,6 @@ function capJsonString(value: string, maxBytes: number): string {
 	}
 	return best;
 }
-
 
 /**
  * The encoder's JSON escapes protect the file format, not the terminal: JSON.parse restores control
@@ -786,7 +789,9 @@ async function openPinnedParent(filePath: string): Promise<PinnedParent> {
 		}
 		const currentUid = process.getuid?.();
 		if (currentUid !== undefined && stats.uid !== currentUid) {
-			throw new Error(`The secret audit directory at ${escapeTerminalText(parentPath)} is not owned by the current user.`);
+			throw new Error(
+				`The secret audit directory at ${escapeTerminalText(parentPath)} is not owned by the current user.`,
+			);
 		}
 		const pinned = { path: parentPath, handle, stats };
 		await assertParentIdentity(pinned);
@@ -1106,11 +1111,7 @@ export class SecretAuditLog {
 	}
 
 	async #appendLine(line: string, lineBytes: number, parent: PinnedParent): Promise<void> {
-		const opened = await openOrCreateAuditFile(
-			this.#logPath,
-			fsConstants.O_APPEND | fsConstants.O_RDWR,
-			parent,
-		);
+		const opened = await openOrCreateAuditFile(this.#logPath, fsConstants.O_APPEND | fsConstants.O_RDWR, parent);
 		try {
 			const stats = await opened.handle.stat();
 			assertOwnedRegularFile(this.#logPath, stats);
@@ -1221,7 +1222,11 @@ export class SecretAuditLog {
 			try {
 				const bytes = await readBounded(opened.handle, ROTATE_AT_BYTES);
 				const after = await opened.handle.stat();
-				if (!sameIdentity(after, opened.stats) || after.size !== opened.stats.size || after.size > ROTATE_AT_BYTES) {
+				if (
+					!sameIdentity(after, opened.stats) ||
+					after.size !== opened.stats.size ||
+					after.size > ROTATE_AT_BYTES
+				) {
 					throw new Error("The secret audit generation changed or grew beyond its read limit.");
 				}
 				await assertPathIdentity(filePath, after);

@@ -55,9 +55,7 @@ describe("the models-config thinking ladder agrees with its owner", () => {
 	/** Every level the owner declares is a `defaultLevel` a user may write. */
 	it("accepts every declared level as defaultLevel", () => {
 		for (const effort of THINKING_EFFORTS) {
-			expect(accepts(overrideWithThinking({ mode: "effort", efforts: [effort], defaultLevel: effort }))).toBe(
-				true,
-			);
+			expect(accepts(overrideWithThinking({ mode: "effort", efforts: [effort], defaultLevel: effort }))).toBe(true);
 		}
 	});
 

@@ -138,9 +138,7 @@ describe("a lease whose expansion authority has been revoked", () => {
 			expect(lease.obfuscateText(`token=${A_VALUE}`)).not.toContain(A_VALUE);
 			expect(JSON.stringify(lease.obfuscatePayload({ token: A_VALUE }))).not.toContain(A_VALUE);
 			expect(
-				JSON.stringify(
-					lease.obfuscateMessages([{ role: "user", content: `token=${A_VALUE}`, timestamp: 1 }]),
-				),
+				JSON.stringify(lease.obfuscateMessages([{ role: "user", content: `token=${A_VALUE}`, timestamp: 1 }])),
 			).not.toContain(A_VALUE);
 			expect(fixture.session.obfuscateProviderText(`token=${A_VALUE}`)).not.toContain(A_VALUE);
 		} finally {

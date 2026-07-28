@@ -159,11 +159,15 @@ describe("nobody writes the icon separator by hand again", () => {
 	 * with a dozen hand-written copies.
 	 */
 	it("the ratchet matches the shape it is written against", () => {
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: this is a source-text fixture for the template-shape ratchet
 		expect(ICON_PREFIX_TEMPLATE.test("`${theme.icon.job} ${count}`")).toBe(true);
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: this is a source-text fixture for the template-shape ratchet
 		expect(ICON_PREFIX_TEMPLATE.test("`${this.#theme.icon.agents} 5`")).toBe(true);
 		// And not the correct spellings: the join itself, and a prefix builder that
 		// already guards on the icon being present.
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: this is a source-text fixture for an accepted helper call
 		expect(ICON_PREFIX_TEMPLATE.test("withIcon(theme.icon.job, `${count}`)")).toBe(false);
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: this is a source-text fixture for a guarded template
 		expect(ICON_PREFIX_TEMPLATE.test('theme.icon.ghost ? `${theme.icon.ghost} ` : ""')).toBe(true);
 	});
 
@@ -174,8 +178,10 @@ describe("nobody writes the icon separator by hand again", () => {
 	 * which is the same failure the ratchet exists to prevent.
 	 */
 	it("skips comment lines and only comment lines", () => {
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: this is a source-text fixture for a comment line
 		expect(isComment(" * a doc line mentioning `${theme.icon.job} ${count}`")).toBe(true);
 		expect(isComment("// a note")).toBe(true);
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: this is a source-text fixture for a code line
 		expect(isComment("\tconst x = `${theme.icon.job} ${count}`;")).toBe(false);
 	});
 });

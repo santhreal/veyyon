@@ -244,8 +244,9 @@ describe("legacy MCP HTTP+SSE transport", () => {
 			const result = await tool.execute("call-1", { token: rawSecret }, undefined, context);
 
 			expect(result.isError).toBeFalsy();
-			expect((attempts[0]?.params as Record<string, unknown>).arguments).toEqual({ token: "first-safe" });
-			expect((attempts[1]?.params as Record<string, unknown>).arguments).toEqual({ token: "second-safe" });
+			expect(attempts).toHaveLength(2);
+			expect((attempts[0]!.params as Record<string, unknown>).arguments).toEqual({ token: "first-safe" });
+			expect((attempts[1]!.params as Record<string, unknown>).arguments).toEqual({ token: "second-safe" });
 		} finally {
 			await transport.close();
 		}

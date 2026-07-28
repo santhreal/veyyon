@@ -19,13 +19,10 @@ import { LRUCache } from "lru-cache/raw";
 import type { Settings } from "../config/settings";
 import { readEditableNotebookText } from "../edit/notebook";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import {
-	resolveProviderTextTransform,
-	type ProviderTextTransformResolver,
-} from "../provider-boundary";
 import { CONVERTIBLE_EXTENSIONS } from "../markit";
 import { theme } from "../modes/theme/theme-binding";
 import type { Theme } from "../modes/theme/theme-class";
+import { type ProviderTextTransformResolver, resolveProviderTextTransform } from "../provider-boundary";
 import type { ToolSession } from "../sdk";
 import type { AgentStorage } from "../session/agent-storage";
 import { DEFAULT_MAX_BYTES, truncateHead } from "../session/streaming-output";
@@ -271,7 +268,9 @@ function decodeUrlCredentialComponent(component: string): string {
 }
 
 function isUrlCredentialLabel(label: string): boolean {
-	const normalized = decodeUrlCredentialComponent(label).toLowerCase().replace(/[^a-z0-9]/g, "");
+	const normalized = decodeUrlCredentialComponent(label)
+		.toLowerCase()
+		.replace(/[^a-z0-9]/g, "");
 	return (
 		URL_CREDENTIAL_LABELS[normalized] === true ||
 		normalized.endsWith("accesstoken") ||
@@ -289,10 +288,7 @@ function looksLikeOpaqueUrlCredential(candidate: string): boolean {
 	if (/^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(decoded)) return true;
 	if (/^[a-f0-9]{24,}$/i.test(decoded)) return true;
 	return (
-		/^[A-Za-z0-9_~-]+$/.test(decoded) &&
-		/[A-Za-z]/.test(decoded) &&
-		/\d/.test(decoded) &&
-		/[A-Z_~]/.test(decoded)
+		/^[A-Za-z0-9_~-]+$/.test(decoded) && /[A-Za-z]/.test(decoded) && /\d/.test(decoded) && /[A-Z_~]/.test(decoded)
 	);
 }
 
@@ -314,7 +310,6 @@ export function hasCredentialBearingUrl(value: string): boolean {
 		return true;
 	}
 	if (parsed.username.length > 0 || parsed.password.length > 0) return true;
-
 
 	for (const [key, item] of parsed.searchParams) {
 		if (isUrlCredentialLabel(key) || looksLikeOpaqueUrlCredential(item)) return true;
@@ -2246,7 +2241,9 @@ export function renderReadUrlResult(
 						: [uiTheme.fg("dim", "(no content)")];
 				if (remaining > 0) {
 					const hint = formatExpandHint(uiTheme, expanded, true);
-					contentPreviewLines.push(uiTheme.fg("muted", `… ${formatMoreLines(remaining)}${hint ? ` ${hint}` : ""}`));
+					contentPreviewLines.push(
+						uiTheme.fg("muted", `… ${formatMoreLines(remaining)}${hint ? ` ${hint}` : ""}`),
+					);
 				}
 				lastExpanded = expanded;
 				outputBlock.invalidate();

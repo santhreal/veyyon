@@ -202,7 +202,9 @@ describe("bench custom prompt provider confidentiality", () => {
 				setExitCode: () => {},
 				streamSimple: (_model, context) => {
 					captures.push(promptText(context));
-					return fakeStream(captures.length === 1 ? () => fs.writeFile(secretsPath, declaration(newSecret)) : undefined);
+					return fakeStream(
+						captures.length === 1 ? () => fs.writeFile(secretsPath, declaration(newSecret)) : undefined,
+					);
 				},
 				now: () => 0,
 				stdoutIsTTY: false,
@@ -215,7 +217,7 @@ describe("bench custom prompt provider confidentiality", () => {
 	it("loads and protects live detected environment values", async () => {
 		// Why: standalone CLI paths do not inherit AgentSession initialization, so a
 		// secrets.yml-only loader silently misses sensitive environment values.
-		const { cwd, agentDir, settings } = await fixture();
+		const { agentDir, settings } = await fixture();
 		const globalConfigRoot = path.join(agentDir, "..", "..", "global");
 		const envName = "VEYYON_BENCH_RUNTIME_TOKEN";
 		const secret = "BENCH_ENV_RUNTIME_SECRET_864209";
@@ -295,7 +297,10 @@ describe("bench custom prompt provider confidentiality", () => {
 		// itself contain the secret. The provider and the user-visible failure get neither.
 		const { cwd, agentDir, settings } = await fixture();
 		const secret = "BENCH_MALFORMED_SECRET_456789";
-		await fs.writeFile(path.join(cwd, ".veyyon", "secrets.yml"), `- type: plain\n  content: ${secret}\n  broken: [\n`);
+		await fs.writeFile(
+			path.join(cwd, ".veyyon", "secrets.yml"),
+			`- type: plain\n  content: ${secret}\n  broken: [\n`,
+		);
 		const model = fakeModel("provider-a", "model-a");
 		let dispatches = 0;
 
@@ -366,7 +371,10 @@ describe("bench custom prompt provider confidentiality", () => {
 		// accidentally interpolate the custom prompt.
 		const { cwd, agentDir, settings } = await fixture();
 		const secret = "BENCH_NO_CREDENTIAL_SECRET_753951";
-		await fs.writeFile(path.join(cwd, ".veyyon", "secrets.yml"), `- type: plain\n  content: ${secret}\n  broken: [\n`);
+		await fs.writeFile(
+			path.join(cwd, ".veyyon", "secrets.yml"),
+			`- type: plain\n  content: ${secret}\n  broken: [\n`,
+		);
 		const model = fakeModel("provider-a", "model-a");
 		let dispatches = 0;
 
@@ -405,7 +413,10 @@ describe("bench custom prompt provider confidentiality", () => {
 		const { cwd, agentDir, settings } = await fixture(false);
 		const secret = "BENCH_DISABLED_SECRET_246813";
 		const globalConfigRoot = path.join(agentDir, "..", "..", "global");
-		await fs.writeFile(path.join(cwd, ".veyyon", "secrets.yml"), `- type: plain\n  content: ${secret}\n  broken: [\n`);
+		await fs.writeFile(
+			path.join(cwd, ".veyyon", "secrets.yml"),
+			`- type: plain\n  content: ${secret}\n  broken: [\n`,
+		);
 		const model = fakeModel("provider-a", "model-a");
 		let captured = "";
 
@@ -433,5 +444,4 @@ describe("bench custom prompt provider confidentiality", () => {
 		expect(captured).toBe(`raw ${secret}`);
 		expect(await fs.stat(globalConfigRoot).catch(() => null)).toBeNull();
 	});
-
 });

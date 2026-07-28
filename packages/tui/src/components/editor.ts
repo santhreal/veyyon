@@ -1,5 +1,6 @@
 import { getProjectDir } from "@veyyon/utils/dirs";
 import * as logger from "@veyyon/utils/logger";
+import { SGR_BG_RESET } from "../ansi";
 import {
 	type AutocompleteProvider,
 	findLeadingSlashCommandStart,
@@ -12,9 +13,20 @@ import { extractPrintableText, isLoneLineFeed, matchesKey } from "../keys";
 import { KillRing } from "../kill-ring";
 import type { SymbolTheme } from "../symbols";
 import { type Component, CURSOR_MARKER, type Focusable } from "../tui";
-import { clampLow, getSegmenter, getWordNavKind, moveWordLeft, moveWordRight, padding, reopenBackgroundAfterResets, replaceTabs, sliceByColumn, truncateToWidth, visibleWidth } from "../utils";
+import {
+	clampLow,
+	getSegmenter,
+	getWordNavKind,
+	moveWordLeft,
+	moveWordRight,
+	padding,
+	reopenBackgroundAfterResets,
+	replaceTabs,
+	sliceByColumn,
+	truncateToWidth,
+	visibleWidth,
+} from "../utils";
 import { type SelectItem, SelectList, type SelectListLayoutOptions, type SelectListTheme } from "./select-list";
-import { SGR_BG_RESET } from "../ansi";
 
 const AUTOCOMPLETE_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
 	overflowSearch: false,

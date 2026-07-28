@@ -13,7 +13,7 @@
  * Throws on any failure (no model, no key, unparseable output, abort/timeout);
  * the caller falls back to a concrete level and continues the turn.
  */
-import { type ApiKeyResolver, completeSimple, type Context, type Model } from "@veyyon/ai";
+import { type ApiKeyResolver, type Context, completeSimple, type Model } from "@veyyon/ai";
 import { assistantText } from "@veyyon/ai/utils/message-text";
 import { Effort } from "@veyyon/catalog/effort";
 import { prompt } from "@veyyon/utils";
@@ -21,8 +21,8 @@ import { prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
-import { isSecretPlaceholder, PLACEHOLDER_RE } from "../secrets/placeholder";
 import { thinkingPrompts } from "../prompts/thinking/rows";
+import { isSecretPlaceholder, PLACEHOLDER_RE } from "../secrets/placeholder";
 import { REASONING_SAFE_MAX_TOKENS } from "../session/classifier-tokens";
 import { clampAutoThinkingEffort } from "../thinking";
 import { preprocessTinyMessage } from "../tiny/message-preproc";

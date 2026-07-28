@@ -44,7 +44,6 @@ interface TavilySearchResponse {
 	request_id?: string | null;
 }
 
-
 /** Find Tavily API key through AuthStorage's unified refresh pipeline. */
 export async function findApiKey(
 	authStorage: AuthStorage,

@@ -121,9 +121,7 @@ describe("maximallyInformativeBinarization", () => {
 	it("emits exactly the bytes the embedding's own dimension needs", () => {
 		fc.assert(
 			fc.property(fc.array(component, { maxLength: configuredEmbeddingDim() + 32 }), values => {
-				expect(maximallyInformativeBinarization(values).length).toBe(
-					Math.ceil(values.length / BITS_PER_BYTE),
-				);
+				expect(maximallyInformativeBinarization(values).length).toBe(Math.ceil(values.length / BITS_PER_BYTE));
 			}),
 			RUNS,
 		);

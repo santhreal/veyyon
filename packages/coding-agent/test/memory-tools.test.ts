@@ -8,7 +8,6 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { type } from "arktype";
 import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
@@ -38,6 +37,7 @@ import { MemoryReflectTool } from "@veyyon/coding-agent/tools/memory-reflect";
 import { MemoryRetainTool } from "@veyyon/coding-agent/tools/memory-retain";
 import { resetMemoryForTests } from "@veyyon/mnemopi";
 import { TempDir } from "@veyyon/utils";
+import { type } from "arktype";
 import { makeToolSession } from "./helpers/tool-session";
 
 // Mnemopi is lazy-loaded at runtime; preload it so the sync construction in
@@ -338,17 +338,12 @@ describe("retain.execute", () => {
 			`Memory retention failed for ${HINDSIGHT_RETAIN_BATCH_SIZE} memories`,
 		);
 		expect(registeredState!.retainQueue.depth).toBe(1);
-		expect(noticeSpy).toHaveBeenCalledWith(
-			"warning",
-			expect.not.stringContaining("do-not-surface"),
-			"Hindsight",
-		);
+		expect(noticeSpy).toHaveBeenCalledWith("warning", expect.not.stringContaining("do-not-surface"), "Hindsight");
 
 		await registeredState!.flushRetainQueue();
 		expect(retainBatchSpy.mock.calls.map(call => call[1].length)).toEqual([HINDSIGHT_RETAIN_BATCH_SIZE, 1]);
 		expect(registeredState!.retainQueue.depth).toBe(0);
 	});
-
 
 	/** Regression: retain accepted unlimited UTF-8 payloads even when character counts looked small. */
 	it("enforces schema count/character caps and exact UTF-8 runtime byte caps before enqueue", async () => {
@@ -358,8 +353,9 @@ describe("retain.execute", () => {
 		const tool = MemoryRetainTool.createIf(makeSession(settings))!;
 
 		expect(
-			tool.parameters({ items: Array.from({ length: MEMORY_RETAIN_MAX_ITEMS }, () => ({ content: "x" })) }) instanceof
-				type.errors,
+			tool.parameters({
+				items: Array.from({ length: MEMORY_RETAIN_MAX_ITEMS }, () => ({ content: "x" })),
+			}) instanceof type.errors,
 		).toBe(false);
 		expect(
 			tool.parameters({

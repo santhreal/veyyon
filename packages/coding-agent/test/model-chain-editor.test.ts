@@ -47,7 +47,9 @@ describe("model chain editor", () => {
 
 	/** One logical model must not get two consecutive attempts merely by carrying different effort suffixes. */
 	it("rejects a duplicate model with a different effort", () => {
-		expect(replaceModelChainEntry(["test/alpha:low", "test/beta:high"], null, "test/alpha:high", models)).toBeUndefined();
+		expect(
+			replaceModelChainEntry(["test/alpha:low", "test/beta:high"], null, "test/alpha:high", models),
+		).toBeUndefined();
 	});
 
 	/** A stale UI index must fail closed instead of appending or corrupting a neighboring chain entry. */

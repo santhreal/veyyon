@@ -20,9 +20,7 @@ describe("retry-after parsing", () => {
 	 * thrown values must not replace the provider failure with a formatter TypeError.
 	 */
 	it("formats primitive and undefined thrown values without throwing", () => {
-		expect(formatErrorMessageWithRetryAfter(undefined, { "retry-after": "1" })).toBe(
-			"undefined retry-after-ms=1000",
-		);
+		expect(formatErrorMessageWithRetryAfter(undefined, { "retry-after": "1" })).toBe("undefined retry-after-ms=1000");
 		expect(formatErrorMessageWithRetryAfter(1n, { "retry-after-ms": "25" })).toBe("1 retry-after-ms=25");
 	});
 

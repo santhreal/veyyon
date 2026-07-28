@@ -1,9 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { transformProviderPayload } from "@veyyon/coding-agent/provider-boundary";
-import {
-	MAX_JSON_TRANSFORM_DEPTH,
-	MAX_JSON_TRANSFORM_STRING_BYTES,
-} from "@veyyon/coding-agent/secrets/obfuscator";
+import { MAX_JSON_TRANSFORM_DEPTH, MAX_JSON_TRANSFORM_STRING_BYTES } from "@veyyon/coding-agent/secrets/obfuscator";
 
 const MCP_BOUNDARY = "MCP tool call";
 const GENERIC_FAILURE = "MCP tool call confidentiality transform failed.";
@@ -74,9 +71,7 @@ describe("provider-boundary bounded JSON adversarial inputs", () => {
 	it("rejects cumulative transformed strings above the canonical byte limit", () => {
 		const oversized = "x".repeat(MAX_JSON_TRANSFORM_STRING_BYTES + 1);
 
-		expectGenericBoundaryFailure({ value: "expand-me" }, text =>
-			text === "expand-me" ? oversized : text,
-		);
+		expectGenericBoundaryFailure({ value: "expand-me" }, text => (text === "expand-me" ? oversized : text));
 	});
 
 	it("maps a valid shared DAG once, preserves sharing, and leaves the raw graph untouched", () => {

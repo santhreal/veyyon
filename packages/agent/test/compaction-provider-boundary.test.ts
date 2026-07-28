@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
+import { type CompactionPreparation, compact, DEFAULT_COMPACTION_SETTINGS } from "@veyyon/agent-core/compaction";
 import type {
 	ApiKeyResolver,
 	AssistantMessage,
@@ -8,11 +9,6 @@ import type {
 	SimpleStreamOptions,
 } from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog/models";
-import {
-	compact,
-	type CompactionPreparation,
-	DEFAULT_COMPACTION_SETTINGS,
-} from "@veyyon/agent-core/compaction";
 import { logger } from "@veyyon/utils";
 
 const HOOK_SECRET = "SESSION_HOOK_SECRET_7f31";
@@ -82,8 +78,7 @@ describe("compaction provider confidentiality boundary", () => {
 
 		const result = await compact(preparation(), modelFixture(), "test-key", undefined, undefined, {
 			extraContext: [`${HOOK_SECRET} hook-safe`, `memory-safe ${MEMORY_SECRET}`],
-			obfuscateProviderText: text =>
-				text.replaceAll(HOOK_SECRET, "#HOOK#").replaceAll(MEMORY_SECRET, "#MEMORY#"),
+			obfuscateProviderText: text => text.replaceAll(HOOK_SECRET, "#HOOK#").replaceAll(MEMORY_SECRET, "#MEMORY#"),
 			completeImpl: async (_model, context) => {
 				captures.push(contextText(context));
 				return assistant(captures.length === 1 ? "long summary" : "short summary");
@@ -131,14 +126,15 @@ describe("compaction provider confidentiality boundary", () => {
 		const resolver: ApiKeyResolver = async context => (context.error ? "refreshed-key" : "initial-key");
 		const fetchImpl = vi.fn(
 			async (_input: Parameters<NonNullable<SimpleStreamOptions["fetch"]>>[0], init?: RequestInit) => {
-			if (typeof init?.body !== "string") throw new Error("Expected JSON request body");
-			bodies.push(init.body);
-			if (bodies.length === 1) {
-				lateSecretIsLive = true;
-				return new Response(`credential rejected ${LATE_SECRET}`, { status: 401, statusText: "Unauthorized" });
-			}
-			return Response.json({ summary: bodies.length === 2 ? "remote long" : "remote short" });
-		});
+				if (typeof init?.body !== "string") throw new Error("Expected JSON request body");
+				bodies.push(init.body);
+				if (bodies.length === 1) {
+					lateSecretIsLive = true;
+					return new Response(`credential rejected ${LATE_SECRET}`, { status: 401, statusText: "Unauthorized" });
+				}
+				return Response.json({ summary: bodies.length === 2 ? "remote long" : "remote short" });
+			},
+		);
 
 		const result = await compact(
 			preparation("https://summarizer.test/compact"),

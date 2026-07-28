@@ -29,9 +29,7 @@ export interface StandaloneSecretRuntimeOptions {
  * vault decoders can quote source bytes; a provider-boundary diagnostic must never
  * turn failure details into a second secret-disclosure surface.
  */
-export async function loadStandaloneSecretRuntime(
-	options: StandaloneSecretRuntimeOptions,
-): Promise<SecretObfuscator> {
+export async function loadStandaloneSecretRuntime(options: StandaloneSecretRuntimeOptions): Promise<SecretObfuscator> {
 	if (!options.enabled) return new SecretObfuscator([]);
 	try {
 		const globalConfigRoot = options.globalConfigRoot ?? getGlobalConfigRootDir();

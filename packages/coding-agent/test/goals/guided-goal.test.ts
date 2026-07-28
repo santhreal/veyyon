@@ -303,7 +303,6 @@ describe("guided goal setup", () => {
 			  }
 			| undefined;
 		const base = createSession();
-		let session!: AgentSession;
 		let resolutions = 0;
 		const modelRegistry = {
 			...(base.modelRegistry as object),
@@ -315,7 +314,7 @@ describe("guided goal setup", () => {
 					return `attempt-key-${resolutions}`;
 				}) as ApiKey,
 		};
-		session = {
+		const session: AgentSession = {
 			...base,
 			modelRegistry,
 			get obfuscator() {

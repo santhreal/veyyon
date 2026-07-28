@@ -46,7 +46,6 @@ import type {
 	BeamStats,
 	ImportStats,
 	MemoriaRetrieveResult,
-	Metadata,
 	RecallEnhancedOptions,
 	RecallOptions,
 	RecallResult,
@@ -339,19 +338,5 @@ export class BeamMemory implements BeamMemoryState {
 
 	importFromDict(data: Record<string, unknown>, force = false): ImportStats {
 		return importFromDict(this, data, force);
-	}
-	#emitEvent(type: string, data: Omit<BeamEvent, "type" | "sessionId" | "timestamp"> = {}): void {
-		const event: BeamEvent = {
-			...data,
-			type,
-			sessionId: this.sessionId,
-			timestamp: new Date().toISOString(),
-		};
-		this.eventEmitter?.(event);
-		void this.pluginManager?.emit?.(event);
-	}
-
-	#metadataJson(metadata: Metadata | null | undefined): string | null {
-		return metadata == null ? null : JSON.stringify(metadata);
 	}
 }

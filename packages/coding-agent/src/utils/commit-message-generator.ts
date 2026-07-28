@@ -5,13 +5,12 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, Model } from "@veyyon/ai";
 import { errorMessage, logger, prompt } from "@veyyon/utils";
-
+import { completeCommitSimple, type ResolveObfuscateProviderText } from "../commit/shared-llm";
 import type { ModelRegistry } from "../config/model-registry";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
 import MODEL_PRIO from "../priority.json" with { type: "json" };
 import { commitPrompts } from "../prompts/commit/rows";
-import { completeCommitSimple, type ResolveObfuscateProviderText } from "../commit/shared-llm";
 import { concreteThinkingLevel, toReasoningEffort } from "../thinking";
 
 const COMMIT_SYSTEM_PROMPT = prompt.render(commitPrompts["commit/message-system"].text);

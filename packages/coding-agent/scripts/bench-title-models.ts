@@ -25,13 +25,10 @@ import * as path from "node:path";
 import { getAgentDir, getProjectDir, prompt } from "@veyyon/utils";
 import { Settings } from "../src/config/settings";
 import { promptText } from "../src/prompts/registry";
+import { loadStandaloneSecretRuntime, type StandaloneSecretRuntimeOptions } from "../src/secrets/standalone-runtime";
 import { preprocessTinyMessage } from "../src/tiny/message-preproc";
 import { isTinyTitleLocalModelKey } from "../src/tiny/models";
 import { normalizeGeneratedTitle } from "../src/tiny/text";
-import {
-	loadStandaloneSecretRuntime,
-	type StandaloneSecretRuntimeOptions,
-} from "../src/secrets/standalone-runtime";
 import { shutdownTinyTitleClient, tinyTitleClient } from "../src/tiny/title-client";
 
 /** A sampled prompt with the cleaned text actually fed to the models. */

@@ -491,9 +491,7 @@ function startSpan(
 	if (dynamicAttributes) Object.assign(attrs, dynamicAttributes);
 	if (options.attributes) Object.assign(attrs, options.attributes);
 
-	const textSanitizer = telemetry.config.textSanitizer
-		? createTelemetryTextSanitizer(telemetry)
-		: undefined;
+	const textSanitizer = telemetry.config.textSanitizer ? createTelemetryTextSanitizer(telemetry) : undefined;
 	const spanName = textSanitizer ? textSanitizer.sanitizeText(name) || kind : name;
 	const initialAttributes = textSanitizer ? textSanitizer.sanitizeSpanAttributes(attrs) : attrs;
 	const ctx = options.parent ? trace.setSpan(context.active(), options.parent) : context.active();
@@ -506,7 +504,9 @@ function startSpan(
 interface TelemetryTextSanitizer {
 	sanitizeText(text: string): string | undefined;
 	sanitizeSpanAttributes(attributes: Attributes): Attributes;
-	sanitizeException(exception: Parameters<Span["recordException"]>[0]): Parameters<Span["recordException"]>[0] | undefined;
+	sanitizeException(
+		exception: Parameters<Span["recordException"]>[0],
+	): Parameters<Span["recordException"]>[0] | undefined;
 }
 
 /**
@@ -692,7 +692,12 @@ function createTelemetryTextSanitizer(telemetry: AgentTelemetry): TelemetryTextS
 		exception: Parameters<Span["recordException"]>[0],
 	): Parameters<Span["recordException"]>[0] | undefined => {
 		if (typeof exception === "string") return sanitizeText(exception);
-		const source = exception as { readonly code?: string | number; readonly message?: string; readonly name?: string; readonly stack?: string };
+		const source = exception as {
+			readonly code?: string | number;
+			readonly message?: string;
+			readonly name?: string;
+			readonly stack?: string;
+		};
 		const sanitized: { code?: string | number; message?: string; name?: string; stack?: string } = {};
 		if (typeof source.code === "number") {
 			sanitized.code = source.code;
@@ -712,9 +717,7 @@ function createTelemetryTextSanitizer(telemetry: AgentTelemetry): TelemetryTextS
 			const stack = sanitizeText(source.stack);
 			if (stack !== undefined) sanitized.stack = stack;
 		}
-		return Object.keys(sanitized).length > 0
-			? (sanitized as Parameters<Span["recordException"]>[0])
-			: undefined;
+		return Object.keys(sanitized).length > 0 ? (sanitized as Parameters<Span["recordException"]>[0]) : undefined;
 	};
 
 	return { sanitizeText, sanitizeSpanAttributes, sanitizeException };
@@ -756,11 +759,7 @@ function wrapSpanWithTextSanitizer(
 				!Array.isArray(attributesOrStartTime) &&
 				!(attributesOrStartTime instanceof Date)
 			) {
-				rawSpan.addEvent(
-					sanitizedName,
-					textSanitizer.sanitizeSpanAttributes(attributesOrStartTime),
-					startTime,
-				);
+				rawSpan.addEvent(sanitizedName, textSanitizer.sanitizeSpanAttributes(attributesOrStartTime), startTime);
 			} else {
 				rawSpan.addEvent(sanitizedName, attributesOrStartTime, startTime);
 			}
@@ -769,9 +768,7 @@ function wrapSpanWithTextSanitizer(
 		addLink(link) {
 			rawSpan.addLink({
 				...link,
-				attributes: link.attributes
-					? textSanitizer.sanitizeSpanAttributes(link.attributes)
-					: undefined,
+				attributes: link.attributes ? textSanitizer.sanitizeSpanAttributes(link.attributes) : undefined,
 			});
 			return wrappedSpan;
 		},
@@ -779,9 +776,7 @@ function wrapSpanWithTextSanitizer(
 			rawSpan.addLinks(
 				links.map(link => ({
 					...link,
-					attributes: link.attributes
-						? textSanitizer.sanitizeSpanAttributes(link.attributes)
-						: undefined,
+					attributes: link.attributes ? textSanitizer.sanitizeSpanAttributes(link.attributes) : undefined,
 				})),
 			);
 			return wrappedSpan;
@@ -1209,9 +1204,7 @@ function serializeFullSystemInstructionsForTelemetry(
 ): string | undefined {
 	const systemPrompt = normalizeSystemPromptParts(request.systemPrompt);
 	if (systemPrompt.length === 0) return undefined;
-	return stringifyJsonAttribute(
-		systemPrompt.map(text => ({ type: "text", content: text }) satisfies OtelMessagePart),
-	);
+	return stringifyJsonAttribute(systemPrompt.map(text => ({ type: "text", content: text }) satisfies OtelMessagePart));
 }
 
 function serializeFullInputMessagesForTelemetry(
@@ -1327,7 +1320,6 @@ function callContentSerializer(
 		return undefined;
 	}
 }
-
 
 function limitTelemetryMessages(messages: readonly TelemetryMessageSummary[]): TelemetryMessageSummary[] {
 	const limited = messages.slice(0, MAX_TELEMETRY_MESSAGE_COUNT);
@@ -1895,7 +1887,8 @@ export async function recordManualChatTelemetry(
 			stepNumber: options.stepNumber,
 			attributes: options.attributes,
 		});
-	const span = candidate && telemetry?.config.textSanitizer ? wrapSpanWithTextSanitizer(telemetry, candidate) : candidate;
+	const span =
+		candidate && telemetry?.config.textSanitizer ? wrapSpanWithTextSanitizer(telemetry, candidate) : candidate;
 	if (!span) return undefined;
 	if (options.span && options.attributes) span.setAttributes(options.attributes);
 	if (options.stepNumber != null) span.setAttribute(PiGenAIAttr.AgentStepNumber, options.stepNumber);

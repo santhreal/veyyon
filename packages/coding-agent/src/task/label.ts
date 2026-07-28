@@ -24,8 +24,7 @@ export async function generateTaskLabel(
 	// transform runs before trim/title preprocessing. Keep the established
 	// trimmed input for local-only tiny models, which never cross a provider
 	// boundary and must retain their existing behavior.
-	const text =
-		settings.get("providers.tinyModel") === ONLINE_TINY_TITLE_MODEL_KEY ? assignment : trimmedAssignment;
+	const text = settings.get("providers.tinyModel") === ONLINE_TINY_TITLE_MODEL_KEY ? assignment : trimmedAssignment;
 	try {
 		return await generateSessionTitle(
 			text,

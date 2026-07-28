@@ -1,15 +1,10 @@
-import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, describe, expect, test, vi } from "bun:test";
+import { randomUUID } from "node:crypto";
 import * as fsSync from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	__internalsForTesting,
-	tryWithFileLock,
-	withFileLock,
-	withFileLockSync,
-} from "../src/file-lock";
+import { __internalsForTesting, tryWithFileLock, withFileLock, withFileLockSync } from "../src/file-lock";
 import * as logger from "../src/logger";
 import {
 	getProcessStartIdentity,
@@ -344,9 +339,10 @@ describe("bounded and fail-closed owner metadata", () => {
 			reusedLock,
 			ownerInfo({ processIdentity: "linux:00000000-0000-0000-0000-000000000000:1" }),
 		);
-		expect(
-			await tryWithFileLock(reusedTarget, async () => "reused", { staleMs: Number.POSITIVE_INFINITY }),
-		).toEqual({ acquired: true, value: "reused" });
+		expect(await tryWithFileLock(reusedTarget, async () => "reused", { staleMs: Number.POSITIVE_INFINITY })).toEqual({
+			acquired: true,
+			value: "reused",
+		});
 
 		const epermTarget = await mkTarget("eperm.json");
 		const epermLock = getLockPath(epermTarget);

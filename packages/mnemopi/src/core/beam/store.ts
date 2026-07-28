@@ -1,8 +1,8 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
 import { batched, errorMessage, HOUR_MS, isRecord, logger } from "@veyyon/utils";
+import { scratchpadMaxItems } from "../../config";
 import { transaction } from "../../db";
 import { toUtcIso } from "../../util/datetime";
-import { scratchpadMaxItems } from "../../config";
 import { generateId } from "../../util/ids";
 import { currentEmbeddingModel, embeddingsDisabled } from "../embeddings";
 import { EpisodicGraph } from "../episodic-graph";

@@ -31,18 +31,18 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
-	type EnvironmentCase,
-	type InstallRun,
-	cleanupEnvironmentMatrixTempRoots,
 	environmentCases as cases,
+	cleanupEnvironmentMatrixTempRoots,
+	type EnvironmentCase,
 	INSTALLED_VERSION,
+	type InstallRun,
 	PATH_MARKER,
 	pathLineFor,
 	rcTargetFor,
 	repoRoot,
 	runInstall,
-	standInBinary,
 	STAND_IN_BINARY,
+	standInBinary,
 	UPDATED_STAND_IN_BINARY,
 	UPDATED_VERSION,
 } from "./install-tests/environment-matrix-harness";
@@ -129,7 +129,12 @@ process.stdout.write("\\n__RESULT__" + JSON.stringify(refresh) + "\\n");
 	const parsed =
 		marker === -1
 			? { refreshed: [], failed: [] }
-			: (JSON.parse(run.stdout.toString().slice(marker + "__RESULT__".length).trim()) as {
+			: (JSON.parse(
+					run.stdout
+						.toString()
+						.slice(marker + "__RESULT__".length)
+						.trim(),
+				) as {
 					refreshed: string[];
 					failed: { filePath: string; reason: string }[];
 				});
@@ -162,7 +167,8 @@ describe.each(cases.map(c => [c.name, c] as const))("update an install in %s", (
 	const binary = path.join(install.installDir, "veyyon");
 	const alias = path.join(install.installDir, "vey");
 	const rcRel = testCase.expect_rc;
-	const rcBefore = rcRel === undefined ? undefined : fs.readFileSync(rcTargetFor(testCase, rcRel, install.home), "utf8");
+	const rcBefore =
+		rcRel === undefined ? undefined : fs.readFileSync(rcTargetFor(testCase, rcRel, install.home), "utf8");
 	const completionsBefore = (testCase.expect_completions ?? []).map(rel => ({
 		rel,
 		content: fs.readFileSync(path.join(install.home, rel), "utf8"),

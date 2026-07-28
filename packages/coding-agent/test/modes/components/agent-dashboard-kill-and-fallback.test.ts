@@ -25,11 +25,11 @@ import * as path from "node:path";
 import { AgentDashboard } from "@veyyon/coding-agent/modes/components/agent-dashboard";
 import type { AgentTranscriptRemote } from "@veyyon/coding-agent/modes/components/agent-transcript-viewer";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
+import type { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { TempDir } from "@veyyon/utils";
-import { stubStdoutGeometry, type StubbedStdoutGeometry } from "../../helpers/stdout-geometry";
+import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 
@@ -387,7 +387,11 @@ describe("What a failure says to the operator", () => {
 			id: "0-Sub",
 			displayName: "scout",
 			kind: "sub",
-			session: { abort: async () => { throw new Error("the session is already gone"); } } as unknown as AgentSession,
+			session: {
+				abort: async () => {
+					throw new Error("the session is already gone");
+				},
+			} as unknown as AgentSession,
 			status: "running",
 		});
 		const dashboard = new AgentDashboard({ terminalHeight: 40 });
@@ -396,7 +400,10 @@ describe("What a failure says to the operator", () => {
 		dashboard.handleInput("x");
 		await Bun.sleep(10);
 
-		const shown = dashboard.render(120).join("\n").replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
+		const shown = dashboard
+			.render(120)
+			.join("\n")
+			.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
 		expect(shown).toContain("Could not stop Kestrel");
 		expect(shown).toContain("the session is already gone");
 		dashboard.dispose();
@@ -422,7 +429,10 @@ describe("What a failure says to the operator", () => {
 		dashboard.handleInput("\r");
 		await Bun.sleep(10);
 
-		const shown = dashboard.render(120).join("\n").replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
+		const shown = dashboard
+			.render(120)
+			.join("\n")
+			.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
 		expect(shown).toContain("Could not open Kestrel");
 		expect(shown).toContain("collab guests are read-only here");
 		dashboard.dispose();

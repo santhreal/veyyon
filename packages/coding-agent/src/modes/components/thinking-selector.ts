@@ -1,10 +1,7 @@
 import type { Model } from "@veyyon/ai";
 import type { SelectItem, SgrMouseEvent } from "@veyyon/tui";
 import { getSelectListTheme } from "../../modes/theme/theme";
-import {
-	type ConfiguredThinkingLevel,
-	configuredThinkingLevelOptions,
-} from "../../thinking";
+import { type ConfiguredThinkingLevel, configuredThinkingLevelOptions } from "../../thinking";
 import { ModalSelectListComponent } from "./modal-select-list";
 
 /**

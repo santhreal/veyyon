@@ -1106,9 +1106,7 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 			send(data) {
 				sent.push(data);
 				queueMicrotask(() => {
-					socket.onmessage?.(
-						new MessageEvent("message", { data: JSON.stringify({ status: "INPUT_REQUIRED" }) }),
-					);
+					socket.onmessage?.(new MessageEvent("message", { data: JSON.stringify({ status: "INPUT_REQUIRED" }) }));
 				});
 			},
 			close() {},

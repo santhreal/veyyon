@@ -54,7 +54,9 @@ describe("the utils barrel", () => {
 	 * useful information is what got defined, not that something did.
 	 */
 	it("defines nothing of its own", () => {
-		const definitions = codeLines().filter(line => /^(export )?(async )?(function|const|let|var|class|interface|type|enum)\b/.test(line));
+		const definitions = codeLines().filter(line =>
+			/^(export )?(async )?(function|const|let|var|class|interface|type|enum)\b/.test(line),
+		);
 
 		expect(definitions).toEqual([]);
 	});

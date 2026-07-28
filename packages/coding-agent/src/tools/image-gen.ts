@@ -1449,8 +1449,6 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 				}
 
 				if (provider === "openrouter") {
-
-
 					const rawText = await withAuth(
 						apiKey.apiKey,
 						async key => {
@@ -1524,7 +1522,6 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 					};
 				}
 
-
 				const generationConfig: {
 					responseModalities: GeminiResponseModality[];
 					imageConfig?: { aspectRatio?: string; imageSize?: string };
@@ -1538,7 +1535,6 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 						imageSize: params.image_size,
 					};
 				}
-
 
 				const rawText = await withAuth(
 					apiKey.apiKey,

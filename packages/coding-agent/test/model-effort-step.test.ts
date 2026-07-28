@@ -118,9 +118,7 @@ describe("renderEffortStep", () => {
 describe("formatSelectorSummary", () => {
 	/** Settings rows must render a suffix as a readable effort without changing its value. */
 	it("renders an effort suffix as a readable ` · level`", () => {
-		expect(formatSelectorSummary("anthropic/claude-sonnet-4-5:high")).toBe(
-			"anthropic/claude-sonnet-4-5 · high",
-		);
+		expect(formatSelectorSummary("anthropic/claude-sonnet-4-5:high")).toBe("anthropic/claude-sonnet-4-5 · high");
 	});
 
 	/** A suffix-free model selector must remain byte-for-byte recognizable. */

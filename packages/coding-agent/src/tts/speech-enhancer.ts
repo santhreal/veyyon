@@ -15,14 +15,14 @@
  *   mechanical {@link SpeakableStream} cleanup — speech never blocks on the
  *   model.
  */
-import { type ApiKeyResolver, type AssistantMessage, completeSimple, type Context } from "@veyyon/ai";
+import { type ApiKeyResolver, type AssistantMessage, type Context, completeSimple } from "@veyyon/ai";
 import { assistantText } from "@veyyon/ai/utils/message-text";
 import { logger, prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
-import { isSecretPlaceholder, PLACEHOLDER_RE } from "../secrets/placeholder";
 import { sideChannelPrompts } from "../prompts/side-channel/rows";
+import { isSecretPlaceholder, PLACEHOLDER_RE } from "../secrets/placeholder";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 
 const SYSTEM_PROMPT = prompt.render(sideChannelPrompts["side-channel/speech-rewrite"].text);

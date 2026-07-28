@@ -12,10 +12,9 @@ const PLACEHOLDER_KEY = new Uint8Array(32).fill(11);
 const SECRET = "credential-in-json-key";
 
 function reversibleObfuscator(): SecretObfuscator {
-	return new SecretObfuscator(
-		[{ type: "plain", content: SECRET, mode: "obfuscate", name: "JSON_KEY_SECRET" }],
-		{ placeholderKey: PLACEHOLDER_KEY },
-	);
+	return new SecretObfuscator([{ type: "plain", content: SECRET, mode: "obfuscate", name: "JSON_KEY_SECRET" }], {
+		placeholderKey: PLACEHOLDER_KEY,
+	});
 }
 
 describe("JSON object keys share the secret boundary with values", () => {
@@ -106,7 +105,7 @@ describe("JSON object keys share the secret boundary with values", () => {
 
 		const outbound = mapJsonStrings(original, value => obfuscator.obfuscate(value));
 		expect(Object.hasOwn(outbound, "__proto__")).toBe(true);
-		expect(outbound.__proto__).toBe("#JSON_KEY_SECRET#");
+		expect(outbound["__proto__"]).toBe("#JSON_KEY_SECRET#");
 		expect(Object.getPrototypeOf(outbound)).toBe(Object.prototype);
 	});
 

@@ -27,10 +27,9 @@ import { trimTrailingSlashes } from "@veyyon/utils";
  */
 
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
-
-import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../../config/settings-instance";
+import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
@@ -222,11 +221,7 @@ async function callSearXNGSearch(
 			const errorText = await response.text();
 			const classified = classifyProviderHttpError("searxng", response.status, errorText);
 			if (classified) throw classified;
-			throw new SearchProviderError(
-				"searxng",
-				`SearXNG API error (${response.status}).`,
-				response.status,
-			);
+			throw new SearchProviderError("searxng", `SearXNG API error (${response.status}).`, response.status);
 		}
 
 		return (await response.json()) as SearXNGResponse;

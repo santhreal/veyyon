@@ -8,11 +8,7 @@
 import type { Model } from "@veyyon/ai";
 import { type Container, type SelectItem, SelectList, Spacer, Text } from "@veyyon/tui";
 import { formatModelSelectorValue, parseModelString } from "../../config/model-resolver";
-import {
-	type ConfiguredThinkingLevel,
-	configuredThinkingLevelOptions,
-	parseConfiguredThinkingLevel,
-} from "../../thinking";
+import { configuredThinkingLevelOptions, parseConfiguredThinkingLevel } from "../../thinking";
 import { getSelectListTheme, theme } from "../theme/theme";
 
 /** Valid effort rows for the selected model, with the suffix-free base first. */
@@ -62,13 +58,7 @@ export function renderEffortStep(
 	list.onCancel = onBack;
 	container.addChild(new Text(theme.bold(theme.fg("accent", "Thinking effort")), 0, 0));
 	container.addChild(new Spacer(1));
-	container.addChild(
-		new Text(
-			theme.fg("muted", `Valid effort variants for ${selector}.`),
-			0,
-			0,
-		),
-	);
+	container.addChild(new Text(theme.fg("muted", `Valid effort variants for ${selector}.`), 0, 0));
 	container.addChild(new Spacer(1));
 	container.addChild(list);
 	container.addChild(new Spacer(1));

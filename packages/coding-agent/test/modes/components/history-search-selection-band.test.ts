@@ -21,7 +21,7 @@ import { HistorySearchComponent } from "@veyyon/coding-agent/modes/components/hi
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { HistoryEntry, HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
 import { getAnsiPolicy, setAnsiPolicy, visibleWidth } from "@veyyon/tui";
-import { stubStdoutGeometry, type StubbedStdoutGeometry } from "../../helpers/stdout-geometry";
+import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 const BG_OPEN = /\x1b\[48;2;\d+;\d+;\d+m/;

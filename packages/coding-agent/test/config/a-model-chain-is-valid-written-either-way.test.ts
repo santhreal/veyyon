@@ -25,11 +25,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { normalizeModelPatternList } from "@veyyon/coding-agent/config/model-resolver";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { describeSettingTypeMismatch, getType } from "@veyyon/coding-agent/config/settings-schema";
-import { normalizeModelPatternList } from "@veyyon/coding-agent/config/model-resolver";
-import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
 import * as YAML from "yaml";
+import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
 
 const makeChainConfigDir = useTrackedTempDirs("veyyon-model-chain-");
 

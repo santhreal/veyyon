@@ -135,7 +135,9 @@ describe("no surface counts folded lines by hand", () => {
 	it("recognizes the inline phrase it forbids", () => {
 		const pattern = /\$\{[^}]+\}\s+more\s+lines/;
 
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: this is a source-text fixture for the banned inline phrase
 		expect(pattern.test("push(`… ${remaining} more lines`)")).toBe(true);
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: this is a source-text fixture for the accepted helper call
 		expect(pattern.test("push(`… ${formatMoreLines(remaining)}`)")).toBe(false);
 	});
 });
@@ -147,7 +149,8 @@ describe("the hint reader", () => {
 	 * typo in the pattern would make the gate permanently green.
 	 */
 	it("finds a chord in both shapes a hint is written in", () => {
-		const sentence = handWrittenChordHints('push(`… ${n} more lines (ctrl+o to expand)`);', "a.ts");
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: this is a source-text fixture for a handwritten hint
+		const sentence = handWrittenChordHints("push(`… ${n} more lines (ctrl+o to expand)`);", "a.ts");
 		const chip = handWrittenChordHints('{ label: "ctrl+o expand" },', "b.ts");
 
 		expect(sentence).toEqual(["a.ts:1: ctrl+o to expand"]);

@@ -20,10 +20,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { IrcBus } from "@veyyon/coding-agent/irc/bus";
 import { AgentDashboard } from "@veyyon/coding-agent/modes/components/agent-dashboard";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { AgentStatus } from "@veyyon/coding-agent/registry/agent-registry";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import type { AgentStatus } from "@veyyon/coding-agent/registry/agent-registry";
-import { stubStdoutGeometry, type StubbedStdoutGeometry } from "../../helpers/stdout-geometry";
+import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 const WIDTH = 110;
@@ -56,7 +56,12 @@ function accepting(): AgentSession {
 
 /** `count` subagents, spawned in order, all running. */
 function registerRoster(count: number): void {
-	AgentRegistry.global().register({ id: MAIN_AGENT_ID, displayName: "Main Session", kind: "main", session: accepting() });
+	AgentRegistry.global().register({
+		id: MAIN_AGENT_ID,
+		displayName: "Main Session",
+		kind: "main",
+		session: accepting(),
+	});
 	for (let index = 0; index < count; index++) {
 		AgentRegistry.global().register({
 			id: `sub-${String(index).padStart(3, "0")}`,
@@ -187,7 +192,12 @@ describe("Paging the Comms stream", () => {
 describe("Roster columns", () => {
 	/** Statuses of different lengths, and ages that do and do not exist. */
 	function registerMixed(): void {
-		AgentRegistry.global().register({ id: MAIN_AGENT_ID, displayName: "Main Session", kind: "main", session: accepting() });
+		AgentRegistry.global().register({
+			id: MAIN_AGENT_ID,
+			displayName: "Main Session",
+			kind: "main",
+			session: accepting(),
+		});
 		const now = Date.now();
 		const specs: Array<[string, string, AgentStatus, number]> = [
 			["a", "scout", "running", 0],
@@ -224,7 +234,11 @@ describe("Roster columns", () => {
 		registerMixed();
 		const dashboard = new AgentDashboard({ terminalHeight: ROWS, showModelBadge: true });
 
-		const columns = new Set(rosterRows(dashboard).map(row => row.indexOf("claude-sonnet-5")).filter(at => at >= 0));
+		const columns = new Set(
+			rosterRows(dashboard)
+				.map(row => row.indexOf("claude-sonnet-5"))
+				.filter(at => at >= 0),
+		);
 
 		expect(columns.size).toBe(1);
 		dashboard.dispose();
@@ -235,9 +249,7 @@ describe("Roster columns", () => {
 		registerMixed();
 		const dashboard = new AgentDashboard({ terminalHeight: ROWS, showModelBadge: true });
 
-		const columns = new Set(
-			rosterRows(dashboard).map(row => row.search(/\b(running|idle|parked|aborted)\b/)),
-		);
+		const columns = new Set(rosterRows(dashboard).map(row => row.search(/\b(running|idle|parked|aborted)\b/)));
 
 		expect(columns.size).toBe(1);
 		dashboard.dispose();
@@ -275,11 +287,17 @@ describe("Roster columns", () => {
 	/** The columns are measured over the WHOLE roster, so scrolling never shifts them. */
 	test("keeps the columns still while the roster scrolls", () => {
 		const dashboard = paintedCard(60);
-		const before = frame(dashboard).find(line => /type-\d{3}/.test(line))?.indexOf("running");
+		const before = frame(dashboard)
+			.find(line => /type-\d{3}/.test(line))
+			?.indexOf("running");
 
 		dashboard.handleInput(PAGE_DOWN);
 
-		expect(frame(dashboard).find(line => /type-\d{3}/.test(line))?.indexOf("running")).toBe(before);
+		expect(
+			frame(dashboard)
+				.find(line => /type-\d{3}/.test(line))
+				?.indexOf("running"),
+		).toBe(before);
 		dashboard.dispose();
 	});
 });
@@ -287,7 +305,12 @@ describe("Roster columns", () => {
 describe("A column never takes the whole row", () => {
 	/** One agent with a name long enough to swallow the row, and three normal ones. */
 	function registerWithOneLongType(): void {
-		AgentRegistry.global().register({ id: MAIN_AGENT_ID, displayName: "Main Session", kind: "main", session: accepting() });
+		AgentRegistry.global().register({
+			id: MAIN_AGENT_ID,
+			displayName: "Main Session",
+			kind: "main",
+			session: accepting(),
+		});
 		for (const [id, type] of [
 			["a", "a-very-long-agent-type-name-someone-wrote"],
 			["b", "reviewer"],
@@ -351,7 +374,12 @@ describe("A column never takes the whole row", () => {
 
 describe("The model badge under pressure", () => {
 	function registerOne(): void {
-		AgentRegistry.global().register({ id: MAIN_AGENT_ID, displayName: "Main Session", kind: "main", session: accepting() });
+		AgentRegistry.global().register({
+			id: MAIN_AGENT_ID,
+			displayName: "Main Session",
+			kind: "main",
+			session: accepting(),
+		});
 		AgentRegistry.global().register({
 			id: "a",
 			displayName: "reviewer",
