@@ -52,7 +52,11 @@ async function runLegacyCommitCommand(args: CommitCommandArgs): Promise<void> {
 		return;
 	}
 	const settings = await Settings.init();
-	const standaloneRuntimeOptions = { cwd, agentDir: settings.getAgentDir() };
+	const standaloneRuntimeOptions = {
+		cwd,
+		agentDir: settings.getAgentDir(),
+		enabled: settings.get("secrets.enabled"),
+	};
 	const resolveObfuscateProviderText: ResolveObfuscateProviderText = async () => {
 		const runtime = await loadStandaloneSecretRuntime(standaloneRuntimeOptions);
 		return text => runtime.obfuscate(text);

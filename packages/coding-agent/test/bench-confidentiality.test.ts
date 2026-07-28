@@ -59,7 +59,7 @@ function registry(models: Model<Api>[], authenticated = true): BenchModelRegistr
 	};
 }
 
-async function fixture() {
+async function fixture(secretsEnabled = true) {
 	const root = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-bench-confidentiality-"));
 	roots.push(root);
 	const cwd = path.join(root, "project");
@@ -67,7 +67,7 @@ async function fixture() {
 	await fs.mkdir(path.join(cwd, ".veyyon"), { recursive: true });
 	await fs.mkdir(agentDir, { recursive: true });
 	const settings = {
-		get: () => undefined,
+		get: (settingPath: string) => (settingPath === "secrets.enabled" ? secretsEnabled : undefined),
 		getCwd: () => cwd,
 		getAgentDir: () => agentDir,
 	} as unknown as Settings;
@@ -398,4 +398,40 @@ describe("bench custom prompt provider confidentiality", () => {
 		expect(result.error).toContain("No credentials for provider");
 		expect(result.error).not.toContain(secret);
 	});
+	it("does not load or mutate secret sources while protection is disabled", async () => {
+		// Why: `secrets.enabled: false` is an operator contract, not just an empty
+		// transform. Consulting a malformed or inaccessible vault while disabled
+		// can block an unrelated benchmark and creates the vault key as a side effect.
+		const { cwd, agentDir, settings } = await fixture(false);
+		const secret = "BENCH_DISABLED_SECRET_246813";
+		const globalConfigRoot = path.join(agentDir, "..", "..", "global");
+		await fs.writeFile(path.join(cwd, ".veyyon", "secrets.yml"), `- type: plain\n  content: ${secret}\n  broken: [\n`);
+		const model = fakeModel("provider-a", "model-a");
+		let captured = "";
+
+		const summary = await runBenchCommand(
+			{ models: ["provider-a/model-a"], flags: { runs: 1, prompt: ` raw ${secret} ` } },
+			{
+				createRuntime: async () => ({
+					modelRegistry: registry([model]),
+					settings,
+					globalConfigRoot,
+				}),
+				writeStdout: () => {},
+				writeStderr: () => {},
+				setExitCode: () => {},
+				streamSimple: (_model, context) => {
+					captured = promptText(context);
+					return fakeStream();
+				},
+				now: () => 0,
+				stdoutIsTTY: false,
+			},
+		);
+
+		expect(summary.failures).toBe(0);
+		expect(captured).toBe(`raw ${secret}`);
+		expect(await fs.stat(globalConfigRoot).catch(() => null)).toBeNull();
+	});
+
 });
