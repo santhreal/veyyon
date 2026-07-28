@@ -512,7 +512,7 @@ export class SelectorController {
 	 * Most settings are saved directly via SettingsManager in the definitions.
 	 * This handles side effects and session-specific settings.
 	 */
-	handleSettingChange(id: string, value: unknown): void {
+	handleSettingChange(id: string, value: unknown): void | Promise<void> {
 		// Discovery provider toggles
 		if (id.startsWith("discovery.")) {
 			const providerId = id.replace("discovery.", "");
@@ -522,6 +522,21 @@ export class SelectorController {
 				disableProvider(providerId);
 			}
 			return;
+		}
+
+		// Auth storage and the model registry capture the profile-sharing backing
+		// store at startup. Persisting a different posture without replacing both
+		// atomically would leave the UI claiming one policy while dispatch still
+		// reads the old store. Begin teardown synchronously (shutdown marks the
+		// context as shutting down before its first await), making restart the
+		// explicit dispatch barrier.
+		if (id === "profileSharing") {
+			this.ctx.showWarning(
+				"Credential sharing changed. Restart required; this session is shutting down before further model dispatch.",
+			);
+			return this.ctx.shutdown().catch(err => {
+				this.ctx.showError(`Failed to shut down after changing credential sharing: ${errorMessage(err)}`);
+			});
 		}
 
 		// Any setting the prompt gates on rebuilds the prompt, read off the ONE registry that
@@ -544,10 +559,11 @@ export class SelectorController {
 		}
 
 		// Secret settings own live process state, not only persisted configuration.
-		// Reconcile through the session loader so enable/disable, audit routing, and
-		// any future secrets.* setting take effect without a restart.
+		// Return the coordinator-backed transition rather than dropping its
+		// promise. Rapid toggles then retain initiation order and callers that can
+		// await the setting side effect observe the committed runtime.
 		if (id.startsWith("secrets.")) {
-			void this.ctx.session.refreshSecrets().catch(err => {
+			return this.ctx.session.refreshSecrets().catch(err => {
 				this.ctx.showError(`Failed to apply "${id}" to the secret runtime: ${errorMessage(err)}`);
 			});
 		}

@@ -45,18 +45,53 @@ describe("selector setting side effects", () => {
 		expect(requestRender).toHaveBeenCalledTimes(1);
 	});
 
-	it("refreshes the authoritative runtime for every secrets setting", () => {
-		const refreshSecrets = vi.fn(async () => {});
+	it("returns coordinator-backed secret transitions in rapid enable/disable initiation order", async () => {
+		const initiated: boolean[] = [];
+		const refreshSecrets = vi.fn(async () => {
+			initiated.push(Settings.instance.get("secrets.enabled"));
+		});
 		const controller = new SelectorController({
 			session: { refreshSecrets },
 			showError: vi.fn(),
 		} as unknown as InteractiveModeContext);
 
-		controller.handleSettingChange("secrets.enabled", true);
-		controller.handleSettingChange("secrets.defaultTtl", "7d");
-		controller.handleSettingChange("secrets.auditLog", false);
+		Settings.instance.override("secrets.enabled", true);
+		const enabled = controller.handleSettingChange("secrets.enabled", true);
+		Settings.instance.override("secrets.enabled", false);
+		const disabled = controller.handleSettingChange("secrets.enabled", false);
 
-		expect(refreshSecrets).toHaveBeenCalledTimes(3);
+		expect(enabled).toBeInstanceOf(Promise);
+		expect(disabled).toBeInstanceOf(Promise);
+		await Promise.all([enabled, disabled]);
+		expect(refreshSecrets).toHaveBeenCalledTimes(2);
+		expect(initiated).toEqual([true, false]);
+	});
+
+	it("enforces restart as the profile-sharing dispatch barrier", async () => {
+		let shuttingDown = false;
+		let oldSharedStorageLookups = 0;
+		const shutdown = vi.fn(async () => {
+			// InteractiveMode.shutdown sets its barrier before its first await.
+			shuttingDown = true;
+		});
+		const showWarning = vi.fn();
+		const controller = new SelectorController({
+			shutdown,
+			showWarning,
+			showError: vi.fn(),
+		} as unknown as InteractiveModeContext);
+
+		const transition = controller.handleSettingChange("profileSharing", false);
+		const dispatchUsingCapturedSharedStorage = () => {
+			if (shuttingDown) throw new Error("restart required");
+			oldSharedStorageLookups++;
+		};
+
+		expect(shutdown).toHaveBeenCalledTimes(1);
+		expect(() => dispatchUsingCapturedSharedStorage()).toThrow("restart required");
+		expect(oldSharedStorageLookups).toBe(0);
+		expect(showWarning).toHaveBeenCalledWith(expect.stringContaining("Restart required"));
+		await transition;
 	});
 
 	it("invalidates the UI and requests a repaint when tui.tight changes", () => {

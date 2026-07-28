@@ -221,7 +221,7 @@ describe("AgentSession message pipeline", () => {
 			onPayload: requestOnPayload,
 		};
 
-		const prepared = session.prepareSimpleStreamOptions(options);
+		const prepared = await session.prepareSimpleStreamOptions(options);
 		const result = await prepared.onPayload?.({ original: true });
 
 		expect(sessionOnPayload).toHaveBeenCalledWith({ original: true }, undefined);
@@ -592,7 +592,7 @@ describe("AgentSession message pipeline", () => {
 		});
 		sessions.push(session);
 
-		const prepared = session.prepareSimpleStreamOptions({});
+		const prepared = await session.prepareSimpleStreamOptions({});
 		prepared.onSseEvent?.({ event: "message", data: "{}", raw: ["event: message", "data: {}"] });
 
 		expect(session.rawSseDebugBuffer.snapshot().totalEvents).toBe(1);

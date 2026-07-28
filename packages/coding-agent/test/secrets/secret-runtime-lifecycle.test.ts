@@ -191,10 +191,10 @@ describe("live secret runtime toggles", () => {
 
 describe("runtime replacement", () => {
 	/**
-	 * A vault can change while the feature is off. Enabling must load additions, later refreshes
-	 * must drop removed names, and `/move` must replace rather than append project mappings.
+	 * must revoke removed names and source-project expansion authority while retaining
+	 * redaction-only tombstones for values that may still exist in transcript history.
 	 */
-	it("reconciles additions/removals and eliminates source-project mappings on move", async () => {
+	it("reconciles additions/removals and revokes source-project expansion authority on move", async () => {
 		const fixture = await createRuntimeFixture();
 		try {
 			await fixture.vaultA.add({ name: "LATE_TOKEN", value: ADDED_WHILE_OFF_VALUE, scope: "project" });
@@ -212,9 +212,9 @@ describe("runtime replacement", () => {
 
 			await fixture.session.setCwd(fixture.projectB);
 			expect(fixture.session.obfuscator?.hasNamedSecret("A_TOKEN")).toBe(false);
-			expect(fixture.session.obfuscator?.obfuscate(PROJECT_A_VALUE)).toBe(PROJECT_A_VALUE);
+			expect(fixture.session.obfuscator?.obfuscate(PROJECT_A_VALUE)).not.toBe(PROJECT_A_VALUE);
 			expect(fixture.session.obfuscator?.obfuscate(PROJECT_B_VALUE)).toBe("#B_TOKEN#");
-			expect(fixture.session.obfuscator?.obfuscate(CONFIG_A_VALUE)).toBe(CONFIG_A_VALUE);
+			expect(fixture.session.obfuscator?.obfuscate(CONFIG_A_VALUE)).not.toBe(CONFIG_A_VALUE);
 			expect(fixture.session.obfuscator?.obfuscate(CONFIG_B_VALUE)).not.toBe(CONFIG_B_VALUE);
 		} finally {
 			await disposeFixture(fixture);
@@ -272,7 +272,7 @@ describe("runtime replacement", () => {
 		}
 	});
 
-	it("revives a parked subagent with its persisted cwd scope, not the parent's live cwd", async () => {
+	it("re-peeks a reusable reviver so a live A→B move survives the next revive", async () => {
 		const fixture = await createRuntimeFixture();
 		let revived: AgentSession | undefined;
 		try {
@@ -281,7 +281,7 @@ describe("runtime replacement", () => {
 
 			const childManager = SessionManager.create(
 				fixture.projectA,
-				path.join(fixture.root.path(), "persisted-child"),
+				path.resolve(fixture.root.path(), "persisted-child"),
 			);
 			childManager.appendSessionInit({
 				systemPrompt: "Persisted child",
@@ -338,6 +338,8 @@ describe("runtime replacement", () => {
 			expect(revive).toBeFunction();
 			await fixture.session.setCwd(fixture.projectB);
 			expect(fixture.session.obfuscator?.hasNamedSecret("B_TOKEN")).toBe(true);
+			expect(await fs.readFile(sessionFile!, "utf8")).toContain("\"type\":\"session_init\"");
+			expect((await SessionManager.peekSessionInit(sessionFile!))?.init?.systemPrompt).toBe("Persisted child");
 
 			revived = await revive!();
 
@@ -345,6 +347,28 @@ describe("runtime replacement", () => {
 			expect(revived.obfuscator?.hasNamedSecret("A_TOKEN")).toBe(true);
 			expect(revived.obfuscator?.hasNamedSecret("B_TOKEN")).toBe(false);
 			expect(revived.obfuscator?.deobfuscate("#A_TOKEN#")).toBe(PROJECT_A_VALUE);
+
+			// Same-cwd is the negative twin: an explicit no-op move must retain A
+			// rather than deriving policy from the parent, which is already in B.
+			await revived.setCwd(fixture.projectA);
+			expect(revived.sessionManager.getCwd()).toBe(fixture.projectA);
+			expect(revived.obfuscator?.hasNamedSecret("A_TOKEN")).toBe(true);
+
+			// Move the live child independently. setCwd rewrites its own persisted
+			// header; the parent's cwd and runtime remain B throughout.
+			await revived.setCwd(fixture.projectB);
+			expect(revived.sessionManager.getCwd()).toBe(fixture.projectB);
+			expect(revived.obfuscator?.hasNamedSecret("A_TOKEN")).toBe(false);
+			expect(revived.obfuscator?.hasNamedSecret("B_TOKEN")).toBe(true);
+			await revived.dispose();
+			revived = undefined;
+
+			// Reuse the SAME closure. A factory-time A peek would regress this to A;
+			// the invocation-time peek/open must restore the rewritten B header.
+			revived = await revive!();
+			expect(revived.sessionManager.getCwd()).toBe(fixture.projectB);
+			expect(revived.obfuscator?.hasNamedSecret("A_TOKEN")).toBe(false);
+			expect(revived.obfuscator?.deobfuscate("#B_TOKEN#")).toBe(PROJECT_B_VALUE);
 		} finally {
 			await revived?.dispose();
 			await disposeFixture(fixture);
@@ -366,7 +390,7 @@ describe("the final mutable provider hook boundary", () => {
 		try {
 			fixture.settings.set("secrets.enabled", true);
 			await fixture.session.refreshSecrets();
-			const options = fixture.session.prepareSimpleStreamOptions({ apiKey: "unused" });
+			const options = await fixture.session.prepareSimpleStreamOptions({ apiKey: "unused" });
 			const outbound = await options.onPayload?.({ kind: "request" });
 
 			expect(outbound).toEqual({ kind: "request", injected: "#A_TOKEN#" });

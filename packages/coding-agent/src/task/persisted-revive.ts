@@ -11,7 +11,7 @@ import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 import type { AgentSession } from "../session/agent-session";
 import type { AuthStorage } from "../session/auth-storage";
 import { SessionManager } from "../session/session-manager";
-import { createMCPProxyTools, createSubagentSettings } from "./executor";
+import { createMCPProxyTools, createSubagentSettingsForCwd } from "./executor";
 
 /**
  * Ambient context the reviver needs at revive time. The parent artifact
@@ -64,7 +64,6 @@ export function createPersistedSubagentReviverFactory(
 			// gone would run its tools against the wrong tree, so it stays transcript-only via history://.
 			return undefined;
 		}
-		const init = peek.init;
 		// taskDepth drives real capability gating (task-spawn allowance, memory
 		// startup, …); derive it from the persisted parent chain rather than
 		// assuming a fixed level.
@@ -77,12 +76,28 @@ export function createPersistedSubagentReviverFactory(
 			parentId = registry.get(parentId)?.parentId;
 		}
 		return async () => {
-			// Re-open fresh on every revive: park closes the writer, so this takes
-			// the single-writer lock cleanly and restores the full message history.
+			// Re-peek and re-open on EVERY invocation. This closure is reusable,
+			// and /move rewrites the persisted header after the factory first
+			// discovered it; retaining the factory-time peek would resurrect the
+			// old workspace and its project policy forever.
+			const current = await SessionManager.peekSessionInit(sessionFile);
+			if (!current?.init) {
+				throw new Error(`Cannot revive ${ref.id}: persisted session contract is missing`);
+			}
+			try {
+				await fs.stat(current.cwd);
+			} catch {
+				throw new Error(`Cannot revive ${ref.id}: persisted working directory is unavailable`);
+			}
 			const reopened = await SessionManager.open(sessionFile, undefined, undefined, {
-				initialCwd: peek.cwd,
+				initialCwd: current.cwd,
 				suppressBreadcrumb: true,
 			});
+			// SessionManager.open owns cwd restoration and validation. Everything
+			// in the rebuilt runtime, including settings discovery, must use this
+			// one authority rather than either peek snapshot.
+			const runtimeCwd = reopened.getCwd();
+			const init = current.init;
 			const artifactManager = ctx.session.sessionManager.getArtifactManager();
 			if (artifactManager) reopened.adoptArtifactManager(artifactManager);
 			// Reuse the parent's live MCP connections via proxy tools (no
@@ -91,11 +106,12 @@ export function createPersistedSubagentReviverFactory(
 			const mcpProxyTools = mcpManager ? createMCPProxyTools(mcpManager) : [];
 			const { createAgentSession } = await import("../sdk");
 			const { session } = await createAgentSession({
-				cwd: peek.cwd,
+				cwd: runtimeCwd,
 				authStorage: ctx.authStorage,
 				modelRegistry: ctx.modelRegistry,
-				settings: createSubagentSettings(
+				settings: await createSubagentSettingsForCwd(
 					ctx.settings,
+					runtimeCwd,
 					init.readSummarize === false ? { "read.summarize.enabled": false } : undefined,
 				),
 				sessionManager: reopened,
