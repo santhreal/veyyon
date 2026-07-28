@@ -161,6 +161,7 @@ describe("AgentSession.switchSession previous-context build", () => {
 		]);
 	});
 
+	/** A cross-project switch must install the destination redactor before replaying its transcript. */
 	it("re-scopes the secret runtime before adopting a cross-project transcript", async () => {
 		const tempDir = TempDir.createSync("@pi-switch-secret-scope-");
 		tempDirs.push(tempDir);
@@ -184,6 +185,7 @@ describe("AgentSession.switchSession previous-context build", () => {
 			.split("\n")
 			.map(line => JSON.parse(line) as { type?: string; cwd?: string })
 			.find(entry => entry.type === "session");
+		if (persistedHeader === undefined) throw new Error("target session header was not persisted");
 		expect(persistedHeader.cwd).toBe(projectB);
 		await targetManager.close();
 
