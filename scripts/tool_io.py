@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+"""
+Shared session-log reader for the hand-run edit analysis scripts.
+
+Walks veyyon session JSONL, yields tool calls and their results, and applies the
+`--limit-mode calls|events` budget the analyses share. A library, not a command:
+`analyze_small_edits.py` is its only caller.
+
+Run: not directly. Import it, or run the script that uses it:
+    scripts/analyze_small_edits.py
+"""
 
 from __future__ import annotations
 

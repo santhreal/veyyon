@@ -54,6 +54,41 @@ describe("extractLinks", () => {
 	it("skips links inside code fences and inline code", () => {
 		expect(extractLinks("```\n[a](dead.md)\n```\nuse `[b](also-dead.md)` inline\n")).toEqual([]);
 	});
+
+	/**
+	 * HTML `<img src>`, which is what a doc reaches for the moment an image needs a
+	 * width or an alignment attribute that `![]()` cannot express.
+	 *
+	 * It was not collected, so those images were outside the check entirely, and the
+	 * README's two side-by-side settings shots both pointed at filenames that a
+	 * rename had moved. A 404 image is the most visible kind of broken link and it
+	 * was the one kind nothing verified.
+	 */
+	it("finds HTML img sources, in either quote style and with other attributes", () => {
+		const markdown = [
+			'<img src="assets/one.png" width="48%" alt="one">',
+			"<p><img alt='two' width='48%' SRC='assets/two.png' /></p>",
+			'<img\n\tsrc="assets/never.png">',
+		].join("\n");
+		expect(extractLinks(markdown)).toEqual([
+			{ target: "assets/one.png", line: 1 },
+			{ target: "assets/two.png", line: 2 },
+		]);
+	});
+
+	/**
+	 * And an `<img>` inside a fence is still an example, not a link.
+	 *
+	 * Docs that explain how to embed an image show the tag, and a checker that
+	 * followed those would fail on paths the author never claimed exist. The third
+	 * case above is the known limit, recorded rather than hidden: a tag whose `src`
+	 * is on a later line than the `<img` is not matched, because the scan is
+	 * line-based like the rest of this extractor. Every such tag in the tree is
+	 * written on one line.
+	 */
+	it("skips HTML img tags inside code fences", () => {
+		expect(extractLinks('```html\n<img src="assets/example.png">\n```\n')).toEqual([]);
+	});
 });
 
 describe("checkDocLinks", () => {

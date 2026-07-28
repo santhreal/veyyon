@@ -22,6 +22,14 @@ actually-observed spend.
 Output:
   scripts/session-stats/out/read-config-sweep.png
   console table with the recommended config + savings
+
+Run (populate the tables with sync.py first):
+    scripts/session-stats/sync.py
+    scripts/session-stats/optimize_read_config.py --help
+
+Hand-run against the operator's own `~/.veyyon/stats.db`. The output is an
+argument for a settings change, not a change: it prints candidate configs and
+what each would have saved.
 """
 
 from __future__ import annotations

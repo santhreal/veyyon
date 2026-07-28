@@ -246,7 +246,7 @@ abstract class BaseAstMutation implements Mutation {
 	abstract collectCandidates(parsed: Parsed): Candidate[];
 	abstract applyCandidate(parsed: Parsed, candidate: Candidate, rng: () => number): MutationInfo;
 
-	protected buildEdits(_parsed: Parsed, candidate: Candidate, originalRange: SourceRange | null): SourceEdit[] | null {
+	#buildEdits(_parsed: Parsed, candidate: Candidate, originalRange: SourceRange | null): SourceEdit[] | null {
 		if (!originalRange) return null;
 		if (candidate.path.removed) {
 			return [{ ...originalRange, replacement: "" }];
@@ -272,7 +272,7 @@ abstract class BaseAstMutation implements Mutation {
 		const originalRange = nodeRange(chosen.path.node);
 		const info = this.applyCandidate(parsed, chosen, rng);
 		if (info.lineNumber === 0) return [content, noopInfo()];
-		const edits = this.buildEdits(parsed, chosen, originalRange);
+		const edits = this.#buildEdits(parsed, chosen, originalRange);
 		if (!edits) return [content, noopInfo()];
 		const mutated = applySourceEdits(content, edits);
 		if (!mutated || mutated === content) return [content, noopInfo()];

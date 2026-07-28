@@ -273,6 +273,70 @@ describe("orphaned root entries", () => {
 		expect(orphanedRootEntries(wrapped, flat)).toEqual([]);
 	});
 
+	/**
+	 * The regression that made this guard hostile. Editing a package entry after a
+	 * root sync left the root holding the old wording, which was reported as an
+	 * orphan, and the ONLY way forward was `--force`, whose purpose is to discard
+	 * entries deliberately. A routine reword pushed the author onto the one flag
+	 * that can lose work. It was hit three times in one session.
+	 */
+	it("does not report an entry whose wording was edited after the last sync", () => {
+		const before = ROOT("- The selected roster row is highlighted across the whole row, which it was not before.");
+		const after = ROOT("- The selected roster row is highlighted across the whole row and stops at the gutter.");
+
+		expect(orphanedRootEntries(before, after)).toEqual([]);
+	});
+
+	/** An entry that gained a whole trailing paragraph is still the same entry. */
+	it("does not report an entry that grew after the last sync", () => {
+		const before = ROOT("- Page up and page down move the Agent Control Center.");
+		const after = ROOT(
+			"- Page up and page down move the Agent Control Center. They come from the shared bindings, so it is the same key and the same distance as every other selector.",
+		);
+
+		expect(orphanedRootEntries(before, after)).toEqual([]);
+	});
+
+	/**
+	 * And the guard still fires on what it exists for. A paragraph typed into the
+	 * root by hand shares no opening with anything the render produces, so it is
+	 * reported rather than silently deleted by the next write.
+	 */
+	it("still reports a hand-written entry that shares no opening with any rendered one", () => {
+		const rendered = ROOT("- The selected roster row is highlighted across the whole row.");
+		const withHandWritten = ROOT(
+			"- The selected roster row is highlighted across the whole row.\n- Somebody typed this straight into the generated root file.",
+		);
+
+		expect(orphanedRootEntries(withHandWritten, rendered)).toEqual([
+			"Somebody typed this straight into the generated root file.",
+		]);
+	});
+
+	/**
+	 * An entry rewritten from its FIRST word is indistinguishable from a new
+	 * hand-written paragraph, and is reported. That is the right way round:
+	 * reporting a reword costs a sentence of reading, and missing a hand-written
+	 * paragraph loses it. Pinned so the limitation is a decision, not a surprise.
+	 */
+	it("reports an entry rewritten from its opening, which cannot be told from a new one", () => {
+		const before = ROOT("- Wheel scrolling now moves the card rather than being swallowed by it.");
+		const after = ROOT("- The scroll wheel moves the card instead of being swallowed by it.");
+
+		expect(orphanedRootEntries(before, after)).toEqual([
+			"Wheel scrolling now moves the card rather than being swallowed by it.",
+		]);
+	});
+
+	/**
+	 * A short entry has no distinctive opening, so it is matched on its whole
+	 * text. Two one-word bullets sharing a prefix are not the same entry, and
+	 * treating them as one would silently drop the second.
+	 */
+	it("matches a short entry on its whole text rather than an opening", () => {
+		expect(orphanedRootEntries(ROOT("- fixed a thing"), ROOT("- fixed a thing too"))).toEqual(["fixed a thing"]);
+	});
+
 	it("ignores released sections, which are not at risk", () => {
 		const withRelease = `# Changelog\n\n## [Unreleased]\n\n### Changed\n\n- kept\n\n## [1.0.0] - 2026-01-01\n\n### Fixed\n\n- only here\n`;
 		const rendered = `# Changelog\n\n## [Unreleased]\n\n### Changed\n\n- kept\n`;

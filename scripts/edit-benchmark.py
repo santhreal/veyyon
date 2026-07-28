@@ -2,6 +2,13 @@
 """
 Edit benchmark: tests the edit tool across models with a simple edit task.
 
+NOT the same thing as `@veyyon/typescript-edit-benchmark`, despite the name.
+That package mutates TypeScript source in process and scores the result against
+generated tasks; it is what CI runs and it never calls a model. This makes LIVE
+model calls and asks a different question: can a real model drive each edit-tool
+VARIANT end to end. Both are edit benchmarks and neither replaces the other, so
+they keep separate homes and separate names for what they measure.
+
 Select the edit variant via the VEYYON_EDIT_VARIANT env var (e.g. `vim`,
 `hashline`, `replace`, `patch`, `apply_patch`) or `--variant`.
 

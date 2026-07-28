@@ -4,7 +4,8 @@
 #   sources: (1) bash-tool calls   (2) full-file writes to *.sh
 # Reports: (1) bash constructs   (2) CLI utilities   (3) flags per utility
 #
-#   julia bash_corpus_stats.jl
+# Run:
+#   cd scripts && julia bash_corpus_stats.jl
 # deps:  import Pkg; Pkg.add(["SQLite","JSON3","DBInterface"])
 
 using SQLite, JSON3, DBInterface, Printf

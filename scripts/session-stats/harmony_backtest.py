@@ -6,6 +6,13 @@ This is a dry-run analysis tool. It does not mutate stats.db or session JSONL.
 It scans stored assistant/tool-call surfaces, applies a selected detection and
 recovery strategy, and prints which edit inputs would be preserved by a
 sanitize-tail strategy versus aborted/replayed.
+
+Run (populate the tables with sync.py first):
+    scripts/session-stats/sync.py
+    scripts/session-stats/harmony_backtest.py --help
+
+Hand-run against the operator's own `~/.veyyon/stats.db`. Read-only: it mutates
+neither the database nor the session JSONL.
 """
 
 from __future__ import annotations

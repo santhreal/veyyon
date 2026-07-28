@@ -1,6 +1,4 @@
 #!/usr/bin/env bun
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { dirname, extname, join, relative, resolve, sep } from "node:path";
 /**
  * Codemod: rewrite relative test imports that reach into a package's `src/`
  * into the package's public subpath import.
@@ -18,6 +16,8 @@ import { dirname, extname, join, relative, resolve, sep } from "node:path";
  *   bun scripts/fix-test-imports.ts          # dry run, prints a diff summary
  *   bun scripts/fix-test-imports.ts --write  # apply the changes
  */
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { Glob } from "bun";
 
 const ROOT = resolve(import.meta.dir, "..");

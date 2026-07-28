@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """
-Shared helpers for edit benchmark scripts.
+Shared helpers for the hand-run, live-model edit benchmarks.
+
+The task spec, the model driver and the scoring shared by `edit-benchmark.py`
+and `rate-edit-tool.py`. A library, not a command.
+
+Run: not directly. Run a benchmark that imports it:
+    VEYYON_EDIT_VARIANT=vim scripts/edit-benchmark.py
+
+Unrelated to `@veyyon/typescript-edit-benchmark`, which is the in-process
+TypeScript-mutation suite CI runs. See `edit-benchmark.py` for why both exist.
 """
 
 from __future__ import annotations

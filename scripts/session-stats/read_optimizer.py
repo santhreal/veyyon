@@ -19,6 +19,14 @@ truncations, and a Pareto frontier.
 
 Output:
   scripts/session-stats/out/read-optimizer.png
+
+Run (populate the tables with sync.py first):
+    scripts/session-stats/sync.py
+    scripts/session-stats/read_optimizer.py --help
+
+Hand-run against the operator's own `~/.veyyon/stats.db`. A counterfactual
+replay: it reports what a candidate config would have avoided, and changes
+nothing.
 """
 
 from __future__ import annotations

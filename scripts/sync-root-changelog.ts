@@ -110,6 +110,21 @@ export function unreleasedBullets(md: string): string[] {
 }
 
 /**
+ * Characters of an entry's opening that identify it across an edit.
+ *
+ * Long enough that two different entries do not collide: 40 characters is most
+ * of a sentence, and no two changelog entries in this repo open the same way.
+ * Short enough that rewording the body of an entry, which is what an author
+ * actually does, does not turn it into a stranger.
+ */
+const ENTRY_IDENTITY_CHARS = 40;
+
+/** The opening of a bullet, or null when it is too short to identify by one. */
+function entryIdentity(bullet: string): string | null {
+	return bullet.length >= ENTRY_IDENTITY_CHARS ? bullet.slice(0, ENTRY_IDENTITY_CHARS) : null;
+}
+
+/**
  * Unreleased entries the on-disk root has and a fresh render does not: exactly
  * what a regeneration would delete.
  *
@@ -119,10 +134,30 @@ export function unreleasedBullets(md: string): string[] {
  * unclaimed and the warning becomes noise nobody reads. Comparing what is on disk
  * to what would replace it is immune to any rewriting, and it is the precise
  * question being asked: which of these paragraphs is about to be lost?
+ *
+ * An EDITED entry is the same entry. Matching on exact text alone meant that
+ * rewording a package entry after a root sync left the root holding the old
+ * wording, which this function then called an orphan, and the only way forward
+ * was `--force`, whose whole purpose is to discard entries deliberately. A
+ * routine reword pushed the author onto the one flag that can lose work, three
+ * times in one session. So an on-disk entry is claimed when its opening matches
+ * a rendered entry's opening, not only when the whole paragraph does.
+ *
+ * What that cannot catch: an entry rewritten from its first word, which is
+ * indistinguishable from a paragraph somebody typed into the root by hand. The
+ * guard reports it, and the author moves it to its package or forces the write.
+ * That is the right way round: reporting a reword costs a sentence of reading,
+ * and missing a hand-written paragraph loses it.
  */
 export function orphanedRootEntries(currentRoot: string, expectedRoot: string): string[] {
-	const rendered = new Set(unreleasedBullets(expectedRoot));
-	return unreleasedBullets(currentRoot).filter(bullet => !rendered.has(bullet));
+	const rendered = unreleasedBullets(expectedRoot);
+	const exact = new Set(rendered);
+	const openings = new Set(rendered.map(entryIdentity).filter((id): id is string => id !== null));
+	return unreleasedBullets(currentRoot).filter(bullet => {
+		if (exact.has(bullet)) return false;
+		const identity = entryIdentity(bullet);
+		return identity === null || !openings.has(identity);
+	});
 }
 
 async function main(): Promise<void> {

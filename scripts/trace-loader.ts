@@ -1,6 +1,14 @@
 /**
- * Bun preload script that traces module resolution.
- * Usage: bun --preload ./scripts/trace-loader.ts <script>
+ * Traces module resolution, to find what a slow import is actually loading.
+ *
+ * A Bun preload that hooks `onResolve` and prints every path the first time it
+ * is resolved, with the elapsed time since startup. Use it when a script or a
+ * suite takes longer to START than to run: the output shows which import pulled
+ * in a barrel, and the timestamps show where the cliff is. It does not
+ * interfere with loading, so the traced program behaves normally.
+ *
+ * Usage:
+ *   bun --preload ./scripts/trace-loader.ts <script>
  */
 
 const startTime = Bun.nanoseconds();

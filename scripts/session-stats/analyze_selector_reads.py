@@ -20,6 +20,12 @@ separate cohort and excluded from interval math.
 
 Outputs:
   scripts/session-stats/out/selector-coverage.png
+
+Run (populate the tables with sync.py first):
+    scripts/session-stats/sync.py
+    scripts/session-stats/analyze_selector_reads.py --help
+
+Hand-run against the operator's own `~/.veyyon/stats.db`.
 """
 
 from __future__ import annotations

@@ -14,6 +14,13 @@ Reads ss_tool_calls + ss_tool_results and renders:
 N by total tokens (default 10); override with --top N or --tools a,b,c.
 
 Output: scripts/session-stats/out/tool-trends.png + standalone panels.
+
+Run (populate the tables with sync.py first):
+    scripts/session-stats/sync.py
+    scripts/session-stats/plot_tools.py --help
+
+Hand-run against the operator's own `~/.veyyon/stats.db`. Needs matplotlib and
+writes an image, which is why it is not a gate.
 """
 
 from __future__ import annotations

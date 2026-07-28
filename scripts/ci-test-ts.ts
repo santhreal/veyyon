@@ -241,6 +241,8 @@ export const repoScriptTests = [
 	"scripts/fuzz-triage.test.ts",
 	"scripts/a-source-file-that-reads-as-binary-is-invisible.test.ts",
 	"scripts/barrel-files-are-imported.test.ts",
+	"scripts/class-privacy-is-the-hash.test.ts",
+	"scripts/the-committed-handbook-matches-its-sources.test.ts",
 	"scripts/workspace-typecheck-coverage.test.ts",
 	"scripts/workspace-test-coverage.test.ts",
 	"scripts/tool-renderer-coverage.test.ts",
@@ -293,6 +295,9 @@ export const repoScriptTests = [
 	"scripts/demos/lib/png.test.ts",
 	"scripts/demos/lib/ansi-grid.test.ts",
 	"scripts/demos/lib/ansi-raster.test.ts",
+	"scripts/every-skill-is-catalogued.test.ts",
+	"scripts/every-script-has-an-owner.test.ts",
+	"scripts/first-party-docs-are-indexed.test.ts",
 	"scripts/script-tests-coverage.test.ts",
 	"scripts/stray-output-path.test.ts",
 	// The leak tracer's own contract tests. Also run by the `test-leaks` job in

@@ -14,6 +14,13 @@ the denominator = every tool's args + results + assistant text + assistant
 thinking + user messages. That removes the "I worked harder that day" effect.
 
 Outputs to scripts/session-stats/out/read-summarizer-*.png.
+
+Run (populate the tables with sync.py first):
+    scripts/session-stats/sync.py
+    scripts/session-stats/plot_read_summarizer.py --help
+
+Hand-run against the operator's own `~/.veyyon/stats.db`. Needs matplotlib and
+writes an image, which is why it is not a gate.
 """
 
 from __future__ import annotations
