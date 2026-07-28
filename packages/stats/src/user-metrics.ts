@@ -5,6 +5,8 @@
  * and standalone testing.
  */
 
+import { stripAnsi } from "@veyyon/utils/strip-ansi";
+
 export interface UserMessageMetrics {
 	/** Total characters of analyzed text. */
 	chars: number;
@@ -541,9 +543,14 @@ const QUOTE_LINE_RE = /^[ \t]*>.*$/gm;
 // Strip them so real frustration signals on later lines aren't masked off
 // by `[Image #1]` etc. consuming line 1.
 const IMAGE_MARKER_RE = /\[Image #\d+\]/g;
-// ANSI escape sequences sometimes leak in from terminal copy-paste
-// (e.g. when the user pastes a bash transcript). Strip them.
-const ANSI_ESCAPE_RE = /\x1b\[[0-9;]*[A-Za-z]/g;
+// ANSI escape sequences sometimes leak in from terminal copy-paste (e.g. when the
+// user pastes a bash transcript). Stripped through `@veyyon/utils/strip-ansi`,
+// which owns the grammar, rather than through a local pattern: the local one was
+// `/\x1b\[[0-9;]*[A-Za-z]/g`, which accepts neither a private-mode sequence
+// (`ESC [ ?25l`, because `?` is not a parameter byte to it) nor an intermediate
+// byte nor a non-alphabetic final, and does not know OSC at all. A pasted prompt
+// or a hyperlinked path therefore left `?25l` and a whole URL behind as prose, and
+// the metrics below then scored that leftover as the user's words.
 
 // Users don't really get angry with super detailed and formatted prompts
 // - if the remaining prose is this many lines or more, score zero.
@@ -600,9 +607,25 @@ function countYellingSentences(text: string): number {
  * mentions and quoted blocks don't dilute or fake behavior signals.
  * Each strip is replaced with a newline so subsequent line counting
  * reflects what was removed instead of merging neighbors.
+ *
+ * Exported because it is the seam the behavior signals are computed over, and the
+ * signals cannot observe most of what it removes: the leftover from a missed CSI
+ * sequence is at most something like `?25l`, which matches no signal pattern and
+ * shifts no count, so a test that went through {@link computeUserMessageMetrics}
+ * would pass whether or not the sequence was stripped. What it WOULD do is join the
+ * prose and change where sentences begin and end, which is exactly the kind of
+ * defect that surfaces later as an unexplained score. Asserting on the stripped text
+ * is the only way to state the contract in terms of real values.
  */
-function stripStructuredContent(text: string): string {
-	return text
+export function stripStructuredContent(text: string): string {
+	// ESCAPES COME OFF FIRST, before any rule that reads the text as content. An escape
+	// sequence carries a payload that is not prose but very much looks like it, and the
+	// URL rule below is greedy to the next whitespace: with the ANSI strip running last,
+	// an OSC 8 hyperlink's target ran through its own BEL terminator and took the first
+	// word of the user's sentence with it, leaving `]8;;` behind as the sentence's
+	// opening token. Removing the sequences first means every later rule sees text a
+	// terminal would have drawn.
+	return stripAnsi(text)
 		.replace(FENCED_CODE_RE, "\n")
 		.replace(XML_TAG_PAIR_RE, "\n")
 		.replace(XML_TAG_BARE_RE, " ")
@@ -611,8 +634,7 @@ function stripStructuredContent(text: string): string {
 		.replace(FILE_MENTION_RE, "$1 ")
 		.replace(DOTTED_TOKEN_RE, " ")
 		.replace(QUOTE_LINE_RE, "")
-		.replace(IMAGE_MARKER_RE, " ")
-		.replace(ANSI_ESCAPE_RE, "");
+		.replace(IMAGE_MARKER_RE, " ");
 }
 
 function countNonEmptyLines(text: string): number {
