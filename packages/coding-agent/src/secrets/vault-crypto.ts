@@ -122,10 +122,7 @@ function safeError(error: unknown): string {
 	return escapeTerminalText(String(error));
 }
 
-function sameInode(
-	left: Pick<Stats, "dev" | "ino">,
-	right: Pick<Stats, "dev" | "ino">,
-): boolean {
+function sameInode(left: Pick<Stats, "dev" | "ino">, right: Pick<Stats, "dev" | "ino">): boolean {
 	return left.dev === right.dev && left.ino === right.ino;
 }
 
@@ -243,9 +240,7 @@ async function pinKeyRoot(globalConfigRoot: string): Promise<KeyRootPin | null> 
 		);
 	}
 	if (before.isSymbolicLink()) {
-		throw new Error(
-			`The vault key directory at ${safeText(globalConfigRoot)} is a symlink. Refusing to follow it.`,
-		);
+		throw new Error(`The vault key directory at ${safeText(globalConfigRoot)} is a symlink. Refusing to follow it.`);
 	}
 	if (!before.isDirectory()) {
 		throw new Error(
@@ -347,10 +342,7 @@ function assertKeyNotExposed(keyPath: string, stat: Stats): void {
 	);
 }
 
-async function removePathIfSameInode(
-	target: string,
-	identity: Pick<Stats, "dev" | "ino">,
-): Promise<boolean> {
+async function removePathIfSameInode(target: string, identity: Pick<Stats, "dev" | "ino">): Promise<boolean> {
 	try {
 		const current = await fs.lstat(target);
 		if (!current.isFile() || !sameInode(current, identity)) return false;
@@ -520,7 +512,7 @@ async function readVaultKeyPinned(pin: KeyRootPin): Promise<Buffer | null> {
 	assertKeyNotExposed(displayKeyPath, pathStat);
 	const snapshot = keySnapshot(pathStat);
 
-	let handle;
+	let handle: fs.FileHandle;
 	try {
 		handle = await fs.open(keyPath, KEY_READ_FLAGS);
 	} catch (error) {
@@ -583,7 +575,7 @@ async function readVaultKeyPinned(pin: KeyRootPin): Promise<Buffer | null> {
 function publicKeyError(error: unknown): Error {
 	const message = escapeTerminalText(errorMessage(error))
 		.replace(/\.vault\.key\.\d+\.[0-9a-f-]{36}\.tmp(?:\.previous)?/gi, "<vault-key-stage>")
-		.replace(/vault\.key\.lock(?:\.[^\s'\"\\]+|\.candidate-[^\s'\"\\]+)?/gi, "<vault-key-lock>");
+		.replace(/vault\.key\.lock(?:\.[^\s'"\\]+|\.candidate-[^\s'"\\]+)?/gi, "<vault-key-lock>");
 	return new Error(message);
 }
 

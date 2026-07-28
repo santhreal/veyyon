@@ -27,17 +27,17 @@ import {
 	formatTtl,
 	generateSecretName,
 	isExpired,
-	MAX_VAULT_FILE_BYTES,
 	lifeFraction,
+	MAX_VAULT_FILE_BYTES,
 	normaliseSecretName,
 	parseTtl,
 	SecretVault,
-	type VaultLocations,
 	VAULT_FILENAME,
+	type VaultLocations,
 	vaultPathFor,
 	warningThresholdCrossed,
 } from "@veyyon/coding-agent/secrets/vault";
-import { loadOrCreateVaultKey, sealVault, type SealedVault } from "@veyyon/coding-agent/secrets/vault-crypto";
+import { loadOrCreateVaultKey, type SealedVault, sealVault } from "@veyyon/coding-agent/secrets/vault-crypto";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -389,9 +389,9 @@ describe("storing and reading", () => {
 		await withVault(async vault => {
 			await vault.add({ name: "SMALL_TOKEN", value: VALUE });
 
-			await expect(
-				vault.add({ name: "OVERSIZED_TOKEN", value: "x".repeat(MAX_VAULT_FILE_BYTES) }),
-			).rejects.toThrow(/over the 6291402-byte plaintext safety limit/);
+			await expect(vault.add({ name: "OVERSIZED_TOKEN", value: "x".repeat(MAX_VAULT_FILE_BYTES) })).rejects.toThrow(
+				/over the 6291402-byte plaintext safety limit/,
+			);
 			expect((await vault.load()).map(entry => entry.name)).toEqual(["SMALL_TOKEN"]);
 		});
 	});
@@ -804,9 +804,9 @@ describe("scope precedence", () => {
 			await vault.add({ name: "GLOBAL_TOKEN", value: VALUE, scope: "global" });
 
 			expect(await vault.load()).toEqual([expect.objectContaining({ name: "GLOBAL_TOKEN", scope: "global" })]);
-			await expect(vault.add({ name: "PROJECT_TOKEN", value: `${VALUE}_project`, scope: "project" })).rejects.toThrow(
-				/project vault path .* is also the global vault path.*different working directory/i,
-			);
+			await expect(
+				vault.add({ name: "PROJECT_TOKEN", value: `${VALUE}_project`, scope: "project" }),
+			).rejects.toThrow(/project vault path .* is also the global vault path.*different working directory/i);
 			expect(await vault.remove("GLOBAL_TOKEN")).toBe("global");
 		} finally {
 			await fs.rm(home, { recursive: true, force: true });
@@ -831,9 +831,9 @@ describe("scope precedence", () => {
 			await vault.add({ name: "GLOBAL_TOKEN", value: VALUE, scope: "global" });
 
 			expect(await vault.load()).toEqual([expect.objectContaining({ name: "GLOBAL_TOKEN", scope: "global" })]);
-			await expect(vault.add({ name: "PROJECT_TOKEN", value: `${VALUE}_project`, scope: "project" })).rejects.toThrow(
-				/project vault path .* is also the global vault path/i,
-			);
+			await expect(
+				vault.add({ name: "PROJECT_TOKEN", value: `${VALUE}_project`, scope: "project" }),
+			).rejects.toThrow(/project vault path .* is also the global vault path/i);
 		} finally {
 			await fs.rm(root, { recursive: true, force: true });
 		}
@@ -959,7 +959,6 @@ describe("scope precedence", () => {
 			await expect(vault.load()).rejects.toThrow(/has 2 hard links/);
 		});
 	});
-
 
 	/** Distinct names in different scopes all show up. */
 	it("returns entries from every scope", async () => {

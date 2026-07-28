@@ -110,8 +110,14 @@ async function createFixture(overrides: Record<string, unknown> = {}): Promise<M
 }
 
 async function writeRollout(fixture: MemoryBoundaryFixture, id: string, messages: unknown[]): Promise<void> {
-	const rows = [{ type: "session", id, cwd: fixture.agentDir }, ...messages.map(message => ({ type: "message", message }))];
-	await fs.writeFile(path.join(fixture.sessionDir, `${id}.jsonl`), `${rows.map(row => JSON.stringify(row)).join("\n")}\n`);
+	const rows = [
+		{ type: "session", id, cwd: fixture.agentDir },
+		...messages.map(message => ({ type: "message", message })),
+	];
+	await fs.writeFile(
+		path.join(fixture.sessionDir, `${id}.jsonl`),
+		`${rows.map(row => JSON.stringify(row)).join("\n")}\n`,
+	);
 }
 
 async function settle(fixture: MemoryBoundaryFixture): Promise<void> {
@@ -195,7 +201,9 @@ describe("memory provider boundary", () => {
 	test("leaves safe projected text unchanged when there is no runtime sanitizer", async () => {
 		// Why: confidentiality hardening must not alter the existing local-memory semantics for safe text.
 		const fixture = await createFixture();
-		await writeRollout(fixture, "safe-text", [{ role: "assistant", content: [{ type: "text", text: "safe answer" }] }]);
+		await writeRollout(fixture, "safe-text", [
+			{ role: "assistant", content: [{ type: "text", text: "safe answer" }] },
+		]);
 		let stageOnePayload = "";
 		vi.spyOn(ai, "completeSimple").mockImplementation(
 			async (_model: Model, context: Context, options?: SimpleStreamOptions) => {
@@ -211,7 +219,7 @@ describe("memory provider boundary", () => {
 		start(fixture);
 		await settle(fixture);
 		expect(stageOnePayload).toContain("safe answer");
-		expect(stageOnePayload).toContain('\\\"role\\\":\\\"assistant\\\",\\\"text\\\":\\\"safe answer\\\"');
+		expect(stageOnePayload).toContain('\\"role\\":\\"assistant\\",\\"text\\":\\"safe answer\\"');
 	});
 
 	test("obfuscates complete secrets before head-tail token truncation can expose fragments", async () => {
@@ -319,7 +327,16 @@ describe("memory provider boundary", () => {
 		await settle(fixture);
 		expect(stageOnePayload).toContain("retain this");
 		expect(stageOnePayload).toContain("assistant text");
-		for (const forbidden of [visibleSecret, hiddenBinary, encodedBinary, nestedSecret, secretKey, "providerPayload", "toolCall", "mimeType"]) {
+		for (const forbidden of [
+			visibleSecret,
+			hiddenBinary,
+			encodedBinary,
+			nestedSecret,
+			secretKey,
+			"providerPayload",
+			"toolCall",
+			"mimeType",
+		]) {
 			expect(stageOnePayload).not.toContain(forbidden);
 		}
 	});

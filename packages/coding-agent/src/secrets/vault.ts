@@ -20,8 +20,8 @@
  * "everywhere" choice.
  */
 import { createHash, randomUUID } from "node:crypto";
-import { constants as fsConstants, type Stats } from "node:fs";
 import * as fsSync from "node:fs";
+import { constants as fsConstants, type Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
@@ -84,8 +84,7 @@ const SEALED_VAULT_FIXED_BYTES = Buffer.byteLength(
 	JSON.stringify({ v: 2, iv: "A".repeat(16), tag: "A".repeat(24), ct: "" }),
 	"utf8",
 );
-export const MAX_VAULT_PLAINTEXT_BYTES =
-	Math.floor((MAX_VAULT_FILE_BYTES - SEALED_VAULT_FIXED_BYTES) / 4) * 3;
+export const MAX_VAULT_PLAINTEXT_BYTES = Math.floor((MAX_VAULT_FILE_BYTES - SEALED_VAULT_FIXED_BYTES) / 4) * 3;
 
 /** A stored credential. */
 export interface VaultEntry {
@@ -134,8 +133,7 @@ function parseVaultFile(plaintext: string, scope: VaultScope, vaultPath: string)
 		value = JSON.parse(plaintext);
 	} catch (error) {
 		throw new Error(
-			`The decrypted ${scope} vault at ${safeText(vaultPath)} is not valid JSON ` +
-				`(${safeError(error)}).`,
+			`The decrypted ${scope} vault at ${safeText(vaultPath)} is not valid JSON ` + `(${safeError(error)}).`,
 		);
 	}
 	if (value === null || typeof value !== "object" || !("entries" in value) || !Array.isArray(value.entries)) {
@@ -207,7 +205,9 @@ function expiryFrom(now: number, ttl: number | null): number | null {
  */
 export function parseTtl(spec: string): number | null {
 	if (spec.length > 64) {
-		throw new Error("This lifetime is too large to represent safely. Use a short amount such as 30m, 12h, 7d, or 2w.");
+		throw new Error(
+			"This lifetime is too large to represent safely. Use a short amount such as 30m, 12h, 7d, or 2w.",
+		);
 	}
 	const text = spec.trim().toLowerCase();
 	if (text === NEVER_TTL) return null;
@@ -514,8 +514,7 @@ async function sameDisplacedSnapshot(
 	}
 	const bytes = await fs.readFile(displacedPath);
 	return (
-		bytes.byteLength === expected.size &&
-		createHash("sha256").update(bytes).digest("hex") === expected.contentHash
+		bytes.byteLength === expected.size && createHash("sha256").update(bytes).digest("hex") === expected.contentHash
 	);
 }
 
@@ -546,9 +545,7 @@ async function pinVaultScope(scope: VaultScope, vaultPath: string): Promise<Vaul
 		);
 	}
 	if (!before.isDirectory()) {
-		throw new Error(
-			`The ${scope} vault directory at ${safeText(directory)} is not a directory. Refusing to use it.`,
-		);
+		throw new Error(`The ${scope} vault directory at ${safeText(directory)} is not a directory. Refusing to use it.`);
 	}
 
 	let directoryHandle: fs.FileHandle | undefined;
@@ -747,10 +744,7 @@ async function writeVaultAtomically(
 ): Promise<void> {
 	await assertExpectedVaultPath(scope, vaultPath, pin, expected);
 	const installedPath = pinnedVaultPath(pin, vaultPath);
-	const temporaryPath = path.join(
-		pin.ioDirectory,
-		`.${path.basename(vaultPath)}.${process.pid}.${randomUUID()}.tmp`,
-	);
+	const temporaryPath = path.join(pin.ioDirectory, `.${path.basename(vaultPath)}.${process.pid}.${randomUUID()}.tmp`);
 	const windowsBackupPath = `${temporaryPath}.previous`;
 	let stagedStat: Stats | null = null;
 	let installed = false;
@@ -829,8 +823,15 @@ function jsonStringByteLength(value: string): number {
 	let bytes = 2;
 	for (let index = 0; index < value.length; index++) {
 		const codeUnit = value.charCodeAt(index);
-		if (codeUnit === 0x22 || codeUnit === 0x5c || codeUnit === 0x08 || codeUnit === 0x09 || codeUnit === 0x0a ||
-			codeUnit === 0x0c || codeUnit === 0x0d) {
+		if (
+			codeUnit === 0x22 ||
+			codeUnit === 0x5c ||
+			codeUnit === 0x08 ||
+			codeUnit === 0x09 ||
+			codeUnit === 0x0a ||
+			codeUnit === 0x0c ||
+			codeUnit === 0x0d
+		) {
 			bytes += 2;
 		} else if (codeUnit < 0x20 || (codeUnit >= 0xd800 && codeUnit <= 0xdfff)) {
 			if (codeUnit <= 0xdbff && index + 1 < value.length) {
@@ -1022,7 +1023,7 @@ export class SecretVault {
 		const snapshot = snapshotOf(pathStat);
 
 		const ioPath = pinnedVaultPath(pin, vaultPath);
-		let handle;
+		let handle: fs.FileHandle;
 		try {
 			handle = await fs.open(ioPath, VAULT_READ_FLAGS);
 		} catch (error) {
@@ -1151,10 +1152,7 @@ export class SecretVault {
 				async () => {
 					await verifyVaultScopePin(scope, pin);
 					const read = await this.#readScopeRaw(scope, pin);
-					const { entries, result: transformed, write = true } = transform(
-						read?.entries ?? [],
-						read !== null,
-					);
+					const { entries, result: transformed, write = true } = transform(read?.entries ?? [], read !== null);
 					if (write) await this.#writeScope(scope, entries, pin, read?.snapshot ?? null);
 					await verifyVaultScopePin(scope, pin);
 					return transformed;
