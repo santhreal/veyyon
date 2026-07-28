@@ -352,6 +352,8 @@ export interface ExecutorOptions {
 	planReference?: { path: string; content: string };
 	/** Pre-set UI label (e.g. eval bridge label). When absent, a tiny-model label is generated from the assignment. */
 	description?: string;
+	/** Final outbound confidentiality boundary for generated label input. */
+	obfuscateProviderText?: (text: string) => string;
 	index: number;
 	id: string;
 	parentToolCallId?: string;
@@ -904,6 +906,7 @@ interface RunMonitorArgs {
 	modelRegistry?: ModelRegistry;
 	/** Parent settings for tiny-model label generation. */
 	settings?: Settings;
+	obfuscateProviderText?: (text: string) => string;
 	modelOverride?: string | string[];
 	signal?: AbortSignal;
 	onProgress?: (progress: AgentProgress) => void;
@@ -1210,7 +1213,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 	// failures just leave the label unset.
 	const labelSource = assignment?.trim();
 	if (!args.description && args.modelRegistry && args.settings && labelSource) {
-		generateTaskLabel(labelSource, args.modelRegistry, args.settings, id)
+		generateTaskLabel(labelSource, args.modelRegistry, args.settings, id, args.obfuscateProviderText)
 			.then(label => {
 				if (!label || abortSignal.aborted || progress.description) return;
 				progress.description = label;
@@ -1677,6 +1680,9 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 				}
 			}
 			if (event.type === "retry_fallback_applied") {
+				// Remember the first model only. A chain that walks three deep still
+				// fell back FROM the model the user picked, not from the second one.
+				progress.fellBackFrom ??= progress.resolvedModel ?? event.from;
 				progress.resolvedModel = event.to;
 				scheduleProgress(true);
 				return;
@@ -2535,6 +2541,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		description: options.description,
 		modelRegistry: options.modelRegistry,
 		settings,
+		obfuscateProviderText: options.obfuscateProviderText,
 		modelOverride,
 		signal,
 		onProgress,

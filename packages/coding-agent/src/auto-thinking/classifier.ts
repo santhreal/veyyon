@@ -44,6 +44,8 @@ export interface ClassifyDifficultyDeps {
 	sessionId?: string;
 	signal?: AbortSignal;
 	metadataResolver?: (provider: string) => Record<string, unknown> | undefined;
+	/** Final confidentiality boundary for text sent to an online classifier. */
+	obfuscateProviderText?: (text: string) => string;
 }
 
 /**
@@ -89,7 +91,13 @@ async function classifyOnline(input: string, deps: ClassifyDifficultyDeps): Prom
 		model,
 		{
 			systemPrompt: [DIFFICULTY_SYSTEM_PROMPT],
-			messages: [{ role: "user", content: input, timestamp: Date.now() }],
+			messages: [
+				{
+					role: "user",
+					content: deps.obfuscateProviderText ? deps.obfuscateProviderText(input) : input,
+					timestamp: Date.now(),
+				},
+			],
 		},
 		{
 			apiKey: deps.registry.resolver(model, deps.sessionId),

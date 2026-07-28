@@ -229,6 +229,7 @@ export class InspectImageTool implements AgentTool<typeof inspectImageSchema, In
 			throw new ToolError("inspect_image only supports PNG, JPEG, GIF, and WEBP files detected by file content.");
 		}
 
+		const providerQuestion = this.session.obfuscateProviderText?.(params.question) ?? params.question;
 		const telemetry = resolveTelemetry(this.session.getTelemetry?.(), this.session.getSessionId?.() ?? undefined);
 		const response = await instrumentedCompleteSimple(
 			model,
@@ -239,7 +240,7 @@ export class InspectImageTool implements AgentTool<typeof inspectImageSchema, In
 						role: "user",
 						content: [
 							{ type: "image", data: imageInput.data, mimeType: imageInput.mimeType },
-							{ type: "text", text: params.question },
+							{ type: "text", text: providerQuestion },
 						],
 						timestamp: Date.now(),
 					},

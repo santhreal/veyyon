@@ -13,16 +13,19 @@ import {
 	getOpenAICodexTransportDetails,
 	prewarmOpenAICodexResponses,
 } from "@veyyon/ai/providers/openai-codex-responses";
+import * as path from "node:path";
 import type { Component } from "@veyyon/tui";
 import {
 	$env,
 	errorMessage,
 	getAgentDir,
+	getGlobalConfigRootDir,
 	getProjectDir,
 	logger,
 	postmortem,
 	prefetch,
 	prompt,
+	setFaultSink,
 	Snowflake,
 	setProjectDir,
 } from "@veyyon/utils";
@@ -133,12 +136,20 @@ import {
 	collectEnvSecrets,
 	deobfuscateSessionContext,
 	deobfuscateToolArguments,
+	describeSecretRejection,
 	loadSecrets,
+	type SecretEntry,
 	obfuscateMessages,
 	obfuscateProviderContext,
 	SecretObfuscator,
 } from "./secrets";
-import { AgentSession, type PlanYolo, type Prewalk } from "./session/agent-session";
+import { buildExpansionRecord, SecretAuditLog, secretAuditPath } from "./secrets/audit";
+import { buildEnvSecretPattern, loadEnvSecretKeywords } from "./secrets/env-keywords";
+import { expiryWarnings } from "./secrets/secret-command";
+import { resolveVaultLocations, SecretVault } from "./secrets/vault";
+import { loadOrCreateVaultKey } from "./secrets/vault-crypto";
+import { AgentSession, obfuscateProviderPayload, type PlanYolo, type Prewalk } from "./session/agent-session";
+import { OperatorNotices, stderrNoticeSink } from "./session/operator-notices";
 import { discoverAuthStorage } from "./session/auth-broker-config";
 import type { AuthStorage } from "./session/auth-storage";
 import { createInterruptedTurnAbortMessage } from "./session/exit-diagnostics";
@@ -500,6 +511,16 @@ export interface CreateAgentSessionOptions {
 
 	/** Shared event bus for tool/extension communication. Default: creates new bus. */
 	eventBus?: EventBus;
+
+	/**
+	 * Where non-fatal problems the operator must see are delivered.
+	 *
+	 * Pass one built by the surface that can render it: a TUI constructs it with no sink and
+	 * attaches its own once the screen exists, so warnings raised during session startup are
+	 * buffered rather than lost. Default: a collector that writes to stderr as notices arrive,
+	 * which is loud in the wrong place rather than silent (Law 10).
+	 */
+	operatorNotices?: OperatorNotices;
 
 	/** Skills. Default: discovered from multiple locations */
 	skills?: Skill[];
@@ -923,7 +944,10 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 
 // Internal Helpers
 
-function createCustomToolContext(ctx: ExtensionContext): CustomToolContext {
+function createCustomToolContext(
+	ctx: ExtensionContext,
+	obfuscateProviderText?: (text: string) => string,
+): CustomToolContext {
 	return {
 		sessionManager: ctx.sessionManager,
 		modelRegistry: ctx.modelRegistry,
@@ -931,6 +955,7 @@ function createCustomToolContext(ctx: ExtensionContext): CustomToolContext {
 		isIdle: ctx.isIdle,
 		hasQueuedMessages: ctx.hasPendingMessages,
 		abort: ctx.abort,
+		obfuscateProviderText: obfuscateProviderText ?? ctx.obfuscateProviderText,
 		localProtocolOptions: ctx.localProtocolOptions,
 	};
 }
@@ -988,7 +1013,7 @@ function registerEvalCleanup(): void {
 	postmortem.register("js-eval-cleanup", disposeAllVmContexts);
 }
 
-function customToolToDefinition(tool: CustomTool): ToolDefinition {
+function customToolToDefinition(tool: CustomTool, obfuscateProviderText?: (text: string) => string): ToolDefinition {
 	const definition: ToolDefinition & { [TOOL_DEFINITION_MARKER]: true } = {
 		name: tool.name,
 		label: tool.label,
@@ -1000,8 +1025,10 @@ function customToolToDefinition(tool: CustomTool): ToolDefinition {
 		mcpServerName: tool.mcpServerName,
 		mcpToolName: tool.mcpToolName,
 		execute: (toolCallId, params, signal, onUpdate, ctx) =>
-			tool.execute(toolCallId, params, onUpdate, createCustomToolContext(ctx), signal),
-		onSession: tool.onSession ? (event, ctx) => tool.onSession?.(event, createCustomToolContext(ctx)) : undefined,
+			tool.execute(toolCallId, params, onUpdate, createCustomToolContext(ctx, obfuscateProviderText), signal),
+		onSession: tool.onSession
+			? (event, ctx) => tool.onSession?.(event, createCustomToolContext(ctx, obfuscateProviderText))
+			: undefined,
 		renderCall: tool.renderCall,
 		renderResult: tool.renderResult
 			? (result, options, theme): Component => {
@@ -1019,17 +1046,20 @@ function customToolToDefinition(tool: CustomTool): ToolDefinition {
 	return definition;
 }
 
-function createCustomToolsExtension(tools: CustomTool[]): ExtensionFactory {
+function createCustomToolsExtension(
+	tools: CustomTool[],
+	obfuscateProviderText: (text: string) => string,
+): ExtensionFactory {
 	return api => {
 		for (const tool of tools) {
-			api.registerTool(customToolToDefinition(tool));
+			api.registerTool(customToolToDefinition(tool, obfuscateProviderText));
 		}
 
 		const runOnSession = async (event: CustomToolSessionEvent, ctx: ExtensionContext) => {
 			for (const tool of tools) {
 				if (!tool.onSession) continue;
 				try {
-					await tool.onSession(event, createCustomToolContext(ctx));
+					await tool.onSession(event, createCustomToolContext(ctx, obfuscateProviderText));
 				} catch (err) {
 					logger.warn("Custom tool onSession error", { tool: tool.name, error: String(err) });
 				}
@@ -1345,18 +1375,78 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	// key is resolved lazily per request via ModelRegistry.resolver.
 	const hasModelAuth = (candidate: Model): boolean => modelRegistry.hasConfiguredAuth(candidate);
 
-	// Load and create secret obfuscator early so resumed session state and prompt warnings
-	// reflect actual loaded secrets, not just the setting toggle.
-	let obfuscator: SecretObfuscator | undefined;
-	if (settings.get("secrets.enabled")) {
-		const fileEntries = await logger.time("loadSecrets", loadSecrets, cwd, agentDir);
-		const envEntries = collectEnvSecrets();
-		const allEntries = [...envEntries, ...fileEntries];
-		if (allEntries.length > 0) {
-			obfuscator = new SecretObfuscator(allEntries);
+	// The operator-visible channel for a non-fatal problem. Built before anything that can raise
+	// one, and defaulted to stderr rather than to nothing: a caller that supplies no surface gets
+	// its warnings in the wrong place, never dropped.
+	const operatorNotices = options.operatorNotices ?? new OperatorNotices(stderrNoticeSink);
+
+	// Give `@veyyon/utils` somewhere to put a filesystem fault. Those helpers are free functions a
+	// layer below this one, so they cannot reach a per-session channel and had nothing but
+	// `logger.warn`, which is file-only: a subagents directory that exists and cannot be listed
+	// reported "no subagents" to the operator and the reason to a file nobody opens. Attached here
+	// rather than in each mode because every mode wants it and forgetting it is silent.
+	setFaultSink(fault => operatorNotices.warn(fault.source, fault.text));
+
+	// There is one loader for startup, runtime toggles, command reconciliation, and
+	// cwd moves. Replacing the complete runtime prevents project-scoped names and
+	// values from surviving a move into another project.
+	const loadSecretRuntime = async (runtimeCwd: string, runtimeSettings: Settings = settings) => {
+		if (!runtimeSettings.get("secrets.enabled")) {
+			return {
+				obfuscator: undefined,
+				vault: undefined,
+				auditLog: undefined,
+			};
 		}
-	}
-	const secretsEnabled = obfuscator?.hasSecrets() === true;
+
+		const fileEntries = await logger.time("loadSecrets", loadSecrets, runtimeCwd, agentDir);
+		const envKeywords = await logger.time("loadEnvSecretKeywords", () =>
+			loadEnvSecretKeywords({ cwd: runtimeCwd, agentDir }),
+		);
+		const envEntries = collectEnvSecrets(buildEnvSecretPattern(envKeywords));
+		const globalConfigRoot = getGlobalConfigRootDir();
+		const vaultLocations = resolveVaultLocations({
+			globalConfigRoot,
+			agentDir,
+			cwd: runtimeCwd,
+		});
+		const vault = new SecretVault(vaultLocations);
+		const auditLog = runtimeSettings.get("secrets.auditLog")
+			? new SecretAuditLog(secretAuditPath(vaultLocations), operatorNotices)
+			: undefined;
+		const liveVaultEntries = await logger.time("loadVault", () => vault.load());
+		const vaultEntries: SecretEntry[] = liveVaultEntries.map(secret => ({
+			type: "plain",
+			content: secret.value,
+			name: secret.name,
+			expiresAt: secret.expiresAt,
+		}));
+
+		for (const warning of expiryWarnings(liveVaultEntries, Date.now())) {
+			operatorNotices.warn("secrets", warning);
+		}
+
+		const placeholderKey = await logger.time("loadSecretPlaceholderKey", () =>
+			loadOrCreateVaultKey(globalConfigRoot),
+		);
+		const nextObfuscator = new SecretObfuscator([...envEntries, ...fileEntries, ...vaultEntries], {
+			placeholderKey,
+			onRejection: rejection => operatorNotices.warn("secrets", describeSecretRejection(rejection)),
+			onExpiry: name =>
+				operatorNotices.warn(
+					"secrets",
+					`#${name}# has expired and is no longer being substituted. Its value was deleted, so ` +
+						`store it again with /secret add ${name} --from-env <VAR> if you still need it.`,
+				),
+		});
+		return { obfuscator: nextObfuscator, vault, auditLog };
+	};
+
+	const initialSecretRuntime = await loadSecretRuntime(cwd);
+	let obfuscator = initialSecretRuntime.obfuscator;
+	let secretVault = initialSecretRuntime.vault;
+	let secretAuditLog = initialSecretRuntime.auditLog;
+	let secretRuntimeCwd = path.normalize(cwd);
 
 	// Argot per-project shorthand codec (experimental). The launch project's
 	// dictionary auto-loads at startup (the adoption loop: works out of the
@@ -1557,14 +1647,17 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	}
 
 	let skills: Skill[];
-	let skillWarnings: SkillWarning[];
 	if (options.skills !== undefined) {
 		skills = options.skills;
-		skillWarnings = [];
 	} else {
 		const discovered = await (discoveredSkillsPromise ?? Promise.resolve({ skills: [], warnings: [] }));
 		skills = discovered.skills;
-		skillWarnings = discovered.warnings;
+		// Straight into the operator channel. These used to be collected into
+		// `AgentSession.skillWarnings`, a getter no production code read, so a skill that failed to
+		// load was discarded in silence and the channel looked live from the outside.
+		for (const warning of discovered.warnings) {
+			operatorNotices.warn("skills", `${warning.skillPath}: ${warning.message}`);
+		}
 	}
 
 	// Discover rules and bucket them in one pass to avoid repeated scans over large rule sets.
@@ -1627,6 +1720,24 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	let session!: AgentSession;
 	let hasSession = false;
 	let hasRegistered = false;
+	const refreshSecretRuntime = async (runtimeCwd: string): Promise<SecretObfuscator | undefined> => {
+		const runtimeSettings = sessionIsSubagent ? await settings.cloneForCwd(runtimeCwd) : settings;
+		const next = await loadSecretRuntime(runtimeCwd, runtimeSettings);
+		const normalizedRuntimeCwd = path.normalize(runtimeCwd);
+		if (next.obfuscator && obfuscator && normalizedRuntimeCwd === secretRuntimeCwd) {
+			// Removal/expiry revokes expansion, never confidentiality. Transfer only
+			// forward HMAC tombstones; the API deliberately cannot copy live mappings.
+			next.obfuscator.retainRedactionsFrom(obfuscator);
+		}
+		// Do not strand queued records in the log being replaced. Loading succeeds
+		// before anything live changes, so a failed reload leaves the safe runtime intact.
+		await secretAuditLog?.flush();
+		obfuscator = next.obfuscator;
+		secretVault = next.vault;
+		secretAuditLog = next.auditLog;
+		secretRuntimeCwd = normalizedRuntimeCwd;
+		return obfuscator;
+	};
 	const enableLsp = options.enableLsp ?? true;
 	const asyncMaxJobs = Math.min(100, Math.max(1, settings.get("async.maxJobs") ?? 100));
 	const ASYNC_INLINE_RESULT_MAX_CHARS = 12_000;
@@ -1746,6 +1857,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			},
 			setCwd: async (resolvedPath, options) =>
 				session ? session.setCwd(resolvedPath, options) : setCwdBeforeSessionExists(resolvedPath, options),
+			obfuscateProviderText: text => obfuscator?.obfuscate(text) ?? text,
 			isToolActive: name => activeToolNames.has(name),
 			setActiveToolNames,
 			hasUI: options.hasUI ?? false,
@@ -2083,7 +2195,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const inlineExtensions: ExtensionFactory[] = options.extensions ? [...options.extensions] : [];
 		inlineExtensions.push((await import("./autoresearch")).createAutoresearchExtension);
 		if (customTools.length > 0) {
-			inlineExtensions.push(createCustomToolsExtension(customTools));
+			inlineExtensions.push(createCustomToolsExtension(customTools, text => obfuscator?.obfuscate(text) ?? text));
 		}
 
 		// Load extensions. Three paths:
@@ -2506,6 +2618,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				session.abort({ reason: USER_INTERRUPT_LABEL });
 			},
 			settings,
+			obfuscateProviderText: (text: string) => obfuscator?.obfuscate(text) ?? text,
 			localProtocolOptions,
 			autoApprove: options.autoApprove ?? false,
 			// Live read so a mid-session `/yolo` toggle takes effect on the next
@@ -2519,7 +2632,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const allCustomTools = [
 			...registeredTools,
 			...sdkCustomTools.map(tool => {
-				const definition = isCustomTool(tool) ? customToolToDefinition(tool) : tool;
+				const definition = isCustomTool(tool)
+					? customToolToDefinition(tool, text => obfuscator?.obfuscate(text) ?? text)
+					: tool;
 				return { definition, extensionPath: "<sdk>" };
 			}),
 		];
@@ -2652,11 +2767,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			emitEvent: event => cursorEventEmitter?.(event),
 		});
 
-		// Resolve the inline-descriptors setting against the session-start model.
-		// `auto` enforces the per-model policy (inline for Gemini, off otherwise);
-		// like the rest of the prune machinery this is fixed for the session, so a
-		// mid-session model switch keeps the start-time decision.
-		const inlineToolDescriptors = shouldInlineToolDescriptors(settings.get("inlineToolDescriptors"), model?.id);
+		// Keep prompt placement and provider-schema pruning on one per-model
+		// decision. A session can switch model families, and `auto` deliberately
+		// chooses different representations for Gemini and native OpenAI models.
+		const inlineToolDescriptorsForModel = (requestModel: Model): boolean =>
+			shouldInlineToolDescriptors(settings.get("inlineToolDescriptors"), requestModel.id);
 		// A RESOLVER, not a captured constant, and that is the whole reason
 		// `tools.intentTracing` is a live prompt gate. Read once here, every later
 		// `rebuildSystemPrompt` re-read the session-start value, so flipping the setting
@@ -2763,20 +2878,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				shouldEncode(argotGate, { model: argotActiveModel, contextTokens: argotContextTokens });
 			const defaultPrompt = await buildSystemPromptInternal({
 				...gateInputs,
-				// TWO OVERRIDES, each for a reason the registry records.
-				//
-				// `inlineToolDescriptors` and `includeWorkspaceTree` are captured once at session
-				// start, and `gate-registry.ts` lists both as frozen. The resolver reads them fresh,
-				// which is right for an inspection of the current configuration and wrong here:
-				// `inlineToolDescriptors` also drives `pruneToolDescriptions` for the whole session.
-				// Taking them from the closure is what makes the registry's "frozen" true.
-				//
-				// `intentField` USED TO BE HERE and is not any more. It was pinned because the intent
-				// field's presence in every tool schema was fixed at session start, so a fresh read
-				// would have described a shape the schemas did not have. The agent now resolves that
-				// per turn (`intentTracing` above), so the fresh value from `gateInputs` is the
-				// correct one and the gate is live.
-				inlineToolDescriptors,
+				// `includeWorkspaceTree` is captured once at session start and
+				// `gate-registry.ts` records that placement. Descriptor placement
+				// stays live in `gateInputs`: the same active-model policy also
+				// drives provider-schema pruning below, so a model switch cannot
+				// retain the previous model family's more expensive representation.
 				includeWorkspaceTree,
 				// A subagent gets no personality regardless of the setting. That is a fact about
 				// this caller, not about the configuration, so it does not belong in the resolver.
@@ -2793,7 +2899,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				skillsSettings: settings.getGroup("skills"),
 				mcpDiscoveryMode: hasDiscoverableTools,
 				mcpDiscoveryServerSummaries: discoverableToolSummary.servers.map(formatDiscoverableToolServerSummary),
-				secretsEnabled,
+				secretsEnabled: obfuscator?.hasSecrets() === true,
 				argotPreamble: argotCanEncode ? renderPreamble({ tools: true }) : undefined,
 				argotHandles: argotCanEncode && argot.loaded ? argot.promptFragment() : undefined,
 				workspaceTree: workspaceTreePromise,
@@ -3014,7 +3120,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			return clampProviderContextImages(transformed, transformModel);
 		};
 		const onPayload = async (payload: unknown, _model?: Model) => {
-			return await extensionRunner.emitBeforeProviderRequest(payload);
+			const replaced = await extensionRunner.emitBeforeProviderRequest(payload);
+			return obfuscateProviderPayload(replaced ?? payload, obfuscator);
 		};
 		const onResponse: SimpleStreamOptions["onResponse"] = async (response, model) => {
 			await extensionRunner.emitAfterProviderResponse(response, model);
@@ -3116,13 +3223,27 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				return settingsAwareStreamFn(streamModel, context, streamOptions);
 			},
 			cursorExecHandlers,
-			transformToolCallArguments: (args, _toolName) => {
+			transformToolCallArguments: (args, toolName) => {
 				let result = args;
 				const maxTimeout = settings.get("tools.maxTimeout");
 				if (maxTimeout > 0 && typeof result.timeout === "number") {
 					result = { ...result, timeout: Math.min(result.timeout, maxTimeout) };
 				}
 				if (obfuscator?.hasSecrets()) {
+					// Recorded from the arguments BEFORE substitution, which is the form in which every
+					// secret is still a placeholder. That ordering is what makes a value impossible to
+					// write into the log, so the record is built here rather than after expansion where
+					// it would need a redaction step to get right (see `secrets/audit.ts`).
+					if (secretAuditLog !== undefined) {
+						const record = buildExpansionRecord({
+							args: result,
+							tool: toolName,
+							session: agent.sessionId,
+							at: Date.now(),
+							known: placeholder => obfuscator!.knowsPlaceholder(placeholder),
+						});
+						if (record !== null) secretAuditLog.record(record);
+					}
 					result = deobfuscateToolArguments(obfuscator, result);
 				}
 				if (argot?.loaded) {
@@ -3131,12 +3252,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				return result;
 			},
 			repairToolCallArguments: createRepairToolCallArgumentsHook(settings, () => agent.state.model),
-			// The RESOLVER, so the schemas follow the setting on the next turn. `Agent` calls
-			// it when it builds the provider context and again when it builds the loop config,
-			// both of which happen per turn.
+			// The RESOLVERS keep provider schemas synchronized with the rebuilt
+			// prompt on settings changes and model-family switches.
 			intentTracing: intentTracingEnabled,
 			instrumentation: settings.get("session.instrumentation"),
-			pruneToolDescriptions: inlineToolDescriptors,
+			pruneToolDescriptions: inlineToolDescriptorsForModel,
 			// Re-resolved with the active model on every request so mid-session
 			// model switches pick the right tool-calling shape (a switch to a
 			// `supportsTools: false` model must stop sending a native `tools`
@@ -3251,7 +3371,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			advisorSharedInstructions: discoveredAdvisors.sharedInstructions,
 			advisorConfigs: discoveredAdvisors.advisors,
 			agent,
-			pruneToolDescriptions: inlineToolDescriptors,
+			pruneToolDescriptions: inlineToolDescriptorsForModel,
 			thinkingLevel: autoThinking ? AUTO_THINKING : effectiveThinkingLevel,
 			prewalk: options.prewalk,
 			planYolo: options.planYolo,
@@ -3273,7 +3393,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			extensionRunner,
 			customCommands: customCommandsResult.commands,
 			skills,
-			skillWarnings,
+			operatorNotices,
 			skillsSettings: settings.getGroup("skills"),
 			modelRegistry,
 			toolRegistry,
@@ -3316,6 +3436,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			defaultSelectedMCPServerNames: [...discoveryDefaultServers],
 			ttsrManager,
 			obfuscator,
+			refreshSecretRuntime,
 			argot,
 			agentId: resolvedAgentId,
 			agentKind,
@@ -3475,6 +3596,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					}
 					await originalDispose();
 				} finally {
+					// The expansion log queues its appends so a tool call is never blocked by a
+					// write, which means an exit that does not wait for the queue loses whichever
+					// records were still in it, and loses them silently. Flushed here rather than
+					// left to the event loop because quitting the TUI ends the process rather than
+					// waiting for pending work: the last credential an agent used is exactly the
+					// one an incident asks about.
+					await secretAuditLog?.flush();
 					unregisterUnlessParked();
 					unsubscribeCredentialDisabled?.();
 				}

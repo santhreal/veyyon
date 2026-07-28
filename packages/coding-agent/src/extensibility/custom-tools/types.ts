@@ -105,6 +105,11 @@ export interface CustomToolContext {
 	getTurnIndex?: () => number;
 	/** Fetch implementation for outbound HTTP; defaults to global fetch when omitted. */
 	fetch?: FetchImpl;
+	/**
+	 * Redact one provider-bound string at the final custom-tool outbound seam.
+	 * The callback is live: callers must invoke it immediately before dispatch.
+	 */
+	obfuscateProviderText?: (text: string) => string;
 	/** Calling session's `local://` root mapping for tools that bridge out of the veyyon process. */
 	localProtocolOptions?: LocalProtocolOptions;
 	/** Whether to auto-approve all destructive tool operations (--auto-approve CLI flag) */

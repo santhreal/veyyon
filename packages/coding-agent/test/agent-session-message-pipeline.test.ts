@@ -572,12 +572,12 @@ describe("AgentSession message pipeline", () => {
 			await agent.prompt("Main Question?");
 			await session.runEphemeralTurn({ promptText: `Side Question ${secret}?` });
 
-			// The static prefix (system prompt + tools) is left untouched, so it stays byte-identical
-			// between the main turn and the side turn and the prompt cache prefix survives.
+			// Main and side requests apply the same final boundary, so their cache prefix stays
+			// byte-identical and no dynamic prompt or schema text carries the raw value.
 			expect(JSON.stringify(mainContext?.systemPrompt)).toBe(JSON.stringify(sideContext?.systemPrompt));
 			expect(JSON.stringify(mainContext?.tools)).toBe(JSON.stringify(sideContext?.tools));
-			// The side turn's user prompt secret is redacted from the outbound messages.
-			expect(JSON.stringify(sideContext?.messages)).not.toContain(secret);
+			expect(JSON.stringify(mainContext)).not.toContain(secret);
+			expect(JSON.stringify(sideContext)).not.toContain(secret);
 		});
 	});
 

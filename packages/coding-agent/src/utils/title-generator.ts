@@ -62,6 +62,7 @@ function getTitleModel(registry: ModelRegistry, settings: Settings, currentModel
  *   resolver instead of a pre-evaluated value ensures the metadata's account_uuid
  *   reflects the credential actually selected for this request.
  * @param customSystemPrompt Optional title-specific system prompt override
+ * @param obfuscateProviderText Final confidentiality boundary for text sent to an online title model
  */
 /**
  * Whether auto-titling is disabled for this process. The `--no-title` flag (and
@@ -83,6 +84,7 @@ export async function generateSessionTitle(
 	currentModel?: Model<Api>,
 	metadataResolver?: (provider: string) => Record<string, unknown> | undefined,
 	customSystemPrompt?: string,
+	obfuscateProviderText?: (text: string) => string,
 ): Promise<string | null> {
 	// Hard off switch: --no-title / VEYYON_NO_TITLE disables auto-titling for
 	// every caller of this function (first-input AND replan refresh), so no
@@ -112,6 +114,7 @@ export async function generateSessionTitle(
 			metadataResolver,
 			undefined,
 			customTitleSystemPrompt,
+			obfuscateProviderText,
 		);
 	}
 
@@ -163,6 +166,7 @@ export async function generateTitleOnline(
 	metadataResolver?: (provider: string) => Record<string, unknown> | undefined,
 	signal?: AbortSignal,
 	customSystemPrompt?: string,
+	obfuscateProviderText?: (text: string) => string,
 ): Promise<string | null> {
 	const model = getTitleModel(registry, settings, currentModel);
 	if (!model) {
@@ -170,7 +174,11 @@ export async function generateTitleOnline(
 		return null;
 	}
 
-	const customTitleSystemPrompt = customSystemPrompt?.trim() || undefined;
+	const rawCustomTitleSystemPrompt = customSystemPrompt?.trim() || undefined;
+	const customTitleSystemPrompt =
+		rawCustomTitleSystemPrompt && obfuscateProviderText
+			? obfuscateProviderText(rawCustomTitleSystemPrompt)
+			: rawCustomTitleSystemPrompt;
 	// The model is always asked to wrap the title in `<title>...</title>` and
 	// the title is parsed from text. A forced `set_title` tool call was the old
 	// scheme, but hosts that ignore or reject forced `tool_choice` then echoed
@@ -179,7 +187,8 @@ export async function generateTitleOnline(
 	const systemPrompt = customTitleSystemPrompt
 		? [customTitleSystemPrompt, TITLE_MARKER_INSTRUCTION]
 		: [TITLE_SYSTEM_PROMPT];
-	const userMessage = formatTitleUserMessage(firstMessage);
+	const formattedUserMessage = formatTitleUserMessage(firstMessage);
+	const userMessage = obfuscateProviderText ? obfuscateProviderText(formattedUserMessage) : formattedUserMessage;
 	const modelName = `${model.provider}/${model.id}`;
 	const modelContext = {
 		sessionId,

@@ -148,16 +148,18 @@ export async function runEvalCompletion(
 	// field on every Responses request and 400 with "Instructions are required"
 	// when it is missing. Fall back to a minimal default so `completion(prompt)` works
 	// without forcing every caller to pass a `system` prompt.
-	const systemPrompt = system ? [system] : ["You are a helpful assistant."];
+	const sanitize = options.session.obfuscateProviderText ?? ((text: string) => text);
+	const systemPrompt = [sanitize(system ?? "You are a helpful assistant.")];
 
 	// Suspend eval timeout accounting while the model request owns control. The
 	// timeout clock restarts once the bridge returns to the cell runtime.
+	const providerPrompt = sanitize(prompt);
 	const response = await withBridgeTimeoutPause(options.emitStatus, () =>
 		instrumentedCompleteSimple(
 			model,
 			{
 				systemPrompt,
-				messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }],
+				messages: [{ role: "user", content: [{ type: "text", text: providerPrompt }], timestamp: Date.now() }],
 				tools,
 			},
 			{

@@ -13,6 +13,7 @@ import {
 } from "@veyyon/coding-agent/auto-thinking/classifier";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import {
 	AUTO_THINKING,
@@ -200,6 +201,48 @@ describe("auto thinking classifier helpers", () => {
 
 		expect(effort).toBe(Effort.High);
 		expect(options).toMatchObject({ disableReasoning: true, maxTokens: 1024 });
+	});
+
+	it("redacts secrets at the online auto-thinking provider boundary", async () => {
+		const baseModel = getBundledModel("anthropic", "claude-sonnet-4-6");
+		if (!baseModel) throw new Error("Expected bundled Claude Sonnet 4.6 model");
+		const classifierModel = { ...baseModel, reasoning: false };
+		const settings = {
+			get(path: string) {
+				if (path === "providers.autoThinkingModel") return "online";
+				return undefined;
+			},
+			getModelRole(role: string) {
+				return role === "smol" ? `${classifierModel.provider}/${classifierModel.id}` : undefined;
+			},
+			getStorage() {
+				return undefined;
+			},
+		} as never;
+		const registry = {
+			getAvailable: () => [classifierModel],
+			getApiKey: async () => "test-key",
+			resolver: () => async () => "test-key",
+		} as never;
+		const secret = "AUTO_THINKING_SECRET_76491";
+		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const placeholder = obfuscator.obfuscate(secret);
+		const completeSimpleMock = vi.spyOn(ai, "completeSimple").mockResolvedValue({
+			stopReason: "stop",
+			content: [{ type: "text", text: "high" }],
+		} as never);
+
+		await classifyDifficulty(`Analyze the retry path using ${secret}`, {
+			settings,
+			registry,
+			model: baseModel,
+			obfuscateProviderText: text => obfuscator.obfuscate(text),
+		});
+
+		const request = completeSimpleMock.mock.calls[0]?.[1] as { messages?: Array<{ content: string }> } | undefined;
+		const providerContent = request?.messages?.[0]?.content;
+		expect(providerContent).toContain(placeholder);
+		expect(providerContent).not.toContain(secret);
 	});
 
 	it("clamps auto effort to model support while never resolving below low", () => {

@@ -15,6 +15,7 @@ export async function generateTaskLabel(
 	registry: ModelRegistry,
 	settings: Settings,
 	sessionId?: string,
+	obfuscateProviderText?: (text: string) => string,
 ): Promise<string | null> {
 	const text = assignment.trim();
 	if (!text) return null;
@@ -27,6 +28,7 @@ export async function generateTaskLabel(
 			undefined,
 			undefined,
 			TASK_LABEL_SYSTEM_PROMPT,
+			obfuscateProviderText,
 		);
 	} catch (err) {
 		logger.debug("task-label: generation failed", {
