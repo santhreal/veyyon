@@ -43,12 +43,18 @@ describe("Kagi web search error handling", () => {
 		}
 	});
 
-	it("falls back to plain text for non-JSON error bodies", async () => {
-		const fetchMock: FetchImpl = async () => new Response("service unavailable", { status: 503 });
+	it("does not reflect non-JSON upstream error bodies", async () => {
+		const rawSecret = "KAGI_UPSTREAM_ECHO_SECRET";
+		const fetchMock: FetchImpl = async () => new Response(`service unavailable: ${rawSecret}`, { status: 503 });
 
-		await expect(searchWithKagi("plain text error", { fetch: fetchMock }, fakeAuthStorage)).rejects.toThrow(
-			"Kagi API error (503): service unavailable",
+		await expect(searchWithKagi(rawSecret, { fetch: fetchMock }, fakeAuthStorage)).rejects.toThrow(
+			"Kagi API error (503)",
 		);
+		try {
+			await searchWithKagi(rawSecret, { fetch: fetchMock }, fakeAuthStorage);
+		} catch (error) {
+			expect(String(error)).not.toContain(rawSecret);
+		}
 	});
 
 	it("maps HTTP 5xx errors with empty body", async () => {

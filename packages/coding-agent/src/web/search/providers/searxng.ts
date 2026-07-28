@@ -28,6 +28,7 @@ import { trimTrailingSlashes } from "@veyyon/utils";
 
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 
+import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../../config/settings-instance";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
@@ -161,35 +162,32 @@ function buildRequest(
 		categories?: string;
 		language?: string;
 		signal?: AbortSignal;
+		resolveProviderTextTransform?: SearchParams["resolveProviderTextTransform"];
 	},
 	auth: SearXNGAuth | null,
 ): { url: URL; headers: Record<string, string> } {
+	const boundary = "SearXNG search";
+	const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, boundary);
 	const base = trimTrailingSlashes(endpoint);
-	const url = new URL(`${base}/search`);
+	const url = new URL(transform(`${base}/search`));
+	const fields = transformProviderPayload(
+		{
+			q: params.query,
+			format: "json",
+			...(params.num_results ? { pageno: "1" } : {}),
+			...(params.recency ? { time_range: RECENCY_MAP[params.recency] } : {}),
+			...(params.categories ? { categories: params.categories } : {}),
+			...(params.language ? { language: params.language } : {}),
+		},
+		transform,
+		boundary,
+	) as Record<string, string>;
+	for (const [key, value] of Object.entries(fields)) url.searchParams.set(key, value);
 
-	url.searchParams.set("q", params.query);
-	url.searchParams.set("format", "json");
-
-	if (params.num_results) {
-		url.searchParams.set("pageno", "1");
-	}
-
-	if (params.recency) {
-		url.searchParams.set("time_range", RECENCY_MAP[params.recency]);
-	}
-
-	if (params.categories) {
-		url.searchParams.set("categories", params.categories);
-	}
-
-	if (params.language) {
-		url.searchParams.set("language", params.language);
-	}
-
-	const headers: Record<string, string> = {
-		Accept: "application/json",
-	};
-
+	const headers = transformProviderPayload({ Accept: "application/json" }, transform, boundary) as Record<
+		string,
+		string
+	>;
 	if (auth?.type === "basic") {
 		headers.Authorization = `Basic ${auth.value}`;
 	} else if (auth?.type === "bearer") {
@@ -209,12 +207,12 @@ async function callSearXNGSearch(
 		language?: string;
 		signal?: AbortSignal;
 		fetch?: FetchImpl;
+		resolveProviderTextTransform?: SearchParams["resolveProviderTextTransform"];
 	},
 	auth: SearXNGAuth | null,
 ): Promise<SearXNGResponse> {
-	const { url, headers } = buildRequest(endpoint, params, auth);
-
 	return withHardTimeout(params.signal, async hardSignal => {
+		const { url, headers } = buildRequest(endpoint, params, auth);
 		const response = await (params.fetch ?? fetch)(url, {
 			headers,
 			signal: hardSignal,
@@ -226,7 +224,7 @@ async function callSearXNGSearch(
 			if (classified) throw classified;
 			throw new SearchProviderError(
 				"searxng",
-				`SearXNG API error (${response.status}): ${errorText}`,
+				`SearXNG API error (${response.status}).`,
 				response.status,
 			);
 		}
@@ -242,6 +240,7 @@ export async function searchSearXNG(params: {
 	recency?: "day" | "week" | "month" | "year";
 	signal?: AbortSignal;
 	fetch?: FetchImpl;
+	resolveProviderTextTransform?: SearchParams["resolveProviderTextTransform"];
 }): Promise<SearchResponse> {
 	const numResults = clampNumResults(params.num_results, SEARCH_DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
 
@@ -270,6 +269,7 @@ export async function searchSearXNG(params: {
 			categories,
 			language,
 			fetch: params.fetch,
+			resolveProviderTextTransform: params.resolveProviderTextTransform,
 		},
 		auth,
 	);
@@ -331,6 +331,7 @@ export class SearXNGProvider extends SearchProvider {
 			recency: params.recency,
 			signal: params.signal,
 			fetch: params.fetch,
+			resolveProviderTextTransform: params.resolveProviderTextTransform,
 		});
 	}
 }

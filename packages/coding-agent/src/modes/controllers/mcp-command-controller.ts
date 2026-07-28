@@ -58,6 +58,7 @@ import { MCPAddWizard } from "../components/mcp-add-wizard";
 import { TranscriptBlock } from "../components/transcript-container";
 import { parseCommandArgs } from "../shared";
 import { theme } from "../theme/theme";
+import { withIcon } from "../theme/icon-label";
 import type { InteractiveModeContext } from "../types";
 import { groupBySource, parseRemoveArgs, readScopeFlag, showCommandMessage } from "./command-controller-shared";
 
@@ -196,7 +197,7 @@ class McpConnectingBlock extends ChatBlock {
 		this.addChild(this.#text);
 	}
 
-	protected override onMount(): void {
+	override onMount(): void {
 		const frames = theme.spinnerFrames;
 		let frame = 0;
 		const interval = setInterval(() => {
@@ -1822,7 +1823,7 @@ export class MCPCommandController {
 			this.#showMessage(
 				[
 					"",
-					theme.fg("success", `${theme.icon.loop} MCP reload complete`),
+					theme.fg("success", withIcon(theme.icon.loop, "MCP reload complete")),
 					`  Connected servers: ${connectedCount}`,
 					"",
 				].join("\n"),
@@ -2072,7 +2073,11 @@ export class MCPCommandController {
 	}
 
 	async #validateSmitheryApiKey(apiKey: string): Promise<void> {
-		await searchSmitheryRegistry("mcp", { limit: 1, apiKey });
+		await searchSmitheryRegistry("mcp", {
+			limit: 1,
+			apiKey,
+			resolveProviderTextTransform: () => text => this.ctx.session.obfuscateProviderText(text),
+		});
 	}
 
 	async #promptSmitheryApiKey(promptLabel: string): Promise<string | null> {
@@ -2345,6 +2350,7 @@ export class MCPCommandController {
 						limit: parsed.limit,
 						apiKey,
 						includeSemantic: parsed.semantic,
+						resolveProviderTextTransform: () => text => this.ctx.session.obfuscateProviderText(text),
 					}),
 				"required for smithery-search",
 			);

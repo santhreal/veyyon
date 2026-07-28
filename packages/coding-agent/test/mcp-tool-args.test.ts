@@ -203,4 +203,107 @@ describe("MCP tool arguments", () => {
 			},
 		]);
 	});
+
+	it("expands local URLs before recursively transforming nested string keys and values", async () => {
+		using tempDir = TempDir.createSync("@pi-mcp-provider-boundary-");
+		const calls: CapturedRequest[] = [];
+		const { context, expectedPath } = await createLocalImageContext(tempDir);
+		const transformedInputs: string[] = [];
+		context.obfuscateProviderText = text => {
+			transformedInputs.push(text);
+			return `safe:${text}`;
+		};
+		const rawArgs = {
+			image_path: "local://image-issue.png",
+			nested_secret: { hidden_key: "hidden_value" },
+			list: ["list_value"],
+		};
+		const tool = new MCPTool(createCapturedConnection(calls), imageToolDefinition);
+
+		await tool.execute("call-1", rawArgs, undefined, context, undefined);
+
+		expect(calls).toHaveLength(1);
+		expect(calls[0]?.params?.arguments).toEqual({
+			"safe:image_path": `safe:${expectedPath}`,
+			"safe:nested_secret": { "safe:hidden_key": "safe:hidden_value" },
+			"safe:list": ["safe:list_value"],
+		});
+		expect(transformedInputs).toContain(expectedPath);
+		expect(transformedInputs).not.toContain("local://image-issue.png");
+		expect(rawArgs).toEqual({
+			image_path: "local://image-issue.png",
+			nested_secret: { hidden_key: "hidden_value" },
+			list: ["list_value"],
+		});
+	});
+
+	it("does not send MCPTool requests or expose raw input when the transform rejects", async () => {
+		const rawSecret = "mcp-raw-secret";
+		const calls: CapturedRequest[] = [];
+		const context = {
+			obfuscateProviderText: (text: string) => {
+				if (text === rawSecret) throw new Error(`cannot transform ${rawSecret}`);
+				return text;
+			},
+		} as CustomToolContext;
+		const tool = new MCPTool(createCapturedConnection(calls), imageToolDefinition);
+
+		const result = await tool.execute("call-1", { image_path: rawSecret }, undefined, context, undefined);
+
+		expect(calls).toHaveLength(0);
+		expect(result.content[0]).toEqual({
+			type: "text",
+			text: "MCP error: MCP tool call confidentiality transform failed.",
+		});
+		expect(JSON.stringify(result)).not.toContain(rawSecret);
+	});
+	it("suppresses a remote isError payload that reflects raw nested arguments", async () => {
+		const rawSecret = "mcp-reflected-raw-secret";
+		const transport = createMockTransport(
+			new Map([
+				[
+					"tools/call",
+					[
+						{
+							content: [{ type: "text", text: `server rejected ${rawSecret}` }],
+							isError: true,
+						},
+					],
+				],
+			]),
+		);
+		const tool = new MCPTool(createMockConnection({ tools: {} }, transport), imageToolDefinition);
+		const context = {
+			obfuscateProviderText: (text: string) => text.replaceAll(rawSecret, "safe-secret"),
+		} as CustomToolContext;
+
+		const result = await tool.execute(
+			"call-reflected-error",
+			{ nested: { image_path: rawSecret } },
+			undefined,
+			context,
+		);
+
+		expect(result.content[0]).toEqual({ type: "text", text: "Error: MCP tool call failed." });
+		expect(result.details?.rawContent).toBeUndefined();
+		expect(JSON.stringify(result)).not.toContain(rawSecret);
+	});
+
+
+	it("waits for DeferredMCPTool connection resolution before using the live transform", async () => {
+		const rawSecret = "deferred-raw-secret";
+		const calls: CapturedRequest[] = [];
+		const context = {
+			obfuscateProviderText: (text: string) => text,
+		} as CustomToolContext;
+		const connection = createCapturedConnection(calls);
+		const tool = new DeferredMCPTool("test-server", imageToolDefinition, async () => {
+			context.obfuscateProviderText = text => text.replaceAll(rawSecret, "deferred-safe");
+			return connection;
+		});
+
+		await tool.execute("call-1", { image_path: rawSecret }, undefined, context, undefined);
+
+		expect(calls[0]?.params?.arguments).toEqual({ image_path: "deferred-safe" });
+	});
 });

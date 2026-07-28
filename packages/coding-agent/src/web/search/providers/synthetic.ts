@@ -8,6 +8,7 @@
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
+import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { applyResultLimit } from "../utils";
@@ -45,15 +46,18 @@ async function callSyntheticSearch(
 	query: string,
 	signal?: AbortSignal,
 	fetchImpl: FetchImpl = fetch,
+	resolveTextTransform?: SearchParams["resolveProviderTextTransform"],
 ): Promise<SyntheticSearchResponse> {
 	return withHardTimeout(signal, async hardSignal => {
+		const transform = resolveProviderTextTransform(resolveTextTransform, "Synthetic search request");
+		const requestBody = transformProviderPayload({ query }, transform, "Synthetic search request");
 		const response = await fetchImpl(SYNTHETIC_SEARCH_URL, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
 				Authorization: `Bearer ${apiKey}`,
 			},
-			body: JSON.stringify({ query }),
+			body: JSON.stringify(requestBody),
 			signal: hardSignal,
 		});
 
@@ -63,7 +67,7 @@ async function callSyntheticSearch(
 			if (classified) throw classified;
 			throw new SearchProviderError(
 				"synthetic",
-				`Synthetic API error (${response.status}): ${errorText}`,
+				`Synthetic API error (${response.status}).`,
 				response.status,
 			);
 		}
@@ -79,11 +83,22 @@ export async function searchSynthetic(params: SearchParamsWithFetch): Promise<Se
 	});
 
 	const fetchImpl = params.fetch;
-	const data = await withAuth(keyOrResolver, key => callSyntheticSearch(key, params.query, params.signal, fetchImpl), {
-		signal: params.signal,
-		missingKeyMessage:
-			"Synthetic credentials not found. Set SYNTHETIC_API_KEY or login with 'veyyon /login synthetic'.",
-	});
+	const data = await withAuth(
+		keyOrResolver,
+		key =>
+			callSyntheticSearch(
+				key,
+				params.query,
+				params.signal,
+				fetchImpl,
+				params.resolveProviderTextTransform,
+			),
+		{
+			signal: params.signal,
+			missingKeyMessage:
+				"Synthetic credentials not found. Set SYNTHETIC_API_KEY or login with 'veyyon /login synthetic'.",
+		},
+	);
 	const sources: SearchSource[] = [];
 
 	for (const result of data.results ?? []) {

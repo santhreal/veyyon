@@ -17,11 +17,13 @@ import type {
 	RenderResultOptions,
 } from "../extensibility/custom-tools/types";
 import { resolveLocalUrlToFile } from "../internal-urls/local-protocol";
+import { resolveProviderTextTransform, transformProviderPayload } from "../provider-boundary";
 import type { Theme } from "../modes/theme/theme";
 import type { OutputMeta } from "../tools/output-meta";
 import { normalizeLocalScheme } from "../tools/path-utils";
 import { ToolAbortError, throwIfAborted, toolAbort } from "../tools/tool-errors";
 import { callTool } from "./client";
+import { retainMCPToolArgsAttemptFactory } from "./transports/http";
 import { renderMCPCall, renderMCPResult } from "./render";
 import type { MCPContent, MCPServerConnection, MCPToolCallParams, MCPToolCallResult, MCPToolDefinition } from "./types";
 
@@ -54,6 +56,7 @@ export function isRetriableConnectionError(error: unknown): boolean {
 }
 
 type MCPToolArgs = NonNullable<MCPToolCallParams["arguments"]>;
+const MCP_TOOL_CALL_BOUNDARY = "MCP tool call";
 
 function normalizeToolArgs(value: unknown): MCPToolArgs {
 	if (!isRecord(value)) {
@@ -147,10 +150,10 @@ async function resolveOutboundLocalUrlArgs(
 }
 
 /**
- * Normalize raw tool params into the outbound `tools/call` arguments: strip
- * the harness intent field, drop optional empty placeholders the server
- * declares but doesn't require, then translate session-local files to paths
- * external MCP servers can read.
+ * Build one physical tools/call attempt from the untouched caller params.
+ * Session-local URLs are expanded first. Only after that asynchronous local
+ * work completes do we resolve the live provider transform and recursively
+ * transform every outbound string key and value.
  */
 async function prepareOutboundArgs(
 	params: unknown,
@@ -158,7 +161,12 @@ async function prepareOutboundArgs(
 	context: CustomToolContext,
 ): Promise<MCPToolArgs> {
 	const args = omitUnusedOptionalArgs(stripHarnessIntent(normalizeToolArgs(params), inputSchema), inputSchema);
-	return (await resolveOutboundLocalUrlArgs(args, context)) as MCPToolArgs;
+	const localArgs = (await resolveOutboundLocalUrlArgs(args, context)) as MCPToolArgs;
+	const transform = resolveProviderTextTransform(() => context.obfuscateProviderText, MCP_TOOL_CALL_BOUNDARY);
+	const transformedArgs = transformProviderPayload(localArgs, transform, MCP_TOOL_CALL_BOUNDARY) as MCPToolArgs;
+	return retainMCPToolArgsAttemptFactory({ ...transformedArgs }, () =>
+		prepareOutboundArgs(params, inputSchema, context),
+	);
 }
 
 /** Details included in MCP tool results for rendering */
@@ -205,24 +213,46 @@ function formatMCPContent(content: MCPContent[]): string {
 	return parts.join("\n\n");
 }
 
+function containsRawToolArgument(text: string, value: unknown, seen: WeakSet<object> = new WeakSet()): boolean {
+	if (typeof value === "string") return value.length > 0 && text.includes(value);
+	if (value === null || typeof value !== "object" || seen.has(value)) return false;
+	seen.add(value);
+	if (Array.isArray(value)) return value.some(item => containsRawToolArgument(text, item, seen));
+	return Object.entries(value).some(
+		([key, item]) =>
+			(key.length > 0 && text.includes(key)) || containsRawToolArgument(text, item, seen),
+	);
+}
+
+function safeMCPErrorMessage(error: unknown, rawParams: unknown): string {
+	const message = errorMessage(error);
+	return containsRawToolArgument(message, rawParams) ? "MCP request failed." : message;
+}
+
 /** Build a CustomToolResult from a callTool response. */
 function buildResult(
 	result: MCPToolCallResult,
 	serverName: string,
 	mcpToolName: string,
-	provider?: string,
-	providerName?: string,
+	provider: string | undefined,
+	providerName: string | undefined,
+	rawParams: unknown,
 ): CustomToolResult<MCPToolDetails> {
 	const text = formatMCPContent(result.content);
+	const leaksRawArgs = result.isError === true && containsRawToolArgument(text, rawParams);
 	const details: MCPToolDetails = {
 		serverName,
 		mcpToolName,
 		isError: result.isError,
-		rawContent: result.content,
+		...(leaksRawArgs ? {} : { rawContent: result.content }),
 		provider,
 		providerName,
 	};
-	const contentText = result.isError ? `Error: ${text}` : text;
+	const contentText = result.isError
+		? leaksRawArgs
+			? "Error: MCP tool call failed."
+			: `Error: ${text}`
+		: text;
 	const toolResult: CustomToolResult<MCPToolDetails> = { content: [{ type: "text", text: contentText }], details };
 	if (result.isError) {
 		toolResult.isError = true;
@@ -235,10 +265,11 @@ function buildErrorResult(
 	error: unknown,
 	serverName: string,
 	mcpToolName: string,
-	provider?: string,
-	providerName?: string,
+	provider: string | undefined,
+	providerName: string | undefined,
+	rawParams: unknown,
 ): CustomToolResult<MCPToolDetails> {
-	const message = errorMessage(error);
+	const message = safeMCPErrorMessage(error, rawParams);
 	return {
 		content: [{ type: "text", text: `MCP error: ${message}` }],
 		details: { serverName, mcpToolName, isError: true, provider, providerName },
@@ -409,13 +440,15 @@ export class MCPTool implements CustomTool<TSchema, MCPToolDetails> {
 		signal?: AbortSignal,
 	): Promise<CustomToolResult<MCPToolDetails>> {
 		throwIfAborted(signal);
-		const args = await prepareOutboundArgs(params, this.tool.inputSchema, _ctx);
+		const rawParams = params;
 		const provider = this.connection._source?.provider;
 		const providerName = this.connection._source?.providerName;
 
 		try {
+			const args = await prepareOutboundArgs(rawParams, this.tool.inputSchema, _ctx);
+			throwIfAborted(signal);
 			const result = await callTool(this.connection, this.tool.name, args, { signal });
-			return buildResult(result, this.connection.name, this.tool.name, provider, providerName);
+			return buildResult(result, this.connection.name, this.tool.name, provider, providerName, rawParams);
 		} catch (error) {
 			rethrowIfAborted(error, signal);
 			if (this.reconnect && isRetriableConnectionError(error)) {
@@ -426,21 +459,17 @@ export class MCPTool implements CustomTool<TSchema, MCPToolDetails> {
 					const retryProvider = newConn._source?.provider ?? provider;
 					const retryProviderName = newConn._source?.providerName ?? providerName;
 					try {
-						const result = await callTool(newConn, this.tool.name, args, { signal });
-						return buildResult(result, newConn.name, this.tool.name, retryProvider, retryProviderName);
+						const retryArgs = await prepareOutboundArgs(rawParams, this.tool.inputSchema, _ctx);
+						throwIfAborted(signal);
+						const result = await callTool(newConn, this.tool.name, retryArgs, { signal });
+						return buildResult(result, newConn.name, this.tool.name, retryProvider, retryProviderName, rawParams);
 					} catch (retryError) {
 						rethrowIfAborted(retryError, signal);
-						return buildErrorResult(
-							retryError,
-							this.connection.name,
-							this.tool.name,
-							retryProvider,
-							retryProviderName,
-						);
+						return buildErrorResult(retryError, this.connection.name, this.tool.name, retryProvider, retryProviderName, rawParams);
 					}
 				}
 			}
-			return buildErrorResult(error, this.connection.name, this.tool.name, provider, providerName);
+			return buildErrorResult(error, this.connection.name, this.tool.name, provider, providerName, rawParams);
 		}
 	}
 }
@@ -510,7 +539,7 @@ export class DeferredMCPTool implements CustomTool<TSchema, MCPToolDetails> {
 		signal?: AbortSignal,
 	): Promise<CustomToolResult<MCPToolDetails>> {
 		throwIfAborted(signal);
-		const args = await prepareOutboundArgs(params, this.tool.inputSchema, _ctx);
+		const rawParams = params;
 		const provider = this.#fallbackProvider;
 		const providerName = this.#fallbackProviderName;
 
@@ -518,14 +547,10 @@ export class DeferredMCPTool implements CustomTool<TSchema, MCPToolDetails> {
 			const connection = await untilAborted(signal, () => this.getConnection());
 			throwIfAborted(signal);
 			try {
+				const args = await prepareOutboundArgs(rawParams, this.tool.inputSchema, _ctx);
+				throwIfAborted(signal);
 				const result = await callTool(connection, this.tool.name, args, { signal });
-				return buildResult(
-					result,
-					this.serverName,
-					this.tool.name,
-					connection._source?.provider ?? provider,
-					connection._source?.providerName ?? providerName,
-				);
+				return buildResult(result, this.serverName, this.tool.name, connection._source?.provider ?? provider, connection._source?.providerName ?? providerName, rawParams);
 			} catch (callError) {
 				rethrowIfAborted(callError, signal);
 				if (this.reconnect && isRetriableConnectionError(callError)) {
@@ -534,21 +559,17 @@ export class DeferredMCPTool implements CustomTool<TSchema, MCPToolDetails> {
 						const retryProvider = newConn._source?.provider ?? provider;
 						const retryProviderName = newConn._source?.providerName ?? providerName;
 						try {
-							const result = await callTool(newConn, this.tool.name, args, { signal });
-							return buildResult(result, this.serverName, this.tool.name, retryProvider, retryProviderName);
+							const retryArgs = await prepareOutboundArgs(rawParams, this.tool.inputSchema, _ctx);
+							throwIfAborted(signal);
+							const result = await callTool(newConn, this.tool.name, retryArgs, { signal });
+							return buildResult(result, this.serverName, this.tool.name, retryProvider, retryProviderName, rawParams);
 						} catch (retryError) {
 							rethrowIfAborted(retryError, signal);
-							return buildErrorResult(
-								retryError,
-								this.serverName,
-								this.tool.name,
-								retryProvider,
-								retryProviderName,
-							);
+							return buildErrorResult(retryError, this.serverName, this.tool.name, retryProvider, retryProviderName, rawParams);
 						}
 					}
 				}
-				return buildErrorResult(callError, this.serverName, this.tool.name, provider, providerName);
+				return buildErrorResult(callError, this.serverName, this.tool.name, provider, providerName, rawParams);
 			}
 		} catch (connError) {
 			// getConnection() failed — server never connected or connection lost.
@@ -559,21 +580,17 @@ export class DeferredMCPTool implements CustomTool<TSchema, MCPToolDetails> {
 				const newConn = await reconnectWithAbort(this.reconnect, signal);
 				if (newConn) {
 					try {
-						const result = await callTool(newConn, this.tool.name, args, { signal });
-						return buildResult(
-							result,
-							this.serverName,
-							this.tool.name,
-							newConn._source?.provider ?? provider,
-							newConn._source?.providerName ?? providerName,
-						);
+						const retryArgs = await prepareOutboundArgs(rawParams, this.tool.inputSchema, _ctx);
+						throwIfAborted(signal);
+						const result = await callTool(newConn, this.tool.name, retryArgs, { signal });
+						return buildResult(result, this.serverName, this.tool.name, newConn._source?.provider ?? provider, newConn._source?.providerName ?? providerName, rawParams);
 					} catch (retryError) {
 						rethrowIfAborted(retryError, signal);
-						return buildErrorResult(retryError, this.serverName, this.tool.name, provider, providerName);
+						return buildErrorResult(retryError, this.serverName, this.tool.name, provider, providerName, rawParams);
 					}
 				}
 			}
-			return buildErrorResult(connError, this.serverName, this.tool.name, provider, providerName);
+			return buildErrorResult(connError, this.serverName, this.tool.name, provider, providerName, rawParams);
 		}
 	}
 }

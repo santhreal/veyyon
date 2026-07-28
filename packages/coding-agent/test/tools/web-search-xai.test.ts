@@ -376,7 +376,7 @@ describe("xAI web search provider", () => {
 			expect(error).toMatchObject({
 				provider: "xai",
 				status: 410,
-				message: "xAI Responses API error (410): Live search is deprecated. Please use the Agent Tools API.",
+				message: "xAI Responses API error (410).",
 			});
 		}
 

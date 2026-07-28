@@ -21,6 +21,44 @@ import { createMCPTimeout, getNeverAbortSignal, isMCPTimeoutEnabled, resolveMCPT
 import { reportUndeliveredServerResponse } from "./server-response-delivery";
 
 const HTTP_SSE_CONNECT_TIMEOUT_MS = 1_000;
+
+const mcpToolArgsAttemptFactory = Symbol("mcpToolArgsAttemptFactory");
+
+type MCPToolArgsAttemptFactory = () => Promise<Record<string, unknown>>;
+
+type MCPToolArgsWithAttemptFactory = Record<string, unknown> & {
+	[mcpToolArgsAttemptFactory]?: MCPToolArgsAttemptFactory;
+};
+
+/**
+ * Keep the raw tool arguments reachable without making them part of the JSON
+ * payload. HTTP auth retries and legacy-SSE POST retries use the factory only
+ * after their refresh await, so each physical retry is rebuilt with the
+ * then-current provider transform.
+ */
+export function retainMCPToolArgsAttemptFactory(
+	args: Record<string, unknown>,
+	attemptFactory: MCPToolArgsAttemptFactory,
+): Record<string, unknown> {
+	Object.defineProperty(args, mcpToolArgsAttemptFactory, {
+		value: attemptFactory,
+		configurable: false,
+		enumerable: false,
+		writable: false,
+	});
+	return args;
+}
+
+/** Rebuild only provider-bound tools/call arguments; all other RPC params stay exact. */
+export async function rebuildMCPToolCallParamsForAttempt(
+	params: Record<string, unknown> | undefined,
+): Promise<Record<string, unknown> | undefined> {
+	const args = params?.arguments;
+	if (typeof args !== "object" || args === null || Array.isArray(args)) return params;
+	const attemptFactory = (args as MCPToolArgsWithAttemptFactory)[mcpToolArgsAttemptFactory];
+	if (!attemptFactory) return params;
+	return { ...params, arguments: await attemptFactory() };
+}
 /**
  * Best-effort startup deadline for the optional Streamable HTTP GET SSE listener.
  *
@@ -196,7 +234,8 @@ export class HttpTransport implements MCPTransport {
 				if (newHeaders) {
 					// Persist refreshed headers so subsequent requests use them directly
 					this.config = { ...this.config, headers: newHeaders };
-					return this.#executeRequest<T>(method, params, options);
+					const retryParams = await rebuildMCPToolCallParamsForAttempt(params);
+					return this.#executeRequest<T>(method, retryParams, options);
 				}
 			}
 			throw error;

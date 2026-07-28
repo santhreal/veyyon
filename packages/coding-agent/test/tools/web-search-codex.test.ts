@@ -373,7 +373,9 @@ describe("searchCodex model selection", () => {
 			);
 		};
 
-		await expect(searchCodex(makeSearchParams("explicit unsupported model", fetchMock))).rejects.toThrow("gpt-5.5");
+		await expect(searchCodex(makeSearchParams("explicit unsupported model", fetchMock))).rejects.toThrow(
+			"requested model is not supported",
+		);
 		expect(calls).toBe(1);
 	});
 

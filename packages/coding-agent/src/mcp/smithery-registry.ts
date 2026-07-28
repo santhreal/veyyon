@@ -1,4 +1,8 @@
 import { clampLow, logger } from "@veyyon/utils";
+import {
+	type ProviderTextTransformResolver,
+	resolveProviderTextTransform,
+} from "../provider-boundary";
 import { isTimeoutError } from "../utils/fetch-timeout";
 import { smitheryTimeoutSignal } from "./smithery-http";
 import type { MCPServerConfig } from "./types";
@@ -109,6 +113,7 @@ export interface SmitherySearchOptions {
 	apiKey?: string;
 	includeSemantic?: boolean;
 	signal?: AbortSignal;
+	resolveProviderTextTransform?: ProviderTextTransformResolver;
 }
 
 export class SmitheryRegistryError extends Error {
@@ -340,7 +345,7 @@ async function fetchServerDetailsFromEntry(
 			if (details) return details;
 		} catch (error) {
 			if (options?.signal?.aborted) throw error;
-			logger.debug("Smithery detail fetch candidate failed", { candidate, error: String(error) });
+			logger.debug("Smithery detail fetch candidate failed", { candidate });
 		}
 	}
 	return null;
@@ -418,8 +423,13 @@ export async function searchSmitheryRegistry(
 	const maxPages = 3;
 	const allEntries: SmitherySearchEntry[] = [];
 	for (let page = 1; page <= maxPages; page++) {
+		const transform = resolveProviderTextTransform(
+			options?.resolveProviderTextTransform,
+			"Smithery registry search",
+		);
+		const outboundQuery = transform(query);
 		const url = new URL(`${SMITHERY_REGISTRY_BASE_URL}/servers`);
-		url.searchParams.set("q", query);
+		url.searchParams.set("q", outboundQuery);
 		url.searchParams.set("pageSize", String(pageSize));
 		if (page > 1) url.searchParams.set("page", String(page));
 		let response: Response;
@@ -466,7 +476,7 @@ export async function searchSmitheryRegistry(
 		);
 	});
 
-	const detailFailures: Array<{ identity: string; error: string }> = [];
+	let detailFailures = 0;
 	const results = await Promise.all(
 		uniqueEntries.map(async entry => {
 			try {
@@ -478,21 +488,16 @@ export async function searchSmitheryRegistry(
 				return toSearchResult(entry, details);
 			} catch (error) {
 				if (options?.signal?.aborted) throw error;
-				detailFailures.push({
-					identity: getEntryIdentityKey(entry) ?? entry.id ?? "unknown",
-					error: String(error),
-				});
+				detailFailures++;
 				return null;
 			}
 		}),
 	);
 
-	if (detailFailures.length > 0) {
+	if (detailFailures > 0) {
 		logger.warn("Smithery detail fetch failed for some entries", {
-			query,
-			failedEntries: detailFailures.length,
+			failedEntries: detailFailures,
 			totalEntries: uniqueEntries.length,
-			sample: detailFailures.slice(0, 3),
 		});
 	}
 	return results.filter((result): result is SmitherySearchResult => result !== null).slice(0, limit);

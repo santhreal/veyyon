@@ -131,12 +131,20 @@ describe("Parallel web search", () => {
 		]);
 	});
 
-	it("surfaces plain-text Parallel API errors", async () => {
-		const fetchMock: FetchImpl = () => Promise.resolve(new Response("upstream unavailable", { status: 503 }));
-		await expect(searchParallel({ query: "broken", fetch: fetchMock }, fakeAuthStorage)).rejects.toMatchObject({
-			provider: "parallel",
-			status: 503,
-			message: "Parallel API error (503): upstream unavailable",
-		});
+	it("does not reflect plain-text Parallel API errors", async () => {
+		const rawSecret = "PARALLEL_UPSTREAM_ECHO_SECRET";
+		const fetchMock: FetchImpl = () =>
+			Promise.resolve(new Response(`upstream unavailable: ${rawSecret}`, { status: 503 }));
+		try {
+			await searchParallel({ query: rawSecret, fetch: fetchMock }, fakeAuthStorage);
+			expect.unreachable("expected Parallel failure");
+		} catch (error) {
+			expect(error).toMatchObject({
+				provider: "parallel",
+				status: 503,
+				message: "Parallel search request failed.",
+			});
+			expect(String(error)).not.toContain(rawSecret);
+		}
 	});
 });

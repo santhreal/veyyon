@@ -1,6 +1,7 @@
 import type { AuthStorage } from "@veyyon/ai";
 import { errorMessage } from "@veyyon/utils";
 import { parseHTML } from "linkedom";
+import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults, collapseWhitespace, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
@@ -85,17 +86,29 @@ function parseHtmlResults(html: string): ParsedResult[] {
 	return results;
 }
 
-function buildSearchUrl(params: SearchParams, numResults: number): string {
-	const url = new URL(GOOGLE_SEARCH_URL);
-	url.searchParams.set("q", params.query);
-	url.searchParams.set("num", String(numResults));
-	url.searchParams.set("hl", "en");
-	url.searchParams.set("gl", "us");
-	url.searchParams.set("udm", "14");
-	url.searchParams.set("pws", "0");
+function buildSearchAttempt(params: SearchParams, numResults: number): { url: string; referer: string } {
+	const boundary = "Google search";
+	const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, boundary);
 	const tbs = params.recency ? RECENCY_TO_GOOGLE_TBS[params.recency] : undefined;
-	if (tbs) url.searchParams.set("tbs", tbs);
-	return url.href;
+	const fields = transformProviderPayload(
+		{
+			q: params.query,
+			num: String(numResults),
+			hl: "en",
+			gl: "us",
+			udm: "14",
+			pws: "0",
+			...(tbs ? { tbs } : {}),
+		},
+		transform,
+		boundary,
+	) as Record<string, string>;
+	const url = new URL(transform(GOOGLE_SEARCH_URL));
+	for (const [key, value] of Object.entries(fields)) url.searchParams.set(key, value);
+	return {
+		url: url.href,
+		referer: transform(GOOGLE_HOME_URL),
+	};
 }
 
 function blockReason(page: LoadedHtmlPage): "javascript" | "traffic" | undefined {
@@ -113,15 +126,19 @@ function blockReason(page: LoadedHtmlPage): "javascript" | "traffic" | undefined
 
 async function callGoogleHtml(params: SearchParams, numResults: number): Promise<string> {
 	return withHardTimeout(params.signal, async signal => {
-		const url = buildSearchUrl(params, numResults);
 		let page: LoadedHtmlPage;
 		try {
-			page = await browserFetch(url, {
+			page = await browserFetch(() => buildSearchAttempt(params, numResults), {
 				fetch: params.fetch,
 				signal,
-				referer: GOOGLE_HOME_URL,
 				browser: {
-					homeUrl: GOOGLE_HOME_URL,
+					homeUrl: () => {
+						const transform = resolveProviderTextTransform(
+							params.resolveProviderTextTransform,
+							"Google search",
+						);
+						return transform(GOOGLE_HOME_URL);
+					},
 					ready: { selector: "a h3" },
 					shouldFallback: candidate => blockReason(candidate) !== undefined,
 				},

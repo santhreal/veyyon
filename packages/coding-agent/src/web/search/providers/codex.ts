@@ -13,6 +13,11 @@ import { applyCodexResponsesLiteShape } from "@veyyon/ai/providers/openai-codex/
 import { createOpenAICodexCompatibilityMetadata } from "@veyyon/ai/providers/openai-codex-responses";
 import { getBundledModels } from "@veyyon/catalog/models";
 import {
+	// The host is imported, never respelled. `@veyyon/catalog/wire/codex` owns it and
+	// six other modules already read it from there; this file had its own copy of the
+	// literal, so a Codex host change would have moved every caller but this one and
+	// web search alone would have kept posting to the old endpoint.
+	CODEX_BASE_URL,
 	CODEX_CLIENT_VERSION,
 	getCodexAccountId,
 	OPENAI_HEADER_VALUES,
@@ -20,6 +25,11 @@ import {
 } from "@veyyon/catalog/wire/codex";
 import { $env, readSseJson } from "@veyyon/utils";
 import packageJson from "../../../../package.json" with { type: "json" };
+import {
+	resolveProviderTextTransform,
+	transformProviderPayload,
+	type ProviderTextTransformResolver,
+} from "../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { applyResultLimit } from "../utils";
@@ -27,7 +37,6 @@ import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
 
-const CODEX_BASE_URL = "https://chatgpt.com/backend-api";
 const CODEX_RESPONSES_PATH = "/codex/responses";
 const FALLBACK_MODEL = "gpt-5.5";
 const DEFAULT_MODEL_PREFERENCES = [
@@ -108,6 +117,7 @@ export interface CodexSearchParams {
 	num_results?: number;
 	/** Search context size: controls how much web content to include */
 	search_context_size?: "low" | "medium" | "high";
+	resolveProviderTextTransform?: ProviderTextTransformResolver;
 }
 
 /** Codex API response structure */
@@ -364,6 +374,7 @@ async function callCodexSearch(
 		model: CodexModelCandidate;
 		sessionId?: string;
 		fetch?: FetchImpl;
+		resolveProviderTextTransform?: ProviderTextTransformResolver;
 	},
 ): Promise<{
 	answer: string;
@@ -413,10 +424,15 @@ async function callCodexSearch(
 
 	const fetchImpl = options.fetch ?? fetch;
 	return withHardTimeout(options.signal, async hardSignal => {
+		const transform = resolveProviderTextTransform(
+			options.resolveProviderTextTransform,
+			"Codex search request",
+		);
+		const requestBody = transformProviderPayload(body, transform, "Codex search request");
 		const response = await fetchImpl(url, {
 			method: "POST",
 			headers,
-			body: JSON.stringify(body),
+			body: JSON.stringify(requestBody),
 			signal: hardSignal,
 		});
 
@@ -424,7 +440,12 @@ async function callCodexSearch(
 			const errorText = await response.text();
 			const classified = classifyProviderHttpError("codex", response.status, errorText);
 			if (classified) throw classified;
-			throw new SearchProviderError("codex", `Codex API error (${response.status}): ${errorText}`, response.status);
+			const message = /model is not supported|requested model is not supported|not supported when using codex with a chatgpt account/i.test(
+				errorText,
+			)
+				? "codex: requested model is not supported"
+				: `Codex API error (${response.status}).`;
+			throw new SearchProviderError("codex", message, response.status);
 		}
 
 		if (!response.body) {
@@ -586,6 +607,7 @@ export async function searchCodex(params: SearchParams): Promise<SearchResponse>
 						model: candidate,
 						sessionId: params.sessionId,
 						fetch: params.fetch,
+						resolveProviderTextTransform: params.resolveProviderTextTransform,
 					});
 				} catch (error) {
 					lastError = error;

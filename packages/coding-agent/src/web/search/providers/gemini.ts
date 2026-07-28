@@ -23,6 +23,11 @@ import {
 	getGeminiCliHeaders,
 } from "@veyyon/catalog/wire/gemini-headers";
 import { fetchWithRetry } from "@veyyon/utils";
+import {
+	resolveProviderTextTransform,
+	transformProviderPayload,
+	type ProviderTextTransformResolver,
+} from "../../../provider-boundary";
 import type { SearchCitation, SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { sanitizeResultLimit } from "../utils";
@@ -66,6 +71,7 @@ export interface GeminiSearchParams extends GeminiToolParams {
 	fetch?: FetchImpl;
 	antigravityEndpointMode?: "auto" | "production" | "sandbox";
 	geminiModel?: string;
+	resolveProviderTextTransform?: ProviderTextTransformResolver;
 }
 
 export function buildGeminiRequestTools(params: GeminiToolParams): Array<Record<string, Record<string, unknown>>> {
@@ -310,6 +316,7 @@ async function callGeminiSearch(
 	fetchImpl: FetchImpl | undefined,
 	signal: AbortSignal | undefined,
 	mode?: "auto" | "production" | "sandbox",
+	resolveTextTransform?: ProviderTextTransformResolver,
 ): Promise<GeminiSearchResult> {
 	let endpoints: string[];
 	if (auth.isAntigravity) {
@@ -383,7 +390,6 @@ async function callGeminiSearch(
 				Accept: "text/event-stream",
 				...headers,
 			},
-			body: JSON.stringify(requestBody),
 			signal: hardSignal,
 		});
 
@@ -395,6 +401,12 @@ async function callGeminiSearch(
 			try {
 				response = await fetchWithRetry(() => `${endpoint}/v1internal:streamGenerateContent?alt=sse`, {
 					...buildInit(),
+					prepareInit: () => {
+						const transform = resolveProviderTextTransform(resolveTextTransform, "Gemini search request");
+						return {
+							body: JSON.stringify(transformProviderPayload(requestBody, transform, "Gemini search request")),
+						};
+					},
 					fetch: fetchImpl,
 					maxAttempts: isLastEndpoint ? MAX_RETRIES + 1 : 1,
 					defaultDelayMs: attempt => BASE_DELAY_MS * 2 ** attempt,
@@ -423,7 +435,7 @@ async function callGeminiSearch(
 			const status = response?.status ?? 502;
 			const classified = classifyProviderHttpError("gemini", status, errorText);
 			if (classified) throw classified;
-			throw new SearchProviderError("gemini", `Gemini Cloud Code API error (${status}): ${errorText}`, status);
+			throw new SearchProviderError("gemini", `Gemini Cloud Code API error (${status}).`, status);
 		}
 
 		if (!response.body) {
@@ -444,6 +456,7 @@ async function callGeminiDeveloperSearch(
 	toolParams: GeminiToolParams,
 	fetchImpl: FetchImpl | undefined,
 	signal: AbortSignal | undefined,
+	resolveTextTransform?: ProviderTextTransformResolver,
 ): Promise<GeminiSearchResult> {
 	const normalizedSystemPrompt = systemPrompt?.toWellFormed();
 	const requestBody: Record<string, unknown> = {
@@ -482,8 +495,13 @@ async function callGeminiDeveloperSearch(
 					"Content-Type": "application/json",
 					Accept: "text/event-stream",
 				},
-				body: JSON.stringify(requestBody),
 				signal: hardSignal,
+				prepareInit: () => {
+					const transform = resolveProviderTextTransform(resolveTextTransform, "Gemini search request");
+					return {
+						body: JSON.stringify(transformProviderPayload(requestBody, transform, "Gemini search request")),
+					};
+				},
 				fetch: fetchImpl,
 				maxAttempts: MAX_RETRIES + 1,
 				defaultDelayMs: attempt => BASE_DELAY_MS * 2 ** attempt,
@@ -497,7 +515,7 @@ async function callGeminiDeveloperSearch(
 			if (classified) throw classified;
 			throw new SearchProviderError(
 				"gemini",
-				`Gemini Developer API error (${response.status}): ${errorText}`,
+				`Gemini Developer API error (${response.status}).`,
 				response.status,
 			);
 		}
@@ -562,6 +580,7 @@ export async function searchGemini(params: GeminiSearchParams): Promise<SearchRe
 					params.fetch,
 					params.signal,
 					params.antigravityEndpointMode,
+					params.resolveProviderTextTransform,
 				),
 			{ sessionId: params.sessionId, signal: params.signal, seed: seed.access },
 		);
@@ -588,6 +607,7 @@ export async function searchGemini(params: GeminiSearchParams): Promise<SearchRe
 			},
 			params.fetch,
 			params.signal,
+			params.resolveProviderTextTransform,
 		);
 	}
 
@@ -647,6 +667,7 @@ export class GeminiProvider extends SearchProvider {
 			sessionId: params.sessionId,
 			fetch: params.fetch,
 			geminiModel: params.geminiModel,
+			resolveProviderTextTransform: params.resolveProviderTextTransform,
 		});
 	}
 }

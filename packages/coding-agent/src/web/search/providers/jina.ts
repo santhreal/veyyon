@@ -7,6 +7,7 @@
 
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
+import { resolveProviderTextTransform } from "../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { applyResultLimit } from "../utils";
@@ -22,6 +23,7 @@ export interface JinaSearchParams {
 	num_results?: number;
 	signal?: AbortSignal;
 	fetch?: FetchImpl;
+	resolveProviderTextTransform?: SearchParams["resolveProviderTextTransform"];
 }
 
 interface JinaSearchResult {
@@ -38,14 +40,11 @@ export function findApiKey(): string | null {
 }
 
 /** Call Jina Reader search API. */
-async function callJinaSearch(
-	apiKey: string,
-	query: string,
-	signal?: AbortSignal,
-	fetchImpl: FetchImpl = fetch,
-): Promise<JinaSearchResponse> {
-	const requestUrl = `${JINA_SEARCH_URL}/${encodeURIComponent(query)}`;
-	return withHardTimeout(signal, async hardSignal => {
+async function callJinaSearch(apiKey: string, params: JinaSearchParams): Promise<JinaSearchResponse> {
+	const fetchImpl = params.fetch ?? fetch;
+	return withHardTimeout(params.signal, async hardSignal => {
+		const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, "Jina search");
+		const requestUrl = `${JINA_SEARCH_URL}/${encodeURIComponent(transform(params.query))}`;
 		const response = await fetchImpl(requestUrl, {
 			headers: {
 				Accept: "application/json",
@@ -58,7 +57,7 @@ async function callJinaSearch(
 			const errorText = await response.text();
 			const classified = classifyProviderHttpError("jina", response.status, errorText);
 			if (classified) throw classified;
-			throw new SearchProviderError("jina", `Jina API error (${response.status}): ${errorText}`, response.status);
+			throw new SearchProviderError("jina", `Jina API request failed (${response.status}).`, response.status);
 		}
 
 		const payload = (await response.json()) as { data?: JinaSearchResponse } | null;
@@ -73,7 +72,7 @@ export async function searchJina(params: JinaSearchParams): Promise<SearchRespon
 		throw new Error("JINA_API_KEY not found. Set it in environment or .env file.");
 	}
 
-	const response = await callJinaSearch(apiKey, params.query, params.signal, params.fetch);
+	const response = await callJinaSearch(apiKey, params);
 	const sources: SearchSource[] = [];
 
 	for (const result of response) {
@@ -108,6 +107,7 @@ export class JinaProvider extends SearchProvider {
 			num_results: params.numSearchResults ?? params.limit,
 			signal: params.signal,
 			fetch: fetchImpl,
+			resolveProviderTextTransform: params.resolveProviderTextTransform,
 		});
 	}
 }

@@ -9,6 +9,11 @@ import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { isRecord, trimmedString } from "@veyyon/utils";
+import {
+	resolveProviderTextTransform,
+	transformProviderPayload,
+	type ProviderTextTransformResolver,
+} from "../../../provider-boundary";
 import { MCP_PROTOCOL_VERSION } from "../../../mcp/protocol-version";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
@@ -32,6 +37,7 @@ export interface ZaiSearchParams {
 	fetch?: FetchImpl;
 	authStorage: AuthStorage;
 	sessionId?: string;
+	resolveProviderTextTransform?: ProviderTextTransformResolver;
 }
 
 interface ZaiSearchResult {
@@ -105,6 +111,7 @@ async function postZaiMcp(
 	signal: AbortSignal | undefined,
 	fetchImpl: FetchImpl,
 	expectResponse: boolean,
+	resolveTextTransform?: ProviderTextTransformResolver,
 ): Promise<ZaiMcpPostResult> {
 	const headers: Record<string, string> = {
 		Authorization: `Bearer ${apiKey}`,
@@ -125,10 +132,12 @@ async function postZaiMcp(
 	}
 
 	return withHardTimeout(signal, async hardSignal => {
+		const transform = resolveProviderTextTransform(resolveTextTransform, "Z.AI MCP request");
+		const requestBody = transformProviderPayload(body, transform, "Z.AI MCP request");
 		const response = await fetchImpl(ZAI_MCP_URL, {
 			method: "POST",
 			headers,
-			body: JSON.stringify(body),
+			body: JSON.stringify(requestBody),
 			signal: hardSignal,
 		});
 
@@ -136,7 +145,7 @@ async function postZaiMcp(
 			const errorText = await response.text();
 			const classified = classifyProviderHttpError("zai", response.status, errorText);
 			if (classified) throw classified;
-			throw new SearchProviderError("zai", `Z.AI MCP error (${response.status}): ${errorText}`, response.status);
+			throw new SearchProviderError("zai", `Z.AI MCP error (${response.status}).`, response.status);
 		}
 
 		const nextSessionId = response.headers.get("Mcp-Session-Id") ?? sessionId;
@@ -199,6 +208,7 @@ async function callZaiTool(
 	args: Record<string, unknown>,
 	signal: AbortSignal | undefined,
 	fetchImpl: FetchImpl,
+	resolveTextTransform?: ProviderTextTransformResolver,
 ): Promise<unknown> {
 	const initialized = await postZaiMcp(
 		apiKey,
@@ -212,12 +222,22 @@ async function callZaiTool(
 		signal,
 		fetchImpl,
 		true,
+		resolveTextTransform,
 	);
 	if (initialized.parsed !== undefined) {
 		readJsonRpcPayload(initialized.parsed);
 	}
 
-	await postZaiMcp(apiKey, "notifications/initialized", {}, initialized.sessionId, signal, fetchImpl, false);
+	await postZaiMcp(
+		apiKey,
+		"notifications/initialized",
+		{},
+		initialized.sessionId,
+		signal,
+		fetchImpl,
+		false,
+		resolveTextTransform,
+	);
 
 	const toolCall = await postZaiMcp(
 		apiKey,
@@ -230,6 +250,7 @@ async function callZaiTool(
 		signal,
 		fetchImpl,
 		true,
+		resolveTextTransform,
 	);
 	const payload = readJsonRpcPayload(toolCall.parsed);
 	const resultRecord = isRecord(payload.result) ? payload.result : null;
@@ -267,7 +288,13 @@ async function callZaiSearch(apiKey: string, params: ZaiSearchParams): Promise<u
 	let lastError: unknown;
 	for (let i = 0; i < attempts.length; i++) {
 		try {
-			return await callZaiTool(apiKey, attempts[i], params.signal, fetchImpl);
+			return await callZaiTool(
+				apiKey,
+				attempts[i],
+				params.signal,
+				fetchImpl,
+				params.resolveProviderTextTransform,
+			);
 		} catch (error) {
 			lastError = error;
 			const isLastAttempt = i === attempts.length - 1;
@@ -427,6 +454,7 @@ export class ZaiProvider extends SearchProvider {
 			authStorage: params.authStorage,
 			sessionId: params.sessionId,
 			fetch: fetchOverride,
+			resolveProviderTextTransform: params.resolveProviderTextTransform,
 		});
 	}
 }

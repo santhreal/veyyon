@@ -1,6 +1,7 @@
 import type { AuthStorage } from "@veyyon/ai";
 import { errorMessage } from "@veyyon/utils";
 import { parseHTML } from "linkedom";
+import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults, collapseWhitespace, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
@@ -93,17 +94,30 @@ function isBlockedPage(page: LoadedHtmlPage): boolean {
 
 async function callEcosiaHtml(params: SearchParams): Promise<string> {
 	return withHardTimeout(params.signal, async signal => {
-		const url = new URL(ECOSIA_SEARCH_URL);
-		url.searchParams.set("q", params.query);
-
+		const createAttempt = () => {
+			const boundary = "Ecosia search";
+			const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, boundary);
+			const url = new URL(transform(ECOSIA_SEARCH_URL));
+			const fields = transformProviderPayload({ q: params.query }, transform, boundary) as Record<string, string>;
+			for (const [key, value] of Object.entries(fields)) url.searchParams.set(key, value);
+			return {
+				url: url.href,
+				referer: transform(ECOSIA_HOME_URL),
+			};
+		};
 		let page: LoadedHtmlPage;
 		try {
-			page = await browserFetch(url.href, {
+			page = await browserFetch(createAttempt, {
 				fetch: params.fetch,
 				signal,
-				referer: ECOSIA_HOME_URL,
 				browser: {
-					homeUrl: ECOSIA_HOME_URL,
+					homeUrl: () => {
+						const transform = resolveProviderTextTransform(
+							params.resolveProviderTextTransform,
+							"Ecosia search",
+						);
+						return transform(ECOSIA_HOME_URL);
+					},
 					ready: { selector: 'article[data-test-id="organic-result"]' },
 					shouldFallback: isBlockedPage,
 				},

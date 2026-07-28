@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import type { CustomToolContext } from "@veyyon/coding-agent/extensibility/custom-tools";
+import { MCPTool } from "@veyyon/coding-agent/mcp/tool-bridge";
+import type { MCPServerConnection } from "@veyyon/coding-agent/mcp/types";
 import { HttpTransport, resolveSSEConnectTimeoutMs } from "@veyyon/coding-agent/mcp/transports/http";
 
 const encoder = new TextEncoder();
@@ -98,6 +101,60 @@ describe("MCP Streamable HTTP transport timeouts", () => {
 
 		await expect(withPendingGuard(transport.request<ToolList>("tools/list"), "request")).resolves.toEqual({
 			tools: [{ name: "fast", inputSchema: { type: "object" } }],
+		});
+	});
+});
+
+describe("MCP Streamable HTTP auth replay provider boundary", () => {
+	it("rebuilds a 401 retry from raw args using the transform installed by auth refresh", async () => {
+		const rawSecret = "http-auth-raw-secret";
+		const attempts: Array<Record<string, unknown>> = [];
+		server = Bun.serve({
+			port: 0,
+			async fetch(request) {
+				const body = (await request.json()) as Record<string, unknown>;
+				attempts.push(body);
+				if (attempts.length === 1) return new Response("expired", { status: 401 });
+				return Response.json({
+					jsonrpc: "2.0",
+					id: body.id,
+					result: { content: [{ type: "text", text: "ok" }] },
+				});
+			},
+		});
+		const transport = await connectedTransport();
+		const context = {
+			obfuscateProviderText: (text: string) => text.replaceAll(rawSecret, "first-safe"),
+		} as CustomToolContext;
+		transport.onAuthError = async () => {
+			context.obfuscateProviderText = text => text.replaceAll(rawSecret, "second-safe");
+			return { Authorization: "Bearer refreshed" };
+		};
+		const connection: MCPServerConnection = {
+			name: "http-test",
+			config: { type: "http", url: transport.url },
+			transport,
+			serverInfo: { name: "http-test", version: "1.0" },
+			capabilities: { tools: {} },
+		};
+		const tool = new MCPTool(connection, {
+			name: "send",
+			inputSchema: { type: "object" },
+		});
+
+		const result = await tool.execute(
+			"call-1",
+			{ [`${rawSecret}-key`]: { value: rawSecret } },
+			undefined,
+			context,
+		);
+
+		expect(result.isError).toBeFalsy();
+		expect((attempts[0]?.params as Record<string, unknown>).arguments).toEqual({
+			"first-safe-key": { value: "first-safe" },
+		});
+		expect((attempts[1]?.params as Record<string, unknown>).arguments).toEqual({
+			"second-safe-key": { value: "second-safe" },
 		});
 	});
 });
