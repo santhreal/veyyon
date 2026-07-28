@@ -115,3 +115,106 @@ describe.skipIf(isWindows)("verifyBinaryVersion runs the path it is given", () =
 		expect(result.ok).toBe(false);
 	});
 });
+
+/**
+ * A failure has to say WHICH failure it was, in the binary's own words.
+ *
+ * Every route out of this function used to answer `{ok: false, path}` and nothing
+ * else, so the caller printed "could not verify updated version at <path>" for
+ * three unrelated situations: a binary that will not start, a binary that starts
+ * and prints something unreadable, and a binary that reports a different version.
+ * Only the third has an obvious next step. The first is what an install directory
+ * mounted `noexec` looks like — the downloaded file is byte-perfect and the mount
+ * refuses to execute it — and the operator was told nothing that would let them
+ * find that out.
+ *
+ * These assert the exact evidence carried back: the exit code, the binary's own
+ * stderr, and the distinction between "no process started" and "a process ran and
+ * failed". A test that only checked `ok === false` passed before the fix.
+ */
+describe.skipIf(isWindows)("verifyBinaryVersion says why a binary would not run", () => {
+	it("quotes the exit code and stderr of a binary that fails to start", async () => {
+		const loud = path.join(root, "installed", "loud");
+		fs.writeFileSync(loud, "#!/bin/sh\necho 'cannot execute: required file not found' >&2\nexit 126\n");
+		fs.chmodSync(loud, 0o755);
+
+		const result = await verifyBinaryVersion(loud, "15.1.8");
+
+		expect(result.ok).toBe(false);
+		expect(result.reason).toContain("exited 126");
+		expect(result.reason).toContain("cannot execute: required file not found");
+		expect(result.reason).toContain(loud);
+	});
+
+	/**
+	 * The silent variant. Saying "it printed nothing" is itself the finding: it
+	 * rules out a message the operator might otherwise go looking for.
+	 */
+	it("says it printed nothing when a failing binary is silent", async () => {
+		const silent = path.join(root, "installed", "silent");
+		fs.writeFileSync(silent, "#!/bin/sh\nexit 1\n");
+		fs.chmodSync(silent, 0o755);
+
+		const result = await verifyBinaryVersion(silent, "15.1.8");
+
+		expect(result.reason).toContain("exited 1");
+		expect(result.reason).toContain("printed nothing");
+	});
+
+	/**
+	 * The `noexec` shape, reproduced the one way it can be without mounting a
+	 * filesystem: a file whose execute bit is off. The kernel refuses the same way
+	 * for the same errno, and the point of the assertion is that the refusal
+	 * reaches the operator instead of being flattened into "could not verify".
+	 */
+	it("reports a file the system refuses to execute as unrunnable, not as a version mismatch", async () => {
+		const noexec = path.join(root, "installed", "noexec");
+		fs.writeFileSync(noexec, "#!/bin/sh\necho 'veyyon/15.1.8'\n");
+		fs.chmodSync(noexec, 0o644);
+
+		const result = await verifyBinaryVersion(noexec, "15.1.8");
+
+		expect(result.ok).toBe(false);
+		expect(result.reason).toBeDefined();
+		expect(result.reason).toContain(noexec);
+		// Never the wrong-version wording: nothing ran, so there is no actual version.
+		expect(result.actual).toBeUndefined();
+		expect(result.reason).not.toContain("expected");
+	});
+
+	it("quotes what an unreadable --version actually printed", async () => {
+		const garbled = path.join(root, "installed", "garbled-reason");
+		fs.writeFileSync(garbled, "#!/bin/sh\necho 'hello there'\n");
+		fs.chmodSync(garbled, 0o755);
+
+		const result = await verifyBinaryVersion(garbled, "15.1.8");
+
+		expect(result.ok).toBe(false);
+		expect(result.reason).toContain("did not report a version");
+		expect(result.reason).toContain("hello there");
+	});
+
+	/**
+	 * A version MISMATCH is the one failure that must NOT carry a reason: the
+	 * caller has a better sentence for it, naming both numbers, and a reason would
+	 * suppress it. This is the assertion that keeps the new evidence from
+	 * swallowing the old message.
+	 */
+	it("leaves a plain version mismatch without a reason so the caller names both versions", async () => {
+		const result = await verifyBinaryVersion(target, "16.0.0");
+
+		expect(result.ok).toBe(false);
+		expect(result.actual).toBe("15.1.8");
+		expect(result.reason).toBeUndefined();
+	});
+
+	/** A path with nothing at it never starts a process, so there is no exit code. */
+	it("reports a missing binary as one that could not be started", async () => {
+		const missing = path.join(root, "installed", "still-not-there");
+
+		const result = await verifyBinaryVersion(missing, "15.1.8");
+
+		expect(result.ok).toBe(false);
+		expect(result.reason).toContain(missing);
+	});
+});

@@ -650,15 +650,56 @@ export async function verifyBinaryVersion(
 ): Promise<InstalledVersionVerification> {
 	try {
 		const result = await $`${binPath} --version`.quiet().nothrow();
-		if (result.exitCode !== 0) return { ok: false, path: binPath };
+		if (result.exitCode !== 0) {
+			// The binary's own words, not "could not verify updated version". A file
+			// that will not start and a file that starts and reports the wrong version
+			// are different failures with different remedies, and the first one used to
+			// be reported with the second one's wording. An install directory mounted
+			// `noexec` is the case that made this matter: the downloaded binary is
+			// byte-perfect and the mount refuses to execute it, and the only thing that
+			// says so is the message the kernel handed back.
+			return {
+				ok: false,
+				path: binPath,
+				reason: describeUnrunnableBinary(binPath, result.exitCode, result.stderr.toString()),
+			};
+		}
 		const output = result.text().trim();
 		// Output format: "veyyon/X.Y.Z"
 		const match = output.match(/\/(\d+\.\d+\.\d+)/);
 		const actual = match?.[1];
+		if (actual === undefined) {
+			// It ran and said something we cannot read a version out of. Quoting it is
+			// the only way the operator can tell a truncated download from a wrapper
+			// script that printed its own banner.
+			return {
+				ok: false,
+				path: binPath,
+				reason:
+					`${binPath} ran but did not report a version. It printed: ` +
+					`${output === "" ? "nothing" : JSON.stringify(output.slice(0, 400))}`,
+			};
+		}
 		return { ok: actual === expectedVersion, actual, path: binPath };
-	} catch {
-		return { ok: false, path: binPath };
+	} catch (err) {
+		// The spawn itself failed, which is where ENOEXEC (wrong architecture) and
+		// EACCES (no execute bit, or a `noexec` mount) land. There is no exit code
+		// because no process ever started.
+		return { ok: false, path: binPath, reason: describeUnrunnableBinary(binPath, undefined, String(err)) };
 	}
+}
+
+/**
+ * Why a binary we just installed would not run, in one line the operator can act on.
+ *
+ * One owner so the two failure routes above word it identically; they differ only
+ * in whether a process started at all, which is exactly what the message says.
+ */
+function describeUnrunnableBinary(binPath: string, exitCode: number | undefined, stderr: string): string {
+	const said = stderr.trim();
+	const what = exitCode === undefined ? "could not be started" : `exited ${exitCode}`;
+	const because = said === "" ? "It printed nothing." : `It said: ${said.slice(0, 400)}`;
+	return `${binPath} ${what} when asked for its version. ${because}`;
 }
 
 /**
