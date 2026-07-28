@@ -66,15 +66,19 @@ function warnAuthRetry(message: string, fields: Record<string, unknown>): void {
 /**
  * Performs the initial resolve of an {@link ApiKey} (`error: undefined`,
  * `lastChance: false`). Static keys pass through unchanged.
+ *
+ * `signal` is forwarded to a resolver so a credential mint can be cancelled; it is
+ * NOT an abort barrier of its own. A single resolve does no retrying, so there is
+ * nothing here for a cancellation check to prevent, and raising one would take the
+ * decision away from the caller that owns the signal. The agent loop calls this
+ * while preparing a request and then renders an abort as a `stopReason: "aborted"`
+ * assistant message; a throw raised here instead unwinds past that and surfaces the
+ * user's own Ctrl-C as a crashed run. The retry driver below is where cancellation
+ * has to bite, because that is the loop that would otherwise keep going.
  */
 export async function resolveApiKeyOnce(key: ApiKey | undefined, signal?: AbortSignal): Promise<string | undefined> {
-	throwIfAuthRetryAborted(signal);
 	if (key === undefined) return undefined;
-	if (isApiKeyResolver(key)) {
-		const resolved = (await key({ lastChance: false, error: undefined, signal })) || undefined;
-		throwIfAuthRetryAborted(signal);
-		return resolved;
-	}
+	if (isApiKeyResolver(key)) return (await key({ lastChance: false, error: undefined, signal })) || undefined;
 	return key;
 }
 
