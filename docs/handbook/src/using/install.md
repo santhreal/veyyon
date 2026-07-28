@@ -220,6 +220,12 @@ row carries the version, its publish date, the markers, and the changelog URL.
 Without a terminal on both ends, the bare `veyyon rollback` prints the list
 rather than opening a picker nothing can drive, so it is safe in a pipeline.
 
+Building that list is the one thing Veyyon asks the GitHub API for, so it is also
+the one thing that can be refused because of the API's per-address limit. When it
+is, the error says so and says what still works: updating forward does not touch
+the API, so `veyyon update` is unaffected. Wait a few minutes and the list comes
+back.
+
 You can also reach the picker without leaving a session. Open `/settings`, go to
 the `Interaction` tab, and you will find `Roll back version` directly under
 `Automatic Updates`, showing the version you are running now. It opens the same

@@ -282,10 +282,20 @@ describe("uninstall takes back the PATH entry install added", () => {
 
 	it("install.ps1 compares entries the same way the add does", () => {
 		// Matching loosely would take an unrelated directory with it; matching
-		// strictly by raw string would miss a trailing-backslash variant.
+		// strictly by raw string would miss the forms a real PATH carries — a
+		// trailing backslash, surrounding quotes, padding spaces. Both sides go
+		// through the one normalizer so they cannot disagree about which entry is
+		// ours: a disagreement double-adds on reinstall or strands the entry on
+		// uninstall.
 		const fn = installPs1.slice(installPs1.indexOf("function Get-PathWithoutDir {"));
 		const body = fn.slice(0, fn.indexOf("\nfunction "));
-		expect(body).toContain("$_.TrimEnd('\\') -ine $want");
+		expect(body).toContain("(Get-NormalizedPathEntry $_) -ine $want");
+		const contains = installPs1.slice(installPs1.indexOf("function Test-PathContainsDir {"));
+		expect(contains.slice(0, contains.indexOf("\nfunction "))).toContain(
+			"(Get-NormalizedPathEntry $entry) -ieq $target",
+		);
+		// One owner, not two copies that happen to agree today.
+		expect(installPs1.split("function Get-NormalizedPathEntry {")).toHaveLength(2);
 	});
 
 	it("install.sh reclaims staging files a killed install left behind", () => {

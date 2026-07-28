@@ -465,6 +465,79 @@ case_reinstall_while_running() {
 	rm -rf "$h"
 }
 
+# --- 25. a reinstall must not write a second PATH entry ----------------------
+# The install is not a one-shot: people re-run the curl line to upgrade, and an
+# rc that grows one PATH entry per run ends up with a $PATH the user cannot read
+# and cannot easily repair, on a file the installer had no business appending to
+# twice. The assertion is on what a NEW SHELL actually gets, not only on the
+# text in the rc, because a duplicate written two different ways still lands
+# twice on $PATH.
+case_reinstall_path_not_duplicated() {
+	local h; h=$(fresh)
+	HOME="$h" VEYYON_INSTALL_DIR="$h/bin" sh "$INSTALLER" >"$h/log1" 2>&1
+	HOME="$h" VEYYON_INSTALL_DIR="$h/bin" sh "$INSTALLER" >"$h/log2" 2>&1 || {
+		echo "the second install exited non-zero"; tail -20 "$h/log2"; return 1; }
+	[ -f "$h/.profile" ] || { echo "no rc was written at all"; return 1; }
+	local markers entries seen
+	markers=$(grep -c "added by the veyyon installer" "$h/.profile")
+	entries=$(grep -cF "$h/bin" "$h/.profile")
+	[ "$markers" = 1 ] || { echo "the marker comment appears $markers times"; grep -n veyyon "$h/.profile"; return 1; }
+	[ "$entries" = 1 ] || { echo "$entries PATH entries name $h/bin"; grep -n "$h/bin" "$h/.profile"; return 1; }
+	seen=$(HOME="$h" sh -c '. "$HOME/.profile" >/dev/null 2>&1; printf %s "$PATH"' | tr ':' '\n' | grep -cxF "$h/bin")
+	[ "$seen" = 1 ] || { echo "a fresh shell sees $h/bin on PATH $seen times"; return 1; }
+	rm -rf "$h"
+}
+
+# --- 26. completions must survive uninstall -> reinstall ---------------------
+# Completions are written by the binary that was just installed, so they are the
+# part of an install most likely to be left stale or missing by a cycle: an
+# uninstall that leaves them behind means a removed command still tab-completes,
+# and a reinstall that does not rewrite them means the new version completes with
+# the old version's flags.
+case_completions_survive_cycle() {
+	local h; h=$(fresh)
+	local file="$h/.local/share/bash-completion/completions/veyyon"
+	HOME="$h" VEYYON_INSTALL_DIR="$h/bin" sh "$INSTALLER" >"$h/log1" 2>&1
+	[ -f "$file" ] || { echo "the first install wrote no bash completion"; tail -20 "$h/log1"; return 1; }
+	HOME="$h" VEYYON_INSTALL_DIR="$h/bin" sh "$INSTALLER" --uninstall >"$h/u" 2>&1
+	[ ! -e "$file" ] || { echo "uninstall left the completion file behind"; return 1; }
+	HOME="$h" VEYYON_INSTALL_DIR="$h/bin" sh "$INSTALLER" >"$h/log2" 2>&1 || {
+		echo "the reinstall exited non-zero"; tail -20 "$h/log2"; return 1; }
+	[ -s "$file" ] || { echo "the reinstall restored no completion file"; tail -20 "$h/log2"; return 1; }
+	grep -q veyyon "$file" || { echo "the restored completion never names the command"; head -5 "$file"; return 1; }
+	rm -rf "$h"
+}
+
+# --- 27. the doctor still passes on the second install -----------------------
+# The install ends by running its own doctor, and a reinstall is where it is most
+# likely to report a problem it caused: a shadowing copy of the old binary, an
+# alias it no longer owns, a native addon left from the previous version. A
+# reinstall whose doctor complains is a failed install that exited 0.
+case_doctor_passes_on_reinstall() {
+	local h; h=$(fresh)
+	HOME="$h" VEYYON_INSTALL_DIR="$h/bin" sh "$INSTALLER" >"$h/log1" 2>&1
+	# The second install runs with the install dir already on PATH, which is what
+	# a real reinstall looks like: the first install wrote the rc line and the
+	# user has opened a shell since. Without that, doctor correctly warns that the
+	# command is not on PATH yet, and this case would be asserting the harness
+	# rather than the product.
+	HOME="$h" VEYYON_INSTALL_DIR="$h/bin" PATH="$h/bin:$PATH" sh "$INSTALLER" >"$h/log2" 2>&1 || {
+		echo "the second install exited non-zero"; tail -20 "$h/log2"; return 1; }
+	local doctor
+	doctor=$(sed -e 's/\x1b\[[0-9;]*m//g' "$h/log2" | sed -n '/^doctor:/,$p')
+	[ -n "$doctor" ] || { echo "the reinstall ran no doctor at all"; tail -20 "$h/log2"; return 1; }
+	printf '%s\n' "$doctor" | grep -q "veyyon runs" || {
+		echo "doctor did not report that veyyon runs"; printf '%s\n' "$doctor"; return 1; }
+	printf '%s\n' "$doctor" | grep -q "native addon loads" || {
+		echo "doctor did not report a working native addon"; printf '%s\n' "$doctor"; return 1; }
+	# `!!` is the installer's warning glyph. A warning here is the shadow/alias
+	# class of problem a reinstall introduces, which is exactly what this case is
+	# for, so it fails rather than passing with a complaint on screen.
+	printf '%s\n' "$doctor" | grep -q '^ *!' && {
+		echo "doctor warned on a reinstall"; printf '%s\n' "$doctor"; return 1; }
+	rm -rf "$h"
+}
+
 echo "=== hostile environment"
 run_case "IFS set to a digit"             case_hostile_env "IFS=0"
 run_case "IFS set to a slash"             case_hostile_env "IFS=/"
@@ -486,6 +559,9 @@ echo "=== uninstall and reinstall"
 run_case "uninstall is idempotent"        case_double_uninstall
 run_case "uninstall cleans only its own rc line" case_uninstall_cleans_rc
 run_case "reinstalls over a live install" case_reinstall_while_running
+run_case "reinstall does not duplicate the PATH entry" case_reinstall_path_not_duplicated
+run_case "completions survive uninstall then reinstall" case_completions_survive_cycle
+run_case "doctor still passes on a reinstall"  case_doctor_passes_on_reinstall
 
 printf '\n%d passed, %d failed, %d skipped\n' "$PASS" "$FAIL" "$SKIP"
 [ "$SKIP" -eq 0 ] || printf 'skipped: %s\n' "${SKIPPED[*]}"

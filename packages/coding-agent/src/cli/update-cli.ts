@@ -67,10 +67,11 @@ const GITHUB_RELEASES_API = `https://api.github.com/repos/${REPO}/releases`;
  */
 const GITHUB_LATEST_RELEASE_URL = `https://github.com/${REPO}/releases/latest`;
 /**
- * GitHub requires a User-Agent on every API request and rejects requests
- * without one. Identify the updater so the traffic is attributable.
+ * GitHub requires a User-Agent and rejects requests without one, on the API and
+ * on `github.com` alike. Identify the updater so the traffic is attributable —
+ * both requests in this file send it, which is why it is not named for the API.
  */
-const GITHUB_API_USER_AGENT = `${APP_NAME}-updater`;
+const GITHUB_USER_AGENT = `${APP_NAME}-updater`;
 const RELEASE_METADATA_TIMEOUT_MS = 30_000;
 const BINARY_DOWNLOAD_TIMEOUT_MS = 15 * 60_000;
 /**
@@ -275,7 +276,7 @@ export async function getLatestRelease(timeoutMs: number = RELEASE_METADATA_TIME
 		response = await fetch(url, {
 			method: "HEAD",
 			redirect: "manual",
-			headers: { "User-Agent": GITHUB_API_USER_AGENT },
+			headers: { "User-Agent": GITHUB_USER_AGENT },
 			signal: withTimeoutSignal(timeoutMs),
 		});
 	} catch (err) {
@@ -294,7 +295,7 @@ export async function getLatestRelease(timeoutMs: number = RELEASE_METADATA_TIME
 				? ` — ${REPO} has no published GitHub release yet (a draft or untagged release does not count)`
 				: "";
 		const status = response.statusText ? `${response.status} ${response.statusText}` : `${response.status}`;
-		throw new Error(`Failed to resolve the latest release from ${url}: HTTP ${status}${hint}`);
+		throw new Error(`Could not read the latest release from ${url}: HTTP ${status}${hint}`);
 	}
 	// Only a tag page is an answer. A redirect anywhere else means GitHub replied
 	// with something other than a release — an interstitial, a moved repository, a
@@ -332,16 +333,26 @@ export interface ReleaseListing extends ReleaseInfo {
  */
 const RELEASES_PAGE_SIZE = 100;
 
-/** How many pages to walk. Bounded so a paging bug cannot loop forever. */
+/**
+ * How many pages to walk. Bounded so a paging bug cannot loop forever, and so
+ * one picker cannot spend the whole hourly API budget in a single open. At 100
+ * releases a page this stops at 1000 versions, roughly two orders of magnitude
+ * past this repository's history; a project that reaches it would truncate the
+ * OLDEST versions silently, so raise this bound rather than let the picker
+ * quietly stop offering them.
+ */
 const RELEASES_MAX_PAGES = 10;
 
 /**
  * Every published release, newest first.
  *
  * Rollback needs the catalog, not just its newest entry, and this is the only
- * place that asks for it. It reads the same source as {@link getLatestRelease}
- * so the picker can never offer a version the updater cannot install, and it
- * applies the same exclusions GitHub's `releases/latest` applies implicitly:
+ * place that asks for it. It is also the only thing left in this file that calls
+ * `api.github.com`, which is capped at 60 requests an hour per address: a full
+ * version list has no redirect to read it from the way {@link getLatestRelease}
+ * does, so the cost is paid here, where it is spent by someone who opened the
+ * rollback picker rather than by every launch. It applies the same exclusions
+ * GitHub's `releases/latest` applies implicitly:
  * drafts are unpublished and prereleases are not what `veyyon update` installs,
  * so offering either would let you roll INTO a version the update path would
  * immediately roll you back out of.
@@ -385,7 +396,7 @@ async function fetchReleasePage(url: string, timeoutMs: number): Promise<Release
 	let response: Response;
 	try {
 		response = await fetch(url, {
-			headers: { "User-Agent": GITHUB_API_USER_AGENT, Accept: "application/vnd.github+json" },
+			headers: { "User-Agent": GITHUB_USER_AGENT, Accept: "application/vnd.github+json" },
 			signal: withTimeoutSignal(timeoutMs),
 		});
 	} catch (err) {
@@ -395,9 +406,14 @@ async function fetchReleasePage(url: string, timeoutMs: number): Promise<Release
 		throw err;
 	}
 	if (!response.ok) {
+		// The version LIST is the only thing left that spends the API budget, and
+		// that budget belongs to the address rather than to this machine, so a
+		// rate limit here is usually somebody else's traffic. Updating forward
+		// does not go through the API at all, which is worth saying: otherwise
+		// this reads as "veyyon cannot reach GitHub" and the user stops trying.
 		const hint =
 			response.status === 403 || response.status === 429
-				? " — GitHub is rate-limiting this address; retry in a few minutes"
+				? " — GitHub is rate-limiting this address (the limit is per address and shared, so another machine behind it may have spent it); retry in a few minutes, or run `veyyon update`, which does not use the API. `veyyon rollback <version>` needs this list to confirm the version exists."
 				: "";
 		throw new Error(
 			`Failed to fetch the release list from ${url}: HTTP ${response.status} ${response.statusText}${hint}`,

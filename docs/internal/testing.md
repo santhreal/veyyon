@@ -792,7 +792,7 @@ its own gate:
 | Linux | `scripts/installer-environment-matrix.test.ts` | `install.sh --local` once per shell/XDG combination in `environments.toml` |
 | Windows | `scripts/install-tests/e2e.test.ps1` (CI job `install_ps1_e2e`) | `install.ps1 -Local` end to end: install, reinstall, uninstall |
 | Windows | `scripts/install-tests/functions.test.ps1` (CI job `install_ps1_functions`) | The pure helpers, with nothing installed |
-| Linux, by hand | `scripts/install-tests/stress.sh` | Real downloads in ~39 adversarial environments, in a disposable container |
+| Linux, by hand | `scripts/install-tests/stress.sh` | Real downloads in ~42 adversarial environments, in a disposable container |
 
 The Windows end-to-end test edits the user PATH and the CurrentUserAllHosts
 PowerShell profile for real, because the installer does and testing a fake would
@@ -815,13 +815,16 @@ release and no network.
 `scripts/install-tests/stress.sh` asks a different question from the gates above.
 Those prove the install works in the environments it was written for; this one
 puts it in environments nobody designs for and reports what breaks. It drives
-about 39 cases: three shells, four hostile `$HOME` names, three terminal widths
+about 42 cases: three shells, four hostile `$HOME` names, three terminal widths
 plus a terminal with no width tools at all, a read-only install directory, a
 read-only rc, a full disk, a shadowed `PATH`, two concurrent installs, a SIGINT
 mid-copy, a killed installer's staging file, a missing `$HOME`, six hostile
 environment variables, two umasks, a symlinked install directory, a tampered
-download, a missing release, no network at all, a double uninstall, and a
-reinstall over a running install.
+download, a missing release, no network at all, a double uninstall, a reinstall
+over a running install, and the three things a second install is most likely to
+get wrong: a duplicated `PATH` entry, completions that an uninstall left behind
+or a reinstall failed to rewrite, and a doctor that warns because the previous
+install is still partly there.
 
 It is not in CI and not in `bun test`. It performs real installs, including real
 downloads of a 300 MB binary, and several cases deliberately break the machine

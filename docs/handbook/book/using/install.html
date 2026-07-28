@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e059680e.js";
+            window.path_to_searchindex_js = "../searchindex-bb6eab77.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -343,6 +343,11 @@ back from there.</p>
 row carries the version, its publish date, the markers, and the changelog URL.
 Without a terminal on both ends, the bare <code>veyyon rollback</code> prints the list
 rather than opening a picker nothing can drive, so it is safe in a pipeline.</p>
+<p>Building that list is the one thing Veyyon asks the GitHub API for, so it is also
+the one thing that can be refused because of the API’s per-address limit. When it
+is, the error says so and says what still works: updating forward does not touch
+the API, so <code>veyyon update</code> is unaffected. Wait a few minutes and the list comes
+back.</p>
 <p>You can also reach the picker without leaving a session. Open <code>/settings</code>, go to
 the <code>Interaction</code> tab, and you will find <code>Roll back version</code> directly under
 <code>Automatic Updates</code>, showing the version you are running now. It opens the same
