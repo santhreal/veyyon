@@ -8,6 +8,7 @@ export * from "./byte-truncate";
 export * from "./bytes";
 export * from "./collapse-whitespace";
 export * from "./color";
+export * from "./config-parse";
 export * from "./conformance";
 export * from "./content-text";
 export * from "./dirs";
