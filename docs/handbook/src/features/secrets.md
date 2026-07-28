@@ -173,21 +173,22 @@ Warning: secrets: #DEPLOY_KEY# expires soon, 2h left. Extend it with
 /secret extend DEPLOY_KEY --ttl 7d, or it will be deleted.
 ```
 
-The thresholds are fractions of the lifetime rather than fixed times, so one rule fits every entry. A one-day secret is mentioned after twelve hours; a ninety-day secret is mentioned on day forty-five, not on day eighty-nine. Each warning names the command that prevents the loss, because expiry deletes the value and there is nothing to do about it afterwards.
+The thresholds are fractions of the lifetime rather than fixed times, so one rule fits every entry. A one-day secret is mentioned after twelve hours; a ninety-day secret is mentioned on day forty-five, not on day eighty-nine. Each warning names the command that prevents expansion from being revoked.
 
-**Expiry deletes the value.** It does not merely stop hiding it. That distinction matters: if an expired secret simply stopped being obfuscated, the value would start flowing to the model provider at the moment its protection lapsed, which is the opposite of what you asked for.
+**Expiry revokes substitution immediately.** If an expired secret merely stopped being obfuscated, its value could flow to the model provider when protection lapsed. Veyyon instead removes the in-memory expansion mapping and keeps a forward-only redaction tombstone.
 
-The deadline is enforced at the moment the credential is used, not only when a session starts. A session you leave open over a weekend stops substituting a one-day secret on the day it runs out, and tells you it has:
+The deadline is enforced when the credential is used, not only when a session starts. A session left open over a weekend stops substituting a one-day secret on the day it expires and reports both the runtime and persisted state:
 
 ```text
-Warning: secrets: #GITHUB_TOKEN# has expired and is no longer being substituted. Its value
-was deleted, so store it again with /secret add GITHUB_TOKEN --from-env <VAR> if you still
-need it.
+Warning: secrets: #GITHUB_TOKEN# has expired and its in-memory expansion has been
+revoked. Its encrypted value has not yet been deleted from the vault; a successful
+vault refresh will prune it. Store it again with /secret add GITHUB_TOKEN
+--from-env <VAR> if you still need it.
 ```
 
-If a command still refers to a secret that has expired, the placeholder stays visible in the command rather than being replaced with nothing. A command that fails loudly is better than one that runs without a credential it needed, and an empty `Authorization:` header reads like a request the agent meant to send unauthenticated.
+The hot-path expiry check does not write to the vault. The encrypted entry remains on disk until the next successful vault refresh prunes it. It remains encrypted and cannot be expanded after the deadline.
 
-The deleted raw value remains a forward-only redaction tombstone for the life of the same working-directory runtime. Veyyon will not substitute it into a command, but old transcript text containing it is still replaced before a provider request.
+If a command still refers to an expired secret, the placeholder stays visible instead of becoming an empty string. This fails loudly rather than sending an empty `Authorization` header. Old transcript text containing the raw value remains covered by the forward-only redaction tombstone for the life of the same working-directory runtime.
 
 ### Scope
 

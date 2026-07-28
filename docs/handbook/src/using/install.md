@@ -57,23 +57,33 @@ On Linux the installer checks which C library your system uses before it downloa
 
 ## Install a specific version, or from source
 
-The installer takes a few options, and `--help` lists them:
+### Linux or macOS
+
+The POSIX installer takes long options. Pass them after `-- ` when you pipe the script:
 
 ```console
 $ curl -fsSL https://get.veyyon.dev | sh -s -- --help
-```
-
-Pass them after `-- ` when you pipe the script:
-
-```console
 $ curl -fsSL https://get.veyyon.dev | sh -s -- --binary --ref v1.0.11   # a specific release binary
 $ curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11           # build that ref from a git checkout (implies --source)
 $ curl -fsSL https://get.veyyon.dev | sh -s -- --source                # build the default branch from a git checkout
 ```
 
-Release tags carry a leading `v`, and `--ref 1.0.11` works as well as `--ref v1.0.11`: the installer looks for the tag you named, then for the `v` form, and prints which one it resolved to before it downloads anything. It does that only for something that reads as a version, so a branch or a commit is looked up once and refused once.
+### Windows
 
-`--source` is for running an unreleased branch or contributing. It keeps a real checkout under `~/.veyyon/src`, installs the workspace once with Bun, and links a launcher that runs Veyyon straight from TypeScript, so there is no separate build step. A source install needs **Bun** and **Git**; the installer installs Bun for you when it is missing. It also needs **[git-lfs](https://git-lfs.com)** when the checkout tracks files through Git LFS, and it stops with that message rather than continuing: without git-lfs those files are written as small pointer text files, which look present and then fail at runtime. If nothing in the checkout is LFS-tracked, git-lfs is not required and the installer does not ask for it. The native addon is provisioned automatically: the installer (and the launcher, if the addon ever goes missing) downloads the prebuilt addon for your platform from the matching release, and falls back to a local Rust build only when no prebuilt exists. On Windows the same options are `-Source`, `-Binary`, `-Ref`, `-Local`, `-Uninstall`, and `-Help`. Pass them with the scriptblock form, for example `& ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source` (see the header of `install.ps1`). `-Local` (and `--local` on Linux and macOS) installs the binary a checkout has already built instead of downloading a release, which is what you want when you are working on Veyyon itself or installing on a machine with no network.
+The PowerShell installer uses named PowerShell parameters. Create a script block from the downloaded installer so you can pass them:
+
+```powershell
+& ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Help
+& ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Binary -Ref v1.0.11  # a specific release binary
+& ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Ref v1.0.11          # build that ref from a git checkout (implies -Source)
+& ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source               # build the default branch from a git checkout
+```
+
+You cannot append parameters to `irm ... | iex`. Use the script-block form above whenever you need an option. If you downloaded `install.ps1` as a file instead, use the same parameters with `pwsh -File install.ps1`.
+
+Release tags carry a leading `v`, and `--ref 1.0.11` on POSIX or `-Ref 1.0.11` on Windows works as well as the leading-`v` form. The installer looks for the tag you named, then for the `v` form, and prints which one it resolved to before it downloads anything. It does that only for something that reads as a version, so a branch or commit is looked up once and refused once.
+
+Source mode is for running an unreleased branch or contributing. It keeps a real checkout under `~/.veyyon/src`, installs the workspace once with Bun, and links a launcher that runs Veyyon straight from TypeScript, so there is no separate build step. A source install needs **Bun** and **Git**; the installer installs Bun for you when it is missing. It also needs **[git-lfs](https://git-lfs.com)** when the checkout tracks files through Git LFS, and it stops with that message rather than continuing: without git-lfs those files are written as small pointer text files, which look present and then fail at runtime. If nothing in the checkout is LFS-tracked, git-lfs is not required and the installer does not ask for it. The native addon is provisioned automatically: the installer (and the launcher, if the addon ever goes missing) downloads the prebuilt addon for your platform from the matching release, and falls back to a local Rust build only when no prebuilt exists. Use `-Local` on Windows or `--local` on POSIX to install a binary the checkout already built instead of downloading a release.
 
 If you would rather clone and drive the workspace yourself:
 

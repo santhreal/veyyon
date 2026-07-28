@@ -16,6 +16,8 @@
 - Every package that ships prompts now has a prompt registry, and `veyyon prompt --prompts` lists all of them. Two packages had none: `@veyyon/ai` shipped fourteen prompts (a tool-call format guide per dialect, plus the tool-catalog template) next to the fourteen modules that imported them by relative path, and `@veyyon/metaharness` shipped the edit benchmark's three. That text goes into a model's system prompt, so "which prompts does veyyon send" had an answer that was short by seventeen, and the inspection command listed none of them. Prompts moved to `packages/ai/src/prompts/` and `packages/metaharness/adapters/edit/prompts/`, each with a registry beside them where the import is the registration. `veyyon prompt --prompts` now lists every id from all three product registries grouped by directory, and `veyyon prompt --prompt <id>` looks a prompt up in whichever one holds it, so `dialect/gemma` and `compaction/summarization-system` work like any coding-agent id. The benchmark harness's prompts stay out of the listing: they are asked by a measurement tool, not by the agent.
 - The auto-compaction threshold is now a two-level picker in `/settings`: **Auto-Compaction Threshold** opens to three modes (Auto, Percent, Tokens) with a green check and the current amount on the active one, and each mode drills into its own presets plus a Custom entry. The flat list it replaces mixed all 19 auto/percent/token options in one list, so the three semantics were invisible until you read every description, and a hand-edited value like `170000` showed as nothing selected. Custom values are validated and normalized on entry (`92` stores as `92%`, `170_000` as `170000`), and a stored value the parser cannot read is shown as a warning with Auto in effect instead of presenting Auto as your choice. The stored value is unchanged (`auto`, `85%`, `200000`), so existing configs, the legacy `thresholdTokens`/`thresholdPercent` fold-in, and the clamp warnings all keep working.
 - Added an **Experimental** settings tab: every experimental feature now lives in one place — Argot shorthand (five settings, moved from the Context tab's Experimental group), Tool Calling Mode, and Auto-Learn (moved from the Memory tab). The tab's name says "experimental" for everything on it, so labels no longer need an "(experimental)" suffix and the features stop pretending to be regular settings on three different tabs.
+- `update`: confirm 'Checksum verified' on a successful self-update.
+- `release`: derive commit-history notes + gate the generator on CI.
 - `GeneratedDict.breakEvenTurns` says how many turns a dictionary has to survive before it pays for itself. `estimatedSavings` alone reads as free money and is not: the dictionary is INPUT, carried on every turn of the session, while the savings are OUTPUT produced once per emission. A dictionary that saves 3,202 output tokens while carrying 2.4M input tokens across a session is a 751:1 loss, and nothing in the old result said so. `breakEvenTurns` divides the two, priced at `DEFAULT_OUTPUT_TO_INPUT_PRICE_RATIO`, and is `Infinity` when the dictionary is empty.
 - `DEFAULT_TOOL_CALL_STRUCTURE_SHARE` and `DEFAULT_OUTPUT_TO_INPUT_PRICE_RATIO` are exported, so a host that prices its own traffic can see what the defaults stand for instead of rediscovering them.
 - `DIALECTS` is exported and `Dialect` is derived from it. The union was the only statement of the set, so nothing could enumerate dialects at runtime and a check that wanted to ask whether every dialect ships a format guide had to write the twelve names out a second time.
@@ -127,6 +129,47 @@
 - `/thinking` and its `/effort` alias now change the current session only and print where the saved default lives. They used to rewrite the profile-wide default while the cycle keybinding did not, so the same change stuck or evaporated depending on how you made it, and there was no way to try an effort without keeping it.
 - Effort pickers now follow the active model's catalog-defined variant list. They show an explicit Default row, Veyyon's Auto control, Off only when the model permits it, and only native effort names after that. A low/high model no longer presents unsupported medium or xhigh choices that would be silently clamped.
 - The `compaction.model` and `subagent.model` chain editor now edits the highlighted primary or fallback position directly. Add fallback appends a position, and Delete removes only the highlighted position. Reopening model pickers reuses the catalog projection and sort while refreshing authentication badges.
+- `changelog`: backfill the undocumented veyyon changes across all packages.
+- `identity`: lock every @veyyon manifest to author santhreal.
+- `natives`: document the version-sentinel freshness gate and tri-state AVX2 lock-step.
+- `release`: lock the fork-notice-safe changelog roll.
+- `release`: unify the changelog roll onto the gate's bullet predicate.
+- `release`: verify the published linux-x64 binary launches.
+- `release`: verify the darwin binary's .sha256 sidecar too.
+- `hashline`: sample the seed-fuzz corpus on the gate, soak the full 3M nightly.
+- `hashline`: reclaim the range-edit perf bullet into [Unreleased].
+- `ai`: satisfy useLiteralKeys in the prototype-key metadata test.
+- `lint`: remove dead vars and a comma operator flagged by biome.
+- `natives`: warn (not silently skip) on a stale workspace native.
+- Align stale tests with strict contracts (unblock release gates).
+- Repoint sibling-package collapse-and-trim onto the utils owner.
+- `utils`: give collapseWhitespace a dependency-free subpath.
+- Repoint the three named errorMessage copies onto the utils owner.
+- `veyyon-shell`: unify head_tail_dedup onto one primitive owner.
+- `tui`: paint terminal ground (OSC 11) + track missing source; add handbook book-freshness gate.
+- Docs+debrand: canonical internal-doc coherence, verification stamps, dead-code cleanup.
+- Fix auth-broker-gateway ASCII diagram alignment after veyyon rename.
+- `website`: auto-sync changelog from CHANGELOG + published GitHub releases; auto-deploy site on release.
+- Website changelog: show only veyyon releases + Unreleased block; credit pre-fork oh-my-pi history as a note, not release cards.
+- Gate npm publish + Homebrew tap on their secrets/vars; debrand brew formula (veyyon.rb, veyyon binary + vey alias, santhreal/veyyon repo).
+- Debrand user-visible surfaces: terminal title π→vey, App/report/prompt/gallery omp→veyyon.
+- `wip`: in-progress modes/plugins/mcp/tui/docs work from parallel session (committed to unblock the 1.0.0 release cut).
+- Biome format wrap in auto-compaction-queue test.
+- `natives`: changelog references the real exported symbol __ompInstallTokioRuntime.
+- `deployment`: repo secrets/variables table + rollback-and-hotfix runbook.
+- Rustfmt diff.rs, crash_handler.rs, bun.rs.
+- `swarm-extension`: debrand npm metadata (description + repo/bugs URLs).
+- `utils`: hoist levenshteinDistance to @veyyon/pi-utils (one canonical home).
+- `mnemopi`: use canonical levenshteinDistance from @veyyon/pi-utils.
+- `cli`: near-miss did-you-mean routing coverage.
+- `changelog`: record the Kimi usage and recent-sessions ordering fixes.
+- `changelog`: note the set_cwd argot_load tip fix.
+- Purge upstream (can1357/oh-my-pi) traces from runtime source.
+- Lock loud surfacing of managed AGENTS.md seed failures.
+- `coding-agent`: correct the auto-chdir fallback chain in the maybeAutoChdir comment.
+- `tui`: warm the native addon before process.platform mocks.
+- `utils`: repoint strip-ansi's stale browser-consumer refs to @veyyon/tool-render.
+- `doc-freshness`: surface tracked-but-deleted docs loudly; re-stamp releasing.md to canonical HEAD.
 - `AgentOptions.pruneToolDescriptions` accepts a per-model resolver as well as the existing boolean. The agent resolves it for main and side requests, so a host can move descriptors between the prompt and native schemas when the active model changes without reconstructing the agent.
 - `compaction/compaction.ts` takes `Effort` from `@veyyon/catalog/effort` and `withAuth` from `@veyyon/ai/auth-retry`, the modules that declare them, so its `@veyyon/ai` import is type-only and the file carries no runtime edge to the barrel at all.
 - The agent loop and the `Agent` class name the modules that declare the functions they call rather than the `@veyyon/ai` entry point, which re-exports the model catalogue, every provider and the usage backends. Both stream, so both reach the streaming engine either way; what changed is that ten other names stopped arriving with the whole package attached. `agent-loop.ts` went from 378 modules to 321 and `agent.ts` from 380 to 323, and `compaction/utils.ts` from 198 to 164 by taking the dialect factory from its own module instead of the dialect barrel.
@@ -174,6 +217,7 @@
 - Values that go on a provider's wire are declared once, in the catalog that owns them. Three had a second declaration in a package that consumes it, under the same name and with the same value, so the owner was being bypassed rather than read. Devin's IDE and extension versions are sent as request metadata by model discovery and by the chat provider, each from its own pair, so a bump would have left the two halves of one session identifying themselves as different clients. Antigravity's `fetchAvailableModels` path was spelled by discovery and by the usage reader; a path change would have 404ed whichever copy was not updated, and a usage reader that cannot reach its endpoint reports no quota information rather than a wrong URL. The Codex base URL is imported from the catalog by six modules and was respelled as a bare literal by web search, which would have kept posting to the old host under the user's real credentials after a move.
 - The placeholder an errored tool result carries when the tool produced no output is one sentence, and `packages/ai/src/types.ts` owns it beside the `ToolResultMessage` type it belongs to. It was declared in the agent loop, which fills it in where an untyped tool result enters, and again in the Anthropic provider, which fills it in on the way to a wire that rejects an empty content array. Same event, same sentence, two copies: an edit to either produced a transcript wording one failure two ways depending on which layer noticed it first.
 - The credential-validation timeout and Google's Code Assist tier ids each have one owner. `VALIDATION_TIMEOUT_MS` is exported from `registry/api-key-validation.ts`, and Xiaomi's regional key check imports it instead of holding its own budget under the same name, so the deadline that decides when a hung validation becomes a rejected key is one number. `TIER_FREE`, `TIER_LEGACY` and `TIER_STANDARD` moved to `registry/oauth/google-oauth-shared.ts`, the module that already exists for the two Google providers: `legacy-tier` is what both fall back to when a response names no tier, and a drift between their private copies would have put them on two different defaults while each file still read correctly on its own.
+- The cancelled-request error is `RequestAbortError`, not `AbortError`. It shared the name with two unrelated classes in `@veyyon/utils` (a cancelled operation and a killed child process), which made an `instanceof` check read as a question about cancellation when it was really a question about which layer raised it. `name` is still `"AbortError"` and the default message is still `"Request was aborted"`, so name-based and text-based matchers, and the auth gateway's 499 classification, are unchanged.
 - `StreamDecoder` and `ArgotSession` use ES `#` private fields instead of the `private` keyword, which TypeScript erases and so never actually hid anything at runtime. `fork()` reaches a sibling instance's fields through `copy.#entries`, which is the spelling a private name needs when the receiver is another object of the same class. No public API changed.
 - A dictionary entry is now priced in the channel it is actually emitted in, which changes what the generator selects. Line structure (a newline plus its indentation) costs about one token in a plain message, but a tool call carries its arguments as JSON, where the same run arrives escaped as `\` + `n` and each tab costs an escape of its own. The two prices differ by enough to flip whether a structure run is worth a handle at all, so `emittedTokenCost` blends them at `DEFAULT_TOOL_CALL_STRUCTURE_SHARE`, the measured share of structure runs emitted inside tool-call arguments: 41.76%, over 307 transcripts and 23,467 assistant turns. Pass `toolCallStructureShare` to `generate` if your own harness splits differently.
 - `GENERATOR_REVISION` is 3. It is part of the cache key, so the first run after upgrading regenerates every cached dictionary rather than serving one selected under the old prices.
@@ -255,7 +299,7 @@
 ### Fixed
 
 - `TERM=dumb` now suppresses bold, italic, underline, strikethrough, and inverse SGR sequences as well as foreground and background colors. `NO_COLOR` still preserves non-color emphasis.
-- The Windows release installer stages downloaded binaries with an `.exe` suffix. Windows PowerShell 5.1 can now run the verified preflight search inside its output pipeline instead of rejecting the staged `.download` file as a document.
+- The Windows installer stages downloaded releases and local builds with an `.exe` suffix. Windows PowerShell 5.1 can run both verified preflight searches inside an output pipeline instead of rejecting `.download` or `.local` staging files as documents. Reinstall and uninstall also reclaim interrupted local staging files, including the legacy suffixless form.
 - A block that folds exactly one line now says "1 more line". Every collapsed tool block, the read tool's continuation notice, the edit preview, the LSP hover, the MCP and eval renderers, `ssh` output and the Agent Control Center's comms fold wrote the count inline, so all of them said "1 more lines" on the commonest fold there is.
 - Image paste now uses the same chords in the composer as everywhere else. The editor kept its own copy of the shipped defaults and had pinned `app.clipboard.pasteImage` to `ctrl+v`, so on Windows the `alt+v` fallback and on macOS the `super+v` fallback did not fire there, while the docs, `/hotkeys` and the settings UI all listed them. There is one table now, in `config/keybinding-defs.ts`, and the editor reads it.
 - The Agent Control Center's Comms view names the expand key you actually have. Its key handler already read `app.tools.expand`, but the footer chip and the fold line both said `ctrl+o` in so many letters, so rebinding the action left the card telling you to press a key that no longer unfolds anything. When no expand key reaches the card the chip is dropped rather than shown, and the fold still reports how many lines it hid.
@@ -301,6 +345,10 @@
 - Secret protection now closes every provider-bound path, including compaction, commit analysis, benchmarks, evaluation, Hindsight, Mnemopi, memory extraction, title and thinking classifiers, task labels, TTS, image tools, resumed assistant text, and dynamic prompts and schemas. Each physical attempt rebuilds from raw text with the live profile, project, environment, and vault runtime after credential refresh. Authenticated replay fields fail closed when they contain a live value, JSON keys are protected with collision checks, provider-bound images are canonically re-encoded without metadata, and credential-bearing URLs bypass cloud readers. Unnamed values and generated one-way aliases use machine-keyed HMAC derivation; replacement output is atomic; ambiguous regex alternations are refused; and ill-formed Unicode cannot enter placeholder generation. Working-directory rescoping rolls back transactionally. Vault files reject scope aliases, hard links, legacy unbound envelopes, oversized descriptors, and stale-lock reaper races. Audit generations reject hard links and oversized reads, recover non-newline tails safely, protect JSON keys, and escape terminal control bytes. Inline `/secret add` preserves exact trailing bytes and rejects option-like text after credential data begins.
 - Vault storage now pins open physical scope and key directories for every transaction. Kernel no-replace and exchange publication preserves a racing destination, key creation uses one crash-atomic winner, and interrupted key stages recover idempotently under concurrent readers. Vault authentication includes the canonical path and physical scope-directory identity. Runtime revisions include inode, time, link, permission, and ownership changes. Existing key and vault permissions fail closed on POSIX and Windows, and write preflight rejects encoded plaintext over 6,291,402 bytes before encryption.
 - SDK hosts can set `globalConfigRoot` in `createAgentSession()` to isolate the cross-profile vault and machine key from the host user's Veyyon data. The omitted default remains `getGlobalConfigRootDir()`. Secret runtime setup now captures one root for creation and refresh, and records the vault revision after key initialization so the first provider attempt does not misread key creation as an external vault change.
+- Session loading now refuses a non-empty transcript with a corrupt header without rewriting it. Recoverably malformed later records produce one content-free operator notice with their path, line, byte offset, and shape problem. Working-directory and session-file moves are transactional through file, memory, Redis, and SQL-backed storage, include artifacts, roll back after a failed final header write, and participate in global listing and orphan-backup recovery without requiring a local mirror.
+- Concurrent SDK sessions now own independent secret-notice registrations, so disposing one cannot detach another's warnings. Vault add and authenticated-load boundaries reject ill-formed UTF-16 without replacing ciphertext. Runtime expiry notices distinguish immediate in-memory revocation from the encrypted entry that a later successful vault refresh prunes.
+- Default Effort treats any explicitly stored `defaultEffort` object, including `{}` or model-only rows, as authoritative over the retired global value. Scoped model cycling re-reads current per-model defaults unless a selector carries an explicit suffix; alias suffixes replace stored suffixes; role displays resolve the concrete model row; and CLI selector effort no longer leaks into later models as a session override.
+- ACP and text dispatch reject argument tails for commands that do not accept them while `/model` retains its argument. Extension and custom commands accept every canonical whitespace separator. Compaction dividers and modal selector footers show live remapped keys and omit unbound actions, and extension headers no longer retain a gap for an empty preset icon.
 - Bold, italic, underline, strikethrough, and inverse attributes no longer disappear when color detection is disabled or unavailable. The theme emits its attribute-specific SGR pairs directly, so markdown emphasis, reasoning text, selected tabs, and wrapped inverse diffs remain readable without relying on color support.
 - Compaction retry messages marked `queueOnly` remain in the user queue rather than starting an idle turn. Image-bearing skill retries preserve their user attribution and queue label after canonical image normalization.
 - Secret runtime refresh now follows the session manager's authoritative working directory. A request that retained an older scope cannot supersede an in-flight move back to that scope, while unchanged vault revisions reuse the exact existing lease. SDK disposal now shares one transaction across concurrent callers, forwards the first caller's shutdown options, and detaches listeners and registries even when audit flushing fails.
@@ -485,12 +533,38 @@
 - Fixed isolated branch merge-back rejecting committed agent edits when the parent had unrelated uncommitted changes in the same file; dirty-baseline blobs are now seeded into the parent object database and replayed with a 3-way synthetic-tree apply ([#40](https://github.com/santhreal/veyyon/issues/40)).
 - Fixed Esc aborting an ongoing agent turn instead of overlapping TTS playback, leaving speech uninterruptible.
 - Fixed the remapped TypeBox compatibility shim omitting `Type.Unsafe`, which crashed extensions such as `vey-mcp-adapter` when they registered tools from raw MCP input schemas.
+- `mnemopi`: validate the source name in renameBank to close a traversal.
+- `settings-test`: drop wrong SettingPath cast that broke the release typecheck.
+- `coding-agent`: make file moves crash-atomic; hoist mode-preserving atomic write.
+- `install`: compare whole PATH entries on Windows, add gated ps1 function tests.
+- `edit`: preserve a UTF-8 BOM through an old_text/new_text edit.
+- `lsp`: don't silently swallow format-on-write failures.
+- `website`: serve get.veyyon.dev root from a dedicated install-only tree.
+- `release`: reclaim hashline perf bullet into [Unreleased]; keep new [Unreleased] below fork notice.
+- `natives`: declare the four new loader-state exports in the .d.ts.
+- `compaction`: count retained custom/branch tokens in keepRecent budget.
+- `compaction`: cut past the crossing entry when keeping everything dead-ends.
+- `tool-render`: deep-import formatCount so the collab-web browser bundle stops pulling Bun-only utils.
+- `plugins`: plugin doctor reports ok for the fresh-install state.
+- `session`: clearer no-model/no-key guidance pointing at /login and veyyon setup.
+- `release`: skip changelog diff when no baseline ref exists (first release).
+- `cli`: fail fast on non-TTY interactive/empty stdin; consume piped prompts.
+- `plugin-cli`: stop doubling the 'Error:' prefix in plugin command errors.
+- `errors`: remove remaining doubled 'Error:' prefixes; generalize the source-lock.
+- `install`: warn instead of silently skipping a failed shell completion.
+- `edit`: trim apply_patch marker paths so the write matches the approved path.
+- `hashline`: guard NodeFilesystem.move against deleting the file it just wrote.
+- `hashline`: guard the production move adapter against deleting the file it just wrote.
+- `hashline`: guard InMemoryFilesystem.move against dropping a same-key move.
 - Compaction and branch summaries now enter the provider request as agent-owned developer context, not as synthetic user turns. Their persisted `compactionSummary` and `branchSummary` roles remain unchanged. New context contains no private `<summary>` delimiters for a model to echo.
 - `AgentLoopConfig.pauseGate` can scope pause state to one execution domain while retaining the process-wide gate by default. Parallel and independently embedded loops no longer inherit another domain's test or host pause, so aborts still become completed `aborted` messages with their exact reason instead of escaping as rejected streams.
 - A turn that ends in an error builds its message with the shared `errorMessage` helper. The two tail branches were that helper written out by hand, and the local `const errorMessage` holding the result shadowed the import, so the hand-rolled copy was the only version reachable in that scope. The local is named `failureMessage` now.
 - Compaction now protects hook output, memory context, turn prefixes, long and short summaries, local fallbacks, and remote summarizer bodies at the final provider boundary. Each physical attempt resolves the current secret transform after credential refresh, so an authentication retry cannot reuse text prepared with a stale runtime. Opaque provider replay state keeps its exact identity and is rejected rather than rewritten if it contains a live credential.
 - Fixed compaction doing nothing when the newest turn alone exceeded the keep-recent budget. One very large tool result at the end of a session was enough: the cut-point search found no boundary at or after the entry that blew the budget and fell back to keeping the whole session, so compaction reported nothing to do while the context meter sat at the ceiling. It now cuts to the newest valid boundary, which never separates a tool call from its result.
 - Fixed images in a user message counting as zero tokens. Every other message role already counted them, so a session of pasted screenshots under-reported its own size to the compaction trigger, the pruning budgets, and the context meter.
+- Aborted compaction completions now raise the canonical cancellation error before empty or partial text can be stored as a summary or handoff. This applies to long, short, turn-prefix, and direct handoff generation.
+- Compaction redacts message content and tool-argument keys and values before JSON escaping or the 2,000-character tool-result cutoff. Provider protocol roles and keys remain intact; signed, encrypted, and binary replay fields are preserved byte-for-byte and fail closed if a configured secret would require changing them.
+- Legacy `<summary>` presentation tags are removed only when they enclose the complete persisted summary. HTML, JSX, or XML `<summary>` elements embedded in source context remain unchanged.
 - OpenAI Responses and Chat Completions now preserve `developer` for agent-owned text-block context instead of silently rewriting the array form as `user`. Responses and Codex split image-bearing developer context into developer text plus user image attachments, which keeps instruction provenance without sending `input_image` in a role those APIs reject.
 - Cancelling a request no longer turns into a crashed run. `resolveApiKeyOnce` checked the abort signal before it looked at the key at all, so an already-cancelled request threw `signal.reason` even when there was no key to resolve and nothing to cancel. Its caller in the agent loop resolves credentials while preparing a request and then renders cancellation as an assistant message with `stopReason: "aborted"`; the throw unwound past that, and a user's own interrupt surfaced as a bare `AbortError`. A single resolve does no retrying and no waiting of its own, so it forwards the signal to a resolver, which can cancel its own I/O, and leaves the decision about what a cancellation means to whoever owns the signal. `withAuth` keeps the check, because it owns a retry loop that would otherwise keep minting credentials for a user who has left.
 - A cache that cannot be read or written now says so once instead of behaving like a permanently cold cache. Every `AuthStorage` cache method answered a database failure by acting as though the cache were empty: a failed read is a miss, a failed write is a value not kept. That behaviour is right, since a cache is an optimization and nothing should fail a request over it, but it was silent, so a read-only or corrupt `auth.db`, a full disk, or a locked file made every model-catalog and OAuth-metadata lookup miss and every write vanish while the process looked merely slow. The first failure of each operation now warns with the underlying error and later ones are debug, because a broken database fails on every call and one warning per call would bury it. A failed `deleteCachePrefix` is reported for a second reason: it leaves stale rows the caller believes it invalidated.
@@ -503,6 +577,7 @@
 - `fetchGitLabDuoWorkflowModels` answers `null` when no candidate namespace exposes Duo models, instead of throwing. It was the only reader that threw, and a throw reaches a manager's catch where it is labelled `unhandled`, which claims a bug in the reader when the real answer is that the token sees no namespace with Duo access. The sentence naming which env var to set now arrives as the reported reason. `discoverGitLabDuoWorkflowRuntimeNamespace` still throws, because a runtime that cannot resolve a namespace has to stop.
 - Every step of the GitLab Duo handshake now makes its request through one function rather than spelling out its own `try`/`if (!response.ok)`/`try` around `response.json()`. Four copies of the same three-way decision meant four places for it to drift and four places a reason had to be added.
 - Fixed GPT-5.6 Codex SKUs (`gpt-5.6-{sol,terra,luna}`) losing ~75K of usable context when the Codex discovery endpoint actively reports `context_window: 272000`: discovery now floors these SKUs at the 372K hard capacity instead of only substituting it when the field is absent, so the runtime dynamic value no longer overwrites the bundled pin.
+- Fixed Enter submitting the collab-web composer while an IME composition was still open, so the keystroke sent a half-composed message instead of confirming the candidate.
 - A patch to a file reached through a chain of symlinks now lands on the real file. The write followed one hop, so with `entry.ts` linking to `middle.ts` linking to the real file, it replaced `middle.ts` with a regular file: the link was destroyed and the file you keep never received the edit. Both halves were silent, because reading back through `entry.ts` returned the new bytes. The whole chain is followed now and every link survives.
 - `NodeFilesystem` refuses to write over a path that is not a regular file. The write ends in a rename, and a rename pointed at a named pipe destroys it and leaves a regular file behind, breaking whatever process was reading the other end; sockets and device nodes went the same way. The refusal names the path and what it actually is. A directory now reports that instead of a bare `EISDIR`.
 - A write is flushed to disk before it is published. The rename already prevented a truncated file, but the contents were not fsynced, so power loss could leave the file present and empty. The write handle and the directory entry are both flushed now.
@@ -561,21 +636,10 @@
 - A source checkout missing its generated tool-views bundle (any freshly pulled or cloned checkout) no longer dies at launch with a raw module-resolution error: the launcher regenerates the bundle before starting, and fails with the exact fix command if it cannot.
 - The setup wizard now paints its own pure-black ground across the full frame (splash, scene transitions, and outro), so the launch sequence looks the same on every terminal background instead of inheriting the terminal's color.
 - The Windows binary is now built as a modern (AVX2) Bun target instead of baseline. Baseline Windows standalone builds crash in the Bun runtime at startup before any Veyyon code runs (oven-sh/bun#32684), which made every published `veyyon-windows-x64.exe` exit with a segmentation fault on launch. The modern target requires a CPU with AVX2 (Intel Haswell 2013 / AMD Excavator 2015 or newer).
-- `REM` no longer deletes a file whose content drifted from the section tag. A whole-file delete is now the strictest op about the content tag (it was the most lenient: empty edits took the position-stable path and deleted through drift with only a soft warning), so a stale or fabricated tag can no longer discard edits the model never saw. The delete is refused with a mismatch error that forces a re-read, matching how an anchored edit on a drifted file behaves.
-- `MV DEST` no longer silently overwrites an existing destination file. A move onto a different existing file is refused during prepare (aborting the whole batch before any write), so a wrong or hallucinated destination can no longer destroy the user's work. A rename that only respells one file (case-only on a case-insensitive volume, or through a symlink) is still allowed, matched by device+inode identity rather than by path string.
 
 ## [1.0.36] - 2026-07-24
 
-### Fixed
-
-- `plugin-cli`: stop doubling the 'Error:' prefix in plugin command errors.
-- `errors`: remove remaining doubled 'Error:' prefixes; generalize the source-lock.
-
 ## [1.0.35] - 2026-07-24
-
-### Added
-
-- `update`: confirm 'Checksum verified' on a successful self-update.
 
 ### Changed
 
@@ -601,8 +665,6 @@
 
 - `settings`: quarantine wrong-shape settings files instead of dropping them silently.
 - `keybindings`: quarantine wrong-shape keybindings files instead of corrupting the map.
-- `mnemopi`: validate the source name in renameBank to close a traversal.
-- `settings-test`: drop wrong SettingPath cast that broke the release typecheck.
 
 ## [1.0.32] - 2026-07-24
 
@@ -633,7 +695,6 @@
 ### Fixed
 
 - `coding-agent`: commit edits and writes crash-atomically.
-- `coding-agent`: make file moves crash-atomic; hoist mode-preserving atomic write.
 
 ## [1.0.29] - 2026-07-24
 
@@ -668,7 +729,6 @@
 ### Fixed
 
 - `install`: write PATH to the login-shell rc on macOS, not ~/.bashrc.
-- `install`: compare whole PATH entries on Windows, add gated ps1 function tests.
 
 ## [1.0.26] - 2026-07-24
 
@@ -680,7 +740,6 @@
 ### Fixed
 
 - `utils`: stop normalizeBaseUrl leaking a trailing space behind a stripped slash.
-- `install`: warn instead of silently skipping a failed shell completion.
 
 ## [1.0.25] - 2026-07-24
 
@@ -697,20 +756,16 @@
 ### Fixed
 
 - `tui`: don't brick rendering on a single transient write failure.
-- `edit`: preserve a UTF-8 BOM through an old_text/new_text edit.
-- `lsp`: don't silently swallow format-on-write failures.
 
 ## [1.0.24] - 2026-07-24
 
 ### Added
 
 - `coding-agent`: present only alabaster while the light-theme slab class is unfixed.
-- `release`: derive commit-history notes + gate the generator on CI.
 
 ### Changed
 
 - `coding-agent`: lock the argot mid-session prompt-refresh contract.
-- `changelog`: backfill the undocumented veyyon changes across all packages.
 
 ### Fixed
 
@@ -726,10 +781,6 @@
 ### Fixed
 
 - `edit`: stop applyCodexPatch from silently hiding partial application.
-- `edit`: trim apply_patch marker paths so the write matches the approved path.
-- `hashline`: guard NodeFilesystem.move against deleting the file it just wrote.
-- `hashline`: guard the production move adapter against deleting the file it just wrote.
-- `hashline`: guard InMemoryFilesystem.move against dropping a same-key move.
 
 ## [1.0.22] - 2026-07-23
 
@@ -744,8 +795,6 @@
 - `coding-agent`: make the agents-guidance isolation helper async and profile-aware.
 - `types`: sync loader-state.d.ts with the tri-state + load-gate API.
 - `natives`: cover the runtime AVX2 classifier + lock parity with the build one.
-- `identity`: lock every @veyyon manifest to author santhreal.
-- `natives`: document the version-sentinel freshness gate and tri-state AVX2 lock-step.
 
 ### Fixed
 
@@ -753,7 +802,6 @@
 - `natives`: don't silently downgrade to baseline when AVX2 detection fails.
 - `build`: don't silently build baseline-only when host AVX2 probe fails.
 - `website`: serve install.sh at the get.veyyon.dev root.
-- `website`: serve get.veyyon.dev root from a dedicated install-only tree.
 
 ## [1.0.21] - 2026-07-23
 
@@ -770,7 +818,6 @@
 ### Changed
 
 - `release`: assert the tarball smoke PACKS every closure dep, not just overrides it.
-- `changelog`: record the Kimi usage and recent-sessions ordering fixes.
 
 ### Fixed
 
@@ -781,14 +828,6 @@
 ### Changed
 
 - `natives`: cover the ship-path stale-native guard on real .node bytes.
-- `release`: lock the fork-notice-safe changelog roll.
-- `release`: unify the changelog roll onto the gate's bullet predicate.
-- `release`: verify the published linux-x64 binary launches.
-- `release`: verify the darwin binary's .sha256 sidecar too.
-- `hashline`: sample the seed-fuzz corpus on the gate, soak the full 3M nightly.
-- `hashline`: reclaim the range-edit perf bullet into [Unreleased].
-- `ai`: satisfy useLiteralKeys in the prototype-key metadata test.
-- `lint`: remove dead vars and a comma operator flagged by biome.
 
 ### Fixed
 
@@ -801,7 +840,6 @@
 ### Fixed
 
 - `ci`: keep hashline scale suites under the 5s per-test limit on slow CI.
-- `release`: reclaim hashline perf bullet into [Unreleased]; keep new [Unreleased] below fork notice.
 
 ## [1.0.17] - 2026-07-23
 
@@ -820,16 +858,10 @@
 
 ## [1.0.16] - 2026-07-23
 
-### Changed
-
-- `natives`: warn (not silently skip) on a stale workspace native.
-- Align stale tests with strict contracts (unblock release gates).
-
 ### Fixed
 
 - `natives`: refuse to embed a native addon built for the wrong version.
 - `install-smoke`: pack argot + build prepack bundle so release gate passes.
-- `natives`: declare the four new loader-state exports in the .d.ts.
 
 ## [1.0.15] - 2026-07-23
 
@@ -842,9 +874,6 @@
 
 - Document scroll isolation in the settings reference and renderer internals.
 - `install`: --uninstall never deletes a checkout holding local work.
-- `changelog`: note the set_cwd argot_load tip fix.
-- Purge upstream (can1357/oh-my-pi) traces from runtime source.
-- Lock loud surfacing of managed AGENTS.md seed failures.
 
 ### Fixed
 
@@ -861,8 +890,6 @@
 ### Changed
 
 - Preserve in-progress startup-cwd and home-anchor-layout edits.
-- `coding-agent`: correct the auto-chdir fallback chain in the maybeAutoChdir comment.
-- `tui`: warm the native addon before process.platform mocks.
 
 ### Removed
 
@@ -1294,17 +1321,12 @@
 - `io`: harden user-config writes and keep the utils barrel off early-load paths.
 - `bash`: spill oversized abort/timeout output to an artifact.
 - `bash`: reuse sink artifact for oversized timeout/abort output.
-- `compaction`: count retained custom/branch tokens in keepRecent budget.
-- `compaction`: cut past the crossing entry when keeping everything dead-ends.
 
 ## [1.0.11] - 2026-07-18
 
 ### Changed
 
 - `utils`: promote collapseWhitespace to the repo-wide owner.
-- Repoint sibling-package collapse-and-trim onto the utils owner.
-- `utils`: give collapseWhitespace a dependency-free subpath.
-- Repoint the three named errorMessage copies onto the utils owner.
 
 ### Fixed
 
@@ -1373,8 +1395,6 @@
 ### Changed
 
 - `coding-agent`: drop the superseded export/html/tool-render duplicate + orphaned generator.
-- `utils`: repoint strip-ansi's stale browser-consumer refs to @veyyon/tool-render.
-- `veyyon-shell`: unify head_tail_dedup onto one primitive owner.
 
 ### Fixed
 
@@ -1391,10 +1411,6 @@
 - `stats`: deep-import format helpers + lock browser bundles off the Bun-mixed utils barrel.
 
 ## [1.0.2] - 2026-07-17
-
-### Fixed
-
-- `tool-render`: deep-import formatCount so the collab-web browser bundle stops pulling Bun-only utils.
 
 ## [1.0.1] - 2026-07-17
 
@@ -1418,33 +1434,12 @@
 
 - Forked oh-my-pi 16.5.2 and imported it under the veyyon name.
 - `website`: latest design refresh + PWA/SEO assets.
-- `doc-freshness`: surface tracked-but-deleted docs loudly; re-stamp releasing.md to canonical HEAD.
-- `tui`: paint terminal ground (OSC 11) + track missing source; add handbook book-freshness gate.
-- Docs+debrand: canonical internal-doc coherence, verification stamps, dead-code cleanup.
-- Fix auth-broker-gateway ASCII diagram alignment after veyyon rename.
-- `website`: auto-sync changelog from CHANGELOG + published GitHub releases; auto-deploy site on release.
-- Website changelog: show only veyyon releases + Unreleased block; credit pre-fork oh-my-pi history as a note, not release cards.
-- Gate npm publish + Homebrew tap on their secrets/vars; debrand brew formula (veyyon.rb, veyyon binary + vey alias, santhreal/veyyon repo).
-- Debrand user-visible surfaces: terminal title π→vey, App/report/prompt/gallery omp→veyyon.
-- `wip`: in-progress modes/plugins/mcp/tui/docs work from parallel session (committed to unblock the 1.0.0 release cut).
-- Biome format wrap in auto-compaction-queue test.
-- `natives`: changelog references the real exported symbol __ompInstallTokioRuntime.
-- `deployment`: repo secrets/variables table + rollback-and-hotfix runbook.
-- Rustfmt diff.rs, crash_handler.rs, bun.rs.
-- `swarm-extension`: debrand npm metadata (description + repo/bugs URLs).
-- `utils`: hoist levenshteinDistance to @veyyon/pi-utils (one canonical home).
-- `mnemopi`: use canonical levenshteinDistance from @veyyon/pi-utils.
-- `cli`: near-miss did-you-mean routing coverage.
 
 ### Fixed
 
 - Resolve lint/format errors in parallel-session WIP so the tree gates green.
 - Debrand user-visible vey leaks (login hint told users to run `vey`).
 - `swarm-extension`: peerDependency @veyyon/pi-coding-agent ^16 -> catalog:.
-- `plugins`: plugin doctor reports ok for the fresh-install state.
-- `session`: clearer no-model/no-key guidance pointing at /login and veyyon setup.
-- `release`: skip changelog diff when no baseline ref exists (first release).
-- `cli`: fail fast on non-TTY interactive/empty stdin; consume piped prompts.
 
 ## Upstream history
 

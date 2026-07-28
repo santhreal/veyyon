@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-cd679d79.js";
+            window.path_to_searchindex_js = "searchindex-3153da01.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-5cf6de48.js"></script>
@@ -639,16 +639,23 @@ by hand. See <a href="#model-and-provider-selection">Model and provider selectio
 <p>A staged file belonging to an installer that is still running is left alone, so two installs at once cannot delete each other’s download.</p>
 <p>On Linux the installer checks which C library your system uses before it downloads anything. The published binaries are built against glibc, so on a musl system (Alpine and similar) the installer stops and tells you to install from source instead. It stops rather than continuing because a musl system would install the binary cleanly and then fail to start it, with a “not found” error from the dynamic loader about a file that is plainly there.</p>
 <h2 id="install-a-specific-version-or-from-source"><a class="header" href="#install-a-specific-version-or-from-source">Install a specific version, or from source</a></h2>
-<p>The installer takes a few options, and <code>--help</code> lists them:</p>
+<h3 id="linux-or-macos"><a class="header" href="#linux-or-macos">Linux or macOS</a></h3>
+<p>The POSIX installer takes long options. Pass them after <code>-- </code> when you pipe the script:</p>
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --help
-</code></pre>
-<p>Pass them after <code>-- </code> when you pipe the script:</p>
-<pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --binary --ref v1.0.11   # a specific release binary
+$ curl -fsSL https://get.veyyon.dev | sh -s -- --binary --ref v1.0.11   # a specific release binary
 $ curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11           # build that ref from a git checkout (implies --source)
 $ curl -fsSL https://get.veyyon.dev | sh -s -- --source                # build the default branch from a git checkout
 </code></pre>
-<p>Release tags carry a leading <code>v</code>, and <code>--ref 1.0.11</code> works as well as <code>--ref v1.0.11</code>: the installer looks for the tag you named, then for the <code>v</code> form, and prints which one it resolved to before it downloads anything. It does that only for something that reads as a version, so a branch or a commit is looked up once and refused once.</p>
-<p><code>--source</code> is for running an unreleased branch or contributing. It keeps a real checkout under <code>~/.veyyon/src</code>, installs the workspace once with Bun, and links a launcher that runs Veyyon straight from TypeScript, so there is no separate build step. A source install needs <strong>Bun</strong> and <strong>Git</strong>; the installer installs Bun for you when it is missing. It also needs <strong><a href="https://git-lfs.com">git-lfs</a></strong> when the checkout tracks files through Git LFS, and it stops with that message rather than continuing: without git-lfs those files are written as small pointer text files, which look present and then fail at runtime. If nothing in the checkout is LFS-tracked, git-lfs is not required and the installer does not ask for it. The native addon is provisioned automatically: the installer (and the launcher, if the addon ever goes missing) downloads the prebuilt addon for your platform from the matching release, and falls back to a local Rust build only when no prebuilt exists. On Windows the same options are <code>-Source</code>, <code>-Binary</code>, <code>-Ref</code>, <code>-Local</code>, <code>-Uninstall</code>, and <code>-Help</code>. Pass them with the scriptblock form, for example <code>&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source</code> (see the header of <code>install.ps1</code>). <code>-Local</code> (and <code>--local</code> on Linux and macOS) installs the binary a checkout has already built instead of downloading a release, which is what you want when you are working on Veyyon itself or installing on a machine with no network.</p>
+<h3 id="windows"><a class="header" href="#windows">Windows</a></h3>
+<p>The PowerShell installer uses named PowerShell parameters. Create a script block from the downloaded installer so you can pass them:</p>
+<pre><code class="language-powershell">&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Help
+&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Binary -Ref v1.0.11  # a specific release binary
+&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Ref v1.0.11          # build that ref from a git checkout (implies -Source)
+&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source               # build the default branch from a git checkout
+</code></pre>
+<p>You cannot append parameters to <code>irm ... | iex</code>. Use the script-block form above whenever you need an option. If you downloaded <code>install.ps1</code> as a file instead, use the same parameters with <code>pwsh -File install.ps1</code>.</p>
+<p>Release tags carry a leading <code>v</code>, and <code>--ref 1.0.11</code> on POSIX or <code>-Ref 1.0.11</code> on Windows works as well as the leading-<code>v</code> form. The installer looks for the tag you named, then for the <code>v</code> form, and prints which one it resolved to before it downloads anything. It does that only for something that reads as a version, so a branch or commit is looked up once and refused once.</p>
+<p>Source mode is for running an unreleased branch or contributing. It keeps a real checkout under <code>~/.veyyon/src</code>, installs the workspace once with Bun, and links a launcher that runs Veyyon straight from TypeScript, so there is no separate build step. A source install needs <strong>Bun</strong> and <strong>Git</strong>; the installer installs Bun for you when it is missing. It also needs <strong><a href="https://git-lfs.com">git-lfs</a></strong> when the checkout tracks files through Git LFS, and it stops with that message rather than continuing: without git-lfs those files are written as small pointer text files, which look present and then fail at runtime. If nothing in the checkout is LFS-tracked, git-lfs is not required and the installer does not ask for it. The native addon is provisioned automatically: the installer (and the launcher, if the addon ever goes missing) downloads the prebuilt addon for your platform from the matching release, and falls back to a local Rust build only when no prebuilt exists. Use <code>-Local</code> on Windows or <code>--local</code> on POSIX to install a binary the checkout already built instead of downloading a release.</p>
 <p>If you would rather clone and drive the workspace yourself:</p>
 <pre><code class="language-console">$ git clone https://github.com/santhreal/veyyon.git
 $ cd veyyon
@@ -1341,7 +1348,7 @@ append rollout entry ──► update active leaf
 The difference is who supplies the next prompt and whether a TUI is attached.</p>
 <h2 id="what-a-session-is"><a class="header" href="#what-a-session-is">What a session is</a></h2>
 <p>A session is the unit of interactive work. Start one with <code>veyyon</code> in the repository you want to change. The session records every turn, tool call, approval, edit, and verification result.</p>
-<p>Sessions are stored as append-only rollout JSONL files. Each line is an entry with an <code>id</code> and a <code>parentId</code>. Those two fields make the file a tree, not just a log. The session never rewrites history. It only appends new entries or pointer moves.</p>
+<p>Sessions are stored as append-oriented rollout JSONL files. Each history entry has an <code>id</code> and a <code>parentId</code>, which makes the rollout a tree rather than a linear chat log. New history is appended. Header or representation maintenance may atomically rewrite the file, but it preserves every history entry.</p>
 <h2 id="what-a-turn-is"><a class="header" href="#what-a-turn-is">What a turn is</a></h2>
 <p>A turn is one user request plus the agent loop that responds to it. The loop calls the model, dispatches any tool calls, and produces the final reply. A turn ends when the model stops or when the harness decides to stop it.</p>
 <p>While a turn runs you can steer it with <code>Enter</code> or queue a follow-up with <code>ctrl+q</code> or <code>ctrl+enter</code>. A queued follow-up becomes a new turn after the current one finishes. Interrupting with <code>Esc</code> aborts the turn and returns queued messages to the composer.</p>
@@ -1356,7 +1363,7 @@ original session is never modified.</p>
 <p>Compaction preserves the goal card, active user instructions, recent turns, and a deterministic working-set of files touched so a resumed session does not require the full raw transcript.</p>
 <p>Prefer <code>/compact</code> when you need a summary to retain state. Prefer the <code>/new</code> command when prior transcript is no longer useful and you want a clean session without summarization. See <a href="#slash-commands-3">Slash commands</a>.</p>
 <h2 id="the-rollout"><a class="header" href="#the-rollout">The rollout</a></h2>
-<p>Session history lives in one layer: the append-only JSONL rollout. Every event is one line: a user message, an agent response, a tool call, a compaction, a goal update, or a branch summary. The rollout is the only source of truth, and it is never rewritten, which is what makes branching and resume safe and auditable. Listing sessions and resuming one read the rollout’s header lines directly; goal cards persist as rollout entries. There is no separate session-state database.</p>
+<p>Session history lives in one layer: the JSONL rollout. Every event is one line: a user message, an agent response, a tool call, a compaction, a goal update, or a branch summary. The rollout is the only source of truth. Listing and resume read it through the active storage backend, including indexed Redis and SQL storage. A non-empty rollout without a valid header is refused without changing its bytes; malformed later records are skipped with an operator-visible path, line, byte, and shape warning. Goal cards persist as rollout entries. There is no separate session-state database.</p>
 <h2 id="how-the-pieces-relate"><a class="header" href="#how-the-pieces-relate">How the pieces relate</a></h2>
 <ul>
 <li>A <strong>session</strong> owns one or more <strong>threads</strong> and stores them on disk.</li>
@@ -2016,15 +2023,16 @@ The model sees #GITHUB_TOKEN# and never the value.
 <pre><code class="language-text">Warning: secrets: #DEPLOY_KEY# expires soon, 2h left. Extend it with
 /secret extend DEPLOY_KEY --ttl 7d, or it will be deleted.
 </code></pre>
-<p>The thresholds are fractions of the lifetime rather than fixed times, so one rule fits every entry. A one-day secret is mentioned after twelve hours; a ninety-day secret is mentioned on day forty-five, not on day eighty-nine. Each warning names the command that prevents the loss, because expiry deletes the value and there is nothing to do about it afterwards.</p>
-<p><strong>Expiry deletes the value.</strong> It does not merely stop hiding it. That distinction matters: if an expired secret simply stopped being obfuscated, the value would start flowing to the model provider at the moment its protection lapsed, which is the opposite of what you asked for.</p>
-<p>The deadline is enforced at the moment the credential is used, not only when a session starts. A session you leave open over a weekend stops substituting a one-day secret on the day it runs out, and tells you it has:</p>
-<pre><code class="language-text">Warning: secrets: #GITHUB_TOKEN# has expired and is no longer being substituted. Its value
-was deleted, so store it again with /secret add GITHUB_TOKEN --from-env &lt;VAR&gt; if you still
-need it.
+<p>The thresholds are fractions of the lifetime rather than fixed times, so one rule fits every entry. A one-day secret is mentioned after twelve hours; a ninety-day secret is mentioned on day forty-five, not on day eighty-nine. Each warning names the command that prevents expansion from being revoked.</p>
+<p><strong>Expiry revokes substitution immediately.</strong> If an expired secret merely stopped being obfuscated, its value could flow to the model provider when protection lapsed. Veyyon instead removes the in-memory expansion mapping and keeps a forward-only redaction tombstone.</p>
+<p>The deadline is enforced when the credential is used, not only when a session starts. A session left open over a weekend stops substituting a one-day secret on the day it expires and reports both the runtime and persisted state:</p>
+<pre><code class="language-text">Warning: secrets: #GITHUB_TOKEN# has expired and its in-memory expansion has been
+revoked. Its encrypted value has not yet been deleted from the vault; a successful
+vault refresh will prune it. Store it again with /secret add GITHUB_TOKEN
+--from-env &lt;VAR&gt; if you still need it.
 </code></pre>
-<p>If a command still refers to a secret that has expired, the placeholder stays visible in the command rather than being replaced with nothing. A command that fails loudly is better than one that runs without a credential it needed, and an empty <code>Authorization:</code> header reads like a request the agent meant to send unauthenticated.</p>
-<p>The deleted raw value remains a forward-only redaction tombstone for the life of the same working-directory runtime. Veyyon will not substitute it into a command, but old transcript text containing it is still replaced before a provider request.</p>
+<p>The hot-path expiry check does not write to the vault. The encrypted entry remains on disk until the next successful vault refresh prunes it. It remains encrypted and cannot be expanded after the deadline.</p>
+<p>If a command still refers to an expired secret, the placeholder stays visible instead of becoming an empty string. This fails loudly rather than sending an empty <code>Authorization</code> header. Old transcript text containing the raw value remains covered by the forward-only redaction tombstone for the life of the same working-directory runtime.</p>
 <h3 id="scope"><a class="header" href="#scope">Scope</a></h3>
 <p>An entry belongs to one scope and is invisible from the others:</p>
 <div class="table-wrapper">
@@ -2367,23 +2375,14 @@ recent turns, working files, verification facts, and unresolved blockers through
 session resumes, Veyyon should make the important state visible to the next model turn instead of
 presenting a clean-looking summary that dropped the real constraint.</p>
 <h2 id="session-files-are-trees"><a class="header" href="#session-files-are-trees">Session files are trees</a></h2>
-<p>A session file (<code>~/.veyyon/profiles/default/agent/sessions/**/&lt;timestamp&gt;_&lt;id&gt;.jsonl</code>) is an append-only log, but its entries form
-a tree. Recorded session entries carry an <code>id</code> and a <code>parentId</code>, and branching works by appending a
-new entry whose <code>parentId</code> names an earlier entry, so it starts a sibling branch from that point.
-The <em>active leaf</em> is implicit: it advances to each appended entry, and on load it falls back to the
-last entry in the file. Not every line carries <code>parentId</code>: the first-line session header does not,
-and in-place refresh records (a replaced session header, a rewritten custom message) are full
-replaces of the original record, not entries on the tree. Nothing is ever rewritten: branches you
-navigate away from stay in the file, and resuming
-a session materializes only the entries along the active path (for a session with no branches, that
-is the entire file, exactly as before).</p>
-<p>Two properties are guaranteed by the storage layer:</p>
+<p>A session file (<code>~/.veyyon/profiles/default/agent/sessions/**/&lt;timestamp&gt;_&lt;id&gt;.jsonl</code>) is an append-oriented log whose entries form a tree. Recorded session entries carry an <code>id</code> and a <code>parentId</code>. Branching appends a new entry whose <code>parentId</code> names an earlier entry, so it starts a sibling branch from that point.</p>
+<p>The <em>active leaf</em> advances to each appended entry. On load it falls back to the last entry in the file. Not every line carries <code>parentId</code>: the first-line session header does not, and in-place refresh records are full replacements of the original logical record rather than tree entries. Storage maintenance may atomically rewrite the file to update the header or representation, but it preserves the history entries. Branches you navigate away from remain addressable.</p>
+<p>Four properties are guaranteed by the storage layer:</p>
 <ul>
-<li><strong>No history rewriting.</strong> Branching appends new entries; abandoned entries remain addressable.</li>
-<li><strong>Loud, fail-open on corruption.</strong> A malformed record is skipped so one corrupt line cannot make
-a whole session unopenable, but the skip is never silent: each dropped record is logged with its
-offset. Duplicate ids are last-write-win, and entries with a broken parent chain surface as extra
-roots rather than blocking the load.</li>
+<li><strong>No history deletion during navigation.</strong> Branching appends new entries; abandoned entries remain addressable.</li>
+<li><strong>A corrupt header never initializes over existing bytes.</strong> A non-empty file without a valid first session record is refused. Veyyon leaves it byte-for-byte unchanged so you can inspect or repair it.</li>
+<li><strong>Recoverable record loss is operator-visible.</strong> A malformed later record is skipped so one damaged line does not make the entire session unopenable. The session shows one bounded warning with the file, one-based line and byte offset, and shape problem. It never quotes the dropped record’s content. Duplicate ids are last-write-win, and broken parent chains appear as extra roots.</li>
+<li><strong>Moves are transactional.</strong> Moving a session changes the transcript, its artifacts, and its recorded working directory as one operation through the active storage backend. If relocation or the final header write fails, Veyyon restores the old paths and in-memory working directory.</li>
 </ul>
 <p>Session files written by older Veyyon versions have no linkage fields; they load as a linear chain,
 which is the exact shape they recorded.</p>

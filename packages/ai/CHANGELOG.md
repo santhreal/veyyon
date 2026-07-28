@@ -10,36 +10,22 @@
   so a predicate cost the whole utility package. That is what put the barrel on the coding agent's
   file-reading module graph and turned a landed reach cut red. Nothing about behaviour changes;
   `providers/anthropic.ts` reaches 191 modules where it reached 253.
-
 - The Google OAuth flow holds its config in an ES `#` private field rather than behind a `private`
   keyword the compiler throws away. No public API changed.
-
 - The OpenAI reasoning-effort fallback reads the thinking ladder from `@veyyon/catalog/effort` instead of restating it three times. `openai-reasoning-fallback.ts` held the six levels as a list, as a lookup table and as a rank table, all written by hand. That module decides what to RETRY with after a server rejects an effort, so a table that had not learned about a new level could not offer it as a fallback: a model whose only allowed value was the new one fell through to no reasoning at all, and the request then succeeded. `none` stays declared locally as `NO_REASONING_VALUE`, because it means do-not-reason and putting it on the ladder would make it a step the clamp helpers could stop at.
-
 - The Claude Code version this client identifies itself as comes from `@veyyon/catalog/wire/anthropic`. Three modules build a user-agent from it and build deliberately different ones, so the version is the only part that has to agree, and it was declared in the Anthropic provider: 310 modules for a string. The OAuth controller went from 313 modules to 106 and the usage client from 313 to 127. A drift between the three was never an error, only three requests carrying fingerprints that disagree with each other.
-
 - `dialect/wire-tags.ts` owns `CODE_FENCE`, the bare markdown fence. `gemini.ts` called it `FENCE` and `deepseek.ts` called it `CODE_FENCE`, and both dialects SCAN for it rather than emit it: DeepSeek closes a tool call's arguments at the last fence in its raw-argument buffer, Gemini closes a code block at the first one. A copy that drifted would not raise anything, it would make one dialect stop finding the end of a block and swallow the rest of the stream as arguments, which surfaces as a tool call with garbage parameters. Fences that carry an info string stay with their dialect, because the string is the dialect's own convention rather than shared vocabulary.
-
 - `<authenticated>` is exported from `provider-env-keys.ts` as `AUTHENTICATED_API_KEY_SENTINEL`. `providers/amazon-bedrock.ts` declared its own copy to recognise it, and it treats a match as "use the ambient AWS credential chain", so a miss would send the literal string `<authenticated>` as an API key.
-
 - Reads the Gemini developer API base, Anthropic's host, Cursor's host and Google's OAuth endpoints and scopes from `@veyyon/catalog` instead of declaring them. `providers/cursor.ts` re-exports `CURSOR_API_URL` from the owner rather than declaring it, and `registry/oauth/google-oauth-shared.ts` takes `readonly string[]` scopes, since it only joins them into a request parameter.
-
 - The Perplexity login flow reads its client identity from `@veyyon/catalog/wire/perplexity`. Its three OTP requests each spelled the same User-Agent and API version, and both values also existed in `@veyyon/coding-agent`, which spends the session this flow mints.
-
 - The Codex OAuth registry, the usage reader and the credential-row identity extractor all read a token's account id and email through `@veyyon/catalog/wire/codex` instead of each decoding the JWT themselves. The usage reader's copy passed an empty `chatgpt_account_id` through unchanged, which is worse than omitting the header it feeds. `auth-credential-rows.ts` had spelled both claim URIs as bare literals, the copy a grep for any constant name never finds, and the usage reader now uses the tree's one stored-email normalizer rather than a third hand-rolled `trim().toLowerCase()`.
 - Removed the deprecated `decodeJwt` export from `oauth/openai-codex`. It only forwarded to `decodeJwtPayload` in `@veyyon/utils`, which its own doc named as the replacement, and its last caller is gone; import `decodeJwtPayload` from `@veyyon/utils` instead.
-
 - The Devin provider and its OAuth flow take their hosts from `@veyyon/catalog/provider-endpoints` instead of each declaring `DEVIN_API_URL` for a different host.
-
 - The in-band tag vocabulary the ChatML-family dialects share (`<tool_call>`, `<tool_response>`, GLM's `<arg_key>`/`<arg_value>`, and both thinking envelopes) is declared once in `dialect/wire-tags.ts`. It was spread over 19 declarations in 8 modules under 15 names, plus 8 bare literals: the tool-call envelope was retyped in `glm.ts`, `hermes.ts` and `qwen3.ts` and a fourth time in `utils/validation.ts` as `SPILL_TOOL_CLOSE`, the tool-response envelope existed as GLM constants, as inline text in `rendering.ts`, and as bare literals in seven rows of the `owned-stream.ts` detection table, and `providers/anthropic.ts` held a third name for the `<thinking>` pair it strips. Each tag is a contract between a prompt this repo writes and a parser this repo runs, and every failure mode is silent: a scanner that no longer matches an opener reports success and the tool call becomes visible text, and a detector that no longer matches the tool-response opener lets the model's invented continuation of a tool result into the transcript. `hermes.ts` also spelled the envelope inline in its own renderer while keeping a named copy for its scanner, so the producer and the parser in one file were not using the same constant.
 - Three dialect tag names each meant two different byte sequences in sibling files, which is a latent bug rather than a style point. `THINK_OPEN` was `<think>` in six dialects and ` ```thinking ` in `gemini.ts`, where adding the shared name to the import list would have silently shadowed it. `CALL_OPEN` was `<|tool_call>` in `gemma.ts` and `<call:` in `pi-native.ts`. `RESPONSE_OPEN` was `<|tool_response>` in `gemma.ts` and the shared `<tool_response>` in `glm.ts`. Every dialect-specific tag is now prefixed with its dialect, and a scan over the dialect directory fails if any name takes two values again.
-
 - `DEFAULT_CALLBACK_PATH` is exported from `registry/oauth/callback-server.ts`, and the providers that used to hand that class back the value of its own default now import it. `anthropic.ts`, `devin.ts` and `gitlab-duo.ts` each declared `const CALLBACK_PATH = "/callback"`, as did the MCP flow in `@veyyon/coding-agent`, which imports `OAuthCallbackFlow` and then redeclared its default as a private fallback. Moving the served path would have left all four still advertising the old one, and the failure surfaces as a redirect-URI mismatch on the provider's own error page. The three provider-specific paths (`/auth/callback`, `/oauth-callback`, `/oauth2callback`) stay local, deliberately, because each is what that provider has registered.
 - Every Google and GitLab host comes from `@veyyon/catalog/provider-endpoints`, and `SQLITE_NOW_EPOCH` from `@veyyon/utils/sqlite`. Six modules here declared one of those hosts and three declared the SQL timestamp expression; nothing about the requests or the schemas changed.
-
 - Asking which environment variable holds a provider's key no longer loads the provider registry. `getEnvApiKey` was split out of `stream.ts` for exactly this reason and still cost 158 modules, because the OVERRIDES hung on the provider definitions: three credential probes (Bedrock's five credential shapes, Vertex ADC, Anthropic's variable order under Foundry) plus a handful of string keys, read off `PROVIDER_REGISTRY`, which is 121 modules of login flows, transports and model lists and was 95 of them marginal on this lookup. `src/provider-env-keys.ts` owns those rules now at 23 modules, and `registry/types.ts` no longer declares an `envKeys` field, so a provider's env-key rule has exactly one home and one reader. `env-api-key.ts` 158 -> 65, and downstream in `@veyyon/coding-agent`, where eighteen web-search providers and the fetcher import it: `web/parallel.ts` 164 -> 72, `tools/fetch.ts` 368 -> 282, `tools/read.ts` 542 -> 468. Two duplicates went with it: `KeyResolver` was declared identically in `registry/types.ts` and in `env-api-key.ts`, and `gitlab-duo-agent` declared `envKeys: "GITLAB_TOKEN"` while the catalog already said `envVars: ["GITLAB_TOKEN"]` for the same id, with the override silently winning. `test/provider-env-keys.test.ts` (26 cases) drives every branch of every probe from the real environment, including the boundaries a rewrite gets wrong (an AWS access key with no secret, ADC credentials with no project or no location, the Foundry order with all three variables set), and ratchets both duplicates shut.
-
-
 - The sqlite credential store moved out of `auth-storage.ts` into `src/auth-storage-sqlite.ts`, and the
   row types and row logic into `src/auth-credential-rows.ts`. One 7,800-line module used to hold three
   jobs: the credential types every consumer speaks, the `AuthStorage` class that selects and refreshes
@@ -56,7 +42,6 @@
   `config/settings.ts` imports that file, everything that reads a setting fell from 250 to 125.
   `packages/ai/test/credential-store-is-not-the-oauth-machinery.test.ts` pins both the numbers and the
   round trips through the store's own module.
-
 - The per-provider in-flight request caps moved out of the streaming engine into
   `src/provider-inflight-limits.ts`, which imports nothing. The caps are WRITTEN by a harness when its
   configuration changes and READ by the engine once per request, so reaching the setter meant importing
@@ -66,7 +51,6 @@
   through the new module, so `@veyyon/ai/stream` remains a working import path for it and there is still
   one owner of the record: two copies would drift, with the harness writing one and the engine reading
   the other, and a configured cap would silently stop applying.
-
 - The usage-provider table moved out of the credential store. `auth-storage.ts` imported all eleven
   usage backends directly, so a module about storing credentials owned the table of how every
   provider reports its quota, and through `usage/claude` it reached the provider transports and the
@@ -81,10 +65,7 @@
   holds the credential-ranking strategies and `getApiKey` reads those, so throwing would stop a
   process selecting a credential over a feature it never asked for. To report no usage deliberately,
   pass `usageProviderResolver` and `rankingStrategyResolver` explicitly.
-
 - Every prompt this package sends is registered in `src/prompts/registry.ts`, and the fourteen `.md` files moved from `src/dialect/` and `src/providers/` to `src/prompts/dialect/` and `src/prompts/provider/`. They were imported by relative path from the modules that used them, so the package could not say what text it puts in a model's system prompt without a glob, and `veyyon prompt --prompts` listed none of it. Each dialect definition now takes its guide from its registry row, and `dialect-prompt-registry.test.ts` asserts per dialect that the guide it ships is the row named for it and is no other dialect's, which is the failure a coverage check cannot see: handing the Gemma model GLM's syntax compiles, renders, and produces calls the scanner drops.
-
-
 - An OAuth refresh no longer trusts a credential row purely because it sits under the right id. The peer-rotation
   check re-reads the row by a bare numeric id to see whether another process already rotated the token, and nothing
   in that lookup said which provider the row belongs to: `readAuthCredentialById` is an optional method on the
@@ -95,27 +76,20 @@
   and the refusal is logged with both provider names and the credential id, and with no part of either credential.
   The shipped SQLite store uses `AUTOINCREMENT` and does not recycle ids on its own, so this is a check at the
   store-interface boundary rather than a fix for a race in that store.
-
 - Three more pass-through wrappers are gone: `hermes`, `qwen3` and `pi-native` each declared a
   `renderToolResults` whose whole body forwarded to `renderToolResponseResults`, which is what the
   generic `xml` dialect already referenced directly. A wrapper that adds nothing is a place a reader
   has to visit to learn that nothing happens there.
-
 - Anthropic's `<invoke>` tool-call syntax has one owner in `dialect/rendering.ts`. Three dialects speak it (`anthropic`, the generic `xml`, and `minimax`, which wraps the same invokes in a tag of its own) and each had a byte-identical private copy of the invoke renderer, the invoke list, the single-call renderer and the transcript wrapper, with two of them also repeating the `<function_results>` block: one wire format written out three times. A change to the escaping or to the rule that emits a declared string argument verbatim would have left the other two dialects emitting a shape the model was never prompted for, and the symptom is not an error but a model that calls tools badly. Six dialects' pass-through `renderThinking` wrappers and the three per-model turn delimiters, which `rendering.ts` already exported, went the same way. No output change: the shared renderers produce the same bytes, which the new suite asserts literally for all three dialects.
-
 - The reasoning-effort and service-tier guards come from the lists that own those values: `isEffort` beside `THINKING_EFFORTS` in `@veyyon/catalog`, and `isServiceTier` beside `SERVICE_TIERS` in this package, with `ServiceTier` now derived from the list instead of declared next to it. Both OpenAI-compatible servers hand-wrote the six effort levels and the five tiers as comparison chains, so adding a level to the ladder left every one of them silently rejecting it: a request naming the new effort was answered as if it had named none. Their `formatError` wrappers, which only forwarded to `formatOpenAiError`, became re-exports.
-
 - The snapshot generation's entity-tag format has one owner, `auth-broker/generation-tag.ts`, which both writes and reads it. The broker's client and server each had a private copy of the parser next to their own inline copy of the quoting, so one header format had four independent statements of itself, and both ends both write and read it. The failure mode is quiet either way: a tag the server cannot parse reads as no condition and returns a full snapshot the client already has, and a tag the client cannot parse leaves its generation unchanged so it asks again forever. See the Fixed note above for the defect the copies were hiding.
-
 - SigV4 signing and the auth-broker snapshot cache take their WebCrypto byte coercion from `asStrictBytes` in `@veyyon/utils` rather than each defining it. It decides whether a `Uint8Array` has to be copied before `crypto.subtle` reads it, and `crypto.subtle` reads the whole backing buffer, so getting it wrong signs or decrypts bytes the caller did not name. Four packages had a private copy of the same three-line condition. No behaviour change.
-
 - Values that go on a provider's wire are declared once, in the catalog that owns them. Three had a second declaration in a package that consumes it, under the same name and with the same value, so the owner was being bypassed rather than read. Devin's IDE and extension versions are sent as request metadata by model discovery and by the chat provider, each from its own pair, so a bump would have left the two halves of one session identifying themselves as different clients. Antigravity's `fetchAvailableModels` path was spelled by discovery and by the usage reader; a path change would have 404ed whichever copy was not updated, and a usage reader that cannot reach its endpoint reports no quota information rather than a wrong URL. The Codex base URL is imported from the catalog by six modules and was respelled as a bare literal by web search, which would have kept posting to the old host under the user's real credentials after a move.
-
 - The placeholder an errored tool result carries when the tool produced no output is one sentence, and `packages/ai/src/types.ts` owns it beside the `ToolResultMessage` type it belongs to. It was declared in the agent loop, which fills it in where an untyped tool result enters, and again in the Anthropic provider, which fills it in on the way to a wire that rejects an empty content array. Same event, same sentence, two copies: an edit to either produced a transcript wording one failure two ways depending on which layer noticed it first.
-
 - The credential-validation timeout and Google's Code Assist tier ids each have one owner. `VALIDATION_TIMEOUT_MS` is exported from `registry/api-key-validation.ts`, and Xiaomi's regional key check imports it instead of holding its own budget under the same name, so the deadline that decides when a hung validation becomes a rejected key is one number. `TIER_FREE`, `TIER_LEGACY` and `TIER_STANDARD` moved to `registry/oauth/google-oauth-shared.ts`, the module that already exists for the two Google providers: `legacy-tier` is what both fall back to when a response names no tier, and a drift between their private copies would have put them on two different defaults while each file still read correctly on its own.
 
   `packages/catalog/test/a-wire-constant-has-one-declaration.test.ts` scans every `packages/*/src` rather than one package, because a per-package lock is what all three slipped through: each copy was the only declaration in its own package. It asserts the real values, exactly one declaration per name across the workspace (a re-export or an import does not count, a second `const` does), that each consumer imports from the catalog, and for the Codex host the half a name-based lock cannot see, that nobody writes `https://chatgpt.com/backend-api` as a literal outside its owner.
+- The cancelled-request error is `RequestAbortError`, not `AbortError`. It shared the name with two unrelated classes in `@veyyon/utils` (a cancelled operation and a killed child process), which made an `instanceof` check read as a question about cancellation when it was really a question about which layer raised it. `name` is still `"AbortError"` and the default message is still `"Request was aborted"`, so name-based and text-based matchers, and the auth gateway's 499 classification, are unchanged.
 
 ### Fixed
 
@@ -123,7 +97,6 @@
   instead of silently rewriting the array form as `user`. Responses and Codex split image-bearing
   developer context into developer text plus user image attachments, which keeps instruction
   provenance without sending `input_image` in a role those APIs reject.
-
 - Cancelling a request no longer turns into a crashed run. `resolveApiKeyOnce` checked the abort signal
   before it looked at the key at all, so an already-cancelled request threw `signal.reason` even when
   there was no key to resolve and nothing to cancel. Its caller in the agent loop resolves credentials
@@ -133,7 +106,6 @@
   to a resolver, which can cancel its own I/O, and leaves the decision about what a cancellation means
   to whoever owns the signal. `withAuth` keeps the check, because it owns a retry loop that would
   otherwise keep minting credentials for a user who has left.
-
 - A cache that cannot be read or written now says so once instead of behaving like a permanently cold
   cache. Every `AuthStorage` cache method answered a database failure by acting as though the cache were
   empty: a failed read is a miss, a failed write is a value not kept. That behaviour is right, since a
@@ -143,18 +115,11 @@
   now warns with the underlying error and later ones are debug, because a broken database fails on every
   call and one warning per call would bury it. A failed `deleteCachePrefix` is reported for a second
   reason: it leaves stale rows the caller believes it invalidated.
-
 - The auth-gateway no longer reports a failed generation as a completed response. `encodeStream` builds its terminal SSE frame from the stream's final assistant message, and when no `done` event arrived it asked the stream for its result and swallowed a rejection to `null`. Every reader after that treated the null as "there was no final message" rather than as an error, so the status became `completed`, the output became whatever text had already streamed, and usage became null: a generation that failed partway through was announced to the client as a success carrying half an answer, which is the one failure a client cannot detect or retry. The path is reachable by design, since a stream that ends without a terminal value rejects with "Stream ended without a final result" -- what an upstream connection dropping mid-stream looks like from here. It now emits `response.failed` with the real reason, and the items that did stream stay attached so a truncated answer can still be inspected. An explicit `error` event still fails with its own message, and a stream that delivers a final message still completes.
-
 - A GCE metadata server that refuses a token is reported. `fetchMetadataToken` answered a refused status and "not running on GCE at all" with the same `undefined`, and the error the caller raises offers "run on a GCE or Cloud Run instance with a service account" as one of three fixes, which is exactly the wrong advice for an instance whose metadata server answered 403. The status and URL are now warned where they are still known; not being on GCE stays silent, since that is every laptop.
-
 - Tool-call arguments that cannot be used are no longer dropped in silence. The DeepSeek, Harmony and Kimi dialects and the GitLab Duo provider each had their own copy of the same parse, and each answered a failure with an empty object, which is also what a call that takes no arguments produces. So a stream cut mid-arguments, or a model emitting a bare string or an array, ran the tool with nothing and nothing said so. There is one owner now, and it names the source, the tool, and an excerpt of what arrived; the empty object is still returned, because refusing the call belongs to the tool's own argument validation.
-
 - Usage history that cannot be read is now reported instead of appearing as usage you never had. Both the history and the cost queries answered any database failure with an empty list, so an unreadable database presented as a clean slate and the cost totals read as zero.
-
-
 - An empty entity tag on a broker snapshot request read as generation 0 instead of as no generation. `Number("")` is 0, so `If-None-Match: ""`, or a header an intermediary blanked, matched a store that was still at its first generation: with `?wait=` set, the broker then long-polled for up to 30 seconds waiting for a change instead of immediately serving the snapshot the client did not have, on every poll. The same hole was in the client's reading of the response `ETag`, where a blanked tag reset its generation to 0 and made it re-download the snapshot it already held. An empty or whitespace-only tag is now no generation, which falls back to sending the snapshot in full. Found while collapsing the two copies of the parser below.
-
 - **Auth Gateway Models**: Fixed `/v1/models` endpoint returning ambiguous bare model IDs when multiple providers register the same model name. Model IDs are now correctly advertised with their `provider/` prefix (e.g., `anthropic/shared-model`) and duplicate entries from the resolver map are deduplicated.
 
 ## [16.5.2] - 2026-07-14
@@ -164,8 +129,6 @@
 - Added OpenAI Codex rate-limit response-header ingestion to proactively refresh account usage snapshots and rotate credentials before hitting 429 errors.
 
 ### Changed
-
-- The cancelled-request error is `RequestAbortError`, not `AbortError`. It shared the name with two unrelated classes in `@veyyon/utils` (a cancelled operation and a killed child process), which made an `instanceof` check read as a question about cancellation when it was really a question about which layer raised it. `name` is still `"AbortError"` and the default message is still `"Request was aborted"`, so name-based and text-based matchers, and the auth gateway's 499 classification, are unchanged.
 
 - Optimized multi-account credential ranking to maximize quota utilization and prevent mid-session blocks by prioritizing expiring quota and demoting heavily used accounts.
 - Improved responsiveness of credential blocking by bypassing the usage-ingestion throttle immediately when an account is detected as exhausted.

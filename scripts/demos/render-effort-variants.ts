@@ -1,3 +1,9 @@
+/**
+ * Regenerate the committed paired proofs:
+ * `env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-effort-variants.ts --width 100 | bun scripts/demos/render-proof.ts --out assets/effort-variants --width 100 --scale 2`
+ * Add `--two-tier-only` and use `assets/model-effort-two-tier`, or add `--wide-only`
+ * and use `assets/model-effort-wide-ladder`, for the model-specific pairs.
+ */
 import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
 import { Container, Spacer } from "@veyyon/tui";
