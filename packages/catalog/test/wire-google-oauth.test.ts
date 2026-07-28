@@ -20,6 +20,7 @@
 
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
+import { GoogleOAuthFlow } from "@veyyon/ai/oauth/google-oauth-shared";
 import {
 	GOOGLE_BASE_OAUTH_SCOPES,
 	GOOGLE_OAUTH_AUTH_ENDPOINT,
@@ -133,11 +134,42 @@ describe("both sign-in flows read one declaration", () => {
 	 * The shared login runner accepts a frozen scope list. Its option was `string[]`, which rejected a shared
 	 * readonly array, and widening it is correct on its own terms: it only joins the scopes into a request
 	 * parameter and has no reason to mutate the caller's list.
+	 *
+	 * Proved by BUILDING the authorization URL rather than by reading the source, because the source text is
+	 * not the contract. The assertion here used to grep for `this.config.scopes.join(" ")`; the field became
+	 * private and the literal moved to `this.#config`, so the test failed on a rename while the behavior it
+	 * describes never changed. What matters is that the frozen list reaches the `scope` parameter in order and
+	 * comes back unmodified, and that survives any spelling of the field.
 	 */
-	it("accepts a readonly scope list in the shared runner", async () => {
-		const runner = await Bun.file(path.join(AI_SRC, "registry/oauth/google-oauth-shared.ts")).text();
-		expect(runner).toContain("scopes: readonly string[];");
-		expect(runner).toContain('this.config.scopes.join(" ")');
+	it("joins a frozen scope list into the authorization request without mutating it", async () => {
+		const scopes = Object.freeze([
+			"https://www.googleapis.com/auth/cloud-platform",
+			"https://www.googleapis.com/auth/userinfo.email",
+		] as const);
+		const flow = new GoogleOAuthFlow(
+			{},
+			{
+				clientId: "client-id",
+				clientSecret: "client-secret",
+				authUrl: GOOGLE_OAUTH_AUTH_ENDPOINT,
+				tokenUrl: GOOGLE_OAUTH_TOKEN_ENDPOINT,
+				scopes,
+				callbackPort: 45_289,
+				callbackPath: "/oauth2callback",
+				discoverProject: () => Promise.reject(new Error("not reached: the URL is built before any exchange")),
+			},
+		);
+
+		const { url } = await flow.generateAuthUrl("state-token", "http://127.0.0.1:45289/oauth2callback");
+		const scopeParam = new URL(url).searchParams.get("scope");
+
+		expect(scopeParam).toBe(
+			"https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email",
+		);
+		expect([...scopes]).toEqual([
+			"https://www.googleapis.com/auth/cloud-platform",
+			"https://www.googleapis.com/auth/userinfo.email",
+		]);
 	});
 
 	/** The service-account path reads the same token endpoint and the same cloud-platform scope. */
