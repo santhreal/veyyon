@@ -75,7 +75,13 @@ export async function requestRemoteCompaction(
 	endpoint: string,
 	request: RemoteCompactionRequest,
 	signal?: AbortSignal,
-	opts?: { fetch?: FetchImpl; timeoutMs?: number; model?: Model; apiKey?: string },
+	opts?: {
+		fetch?: FetchImpl;
+		timeoutMs?: number;
+		model?: Model;
+		apiKey?: string;
+		sanitizeErrorText?: (text: string) => string;
+	},
 ): Promise<RemoteCompactionResponse> {
 	let endpointPath = endpoint;
 	try {
@@ -101,6 +107,16 @@ export async function requestRemoteCompaction(
 			}
 		: { systemPrompt: request.systemPrompt, prompt: request.prompt };
 
+	const sanitizeErrorText = (text: string): string => {
+		if (!opts?.sanitizeErrorText) return text;
+		try {
+			const sanitized = opts.sanitizeErrorText(text);
+			return typeof sanitized === "string" ? sanitized : "[redacted]";
+		} catch {
+			return "[redacted]";
+		}
+	};
+
 	// The fence spans the body read too — a middlebox can drop the connection
 	// after headers and only the armed signal interrupts `response.json()`. The
 	// scoped handle clears its timer on settle; `timeoutMs <= 0` disables it.
@@ -119,18 +135,17 @@ export async function requestRemoteCompaction(
 			// cannot be read (already consumed, connection dropped mid-read) must not replace an HTTP 500 with
 			// a read error, so it degrades to empty -- and the warning below still names the endpoint and the
 			// status, so nothing about the failure is lost, only the detail that was never readable.
-			const errorText = await response.text().catch(() => "");
+			const errorText = sanitizeErrorText(await response.text().catch(() => ""));
+			const statusText = sanitizeErrorText(response.statusText);
 			logger.warn("Remote summarizer failed", {
 				endpoint,
 				status: response.status,
-				statusText: response.statusText,
+				statusText,
 				errorText,
 			});
-			throw new ProviderHttpError(
-				`Remote compaction failed (${response.status} ${response.statusText})`,
-				response.status,
-				{ headers: response.headers },
-			);
+			throw new ProviderHttpError(`Remote compaction failed (${response.status} ${statusText})`, response.status, {
+				headers: response.headers,
+			});
 		}
 
 		if (isChatCompletions) {

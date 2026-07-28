@@ -109,6 +109,7 @@ describe("classifyUnexpectedStop", () => {
 			settings,
 			registry,
 			sessionId: "session-1",
+			obfuscateProviderText: text => text,
 		});
 		const options = completeSimpleMock.mock.calls[0]?.[2] as
 			| { disableReasoning?: boolean; maxTokens?: number }

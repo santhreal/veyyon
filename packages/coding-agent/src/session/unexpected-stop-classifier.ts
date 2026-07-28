@@ -1,4 +1,5 @@
-import { type AssistantMessage, completeSimple, type Model } from "@veyyon/ai";
+import { type AssistantMessage, completeSimple, type Model, seedApiKeyResolver, withAuth } from "@veyyon/ai";
+import { ProviderHttpError } from "@veyyon/ai/error";
 import { assistantText } from "@veyyon/ai/utils/message-text";
 import { errorMessage, logger, prompt } from "@veyyon/utils";
 
@@ -33,6 +34,8 @@ export interface ClassifyUnexpectedStopDeps {
 	sessionId: string;
 	metadataResolver?: (provider: string) => Record<string, unknown> | undefined;
 	signal?: AbortSignal;
+	/** Live final boundary for text sent to the online classifier. */
+	obfuscateProviderText: (text: string) => string;
 }
 
 export function isUnexpectedStopCandidate(message: AssistantMessage): boolean {
@@ -69,6 +72,27 @@ export async function classifyUnexpectedStop(
 	}
 }
 
+function sanitizeClassifierText(text: string, deps: ClassifyUnexpectedStopDeps): string {
+	try {
+		const sanitized = deps.obfuscateProviderText(text);
+		if (typeof sanitized !== "string") throw new TypeError("invalid transform result");
+		return sanitized;
+	} catch {
+		// The transform can inspect secret-bearing text; never reflect its error
+		// (which may quote that text) into logs.
+		throw new Error("unexpected-stop: provider payload sanitization failed");
+	}
+}
+
+function createOnlineClassificationError(
+	response: AssistantMessage,
+	deps: ClassifyUnexpectedStopDeps,
+): Error {
+	const detail = sanitizeClassifierText(response.errorMessage ?? "unknown error", deps);
+	const message = `unexpected-stop: online classification failed: ${detail}`;
+	return response.errorStatus === undefined ? new Error(message) : new ProviderHttpError(message, response.errorStatus);
+}
+
 async function classifyOnline(text: string, deps: ClassifyUnexpectedStopDeps): Promise<boolean | undefined> {
 	const resolved = resolveRoleSelectionWithInherit(
 		["tiny", "smol"],
@@ -87,24 +111,34 @@ async function classifyOnline(text: string, deps: ClassifyUnexpectedStopDeps): P
 	const metadata = deps.metadataResolver?.(model.provider);
 	const maxTokens = REASONING_SAFE_MAX_TOKENS;
 
-	const response = await completeSimple(
-		model,
-		{
-			systemPrompt: [CLASSIFIER_SYSTEM_PROMPT],
-			messages: [{ role: "user", content: text, timestamp: Date.now() }],
+	const response = await withAuth(
+		seedApiKeyResolver(apiKey, deps.registry.resolver(model, deps.sessionId)),
+		async key => {
+			// withAuth enters this closure after every initial/refresh/rotation
+			// credential resolution. Resolve the live confidentiality runtime now,
+			// immediately before this physical provider attempt.
+			const providerText = sanitizeClassifierText(text, deps);
+			const attemptResponse = await completeSimple(
+				model,
+				{
+					systemPrompt: [CLASSIFIER_SYSTEM_PROMPT],
+					messages: [{ role: "user", content: providerText, timestamp: Date.now() }],
+				},
+				{
+					apiKey: key,
+					maxTokens,
+					disableReasoning: true,
+					metadata,
+					signal: deps.signal,
+				},
+			);
+			if (attemptResponse.stopReason === "error") {
+				throw createOnlineClassificationError(attemptResponse, deps);
+			}
+			return attemptResponse;
 		},
-		{
-			apiKey: deps.registry.resolver(model, deps.sessionId),
-			maxTokens,
-			disableReasoning: true,
-			metadata,
-			signal: deps.signal,
-		},
+		{ signal: deps.signal },
 	);
-
-	if (response.stopReason === "error") {
-		throw new Error(`unexpected-stop: online classification failed: ${response.errorMessage ?? "unknown error"}`);
-	}
 
 	const outputText = assistantText(response);
 	return parseUnexpectedStopClassification(outputText);

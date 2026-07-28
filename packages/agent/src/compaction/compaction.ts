@@ -5,25 +5,25 @@
  * and after compaction the session is reloaded.
  */
 
-import {
-	type Api,
-	type ApiKey,
-	type AssistantMessage,
-	type CodexCompactionContext,
-	type Context,
-	Effort,
-	type FetchImpl,
-	type Message,
-	type MessageAttribution,
-	type Model,
-	type ProviderSessionState,
-	type SimpleStreamOptions,
-	type Tool,
-	type Usage,
-	withAuth,
+import type {
+	Api,
+	ApiKey,
+	AssistantMessage,
+	CodexCompactionContext,
+	Context,
+	FetchImpl,
+	Message,
+	MessageAttribution,
+	Model,
+	ProviderSessionState,
+	SimpleStreamOptions,
+	Tool,
+	Usage,
 } from "@veyyon/ai";
+import { withAuth } from "@veyyon/ai/auth-retry";
 import { ProviderHttpError } from "@veyyon/ai/error";
 import { createOpenAICodexCompactionRequestContext } from "@veyyon/ai/providers/openai-codex-responses";
+import { Effort } from "@veyyon/catalog/effort";
 import { preferredDialect } from "@veyyon/catalog/identity";
 import { clampThinkingLevelForModel } from "@veyyon/catalog/model-thinking";
 import { prompt } from "@veyyon/utils";
@@ -514,8 +514,14 @@ function resolveCompactionEffort(model: Model, level: ThinkingLevel | undefined)
  * (pi-native gateway) does not populate `errorStatus`, hence the legacy
  * message-based check is still required upstream — see issue #986.
  */
-function createSummarizationError(prefix: string, response: AssistantMessage): Error {
-	const text = `${prefix}: ${response.errorMessage || "Unknown error"}`;
+function createSummarizationError(
+	prefix: string,
+	response: AssistantMessage,
+	options?: SummaryOptions,
+): Error {
+	const rawDetail = response.errorMessage || "Unknown error";
+	const detail = options ? sanitizeCompactionProviderText(rawDetail, options) : rawDetail;
+	const text = `${prefix}: ${detail}`;
 	return response.errorStatus === undefined ? new Error(text) : new ProviderHttpError(text, response.errorStatus);
 }
 
@@ -566,6 +572,12 @@ export interface SummaryOptions {
 	/** Optional fetch implementation threaded into remote compaction calls. */
 	fetch?: FetchImpl;
 	/**
+	 * Live final-seam transform for provider-bound compaction text. It is
+	 * intentionally invoked after credential resolution for every physical
+	 * attempt; callers must resolve their current secret runtime inside it.
+	 */
+	obfuscateProviderText?: (text: string) => string;
+	/**
 	 * Optional completion transport override for host-level request wrappers
 	 * (e.g. the coding-agent provider-concurrency limiter). When provided,
 	 * every local summarization oneshot (`generateSummary`,
@@ -585,6 +597,40 @@ function localCodexCompaction(options: SummaryOptions | undefined) {
 		context: options?.codexCompaction,
 		implementation: "responses",
 	});
+}
+
+function sanitizeCompactionProviderText(text: string, options: SummaryOptions | undefined): string {
+	const transform = options?.obfuscateProviderText;
+	if (!transform) return text;
+	try {
+		const sanitized = transform(text);
+		if (typeof sanitized !== "string") throw new TypeError("invalid transform result");
+		return sanitized;
+	} catch {
+		// Fail closed without reflecting the provider-bound text (or a transform
+		// error that may quote it) into logs/UI.
+		throw new Error("Compaction provider payload sanitization failed");
+	}
+}
+
+function buildCompactionProviderContext(
+	systemPrompt: string,
+	promptText: string,
+	options: SummaryOptions | undefined,
+): Context {
+	// Keep authenticated provider replay state out of this transform. Only the
+	// newly-authored textual request is sanitized; options.providerSessionState
+	// is passed separately and remains byte-for-byte opaque.
+	return {
+		systemPrompt: [sanitizeCompactionProviderText(systemPrompt, options)],
+		messages: [
+			{
+				role: "user",
+				content: [{ type: "text", text: sanitizeCompactionProviderText(promptText, options) }],
+				timestamp: Date.now(),
+			},
+		],
+	};
 }
 
 function formatLegacyArchiveText(archiveText: string): string {
@@ -634,52 +680,62 @@ export async function generateSummary(
 	promptText += formatAdditionalContext(options?.extraContext);
 	promptText += basePrompt;
 
-	const summarizationMessages = [
-		{
-			role: "user" as const,
-			content: [{ type: "text" as const, text: promptText }],
-			timestamp: Date.now(),
-		},
-	];
 
 	if (options?.remoteEndpoint) {
 		const endpoint = options.remoteEndpoint;
 		const remote = await withAuth(
 			apiKey,
-			key =>
-				requestRemoteCompaction(
-					endpoint,
-					{ systemPrompt: SUMMARIZATION_SYSTEM_PROMPT, prompt: promptText },
-					signal,
-					{ fetch: options.fetch, model, apiKey: key },
-				),
+			key => {
+				// withAuth invokes this closure only after each credential
+				// resolution/refresh, making this the last textual boundary before
+				// every remote fetch attempt.
+				const request = {
+					systemPrompt: sanitizeCompactionProviderText(SUMMARIZATION_SYSTEM_PROMPT, options),
+					prompt: sanitizeCompactionProviderText(promptText, options),
+				};
+				return requestRemoteCompaction(endpoint, request, signal, {
+					fetch: options.fetch,
+					model,
+					apiKey: key,
+					sanitizeErrorText: text => sanitizeCompactionProviderText(text, options),
+				});
+			},
 			{ signal, missingKeyMessage: "Remote compaction credentials unavailable" },
 		);
 		return remote.summary;
 	}
 
-	const response = await instrumentedCompleteSimple(
-		model,
-		{ systemPrompt: [SUMMARIZATION_SYSTEM_PROMPT], messages: summarizationMessages },
-		{
-			maxTokens,
-			signal,
-			apiKey,
-			reasoning: resolveCompactionEffort(model, options?.thinkingLevel),
-			initiatorOverride: options?.initiatorOverride,
-			metadata: options?.metadata,
-			fetch: options?.fetch,
-			sessionId: options?.sessionId,
-			promptCacheKey: options?.promptCacheKey,
-			providerSessionState: options?.providerSessionState,
-			codexCompaction: localCodexCompaction(options),
+	const response = await withAuth(
+		apiKey,
+		async key => {
+			// Build a fresh context inside the auth-attempt closure. A runtime
+			// changed while credentials refreshed therefore governs this send.
+			const attemptResponse = await instrumentedCompleteSimple(
+				model,
+				buildCompactionProviderContext(SUMMARIZATION_SYSTEM_PROMPT, promptText, options),
+				{
+					maxTokens,
+					signal,
+					apiKey: key,
+					reasoning: resolveCompactionEffort(model, options?.thinkingLevel),
+					initiatorOverride: options?.initiatorOverride,
+					metadata: options?.metadata,
+					fetch: options?.fetch,
+					sessionId: options?.sessionId,
+					promptCacheKey: options?.promptCacheKey,
+					providerSessionState: options?.providerSessionState,
+					codexCompaction: localCodexCompaction(options),
+				},
+				{ telemetry: options?.telemetry, oneshotKind: "compaction_summary", completeImpl: options?.completeImpl },
+			);
+			if (attemptResponse.stopReason === "error") {
+				throw createSummarizationError("Summarization failed", attemptResponse, options);
+			}
+			return attemptResponse;
 		},
-		{ telemetry: options?.telemetry, oneshotKind: "compaction_summary", completeImpl: options?.completeImpl },
+		{ signal },
 	);
 
-	if (response.stopReason === "error") {
-		throw createSummarizationError("Summarization failed", response);
-	}
 
 	const textContent = response.content
 		.filter((c): c is { type: "text"; text: string } => c.type === "text")
@@ -906,43 +962,56 @@ async function generateShortSummary(
 		const endpoint = options.remoteEndpoint;
 		const remote = await withAuth(
 			apiKey,
-			key =>
-				requestRemoteCompaction(
-					endpoint,
-					{ systemPrompt: SUMMARIZATION_SYSTEM_PROMPT, prompt: promptText },
-					signal,
-					{ fetch: options?.fetch, model, apiKey: key },
-				),
+			key => {
+				const request = {
+					systemPrompt: sanitizeCompactionProviderText(SUMMARIZATION_SYSTEM_PROMPT, options),
+					prompt: sanitizeCompactionProviderText(promptText, options),
+				};
+				return requestRemoteCompaction(endpoint, request, signal, {
+					fetch: options?.fetch,
+					model,
+					apiKey: key,
+					sanitizeErrorText: text => sanitizeCompactionProviderText(text, options),
+				});
+			},
 			{ signal, missingKeyMessage: "Remote compaction credentials unavailable" },
 		);
 		return remote.summary;
 	}
 
-	const response = await instrumentedCompleteSimple(
-		model,
-		{
-			systemPrompt: [SUMMARIZATION_SYSTEM_PROMPT],
-			messages: [{ role: "user", content: [{ type: "text", text: promptText }], timestamp: Date.now() }],
+	const response = await withAuth(
+		apiKey,
+		async key => {
+			const attemptResponse = await instrumentedCompleteSimple(
+				model,
+				buildCompactionProviderContext(SUMMARIZATION_SYSTEM_PROMPT, promptText, options),
+				{
+					maxTokens,
+					signal,
+					apiKey: key,
+					reasoning: resolveCompactionEffort(model, options?.thinkingLevel),
+					initiatorOverride: options?.initiatorOverride,
+					metadata: options?.metadata,
+					fetch: options?.fetch,
+					sessionId: options?.sessionId,
+					promptCacheKey: options?.promptCacheKey,
+					providerSessionState: options?.providerSessionState,
+					codexCompaction: localCodexCompaction(options),
+				},
+				{
+					telemetry: options?.telemetry,
+					oneshotKind: "compaction_short_summary",
+					completeImpl: options?.completeImpl,
+				},
+			);
+			if (attemptResponse.stopReason === "error") {
+				throw createSummarizationError("Short summary failed", attemptResponse, options);
+			}
+			return attemptResponse;
 		},
-		{
-			maxTokens,
-			signal,
-			apiKey,
-			reasoning: resolveCompactionEffort(model, options?.thinkingLevel),
-			initiatorOverride: options?.initiatorOverride,
-			metadata: options?.metadata,
-			fetch: options?.fetch,
-			sessionId: options?.sessionId,
-			promptCacheKey: options?.promptCacheKey,
-			providerSessionState: options?.providerSessionState,
-			codexCompaction: localCodexCompaction(options),
-		},
-		{ telemetry: options?.telemetry, oneshotKind: "compaction_short_summary", completeImpl: options?.completeImpl },
+		{ signal },
 	);
 
-	if (response.stopReason === "error") {
-		throw createSummarizationError("Short summary failed", response);
-	}
 
 	return response.content
 		.filter((c): c is { type: "text"; text: string } => c.type === "text")
@@ -1153,6 +1222,7 @@ export async function compact(
 		tools: options?.tools,
 		fetch: options?.fetch,
 		completeImpl: options?.completeImpl,
+		obfuscateProviderText: options?.obfuscateProviderText,
 	};
 
 	const previousLegacyArchiveText = legacyArchiveSourceText(previousPreserveData);
@@ -1273,36 +1343,40 @@ async function generateTurnPrefixSummary(
 	const llmMessages = (options?.convertToLlm ?? defaultConvertToLlm)(messages);
 	const conversationText = serializeConversationForSummary(llmMessages, preferredDialect(model.id));
 	const promptText = `<conversation>\n${conversationText}\n</conversation>\n\n${TURN_PREFIX_SUMMARIZATION_PROMPT}`;
-	const summarizationMessages = [
-		{
-			role: "user" as const,
-			content: [{ type: "text" as const, text: promptText }],
-			timestamp: Date.now(),
-		},
-	];
 
-	const response = await instrumentedCompleteSimple(
-		model,
-		{ systemPrompt: [SUMMARIZATION_SYSTEM_PROMPT], messages: summarizationMessages },
-		{
-			maxTokens,
-			signal,
-			apiKey,
-			reasoning: resolveCompactionEffort(model, options?.thinkingLevel),
-			initiatorOverride: options?.initiatorOverride,
-			metadata: options?.metadata,
-			fetch: options?.fetch,
-			sessionId: options?.sessionId,
-			promptCacheKey: options?.promptCacheKey,
-			providerSessionState: options?.providerSessionState,
-			codexCompaction: localCodexCompaction(options),
+	const response = await withAuth(
+		apiKey,
+		async key => {
+			const attemptResponse = await instrumentedCompleteSimple(
+				model,
+				buildCompactionProviderContext(SUMMARIZATION_SYSTEM_PROMPT, promptText, options),
+				{
+					maxTokens,
+					signal,
+					apiKey: key,
+					reasoning: resolveCompactionEffort(model, options?.thinkingLevel),
+					initiatorOverride: options?.initiatorOverride,
+					metadata: options?.metadata,
+					fetch: options?.fetch,
+					sessionId: options?.sessionId,
+					promptCacheKey: options?.promptCacheKey,
+					providerSessionState: options?.providerSessionState,
+					codexCompaction: localCodexCompaction(options),
+				},
+				{
+					telemetry: options?.telemetry,
+					oneshotKind: "compaction_turn_prefix",
+					completeImpl: options?.completeImpl,
+				},
+			);
+			if (attemptResponse.stopReason === "error") {
+				throw createSummarizationError("Turn prefix summarization failed", attemptResponse, options);
+			}
+			return attemptResponse;
 		},
-		{ telemetry: options?.telemetry, oneshotKind: "compaction_turn_prefix", completeImpl: options?.completeImpl },
+		{ signal },
 	);
 
-	if (response.stopReason === "error") {
-		throw createSummarizationError("Turn prefix summarization failed", response);
-	}
 
 	return response.content
 		.filter((c): c is { type: "text"; text: string } => c.type === "text")
