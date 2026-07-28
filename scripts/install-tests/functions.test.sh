@@ -1705,6 +1705,45 @@ check "the existence check asks for headers only too" \
 check "the check is silent on both paths" \
     "$( ( curl() { printf 'noise\n'; return 0; }; release_tag_exists v1.0.0 ) )" ""
 
+# --- resolve_ref_tag: the `v` a person leaves off a version -------------------
+# Releases are tagged `v1.0.37` and `--ref 1.0.37` is what people type: the same
+# version, one character short of a tag that exists. Refusing it states a true
+# fact and leaves the user guessing which of the two spellings this project uses.
+# The `v` form is tried as a SECOND lookup, and the caller announces what it
+# resolved to, so the version the install proceeds with is the version on screen.
+# Nothing wider is attempted: installing a version nobody named is worse than
+# refusing.
+check "an exact tag is returned as given, with no second lookup" \
+    "$( ( curl() { return 0; }; resolve_ref_tag v1.0.37 ) )" "v1.0.37"
+check "a bare version resolves to the published v-prefixed tag" \
+    "$( ( curl() { case "$*" in *releases/tag/v1.0.37) return 0 ;; *) return 22 ;; esac; }
+  resolve_ref_tag 1.0.37 ) )" "v1.0.37"
+check "a bare version whose v-tag does not exist is still refused" \
+    "$( ( curl() { return 22; }; if resolve_ref_tag 1.0.37; then echo resolved; else echo refused; fi ) )" "refused"
+check "a v-prefixed tag that does not exist is refused without a second guess" \
+    "$( ( curl() { printf 'x\n' >> "$SANDBOX/ref-tries"; return 22; }
+  : > "$SANDBOX/ref-tries"; resolve_ref_tag v9.9.9 >/dev/null 2>&1
+  wc -l < "$SANDBOX/ref-tries" | tr -d ' ' ) )" "1"
+# A branch or a commit is not a version, so no `v` is bolted onto it: `vmain` and
+# `vdeadbeef` are tags nobody has, and asking for them is two wasted round trips
+# before the same refusal.
+check "a branch name gets no v-prefixed second try" \
+    "$( ( curl() { printf 'x\n' >> "$SANDBOX/ref-branch"; return 22; }
+  : > "$SANDBOX/ref-branch"; resolve_ref_tag main >/dev/null 2>&1
+  wc -l < "$SANDBOX/ref-branch" | tr -d ' ' ) )" "1"
+check "a commit sha gets no v-prefixed second try" \
+    "$( ( curl() { printf 'x\n' >> "$SANDBOX/ref-sha"; return 22; }
+  : > "$SANDBOX/ref-sha"; resolve_ref_tag d83e6259 >/dev/null 2>&1
+  wc -l < "$SANDBOX/ref-sha" | tr -d ' ' ) )" "1"
+# A prerelease spelled without the v is still a version.
+check "a prerelease version resolves too" \
+    "$( ( curl() { case "$*" in *releases/tag/v2.0.0-rc.1) return 0 ;; *) return 22 ;; esac; }
+  resolve_ref_tag 2.0.0-rc.1 ) )" "v2.0.0-rc.1"
+# The refusal path must print nothing: the caller reads stdout as the tag, so a
+# stray line would be installed as a version.
+check "the refusal prints no tag" \
+    "$( ( curl() { return 22; }; resolve_ref_tag 1.0.37 2>/dev/null ) )" ""
+
 # No API call is left anywhere in the script, which is the whole point: an
 # install must not be able to fail because somebody else on the same address
 # installed veyyon sixty times this hour.

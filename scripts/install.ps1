@@ -1259,13 +1259,31 @@ function Test-ReleaseTagExists {
     }
 }
 
+# The published tag for a -Ref a person typed, or $null when there is none.
+#
+# Releases are tagged `v1.0.37`, and `-Ref 1.0.37` is what people type: the same
+# version, one character short of a tag that exists. Refusing it states a true
+# fact and leaves the user to guess which of the two spellings this project uses,
+# so the `v` form is tried as a second lookup. The caller ANNOUNCES what it
+# resolved to, rather than proceeding quietly, so the version being installed is
+# the version on screen. Nothing wider is attempted: a branch or a commit is not
+# a version, `vmain` is a tag nobody has, and installing a version the user did
+# not name is worse than refusing. Mirrors resolve_ref_tag in install.sh.
+function Resolve-RefTag {
+    param([string]$Ref)
+    if (Test-ReleaseTagExists $Ref) { return $Ref }
+    if ($Ref -match '^\d+\.\d+\.\d+' -and (Test-ReleaseTagExists "v$Ref")) { return "v$Ref" }
+    return $null
+}
+
 function Install-Binary {
     if ($Ref) {
         Write-Host "Fetching release $Ref..."
-        if (-not (Test-ReleaseTagExists $Ref)) {
+        $Latest = Resolve-RefTag $Ref
+        if (-not $Latest) {
             throw "Release tag not found: $Ref`nFor branch/commit installs, use -Source with -Ref."
         }
-        $Latest = $Ref
+        if ($Latest -ne $Ref) { Write-Host "Resolved $Ref to the published tag $Latest" }
     } else {
         Write-Host "Fetching latest release..."
         $Latest = Get-TagFromRedirect "https://github.com/$Repo/releases/latest"

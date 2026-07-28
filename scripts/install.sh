@@ -373,6 +373,35 @@ release_tag_exists() {
         "https://github.com/${REPO}/releases/tag/$1" >/dev/null 2>&1
 }
 
+# The published tag for a `--ref` a person typed, or empty when there is none.
+#
+# Releases are tagged `v1.0.37`, and `--ref 1.0.37` is what people type: same
+# version, one character short of a tag that exists. Refusing it names a real
+# fact ("no such tag") and leaves the user to guess which of the two spellings
+# this project uses, so the `v` form is tried as well. The resolution is
+# ANNOUNCED by the caller, not applied quietly: the version the install proceeds
+# with must be the version on screen.
+#
+# Only that one spelling, and only when the request has no `v` and reads as a
+# version. A wider search would start guessing at tags the user did not ask for,
+# and installing a version nobody named is worse than refusing.
+resolve_ref_tag() {
+    if release_tag_exists "$1"; then
+        printf '%s\n' "$1"
+        return 0
+    fi
+    case "$1" in
+        v*) return 1 ;;
+        [0-9]*.[0-9]*.[0-9]*)
+            if release_tag_exists "v$1"; then
+                printf 'v%s\n' "$1"
+                return 0
+            fi
+            ;;
+    esac
+    return 1
+}
+
 # ---- the `vey` alias: one short launch command next to the binary ----
 link_alias() {
     # $1 = directory containing BIN_NAME
@@ -1578,9 +1607,9 @@ install_binary() {
 
     if [ -n "$REF" ]; then
         step "fetching release $REF..."
-        release_tag_exists "$REF" \
+        LATEST=$(resolve_ref_tag "$REF") \
             || die "release tag not found: $REF (for a branch/commit, use --source --ref)"
-        LATEST="$REF"
+        [ "$LATEST" = "$REF" ] || step "resolved $REF to the published tag $LATEST"
     else
         step "fetching latest release..."
         LATEST=$(resolve_latest_tag) \
