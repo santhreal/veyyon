@@ -3,9 +3,9 @@ import type { ApiKey, Context, Tool } from "@veyyon/ai";
 import { isRecord, prompt, Snowflake } from "@veyyon/utils";
 import { extractTextContent, extractToolCall, parseJsonPayload } from "../commit/utils";
 import { goalsPrompts } from "../prompts/goals/rows";
+import { mapJsonStrings } from "../secrets/obfuscator";
 import type { AgentSession } from "../session/agent-session";
 import { concreteThinkingLevel, shouldDisableReasoning, toReasoningEffort } from "../thinking";
-import { mapJsonStrings } from "../secrets/obfuscator";
 
 const RESPOND_TOOL_NAME = "respond";
 

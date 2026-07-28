@@ -59,7 +59,8 @@ export function getHeadersFromError(error: unknown): HeadersLike {
 		if (seen.has(current)) return undefined;
 		seen.add(current);
 		try {
-			const direct = ("headers" in current ? extractHeaders(current.headers) : undefined) ?? responseHeaders(current);
+			const direct =
+				("headers" in current ? extractHeaders(current.headers) : undefined) ?? responseHeaders(current);
 			if (direct) return direct;
 			current = "cause" in current ? current.cause : undefined;
 		} catch {

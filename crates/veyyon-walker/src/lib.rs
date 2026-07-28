@@ -348,16 +348,17 @@ impl CompiledWalkGlob {
 	/// Compile a raw glob the way every tool that walks with one compiles it.
 	///
 	/// The pattern a user or a model wrote is not yet walk-relative: it may use
-	/// backslashes, it may be the bare `*.ts` that means `**/*.ts` in a recursive
-	/// search, and it may have an unclosed `{` group. [`veyyon_glob`] owns those
-	/// rules, this applies them and compiles the result, and the caller gets a
-	/// filter and its [`depth_bound`](Self::depth_bound) in one step.
+	/// backslashes, it may be the bare `*.ts` that means `**/*.ts` in a
+	/// recursive search, and it may have an unclosed `{` group. [`veyyon_glob`]
+	/// owns those rules, this applies them and compiles the result, and the
+	/// caller gets a filter and its [`depth_bound`](Self::depth_bound) in one
+	/// step.
 	///
-	/// Every walking tool went through this sequence by hand and they did not all
-	/// do the same thing: the glob tool bounded its walk and the grep and ast-grep
-	/// tools passed `usize::MAX`, so a pattern like `src/*.ts` walked the entire
-	/// tree to filter everything below depth 2 back out. That is what having one
-	/// entry point prevents.
+	/// Every walking tool went through this sequence by hand and they did not
+	/// all do the same thing: the glob tool bounded its walk and the grep and
+	/// ast-grep tools passed `usize::MAX`, so a pattern like `src/*.ts` walked
+	/// the entire tree to filter everything below depth 2 back out. That is
+	/// what having one entry point prevents.
 	pub fn compile(glob: &str, recursive: bool) -> Result<Self, globset::Error> {
 		Self::new([veyyon_glob::build_glob_pattern(glob, recursive)])
 	}
@@ -375,11 +376,12 @@ impl CompiledWalkGlob {
 	/// The deepest path this glob can match, in path components, or
 	/// [`usize::MAX`] when it is unbounded.
 	///
-	/// Pass it to [`WalkRequest::depth`] to keep a narrow pattern from traversing
-	/// a subtree it can never match into. It is safe to prune there because
-	/// `literal_separator(true)` stops `*`, `?`, and `[...]` from crossing a `/`,
-	/// so a pattern with N segments cannot match anything deeper than N. `**` and
-	/// `{...}` disable the bound, as does a character class that can match a `/`.
+	/// Pass it to [`WalkRequest::depth`] to keep a narrow pattern from
+	/// traversing a subtree it can never match into. It is safe to prune there
+	/// because `literal_separator(true)` stops `*`, `?`, and `[...]` from
+	/// crossing a `/`, so a pattern with N segments cannot match anything
+	/// deeper than N. `**` and `{...}` disable the bound, as does a character
+	/// class that can match a `/`.
 	pub const fn depth_bound(&self) -> usize {
 		self.depth_bound
 	}

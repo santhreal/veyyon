@@ -275,7 +275,10 @@ describe("the width bound holds over OSC 66 content", () => {
 			"\x1b]8;;http://a\tb\x1b\\label\x1b]8;;\x1b\\",
 		];
 		let seed = 0x9e37_79b9;
-		const rand = () => ((seed = (seed * 1_664_525 + 1_013_904_223) >>> 0) / 0x1_0000_0000);
+		const rand = () => {
+			seed = (seed * 1_664_525 + 1_013_904_223) >>> 0;
+			return seed / 0x1_0000_0000;
+		};
 		const overflows: string[] = [];
 		for (let n = 0; n < 20_000; n++) {
 			let text = "";

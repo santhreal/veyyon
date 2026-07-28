@@ -90,7 +90,11 @@ export function wrapFetchForRequestDebug(fetchImpl: FetchImpl): FetchImpl {
 			try {
 				return await session.wrapResponse(response);
 			} catch (error) {
-				reportRequestDebugFailure("Request debug response wrapper failed; returning the original response", error, session.responsePath);
+				reportRequestDebugFailure(
+					"Request debug response wrapper failed; returning the original response",
+					error,
+					session.responsePath,
+				);
 				return response;
 			}
 		},

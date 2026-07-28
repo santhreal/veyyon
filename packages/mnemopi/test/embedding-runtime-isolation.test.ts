@@ -45,52 +45,52 @@ describe("embedding runtime identity isolation", () => {
 		const isolated = enterIsolatedConfigRoot("mnemopi-embedding-runtime");
 		const debugSpy = spyOn(logger, "debug").mockImplementation(() => undefined);
 		try {
-		process.env.NODE_ENV = "";
-		process.env.BUN_ENV = "";
-		delete process.env.MNEMOPI_NO_EMBEDDINGS;
-		delete process.env.MNEMOPI_EMBEDDING_API_URL;
-		delete process.env.MNEMOPI_EMBEDDINGS_VIA_API;
+			process.env.NODE_ENV = "";
+			process.env.BUN_ENV = "";
+			delete process.env.MNEMOPI_NO_EMBEDDINGS;
+			delete process.env.MNEMOPI_EMBEDDING_API_URL;
+			delete process.env.MNEMOPI_EMBEDDINGS_VIA_API;
 
-		const started: string[] = [];
-		const calls = new Map<string, number>();
-		const gate = Promise.withResolvers<void>();
-		let rejectSmallOnce = true;
-		setLocalModelInitializerForTests(async options => {
-			const model = String(options.model);
-			started.push(model);
-			calls.set(model, (calls.get(model) ?? 0) + 1);
-			if (started.length === 2) gate.resolve();
-			await gate.promise;
-			if (model === "fast-bge-small-en-v1.5" && rejectSmallOnce) {
-				rejectSmallOnce = false;
-				throw new Error("small model failed once");
-			}
-			return {
-				embed: localRows(model === "fast-bge-small-en-v1.5" ? 1 : 2),
+			const started: string[] = [];
+			const calls = new Map<string, number>();
+			const gate = Promise.withResolvers<void>();
+			let rejectSmallOnce = true;
+			setLocalModelInitializerForTests(async options => {
+				const model = String(options.model);
+				started.push(model);
+				calls.set(model, (calls.get(model) ?? 0) + 1);
+				if (started.length === 2) gate.resolve();
+				await gate.promise;
+				if (model === "fast-bge-small-en-v1.5" && rejectSmallOnce) {
+					rejectSmallOnce = false;
+					throw new Error("small model failed once");
+				}
+				return {
+					embed: localRows(model === "fast-bge-small-en-v1.5" ? 1 : 2),
+				};
+			});
+
+			const small: ResolvedMnemopiRuntimeOptions = {
+				embeddings: { model: "BAAI/bge-small-en-v1.5" },
 			};
-		});
+			const base: ResolvedMnemopiRuntimeOptions = {
+				embeddings: { model: "BAAI/bge-base-en-v1.5" },
+			};
+			const [smallFirst, baseFirst] = await Promise.all([
+				withMnemopiRuntimeOptions(small, () => embed(["small first"])),
+				withMnemopiRuntimeOptions(base, () => embed(["base first"])),
+			]);
 
-		const small: ResolvedMnemopiRuntimeOptions = {
-			embeddings: { model: "BAAI/bge-small-en-v1.5" },
-		};
-		const base: ResolvedMnemopiRuntimeOptions = {
-			embeddings: { model: "BAAI/bge-base-en-v1.5" },
-		};
-		const [smallFirst, baseFirst] = await Promise.all([
-			withMnemopiRuntimeOptions(small, () => embed(["small first"])),
-			withMnemopiRuntimeOptions(base, () => embed(["base first"])),
-		]);
+			expect(new Set(started)).toEqual(new Set(["fast-bge-small-en-v1.5", "fast-bge-base-en-v1.5"]));
+			expect(smallFirst).toBeNull();
+			expect(baseFirst).toEqual([new Float32Array([2])]);
 
-		expect(new Set(started)).toEqual(new Set(["fast-bge-small-en-v1.5", "fast-bge-base-en-v1.5"]));
-		expect(smallFirst).toBeNull();
-		expect(baseFirst).toEqual([new Float32Array([2])]);
-
-		const smallSecond = await withMnemopiRuntimeOptions(small, () => embed(["small second"]));
-		const baseSecond = await withMnemopiRuntimeOptions(base, () => embed(["base second"]));
-		expect(smallSecond).toEqual([new Float32Array([1])]);
-		expect(baseSecond).toEqual([new Float32Array([2])]);
-		expect(calls.get("fast-bge-small-en-v1.5")).toBe(2);
-		expect(calls.get("fast-bge-base-en-v1.5")).toBe(1);
+			const smallSecond = await withMnemopiRuntimeOptions(small, () => embed(["small second"]));
+			const baseSecond = await withMnemopiRuntimeOptions(base, () => embed(["base second"]));
+			expect(smallSecond).toEqual([new Float32Array([1])]);
+			expect(baseSecond).toEqual([new Float32Array([2])]);
+			expect(calls.get("fast-bge-small-en-v1.5")).toBe(2);
+			expect(calls.get("fast-bge-base-en-v1.5")).toBe(1);
 		} finally {
 			debugSpy.mockRestore();
 			isolated.restore();
@@ -334,10 +334,7 @@ describe("embedding runtime identity isolation", () => {
 		await started.promise;
 		release.resolve();
 
-		expect(await Promise.all([first, second])).toEqual([
-			new Float32Array([1]),
-			new Float32Array([1]),
-		]);
+		expect(await Promise.all([first, second])).toEqual([new Float32Array([1]), new Float32Array([1])]);
 		expect(calls).toBe(1);
 		expect(await embedQuery("concurrent cache miss")).toEqual(new Float32Array([1]));
 	});

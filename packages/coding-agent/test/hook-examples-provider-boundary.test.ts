@@ -80,9 +80,7 @@ describe("published online hook examples", () => {
 		const compactionResult = await compactHandler?.(
 			{
 				preparation: {
-					messagesToSummarize: [
-						{ role: "user", content: [{ type: "text", text: marker }], timestamp: 1 },
-					],
+					messagesToSummarize: [{ role: "user", content: [{ type: "text", text: marker }], timestamp: 1 }],
 					turnPrefixMessages: [],
 					tokensBefore: 100,
 					firstKeptEntryId: "entry-1",
@@ -99,7 +97,10 @@ describe("published online hook examples", () => {
 		const qnaCaptures: string[] = [];
 		captureComplete(qnaCaptures, "Q: Safe?\nA:");
 		let qnaHandler: ((args: string, context: unknown) => Promise<void>) | undefined;
-		qna({ registerCommand: (_name: string, definition: { handler: typeof qnaHandler }) => (qnaHandler = definition.handler) } as never);
+		qna({
+			registerCommand: (_name: string, definition: { handler: typeof qnaHandler }) =>
+				(qnaHandler = definition.handler),
+		} as never);
 		const qnaNotices: string[] = [];
 		let qnaEditor = "";
 		const qnaRuntime = providerContext(marker, "#QNA_CURRENT#", qnaNotices);

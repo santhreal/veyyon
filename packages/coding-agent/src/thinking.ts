@@ -201,11 +201,7 @@ export function configuredThinkingLevelsForModel(model: Model | undefined): read
 	if (!model) return CONFIGURED_THINKING_LEVELS;
 	const supported = getSupportedEfforts(model);
 	if (supported.length === 0) return [];
-	return [
-		...(model.thinking?.requiresEffort ? [] : [ThinkingLevel.Off]),
-		AUTO_THINKING,
-		...supported,
-	];
+	return [...(model.thinking?.requiresEffort ? [] : [ThinkingLevel.Off]), AUTO_THINKING, ...supported];
 }
 
 /**

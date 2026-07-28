@@ -97,10 +97,7 @@ const MODEL_SELECTOR_ITEMS = new WeakMap<ReadonlyArray<Model>, ReadonlyArray<Mod
  * applied to fresh shallow rows on every opening, so connecting a provider
  * cannot leave a process-lifetime stale cache.
  */
-export function cachedAuthAwareBrowserItems(
-	models: ReadonlyArray<Model>,
-	registry: ModelRegistry,
-): ModelBrowserItem[] {
+export function cachedAuthAwareBrowserItems(models: ReadonlyArray<Model>, registry: ModelRegistry): ModelBrowserItem[] {
 	let cached = MODEL_SELECTOR_ITEMS.get(models);
 	if (!cached) {
 		const built = buildBrowserItems(models);

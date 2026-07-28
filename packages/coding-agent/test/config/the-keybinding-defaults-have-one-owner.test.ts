@@ -55,10 +55,10 @@ describe("the keybinding defaults have one owner", () => {
 	it("imports nothing but the TUI from the leaf", () => {
 		const imported = [...DEFS_SOURCE.matchAll(/^import .*?from "([^"]+)";$/gm)].map(match => match[1] as string);
 
-		expect(imported.sort(), "keybinding-defs.ts is the leaf a UI component reads. Keep its imports to @veyyon/tui").toEqual([
-			"@veyyon/tui",
-			"@veyyon/tui",
-		]);
+		expect(
+			imported.sort(),
+			"keybinding-defs.ts is the leaf a UI component reads. Keep its imports to @veyyon/tui",
+		).toEqual(["@veyyon/tui", "@veyyon/tui"]);
 	});
 
 	/**

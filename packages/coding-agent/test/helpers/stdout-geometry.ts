@@ -60,7 +60,8 @@ export function stubStdoutGeometry(size: { rows?: number; columns?: number }): S
 
 	return {
 		setRows(next: number) {
-			if (size.rows === undefined) throw new Error("stubStdoutGeometry: rows was not stubbed, so it cannot be resized");
+			if (size.rows === undefined)
+				throw new Error("stubStdoutGeometry: rows was not stubbed, so it cannot be resized");
 			rows = next;
 		},
 		setColumns(next: number) {

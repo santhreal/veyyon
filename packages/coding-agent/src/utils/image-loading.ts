@@ -4,12 +4,7 @@ import { formatBytes } from "@veyyon/utils/format";
 // Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
 import { SUPPORTED_IMAGE_MIME_TYPES } from "@veyyon/utils/mime";
 import { resolveReadPath } from "../tools/path-utils";
-import {
-	canonicalizeImageContent,
-	formatDimensionNote,
-	type ImageResizeOptions,
-	resizeImage,
-} from "./image-resize";
+import { canonicalizeImageContent, formatDimensionNote, type ImageResizeOptions, resizeImage } from "./image-resize";
 
 export const MAX_IMAGE_INPUT_BYTES = 20 * 1024 * 1024;
 export const SUPPORTED_INPUT_IMAGE_MIME_TYPES = SUPPORTED_IMAGE_MIME_TYPES;

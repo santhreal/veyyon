@@ -62,9 +62,8 @@ afterAll(async () => {
 describe("summarizeToolArguments, the projection that gets persisted", () => {
 	/** The plain case: the redactor a persisting caller passes is applied to `command`. */
 	it("rewrites a credential in the command through the redactor", () => {
-		const summary = summarizeToolArguments(
-			{ command: `curl -H "Authorization: Bearer ${A_VALUE}"` },
-			text => text.replaceAll(A_VALUE, "#A_TOKEN#"),
+		const summary = summarizeToolArguments({ command: `curl -H "Authorization: Bearer ${A_VALUE}"` }, text =>
+			text.replaceAll(A_VALUE, "#A_TOKEN#"),
 		);
 		expect(summary?.command).toBe('curl -H "Authorization: Bearer #A_TOKEN#"');
 	});

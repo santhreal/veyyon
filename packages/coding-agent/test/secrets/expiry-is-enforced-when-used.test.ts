@@ -27,10 +27,11 @@ const START = 1_700_000_000_000;
 const HOUR = 60 * 60 * 1000;
 
 /** An obfuscator with a settable clock and a record of every expiry it announced. */
-function build(options: {
-	entries: Array<{ name: string; value: string; expiresAt: number | null }>;
-	at?: number;
-}): { obfuscator: SecretObfuscator; expired: string[]; setNow: (at: number) => void } {
+function build(options: { entries: Array<{ name: string; value: string; expiresAt: number | null }>; at?: number }): {
+	obfuscator: SecretObfuscator;
+	expired: string[];
+	setNow: (at: number) => void;
+} {
 	let now = options.at ?? START;
 	const expired: string[] = [];
 	const obfuscator = new SecretObfuscator(
@@ -275,7 +276,9 @@ describe("secrets that carry no lifetime at all", () => {
 	 * auto-detected environment secret would need a field it has no value for.
 	 */
 	it("keeps working with no expiresAt field", () => {
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: VALUE }], { now: () => START + 10_000 * HOUR });
+		const obfuscator = new SecretObfuscator([{ type: "plain", content: VALUE }], {
+			now: () => START + 10_000 * HOUR,
+		});
 
 		const placeholder = obfuscator.obfuscate(VALUE);
 		expect(placeholder).not.toContain(VALUE);
@@ -328,12 +331,15 @@ describe("secrets that carry no lifetime at all", () => {
 	/** A message with no placeholder in it does not even reach the expiry check. */
 	it("does not read the clock for text with no placeholder", () => {
 		let reads = 0;
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: VALUE, name: "TOKEN_A", expiresAt: START + HOUR }], {
-			now: () => {
-				reads++;
-				return START;
+		const obfuscator = new SecretObfuscator(
+			[{ type: "plain", content: VALUE, name: "TOKEN_A", expiresAt: START + HOUR }],
+			{
+				now: () => {
+					reads++;
+					return START;
+				},
 			},
-		});
+		);
 
 		obfuscator.deobfuscate("an ordinary sentence with no placeholder");
 

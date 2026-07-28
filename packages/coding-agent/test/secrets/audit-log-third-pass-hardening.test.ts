@@ -4,8 +4,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { constants as fsConstants, type Stats } from "node:fs";
-import * as fs from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
+import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
@@ -13,8 +13,8 @@ import {
 	decodeLog,
 	encodeRecord,
 	MAX_RECORD_BYTES,
-	ROTATE_AT_BYTES,
 	placeholdersIn,
+	ROTATE_AT_BYTES,
 	SECRET_AUDIT_FILENAME,
 	SecretAuditLog,
 	type SecretExpansionRecord,
@@ -110,7 +110,14 @@ describe("bounded inert pre-expansion snapshots", () => {
 		);
 		expect(encodeRecord(buildExpansionRecord(auditOptions(materialized))!)).not.toContain(RAW_SECRET);
 
-		const hostile = new Proxy({}, { ownKeys: () => { throw new Error(RAW_SECRET); } });
+		const hostile = new Proxy(
+			{},
+			{
+				ownKeys: () => {
+					throw new Error(RAW_SECRET);
+				},
+			},
+		);
 		let failure = "";
 		try {
 			buildExpansionRecord(auditOptions({ command: PLACEHOLDER, hostile }));
@@ -127,9 +134,9 @@ describe("bounded inert pre-expansion snapshots", () => {
 		const boundary = buildExpansionRecord(auditOptions({ command: exactlyAtStringCap }));
 		expect(boundary?.truncated).toBe(true);
 		expect(boundary?.command).not.toContain("x".repeat(100));
-		expect(() =>
-			buildExpansionRecord(auditOptions({ command: `${exactlyAtStringCap}x` })),
-		).toThrow(/string exceeds the byte limit/);
+		expect(() => buildExpansionRecord(auditOptions({ command: `${exactlyAtStringCap}x` }))).toThrow(
+			/string exceeds the byte limit/,
+		);
 
 		let deep: Record<string, unknown> = { command: PLACEHOLDER };
 		for (let depth = 0; depth < 30; depth++) deep = { nested: deep };
@@ -140,7 +147,9 @@ describe("bounded inert pre-expansion snapshots", () => {
 	it("keeps a credential-free fallback when protection itself fails", () => {
 		const expansion = buildExpansionRecord({
 			...auditOptions({ command: `${RAW_SECRET} ${PLACEHOLDER}` }),
-			obfuscate: () => { throw new Error(RAW_SECRET); },
+			obfuscate: () => {
+				throw new Error(RAW_SECRET);
+			},
 		});
 		const encoded = encodeRecord(expansion!);
 
@@ -248,7 +257,12 @@ describe("bounded queue and pinned filesystem identities", () => {
 		const originalStats = await fs.stat(logPath);
 		const probe = await fs.open(logPath, fsConstants.O_RDONLY);
 		const prototype = Object.getPrototypeOf(probe) as {
-			read: (buffer: Buffer, offset: number, length: number, position: number) => Promise<{ bytesRead: number; buffer: Buffer }>;
+			read: (
+				buffer: Buffer,
+				offset: number,
+				length: number,
+				position: number,
+			) => Promise<{ bytesRead: number; buffer: Buffer }>;
 			stat: () => Promise<Stats>;
 		};
 		await probe.close();

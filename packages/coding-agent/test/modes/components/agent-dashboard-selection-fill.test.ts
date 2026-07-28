@@ -26,7 +26,7 @@ import { AgentDashboard } from "@veyyon/coding-agent/modes/components/agent-dash
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
 import { getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
-import { stubStdoutGeometry, type StubbedStdoutGeometry } from "../../helpers/stdout-geometry";
+import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 const BG_CLOSE = "\x1b[49m";
@@ -139,7 +139,10 @@ describe("The selected row's fill", () => {
 	test("gives each row the same fill width as the cursor moves", () => {
 		registerSub("0-Sub", "reviewer");
 		registerSub("1-Sub", "scout");
-		AgentRegistry.global().setActivity("1-Sub", "reading packages/coding-agent/src/modes/components/agent-dashboard.ts");
+		AgentRegistry.global().setActivity(
+			"1-Sub",
+			"reading packages/coding-agent/src/modes/components/agent-dashboard.ts",
+		);
 		const dashboard = new AgentDashboard({ terminalHeight: 40 });
 		const first = highlightOf(dashboard, "reviewer")?.span.length;
 

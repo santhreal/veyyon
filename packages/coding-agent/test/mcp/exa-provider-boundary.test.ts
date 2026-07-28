@@ -1,5 +1,5 @@
-import type { TSchema } from "@veyyon/ai";
 import { afterEach, describe, expect, it, vi } from "bun:test";
+import type { TSchema } from "@veyyon/ai";
 import { MCPWrappedTool } from "@veyyon/coding-agent/exa/mcp-client";
 import type { CustomToolContext } from "@veyyon/coding-agent/extensibility/custom-tools/types";
 
@@ -59,15 +59,15 @@ describe("Exa MCP provider boundary", () => {
 		await websetsTool.execute("third", rawArgs, undefined, ctx);
 
 		expect(requests).toHaveLength(3);
-		expect((requests[0]?.body.params as Record<string, unknown>).arguments).toEqual({
+		expect((requests[0]!.body.params as Record<string, unknown>).arguments).toEqual({
 			"one:outer-secret": "one:value-secret",
 			"one:nested": [{ "one:inner-secret": "one:deep-secret" }],
 		});
-		expect((requests[1]?.body.params as Record<string, unknown>).arguments).toEqual({
+		expect((requests[1]!.body.params as Record<string, unknown>).arguments).toEqual({
 			"two:outer-secret": "two:value-secret",
 			"two:nested": [{ "two:inner-secret": "two:deep-secret" }],
 		});
-		expect((requests[2]?.body.params as Record<string, unknown>).arguments).toEqual({
+		expect((requests[2]!.body.params as Record<string, unknown>).arguments).toEqual({
 			"three:outer-secret": "three:value-secret",
 			"three:nested": [{ "three:inner-secret": "three:deep-secret" }],
 		});

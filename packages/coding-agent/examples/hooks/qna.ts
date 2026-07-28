@@ -6,11 +6,10 @@
  * 2. Shows a spinner while extracting (hides editor)
  * 3. Loads the result into the editor for user to fill in answers
  */
-import { complete, type Context, type UserMessage } from "@veyyon/ai";
+import { type Context, complete, type UserMessage } from "@veyyon/ai";
 import type { HookAPI } from "@veyyon/coding-agent";
 import { BorderedLoader } from "@veyyon/coding-agent";
 import { mapJsonStrings } from "@veyyon/coding-agent/secrets/obfuscator";
-
 
 const SYSTEM_PROMPT = `You are a question extractor. Given text from a conversation, extract any questions that need answering and format them for the user to fill in.
 

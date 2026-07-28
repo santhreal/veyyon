@@ -6,9 +6,9 @@ import { type SettingPath, Settings } from "@veyyon/coding-agent/config/settings
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { renderHtmlToText } from "@veyyon/coding-agent/tools/fetch";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import * as scrapers from "@veyyon/coding-agent/web/scrapers/types";
 import * as natives from "@veyyon/natives";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
-import * as scrapers from "@veyyon/coding-agent/web/scrapers/types";
 import { asGlobalFetch } from "../helpers/fetch-mock";
 
 describe("fetch remote reader confidentiality boundary", () => {

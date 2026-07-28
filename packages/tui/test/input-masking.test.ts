@@ -12,8 +12,8 @@
  * future edit cannot "fix" masking by masking the buffer itself.
  */
 import { describe, expect, it } from "bun:test";
-import { DEFAULT_MASK_CHAR, Input, maskValue } from "../src/components/input";
 import { PASTE_END, PASTE_START } from "../src/bracketed-paste";
+import { DEFAULT_MASK_CHAR, Input, maskValue } from "../src/components/input";
 
 /** Everything the terminal would receive, with escape sequences kept. */
 function rendered(input: Input, width = 40): string {
@@ -22,8 +22,9 @@ function rendered(input: Input, width = 40): string {
 
 /** Escape sequences stripped, so a value cannot hide inside one. */
 function plainText(input: Input, width = 40): string {
-	// biome-ignore lint/suspicious/noControlCharactersInRegex: matching terminal escapes is the point
-	return rendered(input, width).replace(/\x1b\[[0-9;]*m/g, "").replace(/​/g, "");
+	return rendered(input, width)
+		.replace(/\x1b\[[0-9;]*m/g, "")
+		.replace(/​/g, "");
 }
 
 describe("the mask projection", () => {

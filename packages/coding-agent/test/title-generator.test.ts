@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import type { Api, ApiKeyResolver, Model } from "@veyyon/ai";
 import * as ai from "@veyyon/ai";
 import { type GeneratedProvider, getBundledModel } from "@veyyon/catalog/models";
-import { generateSessionTitle } from "@veyyon/coding-agent/utils/title-generator";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
+import { generateSessionTitle } from "@veyyon/coding-agent/utils/title-generator";
 import { logger } from "@veyyon/utils";
 
 function getModelOrThrow(id: string): Model<Api> {

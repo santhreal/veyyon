@@ -18,9 +18,10 @@
  *     bun scripts/demos/render-selection-bands.ts --rows 34
  *       | bun scripts/demos/render-proof.ts --out /tmp/proof/band-history --width 110
  */
-import type { HistoryEntry, HistoryStorage } from "../../packages/coding-agent/src/session/history-storage";
+
 import { HistorySearchComponent } from "../../packages/coding-agent/src/modes/components/history-search";
 import { initTheme } from "../../packages/coding-agent/src/modes/theme/theme";
+import type { HistoryEntry, HistoryStorage } from "../../packages/coding-agent/src/session/history-storage";
 import { setAnsiPolicy } from "../../packages/tui/src/index";
 import { flag, renderWidth } from "./render-args";
 

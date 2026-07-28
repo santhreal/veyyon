@@ -93,7 +93,6 @@ describe("isProcessAlive", () => {
 			process.kill = kill;
 		}
 	});
-
 });
 
 describe("cross-platform process incarnation identity", () => {
@@ -113,9 +112,7 @@ describe("cross-platform process incarnation identity", () => {
 			queryWindowsProcessStart: () => null,
 		};
 
-		expect(getProcessStartIdentity(4242, dependencies)).toBe(
-			"linux:01234567-89ab-cdef-0123-456789abcdef:987654",
-		);
+		expect(getProcessStartIdentity(4242, dependencies)).toBe("linux:01234567-89ab-cdef-0123-456789abcdef:987654");
 	});
 
 	/** A malformed boot UUID or proc record must remain unverifiable rather than identify the wrong PID. */
@@ -124,8 +121,7 @@ describe("cross-platform process incarnation identity", () => {
 		let stat = `9999 (other) ${["S", ...Array.from({ length: 18 }, () => "0"), "123"].join(" ")}`;
 		const dependencies: ProcessIdentityDependencies = {
 			platform: "linux",
-			readBoundedTextFile: filePath =>
-				filePath === "/proc/sys/kernel/random/boot_id" ? bootId : stat,
+			readBoundedTextFile: filePath => (filePath === "/proc/sys/kernel/random/boot_id" ? bootId : stat),
 			querySystem: () => null,
 			queryDarwinProcessStart: () => null,
 			queryWindowsProcessStart: () => null,
@@ -149,9 +145,7 @@ describe("cross-platform process incarnation identity", () => {
 			queryWindowsProcessStart: () => null,
 		};
 
-		expect(getProcessStartIdentity(4242, dependencies)).toBe(
-			"darwin:1670000000.123:1672628645.456",
-		);
+		expect(getProcessStartIdentity(4242, dependencies)).toBe("darwin:1670000000.123:1672628645.456");
 		processStart = "1672628645.1000000";
 		expect(getProcessStartIdentity(4242, dependencies)).toBeNull();
 		processStart = "1672628645.123456";
@@ -206,8 +200,7 @@ describe("cross-platform process incarnation identity", () => {
 		const dependencies: ProcessIdentityDependencies = {
 			platform: "darwin",
 			readBoundedTextFile: () => null,
-			querySystem: executable =>
-				executable === "/usr/sbin/sysctl" ? "{ sec = 1670000000, usec = 123456 }" : null,
+			querySystem: executable => (executable === "/usr/sbin/sysctl" ? "{ sec = 1670000000, usec = 123456 }" : null),
 			queryDarwinProcessStart: () => processStart,
 			queryWindowsProcessStart: () => null,
 		};

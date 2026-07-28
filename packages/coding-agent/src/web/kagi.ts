@@ -9,9 +9,9 @@
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import {
+	type ProviderTextTransformResolver,
 	resolveProviderTextTransform,
 	transformProviderPayload,
-	type ProviderTextTransformResolver,
 } from "../provider-boundary";
 import { withHardTimeout } from "./search/providers/utils";
 
@@ -102,7 +102,6 @@ export class KagiApiError extends Error {
 		this.statusCode = statusCode;
 	}
 }
-
 
 function createKagiApiError(statusCode: number): KagiApiError {
 	return new KagiApiError(`Kagi API error (${statusCode})`, statusCode);
@@ -211,10 +210,7 @@ export async function searchWithKagi(
 		const response = await withAuth(
 			authStorage.resolver("kagi", { sessionId: options.sessionId }),
 			async apiKey => {
-				const transform = resolveProviderTextTransform(
-					options.resolveProviderTextTransform,
-					"Kagi search request",
-				);
+				const transform = resolveProviderTextTransform(options.resolveProviderTextTransform, "Kagi search request");
 				const body = JSON.stringify(
 					transformProviderPayload(buildRequestBody(query, options), transform, "Kagi search request"),
 				);

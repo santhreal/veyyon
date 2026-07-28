@@ -197,11 +197,7 @@ import {
 	resolveCompactionEngineAction,
 	toAgentCompactionSettings,
 } from "../config/compaction-strategy";
-import {
-	type EffortSource,
-	resolveEffort,
-	withLegacyDefaultEffort,
-} from "../config/effort-resolver";
+import { type EffortSource, resolveEffort, withLegacyDefaultEffort } from "../config/effort-resolver";
 import type { ModelRegistry } from "../config/model-registry";
 import {
 	extractExplicitThinkingSelector,
@@ -333,9 +329,9 @@ import { enabledSubagentNames, resolveDelegation } from "../task/subagent-settin
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,
-	configuredThinkingLevelsForModel,
 	clampAutoThinkingEffort,
 	concreteThinkingLevel,
+	configuredThinkingLevelsForModel,
 	parseConfiguredThinkingLevel,
 	resolveProvisionalAutoLevel,
 	resolveThinkingLevelForModel,

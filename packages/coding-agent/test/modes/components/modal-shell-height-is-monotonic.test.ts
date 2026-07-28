@@ -19,6 +19,7 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
+import type { ModalSizing } from "@veyyon/coding-agent/modes/components/modal-shell";
 import {
 	computeModalDims,
 	MODAL_SIZING_LARGE,
@@ -28,7 +29,6 @@ import {
 	renderModalShell,
 	withCompact,
 } from "@veyyon/coding-agent/modes/components/modal-shell";
-import type { ModalSizing } from "@veyyon/coding-agent/modes/components/modal-shell";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 const WIDTH = 100;

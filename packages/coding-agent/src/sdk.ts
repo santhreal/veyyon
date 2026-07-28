@@ -1723,10 +1723,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			}
 			const saved = resolveEffort({
 				modelSelector: selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : undefined,
-				defaultEffort: withLegacyDefaultEffort(
-					settings.get("defaultEffort"),
-					settings.get("defaultThinkingLevel"),
-				),
+				defaultEffort: withLegacyDefaultEffort(settings.get("defaultEffort"), settings.get("defaultThinkingLevel")),
 			});
 			thinkingSource = saved.source;
 			return saved.level ?? selectedModel?.thinking?.defaultLevel;

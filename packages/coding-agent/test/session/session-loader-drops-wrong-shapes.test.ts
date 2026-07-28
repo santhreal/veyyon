@@ -149,12 +149,13 @@ describe("The whole-file loader", () => {
 			expect(messages.map(entry => entry.id)).not.toContain("a1");
 			for (const entry of messages) {
 				const message = entry.message as { role: string; usage?: unknown };
-				if (message.role === "assistant") expect(message.usage).toEqual({
-					input: 10,
-					output: 4,
-					cacheRead: 0,
-					cacheWrite: 0,
-				});
+				if (message.role === "assistant")
+					expect(message.usage).toEqual({
+						input: 10,
+						output: 4,
+						cacheRead: 0,
+						cacheWrite: 0,
+					});
 			}
 		} finally {
 			captured.restore();

@@ -138,14 +138,12 @@ describe("replace mode is permanently one-way", () => {
 	 * must not be able to reproduce the observed alias without the machine-local vault key.
 	 */
 	it("does not expose a cross-machine dictionary oracle", () => {
-		const first = new SecretObfuscator(
-			[{ type: "plain", content: "12345678", mode: "replace" }],
-			{ placeholderKey: new Uint8Array(32).fill(1) },
-		);
-		const second = new SecretObfuscator(
-			[{ type: "plain", content: "12345678", mode: "replace" }],
-			{ placeholderKey: new Uint8Array(32).fill(2) },
-		);
+		const first = new SecretObfuscator([{ type: "plain", content: "12345678", mode: "replace" }], {
+			placeholderKey: new Uint8Array(32).fill(1),
+		});
+		const second = new SecretObfuscator([{ type: "plain", content: "12345678", mode: "replace" }], {
+			placeholderKey: new Uint8Array(32).fill(2),
+		});
 
 		expect(first.obfuscate("12345678")).not.toBe(second.obfuscate("12345678"));
 	});
@@ -155,14 +153,12 @@ describe("replace mode is permanently one-way", () => {
 	 * preserves provider caches without falling back to a public, provider-verifiable hash.
 	 */
 	it("keeps aliases stable for the same machine key", () => {
-		const first = new SecretObfuscator(
-			[{ type: "plain", content: "stable-replacement-secret", mode: "replace" }],
-			{ placeholderKey: PLACEHOLDER_KEY },
-		);
-		const second = new SecretObfuscator(
-			[{ type: "plain", content: "stable-replacement-secret", mode: "replace" }],
-			{ placeholderKey: PLACEHOLDER_KEY },
-		);
+		const first = new SecretObfuscator([{ type: "plain", content: "stable-replacement-secret", mode: "replace" }], {
+			placeholderKey: PLACEHOLDER_KEY,
+		});
+		const second = new SecretObfuscator([{ type: "plain", content: "stable-replacement-secret", mode: "replace" }], {
+			placeholderKey: PLACEHOLDER_KEY,
+		});
 
 		expect(first.obfuscate("stable-replacement-secret")).toBe(second.obfuscate("stable-replacement-secret"));
 	});

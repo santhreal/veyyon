@@ -532,7 +532,7 @@ function correctHangulCompatibilityJamoWidth(width: number, str: string): number
  * result is whatever Bun says about text that no longer contains them, and it also
  * needs no per-mark knowledge of what Bun charged.
  */
-const OVERCOUNTED_MARK_PROBE = /[\u0488\u0489\ua670-\ua672\u20e3\ufe0f]/;
+const OVERCOUNTED_MARK_PROBE = /\u0488|\u0489|[\ua670-\ua672]|\u20e3|\ufe0f/;
 
 /** The five `Me` code points from case 1, which are always dropped. */
 const ZERO_WIDTH_ENCLOSING_MARKS = /[\u0488\u0489\ua670-\ua672]/g;

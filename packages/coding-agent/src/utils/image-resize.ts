@@ -59,7 +59,6 @@ const DEFAULT_OPTIONS: Required<Omit<ImageResizeOptions, "excludeWebP">> = {
 	minDimension: DEFAULT_MIN_DIMENSION,
 };
 
-
 /**
  * Read `VEYYON_NO_WEBP` per-call so runtime toggles take effect.
  * Only `"1"` and `"true"` (case-insensitive) enable exclusion — an empty string
@@ -196,10 +195,7 @@ export async function resizeImage(img: ImageContent, options?: ImageResizeOption
 			quality: number,
 		): Promise<{ buffer: Uint8Array; mimeType: CanonicalImage["mimeType"] }> {
 			const candidates: Array<{ buffer: Uint8Array; mimeType: CanonicalImage["mimeType"] }> = [];
-			for (const mimeType of [
-				"image/jpeg",
-				...(excludeWebP ? [] : (["image/webp"] as const)),
-			] as const) {
+			for (const mimeType of ["image/jpeg", ...(excludeWebP ? [] : (["image/webp"] as const))] as const) {
 				const buffer = await encodeImage(source.inputBuffer, mimeType, width, height, quality);
 				assertEncodedImage(buffer, mimeType, width, height);
 				candidates.push({ buffer, mimeType });
@@ -214,15 +210,7 @@ export async function resizeImage(img: ImageContent, options?: ImageResizeOption
 		let best = await encodeSmallest(targetWidth, targetHeight, opts.jpegQuality);
 
 		if (best.buffer.length <= opts.maxBytes) {
-			return resizedResult(
-				best.buffer,
-				best.mimeType,
-				originalWidth,
-				originalHeight,
-				finalWidth,
-				finalHeight,
-				true,
-			);
+			return resizedResult(best.buffer, best.mimeType, originalWidth, originalHeight, finalWidth, finalHeight, true);
 		}
 
 		for (const quality of qualitySteps) {
@@ -261,15 +249,7 @@ export async function resizeImage(img: ImageContent, options?: ImageResizeOption
 			}
 		}
 
-		return resizedResult(
-			best.buffer,
-			best.mimeType,
-			originalWidth,
-			originalHeight,
-			finalWidth,
-			finalHeight,
-			true,
-		);
+		return resizedResult(best.buffer, best.mimeType, originalWidth, originalHeight, finalWidth, finalHeight, true);
 	} catch {
 		throw new Error("Image normalization failed: input is not a decodable supported image.");
 	}
@@ -317,20 +297,13 @@ async function inspectImageInput(data: string): Promise<InspectedImage> {
 	}).metadata();
 	const decoded = checkedImageDimensions(native.width, native.height);
 	const nativeMime = native.format === "jpeg" ? "image/jpeg" : `image/${native.format}`;
-	if (
-		nativeMime !== detected.mimeType ||
-		decoded.width !== trusted.width ||
-		decoded.height !== trusted.height
-	) {
+	if (nativeMime !== detected.mimeType || decoded.width !== trusted.width || decoded.height !== trusted.height) {
 		throw new Error("image metadata mismatch");
 	}
 	return { inputBuffer, mimeType: detected.mimeType, ...trusted };
 }
 
-function canonicalMimeType(
-	sourceMime: InspectedImage["mimeType"],
-	excludeWebP: boolean,
-): CanonicalImage["mimeType"] {
+function canonicalMimeType(sourceMime: InspectedImage["mimeType"], excludeWebP: boolean): CanonicalImage["mimeType"] {
 	if (sourceMime === "image/gif" || (sourceMime === "image/webp" && excludeWebP)) return "image/png";
 	return sourceMime;
 }

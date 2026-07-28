@@ -14,8 +14,8 @@ import {
 	ExtensionRunner,
 	testSetExtensionHandlerTimeoutMs,
 } from "@veyyon/coding-agent/extensibility/extensions/runner";
-import { HookRunner } from "@veyyon/coding-agent/extensibility/hooks/runner";
 import { ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
+import { HookRunner } from "@veyyon/coding-agent/extensibility/hooks/runner";
 import { Type } from "@veyyon/coding-agent/extensibility/typebox";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";

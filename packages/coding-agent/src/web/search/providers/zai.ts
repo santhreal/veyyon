@@ -9,12 +9,12 @@ import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { isRecord, trimmedString } from "@veyyon/utils";
+import { MCP_PROTOCOL_VERSION } from "../../../mcp/protocol-version";
 import {
+	type ProviderTextTransformResolver,
 	resolveProviderTextTransform,
 	transformProviderPayload,
-	type ProviderTextTransformResolver,
 } from "../../../provider-boundary";
-import { MCP_PROTOCOL_VERSION } from "../../../mcp/protocol-version";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
@@ -288,13 +288,7 @@ async function callZaiSearch(apiKey: string, params: ZaiSearchParams): Promise<u
 	let lastError: unknown;
 	for (let i = 0; i < attempts.length; i++) {
 		try {
-			return await callZaiTool(
-				apiKey,
-				attempts[i],
-				params.signal,
-				fetchImpl,
-				params.resolveProviderTextTransform,
-			);
+			return await callZaiTool(apiKey, attempts[i], params.signal, fetchImpl, params.resolveProviderTextTransform);
 		} catch (error) {
 			lastError = error;
 			const isLastAttempt = i === attempts.length - 1;

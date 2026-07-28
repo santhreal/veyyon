@@ -62,10 +62,14 @@ describe("expansion parity", () => {
 	 */
 	it("records placeholders nested in JSON object keys", () => {
 		const args = { nested: { "#TOKEN_KEY#": "value" } };
-		const expansion = buildExpansionRecord({ args,
+		const expansion = buildExpansionRecord({
+			args,
 			tool: "bash",
 			session: "session",
-			at: 1, known: placeholder => placeholder === "#TOKEN_KEY#", obfuscate: value => value });
+			at: 1,
+			known: placeholder => placeholder === "#TOKEN_KEY#",
+			obfuscate: value => value,
+		});
 
 		expect(expansion?.secrets).toEqual(["#TOKEN_KEY#"]);
 	});
@@ -200,23 +204,22 @@ describe("existing audit paths", () => {
 		expect(notices.all()[0].text).toContain("not a regular file");
 	});
 });
-	/** A hard link must not turn an unrelated owned inode into the audit append target. */
-	it("refuses a multiply linked owned file without chmodding or appending to it", async () => {
-		const unrelated = path.join(dir, "unrelated.txt");
-		await fs.writeFile(unrelated, "unchanged\n", { mode: 0o600 });
-		if (process.platform !== "win32") await fs.chmod(unrelated, 0o644);
-		await fs.link(unrelated, logPath);
-		const notices = new OperatorNotices();
-		const log = new SecretAuditLog(logPath, notices);
+/** A hard link must not turn an unrelated owned inode into the audit append target. */
+it("refuses a multiply linked owned file without chmodding or appending to it", async () => {
+	const unrelated = path.join(dir, "unrelated.txt");
+	await fs.writeFile(unrelated, "unchanged\n", { mode: 0o600 });
+	if (process.platform !== "win32") await fs.chmod(unrelated, 0o644);
+	await fs.link(unrelated, logPath);
+	const notices = new OperatorNotices();
+	const log = new SecretAuditLog(logPath, notices);
 
-		log.record(record(1));
-		await log.flush();
+	log.record(record(1));
+	await log.flush();
 
-		expect(await fs.readFile(unrelated, "utf8")).toBe("unchanged\n");
-		if (process.platform !== "win32") expect((await fs.stat(unrelated)).mode & 0o777).toBe(0o644);
-		expect(notices.all()[0]?.text).toContain("exactly one hard link");
-	});
-
+	expect(await fs.readFile(unrelated, "utf8")).toBe("unchanged\n");
+	if (process.platform !== "win32") expect((await fs.stat(unrelated)).mode & 0o777).toBe(0o644);
+	expect(notices.all()[0]?.text).toContain("exactly one hard link");
+});
 
 describe("malformed evidence", () => {
 	/** Truncation metadata is security evidence too: zero, fractional, or unmarked counts are invalid. */

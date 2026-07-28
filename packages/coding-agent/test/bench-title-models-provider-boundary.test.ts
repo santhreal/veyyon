@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, spyOn, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { runOllamaLane } from "../scripts/bench-title-models";
 import { TempDir } from "@veyyon/utils";
+import { runOllamaLane } from "../scripts/bench-title-models";
 
 const roots: TempDir[] = [];
 
@@ -17,7 +17,10 @@ async function fixture(replacement: string, marker: string) {
 	const cwd = root.join("project");
 	const agentDir = root.join("profile", "agent");
 	const globalConfigRoot = root.join("global");
-	await Promise.all([fs.mkdir(path.join(cwd, ".veyyon"), { recursive: true }), fs.mkdir(agentDir, { recursive: true })]);
+	await Promise.all([
+		fs.mkdir(path.join(cwd, ".veyyon"), { recursive: true }),
+		fs.mkdir(agentDir, { recursive: true }),
+	]);
 	const declarations = path.join(cwd, ".veyyon", "secrets.yml");
 	const writeDeclaration = (nextReplacement: string) =>
 		fs.writeFile(
@@ -40,16 +43,14 @@ describe("title-model benchmark provider boundary", () => {
 		const raw = `${"a".repeat(1_200)}${marker}${"b".repeat(400)}`;
 		const { runtime, writeDeclaration } = await fixture("BENCH_FIRST_PLACEHOLDER", marker);
 		const bodies: string[] = [];
-		spyOn(globalThis, "fetch").mockImplementation(
-			(async (_input: string | URL | Request, init?: RequestInit) => {
-				bodies.push(String(init?.body));
-				if (bodies.length === 1) await writeDeclaration("BENCH_CURRENT_PLACEHOLDER");
-				return new Response(JSON.stringify({ message: { content: "<title>Safe title</title>" } }), {
-					status: 200,
-					headers: { "content-type": "application/json" },
-				});
-			}) as unknown as typeof fetch,
-		);
+		spyOn(globalThis, "fetch").mockImplementation((async (_input: string | URL | Request, init?: RequestInit) => {
+			bodies.push(String(init?.body));
+			if (bodies.length === 1) await writeDeclaration("BENCH_CURRENT_PLACEHOLDER");
+			return new Response(JSON.stringify({ message: { content: "<title>Safe title</title>" } }), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			});
+		}) as unknown as typeof fetch);
 
 		await runOllamaLane(
 			"http://ollama.invalid",
@@ -78,12 +79,7 @@ describe("title-model benchmark provider boundary", () => {
 
 		let message = "";
 		try {
-			await runOllamaLane(
-				"http://ollama.invalid",
-				"test-model",
-				[{ id: 1, raw: marker, input: marker }],
-				runtime,
-			);
+			await runOllamaLane("http://ollama.invalid", "test-model", [{ id: 1, raw: marker, input: marker }], runtime);
 		} catch (error) {
 			message = error instanceof Error ? error.message : String(error);
 		}

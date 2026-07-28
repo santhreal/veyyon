@@ -195,7 +195,9 @@ describe("attempt-time Mnemopi provider payloads", () => {
 			body = String(init?.body);
 			return openAiSse("SDK result");
 		};
-		const result = await withMnemopiRuntimeOptions(runtime, () => complete(`normal ${secret}`, 0, { fetch: fetchMock }));
+		const result = await withMnemopiRuntimeOptions(runtime, () =>
+			complete(`normal ${secret}`, 0, { fetch: fetchMock }),
+		);
 
 		expect(result).toBe("SDK result");
 		expect(body).toContain("[CURRENT]");
@@ -228,7 +230,9 @@ describe("attempt-time Mnemopi provider payloads", () => {
 			body = String(init?.body);
 			return piNativeSse("Pi result");
 		};
-		const result = await withMnemopiRuntimeOptions(runtime, () => complete(`native ${secret}`, 0, { fetch: fetchMock }));
+		const result = await withMnemopiRuntimeOptions(runtime, () =>
+			complete(`native ${secret}`, 0, { fetch: fetchMock }),
+		);
 
 		expect(result).toBe("Pi result");
 		expect(body).toContain("[CURRENT]");

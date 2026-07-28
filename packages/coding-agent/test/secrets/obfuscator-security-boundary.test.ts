@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { AssistantMessage, Context, Message } from "@veyyon/ai";
+import type { AssistantMessage, Context } from "@veyyon/ai";
 import {
 	deobfuscateAssistantContent,
 	obfuscateMessages,

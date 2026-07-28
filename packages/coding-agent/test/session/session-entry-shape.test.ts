@@ -129,7 +129,10 @@ describe("Records the readers can use", () => {
 	/** A zeroed usage is a real value and stays: only an ABSENT one is a defect. */
 	it("accepts an assistant turn whose usage is all zeros", () => {
 		const entry = assistantEntry({
-			message: { ...(assistantEntry().message as object), usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
+			message: {
+				...(assistantEntry().message as object),
+				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			},
 		});
 
 		expect(checkSessionEntryShape(entry)).toEqual({ ok: true });

@@ -22,7 +22,7 @@ export interface WindowsAclOptions {
 	spawn?: typeof spawn;
 }
 
-const VERIFY_ACL = String.raw`
+const VERIFY_ACL = `
 if ($item.PSProvider.Name -ne 'FileSystem') { throw 'ACL target is not a filesystem path' }
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent().User
 $actual = Get-Acl -LiteralPath $target -ErrorAction Stop
@@ -45,7 +45,7 @@ if ($item.PSIsContainer) {
 }
 `;
 
-const APPLY_SCRIPT = String.raw`
+const APPLY_SCRIPT = `
 $ErrorActionPreference = 'Stop'
 $target = [Environment]::GetEnvironmentVariable('VEYYON_OWNER_ONLY_ACL_PATH', 'Process')
 if ([string]::IsNullOrEmpty($target)) { throw 'ACL target is missing' }
@@ -73,7 +73,7 @@ ${VERIFY_ACL}
 [Console]::Out.Write('OK')
 `;
 
-const VERIFY_SCRIPT = String.raw`
+const VERIFY_SCRIPT = `
 $ErrorActionPreference = 'Stop'
 $target = [Environment]::GetEnvironmentVariable('VEYYON_OWNER_ONLY_ACL_PATH', 'Process')
 $item = Get-Item -LiteralPath $target -Force -ErrorAction Stop

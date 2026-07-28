@@ -276,7 +276,9 @@ describe("telemetry final text sanitizer", () => {
 			expect(chat.attributes[GenAIAttr.RequestStream]).toBe(true);
 			expect(chat.status.message).toContain(REPLACEMENT);
 			expect(chat.events.some(event => event.name.includes(REPLACEMENT))).toBe(true);
-			expect(chat.events.some(event => event.name === "exception" && JSON.stringify(event).includes(REPLACEMENT))).toBe(true);
+			expect(
+				chat.events.some(event => event.name === "exception" && JSON.stringify(event).includes(REPLACEMENT)),
+			).toBe(true);
 			expect(chat.links.some(link => JSON.stringify(link.attributes).includes(REPLACEMENT))).toBe(true);
 
 			const tool = spans.find(span => span.attributes[GenAIAttr.OperationName] === "execute_tool") as ReadableSpan;
@@ -419,7 +421,9 @@ describe("telemetry final text sanitizer", () => {
 		expect(readablePayload([readable])).not.toContain(RAW_SENTINEL);
 		expect(warnings.length).toBeGreaterThanOrEqual(6);
 		expect(warnings.every(warning => warning.code === "text_sanitizer_failed")).toBe(true);
-		expect(warnings.every(warning => warning.message === "textSanitizer threw; omitting dynamic telemetry text")).toBe(true);
+		expect(
+			warnings.every(warning => warning.message === "textSanitizer threw; omitting dynamic telemetry text"),
+		).toBe(true);
 		expect(warnings.every(warning => warning.error === undefined)).toBe(true);
 		expect(JSON.stringify(warnings)).not.toContain(RAW_SENTINEL);
 		expect(JSON.stringify(warnings)).not.toContain("sanitizer-error");
@@ -429,10 +433,7 @@ describe("telemetry final text sanitizer", () => {
 		class RetryingFakeExporter extends InMemorySpanExporter {
 			readonly transmissions: string[] = [];
 
-			override export(
-				spans: ReadableSpan[],
-				resultCallback: Parameters<InMemorySpanExporter["export"]>[1],
-			): void {
+			override export(spans: ReadableSpan[], resultCallback: Parameters<InMemorySpanExporter["export"]>[1]): void {
 				const queuedBytes = readablePayload(spans);
 				this.transmissions.push(queuedBytes, queuedBytes);
 				super.export(spans, resultCallback);
@@ -448,10 +449,14 @@ describe("telemetry final text sanitizer", () => {
 			textSanitizer: replaceSentinel,
 			onSpanStart: ({ span }) => span.addEvent(`retry-event-${RAW_SENTINEL}`),
 		});
-		const span = startChatSpan(telemetry, { ...MODEL, id: `retry-model-${RAW_SENTINEL}` }, {
-			stepNumber: 0,
-			request: {},
-		});
+		const span = startChatSpan(
+			telemetry,
+			{ ...MODEL, id: `retry-model-${RAW_SENTINEL}` },
+			{
+				stepNumber: 0,
+				request: {},
+			},
+		);
 		await finishChatSpan(telemetry, span, assistant([], { responseId: `retry-id-${RAW_SENTINEL}` }), {
 			stepNumber: 0,
 		});

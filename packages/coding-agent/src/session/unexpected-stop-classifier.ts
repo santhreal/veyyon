@@ -84,13 +84,12 @@ function sanitizeClassifierText(text: string, deps: ClassifyUnexpectedStopDeps):
 	}
 }
 
-function createOnlineClassificationError(
-	response: AssistantMessage,
-	deps: ClassifyUnexpectedStopDeps,
-): Error {
+function createOnlineClassificationError(response: AssistantMessage, deps: ClassifyUnexpectedStopDeps): Error {
 	const detail = sanitizeClassifierText(response.errorMessage ?? "unknown error", deps);
 	const message = `unexpected-stop: online classification failed: ${detail}`;
-	return response.errorStatus === undefined ? new Error(message) : new ProviderHttpError(message, response.errorStatus);
+	return response.errorStatus === undefined
+		? new Error(message)
+		: new ProviderHttpError(message, response.errorStatus);
 }
 
 async function classifyOnline(text: string, deps: ClassifyUnexpectedStopDeps): Promise<boolean | undefined> {

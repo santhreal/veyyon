@@ -9,7 +9,6 @@
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
-import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
 import { asRecord, tryParseJson } from "@veyyon/utils";
 // The two owners rather than the store that re-exports both: the slot leaf for the value, the schema for
 // the default. A web-search provider reading two settings paid 95 modules for the pair.
@@ -17,6 +16,7 @@ import { settings } from "../../../config/settings-instance";
 import { getDefault } from "../../../config/settings-schema";
 import { findApiKey, isSearchResponse } from "../../../exa/mcp-client";
 import { parseSSE } from "../../../mcp/json-rpc";
+import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
@@ -404,7 +404,6 @@ async function callExaMcpSearch(params: ExaSearchParams): Promise<ExaSearchRespo
 		throw new Error("Exa MCP search returned unexpected response shape.");
 	});
 }
-
 
 /** Execute Exa web search */
 export async function searchExa(params: ExaSearchParams): Promise<SearchResponse> {

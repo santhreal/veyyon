@@ -492,12 +492,7 @@ async function embedApi(texts: readonly string[]): Promise<EmbeddingMatrix | nul
 				return null;
 			}
 			const payload: unknown = await response.json();
-			if (
-				payload === null ||
-				typeof payload !== "object" ||
-				!("data" in payload) ||
-				!Array.isArray(payload.data)
-			) {
+			if (payload === null || typeof payload !== "object" || !("data" in payload) || !Array.isArray(payload.data)) {
 				reportEmbeddingFailure("the embeddings endpoint returned a response with no `data` array", baseUrl);
 				return null;
 			}
@@ -709,11 +704,7 @@ export async function embed(texts: readonly string[]): Promise<EmbeddingMatrix |
 		const vectors = await collectMatrix(model.embed([...texts]), texts.length);
 		if (vectors.length === 1) {
 			const vector = vectors[0];
-			if (
-				vector !== undefined &&
-				localCacheKey !== null &&
-				queryCacheKey(texts[0] ?? "") === localCacheKey
-			) {
+			if (vector !== undefined && localCacheKey !== null && queryCacheKey(texts[0] ?? "") === localCacheKey) {
 				queryCache.set(localCacheKey, vector.slice());
 			}
 		}

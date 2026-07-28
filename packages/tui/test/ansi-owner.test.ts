@@ -28,8 +28,8 @@ import {
 	SGR_RESET,
 	SGR_RESET_SHORT,
 	SGR_SEQUENCE_PATTERN,
-	sgrSequence,
 	ST,
+	sgrSequence,
 } from "@veyyon/tui/ansi";
 
 const TUI_SRC = path.join(import.meta.dir, "..", "src");
@@ -433,9 +433,9 @@ describe("the SGR sequence pattern", () => {
 	/** Non-vacuity for the ratchet: the detector really does recognise the shape it bans. */
 	it("would catch a fifth copy", () => {
 		const literal = /\/\\x1b\\\[[^/]*m\//;
-		expect(literal.test('const SGR = /\\x1b\\[[0-9;:]*m/g;')).toBe(true);
-		expect(literal.test('const SGR = /\\x1b\\[([0-9;]*)m/g;')).toBe(true);
-		expect(literal.test('const CSI = /\\x1b\\[[0-?]*[ -/]*[@-~]/g;')).toBe(false);
+		expect(literal.test("const SGR = /\\x1b\\[[0-9;:]*m/g;")).toBe(true);
+		expect(literal.test("const SGR = /\\x1b\\[([0-9;]*)m/g;")).toBe(true);
+		expect(literal.test("const CSI = /\\x1b\\[[0-?]*[ -/]*[@-~]/g;")).toBe(false);
 	});
 });
 
@@ -509,7 +509,9 @@ describe("nobody writes the reset bytes again", () => {
 	 * these constants exist.
 	 */
 	it("reads code lines and skips comments", () => {
-		const sample = ['/** A doc mentioning \\x1b[0m. */', "// Also \\x1b[39m here.", 'const bad = "\\x1b[49m";'].join("\n");
+		const sample = ["/** A doc mentioning \\x1b[0m. */", "// Also \\x1b[39m here.", 'const bad = "\\x1b[49m";'].join(
+			"\n",
+		);
 		const lines = codeLines(sample);
 		expect(lines).toHaveLength(1);
 		expect(lines[0]?.[1]).toContain("\\x1b\\[49m".replace("\\[", "["));

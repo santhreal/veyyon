@@ -15,11 +15,7 @@
  *      ends in the same silence by a different route.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	formatNotice,
-	type OperatorNotice,
-	OperatorNotices,
-} from "@veyyon/coding-agent/session/operator-notices";
+import { formatNotice, type OperatorNotice, OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
 
 /** Collect into an array, the way a surface would. */
 function collector(): { seen: OperatorNotice[]; sink: (notice: OperatorNotice) => void } {

@@ -39,8 +39,6 @@ import * as piUtils from "@veyyon/utils";
 let tmpRoot: string;
 let pluginsDir: string;
 let spies: Array<{ mockRestore: () => void }>;
-/** Whether `chmod 0o000` actually denied us. It does not when the tests run as root. */
-const denied = false;
 
 beforeEach(async () => {
 	tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-plugin-doctor-"));

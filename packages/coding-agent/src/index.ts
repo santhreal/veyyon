@@ -62,9 +62,9 @@ export {
 	ROTATE_AT_BYTES,
 	ROTATED_SUFFIX,
 	SECRET_AUDIT_FILENAME,
-	secretAuditPath,
 	SecretAuditLog,
 	type SecretExpansionRecord,
+	secretAuditPath,
 } from "./secrets/audit";
 export * from "./session/agent-session";
 // Auth and model registry

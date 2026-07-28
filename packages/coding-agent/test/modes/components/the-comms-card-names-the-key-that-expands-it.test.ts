@@ -19,16 +19,18 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { IrcBus } from "@veyyon/coding-agent/irc/bus";
 import { AgentDashboard } from "@veyyon/coding-agent/modes/components/agent-dashboard";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
-import { IrcBus } from "@veyyon/coding-agent/irc/bus";
-import { stubStdoutGeometry, type StubbedStdoutGeometry } from "../../helpers/stdout-geometry";
+import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 
 /** Lines long enough that the stream folds them, so the fold hint is on screen. */
-const LONG_BODY = Array.from({ length: 12 }, (_, index) => `line ${index} of a message the stream will fold`).join("\n");
+const LONG_BODY = Array.from({ length: 12 }, (_, index) => `line ${index} of a message the stream will fold`).join(
+	"\n",
+);
 
 let geometry: StubbedStdoutGeometry;
 

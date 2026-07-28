@@ -146,7 +146,9 @@ export function actionTableRows(markdown: string): DocumentedRow[] {
 		const ids = [...(cells[1] ?? "").matchAll(/`([a-z]+(?:\.[a-zA-Z]+)+)`/g)].map(match => match[1] as string);
 		if (ids.length !== 1) continue;
 		const chordCell = cells[2] ?? "";
-		const keys = chordCell.startsWith("Unbound") ? [] : [...chordCell.matchAll(/`([^`]+)`/g)].map(match => match[1] as string);
+		const keys = chordCell.startsWith("Unbound")
+			? []
+			: [...chordCell.matchAll(/`([^`]+)`/g)].map(match => match[1] as string);
 		rows.push({ keys, ids });
 	}
 	return rows;
@@ -166,7 +168,9 @@ export function misquotedChords(rows: readonly DocumentedRow[]): string[] {
 	for (const row of rows) {
 		if (!row.ids.every(id => id in BINDINGS)) continue;
 		const claimed =
-			row.ids.length === 1 ? [row.keys] : row.ids.map((_, index) => (row.keys[index] === undefined ? [] : [row.keys[index]]));
+			row.ids.length === 1
+				? [row.keys]
+				: row.ids.map((_, index) => (row.keys[index] === undefined ? [] : [row.keys[index]]));
 		row.ids.forEach((id, index) => {
 			const said = [...new Set((claimed[index] ?? []).map(key => foldChord(key)))].sort();
 			const real = defaultChords(id);
@@ -240,15 +244,18 @@ describe("the keybindings reference quotes the real default keys", () => {
 	 * as a shortcut they have to set up before they can use it.
 	 */
 	it("lists exactly the actions that ship with no default key", () => {
-		const listed = [...unboundParagraph(PAGE).matchAll(/`([a-z]+(?:\.[a-zA-Z]+)+)`/g)].map(match => match[1] as string).sort();
+		const listed = [...unboundParagraph(PAGE).matchAll(/`([a-z]+(?:\.[a-zA-Z]+)+)`/g)]
+			.map(match => match[1] as string)
+			.sort();
 
 		const unbound = Object.keys(BINDINGS)
 			.filter(id => defaultChords(id).length === 0)
 			.sort();
 
-		expect(listed, "the 'Unbound by default' list and the binding table disagree about which actions have no key").toEqual(
-			unbound,
-		);
+		expect(
+			listed,
+			"the 'Unbound by default' list and the binding table disagree about which actions have no key",
+		).toEqual(unbound);
 	});
 });
 
@@ -302,7 +309,9 @@ describe("the row reader sees what the page actually says", () => {
 	 * claiming both chords and fail forever.
 	 */
 	it("reads a row that pairs two chords with two ids", () => {
-		const rows = documentedRows("| `ctrl+p` / `shift+ctrl+p` | Cycle (`app.model.cycleForward` / `app.model.cycleBackward`) |");
+		const rows = documentedRows(
+			"| `ctrl+p` / `shift+ctrl+p` | Cycle (`app.model.cycleForward` / `app.model.cycleBackward`) |",
+		);
 
 		expect(rows[0]?.keys).toEqual(["ctrl+p", "shift+ctrl+p"]);
 		expect(rows[0]?.ids).toEqual(["app.model.cycleForward", "app.model.cycleBackward"]);
@@ -313,7 +322,10 @@ describe("the row reader sees what the page actually says", () => {
 	 * Editor and Lists sections are full of the former.
 	 */
 	it("ignores a row with no id and prose that is not a row", () => {
-		const markdown = ["| `ctrl+u` | Delete to the start of the line |", "Set `app.model.select` in your config."].join("\n");
+		const markdown = [
+			"| `ctrl+u` | Delete to the start of the line |",
+			"Set `app.model.select` in your config.",
+		].join("\n");
 
 		expect(documentedRows(markdown)).toEqual([]);
 	});
@@ -350,7 +362,14 @@ describe("the row reader sees what the page actually says", () => {
 	 * other two as missing from a list that plainly contains them.
 	 */
 	it("reads a wrapped paragraph to its blank line and no further", () => {
-		const markdown = ["# Heading", "", "Unbound by default: `app.a.one`,", "`app.b.two` and nothing else.", "", "`app.c.three` is elsewhere."].join("\n");
+		const markdown = [
+			"# Heading",
+			"",
+			"Unbound by default: `app.a.one`,",
+			"`app.b.two` and nothing else.",
+			"",
+			"`app.c.three` is elsewhere.",
+		].join("\n");
 
 		const paragraph = unboundParagraph(markdown);
 

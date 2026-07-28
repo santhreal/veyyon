@@ -156,10 +156,11 @@ mod tests {
 
 	/// Every `.rs` file in this crate's `src`, as (name, contents).
 	///
-	/// Read at test time rather than baked in with `include_str!`, because a lock
-	/// that has to be told about a new module is a lock a new module escapes: the
-	/// whole failure being prevented here is a module that reintroduces the
-	/// hand-rolled shape, and a new module is the likeliest place for that.
+	/// Read at test time rather than baked in with `include_str!`, because a
+	/// lock that has to be told about a new module is a lock a new module
+	/// escapes: the whole failure being prevented here is a module that
+	/// reintroduces the hand-rolled shape, and a new module is the likeliest
+	/// place for that.
 	fn crate_sources() -> Vec<(String, String)> {
 		let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
 		let mut out = Vec::new();
@@ -202,8 +203,8 @@ mod tests {
 
 	/// Nobody outside this module rebuilds `to_napi` by hand.
 	///
-	/// `Error::from_reason(<expr>.to_string())` is the shape [`to_napi`] owns, and
-	/// it was written out fifteen times before this module existed. A bare
+	/// `Error::from_reason(<expr>.to_string())` is the shape [`to_napi`] owns,
+	/// and it was written out fifteen times before this module existed. A bare
 	/// `Error::from_reason("some message")` is deliberately still allowed and is
 	/// not what this matches: those sites carry no underlying error to map, they
 	/// state a condition the crate detected itself, and routing them through a
@@ -214,38 +215,46 @@ mod tests {
 			.into_iter()
 			.filter(|(name, _)| name != "napi_error.rs")
 			.flat_map(|(name, text)| {
-				text.lines()
+				text
+					.lines()
 					.enumerate()
-					.filter(|(_, line)| line.contains("Error::from_reason(") && line.contains(".to_string()"))
+					.filter(|(_, line)| {
+						line.contains("Error::from_reason(") && line.contains(".to_string()")
+					})
 					.map(|(index, line)| format!("{name}:{}: {}", index + 1, line.trim()))
 					.collect::<Vec<_>>()
 			})
 			.collect();
 		assert!(
 			offenders.is_empty(),
-			"use napi_error::to_napi instead, so one module owns how a Rust error becomes a JS message:\n{}",
+			"use napi_error::to_napi instead, so one module owns how a Rust error becomes a JS \
+			 message:\n{}",
 			offenders.join("\n")
 		);
 	}
 
 	/// Nobody outside this module rebuilds `to_napi_with` by hand.
 	///
-	/// The wrapped shape is `context, colon, space, reason`, and thirty-four call
-	/// sites spelled it as `format!("...: {err}")`. Matching on the `: {` before
-	/// the interpolated error is what distinguishes it from a composed message
-	/// that merely happens to contain a colon, such as a path in the middle of a
-	/// sentence, which the module doc says stays written out where it is made.
+	/// The wrapped shape is `context, colon, space, reason`, and thirty-four
+	/// call sites spelled it as `format!("...: {err}")`. Matching on the `: {`
+	/// before the interpolated error is what distinguishes it from a composed
+	/// message that merely happens to contain a colon, such as a path in the
+	/// middle of a sentence, which the module doc says stays written out where
+	/// it is made.
 	#[test]
 	fn no_module_hand_rolls_the_wrapped_mapping() {
 		let offenders: Vec<String> = crate_sources()
 			.into_iter()
 			.filter(|(name, _)| name != "napi_error.rs")
 			.flat_map(|(name, text)| {
-				text.lines()
+				text
+					.lines()
 					.enumerate()
 					.filter(|(_, line)| {
 						line.contains("Error::from_reason(format!(")
-							&& (line.contains(": {err}") || line.contains(": {e}") || line.contains(": {error}"))
+							&& (line.contains(": {err}")
+								|| line.contains(": {e}")
+								|| line.contains(": {error}"))
 					})
 					.map(|(index, line)| format!("{name}:{}: {}", index + 1, line.trim()))
 					.collect::<Vec<_>>()

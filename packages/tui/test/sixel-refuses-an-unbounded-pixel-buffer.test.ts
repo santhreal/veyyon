@@ -32,8 +32,7 @@ type MutableTerminalInfo = { imageProtocol: ImageProtocol | null };
 const terminal = TERMINAL as unknown as MutableTerminalInfo;
 
 /** A real one-pixel PNG, so the encoder has something decodable when the guard lets a call through. */
-const ONE_PIXEL_PNG =
-	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNgAAAAAgABSK+kcQAAAABJRU5ErkJggg==";
+const ONE_PIXEL_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNgAAAAAgABSK+kcQAAAABJRU5ErkJggg==";
 
 describe("SIXEL rendering refuses a pixel buffer it cannot allocate", () => {
 	const originalProtocol = TERMINAL.imageProtocol;

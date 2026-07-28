@@ -208,7 +208,6 @@ describe("SpeechEnhancer rewriting", () => {
 		expect(captures[1]).toContain(placeholder);
 		expect(captures[1]).not.toContain(secret);
 	});
-
 });
 
 /** Push each delta in order; returns blocks completed by pushes plus the flush tail. */

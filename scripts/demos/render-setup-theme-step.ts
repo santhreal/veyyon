@@ -17,7 +17,7 @@
  * with whichever theme is selected; they used to be rows that ENDED the step
  * without a theme ever being picked.
  */
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Settings } from "../../packages/coding-agent/src/config/settings";

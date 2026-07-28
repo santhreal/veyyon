@@ -8,7 +8,7 @@ const KEY = new Uint8Array(32).fill(41);
 
 describe("concatenated variable-width alternations", () => {
 	it("refuses the compact exponential backtracking construction", () => {
-		const pattern = "(?:a|aa)".repeat(28) + "$";
+		const pattern = `${"(?:a|aa)".repeat(28)}$`;
 
 		expect(() => compileSecretRegex(pattern)).toThrow(
 			/concatenated variable-width alternations.*catastrophic backtracking/,
@@ -122,8 +122,6 @@ describe("plain-secret length uses Unicode code points", () => {
 	it("reports rejected runtime values in Unicode code points", () => {
 		const obfuscator = new SecretObfuscator([], { placeholderKey: KEY });
 
-		expect(() => obfuscator.addNamedSecret("ASTRAL_TOKEN", "🔐".repeat(4))).toThrow(
-			"the value is 4 characters",
-		);
+		expect(() => obfuscator.addNamedSecret("ASTRAL_TOKEN", "🔐".repeat(4))).toThrow("the value is 4 characters");
 	});
 });

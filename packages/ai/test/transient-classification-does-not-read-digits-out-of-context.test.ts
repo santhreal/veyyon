@@ -40,7 +40,9 @@ describe("TRANSIENT_TRANSPORT_PATTERN and digits that are not statuses", () => {
 			TRANSIENT_TRANSPORT_PATTERN.test("Devin stream error invalid_argument: bad tool schema (trace ID: aaa429bbb)"),
 		).toBe(false);
 		expect(
-			TRANSIENT_TRANSPORT_PATTERN.test("Devin stream error invalid_argument: schema too deep (trace ID: 4b56ec500a4a)"),
+			TRANSIENT_TRANSPORT_PATTERN.test(
+				"Devin stream error invalid_argument: schema too deep (trace ID: 4b56ec500a4a)",
+			),
 		).toBe(false);
 	});
 

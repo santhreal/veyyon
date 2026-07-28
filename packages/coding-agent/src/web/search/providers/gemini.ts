@@ -24,9 +24,9 @@ import {
 } from "@veyyon/catalog/wire/gemini-headers";
 import { fetchWithRetry } from "@veyyon/utils";
 import {
+	type ProviderTextTransformResolver,
 	resolveProviderTextTransform,
 	transformProviderPayload,
-	type ProviderTextTransformResolver,
 } from "../../../provider-boundary";
 import type { SearchCitation, SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
@@ -513,11 +513,7 @@ async function callGeminiDeveloperSearch(
 			const errorText = await response.text();
 			const classified = classifyProviderHttpError("gemini", response.status, errorText);
 			if (classified) throw classified;
-			throw new SearchProviderError(
-				"gemini",
-				`Gemini Developer API error (${response.status}).`,
-				response.status,
-			);
+			throw new SearchProviderError("gemini", `Gemini Developer API error (${response.status}).`, response.status);
 		}
 
 		if (!response.body) {

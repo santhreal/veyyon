@@ -7,8 +7,8 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions";
-import * as memoryBackendModule from "@veyyon/coding-agent/memory-backend";
 import type { MemoryBackend } from "@veyyon/coding-agent/memory-backend";
+import * as memoryBackendModule from "@veyyon/coding-agent/memory-backend";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
@@ -123,8 +123,9 @@ describe("AgentSession compaction confidentiality wiring", () => {
 			return undefined;
 		});
 		const sentTexts: string[] = [];
-		const compactSpy = vi.spyOn(compactionModule, "compact").mockImplementation(
-			async (preparation, model, _apiKey, _instructions, _signal, options) => {
+		const compactSpy = vi
+			.spyOn(compactionModule, "compact")
+			.mockImplementation(async (preparation, model, _apiKey, _instructions, _signal, options) => {
 				const extraContext = options?.extraContext ?? [];
 				const materialized = [options?.promptOverride ?? "", ...extraContext].join("\n");
 				expect(materialized).not.toContain(HOOK_SECRET);
@@ -146,8 +147,7 @@ describe("AgentSession compaction confidentiality wiring", () => {
 					tokensBefore: preparation.tokensBefore,
 					details: {},
 				};
-			},
-		);
+			});
 
 		const result = await session.compact();
 

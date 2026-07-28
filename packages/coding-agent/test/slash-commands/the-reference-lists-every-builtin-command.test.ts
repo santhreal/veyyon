@@ -26,10 +26,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { BUILTIN_SLASH_COMMAND_DEFS } from "@veyyon/coding-agent/slash-commands/builtin-registry";
 
-const REFERENCE = path.resolve(
-	import.meta.dir,
-	"../../../../docs/handbook/src/reference/slash-commands.md",
-);
+const REFERENCE = path.resolve(import.meta.dir, "../../../../docs/handbook/src/reference/slash-commands.md");
 
 /**
  * Every name the parser accepts: each command's own name and each of its aliases.

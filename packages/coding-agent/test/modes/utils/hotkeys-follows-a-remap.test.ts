@@ -138,8 +138,12 @@ describe("the hotkeys panel prints live editor keys", () => {
 				.flatMap(line => [...(line.split("|")[1] ?? "").matchAll(/`([^`]+)`/g)].map(match => match[1] as string))
 				.filter(chord => !PROSE.has(chord));
 
-		const everythingRemapped: KeybindingsConfig = Object.fromEntries(Object.keys(KEYBINDINGS).map(id => [id, "alt+shift+j"]));
-		const survivors = [...new Set(chordsOf(panel()))].filter(chord => chordsOf(panel(everythingRemapped)).includes(chord));
+		const everythingRemapped: KeybindingsConfig = Object.fromEntries(
+			Object.keys(KEYBINDINGS).map(id => [id, "alt+shift+j"]),
+		);
+		const survivors = [...new Set(chordsOf(panel()))].filter(chord =>
+			chordsOf(panel(everythingRemapped)).includes(chord),
+		);
 
 		expect(chordsOf(panel()).length).toBeGreaterThan(20);
 		expect(

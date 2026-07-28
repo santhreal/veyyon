@@ -514,11 +514,7 @@ function resolveCompactionEffort(model: Model, level: ThinkingLevel | undefined)
  * (pi-native gateway) does not populate `errorStatus`, hence the legacy
  * message-based check is still required upstream — see issue #986.
  */
-function createSummarizationError(
-	prefix: string,
-	response: AssistantMessage,
-	options?: SummaryOptions,
-): Error {
+function createSummarizationError(prefix: string, response: AssistantMessage, options?: SummaryOptions): Error {
 	const rawDetail = response.errorMessage || "Unknown error";
 	const detail = options ? sanitizeCompactionProviderText(rawDetail, options) : rawDetail;
 	const text = `${prefix}: ${detail}`;
@@ -680,7 +676,6 @@ export async function generateSummary(
 	promptText += formatAdditionalContext(options?.extraContext);
 	promptText += basePrompt;
 
-
 	if (options?.remoteEndpoint) {
 		const endpoint = options.remoteEndpoint;
 		const remote = await withAuth(
@@ -735,7 +730,6 @@ export async function generateSummary(
 		},
 		{ signal },
 	);
-
 
 	const textContent = response.content
 		.filter((c): c is { type: "text"; text: string } => c.type === "text")
@@ -1011,7 +1005,6 @@ async function generateShortSummary(
 		},
 		{ signal },
 	);
-
 
 	return response.content
 		.filter((c): c is { type: "text"; text: string } => c.type === "text")
@@ -1376,7 +1369,6 @@ async function generateTurnPrefixSummary(
 		},
 		{ signal },
 	);
-
 
 	return response.content
 		.filter((c): c is { type: "text"; text: string } => c.type === "text")

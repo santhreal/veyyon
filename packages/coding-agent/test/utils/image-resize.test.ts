@@ -279,7 +279,6 @@ describe("resizeImage defaults", () => {
 	});
 });
 
-
 describe("image decoded-allocation boundary", () => {
 	/** Regression: a tiny compressed 8192² PNG previously allocated and re-encoded the full canvas. */
 	it("rejects a valid compressed 8192² PNG above the pixel ceiling before normalization", async () => {
@@ -295,9 +294,9 @@ describe("image decoded-allocation boundary", () => {
 		expect(await new Bun.Image(png, { maxPixels: width * height }).metadata()).toMatchObject({ width, height });
 		expect(MAX_IMAGE_INPUT_PIXELS).toBeLessThan(width * height);
 
-		await expect(
-			resizeImage({ type: "image", data: png.toBase64(), mimeType: "image/png" }),
-		).rejects.toThrow("Image normalization failed");
+		await expect(resizeImage({ type: "image", data: png.toBase64(), mimeType: "image/png" })).rejects.toThrow(
+			"Image normalization failed",
+		);
 	});
 
 	/** Negative control: the allocation guard must not reject or relabel ordinary supported images. */
@@ -322,9 +321,9 @@ describe("image decoded-allocation boundary", () => {
 			forgedPngHeader(8000, Math.floor(MAX_IMAGE_DECODED_BYTES / 4 / 8000) + 1),
 		];
 		for (const png of cases) {
-			await expect(
-				resizeImage({ type: "image", data: png.toBase64(), mimeType: "image/png" }),
-			).rejects.toThrow("Image normalization failed");
+			await expect(resizeImage({ type: "image", data: png.toBase64(), mimeType: "image/png" })).rejects.toThrow(
+				"Image normalization failed",
+			);
 		}
 	});
 });

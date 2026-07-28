@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { ApiKeyResolver, AssistantMessage, completeSimple, ImageContent, Model } from "@veyyon/ai";
 import { ProviderHttpError } from "@veyyon/ai/error";
 import { buildModel } from "@veyyon/catalog/build";
@@ -14,9 +17,6 @@ import {
 	describeAttachedImagesForTextModel,
 } from "@veyyon/coding-agent/utils/image-vision-fallback";
 import { removeWithRetries } from "@veyyon/utils";
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
-import * as path from "node:path";
 
 const TINY_PNG = Uint8Array.fromBase64(
 	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==",
@@ -74,7 +74,11 @@ async function jpegWithMetadata(secret: string): Promise<Buffer> {
 	]);
 }
 
-function xaiContext(fetchImpl: typeof fetch, resolver: ApiKeyResolver, obfuscateProviderText?: (text: string) => string) {
+function xaiContext(
+	fetchImpl: typeof fetch,
+	resolver: ApiKeyResolver,
+	obfuscateProviderText?: (text: string) => string,
+) {
 	return {
 		fetch: fetchImpl,
 		sessionManager: {

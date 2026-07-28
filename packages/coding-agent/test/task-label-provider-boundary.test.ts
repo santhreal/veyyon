@@ -42,13 +42,7 @@ describe("task label provider boundary", () => {
 
 		const assignment = ` \nInspect account configuration using ${secret}\t `;
 		const sanitize = vi.fn((text: string) => obfuscator.obfuscate(text));
-		const label = await generateTaskLabel(
-			assignment,
-			registry,
-			settings,
-			"task-label-session",
-			sanitize,
-		);
+		const label = await generateTaskLabel(assignment, registry, settings, "task-label-session", sanitize);
 
 		expect(label).toBe("Inspect account configuration");
 		const providerContext = completeSimpleMock.mock.calls[0]?.[1] as {
@@ -163,13 +157,7 @@ describe("task label provider boundary", () => {
 
 		// Why: label generation delegates through an awaited credential lookup;
 		// the delegate must not retain the sanitizer result from label trimming.
-		await generateTaskLabel(
-			`Inspect ${secret}`,
-			registry,
-			settings,
-			"task-label-stale",
-			text => sanitize(text),
-		);
+		await generateTaskLabel(`Inspect ${secret}`, registry, settings, "task-label-stale", text => sanitize(text));
 
 		const context = completeSimpleMock.mock.calls[0]?.[1] as { messages: Array<{ content: string }> };
 		expect(context.messages[0]?.content).toContain(placeholder);
@@ -212,13 +200,7 @@ describe("task label provider boundary", () => {
 
 		// Why: the task-label helper has no visibility into completeSimple's auth
 		// loop, so its title delegate must rebuild the request at resolver time.
-		await generateTaskLabel(
-			`Inspect ${secret}`,
-			registry,
-			settings,
-			"task-label-retry",
-			text => sanitize(text),
-		);
+		await generateTaskLabel(`Inspect ${secret}`, registry, settings, "task-label-retry", text => sanitize(text));
 
 		expect(captures[1]).toContain(placeholder);
 		expect(captures[1]).not.toContain(secret);

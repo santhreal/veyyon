@@ -13,11 +13,10 @@
  */
 
 import { serializeConversation } from "@veyyon/agent-core";
-import { complete, type Context, type Message } from "@veyyon/ai";
+import { type Context, complete, type Message } from "@veyyon/ai";
 import type { HookAPI, SessionEntry } from "@veyyon/coding-agent";
 import { BorderedLoader, convertToLlm } from "@veyyon/coding-agent";
 import { mapJsonStrings } from "@veyyon/coding-agent/secrets/obfuscator";
-
 
 const SYSTEM_PROMPT = `You are a context transfer assistant. Given a conversation history and the user's goal for a new thread, generate a focused prompt that:
 

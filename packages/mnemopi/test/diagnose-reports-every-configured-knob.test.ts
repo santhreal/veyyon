@@ -26,8 +26,8 @@
  * back and add it.
  */
 
-import { describe, expect, it } from "bun:test";
 import { Database } from "bun:sqlite";
+import { describe, expect, it } from "bun:test";
 
 import { inspectDatabase } from "@veyyon/mnemopi/diagnose";
 

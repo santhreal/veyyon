@@ -44,13 +44,25 @@ const showGemini = !args.includes("--wide-only");
 const showOpenAi = !args.includes("--two-tier-only");
 if (showGemini) {
 	const geminiPicker = new Container();
-	renderEffortStep(geminiPicker, "google/gemini-two-tier", gemini, () => {}, () => {});
+	renderEffortStep(
+		geminiPicker,
+		"google/gemini-two-tier",
+		gemini,
+		() => {},
+		() => {},
+	);
 	root.addChild(geminiPicker);
 }
 if (showGemini && showOpenAi) root.addChild(new Spacer(2));
 if (showOpenAi) {
 	const openaiPicker = new Container();
-	renderEffortStep(openaiPicker, "openai/gpt-wide-ladder", openai, () => {}, () => {});
+	renderEffortStep(
+		openaiPicker,
+		"openai/gpt-wide-ladder",
+		openai,
+		() => {},
+		() => {},
+	);
 	root.addChild(openaiPicker);
 }
 

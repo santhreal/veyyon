@@ -8,7 +8,6 @@ import type { Component, OverlayHandle } from "@veyyon/tui";
 import { Loader, Spacer, setTuiTight, Text } from "@veyyon/tui";
 import { errorMessage, getActiveAuthDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/utils";
 import { isRollbackSupported, rollbackToVersion } from "../../cli/update-cli";
-import type { KeyId } from "../../config/keybindings";
 import { formatModelSelectorValue } from "../../config/model-resolver";
 import { DEFAULT_MODEL_SLOT, getRoleInfo, isDefaultModelSlot } from "../../config/model-roles";
 import { applySamplingKnob, optionalNumber, toNumberOrUndefined } from "../../config/optional-number";
@@ -894,10 +893,7 @@ export class SelectorController {
 							}
 							this.ctx.showStatus(`Model: ${selector ?? model.id}`);
 						} else {
-							this.ctx.settings.setModelRole(
-								role,
-								formatModelSelectorValue(selectorValue, selectedThinking),
-							);
+							this.ctx.settings.setModelRole(role, formatModelSelectorValue(selectorValue, selectedThinking));
 							const roleInfo = getRoleInfo(role, settings);
 							this.ctx.showStatus(`${roleInfo?.name ?? role} model: ${selector ?? model.id}`);
 						}

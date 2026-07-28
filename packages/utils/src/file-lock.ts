@@ -474,8 +474,9 @@ function directoryHasOnlyInfoSync(directoryPath: string, hasInfo: boolean): bool
 	const directory = fsSync.opendirSync(directoryPath);
 	try {
 		let count = 0;
-		let entry: fsSync.Dirent | null;
-		while ((entry = directory.readSync()) !== null) {
+		while (true) {
+			const entry = directory.readSync();
+			if (entry === null) break;
 			count += 1;
 			if (count > 1 || entry.name !== "info" || !hasInfo) return false;
 		}

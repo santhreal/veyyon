@@ -103,7 +103,6 @@ function nestedPayload(depth: number): unknown {
 	return payload;
 }
 
-
 describe("branch summary provider boundary", () => {
 	/**
 	 * Regression: branch preparation used to truncate raw tool output before
@@ -348,20 +347,22 @@ describe("branch summary provider boundary", () => {
 			resolveObfuscateProviderText: () => text => text.replaceAll(RAW_MARKER, replacement),
 			completeImpl: async (model, _context, options) => {
 				const shared = { [RAW_MARKER]: RAW_MARKER };
-				transformedPayload = (await options.onPayload?.(
-					{ left: shared, right: shared, binary },
-					model,
-				)) as Record<string, unknown>;
+				transformedPayload = (await options.onPayload?.({ left: shared, right: shared, binary }, model)) as Record<
+					string,
+					unknown
+				>;
 				return assistant();
 			},
 		});
 
-		const payloadText = JSON.stringify(transformedPayload);
+		expect(transformedPayload).toBeDefined();
+		const payload = transformedPayload as Record<string, unknown>;
+		const payloadText = JSON.stringify(payload);
 		expect(payloadText).toContain(replacement);
 		expect(payloadText).not.toContain(RAW_MARKER);
-		expect((transformedPayload?.left as Record<string, unknown>)[replacement]).toBe(replacement);
-		expect((transformedPayload?.right as Record<string, unknown>)[replacement]).toBe(replacement);
-		expect(transformedPayload?.binary).toBe(binary);
+		expect((payload.left as Record<string, unknown>)[replacement]).toBe(replacement);
+		expect((payload.right as Record<string, unknown>)[replacement]).toBe(replacement);
+		expect(payload.binary).toBe(binary);
 	});
 
 	/**
@@ -507,5 +508,4 @@ describe("branch summary provider boundary", () => {
 		expect((error as Error).message).toBe("Branch summary provider text transformation failed.");
 		expect((error as Error).message).not.toContain(RAW_MARKER);
 	});
-
 });

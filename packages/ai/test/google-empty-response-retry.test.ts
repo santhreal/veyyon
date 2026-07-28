@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { streamGoogle } from "@veyyon/ai/providers/google";
-import { streamGoogleGenAI } from "@veyyon/ai/providers/google-shared";
 import { streamGoogleGeminiCli } from "@veyyon/ai/providers/google-gemini-cli";
+import { streamGoogleGenAI } from "@veyyon/ai/providers/google-shared";
 import { streamGoogleVertex } from "@veyyon/ai/providers/google-vertex";
 import type { AssistantMessageEvent, Context, FetchImpl, Model } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";

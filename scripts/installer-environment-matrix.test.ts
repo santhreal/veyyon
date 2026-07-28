@@ -36,15 +36,14 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
-	type EnvironmentCase,
-	cleanupEnvironmentMatrixTempRoots,
 	environmentCases as cases,
+	cleanupEnvironmentMatrixTempRoots,
+	type EnvironmentCase,
 	installSh,
 	makeCheckout,
 	PATH_MARKER,
 	pathLineFor,
 	rcTargetFor,
-	repoRoot,
 	runInstall,
 	STAND_IN_BINARY,
 } from "./install-tests/environment-matrix-harness";

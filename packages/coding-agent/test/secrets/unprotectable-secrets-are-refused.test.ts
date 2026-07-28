@@ -39,8 +39,8 @@ import {
 	describeSecretRejection,
 	loadSecrets,
 	MIN_OBFUSCATABLE_LENGTH,
-	SecretObfuscator,
 	type SecretEntry,
+	SecretObfuscator,
 	type SecretRejection,
 } from "@veyyon/coding-agent/secrets";
 

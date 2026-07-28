@@ -26,9 +26,9 @@ import {
 import { $env, readSseJson } from "@veyyon/utils";
 import packageJson from "../../../../package.json" with { type: "json" };
 import {
+	type ProviderTextTransformResolver,
 	resolveProviderTextTransform,
 	transformProviderPayload,
-	type ProviderTextTransformResolver,
 } from "../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
@@ -424,10 +424,7 @@ async function callCodexSearch(
 
 	const fetchImpl = options.fetch ?? fetch;
 	return withHardTimeout(options.signal, async hardSignal => {
-		const transform = resolveProviderTextTransform(
-			options.resolveProviderTextTransform,
-			"Codex search request",
-		);
+		const transform = resolveProviderTextTransform(options.resolveProviderTextTransform, "Codex search request");
 		const requestBody = transformProviderPayload(body, transform, "Codex search request");
 		const response = await fetchImpl(url, {
 			method: "POST",
@@ -440,11 +437,12 @@ async function callCodexSearch(
 			const errorText = await response.text();
 			const classified = classifyProviderHttpError("codex", response.status, errorText);
 			if (classified) throw classified;
-			const message = /model is not supported|requested model is not supported|not supported when using codex with a chatgpt account/i.test(
-				errorText,
-			)
-				? "codex: requested model is not supported"
-				: `Codex API error (${response.status}).`;
+			const message =
+				/model is not supported|requested model is not supported|not supported when using codex with a chatgpt account/i.test(
+					errorText,
+				)
+					? "codex: requested model is not supported"
+					: `Codex API error (${response.status}).`;
 			throw new SearchProviderError("codex", message, response.status);
 		}
 

@@ -133,10 +133,7 @@ async function callGoogleHtml(params: SearchParams, numResults: number): Promise
 				signal,
 				browser: {
 					homeUrl: () => {
-						const transform = resolveProviderTextTransform(
-							params.resolveProviderTextTransform,
-							"Google search",
-						);
+						const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, "Google search");
 						return transform(GOOGLE_HOME_URL);
 					},
 					ready: { selector: "a h3" },

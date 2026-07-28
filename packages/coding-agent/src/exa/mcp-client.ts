@@ -134,10 +134,15 @@ export async function callWebsetsTool(
 	const url = `https://websetsmcp.exa.ai/mcp?exaApiKey=${encodeURIComponent(apiKey)}`;
 	const transform = resolveProviderTextTransform(options?.resolveProviderTextTransform, "Websets MCP tools/call");
 	const outboundArgs = transformProviderPayload(args, transform, "Websets MCP tools/call") as Record<string, unknown>;
-	const response = (await callMCP(url, "tools/call", {
-		name: toolName,
-		arguments: outboundArgs,
-	}, options)) as MCPCallResponse;
+	const response = (await callMCP(
+		url,
+		"tools/call",
+		{
+			name: toolName,
+			arguments: outboundArgs,
+		},
+		options,
+	)) as MCPCallResponse;
 
 	if (response.error) {
 		throw new Error("Websets MCP tools/call failed.");

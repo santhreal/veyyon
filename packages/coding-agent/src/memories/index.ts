@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import type * as fsNode from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { type ApiKey, completeSimple, type Context, type Model } from "@veyyon/ai";
+import { type ApiKey, type Context, completeSimple, type Model } from "@veyyon/ai";
 import { Effort } from "@veyyon/catalog/effort";
 import { clampThinkingLevelForModel } from "@veyyon/catalog/model-thinking";
 import { emptyCost } from "@veyyon/catalog/models";

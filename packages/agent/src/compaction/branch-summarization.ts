@@ -345,7 +345,8 @@ function resolveProviderTextTransform(options: GenerateBranchSummaryOptions): Ob
 	if (!resolve) return undefined;
 	try {
 		const transform = resolve();
-		if (typeof transform !== "function") throw new TypeError("Provider text transform resolver returned a non-function");
+		if (typeof transform !== "function")
+			throw new TypeError("Provider text transform resolver returned a non-function");
 		return transform;
 	} catch {
 		throw providerTextTransformError();

@@ -198,7 +198,7 @@ class LiteralMatcher<T> {
 
 	forEachMatch(
 		text: string,
-		visit: (start: number, end: number, value: T, literal: string) => boolean | void,
+		visit: (start: number, end: number, value: T, literal: string) => boolean | undefined,
 		maxMatches = MAX_SECRET_MATCHES_PER_TEXT,
 	): void {
 		let nodeIndex = 0;

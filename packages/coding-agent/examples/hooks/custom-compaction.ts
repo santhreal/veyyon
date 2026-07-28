@@ -14,12 +14,11 @@
  */
 
 import { serializeConversation } from "@veyyon/agent-core";
-import { complete, type Context, type Message } from "@veyyon/ai";
+import { type Context, complete, type Message } from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog";
 import type { HookAPI } from "@veyyon/coding-agent";
 import { convertToLlm } from "@veyyon/coding-agent";
 import { mapJsonStrings } from "@veyyon/coding-agent/secrets/obfuscator";
-
 
 export default function (pi: HookAPI) {
 	pi.on("session_before_compact", async (event, ctx) => {

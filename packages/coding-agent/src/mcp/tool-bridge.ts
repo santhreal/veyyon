@@ -17,14 +17,14 @@ import type {
 	RenderResultOptions,
 } from "../extensibility/custom-tools/types";
 import { resolveLocalUrlToFile } from "../internal-urls/local-protocol";
-import { resolveProviderTextTransform, transformProviderPayload } from "../provider-boundary";
 import type { Theme } from "../modes/theme/theme";
+import { resolveProviderTextTransform, transformProviderPayload } from "../provider-boundary";
 import type { OutputMeta } from "../tools/output-meta";
 import { normalizeLocalScheme } from "../tools/path-utils";
 import { ToolAbortError, throwIfAborted, toolAbort } from "../tools/tool-errors";
 import { callTool } from "./client";
-import { retainMCPToolArgsAttemptFactory } from "./transports/http";
 import { renderMCPCall, renderMCPResult } from "./render";
+import { retainMCPToolArgsAttemptFactory } from "./transports/http";
 import type { MCPContent, MCPServerConnection, MCPToolCallParams, MCPToolCallResult, MCPToolDefinition } from "./types";
 
 /** Reconnect callback: tears down stale connection, returns new one or null. */
@@ -219,8 +219,7 @@ function containsRawToolArgument(text: string, value: unknown, seen: WeakSet<obj
 	seen.add(value);
 	if (Array.isArray(value)) return value.some(item => containsRawToolArgument(text, item, seen));
 	return Object.entries(value).some(
-		([key, item]) =>
-			(key.length > 0 && text.includes(key)) || containsRawToolArgument(text, item, seen),
+		([key, item]) => (key.length > 0 && text.includes(key)) || containsRawToolArgument(text, item, seen),
 	);
 }
 
@@ -248,11 +247,7 @@ function buildResult(
 		provider,
 		providerName,
 	};
-	const contentText = result.isError
-		? leaksRawArgs
-			? "Error: MCP tool call failed."
-			: `Error: ${text}`
-		: text;
+	const contentText = result.isError ? (leaksRawArgs ? "Error: MCP tool call failed." : `Error: ${text}`) : text;
 	const toolResult: CustomToolResult<MCPToolDetails> = { content: [{ type: "text", text: contentText }], details };
 	if (result.isError) {
 		toolResult.isError = true;
@@ -465,7 +460,14 @@ export class MCPTool implements CustomTool<TSchema, MCPToolDetails> {
 						return buildResult(result, newConn.name, this.tool.name, retryProvider, retryProviderName, rawParams);
 					} catch (retryError) {
 						rethrowIfAborted(retryError, signal);
-						return buildErrorResult(retryError, this.connection.name, this.tool.name, retryProvider, retryProviderName, rawParams);
+						return buildErrorResult(
+							retryError,
+							this.connection.name,
+							this.tool.name,
+							retryProvider,
+							retryProviderName,
+							rawParams,
+						);
 					}
 				}
 			}
@@ -550,7 +552,14 @@ export class DeferredMCPTool implements CustomTool<TSchema, MCPToolDetails> {
 				const args = await prepareOutboundArgs(rawParams, this.tool.inputSchema, _ctx);
 				throwIfAborted(signal);
 				const result = await callTool(connection, this.tool.name, args, { signal });
-				return buildResult(result, this.serverName, this.tool.name, connection._source?.provider ?? provider, connection._source?.providerName ?? providerName, rawParams);
+				return buildResult(
+					result,
+					this.serverName,
+					this.tool.name,
+					connection._source?.provider ?? provider,
+					connection._source?.providerName ?? providerName,
+					rawParams,
+				);
 			} catch (callError) {
 				rethrowIfAborted(callError, signal);
 				if (this.reconnect && isRetriableConnectionError(callError)) {
@@ -562,10 +571,24 @@ export class DeferredMCPTool implements CustomTool<TSchema, MCPToolDetails> {
 							const retryArgs = await prepareOutboundArgs(rawParams, this.tool.inputSchema, _ctx);
 							throwIfAborted(signal);
 							const result = await callTool(newConn, this.tool.name, retryArgs, { signal });
-							return buildResult(result, this.serverName, this.tool.name, retryProvider, retryProviderName, rawParams);
+							return buildResult(
+								result,
+								this.serverName,
+								this.tool.name,
+								retryProvider,
+								retryProviderName,
+								rawParams,
+							);
 						} catch (retryError) {
 							rethrowIfAborted(retryError, signal);
-							return buildErrorResult(retryError, this.serverName, this.tool.name, retryProvider, retryProviderName, rawParams);
+							return buildErrorResult(
+								retryError,
+								this.serverName,
+								this.tool.name,
+								retryProvider,
+								retryProviderName,
+								rawParams,
+							);
 						}
 					}
 				}
@@ -583,10 +606,24 @@ export class DeferredMCPTool implements CustomTool<TSchema, MCPToolDetails> {
 						const retryArgs = await prepareOutboundArgs(rawParams, this.tool.inputSchema, _ctx);
 						throwIfAborted(signal);
 						const result = await callTool(newConn, this.tool.name, retryArgs, { signal });
-						return buildResult(result, this.serverName, this.tool.name, newConn._source?.provider ?? provider, newConn._source?.providerName ?? providerName, rawParams);
+						return buildResult(
+							result,
+							this.serverName,
+							this.tool.name,
+							newConn._source?.provider ?? provider,
+							newConn._source?.providerName ?? providerName,
+							rawParams,
+						);
 					} catch (retryError) {
 						rethrowIfAborted(retryError, signal);
-						return buildErrorResult(retryError, this.serverName, this.tool.name, provider, providerName, rawParams);
+						return buildErrorResult(
+							retryError,
+							this.serverName,
+							this.tool.name,
+							provider,
+							providerName,
+							rawParams,
+						);
 					}
 				}
 			}

@@ -224,5 +224,4 @@ describe("AgentSession.switchSession previous-context build", () => {
 		expect(session.obfuscator?.hasNamedSecret("SOURCE_TOKEN")).toBe(false);
 		expect(session.obfuscator?.deobfuscate("#TARGET_TOKEN#")).toBe("target-project-secret-67890");
 	});
-
 });

@@ -1,6 +1,6 @@
+import { describe, expect, it } from "bun:test";
 import { gunzipSync } from "node:zlib";
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
-import { describe, expect, it } from "bun:test";
 import { streamDevin } from "@veyyon/ai/providers/devin";
 import type { Context, Model } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";

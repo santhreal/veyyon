@@ -79,7 +79,6 @@ import {
 	type ConfiguredThinkingLevel,
 	configuredThinkingLevelOptions,
 	hasConfigurableThinkingEffort,
-	INHERIT_EFFORT_OPTION_VALUE,
 } from "../../thinking";
 import { getTabBarTheme } from "../shared";
 import { formatSelectorSummary, renderEffortStep } from "./effort-picker";
@@ -675,8 +674,7 @@ export function replaceModelChainEntry(
 	if (trimmed === "") return undefined;
 	const bare = barePickerSelector(trimmed, models);
 	const duplicate = chain.some(
-		(candidate, candidateIndex) =>
-			candidateIndex !== index && barePickerSelector(candidate, models) === bare,
+		(candidate, candidateIndex) => candidateIndex !== index && barePickerSelector(candidate, models) === bare,
 	);
 	if (duplicate) return undefined;
 	const next = [...chain];
@@ -1546,14 +1544,16 @@ export class ModelChainSubmenu extends Container {
 		this.clear();
 		this.#selectList = undefined;
 		const current = index === null ? undefined : this.#chain[index];
-		const position = index === 0 ? "first choice" : index === null ? `fallback ${this.#chain.length + 1}` : `fallback ${index + 1}`;
+		const position =
+			index === 0 ? "first choice" : index === null ? `fallback ${this.#chain.length + 1}` : `fallback ${index + 1}`;
 		const panel = new ModelSelectorPanel(
 			settings,
 			this.registry,
 			this.models,
 			{
 				title: this.#chain.length === 0 ? this.title : `${this.title} · ${position}`,
-				description: index === null ? "Pick a model to append to the chain." : "Pick a replacement for this position.",
+				description:
+					index === null ? "Pick a model to append to the chain." : "Pick a replacement for this position.",
 				currentSelector: barePickerSelector(current, this.models as Model<Api>[]) || undefined,
 				allowClear: true,
 				clearLabel:
