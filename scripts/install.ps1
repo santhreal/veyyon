@@ -890,7 +890,14 @@ function Invoke-Doctor {
     try {
         $ver = (& $Command --version 2>$errFile | Out-String).Trim()
         $status = $LASTEXITCODE
-        if (Test-Path $errFile) { $why = (Get-Content -Raw $errFile).Trim() }
+        # `Get-Content -Raw` answers $null for an EMPTY file, and calling .Trim()
+        # on that throws under `$ErrorActionPreference = "Stop"` — so a binary
+        # that failed silently reported the PowerShell exception as its reason
+        # instead of saying it printed nothing.
+        if (Test-Path $errFile) {
+            $raw = Get-Content -Raw $errFile
+            if ($null -ne $raw) { $why = $raw.Trim() }
+        }
     } catch {
         $ver = $null
         $why = "$_"

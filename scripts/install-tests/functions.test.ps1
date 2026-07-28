@@ -1077,6 +1077,12 @@ try {
     try { Invoke-Doctor -Command $silent } catch { $caught = "$_" }
     Check "a silent failure still names the exit status" ($caught -match 'exit 3') "True"
     Check "a silent failure says it printed nothing" ($caught -match 'printed nothing') "True"
+    # The specific way this went wrong: Get-Content -Raw answers $null for an
+    # empty file, and .Trim() on $null throws under ErrorActionPreference=Stop,
+    # so the reported reason was a PowerShell exception about the harness rather
+    # than a fact about the binary.
+    Check "a silent failure does not report a PowerShell exception as the reason" `
+        ($caught -notmatch 'You cannot call a method on a null') "True"
 
     # The capture file is temporary and must not survive either path.
     Check "the stderr capture is cleaned up" `
