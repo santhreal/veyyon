@@ -7,7 +7,6 @@
 ### Added
 
 - `src/relay.ts` owns the collab relay protocol: the control-message types that used to sit at the bottom of `index.ts`, the fatal close-code table, the `isRelayFatalCloseCode` / `relayFatalCloseReason` predicates, and the client-side reconnect send bound. Three programs speak this protocol, the relay and two independent clients, and each client carried its own copy of the table character for character, doc comment included, plus its own `MAX_PENDING_SENDS = 256`. A code the table does not list is TRANSIENT, so a client retries: add a fatal code to the relay, teach one client, and the other reconnects in a loop against a condition that will never clear, backing off to thirty seconds and staying there without throwing or logging an error. The module has no imports, so a client pays one module for the protocol rather than the 900-line message barrel it sits beside, which is why the constants were copied instead of imported before. `index.ts` re-exports everything, so anything that already took the relay types from `@veyyon/wire` is unchanged.
-
 - The seven custom message roles are now declared: `WireBashExecutionMessage`,
   `WirePythonExecutionMessage`, `WireCustomMessage`, `WireHookMessage`, `WireBranchSummaryMessage`,
   `WireCompactionSummaryMessage` and `WireFileMentionMessage`. `WireMessage` is the union of all
@@ -36,7 +35,6 @@
   contract, on the same terms as a tool result's `details`: the host package's own formatter and the
   extension's own renderer own those shapes, and narrowing them here would mean copying host types
   into a published contract and keeping them in step by hand.
-
 - `WireModel` now declares `reasoning` and a narrowed `thinking` config (`mode`, `efforts`,
   `defaultLevel`).
 
@@ -45,7 +43,6 @@
   the guest already draws. The parts of the host's `ThinkingConfig` left out (`effortMap`,
   `effortRouting`, the per-effort token budgets, `supportsDisplay`) all encode an effort into a
   provider wire field, which is request shaping and never happens on a guest.
-
 - `WireAssistantMessage` now declares `provider`, the bare id of what answered (`"anthropic"`).
 
   It is required rather than optional, which is a breaking change for anyone constructing one by
@@ -54,6 +51,33 @@
   as part of the leak described below, which meant it was present in practice and absent from the
   contract. The host's `api` stays undeclared: that is the transport endpoint the request went to,
   which is a detail of how the host happens to be configured, and no guest draws it.
+- `sealFrame`, `openFrame`, `SEAL_IV_BYTES`, `generateRoomKey`, `generateWriteToken` and
+  `importRoomKey`: the AES-256-GCM frame seal (`[12B IV][ciphertext+tag]`), which the host and the
+  browser guest had each implemented in full. The layout is a wire format like everything else here,
+  and its drift failure is the worst kind available: a GCM tag mismatch cannot distinguish a wrong
+  key from a wrong layout, so changing the IV length on one side presents as every frame failing to
+  authenticate with nothing naming the cause. Both sides now bind only their own frame type. Nothing
+  added here reaches for Node, so the browser guest still imports this package directly.
+- `importRoomKey` reports a wrong key length as a rejection instead of a synchronous throw. It
+  returned a promise but threw that one error synchronously, and the browser client hands the promise
+  to its socket without awaiting it, so a mangled link threw out of the socket's construction rather
+  than reaching the connection's error path.
+- `packEnvelope`, `unpackEnvelope`, and `rewriteEnvelopePeer`: the codec for the plaintext collab
+  envelope (`[4B uint32 BE peerId][sealed payload]`), now beside the `ENVELOPE_HEADER_LENGTH` they read.
+  The TUI host and the browser guest each carried a byte-identical copy, so one wire format had two
+  statements of its byte order and header width. That drift is silent by construction: the payload still
+  decrypts, because the room key is untouched, so the only symptom is a frame arriving at the wrong peer,
+  or broadcast to a room that should not have seen it. Nothing in the package needs Node, so the browser
+  guest imports it directly. No wire-format change.
+- `WELCOME_TIMEOUT_MS`, `SNAPSHOT_PROGRESS_TIMEOUT_MS`, and `TRANSCRIPT_TIMEOUT_MS`: the budgets a collab
+  guest allows the host for each of its three round trips. These describe the protocol, so they now live
+  beside the envelope and link constants instead of being declared separately by each guest. Both guests
+  import them; see the Fixed note below for why that matters.
+- `FallbackContent` is now part of `AssistantContent`. An Anthropic server-side-fallback marker
+  (`{ type: "fallback", from, to }`) was already reaching guests on assistant turns whose request opted
+  into provider fallbacks; the union simply did not admit it, so a client with an exhaustive `switch`
+  had no reason to handle a block it was told could not exist. Renderers should ignore it: it marks a
+  model hand-off and carries no content. No wire-format change.
 
 ### Changed
 
@@ -77,7 +101,6 @@
   package widens the wire model back into a `Model` with inert values rather than plausible ones:
   the endpoint becomes `collab-guest://no-provider-endpoint`, and zero pricing is marked `"unknown"`
   so nothing reads the zeros as free.
-
 - Live events are now PROJECTED by the host too, and this was the widest of the three doors.
 
   `agent_end` is declared here as `{ type: "agent_end" }` with no payload. The host's own
@@ -94,7 +117,6 @@
   rather than an oversight: `args`, `partialResult` and `result` are declared `unknown` because a
   tool's arguments and result are the tool's own shape, and a guest renders them by asking the tool
   how.
-
 - Transcript entries are now PROJECTED by the host before they are sent, not filtered by type and
   passed through. This closes the same defect the `welcome` header had one frame over.
 
@@ -110,8 +132,6 @@
   point of writing it down: `WireSessionEntry` described what a guest receives, and description is
   not enforcement. The host now builds each entry field by field, and its frame types name the wire
   entry rather than its own, so the compiler asks for the projection.
-
-
 - The message vocabulary is prefixed to match: `UserMessage`, `DeveloperMessage`,
   `AssistantMessage`, `ToolResultMessage` and `StopReason` are now `WireUserMessage`,
   `WireDeveloperMessage`, `WireAssistantMessage`, `WireToolResultMessage` and `WireStopReason`.
@@ -123,10 +143,8 @@
   Because assignability runs the permissive way, a wide value satisfies a narrow type without a
   word from the compiler, which is how the header collision below shipped undeclared host fields
   to guests. The prefix is what makes the compiler ask for a projection.
-
 - `SessionHeader` is now `WireSessionHeader`, for the same reason and in the same pass as
   `WireSessionEntry` above. The old name is kept as a renamed export.
-
 - `SessionEntry` is now `WireSessionEntry`. Three packages each declared a `SessionEntry`, all of
   them unions of session entries, all of them different widths: this one is the six variants a
   browser guest can render, `@veyyon/agent-core`'s is the host's full union of a dozen-plus, and
@@ -135,38 +153,6 @@
   `import { SessionEntry as WireSessionEntry }` beside `import { SessionEntry as StoredSessionEntry }`
   to say which one it meant. The old name is kept as a renamed export, so existing imports keep
   working; prefer `WireSessionEntry` in new code.
-
-### Added
-
-- `sealFrame`, `openFrame`, `SEAL_IV_BYTES`, `generateRoomKey`, `generateWriteToken` and
-  `importRoomKey`: the AES-256-GCM frame seal (`[12B IV][ciphertext+tag]`), which the host and the
-  browser guest had each implemented in full. The layout is a wire format like everything else here,
-  and its drift failure is the worst kind available: a GCM tag mismatch cannot distinguish a wrong
-  key from a wrong layout, so changing the IV length on one side presents as every frame failing to
-  authenticate with nothing naming the cause. Both sides now bind only their own frame type. Nothing
-  added here reaches for Node, so the browser guest still imports this package directly.
-
-- `importRoomKey` reports a wrong key length as a rejection instead of a synchronous throw. It
-  returned a promise but threw that one error synchronously, and the browser client hands the promise
-  to its socket without awaiting it, so a mangled link threw out of the socket's construction rather
-  than reaching the connection's error path.
-
-- `packEnvelope`, `unpackEnvelope`, and `rewriteEnvelopePeer`: the codec for the plaintext collab
-  envelope (`[4B uint32 BE peerId][sealed payload]`), now beside the `ENVELOPE_HEADER_LENGTH` they read.
-  The TUI host and the browser guest each carried a byte-identical copy, so one wire format had two
-  statements of its byte order and header width. That drift is silent by construction: the payload still
-  decrypts, because the room key is untouched, so the only symptom is a frame arriving at the wrong peer,
-  or broadcast to a room that should not have seen it. Nothing in the package needs Node, so the browser
-  guest imports it directly. No wire-format change.
-- `WELCOME_TIMEOUT_MS`, `SNAPSHOT_PROGRESS_TIMEOUT_MS`, and `TRANSCRIPT_TIMEOUT_MS`: the budgets a collab
-  guest allows the host for each of its three round trips. These describe the protocol, so they now live
-  beside the envelope and link constants instead of being declared separately by each guest. Both guests
-  import them; see the Fixed note below for why that matters.
-- `FallbackContent` is now part of `AssistantContent`. An Anthropic server-side-fallback marker
-  (`{ type: "fallback", from, to }`) was already reaching guests on assistant turns whose request opted
-  into provider fallbacks; the union simply did not admit it, so a client with an exhaustive `switch`
-  had no reason to handle a block it was told could not exist. Renderers should ignore it: it marks a
-  model hand-off and carries no content. No wire-format change.
 
 ### Fixed
 

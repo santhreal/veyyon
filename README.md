@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/santhreal/veyyon/releases/latest"><img src="https://img.shields.io/github/v/release/santhreal/veyyon?style=flat&colorA=222222&colorB=E05735&label=release" alt="Latest release"></a>
-  <a href="https://github.com/santhreal/veyyon/blob/main/packages/coding-agent/CHANGELOG.md"><img src="https://img.shields.io/badge/changelog-keep-E05735?style=flat&colorA=222222" alt="Changelog"></a>
+  <a href="https://github.com/santhreal/veyyon/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/changelog-keep-E05735?style=flat&colorA=222222" alt="Changelog"></a>
   <a href="https://github.com/santhreal/veyyon/actions"><img src="https://img.shields.io/github/actions/workflow/status/santhreal/veyyon/ci.yml?style=flat&colorA=222222&colorB=3FB950" alt="CI"></a>
   <a href="https://github.com/santhreal/veyyon/blob/main/LICENSE"><img src="https://img.shields.io/github/license/santhreal/veyyon?style=flat&colorA=222222&colorB=58A6FF" alt="License"></a>
   <a href="https://www.typescriptlang.org"><img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat&colorA=222222&logo=typescript&logoColor=white" alt="TypeScript"></a>
@@ -40,9 +40,23 @@ curl -fsSL https://get.veyyon.dev | sh
 irm https://veyyon.dev/install.ps1 | iex
 ```
 
-This installs a single self-contained binary and links a short `vey` command. The first interactive `vey` opens first-run setup (providers, glyphs, theme); re-run it any time with `veyyon setup`. To pin a release binary use `--binary --ref v1.0.12`; a bare `--ref v1.0.12` builds that ref from a git checkout (it implies `--source`).
+This installs one self-contained binary for your OS and architecture and links a short `vey` command. The first interactive `vey` opens first-run setup (providers, glyphs, theme); run it again with `veyyon setup`.
 
-Veyyon ships two ways only: the `curl` installer from veyyon.dev (which downloads the signed binary from [GitHub Releases](https://github.com/santhreal/veyyon/releases)) or a git clone you build yourself. There is no npm package, no Homebrew tap, and no crates.io release.
+To pin a Linux or macOS release binary:
+
+```sh
+curl -fsSL https://get.veyyon.dev | sh -s -- --binary --ref v1.0.12
+```
+
+To pin the same release on Windows:
+
+```powershell
+& ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Binary -Ref v1.0.12
+```
+
+A bare `--ref` on POSIX, or `-Ref` on Windows, builds that ref from a source checkout. See [Install](docs/handbook/src/using/install.md) for source, help, and uninstall forms on both platforms.
+
+Veyyon ships two ways only: a prebuilt release binary served through veyyon.dev from [GitHub Releases](https://github.com/santhreal/veyyon/releases), or a source checkout you build yourself. The installers verify the published SHA-256 sidecar before replacing an installed binary. A checksum detects changed bytes; it is not a publisher signature. There is no npm package, Homebrew tap, or crates.io release.
 
 **From source (contributing)**
 
@@ -56,7 +70,7 @@ bun dev
 
 Config and state live under `~/.veyyon` by default.
 
-macOS · Linux · Windows · bun ≥ 1.3.14
+Prebuilt install: macOS, Linux, or Windows, with no Bun runtime required. Source and development: Bun ≥ 1.3.14 plus Git.
 
 ### Shell completions
 
@@ -90,51 +104,98 @@ Give two harnesses the same model weights and you get different outcomes, becaus
 
 ## What Veyyon adds
 
-Everything in this section landed after the fork import, across more than a thousand commits. Each item names the mechanism rather than the adjective, so you can go read the code behind it.
+This section is the product-level map of Veyyon's changes after the oh-my-pi fork. It describes observable mechanisms, not every refactor or ported upstream fix. Use the generated root [changelog](CHANGELOG.md) for release-level detail and the [divergence ledger](docs/internal/porting-from-pi-mono.md#15-intentional-divergences) when reconciling upstream code.
 
-### Argot: a shorthand the model writes in
+### Prompt assembly that stays configurable
 
-The largest single addition, and still experimental: off by default, gated per model, and being proven on live benches. The agent loads a project with the `argot_load` tool, and Veyyon generates a dictionary for that project mapping short handles to the long strings it repeats: a full path, a canonical command, a fixed identifier. The model writes `§dbconn` where it would have written the whole string, and Veyyon restores every handle to its full text before anything runs or reaches your screen.
+- **The default prompt is assembled, not copied from one prose file.** Statement modules own instruction text. A section registry owns section identity, order, and banners. The outer `system-prompt.md` file is a checked scaffold with one `{{templateSections}}` slot.
+- **Persistent customization has two explicit surfaces.** Put project instructions in layered `AGENTS.md` files. Put a validated body-only section replacement in `PROMPT_SECTIONS/`. Veyyon does not discover `SYSTEM.md` or `APPEND_SYSTEM.md`; it names an existing legacy file at launch and points you to the supported replacement.
+- **Prompt gates follow the live model.** Switching models recalculates inline tool descriptors and native-schema placement. A provider that already receives tool schemas does not pay for a second prompt inventory.
+- **Project context moves as one unit.** `set_cwd` and `/move` reload the destination's `AGENTS.md`, workspace tree, repository context, skills, rules, secret scope, and TTSR matchers. A failed move restores the previous directory and runtime.
+- **Repeated context is removed only when containment is exact.** A less-authoritative context file is omitted when its normalized paragraphs appear contiguously in a later authoritative file. Paraphrases and noncontiguous matches remain.
 
-The round trip is lossless. The model reads and writes less boilerplate, and nothing downstream, no tool, no file, no transcript, ever sees an unexpanded handle. Encoding is gated per model and by context size, so a large or unfamiliar context writes in full instead of risking a garbled handle. Decoding always runs, so a handle can never leak. The dictionary is generated per project, kept in a local content-keyed cache, and never committed. See [Argot](docs/handbook/src/why/argot.md), and the codec itself in [`@veyyon/argot`](packages/argot).
+See [System prompt customization](docs/system-prompt-customization.md) and [Context files](docs/context-files.md).
 
-The five `argot.*` settings sit together on the **Experimental** tab (`/settings` → Experimental → Argot): the master toggle plus four dependent knobs that appear once it is on.
+### Compaction that preserves ownership and boundaries
 
-### Context that shrinks before it summarizes
+- **A lossless first pass runs before summarization.** Tier 0 removes tool results that are byte-identical to a newer copy. Nothing is paraphrased in this pass.
+- **Compaction can trigger automatically, at an absolute token count, or at a percentage.** The effective threshold is visible in the context panel and status line.
+- **Summaries remain agent-owned context.** Compaction and branch summaries enter provider requests as `developer` context where the provider supports it. Image-bearing developer context is split without relabelling the text as a user turn.
+- **Summary boundaries fail closed.** Aborted and empty completions are rejected, internal presentation wrappers are stripped, and legacy image-block summaries are wrapped through the same context template.
+- **Oversized tool output spills to an artifact.** The transcript keeps a bounded preview and an address the agent can read back instead of silently losing the remainder.
 
-- **A lossless first pass.** When the window fills, a Tier-0 pass drops tool results that are byte-identical to a newer copy. Nothing is paraphrased, so nothing is lost, and whatever survives is what compaction then has to condense. See [Compaction and project memory](docs/handbook/src/context/compaction-memory.md).
-- **An absolute-token threshold.** Compaction can trigger on a token count rather than only on a fraction of the window, so the trigger point stays put across models with different context sizes instead of moving every time you switch.
-- **Artifact spill.** Oversized tool output goes to an artifact the agent can read back, instead of being truncated into the transcript.
+See [Compaction and project memory](docs/handbook/src/context/compaction-memory.md).
 
-### Credentials, profiles, and config
+### Model-native effort and explicit routing
 
-- **Credentials live in SQLite, not a JSON lockfile.** Upstream keeps `auth.json` under `proper-lockfile`; Veyyon stores them in `agent.db` through `bun:sqlite`.
-- **Several keys per provider.** Round-robin selection with session affinity and per-credential backoff, so one rate-limited key does not stop the session and a mid-turn switch does not change models under you.
-- **One sign-in reaches every profile.** Providers and global settings are shared, rather than each profile holding its own copy.
-- **A profile can pin its own working directory**, and `set_cwd` re-roots a live session, so one install holds several projects without them bleeding into each other.
-- **Config writes are atomic and serialized.** One path, one swap, so two writers never tear a settings file.
+- **Each model exposes its own effort variants.** A low/high Gemini model does not show medium or xhigh. Separate provider SKUs that represent effort tiers appear as one logical model and route to the correct upstream ID.
+- **Effort precedence is explicit.** A session choice from `/thinking` wins, followed by a selector suffix, the active model's `defaultEffort` row, the `*` row, and finally the model default. Choosing **Default** clears the session override.
+- **Compaction and subagents use ordered model chains.** You can edit or remove one highlighted position and append fallbacks without rebuilding the whole value. YAML list and comma-separated forms round-trip through the same schema.
+- **Model settings stay responsive with large catalogs.** Static catalog projection and sorting are cached across picker openings while authentication badges are recalculated every time.
+- **Roles remain separate from subsystem chains.** The interactive model is `modelRoles.default`; named roles cover work such as `smol`, `slow`, `vision`, `plan`, and `advisor`; `subagent.model` and `compaction.model` own their own chains.
 
-### The shell and tool layer
+<p align="center">
+  <img src="assets/model-effort-controls.gif" width="900" alt="Model-native effort choices followed by highlighted-position model-chain editing">
+</p>
 
-- **Capability-based discovery.** `defineCapability`, `registerProvider`, `loadCapability`, and the skill capability replaced the upstream resource-loader and package-manager classes, so extensions register into one surface instead of several.
-- **Bash interception.** Destructive command patterns force an approval prompt even in a permissive mode (`bashInterceptor.enabled`, `bashInterceptor.patterns`).
-- **LSP writethrough** for format-on-save, so a formatter's edit lands through the same path as the agent's.
-- **A status line component** in place of the upstream footer data provider, and fuzzy path suggestions in `read`.
-- **Clipboard through the native addon** rather than a separate image-clipboard module and shelling out to `xclip`/`pbcopy`.
+See [Settings](docs/settings.md#models) and [Models, roles, and profiles](docs/handbook/src/using/roles-and-profiles.md).
 
-### Five new crates under the addon
+### Secret use with a final outbound boundary
 
-The import came with eight Rust crates. There are thirteen now, and the five added since are there to give a shared answer one home:
+- **Provider credentials live in SQLite, not an `auth.json` lockfile.** You can configure several credentials per provider with session affinity, round-robin selection, and per-credential backoff.
+- **Named working secrets live in an encrypted vault.** `/secret` adds, lists, extends, removes, and audits scoped entries without listing their values.
+- **Obfuscation runs at the final provider seam.** When enabled, it rewrites nested JSON keys and values for every physical attempt, including retries, fallback models, compaction, evaluation, memory, TTS, and image tools. Key collisions and opaque authenticated fields fail closed.
+- **Redaction outlives expansion.** An expired, removed, disabled, or out-of-scope value loses placeholder expansion rights but keeps a forward-redaction tombstone, so old text does not become provider-visible again.
+- **Spending a real credential can require approval.** The prompt names the secret but never its value, and the audit log records where the placeholder was expanded. The `yolo` mode remains the explicit opt-out from all approval gates.
+- **Malformed declarations stop startup.** An unreadable file, invalid entry, unsafe regex, wrong field, or too-short reversible value is reported with the fix instead of being skipped.
 
-- **`veyyon-glob`** and **`veyyon-keys`**: the glob matcher behind the native binding, and Kitty keyboard protocol parsing with a perfect-hash lookup.
-- **`veyyon-text`**: ANSI-aware width, truncation, and column slicing over UTF-16, so the TUI and the natives measure a line the same way.
-- **`veyyon-diff-kernel`** and **`veyyon-grep-kernel`**: one owner each for what a diff line is and how a search pattern is compiled, so the `diff` and `grep` builtins, the isolation backend's patch output, and the search stack cannot drift into disagreeing about it.
+Secret protection is opt-in. Read [Secret obfuscation](docs/secrets.md) for scope, persistence, and the documented tool-output caveat.
 
-### Under the floor
+### Profiles, sessions, and operator-visible failure
 
-Choices that do not show up in a feature list but decide how the code ages: extensions load through native Bun `import()` instead of `jiti`; tools are built by `createTools(session)` off a `BUILTIN_TOOLS` registry rather than `createTool(cwd)` one at a time; the suites run on `bun:test` rather than vitest. The repo carries over 4,200 TypeScript test files and 2,400 Rust test functions today, across 10 CI workflows, with 92 handbook pages and 57 internal engineering docs.
+- **One sign-in reaches every profile.** Provider credentials and global settings are shared, while each profile keeps its own agent directory, instructions, skills, and optional working directory.
+- **A new profile copies only `AGENTS.md` as instruction text.** Skills remain explicit profile data. Unreadable or wrong-shaped seed items abort creation with their source path.
+- **Session files are shape-checked and written atomically.** Listing, loading, moving, and closing refuse states that would orphan or overwrite an unreachable transcript.
+- **Deep subsystems report through session-scoped operator notices.** Prompt migration, secret-vault, filesystem, and runtime failures reach the active surface without leaking a notice sink into the next session.
 
-The complete divergence ledger, including the upstream patterns we deliberately do not port, is [`docs/internal/porting-from-pi-mono.md`](docs/internal/porting-from-pi-mono.md) §15. The mechanism-by-mechanism version is the handbook's [Mechanisms](docs/handbook/src/why/innovations.md) chapter.
+See [Profiles](docs/handbook/src/features/profiles.md) and [Sessions](docs/handbook/src/using/sessions.md).
+
+### Agents you can inspect and coordinate
+
+- **Task and eval workers share the real tool surface.** They can return schema-validated results, communicate over IRC, and expose their transcripts through `agent://` and `history://`.
+- **The Agent Control Center is a live operational view.** It shows the roster, model badges, age, status, transcript, and communications stream, with keyboard and mouse actions for opening or stopping a worker.
+- **The dashboard remains readable without color.** Selection uses a reserved cursor column and active tabs use width-stable brackets in addition to tint and emphasis.
+- **An advisor can review each completed turn.** It runs on its own context and can inject a concern or blocker without becoming the primary model.
+
+See [Subagents](docs/handbook/src/features/subagents.md), [IRC](docs/tools/irc.md), and [Advisor](docs/advisor-watchdog.md).
+
+### One tool and extension architecture
+
+- **Capabilities have one registration surface.** `defineCapability`, `registerProvider`, and `loadCapability` replace parallel resource-loader and package-manager paths.
+- **Built-in tools come from one registry.** `createTools(session)` constructs tools from `BUILTIN_TOOLS`, so activation, SDK embedding, and UI rendering share one inventory.
+- **Extensions load through native Bun imports.** Tool schemas use the repository's TypeBox or Zod compatibility surface without loading a second TypeScript runtime.
+- **Bash interception adds a hard approval boundary.** Configured destructive patterns can require approval even when ordinary shell commands are allowed.
+- **LSP format-on-save writes through the same edit path.** A server's workspace edit is applied with the same stale-content and filesystem protections as an agent edit.
+- **Clipboard access stays in-process.** Text and image clipboard operations route through `@veyyon/natives` rather than platform-specific shell commands.
+
+### Native kernels shared across hot paths
+
+The N-API addon delegates reusable behavior to focused Rust crates instead of letting each shell builtin or TypeScript caller define it again:
+
+- **`veyyon-glob`** owns compiled glob matching and directory-depth bounds.
+- **`veyyon-keys`** owns Kitty keyboard protocol parsing and key lookup.
+- **`veyyon-text`** owns ANSI-aware width, truncation, and UTF-16 column slicing.
+- **`veyyon-diff-kernel`** owns unified-diff line handling, comparison keys, hunk formatting, and binary detection.
+- **`veyyon-grep-kernel`** owns search pattern compilation and searcher construction.
+- **`veyyon-walker`** owns the native directory-read traversal path.
+
+The complete crate inventory is in [Rust Crates](#rust-crates).
+
+### Argot: project shorthand that expands before use
+
+Argot is experimental and off by default. Veyyon generates a project dictionary that maps short handles to repeated paths, commands, and identifiers. The model can write `§dbconn`; Veyyon expands it before a tool, transcript, parent agent, or display receives it.
+
+Encoding is gated by model and context size. Decoding always runs, including across streamed subagent deltas, so disabling new encoding does not permit an old handle to leak. The settings screen hides Argot's dependent controls until the master toggle is on. The codec lives in [`@veyyon/argot`](packages/argot), and the integration contract is in [Argot](docs/handbook/src/why/argot.md).
 
 ## What it can do
 
@@ -556,6 +617,6 @@ MIT. See [LICENSE](LICENSE) for the full text and copyright notices.
 Veyyon is a fork of oh-my-pi (MIT) and Pi, created by Mario Zechner and Can Bölük. Their copyright notices are retained in [LICENSE](LICENSE).
 
 - [GitHub](https://github.com/santhreal/veyyon)
-- [Changelog](https://github.com/santhreal/veyyon/blob/main/packages/coding-agent/CHANGELOG.md)
-- [Releases](https://github.com/santhreal/veyyon/releases) (the `curl` installer pulls these signed binaries)
+- [Changelog](https://github.com/santhreal/veyyon/blob/main/CHANGELOG.md)
+- [Releases](https://github.com/santhreal/veyyon/releases) (the installer downloads one SHA-256-verified binary per supported OS and architecture)
 - [MIT](https://github.com/santhreal/veyyon/blob/main/LICENSE)

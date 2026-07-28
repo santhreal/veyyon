@@ -792,7 +792,7 @@ missing `yield` handler once surfaced as seventeen unrelated-looking failures.
 | Install per environment | `scripts/installer-environment-matrix.test.ts` + `scripts/install-tests/environments.toml` |
 | Update per environment | `scripts/update-environment-matrix.test.ts` (same TOML, shared harness) |
 | Regression corpus | `packages/coding-agent/test/corpus/regressions/` |
-| Docs and handbook | `scripts/check-doc-*.test.ts`, `scripts/the-committed-handbook-matches-its-sources.test.ts` |
+| Docs and handbook | `scripts/check-doc-*.test.ts`, `scripts/handbook-built-pages-contain-source-contracts.test.ts` |
 | Symbol presets and glyph contracts | `coding-agent/test/modes/theme/every-unicode-glyph-*.test.ts`, `an-empty-icon-leaves-no-gap.test.ts` |
 | Module reach and boot cost | `coding-agent/test/architecture/`, via `test/helpers/module-reach-gate.ts` |
 | Keybinding ids reach a reader | `coding-agent/test/config/every-keybinding-id-is-read-by-something.test.ts` |

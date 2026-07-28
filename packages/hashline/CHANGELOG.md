@@ -16,13 +16,6 @@
 - A write that fails names the file you asked to write. The failure came from the temporary sibling the write stages into, so a read-only directory reported `EACCES` on `.mod.ts.4711.1.tmp` — a path that never existed as far as you are concerned and changes every attempt. The reason and the error code are kept, the real target is named, and the original travels as `cause`.
 - Writing to a path whose parent directory does not exist creates the directory instead of failing. A patch that creates `src/new/mod.ts` is an ordinary create. Parents are never created for a symlink, where a missing target directory means the link is dangling.
 
-## [1.0.37] - 2026-07-24
-
-### Fixed
-
-- `REM` no longer deletes a file whose content drifted from the section tag. A whole-file delete is now the strictest op about the content tag (it was the most lenient: empty edits took the position-stable path and deleted through drift with only a soft warning), so a stale or fabricated tag can no longer discard edits the model never saw. The delete is refused with a mismatch error that forces a re-read, matching how an anchored edit on a drifted file behaves.
-- `MV DEST` no longer silently overwrites an existing destination file. A move onto a different existing file is refused during prepare (aborting the whole batch before any write), so a wrong or hallucinated destination can no longer destroy the user's work. A rename that only respells one file (case-only on a case-insensitive volume, or through a symlink) is still allowed, matched by device+inode identity rather than by path string.
-
 ## [16.5.0] - 2026-07-13
 
 ### Fixed
@@ -386,6 +379,13 @@ All notable changes to this package will be documented in this file.
 - Fixed repeated patch application mutating cached `after_anchor` edits between target snapshots
 - Fixed multi-section patching to preflight write policies and reject duplicate canonical targets before any section is committed
 - Fixed mixed line-ending restoration to preserve the first newline style instead of rewriting ties to LF
+
+## [1.0.37] - 2026-07-24
+
+### Fixed
+
+- `REM` no longer deletes a file whose content drifted from the section tag. A whole-file delete is now the strictest op about the content tag (it was the most lenient: empty edits took the position-stable path and deleted through drift with only a soft warning), so a stale or fabricated tag can no longer discard edits the model never saw. The delete is refused with a mismatch error that forces a re-read, matching how an anchored edit on a drifted file behaves.
+- `MV DEST` no longer silently overwrites an existing destination file. A move onto a different existing file is refused during prepare (aborting the whole batch before any write), so a wrong or hallucinated destination can no longer destroy the user's work. A rename that only respells one file (case-only on a case-insensitive volume, or through a symlink) is still allowed, matched by device+inode identity rather than by path string.
 
 ## [1.0.33] - 2026-07-24
 

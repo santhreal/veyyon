@@ -30,24 +30,16 @@ presenting a clean-looking summary that dropped the real constraint.
 
 ## Session files are trees
 
-A session file (`~/.veyyon/profiles/default/agent/sessions/**/<timestamp>_<id>.jsonl`) is an append-only log, but its entries form
-a tree. Recorded session entries carry an `id` and a `parentId`, and branching works by appending a
-new entry whose `parentId` names an earlier entry, so it starts a sibling branch from that point.
-The *active leaf* is implicit: it advances to each appended entry, and on load it falls back to the
-last entry in the file. Not every line carries `parentId`: the first-line session header does not,
-and in-place refresh records (a replaced session header, a rewritten custom message) are full
-replaces of the original record, not entries on the tree. Nothing is ever rewritten: branches you
-navigate away from stay in the file, and resuming
-a session materializes only the entries along the active path (for a session with no branches, that
-is the entire file, exactly as before).
+A session file (`~/.veyyon/profiles/default/agent/sessions/**/<timestamp>_<id>.jsonl`) is an append-oriented log whose entries form a tree. Recorded session entries carry an `id` and a `parentId`. Branching appends a new entry whose `parentId` names an earlier entry, so it starts a sibling branch from that point.
 
-Two properties are guaranteed by the storage layer:
+The *active leaf* advances to each appended entry. On load it falls back to the last entry in the file. Not every line carries `parentId`: the first-line session header does not, and in-place refresh records are full replacements of the original logical record rather than tree entries. Storage maintenance may atomically rewrite the file to update the header or representation, but it preserves the history entries. Branches you navigate away from remain addressable.
 
-- **No history rewriting.** Branching appends new entries; abandoned entries remain addressable.
-- **Loud, fail-open on corruption.** A malformed record is skipped so one corrupt line cannot make
-  a whole session unopenable, but the skip is never silent: each dropped record is logged with its
-  offset. Duplicate ids are last-write-win, and entries with a broken parent chain surface as extra
-  roots rather than blocking the load.
+Four properties are guaranteed by the storage layer:
+
+- **No history deletion during navigation.** Branching appends new entries; abandoned entries remain addressable.
+- **A corrupt header never initializes over existing bytes.** A non-empty file without a valid first session record is refused. Veyyon leaves it byte-for-byte unchanged so you can inspect or repair it.
+- **Recoverable record loss is operator-visible.** A malformed later record is skipped so one damaged line does not make the entire session unopenable. The session shows one bounded warning with the file, one-based line and byte offset, and shape problem. It never quotes the dropped record's content. Duplicate ids are last-write-win, and broken parent chains appear as extra roots.
+- **Moves are transactional.** Moving a session changes the transcript, its artifacts, and its recorded working directory as one operation through the active storage backend. If relocation or the final header write fails, Veyyon restores the old paths and in-memory working directory.
 
 Session files written by older Veyyon versions have no linkage fields; they load as a linear chain,
 which is the exact shape they recorded.

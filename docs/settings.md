@@ -310,6 +310,8 @@ Every key below is defined in the settings schema; `veyyon config list` shows th
 
 `modelRoles`, `modelTags`, and `cycleOrder` work together. Role values may carry a thinking suffix (`:off`, `:auto`, `:minimal`, `:low`, `:medium`, `:high`, `:xhigh`, `:max`). The same suffix works on `subagent.model` and `compaction.model`, so any model slot can run at a chosen effort.
 
+A suffix on a role use overrides the role's stored suffix. For example, if `modelRoles.slow` is `anthropic/claude-opus-5:low`, then `@slow:high` resolves to `anthropic/claude-opus-5:high`, not a double-suffixed model id.
+
 When you pick a model in `/settings`, Veyyon opens a separate effort step only if that model exposes configurable effort. The first row, **Model default**, stores no suffix. The remaining rows contain `auto`, `off` when the model permits it, and only the model's catalog-defined effort variants. For example, a low/high Gemini model does not show medium or xhigh. A fixed-reasoning model skips the effort step. Providers sometimes publish effort tiers as separate upstream model IDs. Veyyon collapses effort-only siblings into one logical model and routes the selected effort to the correct upstream ID.
 
 `compaction.model` and `subagent.model` are ordered chains. The first entry is the primary model and later entries are fallbacks. Enter edits the highlighted position, **Add fallback** appends a position, and Delete removes only the highlighted position. The settings rows show a stored effort as ` · high` instead of the raw `:high` suffix.
@@ -376,6 +378,8 @@ without its own. `/thinking` (and its `/effort` alias) changes only the current
 session and prints where the saved default lives, so trying an effort never
 rewrites your default.
 
+The retired `defaultThinkingLevel` is consulted only when the `defaultEffort` key is absent. Once `defaultEffort` is present, its object is authoritative, including `{}` and a set of model-specific rows with no `*` fallback. Removing the **Any Model** row therefore keeps every unmatched model on its native default instead of resurrecting a legacy profile-wide value.
+
 Choose **Default** in the session effort picker to clear the temporary override.
 Veyyon then applies the active model's saved row, the `*` row, or the model
 default according to the precedence below. Switching models re-evaluates these
@@ -407,7 +411,7 @@ thinkingBudgets:
 | Key | Type | Default | Values |
 |---|---|---|---|
 | `defaultEffort` | record | `{}` | Effort per model, applied when a run does not ask for one. Keys are model selectors (`anthropic/claude-opus-5`) or `*` for any model; values are `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `auto`, or `off`. Edit it in `/settings` → Model → Default Effort. |
-| `defaultThinkingLevel` | enum | `high` | Retired in favour of `defaultEffort`'s `*` row, and still read so an existing config keeps working: if you have no `*` row, this value becomes it. No settings row of its own. |
+| `defaultThinkingLevel` | enum | `high` | Retired in favour of `defaultEffort`'s `*` row. It is read only when the replacement `defaultEffort` key is absent, so an existing profile migrates without overriding an explicitly empty or model-only list. No settings row of its own. |
 | `hideThinkingBlock` | boolean | `false` | Hide thinking blocks in output. `--hide-thinking` sets it for the run (display only). |
 | `thinkingBudgets.minimal` | number | `1024` | Token budget for the `minimal` level. |
 | `thinkingBudgets.low` | number | `2048` | Token budget for `low`. |

@@ -31,7 +31,7 @@ The difference is who supplies the next prompt and whether a TUI is attached.
 
 A session is the unit of interactive work. Start one with `veyyon` in the repository you want to change. The session records every turn, tool call, approval, edit, and verification result.
 
-Sessions are stored as append-only rollout JSONL files. Each line is an entry with an `id` and a `parentId`. Those two fields make the file a tree, not just a log. The session never rewrites history. It only appends new entries or pointer moves.
+Sessions are stored as append-oriented rollout JSONL files. Each history entry has an `id` and a `parentId`, which makes the rollout a tree rather than a linear chat log. New history is appended. Header or representation maintenance may atomically rewrite the file, but it preserves every history entry.
 
 ## What a turn is
 
@@ -58,7 +58,7 @@ Prefer `/compact` when you need a summary to retain state. Prefer the `/new` com
 
 ## The rollout
 
-Session history lives in one layer: the append-only JSONL rollout. Every event is one line: a user message, an agent response, a tool call, a compaction, a goal update, or a branch summary. The rollout is the only source of truth, and it is never rewritten, which is what makes branching and resume safe and auditable. Listing sessions and resuming one read the rollout's header lines directly; goal cards persist as rollout entries. There is no separate session-state database.
+Session history lives in one layer: the JSONL rollout. Every event is one line: a user message, an agent response, a tool call, a compaction, a goal update, or a branch summary. The rollout is the only source of truth. Listing and resume read it through the active storage backend, including indexed Redis and SQL storage. A non-empty rollout without a valid header is refused without changing its bytes; malformed later records are skipped with an operator-visible path, line, byte, and shape warning. Goal cards persist as rollout entries. There is no separate session-state database.
 
 ## How the pieces relate
 

@@ -167,18 +167,20 @@ Failure behavior is fail-closed:
 | Ciphertext, nonce, authentication tag, scope, canonical path, or physical scope identity modified | Hard error. GCM authenticates the complete envelope and its location. |
 | Legacy version 1 envelope | Hard error directing the operator to re-add the entry in the bound current format. |
 | Unknown envelope version | Hard error advising an upgrade rather than deletion. |
+| Entry name or value contains ill-formed UTF-16 | Hard error before a write, or after authenticated decryption during a read. Existing ciphertext is left unchanged. |
 
 ### Lifetimes
 
 `secrets.defaultTtl` sets the default (`1d`). An absent setting uses the built-in default; a setting that does not parse is an error rather than a silent fallback.
 
-Expiry deletes the vault entry and revokes placeholder expansion. It does not revoke confidentiality. The live obfuscator keeps a forward-only HMAC tombstone for the old raw value, so a transcript containing that value remains redacted.
+Expiry has two ordered effects. At use time, the live obfuscator revokes placeholder expansion and installs a forward-only HMAC tombstone for the old raw value. This prevents a transcript containing that value from becoming provider-visible. The hot path performs no vault I/O, so the encrypted entry remains on disk until the next successful vault refresh prunes it.
 
 Expiry is enforced at use time as well as at load:
 
 - The check sits on `deobfuscate`, `hasNamedSecret` and `knowsPlaceholder`, so no path reaches a value without passing it.
 - `#nextExpiryAt` caches the soonest deadline, so the hot path is one number comparison and the map is scanned only when a deadline is crossed.
-- A lapse calls `onExpiry`, which `sdk.ts` renders as an operator notice naming the secret and the command that restores it.
+- A lapse calls `onExpiry` with explicit persisted-deletion state. `sdk.ts` renders an operator notice that says expansion was revoked and, until a vault refresh succeeds, that encrypted ciphertext remains.
+- A successful vault refresh prunes expired entries before rebuilding the runtime.
 - `addNamedSecret` takes the deadline, so `/secret extend` moves the moment substitution stops.
 - `#forgetPlaceholder` is the one owner of revoking reverse mappings and installing forward redaction tombstones.
 

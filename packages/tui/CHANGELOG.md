@@ -2,34 +2,13 @@
 
 ## [Unreleased]
 
-### Fixed
+### Added
 
-- Transcript Markdown now treats `<summary>...</summary>` as a presentation wrapper and renders
-  only its body. Context summaries no longer expose their internal boundary tags after streaming
-  updates or transcript redraws; fenced code still shows literal tags.
-
-- `visibleWidth` no longer charges a tab that lives inside an OSC sequence. Tabs were counted over
-  the raw string while the width came from the string with OSC sequences removed, so a tab in a
-  hyperlink's target or in a window-title OSC was charged a full tab stop for text the terminal
-  never draws. A tab inside an OSC 66 text-sizing payload now scales with its span, like every
-  other cell in it, instead of being charged once at one tab stop no matter the scale.
-
-- OSC 66 metadata is read as a run of digits or not at all, which is the rule the Rust side has
-  always used. `Number.parseInt` took a numeric prefix, a leading sign and leading whitespace, so
-  `s=2x`, `w=+5` and `w= 5` were numbers here and malformed there. That one over-measured: the
-  native left a two-column line whole inside a four-column budget and the compositor padded it to
-  five, which is a line wider than the terminal.
-
-- A stripped OSC sequence leaves a zero-width `ESC \` behind rather than being deleted. Deleting it
-  joined the text on either side, and the native treats an escape as a grapheme break, so the join
-  could invent a cluster: a digit, a span, and a bare keycap combiner measured two cells here and
-  one natively. The pattern that adds an OSC 66 span back also reads a sequence the same way the
-  stripper does now, so a span cannot be stripped as one sequence and added back as a longer one.
-
-  Together these close the OSC 66 half of the two-width-oracle divergence. Well-formed spans, and
-  OSC sequences carrying tabs, join the fuzz suite's agreed surface. Malformed spans, meaning an
-  escape in the payload or no terminator, still differ, in the direction that clips a span rather
-  than overflowing a line; `visible-width-osc66-spans.test.ts` pins that as an open disagreement.
+- Added `TUI#onSelectionAttempt`, called when a left press and a release land in different cells outside the pinned footer while the engine holds the mouse. Capturing the mouse is what lets the wheel scroll the transcript, and it also takes plain drag-select away from the terminal, so hosts can now explain a drag that selected nothing instead of leaving it silent.
+- Added the scroll position to the right edge of a frozen transcript region: a dim one-column groove with a bright thumb, composited through the same cell-accurate path overlays use. It sits in the region that scrolled, so a host's pinned footer renders byte-identically whether the view is frozen or following.
+- Added `rankSettingItems`/`filterSettingItems`: field-weighted ranking for settings search. Label, declared synonyms, config path, group and description are scored separately with the best field winning, so a setting NAMED for your query outranks every setting whose description merely mentions it. A setting's current value and its enum values are no longer searchable (typing `high` used to match everything set to high, and results shifted as values changed), a punctuation-only query returns nothing instead of matching everything, and heading rows are excluded. `SettingItem` gained `group` and `keywords` for this.
+- Added `TUI#onSelectionAttempt`, called when a left press and a release land in different cells outside the pinned footer while the engine holds the mouse. Capturing the mouse is what lets the wheel scroll the transcript, and it also takes plain drag-select away from the terminal, so hosts can now explain a drag that selected nothing instead of leaving it silent.
+- Added the scroll position to the right edge of a frozen transcript region: a dim one-column groove with a bright thumb, composited through the same cell-accurate path overlays use. It sits in the region that scrolled, so a host's pinned footer renders byte-identically whether the view is frozen or following.
 
 ### Changed
 
@@ -37,7 +16,6 @@
   app-level interrupt keeps working, and its own comment says it has no copy implementation, so the
   binding only ever advertised a key that copies nothing and a remap that does nothing. The composer
   still copies through `alt+shift+l` for the current line and `alt+shift+c` for the whole prompt.
-
 - `reopenBackgroundAfterResets` in `src/utils.ts` is the one owner of "keep a painted background
   alive across the content's own resets". Three surfaces painted a ground under content they do
   not control (the editor's quiet card, the setup wizard's canvas, the coding agent's output
@@ -46,7 +24,6 @@
   `\x1b[49m`, and none handled `\x1b[m`, the parameterless reset that means the same thing. Every
   gap was a hole in that surface's ground from the reset to the end of the line, visible in one
   surface and not the others.
-
 - Nine more inline copies of the reset bytes now import them. `\x1b[0m`, `\x1b[39m`, `\x1b[49m`
   and `\x1b[22m` were written out again in the welcome screen, the theme colour resolver, the user
   message renderer, the edit renderer and the status line, under names like `reset`,
@@ -55,7 +32,6 @@
   a twelfth name straight through, which is how nine accumulated. It is keyed on the bytes now,
   which cannot be evaded by naming, and it reads code lines only so the doc comments that explain
   these constants stay writable.
-
 - `src/ansi.ts` owns the SGR sequence PATTERN and the parameterless reset `\x1b[m`. The pattern
   `\x1b\[[0-9;:]*m` was written out four times under four names across this package and
   `@veyyon/coding-agent`, and the fourth had already drifted: it spelled the parameter class `[0-9;]`
@@ -68,21 +44,38 @@
   its Rust twin, so a hyperlink or a private-mode sequence no longer counts as visible text. The class
   stays narrower than that general grammar on purpose: `?` `<` `=` `>` are parameter bytes, and an
   `ESC [ ?25 m` is not a colour change.
-
 - The desktop notifier and the OSC 99 application field read `APP_DISPLAY_NAME` from `@veyyon/utils/app-identity` instead of each declaring the product's name.
-
 - `src/ansi.ts` also owns `BEL`, `SGR_BG_RESET`, `SGR_INTENSITY_RESET` and `OSC66`, each derived from `ESC` or `CSI` rather than respelling the introducer. Those four sequences were declared eight times under eight names across this package and `@veyyon/coding-agent`. Two of the eight were actively wrong about what they held: `\x1b[22m` was `BOLD_CLOSE` in the shimmer and `DIM_OFF` in the diff renderer, and it cancels BOTH intensities, so emitting the one called `DIM_OFF` after dim text nested inside a bold run also drops the bold and the rest of the line silently loses weight. There is no sequence that turns off only one. `\x1b]66;` was `OSC66_PREFIX` in the writer and `OSC66_LINE_PREFIX` in the detector, a pair that has to match byte for byte or every wide grapheme on the line is mis-measured. One-off inline attributes such as a bold opener around a label stay with their feature, since nothing else has to agree with them; this module holds the bytes whose duplication has a consequence.
-
 - `ansi.ts` owns `CSI`, the `ESC [` control-sequence introducer, and both SGR resets are derived from it rather than spelling `\x1b[` again. `packages/metaharness/src/runner.ts` had called the introducer `ESC`, so one name meant `\x1b` in one package and `\x1b[` in the other, and its `${ESC}0m` read as an escape byte followed by the text "0m" when it was a complete SGR reset. That constant is now `CSI` there too.
-
 - `src/ansi.ts` owns the ANSI escape primitives: `ESC`, `OSC`, `ST`, `SGR_RESET` and `SGR_FG_RESET`. Those five byte strings were declared sixteen times across this package and `@veyyon/coding-agent` under eleven names. `\x1b[0m` was `SEGMENT_RESET` in `tui.ts` and `deccara.ts`, `RESET` in two coding-agent modules and `RESERVED_IMAGE_ROW` in `components/image.ts`; `\x1b[39m` was `FG_RESET` three times and `ANSI_FG_RESET` once; `\x1b\\` was `ST`, `OSC_TERMINATOR_ST` and `SIXEL_END_SEQUENCE`; `\x1b]` was `OSC` and `OSC_INTRODUCER`. Eleven names for five values is worse than eleven copies of one name, because a grep for any single name finds a minority of the sites that emit those bytes and nothing points at the rest. Feature-specific sequences stay with their feature (mouse tracking, kitty graphics, the bracketed-paste markers); this module holds only what more than one module needs and has no imports, so reaching for a primitive is cheaper than retyping it. `utils/qrcode.ts` in `@veyyon/coding-agent` is exempt on purpose, since its own doc makes being dependency-free part of what it is, and the exemption is recorded in `test/ansi-owner.test.ts` rather than left implicit.
-
 - `PASTE_START` and `PASTE_END` are exported from `src/bracketed-paste.ts`, beside the paste byte cap that module already owned. The two byte strings that define the protocol were declared in four modules: here, in `stdin-buffer.ts` under different names, and twice more in `@veyyon/coding-agent`'s custom editor and its test. Three detectors read the same terminal input at different layers, so a copy edited to a different sequence makes one layer stop recognising a paste while the others still do, and the symptom is escape bytes leaking into the editor rather than any error.
-
 - Every `@veyyon/utils` helper this package uses comes from the module that owns it: `$env`, `$flag`, `isBunTestRuntime` and `isTerminalHeadless` from `@veyyon/utils/env`, `getProjectDir` and `getDebugLogPath` from `/dirs`, `clamp` and friends from `/math`, the loop-phase trio from `/loop-phase`, `errorMessage` from `/type-guards`, `logger` and `postmortem` as namespaces from their own modules, and six more. Eleven files each took one or two names and paid 82 modules for them, so the barrel was on this package's graph no matter which component you imported. `@veyyon/tui`'s own barrel is 70 modules instead of 119, which every consumer of a TUI component pays.
 
 ### Fixed
 
+- Transcript Markdown now treats `<summary>...</summary>` as a presentation wrapper and renders
+  only its body. Context summaries no longer expose their internal boundary tags after streaming
+  updates or transcript redraws; fenced code still shows literal tags.
+- `visibleWidth` no longer charges a tab that lives inside an OSC sequence. Tabs were counted over
+  the raw string while the width came from the string with OSC sequences removed, so a tab in a
+  hyperlink's target or in a window-title OSC was charged a full tab stop for text the terminal
+  never draws. A tab inside an OSC 66 text-sizing payload now scales with its span, like every
+  other cell in it, instead of being charged once at one tab stop no matter the scale.
+- OSC 66 metadata is read as a run of digits or not at all, which is the rule the Rust side has
+  always used. `Number.parseInt` took a numeric prefix, a leading sign and leading whitespace, so
+  `s=2x`, `w=+5` and `w= 5` were numbers here and malformed there. That one over-measured: the
+  native left a two-column line whole inside a four-column budget and the compositor padded it to
+  five, which is a line wider than the terminal.
+- A stripped OSC sequence leaves a zero-width `ESC \` behind rather than being deleted. Deleting it
+  joined the text on either side, and the native treats an escape as a grapheme break, so the join
+  could invent a cluster: a digit, a span, and a bare keycap combiner measured two cells here and
+  one natively. The pattern that adds an OSC 66 span back also reads a sequence the same way the
+  stripper does now, so a span cannot be stripped as one sequence and added back as a longer one.
+
+  Together these close the OSC 66 half of the two-width-oracle divergence. Well-formed spans, and
+  OSC sequences carrying tabs, join the fuzz suite's agreed surface. Malformed spans, meaning an
+  escape in the payload or no terminator, still differ, in the direction that clips a span rather
+  than overflowing a line; `visible-width-osc66-spans.test.ts` pins that as an open disagreement.
 - A hostile image can no longer abort the process through the SIXEL encoder. `calculateImageFit`
   clamps an image to 4096 terminal CELLS, and the SIXEL path multiplies cells by the cell's pixel
   size before handing the product to the native encoder, which resizes to exactly those dimensions
@@ -93,7 +86,6 @@
   gigapixels fails earlier, in the decode, before any resize could shrink it. The ceiling is four
   times a 4K display, so no real image reaches it; past it the image is not drawn and the caller
   falls back to the textual representation, which is what an encode failure already produced.
-
 - `visibleWidth` no longer measures a span wider than the width `truncateToWidth` cut it to, for the
   largest class of disagreement between the two: zero-width marks. `Bun.stringWidth` charges a cell
   for five enclosing marks (U+0488, U+0489, U+A670..U+A672), widens a cluster to two cells for any
@@ -105,7 +97,6 @@
   last column. Twenty-one of the twenty-eight measured divergences are gone; the seven that remain
   are bare escapes and OSC 66 spans, which need the native side changed. Real keycaps stay two cells
   wide, which is what every terminal renders and what a category-wide rule would have broken.
-
 - `visibleWidth` no longer charges cells for escape sequences that draw nothing. `Bun.stringWidth`
   recognises CSI and OSC and nothing else, so a two-byte `ESC m`, a character-set designator like
   `ESC ( B`, and a DCS, SOS, PM or APC string sequence all reached the width tables as text: the
@@ -114,7 +105,6 @@
   oracle that measures it. Eleven of the nineteen escape-class disagreements are closed; the five that
   remain are unterminated introducers such as `ESC [3`, where this side answers zero like a real
   terminal and the native counts the bytes after the `ESC`.
-
 - Shift+Enter matches a `shift+enter` binding again on terminals that send it as a bare line feed.
   Under the Kitty keyboard protocol, plain Enter arrives as CR or as the CSI-u sequence for codepoint
   13, never as a lone 0x0A, so a bare line feed from a Kitty-capable terminal is the iTerm2-style
@@ -125,7 +115,6 @@
   own, while anything matching the `tui.input.newLine` binding saw plain Enter. `keys.ts` now rewrites
   the ambiguous byte to the canonical Shift+Enter sequence and lets the native parser answer it, so
   aliases like `shift+return` and modifier naming keep one owner.
-
 - What a lone line feed means to a component has one name, `isLoneLineFeed`, instead of seven raw byte
   comparisons. Three terminals send this byte for three different keys, so components accommodate it
   deliberately: a multiline editor inserts a newline whichever protocol mode is active, because
@@ -134,7 +123,6 @@
   breaking one of those terminals, but it can stop being four unexplained comparisons in one file, two
   of them meaning newline and two meaning submit. Behaviour is unchanged, and now pinned per component
   and per mode by `test/line-feed-across-components.test.ts`.
-
 - Parsing a keypress no longer crosses into native code twice for the same key. The native parser
   costs a flat ~150ns per call, essentially all of it FFI and string marshalling, which made it about
   3x slower than the TypeScript parser it replaced on the single bytes that dominate ordinary typing,
@@ -151,7 +139,6 @@
   protocol modes, and a mutated `WT_SESSION`. A native build that grew hidden state fails there
   instead of quietly answering with a stale key. Input longer than 24 bytes skips the memo, so a paste
   cannot evict the keys you are typing.
-
 - The two key-parser benches no longer disagree for an unexplained reason, and neither of them was
   wrong. `bench/parse-key.ts` reported the native matcher as slower than the TypeScript one while
   `bench/kitty-sequence.ts` reported it faster, which was blamed on the shared harness timing its
@@ -161,7 +148,6 @@
   set and 387ns per Kitty sequence, scaling with the work. Native wins by about 2.9x on real Kitty
   sequences and loses by about 3x on the single-byte keypresses that dominate ordinary typing. The
   two scripts measure different input mixes, which is the whole difference.
-
 - Shifted keypad operators are covered by a test for the first time, and the keypad fast path says
   why it exists. Both `parseKey` and `matchesKey` consult a keypad decoder ahead of the native
   parser on every keypress. The reason recorded there was bare numpad codepoints coming back as
@@ -170,14 +156,12 @@
   five operator keys, 120 inputs where native reports `shift+/` for a key that produces `/`. Shift
   does not change the character a keypad key produces, so the fast path is right and is now the
   documented reason the pre-check runs at all. Nothing had tested any of those 120 inputs.
-
 - The keypad pre-check no longer runs a six-group regular expression against every keystroke. It
   first rejects anything that cannot be a Kitty CSI-u sequence with three character comparisons,
   which is a necessary condition of the pattern that follows rather than a second answer to the same
   question, so no input changes hands. Worth about 8% of the cost of parsing a non-Kitty keypress
   (229ns to 209ns for `a`, 233 to 209 for `ctrl+c`, 250 to 234 for a legacy arrow, three process
   pairs each); Kitty sequences are unchanged, since those pass straight through.
-
 - The key-parser benchmark runs again. `bench/parse-key.ts` is the measurement that says whether the
   native key parser earns its place, and it had been throwing on its third statement:
   `bench/_jskey.ts`, the frozen pre-native parser it measures against, exported only its type
@@ -190,25 +174,13 @@
   each parser against the contract instead of only against the other one, and it exits non-zero when
   a sample disagrees. `test/key-bench-samples.test.ts` keeps all of it honest without timing
   anything.
-
 - Markdown tables now honour the alignment markers in the delimiter row. A column written `| :---: |`
   centers and `| ---: |` right-aligns; `| :--- |` and a bare `| --- |` stay left, which is the GFM
   default. The parser had always supplied the alignment and the renderer had always ignored it, padding
   every cell on the right, so all four spellings produced identical output. When a centered cell's slack
   is odd the extra column goes on the right.
-
 - Fixed the pinned composer scrolling off screen when reading history back: scroll isolation held the wheel only while the composed frame overflowed the viewport, and a virtualized transcript (the coding agent's) drops committed rows from its frame on every quiet frame, so the gate closed, the wheel went to the terminal, and the whole window scrolled with the prompt in it. Wheel capture now arms while anything sits above the window, including rows already on the new scroll tape.
 - Fixed scroll-back depth being limited to the commit lag (a few rows) rather than the session. The engine records every prepared row it lets scroll off on a bounded scroll tape (`scrollTapeRows`, `setScrollTapeCap`, default 20k rows) and scrolls a snapshot of the tape plus the live frame, so a frozen view reaches the first row of the session and cannot be shifted by a transcript dropping rows underneath it.
-
-### Added
-
-- Added `TUI#onSelectionAttempt`, called when a left press and a release land in different cells outside the pinned footer while the engine holds the mouse. Capturing the mouse is what lets the wheel scroll the transcript, and it also takes plain drag-select away from the terminal, so hosts can now explain a drag that selected nothing instead of leaving it silent.
-
-- Added the scroll position to the right edge of a frozen transcript region: a dim one-column groove with a bright thumb, composited through the same cell-accurate path overlays use. It sits in the region that scrolled, so a host's pinned footer renders byte-identically whether the view is frozen or following.
-
-- Added `rankSettingItems`/`filterSettingItems`: field-weighted ranking for settings search. Label, declared synonyms, config path, group and description are scored separately with the best field winning, so a setting NAMED for your query outranks every setting whose description merely mentions it. A setting's current value and its enum values are no longer searchable (typing `high` used to match everything set to high, and results shifted as values changed), a punctuation-only query returns nothing instead of matching everything, and heading rows are excluded. `SettingItem` gained `group` and `keywords` for this.
-- Added `TUI#onSelectionAttempt`, called when a left press and a release land in different cells outside the pinned footer while the engine holds the mouse. Capturing the mouse is what lets the wheel scroll the transcript, and it also takes plain drag-select away from the terminal, so hosts can now explain a drag that selected nothing instead of leaving it silent.
-- Added the scroll position to the right edge of a frozen transcript region: a dim one-column groove with a bright thumb, composited through the same cell-accurate path overlays use. It sits in the region that scrolled, so a host's pinned footer renders byte-identically whether the view is frozen or following.
 
 ## [16.5.2] - 2026-07-14
 
