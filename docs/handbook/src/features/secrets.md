@@ -216,19 +216,23 @@ That refusal exists because the alternative is worse than an error. An accepted-
 
 ### Encryption, and what it does not do
 
-Vault files are encrypted with AES-256-GCM. Each write uses a fresh 12 byte nonce and the full 16 byte authentication tag. The key is a 32 byte file at `~/.veyyon/vault.key`, mode 0600, created on first use. It never lives inside a project directory.
+Vault files use AES-256-GCM. Each write uses a fresh 12 byte nonce and the full 16 byte authentication tag. The key is a 32 byte file at `~/.veyyon/vault.key`, created on first use. It never lives inside a project directory.
 
-That placement means a project-scoped vault can sit in a directory you commit, back up, or export over a network share, and the file is unusable on its own. The key stays on the machine.
+On POSIX, the key is mode 0600. Its directory must be owned by you and not writable by another user. On Windows, Veyyon applies and verifies a protected owner-only ACL. Existing vault files receive the same platform permission checks before they are read.
 
-Updates use a synchronized mode-0600 temporary file and an atomic rename, so a failed write leaves the previous vault intact. Veyyon refuses symlinks, hard-linked files, directories, devices, and paths whose resolved parent crosses the requested scope. Copying ciphertext to a different scope also fails authentication because the encrypted envelope is bound to its location.
+A project-scoped vault can sit in a directory you commit or export. The ciphertext is unusable without the machine key, but it is not a portable backup. The authenticated location includes the semantic scope, canonical path, and physical scope-directory identity. If you move or recreate that directory, re-add the entries with `/secret add`.
 
-Each vault descriptor is limited to 8 MiB before it is read into memory. A legacy version 1 envelope is refused because it is not bound to its scope and path. Re-add those entries with `/secret add` so they are written in the current authenticated format. Lock recovery validates the recorded owner and only removes the owner it observed, so a delayed stale-lock cleanup cannot delete a newer writer's lock.
+Updates use a synchronized owner-only temporary file. Kernel no-replace and exchange operations publish the synced inode without overwriting a destination that appeared after the last check. Veyyon holds the scope directory open during the transaction, so replacing the lexical parent cannot redirect the read or write.
+
+Veyyon refuses symlinks, hard-linked files, directories, devices, insecure permissions, and paths whose resolved parent crosses the requested scope. It also refuses ciphertext copied to a different scope or physical directory.
+
+The sealed descriptor is limited to 8 MiB before it is read into memory. Writes enforce a separate 6,291,402-byte encoded plaintext limit before serialization, encryption, or Base64 expansion. A legacy version 1 envelope is refused because it is not bound to its scope and path. Re-add those entries with `/secret add` so they use the current authenticated format.
 
 These failures are deliberately loud:
 
 - A vault file present with no readable key stops the session. It is never treated as empty.
-- A vault whose nonce, ciphertext, or authentication tag was modified or truncated is refused.
-- A symlink, non-regular path, insecure permission mode, or scope mismatch is refused with the path and fix.
+- A vault whose nonce, ciphertext, authentication tag, or bound location changed is refused.
+- An unsafe directory, symlink, non-regular path, hard link, or insecure permission is refused with the path and fix.
 
 What this encryption does not protect against is someone who is already running as you. The key is readable by your own account by design. If you need to defend against a compromised account, use a hardware token or an external secret manager.
 
