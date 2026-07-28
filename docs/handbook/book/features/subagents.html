@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-2937738e.js";
+            window.path_to_searchindex_js = "../searchindex-c1ef6dd2.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-2e8c749f.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -201,9 +201,8 @@ work to, and collects a report from. The parent spawns it with the <code>task</c
 subagent has its own context window, so bulk reading and long grinding work stay out
 of the conversation you are having.</p>
 <p>Everything about them is configured in one place: the <strong>Subagents</strong> tab in
-<code>/settings</code>, backed by the <code>subagent.*</code> settings. <code>/agents</code> is the live picture of a
-run in progress: which agents are working right now and what they are saying to each
-other. It does not configure anything.</p>
+<code>/settings</code>, backed by the <code>subagent.*</code> settings. <code>/agents</code> opens the same agent
+table with a live view of what each agent will run.</p>
 <h2 id="what-you-get-out-of-the-box"><a class="header" href="#what-you-get-out-of-the-box">What you get out of the box</a></h2>
 <p>One agent type, the general-purpose worker, and delegation that the prompt asks for:</p>
 <pre><code class="language-yaml">subagent:
@@ -214,7 +213,7 @@ to and your subagents follow it.</p>
 <p>Veyyon also ships five specialists (<code>scout</code>, <code>reviewer</code>, <code>designer</code>, <code>librarian</code>,
 <code>sonic</code>), and they are <strong>disabled</strong> by default. Each agent type you enable adds its
 description to every request you send for the rest of the session, so you pay for the
-ones you use and nothing else. Enable one in the Subagents tab.</p>
+ones you use and nothing else. Enable one in the Subagents tab or with <code>/agents</code>.</p>
 <h2 id="how-hard-to-push"><a class="header" href="#how-hard-to-push">How hard to push</a></h2>
 <p><code>subagent.delegation</code> decides how hard this session is pushed to delegate:</p>
 <div class="table-wrapper">
@@ -236,13 +235,15 @@ tool and every delegation instruction from the prompt, so nothing can be spawned
 in the prompt talks about picking an agent type, and nothing tells the model to send
 research to a <code>scout</code> it cannot spawn.</p>
 <h2 id="choosing-agents"><a class="header" href="#choosing-agents">Choosing agents</a></h2>
-<p><code>subagent.agents</code> holds one row per agent name, and one screen edits it:
-<strong><code>/settings</code> → Subagents → Agents</strong>. It lists every discovered agent with its state,
-the model it resolves to, and the setting that decided. Enter opens one agent to set
-its state, model and effort, or reset it back to defaults.</p>
-<p>To add an agent, write the file: drop a markdown definition in your own or the
-project’s <code>agents/</code> directory, or start from the shipped ones by running
-<code>veyyon agents unpack</code>. A new agent is offered as soon as the file exists.</p>
+<p><code>subagent.agents</code> holds one row per agent name. Two places edit it, and both show
+the same thing:</p>
+<ul>
+<li><strong><code>/settings</code> → Subagents → Agents.</strong> Every discovered agent, with its state, the
+model it resolves to, and the setting that decided. Enter opens one agent to set
+its state, model and effort, or reset it back to defaults.</li>
+<li><strong><code>/agents</code>.</strong> The same rows next to the agent files themselves, so this is where
+you write a new agent. <code>space</code> toggles a row on or off.</li>
+</ul>
 <p>A row has two states:</p>
 <div class="table-wrapper">
 <table>
