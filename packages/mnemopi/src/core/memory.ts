@@ -203,6 +203,7 @@ function resolveRuntimeOptions(options: MnemopiOptions): ResolvedMnemopiRuntimeO
 	const embeddingApiKey = options.embeddingApiKey ?? nestedEmbeddings?.apiKey;
 	const embeddingProvider = resolveEmbeddingProvider(nestedEmbeddings?.provider);
 	const embeddingMaxInputChars = nestedEmbeddings?.maxInputChars;
+	const embeddingSanitizeProviderText = nestedEmbeddings?.sanitizeProviderText;
 
 	const embeddings =
 		embeddingDisabled !== undefined ||
@@ -210,7 +211,8 @@ function resolveRuntimeOptions(options: MnemopiOptions): ResolvedMnemopiRuntimeO
 		embeddingApiUrl !== undefined ||
 		embeddingApiKey !== undefined ||
 		embeddingProvider !== undefined ||
-		embeddingMaxInputChars !== undefined
+		embeddingMaxInputChars !== undefined ||
+		embeddingSanitizeProviderText !== undefined
 			? {
 					disabled: embeddingDisabled,
 					model: embeddingModel,
@@ -218,6 +220,7 @@ function resolveRuntimeOptions(options: MnemopiOptions): ResolvedMnemopiRuntimeO
 					apiKey: embeddingApiKey,
 					provider: embeddingProvider,
 					maxInputChars: embeddingMaxInputChars,
+					sanitizeProviderText: embeddingSanitizeProviderText,
 				}
 			: undefined;
 
@@ -250,6 +253,7 @@ function resolveRuntimeOptions(options: MnemopiOptions): ResolvedMnemopiRuntimeO
 		const llmComplete = nestedLlm?.complete;
 		const llmExtractionPrompt = nestedLlm?.extractionPrompt;
 		const llmConsolidationPrompt = nestedLlm?.consolidationPrompt;
+		const llmSanitizeProviderText = nestedLlm?.sanitizeProviderText;
 		if (
 			llmEnabled !== undefined ||
 			llmBaseUrl !== undefined ||
@@ -258,7 +262,8 @@ function resolveRuntimeOptions(options: MnemopiOptions): ResolvedMnemopiRuntimeO
 			llmMaxTokens !== undefined ||
 			llmComplete !== undefined ||
 			llmExtractionPrompt !== undefined ||
-			llmConsolidationPrompt !== undefined
+			llmConsolidationPrompt !== undefined ||
+			llmSanitizeProviderText !== undefined
 		) {
 			llm = {
 				enabled: llmEnabled,
@@ -269,6 +274,7 @@ function resolveRuntimeOptions(options: MnemopiOptions): ResolvedMnemopiRuntimeO
 				complete: llmComplete,
 				extractionPrompt: llmExtractionPrompt,
 				consolidationPrompt: llmConsolidationPrompt,
+				sanitizeProviderText: llmSanitizeProviderText,
 			};
 		}
 	}

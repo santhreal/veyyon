@@ -11,7 +11,7 @@ export type MnemopiScoping = "global" | "per-project" | "per-project-tagged";
 
 export type MnemopiProviderOptions = Pick<
 	MnemopiOptions,
-	"noEmbeddings" | "embeddingModel" | "embeddingApiUrl" | "embeddingApiKey" | "llm" | "debug"
+	"noEmbeddings" | "embeddingModel" | "embeddingApiUrl" | "embeddingApiKey" | "embeddings" | "llm" | "debug"
 >;
 
 export interface MnemopiBackendConfig {

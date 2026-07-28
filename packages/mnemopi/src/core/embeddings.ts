@@ -20,7 +20,7 @@ import {
 } from "@veyyon/utils";
 import type { EmbeddingModel } from "fastembed";
 import { LRUCache } from "lru-cache/raw";
-import { DEFAULT_EMBEDDING_MODEL, EMBEDDING_DIMS, FALLBACK_EMBEDDING_DIM } from "../config";
+import { embeddingModel } from "../config";
 import type { DenseVector as Vector } from "../types";
 import { ensureFastembedModelSidecars, FASTEMBED_ID_BY_HF_REPO } from "./fastembed-model-cache";
 import { loadFastembed } from "./fastembed-runtime";
@@ -94,6 +94,16 @@ async function defaultLocalModelInitializer(options: LocalModelInitOptions): Pro
 
 function activeEmbeddingOptions() {
 	return getMnemopiRuntimeOptions()?.embeddings;
+}
+
+function sanitizeEmbeddingProviderText(text: string): string {
+	const sanitize = activeEmbeddingOptions()?.sanitizeProviderText;
+	if (sanitize === undefined) return text;
+	try {
+		return sanitize(text);
+	} catch {
+		throw new Error("Mnemopi provider text sanitization failed.");
+	}
 }
 
 /**
@@ -227,15 +237,17 @@ function embeddingBaseUrl(): string {
 	return $env.MNEMOPI_EMBEDDING_API_URL || $env.OPENROUTER_BASE_URL || OPENROUTER_API_ENDPOINT;
 }
 
+/**
+ * The model to embed with, from the one resolver in `../config`.
+ *
+ * This used to be its own scope-then-env lookup, byte-for-byte the order
+ * `config.embeddingModel()` now uses, and that was the divergence: `config` read
+ * the environment ALONE, so a runtime scope naming a different model moved the
+ * embedder and left the vector packer on the environment's model. Delegating means
+ * there is one place the precedence is written and the packer cannot fall behind.
+ */
 function defaultModel(): string {
-	const active = activeEmbeddingOptions();
-	if (active?.model !== undefined) {
-		return active.model;
-	}
-	// `DEFAULT_EMBEDDING_MODEL`, not the literal spelled a second time. The bare string
-	// used to be written here, so the default model had two homes and the one that
-	// `config.embeddingModel()` reads was not this one.
-	return $env.MNEMOPI_EMBEDDING_MODEL || DEFAULT_EMBEDDING_MODEL;
+	return embeddingModel();
 }
 
 /**
@@ -269,28 +281,15 @@ export function isApiModel(modelName: string): boolean {
 /**
  * The dimension a named embedding model produces.
  *
- * The table lives in `../config` as `EMBEDDING_DIMS` and is imported rather than
- * repeated. This file carried a byte-identical seventeen-entry copy called
- * `MODEL_DIMS`, which is the kind of duplicate that costs nothing until the day
- * someone adds a model to one of them: the vector store would then pack a width
- * that the embedder does not produce, and nothing would report it.
- *
- * KNOWN DIVERGENCE, DELIBERATELY NOT CHANGED HERE. This resolves the dimension for
- * whatever model name you hand it, and `EMBEDDING_DIM` below passes `DEFAULT_MODEL`,
- * which consults the active `withMnemopiRuntimeOptions` scope. `config.embeddingDim()`
- * answers the same question from `MNEMOPI_EMBEDDING_MODEL` alone and never sees that
- * scope, and `binary-vectors.ts` sizes its packed vectors from that one. A scope whose
- * model has a different dimension would therefore have the two disagree. No caller
- * sets a scope model today, so this is latent rather than live; see
- * `EMBED-DIM-TWO-RESOLVERS` in BACKLOG.md.
+ * Re-exported from `../config`, not implemented here. There were three copies of
+ * this idea at once: a byte-identical seventeen-entry `MODEL_DIMS` table (deleted),
+ * then two functions that shared the table and still disagreed, because this one
+ * read `MNEMOPI_EMBEDDING_DIM` off `$env` while `config.embeddingDim` read it off
+ * the `env` argument it was given, and the model NAME each resolved was different
+ * again. One owner now, in `../config`, so the width the embedder expects and the
+ * width `binary-vectors.ts` packs cannot come apart.
  */
-export function embeddingDimFor(modelName: string): number {
-	const override = Number.parseInt($env.MNEMOPI_EMBEDDING_DIM ?? "", 10);
-	if (Number.isFinite(override)) {
-		return override;
-	}
-	return EMBEDDING_DIMS[modelName] ?? FALLBACK_EMBEDDING_DIM;
-}
+export { embeddingDimFor } from "../config";
 
 /** Drain an embedding stream (a custom provider or fastembed) into a `Float32Array` matrix. */
 async function collectMatrix(batches: EmbeddingOutput): Promise<EmbeddingMatrix> {
@@ -359,7 +358,6 @@ async function embedApi(texts: readonly string[]): Promise<EmbeddingMatrix | nul
 		return null;
 	}
 
-	const body = JSON.stringify({ model: defaultModel(), input: texts });
 	try {
 		// withAuth re-resolves the key on 401 (force-refresh, then sibling
 		// rotation) when `apiKey` is a resolver. The 429 backoff stays inside
@@ -380,10 +378,21 @@ async function embedApi(texts: readonly string[]): Promise<EmbeddingMatrix | nul
 				const res = await fetchWithRetry(`${trimTrailingSlashes(baseUrl)}/embeddings`, {
 					method: "POST",
 					headers,
-					body,
 					signal,
 					maxAttempts: 3,
 					defaultDelayMs: attempt => 2 ** attempt * 1000,
+					// This runs after every backoff and on every auth attempt. Re-read
+					// the live transform and build a fresh body at the last send seam.
+					prepareInit: () => {
+						const sanitize = activeEmbeddingOptions()?.sanitizeProviderText;
+						const providerTexts = sanitize === undefined ? texts : texts.map(sanitizeEmbeddingProviderText);
+						return {
+							body: JSON.stringify({
+								model: defaultModel(),
+								input: capInputs(providerTexts),
+							}),
+						};
+					},
 				});
 				if (res.status === 401) {
 					throw new ProviderHttpError("mnemopi embedding request unauthorized (401)", 401, {
@@ -533,9 +542,9 @@ export async function embed(texts: readonly string[]): Promise<EmbeddingMatrix |
 	if (texts.length === 0 || embeddingsDisabled()) {
 		return null;
 	}
-	texts = capInputs(texts);
 	const activeProvider = resolveEmbeddingProvider(activeEmbeddingOptions()?.provider);
 	if (activeProvider !== undefined) {
+		texts = capInputs(texts);
 		try {
 			return await collectMatrix(await activeProvider.embed(texts));
 		} catch (error) {
@@ -547,6 +556,7 @@ export async function embed(texts: readonly string[]): Promise<EmbeddingMatrix |
 		}
 	}
 	if (providerOverride !== null) {
+		texts = capInputs(texts);
 		try {
 			return await collectMatrix(await providerOverride.embed(texts));
 		} catch (error) {
@@ -557,8 +567,15 @@ export async function embed(texts: readonly string[]): Promise<EmbeddingMatrix |
 		}
 	}
 	if (isApiModel(defaultModel())) {
-		return embedApi(texts);
+		// Exact-secret replacement must see each raw query/transcript before the
+		// head/tail cap can split it into fragments that no longer match. Keep
+		// this pre-cap projection raw-sized so a sanitizer added by a later key
+		// refresh can run against complete bytes inside embedApi as well.
+		const sanitize = activeEmbeddingOptions()?.sanitizeProviderText;
+		const providerTexts = sanitize === undefined ? texts : texts.map(sanitizeEmbeddingProviderText);
+		return embedApi(providerTexts);
 	}
+	texts = capInputs(texts);
 	if (texts.length === 1) {
 		const key = queryCacheKey(texts[0] ?? "");
 		const cached = queryCache.get(key);
@@ -592,5 +609,9 @@ export function getEmbeddingApiCallCountForTests(): number {
 	return apiCallCount;
 }
 
-export const DEFAULT_MODEL = defaultModel();
-export const EMBEDDING_DIM = embeddingDimFor(DEFAULT_MODEL);
+// `DEFAULT_MODEL` and `EMBEDDING_DIM` used to be exported from here, evaluated once
+// at module load. Nothing imported either of them, and both were a trap: a scope
+// activated after this file was first imported could not move them, so the two
+// values that named the current model and its width were frozen to whatever the
+// process happened to look like at import time. Ask `embeddingModel()` and
+// `embeddingDim()` in `../config` instead, which answer at the moment of the call.
