@@ -40,12 +40,12 @@ import { TranscriptBlock } from "../../modes/components/transcript-container";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { getSymbolTheme, theme } from "../../modes/theme/theme";
 import type { InteractiveModeContext } from "../../modes/types";
-import { computeContextBreakdown, renderContextUsage } from "../../modes/utils/context-usage";
 import { buildHotkeysMarkdown } from "../../modes/utils/hotkeys-markdown";
 import { buildToolsMarkdown } from "../../modes/utils/tools-markdown";
 import type { AsyncJobSnapshotItem } from "../../session/agent-session";
 import type { AuthStorage, OAuthAccountIdentity } from "../../session/auth-storage";
 import type { CompactMode } from "../../session/compact-modes";
+import { computeContextBreakdown } from "../../session/context-usage";
 import type { NewSessionOptions } from "../../session/session-entries";
 import { formatShakeSummary, type ShakeMode, type ShakeResult } from "../../session/shake-types";
 import { limitMatchesActiveAccount } from "../../slash-commands/helpers/active-oauth-account";
@@ -56,6 +56,7 @@ import { replaceTabs, truncateToWidth } from "../../tools/render-utils";
 import { copyToClipboard } from "../../utils/clipboard";
 import { openPath } from "../../utils/open";
 import { setSessionTerminalTitle } from "../../utils/title-generator";
+import { renderContextUsage } from "../utils/context-usage";
 
 /**
  * The slice of the interactive context this controller uses: 33 members of the
@@ -253,7 +254,7 @@ export class CommandController {
 				serverUrl: this.ctx.settings.get("share.serverUrl"),
 				store: this.ctx.settings.get("share.store"),
 				state: this.ctx.session.state,
-				obfuscator: this.ctx.settings.get("share.redactSecrets") ? this.ctx.session.obfuscator : undefined,
+				obfuscator: this.ctx.settings.get("share.redactSecrets") ? this.ctx.session.providerRedactor : undefined,
 			});
 			if (loader.signal.aborted) return;
 			restoreEditor();

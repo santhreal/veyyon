@@ -8,6 +8,7 @@ import {
 	visibleWidth,
 } from "@veyyon/tui";
 import { clampLow, errorMessage } from "@veyyon/utils";
+import { withIcon } from "../../theme/icon-label";
 import {
 	enableAutoTheme,
 	getAvailableThemes,
@@ -24,14 +25,27 @@ import type { SetupScene, SetupSceneController, SetupSceneHost } from "./types";
 
 type ThemeMode = "curated" | "all";
 
-const CURATED_ITEMS: readonly SelectItem[] = [
+/**
+ * The rows that pick a theme. Choosing one ends the scene.
+ *
+ * The two modifiers, colorblind colours and ASCII glyphs, are NOT here. They
+ * used to sit in this list as if they were alternatives to a theme, and
+ * selecting one finished the scene without a theme ever being chosen: picking
+ * "Colorblind colors" wrote `colorBlindMode: true` and left `theme.dark` at
+ * whatever it already was, and "ANSI-safe" forced `dark-terminal` on you. A
+ * user who wanted colourblind-safe LIGHT had no way to say so. They compose
+ * with a theme, so they are toggles.
+ */
+const THEME_ITEMS: readonly SelectItem[] = [
 	{ value: "auto", label: "Match terminal", description: "Titanium in dark terminals, Light in light terminals" },
 	{ value: "theme:titanium", label: "Titanium", description: "Default dark theme" },
 	{ value: "theme:light", label: "Light", description: "Default light theme" },
-	{ value: "colorblind", label: "Colorblind colors", description: "Adjust red/green contrast" },
-	{ value: "ansi", label: "ANSI-safe", description: "ASCII glyphs with the dark terminal theme" },
 	{ value: "browse", label: "Browse all…", description: "Show every built-in and custom theme" },
 ];
+
+/** The `value` of each toggle row, so the select handler can recognise them. */
+const COLORBLIND_TOGGLE = "toggle:colorblind";
+const ASCII_TOGGLE = "toggle:ascii";
 
 function fitLine(line: string, width: number): string {
 	const truncated = truncateToWidth(line, width);
@@ -45,13 +59,13 @@ function fillStyledLine(content: string, width: number): string {
 function renderMockStatusLine(width: number): string {
 	const sep = theme.fg("statusLineSep", ` ${theme.sep.pipe} `);
 	const left = [
-		theme.fg("statusLineModel", `${theme.icon.model} sonnet`),
+		theme.fg("statusLineModel", withIcon(theme.icon.model, "sonnet")),
 		theme.fg("statusLinePath", "~/project"),
-		theme.fg("statusLineGitDirty", `${theme.icon.git} main +2`),
+		theme.fg("statusLineGitDirty", withIcon(theme.icon.git, "main +2")),
 	].join(sep);
 	const right = [
-		theme.fg("statusLineContext", `${theme.icon.context} 42%`),
-		theme.fg("statusLineCost", `${theme.icon.cost} 0.18`),
+		theme.fg("statusLineContext", withIcon(theme.icon.context, "42%")),
+		theme.fg("statusLineCost", withIcon(theme.icon.cost, "0.18")),
 	].join(sep);
 	const innerWidth = Math.max(1, width - 2);
 	const leftWidth = visibleWidth(left);
@@ -94,6 +108,9 @@ class ThemeSceneController implements SetupSceneController {
 	subtitle = "Themes preview live as you move; nothing saves until you confirm.";
 	#mode: ThemeMode = "curated";
 	#selectList: SelectList;
+	/** Live modifier state, applied to the preview and written on commit. */
+	#colorBlindMode: boolean;
+	#symbolPreset: SymbolPreset;
 	#loadingAllThemes = false;
 	#message: string | undefined;
 	#previewRequest = 0;
@@ -107,7 +124,37 @@ class ThemeSceneController implements SetupSceneController {
 	constructor(private readonly host: SetupSceneHost) {
 		this.#originalSymbolPreset = host.ctx.settings.get("symbolPreset");
 		this.#originalColorBlindMode = host.ctx.settings.get("colorBlindMode");
-		this.#selectList = this.#createSelectList(CURATED_ITEMS, this.#currentCuratedIndex());
+		this.#symbolPreset = this.#originalSymbolPreset;
+		this.#colorBlindMode = this.#originalColorBlindMode;
+		this.#selectList = this.#createSelectList(this.#curatedItems(), this.#currentCuratedIndex());
+	}
+
+	/**
+	 * The curated rows: the themes, then the two modifiers with their state in
+	 * the label. A toggle reads as a toggle because it says what it currently is,
+	 * which is also what tells you that selecting it will not end the scene.
+	 */
+	#curatedItems(): readonly SelectItem[] {
+		const mark = (on: boolean) => (on ? theme.checkbox.checked : theme.checkbox.unchecked);
+		return [
+			...THEME_ITEMS,
+			// The descriptions are kept short on purpose. `SelectList` cuts a
+			// description that does not fit its column with no ellipsis, so a long
+			// one comes out ending mid-word; at 100 columns the pair that spelled
+			// out "Applies to whichever theme you pick." on both rows lost its last
+			// word on the second. The composing behaviour is said once, on the row
+			// where it is least obvious.
+			{
+				value: COLORBLIND_TOGGLE,
+				label: `${mark(this.#colorBlindMode)} Colorblind colors`,
+				description: "Red/green contrast, on any theme",
+			},
+			{
+				value: ASCII_TOGGLE,
+				label: `${mark(this.#symbolPreset === "ascii")} ASCII glyphs`,
+				description: "Plain ASCII box drawing and icons",
+			},
+		];
 	}
 
 	dispose(): void {
@@ -168,7 +215,7 @@ class ThemeSceneController implements SetupSceneController {
 		list.onCancel = () => {
 			if (this.#mode === "all") {
 				this.#mode = "curated";
-				this.#selectList = this.#createSelectList(CURATED_ITEMS, this.#currentCuratedIndex());
+				this.#selectList = this.#createSelectList(this.#curatedItems(), this.#currentCuratedIndex());
 				this.host.requestRender();
 				return;
 			}
@@ -178,22 +225,85 @@ class ThemeSceneController implements SetupSceneController {
 		return list;
 	}
 
+	/** The row for the theme already in force, found by value rather than index. */
 	#currentCuratedIndex(): number {
 		const current = getCurrentThemeName();
-		if (current === "titanium") return 1;
-		if (current === "light") return 2;
-		return 0;
+		const value = current === undefined ? "auto" : `theme:${current}`;
+		const index = THEME_ITEMS.findIndex(item => item.value === value);
+		return index >= 0 ? index : 0;
 	}
 
 	#previewByIndex(index: number): void {
-		const items = this.#mode === "curated" ? CURATED_ITEMS : undefined;
+		const items = this.#mode === "curated" ? this.#curatedItems() : undefined;
 		const value = items?.[index]?.value;
 		if (value) void this.#preview(value);
+	}
+
+	/**
+	 * Flip a modifier and stay in the scene.
+	 *
+	 * The preview repaints with the new combination and the row's label follows
+	 * it, so the toggle is legible without a legend. The cursor is put back where
+	 * it was: a list that jumps to the top under you is a list you cannot toggle
+	 * twice.
+	 */
+	async #toggle(value: string): Promise<void> {
+		if (value === COLORBLIND_TOGGLE) this.#colorBlindMode = !this.#colorBlindMode;
+		if (value === ASCII_TOGGLE) this.#symbolPreset = this.#symbolPreset === "ascii" ? "unicode" : "ascii";
+
+		// Rebuild BEFORE applying the preview. The scene's own fields are the
+		// truth about what the toggles say, and repainting after an await meant a
+		// preview that failed to load left the row disagreeing with the state
+		// while the rejection went nowhere: `onSelect` returns void, so nothing
+		// was ever going to report it.
+		this.#rebuildCurated(this.#curatedIndexOf(value));
+		this.#message = undefined;
+		this.host.requestRender();
+
+		try {
+			await this.#applyPreviewPresentation(this.#symbolPreset, this.#colorBlindMode);
+		} catch (error) {
+			this.#message = theme.fg("error", `Could not preview that: ${errorMessage(error)}`);
+		}
+		// And rebuild AGAIN, because the marks are drawn with `theme.checkbox`,
+		// which the ASCII toggle has just changed. Building them once left the two
+		// rows drawing unicode boxes while everything else on screen, the preview
+		// included, had switched to `[x]`, so the glyph the row used to report the
+		// setting was the one glyph the setting did not apply to.
+		this.#rebuildCurated(this.#curatedIndexOf(this.#selectList.getSelectedItem()?.value));
+		this.host.ctx.ui.invalidate();
+		this.host.requestRender();
+	}
+
+	/** Rebuild the curated rows from current state, keeping the cursor where it is. */
+	#rebuildCurated(selectedIndex: number): void {
+		this.#selectList = this.#createSelectList(this.#curatedItems(), selectedIndex);
+	}
+
+	/**
+	 * The curated row carrying `value`, or the first row when there is none.
+	 *
+	 * By value rather than by index: the labels carry the toggle marks, so a
+	 * rebuild replaces every row object, and the index is the only thing that
+	 * survives it. The cursor is read back off the live list rather than assumed,
+	 * because the rebuild after a preview happens on the far side of an await and
+	 * the arrow keys keep working across it.
+	 */
+	#curatedIndexOf(value: string | undefined): number {
+		if (value === undefined) return 0;
+		return Math.max(
+			0,
+			this.#curatedItems().findIndex(item => item.value === value),
+		);
 	}
 
 	async #select(value: string): Promise<void> {
 		if (value === "browse") {
 			await this.#showAllThemes();
+			return;
+		}
+		if (value === COLORBLIND_TOGGLE || value === ASCII_TOGGLE) {
+			await this.#toggle(value);
 			return;
 		}
 		await this.#commit(value);
@@ -225,29 +335,27 @@ class ThemeSceneController implements SetupSceneController {
 		}
 	}
 
+	/**
+	 * Write the chosen theme AND whatever the modifiers are set to.
+	 *
+	 * The modifiers are written on every commit, not only when they changed, so
+	 * the config says what the wizard showed. Restoring `#originalColorBlindMode`
+	 * here, which is what the theme rows used to do, silently discarded a toggle
+	 * the user had just flipped.
+	 */
 	async #commit(value: string): Promise<void> {
+		this.host.ctx.settings.set("colorBlindMode", this.#colorBlindMode);
+		this.host.ctx.settings.set("symbolPreset", this.#symbolPreset);
+		await this.#applyPreviewPresentation(this.#symbolPreset, this.#colorBlindMode);
+
 		if (value === "auto") {
 			this.host.ctx.settings.set("theme.dark", "titanium");
 			this.host.ctx.settings.set("theme.light", "light");
-			await this.#applyPreviewPresentation(this.#originalSymbolPreset, this.#originalColorBlindMode);
-			enableAutoTheme();
-			return;
-		}
-		if (value === "colorblind") {
-			this.host.ctx.settings.set("colorBlindMode", true);
-			await this.#applyPreviewPresentation(this.#originalSymbolPreset, true);
-			return;
-		}
-		if (value === "ansi") {
-			this.host.ctx.settings.set("symbolPreset", "ascii");
-			this.host.ctx.settings.set("theme.dark", "dark-terminal");
-			await this.#applyPreviewPresentation("ascii", this.#originalColorBlindMode);
 			enableAutoTheme();
 			return;
 		}
 		const themeName = this.#themeNameFromValue(value);
 		if (!themeName) return;
-		await this.#applyPreviewPresentation(this.#originalSymbolPreset, this.#originalColorBlindMode);
 		if (isLightTheme(themeName)) {
 			this.host.ctx.settings.set("theme.light", themeName);
 		} else {
@@ -264,19 +372,23 @@ class ThemeSceneController implements SetupSceneController {
 			return;
 		}
 
+		// Moving onto a toggle previews the combination as it STANDS. The row says
+		// what the modifier is; flipping it is what selecting it does, and a hover
+		// that already flipped it would leave the label disagreeing with the paint.
+		if (value === COLORBLIND_TOGGLE || value === ASCII_TOGGLE) {
+			this.host.ctx.ui.invalidate();
+			this.host.requestRender();
+			return;
+		}
+
 		let result: { success: boolean; error?: string } = { success: true };
 		if (value === "auto") {
-			await this.#applyPreviewPresentation(this.#originalSymbolPreset, this.#originalColorBlindMode);
+			await this.#applyPreviewPresentation(this.#symbolPreset, this.#colorBlindMode);
 			enableAutoTheme({ ephemeral: true });
-		} else if (value === "colorblind") {
-			await this.#applyPreviewPresentation(this.#originalSymbolPreset, true);
-		} else if (value === "ansi") {
-			await this.#applyPreviewPresentation("ascii", this.#originalColorBlindMode);
-			result = await previewTheme("dark-terminal");
 		} else {
 			const themeName = this.#themeNameFromValue(value);
 			if (themeName) {
-				await this.#applyPreviewPresentation(this.#originalSymbolPreset, this.#originalColorBlindMode);
+				await this.#applyPreviewPresentation(this.#symbolPreset, this.#colorBlindMode);
 				result = await previewTheme(themeName);
 			}
 		}

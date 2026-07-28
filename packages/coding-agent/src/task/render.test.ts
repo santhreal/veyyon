@@ -1,15 +1,12 @@
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
+import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { Settings } from "../config/settings";
 import { getThemeByName, setThemeInstance, type Theme } from "../modes/theme/theme";
 import { renderResult } from "./render";
 import { taskToolRenderer } from "./renderer";
 import type { AgentProgress, SingleResult, TaskToolDetails } from "./types";
 
-const strip = (lines: readonly string[]): string =>
-	lines
-		.join("\n")
-		.replace(/\x1b\]8;[^\x1b\x07]*(?:\x07|\x1b\\)/g, "")
-		.replace(/\x1b\[[0-9;]*m/g, "");
+const strip = (lines: readonly string[]): string => stripAnsi(lines.join("\n"));
 
 const originalRowsDescriptor = Object.getOwnPropertyDescriptor(process.stdout, "rows");
 

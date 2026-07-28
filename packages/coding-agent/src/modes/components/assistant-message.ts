@@ -1,6 +1,7 @@
 import type { AssistantMessage, ImageContent } from "@veyyon/ai";
 import { Container, Image, type ImageBudget, ImageProtocol, Markdown, Spacer, TERMINAL, Text } from "@veyyon/tui";
 import { formatNumber } from "@veyyon/utils";
+import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import chalk from "chalk";
 import type { AssistantThinkingRenderer } from "../../extensibility/extensions/types";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
@@ -331,7 +332,7 @@ export class AssistantMessageComponent extends Container {
 			const phase = shimmerPhase(performance.now());
 			for (let i = rows.length - 1; i >= 0; i--) {
 				const row = rows[i]!;
-				if (row.replace(/\x1b\[[0-9;]*m/g, "").trim().length > 0) {
+				if (stripAnsi(row).trim().length > 0) {
 					const painted = [...rows];
 					painted[i] = paintHotTail(row, theme, TERMINAL.trueColor, "thinkingText", phase);
 					return painted;

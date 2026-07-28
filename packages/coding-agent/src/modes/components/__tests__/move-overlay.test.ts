@@ -4,12 +4,13 @@ import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { visibleWidth } from "@veyyon/tui";
+import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { Settings } from "../../../config/settings";
 import { getThemeByName, setThemeInstance, type Theme } from "../../theme/theme";
 import { MoveOverlay, type MoveOverlayResult, resolveExistingDirectory, resolveMovePath } from "../move-overlay";
 
 // Strip SGR colors so assertions see visible text only.
-const stripAnsi = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, "");
+
 const strip = (lines: readonly string[]): string => lines.map(stripAnsi).join("\n");
 
 describe("resolveMovePath", () => {

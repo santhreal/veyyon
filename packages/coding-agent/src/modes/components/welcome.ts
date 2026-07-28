@@ -20,6 +20,7 @@ import { theme } from "../../modes/theme/theme";
 // welcome card stays the one place a reader looks for anything about welcome tips.
 export { clearLaunchTip, setLaunchTip, updateInstalledTip } from "./launch-tip";
 
+import { SGR_RESET } from "@veyyon/tui/ansi";
 import { takeLaunchTip } from "./launch-tip";
 import { sunMark } from "./sun";
 import tipsText from "./tips.txt" with { type: "text" };
@@ -552,7 +553,7 @@ export function gradientEscape(_t: number, shine?: ShineConfig): string {
 
 /** Paint multi-line art in Veyyon silver with an optional left→right reveal. */
 export function gradientLogo(lines: readonly string[], phase = 0, shine?: ShineConfig): string[] {
-	const reset = "\x1b[0m";
+	const reset = SGR_RESET;
 	const cols = Math.max(1, ...lines.map(l => l.length));
 	const frontier = shine ? clamp01(shine.pos) : 1;
 	const edgeStrength = shine?.strength ?? 0;

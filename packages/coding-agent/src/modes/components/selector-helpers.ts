@@ -5,24 +5,47 @@
  * padding. Behaviour is identical to the per-component copies these helpers
  * replace.
  */
-import { clampLow, extractPrintableText, matchesKey, ScrollView } from "@veyyon/tui";
+import { clampLow, Ellipsis, extractPrintableText, matchesKey, ScrollView, truncateToWidth } from "@veyyon/tui";
+import type { ThemeBg } from "../theme/theme";
 import { theme } from "../theme/theme";
 
 /**
- * Render `rows` through a {@link ScrollView} with the shared list theme (muted
- * track / accent thumb) and an "auto" scrollbar, positioned at `scrollOffset`.
- * Returns the rendered lines for the caller to append to its output.
+ * Paint `line` as a selection or hover band that fills the whole row.
+ *
+ * A band is a property of the ROW, not of the text in it. Tinting the text
+ * alone leaves the highlight ending wherever that row's content happened to
+ * stop, so the band changes shape as the cursor moves and reads as a rendering
+ * fault. The row is padded to `rowWidth` first and only then tinted, which also
+ * keeps the closing escape inside the width the list will render at.
+ */
+export function selectionBand(line: string, rowWidth: number, background: ThemeBg = "selectedBg"): string {
+	return theme.bg(background, truncateToWidth(line, rowWidth, Ellipsis.Omit, true));
+}
+
+/**
+ * Render a windowed list through a {@link ScrollView} with the shared list theme
+ * (muted track / accent thumb) and an "auto" scrollbar, positioned at
+ * `scrollOffset`. Returns the rendered lines for the caller to append.
+ *
+ * `buildRows` is handed the width its rows may actually occupy and must return
+ * exactly `visibleRows` of them. It is a callback rather than a finished array
+ * because that width is the ScrollView's own rule: the bar takes two columns,
+ * a gutter and the glyph, and a caller that computed the reserve itself was
+ * wrong by one. Rows built one column too wide are truncated on the way out,
+ * and a truncation that lands inside a background fill drops the escape that
+ * CLOSES it, so a selected row bleeds its colour across the scrollbar.
  */
 export function renderScrollableList(
-	rows: readonly string[],
-	options: { width: number; totalRows: number; scrollOffset: number },
+	options: { width: number; visibleRows: number; totalRows: number; scrollOffset: number },
+	buildRows: (rowWidth: number) => readonly string[],
 ): readonly string[] {
-	const sv = new ScrollView(rows, {
-		height: rows.length,
+	const sv = new ScrollView([], {
+		height: options.visibleRows,
 		scrollbar: "auto",
 		totalRows: options.totalRows,
 		theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
 	});
+	sv.setLines(buildRows(sv.contentWidth(options.width)));
 	sv.setScrollOffset(options.scrollOffset);
 	return sv.render(options.width);
 }
@@ -40,15 +63,6 @@ export function centeredWindow(
 	const startIndex = clampLow(selectedIndex - Math.floor(maxVisible / 2), 0, total - maxVisible);
 	const endIndex = Math.min(startIndex + maxVisible, total);
 	return { startIndex, endIndex };
-}
-
-/**
- * Width available for row content, reserving the rightmost column for the
- * scrollbar when the list overflows its visible window.
- */
-export function contentRowWidth(width: number, total: number, maxVisible: number): number {
-	const overflow = total > maxVisible;
-	return Math.max(0, width - (overflow ? 1 : 0));
 }
 
 /**

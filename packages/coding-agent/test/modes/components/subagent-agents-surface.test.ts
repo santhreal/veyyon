@@ -2,49 +2,22 @@
  * The Agents table — the surface that answers "which agent types does this
  * session offer, and what does each one run".
  *
- * Two surfaces render it: the `Agents` row in the Subagents settings tab and
- * `/agents`. Both must reach it, and both must say the same words about the same
- * row, because the bug this whole area exists to fix was exactly two surfaces
- * disagreeing about which setting decided a subagent's model.
+ * ONE surface renders it: the `Agents` row in the Subagents settings tab. It
+ * used to be two — `/agents` carried a copy — and the bug this whole area exists
+ * to fix was exactly two surfaces disagreeing about which setting decided a
+ * subagent's model. The Control Center is now the live picture only, so the
+ * table has a single home and cannot drift from itself.
  */
 
-import { afterEach, describe, expect, it, test } from "bun:test";
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
-import * as path from "node:path";
-import type { Settings } from "@veyyon/coding-agent/config/settings";
-import { DEFAULT_ENABLED_BUNDLED_AGENT } from "@veyyon/coding-agent/config/settings-domains/subagents";
+import { describe, expect, it } from "bun:test";
 import { SETTING_TABS, TAB_GROUPS } from "@veyyon/coding-agent/config/settings-schema";
-import { AgentDashboard } from "@veyyon/coding-agent/modes/components/agent-dashboard";
 import { getSettingsForTab, invalidateSettingDefsCache } from "@veyyon/coding-agent/modes/components/settings-defs";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import {
 	nextSubagentEnableValue,
 	SUBAGENT_ENABLE_STATE_LABEL,
 	type SubagentEnableState,
 } from "@veyyon/coding-agent/task/subagent-settings";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
-import { removeWithRetries } from "@veyyon/utils";
-
-const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
-const tempDirs: string[] = [];
-
-/** Settings that answer "nothing configured", i.e. a stock install. */
-const defaultSettings = {
-	get: (_key: string) => undefined,
-	set: (_key: string, _value: unknown) => {},
-	getModelRole: (_role: string) => undefined,
-} as unknown as Settings;
-
-async function makeTempCwd(): Promise<string> {
-	const dir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-subagent-surface-"));
-	tempDirs.push(dir);
-	return dir;
-}
-
-afterEach(async () => {
-	await Promise.all(tempDirs.splice(0).map(dir => removeWithRetries(dir)));
-});
 
 describe("subagent.agents settings surface", () => {
 	/**
@@ -138,36 +111,5 @@ describe("subagent enable-state wording", () => {
 		expect(first).toBe(true);
 		expect(second).toBe(false);
 		expect(third).toBe(true);
-	});
-});
-
-describe("/agents rows use the shared wording", () => {
-	/**
-	 * The dashboard used to own its own state strings. Rendering the real component
-	 * against a stock install proves the words the operator sees are the ones the
-	 * settings tab shows for the same row — a source-level copy would pass a
-	 * presence check and still drift.
-	 */
-	test("shows a specialist as disabled and the worker as enabled, in the shared words", async () => {
-		await initTheme(false);
-		const dashboard = await AgentDashboard.create(await makeTempCwd(), defaultSettings, 24, {});
-		const plain = (): string => dashboard.render(200).join("\n").replace(ANSI_PATTERN, "");
-
-		// Selection starts on the first bundled agent, a specialist.
-		const specialist = plain();
-		expect(specialist).toContain(SUBAGENT_ENABLE_STATE_LABEL.off);
-		// And it says nothing about the agent running anyway, which is the sentence
-		// that made this screen unreadable.
-		expect(specialist).not.toContain("still runs");
-
-		// Walk down to the worker, the one bundled agent that ships enabled. Stepping
-		// until its inspector appears rather than a fixed count, so adding a bundled
-		// specialist does not silently make this assert the wrong row.
-		let worker = specialist;
-		for (let step = 0; step < 20 && !worker.includes(`${DEFAULT_ENABLED_BUNDLED_AGENT}\n`); step++) {
-			dashboard.handleInput("\x1b[B");
-			worker = plain();
-		}
-		expect(worker).toContain(SUBAGENT_ENABLE_STATE_LABEL.on);
 	});
 });

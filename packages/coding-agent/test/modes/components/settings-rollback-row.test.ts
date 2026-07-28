@@ -27,6 +27,7 @@ import {
 } from "@veyyon/coding-agent/modes/components/settings-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { VERSION } from "@veyyon/utils";
+import { stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const WIDTH = 160;
 
@@ -35,16 +36,6 @@ beforeAll(async () => {
 });
 
 let geometryStub: { restore(): void } | undefined;
-
-function stubStdoutGeometry(rows: number): { restore(): void } {
-	const rowsDesc = Object.getOwnPropertyDescriptor(process.stdout, "rows");
-	Object.defineProperty(process.stdout, "rows", { configurable: true, get: () => rows, set: () => {} });
-	return {
-		restore() {
-			if (rowsDesc) Object.defineProperty(process.stdout, "rows", rowsDesc);
-		},
-	};
-}
 
 beforeEach(async () => {
 	resetSettingsForTest();
@@ -56,7 +47,7 @@ beforeEach(async () => {
 	// either claim. It was 60, which stopped being enough the first time a
 	// setting was added to the Approvals group, so give it real headroom rather
 	// than the exact current height.
-	geometryStub = stubStdoutGeometry(120);
+	geometryStub = stubStdoutGeometry({ rows: 120 });
 });
 
 afterEach(() => {

@@ -96,8 +96,9 @@ describe("parseCliThinkingLevel", () => {
 		expect(parseCliThinkingLevel("inherit")).toBeUndefined();
 	});
 
-	it("lists the CLI levels in display order: off, efforts, auto", () => {
-		expect(CLI_THINKING_LEVELS).toEqual(["off", "minimal", "low", "medium", "high", "xhigh", "max", "auto"]);
+	/** CLI help must use the same special-first order as interactive variant controls. */
+	it("lists the CLI levels in display order: off, auto, then native efforts", () => {
+		expect(CLI_THINKING_LEVELS).toEqual(["off", "auto", "minimal", "low", "medium", "high", "xhigh", "max"]);
 	});
 });
 
@@ -146,14 +147,14 @@ describe("clampAutoThinkingEffort (no model -> full effort range)", () => {
  * getThinkingLevelMetadata / getConfiguredThinkingLevelMetadata supply the display metadata (value,
  * label, description) the UI shows for each thinking selector. They were untested. The contracts pinned
  * here are the ones a picker or `--help` listing depends on:
- *   - each concrete level's metadata carries its own value and the SHORT label the UI shows (min/off/
- *     high are not the same as the enum value in every case: Minimal -> "min");
+ *   - each concrete level's metadata carries its own value and full variant name;
  *   - the configured variant returns the identical metadata for a concrete level (it delegates), and a
  *     distinct "auto" entry (value/label "auto") for the AUTO_THINKING sentinel, so the auto option is
  *     never rendered as a blank or as one of the concrete levels.
  */
 describe("thinking level metadata", () => {
-	it("returns the value and short label for a concrete level", () => {
+	/** Variant labels must round-trip directly into selector suffixes without abbreviations. */
+	it("returns the value and label for a concrete level", () => {
 		expect(getThinkingLevelMetadata(ThinkingLevel.Off)).toEqual({
 			value: ThinkingLevel.Off,
 			label: "off",
@@ -161,7 +162,7 @@ describe("thinking level metadata", () => {
 		});
 		expect(getThinkingLevelMetadata(ThinkingLevel.Minimal)).toEqual({
 			value: ThinkingLevel.Minimal,
-			label: "min",
+			label: "minimal",
 			description: "Very brief reasoning (~1k tokens)",
 		});
 		expect(getThinkingLevelMetadata(ThinkingLevel.High).label).toBe("high");

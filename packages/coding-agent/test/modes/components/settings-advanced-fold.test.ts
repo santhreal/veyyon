@@ -54,11 +54,6 @@ const DEMOTED_APPEARANCE_PATHS = [
 // toggle across sessions; it lands here rather than in the visible set because
 // the toggle is already how people reach it, and this row only persists the
 // choice they made with it.
-//
-// `display.subagentInbox` was one of them and is not any more: experimental
-// features now live on the Experimental tab, which says "experimental" with
-// its name instead of a label suffix, so this key needed neither the fold nor
-// the "(experimental)" prefix.
 const EXTRA_ADVANCED_APPEARANCE_PATHS = ["tui.scrollIsolation", "display.toolOutputExpanded"] as const;
 
 // Everything the collapsed Advanced fold holds today: the spec-demoted originals

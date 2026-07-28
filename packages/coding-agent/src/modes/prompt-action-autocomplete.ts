@@ -11,6 +11,7 @@ import {
 import { formatKeyHints, type KeybindingsManager } from "../config/keybindings";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../config/settings-instance";
+import type { Skill } from "../extensibility/skills";
 // The order leaf, not the registry that declares every command: this file arranges headers, and the
 // registry is 1,381 modules of command implementations.
 import { BUILTIN_SLASH_COMMAND_CATEGORY_ORDER } from "../slash-commands/category-order";
@@ -38,6 +39,7 @@ interface PromptActionAutocompleteItem extends AutocompleteItem {
 interface PromptActionAutocompleteOptions {
 	commands: SlashCommand[];
 	basePath: string;
+	skills?: readonly Skill[];
 	keybindings: KeybindingsManager;
 	copyCurrentLine: () => void;
 	copyPrompt: () => void;
@@ -99,14 +101,21 @@ export class PromptActionAutocompleteProvider implements AutocompleteProvider {
 	#baseProvider: CombinedAutocompleteProvider;
 	#actions: PromptActionDefinition[];
 	#basePath: string;
+	#skills: readonly Skill[];
 
-	constructor(commands: SlashCommand[], basePath: string, actions: PromptActionDefinition[]) {
+	constructor(
+		commands: SlashCommand[],
+		basePath: string,
+		actions: PromptActionDefinition[],
+		skills: readonly Skill[] = [],
+	) {
 		this.#commands = commands;
 		this.#baseProvider = new CombinedAutocompleteProvider(commands, basePath, {
 			categoryOrder: BUILTIN_SLASH_COMMAND_CATEGORY_ORDER,
 		});
 		this.#basePath = basePath;
 		this.#actions = actions;
+		this.#skills = skills;
 	}
 
 	async getSuggestions(
@@ -132,7 +141,7 @@ export class PromptActionAutocompleteProvider implements AutocompleteProvider {
 				// No slash-argument completion for this input: fall through to
 				// internal-url completion only. `#` prompt-action tokens stay
 				// literal text inside slash command arguments.
-				return getInternalUrlSuggestions(textBeforeCursor, this.#basePath);
+				return getInternalUrlSuggestions(textBeforeCursor, this.#basePath, this.#skills);
 			}
 		}
 
@@ -162,7 +171,7 @@ export class PromptActionAutocompleteProvider implements AutocompleteProvider {
 			}
 		}
 
-		const urlSuggestions = await getInternalUrlSuggestions(textBeforeCursor, this.#basePath);
+		const urlSuggestions = await getInternalUrlSuggestions(textBeforeCursor, this.#basePath, this.#skills);
 		if (urlSuggestions) return urlSuggestions;
 
 		if (!isSettingsInitialized() || settings.get("emojiAutocomplete")) {
@@ -287,5 +296,5 @@ export function createPromptActionAutocompleteProvider(
 		},
 	];
 
-	return new PromptActionAutocompleteProvider(options.commands, options.basePath, actions);
+	return new PromptActionAutocompleteProvider(options.commands, options.basePath, actions, options.skills);
 }

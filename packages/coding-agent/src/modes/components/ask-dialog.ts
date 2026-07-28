@@ -18,7 +18,7 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
-import { clampLow, collapseWhitespace, formatCount } from "@veyyon/utils";
+import { clampLow, collapseWhitespace, formatCount, formatMoreLines } from "@veyyon/utils";
 import type {
 	ExtensionAskDialogQuestion,
 	ExtensionAskDialogResultItem,
@@ -796,7 +796,7 @@ export class AskDialogComponent implements Component {
 		if (content.length <= maxRows) return content;
 		const visibleCount = Math.max(1, maxRows - 1);
 		const hidden = content.length - visibleCount;
-		return [...content.slice(0, visibleCount), theme.fg("dim", `… ${hidden} more lines`)];
+		return [...content.slice(0, visibleCount), theme.fg("dim", `… ${formatMoreLines(hidden)}`)];
 	}
 
 	#renderSubmitBody(width: number, rows: number): RenderedList {

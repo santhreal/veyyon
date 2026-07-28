@@ -1,5 +1,5 @@
 import { routeSelectListMouse, type SelectItem, SelectList, type SgrMouseEvent, truncateToWidth } from "@veyyon/tui";
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage, getAgentDir } from "@veyyon/utils";
 import { type ImportCandidate, importForeignItems, scanForeignConfig } from "../../../discovery/import-scan";
 import { getSelectListTheme, theme } from "../../theme/theme";
 import type { SetupScene, SetupSceneController, SetupSceneHost } from "./types";
@@ -85,7 +85,6 @@ class ImportSceneController implements SetupSceneController {
 			return;
 		}
 		try {
-			const { getAgentDir } = await import("@veyyon/utils");
 			const outcome = await importForeignItems(getAgentDir(), chosen);
 			this.#status = [
 				theme.fg(

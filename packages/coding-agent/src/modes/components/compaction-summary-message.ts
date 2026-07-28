@@ -1,4 +1,5 @@
 import { Box, type Component, Markdown } from "@veyyon/tui";
+import { withIcon } from "../../modes/theme/icon-label";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { theme } from "../../modes/theme/theme";
 import type { BranchSummaryMessage, CompactionSummaryMessage, CustomMessage } from "../../session/messages";
@@ -92,8 +93,8 @@ export class CompactionSummaryMessageComponent implements Component {
 			// the full text lives in the ctrl+o detail block below.
 			label: () =>
 				this.message.warning
-					? `${theme.icon.camera} compacted ${theme.fg("warning", theme.icon.warning)}`
-					: `${theme.icon.camera} compacted`,
+					? withIcon(theme.icon.camera, `compacted ${theme.fg("warning", theme.icon.warning)}`)
+					: withIcon(theme.icon.camera, "compacted"),
 			detailMarkdown: () => this.#detailMarkdown(),
 		});
 	}
@@ -112,7 +113,9 @@ export class CompactionSummaryMessageComponent implements Component {
 
 	#detailMarkdown(): string {
 		const tokenStr = this.message.tokensBefore.toLocaleString();
-		const warningNote = this.message.warning ? `\n\n${theme.icon.warning} **Warning:** ${this.message.warning}` : "";
+		const warningNote = this.message.warning
+			? `\n\n${withIcon(theme.icon.warning, `**Warning:** ${this.message.warning}`)}`
+			: "";
 		return `**Compacted from ${tokenStr} tokens**${warningNote}\n\n${this.message.summary}`;
 	}
 }
@@ -127,7 +130,7 @@ export class HandoffSummaryMessageComponent implements Component {
 
 	constructor(private readonly message: CustomMessage<unknown>) {
 		this.#divider = new SummaryDividerComponent({
-			label: () => `${theme.icon.context} handoff`,
+			label: () => withIcon(theme.icon.context, "handoff"),
 			detailMarkdown: () => this.#detailMarkdown(),
 		});
 	}
@@ -170,7 +173,7 @@ export class BranchSummaryMessageComponent implements Component {
 
 	constructor(private readonly message: BranchSummaryMessage) {
 		this.#divider = new SummaryDividerComponent({
-			label: () => `${theme.icon.branch} branch`,
+			label: () => withIcon(theme.icon.branch, "branch"),
 			detailMarkdown: () => `**Branch summary**\n\n${this.message.summary}`,
 		});
 	}

@@ -1,17 +1,14 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
+import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { Settings } from "../../../config/settings";
 import type { CustomMessage, SkillPromptDetails } from "../../../session/messages";
 import { getThemeByName, setThemeInstance, type Theme } from "../../theme/theme";
 import { SkillMessageComponent } from "../skill-message";
 
 // Drop SGR colors and OSC 8 hyperlink wrappers so assertions see the visible text only.
-const strip = (lines: readonly string[]): string =>
-	lines
-		.join("\n")
-		.replace(/\x1b\]8;[^\x1b\x07]*(?:\x07|\x1b\\)/g, "")
-		.replace(/\x1b\[[0-9;]*m/g, "");
+const strip = (lines: readonly string[]): string => stripAnsi(lines.join("\n"));
 
 function makeMessage(
 	details: SkillPromptDetails,

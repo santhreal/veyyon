@@ -1,4 +1,5 @@
 import { Box, Container, Spacer, Text } from "@veyyon/tui";
+import { withIcon } from "../../modes/theme/icon-label";
 import { theme } from "../../modes/theme/theme";
 import type { TodoItem } from "../../tools/todo";
 
@@ -32,7 +33,10 @@ export class TodoReminderComponent extends Container {
 
 		const count = this.todos.length;
 		const label = count === 1 ? "todo" : "todos";
-		const header = `${theme.icon.warning} ${count} incomplete ${label} - reminder ${this.attempt}/${this.maxAttempts}`;
+		const header = withIcon(
+			theme.icon.warning,
+			`${count} incomplete ${label} - reminder ${this.attempt}/${this.maxAttempts}`,
+		);
 
 		this.#box.addChild(new Text(header, 0, 0));
 		this.#box.addChild(new Spacer(1));

@@ -14,7 +14,7 @@
  * itself holds no state. Ripples (cursor/keypress flares) are passed in as data.
  */
 
-import { padLineToWidth } from "@veyyon/tui";
+import { padLineToWidth, reopenBackgroundAfterResets } from "@veyyon/tui";
 import { SGR_RESET } from "@veyyon/tui/ansi";
 import { clamp01 } from "@veyyon/utils";
 
@@ -38,8 +38,8 @@ export const CANVAS_BG_ESCAPE = "\x1b[48;2;0;0;0m";
  */
 export function paintCanvasBlack(lines: readonly string[], width: number): string[] {
 	return lines.map(line => {
-		const rearmed = line.replaceAll("\x1b[0m", `\x1b[0m${CANVAS_BG_ESCAPE}`).replaceAll("\x1b[49m", CANVAS_BG_ESCAPE);
-		return `${CANVAS_BG_ESCAPE}${padLineToWidth(rearmed, width)}\x1b[0m`;
+		const rearmed = reopenBackgroundAfterResets(line, CANVAS_BG_ESCAPE);
+		return `${CANVAS_BG_ESCAPE}${padLineToWidth(rearmed, width)}${SGR_RESET}`;
 	});
 }
 

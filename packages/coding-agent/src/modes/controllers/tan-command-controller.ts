@@ -186,7 +186,7 @@ export class TanCommandController {
 							signal.removeEventListener("abort", abortClone);
 						}
 					} finally {
-						// Keep the finished tan in the Agent Hub instead of unregistering it:
+						// Keep the finished tan in the Control Center roster instead of unregistering it:
 						// flip the ref to parked BEFORE dispose so the sdk dispose wrapper
 						// skips its unregister, then null the disposed session so the hub
 						// treats it as a transcript-only parked agent. An aborted tan is

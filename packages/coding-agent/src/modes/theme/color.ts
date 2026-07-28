@@ -3,6 +3,7 @@
 // Owned here per the theme boundary split; theme.ts re-exports the public
 // surface so external imports are unchanged.
 
+import { SGR_BG_RESET, SGR_FG_RESET } from "@veyyon/tui/ansi";
 import { type } from "arktype";
 import type { SpinnerFramesOverride } from "./symbols";
 
@@ -134,15 +135,25 @@ function buildThemeJsonSchema() {
 	});
 }
 
-let themeJsonSchemaCache: ReturnType<typeof buildThemeJsonSchema> | undefined;
+/**
+ * The validator `buildThemeJsonSchema` returns.
+ *
+ * Named once because three declarations needed it and each had spelled
+ * `ReturnType<typeof buildThemeJsonSchema>` again: the cache slot, the accessor's
+ * return, and the inferred theme shape. The type is arktype's, with no name of
+ * its own to import, so the alias is the only place the derivation can live.
+ */
+type ThemeJsonSchema = ReturnType<typeof buildThemeJsonSchema>;
+
+let themeJsonSchemaCache: ThemeJsonSchema | undefined;
 
 /** The theme JSON validator, built lazily on first custom-theme load. */
-export function getThemeJsonSchema(): ReturnType<typeof buildThemeJsonSchema> {
+export function getThemeJsonSchema(): ThemeJsonSchema {
 	themeJsonSchemaCache ??= buildThemeJsonSchema();
 	return themeJsonSchemaCache;
 }
 
-export type ThemeJson = ReturnType<typeof buildThemeJsonSchema>["infer"];
+export type ThemeJson = ThemeJsonSchema["infer"];
 
 export type ThemeColor =
 	| "accent"
@@ -333,7 +344,7 @@ export function colorToAnsi(color: string, mode: ColorMode): string {
 }
 
 export function fgAnsi(color: string | number, mode: ColorMode): string {
-	if (color === "") return "\x1b[39m";
+	if (color === "") return SGR_FG_RESET;
 	if (typeof color === "number") return `\x1b[38;5;${color}m`;
 	if (typeof color === "string") {
 		return colorToAnsi(color, mode);
@@ -342,7 +353,7 @@ export function fgAnsi(color: string | number, mode: ColorMode): string {
 }
 
 export function bgAnsi(color: string | number, mode: ColorMode): string {
-	if (color === "") return "\x1b[49m";
+	if (color === "") return SGR_BG_RESET;
 	if (typeof color === "number") return `\x1b[48;5;${color}m`;
 	const ansi = colorToAnsi(color, mode);
 	return ansi.replace("\x1b[38;", "\x1b[48;");

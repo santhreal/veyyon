@@ -89,6 +89,36 @@ export function buildAuthAwareBrowserItems(models: ReadonlyArray<Model>, registr
 	return items;
 }
 
+const MODEL_SELECTOR_ITEMS = new WeakMap<ReadonlyArray<Model>, ReadonlyArray<ModelBrowserItem>>();
+
+/**
+ * Reuse the expensive catalog projection and sort while one settings surface
+ * edits several model slots. Authentication badges remain live: they are
+ * applied to fresh shallow rows on every opening, so connecting a provider
+ * cannot leave a process-lifetime stale cache.
+ */
+export function cachedAuthAwareBrowserItems(
+	models: ReadonlyArray<Model>,
+	registry: ModelRegistry,
+): ModelBrowserItem[] {
+	let cached = MODEL_SELECTOR_ITEMS.get(models);
+	if (!cached) {
+		const built = buildBrowserItems(models);
+		sortModelItems(built, {});
+		cached = built;
+		MODEL_SELECTOR_ITEMS.set(models, cached);
+	}
+	return cached.map(item => {
+		const row = { ...item };
+		const status = resolveModelAuthStatus(registry, row.model);
+		const badge = formatModelAuthBadge(status);
+		row.badge = badge.text;
+		row.badgeColor = badge.color;
+		if (status === "unauthenticated") row.labelColor = "warning";
+		return row;
+	});
+}
+
 /**
  * Host panel: title + searchable {@link ModelBrowser} with auth badges.
  * Embed this in settings submenus, overlays, or any other TUI surface.
@@ -125,8 +155,7 @@ export class ModelSelectorPanel extends Container {
 			emptyText: () => "No models available — configure a provider or /login",
 		});
 
-		const items = buildAuthAwareBrowserItems(models, registry);
-		sortModelItems(items, {});
+		const items = cachedAuthAwareBrowserItems(models, registry);
 		if (this.#allowClear) {
 			// The way back to unset is a visible first-class row, not only a key.
 			const label = options.clearLabel ?? "(inherit main model)";

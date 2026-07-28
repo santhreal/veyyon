@@ -1,5 +1,4 @@
 import { ThinkingLevel } from "@veyyon/agent-core";
-import type { Effort } from "@veyyon/ai";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 // The derived provider set from the registry that derives it (164 modules) rather than the
@@ -42,7 +41,7 @@ import {
 	toResetUsageAccounts,
 } from "../../slash-commands/helpers/reset-usage";
 import { frozenGateNotice, isLivePromptGate } from "../../system-prompt-builder/gate-registry";
-import { AUTO_THINKING, type ConfiguredThinkingLevel } from "../../thinking";
+import { type ConfiguredThinkingLevel, hasConfigurableThinkingEffort } from "../../thinking";
 import { isImageProviderPreference, setPreferredImageProvider } from "../../tools/image-gen";
 import { shortenPath } from "../../tools/render-utils";
 import { copyToClipboard } from "../../utils/clipboard";
@@ -366,26 +365,24 @@ export class SelectorController {
 	}
 
 	/**
-	 * Thinking-effort picker for the interactive (session) model — the overlay
-	 * behind `/thinking` and its `/effort` alias. Mirrors the `thinkingLevel`
-	 * settings row: the chosen level persists per profile (setThinkingLevel with
-	 * persist=true) and repaints the editor border + status line. A model with no
-	 * supported efforts has nothing to pick, so we say so instead of opening an
-	 * empty card.
+	 * Thinking-effort picker for the interactive session.
+	 *
+	 * The control follows the active model's valid variant list, including
+	 * narrower families such as low/high-only models.
 	 */
 	showThinkingSelector(): void {
-		const availableLevels = [...this.ctx.session.getAvailableThinkingLevels()];
-		if (availableLevels.length === 0) {
-			this.ctx.showStatus("This model has no thinking-effort levels to choose from.");
+		const model = this.ctx.session.model;
+		if (!hasConfigurableThinkingEffort(model)) {
+			this.ctx.showStatus("This model does not expose configurable reasoning effort.");
 			return;
 		}
-		const currentLevel = this.ctx.session.thinkingLevel as Effort | undefined;
+		const currentLevel = this.ctx.session.sessionThinkingOverride;
 		this.showModalSelector(done => {
 			const component = new ThinkingSelectorComponent(
-				currentLevel ?? availableLevels[0],
-				availableLevels,
+				currentLevel,
+				model,
 				level => {
-					this.ctx.session.setThinkingLevel(level as ConfiguredThinkingLevel, true);
+					this.ctx.session.setThinkingLevel(level);
 					this.ctx.statusLine.invalidate();
 					this.ctx.updateEditorBorderColor();
 					done();
@@ -585,7 +582,7 @@ export class SelectorController {
 				break;
 			case "thinkingLevel":
 			case "defaultThinkingLevel":
-				this.ctx.session.setThinkingLevel(value as ConfiguredThinkingLevel, true);
+				this.ctx.session.setThinkingLevel(value as ConfiguredThinkingLevel);
 				this.ctx.statusLine.invalidate();
 				this.ctx.updateEditorBorderColor();
 				break;
@@ -819,7 +816,7 @@ export class SelectorController {
 						} else {
 							await this.ctx.session.setModel(model, DEFAULT_MODEL_SLOT, {
 								selector,
-								thinkingLevel: roleThinkingLevel === AUTO_THINKING ? ThinkingLevel.Inherit : roleThinkingLevel,
+								thinkingLevel: roleThinkingLevel,
 								persist: true,
 								currentContextTokens,
 							});
@@ -880,42 +877,27 @@ export class SelectorController {
 			this.ctx.session.scopedModels,
 			{
 				onAssign: async (model, role, thinkingLevel, selector) => {
-					// `auto` is session-global: never baked into a per-role model value
-					// (it can't round-trip through `model:<level>`). Apply it to the session
-					// separately and persist via `defaultThinkingLevel`.
-					const isAuto = thinkingLevel === AUTO_THINKING;
-					const concreteThinking = isAuto || thinkingLevel === undefined ? undefined : thinkingLevel;
+					const selectedThinking =
+						thinkingLevel === undefined || thinkingLevel === ThinkingLevel.Inherit ? undefined : thinkingLevel;
 					const selectorValue = selector ?? `${model.provider}/${model.id}`;
 					try {
 						if (isDefaultModelSlot(role)) {
-							// Not a named role slot: this is the model you are working with, stored
-							// in the default slot that startup restores from.
 							const { switched } = await this.ctx.session.setModel(model, DEFAULT_MODEL_SLOT, {
 								selector,
-								thinkingLevel: isAuto ? ThinkingLevel.Inherit : concreteThinking,
+								thinkingLevel: selectedThinking,
 								persist: true,
 								currentContextTokens,
 							});
-							if (isAuto) {
-								if (switched) {
-									this.ctx.session.setThinkingLevel(AUTO_THINKING, true);
-								} else {
-									this.ctx.settings.set("defaultThinkingLevel", AUTO_THINKING);
-								}
-							} else if (switched && concreteThinking && concreteThinking !== ThinkingLevel.Inherit) {
-								this.ctx.session.setThinkingLevel(concreteThinking);
-							}
 							if (switched) {
 								this.ctx.statusLine.invalidate();
 								this.ctx.updateEditorBorderColor();
 							}
 							this.ctx.showStatus(`Model: ${selector ?? model.id}`);
 						} else {
-							// Named roles (smol, slow, custom): update settings, not the current model.
-							this.ctx.settings.setModelRole(role, formatModelSelectorValue(selectorValue, concreteThinking));
-							if (isAuto) {
-								this.ctx.session.setThinkingLevel(AUTO_THINKING, true);
-							}
+							this.ctx.settings.setModelRole(
+								role,
+								formatModelSelectorValue(selectorValue, selectedThinking),
+							);
 							const roleInfo = getRoleInfo(role, settings);
 							this.ctx.showStatus(`${roleInfo?.name ?? role} model: ${selector ?? model.id}`);
 						}

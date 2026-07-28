@@ -3,6 +3,7 @@ import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 function strip(s: string): string {
 	return stripVTControlCharacters(s);
@@ -17,7 +18,7 @@ let geometryStub: { restore(): void } | undefined;
 beforeEach(async () => {
 	resetSettingsForTest();
 	await Settings.init({ inMemory: true });
-	geometryStub = stubStdoutGeometry(120);
+	geometryStub = stubStdoutGeometry({ columns: 120, rows: 40 });
 });
 
 afterEach(() => {
@@ -25,24 +26,6 @@ afterEach(() => {
 	geometryStub?.restore();
 	geometryStub = undefined;
 });
-
-function stubStdoutGeometry(cols: number): { restore(): void } {
-	const rowsDesc = Object.getOwnPropertyDescriptor(process.stdout, "rows");
-	const colsDesc = Object.getOwnPropertyDescriptor(process.stdout, "columns");
-	const rows = 40;
-	Object.defineProperty(process.stdout, "rows", { configurable: true, get: () => rows, set: () => {} });
-	Object.defineProperty(process.stdout, "columns", { configurable: true, get: () => cols, set: () => {} });
-	const restoreOne = (key: "rows" | "columns", desc: PropertyDescriptor | undefined) => {
-		if (desc) Object.defineProperty(process.stdout, key, desc);
-		else Object.defineProperty(process.stdout, key, { configurable: true, value: undefined, writable: true });
-	};
-	return {
-		restore() {
-			restoreOne("rows", rowsDesc);
-			restoreOne("columns", colsDesc);
-		},
-	};
-}
 
 function createSelector(onCancel: () => void = () => {}): SettingsSelectorComponent {
 	return new SettingsSelectorComponent(

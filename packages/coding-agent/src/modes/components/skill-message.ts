@@ -2,6 +2,7 @@ import type { TextContent } from "@veyyon/ai";
 import type { Component } from "@veyyon/tui";
 import { Box, Container, Markdown, Spacer, Text } from "@veyyon/tui";
 import { collapseWhitespace } from "@veyyon/utils";
+import { withIcon } from "../../modes/theme/icon-label";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { theme } from "../../modes/theme/theme";
 import type { CustomMessage, SkillPromptDetails } from "../../session/messages";
@@ -55,7 +56,7 @@ export class SkillMessageComponent extends Container {
 		const args = collapseWhitespace(details?.args);
 
 		// Header: icon-tag + skill name, with the invocation args trailing dimmed.
-		const tag = theme.fg("customMessageLabel", theme.bold(`${theme.icon.extensionSkill} skill`));
+		const tag = theme.fg("customMessageLabel", theme.bold(withIcon(theme.icon.extensionSkill, "skill")));
 		let header = `${tag} ${theme.fg("customMessageText", theme.bold(name))}`;
 		if (args) {
 			header += ` ${theme.fg("dim", args)}`;

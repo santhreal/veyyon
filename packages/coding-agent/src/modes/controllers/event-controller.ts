@@ -198,7 +198,7 @@ export class EventController {
 						registry: session.modelRegistry,
 						sessionId: session.sessionId,
 						metadataResolver: provider => session.agent.metadataForProvider(provider),
-						obfuscateProviderText: text => session.obfuscator?.obfuscate(text) ?? text,
+						obfuscateProviderText: text => session.obfuscateProviderText(text),
 					})
 				: null,
 		);

@@ -8,8 +8,8 @@ import {
 	matchesKey,
 	padding,
 	routeSgrMouseInput,
-	ScrollView,
 	type SgrMouseEvent,
+	truncateToWidth,
 } from "@veyyon/tui";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../config/settings-instance";
@@ -23,10 +23,12 @@ import {
 	MODAL_SIZING_MEDIUM,
 	ModalRevealDriver,
 	type ModalShellGeometry,
+	modalNeedsCompactPadding,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
 	withCompact,
 } from "./modal-shell";
+import { renderScrollableList, selectionBand } from "./selector-helpers";
 
 const OAUTH_SELECTOR_MAX_VISIBLE = 10;
 
@@ -310,39 +312,39 @@ export class OAuthSelectorComponent implements Component {
 		this.#scrollStart = startIndex;
 		this.#visibleCount = endIndex - startIndex;
 
-		const rows: string[] = [];
-		for (let i = startIndex; i < endIndex; i++) {
-			const provider = this.#filteredProviders[i];
-			if (!provider) continue;
-			const isSelected = i === this.#selectedIndex;
-			const isAvailable = provider.available;
-			const statusIndicator = this.#getStatusIndicator(provider.id);
-
-			let line = "";
-			if (isSelected) {
-				const prefix = theme.fg("accent", `${theme.nav.cursor} `);
-				const text = isAvailable ? theme.fg("accent", provider.name) : theme.fg("dim", provider.name);
-				line = prefix + text + statusIndicator;
-			} else {
-				const text = isAvailable ? `  ${provider.name}` : theme.fg("dim", `  ${provider.name}`);
-				line = text + statusIndicator;
-			}
-			if (!isSelected && i === this.#hoveredIndex) {
-				line = theme.bg("selectedBg", line);
-			}
-			rows.push(line);
-		}
-
 		const body: string[] = [];
-		if (rows.length > 0) {
-			const sv = new ScrollView(rows, {
-				height: rows.length,
-				scrollbar: "auto",
-				totalRows: total,
-				theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
-			});
-			sv.setScrollOffset(startIndex);
-			body.push(...sv.render(width));
+		if (endIndex > startIndex) {
+			body.push(
+				...renderScrollableList(
+					{ width, visibleRows: endIndex - startIndex, totalRows: total, scrollOffset: startIndex },
+					rowWidth => {
+						const rows: string[] = [];
+						for (let i = startIndex; i < endIndex; i++) {
+							const provider = this.#filteredProviders[i];
+							if (!provider) continue;
+							const isSelected = i === this.#selectedIndex;
+							const isAvailable = provider.available;
+							const statusIndicator = this.#getStatusIndicator(provider.id);
+
+							let line: string;
+							if (isSelected) {
+								const prefix = theme.fg("accent", `${theme.nav.cursor} `);
+								const text = isAvailable ? theme.fg("accent", provider.name) : theme.fg("dim", provider.name);
+								line = prefix + text + statusIndicator;
+							} else {
+								const text = isAvailable ? `  ${provider.name}` : theme.fg("dim", `  ${provider.name}`);
+								line = text + statusIndicator;
+							}
+							rows.push(
+								!isSelected && i === this.#hoveredIndex
+									? selectionBand(line, rowWidth)
+									: truncateToWidth(line, rowWidth),
+							);
+						}
+						return rows;
+					},
+				),
+			);
 		}
 
 		// Search status line (scrollbar covers overflow indication)
@@ -505,7 +507,7 @@ export class OAuthSelectorComponent implements Component {
 		}
 
 		const height = process.stdout.rows || 40;
-		const sizing = withCompact(MODAL_SIZING_MEDIUM, height < 24);
+		const sizing = withCompact(MODAL_SIZING_MEDIUM, modalNeedsCompactPadding(height, MODAL_SIZING_MEDIUM));
 		const dims = computeModalDims(width, height, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;

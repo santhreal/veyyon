@@ -1,4 +1,5 @@
 import { Container, Markdown } from "@veyyon/tui";
+import { SGR_FG_RESET } from "@veyyon/tui/ansi";
 import { stripAnsi } from "@veyyon/utils";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { theme } from "../../modes/theme/theme";
@@ -52,7 +53,7 @@ export class UserMessageComponent extends Container {
 		// fenced blocks through its own code styling (never `color`), so those are already excluded;
 		// `highlightMagicKeywords` additionally restores the bubble's own foreground after each
 		// painted keyword so the gradient never bleeds into the rest of the line.
-		const keywordReset = theme.getFgAnsi("userMessageText") || "\x1b[39m";
+		const keywordReset = theme.getFgAnsi("userMessageText") || SGR_FG_RESET;
 		const baseText = synthetic
 			? (value: string) => theme.fg("dim", value)
 			: (value: string) => theme.fg("userMessageText", highlightMagicKeywords(value, keywordReset));

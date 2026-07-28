@@ -88,7 +88,7 @@ export function getChangelogPath(): string | undefined {
  * Project-level: .veyyon, .claude, .codex, .gemini
  */
 const USER_CONFIG_BASES = priorityList.map(({ dir, globalAgentDir }) => ({
-	base: () => path.join(os.homedir(), globalAgentDir ? globalAgentDir() : dir),
+	base: (home: string) => path.join(home, globalAgentDir ? globalAgentDir() : dir),
 	name: dir,
 }));
 
@@ -110,6 +110,8 @@ export interface GetConfigDirsOptions {
 	project?: boolean;
 	/** Current working directory for project paths. Default: getProjectDir() */
 	cwd?: string;
+	/** Home directory for user paths. Default: os.homedir() */
+	home?: string;
 	/** Only return directories that exist. Default: false */
 	existingOnly?: boolean;
 }
@@ -131,13 +133,13 @@ export interface GetConfigDirsOptions {
  * getConfigDirs("skills", { user: false, existingOnly: true })
  */
 export function getConfigDirs(subpath: string, options: GetConfigDirsOptions = {}): ConfigDirEntry[] {
-	const { user = true, project = true, cwd = getProjectDir(), existingOnly = false } = options;
+	const { user = true, project = true, cwd = getProjectDir(), home = os.homedir(), existingOnly = false } = options;
 	const results: ConfigDirEntry[] = [];
 
 	// User-level directories (highest priority)
 	if (user) {
 		for (const { base, name } of USER_CONFIG_BASES) {
-			const resolvedPath = path.resolve(base(), subpath);
+			const resolvedPath = path.resolve(base(home), subpath);
 			if (!existingOnly || fs.existsSync(resolvedPath)) {
 				results.push({ path: resolvedPath, source: name, level: "user" });
 			}
@@ -173,7 +175,7 @@ export interface ConfigFileResult<T> {
 }
 
 /**
- * Find the first existing config file (for non-JSON files like SYSTEM.md).
+ * Find the first existing config file (for non-JSON files such as TITLE_SYSTEM.md).
  * Returns just the path, or undefined if not found.
  */
 export function findConfigFile(subpath: string, options: GetConfigDirsOptions = {}): string | undefined {

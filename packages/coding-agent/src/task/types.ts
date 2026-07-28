@@ -368,6 +368,13 @@ export interface AgentProgress {
 	modelOverride?: string | string[];
 	/** Resolved model display string in the form `<provider>/<id>`, optionally suffixed with `:<thinkingLevel>` when the level was set explicitly. Undefined when the model could not be resolved. */
 	resolvedModel?: string;
+	/**
+	 * The model this agent STARTED on, set only once it has fallen back to
+	 * another entry in its configured chain. `resolvedModel` alone says what it
+	 * runs on now and cannot say that it is not the model you picked, which is
+	 * the question you have when one agent is mysteriously slower than its peers.
+	 */
+	fellBackFrom?: string;
 	/** Data extracted by registered subprocess tool handlers (keyed by tool name) */
 	extractedToolData?: Record<string, unknown[]>;
 	/**

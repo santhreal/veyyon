@@ -213,6 +213,63 @@ describe("glyphs", () => {
 		expect(render("ok 12 ─┐", 8).unmapped).toEqual([]);
 	});
 
+	/**
+	 * Every glyph the agent roster's status column can print has a bitmap.
+	 *
+	 * The roster proof exists to show WHICH agents are running, and the status
+	 * glyph is the only cell that says so. `⟳` was unmapped, so every running row
+	 * on the Agent Control Center proof drew a hollow box: the tool reported it,
+	 * but a reported gap in exactly the column under test is still a proof that
+	 * cannot answer its own question. Adding a fifth status to the card without a
+	 * glyph here fails this rather than surfacing as boxes in the next image.
+	 */
+	it("has a glyph for every agent status mark the roster can draw", () => {
+		// The symbols behind `status.running` / `enabled` / `shadowed` / `aborted`
+		// in the theme's symbol table. Spelled out rather than imported: the demo
+		// scripts do not depend on the coding agent, and this is a four-character
+		// contract that a wrong assertion would state wrongly out loud.
+		for (const mark of ["⟳", "▪", "▫", "∎"]) {
+			expect(render(mark, 1).unmapped).toEqual([]);
+		}
+	});
+
+	/**
+	 * And every glyph a checkbox row can print.
+	 *
+	 * Same failure, different surface. The setup wizard's theme step turns its two
+	 * modifiers into toggles, and a proof of a toggle is a proof of one glyph:
+	 * filled means on, outline means off. Both were unmapped, so the first proof
+	 * of that change drew a hollow box in each state and showed nothing at all.
+	 */
+	it("has a glyph for both checkbox states", () => {
+		// `checkbox.checked` / `checkbox.unchecked` in the unicode symbol table.
+		// The ASCII preset draws `[x]` and `[ ]`, which are plain characters.
+		for (const mark of ["■", "□"]) {
+			expect(render(mark, 1).unmapped).toEqual([]);
+		}
+	});
+
+	/**
+	 * The two states must not raster to the SAME pixels, or the proof lies.
+	 *
+	 * Aliasing one checkbox to the other would satisfy the coverage test above
+	 * and produce an image where on and off are indistinguishable, which is worse
+	 * than the hollow boxes: a reported gap is at least reported.
+	 */
+	it("draws the checked and unchecked boxes differently", () => {
+		const checked = render("■", 1).image;
+		const unchecked = render("□", 1).image;
+
+		let differing = 0;
+		for (let y = 0; y < checked.height; y++) {
+			for (let x = 0; x < checked.width; x++) {
+				if (String(checked.at(x, y)) !== String(unchecked.at(x, y))) differing += 1;
+			}
+		}
+
+		expect(differing).toBeGreaterThan(0);
+	});
+
 	/** A double-width grapheme must draw ONE glyph. Drawing it in the continuation
 	 * cell as well would double every wide character and make a CJK proof unreadable. */
 	it("draws a wide grapheme once, and fills its continuation cell", () => {

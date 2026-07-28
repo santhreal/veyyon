@@ -1,12 +1,12 @@
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { agentPauseGate } from "@veyyon/agent-core";
 import type { Component } from "@veyyon/tui";
+import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { Settings } from "../../../config/settings";
 import { getThemeByName, setThemeInstance } from "../../theme/theme";
 import { PauseScreenComponent, type PauseScreenHost, renderPauseScreen, runPauseScreen } from "../pause-screen";
 
 // Strip SGR colors so assertions see visible text only.
-const stripAnsi = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, "");
 
 interface FakeHost {
 	host: PauseScreenHost;

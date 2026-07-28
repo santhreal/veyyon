@@ -151,6 +151,9 @@ const FONT: Readonly<Record<string, string>> = {
 	"✗": "...../#...#/.#.#./..#../.#.#./#...#/.....",
 	"→": "...../..#../...#./#####/...#./..#../.....",
 	"←": "...../..#../.#.../#####/.#.../..#../.....",
+	"↑": "..#../.###./#.#.#/..#../..#../..#../.....",
+	"↓": "..#../..#../..#../#.#.#/.###./..#../.....",
+	"⌕": "...../.###./#...#/#...#/.###./...#./....#",
 	"…": "...../...../...../...../...../#.#.#/.....",
 	"▶": ".#.../.##../.###./.####/.###./.##../.#...",
 	"›": ".#.../..#../...#./..#../.#.../...../.....",
@@ -166,6 +169,18 @@ const FONT: Readonly<Record<string, string>> = {
 	"┆": "..#../...../..#../...../..#../...../..#..",
 	"┊": "..#../...../..#../...../..#../...../..#..",
 	"◀": "...#./..##./.###./####./.###./..##./...#.",
+	// The agent roster's status column: a rotating arrow for running and a filled
+	// stop for aborted. A roster proof exists to show WHICH agents are running, so
+	// the two glyphs that say so cannot be the ones drawn as anonymous boxes. `▪`
+	// (idle) and `▫` (parked) are already above.
+	"⟳": ".##.#/#..##/#..../#...#/#...#/.###./.....",
+	"∎": "...../.###./.###./.###./.###./...../.....",
+	// The checkbox pair. A toggle whose ON and OFF states both raster as hollow
+	// boxes is a proof that cannot show what it was taken to show, which is what
+	// happened to the setup wizard's theme step: filled vs outline is the whole
+	// picture, so both get real bitmaps rather than an alias.
+	"■": "...../.###./.###./.###./.###./...../.....",
+	"□": "...../.###./.#.#./.#.#./.###./...../.....",
 };
 
 /**

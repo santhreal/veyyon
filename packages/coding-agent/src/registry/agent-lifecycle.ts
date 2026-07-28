@@ -17,7 +17,7 @@ import { type AgentRef, AgentRegistry, MAIN_AGENT_ID, type RegistryEvent } from 
 export type AgentReviver = () => Promise<AgentSession>;
 
 /**
- * Builds a reviver for a `parked` ref restored from disk (Agent Hub scan,
+ * Builds a reviver for a `parked` ref restored from disk (the persisted-subagent scan,
  * collab mirror, resumed process) that carries a sessionFile but no in-memory
  * adoption. Returns undefined when the ref cannot be faithfully rebuilt (no
  * persisted session contract, or its workspace is gone). Injected from the
@@ -83,7 +83,7 @@ export class AgentLifecycleManager {
 
 	/**
 	 * Install the factory used to cold-revive `parked` refs restored from disk
-	 * (Agent Hub scan, collab mirror, resumed process) — they carry a sessionFile
+	 * (the persisted-subagent scan, collab mirror, resumed process) — they carry a sessionFile
 	 * but no adoption. Set by the top-level session, which owns the ambient deps
 	 * (auth, models, MCP, artifacts) the factory needs at revive time.
 	 */

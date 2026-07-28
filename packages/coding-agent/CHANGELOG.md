@@ -73,6 +73,13 @@
   lists them.
 
 ### Fixed
+- `TERM=dumb` now suppresses bold, italic, underline, strikethrough, and inverse SGR sequences as
+  well as foreground and background colors. `NO_COLOR` still preserves non-color emphasis.
+
+- The Windows release installer stages downloaded binaries with an `.exe` suffix. Windows
+  PowerShell 5.1 can now run the verified preflight search inside its output pipeline instead of
+  rejecting the staged `.download` file as a document.
+
 
 - A block that folds exactly one line now says "1 more line". Every collapsed tool block, the read
   tool's continuation notice, the edit preview, the LSP hover, the MCP and eval renderers, `ssh`
@@ -242,7 +249,7 @@
 
 - You can click a roster row to open that agent, and click a name in the view strip to switch views. The card was keyboard-only inside its own borders: every mouse gesture that did anything belonged to the shell around it (the close glyph, a footer chip, a click outside to dismiss), so a row drawn with a cursor on it that did nothing when clicked read as a broken control rather than a keyboard-only one. A row click OPENS rather than only selecting, because the row's one action is "open this agent" and asking for a second gesture to do what the first already said is the friction; Esc in the agent's session returns you to your own, so nothing about it is one-way. A click on the blank space under the last agent, on the chrome, or in the Comms stream does nothing.
 
-- The card stays readable on a terminal that renders no colour. The selected roster row and the active view tab were each marked by a background tint and nothing else, and a tint is not applied at all under `NO_COLOR`, on a dumb terminal, or in a piped capture, so on those you could not tell which agent `enter` would open or which view you were looking at. The selected row now carries the same nav cursor glyph every other picker in veyyon draws, in a slot the unselected rows reserve so moving the cursor never shifts a row sideways, and the view strip takes the shared overlay tab theme, whose active style is bold as well as tinted. The strip was styling itself, which is also how two fullscreen cards end up disagreeing about what an active tab looks like.
+- The card stays readable on a terminal that renders no colour. The selected roster row and the active view tab were each marked by a background tint and nothing else, and a tint is not applied at all under `NO_COLOR`, on a dumb terminal, or in a piped capture, so on those you could not tell which agent `enter` would open or which view you were looking at. The selected row now carries the same nav cursor glyph every other picker in Veyyon draws, in a slot inactive rows reserve. The active tab uses brackets while inactive tabs reserve the same width. It also takes the shared overlay tab theme for bold and tint when the terminal permits them.
 
 - `IrcBus.send` records every leg it attempts, including one that throws. It logged on the paths that RETURN a receipt, which is every failure the bus knows how to describe, but the registry read that opens a delivery, the waiter hand-off and the mailbox enqueue all sit outside a try. A collab guest's registry is a mirror of the host's and can fail on a read, and a throw there left a message that was really sent absent from the Comms view, which reads as a message nobody sent. The throw is recorded as the failure it is and then rethrown unchanged, since the log is a display feed and must not change what the caller sees.
 
@@ -1043,6 +1050,8 @@
 - Settings search now ranks by field instead of one concatenated blob: the setting named for your query comes first, prose matches come last, and a setting can declare the words users actually type for it (`reasoning` finds Default Effort, `copy`/`clipboard` finds scroll isolation). Searching no longer matches a setting by its current value or its enum values.
 - Thinking effort now has one persisted home: `defaultEffort`, a per-profile list of model to effort rows edited at `/settings` → Model → Default Effort. A row keyed by a model selector applies to that model, and a `*` row applies to every model without one. It replaces the profile-wide `defaultThinkingLevel` enum, which is still read so an existing config keeps working: with no `*` row, that value becomes it. Effort resolves in one documented order (session choice, then an explicit `:level` on the role's selector, then the model's row, then the `*` row, then the model's default) owned by `config/effort-resolver.ts` rather than written inline at each call site.
 - `/thinking` and its `/effort` alias now change the current session only and print where the saved default lives. They used to rewrite the profile-wide default while the cycle keybinding did not, so the same change stuck or evaporated depending on how you made it, and there was no way to try an effort without keeping it.
+- Effort pickers now follow the active model's catalog-defined variant list. They show an explicit Default row, Veyyon's Auto control, Off only when the model permits it, and only native effort names after that. A low/high model no longer presents unsupported medium or xhigh choices that would be silently clamped.
+- The `compaction.model` and `subagent.model` chain editor now edits the highlighted primary or fallback position directly. Add fallback appends a position, and Delete removes only the highlighted position. Reopening model pickers reuses the catalog projection and sort while refreshing authentication badges.
 
 ### Fixed
 
@@ -1054,6 +1063,7 @@
 
 - Fixed a rule whose `scope` names a tool that does not exist loading as if it worked. A bare scope token is read as a tool name, so a typo like `raed` registered a rule that could never match, and that is indistinguishable from a rule whose condition simply never came up. Veyyon now reports it once the tool list is known, naming the rule, its file, and the closest tool it does know. The rule is not disabled, because a rule scoped to a tool an extension registers later is legitimate.
 - Fixed inherit-able model settings (`subagent.model`, `compaction.model`, role models, the default model) being effectively one-way: once a model was assigned, the only path back to unset was the forward-Delete key, which many keyboards do not have, and Backspace fell through as a silent no-op. These pickers now lead with a visible `(inherit main model)` row (the default model's reads `(auto-select on launch)`) that clears the assignment like any other selectable row, Backspace clears alongside Delete when the search is empty, the footer names both paths, and an assigned slot opens with its model preselected so a quick Enter re-picks it instead of clearing.
+- Fixed model switches bypassing `defaultEffort`. A session-only effort still wins, then an explicit selector suffix, then the new model's saved row, the any-model row, and the model default. Choosing Default clears the session override and immediately restores that chain.
 - Fixed a mouse drag over the transcript doing nothing without a word of explanation. Scroll isolation holds the mouse so the wheel scrolls the transcript with the prompt pinned, which means selecting is shift+drag, and that tradeoff was stated only in a settings description. The first swallowed drag now names shift+drag, `/copy`, and `tui.scrollIsolation=false`, and a gated tip says the same before you hit it.
 - Fixed the composer being replaced by a scroll readout while reading history: the contextual chip row under the prompt was overwritten with "N rows up / click to go to the bottom" whenever the transcript was frozen, so scrolling up during a run silently removed the `esc interrupt` chip. Scroll position is now drawn on the right edge of the transcript by the renderer, and the composer zone renders the same bytes whether the view is frozen or following.
 

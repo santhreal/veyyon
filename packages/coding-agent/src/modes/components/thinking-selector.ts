@@ -1,7 +1,10 @@
-import type { Effort } from "@veyyon/ai";
+import type { Model } from "@veyyon/ai";
 import type { SelectItem, SgrMouseEvent } from "@veyyon/tui";
 import { getSelectListTheme } from "../../modes/theme/theme";
-import { getThinkingLevelMetadata } from "../../thinking";
+import {
+	type ConfiguredThinkingLevel,
+	configuredThinkingLevelOptions,
+} from "../../thinking";
 import { ModalSelectListComponent } from "./modal-select-list";
 
 /**
@@ -11,13 +14,17 @@ export class ThinkingSelectorComponent {
 	#inner: ModalSelectListComponent;
 
 	constructor(
-		currentLevel: Effort,
-		availableLevels: Effort[],
-		onSelect: (level: Effort) => void,
+		currentLevel: ConfiguredThinkingLevel | undefined,
+		model: Model,
+		onSelect: (level: ConfiguredThinkingLevel | undefined) => void,
 		onCancel: () => void,
 		reveal?: boolean,
 	) {
-		const thinkingLevels: SelectItem[] = availableLevels.map(getThinkingLevelMetadata);
+		const thinkingLevels: SelectItem[] = configuredThinkingLevelOptions({
+			model,
+			inheritLabel: "Default",
+			inheritDescription: "Use the saved model effort, then the model default",
+		}).map(option => ({ ...option }));
 		const currentIndex = thinkingLevels.findIndex(item => item.value === currentLevel);
 		this.#inner = new ModalSelectListComponent(
 			{
@@ -29,7 +36,7 @@ export class ThinkingSelectorComponent {
 				reveal,
 			},
 			{
-				onSelect: item => onSelect(item.value as Effort),
+				onSelect: item => onSelect(item.value ? (item.value as ConfiguredThinkingLevel) : undefined),
 				onCancel,
 			},
 		);

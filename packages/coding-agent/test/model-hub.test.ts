@@ -660,13 +660,13 @@ describe("ModelHub", () => {
 			expect(rendered).toContain("test/*");
 			expect(rendered).toContain("↳ test/model-a");
 			expect(rendered).toMatch(/─{10,}/); // the roles/fallbacks divider
-			// Eight roles plus + New role…, the separator, the chain key and its
-			// selector already fill the pane at 40 terminal rows, so the last row
-			// starts outside the window. It must not be lost: the window follows
-			// the selection, which the wrap-around UP below proves.
-			expect(rendered).not.toContain("+ New fallback…");
+			// One chain fits the pane at 40 rows, so the trailing row is on screen
+			// from the start. Windowing a list that does NOT fit is pinned in
+			// `modal-chrome-budget-has-one-owner.test.ts`, which builds enough
+			// chains to overflow rather than relying on a card being short.
+			expect(rendered).toContain("+ New fallback…");
 
-			hub.handleInput(UP); // wraps to + New fallback…, scrolling it into view
+			hub.handleInput(UP); // wraps to + New fallback…
 			expect(normalize(hub.render(220))).toContain("+ New fallback…");
 			hub.handleInput(UP); // ↳ test/model-a
 			hub.handleInput(UP); // test/* header (separator is skipped)

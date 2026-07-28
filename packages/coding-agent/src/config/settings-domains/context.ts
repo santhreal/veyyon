@@ -122,15 +122,51 @@ export const CONTEXT_SETTINGS = {
 		retiredBy: "compaction.threshold",
 	},
 
+	// An ORDERED CHAIN, not one model: the value goes through
+	// normalizeModelPatternList, so a comma-separated string and a string array
+	// mean the same thing and both have always worked. The settings picker writes
+	// an array. Compaction tries each in turn and moves on when a candidate is
+	// unauthenticated or its window cannot hold the summarization payload.
 	"compaction.model": {
-		type: "string",
+		type: "modelChain",
 		default: undefined,
 		ui: {
 			tab: "model",
 			group: "Compaction",
 			label: "Compaction Model",
 			description:
-				"Model used for LLM compaction / handoff. Default: inherit — follows the main model live. Searchable picker with auth status.",
+				"Models used for LLM compaction / handoff, tried in order. Default: inherit — follows the main model live. Add fallbacks for when the first is unauthenticated or its window is too small.",
+		},
+	},
+
+	// What happens once the configured chain is exhausted. `auto` keeps the
+	// historical tail (the main model, then each model role, then the
+	// largest-window model available), which is why compaction almost never
+	// fails. `configured-only` stops at the models you named: compaction fails
+	// with the reason instead of quietly summarizing on a model you did not pick.
+	"compaction.modelFallbackStrategy": {
+		type: "enum",
+		values: ["auto", "configured-only"] as const,
+		default: "auto",
+		ui: {
+			tab: "model",
+			group: "Compaction",
+			label: "Compaction Fallback",
+			description:
+				"What to try after the compaction models you configured. Auto also tries the main model, your model roles, and the largest-window model available. Configured only stops there and fails loudly.",
+			keywords: ["compaction", "fallback", "chain", "model", "candidates"],
+			options: [
+				{
+					value: "auto",
+					label: "Auto",
+					description: "Fall back to the main model, your roles, then the largest window available",
+				},
+				{
+					value: "configured-only",
+					label: "Configured only",
+					description: "Try only the models you configured, then fail with the reason",
+				},
+			],
 		},
 	},
 

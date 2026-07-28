@@ -5,7 +5,7 @@
 
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Effort } from "@veyyon/ai";
-import { colorEnabled } from "@veyyon/tui";
+import { attributesEnabled, colorEnabled } from "@veyyon/tui";
 import { colorLuma, relativeLuminance } from "@veyyon/utils/color";
 // Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
 import * as logger from "@veyyon/utils/logger";
@@ -331,23 +331,23 @@ export class Theme {
 	// fallback (Law 10). Each attribute closes with its specific off-code so
 	// nesting inside colored spans survives.
 	bold(text: string): string {
-		return `\x1b[1m${text}\x1b[22m`;
+		return attributesEnabled() ? `\x1b[1m${text}\x1b[22m` : text;
 	}
 
 	italic(text: string): string {
-		return `\x1b[3m${text}\x1b[23m`;
+		return attributesEnabled() ? `\x1b[3m${text}\x1b[23m` : text;
 	}
 
 	underline(text: string): string {
-		return `\x1b[4m${text}\x1b[24m`;
+		return attributesEnabled() ? `\x1b[4m${text}\x1b[24m` : text;
 	}
 
 	strikethrough(text: string): string {
-		return `\x1b[9m${text}\x1b[29m`;
+		return attributesEnabled() ? `\x1b[9m${text}\x1b[29m` : text;
 	}
 
 	inverse(text: string): string {
-		return `\x1b[7m${text}\x1b[27m`;
+		return attributesEnabled() ? `\x1b[7m${text}\x1b[27m` : text;
 	}
 
 	getFgAnsi(color: ThemeColor): string {

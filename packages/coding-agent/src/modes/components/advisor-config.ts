@@ -15,9 +15,7 @@
  * {@link WatchdogConfigDoc} and only touches disk + the live advisors via the host
  * `save` callback.
  */
-import type { ThinkingLevel } from "@veyyon/agent-core";
-import type { Effort, Model } from "@veyyon/ai";
-import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
+import type { Model } from "@veyyon/ai";
 import {
 	type Component,
 	Input,
@@ -39,6 +37,11 @@ import {
 import type { ModelRegistry } from "../../config/model-registry";
 import { formatModelSelectorValue } from "../../config/model-resolver";
 import type { Settings } from "../../config/settings";
+import {
+	type ConfiguredThinkingLevel,
+	hasConfigurableThinkingEffort,
+	parseConfiguredThinkingLevel,
+} from "../../thinking";
 import { getSelectListTheme, theme } from "../theme/theme";
 import { effortStepItems } from "./effort-picker";
 import { HookEditorComponent } from "./hook-editor";
@@ -70,7 +73,7 @@ export interface AdvisorConfigCallbacks {
 export interface AdvisorConfigDeps {
 	modelRegistry: ModelRegistry;
 	settings: Settings;
-	scopedModels: ReadonlyArray<{ model: Model; thinkingLevel?: ThinkingLevel }>;
+	scopedModels: ReadonlyArray<{ model: Model; thinkingLevel?: ConfiguredThinkingLevel }>;
 	availableToolNames: string[];
 	/** Formatted advisor-role model shown on the seeded default row (e.g. "anthropic/claude-..."). */
 	defaultModelLabel?: string;
@@ -122,7 +125,7 @@ export class AdvisorConfigOverlayComponent implements Component {
 	#tui: TUI;
 	#modelRegistry: ModelRegistry;
 	#settings: Settings;
-	#scopedModels: ReadonlyArray<{ model: Model; thinkingLevel?: ThinkingLevel }>;
+	#scopedModels: ReadonlyArray<{ model: Model; thinkingLevel?: ConfiguredThinkingLevel }>;
 	#availableToolNames: readonly string[];
 	#defaultModelLabel: string | undefined;
 	#cb: AdvisorConfigCallbacks;
@@ -483,26 +486,23 @@ export class AdvisorConfigOverlayComponent implements Component {
 		picker.setPerfStats(storage?.getModelPerf() ?? new Map());
 		picker.setItems(items);
 		picker.onActivate = item => {
-			const efforts = getSupportedEfforts(item.model);
-			if (efforts.length === 0) {
+			if (!hasConfigurableThinkingEffort(item.model)) {
 				this.#doc.advisors[index].model = item.selector;
 				this.#dirty = true;
 				this.#showDetail(index);
 			} else {
-				this.#showThinkingPicker(index, item.selector, efforts);
+				this.#showThinkingPicker(index, item.selector, item.model);
 			}
 		};
 		picker.onCancel = () => this.#showDetail(index);
 		this.#setScreen("model", picker, "Type to search · Enter / click twice picks · Esc back");
 	}
 
-	#showThinkingPicker(index: number, selector: string, efforts: readonly Effort[]): void {
-		const items = effortStepItems(efforts);
+	#showThinkingPicker(index: number, selector: string, model: Model): void {
+		const items = effortStepItems(model);
 		const list = new SelectList(items, Math.max(1, items.length), getSelectListTheme());
 		list.onSelect = item => {
-			// `item.value` is one of the model's own supported efforts (or "" for the
-			// model default); `formatModelSelectorValue` spells the `:level` suffix.
-			const level = item.value ? (item.value as ThinkingLevel) : undefined;
+			const level = item.value ? parseConfiguredThinkingLevel(item.value) : undefined;
 			this.#doc.advisors[index].model = formatModelSelectorValue(selector, level);
 			this.#dirty = true;
 			this.#showDetail(index);

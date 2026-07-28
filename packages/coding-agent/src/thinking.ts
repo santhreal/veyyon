@@ -28,7 +28,7 @@ const THINKING_LEVEL_METADATA: Record<ThinkingLevel, ThinkingLevelMetadata> = {
 	[ThinkingLevel.Off]: { value: ThinkingLevel.Off, label: "off", description: "No reasoning" },
 	[ThinkingLevel.Minimal]: {
 		value: ThinkingLevel.Minimal,
-		label: "min",
+		label: "minimal",
 		description: "Very brief reasoning (~1k tokens)",
 	},
 	[ThinkingLevel.Low]: { value: ThinkingLevel.Low, label: "low", description: "Light reasoning (~2k tokens)" },
@@ -178,39 +178,85 @@ export function getConfiguredThinkingLevelMetadata(level: ConfiguredThinkingLeve
 	return level === AUTO_THINKING ? AUTO_THINKING_METADATA : getThinkingLevelMetadata(level);
 }
 
+/** True when the model exposes named effort variants rather than fixed reasoning. */
+export function hasConfigurableThinkingEffort(model: Model | undefined): model is Model {
+	return model?.reasoning === true && getSupportedEfforts(model).length > 0;
+}
+
 /**
- * Thinking selectors accepted by the `--thinking` CLI flag, in display order:
- * `off`, every concrete effort (`minimal`..`max`), then `auto`. Single source
- * for the flag's `options` list, shell completions, and the "invalid level"
- * warning so all three stay in sync.
+ * The complete configuration vocabulary.
+ *
+ * Model pickers narrow this vocabulary to the variants the active model
+ * actually exposes. This follows OpenCode's variant contract: one mechanism,
+ * model-specific valid names, and no silently clamped choices.
  */
-export const CLI_THINKING_LEVELS: readonly string[] = [ThinkingLevel.Off, ...THINKING_EFFORTS, AUTO_THINKING];
+export const CONFIGURED_THINKING_LEVELS: readonly ConfiguredThinkingLevel[] = [
+	ThinkingLevel.Off,
+	AUTO_THINKING,
+	...THINKING_EFFORTS,
+];
+
+/** Return the valid configured choices for one model, in cycle order. */
+export function configuredThinkingLevelsForModel(model: Model | undefined): readonly ConfiguredThinkingLevel[] {
+	if (!model) return CONFIGURED_THINKING_LEVELS;
+	const supported = getSupportedEfforts(model);
+	if (supported.length === 0) return [];
+	return [
+		...(model.thinking?.requiresEffort ? [] : [ThinkingLevel.Off]),
+		AUTO_THINKING,
+		...supported,
+	];
+}
+
+/**
+ * Thinking selectors accepted by the `--thinking` CLI flag. The CLI, settings,
+ * model hub, chain editor, and cycle key all read the same ordered vocabulary.
+ */
+export const CLI_THINKING_LEVELS: readonly string[] = CONFIGURED_THINKING_LEVELS;
 
 /** The value an effort picker stores for "no effort of my own — inherit". */
 export const INHERIT_EFFORT_OPTION_VALUE = "";
 
+export interface ConfiguredThinkingLevelOptions {
+	model?: Model;
+	includeInherit?: boolean;
+	inheritLabel?: string;
+	inheritDescription?: string;
+}
+
+function effortDescription(level: ConfiguredThinkingLevel, model: Model | undefined): string {
+	const metadata = getConfiguredThinkingLevelMetadata(level);
+	if (level !== AUTO_THINKING || !model) return metadata.description;
+	const supported = getSupportedEfforts(model);
+	return `Choose per prompt from ${supported.join(", ")}`;
+}
+
 /**
- * The same selectors as {@link CLI_THINKING_LEVELS}, as picker rows with their
- * labels and descriptions, preceded by an explicit inherit row.
+ * Picker rows for the active model's named effort variants.
  *
- * One owner because effort is chosen on several surfaces — the blanket subagent
- * effort in `/settings`, the per-agent effort beside it, and the `--thinking`
- * flag's option list — and a surface that spelled its own list is how a free-text
- * effort field came to accept a typo that silently meant "inherited". Rows carry
- * the metadata table's wording, so no surface renames a level either.
+ * Like OpenCode's variant selector, this shows only valid model-specific
+ * choices plus Veyyon's `auto` and `off` controls. The base model remains the
+ * first, suffix-free row when inheritance is enabled.
  */
-export function configuredThinkingLevelOptions(): ReadonlyArray<{
-	value: string;
-	label: string;
-	description: string;
-}> {
+export function configuredThinkingLevelOptions(
+	options: ConfiguredThinkingLevelOptions = {},
+): ReadonlyArray<{ value: string; label: string; description: string }> {
+	const rows = configuredThinkingLevelsForModel(options.model).map(level => {
+		const metadata = getConfiguredThinkingLevelMetadata(level);
+		return {
+			value: level,
+			label: metadata.label,
+			description: effortDescription(level, options.model),
+		};
+	});
+	if (options.includeInherit === false) return rows;
 	return [
-		{ value: INHERIT_EFFORT_OPTION_VALUE, label: "Inherit", description: "Follow the session's effort" },
-		...CLI_THINKING_LEVELS.map(selector => {
-			const level = parseConfiguredThinkingLevel(selector);
-			const meta = level !== undefined ? getConfiguredThinkingLevelMetadata(level) : undefined;
-			return { value: selector, label: meta?.label ?? selector, description: meta?.description ?? "" };
-		}),
+		{
+			value: INHERIT_EFFORT_OPTION_VALUE,
+			label: options.inheritLabel ?? "Inherit",
+			description: options.inheritDescription ?? "Follow the session's effort",
+		},
+		...rows,
 	];
 }
 

@@ -20,7 +20,7 @@ import { shortenPath } from "../../tools/render-utils";
 import { canonicalizeMessage } from "../../utils/thinking-display";
 import { resolveAssistantErrorPresentation } from "../utils/transcript-render-helpers";
 import { DynamicBorder } from "./dynamic-border";
-import { centeredWindow, contentRowWidth, renderScrollableList } from "./selector-helpers";
+import { centeredWindow, renderScrollableList, selectionBand } from "./selector-helpers";
 
 /** Gutter info: position (displayIndent where connector was) and whether to show │ */
 interface GutterInfo {
@@ -482,6 +482,34 @@ class TreeList implements Component {
 			this.maxVisibleLines,
 		);
 
+		lines.push(
+			...renderScrollableList(
+				{
+					width,
+					visibleRows: endIndex - startIndex,
+					totalRows: this.#filteredNodes.length,
+					scrollOffset: startIndex,
+				},
+				rowWidth => this.#buildRows(startIndex, endIndex, rowWidth),
+			),
+		);
+
+		const filterLabel = this.#getFilterLabel();
+		if (filterLabel) {
+			lines.push(truncateToWidth(theme.fg("muted", `  ${filterLabel.trim()}`), width));
+		}
+
+		return lines;
+	}
+
+	/**
+	 * Paint the rows for the window `[startIndex, endIndex)` at `rowWidth`.
+	 *
+	 * `rowWidth` comes from the ScrollView that will render these rows, so a
+	 * selected row can be filled all the way to the pane edge without the fill
+	 * being cut short and losing the escape that closes it.
+	 */
+	#buildRows(startIndex: number, endIndex: number, rowWidth: number): readonly string[] {
 		// Cap the per-row gutter prefix so a content budget is always preserved.
 		// Each indent level renders as 3 cells; deep branching would otherwise eat the
 		// entire viewport (issue #1144). Reserve at least MIN_CONTENT_COLS for entry
@@ -489,10 +517,9 @@ class TreeList implements Component {
 		// levels off-screen behind a leading ellipsis when the row would exceed budget.
 		const MIN_CONTENT_COLS = 24;
 		const OVERHEAD_COLS = 4; // cursor (2) + a touch of breathing room
-		const contentReserve = Math.max(MIN_CONTENT_COLS, Math.floor(width / 2));
-		const maxIndentLevels = Math.max(1, Math.floor((width - contentReserve - OVERHEAD_COLS) / 3));
+		const contentReserve = Math.max(MIN_CONTENT_COLS, Math.floor(rowWidth / 2));
+		const maxIndentLevels = Math.max(1, Math.floor((rowWidth - contentReserve - OVERHEAD_COLS) / 3));
 
-		const rowWidth = contentRowWidth(width, this.#filteredNodes.length, this.maxVisibleLines);
 		const rows: string[] = [];
 
 		for (let i = startIndex; i < endIndex; i++) {
@@ -574,27 +601,13 @@ class TreeList implements Component {
 			const label = flatNode.node.label ? theme.fg("warning", `[${flatNode.node.label}] `) : "";
 			const content = this.#getEntryDisplayText(flatNode.node, isSelected);
 
-			let line = cursor + theme.fg("dim", prefix) + pathMarker + label + content;
-			if (isSelected) {
-				line = theme.bg("selectedBg", line);
-			}
-			rows.push(truncateToWidth(line, rowWidth));
+			const line = cursor + theme.fg("dim", prefix) + pathMarker + label + content;
+			// The selection band is the ROW, not the text: pad to the full row width
+			// before tinting so the highlight has the same shape on every entry.
+			rows.push(isSelected ? selectionBand(line, rowWidth) : truncateToWidth(line, rowWidth));
 		}
 
-		lines.push(
-			...renderScrollableList(rows, {
-				width,
-				totalRows: this.#filteredNodes.length,
-				scrollOffset: startIndex,
-			}),
-		);
-
-		const filterLabel = this.#getFilterLabel();
-		if (filterLabel) {
-			lines.push(truncateToWidth(theme.fg("muted", `  ${filterLabel.trim()}`), width));
-		}
-
-		return lines;
+		return rows;
 	}
 
 	#getEntryDisplayText(node: SessionTreeNode, isSelected: boolean): string {

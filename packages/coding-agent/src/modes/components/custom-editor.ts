@@ -3,6 +3,8 @@ import type { ImageContent } from "@veyyon/ai";
 import { addKeyAliases, canonicalKeyId, Editor, type KeyId, parseKey, parseKittySequence } from "@veyyon/tui";
 import { BracketedPasteHandler, PASTE_END, PASTE_START } from "@veyyon/tui/bracketed-paste";
 import { hasUriScheme } from "@veyyon/utils";
+// The leaf table, not the loader: this file needs the shipped chords, not yaml.
+import { KEYBINDINGS } from "../../config/keybinding-defs";
 import type { AppKeybinding } from "../../config/keybindings";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../../config/settings-instance";
@@ -11,52 +13,57 @@ import { hasMagicKeyword, highlightMagicKeywords } from "../magic-keywords";
 import { isQueuedMessageList, parseQueueShorthand, QUEUE_LIST_MARKER_RE } from "../queue-input";
 import { fgOrPlain, theme } from "../theme/theme";
 
-type ConfigurableEditorAction = Extract<
-	AppKeybinding,
-	| "app.interrupt"
-	| "app.clear"
-	| "app.exit"
-	| "app.suspend"
-	| "app.display.reset"
-	| "app.thinking.cycle"
-	| "app.model.cycleForward"
-	| "app.model.cycleBackward"
-	| "app.model.select"
-	| "app.model.selectTemporary"
-	| "app.tools.expand"
-	| "app.thinking.toggle"
-	| "app.editor.external"
-	| "app.history.search"
-	| "app.message.dequeue"
-	| "app.retry"
-	| "app.clipboard.pasteImage"
-	| "app.clipboard.pasteTextRaw"
-	| "app.clipboard.copyPrompt"
-	| "app.bash.background"
->;
+/**
+ * The actions this editor matches keys for, as a value so the defaults can be
+ * derived from it rather than restated beside it.
+ *
+ * `satisfies readonly AppKeybinding[]` keeps the compile-time guarantee the old
+ * `Extract<...>` union gave: a name that is not a real app binding is an error
+ * here, not a row that silently matches nothing.
+ */
+const CONFIGURABLE_EDITOR_ACTIONS = [
+	"app.interrupt",
+	"app.clear",
+	"app.exit",
+	"app.suspend",
+	"app.display.reset",
+	"app.thinking.cycle",
+	"app.model.cycleForward",
+	"app.model.cycleBackward",
+	"app.model.select",
+	"app.model.selectTemporary",
+	"app.tools.expand",
+	"app.thinking.toggle",
+	"app.editor.external",
+	"app.history.search",
+	"app.message.dequeue",
+	"app.retry",
+	"app.clipboard.pasteImage",
+	"app.clipboard.pasteTextRaw",
+	"app.clipboard.copyPrompt",
+	"app.bash.background",
+] as const satisfies readonly AppKeybinding[];
 
-const DEFAULT_ACTION_KEYS: Record<ConfigurableEditorAction, KeyId[]> = {
-	"app.interrupt": ["escape"],
-	"app.clear": ["ctrl+c"],
-	"app.exit": ["ctrl+d"],
-	"app.suspend": ["ctrl+z"],
-	"app.bash.background": ["ctrl+b"],
-	"app.display.reset": ["ctrl+l"],
-	"app.thinking.cycle": ["shift+tab"],
-	"app.model.cycleForward": ["ctrl+p"],
-	"app.model.cycleBackward": ["shift+ctrl+p"],
-	"app.model.select": ["alt+m"],
-	"app.model.selectTemporary": ["alt+p"],
-	"app.tools.expand": ["ctrl+o"],
-	"app.thinking.toggle": ["ctrl+t"],
-	"app.editor.external": ["ctrl+g"],
-	"app.history.search": ["ctrl+r"],
-	"app.message.dequeue": ["alt+up"],
-	"app.retry": ["alt+r"],
-	"app.clipboard.pasteImage": ["ctrl+v"],
-	"app.clipboard.pasteTextRaw": ["ctrl+shift+v", "alt+shift+v"],
-	"app.clipboard.copyPrompt": ["alt+shift+c"],
-};
+type ConfigurableEditorAction = (typeof CONFIGURABLE_EDITOR_ACTIONS)[number];
+
+/**
+ * The shipped chord for each action this editor matches, read from the one table.
+ *
+ * These are the FALLBACK values, used until the host calls `setActionKeys` with
+ * whatever the user's `keybindings.yml` resolved to. They used to be a hand-written
+ * copy of twenty rows, which is exactly the shape that drifts: the copy pinned
+ * `app.clipboard.pasteImage` to `ctrl+v` alone, so on Windows and macOS its
+ * `alt+v` / `super+v` fallbacks were missing here and present everywhere else, and
+ * an editor mounted before the host injected keys silently matched the wrong set.
+ *
+ * `config/keybinding-defs.ts` is the leaf that holds the table, so reading it here
+ * costs the TUI types and nothing else. `KEYBINDINGS` covers the `tui.*` ids too;
+ * only the ids in {@link ConfigurableEditorAction} are picked out, so an action
+ * this editor does not handle cannot arrive by accident.
+ */
+const DEFAULT_ACTION_KEYS = Object.fromEntries(
+	CONFIGURABLE_EDITOR_ACTIONS.map(action => [action, [...[KEYBINDINGS[action].defaultKeys].flat()] as KeyId[]]),
+) as Record<ConfigurableEditorAction, KeyId[]>;
 
 function buildMatchKeys(keys: readonly KeyId[]): Set<string> {
 	const matchKeys = new Set<string>();

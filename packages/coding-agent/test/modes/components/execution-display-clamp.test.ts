@@ -21,8 +21,9 @@
  * These cases pin the surviving behaviour against real strings, and lock both components onto the one helper.
  */
 
-import { beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
+import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import {
 	buildStatusFooter,
 	capExecutionOutputLines,
@@ -32,7 +33,7 @@ import {
 	EXECUTION_STREAMING_LINE_CAP,
 } from "@veyyon/coding-agent/modes/components/execution-shared";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
-import { visibleWidth } from "@veyyon/tui";
+import { resetKeybindingsForTests, setKeybindings, visibleWidth } from "@veyyon/tui";
 
 const COMPONENTS = path.resolve(import.meta.dir, "../../../src/modes/components");
 const CONSUMERS = ["bash-execution.ts", "eval-execution.ts"];
@@ -147,11 +148,16 @@ describe("clamping one output line", () => {
 });
 
 describe("bounding the retained output", () => {
-	// The footer cases render themed text, so the theme has to be bound before they run.
+	// Footer cases render themed text and read the live expand binding.
 	beforeEach(async () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
 		setThemeInstance(theme!);
+		setKeybindings(KeybindingsManager.inMemory());
+	});
+
+	afterEach(() => {
+		resetKeybindingsForTests();
 	});
 
 	/**

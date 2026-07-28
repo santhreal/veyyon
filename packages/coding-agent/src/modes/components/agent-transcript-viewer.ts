@@ -1,11 +1,17 @@
 /**
  * Fullscreen transcript viewer.
  *
- * `AgentHubOverlayComponent.openChat` mounts this as a `fullscreen` overlay
+ * The Agent Control Center mounts this as a `fullscreen` overlay
  * (`ui.showOverlay(..., { fullscreen: true })`), so it borrows the terminal's
  * alternate screen buffer (the vim/less idiom) and paints the whole screen — no
- * compositing into the live transcript's scrollback. It renders a parked
- * subagent / advisor / collab-guest transcript that has no live in-view session.
+ * compositing into the live transcript's scrollback.
+ *
+ * It is the FALLBACK drill-in, not the normal one. Opening an agent normally
+ * hands the main view to that agent's live session, where the transcript
+ * renders through the regular pipeline and you can reply. This viewer is for
+ * the two cases where there is no live session to hand over: an advisor
+ * transcript (observability-only, never revivable) and a collab guest (no local
+ * sessions at all, so reads are proxied to the host).
  *
  * Local transcripts tail append-only growth: unchanged file identity plus stable
  * sentinels means only newly appended JSONL is parsed and rendered. Rewrites,
@@ -27,7 +33,6 @@ import { replaceTabs, shortenPath, truncateToWidth } from "../../tools/render-ut
 import type { ObservableSession, SessionObserverRegistry } from "../session-observer-registry";
 import { getEditorTheme, theme } from "../theme/theme";
 import { matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
-import type { AgentHubRemote } from "./agent-hub";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
 
 // The whole transcript sits on ONE left rail (COMPOSER_INSET_COLS); the
@@ -40,11 +45,33 @@ import { ChatTranscriptBuilder } from "./chat-transcript-builder";
 import { DynamicBorder } from "./dynamic-border";
 import { formatContextUsage } from "./status-line/context-thresholds";
 
+/** Result of one host-backed transcript read. */
+export interface AgentTranscriptRemoteRead {
+	text: string;
+	newSize: number;
+	/** Terminal read failure reported by the host; guests should surface it instead of retrying hot. */
+	error?: string;
+}
+
+/**
+ * Guest-side proxy for agent actions executed on the collab host.
+ *
+ * A guest has no local sessions, so every action a local operator performs
+ * directly (prompt, kill, revive, read the transcript) crosses the wire.
+ */
+export interface AgentTranscriptRemote {
+	chat(id: string, text: string): void;
+	kill(id: string): void;
+	revive(id: string): void;
+	/** Mirrors readFileIncremental: text from fromByte (complete JSONL lines), newSize = next fromByte base; null = temporarily unavailable. */
+	readTranscript(id: string, fromByte: number): Promise<AgentTranscriptRemoteRead | null>;
+}
+
 export interface AgentTranscriptViewerDeps {
 	agentId: string;
 	registry: AgentRegistry;
 	/** Collab guest: read transcript from the host instead of a local file. */
-	remote?: AgentHubRemote;
+	remote?: AgentTranscriptRemote;
 	/** Progress/cost snapshot source for the stats line. */
 	observers?: SessionObserverRegistry;
 	/** Revive+prompt path for messageable local agents. Lazy to avoid touching the global. */
@@ -587,7 +614,11 @@ export class AgentTranscriptViewer implements Component {
 	}
 
 	#headerLines(status: AgentStatus | undefined, kind: string | undefined, parentId: string | undefined): string[] {
-		const lines = [theme.fg("accent", `Agent Hub ${theme.sep.dot} ${this.deps.agentId}`)];
+		// "Transcript", not the name of the screen that opened it. This viewer is
+		// reached from the Agent Control Center, and titling it with the surface it
+		// came from told the reader where they had been rather than what they were
+		// looking at. It said "Agent Hub" for months after that screen was gone.
+		const lines = [theme.fg("accent", `Transcript ${theme.sep.dot} ${this.deps.agentId}`)];
 		if (status && kind) {
 			const kindTag = theme.fg("dim", ` ${parentId ? `${kind} ${theme.sep.dot} of ${parentId}` : kind}`);
 			const modelLabel = this.#model ? theme.fg("muted", `${theme.sep.dot}${this.#model}`) : "";

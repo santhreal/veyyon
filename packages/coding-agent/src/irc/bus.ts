@@ -38,6 +38,25 @@ export interface IrcDeliveryReceipt {
 	error?: string;
 }
 
+/**
+ * One line of the bus's own record of the traffic: the message and how it
+ * landed.
+ *
+ * The mailboxes cannot serve this. A mailbox is a QUEUE -- `wait`, `inbox` and
+ * the live hand-off all remove the message as they consume it -- so a surface
+ * reading mailboxes sees only what has not been delivered yet, which on a
+ * healthy run is nothing. Watching agents talk needs a record that delivery
+ * does not erase, and it belongs to the bus rather than to whichever pane
+ * happens to be open, so a pane opened mid-run still shows what was already
+ * said.
+ */
+export interface IrcLogEntry {
+	message: IrcMessage;
+	outcome: IrcDeliveryReceipt["outcome"];
+	/** Present only on `failed`: why it did not reach the recipient. */
+	error?: string;
+}
+
 interface IrcWaiter {
 	from?: string;
 	resolve: (msg: IrcMessage) => void;
@@ -46,6 +65,13 @@ interface IrcWaiter {
 
 /** Mailbox cap per agent; oldest messages are dropped beyond it. */
 const MAILBOX_CAP = 100;
+
+/**
+ * Traffic lines kept for the comms view. A cap, not a page: the log is read
+ * from the newest end, and an unbounded one would grow for the life of a
+ * process that may run for hours of continuous agent chatter.
+ */
+const LOG_CAP = 500;
 
 export class IrcBus {
 	static #global: IrcBus | undefined;
@@ -66,6 +92,8 @@ export class IrcBus {
 	readonly #lifecycle: () => AgentLifecycleManager;
 	readonly #mailboxes = new Map<string, IrcMessage[]>();
 	readonly #waiters = new Map<string, IrcWaiter[]>();
+	readonly #log: IrcLogEntry[] = [];
+	readonly #logListeners = new Set<(entry: IrcLogEntry) => void>();
 
 	constructor(registry: AgentRegistry = AgentRegistry.global(), lifecycle?: AgentLifecycleManager) {
 		this.#registry = registry;
@@ -102,7 +130,71 @@ export class IrcBus {
 		msg: Omit<IrcMessage, "id" | "ts">,
 		opts?: { expectsReply?: boolean; suppressRelay?: boolean },
 	): Promise<IrcDeliveryReceipt> {
+		// One wrapper around the whole delivery, so the log gets every leg exactly
+		// once. `#send` returns from seven places -- three refusals, the waiter
+		// hand-off, the live delivery, and two failure paths -- and recording at
+		// each of them is how a log silently loses the cases nobody tested.
 		const message: IrcMessage = { ...msg, id: Snowflake.next(), ts: Date.now() };
+		let receipt: IrcDeliveryReceipt;
+		try {
+			receipt = await this.#send(message, opts);
+		} catch (error) {
+			// `#send` reports its known failures as receipts, but the relay, the
+			// waiter hand-off and the mailbox enqueue all sit outside its try
+			// blocks. An unexpected throw there would leave a leg that was really
+			// attempted absent from the log, which reads as a message nobody sent.
+			// Recorded as the failure it is, then rethrown unchanged: the log is a
+			// display feed and must not change what the caller sees.
+			this.#record({ message, outcome: "failed", error: errorMessage(error) });
+			throw error;
+		}
+		this.#record({ message, outcome: receipt.outcome, error: receipt.error });
+		return receipt;
+	}
+
+	/**
+	 * The bus's own record of the traffic, oldest first, capped at {@link LOG_CAP}.
+	 *
+	 * A copy: the array is handed to render paths that hold it across frames, and
+	 * a live reference would mutate under them mid-render.
+	 */
+	log(): IrcLogEntry[] {
+		return [...this.#log];
+	}
+
+	/**
+	 * Subscribe to traffic as it happens. Returns the unsubscribe.
+	 *
+	 * A listener that throws must not break delivery -- it is a display feed --
+	 * so a throw is logged loudly and the remaining listeners still run, rather
+	 * than the send path unwinding into a caller that was only trying to talk to
+	 * another agent.
+	 */
+	onMessage(listener: (entry: IrcLogEntry) => void): () => void {
+		this.#logListeners.add(listener);
+		return () => this.#logListeners.delete(listener);
+	}
+
+	#record(entry: IrcLogEntry): void {
+		this.#log.push(entry);
+		if (this.#log.length > LOG_CAP) this.#log.splice(0, this.#log.length - LOG_CAP);
+		for (const listener of this.#logListeners) {
+			try {
+				listener(entry);
+			} catch (error) {
+				logger.warn("IrcBus: a traffic listener threw; delivery was unaffected", {
+					from: entry.message.from,
+					to: entry.message.to,
+					error: String(error),
+				});
+			}
+		}
+	}
+
+	async #send(
+		message: IrcMessage,
+		opts?: { expectsReply?: boolean; suppressRelay?: boolean },
+	): Promise<IrcDeliveryReceipt> {
 		const ref = this.#registry.get(message.to);
 		if (!ref) {
 			return {

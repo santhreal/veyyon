@@ -121,8 +121,10 @@ export const SUBAGENTS_SETTINGS = {
 	 * Per-agent settings keyed by agent name; see {@link SubagentAgentSettings}.
 	 *
 	 * Rendered as a table of discovered agents rather than one control, so the
-	 * settings row is a summary that opens the per-agent editor. `/agents` edits
-	 * the same rows against the same resolver; neither surface owns the meaning.
+	 * settings row is a summary that opens the per-agent editor. This is the ONLY
+	 * surface that edits these rows: the Agent Control Center (`/agents`) used to
+	 * carry a second copy of the same table, and two editors over one setting is
+	 * how the surfaces drifted apart before.
 	 */
 	"subagent.agents": {
 		type: "record",
@@ -142,14 +144,14 @@ export const SUBAGENTS_SETTINGS = {
 	// ────────────────────────────────────────────────────────────────────────
 
 	"subagent.model": {
-		type: "string",
+		type: "modelChain",
 		default: undefined,
 		ui: {
 			tab: "subagents",
 			group: "Models",
 			label: "Subagent Model",
 			description:
-				"Model for every enabled subagent that has no per-agent model of its own. Unset means inherit: subagents follow the session's live main model. A per-agent model in the Agents table wins over this.",
+				"Models for every enabled subagent that has no per-agent model of its own, tried in order: the rest are used when an earlier one errors. Unset means inherit: subagents follow the session's live main model. A per-agent model in the Agents table wins over this.",
 			keywords: ["task", "spawn", "delegate", "worker"],
 		},
 	},

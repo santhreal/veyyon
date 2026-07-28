@@ -1,6 +1,7 @@
 import { matchesKey, replaceTabs, ScrollView, Text, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import type { Theme } from "../modes/theme/theme";
 import { formatElapsed, formatNum, formatPercentChange, isBetter } from "./helpers";
+import { AUTORESEARCH_OVERLAY_KEY, AUTORESEARCH_TOGGLE_KEY } from "./shortcuts";
 import { currentResults, findBaselineMetric, findBaselineRunNumber, findBaselineSecondary } from "./state";
 import type { AutoresearchRuntime, DashboardController, ExperimentResult, ExperimentState } from "./types";
 
@@ -146,7 +147,10 @@ function renderExpandedHeader(runtime: AutoresearchRuntime, width: number, theme
 	const state = runtime.state;
 	const status = renderModeStatus(runtime, state);
 	const label = state.name ? ` autoresearch: ${replaceTabs(state.name)} ` : " autoresearch ";
-	const hint = theme.fg("dim", ` ctrl+x collapse  ctrl+shift+x overlay${status ? `  ${status}` : ""} `);
+	const hint = theme.fg(
+		"dim",
+		` ${AUTORESEARCH_TOGGLE_KEY} collapse  ${AUTORESEARCH_OVERLAY_KEY} overlay${status ? `  ${status}` : ""} `,
+	);
 	const fillWidth = Math.max(0, width - visibleWidth(label) - visibleWidth(hint));
 	return truncateToWidth(theme.fg("accent", label) + theme.fg("borderMuted", "-".repeat(fillWidth)) + hint, width);
 }
@@ -216,7 +220,7 @@ function renderCollapsedLine(runtime: AutoresearchRuntime, state: ExperimentStat
 	} else if (!runtime.autoresearchMode) {
 		parts.push(theme.fg("dim", ` | ${renderModeStatus(runtime, state)}`));
 	}
-	parts.push(theme.fg("dim", " | ctrl+x expand"));
+	parts.push(theme.fg("dim", ` | ${AUTORESEARCH_TOGGLE_KEY} expand`));
 	return parts.join("");
 }
 

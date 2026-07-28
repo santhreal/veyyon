@@ -35,7 +35,14 @@ export const PROVIDERS_SETTINGS = {
 	// Providers
 	// ────────────────────────────────────────────────────────────────────────
 
-	// Secret handling
+	/**
+	 * Whether secrets are replaced before anything is sent to a provider.
+	 *
+	 * OFF by default, but `/secret add` turns it on, because storing a credential for the agent to
+	 * use is the opt-in and a stored credential is worth nothing until the substitution that spends
+	 * it is running. The default stays off so that a user who has never asked for the feature does
+	 * not pay for scanning every outbound string, and nothing turns it back off on their behalf.
+	 */
 	"secrets.enabled": {
 		type: "boolean",
 		default: false,
@@ -43,7 +50,51 @@ export const PROVIDERS_SETTINGS = {
 			tab: "providers",
 			group: "Privacy",
 			label: "Hide Secrets",
-			description: "Obfuscate secrets before sending to AI providers",
+			description: "Obfuscate secrets before sending to AI providers. /secret add turns this on for you",
+		},
+	},
+
+	/**
+	 * Lifetime given to a `/secret` entry when the command does not say.
+	 *
+	 * A string rather than a number of milliseconds, because this is the same notation the
+	 * command takes (`30m`, `12h`, `7d`, `2w`, `never`) and one notation is easier to document
+	 * than two. Parsed by `parseTtl`, which refuses anything it cannot read rather than
+	 * quietly falling back, so a typo here surfaces instead of silently granting a different
+	 * lifetime than intended.
+	 *
+	 * One day by default: long enough to finish the task you added the credential for, short
+	 * enough that forgetting to remove it is not a standing exposure.
+	 */
+	"secrets.defaultTtl": {
+		type: "string",
+		default: "1d",
+		ui: {
+			tab: "providers",
+			group: "Privacy",
+			label: "Secret Lifetime",
+			description: 'How long a /secret lasts by default: 30m, 12h, 7d, 2w, or "never"',
+		},
+	},
+
+	/**
+	 * Whether each use of a stored secret is recorded.
+	 *
+	 * ON by default. The record holds no values (it is written from the arguments as the model
+	 * produced them, in which every secret is still a placeholder), it costs one line per tool
+	 * call that mentions a secret and nothing at all for every call that does not, and the
+	 * question it answers after the fact, which credential did this agent actually use and where,
+	 * has no other source. A default of off would mean the answer does not exist by the time
+	 * anybody thinks to want it.
+	 */
+	"secrets.auditLog": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "providers",
+			group: "Privacy",
+			label: "Record Secret Use",
+			description: "Append which secret was used in which command to the profile's log. Never records values",
 		},
 	},
 

@@ -52,6 +52,7 @@ import {
 import { fit } from "./overlay-box";
 import { joinPlanSections, parsePlanSections, sectionDeletionSpan } from "./plan-toc";
 import { renderSliderLines } from "./segment-track";
+import { selectionBand } from "./selector-helpers";
 
 /** Title shown in the ModalShell chrome. */
 const OVERLAY_TITLE = "Plan Review";
@@ -841,7 +842,7 @@ export class PlanReviewOverlay implements Component {
 		// subtle; the focused row also gets the full-row highlight.
 		const gutter = selected ? theme.nav.cursor : glow ? "▎" : " ";
 		const line = gutter + body;
-		if (selected) return theme.bg("selectedBg", theme.bold(fit(line, width)));
+		if (selected) return selectionBand(theme.bold(line), width);
 		if (glow) return theme.fg("accent", line);
 		return theme.fg("muted", line);
 	}

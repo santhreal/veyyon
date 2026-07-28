@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
+import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { PRIORITY_TIER_COMMAND_LABEL, PRIORITY_TIER_LABEL } from "../../../config/service-tier";
 import { Settings } from "../../../config/settings";
 import type { AgentSession } from "../../../session/agent-session";
@@ -30,7 +31,7 @@ const EFFORT_SYMBOL_KEYS: readonly SymbolKey[] = [
 ];
 
 /** Strip SGR so a case can assert on text, or keep them to assert on color. */
-const strip = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, "");
+const strip = (text: string): string => stripAnsi(text);
 
 function makeContext(over: { fast: boolean; thinking?: ThinkingLevel; compact?: boolean }): SegmentContext {
 	const session = {

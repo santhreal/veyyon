@@ -2,7 +2,7 @@
  * The single owner of the AgentStatus visual language: one color per status,
  * plus the glyph form (compact rosters) and word form (labels) derived from it.
  *
- * Both the Agent Hub roster and the transcript viewer read from here, so the two
+ * Both the Control Center roster and the transcript viewer read from here, so the two
  * can never again disagree on which color means `running` vs `idle` — they
  * previously did (hub: running→accent/idle→success; viewer: the reverse), a
  * same-name divergence where the identical status carried opposite colors in two
@@ -27,20 +27,21 @@ const AGENT_STATUS_SYMBOL = {
 	aborted: "status.aborted",
 } as const;
 
-/**
- * Canonical sort rank per status: running first (needs attention), then idle,
- * parked, aborted. Both the Agent Hub roster and the Subagent Inbox sidebar sort
- * by this, so the two views can never disagree on which agents float to the top.
- * ONE-PLACE: the ordering lives here beside the color/glyph it belongs with.
- */
-export const AGENT_STATUS_ORDER: Record<AgentStatus, number> = { running: 0, idle: 1, parked: 2, aborted: 3 };
+// AGENT_STATUS_ORDER was here: a canonical sort rank per status, shared so the
+// Agent Hub roster and the Subagent Inbox sidebar could not disagree about which
+// agents floated to the top. Both views are gone, and the Agent Control Center
+// that replaced them sorts by SPAWN order instead, deliberately: call signs are
+// assigned from the roster order, so a status-based sort renames agents as they
+// change state, and a name that moves is worse than no name. The constant had no
+// remaining consumer, and an exported ordering nothing orders by is a rule a
+// reader will assume is in force.
 
 /** The color the given status is rendered in, everywhere. */
 export function agentStatusColor(status: AgentStatus): ThemeColor {
 	return AGENT_STATUS_COLOR[status];
 }
 
-/** Colored status glyph for compact rosters (e.g. the Agent Hub table). */
+/** Colored status glyph for compact rosters (the Control Center's Live view). */
 export function agentStatusGlyph(status: AgentStatus): string {
 	return theme.styledSymbol(AGENT_STATUS_SYMBOL[status], AGENT_STATUS_COLOR[status]);
 }
