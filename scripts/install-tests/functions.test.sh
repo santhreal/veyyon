@@ -1258,6 +1258,13 @@ write_stub_binary() {
 # reports success having removed nothing.
 ( _sp="$SANDBOX/spaced/my home dir"
   mkdir -p "$_sp/bin" "$_sp/.veyyon/natives/1.0.0" "$_sp/.veyyon/src/.git"
+  # The subject here is spaces in paths, so the two things that decide WHICH rc
+  # gets the PATH line are pinned rather than inherited: `$SHELL` and the OS.
+  # Unpinned, this block asserted `.bashrc` and passed on the Linux runners while
+  # failing on both macOS ones, where the login shell is zsh and the candidate
+  # list differs — a macOS-only red that says nothing about spaces at all.
+  uname() { printf 'Linux\n'; }
+  export SHELL=/bin/bash
   export HOME="$_sp"
   export XDG_DATA_HOME="$_sp/.local/share"
   export XDG_CONFIG_HOME="$_sp/.config"
