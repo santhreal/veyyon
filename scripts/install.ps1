@@ -247,31 +247,44 @@ function Move-StagedBinaryIntoPlace {
     Remove-Item $aside -ErrorAction SilentlyContinue
 }
 
+# PowerShell decides whether a command path is executable from its final
+# extension. Keep the verified staging file beside the target for an atomic move,
+# but retain `.exe` as the final suffix so the preflight can run inside a
+# pipeline on Windows PowerShell 5.1.
+function New-BinaryStagingPath {
+    param([string]$Dir, [string]$BinName)
+    return Join-Path $Dir ".$BinName.$PID.download.exe"
+}
+
 # Reclaim moved-aside binaries whose owning process has since exited. Deleting
 # one that is still mapped fails, which is fine: it is retried next run.
 # Remove artifacts a previous install left behind: a moved-aside `.old` binary and
-# a staged `.download` that never made it into place.
+# a staged `.download` or `.download.exe` that never made it into place.
 #
-# The `.download` half is why this exists. Nothing survives a killed process, and
-# until now only Uninstall-Veyyon ever swept those files, so an install that kept
-# being killed accumulated a full copy of the binary (~100 MB) per attempt in the
-# user's install directory, hidden, with nothing on screen to explain them. Both
-# names carry the writer's $PID, so a file whose process is STILL RUNNING belongs
-# to a concurrent installer and is left alone: the pid is in the path precisely so
-# two installers cannot truncate each other's download. Every removal is
-# announced, because deleting files in a directory the user owns is a visible
-# change and not something to do quietly. Mirrors sweep_stale_staging in install.sh.
+# The staged-download half is why this exists. Nothing survives a killed process,
+# and until now only Uninstall-Veyyon ever swept those files, so an install that
+# kept being killed accumulated a full copy of the binary (~100 MB) per attempt in
+# the user's install directory, hidden, with nothing on screen to explain them.
+# Both names carry the writer's $PID, so a file whose process is STILL RUNNING
+# belongs to a concurrent installer and is left alone: the pid is in the path
+# precisely so two installers cannot truncate each other's download. Every
+# removal is announced, because deleting files in a directory the user owns is a
+# visible change and not something to do quietly. Mirrors sweep_stale_staging in
+# install.sh.
 function Clear-StaleInstallArtifacts {
     param([string]$Dir, [string]$BaseName, [string]$BinName)
     if (-not (Test-Path $Dir)) { return }
-    foreach ($leftover in @(Get-ChildItem -Path $Dir -Filter "$BaseName.*.old" -File -ErrorAction SilentlyContinue) +
-                          @(Get-ChildItem -Path $Dir -Filter ".$BinName.*.download" -File -Force -ErrorAction SilentlyContinue)) {
-        # `<base>.<pid>.old` / `.<bin>.<pid>.download` - the pid is the token
-        # before the extension. Anything else was not written by this installer.
-        $parts = $leftover.Name.Split('.')
-        $pidToken = if ($parts.Length -ge 2) { $parts[$parts.Length - 2] } else { "" }
+    $oldPattern = "^" + [regex]::Escape($BaseName) + "\.(\d+)\.old$"
+    $downloadPattern = "^\." + [regex]::Escape($BinName) + "\.(\d+)\.download(?:\.exe)?$"
+    $leftovers = @(Get-ChildItem -Path $Dir -Filter "$BaseName.*.old" -File -ErrorAction SilentlyContinue) +
+                 @(Get-ChildItem -Path $Dir -Filter ".$BinName.*.download" -File -Force -ErrorAction SilentlyContinue) +
+                 @(Get-ChildItem -Path $Dir -Filter ".$BinName.*.download.exe" -File -Force -ErrorAction SilentlyContinue)
+    foreach ($leftover in $leftovers) {
+        $match = [regex]::Match($leftover.Name, $oldPattern)
+        if (-not $match.Success) { $match = [regex]::Match($leftover.Name, $downloadPattern) }
+        if (-not $match.Success) { continue }
         $ownerPid = 0
-        if (-not [int]::TryParse($pidToken, [ref]$ownerPid)) { continue }
+        if (-not [int]::TryParse($match.Groups[1].Value, [ref]$ownerPid)) { continue }
         if ($ownerPid -ne $PID -and (Get-Process -Id $ownerPid -ErrorAction SilentlyContinue)) {
             Write-Host "    leaving $($leftover.FullName) alone - another installer (pid $ownerPid) is using it"
             continue
@@ -1340,7 +1353,7 @@ function Install-Binary {
     # and then tried to delete the binary it could not write. The path is
     # per-process so two installers cannot truncate each other's download.
     Clear-StaleInstallArtifacts -Dir $InstallDir -BaseName "$BinName.exe" -BinName $BinName
-    $StagingPath = Join-Path $InstallDir ".$BinName.$PID.download"
+    $StagingPath = New-BinaryStagingPath -Dir $InstallDir -BinName $BinName
     # -UseBasicParsing: without it, Windows PowerShell 5.1 hands the response to
     # Internet Explorer's parsing engine, which is absent on Server Core and
     # refuses to run at all on a machine where IE's first-launch configuration
@@ -1507,7 +1520,8 @@ function Uninstall-Veyyon {
     # `.old` (still the running image) is left for the next sweep rather than
     # failing the uninstall over a file the OS will release on exit.
     foreach ($leftover in @(Get-ChildItem -Path $InstallDir -Filter "*.old" -File -ErrorAction SilentlyContinue) +
-                          @(Get-ChildItem -Path $InstallDir -Filter ".$BinName.*.download" -File -Force -ErrorAction SilentlyContinue)) {
+                          @(Get-ChildItem -Path $InstallDir -Filter ".$BinName.*.download" -File -Force -ErrorAction SilentlyContinue) +
+                          @(Get-ChildItem -Path $InstallDir -Filter ".$BinName.*.download.exe" -File -Force -ErrorAction SilentlyContinue)) {
         Remove-Item -Force $leftover.FullName -ErrorAction SilentlyContinue
         if (-not (Test-Path $leftover.FullName)) {
             Write-Host "OK  removed $($leftover.FullName)" -ForegroundColor Green
