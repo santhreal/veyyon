@@ -1,4 +1,5 @@
-import { escapeXmlAttribute, escapeXmlText, stringifyJson as stringifyJsonValue } from "@veyyon/utils";
+import { stringifyJson as stringifyJsonValue } from "@veyyon/utils/json";
+import { escapeXmlAttribute, escapeXmlText } from "@veyyon/utils/sanitize-text";
 import type { AssistantMessage, Message, ToolCall, ToolResultMessage } from "../types";
 import { buildArgShapes, type ToolArgShape } from "./coercion";
 import type { DialectRenderOptions, DialectToolResult } from "./types";
@@ -118,7 +119,7 @@ export function stringifyJson(value: unknown): string {
 // importing them from `./rendering` alongside the other render helpers. Behavior
 // parity with the naive replaceAll chains these replaced is locked by the
 // differentials in utils/test/sanitize-text.test.ts.
-export { escapeXmlAttribute as escapeXmlAttr, escapeXmlText } from "@veyyon/utils";
+export { escapeXmlAttribute as escapeXmlAttr, escapeXmlText } from "@veyyon/utils/sanitize-text";
 
 export type AssistantTranscriptParts = {
 	readonly text: string;

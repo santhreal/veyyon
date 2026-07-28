@@ -1,4 +1,4 @@
-import { isRecord } from "@veyyon/utils";
+import { isRecord } from "@veyyon/utils/type-guards";
 import { areJsonValuesEqual } from "./equality";
 import { epochNext, once } from "./stamps";
 

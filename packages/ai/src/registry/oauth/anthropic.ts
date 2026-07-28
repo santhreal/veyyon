@@ -3,7 +3,7 @@
  */
 
 import { CLAUDE_CODE_VERSION as claudeCodeVersion } from "@veyyon/catalog/wire/anthropic";
-import { withScopedTimeoutSignal } from "@veyyon/utils";
+import { withScopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import { DEFAULT_CALLBACK_PATH, OAuthCallbackFlow } from "./callback-server";

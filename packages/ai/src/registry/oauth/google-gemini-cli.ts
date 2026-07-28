@@ -10,10 +10,10 @@ import {
 	GOOGLE_OAUTH_AUTH_ENDPOINT,
 	GOOGLE_OAUTH_TOKEN_ENDPOINT,
 } from "@veyyon/catalog/wire/google-oauth";
-import { $env } from "@veyyon/utils";
+import { $env } from "@veyyon/utils/env";
 import * as AIError from "../../error";
 import { credentialExpiryFromExpiresIn } from "./expiry";
-import { runGoogleOAuthLogin } from "./google-oauth-shared";
+import { runGoogleOAuthLogin, TIER_FREE, TIER_LEGACY, TIER_STANDARD } from "./google-oauth-shared";
 import type { OAuthController, OAuthCredentials } from "./types";
 
 const decode = (s: string) => atob(s);
@@ -42,10 +42,6 @@ interface LongRunningOperationResponse {
 		cloudaicompanionProject?: { id?: string };
 	};
 }
-
-const TIER_FREE = "free-tier";
-const TIER_LEGACY = "legacy-tier";
-const TIER_STANDARD = "standard-tier";
 
 interface GoogleRpcErrorResponse {
 	error?: {

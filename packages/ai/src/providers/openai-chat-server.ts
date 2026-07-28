@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { isEffort } from "@veyyon/catalog/effort";
 import { emptyUsage } from "@veyyon/catalog/models";
-import { errorMessage, isRecord } from "@veyyon/utils";
+import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
 import { type } from "arktype";
 import { resolvePromptCacheKey } from "../auth-gateway/http";
 /**

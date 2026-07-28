@@ -2,14 +2,16 @@ import { describe, expect, it } from "bun:test";
 import { callWithCopilotModelRetry, isCopilotTransientModelError } from "@veyyon/ai/utils/retry";
 import { isRetryableError } from "@veyyon/utils";
 
-type ErrorShape = { status: number; code?: string; error?: { code?: string; message?: string }; message: string };
+type ErrorShape = {
+	status: number;
+	code?: string;
+	error?: { code?: string; message?: string };
+	message: string;
+	headers?: Record<string, string>;
+};
 
-function copilotError({ status, code, error, message }: ErrorShape): Error {
-	const err = new Error(message);
-	(err as unknown as ErrorShape).status = status;
-	if (code !== undefined) (err as unknown as ErrorShape).code = code;
-	if (error !== undefined) (err as unknown as ErrorShape).error = error;
-	return err;
+function copilotError({ status, code, error, message, headers }: ErrorShape): Error & ErrorShape {
+	return Object.assign(new Error(message), { status, code, error, headers });
 }
 
 describe("isCopilotTransientModelError", () => {
@@ -142,7 +144,7 @@ describe("callWithCopilotModelRetry", () => {
 				calls += 1;
 				if (calls === 1) {
 					const err = copilotError({ status: 429, message: "rate limited" });
-					(err as unknown as { headers: Record<string, string> }).headers = { "retry-after": "0.01" };
+					err.headers = { "retry-after": "0.01" };
 					throw err;
 				}
 				return "ok" as const;
@@ -151,6 +153,46 @@ describe("callWithCopilotModelRetry", () => {
 		);
 		expect(result).toBe("ok");
 		expect(calls).toBe(2);
+	});
+
+	/**
+	 * A zero Retry-After value is valid server guidance to retry immediately;
+	 * dropping it used to misclassify a guided 429 as an unguided terminal rate limit.
+	 */
+	it("accepts Retry-After zero as explicit retry guidance", async () => {
+		const events: string[] = [];
+		const result = await callWithCopilotModelRetry(
+			async () => {
+				events.push(`attempt:${events.length + 1}`);
+				if (events.length === 1) {
+					throw copilotError({ status: 429, message: "rate limited", headers: { "retry-after": "0" } });
+				}
+				return "ok" as const;
+			},
+			{ provider: "github-copilot", retryBaseDelayMs: 0 },
+		);
+
+		expect(result).toBe("ok");
+		expect(events).toEqual(["attempt:1", "attempt:2"]);
+	});
+
+	/**
+	 * Copilot 5xx responses are transient even when they omit Retry-After;
+	 * requiring that header suppressed the classifier's normal backoff retry.
+	 */
+	it("retries a transient 5xx without Retry-After guidance", async () => {
+		const attempts: number[] = [];
+		const result = await callWithCopilotModelRetry(
+			async () => {
+				attempts.push(attempts.length + 1);
+				if (attempts.length === 1) throw copilotError({ status: 503, message: "service unavailable" });
+				return "ok" as const;
+			},
+			{ provider: "github-copilot", retryBaseDelayMs: 0 },
+		);
+
+		expect(result).toBe("ok");
+		expect(attempts).toEqual([1, 2]);
 	});
 
 	it("still retries status-less transport blips with the linear backoff", async () => {
@@ -171,21 +213,51 @@ describe("callWithCopilotModelRetry", () => {
 		expect(calls).toBe(2);
 	});
 
-	it("stops retrying when the caller aborts during backoff", async () => {
+	/**
+	 * A signal latched before dispatch must prevent the physical request entirely
+	 * and preserve the caller's exact cancellation reason.
+	 */
+	it("does not dispatch an attempt for a pre-aborted Copilot request", async () => {
 		const controller = new AbortController();
-		controller.abort();
-		let calls = 0;
+		const reason = new Error("caller cancelled before dispatch");
+		controller.abort(reason);
+		const events: string[] = [];
+
 		await expect(
 			callWithCopilotModelRetry(
 				async () => {
-					calls += 1;
+					events.push("attempt");
 					throw copilotError({ status: 400, code: "model_not_supported", message: "transient" });
 				},
 				{ provider: "github-copilot", signal: controller.signal, retryBaseDelayMs: 0 },
 			),
-		).rejects.toBeDefined();
-		// fn runs once; scheduler.wait rejects before a second attempt.
-		expect(calls).toBe(1);
+		).rejects.toBe(reason);
+		expect(events).toEqual([]);
+	});
+
+	/**
+	 * Cancellation that lands after a retryable failure but during backoff must
+	 * beat the timer's synthetic AbortError and prevent a second physical attempt.
+	 */
+	it("preserves caller cancellation that lands during backoff", async () => {
+		const controller = new AbortController();
+		const reason = new Error("caller cancelled during backoff");
+		const events: string[] = [];
+
+		await expect(
+			callWithCopilotModelRetry(
+				async () => {
+					events.push("attempt:1");
+					queueMicrotask(() => {
+						events.push("abort");
+						controller.abort(reason);
+					});
+					throw copilotError({ status: 400, code: "model_not_supported", message: "transient" });
+				},
+				{ provider: "github-copilot", signal: controller.signal, retryBaseDelayMs: 60_000 },
+			),
+		).rejects.toBe(reason);
+		expect(events).toEqual(["attempt:1", "abort"]);
 	});
 });
 

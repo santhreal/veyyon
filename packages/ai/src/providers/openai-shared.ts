@@ -20,17 +20,12 @@ import {
 	removeBlankCoreWeaveProjectHeaders,
 } from "@veyyon/catalog/wire/coreweave";
 import { parseGitHubCopilotApiKey } from "@veyyon/catalog/wire/github-copilot";
-import {
-	$env,
-	classifyJsonPrefix,
-	extractHttpStatusFromError,
-	logger,
-	parseStreamingJson,
-	parseStreamingJsonThrottled,
-	stringifyJson,
-	structuredCloneJSON,
-	trimTrailingSlashes,
-} from "@veyyon/utils";
+import { $env } from "@veyyon/utils/env";
+import { extractHttpStatusFromError } from "@veyyon/utils/fetch-retry";
+import { stringifyJson, structuredCloneJSON } from "@veyyon/utils/json";
+import { classifyJsonPrefix, parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/utils/json-parse";
+import * as logger from "@veyyon/utils/logger";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import * as AIError from "../error";
 import {
 	type Api,

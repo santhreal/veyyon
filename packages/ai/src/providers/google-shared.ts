@@ -4,7 +4,7 @@
 
 import { scheduler } from "node:timers/promises";
 import { calculateCost, emptyCost, emptyUsage } from "@veyyon/catalog/models";
-import { readSseJson } from "@veyyon/utils";
+import { readSseJson } from "@veyyon/utils/stream";
 import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
 import type {
@@ -27,6 +27,7 @@ import { shouldSendServiceTier } from "../types";
 import { normalizeSystemPrompts } from "../utils";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import type { RawHttpRequestDump } from "../utils/http-inspector";
+import { notifyProviderResponse } from "../utils/provider-response";
 import { normalizeSchemaForCCA, normalizeSchemaForGoogle, toolWireSchema } from "../utils/schema";
 import type {
 	Content,
@@ -1088,6 +1089,7 @@ export function streamGoogleGenAI<T extends "google-generative-ai" | "google-ver
 					body: bodyJson,
 					signal: options?.signal,
 				});
+				await notifyProviderResponse(options, response, model, response.headers.get("x-request-id"));
 				if (!response.ok) {
 					// The STATUS is the failure; the body is the detail. An unreadable body degrades to empty rather than
 					// replacing the status with a read error.

@@ -6,15 +6,11 @@ import {
 } from "@veyyon/catalog/discovery/gitlab-duo-workflow";
 import { emptyUsage } from "@veyyon/catalog/models";
 import { GITLAB_SAAS_URL } from "@veyyon/catalog/provider-endpoints";
-import {
-	errorMessage,
-	getNonBlankStringProperty,
-	isRecord,
-	logger,
-	scopedTimeoutSignal,
-	trimTrailingSlashes,
-	tryParseJson,
-} from "@veyyon/utils";
+import { tryParseJson } from "@veyyon/utils/json";
+import * as logger from "@veyyon/utils/logger";
+import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
+import { errorMessage, getNonBlankStringProperty, isRecord } from "@veyyon/utils/type-guards";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { parseToolArgsText } from "../dialect/coercion";
 import * as AIError from "../error";
 import { AI_PROMPTS } from "../prompts/registry";
@@ -1054,16 +1050,7 @@ async function runGitLabDuoWorkflow(
 		const sessionWorkflowId = session.workflowId;
 		const resumeResult = await resumeGitLabDuoWorkflowSocket(
 			{ fetchImpl, baseUrl, apiKey, workflowId: sessionWorkflowId, state, providerSessionState },
-			() =>
-				runGitLabDuoWorkflowSocket(
-					session.ws,
-					session.startPayload,
-					state,
-					options,
-					undefined,
-					replay,
-					model,
-				),
+			() => runGitLabDuoWorkflowSocket(session.ws, session.startPayload, state, options, undefined, replay, model),
 		);
 		// As with the action resume, a stall falls through to a fresh-workflow seed
 		// (the helper already stopped the stalled workflow and dropped `active`).

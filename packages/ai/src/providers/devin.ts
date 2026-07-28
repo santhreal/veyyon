@@ -1,3 +1,4 @@
+import { scheduler } from "node:timers/promises";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 import {
@@ -34,13 +35,11 @@ import {
 } from "@veyyon/catalog/discovery/devin-gen/exa/codeium_common_pb/codeium_common_pb";
 import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
 import { DEVIN_CASCADE_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
-import {
-	logger,
-	parseStreamingJson,
-	parseStreamingJsonThrottled,
-	trimTrailingSlashes,
-	tryParseJson,
-} from "@veyyon/utils";
+import { isAbortError } from "@veyyon/utils/abortable";
+import { tryParseJson } from "@veyyon/utils/json";
+import { parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/utils/json-parse";
+import * as logger from "@veyyon/utils/logger";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import * as AIError from "../error";
 import type {
 	Api,
@@ -75,7 +74,34 @@ export interface DevinOptions extends StreamOptions {
 	sessionId?: string;
 	/** Wire model uid selected after thinking-effort routing. */
 	chatModelUid?: string;
+	/**
+	 * Which provider-level retry this is, counted from 0. Internal.
+	 *
+	 * Set only by {@link streamDevin} when it re-runs itself after a transient failure. It does two
+	 * things: it bounds the retries, and it suppresses the second `start` event, because the first
+	 * attempt already emitted one to the consumer and a stream that starts twice is a protocol error
+	 * rather than a retry.
+	 */
+	devinRetryAttempt?: number;
 }
+
+/**
+ * How many times a Devin turn may be re-run before the failure reaches the operator.
+ *
+ * Three, matching the other providers' provider-level budget. The retries are only ever attempted
+ * before the first token, so this costs latency on a failing turn and nothing on a working one.
+ */
+const DEVIN_MAX_PROVIDER_RETRIES = 3;
+const DEVIN_RETRY_BASE_DELAY_MS = 1_000;
+/**
+ * The longest this will sit waiting before giving the failure to the operator.
+ *
+ * Cascade's rate-limit windows are stated in its message and range from one minute to forty. A
+ * minute is worth waiting through, since the alternative is losing the turn. Forty is not: nothing
+ * useful happens for the operator in that time and the correct answer is to fail now and let them
+ * decide, which is what a window over this cap does.
+ */
+const DEVIN_RETRY_MAX_DELAY_MS = 90_000;
 
 const CHAT_MESSAGE_PATH = "/exa.api_server_pb.ApiServerService/GetChatMessage";
 const DEVIN_AUTH_PATH = "/exa.auth_pb.AuthService/GetUserJwt";
@@ -100,6 +126,8 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 	options?: DevinOptions,
 ): AssistantMessageEventStream => {
 	const stream = new AssistantMessageEventStream();
+
+	const retryAttempt = options?.devinRetryAttempt ?? 0;
 
 	(async () => {
 		const startTime = performance.now();
@@ -214,7 +242,11 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 			}
 			const body = response.body;
 
-			stream.push({ type: "start", partial: output });
+			// Only the first attempt announces the stream. A retry is a continuation of the same turn
+			// from the consumer's point of view, and it is only ever reached when nothing but `start`
+			// has escaped, so re-announcing would be the one observable difference between a retried
+			// turn and a clean one.
+			if (retryAttempt === 0) stream.push({ type: "start", partial: output });
 
 			const reader = body.getReader();
 			let pending = Buffer.alloc(0);
@@ -241,7 +273,7 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 					if (flag & CONNECT_END_STREAM_FLAG) {
 						const trailerBytes = flag & CONNECT_COMPRESSED_FLAG ? gunzipSync(payload) : payload;
 						const trailerError = readConnectTrailerError(trailerBytes.toString("utf8").trim());
-						if (trailerError) throw new AIError.ValidationError(trailerError);
+						if (trailerError) throw devinTrailerFailure(trailerError);
 						continue;
 					}
 
@@ -370,6 +402,33 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 			stream.push({ type: "done", reason: doneReason, message: output });
 			stream.end();
 		} catch (error) {
+			const retryDelayMs = devinRetryDelayMs(error, {
+				attempt: retryAttempt,
+				emittedToken: firstTokenTime !== undefined,
+				aborted: options?.signal?.aborted === true,
+			});
+			if (retryDelayMs !== undefined) {
+				logger.warn("devin: transient stream failure, retrying", {
+					model: model.id,
+					attempt: retryAttempt + 1,
+					delayMs: retryDelayMs,
+					error: String(error),
+				});
+				if (options?.providerRetryWait) await options.providerRetryWait(retryDelayMs, options.signal);
+				else await scheduler.wait(retryDelayMs, { signal: options?.signal });
+
+				// Re-run the whole turn and forward it into the stream the caller is already reading.
+				// Delegating rather than looping in place is what keeps the partial `output` of this
+				// attempt from reaching anyone: the retry builds its own, and the only event the caller
+				// has seen so far is the `start` this attempt emitted, which the retry does not repeat.
+				const retried = streamDevin(model, context, { ...options, devinRetryAttempt: retryAttempt + 1 });
+				for await (const event of retried) {
+					stream.push(event);
+					if (stream.done) return;
+				}
+				if (!stream.done) stream.end(await retried.result());
+				return;
+			}
 			logger.error("devin: stream failed", { error: String(error) });
 			const result = await AIError.finalize(error, { api: model.api, signal: options?.signal });
 			output.stopReason = result.stopReason;
@@ -590,7 +649,29 @@ function buildChatMessagePrompts(messages: Message[], cascadeId: string): ChatMe
  * string when it carries `{ error: { code, message } }`, else `null`. The trailer
  * is untrusted server output, so the shape is checked with guards rather than asserted.
  */
-function readConnectTrailerError(text: string): string | null {
+/**
+ * A stream-level failure Cascade reports in its Connect end-stream trailer.
+ *
+ * THE CODE IS KEPT, and it used to be thrown away. This parser flattened the whole structured error
+ * into one string and the single caller wrapped that string in a `ValidationError`, so EVERY
+ * server-side stream failure was reported as a permanent, non-retryable, client-side mistake. A
+ * validation error is exactly the class that must never be retried, which made every transient
+ * Cascade failure fatal to the turn: measured across recorded sessions, 564 of 2690 Devin turns
+ * (21%) ended in error, and 561 of those were one message, `permission_denied: Reached overall
+ * message rate limit. Please try again later. Your limit will reset in 1 minute.` The server states
+ * the wait and 563 of the 564 had not emitted a single token, so nearly every one of them was
+ * safely retryable and none was retried.
+ */
+interface DevinTrailerError {
+	/** Connect error code, e.g. `resource_exhausted`, `unavailable`, `invalid_argument`. */
+	readonly code: string;
+	/** The server's human-readable message, which is what carries the rate-limit reset window. */
+	readonly message: string;
+	/** The operator-facing rendering, unchanged from what this function used to return. */
+	readonly text: string;
+}
+
+function readConnectTrailerError(text: string): DevinTrailerError | null {
 	if (text.length === 0) return null;
 	const parsed = tryParseJson(text);
 	if (!parsed || typeof parsed !== "object" || !("error" in parsed)) return null;
@@ -599,5 +680,110 @@ function readConnectTrailerError(text: string): string | null {
 	const code = "code" in err && typeof err.code === "string" ? err.code : "";
 	const message = "message" in err && typeof err.message === "string" ? err.message : "";
 	if (!code && !message) return null;
-	return `Devin stream error${code ? ` ${code}` : ""}: ${message}`;
+	return { code, message, text: `Devin stream error${code ? ` ${code}` : ""}: ${message}` };
+}
+
+/**
+ * Connect codes whose failures are the server's problem rather than the request's.
+ *
+ * Taken from the Connect code semantics, not from what Cascade happens to send: `unavailable` and
+ * `internal` are explicitly transient, `deadline_exceeded` and `aborted` are timing, and `unknown`
+ * carries no claim either way, so treating it as worth one more attempt is the honest reading.
+ * `resource_exhausted` is the canonical rate-limit code and is here for servers that use it;
+ * Cascade does not, which is what {@link DEVIN_RATE_LIMIT_PATTERN} exists for.
+ */
+const DEVIN_RETRYABLE_TRAILER_CODES: ReadonlySet<string> = new Set([
+	"unavailable",
+	"internal",
+	"deadline_exceeded",
+	"aborted",
+	"resource_exhausted",
+	"unknown",
+]);
+
+/**
+ * THE MESSAGE OUTRANKS THE CODE for rate limits, because Cascade's code is wrong.
+ *
+ * It reports a per-minute message rate limit as `permission_denied`, which reads as "this
+ * credential may not do this" — a permanent authorization failure — when the same sentence says the
+ * limit resets in a minute. Classifying on the code alone would either retry genuine authorization
+ * failures or, as it did, refuse to retry a rate limit that asked to be retried.
+ */
+const DEVIN_RATE_LIMIT_PATTERN = /\brate.?limit\b|\btoo many requests\b/i;
+
+/**
+ * How long Cascade says to wait, read out of the sentence it says it in.
+ *
+ * There is no `retry-after` header on a Connect trailer, so the only machine-usable signal is the
+ * server's own English: "Your limit will reset in 1 minute", "in 40 minutes". Honoring it matters
+ * in both directions. Retrying sooner than the server asked is a guaranteed failure that burns the
+ * retry budget, and a window far longer than any backoff (the 40-minute case is real) means the
+ * turn must fail now rather than sit in a doomed sleep.
+ *
+ * Exported for tests: the parse is the part that decides whether a retry is even attempted.
+ */
+export function parseDevinRateLimitResetMs(message: string): number | undefined {
+	const match =
+		/\breset(?:s)?\s+(?:in|after)\s+(?:about\s+|approximately\s+|~)?(\d+)\s*(second|minute|hour)s?\b/i.exec(message);
+	if (!match?.[1] || !match[2]) return undefined;
+	const amount = Number(match[1]);
+	if (!Number.isFinite(amount) || amount < 0) return undefined;
+	const unit = match[2].toLowerCase();
+	const scale = unit === "second" ? 1_000 : unit === "minute" ? 60_000 : 3_600_000;
+	return amount * scale;
+}
+
+/**
+ * Turn a trailer error into the throwable that classifies correctly.
+ *
+ * The status codes are how the shared machinery reads these: `isProviderRetryableError` keys off
+ * `status(error)` plus the message, so a rate limit has to arrive as 429 and a server fault as 503
+ * to be treated the way every other provider's equivalent already is. Anything this cannot place
+ * stays a `ValidationError`, which is what the whole function used to return unconditionally, so
+ * genuine `invalid_argument` failures are reported exactly as before.
+ */
+/**
+ * How long to wait before re-running a failed turn, or `undefined` when it must not be re-run.
+ *
+ * WHY EVERY CONDITION IS HERE. Each one is a way a retry does harm rather than good:
+ *
+ *   - `emittedToken`: the replay-safety rule, and the same one Anthropic's provider loop uses. Once
+ *     a delta has escaped to the consumer there is no way to un-say it, so a second attempt would
+ *     duplicate or contradict text already on screen. This is why the fix cannot help the socket
+ *     drops that happen mid-answer, only the failures that arrive before any output, which is what
+ *     nearly all of them are: 563 of 564 recorded Devin errors had emitted no token.
+ *   - `aborted`: the caller asked to stop. Retrying would fire a fresh request on the way out.
+ *   - `attempt`: bounded budget, so a persistently failing endpoint fails in seconds not forever.
+ *   - `isProviderRetryableError`: the shared classification, so Devin agrees with every other
+ *     provider about what transient means instead of keeping a second opinion here.
+ *   - the delay cap: a rate-limit window longer than the cap is a signal to stop, not to sleep.
+ *
+ * The delay prefers the server's own stated reset window over backoff, because retrying before the
+ * window closes is a guaranteed second failure that spends the budget for nothing.
+ */
+function devinRetryDelayMs(
+	error: unknown,
+	state: { attempt: number; emittedToken: boolean; aborted: boolean },
+): number | undefined {
+	if (state.aborted || state.emittedToken) return undefined;
+	if (state.attempt >= DEVIN_MAX_PROVIDER_RETRIES) return undefined;
+	if (isAbortError(error)) return undefined;
+	if (!AIError.isProviderRetryableError(error)) return undefined;
+
+	const message = error instanceof Error ? error.message : String(error);
+	const statedResetMs = parseDevinRateLimitResetMs(message);
+	if (statedResetMs !== undefined) {
+		// One second of slack, because waiting until the exact stated instant races the server's own
+		// clock and a retry that lands a moment early just burns an attempt.
+		const waitMs = statedResetMs + 1_000;
+		return waitMs > DEVIN_RETRY_MAX_DELAY_MS ? undefined : waitMs;
+	}
+	return Math.min(DEVIN_RETRY_BASE_DELAY_MS * 2 ** state.attempt, DEVIN_RETRY_MAX_DELAY_MS);
+}
+
+function devinTrailerFailure(trailer: DevinTrailerError): Error {
+	if (DEVIN_RATE_LIMIT_PATTERN.test(trailer.message)) return new AIError.DevinApiError(trailer.text, 429);
+	if (trailer.code === "unauthenticated") return new AIError.DevinApiError(trailer.text, 401);
+	if (DEVIN_RETRYABLE_TRAILER_CODES.has(trailer.code)) return new AIError.DevinApiError(trailer.text, 503);
+	return new AIError.ValidationError(trailer.text);
 }

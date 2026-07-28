@@ -134,6 +134,135 @@ describe("azure openai responses streaming", () => {
 		expect(capturedBody?.input).toEqual([{ role: "user", content: [{ type: "input_text", text: "replacement" }] }]);
 	});
 
+	/** Regression: every retry must rebuild the hook-mutated body, while response/SSE observers retain wire order. */
+	it("rebuilds each physical retry and isolates diagnostic callback failures", async () => {
+		const order: string[] = [];
+		const bodies: Array<Record<string, unknown>> = [];
+		let payloadAttempt = 0;
+		const fetchMock: FetchImpl = async (_input, init) => {
+			const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+			bodies.push(body);
+			order.push(`fetch:${String(body.attempt)}`);
+			if (bodies.length === 1) {
+				return new Response("temporary", { status: 503, headers: { "retry-after": "0" } });
+			}
+			return createSseResponse([
+				{
+					type: "response.completed",
+					response: {
+						id: "resp_retry",
+						status: "completed",
+						usage: {
+							input_tokens: 1,
+							output_tokens: 1,
+							total_tokens: 2,
+							input_tokens_details: { cached_tokens: 0 },
+						},
+					},
+				},
+			]);
+		};
+
+		const result = await streamAzureOpenAIResponses(
+			azureModel,
+			{ messages: [{ role: "user", content: "Say hello", timestamp: Date.now() }] },
+			{
+				apiKey: "test-key",
+				fetch: fetchMock,
+				azureBaseUrl: azureModel.baseUrl,
+				azureApiVersion: "v1",
+				onPayload: payload => {
+					payloadAttempt += 1;
+					order.push(`payload:${payloadAttempt}`);
+					return { ...(payload as Record<string, unknown>), attempt: payloadAttempt };
+				},
+				onResponse: response => {
+					order.push(`response:${response.status}`);
+				},
+				onSseEvent: () => {
+					order.push("sse");
+					throw new Error("diagnostic observer failure");
+				},
+			},
+		).result();
+
+		expect(result.stopReason).toBe("stop");
+		expect(bodies.map(body => body.attempt)).toEqual([1, 2]);
+		expect(order).toEqual(["payload:1", "fetch:1", "payload:2", "fetch:2", "response:200", "sse"]);
+	});
+
+	/** Regression: an already-aborted request remains fetch-free but still exposes its one inspectable payload. */
+	it("prepares exactly one payload for an already-aborted request", async () => {
+		const fetchMock = vi.fn(async () => createSseResponse([]));
+		const onPayload = vi.fn((payload: unknown) => payload);
+
+		const result = await streamAzureOpenAIResponses(
+			azureModel,
+			{ messages: [{ role: "user", content: "Say hello", timestamp: Date.now() }] },
+			{
+				apiKey: "test-key",
+				fetch: fetchMock as FetchImpl,
+				signal: createAbortedSignal(),
+				onPayload,
+			},
+		).result();
+
+		expect(onPayload).toHaveBeenCalledTimes(1);
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(result.stopReason).toBe("aborted");
+	});
+
+	/** Regression: payload-hook rejection is a local failure and must never be retried as a transport attempt. */
+	it("does not fetch or notify response observers when the payload hook fails", async () => {
+		const fetchMock = vi.fn(async () => createSseResponse([]));
+		const onResponse = vi.fn();
+
+		const result = await streamAzureOpenAIResponses(
+			azureModel,
+			{ messages: [{ role: "user", content: "Say hello", timestamp: Date.now() }] },
+			{
+				apiKey: "test-key",
+				fetch: fetchMock as FetchImpl,
+				onPayload: () => {
+					throw new Error("payload exploded");
+				},
+				onResponse,
+			},
+		).result();
+
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(onResponse).not.toHaveBeenCalled();
+		expect(result.stopReason).toBe("error");
+		expect(result.errorMessage).toContain("payload exploded");
+	});
+
+	/** Regression: malformed SSE remains a provider error even though its diagnostic observer cannot change the outcome. */
+	it("reports malformed SSE after notifying response and raw-event callbacks once", async () => {
+		const order: string[] = [];
+		const result = await streamAzureOpenAIResponses(
+			azureModel,
+			{ messages: [{ role: "user", content: "Say hello", timestamp: Date.now() }] },
+			{
+				apiKey: "test-key",
+				fetch: async () =>
+					new Response("data: {malformed}\n\n", {
+						status: 200,
+						headers: { "content-type": "text/event-stream" },
+					}),
+				onResponse: () => {
+					order.push("response");
+				},
+				onSseEvent: () => {
+					order.push("sse");
+					throw new Error("ignored observer failure");
+				},
+			},
+		).result();
+
+		expect(order).toEqual(["response", "sse"]);
+		expect(result.stopReason).toBe("error");
+	});
+
 	it("uses developer role for Azure Responses reasoning model system prompts", async () => {
 		const reasoningModel: Model<"azure-openai-responses"> = buildModel({
 			...azureModel,

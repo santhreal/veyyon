@@ -22,7 +22,11 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $env, isEnoent, logger, readPipeText, scopedTimeoutSignal } from "@veyyon/utils";
+import { $env } from "@veyyon/utils/env";
+import { isEnoent } from "@veyyon/utils/fs-error";
+import * as logger from "@veyyon/utils/logger";
+import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
+import { readPipeText } from "@veyyon/utils/stream";
 import * as AIError from "../error";
 import type { FetchImpl } from "../types";
 import { raceWithSignal } from "../utils/abort";

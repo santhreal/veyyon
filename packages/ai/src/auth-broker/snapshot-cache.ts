@@ -7,7 +7,10 @@
  * can decrypt the snapshot.
  */
 import * as fs from "node:fs/promises";
-import { asStrictBytes, atomicWriteFile, isEnoent, logger } from "@veyyon/utils";
+import { atomicWriteFile } from "@veyyon/utils/atomic-write";
+import { asStrictBytes } from "@veyyon/utils/bytes";
+import { isEnoent } from "@veyyon/utils/fs-error";
+import * as logger from "@veyyon/utils/logger";
 import type { SnapshotResponse } from "./types";
 
 const MAGIC = new Uint8Array([0x4f, 0x4d, 0x50, 0x53]); // "OMPS"

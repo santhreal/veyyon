@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import * as fs from "node:fs/promises";
-import { errorMessage, logger } from "@veyyon/utils";
+import * as logger from "@veyyon/utils/logger";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import type { FetchImpl } from "../types";
 
 const REQUEST_DEBUG_ENV = "VEYYON_REQ_DEBUG";
@@ -57,6 +58,18 @@ export function isRequestDebugEnabled(): boolean {
 	return isRequestDebugEnvEnabled();
 }
 
+function reportRequestDebugFailure(message: string, error: unknown, path?: string): void {
+	try {
+		logger.error(message, {
+			...(path ? { path } : {}),
+			error: errorMessage(error),
+		});
+	} catch {
+		// Debug observability is best-effort all the way down. A logger hook must
+		// not become a second route for debug failures to reach the request.
+	}
+}
+
 export function wrapFetchForRequestDebug(fetchImpl: FetchImpl): FetchImpl {
 	if (!isRequestDebugEnabled()) return fetchImpl;
 	const maybeWrapped = fetchImpl as DebugFetch;
@@ -65,9 +78,21 @@ export function wrapFetchForRequestDebug(fetchImpl: FetchImpl): FetchImpl {
 	const wrapped = Object.assign(
 		async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
 			if (!isRequestDebugEnabled()) return fetchImpl(input, init);
-			const session = await createFetchRequestDebugSession(input, init);
+			let session: RequestDebugSession;
+			try {
+				session = await createFetchRequestDebugSession(input, init);
+			} catch (error) {
+				reportRequestDebugFailure("Request debug log could not be created; this request was not recorded", error);
+				return fetchImpl(input, init);
+			}
+
 			const response = await fetchImpl(input, init);
-			return session.wrapResponse(response);
+			try {
+				return await session.wrapResponse(response);
+			} catch (error) {
+				reportRequestDebugFailure("Request debug response wrapper failed; returning the original response", error, session.responsePath);
+				return response;
+			}
 		},
 		fetchImpl.preconnect ? { preconnect: fetchImpl.preconnect } : {},
 		{ [DEBUG_FETCH_MARKER]: true as const },
@@ -151,7 +176,23 @@ class FileRequestDebugSession implements RequestDebugSession {
 			return response;
 		}
 
-		const reader = response.body.getReader();
+		// INFERRED, not annotated. Two `ReadableStreamDefaultReader`s are in scope here: the DOM one
+		// that `response.body.getReader()` actually returns, and Bun's, which is generic over its
+		// buffer and declares an extra `readMany`. Writing either name picked the wrong one -- the
+		// bare form resolved to Bun's and rejected the assignment, and `ReturnType<...>` selected a
+		// BYOB overload whose `read` wants an argument. Letting the initializer decide keeps this
+		// correct under both lib sets, and nothing here needs the type spelled out.
+		const reader = (() => {
+			try {
+				return response.body.getReader();
+			} catch {
+				return undefined;
+			}
+		})();
+		if (!reader) {
+			await log.close().catch(() => undefined);
+			return response;
+		}
 		const teed = new ReadableStream<Uint8Array>({
 			async pull(controller) {
 				try {
@@ -199,10 +240,11 @@ class FileRequestDebugSession implements RequestDebugSession {
 		try {
 			return await this.openResponseLog(`HTTP ${response.status} ${response.statusText}`.trim(), response.headers);
 		} catch (error) {
-			logger.error("Request debug log could not be opened; this response was not recorded", {
-				path: this.responsePath,
-				error: errorMessage(error),
-			});
+			reportRequestDebugFailure(
+				"Request debug log could not be opened; this response was not recorded",
+				error,
+				this.responsePath,
+			);
 			return undefined;
 		}
 	}
@@ -273,10 +315,11 @@ class FileRequestDebugResponseLog implements RequestDebugResponseLog {
 	#reportFailure(error: unknown): void {
 		if (this.#failed) return;
 		this.#failed = true;
-		logger.error("Request debug log failed; the rest of this response was not recorded", {
-			path: this.#path,
-			error: errorMessage(error),
-		});
+		reportRequestDebugFailure(
+			"Request debug log failed; the rest of this response was not recorded",
+			error,
+			this.#path,
+		);
 	}
 }
 

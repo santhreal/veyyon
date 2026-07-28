@@ -8,19 +8,15 @@ import {
 	OPENAI_HEADER_VALUES,
 	OPENAI_HEADERS,
 } from "@veyyon/catalog/wire/codex";
-import {
-	$env,
-	$flag,
-	asRecord,
-	errorMessage,
-	fetchWithRetry,
-	getInstallId,
-	logger,
-	parseStreamingJson,
-	readSseJson,
-	structuredCloneJSON,
-	trimTrailingSlashes,
-} from "@veyyon/utils";
+import { getInstallId } from "@veyyon/utils/dirs";
+import { $env, $flag } from "@veyyon/utils/env";
+import { fetchWithRetry } from "@veyyon/utils/fetch-retry";
+import { structuredCloneJSON } from "@veyyon/utils/json";
+import { parseStreamingJson } from "@veyyon/utils/json-parse";
+import * as logger from "@veyyon/utils/logger";
+import { readSseJson } from "@veyyon/utils/stream";
+import { asRecord, errorMessage } from "@veyyon/utils/type-guards";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { type } from "arktype";
 import packageJson from "../../package.json" with { type: "json" };
 import * as AIError from "../error";
@@ -62,6 +58,8 @@ import {
 	getOpenAIStreamIdleTimeoutMs,
 	iterateWithIdleTimeout,
 } from "../utils/idle-iterator";
+import type { OpenAIStreamHandle } from "../utils/openai-http";
+import { notifyProviderResponse } from "../utils/provider-response";
 import { createRequestDebugSession, isRequestDebugEnabled, type RequestDebugResponseLog } from "../utils/request-debug";
 import { adaptSchemaForStrict, NO_STRICT, sanitizeSchemaForOpenAIResponses, toolWireSchema } from "../utils/schema";
 import { notifyRawSseEvent } from "../utils/sse-debug";
@@ -1543,36 +1541,43 @@ async function openCodexSseTransport(
 	requestBodyForState: RequestBody;
 	transport: CodexTransport;
 }> {
-	const open = async (wireBody: RequestBody) => {
-		// Keep the 400 dump honest: record the body actually sent on the wire.
-		requestContext.rawRequestDump.body = wireBody;
-		return requestSetup.wrapCodexSseStream(
-			await openCodexSseEventStream(
-				requestContext.url,
-				requestContext.requestHeaders,
-				requestContext.accountId,
-				requestContext.apiKey,
-				requestContext.transportSessionId,
-				wireBody,
-				state,
-				requestContext.responsesLite,
-				requestContext.codexClientVersion,
-				requestContext.requestMetadata,
-				requestSetup.requestSignal,
-				requestSetup.firstEventTimeoutMs,
-				event => options?.onSseEvent?.(event, model),
-				options?.fetch,
-			),
-		);
-	};
 	const canAppendBeforeRequest = state?.canAppend === true;
 	let wireBody = body;
-	const replacementWireBody = await options?.onPayload?.(wireBody, model);
-	if (replacementWireBody !== undefined) {
-		wireBody = replacementWireBody as RequestBody;
-	}
+	const prepareBody = async (): Promise<RequestBody> => {
+		const attemptBody = structuredCloneJSON(body);
+		const replacementWireBody = await options?.onPayload?.(attemptBody, model);
+		wireBody = replacementWireBody !== undefined ? (replacementWireBody as RequestBody) : attemptBody;
+		// Keep the 400 dump honest: record the body actually sent on this attempt.
+		requestContext.rawRequestDump.body = wireBody;
+		return wireBody;
+	};
+	// Preserve payload capture for callers that intentionally use an
+	// already-aborted signal without issuing a physical request.
+	if (requestSetup.requestSignal.aborted) await prepareBody();
+	const handle = await openCodexSseEventStream(
+		requestContext.url,
+		requestContext.requestHeaders,
+		requestContext.accountId,
+		requestContext.apiKey,
+		requestContext.transportSessionId,
+		body,
+		state,
+		requestContext.responsesLite,
+		requestContext.codexClientVersion,
+		requestContext.requestMetadata,
+		requestSetup.requestSignal,
+		requestSetup.firstEventTimeoutMs,
+		event => options?.onSseEvent?.(event, model),
+		options?.fetch,
+		prepareBody,
+	);
+	await notifyProviderResponse(options, handle.response, model, handle.requestId);
 	recordCodexTurnRequestDiagnostics(state, wireBody, "sse", canAppendBeforeRequest);
-	return { eventStream: await open(wireBody), requestBodyForState: structuredCloneJSON(wireBody), transport: "sse" };
+	return {
+		eventStream: requestSetup.wrapCodexSseStream(handle.events),
+		requestBodyForState: structuredCloneJSON(wireBody),
+		transport: "sse",
+	};
 }
 
 function isJsonWhitespaceOnly(value: string): boolean {
@@ -3754,7 +3759,8 @@ async function openCodexSseEventStream(
 	firstEventTimeoutMs: number | undefined,
 	onSseEvent?: OpenAICodexResponsesOptions["onSseEvent"],
 	fetchOverride?: FetchImpl,
-): Promise<AsyncGenerator<Record<string, unknown>>> {
+	prepareBody: () => RequestBody | Promise<RequestBody> = () => structuredCloneJSON(body),
+): Promise<OpenAIStreamHandle<Record<string, unknown>>> {
 	const headers = createCodexHeaders(
 		requestHeaders,
 		accountId,
@@ -3794,10 +3800,11 @@ async function openCodexSseEventStream(
 			headers,
 			body: JSON.stringify(body),
 			signal,
-			prepareInit: () => {
+			prepareInit: async () => {
+				const wireBody = await prepareBody();
 				const watchdog = armPreResponseTimeout(signal, firstEventTimeoutMs);
 				clearPreResponseTimeout = watchdog.clear;
-				return { signal: watchdog.signal };
+				return { body: JSON.stringify(wireBody), signal: watchdog.signal };
 			},
 			maxAttempts: CODEX_MAX_RETRIES + 1,
 			defaultDelayMs: attempt => CODEX_RETRY_DELAY_MS * (attempt + 1),
@@ -3823,9 +3830,10 @@ async function openCodexSseEventStream(
 	if (!response.body) {
 		throw new CodexProviderStreamError("No response body", false);
 	}
-	return readSseJson<Record<string, unknown>>(response.body, signal, event =>
-		onSseEvent?.({ event: event.event, data: event.data, raw: [...event.raw] }, undefined),
+	const events = readSseJson<Record<string, unknown>>(response.body, signal, event =>
+		notifyRawSseEvent(onSseEvent, { event: event.event, data: event.data, raw: [...event.raw] }),
 	);
+	return { events, response, requestId: response.headers.get("x-request-id") };
 }
 
 function createCodexHeaders(

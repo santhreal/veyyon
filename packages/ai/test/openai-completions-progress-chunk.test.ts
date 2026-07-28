@@ -429,4 +429,65 @@ describe("provider integration", () => {
 		expect(result.errorMessage).toBe("OpenAI completions stream stalled while waiting for the next event");
 		expect(result.content).toEqual([{ type: "text", text: "Hello" }]);
 	});
+
+	/** Regression: Chat Completions retries must serialize a fresh post-hook body for each physical fetch. */
+	it("rebuilds physical retry payloads before the single successful response callback", async () => {
+		const order: string[] = [];
+		const bodies: Array<Record<string, unknown>> = [];
+		let payloadAttempt = 0;
+		const fetchMock: FetchImpl = async (_input, init) => {
+			const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+			bodies.push(body);
+			order.push(`fetch:${String(body.attempt)}`);
+			if (bodies.length === 1) {
+				return new Response("temporary", { status: 503, headers: { "retry-after": "0" } });
+			}
+			const chunk = {
+				id: "chatcmpl-retry",
+				object: "chat.completion.chunk",
+				created: 0,
+				model: openAICompletionsModel.id,
+				choices: [{ index: 0, delta: { content: "Hello" }, finish_reason: "stop" }],
+				usage: {
+					prompt_tokens: 1,
+					completion_tokens: 1,
+					total_tokens: 2,
+					prompt_tokens_details: { cached_tokens: 0 },
+				},
+			};
+			return new Response(`data: ${JSON.stringify(chunk)}\n\ndata: [DONE]\n\n`, {
+				status: 200,
+				headers: { "content-type": "text/event-stream" },
+			});
+		};
+
+		const result = await streamOpenAICompletions(openAICompletionsModel, baseContext(), {
+			apiKey: "test-key",
+			fetch: fetchMock,
+			onPayload: payload => {
+				payloadAttempt += 1;
+				order.push(`payload:${payloadAttempt}`);
+				return { ...(payload as Record<string, unknown>), attempt: payloadAttempt };
+			},
+			onResponse: response => {
+				order.push(`response:${response.status}`);
+			},
+			onSseEvent: () => {
+				order.push("sse");
+				throw new Error("diagnostic observer failure");
+			},
+		}).result();
+
+		expect(result.stopReason).toBe("stop");
+		expect(bodies.map(body => body.attempt)).toEqual([1, 2]);
+		expect(order).toEqual([
+			"payload:1",
+			"fetch:1",
+			"payload:2",
+			"fetch:2",
+			"response:200",
+			"sse",
+			"sse",
+		]);
+	});
 });

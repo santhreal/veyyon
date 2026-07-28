@@ -9,7 +9,9 @@
  * Transport security is delegated to the operator (Tailscale / Wireguard);
  * the server only checks a bearer token against an allow-list per request.
  */
-import { clampLow, errorMessage, logger } from "@veyyon/utils";
+import * as logger from "@veyyon/utils/logger";
+import { clampLow } from "@veyyon/utils/math";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import { type Type, type } from "arktype";
 import type { AuthStorage, StoredCredentialBlock } from "../auth-storage";
 import { parseBind } from "../utils/parse-bind";

@@ -19,7 +19,9 @@
  */
 
 import { Effort } from "@veyyon/catalog/effort";
-import { errorMessage, extractHttpStatusFromError, extractRetryHint, logger } from "@veyyon/utils";
+import { extractHttpStatusFromError, extractRetryHint } from "@veyyon/utils/fetch-retry";
+import * as logger from "@veyyon/utils/logger";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import type { ApiKeyResolver } from "../auth-retry";
 import type { AuthStorage } from "../auth-storage";
 import * as AIError from "../error";

@@ -1,4 +1,4 @@
-import { isRecord } from "@veyyon/utils";
+import { isRecord } from "@veyyon/utils/type-guards";
 
 /**
  * Detects tool-parameter schemas that pass structural JSON-Schema validation

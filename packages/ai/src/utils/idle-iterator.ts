@@ -1,4 +1,4 @@
-import { $env } from "@veyyon/utils";
+import { $env } from "@veyyon/utils/env";
 import * as AIError from "../error";
 
 const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 120_000;
@@ -118,7 +118,9 @@ export function armPreResponseTimeout(
 	callerSignal: AbortSignal | undefined,
 	timeoutMs: number | undefined,
 ): { signal: AbortSignal | undefined; clear: () => void } {
-	if (timeoutMs === undefined || timeoutMs <= 0) return { signal: callerSignal, clear: () => {} };
+	if (callerSignal?.aborted || timeoutMs === undefined || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+		return { signal: callerSignal, clear: () => {} };
+	}
 	const controller = new AbortController();
 	const timer = setTimeout(() => {
 		controller.abort(new DOMException("The operation timed out.", "TimeoutError"));
@@ -182,12 +184,16 @@ export async function* iterateWithIdleTimeout<T>(
 	const closeIterator = (): void => {
 		if (iteratorClosed) return;
 		iteratorClosed = true;
-		const returnPromise = iterator.return?.();
-		if (returnPromise) {
-			// Closing the upstream iterator we are done with. The `catch` prevents an unhandled rejection from a
-			// promise nothing awaits; a source that objects to being closed cannot change the outcome we have
-			// already produced, and the reason the iteration ended is what reaches the caller.
-			void returnPromise.catch(() => {});
+		try {
+			const returnPromise = iterator.return?.();
+			if (returnPromise) {
+				// Closing is best-effort because the reason iteration ended has
+				// precedence over a source that objects to being closed.
+				void Promise.resolve(returnPromise).catch(() => {});
+			}
+		} catch {
+			// A synchronous return() failure has the same precedence as a rejected
+			// return promise: it cannot replace the outcome already being produced.
 		}
 	};
 
@@ -218,6 +224,15 @@ export async function* iterateWithIdleTimeout<T>(
 		}
 	};
 	let lastProgressAt = Date.now();
+
+	const invokeTimeoutHook = (callback: (() => void) | undefined): void => {
+		try {
+			callback?.();
+		} catch {
+			// Hooks abort or observe the transport; their failure cannot replace
+			// the stable StreamTimeoutError produced by this watchdog.
+		}
+	};
 
 	const hasPendingLocalWork = (): boolean => {
 		if (!options.hasPendingLocalWork) return false;
@@ -327,6 +342,10 @@ export async function* iterateWithIdleTimeout<T>(
 	try {
 		let raceCount = 0;
 		while (true) {
+			if (abortSignal?.aborted) {
+				closeIterator();
+				throw abortReason(abortSignal);
+			}
 			if (++raceCount % RACER_REMINT_INTERVAL === 0) {
 				if (abortPromise !== undefined && !abortSignal!.aborted) {
 					const { promise, resolve } = Promise.withResolvers<{ kind: "abort" }>();
@@ -345,7 +364,7 @@ export async function* iterateWithIdleTimeout<T>(
 					activeTimeoutMs = firstItemDeadlineMs - Date.now();
 					if (activeTimeoutMs <= 0) {
 						if (!hasPendingLocalWork()) {
-							options.onFirstItemTimeout?.();
+							invokeTimeoutHook(options.onFirstItemTimeout);
 							closeIterator();
 							throw new AIError.StreamTimeoutError(options.firstItemErrorMessage ?? options.errorMessage);
 						}
@@ -357,7 +376,7 @@ export async function* iterateWithIdleTimeout<T>(
 				activeTimeoutMs = options.idleTimeoutMs - (Date.now() - lastProgressAt);
 				if (activeTimeoutMs <= 0) {
 					if (!hasPendingLocalWork()) {
-						options.onIdle?.();
+						invokeTimeoutHook(options.onIdle);
 						closeIterator();
 						throw new AIError.StreamTimeoutError(options.errorMessage);
 					}
@@ -366,6 +385,10 @@ export async function* iterateWithIdleTimeout<T>(
 				}
 			}
 
+			if (abortSignal?.aborted) {
+				closeIterator();
+				throw abortReason(abortSignal);
+			}
 			pendingNext ??= withRacy(iterator.next());
 
 			const racers: Array<
@@ -410,9 +433,9 @@ export async function* iterateWithIdleTimeout<T>(
 						continue;
 					}
 					if (!awaitingFirstItem) {
-						options.onIdle?.();
+						invokeTimeoutHook(options.onIdle);
 					} else {
-						options.onFirstItemTimeout?.();
+						invokeTimeoutHook(options.onFirstItemTimeout);
 					}
 					closeIterator();
 					throw new AIError.StreamTimeoutError(
@@ -423,6 +446,7 @@ export async function* iterateWithIdleTimeout<T>(
 					throw outcome.error;
 				}
 				if (outcome.result.done) {
+					iteratorClosed = true;
 					markFirstItemReceived();
 					return;
 				}
@@ -443,7 +467,7 @@ export async function* iterateWithIdleTimeout<T>(
 			}
 		}
 	} finally {
-		if (timer !== undefined) clearTimeout(timer);
+		clearTimeout(timer);
 		// Settle the persistent racers so the final Promise.race releases them.
 		resolveTimeout?.({ kind: "timeout" });
 		if (abortListener && abortSignal) {
@@ -493,18 +517,33 @@ export async function* iterateWithTerminalGrace<T>(
 	options: TerminalGraceIteratorOptions,
 ): AsyncGenerator<T> {
 	const iterator = iterable[Symbol.asyncIterator]();
+	let iteratorDone = false;
+	let graceEndCalled = false;
+	const invokeGraceEnd = (): void => {
+		if (graceEndCalled) return;
+		graceEndCalled = true;
+		try {
+			options.onGraceEnd?.();
+		} catch {
+			// Grace expiry is a successful logical completion. A transport-cleanup
+			// hook cannot convert it into a failed response.
+		}
+	};
 	try {
 		while (true) {
 			const finishedAtMs = options.finishedAtMs();
 			if (finishedAtMs === undefined) {
 				const result = await iterator.next();
-				if (result.done) return;
+				if (result.done) {
+					iteratorDone = true;
+					return;
+				}
 				yield result.value;
 				continue;
 			}
 			const remainingMs = finishedAtMs + options.graceMs - Date.now();
 			if (remainingMs <= 0) {
-				options.onGraceEnd?.();
+				invokeGraceEnd();
 				return;
 			}
 			const nextPromise = iterator.next();
@@ -518,22 +557,28 @@ export async function* iterateWithTerminalGrace<T>(
 					// The abandoned read settles (likely rejects) once onGraceEnd
 					// aborts the transport — mark it handled so it cannot surface
 					// as an unhandled rejection.
-					nextPromise.catch(() => {});
-					options.onGraceEnd?.();
+					void Promise.resolve(nextPromise).catch(() => {});
+					invokeGraceEnd();
 					return;
 				}
-				if (outcome.done) return;
+				if (outcome.done) {
+					iteratorDone = true;
+					return;
+				}
 				yield outcome.value;
 			} finally {
-				if (timer !== undefined) clearTimeout(timer);
+				clearTimeout(timer);
 			}
 		}
 	} finally {
-		const returnPromise = iterator.return?.();
-		if (returnPromise) {
-			// Same as `closeIterator` above, in the `finally` that runs however the loop ended. A close failure
-			// here must not replace the error or the completion that is already on its way out of this function.
-			void Promise.resolve(returnPromise).catch(() => {});
+		if (!iteratorDone) {
+			try {
+				const returnPromise = iterator.return?.();
+				if (returnPromise) void Promise.resolve(returnPromise).catch(() => {});
+			} catch {
+				// Best-effort close must not replace a source error or clean grace
+				// completion that is already on its way to the consumer.
+			}
 		}
 	}
 }

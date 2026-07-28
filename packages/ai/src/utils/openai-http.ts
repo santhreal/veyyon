@@ -14,7 +14,8 @@
  *   captured response body for the strict-tools fallback and the responses
  *   chain-state detectors, which regex over `error.message`.
  */
-import { fetchWithRetry, readSseJson, type SseEventObserver } from "@veyyon/utils";
+import { fetchWithRetry } from "@veyyon/utils/fetch-retry";
+import { readSseJson, type SseEventObserver } from "@veyyon/utils/stream";
 import * as AIError from "../error";
 import { OpenAIHttpError } from "../error";
 

@@ -9,19 +9,16 @@ import { ANTHROPIC_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { isAnthropicOAuthToken } from "@veyyon/catalog/utils";
 import { ANTHROPIC_WEB_SEARCH_TOOL, CLAUDE_CODE_VERSION as claudeCodeVersion } from "@veyyon/catalog/wire/anthropic";
 import { parseGitHubCopilotApiKey } from "@veyyon/catalog/wire/github-copilot";
-import {
-	$env,
-	clampLow,
-	errorMessage,
-	getInstallId,
-	isEnoent,
-	logger,
-	looksLikeFilePath,
-	parseJsonWithRepair,
-	parseStreamingJsonThrottled,
-	readSseEvents,
-	trimTrailingSlashes,
-} from "@veyyon/utils";
+import { getInstallId } from "@veyyon/utils/dirs";
+import { $env } from "@veyyon/utils/env";
+import { isEnoent } from "@veyyon/utils/fs-error";
+import { parseJsonWithRepair, parseStreamingJsonThrottled } from "@veyyon/utils/json-parse";
+import * as logger from "@veyyon/utils/logger";
+import { clampLow } from "@veyyon/utils/math";
+import { looksLikeFilePath } from "@veyyon/utils/path";
+import { readSseEvents } from "@veyyon/utils/stream";
+import { errorMessage } from "@veyyon/utils/type-guards";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { renderDemotedThinking } from "../dialect/demotion";
 import { XML_THINKING_CLOSE, XML_THINKING_OPEN } from "../dialect/wire-tags";
 import * as AIError from "../error";
@@ -51,6 +48,7 @@ import type {
 	ToolResultMessage,
 	Usage,
 } from "../types";
+import { EMPTY_ERROR_TOOL_RESULT_TEXT } from "../types";
 import { isRecord, normalizeSystemPrompts, normalizeToolCallId, resolveCacheRetention } from "../utils";
 import { createAbortSourceTracker } from "../utils/abort";
 import {
@@ -3486,8 +3484,6 @@ function buildParams(
 
 	return params;
 }
-
-const EMPTY_ERROR_TOOL_RESULT_TEXT = "Tool failed with no output.";
 
 function isEmptyToolResultWireContent(content: AnthropicToolResultContent): boolean {
 	if (typeof content === "string") {

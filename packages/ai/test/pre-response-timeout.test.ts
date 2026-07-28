@@ -29,6 +29,22 @@ describe("armPreResponseTimeout", () => {
 		expect(armPreResponseTimeout(undefined, undefined).signal).toBeUndefined();
 	});
 
+	/**
+	 * A pre-aborted request cannot reach the transport, so arming a fresh timeout
+	 * only leaks redundant timer work until a caller gets a chance to clear it.
+	 */
+	it("does not arm a timeout when the caller is already aborted", () => {
+		vi.useFakeTimers();
+		const baselineTimers = vi.getTimerCount();
+		const caller = new AbortController();
+		caller.abort(new Error("already cancelled"));
+
+		const guarded = armPreResponseTimeout(caller.signal, 50);
+
+		expect(guarded.signal).toBe(caller.signal);
+		expect(vi.getTimerCount()).toBe(baselineTimers);
+	});
+
 	it("aborts at the deadline with a TimeoutError when never cleared", () => {
 		vi.useFakeTimers();
 		const { signal } = armPreResponseTimeout(undefined, 50);

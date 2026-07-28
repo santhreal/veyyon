@@ -1,6 +1,7 @@
 import { toNumber } from "@veyyon/catalog/utils";
 import { getCodexAccountEmail, getCodexAccountId } from "@veyyon/catalog/wire/codex";
-import { clamp, HOUR_MS, MINUTE_MS, WEEK_MS } from "@veyyon/utils";
+import { clamp } from "@veyyon/utils/math";
+import { HOUR_MS, MINUTE_MS, WEEK_MS } from "@veyyon/utils/time";
 import { normalizeStoredEmail } from "../auth-credential-rows";
 import type {
 	CredentialRankingStrategy,

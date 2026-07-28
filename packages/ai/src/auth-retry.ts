@@ -1,4 +1,4 @@
-import { logger } from "@veyyon/utils";
+import * as logger from "@veyyon/utils/logger";
 import type { OAuthAccess } from "./auth-storage";
 import * as AIError from "./error";
 import { isAuthRetryableError } from "./error/auth-classify";
@@ -48,13 +48,33 @@ export function isApiKeyResolver(key: ApiKey | undefined): key is ApiKeyResolver
 	return typeof key === "function";
 }
 
+function throwIfAuthRetryAborted(signal: AbortSignal | undefined): void {
+	if (signal?.aborted) {
+		throw signal.reason ?? new AIError.RequestAbortError("Authentication retry aborted by caller");
+	}
+}
+
+function warnAuthRetry(message: string, fields: Record<string, unknown>): void {
+	try {
+		logger.warn(message, fields);
+	} catch {
+		// Observability cannot change retry control flow or replace the request
+		// error whose recovery failure this warning is describing.
+	}
+}
+
 /**
  * Performs the initial resolve of an {@link ApiKey} (`error: undefined`,
  * `lastChance: false`). Static keys pass through unchanged.
  */
 export async function resolveApiKeyOnce(key: ApiKey | undefined, signal?: AbortSignal): Promise<string | undefined> {
+	throwIfAuthRetryAborted(signal);
 	if (key === undefined) return undefined;
-	if (isApiKeyResolver(key)) return (await key({ lastChance: false, error: undefined, signal })) || undefined;
+	if (isApiKeyResolver(key)) {
+		const resolved = (await key({ lastChance: false, error: undefined, signal })) || undefined;
+		throwIfAuthRetryAborted(signal);
+		return resolved;
+	}
 	return key;
 }
 
@@ -105,15 +125,19 @@ export async function resolveRetryKey(
 	signal?: AbortSignal,
 	previousKey?: string,
 ): Promise<string | undefined> {
+	if (signal?.aborted) return undefined;
 	try {
 		const rotateSibling = lastChance || (!lastChance && isDirectCredentialRotationError(error));
-		return (await resolver({ lastChance: rotateSibling, error, signal, previousKey })) || undefined;
+		const resolved = (await resolver({ lastChance: rotateSibling, error, signal, previousKey })) || undefined;
+		if (signal?.aborted) return undefined;
+		return resolved;
 	} catch (resolveError) {
+		if (signal?.aborted) return undefined;
 		// Returning undefined here abandons the retry, and the caller then reports
 		// the ORIGINAL auth error to the user. So without this line the reason the
 		// retry gave up — a locked store, a broken broker, no sibling credential —
 		// is destroyed, and every one of those presents as the same 401 (Law 10).
-		logger.warn("Auth retry could not resolve a replacement key; reporting the original auth failure instead", {
+		warnAuthRetry("Auth retry could not resolve a replacement key; reporting the original auth failure instead", {
 			lastChance,
 			originalError: String(error),
 			resolveError: String(resolveError),
@@ -223,6 +247,8 @@ export async function withAuth<T>(
 ): Promise<T> {
 	const isAuthError = opts?.isAuthError ?? isAuthRetryableError;
 	const missingKey = (): Error => new AIError.MissingApiKeyError(undefined, opts?.missingKeyMessage);
+	const signal = opts?.signal;
+	throwIfAuthRetryAborted(signal);
 
 	if (!isApiKeyResolver(key)) {
 		if (key === undefined) throw missingKey();
@@ -230,8 +256,9 @@ export async function withAuth<T>(
 	}
 
 	const resolver = key;
-	const signal = opts?.signal;
-	const initialKey = await resolveRetryKey(resolver, false, undefined, signal);
+	const initialKey =
+		(await resolver({ lastChance: false, error: undefined, signal, previousKey: undefined })) || undefined;
+	throwIfAuthRetryAborted(signal);
 	if (initialKey === undefined) throw missingKey();
 
 	const state = createAuthRetryKeyState(initialKey);
@@ -240,16 +267,19 @@ export async function withAuth<T>(
 		return await attempt(initialKey);
 	} catch (error) {
 		if (!isAuthError(error)) throw error;
+		throwIfAuthRetryAborted(signal);
 		lastError = error;
 	}
 
 	while (true) {
 		const nextKey = await resolveNextAuthRetryKey(state, resolver, lastError, signal);
+		throwIfAuthRetryAborted(signal);
 		if (nextKey === undefined) break;
 		try {
 			return await attempt(nextKey);
 		} catch (error) {
 			if (!isAuthError(error)) throw error;
+			throwIfAuthRetryAborted(signal);
 			lastError = error;
 		}
 	}
@@ -318,8 +348,13 @@ export async function withOAuthAccess<T>(
 ): Promise<T> {
 	const isAuthError = opts?.isAuthError ?? isAuthRetryableError;
 	const { sessionId, signal } = opts ?? {};
+	throwIfAuthRetryAborted(signal);
 
-	let lastAccess = opts?.seed ?? (await storage.getOAuthAccess(provider, sessionId, { signal }));
+	let lastAccess = opts?.seed;
+	if (!lastAccess) {
+		lastAccess = await storage.getOAuthAccess(provider, sessionId, { signal });
+		throwIfAuthRetryAborted(signal);
+	}
 	if (!lastAccess) {
 		throw new AIError.MissingApiKeyError(
 			provider,
@@ -334,11 +369,13 @@ export async function withOAuthAccess<T>(
 	let refreshedCurrent = false;
 	let attemptResult = await runOAuthAttempt(lastAccess, attempt, isAuthError);
 	if (attemptResult.ok) return attemptResult.result;
+	throwIfAuthRetryAborted(signal);
 
 	let lastError = attemptResult.error;
 	while (true) {
 		let next: OAuthAccess | undefined;
-		if (signal?.aborted || attemptCount >= AUTH_RETRY_MAX_ATTEMPTS) break;
+		throwIfAuthRetryAborted(signal);
+		if (attemptCount >= AUTH_RETRY_MAX_ATTEMPTS) break;
 		const directRotation = isDirectCredentialRotationError(lastError);
 		if (!directRotation) {
 			if (legacyAuthSwitchUsed) break;
@@ -347,16 +384,16 @@ export async function withOAuthAccess<T>(
 				try {
 					next = await storage.getOAuthAccess(provider, sessionId, { forceRefresh: true, signal });
 				} catch (refreshError) {
+					throwIfAuthRetryAborted(signal);
 					// Same trap as above: the retry falls through to rotation and the
 					// user eventually sees the original 401, so the refresh's own
 					// failure has to be said out loud or it is gone.
-					logger.warn("Auth retry could not force-refresh the current credential; falling through to rotation", {
+					warnAuthRetry("Auth retry could not force-refresh the current credential; falling through to rotation", {
 						provider,
 						error: String(refreshError),
 					});
-					next = undefined;
 				}
-				if (signal?.aborted) break;
+				throwIfAuthRetryAborted(signal);
 				if (next) {
 					const bearer = next.accessToken;
 					if (!attemptedBearers.has(bearer) && attemptCount < AUTH_RETRY_MAX_ATTEMPTS) {
@@ -366,6 +403,7 @@ export async function withOAuthAccess<T>(
 						lastAccess = next;
 						attemptResult = await runOAuthAttempt(next, attempt, isAuthError);
 						if (attemptResult.ok) return attemptResult.result;
+						throwIfAuthRetryAborted(signal);
 						lastError = attemptResult.error;
 						continue;
 					}
@@ -373,7 +411,8 @@ export async function withOAuthAccess<T>(
 			}
 		}
 
-		if (signal?.aborted || attemptCount >= AUTH_RETRY_MAX_ATTEMPTS) break;
+		throwIfAuthRetryAborted(signal);
+		if (attemptCount >= AUTH_RETRY_MAX_ATTEMPTS) break;
 		try {
 			const rotated = await storage.rotateSessionCredential(provider, sessionId, {
 				error: lastError,
@@ -381,19 +420,21 @@ export async function withOAuthAccess<T>(
 				apiKey: lastAccess.accessToken,
 				credentialId: lastAccess.credentialId,
 			});
+			throwIfAuthRetryAborted(signal);
 			if (!rotated) break;
 			next = await storage.getOAuthAccess(provider, sessionId, { signal });
 		} catch (rotateError) {
+			throwIfAuthRetryAborted(signal);
 			// This one ENDS the retry loop, so it is the last chance to say why. The
 			// caller reports `lastError`, the original 401, and the actual blocker
 			// (the rotation itself failing) would otherwise never appear anywhere.
-			logger.warn("Auth retry could not rotate to another credential; giving up and reporting the auth failure", {
+			warnAuthRetry("Auth retry could not rotate to another credential; giving up and reporting the auth failure", {
 				provider,
 				error: String(rotateError),
 			});
-			next = undefined;
 		}
-		if (signal?.aborted || !next) break;
+		throwIfAuthRetryAborted(signal);
+		if (!next) break;
 		const credentialIdentity = oauthCredentialIdentity(next);
 		if (
 			attemptedCredentialIdentities.has(credentialIdentity) ||
@@ -410,8 +451,10 @@ export async function withOAuthAccess<T>(
 		if (!directRotation) legacyAuthSwitchUsed = true;
 		attemptResult = await runOAuthAttempt(next, attempt, isAuthError);
 		if (attemptResult.ok) return attemptResult.result;
+		throwIfAuthRetryAborted(signal);
 		lastError = attemptResult.error;
 	}
 
+	throwIfAuthRetryAborted(signal);
 	throw lastError;
 }

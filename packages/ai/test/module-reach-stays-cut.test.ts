@@ -96,8 +96,27 @@ function runtimeImportsOf(relative: string): string[] {
  * capitalized `APP_DISPLAY_NAME` from being reachable under the same name. The leaf has no imports at all, so
  * the cost is exactly the one module and it cannot grow: see `packages/utils/test/app-identity.test.ts`, which
  * asserts the leaf stays import-free.
+ *
+ * RAISED BY ONE A THIRD TIME, from 225, and again by nothing in this package: `e3d4fea2` moved one
+ * config-parsing helper out of `packages/utils/src/json.ts` into a new `config-parse.ts`, because
+ * `json.ts` had grown an `import { YAML } from "bun"` and sits on the collab web client's graph, which
+ * made `bun build` refuse the whole browser bundle. The new file is re-exported from the `@veyyon/utils`
+ * barrel, so every graph that reaches the barrel gained exactly that one module. This is barrel growth,
+ * not a new edge out of the credential store: the two cuts this file exists to hold are asserted by name
+ * below and both still pass. `env-api-key.ts` (68) and `usage/registry.ts` (20) do not reach the barrel
+ * and did not move.
+ *
+ * RAISED BY ONE A FOURTH TIME, from 226, and again by barrel growth rather than by an edge out of the
+ * credential store: `packages/utils/src/fault-sink.ts` is new, and it is re-exported from the
+ * `@veyyon/utils` barrel like `config-parse.ts` before it. It exists because `fs-optional.ts` reported
+ * a directory it could not read through `logger.warn`, whose default transport set is file-only, so a
+ * TUI operator never saw it and the module's promise that the failure is "not allowed to be silent" was
+ * kept only in a log nobody opens. Its only import is `./logger`, which this graph already had, so the
+ * cost is exactly the one module. The two cuts this file exists to hold are asserted by name below and
+ * both still pass, and `env-api-key.ts` (68) and `usage/registry.ts` (20) do not reach the barrel and
+ * did not move.
  */
-const AUTH_STORAGE_CEILING = 225;
+const AUTH_STORAGE_CEILING = 227;
 
 /**
  * Measured 2026-07-26 at 158, down from 204/212. This module is four functions over a table and its doc
@@ -328,7 +347,16 @@ describe("the walk really happened", () => {
 		const reached = reachedNames("providers/anthropic.ts");
 
 		expect(reached.some(file => file.endsWith("packages/ai/src/stream.ts"))).toBe(true);
-		expect(reach("providers/anthropic.ts")).toBeGreaterThan(AUTH_STORAGE_CEILING);
+		// The size half of this control used to be `> AUTH_STORAGE_CEILING`, a frozen 227
+		// that described a DIFFERENT module's budget. It went false on 2026-07-27 for the
+		// best possible reason: every barrel import in `packages/ai/src` was repointed at
+		// the module that declares the name, and this provider fell from 253 to 191 without
+		// losing a single edge it needs. A control that fails when the tree gets better is
+		// not measuring what it meant to, so it compares against the module it is a control
+		// FOR: the provider streams and the store does not, so the provider reaches strictly
+		// more, and both numbers are read from the same walk rather than from a constant
+		// that has to be renegotiated every time something is cut.
+		expect(reach("providers/anthropic.ts")).toBeGreaterThan(reach("auth-storage.ts"));
 	});
 
 	/**

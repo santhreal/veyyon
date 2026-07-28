@@ -1,4 +1,4 @@
-import { decodeJwtPayload } from "@veyyon/utils";
+import { decodeJwtPayload } from "@veyyon/utils/jwt";
 import * as AIError from "../../error";
 import { credentialExpiryFromJwtExp } from "./expiry";
 import { generatePKCE } from "./pkce";

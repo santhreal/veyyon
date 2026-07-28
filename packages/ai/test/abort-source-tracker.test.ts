@@ -47,6 +47,22 @@ describe("createAbortSourceTracker", () => {
 		expect(tracker.getLocalAbortReason()).toBe(reason);
 	});
 
+	/**
+	 * AbortController latches its first reason, so a second watchdog callback must
+	 * not overwrite the tracker's bookkeeping and make that first reason disappear.
+	 */
+	it("keeps the first local reason when multiple watchdogs fire", () => {
+		const tracker = createAbortSourceTracker();
+		const first = new Error("first-event timeout");
+		const second = new Error("idle timeout");
+
+		tracker.abortLocally(first);
+		tracker.abortLocally(second);
+
+		expect(tracker.requestSignal.reason).toBe(first);
+		expect(tracker.getLocalAbortReason()).toBe(first);
+	});
+
 	it("treats local-then-caller as a caller abort and hides the local reason", () => {
 		// Race A: watchdog fires, then user presses ESC. The previous heuristic
 		// returned wasCallerAbort()=false here because requestSignal.reason was

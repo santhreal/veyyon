@@ -18,7 +18,9 @@ import {
 	getAntigravityUserAgent,
 	getGeminiCliHeaders,
 } from "@veyyon/catalog/wire/gemini-headers";
-import { extractHttpStatusFromError, fetchWithRetry, readSseJson, trimTrailingSlashes } from "@veyyon/utils";
+import { extractHttpStatusFromError, fetchWithRetry } from "@veyyon/utils/fetch-retry";
+import { readSseJson } from "@veyyon/utils/stream";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { type } from "arktype";
 import * as AIError from "../error";
 import type {

@@ -26,7 +26,7 @@
  *   4xx/5xx: { error: { type, message } }
  */
 
-import { errorMessage, isRecord } from "@veyyon/utils";
+import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
 import type { AuthGatewayStreamControl } from "../auth-gateway/types";
 import * as AIError from "../error";
 import type { AssistantMessageEventStream, Context, SimpleStreamOptions } from "../types";

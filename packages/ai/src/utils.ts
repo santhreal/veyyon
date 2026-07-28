@@ -1,11 +1,12 @@
-import { $env, isRecord } from "@veyyon/utils";
+import { $env } from "@veyyon/utils/env";
+import { isRecord } from "@veyyon/utils/type-guards";
 import type { ResponseInput, ResponseInputItem } from "./providers/openai-responses-wire";
 import type { CacheRetention, OpenAIResponsesHistoryPayload, ProviderPayload } from "./types";
 
 type OpenAIResponsesReplayItem = ResponseInput[number];
 const NON_WHITESPACE_RE = /\S/;
 
-export { isRecord } from "@veyyon/utils";
+export { isRecord } from "@veyyon/utils/type-guards";
 export function normalizeSystemPrompts(systemPrompt: readonly string[] | string | undefined | null): string[] {
 	if (systemPrompt === undefined || systemPrompt === null) return [];
 	const prompts = Array.isArray(systemPrompt) ? systemPrompt : typeof systemPrompt === "string" ? [systemPrompt] : [];

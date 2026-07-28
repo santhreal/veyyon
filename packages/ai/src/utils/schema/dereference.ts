@@ -9,7 +9,7 @@
  *
  * After dereferencing, `$defs` and `definitions` are stripped from the root.
  */
-import { isRecord } from "@veyyon/utils";
+import { isRecord } from "@veyyon/utils/type-guards";
 import type { JsonObject } from "./types";
 
 /**

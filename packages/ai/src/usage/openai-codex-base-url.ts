@@ -1,5 +1,5 @@
 import { CODEX_BASE_URL } from "@veyyon/catalog/wire/codex";
-import { trimTrailingSlashes } from "@veyyon/utils";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 
 /**
  * Resolve the base URL for ChatGPT account-API requests (`wham/usage`,

@@ -19,7 +19,12 @@
  *     code in a module with NO imports. 364 -> 42.
  *   - `coding-agent/src/mcp/manager.ts` wanted a string test. 613 -> 498.
  *   - `coding-agent/src/commit/shared-llm.ts` wanted arktype's `type`, which this package only re-exports, and
- *     one validator. 368 -> 112.
+ *     one validator. 368 -> 112, and then back to 325 when `fix(secrets): protect commit analysis requests`
+ *     moved the actual model call into this file and took `completeSimple` from the barrel along with it.
+ *     Repointed at its owner on 2026-07-27: 325 -> 184. The remaining 72 over the old ceiling ARE the
+ *     streaming engine, which this file now genuinely calls, so its ceiling is re-measured below rather
+ *     than left red. That is the distinction this whole suite is about: an engine a file uses is a cost,
+ *     an engine a file merely imported a predicate through is a leak.
  *   - `coding-agent/src/web/search/providers/perplexity.ts` wanted an OAuth retry wrapper. 372 -> 327.
  *
  * WHAT IS STILL ALLOWED, and it is most of the remaining list. `completeSimple` and `streamSimple` ARE the
@@ -154,7 +159,10 @@ describe("the modules that were repointed stay cut", () => {
 		["mnemopi/src/core/embeddings.ts", 125],
 		["mnemopi/src/core/extraction/client.ts", 120],
 		["coding-agent/src/config/api-key-resolver.ts", 55],
-		["coding-agent/src/commit/shared-llm.ts", 125],
+		// Re-measured 2026-07-27 at 184, from 112. The file gained a real `completeSimple` call, and the
+		// engine is 72 modules whichever specifier reaches it. Raised only after the barrel import was
+		// repointed and the number stopped moving; the 325 it sat at before that was the leak, not this.
+		["coding-agent/src/commit/shared-llm.ts", 195],
 		// The agent's hot loop and the `Agent` class. Both STREAM, so both reach the engine whatever
 		// specifier they use; the ceilings are what the other ten names cost when taken from the entry
 		// point. 378 -> 321 and 380 -> 323.

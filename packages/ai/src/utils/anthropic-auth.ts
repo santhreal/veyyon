@@ -10,7 +10,8 @@
  */
 
 import { ANTHROPIC_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
-import { $env, normalizeBaseUrl } from "@veyyon/utils";
+import { $env } from "@veyyon/utils/env";
+import { normalizeBaseUrl } from "@veyyon/utils/url";
 import {
 	buildAnthropicHeaders as buildProviderAnthropicHeaders,
 	normalizeAnthropicBaseUrl,

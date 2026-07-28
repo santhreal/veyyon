@@ -12,7 +12,7 @@
  */
 
 import { emptyUsage } from "@veyyon/catalog/models";
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import * as AIError from "../error";
 import type {
 	Api,

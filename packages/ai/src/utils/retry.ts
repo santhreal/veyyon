@@ -1,5 +1,5 @@
 import { scheduler } from "node:timers/promises";
-import { isRetryableError } from "@veyyon/utils";
+import { isRetryableError } from "@veyyon/utils/fetch-retry";
 import { isCopilotTransientModelError, status } from "../error/flags";
 import { getHeadersFromError, getRetryAfterMsFromHeaders } from "./retry-after";
 
@@ -28,14 +28,14 @@ export async function callWithCopilotModelRetry<T>(
 	let lastError: unknown;
 	const retryBaseDelayMs = options.retryBaseDelayMs ?? COPILOT_MODEL_RETRY_BASE_DELAY_MS;
 	for (let attempt = 0; attempt < COPILOT_MODEL_RETRY_MAX_ATTEMPTS; attempt++) {
+		if (options.signal?.aborted) {
+			throw options.signal.reason ?? new DOMException("The operation was aborted.", "AbortError");
+		}
 		try {
 			return await fn();
 		} catch (error) {
 			lastError = error;
-			// A latched abort (caller cancel or local watchdog) makes any retry a
-			// guaranteed-dead attempt — surface the original error, not the
-			// scheduler's AbortError.
-			if (options.signal?.aborted) throw error;
+			if (options.signal?.aborted) throw options.signal.reason ?? error;
 			const transientModelError = isCopilotTransientModelError(error);
 			if (!transientModelError && !isRetryableError(error)) throw error;
 			if (attempt === COPILOT_MODEL_RETRY_MAX_ATTEMPTS - 1) break;
@@ -43,16 +43,23 @@ export async function callWithCopilotModelRetry<T>(
 			if (!transientModelError) {
 				const errorStatus = status(error);
 				if (errorStatus !== undefined) {
-					// Status-bearing retryable errors (429/5xx) are only re-sent when
-					// the server told us when to come back — a blind fixed-delay retry
-					// of a rate limit just burns the remaining attempts. Status-less
-					// transport blips (socket close, h2 reset) keep the linear backoff.
 					const retryAfterMs = getRetryAfterMsFromHeaders(getHeadersFromError(error));
-					if (retryAfterMs === undefined || retryAfterMs > COPILOT_RETRY_AFTER_MAX_WAIT_MS) throw error;
-					delayMs = Math.max(delayMs, retryAfterMs);
+					// An unguided rate limit is not useful to blind-retry. Other
+					// transient statuses (408/5xx) retain the normal backoff, while
+					// any supplied server delay still governs the retry.
+					if (errorStatus === 429 && retryAfterMs === undefined) throw error;
+					if (retryAfterMs !== undefined) {
+						if (retryAfterMs > COPILOT_RETRY_AFTER_MAX_WAIT_MS) throw error;
+						delayMs = Math.max(delayMs, retryAfterMs);
+					}
 				}
 			}
-			await scheduler.wait(delayMs, { signal: options.signal });
+			try {
+				await scheduler.wait(delayMs, { signal: options.signal });
+			} catch (waitError) {
+				if (options.signal?.aborted) throw options.signal.reason ?? waitError;
+				throw waitError;
+			}
 		}
 	}
 	throw lastError;

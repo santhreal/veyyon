@@ -105,14 +105,10 @@ import {
 } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
 import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
 import { CURSOR_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
-import {
-	$env,
-	errorMessage,
-	parseJsonWithRepair,
-	parseStreamingJson,
-	parseStreamingJsonThrottled,
-	sanitizeText,
-} from "@veyyon/utils";
+import { $env } from "@veyyon/utils/env";
+import { parseJsonWithRepair, parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/utils/json-parse";
+import { sanitizeText } from "@veyyon/utils/sanitize-text";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import * as AIError from "../error";
 import type {
 	Api,

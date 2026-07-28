@@ -1,4 +1,7 @@
-import { escapeRegExp, extractHttpStatusFromError, isRecord } from "@veyyon/utils";
+import { THINKING_EFFORTS } from "@veyyon/catalog/effort";
+import { extractHttpStatusFromError } from "@veyyon/utils/fetch-retry";
+import { escapeRegExp } from "@veyyon/utils/regex";
+import { isRecord } from "@veyyon/utils/type-guards";
 import type { CapturedHttpErrorResponse } from "../utils/http-inspector";
 
 /** @internal */
@@ -9,24 +12,42 @@ export interface OpenAIReasoningEffortFallbackState {
 	reasoningEffortFallbacks: Map<string, OpenAIReasoningEffortFallback>;
 }
 
-const ENABLED_REASONING_VALUES = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
-const KNOWN_REASONING_VALUE: Readonly<Record<string, true>> = {
-	none: true,
-	minimal: true,
-	low: true,
-	medium: true,
-	high: true,
-	xhigh: true,
-	max: true,
-};
-const REASONING_VALUE_RANK: Readonly<Record<string, number>> = {
-	minimal: 0,
-	low: 1,
-	medium: 2,
-	high: 3,
-	xhigh: 4,
-	max: 5,
-};
+/**
+ * The reasoning values this fallback can step DOWN to, least to most intensive.
+ *
+ * This is the thinking ladder from `@veyyon/catalog/effort`, not a copy of it.
+ * All three tables below used to restate the six levels by hand, which is the
+ * duplicate that `isEffort`'s own doc records shipping once already: two
+ * OpenAI-compatible servers each carried a hand-written chain of six
+ * `value === "..."` comparisons, so adding a level to the ladder left them
+ * silently rejecting it and a request naming the new effort was answered as
+ * though it had named none. The same hazard is worse here, because this module
+ * decides what to RETRY with after a server rejects an effort: a table that has
+ * not learned about a new level cannot offer it as a fallback, so a model whose
+ * only allowed value is the new one falls all the way through to no reasoning
+ * at all, and the request succeeds.
+ */
+const ENABLED_REASONING_VALUES: readonly string[] = THINKING_EFFORTS;
+
+/**
+ * Every value an OpenAI-compatible server may name in a reasoning error, which
+ * is the ladder plus `none`.
+ *
+ * `none` is deliberately NOT on the ladder and must not be added to it: it means
+ * "do not reason", the state this fallback lands in when nothing else is
+ * allowed, and treating it as an effort level would make it a step the clamp
+ * helpers could stop at. It is spelled here because the set of values a SERVER
+ * recognises is a different question from the set of levels veyyon offers.
+ */
+const NO_REASONING_VALUE = "none";
+const KNOWN_REASONING_VALUE: Readonly<Record<string, true>> = Object.freeze(
+	Object.fromEntries<true>([NO_REASONING_VALUE, ...ENABLED_REASONING_VALUES].map(value => [value, true])),
+);
+
+/** Position on the ladder, used to pick the nearest allowed step below the rejected one. */
+const REASONING_VALUE_RANK: Readonly<Record<string, number>> = Object.freeze(
+	Object.fromEntries(ENABLED_REASONING_VALUES.map((value, rank) => [value, rank])),
+);
 
 /** @internal */
 export function createOpenAIReasoningEffortFallbackState(): OpenAIReasoningEffortFallbackState {

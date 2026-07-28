@@ -2,7 +2,10 @@ import { scheduler } from "node:timers/promises";
 import { bareModelId, parseAnthropicModel } from "@veyyon/catalog/identity";
 import { toNumber } from "@veyyon/catalog/utils";
 import { CLAUDE_CODE_VERSION as claudeCodeVersion } from "@veyyon/catalog/wire/anthropic";
-import { clamp, clamp01, HOUR_MS, isCancellation, trimTrailingSlashes, WEEK_MS } from "@veyyon/utils";
+import { isCancellation } from "@veyyon/utils/abortable";
+import { clamp, clamp01 } from "@veyyon/utils/math";
+import { HOUR_MS, WEEK_MS } from "@veyyon/utils/time";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import * as AIError from "../error";
 import {
 	type CredentialRankingContext,

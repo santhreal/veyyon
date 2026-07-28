@@ -24,7 +24,7 @@
  * Pure / identity-preserving: returns the input reference when nothing changes.
  */
 
-import { isRecord } from "@veyyon/utils";
+import { isRecord } from "@veyyon/utils/type-guards";
 import type { JsonObject } from "./types";
 
 const VALID_JSON_SCHEMA_TYPES: Record<string, true> = {

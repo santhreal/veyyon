@@ -18,7 +18,11 @@
  */
 
 import { createHash } from "node:crypto";
-import { clamp, clamp01, errorMessage, logger, scopedTimeoutSignal, trimTrailingSlashes } from "@veyyon/utils";
+import * as logger from "@veyyon/utils/logger";
+import { clamp, clamp01 } from "@veyyon/utils/math";
+import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
+import { errorMessage } from "@veyyon/utils/type-guards";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 // The env-key leaf, NOT `./stream`. This file wanted two table lookups and was pulling the whole
 // streaming engine for them, which is most of why importing auth storage reached 276 modules.
 // The row shapes and the pure row logic, which moved to their own module so a caller that only

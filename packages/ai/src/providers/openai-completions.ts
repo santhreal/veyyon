@@ -3,15 +3,12 @@ import { isKimiModelId } from "@veyyon/catalog/identity";
 import { resolveWireModelId } from "@veyyon/catalog/model-thinking";
 import { calculateCost, emptyCost } from "@veyyon/catalog/models";
 import type { ResolvedOpenAICompat } from "@veyyon/catalog/types";
-import {
-	$env,
-	isRecord,
-	logger,
-	parseStreamingJson,
-	parseStreamingJsonThrottled,
-	trimTrailingSlashes,
-	tryParseJson,
-} from "@veyyon/utils";
+import { $env } from "@veyyon/utils/env";
+import { tryParseJson } from "@veyyon/utils/json";
+import { parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/utils/json-parse";
+import * as logger from "@veyyon/utils/logger";
+import { isRecord } from "@veyyon/utils/type-guards";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
 import { getKimiCommonHeaders } from "../registry/oauth/kimi";
@@ -47,11 +44,11 @@ import {
 	iterateWithIdleTimeout,
 	iterateWithTerminalGrace,
 } from "../utils/idle-iterator";
-import { OpenAIHttpError, postOpenAIStream } from "../utils/openai-http";
+import { OpenAIHttpError, type OpenAIStreamHandle, postOpenAIStream } from "../utils/openai-http";
 import { notifyProviderResponse } from "../utils/provider-response";
 import { callWithCopilotModelRetry } from "../utils/retry";
 import { adaptSchemaForStrict, NO_STRICT, normalizeSchemaForMoonshot, toolWireSchema } from "../utils/schema";
-import { resolveOpenAiSseEventName } from "../utils/sse-debug";
+import { notifyRawSseEvent, resolveOpenAiSseEventName } from "../utils/sse-debug";
 import {
 	type HealedToolCall,
 	StreamMarkupHealing,
@@ -616,10 +613,11 @@ const streamOpenAICompletionsOnce = (
 		);
 		const { requestAbortController, requestSignal } = abortTracker;
 		const onSseEvent = options?.onSseEvent;
-		const rawSseObserver = onSseEvent
+		const modelSseObserver = onSseEvent ? (event: RawSseEvent) => onSseEvent(event, model) : undefined;
+		const rawSseObserver = modelSseObserver
 			? (event: RawSseEvent) => {
 					resolveOpenAiSseEventName(event);
-					onSseEvent(event, model);
+					notifyRawSseEvent(modelSseObserver, event);
 				}
 			: undefined;
 		// Assigned once the block helpers exist (they are scoped to the `try`);
@@ -660,7 +658,10 @@ const streamOpenAICompletionsOnce = (
 			const completionsUrl = query
 				? `${trimmedBaseUrl}/chat/completions?${new URLSearchParams(query)}`
 				: `${trimmedBaseUrl}/chat/completions`;
-			const createCompletionsStream = async (toolStrictModeOverride?: ToolStrictModeOverride) => {
+			const createCompletionsStream = async (
+				toolStrictModeOverride?: ToolStrictModeOverride,
+				captureOnly = false,
+			) => {
 				const effectiveToolStrictModeOverride = disableStrictTools ? "none" : toolStrictModeOverride;
 				const { params, strictToolsApplied } = buildParams(
 					model,
@@ -685,9 +686,7 @@ const streamOpenAICompletionsOnce = (
 					const attemptParams = structuredClone(params);
 					const replacementPayload = await options?.onPayload?.(attemptParams, model);
 					const wireParams =
-						replacementPayload !== undefined
-							? (replacementPayload as OpenAICompletionsParams)
-							: attemptParams;
+						replacementPayload !== undefined ? (replacementPayload as OpenAICompletionsParams) : attemptParams;
 					activeRequestParams = wireParams;
 					rawRequestDump = {
 						provider: model.provider,
@@ -700,6 +699,10 @@ const streamOpenAICompletionsOnce = (
 					};
 					return { body: JSON.stringify(wireParams) };
 				};
+				if (captureOnly) {
+					await prepareRequest();
+					throw new AIError.RequestAbortError();
+				}
 				let requestTimeout: NodeJS.Timeout | undefined;
 				if (requestTimeoutMs !== undefined) {
 					requestTimeout = setTimeout(
@@ -712,12 +715,7 @@ const streamOpenAICompletionsOnce = (
 					if (requestTimeoutMs !== undefined) {
 						headersWithTimeout["X-Stainless-Timeout"] = Math.floor(requestTimeoutMs / 1000).toString();
 					}
-					// Payload-capture callers historically observe the final request
-					// even when they supply an already-aborted signal. There is no
-					// physical attempt in that case, so prepare it once before the
-					// retry helper rejects the abort.
-					if (requestSignal.aborted) await prepareRequest();
-					const { events, response, requestId } = await postOpenAIStream<ChatCompletionChunk>({
+					const handle = await postOpenAIStream<ChatCompletionChunk>({
 						url: completionsUrl,
 						headers: headersWithTimeout,
 						// The per-attempt initializer serializes only the post-hook
@@ -733,17 +731,19 @@ const streamOpenAICompletionsOnce = (
 						// extend the deadline.
 						onSseEvent: rawSseObserver,
 					});
-					await notifyProviderResponse(options, response, model, requestId);
-					return events;
+					return handle;
 				} finally {
 					// Headers arrived (or the request failed); from here the
 					// first-event deadline is enforced by `iterateWithIdleTimeout`.
 					clearTimeout(requestTimeout);
 				}
 			};
-			let openaiStream: AsyncIterable<ChatCompletionChunk>;
+			// Copilot retry policy rejects a latched abort before invoking its
+			// callback, so preserve the payload-inspection contract outside it.
+			if (requestSignal.aborted) await createCompletionsStream(undefined, true);
+			let openaiHandle: OpenAIStreamHandle<ChatCompletionChunk>;
 			try {
-				openaiStream = await callWithCopilotModelRetry(() => createCompletionsStream(), {
+				openaiHandle = await callWithCopilotModelRetry(() => createCompletionsStream(), {
 					provider: model.provider,
 					signal: requestSignal,
 				});
@@ -760,7 +760,7 @@ const streamOpenAICompletionsOnce = (
 					if (attemptedReasoningEffortFallbacks.has(retryMarker)) throw error;
 					attemptedReasoningEffortFallbacks.add(retryMarker);
 					requestReasoningEffortFallbacks.set(activeReasoningEffortFallbackKey, reasoningEffortFallback);
-					openaiStream = await createCompletionsStream();
+					openaiHandle = await createCompletionsStream();
 					rememberOpenAIReasoningEffortFallback(
 						providerSessionState,
 						activeReasoningEffortFallbackKey,
@@ -773,7 +773,7 @@ const streamOpenAICompletionsOnce = (
 				) {
 					disableStrictToolsForScope(providerSessionState, strictToolsScope);
 					disableStrictTools = true;
-					openaiStream = await createCompletionsStream("none");
+					openaiHandle = await createCompletionsStream("none");
 				} else {
 					if (!shouldRetryWithoutStrictTools(error, capturedErrorResponse, appliedStrictTools, context.tools)) {
 						throw error;
@@ -782,9 +782,11 @@ const streamOpenAICompletionsOnce = (
 					// subsequent request doesn't pay a strict-400 + retry round-trip.
 					disableStrictToolsForScope(providerSessionState, strictToolsScope);
 					disableStrictTools = true;
-					openaiStream = await createCompletionsStream("none");
+					openaiHandle = await createCompletionsStream("none");
 				}
 			}
+			await notifyProviderResponse(options, openaiHandle.response, model, openaiHandle.requestId);
+			const openaiStream = openaiHandle.events;
 			if (premiumRequestsTotal !== undefined) {
 				output.usage.premiumRequests = premiumRequestsTotal;
 			}

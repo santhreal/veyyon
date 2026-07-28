@@ -16,7 +16,8 @@
  * itself stays credential-free.
  */
 import { emptyUsage } from "@veyyon/catalog/models";
-import { readSseJson, trimTrailingSlashes } from "@veyyon/utils";
+import { readSseJson } from "@veyyon/utils/stream";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import * as AIError from "../error";
 import type {
 	Api,

@@ -1,4 +1,4 @@
-import type { ServerSentEvent } from "@veyyon/utils";
+import type { ServerSentEvent } from "@veyyon/utils/stream";
 import type { RawSseEvent } from "../types";
 
 type RawSseObserver = (event: RawSseEvent) => void;

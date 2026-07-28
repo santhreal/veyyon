@@ -1,6 +1,9 @@
 // (Refresh is the sole responsibility of AuthStorage; no provider-direct refresh here.)
 import { toNumber } from "@veyyon/catalog/utils";
-import { $env, clamp01, DAY_MS, HOUR_MS, MINUTE_MS, normalizeBaseUrl, SECOND_MS } from "@veyyon/utils";
+import { $env } from "@veyyon/utils/env";
+import { clamp01 } from "@veyyon/utils/math";
+import { DAY_MS, HOUR_MS, MINUTE_MS, SECOND_MS } from "@veyyon/utils/time";
+import { normalizeBaseUrl } from "@veyyon/utils/url";
 import { getKimiCommonHeaders } from "../registry/oauth/kimi";
 import type {
 	UsageAmount,

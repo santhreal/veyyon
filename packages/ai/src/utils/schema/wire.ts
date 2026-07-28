@@ -11,7 +11,7 @@
  * JSON Schema dialect.
  */
 
-import { isRecord } from "@veyyon/utils";
+import { isRecord } from "@veyyon/utils/type-guards";
 import type { Type } from "arktype";
 // We import the Zod *value* (z) for runtime APIs. Marker checks rely on the
 // `_zod` symbol that every Zod v4 schema instance carries.

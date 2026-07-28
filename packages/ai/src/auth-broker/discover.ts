@@ -8,17 +8,17 @@
 import { existsSync } from "node:fs";
 import * as path from "node:path";
 import {
-	$pickenv,
 	getAgentDbPath,
 	getAgentDir,
 	getAuthBrokerSnapshotCachePath,
 	getConfigRootDir,
 	getGlobalConfigRootDir,
-	isEnoent,
-	isRecord,
-	logger,
 	MAIN_CONFIG_FILENAMES,
-} from "@veyyon/utils";
+} from "@veyyon/utils/dirs";
+import { $pickenv } from "@veyyon/utils/env";
+import { isEnoent } from "@veyyon/utils/fs-error";
+import * as logger from "@veyyon/utils/logger";
+import { isRecord } from "@veyyon/utils/type-guards";
 import { YAML } from "bun";
 import type { AuthCredential } from "../auth-storage";
 // This module constructs an `AuthStorage` from the subpath rather than through the barrel, so it

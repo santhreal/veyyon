@@ -1,6 +1,7 @@
 import { CURSOR_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { toNumber } from "@veyyon/catalog/utils";
-import { isRecord, trimTrailingSlashes } from "@veyyon/utils";
+import { isRecord } from "@veyyon/utils/type-guards";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import type {
 	UsageAmount,
 	UsageFetchContext,
