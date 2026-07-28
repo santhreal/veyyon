@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi 
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { Model } from "@veyyon/ai";
+import type { Context, Model, SimpleStreamOptions } from "@veyyon/ai";
 import * as ai from "@veyyon/ai";
 import { Effort } from "@veyyon/catalog/effort";
 import { Settings } from "@veyyon/coding-agent/config/settings";
@@ -11,8 +11,8 @@ import {
 	getMemoryRoot,
 	startMemoryStartupTask,
 } from "@veyyon/coding-agent/memories";
-import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import * as memoryStorage from "@veyyon/coding-agent/memories/storage";
+import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import { getAgentDbPath, Snowflake, TempDir } from "@veyyon/utils";
 
 interface SessionFixture {
@@ -92,6 +92,10 @@ async function createFixture(overrides?: Partial<Record<string, unknown>>): Prom
 		model,
 		modelRegistry,
 		refreshBaseSystemPrompt,
+		obfuscator: undefined as SecretObfuscator | undefined,
+		obfuscateProviderText(text: string): string {
+			return this.obfuscator?.obfuscate(text) ?? text;
+		},
 	};
 
 	return { agentDir, sessionDir, sessionFile, settings, session, modelRegistry, model, whenSettled: settled.promise };
@@ -99,6 +103,13 @@ async function createFixture(overrides?: Partial<Record<string, unknown>>): Prom
 
 // Resolve any already-scheduled microtasks/macrotasks without a fixed wall delay.
 const flushAsync = (): Promise<void> => new Promise<void>(resolve => setTimeout(resolve, 0));
+
+async function invokeAttemptApiKey(options: SimpleStreamOptions | undefined): Promise<void> {
+	const apiKey = options?.apiKey;
+	if (typeof apiKey === "function") {
+		await apiKey({ lastChance: false, error: undefined });
+	}
+}
 
 // Await the pipeline's completion signal (its final `refreshBaseSystemPrompt`)
 // instead of polling, racing a generous timeout so a stalled regression fails
@@ -200,33 +211,39 @@ describe("memories runtime", () => {
 
 		const completeSpy = vi
 			.spyOn(ai, "completeSimple")
-			.mockResolvedValueOnce({
-				stopReason: "end_turn",
-				content: [
-					{
-						type: "text",
-						text: JSON.stringify({
-							rollout_summary: "Rollout summary A",
-							rollout_slug: "thread-a-rollout",
-							raw_memory: "Raw memory A",
-						}),
-					},
-				],
-				usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15 },
-			} as any)
-			.mockResolvedValueOnce({
-				stopReason: "end_turn",
-				content: [
-					{
-						type: "text",
-						text: JSON.stringify({
-							memory_md: "# Memory\n\nConsolidated body",
-							memory_summary: "Consolidated summary",
-							skills: [{ name: "deploy-playbook", content: "# Deploy\nUse blue/green." }],
-						}),
-					},
-				],
-			} as any);
+			.mockImplementationOnce(async (_model: Model, _context: Context, options?: SimpleStreamOptions) => {
+				await invokeAttemptApiKey(options);
+				return {
+					stopReason: "end_turn",
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify({
+								rollout_summary: "Rollout summary A",
+								rollout_slug: "thread-a-rollout",
+								raw_memory: "Raw memory A",
+							}),
+						},
+					],
+					usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15 },
+				} as never;
+			})
+			.mockImplementationOnce(async (_model: Model, _context: Context, options?: SimpleStreamOptions) => {
+				await invokeAttemptApiKey(options);
+				return {
+					stopReason: "end_turn",
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify({
+								memory_md: "# Memory\n\nConsolidated body",
+								memory_summary: "Consolidated summary",
+								skills: [{ name: "deploy-playbook", content: "# Deploy\nUse blue/green." }],
+							}),
+						},
+					],
+				} as never;
+			});
 
 		startMemoryStartupTask({
 			session: fx.session,
@@ -269,32 +286,38 @@ describe("memories runtime", () => {
 
 		const completeSpy = vi
 			.spyOn(ai, "completeSimple")
-			.mockResolvedValueOnce({
-				stopReason: "end_turn",
-				content: [
-					{
-						type: "text",
-						text: JSON.stringify({
-							rollout_summary: `Used ${placeholder}`,
-							rollout_slug: "secret-rollout",
-							raw_memory: `Remember ${placeholder}`,
-						}),
-					},
-				],
-			} as never)
-			.mockResolvedValueOnce({
-				stopReason: "end_turn",
-				content: [
-					{
-						type: "text",
-						text: JSON.stringify({
-							memory_md: `# Memory\n\nRemember ${placeholder}`,
-							memory_summary: `Uses ${placeholder}`,
-							skills: [],
-						}),
-					},
-				],
-			} as never);
+			.mockImplementationOnce(async (_model: Model, _context: Context, options?: SimpleStreamOptions) => {
+				await invokeAttemptApiKey(options);
+				return {
+					stopReason: "end_turn",
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify({
+								rollout_summary: `Used ${placeholder}`,
+								rollout_slug: "secret-rollout",
+								raw_memory: `Remember ${placeholder}`,
+							}),
+						},
+					],
+				} as never;
+			})
+			.mockImplementationOnce(async (_model: Model, _context: Context, options?: SimpleStreamOptions) => {
+				await invokeAttemptApiKey(options);
+				return {
+					stopReason: "end_turn",
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify({
+								memory_md: `# Memory\n\nRemember ${placeholder}`,
+								memory_summary: `Uses ${placeholder}`,
+								skills: [],
+							}),
+						},
+					],
+				} as never;
+			});
 
 		startMemoryStartupTask({
 			session: fx.session,
@@ -338,33 +361,39 @@ describe("memories runtime", () => {
 
 		const spy = vi
 			.spyOn(ai, "completeSimple")
-			.mockResolvedValueOnce({
-				stopReason: "end_turn",
-				content: [
-					{
-						type: "text",
-						text: JSON.stringify({
-							rollout_summary: "Rollout summary",
-							rollout_slug: "thread-constrained",
-							raw_memory: "Raw memory",
-						}),
-					},
-				],
-				usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2 },
-			} as any)
-			.mockResolvedValueOnce({
-				stopReason: "end_turn",
-				content: [
-					{
-						type: "text",
-						text: JSON.stringify({
-							memory_md: "# Memory\n\nBody",
-							memory_summary: "Summary",
-							skills: [],
-						}),
-					},
-				],
-			} as any);
+			.mockImplementationOnce(async (_model: Model, _context: Context, options?: SimpleStreamOptions) => {
+				await invokeAttemptApiKey(options);
+				return {
+					stopReason: "end_turn",
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify({
+								rollout_summary: "Rollout summary",
+								rollout_slug: "thread-constrained",
+								raw_memory: "Raw memory",
+							}),
+						},
+					],
+					usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2 },
+				} as never;
+			})
+			.mockImplementationOnce(async (_model: Model, _context: Context, options?: SimpleStreamOptions) => {
+				await invokeAttemptApiKey(options);
+				return {
+					stopReason: "end_turn",
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify({
+								memory_md: "# Memory\n\nBody",
+								memory_summary: "Summary",
+								skills: [],
+							}),
+						},
+					],
+				} as never;
+			});
 
 		startMemoryStartupTask({
 			session: fx.session,

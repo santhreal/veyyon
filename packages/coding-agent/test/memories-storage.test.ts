@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { AssistantMessage, Model } from "@veyyon/ai";
+import type { AssistantMessage, Context, Model, SimpleStreamOptions } from "@veyyon/ai";
 import * as ai from "@veyyon/ai";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { startMemoryStartupTask } from "@veyyon/coding-agent/memories";
@@ -58,6 +58,13 @@ function assistantText(text: string): AssistantMessage {
 		timestamp: Date.now(),
 	};
 	return message;
+}
+
+async function invokeAttemptApiKey(options: SimpleStreamOptions | undefined): Promise<void> {
+	const apiKey = options?.apiKey;
+	if (typeof apiKey === "function") {
+		await apiKey({ lastChance: false, error: undefined });
+	}
 }
 describe("memories/storage", () => {
 	let tempDir: TempDir;
@@ -222,6 +229,7 @@ describe("memories/storage", () => {
 				getSessionId: () => "current-thread",
 				getCwd: () => PROJECT_CWD,
 			},
+			obfuscateProviderText: (text: string) => text,
 			settings,
 			model,
 			refreshBaseSystemPrompt: async () => settled.resolve(),
@@ -233,18 +241,21 @@ describe("memories/storage", () => {
 			resolver: () => async () => "test-api-key",
 		} as unknown as Parameters<typeof startMemoryStartupTask>[0]["modelRegistry"];
 		let completionCount = 0;
-		const completeSpy = vi.spyOn(ai, "completeSimple").mockImplementation(async () => {
-			completionCount += 1;
-			return assistantText(
-				completionCount === 1
-					? JSON.stringify({
-							rollout_summary: "Rollout summary",
-							rollout_slug: "slot-rollout",
-							raw_memory: "Raw memory",
-						})
-					: JSON.stringify({ memory_md: "# Memory\n\nBody", memory_summary: "Summary", skills: [] }),
-			);
-		});
+		const completeSpy = vi
+			.spyOn(ai, "completeSimple")
+			.mockImplementation(async (_model: Model, _context: Context, options?: SimpleStreamOptions) => {
+				await invokeAttemptApiKey(options);
+				completionCount += 1;
+				return assistantText(
+					completionCount === 1
+						? JSON.stringify({
+								rollout_summary: "Rollout summary",
+								rollout_slug: "slot-rollout",
+								raw_memory: "Raw memory",
+							})
+						: JSON.stringify({ memory_md: "# Memory\n\nBody", memory_summary: "Summary", skills: [] }),
+				);
+			});
 
 		startMemoryStartupTask({ session, settings, modelRegistry, agentDir, taskDepth: 0 });
 

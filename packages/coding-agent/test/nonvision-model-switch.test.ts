@@ -8,6 +8,9 @@ import { createAgentSession } from "../src/sdk";
 import { AuthStorage } from "../src/session/auth-storage";
 import { SessionManager } from "../src/session/session-manager";
 
+const RED_1X1_PNG_BASE64 =
+	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+
 registerMockApi();
 
 describe("model switch from vision to text-only", () => {
@@ -41,7 +44,9 @@ describe("model switch from vision to text-only", () => {
 				contextFiles: [],
 			});
 			try {
-				await session.prompt("see image", { images: [{ type: "image", data: "aaaa", mimeType: "image/png" }] });
+				await session.prompt("see image", {
+					images: [{ type: "image", data: RED_1X1_PNG_BASE64, mimeType: "image/png" }],
+				});
 				await session.setModel(text);
 				await session.prompt("now text only");
 

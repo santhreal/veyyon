@@ -11,6 +11,9 @@ import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 
+const RED_1X1_PNG_BASE64 =
+	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+
 /**
  * Regression: a steer can land on an idle session — the submit path checks
  * `isStreaming` before `#queueSteer`'s (potentially slow) image normalization,
@@ -159,11 +162,19 @@ describe("AgentSession steer idle drain", () => {
 		await started.promise;
 		expect(session.isStreaming).toBe(true);
 
-		const image = { type: "image" as const, data: "abc", mimeType: "image/png" };
+		const image = { type: "image" as const, data: RED_1X1_PNG_BASE64, mimeType: "image/png" };
 		await session.steer("with image", [image]);
 
 		const { steering } = session.clearQueue();
-		expect(steering).toEqual([{ text: "with image", images: [image] }]);
+		expect(steering).toHaveLength(1);
+		expect(steering[0]?.text).toBe("with image");
+		expect(steering[0]?.images).toHaveLength(1);
+		const restoredImage = steering[0]?.images?.[0];
+		expect(restoredImage).toMatchObject({ type: "image", mimeType: "image/webp" });
+		if (!restoredImage) throw new Error("Expected the queued image to be restored");
+		expect(restoredImage.data).not.toBe(image.data);
+		const { width, height } = await new Bun.Image(Buffer.from(restoredImage.data, "base64")).metadata();
+		expect({ width, height }).toEqual({ width: 200, height: 200 });
 		expect(session.agent.hasQueuedMessages()).toBe(false);
 
 		await session.abort();
