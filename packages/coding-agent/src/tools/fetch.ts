@@ -226,6 +226,119 @@ function normalizeUrl(url: string): string {
 	return url;
 }
 
+const URL_CREDENTIAL_LABELS: Record<string, true> = {
+	accesskey: true,
+	accesstoken: true,
+	apikey: true,
+	auth: true,
+	authorization: true,
+	bearer: true,
+	code: true,
+	credential: true,
+	jwt: true,
+	key: true,
+	password: true,
+	passwd: true,
+	secret: true,
+	securitytoken: true,
+	sig: true,
+	signature: true,
+	signed: true,
+	token: true,
+	xamzcredential: true,
+	xamzsecuritytoken: true,
+	xamzsignature: true,
+	xgoogcredential: true,
+	xgoogsignature: true,
+};
+
+function decodeUrlCredentialComponent(component: string): string {
+	let decoded = component;
+	for (let pass = 0; pass < 3; pass += 1) {
+		try {
+			const next = decodeURIComponent(decoded);
+			if (next === decoded) break;
+			decoded = next;
+		} catch {
+			break;
+		}
+	}
+	return decoded;
+}
+
+function isUrlCredentialLabel(label: string): boolean {
+	const normalized = decodeUrlCredentialComponent(label).toLowerCase().replace(/[^a-z0-9]/g, "");
+	return (
+		URL_CREDENTIAL_LABELS[normalized] === true ||
+		normalized.endsWith("accesstoken") ||
+		normalized.endsWith("apikey") ||
+		normalized.endsWith("credential") ||
+		normalized.endsWith("password") ||
+		normalized.endsWith("secret") ||
+		normalized.endsWith("signature")
+	);
+}
+
+function looksLikeOpaqueUrlCredential(candidate: string): boolean {
+	const decoded = decodeUrlCredentialComponent(candidate);
+	if (decoded.length < 20 || /\s/.test(decoded)) return false;
+	if (/^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(decoded)) return true;
+	if (/^[a-f0-9]{24,}$/i.test(decoded)) return true;
+	return (
+		/^[A-Za-z0-9_~-]+$/.test(decoded) &&
+		/[A-Za-z]/.test(decoded) &&
+		/\d/.test(decoded) &&
+		/[A-Z_~]/.test(decoded)
+	);
+}
+
+/**
+ * Detect a URL capability that must go only to the target host/local readers.
+ *
+ * Remote reader services need the complete URL to fetch it, so redacting a
+ * credential would both break the URL and still disclose its shape. Detection
+ * is deliberately conservative: false positives merely use the already-loaded
+ * HTML or a direct reader, while a false negative discloses the capability to a
+ * secondary service.
+ */
+export function hasCredentialBearingUrl(value: string): boolean {
+	let parsed: URL;
+	try {
+		parsed = new URL(value);
+	} catch {
+		// Never forward an unparseable URL to a secondary service.
+		return true;
+	}
+	if (parsed.username.length > 0 || parsed.password.length > 0) return true;
+
+
+	for (const [key, item] of parsed.searchParams) {
+		if (isUrlCredentialLabel(key) || looksLikeOpaqueUrlCredential(item)) return true;
+	}
+
+	let previousWasLabel = false;
+	for (const encodedSegment of parsed.pathname.split("/").filter(Boolean)) {
+		const segment = decodeUrlCredentialComponent(encodedSegment);
+		if (previousWasLabel && segment.length > 0) return true;
+		const separator = segment.search(/[=:]/);
+		if (separator > 0 && isUrlCredentialLabel(segment.slice(0, separator))) return true;
+		if (looksLikeOpaqueUrlCredential(segment)) return true;
+		previousWasLabel = isUrlCredentialLabel(segment);
+	}
+
+	const fragment = decodeUrlCredentialComponent(parsed.hash.slice(1));
+	if (fragment.length > 0) {
+		const separator = fragment.search(/[=:]/);
+		if (
+			(separator > 0 && isUrlCredentialLabel(fragment.slice(0, separator))) ||
+			looksLikeOpaqueUrlCredential(fragment)
+		) {
+			return true;
+		}
+	}
+	return false;
+}
+
 // URL line selectors mirror the file form: `:50`, `:50-100`, `:50+150`, `:5-10,20-30`, `:raw`,
 // or `:raw:N-M` / `:N-M:raw` to combine raw mode with a range. If a URL would otherwise look
 // like `host:port`, add a trailing slash before the selector (e.g. `https://example.com/:80`
@@ -726,6 +839,9 @@ export async function renderHtmlToText(
 		};
 		const remoteBudgetMs = Math.min(timeout * 1000, REMOTE_READER_MAX_MS);
 		const fetchImpl = fetchOverride ?? fetch;
+		// Jina/Parallel are unrelated services. Credential-bearing target URLs
+		// stay byte-exact and can only use direct/local readers.
+		const allowSecondaryReaders = !hasCredentialBearingUrl(url);
 
 		const runners: Record<FetchProvider, () => Promise<string | null>> = {
 			// Purely local, no network/subprocess: still works on already-loaded HTML
@@ -748,7 +864,7 @@ export async function renderHtmlToText(
 				return result.ok ? result.stdout : null;
 			},
 			parallel: async () => {
-				if (!findParallelApiKey(storage)) return null;
+				if (!allowSecondaryReaders || !findParallelApiKey(storage)) return null;
 				// Per-attempt budget for remote endpoints so one stall cannot consume
 				// the whole reader-mode budget and starve the local fallbacks; scoped
 				// so the timer is cleared when the attempt settles.
@@ -772,6 +888,7 @@ export async function renderHtmlToText(
 				}
 			},
 			jina: async () => {
+				if (!allowSecondaryReaders) return null;
 				const remoteTimeout = scopedTimeoutSignal(remoteBudgetMs, userSignal);
 				try {
 					const response = await fetchImpl(`https://r.jina.ai/${url}`, {

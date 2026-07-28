@@ -267,6 +267,8 @@ export interface FlushResult {
  * progress to a TTY and to skip the user-facing consent gate (manual
  * pushes are the user's explicit intent, not a side effect of a tool call).
  */
+export type AutoQaSanitizer = (text: string) => string;
+
 export interface FlushOptions {
 	/**
 	 * Skip the `dev.autoqa.consent === "granted"` gate in
@@ -275,6 +277,15 @@ export interface FlushOptions {
 	 * future debug recipes); never set from the tool's auto-flush path.
 	 */
 	bypassConsent?: boolean;
+	/**
+	 * Resolve the current provider-bound sanitizer immediately before each
+	 * physical POST. Auto-flush supplies a live session resolver so a consent
+	 * delay or runtime refresh cannot leave a stale transform in the queue.
+	 *
+	 * Explicit manual pushes without a session intentionally omit this: the
+	 * user's command is an explicit request to ship the locally stored rows.
+	 */
+	resolveSanitizer?: () => AutoQaSanitizer | undefined;
 	/**
 	 * Fetch implementation for the push POST. Defaults to global fetch.
 	 */
@@ -353,6 +364,37 @@ interface GrievanceRow {
 	report: string;
 }
 
+/**
+ * Clone a JSON-shaped auto-QA payload while sanitizing every string value and
+ * every object key. The database rows remain raw/local; only the outbound copy
+ * is transformed. Object keys matter because reports can contain structured
+ * metadata whose property names are model-controlled.
+ */
+export function sanitizeAutoQaPayload(value: unknown, sanitize: AutoQaSanitizer): unknown {
+	const seen = new WeakMap<object, unknown>();
+	const visit = (node: unknown): unknown => {
+		if (typeof node === "string") return sanitize(node);
+		if (node === null || typeof node !== "object") return node;
+
+		const prior = seen.get(node);
+		if (prior !== undefined) return prior;
+		if (Array.isArray(node)) {
+			const clone: unknown[] = [];
+			seen.set(node, clone);
+			for (const item of node) clone.push(visit(item));
+			return clone;
+		}
+
+		const clone: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+		seen.set(node, clone);
+		for (const [key, item] of Object.entries(node)) {
+			clone[sanitize(key)] = visit(item);
+		}
+		return clone;
+	};
+	return visit(value);
+}
+
 async function performFlush(db: Database, config: PushConfig, options: FlushOptions = {}): Promise<FlushResult> {
 	const selectStmt = db.prepare(
 		"SELECT id, model, version, tool, report FROM grievances WHERE pushed = 0 ORDER BY id ASC LIMIT ?",
@@ -370,7 +412,7 @@ async function performFlush(db: Database, config: PushConfig, options: FlushOpti
 		const rows = selectStmt.all(FLUSH_BATCH_SIZE) as GrievanceRow[];
 		if (rows.length === 0) return { pushed: totalPushed, ok: true };
 
-		const body = JSON.stringify({
+		const rawPayload = {
 			agent: { name: "veyyon", version: VERSION },
 			installId: getInstallId(),
 			// Coarse host fingerprint for triage — `darwin`/`linux`/`win32` +
@@ -380,7 +422,22 @@ async function performFlush(db: Database, config: PushConfig, options: FlushOpti
 			platform: process.platform,
 			arch: process.arch,
 			entries: rows,
-		});
+		};
+		let body: string;
+		try {
+			// Resolve after the queue read and immediately before serialization /
+			// fetch. Resolve again for every batch after an intervening POST.
+			const sanitize = options.resolveSanitizer?.() ?? ((text: string) => text);
+			body = JSON.stringify(sanitizeAutoQaPayload(rawPayload, sanitize));
+		} catch {
+			lastFailureAt = Date.now();
+			logger.warn("autoqa push failed", {
+				reason: "outbound payload sanitation failed",
+				batchSize: rows.length,
+				pushedSoFar: totalPushed,
+			});
+			return { pushed: totalPushed, ok: false };
+		}
 		const headers: Record<string, string> = { "content-type": "application/json" };
 		if (config.token) headers.authorization = `Bearer ${config.token}`;
 
@@ -395,11 +452,12 @@ async function performFlush(db: Database, config: PushConfig, options: FlushOpti
 				body,
 				signal: flushTimeout.signal,
 			});
-		} catch (error) {
+		} catch {
 			lastFailureAt = Date.now();
+			// Fetch errors can include the request URL or body. Neither is safe
+			// diagnostic material at this confidentiality boundary.
 			logger.warn("autoqa push failed", {
-				endpoint: config.endpoint,
-				error: String(error),
+				reason: "network request failed",
 				batchSize: rows.length,
 				pushedSoFar: totalPushed,
 			});
@@ -411,7 +469,6 @@ async function performFlush(db: Database, config: PushConfig, options: FlushOpti
 		if (!response.ok) {
 			lastFailureAt = Date.now();
 			logger.warn("autoqa push failed", {
-				endpoint: config.endpoint,
 				status: response.status,
 				batchSize: rows.length,
 				pushedSoFar: totalPushed,
@@ -465,9 +522,9 @@ export async function flushGrievances(
 	const promise = (async () => {
 		try {
 			return await performFlush(handle, config, options);
-		} catch (error) {
+		} catch {
 			lastFailureAt = Date.now();
-			logger.warn("autoqa push failed", { endpoint: config.endpoint, error: String(error) });
+			logger.warn("autoqa push failed", { reason: "unexpected flush failure" });
 			return { pushed: 0, ok: false };
 		}
 	})();
@@ -536,9 +593,12 @@ export function createReportToolIssueTool(session: ToolSession, activeBuiltinNam
 					void (async () => {
 						try {
 							await resolveAutoQaConsent(session.settings);
-							await flushGrievances(db, session.settings);
-						} catch (error) {
-							logger.debug("autoqa post-insert pipeline failed", { error: String(error) });
+							await flushGrievances(db, session.settings, {
+								resolveSanitizer: () => session.obfuscateProviderText,
+							});
+						} catch {
+							// Sanitizer/network errors can carry request material.
+							logger.debug("autoqa post-insert pipeline failed");
 						}
 					})();
 				}
