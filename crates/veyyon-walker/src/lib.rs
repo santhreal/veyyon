@@ -302,10 +302,15 @@ impl std::error::Error for WalkGlobError {}
 /// wildcard matches never cross path separators. Equality and hashing use only
 /// the normalized pattern list, not the compiled matcher internals, which keeps
 /// [`WalkFilter`] suitable for static cacheable traversal policy.
+///
+/// A compiled glob also knows how deep it can match, through
+/// [`depth_bound`](Self::depth_bound), so a caller never has to compute that
+/// separately from the pattern it just compiled.
 #[derive(Clone)]
 pub struct CompiledWalkGlob {
-	patterns: Arc<[String]>,
-	matcher:  Arc<GlobSet>,
+	patterns:    Arc<[String]>,
+	matcher:     Arc<GlobSet>,
+	depth_bound: usize,
 }
 
 impl CompiledWalkGlob {
@@ -317,13 +322,44 @@ impl CompiledWalkGlob {
 	{
 		let mut normalized_patterns = Vec::new();
 		let mut builder = GlobSetBuilder::new();
+		let mut depth_bound = 0;
 		for pattern in patterns {
 			let pattern = pattern.into();
 			let glob = GlobBuilder::new(&pattern).literal_separator(true).build()?;
 			builder.add(glob);
+			// A set matches when ANY pattern matches, so the set reaches as deep as
+			// its deepest member.
+			depth_bound = depth_bound.max(veyyon_glob::walk_depth_bound(&pattern));
 			normalized_patterns.push(pattern);
 		}
-		Ok(Self { patterns: normalized_patterns.into(), matcher: Arc::new(builder.build()?) })
+		// No patterns matches nothing, so any bound is equally correct there. The
+		// unbounded one is chosen because a bound is only ever an optimization and
+		// the conservative answer can never remove a result.
+		if normalized_patterns.is_empty() {
+			depth_bound = usize::MAX;
+		}
+		Ok(Self {
+			patterns: normalized_patterns.into(),
+			matcher: Arc::new(builder.build()?),
+			depth_bound,
+		})
+	}
+
+	/// Compile a raw glob the way every tool that walks with one compiles it.
+	///
+	/// The pattern a user or a model wrote is not yet walk-relative: it may use
+	/// backslashes, it may be the bare `*.ts` that means `**/*.ts` in a recursive
+	/// search, and it may have an unclosed `{` group. [`veyyon_glob`] owns those
+	/// rules, this applies them and compiles the result, and the caller gets a
+	/// filter and its [`depth_bound`](Self::depth_bound) in one step.
+	///
+	/// Every walking tool went through this sequence by hand and they did not all
+	/// do the same thing: the glob tool bounded its walk and the grep and ast-grep
+	/// tools passed `usize::MAX`, so a pattern like `src/*.ts` walked the entire
+	/// tree to filter everything below depth 2 back out. That is what having one
+	/// entry point prevents.
+	pub fn compile(glob: &str, recursive: bool) -> Result<Self, globset::Error> {
+		Self::new([veyyon_glob::build_glob_pattern(glob, recursive)])
 	}
 
 	/// Return whether `relative` matches any compiled pattern.
@@ -334,6 +370,18 @@ impl CompiledWalkGlob {
 	/// Return the normalized patterns backing this compiled filter.
 	pub fn patterns(&self) -> &[String] {
 		&self.patterns
+	}
+
+	/// The deepest path this glob can match, in path components, or
+	/// [`usize::MAX`] when it is unbounded.
+	///
+	/// Pass it to [`WalkRequest::depth`] to keep a narrow pattern from traversing
+	/// a subtree it can never match into. It is safe to prune there because
+	/// `literal_separator(true)` stops `*`, `?`, and `[...]` from crossing a `/`,
+	/// so a pattern with N segments cannot match anything deeper than N. `**` and
+	/// `{...}` disable the bound, as does a character class that can match a `/`.
+	pub const fn depth_bound(&self) -> usize {
+		self.depth_bound
 	}
 }
 

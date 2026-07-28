@@ -153,4 +153,108 @@ mod tests {
 			Error::from_reason(format!("Search failed: {err}")).reason
 		);
 	}
+
+	/// Every `.rs` file in this crate's `src`, as (name, contents).
+	///
+	/// Read at test time rather than baked in with `include_str!`, because a lock
+	/// that has to be told about a new module is a lock a new module escapes: the
+	/// whole failure being prevented here is a module that reintroduces the
+	/// hand-rolled shape, and a new module is the likeliest place for that.
+	fn crate_sources() -> Vec<(String, String)> {
+		let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+		let mut out = Vec::new();
+		let mut stack = vec![src];
+		while let Some(dir) = stack.pop() {
+			for entry in std::fs::read_dir(&dir).expect("read src") {
+				let entry = entry.expect("dir entry");
+				let path = entry.path();
+				if path.is_dir() {
+					stack.push(path);
+				} else if path.extension().is_some_and(|ext| ext == "rs") {
+					let name = path
+						.strip_prefix(Path::new(env!("CARGO_MANIFEST_DIR")).join("src"))
+						.expect("under src")
+						.to_string_lossy()
+						.into_owned();
+					out.push((name, std::fs::read_to_string(&path).expect("read source")));
+				}
+			}
+		}
+		out.sort();
+		out
+	}
+
+	/// Guard on the guard.
+	///
+	/// The two locks below both assert that nothing matches, which an empty file
+	/// list satisfies. If the walk ever stopped finding sources they would pass
+	/// while checking nothing, so the floor is asserted first and the crate's
+	/// largest modules have to be among the files read.
+	#[test]
+	fn the_lock_reads_the_crate_it_claims_to_read() {
+		let sources = crate_sources();
+		assert!(sources.len() > 20, "expected the whole crate, found {}", sources.len());
+		let names: Vec<&str> = sources.iter().map(|(name, _)| name.as_str()).collect();
+		for expected in ["ast.rs", "grep.rs", "pty.rs", "napi_error.rs"] {
+			assert!(names.contains(&expected), "{expected} missing from {names:?}");
+		}
+	}
+
+	/// Nobody outside this module rebuilds `to_napi` by hand.
+	///
+	/// `Error::from_reason(<expr>.to_string())` is the shape [`to_napi`] owns, and
+	/// it was written out fifteen times before this module existed. A bare
+	/// `Error::from_reason("some message")` is deliberately still allowed and is
+	/// not what this matches: those sites carry no underlying error to map, they
+	/// state a condition the crate detected itself, and routing them through a
+	/// mapper would only add a hop.
+	#[test]
+	fn no_module_hand_rolls_the_unwrapped_mapping() {
+		let offenders: Vec<String> = crate_sources()
+			.into_iter()
+			.filter(|(name, _)| name != "napi_error.rs")
+			.flat_map(|(name, text)| {
+				text.lines()
+					.enumerate()
+					.filter(|(_, line)| line.contains("Error::from_reason(") && line.contains(".to_string()"))
+					.map(|(index, line)| format!("{name}:{}: {}", index + 1, line.trim()))
+					.collect::<Vec<_>>()
+			})
+			.collect();
+		assert!(
+			offenders.is_empty(),
+			"use napi_error::to_napi instead, so one module owns how a Rust error becomes a JS message:\n{}",
+			offenders.join("\n")
+		);
+	}
+
+	/// Nobody outside this module rebuilds `to_napi_with` by hand.
+	///
+	/// The wrapped shape is `context, colon, space, reason`, and thirty-four call
+	/// sites spelled it as `format!("...: {err}")`. Matching on the `: {` before
+	/// the interpolated error is what distinguishes it from a composed message
+	/// that merely happens to contain a colon, such as a path in the middle of a
+	/// sentence, which the module doc says stays written out where it is made.
+	#[test]
+	fn no_module_hand_rolls_the_wrapped_mapping() {
+		let offenders: Vec<String> = crate_sources()
+			.into_iter()
+			.filter(|(name, _)| name != "napi_error.rs")
+			.flat_map(|(name, text)| {
+				text.lines()
+					.enumerate()
+					.filter(|(_, line)| {
+						line.contains("Error::from_reason(format!(")
+							&& (line.contains(": {err}") || line.contains(": {e}") || line.contains(": {error}"))
+					})
+					.map(|(index, line)| format!("{name}:{}: {}", index + 1, line.trim()))
+					.collect::<Vec<_>>()
+			})
+			.collect();
+		assert!(
+			offenders.is_empty(),
+			"use napi_error::to_napi_with instead, so `context: reason` is spelled once:\n{}",
+			offenders.join("\n")
+		);
+	}
 }

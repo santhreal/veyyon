@@ -15,7 +15,7 @@ use veyyon_ast::{
 };
 
 use crate::{
-	glob_util, iofs,
+	iofs,
 	napi_error::{to_napi, to_napi_with},
 	task,
 };
@@ -492,10 +492,13 @@ fn collect_candidates(
 	let mentions_node_modules = glob.is_some_and(|value| value.contains("node_modules"));
 	let mut filter =
 		veyyon_walker::WalkFilter::files_only().node_modules_unless_mentioned(mentions_node_modules);
+	// Unbounded unless a glob says otherwise: with no glob every file is a
+	// candidate.
+	let mut depth_limit = usize::MAX;
 	if let Some(glob) = glob.map(str::trim).filter(|value| !value.is_empty()) {
-		let pattern = glob_util::build_glob_pattern(glob, false);
-		let compiled = veyyon_walker::CompiledWalkGlob::new([pattern])
+		let compiled = veyyon_walker::CompiledWalkGlob::compile(glob, false)
 			.map_err(|err| to_napi_with("Invalid glob pattern", err))?;
+		depth_limit = compiled.depth_bound();
 		filter = filter.glob(compiled);
 	}
 	let request = veyyon_walker::WalkRequest::new(&search_path)
@@ -506,7 +509,7 @@ fn collect_candidates(
 		.detail(veyyon_walker::WalkDetail::Minimal)
 		.order(veyyon_walker::WalkOrder::Path)
 		.emit_root(false)
-		.depth(1, usize::MAX)
+		.depth(1, depth_limit)
 		.directory_errors(veyyon_walker::DirectoryErrorMode::SkipSkippable)
 		.cache(true)
 		.empty_recheck(veyyon_walker::EmptyRecheck::Configured)
@@ -1045,7 +1048,7 @@ fn ast_edit_blocking(
 			Ok(source) => source,
 			Err(err) => {
 				if fail_on_parse_error {
-					return Err(Error::from_reason(format!("{}: {err}", candidate.display_path)));
+					return Err(to_napi_with(&candidate.display_path, err));
 				}
 				parse_errors.push(format!("{}: {err}", candidate.display_path));
 				continue;
@@ -1151,7 +1154,7 @@ fn ast_edit_blocking(
 		for write in &pending_writes {
 			ct.heartbeat()?;
 			std::fs::write(&write.absolute_path, &write.output).map_err(|err| {
-				Error::from_reason(format!("Failed to write {}: {err}", write.absolute_path.display()))
+				to_napi_with(format_args!("Failed to write {}", write.absolute_path.display()), err)
 			})?;
 		}
 	}
