@@ -265,14 +265,18 @@ describe("InputController + empty bracketed paste end-to-end (issue #3601)", () 
 			readImage: async () => ({ data: ONE_PX_PNG, mimeType: "image/png" }),
 			readText: async () => "", // pbpaste returns empty for image-only pasteboards
 		});
-		// Wire the same dispatch the production setup uses.
-		editor.onPasteImage = () => controller.handleImagePaste();
+		// Wire the same dispatch the production setup uses and retain the promise
+		// so the test waits for actual filesystem/image work, not an arbitrary
+		// number of microtasks.
+		let paste: Promise<boolean> | undefined;
+		editor.onPasteImage = () => {
+			paste = controller.handleImagePaste();
+			return paste;
+		};
 
 		editor.handleInput(`${BRACKETED_PASTE_START}${BRACKETED_PASTE_END}`);
-		// Drain all queued microtasks so the editor's `void onPasteImage()` and the
-		// async chain inside `#insertPendingImage` (materializeImageReferenceLinks,
-		// imageDimensions) all finish before assertions run.
-		for (let i = 0; i < 50; i++) await Promise.resolve();
+		if (!paste) throw new Error("Expected empty paste to start image handling");
+		await paste;
 
 		expect(showStatus).not.toHaveBeenCalled();
 		expect(pendingImages.length).toBe(1);
