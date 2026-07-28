@@ -230,10 +230,8 @@ import {
 import type { Settings, SkillsSettings } from "../config/settings";
 import {
 	getDefault,
-	isSettingsInitialized,
 	onAppendOnlyModeChanged,
 	onModelRolesChanged,
-	settings,
 	validateProviderMaxInFlightRequests,
 } from "../config/settings";
 import { RawSseDebugBuffer } from "../debug/raw-sse-buffer";
@@ -853,6 +851,38 @@ export interface PlanYolo {
 // Types
 // ============================================================================
 
+/**
+ * Immutable authority admitted for one provider request.
+ *
+ * Expansion and redaction intentionally travel together in one snapshot: a
+ * later disable/re-scope may replace the session's live runtime, but it cannot
+ * change what an already-admitted request uses after an async hook resumes.
+ */
+export interface SecretRuntimeLease {
+	readonly revision: number;
+	readonly cwd: string;
+	/** Live expansion authority. Undefined when expansion is disabled. */
+	readonly expansionObfuscator: SecretObfuscator | undefined;
+	/** True when the redaction-only authority still carries live values or tombstones. */
+	readonly hasRedactions: boolean;
+	obfuscateText(text: string): string;
+	obfuscateMessages(messages: Message[]): Message[];
+	obfuscateContext(context: Context): Context;
+	obfuscatePayload(payload: unknown): unknown;
+	/**
+	 * Synchronously assert that named expansion is still backed by the captured
+	 * vault revision. Implementations schedule a refresh before throwing.
+	 */
+	assertFreshForExpansion(): void;
+}
+
+export interface ProjectAdvisorScope {
+	advisorWatchdogPrompt?: string;
+	advisorContextPrompt?: string;
+	advisorSharedInstructions?: string;
+	advisorConfigs?: AdvisorConfig[];
+}
+
 export interface AgentSessionConfig {
 	agent: Agent;
 	sessionManager: SessionManager;
@@ -916,7 +946,11 @@ export interface AgentSessionConfig {
 	 * clamping. When supplied via {@link createAgentSession}, the advisor agent
 	 * inherits this so its requests undergo the same shaping as the main turn.
 	 */
-	transformProviderContext?: (context: Context, model: Model) => Context | Promise<Context>;
+	transformProviderContext?: (
+		context: Context,
+		model: Model,
+		runtime?: SecretRuntimeLease,
+	) => Context | Promise<Context>;
 	/**
 	 * Stream wrapper passed to side-channel requests (`/btw`, `/omfg`, IRC
 	 * auto-replies, and handoff generation) so they apply the same provider
@@ -972,11 +1006,19 @@ export interface AgentSessionConfig {
 	ttsrManager?: TtsrManager;
 	/** Secret obfuscator for deobfuscating streaming edit content */
 	obfuscator?: SecretObfuscator;
+	/** Initial immutable SDK runtime snapshot. Supersedes `obfuscator` when present. */
+	secretRuntime?: SecretRuntimeLease;
+	/** Await the latest winning runtime before admitting one provider request. */
+	leaseSecretRuntime?: () => Promise<SecretRuntimeLease>;
+	/** Recover the lease attached by the SDK to a provider context. */
+	resolveSecretRuntimeLeaseForContext?: (context: Context) => SecretRuntimeLease | undefined;
 	/**
 	 * Reload and atomically replace the complete secret runtime for a cwd.
 	 * The SDK owns config/env/vault loading; the session owns when lifecycle changes require it.
 	 */
-	refreshSecretRuntime?: (cwd: string) => Promise<SecretObfuscator | undefined>;
+	refreshSecretRuntime?: (
+		cwd: string,
+	) => Promise<SecretRuntimeLease | SecretObfuscator | undefined>;
 	/** Argot shorthand codec (experimental); expands handles before display/tools. */
 	argot?: ArgotSession;
 	/** Inherited eval executor session id from a parent agent. */
@@ -2041,7 +2083,9 @@ export class AgentSession {
 	#onPayload: SimpleStreamOptions["onPayload"] | undefined;
 	#onResponse: SimpleStreamOptions["onResponse"] | undefined;
 	#onSseEvent: SimpleStreamOptions["onSseEvent"] | undefined;
-	#transformProviderContext: ((context: Context, model: Model) => Context | Promise<Context>) | undefined;
+	#transformProviderContext:
+		| ((context: Context, model: Model, runtime?: SecretRuntimeLease) => Context | Promise<Context>)
+		| undefined;
 	/** Session-local provider-ID → `tc_<n>` map; rebuilt from history on resume. */
 	#toolCallIdMap = new Map<string, string>();
 	#toolCallIdCounter = 0;
@@ -2053,6 +2097,12 @@ export class AgentSession {
 	 * the work once between them.
 	 */
 	#lastRescopedCwd: string | undefined;
+	/**
+	 * Whole cwd/rescope/switch transaction queue. Work is appended synchronously,
+	 * so commits and rollbacks occur in monotonic initiation order.
+	 */
+	#scopeTransitionTail: Promise<void> = Promise.resolve();
+	#scopeTransitionRevision = 0;
 	/** Cumulative outbound bytes elided by path relativization this session. */
 	#wirePathBytesSaved = 0;
 	#thoughtSignatureBytesSaved = 0;
@@ -2171,7 +2221,12 @@ export class AgentSession {
 	// unchanged — otherwise a mid-turn estimate would survive into idle.
 	#contextUsageRevision = 0;
 	#obfuscator: SecretObfuscator | undefined;
-	#refreshSecretRuntime: ((cwd: string) => Promise<SecretObfuscator | undefined>) | undefined;
+	#secretRuntime: SecretRuntimeLease | undefined;
+	#leaseSecretRuntime: (() => Promise<SecretRuntimeLease>) | undefined;
+	#resolveSecretRuntimeLeaseForContext: ((context: Context) => SecretRuntimeLease | undefined) | undefined;
+	#refreshSecretRuntime:
+		| ((cwd: string) => Promise<SecretRuntimeLease | SecretObfuscator | undefined>)
+		| undefined;
 	#argot: ArgotSession | undefined;
 	/** Per-streaming-message argot display decoder (seam 3); reset on each assistant message_start. */
 	#argotStreamDisplay: ArgotStreamDisplayDecoder | undefined;
@@ -2672,6 +2727,7 @@ export class AgentSession {
 		this.agent = config.agent;
 		this.sessionManager = config.sessionManager;
 		this.settings = config.settings;
+		this.#lastRescopedCwd = path.resolve(config.sessionManager.getCwd());
 		this.#autoApprove = config.autoApprove === true;
 		this.#approvalBypassActive = config.bypassAllApprovals === true;
 		// Power assertions are taken per turn (see #beginInFlight); nothing acquired here.
@@ -2751,7 +2807,11 @@ export class AgentSession {
 				return [entry.details.cwd];
 			}),
 		]);
-		const canonicalizeProviderContext = (context: Context, model: Model): Context | Promise<Context> => {
+		const canonicalizeProviderContext = (
+			context: Context,
+			model: Model,
+			runtime?: SecretRuntimeLease,
+		): Context | Promise<Context> => {
 			const canonical = canonicalizeToolCallIds(context.messages, this.#toolCallIdMap, () => {
 				this.#toolCallIdCounter += 1;
 				return `tc_${this.#toolCallIdCounter}`;
@@ -2785,10 +2845,11 @@ export class AgentSession {
 							thoughtSignatureMaxLength,
 							thinkingRetention,
 						};
-			const transformed = upstreamTransformProviderContext ? upstreamTransformProviderContext(next, model) : next;
-			return isPromise(transformed)
-				? transformed.then(value => obfuscateProviderContext(this.#obfuscator, value))
-				: obfuscateProviderContext(this.#obfuscator, transformed);
+			if (upstreamTransformProviderContext) return upstreamTransformProviderContext(next, model, runtime);
+			const fallbackRuntime = runtime ?? this.#secretRuntime;
+			return fallbackRuntime
+				? fallbackRuntime.obfuscateContext(next)
+				: obfuscateProviderContext(this.#obfuscator, next);
 		};
 		this.#transformProviderContext = canonicalizeProviderContext;
 		// Agent was constructed before AgentSession; install the wrapped hook so the
@@ -2921,7 +2982,10 @@ export class AgentSession {
 			this.#getConfiguredDefaultSelectedMCPToolNames(),
 		);
 		this.#ttsrManager = config.ttsrManager;
-		this.#obfuscator = config.obfuscator;
+		this.#secretRuntime = config.secretRuntime;
+		this.#obfuscator = config.secretRuntime?.expansionObfuscator ?? config.obfuscator;
+		this.#leaseSecretRuntime = config.leaseSecretRuntime;
+		this.#resolveSecretRuntimeLeaseForContext = config.resolveSecretRuntimeLeaseForContext;
 		this.#refreshSecretRuntime = config.refreshSecretRuntime;
 		this.#argot = config.argot;
 		this.#agentId = config.agentId;
@@ -3246,6 +3310,32 @@ export class AgentSession {
 			// Codex request identity remains UUID-shaped while local labels keep the
 			// `-advisor` suffix.
 			const advisorPromptCacheKey = this.agent.promptCacheKey ?? advisorProviderSessionId;
+			let advisorSecretRuntime: SecretRuntimeLease | undefined;
+			const leasedAdvisorStreamFn: StreamFn = async (requestModel, requestContext, requestOptions) => {
+				const runtime =
+					advisorSecretRuntime ??
+					this.#resolveSecretRuntimeLeaseForContext?.(requestContext) ??
+					(await this.leaseSecretRuntime());
+				const sessionOnPayload = this.#onPayload;
+				const requestOnPayload = requestOptions?.onPayload;
+				const onPayload =
+					runtime.hasRedactions || sessionOnPayload || requestOnPayload
+						? async (payload: unknown, payloadModel?: Model) => {
+								const sessionPayload = sessionOnPayload
+									? await sessionOnPayload(payload, payloadModel)
+									: undefined;
+								const sessionResolvedPayload = sessionPayload ?? payload;
+								const requestPayload = requestOnPayload
+									? await requestOnPayload(sessionResolvedPayload, payloadModel)
+									: undefined;
+								return runtime.obfuscatePayload(requestPayload ?? sessionResolvedPayload);
+							}
+						: undefined;
+				return (this.#advisorStreamFn ?? streamSimple)(requestModel, requestContext, {
+					...requestOptions,
+					onPayload,
+				});
+			};
 			const advisorAgent = new Agent({
 				initialState: {
 					systemPrompt,
@@ -3259,11 +3349,17 @@ export class AgentSession {
 				providerSessionState: this.#providerSessionState,
 				preferWebsockets: this.#preferWebsockets,
 				getApiKey: requestModel => this.#modelRegistry.resolver(requestModel, advisorProviderSessionId),
-				streamFn: this.#advisorStreamFn,
-				onPayload: this.#onPayload,
+				transformContext: async messages => {
+					advisorSecretRuntime = await this.leaseSecretRuntime();
+					return messages;
+				},
+				streamFn: leasedAdvisorStreamFn,
 				onResponse: this.#onResponse,
 				onSseEvent: this.#onSseEvent,
-				transformProviderContext: this.#transformProviderContext,
+				transformProviderContext: (context, requestModel) =>
+					this.#transformProviderContext
+						? this.#transformProviderContext(context, requestModel, advisorSecretRuntime)
+						: (advisorSecretRuntime?.obfuscateContext(context) ?? context),
 				intentTracing: false,
 				transformAssistantMessage: message => {
 					quarantinedAdvisorOutput = quarantineAdvisorUnsafeOutput(
@@ -3855,11 +3951,77 @@ export class AgentSession {
 		return this.#obfuscator !== undefined;
 	}
 
-	/** Reload config/env/vault state, atomically replace the runtime, and refresh guidance. */
-	async refreshSecrets(options?: { refreshPrompt?: boolean }): Promise<void> {
+	/** Live session-lifetime provider redactor, including disable/move tombstones. */
+	obfuscateProviderText(text: string): string {
+		return this.#secretRuntime?.obfuscateText(text) ?? this.#obfuscator?.obfuscate(text) ?? text;
+	}
+
+	/**
+	 * Install the SDK coordinator's winning snapshot in the session view.
+	 *
+	 * This method is synchronous on purpose: the coordinator updates its closure
+	 * authority and this view in the same commit turn.
+	 */
+	installSecretRuntime(runtime: SecretRuntimeLease): void {
+		if (this.#secretRuntime && runtime.revision < this.#secretRuntime.revision) return;
+		this.#secretRuntime = runtime;
+		this.#obfuscator = runtime.expansionObfuscator;
+	}
+
+	/** Wait until every scope transition initiated before this call has settled. */
+	async awaitScopeTransitionReady(): Promise<void> {
+		await this.#scopeTransitionTail;
+	}
+
+	/** Admit one immutable request runtime after the winning scope is ready. */
+	async leaseSecretRuntime(): Promise<SecretRuntimeLease> {
+		await this.awaitScopeTransitionReady();
+		if (this.#leaseSecretRuntime) {
+			const runtime = await this.#leaseSecretRuntime();
+			this.installSecretRuntime(runtime);
+			return runtime;
+		}
+		if (this.#secretRuntime) return this.#secretRuntime;
+
+		const obfuscator = this.#obfuscator;
+		return {
+			revision: 0,
+			cwd: this.sessionManager.getCwd(),
+			expansionObfuscator: obfuscator,
+			hasRedactions: obfuscator?.hasSecrets() ?? false,
+			obfuscateText: text => obfuscator?.obfuscate(text) ?? text,
+			obfuscateMessages: messages => (obfuscator ? obfuscateMessages(obfuscator, messages) : messages),
+			obfuscateContext: context => (obfuscator ? obfuscateProviderContext(obfuscator, context) : context),
+			obfuscatePayload: payload => obfuscateProviderPayload(payload, obfuscator),
+			assertFreshForExpansion: () => undefined,
+		};
+	}
+
+	#runScopeTransition<T>(work: (revision: number) => Promise<T>): Promise<T> {
+		const revision = ++this.#scopeTransitionRevision;
+		const run = this.#scopeTransitionTail.then(() => work(revision));
+		this.#scopeTransitionTail = run.then(
+			() => undefined,
+			() => undefined,
+		);
+		return run;
+	}
+
+	async #refreshSecrets(options?: { refreshPrompt?: boolean }): Promise<void> {
 		if (!this.#refreshSecretRuntime) return;
-		this.#obfuscator = await this.#refreshSecretRuntime(this.sessionManager.getCwd());
+		const refreshed = await this.#refreshSecretRuntime(this.sessionManager.getCwd());
+		if (refreshed && "revision" in refreshed) {
+			this.installSecretRuntime(refreshed);
+		} else {
+			this.#secretRuntime = undefined;
+			this.#obfuscator = refreshed;
+		}
 		if (options?.refreshPrompt !== false) await this.refreshBaseSystemPrompt();
+	}
+
+	/** Reload config/env/vault state in monotonic lifecycle initiation order. */
+	refreshSecrets(options?: { refreshPrompt?: boolean }): Promise<void> {
+		return this.#runScopeTransition(() => this.#refreshSecrets(options));
 	}
 
 	/** Whether a TTSR abort is pending (stream was aborted to inject rules) */
@@ -4390,9 +4552,14 @@ export class AgentSession {
 	 * raw `#HASH#` secret token or a bare `§handle`. Returns the same content
 	 * reference when neither transform applies.
 	 */
+	#assertSecretExpansionFresh(): void {
+		this.#secretRuntime?.assertFreshForExpansion();
+	}
+
 	displayAssistantContent(content: AssistantMessage["content"]): AssistantMessage["content"] {
 		let out = content;
 		if (this.#obfuscator) {
+			this.#assertSecretExpansionFresh();
 			out = deobfuscateAssistantContent(this.#obfuscator, out);
 		}
 		if (this.#argot?.loaded) {
@@ -4419,6 +4586,7 @@ export class AgentSession {
 		if (intent === undefined || intent === "") return intent;
 		let out = intent;
 		if (this.#obfuscator) {
+			this.#assertSecretExpansionFresh();
 			out = this.#obfuscator.deobfuscate(out);
 		}
 		if (this.#argot?.loaded) {
@@ -6312,7 +6480,10 @@ export class AgentSession {
 		let normalizedDiff = normalizeDiff(diffForCheck.replace(/\r/g, ""));
 		if (!normalizedDiff) return;
 		// Deobfuscate the diff so removed lines match real file content
-		if (this.#obfuscator) normalizedDiff = this.#obfuscator.deobfuscate(normalizedDiff);
+		if (this.#obfuscator) {
+			this.#assertSecretExpansionFresh();
+			normalizedDiff = this.#obfuscator.deobfuscate(normalizedDiff);
+		}
 		if (!normalizedDiff) return;
 		const lines = normalizedDiff.split("\n");
 		const hasChangeLine = lines.some(line => line.startsWith("+") || line.startsWith("-"));
@@ -6659,32 +6830,26 @@ export class AgentSession {
 	 * the second call redundant is that nothing changed in between, and something
 	 * did change if another directory was rescoped meanwhile.
 	 */
-	async rescopeToCwd(cwd: string): Promise<void> {
-		if (this.#lastRescopedCwd === cwd) return;
-		// A SUBAGENT MAY NOT MOVE THE PROCESS. Everything above this line is
-		// per-session; everything in `#rescopeProcessToCwd` is process-global, and
-		// subagents are built in-process (`sdk.ts`), several can be in flight at
-		// once, and each carries its own `AgentSession` with its own session cwd.
-		// One of them re-rooting used to `chdir` the whole process, reload the
-		// global settings singleton for ITS project, and reset the shared
-		// capability and plugin-root caches, so the parent and every sibling
-		// silently moved to a directory nobody asked them to be in. Their tool
-		// calls mostly survived it, because `resolveToCwd(path, sessionCwd)`
-		// resolves against the SESSION cwd, and what did not survive is everything
-		// that reads `process.cwd()` directly: a spawned child process, a bare
-		// relative `fs` call, and any reader still consulting `getProjectDir()`.
-		if (!this.#isSubagent) await this.#rescopeProcessToCwd(cwd);
-		// Settings must be re-scoped first: the destination project may toggle
-		// protection, and its config/env/vault set completely replaces the source's.
-		await this.refreshSecrets({ refreshPrompt: false });
-		// Session-scoped, so it runs for every session. The base system prompt
-		// states the working directory verbatim, so a subagent that skipped this
-		// would go on naming the directory it just left.
+	rescopeToCwd(cwd: string): Promise<void> {
+		return this.#runScopeTransition(() => this.#rescopeToCwd(cwd));
+	}
+
+	async #rescopeToCwd(cwd: string): Promise<void> {
+		const normalizedCwd = path.resolve(cwd);
+		if (this.#lastRescopedCwd === normalizedCwd) return;
+
+		// Re-scope the Settings instance owned by THIS session before loading any
+		// runtime candidate. The process singleton may be a different instance
+		// (SDK/embedded and subagent sessions commonly use isolated Settings).
+		await this.settings.reloadForCwd(normalizedCwd);
+
+		// A subagent may not mutate process-global cwd/capability state, but its
+		// session-owned settings, secrets, tools, prompt, and advisors still move.
+		if (!this.#isSubagent) await this.#rescopeProcessToCwd(normalizedCwd);
+		await this.#refreshSecrets({ refreshPrompt: false });
 		await this.refreshSshTool({ activateIfAvailable: true });
 		await this.refreshBaseSystemPrompt();
-		// Mark success only after every re-scope step completes. A failed secret
-		// reload must remain retryable rather than being mistaken for completed work.
-		this.#lastRescopedCwd = cwd;
+		this.#lastRescopedCwd = normalizedCwd;
 	}
 
 	/**
@@ -6705,20 +6870,9 @@ export class AgentSession {
 		// Align process project dir so status-line / discovery readers that still
 		// consult getProjectDir() stay consistent with the live session root.
 		setProjectDir(cwd);
-		// Re-scope project settings (`.claude/settings.yml` etc.) to the new
-		// directory in place so the active session and every settings reader pick
-		// up the destination project's configuration. An SDK session may have no
-		// global settings at all, hence the guard.
-		if (isSettingsInitialized()) {
-			await settings.reloadForCwd(cwd);
-			// Reapply provider preferences from the newly-loaded settings so the
-			// module-level search/image provider state reflects the destination
-			// project's configuration. Without this, the previous project's
-			// exclusions leak and newly-excluded providers are still used.
-			applyProviderGlobalsFromSettings(settings);
-		}
-		// Re-warm plugin roots and capabilities so the next prompt sees everything
-		// scoped to the new project directory.
+		// Provider preferences are process-wide, but their source is the
+		// destination scope of this session's Settings instance.
+		applyProviderGlobalsFromSettings(this.settings);
 		clearClaudePluginRootsCache();
 		resetCapabilities();
 	}
@@ -6730,32 +6884,70 @@ export class AgentSession {
 	 * emits `cwd_changed`, and injects a visible/context system note. Never writes
 	 * profile `session.workdir` or other persisted settings.
 	 */
-	async setCwd(newCwd: string, options?: { validate?: boolean }): Promise<string> {
+	setCwd(newCwd: string, options?: { validate?: boolean }): Promise<string> {
+		return this.#runScopeTransition(() => this.#setCwd(newCwd, options));
+	}
+
+	async #setCwd(newCwd: string, options?: { validate?: boolean }): Promise<string> {
 		const previous = this.sessionManager.getCwd();
 		const cwd = await this.sessionManager.setCwd(newCwd, options);
 		if (cwd === previous) {
-			// A previous transition may have committed SessionManager cwd before a
-			// re-scope failed. The success guard makes an ordinary repeat free while
-			// still allowing that failed transition to be retried.
-			await this.rescopeToCwd(cwd);
+			await this.#rescopeToCwd(cwd);
 			return cwd;
 		}
 
 		try {
-			await this.rescopeToCwd(cwd);
+			await this.#rescopeToCwd(cwd);
 		} catch (error) {
-			// SessionManager persists cwd before the dependent runtime is loaded.
-			// Roll both authorities back together; otherwise tools resolve in the
-			// destination while source-project secret expansion remains live.
 			this.#lastRescopedCwd = undefined;
 			try {
 				await this.sessionManager.setCwd(previous, { validate: false });
-				await this.rescopeToCwd(previous);
+				await this.#rescopeToCwd(previous);
 			} catch (rollbackError) {
 				throw new AggregateError([error, rollbackError], `Failed to change cwd to ${cwd} and restore ${previous}.`);
 			}
 			throw error;
 		}
+		this.#recordCwdChange(previous, cwd);
+		return cwd;
+	}
+
+	/**
+	 * Atomically relocate session storage/artifacts and the complete cwd-derived
+	 * runtime. A failed re-scope moves storage back before exposing the error.
+	 */
+	moveToCwd(newCwd: string, targetSessionDir?: string): Promise<string> {
+		return this.#runScopeTransition(async () => {
+			const previousCwd = this.sessionManager.getCwd();
+			const previousSessionDir = this.sessionManager.getSessionDir();
+			await this.sessionManager.moveTo(newCwd, targetSessionDir);
+			const cwd = this.sessionManager.getCwd();
+			if (cwd === previousCwd && this.sessionManager.getSessionDir() === previousSessionDir) {
+				await this.#rescopeToCwd(cwd);
+				return cwd;
+			}
+
+			try {
+				await this.#rescopeToCwd(cwd);
+			} catch (error) {
+				this.#lastRescopedCwd = undefined;
+				try {
+					await this.sessionManager.moveTo(previousCwd, previousSessionDir);
+					await this.#rescopeToCwd(previousCwd);
+				} catch (rollbackError) {
+					throw new AggregateError(
+						[error, rollbackError],
+						`Failed to move the session to ${cwd} and restore ${previousCwd}.`,
+					);
+				}
+				throw error;
+			}
+			this.#recordCwdChange(previousCwd, cwd);
+			return cwd;
+		});
+	}
+
+	#recordCwdChange(previous: string, cwd: string): void {
 		this.#wirePathRoots = normalizeRoots([...this.#wirePathRoots, cwd]);
 		const note = `Session working directory changed: ${previous} → ${cwd}`;
 		const details = { previous, cwd };
@@ -6770,7 +6962,6 @@ export class AgentSession {
 		});
 		this.sessionManager.appendCustomMessageEntry("cwd_changed", note, true, details, "agent");
 		this.#emit({ type: "cwd_changed", previous, cwd });
-		return cwd;
 	}
 
 	/** Cumulative outbound bytes elided by wire path relativization (TW-10). */
@@ -8275,6 +8466,7 @@ export class AgentSession {
 	}
 
 	buildDisplaySessionContext(): SessionContext {
+		if (this.#obfuscator) this.#assertSecretExpansionFresh();
 		return this.#expandArgot(deobfuscateSessionContext(this.sessionManager.buildSessionContext(), this.#obfuscator));
 	}
 
@@ -8296,6 +8488,7 @@ export class AgentSession {
 	buildTranscriptSessionContext(
 		options?: Pick<BuildSessionContextOptions, "collapseCompactedHistory" | "keepDanglingToolCalls">,
 	): SessionContext {
+		if (this.#obfuscator) this.#assertSecretExpansionFresh();
 		return this.#expandArgot(
 			deobfuscateSessionContext(
 				this.sessionManager.buildSessionContext({
@@ -8347,6 +8540,7 @@ export class AgentSession {
 
 	#deobfuscateFromProvider(text: string): string {
 		if (!this.#obfuscator?.hasSecrets()) return text;
+		this.#assertSecretExpansionFresh();
 		return this.#obfuscator.deobfuscate(text);
 	}
 
@@ -8369,8 +8563,17 @@ export class AgentSession {
 		return await this.#convertToLlm(transformedMessages);
 	}
 
-	/** Apply session-level stream hooks to a direct side request. */
-	prepareSimpleStreamOptions(options: SimpleStreamOptions, provider = "anthropic"): SimpleStreamOptions {
+	/**
+	 * Apply session-level stream hooks to a direct side request.
+	 *
+	 * The lease is admitted before any caller/extension hook can run and is
+	 * captured by the returned payload hook for the request's full lifetime.
+	 */
+	async prepareSimpleStreamOptions(
+		options: SimpleStreamOptions,
+		provider = "anthropic",
+	): Promise<SimpleStreamOptions> {
+		const runtime = await this.leaseSecretRuntime();
 		const sessionOnPayload = this.#onPayload;
 		const sessionOnResponse = this.#onResponse;
 		const sessionMetadata = this.agent.metadataForProvider(provider);
@@ -8405,16 +8608,13 @@ export class AgentSession {
 			preparedOptions.metadata = sessionMetadata;
 		}
 
-		if (sessionOnPayload && !options.onPayload) {
-			// The SDK session hook performs its own final sanitization after extension hooks.
-			preparedOptions.onPayload = sessionOnPayload;
-		} else if (sessionOnPayload || options.onPayload) {
-			const requestOnPayload = options.onPayload;
+		const requestOnPayload = options.onPayload;
+		if (runtime.hasRedactions || sessionOnPayload || requestOnPayload) {
 			preparedOptions.onPayload = async (payload, model) => {
 				const sessionPayload = sessionOnPayload ? await sessionOnPayload(payload, model) : undefined;
 				const sessionResolvedPayload = sessionPayload ?? payload;
 				const requestPayload = requestOnPayload ? await requestOnPayload(sessionResolvedPayload, model) : undefined;
-				return obfuscateProviderPayload(requestPayload ?? sessionResolvedPayload, this.#obfuscator);
+				return runtime.obfuscatePayload(requestPayload ?? sessionResolvedPayload);
 			};
 		}
 
@@ -10105,6 +10305,22 @@ export class AgentSession {
 		return this.#skills;
 	}
 
+	/** Atomically replace the skills visible to this live session after a cwd re-scope. */
+	replaceSkills(skills: readonly Skill[]): void {
+		this.#skills = [...skills];
+	}
+
+	/** Replace every cwd-derived advisor input and rebuild advisor agents in that scope. */
+	replaceProjectAdvisorScope(scope: ProjectAdvisorScope): void {
+		this.#stopAdvisorRuntime();
+		this.#advisorWatchdogPrompt = scope.advisorWatchdogPrompt;
+		this.#advisorContextPrompt = scope.advisorContextPrompt;
+		this.#advisorSharedInstructions = scope.advisorSharedInstructions;
+		this.#advisorConfigs = scope.advisorConfigs;
+		this.#advisorEnabled = isAdvisorProductEnabled() && (this.settings.get("advisor.enabled") as boolean);
+		if (this.#advisorEnabled) this.#buildAdvisorRuntime();
+	}
+
 	/**
 	 * Non-fatal problems the operator must see, from every subsystem that raises one.
 	 *
@@ -11693,7 +11909,7 @@ export class AgentSession {
 			// the handoff seeds a fresh session and must not carry prompt-specific
 			// hook state. Matches the prompt the old handoff path sent.
 			const handoffContext = await this.agent.buildSideRequestContext(handoffLlmMessages, this.#baseSystemPrompt);
-			const handoffStreamOptions = this.prepareSimpleStreamOptions(
+			const handoffStreamOptions = await this.prepareSimpleStreamOptions(
 				{
 					apiKey: this.#modelRegistry.resolver(model, cacheSessionId),
 					sessionId: `${cacheSessionId}:side:${Snowflake.next()}`,
@@ -16226,7 +16442,7 @@ export class AgentSession {
 		const snapshot = this.#buildEphemeralSnapshot(args.promptText);
 		const llmMessages = await this.convertMessagesToLlm(snapshot, args.signal);
 		const context = await this.agent.buildSideRequestContext(llmMessages);
-		const options = this.prepareSimpleStreamOptions(
+		const options = await this.prepareSimpleStreamOptions(
 			{
 				apiKey: this.#modelRegistry.resolver(model, cacheSessionId),
 				// Side-channel turns must not share OpenAI/Codex append-only
@@ -16274,6 +16490,7 @@ export class AgentSession {
 				// 'H.content.filter')`. Normalize to `[]` so the recap surfaces an empty reply
 				// instead of turning a malformed side-channel response into a session-mute crash.
 				const rawContent = Array.isArray(event.message.content) ? event.message.content : [];
+				if (this.#obfuscator?.hasSecrets()) this.#assertSecretExpansionFresh();
 				assistantMessage = this.#obfuscator?.hasSecrets()
 					? { ...event.message, content: deobfuscateAssistantContent(this.#obfuscator, rawContent) }
 					: { ...event.message, content: rawContent };
@@ -16391,7 +16608,11 @@ export class AgentSession {
 	 * Listeners are preserved and will continue receiving events.
 	 * @returns true if switch completed, false if cancelled by hook
 	 */
-	async switchSession(sessionPath: string): Promise<boolean> {
+	switchSession(sessionPath: string): Promise<boolean> {
+		return this.#runScopeTransition(() => this.#switchSession(sessionPath));
+	}
+
+	async #switchSession(sessionPath: string): Promise<boolean> {
 		const previousSessionFile = this.sessionManager.getSessionFile();
 		const switchingToDifferentSession = previousSessionFile
 			? path.resolve(previousSessionFile) !== path.resolve(sessionPath)
@@ -16469,10 +16690,7 @@ export class AgentSession {
 			// the complete transcript+runtime transition rather than depending on
 			// how the manager was originally constructed.
 			const recordedTargetCwd = this.sessionManager.getHeader()?.cwd;
-			if (
-				recordedTargetCwd &&
-				path.resolve(recordedTargetCwd) !== path.resolve(this.sessionManager.getCwd())
-			) {
+			if (recordedTargetCwd && path.resolve(recordedTargetCwd) !== path.resolve(this.sessionManager.getCwd())) {
 				let recordedTargetCwdReachable = false;
 				try {
 					recordedTargetCwdReachable = (await fs.promises.stat(recordedTargetCwd)).isDirectory();
@@ -16489,7 +16707,7 @@ export class AgentSession {
 			const targetCwd = this.sessionManager.getCwd();
 			if (path.resolve(targetCwd) !== path.resolve(previousSessionState.cwd)) {
 				scopeTransitionAttempted = true;
-				await this.rescopeToCwd(targetCwd);
+				await this.#rescopeToCwd(targetCwd);
 				this.#wirePathRoots = normalizeRoots([...this.#wirePathRoots, targetCwd]);
 			}
 
@@ -16635,7 +16853,7 @@ export class AgentSession {
 			if (scopeTransitionAttempted) {
 				this.#lastRescopedCwd = undefined;
 				try {
-					await this.rescopeToCwd(previousSessionState.cwd);
+					await this.#rescopeToCwd(previousSessionState.cwd);
 				} catch (scopeError) {
 					restoreScopeError = scopeError;
 					logger.warn("Failed to restore cwd-scoped runtime after switch error", {
@@ -16964,15 +17182,22 @@ export class AgentSession {
 			if (!apiKey) {
 				throw new Error(`No API key for ${model.provider}`);
 			}
+			await this.leaseSecretRuntime();
 			const branchSummarySettings = this.settings.getGroup("branchSummary");
 			const result = await generateBranchSummary(entriesToSummarize, {
 				model,
 				apiKey: this.#modelRegistry.resolver(model, this.sessionId),
 				signal: this.#branchSummaryAbortController.signal,
-				customInstructions: this.#obfuscateTextForProvider(options.customInstructions),
+				customInstructions: options.customInstructions,
 				reserveTokens: branchSummarySettings.reserveTokens,
 				metadata: this.agent.metadataForProvider(model.provider),
-				convertToLlm: messages => this.#convertToLlmForSideRequest(messages),
+				convertToLlm,
+				resolveObfuscateProviderText: () => {
+					const runtime = this.#secretRuntime;
+					const fallback = this.#obfuscator;
+					return text => runtime?.obfuscateText(text) ?? fallback?.obfuscate(text) ?? text;
+				},
+				onPayload: this.#onPayload,
 				telemetry: resolveTelemetry(this.agent.telemetry, this.sessionId),
 				// Same per-provider concurrency cap rationale as the compaction
 				// path above (chatgpt-codex review on #3751).
@@ -17045,6 +17270,7 @@ export class AgentSession {
 
 		// Update agent state — build display context to populate agent messages.
 		const stateContext = this.sessionManager.buildSessionContext();
+		if (this.#obfuscator) this.#assertSecretExpansionFresh();
 		const displayContext = deobfuscateSessionContext(stateContext, this.#obfuscator);
 		await this.#restoreMCPSelectionsForSessionContext(displayContext);
 		this.agent.replaceMessages(displayContext.messages);

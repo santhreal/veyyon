@@ -413,6 +413,16 @@ export class Settings {
 	#configOverlay: RawSettings = {};
 	/** Runtime overrides (not persisted) */
 	#overrides: RawSettings = {};
+	/**
+	 * Whether clones/rescopes may discover a fresh project layer.
+	 *
+	 * This is deliberately independent of #persist. Subagent settings are
+	 * read-only forks: they must never write the parent's config, but they still
+	 * have to adopt project policy when their runtime cwd moves.
+	 */
+	#discoverProjectSettings: boolean;
+	/** Runtime forks must not apply project-scoped hooks to their parent process. */
+	#activateProcessHooks = true;
 	/** Settings files that could not be parsed, and where their bytes were kept. */
 	#quarantined: QuarantinedSettingsFile[] = [];
 	/** Consecutive failed saves of `#configPath`, and why the last one failed. */
@@ -456,6 +466,7 @@ export class Settings {
 		this.#configPath = options.inMemory ? null : path.join(this.#agentDir, MAIN_CONFIG_FILENAMES[0]);
 		this.#configFiles = options.configFiles?.map(file => path.resolve(this.#cwd, expandTilde(file))) ?? [];
 		this.#persist = !options.inMemory && options.readOnly !== true;
+		this.#discoverProjectSettings = options.inMemory !== true;
 
 		if (options.overrides) {
 			for (const [key, value] of Object.entries(options.overrides)) {
@@ -820,6 +831,7 @@ export class Settings {
 	}
 
 	#fireEffectiveSettingChanged(path: SettingPath, value: unknown, prev: unknown): void {
+		if (!this.#activateProcessHooks) return;
 		if (Object.is(value, prev)) return;
 		if (path === "statusLine.sessionAccent") {
 			statusLineSessionAccentSignal.fire();
@@ -846,6 +858,34 @@ export class Settings {
 		}
 	}
 
+	/**
+	 * Create a non-persisting runtime fork while retaining the provenance of
+	 * every layer. Unlike flattening get() values into Settings.isolated(), this
+	 * leaves project values in the project layer, CLI config files in the config
+	 * overlay, and genuine runtime overrides in the override layer. A later
+	 * cloneForCwd can therefore replace only the project layer.
+	 */
+	forkWithRuntimeOverrides(overrides: Partial<Record<SettingPath, unknown>> = {}): Settings {
+		const forked = new Settings({
+			cwd: this.#cwd,
+			agentDir: this.#agentDir,
+			inMemory: true,
+		});
+		forked.#discoverProjectSettings = this.#discoverProjectSettings;
+		forked.#activateProcessHooks = false;
+		forked.#configFiles = [...this.#configFiles];
+		forked.#global = structuredClone(this.#global);
+		forked.#project = structuredClone(this.#project);
+		forked.#configOverlay = structuredClone(this.#configOverlay);
+		forked.#overrides = structuredClone(this.#overrides);
+		for (const [settingPath, value] of Object.entries(overrides)) {
+			setByPath(forked.#overrides, settingPath.split("."), value);
+		}
+		forked.#overrides = forked.#migrateRawSettings(forked.#overrides);
+		forked.#rebuildMerged();
+		return forked;
+	}
+
 	async cloneForCwd(cwd: string): Promise<Settings> {
 		const cloned = new Settings({
 			cwd,
@@ -854,8 +894,12 @@ export class Settings {
 		});
 		cloned.#storage = this.#storage;
 		cloned.#configPath = this.#configPath;
+		cloned.#discoverProjectSettings = this.#discoverProjectSettings;
+		cloned.#activateProcessHooks = this.#activateProcessHooks;
 		cloned.#global = structuredClone(this.#global);
-		cloned.#project = this.#persist ? await cloned.#loadProjectSettings() : structuredClone(this.#project);
+		cloned.#project = this.#discoverProjectSettings
+			? await cloned.#loadProjectSettings()
+			: structuredClone(this.#project);
 		cloned.#configFiles = [...this.#configFiles];
 		cloned.#configOverlay = structuredClone(this.#configOverlay);
 		cloned.#overrides = structuredClone(this.#overrides);
@@ -881,7 +925,7 @@ export class Settings {
 		if (normalized === this.#cwd) return;
 		const prevModelRoles = this.get("modelRoles");
 		this.#cwd = normalized;
-		if (this.#persist) {
+		if (this.#discoverProjectSettings) {
 			this.#project = await this.#loadProjectSettings();
 		}
 		this.#rebuildMerged();
@@ -2393,6 +2437,7 @@ export class Settings {
 	}
 
 	#fireAllHooks(): void {
+		if (!this.#activateProcessHooks) return;
 		for (const key of Object.keys(SETTING_HOOKS) as SettingPath[]) {
 			const hook = SETTING_HOOKS[key];
 			if (hook) {

@@ -4,6 +4,7 @@
  * Runs each subagent on the main thread and forwards AgentEvents for progress tracking.
  */
 
+import * as fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentEvent, AgentIdentity, AgentTelemetryConfig } from "@veyyon/agent-core";
 import { recordHandoff, resolveTelemetry } from "@veyyon/agent-core";
@@ -36,7 +37,7 @@ import {
 import type { PromptTemplate } from "../config/prompt-templates";
 import { buildServiceTierByFamily, resolveSubagentServiceTier } from "../config/service-tier";
 import { Settings } from "../config/settings";
-import { SETTINGS_SCHEMA, type SettingPath } from "../config/settings-schema";
+import type { SettingPath } from "../config/settings-schema";
 import type { ToolPathWithSource } from "../extensibility/custom-tools";
 import type { CustomTool } from "../extensibility/custom-tools/types";
 import { runExtensionCompact, runExtensionSetModel } from "../extensibility/extensions/compact-handler";
@@ -859,14 +860,11 @@ export function createSubagentSettings(
 	overrides?: Partial<Record<SettingPath, unknown>>,
 	inheritedServiceTier?: ServiceTierByFamily | null,
 ): Settings {
-	const snapshot: Partial<Record<SettingPath, unknown>> = {};
-	for (const key of Object.keys(SETTINGS_SCHEMA) as SettingPath[]) {
-		snapshot[key] = baseSettings.get(key);
-	}
 	// Resolve the subagent's per-family tiers from `tier.subagent` ("inherit" =
 	// match the parent's live tiers when a live session supplied them, else the
-	// subagent's own configured tier.* settings). The result is stamped back onto
-	// the snapshot so createAgentSession's tier.* reads pick it up.
+	// subagent's own configured tier.* settings). These and the headless safety
+	// policies are genuine runtime overrides; global/project/config-file layers
+	// stay separate so a later cwd clone can replace only its project policy.
 	const inheritedTiers =
 		inheritedServiceTier === undefined
 			? buildServiceTierByFamily(
@@ -876,11 +874,10 @@ export function createSubagentSettings(
 				)
 			: (inheritedServiceTier ?? {});
 	const subagentTiers = resolveSubagentServiceTier(baseSettings.get("tier.subagent"), inheritedTiers);
-	snapshot["tier.openai"] = subagentTiers.openai ?? "none";
-	snapshot["tier.anthropic"] = subagentTiers.anthropic ?? "none";
-	snapshot["tier.google"] = subagentTiers.google ?? "none";
-	return Settings.isolated({
-		...snapshot,
+	return baseSettings.forkWithRuntimeOverrides({
+		"tier.openai": subagentTiers.openai ?? "none",
+		"tier.anthropic": subagentTiers.anthropic ?? "none",
+		"tier.google": subagentTiers.google ?? "none",
 		"async.enabled": false,
 		"bash.autoBackground.enabled": false,
 
@@ -890,6 +887,18 @@ export function createSubagentSettings(
 		"tools.approvalMode": "yolo",
 		...overrides,
 	});
+}
+
+/** Derive destination project policy before adding subagent-only overrides. */
+export async function createSubagentSettingsForCwd(
+	baseSettings: Settings,
+	cwd: string,
+	overrides?: Partial<Record<SettingPath, unknown>>,
+	inheritedServiceTier?: ServiceTierByFamily | null,
+): Promise<Settings> {
+	const runtimeFork = baseSettings.forkWithRuntimeOverrides();
+	const destinationSettings = await runtimeFork.cloneForCwd(cwd);
+	return createSubagentSettings(destinationSettings, overrides, inheritedServiceTier);
 }
 
 export type AbortReason = "signal" | "terminate" | "timeout" | "budget";
@@ -2460,12 +2469,17 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		? path.join(options.artifactsDir, sessionFileName(id))
 		: path.join(getSessionsDir(), sessionFileName(`orphan-task-${id}`));
 
-	const settings = options.settings ?? Settings.isolated();
-	const subagentSettings = createSubagentSettings(
-		settings,
+	const sourceSettings = options.settings ?? Settings.isolated();
+	const effectiveCwd = worktree ?? cwd;
+	const subagentSettings = await createSubagentSettingsForCwd(
+		sourceSettings,
+		effectiveCwd,
 		agent.readSummarize === false ? { "read.summarize.enabled": false } : undefined,
 		options.parentServiceTier,
 	);
+	// Every executor decision below is part of the child's runtime contract, so
+	// it reads the destination-scoped view rather than the parent's project.
+	const settings = subagentSettings;
 	const maxRecursionDepth = settings.get("subagent.maxRecursionDepth") ?? 2;
 	const maxRuntimeMs = Math.max(
 		0,
@@ -2688,7 +2702,6 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			);
 			resolvedAt = performance.now();
 
-			const effectiveCwd = worktree ?? cwd;
 			// sessionFile is always durable — a subagent never runs in-memory (GRAN-1).
 			const sessionManager = await awaitAbortable(
 				SessionManager.open(sessionFile, undefined, undefined, {
@@ -2744,11 +2757,14 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			// the same JSONL file re-invokes createAgentSession with the exact options
 			// of the original run (same agent id, tools, model, system prompt,
 			// artifacts dir) — only the SessionManager differs.
-			const buildSubagentSessionOptions = (sessionManagerForRun: SessionManager): CreateAgentSessionOptions => ({
-				cwd: worktree ?? cwd,
+			const buildSubagentSessionOptions = (
+				sessionManagerForRun: SessionManager,
+				runtimeSettings: Settings,
+			): CreateAgentSessionOptions => ({
+				cwd: sessionManagerForRun.getCwd(),
 				authStorage,
 				modelRegistry,
-				settings: subagentSettings,
+				settings: runtimeSettings,
 				model,
 				modelPattern: model || modelOverride === undefined ? undefined : modelPatterns,
 				modelPatternAuthFallback:
@@ -2806,7 +2822,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			});
 
 			const { createAgentSession } = await import("../sdk");
-			const sessionPromise = createAgentSession(buildSubagentSessionOptions(sessionManager));
+			const sessionPromise = createAgentSession(buildSubagentSessionOptions(sessionManager, subagentSettings));
 			let session: AgentSession;
 			try {
 				({ session } = await awaitAbortable(sessionPromise));
@@ -2827,14 +2843,31 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				// (createAgentSession → agent.replaceMessages). Isolated runs are not
 				// resumable (worktree is merged + cleaned) and never get a reviver.
 				reviveSession = async () => {
+					// Re-peek as well as re-open on every use: /move can rewrite
+					// the header after this closure was created, and a deleted
+					// recorded cwd must fail closed rather than use open()'s
+					// general interactive fallback.
+					const current = await SessionManager.peekSessionInit(sessionFile);
+					if (!current?.init) {
+						throw new Error(`Cannot revive ${id}: persisted session contract is missing`);
+					}
+					try {
+						await fs.stat(current.cwd);
+					} catch {
+						throw new Error(`Cannot revive ${id}: persisted working directory is unavailable`);
+					}
 					const reopened = await SessionManager.open(sessionFile, undefined, undefined, {
+						initialCwd: current.cwd,
 						suppressBreadcrumb: true,
 					});
 					if (options.parentArtifactManager) {
 						reopened.adoptArtifactManager(options.parentArtifactManager);
 					}
+					const revivedSettings = await subagentSettings.cloneForCwd(reopened.getCwd());
 					const { createAgentSession: createRevivedSession } = await import("../sdk");
-					const { session: revived } = await createRevivedSession(buildSubagentSessionOptions(reopened));
+					const { session: revived } = await createRevivedSession(
+						buildSubagentSessionOptions(reopened, revivedSettings),
+					);
 					installRegistryStatusSync(revived);
 					return revived;
 				};
@@ -2928,6 +2961,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 					{
 						getModel: () => session.model,
 						isIdle: () => !session.isStreaming,
+						obfuscateProviderText: text => session.obfuscateProviderText(text),
 						abort: () => session.abort({ reason: USER_INTERRUPT_LABEL }),
 						hasPendingMessages: () => session.queuedMessageCount > 0,
 						shutdown: () => {},

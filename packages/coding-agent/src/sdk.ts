@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import {
 	Agent,
 	type AgentEvent,
@@ -13,10 +14,10 @@ import {
 	getOpenAICodexTransportDetails,
 	prewarmOpenAICodexResponses,
 } from "@veyyon/ai/providers/openai-codex-responses";
-import * as path from "node:path";
 import type { Component } from "@veyyon/tui";
 import {
 	$env,
+	attachFaultSink,
 	errorMessage,
 	getAgentDir,
 	getGlobalConfigRootDir,
@@ -25,7 +26,6 @@ import {
 	postmortem,
 	prefetch,
 	prompt,
-	setFaultSink,
 	Snowflake,
 	setProjectDir,
 } from "@veyyon/utils";
@@ -40,7 +40,7 @@ import { type AsyncJob, AsyncJobManager } from "./async";
 import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
 import { loadCapability } from "./capability";
 import { type Rule, ruleCapability, setActiveRules } from "./capability/rule";
-import { bucketRules } from "./capability/rule-buckets";
+import { bucketRules, type RuleBuckets } from "./capability/rule-buckets";
 import { shouldEnableAppendOnlyContext } from "./config/append-only-context-mode";
 import { isAuthenticated, kNoAuth } from "./config/auth-state";
 import { resolveDialect } from "./config/dialect-format";
@@ -115,6 +115,7 @@ import { type FileSlashCommand, loadSlashCommands as loadSlashCommandsInternal }
 import { filterToolsByHarnessProfile, resolvePromptSectionOrderForModel } from "./harness/model-profile";
 import type { HindsightSessionState } from "./hindsight/state";
 import { LocalProtocolHandler, type LocalProtocolOptions } from "./internal-urls";
+import { describeLegacyPromptFile, findLegacyPromptFiles } from "./legacy-system-prompt-files";
 import type { LspStartupServerInfo } from "./lsp";
 import { LSP_STARTUP_EVENT_CHANNEL, type LspStartupEvent } from "./lsp/startup-events";
 import {
@@ -138,9 +139,9 @@ import {
 	deobfuscateToolArguments,
 	describeSecretRejection,
 	loadSecrets,
-	type SecretEntry,
 	obfuscateMessages,
 	obfuscateProviderContext,
+	type SecretEntry,
 	SecretObfuscator,
 } from "./secrets";
 import { buildExpansionRecord, SecretAuditLog, secretAuditPath } from "./secrets/audit";
@@ -148,8 +149,13 @@ import { buildEnvSecretPattern, loadEnvSecretKeywords } from "./secrets/env-keyw
 import { expiryWarnings } from "./secrets/secret-command";
 import { resolveVaultLocations, SecretVault } from "./secrets/vault";
 import { loadOrCreateVaultKey } from "./secrets/vault-crypto";
-import { AgentSession, obfuscateProviderPayload, type PlanYolo, type Prewalk } from "./session/agent-session";
-import { OperatorNotices, stderrNoticeSink } from "./session/operator-notices";
+import {
+	AgentSession,
+	obfuscateProviderPayload,
+	type PlanYolo,
+	type Prewalk,
+	type SecretRuntimeLease,
+} from "./session/agent-session";
 import { discoverAuthStorage } from "./session/auth-broker-config";
 import type { AuthStorage } from "./session/auth-storage";
 import { createInterruptedTurnAbortMessage } from "./session/exit-diagnostics";
@@ -160,6 +166,7 @@ import {
 	replaceLlmImagesWithText,
 	USER_INTERRUPT_LABEL,
 } from "./session/messages";
+import { OperatorNotices, stderrNoticeSink } from "./session/operator-notices";
 import { clampProviderContextImages } from "./session/provider-image-budget";
 import { getRestorableSessionModels } from "./session/session-context";
 import { SessionManager } from "./session/session-manager";
@@ -915,6 +922,7 @@ export interface BuildSystemPromptOptions {
 	skills?: Skill[];
 	contextFiles?: Array<{ path: string; content: string }>;
 	cwd?: string;
+	agentDir?: string;
 	customPrompt?: string;
 	appendPrompt?: string;
 	inlineToolDescriptors?: boolean;
@@ -931,6 +939,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	const toolMap = options.tools ? new Map(options.tools.map(tool => [tool.name, tool])) : undefined;
 	return await buildSystemPromptInternal({
 		cwd: options.cwd,
+		agentDir: options.agentDir,
 		customPrompt: options.customPrompt,
 		skills: options.skills,
 		contextFiles: options.contextFiles,
@@ -1257,6 +1266,17 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			startupCredentialDisabledEvents.push(event);
 		}
 	});
+	let detachFaultSink: (() => void) | undefined;
+	let sessionManager!: SessionManager;
+	let agent!: Agent;
+	let session!: AgentSession;
+	let hasSession = false;
+	let hasRegistered = false;
+	let asyncJobManager: AsyncJobManager | undefined;
+	let unregisterUnlessParked = (): void => {};
+	const evalKernelOwnerId = `agent-session:${Snowflake.next()}`;
+	let mcpManager: MCPManager | undefined = options.mcpManager;
+	try {
 	const settings = await (options.settings ??
 		options.settingsManager ??
 		logger.time("settings", Settings.init, { cwd, agentDir }));
@@ -1269,11 +1289,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	// startup does not perform a second recursive filesystem search. Subagents
 	// inherit the parent's resolved values via options.
 	const STARTUP_SCAN_DEADLINE_MS = 5000;
-	const includeWorkspaceTree = settings.get("includeWorkspaceTree") ?? false;
+	const startupIncludeWorkspaceTree = settings.get("includeWorkspaceTree") ?? false;
 	const workspaceTreePromise: Promise<WorkspaceTree> = prefetch(
 		options.workspaceTree
 			? Promise.resolve(options.workspaceTree)
-			: includeWorkspaceTree
+			: startupIncludeWorkspaceTree
 				? logger.time("buildWorkspaceTree", () => buildWorkspaceTree(cwd, { timeoutMs: STARTUP_SCAN_DEADLINE_MS }))
 				: Promise.resolve({ rootPath: cwd, rendered: "", truncated: false, totalLines: 0, agentsMdFiles: [] }),
 	);
@@ -1340,7 +1360,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		setPreferredImageProvider(imageProvider);
 	}
 
-	const sessionManager =
+	sessionManager =
 		options.sessionManager ??
 		logger.time("sessionManager", () =>
 			SessionManager.create(cwd, SessionManager.getDefaultSessionDir(cwd, agentDir)),
@@ -1379,13 +1399,19 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	// one, and defaulted to stderr rather than to nothing: a caller that supplies no surface gets
 	// its warnings in the wrong place, never dropped.
 	const operatorNotices = options.operatorNotices ?? new OperatorNotices(stderrNoticeSink);
+	for (const legacyFile of await findLegacyPromptFiles({ cwd, agentDir })) {
+		operatorNotices.warn("system-prompt", describeLegacyPromptFile(legacyFile));
+	}
 
 	// Give `@veyyon/utils` somewhere to put a filesystem fault. Those helpers are free functions a
 	// layer below this one, so they cannot reach a per-session channel and had nothing but
 	// `logger.warn`, which is file-only: a subagents directory that exists and cannot be listed
 	// reported "no subagents" to the operator and the reason to a file nobody opens. Attached here
 	// rather than in each mode because every mode wants it and forgetting it is silent.
-	setFaultSink(fault => operatorNotices.warn(fault.source, fault.text));
+	//
+	// Detached on dispose, and on the startup-failure path below, by the handle this returns. The
+	// sink closes over `operatorNotices`, so leaving it attached outlives the session it reports to.
+	detachFaultSink = attachFaultSink(fault => operatorNotices.warn(fault.source, fault.text));
 
 	// There is one loader for startup, runtime toggles, command reconciliation, and
 	// cwd moves. Replacing the complete runtime prevents project-scoped names and
@@ -1396,6 +1422,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				obfuscator: undefined,
 				vault: undefined,
 				auditLog: undefined,
+				vaultRevision: undefined,
 			};
 		}
 
@@ -1415,6 +1442,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			? new SecretAuditLog(secretAuditPath(vaultLocations), operatorNotices)
 			: undefined;
 		const liveVaultEntries = await logger.time("loadVault", () => vault.load());
+		const vaultRevision = vault.revision();
 		const vaultEntries: SecretEntry[] = liveVaultEntries.map(secret => ({
 			type: "plain",
 			content: secret.value,
@@ -1439,14 +1467,73 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 						`store it again with /secret add ${name} --from-env <VAR> if you still need it.`,
 				),
 		});
-		return { obfuscator: nextObfuscator, vault, auditLog };
+		return { obfuscator: nextObfuscator, vault, vaultRevision, auditLog };
 	};
 
 	const initialSecretRuntime = await loadSecretRuntime(cwd);
 	let obfuscator = initialSecretRuntime.obfuscator;
+	let redactionObfuscator = obfuscator;
 	let secretVault = initialSecretRuntime.vault;
+	let capturedVaultRevision = initialSecretRuntime.vaultRevision;
 	let secretAuditLog = initialSecretRuntime.auditLog;
-	let secretRuntimeCwd = path.normalize(cwd);
+	let secretRuntimeCwd = path.resolve(cwd);
+	let latestSecretRuntimeRequest = 0;
+	let pendingSecretRuntime:
+		| {
+				revision: number;
+				cwd: string;
+				work: Promise<SecretRuntimeLease | undefined>;
+		  }
+		| undefined;
+	let refreshSecretRuntime!: (runtimeCwd: string) => Promise<SecretRuntimeLease>;
+
+	const auditLogBySecretLease = new WeakMap<object, SecretAuditLog | undefined>();
+	const createSecretRuntimeLease = (
+		revision: number,
+		runtimeCwd: string,
+		expansionObfuscator: SecretObfuscator | undefined,
+		redactor: SecretObfuscator | undefined,
+		vault: SecretVault | undefined,
+		vaultRevision: string | undefined,
+		auditLog: SecretAuditLog | undefined,
+	): SecretRuntimeLease => {
+		const normalizedCwd = path.resolve(runtimeCwd);
+		const lease: SecretRuntimeLease = Object.freeze({
+			revision,
+			cwd: normalizedCwd,
+			expansionObfuscator,
+			hasRedactions: redactor?.hasSecrets() ?? false,
+			obfuscateText: (text: string) => redactor?.obfuscate(text) ?? text,
+			obfuscateMessages: (messages: Message[]) => (redactor ? obfuscateMessages(redactor, messages) : messages),
+			obfuscateContext: (context: Context) => (redactor ? obfuscateProviderContext(redactor, context) : context),
+			obfuscatePayload: (payload: unknown) => obfuscateProviderPayload(payload, redactor),
+			assertFreshForExpansion: () => {
+				if (!vault || vaultRevision === undefined || vault.revision() === vaultRevision) return;
+				if (!pendingSecretRuntime || pendingSecretRuntime.cwd !== normalizedCwd) {
+					void refreshSecretRuntime(normalizedCwd).catch(error => {
+						logger.warn("Failed to refresh a stale secret runtime", {
+							cwd: normalizedCwd,
+							error: errorMessage(error),
+						});
+					});
+				}
+				throw new Error(
+					"Secret expansion was refused because the vault changed in another session or process; retry after refresh.",
+				);
+			},
+		});
+		auditLogBySecretLease.set(lease, auditLog);
+		return lease;
+	};
+	let secretRuntimeLease = createSecretRuntimeLease(
+		0,
+		cwd,
+		obfuscator,
+		redactionObfuscator,
+		secretVault,
+		capturedVaultRevision,
+		secretAuditLog,
+	);
 
 	// Argot per-project shorthand codec (experimental). The launch project's
 	// dictionary auto-loads at startup (the adoption loop: works out of the
@@ -1716,27 +1803,94 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			advisorConfigsPromise,
 		]);
 
-	let agent: Agent;
-	let session!: AgentSession;
-	let hasSession = false;
-	let hasRegistered = false;
-	const refreshSecretRuntime = async (runtimeCwd: string): Promise<SecretObfuscator | undefined> => {
-		const runtimeSettings = sessionIsSubagent ? await settings.cloneForCwd(runtimeCwd) : settings;
-		const next = await loadSecretRuntime(runtimeCwd, runtimeSettings);
-		const normalizedRuntimeCwd = path.normalize(runtimeCwd);
-		if (next.obfuscator && obfuscator && normalizedRuntimeCwd === secretRuntimeCwd) {
-			// Removal/expiry revokes expansion, never confidentiality. Transfer only
-			// forward HMAC tombstones; the API deliberately cannot copy live mappings.
-			next.obfuscator.retainRedactionsFrom(obfuscator);
+	let promptInputCwd = cwd;
+	let promptContextFiles = contextFiles;
+	let promptWorkspaceTree: WorkspaceTree | Promise<WorkspaceTree> = workspaceTreePromise;
+	let promptActiveRepoContext = activeRepoContext;
+	let promptSkills = skills;
+	let promptRulebookRules = rulebookRules;
+	let promptAlwaysApplyRules = alwaysApplyRules;
+
+	const leaseSecretRuntime = async (): Promise<SecretRuntimeLease> => {
+		for (;;) {
+			const pending = pendingSecretRuntime;
+			if (pending) {
+				await pending.work;
+				if (pendingSecretRuntime !== pending) continue;
+			}
+
+			if (
+				secretVault &&
+				capturedVaultRevision !== undefined &&
+				secretVault.revision() !== capturedVaultRevision
+			) {
+				return await refreshSecretRuntime(secretRuntimeCwd);
+			}
+			return secretRuntimeLease;
 		}
-		// Do not strand queued records in the log being replaced. Loading succeeds
-		// before anything live changes, so a failed reload leaves the safe runtime intact.
-		await secretAuditLog?.flush();
-		obfuscator = next.obfuscator;
-		secretVault = next.vault;
-		secretAuditLog = next.auditLog;
-		secretRuntimeCwd = normalizedRuntimeCwd;
-		return obfuscator;
+	};
+
+	refreshSecretRuntime = (runtimeCwd: string): Promise<SecretRuntimeLease> => {
+		const revision = ++latestSecretRuntimeRequest;
+		const normalizedRuntimeCwd = path.resolve(runtimeCwd);
+		const work = (async (): Promise<SecretRuntimeLease | undefined> => {
+			const runtimeSettings =
+				normalizedRuntimeCwd === secretRuntimeCwd || path.resolve(settings.getCwd()) === normalizedRuntimeCwd
+					? settings
+					: await settings.cloneForCwd(normalizedRuntimeCwd);
+			const next = await loadSecretRuntime(normalizedRuntimeCwd, runtimeSettings);
+
+			const isAuthoritative = (): boolean =>
+				revision === latestSecretRuntimeRequest && path.resolve(sessionManager.getCwd()) === normalizedRuntimeCwd;
+			if (!isAuthoritative()) return undefined;
+
+			if (next.obfuscator && redactionObfuscator) {
+				// Expansion never crosses snapshots, but redaction tombstones cross
+				// every refresh, cwd move, and disable replacement.
+				next.obfuscator.retainRedactionsFrom(redactionObfuscator);
+			}
+			await secretAuditLog?.flush();
+			if (!isAuthoritative()) return undefined;
+
+			const nextRedactor = next.obfuscator ?? redactionObfuscator;
+			const nextLease = createSecretRuntimeLease(
+				revision,
+				normalizedRuntimeCwd,
+				next.obfuscator,
+				nextRedactor,
+				next.vault,
+				next.vaultRevision,
+				next.auditLog,
+			);
+
+			// One synchronous commit updates every SDK closure and the AgentSession
+			// view. No await is permitted in this block.
+			obfuscator = next.obfuscator;
+			redactionObfuscator = nextRedactor;
+			secretVault = next.vault;
+			capturedVaultRevision = next.vaultRevision;
+			secretAuditLog = next.auditLog;
+			secretRuntimeCwd = normalizedRuntimeCwd;
+			secretRuntimeLease = nextLease;
+			if (hasSession) session.installSecretRuntime(nextLease);
+			return nextLease;
+		})();
+		const pending = { revision, cwd: normalizedRuntimeCwd, work };
+		pendingSecretRuntime = pending;
+
+		return (async () => {
+			try {
+				const committed = await work;
+				if (committed) return committed;
+				if (pendingSecretRuntime === pending) pendingSecretRuntime = undefined;
+				return await leaseSecretRuntime();
+			} catch (error) {
+				if (revision !== latestSecretRuntimeRequest) return await leaseSecretRuntime();
+				throw error;
+			} finally {
+				if (pendingSecretRuntime === pending) pendingSecretRuntime = undefined;
+			}
+		})();
 	};
 	const enableLsp = options.enableLsp ?? true;
 	const asyncMaxJobs = Math.min(100, Math.max(1, settings.get("async.maxJobs") ?? 100));
@@ -1770,7 +1924,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	// owning session's manager and break the `task`/`bash` async paths
 	// (issue #1923). The `instance()` guard means later sessions also skip
 	// constructing an orphaned manager that nothing would ever route to.
-	const asyncJobManager =
+	asyncJobManager =
 		!isInProcessChildSession(options) && !AsyncJobManager.instance()
 			? new AsyncJobManager({
 					maxRunningJobs: asyncMaxJobs,
@@ -1802,14 +1956,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	 * already parked). Parking disposes the session but keeps the ref addressable
 	 * (history://, revive); only process teardown / explicit kill unregisters.
 	 */
-	const unregisterUnlessParked = (): void => {
+	unregisterUnlessParked = (): void => {
 		if (agentRegistry.get(resolvedAgentId)?.status === "parked") return;
 		if (AgentLifecycleManager.global().isParking(resolvedAgentId)) return;
 		agentRegistry.unregister(resolvedAgentId);
 	};
-	const evalKernelOwnerId = `agent-session:${Snowflake.next()}`;
-
-	try {
 		const getActiveModelString = (): string | undefined => {
 			const activeModel = agent?.state.model;
 			if (activeModel) return formatModelString(activeModel);
@@ -1857,7 +2008,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			},
 			setCwd: async (resolvedPath, options) =>
 				session ? session.setCwd(resolvedPath, options) : setCwdBeforeSessionExists(resolvedPath, options),
-			obfuscateProviderText: text => obfuscator?.obfuscate(text) ?? text,
+			obfuscateProviderText: text => secretRuntimeLease.obfuscateText(text),
 			isToolActive: name => activeToolNames.has(name),
 			setActiveToolNames,
 			hasUI: options.hasUI ?? false,
@@ -2006,7 +2157,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const builtinTools = await logger.time("createAllTools", createTools, toolSession, options.toolNames);
 
 		// Discover MCP tools from .mcp.json files
-		let mcpManager: MCPManager | undefined = options.mcpManager;
+		mcpManager = options.mcpManager;
 		toolSession.mcpManager = mcpManager;
 		const enableMCP = options.enableMCP ?? true;
 		const deferMCPDiscoveryForUI = enableMCP && !mcpManager && options.hasUI === true;
@@ -2195,7 +2346,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const inlineExtensions: ExtensionFactory[] = options.extensions ? [...options.extensions] : [];
 		inlineExtensions.push((await import("./autoresearch")).createAutoresearchExtension);
 		if (customTools.length > 0) {
-			inlineExtensions.push(createCustomToolsExtension(customTools, text => obfuscator?.obfuscate(text) ?? text));
+			inlineExtensions.push(createCustomToolsExtension(customTools, text => secretRuntimeLease.obfuscateText(text)));
 		}
 
 		// Load extensions. Three paths:
@@ -2618,7 +2769,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				session.abort({ reason: USER_INTERRUPT_LABEL });
 			},
 			settings,
-			obfuscateProviderText: (text: string) => obfuscator?.obfuscate(text) ?? text,
+			obfuscateProviderText: (text: string) => secretRuntimeLease.obfuscateText(text),
 			localProtocolOptions,
 			autoApprove: options.autoApprove ?? false,
 			// Live read so a mid-session `/yolo` toggle takes effect on the next
@@ -2633,7 +2784,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			...registeredTools,
 			...sdkCustomTools.map(tool => {
 				const definition = isCustomTool(tool)
-					? customToolToDefinition(tool, text => obfuscator?.obfuscate(text) ?? text)
+					? customToolToDefinition(tool, text => secretRuntimeLease.obfuscateText(text))
 					: tool;
 				return { definition, extensionPath: "<sdk>" };
 			}),
@@ -2781,11 +2932,149 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// do not carry is worse than one that omits it -- which is why the agent option
 		// below takes the same resolver rather than a value.
 		const intentTracingEnabled = () => resolveIntentField(settings) !== undefined;
-		const includeWorkspaceTree = settings.get("includeWorkspaceTree") ?? false;
+		let projectInputRefresh: Promise<void> = Promise.resolve();
+		const refreshProjectPromptInputs = async (): Promise<void> => {
+			const requestedCwd = path.resolve(sessionManager.getCwd());
+			if (requestedCwd === promptInputCwd) return;
+
+			const refresh = projectInputRefresh
+				.catch(() => undefined)
+				.then(async () => {
+					const liveCwd = path.resolve(sessionManager.getCwd());
+					if (liveCwd === promptInputCwd) return;
+
+					const currentSkillsSettings = settings.getGroup("skills");
+					const currentDisabledExtensionIds = settings.get("disabledExtensions") ?? [];
+					const nextWorkspaceTreePromise: Promise<WorkspaceTree> =
+						options.workspaceTree !== undefined
+							? Promise.resolve(options.workspaceTree)
+							: (settings.get("includeWorkspaceTree") ?? false)
+								? buildWorkspaceTree(liveCwd, { timeoutMs: STARTUP_SCAN_DEADLINE_MS })
+								: Promise.resolve({
+										rootPath: liveCwd,
+										rendered: "",
+										truncated: false,
+										totalLines: 0,
+										agentsMdFiles: [],
+									});
+					const nextActiveRepoContextPromise = (async () => {
+						try {
+							return await resolveActiveRepoContext(liveCwd);
+						} catch (error) {
+							logger.warn("Failed to resolve active repo context after cwd change", {
+								cwd: liveCwd,
+								error: errorMessage(error),
+							});
+							return null;
+						}
+					})();
+					const nextSkillsPromise =
+						options.skills !== undefined
+							? Promise.resolve({ skills: options.skills, warnings: [] as SkillWarning[] })
+							: discoverSkills(liveCwd, agentDir, {
+									...currentSkillsSettings,
+									disabledExtensions: currentDisabledExtensionIds,
+								});
+					const nextRulesPromise =
+						options.rules !== undefined
+							? Promise.resolve({ items: options.rules })
+							: loadCapability<Rule>(ruleCapability.id, { cwd: liveCwd });
+					const nextWatchdogFilesPromise = discoverWatchdogFiles(liveCwd, agentDir);
+					const nextAdvisorConfigsPromise = discoverAdvisorConfigs(liveCwd, agentDir);
+
+					const [
+						nextContextFiles,
+						nextWorkspaceTree,
+						nextActiveRepoContext,
+						nextSkillsResult,
+						nextRulesResult,
+						nextWatchdogFiles,
+						nextAdvisorConfigs,
+					] = await Promise.all([
+						options.contextFiles !== undefined
+							? Promise.resolve(options.contextFiles)
+							: discoverContextFiles(liveCwd, agentDir),
+						nextWorkspaceTreePromise,
+						nextActiveRepoContextPromise,
+						nextSkillsPromise,
+						nextRulesPromise,
+						nextWatchdogFilesPromise,
+						nextAdvisorConfigsPromise,
+					]);
+
+					// A newer cwd transition won the race. Discard these bytes rather
+					// than installing one project's inputs under another project's path.
+					if (path.resolve(sessionManager.getCwd()) !== liveCwd) return;
+
+					const previousTtsrRules = ttsrManager.getRules();
+					ttsrManager.clearRules();
+					let nextBuckets: RuleBuckets;
+					try {
+						const ttsrSettings = settings.getGroup("ttsr");
+						nextBuckets = bucketRules(nextRulesResult.items, ttsrManager, {
+							builtinRules: ttsrSettings.builtinRules,
+							disabledRules: ttsrSettings.disabledRules,
+						});
+					} catch (error) {
+						ttsrManager.clearRules();
+						for (const rule of previousTtsrRules) ttsrManager.addRule(rule);
+						throw error;
+					}
+
+					const nextAdvisorWatchdogPrompts = [...nextWatchdogFiles];
+					if (nextActiveRepoContext) {
+						nextAdvisorWatchdogPrompts.push(formatActiveRepoWatchdogPrompt(nextActiveRepoContext));
+					}
+					const nextAdvisorWatchdogPrompt =
+						nextAdvisorWatchdogPrompts.length > 0 ? nextAdvisorWatchdogPrompts.join("\n\n") : undefined;
+					const nextAdvisorContextPrompt = formatAdvisorContextPrompt(nextContextFiles);
+
+					promptInputCwd = liveCwd;
+					promptContextFiles = nextContextFiles;
+					promptWorkspaceTree = nextWorkspaceTree;
+					promptActiveRepoContext = nextActiveRepoContext;
+					promptSkills = nextSkillsResult.skills;
+					promptRulebookRules = nextBuckets.rulebookRules;
+					promptAlwaysApplyRules = nextBuckets.alwaysApplyRules;
+
+					toolSession.contextFiles = nextContextFiles;
+					toolSession.workspaceTree = nextWorkspaceTree;
+					toolSession.skills = nextSkillsResult.skills;
+					toolSession.rules = nextRulesResult.items;
+					if (hasSession) session.replaceSkills(nextSkillsResult.skills);
+					if (hasSession) {
+						session.replaceProjectAdvisorScope({
+							advisorWatchdogPrompt: nextAdvisorWatchdogPrompt,
+							advisorContextPrompt: nextAdvisorContextPrompt,
+							advisorSharedInstructions: nextAdvisorConfigs.sharedInstructions,
+							advisorConfigs: nextAdvisorConfigs.advisors,
+						});
+					}
+					for (const warning of nextSkillsResult.warnings ?? []) {
+						operatorNotices.warn("skills", `${warning.skillPath}: ${warning.message}`);
+					}
+					ttsrManager.reportUnknownToolScopes(toolRegistry.keys());
+					if (!isInProcessChildSession(options)) {
+						setActiveSkills(nextSkillsResult.skills);
+						setActiveRules([
+							...nextBuckets.rulebookRules,
+							...nextBuckets.alwaysApplyRules,
+							...ttsrManager.getRules(),
+						]);
+					}
+				});
+			projectInputRefresh = refresh;
+			await refresh;
+
+			if (path.resolve(sessionManager.getCwd()) !== promptInputCwd) {
+				await refreshProjectPromptInputs();
+			}
+		};
 		const rebuildSystemPrompt = async (
 			toolNames: string[],
 			tools: Map<string, AgentTool>,
 		): Promise<BuildSystemPromptResult> => {
+			await refreshProjectPromptInputs();
 			toolContextStore.setToolNames(toolNames);
 			const discoverableMCPTools: DiscoverableTool[] = mcpDiscoveryEnabled
 				? filterBySource(collectDiscoverableTools(tools.values()), "mcp")
@@ -2883,18 +3172,19 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				// stays live in `gateInputs`: the same active-model policy also
 				// drives provider-schema pruning below, so a model switch cannot
 				// retain the previous model family's more expensive representation.
-				includeWorkspaceTree,
+				includeWorkspaceTree: settings.get("includeWorkspaceTree") ?? false,
 				// A subagent gets no personality regardless of the setting. That is a fact about
 				// this caller, not about the configuration, so it does not belong in the resolver.
 				personality: agentKind === "sub" ? "none" : gateInputs.personality,
-				cwd,
+				cwd: promptInputCwd,
+				agentDir,
 				resolvedCustomPrompt: options.customSystemPrompt,
-				skills,
-				contextFiles,
+				skills: promptSkills,
+				contextFiles: promptContextFiles,
 				tools: promptTools,
 				toolNames,
-				rules: rulebookRules,
-				alwaysApplyRules,
+				rules: promptRulebookRules,
+				alwaysApplyRules: promptAlwaysApplyRules,
 				resolvedAppendSystemPrompt: appendPrompt,
 				skillsSettings: settings.getGroup("skills"),
 				mcpDiscoveryMode: hasDiscoverableTools,
@@ -2902,10 +3192,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				secretsEnabled: obfuscator?.hasSecrets() === true,
 				argotPreamble: argotCanEncode ? renderPreamble({ tools: true }) : undefined,
 				argotHandles: argotCanEncode && argot.loaded ? argot.promptFragment() : undefined,
-				workspaceTree: workspaceTreePromise,
+				workspaceTree: promptWorkspaceTree,
 				memoryRootEnabled: memoryBackend.id === "local",
 				model: getActiveModelString(),
-				activeRepoContext,
+				activeRepoContext: promptActiveRepoContext,
 				sectionOrder: resolvePromptSectionOrderForModel(settings, agent?.state.model ?? model),
 			});
 
@@ -2920,6 +3210,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				systemPrompt: typeof customPrompt === "string" ? [customPrompt] : customPrompt,
 				// The caller replaced the assembled prompt, so no statement produced these blocks.
 				statementContext: null,
+				statementOverrides: null,
+				replacedStatementSections: [],
 			};
 		};
 
@@ -3100,29 +3392,68 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			return converted;
 		};
 
-		// Final convertToLlm: live provider replay drops API-level refusal errors,
-		// then applies secret obfuscation to the remaining outbound context.
-		const convertToLlmFinal = (messages: AgentMessage[]): Message[] => {
-			const converted = filterProviderReplayMessages(convertToLlmWithBlockImages(messages));
-			if (!obfuscator?.hasSecrets()) return converted;
-			return obfuscateMessages(obfuscator, converted);
+		const secretRuntimeByObject = new WeakMap<object, SecretRuntimeLease>();
+		const bindSecretRuntime = (value: unknown, runtime: SecretRuntimeLease): void => {
+			if (typeof value !== "object" || value === null) return;
+			secretRuntimeByObject.set(value, runtime);
+			if (Array.isArray(value)) {
+				for (const item of value) {
+					if (typeof item === "object" && item !== null) secretRuntimeByObject.set(item, runtime);
+				}
+			}
+		};
+		const resolveSecretRuntimeForContext = (context: Context): SecretRuntimeLease | undefined => {
+			const direct = secretRuntimeByObject.get(context) ?? secretRuntimeByObject.get(context.messages);
+			if (direct) return direct;
+			for (const message of context.messages) {
+				const runtime = secretRuntimeByObject.get(message);
+				if (runtime) return runtime;
+			}
+			return undefined;
+		};
+		let activeMainRequestRuntime = secretRuntimeLease;
+
+		// Acquire before the first async extension hook. The returned arrays and
+		// context retain this exact authority through provider serialization.
+		const transformContext = async (messages: AgentMessage[], _signal?: AbortSignal) => {
+			const runtime = await leaseSecretRuntime();
+			activeMainRequestRuntime = runtime;
+			bindSecretRuntime(messages, runtime);
+			const withContext = await extensionRunner.emitContext(messages);
+			const transformed = wrapSteeringForModel(withContext);
+			bindSecretRuntime(withContext, runtime);
+			bindSecretRuntime(transformed, runtime);
+			return transformed;
 		};
 
-		const transformContext = async (messages: AgentMessage[], _signal?: AbortSignal) => {
-			const withContext = await extensionRunner.emitContext(messages);
-			return wrapSteeringForModel(withContext);
+		const convertToLlmFinal = (messages: AgentMessage[]): Message[] => {
+			const runtime = secretRuntimeByObject.get(messages) ?? activeMainRequestRuntime;
+			const converted = filterProviderReplayMessages(convertToLlmWithBlockImages(messages));
+			const redacted = runtime.obfuscateMessages(converted);
+			bindSecretRuntime(converted, runtime);
+			bindSecretRuntime(redacted, runtime);
+			return redacted;
 		};
-		// Per-request provider-context transforms. Obfuscate FIRST so secrets are
-		// redacted from text, then clamp images to the active provider budget
-		// before the request is sent.
-		const transformProviderContext = async (context: Context, transformModel: Model): Promise<Context> => {
-			const transformed = obfuscator ? obfuscateProviderContext(obfuscator, context) : context;
-			return clampProviderContextImages(transformed, transformModel);
+
+		const transformProviderContext = async (
+			context: Context,
+			transformModel: Model,
+			requestRuntime?: SecretRuntimeLease,
+		): Promise<Context> => {
+			const runtime = requestRuntime ?? resolveSecretRuntimeForContext(context) ?? activeMainRequestRuntime;
+			const transformed = runtime.obfuscateContext(context);
+			const clamped = clampProviderContextImages(transformed, transformModel);
+			bindSecretRuntime(context, runtime);
+			bindSecretRuntime(transformed, runtime);
+			bindSecretRuntime(clamped, runtime);
+			bindSecretRuntime(clamped.messages, runtime);
+			return clamped;
 		};
-		const onPayload = async (payload: unknown, _model?: Model) => {
-			const replaced = await extensionRunner.emitBeforeProviderRequest(payload);
-			return obfuscateProviderPayload(replaced ?? payload, obfuscator);
-		};
+
+		// Raw extension hook. The leased stream wrapper performs the final
+		// redaction after this await with the request's immutable runtime.
+		const onPayload = async (payload: unknown, _model?: Model) =>
+			(await extensionRunner.emitBeforeProviderRequest(payload)) ?? payload;
 		const onResponse: SimpleStreamOptions["onResponse"] = async (response, model) => {
 			await extensionRunner.emitAfterProviderResponse(response, model);
 		};
@@ -3164,6 +3495,14 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			settings,
 			createSettingsAwareStreamFn(settings),
 		);
+		const callerTelemetryTextSanitizer = options.telemetry?.textSanitizer;
+		const telemetry: AgentTelemetryConfig = {
+			...(options.telemetry ?? {}),
+			textSanitizer: text =>
+				secretRuntimeLease.obfuscateText(
+					callerTelemetryTextSanitizer ? callerTelemetryTextSanitizer(text) : text,
+				),
+		};
 		// One warning per model when auto tool-format reroutes a non-tool-calling
 		// model onto an in-band text dialect — the operator must see the degrade.
 		const notifiedDialectFallbackModels = new Set<string>();
@@ -3208,7 +3547,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			preferWebsockets: preferOpenAICodexWebsockets,
 			getToolContext: tc => toolContextStore.getContext(tc),
 			getApiKey: requestModel => modelRegistry.resolver(requestModel, agent.sessionId),
-			streamFn: (streamModel, context, streamOptions) => {
+			streamFn: async (streamModel, context, streamOptions) => {
 				if (notifyFirstChatDispatch) {
 					const cb = notifyFirstChatDispatch;
 					notifyFirstChatDispatch = undefined;
@@ -3220,7 +3559,22 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 						});
 					}
 				}
-				return settingsAwareStreamFn(streamModel, context, streamOptions);
+				const runtime = resolveSecretRuntimeForContext(context) ?? activeMainRequestRuntime;
+				const optionsForRequest = streamOptions ?? {};
+				const requestOnPayload = optionsForRequest.onPayload;
+				const leasedOnPayload =
+					runtime.hasRedactions || requestOnPayload
+						? async (payload: unknown, payloadModel?: Model) => {
+								const replacement = requestOnPayload
+									? await requestOnPayload(payload, payloadModel)
+									: undefined;
+								return runtime.obfuscatePayload(replacement ?? payload);
+							}
+						: undefined;
+				return settingsAwareStreamFn(streamModel, context, {
+					...optionsForRequest,
+					onPayload: leasedOnPayload,
+				});
 			},
 			cursorExecHandlers,
 			transformToolCallArguments: (args, toolName) => {
@@ -3229,22 +3583,23 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				if (maxTimeout > 0 && typeof result.timeout === "number") {
 					result = { ...result, timeout: Math.min(result.timeout, maxTimeout) };
 				}
-				if (obfuscator?.hasSecrets()) {
-					// Recorded from the arguments BEFORE substitution, which is the form in which every
-					// secret is still a placeholder. That ordering is what makes a value impossible to
-					// write into the log, so the record is built here rather than after expansion where
-					// it would need a redaction step to get right (see `secrets/audit.ts`).
-					if (secretAuditLog !== undefined) {
+				const requestRuntime = activeMainRequestRuntime;
+				const requestObfuscator = requestRuntime.expansionObfuscator;
+				if (requestObfuscator?.hasSecrets()) {
+					requestRuntime.assertFreshForExpansion();
+					const requestAuditLog = auditLogBySecretLease.get(requestRuntime);
+					if (requestAuditLog !== undefined) {
 						const record = buildExpansionRecord({
 							args: result,
 							tool: toolName,
 							session: agent.sessionId,
 							at: Date.now(),
-							known: placeholder => obfuscator!.knowsPlaceholder(placeholder),
+							known: placeholder => requestObfuscator.knowsPlaceholder(placeholder),
+							obfuscate: value => requestRuntime.obfuscateText(value),
 						});
-						if (record !== null) secretAuditLog.record(record);
+						if (record !== null) requestAuditLog.record(record);
 					}
-					result = deobfuscateToolArguments(obfuscator, result);
+					result = deobfuscateToolArguments(requestObfuscator, result);
 				}
 				if (argot?.loaded) {
 					result = expandToolArguments(argot, result);
@@ -3278,7 +3633,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			},
 			abortOnFabricatedToolResult: settings.get("tools.abortOnFabricatedResult"),
 			getToolChoice: () => session?.nextToolChoiceDirective(),
-			telemetry: options.telemetry,
+			telemetry,
 			appendOnlyContext: model
 				? shouldEnableAppendOnlyContext(settings.get("provider.appendOnlyContext"), model)
 					? new AppendOnlyContextManager()
@@ -3416,7 +3771,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			setActiveToolNames,
 			getMcpServerInstructions: mcpManager
 				? () => {
-						const raw = mcpManager.getServerInstructions();
+						const raw = mcpManager!.getServerInstructions();
 						if (!raw || raw.size === 0) return raw;
 						const out = new Map<string, string>();
 						for (const [name, text] of raw) {
@@ -3436,6 +3791,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			defaultSelectedMCPServerNames: [...discoveryDefaultServers],
 			ttsrManager,
 			obfuscator,
+			secretRuntime: secretRuntimeLease,
+			leaseSecretRuntime,
+			resolveSecretRuntimeLeaseForContext: resolveSecretRuntimeForContext,
 			refreshSecretRuntime,
 			argot,
 			agentId: resolvedAgentId,
@@ -3562,8 +3920,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		}
 
 		if (asyncJobManager) {
+			const managedJobs = asyncJobManager;
 			session.yieldQueue.register<AsyncResultEntry>("async-result", {
-				isStale: entry => asyncJobManager.isDeliverySuppressed(entry.jobId),
+				isStale: entry => managedJobs.isDeliverySuppressed(entry.jobId),
 				build: buildAsyncResultBatchMessage,
 			});
 		}
@@ -3603,6 +3962,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					// waiting for pending work: the last credential an agent used is exactly the
 					// one an incident asks about.
 					await secretAuditLog?.flush();
+					// Stop routing machine faults into this session's notices. Left attached, the sink
+					// keeps a disposed `OperatorNotices` reachable and posts later faults into a channel
+					// nothing renders, and in a process that opens sessions in sequence the count grows
+					// by one per session forever.
+					detachFaultSink?.();
 					unregisterUnlessParked();
 					unsubscribeCredentialDisabled?.();
 				}
@@ -3728,7 +4092,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// Wire MCP manager callbacks to session for reactive tool updates.
 		// Skip when reusing a parent's manager — the parent owns the callbacks.
 		if (mcpManager && !options.mcpManager) {
-			mcpManager.setOnToolsChanged(tools => {
+			const reactiveMcpManager = mcpManager;
+			reactiveMcpManager.setOnToolsChanged(tools => {
 				void (async () => {
 					try {
 						let activateAll = deferMCPDiscoveryForUI && !mcpDiscoveryEnabled;
@@ -3744,8 +4109,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				})();
 			});
 			// Wire prompt refresh → rebuild MCP prompt slash commands
-			mcpManager.setOnPromptsChanged(serverName => {
-				const promptCommands = buildMCPPromptCommands(mcpManager);
+			reactiveMcpManager.setOnPromptsChanged(serverName => {
+				const promptCommands = buildMCPPromptCommands(reactiveMcpManager);
 				session.setMCPPromptCommands(promptCommands);
 				logger.debug("MCP prompt commands refreshed", { path: `mcp:${serverName}` });
 			});
@@ -3794,6 +4159,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// dispose-wrap took ownership. Idempotent with dispose() — Set.delete is a no-op
 		// for already-removed listeners.
 		unsubscribeCredentialDisabled?.();
+		// Same reason as the dispose path: the sink was attached near the top of this function, so a
+		// throw anywhere after it would otherwise leave a sink pointing at notices for a session that
+		// never started. Idempotent, so the `session.dispose()` below detaching again is harmless.
+		detachFaultSink?.();
 		try {
 			if (hasSession) {
 				await session.dispose();
@@ -3805,10 +4174,16 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					}
 					await asyncJobManager.dispose({ timeoutMs: 3_000 });
 				}
-				await disposeKernelSessionsByOwner(evalKernelOwnerId);
-				await disposeRubyKernelSessionsByOwner(evalKernelOwnerId);
-				await disposeJuliaKernelSessionsByOwner(evalKernelOwnerId);
-				await disposeVmContextsByOwner(evalKernelOwnerId);
+				if (evalKernelOwnerId) {
+					await disposeKernelSessionsByOwner(evalKernelOwnerId);
+					await disposeRubyKernelSessionsByOwner(evalKernelOwnerId);
+					await disposeJuliaKernelSessionsByOwner(evalKernelOwnerId);
+					await disposeVmContextsByOwner(evalKernelOwnerId);
+				}
+				if (mcpManager && mcpManager !== options.mcpManager) {
+					await mcpManager.disconnectAll();
+				}
+				if (!options.sessionManager) await sessionManager?.close();
 				if (ownsAuthStorage) authStorage.close();
 			}
 		} catch (cleanupError) {
