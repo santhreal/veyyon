@@ -254,6 +254,45 @@ width models in measure-vs-slice produced crashes.
   stripped to zero); tabs are added back at the fixed `DEFAULT_TAB_WIDTH` columns.
 - OSC 66 sized spans are added back as `scale × (explicit w ?? payload width)`:
   `Bun.stringWidth` would otherwise strip the whole span to zero.
+- Three marks are corrected because `Bun.stringWidth` charges cells for them and
+  the native does not: five enclosing marks (U+0488, U+0489, U+A670..U+A672), a
+  U+20E3 that is not completing a keycap sequence, and a U+FE0F with no visible
+  base in front of it. A keycap is specifically base + U+FE0F + U+20E3, so
+  `9` + U+20E3 is one cell, not two. The marks are removed from the text before
+  it is measured rather than subtracted from the number afterwards, because the
+  number can come from a string the marks were already stripped out of.
+- `Bun.stringWidth` recognises only CSI and OSC, so three more escape families
+  are stripped before measuring: two-byte Fe/Fs sequences (`ESC m`), nF
+  character-set designators (`ESC ( B`), and the string sequences DCS, SOS, PM
+  and APC with their payloads. Each drew nothing and was charged for its bytes.
+  An **unterminated** introducer (`ESC [3`) stays at zero here and the native
+  counts its bytes; that gap is the native's to close.
+- An escape sequence is a **grapheme cluster break** in the native engine, and
+  `Bun.stringWidth` is not: it deletes the escape and measures the two sides as
+  one cluster, so `"9\x1b[0m️⃣"` is one cell natively and two to Bun.
+  Mark-bearing text is therefore measured one escape-separated run at a time and
+  the widths summed. Text with no such mark keeps the single whole-string call.
+  An OSC sequence is stripped before that split ever runs, so it leaves a
+  zero-width `ESC \` behind rather than being deleted: without the marker the
+  strip joins the text around it and the join can invent a cluster the terminal
+  never drew.
+- A tab is charged to the text that draws it. Tabs inside an OSC sequence draw
+  nothing, and a tab inside an OSC 66 text-sizing payload scales with its span
+  like every other cell in it.
+- OSC 66 metadata (`s=` scale, `w=` declared width) is a run of ASCII digits or
+  it is not a number, which is the rule the native uses. `Number.parseInt` would
+  accept `s=2x`, `w=+5` and `w= 5`, and reading those as numbers makes this side
+  measure WIDER than the cut, which is the direction that overflows a line.
+  `packages/tui/test/visible-width-osc66-spans.test.ts` pins every span shape
+  against the native binding directly, including the malformed spans (an escape
+  in the payload, or no terminator) where the two still differ and the native is
+  the one to change.
+
+Both corrections exist for the same reason: `truncateToWidth` cuts on the native
+engine and `visibleWidth` measures, so a disagreement means a span cut to fit `W`
+re-measures wider than `W` and the caller that sized a viewport by the cut writes
+past the last column. `packages/tui/test/visible-width-enclosing-marks.test.ts`
+pins each correction and each deliberate non-correction.
 
 **Rule:** any new measuring code routes through these helpers, and the hot
 path clamps instead of throwing. Known residual: combining-heavy scripts
@@ -453,4 +492,4 @@ thumb) and the attributes the terminal presents, through
 `VirtualTerminal#getViewportRowFaintColumns`. A byte assertion alone would still
 pass if a later reset in the same row cancelled the dim.
 
-*Verified against `36bd44ad4d0ec6a81a94b2eb37b81d7157cbcc5b` on 2026-07-26.*
+*Verified against `4be8c6d0109eb4913b840028e01f29292c0d9707` on 2026-07-27.*

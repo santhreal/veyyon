@@ -668,6 +668,17 @@ Two things that are still worth doing, for reasons other than the total:
   many suites import. `test-suite-module-reach.test.ts` caps the suite's total reach and how many
   files are individually heavy. Read the header of that file before treating either number as a
   memory prediction: it says plainly what the numbers do and do not mean.
+- **Keep the process entry point thin.** `the-boot-path-stays-thin.test.ts` caps what
+  `packages/coding-agent/src/cli.ts` reaches STATICALLY, which is what every invocation of the binary
+  parses before it looks at an argument. It is 34 modules; `main.ts`, one `await import` away, is
+  1461. The suite pairs the ceiling with a floor, a named list of modules that must stay off the boot
+  graph, and a shape rule that no tool implementation is parsed at startup, so a failure names the
+  edge to remove rather than only a number that grew.
+
+All three of these walk the same graph through `test/helpers/module-reach-gate.ts`, which owns the
+resolution table and the shared memo. Import it rather than building a second one: the table is the
+half that fails silently, and two copies are two chances for one gate to measure a smaller graph than
+its neighbour while both stay green.
 
 **Every one of these ceilings is an upper bound, so a gate that resolves LESS passes.** This is the
 one failure mode to understand before you write or edit one. A specifier the walk cannot resolve
@@ -781,6 +792,22 @@ missing `yield` handler once surfaced as seventeen unrelated-looking failures.
 | Install per environment | `scripts/installer-environment-matrix.test.ts` + `scripts/install-tests/environments.toml` |
 | Update per environment | `scripts/update-environment-matrix.test.ts` (same TOML, shared harness) |
 | Regression corpus | `packages/coding-agent/test/corpus/regressions/` |
+| Docs and handbook | `scripts/check-doc-*.test.ts`, `scripts/the-committed-handbook-matches-its-sources.test.ts` |
+| Symbol presets and glyph contracts | `coding-agent/test/modes/theme/every-unicode-glyph-*.test.ts`, `an-empty-icon-leaves-no-gap.test.ts` |
+| Module reach and boot cost | `coding-agent/test/architecture/`, via `test/helpers/module-reach-gate.ts` |
+| Keybinding ids reach a reader | `coding-agent/test/config/every-keybinding-id-is-read-by-something.test.ts` |
+| Keybinding docs quote real chords | `coding-agent/test/config/the-reference-page-quotes-the-real-default-keys.test.ts` |
+| `/hotkeys` follows a remap | `coding-agent/test/modes/utils/hotkeys-follows-a-remap.test.ts` |
+| No surface spells a hint by hand | `coding-agent/test/modes/utils/no-surface-writes-a-hint-out-by-hand.test.ts` |
+| The more-lines phrase has one owner | `packages/utils/test/more-lines-has-one-owner.test.ts` |
+| One owner for the default chords | `coding-agent/test/config/the-keybinding-defaults-have-one-owner.test.ts` |
+| Session does not import the UI | `coding-agent/test/architecture/session-does-not-import-the-ui.test.ts` |
+| Tools import the UI only to draw | `coding-agent/test/architecture/tools-reach-the-ui-only-to-draw.test.ts` |
+| OSC 66 spans measure the same in both width oracles | `packages/tui/test/visible-width-osc66-spans.test.ts` |
+| The utils barrel re-exports and defines nothing | `packages/utils/test/the-barrel-owns-nothing.test.ts` |
+| A temp dir is not made in the repository | `packages/utils/test/a-temp-dir-is-not-made-in-the-repository.test.ts` |
+| Byte and well-formedness measurements | `packages/utils/test/string-byte-and-form-measurements.test.ts` |
+| The JSON walk is not a secrets module | `coding-agent/test/architecture/the-json-walk-is-not-a-secrets-module.test.ts` |
 
 ## Installer gates per platform
 
@@ -1005,6 +1032,46 @@ Suites with a fake scheduler they step by hand (`StressRenderScheduler`) do not
 use `settleFrames`; they drain their own scheduler, which is exact by
 construction.
 
+## Judging how a surface LOOKS
+
+Some defects are invisible to every assertion you can write about a string. A
+glyph the terminal font does not have, a count that contradicts the list under
+it, a card with eighteen empty rows: each of those renders as a perfectly valid
+string, and each is obvious the moment you look at a picture of the frame.
+
+**Never judge a visual change from a `tmux capture-pane` dump.** tmux renders on
+a pure-black default ground, `capture-pane` strips and distorts styling, and the
+whole class of background-fill and contrast bugs is invisible in it. A dump that
+looks fine there has shipped black slabs onto a grey terminal.
+
+The evidence is a RENDERED IMAGE of the real component, on both a grey
+(`#1e2127`-class) and a black ground, looked at by a human or by whoever is doing
+the work. The components render off-screen without a terminal, so producing one
+takes two steps and no display:
+
+1. Build the component the way its suite does (`stubStdoutGeometry`, `initTheme`,
+   a registry seeded with the state you want) and write `component.render(120).join("\n")`
+   to a file. Keep the ANSI: the styling is half of what you are checking.
+2. Rasterize that file with any ANSI-to-image tool, once per ground, and look at
+   both.
+
+Two things to get right in step 2, because both produce convincing lies:
+
+- **Reset the SGR state at every line boundary.** The compositor writes each
+  terminal line as `SGR_RESET + erase + line` (`tui.ts`), so colour does NOT
+  carry from one row to the next on screen. A rasterizer that carries it paints
+  the whole frame in the first colour any row sets, and you will report a style
+  leak the product does not have.
+- **Use a stock monospace font, not your terminal font.** A patched Nerd Font
+  draws every glyph and hides exactly the bug this is best at finding. DejaVu
+  Sans Mono is the right default: it is the widest-shipped plain monospace face
+  and it is the one the `unicode` symbol preset is held to.
+
+This is how the `⟳` in the running-agent status was found. It is U+27F3, DejaVu
+Sans Mono does not have it, and every busy row in the Agent Control Center drew a
+tofu box on a machine without a Nerd Font. Three hundred passing assertions on
+that component said nothing, because the string was correct the whole time.
+
 ## Anti-patterns (these fail review)
 
 - **Source-grep tests.** A test that reads an implementation file and asserts on its
@@ -1039,4 +1106,4 @@ Wiring you can't exercise in-process (worker spawn, install flow) is covered by 
 runtime smoke probe (`veyyon --smoke-test`) and the install-test scripts, not by a
 source grep.
 
-*Verified against `cc919bad` on 2026-07-27.*
+*Verified against `9ece769be145a5351c820d739f1c54ddd01eaf64` on 2026-07-27.*

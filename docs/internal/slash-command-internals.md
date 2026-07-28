@@ -18,6 +18,26 @@ This document describes how slash commands are discovered, deduplicated, surface
 - [`src/modes/utils/ui-helpers.ts`](../../packages/coding-agent/src/modes/utils/ui-helpers.ts)
 - [`src/modes/controllers/command-controller.ts`](../../packages/coding-agent/src/modes/controllers/command-controller.ts)
 - [`src/slash-commands/builtin-registry.ts`](../../packages/coding-agent/src/slash-commands/builtin-registry.ts)
+- [`src/slash-commands/builtin-declarations.ts`](../../packages/coding-agent/src/slash-commands/builtin-declarations.ts)
+- [`src/slash-commands/text-mode-builtins.ts`](../../packages/coding-agent/src/slash-commands/text-mode-builtins.ts)
+- [`src/slash-commands/acp-builtins.ts`](../../packages/coding-agent/src/slash-commands/acp-builtins.ts)
+
+### Which of those three you want
+
+The builtins are split by what a caller needs, because the handlers are expensive to load:
+
+- `builtin-declarations.ts` holds the NAMES and their metadata. Ask it which names are taken.
+- `text-mode-builtins.ts` holds the metadata view a text client renders. Ask it what a client can
+  drive.
+- `builtin-registry.ts` holds the HANDLERS. It reaches about 740 modules, since a handler can touch
+  the settings store, the MCP client and the session store. Import it only to run a command.
+
+`acp-builtins.ts` dispatches for print, RPC and ACP mode, and it loads the registry with a dynamic
+import inside `executeAcpBuiltinSlashCommand`, after `parseSlashCommand` has said the text is a
+command. That function runs on every message in those modes and almost every message is a prompt, so
+a static import made `veyyon -p "hello"` load the whole command surface to find out the text had no
+slash in it. If you add a dispatcher, copy that order: answer "is this a command" with the parse
+leaf, then load the handlers.
 
 ## 1) Discovery model
 
@@ -244,4 +264,4 @@ Interactive mode separately hard-handles many built-ins in `InputController` (fo
   - non-native commands: warning + fallback key/value parse
 - Extension/custom command handler exceptions are caught and reported via extension error channel (or logger fallback for custom commands without extension runner), and treated as handled (no unintended fallback execution).
 
-*Verified against `ad7ede4a` on 2026-07-28.*
+*Verified against `4be8c6d0109eb4913b840028e01f29292c0d9707` on 2026-07-27.*
