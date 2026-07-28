@@ -1,0 +1,987 @@
+/**
+ * Vault semantics: names, lifetimes, scope precedence, and what expiry actually does.
+ *
+ * WHY THIS SUITE EXISTS. Two of these rules are dangerous if implemented the obvious way,
+ * and they are the reason most of the assertions below exist.
+ *
+ *   1. EXPIRY MUST DELETE, NOT UNPROTECT. The naive reading of "the secret expired" is "stop
+ *      obfuscating it", which would send the value to the model provider in plain text at the
+ *      exact moment its protection lapsed. The feature's failure mode would be the harm it
+ *      exists to prevent. So expiry removes the value from disk, and these tests assert the
+ *      bytes are gone rather than merely filtered from a list.
+ *   2. `never` MUST NOT BE A BIG NUMBER. Representing "never expires" as a far-future
+ *      timestamp invites arithmetic that forgets to check, and a secret that quietly dies in
+ *      the year 10000 is a bug nobody finds. It is `null`, and that is asserted.
+ *
+ * Time is injected everywhere, so expiry is tested by moving the clock rather than by
+ * sleeping, and the tests stay deterministic.
+ */
+import { describe, expect, it, spyOn, vi } from "bun:test";
+import * as crypto from "node:crypto";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import {
+	DEFAULT_TTL_MS,
+	describeTimeLeft,
+	formatTtl,
+	generateSecretName,
+	isExpired,
+	lifeFraction,
+	normaliseSecretName,
+	parseTtl,
+	SecretVault,
+	type VaultLocations,
+	vaultPathFor,
+	warningThresholdCrossed,
+} from "@veyyon/coding-agent/secrets/vault";
+import { loadOrCreateVaultKey, type SealedVault } from "@veyyon/coding-agent/secrets/vault-crypto";
+
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
+
+/** A long-enough value, since anything under the floor is refused by design. */
+const VALUE = "ghp_a_real_looking_token";
+
+/**
+ * Whether a path exists, as a boolean.
+ *
+ * `fs.access` resolves with `undefined` on Node and `null` on Bun, so asserting on its
+ * resolved value pins a runtime detail rather than the thing under test.
+ */
+async function exists(target: string): Promise<boolean> {
+	try {
+		await fs.access(target);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/** Construct the exact unbound envelope emitted before location-bound version 2. */
+function sealLegacyVault(key: Buffer, plaintext: string): SealedVault {
+	const iv = crypto.randomBytes(12);
+	const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+	const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+	return {
+		v: 1,
+		iv: iv.toString("base64"),
+		tag: cipher.getAuthTag().toString("base64"),
+		ct: ciphertext.toString("base64"),
+	};
+}
+
+/** A vault over a throwaway tree, with a clock the test controls. */
+async function withVault(
+	body: (vault: SecretVault, locations: VaultLocations, clock: { now: number }) => Promise<void>,
+): Promise<void> {
+	const root = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-vault-"));
+	try {
+		const locations: VaultLocations = {
+			globalConfigRoot: path.join(root, "config"),
+			profileDir: path.join(root, "config", "profiles", "work", "agent"),
+			projectDir: path.join(root, "project", ".veyyon"),
+		};
+		const clock = { now: 1_800_000_000_000 };
+		await body(new SecretVault(locations, () => clock.now), locations, clock);
+	} finally {
+		await fs.rm(root, { recursive: true, force: true });
+	}
+}
+
+describe("lifetimes", () => {
+	/** The units people actually type, each proved rather than assumed. */
+	it("parses every supported unit", () => {
+		expect(parseTtl("30m")).toBe(30 * 60 * 1000);
+		expect(parseTtl("12h")).toBe(12 * HOUR);
+		expect(parseTtl("7d")).toBe(7 * DAY);
+		expect(parseTtl("2w")).toBe(14 * DAY);
+	});
+
+	/** `never` is the user's word for it, and it maps to null rather than to a large number. */
+	it("maps never to null", () => {
+		expect(parseTtl("never")).toBeNull();
+		expect(parseTtl("NEVER")).toBeNull();
+		expect(parseTtl("  never  ")).toBeNull();
+	});
+
+	/** Case and surrounding space are forgiven, because people type both. */
+	it("accepts mixed case and padding", () => {
+		expect(parseTtl(" 7D ")).toBe(7 * DAY);
+	});
+
+	/**
+	 * A malformed lifetime throws instead of defaulting.
+	 *
+	 * The important one. If `7dd` silently became the one-day default, a credential would
+	 * outlive the window its owner believed they chose, and nothing would ever say so.
+	 */
+	it("refuses a lifetime it cannot parse", () => {
+		for (const bad of ["7dd", "d7", "7", "", "forever", "1y", "-3d", "3.5d"]) {
+			expect(() => parseTtl(bad)).toThrow(/is not a lifetime/);
+		}
+	});
+
+	/** Zero would expire on arrival, which is never what someone means. */
+	it("refuses a zero lifetime", () => {
+		expect(() => parseTtl("0d")).toThrow(/would expire immediately/);
+	});
+
+	/**
+	 * Decimal input can overflow Number before multiplication by the unit.
+	 *
+	 * JSON would serialise an infinite expiry as null, silently turning a bounded credential
+	 * into one that never expires. Both the parser and formatter reject that representation.
+	 */
+	it("refuses an overflowing lifetime instead of turning it into never", () => {
+		expect(() => parseTtl(`${"9".repeat(309)}w`)).toThrow(/too large to represent safely/);
+		expect(() => formatTtl(Number.POSITIVE_INFINITY)).toThrow(/finite.*safely representable/);
+	});
+
+	/**
+	 * Formatting round-trips for the units it emits, so `list` shows what you typed.
+	 *
+	 * Days, hours and minutes round-trip exactly. Weeks deliberately do NOT: `w` is input
+	 * sugar and output is in days. The formatter used to prefer the largest unit that divided
+	 * evenly, which meant a secret created with `7d` was listed as `1w`, a unit the user never
+	 * chose. Showing a lifetime back in different words than it was set in is how someone
+	 * misreads how long they have.
+	 */
+	it("round-trips the units it emits", () => {
+		for (const spec of ["30m", "12h", "7d", "14d", "90d", "never"]) {
+			expect(formatTtl(parseTtl(spec))).toBe(spec);
+		}
+	});
+
+	/** Weeks are accepted and then reported in days, which is the documented behaviour. */
+	it("reports a lifetime given in weeks as days", () => {
+		expect(formatTtl(parseTtl("2w"))).toBe("14d");
+		expect(formatTtl(parseTtl("1w"))).toBe("7d");
+	});
+
+	/** The documented default is one day. */
+	it("defaults to one day", () => {
+		expect(DEFAULT_TTL_MS).toBe(DAY);
+		expect(formatTtl(DEFAULT_TTL_MS)).toBe("1d");
+	});
+});
+
+describe("expiry arithmetic", () => {
+	const entry = { name: "T", value: VALUE, createdAt: 1000, expiresAt: 1000 + DAY };
+
+	/** Not expired before the moment, expired at it and after. The boundary is inclusive. */
+	it("expires at the boundary, not after a grace period", () => {
+		expect(isExpired(entry, 1000)).toBe(false);
+		expect(isExpired(entry, 1000 + DAY - 1)).toBe(false);
+		expect(isExpired(entry, 1000 + DAY)).toBe(true);
+		expect(isExpired(entry, 1000 + DAY + 1)).toBe(true);
+	});
+
+	/** A secret with no expiry never expires, however far the clock is pushed. */
+	it("never expires a null expiry", () => {
+		const forever = { ...entry, expiresAt: null };
+
+		expect(isExpired(forever, Number.MAX_SAFE_INTEGER)).toBe(false);
+		expect(lifeFraction(forever, 5000)).toBeNull();
+		expect(warningThresholdCrossed(forever, Number.MAX_SAFE_INTEGER)).toBeNull();
+	});
+
+	/**
+	 * Warnings are fractions of the lifetime, not absolute times.
+	 *
+	 * One rule for every lifetime. "24 hours left" is useless for a one-day secret and far too
+	 * late for a 90-day one, so the thresholds scale with the window the user chose.
+	 */
+	it("warns at half life and at ninety percent", () => {
+		expect(warningThresholdCrossed(entry, 1000)).toBeNull();
+		expect(warningThresholdCrossed(entry, 1000 + DAY * 0.49)).toBeNull();
+		expect(warningThresholdCrossed(entry, 1000 + DAY * 0.5)).toBe(0.5);
+		expect(warningThresholdCrossed(entry, 1000 + DAY * 0.89)).toBe(0.5);
+		expect(warningThresholdCrossed(entry, 1000 + DAY * 0.9)).toBe(0.9);
+		expect(warningThresholdCrossed(entry, 1000 + DAY)).toBe(0.9);
+	});
+
+	/** The same thresholds work for a long lifetime, which is the point of using fractions. */
+	it("uses the same thresholds for a ninety day secret", () => {
+		const long = { ...entry, expiresAt: 1000 + 90 * DAY };
+
+		expect(warningThresholdCrossed(long, 1000 + 44 * DAY)).toBeNull();
+		expect(warningThresholdCrossed(long, 1000 + 45 * DAY)).toBe(0.5);
+		expect(warningThresholdCrossed(long, 1000 + 81 * DAY)).toBe(0.9);
+	});
+
+	/** The phrase shown to the operator is readable at every scale. */
+	it("describes the time left in the largest sensible unit", () => {
+		expect(describeTimeLeft(entry, 1000)).toBe("1d left");
+		expect(describeTimeLeft(entry, 1000 + 18 * HOUR)).toBe("6h left");
+		expect(describeTimeLeft(entry, 1000 + DAY - 30 * 60 * 1000)).toBe("30m left");
+		expect(describeTimeLeft(entry, 1000 + DAY)).toBe("expired");
+		expect(describeTimeLeft({ ...entry, expiresAt: null }, 1000)).toBe("never expires");
+	});
+});
+
+describe("names", () => {
+	/** The shapes people type are normalised rather than refused on a technicality. */
+	it("normalises what a user is likely to type", () => {
+		expect(normaliseSecretName("github-token")).toBe("GITHUB_TOKEN");
+		expect(normaliseSecretName("github token")).toBe("GITHUB_TOKEN");
+		expect(normaliseSecretName("  deploy_key  ")).toBe("DEPLOY_KEY");
+		expect(normaliseSecretName("AWS_SECRET_ACCESS_KEY")).toBe("AWS_SECRET_ACCESS_KEY");
+	});
+
+	/**
+	 * A name that could be confused with an index placeholder is refused.
+	 *
+	 * `#ABCD#` is what an unnamed secret's placeholder looks like, so a four-character name
+	 * would give the model one token meaning two credentials. The rule is derived from the
+	 * index width rather than hardcoded, and `placeholder.test.ts` pins that coupling.
+	 */
+	it("refuses a name short enough to look like an index placeholder", () => {
+		expect(() => normaliseSecretName("ABCD")).toThrow(/not a usable secret name/);
+		expect(() => normaliseSecretName("A1B2")).toThrow(/not a usable secret name/);
+		// Five characters is fine, because an index body is four.
+		expect(normaliseSecretName("ABCDE")).toBe("ABCDE");
+	});
+
+	/** Characters that would be ambiguous inside `#...#` or in a shell are refused. */
+	it("refuses characters that would be ambiguous in a placeholder", () => {
+		for (const bad of ["my-token!", "tok#en", "a b#c", "1TOKEN", "_TOKEN", "TOK.EN", "TOK/EN"]) {
+			expect(() => normaliseSecretName(bad)).toThrow(/not a usable secret name/);
+		}
+	});
+
+	/** A name too long to read inline is refused, with the limit in the message. */
+	it("refuses an over-long name", () => {
+		expect(() => normaliseSecretName("A".repeat(65))).toThrow(/5 to 64 characters/);
+	});
+
+	/** Generated names avoid collisions, so an unnamed add never overwrites another secret. */
+	it("generates a name that is not taken", () => {
+		expect(generateSecretName(new Set())).toBe("SECRET_1");
+		expect(generateSecretName(new Set(["SECRET_1"]))).toBe("SECRET_2");
+		expect(generateSecretName(new Set(["SECRET_1", "SECRET_2", "SECRET_3"]))).toBe("SECRET_4");
+	});
+
+	/** Every generated name is itself valid, or the vault could store an unusable entry. */
+	it("generates names that pass validation", () => {
+		expect(normaliseSecretName(generateSecretName(new Set()))).toBe("SECRET_1");
+	});
+});
+
+describe("storing and reading", () => {
+	/** The ordinary case, and proof the value survives a full seal and open cycle. */
+	it("stores a secret and reads it back", async () => {
+		await withVault(async vault => {
+			const added = await vault.add({ name: "github-token", value: VALUE });
+
+			expect(added.name).toBe("GITHUB_TOKEN");
+			expect(added.scope).toBe("profile");
+
+			const loaded = await vault.load();
+			expect(loaded).toHaveLength(1);
+			expect(loaded[0]).toMatchObject({ name: "GITHUB_TOKEN", value: VALUE, scope: "profile" });
+		});
+	});
+
+	/**
+	 * Nothing readable is written to disk.
+	 *
+	 * The claim the whole feature rests on, asserted against the actual file rather than
+	 * against the API. If someone replaces the seal with a plain write, every other test here
+	 * still passes and this one fails.
+	 */
+	it("writes no plaintext to the vault file", async () => {
+		await withVault(async (vault, locations) => {
+			await vault.add({ name: "github-token", value: VALUE });
+
+			const onDisk = await fs.readFile(vaultPathFor(locations, "profile"), "utf8");
+			expect(onDisk).not.toContain(VALUE);
+			expect(onDisk).not.toContain("GITHUB_TOKEN");
+		});
+	});
+
+	/**
+	 * Version 1 vaults remain readable and migrate on the next successful mutation.
+	 *
+	 * Reading alone must not rewrite operator state. The following add is the explicit safe
+	 * cutover point because it already owns the scope lock and uses the crash-atomic writer.
+	 */
+	it("reads a legacy v1 vault and migrates it on the next write", async () => {
+		await withVault(async (vault, locations, clock) => {
+			const key = await loadOrCreateVaultKey(locations.globalConfigRoot);
+			const vaultPath = vaultPathFor(locations, "profile");
+			const legacyEntry = {
+				name: "LEGACY_TOKEN",
+				value: VALUE,
+				createdAt: clock.now,
+				expiresAt: clock.now + DAY,
+			};
+			await fs.mkdir(locations.profileDir, { recursive: true });
+			await fs.writeFile(
+				vaultPath,
+				JSON.stringify(sealLegacyVault(key, JSON.stringify({ entries: [legacyEntry] }))),
+				{ mode: 0o600 },
+			);
+
+			expect(await vault.load()).toEqual([{ ...legacyEntry, scope: "profile" }]);
+			expect(JSON.parse(await fs.readFile(vaultPath, "utf8")).v).toBe(1);
+
+			await vault.add({ name: "NEW_TOKEN", value: `${VALUE}_new` });
+			expect(JSON.parse(await fs.readFile(vaultPath, "utf8")).v).toBe(2);
+			expect((await vault.load()).map(entry => entry.name).sort()).toEqual(["LEGACY_TOKEN", "NEW_TOKEN"]);
+		});
+	});
+
+	/**
+	 * The default scope is the profile, which is the boundary people actually want.
+	 *
+	 * Asserted by which FILES exist, not by the returned entry, because the scope claim is
+	 * about where bytes land: a project-scoped write into a repository would be the one that
+	 * gets committed by accident.
+	 */
+	it("defaults to profile scope", async () => {
+		await withVault(async (vault, locations) => {
+			await vault.add({ value: VALUE });
+
+			expect(await exists(vaultPathFor(locations, "profile"))).toBe(true);
+			expect(await exists(vaultPathFor(locations, "project"))).toBe(false);
+			expect(await exists(vaultPathFor(locations, "global"))).toBe(false);
+		});
+	});
+
+	/** An unnamed add still gets a name, so the model always has something to reference. */
+	it("invents a name when none is given", async () => {
+		await withVault(async vault => {
+			const first = await vault.add({ value: VALUE });
+			const second = await vault.add({ value: `${VALUE}_two` });
+
+			expect(first.name).toBe("SECRET_1");
+			expect(second.name).toBe("SECRET_2");
+		});
+	});
+
+	/** The default lifetime is applied when none is given. */
+	it("applies the one day default lifetime", async () => {
+		await withVault(async (vault, _locations, clock) => {
+			const added = await vault.add({ value: VALUE });
+
+			expect(added.expiresAt).toBe(clock.now + DAY);
+		});
+	});
+
+	/** An explicit `never` stores null rather than a distant timestamp. */
+	it("stores never as null", async () => {
+		await withVault(async vault => {
+			const added = await vault.add({ value: VALUE, ttl: null });
+
+			expect(added.expiresAt).toBeNull();
+		});
+	});
+
+	/**
+	 * Programmatic callers cannot bypass the parser with NaN, infinity, fractions, or a TTL
+	 * whose resulting epoch would exceed Number's safe integer range.
+	 */
+	it("refuses non-finite and unsafe numeric lifetimes before writing", async () => {
+		await withVault(async (vault, locations) => {
+			for (const ttl of [
+				Number.NaN,
+				Number.POSITIVE_INFINITY,
+				Number.NEGATIVE_INFINITY,
+				1.5,
+				Number.MAX_SAFE_INTEGER,
+			]) {
+				await expect(vault.add({ name: "BAD_TTL", value: VALUE, ttl })).rejects.toThrow(
+					/finite.*safely representable|too large/,
+				);
+			}
+			expect(await exists(vaultPathFor(locations, "profile"))).toBe(false);
+		});
+	});
+
+	/** Re-adding the same name replaces it rather than accumulating duplicates. */
+	it("replaces an entry of the same name in the same scope", async () => {
+		await withVault(async vault => {
+			await vault.add({ name: "TOKEN_A", value: VALUE });
+			await vault.add({ name: "TOKEN_A", value: `${VALUE}_updated` });
+
+			const loaded = await vault.load();
+			expect(loaded).toHaveLength(1);
+			expect(loaded[0].value).toBe(`${VALUE}_updated`);
+		});
+	});
+
+	/** Replacements use a new synced inode rather than truncating the live vault in place. */
+	it("replaces an existing vault atomically with an owner-only file", async () => {
+		if (process.platform === "win32") return;
+		await withVault(async (vault, locations) => {
+			const vaultPath = vaultPathFor(locations, "profile");
+			await vault.add({ name: "TOKEN_A", value: VALUE });
+			const before = await fs.stat(vaultPath);
+
+			await vault.add({ name: "TOKEN_B", value: `${VALUE}_b` });
+			const after = await fs.stat(vaultPath);
+
+			expect(after.ino).not.toBe(before.ino);
+			expect(after.mode & 0o777).toBe(0o600);
+		});
+	});
+
+	/**
+	 * A failure at the commit seam leaves the previous sealed bytes intact.
+	 *
+	 * Direct writeFile would truncate before this injected failure could protect anything.
+	 * The staged temp file is also removed, so a retry sees one unambiguous vault.
+	 */
+	it("preserves the previous vault when an atomic replacement is interrupted", async () => {
+		await withVault(async (vault, locations) => {
+			const vaultPath = vaultPathFor(locations, "profile");
+			await vault.add({ name: "TOKEN_A", value: VALUE });
+			const before = await fs.readFile(vaultPath);
+			const realRename = fs.rename.bind(fs);
+			const renameSpy = spyOn(fs, "rename").mockImplementation(async (from, to) => {
+				if (String(to) === vaultPath)
+					throw Object.assign(new Error("simulated interrupted rename"), { code: "EIO" });
+				return realRename(from, to);
+			});
+
+			try {
+				await expect(vault.add({ name: "TOKEN_B", value: `${VALUE}_b` })).rejects.toThrow(
+					/simulated interrupted rename/,
+				);
+			} finally {
+				renameSpy.mockRestore();
+			}
+
+			expect(await fs.readFile(vaultPath)).toEqual(before);
+			expect((await vault.load()).map(entry => entry.name)).toEqual(["TOKEN_A"]);
+			expect((await fs.readdir(locations.profileDir)).filter(name => name.endsWith(".tmp"))).toEqual([]);
+		});
+	});
+
+	/**
+	 * A value too short to obfuscate is refused at the door.
+	 *
+	 * Consistent with the loader's refusal: storing it would produce an entry that looks
+	 * protected and is sent to the provider verbatim. Same rule, same single owner.
+	 */
+	it("refuses a value too short to protect", async () => {
+		await withVault(async vault => {
+			await expect(vault.add({ value: "short" })).rejects.toThrow(/under the 8-character minimum/);
+		});
+	});
+
+	/** An empty value is refused separately, with a message that fits the mistake. */
+	it("refuses an empty value", async () => {
+		await withVault(async vault => {
+			await expect(vault.add({ value: "" })).rejects.toThrow(/cannot be empty/);
+		});
+	});
+});
+
+describe("expiry deletes rather than exposes", () => {
+	/**
+	 * THE CENTRAL TEST. An expired secret is gone from disk, not merely hidden.
+	 *
+	 * Reading the vault is what prunes it, so "expired means deleted" is true rather than
+	 * aspirational. If this only filtered in memory, the value would sit in the file after its
+	 * lifetime ended, which is precisely what a lifetime is supposed to prevent.
+	 */
+	it("removes an expired entry from the file on the next read", async () => {
+		await withVault(async (vault, locations, clock) => {
+			await vault.add({ name: "SHORT_LIVED", value: VALUE, ttl: HOUR });
+			const before = await fs.readFile(vaultPathFor(locations, "profile"), "utf8");
+
+			clock.now += 2 * HOUR;
+			expect(await vault.load()).toEqual([]);
+
+			const after = await fs.readFile(vaultPathFor(locations, "profile"), "utf8");
+			expect(after).not.toBe(before);
+			// And the value is really gone: re-reading with a fresh vault finds nothing.
+			expect(await new SecretVault(locations, () => clock.now).load()).toEqual([]);
+		});
+	});
+
+	/** A live entry beside an expired one survives the prune. */
+	it("keeps live entries when pruning an expired one", async () => {
+		await withVault(async (vault, _locations, clock) => {
+			await vault.add({ name: "SHORT_LIVED", value: VALUE, ttl: HOUR });
+			await vault.add({ name: "LONG_LIVED", value: `${VALUE}_b`, ttl: 7 * DAY });
+
+			clock.now += 2 * HOUR;
+
+			const loaded = await vault.load();
+			expect(loaded).toHaveLength(1);
+			expect(loaded[0].name).toBe("LONG_LIVED");
+		});
+	});
+
+	/** Extending measures from now, so a nearly dead secret gets the full window asked for. */
+	it("extends from now rather than from the old expiry", async () => {
+		await withVault(async (vault, _locations, clock) => {
+			await vault.add({ name: "RENEW_ME", value: VALUE, ttl: HOUR });
+			clock.now += 59 * 60 * 1000;
+
+			const extended = await vault.extend("RENEW_ME", 7 * DAY);
+
+			expect(extended?.expiresAt).toBe(clock.now + 7 * DAY);
+		});
+	});
+
+	/** Extending to never clears the expiry entirely. */
+	it("can extend to never", async () => {
+		await withVault(async vault => {
+			await vault.add({ name: "RENEW_ME", value: VALUE, ttl: HOUR });
+
+			expect((await vault.extend("RENEW_ME", null))?.expiresAt).toBeNull();
+		});
+	});
+
+	/** A rejected extension leaves the existing deadline byte-for-byte effective. */
+	it("refuses an unsafe extension without changing the entry", async () => {
+		await withVault(async vault => {
+			const added = await vault.add({ name: "RENEW_ME", value: VALUE, ttl: HOUR });
+
+			await expect(vault.extend("RENEW_ME", Number.POSITIVE_INFINITY)).rejects.toThrow(
+				/finite.*safely representable/,
+			);
+			expect((await vault.load())[0].expiresAt).toBe(added.expiresAt);
+		});
+	});
+
+	/** Extending something that is not there reports so rather than inventing an entry. */
+	it("returns null when extending an unknown name", async () => {
+		await withVault(async vault => {
+			expect(await vault.extend("NOT_THERE", DAY)).toBeNull();
+		});
+	});
+});
+
+describe("removal", () => {
+	/** Removing reports the scope it came from, since the same name can exist in several. */
+	it("removes an entry and names the scope", async () => {
+		await withVault(async vault => {
+			await vault.add({ name: "TOKEN_A", value: VALUE, scope: "project" });
+
+			expect(await vault.remove("token-a")).toBe("project");
+			expect(await vault.load()).toEqual([]);
+		});
+	});
+
+	/** Removing something absent answers null rather than pretending to succeed. */
+	it("returns null when there is nothing to remove", async () => {
+		await withVault(async vault => {
+			expect(await vault.remove("NOT_THERE")).toBeNull();
+		});
+	});
+});
+
+describe("scope precedence", () => {
+	/**
+	 * The nearest scope wins on a name clash, matching the rest of veyyon's config.
+	 *
+	 * Project beats profile beats global. Asserted with all three present at once, because a
+	 * two-scope test would pass under several wrong orderings.
+	 */
+	it("prefers project over profile over global", async () => {
+		await withVault(async vault => {
+			await vault.add({ name: "SHARED_NAME", value: "global_value_here", scope: "global" });
+			await vault.add({ name: "SHARED_NAME", value: "profile_value_here", scope: "profile" });
+			await vault.add({ name: "SHARED_NAME", value: "project_value_here", scope: "project" });
+
+			const loaded = await vault.load();
+			expect(loaded).toHaveLength(1);
+			expect(loaded[0]).toMatchObject({ value: "project_value_here", scope: "project" });
+		});
+	});
+
+	/** With the project entry gone, the profile one becomes visible again. */
+	it("falls back to the next scope when the nearest is removed", async () => {
+		await withVault(async vault => {
+			await vault.add({ name: "SHARED_NAME", value: "profile_value_here", scope: "profile" });
+			await vault.add({ name: "SHARED_NAME", value: "project_value_here", scope: "project" });
+
+			await vault.remove("SHARED_NAME");
+
+			const loaded = await vault.load();
+			expect(loaded).toHaveLength(1);
+			expect(loaded[0]).toMatchObject({ value: "profile_value_here", scope: "profile" });
+		});
+	});
+
+	/**
+	 * An expired narrow entry no longer shadows the live wider entry for mutations.
+	 *
+	 * Remove and extend must agree with load's effective-entry view, while also pruning the
+	 * expired project copies they encounter.
+	 */
+	it("acts on a live profile entry behind an expired project shadow", async () => {
+		await withVault(async (vault, _locations, clock) => {
+			await vault.add({ name: "REMOVE_SHADOW", value: `${VALUE}_profile_remove`, scope: "profile", ttl: 7 * DAY });
+			await vault.add({ name: "EXTEND_SHADOW", value: `${VALUE}_profile_extend`, scope: "profile", ttl: 7 * DAY });
+			await vault.add({ name: "REMOVE_SHADOW", value: `${VALUE}_project_remove`, scope: "project", ttl: HOUR });
+			await vault.add({ name: "EXTEND_SHADOW", value: `${VALUE}_project_extend`, scope: "project", ttl: HOUR });
+			clock.now += 2 * HOUR;
+
+			expect(await vault.remove("REMOVE_SHADOW")).toBe("profile");
+			const extended = await vault.extend("EXTEND_SHADOW", DAY);
+
+			expect(extended).toMatchObject({ scope: "profile", value: `${VALUE}_profile_extend` });
+			expect(extended?.expiresAt).toBe(clock.now + DAY);
+			expect(await vault.load()).toEqual([expect.objectContaining({ name: "EXTEND_SHADOW", scope: "profile" })]);
+		});
+	});
+
+	/**
+	 * A vault symlink cannot relabel one profile's ciphertext as another scope.
+	 *
+	 * Refusal happens at the file seam rather than relying only on decryption, so legacy v1
+	 * files receive the same boundary protection.
+	 */
+	it("refuses a symlink that crosses vault scopes", async () => {
+		if (process.platform === "win32") return;
+		await withVault(async (vault, locations) => {
+			await vault.add({ name: "PROFILE_ONLY", value: VALUE, scope: "profile" });
+			const profileVault = vaultPathFor(locations, "profile");
+			const projectVault = vaultPathFor(locations, "project");
+			await fs.mkdir(locations.projectDir, { recursive: true });
+			await fs.symlink(profileVault, projectVault);
+
+			await expect(vault.load()).rejects.toThrow(/project vault .* is a symlink/i);
+
+			await fs.rm(projectVault);
+			expect((await vault.load())[0]).toMatchObject({ name: "PROFILE_ONLY", scope: "profile" });
+		});
+	});
+
+	/** A symlinked scope directory is refused before its regular-looking child is opened. */
+	it("refuses a vault reached through a symlinked scope directory", async () => {
+		if (process.platform === "win32") return;
+		await withVault(async (vault, locations) => {
+			await vault.add({ name: "PROFILE_ONLY", value: VALUE, scope: "profile" });
+			await fs.mkdir(path.dirname(locations.projectDir), { recursive: true });
+			await fs.symlink(locations.profileDir, locations.projectDir);
+
+			await expect(vault.load()).rejects.toThrow(/project vault directory .* is a symlink/i);
+
+			await fs.rm(locations.projectDir);
+			expect((await vault.load())[0]).toMatchObject({ name: "PROFILE_ONLY", scope: "profile" });
+		});
+	});
+
+	/** Even a regular-file copy is rejected when its authenticated scope and path change. */
+	it("refuses a sealed vault copied to another scope path", async () => {
+		await withVault(async (vault, locations) => {
+			await vault.add({ name: "PROFILE_ONLY", value: VALUE, scope: "profile" });
+			await fs.mkdir(locations.projectDir, { recursive: true });
+			await fs.copyFile(vaultPathFor(locations, "profile"), vaultPathFor(locations, "project"));
+
+			await expect(vault.load()).rejects.toThrow(/different vault location/);
+		});
+	});
+
+	/** Directories and other special nodes at a vault filename fail closed. */
+	it("refuses a non-regular vault path", async () => {
+		await withVault(async (vault, locations) => {
+			await fs.mkdir(vaultPathFor(locations, "profile"), { recursive: true });
+
+			await expect(vault.load()).rejects.toThrow(/not a regular file/);
+		});
+	});
+
+	/** A hard-linked vault cannot acquire a second scope or backup alias while remaining readable. */
+	it("refuses a hard-linked vault", async () => {
+		if (process.platform === "win32") return;
+		await withVault(async (vault, locations) => {
+			const vaultPath = vaultPathFor(locations, "profile");
+			await vault.add({ name: "PROFILE_ONLY", value: VALUE });
+			await fs.link(vaultPath, path.join(locations.profileDir, "vault-alias.json"));
+
+			await expect(vault.load()).rejects.toThrow(/has 2 hard links/);
+		});
+	});
+
+	/** Replacing a vault between lstat and open is detected before any ciphertext is trusted. */
+	it("refuses a vault swapped during open", async () => {
+		await withVault(async (vault, locations) => {
+			const vaultPath = vaultPathFor(locations, "profile");
+			const replacement = path.join(locations.profileDir, "replacement-vault.json");
+			await vault.add({ name: "PROFILE_ONLY", value: VALUE });
+			await fs.copyFile(vaultPath, replacement);
+
+			const realOpen = fs.open;
+			let swapped = false;
+			const openSpy = spyOn(fs, "open").mockImplementation(async (...args) => {
+				if (!swapped && String(args[0]) === vaultPath) {
+					swapped = true;
+					await fs.rename(replacement, vaultPath);
+				}
+				return await Reflect.apply(realOpen, fs, args);
+			});
+			try {
+				await expect(vault.load()).rejects.toThrow(/changed while it was being opened/);
+			} finally {
+				openSpy.mockRestore();
+			}
+		});
+	});
+
+	/** Distinct names in different scopes all show up. */
+	it("returns entries from every scope", async () => {
+		await withVault(async vault => {
+			await vault.add({ name: "IN_GLOBAL", value: "global_value_here", scope: "global" });
+			await vault.add({ name: "IN_PROFILE", value: "profile_value_here", scope: "profile" });
+			await vault.add({ name: "IN_PROJECT", value: "project_value_here", scope: "project" });
+
+			expect((await vault.load()).map(e => e.name).sort()).toEqual(["IN_GLOBAL", "IN_PROFILE", "IN_PROJECT"]);
+		});
+	});
+
+	/** Each scope has its own documented file, so an operator can find and back them up. */
+	it("keeps each scope in its own file", async () => {
+		await withVault(async (_vault, locations) => {
+			expect(vaultPathFor(locations, "global")).toBe(path.join(locations.globalConfigRoot, "vault.json"));
+			expect(vaultPathFor(locations, "profile")).toBe(path.join(locations.profileDir, "vault.json"));
+			expect(vaultPathFor(locations, "project")).toBe(path.join(locations.projectDir, "vault.json"));
+		});
+	});
+});
+
+describe("a vault whose key is gone", () => {
+	/**
+	 * A vault with no key is a HARD ERROR, never an empty vault.
+	 *
+	 * The most important failure in the whole feature. "Empty" would mean every secret the
+	 * file holds silently stops being obfuscated and starts reaching the model provider in
+	 * plain text, while the session looks perfectly healthy. This is the exact shape of the
+	 * bug that DONE-SECRET-1 removed from the loader, so it is asserted here too.
+	 */
+	it("throws instead of reading as empty", async () => {
+		await withVault(async (vault, locations, clock) => {
+			await vault.add({ name: "TOKEN_A", value: VALUE });
+			await fs.rm(path.join(locations.globalConfigRoot, "vault.key"));
+
+			const fresh = new SecretVault(locations, () => clock.now);
+			const failure = await fresh.load().then(
+				() => undefined,
+				(error: unknown) => error,
+			);
+
+			expect(failure).toBeInstanceOf(Error);
+			expect((failure as Error).message).toContain("its key does not");
+			expect((failure as Error).message).toContain("none of the secrets it holds are being");
+		});
+	});
+
+	/** A hand-edited vault is refused with advice that does not destroy credentials. */
+	it("refuses a vault that is not a sealed file", async () => {
+		await withVault(async (vault, locations) => {
+			await fs.mkdir(locations.profileDir, { recursive: true });
+			await fs.writeFile(vaultPathFor(locations, "profile"), JSON.stringify({ entries: [] }));
+
+			await expect(vault.load()).rejects.toThrow(/not a sealed vault file/);
+		});
+	});
+
+	/** Invalid JSON is refused, and the message says the file is not meant to be edited. */
+	it("refuses a vault that is not valid JSON", async () => {
+		await withVault(async (vault, locations) => {
+			await fs.mkdir(locations.profileDir, { recursive: true });
+			await fs.writeFile(vaultPathFor(locations, "profile"), "{ truncated");
+
+			await expect(vault.load()).rejects.toThrow(/not valid JSON/);
+		});
+	});
+
+	/** Authenticated ciphertext with a malformed entry is corruption, never an empty vault. */
+	it("refuses an invalid decrypted vault entry", async () => {
+		await withVault(async (vault, locations, clock) => {
+			const key = await loadOrCreateVaultKey(locations.globalConfigRoot);
+			const vaultPath = vaultPathFor(locations, "profile");
+			await fs.mkdir(locations.profileDir, { recursive: true });
+			await fs.writeFile(
+				vaultPath,
+				JSON.stringify(
+					sealLegacyVault(
+						key,
+						JSON.stringify({
+							entries: [{ name: "TOKEN_A", value: "short", createdAt: clock.now, expiresAt: clock.now + DAY }],
+						}),
+					),
+				),
+				{ mode: 0o600 },
+			);
+
+			await expect(vault.load()).rejects.toThrow(/contains an invalid entry/);
+		});
+	});
+
+	/** No vault at all is not an error: nothing has been stored yet. */
+	it("reads empty when no vault exists", async () => {
+		await withVault(async vault => {
+			expect(await vault.load()).toEqual([]);
+		});
+	});
+});
+
+describe("handing secrets to the obfuscator", () => {
+	/** Each live entry arrives with the placeholder the model will see. */
+	it("reports every live secret with its named placeholder", async () => {
+		await withVault(async vault => {
+			await vault.add({ name: "github-token", value: VALUE });
+
+			// `expiresAt` travels with the value, because the obfuscator enforces the lifetime at the
+			// moment of use and cannot do that from the value alone. Asserted rather than ignored: a
+			// reconcile that dropped this field made every extended secret look like one that never
+			// expires. See `expiry-is-enforced-when-used.test.ts`.
+			expect(await vault.namedSecrets()).toEqual([
+				{ name: "GITHUB_TOKEN", value: VALUE, placeholder: "#GITHUB_TOKEN#", expiresAt: expect.any(Number) },
+			]);
+		});
+	});
+
+	/** An expired secret is not handed over, so it cannot keep being substituted. */
+	it("omits an expired secret", async () => {
+		await withVault(async (vault, _locations, clock) => {
+			await vault.add({ name: "SHORT_LIVED", value: VALUE, ttl: HOUR });
+			clock.now += 2 * HOUR;
+
+			expect(await vault.namedSecrets()).toEqual([]);
+		});
+	});
+});
+
+describe("concurrent writers", () => {
+	/**
+	 * TWO SIMULTANEOUS ADDS BOTH SURVIVE.
+	 *
+	 * WHY THIS SUITE EXISTS. A vault change is a read-modify-write, and this is a fleet where
+	 * several agents share one profile. Unlocked, two adds interleave as read-read-write-write and
+	 * the second write discards the first secret: the user stored a credential, watched it be
+	 * confirmed, and it was gone with nothing reporting a problem. Every mutation now runs under
+	 * `withFileLock`, the same lock `dirs.ts` uses, so this is serialisation rather than a new
+	 * locking scheme.
+	 *
+	 * Ten at once rather than two, because a lost update is a race and one pair can pass by luck.
+	 */
+	it("keeps every secret when ten adds run at once", async () => {
+		await withVault(async vault => {
+			await Promise.all(
+				Array.from({ length: 10 }, (_unused, index) =>
+					vault.add({ name: `TOKEN_${index}`, value: `${VALUE}_${index}` }),
+				),
+			);
+
+			const loaded = await vault.load();
+			expect(loaded).toHaveLength(10);
+			expect(loaded.map(entry => entry.name).sort()).toEqual(
+				Array.from({ length: 10 }, (_unused, index) => `TOKEN_${index}`).sort(),
+			);
+			// The values survived intact, not just the names.
+			for (const entry of loaded) {
+				expect(entry.value).toBe(`${VALUE}_${entry.name.slice("TOKEN_".length)}`);
+			}
+		});
+	});
+
+	/**
+	 * Generated names do not collide under contention.
+	 *
+	 * The name is chosen from the entries visible INSIDE the lock. Chosen from a stale read, two
+	 * concurrent unnamed adds would both pick `SECRET_1` and one would overwrite the other.
+	 */
+	it("gives ten unnamed adds ten distinct names", async () => {
+		await withVault(async vault => {
+			await Promise.all(Array.from({ length: 10 }, (_unused, index) => vault.add({ value: `${VALUE}_${index}` })));
+
+			const loaded = await vault.load();
+			expect(new Set(loaded.map(entry => entry.name)).size).toBe(10);
+		});
+	});
+
+	/** A remove racing an add leaves the vault consistent rather than corrupt. */
+	it("stays consistent when a remove races an add", async () => {
+		await withVault(async vault => {
+			await vault.add({ name: "FIRST_TOKEN", value: VALUE });
+
+			await Promise.all([vault.remove("FIRST_TOKEN"), vault.add({ name: "SECOND_TOKEN", value: `${VALUE}_b` })]);
+
+			const names = (await vault.load()).map(entry => entry.name);
+			expect(names).toContain("SECOND_TOKEN");
+			expect(names).not.toContain("FIRST_TOKEN");
+		});
+	});
+
+	/**
+	 * Extend must never resurrect an entry removed after its earlier observation.
+	 *
+	 * Separate instances reproduce real sessions: whichever operation acquires the lock first
+	 * is valid, but once both settle the remove must win and no stale fallback may be appended.
+	 */
+	it("does not resurrect a secret when remove races extend", async () => {
+		await withVault(async (vault, locations, clock) => {
+			const rival = new SecretVault(locations, () => clock.now);
+			for (let index = 0; index < 10; index++) {
+				const name = `RACE_TOKEN_${index}`;
+				await vault.add({ name, value: `${VALUE}_${index}`, ttl: DAY });
+
+				const [removed] = await Promise.all([vault.remove(name), rival.extend(name, 7 * DAY)]);
+
+				expect(removed).toBe("profile");
+				expect((await vault.load()).some(entry => entry.name === name)).toBe(false);
+			}
+		});
+	});
+
+	/**
+	 * A live owner is not stale merely because its timestamp is old.
+	 *
+	 * The shared lock checks both PID and timestamp. Vault operations disable timestamp-only
+	 * reaping locally, so a stalled fsync cannot overlap a second writer and lose an update.
+	 */
+	it("does not reap a live vault lock with an old timestamp", async () => {
+		await withVault(async (vault, locations) => {
+			const vaultPath = vaultPathFor(locations, "profile");
+			const lockPath = `${vaultPath}.lock`;
+			const infoPath = path.join(lockPath, "info");
+			await fs.mkdir(lockPath, { recursive: true });
+			await fs.writeFile(infoPath, JSON.stringify({ pid: process.pid, timestamp: 0, token: "live-test-holder" }));
+
+			const infoObserved = Promise.withResolvers<void>();
+			const realReadFile = fs.readFile;
+			const readSpy = spyOn(fs, "readFile").mockImplementation((async (...args: Parameters<typeof fs.readFile>) => {
+				const result = await Reflect.apply(realReadFile, fs, args);
+				if (String(args[0]) === infoPath) infoObserved.resolve();
+				return result;
+			}) as unknown as typeof fs.readFile);
+			const realRm = fs.rm;
+			let reaped = false;
+			const rmSpy = spyOn(fs, "rm").mockImplementation(async (...args) => {
+				if (String(args[0]) === lockPath) reaped = true;
+				return await Reflect.apply(realRm, fs, args);
+			});
+
+			vi.useFakeTimers();
+			let pending: Promise<unknown> | undefined;
+			try {
+				pending = vault.add({ name: "WAITED_TOKEN", value: VALUE });
+				await infoObserved.promise;
+				await Promise.resolve();
+				await Promise.resolve();
+				expect(reaped).toBe(false);
+
+				await Reflect.apply(realRm, fs, [lockPath, { recursive: true, force: true }]);
+				vi.advanceTimersByTime(100);
+				await pending;
+			} finally {
+				await Reflect.apply(realRm, fs, [lockPath, { recursive: true, force: true }]);
+				vi.advanceTimersByTime(100);
+				if (pending !== undefined) await pending.catch(() => {});
+				readSpy.mockRestore();
+				rmSpy.mockRestore();
+				vi.useRealTimers();
+			}
+			expect((await vault.load()).map(entry => entry.name)).toEqual(["WAITED_TOKEN"]);
+		});
+	});
+});
