@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-14c328bb.js";
+            window.path_to_searchindex_js = "../searchindex-94628b38.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-2e8c749f.js"></script>
+        <script src="../toc-5cf6de48.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -263,7 +263,7 @@ allowlist for BYOK providers, and discovery returns an error; it does not invent
 <ol>
 <li><strong>Base instructions</strong> for the active model or backend (execution order, stop-when-green, format-neutral
 tool guidance). See <a href="../models/prompts.html">Execution-order prompts</a>.</li>
-<li><strong>User and project instructions</strong> (<code>AGENTS.md</code> / <code>SYSTEM.md</code> layers and any session steers).</li>
+<li><strong>User and project instructions</strong> from global, active-profile, and project <code>AGENTS.md</code> layers, sticky rules, and session steers. A caller may replace the base for one invocation with <code>--system-prompt</code>.</li>
 <li><strong>Tool schemas</strong> the model is allowed to call on this turn (bash, edit/write, web search, MCP tools,
 skills, and so on), filtered by feature flags, harness-profile allowlists, and plan-mode narrowing.
 A per-tool <code>deny</code> policy does not filter this list; it refuses the call at dispatch.</li>

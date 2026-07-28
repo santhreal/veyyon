@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-14c328bb.js";
+            window.path_to_searchindex_js = "../searchindex-94628b38.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-2e8c749f.js"></script>
+        <script src="../toc-5cf6de48.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -218,7 +218,7 @@
 </tbody>
 </table>
 </div>
-<p>Addressable banner sections: <code>role</code>, <code>runtime</code>, <code>tool-policy</code>, <code>execution-workflow</code>, <code>delivery-contract</code>, plus the runtime sections <code>project</code>, <code>shorthand</code>, and <code>shorthand-handles</code>. Listed sections move to the front in the given order (after the fixed system-conventions preamble); unlisted sections keep template order after them. One boundary holds: runtime sections (<code>project</code>, <code>shorthand</code>, <code>shorthand-handles</code>) can never move ahead of template sections, because the template prefix is the provider-cached part. A runtime section listed ahead of a template section stays put and the harness logs a warning. An entry that is not a section name rejects the whole list with a warning, whether it is misspelled or not a string at all, so a hand-edited file can never apply an order you did not write. <code>tools</code> follows the same rule: one bad entry drops the whole allowlist rather than silently denying the model a tool. A <code>harness-profiles.yml</code> that cannot be read or parsed is reported with the path and the reason, and no profiles take effect. Custom system-prompt templates have no banner sections, so the setting is ignored (with a warning).</p>
+<p>Addressable banner sections are <code>role</code>, <code>runtime</code>, <code>tool-policy</code>, <code>execution-workflow</code>, <code>delivery-contract</code>, <code>project</code>, <code>shorthand</code>, and <code>shorthand-handles</code>. Listed sections move first in the order you provide, after the fixed system-conventions preamble. Unlisted sections keep section-registry order. One provider-cache boundary remains: runtime sections (<code>project</code>, <code>shorthand</code>, and <code>shorthand-handles</code>) cannot move ahead of the static statement-assembled prefix. If you list a runtime section before a static section, Veyyon keeps the cache boundary and logs a warning. An unknown or non-string section rejects the whole list with a warning, so a hand-edited file cannot apply an order you did not write. <code>tools</code> follows the same rule: one invalid entry drops the whole allowlist rather than silently denying the model a tool. A <code>harness-profiles.yml</code> file that cannot be read or parsed is reported with its path and reason, and no profiles take effect. Custom system prompts have no banner sections, so Veyyon ignores this setting with a warning.</p>
 <p>Disable all repair process-wide: <code>VEYYON_REPAIR_DISABLE=1</code>.</p>
 <p>See <a href="./overview.html">Why repair exists</a> and <a href="../using/models.html#harness-profiles">Models</a>.</p>
 
