@@ -1468,6 +1468,51 @@ check "and it does remove the checkout under the HOME it was given" \
   printf '#!/bin/sh\necho veyyon build unknown\n' > "$_d/veyyon"; chmod +x "$_d/veyyon"
   ( PATH="$_d:$PATH" doctor "$_d/veyyon" "v1.0.37" >/dev/null 2>&1 ); check "an unreadable version fails closed" "$?" "1" )
 
+# --- doctor: a binary that will not START says why ---
+# The published Windows binary failed to run on a clean runner and the installer
+# reported only "`veyyon --version` failed": no exit code, no message. The one
+# line the system writes about why an executable will not start IS the diagnosis,
+# and it was being sent to /dev/null. Without it the user's only next step is to
+# file a bug that nobody can act on either.
+( _d="$SANDBOX/doctor-diagnosis"
+  mkdir -p "$_d"
+
+  printf '#!/bin/sh\necho "libfoo.so.6: cannot open shared object file" >&2\nexit 127\n' > "$_d/veyyon"
+  chmod +x "$_d/veyyon"
+  out=$( PATH="$_d:$PATH" doctor "$_d/veyyon" 2>&1 || true )
+  check "a binary that cannot start is fatal" \
+      "$( ( PATH="$_d:$PATH" doctor "$_d/veyyon" >/dev/null 2>&1 ); echo $? )" "1"
+  check "the failure carries the exit status" "$(printf '%s' "$out" | grep -c 'exited 127')" "1"
+  check "the failure carries what the system said" "$(printf '%s' "$out" | grep -c 'cannot open shared object file')" "1"
+
+  # Silence is its own answer, and must not read as a missing message.
+  printf '#!/bin/sh\nexit 3\n' > "$_d/silent"; chmod +x "$_d/silent"
+  out=$( PATH="$_d:$PATH" doctor "$_d/silent" 2>&1 || true )
+  check "a silent failure still names the exit status" "$(printf '%s' "$out" | grep -c 'exited 3')" "1"
+  check "a silent failure says it printed nothing" "$(printf '%s' "$out" | grep -c 'printed nothing')" "1"
+
+  # A warning on stderr must not be mistaken for the version: doctor parses this
+  # output for a semver, so a merged stream would read 2.0 out of the warning.
+  write_stub_binary "$_d/noisy" 1.0.37
+  # A working binary that also complains on stderr, which is ordinary: locale
+  # warnings, deprecation notices, a linker note. Built on the standard stub so
+  # the native self-test still passes and the only variable is the noise.
+  printf '%s\n' '#!/bin/sh' 'echo "warning: locale 2.0 unsupported" >&2' > "$_d/noisy.new"
+  tail -n +2 "$_d/noisy" >> "$_d/noisy.new"
+  mv "$_d/noisy.new" "$_d/noisy"
+  chmod +x "$_d/noisy"
+  ( PATH="$_d:$PATH" doctor "$_d/noisy" "v1.0.37" >/dev/null 2>&1 )
+  check "a warning on stderr does not break the version gate" "$?" "0"
+  out=$( PATH="$_d:$PATH" doctor "$_d/noisy" 2>&1 )
+  check "the reported version is the stdout one, not the stderr noise" \
+      "$(printf '%s' "$out" | grep -c 'veyyon runs — veyyon/1.0.37')" "1"
+
+  # The diagnosis file is temporary and must not survive either path.
+  _tmp="$_d/tmpdir"; mkdir -p "$_tmp"
+  ( TMPDIR="$_tmp" PATH="$_d:$PATH" doctor "$_d/veyyon" >/dev/null 2>&1 || true )
+  ( TMPDIR="$_tmp" PATH="$_d:$PATH" doctor "$_d/noisy" >/dev/null 2>&1 || true )
+  check "doctor leaves no stderr capture behind" "$(ls -A "$_tmp" | wc -l | tr -d ' ')" "0" )
+
 # --- doctor: detects a stale copy shadowing the fresh install ---
 # The classic silent install failure: an older veyyon/vey earlier on PATH (a
 # previous `bun add -g`, a distro package, a manual copy) keeps winning every

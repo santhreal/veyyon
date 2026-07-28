@@ -920,10 +920,35 @@ doctor() {
     bin="$1"; want_tag="${2:-}"
     say ""
     say "doctor:"
-    if ver=$("$bin" --version 2>/dev/null); then
+    # stderr is KEPT, in its own file rather than merged. The one line the system
+    # writes about why an executable will not start (a missing shared library, a
+    # bad interpreter, a permission refusal) is the entire diagnosis, and sending
+    # it to /dev/null left the user with "`veyyon --version` failed" and nothing
+    # to act on. Separate rather than merged because `version_from_output` parses
+    # this output for a semver, and a warning on stderr carrying digits would
+    # otherwise be read as the version.
+    # Built from shell variables, not `mktemp`: doctor runs when PATH may be
+    # unusable (that is one of the states it exists to report), and a doctor that
+    # needs an external command to say what is wrong fails before it can speak.
+    # `rm` and `read` are reached through PATH too, so both are allowed to fail
+    # quietly here: the worst case is one empty file left in the temp directory
+    # on a machine whose PATH is already broken, and that is a far better outcome
+    # than doctor dying with `rm: not found` instead of saying what is wrong.
+    _doctor_err="${TMPDIR:-/tmp}/veyyon-doctor-err.$$"
+    if ver=$("$bin" --version 2>"$_doctor_err"); then
+        rm -f "$_doctor_err" 2>/dev/null || :
         ok "$BIN_NAME runs — $ver"
     else
-        die "$BIN_NAME did not run after install (\`$bin --version\` failed)"
+        _doctor_status=$?
+        _doctor_why=""
+        while IFS= read -r _doctor_line; do
+            _doctor_why="${_doctor_why}${_doctor_why:+ }${_doctor_line}"
+        done < "$_doctor_err" 2>/dev/null
+        rm -f "$_doctor_err" 2>/dev/null || :
+        if [ -n "$_doctor_why" ]; then
+            die "$BIN_NAME did not run after install: \`$bin --version\` exited $_doctor_status. It said: $_doctor_why"
+        fi
+        die "$BIN_NAME did not run after install: \`$bin --version\` exited $_doctor_status and printed nothing."
     fi
     # The checksum proved the bytes match the published asset; this proves the
     # published asset is the version the release claims. A release that uploaded
