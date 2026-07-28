@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f36dde81.js";
+            window.path_to_searchindex_js = "../searchindex-acf1a7e2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-2e8c749f.js"></script>
@@ -250,6 +250,19 @@ $ vey plugin doctor
 $ vey plugin doctor --fix
 </code></pre>
 <p><code>vey plugin doctor</code> checks plugin installation health (directories, manifests, entry paths, enabled features). Binary and provider-key checks live in <code>vey setup status</code>. For interactive diagnostics, use <code>/debug</code> in the TUI. See <a href="../features/doctor.html">Diagnostics</a>.</p>
+<h3 id="when-the-installer-says-the-binary-would-not-run"><a class="header" href="#when-the-installer-says-the-binary-would-not-run">When the installer says the binary would not run</a></h3>
+<p>The installer runs the binary it just placed before it reports success, and refuses if
+that fails. The message names the exit status and repeats, verbatim, whatever the system
+said:</p>
+<pre><code>veyyon did not run after install: `~/.local/bin/veyyon --version` exited 127.
+It said: libstdc++.so.6: cannot open shared object file: No such file or directory
+</code></pre>
+<p>That second line is the part to act on. A missing shared library means the machine needs
+that package; a permission error usually means the install directory is mounted <code>noexec</code>,
+so choose another with <code>VEYYON_INSTALL_DIR</code>. The check runs last, after the completions
+and the PATH line, so those are already in place; once you have fixed the cause, run the
+installer again rather than trying to finish by hand. If you would rather start clean,
+<a href="#uninstall">Uninstall</a> reclaims everything the installer added.</p>
 <h3 id="relocate-the-config-directory"><a class="header" href="#relocate-the-config-directory">Relocate the config directory</a></h3>
 <p>On Unix, Veyyon uses <code>~/.veyyon</code> by default. Two environment variables let you move it. <code>VEYYON_CONFIG_DIR</code> renames the home-relative config directory, and <code>VEYYON_CODING_AGENT_DIR</code> relocates the agent base, which holds <code>config.yml</code>, <code>agent.db</code>, your sessions, and more.</p>
 <pre><code class="language-console">$ export VEYYON_CODING_AGENT_DIR=/path/to/veyyon-agent
