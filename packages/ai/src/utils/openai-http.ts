@@ -38,8 +38,10 @@ const MAX_DETAIL_CHARS = 4096;
 export interface OpenAIStreamRequestInit {
 	url: string;
 	headers: Record<string, string>;
-	/** JSON request body; serialized once per call (retries resend the same bytes). */
+	/** Fallback JSON body used when no per-attempt initializer is supplied. */
 	body: unknown;
+	/** Optional physical-attempt initializer. Rejections escape before fetch and are never treated as network retries. */
+	prepareInit?: (attempt: number) => RequestInit | Promise<RequestInit>;
 	signal: AbortSignal;
 	fetch?: FetchImpl;
 	/** Raw wire-frame observer (`onSseEvent` debug pipeline). */
@@ -68,6 +70,7 @@ export async function postOpenAIStream<TEvent>(init: OpenAIStreamRequestInit): P
 		body: JSON.stringify(init.body),
 		signal: init.signal,
 		fetch: init.fetch,
+		prepareInit: init.prepareInit,
 		maxAttempts: DEFAULT_MAX_ATTEMPTS,
 		// Bun's native fetch enforces a hard ~300s pre-response timeout (issue #2422).
 		// Cold large-context streams legitimately exceed it; the caller's

@@ -302,80 +302,15 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 		const region = resolveBedrockRegion(model.id, options);
 
 		try {
-			const cacheRetention = resolveCacheRetention(options.cacheRetention);
-			const convertedMessages = convertMessages(context, model, cacheRetention);
-			const toolPlan = planToolConfig(context.tools, options.toolChoice, convertedMessages);
-			const toolConfig = toolPlan.toolConfig;
-			const sentinelInjected = toolPlan.sentinelInjected;
-			let additionalModelRequestFields = buildAdditionalModelRequestFields(model, options);
-
-			// Bedrock rejects thinking + forced tool_choice ("any" or specific tool).
-			// When tool_choice forces tool use, disable thinking to avoid API errors.
-			if (toolConfig?.toolChoice && additionalModelRequestFields) {
-				const tc = toolConfig.toolChoice;
-				if (tc.any || tc.tool) additionalModelRequestFields = undefined;
-			}
-
-			const commandInput: ConverseStreamRequest = {
-				messages: convertedMessages,
-				system: buildSystemPrompt(context.systemPrompt, model, cacheRetention),
-				inferenceConfig: {
-					maxTokens: options.maxTokens,
-					temperature: options.temperature,
-					topP: options.topP,
-				},
-				toolConfig,
-				additionalModelRequestFields,
-			};
-			options?.onPayload?.(commandInput);
-
+			let sentinelInjected = false;
+			let bearerToken: string | undefined;
 			const host = `bedrock-runtime.${region}.amazonaws.com`;
 			const url = `https://${host}/model/${encodeURIComponent(model.id)}/converse-stream`;
 			const urlPath = `/model/${encodeURIComponent(model.id)}/converse-stream`;
-			rawRequestDump = {
-				provider: model.provider,
-				api: output.api,
-				model: model.id,
-				method: "POST",
-				url,
-				body: commandInput,
-			};
-
-			const bodyText = JSON.stringify(commandInput);
-			const body = new TextEncoder().encode(bodyText);
 			const baseHeaders: Record<string, string> = {
 				"content-type": "application/json",
 				accept: "application/vnd.amazon.eventstream",
 			};
-
-			const bearerToken = resolveBearerToken(options);
-			let requestHeaders: Record<string, string>;
-			if (bearerToken) {
-				requestHeaders = { ...baseHeaders, Authorization: `Bearer ${bearerToken}` };
-			} else {
-				let credentials: { accessKeyId: string; secretAccessKey: string; sessionToken?: string };
-				if ($flag("AWS_BEDROCK_SKIP_AUTH")) {
-					credentials = { accessKeyId: "dummy-access-key", secretAccessKey: "dummy-secret-key" };
-				} else {
-					credentials = await resolveAwsCredentials({
-						profile: options.profile,
-						region,
-						signal: options.signal,
-						fetch: options.fetch,
-					});
-				}
-				const signed = await signRequest({
-					method: "POST",
-					host,
-					path: urlPath,
-					body,
-					region,
-					service: "bedrock",
-					credentials,
-					headers: baseHeaders,
-				});
-				requestHeaders = { ...baseHeaders, ...signed };
-			}
 
 			// Bun's native fetch ceiling is disabled below (`timeout: false`) so
 			// configurable watchdogs govern slow-prefill streams (issue #2422).
@@ -388,15 +323,94 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 			// absolute `AbortSignal.timeout` would keep aborting the actively
 			// streaming body, not just a stalled time-to-first-byte (issue #2422).
 			const watchdog = armPreResponseTimeout(options.signal, firstEventTimeoutMs);
+			const prepareRequest = async (): Promise<RequestInit> => {
+				bearerToken = resolveBearerToken(options);
+				let credentials:
+					| { accessKeyId: string; secretAccessKey: string; sessionToken?: string }
+					| undefined;
+				if (!bearerToken) {
+					credentials = $flag("AWS_BEDROCK_SKIP_AUTH")
+						? { accessKeyId: "dummy-access-key", secretAccessKey: "dummy-secret-key" }
+						: await resolveAwsCredentials({
+								profile: options.profile,
+								region,
+								signal: options.signal,
+								fetch: options.fetch,
+							});
+				}
+
+				const cacheRetention = resolveCacheRetention(options.cacheRetention);
+				const convertedMessages = convertMessages(context, model, cacheRetention);
+				const toolPlan = planToolConfig(context.tools, options.toolChoice, convertedMessages);
+				const toolConfig = toolPlan.toolConfig;
+				sentinelInjected = toolPlan.sentinelInjected;
+				let additionalModelRequestFields = buildAdditionalModelRequestFields(model, options);
+
+				// Bedrock rejects thinking + forced tool_choice ("any" or specific tool).
+				// When tool_choice forces tool use, disable thinking to avoid API errors.
+				if (toolConfig?.toolChoice && additionalModelRequestFields) {
+					const tc = toolConfig.toolChoice;
+					if (tc.any || tc.tool) additionalModelRequestFields = undefined;
+				}
+
+				let commandInput: ConverseStreamRequest = {
+					messages: convertedMessages,
+					system: buildSystemPrompt(context.systemPrompt, model, cacheRetention),
+					inferenceConfig: {
+						maxTokens: options.maxTokens,
+						temperature: options.temperature,
+						topP: options.topP,
+					},
+					toolConfig,
+					additionalModelRequestFields,
+				};
+				const replacementPayload = await options.onPayload?.(commandInput, model);
+				if (replacementPayload !== undefined) {
+					commandInput = replacementPayload as ConverseStreamRequest;
+				}
+
+				rawRequestDump = {
+					provider: model.provider,
+					api: output.api,
+					model: model.id,
+					method: "POST",
+					url,
+					body: commandInput,
+				};
+				const body = new TextEncoder().encode(JSON.stringify(commandInput));
+
+				if (bearerToken) {
+					return {
+						headers: { ...baseHeaders, Authorization: `Bearer ${bearerToken}` },
+						body,
+					};
+				}
+				const signed = await signRequest({
+					method: "POST",
+					host,
+					path: urlPath,
+					body,
+					region,
+					service: "bedrock",
+					credentials: credentials!,
+					headers: baseHeaders,
+				});
+				return {
+					headers: { ...baseHeaders, ...signed },
+					body,
+				};
+			};
 			let response: Response;
 			try {
+				// Preserve the provider's payload-capture contract for an
+				// already-aborted call without creating a physical attempt.
+				if (watchdog.signal?.aborted) await prepareRequest();
 				response = await fetchWithRetry(url, {
 					method: "POST",
-					headers: requestHeaders,
-					body,
 					signal: watchdog.signal,
 					fetch: options.fetch,
 					timeout: false,
+					prepareInit: prepareRequest,
 				});
 			} finally {
 				watchdog.clear();

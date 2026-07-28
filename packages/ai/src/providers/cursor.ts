@@ -7,6 +7,7 @@ import type { McpToolDefinition } from "@veyyon/catalog/discovery/cursor-gen/age
 import {
 	AgentClientMessageSchema,
 	AgentConversationTurnStructureSchema,
+	type AgentRunRequest,
 	AgentRunRequestSchema,
 	type AgentServerMessage,
 	AgentServerMessageSchema,
@@ -407,7 +408,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			const blobStore = conversationBlobStores.get(conversationId) ?? new Map<string, Uint8Array>();
 			conversationBlobStores.set(conversationId, blobStore);
 			const cachedState = conversationStateCache.get(conversationId);
-			const { requestBytes, conversationState } = buildGrpcRequest(model, context, options, {
+			const { requestBytes, conversationState } = await buildGrpcRequest(model, context, options, {
 				conversationId,
 				blobStore,
 				conversationState: cachedState,
@@ -2797,7 +2798,7 @@ function extractImages(content: (TextContent | ImageContent)[]) {
 		);
 }
 
-function buildGrpcRequest(
+async function buildGrpcRequest(
 	model: Model<"cursor-agent">,
 	context: Context,
 	options: CursorOptions | undefined,
@@ -2806,11 +2807,11 @@ function buildGrpcRequest(
 		blobStore: Map<string, Uint8Array>;
 		conversationState?: ConversationStateStructure;
 	},
-): {
+): Promise<{
 	requestBytes: Uint8Array;
 	blobStore: Map<string, Uint8Array>;
 	conversationState: ConversationStateStructure;
-} {
+}> {
 	const blobStore = state.blobStore;
 
 	const systemPromptIds = buildCursorSystemPromptJsons(context.systemPrompt).map(json =>
@@ -2915,7 +2916,7 @@ function buildGrpcRequest(
 		maxMode: cursorMaxMode,
 	});
 
-	const runRequest = create(AgentRunRequestSchema, {
+	let runRequest: AgentRunRequest = create(AgentRunRequestSchema, {
 		conversationState,
 		action,
 		modelDetails,
@@ -2923,12 +2924,15 @@ function buildGrpcRequest(
 		conversationId: state.conversationId,
 	});
 
-	options?.onPayload?.(runRequest);
-
 	// Tools are sent later via requestContext (exec handshake)
 
 	if (options?.customSystemPrompt) {
 		runRequest.customSystemPrompt = options.customSystemPrompt;
+	}
+
+	const replacementPayload = await options?.onPayload?.(runRequest, model);
+	if (replacementPayload !== undefined) {
+		runRequest = replacementPayload as AgentRunRequest;
 	}
 
 	const clientMessage = create(AgentClientMessageSchema, {

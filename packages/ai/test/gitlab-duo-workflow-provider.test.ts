@@ -829,6 +829,387 @@ describe("GitLab Duo Workflow per-account namespace cache", () => {
 });
 
 describe("GitLab Duo Workflow WebSocket state machine", () => {
+	function makeWorkflowTransportFetch(onCreate?: (body: string) => void): FetchImpl {
+		let createCount = 0;
+		return async (input: string | URL | Request, init?: RequestInit) => {
+			const url = String(input);
+			if (url.includes("/api/graphql")) {
+				return new Response(
+					JSON.stringify({
+						data: {
+							aiChatAvailableModels: {
+								defaultModel: { name: "Claude", ref: "claude_sonnet_4_6_vertex" },
+								selectableModels: [],
+								pinnedModel: null,
+							},
+						},
+					}),
+					{ status: 200 },
+				);
+			}
+			if (url.includes("/api/v4/ai/duo_workflows/direct_access")) {
+				return new Response(JSON.stringify({ gitlab_rails: { token: "rails-token" } }), { status: 200 });
+			}
+			if (url.includes("/api/v4/ai/duo_workflows/workflows/")) {
+				return new Response("{}", { status: 200 });
+			}
+			if (url.includes("/api/v4/ai/duo_workflows/workflows") && init?.method === "POST") {
+				onCreate?.(String(init.body ?? ""));
+				createCount++;
+				return new Response(JSON.stringify({ id: `workflow-${createCount}` }), { status: 200 });
+			}
+			return new Response("{}", { status: 404 });
+		};
+	}
+
+	function makeWorkflowOutput(): AssistantMessage {
+		return {
+			role: "assistant",
+			content: [],
+			api: "gitlab-duo-agent",
+			provider: "gitlab-duo-agent",
+			model: model.id,
+			usage: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 0,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			stopReason: "stop",
+			timestamp: Date.now(),
+		};
+	}
+
+	it("awaits fresh replacements for workflow create and every WebSocket start attempt", async () => {
+		const original = "ORIGINAL_WORKFLOW_PAYLOAD";
+		const createBodies: string[] = [];
+		const socketBodies: string[] = [];
+		const createHookGoals: string[] = [];
+		const startHookGoals: string[] = [];
+		const hookModels: unknown[] = [];
+		let createHookCount = 0;
+		let startHookCount = 0;
+		const sockets: GitLabDuoWorkflowWebSocketLike[] = [];
+		const webSocketFactory: GitLabDuoWorkflowWebSocketFactory = () => {
+			const socketIndex = sockets.length;
+			const socket: GitLabDuoWorkflowWebSocketLike = {
+				onopen: null,
+				onmessage: null,
+				onerror: null,
+				onclose: null,
+				send(data) {
+					socketBodies.push(data);
+					if (socketIndex === 1) {
+						queueMicrotask(() => {
+							socket.onmessage?.(
+								new MessageEvent("message", { data: JSON.stringify({ status: "INPUT_REQUIRED" }) }),
+							);
+						});
+					}
+				},
+				close() {},
+			};
+			sockets.push(socket);
+			queueMicrotask(() => socket.onopen?.(new Event("open")));
+			return socket;
+		};
+		const stream = streamGitLabDuoWorkflow(
+			model,
+			{ messages: [{ role: "user", content: original, timestamp: Date.now() }] },
+			{
+				apiKey: "redacted",
+				rootNamespaceId: "gid://gitlab/Group/1",
+				workflowDefinition: "chat",
+				fetch: makeWorkflowTransportFetch(body => createBodies.push(body)),
+				webSocketFactory,
+				idleTimeoutMs: 25,
+				onPayload: async (payload, hookModel) => {
+					hookModels.push(hookModel);
+					if (
+						payload !== null &&
+						typeof payload === "object" &&
+						"workflow_definition" in payload &&
+						"goal" in payload &&
+						typeof payload.goal === "string"
+					) {
+						createHookCount++;
+						createHookGoals.push(payload.goal);
+						payload.goal = `MUTATED_CREATE_${createHookCount}`;
+						await Promise.resolve();
+						return {
+							...payload,
+							goal: `SANITIZED_CREATE_${createHookCount}`,
+							hook_attempt: `create-${createHookCount}`,
+						};
+					}
+					if (payload !== null && typeof payload === "object" && "startRequest" in payload) {
+						const startRequest = payload.startRequest;
+						if (
+							startRequest !== null &&
+							typeof startRequest === "object" &&
+							"goal" in startRequest &&
+							typeof startRequest.goal === "string"
+						) {
+							startHookCount++;
+							startHookGoals.push(startRequest.goal);
+							startRequest.goal = `MUTATED_START_${startHookCount}`;
+							await Promise.resolve();
+							return {
+								...payload,
+								startRequest: {
+									...startRequest,
+									goal: `SANITIZED_START_${startHookCount}`,
+									hookAttempt: `start-${startHookCount}`,
+								},
+							};
+						}
+					}
+					return undefined;
+				},
+			},
+		);
+
+		const result = await stream.result();
+		const createBodySchema = z.object({
+			goal: z.string(),
+			hook_attempt: z.string(),
+		});
+		const startBodySchema = z.object({
+			startRequest: z.object({
+				goal: z.string(),
+				workflowID: z.string(),
+				hookAttempt: z.string(),
+			}),
+		});
+		const parsedCreateBodies = createBodies.map(body => createBodySchema.parse(JSON.parse(body)));
+		const parsedSocketBodies = socketBodies.map(body => startBodySchema.parse(JSON.parse(body)));
+
+		expect(result.stopReason).not.toBe("error");
+		expect(createHookGoals).toEqual(["", ""]);
+		expect(startHookGoals).toEqual([original, original]);
+		expect(parsedCreateBodies).toEqual([
+			expect.objectContaining({ goal: "SANITIZED_CREATE_1", hook_attempt: "create-1" }),
+			expect.objectContaining({ goal: "SANITIZED_CREATE_2", hook_attempt: "create-2" }),
+		]);
+		expect(parsedSocketBodies.map(body => body.startRequest)).toEqual([
+			expect.objectContaining({
+				goal: "SANITIZED_START_1",
+				workflowID: "workflow-1",
+				hookAttempt: "start-1",
+			}),
+			expect.objectContaining({
+				goal: "SANITIZED_START_2",
+				workflowID: "workflow-2",
+				hookAttempt: "start-2",
+			}),
+		]);
+		expect([...createBodies, ...socketBodies].join("\n")).not.toContain(original);
+		expect([...createBodies, ...socketBodies].join("\n")).not.toContain("MUTATED_");
+		expect(hookModels).toHaveLength(4);
+		expect(hookModels.every(hookModel => hookModel === model)).toBe(true);
+	});
+
+	it("does not dispatch or retry workflow create when its payload hook rejects", async () => {
+		let createSends = 0;
+		let socketOpens = 0;
+		const stream = streamGitLabDuoWorkflow(
+			model,
+			{ messages: [{ role: "user", content: "create rejection", timestamp: Date.now() }] },
+			{
+				apiKey: "redacted",
+				rootNamespaceId: "gid://gitlab/Group/1",
+				workflowDefinition: "chat",
+				fetch: makeWorkflowTransportFetch(() => {
+					createSends++;
+				}),
+				webSocketFactory: () => {
+					socketOpens++;
+					return {
+						onopen: null,
+						onmessage: null,
+						onerror: null,
+						onclose: null,
+						send() {},
+						close() {},
+					};
+				},
+				onPayload: async () => {
+					await Promise.resolve();
+					throw new Error("reject create payload");
+				},
+			},
+		);
+
+		const result = await stream.result();
+		expect(result.stopReason).toBe("error");
+		expect(result.errorMessage).toContain("reject create payload");
+		expect(createSends).toBe(0);
+		expect(socketOpens).toBe(0);
+	});
+
+	it("does not send or reconnect a WebSocket start when its payload hook rejects", async () => {
+		let createSends = 0;
+		let socketOpens = 0;
+		let socketSends = 0;
+		const stream = streamGitLabDuoWorkflow(
+			model,
+			{ messages: [{ role: "user", content: "start rejection", timestamp: Date.now() }] },
+			{
+				apiKey: "redacted",
+				rootNamespaceId: "gid://gitlab/Group/1",
+				workflowDefinition: "chat",
+				fetch: makeWorkflowTransportFetch(() => {
+					createSends++;
+				}),
+				webSocketFactory: () => {
+					socketOpens++;
+					const socket: GitLabDuoWorkflowWebSocketLike = {
+						onopen: null,
+						onmessage: null,
+						onerror: null,
+						onclose: null,
+						send() {
+							socketSends++;
+						},
+						close() {},
+					};
+					queueMicrotask(() => socket.onopen?.(new Event("open")));
+					return socket;
+				},
+				onPayload: async payload => {
+					if (payload !== null && typeof payload === "object" && "startRequest" in payload) {
+						await Promise.resolve();
+						throw new Error("reject start payload");
+					}
+					return undefined;
+				},
+			},
+		);
+
+		const result = await stream.result();
+		expect(result.stopReason).toBe("error");
+		expect(result.errorMessage).toContain("reject start payload");
+		expect(createSends).toBe(1);
+		expect(socketOpens).toBe(1);
+		expect(socketSends).toBe(0);
+	});
+
+	it("awaits and sends the replacement tool-result resume payload", async () => {
+		const sent: string[] = [];
+		const socket: GitLabDuoWorkflowWebSocketLike = {
+			onopen: null,
+			onmessage: null,
+			onerror: null,
+			onclose: null,
+			send(data) {
+				sent.push(data);
+				queueMicrotask(() => {
+					socket.onmessage?.(
+						new MessageEvent("message", { data: JSON.stringify({ status: "INPUT_REQUIRED" }) }),
+					);
+				});
+			},
+			close() {},
+		};
+		const resumeResponse = {
+			actionResponse: {
+				requestID: "request-1",
+				plainTextResponse: { response: "ORIGINAL_TOOL_RESULT" },
+			},
+		};
+		const result = await runGitLabDuoWorkflowSocket(
+			socket,
+			buildGitLabDuoWorkflowStartRequest("workflow-1", model, context),
+			{ stream: new AssistantMessageEventStream(), output: makeWorkflowOutput(), started: true },
+			{
+				apiKey: "redacted",
+				onPayload: async payload => {
+					if (payload !== null && typeof payload === "object" && "actionResponse" in payload) {
+						const actionResponse = payload.actionResponse;
+						if (
+							actionResponse !== null &&
+							typeof actionResponse === "object" &&
+							"plainTextResponse" in actionResponse
+						) {
+							const plainTextResponse = actionResponse.plainTextResponse;
+							if (
+								plainTextResponse !== null &&
+								typeof plainTextResponse === "object" &&
+								"response" in plainTextResponse
+							) {
+								plainTextResponse.response = "MUTATED_TOOL_RESULT";
+								await Promise.resolve();
+								return {
+									...payload,
+									actionResponse: {
+										...actionResponse,
+										plainTextResponse: {
+											...plainTextResponse,
+											response: "SANITIZED_TOOL_RESULT",
+										},
+									},
+								};
+							}
+						}
+					}
+					return undefined;
+				},
+			},
+			resumeResponse,
+			undefined,
+			model,
+		);
+
+		expect(result).toBe("terminal");
+		expect(sent).toHaveLength(1);
+		expect(sent[0]).toContain("SANITIZED_TOOL_RESULT");
+		expect(sent[0]).not.toContain("ORIGINAL_TOOL_RESULT");
+		expect(sent[0]).not.toContain("MUTATED_TOOL_RESULT");
+		expect(resumeResponse.actionResponse.plainTextResponse.response).toBe("ORIGINAL_TOOL_RESULT");
+	});
+
+	it("does not send a tool-result resume when its payload hook rejects", async () => {
+		const sent: string[] = [];
+		let closes = 0;
+		const socket: GitLabDuoWorkflowWebSocketLike = {
+			onopen: null,
+			onmessage: null,
+			onerror: null,
+			onclose: null,
+			send(data) {
+				sent.push(data);
+			},
+			close() {
+				closes++;
+			},
+		};
+		const promise = runGitLabDuoWorkflowSocket(
+			socket,
+			buildGitLabDuoWorkflowStartRequest("workflow-1", model, context),
+			{ stream: new AssistantMessageEventStream(), output: makeWorkflowOutput(), started: true },
+			{
+				apiKey: "redacted",
+				onPayload: async () => {
+					await Promise.resolve();
+					throw new Error("reject resume payload");
+				},
+			},
+			{
+				actionResponse: {
+					requestID: "request-1",
+					plainTextResponse: { response: "tool result" },
+				},
+			},
+			undefined,
+			model,
+		);
+
+		await expect(promise).rejects.toThrow("reject resume payload");
+		expect(sent).toEqual([]);
+		expect(closes).toBe(1);
+	});
 	it("opens WebSocket with direct_access GitLab Rails token", async () => {
 		let capturedUrl = "";
 		let capturedHeaders: Record<string, string> | undefined;

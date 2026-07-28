@@ -681,16 +681,24 @@ const streamOpenAICompletionsOnce = (
 					applyOpenAIReasoningEffortFallback(params, requestReasoningEffortFallback);
 				}
 				activeReasoningEffortFallbackKey = reasoningEffortFallbackKey;
-				activeRequestParams = params;
-				options?.onPayload?.(params);
-				rawRequestDump = {
-					provider: model.provider,
-					api: output.api,
-					model: model.id,
-					method: "POST",
-					url: completionsUrl,
-					headers: requestHeaders,
-					body: params,
+				const prepareRequest = async (): Promise<RequestInit> => {
+					const attemptParams = structuredClone(params);
+					const replacementPayload = await options?.onPayload?.(attemptParams, model);
+					const wireParams =
+						replacementPayload !== undefined
+							? (replacementPayload as OpenAICompletionsParams)
+							: attemptParams;
+					activeRequestParams = wireParams;
+					rawRequestDump = {
+						provider: model.provider,
+						api: output.api,
+						model: model.id,
+						method: "POST",
+						url: completionsUrl,
+						headers: requestHeaders,
+						body: wireParams,
+					};
+					return { body: JSON.stringify(wireParams) };
 				};
 				let requestTimeout: NodeJS.Timeout | undefined;
 				if (requestTimeoutMs !== undefined) {
@@ -704,12 +712,21 @@ const streamOpenAICompletionsOnce = (
 					if (requestTimeoutMs !== undefined) {
 						headersWithTimeout["X-Stainless-Timeout"] = Math.floor(requestTimeoutMs / 1000).toString();
 					}
+					// Payload-capture callers historically observe the final request
+					// even when they supply an already-aborted signal. There is no
+					// physical attempt in that case, so prepare it once before the
+					// retry helper rejects the abort.
+					if (requestSignal.aborted) await prepareRequest();
 					const { events, response, requestId } = await postOpenAIStream<ChatCompletionChunk>({
 						url: completionsUrl,
 						headers: headersWithTimeout,
-						body: params,
+						// The per-attempt initializer serializes only the post-hook
+						// payload. Keeping the shared helper's eager body empty also
+						// prevents retries from reusing pre-hook bytes.
+						body: undefined,
 						signal: requestSignal,
 						fetch: options?.fetch,
+						prepareInit: prepareRequest,
 						// Transient 408/429/5xx get Retry-After-aware transport retries.
 						// The first-event watchdog above aborts `requestSignal`, which
 						// bounds every attempt and backoff sleep — retries cannot
@@ -721,7 +738,7 @@ const streamOpenAICompletionsOnce = (
 				} finally {
 					// Headers arrived (or the request failed); from here the
 					// first-event deadline is enforced by `iterateWithIdleTimeout`.
-					if (requestTimeout !== undefined) clearTimeout(requestTimeout);
+					clearTimeout(requestTimeout);
 				}
 			};
 			let openaiStream: AsyncIterable<ChatCompletionChunk>;
