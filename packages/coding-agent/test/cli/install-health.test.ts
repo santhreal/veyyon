@@ -35,6 +35,7 @@ function healthyDeps(overrides: InstallHealthDeps = {}): InstallHealthDeps {
 		verifyVersion: async () => ({ ok: true, actual: "9.9.9", path: BIN }),
 		probeSearch: async () => undefined,
 		env: { HOME: "/home/u", PATH: "/home/u/.local/bin:/usr/bin" },
+		completionFiles: () => [{ shell: "bash", filePath: "/home/u/.local/share/bash-completion/completions/veyyon" }],
 		...overrides,
 	};
 }
@@ -200,10 +201,34 @@ describe("runInstallHealthChecks on a broken install", () => {
 	 * CLI still works perfectly without them.
 	 */
 	it("warns when no completion file is installed and says how to get them", async () => {
-		const checks = await runInstallHealthChecks(healthyDeps({ exists: filePath => filePath === BIN }));
+		const checks = await runInstallHealthChecks(
+			healthyDeps({ exists: filePath => filePath === BIN, completionFiles: () => [] }),
+		);
 
 		const check = find(checks, "Shell completions");
 		expect(check.status).toBe("warning");
 		expect(check.message).toContain("completions");
+	});
+
+	/**
+	 * Windows has no directory a shell autoloads completions from: the installer
+	 * writes ONE script beside the PowerShell profile. Looking for the POSIX layout
+	 * there finds nothing, so a Windows install with every completion in place was
+	 * about to be reported as having none. The paths come from the platform, and
+	 * the check only asks whether they are on disk.
+	 */
+	it("reports the completion files the platform actually uses", async () => {
+		const psScript = "C:\\Users\\u\\Documents\\PowerShell\\veyyon-completions.ps1";
+		const checks = await runInstallHealthChecks(
+			healthyDeps({
+				completionFiles: () => [{ shell: "powershell", filePath: psScript }],
+				exists: filePath => filePath === BIN || filePath === psScript,
+			}),
+		);
+
+		const check = find(checks, "Shell completions");
+		expect(check.status).toBe("ok");
+		expect(check.message).toContain("powershell");
+		expect(check.message).toContain("1 file(s)");
 	});
 });
