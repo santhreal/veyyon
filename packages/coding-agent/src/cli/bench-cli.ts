@@ -211,10 +211,11 @@ async function sanitizeBenchCustomPrompt(
 	rawPrompt: string,
 	cwd: string,
 	agentDir: string,
+	enabled: boolean,
 	globalConfigRoot?: string,
 ): Promise<string> {
 	try {
-		const obfuscator = await loadStandaloneSecretRuntime({ cwd, agentDir, globalConfigRoot });
+		const obfuscator = await loadStandaloneSecretRuntime({ cwd, agentDir, enabled, globalConfigRoot });
 		return obfuscator.obfuscate(rawPrompt).trim();
 	} catch {
 		throw new Error(
@@ -519,6 +520,7 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 						rawPrompt,
 						runtime.settings?.getCwd?.() ?? getProjectDir(),
 						runtime.settings?.getAgentDir?.() ?? getAgentDir(),
+						runtime.settings?.get("secrets.enabled") ?? false,
 						"globalConfigRoot" in runtime ? runtime.globalConfigRoot : undefined,
 					);
 	try {

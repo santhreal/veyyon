@@ -9,6 +9,8 @@ export interface StandaloneSecretRuntimeOptions {
 	cwd: string;
 	/** Active profile's agent directory. */
 	agentDir: string;
+	/** Mirrors the session-level `secrets.enabled` gate. Disabled runtimes perform no secret I/O. */
+	enabled: boolean;
 	/** Test/isolation override; production callers use the active global config root. */
 	globalConfigRoot?: string;
 }
@@ -30,6 +32,7 @@ export interface StandaloneSecretRuntimeOptions {
 export async function loadStandaloneSecretRuntime(
 	options: StandaloneSecretRuntimeOptions,
 ): Promise<SecretObfuscator> {
+	if (!options.enabled) return new SecretObfuscator([]);
 	try {
 		const globalConfigRoot = options.globalConfigRoot ?? getGlobalConfigRootDir();
 		const placeholderKey = await loadOrCreateVaultKey(globalConfigRoot);
