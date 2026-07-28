@@ -144,4 +144,4 @@ Per-model tool-call wire-format notes live in [toolconv/](toolconv/) (Anthropic,
 
 Step-by-step runbooks for when something breaks live in [runbooks/](runbooks/).
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `ad7ede4a` on 2026-07-28.*

@@ -140,4 +140,4 @@ When adding/changing an export, update all of:
 
 Do not add a parallel TS wrapper convention unless the package design intentionally moves back to wrappers; current consumers depend on the direct generated API.
 
-*Verified against `f46fcdb58b933aa498313fd7672a0b29828e860b` on 2026-07-25.*
+*Verified against `ad7ede4a` on 2026-07-28.*

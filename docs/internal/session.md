@@ -22,6 +22,7 @@ Does not cover `/tree` UI rendering behavior beyond semantics that affect sessio
 - [`src/session/session-entries.ts`](../../packages/coding-agent/src/session/session-entries.ts): entry/header types, `SessionEntry` union, `CURRENT_SESSION_VERSION`
 - [`src/session/session-migrations.ts`](../../packages/coding-agent/src/session/session-migrations.ts): version migrations
 - [`src/session/session-loader.ts`](../../packages/coding-agent/src/session/session-loader.ts): file load + blob-ref resolution
+- [`src/session/session-entry-shape.ts`](../../packages/coding-agent/src/session/session-entry-shape.ts): the shape check every decoded record passes before it is treated as a `FileEntry`
 - [`src/session/session-context.ts`](../../packages/coding-agent/src/session/session-context.ts): `buildSessionContext`
 - [`src/session/session-persistence.ts`](../../packages/coding-agent/src/session/session-persistence.ts): large-text + image blob externalization, transient-field stripping
 - [`src/session/session-title-slot.ts`](../../packages/coding-agent/src/session/session-title-slot.ts): fixed-width title-slot serialization/parsing
@@ -428,8 +429,10 @@ One setting, `session.instrumentation`, grades how densely a run records. The le
 | --- | --- | --- |
 | `off` | Nothing. No instrumentation fields are attached (default). | none |
 | `basic` | Wall-clock only: start/end/duration and terminal status, plus provider time-to-first-token. | a subtraction (free) |
-| `rich` | Adds output weight (result bytes/blocks/tokens; one tokenizer pass) and per-turn throughput (tokens/sec). | one tokenizer pass per tool result |
-| `ultra` | Adds everything worth studying: args byte size + fingerprint, cache read/write tokens, reasoning tokens, upstream provider, scheduling detail. | rounding error |
+| `rich` | Adds SCHEDULING (queue wait, concurrency, batch id/index/size) and output weight (result blocks/bytes/images/tokens) on a tool call, and token counts plus throughput (`generationMs`, output tokens/sec) on a turn. | one tokenizer pass per tool result |
+| `ultra` | Adds the args fingerprint and size, interruptibility and abort state on a tool call, and cache read/write tokens, cache hit ratio, reasoning tokens and the upstream provider on a turn. | rounding error |
+
+`INSTRUMENTATION_LEVELS` in [`packages/ai/src/instrumentation.ts`](../../packages/ai/src/instrumentation.ts) is the order, and `captureToolCallMetrics` / `captureAssistantTurnMetrics` in the same file are the ONE place the level-to-fields mapping lives. Expensive work is gated by the tier that keeps it: the result is tokenized only at `rich`, and the args are serialized and hashed only at `ultra`.
 
 The `dev` profile sets `ultra`. A record carries its own `level` field, so a reader knows which optional fields to expect. Every field above `basic` is optional: a message recorded at a lower level (or by an older build) still loads unchanged.
 
@@ -627,6 +630,8 @@ Applied when header `version < 3`:
 
 - Missing file (`ENOENT`) -> returns `[]`.
 - A malformed line is skipped (via `parseJsonlLenient`, or the byte-buffer drain in `loadEntriesFromFileStream` for files >= 8 MiB) so one corrupt record cannot make a whole session unopenable — but the skip is never silent: each dropped record is logged with its offset and a final total is logged, so lost data is visible when studying the session rather than vanishing without a trace. Each malformed record is counted exactly once (the parser reports an error alongside the preceding good record, so counting is gated to the record's own head position).
+- A line that DECODES but does not fit the shape is dropped the same way. Decoding is not validating, and a record whose fields are missing reaches readers that dereference them: an assistant entry written without `usage` used to throw while the transcript was being built, so the viewer died in its constructor and showed no rows at all. `checkSessionEntryShape` in [`session-entry-shape.ts`](../../packages/coding-agent/src/session/session-entry-shape.ts) is the one owner of that check, and both read paths call it. The record is dropped and reported with the reason, never repaired: a turn that claims `0` tokens it did not use is a wrong number in the transcript and in every total taken from it (Law 10).
+- The shape check asks only for what a reader dereferences without guarding: a `message` object with a `role`, and, on an assistant turn, a `content` array and a `usage` record with four finite counters. `id`, `parentId` and `timestamp` are deliberately NOT required, because v1 sessions carry none of them and `migrateSessionEntries` fills them in after the loader returns.
 - If first parsed entry is not a valid session header (`type !== "session"` or missing string `id`) -> returns `[]`.
 
 `SessionManager.setSessionFile()` behavior:
@@ -761,4 +766,4 @@ Metadata extraction for `getRecentSessions` reads a prefix via `readTextSlices(.
 
 Use session files for conversation graph/state replay; use `HistoryStorage` for prompt history UX.
 
-*Verified against `f46fcdb58b933aa498313fd7672a0b29828e860b` on 2026-07-25.*
+*Verified against `ad7ede4a` on 2026-07-28.*

@@ -242,4 +242,4 @@ Source-install/runtime diagnostics include:
 - local rebuild command (`bun --cwd=packages/natives run build`) with the optional x64 variant hint (`TARGET_VARIANT=baseline|modern`),
 - standalone-binary reinstall hint (`curl -fsSL https://get.veyyon.dev | sh`).
 
-*Verified against `f46fcdb58b933aa498313fd7672a0b29828e860b` on 2026-07-25.*
+*Verified against `ad7ede4a` on 2026-07-28.*
