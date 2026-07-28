@@ -15,7 +15,7 @@ function assistantText(text: string): AssistantMessage {
 		stopReason: "end_turn",
 		content: [{ type: "text", text }],
 		timestamp: Date.now(),
-	} as AssistantMessage;
+	} as unknown as AssistantMessage;
 }
 
 function conventionalResponse(): AssistantMessage {

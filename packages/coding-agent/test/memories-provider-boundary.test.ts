@@ -328,7 +328,12 @@ describe("memory provider boundary", () => {
 		const originalFile = Bun.file.bind(Bun);
 		let swapped = false;
 		vi.spyOn(Bun, "file").mockImplementation((input, options) => {
-			const file = originalFile(input, options);
+			const file =
+				typeof input === "number"
+					? originalFile(input, options)
+					: typeof input === "string" || input instanceof URL
+						? originalFile(input, options)
+						: originalFile(input, options);
 			if (swapped || typeof input !== "string" || !input.endsWith("raw_memories.md")) return file;
 			return new Proxy(file, {
 				get(target, property, receiver) {
@@ -370,7 +375,9 @@ describe("memory provider boundary", () => {
 		await settle(fixture);
 		expect(swapped).toBe(true);
 		expect(phaseTwoPayload).not.toContain(phaseTwoSecret);
-		expect(phaseTwoPayload).toContain(fixture.session.obfuscator?.obfuscate(phaseTwoSecret));
+		const obfuscatedPhaseTwoSecret = fixture.session.obfuscator?.obfuscate(phaseTwoSecret);
+		if (obfuscatedPhaseTwoSecret === undefined) throw new Error("runtime obfuscator was not installed");
+		expect(phaseTwoPayload).toContain(obfuscatedPhaseTwoSecret);
 	});
 
 	test("re-sanitizes a request after every awaited credential resolution", async () => {
@@ -406,6 +413,8 @@ describe("memory provider boundary", () => {
 		expect(attempts).toHaveLength(2);
 		expect(attempts[0]).toContain(lateSecret);
 		expect(attempts[1]).not.toContain(lateSecret);
-		expect(attempts[1]).toContain(fixture.session.obfuscator?.obfuscate(lateSecret));
+		const obfuscatedLateSecret = fixture.session.obfuscator?.obfuscate(lateSecret);
+		if (obfuscatedLateSecret === undefined) throw new Error("runtime obfuscator was not installed");
+		expect(attempts[1]).toContain(obfuscatedLateSecret);
 	});
 });

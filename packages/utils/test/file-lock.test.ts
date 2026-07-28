@@ -371,7 +371,7 @@ describe("tryWithFileLock", () => {
 		expect(freshToken).not.toBeNull();
 
 		await releaseLock(lockPath, "dead-owner");
-		expect((await readLockInfo(lockPath))?.token).toBe(freshToken);
+		if (freshToken === null) throw new Error("fresh lock acquisition unexpectedly failed"); expect((await readLockInfo(lockPath))?.token).toBe(freshToken);
 		await releaseLock(lockPath, freshToken!);
 	});
 
