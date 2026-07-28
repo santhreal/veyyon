@@ -45,6 +45,20 @@ describe("selector setting side effects", () => {
 		expect(requestRender).toHaveBeenCalledTimes(1);
 	});
 
+	it("refreshes the authoritative runtime for every secrets setting", () => {
+		const refreshSecrets = vi.fn(async () => {});
+		const controller = new SelectorController({
+			session: { refreshSecrets },
+			showError: vi.fn(),
+		} as unknown as InteractiveModeContext);
+
+		controller.handleSettingChange("secrets.enabled", true);
+		controller.handleSettingChange("secrets.defaultTtl", "7d");
+		controller.handleSettingChange("secrets.auditLog", false);
+
+		expect(refreshSecrets).toHaveBeenCalledTimes(3);
+	});
+
 	it("invalidates the UI and requests a repaint when tui.tight changes", () => {
 		const invalidate = vi.fn();
 		const requestRender = vi.fn();

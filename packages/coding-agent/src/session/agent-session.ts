@@ -6734,12 +6734,29 @@ export class AgentSession {
 		const previous = this.sessionManager.getCwd();
 		const cwd = await this.sessionManager.setCwd(newCwd, options);
 		if (cwd === previous) {
+			// A previous transition may have committed SessionManager cwd before a
+			// re-scope failed. The success guard makes an ordinary repeat free while
+			// still allowing that failed transition to be retried.
+			await this.rescopeToCwd(cwd);
 			return cwd;
 		}
+
+		try {
+			await this.rescopeToCwd(cwd);
+		} catch (error) {
+			// SessionManager persists cwd before the dependent runtime is loaded.
+			// Roll both authorities back together; otherwise tools resolve in the
+			// destination while source-project secret expansion remains live.
+			this.#lastRescopedCwd = undefined;
+			try {
+				await this.sessionManager.setCwd(previous, { validate: false });
+				await this.rescopeToCwd(previous);
+			} catch (rollbackError) {
+				throw new AggregateError([error, rollbackError], `Failed to change cwd to ${cwd} and restore ${previous}.`);
+			}
+			throw error;
+		}
 		this.#wirePathRoots = normalizeRoots([...this.#wirePathRoots, cwd]);
-
-		await this.rescopeToCwd(cwd);
-
 		const note = `Session working directory changed: ${previous} → ${cwd}`;
 		const details = { previous, cwd };
 		this.agent.appendMessage({
@@ -16427,12 +16444,43 @@ export class AgentSession {
 		const previousLastCompletedRewind = this.#lastCompletedRewind;
 		const previousRewoundToolResultIds = new Set(this.#rewoundToolResultIds);
 
+		let scopeTransitionAttempted = false;
+
 		this.agent.clearAllQueues();
 		this.#pendingNextTurnMessages = [];
 		this.#scheduledHiddenNextTurnGeneration = undefined;
 
 		try {
 			await this.sessionManager.setSessionFile(sessionPath);
+			// `setSessionFile` normally adopts the header cwd itself. Reassert the
+			// recorded directory here when it is reachable so switchSession owns
+			// the complete transcript+runtime transition rather than depending on
+			// how the manager was originally constructed.
+			const recordedTargetCwd = this.sessionManager.getHeader()?.cwd;
+			if (
+				recordedTargetCwd &&
+				path.resolve(recordedTargetCwd) !== path.resolve(this.sessionManager.getCwd())
+			) {
+				let recordedTargetCwdReachable = false;
+				try {
+					recordedTargetCwdReachable = (await fs.promises.stat(recordedTargetCwd)).isDirectory();
+				} catch {
+					// Preserve SessionManager's moved/deleted-worktree contract:
+					// an unreachable recorded cwd keeps the caller's current root.
+				}
+				if (recordedTargetCwdReachable) {
+					// Keep mutation failures in switchSession's outer transaction;
+					// only the reachability probe above is an allowed fallback.
+					await this.sessionManager.setCwd(recordedTargetCwd, { validate: false });
+				}
+			}
+			const targetCwd = this.sessionManager.getCwd();
+			if (path.resolve(targetCwd) !== path.resolve(previousSessionState.cwd)) {
+				scopeTransitionAttempted = true;
+				await this.rescopeToCwd(targetCwd);
+				this.#wirePathRoots = normalizeRoots([...this.#wirePathRoots, targetCwd]);
+			}
+
 			if (switchingToDifferentSession) {
 				this.#freshProviderSessionId = undefined;
 				this.#clearInheritedProviderPromptCacheKey();
@@ -16571,6 +16619,21 @@ export class AgentSession {
 			return true;
 		} catch (error) {
 			this.sessionManager.restoreState(previousSessionState);
+			let restoreScopeError: unknown;
+			if (scopeTransitionAttempted) {
+				this.#lastRescopedCwd = undefined;
+				try {
+					await this.rescopeToCwd(previousSessionState.cwd);
+				} catch (scopeError) {
+					restoreScopeError = scopeError;
+					logger.warn("Failed to restore cwd-scoped runtime after switch error", {
+						previousSessionFile,
+						targetSessionFile: sessionPath,
+						error: String(scopeError),
+					});
+				}
+			}
+
 			this.#freshProviderSessionId = previousFreshProviderSessionId;
 			this.#syncAgentSessionId(previousSessionState.sessionId);
 			this.#rekeyHindsightMemoryForCurrentSessionId();
@@ -16619,8 +16682,11 @@ export class AgentSession {
 			this.#syncTodoPhasesFromBranch();
 			this.#resetAllAdvisorRuntimes();
 			this.#reconnectToAgent();
-			if (restoreMcpError) {
-				throw restoreMcpError;
+			if (restoreScopeError || restoreMcpError) {
+				throw new AggregateError(
+					[error, restoreScopeError, restoreMcpError].filter(candidate => candidate !== undefined),
+					"Failed to switch sessions and fully restore the previous runtime.",
+				);
 			}
 			throw error;
 		}

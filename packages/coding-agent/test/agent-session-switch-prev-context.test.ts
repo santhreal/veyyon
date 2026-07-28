@@ -1,10 +1,12 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import type { BuildSessionContextOptions, SessionContext } from "@veyyon/coding-agent/session/session-context";
@@ -158,4 +160,67 @@ describe("AgentSession.switchSession previous-context build", () => {
 			{ sessionFile: sessionFile!, transcript: undefined },
 		]);
 	});
+
+	it("re-scopes the secret runtime before adopting a cross-project transcript", async () => {
+		const tempDir = TempDir.createSync("@pi-switch-secret-scope-");
+		tempDirs.push(tempDir);
+		const projectA = path.join(tempDir.path(), "project-a");
+		const projectB = path.join(tempDir.path(), "project-b");
+		await Promise.all([fs.mkdir(projectA, { recursive: true }), fs.mkdir(projectB, { recursive: true })]);
+
+		const sessionManager = SessionManager.create(projectA, path.join(tempDir.path(), "sessions-a"));
+		sessionManager.appendMessage({ role: "user", content: "source", timestamp: 1 });
+		await sessionManager.flush();
+
+		const targetManager = SessionManager.create(projectB, path.join(tempDir.path(), "sessions-b"));
+		targetManager.appendMessage({ role: "user", content: "target", timestamp: 2 });
+		await targetManager.ensureOnDisk();
+		await targetManager.flush();
+		expect(targetManager.getHeader()?.cwd).toBe(projectB);
+		const targetSessionFile = targetManager.getSessionFile();
+		expect(targetSessionFile).toBeString();
+		const persistedHeader = (await fs.readFile(targetSessionFile!, "utf8"))
+			.trim()
+			.split("\n")
+			.map(line => JSON.parse(line) as { type?: string; cwd?: string })
+			.find(entry => entry.type === "session");
+		expect(persistedHeader.cwd).toBe(projectB);
+		await targetManager.close();
+
+		const sourceObfuscator = new SecretObfuscator([
+			{ type: "plain", name: "SOURCE_TOKEN", content: "source-project-secret-12345" },
+		]);
+		const targetObfuscator = new SecretObfuscator([
+			{ type: "plain", name: "TARGET_TOKEN", content: "target-project-secret-67890" },
+		]);
+		const refreshedCwds: string[] = [];
+		const agent = new Agent({
+			initialState: {
+				model,
+				systemPrompt: ["Test"],
+				tools: [],
+				messages: [],
+			},
+		});
+		const session = new AgentSession({
+			agent,
+			sessionManager,
+			settings: Settings.isolated({ "compaction.enabled": false }),
+			modelRegistry,
+			obfuscator: sourceObfuscator,
+			refreshSecretRuntime: async cwd => {
+				refreshedCwds.push(cwd);
+				return cwd === projectB ? targetObfuscator : sourceObfuscator;
+			},
+			isSubagent: true,
+		});
+		sessions.push(session);
+
+		expect(await session.switchSession(targetSessionFile!)).toBe(true);
+		expect(session.sessionManager.getCwd()).toBe(projectB);
+		expect(refreshedCwds).toEqual([projectB]);
+		expect(session.obfuscator?.hasNamedSecret("SOURCE_TOKEN")).toBe(false);
+		expect(session.obfuscator?.deobfuscate("#TARGET_TOKEN#")).toBe("target-project-secret-67890");
+	});
+
 });

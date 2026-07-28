@@ -55,7 +55,6 @@ import {
 	setPreferredSearchProvider,
 } from "../../web/search";
 import { AgentDashboard } from "../components/agent-dashboard";
-import { AgentHubOverlayComponent } from "../components/agent-hub";
 import { AssistantMessageComponent } from "../components/assistant-message";
 import { CopySelectorComponent } from "../components/copy-selector";
 import { ExtensionDashboard } from "../components/extensions";
@@ -69,7 +68,6 @@ import { OAuthSelectorComponent } from "../components/oauth-selector";
 import { ResetUsageSelectorComponent } from "../components/reset-usage-selector";
 import { SessionSelectorComponent } from "../components/session-selector";
 import { SettingsSelectorComponent } from "../components/settings-selector";
-import { SubagentInboxComponent } from "../components/subagent-inbox";
 import { ThinkingSelectorComponent } from "../components/thinking-selector";
 import { ToolExecutionComponent } from "../components/tool-execution";
 import { TranscriptBlock } from "../components/transcript-container";
@@ -431,46 +429,82 @@ export class SelectorController {
 	}
 
 	/**
-	 * Show the Agent Control Center dashboard.
+	 * Show the Agent Control Center: the ONE agent surface.
+	 *
+	 * Every entry point lands here — `/agents`, `/cockpit` (alias `/hub`), the
+	 * `app.agents.hub` and `app.session.observe` keys, and the editor's `←←`
+	 * gesture — because they were three separate rosters that could disagree
+	 * about what was running.
+	 *
+	 * `requireContent` is the gesture's gate: `←←` on an empty editor must stay
+	 * inert until there is a subagent to look at, while an explicit key still
+	 * opens the empty roster. Agents persisted by earlier runs register
+	 * asynchronously, so the gate waits for that scan rather than treating the
+	 * initial roster as the answer.
 	 */
-	async showAgentsDashboard(): Promise<void> {
-		const activeModel = this.ctx.session.model;
-		const activeModelPattern = activeModel ? `${activeModel.provider}/${activeModel.id}` : undefined;
-		const defaultModelPattern = this.ctx.settings.getModelRole(DEFAULT_MODEL_SLOT);
-		const dashboard = await AgentDashboard.create(
-			getProjectDir(),
-			this.ctx.settings,
-			this.ctx.ui.terminal.rows,
-			{
-				modelRegistry: this.ctx.session.modelRegistry,
-				activeModelPattern,
-				defaultModelPattern,
-			},
-			modalRevealEnabled(),
-		);
-		// Fullscreen dashboard on the alternate screen (the /settings idiom): the
-		// overlay borrows the terminal's alt buffer and enables mouse tracking for
-		// its lifetime, leaving the transcript untouched underneath. The card
-		// itself floats within this via ModalShell LARGE (see agent-dashboard.ts).
-		const overlay = this.ctx.ui.showOverlay(dashboard, {
-			width: "100%",
-			maxHeight: "100%",
-			anchor: "top-left",
-			margin: 0,
-			fullscreen: true,
+	showAgentsDashboard(observers: SessionObserverRegistry, options?: { requireContent?: boolean }): void {
+		const dashboard = new AgentDashboard({
+			terminalHeight: this.ctx.ui.terminal.rows,
+			reveal: modalRevealEnabled(),
+			// The comms stream expands a folded message with the same key the
+			// transcript expands a truncated tool result with.
+			expandKeys: this.ctx.keybindings.getKeys("app.tools.expand"),
+			hubKeys: [
+				...this.ctx.keybindings.getKeys("app.agents.hub"),
+				...this.ctx.keybindings.getKeys("app.session.observe"),
+			],
+			registry: this.ctx.collabGuest?.agentRegistry,
+			remote: this.ctx.collabGuest?.agentRemote,
+			observers,
+			showModelBadge: settings.get("subagent.showResolvedModelBadge"),
+			sessionFile: this.ctx.sessionManager.getSessionFile() ?? null,
+			focusAgent: id => this.ctx.focusAgentSession(id),
+			ui: this.ctx.ui,
+			getTool: name => this.ctx.session.getToolByName(name),
+			getMessageRenderer: type => this.ctx.session.extensionRunner?.getMessageRenderer(type),
+			cwd: this.ctx.sessionManager.getCwd(),
+			hideThinkingBlock: () => this.ctx.effectiveHideThinkingBlock,
+			proseOnlyThinking: () => this.ctx.proseOnlyThinking,
 		});
-		dashboard.onClose = () => {
-			// The card subscribes to the process-global AgentRegistry for its Live
-			// view; without this it would keep rebuilding a layout nobody is looking
-			// at, once per agent event, for the rest of the session.
-			dashboard.dispose();
-			overlay.hide();
-			this.focusActiveEditorArea();
-			this.ctx.ui.requestRender();
-		};
 		dashboard.onRequestRender = () => {
 			this.ctx.ui.requestRender();
 		};
+
+		const show = () => {
+			// Fullscreen dashboard on the alternate screen (the /settings idiom): the
+			// overlay borrows the terminal's alt buffer and enables mouse tracking for
+			// its lifetime, leaving the transcript untouched underneath. The card
+			// itself floats within this via ModalShell LARGE (see agent-dashboard.ts).
+			const overlay = this.ctx.ui.showOverlay(dashboard, {
+				width: "100%",
+				maxHeight: "100%",
+				anchor: "top-left",
+				margin: 0,
+				fullscreen: true,
+			});
+			dashboard.onClose = () => {
+				// The card subscribes to the process-global registry and bus; without
+				// this it would keep rebuilding a layout nobody is looking at, once per
+				// agent event and once per message, for the rest of the session.
+				dashboard.dispose();
+				overlay.hide();
+				this.focusActiveEditorArea();
+				this.ctx.ui.requestRender();
+			};
+			this.ctx.ui.requestRender();
+		};
+
+		if (options?.requireContent && dashboard.isEmpty) {
+			void dashboard.persistedSubagentsReady.then(() => {
+				if (dashboard.isEmpty) {
+					dashboard.dispose();
+					return;
+				}
+				show();
+			});
+			return;
+		}
+		show();
 	}
 
 	/**
@@ -507,6 +541,15 @@ export class SelectorController {
 			// operator has no way to tell an applied change from one that did nothing.
 			const frozen = frozenGateNotice(id);
 			if (frozen !== undefined) this.ctx.showWarning(frozen);
+		}
+
+		// Secret settings own live process state, not only persisted configuration.
+		// Reconcile through the session loader so enable/disable, audit routing, and
+		// any future secrets.* setting take effect without a restart.
+		if (id.startsWith("secrets.")) {
+			void this.ctx.session.refreshSecrets().catch(err => {
+				this.ctx.showError(`Failed to apply "${id}" to the secret runtime: ${errorMessage(err)}`);
+			});
 		}
 
 		switch (id) {
@@ -1594,125 +1637,5 @@ export class SelectorController {
 			const selector = new DebugSelectorComponent(this.ctx, done);
 			return { component: selector, focus: selector };
 		});
-	}
-
-	showAgentHub(
-		observers: SessionObserverRegistry,
-		options?: { requireContent?: boolean; armCloseTap?: boolean },
-	): void {
-		const hubKeys = [
-			...this.ctx.keybindings.getKeys("app.agents.hub"),
-			...this.ctx.keybindings.getKeys("app.session.observe"),
-		];
-
-		// Experimental: the same open gesture raises the opencode-style split
-		// inbox instead of the modal table when `display.subagentInbox` is on. The
-		// flag is off by default, so the shipped hub path below is unchanged.
-		if (settings.get("display.subagentInbox")) {
-			this.#showSubagentInbox(hubKeys, options);
-			return;
-		}
-		let hub: AgentHubOverlayComponent | undefined;
-
-		// Render the hub inline in the editor slot — the same anchored region
-		// every other selector (model, session, tree, the `ask` tool) uses —
-		// rather than a floating overlay. A non-fullscreen overlay composited over
-		// a live transcript strands a stale copy in native scrollback every time a
-		// running subagent's progress grows the frame and scrolls the window; the
-		// hub is opened mid-run, so those copies stacked into a wall of duplicate
-		// "Agent Hub" frames bleeding the task tree behind them. As an editor-slot
-		// component it rides the normal append-only commit path: the transcript
-		// commits above it exactly once and the hub repaints in place.
-		const done = () => {
-			hub?.dispose();
-			this.ctx.editorContainer.clear();
-			this.ctx.editorContainer.addChild(this.ctx.editor);
-			this.ctx.ui.setFocus(this.ctx.editor);
-			this.ctx.ui.requestRender();
-		};
-
-		hub = new AgentHubOverlayComponent({
-			observers,
-			hubKeys,
-			expandKeys: this.ctx.keybindings.getKeys("app.tools.expand"),
-			onDone: done,
-			requestRender: () => this.ctx.ui.requestRender(),
-			registry: this.ctx.collabGuest?.agentRegistry,
-			remote: this.ctx.collabGuest?.hubRemote,
-			ui: this.ctx.ui,
-			getTool: name => this.ctx.session.getToolByName(name),
-			getMessageRenderer: type => this.ctx.session.extensionRunner?.getMessageRenderer(type),
-			cwd: this.ctx.sessionManager.getCwd(),
-			hideThinkingBlock: () => this.ctx.effectiveHideThinkingBlock,
-			proseOnlyThinking: () => this.ctx.proseOnlyThinking,
-			focusAgent: id => this.ctx.focusAgentSession(id),
-			sessionFile: this.ctx.sessionManager.getSessionFile() ?? null,
-		});
-
-		const showReadyHub = () => {
-			// The double-← gesture passes requireContent so it stays inert when
-			// neither live nor persisted subagents are available. Persisted rows now
-			// load asynchronously, so defer the gate until that scan has refreshed the
-			// hub instead of treating the initial empty table as authoritative.
-			if (options?.requireContent && hub.isEmpty) {
-				hub.dispose();
-				return;
-			}
-
-			this.ctx.editorContainer.clear();
-			this.ctx.editorContainer.addChild(hub);
-			this.ctx.ui.setFocus(hub);
-			// When the hub was raised by the editor's double-← gesture, prime its own
-			// close detector so the *next* single ← dismisses it — the two taps that
-			// opened it were consumed by the editor's detector (issue #4780).
-			if (options?.armCloseTap) hub.armCloseTap();
-			this.ctx.ui.requestRender();
-		};
-
-		if (options?.requireContent && hub.isEmpty) {
-			void hub.persistedSubagentsReady.then(showReadyHub);
-			return;
-		}
-
-		showReadyHub();
-	}
-
-	/**
-	 * Mount the experimental subagent inbox split in the editor slot, matching the
-	 * hub's open/close/focus contract. It reads only the LIVE registry (not the
-	 * hub's persisted rows), so the `requireContent` double-← gesture gates
-	 * synchronously on live emptiness — a documented limitation while the surface
-	 * is behind `display.subagentInbox`.
-	 */
-	#showSubagentInbox(hubKeys: KeyId[], options?: { requireContent?: boolean; armCloseTap?: boolean }): void {
-		let inbox: SubagentInboxComponent | undefined;
-		const done = () => {
-			inbox?.dispose();
-			this.ctx.editorContainer.clear();
-			this.ctx.editorContainer.addChild(this.ctx.editor);
-			this.ctx.ui.setFocus(this.ctx.editor);
-			this.ctx.ui.requestRender();
-		};
-
-		inbox = new SubagentInboxComponent({
-			hubKeys,
-			onDone: done,
-			requestRender: () => this.ctx.ui.requestRender(),
-			registry: this.ctx.collabGuest?.agentRegistry,
-			ui: this.ctx.ui,
-			onOpenAgent: id => this.ctx.focusAgentSession(id),
-		});
-
-		// The double-← gesture stays inert when there are no live subagents.
-		if (options?.requireContent && inbox.isEmpty) {
-			inbox.dispose();
-			return;
-		}
-
-		this.ctx.editorContainer.clear();
-		this.ctx.editorContainer.addChild(inbox);
-		this.ctx.ui.setFocus(inbox);
-		if (options?.armCloseTap) inbox.armCloseTap();
-		this.ctx.ui.requestRender();
 	}
 }
