@@ -366,6 +366,14 @@ describe("the repository's own documentation", () => {
 	it("documents only imports that exist", async () => {
 		const result = await checkDocImports(REPO_ROOT);
 
+		// The load failures come FIRST, and are asserted here rather than only
+		// printed by the CLI. A package this environment cannot import falls back to
+		// its declared types, which do not include functions, so its documented
+		// functions all read as missing — and the failure then names a dozen correct
+		// documentation lines while the one real cause is invisible. Asserting it
+		// here puts the reason in the diff, where whoever is looking at a red gate
+		// will actually see it.
+		expect(result.unloadable.map(u => `${u.specifier}: ${u.reason}`)).toEqual([]);
 		expect(result.bad.map(b => `${b.file}:${b.line} ${b.specifier} -> ${b.name}`)).toEqual([]);
 		// And it actually looked at a meaningful amount of documentation.
 		expect(result.importsChecked).toBeGreaterThan(200);
