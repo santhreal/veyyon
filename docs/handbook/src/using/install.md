@@ -96,6 +96,24 @@ $ vey plugin doctor --fix
 
 `vey plugin doctor` checks plugin installation health (directories, manifests, entry paths, enabled features). Binary and provider-key checks live in `vey setup status`. For interactive diagnostics, use `/debug` in the TUI. See [Diagnostics](../features/doctor.md).
 
+### When the installer says the binary would not run
+
+The installer runs the binary it just placed before it reports success, and refuses if
+that fails. The message names the exit status and repeats, verbatim, whatever the system
+said:
+
+```
+veyyon did not run after install: `~/.local/bin/veyyon --version` exited 127.
+It said: libstdc++.so.6: cannot open shared object file: No such file or directory
+```
+
+That second line is the part to act on. A missing shared library means the machine needs
+that package; a permission error usually means the install directory is mounted `noexec`,
+so choose another with `VEYYON_INSTALL_DIR`. The check runs last, after the completions
+and the PATH line, so those are already in place; once you have fixed the cause, run the
+installer again rather than trying to finish by hand. If you would rather start clean,
+[Uninstall](#uninstall) reclaims everything the installer added.
+
 ### Relocate the config directory
 
 On Unix, Veyyon uses `~/.veyyon` by default. Two environment variables let you move it. `VEYYON_CONFIG_DIR` renames the home-relative config directory, and `VEYYON_CODING_AGENT_DIR` relocates the agent base, which holds `config.yml`, `agent.db`, your sessions, and more.
