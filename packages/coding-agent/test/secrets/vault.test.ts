@@ -16,7 +16,7 @@
  * Time is injected everywhere, so expiry is tested by moving the clock rather than by
  * sleeping, and the tests stay deterministic.
  */
-import { describe, expect, it, spyOn, vi } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -33,6 +33,7 @@ import {
 	parseTtl,
 	SecretVault,
 	type VaultLocations,
+	VAULT_FILENAME,
 	vaultPathFor,
 	warningThresholdCrossed,
 } from "@veyyon/coding-agent/secrets/vault";
@@ -83,6 +84,7 @@ async function withVault(
 			profileDir: path.join(root, "config", "profiles", "work", "agent"),
 			projectDir: path.join(root, "project", ".veyyon"),
 		};
+		await fs.mkdir(locations.globalConfigRoot, { mode: 0o700 });
 		const clock = { now: 1_800_000_000_000 };
 		await body(new SecretVault(locations, () => clock.now), locations, clock);
 	} finally {
@@ -251,6 +253,13 @@ describe("names", () => {
 		}
 	});
 
+	/** Unicode case expansion must not alias a rejected spelling onto an existing ASCII name. */
+	it("rejects non-ASCII names before uppercase normalization", () => {
+		for (const bad of ["ſECRET_TOKEN", "STRAẞE_TOKEN", "KELVİΝ_TOKEN"]) {
+			expect(() => normaliseSecretName(bad)).toThrow(/not a usable secret name/);
+		}
+	});
+
 	/** A name too long to read inline is refused, with the limit in the message. */
 	it("refuses an over-long name", () => {
 		expect(() => normaliseSecretName("A".repeat(65))).toThrow(/5 to 64 characters/);
@@ -382,7 +391,7 @@ describe("storing and reading", () => {
 
 			await expect(
 				vault.add({ name: "OVERSIZED_TOKEN", value: "x".repeat(MAX_VAULT_FILE_BYTES) }),
-			).rejects.toThrow(/would be .* over the 8388608-byte safety limit/);
+			).rejects.toThrow(/over the 6291402-byte plaintext safety limit/);
 			expect((await vault.load()).map(entry => entry.name)).toEqual(["SMALL_TOKEN"]);
 		});
 	});
@@ -482,12 +491,58 @@ describe("storing and reading", () => {
 		});
 	});
 
+	/** Existing vaults with broader POSIX access are refused before ciphertext is consumed. */
+	it("refuses a vault file accessible by other users", async () => {
+		if (process.platform === "win32") return;
+		await withVault(async (vault, locations) => {
+			const vaultPath = vaultPathFor(locations, "profile");
+			await vault.add({ name: "PRIVATE_TOKEN", value: VALUE });
+			const before = await fs.readFile(vaultPath);
+			await fs.chmod(vaultPath, 0o644);
+
+			await expect(vault.load()).rejects.toThrow(/accessible by other users/);
+			expect(await fs.readFile(vaultPath)).toEqual(before);
+		});
+	});
+
+	/** Descriptor-relative writes cannot be redirected by replacing the lexical scope directory. */
+	it("fails closed when the scope parent is replaced during a mutation", async () => {
+		if (process.platform === "win32") return;
+		await withVault(async (vault, locations) => {
+			await vault.add({ name: "TOKEN_A", value: VALUE });
+			const displaced = `${locations.profileDir}.displaced`;
+			const sentinel = path.join(locations.profileDir, "sentinel");
+			const realOpen = fs.open;
+			let replaced = false;
+			const openSpy = spyOn(fs, "open").mockImplementation(async (...args) => {
+				const handle = await Reflect.apply(realOpen, fs, args);
+				if (!replaced && String(args[0]).endsWith(".tmp")) {
+					replaced = true;
+					await fs.rename(locations.profileDir, displaced);
+					await fs.mkdir(locations.profileDir);
+					await fs.writeFile(sentinel, "replacement-directory");
+				}
+				return handle;
+			});
+			try {
+				await expect(vault.add({ name: "TOKEN_B", value: `${VALUE}_b` })).rejects.toThrow(
+					/vault directory changed during the transaction/,
+				);
+			} finally {
+				openSpy.mockRestore();
+			}
+
+			expect(replaced).toBe(true);
+			expect(await fs.readFile(sentinel, "utf8")).toBe("replacement-directory");
+			expect(await fs.readdir(locations.profileDir)).toEqual(["sentinel"]);
+		});
+	});
+
 	/**
-	 * A legitimate atomic rename between lstat and open is another valid snapshot, not an
-	 * attack. O_NOFOLLOW, descriptor type/link checks, v2 authentication and the scope
-	 * binding validate the opened inode without rejecting a concurrent writer.
+	 * A final-component replacement between lstat and open is rejected rather than allowing
+	 * an attacker to choose which authenticated snapshot a transaction consumes.
 	 */
-	it("reads through a concurrent atomic replacement without a transient failure", async () => {
+	it("fails closed when the vault is replaced between pathname and descriptor checks", async () => {
 		await withVault(async (vault, locations) => {
 			const vaultPath = vaultPathFor(locations, "profile");
 			const replacementPath = path.join(locations.profileDir, "prepared-vault");
@@ -501,44 +556,45 @@ describe("storing and reading", () => {
 			const realOpen = fs.open;
 			let swapped = false;
 			const openSpy = spyOn(fs, "open").mockImplementation(async (...args) => {
-				if (!swapped && String(args[0]) === vaultPath) {
+				if (!swapped && path.basename(String(args[0])) === VAULT_FILENAME) {
 					swapped = true;
 					await fs.rename(replacementPath, vaultPath);
 				}
 				return await Reflect.apply(realOpen, fs, args);
 			});
 			try {
-				expect((await vault.load()).map(entry => entry.name).sort()).toEqual(["TOKEN_A", "TOKEN_B"]);
+				await expect(vault.load()).rejects.toThrow(/changed while it was being opened/i);
+				expect(await fs.readFile(vaultPath)).toEqual(newBytes);
 			} finally {
 				openSpy.mockRestore();
 			}
 		});
 	});
 
-	it("keeps reading an opened inode after a concurrent rename unlinks it", async () => {
+	it("fails closed when an opened vault pathname is replaced without touching the substitute", async () => {
 		await withVault(async (vault, locations) => {
 			const vaultPath = vaultPathFor(locations, "profile");
 			const replacementPath = path.join(locations.profileDir, "prepared-vault-after-open");
 			await vault.add({ name: "TOKEN_A", value: VALUE });
 			const oldBytes = await fs.readFile(vaultPath);
 			await vault.add({ name: "TOKEN_B", value: `${VALUE}_b` });
-			await fs.writeFile(replacementPath, await fs.readFile(vaultPath), { mode: 0o600 });
+			const newBytes = await fs.readFile(vaultPath);
+			await fs.writeFile(replacementPath, newBytes, { mode: 0o600 });
 			await fs.writeFile(vaultPath, oldBytes, { mode: 0o600 });
 
 			const realOpen = fs.open;
 			let swapped = false;
 			const openSpy = spyOn(fs, "open").mockImplementation(async (...args) => {
 				const handle = await Reflect.apply(realOpen, fs, args);
-				if (!swapped && String(args[0]) === vaultPath) {
+				if (!swapped && path.basename(String(args[0])) === VAULT_FILENAME) {
 					swapped = true;
 					await fs.rename(replacementPath, vaultPath);
 				}
 				return handle;
 			});
 			try {
-				// The descriptor was opened before the rename, so TOKEN_A is a
-				// consistent old snapshot even though fstat now reports nlink=0.
-				expect((await vault.load()).map(entry => entry.name)).toEqual(["TOKEN_A"]);
+				await expect(vault.load()).rejects.toThrow(/changed (while it was being opened|during the transaction)/i);
+				expect(await fs.readFile(vaultPath)).toEqual(newBytes);
 			} finally {
 				openSpy.mockRestore();
 			}
@@ -546,34 +602,48 @@ describe("storing and reading", () => {
 	});
 
 	/**
-	 * A failure at the commit seam leaves the previous sealed bytes intact.
+	 * A destination that changes after the last userspace check is restored rather than overwritten.
 	 *
-	 * Direct writeFile would truncate before this injected failure could protect anything.
-	 * The staged temp file is also removed, so a retry sees one unambiguous vault.
+	 * This is the compare-and-swap seam that plain rename cannot protect. The injected lstat hook
+	 * waits until the synced stage exists, then installs another authenticated vault immediately
+	 * after the final expected-inode observation.
 	 */
-	it("preserves the previous vault when an atomic replacement is interrupted", async () => {
+	it("restores a vault that races atomic mutation publication", async () => {
 		await withVault(async (vault, locations) => {
 			const vaultPath = vaultPathFor(locations, "profile");
+			const substitutePath = path.join(locations.profileDir, "racing-vault");
 			await vault.add({ name: "TOKEN_A", value: VALUE });
-			const before = await fs.readFile(vaultPath);
-			const realRename = fs.rename.bind(fs);
-			const renameSpy = spyOn(fs, "rename").mockImplementation(async (from, to) => {
-				if (String(to) === vaultPath)
-					throw Object.assign(new Error("simulated interrupted rename"), { code: "EIO" });
-				return realRename(from, to);
-			});
+			const oldBytes = await fs.readFile(vaultPath);
+			await vault.add({ name: "TOKEN_B", value: `${VALUE}_b` });
+			const substituteBytes = await fs.readFile(vaultPath);
+			await fs.writeFile(vaultPath, oldBytes, { mode: 0o600 });
+			await fs.writeFile(substitutePath, substituteBytes, { mode: 0o600 });
 
+			const realLstat = fs.lstat;
+			let swapped = false;
+			let stagedVaultStats = 0;
+			const lstatSpy = spyOn(fs, "lstat").mockImplementation((async (...args: Parameters<typeof fs.lstat>) => {
+				const result = await Reflect.apply(realLstat, fs, args);
+				if (!swapped && path.basename(String(args[0])) === VAULT_FILENAME) {
+					const entries = await fs.readdir(locations.profileDir);
+					if (entries.some(name => name.endsWith(".tmp")) && ++stagedVaultStats === 2) {
+						swapped = true;
+						await fs.rename(substitutePath, vaultPath);
+					}
+				}
+				return result;
+			}) as unknown as typeof fs.lstat);
 			try {
-				await expect(vault.add({ name: "TOKEN_B", value: `${VALUE}_b` })).rejects.toThrow(
-					/simulated interrupted rename/,
+				await expect(vault.add({ name: "TOKEN_C", value: `${VALUE}_c` })).rejects.toThrow(
+					/changed during the transaction/,
 				);
 			} finally {
-				renameSpy.mockRestore();
+				lstatSpy.mockRestore();
 			}
 
-			expect(await fs.readFile(vaultPath)).toEqual(before);
-			expect((await vault.load()).map(entry => entry.name)).toEqual(["TOKEN_A"]);
-			expect((await fs.readdir(locations.profileDir)).filter(name => name.endsWith(".tmp"))).toEqual([]);
+			expect(swapped).toBe(true);
+			expect(await fs.readFile(vaultPath)).toEqual(substituteBytes);
+			expect((await vault.load()).map(entry => entry.name).sort()).toEqual(["TOKEN_A", "TOKEN_B"]);
 		});
 	});
 
@@ -729,6 +799,7 @@ describe("scope precedence", () => {
 				profileDir: path.join(home, ".veyyon", "profiles", "work", "agent"),
 				projectDir: path.join(home, ".veyyon"),
 			};
+			await fs.mkdir(locations.globalConfigRoot, { mode: 0o700 });
 			const vault = new SecretVault(locations);
 			await vault.add({ name: "GLOBAL_TOKEN", value: VALUE, scope: "global" });
 
@@ -748,7 +819,8 @@ describe("scope precedence", () => {
 		try {
 			const realHome = path.join(root, "real-home");
 			const aliasHome = path.join(root, "alias-home");
-			await fs.mkdir(path.join(realHome, ".veyyon"), { recursive: true });
+			await fs.mkdir(path.join(realHome, ".veyyon"), { recursive: true, mode: 0o700 });
+			await fs.chmod(path.join(realHome, ".veyyon"), 0o700);
 			await fs.symlink(realHome, aliasHome);
 			const locations: VaultLocations = {
 				globalConfigRoot: path.join(realHome, ".veyyon"),
@@ -852,6 +924,21 @@ describe("scope precedence", () => {
 		});
 	});
 
+	/** Ciphertext is authenticated to the physical parent inode, not only the same lexical path. */
+	it("refuses a vault restored under a recreated scope directory", async () => {
+		await withVault(async (vault, locations) => {
+			await vault.add({ name: "PHYSICAL_SCOPE_TOKEN", value: VALUE, scope: "profile" });
+			const vaultPath = vaultPathFor(locations, "profile");
+			const bytes = await fs.readFile(vaultPath);
+			const displaced = `${locations.profileDir}.original`;
+			await fs.rename(locations.profileDir, displaced);
+			await fs.mkdir(locations.profileDir);
+			await fs.writeFile(vaultPath, bytes, { mode: 0o600 });
+
+			await expect(vault.load()).rejects.toThrow(/different vault location|could not be decrypted/i);
+		});
+	});
+
 	/** Directories and other special nodes at a vault filename fail closed. */
 	it("refuses a non-regular vault path", async () => {
 		await withVault(async (vault, locations) => {
@@ -925,7 +1012,7 @@ describe("a vault whose key is gone", () => {
 	it("refuses a vault that is not a sealed file", async () => {
 		await withVault(async (vault, locations) => {
 			await fs.mkdir(locations.profileDir, { recursive: true });
-			await fs.writeFile(vaultPathFor(locations, "profile"), JSON.stringify({ entries: [] }));
+			await fs.writeFile(vaultPathFor(locations, "profile"), JSON.stringify({ entries: [] }), { mode: 0o600 });
 
 			await expect(vault.load()).rejects.toThrow(/not a sealed vault file/);
 		});
@@ -935,7 +1022,7 @@ describe("a vault whose key is gone", () => {
 	it("refuses a vault that is not valid JSON", async () => {
 		await withVault(async (vault, locations) => {
 			await fs.mkdir(locations.profileDir, { recursive: true });
-			await fs.writeFile(vaultPathFor(locations, "profile"), "{ truncated");
+			await fs.writeFile(vaultPathFor(locations, "profile"), "{ truncated", { mode: 0o600 });
 
 			await expect(vault.load()).rejects.toThrow(/not valid JSON/);
 		});
@@ -947,6 +1034,9 @@ describe("a vault whose key is gone", () => {
 			const key = await loadOrCreateVaultKey(locations.globalConfigRoot);
 			const vaultPath = vaultPathFor(locations, "profile");
 			await fs.mkdir(locations.profileDir, { recursive: true });
+			const directoryStat = await fs.lstat(locations.profileDir);
+			const canonicalVaultPath = path.join(await fs.realpath(locations.profileDir), path.basename(vaultPath));
+			const comparablePath = process.platform === "win32" ? canonicalVaultPath.toLowerCase() : canonicalVaultPath;
 			await fs.writeFile(
 				vaultPath,
 				JSON.stringify(
@@ -955,7 +1045,7 @@ describe("a vault whose key is gone", () => {
 						JSON.stringify({
 							entries: [{ name: "TOKEN_A", value: "short", createdAt: clock.now, expiresAt: clock.now + DAY }],
 						}),
-						`profile\0${path.resolve(vaultPath)}`,
+						`profile\0${comparablePath}\0${directoryStat.dev}\0${directoryStat.ino}`,
 					),
 				),
 				{ mode: 0o600 },
@@ -1114,12 +1204,12 @@ describe("concurrent writers", () => {
 			await fs.writeFile(infoPath, JSON.stringify({ pid: process.pid, timestamp: 0, token: "live-test-holder" }));
 
 			const infoObserved = Promise.withResolvers<void>();
-			const realReadFile = fs.readFile;
-			const readSpy = spyOn(fs, "readFile").mockImplementation((async (...args: Parameters<typeof fs.readFile>) => {
-				const result = await Reflect.apply(realReadFile, fs, args);
+			const realOpen = fs.open;
+			const openSpy = spyOn(fs, "open").mockImplementation((async (...args: Parameters<typeof fs.open>) => {
+				const result = await Reflect.apply(realOpen, fs, args);
 				if (String(args[0]) === infoPath) infoObserved.resolve();
 				return result;
-			}) as unknown as typeof fs.readFile);
+			}) as unknown as typeof fs.open);
 			const realRm = fs.rm;
 			let reaped = false;
 			const rmSpy = spyOn(fs, "rm").mockImplementation(async (...args) => {
@@ -1127,7 +1217,6 @@ describe("concurrent writers", () => {
 				return await Reflect.apply(realRm, fs, args);
 			});
 
-			vi.useFakeTimers();
 			let pending: Promise<unknown> | undefined;
 			try {
 				pending = vault.add({ name: "WAITED_TOKEN", value: VALUE });
@@ -1137,15 +1226,12 @@ describe("concurrent writers", () => {
 				expect(reaped).toBe(false);
 
 				await Reflect.apply(realRm, fs, [lockPath, { recursive: true, force: true }]);
-				vi.advanceTimersByTime(100);
 				await pending;
 			} finally {
 				await Reflect.apply(realRm, fs, [lockPath, { recursive: true, force: true }]);
-				vi.advanceTimersByTime(100);
 				if (pending !== undefined) await pending.catch(() => {});
-				readSpy.mockRestore();
+				openSpy.mockRestore();
 				rmSpy.mockRestore();
-				vi.useRealTimers();
 			}
 			expect((await vault.load()).map(entry => entry.name)).toEqual(["WAITED_TOKEN"]);
 		});

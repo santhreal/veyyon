@@ -30,7 +30,15 @@ import * as crypto from "node:crypto";
 import { constants as fsConstants, type Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { errorMessage, isMissingPath, withFileLock } from "@veyyon/utils";
+import {
+	applyOwnerOnlyWindowsAcl,
+	errorMessage,
+	escapeTerminalText,
+	isMissingPath,
+	verifyOwnerOnlyWindowsAcl,
+	withFileLock,
+} from "@veyyon/utils";
+import { moveNoReplace } from "./atomic-path";
 
 /** Name of the key file inside the cross-profile config root. */
 export const VAULT_KEY_FILENAME = "vault.key";
@@ -50,8 +58,33 @@ const KEY_FILE_MODE = 0o600;
 /** Opening the checked descriptor closes the lstat/read race and never follows the final link. */
 const KEY_READ_FLAGS = fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK;
 
-/** Exclusive creation prevents a link or existing file from being overwritten. */
+/** Staging is exclusive; the final key is published later with an atomic no-overwrite link. */
 const KEY_CREATE_FLAGS = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW;
+
+/** A live PID is never reaped; dead owners are still detected immediately by the shared lock. */
+const KEY_LOCK_OPTIONS = { staleMs: Number.POSITIVE_INFINITY } as const;
+
+const KEY_STAGE_RE = /^\.vault\.key\.\d+\.[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.tmp$/i;
+const MAX_KEY_STAGE_SCAN_ENTRIES = 4096;
+
+interface KeyRootPin {
+	readonly root: string;
+	readonly ioRoot: string;
+	readonly handle: fs.FileHandle;
+	readonly dev: number;
+	readonly ino: number;
+}
+
+interface KeySnapshot {
+	readonly dev: number;
+	readonly ino: number;
+	readonly size: number;
+	readonly mtimeMs: number;
+	readonly ctimeMs: number;
+	readonly nlink: number;
+	readonly mode: number;
+	readonly uid: number;
+}
 
 /**
  * A sealed vault payload as it sits on disk.
@@ -76,185 +109,601 @@ export interface SealedVault {
 /** The only envelope version with authenticated scope provenance. */
 const ENVELOPE_VERSION = 2;
 
-/** A live PID is never reaped; dead owners are still detected immediately by the shared lock. */
-const KEY_LOCK_OPTIONS = { staleMs: Number.POSITIVE_INFINITY } as const;
-
 /** Absolute path of the key file, given the cross-profile config root. */
 export function vaultKeyPath(globalConfigRoot: string): string {
 	return path.join(globalConfigRoot, VAULT_KEY_FILENAME);
 }
 
-/** Reject a config root that redirects the key path before checking the final file. */
-async function keyRootExistsSafely(globalConfigRoot: string): Promise<boolean> {
-	let stat: Stats;
+function safeText(value: string): string {
+	return escapeTerminalText(value);
+}
+
+function safeError(error: unknown): string {
+	return escapeTerminalText(String(error));
+}
+
+function sameInode(
+	left: Pick<Stats, "dev" | "ino">,
+	right: Pick<Stats, "dev" | "ino">,
+): boolean {
+	return left.dev === right.dev && left.ino === right.ino;
+}
+
+function keySnapshot(stat: Stats): KeySnapshot {
+	return {
+		dev: stat.dev,
+		ino: stat.ino,
+		size: stat.size,
+		mtimeMs: stat.mtimeMs,
+		ctimeMs: stat.ctimeMs,
+		nlink: stat.nlink,
+		mode: stat.mode,
+		uid: stat.uid,
+	};
+}
+
+function sameKeySnapshot(snapshot: KeySnapshot, stat: Stats): boolean {
+	return (
+		snapshot.dev === stat.dev &&
+		snapshot.ino === stat.ino &&
+		snapshot.size === stat.size &&
+		snapshot.mtimeMs === stat.mtimeMs &&
+		snapshot.ctimeMs === stat.ctimeMs &&
+		snapshot.nlink === stat.nlink &&
+		snapshot.mode === stat.mode &&
+		snapshot.uid === stat.uid
+	);
+}
+
+async function assertNoSymlinkPathComponents(target: string): Promise<void> {
+	const resolved = path.resolve(target);
+	const parsed = path.parse(resolved);
+	let current = parsed.root;
+	for (const component of resolved.slice(parsed.root.length).split(path.sep).filter(Boolean)) {
+		current = path.join(current, component);
+		try {
+			const stat = await fs.lstat(current);
+			if (stat.isSymbolicLink()) {
+				throw new Error(
+					`The vault key path crosses the symlink at ${safeText(current)}. Refusing to leave the config boundary.`,
+				);
+			}
+		} catch (error) {
+			if (isMissingPath(error)) return;
+			throw error;
+		}
+	}
+}
+
+function assertKeyRootNotExposed(root: string, stat: Stats): void {
+	if (process.platform === "win32") return;
+	const effectiveUid = typeof process.geteuid === "function" ? process.geteuid() : undefined;
+	if (effectiveUid !== undefined && stat.uid !== effectiveUid) {
+		throw new Error(`The vault key directory at ${safeText(root)} is not owned by the current user.`);
+	}
+	if ((stat.mode & 0o022) !== 0) {
+		throw new Error(
+			`The vault key directory at ${safeText(root)} is writable by other users ` +
+				`(mode ${(stat.mode & 0o777).toString(8)}). Run: chmod 700 ${safeText(root)}`,
+		);
+	}
+}
+
+async function hardenEmptyKeyRoot(root: string): Promise<void> {
+	await assertNoSymlinkPathComponents(root);
+	let rootStat: Stats;
 	try {
-		stat = await fs.lstat(globalConfigRoot);
+		rootStat = await fs.lstat(root);
+	} catch (error) {
+		if (isMissingPath(error)) return;
+		throw error;
+	}
+	if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) return;
+	const effectiveUid = typeof process.geteuid === "function" ? process.geteuid() : undefined;
+	if (effectiveUid !== undefined && rootStat.uid !== effectiveUid) {
+		throw new Error(`The vault key directory at ${safeText(root)} is not owned by the current user.`);
+	}
+	const keyPath = vaultKeyPath(root);
+	try {
+		await fs.lstat(keyPath);
+		return;
+	} catch (error) {
+		if (!isMissingPath(error)) throw error;
+	}
+	if (process.platform !== "win32") await fs.chmod(root, 0o700);
+	await applyOwnerOnlyWindowsAcl(root);
+	await verifyOwnerOnlyWindowsAcl(root);
+	try {
+		await fs.lstat(keyPath);
+		throw new Error("A vault key appeared while its empty directory was being hardened. Refusing it.");
+	} catch (error) {
+		if (!isMissingPath(error)) throw error;
+	}
+}
+
+function pinnedKeyPath(pin: KeyRootPin): string {
+	return path.join(pin.ioRoot, VAULT_KEY_FILENAME);
+}
+
+async function closeKeyRootPin(pin: KeyRootPin): Promise<void> {
+	await pin.handle.close();
+}
+
+/** Pin the config root inode before any key path or lock operation. */
+async function pinKeyRoot(globalConfigRoot: string): Promise<KeyRootPin | null> {
+	await assertNoSymlinkPathComponents(globalConfigRoot);
+	let before: Stats;
+	try {
+		before = await fs.lstat(globalConfigRoot);
+	} catch (error) {
+		if (isMissingPath(error)) return null;
+		throw new Error(
+			`The vault key directory at ${safeText(globalConfigRoot)} could not be inspected safely ` +
+				`(${safeError(error)}).`,
+		);
+	}
+	if (before.isSymbolicLink()) {
+		throw new Error(
+			`The vault key directory at ${safeText(globalConfigRoot)} is a symlink. Refusing to follow it.`,
+		);
+	}
+	if (!before.isDirectory()) {
+		throw new Error(
+			`The vault key directory at ${safeText(globalConfigRoot)} is not a directory. Refusing to use it.`,
+		);
+	}
+	assertKeyRootNotExposed(globalConfigRoot, before);
+
+	let handle: fs.FileHandle | undefined;
+	try {
+		handle = await fs.open(
+			globalConfigRoot,
+			fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0) | fsConstants.O_NOFOLLOW,
+		);
+		const opened = await handle.stat();
+		const after = await fs.lstat(globalConfigRoot);
+		if (
+			!opened.isDirectory() ||
+			!after.isDirectory() ||
+			after.isSymbolicLink() ||
+			!sameInode(before, opened) ||
+			!sameInode(opened, after)
+		) {
+			throw new Error("The vault key directory changed while its physical identity was being pinned.");
+		}
+		assertKeyRootNotExposed(globalConfigRoot, opened);
+		await verifyOwnerOnlyWindowsAcl(globalConfigRoot);
+		const ioRoot =
+			process.platform === "linux"
+				? `/proc/self/fd/${handle.fd}`
+				: process.platform === "darwin"
+					? `/dev/fd/${handle.fd}`
+					: globalConfigRoot;
+		return { root: globalConfigRoot, ioRoot, handle, dev: after.dev, ino: after.ino };
+	} catch (error) {
+		await handle?.close().catch(() => {});
+		throw error;
+	}
+}
+
+async function verifyKeyRootPin(pin: KeyRootPin): Promise<void> {
+	let lexical: Stats;
+	let opened: Stats;
+	try {
+		[lexical, opened] = await Promise.all([fs.lstat(pin.root), pin.handle.stat()]);
+	} catch (error) {
+		throw new Error(
+			`The vault key directory changed during the transaction (${safeError(error)}). Refusing to continue.`,
+		);
+	}
+	if (
+		!lexical.isDirectory() ||
+		lexical.isSymbolicLink() ||
+		!opened.isDirectory() ||
+		lexical.dev !== pin.dev ||
+		lexical.ino !== pin.ino ||
+		opened.dev !== pin.dev ||
+		opened.ino !== pin.ino
+	) {
+		throw new Error("The vault key directory changed during the transaction. Refusing to continue.");
+	}
+	assertKeyRootNotExposed(pin.root, lexical);
+}
+
+/** Reject aliases and special files before any bytes are consumed. */
+function assertKeyPathSafe(keyPath: string, stat: Stats, fromPath: boolean, allowPublishedStage = false): void {
+	if (fromPath && stat.isSymbolicLink()) {
+		throw new Error(
+			`The vault key at ${safeText(keyPath)} is a symlink. Refusing to follow it across the vault boundary.`,
+		);
+	}
+	if (!stat.isFile()) {
+		throw new Error(`The vault key at ${safeText(keyPath)} is not a regular file. Refusing to read it.`);
+	}
+	const expectedLinks = allowPublishedStage ? 2 : 1;
+	if (stat.nlink !== expectedLinks) {
+		throw new Error(
+			`The vault key at ${safeText(keyPath)} has ${stat.nlink} hard links. ` +
+				`Refusing a key that is reachable through another path.`,
+		);
+	}
+}
+
+/** Refuse foreign ownership or any group/other permission bits on POSIX. */
+function assertKeyNotExposed(keyPath: string, stat: Stats): void {
+	if (process.platform === "win32") return;
+	const effectiveUid = typeof process.geteuid === "function" ? process.geteuid() : undefined;
+	if (effectiveUid !== undefined && stat.uid !== effectiveUid) {
+		throw new Error(
+			`The vault key at ${safeText(keyPath)} is owned by user ${stat.uid}, not the current user. Refusing it.`,
+		);
+	}
+	const exposed = stat.mode & 0o077;
+	if (exposed === 0) return;
+	throw new Error(
+		`The vault key at ${safeText(keyPath)} is readable by other users (mode ${(stat.mode & 0o777).toString(8)}). ` +
+			`Anyone who can read it can decrypt every stored secret. ` +
+			`Run: chmod 600 ${safeText(keyPath)}`,
+	);
+}
+
+async function removePathIfSameInode(
+	target: string,
+	identity: Pick<Stats, "dev" | "ino">,
+): Promise<boolean> {
+	try {
+		const current = await fs.lstat(target);
+		if (!current.isFile() || !sameInode(current, identity)) return false;
+		await fs.rm(target);
+		try {
+			await fs.lstat(target);
+			return false;
+		} catch (error) {
+			if (isMissingPath(error)) return true;
+			throw error;
+		}
 	} catch (error) {
 		if (isMissingPath(error)) return false;
 		throw error;
 	}
-	if (stat.isSymbolicLink()) {
-		throw new Error(`The vault key directory at ${globalConfigRoot} is a symlink. Refusing to follow it.`);
+}
+
+async function syncDirectory(pin: KeyRootPin): Promise<void> {
+	await verifyKeyRootPin(pin);
+	if (process.platform !== "win32") {
+		const stat = await pin.handle.stat();
+		if (!stat.isDirectory() || stat.dev !== pin.dev || stat.ino !== pin.ino) {
+			throw new Error("The vault key directory changed before it could be synced.");
+		}
+		await pin.handle.sync();
 	}
-	if (!stat.isDirectory()) {
-		throw new Error(`The vault key directory at ${globalConfigRoot} is not a directory. Refusing to use it.`);
-	}
-	return true;
+	await verifyKeyRootPin(pin);
 }
 
 /**
- * Read the vault key, creating it on first use.
- *
- * Creation is serialised across processes, exclusive at the filesystem seam, and synced
- * before it is returned. A vault must never become durable while the only key that can open
- * it is still sitting in the page cache.
+ * Find the single trusted stage link left by a crash after publication, unlink it, and persist
+ * the now-single-link final key. No unbounded readdir allocation is permitted on this path.
  */
-export async function loadOrCreateVaultKey(globalConfigRoot: string): Promise<Buffer> {
-	const keyPath = vaultKeyPath(globalConfigRoot);
-	if (!(await keyRootExistsSafely(globalConfigRoot))) {
-		await fs.mkdir(globalConfigRoot, { recursive: true });
-	}
-	if (!(await keyRootExistsSafely(globalConfigRoot))) {
-		throw new Error(`The vault key directory at ${globalConfigRoot} disappeared while it was being created.`);
-	}
-	return await withFileLock(
-		keyPath,
-		async () => {
-			const raced = await readVaultKey(globalConfigRoot);
-			if (raced !== null) return raced;
-
-			const key = crypto.randomBytes(KEY_BYTES);
-			let handle;
-			try {
-				handle = await fs.open(keyPath, KEY_CREATE_FLAGS, KEY_FILE_MODE);
-			} catch (error) {
-				const winner = await readVaultKey(globalConfigRoot);
-				if (winner !== null) return winner;
-				throw new Error(
-					`Could not create the vault key at ${keyPath} (${String(error)}). ` +
-						`Secrets cannot be stored without it.`,
-				);
+async function recoverPublishedKey(pin: KeyRootPin, keyPath: string, publishedStat: Stats): Promise<boolean> {
+	if (!publishedStat.isFile() || publishedStat.nlink !== 2 || publishedStat.size !== KEY_BYTES) return false;
+	assertKeyPathSafe(keyPath, publishedStat, true, true);
+	assertKeyNotExposed(keyPath, publishedStat);
+	await verifyOwnerOnlyWindowsAcl(keyPath);
+	let seen = 0;
+	const directory = await fs.opendir(pin.ioRoot);
+	try {
+		for await (const entry of directory) {
+			if (!entry.isFile() || !KEY_STAGE_RE.test(entry.name)) continue;
+			if (++seen > MAX_KEY_STAGE_SCAN_ENTRIES) {
+				throw new Error("Too many vault key staging entries exist to recover one safely.");
 			}
-			let createdStat: Stats | null = null;
-			let complete = false;
+			const candidatePath = path.join(pin.ioRoot, entry.name);
+			let candidate: Stats;
 			try {
-				createdStat = await handle.stat();
-				await handle.writeFile(key);
-				await handle.sync();
-				complete = true;
-			} finally {
-				try {
-					await handle.close();
-				} finally {
-					if (!complete && createdStat !== null) {
-						await removeCreatedKeyIfUnchanged(keyPath, createdStat).catch(() => {});
-					}
+				candidate = await fs.lstat(candidatePath);
+			} catch (error) {
+				if (isMissingPath(error)) continue;
+				throw error;
+			}
+			if (
+				!candidate.isFile() ||
+				candidate.isSymbolicLink() ||
+				candidate.nlink !== 2 ||
+				candidate.size !== KEY_BYTES ||
+				!sameInode(candidate, publishedStat)
+			) {
+				continue;
+			}
+			assertKeyNotExposed(candidatePath, candidate);
+			await verifyOwnerOnlyWindowsAcl(candidatePath);
+			await verifyKeyRootPin(pin);
+			const finalNow = await fs.lstat(keyPath);
+			assertKeyPathSafe(keyPath, finalNow, true, true);
+			assertKeyNotExposed(keyPath, finalNow);
+			if (!sameInode(finalNow, publishedStat) || finalNow.nlink !== 2) {
+				throw new Error("The published vault key changed during orphan recovery.");
+			}
+			await syncDirectory(pin);
+			if (!(await removePathIfSameInode(candidatePath, candidate))) {
+				const progressed = await fs.lstat(keyPath);
+				if (!sameInode(progressed, publishedStat) || progressed.nlink !== 1) {
+					throw new Error("The published vault key staging link changed during orphan recovery.");
 				}
 			}
-			await syncDirectory(globalConfigRoot);
-			return key;
-		},
-		KEY_LOCK_OPTIONS,
+			const recovered = await fs.lstat(keyPath);
+			assertKeyPathSafe(keyPath, recovered, true);
+			assertKeyNotExposed(keyPath, recovered);
+			if (!sameInode(recovered, publishedStat)) {
+				throw new Error("The published vault key changed after orphan recovery.");
+			}
+			await syncDirectory(pin);
+			return true;
+		}
+	} finally {
+		try {
+			await directory.close();
+		} catch {
+			// `for await` closes the directory on normal completion.
+		}
+	}
+	return false;
+}
+
+async function cleanupUnpublishedStages(pin: KeyRootPin): Promise<void> {
+	let candidates = 0;
+	let changed = false;
+	const directory = await fs.opendir(pin.ioRoot);
+	try {
+		for await (const entry of directory) {
+			if (!entry.isFile() || !KEY_STAGE_RE.test(entry.name)) continue;
+			if (++candidates > MAX_KEY_STAGE_SCAN_ENTRIES) {
+				throw new Error("Too many vault key staging entries exist to clean safely.");
+			}
+			const candidatePath = path.join(pin.ioRoot, entry.name);
+			let stat: Stats;
+			try {
+				stat = await fs.lstat(candidatePath);
+			} catch (error) {
+				if (isMissingPath(error)) continue;
+				throw error;
+			}
+			if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || stat.size !== KEY_BYTES) continue;
+			assertKeyNotExposed(candidatePath, stat);
+			await verifyOwnerOnlyWindowsAcl(candidatePath);
+			const handle = await fs.open(candidatePath, fsConstants.O_RDWR | fsConstants.O_NOFOLLOW);
+			try {
+				const opened = await handle.stat();
+				if (!sameKeySnapshot(keySnapshot(stat), opened)) continue;
+				await handle.truncate(0);
+				await handle.sync();
+			} finally {
+				await handle.close();
+			}
+			changed = (await removePathIfSameInode(candidatePath, stat)) || changed;
+		}
+	} finally {
+		try {
+			await directory.close();
+		} catch {
+			// `for await` closes the descriptor after normal completion.
+		}
+	}
+	if (changed) await syncDirectory(pin);
+}
+
+function keyReadError(keyPath: string, error: unknown): Error {
+	return new Error(
+		`The vault key at ${safeText(keyPath)} exists but could not be read (${safeError(error)}). ` +
+			`Fix its permissions. Stored secrets cannot be decrypted without it.`,
 	);
 }
 
-/**
- * Read the vault key, or `null` when it does not exist.
- *
- * `null` means ABSENT and nothing else. An unreadable key, a key of the wrong length, or a
- * key with permissions that expose it are all errors, because each one means a vault that
- * cannot be opened, and answering "no key" there would be read by callers as "no secrets".
- */
-export async function readVaultKey(globalConfigRoot: string): Promise<Buffer | null> {
-	if (!(await keyRootExistsSafely(globalConfigRoot))) return null;
-	const keyPath = vaultKeyPath(globalConfigRoot);
+async function readVaultKeyPinned(pin: KeyRootPin): Promise<Buffer | null> {
+	const displayKeyPath = vaultKeyPath(pin.root);
+	const keyPath = pinnedKeyPath(pin);
+	await verifyKeyRootPin(pin);
 	let pathStat: Stats;
 	try {
 		pathStat = await fs.lstat(keyPath);
 	} catch (error) {
-		if (isMissingPath(error)) return null;
-		throw keyReadError(keyPath, error);
+		if (isMissingPath(error)) {
+			await verifyKeyRootPin(pin);
+			return null;
+		}
+		throw keyReadError(displayKeyPath, error);
 	}
-	assertKeyPathSafe(keyPath, pathStat, true);
+	if (pathStat.nlink === 2) {
+		await recoverPublishedKey(pin, keyPath, pathStat);
+		pathStat = await fs.lstat(keyPath);
+	}
+	assertKeyPathSafe(displayKeyPath, pathStat, true);
+	assertKeyNotExposed(displayKeyPath, pathStat);
+	const snapshot = keySnapshot(pathStat);
 
 	let handle;
 	try {
 		handle = await fs.open(keyPath, KEY_READ_FLAGS);
 	} catch (error) {
-		throw keyReadError(keyPath, error);
+		throw keyReadError(displayKeyPath, error);
 	}
 
 	let key: Buffer;
 	try {
 		const openStat = await handle.stat();
-		assertKeyPathSafe(keyPath, openStat, false);
-		if (openStat.dev !== pathStat.dev || openStat.ino !== pathStat.ino) {
-			throw new Error(`The vault key at ${keyPath} changed while it was being opened. Refusing to read it.`);
+		assertKeyPathSafe(displayKeyPath, openStat, false);
+		if (!sameKeySnapshot(snapshot, openStat)) {
+			throw new Error(`The vault key at ${safeText(displayKeyPath)} changed while it was being opened.`);
 		}
-		assertKeyNotExposed(keyPath, openStat);
-		key = await handle.readFile();
+		assertKeyNotExposed(displayKeyPath, openStat);
+		await verifyOwnerOnlyWindowsAcl(keyPath);
+		const afterAclStat = await fs.lstat(keyPath);
+		if (!sameKeySnapshot(snapshot, afterAclStat)) {
+			throw new Error(`The vault key at ${safeText(displayKeyPath)} changed during its ACL check.`);
+		}
+		if (openStat.size !== KEY_BYTES) {
+			throw new Error(
+				`The vault key at ${safeText(displayKeyPath)} is ${openStat.size} bytes, expected ${KEY_BYTES}. ` +
+					`The file is corrupt or is not a veyyon vault key. Restore it from a backup, or delete it ` +
+					`and re-add your secrets: an unreadable key means the vault cannot be opened.`,
+			);
+		}
+		const bytes = Buffer.allocUnsafe(KEY_BYTES + 1);
+		let offset = 0;
+		while (offset < bytes.length) {
+			const { bytesRead } = await handle.read(bytes, offset, bytes.length - offset, null);
+			if (bytesRead === 0) break;
+			offset += bytesRead;
+		}
+		if (offset !== KEY_BYTES) {
+			throw new Error(
+				`The vault key at ${safeText(displayKeyPath)} changed size while it was being read. Expected exactly ${KEY_BYTES} bytes.`,
+			);
+		}
+		const afterReadStat = await handle.stat();
+		if (!sameKeySnapshot(snapshot, afterReadStat)) {
+			throw new Error(`The vault key at ${safeText(displayKeyPath)} changed while it was being read.`);
+		}
+		key = Buffer.from(bytes.subarray(0, KEY_BYTES));
 	} finally {
 		await handle.close();
 	}
-
-	if (key.length !== KEY_BYTES) {
-		throw new Error(
-			`The vault key at ${keyPath} is ${key.length} bytes, expected ${KEY_BYTES}. ` +
-				`The file is corrupt or is not a veyyon vault key. Restore it from a backup, or delete it ` +
-				`and re-add your secrets: an unreadable key means the vault cannot be opened.`,
-		);
+	const finalStat = await fs.lstat(keyPath);
+	if (!sameKeySnapshot(snapshot, finalStat)) {
+		throw new Error(`The vault key at ${safeText(displayKeyPath)} was replaced before the read completed.`);
 	}
+	await verifyKeyRootPin(pin);
 	return key;
 }
 
-function keyReadError(keyPath: string, error: unknown): Error {
-	return new Error(
-		`The vault key at ${keyPath} exists but could not be read (${String(error)}). ` +
-			`Fix its permissions. Your stored secrets cannot be decrypted without it.`,
-	);
+/**
+ * Read the vault key, creating it on first use by staging complete synced bytes and publishing
+ * them with an atomic no-overwrite hard link. The returned bytes are always re-read from the
+ * inode reachable at `keyPath`.
+ */
+function publicKeyError(error: unknown): Error {
+	const message = escapeTerminalText(errorMessage(error))
+		.replace(/\.vault\.key\.\d+\.[0-9a-f-]{36}\.tmp(?:\.previous)?/gi, "<vault-key-stage>")
+		.replace(/vault\.key\.lock(?:\.[^\s'\"\\]+|\.candidate-[^\s'\"\\]+)?/gi, "<vault-key-lock>");
+	return new Error(message);
 }
 
-/** Reject aliases and special files before any bytes are consumed. */
-function assertKeyPathSafe(keyPath: string, stat: Stats, fromPath: boolean): void {
-	if (fromPath && stat.isSymbolicLink()) {
-		throw new Error(`The vault key at ${keyPath} is a symlink. Refusing to follow it across the vault boundary.`);
-	}
-	if (!stat.isFile()) {
-		throw new Error(`The vault key at ${keyPath} is not a regular file. Refusing to read it.`);
-	}
-	if (stat.nlink !== 1) {
-		throw new Error(
-			`The vault key at ${keyPath} has ${stat.nlink} hard links. Refusing a key that is reachable through another path.`,
-		);
-	}
-}
-
-/** Refuse a key file that other users on the machine can read, using the opened inode's stat. */
-function assertKeyNotExposed(keyPath: string, stat: Stats): void {
-	if (process.platform === "win32") return;
-	const exposed = stat.mode & 0o077;
-	if (exposed === 0) return;
-	throw new Error(
-		`The vault key at ${keyPath} is readable by other users (mode ${(stat.mode & 0o777).toString(8)}). ` +
-			`Anyone who can read it can decrypt every secret you have stored. ` +
-			`Run: chmod 600 ${keyPath}`,
-	);
-}
-
-/** Remove a failed exclusive creation only when the path still names our inode. */
-async function removeCreatedKeyIfUnchanged(keyPath: string, createdStat: Stats): Promise<void> {
-	const stat = await fs.lstat(keyPath);
-	if (stat.isFile() && stat.dev === createdStat.dev && stat.ino === createdStat.ino) await fs.rm(keyPath);
-}
-
-/** Persist a newly-created directory entry after the file itself has been synced. */
-async function syncDirectory(directory: string): Promise<void> {
-	if (process.platform === "win32") return;
-	const handle = await fs.open(directory, fsConstants.O_RDONLY);
+export async function loadOrCreateVaultKey(globalConfigRoot: string): Promise<Buffer> {
 	try {
-		await handle.sync();
-	} finally {
-		await handle.close();
+		await hardenEmptyKeyRoot(globalConfigRoot);
+		let pin = await pinKeyRoot(globalConfigRoot);
+		if (pin === null) {
+			await assertNoSymlinkPathComponents(globalConfigRoot);
+			await fs.mkdir(globalConfigRoot, { recursive: true, mode: 0o700 });
+			if (process.platform !== "win32") await fs.chmod(globalConfigRoot, 0o700);
+			await applyOwnerOnlyWindowsAcl(globalConfigRoot);
+			await verifyOwnerOnlyWindowsAcl(globalConfigRoot);
+			pin = await pinKeyRoot(globalConfigRoot);
+		}
+		if (pin === null) {
+			throw new Error(`The vault key directory at ${safeText(globalConfigRoot)} disappeared while being created.`);
+		}
+
+		try {
+			const keyPath = vaultKeyPath(globalConfigRoot);
+			const ioKeyPath = pinnedKeyPath(pin);
+			const result = await withFileLock(
+				keyPath,
+				async () => {
+					await verifyKeyRootPin(pin);
+					const existing = await readVaultKeyPinned(pin);
+					await cleanupUnpublishedStages(pin);
+					if (existing !== null) return existing;
+
+					const generated = crypto.randomBytes(KEY_BYTES);
+					const temporaryPath = path.join(
+						pin.ioRoot,
+						`.${VAULT_KEY_FILENAME}.${process.pid}.${crypto.randomUUID()}.tmp`,
+					);
+					let stagedStat: Stats | null = null;
+					let published = false;
+					try {
+						const handle = await fs.open(temporaryPath, KEY_CREATE_FLAGS, KEY_FILE_MODE);
+						try {
+							stagedStat = await handle.stat();
+							assertKeyPathSafe(temporaryPath, stagedStat, false);
+							assertKeyNotExposed(temporaryPath, stagedStat);
+							await applyOwnerOnlyWindowsAcl(temporaryPath);
+							await verifyOwnerOnlyWindowsAcl(temporaryPath);
+							const stagedPathStat = await fs.lstat(temporaryPath);
+							if (!sameInode(stagedStat, stagedPathStat)) {
+								throw new Error("The staged vault key changed before it could be written.");
+							}
+							await handle.writeFile(generated);
+							await handle.sync();
+							const syncedStat = await handle.stat();
+							if (!sameInode(stagedStat, syncedStat) || syncedStat.size !== KEY_BYTES) {
+								throw new Error("The staged vault key changed while its exact bytes were being synced.");
+							}
+						} finally {
+							await handle.close();
+						}
+
+						await syncDirectory(pin);
+						const stagedPathStat = await fs.lstat(temporaryPath);
+						if (stagedStat === null || !sameInode(stagedStat, stagedPathStat)) {
+							throw new Error("The staged vault key was replaced before publication.");
+						}
+						await verifyOwnerOnlyWindowsAcl(temporaryPath);
+						if (!moveNoReplace(temporaryPath, ioKeyPath)) {
+							const winner = await readVaultKeyPinned(pin);
+							if (winner === null) {
+								throw new Error("A concurrent vault key winner disappeared before it could be read.");
+							}
+							return winner;
+						}
+						published = true;
+						await syncDirectory(pin);
+
+						const publishedStat = await fs.lstat(ioKeyPath);
+						assertKeyPathSafe(keyPath, publishedStat, true);
+						assertKeyNotExposed(keyPath, publishedStat);
+						if (!sameInode(stagedStat, publishedStat)) {
+							throw new Error("The published vault key is not the staged synced inode.");
+						}
+						const reachable = await readVaultKeyPinned(pin);
+						if (reachable === null || !reachable.equals(generated)) {
+							throw new Error("The vault key reachable after publication is not the generated winner.");
+						}
+						return reachable;
+					} finally {
+						if (!published && stagedStat !== null) {
+							if (await removePathIfSameInode(temporaryPath, stagedStat).catch(() => false)) {
+								await syncDirectory(pin).catch(() => {});
+							}
+						}
+					}
+				},
+				KEY_LOCK_OPTIONS,
+			);
+			await verifyKeyRootPin(pin);
+			return result;
+		} finally {
+			await closeKeyRootPin(pin);
+		}
+	} catch (error) {
+		throw publicKeyError(error);
+	}
+}
+
+/**
+ * Read the vault key, or `null` only when the pinned root or final key is genuinely absent.
+ */
+export async function readVaultKey(globalConfigRoot: string): Promise<Buffer | null> {
+	try {
+		const pin = await pinKeyRoot(globalConfigRoot);
+		if (pin === null) return null;
+		try {
+			return await readVaultKeyPinned(pin);
+		} finally {
+			await closeKeyRootPin(pin);
+		}
+	} catch (error) {
+		throw publicKeyError(error);
 	}
 }
 
@@ -318,7 +767,7 @@ export function openVault(key: Buffer, sealed: SealedVault, binding?: string): s
 		return Buffer.concat([decipher.update(Buffer.from(sealed.ct, "base64")), decipher.final()]).toString("utf8");
 	} catch (error) {
 		throw new Error(
-			`This vault could not be decrypted (${errorMessage(error)}). ` +
+			`This vault could not be decrypted (${escapeTerminalText(errorMessage(error))}). ` +
 				`Either it was written with a different key or for a different vault location, or the file has been modified. ` +
 				`Nothing is being read from it, and no secret in it is being protected right now.`,
 		);

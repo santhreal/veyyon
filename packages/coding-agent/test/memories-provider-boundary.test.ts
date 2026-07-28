@@ -334,16 +334,23 @@ describe("memory provider boundary", () => {
 		await writeRollout(fixture, "claim-b", [{ role: "user", content: secondSecret }]);
 		const stageOnePayloads: string[] = [];
 		let stageOneInvocations = 0;
+		let releaseFirstSanitization!: () => void;
+		const firstSanitization = new Promise<void>(resolve => {
+			releaseFirstSanitization = resolve;
+		});
 		vi.spyOn(ai, "completeSimple").mockImplementation(
 			async (_model: Model, context: Context, options?: SimpleStreamOptions) => {
 				if (isStageOne(context)) {
 					stageOneInvocations += 1;
-					if (stageOneInvocations === 1) {
-						fixture.session.obfuscator = new SecretObfuscator([{ type: "plain", content: secondSecret }]);
-					}
+					const invocation = stageOneInvocations;
+					if (invocation > 1) await firstSanitization;
 					await resolveApiKey(options?.apiKey);
 					stageOnePayloads.push(JSON.stringify(context));
-					return successfulStageOne(`claim-${stageOneInvocations}`) as never;
+					if (invocation === 1) {
+						fixture.session.obfuscator = new SecretObfuscator([{ type: "plain", content: secondSecret }]);
+						releaseFirstSanitization();
+					}
+					return successfulStageOne(`claim-${invocation}`) as never;
 				}
 				await resolveApiKey(options?.apiKey);
 				return successfulPhaseTwo as never;

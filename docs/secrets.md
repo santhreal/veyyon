@@ -96,7 +96,7 @@ The masked prompt is `showHookInput`, which is local only. Unlike the selector a
 
 A vault entry's placeholder is its name, so the model sees `#GITHUB_TOKEN#`. That is what lets it choose between several credentials deliberately, and it makes the placeholder stable across sessions.
 
-Names are 5 to 64 characters of `A-Z`, `0-9` and `_`, starting with a letter. Unnamed HMAC placeholders start with the reserved digit `0`, so a name can never collide with one. `normaliseSecretName` accepts what people type (`github-token`, `github token`, lowercase) and uppercases it.
+Names are 5 to 64 characters of `A-Z`, `0-9` and `_`, starting with a letter. Unnamed HMAC placeholders start with the reserved digit `0`, so a name can never collide with one. `normaliseSecretName` accepts what people type (`github-token`, `github token`, lowercase) and uppercases it. It rejects non-ASCII input before uppercasing, so Unicode case expansion cannot alias an existing name.
 
 Entries without a name get a generated name (`SECRET_1`), so every vault entry has a placeholder the model can reference. Plain environment and `secrets.yml` values use the machine-keyed unnamed form.
 
@@ -110,9 +110,13 @@ Entries without a name get a generated name (`SECRET_1`), so every vault entry h
 
 Narrowest scope wins a name clash. `rm` and `extend` walk scopes narrowest-first, so they act on the entry `list` shows.
 
-Encryption is AES-256-GCM with a fresh 12 byte nonce and a full 16 byte authentication tag per write. The key is 32 random bytes at `~/.veyyon/vault.key`, mode 0600, created on first use, never inside a project tree. That placement lets a project-scoped vault be copied without making it readable on a machine that lacks the key.
+Encryption is AES-256-GCM with a fresh 12 byte nonce and a full 16 byte authentication tag per write. The key is 32 random bytes at `~/.veyyon/vault.key`, created on first use and never stored inside a project tree. On POSIX, the key is mode 0600 and its directory must be owned by you and not writable by another user. On Windows, Veyyon applies and verifies a protected owner-only ACL.
 
-Vault updates are written to a mode-0600 temporary file, synchronized, and atomically renamed into place. Read and write paths reject symlinks, hard links, directories, devices, and other non-regular files. Scope checks resolve real parent directories, so a project vault path cannot traverse a symlink into the profile or global scope. Each descriptor is limited to 8 MiB before allocation.
+Vault updates use a synchronized owner-only temporary file. Kernel no-replace and exchange operations publish the synced inode without overwriting a destination that appeared after the last check. Each transaction keeps the scope directory open and performs file I/O through that descriptor. Replacing the lexical directory during a transaction therefore causes a hard error instead of redirecting the read or write.
+
+Read and write paths reject symlinks, hard links, directories, devices, insecure permissions, and other non-regular files. Scope checks resolve real parent directories. The authenticated location includes the semantic scope, canonical path, and physical scope-directory identity. Copying or backing up `vault.json` preserves confidentiality, but the ciphertext is not a portable restore artifact. Recreate entries with `/secret add` after moving or recreating the scope directory.
+
+The sealed descriptor is limited to 8 MiB before allocation. Writes also enforce a 6,291,402-byte encoded plaintext limit before JSON serialization, encryption, or Base64 expansion.
 
 Failure behavior is fail-closed:
 
@@ -121,9 +125,9 @@ Failure behavior is fail-closed:
 | No vault file | Empty. Nothing was stored. |
 | Vault present, key missing | Hard error. Never read as an empty vault. |
 | Key of wrong length | Hard error, so a new key is not written beside a recoverable one. |
-| Key or vault readable by other users (POSIX) | Hard error naming the `chmod`. Not checked on Windows, where mode bits do not apply. |
+| Unsafe key directory, key file, or vault permissions | Hard error naming the permission fix. POSIX ownership and modes and Windows owner-only ACLs are checked. |
 | Symlink, hard-linked file, or non-regular key/vault path | Hard error. The path is never followed or shared. |
-| Ciphertext, nonce, authentication tag, scope, or bound path modified | Hard error. GCM authenticates the complete envelope and its location. |
+| Ciphertext, nonce, authentication tag, scope, canonical path, or physical scope identity modified | Hard error. GCM authenticates the complete envelope and its location. |
 | Legacy version 1 envelope | Hard error directing the operator to re-add the entry in the bound current format. |
 | Unknown envelope version | Hard error advising an upgrade rather than deletion. |
 

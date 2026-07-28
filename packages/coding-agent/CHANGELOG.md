@@ -4,6 +4,157 @@
 
 ### Changed
 
+- `veyyon -p` starts without loading the slash-command handlers. Text and ACP mode dispatch every
+  message through `executeAcpBuiltinSlashCommand`, and that function imported the builtin registry
+  statically: 740 modules of handlers, and behind them the settings store, the MCP client and the
+  session store. Almost every message is a prompt rather than a command, so a plain
+  `veyyon -p "hello"` paid for the entire command surface to discover the text had no slash in it.
+  The registry loads inside the function now, after the parse has already said the text is a command.
+  A command still runs exactly as it did; what changed is when the handlers arrive. Print mode reaches
+  227 modules where it reached 960.
+
+- The MCP HTTP transport uses the shared `isRecord` instead of spelling the same three-clause check
+  out inline, and `commit/{shared-llm,changelog/generate,analysis/summary}.ts` and
+  `secrets/obfuscator.ts` import `completeSimple`, `validateToolCall` and `toolWireSchema` from the
+  modules that declare them rather than from the `@veyyon/ai` entry point. That entry point
+  re-exports the whole package, so taking one function from it costs 363 modules;
+  `commit/shared-llm.ts` reaches 184 where it reached 325.
+
+- Context accounting and the turn-budget directive moved out of the terminal UI. Both lived under
+  `modes/` because the surfaces that display them do, and the session engine imported them from
+  there, which is the wrong direction: the layering gate had to carry a standing exception for each.
+  `parseTurnBudget` is at `session/turn-budget.ts` and the token accounting is at
+  `session/context-usage.ts`. The `/context` grid stayed where it was, in
+  `modes/utils/context-usage.ts`, and imports only the shapes from the accounting module.
+
+  The category rows dropped their colour and glyph in the move. The panel owns that table now, keyed
+  on the category id, so the numbers carry no palette and another surface can report the same figures
+  without inheriting the grid's colours. Callers importing `computeContextBreakdown`,
+  `computeNonMessageTokens`, `computeNonMessageBreakdown`, `computeStoredMessagesTokens`,
+  `estimateSkillsTokens` or `estimateToolSchemaTokens` from
+  `@veyyon/coding-agent/modes/utils/context-usage` should import them from
+  `@veyyon/coding-agent/session/context-usage`; `renderContextUsage` stays where it was.
+
+- `tools/` may import the terminal UI only to draw, and only through named leaves. Unlike the session
+  engine a tool renders its own output block, so it cannot be forbidden the UI outright, and that
+  partial permission is how the boundary rots: thirty-two files under `tools/` import from `modes/`,
+  each one obviously fine on its own. A gate now lists the ten modules they may reach and what each
+  is for, so an eleventh is a decision someone writes down rather than an import that slips in.
+
+- The Agent Control Center sizes itself to the roster. It used to take the whole terminal whatever was
+  in it, so a run with four agents drew four rows and then about twenty rows of empty bordered card
+  over the transcript you opened it to look past. It keeps room for eight rows so it does not resize
+  on every spawn, grows with the roster, and still takes the viewport and no more when the roster is
+  larger than the screen. The Comms stream keeps the full height, because a feed that resized its own
+  frame as messages arrived would be worse than the space it saves. With no agents running it also
+  stops offering the three keys that act on a selected row, since there is no row to select.
+
+- Every place that tells you which key expands a folded block now reads the key you have. Nine
+  surfaces wrote `ctrl+o` out as a literal, so rebinding `app.tools.expand` left them naming a key
+  that no longer expands anything: the Agent Control Center's Comms chip and fold line, the
+  rule-injection notice, the shared execution footer, the bash block, and both `ssh` output hints.
+  The line count they carry is unchanged, and is still shown when the action is bound to nothing.
+
+- The hook editor's footer reads its chords too, and it now names both submit chords. It said
+  `enter or ctrl+q submit`, while `app.message.followUp` ships as `ctrl+q` and `ctrl+enter` and the
+  handler has always accepted either, so a chord that really submits was missing from the row that
+  lists them.
+
+### Fixed
+
+- A block that folds exactly one line now says "1 more line". Every collapsed tool block, the read
+  tool's continuation notice, the edit preview, the LSP hover, the MCP and eval renderers, `ssh`
+  output and the Agent Control Center's comms fold wrote the count inline, so all of them said
+  "1 more lines" on the commonest fold there is.
+
+- Image paste now uses the same chords in the composer as everywhere else. The editor kept its own
+  copy of the shipped defaults and had pinned `app.clipboard.pasteImage` to `ctrl+v`, so on Windows
+  the `alt+v` fallback and on macOS the `super+v` fallback did not fire there, while the docs,
+  `/hotkeys` and the settings UI all listed them. There is one table now, in
+  `config/keybinding-defs.ts`, and the editor reads it.
+
+- The Agent Control Center's Comms view names the expand key you actually have. Its key handler
+  already read `app.tools.expand`, but the footer chip and the fold line both said `ctrl+o` in so
+  many letters, so rebinding the action left the card telling you to press a key that no longer
+  unfolds anything. When no expand key reaches the card the chip is dropped rather than shown, and
+  the fold still reports how many lines it hid.
+
+- `/hotkeys` now prints the live chord for every row, including the composer and editor ones. The
+  reference page sends you there for "the live list after your remaps", and half the table was
+  hardcoded: `Enter`, `Tab`, `Ctrl+U`, `Ctrl+K`, `Ctrl+W`, `Ctrl+A`, `Ctrl+E` and the word motions
+  were literal strings, so rebinding `tui.editor.deleteToLineStart` in your `keybindings.yml` left
+  the panel that exists to tell you what you had done still showing `Ctrl+U`. The rows that stay
+  prose are the ones with no binding behind them: the arrow keys as a family, `alt+enter`, the
+  push-to-talk `Space` hold, and the prompt sigils `/`, `!`, `$` and `#`.
+
+- Eight keybinding ids that nothing read are gone. Every id in the table is printed by `/hotkeys`
+  with a default key beside it and written into the generated `keybindings.yml` as something you may
+  remap, so an id nothing reads is a documented shortcut that does nothing when pressed.
+  `app.session.rename`, `app.session.togglePath`, `app.session.toggleSort` and
+  `app.session.deleteNoninvasive` named actions the session selector does not have,
+  `app.tree.foldOrUp` and `app.tree.unfoldOrDown` named a tree view that is not implemented,
+  `app.session.delete` named an action the selector has but reaches by matching the literal `delete`
+  and `backspace` keys rather than the binding, and `tui.input.copy` named a copy the editor does not
+  implement. One of them was a lie rather than a silence: `app.session.toggleSort` claimed `ctrl+s`,
+  which is `app.session.observe` and opens the Agent Control Center, so `/hotkeys` told you `ctrl+s`
+  sorted your session list. An entry naming a removed id in your own `keybindings.yml` is kept and
+  ignored, as it already was.
+
+- Two functions no longer `await import("@veyyon/utils")` in a file that already imports it
+  statically. The module was instantiated either way, so the await bought nothing and cost a promise
+  per call.
+
+- The list of setting TYPE tags has one owner. `settings-schema.ts` exports `SETTING_TYPES` and
+  `isSettingType`, both derived from a `Record<SettingType, true>` so that adding a definition kind
+  without listing it, or listing one that does not exist, is a compile error. The schema corpus test
+  had kept its own copy of the list, which had drifted both ways: it named an `object` kind the
+  schema never had, and it was missing `modelChain`, so `compaction.model` and `subagent.model` read
+  as untyped.
+
+- Class privacy is `#` everywhere it can be. `private` and `protected` are compile-time annotations that vanish at build time, so a `private` field is reachable from any code holding the object; AGENTS.md asks for the runtime-enforced `#` and exempts only constructor parameter properties, which have no `#` spelling. Six members are now `#`, and the four `ChatBlock` lifecycle hooks plus the one controller that overrides them are bare methods, because a `#` member cannot be overridden by a subclass and a hook exists to be overridden. `MnemopiSessionState` gained a `scoped` constructor option in the process: the failure suite had been building an instance with `Object.create(prototype)` and an `Object.assign`, which skips the constructor and therefore has no private fields at all, so the class now offers the bank bundle as a real seam and the test drives the real class through it.
+
+- Veyyon no longer discovers `SYSTEM.md`, `.gemini/system.md`, or `APPEND_SYSTEM.md`. A whole-prompt file bypassed the assembled prompt and its settings gates, while the append file duplicated `AGENTS.md` at fewer scopes. Existing files remain untouched and produce an operator-visible launch notice with their exact path and the supported replacement. The per-invocation `--system-prompt` and `--append-system-prompt` flags remain, and `PROMPT_SECTIONS/` remains the persistent section-level mechanism.
+
+- New profiles copy only `AGENTS.md` in the instruction row. `RULES.md` never travels during profile switching. The assembled project footer now gives the agent its active profile name, agent directory, skills directory, and the exact global and profile `AGENTS.md` paths.
+
+- A model chain is valid written either way. `compaction.model` and `subagent.model` hold an ordered chain, and every reader has always accepted both a comma-separated string and a YAML list. The schema declared them `string`, so a config written as a list was reported as a value that "does not match its declared type" and shown as invalid while the runtime read it correctly, and the list form is what the handbook shows. Both are declared `modelChain` now, which admits either spelling and still reports a number, an object, or a list holding something that is not a pattern (naming which entry). The settings UI picks the model editor from that type instead of from a hardcoded pair of paths, so a third chain setting cannot silently become a text box.
+
+- `inlineToolDescriptors: auto` follows the active model after a model switch. A session that started on Gemini previously kept Gemini's inline catalog after moving to a native OpenAI model because schema pruning was frozen at construction. Prompt placement, provider-schema pruning, side requests, and session dumps now resolve one active-model policy. The full built-in catalog integration saves at least 500 estimated provider tokens after the switch; the measured fixture saved 937.
+
+- The default built-in system prompt is 742 estimated tokens smaller. Completion, evidence, cleanup, and delegation invariants each have one owner instead of being restated across sections. The default delegation path fell from 862 to 433 tokens, and native tool providers no longer receive a prompt inventory that repeats names already present in their schemas. Inline and non-native tool modes still receive full descriptors.
+
+- The default system prompt has no monolithic prose template. `system-prompt.md` is now a checked
+  scaffold containing only `{{templateSections}}`; statement modules own instruction text, and the
+  section registry owns section order and banners. Assembly joins those sections directly, so prompt
+  text containing JavaScript replacement tokens such as `$`` remains literal. `PROMPT_SECTIONS/` and
+  eval section overrides accept body text only and cannot restyle a registry-owned banner.
+
+- Prompt overrides now fail closed. An eval statement override is rejected when its gate is inactive
+  or a whole-section replacement would discard it. Body-only overrides cannot inject any registered
+  section banner, blank append files change no bytes, and `veyyon prompt --statements` prices the
+  effective replacement text instead of the shipped text. An explicitly blank custom prompt remains
+  a replacement and no longer emits an empty provider block.
+
+- Changing a session's working directory now reloads the destination prompt inputs instead of
+  rebuilding from startup captures. The cwd, `AGENTS.md`, workspace tree, repository context,
+  project extension skills, rule inventory, and TTSR matchers move together. Non-TUI `/move` uses
+  the same re-scope owner, so ACP, RPC, and headless sessions also refresh secrets and prompt state.
+
+- `skill://` paths now use one canonical, session-owned resolver in every tool. Bash can no longer
+  follow a child symlink outside the declared skill root, autocomplete and managed-skill collision
+  checks no longer read another top-level session's skill inventory, and distinct authored skills
+  with one name produce an operator-visible collision warning.
+
+- Profile creation now distinguishes an absent optional seed item from unreadable or malformed
+  source data. An `AGENTS.md` directory, a file named `skills`, or a genuine filesystem failure
+  aborts creation with the source path instead of silently producing an incomplete profile.
+
+- Layered context files no longer resend a less-prominent file when its entire normalized paragraph sequence appears contiguously in a later authoritative file. The comparison keeps paraphrases, noncontiguous blocks, and distinct parent/child instructions. The regression fixture removes 86 provider bytes (22 estimated tokens) per request; a comparison of the active 22KB and 40KB rule files took 0.36 ms during prompt preparation.
+
+- `plugin doctor` and the LSP project detector probe the filesystem without blocking. Both ran a run of sequential `fs.existsSync` calls inside an `async` function: the detector checks up to six marker files in a row before doing any work, and doctor checks a package, a tools entry, a hooks entry and every extension entry for each installed plugin, so its probe count grows with the number of plugins. On a cold or network filesystem that is a stall the TUI cannot paint through. Both use `pathExists` from `@veyyon/utils` now, which also fixes a reporting bug in doctor: `existsSync` answers `false` for a path that exists and cannot be read, so an unreadable plugin entry, exactly the broken install doctor is for, was reported as "not found" and sent the operator looking for a file that was there.
+
+- The two profile dispatchers are named for the surface each one drives: `runProfileCliCommand` in `cli/profile-cli.ts` and `runProfileSlashCommand` in `slash-commands/profile-command.ts`. Both were `runProfileCommand`. Their signatures differ enough that importing the wrong one cannot compile, which is why it lasted; the cost was on the reader, since a call site said nothing about which surface it drove and two test files each had a `runProfileCommand` in scope meaning a different function. `test/architecture/command-surfaces-do-not-share-names.test.ts` now fails when `cli/`, `commands/` and `slash-commands/` declare the same exported name, and `DEVELOPMENT.md` says what each tree owns. No behaviour change: `veyyon profile` and `/profile` do exactly what they did.
+
 - `/agents` is the one agent surface. There were four. `/agents` opened a configuration list of every agent type the project offers, which is the Subagents settings table rendered a second time. `/cockpit` (alias `/hub`, the `app.agents.hub` and `app.session.observe` keys, and the double-tap-left gesture) opened a separate "Agent Hub" overlay with its own roster, its own ordering, its own status glyphs and its own drill-in. A third roster, the "subagent inbox", sat behind a `display.subagentInbox` flag with a fourth drill-in. Three of them rendered the same registry three different ways, so "which agents are running" had three answers that could disagree, and the operator had to know which screen they were on to read the one that was right. Every entry point now opens the same card, which has two views: **Live**, the roster of agents that exist right now, and **Comms**, the agent-to-agent message stream. `/cockpit` and `/hub` are aliases of `/agents` rather than a command of their own, so there is one description and one help entry.
 
 - Opening an agent hands the main view to that agent's live session, so you can talk to it. Enter on a roster row retargets the transcript, the composer and the status line at the agent, and Esc there returns you to your own session; a parked agent revives on the way in. Every drill-in before this was a read-only pane inside the card, which could show you a subagent asking a question and gave you no way to answer it. Two agents still open the read-only transcript, because there is no session to hand over: an advisor, which is observability-only and is not an addressable peer, and a collab guest's agents, which live on the host.
@@ -23,11 +174,45 @@
 
 - The same ragged band is fixed everywhere else it appeared: the session tree, history search, the extension list (rows and hover), the OAuth picker, the model browser, the model hub and the plan review overlay. One helper pads the row and then tints it, so there is one place to read the rule and one place to change it. Underneath was a width the two owners disagreed about: the list helper reserved ONE column for the scrollbar while `ScrollView` reserves TWO, a gutter plus the glyph, so every row was built a column too wide and cut on the way out. The helper is gone; a list now receives the width from the view that will render it and cannot restate the reserve.
 
+- The setup wizard's theme step picks a THEME, and its two modifiers compose with it. "Colorblind colors" and "ANSI-safe" sat in the list as if they were alternatives to a theme, and selecting either one FINISHED the step: you got `colorBlindMode: true` with your theme left at whatever it already was, or `symbolPreset: ascii` with `theme.dark` forced to `dark-terminal`. Neither is a theme choice, so a colourblind-safe LIGHT theme, or ASCII glyphs on Titanium, could not be asked for at all, and picking a theme afterwards silently reverted the modifier, because the theme rows restored the original state on commit. They are toggles now: selecting one flips it, repaints the preview with the new combination and stays in the step, and every commit writes both of them alongside the theme. The rows are rebuilt after the preview applies as well as before it, because the mark is drawn with the very glyph set the ASCII toggle controls, and building them once left the two checkboxes in unicode while the whole rest of the screen had switched to plain text.
+
 - Twelve overlays got the modal height fix they were supposed to have. Each carried its own `height < 24` instead of asking the shell, and a threshold that depends on the card's own margin and padding is only ever right for one sizing, so when the shared rule was corrected the model hub, the settings picker, the session picker, the extension dashboard, the OAuth picker, history search, the copy and move overlays, the usage reset and message pickers and the plain select list all kept the cliff.
 
 ### Fixed
 
+- The slash-command reference documents `/models`, `/status` and `/force:`. All three are aliases,
+  and `/status` is the surprising one: it opens the Extension Control Center rather than anything
+  about session status.
+
+- The `Live` tab in the Agent Control Center counts the rows it shows. It counted only the running
+  agents while the pane listed every one, so a roster with parked agents read `Live (17)` above
+  twenty rows, and a roster with nothing running read `Live (0)` above a full pane.
+
+- Agents spawned in the same millisecond are listed and named in spawn order. Ties were broken on
+  the agent id compared as text, which put `10-Sub` between `1-Sub` and `2-Sub`, so a fan-out of
+  twenty appeared as 1, 10, 11, 12, 2, 3 and the call signs were assigned in that order.
+
+- Six glyphs in the `unicode` symbol preset rendered as empty boxes on a machine without a Nerd
+  Font. `⟳` (running) is absent from DejaVu Sans Mono, so every busy row in the Agent Control
+  Center drew a box where the status mark belongs, and `⤵`/`⤴` (the token in/out icons in
+  the status line) exist in none of the monospace fonts checked. Running is `◐` now, in/out are
+  `↓`/`↑`, and the worktree, gh and disabled marks changed for the same reason. The `nerd`
+  and `ascii` presets are untouched.
+
+- The unread-message badge on an agent row takes its glyph from the symbol preset instead of
+  hard-coding one, so it follows the `ascii` and `nerd` presets like every other icon.
+
+- A second, dead answer to "which model does this session start on" is gone. `config/model-resolver.ts` exported `findInitialModel` and `restoreModelFromSession`, a full precedence chain with its own `console.log`/`console.error` output and a `process.exit(1)` inside a library module. Nothing in the workspace called either one, not even a test: `main.ts` had grown its own resolution and the two had drifted, and `docs/models.md` documented the dead order as the live one. Both functions and their registry type aliases are deleted, and the doc now describes what `buildSessionOptions` actually does, including the deferred resolution for a bare model id an extension may register and the loud substitution when a remembered default is unavailable.
+
+- An empty icon no longer leaves its space behind. A symbol preset may leave an icon blank and the unicode preset leaves thirty-one of them blank, so a label written as `` `${theme.icon.job} ${count}` `` rendered ` 5`: a leading space and a number with nothing saying what it counts. The status line showed it worst, several metrics side by side with unlabelled numbers between them. The join is one leaf function now, `modes/theme/icon-label.ts`, which emits the separator only when there is an icon to separate; it had existed as a private helper inside the status line's segment builders while twenty-nine hand-written copies across thirteen files did not use it, which is why the gap appeared in some parts of a line and not others. Every icon-then-label site goes through it, and a repo-wide ratchet keyed on the SHAPE rather than on a file list fails if the template is written by hand again.
+
 - Secret protection now closes every provider-bound path, including compaction, commit analysis, benchmarks, evaluation, Hindsight, Mnemopi, memory extraction, title and thinking classifiers, task labels, TTS, image tools, resumed assistant text, and dynamic prompts and schemas. Each physical attempt rebuilds from raw text with the live profile, project, environment, and vault runtime after credential refresh. Authenticated replay fields fail closed when they contain a live value, JSON keys are protected with collision checks, provider-bound images are canonically re-encoded without metadata, and credential-bearing URLs bypass cloud readers. Unnamed values and generated one-way aliases use machine-keyed HMAC derivation; replacement output is atomic; ambiguous regex alternations are refused; and ill-formed Unicode cannot enter placeholder generation. Working-directory rescoping rolls back transactionally. Vault files reject scope aliases, hard links, legacy unbound envelopes, oversized descriptors, and stale-lock reaper races. Audit generations reject hard links and oversized reads, recover non-newline tails safely, protect JSON keys, and escape terminal control bytes. Inline `/secret add` preserves exact trailing bytes and rejects option-like text after credential data begins.
+
+- Vault storage now pins open physical scope and key directories for every transaction. Kernel no-replace and exchange publication preserves a racing destination, key creation uses one crash-atomic winner, and interrupted key stages recover idempotently under concurrent readers. Vault authentication includes the canonical path and physical scope-directory identity. Runtime revisions include inode, time, link, permission, and ownership changes. Existing key and vault permissions fail closed on POSIX and Windows, and write preflight rejects encoded plaintext over 6,291,402 bytes before encryption.
+
+- A misspelled key in a model's `compat.reasoningEffortMap` is now reported when the config loads instead of being accepted and ignored. The map remaps a thinking level to whatever string a given OpenAI-compatible server calls it, so every key names a level; a key that names none, `hihg` for `high`, validated, was carried into the config, and then never matched, so the remap silently did not happen and the level went to the provider verbatim. That is the exact failure the map exists to prevent, and nothing about it was visible: the config loaded, the request succeeded, and the effort was wrong. The schema rejects undeclared keys and names the offending one.
+
+- The models-config schema no longer keeps its own copy of the effort ladder. `EFFORT_ORDER` is `THINKING_EFFORTS` from `@veyyon/catalog/effort`, and the literal union `EffortSchema` still spells out (ArkType infers a literal union only from a literal definition, and generating it would infer as `string`, leaving every `defaultLevel`, `minLevel` and `maxLevel` unchecked) is verified against the owner when the schema is built. Adding a level to the ladder and forgetting this file used to produce no build error and no runtime error either: the new level was rejected as unknown, so the failure arrived as a validation message against the user's own config file.
 
 - The Unix installer says `curl is required and is not installed` instead of blaming GitHub. Every fetch it makes is curl, so on a machine without it the first request failed exactly the way an unreachable host does and the install died with "could not reach https://github.com/santhreal/veyyon/releases/latest (network error, or GitHub is down)" while the network was fine. The user then goes looking at DNS, a proxy and a firewall for a missing package. Minimal container images and stripped CI runners are where this happens, and they are also where people reach for `wget -qO- ... | sh`, which is how you get here with wget present and curl not. The check runs before any install path and names the package manager command; an uninstall does not need curl and is not gated on it.
 
