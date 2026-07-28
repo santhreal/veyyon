@@ -29,6 +29,18 @@ import { existingOnly, readIfPresent } from "./check-doc-links";
 const repoRoot = path.resolve(import.meta.dir, "..");
 const runCiPath = path.join(repoRoot, "scripts", "install-tests", "run-ci.sh");
 const runCi = fs.readFileSync(runCiPath, "utf8");
+/**
+ * The end-to-end assertions themselves, which run-ci.sh now sources.
+ *
+ * They moved out of run-ci.sh so `published-release-e2e.sh` could drive the same
+ * contract against the release a user downloads, rather than a second copy that
+ * drifts. The checks below follow them: what matters is that the gate still makes
+ * them, not which file the lines sit in.
+ */
+const installerE2e = fs.readFileSync(
+	path.join(repoRoot, "scripts", "install-tests", "installer-e2e-lib.sh"),
+	"utf8",
+);
 
 /** Files that existed only to build or publish the npm/tarball topology. */
 const removedNpmMachinery = [
@@ -197,68 +209,115 @@ describe("the npm/tarball topology stays deleted", () => {
 describe("the gate runs the installer itself, not only what it installs", () => {
 	it("drives install.sh end to end against a sandboxed HOME", () => {
 		expect(runCi).toContain('section "Installer end-to-end (--local install, then --uninstall)"');
-		expect(runCi).toContain('installer_env sh "$ROOT_DIR/scripts/install.sh" --local');
-		expect(runCi).toContain('installer_env sh "$ROOT_DIR/scripts/install.sh" --uninstall');
+		expect(runCi).toContain('installer_end_to_end "$WORK_DIR" --local');
+		expect(installerE2e).toContain('installer_env sh "$install_sh" "$@"');
+		expect(installerE2e).toContain('installer_env sh "$install_sh" --uninstall');
+	});
+
+	/**
+	 * Both callers, so neither can quietly stop running the contract. The
+	 * published-release script is the one that would go unnoticed: it runs on
+	 * fewer commits and is the install users actually get.
+	 */
+	it("drives the same contract against the published release", () => {
+		const published = fs.readFileSync(
+			path.join(repoRoot, "scripts", "install-tests", "published-release-e2e.sh"),
+			"utf8",
+		);
+		expect(published).toContain("installer-e2e-lib.sh");
+		// No mode argument: the default IS the published-release download.
+		expect(published).toContain('installer_end_to_end "$WORK_DIR"');
+		// The call itself, not the file: `--local` is named in the header, which
+		// explains what this script exists to cover that run-ci.sh does not.
+		expect(published.split("\n").filter(line => /^installer_\w+ .*--local/.test(line))).toEqual([]);
 	});
 
 	it("isolates every directory the installer writes to", () => {
 		// Without all four, the gate edits the developer's or the runner's real
 		// dotfiles and completion directories.
 		for (const variable of ["HOME=", "XDG_DATA_HOME=", "XDG_CONFIG_HOME=", "VEYYON_INSTALL_DIR="]) {
-			expect(runCi, `installer_env must set ${variable}`).toContain(variable);
+			expect(installerE2e, `installer_env must set ${variable}`).toContain(variable);
 		}
 	});
 
 	it("runs with a minimal PATH so the host's own veyyon cannot change the result", () => {
 		// An installed veyyon earlier on the runner's PATH shadows the sandbox
-		// copy, which makes doctor's output depend on the machine.
-		expect(runCi).toContain('env PATH="/usr/bin:/bin"');
+		// copy, which makes doctor's output depend on the machine. `/usr/local/bin`
+		// is on it because the published-release mode needs curl, and nothing else.
+		expect(installerE2e).toContain('env PATH="/usr/local/bin:/usr/bin:/bin"');
 	});
 
 	it("asserts the real files, not the installer's exit code", () => {
 		// An install that exits 0 having placed nothing would pass an exit-code
 		// check. Each of these is a file a user would go looking for.
-		expect(runCi).toContain('expect_exists "$INSTALLER_BIN/veyyon"');
-		expect(runCi).toContain('expect_exists "$INSTALLER_BIN/vey"');
-		expect(runCi).toContain('expect_exists "$INSTALLER_HOME/.local/share/bash-completion/completions/veyyon"');
-		expect(runCi).toContain('expect_exists "$INSTALLER_HOME/.local/share/zsh/site-functions/_veyyon"');
-		expect(runCi).toContain('expect_exists "$INSTALLER_HOME/.config/fish/completions/veyyon.fish"');
+		expect(installerE2e).toContain('expect_exists "$installer_bin/veyyon"');
+		expect(installerE2e).toContain('expect_exists "$installer_bin/vey"');
+		expect(installerE2e).toContain('expect_exists "$installer_home/.local/share/bash-completion/completions/veyyon"');
+		expect(installerE2e).toContain('expect_exists "$installer_home/.local/share/zsh/site-functions/_veyyon"');
+		expect(installerE2e).toContain('expect_exists "$installer_home/.config/fish/completions/veyyon.fish"');
 	});
 
 	it("checks the alias is a symlink and the binary is executable", () => {
-		expect(runCi).toContain('[ -x "$INSTALLER_BIN/veyyon" ]');
-		expect(runCi).toContain('[ -L "$INSTALLER_BIN/vey" ]');
+		expect(installerE2e).toContain('[ -x "$installer_bin/veyyon" ]');
+		expect(installerE2e).toContain('[ -L "$installer_bin/vey" ]');
 	});
 
+	/**
+	 * The rc assertion matches the bytes `path_line_for` writes, single quotes included.
+	 *
+	 * The directory is SINGLE-quoted and `$PATH` is not, which is the shape
+	 * `scripts/install.sh` produces and the shape its uninstall recognises its own
+	 * line by. It was double-quoted once, and a directory whose name contains `$`
+	 * then expanded when the rc was sourced: the user got `command not found` in a
+	 * shell whose rc plainly named the right directory. This test asserted the old
+	 * double-quoted form and so failed every run after the fix landed, which is the
+	 * hazard of pinning a script's text rather than its behaviour. Both spellings
+	 * are checked now: the one the gate greps for, and the fact that the installer
+	 * builds it through the one owner rather than spelling it inline.
+	 */
 	it("checks the PATH line and its marker landed in the rc", () => {
-		expect(runCi).toContain('grep -Fqx "export PATH=\\"$INSTALLER_BIN:\\$PATH\\"" "$INSTALLER_HOME/.bashrc"');
-		expect(runCi).toContain('grep -Fqx "# added by the veyyon installer" "$INSTALLER_HOME/.bashrc"');
+		// `String.raw`, because the assertion is about backslashes: written as an
+		// ordinary literal the escapes are read twice, once by TypeScript and once
+		// by the reader, and the two disagree.
+		expect(installerE2e).toContain(String.raw`local path_line="export PATH='$installer_bin':\"\$PATH\""`);
+		expect(installerE2e).toContain('grep -Fqx "$path_line" "$installer_home/.bashrc"');
+		expect(installerE2e).toContain('grep -Fqx "# added by the veyyon installer" "$installer_home/.bashrc"');
+	});
+
+	/** And the installer really writes that shape, so the gate is not pinned to a fiction. */
+	it("pins the same quoting the installer's one PATH-line owner produces", () => {
+		const installer = fs.readFileSync(path.join(repoRoot, "scripts", "install.sh"), "utf-8");
+
+		expect(installer).toContain(`*) printf 'export PATH=%s:"$PATH"' "$(shell_single_quote "$2")" ;;`);
+		// The pre-fix spelling survives in ONE place only: the uninstall's list of
+		// lines an older install may have left behind. Anywhere else it is the bug.
+		expect(installer).toContain(`*) printf 'export PATH="%s:$PATH"\\n' "$2" ;;`);
 	});
 
 	it("reinstalls once more and proves the rc line is not duplicated", () => {
 		// Re-running the installer is the single most common user action after
 		// the first install, and appending the line again on every run is the
 		// obvious way to get it wrong.
-		expect(runCi).toContain('path_lines="$(grep -Fxc');
-		expect(runCi).toContain('[ "$path_lines" = "1" ]');
+		expect(installerE2e).toContain('path_lines="$(grep -Fxc');
+		expect(installerE2e).toContain('[ "$path_lines" = "1" ]');
 	});
 
 	it("proves uninstall reclaims every file it wrote", () => {
-		expect(runCi).toContain('expect_absent "$INSTALLER_BIN/veyyon"');
-		expect(runCi).toContain('expect_absent "$INSTALLER_HOME/.local/share/bash-completion/completions/vey"');
-		expect(runCi).toContain('expect_absent "$INSTALLER_HOME/.config/fish/completions/vey.fish"');
-		expect(runCi).toContain("uninstall left the PATH line in .bashrc");
+		expect(installerE2e).toContain('expect_absent "$installer_bin/veyyon"');
+		expect(installerE2e).toContain('expect_absent "$installer_home/.local/share/bash-completion/completions/vey"');
+		expect(installerE2e).toContain('expect_absent "$installer_home/.config/fish/completions/vey.fish"');
+		expect(installerE2e).toContain("uninstall left the PATH line in .bashrc");
 	});
 
 	it("proves uninstall leaves the user's own rc content alone", () => {
 		// "Removes everything it added, and only what it added" is the documented
 		// contract; the second half is the one that costs a user their config.
-		expect(runCi).toContain('echo "alias ll=\'ls -la\'" >> "$INSTALLER_HOME/.bashrc"');
-		expect(runCi).toContain("uninstall removed the user's own .bashrc content");
+		expect(installerE2e).toContain('echo "alias ll=\'ls -la\'" >> "$installer_home/.bashrc"');
+		expect(installerE2e).toContain("uninstall removed the user's own .bashrc content");
 	});
 
 	it("proves the install directory is empty afterwards, staging files included", () => {
-		expect(runCi).toContain('leftovers="$(ls -A "$INSTALLER_BIN" 2>/dev/null || true)"');
-		expect(runCi).toContain("uninstall left files behind");
+		expect(installerE2e).toContain('leftovers="$(ls -A "$installer_bin" 2>/dev/null || true)"');
+		expect(installerE2e).toContain("uninstall left files behind");
 	});
 });
