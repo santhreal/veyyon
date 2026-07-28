@@ -15,19 +15,34 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../../..");
 const CLI = path.join(REPO_ROOT, "packages/coding-agent/src/cli.ts");
 
-/** Run `setup status` with a PATH we control, so the machine cannot decide the result. */
+/**
+ * Run `setup status` with a PATH we control, so the machine cannot decide the result.
+ *
+ * THROUGH `hermeticSpawnEnv`, not `{ ...process.env }`. Passing the ambient environment let the child
+ * resolve its config against the developer's real `HOME` and honour any `VEYYON_CONFIG_DIR` or
+ * `VEYYON_CODING_AGENT_DIR` already exported in the shell, so a local profile could change what
+ * `setup status` reports and flip these assertions on one machine and not another. Controlling `PATH`
+ * and leaving the rest inherited controls one input out of several. The
+ * `helpers/hermetic-spawn-env.test.ts` guard exists for exactly this and named this file.
+ */
 function runStatus(pathValue: string): { exitCode: number; stdout: string } {
-	const result = Bun.spawnSync([process.execPath, CLI, "setup", "status"], {
-		cwd: REPO_ROOT,
-		env: { ...process.env, PATH: pathValue },
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	return { exitCode: result.exitCode, stdout: result.stdout.toString() };
+	const { env, cleanup } = hermeticSpawnEnv({ PATH: pathValue });
+	try {
+		const result = Bun.spawnSync([process.execPath, CLI, "setup", "status"], {
+			cwd: REPO_ROOT,
+			env,
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		return { exitCode: result.exitCode, stdout: result.stdout.toString() };
+	} finally {
+		cleanup();
+	}
 }
 
 /** The directory holding the runtime, which the child needs to start at all. */
@@ -42,7 +57,7 @@ describe.skipIf(process.platform === "win32")("veyyon setup status reports failu
 
 		expect(exitCode).toBe(1);
 		expect(stdout).toContain("does not resolve on PATH");
-		expect(stdout).toContain("1 errors");
+		expect(stdout).toContain("1 check failed");
 	});
 
 	/**
@@ -81,7 +96,7 @@ describe.skipIf(process.platform === "win32")("veyyon setup status reports failu
 
 			const { exitCode, stdout } = runStatus(`${dir}:${RUNTIME_DIR}:/usr/bin:/bin`);
 
-			expect(stdout).toContain("0 errors");
+			expect(stdout).toContain("Everything works");
 			expect(stdout).toContain("vey alias");
 			expect(exitCode).toBe(0);
 		} finally {
