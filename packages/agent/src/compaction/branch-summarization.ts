@@ -85,6 +85,17 @@ export interface GenerateBranchSummaryOptions {
 	/** Convert app-specific messages before serializing the branch summary prompt. */
 	convertToLlm?: ConvertToLlm;
 	/**
+	 * Resolve the live provider-text transform after each credential resolution.
+	 * Each physical auth attempt rebuilds its context from the raw entries with
+	 * the returned transform before budgeting or serialization.
+	 */
+	resolveObfuscateProviderText?: () => (text: string) => string;
+	/**
+	 * Optional final provider-payload hook. When a live text transform is
+	 * configured, its result is sanitized with the same attempt transform.
+	 */
+	onPayload?: SimpleStreamOptions["onPayload"];
+	/**
 	 * Optional telemetry handle. When provided, the branch summary LLM call is
 	 * wrapped in an OTEL chat span tagged with `pi.gen_ai.oneshot.kind = "branch_summary"`.
 	 */
@@ -207,6 +218,127 @@ function getMessageFromEntry(entry: SessionEntry): AgentMessage | undefined {
 	}
 }
 
+type ObfuscateProviderText = (text: string) => string;
+
+const PROVIDER_TEXT_TRANSFORM_ERROR = "Branch summary provider text transformation failed.";
+
+function providerTextTransformError(): Error {
+	return new Error(PROVIDER_TEXT_TRANSFORM_ERROR);
+}
+
+const MAX_PROVIDER_TRANSFORM_DEPTH = 64;
+const MAX_PROVIDER_TRANSFORM_NODES = 100_000;
+const MAX_PROVIDER_TRANSFORM_KEYS = 100_000;
+const MAX_PROVIDER_TRANSFORM_STRING_CHARS = 16 * 1024 * 1024;
+
+interface ProviderTransformTraversal {
+	ancestors: WeakSet<object>;
+	nodes: number;
+	keys: number;
+	sourceStringChars: number;
+	transformedStringChars: number;
+}
+
+function transformProviderText(
+	text: string,
+	transform: ObfuscateProviderText,
+	traversal: ProviderTransformTraversal,
+): string {
+	traversal.sourceStringChars += text.length;
+	if (traversal.sourceStringChars > MAX_PROVIDER_TRANSFORM_STRING_CHARS) throw providerTextTransformError();
+	try {
+		const transformed = transform(text);
+		if (typeof transformed !== "string") throw new TypeError("Provider text transform returned a non-string value");
+		traversal.transformedStringChars += transformed.length;
+		if (traversal.transformedStringChars > MAX_PROVIDER_TRANSFORM_STRING_CHARS) {
+			throw providerTextTransformError();
+		}
+		return transformed;
+	} catch {
+		throw providerTextTransformError();
+	}
+}
+
+/**
+ * Clone provider-bound JSON while transforming every string value and object
+ * key. The strict traversal limits bound work over persisted/provider-shaped
+ * data; cycles, accessors, symbols, exotic objects, and key collisions fail
+ * closed. Binary buffers/views contain no transformable string surface and are
+ * deliberately passed through unchanged.
+ */
+function transformProviderValue<T>(
+	value: T,
+	transform: ObfuscateProviderText,
+	traversal: ProviderTransformTraversal = {
+		ancestors: new WeakSet<object>(),
+		nodes: 0,
+		keys: 0,
+		sourceStringChars: 0,
+		transformedStringChars: 0,
+	},
+	depth = 0,
+): T {
+	if (depth > MAX_PROVIDER_TRANSFORM_DEPTH) throw providerTextTransformError();
+	traversal.nodes += 1;
+	if (traversal.nodes > MAX_PROVIDER_TRANSFORM_NODES) throw providerTextTransformError();
+	if (typeof value === "string") return transformProviderText(value, transform, traversal) as T;
+	if (value === null || typeof value !== "object") return value;
+
+	if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) return value;
+	if (Object.getOwnPropertySymbols(value).length > 0) throw providerTextTransformError();
+	if (traversal.ancestors.has(value)) throw providerTextTransformError();
+
+	traversal.ancestors.add(value);
+	try {
+		if (Array.isArray(value)) {
+			if (Object.getPrototypeOf(value) !== Array.prototype || value.length > MAX_PROVIDER_TRANSFORM_NODES) {
+				throw providerTextTransformError();
+			}
+			const transformed = new Array(value.length);
+			for (let index = 0; index < value.length; index += 1) {
+				const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+				if (!descriptor) continue;
+				if (!("value" in descriptor)) throw providerTextTransformError();
+				transformed[index] = transformProviderValue(descriptor.value, transform, traversal, depth + 1);
+			}
+			return transformed as T;
+		}
+
+		const prototype = Object.getPrototypeOf(value);
+		if (prototype !== Object.prototype && prototype !== null) throw providerTextTransformError();
+		const transformed: Record<string, unknown> = {};
+		for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
+			if (!("value" in descriptor)) throw providerTextTransformError();
+			if (!descriptor.enumerable) continue;
+			traversal.keys += 1;
+			if (traversal.keys > MAX_PROVIDER_TRANSFORM_KEYS) throw providerTextTransformError();
+			const transformedKey = transformProviderText(key, transform, traversal);
+			if (Object.hasOwn(transformed, transformedKey)) throw providerTextTransformError();
+			Object.defineProperty(transformed, transformedKey, {
+				value: transformProviderValue(descriptor.value, transform, traversal, depth + 1),
+				enumerable: true,
+				configurable: true,
+				writable: true,
+			});
+		}
+		return transformed as T;
+	} finally {
+		traversal.ancestors.delete(value);
+	}
+}
+
+function resolveProviderTextTransform(options: GenerateBranchSummaryOptions): ObfuscateProviderText | undefined {
+	const resolve = options.resolveObfuscateProviderText;
+	if (!resolve) return undefined;
+	try {
+		const transform = resolve();
+		if (typeof transform !== "function") throw new TypeError("Provider text transform resolver returned a non-function");
+		return transform;
+	} catch {
+		throw providerTextTransformError();
+	}
+}
+
 function estimateBranchSummaryTokens(message: AgentMessage): number {
 	if (message.role !== "toolResult") return estimateTokens(message);
 	const text = message.content
@@ -233,7 +365,11 @@ function estimateBranchSummaryTokens(message: AgentMessage): number {
  * @param entries - Entries in chronological order
  * @param tokenBudget - Maximum tokens to include (0 = no limit)
  */
-export function prepareBranchEntries(entries: SessionEntry[], tokenBudget: number = 0): BranchPreparation {
+function prepareBranchEntriesForProvider(
+	entries: SessionEntry[],
+	tokenBudget: number,
+	transform?: ObfuscateProviderText,
+): BranchPreparation {
 	const messages: AgentMessage[] = [];
 	const fileOps = createFileOps();
 	let totalTokens = 0;
@@ -259,12 +395,14 @@ export function prepareBranchEntries(entries: SessionEntry[], tokenBudget: numbe
 	// Second pass: walk from newest to oldest, adding messages until token budget
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const entry = entries[i];
-		const message = getMessageFromEntry(entry);
-		if (!message) continue;
+		const rawMessage = getMessageFromEntry(entry);
+		if (!rawMessage) continue;
 
-		// Extract file ops from assistant messages (tool calls)
-		extractFileOpsFromMessage(message, fileOps);
-
+		// File tracking is internal session state and must retain raw paths. The
+		// separately cloned provider message is transformed before any lossy
+		// token estimation, truncation, conversion, or serialization.
+		extractFileOpsFromMessage(rawMessage, fileOps);
+		const message = transform ? transformProviderValue(rawMessage, transform) : rawMessage;
 		const tokens = estimateBranchSummaryTokens(message);
 
 		// Check budget before adding
@@ -287,6 +425,10 @@ export function prepareBranchEntries(entries: SessionEntry[], tokenBudget: numbe
 	return { messages, fileOps, totalTokens };
 }
 
+export function prepareBranchEntries(entries: SessionEntry[], tokenBudget: number = 0): BranchPreparation {
+	return prepareBranchEntriesForProvider(entries, tokenBudget);
+}
+
 // ============================================================================
 // Summary Generation
 // ============================================================================
@@ -305,40 +447,73 @@ export async function generateBranchSummary(
 	entries: SessionEntry[],
 	options: GenerateBranchSummaryOptions,
 ): Promise<BranchSummaryResult> {
-	const { model, apiKey, signal, customInstructions, reserveTokens = 16384, metadata } = options;
+	const { model, apiKey, signal, reserveTokens = 16384, metadata } = options;
 
 	// Token budget = context window minus reserved space for prompt + response
 	const contextWindow = model.contextWindow || 128000;
 	const tokenBudget = contextWindow - reserveTokens;
 
-	const { messages, fileOps } = prepareBranchEntries(entries, tokenBudget);
-
-	if (messages.length === 0) {
+	// Preserve the existing empty-branch fast path without retaining this raw,
+	// potentially lossy projection for a provider attempt. Every actual attempt
+	// starts again from `entries`.
+	if (prepareBranchEntries(entries, tokenBudget).messages.length === 0) {
 		return { summary: "No content to summarize" };
 	}
 
-	// Transform to LLM-compatible messages, then serialize to text
-	// Serialization prevents the model from treating it as a conversation to continue
-	const llmMessages = (options.convertToLlm ?? defaultConvertToLlm)(messages);
-	const conversationText = serializeConversationForSummary(llmMessages, preferredDialect(model.id));
+	const context: Context = { messages: [] };
+	let activeTransform: ObfuscateProviderText | undefined;
+	let fileOps = createFileOps();
 
-	// Build prompt
-	const instructions = customInstructions || BRANCH_SUMMARY_PROMPT;
-	const promptText = `<conversation>\n${conversationText}\n</conversation>\n\n${instructions}`;
+	const rebuildAttemptContext = (): void => {
+		const transform = resolveProviderTextTransform(options);
+		const preparation = prepareBranchEntriesForProvider(entries, tokenBudget, transform);
+		const llmMessages = (options.convertToLlm ?? defaultConvertToLlm)(preparation.messages);
+		const conversationText = serializeConversationForSummary(llmMessages, preferredDialect(model.id));
+		const rawInstructions = options.customInstructions || BRANCH_SUMMARY_PROMPT;
+		const instructions = transform ? transformProviderValue(rawInstructions, transform) : rawInstructions;
+		const promptText = `<conversation>\n${conversationText}\n</conversation>\n\n${instructions}`;
+		const summarizationMessages = [
+			{
+				role: "user" as const,
+				content: [{ type: "text" as const, text: promptText }],
+				timestamp: Date.now(),
+			},
+		];
 
-	const summarizationMessages = [
-		{
-			role: "user" as const,
-			content: [{ type: "text" as const, text: promptText }],
-			timestamp: Date.now(),
-		},
-	];
+		context.systemPrompt = [SUMMARIZATION_SYSTEM_PROMPT];
+		context.messages = summarizationMessages;
+		fileOps = preparation.fileOps;
+		activeTransform = transform;
+	};
+
+	const attemptApiKey: ApiKey =
+		typeof apiKey === "function"
+			? async resolveContext => {
+					const resolved = await apiKey(resolveContext);
+					if (resolved) rebuildAttemptContext();
+					return resolved;
+				}
+			: apiKey;
+
+	// A static credential is one immediate physical attempt. Resolver credentials
+	// rebuild only after their awaited resolution, including every auth retry.
+	if (typeof apiKey !== "function") rebuildAttemptContext();
+
+	let onPayload = options.onPayload;
+	if (options.resolveObfuscateProviderText) {
+		onPayload = async (payload, payloadModel) => {
+			const replacement = await options.onPayload?.(payload, payloadModel);
+			const shapedPayload = replacement === undefined ? payload : replacement;
+			if (!activeTransform) throw providerTextTransformError();
+			return transformProviderValue(shapedPayload, activeTransform);
+		};
+	}
 
 	// Call LLM for summarization
 	const response = await instrumentedCompleteSimple(
 		model,
-		{ systemPrompt: [SUMMARIZATION_SYSTEM_PROMPT], messages: summarizationMessages },
-		{ apiKey, signal, maxTokens: 2048, metadata },
+		context,
+		{ apiKey: attemptApiKey, signal, maxTokens: 2048, metadata, onPayload },
 		{ telemetry: options.telemetry, oneshotKind: "branch_summary", completeImpl: options.completeImpl },
 	);
 
