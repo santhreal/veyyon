@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 import * as fsSync from "node:fs";
-import * as path from "node:path";
 import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import { isEnoent } from "./fs-error";
+import { tryParseJson } from "./json";
 import * as logger from "./logger";
 import { getProcessStartIdentity, isProcessInstanceAlive } from "./process-liveness";
 import { sleepSync } from "./sleep";
 import { escapeTerminalText } from "./terminal-safe";
+import { isRecord } from "./type-guards";
 
 export interface FileLockOptions {
 	staleMs?: number;
@@ -81,7 +83,7 @@ function sameObservationIdentity(left: LockObservation, right: LockObservation):
 }
 
 function isLockInfo(value: unknown): value is LockInfo {
-	if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+	if (!isRecord(value)) return false;
 	const info = value as Record<string, unknown>;
 	const keys = Object.keys(info).sort();
 	if (keys.join("\0") !== "pid\0processIdentity\0timestamp\0token\0version") return false;
@@ -165,13 +167,19 @@ function assertParentIdentitySync(filePath: string, expected: FileIdentity): voi
 }
 
 function parseOwnerBytes(bytes: Buffer): LockInfo | null {
+	// Two failure modes, kept apart. The decoder is `fatal`, so a lock file holding
+	// bytes that are not UTF-8 THROWS and only the decode needs guarding; the JSON
+	// half goes through `tryParseJson`, which is this package's one owner of
+	// "parse it or give me null". Writing that try/catch out again here is how a
+	// second, slightly different answer to the same question gets into the tree.
+	let text: string;
 	try {
-		const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-		const parsed: unknown = JSON.parse(text);
-		return isLockInfo(parsed) ? parsed : null;
+		text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 	} catch {
 		return null;
 	}
+	const parsed = tryParseJson(text);
+	return isLockInfo(parsed) ? parsed : null;
 }
 
 async function inspectLockDirectory(lockPath: string): Promise<LockObservation | null> {
@@ -184,7 +192,12 @@ async function inspectLockDirectory(lockPath: string): Promise<LockObservation |
 	}
 	const directoryIdentity = identityOf(directoryStat);
 	if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink()) {
-		return { kind: "unsafe", directoryIdentity, directoryMtimeMs: directoryStat.mtimeMs, directoryCtimeMs: directoryStat.ctimeMs };
+		return {
+			kind: "unsafe",
+			directoryIdentity,
+			directoryMtimeMs: directoryStat.mtimeMs,
+			directoryCtimeMs: directoryStat.ctimeMs,
+		};
 	}
 
 	const infoPath = path.join(lockPath, "info");
@@ -193,16 +206,33 @@ async function inspectLockDirectory(lockPath: string): Promise<LockObservation |
 		infoStat = await fs.lstat(infoPath);
 	} catch (error) {
 		if (isEnoent(error)) {
-			return { kind: "ownerless", directoryIdentity, directoryMtimeMs: directoryStat.mtimeMs, directoryCtimeMs: directoryStat.ctimeMs };
+			return {
+				kind: "ownerless",
+				directoryIdentity,
+				directoryMtimeMs: directoryStat.mtimeMs,
+				directoryCtimeMs: directoryStat.ctimeMs,
+			};
 		}
 		throw error;
 	}
 	const infoIdentity = identityOf(infoStat);
 	if (!infoStat.isFile() || infoStat.isSymbolicLink() || infoStat.nlink !== 1) {
-		return { kind: "unsafe", directoryIdentity, directoryMtimeMs: directoryStat.mtimeMs, directoryCtimeMs: directoryStat.ctimeMs, infoIdentity };
+		return {
+			kind: "unsafe",
+			directoryIdentity,
+			directoryMtimeMs: directoryStat.mtimeMs,
+			directoryCtimeMs: directoryStat.ctimeMs,
+			infoIdentity,
+		};
 	}
 	if (infoStat.size < 1 || infoStat.size > MAX_OWNER_INFO_BYTES) {
-		return { kind: "invalid", directoryIdentity, directoryMtimeMs: directoryStat.mtimeMs, directoryCtimeMs: directoryStat.ctimeMs, infoIdentity };
+		return {
+			kind: "invalid",
+			directoryIdentity,
+			directoryMtimeMs: directoryStat.mtimeMs,
+			directoryCtimeMs: directoryStat.ctimeMs,
+			infoIdentity,
+		};
 	}
 
 	let handle: fs.FileHandle | undefined;
@@ -215,7 +245,13 @@ async function inspectLockDirectory(lockPath: string): Promise<LockObservation |
 			openedStat.size !== infoStat.size ||
 			!sameIdentity(identityOf(openedStat), infoIdentity)
 		) {
-			return { kind: "unsafe", directoryIdentity, directoryMtimeMs: directoryStat.mtimeMs, directoryCtimeMs: directoryStat.ctimeMs, infoIdentity };
+			return {
+				kind: "unsafe",
+				directoryIdentity,
+				directoryMtimeMs: directoryStat.mtimeMs,
+				directoryCtimeMs: directoryStat.ctimeMs,
+				infoIdentity,
+			};
 		}
 		const bytes = Buffer.allocUnsafe(infoStat.size + 1);
 		const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
@@ -225,14 +261,39 @@ async function inspectLockDirectory(lockPath: string): Promise<LockObservation |
 			finalStat.size !== infoStat.size ||
 			!sameIdentity(identityOf(finalStat), infoIdentity)
 		) {
-			return { kind: "unsafe", directoryIdentity, directoryMtimeMs: directoryStat.mtimeMs, directoryCtimeMs: directoryStat.ctimeMs, infoIdentity };
+			return {
+				kind: "unsafe",
+				directoryIdentity,
+				directoryMtimeMs: directoryStat.mtimeMs,
+				directoryCtimeMs: directoryStat.ctimeMs,
+				infoIdentity,
+			};
 		}
 		const info = parseOwnerBytes(bytes.subarray(0, bytesRead));
 		return info
-			? { kind: "valid", directoryIdentity, directoryMtimeMs: directoryStat.mtimeMs, directoryCtimeMs: directoryStat.ctimeMs, infoIdentity, info }
-			: { kind: "invalid", directoryIdentity, directoryMtimeMs: directoryStat.mtimeMs, directoryCtimeMs: directoryStat.ctimeMs, infoIdentity };
+			? {
+					kind: "valid",
+					directoryIdentity,
+					directoryMtimeMs: directoryStat.mtimeMs,
+					directoryCtimeMs: directoryStat.ctimeMs,
+					infoIdentity,
+					info,
+				}
+			: {
+					kind: "invalid",
+					directoryIdentity,
+					directoryMtimeMs: directoryStat.mtimeMs,
+					directoryCtimeMs: directoryStat.ctimeMs,
+					infoIdentity,
+				};
 	} catch {
-		return { kind: "unsafe", directoryIdentity, directoryMtimeMs: directoryStat.mtimeMs, directoryCtimeMs: directoryStat.ctimeMs, infoIdentity };
+		return {
+			kind: "unsafe",
+			directoryIdentity,
+			directoryMtimeMs: directoryStat.mtimeMs,
+			directoryCtimeMs: directoryStat.ctimeMs,
+			infoIdentity,
+		};
 	} finally {
 		await handle?.close().catch(() => {});
 	}
@@ -248,7 +309,12 @@ function inspectLockDirectorySync(lockPath: string): LockObservation | null {
 	}
 	const directoryIdentity = identityOf(directoryStat);
 	if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink()) {
-		return { kind: "unsafe", directoryIdentity, directoryMtimeMs: directoryStat.mtimeMs, directoryCtimeMs: directoryStat.ctimeMs };
+		return {
+			kind: "unsafe",
+			directoryIdentity,
+			directoryMtimeMs: directoryStat.mtimeMs,
+			directoryCtimeMs: directoryStat.ctimeMs,
+		};
 	}
 
 	const infoPath = path.join(lockPath, "info");
@@ -257,16 +323,33 @@ function inspectLockDirectorySync(lockPath: string): LockObservation | null {
 		infoStat = fsSync.lstatSync(infoPath);
 	} catch (error) {
 		if (isEnoent(error)) {
-			return { kind: "ownerless", directoryIdentity, directoryMtimeMs: directoryStat.mtimeMs, directoryCtimeMs: directoryStat.ctimeMs };
+			return {
+				kind: "ownerless",
+				directoryIdentity,
+				directoryMtimeMs: directoryStat.mtimeMs,
+				directoryCtimeMs: directoryStat.ctimeMs,
+			};
 		}
 		throw error;
 	}
 	const infoIdentity = identityOf(infoStat);
 	if (!infoStat.isFile() || infoStat.isSymbolicLink() || infoStat.nlink !== 1) {
-		return { kind: "unsafe", directoryIdentity, directoryMtimeMs: directoryStat.mtimeMs, directoryCtimeMs: directoryStat.ctimeMs, infoIdentity };
+		return {
+			kind: "unsafe",
+			directoryIdentity,
+			directoryMtimeMs: directoryStat.mtimeMs,
+			directoryCtimeMs: directoryStat.ctimeMs,
+			infoIdentity,
+		};
 	}
 	if (infoStat.size < 1 || infoStat.size > MAX_OWNER_INFO_BYTES) {
-		return { kind: "invalid", directoryIdentity, directoryMtimeMs: directoryStat.mtimeMs, directoryCtimeMs: directoryStat.ctimeMs, infoIdentity };
+		return {
+			kind: "invalid",
+			directoryIdentity,
+			directoryMtimeMs: directoryStat.mtimeMs,
+			directoryCtimeMs: directoryStat.ctimeMs,
+			infoIdentity,
+		};
 	}
 
 	let fd: number | undefined;
@@ -279,7 +362,13 @@ function inspectLockDirectorySync(lockPath: string): LockObservation | null {
 			openedStat.size !== infoStat.size ||
 			!sameIdentity(identityOf(openedStat), infoIdentity)
 		) {
-			return { kind: "unsafe", directoryIdentity, directoryMtimeMs: directoryStat.mtimeMs, directoryCtimeMs: directoryStat.ctimeMs, infoIdentity };
+			return {
+				kind: "unsafe",
+				directoryIdentity,
+				directoryMtimeMs: directoryStat.mtimeMs,
+				directoryCtimeMs: directoryStat.ctimeMs,
+				infoIdentity,
+			};
 		}
 		const bytes = Buffer.allocUnsafe(infoStat.size + 1);
 		const bytesRead = fsSync.readSync(fd, bytes, 0, bytes.length, 0);
@@ -289,14 +378,39 @@ function inspectLockDirectorySync(lockPath: string): LockObservation | null {
 			finalStat.size !== infoStat.size ||
 			!sameIdentity(identityOf(finalStat), infoIdentity)
 		) {
-			return { kind: "unsafe", directoryIdentity, directoryMtimeMs: directoryStat.mtimeMs, directoryCtimeMs: directoryStat.ctimeMs, infoIdentity };
+			return {
+				kind: "unsafe",
+				directoryIdentity,
+				directoryMtimeMs: directoryStat.mtimeMs,
+				directoryCtimeMs: directoryStat.ctimeMs,
+				infoIdentity,
+			};
 		}
 		const info = parseOwnerBytes(bytes.subarray(0, bytesRead));
 		return info
-			? { kind: "valid", directoryIdentity, directoryMtimeMs: directoryStat.mtimeMs, directoryCtimeMs: directoryStat.ctimeMs, infoIdentity, info }
-			: { kind: "invalid", directoryIdentity, directoryMtimeMs: directoryStat.mtimeMs, directoryCtimeMs: directoryStat.ctimeMs, infoIdentity };
+			? {
+					kind: "valid",
+					directoryIdentity,
+					directoryMtimeMs: directoryStat.mtimeMs,
+					directoryCtimeMs: directoryStat.ctimeMs,
+					infoIdentity,
+					info,
+				}
+			: {
+					kind: "invalid",
+					directoryIdentity,
+					directoryMtimeMs: directoryStat.mtimeMs,
+					directoryCtimeMs: directoryStat.ctimeMs,
+					infoIdentity,
+				};
 	} catch {
-		return { kind: "unsafe", directoryIdentity, directoryMtimeMs: directoryStat.mtimeMs, directoryCtimeMs: directoryStat.ctimeMs, infoIdentity };
+		return {
+			kind: "unsafe",
+			directoryIdentity,
+			directoryMtimeMs: directoryStat.mtimeMs,
+			directoryCtimeMs: directoryStat.ctimeMs,
+			infoIdentity,
+		};
 	} finally {
 		if (fd !== undefined) {
 			try {
@@ -465,12 +579,7 @@ function restoreTransitionSync(lockPath: string, expected: LockObservation): boo
 
 function removalIsAuthorized(observation: LockObservation, authorization: RemovalAuthorization): boolean {
 	if (authorization.kind === "stale") {
-		return observationIsStale(
-			observation,
-			authorization.staleMs,
-			Date.now(),
-			authorization.isOwnerAlive,
-		);
+		return observationIsStale(observation, authorization.staleMs, Date.now(), authorization.isOwnerAlive);
 	}
 	return (
 		observation.kind === "valid" &&
@@ -602,7 +711,11 @@ async function prepareCandidate(lockPath: string): Promise<{
 		}
 		await assertParentIdentity(lockPath, parentIdentity);
 		const observation = await inspectLockDirectory(candidatePath);
-		if (observation?.kind !== "valid" || observation.infoIdentity === undefined || observation.info?.token !== token) {
+		if (
+			observation?.kind !== "valid" ||
+			observation.infoIdentity === undefined ||
+			observation.info?.token !== token
+		) {
 			throw new Error("file-lock: candidate owner record failed validation");
 		}
 		return {
@@ -641,7 +754,11 @@ function prepareCandidateSync(lockPath: string): {
 		}
 		assertParentIdentitySync(lockPath, parentIdentity);
 		const observation = inspectLockDirectorySync(candidatePath);
-		if (observation?.kind !== "valid" || observation.infoIdentity === undefined || observation.info?.token !== token) {
+		if (
+			observation?.kind !== "valid" ||
+			observation.infoIdentity === undefined ||
+			observation.info?.token !== token
+		) {
 			throw new Error("file-lock: candidate owner record failed validation");
 		}
 		return {
@@ -782,13 +899,21 @@ async function releaseLock(lockPath: string, expected: LockLease | string): Prom
 	try {
 		const observation = await inspectLockDirectory(lockPath);
 		const expectedToken = typeof expected === "string" ? expected : expected.token;
-		if (observation?.kind !== "valid" || observation.infoIdentity === undefined || observation.info?.token !== expectedToken) {
+		if (
+			observation?.kind !== "valid" ||
+			observation.infoIdentity === undefined ||
+			observation.info?.token !== expectedToken
+		) {
 			reportLostLockOwnership(lockPath, expectedToken, observation?.info?.token);
 			return;
 		}
 		const lease: LockLease =
 			typeof expected === "string"
-				? { token: expected, directoryIdentity: observation.directoryIdentity, infoIdentity: observation.infoIdentity }
+				? {
+						token: expected,
+						directoryIdentity: observation.directoryIdentity,
+						infoIdentity: observation.infoIdentity,
+					}
 				: expected;
 		for (let attempt = 0; attempt < 3; attempt++) {
 			const result = await retireObservedLock(lockPath, observation, { kind: "owner", lease });
@@ -810,13 +935,21 @@ function releaseLockSync(lockPath: string, expected: LockLease | string): void {
 	try {
 		const observation = inspectLockDirectorySync(lockPath);
 		const expectedToken = typeof expected === "string" ? expected : expected.token;
-		if (observation?.kind !== "valid" || observation.infoIdentity === undefined || observation.info?.token !== expectedToken) {
+		if (
+			observation?.kind !== "valid" ||
+			observation.infoIdentity === undefined ||
+			observation.info?.token !== expectedToken
+		) {
 			reportLostLockOwnership(lockPath, expectedToken, observation?.info?.token);
 			return;
 		}
 		const lease: LockLease =
 			typeof expected === "string"
-				? { token: expected, directoryIdentity: observation.directoryIdentity, infoIdentity: observation.infoIdentity }
+				? {
+						token: expected,
+						directoryIdentity: observation.directoryIdentity,
+						infoIdentity: observation.infoIdentity,
+					}
 				: expected;
 		for (let attempt = 0; attempt < 3; attempt++) {
 			const result = retireObservedLockSync(lockPath, observation, { kind: "owner", lease });
@@ -847,9 +980,7 @@ async function acquireLock(filePath: string, options: FileLockOptions = {}): Pro
 		}
 		if (attempt + 1 < opts.retries) await Bun.sleep(opts.retryDelayMs);
 	}
-	throw new Error(
-		`Failed to acquire lock for ${escapeTerminalText(filePath)} after ${opts.retries} attempts`,
-	);
+	throw new Error(`Failed to acquire lock for ${escapeTerminalText(filePath)} after ${opts.retries} attempts`);
 }
 
 function acquireLockSync(filePath: string, options: FileLockOptions = {}): () => void {
@@ -865,9 +996,7 @@ function acquireLockSync(filePath: string, options: FileLockOptions = {}): () =>
 		}
 		if (attempt + 1 < opts.retries) sleepSync(opts.retryDelayMs);
 	}
-	throw new Error(
-		`Failed to acquire lock for ${escapeTerminalText(filePath)} after ${opts.retries} attempts`,
-	);
+	throw new Error(`Failed to acquire lock for ${escapeTerminalText(filePath)} after ${opts.retries} attempts`);
 }
 
 /**
