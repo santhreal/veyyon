@@ -15,12 +15,13 @@
  *   mechanical {@link SpeakableStream} cleanup — speech never blocks on the
  *   model.
  */
-import { completeSimple } from "@veyyon/ai";
+import { type ApiKeyResolver, type AssistantMessage, completeSimple, type Context } from "@veyyon/ai";
 import { assistantText } from "@veyyon/ai/utils/message-text";
-import { errorMessage, logger, prompt } from "@veyyon/utils";
+import { logger, prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
+import { isSecretPlaceholder, PLACEHOLDER_RE } from "../secrets/placeholder";
 import { sideChannelPrompts } from "../prompts/side-channel/rows";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 
@@ -78,42 +79,85 @@ export class SpeechEnhancer {
 			if (!apiKey) return null;
 			// Resolve metadata after getApiKey so the session-sticky credential is recorded first.
 			const metadata = this.#deps.metadataResolver?.(model.provider);
-			const boundedBlock = boundBlock(block);
-			const providerBlock = this.#deps.obfuscateProviderText?.(boundedBlock) ?? boundedBlock;
+			const requestContext: Context = { systemPrompt: [], messages: [] };
+			const refreshProviderContext = (): void => {
+				const sanitize = this.#deps.obfuscateProviderText ?? ((text: string) => text);
+				// Replace exact secrets in the raw block before middle elision. If
+				// bounding runs first, either retained edge can become an unmatched
+				// fragment that the transform can no longer recognize.
+				const providerBlock = boundBlockWithAtomicPlaceholders(sanitize(block));
+				requestContext.systemPrompt = [sanitize(SYSTEM_PROMPT)];
+				requestContext.messages = [{ role: "user", content: providerBlock, timestamp: Date.now() }];
+			};
+			refreshProviderContext();
+			const resolveApiKey = registry.resolver(model, sessionId);
+			const resolveAttemptApiKey: ApiKeyResolver = async options => {
+				const key = await resolveApiKey(options);
+				// A retry may refresh both credentials and the secret runtime. Build
+				// each physical attempt again from the unbounded raw speech block.
+				refreshProviderContext();
+				return key;
+			};
 			const timeout = scopedTimeoutSignal(REWRITE_TIMEOUT_MS, signal);
-			let response: Awaited<ReturnType<typeof completeSimple>>;
+			let response: AssistantMessage;
 			try {
-				response = await completeSimple(
-					model,
-					{
-						systemPrompt: [SYSTEM_PROMPT],
-						messages: [{ role: "user", content: providerBlock, timestamp: Date.now() }],
-					},
-					{
-						apiKey: registry.resolver(model, sessionId),
-						maxTokens: ANSWER_MAX_TOKENS,
-						disableReasoning: true,
-						metadata,
-						signal: timeout.signal,
-					},
-				);
+				response = await completeSimple(model, requestContext, {
+					apiKey: resolveAttemptApiKey,
+					maxTokens: ANSWER_MAX_TOKENS,
+					disableReasoning: true,
+					metadata,
+					signal: timeout.signal,
+				});
 			} finally {
 				timeout.cancel();
 			}
 			if (response.stopReason === "error") {
-				logger.debug("speech-enhancer: rewrite errored", { error: response.errorMessage });
+				logger.debug("speech-enhancer: rewrite errored");
 				return null;
 			}
 			return assistantText(response, " ").trim();
-		} catch (error) {
+		} catch {
 			if (!signal?.aborted) {
-				logger.debug("speech-enhancer: rewrite failed", {
-					error: errorMessage(error),
-				});
+				logger.debug("speech-enhancer: rewrite failed");
 			}
 			return null;
 		}
 	}
+}
+
+const PLACEHOLDER_SHIELD_START = 0xe100;
+const PLACEHOLDER_SHIELD_END = 0xf8ff;
+
+/** Keep real provider placeholders indivisible across speech middle elision. */
+function boundBlockWithAtomicPlaceholders(block: string): string {
+	const unavailable = new Set(block);
+	let nextCodePoint = PLACEHOLDER_SHIELD_START;
+	const allocateShield = (): string => {
+		while (nextCodePoint <= PLACEHOLDER_SHIELD_END) {
+			const candidate = String.fromCharCode(nextCodePoint++);
+			if (!unavailable.has(candidate)) {
+				unavailable.add(candidate);
+				return candidate;
+			}
+		}
+		throw new Error("Too many distinct secret placeholders to bound safely.");
+	};
+	const padding = allocateShield();
+	const shields = new Map<string, string>();
+	const shielded = block.replace(PLACEHOLDER_RE, candidate => {
+		if (!isSecretPlaceholder(candidate)) return candidate;
+		let shield = shields.get(candidate);
+		if (!shield) {
+			shield = allocateShield();
+			shields.set(candidate, shield);
+		}
+		return shield + padding.repeat(candidate.length - 1);
+	});
+	let bounded = boundBlock(shielded).split(padding).join("");
+	for (const [placeholder, shield] of shields) {
+		bounded = bounded.split(shield).join(placeholder);
+	}
+	return bounded;
 }
 
 /** Elide the middle of an oversized block so the prompt stays bounded. */

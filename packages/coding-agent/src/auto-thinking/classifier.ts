@@ -13,7 +13,7 @@
  * Throws on any failure (no model, no key, unparseable output, abort/timeout);
  * the caller falls back to a concrete level and continues the turn.
  */
-import { completeSimple, type Model } from "@veyyon/ai";
+import { type ApiKeyResolver, completeSimple, type Context, type Model } from "@veyyon/ai";
 import { assistantText } from "@veyyon/ai/utils/message-text";
 import { Effort } from "@veyyon/catalog/effort";
 import { prompt } from "@veyyon/utils";
@@ -21,6 +21,7 @@ import { prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
+import { isSecretPlaceholder, PLACEHOLDER_RE } from "../secrets/placeholder";
 import { thinkingPrompts } from "../prompts/thinking/rows";
 import { REASONING_SAFE_MAX_TOKENS } from "../session/classifier-tokens";
 import { clampAutoThinkingEffort } from "../thinking";
@@ -31,6 +32,41 @@ import {
 	ONLINE_AUTO_THINKING_MODEL_KEY,
 } from "../tiny/models";
 import { tinyModelClient } from "../tiny/title-client";
+
+const PLACEHOLDER_SHIELD_START = 0xe100;
+const PLACEHOLDER_SHIELD_END = 0xf8ff;
+
+/** Keep provider placeholders whole across tiny-message cleanup and middle truncation. */
+function preprocessProviderInput(text: string): string {
+	const unavailable = new Set(text);
+	let nextCodePoint = PLACEHOLDER_SHIELD_START;
+	const allocateShield = (): string => {
+		while (nextCodePoint <= PLACEHOLDER_SHIELD_END) {
+			const candidate = String.fromCharCode(nextCodePoint++);
+			if (!unavailable.has(candidate)) {
+				unavailable.add(candidate);
+				return candidate;
+			}
+		}
+		throw new Error("Too many distinct secret placeholders to preprocess safely.");
+	};
+	const padding = allocateShield();
+	const shields = new Map<string, string>();
+	const shielded = text.replace(PLACEHOLDER_RE, candidate => {
+		if (!isSecretPlaceholder(candidate)) return candidate;
+		let shield = shields.get(candidate);
+		if (!shield) {
+			shield = allocateShield();
+			shields.set(candidate, shield);
+		}
+		return shield + padding.repeat(candidate.length - 1);
+	});
+	let processed = preprocessTinyMessage(shielded).split(padding).join("");
+	for (const [placeholder, shield] of shields) {
+		processed = processed.split(shield).join(placeholder);
+	}
+	return processed;
+}
 
 const DIFFICULTY_SYSTEM_PROMPT = prompt.render(thinkingPrompts["thinking/difficulty"].text);
 
@@ -59,11 +95,10 @@ export async function classifyDifficulty(
 	deps: ClassifyDifficultyDeps,
 ): Promise<Effort | undefined> {
 	const backend = deps.settings.get("providers.autoThinkingModel");
-	const input = preprocessTinyMessage(promptText);
 	const effort =
 		backend === ONLINE_AUTO_THINKING_MODEL_KEY
-			? await classifyOnline(input, deps)
-			: await classifyLocal(input, backend, deps);
+			? await classifyOnline(promptText, deps)
+			: await classifyLocal(preprocessTinyMessage(promptText), backend, deps);
 	return clampAutoThinkingEffort(deps.model, effort);
 }
 
@@ -86,36 +121,47 @@ async function classifyOnline(input: string, deps: ClassifyDifficultyDeps): Prom
 	// Resolve metadata after getApiKey so the session-sticky credential is recorded first.
 	const metadata = deps.metadataResolver?.(model.provider);
 	const maxTokens = REASONING_SAFE_MAX_TOKENS;
+	const requestContext: Context = { systemPrompt: [], messages: [] };
+	const refreshProviderContext = (): void => {
+		const sanitize = deps.obfuscateProviderText ?? ((text: string) => text);
+		// Exact secret replacement must precede lossy tiny-message preprocessing:
+		// otherwise middle truncation can leave a no-longer-matchable secret prefix.
+		const providerInput = preprocessProviderInput(sanitize(input));
+		requestContext.systemPrompt = [sanitize(DIFFICULTY_SYSTEM_PROMPT)];
+		requestContext.messages = [
+			{
+				role: "user",
+				content: providerInput,
+				timestamp: Date.now(),
+			},
+		];
+	};
+	refreshProviderContext();
+	const resolveApiKey = deps.registry.resolver(model, deps.sessionId);
+	const resolveAttemptApiKey: ApiKeyResolver = async options => {
+		const key = await resolveApiKey(options);
+		// Rebuild from raw input after every credential refresh so each physical
+		// auth retry sees the current runtime rather than a stale transformed copy.
+		refreshProviderContext();
+		return key;
+	};
 
-	const response = await completeSimple(
-		model,
-		{
-			systemPrompt: [DIFFICULTY_SYSTEM_PROMPT],
-			messages: [
-				{
-					role: "user",
-					content: deps.obfuscateProviderText ? deps.obfuscateProviderText(input) : input,
-					timestamp: Date.now(),
-				},
-			],
-		},
-		{
-			apiKey: deps.registry.resolver(model, deps.sessionId),
-			maxTokens,
-			disableReasoning: true,
-			metadata,
-			signal: deps.signal,
-		},
-	);
+	const response = await completeSimple(model, requestContext, {
+		apiKey: resolveAttemptApiKey,
+		maxTokens,
+		disableReasoning: true,
+		metadata,
+		signal: deps.signal,
+	});
 
 	if (response.stopReason === "error") {
-		throw new Error(`auto-thinking: online classification failed: ${response.errorMessage ?? "unknown error"}`);
+		throw new Error("auto-thinking: online classification failed");
 	}
 
 	const text = assistantText(response, " ").trim();
 	const effort = parseDifficultyLevel(text);
 	if (!effort) {
-		throw new Error(`auto-thinking: unparseable online classification: ${JSON.stringify(text)}`);
+		throw new Error("auto-thinking: online classification returned an unusable response");
 	}
 	return effort;
 }
@@ -137,7 +183,7 @@ async function classifyLocal(input: string, modelKey: string, deps: ClassifyDiff
 	}
 	const effort = parseDifficultyBucket(text);
 	if (!effort) {
-		throw new Error(`auto-thinking: unparseable local classification: ${JSON.stringify(text)}`);
+		throw new Error("auto-thinking: local classification returned an unusable response");
 	}
 	return effort;
 }

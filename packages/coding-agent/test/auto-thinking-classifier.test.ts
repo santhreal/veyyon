@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { ThinkingLevel } from "@veyyon/agent-core";
-import type { Model } from "@veyyon/ai";
+import type { ApiKeyResolver, Model } from "@veyyon/ai";
 import * as ai from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
@@ -243,6 +243,129 @@ describe("auto thinking classifier helpers", () => {
 		const providerContent = request?.messages?.[0]?.content;
 		expect(providerContent).toContain(placeholder);
 		expect(providerContent).not.toContain(secret);
+	});
+
+	it("keeps a complete placeholder when online classification truncates around a secret", async () => {
+		const baseModel = getBundledModel("anthropic", "claude-sonnet-4-6");
+		if (!baseModel) throw new Error("Expected bundled Claude Sonnet 4.6 model");
+		const classifierModel = { ...baseModel, reasoning: false };
+		const settings = {
+			get: (path: string) => (path === "providers.autoThinkingModel" ? "online" : undefined),
+			getModelRole: (role: string) =>
+				role === "smol" ? `${classifierModel.provider}/${classifierModel.id}` : undefined,
+			getStorage: () => undefined,
+		} as never;
+		const registry = {
+			getAvailable: () => [classifierModel],
+			getApiKey: async () => "test-key",
+			resolver: () => async () => "test-key",
+		} as never;
+		const secret = "AUTO_BOUNDARY_SECRET_ABCDEF";
+		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const placeholder = obfuscator.obfuscate(secret);
+		const completeSimpleMock = vi.spyOn(ai, "completeSimple").mockResolvedValue({
+			stopReason: "stop",
+			content: [{ type: "text", text: "high" }],
+		} as never);
+
+		// Why: tiny preprocessing formerly cut the exact secret before replacing it,
+		// and its hash cleanup could then cut the replacement itself.
+		await classifyDifficulty(`${"a".repeat(1300)}${secret}${"z".repeat(1800)}`, {
+			settings,
+			registry,
+			model: baseModel,
+			obfuscateProviderText: text => obfuscator.obfuscate(text),
+		});
+
+		const request = completeSimpleMock.mock.calls[0]?.[1] as { messages: Array<{ content: string }> };
+		expect(request.messages[0]?.content).toContain(placeholder);
+		expect(request.messages[0]?.content).not.toContain(secret);
+	});
+
+	it("re-reads the online classifier sanitizer after credential resolution", async () => {
+		const baseModel = getBundledModel("anthropic", "claude-sonnet-4-6");
+		if (!baseModel) throw new Error("Expected bundled Claude Sonnet 4.6 model");
+		const classifierModel = { ...baseModel, reasoning: false };
+		const settings = {
+			get: (path: string) => (path === "providers.autoThinkingModel" ? "online" : undefined),
+			getModelRole: (role: string) =>
+				role === "smol" ? `${classifierModel.provider}/${classifierModel.id}` : undefined,
+			getStorage: () => undefined,
+		} as never;
+		const secret = "AUTO_NEW_RUNTIME_SECRET_119";
+		const placeholder = "#AUTO_RUNTIME_SECRET#";
+		let sanitize = (text: string) => text;
+		const registry = {
+			getAvailable: () => [classifierModel],
+			getApiKey: async () => {
+				sanitize = text => text.replaceAll(secret, placeholder);
+				return "test-key";
+			},
+			resolver: () => async () => "test-key",
+		} as never;
+		const completeSimpleMock = vi.spyOn(ai, "completeSimple").mockResolvedValue({
+			stopReason: "stop",
+			content: [{ type: "text", text: "high" }],
+		} as never);
+
+		// Why: credential refresh can install a new secret runtime while the
+		// classifier is suspended in getApiKey.
+		await classifyDifficulty(`Analyze ${secret}`, {
+			settings,
+			registry,
+			model: baseModel,
+			obfuscateProviderText: text => sanitize(text),
+		});
+
+		const request = completeSimpleMock.mock.calls[0]?.[1] as { messages: Array<{ content: string }> };
+		expect(request.messages[0]?.content).toContain(placeholder);
+		expect(request.messages[0]?.content).not.toContain(secret);
+	});
+
+	it("re-sanitizes online classification for a credential retry", async () => {
+		const baseModel = getBundledModel("anthropic", "claude-sonnet-4-6");
+		if (!baseModel) throw new Error("Expected bundled Claude Sonnet 4.6 model");
+		const classifierModel = { ...baseModel, reasoning: false };
+		const settings = {
+			get: (path: string) => (path === "providers.autoThinkingModel" ? "online" : undefined),
+			getModelRole: (role: string) =>
+				role === "smol" ? `${classifierModel.provider}/${classifierModel.id}` : undefined,
+			getStorage: () => undefined,
+		} as never;
+		const secret = "AUTO_RETRY_SECRET_883";
+		const placeholder = "#AUTO_RETRY_SECRET#";
+		let sanitize = (text: string) => text;
+		let attempt = 0;
+		const captures: string[] = [];
+		const registry = {
+			getAvailable: () => [classifierModel],
+			getApiKey: async () => "test-key",
+			resolver: () => async () => {
+				attempt++;
+				if (attempt === 2) sanitize = text => text.replaceAll(secret, placeholder);
+				return `test-key-${attempt}`;
+			},
+		} as never;
+		vi.spyOn(ai, "completeSimple").mockImplementation(async (_model, context, options) => {
+			const resolveKey = options?.apiKey as ApiKeyResolver;
+			await resolveKey({ lastChance: false, error: undefined });
+			captures.push(JSON.stringify(context));
+			await resolveKey({ lastChance: true, error: new Error("401"), previousKey: "test-key-1" });
+			captures.push(JSON.stringify(context));
+			return { stopReason: "stop", content: [{ type: "text", text: "high" }] } as never;
+		});
+
+		// Why: the auth retry loop is inside completeSimple and otherwise reuses
+		// the logical request snapshot without consulting this helper again.
+		await classifyDifficulty(`Analyze ${secret}`, {
+			settings,
+			registry,
+			model: baseModel,
+			obfuscateProviderText: text => sanitize(text),
+		});
+
+		expect(captures[1]).toContain(placeholder);
+		expect(captures[1]).not.toContain(secret);
 	});
 
 	it("clamps auto effort to model support while never resolving below low", () => {

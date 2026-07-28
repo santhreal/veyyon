@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
+import type { ApiKeyResolver } from "@veyyon/ai";
 import * as ai from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
@@ -87,6 +88,127 @@ describe("SpeechEnhancer rewriting", () => {
 		expect(captured).not.toContain(secret);
 		expect(providerContext.messages[0]?.content).toBe(`Speak ${placeholder} once`);
 	});
+
+	it("keeps a complete placeholder when speech bounding cuts through a secret", async () => {
+		const baseModel = getBundledModel("anthropic", "claude-sonnet-4-5");
+		if (!baseModel) throw new Error("Expected bundled Claude Sonnet 4.5 model");
+		const model = { ...baseModel, reasoning: false };
+		const settings = {
+			get: () => undefined,
+			getModelRole: (role: string) => (role === "tiny" ? `${model.provider}/${model.id}` : undefined),
+			getStorage: () => undefined,
+		} as never;
+		const registry = {
+			getAvailable: () => [model],
+			getApiKey: async () => "test-key",
+			resolver: () => async () => "test-key",
+		} as never;
+		const secret = "SPEECH_BOUNDARY_SECRET_ABCDEF";
+		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const placeholder = obfuscator.obfuscate(secret);
+		const completeSimpleMock = vi.spyOn(ai, "completeSimple").mockResolvedValue({
+			stopReason: "stop",
+			content: [{ type: "text", text: "Safe speech" }],
+		} as never);
+
+		// Why: bounding raw speech first retained a reconstructable prefix; a
+		// replacement straddling the same cut must survive only as a whole token.
+		await new SpeechEnhancer({
+			settings,
+			registry,
+			sessionId: "speech-boundary",
+			obfuscateProviderText: text => obfuscator.obfuscate(text),
+		}).rewrite(`${"a".repeat(1995)}${secret}${"z".repeat(2500)}`);
+
+		const context = completeSimpleMock.mock.calls[0]?.[1] as { messages: Array<{ content: string }> };
+		expect(context.messages[0]?.content).toContain(placeholder);
+		expect(context.messages[0]?.content).not.toContain(secret);
+	});
+
+	it("re-reads the speech sanitizer after credential resolution", async () => {
+		const baseModel = getBundledModel("anthropic", "claude-sonnet-4-5");
+		if (!baseModel) throw new Error("Expected bundled Claude Sonnet 4.5 model");
+		const model = { ...baseModel, reasoning: false };
+		const settings = {
+			get: () => undefined,
+			getModelRole: (role: string) => (role === "tiny" ? `${model.provider}/${model.id}` : undefined),
+			getStorage: () => undefined,
+		} as never;
+		const secret = "SPEECH_NEW_RUNTIME_SECRET_812";
+		const placeholder = "#SPEECH_RUNTIME_SECRET#";
+		let sanitize = (text: string) => text;
+		const registry = {
+			getAvailable: () => [model],
+			getApiKey: async () => {
+				sanitize = text => text.replaceAll(secret, placeholder);
+				return "test-key";
+			},
+			resolver: () => async () => "test-key",
+		} as never;
+		const completeSimpleMock = vi.spyOn(ai, "completeSimple").mockResolvedValue({
+			stopReason: "stop",
+			content: [{ type: "text", text: "Safe speech" }],
+		} as never);
+
+		// Why: OAuth/key lookup can refresh the active runtime before the rewrite
+		// dispatch, so pre-await transformed speech is stale.
+		await new SpeechEnhancer({
+			settings,
+			registry,
+			sessionId: "speech-stale",
+			obfuscateProviderText: text => sanitize(text),
+		}).rewrite(`Speak ${secret}`);
+
+		const context = completeSimpleMock.mock.calls[0]?.[1] as { messages: Array<{ content: string }> };
+		expect(context.messages[0]?.content).toContain(placeholder);
+		expect(context.messages[0]?.content).not.toContain(secret);
+	});
+
+	it("re-sanitizes speech for a credential retry", async () => {
+		const baseModel = getBundledModel("anthropic", "claude-sonnet-4-5");
+		if (!baseModel) throw new Error("Expected bundled Claude Sonnet 4.5 model");
+		const model = { ...baseModel, reasoning: false };
+		const settings = {
+			get: () => undefined,
+			getModelRole: (role: string) => (role === "tiny" ? `${model.provider}/${model.id}` : undefined),
+			getStorage: () => undefined,
+		} as never;
+		const secret = "SPEECH_RETRY_SECRET_662";
+		const placeholder = "#SPEECH_RETRY_SECRET#";
+		let sanitize = (text: string) => text;
+		let attempt = 0;
+		const captures: string[] = [];
+		const registry = {
+			getAvailable: () => [model],
+			getApiKey: async () => "test-key",
+			resolver: () => async () => {
+				attempt++;
+				if (attempt === 2) sanitize = text => text.replaceAll(secret, placeholder);
+				return `test-key-${attempt}`;
+			},
+		} as never;
+		vi.spyOn(ai, "completeSimple").mockImplementation(async (_model, context, options) => {
+			const resolveKey = options?.apiKey as ApiKeyResolver;
+			await resolveKey({ lastChance: false, error: undefined });
+			captures.push(JSON.stringify(context));
+			await resolveKey({ lastChance: true, error: new Error("401"), previousKey: "test-key-1" });
+			captures.push(JSON.stringify(context));
+			return { stopReason: "stop", content: [{ type: "text", text: "Safe speech" }] } as never;
+		});
+
+		// Why: completeSimple owns auth retries, so the resolver is the final seam
+		// where a refreshed runtime can rebuild the speech body.
+		await new SpeechEnhancer({
+			settings,
+			registry,
+			sessionId: "speech-retry",
+			obfuscateProviderText: text => sanitize(text),
+		}).rewrite(`Speak ${secret}`);
+
+		expect(captures[1]).toContain(placeholder);
+		expect(captures[1]).not.toContain(secret);
+	});
+
 });
 
 /** Push each delta in order; returns blocks completed by pushes plus the flush tail. */
