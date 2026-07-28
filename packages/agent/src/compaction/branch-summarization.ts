@@ -266,17 +266,28 @@ function transformProviderText(
  * closed. Binary buffers/views contain no transformable string surface and are
  * deliberately passed through unchanged.
  */
-function transformProviderValue<T>(
-	value: T,
-	transform: ObfuscateProviderText,
-	traversal: ProviderTransformTraversal = {
+function transformProviderValue<T>(value: T, transform: ObfuscateProviderText): T {
+	const traversal: ProviderTransformTraversal = {
 		ancestors: new WeakSet<object>(),
 		nodes: 0,
 		keys: 0,
 		sourceStringChars: 0,
 		transformedStringChars: 0,
-	},
-	depth = 0,
+	};
+	try {
+		return transformProviderValueBounded(value, transform, traversal, 0);
+	} catch {
+		// Reflection over provider-controlled proxies can itself throw. Collapse
+		// every traversal/transform failure to one credential-free boundary error.
+		throw providerTextTransformError();
+	}
+}
+
+function transformProviderValueBounded<T>(
+	value: T,
+	transform: ObfuscateProviderText,
+	traversal: ProviderTransformTraversal,
+	depth: number,
 ): T {
 	if (depth > MAX_PROVIDER_TRANSFORM_DEPTH) throw providerTextTransformError();
 	traversal.nodes += 1;
@@ -299,7 +310,7 @@ function transformProviderValue<T>(
 				const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
 				if (!descriptor) continue;
 				if (!("value" in descriptor)) throw providerTextTransformError();
-				transformed[index] = transformProviderValue(descriptor.value, transform, traversal, depth + 1);
+				transformed[index] = transformProviderValueBounded(descriptor.value, transform, traversal, depth + 1);
 			}
 			return transformed as T;
 		}
@@ -315,7 +326,7 @@ function transformProviderValue<T>(
 			const transformedKey = transformProviderText(key, transform, traversal);
 			if (Object.hasOwn(transformed, transformedKey)) throw providerTextTransformError();
 			Object.defineProperty(transformed, transformedKey, {
-				value: transformProviderValue(descriptor.value, transform, traversal, depth + 1),
+				value: transformProviderValueBounded(descriptor.value, transform, traversal, depth + 1),
 				enumerable: true,
 				configurable: true,
 				writable: true,

@@ -478,4 +478,34 @@ describe("branch summary provider boundary", () => {
 		expect(error).toBeInstanceOf(Error);
 		expect((error as Error).message).toBe("Branch summary provider text transformation failed.");
 	});
+	/**
+	 * Regression: reflection traps on provider-controlled proxy values can throw
+	 * secret-bearing errors; the boundary must collapse those failures too.
+	 */
+	test("normalizes provider reflection failures to the fixed error", async () => {
+		const hostilePayload = new Proxy(
+			{},
+			{
+				ownKeys() {
+					throw new Error(`proxy exposed ${RAW_MARKER}`);
+				},
+			},
+		);
+		const request = generateBranchSummary(branchEntries(), {
+			model: MODEL,
+			apiKey: "static-key",
+			signal: new AbortController().signal,
+			resolveObfuscateProviderText: () => text => text.replaceAll(RAW_MARKER, "#PROXY#"),
+			completeImpl: async (model, _context, options) => {
+				await options.onPayload?.(hostilePayload, model);
+				return assistant();
+			},
+		});
+		const error = await request.catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error).message).toBe("Branch summary provider text transformation failed.");
+		expect((error as Error).message).not.toContain(RAW_MARKER);
+	});
+
 });
