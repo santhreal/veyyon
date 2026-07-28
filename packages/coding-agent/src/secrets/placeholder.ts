@@ -80,7 +80,7 @@ export const PENDING_PLACEHOLDER_RE = new RegExp(`#[A-Z0-9_]{0,${MAX_SECRET_NAME
  * wordlist and recover a short credential. Callers reject the astronomically unlikely
  * event that two values produce the same retained body instead of overwriting a mapping.
  */
-function isWellFormedUtf16(value: string): boolean {
+export function isWellFormedUtf16(value: string): boolean {
 	for (let index = 0; index < value.length; index++) {
 		const codeUnit = value.charCodeAt(index);
 		if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {

@@ -16,6 +16,7 @@ import {
 	buildValuePlaceholder,
 	isSecretPlaceholder,
 	isValidSecretName,
+	isWellFormedUtf16,
 	PLACEHOLDER_RE,
 } from "./placeholder";
 import {
@@ -141,56 +142,274 @@ export type JsonRecord = { [key: string]: JsonWithOptionalFields | undefined };
 const REPLACEMENT_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 const PROCESS_PLACEHOLDER_KEY = crypto.randomBytes(32);
 
+/** Maximum configured entries; high enough for generated enterprise registries, finite for hostile input. */
+export const MAX_SECRET_ENTRIES = 10_000;
+/** Maximum regex rules scanned over one string. Literal rules use a shared multi-pattern matcher. */
+export const MAX_SECRET_REGEX_ENTRIES = 256;
+/** Maximum UTF-8 bytes retained for one configured or discovered secret or alias. */
+export const MAX_SECRET_VALUE_BYTES = 1024 * 1024;
+/** Maximum UTF-8 bytes accepted or emitted by one text transformation. */
+export const MAX_TRANSFORMED_TEXT_BYTES = 16 * 1024 * 1024;
+/** Maximum regex/literal match events examined while transforming one string. */
+export const MAX_SECRET_MATCHES_PER_TEXT = 20_000;
+/** Maximum placeholder-shaped tokens examined while expanding one string. */
+export const MAX_PLACEHOLDERS_PER_TEXT = 10_000;
+/** Maximum distinct runtime regex values retained by one obfuscator. */
+export const MAX_RUNTIME_SECRET_VALUES = 10_000;
+/** Maximum cumulative UTF-8 bytes retained for runtime regex values. */
+export const MAX_RUNTIME_SECRET_BYTES = 8 * 1024 * 1024;
+/** Maximum cumulative configured source/replacement bytes retained by one obfuscator. */
+export const MAX_CONFIGURED_SECRET_BYTES = 16 * 1024 * 1024;
+/** Maximum container nesting accepted by the iterative JSON transformation walk. */
+export const MAX_JSON_TRANSFORM_DEPTH = 128;
+/** Maximum unique containers plus primitive positions visited by one JSON transformation. */
+export const MAX_JSON_TRANSFORM_NODES = 100_000;
+/** Maximum cumulative plain-object keys visited by one JSON transformation. */
+export const MAX_JSON_TRANSFORM_KEYS = 100_000;
+/** Maximum cumulative UTF-8 bytes in input or transformed JSON strings and keys. */
+export const MAX_JSON_TRANSFORM_STRING_BYTES = 16 * 1024 * 1024;
+/** Long aliases avoid trie-per-character overhead; their count and cumulative bytes stay bounded. */
+const MAX_LONG_TERMINAL_ALIASES = 16;
+const SHORT_ALIAS_TRIE_CODE_UNITS = 256;
+const MAX_TERMINAL_ALIAS_BYTES = 16 * 1024 * 1024;
+
+interface LiteralMatcherNode<T> {
+	children: Map<string, number>;
+	fail: number;
+	outputLink: number;
+	outputs: Array<{ literal: string; value: T }>;
+}
+
 /**
- * Generate a machine-keyed same-length replacement.
+ * Aho-Corasick matcher shared by literal secrets and terminal aliases.
  *
- * Rejection sampling removes modulo bias from the 62-character alphabet. Counter-mode HMAC
- * extends the output to arbitrary lengths without exposing a provider-verifiable hash oracle.
+ * Construction is linear in configured characters. Scanning is linear in input plus reported
+ * matches, and callers cap match events before retaining replacement state.
  */
-function generateDeterministicReplacement(secret: string, key: Uint8Array, attempt = 0): string {
-	const chars: string[] = [];
-	for (let counter = 0; chars.length < secret.length; counter++) {
-		const digest = crypto
-			.createHmac("sha256", key)
-			.update(`replacement\0${attempt}\0${counter}\0${secret}`, "utf8")
-			.digest();
-		for (const byte of digest) {
-			if (byte >= 248) continue;
-			chars.push(REPLACEMENT_CHARS[byte % REPLACEMENT_CHARS.length]);
-			if (chars.length === secret.length) break;
+class LiteralMatcher<T> {
+	readonly #nodes: Array<LiteralMatcherNode<T>> = [
+		{ children: new Map(), fail: 0, outputLink: 0, outputs: [] },
+	];
+	readonly #longEntries: Array<{ literal: string; value: T }> = [];
+
+	constructor(entries: Iterable<readonly [string, T]>) {
+		for (const [literal, value] of entries) {
+			if (literal.length === 0) continue;
+			if (literal.length > SHORT_ALIAS_TRIE_CODE_UNITS) {
+				if (this.#longEntries.length >= MAX_LONG_TERMINAL_ALIASES) {
+					throw new Error("Refusing too many long literal secret rules.");
+				}
+				this.#longEntries.push({ literal, value });
+				continue;
+			}
+			let nodeIndex = 0;
+			for (let index = 0; index < literal.length; index++) {
+				const character = literal[index];
+				const existing = this.#nodes[nodeIndex].children.get(character);
+				if (existing !== undefined) {
+					nodeIndex = existing;
+					continue;
+				}
+				const childIndex = this.#nodes.length;
+				this.#nodes.push({ children: new Map(), fail: 0, outputLink: 0, outputs: [] });
+				this.#nodes[nodeIndex].children.set(character, childIndex);
+				nodeIndex = childIndex;
+			}
+			this.#nodes[nodeIndex].outputs.push({ literal, value });
+		}
+		this.#buildFailureLinks();
+	}
+
+	#buildFailureLinks(): void {
+		const queue: number[] = [];
+		for (const child of this.#nodes[0].children.values()) queue.push(child);
+		for (let cursor = 0; cursor < queue.length; cursor++) {
+			const nodeIndex = queue[cursor];
+			const node = this.#nodes[nodeIndex];
+			for (const [character, childIndex] of node.children) {
+				let failure = node.fail;
+				while (failure !== 0 && !this.#nodes[failure].children.has(character)) {
+					failure = this.#nodes[failure].fail;
+				}
+				const transition = this.#nodes[failure].children.get(character);
+				if (transition !== undefined && transition !== childIndex) failure = transition;
+				const child = this.#nodes[childIndex];
+				child.fail = failure;
+				child.outputLink =
+					this.#nodes[failure].outputs.length > 0 ? failure : this.#nodes[failure].outputLink;
+				queue.push(childIndex);
+			}
 		}
 	}
-	return chars.join("");
+
+	forEachMatch(
+		text: string,
+		visit: (start: number, end: number, value: T, literal: string) => boolean | void,
+		maxMatches = MAX_SECRET_MATCHES_PER_TEXT,
+	): void {
+		let nodeIndex = 0;
+		let matchCount = 0;
+		for (let index = 0; index < text.length; index++) {
+			const character = text[index];
+			while (nodeIndex !== 0 && !this.#nodes[nodeIndex].children.has(character)) {
+				nodeIndex = this.#nodes[nodeIndex].fail;
+			}
+			nodeIndex = this.#nodes[nodeIndex].children.get(character) ?? 0;
+			let outputNode = nodeIndex;
+			while (outputNode !== 0) {
+				for (const output of this.#nodes[outputNode].outputs) {
+					if (++matchCount > maxMatches) {
+						throw new Error("Refusing a secret transformation with too many match events.");
+					}
+					if (visit(index + 1 - output.literal.length, index + 1, output.value, output.literal) === false) {
+						return;
+					}
+				}
+				outputNode = this.#nodes[outputNode].outputLink;
+			}
+		}
+		for (const output of this.#longEntries) {
+			for (
+				let start = text.indexOf(output.literal);
+				start >= 0;
+				start = text.indexOf(output.literal, start + 1)
+			) {
+				if (++matchCount > maxMatches) {
+					throw new Error("Refusing a secret transformation with too many match events.");
+				}
+				if (visit(start, start + output.literal.length, output.value, output.literal) === false) return;
+			}
+		}
+	}
+
+	hasMatch(text: string): boolean {
+		let matched = false;
+		this.forEachMatch(
+			text,
+			() => {
+				matched = true;
+				return false;
+			},
+			1,
+		);
+		return matched;
+	}
+}
+
+function utf8ByteLengthInRange(value: string, start = 0, end = value.length): number {
+	let bytes = 0;
+	for (let index = start; index < end; index++) {
+		const codeUnit = value.charCodeAt(index);
+		if (codeUnit <= 0x7f) {
+			bytes++;
+		} else if (codeUnit <= 0x7ff) {
+			bytes += 2;
+		} else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff && index + 1 < end) {
+			const next = value.charCodeAt(index + 1);
+			if (next >= 0xdc00 && next <= 0xdfff) {
+				bytes += 4;
+				index++;
+			} else {
+				bytes += 3;
+			}
+		} else {
+			bytes += 3;
+		}
+	}
+	return bytes;
+}
+
+function assertBoundedSecretString(value: string): void {
+	if (!isWellFormedUtf16(value)) {
+		throw new Error("Refusing ill-formed UTF-16 in secret transformation data.");
+	}
+	if (utf8ByteLengthInRange(value) > MAX_SECRET_VALUE_BYTES) {
+		throw new Error("Refusing secret transformation data above the per-value byte limit.");
+	}
+}
+
+function assertBoundedTransformText(value: string): number {
+	const bytes = utf8ByteLengthInRange(value);
+	if (bytes > MAX_TRANSFORMED_TEXT_BYTES) {
+		throw new Error("Refusing a secret transformation above the text byte limit.");
+	}
+	return bytes;
+}
+
+/**
+ * Generate a machine-keyed same-length replacement after hashing the source exactly once.
+ *
+ * The fixed-size keyed seed is expanded in counter mode. Runtime is O(source bytes + output bytes),
+ * rather than re-interpolating and re-hashing the whole source for each output block.
+ */
+function generateDeterministicReplacement(
+	secret: string,
+	key: Uint8Array,
+	forbidden: LiteralMatcher<true>,
+): string {
+	const seed = crypto
+		.createHmac("sha256", key)
+		.update("replacement-source\0", "utf8")
+		.update(secret, "utf8")
+		.digest();
+	const counterBytes = Buffer.allocUnsafe(8);
+	for (let attempt = 0; attempt < 256; attempt++) {
+		const chunks: string[] = [];
+		let outputLength = 0;
+		for (let counter = 0; outputLength < secret.length; counter++) {
+			counterBytes.writeUInt32BE(attempt, 0);
+			counterBytes.writeUInt32BE(counter, 4);
+			const digest = crypto
+				.createHmac("sha256", key)
+				.update("replacement-expand\0", "utf8")
+				.update(seed)
+				.update(counterBytes)
+				.digest();
+			let chunk = "";
+			for (const byte of digest) {
+				if (byte >= 248) continue;
+				chunk += REPLACEMENT_CHARS[byte % REPLACEMENT_CHARS.length];
+				if (outputLength + chunk.length === secret.length) break;
+			}
+			chunks.push(chunk);
+			outputLength += chunk.length;
+		}
+		const candidate = chunks.join("");
+		if (candidate !== secret && !forbidden.hasMatch(candidate)) return candidate;
+	}
+	throw new Error("Could not generate a replacement distinct from configured secret sources.");
 }
 
 /** Refuse one-way replacement text that could later be expanded as a live credential. */
 function assertOneWayReplacement(replacement: string): void {
-	for (const token of replacement.match(PLACEHOLDER_RE) ?? []) {
-		if (isSecretPlaceholder(token)) {
+	assertBoundedSecretString(replacement);
+	PLACEHOLDER_RE.lastIndex = 0;
+	for (;;) {
+		const match = PLACEHOLDER_RE.exec(replacement);
+		if (match === null) break;
+		if (isSecretPlaceholder(match[0])) {
+			PLACEHOLDER_RE.lastIndex = 0;
 			throw new Error("Refusing a secret replacement that contains a reversible secret placeholder.");
 		}
 	}
+	PLACEHOLDER_RE.lastIndex = 0;
 }
 
-/** Refuse a replacement that would put any configured secret back on the wire. */
+/** Refuse a replacement that would put any configured exact secret source back on the wire. */
 function resolveSafeReplacement(
 	secret: string,
 	preferred: string | undefined,
-	forbidden: readonly string[],
+	forbidden: LiteralMatcher<true>,
 	key: Uint8Array,
 ): string {
-	if (preferred !== undefined) assertOneWayReplacement(preferred);
 	if (preferred !== undefined) {
-		if (preferred === secret || forbidden.some(value => value.length > 0 && preferred.includes(value))) {
+		assertOneWayReplacement(preferred);
+		if (forbidden.hasMatch(preferred)) {
 			throw new Error("Refusing a secret replacement that contains a configured secret.");
 		}
 		return preferred;
 	}
-	for (let attempt = 0; attempt < 256; attempt++) {
-		const candidate = generateDeterministicReplacement(secret, key, attempt);
-		if (!forbidden.some(value => value.length > 0 && candidate.includes(value))) return candidate;
-	}
-	throw new Error("Could not generate a replacement that is distinct from every configured secret.");
+	return generateDeterministicReplacement(secret, key, forbidden);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -200,6 +419,8 @@ function resolveSafeReplacement(
 interface ProtectedSpan {
 	start: number;
 	end: number;
+	/** Only a pre-existing terminal alias may be consumed as part of a larger exact literal source. */
+	allowContainingLiteral?: boolean;
 }
 
 interface ProtectedText {
@@ -210,6 +431,19 @@ interface ProtectedText {
 interface TextReplacement extends ProtectedSpan {
 	replacement: string;
 }
+interface LiteralRule {
+	replacement: string;
+}
+
+interface CompiledRegexEntry {
+	regex: RegExp;
+	mode: "obfuscate" | "replace";
+	replacement?: string;
+	minLength: number;
+	entryIndex: number;
+	aliases: Map<string, string>;
+}
+
 
 export class SecretObfuscator {
 	/** Reversible and retired plain secrets: secret → provider-safe placeholder. */
@@ -218,68 +452,50 @@ export class SecretObfuscator {
 	/** Contextual regex matches: secret → placeholder, never applied outside a regex span. */
 	#regexMappings = new Map<string, string>();
 
-	/** Regex entries (patterns compiled at construction) */
-	#regexEntries: Array<{
-		regex: RegExp;
-		mode: "obfuscate" | "replace";
-		replacement?: string;
-		/** Floor for this pattern's matches: its own `minLength`, else the default. */
-		minLength: number;
-		/** Position in the constructor's input, so a rejection can name the entry. */
-		entryIndex: number;
-	}> = [];
+	/** Regex entries compiled once at construction. */
+	#regexEntries: CompiledRegexEntry[] = [];
 
-	/** Replace-mode plain mappings: secret → replacement */
+	/** Replace-mode plain mappings: secret → terminal one-way alias. */
 	#replaceMappings = new Map<string, string>();
 
-	/** Reverse lookup for deobfuscation: placeholder → secret */
+	/** Reverse lookup for deobfuscation: placeholder → secret. */
 	#deobfuscateMap = new Map<string, string>();
 
-	/** HMAC key for unnamed placeholders. Never leaves this object. */
+	/** Every live placeholder for a value, used to select a survivor after one alias expires. */
+	#placeholdersBySecret = new Map<string, Set<string>>();
+
+	/** One-way outputs are terminal across calls, not only within the call that created them. */
+	#terminalAliases = new Set<string>();
+	#longTerminalAliases = new Set<string>();
+	#terminalAliasBytes = 0;
+	#aliasOrigins = new Map<string, Set<number>>();
+	#aliasMatcher = new LiteralMatcher<true>([]);
+	#aliasMatcherDirty = false;
+
+	/** Literal sources share one compiled multi-pattern matcher. */
+	#plainMatcher = new LiteralMatcher<LiteralRule>([]);
+	#plainMatcherDirty = false;
+
+	/** Configured exact sources used to prove replacement text cannot contain a secret. */
+	#configuredForbiddenMatcher: LiteralMatcher<true>;
+
+	/** HMAC key snapshot for unnamed placeholders and deterministic aliases. */
 	#placeholderKey: Uint8Array;
 
-	/** Values known to be sensitive, including regex matches discovered at runtime. */
+	/** Values known to be sensitive, including bounded regex matches discovered at runtime. */
 	#knownSecretValues = new Set<string>();
+	#runtimeSecretCount = 0;
+	#runtimeSecretBytes = 0;
 
-	/** Whether any secrets were configured */
+	/** Whether any secrets were configured. */
 	#hasAny: boolean;
 
-	/**
-	 * Declared secrets this obfuscator could not protect.
-	 *
-	 * Carried out instead of dropped. Every caller that builds an obfuscator has to
-	 * surface these, because an unprotected declared secret is the failure this whole
-	 * module exists to prevent, and the operator is the only one who can fix it.
-	 */
 	#rejections: SecretRejection[] = [];
-
-	/** Pattern entry indexes that have already reported an over-match, to warn once each. */
 	#reportedOvermatch = new Set<number>();
-
-	/** Told about every rejection as it happens. See {@link SecretObfuscatorOptions}. */
 	#onRejection: ((rejection: SecretRejection) => void) | undefined;
-
 	#onExpiry: ((name: string) => void) | undefined;
-
 	#now: () => number;
-
-	/**
-	 * Placeholder → the moment it stops being substituted. Only entries that actually expire.
-	 *
-	 * Keyed by placeholder rather than by name so the expiry check is one map lookup away from the
-	 * substitution map it has to modify.
-	 */
 	#expiryByPlaceholder = new Map<string, number>();
-
-	/**
-	 * Soonest expiry in {@link #expiryByPlaceholder}, or `Infinity` when nothing expires.
-	 *
-	 * THE REASON EXPIRY COSTS NOTHING ON THE HOT PATH. `deobfuscate` runs on every string of every
-	 * tool call, so a scan of the expiry map per call would be a real cost for a check that almost
-	 * never fires (Law 7). One number compared against the clock answers "could anything have
-	 * expired since last time" in constant time, and the scan happens only on the single call that
-	 * crosses a deadline.
-	 */
 	#nextExpiryAt = Number.POSITIVE_INFINITY;
 
 	/**
@@ -296,21 +512,154 @@ export class SecretObfuscator {
 		this.#rejections.push(rejection);
 		this.#onRejection?.(rejection);
 	}
+	#assertValidExpiry(expiresAt: number | null | undefined): void {
+		if (expiresAt !== undefined && expiresAt !== null && !Number.isSafeInteger(expiresAt)) {
+			throw new Error("Refusing a secret expiry that is not a finite safe-integer epoch timestamp.");
+		}
+	}
+
+	#registerAlias(alias: string, entryIndex: number): void {
+		assertBoundedSecretString(alias);
+		if (!this.#terminalAliases.has(alias)) {
+			const bytes = utf8ByteLengthInRange(alias);
+			if (this.#terminalAliasBytes + bytes > MAX_TERMINAL_ALIAS_BYTES) {
+				throw new Error("Refusing one-way alias state above the cumulative byte limit.");
+			}
+			if (alias.length > SHORT_ALIAS_TRIE_CODE_UNITS) {
+				if (this.#longTerminalAliases.size >= MAX_LONG_TERMINAL_ALIASES) {
+					throw new Error("Refusing too many long one-way aliases.");
+				}
+				this.#longTerminalAliases.add(alias);
+			}
+			this.#terminalAliases.add(alias);
+			this.#terminalAliasBytes += bytes;
+			this.#aliasMatcherDirty = true;
+		}
+		let origins = this.#aliasOrigins.get(alias);
+		if (origins === undefined) {
+			origins = new Set();
+			this.#aliasOrigins.set(alias, origins);
+		}
+		origins.add(entryIndex);
+	}
+
+	#assertNoCrossRuleAliasCapture(alias: string, origins: ReadonlySet<number>): void {
+		for (const entry of this.#regexEntries) {
+			if (origins.has(entry.entryIndex)) continue;
+			entry.regex.lastIndex = 0;
+			const captured = entry.regex.exec(alias) !== null;
+			entry.regex.lastIndex = 0;
+			if (captured) {
+				throw new Error("Refusing a one-way alias captured by another secret rule.");
+			}
+		}
+	}
+
+	#rebuildPlainMatcher(): void {
+		const rules: Array<readonly [string, LiteralRule]> = [];
+		for (const [secret, replacement] of this.#plainMappings) rules.push([secret, { replacement }]);
+		for (const [secret, replacement] of this.#replaceMappings) rules.push([secret, { replacement }]);
+		this.#plainMatcher = new LiteralMatcher(rules);
+		this.#plainMatcherDirty = false;
+	}
+
+	#ensurePlainMatcher(): void {
+		if (this.#plainMatcherDirty) this.#rebuildPlainMatcher();
+	}
+
+	#ensureAliasMatcher(): void {
+		if (!this.#aliasMatcherDirty) return;
+		const shortAliases: Array<readonly [string, true]> = [];
+		for (const alias of this.#terminalAliases) {
+			if (alias.length <= SHORT_ALIAS_TRIE_CODE_UNITS) shortAliases.push([alias, true]);
+		}
+		this.#aliasMatcher = new LiteralMatcher(shortAliases);
+		this.#aliasMatcherDirty = false;
+	}
+
+	#rememberRuntimeSecret(value: string): void {
+		if (this.#knownSecretValues.has(value)) return;
+		assertBoundedSecretString(value);
+		const bytes = utf8ByteLengthInRange(value);
+		if (
+			this.#runtimeSecretCount + 1 > MAX_RUNTIME_SECRET_VALUES ||
+			this.#runtimeSecretBytes + bytes > MAX_RUNTIME_SECRET_BYTES
+		) {
+			throw new Error("Refusing to retain regex secret state above the runtime limit.");
+		}
+		this.#knownSecretValues.add(value);
+		this.#runtimeSecretCount++;
+		this.#runtimeSecretBytes += bytes;
+	}
+
 
 	constructor(entries: SecretEntry[], options?: SecretObfuscatorOptions) {
+		if (entries.length > MAX_SECRET_ENTRIES) {
+			throw new Error("Refusing a secret registry above the configured entry limit.");
+		}
+		const suppliedKey = options?.placeholderKey ?? PROCESS_PLACEHOLDER_KEY;
+		if (!(suppliedKey instanceof Uint8Array) || suppliedKey.byteLength !== 32) {
+			throw new Error("Refusing a placeholder key that is not exactly 32 bytes.");
+		}
+		this.#placeholderKey = Uint8Array.from(suppliedKey);
 		this.#onRejection = options?.onRejection;
 		this.#onExpiry = options?.onExpiry;
 		this.#now = options?.now ?? Date.now;
-		this.#placeholderKey = options?.placeholderKey ?? PROCESS_PLACEHOLDER_KEY;
-		const configuredPlainValues = entries.filter(entry => entry.type === "plain").map(entry => entry.content);
-		let hasRealSecret = false;
 
+		const sourcePolicies = new Map<string, { mode: "obfuscate" | "replace"; replacement?: string }>();
+		const configuredPlainSources: Array<readonly [string, true]> = [];
+		let configuredBytes = 0;
+		let regexEntryCount = 0;
+		for (const entry of entries) {
+			if (!isWellFormedUtf16(entry.content)) {
+				throw new Error("Refusing ill-formed UTF-16 in secret transformation data.");
+			}
+			const contentBytes = utf8ByteLengthInRange(entry.content);
+			if (contentBytes > MAX_SECRET_VALUE_BYTES) {
+				throw new Error("Refusing secret transformation data above the per-value byte limit.");
+			}
+			configuredBytes += contentBytes;
+			if (entry.replacement !== undefined) {
+				assertOneWayReplacement(entry.replacement);
+				configuredBytes += utf8ByteLengthInRange(entry.replacement);
+			}
+			if (configuredBytes > MAX_CONFIGURED_SECRET_BYTES) {
+				throw new Error("Refusing a secret registry above the cumulative byte limit.");
+			}
+			this.#assertValidExpiry(entry.expiresAt);
+			const mode = entry.mode ?? "obfuscate";
+			const sourceKey = `${entry.type}\0${entry.content}`;
+			const existingPolicy = sourcePolicies.get(sourceKey);
+			if (
+				existingPolicy !== undefined &&
+				(existingPolicy.mode !== mode ||
+					(mode === "replace" && existingPolicy.replacement !== entry.replacement))
+			) {
+				throw new Error("Refusing conflicting policies for the same exact secret source.");
+			}
+			sourcePolicies.set(sourceKey, { mode, replacement: entry.replacement });
+			if (entry.type === "plain") configuredPlainSources.push([entry.content, true]);
+			else if (++regexEntryCount > MAX_SECRET_REGEX_ENTRIES) {
+				throw new Error("Refusing a secret registry above the regex entry limit.");
+			}
+		}
+		this.#configuredForbiddenMatcher = new LiteralMatcher(configuredPlainSources);
+		for (const entry of entries) {
+			if (
+				(entry.mode ?? "obfuscate") === "replace" &&
+				entry.replacement !== undefined &&
+				this.#configuredForbiddenMatcher.hasMatch(entry.replacement)
+			) {
+				throw new Error("Refusing a secret replacement that contains a configured secret.");
+			}
+		}
+
+		let hasRealSecret = false;
 		for (const [entryIndex, entry] of entries.entries()) {
 			const mode = entry.mode ?? "obfuscate";
 			if (entry.type === "plain" && mode === "replace" && entry.content.length === 0) {
 				throw new Error("Refusing an empty plain secret, which cannot protect or replace any bytes.");
 			}
-			if (mode === "replace" && entry.replacement !== undefined) assertOneWayReplacement(entry.replacement);
 			if (entry.type === "plain") {
 				if (mode === "obfuscate") {
 					if (!canObfuscatePlainValue(entry.content)) {
@@ -330,11 +679,15 @@ export class SecretObfuscator {
 							: buildNamePlaceholder(entry.name);
 					this.#registerReversible(entry.content, placeholder, entry.expiresAt);
 				} else {
-					this.#replaceMappings.set(
+					const alias = resolveSafeReplacement(
 						entry.content,
-						resolveSafeReplacement(entry.content, entry.replacement, configuredPlainValues, this.#placeholderKey),
+						entry.replacement,
+						this.#configuredForbiddenMatcher,
+						this.#placeholderKey,
 					);
+					this.#replaceMappings.set(entry.content, alias);
 					this.#knownSecretValues.add(entry.content);
+					this.#registerAlias(alias, entryIndex);
 				}
 				hasRealSecret = true;
 				continue;
@@ -342,12 +695,20 @@ export class SecretObfuscator {
 
 			try {
 				const regex = compileSecretRegex(entry.content, entry.flags);
+				let replacement = entry.replacement;
+				if (mode === "replace" && replacement !== undefined) {
+					if (this.#configuredForbiddenMatcher.hasMatch(replacement)) {
+						throw new Error("replacement contains a configured exact secret source");
+					}
+					this.#registerAlias(replacement, entryIndex);
+				}
 				this.#regexEntries.push({
 					regex,
 					mode,
-					replacement: entry.replacement,
+					replacement,
 					minLength: entry.minLength ?? MIN_OBFUSCATABLE_LENGTH,
 					entryIndex,
+					aliases: new Map(),
 				});
 				hasRealSecret = true;
 			} catch (error) {
@@ -360,6 +721,8 @@ export class SecretObfuscator {
 			}
 		}
 
+		for (const [alias, origins] of this.#aliasOrigins) this.#assertNoCrossRuleAliasCapture(alias, origins);
+		this.#rebuildPlainMatcher();
 		this.#hasAny = hasRealSecret;
 	}
 
@@ -373,13 +736,22 @@ export class SecretObfuscator {
 		return placeholder;
 	}
 
-	/** Install one reversible mapping, retiring an older value that used the same name. */
+	/** Install one reversible mapping, retaining every live alias for duplicate values. */
 	#registerReversible(secret: string, placeholder: string, expiresAt?: number | null): void {
+		assertBoundedSecretString(secret);
+		this.#assertValidExpiry(expiresAt);
 		const existing = this.#deobfuscateMap.get(placeholder);
 		if (existing !== undefined && existing !== secret) this.#forgetPlaceholder(placeholder);
 		this.#knownSecretValues.add(secret);
 		this.#plainMappings.set(secret, placeholder);
 		this.#deobfuscateMap.set(placeholder, secret);
+		let placeholders = this.#placeholdersBySecret.get(secret);
+		if (placeholders === undefined) {
+			placeholders = new Set();
+			this.#placeholdersBySecret.set(secret, placeholders);
+		}
+		placeholders.add(placeholder);
+		this.#plainMatcherDirty = true;
 		this.#trackExpiry(placeholder, expiresAt);
 	}
 
@@ -401,6 +773,7 @@ export class SecretObfuscator {
 			this.#plainMappings.set(value, this.#buildValuePlaceholder(value));
 			this.#hasAny = true;
 		}
+		this.#plainMatcherDirty = true;
 	}
 
 	/**
@@ -411,6 +784,8 @@ export class SecretObfuscator {
 	 * credential. Returns the readable placeholder the model should use.
 	 */
 	addNamedSecret(name: string, value: string, expiresAt?: number | null): string {
+		assertBoundedSecretString(value);
+		this.#assertValidExpiry(expiresAt);
 		if (!canObfuscatePlainValue(value)) {
 			throw new Error(
 				`Refusing to add ${name}: the value is ${secretCharacterLength(value)} characters, under the ` +
@@ -442,12 +817,19 @@ export class SecretObfuscator {
 	 * the old deadline and drop the secret at it.
 	 */
 	#trackExpiry(placeholder: string, expiresAt: number | null | undefined): void {
+		this.#assertValidExpiry(expiresAt);
+		const previous = this.#expiryByPlaceholder.get(placeholder);
 		if (expiresAt === undefined || expiresAt === null) {
 			this.#expiryByPlaceholder.delete(placeholder);
-		} else {
-			this.#expiryByPlaceholder.set(placeholder, expiresAt);
+			if (previous === this.#nextExpiryAt) this.#recomputeNextExpiry();
+			return;
 		}
-		this.#recomputeNextExpiry();
+		this.#expiryByPlaceholder.set(placeholder, expiresAt);
+		if (expiresAt < this.#nextExpiryAt) {
+			this.#nextExpiryAt = expiresAt;
+		} else if (previous === this.#nextExpiryAt && expiresAt > previous) {
+			this.#recomputeNextExpiry();
+		}
 	}
 
 	/** Refresh the cached soonest deadline. Called whenever the expiry map changes, never per use. */
@@ -473,14 +855,12 @@ export class SecretObfuscator {
 	#forgetExpired(): void {
 		if (this.#nextExpiryAt === Number.POSITIVE_INFINITY) return;
 		const now = this.#now();
+		if (!Number.isFinite(now)) throw new Error("Refusing to evaluate expiry with an invalid clock value.");
 		if (now < this.#nextExpiryAt) return;
 
-		for (const [placeholder, at] of [...this.#expiryByPlaceholder]) {
+		for (const [placeholder, at] of this.#expiryByPlaceholder) {
 			if (at > now) continue;
-			this.#expiryByPlaceholder.delete(placeholder);
-			this.#forgetPlaceholder(placeholder);
-			// Told, not dropped quietly. A command that runs with the placeholder still in it fails
-			// with a 401 and no explanation anywhere, which is the most confusing outcome available.
+			this.#forgetPlaceholder(placeholder, false);
 			this.#onExpiry?.(placeholder.slice(1, -1));
 		}
 		this.#recomputeNextExpiry();
@@ -497,13 +877,21 @@ export class SecretObfuscator {
 		this.#forgetPlaceholder(buildNamePlaceholder(name));
 	}
 
-	#forgetPlaceholder(placeholder: string): void {
+	#forgetPlaceholder(placeholder: string, recomputeExpiry = true): void {
 		const value = this.#deobfuscateMap.get(placeholder);
 		if (value === undefined) return;
 		this.#deobfuscateMap.delete(placeholder);
+		const removedExpiry = this.#expiryByPlaceholder.get(placeholder);
 		this.#expiryByPlaceholder.delete(placeholder);
+		if (recomputeExpiry && removedExpiry === this.#nextExpiryAt) this.#recomputeNextExpiry();
+
+		const placeholders = this.#placeholdersBySecret.get(value);
+		placeholders?.delete(placeholder);
+		if (placeholders?.size === 0) this.#placeholdersBySecret.delete(value);
 		if (this.#plainMappings.get(value) === placeholder) {
-			this.#plainMappings.set(value, this.#buildValuePlaceholder(value));
+			const survivor = placeholders?.values().next().value as string | undefined;
+			this.#plainMappings.set(value, survivor ?? this.#buildValuePlaceholder(value));
+			this.#plainMatcherDirty = true;
 		}
 	}
 
@@ -537,6 +925,7 @@ export class SecretObfuscator {
 	 * to reconcile against.
 	 */
 	namedSecretNames(): string[] {
+		this.#forgetExpired();
 		const names: string[] = [];
 		for (const placeholder of this.#deobfuscateMap.keys()) {
 			const body = placeholder.slice(1, -1);
@@ -558,8 +947,11 @@ export class SecretObfuscator {
 	/** Obfuscate all secrets in text. Reversible values get placeholders; replace mode stays one-way. */
 	obfuscate(text: string): string {
 		if (!this.#hasAny) return text;
-		let state: ProtectedText = { text, spans: this.#protectedPlaceholderSpans(text) };
+		assertBoundedTransformText(text);
+		this.#forgetExpired();
+		let state: ProtectedText = { text, spans: this.#protectedOutputSpans(text) };
 		state = this.#applyPlainRules(state);
+		let matchEvents = 0;
 
 		for (const entry of this.#regexEntries) {
 			entry.regex.lastIndex = 0;
@@ -568,6 +960,10 @@ export class SecretObfuscator {
 			for (;;) {
 				const match = entry.regex.exec(state.text);
 				if (match === null) break;
+				if (++matchEvents > MAX_SECRET_MATCHES_PER_TEXT) {
+					entry.regex.lastIndex = 0;
+					throw new Error("Refusing a secret transformation with too many regex matches.");
+				}
 				const matchValue = match[0];
 				if (matchValue.length === 0) {
 					if (!this.#reportedOvermatch.has(entry.entryIndex)) {
@@ -590,7 +986,8 @@ export class SecretObfuscator {
 				const protectedSpan = state.spans[protectedIndex];
 				if (protectedSpan !== undefined && protectedSpan.start < matchEnd) continue;
 
-				const characterLength = Array.from(matchValue).length;
+				assertBoundedSecretString(matchValue);
+				const characterLength = secretCharacterLength(matchValue);
 				if (entry.mode === "obfuscate" && characterLength < entry.minLength) {
 					if (!this.#reportedOvermatch.has(entry.entryIndex)) {
 						this.#reportedOvermatch.add(entry.entryIndex);
@@ -607,15 +1004,30 @@ export class SecretObfuscator {
 					continue;
 				}
 
-				this.#knownSecretValues.add(matchValue);
+				this.#rememberRuntimeSecret(matchValue);
 				let replacement: string;
 				if (entry.mode === "replace") {
-					replacement = resolveSafeReplacement(
-						matchValue,
-						entry.replacement,
-						[...this.#knownSecretValues],
-						this.#placeholderKey,
-					);
+					if (entry.replacement !== undefined) {
+						replacement = entry.replacement;
+					} else {
+						const cached = entry.aliases.get(matchValue);
+						if (cached !== undefined) {
+							replacement = cached;
+						} else {
+							replacement = generateDeterministicReplacement(
+								matchValue,
+								this.#placeholderKey,
+								this.#configuredForbiddenMatcher,
+							);
+							if (this.#knownSecretValues.has(replacement)) {
+								throw new Error("Could not generate an unambiguous one-way replacement.");
+							}
+							const origins = new Set([entry.entryIndex]);
+							this.#assertNoCrossRuleAliasCapture(replacement, origins);
+							this.#registerAlias(replacement, entry.entryIndex);
+							entry.aliases.set(matchValue, replacement);
+						}
+					}
 				} else {
 					replacement =
 						this.#regexMappings.get(matchValue) ??
@@ -628,6 +1040,7 @@ export class SecretObfuscator {
 				}
 				replacements.push({ start: match.index, end: matchEnd, replacement });
 			}
+			entry.regex.lastIndex = 0;
 
 			if (replacements.length > 0) state = this.#applyProtectedReplacements(state, replacements);
 		}
@@ -635,24 +1048,65 @@ export class SecretObfuscator {
 		return this.#applyPlainRules(state).text;
 	}
 
-	/** Locate already-emitted placeholders so no rule can reinterpret their bytes. */
-	#protectedPlaceholderSpans(text: string): ProtectedSpan[] {
-		if (!text.includes("#")) return [];
-		const placeholders = new Set([...this.#plainMappings.values(), ...this.#regexMappings.values()]);
-		if (placeholders.size === 0) return [];
+	/** Locate already-emitted placeholders and one-way aliases before any source rule runs. */
+	#protectedOutputSpans(text: string): ProtectedSpan[] {
 		const spans: ProtectedSpan[] = [];
-		PLACEHOLDER_RE.lastIndex = 0;
-		for (;;) {
-			const match = PLACEHOLDER_RE.exec(text);
-			if (match === null) break;
-			if (placeholders.has(match[0])) spans.push({ start: match.index, end: match.index + match[0].length });
+		if (text.includes("#")) {
+			const placeholders = new Set(this.#deobfuscateMap.keys());
+			for (const placeholder of this.#plainMappings.values()) placeholders.add(placeholder);
+			let placeholderCount = 0;
+			PLACEHOLDER_RE.lastIndex = 0;
+			for (;;) {
+				const match = PLACEHOLDER_RE.exec(text);
+				if (match === null) break;
+				if (++placeholderCount > MAX_PLACEHOLDERS_PER_TEXT) {
+					PLACEHOLDER_RE.lastIndex = 0;
+					throw new Error("Refusing a secret transformation with too many placeholders.");
+				}
+				if (placeholders.has(match[0])) spans.push({ start: match.index, end: match.index + match[0].length });
+			}
+			PLACEHOLDER_RE.lastIndex = 0;
 		}
-		PLACEHOLDER_RE.lastIndex = 0;
-		return spans;
+
+		this.#ensureAliasMatcher();
+		this.#aliasMatcher.forEachMatch(text, (start, end) => {
+			spans.push({ start, end, allowContainingLiteral: true });
+		});
+		for (const alias of this.#longTerminalAliases) {
+			for (let start = text.indexOf(alias); start >= 0; start = text.indexOf(alias, start + 1)) {
+				if (spans.length >= MAX_SECRET_MATCHES_PER_TEXT) {
+					throw new Error("Refusing a secret transformation with too many terminal aliases.");
+				}
+				spans.push({ start, end: start + alias.length, allowContainingLiteral: true });
+			}
+		}
+		if (spans.length < 2) return spans;
+		spans.sort((left, right) => left.start - right.start || right.end - left.end);
+		const merged: ProtectedSpan[] = [];
+		for (const span of spans) {
+			const previous = merged[merged.length - 1];
+			if (previous !== undefined && span.start < previous.end) {
+				previous.allowContainingLiteral &&= span.allowContainingLiteral === true;
+				if (span.end > previous.end) previous.end = span.end;
+			} else {
+				merged.push({ ...span });
+			}
+		}
+		return merged;
 	}
 
 	/** Apply non-overlapping replacements while carrying protected output spans forward. */
 	#applyProtectedReplacements(state: ProtectedText, replacements: readonly TextReplacement[]): ProtectedText {
+		let outputBytes = utf8ByteLengthInRange(state.text);
+		for (const replacement of replacements) {
+			outputBytes +=
+				utf8ByteLengthInRange(replacement.replacement) -
+				utf8ByteLengthInRange(state.text, replacement.start, replacement.end);
+			if (outputBytes > MAX_TRANSFORMED_TEXT_BYTES) {
+				throw new Error("Refusing a secret transformation above the output byte limit.");
+			}
+		}
+
 		const chunks: string[] = [];
 		const spans: ProtectedSpan[] = [];
 		let outputLength = 0;
@@ -679,7 +1133,13 @@ export class SecretObfuscator {
 				append(replacement.replacement);
 				replacementIndex++;
 			}
-			if (outputLength > protectedStart) spans.push({ start: protectedStart, end: outputLength });
+			if (outputLength > protectedStart) {
+				spans.push({
+					start: protectedStart,
+					end: outputLength,
+					allowContainingLiteral: useSpan ? span.allowContainingLiteral : false,
+				});
+			}
 			cursor = event.end;
 		}
 		append(state.text.slice(cursor));
@@ -694,84 +1154,68 @@ export class SecretObfuscator {
 	 * input monotonically instead of rescanning the remaining suffix after every match.
 	 */
 	#applyPlainRules(state: ProtectedText): ProtectedText {
-		const rules = [
-			...[...this.#plainMappings].map(([secret, replacement]) => ({ secret, replacement })),
-			...[...this.#replaceMappings].map(([secret, replacement]) => ({ secret, replacement })),
-		].filter(rule => rule.secret.length > 0);
-		if (rules.length === 0) return state;
-		rules.sort((a, b) => b.secret.length - a.secret.length);
-		const nextPositions = rules.map(rule => state.text.indexOf(rule.secret));
-		const chunks: string[] = [];
-		const spans: ProtectedSpan[] = [];
-		let outputLength = 0;
+		this.#ensurePlainMatcher();
+		const bestByStart = new Map<number, TextReplacement>();
+		this.#plainMatcher.forEachMatch(state.text, (start, end, rule) => {
+			const existing = bestByStart.get(start);
+			if (existing === undefined || end - start > existing.end - existing.start) {
+				bestByStart.set(start, { start, end, replacement: rule.replacement });
+			}
+		});
+		if (bestByStart.size === 0) return state;
+
+		const candidates = [...bestByStart.values()].sort(
+			(left, right) => left.start - right.start || right.end - left.end,
+		);
+		const replacements: TextReplacement[] = [];
 		let cursor = 0;
 		let spanIndex = 0;
-		const append = (part: string): void => {
-			chunks.push(part);
-			outputLength += part.length;
-		};
-
-		while (cursor < state.text.length) {
-			while (spanIndex < state.spans.length && state.spans[spanIndex].end <= cursor) spanIndex++;
-			const span = state.spans[spanIndex];
-			let nextRuleIndex = -1;
-			let nextRuleAt = Number.POSITIVE_INFINITY;
-			for (let index = 0; index < rules.length; index++) {
-				let at = nextPositions[index];
-				if (at >= 0 && at < cursor) {
-					at = state.text.indexOf(rules[index].secret, cursor);
-					nextPositions[index] = at;
-				}
-				if (at < 0 || at > nextRuleAt) continue;
+		for (const candidate of candidates) {
+			if (candidate.start < cursor) continue;
+			while (spanIndex < state.spans.length && state.spans[spanIndex].end <= candidate.start) spanIndex++;
+			let blocked = false;
+			for (let check = spanIndex; check < state.spans.length && state.spans[check].start < candidate.end; check++) {
+				const span = state.spans[check];
 				if (
-					at < nextRuleAt ||
-					nextRuleIndex < 0 ||
-					rules[index].secret.length > rules[nextRuleIndex].secret.length
+					span.allowContainingLiteral !== true ||
+					candidate.start > span.start ||
+					candidate.end < span.end
 				) {
-					nextRuleIndex = index;
-					nextRuleAt = at;
+					blocked = true;
+					break;
 				}
 			}
-
-			if (
-				span !== undefined &&
-				nextRuleIndex >= 0 &&
-				nextRuleAt < span.start &&
-				nextRuleAt + rules[nextRuleIndex].secret.length > span.start
-			) {
-				nextPositions[nextRuleIndex] = state.text.indexOf(rules[nextRuleIndex].secret, span.end);
-				continue;
-			}
-
-			if (span !== undefined && span.start <= nextRuleAt) {
-				append(state.text.slice(cursor, span.start));
-				const protectedStart = outputLength;
-				append(state.text.slice(span.start, span.end));
-				spans.push({ start: protectedStart, end: outputLength });
-				cursor = span.end;
-				spanIndex++;
-				continue;
-			}
-			if (nextRuleIndex < 0 || nextRuleAt === Number.POSITIVE_INFINITY) {
-				append(state.text.slice(cursor));
-				break;
-			}
-
-			const rule = rules[nextRuleIndex];
-			append(state.text.slice(cursor, nextRuleAt));
-			const protectedStart = outputLength;
-			append(rule.replacement);
-			if (outputLength > protectedStart) spans.push({ start: protectedStart, end: outputLength });
-			cursor = nextRuleAt + rule.secret.length;
-			nextPositions[nextRuleIndex] = state.text.indexOf(rule.secret, cursor);
+			if (blocked) continue;
+			replacements.push(candidate);
+			cursor = candidate.end;
 		}
-		return { text: chunks.join(""), spans };
+		return replacements.length === 0 ? state : this.#applyProtectedReplacements(state, replacements);
 	}
 
 	/** Deobfuscate live reversible placeholders. Retired and expired placeholders stay opaque. */
 	deobfuscate(text: string): string {
 		if (!this.#hasAny || !text.includes("#")) return text;
+		const inputBytes = assertBoundedTransformText(text);
 		this.#forgetExpired();
+		let outputBytes = inputBytes;
+		let placeholderCount = 0;
+		PLACEHOLDER_RE.lastIndex = 0;
+		for (;;) {
+			const match = PLACEHOLDER_RE.exec(text);
+			if (match === null) break;
+			if (++placeholderCount > MAX_PLACEHOLDERS_PER_TEXT) {
+				PLACEHOLDER_RE.lastIndex = 0;
+				throw new Error("Refusing a secret expansion with too many placeholders.");
+			}
+			const secret = this.#deobfuscateMap.get(match[0]);
+			if (secret === undefined) continue;
+			outputBytes += utf8ByteLengthInRange(secret) - utf8ByteLengthInRange(match[0]);
+			if (outputBytes > MAX_TRANSFORMED_TEXT_BYTES) {
+				PLACEHOLDER_RE.lastIndex = 0;
+				throw new Error("Refusing a secret expansion above the output byte limit.");
+			}
+		}
+		PLACEHOLDER_RE.lastIndex = 0;
 		return text.replace(PLACEHOLDER_RE, match => this.#deobfuscateMap.get(match) ?? match);
 	}
 }
@@ -1150,59 +1594,236 @@ export function obfuscateProviderContext(obfuscator: SecretObfuscator | undefine
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
+interface JsonWalkFrame {
+	original: unknown[] | Record<string, unknown>;
+	kind: "array" | "object";
+	keys: string[];
+	sourceValues: unknown[];
+	mappedKeys: string[];
+	mappedValues: unknown[];
+	prototype: object | null;
+	target: JsonWalkTarget;
+}
+
+interface JsonWalkTarget {
+	frame: JsonWalkFrame | undefined;
+	index: number;
+}
+
+type JsonWalkEvent =
+	| { type: "visit"; value: unknown; depth: number; target: JsonWalkTarget }
+	| { type: "key"; key: string; frame: JsonWalkFrame; index: number }
+	| { type: "complete"; frame: JsonWalkFrame };
+
 /**
- * Map every string in arbitrary JSON, including object keys. Used for provider-bound schemas,
- * examples, opaque replay payloads, and tool arguments. Copies are allocated only along changed
- * paths. A mapped-key collision fails closed instead of silently discarding one JSON field.
+ * Map every string in bounded JSON, including object keys.
+ *
+ * The explicit stack prevents call-stack exhaustion. Gray/done memo states reject cycles and map
+ * shared DAG nodes once, while completion allocates only containers whose key or value changed.
+ * Arrays and plain records are the complete walk domain; typed arrays and class instances are
+ * rejected before their properties can be enumerated byte-by-byte.
  */
 export function mapJsonStrings<T>(value: T, fn: (s: string) => string): T {
-	if (typeof value === "string") return fn(value) as T;
-	if (Array.isArray(value)) {
-		let out: unknown[] | undefined;
-		for (let index = 0; index < value.length; index++) {
-			const item = value[index];
-			const next = mapJsonStrings(item, fn);
-			if (next !== item) {
-				out ??= value.slice();
-				out[index] = next;
-			}
+	const memo = new WeakMap<object, { status: "visiting" | "done"; result?: unknown }>();
+	const events: JsonWalkEvent[] = [
+		{ type: "visit", value, depth: 0, target: { frame: undefined, index: 0 } },
+	];
+	let rootResult: unknown;
+	let visitedNodes = 0;
+	let visitedKeys = 0;
+	let inputStringBytes = 0;
+	let outputStringBytes = 0;
+
+	const mapString = (input: string): string => {
+		if (!isWellFormedUtf16(input)) {
+			throw new Error("Refusing ill-formed UTF-16 in JSON transformation data.");
 		}
-		return (out ?? value) as T;
-	}
-	if (value !== null && typeof value === "object") {
-		const record = value as Record<string, unknown>;
-		const keys = Object.keys(record);
-		let out: Record<string, unknown> | undefined;
-		for (let index = 0; index < keys.length; index++) {
-			const key = keys[index];
-			const item = record[key];
-			const nextKey = fn(key);
-			const next = mapJsonStrings(item, fn);
-			if (out === undefined && (nextKey !== key || next !== item)) {
-				out = {};
-				for (let prior = 0; prior < index; prior++) {
-					const priorKey = keys[prior];
-					Object.defineProperty(out, priorKey, {
-						value: record[priorKey],
+		inputStringBytes += utf8ByteLengthInRange(input);
+		if (inputStringBytes > MAX_JSON_TRANSFORM_STRING_BYTES) {
+			throw new Error("Refusing a JSON transformation above the cumulative input string-byte limit.");
+		}
+		const output = fn(input);
+		if (typeof output !== "string" || !isWellFormedUtf16(output)) {
+			throw new Error("Refusing an ill-formed string produced by a JSON transformation.");
+		}
+		outputStringBytes += utf8ByteLengthInRange(output);
+		if (outputStringBytes > MAX_JSON_TRANSFORM_STRING_BYTES) {
+			throw new Error("Refusing a JSON transformation above the cumulative output string-byte limit.");
+		}
+		return output;
+	};
+
+	const assign = (target: JsonWalkTarget, result: unknown): void => {
+		if (target.frame === undefined) rootResult = result;
+		else target.frame.mappedValues[target.index] = result;
+	};
+
+	while (events.length > 0) {
+		const event = events.pop();
+		if (event === undefined) break;
+		if (event.type === "key") {
+			event.frame.mappedKeys[event.index] = mapString(event.key);
+			continue;
+		}
+		if (event.type === "complete") {
+			const frame = event.frame;
+			let changed = false;
+			if (frame.kind === "array") {
+				for (let index = 0; index < frame.sourceValues.length; index++) {
+					if (frame.mappedValues[index] !== frame.sourceValues[index]) {
+						changed = true;
+						break;
+					}
+				}
+				let result: unknown = frame.original;
+				if (changed) {
+					const output = (frame.original as unknown[]).slice();
+					for (let index = 0; index < frame.sourceValues.length; index++) {
+						if (frame.mappedValues[index] !== frame.sourceValues[index]) {
+							output[index] = frame.mappedValues[index];
+						}
+					}
+					result = output;
+				}
+				assign(frame.target, result);
+				const memoEntry = memo.get(frame.original);
+				if (memoEntry === undefined) throw new Error("JSON transformation memo state was lost.");
+				memoEntry.status = "done";
+				memoEntry.result = result;
+				continue;
+			}
+
+			const seenKeys = new Set<string>();
+			for (let index = 0; index < frame.keys.length; index++) {
+				const mappedKey = frame.mappedKeys[index];
+				if (seenKeys.has(mappedKey)) {
+					throw new Error("Refusing to rewrite two JSON object fields as the same protected key.");
+				}
+				seenKeys.add(mappedKey);
+				if (mappedKey !== frame.keys[index] || frame.mappedValues[index] !== frame.sourceValues[index]) {
+					changed = true;
+				}
+			}
+			let result: unknown = frame.original;
+			if (changed) {
+				const output = Object.create(frame.prototype) as Record<string, unknown>;
+				for (let index = 0; index < frame.keys.length; index++) {
+					Object.defineProperty(output, frame.mappedKeys[index], {
+						value: frame.mappedValues[index],
 						enumerable: true,
 						configurable: true,
 						writable: true,
 					});
 				}
+				result = output;
 			}
-			if (out !== undefined) {
-				if (Object.hasOwn(out, nextKey)) {
-					throw new Error("Refusing to rewrite two JSON object fields as the same protected key.");
+			assign(frame.target, result);
+			const memoEntry = memo.get(frame.original);
+			if (memoEntry === undefined) throw new Error("JSON transformation memo state was lost.");
+			memoEntry.status = "done";
+			memoEntry.result = result;
+			continue;
+		}
+
+		const current = event.value;
+		if (typeof current === "string") {
+			if (++visitedNodes > MAX_JSON_TRANSFORM_NODES) {
+				throw new Error("Refusing a JSON transformation above the node limit.");
+			}
+			assign(event.target, mapString(current));
+			continue;
+		}
+		if (
+			current === null ||
+			current === undefined ||
+			typeof current === "boolean" ||
+			(typeof current === "number" && Number.isFinite(current))
+		) {
+			if (++visitedNodes > MAX_JSON_TRANSFORM_NODES) {
+				throw new Error("Refusing a JSON transformation above the node limit.");
+			}
+			assign(event.target, current);
+			continue;
+		}
+		if (typeof current !== "object") {
+			throw new Error("Refusing a non-JSON value in secret transformation data.");
+		}
+		if (event.depth > MAX_JSON_TRANSFORM_DEPTH) {
+			throw new Error("Refusing a JSON transformation above the depth limit.");
+		}
+		const existingMemo = memo.get(current);
+		if (existingMemo?.status === "visiting") {
+			throw new Error("Refusing a cyclic JSON transformation graph.");
+		}
+		if (existingMemo?.status === "done") {
+			assign(event.target, existingMemo.result);
+			continue;
+		}
+		if (++visitedNodes > MAX_JSON_TRANSFORM_NODES) {
+			throw new Error("Refusing a JSON transformation above the node limit.");
+		}
+
+		const isArray = Array.isArray(current);
+		const prototype = Object.getPrototypeOf(current);
+		if (!isArray && prototype !== Object.prototype && prototype !== null) {
+			throw new Error("Refusing a non-plain object in JSON transformation data.");
+		}
+		const keys: string[] = [];
+		const sourceValues: unknown[] = [];
+		if (isArray) {
+			if (current.length > MAX_JSON_TRANSFORM_NODES - visitedNodes) {
+				throw new Error("Refusing a JSON transformation above the array-item limit.");
+			}
+			for (let index = 0; index < current.length; index++) {
+				const descriptor = Object.getOwnPropertyDescriptor(current, String(index));
+				if (descriptor !== undefined && !("value" in descriptor)) {
+					throw new Error("Refusing an accessor property in JSON transformation data.");
 				}
-				Object.defineProperty(out, nextKey, {
-					value: next,
-					enumerable: true,
-					configurable: true,
-					writable: true,
-				});
+				keys.push(String(index));
+				sourceValues.push(descriptor?.value);
+			}
+		} else {
+			const record = current as Record<string, unknown>;
+			if (Object.getOwnPropertySymbols(record).some(symbol => Object.getOwnPropertyDescriptor(record, symbol)?.enumerable)) {
+				throw new Error("Refusing an enumerable symbol key in JSON transformation data.");
+			}
+			for (const key in record) {
+				if (!Object.hasOwn(record, key)) continue;
+				if (++visitedKeys > MAX_JSON_TRANSFORM_KEYS) {
+					throw new Error("Refusing a JSON transformation above the object-key limit.");
+				}
+				const descriptor = Object.getOwnPropertyDescriptor(record, key);
+				if (descriptor === undefined || !("value" in descriptor)) {
+					throw new Error("Refusing an accessor property in JSON transformation data.");
+				}
+				keys.push(key);
+				sourceValues.push(descriptor.value);
 			}
 		}
-		return (out ?? value) as T;
+
+		const frame: JsonWalkFrame = {
+			original: current as unknown[] | Record<string, unknown>,
+			kind: isArray ? "array" : "object",
+			keys,
+			sourceValues,
+			mappedKeys: isArray ? keys : new Array(keys.length),
+			mappedValues: new Array(sourceValues.length),
+			prototype,
+			target: event.target,
+		};
+		memo.set(current, { status: "visiting" });
+		assign(event.target, current);
+		events.push({ type: "complete", frame });
+		for (let index = sourceValues.length - 1; index >= 0; index--) {
+			events.push({
+				type: "visit",
+				value: sourceValues[index],
+				depth: event.depth + 1,
+				target: { frame, index },
+			});
+			if (!isArray) events.push({ type: "key", key: keys[index], frame, index });
+		}
 	}
-	return value;
+
+	return rootResult as T;
 }
