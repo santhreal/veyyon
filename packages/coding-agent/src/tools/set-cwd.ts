@@ -8,6 +8,7 @@
  * where the write tier alone would have allowed it. See setCwdFilesystemTargets.
  */
 
+import * as path from "node:path";
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
@@ -149,7 +150,7 @@ export class SetCwdTool implements AgentTool<typeof setCwdSchema, SetCwdToolDeta
 	formatApprovalDetails = (args: unknown): string[] => {
 		const raw = (args as Partial<SetCwdToolInput>)?.path;
 		const requested = typeof raw === "string" ? raw.trim() : "";
-		const previous = this.#session.cwd;
+		const previous = path.resolve(this.#session.cwd);
 		const next = requested ? resolveToCwd(requested, previous) : "(missing path)";
 		return [`Working directory: ${previous} → ${next}`];
 	};
@@ -169,7 +170,11 @@ export class SetCwdTool implements AgentTool<typeof setCwdSchema, SetCwdToolDeta
 			throw new ToolError("Session does not support setCwd.");
 		}
 
-		const previous = this.#session.cwd;
+		// Resolved before it is used OR shown. `previous` is echoed back to the model in every branch
+		// below, and a relative one made a successful re-root read as `Session cwd is now .
+		// (previously .)`. The session is the authority and now always answers absolute, so this is
+		// belt and braces for a `ToolSession` supplied by an embedder rather than by `sdk.ts`.
+		const previous = path.resolve(this.#session.cwd);
 		const resolved = resolveToCwd(raw, previous);
 		let cwd: string;
 		try {
