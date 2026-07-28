@@ -11,8 +11,19 @@ import {
 } from "@veyyon/ai";
 import { errorMessage } from "@veyyon/utils";
 import type { SessionContext } from "../session/session-context";
-import { buildNamePlaceholder, buildValuePlaceholder, isValidSecretName, PLACEHOLDER_RE } from "./placeholder";
-import { canObfuscatePlainValue, MIN_OBFUSCATABLE_LENGTH, type SecretRejection } from "./policy";
+import {
+	buildNamePlaceholder,
+	buildValuePlaceholder,
+	isSecretPlaceholder,
+	isValidSecretName,
+	PLACEHOLDER_RE,
+} from "./placeholder";
+import {
+	canObfuscatePlainValue,
+	MIN_OBFUSCATABLE_LENGTH,
+	secretCharacterLength,
+	type SecretRejection,
+} from "./policy";
 import { compileSecretRegex } from "./regex";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -130,22 +141,45 @@ export type JsonRecord = { [key: string]: JsonWithOptionalFields | undefined };
 const REPLACEMENT_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 const PROCESS_PLACEHOLDER_KEY = crypto.randomBytes(32);
 
-/** Generate a deterministic same-length replacement that is never the input itself. */
-function generateDeterministicReplacement(secret: string, attempt = 0): string {
-	const hash = BigInt(Bun.hash(`${attempt}\0${secret}`));
+/**
+ * Generate a machine-keyed same-length replacement.
+ *
+ * Rejection sampling removes modulo bias from the 62-character alphabet. Counter-mode HMAC
+ * extends the output to arbitrary lengths without exposing a provider-verifiable hash oracle.
+ */
+function generateDeterministicReplacement(secret: string, key: Uint8Array, attempt = 0): string {
 	const chars: string[] = [];
-	let h = hash;
-	for (let i = 0; i < secret.length; i++) {
-		h ^= BigInt(i + 1) * 0x9e3779b97f4a7c15n;
-		const idx = Number((h < 0n ? -h : h) % BigInt(REPLACEMENT_CHARS.length));
-		chars.push(REPLACEMENT_CHARS[idx]);
+	for (let counter = 0; chars.length < secret.length; counter++) {
+		const digest = crypto
+			.createHmac("sha256", key)
+			.update(`replacement\0${attempt}\0${counter}\0${secret}`, "utf8")
+			.digest();
+		for (const byte of digest) {
+			if (byte >= 248) continue;
+			chars.push(REPLACEMENT_CHARS[byte % REPLACEMENT_CHARS.length]);
+			if (chars.length === secret.length) break;
+		}
 	}
-	const candidate = chars.join("");
-	return candidate === secret ? generateDeterministicReplacement(secret, attempt + 1) : candidate;
+	return chars.join("");
+}
+
+/** Refuse one-way replacement text that could later be expanded as a live credential. */
+function assertOneWayReplacement(replacement: string): void {
+	for (const token of replacement.match(PLACEHOLDER_RE) ?? []) {
+		if (isSecretPlaceholder(token)) {
+			throw new Error("Refusing a secret replacement that contains a reversible secret placeholder.");
+		}
+	}
 }
 
 /** Refuse a replacement that would put any configured secret back on the wire. */
-function resolveSafeReplacement(secret: string, preferred: string | undefined, forbidden: readonly string[]): string {
+function resolveSafeReplacement(
+	secret: string,
+	preferred: string | undefined,
+	forbidden: readonly string[],
+	key: Uint8Array,
+): string {
+	if (preferred !== undefined) assertOneWayReplacement(preferred);
 	if (preferred !== undefined) {
 		if (preferred === secret || forbidden.some(value => value.length > 0 && preferred.includes(value))) {
 			throw new Error("Refusing a secret replacement that contains a configured secret.");
@@ -153,7 +187,7 @@ function resolveSafeReplacement(secret: string, preferred: string | undefined, f
 		return preferred;
 	}
 	for (let attempt = 0; attempt < 256; attempt++) {
-		const candidate = generateDeterministicReplacement(secret, attempt);
+		const candidate = generateDeterministicReplacement(secret, key, attempt);
 		if (!forbidden.some(value => value.length > 0 && candidate.includes(value))) return candidate;
 	}
 	throw new Error("Could not generate a replacement that is distinct from every configured secret.");
@@ -162,6 +196,20 @@ function resolveSafeReplacement(secret: string, preferred: string | undefined, f
 // ═══════════════════════════════════════════════════════════════════════════
 // SecretObfuscator
 // ═══════════════════════════════════════════════════════════════════════════
+
+interface ProtectedSpan {
+	start: number;
+	end: number;
+}
+
+interface ProtectedText {
+	text: string;
+	spans: ProtectedSpan[];
+}
+
+interface TextReplacement extends ProtectedSpan {
+	replacement: string;
+}
 
 export class SecretObfuscator {
 	/** Reversible and retired plain secrets: secret → provider-safe placeholder. */
@@ -259,13 +307,17 @@ export class SecretObfuscator {
 
 		for (const [entryIndex, entry] of entries.entries()) {
 			const mode = entry.mode ?? "obfuscate";
+			if (entry.type === "plain" && mode === "replace" && entry.content.length === 0) {
+				throw new Error("Refusing an empty plain secret, which cannot protect or replace any bytes.");
+			}
+			if (mode === "replace" && entry.replacement !== undefined) assertOneWayReplacement(entry.replacement);
 			if (entry.type === "plain") {
 				if (mode === "obfuscate") {
 					if (!canObfuscatePlainValue(entry.content)) {
 						this.#reject({
 							reason: "too-short-to-obfuscate",
 							index: entryIndex,
-							length: entry.content.length,
+							length: secretCharacterLength(entry.content),
 						});
 						continue;
 					}
@@ -280,7 +332,7 @@ export class SecretObfuscator {
 				} else {
 					this.#replaceMappings.set(
 						entry.content,
-						resolveSafeReplacement(entry.content, entry.replacement, configuredPlainValues),
+						resolveSafeReplacement(entry.content, entry.replacement, configuredPlainValues, this.#placeholderKey),
 					);
 					this.#knownSecretValues.add(entry.content);
 				}
@@ -361,7 +413,7 @@ export class SecretObfuscator {
 	addNamedSecret(name: string, value: string, expiresAt?: number | null): string {
 		if (!canObfuscatePlainValue(value)) {
 			throw new Error(
-				`Refusing to add ${name}: the value is ${value.length} characters, under the ` +
+				`Refusing to add ${name}: the value is ${secretCharacterLength(value)} characters, under the ` +
 					`${MIN_OBFUSCATABLE_LENGTH}-character minimum for a reversible placeholder.`,
 			);
 		}
@@ -506,13 +558,15 @@ export class SecretObfuscator {
 	/** Obfuscate all secrets in text. Reversible values get placeholders; replace mode stays one-way. */
 	obfuscate(text: string): string {
 		if (!this.#hasAny) return text;
-		let result = this.#applyPlainRules(text);
+		let state: ProtectedText = { text, spans: this.#protectedPlaceholderSpans(text) };
+		state = this.#applyPlainRules(state);
 
 		for (const entry of this.#regexEntries) {
 			entry.regex.lastIndex = 0;
-			const replacements: Array<{ start: number; end: number; replacement: string }> = [];
+			const replacements: TextReplacement[] = [];
+			let protectedIndex = 0;
 			for (;;) {
-				const match = entry.regex.exec(result);
+				const match = entry.regex.exec(state.text);
 				if (match === null) break;
 				const matchValue = match[0];
 				if (matchValue.length === 0) {
@@ -528,6 +582,13 @@ export class SecretObfuscator {
 					entry.regex.lastIndex++;
 					continue;
 				}
+
+				const matchEnd = match.index + matchValue.length;
+				while (protectedIndex < state.spans.length && state.spans[protectedIndex].end <= match.index) {
+					protectedIndex++;
+				}
+				const protectedSpan = state.spans[protectedIndex];
+				if (protectedSpan !== undefined && protectedSpan.start < matchEnd) continue;
 
 				const characterLength = Array.from(matchValue).length;
 				if (entry.mode === "obfuscate" && characterLength < entry.minLength) {
@@ -549,7 +610,12 @@ export class SecretObfuscator {
 				this.#knownSecretValues.add(matchValue);
 				let replacement: string;
 				if (entry.mode === "replace") {
-					replacement = resolveSafeReplacement(matchValue, entry.replacement, [...this.#knownSecretValues]);
+					replacement = resolveSafeReplacement(
+						matchValue,
+						entry.replacement,
+						[...this.#knownSecretValues],
+						this.#placeholderKey,
+					);
 				} else {
 					replacement =
 						this.#regexMappings.get(matchValue) ??
@@ -560,81 +626,146 @@ export class SecretObfuscator {
 						this.#deobfuscateMap.set(replacement, matchValue);
 					}
 				}
-				replacements.push({
-					start: match.index,
-					end: match.index + matchValue.length,
-					replacement,
-				});
+				replacements.push({ start: match.index, end: matchEnd, replacement });
 			}
 
-			if (replacements.length > 0) {
-				let cursor = 0;
-				let rewritten = "";
-				for (const replacement of replacements) {
-					rewritten += result.slice(cursor, replacement.start);
-					rewritten += replacement.replacement;
-					cursor = replacement.end;
-				}
-				result = rewritten + result.slice(cursor);
-			}
+			if (replacements.length > 0) state = this.#applyProtectedReplacements(state, replacements);
 		}
 
-		return this.#applyPlainRules(result);
+		return this.#applyPlainRules(state).text;
+	}
+
+	/** Locate already-emitted placeholders so no rule can reinterpret their bytes. */
+	#protectedPlaceholderSpans(text: string): ProtectedSpan[] {
+		if (!text.includes("#")) return [];
+		const placeholders = new Set([...this.#plainMappings.values(), ...this.#regexMappings.values()]);
+		if (placeholders.size === 0) return [];
+		const spans: ProtectedSpan[] = [];
+		PLACEHOLDER_RE.lastIndex = 0;
+		for (;;) {
+			const match = PLACEHOLDER_RE.exec(text);
+			if (match === null) break;
+			if (placeholders.has(match[0])) spans.push({ start: match.index, end: match.index + match[0].length });
+		}
+		PLACEHOLDER_RE.lastIndex = 0;
+		return spans;
+	}
+
+	/** Apply non-overlapping replacements while carrying protected output spans forward. */
+	#applyProtectedReplacements(state: ProtectedText, replacements: readonly TextReplacement[]): ProtectedText {
+		const chunks: string[] = [];
+		const spans: ProtectedSpan[] = [];
+		let outputLength = 0;
+		let cursor = 0;
+		let spanIndex = 0;
+		let replacementIndex = 0;
+		const append = (part: string): void => {
+			chunks.push(part);
+			outputLength += part.length;
+		};
+
+		while (spanIndex < state.spans.length || replacementIndex < replacements.length) {
+			const span = state.spans[spanIndex];
+			const replacement = replacements[replacementIndex];
+			const useSpan = replacement === undefined || (span !== undefined && span.start <= replacement.start);
+			const event = useSpan ? span : replacement;
+			if (event === undefined) break;
+			append(state.text.slice(cursor, event.start));
+			const protectedStart = outputLength;
+			if (useSpan) {
+				append(state.text.slice(event.start, event.end));
+				spanIndex++;
+			} else {
+				append(replacement.replacement);
+				replacementIndex++;
+			}
+			if (outputLength > protectedStart) spans.push({ start: protectedStart, end: outputLength });
+			cursor = event.end;
+		}
+		append(state.text.slice(cursor));
+		return { text: chunks.join(""), spans };
 	}
 
 	/**
 	 * Apply every literal rule against the same input view.
 	 *
 	 * One-pass selection prevents a replacement from being reinterpreted as another secret.
-	 * At a shared position the longest value wins. Placeholders already emitted by this
-	 * obfuscator are copied atomically, so a one-character replace secret cannot corrupt them.
+	 * At a shared position the longest value wins. Cached next positions make each rule scan the
+	 * input monotonically instead of rescanning the remaining suffix after every match.
 	 */
-	#applyPlainRules(text: string): string {
+	#applyPlainRules(state: ProtectedText): ProtectedText {
 		const rules = [
 			...[...this.#plainMappings].map(([secret, replacement]) => ({ secret, replacement })),
 			...[...this.#replaceMappings].map(([secret, replacement]) => ({ secret, replacement })),
 		].filter(rule => rule.secret.length > 0);
-		if (rules.length === 0) return text;
+		if (rules.length === 0) return state;
 		rules.sort((a, b) => b.secret.length - a.secret.length);
-		const placeholders = [...new Set(this.#plainMappings.values())];
+		const nextPositions = rules.map(rule => state.text.indexOf(rule.secret));
+		const chunks: string[] = [];
+		const spans: ProtectedSpan[] = [];
+		let outputLength = 0;
 		let cursor = 0;
-		let output = "";
+		let spanIndex = 0;
+		const append = (part: string): void => {
+			chunks.push(part);
+			outputLength += part.length;
+		};
 
-		while (cursor < text.length) {
-			let nextRule: (typeof rules)[number] | undefined;
+		while (cursor < state.text.length) {
+			while (spanIndex < state.spans.length && state.spans[spanIndex].end <= cursor) spanIndex++;
+			const span = state.spans[spanIndex];
+			let nextRuleIndex = -1;
 			let nextRuleAt = Number.POSITIVE_INFINITY;
-			for (const rule of rules) {
-				const at = text.indexOf(rule.secret, cursor);
+			for (let index = 0; index < rules.length; index++) {
+				let at = nextPositions[index];
+				if (at >= 0 && at < cursor) {
+					at = state.text.indexOf(rules[index].secret, cursor);
+					nextPositions[index] = at;
+				}
 				if (at < 0 || at > nextRuleAt) continue;
-				if (at < nextRuleAt || nextRule === undefined || rule.secret.length > nextRule.secret.length) {
-					nextRule = rule;
+				if (
+					at < nextRuleAt ||
+					nextRuleIndex < 0 ||
+					rules[index].secret.length > rules[nextRuleIndex].secret.length
+				) {
+					nextRuleIndex = index;
 					nextRuleAt = at;
 				}
 			}
 
-			let nextPlaceholder: string | undefined;
-			let nextPlaceholderAt = Number.POSITIVE_INFINITY;
-			for (const placeholder of placeholders) {
-				const at = text.indexOf(placeholder, cursor);
-				if (at >= 0 && at < nextPlaceholderAt) {
-					nextPlaceholder = placeholder;
-					nextPlaceholderAt = at;
-				}
-			}
-
-			if (nextPlaceholder !== undefined && nextPlaceholderAt <= nextRuleAt) {
-				output += text.slice(cursor, nextPlaceholderAt) + nextPlaceholder;
-				cursor = nextPlaceholderAt + nextPlaceholder.length;
+			if (
+				span !== undefined &&
+				nextRuleIndex >= 0 &&
+				nextRuleAt < span.start &&
+				nextRuleAt + rules[nextRuleIndex].secret.length > span.start
+			) {
+				nextPositions[nextRuleIndex] = state.text.indexOf(rules[nextRuleIndex].secret, span.end);
 				continue;
 			}
-			if (nextRule === undefined || nextRuleAt === Number.POSITIVE_INFINITY) {
-				output += text.slice(cursor);
+
+			if (span !== undefined && span.start <= nextRuleAt) {
+				append(state.text.slice(cursor, span.start));
+				const protectedStart = outputLength;
+				append(state.text.slice(span.start, span.end));
+				spans.push({ start: protectedStart, end: outputLength });
+				cursor = span.end;
+				spanIndex++;
+				continue;
+			}
+			if (nextRuleIndex < 0 || nextRuleAt === Number.POSITIVE_INFINITY) {
+				append(state.text.slice(cursor));
 				break;
 			}
-			output += text.slice(cursor, nextRuleAt) + nextRule.replacement;
-			cursor = nextRuleAt + nextRule.secret.length;
+
+			const rule = rules[nextRuleIndex];
+			append(state.text.slice(cursor, nextRuleAt));
+			const protectedStart = outputLength;
+			append(rule.replacement);
+			if (outputLength > protectedStart) spans.push({ start: protectedStart, end: outputLength });
+			cursor = nextRuleAt + rule.secret.length;
+			nextPositions[nextRuleIndex] = state.text.indexOf(rule.secret, cursor);
 		}
-		return output;
+		return { text: chunks.join(""), spans };
 	}
 
 	/** Deobfuscate live reversible placeholders. Retired and expired placeholders stay opaque. */
@@ -915,8 +1046,9 @@ export function obfuscateProviderContext(obfuscator: SecretObfuscator | undefine
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Map every string in arbitrary JSON. Used for provider-bound schemas, examples, opaque
- * replay payloads, and tool arguments. Copies are allocated only along changed paths.
+ * Map every string in arbitrary JSON, including object keys. Used for provider-bound schemas,
+ * examples, opaque replay payloads, and tool arguments. Copies are allocated only along changed
+ * paths. A mapped-key collision fails closed instead of silently discarding one JSON field.
  */
 export function mapJsonStrings<T>(value: T, fn: (s: string) => string): T {
 	if (typeof value === "string") return fn(value) as T;
@@ -934,13 +1066,35 @@ export function mapJsonStrings<T>(value: T, fn: (s: string) => string): T {
 	}
 	if (value !== null && typeof value === "object") {
 		const record = value as Record<string, unknown>;
+		const keys = Object.keys(record);
 		let out: Record<string, unknown> | undefined;
-		for (const key of Object.keys(record)) {
+		for (let index = 0; index < keys.length; index++) {
+			const key = keys[index];
 			const item = record[key];
+			const nextKey = fn(key);
 			const next = mapJsonStrings(item, fn);
-			if (next !== item) {
-				out ??= { ...record };
-				out[key] = next;
+			if (out === undefined && (nextKey !== key || next !== item)) {
+				out = {};
+				for (let prior = 0; prior < index; prior++) {
+					const priorKey = keys[prior];
+					Object.defineProperty(out, priorKey, {
+						value: record[priorKey],
+						enumerable: true,
+						configurable: true,
+						writable: true,
+					});
+				}
+			}
+			if (out !== undefined) {
+				if (Object.hasOwn(out, nextKey)) {
+					throw new Error("Refusing to rewrite two JSON object fields as the same protected key.");
+				}
+				Object.defineProperty(out, nextKey, {
+					value: next,
+					enumerable: true,
+					configurable: true,
+					writable: true,
+				});
 			}
 		}
 		return (out ?? value) as T;

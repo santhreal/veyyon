@@ -3,7 +3,12 @@ import { errorMessage, isEnoent, isRecord } from "@veyyon/utils";
 import { YAML } from "bun";
 import { BUNDLED_ENV_KEYWORDS, buildEnvSecretPattern } from "./env-keywords";
 import type { SecretEntry } from "./obfuscator";
-import { canObfuscatePlainValue, describeSecretRejection, MIN_AUTODETECTED_ENV_VALUE_LENGTH } from "./policy";
+import {
+	canObfuscatePlainValue,
+	describeSecretRejection,
+	MIN_AUTODETECTED_ENV_VALUE_LENGTH,
+	secretCharacterLength,
+} from "./policy";
 import { compileSecretRegex } from "./regex";
 
 /** Fields the human-authored `secrets.yml` schema understands. */
@@ -20,6 +25,7 @@ export {
 	canObfuscatePlainValue,
 	describeSecretRejection,
 	MIN_AUTODETECTED_ENV_VALUE_LENGTH,
+	secretCharacterLength,
 	MIN_OBFUSCATABLE_LENGTH,
 	type SecretRejection,
 	type SecretRejectionReason,
@@ -92,7 +98,7 @@ function refuseUnprotectableEntries(entries: SecretEntry[], paths: { profilePath
 	if (unprotectable.length === 0) return;
 
 	const complaints = unprotectable.map(({ index, entry }) =>
-		describeSecretRejection({ reason: "too-short-to-obfuscate", index, length: entry.content.length }),
+		describeSecretRejection({ reason: "too-short-to-obfuscate", index, length: secretCharacterLength(entry.content) }),
 	);
 	throw new Error(
 		`Refusing to start: ${unprotectable.length} declared secret(s) cannot be obfuscated, and starting anyway ` +
