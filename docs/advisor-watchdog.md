@@ -270,8 +270,8 @@ The path is derived from the session file (not the artifacts dir, which subagent
 Why a file:
 
 - **Usage attribution.** `veyyon stats` scans each session folder recursively, so advisor assistant turns (with their usage/cost) are attributed to the same project/session like any other subagent. Advisor "session update" prompts are persisted as `synthetic`, agent-attributed user messages so they never inflate user-message metrics.
-- **Observability.** The Agent Hub discovers `__advisor.jsonl` on open and shows it as a read-only `advisor`-kind transcript under its owning session.
+- **Observability.** The Agent Control Center discovers `__advisor.jsonl` on open and shows it as a read-only `advisor`-kind transcript under its owning session. Opening it there shows the transcript rather than handing the main view over, because an advisor is not a session you can talk to.
 
 The file follows session switches: on `/new`, resume/switch, and branch the recorder reopens at the new session's path on the next advisor turn; before a `/drop` deletes the old artifacts dir the recorder feed is detached and drained so a queued write cannot recreate the deleted file. The on-disk log is append-only and independent of the in-memory context, re-primes and compaction never truncate it.
 
-The advisor is never a peer. The `advisor`-kind registry ref is excluded from every agent-facing surface, the `irc` peer roster and broadcast targets, the subagent peer prompt, and the `history://` index/lookup/completions, and cannot be messaged (`irc send` and collab chat refuse it) or revived/killed from the Agent Hub or collab. It is not addressable as a peer, regardless of what tools it has been granted.
+The advisor is never a peer. The `advisor`-kind registry ref is excluded from every agent-facing surface, the `irc` peer roster and broadcast targets, the subagent peer prompt, and the `history://` index/lookup/completions, and cannot be messaged (`irc send` and collab chat refuse it) or revived/killed from the Agent Control Center or collab. It is not addressable as a peer, regardless of what tools it has been granted.

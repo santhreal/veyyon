@@ -94,6 +94,50 @@ $ veyyon plugin uninstall sample@debug
 Use the `--json` flag to return the removal result as JSON for npm plugins; marketplace uninstalls
 ignore it.
 
+#### Check Plugin Health
+
+Report what is wrong with your plugin installation, and optionally repair it.
+
+```console
+$ veyyon plugin doctor
+$ veyyon plugin doctor --fix
+$ veyyon plugin doctor --json
+```
+
+Each check reports `ok`, a warning, or an error. `doctor` exits 1 when any error is left unrepaired
+and 0 otherwise, so you can gate a script on it. Warnings never affect the exit code, and an error
+that `--fix` repaired does not either. `--json` prints the checks as an array instead of the
+human-readable report.
+
+On a machine with no plugins installed every check is `ok`: nothing is missing, because nothing was
+ever installed. That is the state a fresh install is in, and `doctor` is quiet about it on purpose.
+
+The checks are:
+
+* `plugins_directory`, `package_manifest`, `node_modules`: the three things a plugin install needs.
+  Each one distinguishes "not created yet" from "there but unreadable". The first is normal and
+  reports `ok`; the second is an error naming the path, because a plugins directory whose permissions
+  have been mangled looks identical to an empty one from the outside and the fix is `chmod`, not a
+  reinstall.
+* `plugin:<name>`: one per installed plugin. An error means the package is missing from
+  `node_modules` or has no `package.json`. A warning means it loaded but carries no plugin manifest,
+  so veyyon can see the package and cannot use it.
+* `plugin:<name>:tools`, `:hooks`, `:extension:<path>`: an entry point the manifest names and the
+  package does not contain.
+* `plugin:<name>:feature:<feature>`: a feature you enabled that the plugin's manifest does not
+  define, usually because the plugin dropped it in an update. A warning, since the plugin still
+  works.
+* `orphan:<name>`: a plugin your config enables that is not installed. A warning, since your config
+  is intact and only the package is gone.
+* `plugin_config`, `installed_registry`: reported only when one of those files cannot be read.
+  `doctor` continues and reports the rest, so one unreadable file does not cost you the whole
+  report.
+
+`--fix` repairs what can be repaired without a decision: it runs an install for a missing package,
+drops an orphaned config entry, and removes an enabled feature the manifest does not define. A check
+that was repaired says so. Everything else is left for you, because the remedy depends on what you
+meant.
+
 ### Managing Marketplaces
 
 #### Add a Marketplace

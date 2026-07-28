@@ -59,6 +59,23 @@ proceeding. The error leads with the specific path that crossed the boundary, so
 a headless or ACP run reports why it stopped and not merely that something needed
 a prompt.
 
+## The secret-use boundary
+
+A tier says nothing about whether a call is about to spend a credential either. The
+secret-use boundary is the third question, asked in the same modes as the second:
+
+> Do this call's arguments carry a stored secret?
+
+The model works with placeholders such as `#GITHUB_TOKEN#`, and Veyyon substitutes the real
+value immediately before the tool runs, so the model can use a secret it never reads. That
+substitution is recorded by `secrets.auditLog`, which answers the question afterwards. This
+boundary is what asks first: a call whose arguments carry a real credential needs approval
+in `plan`, `ask` and `auto-edit`, and the prompt names the secret without showing its value.
+
+`yolo` opts out of all permission and so opts out of this too. A call that mentions a
+placeholder without expanding it, such as one made while `secrets.enabled` is false, carries
+no credential and does not ask.
+
 ## The `/yolo` command (full session bypass)
 
 The `yolo` mode above still honors your per-tool policies: `tools.approval.<tool>: prompt` and a tool's own `critical` safety prompt both still stop the call. The `/yolo` command is stronger. It removes approval prompts for the current session, including per-tool `prompt` overrides and plain `override` prompts.

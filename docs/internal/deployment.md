@@ -61,6 +61,12 @@ cd docs/handbook && mdbook build
 Use mdbook **v0.5.2**, the `docs.yml` book-freshness gate rebuilds with that pinned
 version and fails CI if the committed `docs/handbook/book/` doesn't match the sources.
 
+`bun test` catches the common case before you push. `scripts/the-committed-handbook-matches-its-sources.test.ts`
+compares the committed HTML against the sources without running mdbook, and fails naming
+the page and quoting the sentence the built page is missing. It sees prose edits, which
+is what a forgotten rebuild almost always is; a change only to a heading, a code block, a
+table cell, a link target or the theme assets is still the workflow's to catch.
+
 The built book is tracked on purpose. Cloudflare Pages deploys `website/**` and
 `docs/handbook/book/**` as static files and does not run mdbook, so the committed
 output is what readers get, and the freshness gate is what keeps it honest.

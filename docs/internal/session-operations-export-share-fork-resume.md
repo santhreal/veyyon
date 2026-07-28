@@ -125,7 +125,11 @@ Only when no custom share handler is found (`shareSession()`):
    `systemPrompt` and tool descriptions from agent state).
 2. If `share.redactSecrets` is enabled (default) and secrets are configured
    (`secrets.*`), the secret obfuscator deep-walks every string in the
-   snapshot, replacing configured/discovered secrets with placeholders.
+   snapshot, replacing configured/discovered secrets with placeholders. The
+   obfuscator comes from `session.providerRedactor`, not `session.obfuscator`:
+   the second is the expansion authority and is undefined after a
+   `/secret disable` or a cwd move, which would make `share.redactSecrets`
+   silently do nothing on an upload to a public URL.
 3. The JSON is gzipped and sealed with a fresh AES-256-GCM key
    (`[12B IV][ciphertext+tag]`).
 4. Upload target is chosen by `share.store`:

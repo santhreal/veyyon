@@ -37,38 +37,37 @@ To test a system prompt candidate:
    argot:
      enabled: false
    ```
-2. Create `arms/<arm_name>.sections.yml` with the one section you are changing:
+2. Create `arms/<arm_name>.sections.yml` with the one section body you are changing:
    ```yaml
-   # Replaces only the tool-policy region. Each value MUST start with that
-   # section's banner. The rest of the prompt stays byte-for-byte identical.
+   # Replaces only the tool-policy body. Do not include its banner.
+   # The section registry adds the canonical banner.
    toolPolicy: |
-     TOOL POLICY
-     ==============
-     # ... your tool-policy variant, banner included ...
+     # ... your tool-policy variant ...
    ```
    The runner (`run.ts`) compiles this to the JSON that `vey` reads from the
    eval-only `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS` environment variable, set for
    this arm only.
 
-### Swap one section, never the whole template
+### Swap one section, never the whole prompt
 
-Pasting a whole template is how a setting quietly dies, so there is no whole-prompt arm vehicle. The default template gates each setting behind a conditional, for example `{{#if taskIrcEnabled}}`. When you hand-copy the template and edit one region, it is easy to drop a conditional in a region you never meant to touch. The setting still parses and still flows into the render data, but no branch consumes it, so it renders as nothing and fails silently. This is the bug that made the delegation settings (`taskIrcEnabled`, `eagerTasksAlways`) useless during earlier experiments.
+Pasting a whole prompt is how an unrelated setting quietly dies, so there is no whole-prompt arm vehicle. The shipped instructions live in statement modules. Their rows hold whole-statement conditions such as `when("taskIrcEnabled")`, and their Markdown files hold wording-level Handlebars variables. The outer `system-prompt.md` scaffold contains only `{{templateSections}}`.
 
-The `.sections.yml` mechanism makes that bug unreachable. The default template is one file, `packages/coding-agent/src/prompts/session/system-prompt.md`, and `system-prompt-builder/default-template.ts` exposes it as named sections:
+The `.sections.yml` mechanism changes one body in the complete statement-assembled section map:
 
 ```ts
-import { assembleDefaultTemplate } from "../system-prompt-builder/default-template";
-
-// Swap only the tool-policy region. Every other section, and every
-// conditional inside it, stays byte-for-byte identical to the shipped default.
+const statementSections = assembleStatementSections(context);
+const sectionOverrides = resolveSectionOverrides({
+  toolPolicy: myToolPolicyBody,
+});
 const candidate = assembleDefaultTemplate({
-  toolPolicy: myToolPolicyVariant,
+  ...statementSections,
+  ...sectionOverrides,
 });
 ```
 
-The sections are `conventions`, `role`, `runtime`, `toolPolicy`, `executionWorkflow`, and `deliveryContract`, split at the template's own banner lines (`ROLE\n====`, `TOOL POLICY\n====`, and so on). `assembleDefaultTemplate()` with no overrides returns the shipped template exactly. An override replaces only the section you name. Because you never retype the other sections, you cannot drop a conditional in them.
+The public section ids are `conventions`, `role`, `runtime`, `tool-policy`, `execution-workflow`, and `delivery-contract`. Replacement values contain body text only. The section registry supplies the canonical banner and order. Because the candidate map spreads one replacement over the complete shipped map, every other statement and condition stays unchanged.
 
-The override is EVAL-ONLY and uncontaminatable by design. It is not a config key and not a CLI flag: `vey` reads it only from `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS`, which the bench sets around one arm and nothing else sets. No `config.yml` — on your machine or in production — can reach the path, so a section experiment can never leak into a normal run. When the variable is set, `vey` logs a loud warning that the prompt is not the production one; a malformed payload, an unknown section, a non-string value, or a banner-less replacement fails loudly instead of silently reverting to the production prompt.
+The override is eval-only and uncontaminatable by design. It is not a config key and not a CLI flag. `vey` reads it only from `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS`, which the bench sets around one arm. No `config.yml` on your machine or in production can reach this path. When the variable is set, `vey` logs that the prompt is not the production prompt. Malformed JSON, an unknown section, a non-string value, or a legacy replacement carrying its own banner fails loudly.
 
 ### The parity guard
 

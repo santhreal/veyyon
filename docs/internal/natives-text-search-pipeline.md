@@ -67,7 +67,8 @@ Terminology follows [`natives-architecture.md`](./natives-architecture.md):
 - **Directory branch**
   - Directory walks go through `veyyon_walker::WalkRequest` (files-only filter, `WalkDetail::Minimal`, `FollowLinks::Never`, `SizeHintPolicy::WhenCheap`) built by `build_grep_walk_request`.
   - Grep always walks with `.cache(false)`: it does not use the shared TTL scan cache (that cache serves `glob`/`fuzzyFind`).
-  - Entry filtering: file-only + optional glob filter (`glob_util`) + optional type filter mapping (`js`, `ts`, `rust`, etc.).
+  - Entry filtering: file-only + optional glob filter (`CompiledWalkGlob::compile`) + optional type filter mapping (`js`, `ts`, `rust`, etc.).
+  - The compiled glob also supplies the walk's maximum depth through `depth_bound()`, so `--glob 'src/*.ts'` stops at two components instead of traversing the whole tree and filtering the rest back out.
 
 ### Search/collection semantics
 
@@ -111,7 +112,7 @@ Terminology follows [`natives-architecture.md`](./natives-architecture.md):
 ### `glob` flow
 
 1. Caller passes `GlobOptions` directly. `pattern` and `path` are required in the generated type.
-2. Rust resolves the search path and compiles pattern via `glob_util::compile_glob`.
+2. Rust resolves the search path and compiles the pattern via `veyyon_walker::CompiledWalkGlob::compile`, which normalizes it with `veyyon-glob` and reports the walk depth it can reach.
 3. Entry source: a `veyyon_walker::WalkRequest` with `.cache(config.cache)` and `.empty_recheck(EmptyRecheck::Configured)`: `cache=true` serves from the walker TTL cache (with stale-empty recheck), `cache=false` walks fresh without storing.
 4. Filtering:
    - skip `.git` always;
@@ -132,17 +133,19 @@ Terminology follows [`natives-architecture.md`](./natives-architecture.md):
 
 ### Failure behavior
 
-- Invalid glob pattern returns an error from `glob_util::compile_glob`.
+- Invalid glob pattern returns an error from `CompiledWalkGlob::compile`, carrying the glob engine's own message.
 - Search root must resolve to an existing directory for directory discovery flows.
 - Cancellation/timeouts propagate as abort errors via `CancelToken::heartbeat()` checks in loops.
 
 ### Malformed glob handling
 
-`glob_util::build_glob_pattern` is tolerant:
+`veyyon_glob::build_glob_pattern`, which `CompiledWalkGlob::compile` applies for every walking tool, is tolerant:
 
 - normalizes `\` to `/`,
 - auto-prefixes simple recursive patterns with `**/` when `recursive=true`,
 - auto-closes unbalanced `{...` alternation groups before compile.
+
+The walk depth is measured after that normalization, so the same `*.ts` is bounded to one component for `astGrep` (which compiles non-recursively) and unbounded for `grep` (which compiles recursively and so measures `**/*.ts`).
 
 ## 3) AST search/match/edit (`astGrep`, `astMatch`, `astEdit`)
 
@@ -258,4 +261,4 @@ Text functions generally return deterministic transformed output; errors are lim
 5. Rust shapes outputs into N-API objects (`lineNumber`, `matchCount`, `limitReached`, etc.).
 6. Generated bindings return typed JS objects and optional per-match callbacks for `grep`/`glob`.
 
-*Verified against `ad7ede4a` on 2026-07-28.*
+*Verified against `dfa565bf` on 2026-07-27.*

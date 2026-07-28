@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-94628b38.js";
+            window.path_to_searchindex_js = "searchindex-cd679d79.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-5cf6de48.js"></script>
@@ -1909,7 +1909,8 @@ instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in
 <p>You often need the agent to run a command that requires a credential. A deploy needs a token. A database query needs a password. If you paste the value into chat without protection, it can reach the model provider and any session export you create.</p>
 <p>Veyyon can keep the value away from the provider while the command still works. This page shows you how, including which local surfaces can still contain it.</p>
 <h2 id="turning-it-on"><a class="header" href="#turning-it-on">Turning it on</a></h2>
-<p>Secret protection is off by default. Turn it on in <code>/settings</code>, or write it into <code>config.yml</code>:</p>
+<p>Secret protection is off by default. The quickest way to turn it on is to store a credential: <code>/secret add</code> switches protection on and tells you it did, because a stored credential is only useful once the protection that substitutes it is running.</p>
+<p>To turn it on without storing anything, use <code>/settings</code>, or write it into <code>config.yml</code>:</p>
 <pre><code class="language-yaml">secrets:
   enabled: true
 </code></pre>
@@ -1968,13 +1969,14 @@ instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in
 <pre><code class="language-text">DEPLOY_TOKEN=#0A1B2C3D4E5F678901234567#
 </code></pre>
 <p>The placeholder is stable across restarts on the same machine. It contains a keyed HMAC rather than a load-order index, so seeing it does not give the provider an offline dictionary test for the value. A named vault entry instead uses its readable name, such as <code>#GITHUB_TOKEN#</code>, so the model can choose the right credential.</p>
-<p>The model is told that placeholders are opaque strings. It does not know the value and cannot ask for it.</p>
+<p>The model is told two things about a placeholder: that putting one where a credential belongs is expected and works, and that it is opaque otherwise. It does not know the value and cannot ask for it.</p>
 <h2 id="using-a-secret-in-a-command"><a class="header" href="#using-a-secret-in-a-command">Using a secret in a command</a></h2>
 <p>This is the part that makes the feature useful rather than merely defensive. The model can put a placeholder into a command, and veyyon substitutes the real value before the command runs.</p>
 <p>The model writes:</p>
 <pre><code class="language-bash">curl -H "Authorization: Bearer #0A1B2C3D4E5F678901234567#" https://api.example.com/deploy
 </code></pre>
 <p>The command that actually executes carries the real token. The substitution happens locally, after the model has produced the command and before the shell sees it. The model never learns the value, and the request still authenticates.</p>
+<p>The substituted command is not written down. Veyyon records one diagnostic entry per tool call so that a session interrupted mid-call can tell you on resume what was running, and that entry stores the placeholder form, not the substituted one. This matters because <code>/share</code> uploads the session file and backups copy it. What the command prints is a separate question, covered under <a href="#what-this-does-not-protect">What this does not protect</a>.</p>
 <h2 id="the-vault-storing-a-credential-with-secret"><a class="header" href="#the-vault-storing-a-credential-with-secret">The vault: storing a credential with <code>/secret</code></a></h2>
 <p>Environment detection covers credentials that are already in your shell. For anything else, hand it to the vault. A vault entry is encrypted on disk, has a name, and expires.</p>
 <p>Name it and veyyon asks for the value with a field that shows nothing as you type:</p>
@@ -2172,7 +2174,7 @@ Set "minLength" on the entry if short matches are real secrets, or tighten the p
 <h2 id="what-this-does-not-protect"><a class="header" href="#what-this-does-not-protect">What this does not protect</a></h2>
 <p>Be clear about the boundary.</p>
 <p><strong>The two stores differ on disk.</strong> Vault entries added with <code>/secret</code> are encrypted. <code>secrets.yml</code> is a plain file: it holds declarations you wrote, in the clear, and anyone who can read it has those credentials. If a value needs to be encrypted at rest, put it in the vault rather than in <code>secrets.yml</code>.</p>
-<p><strong>A command the agent runs receives the real value.</strong> So a command that prints the credential prints it for real. Its output is obfuscated again before it goes back to the model, but it reached the process, and anything that process wrote elsewhere is outside veyyon’s reach.</p>
+<p><strong>A command the agent runs receives the real value.</strong> So a command that prints the credential prints it for real. Its output is obfuscated again before it goes back to the model, but it reached the process, and anything that process wrote elsewhere is outside veyyon’s reach. That output is also saved to the session file as it was printed, so a command that echoes a credential puts it there. The arguments veyyon itself records are redacted, but it cannot redact what a command chose to print.</p>
 <p><strong>Protection begins when the value is known.</strong> Once you enable protection or store a value, old local transcript text containing that value is sanitized on subsequent provider requests. The local transcript is not rewritten in place.</p>
 <p><strong>A value you type on the command line is visible on screen.</strong> <code>/secret add NAME &lt;value&gt;</code> puts the credential in your scrollback. It is excluded from persistent editor history, but the obfuscator cannot scrub a terminal after the fact. Use <code>/secret add NAME</code> on its own, which prompts with the value hidden, or <code>--from-env</code>.</p>
 <p><strong>The secret-use log records use, not intent.</strong> It tells you which credential went into which command. It cannot tell you what the command did with it once the process had it.</p>
@@ -2672,7 +2674,8 @@ your own session instead when you want that project’s configuration to apply.<
 <p>Built-in segment IDs include: <code>pi</code> (legacy product mark segment), <code>profile</code>, <code>model</code>, <code>mode</code>, <code>path</code>, <code>git</code>, <code>pr</code>, <code>subagents</code>, <code>token_in</code>, <code>token_out</code>, <code>token_total</code>, <code>token_rate</code>, <code>cost</code>, <code>context_pct</code>, <code>context_total</code>, <code>time_spent</code>, <code>time</code>, <code>session</code>, <code>hostname</code>, <code>cache_read</code>, <code>cache_write</code>, <code>cache_hit</code>, <code>session_name</code>, <code>usage</code>, <code>collab</code>.</p>
 <p>The <code>model</code> segment shows the model you are working with, then two things that are easy to confuse, so they are drawn differently:</p>
 <ul>
-<li>The <strong>thinking effort</strong> joins the model label as one unit (<code>Sonnet 4.5 @high</code> in the quiet footline, <code>Sonnet 4.5 · high</code> elsewhere), in the model’s own color. It is how much reasoning the model does per turn. Change it with <code>/thinking</code> (its alias is <code>/effort</code>), or set a per-model default under Settings → Model → Default Effort.</li>
+<li>The <strong>thinking effort</strong> joins the model label as one unit (<code>Sonnet 4.5 @high</code> in the quiet footline, <code>Sonnet 4.5 · high</code> elsewhere), in the model’s own color. It is how much reasoning the model does per turn. Change it with <code>/thinking</code> (its alias is <code>/effort</code>), or set a per-model default under Settings → Model → Default Effort.
+The effort picker has a <strong>Default</strong> row followed by only the active model’s valid variants. Choose Default to clear the session override and return to the saved per-model effort or the model default.</li>
 <li>The <strong>priority tier</strong> follows the effort as its own chip, named and in the warning color (<code>⚡ priority</code>, or just <code>priority</code> when your symbol preset has no icon). It is how your requests are queued and served, not how deeply the model thinks. Toggle it with <code>/fast</code>, or set it per provider family under Settings → Model → Service Tier.</li>
 </ul>
 <p>The <code>git</code> segment shows the current branch, and appends the multi-step operation you are part-way through when there is one:</p>
@@ -4228,8 +4231,8 @@ compaction:
 </thead>
 <tbody>
 <tr><td><strong>Default model</strong></td><td>The model used for the main conversation, and the one a new session starts on. Chosen with <code>/model</code> or <code>--model</code>, or in <code>/settings</code> under Model. Persisted under <code>modelRoles.default</code>, which is a slot rather than a selectable role, so it does not appear in role pickers.</td></tr>
-<tr><td><strong>Role</strong></td><td>A named model assignment for a kind of work (<code>smol</code>, <code>plan</code>, <code>task</code>, …). Configured in <code>modelRoles</code> / settings → Model → Roles.</td></tr>
-<tr><td><strong>Slot overrides</strong></td><td><code>subagent.model</code> and <code>compaction.model</code>, dedicated destinations that override the corresponding role or inherit the interactive model when unset.</td></tr>
+<tr><td><strong>Role</strong></td><td>A named model assignment for a kind of work (<code>smol</code>, <code>plan</code>, <code>advisor</code>, and others). Configure it in <code>modelRoles</code> or Settings → Model → Roles.</td></tr>
+<tr><td><strong>Slot override</strong></td><td><code>subagent.model</code> or <code>compaction.model</code>, an ordered model chain for one subsystem. An unset slot inherits the interactive model.</td></tr>
 <tr><td><strong>Profile</strong></td><td>User config tree at <code>~/.veyyon/profiles/&lt;name&gt;/</code> (including <code>default</code>).</td></tr>
 </tbody>
 </table>
@@ -4246,10 +4249,9 @@ modelRoles:
   smol: openai/gpt-4.1-mini
   slow: anthropic/claude-opus-4-5:high
   plan: anthropic/claude-sonnet-5
-  task: deepseek/deepseek-chat
   advisor: anthropic/claude-sonnet-5:medium
 </code></pre>
-<p>Role values may include a thinking suffix (<code>:minimal</code>, <code>:low</code>, <code>:medium</code>, <code>:high</code>, <code>:xhigh</code>, <code>:max</code>).</p>
+<p>Role values may include a thinking suffix (<code>:off</code>, <code>:auto</code>, <code>:minimal</code>, <code>:low</code>, <code>:medium</code>, <code>:high</code>, <code>:xhigh</code>, <code>:max</code>). The model picker shows only variants the selected model supports. If a provider publishes effort tiers as separate upstream IDs, Veyyon presents one logical model and routes the chosen effort to the matching ID.</p>
 <h2 id="built-in-roles"><a class="header" href="#built-in-roles">Built-in roles</a></h2>
 <p>From <code>packages/coding-agent/src/config/model-roles.ts</code>:</p>
 <div class="table-wrapper">
@@ -4282,18 +4284,20 @@ modelRoles:
 <tr><th>Setting</th><th>Effect</th></tr>
 </thead>
 <tbody>
-<tr><td><code>subagent.model</code></td><td>Model for every subagent that has no model of its own. Unset → inherit interactive. A per-agent model in <code>subagent.agents</code> wins over it.</td></tr>
-<tr><td><code>compaction.model</code></td><td>Model for compaction/handoff. Unset → inherit interactive.</td></tr>
+<tr><td><code>subagent.model</code></td><td>Ordered model chain for every subagent that has no model of its own. The first entry is primary and later entries are fallbacks. An unset chain inherits the interactive model. A per-agent model in <code>subagent.agents</code> wins over it.</td></tr>
+<tr><td><code>compaction.model</code></td><td>Ordered model chain for compaction and handoff. An unset chain inherits the interactive model.</td></tr>
 </tbody>
 </table>
 </div>
 <pre><code class="language-yaml">subagent:
-  model: deepseek/deepseek-chat
+  model: deepseek/deepseek-chat:high,anthropic/claude-sonnet-5:low
 compaction:
-  model: openai/gpt-5-mini
+  model: openai/gpt-5-mini:low,anthropic/claude-haiku-4-5
   strategy: handoff
   threshold: "80%"
 </code></pre>
+<p>In Settings, Enter edits the highlighted chain position. <strong>Add fallback</strong>
+appends a position. Delete removes only the highlighted position.</p>
 <h2 id="cycling-roles-ctrlp"><a class="header" href="#cycling-roles-ctrlp">Cycling roles (Ctrl+P)</a></h2>
 <p><code>cycleOrder</code> lists which <strong>roles</strong> the model switcher cycles (<code>app.model.cycleForward</code> / <code>cycleBackward</code>, default chords often Ctrl+P / Shift+Ctrl+P).</p>
 <ul>
@@ -5714,7 +5718,8 @@ broker host:</p>
 </thead>
 <tbody>
 <tr><td><code>NO_COLOR</code></td><td>When set (to any value), Veyyon renders without color; hierarchy comes through emphasis, spacing, and glyphs instead.</td></tr>
-<tr><td><code>TERM</code> / <code>COLORTERM</code></td><td>Read to detect terminal capabilities (truecolor, ANSI-256, ANSI-16) and pick the matching palette mapping.</td></tr>
+<tr><td><code>TERM</code> / <code>COLORTERM</code></td><td>Read to detect terminal capabilities and choose truecolor, ANSI-256, or ANSI-16 output. <code>TERM=dumb</code> disables every ANSI escape, including emphasis.</td></tr>
+<tr><td><code>FORCE_COLOR</code></td><td>A non-empty value other than <code>0</code> forces full ANSI output, overriding <code>NO_COLOR</code> and <code>TERM=dumb</code>.</td></tr>
 <tr><td><code>VEYYON_HARDWARE_CURSOR</code></td><td>Truthy enables hardware cursor mode.</td></tr>
 <tr><td><code>VEYYON_TUI_WRITE_LOG</code></td><td>When set, logs TUI writes to the given file (debugging).</td></tr>
 </tbody>

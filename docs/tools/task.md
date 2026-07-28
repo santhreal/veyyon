@@ -97,7 +97,7 @@ Artifacts and side channels:
     - hard abort (caller signal / wall-clock / budget) → registry status `aborted`, session disposed: terminal;
     - isolated run → status `parked` without a reviver (workspace is merged + cleaned, so the session is not revivable; transcript stays readable via `history://`), then session disposed and detached;
     - everything else (success and failure alike) → status `idle` with the live session attached, and `AgentLifecycleManager.global().adopt(id, { idleTtlMs, revive })` arms the park timer. The reviver reopens the session JSONL (park closed the writer, so the single-writer lock is taken cleanly).
-16. Lifecycle thereafter: `idle` agents are parked after `subagent.idleTtlMs` (session disposed; `AgentRef` + session file retained); messaging (`irc`) or the Agent Hub revives them back to `idle`. `"Main"` is never parked.
+16. Lifecycle thereafter: `idle` agents are parked after `subagent.idleTtlMs` (session disposed; `AgentRef` + session file retained); messaging (`irc`), or opening the agent in the Agent Control Center, revives them back to `idle`. `"Main"` is never parked.
 
 ## Modes / Variants
 - Execution mode

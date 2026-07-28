@@ -167,6 +167,53 @@ Every `unicode`-preset symbol must be narrow-safe: a glyph the TUI counts as one
 
 When you want a richer icon, pick from ranges the width helpers agree on (`⋯ ∎ ‖ ▪ ▫ › ⌕`-class), or leave it to the `nerd` preset, which targets fonts with known metrics.
 
+### Glyph font-coverage contract
+
+Narrow is not enough: the glyph also has to EXIST in the font the terminal falls back to. The
+`unicode` preset is what a user sees with no Nerd Font installed, which is the default state of a
+fresh machine, and six of its picks were absent from the fonts such a machine actually has. `⟳`
+(U+27F3) was the running status and is missing from DejaVu Sans Mono, so every busy row in the Agent
+Control Center drew a tofu box. `⤵` and `⤴` (U+2935/U+2934) were the token in/out icons in the
+status line and exist in none of the three fonts measured.
+
+The bar is **DejaVu Sans Mono and FreeMono**, the two broad-repertoire monospace faces shipped nearly
+everywhere. Noto Sans Mono is deliberately not the bar: its repertoire stops at Latin, Greek and
+Cyrillic, so it lacks even `✓` and `✗` and relies on fontconfig falling back to Noto Sans Symbols.
+Holding the preset to Noto's own `cmap` would mean giving up the check mark, which is making the
+product worse to satisfy a gate.
+
+In practice this means picking from Arrows (`U+2190–U+21FF`), Mathematical Operators
+(`U+2200–U+22FF`), Miscellaneous Technical (`U+2300–U+23FF`), Box Drawing, Block Elements, Geometric
+Shapes (`U+25A0–U+25FF`) and Dingbats, and it means a glyph outside those ranges needs measuring
+before it ships. `test/modes/theme/every-unicode-glyph-exists-in-a-plain-monospace-font.test.ts`
+holds the measurement, one row per codepoint, and fails on a codepoint nobody has checked. A test
+cannot read fonts (CI has no guaranteed font set, and a gate that silently finds none and passes is
+worse than no gate), so the measurement is checked in and its `cmap` command is in the suite header.
+
+This is also why an icon belongs to the symbol preset and never to the call site. A hard-coded glyph
+follows neither the `ascii` nor the `nerd` preset and skips this check entirely, which is exactly how
+the `⧉` in the agent roster's unread badge survived.
+
+### An empty icon is a normal icon
+
+A preset may leave an icon blank, and the `unicode` preset leaves thirty-one of them blank on purpose: no glyph is better than a wrong one. That makes "icon, then label" a join with a condition, not a template. Build it with `withIcon(icon, text)` from `modes/theme/icon-label.ts`, which emits the separating space only when there is an icon:
+
+```ts
+withIcon(theme.icon.job, `${runningJobs}`); // "⚙ 5", or "5" when icon.job is empty
+```
+
+Writing `` `${theme.icon.job} ${runningJobs}` `` instead renders ` 5` under such a preset: a leading space, and a number with nothing saying what it counts. That was the state of twenty-nine call sites, so the same status line showed the gap in some segments and not others. `test/modes/theme/an-empty-icon-leaves-no-gap.test.ts` fails if the template is written by hand again.
+
+Nine of those blanks were treated as an unfinished task for a while, so the reason is worth stating.
+The obvious glyph for a cache, a job, a camera, a roster of agents or a lightning-fast mode is
+pictographic, and every pictographic codepoint is a width risk: a font may give it emoji
+presentation and draw it two cells while the TUI counts one, which is the overlap the width contract
+above exists to prevent. `⌚` and `⏱` fail the font-coverage contract on top of that. What is left
+inside the safe ranges is arbitrary geometry, `▣` for a cache or `⇢` for throughput, which carries
+no meaning a reader recovers. So a `nerd` user gets the real icon, a `unicode` user gets the label
+with no decoration, and an `ascii` user gets `cache`, `tok/s:`, `bg`. Blank is the answer here, not
+a gap.
+
 ### Blockiness (house glyph style)
 
 The default surface leans on **block glyphs** (`▌▐█▄▀░▒▓ ▪▫ ▁▂▃▄▅▆▇█`) over circles (`●○◌◆◇`) and technical dots (`·•`). Blocks carry the square, engineered character the brand wants; a field of soft circles reads as generic terminal chrome. The rule is a lean, not an absolute: the middle-dot separator (see [Separator grammar](#separator-grammar)) stays a dot because a run of squares between words would fight the text, and a checkmark/cross for pass/fail stays a checkmark/cross because those glyphs are unambiguous.
@@ -205,4 +252,4 @@ The website nav speaks lowercase terse ("docs install models changelog"), a disp
 
 When touching TUI polish, name the token (spacing, theme color, motion budget). Hardcoded hex or ANSI at call sites outside `theme.ts` is a design-system bug.
 
-*Verified against `ad7ede4a` on 2026-07-28.*
+*Verified against `d79c1b7b` on 2026-07-27.*

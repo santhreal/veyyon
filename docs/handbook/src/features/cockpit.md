@@ -1,6 +1,6 @@
 # Multi-agent monitoring
 
-The interactive TUI is the main surface for one session. Status line, session tree, background jobs, `/cockpit`, and optional swarm orchestration cover multi-agent work.
+The interactive TUI is the main surface for one session. Status line, session tree, background jobs, the Agent Control Center, and optional swarm orchestration cover multi-agent work.
 
 ## Status line
 
@@ -19,6 +19,7 @@ Built-in segment IDs include: `pi` (legacy product mark segment), `profile`, `mo
 The `model` segment shows the model you are working with, then two things that are easy to confuse, so they are drawn differently:
 
 - The **thinking effort** joins the model label as one unit (`Sonnet 4.5 @high` in the quiet footline, `Sonnet 4.5 · high` elsewhere), in the model's own color. It is how much reasoning the model does per turn. Change it with `/thinking` (its alias is `/effort`), or set a per-model default under Settings → Model → Default Effort.
+  The effort picker has a **Default** row followed by only the active model's valid variants. Choose Default to clear the session override and return to the saved per-model effort or the model default.
 - The **priority tier** follows the effort as its own chip, named and in the warning color (`⚡ priority`, or just `priority` when your symbol preset has no icon). It is how your requests are queued and served, not how deeply the model thinks. Toggle it with `/fast`, or set it per provider family under Settings → Model → Service Tier.
 
 The `git` segment shows the current branch, and appends the multi-step operation you are part-way through when there is one:
@@ -56,17 +57,32 @@ Two run clocks tick alongside the segments, both measuring model runtime, never 
 | `/branch` | Branch a new session file from an earlier user message |
 | `/fork` | Duplicate the current session into a new file |
 | `/session info` | Session metadata and stats |
-| `/agents` | Task subagent definitions (bundled/project/user) |
-| `/cockpit` | Live multi-agent monitor: status, model per agent, drill-in transcript (alias `/hub`; keybinding `app.agents.hub`) |
+| `/agents` | Agent Control Center: the live roster (agent type, status, activity; Enter opens one agent's session) and the Comms stream of agent-to-agent messages |
 | `/jobs` | List background async tool jobs |
 
-The inline task widget also shows the model each subagent runs on, right in its status line, so you can see which model every launched subagent used without opening the cockpit. To hide it, turn off `subagent.showResolvedModelBadge` (Subagents settings).
+`/cockpit` and `/hub` are aliases of `/agents`, as is the `app.agents.hub` keybinding and a double-tap of the left arrow on an empty composer. They used to open a separate screen with its own roster and its own drill-in, which meant "which agents are running" had two answers that could disagree with each other. They all open the one card now.
+
+### The Live roster
+
+Each row is one agent that exists right now: a status glyph, its call sign, the TYPE of agent it was spawned from (`reviewer`, `scout`), its status, how long since it last did anything, and what it is doing. Rows sit in spawn order, oldest first, with your own session at the top. The row you are on is marked two ways, a cursor glyph in the first column and a band across the whole row, so it stays readable on a terminal that renders no colour. Agents from earlier runs of the same session appear too, marked `parked`, because their transcripts are still on disk even though this process never started them.
+
+Press Enter on a row and the main view becomes that agent's session: the transcript, the composer, and the status line all point at it, so you read what it is doing and then answer it. Press Esc there to come back to your own session. Opening a parked agent revives it on the way in. Press `x` to stop an agent, which aborts the turn in flight before releasing the session.
+
+Clicking a row does the same thing as Enter on it, and clicking a name in the view strip switches to that view. Opening an agent is reversible with Esc, so a click opens rather than only moving the cursor. The scroll wheel moves whatever the arrow keys move: the roster cursor on Live, the stream on Comms. Page up and page down move by a screenful, on either view.
+
+The roster is a table, so you can scan a column instead of reading every row: the status, the age, the model and the activity each start at the same place on every line. A name long enough to crowd the row out is truncated rather than paid for by every other row, and the model badge is dropped when the card is too narrow to show enough of it to recognise.
+
+Two agents open a read-only transcript instead of handing the main view over. An advisor is observability-only and is not an addressable peer, so there is nothing on the other end to receive a reply. A collab guest's agents live on the host, so there is no local session to point at.
+
+The inline task widget also shows the model each subagent runs on, right in its status line, so you can see which model every launched subagent used without opening the Control Center. The `Subagents` block above the composer in your main session shows the same badge on every running row, so the answer to "what is that one running on" is on screen without opening anything. To show the badge, keep `subagent.showResolvedModelBadge` on (Subagents settings); turning it off hides it on all three surfaces.
 
 Session files are append-only JSONL under the active profile’s agent `sessions/` directory. See [Sessions](../using/sessions.md).
 
 ## Inter-agent messaging
 
-Subagents and the main agent use the `irc` tool (`send`, `wait`, `inbox`, `list`) over a process-global mailbox. `/btw` is an ephemeral side question; `/tan` spawns a background agent for tangential work. (`/omfg` is unrelated: it forges a TTSR rule from a complaint to stop a recurring behavior.)
+Subagents and the main agent use the `irc` tool (`send`, `wait`, `inbox`, `list`) over a process-global mailbox. The **Comms** view of `/agents` streams that traffic as it happens, oldest first, including the messages that failed to reach their recipient and the reason they did not land. Long messages are folded to their first few lines with a count of what was hidden; `ctrl+o` unfolds every message in the view, and pressing it again folds them back. Both ends of a message are labelled with the call sign the Live roster shows for that agent, so you follow a conversation by who is speaking rather than by an id you have to look up on the other view. An agent that has since been released has no call sign left to show, so its messages print its id instead.
+
+The view reads the message bus, not the session files. A subagent's transcript records what THAT agent received, so a view built from transcripts would show each half of a conversation in a different file and would never show a message that failed to arrive at all. `/btw` is an ephemeral side question; `/tan` spawns a background agent for tangential work. (`/omfg` is unrelated: it forges a TTSR rule from a complaint to stop a recurring behavior.)
 
 ## Swarm extension
 

@@ -57,4 +57,4 @@ A few arrow gestures act on the status line when the composer is empty. They are
 | Gesture             | When                          | Effect                                                        |
 | ------------------- | ----------------------------- | ------------------------------------------------------------ |
 | Down arrow          | A goal is active or paused    | Open the goal detail menu (same as `/goal`): objective, tokens against budget, completed turns, time spent, and pause/resume/adjust-budget/drop |
-| Double-tap ← (left) | Composer empty                | Open the Agent Hub, or return a focused subagent view to the main session |
+| Double-tap ← (left) | Composer empty                | Open the Agent Control Center, or return a focused subagent view to the main session |

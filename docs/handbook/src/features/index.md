@@ -6,7 +6,7 @@ This chapter is the hub for Veyyon's features: the surfaces you touch every sess
 
 These are the parts of the TUI you touch every session:
 
-- [Status line and multi-agent UI](./cockpit.md) covers the status segments, `/cockpit`, jobs, and the swarm view.
+- [Status line and multi-agent UI](./cockpit.md) covers the status segments, the Agent Control Center (`/agents`), jobs, and the swarm view.
 - [Keybindings](./keybindings.md) covers the chords.
 - The composer gives you prompt history, `@` and `/` completion, and `Esc` to interrupt. See [Quickstart](../using/quickstart.md) and [Keybindings](./keybindings.md).
 - [Web search](./web-search.md) covers searching from inside a session.
@@ -31,6 +31,7 @@ These add capabilities or change how the agent runs:
 | [Export and import](./export-import.md) | Moving sessions in and out |
 | [Connectors](./connectors.md) | Third-party app integrations |
 | [Approvals](./sandbox.md) | The approval-mode boundary in depth |
+| [Secrets](./secrets.md) | Credentials the agent uses by placeholder and never sees |
 | [Code review](./review.md) | Reviewing branches, commits, and uncommitted work |
 | [Non-interactive mode](./exec.md) | Running Veyyon from a script |
 

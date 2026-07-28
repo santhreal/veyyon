@@ -45,7 +45,10 @@ A profile owns two layers:
 | `skills/`, `commands/`, `prompts/`, `tools/`, `themes/`, `modules/` | Skills, slash commands, prompt templates, custom tools, themes, Python modules. |
 | `mcp.json`, `ssh.json` | MCP server and SSH target config. |
 | `keybindings.yml` | This profile's keybindings (`keybindings.yaml` accepted; legacy `keybindings.json` migrates on load). |
-| `SYSTEM.md`, `RULES.md`, `AGENTS.md` | User-level instruction files. |
+| `AGENTS.md` | Profile-specific context appended to the assembled prompt. |
+| `RULES.md` | Sticky profile rules reattached near each turn. |
+| `TITLE_SYSTEM.md` | Optional system prompt for automatic session-title calls. |
+| `PROMPT_SECTIONS/` | Persistent replacements or additions for named assembled-prompt sections. |
 | `memories/`, `terminal-sessions/` | Memory store, terminal session state. |
 | `cache/` | Agent-scoped caches (tiny title models, document conversions). |
 

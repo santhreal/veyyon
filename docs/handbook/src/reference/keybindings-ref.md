@@ -27,7 +27,7 @@ live list after your remaps. For the full guide on customizing, see
 | `alt+r` | Retry the last failed assistant turn (`app.retry`) |
 | `alt+up` | Dequeue a queued message back into the editor (`app.message.dequeue`) |
 | `alt+shift+p` | Toggle plan mode (`app.plan.toggle`) |
-| `alt+a` | Open the agent hub (`app.agents.hub`) |
+| `alt+a` | Open the Agent Control Center (`app.agents.hub`) |
 | `ctrl+r` | Search prompt history (`app.history.search`) |
 | `alt+shift+l` | Copy the current line (`app.clipboard.copyLine`) |
 | `alt+shift+c` | Copy the whole prompt (`app.clipboard.copyPrompt`) |
@@ -48,7 +48,10 @@ Unbound by default, remappable: `app.session.new`, `app.session.tree`, `app.sess
 | `enter` | Submit the current message (`tui.input.submit`) |
 | `shift+enter` or `ctrl+j` | Insert a new line (`tui.input.newLine`) |
 | `tab` | Autocomplete (`tui.input.tab`) |
-| `ctrl+c` | Copy the current selection (`tui.input.copy`) |
+
+The composer does not copy. Use `alt+shift+l` to copy the current line and
+`alt+shift+c` to copy the whole prompt, both listed under Clipboard above.
+`ctrl+c` interrupts the running turn.
 
 ## Editor
 

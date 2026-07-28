@@ -76,7 +76,7 @@ Each turn the harness builds a request that includes:
 
 1. **Base instructions** for the active model or backend (execution order, stop-when-green, format-neutral
    tool guidance). See [Execution-order prompts](../models/prompts.md).
-2. **User and project instructions** (`AGENTS.md` / `SYSTEM.md` layers and any session steers).
+2. **User and project instructions** from global, active-profile, and project `AGENTS.md` layers, sticky rules, and session steers. A caller may replace the base for one invocation with `--system-prompt`.
 3. **Tool schemas** the model is allowed to call on this turn (bash, edit/write, web search, MCP tools,
    skills, and so on), filtered by feature flags, harness-profile allowlists, and plan-mode narrowing.
    A per-tool `deny` policy does not filter this list; it refuses the call at dispatch.

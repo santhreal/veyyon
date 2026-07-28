@@ -144,7 +144,8 @@ There is no `VEYYON_REPAIR_LOG`, and Veyyon does not emit per-`(model,tool,shape
 | Variable | Purpose |
 | --- | --- |
 | `NO_COLOR` | When set (to any value), Veyyon renders without color; hierarchy comes through emphasis, spacing, and glyphs instead. |
-| `TERM` / `COLORTERM` | Read to detect terminal capabilities (truecolor, ANSI-256, ANSI-16) and pick the matching palette mapping. |
+| `TERM` / `COLORTERM` | Read to detect terminal capabilities and choose truecolor, ANSI-256, or ANSI-16 output. `TERM=dumb` disables every ANSI escape, including emphasis. |
+| `FORCE_COLOR` | A non-empty value other than `0` forces full ANSI output, overriding `NO_COLOR` and `TERM=dumb`. |
 | `VEYYON_HARDWARE_CURSOR` | Truthy enables hardware cursor mode. |
 | `VEYYON_TUI_WRITE_LOG` | When set, logs TUI writes to the given file (debugging). |
 

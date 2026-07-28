@@ -67,7 +67,7 @@
   - Persists `irc:incoming` custom messages into recipient history; replies are ordinary turns in the recipient's own session.
   - Waking an idle/parked recipient starts a real agent turn (model requests, tool use) in that recipient.
 - User-visible prompts / interactive UI
-  - IRC events render as transcript cards in the TUI; the Agent Hub shows per-agent unread counts.
+  - IRC events render as transcript cards in the TUI. The Agent Control Center shows per-agent unread counts on the Live roster, and its Comms view streams every message as it is sent.
 - Background work / cancellation
   - `send` itself never blocks on reply generation; only `wait` (and `await: true`) blocks, bounded by the resolved timeout and the caller's `AbortSignal`.
 - Network
@@ -95,6 +95,6 @@
 ## Notes
 - This is IRC-like naming only: no servers, sockets, channels, or join/part state. Addressing is by exact registry agent id.
 - Replies are real turns by the recipient, with one exception: an awaited send to a mid-turn recipient with `async.enabled` off triggers an ephemeral no-tools auto-reply (the old `respondAsBackground` path), because a recipient blocked in a synchronous task spawn whose batch includes the sender can never run a real turn before the sender's timeout. A recipient may otherwise keep working before answering; check `inbox` or `wait` again rather than re-sending.
-- Wake-on-message is the only resume primitive: messaging a parked agent revives it (same `ensureLive` path as the Agent Hub). The task tool has no `resume` parameter.
+- Wake-on-message is the only resume primitive: messaging a parked agent revives it (same `ensureLive` path the Agent Control Center uses when you open one). The task tool has no `resume` parameter.
 - Message ids are Snowflakes; pass them as `replyTo` to thread an answer to a specific message.
 - Persistence is per recipient history: the sender gets receipts in the tool result; the recipient sees the injected `irc:incoming` message in its own transcript (visible via `history://<id>`).
