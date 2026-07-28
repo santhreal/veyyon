@@ -11,8 +11,15 @@
 # taking all of it back. install.sh has had that coverage on Linux for a while
 # (scripts/install-tests/run-ci.sh); this is the Windows half.
 #
-# It installs the binary this checkout has already built, with install.ps1
-# -Local, so it needs no published release and no network.
+# INSTALL MODE. By default it installs the binary this checkout has already built,
+# with install.ps1 -Local, so it needs no published release and no network. Pass
+# -Mode Binary to run the DEFAULT install instead: the one a user gets from
+# `irm https://veyyon.dev/install.ps1 | iex`, which resolves the newest release,
+# downloads the Windows asset, and verifies its checksum. That path had never
+# executed on Windows anywhere — the release job downloads the .exe directly and
+# never goes through the installer — so the release lookup, the download, the
+# sidecar verification and the preflight all ran unproven. Same assertions
+# either way: what differs is where the binary came from.
 #
 # WHAT IT MUTATES. Two things outside the sandbox, because the installer edits
 # them for real and testing a fake would prove nothing:
@@ -28,6 +35,13 @@
 # by surprise.
 #
 # Run: VEYYON_INSTALL_E2E=1 pwsh -File scripts/install-tests/e2e.test.ps1
+
+param(
+    # Local: install the binary this checkout built. Binary: install the newest
+    # published release, which is the default install a user actually gets.
+    [ValidateSet("Local", "Binary")]
+    [string]$Mode = "Local"
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -97,13 +111,16 @@ New-Item -ItemType Directory -Force -Path (Split-Path -Parent $profilePath) | Ou
 Add-Content -LiteralPath $profilePath -Value $ownProfileLine
 
 $installer = Join-Path $root "scripts/install.ps1"
+# One place decides what the installer is asked to do, so every invocation below
+# (install, reinstall, reinstall over a quoted PATH entry) stays in the same mode.
+$modeArg = if ($Mode -eq "Binary") { "-Binary" } else { "-Local" }
 $binPath = Join-Path $installDir "veyyon.exe"
 $aliasPath = Join-Path $installDir "vey.cmd"
 
 try {
     Write-Host ""
-    Write-Host "=== install (-Local) ==="
-    & pwsh -NoProfile -File $installer -Local
+    Write-Host "=== install ($modeArg) ==="
+    & pwsh -NoProfile -File $installer $modeArg
     Check "the installer exited 0" ($LASTEXITCODE -eq 0)
 
     ExpectExists $binPath "the binary itself"
@@ -135,7 +152,7 @@ try {
 
     Write-Host ""
     Write-Host "=== reinstall over an existing install ==="
-    & pwsh -NoProfile -File $installer -Local
+    & pwsh -NoProfile -File $installer $modeArg
     Check "the reinstall exited 0" ($LASTEXITCODE -eq 0)
 
     # Idempotence, which is what an upgrade actually is. A second PATH entry or a
@@ -162,7 +179,7 @@ try {
     [Environment]::SetEnvironmentVariable("Path", $quoted, "User")
     Check "the quoted entry is in place before the reinstall" ((Measure-InstallDirEntries $installDir) -eq 1)
 
-    & pwsh -NoProfile -File $installer -Local
+    & pwsh -NoProfile -File $installer $modeArg
     Check "the reinstall over a quoted entry exited 0" ($LASTEXITCODE -eq 0)
     Check "no second entry was added beside the quoted one" ((Measure-InstallDirEntries $installDir) -eq 1)
     # And it was left exactly as the other tool wrote it: recognizing an entry is
@@ -205,5 +222,5 @@ try {
 }
 
 Write-Host ""
-Write-Host "install.ps1 end-to-end: $script:Pass passed, $script:Fail failed"
+Write-Host "install.ps1 end-to-end ($modeArg): $script:Pass passed, $script:Fail failed"
 if ($script:Fail -gt 0) { exit 1 }
