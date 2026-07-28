@@ -82,23 +82,39 @@ installer_end_to_end() {
    # every run after the fix landed; matching the bytes exactly is the point, since
    # the uninstall recognizes its own line by them.
    local path_line="export PATH='$installer_bin':\"\$PATH\""
-   grep -Fqx "$path_line" "$installer_home/.bashrc" || {
-      echo "installer end-to-end: the PATH line is missing from .bashrc"
+   # WHICH rc is the installer's choice to make, not this gate's to assume. A bash
+   # login shell reads `.bashrc` on Linux and `.bash_profile` on macOS, so pinning
+   # one name failed every macOS run with "the PATH line is missing from .bashrc"
+   # about an install that had done exactly the right thing. So: find the rc the
+   # installer marked, and require exactly one.
+   local rc=""
+   local candidate
+   for candidate in "$installer_home/.bashrc" "$installer_home/.bash_profile" "$installer_home/.profile"; do
+      [ -f "$candidate" ] || continue
+      grep -Fqx "# added by the veyyon installer" "$candidate" || continue
+      [ -z "$rc" ] || {
+         echo "installer end-to-end: the PATH line is in more than one rc ($rc and $candidate)"
+         exit 1
+      }
+      rc="$candidate"
+   done
+   [ -n "$rc" ] || {
+      echo "installer end-to-end: no rc under $installer_home carries the installer's marker"
       exit 1
    }
-   grep -Fqx "# added by the veyyon installer" "$installer_home/.bashrc" || {
-      echo "installer end-to-end: the PATH line has no marker comment"
+   grep -Fqx "$path_line" "$rc" || {
+      echo "installer end-to-end: the PATH line is missing from $rc"
       exit 1
    }
 
    # A user's own rc content must survive the uninstall untouched.
-   echo "alias ll='ls -la'" >> "$installer_home/.bashrc"
+   echo "alias ll='ls -la'" >> "$rc"
 
    # Reinstalling over an existing install must be clean and idempotent: no
    # duplicate PATH line, no staging litter, no failure.
    installer_env sh "$install_sh" "$@"
    local path_lines
-   path_lines="$(grep -Fxc "$path_line" "$installer_home/.bashrc" || true)"
+   path_lines="$(grep -Fxc "$path_line" "$rc" || true)"
    [ "$path_lines" = "1" ] || {
       echo "installer end-to-end: reinstall wrote the PATH line $path_lines times, expected 1"
       exit 1
@@ -114,12 +130,12 @@ installer_end_to_end() {
    expect_absent "$installer_home/.config/fish/completions/veyyon.fish" "fish completions after uninstall"
    expect_absent "$installer_home/.config/fish/completions/vey.fish" "alias fish completions after uninstall"
 
-   if grep -Fq "$installer_bin" "$installer_home/.bashrc"; then
-      echo "installer end-to-end: uninstall left the PATH line in .bashrc"
+   if grep -Fq "$installer_bin" "$rc"; then
+      echo "installer end-to-end: uninstall left the PATH line in $rc"
       exit 1
    fi
-   grep -Fqx "alias ll='ls -la'" "$installer_home/.bashrc" || {
-      echo "installer end-to-end: uninstall removed the user's own .bashrc content"
+   grep -Fqx "alias ll='ls -la'" "$rc" || {
+      echo "installer end-to-end: uninstall removed the user's own rc content"
       exit 1
    }
 
