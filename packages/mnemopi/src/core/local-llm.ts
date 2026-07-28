@@ -35,7 +35,7 @@ import {
 	llmMaxTokens,
 	llmModelName,
 } from "./local-llm-config";
-import type { MnemopiLlmCompleteOptions } from "./runtime-options";
+import { getMnemopiRuntimeOptions, type MnemopiLlmCompleteOptions } from "./runtime-options";
 
 export * from "./local-llm-config";
 
@@ -44,14 +44,44 @@ export interface RemoteLlmOptions {
 	fetch?: FetchImpl;
 }
 
+function sanitizeLlmProviderText(text: string): string {
+	const sanitize = getMnemopiRuntimeOptions()?.llm?.sanitizeProviderText;
+	if (sanitize === undefined) return text;
+	try {
+		return sanitize(text);
+	} catch {
+		throw new Error("Mnemopi provider text sanitization failed.");
+	}
+}
+
+/**
+ * This is restricted to completeSimple's freshly built, one-message request.
+ * It must not be reused for restored/native replay payloads whose authenticated
+ * or encrypted fields are intentionally opaque.
+ * Mutating in place also covers provider adapters that invoke onPayload but
+ * ignore its replacement return value.
+ */
+function sanitizeFreshLlmPayload(payload: unknown): unknown {
+	if (typeof payload === "string") return sanitizeLlmProviderText(payload);
+	if (Array.isArray(payload)) {
+		for (let index = 0; index < payload.length; index++) payload[index] = sanitizeFreshLlmPayload(payload[index]);
+		return payload;
+	}
+	if (payload === null || typeof payload !== "object") return payload;
+	const mutable = payload as Record<string, unknown>;
+	for (const [key, value] of Object.entries(mutable)) mutable[key] = sanitizeFreshLlmPayload(value);
+	return mutable;
+}
+
 export async function callConfiguredCompletion(
 	prompt: string,
 	temperature: number,
 	opts: MnemopiLlmCompleteOptions = {},
 ): Promise<string | null> {
 	const completion = activeCustomCompletion();
+	const providerPrompt = sanitizeLlmProviderText(prompt);
 	if (completion !== undefined) {
-		const raw = await completion(prompt, {
+		const raw = await completion(providerPrompt, {
 			maxTokens: opts.maxTokens ?? llmMaxTokens(),
 			temperature,
 			timeout: opts.timeout,
@@ -73,12 +103,13 @@ export async function callConfiguredCompletion(
 	const message = await completeSimple(
 		model,
 		{
-			messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
+			messages: [{ role: "user", content: providerPrompt, timestamp: Date.now() }],
 		},
 		{
 			apiKey: llmApiKey() || undefined,
 			maxTokens: opts.maxTokens ?? llmMaxTokens(),
 			temperature,
+			onPayload: sanitizeFreshLlmPayload,
 		},
 	);
 	return assistantText(message).trim() || null;
@@ -90,7 +121,7 @@ async function tryHostLlm(prompt: string, maxTokens: number, temperature: number
 	}
 
 	try {
-		const raw = await callHostLlm(prompt, {
+		const raw = await callHostLlm(sanitizeLlmProviderText(prompt), {
 			maxTokens,
 			temperature,
 			timeout: 15,
@@ -140,13 +171,6 @@ export async function callRemoteLlm(
 		return null;
 	}
 
-	const body = JSON.stringify({
-		model: llmModelName(),
-		messages: [{ role: "user", content: prompt }],
-		max_tokens: llmMaxTokens(),
-		temperature,
-		stop: ["</s>", "<|user|>"],
-	});
 	const fetchImpl = options.fetch ?? fetch;
 	// Do NOT wrap this in `catch { return null }`. A thrown error (network down,
 	// timeout, JSON parse failure) or a non-2xx HTTP response is a real failure
@@ -167,6 +191,16 @@ export async function callRemoteLlm(
 			if (key !== "") {
 				headers.Authorization = `Bearer ${key}`;
 			}
+			// withAuth has resolved/refreshed credentials before entering this
+			// callback, and re-enters it for every auth retry. Build a new body
+			// here so a runtime sanitizer swap is authoritative for each send.
+			const body = JSON.stringify({
+				model: llmModelName(),
+				messages: [{ role: "user", content: sanitizeLlmProviderText(prompt) }],
+				max_tokens: llmMaxTokens(),
+				temperature,
+				stop: ["</s>", "<|user|>"],
+			});
 			const res = await fetchImpl(`${baseUrl}/chat/completions`, {
 				method: "POST",
 				headers,
@@ -245,10 +279,13 @@ export async function summarizeMemories(
 		return null;
 	}
 
-	const chunks = chunkMemoriesByBudget(memories, source);
+	const sanitize = getMnemopiRuntimeOptions()?.llm?.sanitizeProviderText;
+	const providerMemories = sanitize === undefined ? memories : memories.map(sanitizeLlmProviderText);
+	const providerSource = sanitize === undefined ? source : sanitizeLlmProviderText(source);
+	const chunks = chunkMemoriesByBudget(providerMemories, providerSource);
 	const chunkSummaries: string[] = [];
 	for (const chunk of chunks) {
-		const summary = await summarizeChunk(chunk, source, options);
+		const summary = await summarizeChunk(chunk, providerSource, options);
 		if (summary !== null) {
 			chunkSummaries.push(summary);
 		}
@@ -258,7 +295,7 @@ export async function summarizeMemories(
 		return null;
 	}
 	if (chunkSummaries.length > 1) {
-		const final = await summarizeChunk(chunkSummaries, `${source} [chunked ${chunks.length} parts]`, options);
+		const final = await summarizeChunk(chunkSummaries, `${providerSource} [chunked ${chunks.length} parts]`, options);
 		return final ?? chunkSummaries[0] ?? null;
 	}
 	return chunkSummaries[0] ?? null;

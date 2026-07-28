@@ -1,6 +1,9 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Api, ApiKey, Model } from "@veyyon/ai";
 
+/** Live confidentiality transform for text about to cross a provider boundary. */
+export type MnemopiProviderTextSanitizer = (text: string) => string;
+
 export interface MnemopiLlmCompleteOptions {
 	maxTokens?: number;
 	temperature?: number;
@@ -35,6 +38,8 @@ export interface MnemopiEmbeddingRuntimeOptions {
 	provider?: MnemopiEmbeddingProvider | ((texts: readonly string[]) => EmbeddingOutput | Promise<EmbeddingOutput>);
 	/** Override `MNEMOPI_EMBEDDING_MAX_INPUT_CHARS`. `0` disables the cap. See `config.embeddingMaxInputChars`. */
 	maxInputChars?: number;
+	/** Re-resolved at every physical API embedding attempt; omitted for on-device providers. */
+	sanitizeProviderText?: MnemopiProviderTextSanitizer;
 }
 
 export interface MnemopiLlmRuntimeOptions {
@@ -48,6 +53,8 @@ export interface MnemopiLlmRuntimeOptions {
 	extractionPrompt?: string;
 	/** Override the consolidation/sleep prompt template ({memories}/{source}/{memory_count}). */
 	consolidationPrompt?: string;
+	/** Re-resolved at every physical online LLM attempt; omitted for on-device completions. */
+	sanitizeProviderText?: MnemopiProviderTextSanitizer;
 }
 
 export interface MnemopiRuntimeOptions {
@@ -64,6 +71,7 @@ export interface ResolvedMnemopiEmbeddingRuntimeOptions {
 	apiKey?: ApiKey;
 	provider?: MnemopiEmbeddingProvider;
 	maxInputChars?: number;
+	sanitizeProviderText?: MnemopiProviderTextSanitizer;
 }
 
 export interface ResolvedMnemopiLlmRuntimeOptions {
@@ -75,6 +83,7 @@ export interface ResolvedMnemopiLlmRuntimeOptions {
 	complete?: MnemopiLlmCompletion;
 	extractionPrompt?: string;
 	consolidationPrompt?: string;
+	sanitizeProviderText?: MnemopiProviderTextSanitizer;
 }
 
 export interface ResolvedMnemopiRuntimeOptions {

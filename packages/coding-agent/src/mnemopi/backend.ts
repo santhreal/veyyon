@@ -88,7 +88,7 @@ export const mnemopiBackend: MemoryBackend = {
 		}
 
 		try {
-			const config = await loadMnemopiConfigWithProviders(settings, agentDir, modelRegistry, sessionId);
+			const config = await loadMnemopiConfigWithProviders(settings, agentDir, modelRegistry, session, sessionId);
 			await Promise.all([loadMnemopi(), loadMnemopiCore()]);
 			const state = new MnemopiSessionState({ sessionId, config, session });
 			const previous = setMnemopiSessionState(session, state);
@@ -146,6 +146,7 @@ export const mnemopiBackend: MemoryBackend = {
 					session.settings,
 					agentDir,
 					session.modelRegistry,
+					session,
 					session.sessionId,
 				);
 				await Promise.all([loadMnemopi(), loadMnemopiCore()]);
@@ -439,10 +440,11 @@ async function loadMnemopiConfigWithProviders(
 	settings: MemoryBackendStartOptions["settings"],
 	agentDir: string,
 	modelRegistry: ModelRegistry,
+	session: AgentSession,
 	sessionId: string,
 ): Promise<MnemopiBackendConfig> {
 	const config = loadMnemopiConfig(settings, agentDir);
-	config.providerOptions = await resolveMnemopiProviderOptions(config, settings, modelRegistry, sessionId);
+	config.providerOptions = await resolveMnemopiProviderOptions(config, settings, modelRegistry, session, sessionId);
 	return config;
 }
 
@@ -469,8 +471,10 @@ async function resolveMnemopiProviderOptions(
 	config: MnemopiBackendConfig,
 	settings: MemoryBackendStartOptions["settings"],
 	modelRegistry: ModelRegistry,
+	session: AgentSession,
 	sessionId: string,
 ): Promise<MnemopiProviderOptions> {
+	const sanitizeProviderText = (text: string): string => session.obfuscator?.obfuscate(text) ?? text;
 	const base: MnemopiProviderOptions = {
 		noEmbeddings: config.providerOptions.noEmbeddings,
 		embeddingModel: config.providerOptions.embeddingModel,
@@ -478,6 +482,7 @@ async function resolveMnemopiProviderOptions(
 		embeddingApiKey:
 			config.providerOptions.embeddingApiKey ??
 			(await openrouterKeyResolver(modelRegistry, sessionId, config.providerOptions.embeddingApiUrl)),
+		embeddings: { sanitizeProviderText },
 		llm: false,
 	};
 
@@ -509,6 +514,7 @@ async function resolveMnemopiProviderOptions(
 						? undefined
 						: await openrouterKeyResolver(modelRegistry, sessionId, config.llmBaseUrl)),
 				model: config.llmModel,
+				sanitizeProviderText,
 			},
 		};
 	}
@@ -522,40 +528,80 @@ async function resolveMnemopiProviderOptions(
 		}
 		return {
 			...base,
-			llm: async (prompt, opts) => {
-				const hasApiKey = await modelRegistry.getApiKey(model, sessionId);
-				if (!hasApiKey) {
-					logger.warn("Mnemopi: smol completion requested but no current API key is available.", {
-						provider: model.provider,
-						model: model.id,
-					});
-					return null;
-				}
-				const message = await completeSimple(
-					model,
-					{
-						messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
-					},
-					{
-						apiKey: modelRegistry.resolver(model, sessionId),
-						maxTokens: opts?.maxTokens,
-						temperature: opts?.temperature,
-					},
-				);
-				return message.content
-					.filter(
-						(block): block is Extract<(typeof message.content)[number], { type: "text" }> =>
-							block.type === "text",
-					)
-					.map(block => block.text)
-					.join("\n")
-					.trim();
+			llm: {
+				sanitizeProviderText,
+				complete: async (prompt, opts) => {
+					const hasApiKey = await modelRegistry.getApiKey(model, sessionId);
+					if (!hasApiKey) {
+						logger.warn("Mnemopi: smol completion requested but no current API key is available.", {
+							provider: model.provider,
+							model: model.id,
+						});
+						return null;
+					}
+					// The preflight above and auth refreshes inside completeSimple are
+					// await points. Re-read the session-owned sanitizer now, then again
+					// from onPayload for every physical retry. This request contains one
+					// fresh user message and no authenticated/encrypted replay fields.
+					const providerPrompt = sanitizeMnemopiProviderText(prompt, sanitizeProviderText);
+					const message = await completeSimple(
+						model,
+						{
+							messages: [{ role: "user", content: providerPrompt, timestamp: Date.now() }],
+						},
+						{
+							apiKey: modelRegistry.resolver(model, sessionId),
+							maxTokens: opts?.maxTokens,
+							temperature: opts?.temperature,
+							onPayload: payload => sanitizeFreshMnemopiPayload(payload, sanitizeProviderText),
+						},
+					);
+					return message.content
+						.filter(
+							(block): block is Extract<(typeof message.content)[number], { type: "text" }> =>
+								block.type === "text",
+						)
+						.map(block => block.text)
+						.join("\n")
+						.trim();
+				},
 			},
 		};
 	} catch (error) {
 		logger.warn("Mnemopi: smol LLM resolution failed; continuing without LLM.", { error: String(error) });
 		return base;
 	}
+}
+
+function sanitizeMnemopiProviderText(text: string, sanitize: (text: string) => string): string {
+	try {
+		return sanitize(text);
+	} catch {
+		throw new Error("Mnemopi provider text sanitization failed.");
+	}
+}
+
+/**
+ * Final-attempt transform for the smol request's freshly built JSON payload.
+ * It only mutates string values in a fresh payload, so authenticated or
+ * encrypted history fields cannot be altered.
+ * Mutate as well as return because a few provider adapters observe onPayload
+ * for side effects but do not consume its replacement return value.
+ */
+function sanitizeFreshMnemopiPayload(payload: unknown, sanitize: (text: string) => string): unknown {
+	if (typeof payload === "string") return sanitizeMnemopiProviderText(payload, sanitize);
+	if (Array.isArray(payload)) {
+		for (let index = 0; index < payload.length; index++) {
+			payload[index] = sanitizeFreshMnemopiPayload(payload[index], sanitize);
+		}
+		return payload;
+	}
+	if (payload === null || typeof payload !== "object") return payload;
+	const mutable = payload as Record<string, unknown>;
+	for (const [key, value] of Object.entries(mutable)) {
+		mutable[key] = sanitizeFreshMnemopiPayload(value, sanitize);
+	}
+	return mutable;
 }
 
 function getMnemopiSessionStateFromParent(options: MemoryBackendStartOptions): MnemopiSessionState | undefined {
