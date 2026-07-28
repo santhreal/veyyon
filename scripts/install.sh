@@ -327,6 +327,20 @@ step() { printf '%s%s%s\n' "$C_DIM" "$*" "$C_RESET"; }
 
 has() { command -v "$1" >/dev/null 2>&1; }
 
+# Every network fetch in this installer is curl, so its absence is a preflight
+# failure and not a network failure.
+#
+# Without this the first fetch fails the way an unreachable host does, and the
+# install dies with "could not reach https://github.com/... (network error, or
+# GitHub is down)" on a machine whose network is fine. The user then goes looking
+# at DNS, a proxy and a firewall for a missing package. A minimal container image
+# and a stripped CI runner are where this actually happens, and both are places
+# people install from a `wget -qO- ... | sh` one-liner, which is exactly how you
+# get here with wget present and curl not.
+require_curl() {
+    has curl || die "curl is required and is not installed. Install it with your package manager (apt install curl / dnf install curl / apk add curl / brew install curl) and run this again."
+}
+
 # ---- resolve a release tag WITHOUT the GitHub API ----
 # api.github.com is capped at 60 requests/hour PER IP for unauthenticated
 # callers, and that budget is shared by everyone behind the same address. A CI
@@ -1677,6 +1691,11 @@ if [ "${VEYYON_INSTALL_SOURCED:-0}" != "1" ]; then
         do_uninstall
     else
         brand_mark
+        # --local is the one mode that installs from the checkout, but it still
+        # provisions the native addon over the network, so every install path
+        # needs curl. An uninstall does not, and refusing to remove veyyon
+        # because a fetch tool is missing would be absurd.
+        require_curl
         case "$MODE" in
             local) install_local ;;
             source) has bun || install_bun; require_bun_version; install_via_bun ;;

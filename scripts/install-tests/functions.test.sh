@@ -1705,6 +1705,28 @@ check "the existence check asks for headers only too" \
 check "the check is silent on both paths" \
     "$( ( curl() { printf 'noise\n'; return 0; }; release_tag_exists v1.0.0 ) )" ""
 
+# --- require_curl: a missing fetch tool is not a network failure ---------------
+# Every fetch here is curl, so without it the first request fails the way an
+# unreachable host does and the install dies with "could not reach
+# https://github.com/... (network error, or GitHub is down)" on a machine whose
+# network is fine. The user then goes looking at DNS, a proxy and a firewall for
+# a missing package. Minimal container images and stripped CI runners are where
+# this happens, and they are also where people reach for `wget -qO- ... | sh`.
+check "a present curl passes the preflight" \
+    "$( ( has() { return 0; }; require_curl && echo ok ) )" "ok"
+check "a missing curl is refused before anything is fetched" \
+    "$( ( has() { return 1; }; die() { printf 'died\n'; exit 1; }; require_curl ) 2>/dev/null )" "died"
+check "the refusal names curl and how to install it" \
+    "$( ( has() { return 1; }; die() { printf '%s\n' "$*"; exit 1; }; require_curl ) 2>/dev/null \
+  | grep -c 'curl is required' )" "1"
+check "the refusal names a package manager, not just the problem" \
+    "$( ( has() { return 1; }; die() { printf '%s\n' "$*"; exit 1; }; require_curl ) 2>/dev/null \
+  | grep -c 'apt install curl' )" "1"
+# It must NOT claim the network is down, which is the message this replaces.
+check "the refusal does not blame the network" \
+    "$( ( has() { return 1; }; die() { printf '%s\n' "$*"; exit 1; }; require_curl ) 2>/dev/null \
+  | grep -c 'network error' )" "0"
+
 # --- resolve_ref_tag: the `v` a person leaves off a version -------------------
 # Releases are tagged `v1.0.37` and `--ref 1.0.37` is what people type: the same
 # version, one character short of a tag that exists. Refusing it states a true

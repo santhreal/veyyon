@@ -392,6 +392,61 @@ case_missing_release() {
 	rm -rf "$h"
 }
 
+# --- 19b. a --ref spelled without the leading v ------------------------------
+# Releases are tagged `v1.0.37` and `--ref 1.0.37` is what people type. This
+# proves the resolution against the REAL tag list rather than a stubbed curl: the
+# install has to succeed, and it has to SAY which tag it resolved to, because a
+# version that appears out of nowhere is worse than a refusal.
+case_ref_without_v() {
+	local h; h=$(fresh)
+	local tag
+	# Whichever release is newest, minus its `v`, so this does not rot when a new
+	# version ships.
+	tag=$(curl -fsSIL -o /dev/null -w '%{url_effective}' https://github.com/santhreal/veyyon/releases/latest 2>/dev/null)
+	tag="${tag##*/releases/tag/}"
+	case "$tag" in v*) ;; *) echo "SKIP: could not read the latest tag from GitHub"; return 0 ;; esac
+	local bare="${tag#v}"
+	HOME="$h" VEYYON_INSTALL_DIR="$h/bin" sh "$INSTALLER" --binary --ref "$bare" >"$h/log" 2>&1 || {
+		echo "--ref $bare failed"; tail -20 "$h/log"; return 1; }
+	[ -x "$h/bin/veyyon" ] || { echo "--ref $bare installed nothing"; tail -20 "$h/log"; return 1; }
+	grep -q "resolved $bare to the published tag $tag" "$h/log" || {
+		echo "the install did not say what it resolved $bare to"; tail -20 "$h/log"; return 1; }
+	"$h/bin/veyyon" --version | grep -q "$bare" || {
+		echo "the installed binary does not report $bare"; "$h/bin/veyyon" --version; return 1; }
+	rm -rf "$h"
+}
+
+# --- 19c. curl is not installed at all ---------------------------------------
+# Different from "the network is gone", and it used to look identical: every
+# fetch here is curl, so without it the first request failed the way an
+# unreachable host does and the install blamed GitHub on a machine whose network
+# was fine. Minimal images and stripped CI runners are where this happens.
+case_no_curl() {
+	local h; h=$(fresh); mkdir -p "$h/nocurl"
+	# A PATH holding everything the installer needs EXCEPT curl. Symlinking the
+	# real directories is the only honest way to do this: shadowing curl with a
+	# failing stub tests a broken curl, which is the case above.
+	local d f
+	for d in /usr/bin /bin /usr/local/bin; do
+		[ -d "$d" ] || continue
+		for f in "$d"/*; do
+			[ -e "$f" ] || continue
+			case "${f##*/}" in curl) continue ;; esac
+			ln -sf "$f" "$h/nocurl/${f##*/}" 2>/dev/null
+		done
+	done
+	command -v curl >/dev/null || { echo "SKIP: no curl here to hide"; return 0; }
+	PATH="$h/nocurl" HOME="$h" VEYYON_INSTALL_DIR="$h/bin" sh "$INSTALLER" >"$h/log" 2>&1
+	local rc=$?
+	[ "$rc" -ne 0 ] || { echo "the install reported success with no curl"; tail -20 "$h/log"; return 1; }
+	grep -q "curl is required" "$h/log" || {
+		echo "the failure did not name the missing curl"; tail -20 "$h/log"; return 1; }
+	grep -q "network error" "$h/log" && {
+		echo "the failure blamed the network for a missing package"; tail -20 "$h/log"; return 1; }
+	[ ! -e "$h/bin/veyyon" ] || { echo "something was installed anyway"; return 1; }
+	rm -rf "$h"
+}
+
 # --- 20. the network is gone -------------------------------------------------
 case_no_network() {
 	local h; h=$(fresh); mkdir -p "$h/fakebin"
@@ -554,6 +609,8 @@ run_case "survives no space left"         case_disk_full
 echo "=== the network and the checksum"
 run_case "REFUSES a tampered download"    case_tampered_download
 run_case "fails on a missing release"     case_missing_release
+run_case "installs a --ref with no leading v" case_ref_without_v
+run_case "names a missing curl, not the network" case_no_curl
 run_case "fails with no network"          case_no_network
 echo "=== uninstall and reinstall"
 run_case "uninstall is idempotent"        case_double_uninstall
