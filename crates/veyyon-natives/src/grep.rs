@@ -1120,10 +1120,13 @@ fn build_grep_walk_request(
 	order: veyyon_walker::WalkOrder,
 ) -> Result<veyyon_walker::WalkRequest> {
 	let mut filter = veyyon_walker::WalkFilter::files_only();
+	// Unbounded unless a glob says otherwise: with no `--glob` every file in the
+	// tree is a candidate.
+	let mut depth_limit = usize::MAX;
 	if let Some(glob) = glob.map(str::trim).filter(|value| !value.is_empty()) {
-		let pattern = glob_util::build_glob_pattern(glob, true);
-		let compiled = veyyon_walker::CompiledWalkGlob::new([pattern])
+		let compiled = veyyon_walker::CompiledWalkGlob::compile(glob, true)
 			.map_err(|err| to_napi_with("Invalid glob pattern", err))?;
+		depth_limit = compiled.depth_bound();
 		filter = filter.glob(compiled);
 	}
 
@@ -1137,7 +1140,7 @@ fn build_grep_walk_request(
 		.size_hints(veyyon_walker::SizeHintPolicy::WhenCheap)
 		.order(order)
 		.emit_root(false)
-		.depth(1, usize::MAX)
+		.depth(1, depth_limit)
 		.directory_errors(veyyon_walker::DirectoryErrorMode::SkipSkippable)
 		.cache(false)
 		.filter(filter))

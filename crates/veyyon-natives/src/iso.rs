@@ -22,7 +22,7 @@ use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use veyyon_iso::{BackendKind, ChangeKind, Diff, FileChange, IsoError, IsolationBackend};
 
-use crate::napi_error::to_napi_with;
+use crate::napi_error::{to_napi, to_napi_with};
 
 const ISO_UNAVAILABLE_PREFIX: &str = "ISO_UNAVAILABLE:";
 
@@ -219,8 +219,10 @@ const fn to_napi_change_kind(kind: ChangeKind) -> IsoChangeKind {
 
 fn to_napi_error(err: IsoError) -> Error {
 	match err {
+		// Not `to_napi_with`: the prefix and the message are joined by a space, not
+		// by `: `, and `packages/coding-agent` matches on that exact prefix.
 		IsoError::Unavailable(msg) => Error::from_reason(format!("{ISO_UNAVAILABLE_PREFIX} {msg}")),
-		IsoError::Other(msg) => Error::from_reason(msg),
+		IsoError::Other(msg) => to_napi(msg),
 	}
 }
 
