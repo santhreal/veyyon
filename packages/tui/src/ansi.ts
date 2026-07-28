@@ -66,6 +66,17 @@ export const ST = `${ESC}\\`;
 export const SGR_RESET = `${CSI}0m`;
 
 /**
+ * The parameterless spelling of the reset, `ESC [ m`, which means exactly `ESC [ 0 m`.
+ *
+ * A terminal treats an omitted parameter as zero, so both forms clear every attribute, and a
+ * PARSER has to accept both while an emitter should pick one. This tree emits {@link SGR_RESET}
+ * and reads either: `utils.ts` looks for the short form when it compacts a carried style run,
+ * and `coding-agent/src/tui/output-block.ts` has to re-apply a block background after any reset
+ * in the content, which is wrong if it sees only the long one. Both had the bytes inline.
+ */
+export const SGR_RESET_SHORT = `${CSI}m`;
+
+/**
  * Foreground-colour reset, `ESC [ 39 m`. Restores the default foreground and leaves every other attribute
  * alone, which is why a gradient or shimmer closes with this rather than with {@link SGR_RESET}: a full reset
  * would also drop the bold or inverse the surrounding text set.
@@ -102,3 +113,37 @@ export const SGR_INTENSITY_RESET = `${CSI}22m`;
  * mis-measure every wide grapheme on the line.
  */
 export const OSC66 = `${OSC}66;`;
+
+/**
+ * The body of an SGR sequence, `ESC [ <params> m`, with the parameters captured.
+ *
+ * A pattern rather than a `RegExp`, because the four call sites need three different flag
+ * sets and a shared `RegExp` object carries `lastIndex` between them: `tui.ts` strips with
+ * `g`, `utils.ts` collects with `g`, `markdown.ts` scans with `y`, and
+ * `coding-agent/src/tools/terminal-output.ts` reads the parameters out. Each builds its own
+ * through {@link sgrSequence}.
+ *
+ * WHY IT IS HERE. Those four spelled it out themselves, under four names, and the fourth had
+ * already drifted: it wrote the parameter class as `[0-9;]` with no colon, so a truecolor SGR
+ * written with colon subparameters (`ESC [ 38:2:255:0:0 m`, which libvte and several test
+ * runners emit) did not match at all and its colour was dropped from the re-rendered row. A
+ * grep for any one of the four names finds a quarter of the code that parses an SGR.
+ *
+ * The class stops at `0x30-0x3a` (digits, `;`, `:`) rather than the spec's full `0x30-0x3f`
+ * parameter range, which is what `@veyyon/utils/strip-ansi` accepts for a general CSI. That
+ * is deliberate and narrow on purpose: `<`, `=`, `>` and `?` are private-use parameter bytes
+ * and an `ESC [ ? ... m` is not an SGR, so widening the class here would make these four
+ * sites treat a private-mode sequence as a colour change.
+ */
+export const SGR_SEQUENCE_PATTERN = "\\x1b\\[([0-9;:]*)m";
+
+/**
+ * A fresh `RegExp` over {@link SGR_SEQUENCE_PATTERN} with the flags the caller needs.
+ *
+ * Fresh each call, so a sticky or global scan in one module cannot leave `lastIndex` set for
+ * another. Callers that scan repeatedly should hoist the result to module scope, which is
+ * what all four do.
+ */
+export function sgrSequence(flags: string): RegExp {
+	return new RegExp(SGR_SEQUENCE_PATTERN, flags);
+}

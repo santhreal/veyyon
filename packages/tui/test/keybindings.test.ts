@@ -29,13 +29,19 @@ describe("KeybindingsManager", () => {
 		expect(keybindings.getKeys("tui.editor.cursorUp")).toEqual(["up"]);
 	});
 
+	/**
+	 * The action here is a stand-in: what is under test is that `shift` survives a
+	 * remap onto a printable letter, not anything about yank-pop. It used to be
+	 * `tui.input.copy`, which was removed because the editor has no copy
+	 * implementation, so the stand-in is a binding that something actually reads.
+	 */
 	it("preserves Shift when matching printable uppercase letters", () => {
 		const keybindings = new KeybindingsManager(TUI_KEYBINDINGS, {
-			"tui.input.copy": "shift+a",
+			"tui.editor.yankPop": "shift+a",
 		});
 
-		expect(keybindings.matches("A", "tui.input.copy")).toBe(true);
-		expect(keybindings.matches("a", "tui.input.copy")).toBe(false);
+		expect(keybindings.matches("A", "tui.editor.yankPop")).toBe(true);
+		expect(keybindings.matches("a", "tui.editor.yankPop")).toBe(false);
 	});
 
 	it("still reports direct user binding conflicts without evicting defaults", () => {
@@ -72,14 +78,14 @@ describe("KeybindingsManager", () => {
 		expect(canonicalKeyId("shift+?")).toBe("shift+?");
 
 		const keybindings = new KeybindingsManager(TUI_KEYBINDINGS, {
-			"tui.input.copy": ["esc", "return", "?", "shift+a"],
+			"tui.editor.yankPop": ["esc", "return", "?", "shift+a"],
 		});
 
 		for (const input of ["\x1b", "\r", "?", "A"]) {
 			const parsed = parseKey(input);
 			if (parsed === undefined) throw new Error(`Expected ${JSON.stringify(input)} to parse`);
 			expect(aliases.has(canonicalKeyId(parsed))).toBe(true);
-			expect(keybindings.matches(input, "tui.input.copy")).toBe(true);
+			expect(keybindings.matches(input, "tui.editor.yankPop")).toBe(true);
 		}
 	});
 

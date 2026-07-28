@@ -136,3 +136,76 @@ describe("ScrollView", () => {
 		expect(view.render(5)).toEqual(["x", "y"]);
 	});
 });
+
+/**
+ * `contentWidth`: how much room a caller actually has to draw in.
+ *
+ * WHY IT IS PUBLIC. Callers that FILL a row (a selection highlight, a header
+ * band) have to know where to stop. Padding to the width passed to `render`
+ * overruns the scrollbar band, and `render` then truncates the line to make room
+ * for the bar, cutting whatever escape closed the fill: the bar and every cell
+ * after it come out painted, with nothing left to turn the colour off. Two
+ * copies of the "reserve two columns" rule drift the same way, one silently.
+ */
+describe("ScrollView.contentWidth", () => {
+	/** Content that fits keeps the whole width: there is no bar to make room for. */
+	it("reserves nothing when the content fits the viewport", () => {
+		const view = new ScrollView(["one", "two"], { height: 3, theme });
+
+		expect(view.contentWidth(20)).toBe(20);
+	});
+
+	/** Overflowing content loses the gap plus the bar glyph, which is two columns. */
+	it("reserves the gap and the bar when the content overflows", () => {
+		const view = new ScrollView(["one", "two", "three", "four"], { height: 2, theme });
+
+		expect(view.contentWidth(20)).toBe(18);
+	});
+
+	/** `always` reserves even when everything fits, because the bar is drawn anyway. */
+	it("reserves for a scrollbar that is pinned on", () => {
+		const view = new ScrollView(["one"], { height: 3, scrollbar: "always", theme });
+
+		expect(view.contentWidth(20)).toBe(18);
+	});
+
+	/** `never` reserves nothing however far the content overflows. */
+	it("reserves nothing for a scrollbar that is turned off", () => {
+		const view = new ScrollView(["one", "two", "three", "four"], { height: 1, scrollbar: "never", theme });
+
+		expect(view.contentWidth(20)).toBe(20);
+	});
+
+	/** It answers for the width asked about, not for the last width rendered. */
+	it("answers for the width it is given", () => {
+		const view = new ScrollView(["one", "two", "three"], { height: 1, theme });
+
+		expect(view.contentWidth(40)).toBe(38);
+		expect(view.contentWidth(8)).toBe(6);
+	});
+
+	/** A width of zero has nothing to reserve from, and must not go negative. */
+	it("never returns a negative width", () => {
+		const view = new ScrollView(["one", "two", "three"], { height: 1, theme });
+
+		expect(view.contentWidth(0)).toBe(0);
+		expect(view.contentWidth(1)).toBe(0);
+	});
+
+	/**
+	 * The point of the whole method: a line padded to `contentWidth` reaches
+	 * `render` intact. Padded to the full width instead, it is truncated, and the
+	 * ellipsis lands where the caller's trailing style should have been.
+	 */
+	it("keeps a line padded to it from being truncated", () => {
+		const view = new ScrollView([], { height: 2, totalRows: 9, theme });
+		const width = 12;
+		const padded = `ab${" ".repeat(view.contentWidth(width) - 2)}`;
+		view.setLines([padded, padded]);
+
+		const rendered = view.render(width);
+
+		expect(rendered[0]).toBe(`${padded} B`);
+		expect(visibleWidth(rendered[0])).toBe(width);
+	});
+});

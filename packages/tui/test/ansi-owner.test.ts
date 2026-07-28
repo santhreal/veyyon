@@ -26,6 +26,9 @@ import {
 	SGR_FG_RESET,
 	SGR_INTENSITY_RESET,
 	SGR_RESET,
+	SGR_RESET_SHORT,
+	SGR_SEQUENCE_PATTERN,
+	sgrSequence,
 	ST,
 } from "@veyyon/tui/ansi";
 
@@ -340,5 +343,175 @@ describe("primitive ownership", () => {
 		// Non-vacuity: metaharness really does declare the introducer, under the right name.
 		const runner = await Bun.file(path.resolve(import.meta.dir, "../../metaharness/src/runner.ts")).text();
 		expect(runner).toContain('const CSI = "\\x1b[";');
+	});
+});
+
+/**
+ * The SGR PATTERN, which is the same disease one level up: a grammar rather than a byte string.
+ *
+ * `\x1b\[[0-9;:]*m` was written out four times under four names, in `utils.ts`, `tui.ts`,
+ * `components/markdown.ts` and `coding-agent/src/tools/terminal-output.ts`. Three were
+ * byte-identical and differed only in flags; the fourth had already drifted to `[0-9;]` with no
+ * colon, so a truecolor SGR written with colon subparameters did not match it at all and the
+ * row it was re-rendering lost its colour. That is the copies-drift failure stated as a fact
+ * rather than a worry, and it is why the pattern needs an owner even though it is not a
+ * constant a terminal parses.
+ */
+describe("the SGR sequence pattern", () => {
+	/** The grammar itself, asserted as the string so a silent widening is visible in the diff. */
+	it("accepts digits, semicolons and colons between the introducer and the m", () => {
+		expect(SGR_SEQUENCE_PATTERN).toBe("\\x1b\\[([0-9;:]*)m");
+	});
+
+	/**
+	 * A fresh object per call, which is the reason this is a factory and not a shared `RegExp`.
+	 *
+	 * The four callers need `g`, `g`, `y` and `g`, and a global or sticky `RegExp` carries
+	 * `lastIndex` across uses. Sharing one object between a sticky scan in the markdown renderer
+	 * and a global strip in the frame differ would make each depend on where the other stopped.
+	 */
+	it("hands out a new RegExp each time, with the caller's flags", () => {
+		const first = sgrSequence("g");
+		const second = sgrSequence("y");
+		expect(first).not.toBe(second);
+		expect(first.flags).toBe("g");
+		expect(second.flags).toBe("y");
+		first.lastIndex = 5;
+		expect(sgrSequence("g").lastIndex).toBe(0);
+	});
+
+	/** What it matches, including the colon spelling the fourth copy could not see. */
+	it("matches both truecolor spellings and captures the parameters", () => {
+		const semicolons = sgrSequence("").exec("\x1b[38;2;255;0;0m");
+		expect(semicolons?.[0]).toBe("\x1b[38;2;255;0;0m");
+		expect(semicolons?.[1]).toBe("38;2;255;0;0");
+		const colons = sgrSequence("").exec("\x1b[38:2:255:0:0m");
+		expect(colons?.[0]).toBe("\x1b[38:2:255:0:0m");
+		expect(colons?.[1]).toBe("38:2:255:0:0");
+		expect(sgrSequence("").exec("\x1b[0m")?.[1]).toBe("0");
+		// The parameterless spelling, whose capture is empty and which still means a full reset.
+		expect(sgrSequence("").exec(SGR_RESET_SHORT)?.[1]).toBe("");
+	});
+
+	/**
+	 * And what it must NOT match, which is the half a widened class would break.
+	 *
+	 * `?` `<` `=` `>` are parameter bytes in the CSI grammar that `@veyyon/utils/strip-ansi`
+	 * owns, and an `ESC [ ?25 m` is not a colour change. Widening this class to the spec's full
+	 * `0x30-0x3f` would make all four callers treat a private-mode sequence as a style and
+	 * replay it into the render.
+	 */
+	it("does not match a private-mode sequence or a non-m final", () => {
+		expect(sgrSequence("").test("\x1b[?25m")).toBe(false);
+		expect(sgrSequence("").test("\x1b[2J")).toBe(false);
+		expect(sgrSequence("").test("\x1b[H")).toBe(false);
+		expect(sgrSequence("").test("[31m")).toBe(false);
+	});
+
+	/**
+	 * The ratchet: no module writes the pattern out again.
+	 *
+	 * Keyed on the escape-bracket-through-m shape rather than on a name, because the four copies
+	 * had four different names and a name-based check would have found none of them.
+	 */
+	it("is spelled in no other module", async () => {
+		const literal = /\/\\x1b\\\[[^/]*m\//;
+		const offenders: string[] = [];
+		for (const tree of [TUI_SRC, CODING_AGENT_SRC]) {
+			for (const file of new Bun.Glob("**/*.ts").scanSync(tree)) {
+				const full = path.join(tree, file);
+				if (full === path.join(TUI_SRC, "ansi.ts")) continue;
+				const text = await Bun.file(full).text();
+				for (const [index, line] of text.split("\n").entries()) {
+					if (literal.test(line)) offenders.push(`${path.relative(path.join(TUI_SRC, ".."), full)}:${index + 1}`);
+				}
+			}
+		}
+		expect(offenders).toEqual([]);
+	});
+
+	/** Non-vacuity for the ratchet: the detector really does recognise the shape it bans. */
+	it("would catch a fifth copy", () => {
+		const literal = /\/\\x1b\\\[[^/]*m\//;
+		expect(literal.test('const SGR = /\\x1b\\[[0-9;:]*m/g;')).toBe(true);
+		expect(literal.test('const SGR = /\\x1b\\[([0-9;]*)m/g;')).toBe(true);
+		expect(literal.test('const CSI = /\\x1b\\[[0-?]*[ -/]*[@-~]/g;')).toBe(false);
+	});
+});
+
+/**
+ * The VALUE-keyed ratchet, which is the one the name-keyed check above cannot be.
+ *
+ * `declares none of the retired names` lists the eleven names the first cut removed, so it holds
+ * those eleven down and nothing else: a twelfth copy under a twelfth name walks straight past it,
+ * which is exactly what happened. Nine more inline copies of these bytes accumulated afterwards,
+ * under `reset`, `TRANSPARENT_BG_ANSI`, `keywordReset`, and several with no name at all, written
+ * directly into a template or a `replaceAll` argument. A check keyed on the BYTES cannot be
+ * evaded by naming, because the bytes are the thing a terminal parses and there is only one way
+ * to spell them.
+ */
+describe("nobody writes the reset bytes again", () => {
+	/** The four resets this module owns, with the name to import instead of each. */
+	const OWNED: Array<[string, string]> = [
+		["\\x1b\\[0m", "SGR_RESET"],
+		["\\x1b\\[39m", "SGR_FG_RESET"],
+		["\\x1b\\[49m", "SGR_BG_RESET"],
+		["\\x1b\\[22m", "SGR_INTENSITY_RESET"],
+	];
+
+	/**
+	 * Code only, not prose. A doc comment naming the sequence it is talking about is how these
+	 * are explained, and banning that would make the explanations impossible to write.
+	 */
+	function codeLines(text: string): Array<[number, string]> {
+		const out: Array<[number, string]> = [];
+		let inBlockComment = false;
+		for (const [index, raw] of text.split("\n").entries()) {
+			const line = raw.trim();
+			if (inBlockComment) {
+				if (line.includes("*/")) inBlockComment = false;
+				continue;
+			}
+			if (line.startsWith("/*")) {
+				if (!line.includes("*/")) inBlockComment = true;
+				continue;
+			}
+			if (line.startsWith("//") || line.startsWith("*")) continue;
+			out.push([index + 1, raw]);
+		}
+		return out;
+	}
+
+	it("declares each reset in one place and imports it everywhere else", async () => {
+		const offenders: string[] = [];
+		for (const tree of [TUI_SRC, CODING_AGENT_SRC]) {
+			for (const file of new Bun.Glob("**/*.ts").scanSync(tree)) {
+				const full = path.join(tree, file);
+				if (full === path.join(TUI_SRC, "ansi.ts")) continue;
+				// The dependency-free QR renderer keeps its own, for the reason recorded above.
+				if (full === path.join(CODING_AGENT_SRC, "utils", "qrcode.ts")) continue;
+				const text = await Bun.file(full).text();
+				for (const [line, content] of codeLines(text)) {
+					for (const [bytes, owner] of OWNED) {
+						if (content.includes(bytes)) offenders.push(`${file}:${line} spells ${owner}`);
+					}
+				}
+			}
+		}
+		expect(offenders).toEqual([]);
+	});
+
+	/**
+	 * Non-vacuity, in both directions: the scan reads code and skips prose.
+	 *
+	 * Without the first half, a broken glob or a broken comment-stripper would report a clean
+	 * tree forever. Without the second, the check would ban the doc comments that explain why
+	 * these constants exist.
+	 */
+	it("reads code lines and skips comments", () => {
+		const sample = ['/** A doc mentioning \\x1b[0m. */', "// Also \\x1b[39m here.", 'const bad = "\\x1b[49m";'].join("\n");
+		const lines = codeLines(sample);
+		expect(lines).toHaveLength(1);
+		expect(lines[0]?.[1]).toContain("\\x1b\\[49m".replace("\\[", "["));
 	});
 });

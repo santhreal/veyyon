@@ -19,16 +19,21 @@ import { fuzzSeed, fuzzStrings, lcg } from "@veyyon/utils/adversarial-strings";
 
 // Content on which the two independent width oracles — the Rust-native
 // truncateToWidth and the JS visibleWidth (Bun.stringWidth + corrections) —
-// provably agree: printable ASCII, wide CJK/fullwidth graphemes, a single emoji,
-// and well-formed ANSI color. This is the surface the width-BOUND property
-// guards. Deliberately excluded (still fuzzed for no-throw above): raw C0 control
-// bytes, bare/partial escapes, ZWJ emoji families, and combining / zero-width
-// marks. On those the two oracles use different width models
-// (BUG-WIDTH-MODEL-DIVERGENCE) — visibleWidth adds back OSC66 scaled widths,
-// counts stray OSC/CSI-intro bytes and some combining marks (e.g. U+0489) that
-// the native strips to zero, and clusters ZWJ sequences differently — so a
-// native-truncated span can re-measure wider than the target. The divergence is
-// tracked for a native reconciliation of the two width implementations.
+// provably agree. This is the surface the width-BOUND property guards, and it is
+// deliberately grown as divergences are fixed rather than left at the safe
+// minimum: printable ASCII, wide CJK/fullwidth graphemes, a single emoji,
+// well-formed ANSI color, and the zero-width marks whose corrections now live in
+// `visibleWidth` (see `visible-width-enclosing-marks.test.ts` for what each one
+// pins), and WELL-FORMED OSC 66 text-sizing spans, whose three divergences are
+// fixed and pinned in `visible-width-osc66-spans.test.ts`. Still excluded, and
+// still fuzzed for no-throw above: raw C0 control bytes, UNTERMINATED escape
+// introducers, MALFORMED OSC 66 spans (an escape in the payload, or no
+// terminator), and ZWJ emoji families. On those the two oracles use different
+// width models (BUG-WIDTH-MODEL-DIVERGENCE): the native counts the bytes after an
+// `ESC` that never completed a sequence, where Bun and a real terminal both draw
+// nothing. Every remaining one is the NATIVE's answer to fix, and every one is in
+// the safe direction, native wider than JS, so it clips a span rather than
+// overflowing a line.
 const SAFE_FRAGMENTS: string[] = [
 	"a",
 	"Z",
@@ -38,9 +43,23 @@ const SAFE_FRAGMENTS: string[] = [
 	"Ａ", // fullwidth A (wide)
 	"　", // ideographic space (wide)
 	"\u{1f600}", // single emoji
+	"\u0489", // enclosing mark Bun over-counted (zero cells)
+	"\ua670", // ditto, the other block
+	"\u20dd", // enclosing mark both oracles already zeroed
+	"\u20e3", // keycap combiner with no keycap base (zero cells)
+	"1\ufe0f\u20e3", // a real keycap sequence (two cells)
+	"\ufe0f", // lone variation selector (zero cells)
 	"\x1b[31m",
 	"\x1b[0m",
 	"\x1b[1;32;40m",
+	"\x1bm", // two-byte Fe escape, zero cells
+	"\x1b(B", // nF character-set designator, zero cells
+	"\x1bPq\x1b\\", // DCS string sequence, payload included, zero cells
+	"\x1b]0;t\ti\x07", // OSC with a tab in it, zero cells
+	"\x1b]66;s=2;Hi\x1b\\", // OSC 66 scaled span, four cells
+	"\x1b]66;w=5;Hi\x07", // OSC 66 with a declared width, five cells
+	"\x1b]66;s=2;a\t\x1b\\", // OSC 66 whose payload tab scales with the span
+	"\x1b]66;w=+5;Hi\x1b\\", // OSC 66 with malformed metadata, two cells
 ];
 
 function buildSafeString(rand: () => number): string {
@@ -58,7 +77,14 @@ const WIDTHS = [0, 1, 2, 3, 5, 8, 13, 40, 200, -1, -100, 2 ** 31, Number.MAX_SAF
  * Empty is the honest state. Add the string a failure's `corpus entry:` line prints, with a comment
  * naming the bug it locks out; see `docs/internal/fuzzing.md`.
  */
-const VISIBLE_WIDTH_CORPUS: readonly string[] = [];
+const VISIBLE_WIDTH_CORPUS: readonly string[] = [
+	// A zero-width mark inside an unterminated OSC. `visibleWidth` strips the OSC
+	// before measuring, and the first version of the enclosing-mark correction
+	// re-scanned the ORIGINAL string and subtracted a cell for a mark that was never
+	// counted, returning -1. The correction now removes the marks from the text it is
+	// about to measure instead of adjusting the number afterwards.
+	"\x1b]\u0489",
+];
 
 /** Same, for the `truncateToWidth` no-throw invariant. See {@link VISIBLE_WIDTH_CORPUS}. */
 const TRUNCATE_CORPUS: readonly string[] = [];
