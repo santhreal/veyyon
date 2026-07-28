@@ -47,9 +47,9 @@ export interface AtomicWriteOptions {
 	fsync?: boolean;
 }
 
-// Monotonic per-process counter so two concurrent atomic writes to the same
-// path never pick the same temp name and clobber each other's temp file. A
-// fixed `${path}.tmp` suffix (the pattern several call sites used) races.
+// Monotonic per-process counter gives every in-flight writer a distinct name.
+// The temp is then reserved with O_EXCL, so wraparound or debris from a killed
+// process cannot make a later writer truncate a file it does not own.
 let tempCounter = 0;
 
 function nextTempPath(dir: string, targetBasename: string): string {
@@ -57,11 +57,54 @@ function nextTempPath(dir: string, targetBasename: string): string {
 	return path.join(dir, `.${targetBasename}.${process.pid}.${tempCounter}.tmp`);
 }
 
-// Windows can reject renaming a temp over an existing file. These codes mean
-// "remove the destination and retry the rename", never "fall back to a
-// non-atomic copy".
+
+function removeTempSync(tmpPath: string): void {
+	fs.rmSync(tmpPath, { force: true, recursive: true });
+}
+
+async function reserveTempFile(
+	dir: string,
+	targetBasename: string,
+	mode: number,
+	target: string,
+): Promise<{ handle: fsp.FileHandle; tmpPath: string }> {
+	for (;;) {
+		const tmpPath = nextTempPath(dir, targetBasename);
+		try {
+			return { handle: await fsp.open(tmpPath, "wx", mode), tmpPath };
+		} catch (error) {
+			if (isFsError(error) && error.code === "EEXIST") continue;
+			throw withTargetInMessage(error, target, tmpPath);
+		}
+	}
+}
+
+function reserveTempFileSync(
+	dir: string,
+	targetBasename: string,
+	mode: number,
+	target: string,
+): { fd: number; tmpPath: string } {
+	for (;;) {
+		const tmpPath = nextTempPath(dir, targetBasename);
+		try {
+			return { fd: fs.openSync(tmpPath, "wx", mode), tmpPath };
+		} catch (error) {
+			if (isFsError(error) && error.code === "EEXIST") continue;
+			throw withTargetInMessage(error, target, tmpPath);
+		}
+	}
+}
+
+// Windows can reject renaming a temp over an existing file. Never apply this
+// destructive compatibility path on POSIX: EACCES/EPERM there describes a real
+// permissions failure and removing the destination would turn it into data loss.
 function isRenameClobberError(error: unknown): boolean {
-	return isFsError(error) && (error.code === "EPERM" || error.code === "EEXIST" || error.code === "EACCES");
+	return (
+		process.platform === "win32" &&
+		isFsError(error) &&
+		(error.code === "EPERM" || error.code === "EEXIST" || error.code === "EACCES")
+	);
 }
 
 // The bytes writer and the path writer share the tricky, drift-prone parts of an
@@ -69,44 +112,36 @@ function isRenameClobberError(error: unknown): boolean {
 // fsync. These three helpers are that single home; both public writers call them
 // so the behavior can only ever be defined once.
 
-// Resolve the real file an atomic write should replace. If `filePath` is a
-// symlink (a dotfile manager pointing config.yml into a synced repo), return the
-// file at the END of the link chain so every link survives; renaming a temp over
-// a link name would silently turn that link into a regular file. A dangling link
-// keeps `viaSymlink` true so the caller skips mkdir and fails loudly on the
-// missing directory.
-//
-// The whole chain matters, not just the first hop. Resolving one level with
-// `readlink` and stopping there is what a naive implementation does, and it is
-// wrong in the common dotfile-manager layout where `~/.config/app` points at a
-// link that points at the real file: the write lands on the INTERMEDIATE link,
-// destroying it, and the file the user actually keeps is never updated. That is
-// silent in both directions — no error, and a read afterwards returns the new
-// bytes from the replaced link. `realpath` follows the chain to its end.
-//
-// `resolveWriteTargetSync` below is the blocking twin; keep the two in step.
+// Follow every basename symlink ourselves instead of using realpath. realpath
+// cannot return the resolved prefix of a dangling chain; falling back to a
+// single readlink hop would then rename over the next link and destroy it.
 async function resolveWriteTarget(filePath: string): Promise<{ target: string; viaSymlink: boolean }> {
-	try {
-		const stats = await fsp.lstat(filePath);
-		if (!stats.isSymbolicLink()) {
-			assertRegularFileTarget(stats, filePath);
-			return { target: filePath, viaSymlink: false };
+	let target = filePath;
+	let viaSymlink = false;
+	const seen = new Set<string>();
+
+	for (;;) {
+		let stats: fs.Stats;
+		try {
+			stats = await fsp.lstat(target);
+		} catch (error) {
+			if (!isEnoent(error)) throw error;
+			return { target, viaSymlink };
 		}
-	} catch (error) {
-		// ENOENT is the normal first-write case (the path does not exist yet).
-		if (!isEnoent(error)) throw error;
-		return { target: filePath, viaSymlink: false };
-	}
-	try {
-		const target = await fsp.realpath(filePath);
-		assertRegularFileTarget(await fsp.lstat(target), target);
-		return { target, viaSymlink: true };
-	} catch (error) {
-		// A dangling link (or a chain ending in one) has no real path. Fall back to
-		// the single hop so the caller reports the missing directory by name rather
-		// than reporting the link itself.
-		if (!isEnoent(error)) throw error;
-		return { target: path.resolve(path.dirname(filePath), await fsp.readlink(filePath)), viaSymlink: true };
+		if (!stats.isSymbolicLink()) {
+			assertRegularFileTarget(stats, target);
+			return { target, viaSymlink };
+		}
+
+		viaSymlink = true;
+		const absoluteTarget = path.resolve(target);
+		if (seen.has(absoluteTarget)) {
+			const error = new Error(`Too many symbolic links while resolving ${filePath}`) as NodeJS.ErrnoException;
+			error.code = "ELOOP";
+			throw error;
+		}
+		seen.add(absoluteTarget);
+		target = path.resolve(path.dirname(target), await fsp.readlink(target));
 	}
 }
 
@@ -130,13 +165,15 @@ function assertRegularFileTarget(stats: fs.Stats, target: string): void {
 	if (stats.isFile()) return;
 	const kind = stats.isDirectory()
 		? "a directory"
-		: stats.isFIFO()
-			? "a named pipe (FIFO)"
-			: stats.isSocket()
-				? "a socket"
-				: stats.isBlockDevice() || stats.isCharacterDevice()
-					? "a device node"
-					: "not a regular file";
+		: stats.isSymbolicLink()
+			? "a symbolic link"
+			: stats.isFIFO()
+				? "a named pipe (FIFO)"
+				: stats.isSocket()
+					? "a socket"
+					: stats.isBlockDevice() || stats.isCharacterDevice()
+						? "a device node"
+						: "not a regular file";
 	throw new Error(
 		`Refusing to write ${target}: it is ${kind}, and an atomic write would replace it with a regular file. ` +
 			`Point the write at a regular file path instead.`,
@@ -145,23 +182,32 @@ function assertRegularFileTarget(stats: fs.Stats, target: string): void {
 
 /** Blocking twin of {@link resolveWriteTarget}; see that function for the reasoning. */
 function resolveWriteTargetSync(filePath: string): { target: string; viaSymlink: boolean } {
-	try {
-		const stats = fs.lstatSync(filePath);
-		if (!stats.isSymbolicLink()) {
-			assertRegularFileTarget(stats, filePath);
-			return { target: filePath, viaSymlink: false };
+	let target = filePath;
+	let viaSymlink = false;
+	const seen = new Set<string>();
+
+	for (;;) {
+		let stats: fs.Stats;
+		try {
+			stats = fs.lstatSync(target);
+		} catch (error) {
+			if (!isEnoent(error)) throw error;
+			return { target, viaSymlink };
 		}
-	} catch (error) {
-		if (!isEnoent(error)) throw error;
-		return { target: filePath, viaSymlink: false };
-	}
-	try {
-		const target = fs.realpathSync(filePath);
-		assertRegularFileTarget(fs.lstatSync(target), target);
-		return { target, viaSymlink: true };
-	} catch (error) {
-		if (!isEnoent(error)) throw error;
-		return { target: path.resolve(path.dirname(filePath), fs.readlinkSync(filePath)), viaSymlink: true };
+		if (!stats.isSymbolicLink()) {
+			assertRegularFileTarget(stats, target);
+			return { target, viaSymlink };
+		}
+
+		viaSymlink = true;
+		const absoluteTarget = path.resolve(target);
+		if (seen.has(absoluteTarget)) {
+			const error = new Error(`Too many symbolic links while resolving ${filePath}`) as NodeJS.ErrnoException;
+			error.code = "ELOOP";
+			throw error;
+		}
+		seen.add(absoluteTarget);
+		target = path.resolve(path.dirname(target), fs.readlinkSync(target));
 	}
 }
 
@@ -194,38 +240,97 @@ function withTargetInMessage(error: unknown, target: string, tmpPath: string): u
 	return restated;
 }
 
-async function renameTempOverTarget(tmpPath: string, target: string): Promise<void> {
+async function assertReplaceableTarget(target: string): Promise<void> {
 	try {
-		await fsp.rename(tmpPath, target);
+		assertRegularFileTarget(await fsp.lstat(target), target);
 	} catch (error) {
-		if (isRenameClobberError(error)) {
-			await fsp.rm(target, { force: true });
-			await fsp.rename(tmpPath, target);
-		} else {
-			// The RENAME error is the one the caller needs, and it is rethrown below. A failure to remove the
-			// temp file cannot be reported without replacing that error with a less useful one, so it is
-			// deliberately dropped: the worst outcome is one leftover `*.tmp*` beside the target, while the
-			// worst outcome of surfacing it is a write failure explained by the wrong error.
-			await fsp.rm(tmpPath, { force: true }).catch(() => {});
-			throw error;
-		}
+		if (!isEnoent(error)) throw error;
 	}
 }
 
-async function fsyncDirEntry(dir: string): Promise<void> {
-	// Persist the rename itself by flushing the directory entry. Some platforms
-	// (notably Windows) do not allow opening a directory for fsync; the rename is
-	// still durable enough there, so ignore the failure.
+function assertReplaceableTargetSync(target: string): void {
 	try {
-		const dirHandle = await fsp.open(dir, "r");
-		try {
-			await dirHandle.sync();
-		} finally {
-			await dirHandle.close();
-		}
-	} catch {
-		// Directory fsync unsupported on this platform; the rename stands.
+		assertRegularFileTarget(fs.lstatSync(target), target);
+	} catch (error) {
+		if (!isEnoent(error)) throw error;
 	}
+}
+
+async function renameTempOverTarget(tmpPath: string, target: string): Promise<void> {
+	try {
+		await fsp.rename(tmpPath, target);
+		return;
+	} catch (error) {
+		if (!isRenameClobberError(error)) throw error;
+	}
+
+	// Windows lacks a consistently atomic replace-existing rename. Preserve the
+	// displaced inode under an owned sibling until the replacement succeeds, so
+	// a failed second rename can restore the caller's original bytes.
+	await assertReplaceableTarget(target);
+	const backupPath = nextTempPath(path.dirname(target), `${path.basename(target)}.previous`);
+	try {
+		await fsp.rename(target, backupPath);
+	} catch (error) {
+		if (!isEnoent(error)) throw error;
+		// Another writer removed the target after our failed clobber attempt.
+		await fsp.rename(tmpPath, target);
+		return;
+	}
+	try {
+		await fsp.rename(tmpPath, target);
+	} catch (replacementError) {
+		try {
+			await fsp.rename(backupPath, target);
+		} catch (restoreError) {
+			throw new AggregateError(
+				[replacementError, restoreError],
+				`Failed to replace ${target}, then failed to restore its previous contents`,
+			);
+		}
+		throw replacementError;
+	}
+	await fsp.rm(backupPath, { force: true, recursive: true });
+}
+
+const DIRECTORY_FSYNC_UNSUPPORTED: Readonly<Record<string, true>> = {
+	EINVAL: true,
+	EISDIR: true,
+	ENOSYS: true,
+	ENOTSUP: true,
+};
+
+function isDirectoryFsyncUnsupported(error: unknown): boolean {
+	if (!isFsError(error) || error.code === undefined) return false;
+	if (DIRECTORY_FSYNC_UNSUPPORTED[error.code]) return true;
+	// Windows refuses directory handles with either access code depending on
+	// filesystem and Node version. On POSIX those codes are real failures.
+	return process.platform === "win32" && (error.code === "EACCES" || error.code === "EPERM");
+}
+
+async function fsyncDirEntry(dir: string): Promise<void> {
+	let dirHandle: fsp.FileHandle;
+	try {
+		dirHandle = await fsp.open(dir, "r");
+	} catch (error) {
+		if (isDirectoryFsyncUnsupported(error)) return;
+		throw error;
+	}
+
+	let syncError: unknown;
+	try {
+		await dirHandle.sync();
+	} catch (error) {
+		if (!isDirectoryFsyncUnsupported(error)) syncError = error;
+	}
+	try {
+		await dirHandle.close();
+	} catch (error) {
+		// A failed durability operation is the primary diagnosis; a close failure
+		// must not replace it. If sync succeeded, the close failure still matters.
+		if (syncError === undefined) syncError = error;
+	}
+	if (syncError !== undefined) throw syncError;
 }
 
 /**
@@ -239,22 +344,27 @@ export async function atomicWriteFile(
 	options: AtomicWriteOptions = {},
 ): Promise<void> {
 	const { mode = 0o600, fsync = true } = options;
-	await atomicWriteFileWith(
+	await atomicWriteBytes(filePath, data, mode, fsync, false);
+}
+
+async function atomicWriteBytes(
+	filePath: string,
+	data: string | NodeJS.ArrayBufferView,
+	mode: number,
+	fsync: boolean,
+	preserveModeExactly: boolean,
+): Promise<void> {
+	await atomicWriteFileWithImpl(
 		filePath,
-		async tmpPath => {
-			// Open with `mode` so the created file (and the replacement it becomes)
-			// carries the requested permissions, then fsync the write handle
-			// directly. Flushing the same handle that holds write access is what
-			// keeps durability correct on Windows, where fsync needs write rights.
-			const handle = await fsp.open(tmpPath, "w", mode);
-			try {
+		{
+			kind: "handle",
+			write: async handle => {
 				await handle.writeFile(data);
+				if (preserveModeExactly) await handle.chmod(mode);
 				if (fsync) await handle.sync();
-			} finally {
-				await handle.close();
-			}
+			},
 		},
-		{ fsync, fsyncTempFile: false },
+		{ fsync, mode },
 	);
 }
 
@@ -279,14 +389,16 @@ export async function atomicWriteFilePreservingMode(
 	data: string | NodeJS.ArrayBufferView,
 	options: { fsync?: boolean; defaultMode?: number } = {},
 ): Promise<void> {
-	const { fsync, defaultMode = 0o644 } = options;
+	const { fsync = true, defaultMode = 0o644 } = options;
 	let mode = defaultMode;
+	let existed = true;
 	try {
-		mode = (await fsp.stat(filePath)).mode & 0o777;
+		mode = (await fsp.stat(filePath)).mode & 0o7777;
 	} catch (error) {
 		if (!isEnoent(error)) throw error;
+		existed = false;
 	}
-	await atomicWriteFile(filePath, data, fsync === undefined ? { mode } : { mode, fsync });
+	await atomicWriteBytes(filePath, data, mode, fsync, existed);
 }
 
 /**
@@ -333,35 +445,75 @@ export async function atomicWriteFileWith(
 		fsyncTempFile?: boolean;
 	} = {},
 ): Promise<void> {
-	const { fsync = true, fsyncTempFile = true } = options;
+	await atomicWriteFileWithImpl(filePath, { kind: "path", write }, options);
+}
 
+type AtomicTempWriter =
+	| { kind: "handle"; write: (handle: fsp.FileHandle) => Promise<void> }
+	| { kind: "path"; write: (tempPath: string) => Promise<void> };
+
+interface AtomicWriteInternalOptions extends AtomicWriteOptions {
+	fsyncTempFile?: boolean;
+}
+
+async function atomicWriteFileWithImpl(
+	filePath: string,
+	writer: AtomicTempWriter,
+	options: AtomicWriteInternalOptions,
+): Promise<void> {
+	const { fsync = true, fsyncTempFile = true, mode = 0o600 } = options;
 	const { target, viaSymlink } = await resolveWriteTarget(filePath);
 	const dir = path.dirname(target);
-	// Create parents for a regular path (a convenience). Never fabricate the
-	// target directory of a symlink: a missing one means the link is dangling.
 	if (!viaSymlink) await fsp.mkdir(dir, { recursive: true });
 
-	const tmpPath = nextTempPath(dir, path.basename(target));
+	const reserved = await reserveTempFile(dir, path.basename(target), mode, target);
+	const { tmpPath } = reserved;
 	try {
-		await write(tmpPath);
-		if (fsync && fsyncTempFile) {
-			// Reopen read-write (not "r"): on Windows fsync needs write access, and
-			// the writer already closed its own fd.
-			const handle = await fsp.open(tmpPath, "r+");
+		if (writer.kind === "handle") {
+			let operationError: unknown;
 			try {
-				await handle.sync();
-			} finally {
-				await handle.close();
+				await writer.write(reserved.handle);
+			} catch (error) {
+				operationError = error;
 			}
-		}
-	} catch (error) {
-		await fsp.rm(tmpPath, { force: true }).catch(() => {});
-		throw withTargetInMessage(error, target, tmpPath);
-	}
+			try {
+				await reserved.handle.close();
+			} catch (error) {
+				if (operationError === undefined) operationError = error;
+			}
+			if (operationError !== undefined) throw operationError;
+		} else {
+			await reserved.handle.close();
+			await writer.write(tmpPath);
 
-	try {
+			// The producer owns only the bytes, never the type or permissions of
+			// the staging entry. A directory or link must not become the target.
+			assertRegularFileTarget(await fsp.lstat(tmpPath), tmpPath);
+			const handle = await fsp.open(tmpPath, "r+");
+			let operationError: unknown;
+			try {
+				const finalMode = process.platform === "win32" ? mode : mode & ~process.umask();
+				await handle.chmod(finalMode);
+				if (fsync && fsyncTempFile) await handle.sync();
+			} catch (error) {
+				operationError = error;
+			}
+			try {
+				await handle.close();
+			} catch (error) {
+				if (operationError === undefined) operationError = error;
+			}
+			if (operationError !== undefined) throw operationError;
+		}
+
+		// Recheck both names after user-controlled work and immediately before
+		// rename. This preserves a raced-in special destination and catches a
+		// swapped staging entry.
+		assertRegularFileTarget(await fsp.lstat(tmpPath), tmpPath);
+		await assertReplaceableTarget(target);
 		await renameTempOverTarget(tmpPath, target);
 	} catch (error) {
+		await fsp.rm(tmpPath, { force: true, recursive: true }).catch(() => {});
 		throw withTargetInMessage(error, target, tmpPath);
 	}
 	if (fsync) await fsyncDirEntry(dir);
@@ -378,62 +530,97 @@ export function atomicWriteFileSync(
 	options: AtomicWriteOptions = {},
 ): void {
 	const { mode = 0o600, fsync = true } = options;
-
 	const { target, viaSymlink } = resolveWriteTargetSync(filePath);
-
 	const dir = path.dirname(target);
 	if (!viaSymlink) fs.mkdirSync(dir, { recursive: true });
 
-	const tmpPath = nextTempPath(dir, path.basename(target));
-
-	let fd: number | undefined;
+	const { fd, tmpPath } = reserveTempFileSync(dir, path.basename(target), mode, target);
+	let operationError: unknown;
 	try {
-		fd = fs.openSync(tmpPath, "w", mode);
 		fs.writeFileSync(fd, data);
 		if (fsync) fs.fsyncSync(fd);
 	} catch (error) {
-		if (fd !== undefined) {
-			try {
-				fs.closeSync(fd);
-			} catch {
-				// already closed / invalid fd
-			}
-		}
-		try {
-			fs.rmSync(tmpPath, { force: true });
-		} catch {
-			// temp never created
-		}
-		throw withTargetInMessage(error, target, tmpPath);
+		operationError = error;
 	}
-	fs.closeSync(fd);
+	try {
+		fs.closeSync(fd);
+	} catch (error) {
+		if (operationError === undefined) operationError = error;
+	}
+	if (operationError !== undefined) {
+		try {
+			removeTempSync(tmpPath);
+		} catch {}
+		throw withTargetInMessage(operationError, target, tmpPath);
+	}
 
 	try {
+		assertRegularFileTarget(fs.lstatSync(tmpPath), tmpPath);
+		assertReplaceableTargetSync(target);
 		fs.renameSync(tmpPath, target);
 	} catch (error) {
 		if (isRenameClobberError(error)) {
-			fs.rmSync(target, { force: true });
-			fs.renameSync(tmpPath, target);
+			assertReplaceableTargetSync(target);
+			const backupPath = nextTempPath(dir, `${path.basename(target)}.previous`);
+			try {
+				fs.renameSync(target, backupPath);
+			} catch (backupError) {
+				if (!isEnoent(backupError)) throw withTargetInMessage(backupError, target, tmpPath);
+				fs.renameSync(tmpPath, target);
+				if (fsync) fsyncDirEntrySync(dir);
+				return;
+			}
+			try {
+				fs.renameSync(tmpPath, target);
+			} catch (renameError) {
+				try {
+					fs.renameSync(backupPath, target);
+				} catch (restoreError) {
+					throw new AggregateError(
+						[renameError, restoreError],
+						`Failed to replace ${target}, then failed to restore its previous contents`,
+					);
+				}
+				try {
+					removeTempSync(tmpPath);
+				} catch {}
+				throw withTargetInMessage(renameError, target, tmpPath);
+			}
+			try {
+				removeTempSync(backupPath);
+			} catch (cleanupError) {
+				throw withTargetInMessage(cleanupError, target, backupPath);
+			}
 		} else {
 			try {
-				fs.rmSync(tmpPath, { force: true });
-			} catch {
-				// best effort
-			}
+				removeTempSync(tmpPath);
+			} catch {}
 			throw withTargetInMessage(error, target, tmpPath);
 		}
 	}
 
-	if (fsync) {
-		try {
-			const dirFd = fs.openSync(dir, "r");
-			try {
-				fs.fsyncSync(dirFd);
-			} finally {
-				fs.closeSync(dirFd);
-			}
-		} catch {
-			// Directory fsync unsupported on this platform; the rename stands.
-		}
+	if (fsync) fsyncDirEntrySync(dir);
+}
+
+function fsyncDirEntrySync(dir: string): void {
+	let dirFd: number;
+	try {
+		dirFd = fs.openSync(dir, "r");
+	} catch (error) {
+		if (isDirectoryFsyncUnsupported(error)) return;
+		throw error;
 	}
+
+	let syncError: unknown;
+	try {
+		fs.fsyncSync(dirFd);
+	} catch (error) {
+		if (!isDirectoryFsyncUnsupported(error)) syncError = error;
+	}
+	try {
+		fs.closeSync(dirFd);
+	} catch (error) {
+		if (syncError === undefined) syncError = error;
+	}
+	if (syncError !== undefined) throw syncError;
 }
