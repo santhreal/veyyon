@@ -263,6 +263,7 @@ export const repoScriptTests = [
 	// Runs the installer for real, once per environment in
 	// scripts/install-tests/environments.toml, so it is slower than the parity
 	// suites above and belongs in the same gate rather than a nightly.
+	"scripts/posix-shell-portability.test.ts",
 	"scripts/installer-environment-matrix.test.ts",
 	// The same environments, updated rather than installed. Same reasoning: it
 	// runs the real installer once per case and then the real binary swap over
