@@ -276,6 +276,79 @@ describe("resolveUpdateMethod classifies binary vs source installs", () => {
 		expect(resolveUpdateMethod(shim)).toBe("source");
 	});
 
+	/**
+	 * The POSIX half of the shim defect above, which stayed open after the Windows
+	 * half was fixed because the fix was gated on a `.cmd` extension.
+	 *
+	 * A person who wants their own wrapper in front of a source checkout — to
+	 * export a variable, to pick a different Bun — writes a shell script at the
+	 * PATH entry that execs the checkout's launcher. It is a real file and it has
+	 * no extension, so realpath stops at it and the launcher tail never matches:
+	 * the install classified as `binary` and `veyyon update` would overwrite the
+	 * wrapper with a downloaded release binary, destroying the wrapper and
+	 * orphaning the checkout. Exactly the Windows failure, on the other platform.
+	 */
+	it("classifies a POSIX shell wrapper that execs the launcher as source", () => {
+		const wrapper = "/home/u/.local/bin/veyyon";
+		const launcher = "/home/u/.veyyon/src/packages/coding-agent/scripts/veyyon";
+		expect(resolveUpdateMethod(wrapper, () => `#!/bin/sh\nexec "${launcher}" "$@"\n`)).toBe("source");
+	});
+
+	/** The same wrapper written without quotes, which is just as common. */
+	it("classifies an unquoted exec of the launcher as source", () => {
+		const wrapper = "/home/u/.local/bin/veyyon";
+		const launcher = "/home/u/.veyyon/src/packages/coding-agent/scripts/veyyon";
+		expect(resolveUpdateMethod(wrapper, () => `#!/usr/bin/env bash\nexport FOO=1\nexec ${launcher} "$@"\n`)).toBe(
+			"source",
+		);
+	});
+
+	/** A wrapper in front of a standalone binary is still a binary install. */
+	it("classifies a POSIX wrapper that execs a plain binary as binary", () => {
+		const wrapper = "/home/u/.local/bin/veyyon";
+		expect(resolveUpdateMethod(wrapper, () => '#!/bin/sh\nexec "/opt/veyyon/veyyon" "$@"\n')).toBe("binary");
+	});
+
+	/**
+	 * The shebang gate. Without it the classifier would scan the standalone
+	 * release binary's own bytes for anything that looks like the launcher path,
+	 * and a release that happens to embed one of its own build paths would be
+	 * misclassified as a source install — the updater would then try to git-pull a
+	 * checkout that is not there. Only `#!` scripts and `.cmd`/`.bat` are read.
+	 */
+	it("never classifies a binary as source from bytes that merely contain the launcher path", () => {
+		const binary = "/home/u/.local/bin/veyyon";
+		const launcher = "/build/agent/packages/coding-agent/scripts/veyyon";
+		expect(resolveUpdateMethod(binary, () => `\x7fELF\x02\x01\x01 "${launcher}"`)).toBe("binary");
+	});
+
+	it("reads a real on-disk POSIX wrapper, not just an injected reader", () => {
+		// The production reader, on the platform where the wrapper has no extension
+		// to hint at it: only the shebang tells it apart from the release binary.
+		const dir = makeCmdShimDir();
+		const launcher = path.join(dir, "src", "packages", "coding-agent", "scripts", "veyyon");
+		const wrapper = path.join(dir, "veyyon");
+		nodeFs.writeFileSync(wrapper, `#!/bin/sh\nexec "${launcher}" "$@"\n`);
+		expect(resolveUpdateMethod(wrapper)).toBe("source");
+	});
+
+	/**
+	 * The bound on how much of the PATH entry is read. The standalone release
+	 * binary is over a hundred megabytes and this runs on every update check, so a
+	 * forwarding line past the first 4 KiB is deliberately not found.
+	 */
+	it("reads only the first 4 KiB of the file on PATH", () => {
+		const dir = makeCmdShimDir();
+		const wrapper = path.join(dir, "veyyon");
+		const launcher = path.join(dir, "src", "packages", "coding-agent", "scripts", "veyyon");
+		nodeFs.writeFileSync(wrapper, `#!/bin/sh\n${"# pad\n".repeat(1000)}exec "${launcher}" "$@"\n`);
+		expect(resolveUpdateMethod(wrapper)).toBe("binary");
+
+		const near = path.join(dir, "veyyon-near");
+		nodeFs.writeFileSync(near, `#!/bin/sh\n${"# pad\n".repeat(100)}exec "${launcher}" "$@"\n`);
+		expect(resolveUpdateMethod(near)).toBe("source");
+	});
+
 	it("guidance for a source install names the launcher and the git-pull remedy", () => {
 		const launcher = "/home/u/.veyyon/src/packages/coding-agent/scripts/veyyon";
 		const msg = updateCli.sourceInstallUpdateGuidance(launcher);
