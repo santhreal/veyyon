@@ -9,10 +9,11 @@
 #
 # With options:
 #   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source
-#   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Binary
-#   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source -Ref v1.0.11
-#   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Binary -Ref v1.0.11
-#   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Uninstall
+#   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Help
+#
+# The full option list lives in Write-Usage below, which is what -Help prints. A
+# second copy here would be the one that goes stale, and it is the copy nobody
+# running -Help would ever see.
 #
 # -Local installs the binary this checkout has already built
 # (packages\coding-agent\dist\vey.exe) instead of downloading a release. It is
@@ -28,7 +29,8 @@ param(
     [switch]$Local,
     [string]$Ref,
     [switch]$NoVerify,
-    [switch]$Uninstall
+    [switch]$Uninstall,
+    [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
@@ -1578,10 +1580,46 @@ function Write-BrandMark {
     foreach ($line in (Get-BrandMarkLines -Color:$color)) { Write-Host $line }
 }
 
+# What the installer can be asked to do, and the single owner of the option list:
+# -Help prints this, and the header of this file points here rather than carrying
+# a second copy to go stale. Counterpart of usage() in install.sh.
+#
+# It exists because the options were documented in a comment at the top of the
+# file, which is exactly what an `irm ... | iex` install never shows anyone.
+function Write-Usage {
+    Write-Host @"
+veyyon installer
+
+  irm https://veyyon.dev/install.ps1 | iex                                    install the latest release
+  & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) <options>   with options
+
+Options:
+  -Binary           Install the prebuilt binary (the default; no toolchain needed)
+  -Source           Build and run from a git checkout with bun (installs bun if needed)
+  -Local            Install the binary this checkout already built, from dist\vey.exe
+  -Ref <ref>        Install a specific release tag, or with -Source any branch or
+                    commit. A bare version resolves to its published tag, so
+                    1.0.37 and v1.0.37 are the same release. Implies -Source
+                    unless -Binary is given.
+  -NoVerify         Skip the download's checksum verification (NOT recommended)
+  -Uninstall        Remove veyyon, the vey shim, completions, and any source checkout
+  -Help             Print this and exit
+
+Environment:
+  VEYYON_INSTALL_DIR   Where the binary goes (default %LOCALAPPDATA%\veyyon\bin)
+
+After install, launch with vey in any repository.
+"@
+}
+
 # Main logic. Guarded so the test harness can dot-source this file to exercise
 # the helper functions in isolation without running a real install: set
 # $env:VEYYON_INSTALL_SOURCED=1 before sourcing (mirrors install.sh).
 if (-not $env:VEYYON_INSTALL_SOURCED) {
+    if ($Help) {
+        Write-Usage
+        return
+    }
     if ($Uninstall) {
         Uninstall-Veyyon
         return

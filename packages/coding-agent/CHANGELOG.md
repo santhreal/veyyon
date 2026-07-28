@@ -169,6 +169,8 @@
 
 ### Added
 
+- Both installers answer `--help` (`-Help` on Windows) with their option list. `sh install.sh --help` used to print `Unknown option: --help` and exit 1, and an unknown option printed the complaint and nothing else. The options were documented in a comment at the top of each script, which is precisely what an install run as `curl … | sh` or `irm … | iex` never shows anyone: there was no way to discover `--source`, `--ref`, `--local` or `VEYYON_INSTALL_DIR` short of opening the raw file on GitHub. Each script now has one usage printer, its header points at that printer rather than carrying a second list to go stale, and an unknown option prints the list on stderr alongside the complaint. `scripts/installer-help-parity.test.ts` runs the POSIX one for real and pins that both installers offer the same six options under their two spellings.
+
 - `argot.autoload` decides whether the project you launched in is loaded for the session, or every
   load is left to the agent's `argot_load` calls. The startup load already existed and was
   unconditional, and the handbook described the opposite behaviour ("veyyon does not guess which

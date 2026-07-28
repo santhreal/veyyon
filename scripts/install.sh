@@ -9,14 +9,9 @@ set -e
 # toolchain, nothing from a package registry. Pass --source to build from a
 # local checkout with bun instead (needed only to run an unreleased ref).
 #
-# Options:
-#   --local         Install the locally compiled binary from dist/vey
-#   --source        Build and run from a git checkout with bun (installs bun if needed)
-#   --binary        Install the prebuilt binary (the default)
-#   --ref <ref>     Install a specific tag/commit/branch (implies --source)
-#   -r <ref>        Shorthand for --ref
-#   --uninstall     Remove veyyon, the `vey` alias, completions, and any source checkout
-#   --no-verify     Skip binary checksum verification (NOT recommended)
+# The options live in usage() below, which is also what `--help` prints. One
+# place: a list here as well would be the copy that goes stale, and it is the
+# copy nobody reading `--help` would ever see.
 #
 # After install, launch with `vey` in any repo.
 
@@ -88,6 +83,41 @@ REF=""
 VERIFY=1
 DO_UNINSTALL=0
 
+# What the installer can be asked to do. The single owner of the option list:
+# `--help` prints this, and the header of this file points here rather than
+# carrying a second copy to go stale.
+#
+# It exists at all because `sh install.sh --help` used to answer
+# "Unknown option: --help" and exit 1. The options were documented in a comment
+# at the top of the file, which is precisely what a
+# `curl … | sh` install never shows anyone.
+usage() {
+    cat <<USAGE
+veyyon installer
+
+  curl -fsSL https://get.veyyon.dev | sh                     install the latest release
+  curl -fsSL https://get.veyyon.dev | sh -s -- <options>     with options
+
+Options:
+  --binary          Install the prebuilt binary (the default; no toolchain needed)
+  --source          Build and run from a git checkout with bun (installs bun if needed)
+  --local           Install the binary this checkout already built, from dist/vey
+  --ref <ref>       Install a specific release tag, or with --source any branch or
+                    commit. A bare version resolves to its published tag, so
+                    1.0.37 and v1.0.37 are the same release. Implies --source
+                    unless --binary is given.
+  -r <ref>          Shorthand for --ref
+  --no-verify       Skip the download's checksum verification (NOT recommended)
+  --uninstall       Remove veyyon, the \`vey\` alias, completions, and any source checkout
+  -h, --help        Print this and exit
+
+Environment:
+  VEYYON_INSTALL_DIR   Where the binary goes (default \$HOME/.local/bin)
+
+After install, launch with \`vey\` in any repository.
+USAGE
+}
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --local) MODE="local"; shift ;;
@@ -107,7 +137,11 @@ while [ $# -gt 0 ]; do
             shift
             [ -z "$1" ] && { echo "Missing value for -r" >&2; exit 1; }
             REF="$1"; shift ;;
-        *) echo "Unknown option: $1" >&2; exit 1 ;;
+        -h|--help) usage; exit 0 ;;
+        # A bad option prints the list rather than only the complaint: the
+        # options are not visible anywhere else to someone who installed by
+        # piping this script into a shell.
+        *) echo "Unknown option: $1" >&2; echo "" >&2; usage >&2; exit 1 ;;
     esac
 done
 
