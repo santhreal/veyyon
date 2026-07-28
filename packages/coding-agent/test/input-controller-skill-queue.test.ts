@@ -361,7 +361,11 @@ describe("compaction skill re-invocation", () => {
 	it("queues retry-drained skills without appending them to session history", async () => {
 		const fixture = await createRealSession();
 		try {
-			const image: ImageContent = { type: "image", data: "cmV0cnk=", mimeType: "image/png" };
+			const image: ImageContent = {
+				type: "image",
+				data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC",
+				mimeType: "image/png",
+			};
 			const { ctx } = createCompactionDrainContext([
 				{ text: "/skill:test-skill retry args", mode: "followUp", images: [image] },
 			]);
@@ -376,7 +380,12 @@ describe("compaction skill re-invocation", () => {
 				throw new Error("expected retry-drained skill to be queued as image-bearing custom content");
 			}
 			expect(queued.customType).toBe(SKILL_PROMPT_MESSAGE_TYPE);
-			expect(queued.content[1]).toEqual(image);
+			const queuedImage = queued.content[1];
+			if (queuedImage?.type !== "image") throw new Error("expected canonical queued image content");
+			expect(queuedImage.mimeType).toBe("image/webp");
+			expect(queuedImage.data).not.toBe(image.data);
+			const { width, height } = await new Bun.Image(Buffer.from(queuedImage.data, "base64")).metadata();
+			expect({ width, height }).toEqual({ width: 200, height: 200 });
 			expect(fixture.session.messages).toEqual([]);
 		} finally {
 			await fixture.session.dispose();

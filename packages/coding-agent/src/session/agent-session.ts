@@ -296,15 +296,15 @@ import { IrcBus, type IrcMessage } from "../irc/bus";
 import { resolveMemoryBackend } from "../memory-backend";
 import { shutdownMnemopiEmbedClient } from "../mnemopi/embed-client";
 import { getMnemopiSessionState, type MnemopiSessionState, setMnemopiSessionState } from "../mnemopi/state";
-import { containsOrchestrate, ORCHESTRATE_NOTICE } from "../modes/orchestrate-keyword";
-import { theme } from "../modes/theme/theme-binding";
 import { parseTurnBudget } from "../modes/turn-budget";
-import { containsUltrathink, ULTRATHINK_NOTICE } from "../modes/ultrathink-keyword";
 import {
 	computeNonMessageBreakdown,
 	computeNonMessageTokens,
 	computeStoredMessagesTokens,
 } from "../modes/utils/context-usage";
+import { containsOrchestrate, ORCHESTRATE_NOTICE } from "../modes/orchestrate-keyword";
+import { theme } from "../modes/theme/theme-binding";
+import { containsUltrathink, ULTRATHINK_NOTICE } from "../modes/ultrathink-keyword";
 import { containsWorkflow, renderWorkflowNotice } from "../modes/workflow-keyword";
 import { resolveApprovedPlan } from "../plan-mode/approved-plan";
 import { DEFAULT_PLAN_FILE_URL } from "../plan-mode/plan-file-url";
@@ -10064,7 +10064,6 @@ export class AgentSession {
 		} else {
 			this.agent.steer(normalizedAppMessage);
 		}
-		this.#scheduleIdleQueueDrain();
 	}
 
 	/**
