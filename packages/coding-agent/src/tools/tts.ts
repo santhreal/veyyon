@@ -94,6 +94,22 @@ function readStringSetting(key: "providers.tts" | "tts.localModel" | "tts.localV
 	}
 }
 
+/**
+ * Resolve the live confidentiality callback at the physical request boundary.
+ *
+ * The callback itself can change after an auth refresh, so callers must invoke
+ * this helper from inside each `withAuth` attempt rather than snapshotting a
+ * sanitized payload before the retry loop. A sanitizer failure is deliberately
+ * replaced with a generic error: sanitizer exceptions may echo their input.
+ */
+function sanitizeCloudTtsField(ctx: CustomToolContext, value: string): string {
+	try {
+		return ctx.obfuscateProviderText?.(value) ?? value;
+	} catch {
+		throw new Error("xAI TTS request could not be sanitized");
+	}
+}
+
 async function synthesizeXai(
 	params: TtsSchemaType,
 	ctx: CustomToolContext,
@@ -116,25 +132,13 @@ async function synthesizeXai(
 	}
 
 	const voiceId = params.voice_id;
-	const language = params.language;
 	const sampleRate = params.sample_rate ?? DEFAULT_XAI_SAMPLE_RATE;
 	const bitRate = params.bit_rate ?? DEFAULT_XAI_BIT_RATE;
 
-	const payload: Record<string, unknown> = {
-		text: params.text,
-		voice_id: voiceId,
-		language,
-	};
 	// Hermes tts_tool.py L926-940 — only send output_format when caller overrides a default.
 	const codecOverridden = codec !== "mp3";
 	const sampleRateOverridden = sampleRate !== DEFAULT_XAI_SAMPLE_RATE;
 	const bitRateOverridden = codec === "mp3" && bitRate !== DEFAULT_XAI_BIT_RATE;
-	if (codecOverridden || sampleRateOverridden || bitRateOverridden) {
-		const fmt: Record<string, unknown> = { codec };
-		if (sampleRate) fmt.sample_rate = sampleRate;
-		if (codec === "mp3" && bitRate) fmt.bit_rate = bitRate;
-		payload.output_format = fmt;
-	}
 
 	// Compose the caller signal with a 60 s timeout fence.
 	const requestTimeout = scopedTimeoutSignal(60_000, signal);
@@ -152,6 +156,20 @@ async function synthesizeXai(
 		response = await withAuth(
 			apiKey,
 			async key => {
+				// Rebuild from the raw fields for every physical attempt. In
+				// particular, a 401 refresh may install a new live secret set
+				// before `withAuth` invokes this callback again.
+				const payload: Record<string, unknown> = {
+					text: sanitizeCloudTtsField(ctx, params.text),
+					voice_id: sanitizeCloudTtsField(ctx, params.voice_id),
+					language: sanitizeCloudTtsField(ctx, params.language),
+				};
+				if (codecOverridden || sampleRateOverridden || bitRateOverridden) {
+					const fmt: Record<string, unknown> = { codec };
+					if (sampleRate) fmt.sample_rate = sampleRate;
+					if (codec === "mp3" && bitRate) fmt.bit_rate = bitRate;
+					payload.output_format = fmt;
+				}
 				const resp = await fetch(`${creds.baseURL}/tts`, {
 					method: "POST",
 					headers: {
@@ -163,8 +181,10 @@ async function synthesizeXai(
 					signal: combinedSignal,
 				});
 				if (!resp.ok) {
-					const detail = await resp.text();
-					throw new ProviderHttpError(`xAI TTS failed (${resp.status}): ${detail.slice(0, 300)}`, resp.status, {
+					// Sanitize before slicing: truncating first can split a secret
+					// and make exact replacement impossible.
+					const detail = sanitizeCloudTtsField(ctx, await resp.text()).slice(0, 300);
+					throw new ProviderHttpError(`xAI TTS failed (${resp.status}): ${detail}`, resp.status, {
 						headers: resp.headers,
 					});
 				}
