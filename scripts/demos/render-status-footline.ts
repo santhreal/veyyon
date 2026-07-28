@@ -7,6 +7,7 @@
  * a thing you see. Rendering all four presets at one width puts them side by side, so
  * a change to the grammar can be compared against the presets it does NOT apply to.
  *
+ * Run:
  *     bun scripts/demos/render-status-footline.ts --width 100 |
  *       bun scripts/demos/render-proof.ts --out /tmp/footline --width 100
  *
@@ -86,6 +87,25 @@ for (const preset of presets) {
 	lines.push(rendered ?? theme.fg("error", "(no footline rendered)"));
 	lines.push("");
 }
+
+// The TOP BORDER in both focus states, which is a different surface from the footline above
+// and the only place that says you are inside an agent. Rendered as a pair because the whole
+// bar is dimmed while proxied: the question a proof has to answer is not "is the hint there"
+// but "can you still read it once everything around it went faint", and that needs the
+// unfocused row beside it to compare against.
+lines.push(theme.fg("dim", "top border, main session:"));
+{
+	const statusLine = new StatusLineComponent(stubSession());
+	lines.push(statusLine.getTopBorder(width).content);
+}
+lines.push("");
+lines.push(theme.fg("dim", "top border, viewing an agent:"));
+{
+	const statusLine = new StatusLineComponent(stubSession());
+	statusLine.setSession(stubSession(), "designer-3");
+	lines.push(statusLine.getTopBorder(width).content);
+}
+lines.push("");
 
 process.stdout.write(`${lines.join("\n")}\n`);
 console.error(

@@ -14,6 +14,7 @@ import {
 	relativePathWithinRoot,
 } from "@veyyon/utils";
 import { PRIORITY_TIER_LABEL } from "../../../config/service-tier";
+import { withIcon } from "../../../modes/theme/icon-label";
 import { type ThemeColor, theme } from "../../../modes/theme/theme";
 import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../../../tools/render-utils";
 import { getSessionAccentAnsi, getSessionAccentHex } from "../../../utils/session-color";
@@ -33,10 +34,6 @@ export type { SegmentContext } from "./types";
 // ═══════════════════════════════════════════════════════════════════════════
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
-function withIcon(icon: string, text: string): string {
-	return icon ? `${icon} ${text}` : text;
-}
 
 /** Left-truncate a path/label to `maxLen`, prefixing an ellipsis when clipped. */
 function clampPathLength(pwd: string, maxLen: number): string {
@@ -94,14 +91,51 @@ function classifyProjectDir(pwd: string): { scratch: boolean; relative: string |
 // Segment Implementations
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * `👻 <agent> · esc back`, the one place the proxied view says whose session you are in.
+ *
+ * WHY IT IS NOT A SEGMENT. It used to be the focused branch of {@link piSegment}, and that made
+ * the whole affordance depend on a preset choice: `pi` is only in `full` and `nerd`, so on
+ * `default`, `minimal`, `compact` and `ascii` -- which is what nearly everybody runs -- opening an
+ * agent from `/agents` announced itself by dimming the bar and NOTHING ELSE. A render proof of the
+ * default preset in both states shows two bars with identical text.
+ *
+ * Focus is a mode of the whole view, not a thing you opted into on your status line, so
+ * `getTopBorder` prefixes this unconditionally and no preset can drop it.
+ *
+ * AND IT NAMES THE WAY OUT, which nothing persistent did. `focusAgent` prints one status flash
+ * saying Esc returns to main; a second later the screen is an ordinary session with the agent's
+ * transcript in it, the composer live, and no sign that Esc now means "go back" rather than
+ * "clear the line". That is how people got stuck in a view whose edge they could not see.
+ *
+ * `esc` is spelled literally, unlike every other chord in the TUI, because it is not a remappable
+ * action: `input-controller.ts` handles the raw Esc key for focus exit, so there is no `KeyId` for
+ * `keyHint` to resolve and nothing a user can rebind. If it ever becomes a binding, this must go
+ * through `actionKeyHint`.
+ */
+export function focusExitBadge(focusedAgentId: string): string {
+	const who = theme.fg("warning", withIcon(theme.icon.ghost, focusedAgentId));
+	// "esc to go back" in full, not "esc back". This is the one hint a reader has never seen before
+	// and cannot guess from context -- Esc means "clear the line" everywhere else in this composer --
+	// so it is spelled as the sentence it is rather than compressed into a chip. The bar has room:
+	// the badge is prefixed and the rest of the line is built into what is left.
+	const exit = `${theme.fg("accent", "esc")}${theme.fg("muted", " to go back")}`;
+	// A rule closes the badge so it reads as its own group rather than running into the first
+	// segment. Without it "back" and the profile name sat one space apart and looked like one list.
+	return `${who}${theme.fg("muted", " · ")}${exit}${theme.fg("border", " │")}`;
+}
+
 const piSegment: StatusLineSegment = {
 	id: "pi",
-	render(ctx) {
-		if (ctx.focusedAgentId) {
-			const icon = theme.icon.ghost ? `${theme.icon.ghost} ` : "";
-			return { content: theme.fg("warning", `${icon}${ctx.focusedAgentId} `), visible: true };
-		}
-		const content = theme.icon.pi ? `${theme.icon.pi} ` : "";
+	render() {
+		// The segment is the icon alone, so its label is empty: an icon-less preset
+		// contributes nothing here rather than a stray space.
+		//
+		// It no longer has a focused branch. Announcing focus from here made the whole
+		// affordance a preset opt-in, since `pi` is only in `full` and `nerd`; the badge
+		// `getTopBorder` prefixes is the one owner now, so this stays the veyyon mark in
+		// both states and neither surface can contradict the other.
+		const content = withIcon(theme.icon.pi, "");
 		return { content: theme.fg("accent", content), visible: true };
 	},
 };
@@ -117,7 +151,7 @@ const modelSegment: StatusLineSegment = {
 			modelName = modelName.slice(7);
 		}
 
-		// Resolve the current thinking-level display ("◉ xhigh", "⟳ auto", …)
+		// Resolve the current thinking-level display ("◉ xhigh", "◐ auto", …)
 		// when the model supports thinking and the segment isn't hiding it.
 		let thinkingDisplay = "";
 		if (opts.showThinkingLevel !== false && state.model?.thinking) {
