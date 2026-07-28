@@ -22,6 +22,27 @@ interface InputState {
 	cursor: number;
 }
 
+/** Default character a masked input renders in place of each grapheme typed. */
+export const DEFAULT_MASK_CHAR = "•";
+
+/**
+ * Project a value to its masked form, and the cursor to the matching position.
+ *
+ * ONE MASK CHARACTER PER GRAPHEME, not per code unit, so an emoji or a combining sequence
+ * counts once and the cursor lands where the typist expects. Exported because the mask is worth
+ * asserting on directly: a test that only inspects rendered output cannot tell a mask that
+ * happens to look right from one whose cursor arithmetic is off by a code unit.
+ */
+export function maskValue(value: string, cursor: number, maskChar: string): { value: string; cursor: number } {
+	let masked = "";
+	let maskedCursor = 0;
+	for (const { index } of segmenter.segment(value)) {
+		if (index < cursor) maskedCursor += maskChar.length;
+		masked += maskChar;
+	}
+	return { value: masked, cursor: Math.min(maskedCursor, masked.length) };
+}
+
 /**
  * Input component - single-line text input with horizontal scrolling
  */
@@ -29,10 +50,33 @@ export class Input implements Component, Focusable {
 	#value: string = "";
 	#cursor: number = 0; // Cursor position in the value
 	#useTerminalCursor = false;
+	/**
+	 * When set, the value is rendered as this character repeated, never as itself.
+	 *
+	 * For entering a credential. Masking lives HERE rather than in a separate secret-input
+	 * component because everything else about editing (the kill ring, bracketed paste, word
+	 * motion, undo) has to behave identically, and a second implementation of a text field would
+	 * drift from this one. Masking only changes {@link render}; {@link getValue} still returns
+	 * what was typed, which is what the caller stores.
+	 */
+	mask: string | undefined;
+	/**
+	 * Credential entry is a byte-preserving paste mode with mandatory masked
+	 * rendering. Terminal paste framing is removed by the handler, but payload
+	 * tabs, CR/LF, trailing spaces, decomposed Unicode and C0/DEL code units are
+	 * inserted unchanged. Ordinary inputs retain the single-line cleanup below.
+	 */
+	credentialMode = false;
 	/** Rendered before the editable area; set to "" for chrome-less embedding. */
 	prompt = "> ";
 	onSubmit?: (value: string) => void;
 	onEscape?: () => void;
+	/**
+	 * Optional surface-specific cancel matcher. It runs inside this Input only
+	 * after bracketed-paste framing has completed, so pasted escape/interrupt
+	 * bytes can never close the parent dialog.
+	 */
+	isEscapeInput?: (data: string) => boolean;
 
 	/** Focusable interface - set by TUI when focus changes */
 	focused: boolean = false;
@@ -92,9 +136,8 @@ export class Input implements Component, Focusable {
 	#handleKeyInput(data: string): void {
 		const kb = getKeybindings();
 
-		// Escape/Cancel
-		if (kb.matches(data, "tui.select.cancel")) {
-			if (this.onEscape) this.onEscape();
+		if (this.isEscapeInput?.(data) || kb.matches(data, "tui.select.cancel")) {
+			this.onEscape?.();
 			return;
 		}
 
@@ -388,31 +431,23 @@ export class Input implements Component, Focusable {
 		this.#lastAction = null;
 		this.#pushUndo();
 
-		// Clean the pasted text — decode tmux's re-encoded control bytes (both
-		// extended-keys formats, e.g. Ctrl+J → "\n") back to literal bytes so the escape
-		// tail does not leak in, remove newlines/carriage returns, expand tabs, NFC-normalize,
-		// then strip any remaining control bytes. The decoder can synthesize Ctrl+A..Ctrl+Z
-		// (0x01..0x1A) from a paste, and a single-line value must hold none of them — newlines
-		// are already gone and tabs are already spaces by the time the C0/DEL strip runs.
+		// A credential is an opaque payload. Only bracketed-paste transport
+		// markers have been consumed before this point; changing normalization,
+		// whitespace or control code units would change the stored credential.
 		//
-		// NFC normalization rationale: macOS Finder drag-drops file paths in NFD
-		// (Conjoining Jamo, U+1100..U+11FF). `Bun.stringWidth` counts each
-		// conjoining jamo as a separate cell — a Korean syllable like `화` is
-		// 1 char and 2 cells in NFC, but 2 chars and 3 cells in NFD (ᄒ=2 cells
-		// + ᅪ=1 cell). The terminal renders the NFD sequence as a single
-		// combined syllable (2 cells visible), so the width mismatch shows up
-		// as cursor drift past the visible filename — N×~1.5 cells for a path
-		// with N Korean syllables. NFC normalization at paste time stores the
-		// value in the same form everything else in the codebase assumes.
-		const cleanText = replaceTabs(
-			decodeReencodedPasteControls(pastedText).replace(/\r\n/g, "").replace(/\r/g, "").replace(/\n/g, ""),
-		)
-			.normalize("NFC")
-			.replace(/[\x00-\x1F\x7F]/g, "");
+		// Ordinary single-line input deliberately keeps its established cleanup:
+		// decode tmux control-key transport, flatten lines/tabs, NFC-normalize and
+		// remove remaining C0/DEL bytes.
+		const insertedText = this.credentialMode
+			? pastedText
+			: replaceTabs(
+					decodeReencodedPasteControls(pastedText).replace(/\r\n/g, "").replace(/\r/g, "").replace(/\n/g, ""),
+				)
+					.normalize("NFC")
+					.replace(/[\x00-\x1F\x7F]/g, "");
 
-		// Insert at cursor position
-		this.#value = this.#value.slice(0, this.#cursor) + cleanText + this.#value.slice(this.#cursor);
-		this.#cursor += cleanText.length;
+		this.#value = this.#value.slice(0, this.#cursor) + insertedText + this.#value.slice(this.#cursor);
+		this.#cursor += insertedText.length;
 	}
 
 	invalidate(): void {
@@ -428,9 +463,16 @@ export class Input implements Component, Focusable {
 			return [prompt];
 		}
 
-		const cursorIndex = this.#cursor;
+		// The one place the value becomes something a terminal can show, and therefore the one
+		// place masking has to happen. Everything below works on `sourceValue`, so a masked field
+		// scrolls, clamps and positions its cursor exactly as an unmasked one does.
+		const effectiveMask = this.credentialMode ? (this.mask ?? DEFAULT_MASK_CHAR) : this.mask;
+		const { value: sourceValue, cursor: cursorIndex } =
+			effectiveMask === undefined
+				? { value: this.#value, cursor: this.#cursor }
+				: maskValue(this.#value, this.#cursor, effectiveMask);
 		// Ensure we always have a grapheme to invert at the cursor (space at end).
-		const displayValue = cursorIndex >= this.#value.length ? `${this.#value} ` : this.#value;
+		const displayValue = cursorIndex >= sourceValue.length ? `${sourceValue} ` : sourceValue;
 
 		const totalCols = visibleWidth(displayValue);
 		const cursorCols = visibleWidth(displayValue.slice(0, cursorIndex));

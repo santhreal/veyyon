@@ -4,6 +4,7 @@ import { InputController, shouldSkipHistory } from "@veyyon/coding-agent/modes/c
 import { isQueuedMessageList, splitQueuedMessages } from "@veyyon/coding-agent/modes/queue-input";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import * as secretHelper from "@veyyon/coding-agent/slash-commands/helpers/secret";
+import { normalizeSubmittedPrompt } from "@veyyon/coding-agent/slash-commands/helpers/parse";
 
 // Drives the real editor submit handler through the builtin slash dispatch
 // path. Before #3148 only a handful of commands recorded their text (each
@@ -165,6 +166,48 @@ describe("input controller — slash command history (#3148)", () => {
 		expect(addToHistory).not.toHaveBeenCalled();
 	});
 
+
+	/**
+	 * Inline credentials are raw suffixes, so normal Enter must not erase a
+	 * trailing tab, CR/LF or spaces before canonical slash dispatch reads them.
+	 */
+	it("preserves trailing credential bytes through normal Enter dispatch", async () => {
+		const runSecret = vi.spyOn(secretHelper, "runSecretCommandForSurface").mockResolvedValue({ message: "Stored" });
+		const { ctx, editor } = makeCtx();
+		controllerFor(ctx);
+		const args = "add BYTE_TOKEN raw\tvalue\r\n  ";
+
+		await editor.onSubmit?.(`/secret ${args}`);
+
+		expect(runSecret.mock.calls[0]?.[0]).toBe(args);
+	});
+
+	/**
+	 * Ctrl+Enter uses a separate follow-up path. It must apply the same canonical
+	 * normalization rather than silently storing a different credential.
+	 */
+	it("preserves trailing credential bytes through follow-up dispatch", async () => {
+		const runSecret = vi.spyOn(secretHelper, "runSecretCommandForSurface").mockResolvedValue({ message: "Stored" });
+		const { ctx, editor } = makeCtx(true);
+		const controller = controllerFor(ctx);
+		const args = "add FOLLOW_BYTES raw\tvalue\r\n  ";
+		editor.setText(`/secret ${args}`);
+
+		await controller.handleFollowUp();
+
+		expect(runSecret.mock.calls[0]?.[0]).toBe(args);
+	});
+
+	/**
+	 * The exception is exact: ordinary chat and prefix lookalikes retain the
+	 * longstanding outer trim, while leading editor whitespace before a real
+	 * `/secret` is removed without touching its trailing payload.
+	 */
+	it("keeps ordinary trim and does not treat /secretive as sensitive", () => {
+		expect(normalizeSubmittedPrompt(" \t ordinary chat \r\n ")).toBe("ordinary chat");
+		expect(normalizeSubmittedPrompt("/secretive visible prose  ")).toBe("/secretive visible prose");
+		expect(normalizeSubmittedPrompt("  /secret add TOKEN bytes  \t")).toBe("/secret add TOKEN bytes  \t");
+	});
 	it.each([
 		"/secret",
 		"/secret list",

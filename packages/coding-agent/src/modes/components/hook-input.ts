@@ -1,7 +1,7 @@
 /**
  * Simple text input component for hooks.
  */
-import { Container, Input, Markdown, matchesKey, Spacer, Text, type TUI } from "@veyyon/tui";
+import { Container, Input, Markdown, Spacer, Text, type TUI } from "@veyyon/tui";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { theme } from "../../modes/theme/theme";
 import { matchesAppInterrupt } from "../../modes/utils/keybinding-matchers";
@@ -12,6 +12,19 @@ export interface HookInputOptions {
 	tui?: TUI;
 	timeout?: number;
 	onTimeout?: () => void;
+	/**
+	 * Render each character typed as this one instead of itself, for a credential.
+	 *
+	 * Handed straight to {@link Input.mask}, which is the single place a value becomes something
+	 * a terminal can show. Nothing here reimplements editing, so a masked prompt keeps the same
+	 * paste, word motion and kill-ring behaviour as every other input in the app.
+	 */
+	mask?: string;
+	/**
+	 * Preserve pasted credential payload code units exactly. Masked hooks enable
+	 * this automatically; the explicit flag keeps the mode named and testable.
+	 */
+	credentialMode?: boolean;
 }
 
 export class HookInputComponent extends Container {
@@ -56,6 +69,11 @@ export class HookInputComponent extends Container {
 		}
 
 		this.#input = new Input();
+		this.#input.mask = opts?.mask;
+		this.#input.credentialMode = opts?.credentialMode ?? opts?.mask !== undefined;
+		this.#input.isEscapeInput = matchesAppInterrupt;
+		this.#input.onSubmit = value => this.#onSubmitCallback(value);
+		this.#input.onEscape = () => this.#onCancelCallback();
 		this.addChild(this.#input);
 		this.addChild(new Spacer(1));
 		this.addChild(new Text(theme.fg("dim", "enter submit  esc cancel"), 1, 0));
@@ -64,15 +82,11 @@ export class HookInputComponent extends Container {
 	}
 
 	handleInput(keyData: string): void {
-		// Reset countdown on any interaction
+		// Input owns paste framing as well as submit/cancel recognition. Routing
+		// every chunk through it means a newline or interrupt byte in a
+		// bracketed paste cannot be mistaken for a physical key by this wrapper.
 		this.#countdown?.reset();
-		if (matchesKey(keyData, "enter") || matchesKey(keyData, "return") || keyData === "\n") {
-			this.#onSubmitCallback(this.#input.getValue());
-		} else if (matchesAppInterrupt(keyData)) {
-			this.#onCancelCallback();
-		} else {
-			this.#input.handleInput(keyData);
-		}
+		this.#input.handleInput(keyData);
 	}
 
 	/** Route non-bracketed paste transports (e.g. kitty's OSC 5522 enhanced clipboard)

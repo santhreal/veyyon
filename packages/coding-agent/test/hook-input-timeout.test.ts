@@ -2,7 +2,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 
 import { HookInputComponent } from "@veyyon/coding-agent/modes/components/hook-input";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
-import type { TUI } from "@veyyon/tui";
+import { DEFAULT_MASK_CHAR, type TUI } from "@veyyon/tui";
+import { PASTE_END, PASTE_START } from "@veyyon/tui/bracketed-paste";
 
 beforeAll(async () => {
 	const theme = await getThemeByName("dark");
@@ -103,5 +104,37 @@ describe("HookInputComponent timeout", () => {
 		expect(onSubmit).toHaveBeenCalledWith("sk-line1sk-line2");
 
 		component.dispose();
+	});
+
+	/**
+	 * HookInput used to inspect Enter/Escape before its inner Input saw paste
+	 * framing. When terminal chunks split the payload, a pasted newline or
+	 * interrupt closed the dialog. The inner Input must buffer both and submit
+	 * only after the end marker plus a real physical Enter.
+	 */
+	it("keeps split credential paste bytes inside the masked input until physical Enter", () => {
+		const onSubmit = vi.fn();
+		const onCancel = vi.fn();
+		const credential = "api\tline1\nline2\r\x03\x1b e\u0301\x7f  ";
+		const component = new HookInputComponent("Credential", undefined, onSubmit, onCancel, {
+			mask: DEFAULT_MASK_CHAR,
+		});
+
+		component.handleInput(PASTE_START);
+		component.handleInput(credential.slice(0, 9));
+		component.handleInput(credential.slice(9, 16));
+		component.handleInput(credential.slice(16));
+
+		expect(onSubmit).not.toHaveBeenCalled();
+		expect(onCancel).not.toHaveBeenCalled();
+
+		component.handleInput(PASTE_END);
+		expect(onSubmit).not.toHaveBeenCalled();
+		expect(onCancel).not.toHaveBeenCalled();
+
+		component.handleInput("\r");
+		expect(onSubmit).toHaveBeenCalledTimes(1);
+		expect(onSubmit).toHaveBeenCalledWith(credential);
+		expect(onCancel).not.toHaveBeenCalled();
 	});
 });

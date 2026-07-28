@@ -35,7 +35,6 @@ import { buildInitialMessage } from "./cli/initial-message";
 import { selectSession } from "./cli/session-picker";
 import { announceAutoChdir, applySessionWorkdir, applyStartupCwd } from "./cli/startup-cwd";
 import { getLatestRelease, type ReleaseInfo, runAutoUpdate } from "./cli/update-cli";
-import { findConfigFile } from "./config";
 import { resolveEffort, withLegacyDefaultEffort } from "./config/effort-resolver";
 import { ModelRegistry } from "./config/model-registry";
 import { modelResolutionFailureMessage } from "./config/model-resolution-failure";
@@ -81,6 +80,7 @@ import {
 import type { AgentSession } from "./session/agent-session";
 import type { AuthStorage } from "./session/auth-storage";
 import { describePendingToolCalls } from "./session/exit-diagnostics";
+import { formatNotice, OperatorNotices, stderrNoticeSink } from "./session/operator-notices";
 import { resolveResumableSession, type SessionInfo } from "./session/session-listing";
 import { SessionManager } from "./session/session-manager";
 import { executeBuiltinSlashCommand } from "./slash-commands/builtin-registry";
@@ -663,6 +663,16 @@ async function runInteractiveMode(
 		}
 	}
 
+	// The operator channel gets its surface here, once there is a transcript to write into.
+	// Everything buffered while the session was being built (a skill that failed to load, a
+	// declared secret that cannot be protected) is delivered now, in the order it was raised, and
+	// anything raised later in the run arrives as it happens. Before this existed those problems
+	// went to a log file with no console transport, which is to say nowhere.
+	session.operatorNotices.setSink(notice => {
+		if (notice.severity === "error") mode.showError(formatNotice(notice));
+		else mode.showWarning(formatNotice(notice));
+	});
+
 	// `veyyon join <link>`: dispatch through the same builtin path as a typed
 	// `/join` so collab guards and error rendering stay in one place.
 	if (joinLink !== undefined) {
@@ -917,35 +927,7 @@ export async function createSessionManager(
 	return undefined;
 }
 
-/** Discover SYSTEM.md file if no CLI system prompt was provided */
-function discoverSystemPromptFile(): string | undefined {
-	// Check project-local first (.veyyon/SYSTEM.md, legacy dirs after)
-	const projectPath = findConfigFile("SYSTEM.md", { user: false });
-	if (projectPath) {
-		return projectPath;
-	}
-	// If not found, check SYSTEM.md file in the global directory.
-	const globalPath = findConfigFile("SYSTEM.md", { user: true });
-	if (globalPath) {
-		return globalPath;
-	}
-	return undefined;
-}
-
-/** Discover APPEND_SYSTEM.md file if no CLI append system prompt was provided */
-function discoverAppendSystemPromptFile(): string | undefined {
-	const projectPath = findConfigFile("APPEND_SYSTEM.md", { user: false });
-	if (projectPath) {
-		return projectPath;
-	}
-	const globalPath = findConfigFile("APPEND_SYSTEM.md", { user: true });
-	if (globalPath) {
-		return globalPath;
-	}
-	return undefined;
-}
-
-/** Apply resolved CLI/discovered prompt files without bypassing system prompt templates. */
+/** Apply resolved CLI prompt inputs without bypassing system prompt templates. */
 export function applyResolvedSystemPromptInputs(
 	options: CreateAgentSessionOptions,
 	resolvedSystemPrompt: string | undefined,
@@ -976,13 +958,10 @@ export async function buildSessionOptions(
 		options.deadline = Date.now() + parsed.maxTime * 1000;
 	}
 
-	// Auto-discover SYSTEM.md if no CLI system prompt provided
-	const systemPromptSource = parsed.systemPrompt ?? discoverSystemPromptFile();
-	const appendPromptSource = parsed.appendSystemPrompt ?? discoverAppendSystemPromptFile();
 	const titleSystemPromptSource = discoverTitleSystemPromptFile();
 	const [resolvedSystemPrompt, resolvedAppendPrompt, titleSystemPrompt] = await Promise.all([
-		resolvePromptInput(systemPromptSource, "system prompt"),
-		resolvePromptInput(appendPromptSource, "append system prompt"),
+		resolvePromptInput(parsed.systemPrompt, "system prompt"),
+		resolvePromptInput(parsed.appendSystemPrompt, "append system prompt"),
 		resolvePromptInput(titleSystemPromptSource, "title system prompt"),
 	]);
 
@@ -1741,13 +1720,20 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 			stdoutIsTTY: process.stdout.isTTY,
 		});
 
+		// The TUI cannot render anything until its screen exists, and session startup is exactly
+		// when a degraded skill or an unprotectable secret is discovered. An interactive run
+		// therefore hands `createSession` a collector with NO sink, so those notices buffer and
+		// the TUI delivers them once it is up (see `InteractiveMode.start`). Every other mode
+		// keeps the default, which writes to stderr as they arrive.
+		const operatorNotices = isInteractive ? new OperatorNotices() : new OperatorNotices(stderrNoticeSink);
 		const { session, setToolUIContext, modelFallbackMessage, lspServers, mcpManager } = await createSession({
 			...sessionOptions,
 			eventBus,
+			operatorNotices,
 			preloadedExtensions: extensionsResult,
 		});
 
-		// Cold-revive support: a `parked` subagent ref restored from disk (Agent Hub
+		// Cold-revive support: a `parked` subagent ref restored from disk (the persisted-subagent
 		// scan, collab mirror, resumed process) has a sessionFile but no in-memory
 		// reviver, so `ensureLive` (IRC sends, hub focus) would refuse it. Install a
 		// factory — bound to THIS top-level session — that rebuilds the subagent from
@@ -1852,6 +1838,16 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 				initialMessage,
 				initialImages,
 				printThoughts: initialArgs.printThoughts,
+				commandRuntime: {
+					session,
+					sessionManager: session.sessionManager,
+					settings: session.settings,
+					cwd: session.sessionManager.getCwd(),
+					// A single-shot process has no client-side command palette or
+					// long-lived plugin registry to refresh after a command.
+					refreshCommands: () => {},
+					reloadPlugins: async () => {},
+				},
 			});
 			if ($env.VEYYON_TIMING) {
 				logger.printTimings();

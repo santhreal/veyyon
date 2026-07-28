@@ -25,6 +25,7 @@ import { turnControlPrompts } from "../../prompts/turn-control/rows";
 import { USER_INTERRUPT_LABEL } from "../../session/messages";
 import { executeBuiltinSlashCommand } from "../../slash-commands/builtin-registry";
 import type { TuiSlashCommandHostContext } from "../../slash-commands/types";
+import { isSensitiveSlashCommand, normalizeSubmittedPrompt } from "../../slash-commands/helpers/parse";
 import { isTinyTitleLocalModelKey } from "../../tiny/models";
 import { isLowSignalTitleInput } from "../../tiny/text";
 import { tinyTitleClient } from "../../tiny/title-client";
@@ -46,36 +47,14 @@ import { autoTitleDisabled, generateSessionTitle } from "../../utils/title-gener
 import type { SkillCommandHost } from "../skill-command";
 
 /**
- * Slash commands that may carry secrets in their arguments should never be
- * persisted to history.
+ * Compatibility name for the editor-history policy.
  *
- * Every `/secret` form is excluded, including safe-looking subcommands and
- * malformed input: parser failures and future syntax must not accidentally
- * turn plaintext credentials into durable editor history.
- *
- * Other sensitive commands are matched by the same command-name boundary as
- * parseSlashCommand() — the earliest whitespace or colon.
+ * Classification itself lives beside the canonical slash parser so teardown,
+ * normal Enter and follow-up submission cannot disagree about colon forms or
+ * malformed `/secret` input.
  */
 export function shouldSkipHistory(slashText: string): boolean {
-	if (!slashText.startsWith("/")) return false;
-	const body = slashText.slice(1);
-	// Match parseSlashCommand: split on earliest whitespace or colon.
-	const firstWs = body.search(/\s/);
-	const firstColon = body.indexOf(":");
-	const sep = firstWs === -1 ? firstColon : firstColon === -1 ? firstWs : Math.min(firstWs, firstColon);
-	const name = sep === -1 ? body : body.slice(0, sep);
-	const hasArgs = sep !== -1;
-	if (name === "secret") return true;
-	// /login <anything> — parseCallbackInput() accepts redirect URLs, query
-	// strings (?code=...), and raw auth codes, all of which carry secrets.
-	if (name === "login" && hasArgs) return true;
-	// /join <link> — the link carries the 32-byte room key and write token.
-	if (name === "join" && hasArgs) return true;
-	if (name === "mcp") {
-		const args = body.slice(sep + 1).trim();
-		return args.startsWith("add") && /--token\s/.test(args);
-	}
-	return false;
+	return isSensitiveSlashCommand(slashText);
 }
 
 interface Expandable {
@@ -678,7 +657,7 @@ export class InputController {
 			// Chat idiom: submitting snaps a scrolled-up transcript back to the
 			// live tail — the operator just engaged with the present.
 			this.ctx.ui.scrollToLiveTail();
-			text = text.trim();
+			text = normalizeSubmittedPrompt(text);
 			const hasPendingImages = this.ctx.editor.pendingImages.length > 0;
 			if ((!isSettingsInitialized() || settings.get("emojiAutocomplete")) && text) text = expandEmoticons(text);
 
@@ -734,7 +713,7 @@ export class InputController {
 					return;
 				}
 				if (result?.text !== undefined) {
-					text = result.text.trim();
+					text = normalizeSubmittedPrompt(result.text);
 				}
 				if (result?.images !== undefined) {
 					inputImages = result.images;
@@ -1351,7 +1330,7 @@ export class InputController {
 
 	/** Send editor text as a follow-up message (queued behind current stream). */
 	async handleFollowUp(): Promise<void> {
-		let text = this.ctx.editor.getExpandedText().trim();
+		let text = normalizeSubmittedPrompt(this.ctx.editor.getExpandedText());
 		const images = this.ctx.editor.pendingImages.length > 0 ? [...this.ctx.editor.pendingImages] : undefined;
 		const imageLinks =
 			images && this.ctx.editor.pendingImageLinks.length > 0 ? [...this.ctx.editor.pendingImageLinks] : undefined;
@@ -1840,6 +1819,7 @@ export class InputController {
 		return createPromptActionAutocompleteProvider({
 			commands,
 			basePath,
+			skills: this.ctx.session.skills,
 			keybindings: this.ctx.keybindings,
 			copyCurrentLine: () => this.handleCopyCurrentLine(),
 			copyPrompt: () => this.handleCopyPrompt(),

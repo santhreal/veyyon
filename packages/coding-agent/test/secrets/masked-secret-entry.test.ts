@@ -22,10 +22,15 @@ import * as path from "node:path";
 import { DEFAULT_MASK_CHAR } from "@veyyon/tui";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets";
+import {
+	NONINTERACTIVE_SECRET_COMMAND_USAGE,
+	SECRET_COMMAND_USAGE,
+} from "@veyyon/coding-agent/secrets/secret-command";
 import { resolveVaultLocations, SecretVault } from "@veyyon/coding-agent/secrets/vault";
 import { OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
 import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
 import { runSecretCommandForSurface } from "@veyyon/coding-agent/slash-commands/helpers/secret";
+import * as secretSurface from "@veyyon/coding-agent/slash-commands/helpers/secret";
 
 /** The credential under test. Long enough to be obfuscatable, distinctive enough to grep for. */
 const VALUE = "ghp_maskedEntryTestCredential99";
@@ -271,6 +276,47 @@ describe("non-interactive secret commands", () => {
 			delete process.env.VEYYON_NONINTERACTIVE_SECRET;
 		}
 	});
+
+	/**
+	 * Help is capability-aware. Headless clients may advertise environment
+	 * lookup and management, but must never teach inline or supposedly-hidden
+	 * typing that their transport cannot provide; the TUI retains both forms.
+	 */
+	it("keeps noninteractive help safe while retaining explicit TUI guidance", async () => {
+		const headless = await runSecretCommandForSurface("", harness({ interactive: false }).port);
+		const tui = await runSecretCommandForSurface("", harness({ interactive: true }).port);
+
+		expect(headless.message).toBe(NONINTERACTIVE_SECRET_COMMAND_USAGE);
+		expect(headless.message).toContain("--from-env");
+		expect(headless.message).not.toContain("prompt for the value");
+		expect(headless.message).not.toContain("<value>");
+		expect(headless.message).not.toContain("visible on screen");
+
+		expect(tui.message).toBe(SECRET_COMMAND_USAGE);
+		expect(tui.message).toContain("hidden as you type");
+		expect(tui.message).toContain("<value>");
+		expect(tui.message).toContain("visible on screen");
+	});
+
+	/**
+	 * Parser failures use the same surface copy as successful help. Otherwise a
+	 * typo in ACP would reintroduce unsafe inline guidance through the error
+	 * path even though `/secret` itself looked safe.
+	 */
+	it("keeps noninteractive parse errors free of unsafe credential forms", async () => {
+		const failure = await runSecretCommandForSurface(
+			"unknown-subcommand",
+			harness({ interactive: false }).port,
+		).then(
+			() => undefined,
+			(error: unknown) => String(error),
+		);
+
+		expect(failure).toContain("--from-env");
+		expect(failure).not.toContain("prompt for the value");
+		expect(failure).not.toContain("<value>");
+		expect(failure).not.toContain("visible on screen");
+	});
 });
 
 describe("default lifetime resolution at the surface", () => {
@@ -466,6 +512,11 @@ describe("the TUI path", () => {
 	it("does not prompt for /secret list", async () => {
 		const showHookInput = vi.fn(async () => undefined);
 		const showStatus = vi.fn();
+		const realRunSecretCommand = runSecretCommandForSurface;
+		const isolatedPort = harness().port;
+		const surfaceSpy = vi
+			.spyOn(secretSurface, "runSecretCommandForSurface")
+			.mockImplementation(args => realRunSecretCommand(args, isolatedPort));
 
 		await executeBuiltinSlashCommand("/secret list", {
 			ctx: {
@@ -478,6 +529,7 @@ describe("the TUI path", () => {
 				settings: { get: () => undefined },
 			} as unknown as InteractiveModeContext,
 		});
+		surfaceSpy.mockRestore();
 
 		expect(showHookInput).not.toHaveBeenCalled();
 		expect(showStatus).toHaveBeenCalled();

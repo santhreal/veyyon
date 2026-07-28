@@ -9,6 +9,8 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent } from "@veyyon/ai";
 import { logger, sanitizeText } from "@veyyon/utils";
 import type { AgentSession, AgentSessionEvent } from "../session/agent-session";
+import { executeAcpBuiltinSlashCommand } from "../slash-commands/acp-builtins";
+import type { SlashCommandRuntime } from "../slash-commands/types";
 import { isSilentAbort } from "../session/messages";
 import { flushTelemetryExport } from "../telemetry-export";
 import { initializeExtensions } from "./runtime-init";
@@ -27,6 +29,11 @@ export interface PrintModeOptions {
 	initialImages?: ImageContent[];
 	/** If true, include thinking blocks in text output */
 	printThoughts?: boolean;
+	/**
+	 * Headless slash-command runtime supplied by the CLI entrypoint. Optional
+	 * only for narrow unit-test sessions that cannot execute builtins.
+	 */
+	commandRuntime?: Omit<SlashCommandRuntime, "output">;
 }
 
 /** Drop the provider-opaque replay payload (e.g. encrypted reasoning items) before printing. */
@@ -110,7 +117,7 @@ export type PrintModeSession =
  * Sends prompts to the agent and outputs the result.
  */
 export async function runPrintMode(session: PrintModeSession, options: PrintModeOptions): Promise<void> {
-	const { mode, messages = [], initialMessage, initialImages, printThoughts } = options;
+	const { mode, messages = [], initialMessage, initialImages, printThoughts, commandRuntime } = options;
 
 	// Emit session header for JSON mode
 	if (mode === "json") {
@@ -150,20 +157,42 @@ export async function runPrintMode(session: PrintModeSession, options: PrintMode
 		wroteTextWorkingIndicator = true;
 	};
 
-	// Send initial message with attachments
-	if (initialMessage !== undefined) {
+	let promptedModel = false;
+	const emitCommandOutput = (text: string): void => {
+		if (mode === "json") {
+			process.stdout.write(`${JSON.stringify({ type: "command_output", text })}\n`);
+		} else {
+			process.stdout.write(`${sanitizeText(text)}\n`);
+		}
+	};
+	const dispatchPromptOrCommand = async (message: string, images?: ImageContent[]): Promise<void> => {
+		let prompt = message;
+		if (commandRuntime) {
+			const result = await executeAcpBuiltinSlashCommand(message, {
+				...commandRuntime,
+				output: emitCommandOutput,
+			});
+			if (result !== false) {
+				if ("consumed" in result) return;
+				prompt = result.prompt;
+			}
+		}
 		writeTextWorkingIndicator();
-		await logger.time("print:prompt:initial", () => session.prompt(initialMessage, { images: initialImages }));
-	}
+		promptedModel = true;
+		await session.prompt(prompt, images ? { images } : undefined);
+	};
 
-	// Send remaining messages
+	// Initial and additional messages share one command gate. A consumed
+	// builtin never reaches the model; a residual prompt keeps initial images.
+	if (initialMessage !== undefined) {
+		await logger.time("print:prompt:initial", () => dispatchPromptOrCommand(initialMessage, initialImages));
+	}
 	for (const message of messages) {
-		writeTextWorkingIndicator();
-		await logger.time("print:prompt:next", () => session.prompt(message));
+		await logger.time("print:prompt:next", () => dispatchPromptOrCommand(message));
 	}
 
 	// In text mode, output final response
-	if (mode === "text") {
+	if (mode === "text" && promptedModel) {
 		const state = session.state;
 		const lastMessage = state.messages[state.messages.length - 1];
 

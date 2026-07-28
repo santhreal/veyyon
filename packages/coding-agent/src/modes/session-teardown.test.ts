@@ -138,6 +138,40 @@ describe("createSessionTeardown", () => {
 		expect(rec.draftSaved).toEqual([""]);
 	});
 
+	/**
+	 * Every canonical `/secret` shape is potentially credential-bearing,
+	 * including colon syntax and malformed future input. Teardown must save an
+	 * empty draft so SessionManager unlinks any older sidecar instead of leaving
+	 * either the secret command or a stale prior draft resumable.
+	 */
+	it.each([
+		"/secret",
+		"/secret add TOKEN raw-trailing-secret  ",
+		"/secret:add TOKEN colon-secret",
+		"  /secret rm TOKEN malformed-secret",
+	])("clears sensitive teardown drafts: %s", async draft => {
+		const { deps, rec } = makeDeps({ getDraftText: () => draft });
+
+		await createSessionTeardown(deps)();
+
+		expect(rec.draftSaved).toEqual([""]);
+	});
+
+	/**
+	 * The suppression boundary is exact. Ordinary prose and slash names that
+	 * merely share a prefix remain resumable byte-for-byte.
+	 */
+	it.each(["unfinished ordinary draft  ", "/secretive write a privacy note", "/hotkeys"])(
+		"persists an ordinary teardown draft: %s",
+		async draft => {
+			const { deps, rec } = makeDeps({ getDraftText: () => draft });
+
+			await createSessionTeardown(deps)();
+
+			expect(rec.draftSaved).toEqual([draft]);
+		},
+	);
+
 	it("memoizes: concurrent and repeat calls run the teardown exactly once", async () => {
 		const release = Promise.withResolvers<void>();
 		const { deps, rec } = makeDeps({
