@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-1ece1aaa.js";
+            window.path_to_searchindex_js = "../searchindex-f519e381.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-2e8c749f.js"></script>
@@ -196,14 +196,36 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="diagnostics-and-health"><a class="header" href="#diagnostics-and-health">Diagnostics and health</a></h1>
-<p>Diagnostics are split across <code>veyyon setup status</code>, plugin doctor, TUI <code>/debug</code>, and memory commands. There is no single
-<code>veyyon doctor</code> binary that covers install, auth, and plugins in one pass.</p>
+<p><code>veyyon setup status</code> is the health check. It answers two things in one pass: whether the install itself works, and whether you are signed in to a provider. Plugin health has its own command, and the TUI has its own debug tools.</p>
+<h2 id="system-health"><a class="header" href="#system-health">System health</a></h2>
+<pre><code class="language-console">$ veyyon setup status
+$ veyyon setup status --json
+</code></pre>
+<p>The install checks run first, because nothing below them can work if the install does not. They are the same questions the installer asks at the end of every install, asked of your machine as it is now:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Check</th><th>What it proves</th></tr>
+</thead>
+<tbody>
+<tr><td><code>veyyon on PATH</code></td><td>The shell can find it, and which file it found.</td></tr>
+<tr><td><code>PATH copies</code></td><td>Only one <code>veyyon</code> is on your PATH. A second one earlier on PATH keeps answering after an update writes the first, which is what makes an update look like it did nothing.</td></tr>
+<tr><td><code>veyyon runs</code></td><td>It executes and reports the version you are running. If it will not start, the check quotes what the system said.</td></tr>
+<tr><td><code>Native addon</code></td><td>A real search returns a real match, so the native addon loaded. <code>--version</code> alone passes without it.</td></tr>
+<tr><td><code>Install method</code></td><td>Whether <code>veyyon update</code> swaps the binary or advances a source checkout.</td></tr>
+<tr><td><code>vey alias</code></td><td>The short name the rest of the documentation tells you to type resolves.</td></tr>
+<tr><td><code>Shell completions</code></td><td>Completion files are installed, and for which shells.</td></tr>
+</tbody>
+</table>
+</div>
+<p>None of them touches the network. A health check you cannot run when the network is what broke is not much of a health check.</p>
+<p>After the install checks come the credential checks: <code>git</code> on PATH (missing is an error), and provider authentication through OAuth or one of <code>GEMINI_API_KEY</code> / <code>OPENAI_API_KEY</code> / <code>ANTHROPIC_API_KEY</code> / <code>KIMI_API_KEY</code> (missing is a warning).</p>
+<p>The command exits non-zero when any check reports an error, so you can gate a script on it. Warnings exit zero: they are worth reading, not worth stopping for.</p>
 <h2 id="plugin-doctor"><a class="header" href="#plugin-doctor">Plugin doctor</a></h2>
 <pre><code class="language-console">$ veyyon plugin doctor
 $ veyyon plugin doctor --fix
 </code></pre>
 <p>Checks plugin installation health. With <code>--fix</code>, it attempts automatic repairs where implemented.</p>
-<p>A separate System Health Check runs under <code>veyyon setup status</code> (and <code>veyyon setup status --json</code>): it checks <code>vey</code>, <code>veyyon</code>, and <code>git</code> on PATH (a missing <code>git</code> is an error, the others warnings) plus provider authentication (OAuth or one of <code>GEMINI_API_KEY</code> / <code>OPENAI_API_KEY</code> / <code>ANTHROPIC_API_KEY</code> / <code>KIMI_API_KEY</code>, missing = warning).</p>
 <h2 id="tui-debug"><a class="header" href="#tui-debug">TUI debug</a></h2>
 <pre><code class="language-text">/debug
 </code></pre>
@@ -213,17 +235,15 @@ $ veyyon plugin doctor --fix
 /memory stats
 </code></pre>
 <p>Run diagnostics and statistics on the configured memory backend (<code>memory.backend</code>: mnemopi, hindsight, local) from the TUI. See <a href="./memory.html">Memory</a>.</p>
-<h2 id="checking-install-health"><a class="header" href="#checking-install-health">Checking install health</a></h2>
-<p>There is no single <code>veyyon doctor</code> command. Diagnostics are spread across a few surfaces:</p>
+<h2 id="which-one-to-reach-for"><a class="header" href="#which-one-to-reach-for">Which one to reach for</a></h2>
 <ol>
-<li><code>veyyon --version</code> and a normal interactive session start.</li>
-<li><code>veyyon setup status</code> for the install and auth health check.</li>
-<li><code>veyyon plugin doctor</code> for extension health.</li>
-<li><code>/debug</code> and <code>/memory diagnose</code> inside the TUI.</li>
+<li><code>veyyon setup status</code> when veyyon itself is misbehaving: it covers the install and your credentials.</li>
+<li><code>veyyon plugin doctor</code> when an extension is misbehaving.</li>
+<li><code>/debug</code> and <code>/memory diagnose</code> inside a session.</li>
 <li><a href="../using/troubleshooting.html">Troubleshooting</a> for common setup failures.</li>
 </ol>
-<h2 id="exit-status-plugin-doctor"><a class="header" href="#exit-status-plugin-doctor">Exit status (plugin doctor)</a></h2>
-<p><code>veyyon plugin doctor</code> exits non-zero when checks report <code>error</code> status. Warnings may still exit zero.</p>
+<h2 id="exit-status"><a class="header" href="#exit-status">Exit status</a></h2>
+<p>Both <code>veyyon setup status</code> and <code>veyyon plugin doctor</code> exit non-zero when a check reports an error, and zero when the worst result is a warning.</p>
 <h2 id="see-also"><a class="header" href="#see-also">See also</a></h2>
 <ul>
 <li><a href="../using/install.html">Install</a></li>
