@@ -12,6 +12,7 @@ import {
 	stringifyJson,
 	toError,
 } from "@veyyon/utils";
+import { pathStateSync } from "@veyyon/utils/fs-optional";
 import { sessionFileName, sessionFileStem } from "@veyyon/utils/session-file";
 import { ArtifactManager } from "./artifacts";
 import { type BlobPutOptions, type BlobPutResult, BlobStore } from "./blob-store";
@@ -105,7 +106,12 @@ function resolveBreadcrumbToInteractiveRoot(sessionFile: string): string {
 	// (`<dir>.jsonl` exists). Capped to defend against pathological layouts.
 	for (let depth = 0; depth < 8; depth++) {
 		const parentSessionFile = sessionFileName(path.dirname(current));
-		if (!fs.existsSync(parentSessionFile)) return current;
+		// `!== "present"` stops the climb on absent AND on unreachable. This is a resolution walk
+		// where a miss is the expected answer at nearly every step, so the state is not reported,
+		// but the direction still matters: climbing into a parent transcript this process cannot
+		// read would hand `--continue` a session it cannot load, and stopping one level down hands
+		// it a real one.
+		if (pathStateSync(parentSessionFile) !== "present") return current;
 		current = parentSessionFile;
 	}
 	return current;
@@ -739,11 +745,17 @@ export class SessionManager {
 			return;
 		}
 
+		// `!== "present"` keeps the answer this had and stops it being silent. Both other states
+		// take the same branch on purpose: a title change is written by patching a fixed-width slot
+		// in place, which needs the file to be readable, so "gone" and "there but unreachable" are
+		// equally reasons to rewrite the whole thing instead. The rewrite then fails with the real
+		// errno if the path is genuinely unusable. What changes is that the unreachable case is
+		// REPORTED once through the storage fault channel rather than looking like an absent file.
 		if (
 			!this.#fileIsCurrent ||
 			this.#rewriteRequired ||
 			!this.#hasTitleSlot ||
-			!this.#storage.existsSync(this.#sessionFile)
+			this.#storage.existsStateSync(this.#sessionFile) !== "present"
 		) {
 			await this.#rewriteAtomically();
 			return;
@@ -866,9 +878,14 @@ export class SessionManager {
 		return artifactsDir ? path.join(artifactsDir, DRAFT_ONLY_SESSION_MARKER) : null;
 	}
 
+	// `=== "present"` because a `true` here ARMS the cleanup that deletes the session on close.
+	// Only a marker this manager can actually see may do that, so an unreachable artifacts
+	// directory answers `false` and the session is kept, which is the same direction
+	// `#dropIfEmptyAndNoDraft` takes for the draft itself: not knowing means keep. The state
+	// probe reports the unreachable case instead of letting it read as "no marker was written".
 	#hasDraftOnlySessionMarker(): boolean {
 		const markerPath = this.#draftOnlySessionMarkerPath();
-		return markerPath !== null && this.#storage.existsSync(markerPath);
+		return markerPath !== null && this.#storage.existsStateSync(markerPath) === "present";
 	}
 
 	async #writeDraftOnlySessionMarker(): Promise<void> {
@@ -1159,7 +1176,19 @@ export class SessionManager {
 			const newArtifactsDir = artifactsDirectoryFor(newSessionFile)!;
 			const sessionPathChanged = path.resolve(oldSessionFile) !== path.resolve(newSessionFile);
 			const artifactPathChanged = path.resolve(oldArtifactsDir) !== path.resolve(newArtifactsDir);
-			sessionFileExisted = this.#storage.existsSync(oldSessionFile);
+			// `!== "absent"` so an UNREACHABLE old file counts as present.
+			//
+			// Skipping is the dangerous branch. This flag decides two things: whether to rename the file
+			// into the new directory, and, at the end of this method, whether to rewrite there. `#sessionFile`
+			// is repointed either way, so a `false` from an unreachable old file did BOTH nothing: the
+			// transcript stayed orphaned at the old path and the session carried on believing it had no file,
+			// which with no assistant message to force a rewrite means the operator's history is gone from
+			// their point of view, with nothing failing. Treating it as present makes the manager attempt
+			// that work instead, and whichever step cannot proceed (the rename when the directory really
+			// changes, the atomic rewrite otherwise) fails with the real errno, rolls back, and rethrows. A
+			// `setCwd` that reports EACCES is recoverable; one that succeeds into an amnesiac session is not.
+			// This is the contract `pathExistsOrThrow` names: a probe whose false branch loses something.
+			sessionFileExisted = this.#storage.existsStateSync(oldSessionFile) !== "absent";
 
 			let sessionMoved = false;
 			let artifactsMoved = false;
@@ -1270,12 +1299,24 @@ export class SessionManager {
 	async #dropIfEmptyAndNoDraft(): Promise<void> {
 		if (!this.#draftOnlySessionCleanupArmed) return;
 		const sessionFile = this.#sessionFile;
-		if (!sessionFile || !this.#storage.existsSync(sessionFile)) {
+		// `!== "present"` disarms on both absent and unreachable. Falling through is the branch that
+		// DELETES, so the only state allowed to reach it is one where this manager can see the file
+		// it is about to remove. An unreachable session file used to read as absent here too, which
+		// happened to disarm as well; the difference now is that it is reported rather than guessed
+		// right by accident.
+		if (!sessionFile || this.#storage.existsStateSync(sessionFile) !== "present") {
 			this.#draftOnlySessionCleanupArmed = false;
 			return;
 		}
+		// A DRAFT MEANS KEEP THE SESSION, AND SO DOES NOT KNOWING. The draft lives in the session's
+		// ARTIFACTS directory, which is a different directory from the session file, so it can be
+		// unreachable while the session file beside it reads fine. With the boolean probe an unreachable
+		// artifacts directory answered "no draft" and fell through to `deleteSessionWithArtifacts`, which
+		// deletes the session AND the draft in it: the operator loses unsent text because a mount was
+		// briefly unavailable. This is the case `pathExistsOrThrow` exists for, and the safe direction here
+		// is to keep the session rather than to throw out of a close path.
 		const draftPath = this.#draftPath();
-		if (draftPath && this.#storage.existsSync(draftPath)) return;
+		if (draftPath && this.#storage.existsStateSync(draftPath) !== "absent") return;
 		if (!this.#entries.every(isDraftOnlyMetadataEntry)) {
 			await this.#clearDraftOnlySessionMarker();
 			this.#draftOnlySessionCleanupArmed = false;
@@ -1300,7 +1341,11 @@ export class SessionManager {
 		await this.#scheduleDiskWork(async () => {
 			const hadWriter = this.#writer !== undefined;
 			await this.#closeWriterHandle();
-			if (hadWriter || (this.#sessionFile && this.#storage.existsSync(this.#sessionFile)))
+			// `=== "present"` because `#fileIsCurrent` is a claim that the file on disk MATCHES the
+			// entries in memory, and an unreachable file cannot be claimed to match anything. Leaving
+			// it false costs a full rewrite on the next write, which is the cheap wrong answer; the
+			// expensive one is a title patch applied to a file nobody could read.
+			if (hadWriter || (this.#sessionFile && this.#storage.existsStateSync(this.#sessionFile) === "present"))
 				this.#fileIsCurrent = true;
 		});
 		await this.#dropIfEmptyAndNoDraft();
@@ -1359,7 +1404,14 @@ export class SessionManager {
 
 		// Persist the updated header cwd when a session file already exists so
 		// resume/adoption sees the live root. Storage location is unchanged.
-		if (this.#persist && this.#sessionFile && this.#storage.existsSync(this.#sessionFile)) {
+		//
+		// `!== "absent"` so an UNREACHABLE file counts as present, for the reason `moveTo` above
+		// gives at length: skipping is the branch that loses something. The live session's cwd has
+		// already changed by the time this runs, so a `false` here leaves the header on disk naming
+		// the OLD root while every tool resolves against the new one, and the next resume or
+		// adoption opens the session in the wrong directory with nothing having failed. Attempting
+		// the rewrite instead surfaces the real errno, which is a `setCwd` the caller can retry.
+		if (this.#persist && this.#sessionFile && this.#storage.existsStateSync(this.#sessionFile) !== "absent") {
 			this.#forceFileCreation = true;
 			await this.#rewriteAtomically();
 		}
@@ -1450,9 +1502,14 @@ export class SessionManager {
 		}
 
 		const sessionFile = this.#sessionFile;
+		// `=== "absent"` and not `!existsSync(...)`, because this flag ARMS the cleanup that deletes
+		// the session on close. The boolean answered `false` for an unreachable file, which negates
+		// to `true` here: a session whose file exists and could not be reached was recorded as one
+		// this draft had just brought into being, and closing then deleted a real transcript. Only a
+		// file that is genuinely not there yet can make this a materialization.
 		const draftWillMaterializeMetadataOnlyFile =
 			sessionFile !== undefined &&
-			!this.#storage.existsSync(sessionFile) &&
+			this.#storage.existsStateSync(sessionFile) === "absent" &&
 			this.#entries.every(isDraftOnlyMetadataEntry);
 		// Force the header onto disk so resume can find the file this draft attaches to.
 		await this.ensureOnDisk();
@@ -2183,7 +2240,13 @@ export class SessionManager {
 				// may be the newest entry there; prefer a genuine current-cwd session.
 				let newestInTargetDir = await findMostRecentSession(dir, storage);
 				const breadcrumbFile = path.resolve(breadcrumb.sessionFile);
-				const breadcrumbCwdMissing = !fs.existsSync(breadcrumbCwd);
+				// `=== "absent"` because "missing" here means the worktree was moved or renamed, and
+				// that conclusion RE-ROOTS a session into a different directory. `existsSync` answered
+				// `false` for a cwd that exists and cannot be reached (an unmounted network project, a
+				// directory whose permissions changed), so a temporarily unavailable project read as a
+				// deleted one and the terminal's session was adopted somewhere else. Not knowing is not
+				// the same as gone.
+				const breadcrumbCwdMissing = pathStateSync(breadcrumbCwd) === "absent";
 				const newestIsBreadcrumb = newestInTargetDir ? path.resolve(newestInTargetDir) === breadcrumbFile : false;
 				let currentProjectAlreadyHasSession = false;
 
