@@ -20,6 +20,9 @@ export type TagsMatch = "any" | "all" | "any_strict" | "all_strict";
 export type UpdateMode = "replace" | "append";
 export type ConsolidationState = "failed" | "pending" | "done";
 
+/** Live string transform applied at the last Hindsight network boundary. */
+export type HindsightProviderTextTransform = (text: string) => string;
+
 export interface HindsightTimeouts {
 	request?: number;
 	reflect?: number;
@@ -31,6 +34,11 @@ export interface HindsightApiOptions {
 	baseUrl: string;
 	apiKey?: string;
 	userAgent?: string;
+	/**
+	 * Optional final-seam transform for standalone clients. Session-owned
+	 * clients register their live transforms when the session state is built.
+	 */
+	obfuscateProviderText?: HindsightProviderTextTransform;
 	/**
 	 * Per-operation request deadlines in milliseconds. Each falls back to the
 	 * constructor's own default when omitted. Reflect gets a far longer budget
@@ -240,6 +248,8 @@ export class HindsightError extends Error {
 	}
 }
 
+type RequestPath = string | ((transform: HindsightProviderTextTransform) => string);
+
 interface RequestOptions {
 	body?: Record<string, unknown>;
 	query?: Record<string, unknown>;
@@ -257,6 +267,7 @@ export class HindsightApi {
 	#reflectTimeoutMs: number;
 	#recallTimeoutMs: number;
 	#retainTimeoutMs: number;
+	readonly #providerTextTransforms = new Set<HindsightProviderTextTransform>();
 
 	constructor(options: HindsightApiOptions) {
 		this.#baseUrl = trimTrailingSlashes(options.baseUrl);
@@ -267,10 +278,25 @@ export class HindsightApi {
 		if (options.apiKey) {
 			this.#headers.Authorization = `Bearer ${options.apiKey}`;
 		}
+		if (options.obfuscateProviderText) {
+			this.#providerTextTransforms.add(options.obfuscateProviderText);
+		}
 		this.#requestTimeoutMs = options.timeouts?.request ?? 30_000;
 		this.#reflectTimeoutMs = options.timeouts?.reflect ?? 120_000;
 		this.#recallTimeoutMs = options.timeouts?.recall ?? 30_000;
 		this.#retainTimeoutMs = options.timeouts?.retain ?? 60_000;
+	}
+
+	/**
+	 * Register a live session transform. Shared parent/subagent clients keep
+	 * every active transform so a delayed request is protected by the runtime
+	 * that owns its queued data, rather than whichever state registered last.
+	 */
+	registerProviderTextTransform(transform: HindsightProviderTextTransform): () => void {
+		this.#providerTextTransforms.add(transform);
+		return () => {
+			this.#providerTextTransforms.delete(transform);
+		};
 	}
 
 	async retain(bankId: string, content: string, options?: RetainOptions): Promise<RetainResponse> {
@@ -286,7 +312,7 @@ export class HindsightApi {
 
 		return this.#request<RetainResponse>(
 			"POST",
-			`/v1/default/banks/${encodeURIComponent(bankId)}/memories`,
+			transform => `/v1/default/banks/${encodeURIComponent(transform(bankId))}/memories`,
 			"retain",
 			{
 				body: { items: [item], async: options?.async },
@@ -314,7 +340,7 @@ export class HindsightApi {
 
 		return this.#request<RetainResponse>(
 			"POST",
-			`/v1/default/banks/${encodeURIComponent(bankId)}/memories`,
+			transform => `/v1/default/banks/${encodeURIComponent(transform(bankId))}/memories`,
 			"retainBatch",
 			{
 				body: {
@@ -331,7 +357,7 @@ export class HindsightApi {
 	async recall(bankId: string, query: string, options?: RecallOptions): Promise<RecallResponse> {
 		return this.#request<RecallResponse>(
 			"POST",
-			`/v1/default/banks/${encodeURIComponent(bankId)}/memories/recall`,
+			transform => `/v1/default/banks/${encodeURIComponent(transform(bankId))}/memories/recall`,
 			"recall",
 			{
 				body: {
@@ -351,7 +377,7 @@ export class HindsightApi {
 	async reflect(bankId: string, query: string, options?: ReflectOptions): Promise<ReflectResponse> {
 		return this.#request<ReflectResponse>(
 			"POST",
-			`/v1/default/banks/${encodeURIComponent(bankId)}/reflect`,
+			transform => `/v1/default/banks/${encodeURIComponent(transform(bankId))}/reflect`,
 			"reflect",
 			{
 				body: {
@@ -370,7 +396,7 @@ export class HindsightApi {
 	async createBank(bankId: string, options: CreateBankOptions = {}): Promise<BankProfileResponse> {
 		return this.#request<BankProfileResponse>(
 			"PUT",
-			`/v1/default/banks/${encodeURIComponent(bankId)}`,
+			transform => `/v1/default/banks/${encodeURIComponent(transform(bankId))}`,
 			"createBank",
 			{
 				body: {
@@ -389,7 +415,7 @@ export class HindsightApi {
 	async listMemories(bankId: string, options?: ListMemoriesOptions): Promise<ListMemoriesResponse> {
 		return this.#request<ListMemoriesResponse>(
 			"GET",
-			`/v1/default/banks/${encodeURIComponent(bankId)}/memories/list`,
+			transform => `/v1/default/banks/${encodeURIComponent(transform(bankId))}/memories/list`,
 			"listMemories",
 			{
 				query: {
@@ -408,7 +434,7 @@ export class HindsightApi {
 	async listDocuments(bankId: string, options?: ListDocumentsOptions): Promise<ListDocumentsResponse> {
 		return this.#request<ListDocumentsResponse>(
 			"GET",
-			`/v1/default/banks/${encodeURIComponent(bankId)}/documents`,
+			transform => `/v1/default/banks/${encodeURIComponent(transform(bankId))}/documents`,
 			"listDocuments",
 			{ query: { limit: options?.limit, offset: options?.offset }, signal: options?.signal },
 		);
@@ -418,7 +444,8 @@ export class HindsightApi {
 	async getDocument(bankId: string, documentId: string): Promise<DocumentResponse | null> {
 		return this.#request<DocumentResponse | null>(
 			"GET",
-			`/v1/default/banks/${encodeURIComponent(bankId)}/documents/${encodeURIComponent(documentId)}`,
+			transform =>
+				`/v1/default/banks/${encodeURIComponent(transform(bankId))}/documents/${encodeURIComponent(transform(documentId))}`,
 			"getDocument",
 			{ allow404: true },
 		);
@@ -428,7 +455,8 @@ export class HindsightApi {
 	async updateDocument(bankId: string, documentId: string, options: UpdateDocumentOptions): Promise<DocumentResponse> {
 		return this.#request<DocumentResponse>(
 			"PATCH",
-			`/v1/default/banks/${encodeURIComponent(bankId)}/documents/${encodeURIComponent(documentId)}`,
+			transform =>
+				`/v1/default/banks/${encodeURIComponent(transform(bankId))}/documents/${encodeURIComponent(transform(documentId))}`,
 			"updateDocument",
 			{ body: { tags: options.tags }, signal: options.signal },
 		);
@@ -441,7 +469,8 @@ export class HindsightApi {
 	async deleteDocument(bankId: string, documentId: string): Promise<boolean> {
 		const result = await this.#request<{ __deleted: boolean } | null>(
 			"DELETE",
-			`/v1/default/banks/${encodeURIComponent(bankId)}/documents/${encodeURIComponent(documentId)}`,
+			transform =>
+				`/v1/default/banks/${encodeURIComponent(transform(bankId))}/documents/${encodeURIComponent(transform(documentId))}`,
 			"deleteDocument",
 			{ allow404: true },
 		);
@@ -457,7 +486,7 @@ export class HindsightApi {
 	async listMentalModels(bankId: string, options?: ListMentalModelsOptions): Promise<MentalModelListResponse> {
 		return this.#request<MentalModelListResponse>(
 			"GET",
-			`/v1/default/banks/${encodeURIComponent(bankId)}/mental-models`,
+			transform => `/v1/default/banks/${encodeURIComponent(transform(bankId))}/mental-models`,
 			"listMentalModels",
 			{ query: { detail: options?.detail ?? "content" }, signal: options?.signal },
 		);
@@ -471,7 +500,8 @@ export class HindsightApi {
 	): Promise<MentalModelSummary | null> {
 		return this.#request<MentalModelSummary | null>(
 			"GET",
-			`/v1/default/banks/${encodeURIComponent(bankId)}/mental-models/${encodeURIComponent(mentalModelId)}`,
+			transform =>
+				`/v1/default/banks/${encodeURIComponent(transform(bankId))}/mental-models/${encodeURIComponent(transform(mentalModelId))}`,
 			"getMentalModel",
 			{ query: { detail: options?.detail ?? "content" }, allow404: true, signal: options?.signal },
 		);
@@ -490,7 +520,7 @@ export class HindsightApi {
 	): Promise<CreateMentalModelResponse> {
 		return this.#request<CreateMentalModelResponse>(
 			"POST",
-			`/v1/default/banks/${encodeURIComponent(bankId)}/mental-models`,
+			transform => `/v1/default/banks/${encodeURIComponent(transform(bankId))}/mental-models`,
 			"createMentalModel",
 			{
 				body: {
@@ -510,7 +540,8 @@ export class HindsightApi {
 	async refreshMentalModel(bankId: string, mentalModelId: string): Promise<RefreshMentalModelResponse> {
 		return this.#request<RefreshMentalModelResponse>(
 			"POST",
-			`/v1/default/banks/${encodeURIComponent(bankId)}/mental-models/${encodeURIComponent(mentalModelId)}/refresh`,
+			transform =>
+				`/v1/default/banks/${encodeURIComponent(transform(bankId))}/mental-models/${encodeURIComponent(transform(mentalModelId))}/refresh`,
 			"refreshMentalModel",
 			{},
 		);
@@ -520,7 +551,8 @@ export class HindsightApi {
 	async deleteMentalModel(bankId: string, mentalModelId: string): Promise<boolean> {
 		const result = await this.#request<{ __deleted: boolean } | null>(
 			"DELETE",
-			`/v1/default/banks/${encodeURIComponent(bankId)}/mental-models/${encodeURIComponent(mentalModelId)}`,
+			transform =>
+				`/v1/default/banks/${encodeURIComponent(transform(bankId))}/mental-models/${encodeURIComponent(transform(mentalModelId))}`,
 			"deleteMentalModel",
 			{ allow404: true },
 		);
@@ -535,7 +567,8 @@ export class HindsightApi {
 	async getMentalModelHistory(bankId: string, mentalModelId: string): Promise<MentalModelHistoryEntry[]> {
 		const response = await this.#request<MentalModelHistoryEntry[] | { items?: MentalModelHistoryEntry[] }>(
 			"GET",
-			`/v1/default/banks/${encodeURIComponent(bankId)}/mental-models/${encodeURIComponent(mentalModelId)}/history`,
+			transform =>
+				`/v1/default/banks/${encodeURIComponent(transform(bankId))}/mental-models/${encodeURIComponent(transform(mentalModelId))}/history`,
 			"getMentalModelHistory",
 			{},
 		);
@@ -543,21 +576,30 @@ export class HindsightApi {
 		return response.items ?? [];
 	}
 
-	async #request<T>(method: string, path: string, operation: string, opts?: RequestOptions): Promise<T> {
-		let url = `${this.#baseUrl}${path}`;
+	async #request<T>(method: string, path: RequestPath, operation: string, opts?: RequestOptions): Promise<T> {
+		// Resolve the live callbacks only at the physical dispatch boundary.
+		// Queued values remain raw in-process, so a runtime swapped while they
+		// waited is authoritative when the request finally leaves the process.
+		const transform = composeProviderTextTransform(this.#providerTextTransforms);
+		const requestPath = typeof path === "function" ? path(transform) : path;
+		let url = `${this.#baseUrl}${requestPath}`;
 		if (opts?.query) {
-			const qs = buildQueryString(opts.query);
+			const query = transformHindsightRecord(opts.query, transform);
+			const qs = buildQueryString(query);
 			if (qs) url += `?${qs}`;
 		}
 
 		const effectiveTimeoutMs = opts?.timeoutMs ?? this.#requestTimeoutMs;
 		const init: RequestInit = {
 			method,
+			// Authentication is transport configuration, not caller payload.
+			// Never feed it through the session's recursive text transform.
 			headers: this.#headers,
 			signal: withTimeoutSignal(effectiveTimeoutMs, opts?.signal),
 		};
 		if (opts?.body !== undefined) {
-			init.body = JSON.stringify(pruneUndefined(opts.body));
+			const body = transformHindsightRecord(opts.body, transform);
+			init.body = JSON.stringify(pruneUndefined(body));
 		}
 
 		let response: Response;
@@ -646,6 +688,90 @@ function pad3(value: number): string {
 	if (value < 10) return `00${value}`;
 	if (value < 100) return `0${value}`;
 	return String(value);
+}
+
+function confidentialityTransformError(): HindsightError {
+	// Intentionally omit the source text and key: either may be the secret that
+	// caused the transform to fail.
+	return new HindsightError("Hindsight request confidentiality transform failed.");
+}
+
+function composeProviderTextTransform(
+	transforms: ReadonlySet<HindsightProviderTextTransform>,
+): HindsightProviderTextTransform {
+	const active = [...transforms];
+	return (text: string): string => {
+		let transformed = text;
+		try {
+			for (const transform of active) {
+				transformed = transform(transformed);
+				if (typeof transformed !== "string") throw confidentialityTransformError();
+			}
+			return transformed;
+		} catch (error) {
+			if (error instanceof HindsightError) throw error;
+			throw confidentialityTransformError();
+		}
+	};
+}
+
+function transformHindsightRecord(
+	input: Record<string, unknown>,
+	transform: HindsightProviderTextTransform,
+): Record<string, unknown> {
+	return transformHindsightObject(input, transform, new WeakSet<object>());
+}
+
+function transformHindsightObject(
+	input: object,
+	transform: HindsightProviderTextTransform,
+	ancestors: WeakSet<object>,
+): Record<string, unknown> {
+	if (ancestors.has(input)) throw confidentialityTransformError();
+	ancestors.add(input);
+	try {
+		const output: Record<string, unknown> = {};
+		for (const [rawKey, rawValue] of Object.entries(input)) {
+			const mappedKey = transform(rawKey);
+			if (Object.hasOwn(output, mappedKey)) {
+				// Two source keys mapping to one wire key is ambiguous. Reject
+				// instead of overwriting, and never echo either raw key.
+				throw new HindsightError("Hindsight request rejected: confidentiality key collision.");
+			}
+			Object.defineProperty(output, mappedKey, {
+				value: transformHindsightValue(rawValue, transform, ancestors),
+				enumerable: true,
+				configurable: true,
+				writable: true,
+			});
+		}
+		return output;
+	} finally {
+		ancestors.delete(input);
+	}
+}
+
+function transformHindsightValue(
+	value: unknown,
+	transform: HindsightProviderTextTransform,
+	ancestors: WeakSet<object>,
+): unknown {
+	if (typeof value === "string") return transform(value);
+	if (value === null || typeof value !== "object") return value;
+	if (Array.isArray(value)) {
+		if (ancestors.has(value)) throw confidentialityTransformError();
+		ancestors.add(value);
+		try {
+			return value.map(item => transformHindsightValue(item, transform, ancestors));
+		} finally {
+			ancestors.delete(value);
+		}
+	}
+	const prototype = Object.getPrototypeOf(value);
+	if (prototype !== Object.prototype && prototype !== null) {
+		throw confidentialityTransformError();
+	}
+	return transformHindsightObject(value, transform, ancestors);
 }
 
 function buildQueryString(query: Record<string, unknown>): string {
