@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import * as path from "node:path";
-import { isProcessAlive } from "../src/process-liveness";
+import {
+	getProcessStartIdentity,
+	isProcessAlive,
+	isProcessInstanceAlive,
+	type ProcessIdentityDependencies,
+} from "../src/process-liveness";
 import { scanShippedSourceLines } from "./support/scan-shipped-source";
 
 describe("isProcessAlive", () => {
@@ -65,6 +70,82 @@ describe("isProcessAlive", () => {
 				throw new Error("something unexpected");
 			};
 			expect(isProcessAlive(1234)).toBe(true);
+		} finally {
+			process.kill = kill;
+		}
+	});
+});
+
+describe("cross-platform process incarnation identity", () => {
+	/** macOS keeps a live owner when boot/start match, but exposes PID reuse for orphan recovery. */
+	test("darwin boot and process-start queries distinguish a reused live PID", () => {
+		let processStart = "1672628645.123456";
+		const dependencies: ProcessIdentityDependencies = {
+			platform: "darwin",
+			readBoundedTextFile: () => null,
+			querySystem: executable =>
+				executable === "/usr/sbin/sysctl" ? "{ sec = 1670000000, usec = 123456 }" : null,
+			queryDarwinProcessStart: () => processStart,
+			queryWindowsProcessStart: () => null,
+		};
+		const kill = process.kill;
+		try {
+			process.kill = () => true;
+			const ownerIdentity = getProcessStartIdentity(4242, dependencies);
+			expect(ownerIdentity).toBe("darwin:1670000000.123456:1672628645.123456");
+			expect(isProcessInstanceAlive(4242, ownerIdentity, dependencies)).toBe(true);
+			processStart = "1672715045.123456";
+			expect(isProcessInstanceAlive(4242, ownerIdentity, dependencies)).toBe(false);
+
+			// Query failure cannot prove reuse and therefore must not steal from a
+			// possibly-live owner.
+			processStart = "";
+			expect(isProcessInstanceAlive(4242, ownerIdentity, dependencies)).toBe(true);
+		} finally {
+			process.kill = kill;
+		}
+	});
+
+	/** Windows FILETIME preserves a live owner and makes a reused PID reapable without a shell. */
+	test("win32 native process-start queries distinguish a reused live PID", () => {
+		let processCreation = "133485518451234560";
+		const dependencies: ProcessIdentityDependencies = {
+			platform: "win32",
+			readBoundedTextFile: () => null,
+			querySystem: () => null,
+			queryDarwinProcessStart: () => null,
+			queryWindowsProcessStart: () => processCreation,
+		};
+		const kill = process.kill;
+		try {
+			process.kill = () => true;
+			const ownerIdentity = getProcessStartIdentity(5151, dependencies);
+			expect(ownerIdentity).toBe("win32:133485518451234560");
+			expect(isProcessInstanceAlive(5151, ownerIdentity, dependencies)).toBe(true);
+
+			processCreation = "133485518461234560";
+			expect(isProcessInstanceAlive(5151, ownerIdentity, dependencies)).toBe(false);
+		} finally {
+			process.kill = kill;
+		}
+	});
+
+	/** A failed Windows native query cannot prove reuse and therefore cannot steal a live owner's lease. */
+	test("win32 native query failure remains fail-closed", () => {
+		let processCreation: string | null = "133485518451234560";
+		const dependencies: ProcessIdentityDependencies = {
+			platform: "win32",
+			readBoundedTextFile: () => null,
+			querySystem: () => null,
+			queryDarwinProcessStart: () => null,
+			queryWindowsProcessStart: () => processCreation,
+		};
+		const kill = process.kill;
+		try {
+			process.kill = () => true;
+			const ownerIdentity = getProcessStartIdentity(6161, dependencies);
+			processCreation = null;
+			expect(isProcessInstanceAlive(6161, ownerIdentity, dependencies)).toBe(true);
 		} finally {
 			process.kill = kill;
 		}
