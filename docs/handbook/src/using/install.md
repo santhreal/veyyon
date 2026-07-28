@@ -269,7 +269,12 @@ two checks the installer runs: the binary reports the version the release
 claims, and a real search confirms the native addon loads. If either fails the
 previous binary goes back in place and the update reports why, so a release with
 no build for your platform cannot leave you with a binary that starts and then
-fails on your first command. A source checkout updates in its own terms:
+fails on your first command. "Why" is the binary's own words: if the new binary
+will not start, the update quotes what the system said and the exit code it gave,
+rather than saying only that it could not be verified. That is what tells apart a
+release that is wrong for your platform from an install directory mounted
+`noexec`, where the file is perfect and the mount refuses to run it. A source
+checkout updates in its own terms:
 `veyyon update` fast-forwards the checkout, reinstalls dependencies, and
 regenerates build artifacts, and refreshes the native addon, all in one command.
 It then reads the checkout's own version back and refuses to report success
