@@ -1,8 +1,29 @@
 import * as path from "node:path";
-import { isEnoent, logger } from "@veyyon/utils";
+import { errorMessage, isEnoent, isRecord } from "@veyyon/utils";
 import { YAML } from "bun";
+import { BUNDLED_ENV_KEYWORDS, buildEnvSecretPattern } from "./env-keywords";
 import type { SecretEntry } from "./obfuscator";
+import { canObfuscatePlainValue, describeSecretRejection, MIN_AUTODETECTED_ENV_VALUE_LENGTH } from "./policy";
 import { compileSecretRegex } from "./regex";
+
+/** Fields the human-authored `secrets.yml` schema understands. */
+const SECRET_FILE_FIELDS: Readonly<Record<string, true>> = {
+	type: true,
+	content: true,
+	mode: true,
+	replacement: true,
+	flags: true,
+	minLength: true,
+};
+
+export {
+	canObfuscatePlainValue,
+	describeSecretRejection,
+	MIN_AUTODETECTED_ENV_VALUE_LENGTH,
+	MIN_OBFUSCATABLE_LENGTH,
+	type SecretRejection,
+	type SecretRejectionReason,
+} from "./policy";
 
 export {
 	deobfuscateSessionContext,
@@ -14,38 +35,92 @@ export {
 } from "./obfuscator";
 
 /**
- * Load secrets from project-local and global secrets.yml files.
- * Project-local entries override global entries with matching content.
+ * Load secrets from the project's and the active profile's secrets.yml files.
+ * Project entries override profile entries with matching content.
+ *
+ * THROWS rather than returning a short list when a declared secret cannot be protected.
+ * A caller that gets entries back can trust that every one of them will be obfuscated;
+ * that is the whole contract, and returning a filtered list instead is how a value the
+ * operator declared secret used to reach the provider in plain text. See
+ * {@link describeSecretRejection} for the wording and the remedy.
+ *
+ * PROFILE, not "global". `agentDir` is the ACTIVE PROFILE's directory, and this pair used to be
+ * named `globalPath` / `globalEntries` after it, which put the word `global` on a per-profile file
+ * in the error messages and the docs while `global` also names a real and different vault scope
+ * (`~/.veyyon`). Two meanings for one word in one subsystem is how an operator ends up editing the
+ * wrong file.
  */
 export async function loadSecrets(cwd: string, agentDir: string): Promise<SecretEntry[]> {
 	const projectPath = path.join(cwd, ".veyyon", "secrets.yml");
-	const globalPath = path.join(agentDir, "secrets.yml");
+	const profilePath = path.join(agentDir, "secrets.yml");
 
-	const globalEntries = await loadSecretsFile(globalPath);
+	const profileEntries = await loadSecretsFile(profilePath);
 	const projectEntries = await loadSecretsFile(projectPath);
 
-	if (globalEntries.length === 0) return projectEntries;
-	if (projectEntries.length === 0) return globalEntries;
-
-	// Merge: project overrides global by content match
-	const projectContents = new Set(projectEntries.map(e => e.content));
-	const merged = [...globalEntries.filter(e => !projectContents.has(e.content)), ...projectEntries];
+	const merged = mergeSecretEntries(profileEntries, projectEntries);
+	refuseUnprotectableEntries(merged, { profilePath, projectPath });
 	return merged;
 }
 
-/** Minimum env var value length to consider as a secret. */
-const MIN_ENV_VALUE_LENGTH = 8;
+/** Project entries override profile ones with matching content. */
+function mergeSecretEntries(profileEntries: SecretEntry[], projectEntries: SecretEntry[]): SecretEntry[] {
+	if (profileEntries.length === 0) return projectEntries;
+	if (projectEntries.length === 0) return profileEntries;
 
-/** Env var name patterns that indicate secret values. */
-const SECRET_ENV_PATTERNS = /(?:KEY|SECRET|TOKEN|PASSWORD|PASS|AUTH|CREDENTIAL|PRIVATE|OAUTH)(?:_|$)/i;
+	const projectContents = new Set(projectEntries.map(e => e.content));
+	return [...profileEntries.filter(e => !projectContents.has(e.content)), ...projectEntries];
+}
 
-/** Collect environment variable values that look like secrets. */
-export function collectEnvSecrets(): SecretEntry[] {
+/**
+ * Refuse to start with a declared secret that cannot be obfuscated.
+ *
+ * Fail closed, because the alternative is worse than not having the feature: the
+ * operator wrote a value into `secrets.yml`, the session started cleanly, and the value
+ * went to the provider anyway. `mode: replace` is always available for a short value
+ * (one-way, no floor), so there is a one-word fix in every case, which is what makes
+ * refusing fair rather than merely strict.
+ */
+function refuseUnprotectableEntries(entries: SecretEntry[], paths: { profilePath: string; projectPath: string }): void {
+	const unprotectable = entries
+		.map((entry, index) => ({ entry, index }))
+		.filter(
+			({ entry }) =>
+				entry.type === "plain" &&
+				(entry.mode ?? "obfuscate") === "obfuscate" &&
+				!canObfuscatePlainValue(entry.content),
+		);
+	if (unprotectable.length === 0) return;
+
+	const complaints = unprotectable.map(({ index, entry }) =>
+		describeSecretRejection({ reason: "too-short-to-obfuscate", index, length: entry.content.length }),
+	);
+	throw new Error(
+		`Refusing to start: ${unprotectable.length} declared secret(s) cannot be obfuscated, and starting anyway ` +
+			`would send them to the model provider in plain text.\n` +
+			`Checked ${paths.projectPath} and ${paths.profilePath}.\n` +
+			complaints.map(line => `  - ${line}`).join("\n"),
+	);
+}
+
+/**
+ * Collect environment variable values that look like secrets.
+ *
+ * Nothing here is declared, so nothing here can be refused: the length floor is part of
+ * the guess (see {@link MIN_AUTODETECTED_ENV_VALUE_LENGTH}), and a value that fails it
+ * was never claimed to be a secret in the first place. That is the difference between
+ * this filter and the loader's refusal below.
+ *
+ * The name pattern comes from `env-keywords.ts`, which owns both the keyword list (Tier B data, so
+ * an operator can extend it) and the boundary rule that keeps a keyword from matching as a
+ * substring. Passing it in rather than reading a module-level regex is what lets that list be
+ * loaded from disk at all.
+ */
+export function collectEnvSecrets(pattern: RegExp = buildEnvSecretPattern([...BUNDLED_ENV_KEYWORDS])): SecretEntry[] {
 	const entries: SecretEntry[] = [];
 	const seen = new Set<string>();
 	for (const [name, value] of Object.entries(process.env)) {
-		if (!value || value.length < MIN_ENV_VALUE_LENGTH) continue;
-		if (!SECRET_ENV_PATTERNS.test(name)) continue;
+		if (!value || value.length < MIN_AUTODETECTED_ENV_VALUE_LENGTH) continue;
+		if (!pattern.test(name)) continue;
 		if (seen.has(value)) continue;
 		seen.add(value);
 		entries.push({ type: "plain", content: value, mode: "obfuscate" });
@@ -53,69 +128,187 @@ export function collectEnvSecrets(): SecretEntry[] {
 	return entries;
 }
 
+/**
+ * Read one `secrets.yml`.
+ *
+ * A MISSING FILE IS EMPTY; AN UNREADABLE ONE IS AN ERROR. Nothing was declared when the
+ * file does not exist, so `[]` is the honest answer. Every other failure means the
+ * operator wrote declarations that this process could not read, and answering `[]` there
+ * starts a session that believes it has no secrets to protect while the operator believes
+ * the opposite. That asymmetry is the entire reason absence gets its own branch instead of
+ * sharing one `catch` with parse and permission failures.
+ */
 async function loadSecretsFile(filePath: string): Promise<SecretEntry[]> {
+	let text: string;
 	try {
-		const text = await Bun.file(filePath).text();
-		const raw = YAML.parse(text);
-		if (!Array.isArray(raw)) {
-			logger.warn("secrets.yml must be a YAML array", { path: filePath });
-			return [];
-		}
-		const entries: SecretEntry[] = [];
-		for (let i = 0; i < raw.length; i++) {
-			const entry = raw[i];
-			if (!validateEntry(entry, filePath, i)) continue;
-			entries.push({
-				type: entry.type,
-				content: entry.content,
-				mode: entry.mode ?? "obfuscate",
-				replacement: entry.replacement,
-				flags: entry.flags,
-			});
-		}
-		return entries;
+		text = await Bun.file(filePath).text();
 	} catch (err) {
 		if (isEnoent(err)) return [];
-		logger.warn("Failed to load secrets.yml", { path: filePath, error: String(err) });
-		return [];
+		throw new Error(
+			`Refusing to start: ${filePath} exists but could not be read (${String(err)}). ` +
+				`Fix the file's permissions or remove it. Continuing without it would leave every secret ` +
+				`it declares unprotected.`,
+		);
 	}
+
+	let raw: unknown;
+	try {
+		raw = YAML.parse(text);
+	} catch (err) {
+		throw new Error(
+			`Refusing to start: ${filePath} is not valid YAML (${String(err)}). ` +
+				`Fix the syntax or remove the file. Its declarations cannot be honoured while it does not parse.`,
+		);
+	}
+	if (!Array.isArray(raw)) {
+		throw new Error(
+			`Refusing to start: ${filePath} must be a YAML array of secret entries, ` +
+				`and is ${raw === null ? "null" : typeof raw}. See docs/secrets.md for the schema.`,
+		);
+	}
+
+	const entries: SecretEntry[] = [];
+	const problems: string[] = [];
+	for (let i = 0; i < raw.length; i++) {
+		const entry = raw[i];
+		if (!validateEntry(entry, i, problems)) continue;
+		entries.push({
+			type: entry.type,
+			content: entry.content,
+			mode: entry.mode ?? "obfuscate",
+			replacement: entry.replacement,
+			flags: entry.flags,
+			minLength: entry.minLength,
+		});
+	}
+	if (problems.length > 0) {
+		// EVERY problem in the file, not the first one. An operator with three typos should fix
+		// three typos and restart once, rather than discovering them one restart at a time.
+		throw new Error(
+			`Refusing to start: ${problems.length} entr${problems.length === 1 ? "y" : "ies"} in ${filePath} ` +
+				`${problems.length === 1 ? "is" : "are"} not a valid secret declaration, and skipping ` +
+				`${problems.length === 1 ? "it" : "them"} would leave the value${problems.length === 1 ? "" : "s"} ` +
+				`${problems.length === 1 ? "it declares" : "they declare"} unprotected.\n` +
+				problems.map(line => `  - ${line}`).join("\n"),
+		);
+	}
+	return entries;
 }
 
-function validateEntry(entry: unknown, filePath: string, index: number): entry is SecretEntry {
-	if (entry === null || typeof entry !== "object") {
-		logger.warn(`secrets.yml[${index}]: entry must be an object`, { path: filePath });
+/**
+ * Check one declared entry, collecting what is wrong with it rather than deciding what to do.
+ *
+ * REFUSES, AND DOES NOT SKIP. Every branch here used to be `logger.warn` followed by
+ * `return false`, which is the exact failure this whole subsystem exists to prevent, arrived at
+ * from the inside: the default transport set is `{ file: true }` with no console transport
+ * (`logger.ts:219`), so a mistyped `type:` dropped the entry, told nobody, and sent the credential
+ * the operator had just declared straight to the provider in plain text. The handbook said "a
+ * malformed or unreadable `secrets.yml` also stops startup" while the code warned into a file, so
+ * the documentation and the behaviour disagreed. Security controls fail closed, so a
+ * declaration this process cannot honour stops the session with the entry, the field and the fix
+ * named.
+ *
+ * Problems are appended rather than thrown so the caller can report all of them at once. The
+ * predicate half of the signature still narrows, so a `true` return means every field below is the
+ * type {@link SecretEntry} claims.
+ */
+function validateEntry(entry: unknown, index: number, problems: string[]): entry is SecretEntry {
+	const at = `entry ${index}`;
+	// `isRecord` from the shared owner rather than the same three clauses written out again. Its
+	// definition rejects null, non-objects and arrays alike, so this is a rename and not a behaviour
+	// change, and the hand-written copy is what `packages/utils/test/type-guards.test.ts` locks against.
+	// That lock reads SOURCE TEXT, so quoting the predicate here, even in a comment, trips it: the
+	// first version of this comment spelled the implementation out and the lock counted it as a copy.
+	if (!isRecord(entry)) {
+		problems.push(
+			`${at} is ${entry === null ? "null" : Array.isArray(entry) ? "an array" : typeof entry}, and must be a mapping with "type" and "content".`,
+		);
 		return false;
 	}
 	const e = entry as Record<string, unknown>;
+	const unknownFields = Object.keys(e).filter(field => SECRET_FILE_FIELDS[field] !== true);
+	if (unknownFields.length > 0) {
+		problems.push(
+			`${at} has unknown ${unknownFields.length === 1 ? "field" : "fields"} ` +
+				`${unknownFields.map(field => JSON.stringify(field)).join(", ")}. Allowed fields are ` +
+				`${Object.keys(SECRET_FILE_FIELDS)
+					.map(field => JSON.stringify(field))
+					.join(", ")}.`,
+		);
+		return false;
+	}
 	if (e.type !== "plain" && e.type !== "regex") {
-		logger.warn(`secrets.yml[${index}]: type must be "plain" or "regex"`, { path: filePath });
+		problems.push(
+			`${at} has type ${JSON.stringify(e.type ?? null)}, which must be "plain" (an exact value) or ` +
+				`"regex" (a pattern).`,
+		);
 		return false;
 	}
 	if (typeof e.content !== "string" || e.content.length === 0) {
-		logger.warn(`secrets.yml[${index}]: content must be a non-empty string`, { path: filePath });
+		// The offending content is NOT quoted back: on a plain entry it is the credential, and an
+		// error message is the one place a secret must never appear even when it is malformed.
+		problems.push(`${at} needs a non-empty "content", the value or pattern to protect.`);
 		return false;
 	}
 	if (e.mode !== undefined && e.mode !== "obfuscate" && e.mode !== "replace") {
-		logger.warn(`secrets.yml[${index}]: mode must be "obfuscate" or "replace"`, { path: filePath });
+		problems.push(
+			`${at} has mode ${JSON.stringify(e.mode)}, which must be "obfuscate" (reversible, the default) ` +
+				`or "replace" (one-way).`,
+		);
 		return false;
 	}
 	if (e.replacement !== undefined && typeof e.replacement !== "string") {
-		logger.warn(`secrets.yml[${index}]: replacement must be a string`, { path: filePath });
+		problems.push(`${at} has a non-string "replacement". It is the text that stands in for the value.`);
 		return false;
 	}
 	if (e.flags !== undefined && typeof e.flags !== "string") {
-		logger.warn(`secrets.yml[${index}]: flags must be a string`, { path: filePath });
+		problems.push(`${at} has non-string "flags". Regex flags are a string such as "i".`);
 		return false;
+	}
+	if (e.replacement !== undefined && e.mode !== "replace") {
+		problems.push(`${at} sets "replacement", which applies only when "mode" is "replace".`);
+		return false;
+	}
+	if (e.flags !== undefined && e.type !== "regex") {
+		problems.push(`${at} sets "flags", which applies to regex entries only.`);
+		return false;
+	}
+	if (e.minLength !== undefined) {
+		if (typeof e.minLength !== "number" || !Number.isInteger(e.minLength) || e.minLength < 1) {
+			problems.push(
+				`${at} has minLength ${JSON.stringify(e.minLength)}, which must be a whole number of 1 or more.`,
+			);
+			return false;
+		}
+		// A floor on a plain entry would be read as "protect this even though it is short",
+		// which is not what it does: plain entries are matched literally, so the only rule
+		// that applies to them is the absolute one. Refused rather than ignored, so the operator
+		// cannot come away believing a short plain secret is now covered.
+		if (e.type === "plain") {
+			problems.push(
+				`${at} sets minLength, which applies to regex entries only. A short plain secret needs ` +
+					`"mode: replace", which is one-way and has no minimum.`,
+			);
+			return false;
+		}
+		if (e.mode === "replace") {
+			problems.push(
+				`${at} sets minLength in "replace" mode, where every regex match is replaced and no length floor applies.`,
+			);
+			return false;
+		}
 	}
 	if (e.type === "regex") {
 		try {
-			compileSecretRegex(e.content as string, e.flags as string | undefined);
+			compileSecretRegex(e.content, e.flags as string | undefined);
 		} catch (error) {
-			logger.warn(`secrets.yml[${index}]: invalid regex pattern`, {
-				path: filePath,
-				pattern: e.content,
-				error: String(error),
-			});
+			// A pattern that cannot be scanned safely protects nothing, so the operator declared a
+			// class of secret and got no coverage for it. Patterns are not secret, so the message
+			// quotes it; plain secret values still never reach this branch.
+			problems.push(
+				`${at} is a regex that does not compile or cannot be scanned safely (${errorMessage(error)}). ` +
+					`Pattern: ${e.content}. Every secret it was meant to match is unprotected until it is fixed or removed.`,
+			);
 			return false;
 		}
 	}
