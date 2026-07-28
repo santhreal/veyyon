@@ -155,6 +155,25 @@ export function pluralize(label: string, count: number): string {
 }
 
 /**
+ * `4 more lines`, and `1 more line` when there is one of them.
+ *
+ * WHY THIS HAS AN OWNER. Nineteen surfaces write this phrase: every collapsed tool
+ * block, the read tool's continuation notice, the edit preview, the LSP hover, the
+ * MCP and eval renderers, the Agent Control Center's comms fold. Every one of them
+ * wrote `${n} more lines` inline, so every one of them said "1 more lines" on the
+ * commonest case of all, a block that hid exactly one line.
+ *
+ * It returns the COUNTED PHRASE only, without the leading ellipsis or the trailing
+ * expand hint, because the surfaces frame it differently on purpose: some wrap it in
+ * parentheses, some in brackets with a continuation offset, some append the expand
+ * key. Folding the decoration in would force nineteen callers to share a shape they
+ * do not share, which is how a helper gets copied instead of called.
+ */
+export function formatMoreLines(count: number): string {
+	return `${count} more ${pluralize("line", count)}`;
+}
+
+/**
  * Format a ratio as a percentage.
  */
 export function formatPercent(ratio: number): string {
