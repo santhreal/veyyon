@@ -34,12 +34,6 @@ describe("custom system prompt: always-rendered core", () => {
 });
 
 describe("custom system prompt: gate parity", () => {
-	it("systemPromptCustomization gate toggles the prepended customization block", () => {
-		const on = renderCustom({ systemPromptCustomization: "CUSTOMIZATION-PREAMBLE" });
-		expect(on).toContain("CUSTOMIZATION-PREAMBLE");
-		expect(renderCustom({})).not.toContain("CUSTOMIZATION-PREAMBLE");
-	});
-
 	it("appendPrompt gate toggles the appended block", () => {
 		const on = renderCustom({ appendPrompt: "APPENDED-INSTRUCTIONS" });
 		expect(on).toContain("APPENDED-INSTRUCTIONS");
@@ -97,7 +91,6 @@ describe("custom system prompt: gate parity", () => {
 	 */
 	it("accounts for every gate in the shipped custom template", () => {
 		const tested = new Set([
-			"systemPromptCustomization",
 			"appendPrompt",
 			"contextFiles",
 			"skills",
@@ -110,7 +103,7 @@ describe("custom system prompt: gate parity", () => {
 		for (const m of PROMPTS["session/custom-system-prompt"].text.matchAll(/\{\{#if\s+([A-Za-z_][\w.]*)\}\}/g)) {
 			found.add(m[1].replace(/\.length$/, ""));
 		}
-		expect(found.size).toBeGreaterThanOrEqual(8);
+		expect(found.size).toBeGreaterThanOrEqual(7);
 		const untested = [...found].filter(id => !tested.has(id)).sort();
 		expect(untested).toEqual([]);
 	});

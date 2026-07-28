@@ -1,11 +1,12 @@
 import { describe, expect, it } from "bun:test";
-// These cases drive `applyPromptSectionOrder`, which reorders ONE rendered
-// document, so they name the sections that live in the template file, which is
-// what `templateSectionNames()` returns. The wider `promptSectionNames()` also
-// covers runtime sections (shorthand, project), which are separate parts of the
-// assembled prompt and are ordered by `applyPromptSectionOrderToParts` instead;
-// naming one here would correctly be reported as missing from this document.
-import { PROMPTS } from "@veyyon/coding-agent/prompts/registry";
+// These cases drive `applyPromptSectionOrder`, which reorders the rendered
+// static document assembled from statement modules. Runtime sections are
+// separate provider-cache parts and are ordered by
+// `applyPromptSectionOrderToParts`.
+import {
+	assembleDefaultTemplate,
+	assembleStatementSections,
+} from "@veyyon/coding-agent/system-prompt-builder/default-template";
 import {
 	applyPromptSectionOrder,
 	applyPromptSectionOrderToParts,
@@ -13,7 +14,7 @@ import {
 	templateSectionNames,
 } from "@veyyon/coding-agent/system-prompt-builder/prompt-sections";
 
-const systemPromptTemplate = PROMPTS["session/system-prompt"].text;
+const systemPromptTemplate = assembleDefaultTemplate(assembleStatementSections({}));
 
 // A miniature render with the same banner grammar as the real template.
 const RENDERED = [
@@ -54,11 +55,13 @@ describe("splitPromptSections", () => {
 		]);
 	});
 
-	it("finds every canonical section in the real shipped template", () => {
-		const names = splitPromptSections(systemPromptTemplate).map(s => s.name);
-		for (const name of templateSectionNames()) {
-			expect(names).toContain(name);
-		}
+	/**
+	 * The real statement-assembled static prompt must expose every canonical
+	 * section to the shared splitter.
+	 */
+	it("finds every canonical section in the assembled shipped prompt", () => {
+		const names = splitPromptSections(systemPromptTemplate).map(section => section.name);
+		for (const name of templateSectionNames()) expect(names).toContain(name);
 	});
 });
 

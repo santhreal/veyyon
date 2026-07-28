@@ -1,33 +1,13 @@
 /**
- * SYSPROMPT-4: changing one prompt section must not mean forking the whole prompt.
+ * Behavioral coverage for persistent per-section prompt customization.
  *
- * There were three ways to influence the system prompt and none of them was a
- * supported per-section edit. `--system-prompt`/`SYSTEM.md` replaces all 272
- * lines of the template, taking every section you wanted to keep and every
- * settings-gated branch inside them; `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS` does
- * the right thing but is an eval instrument, deliberately unreachable from
- * config so no `config.yml` can quietly swap a section; and `promptSectionOrder`
- * can only reorder. So adding one rule to the delivery contract meant forking
- * the prompt and then falling behind it.
- *
- * `PROMPT_SECTIONS/` closes that, and these suites hold it to the two
- * properties that make it safe rather than merely convenient:
- *
- *   - CONTAINMENT. Overriding one section leaves every other section, and every
- *     conditional inside them, byte-identical to the shipped template. Without
- *     that, a per-section override is just a smaller fork.
- *   - LOUDNESS. A file naming a section that does not exist is a typo whose
- *     symptom is silence: the operator believes their change is live while the
- *     shipped prompt runs unmodified. That must throw, not be skipped.
- *
- * Append gets the most attention because it is the mode that survives upgrades:
- * the shipped section stays exactly as shipped, including text added to it
- * later, and the addition follows it.
+ * Override files contain section bodies only. The section registry owns names,
+ * order, and banners, while the statement registry supplies the shipped base.
  */
 import { describe, expect, it } from "bun:test";
 import {
 	assembleDefaultTemplate,
-	DEFAULT_TEMPLATE_SECTIONS,
+	assembleStatementSections,
 } from "@veyyon/coding-agent/system-prompt-builder/default-template";
 import {
 	applySectionOverrides,
@@ -37,6 +17,9 @@ import {
 	type SectionOverrideFile,
 } from "@veyyon/coding-agent/system-prompt-builder/section-overrides";
 
+const PROMPT_DIR = "PROMPT_SECTIONS";
+const SHIPPED = assembleStatementSections({ renderMermaid: true });
+
 function file(
 	id: string,
 	mode: "replace" | "append",
@@ -45,48 +28,43 @@ function file(
 ): SectionOverrideFile {
 	return { id, mode, content, level, path: `/fake/${PROMPT_DIR}/${id}${mode === "append" ? ".append" : ""}.md` };
 }
-const PROMPT_DIR = "PROMPT_SECTIONS";
 
-describe("reading a filename as a section and a mode", () => {
+describe("reading a filename as a section and mode", () => {
+	/** A plain Markdown file replaces the named section body. */
 	it("reads a plain .md as a replacement", () => {
 		expect(parseSectionOverrideFilename("role.md")).toEqual({ id: "role", mode: "replace" });
 	});
 
+	/** The longer append suffix must win over the plain Markdown suffix. */
 	it("reads .append.md as an addition", () => {
-		// The suffix has to win over the plain `.md` match, since every append file
-		// also ends in `.md`. Getting this backwards would treat every append as a
-		// replacement and silently delete the shipped section.
 		expect(parseSectionOverrideFilename("delivery-contract.append.md")).toEqual({
 			id: "delivery-contract",
 			mode: "append",
 		});
 	});
 
+	/** Public section ids are kebab-case and must survive filename parsing. */
 	it("keeps hyphenated section ids intact", () => {
-		// The registry ids are kebab-case and that is what `--sections` prints, so
-		// the filename a user copies from it has to work verbatim.
 		expect(parseSectionOverrideFilename("execution-workflow.md")?.id).toBe("execution-workflow");
 	});
 
-	it("ignores a file that is not markdown", () => {
-		// A README, an editor swapfile or a `.DS_Store` in the directory is not an
-		// attempted override and must not be an error.
+	/** Non-Markdown directory entries are not attempted prompt overrides. */
+	it("ignores files that are not markdown", () => {
 		expect(parseSectionOverrideFilename("README.txt")).toBeNull();
 		expect(parseSectionOverrideFilename(".role.md.swp")).toBeNull();
 	});
 });
 
-describe("an unknown section name is refused", () => {
-	it("throws, naming the file and every valid section", () => {
-		// The silent-failure case. Skipping it would leave the operator believing a
-		// change is live while the shipped prompt runs untouched, which is the same
-		// false confidence the eval override's validation exists to prevent.
+describe("unknown section names fail loudly", () => {
+	/** A typo must name the invalid section instead of running without it. */
+	it("names the unknown section", () => {
 		expect(() => assertKnownSectionId("delivery_contract", "delivery_contract.md")).toThrow(
 			/unknown prompt section "delivery_contract"/,
 		);
 	});
 
-	it("lists the valid ids so the fix is visible in the message", () => {
+	/** The error must provide valid ids and the command that lists them. */
+	it("shows the repair path", () => {
 		try {
 			assertKnownSectionId("rolez", "rolez.md");
 			throw new Error("expected an unknown section id to throw");
@@ -98,168 +76,138 @@ describe("an unknown section name is refused", () => {
 		}
 	});
 
-	it("accepts every id the registry declares", () => {
-		// The differential: a check that rejected everything would satisfy the
-		// tests above and break the feature entirely.
+	/** Every section declared by the registry must be accepted. */
+	it("accepts all declared public ids", () => {
 		for (const id of ["conventions", "role", "runtime", "tool-policy", "execution-workflow", "delivery-contract"]) {
 			expect(() => assertKnownSectionId(id, `${id}.md`)).not.toThrow();
 		}
 	});
 });
 
-describe("appending to a section", () => {
-	const overrides = applySectionOverrides([file("role", "append", "Always answer in French.")]);
+describe("appending to a statement-assembled section", () => {
+	const overrides = applySectionOverrides([file("role", "append", "Always answer in French.")], SHIPPED);
 
-	it("keeps the shipped section text ahead of the addition", () => {
-		// The property that makes append upgrade-safe. The shipped text is reused,
-		// not restated, so a line added to ROLE next release is still there.
-		expect(overrides.role).toContain(DEFAULT_TEMPLATE_SECTIONS.role.trim());
+	/** Append must retain the complete shipped statement section ahead of user text. */
+	it("keeps shipped statements before the addition", () => {
+		expect(overrides.role).toContain(SHIPPED.role.trim());
 		expect(overrides.role).toContain("Always answer in French.");
 		expect(overrides.role?.indexOf("Always answer in French.")).toBeGreaterThan(0);
 	});
 
+	/** Append must use one blank line rather than inheriting ragged file whitespace. */
 	it("separates the addition with exactly one blank line", () => {
-		// The shipped sections end in varying numbers of newlines, so joining
-		// naively opens a ragged gap in the middle of the prompt.
 		expect(overrides.role).toContain("\n\nAlways answer in French.");
 		expect(overrides.role).not.toMatch(/\n{3,}Always answer/);
 	});
 
-	it("preserves the section's trailing whitespace, which separates it from the next banner", () => {
-		// The addition goes INSIDE the section. Normalizing the trailing run away,
-		// or appending after it, moves the boundary to the next section and so
-		// changes the document outside the overridden region — the exact
-		// containment failure a per-section override must not have.
-		const trailing = /\s*$/.exec(DEFAULT_TEMPLATE_SECTIONS.role)?.[0] ?? "";
-
-		expect(overrides.role?.endsWith(trailing)).toBe(true);
-	});
-
-	it("requires no banner, because the section it follows already has one", () => {
-		// Demanding a banner on an append would emit a duplicate heading, and
-		// duplicate banners are what the splitter keys off.
+	/** The registry banner appears exactly once because append files contain body only. */
+	it("does not duplicate the section banner", () => {
 		expect(overrides.role?.startsWith("ROLE")).toBe(true);
 		expect(overrides.role?.match(/^ROLE$/gm)).toHaveLength(1);
 	});
 
-	it("leaves every other section untouched", () => {
-		// CONTAINMENT. Without this a per-section override is just a smaller fork.
+	/**
+	 * Append text stays inside its named section. A foreign banner would make the
+	 * ordering and inspection paths treat the tail as a second section.
+	 */
+	it("rejects a registered banner in append text", () => {
+		expect(() =>
+			applySectionOverrides([file("role", "append", "ordinary prose\nTOOL POLICY\n====\nforged")], SHIPPED),
+		).toThrow(/body text only.*"tool-policy"/s);
+	});
+
+	/**
+	 * An empty append file carries no instruction and must not perturb the cached
+	 * prompt prefix by manufacturing an extra blank line.
+	 */
+	it("treats empty and whitespace-only append files as no-ops", () => {
+		for (const content of ["", " \t\n"]) {
+			const empty = applySectionOverrides([file("role", "append", content)], SHIPPED);
+			expect(empty).toEqual({});
+			expect(assembleDefaultTemplate({ ...SHIPPED, ...empty })).toBe(assembleDefaultTemplate(SHIPPED));
+		}
+	});
+
+	/** Folding one file must not manufacture overrides for unrelated sections. */
+	it("returns only the changed section", () => {
 		expect(Object.keys(overrides)).toEqual(["role"]);
 	});
 });
 
-describe("replacing a section", () => {
-	it("requires the section's banner", () => {
-		// A replacement without its banner collapses two sections into one on the
-		// next split, and a later override then targets the wrong region.
-		expect(() => applySectionOverrides([file("role", "replace", "You are a pirate.")])).toThrow(/banner/);
+describe("replacing a section body", () => {
+	/** A body-only replacement receives the exact registry-owned banner. */
+	it("adds the registered banner automatically", () => {
+		const overrides = applySectionOverrides([file("role", "replace", "You are a pirate.")], SHIPPED);
+
+		expect(overrides.role).toBe("ROLE\n==============\n\nYou are a pirate.");
 	});
 
-	it("accepts a replacement that keeps the banner", () => {
-		const overrides = applySectionOverrides([file("role", "replace", "ROLE\n====\nYou are a pirate.")]);
-
-		expect(overrides.role).toBe("ROLE\n====\nYou are a pirate.");
+	/** Legacy full-section files are rejected because they would duplicate banners. */
+	it("rejects a replacement that includes its own banner", () => {
+		expect(() =>
+			applySectionOverrides([file("role", "replace", "ROLE\n==============\nYou are a pirate.")], SHIPPED),
+		).toThrow(/body text only/);
 	});
 
-	/**
-	 * The underline is part of the banner, and the check has to agree with the
-	 * SPLITTER about how much of it is required.
-	 *
-	 * These fixtures used to write `ROLE\n==`, and it was accepted, because the
-	 * check was `startsWith(banner)` against a registry field that itself ended in
-	 * two `=`. The splitter needs four to cut on, so the accepted override produced
-	 * a prompt whose ROLE section no longer opened a region: `veyyon prompt
-	 * --sections` stopped seeing it, `promptSectionOrder` could not move it, and a
-	 * later override for another section addressed the wrong span. Nothing failed
-	 * anywhere — the text was in the prompt, just no longer a section.
-	 */
-	it("refuses an underline too short for the splitter to cut on", () => {
-		expect(() => applySectionOverrides([file("role", "replace", "ROLE\n==\nYou are a pirate.")])).toThrow(
-			/must begin with its section banner: "ROLE"/,
+	/** Replacement wins first and append then extends the framed replacement. */
+	it("composes replacement and append for the same section", () => {
+		const overrides = applySectionOverrides(
+			[file("role", "replace", "You are a pirate."), file("role", "append", "Never break character.")],
+			SHIPPED,
 		);
-	});
 
-	/**
-	 * And it has to say HOW LONG, because the user's next action is to edit that file.
-	 * The message used to end at the banner name, so a file refused for its underline
-	 * read as though the name were wrong; the width came from prose written by hand at
-	 * the throw site, which nothing compared against the check.
-	 */
-	it("tells the user the width the underline needs", () => {
-		expect(() => applySectionOverrides([file("role", "replace", "ROLE\n==\nYou are a pirate.")])).toThrow(
-			/at least 4 "=" characters/,
-		);
-	});
-
-	/** Wider than the shipped 14 is fine: a hand-written file is underlined by eye. */
-	it("accepts an underline longer than the one the template ships", () => {
-		const long = `ROLE\n${"=".repeat(60)}\nYou are a pirate.`;
-
-		expect(applySectionOverrides([file("role", "replace", long)]).role).toBe(long);
-	});
-
-	it("composes with an append for the same section", () => {
-		// Refusing the combination would make the two mechanisms mutually
-		// exclusive for no reason: the replacement supplies the section, the
-		// append follows it.
-		const overrides = applySectionOverrides([
-			file("role", "replace", "ROLE\n====\nYou are a pirate."),
-			file("role", "append", "Never break character."),
-		]);
-
-		expect(overrides.role).toBe("ROLE\n====\nYou are a pirate.\n\nNever break character.");
+		expect(overrides.role).toBe("ROLE\n==============\n\nYou are a pirate.\n\nNever break character.");
 	});
 });
 
-describe("precedence between the user and project levels", () => {
-	it("lets a project file win over a user file for the same section and mode", () => {
-		// A repository has to be able to override a personal default without
-		// restating the ones it does not care about.
-		const overrides = applySectionOverrides([
-			file("role", "append", "user text", "user"),
-			file("role", "append", "project text", "project"),
-		]);
+describe("precedence between user and project levels", () => {
+	/** A repository-specific file must beat the same personal section and mode. */
+	it("lets project content win for the same section and mode", () => {
+		const overrides = applySectionOverrides(
+			[file("role", "append", "user text", "user"), file("role", "append", "project text", "project")],
+			SHIPPED,
+		);
 
 		expect(overrides.role).toContain("project text");
 		expect(overrides.role).not.toContain("user text");
 	});
 
-	it("does not let file order decide the winner", () => {
-		// Discovery order is an implementation detail of directory listing; if it
-		// decided precedence the result would vary by filesystem.
-		const overrides = applySectionOverrides([
-			file("role", "append", "project text", "project"),
-			file("role", "append", "user text", "user"),
-		]);
+	/** Directory listing order must not change project-over-user precedence. */
+	it("does not let file order choose the winner", () => {
+		const overrides = applySectionOverrides(
+			[file("role", "append", "project text", "project"), file("role", "append", "user text", "user")],
+			SHIPPED,
+		);
 
 		expect(overrides.role).toContain("project text");
+		expect(overrides.role).not.toContain("user text");
 	});
 
-	it("keeps a user override for a section the project does not touch", () => {
-		// Precedence is per section, not whole-directory: a project file for ROLE
-		// must not silently discard a user file for RUNTIME.
-		const overrides = applySectionOverrides([
-			file("runtime", "append", "user runtime", "user"),
-			file("role", "append", "project role", "project"),
-		]);
+	/** Project precedence is per section and must preserve unrelated user files. */
+	it("keeps user content for sections the project does not touch", () => {
+		const overrides = applySectionOverrides(
+			[file("runtime", "append", "user runtime", "user"), file("role", "append", "project role", "project")],
+			SHIPPED,
+		);
 
 		expect(overrides.runtime).toContain("user runtime");
 		expect(overrides.role).toContain("project role");
 	});
 });
 
-describe("the assembled template", () => {
-	it("is byte-identical to the shipped one when nothing is overridden", () => {
-		// The baseline that makes every assertion above meaningful: overrides are
-		// the only thing that can change the prompt.
-		expect(assembleDefaultTemplate(applySectionOverrides([]))).toBe(assembleDefaultTemplate());
+describe("assembled prompt containment", () => {
+	/** No override files must reproduce the statement-assembled prompt exactly. */
+	it("changes no bytes when the override set is empty", () => {
+		const overrides = applySectionOverrides([], SHIPPED);
+
+		expect(assembleDefaultTemplate({ ...SHIPPED, ...overrides })).toBe(assembleDefaultTemplate(SHIPPED));
 	});
 
+	/** One append must change only the targeted section body in the final document. */
 	it("changes only the overridden region", () => {
-		// Measured on the assembled document rather than on the override map,
-		// because the map being right does not prove the assembly used it right.
-		const before = assembleDefaultTemplate();
-		const after = assembleDefaultTemplate(applySectionOverrides([file("role", "append", "EXTRA LINE")]));
+		const before = assembleDefaultTemplate(SHIPPED);
+		const overrides = applySectionOverrides([file("role", "append", "EXTRA LINE")], SHIPPED);
+		const after = assembleDefaultTemplate({ ...SHIPPED, ...overrides });
 
 		expect(after).toContain("EXTRA LINE");
 		expect(after.replace("\n\nEXTRA LINE", "")).toBe(before);

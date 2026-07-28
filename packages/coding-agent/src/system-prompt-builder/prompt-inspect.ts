@@ -2,7 +2,7 @@
  * Read back the system prompt a given configuration would actually send.
  *
  * WHY THIS EXISTS. The system prompt is not a document, it is a program. It is
- * assembled from 68 named statements, each with a condition, so whole regions
+ * assembled from named statements, each with a condition, so whole regions
  * appear or vanish with the live tool set, with settings, with the workspace and
  * with the model's harness profile, which can reorder the sections outright. And
  * within a statement Handlebars still decides what it says. Reading the rules
@@ -43,6 +43,7 @@ import {
 	describeCondition,
 	STATEMENT_SECTIONS,
 	type StatementContext,
+	type StatementOverrides,
 	sectionBanner,
 	statementsOf,
 } from "./statement-registry";
@@ -117,11 +118,10 @@ export interface InspectedStatement {
 	 *
 	 *     section bytes = banner + sum of statement bytes + separator
 	 *
-	 * The banner belongs to the assembler rather than to any statement, and the separator is the one
-	 * newline `statementSectionOverrides` adds after every section but the last. Measured, not
-	 * asserted from the argument: the residual is 1 for the first five sections and 0 for the last,
-	 * and `prompt-inspect.test.ts` pins it so a change in either convention fails there rather than
-	 * quietly making these numbers not add up.
+	 * The banner belongs to the section assembler rather than to any statement,
+	 * and `assembleDefaultTemplate` owns the one newline between adjacent static
+	 * sections. `prompt-inspect.test.ts` pins the residual so a change in either
+	 * convention cannot silently make the reported parts stop reconciling.
 	 *
 	 * Zero for an absent statement: it costs nothing, and that is the fact worth reporting.
 	 */
@@ -172,7 +172,8 @@ const SECTION_SOURCE: ReadonlyMap<string, "template" | "runtime"> = new Map(
  * with the bytes it claims to report.
  */
 export async function inspectSystemPrompt(options: BuildSystemPromptOptions = {}): Promise<PromptInspection> {
-	const { systemPrompt, statementContext } = await buildSystemPrompt(options);
+	const { systemPrompt, statementContext, statementOverrides, replacedStatementSections } =
+		await buildSystemPrompt(options);
 	const sections: InspectedSection[] = [];
 
 	for (const [blockIndex, block] of systemPrompt.entries()) {
@@ -204,7 +205,10 @@ export async function inspectSystemPrompt(options: BuildSystemPromptOptions = {}
 		blocks: systemPrompt,
 		sections,
 		missing,
-		statements: statementContext === null ? [] : priceStatements(statementContext),
+		statements:
+			statementContext === null || statementOverrides === null
+				? []
+				: priceStatements(statementContext, statementOverrides, new Set(replacedStatementSections)),
 		fromStatements: statementContext !== null,
 		totalBytes: sections.reduce((sum, section) => sum + section.bytes, 0),
 		totalTokens: sections.reduce((sum, section) => sum + section.tokens, 0),
@@ -226,7 +230,11 @@ export async function inspectSystemPrompt(options: BuildSystemPromptOptions = {}
  * you nothing" is the answer to a question somebody is asking, and a list of only present rows
  * cannot distinguish an off rule from a rule that no longer exists.
  */
-function priceStatements(context: StatementContext): InspectedStatement[] {
+function priceStatements(
+	context: StatementContext,
+	overrides: StatementOverrides,
+	replacedSections: ReadonlySet<string>,
+): InspectedStatement[] {
 	const priced: InspectedStatement[] = [];
 
 	for (const section of STATEMENT_SECTIONS) {
@@ -234,6 +242,22 @@ function priceStatements(context: StatementContext): InspectedStatement[] {
 		// One render per step, both measures taken from it. Rendering twice to price bytes and
 		// tokens separately would double the work for two numbers about the same string.
 		let running = measure(template, context);
+
+		if (replacedSections.has(section)) {
+			for (const statement of statementsOf(section)) {
+				priced.push({
+					id: statement.id,
+					section,
+					purpose: statement.purpose,
+					condition: describeCondition(statement.condition),
+					present: false,
+					bytes: 0,
+					tokens: 0,
+					text: "",
+				});
+			}
+			continue;
+		}
 
 		for (const statement of statementsOf(section)) {
 			const shared = {
@@ -246,7 +270,12 @@ function priceStatements(context: StatementContext): InspectedStatement[] {
 				priced.push({ ...shared, present: false, bytes: 0, tokens: 0, text: "" });
 				continue;
 			}
-			template += statement.text;
+			const replacement = Object.hasOwn(overrides, statement.id) ? overrides[statement.id] : statement.text;
+			if (replacement === null) {
+				priced.push({ ...shared, present: false, bytes: 0, tokens: 0, text: "" });
+				continue;
+			}
+			template += replacement;
 			const grown = measure(template, context);
 			priced.push({
 				...shared,

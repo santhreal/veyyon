@@ -5,7 +5,6 @@ import { buildSystemPrompt as buildSdkSystemPrompt } from "@veyyon/coding-agent/
 import {
 	buildSystemPrompt,
 	buildSystemPromptToolMetadata,
-	DEFAULT_SYSTEM_PROMPT_TOOL_NAMES,
 	type SystemPromptToolMetadata,
 } from "@veyyon/coding-agent/system-prompt";
 import { createTools, type Tool, type ToolSession } from "@veyyon/coding-agent/tools";
@@ -86,20 +85,6 @@ describe("system prompt tool inventory", () => {
 		return systemPrompt.join("\n\n");
 	}
 
-	function inventoryFrom(text: string): string {
-		// Tolerate either prompt layout: the merge-base "# Inventory" / "ENV" framing and the
-		// reordered "# Tool Inventory" / "TOOL POLICY" framing on current main. The slice just
-		// needs to isolate the rendered tool list from the rest of the prompt.
-		const inventoryStart =
-			["# Tool Inventory", "# Inventory"].map(header => text.indexOf(header)).find(index => index >= 0) ?? -1;
-		expect(inventoryStart).toBeGreaterThan(-1);
-		const sectionEnds = ["\nENV\n", "\nTOOL POLICY", "\n# "]
-			.map(marker => text.indexOf(marker, inventoryStart + 1))
-			.filter(index => index > inventoryStart);
-		const inventoryEnd = sectionEnds.length > 0 ? Math.min(...sectionEnds) : text.length;
-		return text.slice(inventoryStart, inventoryEnd);
-	}
-
 	function makeToolSession(settings: Settings): ToolSession {
 		return {
 			cwd: tempDir,
@@ -110,11 +95,35 @@ describe("system prompt tool inventory", () => {
 		} as ToolSession;
 	}
 
-	it("renders a compact name list only when native tools are active and descriptors stay in schemas", async () => {
+	it("honours schema and example metadata overrides", () => {
+		// All fields admitted by the override type must win. Silently retaining
+		// the tool's originals makes verbose prompt descriptors disagree with the caller.
+		const originalParameters = { type: "object", properties: { old: { type: "string" } } } as const;
+		const replacementParameters = { type: "object", properties: { current: { type: "number" } } } as const;
+		const originalExamples = [{ call: { old: "value" } }];
+		const replacementExamples = [{ call: { current: 1 } }];
+		const tool = {
+			...SDK_TOOL,
+			parameters: originalParameters,
+			examples: originalExamples,
+		};
+
+		const metadata = buildSystemPromptToolMetadata(new Map([[tool.name, tool]]), {
+			[tool.name]: {
+				parameters: replacementParameters,
+				examples: replacementExamples,
+			},
+		}).get(tool.name);
+
+		expect(metadata?.parameters).toBe(replacementParameters);
+		expect(metadata?.examples).toBe(replacementExamples);
+	});
+
+	it("omits the redundant inventory when native schemas are the descriptor source", async () => {
 		const text = await render({ nativeTools: true, inlineToolDescriptors: false });
-		expect(text).toContain("- Read: `read`");
-		expect(text).toContain("- Bash: `bash`");
-		// No full per-tool sections in list mode.
+		expect(text).not.toContain("# Tool Inventory");
+		expect(text).not.toContain("- Read: `read`");
+		expect(text).not.toContain("- Bash: `bash`");
 		expect(text).not.toContain("# Tool: read");
 		expect(text).not.toContain("Reads files from disk.");
 	});
@@ -136,7 +145,7 @@ describe("system prompt tool inventory", () => {
 		expect(text).not.toContain("- Read: `read`");
 	});
 
-	it("uses a conservative fallback inventory when no tools map is provided", async () => {
+	it("does not synthesize a native name inventory when no tools map is provided", async () => {
 		const { systemPrompt } = await buildSystemPrompt({
 			cwd: tempDir,
 			contextFiles: [],
@@ -144,13 +153,8 @@ describe("system prompt tool inventory", () => {
 			rules: [],
 			workspaceTree: { ...EMPTY_TREE, rootPath: tempDir },
 		});
-		const inventory = inventoryFrom(systemPrompt.join("\n\n"));
-		for (const toolName of DEFAULT_SYSTEM_PROMPT_TOOL_NAMES) {
-			expect(inventory).toContain(`- \`${toolName}\``);
-		}
-		expect(inventory).not.toContain("- `browser`");
-		expect(inventory).not.toContain("- `task`");
-		expect(inventory).not.toContain("- `eval`");
+		const text = systemPrompt.join("\n\n");
+		expect(text).not.toContain("# Tool Inventory");
 	});
 
 	it("omits eval prompt guidance when every eval backend is disabled", async () => {
@@ -192,16 +196,16 @@ describe("system prompt tool inventory", () => {
 		expect(text).not.toContain("use `eval` cells");
 	});
 
-	it("SDK wrapper renders provided tools instead of the fallback inventory", async () => {
+	it("SDK wrapper also leaves native tool names to provider schemas", async () => {
 		const { systemPrompt } = await buildSdkSystemPrompt({
 			cwd: tempDir,
 			contextFiles: [],
 			skills: [],
 			tools: [SDK_TOOL],
 		});
-		const inventory = inventoryFrom(systemPrompt.join("\n\n"));
-		expect(inventory).toContain("- SDK Custom: `sdk_custom`");
-		expect(inventory).not.toContain("- `read`");
+		const text = systemPrompt.join("\n\n");
+		expect(text).not.toContain("# Tool Inventory");
+		expect(text).not.toContain("- SDK Custom: `sdk_custom`");
 	});
 
 	it("SDK wrapper preserves an explicit empty tool list", async () => {

@@ -30,9 +30,8 @@
 
 import { describe, expect, it } from "bun:test";
 import { kebabToCamel } from "@veyyon/utils";
-import { sessionPrompts } from "../prompts/session/rows";
 import { hasBanner, renderBanner } from "./banner-grammar";
-import { assembleDefaultTemplate, DEFAULT_TEMPLATE_SECTION_ORDER } from "./default-template";
+import { assembleDefaultTemplate, assembleStatementSections, DEFAULT_TEMPLATE_SECTION_ORDER } from "./default-template";
 import { promptSectionNames, splitPromptSections } from "./prompt-sections";
 import {
 	BANNERED_SECTIONS,
@@ -82,32 +81,37 @@ describe("prompt-section registry: structural invariants", () => {
 	});
 });
 
-describe("prompt-section registry: the shipped template agrees with the registry", () => {
-	/** THE anti-divergence lock for the template file. A renamed banner used to
-	 * require edits in two hand-written tables; now it fails here instead of
-	 * silently changing one view of the prompt. */
-	it("finds every registered template banner in the shipped template, in order", () => {
+describe("prompt-section registry: assembled static sections agree with the registry", () => {
+	/**
+	 * Every registered static banner must be generated in registry order. The
+	 * outer template contains no banners that could satisfy this accidentally.
+	 */
+	it("generates every registered static banner in order", () => {
+		const assembled = assembleDefaultTemplate(assembleStatementSections({}));
 		let from = 0;
 		for (const section of BANNERED_TEMPLATE_SECTIONS) {
-			// The FULL rendered banner, underline included: matching the name alone
-			// would pass on a file whose underline was lost or reflowed, which is
-			// exactly the damage that makes two sections merge into one.
 			const banner = renderBanner(section.name);
-			const at = sessionPrompts["session/system-prompt"].text.indexOf(banner, from);
+			const at = assembled.indexOf(banner, from);
 			expect({ id: section.id, found: at >= 0 }).toEqual({ id: section.id, found: true });
 			from = at + banner.length;
 		}
 	});
 
-	/** The whole override mechanism rests on reassembly being lossless. */
-	it("reassembles the template byte-for-byte from its registered sections", () => {
-		expect(assembleDefaultTemplate()).toBe(sessionPrompts["session/system-prompt"].text);
+	/**
+	 * Static assembly must contain substantive modular content rather than only
+	 * the structural slot or a list of empty banners.
+	 */
+	it("assembles a complete static prompt document", () => {
+		const assembled = assembleDefaultTemplate(assembleStatementSections({}));
+
+		expect(assembled.length).toBeGreaterThan(7_500);
+		expect(assembled).toContain("Engineering Principles");
+		expect(assembled).toContain("DELIVERY CONTRACT");
 	});
 
-	/** The template splitter must look for exactly the banners the .md contains. A
-	 * runtime banner is not in that file, and searching for one would throw. */
-	it("excludes runtime sections from the template-file view", () => {
-		const templateIds = new Set<string>(BANNERED_TEMPLATE_SECTIONS.map(s => s.id));
+	/** Runtime sections remain outside the cached static section set. */
+	it("excludes runtime sections from the static registry view", () => {
+		const templateIds = new Set<string>(BANNERED_TEMPLATE_SECTIONS.map(section => section.id));
 		for (const id of RUNTIME_SECTION_IDS) expect(templateIds.has(id)).toBe(false);
 	});
 });

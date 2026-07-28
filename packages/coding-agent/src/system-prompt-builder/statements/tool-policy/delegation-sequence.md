@@ -1,1 +1,0 @@
-- **Sequence only when necessary:** The only reason to run A before B is if B strictly requires A's output to function (e.g., a core API contract or schema migration). {{#if taskIrcEnabled}}If the missing piece is small, run them in parallel and have B ask A via `irc`!{{/if}}

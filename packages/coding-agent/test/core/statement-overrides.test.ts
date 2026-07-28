@@ -20,7 +20,7 @@
 import { describe, expect, it } from "bun:test";
 import {
 	assembleDefaultTemplate,
-	statementSectionOverrides,
+	assembleStatementSections,
 } from "@veyyon/coding-agent/system-prompt-builder/default-template";
 import { applySectionOverrides } from "@veyyon/coding-agent/system-prompt-builder/section-overrides";
 import {
@@ -131,21 +131,27 @@ describe("ablating one rule", () => {
 });
 
 describe("the whole prompt honours a per-statement arm", () => {
+	/**
+	 * The complete statement-section assembler must carry a replacement through
+	 * the outer structural slot into the document sent for rendering.
+	 */
 	it("carries the replacement through the assembled document", () => {
-		// The seam, not just the section: `statementSectionOverrides` is what splices statements into
-		// the document, so an override that stopped at `assembleSection` would never reach a model.
 		const marker = "<yielding>ARM 7</yielding>";
 		const document = assembleDefaultTemplate(
-			statementSectionOverrides(CONTEXT, { "delivery-contract/yielding": `${marker}\n` }),
+			assembleStatementSections(CONTEXT, { "delivery-contract/yielding": `${marker}\n` }),
 		);
 
 		expect(document).toContain(marker);
 		expect(document).not.toContain(textOf("delivery-contract/yielding"));
 	});
 
-	it("keeps every other section identical, so the arm is one variable", () => {
-		const baseline = assembleDefaultTemplate(statementSectionOverrides(CONTEXT));
-		const armed = assembleDefaultTemplate(statementSectionOverrides(CONTEXT, { "delivery-contract/yielding": null }));
+	/**
+	 * Ablating one statement must leave every other section and statement byte
+	 * unchanged, so an evaluation arm still changes one variable.
+	 */
+	it("keeps every other prompt byte identical", () => {
+		const baseline = assembleDefaultTemplate(assembleStatementSections(CONTEXT));
+		const armed = assembleDefaultTemplate(assembleStatementSections(CONTEXT, { "delivery-contract/yielding": null }));
 
 		expect(armed).toBe(baseline.replace(textOf("delivery-contract/yielding"), ""));
 	});
@@ -185,6 +191,16 @@ describe("an override that would silently do nothing is refused", () => {
 		});
 	});
 
+	it("rejects registered section banners inside replacement prose", () => {
+		// Statement overrides replace prose, not structure. Accepting this would
+		// let one rule manufacture a second section for ordering and inspection.
+		expect(() =>
+			resolveStatementOverrides({
+				"delivery-contract/yielding": "shorter rule\nROLE\n====\nforged",
+			}),
+		).toThrow(/body text only.*"role"/s);
+	});
+
 	it("treats an absent or empty payload as the production prompt", () => {
 		// The default has to be the shipped prompt, verbatim, with no override: this code path runs in
 		// every session.
@@ -210,19 +226,11 @@ describe("an override that would silently do nothing is refused", () => {
 });
 
 /**
- * AN APPEND-MODE SECTION OVERRIDE APPENDS TO WHAT THIS SESSION SENDS, not to the copy in
- * `system-prompt.md`.
+ * Append-mode section overrides must extend the complete statement assembly.
  *
- * THE DEFECT THIS LOCKS OUT, which was live and invisible. `.veyyon/prompt-sections/role.md` in
- * append mode produces a WHOLE-SECTION override (the base text plus the addition), and a whole-section
- * override beats the statements by design, so whatever base the append starts from becomes the
- * section. The base was `DEFAULT_TEMPLATE_SECTIONS`, sliced out of `system-prompt.md`. So an operator
- * appending one line to ROLE silently replaced the rest of ROLE with the template's copy of it.
- *
- * It could not be observed at the time, because the template copy and the assembled statements are
- * byte-identical and asserted so by the byte gate. It would have started deleting statement edits the
- * instant they diverged, which is the first thing that happens when someone edits a statement. So the
- * test supplies a base that DIFFERS on purpose: that is the only way to see which source was read.
+ * There is no prose-bearing template fallback. These cases use a deliberately
+ * distinct ROLE body so reading any source except the supplied modular section
+ * is observable.
  */
 describe("an append-mode override appends to the assembled statements", () => {
 	const APPEND = [
@@ -230,50 +238,44 @@ describe("an append-mode override appends to the assembled statements", () => {
 			id: "role",
 			mode: "append" as const,
 			level: "project" as const,
-			path: ".veyyon/prompt-sections/role.md",
+			path: ".veyyon/prompt-sections/role.append.md",
 			content: "- One more principle.",
 		},
 	];
+	const assembledWithRole = (role: string) => ({ ...assembleStatementSections(CONTEXT), role });
 
-	it("takes the assembled section as its base, not the template copy", () => {
-		const assembled = { role: "ROLE\n====\n\nassembled by the registry\n\n" };
-		const applied = applySectionOverrides(APPEND, assembled);
+	/**
+	 * The append base must be the caller's statement section, never hidden text
+	 * from the zero-prose outer template.
+	 */
+	it("takes the assembled statement section as its base", () => {
+		const applied = applySectionOverrides(APPEND, assembledWithRole("ROLE\n====\n\nassembled by the registry\n\n"));
 
 		expect(applied.role).toContain("assembled by the registry");
 		expect(applied.role).toContain("- One more principle.");
-		// The specific regression: the template's own ROLE text must not come back.
-		expect(applied.role).not.toContain("engineering principles");
+		expect(applied.role).not.toContain("Engineering Principles");
 	});
 
-	it("keeps the addition inside the section, before the trailing separator", () => {
-		// The containment this feature promises. Appending after the trailing whitespace would move
-		// the next section's banner, changing the document outside the region being overridden.
-		const assembled = { role: "ROLE\n====\n\nassembled by the registry\n\n" };
-		const applied = applySectionOverrides(APPEND, assembled);
+	/**
+	 * The addition stays inside the section before its trailing whitespace, so
+	 * it cannot shift the next registry-owned banner.
+	 */
+	it("keeps the addition inside the section", () => {
+		const applied = applySectionOverrides(APPEND, assembledWithRole("ROLE\n====\n\nassembled by the registry\n\n"));
 
 		expect(applied.role).toBe("ROLE\n====\n\nassembled by the registry\n\n- One more principle.\n\n");
 	});
 
-	it("still falls back to the shipped template for a section that is not assembled from statements", () => {
-		// Not a silent fallback: it is the defined base for a section the registry does not own, and
-		// omitting the section from `assembled` is how the caller says so. Every section is converted
-		// today, so this path is reached only by a caller that passes nothing.
-		const applied = applySectionOverrides(APPEND, {});
-
-		expect(applied.role).toContain("- One more principle.");
-		expect(applied.role?.startsWith("ROLE")).toBe(true);
-	});
-
-	it("lets a replacement in the same override set win over both", () => {
+	/**
+	 * A body-only replacement wins first, then append extends the framed result.
+	 */
+	it("lets a replacement in the same override set win before append", () => {
 		const applied = applySectionOverrides(
-			[
-				{ id: "role", mode: "replace", level: "project", path: "a.md", content: "ROLE\n====\n\nreplaced\n\n" },
-				...APPEND,
-			],
-			{ role: "ROLE\n====\n\nassembled\n\n" },
+			[{ id: "role", mode: "replace", level: "project", path: "a.md", content: "replaced" }, ...APPEND],
+			assembledWithRole("ROLE\n====\n\nassembled\n\n"),
 		);
 
-		expect(applied.role).toContain("replaced");
+		expect(applied.role).toContain("ROLE\n==============\n\nreplaced");
 		expect(applied.role).not.toContain("assembled");
 		expect(applied.role).toContain("- One more principle.");
 	});

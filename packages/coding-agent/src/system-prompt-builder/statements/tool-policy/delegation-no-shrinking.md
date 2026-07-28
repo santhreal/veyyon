@@ -1,0 +1,1 @@
+- NEVER shrink phases under pressure—delegate execution instead.

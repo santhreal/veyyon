@@ -456,4 +456,19 @@ describe("system prompt section order", () => {
 		expect(result.systemPrompt[0]).toContain("Custom base prompt");
 		expect(result.systemPrompt[0]).not.toContain("DELIVERY CONTRACT");
 	});
+
+	/**
+	 * Presence, not truthiness, selects the custom path. Empty and whitespace-only
+	 * custom bodies therefore behave identically and never fall back to defaults.
+	 */
+	it("treats blank resolved custom prompts as explicit replacements", async () => {
+		for (const custom of ["", "   "]) {
+			const result = await buildSystemPrompt({ ...baseOptions, resolvedCustomPrompt: custom });
+
+			expect(result.statementContext).toBeNull();
+			expect(result.systemPrompt.every(part => part.length > 0)).toBe(true);
+			expect(result.systemPrompt.join("\n")).not.toContain("Engineering Principles");
+			expect(result.systemPrompt.join("\n")).toContain("PROJECT\n==============");
+		}
+	});
 });

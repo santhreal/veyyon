@@ -79,7 +79,7 @@ describe("veyyon prompt reads the real configuration", () => {
 		expect(result.output).toContain("you MUST fan the work out to `task` subagents");
 		// The paragraph the default configuration renders instead. Its absence is the half of the
 		// assertion that fails if the gate silently rendered both.
-		expect(result.output).not.toContain("Delegation is preferred here.");
+		expect(result.output).not.toContain("Delegation is preferred");
 	});
 
 	/**
@@ -89,7 +89,7 @@ describe("veyyon prompt reads the real configuration", () => {
 	it("renders the preferred-delegation wording when the project says nothing", async () => {
 		const result = await runPromptCommand({ cwd: workspace(), section: "tool-policy" });
 
-		expect(result.output).toContain("Delegation is preferred here.");
+		expect(result.output).toContain("Delegation is preferred");
 		expect(result.output).not.toContain("Delegation is the default here, not the exception.");
 	});
 
@@ -150,7 +150,7 @@ describe("veyyon prompt reads the real configuration", () => {
 		};
 
 		expect(policyOf(configured.output).text).toContain("you MUST fan the work out to `task` subagents");
-		expect(policyOf(plain.output).text).toContain("Delegation is preferred here.");
+		expect(policyOf(plain.output).text).toContain("Delegation is preferred");
 		// The required paragraph is the longer of the two, so the configured run is strictly bigger.
 		expect(policyOf(configured.output).bytes).toBeGreaterThan(policyOf(plain.output).bytes);
 	});

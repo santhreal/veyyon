@@ -77,16 +77,15 @@ const NON_SETTINGS_GATES: Readonly<Record<string, string>> = {
 	skills: "the discovered skill list",
 	rules: "the loaded rulebook rules",
 	alwaysApplyRules: "rulebook rules with alwaysApply=true",
-	toolInfo: "the resolved tool inventory",
+	hasTools: "whether the resolved tool set contains at least one tool",
 	tools: "the resolved tool name list, tested with the `has` helper",
-	subagentNames: "the agent types this session can spawn, also a registered gate via subagent.agents",
-	label: "a per-tool descriptor field, inside an each block",
 	secretsEnabled: "whether the obfuscator found secrets in this workspace, not a setting",
 	mcpDiscoveryMode: "whether discovery is active and discoverable tools exist for this build",
 	hasMCPDiscoveryServers: "whether any discoverable MCP server summaries were produced",
 	hasMemoryRoot: "which memory backend resolved, not a setting read directly",
 	hasObsidian: "whether an Obsidian vault was discovered",
 	hasSubagentSpecialists: "derived from subagentNames, which subagent.agents already gates",
+	hasSpawnableSubagent: "derived from the enabled subagent names for this session",
 	useCodexTaskPrompt: "a per-model policy decision keyed off the active model",
 	eagerTasks: "delegation strength, gated by subagent.delegation",
 	eagerTasksAlways: "delegation strength, gated by subagent.delegation",
@@ -246,6 +245,7 @@ describe("which flips reach the model", () => {
 	it("treats every live gate as one that rebuilds the prompt", () => {
 		expect([...LIVE_PROMPT_GATE_SETTINGS].sort()).toEqual([
 			"includeModelInPrompt",
+			"inlineToolDescriptors",
 			"personality",
 			"subagent.agents",
 			"subagent.batch",
@@ -297,10 +297,9 @@ describe("which flips reach the model", () => {
 
 describe("the gates a mid-session flip cannot reach", () => {
 	it("pins the frozen list, so it can shrink but not grow unnoticed", () => {
-		// `tools.intentTracing` LEFT this list on 2026-07-26 when `sdk.ts` started passing a
-		// resolver and `Agent` started calling it per turn. Shrinking is the direction this
-		// assertion exists to allow; growing is what it exists to catch.
-		expect([...FROZEN_PROMPT_GATE_SETTINGS].sort()).toEqual(["includeWorkspaceTree", "inlineToolDescriptors"]);
+		// `tools.intentTracing` and `inlineToolDescriptors` left this list when their
+		// prompt and provider-schema decisions became per-request resolvers.
+		expect([...FROZEN_PROMPT_GATE_SETTINGS].sort()).toEqual(["includeWorkspaceTree"]);
 	});
 
 	it("makes every frozen gate say why", () => {
@@ -310,10 +309,8 @@ describe("the gates a mid-session flip cannot reach", () => {
 		}
 	});
 
-	it("separates frozen on purpose from frozen by accident", () => {
-		// The distinction is the useful part. `inlineToolDescriptors` is a decision documented
-		// at its read site; `includeWorkspaceTree` is a read in the wrong place.
-		expect(promptGateFor("inlineToolDescriptors")?.liveness.kind).toBe("frozen-by-design");
+	it("keeps descriptor placement live while naming the remaining placement accident", () => {
+		expect(promptGateFor("inlineToolDescriptors")?.liveness.kind).toBe("live");
 		expect(promptGateFor("includeWorkspaceTree")?.liveness.kind).toBe("frozen-by-placement");
 	});
 

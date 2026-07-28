@@ -2,17 +2,28 @@
  * System prompt construction and project context loading
  */
 
+import * as path from "node:path";
 import type { AgentTool } from "@veyyon/agent-core";
 import type { ToolExample, TSchema } from "@veyyon/ai";
 import { renderToolInventory } from "@veyyon/ai/dialect";
-import { $env, errorMessage, firstNonEmpty, getProjectDir, logger, looksLikeFilePath, prompt } from "@veyyon/utils";
+import {
+	$env,
+	errorMessage,
+	firstNonEmpty,
+	getActiveProfileOrDefault,
+	getAgentDir,
+	getProfileRootDir,
+	getProjectDir,
+	kebabToCamel,
+	logger,
+	looksLikeFilePath,
+	prompt,
+} from "@veyyon/utils";
 import { contextFileCapability } from "./capability/context-file";
-import { systemPromptCapability } from "./capability/system-prompt";
 import { findConfigFile } from "./config";
 import type { SkillsSettings } from "./config/settings";
-import { DEFAULT_ENABLED_BUNDLED_AGENT } from "./config/settings-domains/subagents";
-import { type ContextFile, loadCapability, type SystemPrompt as SystemPromptFile } from "./discovery";
-import { ensureManagedAgentsFilesOnStartup } from "./discovery/agents-guidance";
+import { type ContextFile, loadCapability } from "./discovery";
+import { ensureManagedAgentsFilesOnStartup, getGlobalAgentsPath } from "./discovery/agents-guidance";
 import { expandAtImports } from "./discovery/at-imports";
 import { findNearestProjectConfigDir } from "./discovery/builtin";
 import { loadSkills, type Skill } from "./extensibility/skills";
@@ -26,8 +37,8 @@ import {
 import { sessionPrompts } from "./prompts/session/rows";
 import {
 	assembleDefaultTemplate,
+	assembleStatementSections,
 	parseSectionOverridesJson,
-	statementSectionOverrides,
 } from "./system-prompt-builder/default-template";
 import { type GateInputs, OMITTED_GATE_DEFAULTS } from "./system-prompt-builder/gate-inputs";
 import { applyPromptSectionOrderToParts } from "./system-prompt-builder/prompt-sections";
@@ -42,10 +53,13 @@ import {
 	type OptionBackedSectionKey,
 	RUNTIME_SECTIONS,
 	type RuntimeSectionEntry,
+	TEMPLATE_SECTIONS,
 	withSectionBanner,
 } from "./system-prompt-builder/section-registry";
 import {
+	conditionHolds,
 	parseStatementOverridesJson,
+	statementById,
 	type StatementContext,
 	type StatementOverrides,
 } from "./system-prompt-builder/statement-registry";
@@ -117,14 +131,10 @@ function splitComparablePromptBlocks(content: string | null | undefined): string
 /**
  * True when every paragraph block of `ruleContent` appears as a contiguous run
  * of blocks inside `source` (exact match after prompt normalization). Exported
- * for unit testing; drives {@link dedupeAlwaysApplyRules} and
- * {@link dedupePromptSource}. The match is conservative: any wording or block
- * boundary difference means "not contained", so dedup never drops a rule that
- * is not verbatim-present.
+ * for unit testing and used by {@link dedupeAlwaysApplyRules}. The match is
+ * conservative: wording or block-boundary differences keep the rule.
  */
-export function promptSourceContainsRule(source: string | null | undefined, ruleContent: string): boolean {
-	const sourceBlocks = splitComparablePromptBlocks(source);
-	const ruleBlocks = splitComparablePromptBlocks(ruleContent);
+function promptBlocksContain(sourceBlocks: readonly string[], ruleBlocks: readonly string[]): boolean {
 	if (sourceBlocks.length === 0 || ruleBlocks.length === 0 || ruleBlocks.length > sourceBlocks.length) return false;
 
 	for (let start = 0; start <= sourceBlocks.length - ruleBlocks.length; start += 1) {
@@ -132,6 +142,10 @@ export function promptSourceContainsRule(source: string | null | undefined, rule
 	}
 
 	return false;
+}
+
+export function promptSourceContainsRule(source: string | null | undefined, ruleContent: string): boolean {
+	return promptBlocksContain(splitComparablePromptBlocks(source), splitComparablePromptBlocks(ruleContent));
 }
 
 /** Drop always-apply rules whose content is already verbatim-present in any prompt source. Exported for unit testing. */
@@ -144,17 +158,6 @@ export function dedupeAlwaysApplyRules(
 	return alwaysApplyRules.filter(
 		rule => !promptSources.some(source => promptSourceContainsRule(source, rule.content)),
 	);
-}
-
-/** Return `source` unless its content is already verbatim-present in another source, in which case return "". Exported for unit testing. */
-export function dedupePromptSource(
-	source: string | null | undefined,
-	otherSources: Array<string | null | undefined>,
-): string {
-	const resolvedSource = firstNonEmpty(source);
-	if (!resolvedSource) return "";
-
-	return otherSources.some(otherSource => promptSourceContainsRule(otherSource, resolvedSource)) ? "" : resolvedSource;
 }
 
 /**
@@ -235,16 +238,22 @@ export interface LoadContextFilesOptions {
 	cwd?: string;
 }
 
-function dedupeExactContextFiles(
+/**
+ * Drop a less-prominent context file only when a later, more-prominent file
+ * contains its entire normalized paragraph sequence. Input order is therefore
+ * authoritative: callers must order context from least to most prominent first.
+ */
+function dedupeContainedContextFiles(
 	contextFiles: Array<{ path: string; content: string; depth?: number }>,
 ): Array<{ path: string; content: string; depth?: number }> {
-	const lastIndexByContent = new Map<string, number>();
-	for (const [index, file] of contextFiles.entries()) {
-		// Keep the closest matching context entry when content is byte-for-byte identical.
-		lastIndexByContent.set(file.content, index);
-	}
-
-	return contextFiles.filter((file, index) => lastIndexByContent.get(file.content) === index);
+	const blocks = contextFiles.map(file => splitComparablePromptBlocks(file.content));
+	return contextFiles.filter(
+		(_file, index) =>
+			!blocks.some(
+				(candidateBlocks, candidateIndex) =>
+					candidateIndex > index && promptBlocksContain(candidateBlocks, blocks[index]),
+			),
+	);
 }
 
 /**
@@ -290,27 +299,7 @@ export async function loadProjectContextFiles(
 		return depthB - depthA;
 	});
 
-	return dedupeExactContextFiles(files.map(({ path, content, depth }) => ({ path, content, depth })));
-}
-
-/**
- * Load the effective system prompt customization from SYSTEM.md.
- * Project-level SYSTEM.md overrides user-level SYSTEM.md.
- */
-export async function loadSystemPromptFiles(options: LoadContextFilesOptions = {}): Promise<string | null> {
-	const resolvedCwd = options.cwd ?? getProjectDir();
-
-	const result = await loadCapability<SystemPromptFile>(systemPromptCapability.id, { cwd: resolvedCwd });
-
-	if (result.items.length === 0) return null;
-
-	const projectLevel = result.items.find(item => item.level === "project");
-	if (projectLevel) {
-		return projectLevel.content;
-	}
-
-	const userLevel = result.items.find(item => item.level === "user");
-	return userLevel?.content ?? null;
+	return dedupeContainedContextFiles(files.map(({ path, content, depth }) => ({ path, content, depth })));
 }
 
 export const DEFAULT_SYSTEM_PROMPT_TOOL_NAMES = ["read", "bash", "edit", "write"] as const;
@@ -343,8 +332,8 @@ export function buildSystemPromptToolMetadata(
 					label: override?.label ?? (typeof toolRecord.label === "string" ? toolRecord.label : ""),
 					description:
 						override?.description ?? (typeof toolRecord.description === "string" ? toolRecord.description : ""),
-					parameters: toolRecord.parameters,
-					examples: toolRecord.examples,
+					parameters: override?.parameters ?? toolRecord.parameters,
+					examples: override?.examples ?? toolRecord.examples,
 					wireName,
 				},
 			] as const;
@@ -382,6 +371,8 @@ export interface BuildSystemPromptOptions extends Partial<GateInputs> {
 	skillsSettings?: SkillsSettings;
 	/** Working directory. Default: getProjectDir() */
 	cwd?: string;
+	/** Agent configuration directory. Default: getAgentDir() */
+	agentDir?: string;
 	/** Pre-loaded context files (skips discovery if provided). */
 	contextFiles?: Array<{ path: string; content: string; depth?: number }>;
 	/** Skills provided directly to system prompt construction. */
@@ -449,6 +440,10 @@ export interface BuildSystemPromptResult {
 	 * prompt does not contain. A consumer has to handle the absence, and cannot mistake it for data.
 	 */
 	statementContext: StatementContext | null;
+	/** Effective per-statement replacements used to assemble the returned blocks. */
+	statementOverrides: StatementOverrides | null;
+	/** Static sections whose shipped statements were replaced wholesale. */
+	replacedStatementSections: readonly string[];
 }
 
 /**
@@ -520,7 +515,12 @@ function resolveEvalStatementOverrides(): StatementOverrides {
 export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}): Promise<BuildSystemPromptResult> {
 	if ($env.NULL_PROMPT === "true") {
 		// No prompt was rendered, so there is no context it was rendered with.
-		return { systemPrompt: [], statementContext: null };
+		return {
+			systemPrompt: [],
+			statementContext: null,
+			statementOverrides: null,
+			replacedStatementSections: [],
+		};
 	}
 
 	// Every gate fallback below comes from ONE table, `OMITTED_GATE_DEFAULTS`, rather than being
@@ -537,6 +537,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		skillsSettings,
 		toolNames: providedToolNames,
 		cwd,
+		agentDir: providedAgentDir,
 		contextFiles: providedContextFiles,
 		skills: providedSkills,
 		rules,
@@ -550,6 +551,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		taskMaxConcurrency = OMITTED_GATE_DEFAULTS.taskMaxConcurrency,
 		taskIrcEnabled = OMITTED_GATE_DEFAULTS.taskIrcEnabled,
 		subagentNames = OMITTED_GATE_DEFAULTS.subagentNames,
+		investigativeSubagentNames = OMITTED_GATE_DEFAULTS.investigativeSubagentNames,
 		secretsEnabled = false,
 		// `argotPreamble` and `argotHandles` are deliberately NOT destructured here.
 		// They are option-backed runtime sections, so the assembler reads them off
@@ -568,12 +570,14 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	} = options;
 	const inlineToolDescriptors = providedInlineToolDescriptors ?? OMITTED_GATE_DEFAULTS.inlineToolDescriptors;
 	const resolvedCwd = cwd ?? getProjectDir();
+	const resolvedAgentDir = path.resolve(providedAgentDir ?? getAgentDir());
+	const activeProfileName = getActiveProfileOrDefault();
+	const profileRootDir = getProfileRootDir(activeProfileName);
 
 	const prepDefaults = {
 		resolvedCustomPrompt: undefined as string | undefined,
 		resolvedAppendPrompt: undefined as string | undefined,
-		systemPromptCustomization: null as string | null,
-		contextFiles: dedupeExactContextFiles(providedContextFiles ?? []),
+		contextFiles: dedupeContainedContextFiles(providedContextFiles ?? []),
 		skills: providedSkills ?? ([] as Skill[]),
 		workspaceTree: {
 			rootPath: resolvedCwd,
@@ -625,15 +629,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		return result.value;
 	}
 
-	// Caller-supplied `customPrompt` / `resolvedCustomPrompt` owns block 0; the
-	// secondary capability-path `SYSTEM.md` walk-up MUST NOT silently augment it,
-	// because that would defeat CLI precedence over project/user `SYSTEM.md`.
-	const callerControlsCustomPrompt =
-		(typeof providedResolvedCustomPrompt === "string" && providedResolvedCustomPrompt.length > 0) ||
-		(typeof customPrompt === "string" && customPrompt.length > 0);
-	const systemPromptCustomizationPromise: Promise<string | null> = callerControlsCustomPrompt
-		? Promise.resolve(null)
-		: logger.time("loadSystemPromptFiles", loadSystemPromptFiles, { cwd: resolvedCwd });
 	const contextFilesPromise = providedContextFiles
 		? Promise.resolve(providedContextFiles)
 		: // Seed the global ~/.veyyon/AGENTS.md AND the active profile's AGENTS.md
@@ -681,7 +676,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	const [
 		resolvedCustomPrompt,
 		resolvedAppendPrompt,
-		systemPromptCustomization,
 		contextFiles,
 		skills,
 		workspaceTree,
@@ -705,9 +699,8 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 				: resolvePromptInput(appendSystemPrompt, "append system prompt"),
 			prepDefaults.resolvedAppendPrompt,
 		),
-		withDeadline("loadSystemPromptFiles", systemPromptCustomizationPromise, prepDefaults.systemPromptCustomization),
 		withDeadline("loadProjectContextFiles", contextFilesPromise, prepDefaults.contextFiles).then(
-			dedupeExactContextFiles,
+			dedupeContainedContextFiles,
 		),
 		withDeadline("loadSkills", skillsPromise, prepDefaults.skills),
 		withDeadline("buildWorkspaceTree", workspaceTreePromise, prepDefaults.workspaceTree),
@@ -759,26 +752,23 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	// Build tool descriptions for system prompt rendering.
 	const toolPromptNames = new Map<string, string>(toolNames.map(name => [name, tools?.get(name)?.wireName ?? name]));
 	const toolRefs = Object.fromEntries(toolPromptNames.entries());
-	const toolInfo = toolNames.map(name => ({
-		name: toolPromptNames.get(name) ?? name,
-		internalName: name,
-		label: tools?.get(name)?.label ?? "",
-		description: tools?.get(name)?.description ?? "",
-	}));
-	const inventoryTools = toolNames.map(name => {
-		const meta = tools?.get(name);
-		return {
-			name: toolPromptNames.get(name) ?? name,
-			description: meta?.description ?? "",
-			parameters: meta?.parameters ?? ({ type: "object" } as TSchema),
-			examples: meta?.examples,
-		};
-	});
-	// List mode shows a compact tool-name list; it only applies when descriptors
-	// stay in provider-native tool schemas AND native tool calling is active.
-	// Otherwise render full `# Tool:` sections inline in the system prompt.
+	// Provider-native mode emits no prompt inventory because the provider schemas
+	// already carry it. Other modes render full `# Tool:` descriptor sections.
 	const toolListMode = !inlineToolDescriptors && nativeTools;
-	const toolInventory = toolListMode ? "" : renderToolInventory(inventoryTools, model ?? "");
+	const toolInventory = toolListMode
+		? ""
+		: renderToolInventory(
+				toolNames.map(name => {
+					const meta = tools?.get(name);
+					return {
+						name: toolPromptNames.get(name) ?? name,
+						description: meta?.description ?? "",
+						parameters: meta?.parameters ?? ({ type: "object" } as TSchema),
+						examples: meta?.examples,
+					};
+				}),
+				model ?? "",
+			);
 
 	// Filter skills for the rendered system prompt:
 	// - require the `read` tool so the model can actually fetch skill content;
@@ -786,31 +776,28 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	const hasRead = toolNames.includes("read");
 	const filteredSkills = hasRead ? skills.filter(skill => skill.hide !== true) : [];
 
-	const effectiveSystemPromptCustomization = dedupePromptSource(systemPromptCustomization, [
-		resolvedCustomPrompt,
-		resolvedAppendPrompt,
-	]);
 	const contextPromptSources = contextFiles.map(file => file.content);
-	const promptSources = [
-		effectiveSystemPromptCustomization,
-		resolvedCustomPrompt,
-		resolvedAppendPrompt,
-		...contextPromptSources,
-	];
+	const promptSources = [resolvedCustomPrompt, resolvedAppendPrompt, ...contextPromptSources];
 	const injectedAlwaysApplyRules = dedupeAlwaysApplyRules(alwaysApplyRules, promptSources);
 
 	const environment = getEnvironmentInfo(cpuModel, gpu);
 	const data = {
-		systemPromptCustomization: effectiveSystemPromptCustomization,
 		customPrompt: resolvedCustomPrompt,
 		appendPrompt: resolvedAppendPrompt ?? "",
 		tools: toolNames,
-		toolInfo,
+		hasTools: toolNames.length > 0,
 		toolInventory,
 		inlineToolDescriptors,
 		toolListMode,
 		toolRefs,
 		environment,
+		agentConfiguration: [
+			{ label: "Active profile", value: activeProfileName },
+			{ label: "Agent directory", value: resolvedAgentDir },
+			{ label: "Skills directory", value: path.join(resolvedAgentDir, "skills") },
+			{ label: "Global AGENTS.md", value: getGlobalAgentsPath() },
+			{ label: "Profile AGENTS.md", value: path.join(profileRootDir, "agent", "AGENTS.md") },
+		],
 		// Merged into the project section: same input (cwd), same lifetime, same
 		// invalidation as the rest of the project framing.
 		activeRepoRoot: activeRepoContext ? normalizePromptPath(activeRepoContext.relativeRepoRoot) : "",
@@ -840,11 +827,33 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		MAX_CONCURRENCY: normalizeConcurrencyLimit(taskMaxConcurrency),
 		taskIrcEnabled,
 		subagentNames,
-		// True when something other than the general-purpose worker is spawnable.
-		// The delegation gates that talk about picking an agent TYPE only mean
-		// anything then; with the specialists off there is one kind of subagent and
-		// the advice is noise.
-		hasSubagentSpecialists: subagentNames.some(name => name !== DEFAULT_ENABLED_BUNDLED_AGENT),
+		investigativeSubagentNames,
+		// True when there is MORE THAN ONE kind of agent to choose between. The gates
+		// this opens are about picking an agent TYPE ("match the slice to the closest
+		// listed type"), which means nothing when there is only one.
+		//
+		// Counted rather than compared against the default agent's name. It used to be
+		// `some(name => name !== DEFAULT_ENABLED_BUNDLED_AGENT)`, which asked "is
+		// anything other than `task` enabled" and answered a question nobody had:
+		// every user-authored agent trivially satisfied it, and so did `sonic`. Length
+		// says what the gate means and stops naming one agent as the yardstick for all
+		// the others.
+		hasSubagentSpecialists: subagentNames.length > 1,
+		// Whether ANYTHING can be spawned, which gates the delegation guidance as a whole.
+		//
+		// The task tool is built whenever `subagent.enabled` is on, and it stays built with every agent
+		// row disabled ON PURPOSE, because an ephemeral `/` command that names an agent is the operator
+		// asking directly and is granted per turn. The model-facing PROSE is a different matter: with
+		// nothing the model may choose, "fan the work out" is an instruction it can only fail, and the
+		// agent-typing bullet interpolated an empty list and read "Only one agent type is enabled here
+		// (``)" while telling the model to delegate for parallelism. `resolveDelegation` has always
+		// computed this state and named it `blockedBy: "no-enabled-agents"`; nothing consumed it.
+		hasSpawnableSubagent: subagentNames.length > 0,
+		// Whether AUDIT work may be delegated, which is NOT the question above.
+		// `sonic` gives the model a second type to match a slice to and is still an
+		// executor, so it must not switch on advice about handing off exploration and
+		// review. Only an agent that grants no workspace-editing tool does that.
+		hasInvestigativeSubagent: investigativeSubagentNames.length > 0,
 		secretsEnabled,
 		hasMemoryRoot: memoryRootEnabled,
 		hasObsidian: hasObsidian(),
@@ -852,11 +861,28 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		renderMermaid,
 	};
 	const evalSectionOverrides = resolveEvalSectionOverrides();
+	const evalStatementOverrides = resolveEvalStatementOverrides();
+	const overriddenStatementIds = Object.keys(evalStatementOverrides);
+	const hasCustomPrompt = resolvedCustomPrompt !== undefined;
+	if (hasCustomPrompt && overriddenStatementIds.length > 0) {
+		throw new Error(
+			"VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS cannot be combined with a custom system prompt " +
+				"(--system-prompt): a custom prompt contains no registered statements to override.",
+		);
+	}
+	for (const id of overriddenStatementIds) {
+		const statement = statementById(id);
+		if (statement !== undefined && !conditionHolds(statement.condition, data)) {
+			throw new Error(
+				`statement override for "${id}" is inactive for this prompt configuration; ` +
+					`its condition (${JSON.stringify(statement.condition)}) does not hold`,
+			);
+		}
+	}
 	// The eval instrument wins outright and SUPPRESSES the file surface rather
 	// than merging with it. A benchmark arm must measure the prompt it declared;
 	// letting a `PROMPT_SECTIONS/` directory on the machine running the arm mix
-	// into it would silently contaminate the result, which is the whole reason
-	// that override refuses to live in config in the first place.
+	// into it would silently contaminate the result.
 	const usingEvalOverrides = Object.keys(evalSectionOverrides).length > 0;
 	const sectionOverrideFiles = await loadSectionOverrideFiles({
 		cwd: resolvedCwd,
@@ -868,36 +894,49 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 				"VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS is set; the benchmark payload is the only section source.",
 		);
 	}
-	// The assembled statement text is computed FIRST so an append-mode override appends to what this
-	// session would actually send, not to the copy in `system-prompt.md`. See `applySectionOverrides`.
-	const statementSections = statementSectionOverrides(data, resolveEvalStatementOverrides());
-	const sectionOverrides = usingEvalOverrides
-		? evalSectionOverrides
-		: applySectionOverrides(sectionOverrideFiles, statementSections);
-	if (resolvedCustomPrompt && Object.keys(sectionOverrides).length > 0) {
-		// A custom prompt replaces the whole template, so it has no banner
-		// sections to override. Silently ignoring the overrides would run against
-		// the custom prompt while the operator believes their section change is
-		// live — fail loudly instead.
+
+	const replacedStatementSections = usingEvalOverrides
+		? TEMPLATE_SECTIONS.filter(section => Object.hasOwn(evalSectionOverrides, kebabToCamel(section.id))).map(
+				section => section.id,
+			)
+		: [...new Set(sectionOverrideFiles.filter(file => file.mode === "replace").map(file => file.id))];
+	const overriddenStatementSections = new Set(overriddenStatementIds.map(id => id.slice(0, id.indexOf("/"))));
+	const overlappingSections = replacedStatementSections.filter(section => overriddenStatementSections.has(section));
+	if (overlappingSections.length > 0) {
+		throw new Error(
+			`statement overrides cannot be combined with whole-section replacements for ` +
+				`[${overlappingSections.join(", ")}]: the section replacement would silently discard the statement arm`,
+		);
+	}
+
+	const hasSectionOverrides = usingEvalOverrides || sectionOverrideFiles.length > 0;
+	if (hasCustomPrompt && hasSectionOverrides) {
+		// A custom prompt has no registry sections. Refuse the conflict before
+		// assembling the static statement map that the custom prompt would discard.
 		const source = usingEvalOverrides
 			? "VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS"
 			: `${PROMPT_SECTIONS_DIR}/ overrides (${sectionOverrideFiles.map(file => file.path).join(", ")})`;
 		throw new Error(
 			`${source} cannot be combined with a custom system prompt ` +
-				"(--system-prompt / SYSTEM.md): a custom prompt has no banner sections to override. Use one or the other.",
+				"(--system-prompt): a custom prompt has no banner sections to override. Use one or the other.",
 		);
 	}
-	// Converted sections' text comes from the STATEMENT REGISTRY, spliced in as overrides.
-	// Statements first, operator overrides second, so an operator replacing a section still wins:
-	// a converted section that ignored `.veyyon/prompt-sections/<id>.md` would be a shipped feature
-	// lost to a refactor. A custom prompt replaces the whole document and has no sections at all,
-	// so it takes neither.
-	const baseTemplate = resolvedCustomPrompt
-		? sessionPrompts["session/custom-system-prompt"].text
-		: assembleDefaultTemplate({ ...statementSections, ...sectionOverrides });
+
+	let baseTemplate: string;
+	if (hasCustomPrompt) {
+		baseTemplate = sessionPrompts["session/custom-system-prompt"].text;
+	} else {
+		// Build statement sections only for the default prompt. Append-mode
+		// overrides extend exactly what this session would otherwise send.
+		const statementSections = assembleStatementSections(data, evalStatementOverrides);
+		const sectionOverrides = usingEvalOverrides
+			? evalSectionOverrides
+			: applySectionOverrides(sectionOverrideFiles, statementSections);
+		baseTemplate = assembleDefaultTemplate({ ...statementSections, ...sectionOverrides });
+	}
 	const rendered = prompt.render(baseTemplate, data);
 	const reorderSections = Boolean(sectionOrder && sectionOrder.length > 0);
-	if (reorderSections && resolvedCustomPrompt) {
+	if (reorderSections && hasCustomPrompt) {
 		logger.warn("harness promptSectionOrder is ignored for custom system prompt templates (no banner sections)");
 	}
 	// Custom prompt templates already render context files and append text; the
@@ -905,7 +944,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	const projectPrompt = prompt
 		.render(
 			sessionPrompts["session/project-prompt"].text,
-			resolvedCustomPrompt ? { ...data, contextFiles: [], appendPrompt: "" } : data,
+			hasCustomPrompt ? { ...data, contextFiles: [], appendPrompt: "" } : data,
 		)
 		.trim();
 
@@ -948,7 +987,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	// volatile section (the handle table changes whenever a dictionary loads) must
 	// not sit inside it. Every entry is a banner section, so `splitPromptSections`
 	// addresses runtime and template sections identically.
-	const systemPrompt = [rendered];
+	const systemPrompt: string[] = rendered || !hasCustomPrompt ? [rendered] : [];
 	for (const section of RUNTIME_SECTIONS) {
 		const text = withSectionBanner(section, runtimeText(section));
 		if (text) systemPrompt.push(text);
@@ -960,11 +999,13 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	// never had.
 	return {
 		systemPrompt:
-			reorderSections && !resolvedCustomPrompt
+			reorderSections && !hasCustomPrompt
 				? applyPromptSectionOrderToParts(systemPrompt, sectionOrder)
 				: systemPrompt,
 		// A custom prompt is not assembled from statements, so pricing them against this context
 		// would attribute cost to text the operator replaced.
-		statementContext: resolvedCustomPrompt ? null : data,
+		statementContext: hasCustomPrompt ? null : data,
+		statementOverrides: hasCustomPrompt ? null : evalStatementOverrides,
+		replacedStatementSections: hasCustomPrompt ? [] : replacedStatementSections,
 	};
 }

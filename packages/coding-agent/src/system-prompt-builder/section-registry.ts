@@ -1,69 +1,21 @@
 /**
- * The single registry of every section of the model's SYSTEM prompt.
+ * The single registry of every section in the model's system prompt.
  *
- * Rows only. What a banner is, and what fields a section row has, belong to every
- * prompt rather than to this one and live in `banner-grammar.ts`; this file says
- * which sections the system prompt has, in what order, and where each one's text
- * comes from.
+ * Rows declare section identity, order, purpose, source class, and banner name.
+ * Statement modules own the static instruction text. Runtime producers own
+ * volatile text. `renderBanner` turns every declared name into model-visible
+ * bytes, so neither the zero-prose outer template nor an override file owns a
+ * banner.
  *
- * NAMED FOR SECTIONS, NOT BLOCKS. It was `section-registry.ts` and contained no
- * blocks: a "block" in this subsystem is an entry of the `string[]` that
- * `buildSystemPrompt` returns, which is the provider caching boundary that
- * `prompt-inspect.ts` reports as `blockIndex` and that the stability guard pins as
- * block 0. Using the same word for a registry row meant one term with two meanings
- * in one directory, and the more important meaning was the one the file was not
- * about.
+ * The `template` source label means the static provider-cache prefix assembled
+ * into the outer template slot. It does not mean prose is read from
+ * `prompts/session/system-prompt.md`. The `runtime` label means a separately
+ * emitted provider-cache part whose text may change during a session.
  *
- * WHY THIS EXISTS. The prompt used to be described in three places that could
- * disagree with each other, and one of them could disagree silently:
- *
- *   1. `default-template.ts` defined the template's banner sections one way
- *      (camelCase keys, `indexOf` byte-offset splitting) so evals could override
- *      one region.
- *   2. `prompt-sections.ts` defined the SAME sections a second, independent way
- *      (kebab-case names, line-by-line splitting) so the harness could reorder
- *      them.
- *   3. `system-prompt.ts` appended MORE blocks after the rendered template with
- *      ad-hoc `push()` calls. Those had no banners, so they appeared in neither
- *      of the above: they could not be reordered and could not be overridden.
- *
- * That third group was the real damage. It made the prompt two-tiered for no
- * reason anyone chose — the split tracked PROVENANCE (text from the .md file vs
- * text computed at runtime), which is an implementation detail, and leaked it
- * into the prompt's structure as a capability difference. The one section an eval
- * most wants to ablate, the shorthand notation, was in the tier the override
- * mechanism could not touch.
- *
- * There is now ONE model: the prompt is an ordered list of banner-delimited
- * sections. `source` records where a section's text comes from, and that is all
- * it does — every section is split, addressed, and overridden the same way.
- *
- * BANNER OWNERSHIP. A row declares a NAME; {@link renderBanner} turns it into the
- * two-line banner the model sees. Where those bytes physically come from still
- * differs by source, and that part is deliberate:
- *   - `template` sections carry their banner INSIDE
- *     `prompts/session/system-prompt.md`, because those banners are the split
- *     points of a single readable document. The registry asserts the file agrees
- *     with it (`section-registry.test.ts`) rather than writing the file.
- *   - `runtime` sections have no document to carry one, so the assembler prepends
- *     it, which is one owner instead of asking each producer to remember one.
- *
- * Either way the WIDTH is decided in exactly one place and no row states it, which
- * is `banner-grammar.ts` — the leaf that owns what a banner IS for every prompt in
- * the product, not just this one. Three widths used to ship at once, none written
- * down.
- *
- * ORDER is the order the model receives. For `template` sections it is also a
- * fact about the .md file — concatenating them reproduces it byte for byte, and
- * the splitter asserts that.
- *
- * WHY THE ARRAY BOUNDARY SURVIVES: `buildSystemPrompt` still returns template
- * sections in one entry and runtime sections in their own. That is a caching
- * contract, not a structural tier — the static prefix stays byte-stable so the
- * provider can cache it, while a volatile section (the handle table, which
- * changes whenever a dictionary loads) cannot invalidate it. Sections are
- * uniformly addressable across that boundary; only reordering ACROSS it is
- * refused, because that would move volatile text into the cached prefix.
+ * `buildSystemPrompt` keeps the static prefix in one array entry and emits
+ * volatile runtime sections separately. That boundary is a provider caching
+ * contract, not a difference in addressability: all bannered sections use the
+ * same registry, splitter, override vocabulary, and ordering rules.
  */
 import { kebabToCamel, type PromptSection } from "@veyyon/utils";
 import { hasBanner, renderBanner } from "./banner-grammar";
@@ -99,22 +51,19 @@ export interface RuntimeSection extends PromptSection {
 }
 
 /**
- * A row in the SYSTEM prompt's section list: template-sourced or runtime-sourced.
+ * A row in the system prompt's section list: static-prefix or runtime-sourced.
  *
- * Named for the document it describes, not `PromptSection`. That name means the base
- * row shape every registry shares (`@veyyon/utils`), and this package exported both
- * meanings under it from sibling modules, so an editor auto-import of "the"
- * `PromptSection` picked whichever it offered first and the two are not
- * interchangeable: this union carries `source`, and the base shape does not.
+ * This union extends the shared `PromptSection` shape with source information
+ * used for provider-cache boundaries.
  */
 export type SystemPromptSection = TemplateSection | RuntimeSection;
 
 /**
- * The template's regions, in document order.
+ * Static cached-prefix sections in model-visible order.
  *
- * `as const satisfies` for the same reason {@link RUNTIME_SECTIONS} uses it: the
- * id list below is derived from this array, and an annotation would widen `id` to
- * `string` and leave the union with no members to derive.
+ * Their bodies come exclusively from statement modules and are inserted into
+ * the zero-prose outer template as one complete document. `as const satisfies`
+ * preserves literal ids for the unions derived below.
  */
 export const TEMPLATE_SECTIONS = [
 	{
@@ -301,15 +250,21 @@ export const BANNERED_SECTIONS: readonly (SystemPromptSection & { name: string }
 	SYSTEM_PROMPT_SECTIONS.filter(hasBanner);
 
 /**
- * The banner-bearing sections OF THE TEMPLATE FILE only.
+ * Banner-bearing static sections.
  *
- * `default-template.ts` splits `system-prompt.md` on these offsets, so it must
- * look for exactly the banners that file contains — a runtime banner is not in
- * it, and searching for one would throw. The reorderer, which works on the
- * assembled prompt, uses {@link BANNERED_SECTIONS} instead.
+ * These rows define the banner table used to split, inspect, override, and
+ * reorder the statement-assembled cached prefix.
  */
 export const BANNERED_TEMPLATE_SECTIONS: readonly (TemplateSection & { name: string })[] =
 	TEMPLATE_SECTIONS.filter(hasBanner);
+
+/** Type-level counterpart to {@link kebabToCamel} for registry-derived keys. */
+type KebabToCamelKey<Value extends string> = Value extends `${infer Head}-${infer Tail}`
+	? `${Head}${Capitalize<KebabToCamelKey<Tail>>}`
+	: Value;
+
+/** Internal camel-case key for one static section. */
+export type TemplateSectionKey = KebabToCamelKey<TemplateSectionId>;
 
 /**
  * The camelCase override keys for the template sections, in document order.
@@ -319,16 +274,21 @@ export const BANNERED_TEMPLATE_SECTIONS: readonly (TemplateSection & { name: str
  * a mistake. `kebabToCamel` (@veyyon/utils) owns the conversion itself, so this
  * file does not hand-roll a second copy of it either.
  */
-export const TEMPLATE_SECTION_CAMEL_KEYS: readonly string[] = TEMPLATE_SECTION_IDS.map(kebabToCamel);
+export const TEMPLATE_SECTION_CAMEL_KEYS: readonly TemplateSectionKey[] = TEMPLATE_SECTION_IDS.map(
+	kebabToCamel,
+) as TemplateSectionKey[];
 
 /**
- * Prefix a runtime section's rendered text with its registered banner.
+ * Prefix assembled section body text with its registered banner.
  *
- * Returns "" for empty text so an absent section stays absent rather than
- * becoming a bare banner with nothing under it — a heading promising content
- * that is not there reads as a truncation bug to the model.
+ * Returns "" for empty text so an absent optional section stays absent rather
+ * than becoming a bare banner. The same function serves default and runtime
+ * sections, so the registry is the only owner of banner bytes.
  */
-export function withSectionBanner(section: RuntimeSection, text: string | undefined): string {
+export function withSectionBanner(
+	section: SystemPromptSection & { readonly name: string },
+	text: string | undefined,
+): string {
 	const body = text?.trim();
 	if (!body) return "";
 	return `${renderBanner(section.name)}\n\n${body}`;

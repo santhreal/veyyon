@@ -1,1 +1,1 @@
-{{#has tools "glob"}}- Use `{{toolRefs.glob}}` to map structure.{{/has}}
+- Use `{{toolRefs.glob}}` to map structure.

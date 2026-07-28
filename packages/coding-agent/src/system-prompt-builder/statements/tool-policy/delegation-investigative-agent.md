@@ -1,0 +1,1 @@
+- Use a read-only agent (`{{join investigativeSubagentNames ", "}}`) to map or review unknown code without importing bulk output.
