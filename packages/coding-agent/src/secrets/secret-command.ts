@@ -217,37 +217,16 @@ export function parseSecretCommand(args: string): SecretCommandRequest {
 				continue;
 			}
 
-			// A well-formed option suffix keeps the established "flags in any position" contract.
-			// Anything else that looks option-shaped has two possible readings and is refused
-			// without quoting any of the candidate credential.
+			// The first bare word after the name starts the credential. From this byte onward an
+			// option-looking word has two valid readings: command syntax or credential data. Never
+			// guess between them, because guessing syntax silently truncates the stored credential.
 			const valueStart = tokens[i - 1].end + 1;
-			let optionStart = i + 1;
-			while (optionStart < tokens.length && !tokens[optionStart].value.startsWith("--")) optionStart++;
-			if (optionStart === tokens.length) {
-				request.value = args.slice(valueStart);
-				positional.push(token);
-				break;
+			if (tokens.slice(i + 1).some(candidate => candidate.value.startsWith("--"))) {
+				throw ambiguousInlineCredential();
 			}
-			for (let candidate = optionStart; candidate < tokens.length; candidate += 2) {
-				const option = tokens[candidate]?.value;
-				const value = tokens[candidate + 1]?.value;
-				if (
-					option === undefined ||
-					!SECRET_COMMAND_OPTIONS[option] ||
-					value === undefined ||
-					value.startsWith("--")
-				) {
-					throw ambiguousInlineCredential();
-				}
-			}
-
-			// One whitespace character is syntax separating the credential from the option. Any
-			// preceding whitespace remains credential data.
-			const valueEnd = tokens[optionStart].start - 1;
-			request.value = args.slice(valueStart, valueEnd);
+			request.value = args.slice(valueStart);
 			positional.push(token);
-			i = optionStart - 1;
-			continue;
+			break;
 		}
 
 		positional.push(token);

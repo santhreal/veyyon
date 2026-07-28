@@ -26,6 +26,7 @@ import {
 	runSecretCommand,
 	SECRET_COMMAND_USAGE,
 } from "@veyyon/coding-agent/secrets/secret-command";
+import { parseSlashCommand } from "@veyyon/coding-agent/slash-commands/helpers/parse";
 import { PROVIDERS_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/providers";
 import { DEFAULT_TTL_MS, SecretVault } from "@veyyon/coding-agent/secrets/vault";
 
@@ -88,8 +89,8 @@ describe("parsing", () => {
 		expect(() => parseSecretCommand("frobnicate")).toThrow(/Unknown \/secret subcommand "frobnicate"/);
 	});
 
-	/** Flags are read wherever they appear, since people do not remember an order. */
-	it("reads flags in any position", () => {
+	/** Flags can surround the name until inline credential data starts, so safe forms stay flexible. */
+	it("reads flags on either side of the name before a credential", () => {
 		const a = parseSecretCommand("add TOKEN_A --from-env MY_VAR --ttl 7d --scope project");
 		expect(a).toMatchObject({
 			subcommand: "add",
@@ -117,38 +118,58 @@ describe("parsing", () => {
 	});
 
 	/**
-	 * Inline credentials are byte strings, not shell words. Repeated whitespace, tabs, trailing
-	 * whitespace and quotes are all data once the credential starts.
+	 * Slash parsing owns only the whitespace that separates the command name from its arguments.
+	 * Once the credential starts, repeated, leading and trailing whitespace are credential bytes.
 	 */
-	it("preserves inline credential bytes exactly", () => {
-		const whitespace = "  alpha  beta\tgamma  ";
-		expect(parseSecretCommand(`add TOKEN_A ${whitespace}`).value).toBe(whitespace);
-		expect(parseSecretCommand('add TOKEN_A "alpha beta"').value).toBe('"alpha beta"');
-		expect(parseSecretCommand("add TOKEN_A alpha  beta --ttl never").value).toBe("alpha  beta");
+	it("preserves unquoted credential bytes through slash transport", () => {
+		const credential = "  alpha  beta\tgamma  ";
+		const transported = parseSlashCommand(`/secret   add TOKEN_A ${credential}`)?.args;
+
+		expect(transported).toBe(`add TOKEN_A ${credential}`);
+		expect(parseSecretCommand(transported ?? "").value).toBe(credential);
 	});
 
 	/**
-	 * An option-looking word after an inline credential has two possible readings. Refuse instead
-	 * of guessing, and never put a following credential fragment into the error.
+	 * Quotes are credential data rather than shell syntax at this boundary. Keeping them and the
+	 * trailing tab exactly prevents the slash adapter from changing a quoted token before storage.
+	 */
+	it("preserves quoted credential bytes through slash transport", () => {
+		const credential = '"alpha beta"\t ';
+		const transported = parseSlashCommand(`/secret add TOKEN_A ${credential}`)?.args;
+
+		expect(transported).toBe(`add TOKEN_A ${credential}`);
+		expect(parseSecretCommand(transported ?? "").value).toBe(credential);
+	});
+
+	/**
+	 * An option-looking word after an inline credential has two possible readings. Refuse even a
+	 * well-formed option instead of truncating the value, and never put candidate bytes in the error.
 	 */
 	it("refuses ambiguous option-shaped credentials without echoing fragments", () => {
-		const fragment = "credential-fragment-should-stay-private";
-		for (const args of [`add TOKEN_A alpha --scope ${fragment} omega`, `add TOKEN_A --${fragment}`]) {
+		const candidates = [
+			"alpha-secret --scope global",
+			"alpha --scope credential-fragment-should-stay-private omega",
+			"--credential-fragment-should-stay-private",
+		];
+		for (const credential of candidates) {
 			let message = "";
 			try {
-				parseSecretCommand(args);
+				parseSecretCommand(`add TOKEN_A ${credential}`);
 			} catch (error) {
-				message = String(error);
+				message = error instanceof Error ? error.message : String(error);
 			}
 
-			expect(message).toContain("ambiguous");
-			expect(message).not.toContain(fragment);
+			expect(message).toBe(
+				"An inline credential containing an option-shaped word is ambiguous and was not read. " +
+					"Put every option before the secret name, or use --from-env.",
+			);
+			expect(message).not.toContain(credential);
 		}
 	});
 
-	/** `never` parses to null, so a non-expiring secret is expressible. */
+	/** `never` parses to null before an inline credential starts, so its meaning is unambiguous. */
 	it("understands a never lifetime", () => {
-		expect(parseSecretCommand("add TOKEN_A x --ttl never").ttl).toBeNull();
+		expect(parseSecretCommand("add --ttl never TOKEN_A x").ttl).toBeNull();
 	});
 
 	/** An absent lifetime is undefined, which means "use the configured default". */
@@ -266,6 +287,52 @@ describe("add", () => {
 			expect(result.changed).toBe(true);
 			expect(result.message).toContain("in your scrollback");
 			expect(result.message).toContain("--from-env");
+		});
+	});
+
+	/**
+	 * The vault must receive the exact bytes that crossed the slash boundary. A parser-only check
+	 * would miss a later normalization before persistence, so this pins the stored value as well.
+	 */
+	it("stores transported inline credential bytes exactly", async () => {
+		await withContext(async context => {
+			const credential = `  "${VALUE} alpha"\t  `;
+			const transported = parseSlashCommand(`/secret add byte-token ${credential}`)?.args;
+
+			expect(transported).toBe(`add byte-token ${credential}`);
+			const request = parseSecretCommand(transported ?? "");
+			expect(request.value).toBe(credential);
+			const result = await runSecretCommand(request, context);
+
+			expect((await context.vault.load())[0]?.value).toBe(credential);
+			expect(result.message).not.toContain(credential);
+			expect(result.agentNotice).not.toContain(credential);
+		});
+	});
+
+	/**
+	 * A credential followed by a valid-looking option used to be truncated and stored in another
+	 * scope. Refusal must happen before any vault write, and its error must disclose none of it.
+	 */
+	it("stores nothing for an ambiguous option-looking credential", async () => {
+		await withContext(async context => {
+			const credential = `${VALUE} --scope global`;
+			const transported = parseSlashCommand(`/secret add byte-token ${credential}`)?.args;
+			let message = "";
+
+			try {
+				await runSecretCommand(parseSecretCommand(transported ?? ""), context);
+			} catch (error) {
+				message = error instanceof Error ? error.message : String(error);
+			}
+
+			expect(transported).toBe(`add byte-token ${credential}`);
+			expect(message).toBe(
+				"An inline credential containing an option-shaped word is ambiguous and was not read. " +
+					"Put every option before the secret name, or use --from-env.",
+			);
+			expect(message).not.toContain(credential);
+			expect(await context.vault.load()).toEqual([]);
 		});
 	});
 

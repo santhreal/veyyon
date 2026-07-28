@@ -30,7 +30,7 @@ export function parseSlashCommand(text: string): ParsedSlashCommand | null {
 	if (firstSeparator === -1) return { name: body, args: "", text };
 	return {
 		name: body.slice(0, firstSeparator),
-		args: body.slice(firstSeparator + 1).trim(),
+		args: body.slice(firstSeparator + 1).trimStart(),
 		text,
 	};
 }
