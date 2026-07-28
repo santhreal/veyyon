@@ -57,11 +57,13 @@ const KEY_CREATE_FLAGS = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstant
  * A sealed vault payload as it sits on disk.
  *
  * Versioned from the first release so a later format change can be detected rather than
- * guessed at. Version 1 payloads remain readable; version 2 authenticates an optional
- * vault-location binding as associated data so ciphertext cannot be moved between scopes.
+ * guessed at. Version 2 authenticates the vault-location binding as associated data so
+ * ciphertext cannot be moved between scopes. Legacy version 1 envelopes are recognised only
+ * to reject them explicitly: they contain no authenticated provenance and cannot be migrated
+ * into a scope safely.
  */
 export interface SealedVault {
-	/** Envelope version. Writers emit 2; readers also accept legacy version 1. */
+	/** Envelope version. Writers and readers require 2. */
 	v: number;
 	/** Base64 nonce, fresh for every seal. */
 	iv: string;
@@ -71,8 +73,7 @@ export interface SealedVault {
 	ct: string;
 }
 
-/** Versions understood by this build. New writes always use the bound-capable format. */
-const LEGACY_ENVELOPE_VERSION = 1;
+/** The only envelope version with authenticated scope provenance. */
 const ENVELOPE_VERSION = 2;
 
 /** A live PID is never reaped; dead owners are still detected immediately by the shared lock. */
@@ -286,10 +287,16 @@ export function sealVault(key: Buffer, plaintext: string, binding?: string): Sea
  * protecting every secret it held, which is the one outcome this module exists to prevent.
  */
 export function openVault(key: Buffer, sealed: SealedVault, binding?: string): string {
-	if (sealed.v !== LEGACY_ENVELOPE_VERSION && sealed.v !== ENVELOPE_VERSION) {
+	if (sealed.v === 1) {
 		throw new Error(
-			`This vault was written in format version ${sealed.v}, and this build understands ` +
-				`versions ${LEGACY_ENVELOPE_VERSION} and ${ENVELOPE_VERSION}. Upgrade veyyon rather than deleting the file.`,
+			"Legacy vault format version 1 has no authenticated scope or path. " +
+				"Refusing to guess its provenance; re-add its credentials into the intended scope.",
+		);
+	}
+	if (sealed.v !== ENVELOPE_VERSION) {
+		throw new Error(
+			`This vault was written in format version ${sealed.v}, and this build understands version ` +
+				`${ENVELOPE_VERSION}. Upgrade veyyon rather than deleting the file.`,
 		);
 	}
 
@@ -306,7 +313,7 @@ export function openVault(key: Buffer, sealed: SealedVault, binding?: string): s
 
 	try {
 		const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv, { authTagLength: TAG_BYTES });
-		if (sealed.v === ENVELOPE_VERSION) decipher.setAAD(vaultAssociatedData(binding));
+		decipher.setAAD(vaultAssociatedData(binding));
 		decipher.setAuthTag(tag);
 		return Buffer.concat([decipher.update(Buffer.from(sealed.ct, "base64")), decipher.final()]).toString("utf8");
 	} catch (error) {

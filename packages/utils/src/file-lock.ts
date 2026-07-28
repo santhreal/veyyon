@@ -19,17 +19,33 @@ const DEFAULT_OPTIONS: Required<FileLockOptions> = {
 	retryDelayMs: 100,
 };
 
+/** Maximum time a live creator may need to publish its tiny owner record. */
+const OWNER_INFO_GRACE_MS = 1_000;
+
 interface LockInfo {
 	pid: number;
 	timestamp: number;
 	token: string;
 }
 
-// A lock is a directory at `${filePath}.lock`. mkdir is atomic on every
-// filesystem, so the process that creates the directory owns the lock. The
-// owner's identity lives in `${lockPath}/info` (pid + timestamp + token). The
-// sync and async paths below share this on-disk layout, so a `withFileLock`
-// holder and a `withFileLockSync` holder contend correctly on the same lock.
+function isLockInfo(value: unknown): value is LockInfo {
+	if (value === null || typeof value !== "object") return false;
+	const info = value as Record<string, unknown>;
+	return (
+		typeof info.pid === "number" &&
+		Number.isSafeInteger(info.pid) &&
+		info.pid > 0 &&
+		typeof info.timestamp === "number" &&
+		Number.isSafeInteger(info.timestamp) &&
+		typeof info.token === "string" &&
+		info.token.length > 0
+	);
+}
+
+// A lock is a directory at `${filePath}.lock`. mkdir elects its owner, whose
+// identity is then written to `${lockPath}/info`. An ownerless directory is
+// left alone for a short publication grace and recovered after that grace,
+// including when ordinary timestamp-based stale expiry is disabled.
 function getLockPath(filePath: string): string {
 	return `${filePath}.lock`;
 }
@@ -39,30 +55,29 @@ function buildLockInfo(token: string): LockInfo {
 }
 
 async function writeLockInfo(lockPath: string, token: string): Promise<void> {
-	await Bun.write(`${lockPath}/info`, JSON.stringify(buildLockInfo(token)));
+	await fs.writeFile(`${lockPath}/info`, JSON.stringify(buildLockInfo(token)), { flag: "wx", mode: 0o600 });
 }
 
 function writeLockInfoSync(lockPath: string, token: string): void {
-	fsSync.writeFileSync(`${lockPath}/info`, JSON.stringify(buildLockInfo(token)));
+	fsSync.writeFileSync(`${lockPath}/info`, JSON.stringify(buildLockInfo(token)), { flag: "wx", mode: 0o600 });
 }
 
 /**
  * Read a lock's `info` file, or `null` when there is nothing readable there.
  *
- * `null` covers three cases on purpose -- the lock directory does not exist, the `info` file is missing
- * (an owner that died mid-acquire), or its contents are unreadable or truncated -- and `decideStale`
- * below is what makes collapsing them safe: with no info it falls back to the lock DIRECTORY's mtime,
- * so a lock that is mid-acquire is left alone and one whose directory is older than `staleMs` is
- * reaped. The distinction that matters is therefore made from the directory, not from this return
- * value, which is why nothing here needs to tell an absent info file from a corrupt one.
+ * `null` means the lock is absent, is still in the short mkdir-to-info
+ * publication window, is an ownerless artifact from an interrupted acquisition,
+ * or contains corrupt metadata. Callers use the directory age to distinguish
+ * the live publication window from an orphan.
  *
- * The sync twin below exists for exit-path teardown, which cannot await, and answers identically for
- * the same reason.
+ * The sync twin below exists for exit-path teardown, which cannot await, and
+ * answers identically.
  */
 async function readLockInfo(lockPath: string): Promise<LockInfo | null> {
 	try {
 		const content = await fs.readFile(`${lockPath}/info`, "utf-8");
-		return tryParseJson<LockInfo>(content);
+		const parsed = tryParseJson<unknown>(content);
+		return isLockInfo(parsed) ? parsed : null;
 	} catch {
 		return null;
 	}
@@ -72,7 +87,8 @@ async function readLockInfo(lockPath: string): Promise<LockInfo | null> {
 function readLockInfoSync(lockPath: string): LockInfo | null {
 	try {
 		const content = fsSync.readFileSync(`${lockPath}/info`, "utf-8");
-		return tryParseJson<LockInfo>(content);
+		const parsed = tryParseJson<unknown>(content);
+		return isLockInfo(parsed) ? parsed : null;
 	} catch {
 		return null;
 	}
@@ -80,9 +96,8 @@ function readLockInfoSync(lockPath: string): LockInfo | null {
 
 // Decide whether a held lock is abandoned. Shared reaping policy for both the
 // sync and async paths: a lock is stale if its owner pid is dead, or its info
-// timestamp is older than staleMs. When there is no info file the lock is
-// either mid-acquire (fresh dir, do not reap) or already gone (nothing to
-// reap) — reap only when the bare dir's mtime is itself older than staleMs.
+// timestamp is older than staleMs. The directory-mtime branch handles the
+// bounded owner-info publication window and interrupted acquisitions.
 function decideStale(info: LockInfo | null, dirMtimeMs: number | null, staleMs: number, now: number): boolean {
 	if (info) {
 		if (!isProcessAlive(info.pid)) return true;
@@ -117,28 +132,36 @@ function isLockStaleSync(lockPath: string, staleMs: number): boolean {
 }
 
 async function tryAcquireLock(lockPath: string): Promise<string | null> {
+	let created = false;
 	try {
-		await fs.mkdir(lockPath);
+		await fs.mkdir(lockPath, { mode: 0o700 });
+		created = true;
 		const token = randomUUID();
 		await writeLockInfo(lockPath, token);
 		return token;
 	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-			return null;
-		}
+		if (!created && (error as NodeJS.ErrnoException).code === "EEXIST") return null;
+		if (created) await fs.rm(lockPath, { recursive: true, force: true }).catch(() => {});
 		throw error;
 	}
 }
 
 function tryAcquireLockSync(lockPath: string): string | null {
+	let created = false;
 	try {
-		fsSync.mkdirSync(lockPath);
+		fsSync.mkdirSync(lockPath, { mode: 0o700 });
+		created = true;
 		const token = randomUUID();
 		writeLockInfoSync(lockPath, token);
 		return token;
 	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-			return null;
+		if (!created && (error as NodeJS.ErrnoException).code === "EEXIST") return null;
+		if (created) {
+			try {
+				fsSync.rmSync(lockPath, { recursive: true, force: true });
+			} catch {
+				// The acquisition error is the useful one.
+			}
 		}
 		throw error;
 	}
@@ -185,12 +208,17 @@ function reportFailedRelease(lockPath: string, error: unknown): void {
 
 async function releaseLock(lockPath: string, expectedToken?: string): Promise<void> {
 	try {
+		const info = await readLockInfo(lockPath);
 		if (expectedToken !== undefined) {
-			const info = await readLockInfo(lockPath);
 			if (!info || info.token !== expectedToken) {
 				reportLostLockOwnership(lockPath, expectedToken, info?.token);
 				return;
 			}
+		} else if (info !== null) {
+			// Tokenless removal is reserved for an ownerless legacy lock. A stale
+			// owner record must always be removed with the token that was observed,
+			// or a delayed reaper can erase a freshly-acquired lock.
+			return;
 		}
 		await fs.rm(lockPath, { recursive: true });
 	} catch (error) {
@@ -203,12 +231,14 @@ async function releaseLock(lockPath: string, expectedToken?: string): Promise<vo
 
 function releaseLockSync(lockPath: string, expectedToken?: string): void {
 	try {
+		const info = readLockInfoSync(lockPath);
 		if (expectedToken !== undefined) {
-			const info = readLockInfoSync(lockPath);
 			if (!info || info.token !== expectedToken) {
 				reportLostLockOwnership(lockPath, expectedToken, info?.token);
 				return;
 			}
+		} else if (info !== null) {
+			return;
 		}
 		fsSync.rmSync(lockPath, { recursive: true });
 	} catch (error) {
@@ -247,10 +277,17 @@ async function acquireLock(filePath: string, options: FileLockOptions = {}): Pro
 			return () => releaseLock(lockPath, token);
 		}
 
-		if ((await lockExists(lockPath)) && (await isLockStale(lockPath, opts.staleMs))) {
-			// Reaping a stale lock — no token because we didn't acquire it. The
-			// rightful owner is presumed dead; rm without ownership check.
-			await releaseLock(lockPath);
+		const info = await readLockInfo(lockPath);
+		if (info === null) {
+			if (await isLockStale(lockPath, OWNER_INFO_GRACE_MS)) {
+				await releaseLock(lockPath);
+				continue;
+			}
+			await Bun.sleep(opts.retryDelayMs);
+			continue;
+		}
+		if (decideStale(info, null, opts.staleMs, Date.now())) {
+			await releaseLock(lockPath, info.token);
 			continue;
 		}
 
@@ -270,8 +307,17 @@ function acquireLockSync(filePath: string, options: FileLockOptions = {}): () =>
 			return () => releaseLockSync(lockPath, token);
 		}
 
-		if (lockExistsSync(lockPath) && isLockStaleSync(lockPath, opts.staleMs)) {
-			releaseLockSync(lockPath);
+		const info = readLockInfoSync(lockPath);
+		if (info === null) {
+			if (isLockStaleSync(lockPath, OWNER_INFO_GRACE_MS)) {
+				releaseLockSync(lockPath);
+				continue;
+			}
+			sleepSync(opts.retryDelayMs);
+			continue;
+		}
+		if (decideStale(info, null, opts.staleMs, Date.now())) {
+			releaseLockSync(lockPath, info.token);
 			continue;
 		}
 
@@ -349,8 +395,14 @@ export async function tryWithFileLock<T>(
 				await releaseLock(lockPath, token);
 			}
 		}
-		if (!(await isLockStale(lockPath, opts.staleMs))) break;
-		await releaseLock(lockPath);
+		const info = await readLockInfo(lockPath);
+		if (info === null) {
+			if (!(await isLockStale(lockPath, OWNER_INFO_GRACE_MS))) break;
+			await releaseLock(lockPath);
+			continue;
+		}
+		if (!decideStale(info, null, opts.staleMs, Date.now())) break;
+		await releaseLock(lockPath, info.token);
 	}
 	return { acquired: false };
 }
