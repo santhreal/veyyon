@@ -6,6 +6,7 @@
 
 ### Fixed
 
+- Remote memory extraction, consolidation, summarization, and API embeddings now transform provider-bound text with the live secret runtime on every physical request. The transform runs before token caps and serialization, then runs again after credential refresh or retry backoff. Local, FastEmbed, and on-device paths remain byte-identical and never take the remote transform.
 - A memory recorded as `false` now stays out of recall results. `Veracity` was declared five
   times in this package with different value sets, and the narrowest of them validated writes:
   `clampVeracity("false")` returned `"unknown"`, so a fact something had checked and rejected

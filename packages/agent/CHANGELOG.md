@@ -19,6 +19,7 @@
 
 - A turn that ends in an error builds its message with the shared `errorMessage` helper. The two tail branches were that helper written out by hand, and the local `const errorMessage` holding the result shadowed the import, so the hand-rolled copy was the only version reachable in that scope. The local is named `failureMessage` now.
 
+- Compaction now protects hook output, memory context, turn prefixes, long and short summaries, local fallbacks, and remote summarizer bodies at the final provider boundary. Each physical attempt resolves the current secret transform after credential refresh, so an authentication retry cannot reuse text prepared with a stale runtime. Opaque provider replay state keeps its exact identity and is rejected rather than rewritten if it contains a live credential.
 - Fixed compaction doing nothing when the newest turn alone exceeded the keep-recent budget. One very large tool result at the end of a session was enough: the cut-point search found no boundary at or after the entry that blew the budget and fell back to keeping the whole session, so compaction reported nothing to do while the context meter sat at the ceiling. It now cuts to the newest valid boundary, which never separates a tool call from its result.
 - Fixed images in a user message counting as zero tokens. Every other message role already counted them, so a session of pasted screenshots under-reported its own size to the compaction trigger, the pruning budgets, and the context meter.
 
