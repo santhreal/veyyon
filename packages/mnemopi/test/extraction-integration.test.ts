@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { FetchImpl } from "@veyyon/ai";
 import { extractFacts } from "@veyyon/mnemopi/core/extraction";
 import { type ChatMessage, ExtractionClient } from "@veyyon/mnemopi/core/extraction/client";
@@ -17,6 +17,11 @@ function restoreEnv(): void {
 		else process.env[key] = value;
 	}
 }
+
+beforeEach(() => {
+	resetHostLlmBackendForTests();
+	resetExtractionStats();
+});
 
 afterEach(() => {
 	restoreEnv();
