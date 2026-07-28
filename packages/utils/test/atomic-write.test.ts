@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
@@ -244,8 +244,305 @@ describe("atomicWriteFile", () => {
 			expect(payloads).toContain(final);
 			expect(tempSiblings(target)).toEqual([]);
 		});
+		/**
+		 * A producer used to be able to replace its temp path with a directory;
+		 * with fsync disabled that directory was renamed over the destination, and
+		 * on failure the non-recursive cleanup left the owned temp tree behind.
+		 */
+		it("refuses and recursively cleans a directory left at the producer temp path", async () => {
+			const target = path.join(dir.path(), "archive.tar");
+			await atomicWriteFile(target, "ORIGINAL");
+
+			await expect(
+				atomicWriteFileWith(
+					target,
+					async tmpPath => {
+						await fsp.rm(tmpPath);
+						await fsp.mkdir(tmpPath);
+						await fsp.writeFile(path.join(tmpPath, "partial"), "HALF");
+					},
+					{ fsync: false },
+				),
+			).rejects.toThrow("directory");
+
+			expect(fs.readFileSync(target, "utf8")).toBe("ORIGINAL");
+			expect(tempSiblings(target)).toEqual([]);
+		});
+
+		/**
+		 * A path producer could previously swap its temp entry for a symlink and
+		 * have the symlink renamed into place, violating the regular-file contract
+		 * and transferring later writes to an unrelated file.
+		 */
+		it("refuses and cleans a symlink left at the producer temp path", async () => {
+			if (process.platform === "win32") return;
+			const target = path.join(dir.path(), "archive.tar");
+			const unrelated = path.join(dir.path(), "unrelated");
+			await atomicWriteFile(target, "ORIGINAL");
+			await fsp.writeFile(unrelated, "KEEP");
+
+			await expect(
+				atomicWriteFileWith(
+					target,
+					async tmpPath => {
+						await fsp.rm(tmpPath);
+						await fsp.symlink(unrelated, tmpPath);
+					},
+					{ fsync: false },
+				),
+			).rejects.toThrow("symbolic link");
+
+			expect(fs.readFileSync(target, "utf8")).toBe("ORIGINAL");
+			expect(fs.readFileSync(unrelated, "utf8")).toBe("KEEP");
+			expect(tempSiblings(target)).toEqual([]);
+		});
+
+		/**
+		 * `mode` was accepted by the producer API but ignored, so a producer's
+		 * incidental creation mode leaked into the installed destination.
+		 */
+		it("owns the producer result mode instead of inheriting the producer's mode", async () => {
+			if (process.platform === "win32") return;
+			const target = path.join(dir.path(), "archive.tar");
+
+			await atomicWriteFileWith(
+				target,
+				async tmpPath => {
+					await fsp.writeFile(tmpPath, "PACKED");
+					await fsp.chmod(tmpPath, 0o777);
+				},
+				{ mode: 0o640 },
+			);
+
+			expect(fs.statSync(target).mode & 0o777).toBe(0o640 & ~process.umask());
+		});
 	});
 
+	/**
+	 * A predictable, unreserved temp name let a stale file (or another owner)
+	 * get truncated. The writer must retry an exclusive reservation and leave
+	 * the colliding entry byte-identical.
+	 */
+	it("never truncates a temp-name collision it does not own", async () => {
+		const target = path.join(dir.path(), "owned.txt");
+		const realOpen = fsp.open;
+		let collision = "";
+		const openSpy = spyOn(fsp, "open").mockImplementation((async (
+			file: fs.PathLike,
+			flags: string | number,
+			mode?: number,
+		) => {
+			if (flags === "wx" && collision === "") {
+				collision = String(file);
+				await fsp.writeFile(collision, "FOREIGN");
+			}
+			return realOpen(file, flags as fs.OpenMode, mode);
+		}) as typeof fsp.open);
+		try {
+			await atomicWriteFile(target, "OURS");
+		} finally {
+			openSpy.mockRestore();
+		}
+
+		expect(collision).not.toBe("");
+		expect(fs.readFileSync(collision, "utf8")).toBe("FOREIGN");
+		expect(fs.readFileSync(target, "utf8")).toBe("OURS");
+		await fsp.rm(collision);
+		expect(tempSiblings(target)).toEqual([]);
+	});
+
+	/**
+	 * A write failure and a close failure can happen together. `finally {
+	 * close() }` used to replace the actionable write error with the secondary
+	 * close error while also obscuring cleanup.
+	 */
+	it("keeps the write error primary when closing its descriptor also fails", async () => {
+		const target = path.join(dir.path(), "precedence.txt");
+		await atomicWriteFile(target, "ORIGINAL");
+		const realOpen = fsp.open;
+		let injected = false;
+		let writeAttempted = false;
+		const openSpy = spyOn(fsp, "open").mockImplementation((async (
+			file: fs.PathLike,
+			flags: string | number,
+			mode?: number,
+		) => {
+			const handle = await realOpen(file, flags as fs.OpenMode, mode);
+			if (injected || !String(file).endsWith(".tmp") || (flags !== "w" && flags !== "wx")) return handle;
+			injected = true;
+			return new Proxy(handle, {
+				get(realHandle, property) {
+					if (property === "writeFile") {
+						return async () => {
+							writeAttempted = true;
+							throw new Error("primary write failure");
+						};
+					}
+					if (property === "close") {
+						return async () => {
+							await realHandle.close();
+							if (writeAttempted) throw new Error("secondary close failure");
+						};
+					}
+					const value = Reflect.get(realHandle, property);
+					return typeof value === "function" ? value.bind(realHandle) : value;
+				},
+			});
+		}) as typeof fsp.open);
+		try {
+			await expect(atomicWriteFile(target, "NEW")).rejects.toThrow("primary write failure");
+		} finally {
+			openSpy.mockRestore();
+		}
+
+		expect(fs.readFileSync(target, "utf8")).toBe("ORIGINAL");
+		expect(tempSiblings(target)).toEqual([]);
+	});
+
+	/**
+	 * POSIX EACCES is a real rename failure, not Windows' replace-existing quirk.
+	 * Treating it as a clobber signal used to unlink the valid destination and
+	 * retry, converting a permissions failure into an overwrite.
+	 */
+	it("does not delete the destination to retry a POSIX rename permission error", async () => {
+		if (process.platform === "win32") return;
+		const target = path.join(dir.path(), "rename-error.txt");
+		await atomicWriteFile(target, "ORIGINAL");
+		const renameError = Object.assign(new Error("EACCES: rename denied"), { code: "EACCES" });
+		const realRename = fsp.rename;
+		const renameSpy = spyOn(fsp, "rename").mockImplementation(async (oldPath, newPath) => {
+			if (newPath === target) throw renameError;
+			await realRename(oldPath, newPath);
+		});
+		try {
+			await expect(atomicWriteFile(target, "NEW")).rejects.toThrow("rename denied");
+		} finally {
+			renameSpy.mockRestore();
+		}
+
+		expect(fs.readFileSync(target, "utf8")).toBe("ORIGINAL");
+		expect(tempSiblings(target)).toEqual([]);
+	});
+
+	/**
+	 * The Windows remove-and-retry fallback deleted the original before the
+	 * second rename, so a second failure caused data loss. The displaced file is
+	 * now retained until installation succeeds and restored on failure.
+	 */
+	it("restores the previous file when the Windows rename retry also fails", async () => {
+		const target = path.join(dir.path(), "windows-recovery.txt");
+		await atomicWriteFile(target, "ORIGINAL");
+		const originalPlatform = process.platform;
+		Object.defineProperty(process, "platform", { configurable: true, value: "win32" });
+		const realRename = fsp.rename;
+		let installAttempts = 0;
+		const renameSpy = spyOn(fsp, "rename").mockImplementation(async (oldPath, newPath) => {
+			if (newPath === target && String(oldPath).endsWith(".tmp") && !String(oldPath).includes(".previous.")) {
+				installAttempts++;
+				if (installAttempts === 1) {
+					throw Object.assign(new Error("EEXIST: destination exists"), { code: "EEXIST" });
+				}
+				if (installAttempts === 2) {
+					throw Object.assign(new Error("EIO: replacement failed"), { code: "EIO" });
+				}
+			}
+			await realRename(oldPath, newPath);
+		});
+		try {
+			await expect(atomicWriteFile(target, "NEW")).rejects.toThrow("replacement failed");
+		} finally {
+			renameSpy.mockRestore();
+			Object.defineProperty(process, "platform", { configurable: true, value: originalPlatform });
+		}
+
+		expect(installAttempts).toBe(2);
+		expect(fs.readFileSync(target, "utf8")).toBe("ORIGINAL");
+		expect(tempSiblings(target)).toEqual([]);
+	});
+	/**
+	 * Directory fsync was wrapped in a catch-all, so EIO was reported as success
+	 * even though the rename's durability had not been established. The error is
+	 * now surfaced after closing the directory descriptor.
+	 */
+	it("reports a real directory fsync failure and still closes the descriptor", async () => {
+		const target = path.join(dir.path(), "durability.txt");
+		const realOpen = fsp.open;
+		let closed = false;
+		const syncError = Object.assign(new Error("directory fsync failed"), { code: "EIO" });
+		const openSpy = spyOn(fsp, "open").mockImplementation((async (
+			file: fs.PathLike,
+			flags: string | number,
+			mode?: number,
+		) => {
+			if (String(file) === dir.path() && flags === "r") {
+				return {
+					sync: async () => {
+						throw syncError;
+					},
+					close: async () => {
+						closed = true;
+					},
+					// Through `unknown`: the code under test calls only `sync` and `close` on a
+					// directory handle, so the double is deliberately those two and nothing else,
+					// and a direct cast asks the compiler to accept a 21-member overlap it does
+					// not have. Widening the double to a full `FileHandle` would add twenty
+					// methods no assertion here reads.
+				} as unknown as fsp.FileHandle;
+			}
+			return realOpen(file, flags as fs.OpenMode, mode);
+		}) as typeof fsp.open);
+		try {
+			await expect(atomicWriteFile(target, "NEW")).rejects.toThrow("directory fsync failed");
+		} finally {
+			openSpy.mockRestore();
+		}
+
+		expect(closed).toBe(true);
+		expect(fs.readFileSync(target, "utf8")).toBe("NEW");
+		expect(tempSiblings(target)).toEqual([]);
+	});
+
+	/**
+	 * Some filesystems reject directory fsync with EINVAL after a successful
+	 * rename. That portability signal remains a successful write, while the
+	 * opened descriptor is still closed.
+	 */
+	it("treats an unsupported directory fsync as portable success", async () => {
+		const target = path.join(dir.path(), "portable.txt");
+		const realOpen = fsp.open;
+		let closed = false;
+		const unsupported = Object.assign(new Error("directory fsync unsupported"), { code: "EINVAL" });
+		const openSpy = spyOn(fsp, "open").mockImplementation((async (
+			file: fs.PathLike,
+			flags: string | number,
+			mode?: number,
+		) => {
+			if (String(file) === dir.path() && flags === "r") {
+				return {
+					sync: async () => {
+						throw unsupported;
+					},
+					close: async () => {
+						closed = true;
+					},
+					// Through `unknown`: the code under test calls only `sync` and `close` on a
+					// directory handle, so the double is deliberately those two and nothing else,
+					// and a direct cast asks the compiler to accept a 21-member overlap it does
+					// not have. Widening the double to a full `FileHandle` would add twenty
+					// methods no assertion here reads.
+				} as unknown as fsp.FileHandle;
+			}
+			return realOpen(file, flags as fs.OpenMode, mode);
+		}) as typeof fsp.open);
+		try {
+			await atomicWriteFile(target, "NEW");
+		} finally {
+			openSpy.mockRestore();
+		}
+
+		expect(closed).toBe(true);
+		expect(fs.readFileSync(target, "utf8")).toBe("NEW");
+	});
 	describe("atomicWriteFileSync", () => {
 		it("writes content exactly, creates parents, and leaves no temp file", () => {
 			const target = path.join(dir.path(), "nested", "config.yml");
@@ -294,6 +591,129 @@ describe("atomicWriteFile", () => {
 			expect(() => atomicWriteFileSync(target, "data")).toThrow();
 			expect(fs.readFileSync(blocker, "utf8")).toBe("i am a file");
 			expect(fs.readdirSync(dir.path())).toEqual(["blocker"]);
+		});
+		/**
+		 * The sync rename fallback had the same POSIX data-loss bug as the async
+		 * path: an EACCES unlinked the valid destination before retrying.
+		 */
+		it("does not clobber the destination on a sync POSIX rename permission error", () => {
+			if (process.platform === "win32") return;
+			const target = path.join(dir.path(), "sync-rename-error.txt");
+			atomicWriteFileSync(target, "ORIGINAL");
+			const renameError = Object.assign(new Error("EACCES: sync rename denied"), { code: "EACCES" });
+			const renameSpy = spyOn(fs, "renameSync").mockImplementation((_oldPath, newPath) => {
+				if (newPath === target) throw renameError;
+			});
+			try {
+				expect(() => atomicWriteFileSync(target, "NEW")).toThrow("sync rename denied");
+			} finally {
+				renameSpy.mockRestore();
+			}
+
+			expect(fs.readFileSync(target, "utf8")).toBe("ORIGINAL");
+			expect(tempSiblings(target)).toEqual([]);
+		});
+
+		/**
+		 * The sync Windows fallback likewise removed the original before knowing
+		 * whether its second rename could succeed; this pins restoration parity.
+		 */
+		it("restores the previous file when the sync Windows retry fails", () => {
+			const target = path.join(dir.path(), "sync-windows-recovery.txt");
+			atomicWriteFileSync(target, "ORIGINAL");
+			const originalPlatform = process.platform;
+			Object.defineProperty(process, "platform", { configurable: true, value: "win32" });
+			const realRename = fs.renameSync;
+			let installAttempts = 0;
+			const renameSpy = spyOn(fs, "renameSync").mockImplementation((oldPath, newPath) => {
+				if (newPath === target && String(oldPath).endsWith(".tmp") && !String(oldPath).includes(".previous.")) {
+					installAttempts++;
+					if (installAttempts === 1) {
+						throw Object.assign(new Error("EEXIST: destination exists"), { code: "EEXIST" });
+					}
+					if (installAttempts === 2) {
+						throw Object.assign(new Error("EIO: sync replacement failed"), { code: "EIO" });
+					}
+				}
+				realRename(oldPath, newPath);
+			});
+			try {
+				expect(() => atomicWriteFileSync(target, "NEW")).toThrow("sync replacement failed");
+			} finally {
+				renameSpy.mockRestore();
+				Object.defineProperty(process, "platform", { configurable: true, value: originalPlatform });
+			}
+
+			expect(installAttempts).toBe(2);
+			expect(fs.readFileSync(target, "utf8")).toBe("ORIGINAL");
+			expect(tempSiblings(target)).toEqual([]);
+		});
+
+		/**
+		 * The blocking directory-flush path also swallowed every error. A real
+		 * EIO must be reported, and its directory descriptor must be closed before
+		 * control returns to the caller.
+		 */
+		it("reports sync directory fsync failure after closing its descriptor", () => {
+			const target = path.join(dir.path(), "sync-durability.txt");
+			const realOpen = fs.openSync;
+			const realFsync = fs.fsyncSync;
+			let dirFd: number | undefined;
+			const openSpy = spyOn(fs, "openSync").mockImplementation((file, flags, mode) => {
+				const fd = realOpen(file, flags, mode);
+				if (String(file) === dir.path() && flags === "r") dirFd = fd;
+				return fd;
+			});
+			const syncError = Object.assign(new Error("sync directory fsync failed"), { code: "EIO" });
+			const fsyncSpy = spyOn(fs, "fsyncSync").mockImplementation(fd => {
+				if (fd === dirFd) throw syncError;
+				realFsync(fd);
+			});
+			try {
+				expect(() => atomicWriteFileSync(target, "NEW")).toThrow("sync directory fsync failed");
+			} finally {
+				fsyncSpy.mockRestore();
+				openSpy.mockRestore();
+			}
+
+			expect(fs.readFileSync(target, "utf8")).toBe("NEW");
+			expect(() => fs.fstatSync(dirFd as number)).toThrow();
+			expect(tempSiblings(target)).toEqual([]);
+		});
+
+		/**
+		 * The sync writer closed its temp descriptor outside the guarded cleanup
+		 * path. A close failure therefore leaked the temp entry even though the
+		 * destination correctly remained untouched.
+		 */
+		it("cleans its temp when closing the write descriptor fails", () => {
+			const target = path.join(dir.path(), "sync-close.txt");
+			atomicWriteFileSync(target, "ORIGINAL");
+			const realOpen = fs.openSync;
+			const realClose = fs.closeSync;
+			let tempFd: number | undefined;
+			let injected = false;
+			const openSpy = spyOn(fs, "openSync").mockImplementation((file, flags, mode) => {
+				const fd = realOpen(file, flags, mode);
+				if (String(file).endsWith(".tmp")) tempFd = fd;
+				return fd;
+			});
+			const closeSpy = spyOn(fs, "closeSync").mockImplementation(fd => {
+				realClose(fd);
+				if (fd === tempFd && !injected) {
+					injected = true;
+					throw new Error("temp descriptor close failed");
+				}
+			});
+			try {
+				expect(() => atomicWriteFileSync(target, "NEW")).toThrow("temp descriptor close failed");
+			} finally {
+				closeSpy.mockRestore();
+				openSpy.mockRestore();
+			}
+
+			expect(fs.readFileSync(target, "utf8")).toBe("ORIGINAL");
+			expect(tempSiblings(target)).toEqual([]);
 		});
 	});
 });
@@ -483,6 +903,27 @@ describe("atomicWriteFilePreservingMode", () => {
 		const target = path.join(dir.path(), "exec-new.sh");
 		await atomicWriteFilePreservingMode(target, "#!/bin/sh\n", { defaultMode: 0o700 });
 		expect(fs.statSync(target).mode & 0o777).toBe(0o700 & ~process.umask());
+	});
+
+	/**
+	 * Opening the replacement with the old mode still applies the current umask.
+	 * That used to silently strip group-write from an existing 0o660 file even
+	 * though this API promises exact preservation of existing permissions.
+	 */
+	it("preserves existing mode bits even when the process umask masks them", async () => {
+		if (process.platform === "win32") return;
+		const target = path.join(dir.path(), "group-writable.txt");
+		await fsp.writeFile(target, "old\n");
+		await fsp.chmod(target, 0o660);
+
+		const previousUmask = process.umask(0o027);
+		try {
+			await atomicWriteFilePreservingMode(target, "new\n");
+		} finally {
+			process.umask(previousUmask);
+		}
+
+		expect(fs.statSync(target).mode & 0o777).toBe(0o660);
 	});
 
 	it("leaves no temp sibling behind after a successful write", async () => {

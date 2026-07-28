@@ -1,8 +1,6 @@
 import { clampLow, logger } from "@veyyon/utils";
-import {
-	type ProviderTextTransformResolver,
-	resolveProviderTextTransform,
-} from "../provider-boundary";
+import { isRecord } from "@veyyon/utils/type-guards";
+import { type ProviderTextTransformResolver, resolveProviderTextTransform } from "../provider-boundary";
 import { isTimeoutError } from "../utils/fetch-timeout";
 import { smitheryTimeoutSignal } from "./smithery-http";
 import type { MCPServerConfig } from "./types";
@@ -126,6 +124,73 @@ export class SmitheryRegistryError extends Error {
 	}
 }
 
+async function parseRegistryObject(response: Response, request: string): Promise<Record<string, unknown>> {
+	let payload: unknown;
+	try {
+		payload = await response.json();
+	} catch {
+		throw new SmitheryRegistryError(`Smithery ${request} returned malformed JSON`, 502);
+	}
+	if (!isRecord(payload)) {
+		throw new SmitheryRegistryError(`Smithery ${request} returned a malformed response`, 502);
+	}
+	return payload;
+}
+
+function isOptionalString(value: unknown): boolean {
+	return value === undefined || typeof value === "string";
+}
+
+function isOptionalBoolean(value: unknown): boolean {
+	return value === undefined || typeof value === "boolean";
+}
+
+function isSearchEntry(value: unknown): value is SmitherySearchEntry {
+	if (!isRecord(value)) return false;
+	const entry = value;
+	return (
+		isOptionalString(entry.id) &&
+		isOptionalString(entry.qualifiedName) &&
+		isOptionalString(entry.namespace) &&
+		isOptionalString(entry.slug) &&
+		isOptionalString(entry.displayName) &&
+		isOptionalString(entry.description) &&
+		isOptionalString(entry.homepage) &&
+		isOptionalString(entry.createdAt) &&
+		isOptionalString(entry.owner) &&
+		isOptionalString(entry.iconUrl) &&
+		isOptionalBoolean(entry.remote) &&
+		isOptionalBoolean(entry.verified) &&
+		isOptionalBoolean(entry.isDeployed) &&
+		(entry.score === undefined || (typeof entry.score === "number" && Number.isFinite(entry.score))) &&
+		(entry.useCount === undefined || (typeof entry.useCount === "number" && Number.isFinite(entry.useCount)))
+	);
+}
+
+function isServerDetails(value: unknown): value is SmitheryServerDetails {
+	if (!isRecord(value)) return false;
+	const details = value;
+	if (
+		!isOptionalString(details.qualifiedName) ||
+		!isOptionalString(details.displayName) ||
+		!isOptionalString(details.description) ||
+		!isOptionalString(details.deploymentUrl) ||
+		!isOptionalBoolean(details.remote)
+	) {
+		return false;
+	}
+	if (details.connections === undefined) return true;
+	if (!Array.isArray(details.connections)) return false;
+	return details.connections.every(connection => {
+		if (!isRecord(connection)) return false;
+		const candidate = connection;
+		return (
+			(candidate.type === undefined || candidate.type === "http" || candidate.type === "stdio") &&
+			isOptionalString(candidate.deploymentUrl)
+		);
+	});
+}
+
 function clampRegistryLimit(limit: number | undefined): number {
 	// 0/undefined/NaN mean "unspecified" here, so they fall back to the page-size
 	// default (20) rather than clamping to the low bound; a real value is truncated
@@ -226,6 +291,7 @@ function getToolsList(tools: unknown): SmitherySearchResult["display"]["tools"] 
 	if (!Array.isArray(tools)) return [];
 	const output: SmitherySearchResult["display"]["tools"] = [];
 	for (const item of tools) {
+		if (!isRecord(item)) continue;
 		const tool = item as SmitheryToolDefinition;
 		const name = safeMetadataValue(tool.name);
 		if (!name) continue;
@@ -322,16 +388,28 @@ async function fetchServerDetails(
 	path: string,
 	options?: { apiKey?: string; signal?: AbortSignal },
 ): Promise<SmitheryServerDetails | null> {
+	options?.signal?.throwIfAborted();
 	const headers = new Headers();
 	if (options?.apiKey) {
 		headers.set("Authorization", `Bearer ${options.apiKey}`);
 	}
-	const response = await fetch(`${SMITHERY_REGISTRY_BASE_URL}/servers/${path}`, {
+	const encodedPath = path
+		.split("/")
+		.map(segment => encodeURIComponent(segment))
+		.join("/");
+	const response = await fetch(`${SMITHERY_REGISTRY_BASE_URL}/servers/${encodedPath}`, {
 		headers,
 		signal: smitheryTimeoutSignal(options?.signal),
 	});
-	if (!response.ok) return null;
-	return (await response.json()) as SmitheryServerDetails;
+	if (response.status === 404) return null;
+	if (!response.ok) {
+		throw new SmitheryRegistryError(`Smithery detail request failed with status ${response.status}`, response.status);
+	}
+	const details = await parseRegistryObject(response, "detail request");
+	if (!isServerDetails(details)) {
+		throw new SmitheryRegistryError("Smithery detail request returned a malformed response", 502);
+	}
+	return details;
 }
 
 async function fetchServerDetailsFromEntry(
@@ -339,14 +417,10 @@ async function fetchServerDetailsFromEntry(
 	options?: { apiKey?: string; signal?: AbortSignal },
 ): Promise<SmitheryServerDetails | null> {
 	const candidates = resolveDetailPathCandidates(entry);
+	options?.signal?.throwIfAborted();
 	for (const candidate of candidates) {
-		try {
-			const details = await fetchServerDetails(candidate, options);
-			if (details) return details;
-		} catch (error) {
-			if (options?.signal?.aborted) throw error;
-			logger.debug("Smithery detail fetch candidate failed", { candidate });
-		}
+		const details = await fetchServerDetails(candidate, options);
+		if (details) return details;
 	}
 	return null;
 }
@@ -408,12 +482,14 @@ export async function searchSmitheryRegistry(
 	keyword: string,
 	options?: SmitherySearchOptions,
 ): Promise<SmitherySearchResult[]> {
+	options?.signal?.throwIfAborted();
 	const query = keyword.trim();
 	if (!query) return [];
 
 	const limit = clampRegistryLimit(options?.limit);
 	const isSemantic = options?.includeSemantic === true;
-	const pageSize = Math.max(limit * 2, 20);
+	// Two pages worth of headroom for the filter below, held inside the API's [20, 100] page bound.
+	const pageSize = clampLow(limit * 2, 20, 100);
 	const headers = new Headers();
 	if (options?.apiKey) {
 		headers.set("Authorization", `Bearer ${options.apiKey}`);
@@ -423,10 +499,8 @@ export async function searchSmitheryRegistry(
 	const maxPages = 3;
 	const allEntries: SmitherySearchEntry[] = [];
 	for (let page = 1; page <= maxPages; page++) {
-		const transform = resolveProviderTextTransform(
-			options?.resolveProviderTextTransform,
-			"Smithery registry search",
-		);
+		options?.signal?.throwIfAborted();
+		const transform = resolveProviderTextTransform(options?.resolveProviderTextTransform, "Smithery registry search");
 		const outboundQuery = transform(query);
 		const url = new URL(`${SMITHERY_REGISTRY_BASE_URL}/servers`);
 		url.searchParams.set("q", outboundQuery);
@@ -439,6 +513,7 @@ export async function searchSmitheryRegistry(
 				signal: smitheryTimeoutSignal(options?.signal),
 			});
 		} catch (err) {
+			options?.signal?.throwIfAborted();
 			if (isTimeoutError(err)) {
 				throw new SmitheryRegistryError("Smithery search timed out after 10s", 0);
 			}
@@ -447,8 +522,15 @@ export async function searchSmitheryRegistry(
 		if (!response.ok) {
 			throw new SmitheryRegistryError(`Smithery search failed with status ${response.status}`, response.status);
 		}
-		const payload = (await response.json()) as { servers?: SmitherySearchEntry[] };
-		const pageEntries = payload.servers ?? [];
+		const payload = await parseRegistryObject(response, "search");
+		const servers = payload.servers;
+		if (servers !== undefined && !Array.isArray(servers)) {
+			throw new SmitheryRegistryError("Smithery search returned a malformed response", 502);
+		}
+		const pageEntries = servers ?? [];
+		if (!pageEntries.every(isSearchEntry)) {
+			throw new SmitheryRegistryError("Smithery search returned a malformed response", 502);
+		}
 		if (pageEntries.length === 0) break;
 		allEntries.push(...pageEntries);
 
@@ -477,30 +559,47 @@ export async function searchSmitheryRegistry(
 	});
 
 	let detailFailures = 0;
-	const results = await Promise.all(
-		uniqueEntries.map(async entry => {
-			try {
-				const details = await fetchServerDetailsFromEntry(entry, {
-					apiKey: options?.apiKey,
-					signal: options?.signal,
-				});
-				if (!details) return null;
-				return toSearchResult(entry, details);
-			} catch (error) {
-				if (options?.signal?.aborted) throw error;
-				detailFailures++;
-				return null;
-			}
-		}),
-	);
+	let firstDetailFailure: unknown;
+	const results: SmitherySearchResult[] = [];
+	const detailConcurrency = 8;
+	let nextEntry = 0;
+	while (nextEntry < uniqueEntries.length && results.length < limit) {
+		options?.signal?.throwIfAborted();
+		const batchSize = Math.min(detailConcurrency, limit - results.length, uniqueEntries.length - nextEntry);
+		const batch = uniqueEntries.slice(nextEntry, nextEntry + batchSize);
+		nextEntry += batchSize;
+		const batchResults = await Promise.all(
+			batch.map(async entry => {
+				try {
+					const details = await fetchServerDetailsFromEntry(entry, {
+						apiKey: options?.apiKey,
+						signal: options?.signal,
+					});
+					if (!details) return null;
+					return toSearchResult(entry, details);
+				} catch (error) {
+					options?.signal?.throwIfAborted();
+					detailFailures++;
+					firstDetailFailure ??= error;
+					return null;
+				}
+			}),
+		);
+		for (const result of batchResults) {
+			if (result) results.push(result);
+		}
+	}
 
+	if (results.length === 0 && firstDetailFailure !== undefined) {
+		throw firstDetailFailure;
+	}
 	if (detailFailures > 0) {
 		logger.warn("Smithery detail fetch failed for some entries", {
 			failedEntries: detailFailures,
 			totalEntries: uniqueEntries.length,
 		});
 	}
-	return results.filter((result): result is SmitherySearchResult => result !== null).slice(0, limit);
+	return results;
 }
 
 export function toConfigName(candidate: string): string {
