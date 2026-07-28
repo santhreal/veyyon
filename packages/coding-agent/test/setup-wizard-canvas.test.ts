@@ -49,9 +49,10 @@ describe("paintCanvasBlack (the Canvas ground painter)", () => {
 		// otherwise fall back to the terminal's background.
 		const [row] = paintCanvasBlack(["\x1b[31mred\x1b[0m plain tail"], 30);
 		expect(row).toContain(`\x1b[0m${CANVAS_BG_ESCAPE}`);
-		// The bg-default sentinel is likewise replaced by the ground.
+		// The bg-default sentinel is retained for foreground semantics, then
+		// immediately overridden by the Canvas ground.
 		const [sentinelRow] = paintCanvasBlack(["a\x1b[49mb"], 10);
-		expect(sentinelRow).not.toContain("\x1b[49m");
+		expect(sentinelRow).toContain(`\x1b[49m${CANVAS_BG_ESCAPE}`);
 		expect(sentinelRow.split(CANVAS_BG_ESCAPE).length).toBeGreaterThan(2);
 	});
 
