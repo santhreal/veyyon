@@ -14,6 +14,7 @@ import { downloadSttModel, isSttModelCached } from "../stt/downloader";
 import { isSttModelKey, STT_MODEL_OPTIONS } from "../stt/models";
 import { detectRecorder, ensureRecorder } from "../stt/recorder";
 import { downloadTtsModel, isTtsLocalModelKey, isTtsModelCached, TTS_LOCAL_MODEL_OPTIONS } from "../tts";
+import { runInstallHealthChecks } from "./install-health";
 import { makeCoarseStepPrinter } from "./progress-line";
 import { selectSetupModel } from "./setup-model-picker";
 
@@ -94,12 +95,22 @@ export async function runSetupCommand(cmd: SetupCommandArgs): Promise<void> {
 }
 
 async function handleStatusSetup(flags: { json?: boolean; check?: boolean }): Promise<void> {
-	const checks = await runDoctorChecks();
+	// The install questions come first because they are the ones that decide
+	// whether anything below them can work at all: a veyyon that cannot run does
+	// not have a credentials problem. They were missing entirely, so a broken
+	// install was reported as "Found at <path>" and counted as ok.
+	const checks = [...(await runInstallHealthChecks()), ...(await runDoctorChecks())];
 	if (flags.json) {
 		console.log(JSON.stringify(checks, null, 2));
-		return;
+	} else {
+		console.log(formatDoctorResults(checks));
 	}
-	console.log(formatDoctorResults(checks));
+	// An error-level check has to reach the exit code, or a script that runs this
+	// to gate a deploy passes on a machine where veyyon does not work. `veyyon
+	// plugin doctor` has always done this and the docs said so about both; only
+	// this one silently exited 0. Warnings still exit 0: they are things to look
+	// at, not reasons to stop.
+	if (checks.some(check => check.status === "error")) process.exit(1);
 }
 
 async function handlePythonSetup(flags: { json?: boolean; check?: boolean }): Promise<void> {

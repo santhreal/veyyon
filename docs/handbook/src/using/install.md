@@ -114,6 +114,12 @@ and the PATH line, so those are already in place; once you have fixed the cause,
 installer again rather than trying to finish by hand. If you would rather start clean,
 [Uninstall](#uninstall) reclaims everything the installer added.
 
+To ask the same questions later, on the machine as it is now, run `veyyon setup status`.
+It repeats the install checks and adds the two the installer cannot make: whether a second
+copy of `veyyon` earlier on your `PATH` is shadowing this one, and whether the completion
+files are still there. It exits non-zero when something is actually broken, so a script can
+gate on it. See [Diagnostics and health](../features/doctor.md).
+
 ### Relocate the config directory
 
 On Unix, Veyyon uses `~/.veyyon` by default. Two environment variables let you move it. `VEYYON_CONFIG_DIR` renames the home-relative config directory, and `VEYYON_CODING_AGENT_DIR` relocates the agent base, which holds `config.yml`, `agent.db`, your sessions, and more.
