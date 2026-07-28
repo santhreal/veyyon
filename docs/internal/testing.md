@@ -791,6 +791,7 @@ its own gate:
 | Linux, macOS | `scripts/install-tests/run-ci.sh` (CI job `install_methods`, matrixed over `ubuntu-22.04` and `macos-14`) | `install.sh --local` end to end: install, reinstall, uninstall, plus the no-clobber rules for a `vey` the user already owns |
 | Linux | `scripts/installer-environment-matrix.test.ts` | `install.sh --local` once per shell/XDG combination in `environments.toml` |
 | Windows | `scripts/install-tests/e2e.test.ps1` (CI job `install_ps1_e2e`) | `install.ps1 -Local` end to end: install, reinstall, reinstall over a quoted PATH entry, uninstall |
+| Windows, on push to main | `scripts/install-tests/e2e.test.ps1 -Mode Binary` (CI job `install_ps1_binary`) | The same run against the newest published release, which is the default install |
 | Windows | `scripts/install-tests/functions.test.ps1` (CI job `install_ps1_functions`) | The pure helpers, with nothing installed |
 | Linux, by hand | `scripts/install-tests/stress.sh` | Real downloads in ~42 adversarial environments, in a disposable container |
 
@@ -804,6 +805,11 @@ edit your PATH by surprise:
 ```powershell
 $env:VEYYON_INSTALL_E2E = "1"; pwsh -File scripts/install-tests/e2e.test.ps1
 ```
+
+`-Mode Binary` runs the identical assertions against the install a user actually
+gets: the release lookup, the download and the `.sha256` verification, rather
+than a binary the checkout already built. It is push-to-main only, because it
+downloads a published release every time and needs one to exist.
 
 One of its cases rewrites the PATH entry into the quoted form Windows tools use
 around a path containing a space, then reinstalls. That is the shape the

@@ -600,6 +600,29 @@ jobs:
               VEYYON_INSTALL_E2E: "1"
            run: pwsh -File scripts/install-tests/e2e.test.ps1
 
+   install_ps1_binary:
+      # The DEFAULT Windows install, which is the one a user actually gets from
+      # `irm https://veyyon.dev/install.ps1 | iex`. install_ps1_e2e proves
+      # everything the installer does around the binary, but with -Local, so the
+      # release lookup, the download, the .sha256 verification and the staged
+      # preflight had never executed on Windows anywhere: the release job
+      # downloads the .exe directly and never goes through the installer. Same
+      # assertions as the -Local run; only the source of the binary differs.
+      #
+      # Push-to-main only. It downloads a published release on every run, which is
+      # not a per-pull-request cost, and it needs a release to exist at all.
+      name: Windows installer end-to-end (published release)
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      runs-on: windows-latest
+      timeout-minutes: 30
+      steps:
+         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+         - name: install.ps1 end-to-end against the published release
+           shell: pwsh
+           env:
+              VEYYON_INSTALL_E2E: "1"
+           run: pwsh -File scripts/install-tests/e2e.test.ps1 -Mode Binary
+
    install_ps1_functions:
       name: Windows installer function tests
       # install.ps1 is a shipped install channel; run its helper-function tests
