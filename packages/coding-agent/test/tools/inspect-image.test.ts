@@ -213,7 +213,11 @@ describe("InspectImageTool", () => {
 			type: string;
 			data?: string;
 		}>;
-		expect(attachmentParts[0]).toMatchObject({ type: "image", data: TINY_PNG_BASE64 });
+		expect(attachmentParts[0]?.type).toBe("image");
+		expect(attachmentParts[0]?.data).not.toBe(TINY_PNG_BASE64);
+		expect(await new Bun.Image(Buffer.from(attachmentParts[0]?.data ?? "", "base64")).metadata()).toMatchObject({
+			format: "png",
+		});
 	});
 
 	it("resolves bracketed labels and attachment URIs deterministically", async () => {

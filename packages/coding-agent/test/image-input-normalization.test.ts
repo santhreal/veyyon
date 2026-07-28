@@ -19,10 +19,14 @@ async function dimensions(image: { data: string }): Promise<{ width: number; hei
 }
 
 describe("ensureSupportedImageInput", () => {
-	test("passes supported mime types through unchanged", async () => {
+	test("canonically re-encodes supported MIME inputs instead of using a small-image pass-through", async () => {
+		// Supported labels used to skip the decoder entirely, preserving hidden
+		// metadata. Even a tiny valid PNG must now cross an encoder boundary.
 		const input = { type: "image" as const, data: RED_1X1_PNG_BASE64, mimeType: "image/png" };
 		const result = await ensureSupportedImageInput(input);
-		expect(result).toEqual(input);
+		expect(result?.mimeType).toBe("image/png");
+		expect(result?.data).not.toBe(input.data);
+		expect(await dimensions(result!)).toEqual({ width: 1, height: 1 });
 	});
 
 	test("converts unsupported image input to png", async () => {
@@ -69,5 +73,19 @@ describe("normalizeModelContextImages", () => {
 		expect(wideDims.height).toBeLessThanOrEqual(1568);
 		expect(tallDims.width).toBeLessThanOrEqual(1568);
 		expect(tallDims.height).toBeLessThanOrEqual(1568);
+	});
+
+	test("rejects undecodable context images instead of preserving the raw block", async () => {
+		// Context normalization is upstream of several providers; keeping the
+		// original on decoder failure would bypass every binary sanitizer.
+		await expect(
+			normalizeModelContextImages([
+				{
+					type: "image",
+					data: Buffer.from("not an image").toString("base64"),
+					mimeType: "image/png",
+				},
+			]),
+		).rejects.toThrow("Image normalization failed");
 	});
 });

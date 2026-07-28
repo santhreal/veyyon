@@ -1,4 +1,5 @@
 import type { ImageContent } from "@veyyon/ai";
+import { parseImageMetadata } from "@veyyon/utils/mime";
 
 export interface ImageResizeOptions {
 	maxWidth?: number;
@@ -19,6 +20,14 @@ export interface ResizedImage {
 	height: number;
 	wasResized: boolean;
 	decodeFailed?: boolean;
+	get data(): string;
+}
+
+export interface CanonicalImage {
+	buffer: Uint8Array;
+	mimeType: "image/png" | "image/jpeg" | "image/webp";
+	width: number;
+	height: number;
 	get data(): string;
 }
 
@@ -43,82 +52,6 @@ const DEFAULT_OPTIONS: Required<Omit<ImageResizeOptions, "excludeWebP">> = {
 	minDimension: DEFAULT_MIN_DIMENSION,
 };
 
-interface ImageHeaderDimensions {
-	width: number;
-	height: number;
-	mimeType: string;
-}
-
-function readUint16BE(buffer: Uint8Array, offset: number): number {
-	return (buffer[offset] << 8) | buffer[offset + 1];
-}
-
-function readUint32BE(buffer: Uint8Array, offset: number): number {
-	return ((buffer[offset] << 24) | (buffer[offset + 1] << 16) | (buffer[offset + 2] << 8) | buffer[offset + 3]) >>> 0;
-}
-
-function readPngHeaderDimensions(buffer: Uint8Array): ImageHeaderDimensions | undefined {
-	if (buffer.length < 24) return undefined;
-	if (
-		buffer[0] !== 0x89 ||
-		buffer[1] !== 0x50 ||
-		buffer[2] !== 0x4e ||
-		buffer[3] !== 0x47 ||
-		buffer[4] !== 0x0d ||
-		buffer[5] !== 0x0a ||
-		buffer[6] !== 0x1a ||
-		buffer[7] !== 0x0a
-	) {
-		return undefined;
-	}
-	if (readUint32BE(buffer, 8) !== 13) return undefined;
-	if (buffer[12] !== 0x49 || buffer[13] !== 0x48 || buffer[14] !== 0x44 || buffer[15] !== 0x52) return undefined;
-	const width = readUint32BE(buffer, 16);
-	const height = readUint32BE(buffer, 20);
-	if (width === 0 || height === 0) return undefined;
-	return { width, height, mimeType: "image/png" };
-}
-
-function isJpegStartOfFrame(marker: number): boolean {
-	return (
-		(marker >= 0xc0 && marker <= 0xc3) ||
-		(marker >= 0xc5 && marker <= 0xc7) ||
-		(marker >= 0xc9 && marker <= 0xcb) ||
-		(marker >= 0xcd && marker <= 0xcf)
-	);
-}
-
-function readJpegHeaderDimensions(buffer: Uint8Array): ImageHeaderDimensions | undefined {
-	if (buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) return undefined;
-	let offset = 2;
-	while (offset + 3 < buffer.length) {
-		if (buffer[offset] !== 0xff) {
-			offset++;
-			continue;
-		}
-		while (offset < buffer.length && buffer[offset] === 0xff) offset++;
-		if (offset >= buffer.length) return undefined;
-		const marker = buffer[offset++];
-		if (marker === 0xd9 || marker === 0xda) return undefined;
-		if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) continue;
-		if (offset + 1 >= buffer.length) return undefined;
-		const segmentLength = readUint16BE(buffer, offset);
-		if (segmentLength < 2) return undefined;
-		if (isJpegStartOfFrame(marker)) {
-			if (offset + 7 >= buffer.length) return undefined;
-			const height = readUint16BE(buffer, offset + 3);
-			const width = readUint16BE(buffer, offset + 5);
-			if (width === 0 || height === 0) return undefined;
-			return { width, height, mimeType: "image/jpeg" };
-		}
-		offset += segmentLength;
-	}
-	return undefined;
-}
-
-function readImageHeaderDimensions(buffer: Uint8Array): ImageHeaderDimensions | undefined {
-	return readPngHeaderDimensions(buffer) ?? readJpegHeaderDimensions(buffer);
-}
 
 /**
  * Read `VEYYON_NO_WEBP` per-call so runtime toggles take effect.
@@ -146,6 +79,73 @@ Buffer.prototype.toBase64 = function (this: Buffer) {
 };
 
 /**
+ * Decode and canonically re-encode an image before it can cross a provider
+ * boundary. The caller's MIME label is deliberately ignored: the decoder and
+ * byte signature establish the actual type, while re-encoding removes
+ * container metadata that a text sanitizer cannot inspect.
+ */
+export async function canonicalizeImageContent(
+	img: Pick<ImageContent, "data">,
+	options?: Pick<ImageResizeOptions, "excludeWebP">,
+): Promise<CanonicalImage> {
+	try {
+		const inputBuffer = Uint8Array.fromBase64(img.data.trim());
+		const detected = parseImageMetadata(inputBuffer);
+		if (!detected) throw new Error("unsupported image type");
+
+		const metadata = await new Bun.Image(inputBuffer).metadata();
+		if (!Number.isFinite(metadata.width) || !Number.isFinite(metadata.height) || metadata.width < 1 || metadata.height < 1) {
+			throw new Error("invalid image dimensions");
+		}
+
+		let buffer: Uint8Array;
+		let mimeType: CanonicalImage["mimeType"];
+		switch (detected.mimeType) {
+			case "image/jpeg":
+				buffer = await new Bun.Image(inputBuffer).jpeg({ quality: 100 }).bytes();
+				mimeType = "image/jpeg";
+				break;
+			case "image/webp":
+				if (options?.excludeWebP) {
+					buffer = await new Bun.Image(inputBuffer).png().bytes();
+					mimeType = "image/png";
+				} else {
+					buffer = await new Bun.Image(inputBuffer).webp({ quality: 100 }).bytes();
+					mimeType = "image/webp";
+				}
+				break;
+			case "image/gif":
+				// Bun has no GIF encoder. A canonical PNG of the decoded first
+				// frame is provider-compatible and contains no GIF extensions.
+				buffer = await new Bun.Image(inputBuffer).png().bytes();
+				mimeType = "image/png";
+				break;
+			case "image/png":
+				buffer = await new Bun.Image(inputBuffer).png().bytes();
+				mimeType = "image/png";
+				break;
+		}
+
+		const outputMetadata = parseImageMetadata(buffer);
+		if (outputMetadata?.mimeType !== mimeType) throw new Error("image encoder returned an unexpected type");
+
+		return {
+			buffer,
+			mimeType,
+			width: metadata.width,
+			height: metadata.height,
+			get data() {
+				return Buffer.from(buffer).toBase64();
+			},
+		};
+	} catch {
+		// Do not include input bytes, labels, or decoder diagnostics: malformed
+		// image metadata can itself contain confidential text.
+		throw new Error("Image normalization failed: input is not a decodable supported image.");
+	}
+}
+
+/**
  * Resize and recompress an image to fit within the specified max dimensions and file size.
  *
  * Strategy:
@@ -163,11 +163,13 @@ Buffer.prototype.toBase64 = function (this: Buffer) {
 export async function resizeImage(img: ImageContent, options?: ImageResizeOptions): Promise<ResizedImage> {
 	const excludeWebP = options?.excludeWebP ?? isWebPExcluded();
 	const opts = { ...DEFAULT_OPTIONS, ...options, excludeWebP };
-	const inputBuffer = Buffer.from(img.data, "base64");
+	const canonical = await canonicalizeImageContent(img, { excludeWebP });
+	const inputBuffer = canonical.buffer;
 
 	try {
-		const { width: originalWidth, height: originalHeight, format } = await new Bun.Image(inputBuffer).metadata();
-		const sourceMime = img.mimeType ?? `image/${format}`;
+		const originalWidth = canonical.width;
+		const originalHeight = canonical.height;
+		const sourceMime = canonical.mimeType;
 
 		// Fast path: already within dimensions AND well under budget.
 		// Threshold is 1/4 of budget — if already that compact, don't re-encode.
@@ -195,7 +197,7 @@ export async function resizeImage(img: ImageContent, options?: ImageResizeOption
 				height: originalHeight,
 				wasResized: false,
 				get data() {
-					return img.data;
+					return Buffer.from(inputBuffer).toBase64();
 				},
 			};
 		}
@@ -376,26 +378,19 @@ export async function resizeImage(img: ImageContent, options?: ImageResizeOption
 			},
 		};
 	} catch {
-		const headerDimensions = readImageHeaderDimensions(inputBuffer);
-		const fallbackMimeType = img.mimeType ?? headerDimensions?.mimeType ?? "application/octet-stream";
-		// Bun.Image rejected the input — we cannot decode/re-encode it.
-		// When the caller demanded WebP exclusion AND the source might be WebP,
-		// returning the original buffer would silently violate that contract,
-		// so surface an explicit error instead.
-		if (excludeWebP && (fallbackMimeType === "image/webp" || (!img.mimeType && !headerDimensions))) {
-			throw new Error("resizeImage: failed to decode image and cannot honor excludeWebP for a WebP source");
-		}
+		// Canonicalization above already proved decodeability and stripped
+		// metadata. If an optional resize encoder fails, the canonical image is
+		// the only safe fallback; the caller's original bytes never escape.
 		return {
-			buffer: inputBuffer,
-			mimeType: fallbackMimeType,
-			originalWidth: headerDimensions?.width ?? 0,
-			originalHeight: headerDimensions?.height ?? 0,
-			width: headerDimensions?.width ?? 0,
-			height: headerDimensions?.height ?? 0,
+			buffer: canonical.buffer,
+			mimeType: canonical.mimeType,
+			originalWidth: canonical.width,
+			originalHeight: canonical.height,
+			width: canonical.width,
+			height: canonical.height,
 			wasResized: false,
-			decodeFailed: true,
 			get data() {
-				return img.data;
+				return canonical.data;
 			},
 		};
 	}

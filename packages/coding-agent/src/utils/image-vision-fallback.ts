@@ -28,6 +28,7 @@ import type { Settings } from "../config/settings";
 // handler and reaches hundreds of modules, and both of these live in `local-protocol`.
 import { type LocalProtocolOptions, resolveLocalRoot } from "../internal-urls/local-protocol";
 import { toolsPrompts } from "../prompts/tools/rows";
+import { canonicalizeImageContent } from "./image-resize";
 
 /** Telemetry tag for the oneshot vision-description calls. */
 const ONESHOT_KIND = "image_attachment_describe";
@@ -128,6 +129,10 @@ async function describeImage(
 	signal: AbortSignal | undefined,
 ): Promise<string | null> {
 	try {
+		// normalizeModelContextImages is intentionally not trusted as the final
+		// boundary: restored or extension-supplied blocks can reach this helper
+		// directly. Decode and re-encode again immediately before provider use.
+		const providerImage = await canonicalizeImageContent(image);
 		const response = await instrumentedCompleteSimple(
 			visionModel,
 			{
@@ -136,7 +141,7 @@ async function describeImage(
 					{
 						role: "user",
 						content: [
-							{ type: "image", data: image.data, mimeType: image.mimeType },
+							{ type: "image", data: providerImage.data, mimeType: providerImage.mimeType },
 							{ type: "text", text: prompt.render(toolsPrompts["tools/image-attachment-describe"].text) },
 						],
 						timestamp: Date.now(),
