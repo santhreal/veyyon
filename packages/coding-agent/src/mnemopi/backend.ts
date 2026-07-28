@@ -1,10 +1,11 @@
 import { rm } from "node:fs/promises";
 import * as path from "node:path";
-import { type ApiKeyResolver, completeSimple } from "@veyyon/ai";
+import { type ApiKeyResolver, completeSimple, type FetchImpl } from "@veyyon/ai";
 import { hostMatchesUrl } from "@veyyon/catalog/hosts";
 import type { Mnemopi } from "@veyyon/mnemopi";
 import type * as MnemopiDiagnoseNs from "@veyyon/mnemopi/diagnose";
 import type { DiagnosticSummary } from "@veyyon/mnemopi/diagnose";
+import type { MnemopiLlmCompleteOptions, MnemopiLlmPayloadHook } from "@veyyon/mnemopi/core/runtime-options";
 import { clampLow, logger } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
@@ -526,45 +527,50 @@ async function resolveMnemopiProviderOptions(
 			logger.warn("Mnemopi: llmMode=smol but no tiny/smol/default model resolved; continuing without LLM.");
 			return base;
 		}
+		const onlineCompletion = Object.assign(
+			async (prompt: string, opts?: MnemopiLlmCompleteOptions) => {
+				if (opts?.onPayload === undefined) {
+					throw new Error("Mnemopi online smol completion requires an attempt-time payload hook.");
+				}
+				const hasApiKey = await modelRegistry.getApiKey(model, sessionId);
+				if (!hasApiKey) {
+					logger.warn("Mnemopi: smol completion requested but no current API key is available.", {
+						provider: model.provider,
+						model: model.id,
+					});
+					return null;
+				}
+				// Keep Mnemopi's secret-free placeholder in the provider context.
+				// The fetch wrapper runs after completeSimple resolves credentials
+				// and rebuilds the body through onPayload for every physical send,
+				// including pi-native, whose wire options intentionally omit hooks.
+				const message = await completeSimple(
+					model,
+					{
+						messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
+					},
+					{
+						apiKey: modelRegistry.resolver(model, sessionId),
+						maxTokens: opts.maxTokens,
+						temperature: opts.temperature,
+						fetch: createMnemopiAttemptFetch(opts.fetch ?? globalThis.fetch, opts.onPayload),
+					},
+				);
+				return message.content
+					.filter(
+						(block): block is Extract<(typeof message.content)[number], { type: "text" }> => block.type === "text",
+					)
+					.map(block => block.text)
+					.join("\n")
+					.trim();
+			},
+			{ online: true as const, supportsAttemptPayload: true as const },
+		);
 		return {
 			...base,
 			llm: {
 				sanitizeProviderText,
-				complete: async (prompt, opts) => {
-					const hasApiKey = await modelRegistry.getApiKey(model, sessionId);
-					if (!hasApiKey) {
-						logger.warn("Mnemopi: smol completion requested but no current API key is available.", {
-							provider: model.provider,
-							model: model.id,
-						});
-						return null;
-					}
-					// The preflight above and auth refreshes inside completeSimple are
-					// await points. Re-read the session-owned sanitizer now, then again
-					// from onPayload for every physical retry. This request contains one
-					// fresh user message and no authenticated/encrypted replay fields.
-					const providerPrompt = sanitizeMnemopiProviderText(prompt, sanitizeProviderText);
-					const message = await completeSimple(
-						model,
-						{
-							messages: [{ role: "user", content: providerPrompt, timestamp: Date.now() }],
-						},
-						{
-							apiKey: modelRegistry.resolver(model, sessionId),
-							maxTokens: opts?.maxTokens,
-							temperature: opts?.temperature,
-							onPayload: payload => sanitizeFreshMnemopiPayload(payload, sanitizeProviderText),
-						},
-					);
-					return message.content
-						.filter(
-							(block): block is Extract<(typeof message.content)[number], { type: "text" }> =>
-								block.type === "text",
-						)
-						.map(block => block.text)
-						.join("\n")
-						.trim();
-				},
+				complete: onlineCompletion,
 			},
 		};
 	} catch (error) {
@@ -573,35 +579,46 @@ async function resolveMnemopiProviderOptions(
 	}
 }
 
-function sanitizeMnemopiProviderText(text: string, sanitize: (text: string) => string): string {
-	try {
-		return sanitize(text);
-	} catch {
-		throw new Error("Mnemopi provider text sanitization failed.");
-	}
-}
-
-/**
- * Final-attempt transform for the smol request's freshly built JSON payload.
- * It only mutates string values in a fresh payload, so authenticated or
- * encrypted history fields cannot be altered.
- * Mutate as well as return because a few provider adapters observe onPayload
- * for side effects but do not consume its replacement return value.
- */
-function sanitizeFreshMnemopiPayload(payload: unknown, sanitize: (text: string) => string): unknown {
-	if (typeof payload === "string") return sanitizeMnemopiProviderText(payload, sanitize);
-	if (Array.isArray(payload)) {
-		for (let index = 0; index < payload.length; index++) {
-			payload[index] = sanitizeFreshMnemopiPayload(payload[index], sanitize);
+function createMnemopiAttemptFetch(
+	baseFetch: FetchImpl,
+	onPayload: MnemopiLlmPayloadHook,
+): FetchImpl {
+	const attemptFetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+		let requestInput = input;
+		let requestInit = init;
+		if (init?.body !== undefined && init.body !== null) {
+			if (typeof init.body !== "string") {
+				throw new Error("Mnemopi online smol completion produced a non-JSON provider body.");
+			}
+			let payload: unknown;
+			try {
+				payload = JSON.parse(init.body) as unknown;
+			} catch {
+				throw new Error("Mnemopi online smol completion produced an invalid provider body.");
+			}
+			const serialized = JSON.stringify(await onPayload(payload));
+			if (serialized === undefined) {
+				throw new Error("Mnemopi online smol completion payload hook returned no body.");
+			}
+			requestInit = { ...init, body: serialized };
+		} else if (input instanceof Request) {
+			let payload: unknown;
+			try {
+				payload = JSON.parse(await input.clone().text()) as unknown;
+			} catch {
+				throw new Error("Mnemopi online smol completion produced an invalid provider request.");
+			}
+			const serialized = JSON.stringify(await onPayload(payload));
+			if (serialized === undefined) {
+				throw new Error("Mnemopi online smol completion payload hook returned no body.");
+			}
+			requestInput = new Request(input, { body: serialized });
+		} else {
+			throw new Error("Mnemopi online smol completion produced no interceptable request body.");
 		}
-		return payload;
-	}
-	if (payload === null || typeof payload !== "object") return payload;
-	const mutable = payload as Record<string, unknown>;
-	for (const [key, value] of Object.entries(mutable)) {
-		mutable[key] = sanitizeFreshMnemopiPayload(value, sanitize);
-	}
-	return mutable;
+		return baseFetch(requestInput, requestInit);
+	};
+	return attemptFetch as FetchImpl;
 }
 
 function getMnemopiSessionStateFromParent(options: MemoryBackendStartOptions): MnemopiSessionState | undefined {
