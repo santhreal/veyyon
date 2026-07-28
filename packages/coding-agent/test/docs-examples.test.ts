@@ -556,6 +556,15 @@ describe("docs examples — inline dotted settings mentions are registered paths
 	// extension; settings leaves never do.
 	const FILE_EXT_RE =
 		/\.(?:json|jsonc|ts|tsx|js|mjs|cjs|yml|yaml|md|toml|rs|py|sh|ps1|html|css|webp|png|svg|db|lock|txt|exe)$/;
+	/**
+	 * Hostnames share the dotted shape too, and one of them collides with a real settings root.
+	 *
+	 * `github` IS a settings root (`github.enabled`, `github.cache.*`), so a sentence saying the
+	 * update check "costs one request to `github.com`" was reported as an unregistered settings
+	 * path. The doc was correct and the guard was wrong: settings leaves never end in a public
+	 * suffix, so excluding one is not a loosening of what the gate checks.
+	 */
+	const HOSTNAME_RE = /\.(?:com|org|net|io|dev|sh|app|ai|co|gov|edu|local)$/;
 	const NEGATION_RE = /\bnot?\s+(?:a\s+)?`|\*\*not\*\*|does not exist|not shipped|never existed|removed|is gone/i;
 
 	const schemaPaths = new Set(Object.keys(SETTINGS_SCHEMA));
@@ -632,6 +641,7 @@ describe("docs examples — inline dotted settings mentions are registered paths
 				for (const match of lines[i].matchAll(MENTION_RE)) {
 					const token = match[1];
 					if (FILE_EXT_RE.test(token)) continue;
+					if (HOSTNAME_RE.test(token)) continue;
 					if (!schemaRoots.has(token.split(".")[0])) continue;
 					mentions++;
 					if (!isKnownDotted(token)) {
