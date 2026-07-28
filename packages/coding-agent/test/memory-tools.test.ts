@@ -8,12 +8,19 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import { type } from "arktype";
 import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { HindsightApi } from "@veyyon/coding-agent/hindsight/client";
 import type { HindsightConfig } from "@veyyon/coding-agent/hindsight/config";
-import { HindsightSessionState } from "@veyyon/coding-agent/hindsight/state";
+import {
+	HINDSIGHT_RETAIN_BATCH_SIZE,
+	HindsightSessionState,
+	MEMORY_RETAIN_MAX_BYTES,
+	MEMORY_RETAIN_MAX_ITEM_BYTES,
+	MEMORY_RETAIN_MAX_ITEMS,
+} from "@veyyon/coding-agent/hindsight/state";
 import { mnemopiBackend } from "@veyyon/coding-agent/mnemopi/backend";
 import { loadMnemopiConfig, type MnemopiBackendConfig } from "@veyyon/coding-agent/mnemopi/config";
 import {
@@ -312,26 +319,165 @@ describe("retain.execute", () => {
 		expect(registeredState?.retainQueue.depth).toBe(0);
 	});
 
-	it("emits a UI-only warning notice when the batch flush fails", async () => {
+	/** Regression: one failed oversized drain was swallowed after dropping an unbounded queue. */
+	it("reports a credential-free flush error, drops only the failed fixed batch, and keeps the remainder bounded", async () => {
 		const settings = Settings.isolated({ "memory.backend": "hindsight" });
 		const client = new HindsightApi({ baseUrl: "http://localhost:8888" });
-		const fetchStub = async () => Promise.reject(new Error("HTTP 503"));
-		vi.spyOn(globalThis, "fetch").mockImplementation(fetchStub as any);
+		vi.spyOn(HindsightApi.prototype, "createBank").mockResolvedValue({} as never);
+		const retainBatchSpy = vi
+			.spyOn(HindsightApi.prototype, "retainBatch")
+			.mockRejectedValueOnce(new Error("HTTP 503 with secret=do-not-surface"))
+			.mockResolvedValue({} as never);
 		const noticeSpy = vi.fn();
 		registerState(client, settings, { sessionOverrides: { emitNotice: noticeSpy } });
+		registeredState!.enqueueRetains(
+			Array.from({ length: HINDSIGHT_RETAIN_BATCH_SIZE + 1 }, (_, index) => ({ content: `fact-${index}` })),
+		);
 
-		const tool = MemoryRetainTool.createIf(makeSession(settings))!;
-		await tool.execute("call-x", { items: [{ content: "doomed fact" }] });
-		await registeredState?.flushRetainQueue();
+		await expect(registeredState!.flushRetainQueue()).rejects.toThrow(
+			`Memory retention failed for ${HINDSIGHT_RETAIN_BATCH_SIZE} memories`,
+		);
+		expect(registeredState!.retainQueue.depth).toBe(1);
+		expect(noticeSpy).toHaveBeenCalledWith(
+			"warning",
+			expect.not.stringContaining("do-not-surface"),
+			"Hindsight",
+		);
 
-		expect(noticeSpy).toHaveBeenCalledTimes(1);
-		const [level, message, source] = noticeSpy.mock.calls[0];
-		expect(level).toBe("warning");
-		expect(source).toBe("Hindsight");
-		expect(message).toContain("HTTP 503");
-		expect(message).toContain("1 memory");
+		await registeredState!.flushRetainQueue();
+		expect(retainBatchSpy.mock.calls.map(call => call[1].length)).toEqual([HINDSIGHT_RETAIN_BATCH_SIZE, 1]);
+		expect(registeredState!.retainQueue.depth).toBe(0);
 	});
 
+
+	/** Regression: retain accepted unlimited UTF-8 payloads even when character counts looked small. */
+	it("enforces schema count/character caps and exact UTF-8 runtime byte caps before enqueue", async () => {
+		const settings = Settings.isolated({ "memory.backend": "hindsight" });
+		const client = new HindsightApi({ baseUrl: "http://localhost:8888" });
+		registerState(client, settings);
+		const tool = MemoryRetainTool.createIf(makeSession(settings))!;
+
+		expect(
+			tool.parameters({ items: Array.from({ length: MEMORY_RETAIN_MAX_ITEMS }, () => ({ content: "x" })) }) instanceof
+				type.errors,
+		).toBe(false);
+		expect(
+			tool.parameters({
+				items: Array.from({ length: MEMORY_RETAIN_MAX_ITEMS + 1 }, () => ({ content: "x" })),
+			}) instanceof type.errors,
+		).toBe(true);
+		expect(
+			tool.parameters({ items: [{ content: "x".repeat(MEMORY_RETAIN_MAX_ITEM_BYTES + 1) }] }) instanceof type.errors,
+		).toBe(true);
+
+		await expect(
+			tool.execute("utf8-overflow", {
+				items: [{ content: "é".repeat(Math.floor(MEMORY_RETAIN_MAX_ITEM_BYTES / 2) + 1) }],
+			}),
+		).rejects.toThrow("per-item limit");
+		expect(registeredState!.retainQueue.depth).toBe(0);
+
+		await expect(
+			tool.execute("aggregate-overflow", {
+				items: Array.from({ length: 5 }, () => ({ content: "x".repeat(MEMORY_RETAIN_MAX_ITEM_BYTES) })),
+			}),
+		).rejects.toThrow("aggregate limit");
+		expect(registeredState!.retainQueue.depth).toBe(0);
+	});
+
+	/** Boundary proof: exact byte-cap inputs must survive validation and queueing byte-for-byte. */
+	it("round-trips the exact aggregate byte boundary without truncation", async () => {
+		const settings = Settings.isolated({ "memory.backend": "hindsight" });
+		const client = new HindsightApi({ baseUrl: "http://localhost:8888" });
+		vi.spyOn(HindsightApi.prototype, "createBank").mockResolvedValue({} as never);
+		const retainBatchSpy = vi.spyOn(HindsightApi.prototype, "retainBatch").mockResolvedValue({} as never);
+		registerState(client, settings);
+		const tool = MemoryRetainTool.createIf(makeSession(settings))!;
+		const items = Array.from({ length: MEMORY_RETAIN_MAX_BYTES / MEMORY_RETAIN_MAX_ITEM_BYTES }, (_, index) => ({
+			content: String(index).repeat(MEMORY_RETAIN_MAX_ITEM_BYTES),
+		}));
+
+		await tool.execute("exact-boundary", { items });
+		expect(registeredState!.retainQueue.bytes).toBe(MEMORY_RETAIN_MAX_BYTES);
+		await registeredState!.flushRetainQueue();
+
+		const sent = retainBatchSpy.mock.calls.flatMap(call => call[1]);
+		expect(sent.map(item => item.content)).toEqual(items.map(item => item.content));
+		expect(sent.reduce((bytes, item) => bytes + Buffer.byteLength(item.content), 0)).toBe(MEMORY_RETAIN_MAX_BYTES);
+	});
+
+	/** Regression: threshold crossings spawned flush promises and drained every queued item in one request. */
+	it("uses one drain loop for a burst and never sends a batch above 16", async () => {
+		const settings = Settings.isolated({ "memory.backend": "hindsight" });
+		const client = new HindsightApi({ baseUrl: "http://localhost:8888" });
+		vi.spyOn(HindsightApi.prototype, "createBank").mockResolvedValue({} as never);
+		const firstStarted = Promise.withResolvers<void>();
+		const releaseFirst = Promise.withResolvers<void>();
+		const batchSizes: number[] = [];
+		vi.spyOn(HindsightApi.prototype, "retainBatch").mockImplementation(async (_bankId, items) => {
+			batchSizes.push(items.length);
+			if (batchSizes.length === 1) {
+				firstStarted.resolve();
+				await releaseFirst.promise;
+			}
+			return {} as never;
+		});
+		registerState(client, settings);
+		registeredState!.enqueueRetains(
+			Array.from({ length: HINDSIGHT_RETAIN_BATCH_SIZE }, (_, index) => ({ content: `first-${index}` })),
+		);
+
+		await firstStarted.promise;
+		registeredState!.enqueueRetains(
+			Array.from({ length: HINDSIGHT_RETAIN_BATCH_SIZE * 2 }, (_, index) => ({ content: `burst-${index}` })),
+		);
+		expect(registeredState!.retainQueue.depth).toBe(HINDSIGHT_RETAIN_BATCH_SIZE * 3);
+		releaseFirst.resolve();
+		await registeredState!.flushRetainQueue();
+
+		expect(batchSizes).toEqual([
+			HINDSIGHT_RETAIN_BATCH_SIZE,
+			HINDSIGHT_RETAIN_BATCH_SIZE,
+			HINDSIGHT_RETAIN_BATCH_SIZE,
+		]);
+		expect(Math.max(...batchSizes)).toBe(HINDSIGHT_RETAIN_BATCH_SIZE);
+		expect(registeredState!.retainQueue.depth).toBe(0);
+	});
+
+	/** Regression: blocked requests allowed the queue to grow without bound and partially accepted calls. */
+	it("rejects an over-capacity tool call atomically while a request is blocked", async () => {
+		const settings = Settings.isolated({ "memory.backend": "hindsight" });
+		const client = new HindsightApi({ baseUrl: "http://localhost:8888" });
+		vi.spyOn(HindsightApi.prototype, "createBank").mockResolvedValue({} as never);
+		const firstStarted = Promise.withResolvers<void>();
+		const releaseFirst = Promise.withResolvers<void>();
+		vi.spyOn(HindsightApi.prototype, "retainBatch").mockImplementation(async () => {
+			firstStarted.resolve();
+			await releaseFirst.promise;
+			return {} as never;
+		});
+		registerState(client, settings);
+		const tool = MemoryRetainTool.createIf(makeSession(settings))!;
+		registeredState!.enqueueRetains(
+			Array.from({ length: HINDSIGHT_RETAIN_BATCH_SIZE }, (_, index) => ({ content: `blocked-${index}` })),
+		);
+		await firstStarted.promise;
+		registeredState!.enqueueRetains(
+			Array.from({ length: MEMORY_RETAIN_MAX_ITEMS - HINDSIGHT_RETAIN_BATCH_SIZE }, (_, index) => ({
+				content: `pending-${index}`,
+			})),
+		);
+		const depthBefore = registeredState!.retainQueue.depth;
+		const bytesBefore = registeredState!.retainQueue.bytes;
+
+		await expect(tool.execute("over-capacity", { items: [{ content: "must-not-be-retained" }] })).rejects.toThrow(
+			"queue is full",
+		);
+		expect(registeredState!.retainQueue.depth).toBe(depthBefore);
+		expect(registeredState!.retainQueue.bytes).toBe(bytesBefore);
+		releaseFirst.resolve();
+		await registeredState!.flushRetainQueue();
+	});
 	it("throws when no per-session state is registered", async () => {
 		const settings = Settings.isolated({ "memory.backend": "hindsight" });
 		const tool = MemoryRetainTool.createIf(makeSession(settings))!;

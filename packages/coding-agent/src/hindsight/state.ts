@@ -1,4 +1,4 @@
-import { errorMessage, formatCount, logger } from "@veyyon/utils";
+import { formatCount, logger } from "@veyyon/utils";
 import type { AgentSession } from "../session/agent-session";
 import { type BankScope, ensureBankExists } from "./bank";
 import type { HindsightApi, MemoryItemInput } from "./client";
@@ -20,13 +20,17 @@ import {
 } from "./mental-models";
 import { extractMessages } from "./transcript";
 
-const RETAIN_FLUSH_BATCH_SIZE = 16;
+export const HINDSIGHT_RETAIN_BATCH_SIZE = 16;
+export const MEMORY_RETAIN_MAX_ITEM_BYTES = 64 * 1024;
+export const MEMORY_RETAIN_MAX_ITEMS = 64;
+export const MEMORY_RETAIN_MAX_BYTES = 256 * 1024;
 const RETAIN_FLUSH_INTERVAL_MS = 5_000;
 
 interface PendingRetainItem {
 	content: string;
 	context?: string;
 	timestamp: Date;
+	bytes: number;
 }
 
 interface RecallOutcome {
@@ -70,60 +74,81 @@ export class HindsightRetainQueue {
 	readonly #state: HindsightSessionState;
 	#items: PendingRetainItem[] = [];
 	#timer?: NodeJS.Timeout;
-	#flushing?: Promise<void>;
+	#timerReady = false;
+	#draining?: Promise<void>;
+	#residentItems = 0;
+	#residentBytes = 0;
 	#closed = false;
 
 	constructor(state: HindsightSessionState) {
 		this.#state = state;
 	}
 
+	/** Pending plus in-flight items; this is the actual retained-memory high-water. */
 	get depth(): number {
-		return this.#items.length;
+		return this.#residentItems;
+	}
+
+	get bytes(): number {
+		return this.#residentBytes;
 	}
 
 	enqueue(content: string, context?: string): void {
-		if (this.#closed) {
-			throw new Error("Hindsight retain queue is closed.");
-		}
-		this.#items.push({ content, context, timestamp: new Date() });
+		this.enqueueMany([{ content, context }]);
+	}
 
-		if (this.#items.length >= RETAIN_FLUSH_BATCH_SIZE) {
-			void this.flush();
-			return;
+	/**
+	 * Atomically accept a tool call. Capacity is checked before timestamps or
+	 * queue entries are allocated, so rejection retains none of the input.
+	 */
+	enqueueMany(items: ReadonlyArray<{ content: string; context?: string }>): void {
+		if (this.#closed) throw new Error("Hindsight retain queue is closed.");
+		if (items.length === 0) return;
+		if (items.length > MEMORY_RETAIN_MAX_ITEMS) {
+			throw new Error(`Hindsight retain accepts at most ${MEMORY_RETAIN_MAX_ITEMS} items per request.`);
 		}
-		if (!this.#timer) {
-			this.#timer = setTimeout(() => {
-				void this.flush();
-			}, RETAIN_FLUSH_INTERVAL_MS);
-			// Don't pin the event loop alive just for a pending retain flush.
-			this.#timer.unref?.();
+
+		let addedBytes = 0;
+		for (const [index, item] of items.entries()) {
+			const bytes = Buffer.byteLength(item.content, "utf8") + Buffer.byteLength(item.context ?? "", "utf8");
+			if (bytes > MEMORY_RETAIN_MAX_ITEM_BYTES) {
+				throw new Error(
+					`Hindsight retain item ${index + 1} is ${formatCount("byte", bytes)}, exceeding the ${formatCount("byte", MEMORY_RETAIN_MAX_ITEM_BYTES)} per-item limit.`,
+				);
+			}
+			addedBytes += bytes;
+			if (!Number.isSafeInteger(addedBytes) || addedBytes > MEMORY_RETAIN_MAX_BYTES) {
+				throw new Error(
+					`Hindsight retain request exceeds the ${formatCount("byte", MEMORY_RETAIN_MAX_BYTES)} queue limit.`,
+				);
+			}
 		}
+		if (
+			this.#residentItems + items.length > MEMORY_RETAIN_MAX_ITEMS ||
+			this.#residentBytes + addedBytes > MEMORY_RETAIN_MAX_BYTES
+		) {
+			throw new Error(
+				`Hindsight retain queue is full (maximum ${MEMORY_RETAIN_MAX_ITEMS} items / ${formatCount("byte", MEMORY_RETAIN_MAX_BYTES)}); retry after pending memories flush.`,
+			);
+		}
+
+		const timestamp = new Date();
+		for (const item of items) {
+			const bytes = Buffer.byteLength(item.content, "utf8") + Buffer.byteLength(item.context ?? "", "utf8");
+			this.#items.push({ ...item, timestamp, bytes });
+		}
+		this.#residentItems += items.length;
+		this.#residentBytes += addedBytes;
+		this.#scheduleDrain();
 	}
 
 	async flush(): Promise<void> {
 		if (this.#timer) {
 			clearTimeout(this.#timer);
 			this.#timer = undefined;
+			this.#timerReady = false;
 		}
-
-		if (this.#flushing) {
-			// Coalesce: wait for the in-flight flush, then drain anything that
-			// landed after it started so we don't strand items.
-			await this.#flushing;
-			if (this.#items.length > 0) await this.flush();
-			return;
-		}
-
-		if (this.#items.length === 0) return;
-
-		const items = this.#items.splice(0);
-		const flushPromise = this.#doFlush(items);
-		this.#flushing = flushPromise;
-		try {
-			await flushPromise;
-		} finally {
-			this.#flushing = undefined;
-		}
+		await this.#startDrain();
 	}
 
 	dispose(): void {
@@ -131,16 +156,75 @@ export class HindsightRetainQueue {
 		if (this.#timer) {
 			clearTimeout(this.#timer);
 			this.#timer = undefined;
+			this.#timerReady = false;
+		}
+		for (const item of this.#items) {
+			this.#residentItems -= 1;
+			this.#residentBytes -= item.bytes;
 		}
 		this.#items = [];
+	}
+
+	#scheduleDrain(): void {
+		if (this.#draining) return;
+		const ready = this.#items.length >= HINDSIGHT_RETAIN_BATCH_SIZE;
+		if (this.#timer) {
+			if (!ready || this.#timerReady) return;
+			clearTimeout(this.#timer);
+		}
+		this.#timerReady = ready;
+		this.#timer = setTimeout(
+			() => {
+				this.#timer = undefined;
+				this.#timerReady = false;
+				void this.#startDrain().catch(() => {
+					// #drainLoop already emitted one actionable notice. Scheduled
+					// drains have no direct caller to receive the same error.
+				});
+			},
+			ready ? 0 : RETAIN_FLUSH_INTERVAL_MS,
+		);
+		this.#timer.unref?.();
+	}
+
+	async #startDrain(): Promise<void> {
+		if (this.#draining) return this.#draining;
+		const draining = this.#drainLoop();
+		this.#draining = draining;
+		try {
+			await draining;
+		} finally {
+			if (this.#draining === draining) this.#draining = undefined;
+		}
+	}
+
+	async #drainLoop(): Promise<void> {
+		while (this.#items.length > 0) {
+			const items = this.#items.splice(0, HINDSIGHT_RETAIN_BATCH_SIZE);
+			try {
+				await this.#doFlush(items);
+			} catch {
+				this.#release(items);
+				this.#notifyRetainFailure(items.length);
+				throw new Error(
+					`Memory retention failed for ${formatCount("memory", items.length)}; that batch was not retained. Retry the retain tool.`,
+				);
+			}
+			this.#release(items);
+		}
+	}
+
+	#release(items: readonly PendingRetainItem[]): void {
+		for (const item of items) {
+			this.#residentItems -= 1;
+			this.#residentBytes -= item.bytes;
+		}
 	}
 
 	async #doFlush(items: PendingRetainItem[]): Promise<void> {
 		const state = this.#state;
 		const sessionId = state.sessionId;
 		if (state.session.getHindsightSessionState() !== state) {
-			// Session went away before we could flush. We can't notify anyone, so
-			// log and drop — these are best-effort facts, not transactional writes.
 			logger.warn("Hindsight retain queue: session vanished, dropping batch", {
 				sessionId,
 				items: items.length,
@@ -148,39 +232,28 @@ export class HindsightRetainQueue {
 			return;
 		}
 
-		try {
-			await ensureBankExists(state.client, state.bankId, state.config, state.banksSet);
-			const batch: MemoryItemInput[] = items.map(item => ({
-				content: item.content,
-				context: item.context ?? state.config.retainContext,
-				metadata: { session_id: sessionId },
-				tags: state.retainTags,
-				timestamp: item.timestamp,
-			}));
-			await state.client.retainBatch(state.bankId, batch, { async: true });
-			if (state.config.debug) {
-				logger.debug("Hindsight retain queue: batch flushed", {
-					sessionId,
-					bankId: state.bankId,
-					items: items.length,
-				});
-			}
-		} catch (err) {
-			const errorText = errorMessage(err);
-			logger.warn("Hindsight retain queue: batch flush failed", {
+		await ensureBankExists(state.client, state.bankId, state.config, state.banksSet);
+		const batch: MemoryItemInput[] = items.map(item => ({
+			content: item.content,
+			context: item.context ?? state.config.retainContext,
+			metadata: { session_id: sessionId },
+			tags: state.retainTags,
+			timestamp: item.timestamp,
+		}));
+		await state.client.retainBatch(state.bankId, batch, { async: true });
+		if (state.config.debug) {
+			logger.debug("Hindsight retain queue: batch flushed", {
 				sessionId,
 				bankId: state.bankId,
 				items: items.length,
-				error: errorText,
 			});
-			this.#notifyRetainFailure(items.length, errorText);
 		}
 	}
 
-	#notifyRetainFailure(count: number, errorText: string): void {
+	#notifyRetainFailure(count: number): void {
 		this.#state.session.emitNotice(
 			"warning",
-			`Memory retention failed for ${formatCount("memory", count)}: ${errorText}`,
+			`Memory retention failed for ${formatCount("memory", count)}; that batch was not retained. Retry the retain tool.`,
 			"Hindsight",
 		);
 	}
@@ -256,6 +329,10 @@ export class HindsightSessionState {
 
 	enqueueRetain(content: string, context?: string): void {
 		this.retainQueue.enqueue(content, context);
+	}
+
+	enqueueRetains(items: ReadonlyArray<{ content: string; context?: string }>): void {
+		this.retainQueue.enqueueMany(items);
 	}
 
 	async flushRetainQueue(): Promise<void> {
@@ -484,7 +561,9 @@ export class HindsightSessionState {
 				// Drain any queued tool-initiated retain calls now that the turn
 				// is settled. The queue is also debounced/size-bounded, but
 				// flushing here keeps the bank fresh between turns.
-				void this.flushRetainQueue();
+				void this.flushRetainQueue().catch(() => {
+					// The queue already emitted a warning notice for this batch.
+				});
 				// MM TTL refresh: re-list once we're past the cache deadline. List
 				// is cheap (no reflect call); the LLM doesn't see this happen.
 				if (
