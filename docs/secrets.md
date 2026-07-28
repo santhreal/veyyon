@@ -20,9 +20,13 @@ secrets:
 
 2. Outbound strings are replaced before provider dispatch. Named vault values use readable placeholders such as `#GITHUB_TOKEN#`. Unnamed values use a stable machine-keyed HMAC placeholder such as `#0A1B2C3D4E5F678901234567#`. The keyed form is stable across restarts without exposing an index or an offline dictionary oracle.
 
+The final provider boundary works from raw strings before trimming, truncation, serialization, or other lossy transforms. It resolves the live runtime for every physical attempt, including authentication retries, fallback models, delayed queues, compaction, commit analysis, evaluation, benchmarks, memory services, TTS, and image tools. JSON object keys and values are both covered, and key collisions fail closed.
+
+Opaque authenticated replay fields are validated rather than mutated. A live secret in a signature, provider item id, encrypted reasoning block, or provider payload refuses dispatch with a value-free error. Provider-bound images are content-detected, decoded, and canonically re-encoded so EXIF, comments, and other container metadata cannot bypass string obfuscation. URLs that appear to carry credentials bypass cloud reader and enrichment services.
+
 3. Local display restoration expands only live reversible placeholders. Replace-mode substitutions are one-way. Expired and removed values lose expansion rights but retain forward redaction tombstones, so old transcript text cannot become provider-visible.
 
-4. Toggling secret protection and running `/secret` commands rebuilds the runtime immediately. A working-directory move loads the destination project scope and drops the source project's mappings. A same-directory refresh retains only forward redaction history for removed values.
+4. Toggling secret protection and running `/secret` commands rebuilds the runtime immediately. A working-directory move loads the destination project scope transactionally and drops the source project's mappings. If loading fails, both the old directory and runtime are restored. Persisted subagents and resumed sessions initialize from their recorded directory. A same-directory refresh retains only forward redaction history for removed values.
 
 Two modes control what happens to each secret:
 
@@ -108,7 +112,7 @@ Narrowest scope wins a name clash. `rm` and `extend` walk scopes narrowest-first
 
 Encryption is AES-256-GCM with a fresh 12 byte nonce and a full 16 byte authentication tag per write. The key is 32 random bytes at `~/.veyyon/vault.key`, mode 0600, created on first use, never inside a project tree. That placement lets a project-scoped vault be copied without making it readable on a machine that lacks the key.
 
-Vault updates are written to a mode-0600 temporary file, synchronized, and atomically renamed into place. Read and write paths reject symlinks, directories, devices, and other non-regular files. Scope checks resolve real parent directories, so a project vault path cannot traverse a symlink into the profile or global scope.
+Vault updates are written to a mode-0600 temporary file, synchronized, and atomically renamed into place. Read and write paths reject symlinks, hard links, directories, devices, and other non-regular files. Scope checks resolve real parent directories, so a project vault path cannot traverse a symlink into the profile or global scope. Each descriptor is limited to 8 MiB before allocation.
 
 Failure behavior is fail-closed:
 
@@ -118,8 +122,9 @@ Failure behavior is fail-closed:
 | Vault present, key missing | Hard error. Never read as an empty vault. |
 | Key of wrong length | Hard error, so a new key is not written beside a recoverable one. |
 | Key or vault readable by other users (POSIX) | Hard error naming the `chmod`. Not checked on Windows, where mode bits do not apply. |
-| Symlink or non-regular key/vault path | Hard error. The path is never followed. |
-| Ciphertext, nonce, or authentication tag modified or truncated | Hard error. GCM authenticates the complete envelope. |
+| Symlink, hard-linked file, or non-regular key/vault path | Hard error. The path is never followed or shared. |
+| Ciphertext, nonce, authentication tag, scope, or bound path modified | Hard error. GCM authenticates the complete envelope and its location. |
+| Legacy version 1 envelope | Hard error directing the operator to re-add the entry in the bound current format. |
 | Unknown envelope version | Hard error advising an upgrade rather than deletion. |
 
 ### Lifetimes
@@ -154,7 +159,7 @@ Expiry is enforced at use time as well as at load:
 
 Written from the arguments **before** substitution, which is the form in which every secret is still a placeholder. That ordering is the safety property: there is no redaction step to get wrong and no way for a value to reach the file. `buildExpansionRecord` receives the pre-expansion arguments and nothing else.
 
-`MAX_RECORD_BYTES` (2048) is a security and concurrency boundary. Every field and placeholder list is bounded before encoding. A cross-process file lock covers the size check, atomic rotation rename, append, and generation reads, so two sessions cannot overwrite a rotated generation or push a record past the cap.
+`MAX_RECORD_BYTES` (2048) is a security and concurrency boundary. Every field and placeholder list is bounded before encoding. Placeholder discovery walks JSON string values and object keys in the same order as expansion. A cross-process file lock covers the size check, atomic rotation rename, append, and generation reads, so two sessions cannot overwrite a rotated generation or push a record past the cap.
 
 Failure behaviour differs from the vault's, deliberately. Obfuscation is the preventive control and it fails closed; the log is a detective control, so a failed append raises an operator notice and the command still runs. Refusing to execute a tool because a log file could not be written turns a full disk into an agent outage while nothing is actually unsafe. What is not permitted is silence: a log that stopped recording must not look like a log with nothing to record.
 
@@ -163,7 +168,7 @@ The log lives in the profile directory, never the project one, and is written 06
 Three properties keep the reader honest:
 
 - **Rotation.** `ROTATE_AT_BYTES` (2 MiB, about ten thousand uses) atomically moves the file to `secret-audit.jsonl.1` and starts a fresh one, keeping two generations. The same cross-process lock covers both sessions that race at the boundary. `read` spans both generations, so `--limit 20` immediately after a rotation still answers with twenty records.
-- **Full validation on the way back in.** A parsed line is accepted only when every field the renderer reads has the right type. The check was `typeof at === "number" && Array.isArray(secrets)` followed by a cast, so a line missing `tool` printed `undefined` in the middle of a security report. Anything that fails is counted as malformed and the count is shown, never dropped.
+- **Full validation on the way back in.** A parsed line is accepted only when every field the renderer reads has the right type. The check was `typeof at === "number" && Array.isArray(secrets)` followed by a cast, so a line missing `tool` printed `undefined` in the middle of a security report. Anything that fails is counted as malformed and the count is shown, never dropped. Terminal control characters in records, paths, and notices are escaped before display. Hard-linked generations are refused, and the 2 MiB generation limit is checked before allocating a read buffer.
 - **Flushed on dispose.** Appends are queued so a tool call is never blocked by a write, which means an exit that does not drain the queue loses records silently. `session.dispose` awaits `flush()`, because quitting ends the process rather than waiting for pending work, and the last credential used is exactly the one an incident asks about.
 
 ### Operator notices
@@ -232,6 +237,8 @@ Each entry in the array has these fields:
   replacement: "********"
 ```
 
+Generated `replace` aliases use counter-mode HMAC with the machine placeholder key. A custom replacement that looks like `#NAME#` or a machine-keyed placeholder is refused, so one-way output cannot be reinterpreted as a live credential. Emitted placeholders are protected spans: later literal or regex rules cannot scan inside and corrupt them.
+
 #### Regex secrets
 
 ```yaml
@@ -255,6 +262,8 @@ Each entry in the array has these fields:
 ```
 
 Regex entries always scan globally (the `g` flag is enforced automatically). The regex literal syntax `/pattern/flags` is supported as an alternative to separate `content` + `flags` fields. Escaped slashes within the pattern (`\\/`) are handled correctly.
+
+Alternations whose branches can consume concatenated prefixes are refused along with nested ambiguous quantifiers. This prevents exponential backtracking even when the ambiguity is spread across alternatives.
 
 Only standard, bounded global matching is accepted. The sticky `y` flag and expressions that can match an empty string are refused because their scan semantics can skip text or make no progress. Nested ambiguous quantifiers and related catastrophic-backtracking forms are refused before compilation. Regex replacement rewrites exact match spans rather than every equal substring elsewhere in the message.
 

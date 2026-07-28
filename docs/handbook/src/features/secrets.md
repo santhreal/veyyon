@@ -66,6 +66,10 @@ needs no configuration. Start veyyon and that value is protected.
 
 Every occurrence of a known value is replaced before provider dispatch. This boundary covers messages, dynamic system prompts, tool descriptions and schemas, resumed assistant text, replay payloads, and nested model calls such as title generation, image analysis, memory summaries, and speech rewriting.
 
+The replacement happens from raw text before trimming, truncation, JSON serialization, or other lossy preparation. Veyyon resolves the live profile, project, environment, and vault runtime again for each physical provider attempt. This includes authentication retries, fallback models, delayed queues, compaction, commit analysis, evaluation, benchmarks, memory services, TTS, and image tools. A refresh cannot leave a retry using an old set of secret values.
+
+Provider fields that are authenticated or signed cannot be rewritten safely. If a live value appears in a signature, provider item id, encrypted reasoning block, or other opaque replay payload, the request is refused with a value-free error. Structured fields are rewritten recursively, including JSON object keys. A rewrite that would collapse two keys into one is also refused.
+
 Suppose a file you read contains this token:
 
 ```text
@@ -125,6 +129,8 @@ You can also pass the value on the command line. It works, and veyyon tells you 
 ```
 
 Every exact `/secret` command shape, including malformed input, is excluded from persistent editor history. This prevents the command from being recovered with the Up key or written to `history.db`. It cannot erase terminal scrollback that was already rendered.
+
+The inline form preserves the credential bytes exactly, including trailing whitespace. Once credential data has started, a later word that looks like an option is refused instead of being silently discarded. Use the masked prompt or `--from-env` when a value could be mistaken for command syntax.
 
 Any of the three shows the model a placeholder built from the name:
 
@@ -216,6 +222,8 @@ That placement means a project-scoped vault can sit in a directory you commit, b
 
 Updates use a synchronized mode-0600 temporary file and an atomic rename, so a failed write leaves the previous vault intact. Veyyon refuses symlinks, hard-linked files, directories, devices, and paths whose resolved parent crosses the requested scope. Copying ciphertext to a different scope also fails authentication because the encrypted envelope is bound to its location.
 
+Each vault descriptor is limited to 8 MiB before it is read into memory. A legacy version 1 envelope is refused because it is not bound to its scope and path. Re-add those entries with `/secret add` so they are written in the current authenticated format. Lock recovery validates the recorded owner and only removes the owner it observed, so a delayed stale-lock cleanup cannot delete a newer writer's lock.
+
 These failures are deliberately loud:
 
 - A vault file present with no readable key stops the session. It is never treated as empty.
@@ -253,6 +261,8 @@ These records come from 2 sessions sharing this profile's log.
 Without that line the rows read as one session's history, and you would count uses another window made.
 
 The recorded command holds the **placeholder**, not the value, and that is a property of how the record is built rather than a promise about care taken. Veyyon writes the arguments as they were before substitution, which is the form in which every secret is still a placeholder, so there is no redaction step that could be got wrong and no way for a value to reach the file.
+
+Placeholder discovery follows the same recursive string and object-key walk as command expansion. The reader escapes terminal control characters in records, paths, and notices before display. Hard-linked log files are refused, and generation reads check the 2 MiB bound before allocating a buffer.
 
 Recording is on by default and writes to `secret-audit.jsonl` in your active profile's directory. Turn it off under Record Secret Use in `/settings`:
 
@@ -308,6 +318,8 @@ Each entry chooses what happens to the value.
   mode: replace
   replacement: "********"
 ```
+
+A generated replacement is derived with the machine placeholder key, so it does not expose a cross-machine dictionary oracle. A custom replacement cannot look like a named or machine-keyed placeholder. That restriction prevents one-way text from becoming a request to expand a live credential.
 
 ## The 8-character minimum
 
@@ -372,6 +384,8 @@ Nothing important goes only to the log file. That was the previous behaviour and
 | A command the agent runs | Yes, substituted before execution |
 
 The provider boundary is applied again whenever a local transcript is sent. Resuming a session can restore placeholders for display without giving the resumed raw text a path back to the provider.
+
+Changing the working directory is transactional. Veyyon loads the destination runtime before committing the move, and restores both the old directory and old runtime if loading fails. A resumed session or persisted subagent starts from its recorded directory before loading project-scoped secrets.
 
 ## What this does not protect
 
