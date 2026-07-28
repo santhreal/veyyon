@@ -30,7 +30,7 @@ import {
 	isValidSecretName,
 	MAX_SECRET_NAME_LENGTH,
 } from "./placeholder";
-import { canObfuscatePlainValue, MIN_OBFUSCATABLE_LENGTH } from "./policy";
+import { canObfuscatePlainValue, MIN_OBFUSCATABLE_LENGTH, secretCharacterLength } from "./policy";
 import { isSealedVault, loadOrCreateVaultKey, openVault, readVaultKey, sealVault } from "./vault-crypto";
 
 /** Where an entry lives, and therefore who can see it. */
@@ -59,6 +59,9 @@ export const VAULT_SCOPES_NARROWEST_FIRST: readonly VaultScope[] = [...VAULT_SCO
 
 /** Filename used for the vault in every scope. */
 export const VAULT_FILENAME = "vault.json";
+
+/** Maximum sealed vault envelope accepted from disk, before any bytes are parsed or decoded. */
+export const MAX_VAULT_FILE_BYTES = 8 * 1024 * 1024;
 
 /** A stored credential. */
 export interface VaultEntry {
@@ -341,6 +344,32 @@ function vaultBinding(scope: VaultScope, vaultPath: string): string {
 	return `${scope}\0${path.resolve(vaultPath)}`;
 }
 
+/** Compare scope paths using the filesystem's path identity rules available without I/O. */
+function comparableVaultPath(vaultPath: string): string {
+	const resolved = path.resolve(vaultPath);
+	return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+/**
+ * Resolve existing ancestors so two textual paths to the same physical scope directory
+ * receive one owner. Missing suffixes remain lexical, which keeps first-write paths stable.
+ */
+async function canonicalVaultPath(vaultPath: string): Promise<string> {
+	let current = path.dirname(path.resolve(vaultPath));
+	const suffix = [path.basename(vaultPath)];
+	for (;;) {
+		try {
+			return comparableVaultPath(path.join(await fs.realpath(current), ...suffix));
+		} catch (error) {
+			if (!isMissingPath(error)) throw error;
+			const parent = path.dirname(current);
+			if (parent === current) return comparableVaultPath(path.join(current, ...suffix));
+			suffix.unshift(path.basename(current));
+			current = parent;
+		}
+	}
+}
+
 /** Reject path aliases and special files before opening or replacing a vault. */
 function assertVaultPathSafe(scope: VaultScope, vaultPath: string, stat: Stats, fromPath: boolean): void {
 	if (fromPath && stat.isSymbolicLink()) {
@@ -351,7 +380,7 @@ function assertVaultPathSafe(scope: VaultScope, vaultPath: string, stat: Stats, 
 	if (!stat.isFile()) {
 		throw new Error(`The ${scope} vault at ${vaultPath} is not a regular file. Refusing to use it.`);
 	}
-	if (stat.nlink !== 1) {
+	if (stat.nlink > 1) {
 		throw new Error(
 			`The ${scope} vault at ${vaultPath} has ${stat.nlink} hard links. ` +
 				`Refusing a vault that is reachable through another scope or path.`,
@@ -448,6 +477,14 @@ export class SecretVault {
 		this.#now = now;
 	}
 
+	async #scopePathOwner(scope: VaultScope): Promise<VaultScope> {
+		const wanted = await canonicalVaultPath(vaultPathFor(this.#locations, scope));
+		for (const candidate of VAULT_SCOPES) {
+			if ((await canonicalVaultPath(vaultPathFor(this.#locations, candidate))) === wanted) return candidate;
+		}
+		return scope;
+	}
+
 	/**
 	 * Every live entry, nearest scope last.
 	 *
@@ -460,6 +497,13 @@ export class SecretVault {
 	async load(): Promise<ScopedVaultEntry[]> {
 		const byName = new Map<string, ScopedVaultEntry>();
 		for (const scope of VAULT_SCOPES) {
+			// Final-component symlinks are explicit boundary violations, not aliases
+			// to deduplicate. Reject them before canonical ancestor comparison.
+			if (!(await vaultDirectoryExistsSafely(scope, vaultPathFor(this.#locations, scope)))) continue;
+			// A working directory can make project/.veyyon identical to the global root
+			// (most notably cwd=$HOME). One physical file cannot carry two authenticated
+			// scope bindings, so the widest configured owner reads it exactly once.
+			if ((await this.#scopePathOwner(scope)) !== scope) continue;
 			for (const entry of await this.#loadScope(scope)) {
 				byName.set(entry.name, { ...entry, scope });
 			}
@@ -495,8 +539,7 @@ export class SecretVault {
 	async #readScopeRaw(scope: VaultScope): Promise<VaultEntry[] | null> {
 		const vaultPath = vaultPathFor(this.#locations, scope);
 		if (!(await vaultDirectoryExistsSafely(scope, vaultPath))) return null;
-		const pathStat = await vaultPathStat(scope, vaultPath);
-		if (pathStat === null) return null;
+		if ((await vaultPathStat(scope, vaultPath)) === null) return null;
 
 		let handle;
 		try {
@@ -509,12 +552,33 @@ export class SecretVault {
 		try {
 			const openStat = await handle.stat();
 			assertVaultPathSafe(scope, vaultPath, openStat, false);
-			if (openStat.dev !== pathStat.dev || openStat.ino !== pathStat.ino) {
+			if (openStat.size > MAX_VAULT_FILE_BYTES) {
 				throw new Error(
-					`The ${scope} vault at ${vaultPath} changed while it was being opened. Refusing to read it.`,
+					`The ${scope} vault at ${vaultPath} is ${openStat.size} bytes, over the ` +
+						`${MAX_VAULT_FILE_BYTES}-byte safety limit. Refusing to read or parse it.`,
 				);
 			}
-			text = await handle.readFile({ encoding: "utf8" });
+
+			// Read at most one byte beyond the descriptor size observed above. Atomic
+			// veyyon writers never grow an inode in place, but this also bounds a hostile
+			// writer that appends after fstat and before the read completes.
+			const bytes = Buffer.allocUnsafe(Math.min(openStat.size + 1, MAX_VAULT_FILE_BYTES + 1));
+			let offset = 0;
+			while (offset < bytes.length) {
+				const { bytesRead } = await handle.read(bytes, offset, bytes.length - offset, null);
+				if (bytesRead === 0) break;
+				offset += bytesRead;
+			}
+			if (offset > MAX_VAULT_FILE_BYTES) {
+				throw new Error(
+					`The ${scope} vault at ${vaultPath} grew over the ${MAX_VAULT_FILE_BYTES}-byte safety limit ` +
+						`while it was being read. Refusing to parse it.`,
+				);
+			}
+			if (offset > openStat.size) {
+				throw new Error(`The ${scope} vault at ${vaultPath} changed size while it was being read. Refusing it.`);
+			}
+			text = bytes.subarray(0, offset).toString("utf8");
 		} finally {
 			await handle.close();
 		}
@@ -532,6 +596,13 @@ export class SecretVault {
 			throw new Error(
 				`The ${scope} vault at ${vaultPath} is not a sealed vault file. ` +
 					`Restore it from a backup rather than editing it.`,
+			);
+		}
+
+		if (parsed.v === 1) {
+			throw new Error(
+				`The ${scope} vault at ${vaultPath} uses legacy format version 1, which has no authenticated scope ` +
+					`or path. Refusing to guess its provenance. Re-add its credentials into the intended scope.`,
 			);
 		}
 
@@ -570,6 +641,16 @@ export class SecretVault {
 		const vaultPath = vaultPathFor(this.#locations, scope);
 		const directory = path.dirname(vaultPath);
 		const directoryExists = await vaultDirectoryExistsSafely(scope, vaultPath);
+		const owner = await this.#scopePathOwner(scope);
+		if (owner !== scope) {
+			if (createIfMissing) {
+				throw new Error(
+					`The ${scope} vault path ${vaultPath} is also the ${owner} vault path. ` +
+						`One file cannot safely represent two authenticated scopes; choose a different working directory.`,
+				);
+			}
+			return transform([], false).result;
+		}
 		if (!directoryExists && !createIfMissing) return transform([], false).result;
 		if (!directoryExists) {
 			await fs.mkdir(directory, { recursive: true });
@@ -602,8 +683,16 @@ export class SecretVault {
 		}
 		const key = await loadOrCreateVaultKey(this.#locations.globalConfigRoot);
 		const sealed = sealVault(key, JSON.stringify({ entries } satisfies VaultFile), vaultBinding(scope, vaultPath));
+		const text = JSON.stringify(sealed);
+		const size = Buffer.byteLength(text, "utf8");
+		if (size > MAX_VAULT_FILE_BYTES) {
+			throw new Error(
+				`The ${scope} vault at ${vaultPath} would be ${size} bytes, over the ` +
+					`${MAX_VAULT_FILE_BYTES}-byte safety limit. Refusing to replace the existing vault.`,
+			);
+		}
 		// The staged inode is 0600, synced, and only then renamed over the old vault.
-		await writeVaultAtomically(scope, vaultPath, JSON.stringify(sealed));
+		await writeVaultAtomically(scope, vaultPath, text);
 	}
 
 	/**
@@ -623,7 +712,7 @@ export class SecretVault {
 		if (options.value.length === 0) throw new Error("A secret cannot be empty.");
 		if (!canObfuscatePlainValue(options.value)) {
 			throw new Error(
-				`This secret is ${options.value.length} characters, under the ${MIN_OBFUSCATABLE_LENGTH}-character ` +
+				`This secret is ${secretCharacterLength(options.value)} characters, under the ${MIN_OBFUSCATABLE_LENGTH}-character ` +
 					`minimum. Values that short cannot be replaced in text without cutting into ordinary words, ` +
 					`so storing it would not protect it.`,
 			);

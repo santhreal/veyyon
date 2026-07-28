@@ -70,6 +70,33 @@ describe("file-lock token ownership (F1)", () => {
 		await removeWithRetries(lockPath);
 	});
 
+	test("recovers an ownerless lock even when timestamp expiry is disabled", async () => {
+		const root = await mkRoot();
+		const target = path.join(root, "orphaned.json");
+		const lockPath = getLockPath(target);
+		await fs.mkdir(lockPath);
+		await fs.utimes(lockPath, 0, 0);
+
+		const result = await withFileLock(target, async () => "recovered", {
+			staleMs: Number.POSITIVE_INFINITY,
+			retries: 3,
+			retryDelayMs: 1,
+		});
+
+		expect(result).toBe("recovered");
+		expect(await readLockInfo(lockPath)).toBeNull();
+	});
+
+	test("writes a readable validated owner record", async () => {
+		const root = await mkRoot();
+		const target = path.join(root, "published.json");
+		const lockPath = getLockPath(target);
+		const token = await tryAcquireLock(lockPath);
+
+		expect(readLockInfo(lockPath)).resolves.toMatchObject({ pid: process.pid, token });
+		await releaseLock(lockPath, token!);
+	});
+
 	test("withFileLock serializes N concurrent writers without lost updates", async () => {
 		const root = await mkRoot();
 		const target = path.join(root, "counter.json");
@@ -132,6 +159,23 @@ describe("file-lock sync twin", () => {
 		await fs.mkdir(lockPath);
 		expect(isLockStaleSync(lockPath, 10_000)).toBe(false);
 		await removeWithRetries(lockPath);
+	});
+
+	test("sync acquisition recovers an ownerless lock with infinite staleMs", async () => {
+		const root = await mkRoot();
+		const target = path.join(root, "sync-orphaned.json");
+		const lockPath = getLockPath(target);
+		await fs.mkdir(lockPath);
+		fsSync.utimesSync(lockPath, 0, 0);
+
+		expect(
+			withFileLockSync(target, () => "recovered", {
+				staleMs: Number.POSITIVE_INFINITY,
+				retries: 3,
+				retryDelayMs: 1,
+			}),
+		).toBe("recovered");
+		expect(readLockInfoSync(lockPath)).toBeNull();
 	});
 
 	test("withFileLockSync returns the function result and releases the lock", async () => {
@@ -305,6 +349,30 @@ describe("tryWithFileLock", () => {
 		const result = await tryWithFileLock(target, async () => "reaped");
 
 		expect(result).toEqual({ acquired: true, value: "reaped" });
+	});
+
+	test("a delayed stale reaper cannot delete the lock that replaced its observation", async () => {
+		const root = await mkRoot();
+		const target = path.join(root, "delayed-reaper.json");
+		const lockPath = getLockPath(target);
+		await fs.mkdir(lockPath);
+		await fs.writeFile(
+			path.join(lockPath, "info"),
+			JSON.stringify({ pid: 0x7fffffff, timestamp: Date.now(), token: "dead-owner" }),
+		);
+
+		// Both contenders observe the same dead owner. A reaps it and acquires;
+		// B then resumes from its stale observation. Reaping with no/guessed
+		// ownership token would erase A's live lock here.
+		expect(await isLockStale(lockPath, Number.POSITIVE_INFINITY)).toBe(true);
+		expect(await isLockStale(lockPath, Number.POSITIVE_INFINITY)).toBe(true);
+		await releaseLock(lockPath, "dead-owner");
+		const freshToken = await tryAcquireLock(lockPath);
+		expect(freshToken).not.toBeNull();
+
+		await releaseLock(lockPath, "dead-owner");
+		expect((await readLockInfo(lockPath))?.token).toBe(freshToken);
+		await releaseLock(lockPath, freshToken!);
 	});
 
 	test("does not reap a live holder whose lock is younger than staleMs", async () => {

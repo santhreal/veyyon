@@ -53,6 +53,17 @@ describe("the vault key", () => {
 		});
 	});
 
+	it("recovers an ownerless key lock left before owner metadata was published", async () => {
+		await withRoot(async root => {
+			const lockPath = `${vaultKeyPath(root)}.lock`;
+			await fs.mkdir(lockPath);
+			await fs.utimes(lockPath, 0, 0);
+
+			expect(await loadOrCreateVaultKey(root)).toHaveLength(32);
+			await expect(fs.stat(lockPath)).rejects.toThrow();
+		});
+	});
+
 	/**
 	 * The key file is owner-only, written that way in ONE step.
 	 *
@@ -271,6 +282,17 @@ describe("sealing and opening", () => {
 
 			expect(openVault(key, sealed, "profile:/profiles/work/vault.json")).toBe("payload");
 			expect(() => openVault(key, sealed, "project:/repo/.veyyon/vault.json")).toThrow(/different vault location/);
+		});
+	});
+
+	it("rejects legacy v1 even when its ciphertext would otherwise be readable", async () => {
+		await withRoot(async root => {
+			const key = await loadOrCreateVaultKey(root);
+			const sealed = { ...sealVault(key, "payload", "profile:/work/vault.json"), v: 1 };
+
+			expect(() => openVault(key, sealed, "profile:/work/vault.json")).toThrow(
+				/legacy vault format version 1.*no authenticated scope.*re-add.*intended scope/i,
+			);
 		});
 	});
 
