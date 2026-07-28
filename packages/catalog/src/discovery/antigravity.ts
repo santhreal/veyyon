@@ -19,7 +19,15 @@ export { ANTIGRAVITY_PRIMARY_ENDPOINT, ANTIGRAVITY_SANDBOX_ENDPOINT } from "../p
 import { ANTIGRAVITY_ENDPOINTS } from "../provider-endpoints";
 
 const DEFAULT_ANTIGRAVITY_DISCOVERY_ENDPOINTS = ANTIGRAVITY_ENDPOINTS;
-const FETCH_AVAILABLE_MODELS_PATH = "/v1internal:fetchAvailableModels";
+/**
+ * The path both model discovery and the usage reader append to an Antigravity endpoint.
+ *
+ * `packages/ai/src/usage/google-antigravity.ts` had a second declaration of it under the
+ * same name. `@veyyon/catalog` owns what goes on this wire, so an API path that moved
+ * would have been changed here and left the usage reader calling the old one, which
+ * fails as "no quota information" rather than as a wrong URL.
+ */
+export const FETCH_AVAILABLE_MODELS_PATH = "/v1internal:fetchAvailableModels";
 
 const ANTIGRAVITY_DISCOVERY_DENYLIST = new Set(["chat_20706", "chat_23310", "gemini-2.5-pro"]);
 

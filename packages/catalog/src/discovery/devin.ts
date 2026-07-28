@@ -13,8 +13,20 @@ import { type ClientModelConfig, MetadataSchema } from "./devin-gen/exa/codeium_
 import type { DiscoveryHooks } from "./failure";
 
 const DEVIN_GET_CLI_MODEL_CONFIGS_PATH = "/exa.api_server_pb.ApiServerService/GetCliModelConfigs";
-const DEVIN_IDE_VERSION = "3.2.23";
-const DEVIN_EXTENSION_VERSION = "1.48.2";
+
+/**
+ * The client Devin's API is told it is talking to.
+ *
+ * Both are sent as request metadata on every call, by model discovery here AND by the
+ * provider in `@veyyon/ai`, which had its own copy of both strings. `@veyyon/catalog`
+ * is the declared owner of what goes on Devin's wire, so a bump landed in one file and
+ * left the other claiming a different client: two versions of the same product
+ * identifying themselves differently on requests that belong to one session, which the
+ * server is entitled to treat as two clients. Exported for the same reason
+ * {@link DEVIN_SESSION_TOKEN_PREFIX} is.
+ */
+export const DEVIN_IDE_VERSION = "3.2.23";
+export const DEVIN_EXTENSION_VERSION = "1.48.2";
 /**
  * Prefix Devin's API expects on a session token.
  *

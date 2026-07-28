@@ -4,6 +4,7 @@
 
 ### Changed
 
+- `discovery/devin.ts` exports `DEVIN_IDE_VERSION` and `DEVIN_EXTENSION_VERSION`, and `discovery/antigravity.ts` exports `FETCH_AVAILABLE_MODELS_PATH`. All three go on the wire and all three had a second declaration in `@veyyon/ai`, so the catalog was being bypassed rather than read. Devin's two versions are request metadata sent by model discovery here and by the chat provider there, and the two halves of one session identifying themselves as different client builds is the kind of mismatch a provider notices before we do. The Antigravity path is spelled by discovery here and by the usage reader there, and a usage reader that 404s reports no quota information rather than a wrong URL.
 - `provider-endpoints.ts` also owns `OPENROUTER_API_ENDPOINT`. The host was declared four times across two packages under three names, and it carries a `/v1` path segment, so an API version bump had four declarations to find. `@veyyon/mnemopi` held three of them, and its embedding path and its extraction path pointing at different versions of the same host is a mismatch that shows up only as a request the endpoint rejects.
 
 - `wire/anthropic.ts` owns `ANTHROPIC_WEB_SEARCH_TOOL`, the server-side tool name that the search provider in `@veyyon/coding-agent` asks for and the Anthropic provider in `@veyyon/ai` matches in the response. A drift between them is a miss rather than an error: the search runs, the results come back, and nothing renders them.
