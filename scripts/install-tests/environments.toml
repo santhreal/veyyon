@@ -193,3 +193,23 @@ shell = "/bin/bash"
 home_dir = "install-dir-trailing-slash"
 install_dir = ".local/bin/"
 expect_rc = ".bashrc"
+
+# A `vey` the user already owns, sitting in the install directory. Our alias is
+# the ONLY thing that changes: their file must survive install, reinstall, update
+# and rollback untouched, and our completion scripts must stop binding the name,
+# because every generated script normally completes both and declining to write
+# the alias FILE was never enough on its own. run-ci.sh drives this once against
+# a --local install; here it becomes an environment, so the UPDATE path has to
+# respect it too — an update regenerates completions and is the second chance to
+# bind a command that is not ours.
+[[case]]
+name = "a vey the user already owns"
+shell = "/bin/bash"
+home_dir = "foreign-vey"
+install_dir = ".local/bin"
+expect_rc = ".bashrc"
+alias_is_foreign = true
+expect_completions = [".local/share/bash-completion/completions/veyyon"]
+expect_absent = [".config/fish/completions/vey.fish"]
+[case.pre_files]
+".local/bin/vey" = "#!/bin/sh\necho their tool\n"

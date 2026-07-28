@@ -39,6 +39,12 @@ export interface EnvironmentCase {
 	expect_absent?: string[];
 	expect_rc_stays_symlink?: boolean;
 	install_dir_on_path?: boolean;
+	/**
+	 * The case seeds a `vey` in the install directory that the installer did not
+	 * create, so the alias is the USER's and every assertion about our own `vey`
+	 * symlink is inverted: it must be left exactly as it was found.
+	 */
+	alias_is_foreign?: boolean;
 }
 
 /** Every environment the matrix covers, in the order the TOML lists them. */
@@ -70,11 +76,24 @@ set -u
 case "\${1:-}" in
 	--version) echo "veyyon/${version}"; exit 0 ;;
 	completions)
+		# --no-alias is the installer's way of saying "a vey we do not own exists",
+		# and honouring it is the whole no-clobber contract: the flag is passed to
+		# the BINARY, so a stand-in that ignored it would report our completions
+		# binding someone else's command as if that were correct.
+		_no_alias=0
+		for _arg in "$@"; do [ "$_arg" = "--no-alias" ] && _no_alias=1; done
 		case "\${2:-}" in
-			--help) echo "usage: veyyon completions <bash|zsh|fish>"; exit 0 ;;
-			bash) echo "complete -F _veyyon veyyon vey # ${version}"; exit 0 ;;
-			zsh) echo "#compdef veyyon vey # ${version}"; exit 0 ;;
-			fish) echo "complete -c veyyon # ${version}"; exit 0 ;;
+			--help) echo "usage: veyyon completions <bash|zsh|fish> [--no-alias]"; exit 0 ;;
+			bash)
+				[ "$_no_alias" = 1 ] && { echo "complete -F _veyyon veyyon # ${version}"; exit 0; }
+				echo "complete -F _veyyon veyyon vey # ${version}"; exit 0 ;;
+			zsh)
+				[ "$_no_alias" = 1 ] && { echo "#compdef veyyon # ${version}"; exit 0; }
+				echo "#compdef veyyon vey # ${version}"; exit 0 ;;
+			fish)
+				echo "complete -c veyyon # ${version}"
+				[ "$_no_alias" = 1 ] || echo "complete -c vey -w veyyon"
+				exit 0 ;;
 			*) echo "unknown shell" >&2; exit 2 ;;
 		esac ;;
 	grep)
