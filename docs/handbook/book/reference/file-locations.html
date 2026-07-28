@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-14c328bb.js";
+            window.path_to_searchindex_js = "../searchindex-94628b38.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-2e8c749f.js"></script>
+        <script src="../toc-5cf6de48.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -250,7 +250,10 @@ A profile owns two layers:</p>
 <tr><td><code>skills/</code>, <code>commands/</code>, <code>prompts/</code>, <code>tools/</code>, <code>themes/</code>, <code>modules/</code></td><td>Skills, slash commands, prompt templates, custom tools, themes, Python modules.</td></tr>
 <tr><td><code>mcp.json</code>, <code>ssh.json</code></td><td>MCP server and SSH target config.</td></tr>
 <tr><td><code>keybindings.yml</code></td><td>This profile’s keybindings (<code>keybindings.yaml</code> accepted; legacy <code>keybindings.json</code> migrates on load).</td></tr>
-<tr><td><code>SYSTEM.md</code>, <code>RULES.md</code>, <code>AGENTS.md</code></td><td>User-level instruction files.</td></tr>
+<tr><td><code>AGENTS.md</code></td><td>Profile-specific context appended to the assembled prompt.</td></tr>
+<tr><td><code>RULES.md</code></td><td>Sticky profile rules reattached near each turn.</td></tr>
+<tr><td><code>TITLE_SYSTEM.md</code></td><td>Optional system prompt for automatic session-title calls.</td></tr>
+<tr><td><code>PROMPT_SECTIONS/</code></td><td>Persistent replacements or additions for named assembled-prompt sections.</td></tr>
 <tr><td><code>memories/</code>, <code>terminal-sessions/</code></td><td>Memory store, terminal session state.</td></tr>
 <tr><td><code>cache/</code></td><td>Agent-scoped caches (tiny title models, document conversions).</td></tr>
 </tbody>

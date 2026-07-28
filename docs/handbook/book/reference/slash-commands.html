@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-14c328bb.js";
+            window.path_to_searchindex_js = "../searchindex-94628b38.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-2e8c749f.js"></script>
+        <script src="../toc-5cf6de48.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -198,6 +198,18 @@
                         <h1 id="slash-commands"><a class="header" href="#slash-commands">Slash commands</a></h1>
 <p>Slash commands run inside an interactive Veyyon session. Type <code>/</code> in the composer to open the
 picker. Commands below are the <strong>builtin</strong> set; extensions may add more.</p>
+<p>A command nothing can handle is refused, not sent to the model. If you mistype a name, or type a
+command your installed build does not have, you get:</p>
+<pre><code class="language-text">Unknown command "/secrt". Nothing handled it, so it was not sent to the model. Type / to see the
+commands this build has, or drop the leading slash to send it as a message.
+</code></pre>
+<p>The refusal names the command and never repeats what followed it, because the tail of a mistyped
+<code>/secret add</code> is a credential.</p>
+<p>A message that merely begins with a filesystem path is prose, not a command, and is sent as usual:</p>
+<pre><code class="language-text">/etc/hosts is broken
+</code></pre>
+<p>The separator decides. A command name is one segment of letters, digits, underscores and hyphens
+starting with a letter, so anything holding a slash is a path.</p>
 <h2 id="session-and-navigation"><a class="header" href="#session-and-navigation">Session and navigation</a></h2>
 <div class="table-wrapper">
 <table>
@@ -227,7 +239,7 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 <tr><th>Command</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>/model [id]</code></td><td>Select the <strong>interactive</strong> model only (no role cycle; roles live in settings)</td></tr>
+<tr><td><code>/model [id]</code>, <code>/models</code></td><td>Select the <strong>interactive</strong> model only (no role cycle; roles live in settings)</td></tr>
 <tr><td><code>/switch</code></td><td>Try a model for this session only, without saving it as default (same as alt+p)</td></tr>
 <tr><td><code>/fast on|off|status</code></td><td>Fast mode</td></tr>
 <tr><td><code>/thinking [level]</code> (<code>/effort</code>)</td><td>Set reasoning effort; no argument opens the picker</td></tr>
@@ -238,10 +250,11 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 <tr><td><code>/guided-goal</code></td><td>Guided goal wizard</td></tr>
 <tr><td><code>/loop</code></td><td>Loop mode controls</td></tr>
 <tr><td><code>/prewalk</code></td><td>Prewalk edit path</td></tr>
+<tr><td><code>/secret</code></td><td>Store a credential the agent uses by placeholder and never sees. <code>add</code> (prompts with the value hidden), <code>list</code>, <code>rm</code>, <code>extend</code>, <code>log</code>. See <a href="../features/secrets.html">Secrets</a></td></tr>
 <tr><td><code>/settings</code>, <code>/setup</code></td><td>Settings UI; <code>/setup</code> / <code>/providers</code> opens provider sign-in</td></tr>
 <tr><td><code>/statusline</code></td><td>Settings UI, jumped to Status Line (preset/segments/separator)</td></tr>
 <tr><td><code>/reload-plugins</code></td><td>Reload extensions</td></tr>
-<tr><td><code>/force &lt;tool&gt; [prompt]</code></td><td>Force the next turn to use a specific tool</td></tr>
+<tr><td><code>/force &lt;tool&gt; [prompt]</code> (<code>/force:</code>)</td><td>Force the next turn to use a specific tool</td></tr>
 </tbody>
 </table>
 </div>
@@ -263,7 +276,6 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 <tr><td><code>/memory …</code></td><td>Memory backend view/stats/clear/enqueue</td></tr>
 <tr><td><code>/copy</code></td><td>Pick text or code from the conversation to copy</td></tr>
 <tr><td><code>/lsp</code></td><td>Show language server status</td></tr>
-<tr><td><code>/cockpit</code></td><td>Live multi-agent cockpit (status, model per agent, drill-in)</td></tr>
 </tbody>
 </table>
 </div>
@@ -291,8 +303,8 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 <tr><td><code>/mcp …</code></td><td>MCP server management</td></tr>
 <tr><td><code>/mcp notifications</code></td><td>Show notification capabilities and subscriptions</td></tr>
 <tr><td><code>/plugins …</code></td><td>Plugin browser</td></tr>
-<tr><td><code>/extensions</code></td><td>Extension dashboard</td></tr>
-<tr><td><code>/agents</code></td><td>Open the Agent Control Center (subagent definitions)</td></tr>
+<tr><td><code>/extensions</code>, <code>/status</code></td><td>Extension Control Center dashboard. <code>/status</code> is an alias for it, not a session-status view</td></tr>
+<tr><td><code>/agents</code> (aliases <code>/cockpit</code>, <code>/hub</code>)</td><td>Open the Agent Control Center: live agent roster and the agent-to-agent comms stream</td></tr>
 <tr><td><code>/ssh …</code></td><td>SSH host setup</td></tr>
 <tr><td><code>/hotkeys</code></td><td>Active keybinding chords</td></tr>
 <tr><td><code>/collab …</code>, <code>/join</code>, <code>/leave</code></td><td>Live collab sessions</td></tr>

@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-14c328bb.js";
+            window.path_to_searchindex_js = "../searchindex-94628b38.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-2e8c749f.js"></script>
+        <script src="../toc-5cf6de48.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -276,6 +276,43 @@ installs ignore it.</p>
 </code></pre>
 <p>Use the <code>--json</code> flag to return the removal result as JSON for npm plugins; marketplace uninstalls
 ignore it.</p>
+<h4 id="check-plugin-health"><a class="header" href="#check-plugin-health">Check Plugin Health</a></h4>
+<p>Report what is wrong with your plugin installation, and optionally repair it.</p>
+<pre><code class="language-console">$ veyyon plugin doctor
+$ veyyon plugin doctor --fix
+$ veyyon plugin doctor --json
+</code></pre>
+<p>Each check reports <code>ok</code>, a warning, or an error. <code>doctor</code> exits 1 when any error is left unrepaired
+and 0 otherwise, so you can gate a script on it. Warnings never affect the exit code, and an error
+that <code>--fix</code> repaired does not either. <code>--json</code> prints the checks as an array instead of the
+human-readable report.</p>
+<p>On a machine with no plugins installed every check is <code>ok</code>: nothing is missing, because nothing was
+ever installed. That is the state a fresh install is in, and <code>doctor</code> is quiet about it on purpose.</p>
+<p>The checks are:</p>
+<ul>
+<li><code>plugins_directory</code>, <code>package_manifest</code>, <code>node_modules</code>: the three things a plugin install needs.
+Each one distinguishes “not created yet” from “there but unreadable”. The first is normal and
+reports <code>ok</code>; the second is an error naming the path, because a plugins directory whose permissions
+have been mangled looks identical to an empty one from the outside and the fix is <code>chmod</code>, not a
+reinstall.</li>
+<li><code>plugin:&lt;name&gt;</code>: one per installed plugin. An error means the package is missing from
+<code>node_modules</code> or has no <code>package.json</code>. A warning means it loaded but carries no plugin manifest,
+so veyyon can see the package and cannot use it.</li>
+<li><code>plugin:&lt;name&gt;:tools</code>, <code>:hooks</code>, <code>:extension:&lt;path&gt;</code>: an entry point the manifest names and the
+package does not contain.</li>
+<li><code>plugin:&lt;name&gt;:feature:&lt;feature&gt;</code>: a feature you enabled that the plugin’s manifest does not
+define, usually because the plugin dropped it in an update. A warning, since the plugin still
+works.</li>
+<li><code>orphan:&lt;name&gt;</code>: a plugin your config enables that is not installed. A warning, since your config
+is intact and only the package is gone.</li>
+<li><code>plugin_config</code>, <code>installed_registry</code>: reported only when one of those files cannot be read.
+<code>doctor</code> continues and reports the rest, so one unreadable file does not cost you the whole
+report.</li>
+</ul>
+<p><code>--fix</code> repairs what can be repaired without a decision: it runs an install for a missing package,
+drops an orphaned config entry, and removes an enabled feature the manifest does not define. A check
+that was repaired says so. Everything else is left for you, because the remedy depends on what you
+meant.</p>
 <h3 id="managing-marketplaces"><a class="header" href="#managing-marketplaces">Managing Marketplaces</a></h3>
 <h4 id="add-a-marketplace"><a class="header" href="#add-a-marketplace">Add a Marketplace</a></h4>
 <p>Add a local path or Git repository to your configured marketplace sources.</p>

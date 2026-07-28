@@ -66,7 +66,8 @@ veyyon config get compaction.threshold
 | `display.collapseCompacted` | Collapse Compacted History | boolean | `true` | Collapse pre-compaction history behind the summary divider on the live transcript; disable to keep the full transcript inline with dividers at each compaction point. |
 | `compaction.strategy` | Compaction Type | enum | `summary` | Summary condenses history in place and continues the same session; Handoff generates a session transfer and continues in a new session. Values: `handoff`, `summary`. |
 | `compaction.threshold` | Auto-Compaction Threshold | string | `auto` | When auto-compaction triggers. Auto uses the model's window minus the reserve; a percent scales with each model's window; a token amount is the same trigger on every model. |
-| `compaction.model` | Compaction Model | string | _(unset)_ | Model used for LLM compaction / handoff. Default: inherit — follows the main model live. Searchable picker with auth status. |
+| `compaction.model` | Compaction Model | modelChain | _(unset)_ | Models used for LLM compaction / handoff, tried in order. Default: inherit — follows the main model live. Add fallbacks for when the first is unauthenticated or its window is too small. |
+| `compaction.modelFallbackStrategy` | Compaction Fallback | enum | `auto` | What to try after the compaction models you configured. Auto also tries the main model, your model roles, and the largest-window model available. Configured only stops there and fails loudly. Values: `auto`, `configured-only`. |
 | `compaction.modelContextWindow` | Compaction Model Context | number | _(unset)_ | Context window in tokens to assume for the compaction model. Unset uses the compaction model's own reported window. Candidates whose window cannot fit the summarization payload are skipped loudly. |
 
 ### Roles
@@ -112,7 +113,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `inlineToolDescriptors` | Inline Tool Descriptors | enum | `auto` | Render full tool descriptors in the system prompt and strip top-level/nested descriptions from provider tool schemas so descriptor text is sent once. Auto enables this for Gemini models and disables it otherwise. Values: `auto`, `on`, `off`. |
+| `inlineToolDescriptors` | Inline Tool Descriptors | enum | `auto` | Render full tool descriptors in the system prompt and strip top-level/nested descriptions from provider tool schemas so descriptor text is sent once. Auto follows the active model, enabling this for Gemini and disabling it otherwise. Values: `auto`, `on`, `off`. |
 | `includeModelInPrompt` | Include Model in Prompt | boolean | `true` | Surface the active model identifier in the system prompt so the agent knows which model it is. |
 | `includeWorkspaceTree` | Include Workspace Tree | boolean | `false` | Render the workspace directory tree in the system prompt. WARNING: This can bust prompt caching across sessions when files are modified. |
 | `personality` | Personality | string | `default` | Communication style rendered into the system prompt's personality block. Extend via ~/.veyyon/personalities/<name>.md or project .veyyon/personalities/<name>.md. |
@@ -530,7 +531,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.model` | Subagent Model | string | _(unset)_ | Model for every enabled subagent that has no per-agent model of its own. Unset means inherit: subagents follow the session's live main model. A per-agent model in the Agents table wins over this. |
+| `subagent.model` | Subagent Model | modelChain | _(unset)_ | Models for every enabled subagent that has no per-agent model of its own, tried in order: the rest are used when an earlier one errors. Unset means inherit: subagents follow the session's live main model. A per-agent model in the Agents table wins over this. |
 | `subagent.thinkingLevel` | Subagent Effort | string | _(unset)_ | Thinking level for every enabled subagent that has no per-agent effort of its own. Inherit follows the session's effort. An explicit `:level` suffix on a model pattern still wins. |
 | `subagent.showResolvedModelBadge` | Show Resolved Model Badge | boolean | `true` | Show each subagent's resolved model, and the setting that decided it, in the task widget status line and the agent surfaces. |
 
@@ -635,6 +636,8 @@ veyyon config get compaction.threshold
 |---|---|---|---|---|
 | `images.blockImages` | Block Images | boolean | `false` | Prevent images from being sent to LLM providers. |
 | `secrets.enabled` | Hide Secrets | boolean | `false` | Obfuscate secrets before sending to AI providers. |
+| `secrets.defaultTtl` | Secret Lifetime | string | `1d` | How long a /secret lasts by default: 30m, 12h, 7d, 2w, or "never". |
+| `secrets.auditLog` | Record Secret Use | boolean | `true` | Append which secret was used in which command to the profile's log. Never records values. |
 
 ## Experimental
 
@@ -662,12 +665,6 @@ veyyon config get compaction.threshold
 | `autolearn.enabled` | Auto-Learn | boolean | `false` | After the agent stops, nudge it to capture lessons to memory and create/enhance isolated managed skills. |
 | `autolearn.autoContinue` | Auto-run capture at stop | boolean | `false` | When on, auto-run one capture turn at stop (uses extra tokens). Off = passive reminder on your next turn. |
 
-### Display
-
-| Key | Setting | Type | Default | What it does |
-|---|---|---|---|---|
-| `display.subagentInbox` | Subagent Inbox | boolean | `false` | opencode-style split: a live per-agent sidebar plus the focused agent's detail pane, instead of the modal agent hub. Off by default while the layout is refined. |
-
 ## Global
 
 ### Profiles
@@ -680,7 +677,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `profileSharing` | Share Credentials Across Profiles | boolean | `true` | When on (the default), every profile reads one machine-wide set of provider logins. Turn off to give each profile its own private credential store. Stored machine-wide, not per profile. |
+| `profileSharing` | Share Credentials Across Profiles | boolean | `true` | When on (the default), every profile reads one machine-wide set of provider logins. Turn off to give each profile its own private credential store. Changing this setting shuts down the active session; restart is required before any further model dispatch. Stored machine-wide, not per profile. |
 
 ### Auth Broker
 
@@ -689,4 +686,4 @@ veyyon config get compaction.threshold
 | `authBrokerUrl` | Auth Broker URL | string | _(empty)_ | Base URL of the auth broker that mints provider credentials for this machine. Stored in ~/.veyyon/config.yml under auth.broker.url; empty disables broker discovery via config. Stored machine-wide, not per profile. |
 | `authBrokerToken` | Auth Broker Token | string | _(empty)_ | Bearer token for the auth broker. Write-only: a stored token shows as a mask and is never echoed. Enter a new value to replace it, leave the mask to keep it, or clear the field to delete it. Stored machine-wide, not per profile. |
 
-325 settings.
+327 settings.

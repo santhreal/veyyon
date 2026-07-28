@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-14c328bb.js";
+            window.path_to_searchindex_js = "../searchindex-94628b38.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-2e8c749f.js"></script>
+        <script src="../toc-5cf6de48.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -264,10 +264,35 @@ what the session can reach rather than widening it.</p>
 <p>When no interactive prompt is available, such as a headless or ACP run, a call that
 needs approval fails instead of proceeding. The error names the path that crossed the
 boundary, so you can see why the run stopped.</p>
+<h2 id="secrets-in-arguments"><a class="header" href="#secrets-in-arguments">Secrets in arguments</a></h2>
+<p>A tier does not tell you whether a call is about to spend a credential either. The
+secret-use boundary is the third question, asked the same way and in the same modes:</p>
+<blockquote>
+<p>Do this call’s arguments carry a stored secret?</p>
+</blockquote>
+<p>Your secrets reach a tool as real values. The model works with placeholders such as
+<code>#GITHUB_TOKEN#</code>, and Veyyon substitutes the credential just before the tool runs, so the
+model can use a secret it never reads. That substitution used to be recorded and never
+asked about: <code>secrets.auditLog</code> could tell you afterwards which credential an agent had
+spent, and nothing could ask you first.</p>
+<p>Now a call whose arguments carry a real credential asks for approval in <code>plan</code>, <code>ask</code>, and
+<code>auto-edit</code>, even when its tier would have allowed it. The prompt names the secret and
+never shows its value:</p>
+<pre><code class="language-text">Allow tool: bash
+Reason: This call uses stored secret: GITHUB_TOKEN. Approving it runs the call with the
+real credential.
+</code></pre>
+<p>As with the working-directory boundary, <code>yolo</code> turns permission off entirely and turns
+this off with it, so the shipped default asks nothing extra. A call that mentions a
+placeholder without expanding it, such as one made while <code>secrets.enabled</code> is false, is
+not carrying a credential and does not ask.</p>
 <h2 id="per-tool-overrides"><a class="header" href="#per-tool-overrides">Per-tool overrides</a></h2>
 <p>When you want one tool to behave differently from its tier, name it under
 <code>tools.approval</code>. Each entry maps a tool to <code>allow</code>, <code>deny</code>, or <code>prompt</code>, and that choice
-wins for that tool no matter what the mode says.</p>
+wins for that tool whatever the mode says, with one exception: while a plan-mode session is
+active, a per-tool <code>allow</code> does not let an exec-tier tool run. Plan mode is a cap rather
+than a default, so it outranks both the configured mode and the per-tool setting. A <code>deny</code>
+is a hard block in every direction.</p>
 <pre><code class="language-yaml"># ~/.veyyon/profiles/default/agent/config.yml
 tools:
   approvalMode: auto-edit
