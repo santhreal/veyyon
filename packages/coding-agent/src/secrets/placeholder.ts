@@ -18,6 +18,7 @@
  * ever stop being disjoint.
  */
 import * as crypto from "node:crypto";
+import { isWellFormedUtf16 } from "@veyyon/utils/string-length";
 
 /** Prefix reserved for unnamed value-derived placeholders. Names must start with a letter. */
 export const VALUE_PLACEHOLDER_PREFIX = "0";
@@ -80,21 +81,6 @@ export const PENDING_PLACEHOLDER_RE = new RegExp(`#[A-Z0-9_]{0,${MAX_SECRET_NAME
  * wordlist and recover a short credential. Callers reject the astronomically unlikely
  * event that two values produce the same retained body instead of overwriting a mapping.
  */
-export function isWellFormedUtf16(value: string): boolean {
-	for (let index = 0; index < value.length; index++) {
-		const codeUnit = value.charCodeAt(index);
-		if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
-			if (index + 1 >= value.length) return false;
-			const next = value.charCodeAt(index + 1);
-			if (next < 0xdc00 || next > 0xdfff) return false;
-			index++;
-		} else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
-			return false;
-		}
-	}
-	return true;
-}
-
 export function buildValuePlaceholder(value: string, key: Uint8Array): string {
 	if (!isWellFormedUtf16(value)) {
 		throw new Error("Refusing to derive a secret placeholder from ill-formed UTF-16.");

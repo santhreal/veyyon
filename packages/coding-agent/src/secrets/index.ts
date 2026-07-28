@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import { errorMessage, isEnoent, isRecord } from "@veyyon/utils";
-import { YAML } from "bun";
+import { parse as parseYaml } from "yaml";
 import { BUNDLED_ENV_KEYWORDS, buildEnvSecretPattern } from "./env-keywords";
 import type { SecretEntry } from "./obfuscator";
 import {
@@ -22,14 +22,18 @@ const SECRET_FILE_FIELDS: Readonly<Record<string, true>> = {
 };
 
 export {
-	canObfuscatePlainValue,
-	describeSecretRejection,
-	MIN_AUTODETECTED_ENV_VALUE_LENGTH,
-	secretCharacterLength,
-	MIN_OBFUSCATABLE_LENGTH,
-	type SecretRejection,
-	type SecretRejectionReason,
-} from "./policy";
+	buildExpansionRecord,
+	decodeLog,
+	encodeRecord,
+	MAX_RECORD_BYTES,
+	placeholdersIn,
+	ROTATE_AT_BYTES,
+	ROTATED_SUFFIX,
+	SECRET_AUDIT_FILENAME,
+	SecretAuditLog,
+	type SecretExpansionRecord,
+	secretAuditPath,
+} from "./audit";
 
 export {
 	deobfuscateSessionContext,
@@ -39,20 +43,15 @@ export {
 	type SecretEntry,
 	SecretObfuscator,
 } from "./obfuscator";
-
 export {
-	buildExpansionRecord,
-	decodeLog,
-	encodeRecord,
-	MAX_RECORD_BYTES,
-	placeholdersIn,
-	ROTATE_AT_BYTES,
-	ROTATED_SUFFIX,
-	SECRET_AUDIT_FILENAME,
-	secretAuditPath,
-	SecretAuditLog,
-	type SecretExpansionRecord,
-} from "./audit";
+	canObfuscatePlainValue,
+	describeSecretRejection,
+	MIN_AUTODETECTED_ENV_VALUE_LENGTH,
+	MIN_OBFUSCATABLE_LENGTH,
+	type SecretRejection,
+	type SecretRejectionReason,
+	secretCharacterLength,
+} from "./policy";
 
 /**
  * Load secrets from the project's and the active profile's secrets.yml files.
@@ -112,7 +111,11 @@ function refuseUnprotectableEntries(entries: SecretEntry[], paths: { profilePath
 	if (unprotectable.length === 0) return;
 
 	const complaints = unprotectable.map(({ index, entry }) =>
-		describeSecretRejection({ reason: "too-short-to-obfuscate", index, length: secretCharacterLength(entry.content) }),
+		describeSecretRejection({
+			reason: "too-short-to-obfuscate",
+			index,
+			length: secretCharacterLength(entry.content),
+		}),
 	);
 	throw new Error(
 		`Refusing to start: ${unprotectable.length} declared secret(s) cannot be obfuscated, and starting anyway ` +
@@ -135,18 +138,23 @@ function refuseUnprotectableEntries(entries: SecretEntry[], paths: { profilePath
  * substring. Passing it in rather than reading a module-level regex is what lets that list be
  * loaded from disk at all.
  */
-export function collectEnvSecrets(pattern: RegExp = buildEnvSecretPattern([...BUNDLED_ENV_KEYWORDS])): SecretEntry[] {
+export function collectEnvSecrets(pattern: RegExp = BUNDLED_ENV_SECRET_PATTERN): SecretEntry[] {
 	const entries: SecretEntry[] = [];
 	const seen = new Set<string>();
 	for (const [name, value] of Object.entries(process.env)) {
-		if (!value || value.length < MIN_AUTODETECTED_ENV_VALUE_LENGTH) continue;
-		if (!pattern.test(name)) continue;
+		if (!value || secretCharacterLength(value) < MIN_AUTODETECTED_ENV_VALUE_LENGTH) continue;
+		pattern.lastIndex = 0;
+		const nameMatches = pattern.test(name);
+		pattern.lastIndex = 0;
+		if (!nameMatches) continue;
 		if (seen.has(value)) continue;
 		seen.add(value);
 		entries.push({ type: "plain", content: value, mode: "obfuscate" });
 	}
 	return entries;
 }
+
+const BUNDLED_ENV_SECRET_PATTERN = buildEnvSecretPattern(BUNDLED_ENV_KEYWORDS);
 
 /**
  * Read one `secrets.yml`.
@@ -173,10 +181,10 @@ async function loadSecretsFile(filePath: string): Promise<SecretEntry[]> {
 
 	let raw: unknown;
 	try {
-		raw = YAML.parse(text);
+		raw = parseYaml(text);
 	} catch (err) {
 		throw new Error(
-			`Refusing to start: ${filePath} is not valid YAML (${String(err)}). ` +
+			`Refusing to start: ${filePath} is not valid YAML (${errorMessage(err).split("\n", 1)[0]}). ` +
 				`Fix the syntax or remove the file. Its declarations cannot be honoured while it does not parse.`,
 		);
 	}

@@ -475,6 +475,53 @@ describe("storing and reading", () => {
 		});
 	});
 
+	/**
+	 * Replacing a value or deadline must preserve the established entry order so unrelated
+	 * mutations do not reshuffle list and placeholder output.
+	 */
+	it("preserves entry order across add replacements and extensions", async () => {
+		await withVault(async vault => {
+			await vault.add({ name: "TOKEN_A", value: `${VALUE}_a` });
+			await vault.add({ name: "TOKEN_B", value: `${VALUE}_b` });
+			await vault.add({ name: "TOKEN_C", value: `${VALUE}_c` });
+
+			await vault.add({ name: "TOKEN_B", value: `${VALUE}_b_updated` });
+			expect((await vault.load()).map(entry => entry.name)).toEqual(["TOKEN_A", "TOKEN_B", "TOKEN_C"]);
+
+			await vault.extend("TOKEN_A", 2 * DAY);
+			expect((await vault.load()).map(entry => entry.name)).toEqual(["TOKEN_A", "TOKEN_B", "TOKEN_C"]);
+		});
+	});
+
+	/**
+	 * Repeating an exact mutation must not rotate ciphertext or replace the vault inode.
+	 *
+	 * Randomized sealing makes an unnecessary write observably different even when the
+	 * plaintext state is identical, needlessly revoking every captured vault revision.
+	 */
+	it("does not rewrite an entry when add or extend leaves its exact state unchanged", async () => {
+		await withVault(async (vault, locations, clock) => {
+			const vaultPath = vaultPathFor(locations, "profile");
+			await vault.add({ name: "TOKEN_A", value: VALUE, ttl: HOUR });
+			const afterFirstAdd = await fs.readFile(vaultPath);
+
+			await vault.add({ name: "TOKEN_A", value: VALUE, ttl: HOUR });
+			expect(await fs.readFile(vaultPath)).toEqual(afterFirstAdd);
+
+			await vault.extend("TOKEN_A", DAY);
+			const afterFirstExtend = await fs.readFile(vaultPath);
+			await vault.extend("TOKEN_A", DAY);
+			expect(await fs.readFile(vaultPath)).toEqual(afterFirstExtend);
+
+			const never = await vault.add({ name: "TOKEN_NEVER", value: `${VALUE}_never`, ttl: null });
+			const beforeRedundantNever = await fs.readFile(vaultPath);
+			clock.now += HOUR;
+			const stillNever = await vault.extend("TOKEN_NEVER", null);
+			expect(stillNever?.createdAt).toBe(never.createdAt);
+			expect(await fs.readFile(vaultPath)).toEqual(beforeRedundantNever);
+		});
+	});
+
 	/** Replacements use a new synced inode rather than truncating the live vault in place. */
 	it("replaces an existing vault atomically with an owner-only file", async () => {
 		if (process.platform === "win32") return;
@@ -648,6 +695,55 @@ describe("storing and reading", () => {
 	});
 
 	/**
+	 * Retirement cleanup must never unlink a different file that races into the displaced
+	 * pathname between identity inspection and removal.
+	 */
+	it("restores a racing replacement of the retired vault path", async () => {
+		if (process.platform === "win32") return;
+		await withVault(async (vault, locations) => {
+			const sentinel = Buffer.from("racing cleanup sentinel");
+			let racingPath: string | null = null;
+			let truncatedOriginalPath: string | null = null;
+			await vault.add({ name: "TOKEN_A", value: VALUE });
+			const originalStat = await fs.stat(vaultPathFor(locations, "profile"));
+
+			const realLstat = fs.lstat;
+			const lstatSpy = spyOn(fs, "lstat").mockImplementation((async (...args: Parameters<typeof fs.lstat>) => {
+				const result = await Reflect.apply(realLstat, fs, args);
+				const candidate = String(args[0]);
+				if (
+					racingPath === null &&
+					path.basename(candidate).startsWith(`.${VAULT_FILENAME}.`) &&
+					candidate.endsWith(".tmp") &&
+					result.isFile() &&
+					result.dev === originalStat.dev &&
+					result.ino === originalStat.ino &&
+					result.size === 0
+				) {
+					const basename = path.basename(candidate);
+					racingPath = path.join(locations.profileDir, basename);
+					truncatedOriginalPath = `${racingPath}.truncated`;
+					await fs.rename(candidate, `${candidate}.truncated`);
+					await fs.writeFile(candidate, sentinel, { mode: 0o600 });
+				}
+				return result;
+			}) as unknown as typeof fs.lstat);
+			try {
+				await expect(vault.add({ name: "TOKEN_B", value: `${VALUE}_b` })).rejects.toThrow(
+					/cleanup entry changed before removal.*restored without deleting/i,
+				);
+			} finally {
+				lstatSpy.mockRestore();
+			}
+
+			expect(racingPath).not.toBeNull();
+			expect(await fs.readFile(racingPath!)).toEqual(sentinel);
+			expect((await fs.stat(truncatedOriginalPath!)).size).toBe(0);
+			expect((await vault.load()).map(entry => entry.name)).toEqual(["TOKEN_A", "TOKEN_B"]);
+		});
+	});
+
+	/**
 	 * A value too short to obfuscate is refused at the door.
 	 *
 	 * Consistent with the loader's refusal: storing it would produce an entry that looks
@@ -707,6 +803,23 @@ describe("expiry deletes rather than exposes", () => {
 		});
 	});
 
+	/**
+	 * One load observes one clock instant rather than expiring later array elements merely
+	 * because iteration crossed their shared deadline.
+	 */
+	it("evaluates every entry against one load-time clock snapshot", async () => {
+		await withVault(async (vault, locations, clock) => {
+			await vault.add({ name: "TOKEN_A", value: VALUE, ttl: HOUR });
+			await vault.add({ name: "TOKEN_B", value: `${VALUE}_b`, ttl: HOUR });
+			const readings = [clock.now + HOUR - 1, clock.now + HOUR];
+			let calls = 0;
+			const boundaryVault = new SecretVault(locations, () => readings[Math.min(calls++, readings.length - 1)]);
+
+			expect((await boundaryVault.load()).map(entry => entry.name)).toEqual(["TOKEN_A", "TOKEN_B"]);
+			expect(calls).toBe(1);
+		});
+	});
+
 	/** Extending measures from now, so a nearly dead secret gets the full window asked for. */
 	it("extends from now rather than from the old expiry", async () => {
 		await withVault(async (vault, _locations, clock) => {
@@ -716,6 +829,23 @@ describe("expiry deletes rather than exposes", () => {
 			const extended = await vault.extend("RENEW_ME", 7 * DAY);
 
 			expect(extended?.expiresAt).toBe(clock.now + 7 * DAY);
+		});
+	});
+
+	/**
+	 * Scope lookup and expiry extension share one instant so crossing the deadline while
+	 * checking an empty narrower scope cannot make the real target disappear.
+	 */
+	it("uses one clock snapshot while extending across scopes", async () => {
+		await withVault(async (vault, locations, clock) => {
+			await vault.add({ name: "RENEW_ME", value: VALUE, ttl: HOUR });
+			const readings = [clock.now + HOUR - 1, clock.now + HOUR];
+			let calls = 0;
+			const boundaryVault = new SecretVault(locations, () => readings[Math.min(calls++, readings.length - 1)]);
+
+			const extended = await boundaryVault.extend("RENEW_ME", DAY);
+			expect(extended).toMatchObject({ name: "RENEW_ME", scope: "profile", expiresAt: readings[0] + DAY });
+			expect(calls).toBe(1);
 		});
 	});
 
@@ -759,6 +889,26 @@ describe("removal", () => {
 		});
 	});
 
+	/**
+	 * Removal uses one clock snapshot so crossing a shared deadline during iteration cannot
+	 * silently prune a different entry that was live when the operation began.
+	 */
+	it("evaluates every entry against one removal-time clock snapshot", async () => {
+		await withVault(async (vault, locations, clock) => {
+			await vault.add({ name: "TOKEN_A", value: VALUE, ttl: HOUR });
+			await vault.add({ name: "TOKEN_B", value: `${VALUE}_b`, ttl: HOUR });
+			const readings = [clock.now + HOUR - 1, clock.now + HOUR];
+			let calls = 0;
+			const boundaryVault = new SecretVault(locations, () => readings[Math.min(calls++, readings.length - 1)]);
+
+			expect(await boundaryVault.remove("TOKEN_A")).toBe("profile");
+			expect(calls).toBe(1);
+			expect((await new SecretVault(locations, () => readings[0]).load()).map(entry => entry.name)).toEqual([
+				"TOKEN_B",
+			]);
+		});
+	});
+
 	/** Removing something absent answers null rather than pretending to succeed. */
 	it("returns null when there is nothing to remove", async () => {
 		await withVault(async vault => {
@@ -783,6 +933,25 @@ describe("scope precedence", () => {
 			const loaded = await vault.load();
 			expect(loaded).toHaveLength(1);
 			expect(loaded[0]).toMatchObject({ value: "project_value_here", scope: "project" });
+		});
+	});
+
+	/**
+	 * A narrower override belongs at that narrower scope's position; Map.set alone replaces
+	 * its value while leaving it stranded among the wider scope's entries.
+	 */
+	it("orders overriding entries with their winning scope", async () => {
+		await withVault(async vault => {
+			await vault.add({ name: "GLOBAL_ONLY", value: "global_only_value", scope: "global" });
+			await vault.add({ name: "SHARED_NAME", value: "global_shared_value", scope: "global" });
+			await vault.add({ name: "PROFILE_ONLY", value: "profile_only_value", scope: "profile" });
+			await vault.add({ name: "SHARED_NAME", value: "profile_shared_value", scope: "profile" });
+
+			expect((await vault.load()).map(entry => `${entry.scope}:${entry.name}`)).toEqual([
+				"global:GLOBAL_ONLY",
+				"profile:PROFILE_ONLY",
+				"profile:SHARED_NAME",
+			]);
 		});
 	});
 
@@ -924,18 +1093,82 @@ describe("scope precedence", () => {
 		});
 	});
 
-	/** Ciphertext is authenticated to the physical parent inode, not only the same lexical path. */
-	it("refuses a vault restored under a recreated scope directory", async () => {
+	/**
+	 * Ciphertext is authenticated to the scope and the lexical path, and deliberately NOT to the
+	 * parent inode.
+	 *
+	 * The inode was added to the binding in 757d70af with no envelope version bump, which made every
+	 * vault written by a shipped build permanently undecryptable: AES-GCM authenticates the AAD, the
+	 * envelope still said `v2`, and there was no migration and no way for an operator to tell why.
+	 * It was also wrong on its own terms. A device and inode number change under an ordinary
+	 * backup-and-restore, a `cp -a`, a filesystem migration, and any tool that rewrites a directory
+	 * atomically, so binding a long-lived credential store to them refuses the operations users
+	 * legitimately perform on their own data. What protects the vault is the key, which lives in a
+	 * 700 directory of its own, plus the scope and path binding that keeps a copy from acquiring a
+	 * second scope. This test pins the reversal so the inode cannot quietly return.
+	 */
+	it("opens a vault restored under a recreated scope directory", async () => {
 		await withVault(async (vault, locations) => {
 			await vault.add({ name: "PHYSICAL_SCOPE_TOKEN", value: VALUE, scope: "profile" });
 			const vaultPath = vaultPathFor(locations, "profile");
 			const bytes = await fs.readFile(vaultPath);
 			const displaced = `${locations.profileDir}.original`;
 			await fs.rename(locations.profileDir, displaced);
-			await fs.mkdir(locations.profileDir);
+			await fs.mkdir(locations.profileDir, { recursive: true, mode: 0o700 });
 			await fs.writeFile(vaultPath, bytes, { mode: 0o600 });
 
-			await expect(vault.load()).rejects.toThrow(/different vault location|could not be decrypted/i);
+			const entries = await vault.load();
+			expect(entries).toHaveLength(1);
+			expect(entries[0]).toMatchObject({ name: "PHYSICAL_SCOPE_TOKEN", scope: "profile" });
+			expect(entries[0]?.value).toBe(VALUE);
+		});
+	});
+
+	/**
+	 * The migration for a vault the broken build sealed.
+	 *
+	 * Those envelopes exist on real machines, so the read path tries the canonical binding, then the
+	 * superseded physical one, and re-seals under the canonical binding when the second succeeds.
+	 * The superseded form is reconstructed here from the directory's live dev and ino, which is
+	 * exactly what 757d70af appended to the AAD.
+	 */
+	it("opens a vault sealed under the superseded inode binding", async () => {
+		if (process.platform === "win32") return;
+		await withVault(async (vault, locations, clock) => {
+			await vault.add({ name: "SUPERSEDED_TOKEN", value: VALUE, scope: "profile" });
+			const vaultPath = vaultPathFor(locations, "profile");
+			const key = await loadOrCreateVaultKey(locations.globalConfigRoot);
+			const canonical = path.join(await fs.realpath(path.dirname(vaultPath)), path.basename(vaultPath));
+			const plaintext = JSON.stringify({
+				entries: [{ name: "SUPERSEDED_TOKEN", value: VALUE, createdAt: clock.now, expiresAt: clock.now + DAY }],
+			});
+			const directory = await fs.stat(path.dirname(vaultPath));
+			const superseded = `profile\0${canonical}\0${directory.dev}\0${directory.ino}`;
+			await fs.writeFile(vaultPath, JSON.stringify(sealVault(key, plaintext, superseded)), { mode: 0o600 });
+
+			const entries = await vault.load();
+			expect(entries).toHaveLength(1);
+			expect(entries[0]).toMatchObject({ name: "SUPERSEDED_TOKEN", value: VALUE, scope: "profile" });
+		});
+	});
+
+	/**
+	 * The migration cannot become a way in. A file that authenticates under NEITHER binding is a
+	 * forgery, a corruption, or the wrong key, and the error the operator sees has to be the one
+	 * from the current binding rather than from an attempt they never asked for.
+	 */
+	it("refuses a vault that authenticates under neither binding", async () => {
+		await withVault(async (vault, locations) => {
+			await vault.add({ name: "TAMPERED_TOKEN", value: VALUE, scope: "profile" });
+			const vaultPath = vaultPathFor(locations, "profile");
+			const sealed = JSON.parse(await fs.readFile(vaultPath, "utf8")) as SealedVault;
+			const ciphertext = Buffer.from(sealed.ct, "base64");
+			ciphertext[0] = (ciphertext[0] ?? 0) ^ 0xff;
+			await fs.writeFile(vaultPath, JSON.stringify({ ...sealed, ct: ciphertext.toString("base64") }), {
+				mode: 0o600,
+			});
+
+			await expect(vault.load()).rejects.toThrow(/could not be decrypted|different vault location/i);
 		});
 	});
 

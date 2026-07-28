@@ -179,7 +179,9 @@ function planAutonomyBlocksMutation(
  *
  * Resolution order:
  *  1. Tool `approval(args)` decision, defaulting to tier "exec" when omitted.
- *  2. User per-tool override, if set and valid.
+ *  2. User per-tool override, if set and valid, EXCEPT that an active plan-mode
+ *     session blocks mutations regardless of a per-tool `allow` (a `deny` still
+ *     wins, and a configured `plan` level with no active session does not cap).
  *  3. Active autonomy level tier comparison (`plan` denies mutations; `ask` prompts).
  *
  * In yolo mode, override-based tool prompts are ignored; user `tools.approval`
@@ -239,7 +241,18 @@ function resolveApprovalInner(
 				...(decision.reason ? { reason: decision.reason } : {}),
 			};
 		}
-		return { policy: userPolicy ?? "allow", tier: decision.tier, override: false };
+		// A configured policy on a critical decision keeps the critical flag. The
+		// flag is what the `/yolo` bypass reads to know which prompts it may lift,
+		// so dropping it here made `tools.approval.<tool> = "prompt"` buy LESS
+		// protection than configuring nothing at all: the unconfigured branch above
+		// returns `critical: true` and survives the bypass, while a deliberately
+		// requested prompt was silently turned into `allow`.
+		return {
+			policy: userPolicy ?? "allow",
+			tier: decision.tier,
+			override: false,
+			...(decision.critical ? { critical: true } : {}),
+		};
 	}
 
 	if (decision.override) {
@@ -258,7 +271,16 @@ function resolveApprovalInner(
 		};
 	}
 
-	if (userPolicy) {
+	// An ACTIVE plan-mode session is a cap, not a default, and the cap outranks a
+	// per-tool `allow`. `resolveEffectiveApprovalMode` already forces the level to
+	// `plan` while plan mode is active precisely so a configured `yolo` cannot beat
+	// it; letting `tools.approval.bash = "allow"` through would reintroduce the same
+	// escape one tool at a time, and "exec is blocked in plan mode" would hold only
+	// for operators who never configured a tool. A `deny` is a hard block either
+	// way, and a configured `plan` autonomy level with no active plan-mode session
+	// keeps the documented precedence where the per-tool setting wins.
+	const planCapBlocks = options?.planModeActive === true && planAutonomyBlocksMutation(level, decision.tier, options);
+	if (userPolicy && !(planCapBlocks && userPolicy !== "deny")) {
 		return { policy: userPolicy, tier: decision.tier, override: false };
 	}
 

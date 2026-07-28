@@ -19,18 +19,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { DEFAULT_MASK_CHAR } from "@veyyon/tui";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets";
-import {
-	NONINTERACTIVE_SECRET_COMMAND_USAGE,
-	SECRET_COMMAND_USAGE,
-} from "@veyyon/coding-agent/secrets/secret-command";
+import { NONINTERACTIVE_SECRET_COMMAND_USAGE, SECRET_COMMAND_USAGE } from "@veyyon/coding-agent/secrets/secret-command";
 import { resolveVaultLocations, SecretVault } from "@veyyon/coding-agent/secrets/vault";
 import { OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
 import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
-import { runSecretCommandForSurface } from "@veyyon/coding-agent/slash-commands/helpers/secret";
 import * as secretSurface from "@veyyon/coding-agent/slash-commands/helpers/secret";
+import { runSecretCommandForSurface } from "@veyyon/coding-agent/slash-commands/helpers/secret";
+import { DEFAULT_MASK_CHAR } from "@veyyon/tui";
 
 /** The credential under test. Long enough to be obfuscatable, distinctive enough to grep for. */
 const VALUE = "ghp_maskedEntryTestCredential99";
@@ -54,6 +51,8 @@ interface Harness {
 	sessionMessages: unknown[];
 	obfuscator: SecretObfuscator;
 	prompted: string[];
+	/** Every `settings.set` the command performed, in order, so a write can be asserted exactly. */
+	settingWrites: Array<{ key: string; value: unknown }>;
 	port: Parameters<typeof runSecretCommandForSurface>[1];
 }
 
@@ -97,15 +96,25 @@ function harness(options?: {
 		},
 	};
 
+	const settingWrites: Array<{ key: string; value: unknown }> = [];
 	return {
 		agentMessages,
 		sessionMessages,
 		obfuscator,
 		prompted,
+		settingWrites,
 		port: {
 			session,
 			sessionManager: { appendMessage: (message: unknown) => sessionMessages.push(message) },
-			settings: { get: (key: string) => settingValues[key] },
+			settings: {
+				get: (key: string) => settingValues[key],
+				// Writes are applied to the same map `get` reads, so a later read inside the same
+				// command sees what the command just wrote, as the real Settings does.
+				set: (key: string, value: unknown) => {
+					settingWrites.push({ key, value });
+					settingValues[key] = value;
+				},
+			},
 			cwd: project,
 			globalConfigRoot: home,
 			agentDir: path.join(home, "profiles", "default"),
@@ -278,6 +287,21 @@ describe("non-interactive secret commands", () => {
 	});
 
 	/**
+	 * A missing value in a headless client must not recommend the inline form that the same adapter
+	 * refuses. Contradictory recovery instructions turn a safe failure into an unusable loop.
+	 */
+	it("recommends only --from-env when no noninteractive value was supplied", async () => {
+		const failure = await runSecretCommandForSurface("add remote-token", harness({ interactive: false }).port).then(
+			() => undefined,
+			(error: unknown) => String(error),
+		);
+
+		expect(failure).toContain("/secret add REMOTE_TOKEN --from-env MY_TOKEN");
+		expect(failure).not.toContain("pass the value directly");
+		expect(failure).not.toContain("scrollback");
+	});
+
+	/**
 	 * Help is capability-aware. Headless clients may advertise environment
 	 * lookup and management, but must never teach inline or supposedly-hidden
 	 * typing that their transport cannot provide; the TUI retains both forms.
@@ -304,10 +328,7 @@ describe("non-interactive secret commands", () => {
 	 * path even though `/secret` itself looked safe.
 	 */
 	it("keeps noninteractive parse errors free of unsafe credential forms", async () => {
-		const failure = await runSecretCommandForSurface(
-			"unknown-subcommand",
-			harness({ interactive: false }).port,
-		).then(
+		const failure = await runSecretCommandForSurface("unknown-subcommand", harness({ interactive: false }).port).then(
 			() => undefined,
 			(error: unknown) => String(error),
 		);
@@ -321,15 +342,34 @@ describe("non-interactive secret commands", () => {
 
 describe("default lifetime resolution at the surface", () => {
 	/**
-	 * A malformed default matters only when a command needs that default. Read-only commands,
-	 * help and removal must remain available so a bad setting cannot lock the operator out.
+	 * A malformed default matters only when a command needs that default. Read-only commands and
+	 * help remain available; removal still fails honestly when its target is absent, but never
+	 * because the unrelated lifetime setting was parsed.
 	 */
 	it("does not resolve a malformed default for help, list, log or rm", async () => {
 		const h = harness({ defaultTtl: "not-a-lifetime" });
 
-		for (const args of ["help", "list", "log", "rm absent-token"]) {
+		for (const args of ["help", "list", "log"]) {
 			await expect(runSecretCommandForSurface(args, h.port)).resolves.toHaveProperty("message");
 		}
+		await expect(runSecretCommandForSurface("rm absent-token", h.port)).rejects.toThrow(
+			"No secret named ABSENT_TOKEN is stored. Run /secret list to see what is.",
+		);
+	});
+
+	/**
+	 * A malformed default must be rejected before opening the masked field. Asking for sensitive
+	 * bytes and only then discovering unrelated configuration is invalid loses the credential and
+	 * invites a needless second paste.
+	 */
+	it("validates the default lifetime before prompting for a value", async () => {
+		const h = harness({ defaultTtl: "not-a-lifetime", promptReturns: VALUE });
+
+		await expect(runSecretCommandForSurface("add prompt-token", h.port)).rejects.toThrow(
+			/The secrets\.defaultTtl setting/,
+		);
+		expect(h.prompted).toEqual([]);
+		await expect(fs.stat(path.join(home, "profiles", "default", "vault.json"))).rejects.toThrow();
 	});
 
 	/** An explicit lifetime is complete input and must not consult a contradictory default. */
@@ -385,6 +425,64 @@ describe("live obfuscator reconciliation", () => {
 			delete process.env.VEYYON_NO_LIVE_OBFUSCATOR;
 		}
 	});
+
+	/**
+	 * A refresh can fail after the encrypted write is durable. The surfaced error must name that
+	 * split outcome so callers do not retry an add believing nothing changed.
+	 */
+	it("reports a durable vault update when live reconciliation fails", async () => {
+		const h = harness({ promptReturns: VALUE });
+		h.port.session.refreshSecrets = async () => {
+			throw new Error("reload failed");
+		};
+
+		const failure = await runSecretCommandForSurface("add durable-token", h.port).then(
+			() => undefined,
+			(error: unknown) => error,
+		);
+		const vault = new SecretVault(
+			resolveVaultLocations({
+				globalConfigRoot: home,
+				agentDir: path.join(home, "profiles", "default"),
+				cwd: project,
+			}),
+		);
+
+		expect((failure as Error).message).toBe(
+			"The vault was updated, but the running session could not refresh secret protection: reload failed",
+		);
+		expect((await vault.load()).find(entry => entry.name === "DURABLE_TOKEN")?.value).toBe(VALUE);
+	});
+
+	/**
+	 * Conversation persistence runs after storage and live refresh. If it fails, the error must
+	 * disclose the completed state transition so retry logic does not rotate the secret by mistake.
+	 */
+	it("reports a durable protected update when the model notice cannot be saved", async () => {
+		const h = harness({ promptReturns: VALUE });
+		h.port.sessionManager.appendMessage = () => {
+			throw new Error("session append failed");
+		};
+
+		const failure = await runSecretCommandForSurface("add notice-token", h.port).then(
+			() => undefined,
+			(error: unknown) => error,
+		);
+		const vault = new SecretVault(
+			resolveVaultLocations({
+				globalConfigRoot: home,
+				agentDir: path.join(home, "profiles", "default"),
+				cwd: project,
+			}),
+		);
+
+		expect((failure as Error).message).toBe(
+			"The vault was updated and secret protection refreshed, but the model notice could not be saved: " +
+				"session append failed",
+		);
+		expect(h.obfuscator.hasNamedSecret("NOTICE_TOKEN")).toBe(true);
+		expect((await vault.load()).find(entry => entry.name === "NOTICE_TOKEN")?.value).toBe(VALUE);
+	});
 });
 
 describe("a cancelled masked prompt", () => {
@@ -423,11 +521,12 @@ describe("a cancelled masked prompt", () => {
 
 describe("the TUI path", () => {
 	/**
-	 * THE ORDER PROPERTY. The composer is cleared BEFORE the masked field opens.
+	 * THE ORDER PROPERTY. The composer is cleared BEFORE the masked field opens, and cancellation
+	 * stays quiet instead of rendering a successful-looking completion status.
 	 *
 	 * Clearing afterwards would leave the credential in the input buffer for the life of the
-	 * prompt, and a cancelled prompt would leave it there permanently. The prompt is cancelled in
-	 * this test so nothing is written and the real profile directory is not touched.
+	 * prompt, and a cancelled prompt would leave it there permanently. A cancellation is already
+	 * visible in the dialog closing, so an extra status line is stale surface noise.
 	 */
 	it("clears the composer before reading the value", async () => {
 		const order: string[] = [];
@@ -436,12 +535,13 @@ describe("the TUI path", () => {
 			order.push("prompt");
 			return undefined;
 		});
+		const showStatus = vi.fn();
 
 		const handled = await executeBuiltinSlashCommand("/secret add github-token", {
 			ctx: {
 				editor: { setText },
 				showHookInput,
-				showStatus: vi.fn(),
+				showStatus,
 				showWarning: vi.fn(),
 				session: { obfuscator: undefined, operatorNotices: new OperatorNotices(), agent: {} },
 				sessionManager: { getCwd: () => project, appendMessage: vi.fn() },
@@ -451,6 +551,7 @@ describe("the TUI path", () => {
 
 		expect(handled).toBe(true);
 		expect(order).toEqual(["clear", "prompt"]);
+		expect(showStatus).not.toHaveBeenCalled();
 	});
 
 	/** The field is masked. A prompt that echoes is the exposure this path exists to remove. */
@@ -533,5 +634,97 @@ describe("the TUI path", () => {
 
 		expect(showHookInput).not.toHaveBeenCalled();
 		expect(showStatus).toHaveBeenCalled();
+	});
+});
+
+/**
+ * Storing a credential is the opt-in, so `/secret add` turns protection on.
+ *
+ * WHY THIS SUITE EXISTS. `secrets.enabled` ships off. Before this, the first `/secret add` on a
+ * fresh install stored the value, printed "the model sees #NAME#, write that placeholder where the
+ * credential goes", and then did nothing at all: no substitution, no redaction, until the operator
+ * went looking for a checkbox in `/settings`. The feature's own confirmation described behaviour
+ * the operator did not have. Asking someone to confirm the thing they just asked for is not a
+ * safety property, and the direction of the change is the safe one, since enabling can only ever
+ * hide more.
+ *
+ * The write is announced rather than quiet, because it also changes what happens to environment
+ * variables and `secrets.yml`, and a setting that changes itself without saying so is its own bug.
+ */
+describe("storing a credential while protection is off", () => {
+	/** The exact write: one setting, one value, on the add path. */
+	it("turns secret protection on", async () => {
+		const h = harness({ promptReturns: VALUE, secretsEnabled: false });
+
+		await runSecretCommandForSurface("add first-token", h.port);
+
+		expect(h.settingWrites).toEqual([{ key: "secrets.enabled", value: true }]);
+	});
+
+	/** Announced in the confirmation, on its own line, so the operator knows the state changed. */
+	it("says so in the confirmation", async () => {
+		const h = harness({ promptReturns: VALUE, secretsEnabled: false });
+
+		const outcome = await runSecretCommandForSurface("add first-token", h.port);
+
+		expect(outcome.message).toContain("Stored FIRST_TOKEN");
+		expect(outcome.message).toContain(
+			"Secret protection was off, so it is now on for this session and saved for the next one.",
+		);
+	});
+
+	/** Already on is left alone. A no-op write would still fire settings hooks and a background save. */
+	it("writes nothing when protection is already on", async () => {
+		const h = harness({ promptReturns: VALUE, secretsEnabled: true });
+
+		const outcome = await runSecretCommandForSurface("add second-token", h.port);
+
+		expect(h.settingWrites).toEqual([]);
+		expect(outcome.message).not.toContain("Secret protection was off");
+	});
+
+	/**
+	 * Only `add` enables. Listing is a read, and `rm` is the operator reducing what is stored: an
+	 * `/secret rm` that switched protection on would be the command doing the opposite of what it
+	 * says. A cancelled prompt stores nothing, so it changes nothing either.
+	 */
+	it("leaves the setting alone for every other subcommand", async () => {
+		for (const args of ["list", "rm missing-token", "log"]) {
+			const h = harness({ secretsEnabled: false });
+			await runSecretCommandForSurface(args, h.port).catch(() => undefined);
+			expect(h.settingWrites).toEqual([]);
+		}
+	});
+
+	/** A cancelled masked prompt stores nothing, so there is nothing to enable protection for. */
+	it("leaves the setting alone when the prompt is cancelled", async () => {
+		const h = harness({ promptReturns: undefined, secretsEnabled: false });
+
+		const outcome = await runSecretCommandForSurface("add cancelled-token", h.port);
+
+		expect(outcome.cancelled).toBe(true);
+		expect(h.settingWrites).toEqual([]);
+	});
+
+	/**
+	 * The fail-closed half. Enabling the setting is not the same as the runtime honouring it, and
+	 * the message the operator gets has to reflect the runtime rather than the write. A session with
+	 * no live obfuscator still says protection is off, even though the setting was just turned on.
+	 */
+	it("still reports protection off when the runtime refuses the setting", async () => {
+		process.env.VEYYON_AUTO_ENABLE_REFUSED = VALUE;
+		try {
+			const h = harness({ interactive: false, secretsEnabled: false, liveObfuscator: false });
+
+			const outcome = await runSecretCommandForSurface(
+				"add refused-token --from-env VEYYON_AUTO_ENABLE_REFUSED",
+				h.port,
+			);
+
+			expect(h.settingWrites).toEqual([{ key: "secrets.enabled", value: true }]);
+			expect(outcome.message).toContain("Secret protection is OFF");
+		} finally {
+			delete process.env.VEYYON_AUTO_ENABLE_REFUSED;
+		}
 	});
 });

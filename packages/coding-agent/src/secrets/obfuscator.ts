@@ -1,30 +1,19 @@
 import * as crypto from "node:crypto";
 import type { AgentMessage } from "@veyyon/agent-core";
-import {
-	type AssistantMessage,
-	type Context,
-	type ImageContent,
-	type Message,
-	type TextContent,
-	type Tool,
-	toolWireSchema,
-} from "@veyyon/ai";
-import { errorMessage } from "@veyyon/utils";
+import type { AssistantMessage, Context, ImageContent, Message, TextContent, Tool } from "@veyyon/ai";
+import { toolWireSchema } from "@veyyon/ai/utils/schema";
+import { isWellFormedUtf16, utf8ByteLength } from "@veyyon/utils/string-length";
+import { errorMessage } from "@veyyon/utils/type-guards";
+import { type JsonWithOptionalFields, mapJsonStrings } from "../json-transform";
 import type { SessionContext } from "../session/session-context";
 import {
 	buildNamePlaceholder,
 	buildValuePlaceholder,
 	isSecretPlaceholder,
 	isValidSecretName,
-	isWellFormedUtf16,
 	PLACEHOLDER_RE,
 } from "./placeholder";
-import {
-	canObfuscatePlainValue,
-	MIN_OBFUSCATABLE_LENGTH,
-	secretCharacterLength,
-	type SecretRejection,
-} from "./policy";
+import { canObfuscatePlainValue, MIN_OBFUSCATABLE_LENGTH, type SecretRejection, secretCharacterLength } from "./policy";
 import { compileSecretRegex } from "./regex";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -111,30 +100,6 @@ export interface SecretObfuscatorOptions {
 	placeholderKey?: Uint8Array;
 }
 
-/**
- * JSON as it arrives from a caller's object, where an optional property is `undefined`.
- *
- * NAMED FOR WHAT MAKES IT DIFFERENT, because it used to be called `JsonValue` and it is
- * not the repository's `JsonValue` (`@veyyon/utils`): that one's objects hold `JsonValue`
- * and never `undefined`, since `undefined` is not JSON and `JSON.stringify` drops the
- * property rather than encoding it. Two exported types with one name and different
- * contents is a bug waiting for an editor's auto-import to pick the wrong one, and the
- * difference here is load-bearing rather than accidental: {@link mapJsonStrings} walks
- * tool-call arguments that came from a model, and a TypeScript object literal with
- * optional fields is not assignable to the strict shape, so the walker would refuse the
- * values it exists to rewrite.
- */
-export type JsonWithOptionalFields =
-	| string
-	| number
-	| boolean
-	| null
-	| JsonWithOptionalFields[]
-	| { [key: string]: JsonWithOptionalFields | undefined };
-
-/** An object of {@link JsonWithOptionalFields}, which is what a tool's arguments are. */
-export type JsonRecord = { [key: string]: JsonWithOptionalFields | undefined };
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Deterministic replacement generation
 // ═══════════════════════════════════════════════════════════════════════════
@@ -160,14 +125,6 @@ export const MAX_RUNTIME_SECRET_VALUES = 10_000;
 export const MAX_RUNTIME_SECRET_BYTES = 8 * 1024 * 1024;
 /** Maximum cumulative configured source/replacement bytes retained by one obfuscator. */
 export const MAX_CONFIGURED_SECRET_BYTES = 16 * 1024 * 1024;
-/** Maximum container nesting accepted by the iterative JSON transformation walk. */
-export const MAX_JSON_TRANSFORM_DEPTH = 128;
-/** Maximum unique containers plus primitive positions visited by one JSON transformation. */
-export const MAX_JSON_TRANSFORM_NODES = 100_000;
-/** Maximum cumulative plain-object keys visited by one JSON transformation. */
-export const MAX_JSON_TRANSFORM_KEYS = 100_000;
-/** Maximum cumulative UTF-8 bytes in input or transformed JSON strings and keys. */
-export const MAX_JSON_TRANSFORM_STRING_BYTES = 16 * 1024 * 1024;
 /** Long aliases avoid trie-per-character overhead; their count and cumulative bytes stay bounded. */
 const MAX_LONG_TERMINAL_ALIASES = 16;
 const SHORT_ALIAS_TRIE_CODE_UNITS = 256;
@@ -187,9 +144,7 @@ interface LiteralMatcherNode<T> {
  * matches, and callers cap match events before retaining replacement state.
  */
 class LiteralMatcher<T> {
-	readonly #nodes: Array<LiteralMatcherNode<T>> = [
-		{ children: new Map(), fail: 0, outputLink: 0, outputs: [] },
-	];
+	readonly #nodes: Array<LiteralMatcherNode<T>> = [{ children: new Map(), fail: 0, outputLink: 0, outputs: [] }];
 	readonly #longEntries: Array<{ literal: string; value: T }> = [];
 
 	constructor(entries: Iterable<readonly [string, T]>) {
@@ -235,8 +190,7 @@ class LiteralMatcher<T> {
 				if (transition !== undefined && transition !== childIndex) failure = transition;
 				const child = this.#nodes[childIndex];
 				child.fail = failure;
-				child.outputLink =
-					this.#nodes[failure].outputs.length > 0 ? failure : this.#nodes[failure].outputLink;
+				child.outputLink = this.#nodes[failure].outputs.length > 0 ? failure : this.#nodes[failure].outputLink;
 				queue.push(childIndex);
 			}
 		}
@@ -269,11 +223,7 @@ class LiteralMatcher<T> {
 			}
 		}
 		for (const output of this.#longEntries) {
-			for (
-				let start = text.indexOf(output.literal);
-				start >= 0;
-				start = text.indexOf(output.literal, start + 1)
-			) {
+			for (let start = text.indexOf(output.literal); start >= 0; start = text.indexOf(output.literal, start + 1)) {
 				if (++matchCount > maxMatches) {
 					throw new Error("Refusing a secret transformation with too many match events.");
 				}
@@ -296,40 +246,17 @@ class LiteralMatcher<T> {
 	}
 }
 
-function utf8ByteLengthInRange(value: string, start = 0, end = value.length): number {
-	let bytes = 0;
-	for (let index = start; index < end; index++) {
-		const codeUnit = value.charCodeAt(index);
-		if (codeUnit <= 0x7f) {
-			bytes++;
-		} else if (codeUnit <= 0x7ff) {
-			bytes += 2;
-		} else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff && index + 1 < end) {
-			const next = value.charCodeAt(index + 1);
-			if (next >= 0xdc00 && next <= 0xdfff) {
-				bytes += 4;
-				index++;
-			} else {
-				bytes += 3;
-			}
-		} else {
-			bytes += 3;
-		}
-	}
-	return bytes;
-}
-
 function assertBoundedSecretString(value: string): void {
 	if (!isWellFormedUtf16(value)) {
 		throw new Error("Refusing ill-formed UTF-16 in secret transformation data.");
 	}
-	if (utf8ByteLengthInRange(value) > MAX_SECRET_VALUE_BYTES) {
+	if (utf8ByteLength(value) > MAX_SECRET_VALUE_BYTES) {
 		throw new Error("Refusing secret transformation data above the per-value byte limit.");
 	}
 }
 
 function assertBoundedTransformText(value: string): number {
-	const bytes = utf8ByteLengthInRange(value);
+	const bytes = utf8ByteLength(value);
 	if (bytes > MAX_TRANSFORMED_TEXT_BYTES) {
 		throw new Error("Refusing a secret transformation above the text byte limit.");
 	}
@@ -342,16 +269,8 @@ function assertBoundedTransformText(value: string): number {
  * The fixed-size keyed seed is expanded in counter mode. Runtime is O(source bytes + output bytes),
  * rather than re-interpolating and re-hashing the whole source for each output block.
  */
-function generateDeterministicReplacement(
-	secret: string,
-	key: Uint8Array,
-	forbidden: LiteralMatcher<true>,
-): string {
-	const seed = crypto
-		.createHmac("sha256", key)
-		.update("replacement-source\0", "utf8")
-		.update(secret, "utf8")
-		.digest();
+function generateDeterministicReplacement(secret: string, key: Uint8Array, forbidden: LiteralMatcher<true>): string {
+	const seed = crypto.createHmac("sha256", key).update("replacement-source\0", "utf8").update(secret, "utf8").digest();
 	const counterBytes = Buffer.allocUnsafe(8);
 	for (let attempt = 0; attempt < 256; attempt++) {
 		const chunks: string[] = [];
@@ -444,7 +363,6 @@ interface CompiledRegexEntry {
 	aliases: Map<string, string>;
 }
 
-
 export class SecretObfuscator {
 	/** Reversible and retired plain secrets: secret → provider-safe placeholder. */
 	#plainMappings = new Map<string, string>();
@@ -484,6 +402,8 @@ export class SecretObfuscator {
 
 	/** Values known to be sensitive, including bounded regex matches discovered at runtime. */
 	#knownSecretValues = new Set<string>();
+	/** Opaque value-placeholder ownership survives retirement so an HMAC collision cannot be reused. */
+	#valuePlaceholderOwners = new Map<string, string>();
 	#runtimeSecretCount = 0;
 	#runtimeSecretBytes = 0;
 
@@ -521,7 +441,7 @@ export class SecretObfuscator {
 	#registerAlias(alias: string, entryIndex: number): void {
 		assertBoundedSecretString(alias);
 		if (!this.#terminalAliases.has(alias)) {
-			const bytes = utf8ByteLengthInRange(alias);
+			const bytes = utf8ByteLength(alias);
 			if (this.#terminalAliasBytes + bytes > MAX_TERMINAL_ALIAS_BYTES) {
 				throw new Error("Refusing one-way alias state above the cumulative byte limit.");
 			}
@@ -580,7 +500,7 @@ export class SecretObfuscator {
 	#rememberRuntimeSecret(value: string): void {
 		if (this.#knownSecretValues.has(value)) return;
 		assertBoundedSecretString(value);
-		const bytes = utf8ByteLengthInRange(value);
+		const bytes = utf8ByteLength(value);
 		if (
 			this.#runtimeSecretCount + 1 > MAX_RUNTIME_SECRET_VALUES ||
 			this.#runtimeSecretBytes + bytes > MAX_RUNTIME_SECRET_BYTES
@@ -591,7 +511,6 @@ export class SecretObfuscator {
 		this.#runtimeSecretCount++;
 		this.#runtimeSecretBytes += bytes;
 	}
-
 
 	constructor(entries: SecretEntry[], options?: SecretObfuscatorOptions) {
 		if (entries.length > MAX_SECRET_ENTRIES) {
@@ -607,6 +526,7 @@ export class SecretObfuscator {
 		this.#now = options?.now ?? Date.now;
 
 		const sourcePolicies = new Map<string, { mode: "obfuscate" | "replace"; replacement?: string }>();
+		const namedPolicies = new Map<string, { content: string; expiresAt: number | null }>();
 		const configuredPlainSources: Array<readonly [string, true]> = [];
 		let configuredBytes = 0;
 		let regexEntryCount = 0;
@@ -614,26 +534,60 @@ export class SecretObfuscator {
 			if (!isWellFormedUtf16(entry.content)) {
 				throw new Error("Refusing ill-formed UTF-16 in secret transformation data.");
 			}
-			const contentBytes = utf8ByteLengthInRange(entry.content);
+			const contentBytes = utf8ByteLength(entry.content);
 			if (contentBytes > MAX_SECRET_VALUE_BYTES) {
 				throw new Error("Refusing secret transformation data above the per-value byte limit.");
 			}
 			configuredBytes += contentBytes;
 			if (entry.replacement !== undefined) {
 				assertOneWayReplacement(entry.replacement);
-				configuredBytes += utf8ByteLengthInRange(entry.replacement);
+				configuredBytes += utf8ByteLength(entry.replacement);
 			}
 			if (configuredBytes > MAX_CONFIGURED_SECRET_BYTES) {
 				throw new Error("Refusing a secret registry above the cumulative byte limit.");
 			}
 			this.#assertValidExpiry(entry.expiresAt);
 			const mode = entry.mode ?? "obfuscate";
+			if (entry.replacement !== undefined && mode !== "replace") {
+				throw new Error('Refusing a "replacement" on a secret outside "replace" mode.');
+			}
+			if (entry.flags !== undefined && entry.type !== "regex") {
+				throw new Error('Refusing regex "flags" on a plain secret.');
+			}
+			if (entry.minLength !== undefined) {
+				if (!Number.isInteger(entry.minLength) || entry.minLength < 1) {
+					throw new Error('Refusing a secret "minLength" that is not a whole number of 1 or more.');
+				}
+				if (entry.type !== "regex" || mode === "replace") {
+					throw new Error('Refusing "minLength" where no reversible regex match floor applies.');
+				}
+			}
+			if (entry.name !== undefined) {
+				if (entry.type !== "plain" || mode !== "obfuscate") {
+					throw new Error("Refusing a secret name where no reversible plain placeholder is created.");
+				}
+				if (!isValidSecretName(entry.name)) {
+					throw new Error("Refusing an invalid secret name in a reversible placeholder.");
+				}
+				const namedPolicy = { content: entry.content, expiresAt: entry.expiresAt ?? null };
+				const existingNamedPolicy = namedPolicies.get(entry.name);
+				if (
+					existingNamedPolicy !== undefined &&
+					(existingNamedPolicy.content !== namedPolicy.content ||
+						existingNamedPolicy.expiresAt !== namedPolicy.expiresAt)
+				) {
+					throw new Error("Refusing conflicting declarations for the same secret name.");
+				}
+				namedPolicies.set(entry.name, namedPolicy);
+			}
+			if (entry.expiresAt !== undefined && (entry.type !== "plain" || mode !== "obfuscate")) {
+				throw new Error("Refusing an expiry where no reversible plain placeholder is created.");
+			}
 			const sourceKey = `${entry.type}\0${entry.content}`;
 			const existingPolicy = sourcePolicies.get(sourceKey);
 			if (
 				existingPolicy !== undefined &&
-				(existingPolicy.mode !== mode ||
-					(mode === "replace" && existingPolicy.replacement !== entry.replacement))
+				(existingPolicy.mode !== mode || (mode === "replace" && existingPolicy.replacement !== entry.replacement))
 			) {
 				throw new Error("Refusing conflicting policies for the same exact secret source.");
 			}
@@ -695,7 +649,7 @@ export class SecretObfuscator {
 
 			try {
 				const regex = compileSecretRegex(entry.content, entry.flags);
-				let replacement = entry.replacement;
+				const replacement = entry.replacement;
 				if (mode === "replace" && replacement !== undefined) {
 					if (this.#configuredForbiddenMatcher.hasMatch(replacement)) {
 						throw new Error("replacement contains a configured exact secret source");
@@ -726,9 +680,14 @@ export class SecretObfuscator {
 		this.#hasAny = hasRealSecret;
 	}
 
-	/** Build an unnamed placeholder and fail closed on the retained-HMAC collision case. */
+	/** Build an unnamed placeholder and fail closed on retained or structural collision cases. */
 	#buildValuePlaceholder(secret: string): string {
 		const placeholder = buildValuePlaceholder(secret, this.#placeholderKey);
+		const owner = this.#valuePlaceholderOwners.get(placeholder);
+		if (owner !== undefined && owner !== secret) {
+			throw new Error("Refusing to register two secrets with the same opaque placeholder.");
+		}
+		this.#valuePlaceholderOwners.set(placeholder, secret);
 		const existing = this.#deobfuscateMap.get(placeholder);
 		if (existing !== undefined && existing !== secret) {
 			throw new Error("Refusing to register two secrets with the same opaque placeholder.");
@@ -768,7 +727,7 @@ export class SecretObfuscator {
 	 */
 	retainRedactionsFrom(previous: SecretObfuscator): void {
 		for (const value of previous.#knownSecretValues) {
-			if (this.#plainMappings.has(value)) continue;
+			if (this.#plainMappings.has(value) || this.#replaceMappings.has(value)) continue;
 			this.#knownSecretValues.add(value);
 			this.#plainMappings.set(value, this.#buildValuePlaceholder(value));
 			this.#hasAny = true;
@@ -1097,11 +1056,10 @@ export class SecretObfuscator {
 
 	/** Apply non-overlapping replacements while carrying protected output spans forward. */
 	#applyProtectedReplacements(state: ProtectedText, replacements: readonly TextReplacement[]): ProtectedText {
-		let outputBytes = utf8ByteLengthInRange(state.text);
+		let outputBytes = utf8ByteLength(state.text);
 		for (const replacement of replacements) {
 			outputBytes +=
-				utf8ByteLengthInRange(replacement.replacement) -
-				utf8ByteLengthInRange(state.text, replacement.start, replacement.end);
+				utf8ByteLength(replacement.replacement) - utf8ByteLength(state.text, replacement.start, replacement.end);
 			if (outputBytes > MAX_TRANSFORMED_TEXT_BYTES) {
 				throw new Error("Refusing a secret transformation above the output byte limit.");
 			}
@@ -1176,11 +1134,7 @@ export class SecretObfuscator {
 			let blocked = false;
 			for (let check = spanIndex; check < state.spans.length && state.spans[check].start < candidate.end; check++) {
 				const span = state.spans[check];
-				if (
-					span.allowContainingLiteral !== true ||
-					candidate.start > span.start ||
-					candidate.end < span.end
-				) {
+				if (span.allowContainingLiteral !== true || candidate.start > span.start || candidate.end < span.end) {
 					blocked = true;
 					break;
 				}
@@ -1209,7 +1163,7 @@ export class SecretObfuscator {
 			}
 			const secret = this.#deobfuscateMap.get(match[0]);
 			if (secret === undefined) continue;
-			outputBytes += utf8ByteLengthInRange(secret) - utf8ByteLengthInRange(match[0]);
+			outputBytes += utf8ByteLength(secret) - utf8ByteLength(match[0]);
 			if (outputBytes > MAX_TRANSFORMED_TEXT_BYTES) {
 				PLACEHOLDER_RE.lastIndex = 0;
 				throw new Error("Refusing a secret expansion above the output byte limit.");
@@ -1404,11 +1358,7 @@ export function obfuscateToolArguments(
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Fail closed rather than modifying authenticated provider replay metadata or sending a secret in it. */
-function assertOpaqueProviderFieldSafe(
-	obfuscator: SecretObfuscator,
-	value: string | undefined,
-	field: string,
-): void {
+function assertOpaqueProviderFieldSafe(obfuscator: SecretObfuscator, value: string | undefined, field: string): void {
 	if (value !== undefined && obfuscator.obfuscate(value) !== value) {
 		throw new Error(
 			`Refusing to send provider context because opaque ${field} metadata contains a configured secret.`,
@@ -1417,10 +1367,7 @@ function assertOpaqueProviderFieldSafe(
 }
 
 /** Native replay payloads may contain authenticated or encrypted strings, so they are validation-only. */
-function assertOpaqueProviderPayloadSafe(
-	obfuscator: SecretObfuscator,
-	payload: unknown,
-): void {
+function assertOpaqueProviderPayloadSafe(obfuscator: SecretObfuscator, payload: unknown): void {
 	if (mapJsonStrings(payload, text => obfuscator.obfuscate(text)) !== payload) {
 		throw new Error(
 			"Refusing to send provider context because opaque native replay metadata contains a configured secret.",
@@ -1465,9 +1412,7 @@ function obfuscateAssistantContentForProvider(
 			const thinking = obfuscator.obfuscate(block.thinking);
 			if (thinking === block.thinking) return block;
 			if (block.thinkingSignature !== undefined || block.itemId !== undefined) {
-				throw new Error(
-					"Refusing to send provider context because signed thinking contains a configured secret.",
-				);
+				throw new Error("Refusing to send provider context because signed thinking contains a configured secret.");
 			}
 			changed = true;
 			return { ...block, thinking };
@@ -1534,11 +1479,7 @@ export function obfuscateMessages(obfuscator: SecretObfuscator, messages: Messag
 			const content = obfuscateTextBlocks(obfuscator, message.content);
 			const toolCallId = obfuscator.obfuscate(message.toolCallId);
 			const toolName = obfuscator.obfuscate(message.toolName);
-			if (
-				content === message.content &&
-				toolCallId === message.toolCallId &&
-				toolName === message.toolName
-			) {
+			if (content === message.content && toolCallId === message.toolCallId && toolName === message.toolName) {
 				return message;
 			}
 			changed = true;
@@ -1584,246 +1525,45 @@ function obfuscateToolDefinition(obfuscator: SecretObfuscator, tool: Tool): Tool
 /** Redact every provider-bound context surface, including prompts and tool schemas. */
 export function obfuscateProviderContext(obfuscator: SecretObfuscator | undefined, context: Context): Context {
 	if (!obfuscator?.hasSecrets()) return context;
-	const systemPrompt = context.systemPrompt?.map(text => obfuscator.obfuscate(text));
-	const messages = obfuscateMessages(obfuscator, context.messages);
-	const tools = context.tools?.map(tool => obfuscateToolDefinition(obfuscator, tool));
-	return { ...context, systemPrompt, messages, tools };
-}
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Helpers
-// ═══════════════════════════════════════════════════════════════════════════
-
-interface JsonWalkFrame {
-	original: unknown[] | Record<string, unknown>;
-	kind: "array" | "object";
-	keys: string[];
-	sourceValues: unknown[];
-	mappedKeys: string[];
-	mappedValues: unknown[];
-	prototype: object | null;
-	target: JsonWalkTarget;
-}
-
-interface JsonWalkTarget {
-	frame: JsonWalkFrame | undefined;
-	index: number;
-}
-
-type JsonWalkEvent =
-	| { type: "visit"; value: unknown; depth: number; target: JsonWalkTarget }
-	| { type: "key"; key: string; frame: JsonWalkFrame; index: number }
-	| { type: "complete"; frame: JsonWalkFrame };
-
-/**
- * Map every string in bounded JSON, including object keys.
- *
- * The explicit stack prevents call-stack exhaustion. Gray/done memo states reject cycles and map
- * shared DAG nodes once, while completion allocates only containers whose key or value changed.
- * Arrays and plain records are the complete walk domain; typed arrays and class instances are
- * rejected before their properties can be enumerated byte-by-byte.
- */
-export function mapJsonStrings<T>(value: T, fn: (s: string) => string): T {
-	const memo = new WeakMap<object, { status: "visiting" | "done"; result?: unknown }>();
-	const events: JsonWalkEvent[] = [
-		{ type: "visit", value, depth: 0, target: { frame: undefined, index: 0 } },
-	];
-	let rootResult: unknown;
-	let visitedNodes = 0;
-	let visitedKeys = 0;
-	let inputStringBytes = 0;
-	let outputStringBytes = 0;
-
-	const mapString = (input: string): string => {
-		if (!isWellFormedUtf16(input)) {
-			throw new Error("Refusing ill-formed UTF-16 in JSON transformation data.");
-		}
-		inputStringBytes += utf8ByteLengthInRange(input);
-		if (inputStringBytes > MAX_JSON_TRANSFORM_STRING_BYTES) {
-			throw new Error("Refusing a JSON transformation above the cumulative input string-byte limit.");
-		}
-		const output = fn(input);
-		if (typeof output !== "string" || !isWellFormedUtf16(output)) {
-			throw new Error("Refusing an ill-formed string produced by a JSON transformation.");
-		}
-		outputStringBytes += utf8ByteLengthInRange(output);
-		if (outputStringBytes > MAX_JSON_TRANSFORM_STRING_BYTES) {
-			throw new Error("Refusing a JSON transformation above the cumulative output string-byte limit.");
-		}
-		return output;
-	};
-
-	const assign = (target: JsonWalkTarget, result: unknown): void => {
-		if (target.frame === undefined) rootResult = result;
-		else target.frame.mappedValues[target.index] = result;
-	};
-
-	while (events.length > 0) {
-		const event = events.pop();
-		if (event === undefined) break;
-		if (event.type === "key") {
-			event.frame.mappedKeys[event.index] = mapString(event.key);
-			continue;
-		}
-		if (event.type === "complete") {
-			const frame = event.frame;
-			let changed = false;
-			if (frame.kind === "array") {
-				for (let index = 0; index < frame.sourceValues.length; index++) {
-					if (frame.mappedValues[index] !== frame.sourceValues[index]) {
-						changed = true;
-						break;
-					}
-				}
-				let result: unknown = frame.original;
-				if (changed) {
-					const output = (frame.original as unknown[]).slice();
-					for (let index = 0; index < frame.sourceValues.length; index++) {
-						if (frame.mappedValues[index] !== frame.sourceValues[index]) {
-							output[index] = frame.mappedValues[index];
-						}
-					}
-					result = output;
-				}
-				assign(frame.target, result);
-				const memoEntry = memo.get(frame.original);
-				if (memoEntry === undefined) throw new Error("JSON transformation memo state was lost.");
-				memoEntry.status = "done";
-				memoEntry.result = result;
-				continue;
-			}
-
-			const seenKeys = new Set<string>();
-			for (let index = 0; index < frame.keys.length; index++) {
-				const mappedKey = frame.mappedKeys[index];
-				if (seenKeys.has(mappedKey)) {
-					throw new Error("Refusing to rewrite two JSON object fields as the same protected key.");
-				}
-				seenKeys.add(mappedKey);
-				if (mappedKey !== frame.keys[index] || frame.mappedValues[index] !== frame.sourceValues[index]) {
-					changed = true;
-				}
-			}
-			let result: unknown = frame.original;
-			if (changed) {
-				const output = Object.create(frame.prototype) as Record<string, unknown>;
-				for (let index = 0; index < frame.keys.length; index++) {
-					Object.defineProperty(output, frame.mappedKeys[index], {
-						value: frame.mappedValues[index],
-						enumerable: true,
-						configurable: true,
-						writable: true,
-					});
-				}
-				result = output;
-			}
-			assign(frame.target, result);
-			const memoEntry = memo.get(frame.original);
-			if (memoEntry === undefined) throw new Error("JSON transformation memo state was lost.");
-			memoEntry.status = "done";
-			memoEntry.result = result;
-			continue;
-		}
-
-		const current = event.value;
-		if (typeof current === "string") {
-			if (++visitedNodes > MAX_JSON_TRANSFORM_NODES) {
-				throw new Error("Refusing a JSON transformation above the node limit.");
-			}
-			assign(event.target, mapString(current));
-			continue;
-		}
-		if (
-			current === null ||
-			current === undefined ||
-			typeof current === "boolean" ||
-			(typeof current === "number" && Number.isFinite(current))
-		) {
-			if (++visitedNodes > MAX_JSON_TRANSFORM_NODES) {
-				throw new Error("Refusing a JSON transformation above the node limit.");
-			}
-			assign(event.target, current);
-			continue;
-		}
-		if (typeof current !== "object") {
-			throw new Error("Refusing a non-JSON value in secret transformation data.");
-		}
-		if (event.depth > MAX_JSON_TRANSFORM_DEPTH) {
-			throw new Error("Refusing a JSON transformation above the depth limit.");
-		}
-		const existingMemo = memo.get(current);
-		if (existingMemo?.status === "visiting") {
-			throw new Error("Refusing a cyclic JSON transformation graph.");
-		}
-		if (existingMemo?.status === "done") {
-			assign(event.target, existingMemo.result);
-			continue;
-		}
-		if (++visitedNodes > MAX_JSON_TRANSFORM_NODES) {
-			throw new Error("Refusing a JSON transformation above the node limit.");
-		}
-
-		const isArray = Array.isArray(current);
-		const prototype = Object.getPrototypeOf(current);
-		if (!isArray && prototype !== Object.prototype && prototype !== null) {
-			throw new Error("Refusing a non-plain object in JSON transformation data.");
-		}
-		const keys: string[] = [];
-		const sourceValues: unknown[] = [];
-		if (isArray) {
-			if (current.length > MAX_JSON_TRANSFORM_NODES - visitedNodes) {
-				throw new Error("Refusing a JSON transformation above the array-item limit.");
-			}
-			for (let index = 0; index < current.length; index++) {
-				const descriptor = Object.getOwnPropertyDescriptor(current, String(index));
-				if (descriptor !== undefined && !("value" in descriptor)) {
-					throw new Error("Refusing an accessor property in JSON transformation data.");
-				}
-				keys.push(String(index));
-				sourceValues.push(descriptor?.value);
-			}
-		} else {
-			const record = current as Record<string, unknown>;
-			if (Object.getOwnPropertySymbols(record).some(symbol => Object.getOwnPropertyDescriptor(record, symbol)?.enumerable)) {
-				throw new Error("Refusing an enumerable symbol key in JSON transformation data.");
-			}
-			for (const key in record) {
-				if (!Object.hasOwn(record, key)) continue;
-				if (++visitedKeys > MAX_JSON_TRANSFORM_KEYS) {
-					throw new Error("Refusing a JSON transformation above the object-key limit.");
-				}
-				const descriptor = Object.getOwnPropertyDescriptor(record, key);
-				if (descriptor === undefined || !("value" in descriptor)) {
-					throw new Error("Refusing an accessor property in JSON transformation data.");
-				}
-				keys.push(key);
-				sourceValues.push(descriptor.value);
-			}
-		}
-
-		const frame: JsonWalkFrame = {
-			original: current as unknown[] | Record<string, unknown>,
-			kind: isArray ? "array" : "object",
-			keys,
-			sourceValues,
-			mappedKeys: isArray ? keys : new Array(keys.length),
-			mappedValues: new Array(sourceValues.length),
-			prototype,
-			target: event.target,
-		};
-		memo.set(current, { status: "visiting" });
-		assign(event.target, current);
-		events.push({ type: "complete", frame });
-		for (let index = sourceValues.length - 1; index >= 0; index--) {
-			events.push({
-				type: "visit",
-				value: sourceValues[index],
-				depth: event.depth + 1,
-				target: { frame, index },
-			});
-			if (!isArray) events.push({ type: "key", key: keys[index], frame, index });
+	let systemPrompt = context.systemPrompt;
+	if (systemPrompt !== undefined) {
+		for (let index = 0; index < systemPrompt.length; index++) {
+			const text = obfuscator.obfuscate(systemPrompt[index]);
+			if (text === systemPrompt[index]) continue;
+			if (systemPrompt === context.systemPrompt) systemPrompt = [...systemPrompt];
+			systemPrompt[index] = text;
 		}
 	}
 
-	return rootResult as T;
+	const messages = obfuscateMessages(obfuscator, context.messages);
+	let tools = context.tools;
+	if (tools !== undefined) {
+		for (let index = 0; index < tools.length; index++) {
+			const tool = obfuscateToolDefinition(obfuscator, tools[index]);
+			if (tool === tools[index]) continue;
+			if (tools === context.tools) tools = [...tools];
+			tools[index] = tool;
+		}
+	}
+
+	if (systemPrompt === context.systemPrompt && messages === context.messages && tools === context.tools)
+		return context;
+	return { ...context, systemPrompt, messages, tools };
 }
+
+/**
+ * The JSON walk moved to `../json-transform`, which imports two string measurements and nothing
+ * else. It was never about secrets: `argot-wire.ts` and `provider-boundary.ts` call it too, and
+ * reaching it through this module cost them the secret registry and the 18-module JSON Schema
+ * validator behind `toolWireSchema`. Prefer importing from `@veyyon/coding-agent/json-transform`.
+ */
+export {
+	type JsonRecord,
+	type JsonWithOptionalFields,
+	MAX_JSON_TRANSFORM_DEPTH,
+	MAX_JSON_TRANSFORM_KEYS,
+	MAX_JSON_TRANSFORM_NODES,
+	MAX_JSON_TRANSFORM_STRING_BYTES,
+	mapJsonStrings,
+} from "../json-transform";

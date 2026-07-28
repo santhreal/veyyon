@@ -111,6 +111,31 @@ describe("--from-env outside add", () => {
 	});
 });
 
+describe("ownership is checked before option values", () => {
+	/**
+	 * A subcommand that does not own an option must not parse or validate its following token.
+	 * Otherwise malformed values produce the wrong diagnostic and may echo bytes the command
+	 * never had authority to interpret.
+	 */
+	it("refuses the option itself even when its value is malformed", () => {
+		const cases = [
+			["list --ttl not-a-lifetime", "/secret list does not take --ttl"],
+			["rm github-token --scope nowhere", "/secret rm does not take --scope"],
+			["extend github-token --limit not-a-number", "/secret extend does not take --limit"],
+			["help --from-env --candidate-secret", "/secret help does not take --from-env"],
+		] as const;
+
+		for (const [args, expected] of cases) {
+			const message = refusal(args);
+			expect(message).toContain(expected);
+			expect(message).not.toContain("not-a-lifetime");
+			expect(message).not.toContain("nowhere");
+			expect(message).not.toContain("not-a-number");
+			expect(message).not.toContain("--candidate-secret");
+		}
+	});
+});
+
 describe("the refusal's shape", () => {
 	/** The usage text is attached, so the operator sees the whole command surface at once. */
 	it("shows the usage", () => {

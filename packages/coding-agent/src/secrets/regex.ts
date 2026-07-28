@@ -1,4 +1,4 @@
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage } from "@veyyon/utils/type-guards";
 
 const MAX_PATTERN_LENGTH = 4096;
 const MAX_GROUP_DEPTH = 64;
@@ -124,8 +124,7 @@ class PatternSafetyParser {
 			minimumWidth: Math.min(...branches.map(branch => branch.minimumWidth)),
 			maximumWidth: Math.max(...branches.map(branch => branch.maximumWidth)),
 			variableWidthAlternations:
-				currentVariableWidthAlternation +
-				Math.max(...branches.map(branch => branch.variableWidthAlternations)),
+				currentVariableWidthAlternation + Math.max(...branches.map(branch => branch.variableWidthAlternations)),
 			hasVariableQuantifier: branches.some(branch => branch.hasVariableQuantifier),
 			hasAlternation: branches.length > 1 || branches.some(branch => branch.hasAlternation),
 			startsWithVariableAtom: mergeBoundaryAtoms(branches.map(branch => branch.startsWithVariableAtom)),
@@ -153,9 +152,7 @@ class PatternSafetyParser {
 				atom.startsWithVariableAtom !== undefined &&
 				variableAtomsMayOverlap(endsWithVariableAtom, atom.startsWithVariableAtom, this.ignoreCase)
 			) {
-				throw new Error(
-					"concatenated variable quantifiers cannot be proven safe from catastrophic backtracking",
-				);
+				throw new Error("concatenated variable quantifiers cannot be proven safe from catastrophic backtracking");
 			}
 			nullable &&= atom.nullable;
 			minimumWidth += atom.minimumWidth;
@@ -420,9 +417,7 @@ function validatePatternSafety(pattern: string, flags: string): void {
 		throw new Error("the pattern can match without consuming input; a zero-width match protects no secret value");
 	}
 	if (analysis.variableWidthAlternations > 1) {
-		throw new Error(
-			"concatenated variable-width alternations cannot be proven safe from catastrophic backtracking",
-		);
+		throw new Error("concatenated variable-width alternations cannot be proven safe from catastrophic backtracking");
 	}
 }
 

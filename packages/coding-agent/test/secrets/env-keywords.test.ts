@@ -17,13 +17,13 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { collectEnvSecrets } from "@veyyon/coding-agent/secrets";
 import {
 	BUNDLED_ENV_KEYWORDS,
 	buildEnvSecretPattern,
 	ENV_KEYWORDS_FILENAME,
 	loadEnvSecretKeywords,
 } from "@veyyon/coding-agent/secrets/env-keywords";
-import { collectEnvSecrets } from "@veyyon/coding-agent/secrets";
 
 const bundled = (): RegExp => buildEnvSecretPattern([...BUNDLED_ENV_KEYWORDS]);
 
@@ -179,6 +179,18 @@ describe("the pattern builder", () => {
 		expect(pattern.test("VAULTPASS_FILE")).toBe(true);
 		expect(pattern.test("VAULTPASSWORDLESS")).toBe(false);
 	});
+
+	/** An empty item is not an empty list: compiling it as an alternation would detect every variable. */
+	it("refuses empty and whitespace-only keyword items", () => {
+		expect(() => buildEnvSecretPattern([""])).toThrow(/empty environment-secret keyword/i);
+		expect(() => buildEnvSecretPattern(["  \t"])).toThrow(/empty environment-secret keyword/i);
+	});
+
+	/** Direct callers receive the same whitespace normalization as keywords loaded from YAML. */
+	it("trims and de-duplicates direct keyword input", () => {
+		const pattern = buildEnvSecretPattern(["  CUSTOM_TOKEN  ", "custom_token"]);
+		expect(pattern.test("MY_CUSTOM_TOKEN")).toBe(true);
+	});
 });
 
 describe("loading the list from disk", () => {
@@ -270,6 +282,16 @@ describe("loading the list from disk", () => {
 
 		await expect(loadEnvSecretKeywords({ cwd, agentDir })).rejects.toThrow(new RegExp(escapeForRegExp(filePath)));
 	});
+
+	/** Repeating the sole mapping key must not silently replace the operator's first keyword list. */
+	it("refuses duplicate keyword mapping keys", async () => {
+		await fs.writeFile(
+			path.join(agentDir, ENV_KEYWORDS_FILENAME),
+			"keywords:\n  - VAULTPASS\nkeywords:\n  - SCANSEED\n",
+		);
+
+		await expect(loadEnvSecretKeywords({ cwd, agentDir })).rejects.toThrow(/Map keys must be unique/);
+	});
 });
 
 describe("collecting from the real environment", () => {
@@ -326,6 +348,40 @@ describe("collecting from the real environment", () => {
 			expect(collectEnvSecrets(bundled()).some(entry => entry.content === "short")).toBe(false);
 		} finally {
 			delete process.env.VEYYON_ENVKW_TEST_KEY;
+		}
+	});
+
+	/** The heuristic uses the same Unicode code-point boundary as the obfuscator it feeds. */
+	it("counts astral environment values by code point", () => {
+		const seven = "🔐".repeat(7);
+		const eight = "🔐".repeat(8);
+		process.env.VEYYON_ENVKW_ASTRAL_SHORT_TOKEN = seven;
+		process.env.VEYYON_ENVKW_ASTRAL_EXACT_TOKEN = eight;
+		try {
+			const collected = collectEnvSecrets(/^VEYYON_ENVKW_ASTRAL_/);
+			expect(collected.some(entry => entry.content === seven)).toBe(false);
+			expect(collected.some(entry => entry.content === eight)).toBe(true);
+		} finally {
+			delete process.env.VEYYON_ENVKW_ASTRAL_SHORT_TOKEN;
+			delete process.env.VEYYON_ENVKW_ASTRAL_EXACT_TOKEN;
+		}
+	});
+
+	/** Caller regex scan state must be reset per name or adjacent matches are skipped under the global flag. */
+	it("does not carry a global pattern's lastIndex between variables", () => {
+		const first = "stateful-pattern-first-value";
+		const second = "stateful-pattern-second-value";
+		process.env.VEYYON_ENVKW_STATEFUL_ALPHA = first;
+		process.env.VEYYON_ENVKW_STATEFUL_BETA = second;
+		try {
+			const pattern = /^VEYYON_ENVKW_STATEFUL_/g;
+			const collected = collectEnvSecrets(pattern);
+			expect(pattern.lastIndex).toBe(0);
+			expect(collected.some(entry => entry.content === first)).toBe(true);
+			expect(collected.some(entry => entry.content === second)).toBe(true);
+		} finally {
+			delete process.env.VEYYON_ENVKW_STATEFUL_ALPHA;
+			delete process.env.VEYYON_ENVKW_STATEFUL_BETA;
 		}
 	});
 });

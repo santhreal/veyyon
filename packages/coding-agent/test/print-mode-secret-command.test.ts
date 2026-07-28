@@ -8,11 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { runPrintMode, type PrintModeOptions } from "@veyyon/coding-agent/modes/print-mode";
+import { type PrintModeOptions, runPrintMode } from "@veyyon/coding-agent/modes/print-mode";
 import { resolveVaultLocations, SecretVault } from "@veyyon/coding-agent/secrets/vault";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import * as secretHelper from "@veyyon/coding-agent/slash-commands/helpers/secret";
 import type { SecretCommandPort } from "@veyyon/coding-agent/slash-commands/helpers/secret";
+import * as secretHelper from "@veyyon/coding-agent/slash-commands/helpers/secret";
 
 interface PrintHarness {
 	session: AgentSession;
@@ -20,6 +20,8 @@ interface PrintHarness {
 	options: PrintModeOptions["commandRuntime"];
 	cwd: string;
 	agentDir: string;
+	/** Every `settings.set` the run performed, so the protection write can be asserted exactly. */
+	settingWrites: Array<{ key: string; value: unknown }>;
 }
 
 interface RestorableMock {
@@ -67,11 +69,16 @@ function createHarness(): PrintHarness {
 		getCwd: () => cwd,
 		appendMessage: vi.fn(),
 	};
+	// `secrets.enabled` is absent here, which is the shipped default, so a `/secret add` through
+	// this harness exercises the path that turns protection on. The stub records the write into the
+	// same map `get` reads, so the command sees its own effect exactly as the real Settings shows it.
+	const settingValues: Record<string, unknown> = { "secrets.auditLog": false, "secrets.defaultTtl": "1d" };
+	const settingWrites: Array<{ key: string; value: unknown }> = [];
 	const settings = {
-		get: (key: string) => {
-			if (key === "secrets.auditLog") return false;
-			if (key === "secrets.defaultTtl") return "1d";
-			return undefined;
+		get: (key: string) => settingValues[key],
+		set: (key: string, value: unknown) => {
+			settingWrites.push({ key, value });
+			settingValues[key] = value;
 		},
 	};
 	const session = {
@@ -107,6 +114,7 @@ function createHarness(): PrintHarness {
 		prompt,
 		cwd,
 		agentDir,
+		settingWrites,
 		options: {
 			session,
 			sessionManager: session.sessionManager,
@@ -143,37 +151,42 @@ describe("print-mode builtin secret dispatch", () => {
 		expect((await vault.load()).find(entry => entry.name === "PRINT_TOKEN")?.value).toBe(credential);
 		expect(stdout.join("")).not.toContain(credential);
 		expect(stderr.join("")).not.toContain(credential);
+		// Storing a credential from a non-interactive surface turns protection on too, and says so:
+		// a print-mode caller that stored a value and got no substitution would be the same dead end
+		// the TUI had.
+		expect(h.settingWrites).toEqual([{ key: "secrets.enabled", value: true }]);
+		expect(stdout.join("")).toContain("Secret protection was off");
 	});
 
 	/**
-	 * Negative/adversarial path: additional messages pass through the same gate.
-	 * Inline credential bytes are refused without prompt or echo, and JSON mode
-	 * emits one independently parseable command_output object rather than prose.
+	 * Negative/adversarial path: additional messages pass through the same gate. Inline credential
+	 * bytes are refused without prompt or echo, and the rejected promise gives the CLI an honest
+	 * failing exit path instead of disguising the error as successful command output.
 	 */
 	it.each(["text", "json"] as const)(
-		"refuses a secret-bearing additional message without leakage in %s mode",
+		"fails a secret-bearing additional message without leakage in %s mode",
 		async mode => {
 			const credential = "INLINE_PRINT_SECRET_93\ttrail  ";
 			const h = createHarness();
 
-			await runPrintMode(h.session, {
+			const failure = await runPrintMode(h.session, {
 				mode,
 				messages: [`/secret add PRINT_TOKEN ${credential}`],
 				commandRuntime: h.options,
-			});
+			}).then(
+				() => undefined,
+				(error: unknown) => error,
+			);
 
 			expect(h.prompt).not.toHaveBeenCalled();
-			const output = stdout.join("");
-			expect(output).toContain("--from-env");
-			expect(output).not.toContain(credential);
+			expect(failure).toBeInstanceOf(Error);
+			expect((failure as Error).message).toBe(
+				"This non-interactive client refuses inline credentials because they would be retained in command history. " +
+					"Use /secret add PRINT_TOKEN --from-env MY_TOKEN instead.",
+			);
+			expect((failure as Error).message).not.toContain(credential);
+			expect(stdout.join("")).toBe("");
 			expect(stderr.join("")).not.toContain(credential);
-			if (mode === "json") {
-				const lines = output.trimEnd().split("\n");
-				expect(lines).toHaveLength(1);
-				expect(JSON.parse(lines[0] ?? "")).toMatchObject({ type: "command_output" });
-			} else {
-				expect(() => JSON.parse(output)).toThrow();
-			}
 		},
 	);
 });

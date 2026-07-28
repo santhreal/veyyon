@@ -13,6 +13,7 @@ import {
 	resolveEffectiveApprovalMode,
 } from "../../tools/approval";
 import { cwdEscapingTargets, formatCwdBoundaryReason } from "../../tools/cwd-boundary";
+import { secretUseApprovalReason } from "../../tools/secret-use-boundary";
 import { normalizeToolEventInput, resolveToolEventInput } from "../tool-event-input";
 import { applyToolProxy } from "../tool-proxy";
 import type { ExtensionRunner } from "./runner";
@@ -155,10 +156,20 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 			boundaryTargets.length > 0
 				? formatCwdBoundaryReason(context?.sessionManager?.getCwd?.() ?? "", boundaryTargets)
 				: undefined;
-		const approvalRequired = approvalCheck.required || boundaryReason !== undefined;
+		// Secret-use boundary: a call whose arguments carry a real credential needs
+		// explicit permission in every non-yolo mode, by the same rule as the cwd
+		// boundary above. The tier decides what kind of tool this is and never what
+		// the arguments contain, so without this a `bash` that spends a stored token
+		// was indistinguishable from one that lists a directory. Expansion was
+		// audited and never gated, so the log could say afterwards which credential
+		// was spent and nothing could ask first. See secret-use-boundary.ts.
+		const secretReason =
+			approvalMode === "yolo" || bypassAllApprovals ? undefined : secretUseApprovalReason(params, context);
+		const approvalRequired = approvalCheck.required || boundaryReason !== undefined || secretReason !== undefined;
 		const approvalReason =
-			[approvalCheck.reason, boundaryReason].filter((part): part is string => part !== undefined).join(" ") ||
-			undefined;
+			[approvalCheck.reason, boundaryReason, secretReason]
+				.filter((part): part is string => part !== undefined)
+				.join(" ") || undefined;
 
 		if (approvalRequired) {
 			const hasApprovalHandlers =

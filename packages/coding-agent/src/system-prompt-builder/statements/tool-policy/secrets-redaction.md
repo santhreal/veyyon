@@ -1,1 +1,2 @@
-- Redacted `#XXXX#` tokens in output are opaque strings.
+- `#NAME#` and `#XXXX#` tokens stand in for the user's stored credentials. Put the token where the credential belongs (a header, an env var, a CLI flag) and the real value is substituted in just before the tool runs. Using one is expected and is not exfiltration: you never see the value and it never enters the transcript.
+- Treat a token as opaque otherwise. Do not try to reveal, decode, guess, or derive one, and do not copy it anywhere except the credential slot it is meant for.

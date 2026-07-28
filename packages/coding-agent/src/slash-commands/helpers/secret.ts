@@ -9,6 +9,7 @@
  * for a credential without showing it, and that difference is one injected function
  * ({@link SecretCommandPort.promptForValue}) rather than a second copy of the logic.
  */
+import { errorMessage } from "@veyyon/utils";
 import type { Settings } from "../../config/settings";
 import { SecretAuditLog, secretAuditPath } from "../../secrets/audit";
 import {
@@ -68,12 +69,19 @@ function locationsFor(port: SecretCommandPort): VaultLocations {
 export async function runSecretCommandForSurface(args: string, port: SecretCommandPort): Promise<SecretCommandOutcome> {
 	const surface = port.promptForValue === undefined ? "noninteractive" : "tui";
 	const request = parseSecretCommand(args, surface);
+	if (request.name !== undefined) request.name = normaliseSecretName(request.name);
 	if (request.subcommand === "add" && request.value !== undefined && port.promptForValue === undefined) {
 		throw new Error(
 			`This non-interactive client refuses inline credentials because they would be retained in command history. ` +
 				`Use /secret add ${request.name ?? "<name>"} --from-env MY_TOKEN instead.`,
 		);
 	}
+	const needsDefaultTtl =
+		request.ttl === undefined &&
+		(request.subcommand === "add" || (request.subcommand === "extend" && request.name !== undefined));
+	// Validate settings before a masked field accepts sensitive bytes. Otherwise a malformed
+	// default asks the operator for a credential and only then announces it cannot store it.
+	const defaultTtl = needsDefaultTtl ? resolveDefaultTtl(port.settings.get("secrets.defaultTtl")) : null;
 	const locations = locationsFor(port);
 	const vault = new SecretVault(locations);
 	const auditLog = port.settings.get("secrets.auditLog")
@@ -81,12 +89,9 @@ export async function runSecretCommandForSurface(args: string, port: SecretComma
 		: undefined;
 
 	if (needsValuePrompt(request) && port.promptForValue !== undefined) {
-		// NORMALISED BEFORE THE PROMPT, for two reasons. The prompt names the secret, and naming it
-		// `github-token` when the model will see `#GITHUB_TOKEN#` teaches the wrong placeholder. And
-		// `normaliseSecretName` throws on a name that cannot be used, so an unusable name is refused
-		// BEFORE the operator pastes a credential rather than after: prompting first would take a
-		// live credential, put it in memory, and then throw the request away.
-		if (request.name !== undefined) request.name = normaliseSecretName(request.name);
+		// The name was normalised before settings validation and before the prompt: the title must
+		// teach the placeholder the model will actually see, and every unusable input must fail
+		// before the operator pastes a live credential.
 		const typed = await port.promptForValue(request.name);
 		if (typed === undefined) return { message: "Cancelled. Nothing was stored.", cancelled: true };
 		if (typed.length === 0) return { message: "Nothing was typed, so nothing was stored.", cancelled: true };
@@ -99,14 +104,24 @@ export async function runSecretCommandForSurface(args: string, port: SecretComma
 	const result = await runSecretCommand(request, {
 		vault,
 		readEnv: name => process.env[name],
-		defaultTtl:
-			(request.subcommand === "add" || request.subcommand === "extend") && request.ttl === undefined
-				? resolveDefaultTtl(port.settings.get("secrets.defaultTtl"))
-				: null,
+		defaultTtl,
 		now: Date.now(),
 		auditLog,
 		surface,
 	});
+
+	// STORING A CREDENTIAL IS THE OPT-IN. `secrets.enabled` ships off, so before this every
+	// first `/secret add` stored a value, said "the model sees #NAME#", and then did nothing:
+	// the placeholder was never substituted and the value was never hidden, until the operator
+	// went to find a checkbox in another menu. Asking someone to confirm the thing they just
+	// asked for is not a safety property, it is a dead end at the exact moment the feature is
+	// supposed to start working. Turning it on is also the safe direction, since the only thing
+	// it can do is hide more. It is announced in the confirmation rather than done quietly,
+	// because it changes what happens to environment variables and `secrets.yml` too, and a
+	// setting that changes itself without saying so is its own bug.
+	const enabledByThisCommand =
+		result.changed && request.subcommand === "add" && port.settings.get("secrets.enabled") !== true;
+	if (enabledByThisCommand) port.settings.set("secrets.enabled", true);
 
 	if (result.changed) {
 		try {
@@ -118,14 +133,18 @@ export async function runSecretCommandForSurface(args: string, port: SecretComma
 			if (request.name !== undefined) {
 				port.session.obfuscator?.forgetNamedSecret(normaliseSecretName(request.name));
 			}
-			throw error;
+			throw new Error(
+				`The vault was updated, but the running session could not refresh secret protection: ${errorMessage(error)}`,
+				{ cause: error },
+			);
 		}
 	}
 
 	if (!port.session.secretsEnabled) {
 		// Said after the action and authoritative refresh rather than inferred from a settings
 		// snapshot: the session runtime is the boundary that determines whether provider traffic
-		// is actually protected right now.
+		// is actually protected right now. Reaching this after the block above turned the setting
+		// on means the runtime refused it, which the operator has to hear about.
 		return {
 			message:
 				`${result.message}\n\nSecret protection is OFF, so nothing is being obfuscated yet. ` +
@@ -133,11 +152,24 @@ export async function runSecretCommandForSurface(args: string, port: SecretComma
 		};
 	}
 
+	const message = enabledByThisCommand
+		? `${result.message}\nSecret protection was off, so it is now on for this session and saved for the next one.`
+		: result.message;
+
 	// Refresh above reloads every source atomically; patching one vault entry here would leave the
 	// rest of the live runtime stale and would not be able to create an obfuscator for a newly
 	// enabled session.
-	if (result.agentNotice !== undefined) tellTheAgent(port, result.agentNotice);
-	return { message: result.message };
+	if (result.agentNotice !== undefined) {
+		try {
+			tellTheAgent(port, result.agentNotice);
+		} catch (error) {
+			throw new Error(
+				`The vault was updated and secret protection refreshed, but the model notice could not be saved: ${errorMessage(error)}`,
+				{ cause: error },
+			);
+		}
+	}
+	return { message };
 }
 
 /**

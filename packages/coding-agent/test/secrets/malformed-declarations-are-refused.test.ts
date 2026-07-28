@@ -311,6 +311,20 @@ describe("a file with several problems", () => {
 	});
 });
 
+describe("duplicate YAML mapping keys", () => {
+	/** A repeated field must not silently discard the first credential while accepting the second one. */
+	it("refuses duplicate declaration fields without echoing either value", async () => {
+		const first = "first-duplicate-yaml-secret";
+		const second = "second-duplicate-yaml-secret";
+		await writeProjectSecrets(`- type: plain\n  content: ${first}\n  content: ${second}\n`);
+
+		const message = await loadAndCatch();
+		expect(message).toContain("Map keys must be unique");
+		expect(message).not.toContain(first);
+		expect(message).not.toContain(second);
+	});
+});
+
 describe("a valid file", () => {
 	/**
 	 * Still loads, which is what keeps the refusals above meaningful.
