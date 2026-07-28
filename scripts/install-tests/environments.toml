@@ -179,3 +179,17 @@ shell = "/usr/bin/fish"
 home_dir = "home*glob"
 install_dir = ".local/bin"
 expect_rc = ".config/fish/config.fish"
+
+# A trailing slash on the install directory is a spelling people type, and it
+# used to make the installer write a PATH entry it could not afterwards
+# recognize as its own: the membership test compares `":$dir:"` against $PATH
+# and the uninstall matches the rc line back byte-for-byte, so `.local/bin/` and
+# `.local/bin` read as two different directories. install_dir() strips it, and
+# this case proves the whole install agrees — including the second run, which is
+# where a duplicate PATH entry would appear.
+[[case]]
+name = "an install dir spelled with a trailing slash"
+shell = "/bin/bash"
+home_dir = "install-dir-trailing-slash"
+install_dir = ".local/bin/"
+expect_rc = ".bashrc"
