@@ -64,31 +64,16 @@ describe("SecretObfuscator regex behavior", () => {
 		expect(deobfuscateToolArguments(obfuscator, obfuscated)).toEqual(original);
 	});
 
-	it("obfuscates conversation messages but leaves the system prompt untouched", () => {
-		const secret = "SUPER_SECRET_TOKEN_12345";
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
-		const context: Context = {
-			systemPrompt: [`workspace contains ${secret}`],
-			messages: [{ role: "user", content: `use ${secret}`, timestamp: 1 }],
-		};
-
-		const obfuscated = obfuscateProviderContext(obfuscator, context);
-
-		// Conversation messages are redacted (and round-trip back to the secret)...
-		expect(JSON.stringify(obfuscated.messages)).not.toContain(secret);
-		expect(obfuscator.deobfuscate(JSON.stringify(obfuscated.messages))).toContain(secret);
-		// ...but the author-controlled system prompt passes through by reference.
-		expect(obfuscated.systemPrompt).toBe(context.systemPrompt);
-	});
-
-	it("leaves tool schemas untouched in provider context (no clone, no redaction)", () => {
+	/** System prompt and schema text are provider-controlled dynamically, so they share the redaction boundary. */
+	it("obfuscates system prompts and serialized tool schemas", () => {
 		const secret = "SUPER_SECRET_TOKEN_12345";
 		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
 		const parameters = type({
 			note: "string",
 		}).describe(`write ${secret}`);
 		const context: Context = {
-			messages: [],
+			systemPrompt: [`workspace contains ${secret}`],
+			messages: [{ role: "user", content: `use ${secret}`, timestamp: 1 }],
 			tools: [
 				{
 					name: "extension_tool",
@@ -100,11 +85,15 @@ describe("SecretObfuscator regex behavior", () => {
 
 		const obfuscated = obfuscateProviderContext(obfuscator, context);
 
-		expect(obfuscated.tools).toBe(context.tools);
-		expect(obfuscated.tools?.[0]?.parameters).toBe(parameters);
+		expect(JSON.stringify(obfuscated)).not.toContain(secret);
+		expect(obfuscated.systemPrompt).not.toBe(context.systemPrompt);
+		expect(obfuscated.tools?.[0]?.parameters).not.toBe(parameters);
+		expect(context.systemPrompt?.[0]).toContain(secret);
+		expect(context.tools?.[0]?.description).toContain(secret);
 	});
 
-	it("redacts only user, tool-result, and user-attributed developer messages", () => {
+	/** Every replayable message role is sanitized, including resumed assistant and agent-authored developer text. */
+	it("redacts every provider-bound message role", () => {
 		const secret = "SUPER_SECRET_TOKEN_12345";
 		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
 		const userMsg: Message = { role: "user", content: `user says ${secret}`, timestamp: 1 };
@@ -157,13 +146,12 @@ describe("SecretObfuscator regex behavior", () => {
 			toolResultMsg,
 		]);
 
-		// User, user-attributed developer, and tool results are redacted.
-		expect(JSON.stringify(obfuscated[0])).not.toContain(secret);
-		expect(JSON.stringify(obfuscated[2])).not.toContain(secret);
-		expect(JSON.stringify(obfuscated[4])).not.toContain(secret);
-		// System developer reminders and assistant output pass through untouched (same reference).
-		expect(obfuscated[1]).toBe(systemDeveloperMsg);
-		expect(obfuscated[3]).toBe(assistantMsg);
+		expect(JSON.stringify(obfuscated)).not.toContain(secret);
+		for (let index = 0; index < obfuscated.length; index++) {
+			expect(obfuscated[index]).not.toBe(
+				[userMsg, systemDeveloperMsg, fileMentionMsg, assistantMsg, toolResultMsg][index],
+			);
+		}
 	});
 
 	it("never rewrites inline image bytes", () => {
