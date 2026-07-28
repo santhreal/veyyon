@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e059680e.js";
+            window.path_to_searchindex_js = "searchindex-bb6eab77.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-5cf6de48.js"></script>
@@ -755,6 +755,11 @@ back from there.</p>
 row carries the version, its publish date, the markers, and the changelog URL.
 Without a terminal on both ends, the bare <code>veyyon rollback</code> prints the list
 rather than opening a picker nothing can drive, so it is safe in a pipeline.</p>
+<p>Building that list is the one thing Veyyon asks the GitHub API for, so it is also
+the one thing that can be refused because of the API’s per-address limit. When it
+is, the error says so and says what still works: updating forward does not touch
+the API, so <code>veyyon update</code> is unaffected. Wait a few minutes and the list comes
+back.</p>
 <p>You can also reach the picker without leaving a session. Open <code>/settings</code>, go to
 the <code>Interaction</code> tab, and you will find <code>Roll back version</code> directly under
 <code>Automatic Updates</code>, showing the version you are running now. It opens the same
@@ -2456,7 +2461,8 @@ detached|BISECT      bisecting
 <h3 id="the-live-roster"><a class="header" href="#the-live-roster">The Live roster</a></h3>
 <p>Each row is one agent that exists right now: a status glyph, its call sign, the TYPE of agent it was spawned from (<code>reviewer</code>, <code>scout</code>), its status, how long since it last did anything, and what it is doing. Rows sit in spawn order, oldest first, with your own session at the top. The row you are on is marked two ways, a cursor glyph in the first column and a band across the whole row, so it stays readable on a terminal that renders no colour. Agents from earlier runs of the same session appear too, marked <code>parked</code>, because their transcripts are still on disk even though this process never started them.</p>
 <p>Press Enter on a row and the main view becomes that agent’s session: the transcript, the composer, and the status line all point at it, so you read what it is doing and then answer it. Press Esc there to come back to your own session. Opening a parked agent revives it on the way in. Press <code>x</code> to stop an agent, which aborts the turn in flight before releasing the session.</p>
-<p>Clicking a row does the same thing as Enter on it, and clicking a name in the view strip switches to that view. Opening an agent is reversible with Esc, so a click opens rather than only moving the cursor. The scroll wheel moves whatever the arrow keys move: the roster cursor on Live, the stream on Comms.</p>
+<p>Clicking a row does the same thing as Enter on it, and clicking a name in the view strip switches to that view. Opening an agent is reversible with Esc, so a click opens rather than only moving the cursor. The scroll wheel moves whatever the arrow keys move: the roster cursor on Live, the stream on Comms. Page up and page down move by a screenful, on either view.</p>
+<p>The roster is a table, so you can scan a column instead of reading every row: the status, the age, the model and the activity each start at the same place on every line. A name long enough to crowd the row out is truncated rather than paid for by every other row, and the model badge is dropped when the card is too narrow to show enough of it to recognise.</p>
 <p>Two agents open a read-only transcript instead of handing the main view over. An advisor is observability-only and is not an addressable peer, so there is nothing on the other end to receive a reply. A collab guest’s agents live on the host, so there is no local session to point at.</p>
 <p>The inline task widget also shows the model each subagent runs on, right in its status line, so you can see which model every launched subagent used without opening the Control Center. To show the same badge on the roster, keep <code>subagent.showResolvedModelBadge</code> on (Subagents settings); turning it off hides it in both places.</p>
 <p>Session files are append-only JSONL under the active profile’s agent <code>sessions/</code> directory. See <a href="#sessions">Sessions</a>.</p>

@@ -144,7 +144,7 @@ describe("getLatestRelease reads GitHub Releases, not npm", () => {
 	it("throws when there is no redirect to read", async () => {
 		mockFetch(new Response("", { status: 200 }));
 
-		await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/Failed to resolve the latest release/);
+		await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/Could not read the latest release/);
 	});
 
 	it("refuses a release whose tag is not a usable semver instead of guessing", async () => {
@@ -414,6 +414,10 @@ describe("update-cli release-info errors", () => {
 		expect(exitSpy).toHaveBeenCalledWith(1);
 		const combined = errors.join("\n");
 		expect(combined).toContain("Failed to check for updates");
+		// "Failed to check for updates: Failed to resolve..." read as two failures
+		// stacked on one another. The inner message states what it could not do
+		// and lets the outer one supply the "failed".
+		expect(combined).not.toContain("updates: Failed");
 		expect(combined).toContain("github.com/santhreal/veyyon/releases/latest");
 		expect(combined).not.toContain("api.github.com");
 		expect(combined).not.toContain("registry.npmjs.org");

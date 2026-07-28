@@ -66,6 +66,42 @@ Check "null PATH contains nothing" `
 Check "bracket metachar in dir is a literal, not a wildcard" `
     (Test-PathContainsDir "C:\proj[1];C:\z" "C:\proj[1]") "True"
 
+# --- Get-NormalizedPathEntry: what makes two PATH entries "the same" ---------
+# A real Windows PATH is not a clean list. Entries arrive quoted (which is legal,
+# and what installers write around a path containing a space) and padded with
+# spaces (which `PATH=%PATH%; C:\tools` leaves behind). Comparing those raw meant
+# an entry we had already written did not match the directory we were about to
+# write, so a reinstall appended a SECOND copy of the install dir and the
+# uninstall then failed to take either one out. One normalizer owns the answer so
+# the add, the remove and the presence check cannot disagree.
+Check "an unremarkable entry is left alone" (Get-NormalizedPathEntry "C:\a\bin") "C:\a\bin"
+Check "surrounding spaces are stripped" (Get-NormalizedPathEntry "  C:\a\bin  ") "C:\a\bin"
+Check "a matched pair of quotes is stripped" (Get-NormalizedPathEntry '"C:\a\bin"') "C:\a\bin"
+Check "quotes with padding inside and out are stripped" (Get-NormalizedPathEntry ' " C:\a\bin " ') "C:\a\bin"
+Check "trailing backslashes are stripped" (Get-NormalizedPathEntry "C:\a\bin\\") "C:\a\bin"
+Check "a quoted entry with a trailing backslash normalizes too" (Get-NormalizedPathEntry '"C:\Program Files\a\"') "C:\Program Files\a"
+# A lone quote is NOT a quoted entry: stripping it would invent a path the user
+# never wrote, and a path that legitimately begins with a quote is not a thing.
+Check "a leading quote alone is kept" (Get-NormalizedPathEntry '"C:\a\bin') '"C:\a\bin'
+Check "a trailing quote alone is kept" (Get-NormalizedPathEntry 'C:\a\bin"') 'C:\a\bin"'
+Check "an inner space is preserved" (Get-NormalizedPathEntry '"C:\Program Files\veyyon"') "C:\Program Files\veyyon"
+Check "an empty entry normalizes to empty" (Get-NormalizedPathEntry "") ""
+Check "a null entry normalizes to empty" (Get-NormalizedPathEntry $null) ""
+
+# The reason it exists: the reinstall and the uninstall both go through it.
+Check "a QUOTED existing entry is recognized, so a reinstall does not double it" `
+    (Test-PathContainsDir '"C:\a\bin";C:\x' "C:\a\bin") "True"
+Check "a SPACE-PADDED existing entry is recognized" `
+    (Test-PathContainsDir "C:\x; C:\a\bin ;C:\y" "C:\a\bin") "True"
+Check "a quoted entry is left untouched when the dir is not ours" `
+    (Test-PathContainsDir '"C:\a\bin2"' "C:\a\bin") "False"
+Check "a reinstall over a quoted entry adds nothing" `
+    (Get-PathWithDir '"C:\a\bin";C:\x' "C:\a\bin") '"C:\a\bin";C:\x'
+Check "uninstall removes the entry it finds quoted" `
+    (Get-PathWithoutDir '"C:\a\bin";C:\x' "C:\a\bin") "C:\x"
+Check "uninstall removes the entry it finds padded" `
+    (Get-PathWithoutDir "C:\x; C:\a\bin ;C:\y" "C:\a\bin") "C:\x;C:\y"
+
 # --- Get-PathWithDir: PREPENDS distinctly, never a leading/duplicate ';' ---
 # PATH order decides which copy of a name runs. Appending put the fresh install
 # behind every older veyyon already on PATH, so the installer created the

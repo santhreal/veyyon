@@ -281,13 +281,34 @@ function Clear-StaleInstallArtifacts {
     }
 }
 
+# The comparable form of one PATH entry. Single owner: every place that asks
+# whether two PATH entries name the same directory goes through this, so the add,
+# the remove and the presence check can never disagree about what "the same
+# entry" means — a disagreement there either double-adds our directory on every
+# reinstall or refuses to take it back out on uninstall.
+#
+# Three things are stripped, each of which a real Windows PATH carries:
+#   * surrounding whitespace, which `PATH=%PATH%; C:\tools` leaves behind;
+#   * one matched pair of double quotes, which is legal and which installers
+#     write around a path containing a space;
+#   * trailing backslashes, since `C:\a\bin\` and `C:\a\bin` are one directory.
+# Comparison is case-insensitive at the call sites because Windows paths are.
+function Get-NormalizedPathEntry {
+    param([string]$Entry)
+    $value = "$Entry".Trim()
+    if ($value.Length -ge 2 -and $value.StartsWith('"') -and $value.EndsWith('"')) {
+        $value = $value.Substring(1, $value.Length - 2).Trim()
+    }
+    return $value.TrimEnd('\')
+}
+
 # PATH with $Dir removed, comparing entries the same way Test-PathContainsDir
-# does (case-insensitive, trailing backslash ignored). Returns the original
-# string when the entry is not present, so the caller can tell nothing changed.
+# does. Returns the original string when the entry is not present, so the caller
+# can tell nothing changed.
 function Get-PathWithoutDir {
     param([string]$Raw, [string]$Dir)
-    $want = $Dir.TrimEnd('\')
-    $kept = @(Split-PathEntries $Raw | Where-Object { $_.TrimEnd('\') -ine $want })
+    $want = Get-NormalizedPathEntry $Dir
+    $kept = @(Split-PathEntries $Raw | Where-Object { (Get-NormalizedPathEntry $_) -ine $want })
     return ($kept -join ';')
 }
 
@@ -587,13 +608,13 @@ function Split-PathEntries {
 # True when $Dir is already a distinct entry of $Raw. A substring test is wrong:
 # "C:\a\bin" is a substring of "C:\a\bin2" and of "C:\a\bin;..." with wildcard
 # metacharacters, so a naive -like falsely reports the dir is present (or absent)
-# and either skips a needed add or double-adds. Compare whole entries, trimmed of
-# a trailing separator, case-insensitively (Windows paths are case-insensitive).
+# and either skips a needed add or double-adds. Compare whole entries through
+# Get-NormalizedPathEntry, case-insensitively (Windows paths are case-insensitive).
 function Test-PathContainsDir {
     param([string]$Raw, [string]$Dir)
-    $target = $Dir.TrimEnd('\')
+    $target = Get-NormalizedPathEntry $Dir
     foreach ($entry in (Split-PathEntries $Raw)) {
-        if ($entry.TrimEnd('\') -ieq $target) { return $true }
+        if ((Get-NormalizedPathEntry $entry) -ieq $target) { return $true }
     }
     return $false
 }

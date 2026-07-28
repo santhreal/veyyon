@@ -115,14 +115,14 @@ describe("an unreachable release source fails loudly and never answers from stal
 			// Status 200 with an interception page is the nastiest case: every status
 			// check passes and there is simply no redirect to read.
 			respondWith(() => new Response("<html><body>Sign in to the network</body></html>", { status: 200 }));
-			await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/Failed to resolve the latest release/);
+			await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/Could not read the latest release/);
 		});
 
 		it("throws when the redirect header is absent instead of resolving to an empty version", async () => {
 			// An empty version string would compare as "not newer" against anything and
 			// silently report up to date forever.
 			respondWith(() => new Response(null, { status: 302 }));
-			await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/Failed to resolve the latest release/);
+			await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/Could not read the latest release/);
 		});
 
 		it("throws when the redirect points somewhere that is not a tag page", async () => {

@@ -138,11 +138,22 @@ describe("getAllReleases", () => {
 		expect(getAllReleases()).rejects.toThrow(/No published releases/);
 	});
 
-	it("names the rate limit when GitHub returns 403", async () => {
+	/**
+	 * The version list is the ONLY thing that still spends the GitHub API budget:
+	 * the startup check and `veyyon update` resolve their version from a redirect
+	 * on `github.com`, which is not on that budget. So a rate limit here means the
+	 * picker is unavailable and updating forward still works, and the message has
+	 * to say so — otherwise it reads as "veyyon cannot reach GitHub" and the user
+	 * stops trying. It also has to say the limit belongs to the ADDRESS, since the
+	 * traffic that spent it was probably not theirs.
+	 */
+	it("names the rate limit when GitHub returns 403, and what still works", async () => {
 		globalThis.fetch = (async () =>
 			new Response("", { status: 403, statusText: "Forbidden" })) as unknown as typeof fetch;
 
-		expect(getAllReleases()).rejects.toThrow(/rate-limiting/);
+		expect(getAllReleases()).rejects.toThrow(/rate-limiting this address/);
+		expect(getAllReleases()).rejects.toThrow(/per address and shared/);
+		expect(getAllReleases()).rejects.toThrow(/`veyyon update`, which does not use the API/);
 	});
 
 	it("reports the status for any other failure", async () => {
