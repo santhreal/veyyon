@@ -7,6 +7,11 @@ const MAX_FLAG_LENGTH = 16;
 interface PatternAnalysis {
 	/** Whether this expression can succeed without consuming a character. */
 	nullable: boolean;
+	/** Minimum and maximum characters this expression can consume. */
+	minimumWidth: number;
+	maximumWidth: number;
+	/** Variable-width alternation decisions encountered along one matching path. */
+	variableWidthAlternations: number;
 	/** Whether this expression contains a variable-width quantifier. */
 	hasVariableQuantifier: boolean;
 	/** Whether this expression contains an alternation. */
@@ -44,7 +49,9 @@ function splitRegexLiteral(pattern: string): { pattern: string; flags: string } 
 		if (precedingBackslashes % 2 !== 0) continue;
 
 		const flags = pattern.slice(index + 1);
-		if (!/^[A-Za-z]*$/.test(flags)) return undefined;
+		if (!/^[A-Za-z]*$/.test(flags)) {
+			throw new Error("regex literal flags must contain only ASCII letters");
+		}
 		return { pattern: pattern.slice(1, index), flags };
 	}
 	return undefined;
@@ -74,9 +81,9 @@ function validateFlags(flags: string, source: string): void {
  * JavaScript offers no match timeout. Running an operator-supplied expression against a probe is
  * therefore not a safety check: the check itself can hang. This parser instead walks the source
  * once, caps both source length and nesting, and conservatively refuses the high-risk structures:
- * variable quantifiers nested inside another repetition, repeated alternations, and backreferences
- * whose consumption cannot be established locally. It also computes nullability so assertions and
- * other zero-width-only patterns cannot be accepted as if they protected a value.
+ * variable quantifiers nested inside another repetition, repeated alternations, concatenated
+ * variable-width alternations, and backreferences whose consumption cannot be established locally.
+ * It also computes nullability so zero-width-only patterns cannot be accepted as protection.
  */
 class PatternSafetyParser {
 	#index = 0;
@@ -101,8 +108,20 @@ class PatternSafetyParser {
 			this.#index++;
 			branches.push(this.#parseSequence());
 		}
+		const first = branches[0];
+		const branchWidthsDiffer = branches.some(
+			branch => branch.minimumWidth !== first.minimumWidth || branch.maximumWidth !== first.maximumWidth,
+		);
+		const hasVariableWidthBranch = branches.some(branch => branch.minimumWidth !== branch.maximumWidth);
+		const currentVariableWidthAlternation =
+			branches.length > 1 && (branchWidthsDiffer || hasVariableWidthBranch) ? 1 : 0;
 		return {
 			nullable: branches.some(branch => branch.nullable),
+			minimumWidth: Math.min(...branches.map(branch => branch.minimumWidth)),
+			maximumWidth: Math.max(...branches.map(branch => branch.maximumWidth)),
+			variableWidthAlternations:
+				currentVariableWidthAlternation +
+				Math.max(...branches.map(branch => branch.variableWidthAlternations)),
 			hasVariableQuantifier: branches.some(branch => branch.hasVariableQuantifier),
 			hasAlternation: branches.length > 1 || branches.some(branch => branch.hasAlternation),
 		};
@@ -110,6 +129,9 @@ class PatternSafetyParser {
 
 	#parseSequence(): PatternAnalysis {
 		let nullable = true;
+		let minimumWidth = 0;
+		let maximumWidth = 0;
+		let variableWidthAlternations = 0;
 		let hasVariableQuantifier = false;
 		let hasAlternation = false;
 		while (this.#index < this.pattern.length) {
@@ -117,10 +139,20 @@ class PatternSafetyParser {
 			if (current === "|" || current === ")") break;
 			const atom = this.#parseQuantifiedAtom();
 			nullable &&= atom.nullable;
+			minimumWidth += atom.minimumWidth;
+			maximumWidth += atom.maximumWidth;
+			variableWidthAlternations += atom.variableWidthAlternations;
 			hasVariableQuantifier ||= atom.hasVariableQuantifier;
 			hasAlternation ||= atom.hasAlternation;
 		}
-		return { nullable, hasVariableQuantifier, hasAlternation };
+		return {
+			nullable,
+			minimumWidth,
+			maximumWidth,
+			variableWidthAlternations,
+			hasVariableQuantifier,
+			hasAlternation,
+		};
 	}
 
 	#parseQuantifiedAtom(): PatternAnalysis {
@@ -141,6 +173,9 @@ class PatternSafetyParser {
 
 		return {
 			nullable: quantifier.minimum === 0,
+			minimumWidth: multiplyWidth(atom.minimumWidth, quantifier.minimum),
+			maximumWidth: multiplyWidth(atom.maximumWidth, quantifier.maximum),
+			variableWidthAlternations: atom.variableWidthAlternations,
 			hasVariableQuantifier: atom.hasVariableQuantifier || quantifier.minimum !== quantifier.maximum,
 			hasAlternation: atom.hasAlternation,
 		};
@@ -187,7 +222,7 @@ class PatternSafetyParser {
 		if (this.pattern[this.#index] !== ")") throw new Error("group has no closing parenthesis");
 		this.#index++;
 		this.#depth--;
-		return assertion ? { ...inner, nullable: true } : inner;
+		return assertion ? { ...inner, nullable: true, minimumWidth: 0, maximumWidth: 0 } : inner;
 	}
 
 	#parseEscape(): PatternAnalysis {
@@ -249,14 +284,26 @@ class PatternSafetyParser {
 	}
 }
 
+function multiplyWidth(width: number, repetitions: number): number {
+	if (width === 0 || repetitions === 0) return 0;
+	if (!Number.isFinite(width) || !Number.isFinite(repetitions)) return Number.POSITIVE_INFINITY;
+	return width * repetitions;
+}
+
 const ZERO_WIDTH: PatternAnalysis = {
 	nullable: true,
+	minimumWidth: 0,
+	maximumWidth: 0,
+	variableWidthAlternations: 0,
 	hasVariableQuantifier: false,
 	hasAlternation: false,
 };
 
 const CONSUMING: PatternAnalysis = {
 	nullable: false,
+	minimumWidth: 1,
+	maximumWidth: 1,
+	variableWidthAlternations: 0,
 	hasVariableQuantifier: false,
 	hasAlternation: false,
 };
@@ -268,6 +315,11 @@ function validatePatternSafety(pattern: string, flags: string): void {
 	const analysis = new PatternSafetyParser(pattern, flags.includes("v")).parse();
 	if (analysis.nullable) {
 		throw new Error("the pattern can match without consuming input; a zero-width match protects no secret value");
+	}
+	if (analysis.variableWidthAlternations > 1) {
+		throw new Error(
+			"concatenated variable-width alternations cannot be proven safe from catastrophic backtracking",
+		);
 	}
 }
 

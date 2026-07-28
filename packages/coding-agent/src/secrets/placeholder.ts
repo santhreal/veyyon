@@ -80,7 +80,25 @@ export const PENDING_PLACEHOLDER_RE = new RegExp(`#[A-Z0-9_]{0,${MAX_SECRET_NAME
  * wordlist and recover a short credential. Callers reject the astronomically unlikely
  * event that two values produce the same retained body instead of overwriting a mapping.
  */
+function isWellFormedUtf16(value: string): boolean {
+	for (let index = 0; index < value.length; index++) {
+		const codeUnit = value.charCodeAt(index);
+		if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+			if (index + 1 >= value.length) return false;
+			const next = value.charCodeAt(index + 1);
+			if (next < 0xdc00 || next > 0xdfff) return false;
+			index++;
+		} else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+			return false;
+		}
+	}
+	return true;
+}
+
 export function buildValuePlaceholder(value: string, key: Uint8Array): string {
+	if (!isWellFormedUtf16(value)) {
+		throw new Error("Refusing to derive a secret placeholder from ill-formed UTF-16.");
+	}
 	const digest = crypto.createHmac("sha256", key).update(value, "utf8").digest("hex").toUpperCase();
 	return `#${VALUE_PLACEHOLDER_PREFIX}${digest.slice(0, VALUE_PLACEHOLDER_HEX_LENGTH)}#`;
 }
@@ -96,6 +114,13 @@ export function isValidSecretName(name: string): boolean {
 	// Structurally unreachable because value placeholders start with a digit and names with a letter.
 	if (VALUE_BODY_RE.test(name)) return false;
 	return true;
+}
+
+/** Whether a complete token has one of the two forms that can carry expansion rights. */
+export function isSecretPlaceholder(value: string): boolean {
+	if (!value.startsWith("#") || !value.endsWith("#")) return false;
+	const body = value.slice(1, -1);
+	return NAME_RE.test(body) || VALUE_BODY_RE.test(body);
 }
 
 /** One sentence saying why a name was refused, with the rule spelled out. */
