@@ -74,7 +74,7 @@ Every user-facing feature update lands with three artifacts, all committed:
 
 Beyond the three artifacts, **assert every setting the feature adds actually works end to end** — the default is honored, each non-default value changes observable behavior, and an invalid value fails loud. A setting that appears in the defaults but never reaches behavior is a defect, the same class as a dead flag.
 
-**An experimental feature that is off hides its dependent knobs completely.** When a feature is gated behind a master toggle and that toggle is off, the knobs that only matter when it is on must not appear in the settings screen at all — not greyed out, not inert, gone. Wire each dependent setting to a `ui.condition` that reads the master toggle (see `CONDITIONS` in `settings-defs.ts`); the selector hides any setting whose condition returns false. The off-vs-on screenshot pair is exactly what proves this: off shows only the master toggle, on shows the toggle plus its dependents. A dependent knob visible while the feature is off is a defect.
+**An experimental feature that is off hides its dependent knobs completely.** When a feature is gated behind a master toggle and that toggle is off, the knobs that only matter when it is on must not appear in the settings screen at all — not greyed out, not inert, gone. Wire each dependent setting to a `ui.condition` that reads the master toggle; the setting itself is declared in `packages/coding-agent/src/config/settings-domains/<domain>.ts`, and the predicate it names is registered in `CONDITIONS` in `packages/coding-agent/src/modes/components/settings-defs.ts`. The selector hides any setting whose condition returns false. The off-vs-on screenshot pair is exactly what proves this: off shows only the master toggle, on shows the toggle plus its dependents. A dependent knob visible while the feature is off is a defect.
 
 If a feature cannot meet this bar, it is experimental and must say so in its settings group, stay off by default, hide its dependent knobs while off, and carry a backlog row for the missing proof. Do not ship it as done.
 
@@ -291,7 +291,7 @@ Argot is the codec that lets the model write short `§handle` tokens; veyyon exp
 - Commit in **logical chunks**, one concern per commit — never one giant `git add -A`. Stage only the paths you changed.
 - Subject line is imperative and scoped, e.g. `polish(onboarding): …`, `fix: …`, `ci: …`, `test(agent): …`.
 - Do not add AI/assistant attribution trailers (no `Co-Authored-By: <model>`, no `Generated with …`). Commit as the configured git user only.
-- The **release** commit is special: its subject **must** be exactly `chore: bump version to vX.Y.Z` — CI keys the never-cancel release concurrency group off that subject (#2564). `bun run release` writes it for you; never hand-craft it.
+- The **release** commit is special. Its subject **must** be exactly `chore: bump version to vX.Y.Z`. CI keys the never-cancel release concurrency group off that subject (#2564). The release workflow writes it; never hand-craft it.
 
 ## Testing Guidance
 
@@ -327,7 +327,7 @@ Location: `packages/*/CHANGELOG.md` (per package).
 - New entries always go under `## [Unreleased]` in the OWNING package's `packages/<name>/CHANGELOG.md`.
 - **Never write an entry into the repo-root `CHANGELOG.md`.** It is generated from every package changelog by `bun run changelog:root`, so an entry written there is not a changelog entry: it is content the next regeneration deletes. The root is the file you open first and it reads as hand-written, which is exactly why this keeps happening — 23 entries across several packages were written there and would have been lost. The write path now refuses when the root holds an unreleased entry the render does not produce, and names each one, so the deletion can no longer be silent.
 - Never modify already-released sections (e.g., `## [0.12.2]`) — they are immutable.
-- Don't flag changelog section order or formatting in reviews or PRs — `bun run release` runs `fix-changelogs` which normalizes everything automatically.
+- Don't flag changelog section order or formatting in reviews or PRs — the Release workflow runs `fix-changelogs` and normalizes everything automatically.
 
 **Enforced (`changelog` CI job on every push to `main` and every PR).** `bun run changelog:check` fails when a change to a publishable package's shipped source lands without a bullet under that package's `## [Unreleased]` section. It runs on the direct-to-main push (base: the branch tip before the push) as well as on PRs, because changes land directly on `main` here; a PR-only gate would never fire and shipped source would reach releases undocumented. This is what makes releases safe to cut at any time: a change can never land without reaching the changelog. Tests, fixtures, docs, `package.json`, and `tsconfig*.json` are not "shipped source" and never trigger it. The release bump commit (`chore: bump version to ...`) is exempt. Run it locally before pushing with `CHANGELOG_BASE=origin/main bun run changelog:check`.
 - Every publishable package must own a `CHANGELOG.md`. A package with none used to be skipped by the gate, which meant its source shipped with nothing checking it at all, and two packages sat that way for several releases before anyone noticed. The gate now fails and names the file to create. A package that is genuinely not published says so with `"private": true` in its `package.json`.
@@ -399,34 +399,30 @@ release is only real once it is a tagged commit **and** a published GitHub relea
 
 ### How a release happens
 
-1. Ensure every change since the last release sits under each affected package's
-   `## [Unreleased]` changelog section (per-package `packages/*/CHANGELOG.md`).
-2. From a clean `main`, run `bun run release <version|major|minor|patch>`.
+1. Ensure every publishable change sits under its package's `## [Unreleased]`
+   section (`packages/*/CHANGELOG.md`).
+2. Push the change to `main` with explicit approval. After CI and Checks pass for
+   that exact SHA, the Release workflow cuts a patch automatically.
 
-`scripts/release.ts` then, in order: verifies you're on clean `main` and the version
-is greater than the latest tag → bumps every public `package.json` + root catalog
-`@veyyon/*` entries → bumps the Rust workspace version, `veyyon-natives` sentinel, and
-regenerates lockfiles → normalizes and finalizes changelogs (`[Unreleased]` → the new
-version, adds a fresh `[Unreleased]`) → runs `bun run check` → commits
-`chore: bump version to vX.Y.Z` → tags and **atomically** pushes `main` + the tag (by
-commit sha, to survive tag-pruning maintenance) → watches CI until the release jobs
-pass. Use `bun run release watch` to re-attach to CI for the current commit.
+The workflow runs `scripts/release.ts` internally. It bumps public package versions,
+the root catalog, Rust workspace, native sentinel, lockfiles, and changelogs; runs
+checks; commits `chore: bump version to X.Y.Z`; and atomically pushes `main` plus the
+tag. If main advanced, the push fails without rebasing and the newer SHA gets its own
+cut after its own gates pass. The workflow then dispatches `checks.yml` at the
+immutable tag, verifies the bump SHA is green, and dispatches `ci.yml` for binaries,
+the GitHub release, and production site deployment.
 
-The tagged push is what makes `ci.yml` build the binaries and publish. After it's
-green, `curl -fsSL https://get.veyyon.dev | sh` (which reads
-`github.com/santhreal/veyyon` `releases/latest`) installs the new version. Verify with
-a real install on a clean machine, not just a `cargo`/`bun` build.
+For an explicitly approved major, minor, or exact-version cut, run the Release
+workflow from Actions. The equivalent command is
+`gh workflow run release.yml --ref main -f version=<major|minor|patch|X.Y.Z>`.
+No personal access token or maintainer workstation is part of the release path.
 
-### The first veyyon release is `1.0.0`
+### The veyyon release line starts at `1.0.0`
 
-The repo carries **no `v*` tags** yet — only the inherited oh-my-pi changelog history
-(see the fork notice atop each `CHANGELOG.md`). `release.ts` treats the absence of tags
-as a `0.0.0` baseline, so `bun run release 1.0.0` (equivalently `release major`) cuts
-the first release cleanly instead of aborting on `git describe`. Package `version`
-fields sit at the `16.5.2` fork point until then; the release run flips every public
-package, the Rust workspace, and the `veyyon-natives` sentinel to `1.0.0` in one atomic
-commit. Before running it, add a short "First veyyon release" summary under each
-changed package's `## [Unreleased]` so the generated `## [1.0.0]` entry isn't empty.
+The inherited oh-my-pi changelog history remains below the fork notice, but veyyon
+tags started at `v1.0.0`. `release.ts` treats an empty tag set as a `0.0.0` baseline,
+which keeps that identity reproducible if the tag set is rebuilt. Current releases
+continue monotonically from that veyyon-owned baseline.
 
 ## Maintenance
 
