@@ -12,8 +12,8 @@ describe("literal transform precedence", () => {
 		const long = `long-${short}`;
 		const obfuscator = new SecretObfuscator(
 			[
-				{ type: "plain", content: short },
-				{ type: "plain", content: long },
+				{ type: "plain", origin: "config", content: short },
+				{ type: "plain", origin: "config", content: long },
 			],
 			{ placeholderKey: KEY },
 		);
@@ -28,9 +28,11 @@ describe("literal transform precedence", () => {
 	/** A refreshed exact replace policy must beat retained historical redaction for that same source. */
 	it("does not let a retained tombstone override the active replacement", () => {
 		const value = "policy-updated-secret-value";
-		const previous = new SecretObfuscator([{ type: "plain", content: value }], { placeholderKey: KEY });
+		const previous = new SecretObfuscator([{ type: "plain", origin: "config", content: value }], {
+			placeholderKey: KEY,
+		});
 		const current = new SecretObfuscator(
-			[{ type: "plain", content: value, mode: "replace", replacement: "MASKED_VALUE" }],
+			[{ type: "plain", origin: "config", content: value, mode: "replace", replacement: "MASKED_VALUE" }],
 			{ placeholderKey: KEY },
 		);
 
@@ -47,8 +49,8 @@ describe("direct declaration invariants", () => {
 			() =>
 				new SecretObfuscator(
 					[
-						{ type: "plain", content: "first-duplicate-secret", name: "DUPLICATE_NAME" },
-						{ type: "plain", content: "second-duplicate-secret", name: "DUPLICATE_NAME" },
+						{ type: "plain", origin: "config", content: "first-duplicate-secret", name: "DUPLICATE_NAME" },
+						{ type: "plain", origin: "config", content: "second-duplicate-secret", name: "DUPLICATE_NAME" },
 					],
 					{ placeholderKey: KEY },
 				),
@@ -61,8 +63,20 @@ describe("direct declaration invariants", () => {
 			() =>
 				new SecretObfuscator(
 					[
-						{ type: "plain", content: "same-duplicate-secret", name: "DUPLICATE_NAME", expiresAt: 10 },
-						{ type: "plain", content: "same-duplicate-secret", name: "DUPLICATE_NAME", expiresAt: 20 },
+						{
+							type: "plain",
+							origin: "config",
+							content: "same-duplicate-secret",
+							name: "DUPLICATE_NAME",
+							expiresAt: 10,
+						},
+						{
+							type: "plain",
+							origin: "config",
+							content: "same-duplicate-secret",
+							name: "DUPLICATE_NAME",
+							expiresAt: 20,
+						},
 					],
 					{ placeholderKey: KEY },
 				),
@@ -71,13 +85,22 @@ describe("direct declaration invariants", () => {
 
 	/** Programmatic callers must not get silent acceptance of fields that the selected transform never uses. */
 	it.each([
-		[{ type: "plain", content: "unused-field-secret", replacement: "ignored" }, /replacement.*replace.*mode/i],
-		[{ type: "plain", content: "unused-field-secret", flags: "i" }, /flags.*plain secret/i],
-		[{ type: "plain", content: "unused-field-secret", minLength: 4 }, /minLength.*no reversible regex/i],
-		[{ type: "regex", content: "token-[0-9]+", mode: "replace", minLength: 4 }, /minLength.*no reversible regex/i],
-		[{ type: "regex", content: "token-[0-9]+", minLength: 0 }, /minLength.*whole number/i],
-		[{ type: "regex", content: "token-[0-9]+", name: "REGEX_TOKEN" }, /name.*reversible plain/i],
-		[{ type: "regex", content: "token-[0-9]+", expiresAt: 10 }, /expiry.*reversible plain/i],
+		[
+			{ type: "plain", origin: "config", content: "unused-field-secret", replacement: "ignored" },
+			/replacement.*replace.*mode/i,
+		],
+		[{ type: "plain", origin: "config", content: "unused-field-secret", flags: "i" }, /flags.*plain secret/i],
+		[
+			{ type: "plain", origin: "config", content: "unused-field-secret", minLength: 4 },
+			/minLength.*no reversible regex/i,
+		],
+		[
+			{ type: "regex", origin: "config", content: "token-[0-9]+", mode: "replace", minLength: 4 },
+			/minLength.*no reversible regex/i,
+		],
+		[{ type: "regex", origin: "config", content: "token-[0-9]+", minLength: 0 }, /minLength.*whole number/i],
+		[{ type: "regex", origin: "config", content: "token-[0-9]+", name: "REGEX_TOKEN" }, /name.*reversible plain/i],
+		[{ type: "regex", origin: "config", content: "token-[0-9]+", expiresAt: 10 }, /expiry.*reversible plain/i],
 	] as Array<[SecretEntry, RegExp]>)('refuses ignored declaration fields for "$type" entries', (entry, message) => {
 		expect(() => new SecretObfuscator([entry], { placeholderKey: KEY })).toThrow(message);
 	});
@@ -86,9 +109,12 @@ describe("direct declaration invariants", () => {
 describe("copy-on-change provider transforms", () => {
 	/** A no-op provider boundary is a hot path and must preserve the complete context identity. */
 	it("returns the original provider context when no string changes", () => {
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: "configured-secret-value" }], {
-			placeholderKey: KEY,
-		});
+		const obfuscator = new SecretObfuscator(
+			[{ type: "plain", origin: "config", content: "configured-secret-value" }],
+			{
+				placeholderKey: KEY,
+			},
+		);
 		const context: Context = { systemPrompt: ["safe prompt"], messages: [], tools: [] };
 
 		expect(obfuscateProviderContext(obfuscator, context)).toBe(context);

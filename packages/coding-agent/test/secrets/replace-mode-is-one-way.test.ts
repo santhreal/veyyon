@@ -15,12 +15,14 @@ describe("replace mode is permanently one-way", () => {
 					[
 						{
 							type: "plain",
+							origin: "config",
 							content: "replacement-source-secret",
 							mode: "replace",
 							replacement: "#TARGET_SECRET#",
 						},
 						{
 							type: "plain",
+							origin: "config",
 							content: "target-live-credential",
 							mode: "obfuscate",
 							name: "TARGET_SECRET",
@@ -42,6 +44,7 @@ describe("replace mode is permanently one-way", () => {
 					[
 						{
 							type: "plain",
+							origin: "config",
 							content: "replacement-source-secret",
 							mode: "replace",
 							replacement: "redacted as #TARGET_SECRET# for transport",
@@ -64,6 +67,7 @@ describe("replace mode is permanently one-way", () => {
 					[
 						{
 							type: "plain",
+							origin: "config",
 							content: "replacement-source-secret",
 							mode: "replace",
 							replacement: opaquePlaceholder,
@@ -85,6 +89,7 @@ describe("replace mode is permanently one-way", () => {
 					[
 						{
 							type: "regex",
+							origin: "config",
 							content: "token-[A-Z]{8}",
 							mode: "replace",
 							replacement: "#TARGET_SECRET#",
@@ -104,6 +109,7 @@ describe("replace mode is permanently one-way", () => {
 			[
 				{
 					type: "plain",
+					origin: "config",
 					content: "replacement-source-secret",
 					mode: "replace",
 					replacement: "redacted #lowercase# value",
@@ -123,7 +129,7 @@ describe("replace mode is permanently one-way", () => {
 	 */
 	it("keeps generated replacements one-way", () => {
 		const obfuscator = new SecretObfuscator(
-			[{ type: "plain", content: "replacement-source-secret", mode: "replace" }],
+			[{ type: "plain", origin: "config", content: "replacement-source-secret", mode: "replace" }],
 			{ placeholderKey: PLACEHOLDER_KEY },
 		);
 
@@ -138,10 +144,10 @@ describe("replace mode is permanently one-way", () => {
 	 * must not be able to reproduce the observed alias without the machine-local vault key.
 	 */
 	it("does not expose a cross-machine dictionary oracle", () => {
-		const first = new SecretObfuscator([{ type: "plain", content: "12345678", mode: "replace" }], {
+		const first = new SecretObfuscator([{ type: "plain", origin: "config", content: "12345678", mode: "replace" }], {
 			placeholderKey: new Uint8Array(32).fill(1),
 		});
-		const second = new SecretObfuscator([{ type: "plain", content: "12345678", mode: "replace" }], {
+		const second = new SecretObfuscator([{ type: "plain", origin: "config", content: "12345678", mode: "replace" }], {
 			placeholderKey: new Uint8Array(32).fill(2),
 		});
 
@@ -153,12 +159,18 @@ describe("replace mode is permanently one-way", () => {
 	 * preserves provider caches without falling back to a public, provider-verifiable hash.
 	 */
 	it("keeps aliases stable for the same machine key", () => {
-		const first = new SecretObfuscator([{ type: "plain", content: "stable-replacement-secret", mode: "replace" }], {
-			placeholderKey: PLACEHOLDER_KEY,
-		});
-		const second = new SecretObfuscator([{ type: "plain", content: "stable-replacement-secret", mode: "replace" }], {
-			placeholderKey: PLACEHOLDER_KEY,
-		});
+		const first = new SecretObfuscator(
+			[{ type: "plain", origin: "config", content: "stable-replacement-secret", mode: "replace" }],
+			{
+				placeholderKey: PLACEHOLDER_KEY,
+			},
+		);
+		const second = new SecretObfuscator(
+			[{ type: "plain", origin: "config", content: "stable-replacement-secret", mode: "replace" }],
+			{
+				placeholderKey: PLACEHOLDER_KEY,
+			},
+		);
 
 		expect(first.obfuscate("stable-replacement-secret")).toBe(second.obfuscate("stable-replacement-secret"));
 	});
@@ -169,7 +181,7 @@ describe("replace mode is permanently one-way", () => {
 	 */
 	it("generates the full alias for values longer than one digest", () => {
 		const secret = "long-secret-segment-".repeat(12);
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret, mode: "replace" }], {
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret, mode: "replace" }], {
 			placeholderKey: PLACEHOLDER_KEY,
 		});
 
@@ -184,7 +196,12 @@ describe("replace mode is permanently one-way", () => {
 	 * could bypass the fix by placing a guessed credential behind a replace-mode pattern.
 	 */
 	it("keys generated regex replacements", () => {
-		const entry = { type: "regex" as const, content: "pin-[0-9]{8}", mode: "replace" as const };
+		const entry = {
+			type: "regex" as const,
+			origin: "config" as const,
+			content: "pin-[0-9]{8}",
+			mode: "replace" as const,
+		};
 		const first = new SecretObfuscator([entry], { placeholderKey: new Uint8Array(32).fill(3) });
 		const second = new SecretObfuscator([entry], { placeholderKey: new Uint8Array(32).fill(4) });
 
@@ -198,7 +215,7 @@ describe("replace mode is permanently one-way", () => {
 	it("rejects an empty literal replacement", () => {
 		expect(
 			() =>
-				new SecretObfuscator([{ type: "plain", content: "", mode: "replace" }], {
+				new SecretObfuscator([{ type: "plain", origin: "config", content: "", mode: "replace" }], {
 					placeholderKey: PLACEHOLDER_KEY,
 				}),
 		).toThrow("Refusing an empty plain secret");
@@ -213,6 +230,7 @@ describe("replace mode is permanently one-way", () => {
 			[
 				{
 					type: "plain",
+					origin: "config",
 					content: "replacement-source-secret",
 					mode: "replace",
 					replacement: "#ABCD#",

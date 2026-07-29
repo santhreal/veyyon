@@ -36,8 +36,9 @@ import * as path from "node:path";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/sdk";
+import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import { SecretVault } from "@veyyon/coding-agent/secrets/vault";
-import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSession, SecretRuntimeLease } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { TempDir } from "@veyyon/utils";
@@ -363,10 +364,64 @@ describe("no outbound seam reads the expansion authority", () => {
 		expect(text).toContain("return this.#secretRuntime?.redactionObfuscator ?? this.#obfuscator;");
 	});
 
-	/** Expansion still reads the expansion authority, so the fix did not blur the two directions. */
-	it("still reads the expansion authority when expanding", async () => {
-		const text = await source();
-		expect(text).toContain("this.#obfuscator.deobfuscate(");
-		expect(text).toContain("deobfuscateAssistantContent(this.#obfuscator");
+	/**
+	 * Expansion still reads the expansion authority, so the fix did not blur the two directions.
+	 *
+	 * Behavioral rather than textual. This used to match `this.#obfuscator.deobfuscate(` and
+	 * `deobfuscateAssistantContent(this.#obfuscator` in the source, and both expressions are gone:
+	 * the display paths now expand one string at a time through a per-pass expander, so that a vault
+	 * changed by another process degrades to the literal placeholder instead of throwing a codec
+	 * error that unwound the session. A source match could never tell that property from a renamed
+	 * local anyway.
+	 *
+	 * The two authorities are deliberately DIFFERENT objects holding DIFFERENT mappings, so this
+	 * pins which one each direction read: a display path that reached for the redaction authority
+	 * would leave `#A_TOKEN#` literal, and an outbound seam that reached for the expansion authority
+	 * would ship `B_VALUE` in the clear.
+	 */
+	it("expands through the expansion authority and redacts through the redaction authority", async () => {
+		const fixture = await createFixture();
+		try {
+			// The expansion authority holds a DISPLAY-RESTORABLE mapping, which is `config` + `regex`
+			// and only that combination: a stored credential is deliberately withheld from every
+			// display path, so a config-PLAIN entry here would render as its literal placeholder and
+			// this row could no longer tell the two authorities apart. Both values are plain
+			// alphanumerics with hyphens, so each doubles as its own literal pattern.
+			const expansion = new SecretObfuscator([{ type: "regex", origin: "config", content: A_VALUE }]);
+			const redaction = new SecretObfuscator([
+				{ type: "plain", origin: "config", content: B_VALUE, name: "B_TOKEN" },
+			]);
+			// A regex mapping comes into existence when the value is first redacted, which is how it
+			// arises in a session, and the placeholder it mints is what a display path later sees.
+			const aPlaceholder = expansion.obfuscate(A_VALUE);
+			expect(aPlaceholder).not.toBe(A_VALUE);
+			const lease: SecretRuntimeLease = {
+				revision: 1,
+				cwd: fixture.projectA,
+				expansionObfuscator: expansion,
+				redactionObfuscator: redaction,
+				hasRedactions: true,
+				obfuscateText: text => redaction.obfuscate(text),
+				obfuscateMessages: messages => messages,
+				obfuscateContext: context => context,
+				obfuscatePayload: payload => payload,
+				isFreshForExpansion: () => true,
+				ensureFreshForExpansion: async () => undefined,
+				assertFreshForExpansion: () => undefined,
+			};
+			fixture.session.installSecretRuntime(lease);
+
+			const displayed = fixture.session.displayAssistantContent([{ type: "text", text: `use ${aPlaceholder}` }]);
+			expect(displayed.find(block => block.type === "text")).toMatchObject({
+				type: "text",
+				text: `use ${A_VALUE}`,
+			});
+			expect(fixture.session.obfuscateProviderText(`use ${B_VALUE}`)).toBe("use #B_TOKEN#");
+			// The discriminator: the redaction authority does not know A_VALUE, so an outbound seam
+			// that had reached for the expansion authority would have replaced it here.
+			expect(fixture.session.obfuscateProviderText(`use ${A_VALUE}`)).toBe(`use ${A_VALUE}`);
+		} finally {
+			await dispose(fixture);
+		}
 	});
 });

@@ -107,7 +107,7 @@ describe("secret deobfuscation walk", () => {
 	 * reasoning pane is the deliberate cost of that.
 	 */
 	it("restores a secret in text but leaves thinking untouched, so replay stays valid", () => {
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: SECRET }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: SECRET }]);
 		const placeholder = obfuscator.obfuscate(SECRET);
 		expect(placeholder).not.toBe(SECRET);
 

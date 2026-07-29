@@ -490,7 +490,7 @@ describe("AgentSession message pipeline", () => {
 			sessionManager: SessionManager.inMemory(),
 			settings: Settings.isolated({ "compaction.enabled": false }),
 			modelRegistry: createModelRegistryStub() as never,
-			obfuscator: new SecretObfuscator([{ type: "plain", content: secret }]),
+			obfuscator: new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]),
 		});
 		sessions.push(session);
 
@@ -537,7 +537,7 @@ describe("AgentSession message pipeline", () => {
 				contextWindow: 4096,
 				maxTokens: 1024,
 			} as ModelSpec<Api>) as Model<Api>;
-			const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+			const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 			const tool: AgentTool = {
 				name: "secret_probe",
 				label: "Secret Probe",

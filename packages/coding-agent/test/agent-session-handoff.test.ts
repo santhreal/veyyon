@@ -85,7 +85,7 @@ describe("AgentSession handoff", () => {
 		tempDir = TempDir.createSync("@pi-handoff-");
 		sessionManager = SessionManager.create(tempDir.path(), tempDir.path());
 		events = [];
-		obfuscator = new SecretObfuscator([{ type: "plain", content: HANDOFF_SECRET }]);
+		obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: HANDOFF_SECRET }]);
 
 		const agent = new Agent({
 			initialState: {

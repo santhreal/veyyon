@@ -70,7 +70,7 @@ describe("unexpected-stop provider confidentiality boundary", () => {
 		// WHY: attacker/restored assistant text is provider-authored input, not trusted classifier metadata.
 		const model = onlineModel();
 		const raw = `${SECRET} safe middle ${SECRET}`;
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: SECRET }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: SECRET }]);
 		const placeholder = obfuscator.obfuscate(SECRET);
 		let captured = "";
 		vi.spyOn(ai, "completeSimple").mockImplementation(async (_model, context) => {

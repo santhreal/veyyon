@@ -45,7 +45,9 @@ async function withVault(body: (vault: SecretVault, locations: VaultLocations) =
 /** Build an obfuscator over everything currently live in a vault. */
 async function obfuscatorFor(vault: SecretVault): Promise<SecretObfuscator> {
 	const named = await vault.namedSecrets();
-	return new SecretObfuscator(named.map(secret => ({ type: "plain", content: secret.value, name: secret.name })));
+	return new SecretObfuscator(
+		named.map(secret => ({ type: "plain", origin: "config", content: secret.value, name: secret.name })),
+	);
 }
 
 describe("a named secret becomes a name the model can choose", () => {
@@ -181,7 +183,7 @@ describe("adding a secret mid-session", () => {
 	 * hold the old tokens.
 	 */
 	it("leaves an existing secret's placeholder unchanged", () => {
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: AWS }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: AWS }]);
 		const before = obfuscator.obfuscate(AWS);
 
 		obfuscator.addNamedSecret("DEPLOY_TOKEN", GITHUB);

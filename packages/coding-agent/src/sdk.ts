@@ -115,6 +115,7 @@ import { type FileSlashCommand, loadSlashCommands as loadSlashCommandsInternal }
 import { filterToolsByHarnessProfile, resolvePromptSectionOrderForModel } from "./harness/model-profile";
 import type { HindsightSessionState } from "./hindsight/state";
 import { LocalProtocolHandler, type LocalProtocolOptions } from "./internal-urls";
+import { type JsonWithOptionalFields, mapJsonStrings } from "./json-transform";
 import { describeLegacyPromptFile, findLegacyPromptFiles } from "./legacy-system-prompt-files";
 import type { LspStartupServerInfo } from "./lsp";
 import { LSP_STARTUP_EVENT_CHANNEL, type LspStartupEvent } from "./lsp/startup-events";
@@ -146,11 +147,13 @@ import {
 } from "./secrets";
 import { buildExpansionRecord, SecretAuditLog, secretAuditPath } from "./secrets/audit";
 import { buildEnvSecretPattern, loadEnvSecretKeywords } from "./secrets/env-keywords";
-import { attachSecretsNoticeSink } from "./secrets/notices";
+import { attachSecretsNoticeSink, SECRET_SPEND_NOTICE_SOURCE } from "./secrets/notices";
 import { describeSecretExpiry } from "./secrets/obfuscator";
+import { isSecretPlaceholder, PLACEHOLDER_RE } from "./secrets/placeholder";
 import { expiryWarnings } from "./secrets/secret-command";
-import { resolveVaultLocations, SecretVault } from "./secrets/vault";
-import { loadOrCreateVaultKey } from "./secrets/vault-crypto";
+import { secretSpendMarker } from "./secrets/spend-marker";
+import { resolveVaultLocations, SecretVault, vaultPathFor } from "./secrets/vault";
+import { loadOrCreateVaultKey, vaultKeyPath } from "./secrets/vault-crypto";
 import {
 	AgentSession,
 	obfuscateProviderPayload,
@@ -160,6 +163,7 @@ import {
 } from "./session/agent-session";
 import { discoverAuthStorage } from "./session/auth-broker-config";
 import type { AuthStorage } from "./session/auth-storage";
+import { abortDetached } from "./session/detached-abort";
 import { createInterruptedTurnAbortMessage } from "./session/exit-diagnostics";
 import {
 	type CustomMessage,
@@ -182,6 +186,7 @@ import {
 	buildSystemPromptToolMetadata,
 	loadProjectContextFiles as loadContextFilesInternal,
 } from "./system-prompt";
+import { renderSecretInventory } from "./system-prompt-builder/secret-inventory";
 import { ARGOT_HANDLES_BANNER } from "./system-prompt-builder/section-registry";
 import { AgentOutputManager } from "./task/output-manager";
 import { wrapStreamFnWithProviderConcurrency } from "./task/provider-concurrency";
@@ -259,6 +264,30 @@ type McpNotificationEntry = {
 	serverName: string;
 	uri: string;
 };
+
+/**
+ * The operator-facing text for a session that cannot initialize secret protection.
+ *
+ * Starting anyway was considered and rejected. Degrading to a no-secrets session
+ * reads like the kind option, but it is fail-OPEN on a security control: without a
+ * placeholder key there is no obfuscator, and the obfuscator is what REDACTS. Stored
+ * secrets would merely be unavailable, which is survivable, but env-derived values
+ * that this session would have redacted reach the model, the transcript and the
+ * session file in the clear. The operator turned protection on deliberately; quietly
+ * running without it is worse than not starting, because nothing on screen would say
+ * the guarantee had lapsed.
+ *
+ * So the failure stays fatal and becomes a decision instead of a stack trace: it names
+ * the key path, the causes worth checking, and the one command that starts veyyon
+ * without protection if that is genuinely what the operator wants.
+ */
+function secretProtectionUnavailableMessage(globalConfigRoot: string): string {
+	return [
+		`Secret protection is enabled but its key at ${vaultKeyPath(globalConfigRoot)} could not be initialized, so this session cannot redact or expand secrets.`,
+		`Check that ${globalConfigRoot} is a real directory you own and can write to, that it is not a symlink and not on a read-only or exotic filesystem, then retry.`,
+		"To start without secret protection instead, run: veyyon config set secrets.enabled false",
+	].join("\n");
+}
 
 function buildAsyncResultBatchMessage(entries: AsyncResultEntry[]): CustomMessage<AsyncResultDetails> | null {
 	if (entries.length === 0) return null;
@@ -1272,8 +1301,15 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	let credentialDisabledTarget: ExtensionRunner | undefined;
 	const unsubscribeCredentialDisabled: (() => void) | undefined = authStorage.onCredentialDisabled(event => {
 		if (credentialDisabledTarget) {
-			// Discard return: any handler error is routed through runner.onError listeners.
-			void credentialDisabledTarget.emitCredentialDisabled(event);
+			// Discard the result: handler errors are already isolated onto runner.onError
+			// listeners. The catch is for the runner itself failing, which nothing here
+			// awaits, so without it the rejection reaches the process-level handler and
+			// takes the whole session down over a notification.
+			void credentialDisabledTarget.emitCredentialDisabled(event).catch(error => {
+				logger.warn("Failed to deliver a credential-disabled event to extensions", {
+					error: errorMessage(error),
+				});
+			});
 		} else {
 			startupCredentialDisabledEvents.push(event);
 		}
@@ -1472,15 +1508,25 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				content: secret.value,
 				name: secret.name,
 				expiresAt: secret.expiresAt,
+				// Stored in the vault precisely so the value is never shown. `mayRestoreForDisplay`
+				// restores only `type: "regex"` + `origin: "config"`, so declaring the true
+				// provenance here is what keeps a stored credential from being painted back onto
+				// the screen out of model-authored prose or a tool-call argument.
+				origin: "vault",
 			}));
 
 			for (const warning of expiryWarnings(liveVaultEntries, Date.now())) {
 				operatorNotices.warn("secrets", warning);
 			}
 
-			const placeholderKey = await logger.time("loadSecretPlaceholderKey", () =>
-				loadOrCreateVaultKey(globalConfigRoot),
-			);
+			let placeholderKey: Buffer;
+			try {
+				placeholderKey = await logger.time("loadSecretPlaceholderKey", () =>
+					loadOrCreateVaultKey(globalConfigRoot),
+				);
+			} catch (error) {
+				throw new Error(secretProtectionUnavailableMessage(globalConfigRoot), { cause: error });
+			}
 			const vaultRevision = vault.revision();
 			const nextObfuscator = new SecretObfuscator([...envEntries, ...fileEntries, ...vaultEntries], {
 				placeholderKey,
@@ -1508,6 +1554,192 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		let refreshSecretRuntime!: (runtimeCwd: string) => Promise<SecretRuntimeLease>;
 
 		const auditLogBySecretLease = new WeakMap<object, SecretAuditLog | undefined>();
+		/**
+		 * The vault each lease was built from, so the spend seam can ask whether a scope
+		 * is currently unreadable. Keyed like the audit log because it answers the same
+		 * kind of question: which load produced the authority about to be used.
+		 */
+		const vaultBySecretLease = new WeakMap<object, SecretVault>();
+
+		/**
+		 * Schedule the reload a stale lease needs, honouring the two rules that keep
+		 * refreshes from fighting each other.
+		 *
+		 * A lease may outlive a cwd transition because one admitted request keeps its
+		 * immutable authority. Such an old lease must not supersede the destination
+		 * refresh by scheduling work for the directory being left. And once the
+		 * committed lease already answers correctly there is nothing left to fix: a
+		 * revision that moved because THIS session wrote the vault therefore cannot
+		 * feed a reload storm, because the write is already reflected in the lease
+		 * every later request reads.
+		 */
+		const scheduleStaleSecretRefresh = (normalizedCwd: string): void => {
+			if (path.resolve(sessionManager.getCwd()) !== normalizedCwd) return;
+			if (pendingSecretRuntime?.cwd === normalizedCwd) return;
+			if (secretRuntimeLease.cwd === normalizedCwd && secretRuntimeLease.isFreshForExpansion()) return;
+			void refreshSecretRuntime(normalizedCwd).catch(error => {
+				logger.warn("Failed to refresh a stale secret runtime", {
+					cwd: normalizedCwd,
+					error: errorMessage(error),
+				});
+			});
+		};
+
+		/**
+		 * The lease that may expand right now, or undefined when no fresh authority
+		 * exists yet.
+		 *
+		 * A request pins one immutable lease so that a disable or a scope move cannot
+		 * change what an already-admitted request uses. That rule protects redaction.
+		 * For EXPANSION a reload that already landed on the same directory is strictly
+		 * better authority: it resolves the placeholder against the vault as it is now
+		 * instead of against a snapshot a rotation has moved past. Preferring it is how
+		 * a stale revision recovers instead of refusing.
+		 */
+		const resolveFreshExpansionAuthority = (requested: SecretRuntimeLease): SecretRuntimeLease | undefined => {
+			if (requested.isFreshForExpansion()) return requested;
+			const live = secretRuntimeLease;
+			if (live === requested || live.cwd !== requested.cwd) return undefined;
+			if (live.expansionObfuscator?.hasSecrets() !== true) return undefined;
+			return live.isFreshForExpansion() ? live : undefined;
+		};
+
+		/**
+		 * Whether any string inside a tool call's arguments would actually be expanded.
+		 *
+		 * The same bounded JSON walk `deobfuscateToolArguments` uses, with the mapper
+		 * replaced by the non-throwing predicate that mirrors `deobfuscate`'s rule. The
+		 * identity return keeps the walk allocation-free: `mapJsonStrings` hands back
+		 * the original reference when no string changed.
+		 */
+		const toolArgumentsCarryLivePlaceholder = (
+			expansion: SecretObfuscator,
+			args: Record<string, unknown>,
+		): boolean => {
+			let carries = false;
+			mapJsonStrings(args as JsonWithOptionalFields, text => {
+				if (!carries && expansion.containsLivePlaceholder(text)) carries = true;
+				return text;
+			});
+			return carries;
+		};
+
+		/**
+		 * The first placeholder-shaped token in a tool call's arguments that this
+		 * runtime cannot resolve, or `undefined` when every one of them resolves.
+		 *
+		 * Only consulted while a vault scope is unreadable. An unparseable vault never
+		 * says which names it held, so there is no list to check a token against and
+		 * the shape is the only signal available. `isSecretPlaceholder` is the gate
+		 * rather than the looser `PLACEHOLDER_RE` alone, so a four-character token
+		 * like `#TODO#` is not mistaken for a name (names start with a letter and run
+		 * at least five characters).
+		 *
+		 * A private regex, not the shared `PLACEHOLDER_RE`: that one is global and
+		 * carries `lastIndex` across every module that touches it, so borrowing it
+		 * here would couple this walk to whether some other caller reset it.
+		 */
+		const firstUnresolvedPlaceholder = (
+			expansion: SecretObfuscator | undefined,
+			args: Record<string, unknown>,
+		): string | undefined => {
+			const scan = new RegExp(PLACEHOLDER_RE.source, PLACEHOLDER_RE.flags);
+			let orphan: string | undefined;
+			mapJsonStrings(args as JsonWithOptionalFields, text => {
+				if (orphan !== undefined || !text.includes("#")) return text;
+				scan.lastIndex = 0;
+				for (;;) {
+					const match = scan.exec(text);
+					if (match === null) break;
+					const token = match[0];
+					if (isSecretPlaceholder(token) && expansion?.knowsPlaceholder(token) !== true) {
+						orphan = token;
+						break;
+					}
+				}
+				return text;
+			});
+			return orphan;
+		};
+
+		/** An unreadable-scope condition, described in the words an operator is shown. */
+		interface UnreadableVaultReport {
+			/** The lease whose vault was consulted, which is the live one whenever it still applies. */
+			readonly authority: SecretRuntimeLease;
+			/** Every unreadable scope with its path, for a message that has to say WHICH file. */
+			readonly broken: string;
+			/** The repair, worded to match the notice `noteUnreadableVault` prints for the same state. */
+			readonly repair: string;
+		}
+
+		/**
+		 * The unreadable scopes that currently speak for `requested`'s directory, and the words that
+		 * tell an operator how to fix them.
+		 *
+		 * Split out from its one caller so the repair is worded in ONE place. The same condition is
+		 * also reported by `noteUnreadableVault` in vault.ts, and an operator hitting a corrupt vault
+		 * sees both within a minute of each other; two descriptions of one repair is how someone
+		 * concludes there are two problems. Keep this clause and that notice's in step.
+		 */
+		const unreadableVaultReport = (requested: SecretRuntimeLease): UnreadableVaultReport | undefined => {
+			// A repaired vault stops refusing the moment its reload lands: the live lease
+			// holds a different SecretVault whose own load found every scope readable.
+			const live = secretRuntimeLease;
+			const authority = live.cwd === requested.cwd ? live : requested;
+			const unreadable = vaultBySecretLease.get(authority)?.unreadableScopes() ?? [];
+			if (unreadable.length === 0) return undefined;
+			const locations = resolveVaultLocations({ globalConfigRoot, agentDir, cwd: authority.cwd });
+			const broken = unreadable.map(scope => `${scope} (${vaultPathFor(locations, scope)})`).join(", ");
+			// MOVES the file, so say "aside" rather than "delete": it still holds real credentials
+			// sealed with a key that is still on disk, the damage may be a truncated tail with
+			// recoverable entries behind it, and someone told it was deleted finds out otherwise at
+			// the worst possible moment.
+			const commands = unreadable.map(scope => `/secret discard --scope ${scope}`).join(" and ");
+			return {
+				authority,
+				broken,
+				repair: `Run ${commands} to move the unreadable file aside, then re-add the secrets it held with /secret add.`,
+			};
+		};
+
+		/**
+		 * THE FOURTH REFUSAL CONDITION: an unreadable vault scope plus a placeholder
+		 * nothing can resolve.
+		 *
+		 * A vault whose bytes exist but do not parse is skipped by `load()` so launch
+		 * survives, which leaves this hole: `revision()` fingerprints file STATS and
+		 * never parses, so the corrupt file's revision matches the captured one and the
+		 * freshness conditions are all satisfied. `containsLivePlaceholder` is false
+		 * too, because the obfuscator never learned the name the file held. Every guard
+		 * says yes and `bash echo #TOKEN#` RUNS, passing the literal characters
+		 * `#TOKEN#` where a credential belongs. That is worse than the crash it
+		 * replaced: a dead TUI is loud, a command that quietly executes against a live
+		 * endpoint with a placeholder for its credential is not.
+		 *
+		 * The rule cannot be name-specific. An unparseable vault never says which names
+		 * it held, so there is no list to check against; while ANY scope is unreadable,
+		 * a placeholder-shaped token that does not resolve is refused instead of passed
+		 * through. With every scope healthy this does nothing at all, so an unknown
+		 * `#WORD#` keeps behaving exactly as it does today.
+		 *
+		 * Deliberately OUTSIDE the `hasSecrets()` gate that guards the rest of the spend
+		 * seam. In the case this exists for, the corrupt scope is often the only source
+		 * of secrets, so the obfuscator holds nothing, `hasSecrets()` is false, and a
+		 * check placed inside that gate would never run.
+		 */
+		const assertNoOrphanPlaceholderWhileVaultUnreadable = (
+			requested: SecretRuntimeLease,
+			args: Record<string, unknown>,
+		): void => {
+			const report = unreadableVaultReport(requested);
+			if (report === undefined) return;
+			const orphan = firstUnresolvedPlaceholder(report.authority.expansionObfuscator, args);
+			if (orphan === undefined) return;
+			throw new Error(
+				`Secret expansion was refused because ${orphan} does not resolve and the vault could not be read, so there is no way to tell whether it is a credential this session should have expanded. Unreadable: ${report.broken}. ${report.repair} Nothing was run.`,
+			);
+		};
+
 		const createSecretRuntimeLease = (
 			revision: number,
 			runtimeCwd: string,
@@ -1518,6 +1750,22 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			auditLog: SecretAuditLog | undefined,
 		): SecretRuntimeLease => {
 			const normalizedCwd = path.resolve(runtimeCwd);
+			/**
+			 * Nothing this lease could get wrong about `text`.
+			 *
+			 * A moved vault revision is a cache miss, not a security event, and it is
+			 * only a miss at all for text carrying a placeholder this snapshot would
+			 * substitute. `deobfuscate` leaves every other string byte-identical, so a
+			 * payload without a live placeholder is safe whatever the vault did on
+			 * disk. The payload gate runs BEFORE the revision compare because
+			 * `revision()` costs a stat per vault path and almost every payload
+			 * expands to itself.
+			 */
+			const settledForExpansion = (text: string | undefined): boolean => {
+				if (!vault || vaultRevision === undefined) return true;
+				if (text !== undefined && expansionObfuscator?.containsLivePlaceholder(text) !== true) return true;
+				return vault.revision() === vaultRevision;
+			};
 			const lease: SecretRuntimeLease = Object.freeze({
 				revision,
 				cwd: normalizedCwd,
@@ -1528,27 +1776,48 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				obfuscateMessages: (messages: Message[]) => (redactor ? obfuscateMessages(redactor, messages) : messages),
 				obfuscateContext: (context: Context) => (redactor ? obfuscateProviderContext(redactor, context) : context),
 				obfuscatePayload: (payload: unknown) => obfuscateProviderPayload(payload, redactor),
-				assertFreshForExpansion: () => {
-					if (!vault || vaultRevision === undefined || vault.revision() === vaultRevision) return;
-					// A lease may outlive a cwd transition because one admitted
-					// request keeps its immutable authority. Such an old lease must
-					// refuse expansion, but it must not supersede the destination
-					// refresh by scheduling work for the directory being left.
-					const stillCurrent = path.resolve(sessionManager.getCwd()) === normalizedCwd;
-					if (stillCurrent && (!pendingSecretRuntime || pendingSecretRuntime.cwd !== normalizedCwd)) {
-						void refreshSecretRuntime(normalizedCwd).catch(error => {
-							logger.warn("Failed to refresh a stale secret runtime", {
-								cwd: normalizedCwd,
-								error: errorMessage(error),
-							});
-						});
+				isFreshForExpansion: (text?: string) => settledForExpansion(text),
+				ensureFreshForExpansion: async (text?: string) => {
+					if (settledForExpansion(text)) return;
+					if (path.resolve(sessionManager.getCwd()) !== normalizedCwd) {
+						// Pinned to a directory the session has left. Scheduling a reload
+						// here would supersede the destination refresh, so wait for
+						// whatever is already in flight and re-ask instead.
+						await pendingSecretRuntime?.work.catch(() => undefined);
+						if (settledForExpansion(text)) return;
+						throw new Error(
+							`Secret expansion was refused because the vault changed under a lease pinned to ${normalizedCwd}, a directory the session has already left, so that project's vault cannot be reloaded for it. Retry once the directory change has finished.`,
+						);
 					}
+					let refreshed: SecretRuntimeLease | undefined;
+					let reloadError: unknown;
+					try {
+						refreshed = await refreshSecretRuntime(normalizedCwd);
+					} catch (error) {
+						reloadError = error;
+					}
+					// Exactly one attempt. A reload that keeps losing to a revision that
+					// will not settle must surface as one actionable refusal rather than
+					// spin the loader.
+					if (refreshed?.isFreshForExpansion(text) === true) return;
+					if (settledForExpansion(text)) return;
+					const detail = reloadError === undefined ? "" : ` Reload failed: ${errorMessage(reloadError)}.`;
 					throw new Error(
-						"Secret expansion was refused because the vault changed in another session or process; retry after refresh.",
+						`Secret expansion was refused: reloading the secret vault for ${normalizedCwd} did not produce a runtime that can resolve this text's placeholders, so no current value is available.${detail} Check the vault with /secret list, then retry.`,
+					);
+				},
+				assertFreshForExpansion: (text?: string) => {
+					if (settledForExpansion(text)) return;
+					scheduleStaleSecretRefresh(normalizedCwd);
+					throw new Error(
+						path.resolve(sessionManager.getCwd()) === normalizedCwd
+							? "Secret expansion was refused because the vault on disk no longer matches the snapshot this request is pinned to, so a placeholder could resolve to a value the vault has already replaced. A reload is under way; retry this call, and run /secret list if it keeps failing."
+							: `Secret expansion was refused because the vault changed under a lease pinned to ${normalizedCwd}, a directory the session has already left; the destination's own reload is the authority. Retry once the directory change has finished.`,
 					);
 				},
 			});
 			auditLogBySecretLease.set(lease, auditLog);
+			if (vault) vaultBySecretLease.set(lease, vault);
 			return lease;
 		};
 		let secretRuntimeLease = createSecretRuntimeLease(
@@ -2781,8 +3050,12 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 		credentialDisabledTarget = extensionRunner;
 		for (const event of startupCredentialDisabledEvents.splice(0)) {
-			// Discard return: any handler error is routed through runner.onError listeners.
-			void extensionRunner.emitCredentialDisabled(event);
+			// Same containment as the live path above: nothing awaits this drain.
+			void extensionRunner.emitCredentialDisabled(event).catch(error => {
+				logger.warn("Failed to deliver a buffered credential-disabled event to extensions", {
+					error: errorMessage(error),
+				});
+			});
 		}
 
 		const getSessionContext = () => ({
@@ -2792,7 +3065,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			isIdle: () => !session.isStreaming,
 			hasQueuedMessages: () => session.queuedMessageCount > 0,
 			abort: () => {
-				session.abort({ reason: USER_INTERRUPT_LABEL });
+				abortDetached(session, "sdk.agentControl.abort", USER_INTERRUPT_LABEL);
 			},
 			settings,
 			obfuscateProviderText: (text: string) => secretRuntimeLease.obfuscateText(text),
@@ -3216,6 +3489,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				mcpDiscoveryMode: hasDiscoverableTools,
 				mcpDiscoveryServerSummaries: discoverableToolSummary.servers.map(formatDiscoverableToolServerSummary),
 				secretsEnabled: obfuscator?.hasSecrets() === true,
+				// Read LATE, inside the build, never snapshotted when the runtime was
+				// constructed. `namedSecretNames()` expires stale entries while answering, so
+				// asking it here is what drops a credential that lapsed mid-session out of the
+				// prompt, and reading the live `obfuscator` binding is what drops one that
+				// `/secret rm` revoked. Undefined (protection off, or an empty vault) emits no
+				// section at all.
+				secretInventory: renderSecretInventory(obfuscator?.namedSecretNames()),
 				argotPreamble: argotCanEncode ? renderPreamble({ tools: true }) : undefined,
 				argotHandles: argotCanEncode && argot.loaded ? argot.promptFragment() : undefined,
 				workspaceTree: promptWorkspaceTree,
@@ -3602,33 +3882,95 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			},
 			cursorExecHandlers,
 			transformToolCallArguments: (args, toolName) => {
-				let result = args;
+				// `display` is what an operator reads and what the session records;
+				// `execution` is what the tool runs with. They diverge on exactly one thing
+				// below, and that divergence is the point of the split.
+				let display = args;
 				const maxTimeout = settings.get("tools.maxTimeout");
-				if (maxTimeout > 0 && typeof result.timeout === "number") {
-					result = { ...result, timeout: Math.min(result.timeout, maxTimeout) };
+				if (maxTimeout > 0 && typeof display.timeout === "number") {
+					display = {
+						...display,
+						timeout: Math.min(display.timeout, maxTimeout),
+					};
 				}
+				let execution = display;
 				const requestRuntime = activeMainRequestRuntime;
 				const requestObfuscator = requestRuntime.expansionObfuscator;
+				// Before the `hasSecrets()` gate on purpose: when the unreadable scope was
+				// the only source of secrets there is nothing in the obfuscator and that
+				// gate is false, which is exactly the case this has to catch.
+				assertNoOrphanPlaceholderWhileVaultUnreadable(requestRuntime, display);
 				if (requestObfuscator?.hasSecrets()) {
-					requestRuntime.assertFreshForExpansion();
-					const requestAuditLog = auditLogBySecretLease.get(requestRuntime);
+					// Freshness is a question about THIS payload, not about the session.
+					// The revision compare is the cheap half, so it runs first; only when
+					// it fails is walking the arguments worth its cost. A payload that
+					// carries no placeholder this runtime would substitute expands to
+					// itself, so a moved revision cannot make it wrong and must not cost
+					// it a refusal. That is the whole reason a placeholder-free `bash` call
+					// used to be rejected out of a session holding any secret.
+					let expansionLease = requestRuntime;
+					let expansionObfuscator = requestObfuscator;
+					if (
+						!requestRuntime.isFreshForExpansion() &&
+						toolArgumentsCarryLivePlaceholder(requestObfuscator, display)
+					) {
+						const fresh = resolveFreshExpansionAuthority(requestRuntime);
+						if (fresh === undefined) {
+							// Schedules the reload the retry will expand against, then
+							// refuses this one call rather than spending a value the vault
+							// may already have replaced. The agent loop turns this into a
+							// failed tool result, never an unwound session.
+							requestRuntime.assertFreshForExpansion();
+						} else {
+							expansionLease = fresh;
+							expansionObfuscator = fresh.expansionObfuscator ?? requestObfuscator;
+						}
+					}
+					// The audit log travels with whichever lease supplied the expansion
+					// authority, because both were built by the same load: a log that
+					// named a placeholder the other snapshot resolved would describe an
+					// event that never happened.
+					const requestAuditLog = auditLogBySecretLease.get(expansionLease);
 					if (requestAuditLog !== undefined) {
 						const record = buildExpansionRecord({
-							args: result,
+							args: display,
 							tool: toolName,
 							session: agent.sessionId,
 							at: Date.now(),
-							known: placeholder => requestObfuscator.knowsPlaceholder(placeholder),
+							known: placeholder => expansionObfuscator.knowsPlaceholder(placeholder),
 							obfuscate: value => requestRuntime.obfuscateText(value),
 						});
 						if (record !== null) requestAuditLog.record(record);
 					}
-					result = deobfuscateToolArguments(requestObfuscator, result);
+					// The operator-visible half of the same fact, on the session's notice event so
+					// the transcript carries it in EVERY approval mode. The audit log is a file read
+					// afterwards and the secret-use boundary is skipped under yolo / the `/yolo`
+					// bypass, which is the configuration most likely to be running unattended: this
+					// is the only thing that says a credential left the vault while it happens. Read
+					// BEFORE expansion, because after it there is no placeholder left to name, and
+					// never gated on `secrets.auditLog` — recording a spend and showing one are
+					// separate obligations.
+					const spend = secretSpendMarker(display, toolName, placeholder =>
+						expansionObfuscator.knowsPlaceholder(placeholder),
+					);
+					if (spend !== undefined) session?.emitNotice("info", spend, SECRET_SPEND_NOTICE_SOURCE);
+					// EXECUTION ONLY. The substituted text is a live credential, so the tool
+					// gets it and nothing else does: `display` keeps the placeholder, which is
+					// what reaches the rendered tool card, `tool_execution_start`, the
+					// telemetry span and the session file. A renderer cannot leak a value it
+					// was never handed.
+					execution = deobfuscateToolArguments(expansionObfuscator, display);
 				}
+				// BOTH. A codec handle is opaque to a person, so an unexpanded display is the
+				// bug rather than the protection — the opposite of a secret. When no secret
+				// expanded, `execution` is still the same object as `display` and one walk
+				// serves both.
 				if (argot?.loaded) {
-					result = expandToolArguments(argot, result);
+					const expandedDisplay = expandToolArguments(argot, display);
+					execution = execution === display ? expandedDisplay : expandToolArguments(argot, execution);
+					display = expandedDisplay;
 				}
-				return result;
+				return { execution, display };
 			},
 			repairToolCallArguments: createRepairToolCallArgumentsHook(settings, () => agent.state.model),
 			// The RESOLVERS keep provider schemas synchronized with the rebuilt

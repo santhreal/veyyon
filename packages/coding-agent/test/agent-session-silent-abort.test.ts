@@ -164,7 +164,7 @@ describe("AgentSession silent-abort marker stamping", () => {
 		// `displayEvent = { ...event, message: { ...message, content } }` spread copy
 		// in `#handleAgentEvent`. The marker must be stamped BEFORE that spread so
 		// `displayEvent.message.errorMessage` inherits via the spread.
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: "SECRET_VALUE" }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: "SECRET_VALUE" }]);
 		// A real generated placeholder matters here because local display restoration must
 		// allocate the copied content array before the abort marker is observed.
 		const obfuscatedText = obfuscator.obfuscate("hello SECRET_VALUE world");

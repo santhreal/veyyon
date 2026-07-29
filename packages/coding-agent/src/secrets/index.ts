@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { errorMessage, isEnoent, isRecord } from "@veyyon/utils";
+import { CONFIG_DIR_NAME, errorMessage, isEnoent, isRecord } from "@veyyon/utils";
 import { parse as parseYaml } from "yaml";
 import { BUNDLED_ENV_KEYWORDS, buildEnvSecretPattern } from "./env-keywords";
 import type { SecretEntry } from "./obfuscator";
@@ -70,7 +70,7 @@ export {
  * wrong file.
  */
 export async function loadSecrets(cwd: string, agentDir: string): Promise<SecretEntry[]> {
-	const projectPath = path.join(cwd, ".veyyon", "secrets.yml");
+	const projectPath = path.join(cwd, CONFIG_DIR_NAME, "secrets.yml");
 	const profilePath = path.join(agentDir, "secrets.yml");
 
 	const profileEntries = await loadSecretsFile(profilePath);
@@ -149,7 +149,7 @@ export function collectEnvSecrets(pattern: RegExp = BUNDLED_ENV_SECRET_PATTERN):
 		if (!nameMatches) continue;
 		if (seen.has(value)) continue;
 		seen.add(value);
-		entries.push({ type: "plain", content: value, mode: "obfuscate" });
+		entries.push({ type: "plain", content: value, mode: "obfuscate", origin: "environment" });
 	}
 	return entries;
 }
@@ -207,6 +207,8 @@ async function loadSecretsFile(filePath: string): Promise<SecretEntry[]> {
 			replacement: entry.replacement,
 			flags: entry.flags,
 			minLength: entry.minLength,
+			// Supplied here, never read from the file. See `validateEntry`.
+			origin: "config",
 		});
 	}
 	if (problems.length > 0) {
@@ -236,11 +238,18 @@ async function loadSecretsFile(filePath: string): Promise<SecretEntry[]> {
  * declaration this process cannot honour stops the session with the entry, the field and the fix
  * named.
  *
- * Problems are appended rather than thrown so the caller can report all of them at once. The
- * predicate half of the signature still narrows, so a `true` return means every field below is the
- * type {@link SecretEntry} claims.
+ * Problems are appended rather than thrown so the caller can report all of them at once.
+ *
+ * Narrows to {@link SecretEntry} MINUS `origin`, which is the operator-authored surface and not
+ * the whole type. Two reasons, and the first is the one that bites. A type predicate is an
+ * ASSERTION, not a verified narrowing: claiming `entry is SecretEntry` would promise a field this
+ * function never checks, the compiler would not complain, and the promise would simply be false.
+ * That is the same failure shape as a doc comment claiming `expiresAt` identifies vault entries.
+ * Second, provenance must never be operator-supplied, or a hand-written `origin: "environment"` in
+ * a secrets file becomes a way to opt a credential back into being displayed. The loader is the
+ * only thing that knows which file it just read, so the loader sets it.
  */
-function validateEntry(entry: unknown, index: number, problems: string[]): entry is SecretEntry {
+function validateEntry(entry: unknown, index: number, problems: string[]): entry is Omit<SecretEntry, "origin"> {
 	const at = `entry ${index}`;
 	// `isRecord` from the shared owner rather than the same three clauses written out again. Its
 	// definition rejects null, non-objects and arrays alike, so this is a rename and not a behaviour

@@ -190,10 +190,10 @@ describe("AgentSession.switchSession previous-context build", () => {
 		await targetManager.close();
 
 		const sourceObfuscator = new SecretObfuscator([
-			{ type: "plain", name: "SOURCE_TOKEN", content: "source-project-secret-12345" },
+			{ type: "plain", origin: "config", name: "SOURCE_TOKEN", content: "source-project-secret-12345" },
 		]);
 		const targetObfuscator = new SecretObfuscator([
-			{ type: "plain", name: "TARGET_TOKEN", content: "target-project-secret-67890" },
+			{ type: "plain", origin: "config", name: "TARGET_TOKEN", content: "target-project-secret-67890" },
 		]);
 		const refreshedCwds: string[] = [];
 		const agent = new Agent({

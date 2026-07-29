@@ -12,9 +12,12 @@ const PLACEHOLDER_KEY = new Uint8Array(32).fill(11);
 const SECRET = "credential-in-json-key";
 
 function reversibleObfuscator(): SecretObfuscator {
-	return new SecretObfuscator([{ type: "plain", content: SECRET, mode: "obfuscate", name: "JSON_KEY_SECRET" }], {
-		placeholderKey: PLACEHOLDER_KEY,
-	});
+	return new SecretObfuscator(
+		[{ type: "plain", origin: "config", content: SECRET, mode: "obfuscate", name: "JSON_KEY_SECRET" }],
+		{
+			placeholderKey: PLACEHOLDER_KEY,
+		},
+	);
 }
 
 describe("JSON object keys share the secret boundary with values", () => {
@@ -55,14 +58,7 @@ describe("JSON object keys share the secret boundary with values", () => {
 	 */
 	it("fails closed when rewritten keys collide", () => {
 		const obfuscator = new SecretObfuscator(
-			[
-				{
-					type: "plain",
-					content: "replacement-source-key",
-					mode: "replace",
-					replacement: "safe",
-				},
-			],
+			[{ type: "plain", origin: "config", content: "replacement-source-key", mode: "replace", replacement: "safe" }],
 			{ placeholderKey: PLACEHOLDER_KEY },
 		);
 		const original = { "replacement-source-key": 1, safe: 2 };
@@ -115,7 +111,15 @@ describe("JSON object keys share the secret boundary with values", () => {
 	 */
 	it("keeps replace-mode keys one-way", () => {
 		const obfuscator = new SecretObfuscator(
-			[{ type: "plain", content: "replacement-source-key", mode: "replace", replacement: "alias" }],
+			[
+				{
+					type: "plain",
+					origin: "config",
+					content: "replacement-source-key",
+					mode: "replace",
+					replacement: "alias",
+				},
+			],
 			{ placeholderKey: PLACEHOLDER_KEY },
 		);
 		const outbound = mapJsonStrings({ "replacement-source-key": true }, value => obfuscator.obfuscate(value));

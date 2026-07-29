@@ -351,9 +351,26 @@ describe("a valid file", () => {
 		const entries = await loadSecrets(projectDir, profileDir);
 
 		expect(entries).toHaveLength(3);
-		expect(entries[0]).toMatchObject({ type: "plain", content: "sk-live-abcdefghijklmnop", mode: "obfuscate" });
-		expect(entries[1]).toMatchObject({ type: "regex", content: "AKIA[0-9A-Z]{16}", flags: "i", minLength: 20 });
-		expect(entries[2]).toMatchObject({ type: "plain", content: "hunter2", mode: "replace", replacement: "********" });
+		expect(entries[0]).toMatchObject({
+			type: "plain",
+			origin: "config",
+			content: "sk-live-abcdefghijklmnop",
+			mode: "obfuscate",
+		});
+		expect(entries[1]).toMatchObject({
+			type: "regex",
+			origin: "config",
+			content: "AKIA[0-9A-Z]{16}",
+			flags: "i",
+			minLength: 20,
+		});
+		expect(entries[2]).toMatchObject({
+			type: "plain",
+			origin: "config",
+			content: "hunter2",
+			mode: "replace",
+			replacement: "********",
+		});
 	});
 
 	/** A missing file is still empty, which is the one absence that is not a failure. */

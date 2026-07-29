@@ -115,7 +115,7 @@ describe("buildShareSnapshot", () => {
 			getEntries: () => entries,
 			getLeafId: () => "e1",
 		} as unknown as SessionManager;
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: "hunter2-XYZZY" }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: "hunter2-XYZZY" }]);
 
 		const snapshot = buildShareSnapshot(sm, { obfuscator });
 
@@ -158,7 +158,7 @@ describe("buildShareSnapshot", () => {
 			getEntries: () => entries,
 			getLeafId: () => "e1",
 		} as unknown as SessionManager;
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 
 		const snapshot = buildShareSnapshot(sm, { obfuscator });
 		const flat = JSON.stringify(snapshot);
@@ -237,7 +237,7 @@ describe("buildShareSnapshot", () => {
 			getEntries: () => entries,
 			getLeafId: () => "b1",
 		} as unknown as SessionManager;
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 
 		const flat = JSON.stringify(buildShareSnapshot(sm, { obfuscator }));
 

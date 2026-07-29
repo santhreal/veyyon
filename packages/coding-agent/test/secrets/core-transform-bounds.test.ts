@@ -35,15 +35,26 @@ describe("deterministic one-way aliases", () => {
 	/** Terminal aliases are recognized before every rule on later calls, not only by same-call provenance spans. */
 	it("is idempotent across calls for literal and generated regex aliases", () => {
 		const literal = new SecretObfuscator(
-			[{ type: "plain", content: "literal-source-secret", mode: "replace", replacement: "SAFE_ALIAS" }],
+			[
+				{
+					type: "plain",
+					origin: "config",
+					content: "literal-source-secret",
+					mode: "replace",
+					replacement: "SAFE_ALIAS",
+				},
+			],
 			{ placeholderKey: KEY },
 		);
 		const literalAlias = literal.obfuscate("literal-source-secret");
 		expect(literal.obfuscate(literalAlias)).toBe(literalAlias);
 
-		const regex = new SecretObfuscator([{ type: "regex", content: "pin-[0-9]{8}", mode: "replace" }], {
-			placeholderKey: KEY,
-		});
+		const regex = new SecretObfuscator(
+			[{ type: "regex", origin: "config", content: "pin-[0-9]{8}", mode: "replace" }],
+			{
+				placeholderKey: KEY,
+			},
+		);
 		const regexAlias = regex.obfuscate("pin-12345678");
 		expect(regex.obfuscate(regexAlias)).toBe(regexAlias);
 	});
@@ -54,8 +65,14 @@ describe("deterministic one-way aliases", () => {
 			() =>
 				new SecretObfuscator(
 					[
-						{ type: "plain", content: "literal-source-secret", mode: "replace", replacement: "alias-12345678" },
-						{ type: "regex", content: "alias-[0-9]{8}" },
+						{
+							type: "plain",
+							origin: "config",
+							content: "literal-source-secret",
+							mode: "replace",
+							replacement: "alias-12345678",
+						},
+						{ type: "regex", origin: "config", content: "alias-[0-9]{8}" },
 					],
 					{ placeholderKey: KEY },
 				),
@@ -66,16 +83,36 @@ describe("deterministic one-way aliases", () => {
 	it("rejects conflicting exact policies independent of order", () => {
 		for (const entries of [
 			[
-				{ type: "plain" as const, content: "conflicting-secret", mode: "obfuscate" as const },
-				{ type: "plain" as const, content: "conflicting-secret", mode: "replace" as const },
+				{
+					type: "plain" as const,
+					origin: "config" as const,
+					content: "conflicting-secret",
+					mode: "obfuscate" as const,
+				},
+				{
+					type: "plain" as const,
+					origin: "config" as const,
+					content: "conflicting-secret",
+					mode: "replace" as const,
+				},
 			],
 			[
-				{ type: "plain" as const, content: "conflicting-secret", mode: "replace" as const },
-				{ type: "plain" as const, content: "conflicting-secret", mode: "obfuscate" as const },
+				{
+					type: "plain" as const,
+					origin: "config" as const,
+					content: "conflicting-secret",
+					mode: "replace" as const,
+				},
+				{
+					type: "plain" as const,
+					origin: "config" as const,
+					content: "conflicting-secret",
+					mode: "obfuscate" as const,
+				},
 			],
 			[
-				{ type: "regex" as const, content: "token-[0-9]+", mode: "replace" as const },
-				{ type: "regex" as const, content: "token-[0-9]+", mode: "obfuscate" as const },
+				{ type: "regex" as const, origin: "config" as const, content: "token-[0-9]+", mode: "replace" as const },
+				{ type: "regex" as const, origin: "config" as const, content: "token-[0-9]+", mode: "obfuscate" as const },
 			],
 		]) {
 			expect(() => new SecretObfuscator(entries, { placeholderKey: KEY })).toThrow(/conflicting policies/i);
@@ -85,10 +122,10 @@ describe("deterministic one-way aliases", () => {
 	/** A long source is hashed into one fixed seed, then expanded to a deterministic same-length terminal alias. */
 	it("preserves the linear source-plus-output work invariant for long default replacements", () => {
 		const source = "s".repeat(320_000);
-		const first = new SecretObfuscator([{ type: "plain", content: source, mode: "replace" }], {
+		const first = new SecretObfuscator([{ type: "plain", origin: "config", content: source, mode: "replace" }], {
 			placeholderKey: KEY,
 		});
-		const second = new SecretObfuscator([{ type: "plain", content: source, mode: "replace" }], {
+		const second = new SecretObfuscator([{ type: "plain", origin: "config", content: source, mode: "replace" }], {
 			placeholderKey: KEY,
 		});
 		const alias = first.obfuscate(source);
@@ -101,6 +138,7 @@ describe("deterministic one-way aliases", () => {
 	it("registers and matches a bulk literal registry", () => {
 		const entries = Array.from({ length: 2_000 }, (_, index) => ({
 			type: "plain" as const,
+			origin: "config" as const,
 			content: `bulk-source-secret-${index}`,
 			mode: "replace" as const,
 			replacement: `MASK_${index}`,
@@ -118,7 +156,15 @@ describe("expiry and key invariants", () => {
 			expect(
 				() =>
 					new SecretObfuscator(
-						[{ type: "plain", content: "expiring-secret-value", name: "EXPIRY_TOKEN", expiresAt }],
+						[
+							{
+								type: "plain",
+								origin: "config",
+								content: "expiring-secret-value",
+								name: "EXPIRY_TOKEN",
+								expiresAt,
+							},
+						],
 						{ placeholderKey: KEY },
 					),
 			).toThrow(/finite safe-integer/i);
@@ -129,11 +175,11 @@ describe("expiry and key invariants", () => {
 	it("snapshots the validated placeholder key", () => {
 		const mutable = new Uint8Array(32).fill(23);
 		const expectedKey = Uint8Array.from(mutable);
-		const first = new SecretObfuscator([{ type: "regex", content: "token-[0-9]{8}" }], {
+		const first = new SecretObfuscator([{ type: "regex", origin: "config", content: "token-[0-9]{8}" }], {
 			placeholderKey: mutable,
 		});
 		mutable.fill(99);
-		const second = new SecretObfuscator([{ type: "regex", content: "token-[0-9]{8}" }], {
+		const second = new SecretObfuscator([{ type: "regex", origin: "config", content: "token-[0-9]{8}" }], {
 			placeholderKey: expectedKey,
 		});
 		expect(first.obfuscate("token-12345678")).toBe(second.obfuscate("token-12345678"));
@@ -146,8 +192,8 @@ describe("expiry and key invariants", () => {
 		const value = "duplicate-named-secret-value";
 		const obfuscator = new SecretObfuscator(
 			[
-				{ type: "plain", content: value, name: "SURVIVOR_TOKEN", expiresAt: 20 },
-				{ type: "plain", content: value, name: "EXPIRING_TOKEN", expiresAt: 10 },
+				{ type: "plain", origin: "config", content: value, name: "SURVIVOR_TOKEN", expiresAt: 20 },
+				{ type: "plain", origin: "config", content: value, name: "EXPIRING_TOKEN", expiresAt: 10 },
 			],
 			{ placeholderKey: KEY, now: () => now },
 		);
@@ -166,9 +212,9 @@ describe("expiry and key invariants", () => {
 		const value = "duplicate-live-alias-secret";
 		const obfuscator = new SecretObfuscator(
 			[
-				{ type: "plain", content: value, name: "FIRST_TOKEN" },
-				{ type: "plain", content: value, name: "SECOND_TOKEN" },
-				{ type: "regex", content: "FIRST_TOKEN" },
+				{ type: "plain", origin: "config", content: value, name: "FIRST_TOKEN" },
+				{ type: "plain", origin: "config", content: value, name: "SECOND_TOKEN" },
+				{ type: "regex", origin: "config", content: "FIRST_TOKEN" },
 			],
 			{ placeholderKey: KEY },
 		);
@@ -180,7 +226,15 @@ describe("expiry and key invariants", () => {
 	it("sweeps immediate inventory expiry", () => {
 		const expired: string[] = [];
 		const obfuscator = new SecretObfuscator(
-			[{ type: "plain", content: "already-expired-secret", name: "EXPIRED_TOKEN", expiresAt: 100 }],
+			[
+				{
+					type: "plain",
+					origin: "config",
+					content: "already-expired-secret",
+					name: "EXPIRED_TOKEN",
+					expiresAt: 100,
+				},
+			],
 			{ placeholderKey: KEY, now: () => 100, onExpiry: event => expired.push(event.name) },
 		);
 		expect(obfuscator.namedSecretNames()).toEqual([]);
@@ -193,6 +247,7 @@ describe("expiry and key invariants", () => {
 		const expired: string[] = [];
 		const entries = Array.from({ length: 2_000 }, (_, index) => ({
 			type: "plain" as const,
+			origin: "config" as const,
 			content: `bulk-expiry-secret-value-${index}`,
 			name: `TOKEN_${index.toString().padStart(5, "0")}`,
 			expiresAt: index % 2 === 0 ? 10 : 20,
@@ -286,9 +341,12 @@ describe("bounded iterative JSON string mapping", () => {
 describe("match, placeholder, and output amplification limits", () => {
 	/** Match processing stops at the declared count instead of retaining a 100K replacement array. */
 	it("rejects huge regex match sets", () => {
-		const obfuscator = new SecretObfuscator([{ type: "regex", content: "x", mode: "replace", replacement: "*" }], {
-			placeholderKey: KEY,
-		});
+		const obfuscator = new SecretObfuscator(
+			[{ type: "regex", origin: "config", content: "x", mode: "replace", replacement: "*" }],
+			{
+				placeholderKey: KEY,
+			},
+		);
 		expect(() => obfuscator.obfuscate("x".repeat(MAX_SECRET_MATCHES_PER_TEXT + 1))).toThrow(
 			/too many regex matches/i,
 		);
@@ -297,7 +355,7 @@ describe("match, placeholder, and output amplification limits", () => {
 	/** Placeholder count is preflighted even when each individual expansion is small. */
 	it("rejects excessive placeholder counts", () => {
 		const obfuscator = new SecretObfuscator(
-			[{ type: "plain", content: "placeholder-count-secret", name: "COUNT_TOKEN" }],
+			[{ type: "plain", origin: "config", content: "placeholder-count-secret", name: "COUNT_TOKEN" }],
 			{ placeholderKey: KEY },
 		);
 		expect(() => obfuscator.deobfuscate("#COUNT_TOKEN#".repeat(MAX_PLACEHOLDERS_PER_TEXT + 1))).toThrow(
@@ -314,18 +372,24 @@ describe("match, placeholder, and output amplification limits", () => {
 	/** Expansion size is computed from mapped values before String.replace can allocate the result. */
 	it("rejects placeholder output amplification", () => {
 		const value = "v".repeat(MAX_SECRET_VALUE_BYTES);
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: value, name: "LARGE_TOKEN" }], {
-			placeholderKey: KEY,
-		});
+		const obfuscator = new SecretObfuscator(
+			[{ type: "plain", origin: "config", content: value, name: "LARGE_TOKEN" }],
+			{
+				placeholderKey: KEY,
+			},
+		);
 		expect(() => obfuscator.deobfuscate("#LARGE_TOKEN#".repeat(17))).toThrow(/output byte limit/i);
 	});
 
 	/** One-way replacement output is also preflighted before joining amplified chunks. */
 	it("rejects literal replacement output amplification", () => {
 		const replacement = "A".repeat(64 * 1024);
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: "x", mode: "replace", replacement }], {
-			placeholderKey: KEY,
-		});
+		const obfuscator = new SecretObfuscator(
+			[{ type: "plain", origin: "config", content: "x", mode: "replace", replacement }],
+			{
+				placeholderKey: KEY,
+			},
+		);
 		expect(() => obfuscator.obfuscate("x".repeat(257))).toThrow(/output byte limit/i);
 	});
 });

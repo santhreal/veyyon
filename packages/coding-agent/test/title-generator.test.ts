@@ -74,7 +74,7 @@ describe("title generator", () => {
 	it("redacts first-turn secrets at the online title provider boundary", async () => {
 		const model = getModelOrThrow("claude-sonnet-4-5");
 		const secret = "TITLE_PROVIDER_SECRET_49372";
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 		const placeholder = obfuscator.obfuscate(secret);
 		const completeSimpleMock = vi.spyOn(ai, "completeSimple").mockResolvedValue({
 			stopReason: "stop",
@@ -102,7 +102,7 @@ describe("title generator", () => {
 	it("keeps a complete placeholder when a secret straddles title truncation", async () => {
 		const model = getModelOrThrow("claude-sonnet-4-5");
 		const secret = "TITLE_BOUNDARY_SECRET_ABCDEF";
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 		const placeholder = obfuscator.obfuscate(secret);
 		const completeSimpleMock = vi.spyOn(ai, "completeSimple").mockResolvedValue({
 			stopReason: "stop",

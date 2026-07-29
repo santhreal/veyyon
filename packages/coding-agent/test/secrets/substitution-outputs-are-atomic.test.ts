@@ -11,8 +11,8 @@ describe("substitution outputs are atomic", () => {
 	it("protects regex placeholders from the final literal pass", () => {
 		const obfuscator = new SecretObfuscator(
 			[
-				{ type: "plain", content: "0", mode: "replace", replacement: "X" },
-				{ type: "regex", content: "secretvalue" },
+				{ type: "plain", origin: "config", content: "0", mode: "replace", replacement: "X" },
+				{ type: "regex", origin: "config", content: "secretvalue" },
 			],
 			{ placeholderKey: PLACEHOLDER_KEY },
 		);
@@ -29,8 +29,8 @@ describe("substitution outputs are atomic", () => {
 	it("protects named placeholders from regex rules", () => {
 		const obfuscator = new SecretObfuscator(
 			[
-				{ type: "plain", content: "named-secret-value", name: "GITHUB_TOKEN" },
-				{ type: "regex", content: "GITHUB_TOKEN" },
+				{ type: "plain", origin: "config", content: "named-secret-value", name: "GITHUB_TOKEN" },
+				{ type: "regex", origin: "config", content: "GITHUB_TOKEN" },
 			],
 			{ placeholderKey: new Uint8Array(32).fill(6) },
 		);
@@ -51,11 +51,12 @@ describe("substitution outputs are atomic", () => {
 					[
 						{
 							type: "plain",
+							origin: "config",
 							content: "literal-source-secret",
 							mode: "replace",
 							replacement: "alias-12345678",
 						},
-						{ type: "regex", content: "alias-[0-9]{8}" },
+						{ type: "regex", origin: "config", content: "alias-[0-9]{8}" },
 					],
 					{ placeholderKey: PLACEHOLDER_KEY },
 				),
@@ -73,11 +74,12 @@ describe("substitution outputs are atomic", () => {
 					[
 						{
 							type: "regex",
+							origin: "config",
 							content: "source-[0-9]{8}",
 							mode: "replace",
 							replacement: "alias-12345678",
 						},
-						{ type: "regex", content: "alias-[0-9]{8}" },
+						{ type: "regex", origin: "config", content: "alias-[0-9]{8}" },
 					],
 					{ placeholderKey: PLACEHOLDER_KEY },
 				),
@@ -91,9 +93,9 @@ describe("substitution outputs are atomic", () => {
 	it("preserves an existing live placeholder across every phase", () => {
 		const obfuscator = new SecretObfuscator(
 			[
-				{ type: "plain", content: "resumed-secret-value", name: "RESUME_TOKEN" },
-				{ type: "plain", content: "TOKEN", mode: "replace", replacement: "LABEL" },
-				{ type: "regex", content: "RESUME_[A-Z]+" },
+				{ type: "plain", origin: "config", content: "resumed-secret-value", name: "RESUME_TOKEN" },
+				{ type: "plain", origin: "config", content: "TOKEN", mode: "replace", replacement: "LABEL" },
+				{ type: "regex", origin: "config", content: "RESUME_[A-Z]+" },
 			],
 			{ placeholderKey: PLACEHOLDER_KEY },
 		);
@@ -109,8 +111,14 @@ describe("substitution outputs are atomic", () => {
 	it("does not allow a literal match to cross a protected span", () => {
 		const obfuscator = new SecretObfuscator(
 			[
-				{ type: "plain", content: "crossing-secret-value", name: "CROSS_TOKEN" },
-				{ type: "plain", content: "prefix#CROSS_TOKEN#suffix", mode: "replace", replacement: "bad" },
+				{ type: "plain", origin: "config", content: "crossing-secret-value", name: "CROSS_TOKEN" },
+				{
+					type: "plain",
+					origin: "config",
+					content: "prefix#CROSS_TOKEN#suffix",
+					mode: "replace",
+					replacement: "bad",
+				},
 			],
 			{ placeholderKey: PLACEHOLDER_KEY },
 		);
