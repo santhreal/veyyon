@@ -4,6 +4,27 @@
 
 ### Added
 
+- The Subagents HUD, the `/agents` roster, and the inline task widget now show the reasoning effort each agent is actually running at, including an effort it inherited. Previously the effort appeared only when a `:level` suffix had been typed into the model pattern, so every stock agent rendered as a bare model id and two agents running at different efforts looked identical.
+- `/secret rm` and `/secret extend` complete the names of the credentials you have stored, so you no
+  longer have to recall an exact name with nothing on screen to recognise it by. That is a worse
+  position than any other command's arguments put you in, because the whole point of a stored secret
+  is that its value is never displayed, and a mistyped name is a silent no-op rather than something
+  the surface can correct: `/secret list` was the only way to recover a name. The names come from the
+  running obfuscator rather than the vault on disk, because the vault means file I/O plus a decrypt on
+  every keystroke and `load()` throws on a malformed or key-missing vault, which would turn a bad
+  vault into a dropdown that crashes as you type. `extend` completes to `extend NAME ` with the cursor
+  ready for `--ttl` while `rm` completes to a finished command, read off each subcommand's declared
+  usage rather than naming `extend` a second time in the completion code. `add` is deliberately left
+  out, since the name you give it is one you are inventing and offering existing names there would
+  read as a list of things to overwrite. No secret VALUE reaches the dropdown in any field.
+- The model is told which credentials it can spend, in an `AVAILABLE SECRETS` section rebuilt from the
+  live secret runtime every time the base system prompt is built. Storing a secret told the model
+  about it in that turn and only that turn, so a session started the next day had `GITHUB_TOKEN`
+  active and obfuscating while the model had no way to know it existed. Rebuilding from the runtime
+  rather than remembering from the conversation also fixes revocation and expiry structurally: a name
+  the runtime stops returning simply stops being rendered. Names only, sorted so the bytes are stable
+  for prompt caching, and the section is absent rather than empty when protection is off or nothing is
+  stored.
 - Both installers answer `--help` (`-Help` on Windows) with their option list. `sh install.sh --help` used to print `Unknown option: --help` and exit 1, and an unknown option printed the complaint and nothing else. The options were documented in a comment at the top of each script, which is precisely what an install run as `curl … | sh` or `irm … | iex` never shows anyone: there was no way to discover `--source`, `--ref`, `--local` or `VEYYON_INSTALL_DIR` short of opening the raw file on GitHub. Each script now has one usage printer, its header points at that printer rather than carrying a second list to go stale, and an unknown option prints the list on stderr alongside the complaint. `scripts/installer-help-parity.test.ts` runs the POSIX one for real and pins that both installers offer the same six options under their two spellings.
 - `argot.autoload` decides whether the project you launched in is loaded for the session, or every
   load is left to the agent's `argot_load` calls. The startup load already existed and was
@@ -70,8 +91,110 @@
 - `update`: confirm 'Checksum verified' on a successful self-update.
 - `release`: derive commit-history notes + gate the generator on CI.
 
+### Fixed
+
+- `/secret add` now makes secret protection survive the process it was turned on in. Storing your
+  first credential switches `secrets.enabled` on and says it was "saved for the next one", but the
+  write was only queued behind a 100ms debounce and nothing on that path flushed it, so any
+  short-lived surface exited before it landed: a `-p` run, an ACP request, any non-interactive
+  client. The next launch then came up with protection OFF and the credential already in the vault,
+  which is the one state the feature exists to prevent, and the confirmation had promised otherwise.
+  Found by driving the real CLI rather than the test suite: `/secret add` reported the save, and the
+  very next process reported `secrets.enabled` as `false`. A flush that fails now says so in the
+  confirmation instead of overstating what was written.
+- `/secret add --from-env` now tells you when the variable is set but empty, instead of claiming it
+  "is not set in this process". Unset and set-to-nothing shared one message, so exporting `TOKEN=`
+  produced a line that was false for the situation you were in and sent you to re-check an export
+  that was already correct. A variable holding only whitespace is refused too, rather than stored as
+  a credential that would expand to blank text inside a command. A value that merely carries
+  surrounding whitespace is still stored byte for byte, since a real token is allowed to and
+  trimming one would corrupt it where nothing could trace the failure back.
+- The Linux, macOS, and Windows installers now ask the staged executable for its version before they replace an existing command or change your alias, shell profile, or completions. A checksum-valid asset that reported the wrong release version previously replaced the working binary and failed only in the final doctor check. The mismatch now stops at the staged file and leaves the installed bytes untouched. Interrupted-install cleanup also removes only installer-owned staging names, so a similarly named user file is never mistaken for debris.
+- Binary self-update now preserves the old executable under a recovery link or copy and replaces the live path with one atomic rename. A hard kill between the old two renames previously left `veyyon` absent from `PATH`; it now leaves either the complete old binary or the checksum-verified new one. Automatic update state and lock errors return a visible failure instead of rejecting behind the TUI, completion refresh failures appear in the update notification instead of writing raw text through the live frame, single-quoted source wrappers stay source installs, and the rollback picker continues past a full GitHub page even when drafts or prereleases are filtered out. Windows arm64 now reports that no release asset exists instead of requesting a filename the release train never publishes.
+- A session holding any stored secret no longer has its tool calls refused because the vault's
+  revision moved. The freshness guard asked whether the SESSION held a secret rather than whether
+  the CALL carried a placeholder, so a `bash` running `echo "$HOME"` was rejected out of a session
+  that happened to hold one credential, and the reload that would have fixed it was started and
+  thrown away on the line above the refusal. A stale revision now reloads the vault and the call
+  expands against the current values. A refusal survives only where it is real: the text carries a
+  placeholder the runtime would substitute, a reload was actually attempted, and it could not
+  produce a runtime that resolves it. That refusal now names the reload failure and says to retry
+  and check `/secret list`, instead of blaming another session for a reload of its own that failed.
+- Enabling secrets on a machine where the vault key cannot be created no longer kills veyyon at
+  launch with a bare stack. Key provisioning throws on a key root that cannot be hardened, a
+  symlinked or read-only `~/.veyyon`, or anything occupying the key path, and that throw was
+  awaited uncaught during session construction, so veyyon died before drawing a frame and nothing
+  on screen said why. It still refuses to start, because starting without a key would silently
+  switch redaction off after you deliberately turned protection on, but the failure now names the
+  key path, what to check, and the one command that starts veyyon without protection if that is
+  what you want.
+- A vault file that cannot be read no longer lets a placeholder run as literal text, and no longer
+  takes the terminal down on launch. A vault that clears every provenance and integrity check but
+  whose decrypted contents will not parse is now skipped so you can still reach `/secret` to repair
+  it, while a vault that fails any of those checks still refuses to start rather than quietly
+  reporting that the scope holds no secrets. Previously the revision fingerprint read file stats and
+  never parsed, so nothing downstream noticed a skipped scope: `#TOKEN#` was passed through verbatim
+  and the command ran with those seven characters where a credential belonged. While any scope is
+  unreadable, a placeholder-shaped token that does not resolve is now refused, naming the unreadable
+  file and the repair. Tokens the surviving scopes do resolve still expand, and with every scope
+  readable an unknown `#WORD#` is still just text.
+- `/secret discard --scope <scope>` moves a broken vault file aside, which is the repair the
+  unreadable-vault notice tells you to run. The notice and the operation it names had been
+  describing a repair the product could not perform: the method behind it existed and nothing in
+  the tree called it, so the only real route was deleting the file by hand. The scope is required
+  and has no default, because unlike every other use of `--scope` this one names a file to move
+  rather than a place to store something, and defaulting it would move a working vault out from
+  under the session. The file is renamed, never deleted, and the new path is reported, because a
+  vault that will not parse may still hold recoverable entries sealed with a key you still have.
+- A secret matched by a `secrets.yml` pattern no longer stops rendering readable for the rest of the
+  session after the vault changes, you move directories, or protection is toggled. Each of those
+  refreshes carries previously seen values forward so redaction can never regress, and it carried
+  them as redact-only entries; because plain values are substituted before patterns are matched,
+  the carried-forward entry replaced the value before its own pattern could match, and the pattern
+  is what makes a placeholder reversible. The value stayed hidden, so nothing leaked, but it
+  rendered as an opaque `#0...#` token from then on and no later refresh could recover it.
+- Secret expansion no longer breaks by itself while veyyon is running. The vault's revision
+  fingerprint also stat'd the directories the vault files sit in, which are `~/.veyyon`, the
+  profile agent directory, and `<cwd>/.veyyon`, and a directory's timestamps move whenever
+  anything at all is created or removed inside it. veyyon's own SQLite journals, session files,
+  caches, and even the vault's own lock file therefore made the vault look like another process
+  had rewritten it, seconds after a session started and with nothing stored. The fingerprint now
+  reads the vault files themselves, and a write this process makes no longer counts as somebody
+  else's, so storing a credential with `/secret add` and spending it in the same session works
+  instead of reporting that the vault changed underneath you. A genuine write from another
+  session or process is still detected.
+- A vault that changes under a running session no longer takes the session down with it, and a stored
+  credential is no longer painted onto your screen. Rendering the transcript, an assistant message, or
+  a tool call ran the same expansion the spend path uses, so a vault written by a second window or a
+  rotation script turned the next redraw into a thrown error out of a code path that only ever draws,
+  which left the session unable to accept commands. Display paths now expand what they can and render
+  the placeholder literally when they cannot, with a notice saying why, and the refresh they schedule
+  is awaited on the render paths that can wait. The same seam also stopped restoring values that exist
+  precisely so they are never shown: a `secrets.yml` pattern match is still restored on screen, while
+  a vault credential and an environment-derived value stay as placeholders in prose, tool arguments,
+  intents, and both rendered transcripts, so they no longer reach your terminal or its scrollback.
+
 ### Changed
 
+- `tui.scrollIsolation` now defaults to OFF. While it is on, veyyon holds the mouse in order to read
+  wheel events, which takes drag-to-select away from your terminal: selecting text becomes shift+drag,
+  or `/copy` to pick text and code out of the conversation without the mouse at all. That trade may be
+  worth making deliberately, but it was being made for everyone by default, and breaking the most
+  ordinary thing a terminal does is an opt-in rather than a default. With it off, the wheel, native
+  scrollback, drag-select and copy all belong to your terminal again, and the prompt still sits at the
+  bottom of the live view. Turn it back on in `/settings` under Appearance, Display, or with
+  `veyyon config set tui.scrollIsolation true`; nothing about its behaviour changed when it is on.
+- `/secret list` renders as an aligned table with a header, wide-character-safe column widths, and a
+  status column that appears only when something is close to expiring. The near-expiry threshold now
+  has one owner shared with the warning sentences, so the marker in the list and the warning below it
+  cannot disagree.
+- The swallowed-drag hint, the `tui.scrollIsolation` description and the gated tip no longer promise
+  that the mouse comes back on its own. A hold that released after a few seconds of quiet was tried
+  and removed: it unpinned the composer at unpredictable moments and made whether a plain drag
+  selected anything depend on how recently you had typed. The wording outlived the behaviour, which
+  is worse than saying nothing, because it sent you off to wait for a handback that never arrives.
+  All three now state plainly that veyyon holds the mouse while the setting is on and name the three
+  answers that actually work: shift+drag, `/copy`, and turning the setting off.
 - The bounded JSON walk moved out of the secret obfuscator into `src/json-transform.ts`.
   `mapJsonStrings` rewrites every string in a JSON value, keys included, and three callers want
   three different rewrites: the obfuscator's placeholders, the argot token dictionary, and whatever
@@ -365,6 +488,46 @@
 
 ### Fixed
 
+- `/secret rm` now tells the model the credential is gone. Only `add` ever produced an agent notice,
+  and a revoked placeholder is no longer substituted, so a model still carrying "use `#GITHUB_TOKEN#`"
+  wrote that literal text into the next command: the operator saw an authentication failure from the
+  remote service with nothing anywhere connecting it to the secret they had just removed. `/secret
+  extend` likewise says the placeholder is still good. The extend notice quotes no duration, because a
+  lifetime pinned into conversation history goes stale and then misleads, and the operator already has
+  the exact time left on screen.
+- A revocation notice reaches the model even when secret protection is off. Notice delivery sat below
+  the `!secretsEnabled` early return, so every notice was discarded in exactly the state where a stale
+  placeholder does the most damage: with no obfuscator nothing is substituted, so every `#NAME#` still
+  in the model's history reaches the shell verbatim. Notices that OFFER a usable placeholder are still
+  withheld there, since they would advertise an expansion the runtime cannot perform.
+- `SecretObfuscator.namedSecretNames()` returns its names sorted. It previously returned them in vault
+  load order, which is stable enough for reconciling the live runtime and quietly wrong for the system
+  prompt, where a section whose bytes reshuffle between rebuilds invalidates the provider's prompt
+  cache for no behavioral reason. Every pre-existing assertion on this method was single-element,
+  empty, or a length check, so none of them could see the difference.
+- `/settings` now keeps the selected row visible in short terminals and shows a
+  non-actionable resize message when the terminal cannot fit a usable pane. Mouse
+  close, outside-click, and category switches now cancel uncommitted theme or text
+  previews before leaving their scope. Clicking or scrolling the settings pane
+  returns keyboard focus from the category sidebar and each category restores its
+  last selected row. Rows shadowed by project config, a `--config` file, or a
+  runtime override now name that source and remain read-only instead of accepting
+  a hidden profile write. Default Model shows the saved profile choice separately
+  from an active session override. Array-encoded model chains show their primary
+  model and fallback count instead of `inherit`, and expanded Advanced rows retain
+  their original section heading while you scroll.
+- Session effort overrides remain authoritative across role-model switches until
+  cleared. Clearing one now reveals the active role selector's explicit effort.
+
+- Pressing Esc to interrupt a turn can no longer take the process down with
+  `[Unhandled Rejection] AbortError: The operation was aborted.` The interrupt path aborted the
+  session as `void session.abort(...)`, and `void` discards the value without attaching a rejection
+  handler, so an abort that rejected escaped to the process from a keystroke handler. The reported
+  stack blamed the keystroke rather than the teardown step that actually failed, because nothing had
+  ever caught the error to record it. Detached aborts now go through one owner, `abortDetached`,
+  which handles the rejection and logs it with the call site that issued it; the same defect is
+  fixed at the four places that had it (both interrupt paths in the input controller, the SDK agent
+  control, the ACP session control, and the extension host control).
 - `/settings` → Model → Default Model now stores only the model selector. Saved effort has one UI owner, Default Effort. The old second step wrote a hidden `:effort` suffix to `modelRoles.default`, which outranked the adjacent Default Effort row and made later edits there appear ineffective. Role models and subsystem chains keep their explicit effort steps.
 - `set_cwd` now reports a re-root as one readable move, `Moved cwd: <from> → <to>`, and tells the
   caller that relative paths moved with it. The old line put the origin in a trailing parenthetical,
@@ -872,6 +1035,13 @@
 - `session`: clearer no-model/no-key guidance pointing at /login and veyyon setup.
 - `release`: skip changelog diff when no baseline ref exists (first release).
 - `cli`: fail fast on non-TTY interactive/empty stdin; consume piped prompts.
+- A secret vault changed by another session or process no longer kills the running session. Every
+  display and render path (the streamed assistant message, the tool-intent working line, the
+  transcript the TUI repaints, the state rebuild after a compaction or a branch move) now shows the
+  placeholder unexpanded and raises an operator notice while it re-reads the vault, instead of
+  throwing a codec error that unwound the whole session and left the TUI refusing every command.
+  Text with no placeholder in it is never checked for freshness at all, so a command like
+  `echo "$HOME"` can no longer be refused over a vault it does not touch.
 
 ## Upstream history
 
