@@ -39,12 +39,31 @@ describe("vault revision", () => {
 		expect(captured).toMatch(/^[0-9a-f]{64}$/);
 	});
 
-	/** Creating a previously absent scope boundary changes what future vault resolution may read. */
-	it("changes when an absent scope directory appears", async () => {
+	/**
+	 * An empty scope directory holds no readable vault, so its appearance revokes nothing.
+	 *
+	 * This used to fire, because the fingerprint stat'd the scope DIRECTORIES. Those directories
+	 * are `~/.veyyon`, the profile agent directory, and `<cwd>/.veyyon`, and a directory's mtime
+	 * moves whenever any entry inside it is created or removed. Every SQLite `-wal` file, session
+	 * file, cache entry, and the vault's own `<vault>.lock` sibling therefore revoked expansion
+	 * rights, so secret expansion was refused constantly with no other process involved.
+	 */
+	it("is stable when an empty scope directory appears", async () => {
 		const { locations, vault } = await fixture();
 		const captured = vault.revision();
 
-		await fs.mkdir(locations.projectDir);
+		await fs.mkdir(locations.projectDir, { recursive: true });
+		expect(vault.revision()).toBe(captured);
+	});
+
+	/** A vault FILE arriving in a previously absent scope can shadow a loaded name, so it revokes. */
+	it("changes when a vault file appears in a previously absent scope", async () => {
+		const { locations, vault } = await fixture();
+		await vault.add({ name: "SHADOWED_TOKEN", value: "shadowed_secret_value" });
+		const captured = vault.revision();
+
+		await fs.mkdir(locations.projectDir, { recursive: true });
+		await fs.writeFile(vaultPathFor(locations, "project"), "{}", { mode: 0o600 });
 		expect(vault.revision()).not.toBe(captured);
 	});
 
