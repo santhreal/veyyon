@@ -86,7 +86,7 @@ DEPLOY_TOKEN=#0A1B2C3D4E5F678901234567#
 
 The placeholder is stable across restarts on the same machine. It contains a keyed HMAC rather than a load-order index, so seeing it does not give the provider an offline dictionary test for the value. A named vault entry instead uses its readable name, such as `#GITHUB_TOKEN#`, so the model can choose the right credential.
 
-The model is told two things about a placeholder: that putting one where a credential belongs is expected and works, and that it is opaque otherwise. It does not know the value and cannot ask for it.
+The model is told two things about a placeholder: that putting one where a credential belongs is expected and works, and that it is opaque otherwise. It does not know the value and cannot ask for it. For named vault entries it is told one more thing, which credentials it currently has, covered under [What the agent knows, and when](#what-the-agent-knows-and-when).
 
 ## Using a secret in a command
 
@@ -101,6 +101,44 @@ curl -H "Authorization: Bearer #0A1B2C3D4E5F678901234567#" https://api.example.c
 The command that actually executes carries the real token. The substitution happens locally, after the model has produced the command and before the shell sees it. The model never learns the value, and the request still authenticates.
 
 The substituted command is not written down. Veyyon records one diagnostic entry per tool call so that a session interrupted mid-call can tell you on resume what was running, and that entry stores the placeholder form, not the substituted one. This matters because `/share` uploads the session file and backups copy it. What the command prints is a separate question, covered under [What this does not protect](#what-this-does-not-protect).
+
+## What the agent knows, and when
+
+Store `GITHUB_TOKEN` today, quit, and start a new session tomorrow. Ask for your open pull requests, and the agent writes `#GITHUB_TOKEN#` into the `curl` command without you mentioning the credential again.
+
+It can do that because the system prompt carries an **inventory**: the placeholders the agent is able to spend at that moment, listed by name and sorted. The inventory is built from the live secret runtime rather than from the conversation, and that is the whole reason it survives a restart. The vault is stored on disk; a conversation is not. Knowledge kept only in the transcript went away with the transcript, while the credential it described stayed exactly where it was.
+
+The inventory holds names, and nothing else. No value appears in it in any state, and the agent has no way to ask for one. Around the list the agent is told what the list is for: write the placeholder where the credential belongs, the real value is substituted locally just before the tool runs, and a name that is not listed is not available.
+
+Only vault entries are listed, because only they have readable names. A value detected in your environment, or declared in `secrets.yml`, becomes a machine-keyed placeholder instead, which the agent meets where the value would have appeared rather than in a list.
+
+When protection is off, or when nothing is stored, the section is absent rather than empty. An empty heading reads as "you have no credentials", and that is a different statement from "this session cannot spend any". Removing the last credential takes the whole section away again, heading included.
+
+Four moments, and what the agent learns at each:
+
+**At session start, or on resume.** The inventory, rebuilt from whatever the vault holds right then. Nothing else is needed. A credential you stored last week does not have to be introduced again.
+
+**When you add one.** The inventory is rebuilt so the new name is in it, and the agent is told directly, in that turn, that the credential now exists and where its placeholder goes.
+
+**When you remove or extend one.** Both again: the inventory is rebuilt, and the agent is told what changed. `/secret rm` says the placeholder is revoked and must not be used. `/secret extend` says the credential is still available under the same placeholder. Neither notice quotes a lifetime, because a duration written into the history is wrong a minute later, and your terminal already shows you the exact time left.
+
+**When a lifetime runs out on its own.** Substitution stops at the deadline itself, not a moment after, and the name leaves the inventory on the next rebuild. There is no notice on this path, because no command ran and so there is no turn to put one in. You are warned twice before it happens, which is covered under [Lifetimes](#lifetimes).
+
+In none of these does the agent learn a value.
+
+### Why a removal is stated rather than left to the list
+
+Dropping the name from the inventory would be the quieter design, and on paper it says the same thing. It does not work. Noticing that something has stopped being present in a long prompt is the kind of thing a model reliably fails at, so it goes on writing a placeholder that worked ten minutes ago.
+
+The failure is not quiet either. A revoked placeholder is no longer substituted, so `#GITHUB_TOKEN#` reaches the command as that literal text:
+
+```text
+Authorization: Bearer #GITHUB_TOKEN#
+```
+
+The server rejects it, and the agent sees an authentication error with no stated cause. From there it is as likely to conclude the credential is wrong and retry as it is to work out that you took it away. Saying the revocation out loud turns that into a fact it can act on.
+
+For the same reason, the removal notice is delivered even when secret protection is off. The add and extend notices are not: with protection off there is no working placeholder to advertise. A revoked one is different, because it is already sitting in the agent's history, and the agent needs to hear that it stopped working whatever the setting says.
 
 ## The vault: storing a credential with `/secret`
 
@@ -140,20 +178,110 @@ Any of the three shows the model a placeholder built from the name:
 
 ```text
 Stored GITHUB_TOKEN in the profile vault, 1d left.
-The model sees #GITHUB_TOKEN# and never the value.
+The model sees #GITHUB_TOKEN# and never the value. Write that placeholder where the credential goes.
 ```
 
-The agent is told, in that same turn, that a credential exists and that it should write `#GITHUB_TOKEN#` where the value belongs. It is never told the value and cannot ask for it.
+The agent is told at once that a credential exists and that it should write `#GITHUB_TOKEN#` where the value belongs. It is never told the value and cannot ask for it. It also keeps knowing after this session ends, because the inventory in the system prompt is rebuilt from the vault rather than remembered from the conversation. See [What the agent knows, and when](#what-the-agent-knows-and-when).
 
 ### Seeing and removing what you stored
 
 ```text
-/secret list                      names, scopes and lifetimes, never values
+/secret list                      what is stored, never a value
 /secret rm github-token           remove it
 /secret extend github-token --ttl 7d
 ```
 
-`list` shows no part of any value. A prefix of a credential is still a disclosure.
+You do not have to remember how you spelled a name. Type `/secret rm ` and veyyon offers the
+credentials you have stored, so you can pick one instead of recalling it:
+
+```text
+/secret rm git
+  GITHUB_TOKEN   stop this secret being spendable
+  GITLAB_TOKEN   stop this secret being spendable
+```
+
+The list narrows as you type and ignores case, so `git` finds `GITHUB_TOKEN`. `extend` completes the
+same way and leaves the cursor after the name, ready for `--ttl`. Only names appear, which is the
+same thing `list` shows you.
+
+`add` does not complete existing names. The name you give it is one you are inventing, and offering
+the stored ones there would read as a list of things to overwrite.
+
+Completion reads the names from the running redaction engine rather than from the vault on disk, so
+it needs secret protection to be on. With protection off the names are not offered, and `rm` still
+works when you type one in full.
+
+`list` prints a table:
+
+```text
+2 active secrets. The agent spends one by writing its placeholder; the value is never shown.
+  PLACEHOLDER         SCOPE    EXPIRES  STATUS
+  #GITHUB_TOKEN#      profile  6d left
+  #PROD_DB_PASSWORD#  project  1d left  expires soon
+Extend one before it lapses: /secret extend <name> --ttl 7d.
+```
+
+No part of any value appears there. A prefix of a credential is still a disclosure, and one on screen is one in a screenshot.
+
+The `STATUS` column and the closing line appear only when at least one entry has crossed a warning threshold, so a table of healthy entries is one column narrower. A cell reads `past halfway` or `expires soon`, and those are the same two thresholds that raise the warnings described under [Lifetimes](#lifetimes). The table and the warnings cannot disagree about which entry is in trouble.
+
+With nothing stored, `list` says so and shows you the two ways to store something rather than printing an empty table.
+
+`rm` and `extend` each tell the agent what changed, so a placeholder you revoked stops being used instead of arriving at a command as literal text. See [What the agent knows, and when](#what-the-agent-knows-and-when).
+
+### When a vault file cannot be read
+
+Sometimes a vault file survives on disk and stops being readable: a disk filled up mid-write, a
+backup tool restored half of it, a sync client merged two copies. Veyyon tells you which scope, and
+what to run:
+
+```text
+Your profile vault at /home/you/.veyyon/profiles/work/agent/vault.json exists but could not be
+read, so it was skipped and the secrets stored in it are unavailable for the rest of this session:
+their placeholders will NOT expand. Every OTHER scope loaded normally, and masking of known secret
+values is unaffected. The vault is encrypted, so a hand edit cannot repair it: run
+/secret discard --scope profile to move the unreadable file aside, then re-add the secrets it held
+with /secret add.
+```
+
+That is what `discard` is for:
+
+```text
+/secret discard --scope profile
+```
+
+```text
+Moved the unreadable profile vault to
+/home/you/.veyyon/profiles/work/agent/vault.json.unreadable-1753660800000-8e3a8d58, so that scope
+works again. The file still holds your sealed entries, so re-add the secrets it held rather than
+assuming they are gone.
+```
+
+The scope keeps working from there. You can store secrets in it again immediately, and the other two
+scopes were never affected: only the file you named moved.
+
+**Your file is moved, not deleted.** The name it moved to is in the message because that file is the
+only route back to what it held. It is still encrypted with a key that is still on disk, so if the
+damage is a truncated tail, the entries before the damage are still in there. Veyyon will not destroy
+a credential store to make itself usable again, so the cleanup is yours to do once you are sure you
+no longer need it.
+
+**You have to name the scope.** Every other command that takes `--scope` defaults to `profile`,
+because there it chooses where to put something and `/secret list` shows you the result. Here it
+chooses a file to move aside, so a default would let a bare `/secret discard` move a working vault
+out from under the session you are sitting in. A bare invocation is refused and tells you the flag.
+
+Two things it refuses, both on purpose:
+
+- **A scope that reads normally.** This is not a second way to delete secrets. Use `/secret rm
+  <name>` for that, which can tell you what it removed. The check happens at the moment you run the
+  command rather than from the earlier warning, so a file that was repaired in between is left alone.
+- **A scope that shares its file with another scope.** If your profile directory is your config
+  root, the profile and global vaults are one file, and moving it aside as one would take the other
+  with it. The refusal names the other scope so you can decide which you meant.
+
+`discard` works from any client, not only the TUI, because a broken vault is most likely to turn up
+in a headless run.
 
 ### Lifetimes
 
@@ -389,7 +517,7 @@ Nothing important goes only to the log file. That was the previous behaviour and
 | The vault file on disk | No, encrypted |
 | The secret-use log | No, a placeholder |
 | `secrets.yml` on disk | Yes, it is a plain file you wrote |
-| Your terminal | Yes, local display restores live placeholders |
+| Your terminal | Only a `type: regex` pattern you declared in `secrets.yml`. A vault entry, a detected environment variable, and a plain declaration stay masked on screen. |
 | A command the agent runs | Yes, substituted before execution |
 
 The provider boundary is applied again whenever a local transcript is sent. Resuming a session can restore placeholders for display without giving the resumed raw text a path back to the provider.
