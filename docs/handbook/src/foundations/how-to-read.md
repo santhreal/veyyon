@@ -4,8 +4,8 @@
 
 The book runs from what Veyyon is to how it works inside, in this order:
 
-- **Understand Veyyon**: what it is, why it helps, the main mechanisms, and Argot, the shorthand the
-  fork adds.
+- **Understand Veyyon**: what it is, where its fork foundation ends, what Veyyon owns, and how its
+  main mechanisms work.
 - **Get started**: install, sign in, and run your first task.
 - **Core concepts**: the few ideas the rest of the book builds on (sessions and turns, the permission
   model, the model contract).
