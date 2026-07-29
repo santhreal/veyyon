@@ -2200,28 +2200,29 @@ async function executeToolCalls(
 			}
 		}
 
-		// Rewrite the arguments HERE, before anything else observes them, so every
-		// consumer sees one canonical set of values: `tool_execution_start`, the
-		// telemetry span, `beforeToolCall`, `tool_execution_update`, and the tool
-		// body itself.
+		// Rewrite the arguments HERE, before anything else observes them, and split the
+		// result by AUDIENCE.
 		//
-		// This used to run just before `tool.execute`, which meant the transform's
-		// output reached the tool but nothing else. The transform is where secret
-		// placeholders are deobfuscated and argot handles are expanded, so an
-		// interactive operator watching a tool call was shown the pre-transform
-		// form: `tool_execution_start` is the event the renderer treats as
-		// authoritative ("args are final, reconcile them"), so it overwrote the
-		// live preview with `§handle` and `#HASH#` text and left it there. The
-		// operator must always see the expanded form of a tool's input.
+		// Two different expansions ride this hook and they disagree about display. A
+		// codec handle MUST be expanded before a person sees it: `tool_execution_start`
+		// is the event a renderer treats as authoritative ("args are final, reconcile
+		// them"), so leaving it unexpanded overwrote the live preview with `§handle` and
+		// left it there. A secret placeholder is the exact opposite: its expansion is a
+		// live credential, and a rendered card, a stream event, a telemetry span and a
+		// session file are precisely where it must never land.
 		//
-		// It also makes the `BeforeToolCallContext.args` contract true. That doc
-		// promises the same reference reaches `tool.execute` so in-place mutations
-		// stick, but the old order handed the hook the pre-transform object and
-		// then executed a transformed copy, silently dropping any mutation
-		// whenever a transform actually fired.
+		// One form cannot satisfy both, so the transform returns both and the loop routes
+		// them. `execution` goes to `tool.execute` and to `beforeToolCall` — the hook that
+		// decides whether the call runs, so it must see what would actually run, and whose
+		// in-place mutations must reach the tool. `display` goes to everything that shows,
+		// streams, traces or records arguments. A sink added here later inherits `display`,
+		// so it is safe without knowing that secrets exist.
+		let displayArgs = effectiveArgs;
 		if (transformToolCallArguments) {
 			try {
-				effectiveArgs = transformToolCallArguments(effectiveArgs, toolCall.name);
+				const transformed = transformToolCallArguments(effectiveArgs, toolCall.name);
+				effectiveArgs = transformed.execution;
+				displayArgs = transformed.display;
 			} catch (transformError) {
 				record.args = effectiveArgs;
 				emitToolResult(
@@ -2239,7 +2240,7 @@ async function executeToolCalls(
 			}
 		}
 
-		record.args = effectiveArgs;
+		record.args = displayArgs;
 		if (record.signal.aborted) {
 			record.skipped = true;
 			recordSkippedTool(telemetry, {
@@ -2255,7 +2256,7 @@ async function executeToolCalls(
 			type: "tool_execution_start",
 			toolCallId: toolCall.id,
 			toolName: toolCall.name,
-			args: effectiveArgs,
+			args: displayArgs,
 			intent: toolCall.intent,
 		});
 
@@ -2263,7 +2264,7 @@ async function executeToolCalls(
 			tool,
 			toolName: toolCall.name,
 			toolCallId: toolCall.id,
-			args: effectiveArgs,
+			args: displayArgs,
 			parent: invokeAgentSpan,
 		});
 		if (toolSpan && toolCall.intent) {
@@ -2324,7 +2325,7 @@ async function executeToolCalls(
 							type: "tool_execution_update",
 							toolCallId: toolCall.id,
 							toolName: toolCall.name,
-							args: effectiveArgs,
+							args: displayArgs,
 							partialResult: coerceToolResult(partialResult).result,
 						});
 					},

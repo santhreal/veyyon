@@ -51,6 +51,7 @@ import type {
 	AsideMessage,
 	ConfiguredDialect,
 	StreamFn,
+	ToolCallArgumentTransform,
 	ToolCallContext,
 	ToolChoiceDirective,
 } from "./types";
@@ -241,10 +242,13 @@ export interface AgentOptions {
 	getToolContext?: (toolCall?: ToolCallContext) => AgentToolContext | undefined;
 
 	/**
-	 * Optional transform applied to tool call arguments before execution.
-	 * Use for deobfuscating secrets or rewriting arguments.
+	 * Optional transform applied to tool call arguments before execution. Use for
+	 * deobfuscating secrets or rewriting arguments.
+	 *
+	 * Returns the arguments split by audience — see {@link ToolCallArgumentTransform}.
+	 * An expansion whose result must not be shown belongs in `execution` only.
 	 */
-	transformToolCallArguments?: (args: Record<string, unknown>, toolName: string) => Record<string, unknown>;
+	transformToolCallArguments?: (args: Record<string, unknown>, toolName: string) => ToolCallArgumentTransform;
 
 	/**
 	 * Enable intent tracing schema injection/stripping in the harness.
@@ -406,7 +410,7 @@ export class Agent {
 	#resolveRunningPrompt?: () => void;
 	#kimiApiFormat?: "openai" | "anthropic";
 	#preferWebsockets?: boolean;
-	#transformToolCallArguments?: (args: Record<string, unknown>, toolName: string) => Record<string, unknown>;
+	#transformToolCallArguments?: (args: Record<string, unknown>, toolName: string) => ToolCallArgumentTransform;
 	#repairToolCallArguments?: AgentLoopConfig["repairToolCallArguments"];
 	#resolveIntentTracing: () => boolean;
 	#instrumentation: InstrumentationLevel;

@@ -106,6 +106,25 @@ export interface SteeringQueueState {
 }
 
 /**
+ * The two forms of a tool call's arguments produced by
+ * {@link AgentLoopConfig.transformToolCallArguments}.
+ *
+ * They exist separately because argument expansions disagree about their
+ * audience. A codec handle MUST be expanded before a person reads it — the whole
+ * point is that nobody should have to decode `§handle` by eye. A secret
+ * placeholder MUST NOT be: the expanded form is a live credential, and a display
+ * or a session file is exactly where it must never appear. One shared form
+ * cannot satisfy both, so the transform states which form each audience gets and
+ * the loop routes them.
+ */
+export interface ToolCallArgumentTransform {
+	/** Fully expanded arguments. Only `tool.execute` and `beforeToolCall` see these. */
+	execution: Record<string, unknown>;
+	/** Arguments safe to reveal: shown, streamed, traced and recorded. */
+	display: Record<string, unknown>;
+}
+
+/**
  * Configuration for the agent loop.
  */
 export interface AgentLoopConfig extends SimpleStreamOptions {
@@ -281,20 +300,25 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	syncContextBeforeModelCall?: (context: AgentContext) => void | Promise<void>;
 
 	/**
-	 * Optional transform applied to tool call arguments before execution.
-	 * Use for deobfuscating secrets or rewriting arguments.
+	 * Optional transform applied to tool call arguments, once, straight after
+	 * argument validation and before anything else reads them.
 	 *
-	 * It runs once, straight after argument validation and before anything else
-	 * reads the arguments, so its output is what `tool_execution_start`, the
-	 * telemetry span, `beforeToolCall`, `tool_execution_update` and `tool.execute`
-	 * all receive. That single position matters for display: a transform that
-	 * expands secret placeholders or codec handles is what an operator sees, and
-	 * running it any later would show them the pre-transform text instead.
+	 * It returns TWO forms of the arguments because expansions do not all have the
+	 * same audience, and one shared form cannot serve both:
+	 *
+	 * - `execution` reaches `tool.execute` and `beforeToolCall`. Every expansion
+	 *   applies, including ones whose expanded text must never be shown.
+	 * - `display` reaches `tool_execution_start`, `tool_execution_update`, the
+	 *   telemetry span and the recorded tool call, so it is what an operator reads
+	 *   and what a serializer persists. Only expansions safe to reveal apply.
+	 *
+	 * Return the same object for both when the distinction does not apply; nothing
+	 * copies it.
 	 *
 	 * Throwing fails the call with the thrown message as the tool error; the tool
 	 * does not run.
 	 */
-	transformToolCallArguments?: (args: Record<string, unknown>, toolName: string) => Record<string, unknown>;
+	transformToolCallArguments?: (args: Record<string, unknown>, toolName: string) => ToolCallArgumentTransform;
 
 	/**
 	 * Enable intent tracing for tool calls.
@@ -555,8 +579,11 @@ export interface BeforeToolCallContext {
 	/** The raw tool call block from `assistantMessage.content`. */
 	toolCall: AgentToolCall;
 	/**
-	 * Validated tool arguments, already through `transformToolCallArguments`. The
-	 * same reference is forwarded to `tool.execute`, so in-place mutations stick.
+	 * Validated tool arguments in their `execution` form — fully expanded, the same
+	 * reference forwarded to `tool.execute`, so in-place mutations stick. This hook
+	 * decides whether the call runs, so it sees what would run. Anything that only
+	 * displays or records arguments gets the `display` form instead, which is why
+	 * these may contain expanded secrets and must not be logged.
 	 */
 	args: Record<string, unknown>;
 	/** Current agent context at the time the tool call is prepared. */
@@ -569,7 +596,11 @@ export interface AfterToolCallContext {
 	assistantMessage: AssistantMessage;
 	/** The raw tool call block from `assistantMessage.content`. */
 	toolCall: AgentToolCall;
-	/** Validated tool arguments used for execution (post `beforeToolCall` mutations). */
+	/**
+	 * Tool arguments in their `display` form: the recorded arguments, safe to
+	 * reveal. This hook runs after execution and cannot change what ran, so it is
+	 * given the recorded form rather than the expanded one.
+	 */
 	args: Record<string, unknown>;
 	/** The executed tool result before any `afterToolCall` overrides are applied. */
 	result: AgentToolResult<any>;
