@@ -9,7 +9,7 @@ Argot is a per-project shorthand that the model writes in. A project keeps a
 small table of handles, each one a short name that stands for a longer string it
 repeats a lot: a full path, an import root, a canonical build command. The model
 writes the handle, and Veyyon restores it to the full string before anything runs
-or is shown. This is the largest mechanism the fork adds on top of oh-my-pi.
+or is shown. It is one of the mechanisms Veyyon owns after the oh-my-pi fork.
 
 This chapter explains what Argot is and how the codec works. To turn it on, see
 [Save tokens with project shorthand](../using/configuration.md#save-tokens-with-project-shorthand-argot-experimental).
@@ -136,4 +136,4 @@ page](../using/configuration.md#choose-how-subagents-start).
 ## Related
 
 - [Save tokens with project shorthand](../using/configuration.md#save-tokens-with-project-shorthand-argot-experimental): the settings and how to enable it
-- [Mechanisms](./innovations.md): the rest of what the fork adds
+- [Mechanisms](./innovations.md): the provenance boundary and the other Veyyon-owned contracts

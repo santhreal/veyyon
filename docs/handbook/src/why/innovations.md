@@ -1,17 +1,27 @@
 # Mechanisms
 
-This chapter is a compact map of the main harness mechanisms. It explains what each one is and points you to the chapter that covers it in full. The operator how-tos live under [Using](../using/getting-started.md) and [Features](../features/sandbox.md).
+This chapter maps the mechanisms that shape Veyyon's behavior. It separates source provenance from the current product contract. The operator how-tos live under [Using](../using/getting-started.md) and [Features](../features/sandbox.md).
 
-Veyyon is a fork of oh-my-pi. The first group below is what the fork adds on top. The rest is the shared base both projects run on.
+## Provenance boundary
 
-## What the fork adds
+Veyyon is a source fork of oh-my-pi. It retains the Bun and TypeScript agent loop, terminal UI, provider catalog, role routing, hashline edit engine, mnemopi memory, and the original native hot-path helpers. This is the foundation Veyyon started from, not a claim about what current oh-my-pi does today.
 
-- **Argot.** A per-project shorthand the model writes in. The model writes a short handle like `§build` where it would have written a long string it repeats, and Veyyon restores the full text before anything runs or is shown. The round trip is lossless, encoding is gated per model and by context size, and the generated dictionary is cached per project and only grows. See [Argot](./argot.md).
-- **Local compaction with a lossless first pass.** When the window fills, a Tier-0 pass first drops tool results that are byte-identical to a newer copy, then compaction condenses history in place (`summary`, the default) or writes a handoff document and continues from it. See [Compaction and project memory](../context/compaction-memory.md).
-- **Shared credentials and global config.** Providers and global settings are shared across profiles, so signing in once reaches every profile instead of each one holding its own copy.
-- **Per-profile working directory.** A profile can pin its own working directory, and `set_cwd` moves an existing session, so one install can hold several projects without them bleeding into each other.
-- **Absolute-token compaction threshold.** Compaction can trigger on an absolute token count, not only a fraction of the window, so the trigger point is the same across models with different context sizes.
-- **Atomic, serialized config writes.** Settings are written through a single serialized path with an atomic swap, so two writers never tear a config file.
+## Veyyon-owned contracts
+
+| Area | Current Veyyon contract |
+| --- | --- |
+| Prompt and context | Statement-owned prompt assembly, layered `AGENTS.md`, validated `PROMPT_SECTIONS/`, and transactional context reload when the working directory moves |
+| Models and compaction | Model-native effort variants, explicit effort precedence, editable subsystem fallback chains, and a lossless first compaction pass |
+| Credentials and sessions | Shared SQLite credentials, multi-credential selection, encrypted working secrets, final outbound obfuscation, atomic session writes, and non-destructive corruption handling |
+| Tools and workers | One capability and tool registry, LSP write-through, destructive-shell interception, schema-validated workers, IRC, internal agent URLs, and the Agent Control Center |
+| Native runtime | Reusable Rust kernels for glob, keys, text, diff, grep, and directory walking |
+| Argot | Lossless per-project shorthand that expands before a tool, transcript, parent agent, or display receives it |
+
+The detailed contract for these changes is in the README section [What Veyyon adds](../../../../README.md#what-veyyon-adds). The repository's [upstream provenance](../../../../UPSTREAM.md) explains the fork boundary, and the [intentional-divergence ledger](../../../internal/porting-from-pi-mono.md#15-intentional-divergences) records port-sensitive implementation differences.
+
+## Shared and evolved mechanisms
+
+The sections below describe the current product. Some mechanisms began in the fork baseline, and some have changed since. Their behavior here is authoritative for Veyyon.
 
 ## Hashline edits
 

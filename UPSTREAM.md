@@ -32,20 +32,24 @@ upstream  https://github.com/can1357/oh-my-pi.git
 
 ## What changed (rebrand + product direction)
 
-Veyyon started as a rebrand of oh-my-pi — name, brand constants, config
-directory, npm scope, splash/theme, emoji removal, settings simplification
-(tracked as `R1`-`R8` in `BACKLOG.md`, all done) — and has since diverged
-with its own product direction (model-selection/compaction redesign, docs
-handbook, perf work) tracked in the same ledger. It is not a drop-in
-resync target: changes here are not intended to be upstreamed, and upstream
-oh-my-pi changes are not automatically pulled in.
+Veyyon began with a rebrand of oh-my-pi: the name, brand constants, config
+directory, package scope, splash and theme, emoji removal, and settings
+simplification. Since the fork, this repository has changed the prompt and
+context contract, model effort and subsystem routing, compaction, credential
+and session storage, tool and extension architecture, worker operations,
+native kernels, and documentation. The README section
+[From oh-my-pi to Veyyon](README.md#from-oh-my-pi-to-veyyon) separates the
+inherited foundation from those Veyyon-owned contracts.
 
-This repository's history in this tree is a single squashed snapshot
-(`git log` shows one commit at the time of writing); it does not carry
-oh-my-pi's original commit history. The `upstream` remote above is the
-canonical place to compare current oh-my-pi behavior against Veyyon's if a
-specific reconciliation is needed — this document intentionally does not
-assert a pinned upstream commit hash it cannot verify.
+Veyyon is not a drop-in resync target. Changes here are not assumed to belong
+upstream, and upstream changes are not pulled automatically.
+
+This repository's history begins with one imported snapshot rather than
+oh-my-pi's individual pre-fork commits. Commits after that snapshot record
+Veyyon's work. Use the `upstream` remote to compare current oh-my-pi behavior
+with Veyyon when you reconcile a specific change. The
+[porting guide](docs/internal/porting-from-pi-mono.md) records verified sync
+markers and intentional divergences.
 
 ## Where the legal notices live
 
