@@ -290,17 +290,21 @@ export function parseTtl(spec: string): number | null {
 	if (text === NEVER_TTL) return null;
 
 	const match = /^([0-9]+)([mhdw])$/.exec(text);
+	// NEITHER refusal repeats the spec back. A lifetime is typed on the same line as a credential,
+	// and the realistic slip puts the credential where the lifetime goes (`--ttl sk-live-...`) or
+	// where a verb expects nothing. Echoing it wrote the credential into an error that reaches the
+	// scrollback and the saved transcript. The two cases stay separately worded, because "not a
+	// lifetime" and "expires immediately" are different mistakes with different fixes.
 	if (match === null) {
 		throw new Error(
-			`"${safeText(spec)}" is not a lifetime. Write a number followed by m, h, d or w ` +
-				`(for example 30m, 12h, 7d, 2w), or "${NEVER_TTL}" for a secret that does not expire.`,
+			`That is not a lifetime. Write a number followed by m, h, d or w ` +
+				`(for example 30m, 12h, 7d, 2w), or "${NEVER_TTL}" for a secret that does not expire. ` +
+				`What you wrote is not repeated here, in case it is the credential.`,
 		);
 	}
 	const amount = Number(match[1]);
 	if (amount === 0) {
-		throw new Error(
-			`A lifetime of "${safeText(spec)}" would expire immediately. Use a positive amount, or "${NEVER_TTL}".`,
-		);
+		throw new Error(`A lifetime of zero would expire immediately. Use a positive amount, or "${NEVER_TTL}".`);
 	}
 	const ttl = amount * TTL_UNITS[match[2]];
 	if (!Number.isSafeInteger(ttl)) {

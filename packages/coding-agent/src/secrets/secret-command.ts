@@ -275,29 +275,24 @@ export function parseSecretCommand(args: string, surface: SecretCommandSurface =
 				if (value === undefined || value.startsWith("--")) {
 					throw new Error("--ttl needs a lifetime, such as 7d or never.");
 				}
-				try {
-					request.ttl = parseTtl(value);
-				} catch (error) {
-					if (request.subcommand !== "add") throw error;
-					throw new Error("--ttl needs a valid lifetime, such as 7d or never.");
-				}
+				// No try/catch. `parseTtl` owns the wording for every way a lifetime can be wrong and no
+				// longer echoes the value, so both verbs explain the same mistake the same way. The
+				// `add`-only rewrite that used to live here existed to blunt that echo and cost the
+				// distinction between "not a lifetime", "expires immediately" and "too large".
+				request.ttl = parseTtl(value);
 			} else if (token === "--limit") {
 				const parsed = Number(value);
 				if (value === undefined || value.startsWith("--") || !Number.isInteger(parsed) || parsed <= 0) {
-					throw new Error(
-						request.subcommand === "add"
-							? "--limit needs a positive whole number."
-							: `--limit needs a positive whole number, not "${value ?? ""}".`,
-					);
+					// Not quoted, for the reason `refuseExtraWords` explains: a misplaced credential reaches
+					// here too, and this used to echo it for every verb except `add`. The `add`-only
+					// suppression it replaces also made the branch below unreachable, since `add` does not
+					// take --limit and the ownership guard rejects it first.
+					throw new Error("--limit needs a positive whole number.");
 				}
 				request.limit = parsed;
 			} else {
 				if (value !== "profile" && value !== "project" && value !== "global") {
-					throw new Error(
-						request.subcommand === "add"
-							? "--scope must be profile, project or global."
-							: `--scope must be profile, project or global, not "${value ?? ""}".`,
-					);
+					throw new Error("--scope must be profile, project or global.");
 				}
 				request.scope = value;
 			}
@@ -357,20 +352,37 @@ function ambiguousInlineCredential(): Error {
  *
  * The message names the option that does what the word was reaching for, where there is one, because
  * "too many arguments" does not tell somebody who typed `/secret log 50` to type `--limit 50`.
+ *
+ * IT DOES NOT QUOTE THE WORD, because on a `/secret` line the extra word is very often the
+ * credential. The realistic slip is muscle memory for `add` with a different verb: `/secret extend
+ * TOK sk-live-...`, `/secret rm TOK sk-live-...`, or the value appended to a bare `/secret list`.
+ * Quoting it wrote the credential into the error, which lands in the scrollback and in the saved
+ * transcript, so the one command whose entire purpose is keeping credentials off the screen put one
+ * there permanently. Verified by hand across every verb before this changed. Naming the POSITION
+ * tells the operator what to remove without repeating the secret back at them.
  */
 function refuseExtraWords(request: SecretCommandRequest, words: readonly string[], usageText: string): void {
 	const shape = SUBCOMMAND_SHAPES[request.subcommand];
 	if (words.length <= shape.words) return;
 
 	const extra = words[shape.words];
+	// Digits are the one shape that cannot be a credential worth protecting AND is the shape the
+	// hint needs to be useful, so `/secret log 50` still gets told to write `--limit 50`.
+	const countedHint = /^[0-9]+$/.test(extra) ? extra : undefined;
 	const hint =
-		request.subcommand === "log"
-			? ` To show more records, write /secret log --limit ${/^[0-9]+$/.test(extra) ? extra : "50"}.`
-			: "";
+		request.subcommand === "log" ? ` To show more records, write /secret log --limit ${countedHint ?? "50"}.` : "";
+	const position = shape.words === 0 ? "the extra word" : `the word after the ${ordinalWord(shape.words)}`;
 	throw new Error(
 		`/secret ${request.subcommand} takes ${shape.words === 0 ? "no arguments" : `${shape.words} argument(s)`}, ` +
-			`and "${extra}" would be ignored rather than used.${hint}\n\n${usageText}`,
+			`and ${position} would be ignored rather than used, so it was refused instead. The word itself is ` +
+			`not repeated here, in case it is the credential.${hint}\n\n${usageText}`,
 	);
+}
+
+/** Name a positional slot in the refusal above without echoing what sits in it. */
+function ordinalWord(count: number): string {
+	const names: Record<number, string> = { 1: "first", 2: "second", 3: "third" };
+	return names[count] ?? `${count}th`;
 }
 
 /**

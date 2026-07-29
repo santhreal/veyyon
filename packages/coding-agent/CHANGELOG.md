@@ -4,6 +4,10 @@
 
 ### Added
 
+- Auto QA can upload grievances to `https://veyyon.dev/api/grievances`, where a Cloudflare Pages
+  Function validates the batch and stores it in D1. Upload is controlled by
+  **Auto-upload Grievances** in each profile and defaults to off. Local recording remains separate,
+  and `veyyon grievances push` performs one explicit upload without changing the toggle.
 - The Subagents HUD, the `/agents` roster, and the inline task widget now show the reasoning effort each agent is actually running at, including an effort it inherited. Previously the effort appeared only when a `:level` suffix had been typed into the model pattern, so every stock agent rendered as a bare model id and two agents running at different efforts looked identical.
 - `/secret rm` and `/secret extend` complete the names of the credentials you have stored, so you no
   longer have to recall an exact name with nothing on screen to recognise it by. That is a worse
@@ -93,6 +97,28 @@
 
 ### Fixed
 
+- `/secret` no longer repeats a word you typed back at you when it refuses a command, because on a
+  `/secret` line that word is often the credential. Every verb except `add` echoed it: the realistic
+  slip is muscle memory for `add` with a different verb, which is exactly the moment a secret is on the
+  line, so `/secret extend TOK sk-live-...`, `/secret rm TOK sk-live-...`, a value appended to a bare
+  `/secret list`, and a credential landing where a lifetime or a scope goes all wrote it into an error
+  that reaches the scrollback and the saved transcript. The command whose entire purpose is keeping
+  credentials off the screen was putting one there permanently, and in the saved session it survived
+  the restart. The refusals now name the position that was wrong (`the word after the first`) and say
+  why the word is not shown, which carries the same correction without repeating anything. `/secret log
+  50` still echoes `50`, since a run of digits cannot be a credential worth protecting and the
+  `--limit` hint is useless without it. Fixed at the source in `parseTtl`, so a lifetime typed anywhere
+  stops being echoed rather than only on the one path that had noticed. That also let `add` drop a
+  per-verb rewrite it only carried to blunt the same echo, which had cost it the distinction between
+  "not a lifetime", "expires immediately", and "too large": `add` and `extend` now explain the same bad
+  lifetime identically.
+- `set_cwd` now explains that `.` in later tool paths and directory headers names the current absolute
+  working directory, while `..` names its parent. This prevents the agent from treating a successful
+  re-root as an unexpected move and running a second command to rediscover the same directory.
+- Subagents whose effort is **Inherit** now receive the parent session's effective effort before
+  their session starts. Previously the inherited value became undefined at the executor boundary,
+  which let the provider default every child to `auto` even when the parent was running at `medium`.
+  Explicit subagent efforts, including an explicit `auto`, still win.
 - `/secret add` now makes secret protection survive the process it was turned on in. Storing your
   first credential switches `secrets.enabled` on and says it was "saved for the next one", but the
   write was only queued behind a 100ms debounce and nothing on that path flushed it, so any
