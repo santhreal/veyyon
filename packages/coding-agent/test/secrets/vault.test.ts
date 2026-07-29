@@ -38,6 +38,9 @@ import {
 	warningThresholdCrossed,
 } from "@veyyon/coding-agent/secrets/vault";
 import { loadOrCreateVaultKey, type SealedVault, sealVault } from "@veyyon/coding-agent/secrets/vault-crypto";
+import { useSpyTeardown } from "../helpers/spy-teardown";
+
+const teardown = useSpyTeardown();
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -583,7 +586,7 @@ describe("storing and reading", () => {
 			const sentinel = path.join(locations.profileDir, "sentinel");
 			const realOpen = fs.open;
 			let replaced = false;
-			const openSpy = spyOn(fs, "open").mockImplementation(async (...args) => {
+			const openSpy = teardown.spy(fs, "open").mockImplementation(async (...args) => {
 				const handle = await Reflect.apply(realOpen, fs, args);
 				if (!replaced && String(args[0]).endsWith(".tmp")) {
 					replaced = true;
@@ -624,7 +627,7 @@ describe("storing and reading", () => {
 			await fs.writeFile(replacementPath, newBytes, { mode: 0o600 });
 			const realOpen = fs.open;
 			let swapped = false;
-			const openSpy = spyOn(fs, "open").mockImplementation(async (...args) => {
+			const openSpy = teardown.spy(fs, "open").mockImplementation(async (...args) => {
 				if (!swapped && path.basename(String(args[0])) === VAULT_FILENAME) {
 					swapped = true;
 					await fs.rename(replacementPath, vaultPath);
@@ -653,7 +656,7 @@ describe("storing and reading", () => {
 
 			const realOpen = fs.open;
 			let swapped = false;
-			const openSpy = spyOn(fs, "open").mockImplementation(async (...args) => {
+			const openSpy = teardown.spy(fs, "open").mockImplementation(async (...args) => {
 				const handle = await Reflect.apply(realOpen, fs, args);
 				if (!swapped && path.basename(String(args[0])) === VAULT_FILENAME) {
 					swapped = true;
@@ -1490,16 +1493,24 @@ describe("concurrent writers", () => {
 			await fs.mkdir(lockPath, { recursive: true });
 			await fs.writeFile(infoPath, JSON.stringify({ pid: process.pid, timestamp: 0, token: "live-test-holder" }));
 
-			const infoObserved = Promise.withResolvers<void>();
+			// `teardown.gate()` and `teardown.spy` rather than a bare resolver and `spyOn`, because a row
+			// killed by the deadline never reaches its own `finally`. Measured, not assumed, and measured
+			// for THIS spy kind: an unrestored `spyOn(fs, "open")` on the `node:fs/promises` MODULE object
+			// does NOT survive its file, exactly as a prototype spy does not. bun restores both at the
+			// file boundary, so the process-global alarm this comment could have carried is false. A kill
+			// still leaves the REMAINING ROWS IN THIS FILE running against a poisoned `fs.open` and `fs.rm`
+			// with a waiter nobody will resolve, which reads as a block of unrelated timeouts whose
+			// output never mentions vaults. The `finally` below stays as the normal path.
+			const infoObserved = teardown.gate();
 			const realOpen = fs.open;
-			const openSpy = spyOn(fs, "open").mockImplementation((async (...args: Parameters<typeof fs.open>) => {
+			const openSpy = teardown.spy(fs, "open").mockImplementation((async (...args: Parameters<typeof fs.open>) => {
 				const result = await Reflect.apply(realOpen, fs, args);
-				if (String(args[0]) === infoPath) infoObserved.resolve();
+				if (String(args[0]) === infoPath) infoObserved.open();
 				return result;
 			}) as unknown as typeof fs.open);
 			const realRm = fs.rm;
 			let reaped = false;
-			const rmSpy = spyOn(fs, "rm").mockImplementation(async (...args) => {
+			const rmSpy = teardown.spy(fs, "rm").mockImplementation(async (...args) => {
 				if (String(args[0]) === lockPath) reaped = true;
 				return await Reflect.apply(realRm, fs, args);
 			});
@@ -1507,7 +1518,7 @@ describe("concurrent writers", () => {
 			let pending: Promise<unknown> | undefined;
 			try {
 				pending = vault.add({ name: "WAITED_TOKEN", value: VALUE });
-				await infoObserved.promise;
+				await infoObserved.reached;
 				await Promise.resolve();
 				await Promise.resolve();
 				expect(reaped).toBe(false);

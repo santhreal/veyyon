@@ -16,7 +16,7 @@
  *
  * The round-trip test is almost the least interesting one here.
  */
-import { describe, expect, it, spyOn } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -30,6 +30,7 @@ import {
 	VAULT_KEY_FILENAME,
 	vaultKeyPath,
 } from "@veyyon/coding-agent/secrets/vault-crypto";
+import { useSpyTeardown } from "../helpers/spy-teardown";
 
 /** A throwaway config root. */
 async function withRoot(body: (root: string) => Promise<void>): Promise<void> {
@@ -40,6 +41,8 @@ async function withRoot(body: (root: string) => Promise<void>): Promise<void> {
 		await fs.rm(root, { recursive: true, force: true });
 	}
 }
+
+const teardown = useSpyTeardown();
 
 describe("the vault key", () => {
 	/** First use creates the key, so the feature needs no setup step. */
@@ -124,7 +127,7 @@ describe("the vault key", () => {
 			const displacedRoot = `${root}.displaced`;
 			const realChmod = fs.chmod;
 			let replaced = false;
-			const chmodSpy = spyOn(fs, "chmod").mockImplementation(async (...args) => {
+			const chmodSpy = teardown.spy(fs, "chmod").mockImplementation(async (...args) => {
 				if (!replaced && String(args[0]) === root) {
 					replaced = true;
 					await fs.rename(root, displacedRoot);
@@ -281,7 +284,7 @@ describe("the vault key", () => {
 
 			const realOpen = fs.open;
 			let swapped = false;
-			const openSpy = spyOn(fs, "open").mockImplementation(async (...args) => {
+			const openSpy = teardown.spy(fs, "open").mockImplementation(async (...args) => {
 				if (!swapped && path.basename(String(args[0])) === VAULT_KEY_FILENAME) {
 					swapped = true;
 					await fs.rename(replacement, keyPath);

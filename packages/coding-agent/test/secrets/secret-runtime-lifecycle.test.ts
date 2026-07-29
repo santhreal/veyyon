@@ -8,7 +8,7 @@
  * provider hook. Exact outbound payloads are asserted so merely changing a status flag cannot
  * make the suite pass while the credential still leaves the process.
  */
-import { afterAll, beforeAll, describe, expect, it, vi } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -23,6 +23,7 @@ import { runSecretCommandForSurface } from "@veyyon/coding-agent/slash-commands/
 import { createPersistedSubagentReviverFactory } from "@veyyon/coding-agent/task/persisted-revive";
 import { TempDir } from "@veyyon/utils";
 import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
+import { useSpyTeardown } from "../helpers/spy-teardown";
 
 const PROJECT_A_VALUE = "project-a-secret-value-12345";
 const PROJECT_B_VALUE = "project-b-secret-value-67890";
@@ -47,6 +48,19 @@ afterAll(async () => {
 	authStorage.close();
 	await registryRoot.remove();
 });
+
+/**
+ * Two rows below spy on `SecretVault.prototype.load` and deliberately park a load inside it, so the
+ * mock and the parked waiter are shared by every LATER ROW IN THIS FILE. A deadline kill never reaches
+ * their `finally`, so both undos are registered at creation instead; `helpers/spy-teardown` explains
+ * what that prevents. Measured, not assumed: with the drain disabled, sabotage that hangs the first of
+ * those rows also turns the second one red, because it inherits a live mock whose one-shot gate is
+ * already spent. With the drain, only the sabotaged row fails. The blast radius stops at the file
+ * boundary, since bun restores spies when a file finishes.
+ *
+ * The `finally` blocks stay: this is the backstop for the kill path, not a replacement for teardown.
+ */
+const teardown = useSpyTeardown();
 
 interface RuntimeFixture {
 	root: TempDir;
@@ -97,6 +111,25 @@ async function createRuntimeFixture(extension?: ExtensionFactory): Promise<Runti
 		skipPythonPreflight: true,
 	});
 	return { root, projectA, projectB, vaultA, vaultB, agentDir, settings, session };
+}
+
+/**
+ * Store a secret and then make the vault file look like another process wrote it.
+ *
+ * A `SecretVault` built inside THIS process is deliberately no longer an external writer: the
+ * revision fingerprint ignores changes this process made, so a session does not read its own
+ * `/secret add` as tampering and refuse to spend the credential it just stored. These tests are
+ * about the OTHER case, a vault mutated behind the session's back, so the write has to look like
+ * one. Rewriting the file's own bytes in place does exactly that and leaves the content valid, so
+ * the reload still finds the secret the add stored.
+ *
+ * Deliberately a real filesystem write rather than a stub over `revision()`: stubbing the
+ * fingerprint would keep these tests passing even if the fingerprint stopped detecting anything.
+ */
+async function addSecretAndForgeAnExternalWrite(fixture: RuntimeFixture, projectDir: string): Promise<void> {
+	await fixture.vaultA.add({ name: "LATE_TOKEN", value: ADDED_WHILE_OFF_VALUE, scope: "project" });
+	const vaultPath = path.join(projectDir, ".veyyon", "vault.json");
+	await fs.writeFile(vaultPath, await fs.readFile(vaultPath));
 }
 
 async function disposeFixture(fixture: RuntimeFixture): Promise<void> {
@@ -232,11 +265,7 @@ describe("runtime replacement", () => {
 			const initial = await fixture.session.leaseSecretRuntime();
 
 			expect(await fixture.session.leaseSecretRuntime()).toBe(initial);
-			await fixture.vaultA.add({
-				name: "LATE_TOKEN",
-				value: ADDED_WHILE_OFF_VALUE,
-				scope: "project",
-			});
+			await addSecretAndForgeAnExternalWrite(fixture, fixture.projectA);
 
 			const refreshed = await fixture.session.leaseSecretRuntime();
 			expect(refreshed).not.toBe(initial);
@@ -256,14 +285,16 @@ describe("runtime replacement", () => {
 	it("keeps prior authority during refresh and rejects a stale lease completion", async () => {
 		const fixture = await createRuntimeFixture();
 		const originalLoad = SecretVault.prototype.load;
-		const loadStarted = Promise.withResolvers<void>();
-		const releaseLoad = Promise.withResolvers<void>();
+		const loadStarted = teardown.gate();
+		const releaseLoad = teardown.gate();
 		let blockNextLoad = true;
-		const loadSpy = vi.spyOn(SecretVault.prototype, "load").mockImplementation(async function (this: SecretVault) {
+		const loadSpy = teardown.spy(SecretVault.prototype, "load").mockImplementation(async function (
+			this: SecretVault,
+		) {
 			if (blockNextLoad) {
 				blockNextLoad = false;
-				loadStarted.resolve();
-				await releaseLoad.promise;
+				loadStarted.open();
+				await releaseLoad.reached;
 			}
 			return originalLoad.call(this);
 		});
@@ -273,7 +304,7 @@ describe("runtime replacement", () => {
 			fixture.settings.set("secrets.enabled", true);
 
 			const refresh = fixture.session.refreshSecrets({ refreshPrompt: false });
-			await loadStarted.promise;
+			await loadStarted.reached;
 			expect(fixture.session.obfuscator).toBeUndefined();
 
 			let admitted = false;
@@ -284,7 +315,7 @@ describe("runtime replacement", () => {
 			await Promise.resolve();
 			expect(admitted).toBe(false);
 
-			releaseLoad.resolve();
+			releaseLoad.open();
 			await refresh;
 			const current = await admission;
 			expect(current.revision).toBeGreaterThan(prior.revision);
@@ -295,7 +326,7 @@ describe("runtime replacement", () => {
 			expect(fixture.session.obfuscator?.deobfuscate("#A_TOKEN#")).toBe(PROJECT_A_VALUE);
 		} finally {
 			loadSpy.mockRestore();
-			releaseLoad.resolve();
+			releaseLoad.open();
 			await disposeFixture(fixture);
 		}
 	});
@@ -311,35 +342,31 @@ describe("runtime replacement", () => {
 			fixture.settings.set("secrets.enabled", true);
 			await fixture.session.refreshSecrets({ refreshPrompt: false });
 			const sourceLease = await fixture.session.leaseSecretRuntime();
-			await fixture.vaultA.add({
-				name: "LATE_TOKEN",
-				value: ADDED_WHILE_OFF_VALUE,
-				scope: "project",
-			});
+			await addSecretAndForgeAnExternalWrite(fixture, fixture.projectA);
 
 			const originalLoad = SecretVault.prototype.load;
-			const destinationLoadStarted = Promise.withResolvers<void>();
-			const releaseDestinationLoad = Promise.withResolvers<void>();
+			const destinationLoadStarted = teardown.gate();
+			const releaseDestinationLoad = teardown.gate();
 			let blockNextLoad = true;
-			const guardedLoadSpy = vi.spyOn(SecretVault.prototype, "load").mockImplementation(async function (
+			const guardedLoadSpy = teardown.spy(SecretVault.prototype, "load").mockImplementation(async function (
 				this: SecretVault,
 			) {
 				if (blockNextLoad) {
 					blockNextLoad = false;
-					destinationLoadStarted.resolve();
-					await releaseDestinationLoad.promise;
+					destinationLoadStarted.open();
+					await releaseDestinationLoad.reached;
 				}
 				return originalLoad.call(this);
 			});
 			try {
 				const moving = fixture.session.setCwd(fixture.projectB);
-				await destinationLoadStarted.promise;
+				await destinationLoadStarted.reached;
 				expect(() => sourceLease.assertFreshForExpansion()).toThrow(
 					"Secret expansion was refused because the vault changed",
 				);
 				expect(guardedLoadSpy).toHaveBeenCalledTimes(1);
 
-				releaseDestinationLoad.resolve();
+				releaseDestinationLoad.open();
 				await moving;
 				const destinationLease = await fixture.session.leaseSecretRuntime();
 				expect(destinationLease.cwd).toBe(fixture.projectB);
@@ -347,7 +374,7 @@ describe("runtime replacement", () => {
 				expect(guardedLoadSpy).toHaveBeenCalledTimes(1);
 			} finally {
 				guardedLoadSpy.mockRestore();
-				releaseDestinationLoad.resolve();
+				releaseDestinationLoad.open();
 			}
 		} finally {
 			await disposeFixture(fixture);

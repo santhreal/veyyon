@@ -118,6 +118,20 @@ export interface ScopedVaultEntry extends VaultEntry {
 	scope: VaultScope;
 }
 
+/**
+ * What {@link SecretVault.add} stored, and whether it took the place of an entry that was
+ * already there.
+ *
+ * `add` replaces a same-name entry in the same scope, which is what makes rotating a credential
+ * work. The caller has to be able to SAY that happened. Reporting the same "stored" sentence for
+ * a new entry and for one that overwrote a working credential means a mistyped name that collides
+ * with an existing secret destroys it with no operator-visible signal at all.
+ */
+export interface AddedVaultEntry extends ScopedVaultEntry {
+	/** True when an entry of the same name in the same scope was overwritten. */
+	replaced: boolean;
+}
+
 /** The plaintext shape inside a sealed vault file. */
 interface VaultFile {
 	entries: VaultEntry[];
@@ -135,14 +149,56 @@ function isVaultEntry(value: unknown): value is VaultEntry {
 	return value.expiresAt === null || (typeof value.expiresAt === "number" && Number.isSafeInteger(value.expiresAt));
 }
 
+/**
+ * Name a failure to parse vault bytes WITHOUT repeating any of them.
+ *
+ * A parser quotes the token it choked on: `JSON Parse error: Unexpected identifier "ghp_live_..."`.
+ * That token is content from a credential store, and an adversarial test caught it travelling from
+ * the file into an operator notice, which puts it on screen and into the transcript. There is no
+ * way to tell which parts of a parser's message came from its input, so the message is dropped
+ * whole and only the error's TYPE survives.
+ *
+ * Nothing actionable is lost. The vault is encrypted, so an operator cannot hand-repair it from a
+ * byte offset anyway; the repair is to move the file aside. The distinction that does matter, "not
+ * JSON at all" versus "JSON of the wrong shape", is preserved because the wrong-shape case is a
+ * separate branch with its own message.
+ */
+function safeParseFailure(error: unknown): string {
+	if (!(error instanceof Error) || error.name.length === 0) return "unrecognised parse failure";
+	return escapeTerminalText(error.name);
+}
+
+/**
+ * A vault that cleared every provenance and integrity check and still would not parse.
+ *
+ * A distinct class because {@link SecretVault.load} degrades past exactly this failure and must
+ * stay fatal on all the others. That distinction is load-bearing, not stylistic. An earlier version
+ * of the degrade caught every error, which quietly converted the refusals for a hardlinked vault, a
+ * symlink crossing scopes, a sealed vault copied into another scope, a world-readable vault, an
+ * oversized vault, unknowable legacy provenance, and a TOCTOU replacement between the pathname and
+ * descriptor checks into "that scope simply has no secrets". Each of those is an attacker signal,
+ * and dropping the scope also drops its values out of the obfuscator, so a credential the operator
+ * later pastes is no longer redacted on its way to the provider. A boot refusal became a silent
+ * disclosure path.
+ *
+ * NEVER widen what throws this, and never catch it where that distinction is not the whole point.
+ */
+class UnparseableVaultPayloadError extends Error {}
+
 /** Parse a decrypted payload without treating malformed state as an empty vault. */
 function parseVaultFile(plaintext: string, scope: VaultScope, vaultPath: string): VaultFile {
 	let value: unknown;
 	try {
 		value = JSON.parse(plaintext);
 	} catch (error) {
-		throw new Error(
-			`The decrypted ${scope} vault at ${safeText(vaultPath)} is not valid JSON ` + `(${safeError(error)}).`,
+		// The ONE degradable failure. Reaching this line means the sealed envelope parsed, the
+		// pathname and descriptor checks passed, and the AEAD authenticated the ciphertext against
+		// this scope's binding, so the file is provably ours and provably not swapped: only its
+		// plaintext is malformed. Every other refusal in this file is about provenance or integrity
+		// and MUST stay fatal, because skipping one of those drops the scope's secrets, and a scope
+		// whose secrets are absent silently stops redacting them.
+		throw new UnparseableVaultPayloadError(
+			`The decrypted ${scope} vault at ${safeText(vaultPath)} is not valid JSON (${safeParseFailure(error)}).`,
 		);
 	}
 	if (value === null || typeof value !== "object" || !("entries" in value) || !Array.isArray(value.entries)) {
@@ -427,7 +483,17 @@ interface VaultFileSnapshot {
 	readonly ino: number;
 	readonly size: number;
 	readonly mtimeMs: number;
-	readonly ctimeMs: number;
+	// DELIBERATELY NOT ctimeMs. A rename bumps the inode's ctime, and this file renames the live
+	// vault to a quarantine path and renames it BACK when its own identity check fails. An
+	// aborted-and-restored cleanup therefore leaves the vault byte-identical with dev, ino, size,
+	// mtimeMs, nlink, mode and uid all unchanged and ctimeMs moved TWICE, and comparing it reported
+	// "the vault changed" for a file whose bytes never moved. Same defect, and same removal, as the
+	// key snapshot in `vault-crypto.ts`.
+	//
+	// `nlink` STAYS, and the difference from that file is the point: there, a peer legitimately
+	// reaps a recovery link mid-read, so the count moves under an innocent caller. Nothing moves
+	// this file's link count under a live read, so it carries no false positive and is a defence
+	// with nothing to trade away. Dropping a check needs a false positive behind it.
 	readonly nlink: number;
 	readonly mode: number;
 	readonly uid: number;
@@ -494,7 +560,6 @@ function snapshotOf(stat: Stats, contentHash = ""): VaultFileSnapshot {
 		ino: stat.ino,
 		size: stat.size,
 		mtimeMs: stat.mtimeMs,
-		ctimeMs: stat.ctimeMs,
 		nlink: stat.nlink,
 		mode: stat.mode,
 		uid: stat.uid,
@@ -502,19 +567,37 @@ function snapshotOf(stat: Stats, contentHash = ""): VaultFileSnapshot {
 	};
 }
 
+/**
+ * Metadata identity only: is the file at this path still the same file, unchanged.
+ *
+ * Callers that hold no bytes. Five of the seven reach here before the vault has been read at all,
+ * so `contentHash` on the incoming snapshot is `""` and there is nothing to verify content
+ * against. The AEAD envelope is the integrity witness on those paths: an attacker without the key
+ * cannot produce a vault that opens, so metadata identity is asked to catch a SWAPPED INODE, not a
+ * forged payload. See {@link sameDisplacedSnapshot} for the case that does hold a path.
+ */
 function sameSnapshot(left: VaultFileSnapshot, right: Stats): boolean {
 	return (
 		left.dev === right.dev &&
 		left.ino === right.ino &&
 		left.size === right.size &&
 		left.mtimeMs === right.mtimeMs &&
-		left.ctimeMs === right.ctimeMs &&
 		left.nlink === right.nlink &&
 		left.mode === right.mode &&
 		left.uid === right.uid
 	);
 }
 
+/**
+ * Identity AND content, for the one caller that holds a path to read.
+ *
+ * Compares the same metadata set as {@link sameSnapshot} and then verifies sha256, which is why the
+ * two must be kept in step: they answered different metadata questions once, `ctimeMs` in one and
+ * not the other, and that drift is what produced the false "the vault changed" report. The only
+ * legitimate difference is the content witness, permitted here because a path is in hand. The
+ * `contentHash.length === 0` guard refuses rather than skipping, so a snapshot taken before any
+ * read can never silently pass a content check it never had the data for.
+ */
 async function sameDisplacedSnapshot(
 	expected: VaultFileSnapshot,
 	displacedPath: string,
@@ -769,6 +852,25 @@ async function vaultPathStat(scope: VaultScope, vaultPath: string, pin: VaultSco
 	}
 }
 
+/**
+ * The gate immediately before the vault is overwritten: is the file still the one we read.
+ *
+ * VERIFIES CONTENT WHEN IT CAN. Five of the seven callers reach here before the vault has been
+ * read, so their snapshot carries `contentHash: ""` and metadata identity is all there is to check.
+ * The two write-path callers build `expected` from bytes they already hold, and that hash used to be
+ * DEAD DATA: `sameSnapshot` compares metadata only, so the field was carried to precisely the gate
+ * that needed it and then ignored. Metadata alone cannot tell a substituted target from the original
+ * here, because `mtimeMs` and `size` are settable by anyone who can write the file, so this gate was
+ * WEAKER THAN INTENDED at the one moment it guards: the instant before a replace.
+ *
+ * NOT AN AUTHENTICATION QUESTION. An attacker cannot produce a vault that opens, because the
+ * envelope is AES-GCM with the scope and canonical path as associated data. The risk this closes is
+ * the write path clobbering or rolling back entries that changed underneath the transaction, which
+ * is lost data rather than leaked data. The read path is a different question and the tag answers it.
+ *
+ * The `contentHash.length === 0` guard is the same one {@link sameDisplacedSnapshot} uses, so a
+ * pre-read snapshot skips a check it never had the bytes for instead of failing one it cannot pass.
+ */
 async function assertExpectedVaultPath(
 	scope: VaultScope,
 	vaultPath: string,
@@ -778,6 +880,23 @@ async function assertExpectedVaultPath(
 	const current = await vaultPathStat(scope, vaultPath, pin);
 	if (expected === null ? current !== null : current === null || !sameSnapshot(expected, current)) {
 		throw new Error(`The ${scope} vault changed during the transaction. Refusing to replace another inode.`);
+	}
+	if (expected === null || current === null || expected.contentHash.length === 0) return;
+	// Bounded before the read, not after. `sameSnapshot` already proved the sizes match, so this can
+	// only trip on a snapshot taken above the cap, but the read stays guarded on its own terms rather
+	// than on another check's invariant.
+	if (current.size > MAX_VAULT_FILE_BYTES) {
+		throw new Error(`The ${scope} vault grew past its safety limit during the transaction. Refusing to replace it.`);
+	}
+	const bytes = await fs.readFile(pinnedVaultPath(pin, vaultPath));
+	if (
+		bytes.byteLength !== expected.size ||
+		createHash("sha256").update(bytes).digest("hex") !== expected.contentHash
+	) {
+		throw new Error(
+			`The ${scope} vault's contents changed during the transaction, though its path and metadata did not. ` +
+				`Refusing to replace it and lose the change.`,
+		);
 	}
 }
 
@@ -1052,15 +1171,189 @@ function revisionStat(pathname: string): string {
 	}
 }
 
+/**
+ * How many vault paths to track identities for before evicting the oldest.
+ *
+ * One entry per distinct vault path this process has looked at, so three per working directory.
+ * Eviction can only make a state this process wrote look externally changed again, which costs
+ * one refresh; it can never make an external change look self-inflicted.
+ */
+const MAX_TRACKED_VAULT_PATHS = 64;
+
+interface VaultIdentityRecord {
+	/** The exact {@link revisionStat} this process last observed or wrote at the path. */
+	observed: string;
+	/** What {@link vaultRevision} reports for that state. Advances only on external change. */
+	identity: string;
+}
+
+/**
+ * Per-path identity of each vault file, as seen by THIS process.
+ *
+ * Keyed by comparable path rather than by stat, so a file that disappears is still known to be
+ * a path we had written: "created from nothing" and "externally deleted" both stat as `absent`,
+ * and only the path record can tell them apart.
+ */
+const vaultIdentities = new Map<string, VaultIdentityRecord>();
+
+/**
+ * Source of never-reused identity tokens.
+ *
+ * Monotonic rather than derived from the state, because a derived identity can repeat: an
+ * external actor who deletes a vault returns it to the one state that carries no distinguishing
+ * metadata. A strictly increasing counter cannot collide with any identity already handed out,
+ * so a deletion is always a change even when it restores an earlier-looking state.
+ */
+let vaultIdentityCounter = 0;
+
+function rememberVaultIdentity(key: string, record: VaultIdentityRecord): void {
+	vaultIdentities.delete(key);
+	vaultIdentities.set(key, record);
+	while (vaultIdentities.size > MAX_TRACKED_VAULT_PATHS) {
+		const oldest = vaultIdentities.keys().next();
+		if (oldest.done === true) break;
+		vaultIdentities.delete(oldest.value);
+	}
+}
+
+/**
+ * The identity of a vault file, held stable across changes THIS process made.
+ *
+ * Answers "has anybody else touched this file", which is the only question
+ * {@link SecretVault.revision} exists to ask. Observing is what advances the identity: a state
+ * that differs from the last one this process saw or wrote is, by elimination, somebody else's
+ * work, and earns a fresh token that can never equal a previous one.
+ */
+function externalVaultIdentity(pathname: string): string {
+	const key = comparableVaultPath(pathname);
+	const current = revisionStat(pathname);
+	const record = vaultIdentities.get(key);
+	if (record !== undefined && record.observed === current) return record.identity;
+	vaultIdentityCounter += 1;
+	const identity = `ext:${vaultIdentityCounter}:${current}`;
+	rememberVaultIdentity(key, { observed: current, identity });
+	return identity;
+}
+
+/**
+ * Re-anchor a path to the state this process just published, keeping its identity.
+ *
+ * This is what stops a session invalidating itself. Publishing genuinely changes the file, but
+ * it is not an external change, and a session that treated its own `/secret add` as tampering
+ * could never spend the secret it had just stored. Call while the scope lock is held, so the
+ * state being recorded is still the one that was written.
+ *
+ * Both the lexical and the canonical path are re-anchored because {@link vaultRevision} hashes
+ * the file under both names, and leaving either behind would reintroduce the self-invalidation
+ * through the alias.
+ */
+function recordSelfWrittenVault(pathname: string): void {
+	const written = revisionStat(pathname);
+	const keys = [comparableVaultPath(pathname)];
+	try {
+		const canonical = canonicalVaultPathSync(pathname);
+		if (canonical !== keys[0]) keys.push(canonical);
+	} catch {
+		// An unresolvable path is hashed as `canonical-error`, which carries no identity to keep.
+	}
+	for (const key of keys) {
+		const record = vaultIdentities.get(key);
+		// No record means nothing has ever observed this path, so there is no captured revision
+		// this write could invalidate. The first observation mints an identity for the new state.
+		if (record === undefined) continue;
+		rememberVaultIdentity(key, { observed: written, identity: record.identity });
+	}
+}
+
+/**
+ * The unreadable state each vault path was last reported for, keyed by comparable path.
+ *
+ * A notice fires once per DISTINCT broken state rather than once per read. {@link load} runs on
+ * every runtime refresh, so an unconditional notice would repeat the same warning several times a
+ * minute and train the operator to ignore the one message that tells them how to recover.
+ *
+ * An entry is REMOVED the moment the path reads successfully, and that removal is what makes the
+ * dedupe safe rather than merely quiet. Comparing against the last state we REPORTED is not enough
+ * on its own: break a vault, repair it, break it the same way again, and the remembered state still
+ * matches, so the second break would be silenced by a memory of the first. Nothing about the stat
+ * rules that out either, since a rewrite can land on the same inode with the same size inside one
+ * timestamp tick. Forgetting on success removes the whole collision class instead of betting on
+ * timestamp granularity, because a warning that shows once per process and then never again is how
+ * a broken vault ships unnoticed.
+ */
+const reportedUnreadableVaults = new Map<string, string>();
+
+/**
+ * Report a vault scope that exists but could not be read, once per distinct broken state.
+ *
+ * A vault whose bytes are present but do not parse used to be FATAL: the throw escaped `load()`,
+ * escaped the secret-runtime build, and took the process down before the TUI drew a frame. That is
+ * the worst available outcome, because the repair for a broken vault lives inside the product the
+ * error prevents from starting. The operator was locked out at exactly the moment they needed
+ * `/secret` most, with no reachable path to the fix.
+ *
+ * Degrading here does not weaken masking, and the reason is stronger than "redaction is
+ * independent of the vault". In `loadSecretRuntime`, the `secrets.yml` entries and the env-keyword
+ * entries are both collected BEFORE the vault is constructed, so the old throw did not merely fail
+ * to load vault secrets: it discarded redaction that had ALREADY been built and would have worked.
+ * Degrading strictly INCREASES masking coverage in the corrupt case, from none because the session
+ * is dead, to env plus `secrets.yml` live. What is lost is expansion of that scope's placeholders,
+ * which is refused at the spend seam rather than passed through.
+ *
+ * The message never includes bytes from the file. It is a credential store, and a parser's
+ * complaint about unexpected input is a natural place for a fragment of ciphertext, or of
+ * plaintext, to reach a transcript. The underlying reason goes LAST: parser messages end in their
+ * own punctuation, and continuing the sentence after one produced a doubled period on screen.
+ */
+function noteUnreadableVault(scope: VaultScope, vaultPath: string, error: unknown): void {
+	const key = comparableVaultPath(vaultPath);
+	const state = revisionStat(vaultPath);
+	if (reportedUnreadableVaults.get(key) === state) return;
+	reportedUnreadableVaults.set(key, state);
+	noteSecretsCondition(
+		`Your ${scope} vault at ${safeText(vaultPath)} exists but could not be read, so it was skipped ` +
+			`and the secrets stored in it are unavailable for the rest of this session: their placeholders ` +
+			`will NOT expand. Every OTHER scope loaded normally, and masking of known secret values is ` +
+			`unaffected. The vault is encrypted, so a hand edit cannot repair it: run ` +
+			`/secret discard --scope ${scope} to move the unreadable file aside, then re-add the secrets ` +
+			`it held with /secret add. The reason it could not be read was ` +
+			`${safeError(error)}`,
+	);
+}
+
+/**
+ * Forget any unreadable-vault complaint recorded for a path, because it just read cleanly.
+ *
+ * Called for a vault that is absent as well as one that parsed, since absent is not unreadable: a
+ * vault repaired by deleting it and later recreated broken must warn again.
+ */
+function forgetUnreadableVault(vaultPath: string): void {
+	reportedUnreadableVaults.delete(comparableVaultPath(vaultPath));
+}
+
+/**
+ * Fingerprint of every configured vault FILE, excluding changes this process made.
+ *
+ * Deliberately does NOT stat the containing directories. It used to, and that made the feature
+ * unusable: the three scope directories are `~/.veyyon`, the profile agent directory, and
+ * `<cwd>/.veyyon`, the busiest state directories in the product. A directory's mtime and ctime
+ * move whenever ANY entry is created or removed in it, so a SQLite `-wal` file, a session file,
+ * a cache entry, or the vault's own `<vault>.lock` sibling all changed this fingerprint while
+ * the vault itself sat untouched. Every secret expansion was then refused as though another
+ * process had tampered with the vault.
+ *
+ * Nothing is lost by dropping it. A vault appearing, disappearing, or being replaced by
+ * `replaceWithRollback` all land on the FILE, and {@link revisionStat} reports "absent" for a
+ * missing path and pins dev, inode, and ctime for a present one. Swapping the directory moves
+ * the file with it, which the file's own stat sees. The directory stat only ever added the
+ * dirents of unrelated software.
+ */
 function vaultRevision(locations: VaultLocations): string {
 	const hash = createHash("sha256");
 	for (const scope of VAULT_SCOPES) {
 		const lexical = vaultPathFor(locations, scope);
-		const lexicalDirectory = path.dirname(lexical);
 		hash.update(
-			`${scope}\0lexical:${comparableVaultPath(lexical)}\0` +
-				`lexical-parent:${revisionStat(lexicalDirectory)}\0` +
-				`lexical-vault:${revisionStat(lexical)}\0`,
+			`${scope}\0lexical:${comparableVaultPath(lexical)}\0lexical-vault:${externalVaultIdentity(lexical)}\0`,
 		);
 		let canonical: string;
 		try {
@@ -1073,10 +1366,7 @@ function vaultRevision(locations: VaultLocations): string {
 			hash.update(`canonical-error:${code}\0`);
 			continue;
 		}
-		hash.update(
-			`canonical:${canonical}\0canonical-parent:${revisionStat(path.dirname(canonical))}\0` +
-				`canonical-vault:${revisionStat(canonical)}\0`,
-		);
+		hash.update(`canonical:${canonical}\0canonical-vault:${externalVaultIdentity(canonical)}\0`);
 	}
 	return hash.digest("hex");
 }
@@ -1097,6 +1387,8 @@ interface VaultReadResult {
 export class SecretVault {
 	readonly #locations: VaultLocations;
 	readonly #now: () => number;
+	/** Scopes skipped by the most recent {@link load} because their file could not be read. */
+	#unreadableScopes: ReadonlySet<VaultScope> = new Set();
 
 	constructor(locations: VaultLocations, now: () => number = () => Date.now()) {
 		this.#locations = locations;
@@ -1145,10 +1437,16 @@ export class SecretVault {
 	async load(): Promise<ScopedVaultEntry[]> {
 		const now = this.#now();
 		const byName = new Map<string, ScopedVaultEntry>();
+		const unreadable = new Set<VaultScope>();
 		for (const scope of VAULT_SCOPES) {
 			const vaultPath = vaultPathFor(this.#locations, scope);
 			const pin = await pinVaultScope(scope, vaultPath);
-			if (pin === null) continue;
+			if (pin === null) {
+				// Absent is not unreadable, and the distinction matters for the notice: a vault
+				// repaired by DELETING it and later recreated broken has to warn again.
+				forgetUnreadableVault(vaultPath);
+				continue;
+			}
 			try {
 				// One physical file cannot carry two semantic scope bindings, so the widest
 				// configured owner reads it exactly once.
@@ -1159,11 +1457,118 @@ export class SecretVault {
 					byName.delete(entry.name);
 					byName.set(entry.name, { ...entry, scope });
 				}
+				// This path read cleanly, so any earlier complaint about it is spent. Clearing on
+				// success, rather than trusting the last state we reported, is what lets a
+				// break/repair/break sequence in one session raise the notice both times.
+				forgetUnreadableVault(vaultPath);
+			} catch (error) {
+				// NARROW BY DESIGN. Only a payload that already cleared every provenance and integrity
+				// check may be skipped; see UnparseableVaultPayloadError for why catching anything
+				// wider turned each of this file's security refusals into "that scope has no secrets"
+				// and, through the obfuscator, into a silent disclosure path. Everything else rethrows
+				// and still refuses to start.
+				if (!(error instanceof UnparseableVaultPayloadError)) throw error;
+				unreadable.add(scope);
+				noteUnreadableVault(scope, vaultPath, error);
 			} finally {
 				await closeVaultScopePin(pin);
 			}
 		}
+		this.#unreadableScopes = unreadable;
 		return [...byName.values()];
+	}
+
+	/**
+	 * Scopes whose vault file existed but could not be read during the most recent {@link load}.
+	 *
+	 * Empty until the first load, and empty in the ordinary case of a vault that is simply absent.
+	 * The spend seam consults this to tell "you have no secret by that name" apart from "the file
+	 * holding your secret is broken", so a placeholder that cannot be resolved is refused with the
+	 * repair rather than handed to a command as the literal text `#NAME#`.
+	 */
+	unreadableScopes(): readonly VaultScope[] {
+		return [...this.#unreadableScopes];
+	}
+
+	/**
+	 * Move an unreadable scope's vault file aside so that scope can be used again.
+	 *
+	 * The in-product repair for a vault that exists and cannot be read. `load()` degrades past such
+	 * a file and `remove()` deliberately refuses to touch it, which leaves the operator able to
+	 * start and unable to fix, so this is the one operation that resolves it from inside veyyon.
+	 *
+	 * MOVES rather than deletes. The file still holds real credentials, sealed with a key that is
+	 * still on disk, so the damage may be a truncated tail with recoverable entries behind it.
+	 * Destroying it to make the product usable again is a trade the operator has not agreed to, and
+	 * a rename costs nothing. The new path is returned so it can be reported.
+	 *
+	 * Refuses a scope that reads normally, checked HERE under the lock rather than trusting an
+	 * earlier {@link load}: the file may have been repaired in between, and `remove()` can name what
+	 * it removed while this cannot. It is not a second delete path.
+	 */
+	async discardUnreadableScope(scope: VaultScope): Promise<{ readonly movedTo: string }> {
+		const vaultPath = vaultPathFor(this.#locations, scope);
+		const absent = new Error(`There is no ${scope} vault at ${safeText(vaultPath)}, so there is nothing to discard.`);
+		const pin = await pinVaultScope(scope, vaultPath);
+		if (pin === null) throw absent;
+		try {
+			const owner = await this.#scopePathOwner(scope, pin);
+			if (owner !== scope) {
+				throw new Error(
+					`The ${scope} vault path ${safeText(vaultPath)} is also the ${owner} vault path, so discarding ` +
+						`it would discard the ${owner} vault too. Name the ${owner} scope instead if that is what ` +
+						`you mean.`,
+				);
+			}
+			return await withFileLock(
+				vaultPath,
+				async () => {
+					await verifyVaultScopePin(scope, pin);
+					let readable: boolean;
+					try {
+						readable = (await this.#readScopeRaw(scope, pin)) !== null;
+					} catch {
+						// The whole precondition: it threw, so it is genuinely unreadable. The reason is
+						// not inspected, because every reason lands the operator in the same place.
+						readable = false;
+						const ioPath = pinnedVaultPath(pin, vaultPath);
+						for (let attempt = 0; attempt < 8; attempt++) {
+							// ONE suffix, used twice on purpose. The rename goes through the pinned
+							// descriptor path, because that is what guarantees the directory is still the
+							// one this scope was verified against. The REPORTED path must be the real one:
+							// the pinned form is `/proc/self/fd/<n>/...`, which names a descriptor this
+							// process is about to close, so reporting it handed the operator a path that
+							// does not exist for anyone else and stops existing here too. That string is
+							// the only route back to credentials the file may still hold.
+							const suffix = `.unreadable-${this.#now()}-${randomUUID().slice(0, 8)}`;
+							if (!moveNoReplace(ioPath, `${ioPath}${suffix}`)) continue;
+							await verifyVaultScopePin(scope, pin);
+							// This process made the path absent, so the revision fingerprint must not read it
+							// as somebody else tampering and start refusing expansions.
+							recordSelfWrittenVault(vaultPath);
+							// A later break at this path has to warn again.
+							forgetUnreadableVault(vaultPath);
+							return { movedTo: `${vaultPath}${suffix}` };
+						}
+						throw new Error(
+							`Could not find an unused name to move the ${scope} vault at ${safeText(vaultPath)} ` +
+								`aside. Move or delete that file yourself.`,
+						);
+					}
+					if (readable) {
+						throw new Error(
+							`The ${scope} vault at ${safeText(vaultPath)} reads normally, so nothing needs ` +
+								`discarding. Use /secret rm <name> to remove one secret; unlike this, it can tell ` +
+								`you what it removed.`,
+						);
+					}
+					throw absent;
+				},
+				VAULT_LOCK_OPTIONS,
+			);
+		} finally {
+			await closeVaultScopePin(pin);
+		}
 	}
 
 	/** Live entries in one pinned scope, pruning any that have expired. */
@@ -1175,6 +1580,13 @@ export class SecretVault {
 		if (live.length === all.length) return live;
 
 		// Re-read inside the lock so a concurrent add is not pruned with the expired entries.
+		//
+		// Deliberately NOT wrapped in a catch. An earlier version swallowed a failure here and
+		// returned the pre-lock `live` list, reasoning that a prune is only cleanup and a read-only
+		// filesystem should not cost the operator their working credentials. That reasoning ignored
+		// what else this call performs: it re-verifies the scope pin, so it is one of the places a
+		// vault swapped underneath us is caught. Swallowing it converted that TOCTOU refusal into a
+		// successful read of values taken before the swap.
 		return await this.#withScopeLocked(scope, entries => {
 			const stillLive = entries.filter(entry => !isExpired(entry, now));
 			return { entries: stillLive, result: stillLive };
@@ -1247,7 +1659,7 @@ export class SecretVault {
 			parsed = JSON.parse(text);
 		} catch (error) {
 			throw new Error(
-				`The ${scope} vault at ${safeText(vaultPath)} is not valid JSON (${safeError(error)}). ` +
+				`The ${scope} vault at ${safeText(vaultPath)} is not valid JSON (${safeParseFailure(error)}). ` +
 					`It is encrypted, so it is not meant to be edited by hand.`,
 			);
 		}
@@ -1269,7 +1681,9 @@ export class SecretVault {
 			throw new Error(
 				`The ${scope} vault at ${safeText(vaultPath)} exists, but its key does not. ` +
 					`Without the key nothing in it can be decrypted, and none of the secrets it holds are being ` +
-					`protected. Restore the key file, or delete the vault and add the secrets again.`,
+					`protected. Restore the key file from a backup: this vault's ciphertext is intact, so its ` +
+					`secrets come back the moment the key does. If the key is genuinely unrecoverable, run ` +
+					`\`/secret discard\`, which moves the unreadable vault aside instead of destroying it.`,
 			);
 		}
 		await assertExpectedVaultPath(scope, vaultPath, pin, snapshot);
@@ -1376,11 +1790,20 @@ export class SecretVault {
 		if (Buffer.byteLength(text, "utf8") > MAX_VAULT_FILE_BYTES) {
 			throw new Error(`The ${scope} vault exceeded its safety limit during sealing. Refusing to replace it.`);
 		}
+		// Observe the pre-write state so this path has an identity to carry across the write. Any
+		// external change that landed since the last look is caught HERE, before publishing, so
+		// re-anchoring below preserves a fresh external identity rather than hiding one.
+		externalVaultIdentity(vaultPath);
 		await writeVaultAtomically(scope, vaultPath, pin, expected, text);
+		recordSelfWrittenVault(vaultPath);
 	}
 
 	/**
 	 * Store a secret, replacing any entry of the same name in the same scope.
+	 *
+	 * Reports whether it replaced one, because the caller has to be able to say so. Rotating a
+	 * credential and destroying one by mistyping its name are the same write, and the only thing
+	 * that distinguishes them for the operator is being told which happened.
 	 *
 	 * Refuses a value the obfuscator could not protect, for the reason spelled out in
 	 * `policy.ts`: accepting it here would produce an entry that looks stored and is sent to
@@ -1391,7 +1814,7 @@ export class SecretVault {
 		value: string;
 		scope?: VaultScope;
 		ttl?: number | null;
-	}): Promise<ScopedVaultEntry> {
+	}): Promise<AddedVaultEntry> {
 		const scope = options.scope ?? "profile";
 		if (!isWellFormedUtf16(options.value)) {
 			throw new Error("This secret contains ill-formed UTF-16. Refusing to store it.");
@@ -1436,7 +1859,10 @@ export class SecretVault {
 					createdAt: now,
 					expiresAt: expiryFrom(now, ttl),
 				};
-				return { entries: replaceVaultEntry(existing, created), result: created };
+				// Decided inside the lock against the same `existing` the write is built from, so it
+				// cannot disagree with what `replaceVaultEntry` actually did.
+				const replaced = existing.some(entry => entry.name === name);
+				return { entries: replaceVaultEntry(existing, created), result: { ...created, replaced } };
 			},
 			true,
 		);

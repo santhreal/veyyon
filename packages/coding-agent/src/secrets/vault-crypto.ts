@@ -67,6 +67,8 @@ const KEY_LOCK_OPTIONS = { staleMs: Number.POSITIVE_INFINITY } as const;
 
 const KEY_STAGE_RE = /^\.vault\.key\.\d+\.[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.tmp$/i;
 const MAX_KEY_STAGE_SCAN_ENTRIES = 4096;
+const KEY_QUARANTINE_RE =
+	/^\.vault\.key\.\d+\.[0-9a-f-]{36}\.tmp\.[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.removing$/i;
 
 interface KeyRootPin {
 	readonly root: string;
@@ -86,8 +88,12 @@ interface KeySnapshot {
 	readonly ino: number;
 	readonly size: number;
 	readonly mtimeMs: number;
-	readonly ctimeMs: number;
-	readonly nlink: number;
+	// Deliberately NOT nlink and NOT ctimeMs. BOTH are changed by a peer reaping a recovery link —
+	// unlinking a hard link bumps the inode's ctime as surely as it drops the count — so comparing
+	// either one made a reader report "the key changed while it was being opened" for a key whose
+	// bytes never moved. Identity is dev, ino, size, mtimeMs, mode and uid; the link count is judged
+	// separately in `assertKeyPathSafe`, against the right expectation, instead of being smuggled in
+	// here as tamper evidence.
 	readonly mode: number;
 	readonly uid: number;
 }
@@ -138,8 +144,6 @@ function keySnapshot(stat: Stats): KeySnapshot {
 		ino: stat.ino,
 		size: stat.size,
 		mtimeMs: stat.mtimeMs,
-		ctimeMs: stat.ctimeMs,
-		nlink: stat.nlink,
 		mode: stat.mode,
 		uid: stat.uid,
 	};
@@ -151,8 +155,6 @@ function sameKeySnapshot(snapshot: KeySnapshot, stat: Stats): boolean {
 		snapshot.ino === stat.ino &&
 		snapshot.size === stat.size &&
 		snapshot.mtimeMs === stat.mtimeMs &&
-		snapshot.ctimeMs === stat.ctimeMs &&
-		snapshot.nlink === stat.nlink &&
 		snapshot.mode === stat.mode &&
 		snapshot.uid === stat.uid
 	);
@@ -397,7 +399,7 @@ async function verifyKeyRootPin(pin: KeyRootPin): Promise<void> {
 }
 
 /** Reject aliases and special files before any bytes are consumed. */
-function assertKeyPathSafe(keyPath: string, stat: Stats, fromPath: boolean, allowPublishedStage = false): void {
+function assertKeyPathSafe(keyPath: string, stat: Stats, fromPath: boolean, allowRecoveryLink = false): void {
 	if (fromPath && stat.isSymbolicLink()) {
 		throw new Error(
 			`The vault key at ${safeText(keyPath)} is a symlink. Refusing to follow it across the vault boundary.`,
@@ -406,8 +408,12 @@ function assertKeyPathSafe(keyPath: string, stat: Stats, fromPath: boolean, allo
 	if (!stat.isFile()) {
 		throw new Error(`The vault key at ${safeText(keyPath)} is not a regular file. Refusing to read it.`);
 	}
-	const expectedLinks = allowPublishedStage ? 2 : 1;
-	if (stat.nlink !== expectedLinks) {
+	// A recovery link is allowed to be THERE OR ALREADY GONE, because the peer reaping it can finish
+	// between any two stats a reader takes. Pinning this to exactly 2 made a reader that raced a
+	// completing peer refuse the key. Callers pass true only once the second link has been identified
+	// as an in-flight recovery entry, so an unexplained extra link is still refused below.
+	const maxLinks = allowRecoveryLink ? 2 : 1;
+	if (stat.nlink < 1 || stat.nlink > maxLinks) {
 		throw new Error(
 			`The vault key at ${safeText(keyPath)} has ${stat.nlink} hard links. ` +
 				`Refusing a key that is reachable through another path.`,
@@ -431,6 +437,65 @@ function assertKeyNotExposed(keyPath: string, stat: Stats): void {
 			`Anyone who can read it can decrypt every stored secret. ` +
 			`Run: chmod 600 ${safeText(keyPath)}`,
 	);
+}
+
+/**
+ * Whether the key's second hard link is one that vault recovery itself created.
+ *
+ * A link count of 2 is AMBIGUOUS and cannot be resolved by comparing inodes, because a recovery
+ * link is the same inode as the published key by construction. It is resolved STRUCTURALLY instead:
+ * a second link that is a staging or quarantine entry in this pinned directory belongs to a
+ * publication or a reap that is still in flight, while a second link that no such entry accounts
+ * for is a foreign path to the key and must be refused.
+ *
+ * Deciding this by scanning beats waiting for the count to drop. A wait is a guess about how long a
+ * peer takes, so it turns a correctness property into a timing property and fails on a loaded
+ * machine; the scan answers the actual question and never sleeps. Entries are owner-only by the
+ * time this runs, so a name is as trustworthy here as it already is for staging recovery.
+ */
+async function recoveryLinkAccountedFor(pin: KeyRootPin, published: Stats): Promise<boolean> {
+	let seen = 0;
+	const directory = await fs.opendir(pin.ioRoot);
+	try {
+		for await (const entry of directory) {
+			if (!entry.isFile()) continue;
+			if (!KEY_STAGE_RE.test(entry.name) && !KEY_QUARANTINE_RE.test(entry.name)) continue;
+			if (++seen > MAX_KEY_STAGE_SCAN_ENTRIES) {
+				throw new Error("Too many vault key staging entries exist to recover one safely.");
+			}
+			try {
+				const candidate = await fs.lstat(path.join(pin.ioRoot, entry.name));
+				if (candidate.isFile() && sameInode(candidate, published)) return true;
+			} catch (error) {
+				if (isMissingPath(error)) continue;
+				throw error;
+			}
+		}
+	} finally {
+		try {
+			await directory.close();
+		} catch {
+			// `for await` closes the directory on normal completion.
+		}
+	}
+	return false;
+}
+
+/**
+ * Whether `target` still names an entry, distinguishing "already gone" from every other failure.
+ *
+ * The one question a lockless peer needs answered after losing a removal, and the reason it needs
+ * its own helper: `removePathIfSameInode` collapses "absent" and "replaced" into one `false`, and
+ * only the second means somebody interfered.
+ */
+async function pathPresent(target: string): Promise<boolean> {
+	try {
+		await fs.lstat(target);
+		return true;
+	} catch (error) {
+		if (isMissingPath(error)) return false;
+		throw error;
+	}
 }
 
 async function removePathIfSameInode(target: string, identity: Pick<Stats, "dev" | "ino">): Promise<boolean> {
@@ -537,14 +602,40 @@ async function recoverPublishedKey(pin: KeyRootPin, keyPath: string, publishedSt
 			const finalNow = await fs.lstat(keyPath);
 			assertKeyPathSafe(keyPath, finalNow, true, true);
 			assertKeyNotExposed(keyPath, finalNow);
-			if (!sameInode(finalNow, publishedStat) || finalNow.nlink !== 2) {
+			if (!sameInode(finalNow, publishedStat)) {
 				throw new Error("The published vault key changed during orphan recovery.");
 			}
+			// A lockless reader has TWO legal states to find here, not one. Two links means the
+			// recovery is still outstanding; ONE link means a peer reader already completed it, which
+			// is the outcome this function exists to produce and therefore success, not tampering.
+			// Only a third link is suspicious, and `assertKeyPathSafe` above already refuses that.
+			if (finalNow.nlink === 1) return true;
 			await syncDirectory(pin);
 			if (!(await removePathIfSameInode(candidatePath, candidate))) {
-				const progressed = await fs.lstat(keyPath);
-				if (!sameInode(progressed, publishedStat) || progressed.nlink !== 1) {
-					throw new Error("The published vault key staging link changed during orphan recovery.");
+				// `removePathIfSameInode` returns false for two different facts: the path is already
+				// GONE, or it now holds SOMETHING ELSE. Only the second is suspicious, and conflating
+				// them is what lost the race. Removal is a CAS in two steps — rename the path to a
+				// quarantine name, re-verify the inode, unlink — so a peer holds the staging path
+				// absent while the inode still has BOTH links for the width of that window. A reader
+				// landing there and demanding `nlink === 1` was asserting a fact the winner had not
+				// published yet, and read a peer's progress as an attack.
+				if (await pathPresent(candidatePath)) {
+					const progressed = await fs.lstat(keyPath);
+					if (!sameInode(progressed, publishedStat) || progressed.nlink !== 1) {
+						throw new Error("The published vault key staging link changed during orphan recovery.");
+					}
+				} else {
+					// The staging path went away under a peer that is still mid-CAS, so the link count
+					// that peer will publish IS NOT OBSERVABLE YET and asserting it here is the race
+					// itself. Identity and exposure are observable, so this reader checks those and
+					// leaves the single-link guarantee to the reader that performs the unlink — the one
+					// that can actually keep it.
+					const watched = await fs.lstat(keyPath);
+					assertKeyNotExposed(keyPath, watched);
+					if (!sameInode(watched, publishedStat)) {
+						throw new Error("The published vault key changed during orphan recovery.");
+					}
+					return true;
 				}
 			}
 			const recovered = await fs.lstat(keyPath);
@@ -635,8 +726,25 @@ async function readVaultKeyPinned(pin: KeyRootPin): Promise<Buffer | null> {
 		await recoverPublishedKey(pin, keyPath, pathStat);
 		pathStat = await fs.lstat(keyPath);
 	}
-	assertKeyPathSafe(displayKeyPath, pathStat, true);
-	assertKeyNotExposed(displayKeyPath, pathStat);
+	// Recovery is a two-step CAS — rename the staging link to a quarantine name, verify the inode,
+	// unlink — so a reader can arrive after a peer renamed the link away and before it unlinked it,
+	// and find a key with two links and nothing left to reap. Demanding one link here refused a
+	// perfectly good key, and how often that happened depended on machine load, which is what made it
+	// look like flake. So the second link is CLASSIFIED rather than counted: an in-flight recovery
+	// entry in this directory accounts for it, and anything else is a foreign path and still refused.
+	let recoveryLinkPending = false;
+	if (pathStat.nlink === 2) {
+		recoveryLinkPending = await recoveryLinkAccountedFor(pin, pathStat);
+		if (!recoveryLinkPending) {
+			// The scan can lose to the very reap it is looking for: the entry that explained the second
+			// link may be unlinked while this scan walks the directory, leaving an unexplained count of
+			// 2 that has ALREADY become 1 on disk. Confirm against a fresh stat before refusing, so the
+			// verdict is never delivered on a stale sample. A second link that is still present and
+			// still unexplained is a foreign path to the key and is refused below.
+			pathStat = await fs.lstat(keyPath);
+		}
+	}
+	assertKeyPathSafe(displayKeyPath, pathStat, true, recoveryLinkPending);
 	const snapshot = keySnapshot(pathStat);
 
 	let handle: fs.FileHandle;
@@ -649,7 +757,7 @@ async function readVaultKeyPinned(pin: KeyRootPin): Promise<Buffer | null> {
 	let key: Buffer;
 	try {
 		const openStat = await handle.stat();
-		assertKeyPathSafe(displayKeyPath, openStat, false);
+		assertKeyPathSafe(displayKeyPath, openStat, false, recoveryLinkPending);
 		if (!sameKeySnapshot(snapshot, openStat)) {
 			throw new Error(`The vault key at ${safeText(displayKeyPath)} changed while it was being opened.`);
 		}
