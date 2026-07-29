@@ -555,15 +555,13 @@ export class HindsightSessionState {
 		this.unsubscribe?.();
 		this.unsubscribe = this.session.subscribe(event => {
 			if (event.type === "agent_start") {
-				void this.maybeRecallOnAgentStart();
+				this.#runDetached("auto-recall", () => this.maybeRecallOnAgentStart());
 			} else if (event.type === "agent_end") {
-				void this.maybeRetainOnAgentEnd();
+				this.#runDetached("auto-retain", () => this.maybeRetainOnAgentEnd());
 				// Drain any queued tool-initiated retain calls now that the turn
 				// is settled. The queue is also debounced/size-bounded, but
 				// flushing here keeps the bank fresh between turns.
-				void this.flushRetainQueue().catch(() => {
-					// The queue already emitted a warning notice for this batch.
-				});
+				this.#runDetached("retain-queue flush", () => this.flushRetainQueue());
 				// MM TTL refresh: re-list once we're past the cache deadline. List
 				// is cheap (no reflect call); the LLM doesn't see this happen.
 				if (
@@ -571,12 +569,41 @@ export class HindsightSessionState {
 					this.mentalModelsLoadedAt !== undefined &&
 					Date.now() - this.mentalModelsLoadedAt >= this.config.mentalModelRefreshIntervalMs
 				) {
-					void this.refreshMentalModelsSnippet().then(async () => {
+					this.#runDetached("mental-model TTL reload", async () => {
+						await this.refreshMentalModelsSnippet();
 						await this.#publishVolatileContextAfter("MM TTL reload");
 					});
 				}
 			}
 		});
+	}
+
+	/**
+	 * Run background memory work started from a session event without letting it
+	 * reject into nowhere.
+	 *
+	 * `AgentSession#subscribe` delivers events synchronously and ignores whatever
+	 * a listener returns, so an async listener body is a detached promise. This
+	 * process installs a global `unhandledRejection` handler that prints a fatal
+	 * report and calls `process.exit(1)`, so one rejected background recall or
+	 * mental-model refresh does not degrade memory: it terminates the user's whole
+	 * TUI session at a turn boundary, with a crash report instead of an
+	 * explanation. Memory is optional enrichment, so the correct failure is this
+	 * warning plus a turn without the extra context.
+	 */
+	#runDetached(what: string, work: () => Promise<void>): void {
+		const report = (error: unknown): void => {
+			logger.warn(`Hindsight: background ${what} failed`, {
+				sessionId: this.sessionId,
+				bankId: this.bankId,
+				error: String(error),
+			});
+		};
+		try {
+			void work().catch(report);
+		} catch (error) {
+			report(error);
+		}
 	}
 
 	dispose(): void {

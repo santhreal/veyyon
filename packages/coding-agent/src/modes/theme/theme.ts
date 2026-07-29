@@ -690,7 +690,25 @@ export function getThemeEpoch(): number {
 /** Bump the theme epoch and notify the registered theme-change listener. */
 function notifyThemeChange(event: ThemeChangeEvent = {}): void {
 	themeEpoch++;
-	onThemeChangeCallback?.(event);
+	try {
+		onThemeChangeCallback?.(event);
+	} catch (error) {
+		// The listener is the UI's repaint hook: render-cache invalidation, the
+		// editor border, native scrollback replacement. It is invoked inside the
+		// theme watcher's and the auto-theme observer's `.then()`, so a throw here
+		// lands in a sibling `.catch` written for a FAILED LOAD — and that handler
+		// rolls `currentThemeName` back to the previous name even though
+		// `setActiveTheme` already succeeded, leaving the tracked name disagreeing
+		// with the live theme for the rest of the session (the watcher's
+		// `currentThemeName !== watchedThemeName` guard then misfires too). On the
+		// synchronous `/theme` path the same throw instead unwinds into the command
+		// and reports a theme that did load as broken. The epoch is already bumped,
+		// so the next render re-shapes either way: a dead repaint hook is a logged
+		// warning, never a rolled-back theme.
+		logger.warn("Theme change listener threw; the UI may not repaint until the next render", {
+			error: errorMessage(error),
+		});
+	}
 }
 
 /**

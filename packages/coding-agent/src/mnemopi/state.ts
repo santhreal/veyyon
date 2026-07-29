@@ -534,11 +534,37 @@ export class MnemopiSessionState {
 		this.unsubscribe?.();
 		this.unsubscribe = this.session.subscribe((event: AgentSessionEvent) => {
 			if (event.type === "agent_start") {
-				void this.maybeRecallOnAgentStart();
+				this.#runDetached("auto-recall", () => this.maybeRecallOnAgentStart());
 			} else if (event.type === "agent_end") {
-				void this.maybeRetainOnAgentEnd(event.messages);
+				this.#runDetached("auto-retain", () => this.maybeRetainOnAgentEnd(event.messages));
 			}
 		});
+	}
+
+	/**
+	 * Run background memory work started from a session event without letting it
+	 * reject into nowhere.
+	 *
+	 * `AgentSession#subscribe` delivers events synchronously and ignores whatever
+	 * a listener returns, so an async listener body is a detached promise. This
+	 * process installs a global `unhandledRejection` handler that prints a fatal
+	 * report and calls `process.exit(1)`, so a recall whose embedding worker died
+	 * does not cost the user a recall: it terminates their whole TUI session on
+	 * the first turn. Memory is optional enrichment, so the correct failure is
+	 * this warning plus a turn without the extra context.
+	 */
+	#runDetached(what: string, work: () => Promise<void>): void {
+		const report = (error: unknown): void => {
+			logger.warn(`Mnemopi: background ${what} failed`, {
+				sessionId: this.sessionId,
+				error: String(error),
+			});
+		};
+		try {
+			void work().catch(report);
+		} catch (error) {
+			report(error);
+		}
 	}
 
 	async maybeRecallOnAgentStart(): Promise<void> {

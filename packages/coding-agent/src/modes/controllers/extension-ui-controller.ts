@@ -30,6 +30,7 @@ import { HookSelectorComponent, type HookSelectorSlider } from "../../modes/comp
 import { modalRevealEnabled } from "../../modes/components/modal-shell";
 import { getAvailableThemesWithPaths, getThemeByName, setTheme, type Theme, theme } from "../../modes/theme/theme";
 import type { InteractiveModeContext, InteractiveSelectorDialogOptions } from "../../modes/types";
+import { abortDetached } from "../../session/detached-abort";
 import { normalizeCustomMessagePayload, USER_INTERRUPT_LABEL } from "../../session/messages";
 import { ASK_CHAT_OPTION_LABEL, ASK_NEXT_OPTION_LABEL, ASK_OTHER_OPTION_LABEL } from "../../tools/ask-option-labels";
 import { setSessionTerminalTitle, setTerminalTitle } from "../../utils/title-generator";
@@ -205,7 +206,19 @@ export class ExtensionUiController {
 		const contextActions: ExtensionContextActions = {
 			getModel: () => this.ctx.session.model,
 			isIdle: () => !this.ctx.session.isStreaming,
-			abort: () => this.ctx.session.abort({ reason: USER_INTERRUPT_LABEL }),
+			// `ExtensionContextActions.abort` is `() => void`, so returning
+			// `session.abort(...)` here hands a promise into a void slot: the
+			// runner discards it at `#abortFn()` and a rejected abort floats to
+			// postmortem, which exits the process. `abortDetached` is the helper
+			// that exists for exactly this and is already used at the hook-runner
+			// wiring below; these two were simply missed.
+			abort: () => {
+				abortDetached(
+					this.ctx.session,
+					"extension-ui-controller.initHooksAndCustomTools.abort",
+					USER_INTERRUPT_LABEL,
+				);
+			},
 			hasPendingMessages: () => this.ctx.session.queuedMessageCount > 0,
 			shutdown: () => {
 				// Defer the actual teardown to the main loop, which calls
@@ -425,7 +438,9 @@ export class ExtensionUiController {
 		const contextActions: ExtensionContextActions = {
 			getModel: () => this.ctx.session.model,
 			isIdle: () => !this.ctx.session.isStreaming,
-			abort: () => this.ctx.session.abort({ reason: USER_INTERRUPT_LABEL }),
+			abort: () => {
+				abortDetached(this.ctx.session, "extension-ui-controller.initializeHookRunner.abort", USER_INTERRUPT_LABEL);
+			},
 			hasPendingMessages: () => this.ctx.session.queuedMessageCount > 0,
 			shutdown: () => {
 				// Defer the actual teardown to the main loop, which calls
@@ -554,7 +569,7 @@ export class ExtensionUiController {
 						isIdle: () => !this.ctx.session.isStreaming,
 						hasPendingMessages: () => this.ctx.session.queuedMessageCount > 0,
 						abort: () => {
-							this.ctx.session.abort({ reason: USER_INTERRUPT_LABEL });
+							abortDetached(this.ctx.session, "extension-ui-controller.abort", USER_INTERRUPT_LABEL);
 						},
 						shutdown: () => {
 							// Signal shutdown request
