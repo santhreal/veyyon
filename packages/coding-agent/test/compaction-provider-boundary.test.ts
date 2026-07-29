@@ -74,9 +74,9 @@ describe("AgentSession compaction confidentiality wiring", () => {
 		let refreshStage = 0;
 		const refreshSecretRuntime = async () => {
 			refreshStage++;
-			const entries = [{ type: "plain" as const, content: HOOK_SECRET }];
-			if (refreshStage >= 2) entries.push({ type: "plain", content: MEMORY_SECRET });
-			if (refreshStage >= 3) entries.push({ type: "plain", content: LATE_SECRET });
+			const entries = [{ type: "plain" as const, origin: "config" as const, content: HOOK_SECRET }];
+			if (refreshStage >= 2) entries.push({ type: "plain", origin: "config", content: MEMORY_SECRET });
+			if (refreshStage >= 3) entries.push({ type: "plain", origin: "config", content: LATE_SECRET });
 			return new SecretObfuscator(entries);
 		};
 		const extensionRunner = {

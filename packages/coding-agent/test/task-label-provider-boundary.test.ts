@@ -15,7 +15,7 @@ describe("task label provider boundary", () => {
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5") as Model<Api> | undefined;
 		if (!model) throw new Error("Expected bundled Claude Sonnet 4.5 model");
 		const secret = "TASK_LABEL_RAW_SECRET_123";
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 		const placeholder = obfuscator.obfuscate(secret);
 		const completeSimpleMock = vi.spyOn(ai, "completeSimple").mockResolvedValue({
 			stopReason: "stop",
@@ -109,7 +109,7 @@ describe("task label provider boundary", () => {
 			resolver: () => async () => "test-key",
 		} as never;
 		const secret = "TASK_LABEL_BOUNDARY_SECRET_ABCDEF";
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 		const placeholder = obfuscator.obfuscate(secret);
 		const completeSimpleMock = vi.spyOn(ai, "completeSimple").mockResolvedValue({
 			stopReason: "stop",

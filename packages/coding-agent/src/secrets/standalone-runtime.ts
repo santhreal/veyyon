@@ -48,6 +48,7 @@ export async function loadStandaloneSecretRuntime(options: StandaloneSecretRunti
 			content: secret.value,
 			name: secret.name,
 			expiresAt: secret.expiresAt,
+			origin: "vault",
 		}));
 		return new SecretObfuscator([...envEntries, ...fileEntries, ...vaultEntries], { placeholderKey });
 	} catch {

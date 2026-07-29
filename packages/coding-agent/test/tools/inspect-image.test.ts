@@ -163,7 +163,7 @@ describe("InspectImageTool", () => {
 		const imagePath = path.join(testDir, "secret-question.png");
 		fs.writeFileSync(imagePath, Buffer.from(TINY_PNG_BASE64, "base64"));
 		const secret = "VISION_RAW_SECRET_123";
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 		const placeholder = obfuscator.obfuscate(secret);
 		const stub = createCompleteSimpleSuccessStub("Safe answer");
 		const tool = new InspectImageTool(

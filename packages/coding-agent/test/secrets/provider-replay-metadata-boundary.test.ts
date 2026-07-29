@@ -18,7 +18,7 @@ const usage: AssistantMessage["usage"] = {
 };
 
 function obfuscator(): SecretObfuscator {
-	return new SecretObfuscator([{ type: "plain", content: SECRET, name: "REPLAY_SECRET" }], {
+	return new SecretObfuscator([{ type: "plain", origin: "config", content: SECRET, name: "REPLAY_SECRET" }], {
 		placeholderKey: new Uint8Array(32).fill(13),
 	});
 }

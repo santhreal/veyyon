@@ -176,7 +176,7 @@ describe("imageGenTool", () => {
 			baseUrl: "https://api.openai.com/v1",
 		} as Model;
 		const secret = "IMAGE_GEN_RAW_SECRET_123";
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 		const placeholder = obfuscator.obfuscate(secret);
 		const ctx: CustomToolContext = {
 			fetch: fetchMock,

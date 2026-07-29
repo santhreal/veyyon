@@ -315,9 +315,10 @@ import { steeringPrompts } from "../prompts/steering/rows";
 import { turnControlPrompts } from "../prompts/turn-control/rows";
 import { transformProviderPayload } from "../provider-boundary";
 import { AgentRegistry } from "../registry/agent-registry";
+import { noteSecretsCondition } from "../secrets/notices";
 import {
-	deobfuscateAssistantContent,
-	deobfuscateSessionContext,
+	mapAgentMessageStrings,
+	mapAssistantContentStrings,
 	obfuscateMessages,
 	obfuscateProviderContext,
 	type SecretObfuscator,
@@ -392,6 +393,7 @@ import { type ContentBlockLike, contentText } from "./content-text";
 // The accounting, not the drawing. Both of these used to be imported from `modes/`, which put the
 // terminal UI on the session engine's graph and cost the layering gate a standing exception each.
 import { computeNonMessageBreakdown, computeNonMessageTokens, computeStoredMessagesTokens } from "./context-usage";
+import { abortDetached } from "./detached-abort";
 import {
 	collectPendingToolCalls,
 	createInterruptedTurnAbortMessage,
@@ -783,6 +785,12 @@ const PRUNE_CACHE_WARM_SUFFIX_TOKENS = 8_000;
  * still-warm prefix is busted by the flush. 90 min leaves margin over the 1h TTL.
  */
 const PRUNE_IDLE_FLUSH_MS = 90 * 60_000;
+/**
+ * How long a headless `shutdown()` waits for `dispose()` to flush before it
+ * exits anyway. Long enough for a session-log write, short enough that a wedged
+ * teardown cannot strand the caller.
+ */
+const SHUTDOWN_DISPOSE_TIMEOUT_MS = 5_000;
 export type CommandMetadataChangedListener = () => void | Promise<void>;
 export type AsyncJobSnapshotItem = Pick<AsyncJob, "id" | "type" | "status" | "label" | "startTime">;
 
@@ -887,10 +895,34 @@ export interface SecretRuntimeLease {
 	obfuscateContext(context: Context): Context;
 	obfuscatePayload(payload: unknown): unknown;
 	/**
-	 * Synchronously assert that named expansion is still backed by the captured
-	 * vault revision. Implementations schedule a refresh before throwing.
+	 * Whether expansion may proceed against the captured vault revision, without
+	 * side effects. True when nothing needs expanding, or when the captured
+	 * revision is still current. Pass the payload for the payload-aware answer:
+	 * text with no live placeholder is always fresh, because expanding it could
+	 * not change a byte. NEVER throws and NEVER schedules work, so a render path
+	 * can consult it and degrade.
 	 */
-	assertFreshForExpansion(): void;
+	isFreshForExpansion(text?: string): boolean;
+	/**
+	 * Refresh a stale runtime and resolve once expansion may proceed.
+	 *
+	 * A stale captured revision is a cache miss, not a security event: the
+	 * recovery is to re-read the vault, which is what this awaits. Resolves
+	 * immediately when `text` carries no live placeholder or the revision is
+	 * current. Rejects ONLY when a refresh was attempted, genuinely failed, and
+	 * `text` carries a live placeholder.
+	 */
+	ensureFreshForExpansion(text?: string): Promise<void>;
+	/**
+	 * Synchronously assert that named expansion is still backed by the captured
+	 * vault revision, for a SPEND: text about to be expanded and handed to a
+	 * tool, a command, or the provider. Silent for any payload without a live
+	 * placeholder. Prefer {@link SecretRuntimeLease.ensureFreshForExpansion}
+	 * wherever an await is possible, and NEVER call this from a display or render
+	 * path: an exception there unwinds the renderer instead of failing one
+	 * operation.
+	 */
+	assertFreshForExpansion(text?: string): void;
 }
 
 export interface ProjectAdvisorScope {
@@ -1915,6 +1947,8 @@ export class AgentSession {
 	#thinkingLevel: ThinkingLevel | undefined;
 	/** Explicit session-only choice. Undefined lets selector and saved per-model defaults apply. */
 	#sessionThinkingOverride: ConfiguredThinkingLevel | undefined;
+	/** Explicit effort suffix on the selector that activated the current model. */
+	#activeSelectorThinkingLevel: ConfiguredThinkingLevel | undefined;
 	/** True when the user configured `auto`; the effective level is resolved per turn. */
 	#autoThinking: boolean = false;
 	/** The level `auto` last resolved to (for UI); undefined until a turn is classified. */
@@ -2242,6 +2276,8 @@ export class AgentSession {
 	#leaseSecretRuntime: (() => Promise<SecretRuntimeLease>) | undefined;
 	#resolveSecretRuntimeLeaseForContext: ((context: Context) => SecretRuntimeLease | undefined) | undefined;
 	#refreshSecretRuntime: ((cwd: string) => Promise<SecretRuntimeLease | SecretObfuscator | undefined>) | undefined;
+	/** Single-flight guard for the out-of-band refresh a stale render schedules. */
+	#staleSecretRuntimeRefreshInFlight = false;
 	#argot: ArgotSession | undefined;
 	/** Per-streaming-message argot display decoder (seam 3); reset on each assistant message_start. */
 	#argotStreamDisplay: ArgotStreamDisplayDecoder | undefined;
@@ -2753,6 +2789,7 @@ export class AgentSession {
 		this.#asyncJobManager = config.asyncJobManager ?? config.ownedAsyncJobManager;
 		this.#scopedModels = config.scopedModels ?? [];
 		this.#sessionThinkingOverride = config.thinkingSource === "session" ? config.thinkingLevel : undefined;
+		this.#activeSelectorThinkingLevel = config.thinkingSource === "selector" ? config.thinkingLevel : undefined;
 		if (config.thinkingLevel === AUTO_THINKING) {
 			// `auto` is session-level: keep the flag and show a provisional concrete
 			// level (the agent's initial effort was already set by the caller) until
@@ -4062,6 +4099,10 @@ export class AgentSession {
 			obfuscateMessages: messages => (obfuscator ? obfuscateMessages(obfuscator, messages) : messages),
 			obfuscateContext: context => (obfuscator ? obfuscateProviderContext(obfuscator, context) : context),
 			obfuscatePayload: payload => obfuscateProviderPayload(payload, obfuscator),
+			// No vault revision was ever captured on this path, so nothing here can
+			// go stale and every freshness member is a no-op.
+			isFreshForExpansion: () => true,
+			ensureFreshForExpansion: async () => undefined,
 			assertFreshForExpansion: () => undefined,
 		};
 	}
@@ -4621,6 +4662,293 @@ export class AgentSession {
 	}
 
 	/**
+	 * Expand one string for display, or report that it cannot be expanded. NEVER
+	 * throws, for any codec or freshness reason.
+	 *
+	 * WHY THAT MATTERS: every caller is a display or render path, not a tool call.
+	 * An exception raised while turning a stored `#HASH#` back into plaintext does
+	 * not fail one operation, it unwinds whatever was rendering (the event
+	 * fan-out, a TUI repaint, the agent-state rebuild after a compaction, even the
+	 * constructor's first `buildDisplaySessionContext()`) and the session is gone.
+	 * A placeholder left on screen literally is cosmetic, so degrading is always
+	 * the right trade here.
+	 *
+	 * Returns the text unchanged when there is nothing to expand. The
+	 * DISPLAY-RESTORABLE test comes FIRST and is the whole gate. `hasSecrets()`
+	 * answers "this session has a secret", which is not the question, and
+	 * `containsLivePlaceholder` answers "would expansion change this", which is no
+	 * longer the question either: a vault-backed credential is deliberately NOT
+	 * restorable on screen, so text whose only placeholders are withheld has
+	 * nothing to expand and must not consult the vault revision or report a
+	 * degraded render. Returns undefined ONLY when the text carries a restorable
+	 * placeholder and expansion is unsafe: a stale captured revision, or a codec
+	 * limit refusing the text.
+	 */
+	#tryExpandSecretsForDisplay(text: string): string | undefined {
+		const obfuscator = this.#obfuscator;
+		if (obfuscator === undefined || !obfuscator.containsDisplayRestorablePlaceholder(text)) return text;
+		if (!this.#secretExpansionFreshForDisplay()) return undefined;
+		return this.#expandLivePlaceholdersForDisplay(obfuscator, text);
+	}
+
+	/**
+	 * Per-string expander for one display pass over a structured payload (a
+	 * transcript, one assistant message's content), or undefined when the session
+	 * has no expansion authority and the caller should skip the walk and keep its
+	 * own reference.
+	 *
+	 * Freshness is resolved lazily, on the first string that actually carries a
+	 * live placeholder, and then memoized FOR THIS PASS ONLY: the freshness probe
+	 * reads the vault's revision off disk, and a transcript rebuild walks every
+	 * model-authored string in the branch. A later pass resolves it again, so a
+	 * refresh that landed in between is picked up.
+	 */
+	#displaySecretExpander(): ((text: string) => string) | undefined {
+		const obfuscator = this.#obfuscator;
+		if (obfuscator === undefined || !obfuscator.hasSecrets()) return undefined;
+		let fresh: boolean | undefined;
+		return (text: string): string => {
+			if (!obfuscator.containsDisplayRestorablePlaceholder(text)) return text;
+			fresh ??= this.#secretExpansionFreshForDisplay();
+			if (!fresh) return text;
+			return this.#expandLivePlaceholdersForDisplay(obfuscator, text) ?? text;
+		};
+	}
+
+	/**
+	 * {@link SecretObfuscator.deobfuscateForDisplay} with a refused expansion demoted to a literal
+	 * render AND reported to the operator.
+	 *
+	 * NOT `deobfuscate`. A stored credential must never be drawn, so the display codec restores
+	 * only what may be shown and leaves a withheld placeholder standing. The two are otherwise
+	 * identical, which is why this seam is the only thing that had to change to close the leak:
+	 * every display path already funnels through here.
+	 *
+	 * The refusal arrives as UNCHANGED TEXT, not as a throw. The display codec swallows its own cap
+	 * refusals by design, since its caller is drawing a frame. That is the right call and it is also
+	 * why detecting the refusal is this seam's job: without the comparison a refused expansion is
+	 * indistinguishable on screen from having nothing to expand, and the operator is left with a
+	 * placeholder and no reason for it.
+	 *
+	 * PRECONDITION, and the equality check is sound ONLY because of it: every caller has already
+	 * established, via `containsDisplayRestorablePlaceholder`, that this text holds a placeholder the
+	 * codec would expand. Given that, identical text can only mean the codec declined. Reuse this
+	 * check anywhere that precondition does not hold and it reads "refused" for the ordinary case of
+	 * text with nothing to expand, which is a silent false notice on every render. Callers must keep
+	 * gating; this method must not be the first thing to ask whether expansion was possible.
+	 */
+	#expandLivePlaceholdersForDisplay(obfuscator: SecretObfuscator, text: string): string | undefined {
+		try {
+			const expanded = obfuscator.deobfuscateForDisplay(text);
+			if (expanded !== text) return expanded;
+			this.#noteDegradedSecretDisplay(
+				"A secret placeholder is shown unexpanded because the expansion was refused.",
+				"A display expansion returned unchanged text for a restorable placeholder; rendering it literally",
+			);
+			return undefined;
+		} catch (error) {
+			// BACKSTOP, not a live path: the display codec is documented never to throw. Kept because
+			// this is the one seam every display path funnels through, and the cost of that contract
+			// changing under us is the unwound TUI this lane exists to prevent.
+			this.#noteDegradedSecretDisplay(
+				"A secret placeholder is shown unexpanded because the expansion was refused.",
+				"Refused a secret expansion on a display path; rendering the placeholder literally",
+				error,
+			);
+			return undefined;
+		}
+	}
+
+	/**
+	 * Expand one string for an INTERNAL COMPARISON against bytes on disk, or report that it cannot
+	 * be expanded. Never throws.
+	 *
+	 * The one expansion in this file that is neither a spend nor a display, and the one that still
+	 * needs the REAL value: {@link #maybeAbortStreamingEdit} matches the model's removed lines
+	 * against the file's actual content, which holds the credential in cleartext. Routing it
+	 * through the display codec would leave `#HASH#` in the comparison text, no removed line would
+	 * ever match, and every edit touching a secret would look like a failed patch preview.
+	 *
+	 * Nothing expanded here may be rendered or logged. The result is compared and discarded.
+	 */
+	#tryExpandSecretsForDiskComparison(text: string): string | undefined {
+		const obfuscator = this.#obfuscator;
+		if (obfuscator === undefined || !obfuscator.containsLivePlaceholder(text)) return text;
+		if (!this.#secretExpansionFreshForDisplay()) return undefined;
+		try {
+			return obfuscator.deobfuscate(text);
+		} catch (error) {
+			logger.warn("Refused a secret expansion for a streaming-edit disk comparison; skipping the check", {
+				sessionId: this.sessionManager.getSessionId(),
+				error: errorMessage(error),
+			});
+			return undefined;
+		}
+	}
+
+	/**
+	 * One line of model-authored text, safe to put in a log.
+	 *
+	 * Re-redacts through the live obfuscator, turning any expanded credential back into its
+	 * placeholder. Used where a diagnostic quotes text that has ALREADY been expanded for an
+	 * internal comparison: the log file outlives the terminal, so a credential written there is a
+	 * longer-lived exposure than the screen leak this class of fix exists to close. Falls back to a
+	 * fixed marker rather than the raw text, because a redactor that fails open is not one.
+	 */
+	#redactForLog(text: string): string {
+		const obfuscator = this.#obfuscator;
+		if (obfuscator === undefined || !obfuscator.hasSecrets()) return text;
+		try {
+			return obfuscator.obfuscate(text);
+		} catch {
+			return "<redacted: could not be safely rendered>";
+		}
+	}
+
+	/**
+	 * Whether a display pass may expand live placeholders, plus the recovery when
+	 * it may not.
+	 *
+	 * A stale captured revision means the vault changed under this session, so the
+	 * cached map can hold a value that has since been rotated or deleted and
+	 * expanding from it would put a superseded secret on screen. Show the
+	 * placeholder, tell the operator once, and start the refresh that makes the
+	 * NEXT render correct. Refusing to render is never one of the options.
+	 */
+	#secretExpansionFreshForDisplay(): boolean {
+		const runtime = this.#secretRuntime;
+		if (runtime === undefined) return true;
+		let fresh: boolean;
+		try {
+			fresh = runtime.isFreshForExpansion();
+		} catch (error) {
+			// Documented pure, but it reads the vault's revision off disk. An
+			// unreadable vault degrades the render; it never ends it.
+			this.#noteDegradedSecretDisplay(
+				"Secret placeholders are shown unexpanded because the vault revision could not be read.",
+				"Could not read the vault revision while rendering; showing placeholders literally",
+				error,
+			);
+			return false;
+		}
+		if (fresh) return true;
+		this.#scheduleStaleSecretRuntimeRefresh();
+		this.#noteDegradedSecretDisplay(
+			"The secret vault changed in another session or process, so secret placeholders are shown unexpanded until the refresh lands.",
+			"Rendering secret placeholders literally because the captured vault revision is stale",
+		);
+		return false;
+	}
+
+	/**
+	 * Await the recovery a stale runtime needs, on a render path that happens to
+	 * be async, and never fail the caller for it.
+	 *
+	 * The two async render sites (the ephemeral turn's final message, the
+	 * transcript rebuild after a branch move) can do better than degrade: they are
+	 * already inside an await, so they can wait for the vault re-read and then
+	 * expand from the fresh runtime that refresh installs. A refresh that
+	 * genuinely fails still only degrades, because a codec problem must not become
+	 * a failed navigation or a dead recap.
+	 */
+	async #awaitSecretExpansionRefreshForRender(carriesLivePlaceholder: boolean): Promise<void> {
+		const runtime = this.#secretRuntime;
+		if (!carriesLivePlaceholder || runtime === undefined) return;
+		try {
+			await runtime.ensureFreshForExpansion();
+		} catch (error) {
+			this.#noteDegradedSecretDisplay(
+				"The secret vault changed in another session or process and could not be re-read, so secret placeholders are shown unexpanded.",
+				"Failed to refresh a stale secret runtime before a render expansion",
+				error,
+			);
+		}
+	}
+
+	/**
+	 * Recover a stale secret runtime out of band, so the next render expands.
+	 *
+	 * Single-flight because the callers are renders: a transcript rebuild reaches
+	 * this from the first placeholder it walks and a repaint can run on every
+	 * keystroke, while each refresh re-reads the whole vault.
+	 *
+	 * Goes through the PUBLIC `refreshSecrets`, not `#refreshSecrets`, so this
+	 * re-read is queued on the scope-transition tail like every other one: a cwd
+	 * move in flight is not raced, and a spend that runs right after a degraded
+	 * render waits for this refresh through `awaitScopeTransitionReady` instead of
+	 * re-reading the vault a second time. The optional system-prompt rebuild is
+	 * skipped because a render must not rewrite the prompt as a side effect.
+	 */
+	#scheduleStaleSecretRuntimeRefresh(): void {
+		if (this.#staleSecretRuntimeRefreshInFlight || this.#refreshSecretRuntime === undefined) return;
+		this.#staleSecretRuntimeRefreshInFlight = true;
+		void this.refreshSecrets({ refreshPrompt: false })
+			.catch(error => {
+				logger.warn("Failed to refresh a stale secret runtime for display", { error: errorMessage(error) });
+			})
+			.finally(() => {
+				this.#staleSecretRuntimeRefreshInFlight = false;
+			});
+	}
+
+	/**
+	 * Tell the operator that a render degraded, and log the detail.
+	 *
+	 * Goes through the secrets notice sink that every other machine-state
+	 * condition in this subsystem already uses, rather than a second channel, so
+	 * the host renders it the same way as a tightened key directory or a
+	 * superseded vault binding. NEVER carries a secret value: the notice names the
+	 * condition and the log carries the error text.
+	 */
+	#noteDegradedSecretDisplay(notice: string, logMessage: string, error?: unknown): void {
+		logger.warn(logMessage, {
+			sessionId: this.sessionManager.getSessionId(),
+			...(error === undefined ? {} : { error: errorMessage(error) }),
+		});
+		noteSecretsCondition(notice);
+	}
+
+	/** Whether any model-authored string in this assistant content carries a display-restorable placeholder. */
+	#contentCarriesLivePlaceholder(content: AssistantMessage["content"]): boolean {
+		const obfuscator = this.#obfuscator;
+		if (obfuscator === undefined || !obfuscator.hasSecrets()) return false;
+		let found = false;
+		mapAssistantContentStrings(
+			content,
+			text => {
+				found ||= obfuscator.containsDisplayRestorablePlaceholder(text);
+				return text;
+			},
+			{ includeToolMetadata: true },
+		);
+		return found;
+	}
+
+	/** Whether any model-authored string in this transcript carries a display-restorable placeholder. */
+	#messagesCarryLivePlaceholder(messages: AgentMessage[]): boolean {
+		const obfuscator = this.#obfuscator;
+		if (obfuscator === undefined || !obfuscator.hasSecrets()) return false;
+		let found = false;
+		mapAgentMessageStrings(messages, text => {
+			found ||= obfuscator.containsDisplayRestorablePlaceholder(text);
+			return text;
+		});
+		return found;
+	}
+
+	/**
+	 * Per-string, never-throwing stand-in for `deobfuscateSessionContext` on
+	 * render paths: the same transcript walk, and the same
+	 * same-reference-when-nothing-changed contract.
+	 */
+	#deobfuscateSessionContextForDisplay(context: SessionContext): SessionContext {
+		const expand = this.#displaySecretExpander();
+		if (expand === undefined) return context;
+		const messages = mapAgentMessageStrings(context.messages, expand);
+		return messages === context.messages ? context : { ...context, messages };
+	}
+
+	/**
 	 * Assistant message content in display form: secrets deobfuscated and argot
 	 * handles expanded, composed in that order. Stored messages keep the
 	 * obfuscated placeholders and cheap handles (the token win and the persistence
@@ -4630,16 +4958,12 @@ export class AgentSession {
 	 * raw `#HASH#` secret token or a bare `§handle`. Returns the same content
 	 * reference when neither transform applies.
 	 */
-	#assertSecretExpansionFresh(): void {
-		this.#secretRuntime?.assertFreshForExpansion();
-	}
-
 	displayAssistantContent(content: AssistantMessage["content"]): AssistantMessage["content"] {
-		let out = content;
-		if (this.#obfuscator) {
-			this.#assertSecretExpansionFresh();
-			out = deobfuscateAssistantContent(this.#obfuscator, out);
-		}
+		// DISPLAY PATH: the streamed `message_end` display event, the interactive
+		// event fan-out, and `--print`. Degrades per string; never throws.
+		const expand = this.#displaySecretExpander();
+		let out =
+			expand === undefined ? content : mapAssistantContentStrings(content, expand, { includeToolMetadata: true });
 		if (this.#argot?.loaded) {
 			out = expandAssistantContent(this.#argot, out);
 		}
@@ -4662,11 +4986,9 @@ export class AgentSession {
 	 */
 	displayToolIntent(intent: string | undefined): string | undefined {
 		if (intent === undefined || intent === "") return intent;
-		let out = intent;
-		if (this.#obfuscator) {
-			this.#assertSecretExpansionFresh();
-			out = this.#obfuscator.deobfuscate(out);
-		}
+		// DISPLAY PATH: the working line puts this on screen the moment a tool call
+		// starts, so it degrades to the literal placeholder and never throws.
+		let out = this.#tryExpandSecretsForDisplay(intent) ?? intent;
 		if (this.#argot?.loaded) {
 			out = this.#argot.expand(out);
 		}
@@ -6557,10 +6879,17 @@ export class AgentSession {
 
 		let normalizedDiff = normalizeDiff(diffForCheck.replace(/\r/g, ""));
 		if (!normalizedDiff) return;
-		// Deobfuscate the diff so removed lines match real file content
-		if (this.#obfuscator) {
-			this.#assertSecretExpansionFresh();
-			normalizedDiff = this.#obfuscator.deobfuscate(normalizedDiff);
+		// INTERNAL CONTROL PATH, neither a spend nor display: the expanded diff is
+		// only compared against the file on disk to decide an early abort.
+		// Deobfuscate so removed lines match real file content, and when a live
+		// placeholder cannot be expanded from a fresh runtime, skip the check
+		// outright instead of degrading: an unexpanded `#HASH#` would not match the
+		// file and would abort a legitimate edit, which is worse than never
+		// aborting. Never throws, because this runs inside the agent event dispatch.
+		if (this.#obfuscator?.containsLivePlaceholder(normalizedDiff)) {
+			const expanded = this.#tryExpandSecretsForDiskComparison(normalizedDiff);
+			if (expanded === undefined) return;
+			normalizedDiff = expanded;
 		}
 		if (!normalizedDiff) return;
 		const lines = normalizedDiff.split("\n");
@@ -6588,7 +6917,7 @@ export class AgentSession {
 					logger.warn("Streaming edit aborted due to patch preview failure", {
 						toolCallId: toolCall.id,
 						path,
-						error: `Failed to find expected lines in ${path}:\n${missing}`,
+						error: `Failed to find expected lines in ${path}:\n${this.#redactForLog(missing)}`,
 					});
 					this.agent.abort();
 				}
@@ -6619,7 +6948,7 @@ export class AgentSession {
 				logger.warn("Streaming edit aborted due to patch preview failure", {
 					toolCallId,
 					path,
-					error: `Failed to find expected lines in ${path}:\n${missing}`,
+					error: `Failed to find expected lines in ${path}:\n${this.#redactForLog(missing)}`,
 				});
 				this.agent.abort();
 			}
@@ -7084,8 +7413,26 @@ export class AgentSession {
 	#notifyCommandMetadataChanged(): void {
 		const listeners = [...this.#commandMetadataChangedListeners];
 		for (const listener of listeners) {
+			// `CommandMetadataChangedListener` is `() => void | Promise<void>`, so
+			// the published contract INVITES an async listener, but a `catch`
+			// only ever observes a SYNCHRONOUS throw. The old `void listener()`
+			// discarded the promise, so a rejecting async subscriber walked past
+			// the handler three lines below and reached postmortem's global
+			// `unhandledRejection` hook, which prints a crash report and calls
+			// `process.exit(1)`. `setMCPPromptCommands` runs on every MCP prompt
+			// (re)load, reconnects included, so one bad subscriber killed a
+			// working session at a moment the user did not act. Both arms now
+			// land in the SAME sink with the SAME message: to an operator a
+			// rejection and a throw are one greppable failure.
 			try {
-				void listener();
+				// `unknown` so `instanceof` narrows cleanly off the `void` arm.
+				// Only a listener that actually returned a promise allocates.
+				const result: unknown = listener();
+				if (result instanceof Promise) {
+					result.catch((err: unknown) => {
+						logger.error("Command metadata listener threw", { err });
+					});
+				}
 			} catch (err) {
 				logger.error("Command metadata listener threw", { err });
 			}
@@ -8549,8 +8896,11 @@ export class AgentSession {
 	}
 
 	buildDisplaySessionContext(): SessionContext {
-		if (this.#obfuscator) this.#assertSecretExpansionFresh();
-		return this.#expandArgot(deobfuscateSessionContext(this.sessionManager.buildSessionContext(), this.#obfuscator));
+		// RENDER PATH, and also the agent-state rebuild after a compaction or a
+		// history rewrite and the constructor's first MCP-selection read, so a throw
+		// here does not fail one render, it fails session construction. Degrades per
+		// string; never throws.
+		return this.#expandArgot(this.#deobfuscateSessionContextForDisplay(this.sessionManager.buildSessionContext()));
 	}
 
 	/**
@@ -8571,15 +8921,15 @@ export class AgentSession {
 	buildTranscriptSessionContext(
 		options?: Pick<BuildSessionContextOptions, "collapseCompactedHistory" | "keepDanglingToolCalls">,
 	): SessionContext {
-		if (this.#obfuscator) this.#assertSecretExpansionFresh();
+		// RENDER PATH: every TUI repaint runs this, so a throw would unwind the
+		// render loop. Degrades per string; never throws.
 		return this.#expandArgot(
-			deobfuscateSessionContext(
+			this.#deobfuscateSessionContextForDisplay(
 				this.sessionManager.buildSessionContext({
 					transcript: true,
 					collapseCompactedHistory: options?.collapseCompactedHistory,
 					keepDanglingToolCalls: options?.keepDanglingToolCalls,
 				}),
-				this.#obfuscator,
 			),
 		);
 	}
@@ -8620,10 +8970,13 @@ export class AgentSession {
 		return redactLegacyArchiveText(preserveData, value => this.obfuscateProviderText(value));
 	}
 
+	/**
+	 * DISPLAY PATH: provider text on its way to the operator, namely the streamed
+	 * side-channel delta and the ephemeral turn's reply. Degrades to the literal
+	 * placeholder; never throws.
+	 */
 	#deobfuscateFromProvider(text: string): string {
-		if (!this.#obfuscator?.hasSecrets()) return text;
-		this.#assertSecretExpansionFresh();
-		return this.#obfuscator.deobfuscate(text);
+		return this.#tryExpandSecretsForDisplay(text) ?? text;
 	}
 
 	#deobfuscatedProviderTextReadyForDelta(text: string): string {
@@ -9790,13 +10143,25 @@ export class AgentSession {
 			model: this.model ?? undefined,
 			models: createExtensionModelQuery(this.#modelRegistry, this.settings, () => this.model ?? undefined),
 			isIdle: () => !this.isStreaming,
+			// `ExtensionContextActions.abort` is `() => void`, so the promise from
+			// `this.abort()` was discarded with no rejection handler and a failing
+			// abort floated to postmortem, which exits the process. `abortDetached`
+			// is the shared helper for aborts no caller can await.
 			abort: () => {
-				void this.abort();
+				abortDetached(this, "agent-session.commandContext.abort", USER_INTERRUPT_LABEL);
 			},
 			hasPendingMessages: () => this.queuedMessageCount > 0,
 			shutdown: () => {
-				void this.dispose();
-				process.exit(0);
+				// `dispose()` flushes session state. This used to fire it and call
+				// `process.exit(0)` on the very next line, so the flush was
+				// abandoned at its first await and anything not yet written was
+				// lost. Wait for it, but bound the wait so a wedged teardown still
+				// exits instead of hanging the caller forever.
+				void Promise.race([this.dispose(), Bun.sleep(SHUTDOWN_DISPOSE_TIMEOUT_MS)])
+					.catch(error => {
+						logger.error("Session dispose failed during shutdown", { error: errorMessage(error) });
+					})
+					.finally(() => process.exit(0));
 			},
 			getContextUsage: () => this.getContextUsage(),
 			waitForIdle: () => this.waitForIdle(),
@@ -11128,7 +11493,9 @@ export class AgentSession {
 	): void {
 		if (source === "session") {
 			this.#sessionThinkingOverride = level;
-			if (level === undefined) level = this.#resolvedEffortForModel(this.model);
+			if (level === undefined) {
+				level = this.#resolvedEffortForModel(this.model, this.#activeSelectorThinkingLevel);
+			}
 		}
 		if (level === AUTO_THINKING) {
 			const provisional = resolveProvisionalAutoLevel(this.model);
@@ -11173,6 +11540,7 @@ export class AgentSession {
 
 	/** Apply the current session override, selector pin, or saved model default after a model switch. */
 	#reapplyThinkingLevel(selectorLevel?: ConfiguredThinkingLevel): void {
+		this.#activeSelectorThinkingLevel = selectorLevel;
 		this.setThinkingLevel(this.#resolvedEffortForModel(this.model, selectorLevel), false, "resolved");
 	}
 
@@ -16612,10 +16980,21 @@ export class AgentSession {
 				// 'H.content.filter')`. Normalize to `[]` so the recap surfaces an empty reply
 				// instead of turning a malformed side-channel response into a session-mute crash.
 				const rawContent = Array.isArray(event.message.content) ? event.message.content : [];
-				if (this.#obfuscator?.hasSecrets()) this.#assertSecretExpansionFresh();
-				assistantMessage = this.#obfuscator?.hasSecrets()
-					? { ...event.message, content: deobfuscateAssistantContent(this.#obfuscator, rawContent) }
-					: { ...event.message, content: rawContent };
+				// RENDER PATH, and async: this reply is shown to the operator (btw,
+				// omfg, the idle recap) and is never handed to a tool. Being inside an
+				// await it can do better than degrade, so it waits for the vault re-read
+				// a stale revision needs and then expands from the runtime that refresh
+				// installs. A refresh that fails renders placeholders literally rather
+				// than killing the side-channel turn.
+				await this.#awaitSecretExpansionRefreshForRender(this.#contentCarriesLivePlaceholder(rawContent));
+				const expandReply = this.#displaySecretExpander();
+				assistantMessage = {
+					...event.message,
+					content:
+						expandReply === undefined
+							? rawContent
+							: mapAssistantContentStrings(rawContent, expandReply, { includeToolMetadata: true }),
+				};
 				break;
 			}
 			if (event.type === "error") {
@@ -17392,8 +17771,11 @@ export class AgentSession {
 
 		// Update agent state — build display context to populate agent messages.
 		const stateContext = this.sessionManager.buildSessionContext();
-		if (this.#obfuscator) this.#assertSecretExpansionFresh();
-		const displayContext = deobfuscateSessionContext(stateContext, this.#obfuscator);
+		// RENDER PATH, and async: this rebuilds the agent's display state after a
+		// branch move, so a throw left the TUI with no transcript at all. Await the
+		// refresh a stale revision needs, then degrade per string.
+		await this.#awaitSecretExpansionRefreshForRender(this.#messagesCarryLivePlaceholder(stateContext.messages));
+		const displayContext = this.#deobfuscateSessionContextForDisplay(stateContext);
 		await this.#restoreMCPSelectionsForSessionContext(displayContext);
 		this.agent.replaceMessages(displayContext.messages);
 		this.#rehydrateCheckpointRewindState();
@@ -17887,7 +18269,17 @@ export class AgentSession {
 						`Auto-redeemed a saved Codex rate-limit reset for ${who} (${left} left); retrying now.`,
 						"codex-auto-reset",
 					);
-					void this.fetchUsageReports();
+					// Best-effort refresh so the status line stops showing the
+					// spent window. It is a network call on a rate-limit recovery
+					// path, which is exactly when the provider is least reliable,
+					// and nothing awaits it: without a handler a failed refresh
+					// floated to postmortem and killed the session it had just
+					// finished rescuing.
+					this.fetchUsageReports().catch(error => {
+						logger.debug("codex-auto-reset: usage refresh after redeem failed", {
+							error: errorMessage(error),
+						});
+					});
 					return true;
 				}
 				case "already_redeemed":

@@ -52,7 +52,7 @@ describe("coding-agent Mnemopi online smol boundary", () => {
 			getAvailable: () => [model],
 			getApiKeyForProvider: async () => undefined,
 			getApiKey: async () => {
-				obfuscator = new SecretObfuscator([{ type: "plain", content: afterKeySecret }]);
+				obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: afterKeySecret }]);
 				return "test-key";
 			},
 			resolver: () => async () => "test-key",
@@ -66,8 +66,8 @@ describe("coding-agent Mnemopi online smol boundary", () => {
 		vi.spyOn(ai, "completeSimple").mockImplementation(async (_model, context, options?: SimpleStreamOptions) => {
 			providerContext = JSON.stringify(context);
 			obfuscator = new SecretObfuscator([
-				{ type: "plain", content: afterKeySecret },
-				{ type: "plain", content: retrySecret },
+				{ type: "plain", origin: "config", content: afterKeySecret },
+				{ type: "plain", origin: "config", content: retrySecret },
 			]);
 			if (options?.fetch === undefined) throw new Error("Expected final-attempt fetch wrapper");
 			await options.fetch("http://provider.test/v1/messages", {

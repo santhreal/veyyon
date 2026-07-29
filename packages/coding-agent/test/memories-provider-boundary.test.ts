@@ -174,7 +174,7 @@ describe("memory provider boundary", () => {
 		// Why: persisted text is useful memory input, but it must be transformed before JSON can escape it.
 		const fixture = await createFixture();
 		const secret = "MEMORY_VISIBLE_SECRET_43d1";
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 		fixture.session.obfuscator = obfuscator;
 		await writeRollout(fixture, "visible-text", [
 			{ role: "user", content: [{ type: "text", text: `ordinary context and ${secret}` }] },
@@ -226,7 +226,7 @@ describe("memory provider boundary", () => {
 		// Why: an exact-match sanitizer cannot recognize a prefix after truncation has already split the secret.
 		const fixture = await createFixture({ "memories.phase1InputTokenLimit": 12 });
 		const secret = "MEMORY_BOUNDARY_SECRET_ABCDEF";
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 		fixture.session.obfuscator = obfuscator;
 		await writeRollout(fixture, "truncation-boundary", [{ role: "user", content: secret.repeat(12) }]);
 		let stageOnePayload = "";
@@ -259,7 +259,7 @@ describe("memory provider boundary", () => {
 		]);
 		fixture.modelRegistry.resolver = () => async () => {
 			fixture.session.obfuscator = new SecretObfuscator([
-				{ type: "plain", content: secret, name: "TOOL_CHUNK_CURRENT" },
+				{ type: "plain", origin: "config", content: secret, name: "TOOL_CHUNK_CURRENT" },
 			]);
 			return "test-key";
 		};
@@ -291,7 +291,7 @@ describe("memory provider boundary", () => {
 		const nestedSecret = "MEMORY_NESTED_SECRET_712";
 		const secretKey = "MEMORY_SECRET_KEY_551";
 		const encodedBinary = Buffer.from(hiddenBinary).toString("base64");
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: visibleSecret }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: visibleSecret }]);
 		fixture.session.obfuscator = obfuscator;
 		await writeRollout(fixture, "adversarial", [
 			{
@@ -346,7 +346,7 @@ describe("memory provider boundary", () => {
 		const fixture = await createFixture({ "memories.stage1Concurrency": 2 });
 		const firstSecret = "MEMORY_FIRST_RUNTIME_SECRET_131";
 		const secondSecret = "MEMORY_SECOND_RUNTIME_SECRET_242";
-		fixture.session.obfuscator = new SecretObfuscator([{ type: "plain", content: firstSecret }]);
+		fixture.session.obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: firstSecret }]);
 		await writeRollout(fixture, "claim-a", [{ role: "user", content: firstSecret }]);
 		await writeRollout(fixture, "claim-b", [{ role: "user", content: secondSecret }]);
 		const stageOnePayloads: string[] = [];
@@ -364,7 +364,9 @@ describe("memory provider boundary", () => {
 					await resolveApiKey(options?.apiKey);
 					stageOnePayloads.push(JSON.stringify(context));
 					if (invocation === 1) {
-						fixture.session.obfuscator = new SecretObfuscator([{ type: "plain", content: secondSecret }]);
+						fixture.session.obfuscator = new SecretObfuscator([
+							{ type: "plain", origin: "config", content: secondSecret },
+						]);
 						releaseFirstSanitization();
 					}
 					return successfulStageOne(`claim-${invocation}`) as never;
@@ -401,7 +403,9 @@ describe("memory provider boundary", () => {
 					if (property !== "text") return Reflect.get(target, property, receiver);
 					return async () => {
 						const text = await target.text();
-						fixture.session.obfuscator = new SecretObfuscator([{ type: "plain", content: phaseTwoSecret }]);
+						fixture.session.obfuscator = new SecretObfuscator([
+							{ type: "plain", origin: "config", content: phaseTwoSecret },
+						]);
 						swapped = true;
 						return text;
 					};
@@ -453,7 +457,9 @@ describe("memory provider boundary", () => {
 		fixture.modelRegistry.resolver = () => async () => {
 			underlyingResolutions += 1;
 			const name = underlyingResolutions === 1 ? "FIRST_ATTEMPT" : "CURRENT_ATTEMPT";
-			fixture.session.obfuscator = new SecretObfuscator([{ type: "plain", content: lateSecret, name }]);
+			fixture.session.obfuscator = new SecretObfuscator([
+				{ type: "plain", origin: "config", content: lateSecret, name },
+			]);
 			return `test-key-${underlyingResolutions}`;
 		};
 		const attempts: string[] = [];
@@ -495,7 +501,7 @@ describe("memory provider boundary", () => {
 		fixture.modelRegistry.resolver = () => async () => {
 			if (resolvingPhaseTwo) {
 				fixture.session.obfuscator = new SecretObfuscator([
-					{ type: "plain", content: phaseTwoSecret, name: "PHASE_TWO_CURRENT" },
+					{ type: "plain", origin: "config", content: phaseTwoSecret, name: "PHASE_TWO_CURRENT" },
 				]);
 			}
 			return "test-key";

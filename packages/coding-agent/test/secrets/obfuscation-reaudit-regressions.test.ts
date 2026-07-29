@@ -83,7 +83,7 @@ describe("well-formed UTF-16 placeholder inputs", () => {
 	});
 
 	it("fails closed when a non-Unicode regex splits an astral character", () => {
-		const obfuscator = new SecretObfuscator([{ type: "regex", content: ".", minLength: 1 }], {
+		const obfuscator = new SecretObfuscator([{ type: "regex", origin: "config", content: ".", minLength: 1 }], {
 			placeholderKey: KEY,
 		});
 
@@ -110,7 +110,9 @@ describe("plain-secret length uses Unicode code points", () => {
 
 	it("rejects four astral characters instead of accepting their eight UTF-16 units", () => {
 		const secret = "🔐".repeat(4);
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }], { placeholderKey: KEY });
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }], {
+			placeholderKey: KEY,
+		});
 
 		expect(obfuscator.hasSecrets()).toBe(false);
 		expect(obfuscator.rejections()).toHaveLength(1);

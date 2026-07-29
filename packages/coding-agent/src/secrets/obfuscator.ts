@@ -20,6 +20,46 @@ import { compileSecretRegex } from "./regex";
 // Types
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * Where a configured secret came from.
+ *
+ * An enum rather than a boolean because a boolean invites a default and reads as an afterthought,
+ * while a name forces the construction site to state a fact. A fourth source added later has to
+ * declare itself here instead of quietly inheriting somebody else's meaning.
+ */
+export type SecretOrigin = "vault" | "environment" | "config";
+
+/**
+ * Whether a secret may be restored into text that is DRAWN ON SCREEN.
+ *
+ * Phrased positively, around the one case that may be shown, so that an origin or a type added
+ * later withholds by falling off the end of this condition instead of inheriting permission.
+ *
+ * The rule needs BOTH fields because neither alone can express it. A `secrets.yml` plain entry and
+ * a `secrets.yml` regex entry share `origin: "config"` and need opposite answers: the plain one is
+ * a declared exact credential, while the regex one only ever names values discovered in text that
+ * was already flowing through, which is the "show the operator what is actually there" case.
+ * Provenance alone cannot separate those.
+ *
+ * `type` alone cannot do it either, and that is the more important half. "A vault secret is always
+ * plain" is true today and UNENFORCED, so a vault pattern feature added later would silently flip
+ * every vault value to restorable and would pass every test written now. Requiring the origin too
+ * makes that future change fail closed. This is the same class of unenforced guarantee as the
+ * `expiresAt` comment above, which claimed to identify vault entries and did not.
+ *
+ * Why the split exists at all: one mechanism is doing two jobs. The obfuscator redacts values
+ * before they reach the provider AND un-redacts them for local display, and those jobs disagree
+ * about a stored credential. Redaction wants the mapping so the value never goes out. Display
+ * wants it so the operator sees what is there. For a value the operator deliberately put in the
+ * vault, never being shown is the entire reason it went in, so restoring it on screen breaks the
+ * promise `/secret` makes. This predicate is a patch over that overload, not its resolution: a
+ * value the model never receives never needed the provider half of the mechanism in the first
+ * place.
+ */
+function mayRestoreForDisplay(entry: SecretEntry): boolean {
+	return entry.type === "regex" && entry.origin === "config";
+}
+
 export interface SecretEntry {
 	type: "plain" | "regex";
 	content: string;
@@ -58,10 +98,29 @@ export interface SecretEntry {
 	 * until somebody happened to run a `/secret` subcommand. The documentation said the opposite,
 	 * and the reconcile that would have fixed it only ran after a command.
 	 *
-	 * Only vault entries carry one. Environment and `secrets.yml` entries have no lifetime, so
-	 * they leave it `undefined`, which means the same as `null` here.
+	 * NOT A PROVENANCE SIGNAL. Vault entries are the only ones that ever SET a lifetime, and that
+	 * one-way fact used to be written here as "only vault entries carry one", which reads as a way
+	 * to recognise a vault secret and is not one: a vault secret stored with no lifetime leaves this
+	 * `undefined`, identical to an environment or `secrets.yml` entry. Anything keyed on it would
+	 * have treated every never-expiring vault secret as environment-derived, which is the common
+	 * case, while passing any test that happened to use a TTL. Use {@link SecretEntry.origin}.
 	 */
 	expiresAt?: number | null;
+	/**
+	 * Where this secret came from.
+	 *
+	 * PROVENANCE, NOT A DISPLAY POLICY. Do not read `origin: "config"` as "safe to show": whether a
+	 * secret may be drawn on screen is decided by {@link mayRestoreForDisplay}, which reads this
+	 * field AND {@link SecretEntry.type} together, because a config-plain and a config-regex entry
+	 * share this origin and need opposite answers. Putting the decision in one predicate is what
+	 * keeps four construction sites from holding four opinions about what is safe to display.
+	 *
+	 * Declared by the site that builds the entry, because provenance is a fact that site knows and
+	 * nothing downstream can recover. REQUIRED rather than optional so the compiler names every
+	 * construction site, including one added next year: an optional field would let a new source
+	 * inherit a default silently, and the default is exactly the thing that must be a decision.
+	 */
+	origin: SecretOrigin;
 }
 
 /** State reported when a live runtime revokes one expired credential. */
@@ -378,6 +437,13 @@ interface CompiledRegexEntry {
 	minLength: number;
 	entryIndex: number;
 	aliases: Map<string, string>;
+	/**
+	 * Whether values this rule discovers may be restored on a display path.
+	 *
+	 * Resolved once per RULE at construction rather than per match, because every value a rule
+	 * discovers inherits that rule's verdict and a match has no origin of its own to consult.
+	 */
+	displayRestorable: boolean;
 }
 
 export class SecretObfuscator {
@@ -395,6 +461,16 @@ export class SecretObfuscator {
 
 	/** Reverse lookup for deobfuscation: placeholder → secret. */
 	#deobfuscateMap = new Map<string, string>();
+
+	/**
+	 * Placeholders that MAY be expanded again for local display.
+	 *
+	 * A subset of {@link #deobfuscateMap}, never a parallel copy of it: membership here only ever
+	 * grants display, so a placeholder missing from this set is withheld. That direction is the
+	 * point. If the two ever fall out of step the failure is a placeholder shown on screen instead
+	 * of a value, not a credential shown instead of a placeholder.
+	 */
+	#displayRestorable = new Set<string>();
 
 	/** Every live placeholder for a value, used to select a survivor after one alias expires. */
 	#placeholdersBySecret = new Map<string, Set<string>>();
@@ -648,7 +724,8 @@ export class SecretObfuscator {
 						entry.name === undefined
 							? this.#buildValuePlaceholder(entry.content)
 							: buildNamePlaceholder(entry.name);
-					this.#registerReversible(entry.content, placeholder, entry.expiresAt);
+					// Display is decided by origin AND type together; see mayRestoreForDisplay.
+					this.#registerReversible(entry.content, placeholder, entry.expiresAt, mayRestoreForDisplay(entry));
 				} else {
 					const alias = resolveSafeReplacement(
 						entry.content,
@@ -680,6 +757,7 @@ export class SecretObfuscator {
 					minLength: entry.minLength ?? MIN_OBFUSCATABLE_LENGTH,
 					entryIndex,
 					aliases: new Map(),
+					displayRestorable: mayRestoreForDisplay(entry),
 				});
 				hasRealSecret = true;
 			} catch (error) {
@@ -713,7 +791,12 @@ export class SecretObfuscator {
 	}
 
 	/** Install one reversible mapping, retaining every live alias for duplicate values. */
-	#registerReversible(secret: string, placeholder: string, expiresAt?: number | null): void {
+	#registerReversible(
+		secret: string,
+		placeholder: string,
+		expiresAt?: number | null,
+		displayRestorable = false,
+	): void {
 		assertBoundedSecretString(secret);
 		this.#assertValidExpiry(expiresAt);
 		const existing = this.#deobfuscateMap.get(placeholder);
@@ -721,6 +804,10 @@ export class SecretObfuscator {
 		this.#knownSecretValues.add(secret);
 		this.#plainMappings.set(secret, placeholder);
 		this.#deobfuscateMap.set(placeholder, secret);
+		// AFTER the forget above, which clears this set: setting it earlier would have the retirement
+		// of a superseded mapping silently revoke the display grant this call is installing.
+		if (displayRestorable) this.#displayRestorable.add(placeholder);
+		else this.#displayRestorable.delete(placeholder);
 		let placeholders = this.#placeholdersBySecret.get(secret);
 		if (placeholders === undefined) {
 			placeholders = new Set();
@@ -736,16 +823,60 @@ export class SecretObfuscator {
 	}
 
 	/**
+	 * Whether one of THIS obfuscator's own obfuscate-mode regex rules already covers the whole value.
+	 *
+	 * Requires the match to span the ENTIRE value, because a rule that covers only part of it leaves
+	 * the rest visible, and a retained full-value mapping is what keeps that rest redacted. Applies
+	 * the same floor the regex pass applies, so a value its rule would reject as too short is not
+	 * mistaken for one the rule protects.
+	 */
+	#regexRuleCoversWholeValue(value: string): boolean {
+		for (const entry of this.#regexEntries) {
+			// Replace mode is one-way by design and registers no reverse mapping, so deferring to it
+			// would drop redaction knowledge rather than enrich it.
+			if (entry.mode !== "obfuscate") continue;
+			entry.regex.lastIndex = 0;
+			const match = entry.regex.exec(value);
+			entry.regex.lastIndex = 0;
+			if (match?.[0] !== value) continue;
+			if (secretCharacterLength(value) >= entry.minLength) return true;
+		}
+		return false;
+	}
+
+	/**
 	 * Carry forward only the previous obfuscator's redaction knowledge.
 	 *
 	 * Expansion rights are deliberately not copied. Call this only when refreshing the same
 	 * workspace scope. A removed or expired value remains hidden, while its old readable
 	 * placeholder cannot spend it.
+	 *
+	 * WHY A STILL-COVERED VALUE IS SKIPPED. {@link obfuscate} applies plain rules BEFORE the regex
+	 * pass, so a redact-only plain mapping installed here rewrites the value before its own rule can
+	 * match, and the rule is the only thing that installs the reverse mapping and the display grant.
+	 * Retaining a value that a current rule still covers whole therefore downgraded it permanently:
+	 * it rendered as an opaque token for the rest of the session, on every display path, and each
+	 * later refresh re-installed the same mapping so it could never recover. Skipping the mapping
+	 * costs no redaction, because the rule that covers the value redacts it, and reversibly.
+	 *
+	 * The value stays in {@link #knownSecretValues} either way: that set is knowledge, not a rule,
+	 * and dropping it would lose a leak check for a value that has genuinely flowed.
+	 *
+	 * WHY THE REVERSE MAPPING IS NOT REGISTERED EAGERLY HERE, even though this function holds the
+	 * cleartext and easily could. Lazy registration has a visible cost: a transcript already on screen
+	 * stays opaque until the value next flows outbound, and closing that gap from here looks like a
+	 * four-line improvement. It is not one. The reverse mapping in `#deobfuscateMap` IS the expansion
+	 * right that spend paths read, so installing it here would make a value spendable before this
+	 * obfuscator's own rules had matched it even once, which is precisely what the paragraph above
+	 * refuses to copy. One turn of cosmetic opacity is the deliberate price of never handing out a
+	 * spend authorisation the codec itself did not grant. Making this eager is therefore a change to
+	 * the invariant, argued on purpose and covered by its own tests, not a loose end to tighten.
 	 */
 	retainRedactionsFrom(previous: SecretObfuscator): void {
 		for (const value of previous.#knownSecretValues) {
 			if (this.#plainMappings.has(value) || this.#replaceMappings.has(value)) continue;
 			this.#knownSecretValues.add(value);
+			if (this.#regexRuleCoversWholeValue(value)) continue;
 			this.#plainMappings.set(value, this.#buildValuePlaceholder(value));
 			this.#hasAny = true;
 		}
@@ -857,6 +988,7 @@ export class SecretObfuscator {
 		const value = this.#deobfuscateMap.get(placeholder);
 		if (value === undefined) return;
 		this.#deobfuscateMap.delete(placeholder);
+		this.#displayRestorable.delete(placeholder);
 		const removedExpiry = this.#expiryByPlaceholder.get(placeholder);
 		this.#expiryByPlaceholder.delete(placeholder);
 		if (recomputeExpiry && removedExpiry === this.#nextExpiryAt) this.#recomputeNextExpiry();
@@ -893,12 +1025,20 @@ export class SecretObfuscator {
 	}
 
 	/**
-	 * Names of every secret currently protected under a name placeholder.
+	 * Names of every secret currently protected under a name placeholder, sorted.
 	 *
 	 * Exists so a caller can reconcile against the vault: whatever is here and no longer live
 	 * has to be forgotten, or an expired credential would keep being substituted into commands
 	 * for the rest of the session. Index-form secrets are not listed, because they have no name
 	 * to reconcile against.
+	 *
+	 * Also the source of the inventory the model is shown, which is why the order is sorted
+	 * rather than whatever order the map happens to hold: that section is part of the system
+	 * prompt, and a section whose bytes shuffle between refreshes would invalidate the provider's
+	 * prompt cache for no reason. Reconciliation does not care about order, so one stable order
+	 * serves both callers.
+	 *
+	 * NEVER RETURNS A VALUE. Names only; the map's values stay inside this class.
 	 */
 	namedSecretNames(): string[] {
 		this.#forgetExpired();
@@ -907,7 +1047,7 @@ export class SecretObfuscator {
 			const body = placeholder.slice(1, -1);
 			if (isValidSecretName(body)) names.push(body);
 		}
-		return names;
+		return names.sort();
 	}
 
 	/**
@@ -1012,6 +1152,10 @@ export class SecretObfuscator {
 					if (!this.#deobfuscateMap.has(replacement)) {
 						this.#regexMappings.set(matchValue, replacement);
 						this.#deobfuscateMap.set(replacement, matchValue);
+						// A regex match is a value DISCOVERED in text already flowing through, not a
+						// declared credential, so it carries its rule's verdict rather than looking one
+						// up. See mayRestoreForDisplay for why that case may be shown and others may not.
+						if (entry.displayRestorable) this.#displayRestorable.add(replacement);
 					}
 				}
 				replacements.push({ start: match.index, end: matchEnd, replacement });
@@ -1163,8 +1307,136 @@ export class SecretObfuscator {
 		return replacements.length === 0 ? state : this.#applyProtectedReplacements(state, replacements);
 	}
 
+	/**
+	 * Whether {@link deobfuscate} would actually change this text: does it carry at least one
+	 * placeholder that is LIVE in the reversible map.
+	 *
+	 * Exists so the freshness guard can be asked about a specific payload instead of about the
+	 * session. The guard used to fire whenever the session held any secret at all, so once the vault
+	 * revision moved under a running session EVERY tool call, assistant message and transcript
+	 * rebuild was refused, including text with no placeholder in it and nothing to expand. That is a
+	 * refusal that protects nothing: a text the codec would not touch cannot be expanded wrongly.
+	 *
+	 * Deliberately a predicate, so it NEVER throws. `deobfuscate` refuses a text carrying more
+	 * placeholders than the cap or expanding past the byte limit, and those refusals are correct
+	 * there because it is about to produce output. Raising them from a question about a text would
+	 * put a throw back on the paths this exists to keep from throwing.
+	 *
+	 * Mirrors `deobfuscate`'s own rule rather than restating it: same regex, same map, and the same
+	 * `#` fast path, so a text can never answer false here and then be expanded.
+	 */
+	containsLivePlaceholder(text: string): boolean {
+		if (!this.#hasAny || !text.includes("#")) return false;
+		try {
+			this.#forgetExpired();
+		} catch {
+			// An unusable clock cannot prove a placeholder is dead, and this predicate is called
+			// from render paths that must not unwind. Answer "maybe" so the caller routes the text
+			// through `deobfuscate`, which reports the clock fault where a throw is survivable.
+			return true;
+		}
+		PLACEHOLDER_RE.lastIndex = 0;
+		for (;;) {
+			const match = PLACEHOLDER_RE.exec(text);
+			if (match === null) break;
+			if (this.#deobfuscateMap.has(match[0])) {
+				PLACEHOLDER_RE.lastIndex = 0;
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/** Deobfuscate live reversible placeholders. Retired and expired placeholders stay opaque. */
 	deobfuscate(text: string): string {
+		return this.#expandPlaceholders(text, placeholder => this.#deobfuscateMap.get(placeholder));
+	}
+
+	/**
+	 * Restore only the placeholders their origin permits showing, for text about to be DRAWN.
+	 *
+	 * The spend direction and the display direction want different answers about the same mapping,
+	 * which is why this is a second entry point rather than a flag on {@link deobfuscate}. A value
+	 * the user typed should come back on screen; they typed it, and obfuscating it was only ever for
+	 * the provider's benefit. A value the operator put in the vault should not, because never being
+	 * shown is the entire reason it went in the vault. Expanding it on a render path put a live
+	 * credential into the terminal and the scrollback, contradicting what `/secret` promises.
+	 *
+	 * NEVER throws. `deobfuscate` refuses text over the placeholder or byte caps, and refusing is
+	 * right when it is about to hand a value to a command. Here the caller is drawing a frame, and a
+	 * throw would unwind the TUI over a display detail, so an over-cap text is drawn with its
+	 * placeholders standing. That degrade is in the safe direction: the worst case shows less than
+	 * it could, and it can never show more.
+	 */
+	deobfuscateForDisplay(text: string): string {
+		if (!this.#hasAny || !text.includes("#")) return text;
+		try {
+			return this.#expandPlaceholders(text, placeholder =>
+				this.#displayRestorable.has(placeholder) ? this.#deobfuscateMap.get(placeholder) : undefined,
+			);
+		} catch {
+			return text;
+		}
+	}
+
+	/**
+	 * Whether {@link deobfuscateForDisplay} would actually change this text.
+	 *
+	 * The display-side mirror of {@link containsLivePlaceholder}, and needed for correctness rather
+	 * than speed. Once vault-backed secrets stop expanding on screen, text whose only placeholders
+	 * are vault-backed has nothing left to restore, so asking the live predicate about it would
+	 * report "yes, placeholders" forever: a freshness probe would keep firing and the operator would
+	 * be told their render had degraded on every frame, permanently, over text that is being drawn
+	 * exactly as intended.
+	 *
+	 * Answers FALSE on a broken clock, which is deliberately the opposite of what
+	 * {@link containsLivePlaceholder} does. That one answers "maybe" so its caller routes the text
+	 * through `deobfuscate`, where a clock fault can be reported from a path that survives a throw.
+	 * This one has no such path: its caller is drawing, and "maybe" would mean a permanent warning.
+	 * False means "restore nothing", which is the same fail-closed direction as the transform.
+	 */
+	containsDisplayRestorablePlaceholder(text: string): boolean {
+		if (!this.#hasAny || this.#displayRestorable.size === 0 || !text.includes("#")) return false;
+		try {
+			this.#forgetExpired();
+		} catch {
+			return false;
+		}
+		PLACEHOLDER_RE.lastIndex = 0;
+		for (;;) {
+			const match = PLACEHOLDER_RE.exec(text);
+			if (match === null) break;
+			if (this.#displayRestorable.has(match[0]) && this.#deobfuscateMap.has(match[0])) {
+				PLACEHOLDER_RE.lastIndex = 0;
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Whether one placeholder may be restored for display.
+	 *
+	 * For surfaces that already hold a placeholder, such as an inventory or an audit line. Callers
+	 * holding TEXT must use {@link containsDisplayRestorablePlaceholder} instead of finding
+	 * placeholders themselves, so the grammar for what counts as a placeholder stays in one place.
+	 */
+	isDisplayRestorable(placeholder: string): boolean {
+		try {
+			this.#forgetExpired();
+		} catch {
+			return false;
+		}
+		return this.#displayRestorable.has(placeholder) && this.#deobfuscateMap.has(placeholder);
+	}
+
+	/**
+	 * Expand placeholders through one caller-supplied resolver, applying the shared caps.
+	 *
+	 * Both directions share this so the placeholder grammar, the count cap and the output byte cap
+	 * cannot drift between spending and display. The resolver is the ONLY difference between them.
+	 */
+	#expandPlaceholders(text: string, resolve: (placeholder: string) => string | undefined): string {
 		if (!this.#hasAny || !text.includes("#")) return text;
 		const inputBytes = assertBoundedTransformText(text);
 		this.#forgetExpired();
@@ -1178,7 +1450,7 @@ export class SecretObfuscator {
 				PLACEHOLDER_RE.lastIndex = 0;
 				throw new Error("Refusing a secret expansion with too many placeholders.");
 			}
-			const secret = this.#deobfuscateMap.get(match[0]);
+			const secret = resolve(match[0]);
 			if (secret === undefined) continue;
 			outputBytes += utf8ByteLength(secret) - utf8ByteLength(match[0]);
 			if (outputBytes > MAX_TRANSFORMED_TEXT_BYTES) {
@@ -1187,7 +1459,7 @@ export class SecretObfuscator {
 			}
 		}
 		PLACEHOLDER_RE.lastIndex = 0;
-		return text.replace(PLACEHOLDER_RE, match => this.#deobfuscateMap.get(match) ?? match);
+		return text.replace(PLACEHOLDER_RE, match => resolve(match) ?? match);
 	}
 }
 
@@ -1457,7 +1729,7 @@ function obfuscateAssistantContentForProvider(
 }
 
 /** Map `text` blocks through `fn`; image and other blocks pass through byte-identical. */
-export function mapTextBlockStrings(
+function mapTextBlockStrings(
 	content: (TextContent | ImageContent)[],
 	fn: (s: string) => string,
 ): (TextContent | ImageContent)[] {

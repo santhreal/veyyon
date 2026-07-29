@@ -41,6 +41,7 @@ function build(options: { entries: Array<{ name: string; value: string; expiresA
 	const obfuscator = new SecretObfuscator(
 		options.entries.map(entry => ({
 			type: "plain" as const,
+			origin: "config" as const,
 			content: entry.value,
 			name: entry.name,
 			expiresAt: entry.expiresAt,
@@ -111,7 +112,7 @@ describe("a secret whose lifetime has run out", () => {
 		let now = START;
 		let expiry: SecretExpiryEvent | undefined;
 		const obfuscator = new SecretObfuscator(
-			[{ type: "plain", content: VALUE, name: "GITHUB_TOKEN", expiresAt: START + HOUR }],
+			[{ type: "plain", origin: "config", content: VALUE, name: "GITHUB_TOKEN", expiresAt: START + HOUR }],
 			{ now: () => now, onExpiry: event => (expiry = event) },
 		);
 		now = START + HOUR;
@@ -303,7 +304,7 @@ describe("secrets that carry no lifetime at all", () => {
 	 * auto-detected environment secret would need a field it has no value for.
 	 */
 	it("keeps working with no expiresAt field", () => {
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: VALUE }], {
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: VALUE }], {
 			now: () => START + 10_000 * HOUR,
 		});
 
@@ -322,12 +323,15 @@ describe("secrets that carry no lifetime at all", () => {
 	 */
 	it("does not read the clock when no secret has a deadline", () => {
 		let reads = 0;
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: VALUE, name: "TOKEN_A", expiresAt: null }], {
-			now: () => {
-				reads++;
-				return START;
+		const obfuscator = new SecretObfuscator(
+			[{ type: "plain", origin: "config", content: VALUE, name: "TOKEN_A", expiresAt: null }],
+			{
+				now: () => {
+					reads++;
+					return START;
+				},
 			},
-		});
+		);
 
 		for (let i = 0; i < 100; i++) obfuscator.deobfuscate("use #TOKEN_A# here");
 
@@ -339,8 +343,8 @@ describe("secrets that carry no lifetime at all", () => {
 		let reads = 0;
 		const obfuscator = new SecretObfuscator(
 			[
-				{ type: "plain", content: VALUE, name: "A_TOKEN", expiresAt: START + 100 * HOUR },
-				{ type: "plain", content: OTHER, name: "B_TOKEN", expiresAt: START + 200 * HOUR },
+				{ type: "plain", origin: "config", content: VALUE, name: "A_TOKEN", expiresAt: START + 100 * HOUR },
+				{ type: "plain", origin: "config", content: OTHER, name: "B_TOKEN", expiresAt: START + 200 * HOUR },
 			],
 			{
 				now: () => {
@@ -359,7 +363,7 @@ describe("secrets that carry no lifetime at all", () => {
 	it("does not read the clock for text with no placeholder", () => {
 		let reads = 0;
 		const obfuscator = new SecretObfuscator(
-			[{ type: "plain", content: VALUE, name: "TOKEN_A", expiresAt: START + HOUR }],
+			[{ type: "plain", origin: "config", content: VALUE, name: "TOKEN_A", expiresAt: START + HOUR }],
 			{
 				now: () => {
 					reads++;

@@ -38,7 +38,9 @@ describe("compileSecretRegex", () => {
 
 describe("SecretObfuscator regex behavior", () => {
 	it("obfuscates and deobfuscates regex matches with flags", () => {
-		const obfuscator = new SecretObfuscator([{ type: "regex", content: "api[_-]?key\\s*=\\s*\\w+", flags: "i" }]);
+		const obfuscator = new SecretObfuscator([
+			{ type: "regex", origin: "config", content: "api[_-]?key\\s*=\\s*\\w+", flags: "i" },
+		]);
 		const original = "API_KEY=abc and api-key=def";
 		const obfuscated = obfuscator.obfuscate(original);
 		expect(obfuscated).not.toEqual(original);
@@ -46,14 +48,18 @@ describe("SecretObfuscator regex behavior", () => {
 	});
 
 	it("supports bare regex patterns without explicit flags", () => {
-		const obfuscator = new SecretObfuscator([{ type: "regex", content: "api[_-]?key\\s*=\\s*\\w+" }]);
+		const obfuscator = new SecretObfuscator([
+			{ type: "regex", origin: "config", content: "api[_-]?key\\s*=\\s*\\w+" },
+		]);
 		const text = "api_key=abc and API_KEY=def";
 		const obfuscated = obfuscator.obfuscate(text);
 		expect(obfuscated).not.toEqual(text);
 		expect(obfuscator.deobfuscate(obfuscated)).toEqual(text);
 	});
 	it("deobfuscates placeholders through tool-call arguments", () => {
-		const obfuscator = new SecretObfuscator([{ type: "regex", content: "api[_-]?key\\s*=\\s*\\w+", flags: "i" }]);
+		const obfuscator = new SecretObfuscator([
+			{ type: "regex", origin: "config", content: "api[_-]?key\\s*=\\s*\\w+", flags: "i" },
+		]);
 		const original = { cmd: "API_KEY=abc and api-key=def", status: "ok", nested: { note: "API_KEY=zzz" } };
 		const obfuscated = {
 			cmd: obfuscator.obfuscate(original.cmd),
@@ -67,7 +73,7 @@ describe("SecretObfuscator regex behavior", () => {
 	/** System prompt and schema text are provider-controlled dynamically, so they share the redaction boundary. */
 	it("obfuscates system prompts and serialized tool schemas", () => {
 		const secret = "SUPER_SECRET_TOKEN_12345";
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 		const parameters = type({
 			note: "string",
 		}).describe(`write ${secret}`);
@@ -95,7 +101,7 @@ describe("SecretObfuscator regex behavior", () => {
 	/** Every replayable message role is sanitized, including resumed assistant and agent-authored developer text. */
 	it("redacts every provider-bound message role", () => {
 		const secret = "SUPER_SECRET_TOKEN_12345";
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 		const userMsg: Message = { role: "user", content: `user says ${secret}`, timestamp: 1 };
 		const systemDeveloperMsg: Message = { role: "developer", content: `system reminder ${secret}`, timestamp: 1 };
 		const fileMentionMsg: Message = {
@@ -156,7 +162,7 @@ describe("SecretObfuscator regex behavior", () => {
 
 	it("never rewrites inline image bytes", () => {
 		const secret = "SUPER_SECRET_TOKEN_12345";
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 		// A base64 payload that literally contains the secret substring must survive byte-identical;
 		// rewriting it would corrupt the data URL (the Codex "invalid base64" failure).
 		const imageData = `iVBORw0KGgo${secret}AAAASUVORK5CYII=`;
@@ -183,13 +189,13 @@ describe("SecretObfuscator regex behavior", () => {
 	});
 
 	it("ignores configured plain secrets shorter than 8 characters", () => {
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: "esp" }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: "esp" }]);
 		expect(obfuscator.hasSecrets()).toBe(false);
 		expect(obfuscator.obfuscate("the response despite whitespace")).toBe("the response despite whitespace");
 	});
 
 	it("ignores regex matches shorter than 8 characters", () => {
-		const obfuscator = new SecretObfuscator([{ type: "regex", content: "esp" }]);
+		const obfuscator = new SecretObfuscator([{ type: "regex", origin: "config", content: "esp" }]);
 		expect(obfuscator.obfuscate("the response despite whitespace")).toBe("the response despite whitespace");
 	});
 });
@@ -204,8 +210,8 @@ describe("SecretObfuscator cross-turn cache stability", () => {
 	it("produces byte-identical output when re-obfuscating the same content across turns", () => {
 		const secret = "SUPER_SECRET_TOKEN_12345";
 		const obfuscator = new SecretObfuscator([
-			{ type: "plain", content: secret },
-			{ type: "regex", content: "tok_[a-z0-9]+" },
+			{ type: "plain", origin: "config", content: secret },
+			{ type: "regex", origin: "config", content: "tok_[a-z0-9]+" },
 		]);
 		const messages: Message[] = [{ role: "user", content: `use ${secret} and tok_abc123`, timestamp: 1 }];
 
@@ -219,7 +225,7 @@ describe("SecretObfuscator cross-turn cache stability", () => {
 	});
 
 	it("keeps earlier message placeholders stable when a later message reveals a new regex secret", () => {
-		const obfuscator = new SecretObfuscator([{ type: "regex", content: "tok_[a-z0-9]+" }]);
+		const obfuscator = new SecretObfuscator([{ type: "regex", origin: "config", content: "tok_[a-z0-9]+" }]);
 		const early: Message[] = [{ role: "user", content: "first uses tok_aaaa", timestamp: 1 }];
 
 		// Turn N: only the early message exists; tok_aaa mints a fresh placeholder.
@@ -242,7 +248,7 @@ describe("SecretObfuscator cross-turn cache stability", () => {
 describe("deobfuscateAgentMessages (display restore)", () => {
 	it("restores assistant text and tool calls while leaving raw user text and thinking untouched", () => {
 		const secret = "DISPLAY_SECRET_TOKEN_123";
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 		const placeholder = obfuscator.obfuscate(secret);
 		expect(placeholder).not.toBe(secret);
 
@@ -311,7 +317,7 @@ describe("deobfuscateAgentMessages (display restore)", () => {
 
 	it("restores compactionSummary block text while leaving legacy image bytes intact", () => {
 		const secret = "BLOCKS_SECRET_TOKEN_456";
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 		const placeholder = obfuscator.obfuscate(secret);
 		const imageData = `frame${secret}bytes==`;
 		const message: AgentMessage = {

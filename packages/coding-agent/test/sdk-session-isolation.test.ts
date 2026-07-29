@@ -213,9 +213,12 @@ describe("createAgentSession session storage isolation", () => {
 			if (!model) throw new Error("Expected anthropic model");
 
 			const placeholderKey = await loadOrCreateVaultKey(globalConfigRoot);
-			const obfuscator = new SecretObfuscator([{ type: "plain", content: "sdk-secret-token-123456" }], {
-				placeholderKey,
-			});
+			const obfuscator = new SecretObfuscator(
+				[{ type: "plain", origin: "config", content: "sdk-secret-token-123456" }],
+				{
+					placeholderKey,
+				},
+			);
 			const initialManager = SessionManager.create(cwd, path.join(agentDir, "sessions"));
 			initialManager.appendMessage({
 				role: "assistant",

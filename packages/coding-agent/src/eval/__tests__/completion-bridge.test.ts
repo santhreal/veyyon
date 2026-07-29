@@ -293,7 +293,7 @@ describe("runEvalCompletion", () => {
 
 	it("obfuscates both prompt and explicit system text at the final provider boundary", async () => {
 		const secret = "EVAL_RAW_SECRET_123";
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 		const placeholder = obfuscator.obfuscate(secret);
 		const spy = vi.spyOn(ai, "completeSimple").mockResolvedValue(assistant({ text: "ok" }));
 		const session = makeSession({

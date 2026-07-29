@@ -44,6 +44,8 @@ describe("AgentSession role model thinking behavior", () => {
 		initialModelId: string;
 		initialThinkingLevel: Effort;
 		modelRoles: Record<string, string>;
+		initialThinkingSource?: "selector" | "session";
+		initialConfiguredThinkingLevel?: Effort | "off";
 		runtimeApiKeys?: Record<string, string>;
 	}) {
 		const model = getAnthropicModelOrThrow(options.initialModelId);
@@ -74,10 +76,17 @@ describe("AgentSession role model thinking behavior", () => {
 			sessionManager: SessionManager.inMemory(),
 			settings: sessionSettings,
 			modelRegistry,
+			thinkingLevel: options.initialConfiguredThinkingLevel ?? options.initialThinkingLevel,
+			thinkingSource: options.initialThinkingSource,
 		});
 	}
 
-	it("re-applies explicit role thinking each time that role is selected", async () => {
+	/**
+	 * A role suffix applies until the user chooses a session override. The
+	 * override survives role switches, and clearing it reveals the active
+	 * selector pin immediately instead of waiting for another model switch.
+	 */
+	it("keeps session effort above role pins and restores the pin when cleared", async () => {
 		const defaultModel = getAnthropicModelOrThrow("claude-sonnet-4-5");
 		const slowModel = getAnthropicModelOrThrow("claude-sonnet-4-6");
 
@@ -107,7 +116,42 @@ describe("AgentSession role model thinking behavior", () => {
 		const thirdSwitch = await session.cycleRoleModels(["default", "slow"]);
 		expect(thirdSwitch?.role).toBe("slow");
 		expect(thirdSwitch?.model.id).toBe(slowModel.id);
-		expect(thirdSwitch?.thinkingLevel).toBe("off");
+		expect(thirdSwitch?.thinkingLevel).toBe(Effort.High);
+		expect(session.thinkingLevel).toBe(Effort.High);
+
+		session.setThinkingLevel(undefined);
+		expect(session.thinkingLevel).toBe("off");
+
+		const fourthSwitch = await session.cycleRoleModels(["default", "slow"]);
+		expect(fourthSwitch?.role).toBe("default");
+		expect(fourthSwitch?.thinkingLevel).toBe(Effort.High);
+
+		const fifthSwitch = await session.cycleRoleModels(["default", "slow"]);
+		expect(fifthSwitch?.role).toBe("slow");
+		expect(fifthSwitch?.thinkingLevel).toBe("off");
+	});
+
+	/**
+	 * A session that starts from a role suffix must remember that selector
+	 * beneath a later temporary override. Default should reveal it immediately.
+	 */
+	it("restores an initial selector pin after clearing a later session override", async () => {
+		const slowModel = getAnthropicModelOrThrow("claude-sonnet-4-6");
+		await createSession({
+			initialModelId: slowModel.id,
+			initialThinkingLevel: Effort.Low,
+			initialThinkingSource: "selector",
+			initialConfiguredThinkingLevel: "off",
+			modelRoles: {
+				slow: `${slowModel.provider}/${slowModel.id}:off`,
+			},
+		});
+
+		session.setThinkingLevel(Effort.High);
+		expect(session.thinkingLevel).toBe(Effort.High);
+		session.setThinkingLevel(undefined);
+
+		expect(session.sessionThinkingOverride).toBeUndefined();
 		expect(session.thinkingLevel).toBe("off");
 	});
 

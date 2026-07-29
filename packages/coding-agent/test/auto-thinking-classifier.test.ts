@@ -225,7 +225,7 @@ describe("auto thinking classifier helpers", () => {
 			resolver: () => async () => "test-key",
 		} as never;
 		const secret = "AUTO_THINKING_SECRET_76491";
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 		const placeholder = obfuscator.obfuscate(secret);
 		const completeSimpleMock = vi.spyOn(ai, "completeSimple").mockResolvedValue({
 			stopReason: "stop",
@@ -261,7 +261,7 @@ describe("auto thinking classifier helpers", () => {
 			resolver: () => async () => "test-key",
 		} as never;
 		const secret = "AUTO_BOUNDARY_SECRET_ABCDEF";
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 		const placeholder = obfuscator.obfuscate(secret);
 		const completeSimpleMock = vi.spyOn(ai, "completeSimple").mockResolvedValue({
 			stopReason: "stop",

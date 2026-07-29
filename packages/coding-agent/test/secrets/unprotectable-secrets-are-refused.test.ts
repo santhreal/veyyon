@@ -139,7 +139,7 @@ describe("a declared short secret is refused at the loader", () => {
 			const entries = await loadSecrets(cwd, agentDir);
 
 			expect(entries).toHaveLength(1);
-			expect(entries[0]).toMatchObject({ type: "plain", content: UNDER_FLOOR, mode: "replace" });
+			expect(entries[0]).toMatchObject({ type: "plain", origin: "config", content: UNDER_FLOOR, mode: "replace" });
 		});
 	});
 
@@ -226,7 +226,7 @@ describe("the obfuscator reports what it could not protect", () => {
 	 * so construction has to report rather than drop.
 	 */
 	it("rejects a short plain entry and says why", () => {
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: UNDER_FLOOR }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: UNDER_FLOOR }]);
 
 		expect(obfuscator.rejections()).toEqual([
 			{ reason: "too-short-to-obfuscate", index: 0, length: UNDER_FLOOR.length },
@@ -241,7 +241,7 @@ describe("the obfuscator reports what it could not protect", () => {
 	 * it in the log file: the leak, relocated. This pins the shape rather than trusting it.
 	 */
 	it("carries no secret material in a rejection", () => {
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: UNDER_FLOOR }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: UNDER_FLOOR }]);
 
 		const serialised = JSON.stringify(obfuscator.rejections());
 		expect(serialised).not.toContain(UNDER_FLOOR);
@@ -256,7 +256,7 @@ describe("the obfuscator reports what it could not protect", () => {
 	 * refusal sees, in a test name, what they are re-enabling.
 	 */
 	it("leaves a refused value untouched in obfuscated output", () => {
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: UNDER_FLOOR }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: UNDER_FLOOR }]);
 
 		expect(obfuscator.obfuscate(`token=${UNDER_FLOOR}`)).toBe(`token=${UNDER_FLOOR}`);
 		expect(obfuscator.rejections()).toHaveLength(1);
@@ -264,7 +264,7 @@ describe("the obfuscator reports what it could not protect", () => {
 
 	/** An accepted value is replaced, so the floor is the only thing separating the two. */
 	it("replaces a value at the floor with a placeholder", () => {
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: AT_FLOOR }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: AT_FLOOR }]);
 
 		const out = obfuscator.obfuscate(`token=${AT_FLOOR}`);
 		expect(out).not.toContain(AT_FLOOR);
@@ -280,7 +280,7 @@ describe("the obfuscator reports what it could not protect", () => {
 	 * other way to find out.
 	 */
 	it("rejects a regex that does not compile", () => {
-		const obfuscator = new SecretObfuscator([{ type: "regex", content: "(unclosed" }]);
+		const obfuscator = new SecretObfuscator([{ type: "regex", origin: "config", content: "(unclosed" }]);
 
 		expect(obfuscator.rejections()).toHaveLength(1);
 		expect(obfuscator.rejections()[0].reason).toBe("invalid-pattern");
@@ -290,9 +290,9 @@ describe("the obfuscator reports what it could not protect", () => {
 	/** Rejections are indexed by input position, so a message can point at the entry. */
 	it("indexes rejections by their position in the input", () => {
 		const entries: SecretEntry[] = [
-			{ type: "plain", content: AT_FLOOR },
-			{ type: "plain", content: UNDER_FLOOR },
-			{ type: "regex", content: "(unclosed" },
+			{ type: "plain", origin: "config", content: AT_FLOOR },
+			{ type: "plain", origin: "config", content: UNDER_FLOOR },
+			{ type: "regex", origin: "config", content: "(unclosed" },
 		];
 		const obfuscator = new SecretObfuscator(entries);
 
@@ -313,7 +313,7 @@ describe("every rejection reaches the caller as it happens", () => {
 	 */
 	it("notifies for a rejection that only appears while obfuscating", () => {
 		const seen: SecretRejection[] = [];
-		const obfuscator = new SecretObfuscator([{ type: "regex", content: "\\b[a-z]{3}\\b" }], {
+		const obfuscator = new SecretObfuscator([{ type: "regex", origin: "config", content: "\\b[a-z]{3}\\b" }], {
 			onRejection: rejection => seen.push(rejection),
 		});
 
@@ -330,7 +330,7 @@ describe("every rejection reaches the caller as it happens", () => {
 	/** A construction-time rejection notifies too, so both paths use the one channel. */
 	it("notifies for a rejection found at construction", () => {
 		const seen: SecretRejection[] = [];
-		new SecretObfuscator([{ type: "plain", content: UNDER_FLOOR }], {
+		new SecretObfuscator([{ type: "plain", origin: "config", content: UNDER_FLOOR }], {
 			onRejection: rejection => seen.push(rejection),
 		});
 
@@ -348,8 +348,8 @@ describe("every rejection reaches the caller as it happens", () => {
 		const seen: SecretRejection[] = [];
 		const obfuscator = new SecretObfuscator(
 			[
-				{ type: "plain", content: UNDER_FLOOR },
-				{ type: "regex", content: "(unclosed" },
+				{ type: "plain", origin: "config", content: UNDER_FLOOR },
+				{ type: "regex", origin: "config", content: "(unclosed" },
 			],
 			{ onRejection: rejection => seen.push(rejection) },
 		);
@@ -360,7 +360,7 @@ describe("every rejection reaches the caller as it happens", () => {
 
 	/** The callback stays optional, so existing single-argument callers keep working. */
 	it("works with no options at all", () => {
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: AT_FLOOR }]);
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: AT_FLOOR }]);
 
 		expect(obfuscator.obfuscate(`t=${AT_FLOOR}`)).not.toContain(AT_FLOOR);
 		expect(obfuscator.rejections()).toEqual([]);
@@ -396,7 +396,7 @@ describe("a broken pattern in a file refuses startup", () => {
 			const entries = await loadSecrets(cwd, agentDir);
 
 			expect(entries).toHaveLength(1);
-			expect(entries[0]).toMatchObject({ type: "regex", content: "AKIA[0-9A-Z]{16}" });
+			expect(entries[0]).toMatchObject({ type: "regex", origin: "config", content: "AKIA[0-9A-Z]{16}" });
 		});
 	});
 });
@@ -410,7 +410,7 @@ describe("a short regex match is a loose pattern, not an unprotected secret", ()
 	 * distinction from a declared plain secret is the whole design of this change.
 	 */
 	it("leaves a short match alone rather than shredding prose", () => {
-		const obfuscator = new SecretObfuscator([{ type: "regex", content: "\\b[a-z]{3}\\b" }]);
+		const obfuscator = new SecretObfuscator([{ type: "regex", origin: "config", content: "\\b[a-z]{3}\\b" }]);
 
 		expect(obfuscator.obfuscate("the esp was fine")).toBe("the esp was fine");
 	});
@@ -423,7 +423,7 @@ describe("a short regex match is a loose pattern, not an unprotected secret", ()
 	 * count occurrences.
 	 */
 	it("records the over-match a single time per pattern", () => {
-		const obfuscator = new SecretObfuscator([{ type: "regex", content: "\\b[a-z]{3}\\b" }]);
+		const obfuscator = new SecretObfuscator([{ type: "regex", origin: "config", content: "\\b[a-z]{3}\\b" }]);
 
 		obfuscator.obfuscate("the esp was fine");
 		obfuscator.obfuscate("and the cat sat too");
@@ -440,7 +440,9 @@ describe("a short regex match is a loose pattern, not an unprotected secret", ()
 	 * different costume.
 	 */
 	it("obfuscates a short match when the entry lowers its floor", () => {
-		const obfuscator = new SecretObfuscator([{ type: "regex", content: "\\b[0-9]{6}\\b", minLength: 6 }]);
+		const obfuscator = new SecretObfuscator([
+			{ type: "regex", origin: "config", content: "\\b[0-9]{6}\\b", minLength: 6 },
+		]);
 
 		const out = obfuscator.obfuscate("code 481516 now");
 		expect(out).not.toContain("481516");
@@ -451,7 +453,7 @@ describe("a short regex match is a loose pattern, not an unprotected secret", ()
 	/** `replace` mode has no floor at all, on the regex path as on the plain path. */
 	it("replaces a short match in replace mode without any floor", () => {
 		const obfuscator = new SecretObfuscator([
-			{ type: "regex", content: "\\b[0-9]{3}\\b", mode: "replace", replacement: "***" },
+			{ type: "regex", origin: "config", content: "\\b[0-9]{3}\\b", mode: "replace", replacement: "***" },
 		]);
 
 		expect(obfuscator.obfuscate("pin 123 ok")).toBe("pin *** ok");

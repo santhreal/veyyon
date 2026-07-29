@@ -38,7 +38,9 @@ describe("final provider secret boundary", () => {
 	/** Resumed assistant prose is re-sanitized after local display restoration, or a restart sends the raw credential back. */
 	it("re-obfuscates restored assistant text and tool arguments", () => {
 		const secret = "resume-secret-value-123";
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret, name: "RESUME_TOKEN" }]);
+		const obfuscator = new SecretObfuscator([
+			{ type: "plain", origin: "config", content: secret, name: "RESUME_TOKEN" },
+		]);
 		const persisted = assistant([
 			{ type: "text", text: "use #RESUME_TOKEN#" },
 			{ type: "toolCall", id: "call-1", name: "run", arguments: { token: "#RESUME_TOKEN#" } },
@@ -54,7 +56,7 @@ describe("final provider secret boundary", () => {
 	/** Dynamic instructions and emitted schemas share the provider trust boundary with messages and must not bypass redaction. */
 	it("redacts system prompts, every message role, ArkType schemas, examples, and custom formats", () => {
 		const secret = "provider-boundary-secret-456";
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }], {
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }], {
 			placeholderKey: new Uint8Array(32).fill(3),
 		});
 		const parameters = type({ note: "string" }).describe(`schema ${secret}`);
@@ -100,7 +102,7 @@ describe("redaction tombstones", () => {
 		const secret = "expiring-secret-value-789";
 		const expired: string[] = [];
 		const obfuscator = new SecretObfuscator(
-			[{ type: "plain", content: secret, name: "EXPIRING_TOKEN", expiresAt: 20 }],
+			[{ type: "plain", origin: "config", content: secret, name: "EXPIRING_TOKEN", expiresAt: 20 }],
 			{
 				now: () => now,
 				onExpiry: event => expired.push(event.name),
@@ -120,9 +122,12 @@ describe("redaction tombstones", () => {
 	/** A same-scope runtime refresh carries redaction history without carrying authority to expand the removed value. */
 	it("transfers removed-value redaction without transferring expansion rights", () => {
 		const secret = "removed-secret-value-abc";
-		const previous = new SecretObfuscator([{ type: "plain", content: secret, name: "REMOVED_TOKEN" }], {
-			placeholderKey: new Uint8Array(32).fill(5),
-		});
+		const previous = new SecretObfuscator(
+			[{ type: "plain", origin: "config", content: secret, name: "REMOVED_TOKEN" }],
+			{
+				placeholderKey: new Uint8Array(32).fill(5),
+			},
+		);
 		const next = new SecretObfuscator([], { placeholderKey: new Uint8Array(32).fill(5) });
 
 		next.retainRedactionsFrom(previous);
@@ -135,9 +140,12 @@ describe("redaction tombstones", () => {
 	it("redacts stale values after a named rotation and removal", () => {
 		const oldValue = "rotated-old-secret-123";
 		const newValue = "rotated-new-secret-456";
-		const obfuscator = new SecretObfuscator([{ type: "plain", content: oldValue, name: "ROTATING_TOKEN" }], {
-			placeholderKey: new Uint8Array(32).fill(6),
-		});
+		const obfuscator = new SecretObfuscator(
+			[{ type: "plain", origin: "config", content: oldValue, name: "ROTATING_TOKEN" }],
+			{
+				placeholderKey: new Uint8Array(32).fill(6),
+			},
+		);
 
 		obfuscator.addNamedSecret("ROTATING_TOKEN", newValue);
 		expect(obfuscator.obfuscate(oldValue)).toMatch(/^#0[A-F0-9]{24}#$/);
@@ -153,9 +161,13 @@ describe("opaque placeholder identity", () => {
 	it("is stable across instances with the same key and changes with a different key", () => {
 		const secret = "stable-secret-value-123";
 		const key = new Uint8Array(32).fill(7);
-		const first = new SecretObfuscator([{ type: "plain", content: secret }], { placeholderKey: key });
-		const second = new SecretObfuscator([{ type: "plain", content: secret }], { placeholderKey: key });
-		const other = new SecretObfuscator([{ type: "plain", content: secret }], {
+		const first = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }], {
+			placeholderKey: key,
+		});
+		const second = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }], {
+			placeholderKey: key,
+		});
+		const other = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }], {
 			placeholderKey: new Uint8Array(32).fill(8),
 		});
 
@@ -167,7 +179,7 @@ describe("opaque placeholder identity", () => {
 	it("keeps 1,500 distinct secrets mapped to 1,500 distinct placeholders", () => {
 		const secrets = Array.from({ length: 1_500 }, (_, index) => `collision-secret-value-${index}`);
 		const obfuscator = new SecretObfuscator(
-			secrets.map(content => ({ type: "plain" as const, content })),
+			secrets.map(content => ({ type: "plain" as const, origin: "config" as const, content })),
 			{ placeholderKey: new Uint8Array(32).fill(9) },
 		);
 		const placeholders = secrets.map(secret => obfuscator.obfuscate(secret));
@@ -182,9 +194,9 @@ describe("one-pass substitution", () => {
 	/** Deterministic replacements for short fixed-point values must never equal or contain any configured secret. */
 	it("does not preserve the R, 8, or og replacement fixed points", () => {
 		const obfuscator = new SecretObfuscator([
-			{ type: "plain", content: "R", mode: "replace" },
-			{ type: "plain", content: "8", mode: "replace" },
-			{ type: "plain", content: "og", mode: "replace" },
+			{ type: "plain", origin: "config", content: "R", mode: "replace" },
+			{ type: "plain", origin: "config", content: "8", mode: "replace" },
+			{ type: "plain", origin: "config", content: "og", mode: "replace" },
 		]);
 
 		const output = obfuscator.obfuscate("R8og");
@@ -199,8 +211,14 @@ describe("one-pass substitution", () => {
 		expect(
 			() =>
 				new SecretObfuscator([
-					{ type: "plain", content: "first-secret-value", mode: "replace", replacement: "second-secret-value" },
-					{ type: "plain", content: "second-secret-value", mode: "replace" },
+					{
+						type: "plain",
+						origin: "config",
+						content: "first-secret-value",
+						mode: "replace",
+						replacement: "second-secret-value",
+					},
+					{ type: "plain", origin: "config", content: "second-secret-value", mode: "replace" },
 				]),
 		).toThrow("contains a configured secret");
 		expect(
@@ -208,6 +226,7 @@ describe("one-pass substitution", () => {
 				new SecretObfuscator([
 					{
 						type: "plain",
+						origin: "config",
 						content: "identity-secret-value",
 						mode: "replace",
 						replacement: "identity-secret-value",
@@ -219,7 +238,7 @@ describe("one-pass substitution", () => {
 	/** Contextual regexes may redact only their matched span, or common values disappear from unrelated prose. */
 	it("replaces exact regex spans without rewriting equal text outside the match context", () => {
 		const secret = "abcdefgh";
-		const obfuscator = new SecretObfuscator([{ type: "regex", content: "(?<=token=)[a-z]{8}" }], {
+		const obfuscator = new SecretObfuscator([{ type: "regex", origin: "config", content: "(?<=token=)[a-z]{8}" }], {
 			placeholderKey: new Uint8Array(32).fill(10),
 		});
 
@@ -230,7 +249,7 @@ describe("one-pass substitution", () => {
 
 	/** The minimum is measured in Unicode characters, not UTF-16 code units, so astral symbols cannot bypass the floor. */
 	it("applies regex minimum length by Unicode code points", () => {
-		const obfuscator = new SecretObfuscator([{ type: "regex", content: "(?:🔐)+" }], {
+		const obfuscator = new SecretObfuscator([{ type: "regex", origin: "config", content: "(?:🔐)+" }], {
 			placeholderKey: new Uint8Array(32).fill(11),
 		});
 		const seven = "🔐".repeat(7);

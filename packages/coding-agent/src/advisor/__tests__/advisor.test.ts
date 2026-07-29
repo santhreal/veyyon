@@ -1219,7 +1219,7 @@ describe("advisor", () => {
 
 		it("obfuscates session updates before prompting the advisor", async () => {
 			const secret = "ADVISOR_SECRET_TOKEN_123";
-			const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+			const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 			const placeholder = obfuscator.obfuscate(secret);
 			const promptInputs: string[] = [];
 			const agent = makeAgent(promptInputs);
@@ -1241,7 +1241,7 @@ describe("advisor", () => {
 
 		it("redacts expanded primary context before XML escaping", async () => {
 			const secret = "ADVISOR&SECRET<TOKEN>123";
-			const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+			const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 			const placeholder = obfuscator.obfuscate(secret);
 			const promptInputs: string[] = [];
 			const agent = makeAgent(promptInputs);
@@ -1272,7 +1272,7 @@ describe("advisor", () => {
 
 		it("redacts file-mention paths before formatting", async () => {
 			const secret = "MENTION_SECRET_TOKEN_123";
-			const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+			const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 			const placeholder = obfuscator.obfuscate(secret);
 			const promptInputs: string[] = [];
 			const agent = makeAgent(promptInputs);
@@ -1300,7 +1300,7 @@ describe("advisor", () => {
 
 		it("redacts nested async-result job labels before formatting", async () => {
 			const secret = "JOB_LABEL_SECRET_TOKEN_123";
-			const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+			const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 			const placeholder = obfuscator.obfuscate(secret);
 			const promptInputs: string[] = [];
 			const agent = makeAgent(promptInputs);
@@ -1332,7 +1332,7 @@ describe("advisor", () => {
 
 		it("surfaces edit diff details but redacts secrets inside the diff", async () => {
 			const secret = "DIFF_SECRET_TOKEN_123";
-			const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
+			const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: secret }]);
 			const placeholder = obfuscator.obfuscate(secret);
 			const promptInputs: string[] = [];
 			const agent = makeAgent(promptInputs);
