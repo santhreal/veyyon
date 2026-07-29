@@ -210,8 +210,7 @@ describe("set_cwd rule reporting", () => {
 		const { tool } = toolAt(outer);
 		const text = textOf(await tool.execute("s1", { path: inner }));
 
-		expect(text).toContain(`Session cwd is now ${path.resolve(inner)}`);
-		expect(text).toContain(`(previously ${path.resolve(outer)})`);
+		expect(text).toContain(`Moved cwd: ${path.resolve(outer)} → ${path.resolve(inner)}`);
 	});
 
 	it("shows the rule counts on the status line, not only in the model's copy", async () => {

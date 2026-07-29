@@ -19,8 +19,10 @@
 ## Outputs
 A single text block plus structured `details`.
 
-- Changed: `Session cwd is now <cwd> (previously <previous>). Your requested path "<raw>" resolved to it. This change is session-scoped and ephemeral; a per-profile default working directory is the session.workdir setting, not this tool.`
-- Unchanged: `Session cwd is <cwd>. Your requested path "<raw>" resolved to that same directory, so nothing needed to change. This call succeeded; do not retry it.`
+- Changed: `Moved cwd: <previous> → <cwd>. Your requested path "<raw>" resolved to <cwd>. Relative paths now resolve from there, so read "." to list the top level of your new cwd. This change is session-scoped and ephemeral; a per-profile default working directory is the session.workdir setting, not this tool.`
+- Unchanged: `Cwd stays at <cwd>. Your requested path "<raw>" resolved to the directory the session was already in, so nothing moved. This call succeeded; do not retry it. Relative paths resolve from there, so read "." to list the top level of your cwd.`
+
+  Both name the directory at each end rather than only the destination. A model that re-roots and then cannot tell whether it moved reads the next relative path against the wrong root, and the earlier `Session cwd is now <cwd> (previously <previous>)` wording collapsed to `Session cwd is now . (previously .)` whenever either value reached it unresolved.
 - Both branches then describe the rule files. When the set changed, the result names the files that started applying and the ones that stopped. When it did not, it says `The rule files in effect are unchanged.`
 - `details`:
   - `previous`: the cwd before the call.
