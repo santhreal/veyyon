@@ -156,6 +156,15 @@ export const RUNTIME_SECTIONS = [
 		purpose: "the handle table for loaded projects, so the model can learn the handles at all",
 		optional: true,
 	},
+	{
+		id: "available-secrets",
+		source: "runtime",
+		name: "AVAILABLE SECRETS",
+		input: { kind: "option", key: "secretInventory" },
+		purpose:
+			"the credential placeholders this session can actually spend, named but never valued, so a session that did not watch them being stored still knows they exist",
+		optional: true,
+	},
 ] as const satisfies readonly RuntimeSection[];
 
 /** One entry of {@link TEMPLATE_SECTIONS}, with its literal id and name intact. */
