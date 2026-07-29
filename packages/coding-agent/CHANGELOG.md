@@ -365,6 +365,15 @@
 
 ### Fixed
 
+- `/settings` → Model → Default Model now stores only the model selector. Saved effort has one UI owner, Default Effort. The old second step wrote a hidden `:effort` suffix to `modelRoles.default`, which outranked the adjacent Default Effort row and made later edits there appear ineffective. Role models and subsystem chains keep their explicit effort steps.
+- `set_cwd` now reports a re-root as one readable move, `Moved cwd: <from> → <to>`, and tells the
+  caller that relative paths moved with it. The old line put the origin in a trailing parenthetical,
+  `Session cwd is now <to> (previously <from>)`, so the half that says whether anything happened was
+  the easiest half to miss, and when either endpoint reached the message unresolved it collapsed to
+  `Session cwd is now . (previously .)`: a successful re-root naming neither directory. An agent
+  reading that cannot tell a move from a no-op, so it either re-issues the call or keeps resolving
+  relative paths against the directory it just left. Both branches now name the directory at each
+  end and point at the one call that lists the new root.
 - `TERM=dumb` now suppresses bold, italic, underline, strikethrough, and inverse SGR sequences as
   well as foreground and background colors. `NO_COLOR` still preserves non-color emphasis.
 - The Windows installer stages downloaded releases and local builds with an `.exe` suffix. Windows

@@ -337,7 +337,7 @@ export function getAllSettingDefs(): SettingDef[] {
 		group: "Models",
 		label: "Default Model",
 		description:
-			"The model each new session starts on, restored on launch. Searchable picker with auth status, then a thinking-effort step. Scoped to the active profile.",
+			"The model each new session starts on, restored on launch. This picker stores only the model; set its saved effort in Default Effort. Scoped to the active profile.",
 	});
 	cachedDefs = defs;
 	return defs;
