@@ -183,19 +183,22 @@ export class SetCwdTool implements AgentTool<typeof setCwdSchema, SetCwdToolDeta
 			throw toolFailure(err);
 		}
 
-		// Both branches state the END STATE, and both echo the path that was
-		// actually received. The old no-op text read "Session cwd unchanged: X",
-		// which a model asking for X reads as "your call did not take effect" —
-		// so it retries, gets the same line, and loops. Nothing in that message
-		// let it check whether the argument it sent was the argument that
-		// arrived, which is the other half of the loop.
+		// Both branches state the END STATE as an explicit pair of absolute paths, and both echo the
+		// path that was actually received. Two earlier wordings each lost half of that. "Session cwd
+		// unchanged: X" read as "your call did not take effect", so the model retried and looped.
+		// "Session cwd is now X (previously Y)" buries the move inside a parenthetical, and when
+		// either value was relative it degenerated to "Session cwd is now . (previously .)" — a
+		// successful re-root naming neither end, which is what a reader then has to guess at. An
+		// arrow between two resolved paths cannot degenerate that way. Each branch also says what
+		// to do next: the single most common follow-up is listing the new root, and a model that
+		// re-roots and then does not know relative paths moved is the other half of the same loop.
 		const noop = cwd === previous;
 		const lines = noop
 			? [
-					`Session cwd is ${cwd}. Your requested path ${JSON.stringify(raw)} resolved to that same directory, so nothing needed to change. This call succeeded; do not retry it.`,
+					`Cwd stays at ${cwd}. Your requested path ${JSON.stringify(raw)} resolved to the directory the session was already in, so nothing moved. This call succeeded; do not retry it. Relative paths resolve from there, so read "." to list the top level of your cwd.`,
 				]
 			: [
-					`Session cwd is now ${cwd} (previously ${previous}). Your requested path ${JSON.stringify(raw)} resolved to it. This change is session-scoped and ephemeral; a per-profile default working directory is the session.workdir setting, not this tool.`,
+					`Moved cwd: ${previous} → ${cwd}. Your requested path ${JSON.stringify(raw)} resolved to ${cwd}. Relative paths now resolve from there, so read "." to list the top level of your new cwd. This change is session-scoped and ephemeral; a per-profile default working directory is the session.workdir setting, not this tool.`,
 				];
 		const details: SetCwdToolDetails = { previous, cwd, requested: raw };
 		try {

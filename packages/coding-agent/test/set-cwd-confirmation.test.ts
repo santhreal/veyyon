@@ -67,8 +67,7 @@ describe("set_cwd result confirmation", () => {
 		const session = makeSession("/start");
 
 		return run(session, "/target").then(({ text }) => {
-			expect(text).toContain("Session cwd is now /target");
-			expect(text).toContain("previously /start");
+			expect(text).toContain("Moved cwd: /start → /target");
 		});
 	});
 
@@ -80,7 +79,7 @@ describe("set_cwd result confirmation", () => {
 
 		const { text } = await run(session, "/already/here");
 
-		expect(text).toContain("Session cwd is /already/here");
+		expect(text).toContain("Cwd stays at /already/here");
 		expect(cwdWordingOnly(text)).not.toContain("unchanged");
 		// And specifically not the sentence that caused it, in any spacing.
 		expect(text).not.toMatch(/cwd\s+unchanged/i);
@@ -247,7 +246,60 @@ describe("set_cwd result confirmation", () => {
 
 		const { text, details } = await run(session, "/target");
 
-		expect(text).toContain("Session cwd is now /private/target");
+		expect(text).toContain("Moved cwd: /start → /private/target");
 		expect(details).toMatchObject({ previous: "/start", cwd: "/private/target", requested: "/target" });
+	});
+
+	/**
+	 * THE REPORTED DEFECT. A successful re-root has to name the directory it came FROM as well as
+	 * the one it landed in, in that order, as one readable move.
+	 *
+	 * The previous wording put the origin in a trailing parenthetical -- `Session cwd is now
+	 * /target (previously /start)` -- and the origin is the half that decides whether the call did
+	 * anything. A reader that cannot see the move treats a re-root and a no-op as the same event:
+	 * it either re-issues the call or keeps resolving relative paths against the old root. Both
+	 * endpoints, one arrow, nothing between them.
+	 */
+	it("names both ends of the move in order", async () => {
+		const session = makeSession("/start");
+
+		const { text } = await run(session, "/target");
+
+		expect(text).toContain("Moved cwd: /start → /target");
+		// Origin BEFORE destination: the reversed pair describes the opposite move.
+		expect(text.indexOf("/start")).toBeLessThan(text.indexOf("/target"));
+	});
+
+	/**
+	 * The move is worthless to a caller that does not know relative paths moved with it, which is
+	 * the second half of the same confusion: a model re-roots, then reads `src/foo.ts` against the
+	 * directory it just left. Both branches point at the one call that establishes the new root.
+	 */
+	it.each([
+		["a real move", "/start", "/target"],
+		["a no-op", "/already/here", "/already/here"],
+	])("tells the caller how to list the cwd after %s", async (_case, from, to) => {
+		const session = makeSession(from);
+
+		const { text } = await run(session, to);
+
+		expect(text).toContain(`read "." to list the top level`);
+	});
+
+	/**
+	 * The degenerate line this rewrite exists to make unrepresentable: `Session cwd is now .
+	 * (previously .)`, emitted on a SUCCESSFUL re-root when either endpoint reached the message
+	 * unresolved. It names neither directory, so it reads as a failed call. The tool resolves both
+	 * ends against the session before formatting; this asserts the formatted line can never carry a
+	 * bare relative endpoint even when the session hands back a relative cwd.
+	 */
+	it("never reports a bare '.' as either endpoint", async () => {
+		const session = makeSession(".", { accept: () => "/target" });
+
+		const { text } = await run(session, "/target");
+
+		expect(text).toContain(`→ /target`);
+		expect(text).not.toMatch(/Moved cwd: \.\s/);
+		expect(text).not.toContain("Moved cwd: . → .");
 	});
 });

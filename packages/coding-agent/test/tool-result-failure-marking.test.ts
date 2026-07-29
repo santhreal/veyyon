@@ -129,7 +129,7 @@ describe("tool results that read as failures are marked as failures", () => {
 				"No relevant memories found.",
 				"No message from alice within 30s.",
 				"Nothing to discard; no pending action remains.",
-				"Session cwd is /tmp. Your requested path resolved to that same directory.",
+				"Cwd stays at /tmp. Your requested path resolved to the directory the session was already in, so nothing moved.",
 			]) {
 				expect(FAILURE_OPENERS.test(text)).toBe(false);
 			}
