@@ -8,6 +8,7 @@ Every skill in this directory is listed below, in one of the two tables. The shi
 
 | When | Skill |
 | --- | --- |
+| About to report a feature done, verified, or green | [dogfood](dogfood/SKILL.md) |
 | Any change to what the TUI renders (component, layout, color, theme, animation) | [ui](ui/SKILL.md) |
 | A feature or fix just landed and needs to be tracked | [ship-feature](ship-feature/SKILL.md) |
 | Handbook, README, `--help`, SPEC, or CHANGELOG | [docs](docs/SKILL.md) |
@@ -31,6 +32,8 @@ These are not steps in the ship ritual and `ship-feature` does not route to them
 `ship-feature` is the router. It calls the others in order: changelog and docs → settings differential → demo → gates. `prove-feature` is the bar for *which* demo is worth shipping when the change is a differentiator (Argot, hashline landing, and so on), not a generic ask/edit toy.
 
 `ui` is a gate, not a step in that router: any change that alters what the TUI renders goes through it first. UI work leaves `main` (its own worktree) and cannot land without a before/after visual proof per theme and ground. Reach it before you edit a component, not after.
+
+`dogfood` is the other gate, and it applies to every change rather than only to visual ones. Before you report that something works, you use it by hand on the real operator path and paste the transcript. A passing suite, a stress harness, or another agent's green is not a substitute, and the incoherence this catches (a confirmation that lies, two surfaces disagreeing, a setting that does not survive a restart) is invisible to all three.
 
 ## Shared demo defaults
 
