@@ -1373,23 +1373,19 @@ class DefaultEffortSubmenu extends Container {
 }
 
 /**
- * Single-slot picker for the profile's DEFAULT model — the model each new
- * session starts on. Opens straight to the model picker (there is only one slot,
- * no role list), then a thinking-effort step, and persists to the `default`
- * model-role slot via {@link Settings.setModelRole}. That is the exact slot the
- * interactive `/model` choice writes to (LEGACY_DEFAULT_MODEL_ROLE) and startup
- * restores from, so this reads and writes ONE source of truth, profile-scoped.
+ * Single-slot picker for the profile's DEFAULT model, the model each new
+ * session starts on. Opens straight to the model picker because there is only
+ * one slot, then persists a bare selector to the `default` model-role slot via
+ * {@link Settings.setModelRole}. Default Effort is the one persisted effort
+ * surface for the main model; this picker must not create a competing suffix.
  * Del clears the pin, letting the default resolve to the auto-selected model.
  */
 class DefaultModelSubmenu extends Container {
-	#selectList: SelectList | undefined;
-
 	constructor(
 		private readonly models: ReadonlyArray<Model>,
 		private readonly registry: ModelRegistry,
 		private readonly onChange: () => void,
 		private readonly onCancel: () => void,
-		private readonly requestRender?: () => void,
 	) {
 		super();
 		this.#showModelPicker();
@@ -1397,7 +1393,6 @@ class DefaultModelSubmenu extends Container {
 
 	#showModelPicker(): void {
 		this.clear();
-		this.#selectList = undefined;
 		const current = settings.getModelRole(DEFAULT_MODEL_SLOT)?.trim();
 		const panel = new ModelSelectorPanel(
 			settings,
@@ -1411,14 +1406,7 @@ class DefaultModelSubmenu extends Container {
 				clearLabel: "(auto-select on launch)",
 			},
 			{
-				onPick: (model, selector) => {
-					if (!hasConfigurableThinkingEffort(model)) {
-						this.#persist(selector);
-						return;
-					}
-					this.#showEffortPicker(selector, model);
-					this.requestRender?.();
-				},
+				onPick: (_model, selector) => this.#persist(selector),
 				onClear: () => {
 					settings.setModelRole(DEFAULT_MODEL_SLOT, undefined);
 					this.onChange();
@@ -1430,30 +1418,13 @@ class DefaultModelSubmenu extends Container {
 		this.addChild(panel);
 	}
 
-	#showEffortPicker(selector: string, model: Model): void {
-		this.#selectList = renderEffortStep(
-			this,
-			selector,
-			model,
-			value => this.#persist(value),
-			() => {
-				this.#showModelPicker();
-				this.requestRender?.();
-			},
-		);
-	}
-
-	#persist(value: string): void {
-		settings.setModelRole(DEFAULT_MODEL_SLOT, value);
+	#persist(selector: string): void {
+		settings.setModelRole(DEFAULT_MODEL_SLOT, selector);
 		this.onChange();
 		this.onCancel();
 	}
 
 	handleInput(data: string): void {
-		if (this.#selectList) {
-			this.#selectList.handleInput(data);
-			return;
-		}
 		this.children[0]?.handleInput?.(data);
 	}
 }
@@ -2879,7 +2850,6 @@ export class SettingsSelectorComponent implements Component {
 					settings.getModelRole(DEFAULT_MODEL_SLOT) ?? "",
 				),
 			() => done(this.#formatModelSelectorValue(settings.getModelRole(DEFAULT_MODEL_SLOT))),
-			this.context.requestRender,
 		);
 	}
 
