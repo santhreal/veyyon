@@ -53,6 +53,8 @@ interface Harness {
 	prompted: string[];
 	/** Every `settings.set` the command performed, in order, so a write can be asserted exactly. */
 	settingWrites: Array<{ key: string; value: unknown }>;
+	/** The `settings.set` keys observed at each `flush`, proving a write reached durable storage. */
+	settingFlushes: Array<string[]>;
 	port: Parameters<typeof runSecretCommandForSurface>[1];
 }
 
@@ -97,12 +99,19 @@ function harness(options?: {
 	};
 
 	const settingWrites: Array<{ key: string; value: unknown }> = [];
+	/**
+	 * Keys captured at each `flush`, so a test can prove the enable was made DURABLE and not merely
+	 * queued. The fake carries `flush` because the real `Settings.set` only schedules a debounced
+	 * write: a fake without it cannot tell a persisted setting from a lost one.
+	 */
+	const settingFlushes: Array<string[]> = [];
 	return {
 		agentMessages,
 		sessionMessages,
 		obfuscator,
 		prompted,
 		settingWrites,
+		settingFlushes,
 		port: {
 			session,
 			sessionManager: { appendMessage: (message: unknown) => sessionMessages.push(message) },
@@ -113,6 +122,9 @@ function harness(options?: {
 				set: (key: string, value: unknown) => {
 					settingWrites.push({ key, value });
 					settingValues[key] = value;
+				},
+				flush: async () => {
+					settingFlushes.push(settingWrites.map(write => write.key));
 				},
 			},
 			cwd: project,
@@ -659,6 +671,41 @@ describe("storing a credential while protection is off", () => {
 		await runSecretCommandForSurface("add first-token", h.port);
 
 		expect(h.settingWrites).toEqual([{ key: "secrets.enabled", value: true }]);
+	});
+
+	/**
+	 * The enable must be FLUSHED, not merely queued. `Settings.set` schedules a debounced write, so
+	 * before this the setting was lost whenever the surface exited inside the debounce window: a
+	 * `-p` run, an ACP request, any non-interactive client. Driving the real CLI showed the shape of
+	 * the bug exactly: `/secret add` said protection was "saved for the next one", and the very next
+	 * process reported protection OFF with the credential already in the vault, which is the one
+	 * state this feature exists to prevent. Asserting the flush happened AFTER the write is the
+	 * whole contract, so the ordering is pinned rather than just the call count.
+	 */
+	it("flushes the enable to disk instead of leaving it queued", async () => {
+		const h = harness({ promptReturns: VALUE, secretsEnabled: false });
+
+		await runSecretCommandForSurface("add first-token", h.port);
+
+		expect(h.settingFlushes).toEqual([["secrets.enabled"]]);
+	});
+
+	/**
+	 * A flush that fails must not be reported as a save. The confirmation is the only place the
+	 * operator learns whether protection survives a restart, so overstating it strands them in the
+	 * exact state they think they escaped: a stored credential with protection off next launch.
+	 */
+	it("admits when the enable could not be persisted", async () => {
+		const h = harness({ promptReturns: VALUE, secretsEnabled: false });
+		h.port.settings.flush = async () => {
+			throw new Error("read-only file system");
+		};
+
+		const outcome = await runSecretCommandForSurface("add first-token", h.port);
+
+		expect(outcome.message).toContain("it is now on for this session, but it could not be saved");
+		expect(outcome.message).toContain("read-only file system");
+		expect(outcome.message).not.toContain("saved for the next one.");
 	});
 
 	/** Announced in the confirmation, on its own line, so the operator knows the state changed. */
