@@ -97,6 +97,19 @@
 
 ### Fixed
 
+- A project-scope vault can no longer be committed by accident. `/secret add --scope project` writes
+  an encrypted credential store to `<project>/.veyyon/vault.json`, which is inside the repository you
+  are working in, and nothing kept it out of your commits: a real untracked `vault.json` was found in
+  this repo, one `git add -A` from being published. Veyyon now writes `.veyyon/.gitignore` on the way
+  to creating a project vault, covering `vault.json` and the `vault.json.unreadable-*` name that
+  `/secret discard` renames a broken vault to. Committing one would not expose the credentials, since
+  the ciphertext is unusable without the machine key, but it would put a credential store in your
+  history that no clone can open, which then breaks `/secret` for whoever cloned it. Only the vault is
+  ignored, never the directory: `.veyyon/` also holds skills and project settings a repo is supposed
+  to track, and ignoring all of it would read as git losing files. An existing `.veyyon/.gitignore`
+  that does not already cover the vault is appended to rather than rewritten, because a vault stored
+  before this shipped is exactly the case a create-only guard would miss while saying nothing; your
+  own lines are left untouched, and a file that already names the vault is not modified at all.
 - `/secret` no longer repeats a word you typed back at you when it refuses a command, because on a
   `/secret` line that word is often the credential. Every verb except `add` echoed it: the realistic
   slip is muscle memory for `add` with a different verb, which is exactly the moment a secret is on the

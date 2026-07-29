@@ -464,6 +464,77 @@ export function vaultPathFor(locations: VaultLocations, scope: VaultScope): stri
 			return path.join(locations.projectDir, VAULT_FILENAME);
 	}
 }
+
+/**
+ * What veyyon writes into a project's `.veyyon/` so the vault cannot be committed.
+ *
+ * ONLY the vault, never the directory. A project `.veyyon/` also holds things a repo is SUPPOSED to
+ * track (skills, project settings), so `.veyyon/` or `*` here would quietly stop those being
+ * committed and look like git losing files. The `.unreadable-*` sibling is what `/secret discard`
+ * renames a broken vault to, and it still holds the sealed entries.
+ */
+const PROJECT_VAULT_GITIGNORE = `# Written by veyyon, and safe to keep.
+#
+# A vault is an encrypted credential store. Its key never leaves this machine, so committing one
+# publishes a credential store that nobody who clones the repo can open, including you on another
+# machine. Only the vault is ignored: everything else in this directory is yours to track.
+${VAULT_FILENAME}
+${VAULT_FILENAME}.unreadable-*
+`;
+
+/**
+ * Keep a project vault out of the user's version control, on the way to creating one.
+ *
+ * WHY THIS EXISTS. `project` is the one scope whose file lands inside the repository the operator is
+ * working in, and nothing stopped it being committed: a real `.veyyon/vault.json` was found untracked
+ * in this repo, one `git add -A` away from being published. It is ciphertext rather than plaintext, so
+ * the immediate harm is bounded, but a committed vault is a credential store in the history that no
+ * clone can decrypt, which then breaks `/secret` for whoever cloned it.
+ *
+ * An existing file is APPENDED to, never rewritten, and only when it does not already ignore the
+ * vault. That case is the upgrade path and it is the one that matters: a vault created before this
+ * shipped, in a directory that has since acquired a `.gitignore` for some other reason, is left
+ * committable by a create-only guard, and the operator is never told. Appending is defensible here in
+ * a way that editing their root `.gitignore` would not be, because `.veyyon/` is veyyon's own
+ * directory. Their existing lines are untouched. A failure is reported rather than swallowed: the
+ * vault write that follows will usually fail too, and a protection that quietly did not happen is
+ * worse than one that says so.
+ */
+async function ensureProjectVaultIgnored(scope: VaultScope, directory: string): Promise<void> {
+	if (scope !== "project") return;
+	const ignorePath = path.join(directory, ".gitignore");
+	try {
+		// `wx` creates or fails, so the common path needs no check-then-write race.
+		await fs.writeFile(ignorePath, PROJECT_VAULT_GITIGNORE, { flag: "wx", mode: 0o644 });
+		return;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+			noteSecretsCondition(
+				`Could not write ${safeText(ignorePath)} (${safeError(error)}), so the project vault about to be ` +
+					`written is NOT protected from being committed. Add "${VAULT_FILENAME}" to that directory's ` +
+					`.gitignore yourself, or store this secret with --scope profile instead.`,
+			);
+			return;
+		}
+	}
+	try {
+		const existing = await Bun.file(ignorePath).text();
+		// Deliberately literal. A broader pattern that already covers the vault (`*`) makes this append
+		// one redundant line, once, and the line is then found on every later call. Guessing at pattern
+		// semantics to avoid that would risk the opposite mistake, which is the one that costs a leak.
+		if (existing.split("\n").some(line => line.trim() === VAULT_FILENAME || line.trim() === `/${VAULT_FILENAME}`)) {
+			return;
+		}
+		const separator = existing.length === 0 || existing.endsWith("\n") ? "" : "\n";
+		await fs.appendFile(ignorePath, `${separator}\n${PROJECT_VAULT_GITIGNORE}`);
+	} catch (error) {
+		noteSecretsCondition(
+			`Could not check or extend ${safeText(ignorePath)} (${safeError(error)}), so the project vault may not ` +
+				`be protected from being committed. Add "${VAULT_FILENAME}" to that file yourself, or store this ` +
+				`secret with --scope profile instead.`,
+		);
+	}
+}
 /** A live PID is never reaped; dead owners are still detected immediately by the shared lock. */
 const VAULT_LOCK_OPTIONS = { staleMs: Number.POSITIVE_INFINITY } as const;
 
@@ -1721,6 +1792,11 @@ export class SecretVault {
 				throw new Error(`The ${scope} vault directory disappeared while it was being created.`);
 			}
 		}
+		// Before anything is sealed into it. A project vault lives in the user's OWN repository, so
+		// without this the first `/secret add --scope project` leaves an encrypted credential store
+		// sitting untracked where `git add -A` sweeps it up. Observed in this repo. Runs on an
+		// existing directory too, since a vault created before this shipped is the case that needs it.
+		await ensureProjectVaultIgnored(scope, directory);
 		try {
 			const owner = await this.#scopePathOwner(scope, pin);
 			if (owner !== scope) {

@@ -325,7 +325,7 @@ An entry belongs to one scope and is invisible from the others:
 | Scope | Where it lives | Use it for |
 | ----- | -------------- | ---------- |
 | `profile` (default) | the active profile's agent directory | credentials for one line of work |
-| `project` | `<project>/.veyyon/vault.json` | credentials for one repository |
+| `project` | `<project>/.veyyon/vault.json`, kept out of your commits | credentials for one repository |
 | `global` | `~/.veyyon/vault.json` | credentials you want everywhere |
 
 ```text
@@ -353,7 +353,9 @@ Vault files use AES-256-GCM. Each write uses a fresh 12 byte nonce and the full 
 
 On POSIX, the key is mode 0600. Its directory must be owned by you and not writable by another user. On Windows, Veyyon applies and verifies a protected owner-only ACL. Existing vault files receive the same platform permission checks before they are read.
 
-A project-scoped vault can sit in a directory you commit or export. The ciphertext is unusable without the machine key, but it is not a portable backup. The authenticated location includes the semantic scope, canonical path, and physical scope-directory identity. If you move or recreate that directory, re-add the entries with `/secret add`.
+A project-scoped vault lives inside the repository you are working in, so Veyyon keeps it out of your commits. The first time it stores a project secret, it writes `.veyyon/.gitignore` covering `vault.json` and the `vault.json.unreadable-*` file that `/secret discard` renames a broken vault to. If that file already exists, Veyyon adds the two rules and leaves your own lines alone. Only the vault is ignored, so anything else you keep in `.veyyon/`, such as skills or project settings, stays trackable. Commit the generated `.veyyon/.gitignore` along with the rest of your project.
+
+Committing a vault would not expose the credentials directly, because the ciphertext is unusable without the machine key. It would still put a credential store in your history, and nobody who clones the repository can open it, including you on another machine. A vault is not a portable backup. The authenticated location includes the semantic scope, canonical path, and physical scope-directory identity. If you move or recreate that directory, re-add the entries with `/secret add`.
 
 Updates use a synchronized owner-only temporary file. Kernel no-replace and exchange operations publish the synced inode without overwriting a destination that appeared after the last check. Veyyon holds the scope directory open during the transaction, so replacing the lexical parent cannot redirect the read or write.
 
