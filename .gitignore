@@ -120,3 +120,7 @@ packages/natives/native/.build/
 
 # Bun install cache, written into the repo root by some tool invocations.
 relative-cache/
+
+# Bun temp spill directory (`bun/@t@/*.pile`), written into the repo root by some
+# tool invocations for the same reason as the cache above.
+bun/
