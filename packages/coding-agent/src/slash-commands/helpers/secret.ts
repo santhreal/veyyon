@@ -9,7 +9,7 @@
  * for a credential without showing it, and that difference is one injected function
  * ({@link SecretCommandPort.promptForValue}) rather than a second copy of the logic.
  */
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import type { Settings } from "../../config/settings";
 import { SecretAuditLog, secretAuditPath } from "../../secrets/audit";
 import {
@@ -121,7 +121,26 @@ export async function runSecretCommandForSurface(args: string, port: SecretComma
 	// setting that changes itself without saying so is its own bug.
 	const enabledByThisCommand =
 		result.changed && request.subcommand === "add" && port.settings.get("secrets.enabled") !== true;
-	if (enabledByThisCommand) port.settings.set("secrets.enabled", true);
+	/**
+	 * WHY THIS FLUSHES RATHER THAN TRUSTING `set`. `Settings.set` only QUEUES a debounced write,
+	 * and nothing on this path called `flush`, so any short-lived surface exited before the timer
+	 * fired: a `-p` run, an ACP request, any non-interactive client. The credential was durable
+	 * and the setting was not, so the next launch came up with protection OFF and a secret already
+	 * in the vault, which is the one state this feature exists to prevent. The confirmation below
+	 * promises the operator it was "saved for the next one", so this is the line that has to make
+	 * that true. A write it cannot complete is reported instead of hidden, because a confirmation
+	 * that overstates what was saved is worse than one that admits the gap.
+	 */
+	let enableSaveFailure: string | undefined;
+	if (enabledByThisCommand) {
+		port.settings.set("secrets.enabled", true);
+		try {
+			await port.settings.flush();
+		} catch (error) {
+			enableSaveFailure = errorMessage(error);
+			logger.warn("secrets: could not persist secrets.enabled after /secret add", { error: enableSaveFailure });
+		}
+	}
 
 	if (result.changed) {
 		try {
@@ -140,6 +159,29 @@ export async function runSecretCommandForSurface(args: string, port: SecretComma
 		}
 	}
 
+	// Delivered BEFORE the protection-off return below, because a revocation must not depend on
+	// protection being on. The early return used to swallow every notice, and the one state it
+	// swallowed them in is the state a revocation matters most: with no obfuscator, nothing is
+	// substituted, so a model still carrying "use #NAME#" writes that literal text straight into a
+	// command. A notice that OFFERS a placeholder is withheld there instead, because it would be
+	// advertising an expansion the runtime cannot perform.
+	//
+	// The refresh above reloads every source atomically; patching one vault entry here would leave
+	// the rest of the live runtime stale and could not create an obfuscator for a newly enabled
+	// session.
+	const notice =
+		port.session.secretsEnabled || result.agentNoticeIsRevocation === true ? result.agentNotice : undefined;
+	if (notice !== undefined) {
+		try {
+			tellTheAgent(port, notice);
+		} catch (error) {
+			throw new Error(
+				`The vault was updated and secret protection refreshed, but the model notice could not be saved: ${errorMessage(error)}`,
+				{ cause: error },
+			);
+		}
+	}
+
 	if (!port.session.secretsEnabled) {
 		// Said after the action and authoritative refresh rather than inferred from a settings
 		// snapshot: the session runtime is the boundary that determines whether provider traffic
@@ -152,24 +194,17 @@ export async function runSecretCommandForSurface(args: string, port: SecretComma
 		};
 	}
 
-	const message = enabledByThisCommand
-		? `${result.message}\nSecret protection was off, so it is now on for this session and saved for the next one.`
-		: result.message;
-
-	// Refresh above reloads every source atomically; patching one vault entry here would leave the
-	// rest of the live runtime stale and would not be able to create an obfuscator for a newly
-	// enabled session.
-	if (result.agentNotice !== undefined) {
-		try {
-			tellTheAgent(port, result.agentNotice);
-		} catch (error) {
-			throw new Error(
-				`The vault was updated and secret protection refreshed, but the model notice could not be saved: ${errorMessage(error)}`,
-				{ cause: error },
-			);
-		}
+	if (enabledByThisCommand) {
+		return {
+			message:
+				enableSaveFailure === undefined
+					? `${result.message}\nSecret protection was off, so it is now on for this session and saved for the next one.`
+					: `${result.message}\nSecret protection was off, so it is now on for this session, but it could not be ` +
+						`saved for the next one: ${enableSaveFailure}. Turn on "Hide Secrets" in /settings so it survives a restart.`,
+		};
 	}
-	return { message };
+
+	return { message: result.message };
 }
 
 /**
