@@ -33,6 +33,16 @@ import { parseSlashCommand } from "@veyyon/coding-agent/slash-commands/helpers/p
 const VALUE = "ghp_a_real_looking_credential";
 const DAY = 24 * 60 * 60 * 1000;
 
+/** The message a refusal carries, so two verbs' wording can be compared rather than only matched. */
+function messageOf(body: () => unknown): string {
+	try {
+		body();
+	} catch (error) {
+		return error instanceof Error ? error.message : String(error);
+	}
+	throw new Error("Expected a refusal, but the call returned.");
+}
+
 /** A command context over a throwaway vault, with a fixed clock and a fake environment. */
 async function withContext(
 	body: (context: {
@@ -195,7 +205,7 @@ describe("parsing", () => {
 	 * is how a credential outlives the window its owner chose.
 	 */
 	it("refuses a lifetime it cannot read", () => {
-		expect(() => parseSecretCommand("add --ttl 7dd TOKEN_A x")).toThrow(/needs a valid lifetime/);
+		expect(() => parseSecretCommand("add --ttl 7dd TOKEN_A x")).toThrow(/is not a lifetime/);
 		expect(() => parseSecretCommand("add TOKEN_A --ttl")).toThrow(/needs a lifetime/);
 	});
 
@@ -204,10 +214,33 @@ describe("parsing", () => {
 	 * default. Both must refuse before a request can reach storage.
 	 */
 	it("refuses TTL boundary values instead of falling back", () => {
-		expect(() => parseSecretCommand("add --ttl 0m TOKEN_A x")).toThrow(/needs a valid lifetime/);
-		expect(() => parseSecretCommand("add --ttl 9007199254740991w TOKEN_A x")).toThrow(/needs a valid lifetime/);
+		expect(() => parseSecretCommand("add --ttl 0m TOKEN_A x")).toThrow(/expire immediately/);
+		expect(() => parseSecretCommand("add --ttl 9007199254740991w TOKEN_A x")).toThrow(/too large/);
 		expect(() => parseSecretCommand("extend TOKEN_A --ttl 0m")).toThrow(/expire immediately/);
 		expect(() => parseSecretCommand("extend TOKEN_A --ttl 9007199254740991w")).toThrow(/too large/);
+	});
+
+	/**
+	 * `add` and `extend` must diagnose the same bad lifetime identically.
+	 *
+	 * They did not. `add` rewrote every `parseTtl` failure into one generic "needs a valid lifetime",
+	 * which existed only to stop `parseTtl` echoing the value back, and the cost was that `add` could
+	 * not tell "0m expires immediately" from "9007199254740991w is too large" from "7dd is not a
+	 * lifetime". Same mistake, same sentence, whichever verb you typed. If this fails, someone
+	 * reintroduced a per-verb rewrite and one verb is now less specific than the other.
+	 */
+	it("diagnoses a bad lifetime identically for add and extend", () => {
+		for (const [spec, expected] of [
+			["7dd", /is not a lifetime/],
+			["0m", /expire immediately/],
+			["9007199254740991w", /too large/],
+		] as const) {
+			const fromAdd = messageOf(() => parseSecretCommand(`add --ttl ${spec} TOKEN_A x`));
+			const fromExtend = messageOf(() => parseSecretCommand(`extend TOKEN_A --ttl ${spec}`));
+			expect(fromAdd).toMatch(expected);
+			expect(fromExtend).toMatch(expected);
+			expect(fromAdd).toBe(fromExtend);
+		}
 	});
 
 	/** An unknown scope refuses, naming the three that exist. */

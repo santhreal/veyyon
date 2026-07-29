@@ -42,7 +42,7 @@ describe("--scope on a subcommand that ignores it", () => {
 
 		expect(message).toContain("/secret rm does not take --scope");
 		expect(message).toContain("would look like it had been applied");
-		expect(message).toContain("/secret add takes it");
+		expect(message).toContain("/secret add and /secret discard take it");
 	});
 
 	/**
@@ -148,11 +148,16 @@ describe("the refusal's shape", () => {
 	/**
 	 * Singular and plural agree with how many verbs take the option.
 	 *
-	 * "/secret add and /secret extend take it" against "/secret add takes it". A message that reads
+	 * "/secret add and /secret extend take it" against "/secret log takes it". A message that reads
 	 * as broken English undermines the advice it is giving.
+	 *
+	 * `--limit` is the singular case on purpose: it is owned by `log` alone, and it stays singular as
+	 * verbs are added. `--scope` used to serve here, and `/secret discard` taking a required scope
+	 * turned it plural, which is exactly how a test that pins grammar loses the case it was pinning.
 	 */
 	it("agrees in number with the verbs it names", () => {
-		expect(refusal("list --scope project")).toContain("/secret add takes it");
+		expect(refusal("list --limit 50")).toContain("/secret log takes it");
+		expect(refusal("list --scope project")).toContain("/secret add and /secret discard take it");
 		expect(refusal("list --ttl 7d")).toContain("/secret add and /secret extend take it");
 	});
 });
@@ -208,15 +213,16 @@ describe("a bare word the subcommand does not read", () => {
 	 * `/secret log 50` is the natural way to ask for fifty records. It used to parse the `50` into
 	 * `request.name`, which `showLog` never reads, so the command printed the default twenty and said
 	 * nothing about the number that had been asked for. The operator concludes twenty is all there is.
-	 *
 	 * The message has to teach `--limit`, because "too many arguments" does not tell somebody who
-	 * typed `/secret log 50` what to type instead, and it echoes the number they gave.
+	 * typed `/secret log 50` what to type instead. It repeats the NUMBER, which it can only do
+	 * because a run of digits cannot be a credential worth protecting; see the no-echo suite below
+	 * for why no other word is repeated.
 	 */
 	it("refuses a count after log and names --limit with that number", () => {
 		const message = refusal("log 50");
 
 		expect(message).toContain("/secret log takes no arguments");
-		expect(message).toContain('"50" would be ignored');
+		expect(message).toContain("the extra word would be ignored");
 		expect(message).toContain("/secret log --limit 50");
 	});
 
@@ -241,7 +247,7 @@ describe("a bare word the subcommand does not read", () => {
 		const message = refusal("rm github-token extra");
 
 		expect(message).toContain("/secret rm takes 1 argument(s)");
-		expect(message).toContain('"extra" would be ignored');
+		expect(message).toContain("the word after the first would be ignored");
 	});
 
 	/** And after extend, where the lifetime belongs to `--ttl` and not to a bare word. */
@@ -281,5 +287,80 @@ describe("bare words where they belong", () => {
 	it("accepts list and log with no words", () => {
 		expect(parseSecretCommand("list").subcommand).toBe("list");
 		expect(parseSecretCommand("log").subcommand).toBe("log");
+	});
+});
+
+/**
+ * A `/secret` refusal never repeats a word the operator typed.
+ *
+ * WHY THIS SUITE EXISTS. `/secret` exists to keep a credential off the screen and out of the saved
+ * transcript, and its own error messages put one there. The refusals quoted the offending word, so a
+ * credential typed on a line whose verb takes fewer words was echoed back verbatim. The realistic
+ * slip is muscle memory for `add` with a different verb, which is exactly the moment a credential is
+ * on the line: `/secret extend TOK sk-live-...`, `/secret rm TOK sk-live-...`, a value appended to a
+ * bare `/secret list`, or a credential landing where a lifetime or a scope goes.
+ *
+ * Verified by hand against the real CLI before the fix: every verb except `add` echoed the value.
+ * `add` alone was clean, because it rewrote those messages to drop the value, which is what proves
+ * the suppression was understood to be necessary and simply had not been applied anywhere else.
+ *
+ * Digits are the deliberate exception, covered above: `/secret log 50` still repeats `50`, because a
+ * run of digits is not a credential worth protecting and the `--limit` hint is useless without it.
+ *
+ * If a row here fails, a refusal started repeating operator input and a credential can reach the
+ * scrollback again.
+ */
+describe("a refusal does not repeat what was typed", () => {
+	const CRED = "sk-live-LEAKCANARY-9z";
+
+	/**
+	 * The wrong-verb slips, which put a credential in a positional slot. Each of these echoed it.
+	 * `list`/`log` are here with the credential FIRST because they take no words at all: with a name
+	 * in front, the refusal quoted the harmless name and looked clean while the same bug sat behind
+	 * it, which is how this survived review.
+	 */
+	it.each([
+		["extend TOK", "extend"],
+		["renew TOK", "extend via renew"],
+		["rm TOK", "rm"],
+		["remove TOK", "rm via remove"],
+		["delete TOK", "rm via delete"],
+		["list", "list, credential in the first slot"],
+		["log", "log, credential in the first slot"],
+		["discard --scope project", "discard"],
+	])("keeps a credential out of the refusal for %s", (prefix, _label) => {
+		expect(refusal(`${prefix} ${CRED}`)).not.toContain(CRED);
+	});
+
+	/** An option VALUE is the other way a credential lands in a refusal: a slipped `--ttl`/`--scope`. */
+	it.each([
+		["extend TOK --ttl", "a lifetime that is really a credential"],
+		["add TOK --ttl", "the same on the verb that was already clean"],
+		["log --limit", "a count that is really a credential"],
+		["discard --scope", "a scope that is really a credential"],
+		["add TOK --scope", "the same on add"],
+	])("keeps a credential out of the refusal for %s", (prefix, _label) => {
+		expect(refusal(`${prefix} ${CRED}`)).not.toContain(CRED);
+	});
+
+	/**
+	 * The refusal still has to be actionable without the word. It names the verb, the count, and
+	 * which slot is wrong, and it says why the word is missing, so the omission does not read as a
+	 * message that lost its variable.
+	 */
+	it("says which slot was wrong and why it is not quoted", () => {
+		const message = refusal(`rm TOK ${CRED}`);
+
+		expect(message).toContain("/secret rm takes 1 argument(s)");
+		expect(message).toContain("the word after the first would be ignored");
+		expect(message).toContain("in case it is the credential");
+	});
+
+	/**
+	 * The negative control for the digit exception. `50` IS repeated, so the suite above is testing a
+	 * real suppression rather than a message that happens to omit everything.
+	 */
+	it("still repeats a plain count, proving the omission is selective", () => {
+		expect(refusal("log 50")).toContain("--limit 50");
 	});
 });
