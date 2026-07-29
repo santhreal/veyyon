@@ -378,6 +378,66 @@ describe("add", () => {
 		});
 	});
 
+	/**
+	 * Set-but-empty is a DIFFERENT cause from unset and must not borrow its message. Both used to
+	 * say "is not set in this process", which is false for a variable that is exported and empty:
+	 * driving the real CLI produced that line for `V_EMPTY=""` and sent the reader off to re-check
+	 * an export that was already correct, while the real cause was an assignment that set it to
+	 * nothing. The wrong diagnosis is the whole bug here, so the message is pinned, not just the
+	 * refusal.
+	 */
+	it("distinguishes a variable that is set but empty from one that is unset", async () => {
+		await withContext(async context => {
+			context.env.set("EMPTY_TOKEN", "");
+
+			const failure = await runSecretCommand(parseSecretCommand("add t-token --from-env EMPTY_TOKEN"), context).then(
+				() => undefined,
+				(error: unknown) => (error as Error).message,
+			);
+
+			expect(failure).toContain("EMPTY_TOKEN is set but empty");
+			expect(failure).toContain("EMPTY_TOKEN= sets it to nothing");
+			expect(failure).not.toContain("is not set in this process");
+		});
+	});
+
+	/**
+	 * Whitespace-only is refused rather than stored, because a placeholder that expands to blank
+	 * text would spend nothing into a command while looking like a working credential. It is
+	 * refused rather than trimmed for the same reason: trimming would invent a value the operator
+	 * never exported.
+	 */
+	it.each([
+		["spaces and a tab", "   \t "],
+		["a newline", "\n"],
+	])("refuses a variable holding only %s", async (_case, blank) => {
+		await withContext(async context => {
+			context.env.set("BLANK_TOKEN", blank);
+
+			await expect(
+				runSecretCommand(parseSecretCommand("add t-token --from-env BLANK_TOKEN"), context),
+			).rejects.toThrow(/BLANK_TOKEN contains only whitespace/);
+		});
+	});
+
+	/**
+	 * A credential that merely CONTAINS surrounding whitespace is stored byte for byte. Real tokens
+	 * are allowed to carry padding, and trimming one would corrupt it silently: the placeholder
+	 * would spend bytes the operator never stored, and the failure would surface far away as an
+	 * authentication error with no trace back to here.
+	 */
+	it("stores a padded credential without trimming it", async () => {
+		await withContext(async context => {
+			const padded = ` ${VALUE} `;
+			context.env.set("PADDED_TOKEN", padded);
+
+			await runSecretCommand(parseSecretCommand("add t-token --from-env PADDED_TOKEN"), context);
+
+			const stored = await context.vault.load();
+			expect(stored.find(entry => entry.name === "T_TOKEN")?.value).toBe(padded);
+		});
+	});
+
 	/** Two sources at once is a mistake worth naming rather than silently preferring one. */
 	it("refuses both a value and --from-env", async () => {
 		await withContext(async context => {
@@ -486,7 +546,7 @@ describe("list", () => {
 			await runSecretCommand(parseSecretCommand("add shared-token --from-env PROJECT --scope project"), context);
 
 			const result = await runSecretCommand(parseSecretCommand("list"), context);
-			expect(result.message).toContain("1 active secret(s):");
+			expect(result.message).toContain("1 active secret. ");
 			expect(result.message.match(/#SHARED_TOKEN#/g)).toHaveLength(1);
 			expect(result.message).toContain("#SHARED_TOKEN#  project");
 			expect(result.message).not.toContain("#SHARED_TOKEN#  profile");

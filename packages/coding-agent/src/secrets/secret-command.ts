@@ -21,8 +21,10 @@
  *     editor is cleared, so {@link addSecret} says so in its confirmation rather than leaving
  *     the user to assume otherwise.
  */
-import { errorMessage } from "@veyyon/utils";
+import { Ellipsis, padding, sanitizeSingleLine, truncateToWidth, visibleWidth } from "@veyyon/tui/utils";
+import { errorMessage, formatCount } from "@veyyon/utils";
 import type { SecretAuditLog, SecretExpansionRecord } from "./audit";
+import { MAX_SECRET_NAME_LENGTH } from "./placeholder";
 import {
 	DEFAULT_TTL_MS,
 	describeTimeLeft,
@@ -37,7 +39,7 @@ import {
 } from "./vault";
 
 /** Every subcommand `/secret` understands. */
-export type SecretSubcommand = "add" | "list" | "rm" | "extend" | "log" | "help";
+export type SecretSubcommand = "add" | "list" | "rm" | "extend" | "log" | "discard" | "help";
 
 /** How many log lines `/secret log` shows when the operator does not say. */
 export const DEFAULT_LOG_LIMIT = 20;
@@ -87,8 +89,22 @@ export interface SecretCommandResult {
 	 * reference it. Without this the model has a placeholder it was never introduced to: the
 	 * system prompt's note about `#XXXX#` tokens is folded in at startup, so a session that
 	 * began with no secrets would never have been told what one means.
+	 *
+	 * Also set by `rm` and `extend`, because the vault changing under a conversation is invisible
+	 * to the model otherwise. The absence of a name is a weak signal: after a revocation the model
+	 * still has "use `#NAME#`" in its history and keeps emitting it, and the placeholder no longer
+	 * expands, so what actually reaches the shell is the literal text.
 	 */
 	agentNotice?: string;
+	/**
+	 * True when {@link agentNotice} revokes a placeholder rather than offering one.
+	 *
+	 * The distinction decides whether the notice survives protection being off. A notice that
+	 * advertises a usable placeholder is false in that state and must be withheld; a notice that
+	 * says "stop using this" is true in every state and is needed most precisely there, because
+	 * with nothing expanding, every `#NAME#` the model writes reaches the shell verbatim.
+	 */
+	agentNoticeIsRevocation?: true;
 	/** True when the vault changed, so the caller can refresh the obfuscator. */
 	changed: boolean;
 }
@@ -96,31 +112,70 @@ export interface SecretCommandResult {
 /** The two command-help surfaces have different safe credential-entry capabilities. */
 export type SecretCommandSurface = "tui" | "noninteractive";
 
-/** TUI help may describe masked entry and explicit inline entry. */
-export const SECRET_COMMAND_USAGE = [
-	"/secret add <name>                    prompt for the value, hidden as you type",
-	"/secret add <name> --from-env <VAR>   store the value of an environment variable",
-	"/secret add <name> <value>            store a value directly (visible on screen)",
-	"/secret list                          show active secrets, never their values",
+/**
+ * The credential-entry lines, which are the ONLY thing the two help surfaces disagree about.
+ *
+ * Named once rather than written out twice, because that disagreement is a security property:
+ * a surface with no way to hide what is typed must never advertise typing a credential. Two
+ * hand-maintained lists drift, and the drift that matters here is silent — an ACP client
+ * offered a masked prompt it cannot open, or an inline form that would park the credential in
+ * its request history forever.
+ */
+const USAGE_ADD_MASKED = "/secret add <name>                    prompt for the value, hidden as you type";
+const USAGE_ADD_FROM_ENV = "/secret add <name> --from-env <VAR>   store the value of an environment variable";
+const USAGE_ADD_INLINE = "/secret add <name> <value>            store a value directly (visible on screen)";
+
+/** Reading what is stored. Grouped with `add` because between them they are the everyday path. */
+const USAGE_LIST = "/secret list                          show active secrets, never their values";
+
+/** Everything you only need once a secret exists, kept out of the way of the two above. */
+const USAGE_MANAGE = [
 	"/secret rm <name>                     remove a secret",
 	"/secret extend <name> --ttl 7d        give a secret a fresh lifetime",
 	"/secret log [--limit 50]              show which secrets were used, and where",
-	"",
+	"/secret discard --scope project       move a broken vault file aside",
+];
+
+/** Applies to every subcommand, so it sits under both groups rather than inside either. */
+const USAGE_FOOTER = [
 	"Options: --ttl 30m|12h|7d|2w|never   --scope profile|project|global",
 	"Lifetimes default to the secrets.defaultTtl setting. Scope defaults to profile; project overrides profile, which overrides global.",
-].join("\n");
+];
+
+/**
+ * Two spaces in front of every line `/secret` indents: usage entries, `list` table rows, the
+ * suggestions an empty vault prints. ONE owner, so the command's output reads as one report
+ * rather than three that nearly line up.
+ */
+const OUTPUT_INDENT = "  ";
+
+/**
+ * Help, grouped: what you do every day first, management second.
+ *
+ * The flat list this replaced gave `rm`, `extend` and `log` exactly the weight of `add`, so the
+ * one line a new operator needs was the fourth of seven with nothing separating them. Both
+ * surfaces are built from the same call, so the grouping cannot be applied to one and forgotten
+ * on the other.
+ */
+function buildUsage(addLines: readonly string[]): string {
+	const groups: ReadonlyArray<readonly [string, readonly string[]]> = [
+		["Store a credential the agent can use without ever seeing it:", [...addLines, USAGE_LIST]],
+		["Manage what is already stored:", USAGE_MANAGE],
+	];
+	const lines: string[] = [];
+	for (const [heading, entries] of groups) {
+		// The blank line after each group is what makes the grouping visible at all.
+		lines.push(heading, ...entries.map(entry => `${OUTPUT_INDENT}${entry}`), "");
+	}
+	lines.push(...USAGE_FOOTER);
+	return lines.join("\n");
+}
+
+/** TUI help may describe masked entry and explicit inline entry. */
+export const SECRET_COMMAND_USAGE = buildUsage([USAGE_ADD_MASKED, USAGE_ADD_FROM_ENV, USAGE_ADD_INLINE]);
 
 /** Noninteractive help exposes only environment-backed creation and management. */
-export const NONINTERACTIVE_SECRET_COMMAND_USAGE = [
-	"/secret add <name> --from-env <VAR>   store the value of an environment variable",
-	"/secret list                          show active secrets, never their values",
-	"/secret rm <name>                     remove a secret",
-	"/secret extend <name> --ttl 7d        give a secret a fresh lifetime",
-	"/secret log [--limit 50]              show which secrets were used, and where",
-	"",
-	"Options: --ttl 30m|12h|7d|2w|never   --scope profile|project|global",
-	"Lifetimes default to the secrets.defaultTtl setting. Scope defaults to profile; project overrides profile, which overrides global.",
-].join("\n");
+export const NONINTERACTIVE_SECRET_COMMAND_USAGE = buildUsage([USAGE_ADD_FROM_ENV]);
 
 /** Select help that matches what the invoking surface can enter safely. */
 export function secretCommandUsage(surface: SecretCommandSurface): string {
@@ -140,6 +195,10 @@ const SUBCOMMAND_SHAPES: Record<SecretSubcommand, { options: readonly string[]; 
 	rm: { options: [], words: 1 },
 	extend: { options: ["--ttl"], words: 1 },
 	log: { options: ["--limit"], words: 0 },
+	// REQUIRED scope, so `words: 0` and the guard below. The scope names a FILE to move aside
+	// rather than a place to store something, so there is no safe default to fall back on, and a
+	// bare word here would read as a secret name, which is the mistake worth refusing outright.
+	discard: { options: ["--scope"], words: 0 },
 	help: { options: [], words: 0 },
 };
 
@@ -176,6 +235,9 @@ export function parseSecretCommand(args: string, surface: SecretCommandSurface =
 		case "renew":
 		case "log":
 		case "audit":
+		// No alias. `rm` and `extend` have two natural spellings each; `discard` has no twin, and
+		// inventing one for a destructive-looking repair only widens what a typo can reach.
+		case "discard":
 		case "help":
 			request.subcommand =
 				verb === "remove" || verb === "delete"
@@ -272,6 +334,7 @@ export function parseSecretCommand(args: string, surface: SecretCommandSurface =
 	if (request.subcommand !== "add" && positional.length > 0) request.name = positional[0];
 
 	refuseExtraWords(request, positional, usageText);
+	refuseMissingScope(request, usageText);
 	return request;
 }
 
@@ -307,6 +370,23 @@ function refuseExtraWords(request: SecretCommandRequest, words: readonly string[
 	throw new Error(
 		`/secret ${request.subcommand} takes ${shape.words === 0 ? "no arguments" : `${shape.words} argument(s)`}, ` +
 			`and "${extra}" would be ignored rather than used.${hint}\n\n${usageText}`,
+	);
+}
+
+/**
+ * Refuse `/secret discard` with no scope, rather than defaulting it.
+ *
+ * EVERY OTHER USE of `--scope` names where to PUT something and defaults to profile, where a wrong
+ * guess costs you a secret stored in the wrong place and `/secret list` shows you that. Here the
+ * argument selects a FILE TO MOVE ASIDE, so a default would let a bare `/secret discard` move a
+ * working vault out from under the session, and the operator asked for a repair rather than that.
+ */
+function refuseMissingScope(request: SecretCommandRequest, usageText: string): void {
+	if (request.subcommand !== "discard" || request.scope !== undefined) return;
+	throw new Error(
+		`/secret discard needs the scope whose vault file you want moved aside, such as ` +
+			`/secret discard --scope project. There is no default, because discarding a scope you did ` +
+			`not mean would move a working vault out from under this session.\n\n${usageText}`,
 	);
 }
 
@@ -351,7 +431,48 @@ export async function runSecretCommand(
 			return await extendSecret(request, context);
 		case "log":
 			return await showLog(request, context);
+		case "discard":
+			return await discardVaultScope(request, context);
 	}
+}
+
+/**
+ * Move an unreadable scope's vault file aside, the in-product repair for a broken vault.
+ *
+ * WHY THIS COMMAND EXISTS. `load()` degrades past a vault whose decrypted payload will not parse so
+ * the session still starts, and `remove()` deliberately refuses to touch such a file, which left the
+ * operator able to start and unable to fix: `SecretVault.discardUnreadableScope` existed and nothing
+ * in the tree called it, so the only real route was deleting the file by hand. A notice that names a
+ * repair the product cannot perform is not a repair.
+ *
+ * REPORTS THE MOVED PATH, always. The vault is renamed rather than deleted because it still holds
+ * real entries sealed with a key that is still on disk, so the damage may be a truncated tail with
+ * recoverable credentials behind it. That path is the operator's only route back to them, and
+ * swallowing it would make a recoverable move indistinguishable from a delete.
+ *
+ * No `agentNotice`. An unreadable scope was never loaded, so no placeholder the model was told about
+ * stops working here; announcing a revocation that did not happen would teach it to ignore the ones
+ * that did.
+ */
+async function discardVaultScope(
+	request: SecretCommandRequest,
+	context: { vault: SecretVault },
+): Promise<SecretCommandResult> {
+	// Unreachable through `parseSecretCommand`, which refuses a missing scope. Kept because this
+	// function is also reachable from a hand-built request, and a `VaultScope | undefined` must not
+	// silently become a scope somebody did not name.
+	if (request.scope === undefined) throw new Error("Which scope? /secret discard --scope project");
+
+	const { movedTo } = await context.vault.discardUnreadableScope(request.scope);
+	return {
+		message:
+			`Moved the unreadable ${request.scope} vault to ${sanitizeSingleLine(movedTo)}, so that scope works ` +
+			`again. The file still holds your sealed entries, so re-add the secrets it held rather than ` +
+			`assuming they are gone.`,
+		// The obfuscator has to be rebuilt: a scope's file just stopped existing at the path the
+		// loader reads, and until it reloads the session still holds the pre-discard view.
+		changed: true,
+	};
 }
 
 async function addSecret(
@@ -372,10 +493,29 @@ async function addSecret(
 	let typedOnScreen: boolean;
 	if (request.fromEnv !== undefined) {
 		const fromEnv = context.readEnv(request.fromEnv);
-		if (fromEnv === undefined || fromEnv.length === 0) {
+		// Set-but-empty is kept DISTINCT from unset, because collapsing the two told an operator that a
+		// variable they had just exported "is not set", sending them to re-check an export that was
+		// already there while the real cause was an assignment that set it to nothing. Each case gets
+		// the fix that applies to it. Whitespace-only is refused rather than trimmed and stored:
+		// nothing made only of spaces is a credential, and storing it would mint a placeholder that
+		// spends blank text into a command. A value that merely CONTAINS surrounding space is stored
+		// byte for byte, since a real credential is allowed to and trimming one would corrupt it.
+		if (fromEnv === undefined) {
 			throw new Error(
 				`The environment variable ${request.fromEnv} is not set in this process, so there is nothing to store. ` +
 					`Note that it must be set for the veyyon process, not only in a shell you opened afterwards.`,
+			);
+		}
+		if (fromEnv.length === 0) {
+			throw new Error(
+				`The environment variable ${request.fromEnv} is set but empty, so there is no credential to store. ` +
+					`Check where it is exported: an assignment such as ${request.fromEnv}= sets it to nothing.`,
+			);
+		}
+		if (fromEnv.trim().length === 0) {
+			throw new Error(
+				`The environment variable ${request.fromEnv} contains only whitespace, so there is no credential to ` +
+					`store. Storing it would create a placeholder that spends blank text.`,
 			);
 		}
 		value = fromEnv;
@@ -406,10 +546,19 @@ async function addSecret(
 	const ttl = request.ttl === undefined ? context.defaultTtl : request.ttl;
 	const entry = await context.vault.add({ name: request.name, value, scope: request.scope, ttl });
 
-	const lines = [
-		`Stored ${entry.name} in the ${entry.scope} vault, ${describeTimeLeft(entry, context.now)}.`,
-		`The model sees #${entry.name}# and never the value. Write that placeholder where the credential goes.`,
-	];
+	// A replacement is called a replacement. `vault.add` overwrites a same-name entry in the same
+	// scope, which is what makes rotating a credential work, but it is the same write as fumbling
+	// the name of an existing secret. Saying "Stored" for both means a typo destroys a working
+	// credential and the operator is told nothing went wrong.
+	const lines = entry.replaced
+		? [
+				`Replaced ${entry.name} in the ${entry.scope} vault, ${describeTimeLeft(entry, context.now)}.`,
+				`The previous value is gone. #${entry.name}# now spends the credential you just stored.`,
+			]
+		: [
+				`Stored ${entry.name} in the ${entry.scope} vault, ${describeTimeLeft(entry, context.now)}.`,
+				`The model sees #${entry.name}# and never the value. Write that placeholder where the credential goes.`,
+			];
 	if (typedOnScreen) {
 		// Said plainly rather than left for the user to work out. The obfuscator protects what
 		// goes to the provider; it cannot retroactively scrub the terminal.
@@ -422,25 +571,126 @@ async function addSecret(
 			`The user has stored a secret for you to use. Reference it as #${entry.name}# wherever the ` +
 			`credential belongs, for example inside a command's arguments. The placeholder is replaced with the ` +
 			`real value locally, just before the command runs, so you never see the value itself and must not ` +
-			`ask for it. Do not echo #${entry.name}# into a file or a message where it is not needed.`,
+			`ask for it. Do not write #${entry.name}# into a file or a message where it is not needed.`,
 		changed: true,
 	};
 }
 
-async function listSecrets(context: { vault: SecretVault; now: number }): Promise<SecretCommandResult> {
+/** Blank columns between two cells. Two, so adjacent cells never read as one word. */
+const LIST_GUTTER = 2;
+
+/**
+ * Widest any cell may draw: `#` + a maximum-length name + `#`, so no legal name is ever cut.
+ *
+ * The cap exists for the name a legal vault cannot hold. This renderer is handed entries, not
+ * a validated vault, and a hand-edited file or a wide-character name would otherwise push
+ * SCOPE and EXPIRES off the right of the terminal — the unreadable output this table replaced.
+ */
+const MAX_LIST_CELL_WIDTH = MAX_SECRET_NAME_LENGTH + 2;
+
+/**
+ * Column headings. STATUS is drawn only when a row has something to put in it: a permanent
+ * column of blanks teaches the eye to skip the one place a warning will ever appear.
+ */
+const LIST_HEADINGS = ["PLACEHOLDER", "SCOPE", "EXPIRES", "STATUS"] as const;
+
+/** The remedy, printed under the table when a row is near expiry, so the warning is actionable. */
+const LIST_EXPIRY_FOOTER = "Extend one before it lapses: /secret extend <name> --ttl 7d.";
+
+/** Two words per urgency level: short enough for a table cell, unlike the sentences `expiryWarnings` writes. */
+const LIST_STATUS_LABEL: Record<ExpiryUrgency, string> = { soon: "expires soon", halfway: "past halfway" };
+
+/** Shared by both empty-vault variants, so only the entry forms differ between surfaces. */
+const EMPTY_VAULT_PREAMBLE = [
+	"No active secrets. Nothing is being substituted right now.",
+	"",
+	"Store one and the agent can spend it by writing #NAME#, never seeing the value itself:",
+];
+const EMPTY_VAULT_HELP = [
+	...EMPTY_VAULT_PREAMBLE,
+	`${OUTPUT_INDENT}${USAGE_ADD_MASKED}`,
+	`${OUTPUT_INDENT}${USAGE_ADD_FROM_ENV}`,
+].join("\n");
+const NONINTERACTIVE_EMPTY_VAULT_HELP = [...EMPTY_VAULT_PREAMBLE, `${OUTPUT_INDENT}${USAGE_ADD_FROM_ENV}`].join("\n");
+
+async function listSecrets(context: {
+	vault: SecretVault;
+	now: number;
+	surface?: SecretCommandSurface;
+}): Promise<SecretCommandResult> {
 	const entries = await context.vault.load();
-	if (entries.length === 0) {
-		return { message: "No active secrets. Add one with /secret add <name> --from-env <VAR>.", changed: false };
+	return {
+		message: renderSecretList(entries, { now: context.now, surface: context.surface }),
+		changed: false,
+	};
+}
+
+/**
+ * Render `/secret list` for a person.
+ *
+ * Exported and separated from the vault read for the reason {@link renderLog} is: the layout is
+ * the part worth asserting byte for byte, and here it can be asserted without a filesystem, a
+ * vault key or a live session.
+ *
+ * A TABLE, NOT THREE SPACE-JOINED FIELDS. The previous form printed `  #NAME#  scope  time-left`
+ * per row with no header, so the moment two names differed in length the scopes and lifetimes
+ * stopped lining up and every row had to be read from its start to find the column you wanted.
+ * Column widths come from `visibleWidth`, the TUI's `Bun.stringWidth` wrapper, never `.length`:
+ * as far as this function is concerned a name is arbitrary text, and one wide-character grapheme
+ * occupies two terminal columns while counting as one unit of `.length` — a table that looks
+ * aligned only in an ASCII fixture.
+ *
+ * NO VALUE APPEARS, not even a prefix. A prefix of a credential is still a disclosure, and
+ * showing one invites a screenshot that leaks it. `load` returns the effective entry for each
+ * name, so "active" is exact even when a wider-scope copy is shadowed by project/profile
+ * precedence.
+ */
+export function renderSecretList(
+	entries: readonly ScopedVaultEntry[],
+	options: { now: number; surface?: SecretCommandSurface },
+): string {
+	const surface = options.surface ?? "tui";
+	if (entries.length === 0) return surface === "tui" ? EMPTY_VAULT_HELP : NONINTERACTIVE_EMPTY_VAULT_HELP;
+
+	const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name));
+	const rows = sorted.map(entry => {
+		const urgency = expiryUrgency(entry, options.now);
+		return [
+			`#${entry.name}#`,
+			entry.scope,
+			describeTimeLeft(entry, options.now),
+			urgency === null ? "" : LIST_STATUS_LABEL[urgency],
+		];
+	});
+	const nearExpiry = rows.some(row => row[3] !== "");
+	const columns = nearExpiry ? LIST_HEADINGS.length : LIST_HEADINGS.length - 1;
+	// A name arrives from a file, which makes it operator-supplied text rather than something this
+	// module produced. A tab or a newline would break the table apart and an over-long name would
+	// push the later columns out of view, so both are handled rather than trusted not to happen.
+	const cells = [LIST_HEADINGS, ...rows].map(row =>
+		row
+			.slice(0, columns)
+			.map(cell => truncateToWidth(sanitizeSingleLine(cell), MAX_LIST_CELL_WIDTH, Ellipsis.Unicode)),
+	);
+	const widths = cells[0].map((_, column) => Math.max(...cells.map(row => visibleWidth(row[column]))));
+
+	const lines = [
+		`${formatCount("active secret", sorted.length)}. The agent spends one by writing its placeholder; the value is never shown.`,
+		...cells.map(row => renderListRow(row, widths)),
+	];
+	if (nearExpiry) lines.push(LIST_EXPIRY_FOOTER);
+	return lines.join("\n");
+}
+
+/** One table row: every cell but the last padded to its column, and no trailing blanks. */
+function renderListRow(row: readonly string[], widths: readonly number[]): string {
+	let line = OUTPUT_INDENT;
+	for (const [column, cell] of row.entries()) {
+		// The last column is never padded, so an empty STATUS cell cannot leave a run of spaces
+		// in a line the operator is likely to copy straight out of the terminal.
+		line += column === row.length - 1 ? cell : cell + padding(widths[column] - visibleWidth(cell) + LIST_GUTTER);
 	}
-
-	const rows = [...entries]
-		.sort((a, b) => a.name.localeCompare(b.name))
-		.map(entry => `  #${entry.name}#  ${entry.scope}  ${describeTimeLeft(entry, context.now)}`);
-
-	// Values are deliberately absent, not truncated. A prefix of a credential is still a
-	// disclosure. `load` returns the effective entry for each name, so "active" is exact even
-	// when a wider-scope copy is shadowed by project/profile precedence.
-	return { message: [`${entries.length} active secret(s):`, ...rows].join("\n"), changed: false };
+	return line.trimEnd();
 }
 
 async function removeSecret(
@@ -449,13 +699,25 @@ async function removeSecret(
 ): Promise<SecretCommandResult> {
 	if (request.name === undefined) throw new Error("Which secret? /secret rm <name>");
 
+	const name = normaliseSecretName(request.name);
 	const scope = await context.vault.remove(request.name);
 	if (scope === null) {
-		throw new Error(
-			`No secret named ${normaliseSecretName(request.name)} is stored. Run /secret list to see what is.`,
-		);
+		throw new Error(`No secret named ${name} is stored. Run /secret list to see what is.`);
 	}
-	return { message: `Removed ${normaliseSecretName(request.name)} from the ${scope} vault.`, changed: true };
+	return {
+		message: `Removed ${name} from the ${scope} vault.`,
+		// Stated outright rather than left as an inference. A name quietly vanishing from the vault
+		// is invisible to a model that was introduced to it several turns ago: it keeps writing the
+		// placeholder, nothing expands it any more, and the literal text arrives at the command as
+		// though it were the credential. The authentication failure that follows explains nothing.
+		agentNotice:
+			`The user has revoked the secret ${name}, so #${name}# is no longer available and you must ` +
+			`stop using it. It is no longer replaced with a real value: writing it now sends the literal ` +
+			`text #${name}# rather than a credential, which will fail instead of authenticating. Do not ` +
+			`write #${name}# into a command, a file, or a message, and do not ask for the value.`,
+		agentNoticeIsRevocation: true,
+		changed: true,
+	};
 }
 
 async function extendSecret(
@@ -475,6 +737,13 @@ async function extendSecret(
 		message:
 			`${entry.name} in the ${entry.scope} vault now lasts ${formatTtl(ttl)} from now ` +
 			`(${describeTimeLeft(entry, context.now)}).`,
+		// Reassurance, not instruction: the name did not change, so restating the whole placeholder
+		// explainer would be noise. The new duration is deliberately absent, because it would sit in
+		// the conversation long after it stopped being true and the operator already has the exact
+		// time left on screen.
+		agentNotice:
+			`The user has refreshed the lifetime of the secret ${entry.name}. #${entry.name}# is still ` +
+			`available, so keep referencing that placeholder wherever the credential belongs.`,
 		changed: true,
 	};
 }
@@ -568,31 +837,49 @@ export function resolveDefaultTtl(setting: string | undefined): number | null {
 	}
 }
 
+/** How close an entry is to lapsing. */
+type ExpiryUrgency = "soon" | "halfway";
+
+/**
+ * Classify an entry against the warning thresholds. ONE owner, read by everything that has to
+ * say "this one is nearly gone".
+ *
+ * THROUGH `warningThresholdCrossed`, NOT ITS OWN ARITHMETIC. {@link expiryWarnings} used to
+ * compare against an inline `0.9` while `WARN_AT_FRACTIONS` said `[0.5, 0.9]`, so there were two
+ * owners of "when do we warn" and they disagreed: the halfway warning the setting promised was
+ * never raised by anything. The STATUS column in {@link renderSecretList} would have been the
+ * third owner, which is why the classification lives here and not at either call site.
+ *
+ * The LAST fraction in the list is the urgent one, read from the list rather than written here
+ * as a literal. That inline `0.9` was the original bug, and repeating it one level down would
+ * have re-created it: adding a 0.99 threshold would then have described a secret with minutes
+ * left as merely over halfway through its lifetime.
+ */
+function expiryUrgency(entry: ScopedVaultEntry, now: number): ExpiryUrgency | null {
+	const crossed = warningThresholdCrossed(entry, now);
+	if (crossed === null) return null;
+	return crossed >= WARN_AT_FRACTIONS[WARN_AT_FRACTIONS.length - 1] ? "soon" : "halfway";
+}
+
 /**
  * Warnings for secrets far enough through their lifetime to be worth mentioning.
  *
- * THROUGH `warningThresholdCrossed`, NOT ITS OWN ARITHMETIC. This function used to compare
- * against an inline `0.9` while `WARN_AT_FRACTIONS` said `[0.5, 0.9]`, so there were two owners
- * of "when do we warn" and they disagreed: the halfway warning the setting promised was never
- * raised by anything. One owner now, and a new threshold added to the list takes effect here
- * without a second edit.
+ * A sentence per entry, where `/secret list` shows the same classification as a two-word column.
+ * Both read {@link expiryUrgency}, so a threshold added to `WARN_AT_FRACTIONS` takes effect in
+ * both without a second edit, and neither can call a secret nearly expired while the other
+ * calls it healthy.
  *
  * Each line names the remedy, because a warning you cannot act on is noise. Expiry deletes the
  * value, so the action is to extend it before that happens rather than after.
  */
 export function expiryWarnings(entries: readonly ScopedVaultEntry[], now: number): string[] {
 	const warnings: string[] = [];
-	// The LAST fraction in the list is the urgent one, read from the list rather than written here
-	// as a literal. An inline `0.9` was the original bug in this function, and repeating it in the
-	// wording would have re-created it one level down: adding a 0.99 threshold would then have
-	// produced "over halfway through its lifetime" for a secret with minutes left.
-	const urgentFraction = WARN_AT_FRACTIONS[WARN_AT_FRACTIONS.length - 1];
 	for (const entry of entries) {
-		const crossed = warningThresholdCrossed(entry, now);
-		if (crossed === null) continue;
-		const urgency = crossed >= urgentFraction ? "expires soon" : "is over halfway through its lifetime";
+		const urgency = expiryUrgency(entry, now);
+		if (urgency === null) continue;
+		const phrase = urgency === "soon" ? "expires soon" : "is over halfway through its lifetime";
 		warnings.push(
-			`#${entry.name}# ${urgency}, ${describeTimeLeft(entry, now)}. ` +
+			`#${entry.name}# ${phrase}, ${describeTimeLeft(entry, now)}. ` +
 				`Extend it with /secret extend ${entry.name} --ttl 7d, or it will be deleted.`,
 		);
 	}
