@@ -80,7 +80,7 @@ describe("a section marked required renders even from the barest configuration",
 			"delivery-contract",
 			"project",
 		]);
-		expect(optional).toEqual(["shorthand", "shorthand-handles"]);
+		expect(optional).toEqual(["shorthand", "shorthand-handles", "available-secrets"]);
 	});
 
 	/**

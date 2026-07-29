@@ -25,6 +25,7 @@ import sessionPersonalitiesDefault from "./personalities/default.md" with { type
 import sessionPersonalitiesFriendly from "./personalities/friendly.md" with { type: "text" };
 import sessionPersonalitiesPragmatic from "./personalities/pragmatic.md" with { type: "text" };
 import sessionProjectPrompt from "./project-prompt.md" with { type: "text" };
+import sessionSecretInventory from "./secret-inventory.md" with { type: "text" };
 import sessionSystemPrompt from "./system-prompt.md" with { type: "text" };
 import sessionVibeModeActive from "./vibe-mode-active.md" with { type: "text" };
 
@@ -47,6 +48,10 @@ export const sessionPrompts = {
 		purpose: "the pragmatic senior-engineer personality",
 	},
 	"session/project-prompt": { text: sessionProjectPrompt, purpose: "the workstation and project context block" },
+	"session/secret-inventory": {
+		text: sessionSecretInventory,
+		purpose: "the AVAILABLE SECRETS runtime section: the credential placeholders this session can actually spend",
+	},
 	"session/system-prompt": { text: sessionSystemPrompt, purpose: "the main system prompt" },
 	"session/vibe-mode-active": { text: sessionVibeModeActive, purpose: "the director contract while vibe mode is on" },
 } satisfies Record<string, PromptEntry>;

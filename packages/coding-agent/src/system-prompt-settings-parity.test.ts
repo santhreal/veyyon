@@ -789,6 +789,18 @@ describe("system prompt parity: runtime sections", () => {
 		expect(await renderAll({ argotHandles: undefined })).not.toContain(marker);
 	});
 
+	it(`${assertedBlock("available-secrets")} lists spendable credentials only when the caller supplies an inventory`, async () => {
+		// The vault outlives a session, so this block is the only thing that tells a
+		// fresh session a credential exists at all. It must also stay absent when the
+		// caller passes nothing: protection off and an empty vault both arrive here as
+		// `undefined`, and an "AVAILABLE SECRETS" banner over nothing would advertise a
+		// capability the session does not have.
+		const marker = "<<AVAILABLE-SECRETS-MARKER>>";
+		expect(await renderAll({ secretInventory: marker })).toContain(marker);
+		expect(await renderAll({ secretInventory: undefined })).not.toContain(marker);
+		expect(await renderAll({ secretInventory: undefined })).not.toContain("AVAILABLE SECRETS");
+	});
+
 	it("emits appended blocks in registry order", async () => {
 		// Order is declared data in the registry; assert the model actually receives
 		// it that way, so a reordered assembly cannot pass unnoticed.

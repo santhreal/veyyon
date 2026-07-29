@@ -135,7 +135,11 @@ describe("computed and option-backed sections are derived from the rows, not res
 	 */
 	it("has both kinds of section to compare", () => {
 		expect(RUNTIME_SECTIONS.length).toBeGreaterThan(2);
-		expect(OPTION_BACKED_RUNTIME_SECTIONS.map(s => s.id).sort()).toEqual(["shorthand", "shorthand-handles"]);
+		expect(OPTION_BACKED_RUNTIME_SECTIONS.map(s => s.id).sort()).toEqual([
+			"available-secrets",
+			"shorthand",
+			"shorthand-handles",
+		]);
 		expect(RUNTIME_SECTIONS.filter(s => s.input.kind === "computed").map(s => s.id)).toEqual(["project"]);
 	});
 

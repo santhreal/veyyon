@@ -388,6 +388,22 @@ export interface BuildSystemPromptOptions extends Partial<GateInputs> {
 	/** Whether secret obfuscation is active. When true, explains the redaction format in the prompt. */
 	secretsEnabled?: boolean;
 	/**
+	 * The rendered AVAILABLE SECRETS body: the credential placeholders this session
+	 * can actually spend, one per name, values never included.
+	 *
+	 * `secretsEnabled` above says only that redaction is running, which is why it was
+	 * not enough on its own: the vault outlives a session, so a fresh one had a live
+	 * `#GITHUB_TOKEN#` it was never told about and could not use. The caller reads the
+	 * names off the live obfuscator AT BUILD TIME (`namedSecretNames()`, which expires
+	 * stale entries while answering) and renders them through
+	 * `system-prompt-builder/secret-inventory.ts`, so a revoked or lapsed name is gone
+	 * from the next build with no extra plumbing.
+	 *
+	 * Undefined when protection is off or the vault is empty; the section is optional,
+	 * so undefined emits no banner at all rather than an empty heading.
+	 */
+	secretInventory?: string;
+	/**
 	 * The fixed argot notation block (the SDK's `renderPreamble({ tools: true })`),
 	 * injected when the encode gate lets this model write shorthand: the active
 	 * model is on the allowlist and the context is under the cutoff, resolved by
@@ -553,11 +569,11 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		subagentNames = OMITTED_GATE_DEFAULTS.subagentNames,
 		investigativeSubagentNames = OMITTED_GATE_DEFAULTS.investigativeSubagentNames,
 		secretsEnabled = false,
-		// `argotPreamble` and `argotHandles` are deliberately NOT destructured here.
-		// They are option-backed runtime sections, so the assembler reads them off
-		// `options` through the section registry (`section.input.key`). Naming them
-		// here as well left two bindings for one value, one of them dead, and a
-		// reader could not tell which one the prompt actually used.
+		// `argotPreamble`, `argotHandles` and `secretInventory` are deliberately NOT
+		// destructured here. They are option-backed runtime sections, so the assembler
+		// reads them off `options` through the section registry (`section.input.key`).
+		// Naming them here as well left two bindings for one value, one of them dead,
+		// and a reader could not tell which one the prompt actually used.
 		workspaceTree: providedWorkspaceTree,
 		memoryRootEnabled = false,
 		model,
