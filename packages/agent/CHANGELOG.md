@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- `AgentLoopConfig.transformToolCallArguments` returns two forms of the arguments, `{ execution, display }`, instead of one record. The two exist because argument expansions disagree about their audience: a codec handle must be expanded before a person reads it, and a secret placeholder must not be, because the expanded form is a live credential and a display or a session file is exactly where it must never appear. One shared form cannot satisfy both, so the transform states which form each audience gets and the loop routes them. `execution` reaches `tool.execute` and `beforeToolCall`; `display` is what is shown, streamed, traced and recorded. A host that returned a single record returns it as both fields to keep the previous behavior.
+
 ### Changed
 
 - `AgentOptions.pruneToolDescriptions` accepts a per-model resolver as well as the existing boolean. The agent resolves it for main and side requests, so a host can move descriptors between the prompt and native schemas when the active model changes without reconstructing the agent.
