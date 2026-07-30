@@ -65,11 +65,13 @@ What you need to know before using it:
 
 ## On-Disk Layout
 
-Default session file location:
+Resolved session file location:
 
 ```text
-~/.veyyon/profiles/default/agent/sessions/<dir-encoded>/<timestamp>_<sessionId>.jsonl
+<resolved data agent dir>/sessions/<dir-encoded>/<timestamp>_<sessionId>.jsonl
 ```
+
+`getSessionsDir()` is authoritative. Without category-specific XDG roots, the resolved agent directory is normally `~/.veyyon/profiles/<active-profile>/agent`; profile selection, agent-directory overrides, and XDG data roots can change the concrete path.
 
 `<dir-encoded>` depends on where the canonicalized cwd lives:
 
@@ -82,14 +84,16 @@ Old `--<home-encoded>-*--` directories are migrated to the new home-relative nam
 Blob store location:
 
 ```text
-~/.veyyon/profiles/default/agent/blobs/<sha256>
+<resolved data agent dir>/blobs/<sha256>
 ```
 
 Terminal breadcrumb files are written under:
 
 ```text
-~/.veyyon/profiles/default/agent/terminal-sessions/<terminal-id>
+<resolved state agent dir>/terminal-sessions/<terminal-id>
 ```
+
+The blob and breadcrumb roots come from `getBlobsDir()` and `getTerminalSessionsDir()`. Data and state roots can differ when XDG directories are active.
 
 Breadcrumb content is two lines: original cwd, then session file path. `continueRecent()` prefers this terminal-scoped pointer before scanning most-recent mtime.
 
@@ -108,12 +112,13 @@ Session files are JSONL: one JSON object per line.
 {
   "type": "session",
   "version": 3,
-  "id": "1f9d2a6b9c0d1234",
+  "id": "019c4fa2-17ab-7000-8000-123456789abc",
   "timestamp": "2026-02-16T10:20:30.000Z",
   "cwd": "/work/pi",
   "title": "optional session title",
   "titleSource": "auto",
-  "parentSession": "optional lineage marker"
+  "parentSession": "optional lineage marker",
+  "providerPromptCacheKey": "optional inherited provider cache identity"
 }
 ```
 
@@ -121,6 +126,8 @@ Notes:
 
 - `version` is optional in v1 files; absence means v1.
 - `parentSession` is an opaque lineage string. Current code writes either a session id or a session path depending on flow (`fork`, `forkFrom`, `createBranchedSession`, or explicit `newSession({ parentSession })`). Treat as metadata, not a typed foreign key.
+- Newly minted session ids come from `Bun.randomUUIDv7()`. Legacy opaque and short ids remain loadable.
+- `providerPromptCacheKey` is optional. Exact-route full forks inherit it, falling back to the source session id, so provider prompt-cache identity can remain stable across a Veyyon session fork.
 
 ### Entry Base (`SessionEntryBase`)
 
@@ -131,11 +138,13 @@ All non-header entries include:
   "type": "...",
   "id": "8-char-id",
   "parentId": "previous-or-branch-parent",
-  "timestamp": "2026-02-16T10:20:30.000Z"
+  "timestamp": "2026-02-16T10:20:30.000Z",
+  "sequence": 1
 }
 ```
 
 `parentId` can be `null` for a root entry (first append, or after `resetLeaf()`).
+`sequence` is an optional monotonic logical position assigned when lifecycle telemetry is enabled. It is absent from older files and sessions whose instrumentation is off.
 
 ## Entry Taxonomy
 
@@ -157,6 +166,8 @@ All non-header entries include:
 - `mcp_tool_selection`
 - `subagent_spawn`
 - `settings_snapshot`
+- `session_lifecycle`
+- `session_checkpoint`
 
 ### `message`
 
@@ -445,6 +456,44 @@ The complete resolved Tier-A config that governed the run, keyed by dotted setti
 - Settings that change mid-run and already have dedicated change entries (model, thinking level, service tier, mode, MCP selection) are not re-captured here; this snapshot fills the gap for the static governing config.
 - The per-turn `request` record (below) captures the effective, possibly-overridden sampling/reasoning values a specific turn actually sent; this snapshot captures the session-level defaults. Read them together to reproduce a turn.
 
+### `session_lifecycle`
+
+An append-only state transition for one live `SessionManager` incarnation. Forked and branched sessions do not copy source-incarnation lifecycle records; they start their own interval when instrumentation is enabled.
+
+```json
+{
+  "type": "session_lifecycle",
+  "id": "b4c5d6e7",
+  "parentId": "a3b4c5d6",
+  "timestamp": "2026-02-16T10:20:32.000Z",
+  "sequence": 2,
+  "state": "running",
+  "reason": "created",
+  "instrumentationLevel": "basic"
+}
+```
+
+- `state` is `"running" | "ended"`.
+- `reason` is `"created" | "resumed" | "closed" | "new_session" | "session_switched" | "instrumentation_disabled" | "instrumentation_changed"`.
+- `instrumentationLevel` is the enabled level for that live interval and can be absent on older lifecycle records.
+
+### `session_checkpoint`
+
+An immutable marker for an exact logical JSONL prefix:
+
+```json
+{
+  "type": "session_checkpoint",
+  "id": "c5d6e7f8",
+  "parentId": "b4c5d6e7",
+  "timestamp": "2026-02-16T10:20:33.000Z",
+  "sequence": 3,
+  "prefixSequence": 2
+}
+```
+
+The checkpoint's own `id` names the frozen prefix. `prefixSequence` is the last logical entry position included before the checkpoint, or `0` for an empty prefix.
+
 ## Session Instrumentation (structured analysis)
 
 Instrumentation is the graded, machine-readable study layer of the session file. It records enough structured data to explain lifecycle, task state, context weight, tool execution, model turns, and agent communication. Every added field is policy-gated and content-minimized by `session.instrumentation`.
@@ -673,11 +722,11 @@ Applied when header `version < 3`:
 - A malformed line is skipped (via `parseJsonlLenient`, or the byte-buffer drain in `loadEntriesFromFileStream` for files >= 8 MiB) so one corrupt record cannot make a whole session unopenable — but the skip is never silent: each dropped record is logged with its offset and a final total is logged, so lost data is visible when studying the session rather than vanishing without a trace. Each malformed record is counted exactly once (the parser reports an error alongside the preceding good record, so counting is gated to the record's own head position).
 - A line that DECODES but does not fit the shape is dropped the same way. Decoding is not validating, and a record whose fields are missing reaches readers that dereference them: an assistant entry written without `usage` used to throw while the transcript was being built, so the viewer died in its constructor and showed no rows at all. `checkSessionEntryShape` in [`session-entry-shape.ts`](../../packages/coding-agent/src/session/session-entry-shape.ts) is the one owner of that check, and both read paths call it. The record is dropped and reported with the reason, never repaired: a turn that claims `0` tokens it did not use is a wrong number in the transcript and in every total taken from it (Law 10).
 - The shape check asks only for what a reader dereferences without guarding: a `message` object with a `role`, and, on an assistant turn, a `content` array and a `usage` record with four finite counters. `id`, `parentId` and `timestamp` are deliberately NOT required, because v1 sessions carry none of them and `migrateSessionEntries` fills them in after the loader returns.
-- If first parsed entry is not a valid session header (`type !== "session"` or missing string `id`) -> returns `[]`.
+- Missing files (`ENOENT`) and zero-length files return `[]`. A non-empty file with no readable header, or whose first readable record is not a valid session header (`type !== "session"` or missing string `id`), throws `CorruptSessionFileError` and is not replaced.
 
 `SessionManager.setSessionFile()` behavior:
 
-- `[]` from loader is treated as empty/nonexistent session and replaced with a new initialized session file at that path.
+- `[]` from the loader is limited to an empty or nonexistent session and is replaced with a new initialized session file at that path. Corrupt non-empty transcripts fail closed before the active session identity changes.
 - Valid files are loaded, migrated if needed, blob refs resolved, then indexed.
 
 ## Tree and Leaf Semantics
@@ -731,7 +780,7 @@ Algorithm:
 
 ### Write pipeline
 
-Appends are written synchronously in-body through a `SessionStorageWriter` (from `storage.openWriter`), so an entry is durable the instant the append returns. Async disk work (flush, close, atomic rewrite) is serialized through an internal promise chain (`#diskTail`); appends bypass it.
+File and memory `SessionStorageWriter` implementations perform appends synchronously in-body. Indexed Redis/SQL writers preserve call order through queued asynchronous backend operations, so an append call returning from the session's synchronous hot path does not by itself prove remote durability.
 
 - `append*` updates in-memory state immediately.
 - Persistence is deferred until at least one assistant message exists.
@@ -743,7 +792,7 @@ Rationale in code: avoid persisting sessions that never produced an assistant re
 
 ### Durability operations
 
-- `flush()` drains the async disk chain and the open writer's queued appends (no `fsync`); `flushSync()` performs a synchronous full rewrite for exit paths that cannot await.
+- `flush()` drains the async disk chain, the open writer's queued appends, and storage-level backing writes (no `fsync`). `flushSync()` checks latched errors and performs a synchronous full rewrite only when in-memory state is divergent or the file is not current; otherwise it returns without rewriting.
 - Atomic full rewrites (`#rewriteAtomically`) delegate to `storage.writeTextAtomic`: temp-write then rename over the target (with an EPERM-safe move-aside fallback).
 - Used for `rewriteEntries` (tool-output pruning/supersede passes) and move/fork operations. `setSessionName` instead appends a `title_change` entry and overwrites the fixed-width title slot in place, falling back to a fenced atomic rewrite on failure or when the file has no slot yet. Load-time migrations and other in-memory divergence (`#rewriteRequired`) instead trigger a synchronous full rewrite (`#rewriteSynchronously`) on the next persist.
 
@@ -771,17 +820,16 @@ On load, blob refs are resolved back: `blob:sha256:` image refs to base64 for me
 
 ## Storage Abstractions
 
-`SessionStorage` interface provides all filesystem operations used by `SessionManager`:
+`SessionStorage` provides the filesystem-shaped operations used by `SessionManager`:
 
-- sync: `ensureDirSync`, `existsSync`, `writeTextSync`, `statSync`, `listFilesSync`
-- async: `exists`, `readText`, `readTextSlices`, `writeText`, `writeTextAtomic`, `rename`, `unlink`, `deleteSessionWithArtifacts`, `updateSessionTitle`, `openWriter`
+- sync: `ensureDirSync`, `existsSync`, `existsStateSync`, `writeTextSync`, `statSync`, `listFilesSync`, `listFilesRecursiveSync`
+- async: `exists`, `readText`, `readTextSlices`, `writeText`, `writeTextAtomic`, `rename`, `moveSessionWithArtifacts`, `unlink`, `deleteSessionWithArtifacts`, `updateSessionTitle`, `openWriter`, `drain`
 
-Implementations:
+`moveSessionWithArtifacts` relocates the transcript and its artifact tree as one logical operation and restores the source if relocation fails. `drain` waits for queued backing writes; it returns immediately for synchronous file/memory storage and awaits indexed Redis/SQL queues.
 
-- `FileSessionStorage`: real filesystem (Bun + node fs)
-- `MemorySessionStorage`: map-backed in-memory implementation for tests/non-persistent sessions
+Implementations are `FileSessionStorage`, `MemorySessionStorage`, `IndexedSessionStorage`, `RedisSessionStorage`, and `SqlSessionStorage`.
 
-`SessionStorageWriter` exposes `append`, `flush`, `isOpen`, `close`, `getError`.
+`SessionStorageWriter` exposes `append`, `flush`, `isOpen`, `close`, and `getError`. File/memory writers complete appends in-body; indexed writers return promises for queued work.
 
 ## Session Discovery Utilities
 
@@ -790,7 +838,7 @@ Discovery helpers live in `session-listing.ts`; `SessionManager` re-exposes the 
 - `getRecentSessions(sessionDir, limit?)` -> lightweight metadata for UI/session picker, capped by `limit` (default 4)
 - `findMostRecentSession(sessionDir)` -> newest by mtime
 - `listSessions(sessionDir, storage)` (a.k.a. `SessionManager.list(cwd, sessionDir?)`) -> sessions in one project scope
-- `listAllSessions(storage)` (a.k.a. `SessionManager.listAll()`) -> sessions across all project scopes under `~/.veyyon/profiles/default/agent/sessions`
+- `listAllSessions(storage)` (a.k.a. `SessionManager.listAll()`) -> sessions across all project scopes under the resolved `getAgentDir()/sessions` root
 - `resolveResumableSession(sessionArg, cwd, sessionDir?)` -> local then global resume/fork target lookup
 
 Metadata extraction for `getRecentSessions` reads a prefix via `readTextSlices(..., 4096, 0)`. `listSessions`/`listAllSessions` read a 4KB prefix plus a bounded 32 KiB tail through one `readTextSlices(...)` call per file, using the prefix for metadata and the tail for lifecycle status. Resume matching is case-insensitive and accepts session id prefixes, full filename prefixes, or the id suffix after the timestamp in `<timestamp>_<sessionId>.jsonl`.
@@ -799,7 +847,7 @@ Metadata extraction for `getRecentSessions` reads a prefix via `readTextSlices(.
 
 `HistoryStorage` (`history-storage.ts`) is a separate SQLite subsystem for prompt recall/search, not session replay.
 
-- DB: `~/.veyyon/profiles/default/agent/history.db`
+- DB: resolved `getHistoryDbPath()` (normally `<active agent dir>/history.db` without an XDG data root)
 - Table: `history(id, prompt, created_at, cwd, session_id)`
 - FTS5 index: `history_fts` with trigger-maintained sync
 - Deduplicates consecutive identical prompts using in-memory last-prompt cache
@@ -807,4 +855,4 @@ Metadata extraction for `getRecentSessions` reads a prefix via `readTextSlices(.
 
 Use session files for conversation graph/state replay; use `HistoryStorage` for prompt history UX.
 
-*Verified against `ad7ede4a` on 2026-07-28.*
+*Verified against `0eb8d74a3ecf60e1b2ec37c15e9255f2dbe310dc` on 2026-07-30.*

@@ -12,7 +12,13 @@ This document covers the media/system/conversion exports currently present in `@
 - `crates/veyyon-natives/src/power.rs`
 - `crates/veyyon-natives/src/prof.rs`
 - `crates/veyyon-natives/src/task.rs`
+- `packages/natives/native/index.js`
+- `packages/natives/native/loader-state.js`
 - `packages/natives/native/index.d.ts`
+- `packages/natives/scripts/build-native.ts`
+- `packages/natives/scripts/gen-enums.ts`
+
+The package resolves `@veyyon/natives` through `native/index.js`, while `index.d.ts` supplies its generated declarations. Function and class exports in `index.js` are lazy facades: importing or merely referencing an export does not load the addon. The first invocation, construction, or static class access asks `loader-state.js` to load the addon and either returns the native export or throws; this is deferral, not a functional fallback. During the build, `napi build` generates `index.d.ts`, then `gen-enums.ts` rewrites the generated JS export registry in `index.js`.
 
 There is no native `PhotonImage` class, `image.rs`, or ProjFS overlay helper module in the current `veyyon-natives` addon. General-purpose image decode/resize/encode is expected to live outside this native surface; the native image export here is only terminal SIXEL encoding.
 
@@ -59,14 +65,15 @@ Conversion behavior:
 - `readImageFromClipboard()` runs in `task::blocking("clipboard.read_image", (), ...)`.
 - Image read returns `null`/`undefined` when `arboard` reports `ContentNotAvailable`.
 - Successful image read converts clipboard RGBA data into PNG bytes and returns `{ data: Uint8Array, mimeType: "image/png" }`.
-- Clipboard access or image encoding failures reject/throw as native errors.
+- On Windows, an `arboard` image-read error other than `ContentNotAvailable` triggers a best-effort native fallback: `clipboard-win` reads raw `CF_DIB`, the module wraps and decodes it as BMP, and a successful decode returns PNG. If raw DIB retrieval or decoding fails, the original `arboard` error is preserved and rejected.
+- Clipboard access or image encoding failures outside that Windows recovery path reject/throw as native errors.
 
-There is no current `packages/natives` TS wrapper that emits OSC52, handles Termux, or suppresses native clipboard failures. Any best-effort clipboard policy must live in consumers.
+There is no current `packages/natives` TS wrapper that emits OSC52, handles Termux, or suppresses native text-copy failures. Consumers own those fallback and suppression policies; the native module itself owns the Windows best-effort image recovery described above.
 
 ### Tokens (`tokens`)
 
 - `countTokens(input, encoding?)` accepts a single string or an array of strings.
-- Arrays return one aggregate token count; array elements are encoded in parallel via rayon.
+- Arrays return one aggregate token count; elements are encoded with Rayon when the global pool is available and sequentially otherwise.
 - Default encoding is `O200kBase`; `Cl100kBase` is also exported.
 - The implementation uses `encode_ordinary`, not special-token handling.
 - BPE tables are initialized once through `LazyLock` and reused.
@@ -76,7 +83,7 @@ There is no current `packages/natives` TS wrapper that emits OSC52, handles Term
 - `detectMacOSAppearance()` returns `"dark"`, `"light"`, or `null` on non-macOS.
 - `MacAppearanceObserver.start(callback)` returns a handle with `stop()`; on macOS it uses distributed notifications plus a 2-second polling fallback, and on non-macOS it is a no-op observer.
 - `MacOSPowerAssertion.start(options?)` returns a handle with `stop()`; on macOS it acquires one or more IOKit assertions, and on other platforms it is a no-op handle.
-- Power assertion options are `{ reason?, idle?, system?, user?, display? }`. If every boolean is unset or omitted, `idle` behavior is used by default.
+- Power assertion options are `{ reason?, idle?, system?, user?, display? }`. Idle precedence is exactly `effectiveIdle = idle === true || !(system === true || user === true || display === true)`. Thus explicit `idle: false` still selects idle behavior when none of `system`, `user`, or `display` is true.
 
 ### Work profiling (`prof`)
 
@@ -109,20 +116,21 @@ to exactly the requested dimensions and step 4 allocates an RGBA buffer for the 
 enough target asks Rust for an allocation it cannot make, and an allocation failure aborts the
 process instead of throwing. No `try/catch` on the JavaScript side sees it. Bound the input before
 you call: `packages/tui/src/terminal-capabilities.ts` refuses a target or a source over
-`MAX_SIXEL_PIXELS` (16777216, four times a 4K display), checking the pixel PRODUCT rather than each
-axis, because a 1x4000000000 image passes any per-axis limit. The source is checked as well as the
-target, since step 2 decodes before step 3 can shrink anything.
+`MAX_SIXEL_PIXELS` (16777216, roughly twice a 3840x2160 UHD/4K frame), checking the pixel
+PRODUCT rather than only each axis. For example, `4096x8192` fits below a per-axis cap of
+16777216 on both axes but contains 33554432 pixels. The source is checked as well as the target,
+since step 2 decodes before step 3 can shrink anything.
 
 ### HTML lifecycle
 
 1. `htmlToMarkdown(html, options)` schedules a blocking conversion task.
 2. Conversion runs with defaulted options (`cleanContent=false`, `skipImages=false`) unless specified.
-3. Returns markdown string or rejects with `Conversion error: ...`.
+3. Returns markdown on success. Errors from `html_to_markdown_rs::convert` reject as `Conversion error: ...`; blocking-task infrastructure failures reject independently, and a panic is reported as ``native task `html_to_markdown` panicked: ...``.
 
 ### Clipboard lifecycle
 
 - Text copy calls `set_text` synchronously; macOS/Windows construct a transient `arboard::Clipboard` per call, while Linux initializes one process-lifetime instance on first copy and reuses it.
-- Image read constructs an `arboard::Clipboard`, calls `get_image`, encodes PNG on success, maps `ContentNotAvailable` to `None`, and rejects other errors.
+- Image read constructs an `arboard::Clipboard`, calls `get_image`, encodes PNG on success, and maps `ContentNotAvailable` to `None`. Other errors normally reject. On Windows they first attempt raw `CF_DIB` retrieval and BMP-to-PNG decoding; successful recovery returns the PNG, while absent or invalid fallback data preserves and rejects with the original `arboard` error.
 
 ### Work profiling lifecycle
 
@@ -146,13 +154,13 @@ Failure transitions:
 
 ### HTML
 
-- Conversion errors are strict failures.
+- Conversion-library errors and native blocking-task failures are strict failures, but only conversion-library errors use the `Conversion error: ...` prefix.
 - Option omission is defaulting, not failure.
 
 ### Clipboard
 
 - Text copy is strict at the native API surface.
-- Image read distinguishes "no image" (`null`/`undefined`) from operational failure (rejection).
+- Image read distinguishes "no image" (`null`/`undefined`) from operational failure. On Windows, a non-absence `arboard` error rejects only after the native raw `CF_DIB` recovery attempt fails.
 
 ### Work profiling
 
@@ -166,4 +174,4 @@ Failure transitions:
 - macOS appearance and power helpers intentionally return no-op/null behavior on unsupported platforms.
 - ProjFS is not exposed by this media/system native utility surface. Isolation backend selection, including any ProjFS support, lives in the separate `iso` subsystem.
 
-*Verified against `2be25bb55e8fdcdafdd98ab8fccb47a8f34c4bcc` on 2026-07-29.*
+*Verified against `0eb8d74a3ecf60e1b2ec37c15e9255f2dbe310dc` on 2026-07-30.*

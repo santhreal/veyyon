@@ -16,7 +16,9 @@ This document is the foundation for deeper module-level docs.
 - `packages/natives/scripts/build-native.ts`
 - `packages/natives/scripts/embed-native.ts`
 - `packages/natives/scripts/gen-enums.ts`
+- `packages/natives/scripts/ensure-native.ts`
 - `packages/natives/package.json`
+- `packages/natives/src/sha256-sidecar.ts`
 - `crates/veyyon-natives/src/lib.rs`
 
 ## Package entrypoint and public surface
@@ -28,12 +30,18 @@ This document is the foundation for deeper module-level docs.
 - `exports["."].types`: `./native/index.d.ts`
 - `exports["."].import`: `./native/index.js`
 
-There is no current `packages/natives/src` TypeScript wrapper layer. Consumers import functions/classes/enums directly from `@veyyon/natives`; the type contract is the generated `native/index.d.ts` plus the explicit named exports generated into `native/index.js` by `packages/natives/scripts/gen-enums.ts`.
+There is no current `packages/natives/src` TypeScript wrapper around the root
+native API. Consumers import functions/classes/enums directly from
+`@veyyon/natives`; the type contract is the generated `native/index.d.ts` plus
+the explicit named exports generated into `native/index.js` by
+`packages/natives/scripts/gen-enums.ts`. The package also exports
+`@veyyon/natives/sha256-sidecar` from `src/sha256-sidecar.ts`; that non-native
+subpath parses checksum sidecars without loading the addon.
 
 Current capability groups in the generated API include:
 
-- **Search/text/code primitives**: `grep`, `search`, `hasMatch`, `fuzzyFind`, `glob`, `astGrep`, `astEdit`, `blockRangeAt`, `summarizeCode`, text width/slicing/wrapping/sanitization, syntax highlighting, token counting.
-- **Execution/process/terminal primitives**: `executeShell`, `Shell`, `PtySession`, `Process`, key parsing, bash fixups.
+- **Search/text/code primitives**: `grep`, `search`, `hasMatch`, `fuzzyFind`, `glob`, `astGrep`, `astEdit`, `blockRangeAt`, `summarizeCode`, text width/slicing/wrapping, segment extraction, syntax highlighting, token counting.
+- **Execution/process/terminal primitives**: `executeShell`, `Shell`, `PtySession`, `Process`, key parsing.
 - **System/media/isolation/conversion primitives**: clipboard, SIXEL encoding, HTML-to-Markdown, macOS appearance/power helpers, work profiling, workspace scanning, isolation backend helpers (`iso*`).
 
 ## Loader layer
@@ -84,11 +92,19 @@ Nothing generates those leaves. veyyon ships GitHub-only, so the npm publish
 channel was removed, and the `gen-npm-packages.ts` script that once wrote the
 leaves under `packages/natives/scripts/` went with it. It is not coming back:
 `scripts/install-methods-coverage.test.ts` fails if that script, its test, or a
-`gen:npm` manifest entry reappears. Adding a build
-target therefore does **not** require adding a leaf package, and there is no
-`LEAF_TARGETS` list to add it to. What a new target does need is a
-`crates/veyyon-natives` build for the tag and a matching entry in the loader's
-supported-platform set, which is what the failure modes below key off.
+`gen:npm` manifest entry reappears. Adding a build target therefore does
+**not** require adding a leaf package, and there is no `LEAF_TARGETS` list to
+extend. It does require all of the following:
+
+- a `crates/veyyon-natives` build for the tag;
+- a matching entry in the loader's supported-platform set;
+- entries in the CI native-build matrices and required native-artifact cache;
+- an entry in the compiled-binary target list and release job matrix; and
+- the binary/native asset names and checksum sidecars in the release gate's
+  exact artifact manifest, plus the matching installer naming where applicable.
+
+These are separate allowlists. A loader entry alone does not make a target
+buildable or releasable.
 
 You may find a stale `packages/natives/npm/<platform>-<arch>/` directory in a
 working tree that predates the removal. It is untracked, it is not built by
@@ -111,7 +127,17 @@ For compiled binaries, loader behavior is:
 
 If a populated embedded addon manifest is present, it is also treated as a compiled-binary signal. Current embedded manifests point at a gzip-compressed tar archive (`embedded-addons.<tag>.tar.gz`) that contains one or more matching `.node` files. The loader extracts the archive into the versioned cache directory, validates the selected file by size, and prepends that cache path before normal candidate probing.
 
-For npm/bun installs (non-compiled), `loader-state.js` resolves the platform leaf directory via `require.resolve("@veyyon/natives-<tag>/package.json")` and probes its `.node` **before** the core package's `native/` directory and the executable directory. The optional-dependency binary is therefore preferred over any `.node` left in the core (e.g. a stale local-dev build). On Windows `node_modules` installs, the loader first stages the selected leaf/core addon into `<getNativesDir()>/<packageVersion>/...` and prepends that staged path so running processes do not lock the `node_modules` copy during global updates.
+For npm/bun installs (non-compiled), `loader-state.js` resolves the legacy
+per-platform leaf directory through
+`require.resolve("@veyyon/natives-<tag>/package.json")`, when independently
+present, and probes its `.node` before the core package's `native/` directory
+and the executable directory. It then probes the matching per-version cache,
+which lets a source tree recover when a sync removed its gitignored
+`native/*.node` but `ensure-native.ts` or a prior standalone install cached a
+sentinel-matched addon. On Windows `node_modules` installs, the loader first
+stages the selected leaf/core addon into
+`<getNativesDir()>/<packageVersion>/...` and prepends that staged path so
+running processes do not lock the `node_modules` copy during global updates.
 
 ### Failure modes
 
@@ -141,6 +167,7 @@ Loader failures are explicit:
 - `iso`
 - `keys`
 - `language` (re-exported from `veyyon_ast`)
+- `napi_error` (crate-private conversion of Rust failures into stable N-API errors)
 - `power`
 - `prof`
 - `ps`
@@ -164,20 +191,42 @@ N-API exports are generated from Rust `#[napi]` functions/classes/objects/enums.
   - compiled-binary embedded archive extraction
   - Windows `node_modules` addon staging
   - generated TypeScript declarations and explicit ESM export/enum patching
-- **Rust ownership (`crates/veyyon-natives/src`)**
-  - algorithmic and system-level implementation
-  - platform-native behavior and performance-sensitive logic
-  - N-API symbol implementation consumed directly by package callers
+- **N-API crate ownership (`crates/veyyon-natives/src`)**
+  - N-API symbols, DTOs, string/result conversion, and JavaScript-visible errors
+  - platform-native implementations that remain local to the addon
+  - adapter shims over shared engines and backends in crates such as
+    `veyyon-text`, `veyyon-walker`, `veyyon-ast`, and `veyyon-iso`
 - **Consumer ownership (`packages/coding-agent`, `packages/tui`)**
   - user-facing policy and fallbacks that are not built into the native API
   - higher-level rendering, artifact, shell-session, and command behavior
 
 For the contributor-facing crate map covering `veyyon-natives`, `veyyon-shell`, `veyyon-ast`, `veyyon-iso`, `veyyon-walker`, `veyyon-uu-grep`, `veyyon-uu-diff`, `veyyon-uutils-ctx`, and the vendored `brush-*` crates, see [`native-crates.md`](./native-crates.md). The root-docs inclusion policy that keeps internal Rust crates under native architecture docs unless promoted as user-facing also lives in [`user-facing-packages.md`](./user-facing-packages.md).
 
+## Development and release build flow
+
+The scripts have distinct state transitions:
+
+1. `bun run build` runs napi-rs with `--no-js --dts`, normalizes and installs
+   the addon and declaration, regenerates the explicit ESM export registry, and
+   refreshes the embedded archive. It deliberately leaves the checked-in
+   `embedded-addon.js` metadata as `null`, so a source tree is not mistaken for
+   a compiled binary.
+2. `bun run gen:native` packages an already-built target addon and writes a
+   populated embedded manifest. `gen:native:reset` restores the null manifest
+   and removes generated archives.
+3. `ensure-native.ts` provisions the source-tree addon, mirrors valid builds
+   into the per-version cache, and can restore from that cache without a
+   network fetch.
+4. Release compilation embeds the target's archive and populated metadata
+   before compiling each binary, then resets both in a `finally` block so one
+   target's generated state cannot leak into another build or the source tree.
+
 ## Runtime flow (high level)
 
 1. Consumer imports from `@veyyon/natives`; `native/index.js` binds lazy accessors, so the import itself never loads a `.node`.
-2. On the first native call or `new`, `loadNative()` computes platform/arch/variant and candidate paths.
+2. The first function invocation, or a class operation that reaches its proxy
+   (`new`, static/property access, `in`, or `instanceof`), calls `loadNative()`
+   to compute platform/arch/variant and candidate paths.
 3. Optional embedded archive extraction or Windows `node_modules` staging can prepend a versioned-cache candidate.
 4. Each candidate is `require(...)`d; install/compiled loads must expose the package-version sentinel.
 5. The memoized addon object backs every lazy named export; enum objects are plain literals that need no load.
@@ -187,11 +236,15 @@ For the contributor-facing crate map covering `veyyon-natives`, `veyyon-shell`, 
 
 - **Native addon**: A `.node` binary loaded via Node-API (N-API).
 - **Platform tag**: Runtime tuple `platform-arch` (for example `darwin-arm64`).
-- **Platform leaf package**: Per-platform npm package `@veyyon/natives-<tag>` that carries one platform's prebuilt `.node`. The core depends on every leaf via `optionalDependencies`; the package manager installs only the host-matching one (`os`/`cpu`).
+- **Platform leaf package**: Legacy compatibility package
+  `@veyyon/natives-<tag>` carrying one platform's prebuilt `.node`. HEAD neither
+  generates nor publishes these leaves, and the core has no
+  `optionalDependencies` on them; the non-compiled loader only prefers one if
+  it is independently present.
 - **Variant**: x64 CPU-specific build flavor (`modern` AVX2, `baseline` fallback).
 - **Generated binding declaration**: `native/index.d.ts` emitted by napi-rs during `build-native.ts`.
 - **Version sentinel**: Rust export named from the package version (for example `__veyyonNativesV16_0_3`) that lets the loader reject a `.node` from a different release.
 - **Compiled binary mode**: Runtime mode where the CLI is bundled and native addons are resolved from embedded/cache paths before package-local paths.
 - **Embedded addon**: Build artifact metadata and archive reference generated into `native/embedded-addon.js` so compiled binaries can extract matching `.node` payloads.
 
-*Verified against `2be25bb55e8fdcdafdd98ab8fccb47a8f34c4bcc` on 2026-07-29.*
+*Verified against `0eb8d74a3ecf60e1b2ec37c15e9255f2dbe310dc` on 2026-07-30.*

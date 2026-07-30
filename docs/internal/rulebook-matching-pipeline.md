@@ -21,6 +21,7 @@ It reflects the current implementation, including partial semantics and metadata
 - [`packages/coding-agent/src/discovery/cursor.ts`](../../packages/coding-agent/src/discovery/cursor.ts)
 - [`packages/coding-agent/src/discovery/windsurf.ts`](../../packages/coding-agent/src/discovery/windsurf.ts)
 - [`packages/coding-agent/src/discovery/cline.ts`](../../packages/coding-agent/src/discovery/cline.ts)
+- [`packages/coding-agent/src/discovery/github.ts`](../../packages/coding-agent/src/discovery/github.ts)
 - [`packages/coding-agent/src/sdk.ts`](../../packages/coding-agent/src/sdk.ts)
 - [`packages/coding-agent/src/system-prompt.ts`](../../packages/coding-agent/src/system-prompt.ts)
 - [`packages/coding-agent/src/internal-urls/rule-protocol.ts`](../../packages/coding-agent/src/internal-urls/rule-protocol.ts)
@@ -63,15 +64,18 @@ Consequence: precedence and deduplication are **name-based only**. Two different
 - `cursor` (priority `50`)
 - `windsurf` (priority `50`)
 - `cline` (priority `40`)
+- `github` (priority `30`)
 - `builtin-defaults` (priority `1`)
+
+The registry contains every provider above. Ambient discovery filters foreign providers (`agents`, `cline`, `cursor`, `github`, and `windsurf`) unless `discovery.importForeignConfig` is enabled. An explicit provider allowlist selects named providers directly and bypasses that ambient foreign-config gate.
 
 ### Native provider (`builtin.ts`)
 
 Loads native rules from:
 
 - project: `<cwd>/.veyyon/rules/*.{md,mdc}` when the cwd `.veyyon` directory exists
-- user: `~/.veyyon/profiles/default/agent/rules/*.{md,mdc}`
-- sticky user rule: `~/.veyyon/profiles/default/agent/RULES.md`
+- user: `<active agent dir>/rules/*.{md,mdc}`, where the active agent directory comes from `getAgentDir()`
+- sticky user rule: `<active agent dir>/RULES.md`
 - sticky project rule: nearest ancestor `.veyyon/RULES.md` while walking from cwd toward the repository root
 
 Normalization:
@@ -82,7 +86,7 @@ Normalization:
 - `globs`, `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, and `repeatGap` are parsed by `buildRuleFromMarkdown`
 - top-level `RULES.md` is synthesized as rule name `RULES` for the user file and `RULES@project` for the project file, and forced to `alwaysApply: true`
 
-Important caveat: `condition` values that look like file globs are converted into `tool:edit(...)` / `tool:write(...)` scope shorthands with catch-all condition `.*`.
+Important caveat: `condition` values that look like file globs are removed from the regex condition list and converted into `tool:edit(...)` / `tool:write(...)` scope shorthands. Catch-all condition `.*` is added only when no non-glob regex condition remains.
 
 ### Agents provider (`agents.ts`)
 
@@ -134,6 +138,15 @@ Normalization:
 - `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, and `repeatGap` parsed by shared rule helpers
 - `name` is fixed to `clinerules` for a `.clinerules` file and derived from filename for `.clinerules/*.md`
 
+### GitHub Copilot provider (`github.ts`)
+
+Loads rules recursively from:
+
+- project: `<cwd>/.github/instructions/**/*.instructions.md`
+- user: `<configured-dir>/.github/instructions/**/*.instructions.md` for each directory in `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`
+
+Normalization uses `buildRuleFromMarkdown`, strips `.instructions.md` from the rule name, and maps GitHub's comma-separated or array-valued `applyTo` metadata to `globs`. `applyTo` values `*`, `**`, and `**/*` become `alwaysApply: true`; other values become described rulebook rules. A missing `applyTo` emits a warning and loads the rule without glob scoping.
+
 ## 3. Frontmatter parsing behavior and ambiguity
 
 All providers use `parseFrontmatter` (`utils/frontmatter.ts`) with these semantics:
@@ -161,6 +174,8 @@ Ambiguity consequences:
 - Equal priority keeps registration order (`cursor` before `windsurf` from `discovery/index.ts`).
 - Dedup is first-wins: first encountered rule name is kept; later same-name items are marked `_shadowed` in `all` and excluded from `items`.
 
+This is the registered precedence order. The ambient enabled set can be smaller because the foreign-provider gate described above runs before loading.
+
 Effective rule provider order is currently:
 
 1. `native` (100)
@@ -169,7 +184,8 @@ Effective rule provider order is currently:
 4. `cursor` (50)
 5. `windsurf` (50)
 6. `cline` (40)
-7. `builtin-defaults` (1)
+7. `github` (30)
+8. `builtin-defaults` (1)
 
 ### Intra-provider ordering caveat
 
@@ -177,12 +193,13 @@ Within a provider, item order comes from `loadFilesFromDir` glob result ordering
 
 Notable source-order differences:
 
-- `native` appends project `.veyyon/rules`, user `~/.veyyon/profiles/default/agent/rules`, user `RULES.md`, then nearest project `.veyyon/RULES.md`.
+- `native` appends project `.veyyon/rules`, user `<active agent dir>/rules`, user `<active agent dir>/RULES.md`, then nearest project `.veyyon/RULES.md`.
 - `veyyon-plugins` appends `rules/` results per configured extension package root.
 - `agents` appends project-walk `.agent`/`.agents` rule dirs before user home dirs.
 - `cursor` appends user then project results.
 - `windsurf` appends user `global_rules` first, then project rules.
 - `cline` loads only nearest `.clinerules` source.
+- `github` appends recursive project instructions before instructions from each configured custom root.
 - `builtin-defaults` uses the embedded rule source order.
 
 ## 5. Split into Rulebook, Always-Apply, and TTSR buckets
@@ -232,12 +249,12 @@ After rule discovery in `createAgentSession` (`sdk.ts`), `bucketRules(...)` appl
 - `condition` is the regex TTSR trigger field; legacy `ttsr_trigger` / `ttsrTrigger` are accepted as fallback inputs during parsing.
 - `astCondition` is the ast-grep trigger field: a string or list of structural patterns, kept verbatim (no glob inference). It only matches on edit/write tool streams, where the language is inferred from the file path. A rule may set `condition`, `astCondition`, or both.
 - A `scope` token that names no registered tool is reported at warn once the tool registry is complete (`TtsrManager.reportUnknownToolScopes`, called from `sdk.ts`), with the closest registered name. A bare token is read as a TOOL NAME, so `scope: "raed"` parses cleanly and registers a rule that can never match, which looks exactly like a rule whose condition is never met. The rule is NOT refused: a tool can be registered later by an extension, and scoping a rule to an inactive tool is legitimate.
-- `scope` narrows TTSR matching scope. A `condition` token that looks like a file glob becomes `tool:edit(<glob>)` and `tool:write(<glob>)` scope entries plus catch-all condition `.*`; `astCondition` tokens never trigger this shorthand.
+- `scope` narrows TTSR matching scope. A `condition` token that looks like a file glob becomes `tool:edit(<glob>)` and `tool:write(<glob>)` scope entries and is removed from the regex condition list. Catch-all condition `.*` is inserted only when no non-glob regex condition remains; `astCondition` tokens never trigger this shorthand.
 - `interruptMode` can override the global TTSR interrupt mode for the rule.
 - `repeatMode` and `repeatGap` override the global `ttsr.repeatMode` / `ttsr.repeatGap` for the rule. Use them when the rule's advice is repeatable: the global default retires a rule after one injection per session, which suits a convention and not a nudge that applies again to the next directory. An unrecognised mode, a negative gap, and a fractional gap are ignored rather than coerced, so the global setting governs instead of a policy the author did not write.
-- `pathScope` requires the path the condition matched to be outside (`outside-cwd`) or inside (`inside-cwd`) the session working directory. A condition is a regex over the model's output and cannot know where the working directory is, so a rule about location fires on any path of the right shape — which is what made `cwd-reroot` advise re-rooting into the project the session was already in. The comparison runs against the LIVE working directory at match time, so it stays right after a `set_cwd`, and it resolves both paths rather than comparing strings, so `/work/project-two` is not read as inside `/work/project`. With no working directory available the rule does not fire: a rule that asked to be filtered must not fire unfiltered. `TtsrManager.lastMatchedPath(name)` returns the path that decided the match, which is how an injected body can name the directory it is advising about.
+- `pathScope` requires the path the condition matched to be outside (`outside-cwd`) or inside (`inside-cwd`) the session working directory. A condition is a regex over the model's output and cannot know where the working directory is, so a rule about location fires on any path of the right shape. This is what made `cwd-reroot` advise re-rooting into the project the session was already in. The comparison runs against the LIVE working directory at match time, so it stays right after a `set_cwd`, and it resolves both paths rather than comparing strings, so `/work/project-two` is not read as inside `/work/project`. With no working directory available the rule does not fire: a rule that asked to be filtered must not fire unfiltered. `TtsrManager.lastMatchedPath(name)` returns the path that decided the match, which is how an injected body can name the directory it is advising about.
 
-A rule that uses `pathScope` should stay scoped to navigation tools (`read`, `grep`, `glob`, `ast_grep`). The reason is what a tool's argument stream contains. For a navigation call the stream is the target path, so a matched path is the thing being reached for. For `edit`, `write`, `ast_edit`, and `bash`, the stream also carries file content or a heredoc, and content mentions absolute paths constantly: docs, configs, fixtures, path constants. Scoping those tools into a path rule makes it fire on what a file talks about rather than on where the file lives, and no regex over the stream can tell the two apart. When you want to react to where a write actually lands, use the tool's declared `filesystemTargets` instead; `RerootDetector` in `src/tools/reroot-hint.ts` is the worked example.
+A rule that uses `pathScope` should stay scoped to navigation tools (`read`, `grep`, `glob`, `ast_grep`). These tools are comparatively safe because their raw argument streams normally contain navigation arguments instead of file bodies, but the stream is not path-only: it can also contain intent, patterns, and other arguments. For `edit`, `write`, `ast_edit`, and `bash`, the stream also carries file content or a heredoc, and content mentions absolute paths constantly: docs, configs, fixtures, path constants. Scoping those tools into a path rule makes it fire on what a file talks about rather than on where the file lives, and no regex over the stream can tell the two apart. When you want to react to where a write actually lands, use the tool's declared `filesystemTargets` instead; `RerootDetector` in `src/tools/reroot-hint.ts` does this.
 
 ### Rule bodies and their render context
 
@@ -254,7 +271,7 @@ A body that renders to the empty string is never delivered; see `docs/internal/t
 
 `buildSystemPromptInternal` receives both `rules` (rulebook) and `alwaysApplyRules`.
 
-Always-apply rules are deduped against the caller-supplied custom base, append value, and loaded context files. `dedupeAlwaysApplyRules` drops a rule whose content already appears verbatim in one of those sources. The remaining rules render first and inject their raw content into a `<generic-rules>` block in the default template.
+Always-apply rules are deduped against the caller-supplied custom base, append value, and loaded context files. `dedupeAlwaysApplyRules` normalizes each source and rule into trimmed, non-empty paragraph blocks, then drops a rule when its blocks appear as an exact contiguous run in a source. The remaining rules render first and inject their raw content into a `<generic-rules>` block in the default template.
 
 Rulebook rules are rendered in a `<domain-rules>` block as `- <name> (<globs>): <description>` lines; the URL list in the prompt documents `rule://<name>` and the workflow section tells the model to read relevant rules first. The custom-prompt template (`custom-system-prompt.md`) instead renders `<rule name="...">` entries with `<glob>` children under an explicit "You MUST read `rule://<name>`" instruction.
 
@@ -262,8 +279,7 @@ This is advisory/contextual: prompt text asks the model to read applicable rules
 
 ## 8. `rule://` internal URL behavior
 
-`RuleProtocolHandler` resolves against the process-global active-rule snapshot
-installed once per top-level session in `sdk.ts`:
+`RuleProtocolHandler` resolves against the process-global active-rule snapshot. A top-level session installs the snapshot initially in `sdk.ts` and refreshes it when live cwd/project prompt inputs are re-discovered and TTSR rules are re-bucketed. Subagents do not install independent snapshots:
 
 ```ts
 setActiveRules([...rulebookRules, ...alwaysApplyRules, ...ttsrManager.getRules()]);
@@ -280,9 +296,9 @@ Implications:
 
 ## 9. Known partial / non-enforced semantics
 
-1. The rule providers currently loaded for `rules` are `native`, `veyyon-plugins`, `agents`, `cursor`, `windsurf`, `cline`, and embedded `builtin-defaults`; provider files for other tools may parse other config formats but do not register rule loaders.
+1. Registered rule providers are `native`, `veyyon-plugins`, `agents`, `cursor`, `windsurf`, `cline`, `github`, and embedded `builtin-defaults`. Ambient discovery filters foreign providers unless `discovery.importForeignConfig` enables them; an explicit provider allowlist can select them directly.
 2. `globs` metadata is surfaced to prompt/UI and is used as a global path gate for TTSR matching, but it is not used to automatically select rulebook rules for `rule://`.
 3. Rule selection for `rule://` includes rulebook, always-apply, and registered TTSR rules (so a triggered TTSR rule can be re-read), but not rules that registered no condition and carry neither a description nor `alwaysApply`.
 4. Discovery warnings (`loadCapability("rules").warnings`) are produced but `createAgentSession` does not currently surface/log them in this path.
 
-*Verified against `2be25bb55e8fdcdafdd98ab8fccb47a8f34c4bcc` on 2026-07-29.*
+*Verified against `0eb8d74a3ecf60e1b2ec37c15e9255f2dbe310dc` on 2026-07-30.*
