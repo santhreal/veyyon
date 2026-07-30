@@ -31,11 +31,11 @@ describe("buildCoordinationAdvisory", () => {
 });
 
 describe("subagent COOP irc guidance", () => {
-	it("prompts coordination before overlapping edits when peers are present", () => {
+	/** Static IRC capability guidance still warns every subagent before overlapping edits. */
+	it("prompts coordination before overlapping edits when IRC is available", () => {
 		const out = prompt.render(PROMPTS["subagent/system-prompt"].text, {
 			agent: "Base worker.",
-			ircPeers: "- `Sib` — task (sub, running)",
-			ircSelfId: "Self",
+			ircEnabled: true,
 		});
 		expect(out).toContain("before you edit");
 		expect(out).toMatch(/overlapping edits collide/i);
