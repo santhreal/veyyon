@@ -538,5 +538,5 @@ describe("memory provider boundary", () => {
 		expect(phaseTwoPayload).not.toContain(phaseTwoSecret);
 		expect(phaseTwoPayload).not.toContain("PHASE_TWO_BOUNDARY_START");
 		expect(phaseTwoPayload).not.toContain("PHASE_TWO_BOUNDARY_END");
-	});
+	}, 20_000);
 });

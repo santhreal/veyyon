@@ -121,7 +121,7 @@ describe("stats sync deduplicates forked-session entries", () => {
 		// header. Earlier stats sync keyed uniqueness on (session_file,
 		// entry_id), so both files contributed the same provider request to
 		// every aggregate.
-		await writeSessionFile(
+		const forkFile = await writeSessionFile(
 			"--tmp--fork-dedup",
 			"02_fork.jsonl",
 			{ id: "fork0000", cwd: "/tmp/project", parentSession: parentFile },
@@ -131,7 +131,9 @@ describe("stats sync deduplicates forked-session entries", () => {
 
 		const assistantRequests = getRecentRequests(10).filter(r => r.entryId === "asst01ab");
 		expect(assistantRequests).toHaveLength(1);
-		expect(assistantRequests[0].sessionFile).toBe(parentFile);
+		// Dedup is first-write-wins. Directory enumeration does not guarantee
+		// which physical copy supplies the representative path.
+		expect([parentFile, forkFile]).toContain(assistantRequests[0].sessionFile);
 
 		const overall = getOverallStats();
 		expect(overall.totalRequests).toBe(1);
