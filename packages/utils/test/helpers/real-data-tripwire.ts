@@ -136,6 +136,21 @@ function resolveTarget(target: unknown): string | undefined {
 }
 
 /**
+ * Errors that prove the current leaf cannot be resolved but say nothing unsafe
+ * about its nearest existing ancestor.
+ *
+ * `ENAMETOOLONG` belongs here for the same reason as `ENOENT`: the kernel cannot
+ * look up that leaf, so peel it into the preserved suffix and keep resolving the
+ * parent. This does not allow a symlink bypass. Every accessible ancestor is
+ * still canonicalized before the suffix is reattached, while the original
+ * mutation still reaches the kernel and receives its native `ENAMETOOLONG`.
+ */
+function isUnresolvedLeaf(error: unknown): boolean {
+	const code = (error as NodeJS.ErrnoException).code;
+	return code === "ENOENT" || code === "ENAMETOOLONG";
+}
+
+/**
  * Resolve symlinks while preserving a suffix whose entries do not exist yet.
  *
  * `realpath` alone cannot resolve a dangling symlink aimed at a missing protected
@@ -153,7 +168,7 @@ function resolveForContainment(target: string): string {
 			const resolved = rawRealpathSync(cursor);
 			return path.join(resolved, ...suffix);
 		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+			if (!isUnresolvedLeaf(error)) throw error;
 		}
 
 		try {
@@ -179,7 +194,7 @@ function resolveForContainment(target: string): string {
 			suffix = [];
 			concurrentRetries = 0;
 		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+			if (!isUnresolvedLeaf(error)) throw error;
 			const parent = path.dirname(cursor);
 			if (parent === cursor) throw error;
 			suffix.unshift(path.basename(cursor));

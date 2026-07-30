@@ -31,7 +31,7 @@ import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
 
-const CHILD = path.join(import.meta.dir, "failclosedguardhunt-shutdown-flush-child.ts");
+const CHILD = path.join(import.meta.dir, "support", "failclosedguardhunt-shutdown-flush-child.ts");
 
 /** Run the child and report how it exited plus whatever marker it left. */
 async function runChild(disposeDelayMs: number): Promise<{ exitCode: number; marker: string | null }> {

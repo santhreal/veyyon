@@ -24,6 +24,7 @@ import * as path from "node:path";
 import { resolveToCwd } from "@veyyon/coding-agent/tools/path-utils";
 import { removeWithRetries } from "@veyyon/utils";
 import { guardDestructivePath } from "../../../utils/test/helpers/destructive-guard";
+import { __tripwire } from "../../../utils/test/helpers/real-data-tripwire";
 import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
 
 // Tracked temp directories: the factory deletes what it made when this file finishes.
@@ -202,6 +203,36 @@ describe("the limits match what the filesystem actually enforces", () => {
 			await removeWithRetries(guardDestructivePath(dir, "path-length-limits"));
 			dir = "";
 		}
+	});
+
+	/**
+	 * The containment resolver must preserve a leaf the kernel cannot look up,
+	 * rather than mistaking that native boundary error for an unsafe path. The
+	 * 255-byte case exercises the ordinary missing-leaf path; 256 bytes exercises
+	 * the `ENAMETOOLONG` path that previously made the tripwire mask the errno.
+	 */
+	it("preserves missing leaves on both sides of the filesystem name boundary", () => {
+		for (const bytes of [255, 256]) {
+			const target = path.join(dir, "z".repeat(bytes));
+			expect(__tripwire.resolveForContainment(target)).toBe(target);
+		}
+	});
+
+	/**
+	 * Treating an overlong leaf as unresolved must not weaken the tripwire. An
+	 * accessible symlink ancestor still has to be canonicalized before that leaf
+	 * is reattached, or an overlong write through an alias could evade containment
+	 * verification before the kernel rejects it.
+	 */
+	it("still detects a protected symlink destination behind an overlong leaf", () => {
+		const protectedRoot = path.join(dir, "protected");
+		const alias = path.join(dir, "alias");
+		const target = path.join(alias, "z".repeat(256));
+		fs.mkdirSync(protectedRoot);
+		fs.symlinkSync(protectedRoot, alias, process.platform === "win32" ? "junction" : "dir");
+
+		expect(__tripwire.isInsideResolved(target, protectedRoot)).toBe(true);
+		expect(__tripwire.resolveForContainment(target)).toBe(path.join(protectedRoot, "z".repeat(256)));
 	});
 
 	it("really does reject a 256-byte name, one byte over the guard's limit", () => {
