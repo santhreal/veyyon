@@ -58,8 +58,17 @@ describe("parseArgs — --thinking flag", () => {
 		expect(parseArgs(["--thinking", "max"]).thinking).toBe(ThinkingLevel.Max);
 	});
 
-	it("ignores invalid levels and the internal inherit selector", () => {
-		expect(parseArgs(["--thinking", "bogus"]).thinking).toBeUndefined();
-		expect(parseArgs(["--thinking", "inherit"]).thinking).toBeUndefined();
+	/** A typo must fail before the session starts instead of silently falling back to the configured effort. */
+	it("refuses an invalid thinking level with the accepted values", () => {
+		expect(() => parseArgs(["--thinking", "bogus"])).toThrow(
+			'Invalid --thinking value: "bogus". Expected one of: off, auto, minimal, low, medium, high, xhigh, max.',
+		);
+	});
+
+	/** The internal inheritance sentinel is not an operator-facing CLI value and must fail loud. */
+	it("refuses the internal inherit selector", () => {
+		expect(() => parseArgs(["--thinking", "inherit"])).toThrow(
+			'Invalid --thinking value: "inherit". Expected one of: off, auto, minimal, low, medium, high, xhigh, max.',
+		);
 	});
 });
