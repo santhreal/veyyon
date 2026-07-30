@@ -149,6 +149,7 @@ describe("a session whose secret key cannot be created", () => {
 		expect(output).not.toContain("Secret protection is enabled");
 	});
 
+	/** The advertised opt-out must work end to end even though it needs four real CLI launches. */
 	it("honours the escape hatch it advertises, leaving the key path still broken", async () => {
 		const f = await fixture();
 		await run(f, ["config", "set", "secrets.enabled", "true"]);
@@ -164,5 +165,5 @@ describe("a session whose secret key cannot be created", () => {
 		// than no message. Same broken key, protection off, and the session gets past secret init.
 		expect(output).not.toContain("Secret protection is enabled");
 		await expect(fs.stat(f.keyPath).then(s => s.isDirectory())).resolves.toBe(true);
-	});
+	}, 30_000);
 });
