@@ -186,6 +186,14 @@ describe("release.yml exact-SHA source gates", () => {
 		expect(wf.permissions.actions).toBe("read");
 	});
 
+	it("runs every source gate on every main commit so exact-SHA proof cannot be absent", async () => {
+		for (const file of ["ci.yml", "checks.yml", "security.yml"]) {
+			const wf = await loadYaml(`workflows/${file}`);
+			expect(wf.on.push.branches, `${file} must gate main`).toContain("main");
+			expect(wf.on.push["paths-ignore"], `${file} must not omit an exact main SHA`).toBeUndefined();
+		}
+	});
+
 	it("uses the repository token and explicitly dispatches the tagged publish pipeline", async () => {
 		const workflowText = await Bun.file(path.join(workflowsDir, "workflows/release.yml")).text();
 		const wf = await loadYaml("workflows/release.yml");
