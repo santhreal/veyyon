@@ -45,8 +45,8 @@ bun run check:tools  # biome: formatting, import order, and lint rules (CI gate)
 bun run lint         # biome lint + clippy, advisory
 ```
 
-`check` typechecks and runs the tests that gate a release; it does not run
-biome. Biome splits into two halves, and they are gated differently.
+`check` runs the TypeScript and Rust checks; `test` runs the local test suite.
+Neither command runs biome. Biome splits into two halves, and they are gated differently.
 
 `check:tools` runs `biome check`, which is formatting, import organization, and
 the lint rules that are set to error. CI runs it, so an unformatted file or an

@@ -37,9 +37,8 @@ directory, package scope, splash and theme, emoji removal, and settings
 simplification. Since the fork, this repository has changed the prompt and
 context contract, model effort and subsystem routing, compaction, credential
 and session storage, tool and extension architecture, worker operations,
-native kernels, and documentation. The README section
-[From oh-my-pi to Veyyon](README.md#from-oh-my-pi-to-veyyon) separates the
-inherited foundation from those Veyyon-owned contracts.
+native kernels, and documentation. The README [Provenance](README.md#provenance)
+section separates the inherited foundation from those Veyyon-owned contracts.
 
 Veyyon is not a drop-in resync target. Changes here are not assumed to belong
 upstream, and upstream changes are not pulled automatically.

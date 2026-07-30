@@ -31,7 +31,7 @@
 - Provider responses with no image data return `imageCount: 0`, empty `imagePaths` / `images`, and any provider text/feedback available.
 
 ## Flow
-1. The SDK injects `generate_image` as a custom tool via `getImageGenTools()`.
+1. The SDK injects `generate_image` as a first-party custom tool via `getImageGenTools()`. With `tools.discoveryMode: all`, the tool starts in the discovery inventory instead of the provider schema unless you explicitly request it.
 2. `execute(...)` resolves credentials and provider from the active model registry / session credentials.
 3. Input images are resolved from `path` relative to the session cwd or from inline `data` + `mime_type`.
 4. The tool validates provider-specific `aspect_ratio` support.

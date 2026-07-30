@@ -26,8 +26,8 @@ A degenerate pair is a failed proof. Two identical shots, or an "on" shot that i
 Seed each state from the shell, never from a keybinding:
 
 ```console
-$ veyyon --profile work config set <path> off   # seed, then record the off shot
-$ veyyon --profile work config set <path> on    # seed, then record the on shot
+$ bun packages/coding-agent/src/cli.ts --profile demo config set <path> off   # seed, then record the off shot
+$ bun packages/coding-agent/src/cli.ts --profile demo config set <path> on    # seed, then record the on shot
 ```
 
 A TUI toggle can land on the wrong key and give you two identical or wrong frames. Seeding with `config set` before launch is the only reliable way to fix the state a frame captures.
@@ -52,7 +52,7 @@ Every shot must record the same each time.
 
 - **Reset the fixture** before recording a workflow surface: `bash scripts/demos/reset-fixture.sh`. Settings and gallery shots make no model call, so they record fully offline; a workflow still needs the pristine fixture.
 - **Seed state from the shell** with `config set`, per the differential rule above.
-- **Pin the profile** (`--profile work`). Settings and gallery surfaces need no authenticated model, so any maintainer regenerates them offline. Override with `VEYYON_DEMO_PROFILE` to match launch.sh.
+- **Pin the isolated profile** (`--profile demo`). Settings and gallery surfaces need no authenticated model, so any maintainer regenerates them offline. Override with `VEYYON_DEMO_PROFILE` only when the tape header records why.
 
 ## Capture quality
 

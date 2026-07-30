@@ -181,6 +181,7 @@ const FONT: Readonly<Record<string, string>> = {
 	// picture, so both get real bitmaps rather than an alias.
 	"■": "...../.###./.###./.###./.###./...../.....",
 	"□": "...../.###./.#.#./.#.#./.###./...../.....",
+	"▣": "...../.###./.#.#./.###./.#.#./.###./.....",
 };
 
 /**

@@ -194,4 +194,4 @@ For the contributor-facing crate map covering `veyyon-natives`, `veyyon-shell`, 
 - **Compiled binary mode**: Runtime mode where the CLI is bundled and native addons are resolved from embedded/cache paths before package-local paths.
 - **Embedded addon**: Build artifact metadata and archive reference generated into `native/embedded-addon.js` so compiled binaries can extract matching `.node` payloads.
 
-*Verified against `dfa565bf` on 2026-07-27.*
+*Verified against `2be25bb55e8fdcdafdd98ab8fccb47a8f34c4bcc` on 2026-07-29.*

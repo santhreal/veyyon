@@ -19,7 +19,7 @@ The setting takes effect in the current session. Veyyon reloads environment vari
 
 ## Your first secret
 
-If the credential is already an environment variable, you have nothing to declare. Veyyon treats an environment variable as secret when its value is 8 characters or longer and its name ends with, or has an underscore after, one of `KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `PASS`, `PASSPHRASE`, `AUTH`, `CREDENTIAL`, `PRIVATE`, or `OAUTH`.
+If the credential is already an environment variable, you have nothing to declare to keep its value out of provider requests. Veyyon treats an environment variable as secret when its value is 8 characters or longer and its name ends with, or has an underscore after, one of `KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `PASS`, `PASSPHRASE`, `AUTH`, `CREDENTIAL`, `PRIVATE`, or `OAUTH`.
 
 That boundary matters, so read each keyword as a whole word rather than a substring:
 
@@ -62,7 +62,14 @@ So a shell that already has this:
 export DEPLOY_TOKEN=ghp_R2d2c3poIHRva2VuIGV4YW1wbGU
 ```
 
-needs no configuration. Start veyyon and that value is protected.
+needs no configuration for defensive protection. Start Veyyon and that value is
+replaced whenever it appears in provider-bound text. Environment detection does
+not give the agent a readable inventory name. When the agent must choose and
+spend the credential deliberately, store the same value in the vault:
+
+```text
+/secret add deploy-token --from-env DEPLOY_TOKEN
+```
 
 ## What the model sees
 

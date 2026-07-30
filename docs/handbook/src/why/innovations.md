@@ -4,20 +4,22 @@ This chapter maps the mechanisms that shape Veyyon's behavior. It separates sour
 
 ## Provenance boundary
 
-Veyyon is a source fork of oh-my-pi. It retains the Bun and TypeScript agent loop, terminal UI, provider catalog, role routing, hashline edit engine, mnemopi memory, and the original native hot-path helpers. This is the foundation Veyyon started from, not a claim about what current oh-my-pi does today.
+Veyyon is a source fork of oh-my-pi. It retains the Bun and TypeScript agent loop, terminal UI, provider catalog, role routing, hashline edit engine, mnemopi memory, and the original native grep, PTY, and tree-sitter hot-path foundations. After the fork, Veyyon extracted reusable Rust crates for glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking. Those crate boundaries and their current contracts are post-fork work. The underlying grep and tree-sitter mechanisms are not Veyyon inventions.
 
-## Veyyon-owned contracts
+## Current contracts and proof entry points
 
-| Area | Current Veyyon contract |
-| --- | --- |
-| Prompt and context | Statement-owned prompt assembly, layered `AGENTS.md`, validated `PROMPT_SECTIONS/`, and transactional context reload when the working directory moves |
-| Models and compaction | Model-native effort variants, explicit effort precedence, editable subsystem fallback chains, and a lossless first compaction pass |
-| Credentials and sessions | Shared SQLite credentials, multi-credential selection, encrypted working secrets, final outbound obfuscation, atomic session writes, and non-destructive corruption handling |
-| Tools and workers | One capability and tool registry, LSP write-through, destructive-shell interception, schema-validated workers, IRC, internal agent URLs, and the Agent Control Center |
-| Native runtime | Reusable Rust kernels for glob, keys, text, diff, grep, and directory walking |
-| Argot | Lossless per-project shorthand that expands before a tool, transcript, parent agent, or display receives it |
+The table names the current product contract. A link in the **Recorded proof** column demonstrates only its link text, not every mechanism in that row. The provenance boundary above still applies to inherited mechanisms.
 
-The detailed contract for these changes is in the README section [What Veyyon adds](../../../../README.md#what-veyyon-adds). The repository's [upstream provenance](../../../../UPSTREAM.md) explains the fork boundary, and the [intentional-divergence ledger](../../../internal/porting-from-pi-mono.md#15-intentional-divergences) records port-sensitive implementation differences.
+| Area | Current Veyyon contract | Recorded proof |
+| --- | --- | --- |
+| Prompt and context | Statement-owned prompt assembly, layered `AGENTS.md`, validated `PROMPT_SECTIONS/`, and transactional context reload when the working directory moves | [Section byte costs and the conditional section registry](../../../../assets/demo-prompt-architecture.gif) |
+| Models and compaction | Model-native effort variants, explicit effort precedence, editable subsystem fallback chains, and a lossless first compaction pass | [Model-specific effort menus and before-and-after chain editing](../../../../assets/model-effort-controls.gif) and [manual compaction status with before-and-after context usage](../../../../assets/demo-context-compaction.gif) |
+| Credentials and sessions | Shared SQLite credentials, multi-credential selection, encrypted working secrets, final outbound obfuscation, atomic session writes, and non-destructive corruption handling | [A project secret listed by placeholder, spent through bash, and recorded once in the value-free use log](../../../../assets/demo-secret-boundary.gif) |
+| Tools and workers | One capability and tool registry, LSP write-through, destructive-shell interception, schema-validated workers, IRC, internal agent URLs, and the Agent Control Center | [An LSP reference lookup and subsequent test output](../../../../assets/demo-lsp-refactor.gif) and [parallel worker progress with live and idle Agent Control Center rows](../../../../assets/demo-agent-control-center.gif) |
+| Native runtime | Inherited native grep and tree-sitter foundations, plus post-fork reusable Rust crates for glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking | No recording. See the [architecture and provenance reference](performance.md). |
+| Argot | Lossless per-project shorthand that expands before a tool, transcript, parent agent, or display receives it | [One disabled Argot setting](../../../../assets/argot-settings-off.png) and [six enabled Argot settings](../../../../assets/argot-settings-on.png) |
+
+The README section [What Veyyon changes](../../../../README.md#what-veyyon-changes) shows these contracts first. The repository's [upstream provenance](../../../../UPSTREAM.md) explains the fork boundary, and the [intentional-divergence ledger](../../../internal/porting-from-pi-mono.md#15-intentional-divergences) records port-sensitive implementation differences.
 
 ## Shared and evolved mechanisms
 

@@ -108,8 +108,8 @@ you force the theme by setting the terminal ground in the tape's `Set Theme`
 background and pinning which named theme fills each slot:
 
 ```console
-$ veyyon --profile work config set theme.dark titanium     # then record on a dark/grey ground
-$ veyyon --profile work config set theme.light light        # then record on a white ground
+$ bun packages/coding-agent/src/cli.ts --profile demo config set theme.dark titanium
+$ bun packages/coding-agent/src/cli.ts --profile demo config set theme.light light
 ```
 
 In the tape, vary only the `Set Theme` background to move between grounds

@@ -10,9 +10,9 @@ A tool call or edit that fails schema or apply verification usually costs anothe
 
 Hashline avoids re-emitting large surrounding context when anchors are available. Apply cost scales with patch size, not with re-serializing the full file for every change. See [Hashline engine](../edit/engine.md).
 
-## Harness overhead
+## Harness overhead and provenance
 
-CLI/TUI and session loop: TypeScript on Bun. Grep, glob, PTY/shell, and tree-sitter parsing: Rust natives in `@veyyon/natives`; hashline apply is TypeScript in `@veyyon/hashline`. Streaming returns tokens as they arrive.
+The CLI, TUI, and session loop run as TypeScript on Bun. Native grep, PTY and shell support, and tree-sitter parsing came from the oh-my-pi fork foundation. Veyyon later extracted reusable Rust crates for glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking. The crate boundaries and their current contracts are post-fork work, but the inherited grep and tree-sitter mechanisms are not Veyyon inventions. Hashline apply remains TypeScript in `@veyyon/hashline`. Streaming returns tokens as they arrive.
 
 ## Measurement
 

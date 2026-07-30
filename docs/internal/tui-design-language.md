@@ -252,4 +252,4 @@ The website nav speaks lowercase terse ("docs install models changelog"), a disp
 
 When touching TUI polish, name the token (spacing, theme color, motion budget). Hardcoded hex or ANSI at call sites outside `theme.ts` is a design-system bug.
 
-*Verified against `d79c1b7b` on 2026-07-27.*
+*Verified against `2be25bb55e8fdcdafdd98ab8fccb47a8f34c4bcc` on 2026-07-29.*

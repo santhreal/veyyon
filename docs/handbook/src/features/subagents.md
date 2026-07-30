@@ -139,8 +139,9 @@ subagent:
 ```
 
 No bundled agent pins a model, so layer 4 is the normal case and `subagent.model`
-moves all of them together. `subagent.thinkingLevel` does the same for effort, and an
-explicit `:effort` suffix on a model pattern always wins over an agent's own default.
+moves all of them together. `subagent.thinkingLevel` does the same for effort. **Inherit** passes the
+current session's effective effort into the child, while an explicit `auto` asks the provider to
+choose. An explicit `:effort` suffix on a model pattern always wins over an agent's own default.
 
 ### Fallback models
 
@@ -174,8 +175,8 @@ quietly running it on the next entry: a typo must not silently downgrade every s
 In the `Subagents` block above the composer, an agent that fell back is marked with `↓` before its
 model badge, so you can tell a deliberate model from a retried one at a glance.
 
-Effort is chosen from a list — `off`, `minimal` through `max`, `auto`, or `Inherit` —
-in both places, so you cannot set a level that does not exist. If a hand-written config
+Effort is chosen from a list: `off`, `minimal` through `max`, `auto`, or `Inherit`.
+The same list appears in both places, so you cannot set a level that does not exist. If a hand-written config
 holds one that does not, veyyon says so and names the levels that work, rather than
 treating it as `Inherit` and leaving you with a setting that reads as configured and
 changes nothing.
@@ -189,10 +190,29 @@ which of the four layers decided.
 ## Limits and isolation
 
 The remaining groups in the tab are operational: how many subagents run at once
-(`subagent.maxConcurrency`), how deep they may spawn their own (`maxRecursionDepth`),
+(`subagent.maxConcurrency`), how deeply they may nest (`subagent.maxNestedSpawnDepth`),
 per-run wall clock and request budgets, how long an idle subagent stays in memory
 before being parked to disk (`idleTtlMs`), and whether their edits land in an isolated
 copy of the tree first (`subagent.isolation.*`, see [Safety](../using/safety.md)).
+
+`subagent.maxNestedSpawnDepth` is inclusive. The default is `0`: the top-level session,
+at depth 0, may spawn direct subagents, but those children are leaves and cannot spawn
+more subagents. A value of `1` also lets direct children spawn, producing children at
+depth 2. Higher values extend the same rule, and `-1` allows nesting without a depth
+limit.
+
+An agent-specific value takes precedence over the blanket value:
+
+```yaml
+subagent:
+  maxNestedSpawnDepth: 0
+  agents:
+    reviewer:
+      maxNestedSpawnDepth: 1
+```
+
+Here ordinary direct subagents remain leaves. A direct `reviewer` may spawn its own
+children because its effective limit is 1.
 
 A subagent's working directory is its own. If a subagent calls `set_cwd`, only that
 subagent moves: its tool paths resolve against the new directory and its system prompt

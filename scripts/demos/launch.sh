@@ -11,12 +11,13 @@ BUN="${VEYYON_DEMO_BUN:-$HOME/.bun/bin/bun}"
 DEMO_CWD="${VEYYON_DEMO_CWD:-$HOME/orbit}"
 # Pin the collapsed Antigravity family (wire tiers gemini-3.6-flash-{low,medium,high}).
 # Without --thinking, requestModelId stays on -low; demos pin high so the capture
-# actually uses gemini-3.6-flash-high. Profile defaults to `work` (authenticated
-# antigravity on this fleet); override with VEYYON_DEMO_PROFILE if needed.
-# If resolve fails with "not found", run: veyyon --profile "$PROFILE" models refresh
+# actually uses gemini-3.6-flash-high. Every committed demo uses the isolated
+# `demo` profile so recording never mutates a maintainer's working profile.
+# If resolve fails with "not found", run:
+#   bun packages/coding-agent/src/cli.ts --profile demo models refresh
 MODEL="${VEYYON_DEMO_MODEL:-google-antigravity/gemini-3.6-flash}"
 THINKING="${VEYYON_DEMO_THINKING:-high}"
-PROFILE="${VEYYON_DEMO_PROFILE:-work}"
+PROFILE="${VEYYON_DEMO_PROFILE:-demo}"
 
 # Open straight into the composer, never the first-run setup wizard. The demo
 # profile has never been onboarded (setupVersion 0), so without this every
@@ -24,6 +25,7 @@ PROFILE="${VEYYON_DEMO_PROFILE:-work}"
 # feature. VEYYON_SKIP_SETUP skips onboarding for this launch only, without
 # mutating the profile's stored setupVersion (see selectSetupScenes).
 export VEYYON_SKIP_SETUP="${VEYYON_SKIP_SETUP:-1}"
+export PATH="$DEMO_CWD/node_modules/.bin:$PATH"
 
 cd "$REPO_ROOT/packages/coding-agent"
 exec "$BUN" src/cli.ts \

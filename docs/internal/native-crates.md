@@ -104,4 +104,4 @@ package (`@veyyon/natives`) and the architecture pages above. Promote a
 crate to a dedicated user-facing doc only when it grows a standalone CLI or
 public API consumed outside `packages/natives`.
 
-*Verified against `dfa565bf` on 2026-07-27.*
+*Verified against `2be25bb55e8fdcdafdd98ab8fccb47a8f34c4bcc` on 2026-07-29.*
