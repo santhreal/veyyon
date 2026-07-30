@@ -27,6 +27,7 @@ import {
 	removeTempPath,
 	tryWithFileLock,
 	VERSION,
+	withFileLock,
 } from "@veyyon/utils";
 import { $ } from "bun";
 import chalk from "chalk";
@@ -74,6 +75,7 @@ const GITHUB_LATEST_RELEASE_URL = `https://github.com/${REPO}/releases/latest`;
 const GITHUB_USER_AGENT = `${APP_NAME}-updater`;
 const RELEASE_METADATA_TIMEOUT_MS = 30_000;
 const BINARY_DOWNLOAD_TIMEOUT_MS = 15 * 60_000;
+const BINARY_UPDATE_LOCK_RETRY_MS = 100;
 /**
  * The `.sha256` sidecar is a few dozen bytes, so it should arrive fast; a slow
  * fetch here is a signal something is wrong, not patience worth spending. Matches
@@ -898,11 +900,12 @@ async function removeFileBestEffort(filePath: string): Promise<boolean> {
 /**
  * Best-effort removal of binary-update backups left by earlier runs.
  *
- * Each self-update moves the previous executable to `<binary>.<timestamp>.<pid>.bak`
- * before swapping the new one in. On Windows that backup cannot be deleted
- * while the updating process is alive, so it is left for a later run to reclaim
- * once its owning process has exited. Also matches the legacy fixed
- * `<binary>.bak` name produced before backups were timestamped, so users
+ * Each self-update moves the previous executable to
+ * `<binary>.<attempt UUID>.bak` before swapping the new one in. On Windows that
+ * backup cannot be deleted while the updating process is alive, so it is left
+ * for a later run to reclaim once its owning process has exited. Also matches
+ * the legacy fixed `<binary>.bak` and numeric
+ * `<binary>.<timestamp>.<pid>.bak` names produced by older releases, so users
  * upgrading from a buggy release get the orphaned file cleaned up.
  */
 export async function sweepStaleBackups(targetPath: string): Promise<void> {
@@ -916,10 +919,13 @@ export async function sweepStaleBackups(targetPath: string): Promise<void> {
 	}
 	for (const entry of entries) {
 		if (!entry.startsWith(`${base}.`) || !entry.endsWith(".bak")) continue;
-		// Legacy "<base>.bak" → empty middle; new "<base>.<timestamp>.<pid>.bak"
-		// → dot-separated numeric run. Anything else is an unrelated *.bak file.
+		// Legacy "<base>.bak" → empty middle; older
+		// "<base>.<timestamp>.<pid>.bak" → dot-separated numeric run; current
+		// "<base>.<attempt UUID>.bak" → one UUID. Anything else is unrelated.
 		const middle = entry.slice(base.length + 1, entry.length - ".bak".length);
-		if (middle.length > 0 && !/^\d+(\.\d+)*$/.test(middle)) continue;
+		const isNumericAttempt = /^\d+(\.\d+)*$/.test(middle);
+		const isUuidAttempt = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(middle);
+		if (middle.length > 0 && !isNumericAttempt && !isUuidAttempt) continue;
 		await removeFileBestEffort(path.join(dir, entry));
 	}
 }
@@ -1028,12 +1034,12 @@ export async function updateViaBinaryAt(
 	const tag = `v${expectedVersion}`;
 	const url = `https://github.com/${REPO}/releases/download/${tag}/${binaryName}`;
 
-	const tempPath = `${targetPath}.new`;
-	// Unique per attempt: a stale backup from an earlier update may still be
-	// locked (it is the previous process image on Windows), and a fixed name
-	// would force the move-aside rename to overwrite it. pid + timestamp keeps
-	// two forced updates in the same millisecond from colliding.
-	const backupPath = `${targetPath}.${Date.now()}.${process.pid}.bak`;
+	// Every download gets its own same-directory pathname. Besides preserving
+	// same-filesystem atomic rename, this prevents one forced update from
+	// truncating or cleaning up another update's live download.
+	const attemptId = crypto.randomUUID();
+	const tempPath = `${targetPath}.${attemptId}.new`;
+	const backupPath = `${targetPath}.${attemptId}.bak`;
 	report(chalk.dim(`Downloading ${binaryName}…`));
 
 	let response: Response;
@@ -1060,8 +1066,8 @@ export async function updateViaBinaryAt(
 	try {
 		await pipeline(response.body, fileStream);
 	} catch (err) {
-		// A mid-download failure (network drop) leaves a partial `<binary>.new`
-		// behind: we throw here before reaching replaceBinaryForUpdate, whose catch
+		// A mid-download failure (network drop) leaves a partial attempt file
+		// behind before reaching replaceBinaryForUpdate, whose catch
 		// would otherwise clean it up. Remove it so a failed update never litters
 		// the install dir, matching install.sh's EXIT/INT/TERM trap on its tmpbin.
 		// Best-effort: a directory this process cannot write is the likeliest reason
@@ -1092,25 +1098,49 @@ export async function updateViaBinaryAt(
 	// ran at all; say so on success too. Silent under the auto-update reporter.
 	report(chalk.dim("Checksum verified"));
 
-	report(chalk.dim("Installing update..."));
-	await replaceBinaryForUpdate({
-		targetPath,
-		tempPath,
-		backupPath,
-		expectedVersion,
-		// Verify the file this update just wrote, not whatever PATH resolves now.
-		verifyInstalledVersion: version => verifyBinaryUsable(targetPath, version),
-	});
-	// Reclaim backups from earlier updates whose owning process has since exited.
-	await sweepStaleBackups(targetPath);
-	// The completion scripts on disk describe the version we just replaced, so
-	// every subcommand and flag this release adds would be missing from tab
-	// completion until the user re-ran the installer. Regenerate from the binary
-	// that was just installed.
-	const completionResult = await refreshCompletionsForInstalledBinary(targetPath, report);
-	printVerifiedVersion(expectedVersion, report);
-	report(chalk.dim(`Restart ${APP_NAME} to use the new version`));
-	return { warnings: completionResult.failed.map(formatCompletionRefreshWarning) };
+	// Only the mutation phase needs serialization: downloads remain concurrent
+	// and isolated at their unique paths, while backup, atomic replacement,
+	// rollback, stale-backup sweeping, and completion refresh observe one
+	// installed version at a time. The lock path is derived from targetPath, so
+	// independent installs do not block one another.
+	try {
+		return await withFileLock(
+			targetPath,
+			async () => {
+				report(chalk.dim("Installing update..."));
+				await replaceBinaryForUpdate({
+					targetPath,
+					tempPath,
+					backupPath,
+					expectedVersion,
+					// Verify the file this update just wrote, not whatever PATH resolves now.
+					verifyInstalledVersion: version => verifyBinaryUsable(targetPath, version),
+				});
+				// Reclaim backups from earlier updates whose owning process has since exited.
+				// Holding the replacement lock means this can never sweep another live
+				// attempt's rollback copy.
+				await sweepStaleBackups(targetPath);
+				// The completion scripts on disk describe the version we just replaced, so
+				// every subcommand and flag this release adds would be missing from tab
+				// completion until the user re-ran the installer. Regenerate from the binary
+				// that was just installed.
+				const completionResult = await refreshCompletionsForInstalledBinary(targetPath, report);
+				printVerifiedVersion(expectedVersion, report);
+				report(chalk.dim(`Restart ${APP_NAME} to use the new version`));
+				return { warnings: completionResult.failed.map(formatCompletionRefreshWarning) };
+			},
+			{
+				staleMs: AUTO_UPDATE_LOCK_STALE_MS,
+				retries: Math.ceil(BINARY_DOWNLOAD_TIMEOUT_MS / BINARY_UPDATE_LOCK_RETRY_MS),
+				retryDelayMs: BINARY_UPDATE_LOCK_RETRY_MS,
+			},
+		);
+	} catch (err) {
+		// Lock acquisition can fail before replaceBinaryForUpdate owns cleanup.
+		// Removing only this attempt's unique staging cannot disturb a contender.
+		await removeFileBestEffort(tempPath);
+		throw err;
+	}
 }
 
 /**
