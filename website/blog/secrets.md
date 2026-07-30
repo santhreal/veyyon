@@ -1,276 +1,327 @@
 ---
-title: "Secrets: Let the Agent Use Your Credentials Without Seeing Them"
+title: "Secrets: Give the Agent a Token Without Giving It to the Model"
 slug: secrets
 date: 2026-07-29
-summary: "Store a credential once, let the agent spend it by name, and keep the value out of provider requests. This guide shows the vault commands, local substitution boundary, audit trail, and limits."
+summary: "Start with one masked paste, use the credential through a placeholder, then add names, scopes, lifetimes, environment imports, auditing, and repair when you need them."
 draft: false
 ---
 
-# Secrets: Let the Agent Use Your Credentials Without Seeing Them
+# Secrets: Give the Agent a Token Without Giving It to the Model
 
-You want the agent to run the deploy. The deploy needs a token. So you paste the
-token into the chat, and now it is in the provider's logs, the session file on
-disk, and your terminal scrollback. Deleting the message does not remove it from
-any of those.
+You need the agent to call an API now. The API needs a token. You could paste the
+token into chat, but that sends it to the model provider and leaves it in your
+session history and terminal scrollback.
 
-veyyon splits reading a credential from spending one. A vault entry gives the
-agent a named placeholder such as `#DEPLOY_KEY#`. When it writes that placeholder
-into a command, veyyon swaps in the real value just before the command runs. The
-command works. The text that goes to the provider says `#DEPLOY_KEY#`.
+Use `/secret` instead. Veyyon stores the value locally and tells the agent only a
+placeholder such as `#SECRET_1#`. The agent writes the placeholder into a tool
+call. Veyyon replaces it with the real value immediately before execution.
 
-## Try it in 60 seconds
+This guide starts with the shortest path. The later sections add control only
+when you need it.
 
-If the credential is already in your shell, store it without typing it into the
-chat or terminal:
+## Store one now
 
-```sh
-export GITHUB_TOKEN=ghp_your_real_token_here
-veyyon
-```
+In an interactive Veyyon session, run:
 
 ```text
-/secret add github-token --from-env GITHUB_TOKEN
+/secret add
 ```
 
+Veyyon opens a masked input. Paste the credential and press Enter. Your typing is
+hidden. You do not need to choose a name, scope, or lifetime first.
+
+The first unnamed credential is stored as `SECRET_1`:
+
 ```text
-Stored GITHUB_TOKEN in the profile vault, 1d left.
-The model sees #GITHUB_TOKEN# and never the value. Write that placeholder where the credential goes.
+Stored SECRET_1 in the profile vault, 1d left.
+The model sees #SECRET_1# and never the value. Write that placeholder where the credential goes.
 Secret protection was off, so it is now on for this session and saved for the next one.
 ```
 
-Now ask for something that needs it:
+That is enough. The agent can use `#SECRET_1#` immediately, and a later session
+will be told that the placeholder is available.
+
+## Use it
+
+Suppose the credential is a Stripe test-mode API key. Ask:
 
 ```text
-> list my open pull requests
+Use #SECRET_1# to fetch my Stripe test-mode balance.
 ```
 
-The agent writes a command with `#GITHUB_TOKEN#`. The approval view still shows
-the placeholder. After approval, veyyon substitutes the token locally and runs
-the command. Check what the provider received with `/dump`: the token is not in
-it.
+The agent can produce a command such as:
 
-`--from-env` matters here. The credential never enters the editor buffer or
-terminal scrollback. The vault gives it a stable name that the agent can use in
-this session and after a restart.
-
-Veyyon also detects credential-like environment variables defensively. A value
-of 8 characters or longer is protected when its name ends with, or has an
-underscore before, one of `KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `PASS`,
-`PASSPHRASE`, `AUTH`, `CREDENTIAL`, `PRIVATE`, or `OAUTH`. If a detected value
-appears in provider-bound text, veyyon replaces it with an opaque machine-keyed
-placeholder. Detection does not add a readable name to the agent's inventory.
-Use `/secret add --from-env` when the agent needs to spend the credential
-deliberately.
-
-That is the whole setup. Everything below is detail.
-
-## Every command
-
-```text
-/secret add <name> --from-env <VAR>   store the value of an environment variable
-/secret list                          show active secrets, never their values
-/secret rm <name>                     remove a secret
-/secret extend <name> --ttl 7d        give a secret a fresh lifetime
-/secret log [--limit 50]              show which secrets were used, and where
-/secret discard --scope project       move a broken vault file aside
-
-Options: --ttl 30m|12h|7d|2w|never   --scope profile|project|global
+```sh
+curl -sS https://api.stripe.com/v1/balance -u '#SECRET_1#:'
 ```
 
-In an interactive session you can leave off `--from-env` and be prompted, with
-your typing hidden:
+The model provider receives the placeholder. The approval view shows the
+placeholder. Veyyon expands the real key locally just before `curl` starts.
 
-```text
-/secret add stripe-key
-```
-
-`--from-env` is the only form that works where there is no terminal to hide
-input on, such as `--print` mode or an ACP editor. On those surfaces veyyon
-refuses an inline value rather than accept one that would land in your
-scrollback.
-
-### Storing
-
-Names are normalized up, so `deploy-key` becomes `DEPLOY_KEY`, and the
-confirmation shows you the name the model will actually see. Use 5 to 64
-characters, starting with a letter, then `A-Z`, `0-9`, and underscore. The name
-appears inside `#...#` in text the model reads, so it has to be unambiguous
+Run `/dump` if you want to inspect the provider request. The key should not be
 there.
 
-```text
-/secret add staging-key --from-env STG --scope project --ttl 12h
-```
+## Give it a useful name
+
+`SECRET_1` is useful when you are in a hurry. A descriptive name is easier to
+recognize when you have several credentials.
+
+Remove the temporary entry and add it again with a name:
 
 ```text
-Stored STAGING_KEY in the project vault, 12h left.
-The model sees #STAGING_KEY# and never the value. Write that placeholder where the credential goes.
+/secret rm secret-1
+/secret add stripe-test-key
 ```
 
-Storing the same name again rotates it, and says which happened:
+Paste the value into the masked input again. Veyyon normalizes the name to
+`STRIPE_TEST_KEY`, and the agent uses `#STRIPE_TEST_KEY#`.
+
+Names are 5 to 64 characters. They begin with a letter and normalize to `A-Z`,
+`0-9`, and underscore. For example, `staging deploy key` becomes
+`STAGING_DEPLOY_KEY`.
+
+Adding the same normalized name again in the same scope rotates it. The old
+value is replaced:
 
 ```text
-Replaced DEPLOY_KEY in the profile vault, 1d left.
-The previous value is gone. #DEPLOY_KEY# now spends the credential you just stored.
+Replaced STRIPE_TEST_KEY in the profile vault, 1d left.
+The previous value is gone. #STRIPE_TEST_KEY# now spends the credential you just stored.
 ```
 
-### Listing
+## Import a value that is already in the environment
+
+A masked paste is the fastest interactive path. An environment import is better
+when your shell, password manager, service manager, or CI runner already
+provides the credential.
+
+Make the variable available before Veyyon starts, then run:
+
+```text
+/secret add stripe-test-key --from-env STRIPE_TEST_KEY
+```
+
+Veyyon reads the inherited environment variable. The value never enters the
+Veyyon editor or its terminal output.
+
+Do not type a real assignment such as `export STRIPE_TEST_KEY=...` merely to
+follow this example. A literal shell assignment can remain in shell history. Use
+the credential facility you already trust to populate the environment.
+
+`--from-env` is also the only add form available in non-interactive surfaces such
+as `--print` mode and ACP clients. Those surfaces cannot provide a masked input,
+so Veyyon refuses an inline credential.
+
+## Choose where it is available
+
+The default scope is `profile`. Add `--scope` when you want a narrower or broader
+boundary.
+
+### Keep it with one repository
+
+Use `project` for a credential that belongs to the codebase in your current
+working directory:
+
+```text
+/secret add stripe-test-key --scope project
+```
+
+When you move to another project, that project entry is no longer available.
+Use this for a repository's staging key or a project-specific service account.
+
+### Keep it with your line of work
+
+Use `profile` for credentials you normally use across several repositories in
+the same Veyyon profile:
+
+```text
+/secret add stripe-test-key --scope profile
+```
+
+This is the default. A work profile and a personal profile can carry different
+credentials with the same name.
+
+### Make it available to every profile
+
+Use `global` only when the same machine-wide credential should be available in
+every profile:
+
+```text
+/secret add shared-service-key --scope global
+```
+
+This is the broadest scope. Prefer project or profile when either describes the
+real ownership boundary.
+
+When the same name exists in more than one scope, project overrides profile, and
+profile overrides global. The narrower entry shadows only the matching name.
+Other entries remain available.
+
+## Set a lifetime
+
+A new entry lasts one day unless your settings specify another default. Set a
+lifetime when you add it:
+
+```text
+/secret add stripe-test-key --scope project --ttl 12h
+```
+
+Accepted forms include `30m`, `12h`, `7d`, `2w`, and `never`.
+
+Extend an existing entry from the current time:
+
+```text
+/secret extend stripe-test-key --ttl 7d
+```
+
+An expired entry stops expanding immediately. Veyyon removes its placeholder
+from the active inventory and tells the agent that it can no longer use it.
+
+## See what is active
+
+Run:
 
 ```text
 /secret list
 ```
 
+The list shows placeholders, scope, and expiry. It never shows values:
+
 ```text
 3 active secrets. The agent spends one by writing its placeholder; the value is never shown.
-  PLACEHOLDER    SCOPE    EXPIRES
-  #DEPLOY_KEY#   profile  24h left
-  #HOME_LAB#     profile  never expires
-  #STAGING_KEY#  project  12h left
+  PLACEHOLDER       SCOPE    EXPIRES
+  #STRIPE_TEST_KEY# project  12h left
+  #DEPLOY_KEY#      profile  24h left
+  #HOME_LAB#        profile  never expires
 ```
 
-### Lifetimes
+The list contains the effective live entries for your current profile and
+working directory.
 
-Every entry expires. The default is one day, changed in `/settings` under Secret
-Lifetime or per entry with `--ttl`. Accepted forms are `30m`, `12h`, `7d`, `2w`,
-and `never`.
+## Check how a credential was used
 
-```text
-/secret extend deploy-key --ttl 7d
-```
-
-```text
-DEPLOY_KEY in the profile vault now lasts 7d from now (7d left).
-```
-
-### Scope
-
-An entry belongs to one scope and is invisible from the others. Project
-overrides profile, which overrides global. The default is profile.
-
-| Scope | Lives with | Use for |
-| --- | --- | --- |
-| `project` | one repository | credentials for that codebase |
-| `profile` | your line of work | your usual tokens |
-| `global` | every profile | machine-wide credentials |
-
-Moving to another working directory loads that project's scope and drops the old
-one's.
-
-### Auditing
-
-Hiding a value tells you what the agent could not see. It does not tell you what
-it did with what it could:
+Run:
 
 ```text
 /secret log --limit 5
 ```
 
-Each entry records which placeholder was spent and in what command, never the
-value. Turn it off with the `secrets.auditLog` setting.
+Each audit entry records the placeholder, tool, command context, and time. It
+never records the value. The `secrets.auditLog` setting controls this log and is
+on by default.
 
-### Repair
+The log answers a different question from masking. Masking shows what the model
+could not read. The audit log shows where an available placeholder was spent.
 
-Veyyon will not guess at repairing an encrypted vault that no longer opens. If
-a disk filled up mid-write or a sync client merged two copies, move that scope's
-file aside and re-add what it held:
+## Remove or rotate it
+
+Remove the effective entry by name:
+
+```text
+/secret rm stripe-test-key
+```
+
+`rm` removes the narrowest active match. If a project entry shadows a profile or
+global entry with the same name, removing the project entry reveals the entry
+under it. Run `/secret list` again and remove the name once more if you intend to
+revoke every layer.
+
+Rotate a credential by adding the same name again in the same scope. Veyyon
+replaces the old value atomically.
+
+## Repair a vault that no longer opens
+
+A disk failure or file-sync conflict can leave an encrypted vault unreadable.
+Veyyon will not guess how to repair authenticated ciphertext. Move the damaged
+scope aside, then add its entries again:
 
 ```text
 /secret discard --scope project
 ```
 
-It requires the scope, with no default, and refuses when the vault reads fine.
+The scope is mandatory. `discard` refuses to move a vault that still reads
+correctly.
 
-## Declaring secrets yourself
+## Declare protection rules without using the vault
 
-Environment detection covers what is already in your shell. For anything else,
-list entries in a `secrets.yml`. Two files are read and merged, profile at
-`<agent dir>/secrets.yml` and project at `<project>/.veyyon/secrets.yml`.
+The vault is the right place for an encrypted value the agent should be able to
+spend. `secrets.yml` is for additional protection rules.
 
-An exact value:
+Veyyon merges two optional files:
+
+- `<agent dir>/secrets.yml` for the active profile.
+- `<project>/.veyyon/secrets.yml` for the current project.
+
+Protect one exact value:
 
 ```yaml
 - type: plain
-  content: sk-proj-abc123def456
+  content: sk_test_example_not_a_real_key
 ```
 
-A pattern, which covers credentials you have not seen yet:
+Protect values that match a pattern:
 
 ```yaml
 - type: regex
   content: "AKIA[0-9A-Z]{16}"
 ```
 
-Each entry picks a mode. `obfuscate` is the default and is reversible: the
-placeholder expands back to the value on its way into a command. `replace` is
-one-way, for values that should never be reconstructed.
+`obfuscate` is the default mode and can expand its placeholder locally.
+`replace` is one-way and cannot reconstruct the original value.
 
-Two limits worth knowing. Values under 8 characters are not obfuscated, because
-replacing a three-character string would blank out fragments of unrelated words.
-And veyyon refuses a regex that cannot make progress, uses sticky matching, or
-looks like catastrophic backtracking.
+A `secrets.yml` file is plain text. Anyone who can read it can read an exact
+value declared there. Put real credentials in the encrypted vault instead.
 
-`secrets.yml` is a plain file. It holds your declarations in the clear, and
-anyone who can read it has those credentials. If a value needs to be encrypted
-at rest, put it in the vault instead.
+## Automatic environment protection
 
-## How it works
+Veyyon also detects credential-like values already present in its inherited
+environment. A value of at least 8 characters is protected when the variable
+name ends with, or has an underscore before, a credential keyword such as
+`KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `AUTH`, `CREDENTIAL`, `PRIVATE`, or
+`OAUTH`.
 
-Three sources feed one runtime: detected environment variables, your
-`secrets.yml` declarations, and the vault. Each contributes values to protect.
-Reversible declarations and vault entries also contribute placeholders that map
-back locally.
+This is defensive masking. It does not give the agent a useful name to spend.
+Use `/secret add --from-env` when you deliberately want the agent to use that
+credential.
 
-**On the way out**, every known value is replaced before provider dispatch. That
-covers messages, dynamic system prompts, tool descriptions and schemas, resumed
-assistant text, replay payloads, and nested model calls such as title
-generation, image analysis, and memory summaries.
+## What crosses each boundary
 
-**On the way in**, a placeholder the model wrote is expanded just before a
-command executes. The process gets the real bytes. The transcript keeps the
-placeholder.
+Three sources feed the runtime: detected environment variables, `secrets.yml`
+declarations, and encrypted vault entries.
 
-**The agent is told what it can spend.** An `AVAILABLE SECRETS` section is
-rebuilt from the live runtime on every prompt, listing vault names only. Store
-`GITHUB_TOKEN` today and start a fresh session tomorrow: the agent writes
-`#GITHUB_TOKEN#` without you mentioning the credential again. Remove it and the
-name stops being rendered.
+On the way to a model provider, Veyyon replaces every known value before
+messages, prompts, tool descriptions, resumed text, or nested model calls leave
+the process.
 
-**Screen and execution are separate.** A placeholder expands for execution
-always, but on your terminal only a `type: regex` pattern you declared yourself
-is painted back. Vault entries, detected environment variables, and plain
-declarations stay masked on screen, because a scrollback buffer is not a private
-channel and a screenshot travels.
+On the way to a tool, Veyyon expands a placeholder immediately before execution.
+The tool receives the real bytes. The transcript keeps the placeholder.
 
-**Vault files use AES-256-GCM**, a fresh 12-byte nonce per write and the full
-16-byte authentication tag. The key is a 32-byte file at `~/.veyyon/vault.key`,
-created on first use, never inside a project directory. Because the ciphertext
-is authenticated, a damaged vault fails to open rather than decrypting to
-something subtly wrong.
+The active model prompt includes an `AVAILABLE SECRETS` section containing vault
+names only. Add `STRIPE_TEST_KEY` now and a later session can use
+`#STRIPE_TEST_KEY#` without you repeating the value or the name.
 
-**Failures that would leak stop the session.** A missing vault key, an
-unparseable `secrets.yml`, a declared `obfuscate` entry under the length floor:
-each refuses with the entry and the fix named. Failures that only degrade
-something warn instead and say what is not protected.
+Vault files use AES-256-GCM with a fresh nonce and authentication tag for every
+write. The machine key lives at `~/.veyyon/vault.key`, outside project
+directories.
 
 ## Settings
 
-| Setting | Default | What it does |
-| --- | --- | --- |
-| `secrets.enabled` | `false` | Master switch, shown as Hide Secrets |
-| `secrets.defaultTtl` | `1d` | Lifetime for a new entry without `--ttl` |
-| `secrets.auditLog` | `true` | Record which secret was used where |
-| `share.redactSecrets` | `true` | Keep values out of a shared session |
+The relevant settings are:
 
-`/secret add` turns `secrets.enabled` on and persists it, because a stored
-credential is only useful once the substitution is running.
+- `secrets.enabled`, default `false`: turns substitution and protection on. `/secret add` enables it for the current session and persists the setting.
+- `secrets.defaultTtl`, default `1d`: controls a new vault entry when `--ttl` is absent.
+- `secrets.auditLog`, default `true`: records placeholder use without recording values.
+- `share.redactSecrets`, default `true`: keeps known values out of a shared session.
 
-## What this does not protect
+## Know the execution boundary
 
-A command the agent runs receives the real value, so a command that prints the
-credential prints it for real. Its output is obfuscated again before returning
-to the model, but the process saw it, and whatever that process wrote elsewhere
-is outside veyyon's reach. That output is also saved to the session file as
-printed. veyyon redacts the arguments it records itself; it cannot redact what a
-command chose to print.
+A tool that receives a credential can still print it, write it to a file, or
+send it to another service. Veyyon masks provider-bound output again, but the
+process already received the real value. Raw command output is also retained in
+the session history as the command produced it.
 
-Full field-by-field schema, merge rules, and the interaction with environment
-detection are in the handbook.
+Use approval controls and narrow credential scopes as you would without the
+vault. `/secret` removes the model-provider exposure and gives the agent a named,
+auditable way to spend a value. It does not make an untrusted command safe.
+
+The handbook contains the complete field schema, merge rules, and environment
+detection details.

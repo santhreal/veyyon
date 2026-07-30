@@ -91,6 +91,13 @@ header.site{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--
 .lede{font-size:clamp(17px,1.8vw,20px);color:var(--fg-2);margin:0 0 36px;max-width:48ch;line-height:1.55;text-wrap:pretty}
 .cta{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:40px}
 .cta .btn{padding:12px 22px;font-size:14.5px}
+.install-picker{display:inline-flex;flex-direction:column;align-items:flex-start;gap:9px}
+.install-platforms{display:flex;gap:6px;flex-wrap:wrap}
+.install-platform{border:1px solid var(--line-2);background:transparent;color:var(--muted);padding:6px 11px;
+  font:600 10.5px/1 var(--mono);letter-spacing:.07em;cursor:pointer;transition:.14s}
+.install-platform:hover{border-color:var(--silver);color:var(--silver-hi)}
+.install-platform[aria-pressed="true"]{border-color:var(--sun-hi);background:var(--sun-dim);color:var(--fg)}
+.install-platform:focus-visible,.install button:focus-visible{outline:2px solid var(--sun-hi);outline-offset:2px}
 .install{display:inline-flex;align-items:center;gap:16px;border:1px solid var(--line-2);background:var(--inset);
   padding:13px 18px;font-family:var(--mono);font-size:14px}
 .install .p{color:var(--sun-hi)}
@@ -121,7 +128,7 @@ header.site{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--
 .page-head h1{font-family:var(--mono);font-weight:700;font-size:clamp(34px,5vw,54px);letter-spacing:-.038em;
   margin:0 0 20px;max-width:18ch;line-height:1.05;text-wrap:balance}
 .page-head p{color:var(--fg-2);max-width:60ch;font-size:clamp(16px,1.7vw,18.5px);margin:0;line-height:1.55;text-wrap:pretty}
-.page-head .install{margin-top:34px}
+.page-head .install-picker{margin-top:34px}
 
 /* ---------- sections ---------- */
 section{padding:96px 0;border-top:1px solid var(--line)}
@@ -323,6 +330,8 @@ footer.site{border-top:1px solid var(--line);padding:52px 0;color:var(--dim);fon
   /* the install command is one long unbreakable token, so the row has to be a
      shrinkable flex line with the code scrolling inside it — an inline-flex box
      with a nowrap child pushed the whole row past the viewport edge on phones */
+  .install-picker{display:flex;width:100%}
+  .install-platforms{width:100%}
   .install{display:flex;width:100%;gap:12px}
   .install code{flex:1;min-width:0;overflow-x:auto;font-size:13px}
   .install button{flex:none}
