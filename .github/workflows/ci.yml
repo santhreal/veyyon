@@ -587,6 +587,10 @@ jobs:
       # one would mean a broken published binary blocks the release that fixes it,
       # which is exactly backwards.
       name: "Published release install (${{ matrix.os }})"
+      # This monitor describes the release already in production. Keep its
+      # failed step visible, but do not let yesterday's broken artifact block
+      # the source-built release that repairs it.
+      continue-on-error: true
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       strategy:
          fail-fast: false
@@ -644,6 +648,10 @@ jobs:
       # Push-to-main only. It downloads a published release on every run, which is
       # not a per-pull-request cost, and it needs a release to exist at all.
       name: Windows installer end-to-end (published release)
+      # This monitor describes the release already in production. Keep its
+      # failed step visible, but do not let yesterday's broken artifact block
+      # the source-built release that repairs it.
+      continue-on-error: true
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       runs-on: windows-latest
       timeout-minutes: 30
