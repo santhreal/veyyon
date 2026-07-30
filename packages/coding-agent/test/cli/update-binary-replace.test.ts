@@ -247,13 +247,14 @@ describe("replaceBinaryForUpdate rollback failure", () => {
 		writeFileSync(target, "OLD-BINARY");
 		writeFileSync(temp, "BROKEN-NEW-BINARY");
 
-		// Let the two forward renames run (target->backup move-aside, temp->target
-		// swap-in) but force the third (backup->target rollback) to fail.
+		// The transaction now preserves the old inode with a hard link before the
+		// atomic temp->target swap. Let that first rename run, then force the second
+		// rename (backup->target rollback) to fail.
 		const realRename = fsp.rename.bind(fsp);
 		let renameCalls = 0;
 		const renameSpy = spyOn(fsp, "rename").mockImplementation(async (from, to) => {
 			renameCalls += 1;
-			if (renameCalls >= 3) throw new Error("simulated rollback rename failure (EACCES)");
+			if (renameCalls >= 2) throw new Error("simulated rollback rename failure (EACCES)");
 			return realRename(from as string, to as string);
 		});
 
@@ -284,7 +285,7 @@ describe("replaceBinaryForUpdate rollback failure", () => {
 		expect(readFileSync(backup, "utf8")).toBe("OLD-BINARY");
 		// The failed download is cleaned up even on the rollback-failure path.
 		expect(existsSync(temp)).toBe(false);
-		// The rollback was actually attempted (3 renames: move-aside, swap, restore).
-		expect(renameCalls).toBe(3);
+		// The rollback was actually attempted (swap-in, then restore).
+		expect(renameCalls).toBe(2);
 	});
 });
