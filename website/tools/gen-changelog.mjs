@@ -458,7 +458,12 @@ function veyyonEntries(entries, forkPointVersion) {
  * A changelog that silently loses entries is worse than none, because the reader
  * has no way to tell that what they are looking at is incomplete.
  *
- * Entries are merged by version and then by section, in Keep a Changelog order.
+ * Entries are merged by product release version and then by section, in Keep a
+ * Changelog order. The first source owns the release train. Other packages
+ * contribute `Unreleased` work and entries whose version exists in that lead
+ * changelog. This matters because extracted package changelogs contain inherited
+ * history first and newer Veyyon package releases appended after it.
+ *
  * Bullets keep their text verbatim and are not tagged with a package name: a
  * reader of the product changelog wants to know what changed, not which internal
  * package it landed in. `coding-agent` is listed first within each section
@@ -486,13 +491,27 @@ const ROOT_GENERATED_BANNER =
 
 export function renderRootChangelog(sources, { forkPointVersion = FORK_POINT_VERSION } = {}) {
 	const list = typeof sources === "string" ? [{ name: "coding-agent", md: sources }] : sources;
+	const leadEntries = veyyonEntries(parseAllEntries(list[0]?.md ?? ""), forkPointVersion);
+	const productVersions = new Set(
+		leadEntries
+			.filter(entry => entry.version.toLowerCase() !== "unreleased")
+			.map(entry => normalizeVersion(entry.version)),
+	);
 
 	// version -> section name -> bullets, insertion-ordered by the source list so
 	// the first package listed contributes its bullets first.
 	const byVersion = new Map();
 	const dates = new Map();
-	for (const { md } of list) {
-		for (const entry of veyyonEntries(parseAllEntries(md), forkPointVersion)) {
+	for (const [index, { md }] of list.entries()) {
+		const entries =
+			index === 0
+				? leadEntries
+				: parseAllEntries(md).filter(
+						entry =>
+							entry.version.toLowerCase() === "unreleased" ||
+							productVersions.has(normalizeVersion(entry.version)),
+					);
+		for (const entry of entries) {
 			const sections = byVersion.get(entry.version) ?? new Map();
 			byVersion.set(entry.version, sections);
 			// The date is the release's, not a package's, so the first one wins and
