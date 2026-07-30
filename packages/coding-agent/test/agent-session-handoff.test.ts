@@ -411,7 +411,8 @@ describe("AgentSession handoff", () => {
 		expect(session.agent.peekFollowUpQueue().map(textOf)).toEqual(["inflight-followup"]);
 	});
 
-	it("obfuscates custom instructions before generating a handoff", async () => {
+	/** Stored credentials remain opaque in provider input, persisted history, and the returned document. */
+	it("keeps custom instruction credentials obfuscated through a generated handoff", async () => {
 		const placeholder = obfuscator.obfuscate(HANDOFF_SECRET);
 		const generateHandoffSpy = vi
 			.spyOn(compactionModule, "generateHandoffFromContext")
@@ -431,8 +432,8 @@ describe("AgentSession handoff", () => {
 				: (trailing?.content ?? []).map(block => (block.type === "text" ? block.text : "")).join("");
 		expect(trailingText).toContain(`preserve ${placeholder}`);
 		expect(trailingText).not.toContain(HANDOFF_SECRET);
-		expect(result?.document).toContain(HANDOFF_SECRET);
-		expect(result?.document).not.toContain(placeholder);
+		expect(result?.document).toContain(placeholder);
+		expect(result?.document).not.toContain(HANDOFF_SECRET);
 	});
 
 	it("obfuscates the previous compaction summary but preserves opaque replay data", async () => {
