@@ -10,6 +10,7 @@
 # schedule so newly published advisories are caught against an unchanged tree,
 # plus manual dispatch.
 name: Security
+run-name: "${{ inputs.release_nonce != '' && format('{0} release gate {1}', github.workflow, inputs.release_nonce) || github.workflow }}"
 
 on:
   push:
@@ -20,6 +21,11 @@ on:
     # 03:17 UTC daily — offset off the hour to avoid the cron stampede.
     - cron: "17 3 * * *"
   workflow_dispatch:
+    inputs:
+      release_nonce:
+        description: "Release cutter correlation token"
+        required: false
+        type: string
 
 # Release shas keep their security gates: byte-equivalent copy of ci.yml's
 # release-detection concurrency (see checks.yml/ci.yml comments; keep in lockstep).

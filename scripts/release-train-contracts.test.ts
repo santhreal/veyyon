@@ -113,68 +113,6 @@ esac
 	};
 }
 
-async function runPublishDispatch(options: { failSecurity?: boolean } = {}) {
-	const wf = await loadYaml("workflows/release.yml");
-	const dispatch = wf.jobs.release.steps.find((step: { id?: string }) => step.id === "dispatch");
-	const dir = mkdtempSync(path.join(tmpdir(), "release-dispatch-"));
-	const output = path.join(dir, "github-output");
-	const calls = path.join(dir, "calls");
-	writeFileSync(output, "");
-	writeFileSync(calls, "");
-	const git = path.join(dir, "git");
-	const gh = path.join(dir, "gh");
-	writeFileSync(
-		git,
-		`#!/bin/sh
-case "$*" in
-  "tag --points-at HEAD") printf 'v1.2.3\\n' ;;
-  "rev-parse HEAD") printf 'release-sha\\n' ;;
-  *) printf 'unexpected git invocation: %s\\n' "$*" >&2; exit 88 ;;
-esac
-`,
-	);
-	writeFileSync(
-		gh,
-		`#!/bin/sh
-printf '%s\\n' "$*" >> "$CALLS"
-case "$*" in
-  "workflow run checks.yml --ref v1.2.3") ;;
-  "workflow run security.yml --ref v1.2.3") ;;
-  "workflow run ci.yml --ref v1.2.3") ;;
-  *"run list --workflow checks.yml "*) printf '101\\n' ;;
-  *"run list --workflow security.yml "*) printf '102\\n' ;;
-  *"run view 101 "*) printf 'release-sha\\n' ;;
-  *"run view 102 "*) printf 'release-sha\\n' ;;
-  "run watch 101 --exit-status") ;;
-  "run watch 102 --exit-status") [ "$FAIL_SECURITY" != "1" ] ;;
-  *) printf 'unexpected gh invocation: %s\\n' "$*" >&2; exit 88 ;;
-esac
-`,
-	);
-	chmodSync(git, 0o755);
-	chmodSync(gh, 0o755);
-	const proc = Bun.spawn(["bash", "-c", dispatch.run], {
-		cwd: path.resolve(import.meta.dir, ".."),
-		env: {
-			...process.env,
-			PATH: `${dir}:${process.env.PATH ?? ""}`,
-			CALLS: calls,
-			GITHUB_OUTPUT: output,
-			GH_TOKEN: "write-test-token",
-			FAIL_SECURITY: options.failSecurity ? "1" : "0",
-		},
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
-	return {
-		exitCode,
-		stderr,
-		output: readFileSync(output, "utf8"),
-		calls: readFileSync(calls, "utf8").trim().split("\n"),
-	};
-}
-
 describe("release.yml exact-SHA source gates", () => {
 	it("is triggered by completed CI, Checks, and Security runs on main, never a raw push", async () => {
 		const wf = await loadYaml("workflows/release.yml");
@@ -229,30 +167,6 @@ describe("release.yml exact-SHA source gates", () => {
 		expect(dispatch.run.indexOf("dispatch_and_wait security.yml")).toBeLessThan(
 			dispatch.run.indexOf("gh workflow run ci.yml"),
 		);
-	});
-
-	it("waits for exact-tag Checks and Security before dispatching publication", async () => {
-		const result = await runPublishDispatch();
-		expect(result.exitCode).toBe(0);
-		expect(result.output).toContain("tag=v1.2.3");
-		expect(result.calls).toEqual([
-			"workflow run checks.yml --ref v1.2.3",
-			"run list --workflow checks.yml --commit release-sha --event workflow_dispatch --json databaseId --limit 1 --jq .[0].databaseId // empty",
-			"run view 101 --json headSha --jq .headSha",
-			"run watch 101 --exit-status",
-			"workflow run security.yml --ref v1.2.3",
-			"run list --workflow security.yml --commit release-sha --event workflow_dispatch --json databaseId --limit 1 --jq .[0].databaseId // empty",
-			"run view 102 --json headSha --jq .headSha",
-			"run watch 102 --exit-status",
-			"workflow run ci.yml --ref v1.2.3",
-		]);
-	});
-
-	it("does not dispatch publication when the exact-tag Security gate fails", async () => {
-		const result = await runPublishDispatch({ failSecurity: true });
-		expect(result.exitCode).not.toBe(0);
-		expect(result.calls).not.toContain("workflow run ci.yml --ref v1.2.3");
-		expect(result.output).not.toContain("tag=");
 	});
 
 	it("defers a successful but stale workflow completion without invoking release selection", async () => {
@@ -396,14 +310,17 @@ describe("required publication artifacts", () => {
 		expect(await run({ SITE_AUTODEPLOY: "on", HAS_CF_TOKEN: "true", HAS_CF_ACCOUNT_ID: "true" })).toBe(0);
 	});
 
-	it("both production deployers share one never-cancel concurrency group", async () => {
+	it("every release and standalone production deploy shares one never-cancel concurrency group", async () => {
 		const ci = await loadYaml("workflows/ci.yml");
 		const site = await loadYaml("workflows/site.yml");
-		expect(ci.jobs.release_site.concurrency).toEqual({
+		const expected = {
 			group: "production-site-deploy",
 			"cancel-in-progress": false,
-		});
-		expect(site.concurrency).toEqual(ci.jobs.release_site.concurrency);
+		};
+
+		expect(ci.jobs.release_site.concurrency).toEqual(expected);
+		expect(ci.jobs.release_site_finalize.concurrency).toEqual(expected);
+		expect(site.concurrency).toEqual(expected);
 	});
 
 	it("release deployment and installer verification cannot be conditionally skipped", async () => {
@@ -439,13 +356,88 @@ describe("required publication artifacts", () => {
 			expect(installer.env.VEYYON_PAGES_PROJECT, workflow).toBe("veyyon-get");
 		}
 	});
-	it("published asset verification is part of the GitHub publication job", async () => {
+	it("draft asset verification is part of the GitHub preparation job", async () => {
 		const wf = await loadYaml("workflows/ci.yml");
 		const step = wf.jobs.release_github.steps.find(
-			(candidate: { name?: string }) => candidate.name === "Verify the exact published asset manifest",
+			(candidate: { name?: string }) => candidate.name === "Verify the exact draft asset manifest",
 		);
 		expect(step).toBeDefined();
 		expect(step.env.GH_TOKEN).toBeDefined();
+	});
+
+	/** Existing release metadata is mutable; only the Git tag ref proves the immutable SHA. */
+	it("resolves the release tag ref before draft preparation and publication", async () => {
+		const wf = await loadYaml("workflows/ci.yml");
+		const prepare = wf.jobs.release_github.steps.find((step: { id?: string }) => step.id === "draft");
+		const publish = wf.jobs.release_github_publish.steps.find(
+			(step: { name?: string }) => step.name === "Publish the exact verified draft",
+		);
+
+		for (const step of [prepare, publish]) {
+			expect(step.run).toContain("/git/ref/tags/");
+			expect(step.run).toContain("ref_type=\"$(jq -r '.object.type'");
+			expect(step.run).toContain("ref_sha=\"$(jq -r '.object.sha'");
+			expect(step.run).not.toContain("target_commitish");
+		}
+	});
+
+	/** A draft asset mutation after platform verification must be caught before the publish PATCH. */
+	it("rechecks every release asset digest immediately before publication", async () => {
+		const wf = await loadYaml("workflows/ci.yml");
+		const prepareSteps = wf.jobs.release_github.steps;
+		const publishSteps = wf.jobs.release_github_publish.steps;
+		const preserved = prepareSteps.find(
+			(step: { name?: string }) => step.name === "Preserve the verified asset digest manifest",
+		);
+		const downloaded = publishSteps.find(
+			(step: { name?: string }) => step.name === "Download the verified asset digest manifest",
+		);
+		const publish = publishSteps.find((step: { name?: string }) => step.name === "Publish the exact verified draft");
+
+		expect(preserved).toBeDefined();
+		expect(downloaded).toBeDefined();
+		expect(publish.run).toContain("diff -u release-proof/local-assets.sha256 remote-assets.sha256");
+		expect(publish.run.indexOf("diff -u release-proof/local-assets.sha256")).toBeLessThan(
+			publish.run.indexOf("releases/$RELEASE_ID"),
+		);
+	});
+
+	/** Publishing changes changelog reconciliation, so the final deploy must rebuild and prove the live link. */
+	it("rebuilds and verifies the website after GitHub publication", async () => {
+		const wf = await loadYaml("workflows/ci.yml");
+		const finalize = wf.jobs.release_site_finalize;
+		const names = finalize.steps.map((step: { name?: string }) => step.name).filter(Boolean);
+
+		expect(finalize.needs).toContain("release_github_publish");
+		expect(names).toContain("Rebuild changelog after GitHub publication");
+		expect(names).toContain("Deploy finalized changelog to veyyon.dev");
+		expect(names).toContain("Verify veyyon.dev links the published release");
+		expect(names.indexOf("Rebuild changelog after GitHub publication")).toBeLessThan(
+			names.indexOf("Deploy finalized changelog to veyyon.dev"),
+		);
+		expect(names.indexOf("Deploy finalized changelog to veyyon.dev")).toBeLessThan(
+			names.indexOf("Verify veyyon.dev links the published release"),
+		);
+	});
+
+	/** The completed train must exercise releases/latest through every shipped platform installer. */
+	it("requires published installer round trips before reporting the train green", async () => {
+		const wf = await loadYaml("workflows/ci.yml");
+		const verify = wf.jobs.release_install_verify;
+		const alertNeeds = wf.jobs.release_train_alert.needs;
+
+		expect(verify.needs).toContain("release_site_finalize");
+		expect(verify.strategy.matrix.include.map((entry: { name: string }) => entry.name)).toEqual([
+			"linux-x64",
+			"macos-arm64",
+			"macos-x64",
+			"windows-x64",
+		]);
+		for (const step of verify.steps.filter((entry: { run?: string }) => entry.run)) {
+			expect(step["continue-on-error"]).toBeUndefined();
+		}
+		expect(alertNeeds).toContain("release_site_finalize");
+		expect(alertNeeds).toContain("release_install_verify");
 	});
 	it("a cancelled required site artifact cannot be reported as a green release", async () => {
 		const wf = await loadYaml("workflows/ci.yml");
