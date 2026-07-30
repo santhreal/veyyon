@@ -18,11 +18,12 @@
  *     ground is unchanged, since the whole risk of a ramp swap is fixing one
  *     ground by breaking the other.
  */
-import { describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { LIGHT_SILVER_STOPS, SILVER_STOPS, silverEscape } from "@veyyon/coding-agent/modes/components/welcome";
 import type { ThemeJson } from "@veyyon/coding-agent/modes/theme/color";
 import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
 import { createTheme, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { TERMINAL } from "@veyyon/tui";
 import lightThemeJson from "../../src/modes/theme/light.json" with { type: "json" };
 
 /** `#RRGGBB` to the triple the stops are written as. */
@@ -61,6 +62,16 @@ const RESTING = 0.55;
 function useTruecolorTheme(themeJson: ThemeJson): void {
 	setThemeInstance(createTheme(themeJson, { mode: "truecolor" }));
 }
+const originalTrueColor = TERMINAL.trueColor;
+const mutableTerminal = TERMINAL as unknown as { trueColor: boolean };
+
+beforeAll(() => {
+	mutableTerminal.trueColor = true;
+});
+
+afterAll(() => {
+	mutableTerminal.trueColor = originalTrueColor;
+});
 
 describe("the light-ground stops", () => {
 	it("are the light theme's own silver vars, not a second palette", () => {
