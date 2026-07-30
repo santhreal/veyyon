@@ -105,6 +105,9 @@
   mid-cell and replay the cell once. Unexpected process exits were classified as user cancellation,
   which bypassed the existing dead-kernel recovery path. Timeouts and explicit cancellation still
   stop without replaying the cell.
+- Tool status headers no longer gain a blank leading cell when the active symbol preset intentionally
+  leaves that tool's glyph empty. Empty symbols now produce no ANSI wrapper, so IRC inbox headers and
+  other iconless tool rows begin at the same column as their title.
 - With `tools.discoveryMode=all`, `generate_image` starts in the searchable tool inventory instead of
   sending its schema on every provider request. Explicit tool whitelists still keep it active, and
   selecting it through tool discovery persists activation for subsequent turns.

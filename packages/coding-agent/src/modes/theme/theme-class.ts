@@ -439,7 +439,8 @@ export class Theme {
 	 * Get a symbol styled with a color.
 	 */
 	styledSymbol(key: SymbolKey, color: ThemeColor): string {
-		return this.fg(color, this.#symbols[key]);
+		const symbol = this.#symbols[key];
+		return symbol ? this.fg(color, symbol) : "";
 	}
 
 	/**
