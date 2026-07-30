@@ -97,6 +97,23 @@
 
 ### Fixed
 
+- A vault that cannot be read no longer stops a session from starting, which had made the command
+  that repairs one unreachable on every surface except the full-screen interface. `/secret discard`
+  moves a broken vault file aside, but the vault was read while the session was being assembled, so
+  a `-p`, scripted, or ACP run over a project with a corrupt `vault.json` exited 1 before any command
+  could be dispatched: `veyyon -p "/secret list"` and `veyyon -p "/secret discard --scope project"`
+  both failed with the same message, and that message recommended the command the other run had just
+  refused to execute. The only repair was deleting the file by hand, which is exactly the thing the
+  encrypted store exists to stop you doing casually. Sessions now start without the vault, and
+  `/secret list` reports the failure with the repair instead of throwing.
+  This is not a wider `catch`. `load()` still refuses every failure it refused before, because
+  skipping a scope that failed a provenance or integrity check would silently turn a tampered vault
+  into "that scope has no secrets" and drop its entries out of the obfuscator. The failure is
+  absorbed one level up, where the answer is unambiguous, and every scope holding a file is marked
+  unreadable rather than empty, so its placeholders are refused rather than sent as literal text and
+  the operator is told which file to move aside. The mid-session reload that runs before a live
+  `#NAME#` is expanded still fails closed: the loader takes an explicit mode, and only startup asks
+  to degrade.
 - A project-scope vault can no longer be committed by accident. `/secret add --scope project` writes
   an encrypted credential store to `<project>/.veyyon/vault.json`, which is inside the repository you
   are working in, and nothing kept it out of your commits: a real untracked `vault.json` was found in
@@ -215,6 +232,11 @@
 
 ### Changed
 
+- Subagent nesting now defaults to parent-only spawning. Your main session can still spawn direct
+  subagents, but those children do not receive the `task` tool unless you raise
+  `subagent.maxNestedSpawnDepth`. You can override the blanket limit for one agent through
+  `subagent.agents.<name>.maxNestedSpawnDepth` or the Agents settings editor; `-1` remains unlimited.
+  Existing `maxRecursionDepth` values migrate to the equivalent nested-depth policy.
 - `tui.scrollIsolation` now defaults to OFF. While it is on, veyyon holds the mouse in order to read
   wheel events, which takes drag-to-select away from your terminal: selecting text becomes shift+drag,
   or `/copy` to pick text and code out of the conversation without the mouse at all. That trade may be

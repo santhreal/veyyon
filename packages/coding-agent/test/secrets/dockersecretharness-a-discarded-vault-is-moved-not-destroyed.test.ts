@@ -23,9 +23,11 @@
  * The vault is real, on a temporary directory, so the seal, the scope files and the move are the
  * production ones. The unreadable state comes from the shared fixture rather than from writing
  * garbage: `load()` skips exactly one failure, a payload that cleared every provenance and
- * integrity check whose decrypted plaintext will not parse, and invalid outer JSON instead refuses
- * the session at startup. A suite that induced it the other way would measure the refusing branch
- * while passing.
+ * integrity check whose decrypted plaintext will not parse, while invalid outer JSON is refused
+ * outright. A suite that induced it the other way would measure the refusing branch while passing.
+ * That refusal no longer kills the session: it is absorbed where the secret runtime is assembled,
+ * so the whole vault reads as unreadable and this command stays reachable to repair it. See
+ * `a-session-starts-when-its-vault-cannot-be-read.test.ts`, which owns that boundary.
  */
 import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";

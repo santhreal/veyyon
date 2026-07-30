@@ -244,6 +244,27 @@ values is unaffected. The vault is encrypted, so a hand edit cannot repair it: r
 with /secret add.
 ```
 
+A vault can also fail in a way Veyyon cannot step around, where nothing in it can be read: the key
+is gone, the key is not the one the vault was sealed with, or the file is truncated. The session
+still starts, and says so:
+
+```text
+Your vault could not be read, so this session started WITHOUT it: nothing you have stored is
+available, and every #NAME# placeholder it held will be refused rather than sent as literal text.
+Masking of secrets from your environment and secrets.yml is unaffected and still running.
+Affected: project (/home/you/work/repo/.veyyon/vault.json). Run /secret discard --scope project to
+move the unreadable file aside, then re-add the secrets it held with /secret add.
+```
+
+Read the second sentence carefully, because it is the part that keeps a broken vault from becoming
+a leak. A scope Veyyon could not read is treated as unreadable, never as empty. `#NAME#` in a
+prompt is refused rather than passed through as the literal text `#NAME#`, and Veyyon will not act
+as though you had stored nothing.
+
+The session starts because the repair is a command inside it. If a vault that would not open also
+stopped Veyyon from launching, the only way out would be deleting the file by hand, which is the
+one thing an encrypted store exists to stop you doing casually.
+
 That is what `discard` is for:
 
 ```text
