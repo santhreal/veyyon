@@ -228,22 +228,37 @@ jobs:
               dispatch_and_wait() {
                 workflow="$1"
                 label="$2"
-                gh workflow run "$workflow" --ref "$release_tag"
+                nonce="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${workflow%.yml}"
+                expected_title="$label release gate $nonce"
+                runs_url="repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?head_sha=$release_sha&event=workflow_dispatch&per_page=100"
+                baseline_ids=$(gh api "$runs_url" --paginate --jq '.workflow_runs[].id')
+
+                gh workflow run "$workflow" --ref "$release_tag" -f release_nonce="$nonce"
                 run_id=""
                 for attempt in $(seq 1 30); do
-                  run_id=$(gh run list --workflow "$workflow" --commit "$release_sha" \
-                    --event workflow_dispatch --json databaseId --limit 1 \
-                    --jq '.[0].databaseId // empty')
+                  candidate_ids=$(gh api "$runs_url" --paginate --jq '.workflow_runs[].id')
+                  for candidate_id in $candidate_ids; do
+                    if printf '%s\n' "$baseline_ids" | grep -Fxq "$candidate_id"; then
+                      continue
+                    fi
+                    evidence=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_id" \
+                      --jq '[.path, .event, .head_branch, .head_sha, .display_title] | join("|")')
+                    IFS='|' read -r run_path run_event run_branch run_sha run_title <<< "$evidence"
+                    expected_path=".github/workflows/$workflow"
+                    if [ "$run_path" = "$expected_path" ] &&
+                       [ "$run_event" = workflow_dispatch ] &&
+                       [ "$run_branch" = "$release_tag" ] &&
+                       [ "$run_sha" = "$release_sha" ] &&
+                       [ "$run_title" = "$expected_title" ]; then
+                      run_id="$candidate_id"
+                      break
+                    fi
+                  done
                   if [ -n "$run_id" ]; then break; fi
                   sleep $(( attempt < 5 ? attempt : 5 ))
                 done
                 if [ -z "$run_id" ]; then
-                  echo "::error::$label did not start for $release_tag ($release_sha)"
-                  exit 1
-                fi
-                run_sha=$(gh run view "$run_id" --json headSha --jq '.headSha')
-                if [ "$run_sha" != "$release_sha" ]; then
-                  echo "::error::$label run $run_id targets $run_sha, expected $release_sha"
+                  echo "::error::$label did not start correlated run '$expected_title' for $release_tag ($release_sha)"
                   exit 1
                 fi
                 gh run watch "$run_id" --exit-status

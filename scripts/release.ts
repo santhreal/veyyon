@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import * as path from "node:path";
 /**
  * Workflow-internal release cutter.
  *
@@ -9,7 +10,7 @@
  * rebase, retry, or depend on a maintainer workstation.
  */
 import { isNewerVersion } from "@veyyon/utils/semver";
-import { $, Glob } from "bun";
+import { $, Glob, JSONC } from "bun";
 import { runChangelogFixer } from "./fix-changelogs";
 import { parseUnreleasedBullets } from "./require-changelog.ts";
 import { buildRootChangelog, ROOT_PATH } from "./sync-root-changelog";
@@ -156,6 +157,215 @@ export function classifySentinelBumpState(
  */
 export function isSentinelRewriteExcluded(file: string): boolean {
 	return file.includes("node_modules") || file.includes("/dist/") || /\.test\.[cm]?[jt]s$/.test(file);
+}
+
+type JsonObject = Record<string, unknown>;
+
+function asObject(value: unknown, authority: string): JsonObject {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		throw new Error(`${authority} must be an object.`);
+	}
+	return value as JsonObject;
+}
+
+function normalizedRelativePath(value: string): string {
+	return value.replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/$/, "");
+}
+
+async function discoverManifestPaths(
+	rootDir: string,
+	patterns: readonly string[],
+	manifestName: string,
+): Promise<string[]> {
+	const discovered = new Set<string>();
+	for (const pattern of patterns) {
+		const normalizedPattern = normalizedRelativePath(pattern);
+		const manifestPattern = normalizedPattern.endsWith(`/${manifestName}`)
+			? normalizedPattern
+			: `${normalizedPattern}/${manifestName}`;
+		for await (const manifestPath of new Glob(manifestPattern).scan({ cwd: rootDir, onlyFiles: true })) {
+			discovered.add(normalizedRelativePath(manifestPath));
+		}
+	}
+	return [...discovered].sort();
+}
+
+function workspacePackagePatterns(rootPackage: JsonObject): string[] {
+	const workspaces = rootPackage.workspaces;
+	const patterns = Array.isArray(workspaces) ? workspaces : asObject(workspaces, "package.json workspaces").packages;
+	if (!Array.isArray(patterns) || patterns.some(pattern => typeof pattern !== "string")) {
+		throw new Error("package.json workspaces must enumerate package path patterns.");
+	}
+	return patterns as string[];
+}
+
+function workspaceCatalog(rootPackage: JsonObject): JsonObject {
+	const workspaces = rootPackage.workspaces;
+	if (Array.isArray(workspaces)) return {};
+	const catalog = asObject(workspaces, "package.json workspaces").catalog;
+	return catalog === undefined ? {} : asObject(catalog, "package.json workspace catalog");
+}
+
+/**
+ * Enumerate every release-version authority in a prepared tree and require one
+ * immutable version tuple before the cutter is allowed to push it.
+ */
+export async function validateReleaseVersionAuthorities(
+	rootDir: string,
+	version: string,
+	expectedTag: string,
+): Promise<void> {
+	const errors: string[] = [];
+	const strictVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+	if (!strictVersion.test(version)) errors.push(`release version "${version}" is not strict semver`);
+	if (!/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(expectedTag)) {
+		errors.push(`expected tag "${expectedTag}" is not a strict v-prefixed semver tag`);
+	}
+	if (expectedTag !== `v${version}`)
+		errors.push(`expected tag "${expectedTag}" does not identify version "${version}"`);
+
+	const rootPackagePath = path.join(rootDir, "package.json");
+	const rootPackage = asObject(JSON.parse(await Bun.file(rootPackagePath).text()), "package.json");
+	const manifestPaths = await discoverManifestPaths(rootDir, workspacePackagePatterns(rootPackage), "package.json");
+	const publicPackages = new Map<string, { path: string; name: string }>();
+	const publicNames = new Map<string, string>();
+	for (const manifestPath of manifestPaths) {
+		const manifest = asObject(JSON.parse(await Bun.file(path.join(rootDir, manifestPath)).text()), manifestPath);
+		if (manifest.private === true) continue;
+		if (typeof manifest.name !== "string" || manifest.name.length === 0) {
+			errors.push(`public workspace ${manifestPath} has no package name`);
+			continue;
+		}
+		const workspacePath = normalizedRelativePath(path.posix.dirname(manifestPath));
+		if (publicNames.has(manifest.name)) {
+			errors.push(
+				`public package name ${manifest.name} is duplicated by ${publicNames.get(manifest.name)} and ${manifestPath}`,
+			);
+			continue;
+		}
+		publicNames.set(manifest.name, manifestPath);
+		publicPackages.set(workspacePath, { path: manifestPath, name: manifest.name });
+		if (manifest.version !== version) {
+			errors.push(
+				`public package ${manifest.name} at ${manifestPath} has version "${String(manifest.version)}", expected "${version}"`,
+			);
+		}
+	}
+
+	for (const [name, pin] of Object.entries(workspaceCatalog(rootPackage))) {
+		if (publicNames.has(name) && pin !== version) {
+			errors.push(`workspace catalog pin ${name} has version "${String(pin)}", expected "${version}"`);
+		}
+	}
+
+	const bunLockPath = path.join(rootDir, "bun.lock");
+	const bunLock = asObject(JSONC.parse(await Bun.file(bunLockPath).text()), "bun.lock");
+	const lockedWorkspaces = asObject(bunLock.workspaces, "bun.lock workspaces");
+	for (const [workspacePath, pkg] of publicPackages) {
+		const locked = lockedWorkspaces[workspacePath];
+		if (locked === undefined) {
+			errors.push(`bun.lock is missing public workspace ${workspacePath} (${pkg.name})`);
+			continue;
+		}
+		const lockedPackage = asObject(locked, `bun.lock workspace ${workspacePath}`);
+		if (lockedPackage.name !== pkg.name) {
+			errors.push(
+				`bun.lock workspace ${workspacePath} names "${String(lockedPackage.name)}", expected "${pkg.name}"`,
+			);
+		}
+		if (lockedPackage.version !== version) {
+			errors.push(
+				`bun.lock workspace ${workspacePath} (${pkg.name}) has version "${String(lockedPackage.version)}", expected "${version}"`,
+			);
+		}
+	}
+
+	const cargoToml = asObject(Bun.TOML.parse(await Bun.file(path.join(rootDir, "Cargo.toml")).text()), "Cargo.toml");
+	const cargoWorkspace = asObject(cargoToml.workspace, "Cargo.toml workspace");
+	const cargoWorkspacePackage = asObject(cargoWorkspace.package, "Cargo.toml workspace.package");
+	if (cargoWorkspacePackage.version !== version) {
+		errors.push(`Cargo workspace has version "${String(cargoWorkspacePackage.version)}", expected "${version}"`);
+	}
+	if (
+		!Array.isArray(cargoWorkspace.members) ||
+		cargoWorkspace.members.some(member => typeof member !== "string") ||
+		(cargoWorkspace.exclude !== undefined &&
+			(!Array.isArray(cargoWorkspace.exclude) ||
+				cargoWorkspace.exclude.some(excluded => typeof excluded !== "string")))
+	) {
+		throw new Error("Cargo.toml workspace members/exclude must enumerate path patterns.");
+	}
+	const cargoManifestPaths = await discoverManifestPaths(rootDir, cargoWorkspace.members as string[], "Cargo.toml");
+	const cargoExcludes = ((cargoWorkspace.exclude as string[] | undefined) ?? []).map(
+		excluded => new Glob(normalizedRelativePath(excluded)),
+	);
+	const inheritedCargoPackages = new Map<string, string>();
+	for (const manifestPath of cargoManifestPaths) {
+		const cratePath = normalizedRelativePath(path.posix.dirname(manifestPath));
+		if (cargoExcludes.some(excluded => excluded.match(cratePath))) continue;
+		const manifest = asObject(Bun.TOML.parse(await Bun.file(path.join(rootDir, manifestPath)).text()), manifestPath);
+		const cargoPackage = asObject(manifest.package, `${manifestPath} package`);
+		const cargoVersion = cargoPackage.version;
+		if (
+			typeof cargoVersion !== "object" ||
+			cargoVersion === null ||
+			Array.isArray(cargoVersion) ||
+			(cargoVersion as JsonObject).workspace !== true
+		) {
+			continue;
+		}
+		if (typeof cargoPackage.name !== "string" || cargoPackage.name.length === 0) {
+			errors.push(`Cargo workspace package ${manifestPath} has no name`);
+			continue;
+		}
+		if (inheritedCargoPackages.has(cargoPackage.name)) {
+			errors.push(`Cargo workspace package name ${cargoPackage.name} is duplicated`);
+			continue;
+		}
+		inheritedCargoPackages.set(cargoPackage.name, manifestPath);
+	}
+
+	const cargoLock = asObject(Bun.TOML.parse(await Bun.file(path.join(rootDir, "Cargo.lock")).text()), "Cargo.lock");
+	if (!Array.isArray(cargoLock.package)) throw new Error("Cargo.lock must contain package entries.");
+	for (const [name, manifestPath] of inheritedCargoPackages) {
+		const locked = cargoLock.package.filter(
+			entry =>
+				typeof entry === "object" &&
+				entry !== null &&
+				!Array.isArray(entry) &&
+				(entry as JsonObject).name === name &&
+				(entry as JsonObject).source === undefined,
+		) as JsonObject[];
+		if (locked.length !== 1) {
+			errors.push(
+				`Cargo.lock has ${locked.length} local entries for workspace package ${name} (${manifestPath}), expected 1`,
+			);
+			continue;
+		}
+		if (locked[0].version !== version) {
+			errors.push(`Cargo.lock package ${name} has version "${String(locked[0].version)}", expected "${version}"`);
+		}
+	}
+
+	const sentinelName = sentinelExportName(version);
+	const sentinelGlob = new Glob("{crates,packages}/**/*.{rs,ts,mts,cts,js,mjs,cjs}");
+	let sentinelAuthorities = 0;
+	for await (const sourcePath of sentinelGlob.scan({ cwd: rootDir, onlyFiles: true })) {
+		const normalizedPath = normalizedRelativePath(sourcePath);
+		if (isSentinelRewriteExcluded(normalizedPath)) continue;
+		const source = await Bun.file(path.join(rootDir, normalizedPath)).text();
+		for (const match of source.matchAll(/__veyyonNativesV[0-9][A-Za-z0-9_]*/g)) {
+			sentinelAuthorities++;
+			if (match[0] !== sentinelName) {
+				errors.push(`native sentinel ${match[0]} in ${normalizedPath} disagrees with expected ${sentinelName}`);
+			}
+		}
+	}
+	if (sentinelAuthorities === 0) errors.push(`prepared tree has no native sentinel authority for ${sentinelName}`);
+
+	if (errors.length > 0) {
+		throw new Error(`Release version authority validation failed:\n- ${errors.join("\n- ")}`);
+	}
 }
 
 async function prepareReleaseTree(version: string, latestTag: string): Promise<void> {
@@ -372,6 +582,7 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 	// approved this exact SHA, not whatever arrived later. A rejected atomic push
 	// leaves both remote refs untouched; the newer main workflow starts a fresh
 	// cut after its own CI and Checks runs are green.
+	await validateReleaseVersionAuthorities(".", version, tagRef);
 	await pushPreparedRelease(tagRef, {
 		currentSha: async () => (await git(["rev-parse", "HEAD"]).text()).trim(),
 		forceLocalTag: async tag => {

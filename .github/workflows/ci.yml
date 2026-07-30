@@ -805,13 +805,16 @@ jobs:
               path: ${{ matrix.binary_path }}
 
    release_github:
-      name: Publish GitHub release
+      name: Prepare draft GitHub release
       if: ${{ needs.release_metadata.outputs.is-release == 'true' && !cancelled() &&
          needs.release_binary.result == 'success' }}
       needs: [release_metadata, release_binary, native_artifact_lookup]
       runs-on: ubuntu-22.04
       permissions:
          contents: write
+      outputs:
+         release-id: ${{ steps.draft.outputs.release-id }}
+         already-published: ${{ steps.draft.outputs.already-published }}
       steps:
          - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
            with:
@@ -862,29 +865,121 @@ jobs:
                 sha256sum "$f" > "$f.sha256"
               done
               cat ./*.sha256
-         - name: Create GitHub Release
-           uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
-           with:
-              tag_name: ${{ needs.release_metadata.outputs.release-tag }}
-              files: |
-                 packages/coding-agent/binaries/veyyon-*
-                 packages/coding-agent/binaries/veyyon_natives.*
-              body_path: release-notes.md
-              generate_release_notes: true
-         - name: Verify the exact published asset manifest
+         - name: Create or resume the immutable draft release
+           id: draft
+           env:
+              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              RELEASE_TAG: ${{ needs.release_metadata.outputs.release-tag }}
+              RELEASE_SHA: ${{ github.sha }}
+           shell: bash
+           run: |
+              set -euo pipefail
+              repo="$GITHUB_REPOSITORY"
+              tag="$RELEASE_TAG"
+              binaries="packages/coding-agent/binaries"
+              shopt -s nullglob
+              assets=("$binaries"/veyyon-* "$binaries"/veyyon_natives.*)
+              if [ "${#assets[@]}" -eq 0 ]; then
+                echo "::error::no release assets were assembled"
+                exit 1
+              fi
+              printf '%s\n' "${assets[@]##*/}" | LC_ALL=C sort > local-assets.txt
+              for asset in "${assets[@]}"; do
+                digest="$(sha256sum "$asset")"
+                printf '%s  %s\n' "${digest%% *}" "${asset##*/}"
+              done | LC_ALL=C sort -k2 > local-assets.sha256
+              if [ "$(uniq -d local-assets.txt | wc -l)" -ne 0 ]; then
+                echo "::error::duplicate release asset names"
+                exit 1
+              fi
+
+              api_error="$(mktemp)"
+              set +e
+              release_json="$(gh api "repos/$repo/releases/tags/$tag" 2>"$api_error")"
+              api_status=$?
+              set -e
+              if [ "$api_status" -ne 0 ]; then
+                if ! grep -Eq 'HTTP 404|Not Found' "$api_error"; then
+                  cat "$api_error" >&2
+                  exit "$api_status"
+                fi
+                gh release create "$tag" --draft --verify-tag --target "$RELEASE_SHA" \
+                  --title "$tag" --notes-file release-notes.md --generate-notes
+                release_json="$(gh api "repos/$repo/releases/tags/$tag")"
+              fi
+
+              release_id="$(jq -r '.id' <<<"$release_json")"
+              actual_tag="$(jq -r '.tag_name' <<<"$release_json")"
+              is_draft="$(jq -r '.draft' <<<"$release_json")"
+              ref_json="$(gh api "repos/$repo/git/ref/tags/$tag")"
+              ref_type="$(jq -r '.object.type' <<<"$ref_json")"
+              ref_sha="$(jq -r '.object.sha' <<<"$ref_json")"
+              if [ -z "$release_id" ] || [ "$release_id" = null ]; then
+                echo "::error::release API returned no id for $tag"
+                exit 1
+              fi
+              if [ "$actual_tag" != "$tag" ]; then
+                echo "::error::release API returned tag $actual_tag, expected $tag"
+                exit 1
+              fi
+              if [ "$ref_type" != commit ] || [ "$ref_sha" != "$RELEASE_SHA" ]; then
+                echo "::error::tag $tag resolves to $ref_type $ref_sha, expected commit $RELEASE_SHA"
+                exit 1
+              fi
+
+              if [ "$is_draft" != true ]; then
+                gh api --paginate "repos/$repo/releases/$release_id/assets" \
+                  --jq '.[].name' | LC_ALL=C sort > remote-assets.txt
+                if ! diff -u local-assets.txt remote-assets.txt; then
+                  echo "::error::published release $tag has a different asset manifest; refusing overwrite"
+                  exit 1
+                fi
+                remote_dir="$(mktemp -d)"
+                while IFS= read -r name; do
+                  gh release download "$tag" --pattern "$name" --dir "$remote_dir"
+                  if ! cmp -s "$binaries/$name" "$remote_dir/$name"; then
+                    echo "::error::published asset $name differs byte-for-byte; refusing overwrite"
+                    exit 1
+                  fi
+                done < local-assets.txt
+                {
+                  echo "release-id=$release_id"
+                  echo "already-published=true"
+                } >> "$GITHUB_OUTPUT"
+                echo "Published release $tag already has the exact immutable asset set; nothing changed."
+                exit 0
+              fi
+
+              # A retry owns only this still-hidden draft. Clear any partial
+              # upload before replacing it with the complete locally verified set.
+              gh api --paginate "repos/$repo/releases/$release_id/assets" --jq '.[].id' |
+                while IFS= read -r asset_id; do
+                  [ -z "$asset_id" ] || gh api --method DELETE "repos/$repo/releases/assets/$asset_id"
+                done
+              gh release upload "$tag" "${assets[@]}"
+              {
+                echo "release-id=$release_id"
+                echo "already-published=false"
+              } >> "$GITHUB_OUTPUT"
+         - name: Verify the exact draft asset manifest
            env:
               GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
            # Five platform binaries, all required native addons, and a .sha256
            # sidecar for every artifact. Any missing/extra distribution asset or
            # unknown GitHub response keeps release_github red.
            run: bun scripts/release-gate-decision.ts verify-assets ${{ needs.release_metadata.outputs.release-tag }}
+         - name: Preserve the verified asset digest manifest
+           uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+           with:
+              name: veyyon-release-proof-${{ needs.release_metadata.outputs.release-tag }}
+              path: local-assets.sha256
+              retention-days: 1
 
 
    release_site:
-      # Autosync the website changelog on every published release. The generator
-      # reconciles packages/coding-agent/CHANGELOG.md against the live GitHub
-      # Releases (real publish dates + permalinks), so the site updates itself
-      # instead of drifting until someone remembers to redeploy by hand.
+      # Deploy the website and installer endpoint while the candidate remains a
+      # draft. A failed deployment therefore leaves releases/latest on the prior
+      # version instead of exposing a release whose install channels are stale.
       name: Deploy website (changelog autosync)
       if: ${{ needs.release_metadata.outputs.is-release == 'true' && !cancelled() &&
          needs.release_github.result == 'success' }}
@@ -945,7 +1040,7 @@ jobs:
            run: bun scripts/verify-deployed-installers.ts
 
    release_github_verify:
-      name: Verify published release (macOS)
+      name: Verify draft release (macOS)
       if: ${{ needs.release_metadata.outputs.is-release == 'true' && !cancelled() &&
          needs.release_github.result == 'success' }}
       needs: [release_metadata, release_github]
@@ -955,11 +1050,13 @@ jobs:
       env:
          MACOS_SIGNING: ${{ secrets.APPLE_CERTIFICATE_P12 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_API_KEY_ID != '' && secrets.APPLE_API_ISSUER_ID != '' && secrets.APPLE_API_KEY != '' }}
       steps:
-         - name: Download published macOS arm64 binary and checksum sidecar
+         - name: Download draft macOS arm64 binary and checksum sidecar
+           env:
+              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
            run: |
-              base="https://github.com/${{ github.repository }}/releases/download/${{ needs.release_metadata.outputs.release-tag }}"
-              curl -fsSL -o veyyon-darwin-arm64 "$base/veyyon-darwin-arm64"
-              curl -fsSL -o veyyon-darwin-arm64.sha256 "$base/veyyon-darwin-arm64.sha256"
+              gh release download "${{ needs.release_metadata.outputs.release-tag }}" \
+                --pattern veyyon-darwin-arm64 \
+                --pattern veyyon-darwin-arm64.sha256
               chmod +x veyyon-darwin-arm64
          - name: Verify the published .sha256 sidecar (install.sh fails closed without it)
            run: |
@@ -1000,7 +1097,7 @@ jobs:
       # install.sh requires, then run --version and --smoke-test in a clean HOME.
       # --smoke-test forces the core @veyyon/natives addon to load, so this is the
       # end-to-end proof that the shipped linux binary actually starts.
-      name: Verify published release (linux-x64)
+      name: Verify draft release (linux-x64)
       if: ${{ needs.release_metadata.outputs.is-release == 'true' && !cancelled() &&
          needs.release_github.result == 'success' }}
       needs: [release_metadata, release_github]
@@ -1008,11 +1105,13 @@ jobs:
       permissions:
          contents: read
       steps:
-         - name: Download published linux-x64 binary and checksum sidecar
+         - name: Download draft linux-x64 binary and checksum sidecar
+           env:
+              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
            run: |
-              base="https://github.com/${{ github.repository }}/releases/download/${{ needs.release_metadata.outputs.release-tag }}"
-              curl -fsSL -o veyyon-linux-x64 "$base/veyyon-linux-x64"
-              curl -fsSL -o veyyon-linux-x64.sha256 "$base/veyyon-linux-x64.sha256"
+              gh release download "${{ needs.release_metadata.outputs.release-tag }}" \
+                --pattern veyyon-linux-x64 \
+                --pattern veyyon-linux-x64.sha256
               chmod +x veyyon-linux-x64
          - name: Verify the published .sha256 sidecar (install.sh fails closed without it)
            run: |
@@ -1042,24 +1141,25 @@ jobs:
       # install.ps1 requires (Get-FileHash), then run --version and --smoke-test in
       # a clean HOME. --smoke-test forces the core @veyyon/natives addon to load,
       # so this is the end-to-end proof that the shipped Windows binary starts.
-      name: Verify published release (windows-x64)
+      name: Verify draft release (windows-x64)
       if: ${{ needs.release_metadata.outputs.is-release == 'true' && !cancelled() &&
          needs.release_github.result == 'success' }}
       needs: [release_metadata, release_github]
       runs-on: windows-latest
-      # Post-publish verification (like the macOS/linux verify jobs): it does not
-      # gate the publish, so cap it so a smoke-test that hangs on Windows fails
-      # fast and loud instead of holding a runner.
+      # The candidate remains private, but cap a hung Windows smoke-test so it
+      # fails the transaction quickly instead of holding the draft indefinitely.
       timeout-minutes: 15
       permissions:
          contents: read
       steps:
-         - name: Download published windows-x64 binary and checksum sidecar
+         - name: Download draft windows-x64 binary and checksum sidecar
            shell: pwsh
+           env:
+              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
            run: |
-              $base = "https://github.com/${{ github.repository }}/releases/download/${{ needs.release_metadata.outputs.release-tag }}"
-              Invoke-WebRequest -Uri "$base/veyyon-windows-x64.exe" -OutFile veyyon-windows-x64.exe
-              Invoke-WebRequest -Uri "$base/veyyon-windows-x64.exe.sha256" -OutFile veyyon-windows-x64.exe.sha256
+              gh release download "${{ needs.release_metadata.outputs.release-tag }}" `
+                --pattern veyyon-windows-x64.exe `
+                --pattern veyyon-windows-x64.exe.sha256
          - name: Verify the published .sha256 sidecar (install.ps1 fails closed without it)
            shell: pwsh
            run: |
@@ -1090,6 +1190,158 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw "veyyon-windows-x64.exe --smoke-test failed with exit $LASTEXITCODE" }
 
 
+   release_github_publish:
+      name: Publish verified GitHub release
+      if: ${{ needs.release_metadata.outputs.is-release == 'true' && !cancelled() &&
+         needs.release_github.result == 'success' &&
+         needs.release_site.result == 'success' &&
+         needs.release_github_verify.result == 'success' &&
+         needs.release_github_verify_linux.result == 'success' &&
+         needs.release_github_verify_windows.result == 'success' }}
+      needs: [release_metadata, release_github, release_site, release_github_verify, release_github_verify_linux, release_github_verify_windows]
+      runs-on: ubuntu-22.04
+      permissions:
+         actions: read
+         contents: write
+      steps:
+         - name: Download the verified asset digest manifest
+           uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+           with:
+              name: veyyon-release-proof-${{ needs.release_metadata.outputs.release-tag }}
+              path: release-proof
+         - name: Publish the exact verified draft
+           env:
+              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              RELEASE_TAG: ${{ needs.release_metadata.outputs.release-tag }}
+              RELEASE_SHA: ${{ github.sha }}
+              RELEASE_ID: ${{ needs.release_github.outputs.release-id }}
+              ALREADY_PUBLISHED: ${{ needs.release_github.outputs.already-published }}
+           shell: bash
+           run: |
+              set -euo pipefail
+              remote_dir="$(mktemp -d)"
+              gh release download "$RELEASE_TAG" --dir "$remote_dir"
+              (
+                cd "$remote_dir"
+                for asset in *; do
+                  digest="$(sha256sum "$asset")"
+                  printf '%s  %s\n' "${digest%% *}" "$asset"
+                done | LC_ALL=C sort -k2
+              ) > remote-assets.sha256
+              if ! diff -u release-proof/local-assets.sha256 remote-assets.sha256; then
+                echo "::error::draft release assets changed after verification; refusing publication"
+                exit 1
+              fi
+              release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+              ref_json="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG")"
+              actual_id="$(jq -r '.id' <<<"$release_json")"
+              actual_tag="$(jq -r '.tag_name' <<<"$release_json")"
+              ref_type="$(jq -r '.object.type' <<<"$ref_json")"
+              ref_sha="$(jq -r '.object.sha' <<<"$ref_json")"
+              is_draft="$(jq -r '.draft' <<<"$release_json")"
+              if [ "$actual_id" != "$RELEASE_ID" ] || [ "$actual_tag" != "$RELEASE_TAG" ] ||
+                 [ "$ref_type" != commit ] || [ "$ref_sha" != "$RELEASE_SHA" ]; then
+                echo "::error::release identity changed after verification; refusing publication"
+                exit 1
+              fi
+              if [ "$ALREADY_PUBLISHED" = true ]; then
+                if [ "$is_draft" != false ]; then
+                  echo "::error::release changed back to draft after byte comparison"
+                  exit 1
+                fi
+                echo "Published release $RELEASE_TAG was already byte-identical; nothing changed."
+                exit 0
+              fi
+              if [ "$is_draft" != true ]; then
+                echo "::error::verified release $RELEASE_ID is no longer a draft"
+                exit 1
+              fi
+              published="$(gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -F draft=false)"
+              if [ "$(jq -r '.id' <<<"$published")" != "$RELEASE_ID" ] ||
+                 [ "$(jq -r '.draft' <<<"$published")" != false ]; then
+                echo "::error::GitHub did not publish the verified draft $RELEASE_ID"
+                exit 1
+              fi
+              echo "Published verified draft $RELEASE_ID as $RELEASE_TAG."
+
+
+   release_site_finalize:
+      # The pre-publication deploy proves the Pages projects and installer bytes
+      # before the draft becomes visible. Rebuild after publication so the
+      # changelog generator can replace the pending draft card with the immutable
+      # GitHub release link and latest marker.
+      name: Finalize published website
+      if: ${{ needs.release_metadata.outputs.is-release == 'true' && !cancelled() &&
+         needs.release_github_publish.result == 'success' }}
+      needs: [release_metadata, release_github_publish]
+      runs-on: ubuntu-22.04
+      concurrency:
+         group: production-site-deploy
+         cancel-in-progress: false
+      permissions:
+         contents: read
+      env:
+         HAS_CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+         HAS_CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+         SITE_AUTODEPLOY: ${{ vars.SITE_AUTODEPLOY }}
+      steps:
+         - name: Require release Pages deployment credentials and policy
+           run: |
+              set -euo pipefail
+              if [ "$SITE_AUTODEPLOY" = "off" ]; then
+                echo "::error::SITE_AUTODEPLOY=off, but production site deployment is a required release artifact."
+                exit 1
+              fi
+              if [ "$HAS_CF_TOKEN" != "true" ] || [ "$HAS_CF_ACCOUNT_ID" != "true" ]; then
+                echo "::error::CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are both required for a release."
+                exit 1
+              fi
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+         - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+           with:
+              bun-version: "1.3.14"
+         - name: Rebuild changelog after GitHub publication
+           run: node website/build.mjs
+         - name: Deploy finalized changelog to veyyon.dev
+           env:
+              CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+              CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+           run: node website/deploy.mjs --skip-build
+         - name: Verify veyyon.dev links the published release
+           run: bun scripts/verify-deployed-changelog.ts ${{ needs.release_metadata.outputs.release-tag }}
+
+   release_install_verify:
+      # These jobs start only after GitHub publication and the final Pages
+      # deployment. They exercise the real installer release lookup and checksum
+      # path against releases/latest, rather than only launching draft assets.
+      name: "Verify published install (${{ matrix.name }})"
+      if: ${{ needs.release_metadata.outputs.is-release == 'true' && !cancelled() &&
+         needs.release_github_publish.result == 'success' &&
+         needs.release_site_finalize.result == 'success' }}
+      needs: [release_metadata, release_github_publish, release_site_finalize]
+      strategy:
+         fail-fast: false
+         matrix:
+            include:
+               - { name: linux-x64, os: ubuntu-22.04, kind: posix }
+               - { name: macos-arm64, os: macos-14, kind: posix }
+               - { name: macos-x64, os: macos-15-intel, kind: posix }
+               - { name: windows-x64, os: windows-latest, kind: windows }
+      runs-on: ${{ matrix.os }}
+      timeout-minutes: 30
+      steps:
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+         - name: Install through the published POSIX release
+           if: matrix.kind == 'posix'
+           shell: bash
+           run: bash scripts/install-tests/published-release-e2e.sh
+         - name: Install through the published Windows release
+           if: matrix.kind == 'windows'
+           shell: pwsh
+           env:
+              VEYYON_INSTALL_E2E: "1"
+           run: pwsh -File scripts/install-tests/e2e.test.ps1 -Mode Binary
+
    release_train_alert:
       # Eight consecutive releases (v1.0.28-v1.0.35) were tagged and then died red
       # with zero signal anywhere; the jam was only found by manual audit. This is
@@ -1099,7 +1351,7 @@ jobs:
       # succeeded may close it. `always()` is required for incomplete upstreams.
       name: Release train alert
       if: ${{ always() && needs.release_metadata.result == 'success' && needs.release_metadata.outputs.is-release == 'true' }}
-      needs: [release_metadata, check, native_linux_x64, native_cross_platform_cross, native_cross_platform_macos, test_workspace, test_coding_agent_singleton, test_ts_native, test_coding_agent_ui, test_coding_agent_runtime, test_coding_agent_native, test_smoke, install_methods, install_ps1_e2e, install_ps1_functions, release_binary, release_github, release_site, release_github_verify, release_github_verify_linux, release_github_verify_windows]
+      needs: [release_metadata, check, native_linux_x64, native_cross_platform_cross, native_cross_platform_macos, test_workspace, test_coding_agent_singleton, test_ts_native, test_coding_agent_ui, test_coding_agent_runtime, test_coding_agent_native, test_smoke, install_methods, install_ps1_e2e, install_ps1_functions, release_binary, release_github, release_site, release_github_verify, release_github_verify_linux, release_github_verify_windows, release_github_publish, release_site_finalize, release_install_verify]
       runs-on: ubuntu-22.04
       permissions:
          contents: read
