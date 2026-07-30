@@ -4,6 +4,8 @@
 	"cleanFeatureTypes": ["feat"],
 	"titleAllowRegexes": ["^fix\\b"],
 	"cleanFeatureTitleAllowRegexes": ["^(?:add|introduce|support)\\b"],
+	"documentationPaths": ["docs/"],
+	"documentationExtensions": [".md", ".mdx", ".rst", ".txt"],
 	"divergedSurfaces": [
 		{
 			"name": "model catalog, IDs, types, and roles",

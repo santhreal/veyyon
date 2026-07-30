@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { readFileSync } from "node:fs";
 /**
  * Jules port manager: drive every eligible `upstream-port` issue through the
  * Jules async coding agent until it becomes a manually reviewed candidate PR.
@@ -54,7 +55,9 @@
  * Jules accounts to the repo scales capacity with zero config. Fails closed:
  * missing token, no usable key, or an API error exits non-zero and loud.
  */
-import { readFileSync } from "node:fs";
+import { prompt } from "@veyyon/utils";
+import JULES_NUDGE_PROMPT from "./jules-nudge.prompt.md" with { type: "text" };
+import JULES_PORT_PROMPT from "./jules-port.prompt.md" with { type: "text" };
 
 const UPSTREAM = "can1357/oh-my-pi";
 const ORIGIN = process.env.GITHUB_REPOSITORY ?? "santhreal/veyyon";
@@ -147,13 +150,26 @@ export function countNudges(commentBodies: string[], session: string): number {
 }
 
 /** The autonomy answer sent to a session that paused to ask permission. */
-export const NUDGE_PROMPT =
-	"Proceed autonomously; you will get no further human input. Make the decision you judge best, run the tests, finish the port, and open the PR with the mandated Closes line. If the change truly does not apply, end the session with a NOT-APPLICABLE summary. Do not pause to ask again.";
+export const NUDGE_PROMPT = JULES_NUDGE_PROMPT.trim();
 
-/** The mirrored upstream PR number from the radar's marker, or null. */
+export type UpstreamPortKind = "fix" | "clean-feature";
+
+export interface UpstreamIssueMetadata {
+	number: number;
+	kind: UpstreamPortKind;
+}
+
+/** Canonical radar metadata from the first two issue-body lines, or null. */
+export function upstreamIssueMetadata(issueBody: string): UpstreamIssueMetadata | null {
+	const match = /^<!-- upstream-pr: (\d+) -->\r?\n<!-- upstream-port-kind: (fix|clean-feature) -->(?:\r?\n|$)/.exec(
+		issueBody,
+	);
+	return match ? { number: Number(match[1]), kind: match[2] as UpstreamPortKind } : null;
+}
+
+/** The mirrored upstream PR number from the radar's canonical header, or null. */
 export function upstreamNumberFromIssue(issueBody: string): number | null {
-	const m = /<!-- upstream-pr: (\d+) -->/.exec(issueBody);
-	return m ? Number(m[1]) : null;
+	return upstreamIssueMetadata(issueBody)?.number ?? null;
 }
 
 /**
@@ -163,29 +179,24 @@ export function upstreamNumberFromIssue(issueBody: string): number | null {
  * failure context, if any, so a retry does not repeat the same dead end.
  */
 export function buildPortPrompt(issueNumber: number, issueBody: string, priorFailure: string | null): string {
-	const retry =
-		priorFailure === null
-			? ""
-			: `\n## Previous attempt failed\n\nA prior session on this task did not produce a PR. Its recorded failure state was:\n\n${priorFailure.slice(0, 2000)}\n\nRead it, avoid the same dead end, and take a different approach where it points at one.\n`;
-	const documentationRule = issueBody.includes("<!-- upstream-port-kind: clean-feature -->")
-		? "A feature candidate must update the local user-facing docs that describe its behavior; write them for veyyon rather than copying upstream prose. Never commit generated `docs/handbook/book/` output or internal docs."
-		: "Do NOT edit `docs/handbook/src/` for a fix. Never rebuild or commit generated `docs/handbook/book/` output.";
-	return `You are working on ${ORIGIN}, branch main. This task is GitHub issue #${issueNumber}.
-
-${issueBody}
-${retry}
-## PR requirements (mandatory)
-
-- The PR body MUST contain the exact line \`Closes #${issueNumber}\` so the merge closes the tracking issue.
-- Branch from current \`origin/main\` and NEVER merge \`main\` into your branch. If your clone has gone stale, fetch and rebase; a merge you resolve in your own favour silently reverts commits that landed while you worked, and such a PR is rejected on sight however good the fix is.
-- Your diff must contain the one upstream change and nothing else. Before committing, run \`git status\` and \`git diff --stat\`, and confirm every path is deliberate. A one-file change has a one-file diff. If the stat shows files you did not intend, your branch is stale: start over from a fresh \`origin/main\` rather than committing it.
-- Never commit: lockfiles (\`bun.lock\`, \`Cargo.lock\`), \`.gitignore\`, workflow files under \`.github/\`, anything under \`docs/handbook/book/\` or \`docs/internal/\`, or the port pipeline's own \`scripts/upstream-*\` and \`scripts/jules-port-manager*\`. Those belong to veyyon, not to any port. If a build step rewrites one of them, \`git checkout -- <path>\` it before you commit.
-- Delete every scratch file you created before committing: \`patch_*.ts\`, \`test_*.ts\`, debug scripts, downloaded \`*.diff\`/\`*.patch\` files, notes, tool output. They must not appear in \`git status\`.
-- Every user-visible change gets one bullet under \`## [Unreleased]\` in the touched package's CHANGELOG.md. If you touch \`packages/coding-agent/CHANGELOG.md\`, run \`bun scripts/sync-root-changelog.ts\` and commit the regenerated root \`CHANGELOG.md\` too. ${documentationRule}
-- Keep existing tests. Add focused behavior cases to the existing test file that owns the changed contract; never rewrite or shrink that file around the new behavior. A port that removes more test lines than it adds is rejected even when its implementation is correct.
-- veyyon's product direction wins over upstream's. A clean-feature classification is only a conservative path screen, not proof of product fit. Where veyyon diverged, port an underlying correctness fix onto veyyon's design, but declare an incompatible feature NOT-APPLICABLE. The issue's "Diverged surface warning" section, when present, is binding.
-- If the change does NOT apply to veyyon (superseded, subsystem rewritten or removed, or incompatible product direction), commit nothing. End the session with a summary starting with \`NOT-APPLICABLE:\` naming the local contract that supersedes it; if your mode forces a PR anyway, keep its diff EMPTY and title it \`NOT-APPLICABLE: <original title>\` with the reasoning and the \`Closes #${issueNumber}\` line in the body.
-`;
+	const metadata = upstreamIssueMetadata(issueBody);
+	if (!metadata) {
+		throw new Error(
+			`upstream issue #${issueNumber} is missing the canonical upstream PR/kind header; refusing an ambiguous Jules prompt`,
+		);
+	}
+	return prompt.render(
+		JULES_PORT_PROMPT,
+		{
+			origin: ORIGIN,
+			issueNumber,
+			issueBody,
+			isFeature: metadata.kind === "clean-feature",
+			hasPriorFailure: priorFailure !== null,
+			priorFailure: priorFailure?.slice(0, 2000) ?? "",
+		},
+		{ label: "scripts/jules-port.prompt.md" },
+	);
 }
 
 export interface PortPrRef {
