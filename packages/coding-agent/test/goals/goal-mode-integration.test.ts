@@ -89,6 +89,7 @@ async function createGoalHarness(shared: SharedFixture): Promise<GoalHarness> {
 		settings,
 		modelRegistry,
 		toolRegistry,
+		builtInToolNames: ["read", "todo", "goal"],
 		rebuildSystemPrompt: async () => ({ systemPrompt: ["Test"] }),
 	});
 	const mode = new InteractiveMode(session, "test");
