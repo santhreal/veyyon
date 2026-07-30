@@ -213,7 +213,8 @@ export function buildSessionData(sm: SessionManager, state?: AgentState): Sessio
  * A session at `<dir>/<name>.jsonl` keeps its subagent sessions at `<dir>/<name>/<AgentId>.jsonl`;
  * each subagent's own children nest the same way under `<dir>/<name>/<AgentId>/`. Keys in the
  * returned record are slash-joined ids relative to the main session ("ToolAsk", "ToolAsk/Helper").
- * Corrupt or empty files are skipped silently.
+ * Empty files, backups, and unrelated files are skipped. A corrupt transcript refuses the export so
+ * the resulting artifact cannot silently claim to contain a complete session.
  */
 export async function collectSubSessions(sessionFile: string): Promise<Record<string, SubSession>> {
 	const result: Record<string, SubSession> = {};

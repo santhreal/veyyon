@@ -8,7 +8,9 @@ import { collectSubSessions } from "../src/export/html";
 /**
  * Contract: a session at `<dir>/<name>.jsonl` embeds subagent transcripts from
  * `<dir>/<name>/<AgentId>.jsonl` (recursively) under slash-joined keys, with
- * parent links and last-entry leaf ids. Corrupt/empty/backup files are skipped.
+ * parent links and last-entry leaf ids. Empty, backup, and unrelated files are
+ * skipped. Corrupt transcripts refuse the export rather than silently producing
+ * an incomplete artifact.
  */
 
 function sessionJsonl(id: string, entryIds: string[]): string {
@@ -60,9 +62,12 @@ describe("collectSubSessions", () => {
 		expect(subs.Beta).toMatchObject({ agentId: "Beta", parent: null, leafId: "b1" });
 	});
 
-	test("skips corrupt, empty, backup, and non-jsonl files", async () => {
+	/**
+	 * Empty and unrelated files are not transcripts, and backup files would duplicate the live
+	 * session. They must not create phantom subagents in an otherwise complete export.
+	 */
+	test("skips empty, backup, and non-jsonl files", async () => {
 		await Bun.write(path.join(root, "main/Good.jsonl"), sessionJsonl("good", ["g1"]));
-		await Bun.write(path.join(root, "main/corrupt.jsonl"), "{not json\n");
 		await Bun.write(path.join(root, "main/empty.jsonl"), "");
 		await Bun.write(path.join(root, "main/Good.jsonl.123.bak"), sessionJsonl("bak", ["x1"]));
 		await Bun.write(path.join(root, "main/notes.md"), "# notes\n");
@@ -70,6 +75,19 @@ describe("collectSubSessions", () => {
 		const subs = await collectSubSessions(mainFile);
 
 		expect(Object.keys(subs)).toEqual(["Good"]);
+	});
+
+	/**
+	 * A corrupt child transcript means the export cannot be complete. Surfacing the exact file and
+	 * parse failure prevents a share artifact from silently omitting part of the recorded session.
+	 */
+	test("refuses a corrupt subagent transcript", async () => {
+		const corruptPath = path.join(root, "main/corrupt.jsonl");
+		await Bun.write(corruptPath, "{not json\n");
+
+		await expect(collectSubSessions(mainFile)).rejects.toThrow(
+			`Cannot load corrupt session ${corruptPath}: the non-empty file has no readable session header`,
+		);
 	});
 
 	test("returns empty record when no subagent dir exists", async () => {
