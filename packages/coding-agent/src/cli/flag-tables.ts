@@ -140,7 +140,9 @@ function isKnownMode(value: string): value is Mode {
  * successful, which is a safety problem rather than a cosmetic one.
  */
 function invalidFlagValue(flag: string, value: string, accepted: readonly string[]): CliUsageError {
-	return new CliUsageError(`Invalid ${flag} value: ${JSON.stringify(value)}. Expected one of: ${accepted.join(", ")}.`);
+	return new CliUsageError(
+		`Invalid ${flag} value: ${JSON.stringify(value)}. Expected one of: ${accepted.join(", ")}.`,
+	);
 }
 
 /**
