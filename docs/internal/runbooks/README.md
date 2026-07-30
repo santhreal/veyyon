@@ -6,7 +6,7 @@ recovery → verification. For the normal (non-incident) flows, see [releasing](
 
 | Runbook | When to reach for it |
 | --- | --- |
-| [release-recovery.md](release-recovery.md) | `bun run release` or its CI failed partway; a tag exists but the GitHub release / binaries are missing or incomplete. |
+| [release-recovery.md](release-recovery.md) | The automated Release or tagged publish workflow failed, or a tag exists without complete binaries. |
 | [secret-rotation.md](secret-rotation.md) | Rotating Apple signing secrets, the Cloudflare Pages token, or auth-broker bearer tokens. |
 | [install-rollback.md](install-rollback.md) | A published release is bad and `curl … | sh` is serving it to users. |
 

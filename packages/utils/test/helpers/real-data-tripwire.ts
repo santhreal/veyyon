@@ -49,7 +49,31 @@
 
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { installTempDirJanitor } from "./temp-dir-janitor";
+
+// Capture the read-only primitives before the CJS export object is patched below.
+// Importing `node:fs` as an ESM namespace here would cache unguarded bindings for
+// every test module that imports it later.
+const unpatchedFs = require("node:fs") as {
+	constants: {
+		O_CREAT: number;
+		O_RDWR: number;
+		O_TRUNC: number;
+		O_WRONLY: number;
+	};
+	lstatSync(target: string): { isSymbolicLink(): boolean };
+	readlinkSync(target: string): string;
+	realpathSync: { native(target: string): string };
+};
+const rawLstatSync = unpatchedFs.lstatSync;
+const rawReadlinkSync = unpatchedFs.readlinkSync;
+const rawRealpathSync = unpatchedFs.realpathSync.native;
+const NUMERIC_OPEN_MUTATION_FLAGS =
+	unpatchedFs.constants.O_WRONLY |
+	unpatchedFs.constants.O_RDWR |
+	unpatchedFs.constants.O_CREAT |
+	unpatchedFs.constants.O_TRUNC;
 
 /** Env var by which the test runner names the real config root it redirected away from. */
 export const REAL_CONFIG_ROOT_ENV = "VEYYON_TEST_REAL_CONFIG_ROOT";
@@ -97,7 +121,7 @@ const REAL_HOME = ((): string | undefined => {
 /** True when `candidate` is inside `root` (or is `root` itself). */
 function isInside(candidate: string, root: string): boolean {
 	const rel = path.relative(root, candidate);
-	return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+	return rel === "" || (!path.isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${path.sep}`));
 }
 
 /**
@@ -106,9 +130,69 @@ function isInside(candidate: string, root: string): boolean {
  */
 function resolveTarget(target: unknown): string | undefined {
 	if (typeof target === "string") return path.resolve(target);
-	if (target instanceof URL) return path.resolve(target.pathname);
-	if (target instanceof Buffer) return path.resolve(target.toString());
+	if (target instanceof URL) return path.resolve(fileURLToPath(target));
+	if (Buffer.isBuffer(target)) return path.resolve(target.toString());
 	return undefined;
+}
+
+/**
+ * Resolve symlinks while preserving a suffix whose entries do not exist yet.
+ *
+ * `realpath` alone cannot resolve a dangling symlink aimed at a missing protected
+ * descendant. When that happens, inspect the symlink itself, follow its target,
+ * and resume with the missing suffix. Unexpected filesystem errors propagate so
+ * callers can fail closed.
+ */
+function resolveForContainment(target: string): string {
+	let cursor = path.resolve(target);
+	let suffix: string[] = [];
+	let symlinkExpansions = 0;
+	let concurrentRetries = 0;
+	for (;;) {
+		try {
+			const resolved = rawRealpathSync(cursor);
+			return path.join(resolved, ...suffix);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+		}
+
+		try {
+			const stat = rawLstatSync(cursor);
+			if (!stat.isSymbolicLink()) {
+				concurrentRetries += 1;
+				if (concurrentRetries > 8) {
+					throw Object.assign(new Error(`path kept changing while resolving "${cursor}"`), {
+						code: "EBUSY",
+					});
+				}
+				continue;
+			}
+			concurrentRetries = 0;
+			symlinkExpansions += 1;
+			if (symlinkExpansions > 40) {
+				throw Object.assign(new Error(`too many symlink expansions while resolving "${target}"`), {
+					code: "ELOOP",
+				});
+			}
+			const link = rawReadlinkSync(cursor);
+			cursor = path.join(path.resolve(path.dirname(cursor), link), ...suffix);
+			suffix = [];
+			concurrentRetries = 0;
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+			const parent = path.dirname(cursor);
+			if (parent === cursor) throw error;
+			suffix.unshift(path.basename(cursor));
+			cursor = parent;
+			concurrentRetries = 0;
+		}
+	}
+}
+
+/** Lexical containment plus filesystem-resolved containment for symlink aliases. */
+function isInsideResolved(candidate: string, root: string): boolean {
+	if (isInside(candidate, root)) return true;
+	return isInside(resolveForContainment(candidate), resolveForContainment(root));
 }
 
 /**
@@ -133,7 +217,7 @@ function resolveTarget(target: unknown): string | undefined {
 function isVeyyonSiblingInRealHome(resolved: string): boolean {
 	if (!REAL_HOME) return false;
 	const rel = path.relative(REAL_HOME, resolved);
-	if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) return false;
+	if (rel === "" || rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return false;
 	const first = rel.split(path.sep)[0] ?? "";
 	return first.startsWith(".veyyon");
 }
@@ -141,10 +225,26 @@ function isVeyyonSiblingInRealHome(resolved: string): boolean {
 /** Throw if `target` names anything inside a forbidden root. */
 function assertNotRealData(operation: string, target: unknown): void {
 	if (!ENABLED) return;
-	const resolved = resolveTarget(target);
+	let resolved: string | undefined;
+	try {
+		resolved = resolveTarget(target);
+	} catch (cause) {
+		throw new Error(`REAL-DATA TRIPWIRE: refusing ${operation} because its target could not be resolved safely.`, {
+			cause,
+		});
+	}
 	if (!resolved) return;
 	for (const root of FORBIDDEN) {
-		if (!isInside(resolved, root)) continue;
+		let inside: boolean;
+		try {
+			inside = isInsideResolved(resolved, root);
+		} catch (cause) {
+			throw new Error(
+				`REAL-DATA TRIPWIRE: refusing ${operation} on "${resolved}" because symlink containment could not be verified safely.`,
+				{ cause },
+			);
+		}
+		if (!inside) continue;
 		throw new Error(
 			`REAL-DATA TRIPWIRE: refusing ${operation} on "${resolved}".\n` +
 				`That path is inside the real veyyon data directory ("${root}"), which no test may modify — ` +
@@ -154,7 +254,16 @@ function assertNotRealData(operation: string, target: unknown): void {
 				`it is resolved once at process start.`,
 		);
 	}
-	if (isVeyyonSiblingInRealHome(resolved)) {
+	let isSibling: boolean;
+	try {
+		isSibling = isVeyyonSiblingInRealHome(resolved) || isVeyyonSiblingInRealHome(resolveForContainment(resolved));
+	} catch (cause) {
+		throw new Error(
+			`REAL-DATA TRIPWIRE: refusing ${operation} on "${resolved}" because its real-home containment could not be verified safely.`,
+			{ cause },
+		);
+	}
+	if (isSibling) {
 		throw new Error(
 			`REAL-DATA TRIPWIRE: refusing ${operation} on "${resolved}".\n` +
 				`That is a veyyon config root in the real home directory ("${REAL_HOME}"). Setting ` +
@@ -193,23 +302,13 @@ const FIRST_ARG_MUTATORS = [
 	"utimes",
 	"utimesSync",
 	"createWriteStream",
-	"opendir",
-	"opendirSync",
 ] as const;
 
-/** Mutating functions whose SECOND argument is also (or instead) a destination. */
-const SECOND_ARG_MUTATORS = [
-	"rename",
-	"renameSync",
-	"copyFile",
-	"copyFileSync",
-	"cp",
-	"cpSync",
-	"link",
-	"linkSync",
-	"symlink",
-	"symlinkSync",
-] as const;
+/** Operations that mutate or remove both paths. */
+const BOTH_PATH_MUTATORS = ["rename", "renameSync", "link", "linkSync"] as const;
+
+/** Copy/link operations whose source is read-only and only destination mutates. */
+const DESTINATION_MUTATORS = ["copyFile", "copyFileSync", "cp", "cpSync", "symlink", "symlinkSync"] as const;
 
 /**
  * Marker set on every wrapped function.
@@ -251,29 +350,34 @@ function wrapOpen(target: Record<string, unknown>, name: string): void {
 	const original = target[name];
 	if (typeof original !== "function") return;
 	const fn = original as (...args: unknown[]) => unknown;
-	target[name] = function guardedOpen(this: unknown, ...args: unknown[]) {
+	const numericMutationFlags = NUMERIC_OPEN_MUTATION_FLAGS;
+	const guarded = function guardedOpen(this: unknown, ...args: unknown[]) {
 		const flags = args[1];
 		const writing =
 			typeof flags === "number"
-				? (flags & 0o3) !== 0 || (flags & 0o100) !== 0
+				? (flags & numericMutationFlags) !== 0
 				: typeof flags !== "string" || /[wax+]/.test(flags);
 		if (writing) assertNotRealData(`fs.${name}`, args[0]);
 		return fn.apply(this, args);
 	};
+	(guarded as unknown as Record<string, unknown>)[GUARDED_MARKER] = true;
+	target[name] = guarded;
 }
 
 function installFsTripwire(): void {
 	const fs = require("node:fs") as Record<string, unknown>;
 	for (const name of FIRST_ARG_MUTATORS) wrap(fs, name, [0]);
-	for (const name of SECOND_ARG_MUTATORS) wrap(fs, name, [0, 1]);
+	for (const name of BOTH_PATH_MUTATORS) wrap(fs, name, [0, 1]);
+	for (const name of DESTINATION_MUTATORS) wrap(fs, name, [1]);
 	wrapOpen(fs, "open");
 	wrapOpen(fs, "openSync");
 
 	const promises = fs.promises as Record<string, unknown> | undefined;
 	if (promises) {
 		for (const name of FIRST_ARG_MUTATORS) wrap(promises, name, [0]);
-		for (const name of SECOND_ARG_MUTATORS) wrap(promises, name, [0, 1]);
-		wrap(promises, "open", [0]);
+		for (const name of BOTH_PATH_MUTATORS) wrap(promises, name, [0, 1]);
+		for (const name of DESTINATION_MUTATORS) wrap(promises, name, [1]);
+		wrapOpen(promises, "open");
 	}
 }
 
@@ -317,6 +421,8 @@ export const __tripwire = {
 	forbiddenRoots,
 	isInside,
 	resolveTarget,
+	resolveForContainment,
+	isInsideResolved,
 	isGuarded,
 	ENABLED,
 	FORBIDDEN,

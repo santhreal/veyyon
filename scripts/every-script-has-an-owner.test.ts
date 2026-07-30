@@ -203,6 +203,7 @@ describe("every script under scripts/ has an owner", () => {
 		for (const owned of [
 			"scripts/ci-test-ts.ts",
 			"scripts/release.ts",
+			"scripts/trigger-release.ts",
 			"scripts/check-doc-links.ts",
 			"scripts/install-tests/run-ci.sh",
 		]) {

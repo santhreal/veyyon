@@ -108,6 +108,24 @@ describe("getAllReleases", () => {
 		expect(urls[1]).toContain("page=2");
 	});
 
+	/**
+	 * Filtering is not pagination. GitHub can return a full raw page containing a
+	 * draft, prerelease, or malformed tag; the next page still exists even though
+	 * only 99 installable rows survive locally.
+	 */
+	it("keeps paging when filtering makes a full raw page look short", async () => {
+		const rawFull = [
+			{ tag_name: "v3.0.0", prerelease: true },
+			...Array.from({ length: 99 }, (_, i) => ({ tag_name: `v2.0.${98 - i}` })),
+		];
+		const { urls } = serveReleasePages([rawFull, [{ tag_name: "v1.0.0" }]]);
+
+		const versions = (await getAllReleases()).map(release => release.version);
+
+		expect(versions).toContain("1.0.0");
+		expect(urls.map(url => /[?&]page=(\d+)/.exec(url)?.[1])).toEqual(["1", "2"]);
+	});
+
 	it("stops paging on the first short page", async () => {
 		// A short page means the end of the list. Continuing would spend a request
 		// per empty page against a rate-limited API on every single launch.

@@ -82,12 +82,57 @@ describe("rebrand", () => {
 	});
 });
 
+describe("renderInline", () => {
+	it("renders Markdown strong emphasis while keeping code literal and escaped", () => {
+		expect(gen.renderInline("Enable **Auto-upload Grievances**; keep `**literal**` and **<unsafe>** escaped.")).toBe(
+			'Enable <strong>Auto-upload Grievances</strong>; keep <span class="inline">**literal**</span> and <strong>&lt;unsafe&gt;</strong> escaped.',
+		);
+	});
+});
+
 describe("normalizeVersion / compareVersions", () => {
 	it("strips a leading v and compares numerically", () => {
 		expect(gen.normalizeVersion("v1.2.3")).toBe("1.2.3");
 		expect(gen.compareVersions("1.0.0", "16.5.2")).toBe(-1);
 		expect(gen.compareVersions("v1.10.0", "1.9.0")).toBe(1);
 		expect(gen.compareVersions("16.5.2", "v16.5.2")).toBe(0);
+	});
+});
+
+describe("publication-state resolution", () => {
+	it("returns the GitHub release record used to classify published versions", async () => {
+		const releases = [{ tag_name: "v1.0.0", published_at: "2026-08-01T00:00:00Z" }];
+		const seen: string[] = [];
+		const actual = await gen.resolvePublicationState("owner/repo", {
+			fetchReleases: async (repo: string) => {
+				seen.push(repo);
+				return releases;
+			},
+		});
+		expect(actual).toBe(releases);
+		expect(seen).toEqual(["owner/repo"]);
+	});
+
+	it("fails closed when GitHub cannot establish publication state", async () => {
+		const outcome = gen.resolvePublicationState("owner/repo", {
+			fetchReleases: async () => {
+				throw new Error("API unavailable");
+			},
+		});
+		await expect(outcome).rejects.toThrow("Refusing to generate deployable release metadata");
+	});
+
+	it("allows an explicit offline build without pretending it queried GitHub", async () => {
+		let called = false;
+		const actual = await gen.resolvePublicationState("owner/repo", {
+			noGithub: true,
+			fetchReleases: async () => {
+				called = true;
+				return [];
+			},
+		});
+		expect(actual).toBeNull();
+		expect(called).toBe(false);
 	});
 });
 

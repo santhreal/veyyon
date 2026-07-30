@@ -16,8 +16,8 @@ packages were on npm, so any version number was available.
 
 veyyon's own release line starts at `1.0.0`. The inherited entries stay in the
 changelogs behind a fork-notice marking everything at or below `16.5.2` as upstream
-history. `release.ts` treats "no tags" as a `0.0.0` baseline so the first
-`bun run release 1.0.0` cuts cleanly.
+history. `release.ts` treats "no tags" as a `0.0.0` baseline, so the Release
+workflow's first `1.0.0` cut starts cleanly.
 
 ## Consequences
 

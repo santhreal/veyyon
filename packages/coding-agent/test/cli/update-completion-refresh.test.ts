@@ -3,11 +3,10 @@
  * surfaced when it cannot be rewritten.
  *
  * The mechanics live in src/cli/completion-refresh.ts and are covered by
- * completion-refresh.test.ts. What matters here is that a failure is not
- * swallowed. The refresh runs at the very end of a successful update, including
- * the background auto-update whose reporter prints nothing at all, so routing
- * the failure through that reporter would mean a user's tab completion silently
- * stops matching their installed version with no message anywhere.
+ * completion-refresh.test.ts. What matters here is that a failure is reported
+ * through the update result without writing directly to stderr. Automatic
+ * updates run under a live TUI, so raw process output corrupts the frame; their
+ * caller presents returned warnings inside the transcript instead.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
@@ -29,26 +28,13 @@ beforeAll(async () => {
 describe("refreshCompletionsForInstalledBinary", () => {
 	let home: string;
 	let tempHome: TempHome;
-	let stderr: string;
-	let restoreWrite: (() => void) | undefined;
 
 	beforeEach(() => {
 		tempHome = enterTempHome();
 		home = tempHome.home;
-
-		stderr = "";
-		const original = process.stderr.write.bind(process.stderr);
-		process.stderr.write = ((chunk: string | Uint8Array) => {
-			stderr += typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
-			return true;
-		}) as typeof process.stderr.write;
-		restoreWrite = () => {
-			process.stderr.write = original;
-		};
 	});
 
 	afterEach(() => {
-		restoreWrite?.();
 		tempHome.restore();
 	});
 
@@ -61,25 +47,28 @@ describe("refreshCompletionsForInstalledBinary", () => {
 		return file;
 	}
 
-	it("names the exact stale file on stderr when the refresh fails", async () => {
-		// The reporter is silent under auto-update, so this has to bypass it. A
-		// warning the user cannot act on is no better than none: it names the file
-		// and the way to fix it.
+	/**
+	 * A refresh failure must be actionable through the reporter while leaving raw
+	 * stderr untouched. The automatic updater captures the structured failure for
+	 * its transcript notification; the manual updater prints the reporter line.
+	 */
+	it("reports the exact stale completion without writing outside the TUI", async () => {
 		const file = seedFishCompletion("# old\n");
+		const reported: string[] = [];
 		const result = await refreshCompletionsForInstalledBinary(
 			"/nonexistent/veyyon",
-			() => {},
+			line => reported.push(line),
 			async () => {
 				throw new Error("exited 127: not found");
 			},
 		);
 		expect(result.failed).toHaveLength(1);
-		expect(stderr).toContain(file);
-		expect(stderr).toContain("exited 127: not found");
-		expect(stderr).toContain("Re-run the installer");
+		expect(reported.join("\n")).toContain(file);
+		expect(reported.join("\n")).toContain("exited 127: not found");
+		expect(reported.join("\n")).toContain("Re-run the installer");
 	});
 
-	it("says nothing on stderr when every completion refreshes", async () => {
+	it("reports only the successful refresh when every completion updates", async () => {
 		// Warning on a healthy update trains the user to ignore the warning.
 		const file = seedFishCompletion("# old\n");
 		const reported: string[] = [];
@@ -91,7 +80,6 @@ describe("refreshCompletionsForInstalledBinary", () => {
 		expect(result.failed).toEqual([]);
 		expect(result.refreshed).toEqual([file]);
 		expect(fs.readFileSync(file, "utf8")).toBe("# fresh fish\n");
-		expect(stderr).toBe("");
 		expect(reported.join("\n")).toContain("Refreshed 1 shell completion file(s)");
 	});
 
@@ -112,7 +100,6 @@ describe("refreshCompletionsForInstalledBinary", () => {
 		expect(result).toEqual({ refreshed: [], failed: [] });
 		expect(generatorCalls).toBe(0);
 		expect(reported).toEqual([]);
-		expect(stderr).toBe("");
 	});
 });
 
@@ -126,23 +113,18 @@ describe("a source update refreshes completions too", () => {
 	it("regenerates the installed completions after the checkout advances", async () => {
 		const tempHome = enterTempHome();
 		const home = tempHome.home;
-		let stderr = "";
-		const originalWrite = process.stderr.write.bind(process.stderr);
-		process.stderr.write = ((chunk: string | Uint8Array) => {
-			stderr += typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
-			return true;
-		}) as typeof process.stderr.write;
 		try {
 			const completions = path.join(home, ".config", "fish", "completions");
 			fs.mkdirSync(completions, { recursive: true });
 			const stale = path.join(completions, "veyyon.fish");
 			fs.writeFileSync(stale, "# from the previous version\n");
+			const reported: string[] = [];
 
 			const launcher = path.join(home, "src", "packages", "coding-agent", "scripts", "veyyon");
-			await updateViaSourceAt(
+			const outcome = await updateViaSourceAt(
 				launcher,
 				"1.2.3",
-				() => {},
+				line => reported.push(line),
 				async () => ({ exitCode: 0, stderr: "" }),
 				async () => "1.2.3",
 				// The launcher does not exist here, which the real probe now refuses
@@ -150,13 +132,14 @@ describe("a source update refreshes completions too", () => {
 				async () => undefined,
 			);
 
-			// The launcher does not exist in this sandbox, so generation fails — and
-			// that failure naming the stale file is the proof the refresh ran on this
-			// path at all. A source update that skipped it would print nothing.
-			expect(stderr).toContain(stale);
-			expect(stderr).toContain("still describes the previous version");
+			// The launcher does not exist in this sandbox, so generation fails.
+			// The structured warning proves the source path ran the refresh and
+			// gives automatic-update callers the data they need to render it.
+			expect(outcome.warnings).toHaveLength(1);
+			expect(outcome.warnings[0]).toContain(stale);
+			expect(outcome.warnings[0]).toContain("still describes the previous version");
+			expect(reported.join("\n")).toContain(stale);
 		} finally {
-			process.stderr.write = originalWrite;
 			tempHome.restore();
 		}
 	});

@@ -1,9 +1,9 @@
 # Deployment
 
-How veyyon reaches users. Two independent things ship: the **website** (Cloudflare
-Pages) and the **CLI binaries** (GitHub Releases, pulled by the install scripts).
-Neither depends on the other, you can redeploy the site without cutting a release,
-and a release publishes binaries without touching the site.
+How veyyon reaches users. Three coordinated surfaces ship: the **website** and
+**install scripts** on Cloudflare Pages, and the **CLI binaries** on GitHub Releases.
+The site can deploy without cutting a release. A release publishes the binaries, then
+redeploys both Pages projects so the changelog and installer endpoints match them.
 
 ## Domains and what serves them
 
@@ -156,34 +156,34 @@ still has a source file. `website/tools/gen-blog.test.ts` pins the generator's r
 
 `.github/workflows/site.yml` is what makes the repository and the site one thing.
 It builds the site on any pull request touching `website/**` (so a malformed report
-fails review, never production), and on push to `main` it builds again and deploys
-the `veyyon` Pages project. Merging a report to `main` publishes it; there is no
-manual deploy step and no waiting for a release.
+fails review, never production), and on a matching push to `main` it builds again
+and deploys both the `veyyon` and `veyyon-get` Pages projects. Merging a report or
+installer change to `main` publishes it; there is no manual deploy step and no
+waiting for a release.
 
 It runs on `website/**`, `docs/handbook/book/**`,
 `packages/coding-agent/CHANGELOG.md`, `scripts/install.*`, and its own file. It uses
-the same `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets as the release
-deploy below, and if the token is missing the job **fails loudly** rather than
-reporting a green publish that never happened.
+the same `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` values as the release
+deploy below. If the token is missing, the job fails loudly rather than reporting
+a green publish that never happened.
 
-### Automatic deploy on release (secondary path)
+### Required deploy on release
 
-The site redeploys itself whenever a release publishes. `ci.yml`'s `release_site` job
-runs after `release_github`: it regenerates the changelog (now reconciled against the
-just-published release), builds the site with the brand check gating, and deploys the
-`veyyon` Pages project with `wrangler pages deploy`. This is what keeps the changelog
-current, no human has to remember to redeploy after a release.
+The site redeploys whenever a release publishes. `ci.yml`'s `release_site` job
+runs after `release_github`: it regenerates the changelog against the
+just-published release, builds the site with the brand check gating, and deploys
+both the `veyyon` and `veyyon-get` Pages projects. This keeps the changelog and
+served install scripts current without a manual deployment.
 
-It needs two GitHub **repository secrets**:
+The job requires two GitHub **repository secrets**:
 
 - **`CLOUDFLARE_API_TOKEN`**: a Cloudflare Pages:Edit token (the same value as
   `CF_PAGES_API_TOKEN` in `/credentials/.env`).
-- **`CLOUDFLARE_ACCOUNT_ID`**: optional; set it only if the token spans more than one
-  account.
+- **`CLOUDFLARE_ACCOUNT_ID`**: the account that owns both Pages projects.
 
-If `CLOUDFLARE_API_TOKEN` is absent the job **skips loudly** with a CI `::warning::`
-(it never silently no-ops), and you fall back to the manual deploy below. Set repo
-variable `SITE_AUTODEPLOY=off` to disable the job entirely.
+If either secret is absent, or the repository variable `SITE_AUTODEPLOY` is
+`off`, the job fails loudly. The GitHub release already exists at that point,
+but the release train remains red until production deployment is repaired.
 
 ### Manual deploy (override / out-of-band site edits)
 
@@ -194,9 +194,12 @@ export CLOUDFLARE_API_TOKEN="$CF_PAGES_API_TOKEN"   # token lives in /credential
 bun run site:deploy                                 # = node website/deploy.mjs
 ```
 
-`deploy.mjs` runs `build.mjs` (so a failing brand check aborts the deploy), then
-publishes the `website/` tree with `wrangler pages deploy`. `--dry-run` builds and
-prints the exact command without publishing. The account is resolved from the token;
+`deploy.mjs` runs `build.mjs` (so a failing brand check aborts the deploy), copies the selected site
+into a temporary tree with symlinks dereferenced, then publishes that snapshot with
+`wrangler pages deploy --skip-caching`. Dereferencing makes `website/docs` contain the rebuilt
+handbook files. Skipping Wrangler's local asset cache prevents it from reusing the symlink's old
+manifest and reporting success without creating a new deployment. `--dry-run` builds and prints the
+staging plan and exact Wrangler command without publishing. The account is resolved from the token;
 set `CLOUDFLARE_ACCOUNT_ID` if the token spans more than one account.
 
 To deploy the install endpoint instead of the main site, target the other project:
@@ -214,6 +217,32 @@ Cloudflare reads these from the deployed root:
   a real hazard), and long-lived immutable caching on `/fonts/*`.
 - **`website/_redirects`**: clean-URL routing. `/install` serves the install *page*;
   the raw script lives at `/install.sh` and at `get.veyyon.dev`.
+
+### Grievance collector
+
+`POST https://veyyon.dev/api/grievances` is a Pages Function at
+`website/functions/api/grievances.ts`. It validates bounded Auto QA batches and writes them to the
+`veyyon-grievances` D1 database through the `GRIEVANCES_DB` binding in
+`website/wrangler.jsonc`. The database stores the sanitized report payload and a server timestamp. It
+does not store request headers or client IP addresses. `(install_id, local_id)` is unique, so a retry
+cannot create a duplicate row.
+
+Apply committed schema migrations before deploying a function that needs them:
+
+```bash
+env -u CF_ACCOUNT_ID -u CLOUDFLARE_ACCOUNT_ID -u CLOUDFLARE_API_TOKEN \
+  bunx wrangler@latest d1 migrations apply veyyon-grievances \
+  --remote --config website/wrangler.jsonc
+```
+
+This command deliberately uses Wrangler's cached OAuth login. The Pages API token can deploy the
+existing D1 binding, but it does not have D1 migration permission. A stale `CF_ACCOUNT_ID` can force
+the OAuth token against another account and produce Cloudflare error 10000, so the command removes
+both account overrides.
+
+The client records grievances locally whenever `dev.autoqa` is on. Network upload remains a
+per-profile opt-in through `dev.autoqaPush.enabled`, which defaults to `false`. An operator can also
+run `veyyon grievances push` for a one-time upload without changing that toggle.
 
 ## CLI binaries
 
@@ -248,10 +277,11 @@ the rest, so keep the asset set complete.
 
 ### How binaries get published
 
-Cutting a release (see [releasing.md](./releasing.md)) tags the commit; the tagged
-push triggers `ci.yml`, which builds every platform binary and publishes the GitHub
-release with all assets + checksums. The install scripts then pick it up through
-`releases/latest` with no further action.
+Cutting a release (see [releasing.md](./releasing.md)) tags the commit. After the
+exact tag passes `checks.yml` and the security workflow, the Release workflow
+dispatches `ci.yml` at that immutable tag. CI builds every platform binary and
+publishes the GitHub release with all assets and checksums. The install scripts
+then pick it up through `releases/latest` with no further action.
 
 > Every `ci.yml` job runs on GitHub-hosted runners, so a release never depends
 > on a self-hosted fleet: see [releasing.md](./releasing.md) §Runners and
@@ -259,19 +289,19 @@ release with all assets + checksums. The install scripts then pick it up through
 
 ## Repository secrets and variables
 
-Everything CI needs to publish, in one place. veyyon publishes to GitHub only, so
-the one credential a release genuinely needs is `RELEASE_PAT` (to trigger the
-release run). The rest are optional-with-a-loud-skip: a missing secret emits a CI
-`::warning::` and skips that leg (signing, or the site deploys), and the release
-still ships the GitHub binaries.
+GitHub binary publication needs no repository secret. The Release workflow uses
+the built-in `GITHUB_TOKEN` to push the version bump and tag, gates that immutable
+tag through `checks.yml`, then dispatches `ci.yml` for publication. The Cloudflare
+credentials are required by the production deployment that follows GitHub
+publication. Apple credentials are optional; missing any of them skips signing
+and notarization and leaves the release binaries unsigned.
 
 | Name | Kind | Gates |
 | --- | --- | --- |
-| `RELEASE_PAT` | secret | **required.** Fine-grained PAT with Contents: read/write. The Release workflow pushes the version-bump commit and tag with it, because GitHub does not start workflow runs for pushes made with the built-in `GITHUB_TOKEN` — so without it a release would be tagged but never published. The workflow refuses to start when it is missing. Drives both the automatic (push) and manual release paths. |
-| `CLOUDFLARE_API_TOKEN` | secret | `site.yml`'s deploy of `veyyon.dev` on every push to `main`, and `release_site`'s deploy of both `veyyon.dev` and `get.veyyon.dev` (Pages:Edit token; same value as `CF_PAGES_API_TOKEN` in `/credentials/.env`) |
-| `CLOUDFLARE_ACCOUNT_ID` | secret | only if the token spans multiple Cloudflare accounts |
+| `CLOUDFLARE_API_TOKEN` | secret | Required by `site.yml` and `release_site` to deploy both `veyyon.dev` and `get.veyyon.dev` (Pages:Edit token; same value as `CF_PAGES_API_TOKEN` in `/credentials/.env`) |
+| `CLOUDFLARE_ACCOUNT_ID` | secret | Required by `release_site` to select the Cloudflare account |
 | `APPLE_CERTIFICATE_P12` + `APPLE_CERTIFICATE_PASSWORD` + `APPLE_API_KEY` + `APPLE_API_KEY_ID` + `APPLE_API_ISSUER_ID` | secrets | macOS Developer-ID signing + notarization (all five or signing is skipped) |
-| `SITE_AUTODEPLOY` | repo var | set `off` to disable the release site auto-deploy |
+| `SITE_AUTODEPLOY` | repo var | Must not be `off` for a release; `off` deliberately fails `release_site` |
 
 ## Rollback and hotfix
 
@@ -287,10 +317,9 @@ rollback lever:
   auto-deploy) reconciles the changelog against the *published* releases, so an
   unpublished/rolled-back version automatically drops back to `pending release`.
 
-**Hotfix flow**: fix on `main` → `bun run release patch`. There are no release
-branches, a hotfix is just the next patch release. If the bad version must stop
-being installed *right now*, do the pre-release flip above first, then take the time
-to fix properly.
+**Hotfix flow**: fix on `main`, then let its green CI and Checks runs trigger the
+next automatic patch release. There are no release branches. If the bad version
+must stop being installed *right now*, do the pre-release flip above first.
 
 ## Checklist for a normal site update
 

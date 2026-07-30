@@ -24,8 +24,8 @@ confuses `release.ts`'s "latest tag" baseline. Demote it; delete only after a fi
 Veyyon keeps all user data under `~/.veyyon` (relocatable via `VEYYON_CONFIG_DIR`), so rolling the
 binary back does not lose sessions or config:
 
-1. Reinstall the previous version (now `latest` again) with the same `curl … | sh`, or restore the
-   prior binary from the user's package manager / a kept archive.
+1. Reinstall the previous version (now `latest` again) with the same `curl … | sh`,
+   or restore a copy of the prior binary from a kept archive.
    To pin an exact version regardless of `latest`:
    `curl -fsSL https://get.veyyon.dev | sh -s -- --binary --ref vX.Y.Z` (release asset download; note
    a bare `--ref` without `--binary` implies `--source`, it clones and builds that ref).
@@ -35,8 +35,8 @@ binary back does not lose sessions or config:
 
 ## Ship the fix
 
-1. Land the fix on `main`, cut a new patch release (`bun run release patch`): see
-   [releasing](../releasing.md).
+1. Land the fix on `main`. Its green CI and Checks runs trigger the next automatic patch release:
+   see [releasing](../releasing.md).
 2. Once the new release publishes and verifies, it becomes `latest` automatically.
 3. Only then delete the bad release + tag if you want it gone.
 

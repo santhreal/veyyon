@@ -33,7 +33,7 @@ const OLD_BINARY = "#!/bin/sh\necho veyyon/1.0.0\n";
 const NEW_BINARY = "#!/bin/sh\necho veyyon/2.0.0\n";
 
 /** Where the child is told to die. */
-type KillPoint = "before-verify";
+type KillPoint = "before-replacement" | "before-verify";
 
 interface Layout {
 	dir: string;
@@ -56,14 +56,20 @@ async function makeLayout(): Promise<Layout> {
  * Runs the real `replaceBinaryForUpdate` in a child that SIGKILLs itself at
  * `killPoint`, and returns what the child's exit looked like.
  *
- * The kill is delivered by the injected verifier, which is the one seam that
- * lands between the second rename and the verification: the instant at which the
- * new binary is in place, the backup still exists, and nothing has yet decided
- * whether to keep it.
+ * `before-replacement` kills on the atomic rename after the recovery backup is
+ * ready. `before-verify` kills from the verifier after the new path is live.
+ * Together they bracket the swap instead of proving only its trailing edge.
  */
 function killDuringSwap(layout: Layout, killPoint: KillPoint): { signal: string | null; status: number | null } {
 	const script = `
+import * as fs from "node:fs";
 import { replaceBinaryForUpdate } from ${JSON.stringify(UPDATE_CLI)};
+if (${JSON.stringify(killPoint)} === "before-replacement") {
+	fs.promises.rename = async () => {
+		process.kill(process.pid, "SIGKILL");
+		throw new Error("unreachable");
+	};
+}
 await replaceBinaryForUpdate({
 	targetPath: ${JSON.stringify(layout.target)},
 	tempPath: ${JSON.stringify(layout.temp)},
@@ -102,6 +108,26 @@ describe("an update killed mid-swap", () => {
 		try {
 			const outcome = killDuringSwap(layout, "before-verify");
 			expect(outcome.signal).toBe("SIGKILL");
+		} finally {
+			await fs.rm(layout.dir, { recursive: true, force: true });
+		}
+	});
+
+	/**
+	 * The critical leading edge. The old two-rename transaction removed the live
+	 * path before installing the new one, so this exact kill left PATH pointing
+	 * at ENOENT. The backup may exist and the staged file may remain, but recovery
+	 * cannot depend on a process that was just killed.
+	 */
+	it("keeps the old executable live when killed before atomic replacement", async () => {
+		const layout = await makeLayout();
+		try {
+			const outcome = killDuringSwap(layout, "before-replacement");
+			expect(outcome.signal).toBe("SIGKILL");
+			expect(await read(layout.target)).toBe(OLD_BINARY);
+			expect(await isExecutable(layout.target)).toBe(true);
+			expect(await read(layout.backup)).toBe(OLD_BINARY);
+			expect(await read(layout.temp)).toBe(NEW_BINARY);
 		} finally {
 			await fs.rm(layout.dir, { recursive: true, force: true });
 		}

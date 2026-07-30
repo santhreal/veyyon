@@ -99,6 +99,11 @@ export interface ReleaseInfo {
 	version: string;
 }
 
+/** Non-fatal follow-up work that needs operator attention after an install. */
+export interface InstallReleaseResult {
+	warnings: string[];
+}
+
 /** Result from running the installed binary and parsing its reported version. */
 export interface InstalledVersionVerification {
 	ok: boolean;
@@ -228,6 +233,7 @@ function defaultReadShim(p: string): string {
 function shimForwardTargets(shimBody: string): string[] {
 	const targets: string[] = [];
 	for (const match of shimBody.matchAll(/"([^"\r\n]+)"/g)) targets.push(match[1] as string);
+	for (const match of shimBody.matchAll(/'([^'\r\n]+)'/g)) targets.push(match[1] as string);
 	for (const match of shimBody.matchAll(/^\s*exec\s+([^\s"'\r\n]+)/gm)) targets.push(match[1] as string);
 	return targets;
 }
@@ -423,8 +429,8 @@ export async function getAllReleases(timeoutMs: number = RELEASE_METADATA_TIMEOU
 	for (let page = 1; page <= RELEASES_MAX_PAGES; page++) {
 		const url = `${GITHUB_RELEASES_API}?per_page=${RELEASES_PAGE_SIZE}&page=${page}`;
 		const batch = await fetchReleasePage(url, timeoutMs);
-		if (batch.length === 0) break;
-		for (const entry of batch) {
+		if (batch.rawCount === 0) break;
+		for (const entry of batch.releases) {
 			// A tag can legitimately repeat across pages when a release is published
 			// mid-walk and shifts the pagination window; keeping the first sighting
 			// keeps the list a set of versions rather than a list of sightings.
@@ -432,7 +438,9 @@ export async function getAllReleases(timeoutMs: number = RELEASE_METADATA_TIMEOU
 			seen.add(entry.version);
 			releases.push(entry);
 		}
-		if (batch.length < RELEASES_PAGE_SIZE) break;
+		// Pagination is governed by the GitHub page size, not by the number left
+		// after drafts, prereleases and malformed tags are filtered out.
+		if (batch.rawCount < RELEASES_PAGE_SIZE) break;
 	}
 
 	if (releases.length === 0) {
@@ -445,8 +453,11 @@ export async function getAllReleases(timeoutMs: number = RELEASE_METADATA_TIMEOU
 	return releases;
 }
 
-/** One page of the releases list, already filtered to installable releases. */
-async function fetchReleasePage(url: string, timeoutMs: number): Promise<ReleaseListing[]> {
+/** One raw GitHub page plus its filtered installable releases. */
+async function fetchReleasePage(
+	url: string,
+	timeoutMs: number,
+): Promise<{ releases: ReleaseListing[]; rawCount: number }> {
 	let response: Response;
 	try {
 		response = await fetch(url, {
@@ -478,7 +489,7 @@ async function fetchReleasePage(url: string, timeoutMs: number): Promise<Release
 	if (!Array.isArray(data)) {
 		throw new Error(`Expected a list of releases from ${url}, got ${typeof data}`);
 	}
-	return data.flatMap(entry => {
+	const releases = data.flatMap(entry => {
 		const record = entry as { tag_name?: unknown; draft?: unknown; prerelease?: unknown; published_at?: unknown };
 		if (record.draft === true || record.prerelease === true) return [];
 		const tag = typeof record.tag_name === "string" ? record.tag_name : "";
@@ -487,15 +498,16 @@ async function fetchReleasePage(url: string, timeoutMs: number): Promise<Release
 		const publishedAt = typeof record.published_at === "string" ? record.published_at : undefined;
 		return [{ tag: tag.startsWith("v") ? tag : `v${version}`, version, publishedAt }];
 	});
+	return { releases, rawCount: data.length };
 }
 
 /**
  * Get the appropriate binary name for this platform.
  */
-function getBinaryName(): string {
-	const platform = process.platform;
-	const arch = process.arch;
-
+export function getBinaryName(
+	platform: NodeJS.Platform = process.platform,
+	arch: NodeJS.Architecture = process.arch,
+): string {
 	let os: string;
 	switch (platform) {
 		case "linux":
@@ -511,6 +523,11 @@ function getBinaryName(): string {
 			throw new Error(`Unsupported platform: ${platform}`);
 	}
 
+	if (platform === "win32" && arch === "arm64") {
+		throw new Error(
+			"Unsupported platform: Windows arm64 releases are not published. Install the Windows x64 build under emulation.",
+		);
+	}
 	let archName: string;
 	switch (arch) {
 		case "x64":
@@ -860,25 +877,6 @@ async function readLinkIfSymlink(filePath: string): Promise<string | null> {
 }
 
 /**
- * Delete a file, tolerating only its absence.
- *
- * The THROW is the point, and there is exactly one place that wants it: clearing
- * the swapped-in binary so the backup can be renamed back. If that delete fails
- * the rollback cannot proceed, and the caller turns the throw into the
- * recovery-instructions error. Everywhere else — cleaning a temp download, a
- * partial file, a backup — use {@link removeFileBestEffort}: those cleanups run
- * inside a catch, and a failure there REPLACES the failure being reported, which
- * is how "cannot write into this directory" became "cannot unlink vey.new".
- */
-async function unlinkIfExists(filePath: string): Promise<void> {
-	try {
-		await fs.promises.unlink(filePath);
-	} catch (err) {
-		if (!isEnoent(err)) throw err;
-	}
-}
-
-/**
  * Remove a file without letting the removal abort or mask what is being reported.
  *
  * On Windows the executable that was just moved aside is still mapped as the
@@ -931,14 +929,9 @@ export async function sweepStaleBackups(targetPath: string): Promise<void> {
  */
 export async function replaceBinaryForUpdate(options: BinaryReplacementOptions): Promise<InstalledVersionVerification> {
 	let backupReady = false;
+	let replacementInstalled = false;
 	try {
 		// Refuse an empty or missing download BEFORE disturbing the live binary.
-		// A truncated-but-HTTP-200 body would otherwise be renamed over the running
-		// binary and only caught afterwards by the `--version` check, leaving the
-		// user with a broken binary for the duration of the rollback. This mirrors
-		// install.sh's `finalize_binary` guard (`[ -s "$tmp" ]`), which fails
-		// before ever touching the destination. `backupReady` is still false, so
-		// the catch cleans the junk temp and never runs a needless restore.
 		let tempSize: number;
 		try {
 			tempSize = (await fs.promises.stat(options.tempPath)).size;
@@ -949,14 +942,6 @@ export async function replaceBinaryForUpdate(options: BinaryReplacementOptions):
 		if (tempSize === 0) {
 			throw new Error("Downloaded update is empty; not replacing the installed binary");
 		}
-		// A symlinked binary is somebody's deliberate setup — `~/.local/bin/vey`
-		// pointing at a checkout's build is how you develop on veyyon — and renaming
-		// over it REPLACES THE LINK with a regular file. The checkout survives, but
-		// nothing points at it any more, and the swap said nothing: you keep editing
-		// a build that no longer runs. Writing through the link instead would be
-		// worse, since it would clobber the build artifact at the other end. So
-		// refuse, and say which link, where it goes, and what to do (Law 10: fail
-		// closed rather than degrade silently).
 		const linkTarget = await readLinkIfSymlink(options.targetPath);
 		if (linkTarget !== null) {
 			throw new Error(
@@ -965,13 +950,24 @@ export async function replaceBinaryForUpdate(options: BinaryReplacementOptions):
 					`replace the symlink with a real binary first (rm ${options.targetPath}) and re-run the update.`,
 			);
 		}
-		// `backupPath` is unique per attempt (see updateViaBinaryAt), so this rename
-		// never has to overwrite — or unlink — a possibly-locked leftover from an
-		// earlier run. Renaming the running executable itself is permitted on
-		// Windows; only deleting its still-mapped image is not.
-		await fs.promises.rename(options.targetPath, options.backupPath);
+
+		// Preserve the old inode before the atomic replacement. A hard link is
+		// constant-time and keeps the exact executable bytes without ever removing
+		// the PATH entry. Filesystems that reject hard links fall back to an
+		// exclusive copy, which is still completed before the live path changes.
+		try {
+			await fs.promises.link(options.targetPath, options.backupPath);
+		} catch (err) {
+			const code = (err as NodeJS.ErrnoException).code;
+			if (!["EACCES", "EPERM", "ENOTSUP", "EXDEV"].includes(code ?? "")) throw err;
+			await fs.promises.copyFile(options.targetPath, options.backupPath, fs.constants.COPYFILE_EXCL);
+		}
 		backupReady = true;
+
+		// rename(temp, target) replaces the directory entry atomically. A hard
+		// kill can leave the old target or the new target, but never no target.
 		await fs.promises.rename(options.tempPath, options.targetPath);
+		replacementInstalled = true;
 
 		const verification = await options.verifyInstalledVersion(options.expectedVersion);
 		if (!verification.ok) {
@@ -981,27 +977,15 @@ export async function replaceBinaryForUpdate(options: BinaryReplacementOptions):
 		}
 
 		backupReady = false;
-		// Swap done and verified. On Windows the backup is still the running
-		// process image and cannot be unlinked until this process exits, so a
-		// failure here must NOT fail an otherwise-successful update.
 		await removeFileBestEffort(options.backupPath);
 		return verification;
 	} catch (err) {
-		if (backupReady) {
+		if (backupReady && replacementInstalled) {
 			try {
-				await unlinkIfExists(options.targetPath);
+				// The backup replaces the rejected binary atomically too. Never
+				// unlink the live path first, even on a rollback failure.
 				await fs.promises.rename(options.backupPath, options.targetPath);
 			} catch (rollbackErr) {
-				// The worst case: the update failed AND the automatic restore failed
-				// too (permissions, a locked destination, the backup vanished). Left
-				// alone, the rollback error would replace the original failure, the
-				// temp would leak, and the user would be staring at a missing binary
-				// with no idea their previous one is intact one path over. Clean the
-				// temp, then fail loud with the exact recovery move and the original
-				// cause preserved. Best-effort: whatever stopped the rollback (a
-				// read-only directory, a locked file) usually stops this unlink too,
-				// and losing the recovery instructions to an unlink error is the worst
-				// possible trade.
 				await removeFileBestEffort(options.tempPath);
 				throw new Error(
 					`${APP_NAME} update failed and the automatic rollback could not restore the previous binary ` +
@@ -1010,13 +994,11 @@ export async function replaceBinaryForUpdate(options: BinaryReplacementOptions):
 					{ cause: err },
 				);
 			}
+		} else if (backupReady) {
+			// The atomic replacement itself failed, so the original target is
+			// still live and this extra recovery link/copy is no longer needed.
+			await removeFileBestEffort(options.backupPath);
 		}
-		// Best-effort, deliberately not `unlinkIfExists`: in a read-only or
-		// noexec bin directory the unlink ALSO fails, and that EACCES used to
-		// propagate in place of the real cause, so the operator was told veyyon
-		// could not delete `vey.new` when what actually happened is that it could
-		// not write into the directory at all. A cleanup that cannot run is a
-		// leaked temp file; the failure being reported is the one that matters.
 		await removeFileBestEffort(options.tempPath);
 		throw err;
 	}
@@ -1041,7 +1023,7 @@ export async function updateViaBinaryAt(
 	targetPath: string,
 	expectedVersion: string,
 	report: UpdateReporter,
-): Promise<void> {
+): Promise<InstallReleaseResult> {
 	const binaryName = getBinaryName();
 	const tag = `v${expectedVersion}`;
 	const url = `https://github.com/${REPO}/releases/download/${tag}/${binaryName}`;
@@ -1125,9 +1107,10 @@ export async function updateViaBinaryAt(
 	// every subcommand and flag this release adds would be missing from tab
 	// completion until the user re-ran the installer. Regenerate from the binary
 	// that was just installed.
-	await refreshCompletionsForInstalledBinary(targetPath, report);
+	const completionResult = await refreshCompletionsForInstalledBinary(targetPath, report);
 	printVerifiedVersion(expectedVersion, report);
 	report(chalk.dim(`Restart ${APP_NAME} to use the new version`));
+	return { warnings: completionResult.failed.map(formatCompletionRefreshWarning) };
 }
 
 /**
@@ -1170,6 +1153,13 @@ export async function windowsCompletionTargets(): Promise<CompletionTarget[]> {
  * progress and a failure that nobody sees is exactly the silent degrade this
  * codebase does not allow.
  */
+function formatCompletionRefreshWarning(failure: CompletionRefreshResult["failed"][number]): string {
+	return (
+		`Could not refresh the shell completion at ${failure.filePath}: ${failure.reason}\n` +
+		"It still describes the previous version. Re-run the installer to rewrite it."
+	);
+}
+
 export async function refreshCompletionsForInstalledBinary(
 	binaryPath: string,
 	report: UpdateReporter,
@@ -1201,12 +1191,7 @@ export async function refreshCompletionsForInstalledBinary(
 		report(chalk.dim(`Refreshed ${result.refreshed.length} shell completion file(s)`));
 	}
 	for (const failure of result.failed) {
-		process.stderr.write(
-			chalk.yellow(
-				`Warning: could not refresh the shell completion at ${failure.filePath}: ${failure.reason}\n` +
-					`It still describes the previous version. Re-run the installer to rewrite it.\n`,
-			),
-		);
+		report(chalk.yellow(`Warning: ${formatCompletionRefreshWarning(failure)}`));
 	}
 	return result;
 }
@@ -1294,7 +1279,7 @@ export async function updateViaSourceAt(
 	exec: SourceUpdateExec = defaultSourceUpdateExec,
 	readCheckoutVersion: CheckoutVersionReader = defaultReadCheckoutVersion,
 	probe: SearchProbe = probeSearchWorks,
-): Promise<void> {
+): Promise<InstallReleaseResult> {
 	// launcher = <checkout>/packages/coding-agent/scripts/veyyon
 	const resolvedLauncher = tryRealpath(launcherPath) ?? launcherPath;
 	const checkoutRoot = path.join(path.dirname(resolvedLauncher), "..", "..", "..");
@@ -1370,8 +1355,9 @@ export async function updateViaSourceAt(
 	// Same reason as the binary path: the completion scripts on disk describe the
 	// version the checkout just left. The launcher is what the installer put on
 	// PATH, so it is what regenerates them.
-	await refreshCompletionsForInstalledBinary(launcherPath, report);
+	const completionResult = await refreshCompletionsForInstalledBinary(launcherPath, report);
 	report(`Updated source checkout to ${version}. Restart ${APP_NAME} to run it.`);
+	return { warnings: completionResult.failed.map(formatCompletionRefreshWarning) };
 }
 
 /**
@@ -1407,17 +1393,17 @@ export async function installRelease(
 	report: UpdateReporter = CONSOLE_UPDATE_REPORTER,
 	currentVersion: string = VERSION,
 	historyPath: string = getUpdateHistoryPath(),
-): Promise<void> {
+): Promise<InstallReleaseResult> {
 	void force;
 	const target = await resolveUpdateTarget();
-	if (target.method === "source") {
-		await updateViaSourceAt(target.path, version, report);
-	} else {
-		await updateViaBinaryAt(target.path, version, report);
-	}
+	const result =
+		target.method === "source"
+			? await updateViaSourceAt(target.path, version, report)
+			: await updateViaBinaryAt(target.path, version, report);
 	if (version !== currentVersion) {
 		await recordVersionMove({ from: currentVersion, to: version, at: new Date().toISOString() }, historyPath);
 	}
+	return result;
 }
 
 /**
@@ -1568,7 +1554,7 @@ export async function rollbackToVersion(
  */
 export type AutoUpdateOutcome =
 	| { status: "up-to-date" }
-	| { status: "updated"; version: string }
+	| { status: "updated"; version: string; warnings: string[] }
 	| { status: "failed"; version?: string; error: string }
 	| { status: "skipped"; version: string; reason: AutoUpdateSkipReason };
 
@@ -1612,8 +1598,10 @@ export async function runAutoUpdate(
 	// Injectable for the same reason `runUpdateCommand` takes one: the lock this
 	// function holds is only meaningful if two callers can be raced against it,
 	// and a race test cannot download a release twice.
-	install: (version: string, reporter: typeof SILENT_UPDATE_REPORTER) => Promise<void> = (version, reporter) =>
-		installRelease(version, false, reporter),
+	install: (
+		version: string,
+		reporter: typeof SILENT_UPDATE_REPORTER,
+	) => Promise<void> | Promise<InstallReleaseResult> = (version, reporter) => installRelease(version, false, reporter),
 ): Promise<AutoUpdateOutcome> {
 	let release: ReleaseInfo;
 	if (knownRelease) {
@@ -1642,39 +1630,53 @@ export async function runAutoUpdate(
 		return { status: "skipped", version: release.version, reason: "source-install" };
 	}
 
-	const state = await readAutoUpdateState(statePath);
-	if (!shouldAttemptAutoUpdate(state, release.version, Date.now())) {
-		logger.warn("Skipping automatic update: installing this version failed recently", {
-			version: release.version,
-			error: state.failedError,
-			retryAfterMs: AUTO_UPDATE_FAILURE_COOLDOWN_MS,
-		});
-		return { status: "skipped", version: release.version, reason: "recent-failure" };
-	}
+	try {
+		const state = await readAutoUpdateState(statePath);
+		if (!shouldAttemptAutoUpdate(state, release.version, Date.now())) {
+			logger.warn("Skipping automatic update: installing this version failed recently", {
+				version: release.version,
+				error: state.failedError,
+				retryAfterMs: AUTO_UPDATE_FAILURE_COOLDOWN_MS,
+			});
+			return { status: "skipped", version: release.version, reason: "recent-failure" };
+		}
 
-	const attempt = await tryWithFileLock(
-		statePath,
-		async (): Promise<AutoUpdateOutcome> => {
-			try {
-				// Silent: this runs under a live TUI, where any console write corrupts the frame.
-				await install(release.version, SILENT_UPDATE_REPORTER);
-			} catch (err) {
-				const error = errorMessage(err);
-				await recordAutoUpdateFailure(release.version, error, statePath);
-				return { status: "failed", version: release.version, error };
-			}
-			await clearAutoUpdateFailure(statePath);
-			return { status: "updated", version: release.version };
-		},
-		{ staleMs: AUTO_UPDATE_LOCK_STALE_MS },
-	);
-	if (!attempt.acquired) {
-		logger.info("Skipping automatic update: another session is already installing it", {
-			version: release.version,
-		});
-		return { status: "skipped", version: release.version, reason: "another-process" };
+		const attempt = await tryWithFileLock(
+			statePath,
+			async (): Promise<AutoUpdateOutcome> => {
+				let installResult: InstallReleaseResult | undefined;
+				try {
+					// Silent: this runs under a live TUI, where any console write corrupts the frame.
+					installResult = (await install(release.version, SILENT_UPDATE_REPORTER)) as
+						| InstallReleaseResult
+						| undefined;
+				} catch (err) {
+					const error = errorMessage(err);
+					try {
+						await recordAutoUpdateFailure(release.version, error, statePath);
+					} catch (stateErr) {
+						logger.warn("Could not record automatic update failure", {
+							version: release.version,
+							error: errorMessage(stateErr),
+						});
+					}
+					return { status: "failed", version: release.version, error };
+				}
+				await clearAutoUpdateFailure(statePath);
+				return { status: "updated", version: release.version, warnings: installResult?.warnings ?? [] };
+			},
+			{ staleMs: AUTO_UPDATE_LOCK_STALE_MS },
+		);
+		if (!attempt.acquired) {
+			logger.info("Skipping automatic update: another session is already installing it", {
+				version: release.version,
+			});
+			return { status: "skipped", version: release.version, reason: "another-process" };
+		}
+		return attempt.value;
+	} catch (err) {
+		return { status: "failed", version: release.version, error: errorMessage(err) };
 	}
-	return attempt.value;
 }
 
 /**
@@ -1683,7 +1685,7 @@ export async function runAutoUpdate(
  * running git against a real checkout; production always uses
  * {@link installRelease}, which owns the binary-vs-source decision.
  */
-export type ReleaseInstaller = (version: string, force: boolean) => Promise<void>;
+export type ReleaseInstaller = (version: string, force: boolean) => Promise<void> | Promise<InstallReleaseResult>;
 
 /**
  * Run the update command.

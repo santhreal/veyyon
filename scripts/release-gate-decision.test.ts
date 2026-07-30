@@ -16,22 +16,155 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { type CiConclusion, decideReleaseGate, MAX_STRANDED_TAGS, type SilentTag } from "./release-gate-decision.ts";
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+	type CiConclusion,
+	decideReleaseGate,
+	MAX_STRANDED_TAGS,
+	REQUIRED_RELEASE_ASSET_NAMES,
+	REQUIRED_SOURCE_WORKFLOWS,
+	type SilentTag,
+	type SourceWorkflowRun,
+	verifyPublishedReleaseAssets,
+} from "./release-gate-decision.ts";
 
 const MAIN = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const OLDER = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+async function runGateCli(options: {
+	checks?: "success" | "failure" | "missing";
+	security?: "success" | "failure" | "missing";
+	greenOnly?: boolean;
+	failGh?: boolean;
+}) {
+	const sha = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: REPO_ROOT }).stdout.toString().trim();
+	const bin = mkdtempSync(join(tmpdir(), "release-gate-cli-"));
+	const fakeGh = join(bin, "gh");
+	writeFileSync(
+		fakeGh,
+		`#!/bin/sh
+if [ "$FAIL_GH" = "1" ]; then echo unavailable >&2; exit 9; fi
+case "$*" in
+  *"commits/main"*) printf '%s\\n' "$FAKE_SHA" ;;
+  *"actions/runs?head_sha=$FAKE_SHA"*)
+    printf 'CI\\t%s\\tcompleted\\tsuccess\\n' "$FAKE_SHA"
+    if [ "$CHECKS" != "missing" ]; then printf 'Checks\\t%s\\tcompleted\\t%s\\n' "$FAKE_SHA" "$CHECKS"; fi
+    if [ "$SECURITY" != "missing" ]; then printf 'Security\\t%s\\tcompleted\\t%s\\n' "$FAKE_SHA" "$SECURITY"; fi ;;
+  *"release list --limit 1"*) printf 'v0.0.1\\n' ;;
+  *"release list --limit 50"*) printf 'v0.0.1\\n' ;;
+  *"tags?per_page=50"*) printf 'v0.0.1 %s\\n' "$FAKE_SHA" ;;
+  *) echo "unexpected gh invocation: $*" >&2; exit 88 ;;
+esac
+`,
+	);
+	chmodSync(fakeGh, 0o755);
+	const args = ["bun", "scripts/release-gate-decision.ts"];
+	if (options.greenOnly) args.push("--green-only");
+	const proc = Bun.spawn(args, {
+		cwd: REPO_ROOT,
+		env: {
+			...process.env,
+			PATH: `${bin}:${process.env.PATH ?? ""}`,
+			FAKE_SHA: sha,
+			CHECKS: options.checks ?? "success",
+			SECURITY: options.security ?? "success",
+			FAIL_GH: options.failGh ? "1" : "0",
+		},
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	const [exitCode, stdout, stderr] = await Promise.all([
+		proc.exited,
+		new Response(proc.stdout).text(),
+		new Response(proc.stderr).text(),
+	]);
+	return { exitCode, stdout, stderr };
+}
+
+function greenSourceRuns(sha = MAIN): SourceWorkflowRun[] {
+	return REQUIRED_SOURCE_WORKFLOWS.map(name => ({
+		name,
+		headSha: sha,
+		status: "completed",
+		conclusion: "success",
+	}));
+}
 
 function tag(name: string, conclusion: CiConclusion, sha = OLDER): SilentTag {
 	return { tag: name, sha, conclusion };
 }
 
-function decide(options: { bullets?: boolean; silentTags?: SilentTag[]; mainHeadSha?: string } = {}) {
+function decide(
+	options: {
+		bullets?: boolean;
+		silentTags?: SilentTag[];
+		mainHeadSha?: string;
+		sourceWorkflowRuns?: SourceWorkflowRun[];
+	} = {},
+) {
+	const mainHeadSha = options.mainHeadSha ?? MAIN;
 	return decideReleaseGate({
 		hasUnreleasedBullets: options.bullets ?? false,
 		silentTags: options.silentTags ?? [],
-		mainHeadSha: options.mainHeadSha ?? MAIN,
+		mainHeadSha,
+		sourceWorkflowRuns: options.sourceWorkflowRuns ?? greenSourceRuns(mainHeadSha),
 	});
 }
+
+describe("exact-source gates", () => {
+	it("requires CI, Checks, and Security to be green for the exact main SHA", () => {
+		expect(decide({ bullets: true }).cut).toBe(true);
+
+		for (const missingName of REQUIRED_SOURCE_WORKFLOWS) {
+			const runs = greenSourceRuns().filter(run => run.name !== missingName);
+			const decision = decide({ bullets: true, sourceWorkflowRuns: runs });
+			expect(decision.cut).toBe(false);
+			expect(decision.reason).toContain(`${missingName} has no run`);
+		}
+	});
+
+	it("blocks a red or unfinished exact-SHA run even when a changelog bullet is waiting", () => {
+		for (const conclusion of ["failure", "cancelled", null]) {
+			const runs = greenSourceRuns();
+			runs[1] = {
+				...runs[1]!,
+				status: conclusion === null ? "in_progress" : "completed",
+				conclusion,
+			};
+			expect(decide({ bullets: true, sourceWorkflowRuns: runs }).cut).toBe(false);
+		}
+	});
+
+	it("does not accept green runs from a different commit", () => {
+		const decision = decide({ bullets: true, sourceWorkflowRuns: greenSourceRuns(OLDER) });
+		expect(decision.cut).toBe(false);
+		expect(decision.reason).toContain("exact main SHA");
+	});
+
+	it("the CLI fails closed for red, missing, or unknowable exact-SHA evidence", async () => {
+		for (const options of [
+			{ checks: "failure" },
+			{ checks: "missing" },
+			{ security: "failure" },
+			{ security: "missing" },
+		] as const) {
+			const automatic = await runGateCli(options);
+			expect(automatic.exitCode).toBe(0);
+			expect(automatic.stdout.trim()).toBe("false");
+
+			const manual = await runGateCli({ ...options, greenOnly: true });
+			expect(manual.exitCode).not.toBe(0);
+		}
+
+		const unknown = await runGateCli({ failGh: true });
+		expect(unknown.exitCode).not.toBe(0);
+		expect(unknown.stderr).toContain("fails closed");
+	});
+});
 
 describe("the ordinary path", () => {
 	/**
@@ -187,5 +320,55 @@ describe("every refusal", () => {
 			expect(decision.reason.length).toBeGreaterThan(20);
 			expect(decision.needsAttention).toBe(attention);
 		}
+	});
+});
+
+describe("published asset manifest", () => {
+	it("accepts exactly the complete five-platform binary and native-addon set with sidecars", () => {
+		const result = verifyPublishedReleaseAssets(REQUIRED_RELEASE_ASSET_NAMES);
+		expect(result).toEqual({ ok: true, missing: [], unexpected: [] });
+	});
+
+	it("fails when either binary platform previously omitted from verification is absent", () => {
+		for (const missing of ["veyyon-darwin-x64", "veyyon-linux-arm64"]) {
+			const result = verifyPublishedReleaseAssets(REQUIRED_RELEASE_ASSET_NAMES.filter(name => name !== missing));
+			expect(result.ok).toBe(false);
+			expect(result.missing).toContain(missing);
+		}
+	});
+
+	it("fails when any checksum sidecar or required native addon is absent", () => {
+		for (const missing of [
+			"veyyon-linux-arm64.sha256",
+			"veyyon_natives.darwin-arm64.node",
+			"veyyon_natives.win32-x64-baseline.node.sha256",
+		]) {
+			const result = verifyPublishedReleaseAssets(REQUIRED_RELEASE_ASSET_NAMES.filter(name => name !== missing));
+			expect(result.ok).toBe(false);
+			expect(result.missing).toContain(missing);
+		}
+	});
+
+	it("rejects distribution assets outside the exact manifest", () => {
+		const result = verifyPublishedReleaseAssets([...REQUIRED_RELEASE_ASSET_NAMES, "veyyon-linux-riscv64"]);
+		expect(result.ok).toBe(false);
+		expect(result.unexpected).toEqual(["veyyon-linux-riscv64"]);
+	});
+
+	it("fails closed when GitHub publication state cannot be queried", async () => {
+		const bin = mkdtempSync(join(tmpdir(), "release-gate-gh-"));
+		const fakeGh = join(bin, "gh");
+		writeFileSync(fakeGh, "#!/bin/sh\necho publication unavailable >&2\nexit 9\n");
+		chmodSync(fakeGh, 0o755);
+
+		const proc = Bun.spawn(["bun", "scripts/release-gate-decision.ts", "verify-assets", "v1.2.3"], {
+			cwd: REPO_ROOT,
+			env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}` },
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+		expect(exitCode).not.toBe(0);
+		expect(stderr).toContain("could not establish publication state");
 	});
 });

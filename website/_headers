@@ -1,6 +1,6 @@
-# Install scripts: correct content-type, never cache stale installers.
+# Downloadable install scripts: correct content type, never cache stale installers.
 /install.sh
-  Content-Type: text/x-shellscript; charset=utf-8
+  Content-Type: application/x-sh; charset=utf-8
   Cache-Control: no-cache, must-revalidate
 /install.ps1
   Content-Type: text/plain; charset=utf-8
