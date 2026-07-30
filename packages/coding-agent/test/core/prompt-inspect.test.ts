@@ -315,7 +315,7 @@ describe("what each rule costs", () => {
 		expect(lsp?.condition).toBe("tools has lsp");
 		expect(always?.condition).toBe("always");
 		expect(codex?.condition).toBe(
-			"tools has task and not useCodexTaskPrompt and eagerTasks and not eagerTasksAlways",
+			"tools has task and hasSpawnableSubagent and not useCodexTaskPrompt and eagerTasks and not eagerTasksAlways",
 		);
 	});
 
