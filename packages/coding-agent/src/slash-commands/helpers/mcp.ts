@@ -42,6 +42,8 @@ type McpAddOptionParser = (parsed: ParsedMcpAddArgs, value: string | undefined) 
 const MCP_ADD_USAGE =
 	"Usage: /mcp add <name> [--scope project|user] [--url <url> --transport http|sse] [--token <token>] [-- <command...>]";
 
+const MCP_SEARCH_USAGE = "Usage: /mcp smithery-search <keyword> [--scope project|user] [--limit <1-100>] [--semantic]";
+
 const MCP_ADD_OPTION_PARSERS = new Map<string, McpAddOptionParser>([
 	[
 		"--scope",
@@ -103,10 +105,10 @@ function validateParsedMcpAddArgs(parsed: ParsedMcpAddArgs): ParsedMcpAddArgs {
 	if (!hasCommand && !hasUrl) {
 		return {
 			...parsed,
-			error: "Provide --url or -- <command...> for non-interactive add. Usage: /mcp add <name> [--scope project|user] [--url <url> --transport http|sse] [--token <token>] [-- <command...>]",
+			error: `Provide --url or -- <command...> for non-interactive add.\n${MCP_ADD_USAGE}`,
 		};
 	}
-	if (!parsed.name) return { ...parsed, error: "Server name required. Usage: /mcp add <name> ..." };
+	if (!parsed.name) return { ...parsed, error: `Server name required.\n${MCP_ADD_USAGE}` };
 	if (hasCommand && hasUrl) return { ...parsed, error: "Use either --url or -- <command...>, not both." };
 	if (parsed.authToken && !hasUrl) return { ...parsed, error: "--token requires --url (HTTP/SSE transport)." };
 	return parsed;
@@ -130,7 +132,7 @@ function parseMcpAddArgs(rest: string): ParsedMcpAddArgs {
 			break;
 		}
 		const parser = MCP_ADD_OPTION_PARSERS.get(arg);
-		if (!parser) return { ...parsed, error: `Unknown option: ${arg}` };
+		if (!parser) return { ...parsed, error: `Unknown option: ${arg}\n${MCP_ADD_USAGE}` };
 		const error = parser(parsed, tokens[index + 1]);
 		if (error) return { ...parsed, error };
 		index += 2;
@@ -146,7 +148,7 @@ function parseMcpSearchArgs(rest: string): ParsedMcpSearchArgs {
 		scope: "project",
 		limit: 20,
 		semantic: false,
-		error: "Keyword required. Usage: /mcp smithery-search <keyword> [--scope project|user] [--limit <1-100>] [--semantic]",
+		error: `Keyword required.\n${MCP_SEARCH_USAGE}`,
 	};
 	if (tokens.length === 0) return missingKeyword;
 
@@ -187,7 +189,9 @@ function parseMcpSearchArgs(rest: string): ParsedMcpSearchArgs {
 			semantic = true;
 			continue;
 		}
-		if (token.startsWith("--")) return { keyword: "", scope, limit, semantic, error: `Unknown option: ${token}` };
+		if (token.startsWith("--")) {
+			return { keyword: "", scope, limit, semantic, error: `Unknown option: ${token}\n${MCP_SEARCH_USAGE}` };
+		}
 		keywordParts.push(token);
 	}
 
