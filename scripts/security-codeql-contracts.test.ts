@@ -28,8 +28,10 @@ async function loadYaml<T>(relativePath: string): Promise<T> {
 describe("Security CodeQL production-source boundary", () => {
 	/**
 	 * CodeQL previously evaluated data-flow queries across more than 1,200 test
-	 * files and exhausted GitHub's six-hour job limit. The workflow must load the
-	 * repository scope and fail within a bounded interval instead of hanging.
+	 * files and exhausted GitHub's six-hour job limit. The production-only graph
+	 * still needs more than 55 minutes for the full security-and-quality suite,
+	 * so the workflow keeps a three-hour hard deadline without aborting a healthy
+	 * analysis halfway through its data-flow queries.
 	 */
 	it("loads the bounded production config and has an explicit deadline", async () => {
 		const workflow = await loadYaml<SecurityWorkflow>(".github/workflows/security.yml");
@@ -37,7 +39,7 @@ describe("Security CodeQL production-source boundary", () => {
 		const initialize = job.steps.find(step => step.name === "Initialize CodeQL");
 		if (!initialize?.with) throw new Error("Security workflow must initialize CodeQL with repository config");
 
-		expect(job["timeout-minutes"]).toBe(60);
+		expect(job["timeout-minutes"]).toBe(180);
 		expect(initialize.with["config-file"]).toBe("./.github/codeql/codeql-config.yml");
 		expect(initialize.with.queries).toBe("security-and-quality");
 	});
