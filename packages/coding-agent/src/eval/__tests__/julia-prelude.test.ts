@@ -19,6 +19,10 @@ describeRequiringTool("julia", "eval Julia prelude helpers", () => {
 		await disposeJuliaKernelSessionsByOwner(OWNER_ID);
 	}, 30_000);
 
+	/**
+	 * A clean Julia depot JIT-compiles the runner and prelude. This integration
+	 * test must cover that first launch, not only a developer's warm cache.
+	 */
 	it("supports output ranges, JSON queries, metadata, and ANSI stripping", async () => {
 		using tempDir = TempDir.createSync("@veyyon-eval-julia-output-");
 		const artifactsDir = path.join(tempDir.path(), "session-artifacts");
@@ -52,7 +56,7 @@ nothing
 		expect(result.output).toContain("STRIPPED=red");
 		expect(result.output).toContain("META=alpha:true");
 		expect(result.output).toContain("MULTI=2:alpha:json");
-	}, 60_000);
+	}, 90_000);
 
 	it("surfaces the exception type and message in the error output, not just stack frames", async () => {
 		using tempDir = TempDir.createSync("@veyyon-eval-julia-error-");
@@ -70,5 +74,5 @@ nothing
 		expect(result.output).toContain("missing_var_xyz");
 		// Frames are still present alongside the message.
 		expect(result.output).toContain("top-level scope");
-	}, 30_000);
+	}, 90_000);
 });
