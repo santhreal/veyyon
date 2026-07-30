@@ -59,7 +59,11 @@ describe("task spawn validation", () => {
 		return makeToolSession({
 			cwd: "/tmp",
 			hasUI: false,
-			settings: Settings.isolated({ "subagent.isolation.mode": "none", "subagent.batch": false }),
+			settings: Settings.isolated({
+				"async.enabled": false,
+				"subagent.isolation.mode": "none",
+				"subagent.batch": false,
+			}),
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
 		});
