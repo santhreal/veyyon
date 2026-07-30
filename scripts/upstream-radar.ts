@@ -14,12 +14,12 @@
  * (`upstream-pr: <number>`) in the issue body, so re-runs are idempotent and
  * concurrent runs converge.
  *
- * What gets mirrored is policy, not everything: veyyon ports upstream BUG
- * FIXES only (features/refactors/docs follow veyyon's own direction), and
- * fixes touching surfaces where veyyon deliberately diverged (model catalog,
- * IDs, roles; branding) carry a warning block so the port adapts to veyyon's
- * design instead of importing upstream's. The policy is data, not code:
- * scripts/upstream-port-policy.json.
+ * What gets mirrored is policy, not everything: veyyon ports upstream fixes
+ * and performance corrections, plus feature additions whose file surface does
+ * not cross a known architectural divergence. The clean-feature screen is
+ * deliberately conservative and only creates a review candidate; Jules still
+ * has to establish product fit, tests, and local architecture before opening
+ * a PR. The policy is data, not code: scripts/upstream-port-policy.json.
  *
  * Runs from .github/workflows/upstream-radar.yml on a schedule; also runnable
  * locally with GH_TOKEN set. Fails closed: any API error aborts the run with a
@@ -42,11 +42,14 @@ export interface DivergedSurface {
 	name: string;
 	paths: string[];
 	note: string;
+	blocksCleanFeatures?: boolean;
 }
 
 export interface PortPolicy {
 	allowedTypes: string[];
+	cleanFeatureTypes: string[];
 	titleAllowRegexes: string[];
+	cleanFeatureTitleAllowRegexes: string[];
 	divergedSurfaces: DivergedSurface[];
 }
 
@@ -61,16 +64,35 @@ export function titleType(title: string): string | null {
 	return m ? m[1] : null;
 }
 
+export type PortCandidateKind = "fix" | "clean-feature";
+
 /**
- * Whether an upstream PR is port-worthy under the policy: its conventional
- * type is allowed, or (for unprefixed titles only) a titleAllowRegex matches.
- * A typed title never falls through to the regexes: `feat: fix the fixer`
- * must not sneak in through `^fix\b`.
+ * Classify the title before fetching its file list. Fix/perf changes always
+ * enter semantic triage. Features proceed only to the clean-surface check.
  */
-export function isPortWorthy(title: string, policy: PortPolicy): boolean {
+export function portCandidateKind(title: string, policy: PortPolicy): PortCandidateKind | null {
 	const type = titleType(title);
-	if (type !== null) return policy.allowedTypes.includes(type);
-	return policy.titleAllowRegexes.some(re => new RegExp(re, "i").test(title.trim()));
+	if (type !== null) {
+		if (policy.allowedTypes.includes(type)) return "fix";
+		if (policy.cleanFeatureTypes.includes(type)) return "clean-feature";
+		return null;
+	}
+	const trimmed = title.trim();
+	if (policy.titleAllowRegexes.some(re => new RegExp(re, "i").test(trimmed))) return "fix";
+	if (policy.cleanFeatureTitleAllowRegexes.some(re => new RegExp(re, "i").test(trimmed))) return "clean-feature";
+	return null;
+}
+
+/** Diverged surfaces that make a feature unsuitable for automatic candidate generation. */
+export function cleanFeatureBlockers(files: string[], policy: PortPolicy): DivergedSurface[] {
+	return divergedMatches(files, policy).filter(surface => surface.blocksCleanFeatures !== false);
+}
+
+/** Final policy decision after a feature candidate's touched files are known. */
+export function isPortWorthy(title: string, files: string[], policy: PortPolicy): boolean {
+	const kind = portCandidateKind(title, policy);
+	if (kind === "fix") return true;
+	return kind === "clean-feature" && cleanFeatureBlockers(files, policy).length === 0;
 }
 
 /** Diverged surfaces a PR's file list touches, by path prefix. */
@@ -142,11 +164,31 @@ if (import.meta.main) {
 	const inWindow = closed
 		.filter(pr => pr.merged_at && Date.parse(pr.merged_at) >= cutoff)
 		.sort((a, b) => Date.parse(a.merged_at) - Date.parse(b.merged_at)); // oldest first: port in merge order
-	// Policy gate: only bug fixes are ported; features/refactors/docs follow
-	// veyyon's own direction. Loud skip, never a silent one.
-	const merged = inWindow.filter(pr => isPortWorthy(pr.title, policy));
+	const filesByPr = new Map<number, unknown[]>();
+	const merged = [];
 	for (const pr of inWindow) {
-		if (!isPortWorthy(pr.title, policy)) console.log(`upstream-radar: skip (not a fix): #${pr.number} ${pr.title}`);
+		const kind = portCandidateKind(pr.title, policy);
+		if (kind === null) {
+			console.log(`upstream-radar: skip (outside fix/clean-feature policy): #${pr.number} ${pr.title}`);
+			continue;
+		}
+		if (kind === "clean-feature") {
+			const files = await ghAll(`/repos/${UPSTREAM}/pulls/${pr.number}/files`, 300);
+			filesByPr.set(pr.number, files);
+			const names = files.flatMap(file =>
+				file && typeof file === "object" && "filename" in file && typeof file.filename === "string"
+					? [file.filename]
+					: [],
+			);
+			const blockers = cleanFeatureBlockers(names, policy);
+			if (blockers.length > 0) {
+				console.log(
+					`upstream-radar: skip (feature crosses ${blockers.map(surface => surface.name).join(", ")}): #${pr.number} ${pr.title}`,
+				);
+				continue;
+			}
+		}
+		merged.push(pr);
 	}
 
 	// Already-mirrored PR numbers, read from the marker in every issue we ever filed
@@ -177,23 +219,42 @@ if (import.meta.main) {
 	}
 
 	for (const pr of batch) {
-		const files = await ghAll(`/repos/${UPSTREAM}/pulls/${pr.number}/files`, 300);
-		const fileList = files.map(f => `- \`${f.filename}\` (+${f.additions}/-${f.deletions})`).join("\n");
-		const warning = divergenceWarning(
-			divergedMatches(
-				files.map(f => f.filename),
-				policy,
-			),
+		const files = filesByPr.get(pr.number) ?? (await ghAll(`/repos/${UPSTREAM}/pulls/${pr.number}/files`, 300));
+		const fileList = files
+			.flatMap(file =>
+				file &&
+				typeof file === "object" &&
+				"filename" in file &&
+				typeof file.filename === "string" &&
+				"additions" in file &&
+				typeof file.additions === "number" &&
+				"deletions" in file &&
+				typeof file.deletions === "number"
+					? [`- \`${file.filename}\` (+${file.additions}/-${file.deletions})`]
+					: [],
+			)
+			.join("\n");
+		const filenames = files.flatMap(file =>
+			file && typeof file === "object" && "filename" in file && typeof file.filename === "string"
+				? [file.filename]
+				: [],
 		);
+		const warning = divergenceWarning(divergedMatches(filenames, policy));
+		const kind = portCandidateKind(pr.title, policy);
+		const featureGuard =
+			kind === "clean-feature"
+				? "\nThis feature passed only a conservative path-level screen. Confirm that it is additive, fits veyyon's product direction, and preserves every local contract. If any of those is false, declare it NOT-APPLICABLE instead of forcing a PR.\n"
+				: "";
 		const bodyExcerpt = (pr.body ?? "").trim().slice(0, 3000);
 
 		const body = `${marker(pr.number)}
+<!-- upstream-port-kind: ${kind} -->
 Upstream merged PR: ${pr.html_url} (merged ${pr.merged_at}, +${pr.additions}/-${pr.deletions} across ${pr.changed_files} files)
 
 ## Task: evaluate and port this upstream change to veyyon
 
 veyyon is a diverged fork of oh-my-pi (see \`UPSTREAM.md\` for the provenance map). Port this change **adapted to veyyon**, not verbatim:
-
+${featureGuard}
 1. Read the upstream diff. Decide whether it still applies here: the touched subsystem may have been rewritten, renamed, or removed in veyyon. If it does not apply, comment on this issue explaining exactly why (which veyyon change supersedes it) and close the issue. Do not force a port.
 2. If it applies, port it with veyyon's naming (\`omp\`→\`veyyon\`/\`vey\`, \`pi\` brand strings→\`vey\`, config dir \`.veyyon\`) and veyyon's architecture. Follow \`AGENTS.md\`.
 3. Every behavior change lands with real-value regression tests in the existing suite structure (\`bun scripts/ci-test-ts.ts <suite>\`), and updates any user-facing docs that describe the behavior.

@@ -1,28 +1,45 @@
 import { describe, expect, it } from "bun:test";
 import {
+	cleanFeatureBlockers,
 	divergedMatches,
 	divergenceWarning,
 	isPortWorthy,
 	loadPolicy,
 	type PortPolicy,
+	portCandidateKind,
 	titleType,
 } from "./upstream-radar.ts";
 
 /**
- * The port policy is what keeps the pipeline fixes-only: veyyon deliberately
- * diverged from upstream on direction (model catalog/IDs/roles, branding), so
- * mirroring feature PRs would queue work that fights the product. A regression
- * here either floods the queue with direction-conflicting ports (burning the
- * whole Jules budget on work that gets rejected) or silently drops real bug
- * fixes (the recall loss the radar exists to prevent).
+ * This representative policy proves the intake split: fixes always receive
+ * semantic triage, while feature additions become candidates only outside
+ * architecture-owned surfaces. A path screen is intentionally not a merge
+ * decision; every resulting PR still receives CI and human review.
  */
-
 const policy: PortPolicy = {
 	allowedTypes: ["fix", "perf"],
+	cleanFeatureTypes: ["feat"],
 	titleAllowRegexes: ["^fix\\b"],
+	cleanFeatureTitleAllowRegexes: ["^(?:add|support)\\b"],
 	divergedSurfaces: [
-		{ name: "model catalog", paths: ["packages/catalog/"], note: "veyyon owns its model IDs, types, and roles." },
-		{ name: "branding", paths: ["website/", "docs/"], note: "veyyon owns its brand." },
+		{
+			name: "model catalog",
+			paths: ["packages/catalog/"],
+			note: "veyyon owns its model IDs, types, and roles.",
+			blocksCleanFeatures: true,
+		},
+		{
+			name: "interactive TUI",
+			paths: ["packages/coding-agent/src/modes/"],
+			note: "veyyon owns its TUI composition.",
+			blocksCleanFeatures: true,
+		},
+		{
+			name: "documentation",
+			paths: ["docs/"],
+			note: "rewrite docs for veyyon.",
+			blocksCleanFeatures: false,
+		},
 	],
 };
 
@@ -38,34 +55,60 @@ describe("titleType", () => {
 	});
 });
 
-describe("isPortWorthy", () => {
-	it("admits fix and perf, the bug-fix types veyyon ports", () => {
-		expect(isPortWorthy("fix(agent): commit plan-reference flag", policy)).toBe(true);
-		expect(isPortWorthy("perf(tui): cheaper frame diff", policy)).toBe(true);
+describe("port candidate policy", () => {
+	/** Fixes and performance corrections must keep entering semantic triage even on diverged paths. */
+	it("admits fix and perf changes without treating path divergence as an automatic rejection", () => {
+		expect(isPortWorthy("fix(catalog): correct token limit", ["packages/catalog/src/model-manager.ts"], policy)).toBe(
+			true,
+		);
+		expect(isPortWorthy("perf(tui): cheaper frame diff", ["packages/tui/src/tui.ts"], policy)).toBe(true);
 	});
 
-	it("rejects direction types: features, refactors, docs, chores", () => {
-		for (const t of [
-			"feat(openai): add explicit prompt cache policy",
-			"refactor(core): split loop",
-			"docs: document /vibe mode",
-			"chore(deps): bump things",
-		]) {
-			expect(isPortWorthy(t, policy)).toBe(false);
+	/** A small additive feature on an inherited leaf surface should produce a manually reviewed PR candidate. */
+	it("admits conventional and unprefixed feature additions on clean surfaces", () => {
+		const files = ["packages/ai/src/providers/anthropic.ts", "packages/ai/test/anthropic.test.ts"];
+		expect(isPortWorthy("feat(ai): expose retry delay", files, policy)).toBe(true);
+		expect(isPortWorthy("Add retry delay reporting", files, policy)).toBe(true);
+		expect(isPortWorthy("Support retry delay reporting", files, policy)).toBe(true);
+	});
+
+	/** A feature crossing a locally owned architecture must never consume an implementation lane automatically. */
+	it("rejects feature additions that touch a blocking diverged surface", () => {
+		expect(isPortWorthy("feat(catalog): add a model role", ["packages/catalog/src/model-thinking.ts"], policy)).toBe(
+			false,
+		);
+		expect(
+			isPortWorthy(
+				"feat(tui): replace plan review",
+				["packages/coding-agent/src/modes/components/plan-review-overlay.ts"],
+				policy,
+			),
+		).toBe(false);
+	});
+
+	/** Documentation is rewritten locally, so accompanying prose alone must not disqualify clean source changes. */
+	it("allows a clean feature to carry upstream documentation paths that do not block candidates", () => {
+		expect(
+			isPortWorthy(
+				"feat(ai): expose retry delay",
+				["packages/ai/src/providers/anthropic.ts", "docs/providers.md"],
+				policy,
+			),
+		).toBe(true);
+		expect(cleanFeatureBlockers(["docs/providers.md"], policy)).toEqual([]);
+	});
+
+	/** Non-feature direction changes remain excluded so the radar cannot become a wholesale sync queue. */
+	it("rejects refactors, docs-only commits, and chores", () => {
+		for (const title of ["refactor(core): split loop", "docs: document /vibe mode", "chore(deps): bump things"]) {
+			expect(isPortWorthy(title, [], policy)).toBe(false);
 		}
 	});
 
-	it("admits unprefixed titles that are clearly fixes, case-insensitively", () => {
-		expect(isPortWorthy("Fix ST-terminated OSC 8 links in Markdown tables", policy)).toBe(true);
-	});
-
-	it("rejects unprefixed feature titles", () => {
-		expect(isPortWorthy("Add dynamic multi-root workspace context", policy)).toBe(false);
-		expect(isPortWorthy("Support light, dark, and system themes in HTML exports", policy)).toBe(false);
-	});
-
-	it("never lets a typed title sneak in through the unprefixed regexes ('feat: fix the fixer')", () => {
-		expect(isPortWorthy("feat: fix the fixer", policy)).toBe(false);
+	/** Typed titles must use their declared type instead of sneaking through an unprefixed-title regex. */
+	it("does not classify a typed title through the unprefixed regexes", () => {
+		expect(portCandidateKind("refactor: add a retry delay", policy)).toBeNull();
+		expect(portCandidateKind("feat: fix the fixer", policy)).toBe("clean-feature");
 	});
 });
 
@@ -83,23 +126,39 @@ describe("divergedMatches + divergenceWarning", () => {
 	});
 
 	it("flags multiple touched surfaces at once", () => {
-		const surfaces = divergedMatches(["packages/catalog/src/hosts.ts", "website/sun.js"], policy);
-		expect(surfaces.map(s => s.name)).toEqual(["model catalog", "branding"]);
+		const surfaces = divergedMatches(
+			["packages/catalog/src/hosts.ts", "packages/coding-agent/src/modes/interactive-mode.ts"],
+			policy,
+		);
+		expect(surfaces.map(s => s.name)).toEqual(["model catalog", "interactive TUI"]);
 	});
 });
 
 /**
- * The shipped policy file is data the radar trusts blindly; this pins its
- * shape and its two load-bearing guarantees (fixes-only types, the model
- * catalog named as diverged) so an edit cannot silently disable the gate.
+ * The shipped policy file is data the radar trusts at runtime. These checks pin
+ * the candidate types and architecture blockers so a data edit cannot silently
+ * turn candidate generation into wholesale feature synchronization.
  */
 describe("shipped upstream-port-policy.json", () => {
-	it("parses, allows only bug-fix types, and names the model catalog as diverged", () => {
+	/** Shipped policy must admit feature candidates while retaining every high-risk architecture boundary. */
+	it("loads clean feature types and the required blocking divergence surfaces", () => {
 		const shipped = loadPolicy();
 		expect(shipped.allowedTypes).toEqual(["fix", "perf"]);
+		expect(shipped.cleanFeatureTypes).toEqual(["feat"]);
 		expect(shipped.titleAllowRegexes.length).toBeGreaterThan(0);
-		const catalog = shipped.divergedSurfaces.find(s => s.paths.includes("packages/catalog/"));
-		expect(catalog).toBeDefined();
-		expect(catalog?.note).toContain("model");
+		expect(shipped.cleanFeatureTitleAllowRegexes.length).toBeGreaterThan(0);
+		for (const path of [
+			"packages/catalog/",
+			"packages/ai/src/auth-broker/",
+			"packages/coding-agent/src/session/",
+			"packages/coding-agent/src/tools/",
+			"packages/coding-agent/src/modes/",
+			"crates/",
+			".github/",
+		]) {
+			const surface = shipped.divergedSurfaces.find(candidate => candidate.paths.includes(path));
+			expect(surface, `${path} must remain a declared divergence`).toBeDefined();
+			expect(surface?.blocksCleanFeatures, `${path} must block automatic feature candidates`).toBe(true);
+		}
 	});
 });

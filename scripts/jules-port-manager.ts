@@ -1,16 +1,14 @@
 #!/usr/bin/env bun
 /**
- * Jules port manager: drive every `upstream-port` issue through the Jules
- * async coding agent until it becomes a reviewed port PR.
+ * Jules port manager: drive every eligible `upstream-port` issue through the
+ * Jules async coding agent until it becomes a manually reviewed candidate PR.
  *
- * Why: scripts/upstream-radar.ts mirrors each merged oh-my-pi PR into one
- * issue labeled `upstream-port` + `jules`, on the assumption that the Jules
- * GitHub-app label trigger would pick issues up. It never did (140 open
- * issues, zero sessions, zero PRs). This manager replaces that assumption
- * with explicit Jules REST API dispatch, so the whole port pipeline is owned
- * by this repo and runs unattended: radar files issues, the manager turns
- * them into sessions, sessions turn into PRs, autoreview + a human gate the
- * merge, and the `Closes #N` line closes the issue.
+ * Why: scripts/upstream-radar.ts mirrors upstream fixes, performance changes,
+ * and clean-surface feature additions into issues labeled `upstream-port` +
+ * `jules`. The GitHub-app label trigger never created sessions, so this manager
+ * explicitly dispatches the Jules REST API. Radar files issues, the manager
+ * turns them into sessions, sessions either declare the change not applicable
+ * or open adapted PRs, and CI plus a human gate every merge.
  *
  * GitHub is the only state store. An issue's position in the pipeline is its
  * labels plus HTML-comment markers in its own comments; the manager keeps no
@@ -169,6 +167,9 @@ export function buildPortPrompt(issueNumber: number, issueBody: string, priorFai
 		priorFailure === null
 			? ""
 			: `\n## Previous attempt failed\n\nA prior session on this task did not produce a PR. Its recorded failure state was:\n\n${priorFailure.slice(0, 2000)}\n\nRead it, avoid the same dead end, and take a different approach where it points at one.\n`;
+	const documentationRule = issueBody.includes("<!-- upstream-port-kind: clean-feature -->")
+		? "A feature candidate must update the local user-facing docs that describe its behavior; write them for veyyon rather than copying upstream prose. Never commit generated `docs/handbook/book/` output or internal docs."
+		: "Do NOT edit `docs/handbook/src/` for a fix. Never rebuild or commit generated `docs/handbook/book/` output.";
 	return `You are working on ${ORIGIN}, branch main. This task is GitHub issue #${issueNumber}.
 
 ${issueBody}
@@ -177,13 +178,13 @@ ${retry}
 
 - The PR body MUST contain the exact line \`Closes #${issueNumber}\` so the merge closes the tracking issue.
 - Branch from current \`origin/main\` and NEVER merge \`main\` into your branch. If your clone has gone stale, fetch and rebase; a merge you resolve in your own favour silently reverts commits that landed while you worked, and such a PR is rejected on sight however good the fix is.
-- Your diff must contain the fix and nothing else. Before committing, run \`git status\` and \`git diff --stat\`, and confirm every path is one you deliberately changed for this fix. A one-file fix has a one-file diff. If \`git diff --stat\` shows dozens of files you did not intend, your branch is stale: start over from a fresh \`origin/main\` rather than committing it.
+- Your diff must contain the one upstream change and nothing else. Before committing, run \`git status\` and \`git diff --stat\`, and confirm every path is deliberate. A one-file change has a one-file diff. If the stat shows files you did not intend, your branch is stale: start over from a fresh \`origin/main\` rather than committing it.
 - Never commit: lockfiles (\`bun.lock\`, \`Cargo.lock\`), \`.gitignore\`, workflow files under \`.github/\`, anything under \`docs/handbook/book/\` or \`docs/internal/\`, or the port pipeline's own \`scripts/upstream-*\` and \`scripts/jules-port-manager*\`. Those belong to veyyon, not to any port. If a build step rewrites one of them, \`git checkout -- <path>\` it before you commit.
 - Delete every scratch file you created before committing: \`patch_*.ts\`, \`test_*.ts\`, debug scripts, downloaded \`*.diff\`/\`*.patch\` files, notes, tool output. They must not appear in \`git status\`.
-- A user-facing change gets one bullet under \`## [Unreleased]\` in the touched package's CHANGELOG.md. If you touch \`packages/coding-agent/CHANGELOG.md\`, run \`bun scripts/sync-root-changelog.ts\` and commit the regenerated root \`CHANGELOG.md\` too (CI's "Changelog entry" check enforces the pair). Do NOT edit \`docs/handbook/src/\`: porting a bug fix never needs a handbook change, and rebuilding the book drags hundreds of generated files into your diff.
-- Keep existing tests. Add your cases to the test file that already covers the code you changed; never rewrite or shrink that file around your new behaviour. A port that removes more test lines than it adds is rejected even when its fix is correct.
-- veyyon's product direction wins over upstream's. Where veyyon diverged (its own model catalog with its own model IDs, types, and roles; its own branding, install flow, and docs), port the underlying bug onto veyyon's design; never import upstream's scheme. The issue's "Diverged surface warning" section, when present, is binding.
-- If the change does NOT apply to veyyon (superseded, subsystem rewritten or removed), commit nothing. End the session with a summary starting with \`NOT-APPLICABLE:\` naming the veyyon change that supersedes it; if your mode forces a PR anyway, keep its diff EMPTY and title it \`NOT-APPLICABLE: <original title>\` with the reasoning and the \`Closes #${issueNumber}\` line in the body.
+- Every user-visible change gets one bullet under \`## [Unreleased]\` in the touched package's CHANGELOG.md. If you touch \`packages/coding-agent/CHANGELOG.md\`, run \`bun scripts/sync-root-changelog.ts\` and commit the regenerated root \`CHANGELOG.md\` too. ${documentationRule}
+- Keep existing tests. Add focused behavior cases to the existing test file that owns the changed contract; never rewrite or shrink that file around the new behavior. A port that removes more test lines than it adds is rejected even when its implementation is correct.
+- veyyon's product direction wins over upstream's. A clean-feature classification is only a conservative path screen, not proof of product fit. Where veyyon diverged, port an underlying correctness fix onto veyyon's design, but declare an incompatible feature NOT-APPLICABLE. The issue's "Diverged surface warning" section, when present, is binding.
+- If the change does NOT apply to veyyon (superseded, subsystem rewritten or removed, or incompatible product direction), commit nothing. End the session with a summary starting with \`NOT-APPLICABLE:\` naming the local contract that supersedes it; if your mode forces a PR anyway, keep its diff EMPTY and title it \`NOT-APPLICABLE: <original title>\` with the reasoning and the \`Closes #${issueNumber}\` line in the body.
 `;
 }
 

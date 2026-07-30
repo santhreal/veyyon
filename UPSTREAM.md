@@ -72,21 +72,21 @@ Upstream keeps merging fixes after the fork point, so the repo runs an
 automated port pipeline. It has two halves:
 
 1. The radar (`.github/workflows/upstream-radar.yml`, every 30 minutes)
-   mirrors each newly merged upstream **bug fix** into one issue labeled
-   `upstream-port`, carrying the diff surface and porting instructions.
-   Only fixes are ported: features, refactors, and docs follow veyyon's own
-   direction, and fixes touching deliberately diverged surfaces (the model
-   catalog with its own model IDs, types, and roles; branding and install)
-   carry a warning so the port adapts to veyyon's design. The policy is
-   data: `scripts/upstream-port-policy.json`.
+   mirrors newly merged upstream fixes and performance corrections. It also
+   mirrors feature additions whose touched files avoid every architecture-owned
+   surface in `scripts/upstream-port-policy.json`. This is a conservative
+   candidate screen, not an assertion that the feature belongs in veyyon.
+   Refactors, chores, and upstream product or infrastructure direction remain
+   excluded. Fixes touching a diverged surface still enter semantic triage with
+   a warning so the underlying bug can be adapted to veyyon's design.
 2. The manager (`scripts/jules-port-manager.ts`, run from a local cron with
-   the Jules API keys) dispatches each queued issue as a Jules session that
-   evaluates applicability post-divergence and opens an adapted port PR.
-   Autoreview and a human gate the merge; the PR's `Closes #N` line closes
-   the issue.
+   the Jules API keys) dispatches each queued issue as a Jules session. A
+   session must evaluate applicability after divergence, preserve veyyon's
+   contracts, add behavioral proof, and either open an adapted candidate PR or
+   declare the change not applicable. CI and a human gate every merge.
 3. Landing happens locally, not on GitHub. `bun scripts/jules-port-manager.ts
-   land` audits each open port PR, merges the ones that pass into your local
-   `main`, and stops there so you can run the gate before pushing.
+   land` audits each open port PR, merges only the selected clean candidates
+   into local `main`, and stops there so you can run the gate before pushing.
 
 An issue's labels are its pipeline position: none beyond `upstream-port`
 means queued, `jules-dispatched` means a session is in flight,

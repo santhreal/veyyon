@@ -1,17 +1,57 @@
 {
-	"_doc": "Port policy for the upstream radar (scripts/upstream-radar.ts). veyyon ports upstream BUG FIXES, not direction: features, refactors, and docs follow veyyon's own roadmap. allowedTypes filters merged upstream PRs by conventional-commit type; titleAllowRegexes admits unprefixed titles that are clearly fixes. divergedSurfaces names the places veyyon deliberately went a different way: a fix touching one still gets filed, but its issue carries the surface's note so the port maps the underlying fix onto veyyon's design instead of importing upstream's.",
+	"_doc": "Port policy for the upstream radar (scripts/upstream-radar.ts). Fix and performance changes always enter semantic triage. Feature additions enter only when their touched files avoid every diverged surface whose blocksCleanFeatures flag is not false. This screen creates a review candidate, not a merge decision. titleAllowRegexes and cleanFeatureTitleAllowRegexes classify unprefixed upstream titles.",
 	"allowedTypes": ["fix", "perf"],
+	"cleanFeatureTypes": ["feat"],
 	"titleAllowRegexes": ["^fix\\b"],
+	"cleanFeatureTitleAllowRegexes": ["^(?:add|introduce|support)\\b"],
 	"divergedSurfaces": [
 		{
 			"name": "model catalog, IDs, types, and roles",
 			"paths": ["packages/catalog/"],
-			"note": "veyyon owns its own model catalog: model IDs, model types/tiers, role handling, and provider discovery all diverge from upstream. Never import upstream's model list, id scheme, or role table. Port the underlying bug (wrong limit, broken parse, bad fallback) onto veyyon's catalog structures, or declare NOT-APPLICABLE if the bug only exists in upstream's scheme."
+			"note": "veyyon owns its model catalog, IDs, tiers, roles, and provider discovery. Port underlying correctness fixes onto local structures; never import upstream tables or generated model files.",
+			"blocksCleanFeatures": true
 		},
 		{
-			"name": "branding, install, and website",
-			"paths": ["packages/web/", "website/", "install.sh", "docs/"],
-			"note": "veyyon's brand, install flow, docs, and website are fully its own. Port only behavior fixes that survive the rebrand; never upstream copy, naming, or visual direction."
+			"name": "credential storage and OAuth routing",
+			"paths": ["packages/ai/src/auth-broker/", "packages/ai/src/auth-gateway/", "packages/ai/src/registry/oauth/", "packages/ai/src/auth-storage.ts"],
+			"note": "veyyon uses SQLite multi-credential storage with selection, backoff, and session affinity. Preserve those contracts when adapting a fix.",
+			"blocksCleanFeatures": true
+		},
+		{
+			"name": "session, model-control, and instrumentation lifecycle",
+			"paths": ["packages/coding-agent/src/session/", "packages/coding-agent/src/auto-thinking/", "packages/ai/src/instrumentation/"],
+			"note": "veyyon owns session persistence, resumability, model controls, and fail-closed instrumentation. Adapt fixes without weakening those invariants.",
+			"blocksCleanFeatures": true
+		},
+		{
+			"name": "tool, capability, extension, and discovery architecture",
+			"paths": ["packages/coding-agent/src/tools/", "packages/coding-agent/src/capability/", "packages/coding-agent/src/discovery/", "packages/coding-agent/src/extensibility/"],
+			"note": "veyyon uses ToolSession, the built-in registry, capability discovery, native Bun loading, and local manifest compatibility. Port behavior through those owners instead of importing upstream factories.",
+			"blocksCleanFeatures": true
+		},
+		{
+			"name": "interactive TUI composition",
+			"paths": ["packages/coding-agent/src/modes/"],
+			"note": "veyyon's status line, controller split, and interactive versus ACP/RPC behavior diverge. Leaf TUI fixes may still adapt, but upstream feature composition is not an automatic candidate.",
+			"blocksCleanFeatures": true
+		},
+		{
+			"name": "native crates and worker infrastructure",
+			"paths": ["crates/", "packages/natives/"],
+			"note": "veyyon's renamed crates, native surface, and worker-host contract require explicit semantic mapping.",
+			"blocksCleanFeatures": true
+		},
+		{
+			"name": "branding, install, website, and CI",
+			"paths": ["packages/web/", "website/", "install.sh", "scripts/install.", ".github/"],
+			"note": "veyyon's brand, distribution, website, and workflows are locally owned. Never import upstream naming, release channels, or CI direction.",
+			"blocksCleanFeatures": true
+		},
+		{
+			"name": "documentation",
+			"paths": ["docs/"],
+			"note": "Rewrite documentation for veyyon's behavior and terminology instead of copying upstream prose.",
+			"blocksCleanFeatures": false
 		}
 	],
 	"neverPorted": {
