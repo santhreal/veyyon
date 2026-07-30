@@ -312,6 +312,7 @@
 
 ### Fixed
 
+- The Windows installer now accepts a healthy release binary that writes a native-variant warning to stderr while its search self-test succeeds. Windows PowerShell 5.1 promoted that warning to a terminating `NativeCommandError`, so a bytecode-free Windows build passed `--version` and `--smoke-test` but was rejected before installation. Exit status and the expected search match now decide the preflight while stderr remains available when the command actually fails.
 - Session listing now reports a failure to enumerate recovery backups instead of silently continuing with primary files only. A backup remains intact and visible in the unreadable-session report until the directory or storage backend can be read again.
 - Session-backed Python, Ruby, and Julia eval now replace an interpreter that exits unexpectedly mid-cell and replay the cell once. Unexpected process exits were classified as user cancellation, which bypassed the existing dead-kernel recovery path. Timeouts and explicit cancellation still stop without replaying the cell.
 - A cold Julia eval now gets 60 seconds to compile each kernel startup phase instead of 15 seconds. Clean hosted runners exceeded 30 seconds before the first cell could run, which surfaced as a cell timeout even though the user's code had not started. Warm kernels still return immediately.

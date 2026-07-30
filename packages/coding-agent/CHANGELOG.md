@@ -106,6 +106,11 @@
 - `release`: derive commit-history notes + gate the generator on CI.
 
 ### Fixed
+- The Windows installer now accepts a healthy release binary that writes a native-variant warning
+  to stderr while its search self-test succeeds. Windows PowerShell 5.1 promoted that warning to a
+  terminating `NativeCommandError`, so a bytecode-free Windows build passed `--version` and
+  `--smoke-test` but was rejected before installation. Exit status and the expected search match now
+  decide the preflight while stderr remains available when the command actually fails.
 - Session listing now reports a failure to enumerate recovery backups instead of silently continuing
   with primary files only. A backup remains intact and visible in the unreadable-session report until
   the directory or storage backend can be read again.
