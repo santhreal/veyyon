@@ -2,8 +2,9 @@
 
 How veyyon reaches users. Three coordinated surfaces ship: the **website** and
 **install scripts** on Cloudflare Pages, and the **CLI binaries** on GitHub Releases.
-The site can deploy without cutting a release. A release publishes the binaries, then
-redeploys both Pages projects so the changelog and installer endpoints match them.
+The site can deploy without cutting a release. A release stages its binaries in a
+hidden GitHub draft, deploys and verifies both Pages projects, publishes the verified
+draft, then rebuilds `veyyon.dev` so the changelog records the now-public release.
 
 ## Domains and what serves them
 
@@ -345,4 +346,4 @@ merge lands:
 4. `bun run site:deploy`.
 5. If `install.sh` or `install.ps1` changed, also run `bun run site:deploy:get`.
 
-*Verified against `0eb8d74a3ecf60e1b2ec37c15e9255f2dbe310dc` on 2026-07-30.*
+*Verified against `7815b71a84f7d4dffe5572f8cfc1e3172b8b8072` on 2026-07-30.*
