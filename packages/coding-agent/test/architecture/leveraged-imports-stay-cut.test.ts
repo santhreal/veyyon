@@ -1016,8 +1016,14 @@ describe("session/messages, which the session layer is mostly made of", () => {
  * `json-transform.ts`, `string-length.ts`, the last two zero- and one-import leaves), plus one for
  * `@veyyon/utils/terminal-safe`, which `utils/src/file-lock.ts` reaches to escape the attacker-supplied path
  * it names in an error. That module imports nothing either. See the same entry on INTERNAL_URLS_CEILING.
+ *
+ * RAISED BY ONE, to 448, for the canonical `INSTRUMENTATION_LEVELS` tuple. The settings schema used
+ * to repeat the four values inline; it now imports the closed vocabulary from
+ * `@veyyon/ai/instrumentation`, the zero-runtime-import leaf that owns the level policy. The marginal
+ * cost is exactly that owner module. Keeping two runtime lists would make an added level valid in
+ * recorded telemetry but invalid in config, which is a worse architecture than one measured leaf.
  */
-const READ_CEILING = 447;
+const READ_CEILING = 448;
 /**
  * Measured at 205, down from 911 and from 418 before the `gh` split. It is a pure `export *` barrel, so
  * this is `./router` plus one, and the router is every handler at once.
@@ -1072,8 +1078,12 @@ const READ_CEILING = 447;
  * `internal-urls` pays it because `utils/src/dirs.ts` reaches the lock. Raised rather than routed around
  * for the same reason as the two entries above: the alternative is not a cheaper graph, it is an error
  * message that can drive the terminal it is printed to.
+ *
+ * AND THEN 196, one FORWARD, for the same canonical `INSTRUMENTATION_LEVELS` leaf described on
+ * `READ_CEILING`. The router reaches the settings schema through its session-loading handlers, so it
+ * pays the same single owner module rather than carrying a second instrumentation-level vocabulary.
  */
-const INTERNAL_URLS_CEILING = 195;
+const INTERNAL_URLS_CEILING = 196;
 /**
  * Measured at 252, down from 517. Eighteen web-search providers sit behind this module, and it had a static
  * edge to `session/auth-broker-config.ts` (347 modules: the broker client, the remote store, the snapshot
