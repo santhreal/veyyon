@@ -1,12 +1,16 @@
 import { describe, expect, it } from "bun:test";
 import {
 	cleanFeatureBlockers,
+	collectPages,
+	completePullFiles,
 	divergedMatches,
 	divergenceWarning,
+	isDocumentationOnly,
 	isPortWorthy,
 	loadPolicy,
 	type PortPolicy,
 	portCandidateKind,
+	renderPortIssue,
 	titleType,
 } from "./upstream-radar.ts";
 
@@ -21,6 +25,8 @@ const policy: PortPolicy = {
 	cleanFeatureTypes: ["feat"],
 	titleAllowRegexes: ["^fix\\b"],
 	cleanFeatureTitleAllowRegexes: ["^(?:add|support)\\b"],
+	documentationPaths: ["docs/"],
+	documentationExtensions: [".md", ".mdx", ".rst", ".txt"],
 	divergedSurfaces: [
 		{
 			name: "model catalog",
@@ -98,6 +104,18 @@ describe("port candidate policy", () => {
 		expect(cleanFeatureBlockers(["docs/providers.md"], policy)).toEqual([]);
 	});
 
+	/** Features whose entire diff is prose must not consume a Jules implementation lane. */
+	it("rejects typed and unprefixed documentation-only features by file surface", () => {
+		expect(isPortWorthy("feat(docs): add deployment guide", ["docs/deployment.md"], policy)).toBe(false);
+		expect(isPortWorthy("Add deployment documentation", ["README.md", "docs/deployment.md"], policy)).toBe(false);
+		expect(isDocumentationOnly(["README.md", "docs/deployment.md"], policy)).toBe(true);
+	});
+
+	/** A feature with no returned files is incomplete evidence, not a clean implementation surface. */
+	it("rejects an empty feature file list", () => {
+		expect(isPortWorthy("feat(ai): expose retry delay", [], policy)).toBe(false);
+	});
+
 	/** Non-feature direction changes remain excluded so the radar cannot become a wholesale sync queue. */
 	it("rejects refactors, docs-only commits, and chores", () => {
 		for (const title of ["refactor(core): split loop", "docs: document /vibe mode", "chore(deps): bump things"]) {
@@ -109,6 +127,39 @@ describe("port candidate policy", () => {
 	it("does not classify a typed title through the unprefixed regexes", () => {
 		expect(portCandidateKind("refactor: add a retry delay", policy)).toBeNull();
 		expect(portCandidateKind("feat: fix the fixer", policy)).toBe("clean-feature");
+	});
+});
+
+describe("GitHub pagination and file completeness", () => {
+	/** Full 100-item pages require another request; stopping at an arbitrary cap silently loses candidates. */
+	it("collects every page through the first short response", async () => {
+		const requested: number[] = [];
+		const values = await collectPages(async page => {
+			requested.push(page);
+			if (page < 3) return Array.from({ length: 100 }, (_, index) => (page - 1) * 100 + index);
+			return [200, 201];
+		});
+		expect(requested).toEqual([1, 2, 3]);
+		expect(values).toEqual(Array.from({ length: 202 }, (_, index) => index));
+	});
+
+	/** GitHub's 3,000-file endpoint ceiling must abort a 3,001-file PR instead of screening a partial diff. */
+	it("refuses a truncated pull-file response", () => {
+		const records = Array.from({ length: 3000 }, (_, index) => ({
+			filename: `src/file-${index}.ts`,
+			additions: 1,
+			deletions: 0,
+		}));
+		expect(() => completePullFiles(7007, 3001, records)).toThrow(
+			"PR #7007 reports 3001 changed files, but GitHub returned 3000; refusing partial triage",
+		);
+	});
+
+	/** Validated records preserve exact filenames and line counts used in issue evidence. */
+	it("returns complete typed pull-file evidence", () => {
+		expect(
+			completePullFiles(7008, 1, [{ filename: "packages/ai/src/provider.ts", additions: 12, deletions: 2 }]),
+		).toEqual([{ filename: "packages/ai/src/provider.ts", additions: 12, deletions: 2 }]);
 	});
 });
 
@@ -131,6 +182,32 @@ describe("divergedMatches + divergenceWarning", () => {
 			policy,
 		);
 		expect(surfaces.map(s => s.name)).toEqual(["model catalog", "interactive TUI"]);
+	});
+});
+
+describe("port issue evidence", () => {
+	/**
+	 * The tracking issue must supply evidence without competing with the manager's
+	 * single outcome protocol, or Jules receives contradictory close/PR commands.
+	 */
+	it("renders a feature brief without instructing Jules to close the issue or open a PR", () => {
+		const body = renderPortIssue({
+			marker: "<!-- upstream-pr: 7007 -->",
+			kind: "clean-feature",
+			url: "https://github.com/can1357/oh-my-pi/pull/7007",
+			mergedAt: "2026-07-29T12:00:00Z",
+			additions: 12,
+			deletions: 2,
+			changedFiles: 2,
+			warning: "",
+			fileList: "- `packages/ai/src/provider.ts` (+10/-2)",
+			bodyExcerpt: "Adds provider behavior.",
+		});
+		expect(body).toContain("<!-- upstream-port-kind: clean-feature -->");
+		expect(body).toContain("manager's static Jules prompt owns applicability");
+		expect(body).toContain("Do not close this tracking issue directly");
+		expect(body).not.toContain("Open a PR");
+		expect(body).not.toContain("close the issue");
 	});
 });
 

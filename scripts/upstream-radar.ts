@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 /**
  * Upstream radar: mirror every newly MERGED oh-my-pi PR into one porting issue
  * on this repo, labeled for the Jules async coding agent to pick up.
@@ -25,9 +28,8 @@
  * locally with GH_TOKEN set. Fails closed: any API error aborts the run with a
  * non-zero exit rather than silently skipping PRs.
  */
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { prompt } from "@veyyon/utils";
+import PORT_ISSUE_TEMPLATE from "./upstream-port-issue.md" with { type: "text" };
 
 const UPSTREAM = "can1357/oh-my-pi";
 const ORIGIN = process.env.GITHUB_REPOSITORY ?? "santhreal/veyyon";
@@ -51,6 +53,8 @@ export interface PortPolicy {
 	titleAllowRegexes: string[];
 	cleanFeatureTitleAllowRegexes: string[];
 	divergedSurfaces: DivergedSurface[];
+	documentationPaths: string[];
+	documentationExtensions: string[];
 }
 
 export function loadPolicy(): PortPolicy {
@@ -87,12 +91,29 @@ export function portCandidateKind(title: string, policy: PortPolicy): PortCandid
 export function cleanFeatureBlockers(files: string[], policy: PortPolicy): DivergedSurface[] {
 	return divergedMatches(files, policy).filter(surface => surface.blocksCleanFeatures !== false);
 }
+/** Whether a touched path is documentation rather than implementation surface. */
+export function isDocumentationFile(file: string, policy: PortPolicy): boolean {
+	const normalized = file.replaceAll("\\", "/").replace(/^\.\/+/, "");
+	if (policy.documentationPaths.some(prefix => normalized.startsWith(prefix))) return true;
+	const lower = normalized.toLowerCase();
+	return policy.documentationExtensions.some(extension => lower.endsWith(extension.toLowerCase()));
+}
+
+/** A feature that changes only prose must not consume an implementation lane. */
+export function isDocumentationOnly(files: string[], policy: PortPolicy): boolean {
+	return files.length > 0 && files.every(file => isDocumentationFile(file, policy));
+}
 
 /** Final policy decision after a feature candidate's touched files are known. */
 export function isPortWorthy(title: string, files: string[], policy: PortPolicy): boolean {
 	const kind = portCandidateKind(title, policy);
 	if (kind === "fix") return true;
-	return kind === "clean-feature" && cleanFeatureBlockers(files, policy).length === 0;
+	return (
+		kind === "clean-feature" &&
+		files.length > 0 &&
+		!isDocumentationOnly(files, policy) &&
+		cleanFeatureBlockers(files, policy).length === 0
+	);
 }
 
 /** Diverged surfaces a PR's file list touches, by path prefix. */
@@ -105,6 +126,78 @@ export function divergenceWarning(surfaces: DivergedSurface[]): string {
 	if (surfaces.length === 0) return "";
 	const items = surfaces.map(s => `- **${s.name}**: ${s.note}`).join("\n");
 	return `\n## Diverged surface warning\n\nThis change touches surfaces where veyyon deliberately went a different direction. veyyon's design wins:\n\n${items}\n`;
+}
+
+export interface GitHubPullFile {
+	filename: string;
+	additions: number;
+	deletions: number;
+}
+
+/**
+ * Validate the complete files response against GitHub's authoritative PR count.
+ * GitHub caps this endpoint at 3,000 files, so a short response must fail loud
+ * instead of screening and reporting a partial diff.
+ */
+export function completePullFiles(prNumber: number, expectedCount: number, records: unknown[]): GitHubPullFile[] {
+	if (!Number.isSafeInteger(expectedCount) || expectedCount < 0) {
+		throw new Error(`upstream-radar: PR #${prNumber} returned invalid changed_files=${expectedCount}`);
+	}
+	if (records.length !== expectedCount) {
+		throw new Error(
+			`upstream-radar: PR #${prNumber} reports ${expectedCount} changed files, but GitHub returned ${records.length}; refusing partial triage`,
+		);
+	}
+	return records.map((record, index) => {
+		if (
+			typeof record !== "object" ||
+			record === null ||
+			!("filename" in record) ||
+			typeof record.filename !== "string" ||
+			!("additions" in record) ||
+			typeof record.additions !== "number" ||
+			!("deletions" in record) ||
+			typeof record.deletions !== "number"
+		) {
+			throw new Error(`upstream-radar: PR #${prNumber} returned an invalid file record at index ${index}`);
+		}
+		return { filename: record.filename, additions: record.additions, deletions: record.deletions };
+	});
+}
+
+export interface PortIssueBrief {
+	marker: string;
+	kind: PortCandidateKind;
+	url: string;
+	mergedAt: string;
+	additions: number;
+	deletions: number;
+	changedFiles: number;
+	warning: string;
+	fileList: string;
+	bodyExcerpt: string;
+}
+
+/** Render the evidence-only tracking issue that the manager embeds in Jules's prompt. */
+export function renderPortIssue(brief: PortIssueBrief): string {
+	return prompt.render(
+		PORT_ISSUE_TEMPLATE,
+		{
+			...brief,
+			isFeature: brief.kind === "clean-feature",
+		},
+		{ label: "scripts/upstream-port-issue.md" },
+	);
+}
+
+/** Collect every page from a list endpoint without a silent item cap. */
+export async function collectPages<T>(loadPage: (page: number) => Promise<T[]>): Promise<T[]> {
+	const out: T[] = [];
+	for (let page = 1; ; page++) {
+		const batch = await loadPage(page);
+		out.push(...batch);
+		if (batch.length < 100) return out;
+	}
 }
 
 async function gh(path: string, init?: RequestInit): Promise<any> {
@@ -124,15 +217,15 @@ async function gh(path: string, init?: RequestInit): Promise<any> {
 }
 
 /** Every page of a list endpoint; fails on any page error rather than returning a partial list. */
-async function ghAll(path: string, cap = 1000): Promise<any[]> {
+async function ghAll(path: string): Promise<any[]> {
 	const sep = path.includes("?") ? "&" : "?";
-	const out: any[] = [];
-	for (let page = 1; out.length < cap; page++) {
+	return collectPages(async page => {
 		const batch = await gh(`${path}${sep}per_page=100&page=${page}`);
-		out.push(...batch);
-		if (batch.length < 100) break;
-	}
-	return out;
+		if (!Array.isArray(batch)) {
+			throw new Error(`GitHub API GET ${path} returned a non-list response on page ${page}`);
+		}
+		return batch;
+	});
 }
 
 async function ensureLabel(name: string, color: string, description: string): Promise<void> {
@@ -145,6 +238,31 @@ async function ensureLabel(name: string, color: string, description: string): Pr
 	if (!res.ok && res.status !== 422) {
 		throw new Error(`creating label ${name} failed: ${res.status} ${await res.text()}`);
 	}
+}
+
+interface PullEvidence {
+	files: GitHubPullFile[];
+	additions: number;
+	deletions: number;
+}
+
+async function loadPullEvidence(prNumber: number): Promise<PullEvidence> {
+	const detail = await gh(`/repos/${UPSTREAM}/pulls/${prNumber}`);
+	if (
+		typeof detail !== "object" ||
+		detail === null ||
+		typeof detail.changed_files !== "number" ||
+		typeof detail.additions !== "number" ||
+		typeof detail.deletions !== "number"
+	) {
+		throw new Error(`upstream-radar: PR #${prNumber} returned invalid summary counts`);
+	}
+	const records = await ghAll(`/repos/${UPSTREAM}/pulls/${prNumber}/files`);
+	return {
+		files: completePullFiles(prNumber, detail.changed_files, records),
+		additions: detail.additions,
+		deletions: detail.deletions,
+	};
 }
 
 const marker = (n: number) => `<!-- upstream-pr: ${n} -->`;
@@ -160,47 +278,45 @@ if (import.meta.main) {
 	const cutoff = Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
 
 	// Recently-closed upstream PRs, newest first; keep only merged ones in window.
-	const closed = await ghAll(`/repos/${UPSTREAM}/pulls?state=closed&sort=updated&direction=desc`, 300);
+	const closed = await ghAll(`/repos/${UPSTREAM}/pulls?state=closed&sort=updated&direction=desc`);
 	const inWindow = closed
 		.filter(pr => pr.merged_at && Date.parse(pr.merged_at) >= cutoff)
 		.sort((a, b) => Date.parse(a.merged_at) - Date.parse(b.merged_at)); // oldest first: port in merge order
-	const filesByPr = new Map<number, unknown[]>();
-	const merged = [];
+	const evidenceByPr = new Map<number, PullEvidence>();
+	const merged: Array<{ pr: (typeof inWindow)[number]; kind: PortCandidateKind }> = [];
 	for (const pr of inWindow) {
 		const kind = portCandidateKind(pr.title, policy);
 		if (kind === null) {
 			console.log(`upstream-radar: skip (outside fix/clean-feature policy): #${pr.number} ${pr.title}`);
 			continue;
 		}
-		if (kind === "clean-feature") {
-			const files = await ghAll(`/repos/${UPSTREAM}/pulls/${pr.number}/files`, 300);
-			filesByPr.set(pr.number, files);
-			const names = files.flatMap(file =>
-				file && typeof file === "object" && "filename" in file && typeof file.filename === "string"
-					? [file.filename]
-					: [],
-			);
-			const blockers = cleanFeatureBlockers(names, policy);
-			if (blockers.length > 0) {
+		const evidence = await loadPullEvidence(pr.number);
+		evidenceByPr.set(pr.number, evidence);
+		const filenames = evidence.files.map(file => file.filename);
+		if (!isPortWorthy(pr.title, filenames, policy)) {
+			if (isDocumentationOnly(filenames, policy)) {
+				console.log(`upstream-radar: skip (documentation-only feature): #${pr.number} ${pr.title}`);
+			} else {
+				const blockers = cleanFeatureBlockers(filenames, policy);
 				console.log(
 					`upstream-radar: skip (feature crosses ${blockers.map(surface => surface.name).join(", ")}): #${pr.number} ${pr.title}`,
 				);
-				continue;
 			}
+			continue;
 		}
-		merged.push(pr);
+		merged.push({ pr, kind });
 	}
 
 	// Already-mirrored PR numbers, read from the marker in every issue we ever filed
 	// (state=all so closing an issue never resurrects its PR).
-	const existing = await ghAll(`/repos/${ORIGIN}/issues?labels=${PORT_LABEL}&state=all`, 2000);
+	const existing = await ghAll(`/repos/${ORIGIN}/issues?labels=${PORT_LABEL}&state=all`);
 	const seen = new Set<number>();
 	for (const issue of existing) {
-		const m = /<!-- upstream-pr: (\d+) -->/.exec(issue.body ?? "");
+		const m = /^<!-- upstream-pr: (\d+) -->/.exec(issue.body ?? "");
 		if (m) seen.add(Number(m[1]));
 	}
 
-	const fresh = merged.filter(pr => !seen.has(pr.number));
+	const fresh = merged.filter(({ pr }) => !seen.has(pr.number));
 	console.log(
 		`upstream-radar: ${merged.length} merged upstream PRs in the last ${LOOKBACK_DAYS}d, ${seen.size} already mirrored, ${fresh.length} new.`,
 	);
@@ -218,56 +334,29 @@ if (import.meta.main) {
 		);
 	}
 
-	for (const pr of batch) {
-		const files = filesByPr.get(pr.number) ?? (await ghAll(`/repos/${UPSTREAM}/pulls/${pr.number}/files`, 300));
-		const fileList = files
-			.flatMap(file =>
-				file &&
-				typeof file === "object" &&
-				"filename" in file &&
-				typeof file.filename === "string" &&
-				"additions" in file &&
-				typeof file.additions === "number" &&
-				"deletions" in file &&
-				typeof file.deletions === "number"
-					? [`- \`${file.filename}\` (+${file.additions}/-${file.deletions})`]
-					: [],
-			)
+	for (const { pr, kind } of batch) {
+		const evidence = evidenceByPr.get(pr.number);
+		if (!evidence) {
+			throw new Error(`upstream-radar: PR #${pr.number} lost its validated file evidence`);
+		}
+		const fileList = evidence.files
+			.map(file => `- \`${file.filename}\` (+${file.additions}/-${file.deletions})`)
 			.join("\n");
-		const filenames = files.flatMap(file =>
-			file && typeof file === "object" && "filename" in file && typeof file.filename === "string"
-				? [file.filename]
-				: [],
-		);
+		const filenames = evidence.files.map(file => file.filename);
 		const warning = divergenceWarning(divergedMatches(filenames, policy));
-		const kind = portCandidateKind(pr.title, policy);
-		const featureGuard =
-			kind === "clean-feature"
-				? "\nThis feature passed only a conservative path-level screen. Confirm that it is additive, fits veyyon's product direction, and preserves every local contract. If any of those is false, declare it NOT-APPLICABLE instead of forcing a PR.\n"
-				: "";
 		const bodyExcerpt = (pr.body ?? "").trim().slice(0, 3000);
-
-		const body = `${marker(pr.number)}
-<!-- upstream-port-kind: ${kind} -->
-Upstream merged PR: ${pr.html_url} (merged ${pr.merged_at}, +${pr.additions}/-${pr.deletions} across ${pr.changed_files} files)
-
-## Task: evaluate and port this upstream change to veyyon
-
-veyyon is a diverged fork of oh-my-pi (see \`UPSTREAM.md\` for the provenance map). Port this change **adapted to veyyon**, not verbatim:
-${featureGuard}
-1. Read the upstream diff. Decide whether it still applies here: the touched subsystem may have been rewritten, renamed, or removed in veyyon. If it does not apply, comment on this issue explaining exactly why (which veyyon change supersedes it) and close the issue. Do not force a port.
-2. If it applies, port it with veyyon's naming (\`omp\`→\`veyyon\`/\`vey\`, \`pi\` brand strings→\`vey\`, config dir \`.veyyon\`) and veyyon's architecture. Follow \`AGENTS.md\`.
-3. Every behavior change lands with real-value regression tests in the existing suite structure (\`bun scripts/ci-test-ts.ts <suite>\`), and updates any user-facing docs that describe the behavior.
-4. Open a PR titled \`port(upstream#${pr.number}): ${pr.title.replaceAll("`", "'")}\` referencing this issue.
-${warning}
-## Upstream files touched
-
-${fileList}
-
-## Upstream PR description (excerpt)
-
-${bodyExcerpt || "(no description)"}
-`;
+		const body = renderPortIssue({
+			marker: marker(pr.number),
+			kind,
+			url: pr.html_url,
+			mergedAt: pr.merged_at,
+			additions: evidence.additions,
+			deletions: evidence.deletions,
+			changedFiles: evidence.files.length,
+			warning,
+			fileList,
+			bodyExcerpt: bodyExcerpt || "(no description)",
+		});
 
 		const issue = await gh(`/repos/${ORIGIN}/issues`, {
 			method: "POST",

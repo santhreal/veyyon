@@ -77,13 +77,19 @@ automated port pipeline. It has two halves:
    surface in `scripts/upstream-port-policy.json`. This is a conservative
    candidate screen, not an assertion that the feature belongs in veyyon.
    Refactors, chores, and upstream product or infrastructure direction remain
-   excluded. Fixes touching a diverged surface still enter semantic triage with
+   excluded. Documentation-only feature diffs are excluded; documentation
+   accompanying an implementation does not block an otherwise clean candidate.
+   Fixes touching a diverged surface still enter semantic triage with
    a warning so the underlying bug can be adapted to veyyon's design.
 2. The manager (`scripts/jules-port-manager.ts`, run from a local cron with
-   the Jules API keys) dispatches each queued issue as a Jules session. A
-   session must evaluate applicability after divergence, preserve veyyon's
-   contracts, add behavioral proof, and either open an adapted candidate PR or
-   declare the change not applicable. CI and a human gate every merge.
+   the Jules API keys) dispatches each queued issue as a Jules session. The
+   issue body is evidence-only. The execution contract lives in
+   `scripts/jules-port.prompt.md`, with the resume nudge in
+   `scripts/jules-nudge.prompt.md`. Jules must map upstream behavior to local
+   owners, establish an observable negative control, prove the result, and
+   audit the complete `origin/main...HEAD` range. It ends with either
+   `PR-READY: <URL>` or `NOT-APPLICABLE: <reason>`. A ready PR remains
+   unmerged and awaits CI plus human review.
 3. Landing happens locally, not on GitHub. `bun scripts/jules-port-manager.ts
    land` audits each open port PR, merges only the selected clean candidates
    into local `main`, and stops there so you can run the gate before pushing.
