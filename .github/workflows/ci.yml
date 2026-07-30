@@ -688,8 +688,9 @@ jobs:
          needs.test_coding_agent_native.result == 'success' &&
          needs.test_smoke.result == 'success' && needs.check.result == 'success' &&
          needs.install_methods.result == 'success' &&
-         needs.install_ps1_e2e.result == 'success' }}
-      needs: [release_metadata, check, native_linux_x64, native_cross_platform_cross, native_cross_platform_macos, test_workspace, test_coding_agent_singleton, test_ts_native, test_coding_agent_ui, test_coding_agent_runtime, test_coding_agent_native, test_smoke, install_methods, install_ps1_e2e, native_artifact_lookup]
+         needs.install_ps1_e2e.result == 'success' &&
+         needs.install_ps1_functions.result == 'success' }}
+      needs: [release_metadata, check, native_linux_x64, native_cross_platform_cross, native_cross_platform_macos, test_workspace, test_coding_agent_singleton, test_ts_native, test_coding_agent_ui, test_coding_agent_runtime, test_coding_agent_native, test_smoke, install_methods, install_ps1_e2e, install_ps1_functions, native_artifact_lookup]
       strategy:
          fail-fast: false
          matrix:
