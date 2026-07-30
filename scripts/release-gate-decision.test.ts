@@ -21,11 +21,14 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+	assertReleaseTagGateEvidence,
 	type CiConclusion,
 	decideReleaseGate,
 	MAX_STRANDED_TAGS,
 	REQUIRED_RELEASE_ASSET_NAMES,
+	REQUIRED_RELEASE_TAG_WORKFLOWS,
 	REQUIRED_SOURCE_WORKFLOWS,
+	type ReleaseTagWorkflowRun,
 	type SilentTag,
 	type SourceWorkflowRun,
 	verifyPublishedReleaseAssets,
@@ -34,6 +37,171 @@ import {
 const MAIN = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const OLDER = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+async function runTagGateCli(security: "success" | "missing" = "success") {
+	const sha = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: REPO_ROOT }).stdout.toString().trim();
+	const bin = mkdtempSync(join(tmpdir(), "release-tag-gate-cli-"));
+	const fakeGh = join(bin, "gh");
+	const callsPath = join(bin, "calls.log");
+	writeFileSync(
+		fakeGh,
+		`#!/bin/sh
+printf '%s\\n' "$*" >> "$CALLS_PATH"
+case "$*" in
+  *"--workflow checks.yml"*)
+    printf '[{"headSha":"%s","headBranch":"v1.2.3","event":"workflow_dispatch","conclusion":"success"}]\\n' "$FAKE_SHA" ;;
+  *"--workflow security.yml"*)
+    if [ "$SECURITY" = "success" ]; then
+      printf '[{"headSha":"%s","headBranch":"v1.2.3","event":"workflow_dispatch","conclusion":"success"}]\\n' "$FAKE_SHA"
+    else
+      printf '[]\\n'
+    fi ;;
+  *) echo "unexpected gh invocation: $*" >&2; exit 88 ;;
+esac
+`,
+	);
+	chmodSync(fakeGh, 0o755);
+	const proc = Bun.spawn(["bun", "scripts/release-gate-decision.ts", "verify-tag-gates", "v1.2.3", sha], {
+		cwd: REPO_ROOT,
+		env: {
+			...process.env,
+			PATH: `${bin}:${process.env.PATH ?? ""}`,
+			CALLS_PATH: callsPath,
+			FAKE_SHA: sha,
+			SECURITY: security,
+		},
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	const [stdout, stderr, exitCode] = await Promise.all([
+		new Response(proc.stdout).text(),
+		new Response(proc.stderr).text(),
+		proc.exited,
+	]);
+	return {
+		exitCode,
+		output: `${stdout}\n${stderr}`,
+		calls: await Bun.file(callsPath).text(),
+	};
+}
+
+describe("exact-tag publication provenance", () => {
+	/**
+	 * Publication is allowed only after both immutable-tag workflow dispatches
+	 * succeeded for the exact release commit.
+	 */
+	it("accepts exact successful Checks and Security tag runs", () => {
+		const success: ReleaseTagWorkflowRun = {
+			headSha: MAIN,
+			headBranch: "v1.2.3",
+			event: "workflow_dispatch",
+			conclusion: "success",
+		};
+
+		expect(() =>
+			assertReleaseTagGateEvidence("v1.2.3", MAIN, {
+				"checks.yml": [success],
+				"security.yml": [success],
+			}),
+		).not.toThrow();
+		expect(REQUIRED_RELEASE_TAG_WORKFLOWS).toEqual(["checks.yml", "security.yml"]);
+	});
+	/**
+	 * The production CLI must query the workflow files themselves and accept the
+	 * exact tag/SHA tuple before CI enables publication.
+	 */
+	it("verifies exact-tag provenance through the real CLI boundary", async () => {
+		const result = await runTagGateCli();
+
+		expect(result.exitCode).toBe(0);
+		expect(result.output).toContain("verified exact-tag Checks and Security for v1.2.3");
+		expect(result.calls).toContain("run list --workflow checks.yml");
+		expect(result.calls).toContain("run list --workflow security.yml");
+	});
+
+	/**
+	 * Missing Security evidence must make the CLI nonzero, because release
+	 * metadata treats any verifier success as authority to publish.
+	 */
+	it("fails the real CLI boundary when Security evidence is missing", async () => {
+		const result = await runTagGateCli("missing");
+
+		expect(result.exitCode).not.toBe(0);
+		expect(result.output).toContain("security.yml has no successful workflow_dispatch run");
+	});
+
+	/**
+	 * A green run for another commit cannot authorize bytes built from this tag,
+	 * even when its branch and event look like a release run.
+	 */
+	it("rejects successful gate evidence from another SHA", () => {
+		const wrongSha: ReleaseTagWorkflowRun = {
+			headSha: OLDER,
+			headBranch: "v1.2.3",
+			event: "workflow_dispatch",
+			conclusion: "success",
+		};
+
+		expect(() =>
+			assertReleaseTagGateEvidence("v1.2.3", MAIN, {
+				"checks.yml": [wrongSha],
+				"security.yml": [wrongSha],
+			}),
+		).toThrow("checks.yml has no successful workflow_dispatch run");
+	});
+
+	/**
+	 * Main and a tag can point at the same commit. A manual main run still does
+	 * not prove the immutable tag ref release.yml intended to verify.
+	 */
+	it("rejects main-branch evidence at the same SHA", () => {
+		const mainRun: ReleaseTagWorkflowRun = {
+			headSha: MAIN,
+			headBranch: "main",
+			event: "workflow_dispatch",
+			conclusion: "success",
+		};
+
+		expect(() =>
+			assertReleaseTagGateEvidence("v1.2.3", MAIN, {
+				"checks.yml": [mainRun],
+				"security.yml": [mainRun],
+			}),
+		).toThrow("checks.yml has no successful workflow_dispatch run");
+	});
+
+	/**
+	 * A missing, failed, or non-dispatch Security run must stop publication after
+	 * Checks passes instead of treating one workflow as proof for both.
+	 */
+	it("requires an independently successful Security workflow dispatch", () => {
+		const checks: ReleaseTagWorkflowRun = {
+			headSha: MAIN,
+			headBranch: "v1.2.3",
+			event: "workflow_dispatch",
+			conclusion: "success",
+		};
+		const failedSecurity: ReleaseTagWorkflowRun = {
+			...checks,
+			conclusion: "failure",
+		};
+
+		expect(() =>
+			assertReleaseTagGateEvidence("v1.2.3", MAIN, {
+				"checks.yml": [checks],
+				"security.yml": [failedSecurity],
+			}),
+		).toThrow("security.yml has no successful workflow_dispatch run");
+	});
+
+	/**
+	 * Loose v-prefix tags used to enter the publication path. Strict semver keeps
+	 * aliases and malformed tags from choosing an ambiguous release identity.
+	 */
+	it("rejects malformed release tags before reading workflow evidence", () => {
+		expect(() => assertReleaseTagGateEvidence("v1junk", MAIN, {})).toThrow("is not strict vX.Y.Z semver");
+	});
+});
 
 async function runGateCli(options: {
 	checks?: "success" | "failure" | "missing";

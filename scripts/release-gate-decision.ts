@@ -55,6 +55,44 @@ export interface SourceWorkflowRun {
 	conclusion: string | null;
 }
 
+/** Exact-tag gates that must independently prove a release commit before CI may publish it. */
+export const REQUIRED_RELEASE_TAG_WORKFLOWS = ["checks.yml", "security.yml"] as const;
+
+export interface ReleaseTagWorkflowRun {
+	headSha: string;
+	headBranch: string;
+	event: string;
+	conclusion: string | null;
+}
+
+/**
+ * Require successful workflow-dispatch evidence for the immutable tag and SHA.
+ *
+ * File identities are used instead of mutable display names. A successful run
+ * on main at the same SHA does not satisfy a tag-ref release.
+ */
+export function assertReleaseTagGateEvidence(
+	tag: string,
+	sha: string,
+	runsByWorkflow: Readonly<Record<string, readonly ReleaseTagWorkflowRun[]>>,
+): void {
+	if (!/^v\d+\.\d+\.\d+$/.test(tag)) {
+		throw new Error(`release tag ${JSON.stringify(tag)} is not strict vX.Y.Z semver`);
+	}
+	for (const workflow of REQUIRED_RELEASE_TAG_WORKFLOWS) {
+		const exactSuccess = runsByWorkflow[workflow]?.some(
+			run =>
+				run.headSha === sha &&
+				run.headBranch === tag &&
+				run.event === "workflow_dispatch" &&
+				run.conclusion === "success",
+		);
+		if (!exactSuccess) {
+			throw new Error(`${workflow} has no successful workflow_dispatch run for ${tag} at ${sha}`);
+		}
+	}
+}
+
 const RELEASE_ARTIFACTS = [
 	"veyyon-linux-x64",
 	"veyyon-linux-arm64",
@@ -308,6 +346,66 @@ async function checkedOutHeadSha(): Promise<string | undefined> {
 	return stdout.trim();
 }
 
+function parseReleaseTagWorkflowRuns(raw: string, workflow: string): ReleaseTagWorkflowRun[] {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		throw new Error(`${workflow} run evidence was not valid JSON`);
+	}
+	if (!Array.isArray(parsed)) throw new Error(`${workflow} run evidence was not an array`);
+	return parsed.map((entry, index) => {
+		if (
+			typeof entry !== "object" ||
+			entry === null ||
+			typeof (entry as Record<string, unknown>).headSha !== "string" ||
+			typeof (entry as Record<string, unknown>).headBranch !== "string" ||
+			typeof (entry as Record<string, unknown>).event !== "string" ||
+			!["string", "object"].includes(typeof (entry as Record<string, unknown>).conclusion)
+		) {
+			throw new Error(`${workflow} run evidence row ${index} had an invalid shape`);
+		}
+		const row = entry as Record<string, unknown>;
+		if (row.conclusion !== null && typeof row.conclusion !== "string") {
+			throw new Error(`${workflow} run evidence row ${index} had an invalid conclusion`);
+		}
+		return {
+			headSha: row.headSha as string,
+			headBranch: row.headBranch as string,
+			event: row.event as string,
+			conclusion: row.conclusion as string | null,
+		};
+	});
+}
+
+async function verifyReleaseTagGates(tag: string, sha: string): Promise<void> {
+	const checkedOutSha = await checkedOutHeadSha();
+	if (checkedOutSha === undefined || checkedOutSha !== sha) {
+		throw new Error(`checked-out release SHA ${checkedOutSha ?? "unknown"} does not match ${sha}`);
+	}
+	const runsByWorkflow: Record<string, ReleaseTagWorkflowRun[]> = {};
+	for (const workflow of REQUIRED_RELEASE_TAG_WORKFLOWS) {
+		const output = await gh([
+			"run",
+			"list",
+			"--workflow",
+			workflow,
+			"--commit",
+			sha,
+			"--event",
+			"workflow_dispatch",
+			"--limit",
+			"100",
+			"--json",
+			"headSha,headBranch,event,conclusion",
+		]);
+		if (output === undefined) throw new Error(`could not establish ${workflow} run evidence`);
+		runsByWorkflow[workflow] = parseReleaseTagWorkflowRuns(output, workflow);
+	}
+	assertReleaseTagGateEvidence(tag, sha, runsByWorkflow);
+	console.log(`verified exact-tag Checks and Security for ${tag} at ${sha}`);
+}
+
 /** Gather exact-tree workflow, changelog, tag, and publication facts. */
 async function gatherFacts(): Promise<ReleaseGateFacts | undefined> {
 	const hasUnreleasedBullets = hasReleasableChanges(await readReleasableChangelogs(REPO_ROOT));
@@ -422,7 +520,20 @@ async function verifyPublishedAssetManifest(tag: string): Promise<void> {
 }
 
 if (import.meta.main) {
-	if (process.argv[2] === "verify-assets") {
+	if (process.argv[2] === "verify-tag-gates") {
+		const tag = process.argv[3];
+		const sha = process.argv[4];
+		if (!tag || !sha) {
+			console.error("usage: release-gate-decision.ts verify-tag-gates <tag> <sha>");
+			process.exit(1);
+		}
+		try {
+			await verifyReleaseTagGates(tag, sha);
+		} catch (error) {
+			console.error(`release tag provenance verification failed: ${(error as Error).message}`);
+			process.exit(1);
+		}
+	} else if (process.argv[2] === "verify-assets") {
 		const tag = process.argv[3];
 		if (!tag) {
 			console.error("usage: release-gate-decision.ts verify-assets <tag>");

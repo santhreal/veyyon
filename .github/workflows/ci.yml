@@ -56,26 +56,37 @@ jobs:
          - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
            with:
               fetch-tags: ${{ github.ref == 'refs/heads/main' }}
+         - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+           if: startsWith(github.ref, 'refs/tags/')
+           with:
+              bun-version: "1.3.14"
          - name: Detect release tag at HEAD
            id: detect
+           env:
+              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
            shell: bash
            run: |
               is_release=false
               release_tag=""
               case "${{ github.ref }}" in
-                refs/tags/v[0-9]*)
+                refs/tags/*)
+                  if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+                    echo "::error::release publication requires a workflow_dispatch at the immutable tag"
+                    exit 1
+                  fi
                   release_tag="${{ github.ref_name }}"
+                  if ! printf '%s\n' "$release_tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+                    echo "::error::release tag '$release_tag' is not strict vX.Y.Z semver"
+                    exit 1
+                  fi
+                  bun scripts/release-gate-decision.ts verify-tag-gates "$release_tag" "${{ github.sha }}"
+                  echo "Exact-tag Checks and Security are green for $release_tag; this run may publish the release."
+                  is_release=true
                   ;;
                 refs/heads/main)
-                  if [ "${{ github.event_name }}" != "pull_request" ]; then
-                    release_tag=$(git tag --points-at HEAD | grep -E '^v[0-9]' | head -n1 || true)
-                  fi
+                  echo "Main CI never publishes; release.yml dispatches publication at an immutable verified tag."
                   ;;
               esac
-              if [ -n "$release_tag" ]; then
-                echo "HEAD carries release tag $release_tag; this run builds and publishes the release."
-                is_release=true
-              fi
               {
                 echo "is-release=$is_release"
                 echo "release-tag=$release_tag"
