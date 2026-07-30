@@ -691,8 +691,10 @@
   well as foreground and background colors. `NO_COLOR` still preserves non-color emphasis.
 - The Windows installer stages downloaded releases and local builds with an `.exe` suffix. Windows
   PowerShell 5.1 can run both verified preflight searches inside an output pipeline instead of
-  rejecting `.download` or `.local` staging files as documents. Reinstall and uninstall also
-  reclaim interrupted local staging files, including the legacy suffixless form.
+  rejecting `.download` or `.local` staging files as documents. Replacement now retries a transient
+  Windows image lock while the staged preflight's last worker or an antivirus scan releases the
+  executable, so an immediate reinstall does not fail after verification. Reinstall and uninstall
+  also reclaim interrupted local staging files, including the legacy suffixless form.
 - A block that folds exactly one line now says "1 more line". Every collapsed tool block, the read
   tool's continuation notice, the edit preview, the LSP hover, the MCP and eval renderers, `ssh`
   output and the Agent Control Center's comms fold wrote the count inline, so all of them said

@@ -173,7 +173,7 @@ describe("the Windows binary install stages its download", () => {
 	it("restores the previous binary when the swap itself fails", () => {
 		const fn = installPs1.slice(installPs1.indexOf("function Move-StagedBinaryIntoPlace {"));
 		const body = fn.slice(0, fn.indexOf("\nfunction "));
-		expect(body).toContain("Move-Item -Path $aside -Destination $TargetPath -Force");
+		expect(body).toContain("Move-InstallItemWithRetry -SourcePath $aside -DestinationPath $TargetPath");
 		expect(body).toContain("your previous $BinName is untouched");
 	});
 
@@ -347,7 +347,9 @@ describe("neither installer moves an empty staged file into place", () => {
 		// not a failed install.
 		const fn = installPs1.slice(installPs1.indexOf("function Move-StagedBinaryIntoPlace {"));
 		const body = fn.slice(0, fn.indexOf("\nfunction "));
-		expect(body.indexOf("$staged.Length -eq 0")).toBeLessThan(body.indexOf("Move-Item -Path $TargetPath"));
+		expect(body.indexOf("$staged.Length -eq 0")).toBeLessThan(
+			body.indexOf("Move-InstallItemWithRetry -SourcePath $TargetPath"),
+		);
 	});
 
 	it("both name the staged path and the next step in the refusal", () => {
