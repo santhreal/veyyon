@@ -6,6 +6,7 @@
  */
 
 import { APP_NAME, getAgentDir, isRecord, nearestNames } from "@veyyon/utils";
+import { renderHelpParagraph, renderHelpTable } from "@veyyon/utils/cli";
 import chalk from "chalk";
 import {
 	getDefault,
@@ -115,6 +116,31 @@ export const CONFIG_ACTIONS: ConfigAction[] = ["list", "get", "set", "reset", "p
 // =============================================================================
 // Value Formatting
 // =============================================================================
+
+/**
+ * Widest opening value token that can still share its key's line in `config list`.
+ *
+ * `renderHelpTable` puts the first wrapped line of a value inline after the key, and nothing can
+ * break a token with no space in it, so a value that OPENS with a long token drags that line past
+ * the terminal edge even though the rest of it wraps. Anything wider gets its own block below the
+ * key instead.
+ *
+ * THE NUMBER IS DERIVED, NOT CHOSEN, and it is coupled to the gutter fraction passed at the one
+ * call site below. The narrowest terminal the layout lays out for is 60 columns, and the gutter
+ * takes `maxGutterFraction` of it, so the value column is what remains: at one half that is 30.
+ * The two must move together. They did not once already: the fraction went from a third to a half
+ * while this still read 40, and `compaction.model = google-antigravity/gemini-3.6-flash:high` (a
+ * 40-character unbreakable value) went back over the edge at 60 columns.
+ */
+const INLINE_VALUE_WIDTH = 30;
+
+/**
+ * Indent for a value printed below its key rather than beside it.
+ *
+ * Deeper than the two spaces a key sits at, so a continuation line can never be read as a new
+ * setting: `config list` output is scanned and grepped for `key =` at exactly one indent.
+ */
+const VALUE_BLOCK_INDENT = "      ";
 
 function formatValue(value: unknown): string {
 	if (value === undefined || value === null) {
@@ -307,16 +333,44 @@ async function handleList(flags: { json?: boolean }): Promise<void> {
 		return a.localeCompare(b);
 	});
 
+	// ONE table for the whole listing, not one per group: `renderHelpTable` derives its
+	// gutter from the rows it is handed, so a call per group would put the value column in a
+	// different place in every section. Group headers and pre-rendered value blocks ride
+	// along as rows with no description, which the helper emits verbatim.
+	const rows: Array<readonly [string, string]> = [];
 	for (const group of sortedGroups) {
-		console.log(chalk.bold.blue(`[${group}]`));
+		rows.push([chalk.bold.blue(`[${group}]`), ""]);
 		for (const def of groups[group]) {
-			const value = settings.get(def.path);
-			const valueStr = formatValue(value);
-			const typeStr = getTypeDisplay(def);
-			console.log(`  ${chalk.white(def.path)} = ${valueStr} ${chalk.dim(typeStr)}`);
+			const key = `  ${chalk.white(def.path)} =`;
+			const detail = `${formatValue(settings.get(def.path))} ${chalk.dim(getTypeDisplay(def))}`;
+			// A long value WRAPS onto indented continuation lines; it is never truncated.
+			// `bashInterceptor.patterns` serializes to ~2.3kB of JSON, and an ellipsis there
+			// would be the worst possible answer: `config list` is the command an operator runs
+			// to read what a setting is ACTUALLY set to, so hiding the tail defeats the only
+			// reason to run it, and a half-printed regex table reads like a corrupt one. The
+			// cost is lines (that one setting spills over dozens) and that a wrapped value is
+			// no longer one copy-pasteable string, which is what `--json` is for.
+			const [firstToken = ""] = detail.split(" ");
+			if (Bun.stringWidth(firstToken) <= INLINE_VALUE_WIDTH) {
+				rows.push([key, detail]);
+				continue;
+			}
+			// The value opens with a token too long to share the key's line, so it gets its own
+			// indented block instead of being jammed into the description column.
+			rows.push([key, ""]);
+			for (const line of renderHelpParagraph(detail, { indent: VALUE_BLOCK_INDENT })) {
+				rows.push([line, ""]);
+			}
 		}
-		console.log("");
+		rows.push(["", ""]);
 	}
+	// `indent: ""` because the group headers are part of the table and belong at column 0;
+	// the setting rows carry their own two-space indent.
+	// Half the width, not the default third. The left column here is a dotted setting path, which
+	// routinely runs past thirty characters, and at a third every such key pushed its value onto a
+	// second line even when the value was `true`. That grew the listing by half again in lines
+	// without making one of them easier to read.
+	console.log(renderHelpTable(rows, { indent: "", maxGutterFraction: 1 / 2 }).join("\n"));
 }
 
 function handleGet(key: string | undefined, flags: { json?: boolean }): void {

@@ -4,6 +4,8 @@
 
 ### Added
 
+- Expanded `session.instrumentation` into a complete session-study record. `basic` adds lifecycle checkpoints, task transitions, and tool timing; `rich` adds context attribution, directional agent-message delivery, result weight, and analytics rollups; `ultra` adds compaction links, per-task transitions, routes, fingerprints, and provider provenance. `veyyon session stats` reports each available family. `off` adds no telemetry but still stores the normal conversation and tool history required to resume.
+
 - Auto QA can upload grievances to `https://veyyon.dev/api/grievances`, where a Cloudflare Pages
   Function validates the batch and stores it in D1. Upload is controlled by
   **Auto-upload Grievances** in each profile and defaults to off. Local recording remains separate,
@@ -97,6 +99,22 @@
 
 ### Fixed
 
+- Tool approval prompts now use a structured permission card that separates the one-call scope,
+  approval reason, and requested action. Approve and deny choices include explicit descriptions,
+  radio focus, and complete navigation help instead of presenting one flat accent-colored text block.
+- `config list` is laid out for the terminal it prints on. It emitted one unwrapped
+  `key = value (type)` line per setting, so at 80 columns fifteen lines ran past the edge and
+  `bashInterceptor.patterns` was a single 2355-character line; the terminal re-broke each of them
+  wherever it liked with no indent, which put the tail of a value at column 0 where it read as
+  another setting. The listing now goes through the same width-aware `renderHelpTable` /
+  `renderHelpParagraph` primitives as `--help`, so values wrap into a column and continuation lines
+  stay indented under their key. Long values WRAP rather than truncate: `config list` is the command
+  an operator runs to read what a setting is actually set to, so an ellipsis would hide the part they
+  came to check, and trimming and rejoining the continuation lines reproduces the stored value byte
+  for byte. A value that opens with a token too long to share its key's line (a 2.3kB JSON blob) gets
+  its own indented block instead of being jammed into the value column and overflowing anyway. What
+  still exceeds the width is only what has nowhere to break, an unbroken enum spelling or a regex
+  with no spaces in it, each on a line of its own.
 - A value-taking flag with no value is refused instead of silently dropped. `--model`,
   `--approval-mode`, `--thinking`, `--system-prompt` and every other string-valued flag fell through
   the parse loop when they sat in the last argv position, so `veyyon -p "..." --approval-mode` exited

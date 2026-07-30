@@ -120,6 +120,32 @@ describe("a rendered help table", () => {
 	});
 
 	/**
+	 * The cap is a parameter because the right answer depends on what the left column IS.
+	 *
+	 * A third suits flag names, which are short beside their prose. It does not suit `veyyon config
+	 * list`, whose left column is a dotted setting path routinely past thirty characters: at a third
+	 * every such key pushed its value onto a second line even when the value was `true`, growing that
+	 * listing from 470 lines to 714 without making one of them easier to read. This pins that a
+	 * caller can widen the column, and that widening actually moves it, so the knob cannot quietly
+	 * become inert.
+	 */
+	it("lets a caller widen the gutter when its left column is inherently long", () => {
+		terminalWidth(80);
+		const rows = [["settings.statusLine.sessionAccent", "true"]] as const;
+
+		const atAThird = renderHelpTable(rows);
+		const atAHalf = renderHelpTable(rows, { maxGutterFraction: 1 / 2 });
+
+		// The key is 33 characters plus indent, so a third of 80 cannot hold it and the value is
+		// exiled to its own line. Half can, and the pair fits on one.
+		expect(atAThird).toHaveLength(2);
+		expect(atAHalf).toHaveLength(1);
+		expect(atAHalf[0]).toContain("true");
+		// Widening must not be a licence to overflow.
+		for (const line of atAHalf) expect(line.length).toBeLessThanOrEqual(80);
+	});
+
+	/**
 	 * A continuation that returns to column 0 reads as the next entry, which is exactly how the
 	 * unwrapped output misled: the terminal's own wrap has no indent.
 	 */
