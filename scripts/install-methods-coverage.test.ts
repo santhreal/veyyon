@@ -122,8 +122,10 @@ describe("the release gate covers both shipped install channels", () => {
 		expect(windowsMonitor?.["continue-on-error"]).toBe(true);
 		expect(workflow.jobs.install_methods?.["continue-on-error"]).toBeUndefined();
 		expect(workflow.jobs.install_ps1_e2e?.["continue-on-error"]).toBeUndefined();
+		expect(workflow.jobs.install_ps1_functions?.["continue-on-error"]).toBeUndefined();
 		expect(workflow.jobs.release_binary?.needs).toContain("install_methods");
 		expect(workflow.jobs.release_binary?.needs).toContain("install_ps1_e2e");
+		expect(workflow.jobs.release_binary?.needs).toContain("install_ps1_functions");
 		expect(workflow.jobs.release_binary?.needs).not.toContain("install_binary_posix");
 		expect(workflow.jobs.release_binary?.needs).not.toContain("install_ps1_binary");
 	});
