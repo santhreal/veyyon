@@ -62,10 +62,17 @@
     <span class="kicker">Install</span>
     <h1>Install</h1>
     <p>One-line installer script or a GitHub release binary. Binary names: <span class="inline">veyyon</span>, <span class="inline">vey</span>.</p>
-    <div class="install" style="margin:0 0 8px">
-      <span class="p">$</span>
-      <code id="cmd">curl -fsSL https://get.veyyon.dev | sh</code>
-      <button id="copy" aria-label="Copy install command">copy</button>
+    <div class="install-picker" data-install-selector>
+      <div class="install-platforms" role="group" aria-label="Select your operating system">
+        <button type="button" class="install-platform" data-install-platform="macos" aria-pressed="true">macOS</button>
+        <button type="button" class="install-platform" data-install-platform="linux" aria-pressed="false">Linux</button>
+        <button type="button" class="install-platform" data-install-platform="windows" aria-pressed="false">Windows</button>
+      </div>
+      <div class="install">
+        <span class="p" data-install-prompt>$</span>
+        <code data-install-command>curl -fsSL https://get.veyyon.dev | sh</code>
+        <button type="button" data-install-copy aria-label="Copy install command">copy</button>
+      </div>
     </div>
   </div>
 
@@ -87,7 +94,7 @@
     <div class="grid">
       <div class="card"><h3>macOS</h3><p>Apple Silicon and Intel. <span class="inline">curl … | sh</span> or release archive.</p></div>
       <div class="card"><h3>Linux</h3><p>x64 and arm64. Optional XDG layout: <span class="inline">veyyon config init-xdg</span>.</p></div>
-      <div class="card"><h3>Windows</h3><p>PowerShell: <span class="inline">irm https://veyyon.dev/install.ps1 | iex</span> (if published). Same <span class="inline">veyyon</span> / <span class="inline">vey</span> binary name.</p></div>
+      <div class="card"><h3>Windows</h3><p>x64, including Windows arm64 under emulation. PowerShell: <span class="inline">irm https://veyyon.dev/install.ps1 | iex</span>.</p></div>
     </div>
   </section>
 
@@ -133,10 +140,7 @@
   </div>
 </footer>
 
-<script>
-  (function(){var b=document.getElementById('copy'),c=document.getElementById('cmd');
-   if(b&&c)b.addEventListener('click',function(){if(navigator.clipboard)navigator.clipboard.writeText(c.textContent).then(function(){b.textContent='copied';setTimeout(function(){b.textContent='copy'},1300)})})})();
-</script>
+<script type="module" src="./install-command.js"></script>
 
 <script src="./sun-field.js" defer></script>
 <script src="./motion.js" defer></script>
