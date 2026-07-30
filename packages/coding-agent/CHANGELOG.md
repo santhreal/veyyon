@@ -101,6 +101,10 @@
 - Session listing now reports a failure to enumerate recovery backups instead of silently continuing
   with primary files only. A backup remains intact and visible in the unreadable-session report until
   the directory or storage backend can be read again.
+- Session-backed Python, Ruby, and Julia eval now replace an interpreter that exits unexpectedly
+  mid-cell and replay the cell once. Unexpected process exits were classified as user cancellation,
+  which bypassed the existing dead-kernel recovery path. Timeouts and explicit cancellation still
+  stop without replaying the cell.
 - With `tools.discoveryMode=all`, `generate_image` starts in the searchable tool inventory instead of
   sending its schema on every provider request. Explicit tool whitelists still keep it active, and
   selecting it through tool discovery persists activation for subsequent turns.
