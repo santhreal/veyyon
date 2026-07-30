@@ -54,6 +54,7 @@ const MINIMAL = {
 	worktree: "",
 	outputSchema: "",
 	outputSchemaOverridesAgent: false,
+	ircEnabled: false,
 	ircPeers: "",
 	ircSelfId: "",
 };
@@ -65,6 +66,7 @@ const MAXIMAL = {
 	planReference: "1. Do the thing.",
 	planReferencePath: "/repo/PLAN.md",
 	worktree: "/tmp/wt",
+	ircEnabled: true,
 	ircPeers: "- peer-1: editing foo.ts",
 	ircSelfId: "task-9",
 };
@@ -165,12 +167,16 @@ describe("registration preserves the rendered bytes", () => {
 		expect(rendered).toContain('<plan path="/repo/PLAN.md">\n1. Do the thing.\n</plan>');
 	});
 
-	it("renders the worktree and IRC regions with their values substituted", () => {
+	/** IRC guidance stays static so sibling launches share one provider-cache prefix. */
+	it("renders the worktree and static IRC coordination without launch-specific values", () => {
 		const rendered = prompt.render(template, MAXIMAL);
 
 		expect(rendered).toContain("You are working in an isolated working tree at `/tmp/wt` for this sub-task.");
-		expect(rendered).toContain("Your id is `task-9`.");
-		expect(rendered).toContain("- peer-1: editing foo.ts");
+		expect(rendered).toContain(
+			'call `irc` with `op:"list"` when you need the current roster, your own id, or a peer\'s status.',
+		);
+		expect(rendered).not.toContain("task-9");
+		expect(rendered).not.toContain("peer-1");
 	});
 
 	it("leaves no unrendered template syntax behind", () => {
