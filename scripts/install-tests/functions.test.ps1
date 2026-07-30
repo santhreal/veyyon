@@ -925,10 +925,18 @@ echo veyyon/9.9.9
     $good = New-StubBinary -Name "good" -GrepBody "echo %3\probe.txt:1: match & exit /b 0"
     $noAddon = New-StubBinary -Name "noaddon" -GrepBody "echo dlopen failed 1>&2 & exit /b 127"
     $empty = New-StubBinary -Name "empty" -GrepBody "echo Total matches: 0 & exit /b 0"
+    $warns = New-StubBinary -Name "warns" -GrepBody "echo CPU detection unavailable 1>&2 & echo %3\probe.txt:1: match & exit /b 0"
 
     $ok = $true
     try { Test-NativeAddon -Command $good *> $null } catch { $ok = $false }
     Check "Test-NativeAddon accepts a binary whose search works" $ok "True"
+
+    # A valid binary may warn while selecting a conservative native variant.
+    # PowerShell 5.1 promotes merged native stderr to a terminating error under
+    # ErrorActionPreference=Stop; the exit code and expected match still decide.
+    $ok = $true
+    try { Test-NativeAddon -Command $warns *> $null } catch { $ok = $false }
+    Check "Test-NativeAddon accepts a successful search that warns on stderr" $ok "True"
 
     # The failure this exists to catch: --version would have said this is fine.
     $threw = $false

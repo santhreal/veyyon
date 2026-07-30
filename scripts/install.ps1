@@ -904,7 +904,9 @@ function Assert-ReleaseVersion {
     $why = ""
     $status = $null
     $errFile = Join-Path ([System.IO.Path]::GetTempPath()) ("veyyon-release-version-" + [guid]::NewGuid().ToString("N") + ".err")
+    $previousErrorActionPreference = $ErrorActionPreference
     try {
+        $ErrorActionPreference = "Continue"
         $ver = (& $Command --version 2>$errFile | Out-String).Trim()
         $status = $LASTEXITCODE
         if (Test-Path $errFile) {
@@ -915,6 +917,7 @@ function Assert-ReleaseVersion {
         $ver = $null
         $why = "$_"
     } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
         Remove-Item -Force $errFile -ErrorAction SilentlyContinue
     }
     if ($status -ne 0 -or -not $ver) {
@@ -951,9 +954,15 @@ function Assert-ReleaseVersion {
 # doctor_natives $2.
 function Test-NativeAddon {
     param([string]$Command, [string]$Phase = "installed")
-    # An older build with no `grep` subcommand is not a broken install.
-    & $Command grep --help *> $null
-    if ($LASTEXITCODE -ne 0) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        & $Command grep --help *> $null
+        $helpStatus = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($helpStatus -ne 0) {
         Write-Host "!!  this build has no 'grep' command - skipping the native addon self-test" -ForegroundColor Yellow
         return
     }
@@ -966,10 +975,14 @@ function Test-NativeAddon {
         Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
         return
     }
+    $status = $null
+    $previousErrorActionPreference = $ErrorActionPreference
     try {
+        $ErrorActionPreference = "Continue"
         $out = (& $Command grep veyyon-native-self-test $dir 2>&1 | Out-String)
         $status = $LASTEXITCODE
     } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
         Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
     if ($status -ne 0) {
@@ -996,7 +1009,9 @@ function Invoke-Doctor {
     # parse below reads this output, and a warning on stderr carrying digits
     # would otherwise be read as the version.
     $errFile = Join-Path ([System.IO.Path]::GetTempPath()) ("veyyon-doctor-" + [guid]::NewGuid().ToString("N") + ".err")
+    $previousErrorActionPreference = $ErrorActionPreference
     try {
+        $ErrorActionPreference = "Continue"
         $ver = (& $Command --version 2>$errFile | Out-String).Trim()
         $status = $LASTEXITCODE
         # `Get-Content -Raw` answers $null for an EMPTY file, and calling .Trim()
@@ -1011,6 +1026,7 @@ function Invoke-Doctor {
         $ver = $null
         $why = "$_"
     } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
         Remove-Item -Force $errFile -ErrorAction SilentlyContinue
     }
     if ($status -eq 0 -and $ver) {
