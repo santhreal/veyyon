@@ -118,6 +118,21 @@ describe("set_cwd result confirmation", () => {
 		expect(text).toContain("/start");
 	});
 
+	/**
+	 * Directory listings label the active root as `.`, which led an agent to conclude that set_cwd
+	 * had moved upward and to run `bash pwd`. The result defines that display alias and keeps the
+	 * absolute endpoint authoritative so a successful call does not trigger a second probe.
+	 */
+	it("explains that the dot display aliases the absolute cwd rather than its parent", async () => {
+		const session = makeSession("/already/here");
+
+		const { text } = await run(session, ".");
+
+		expect(text).toContain(`"." in later tool paths and directory headers means the current cwd, /already/here`);
+		expect(text).toContain(`it does not mean the parent directory (that is "..")`);
+		expect(text).toContain("Treat /already/here as authoritative and do not run another tool to rediscover it.");
+	});
+
 	it("reports the requested path in the details for the transcript", async () => {
 		const session = makeSession("/start");
 

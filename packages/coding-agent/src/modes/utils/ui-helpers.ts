@@ -754,7 +754,7 @@ export class UiHelpers {
 		this.ctx.present([new Spacer(1), new Text(theme.fg("warning", `Warning: ${warningMessage}`), 1, 0)]);
 	}
 
-	showUpdateReadyNotification(newVersion: string): void {
+	showUpdateReadyNotification(newVersion: string, warnings: readonly string[] = []): void {
 		// An automatic update finished writing the new binary. It cannot affect the
 		// process already running, so say what the user has to do about it.
 		const block = new TranscriptBlock();
@@ -765,6 +765,19 @@ export class UiHelpers {
 				0,
 			),
 		);
+		if (warnings.length > 0) {
+			const noun = warnings.length === 1 ? "completion file" : "completion files";
+			block.addChild(
+				new Text(
+					theme.fg(
+						"warning",
+						`${warnings.length} shell ${noun} could not be refreshed · re-run the installer to rewrite ${warnings.length === 1 ? "it" : "them"}`,
+					),
+					1,
+					0,
+				),
+			);
+		}
 		this.ctx.present(block);
 	}
 

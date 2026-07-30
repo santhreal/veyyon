@@ -41,6 +41,11 @@ class DeferredRenderScheduler {
 	}
 }
 
+function flushTimers(scheduler: DeferredRenderScheduler): void {
+	const pending = scheduler.timers.splice(0, scheduler.timers.length);
+	for (const timer of pending) if (!timer.canceled) timer.callback();
+}
+
 describe("TUI input/render scheduling", () => {
 	it("can process terminal input before a deferred ordinary repaint", () => {
 		const term = new VirtualTerminal(20, 4);
@@ -54,16 +59,17 @@ describe("TUI input/render scheduling", () => {
 		try {
 			tui.start();
 			scheduler.immediates.shift()?.();
-			const initialTimer = scheduler.timers.shift();
-			if (initialTimer && !initialTimer.canceled) initialTimer.callback();
+			// Fire every queued timer, not just the first: the engine also arms a mouse-grab
+			// idle backstop at startup, and this test is about input-vs-repaint ORDER, not
+			// about how many timers the engine happens to keep.
+			flushTimers(scheduler);
 			events.length = 0;
 			scheduler.nowMs = 100;
 
 			tui.requestRender();
 			term.sendInput("x");
 			scheduler.immediates.shift()?.();
-			const repaintTimer = scheduler.timers.shift();
-			if (repaintTimer && !repaintTimer.canceled) repaintTimer.callback();
+			flushTimers(scheduler);
 
 			expect(events[0]).toBe("input");
 			expect(events).toContain("render");

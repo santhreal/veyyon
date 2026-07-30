@@ -125,7 +125,6 @@ import type { LspStartupServerInfo } from "../tools";
 import { hasForegroundBashWait, onForegroundBashWaitChange } from "../tools/bash-foreground-registry";
 import { normalizeLocalScheme } from "../tools/path-utils";
 import { replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../tools/render-utils";
-import { setAutoQaConsentHandler } from "../tools/report-tool-issue";
 import { type ResolveToolDetails, runResolveInvocation } from "../tools/resolve";
 import { formatPhaseDisplayName, todoMatchesAnyDescription } from "../tools/todo";
 import { ToolError } from "../tools/tool-errors";
@@ -1059,14 +1058,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		// FIRST and its dispose() would otherwise persist the generic "dispose".
 		this.#cleanupUnsubscribe = postmortem.register("session-teardown", reason => this.#signalTeardown!(reason));
 
-		// Wire the report_tool_issue consent gate to the Yes/No dialog popup.
-		// The handler is process-global — subagent tools (which can't reach
-		// `showHookSelector` on their own) resolve through this exact closure.
-		// `Settings.instance` is the disk-backed singleton; passing it explicitly
-		// guarantees the decision persists even when the prompt is triggered
-		// from a subagent whose own `Settings` is an in-memory snapshot.
-		setAutoQaConsentHandler(() => this.#promptAutoQaConsent(), Settings.instance);
-
 		await logger.time(
 			"InteractiveMode.init:slashCommands",
 			this.refreshSlashCommandState.bind(this),
@@ -1233,7 +1224,24 @@ export class InteractiveMode implements InteractiveModeContext {
 
 		this.#eventBusUnsubscribers.push(
 			this.session.subscribe(event => {
-				void this.#handleGoalSessionEvent(event);
+				// RETURNED, never `void`-ed. `AgentSession#emit` already contains a
+				// listener that hands back a promise: it attaches a `.catch` and logs.
+				// A bare `void someAsync()` opts out of exactly that guard, because the
+				// listener then returns undefined and `#emit` sees no promise — and the
+				// rejection reaches postmortem, which prints a crash report and calls
+				// `process.exit(1)`. A goal-mode bookkeeping failure (a tool-set
+				// restore, a session-log append) must not take the whole TUI down at a
+				// turn boundary. The local catch owns the operator-visible half that
+				// `#emit`'s file-only warning cannot give; returning it keeps the
+				// framework guard underneath as the backstop if this handler itself
+				// throws.
+				return this.#handleGoalSessionEvent(event).catch(error => {
+					logger.warn("Goal mode session event handler failed", {
+						event: event.type,
+						error: errorMessage(error),
+					});
+					this.showWarning(`Goal mode update failed: ${errorMessage(error)}`);
+				});
 			}),
 			onStatusLineSessionAccentChanged(() => {
 				this.#syncStatusLineSettings();
@@ -3723,62 +3731,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 	}
 
-	/**
-	 * Pool of consent-prompt variants. Each entry is `[headline, reassurance]`;
-	 * the second line always promises the same scope (tool name + confusion
-	 * details, never personal data) so users learn what they're consenting to
-	 * even as the top line rotates.
-	 *
-	 * Kept in-module rather than i18n'd because the whole charm is the tone
-	 * — translations would need to preserve it deliberately, not auto-render.
-	 */
-	static #AUTOQA_CONSENT_PROMPTS: ReadonlyArray<readonly [string, string]> = [
-		[
-			" Your agent is fuming about a tool.",
-			"Wanna let it vent to the devs? Just the tool name + what set it off, nothing personal.",
-		],
-		[
-			"‍ Your agent is having an existential crisis over a tool.",
-			"Forward the dread to the devs? Tool + what broke its little mind, no personal info.",
-		],
-		[
-			" Your agent wants to cry about a misbehaving tool.",
-			"Let it cry to the devs? Tool + the tears, never anything personal.",
-		],
-		[
-			" Your agent is BIG MAD at one of the tools.",
-			"Pass the rant along? Just the tool name and what enraged it, nothing personal.",
-		],
-		[
-			" Your agent is melting down over a tool.",
-			"Mop up by alerting the devs? Tool + what melted it, no personal info.",
-		],
-		[
-			" Your agent's brain broke at a tool's nonsense.",
-			"Ship the pieces to the devs? Tool name + the confusion, never anything personal.",
-		],
-		[
-			" Your agent is begging to file a complaint about a tool.",
-			"Hand it the form? Tool + what wronged it, nothing personal.",
-		],
-		[
-			" Your agent put on a brave face but a tool did it dirty.",
-			"Let it tell the devs the truth? Tool name + the dirt, no personal info.",
-		],
-	];
-
-	/**
-	 * Show the report_tool_issue consent popup and return the user's decision.
-	 * Invoked by the process-global consent handler the tool dispatches to;
-	 * subagent invocations bubble up here through the shared module state.
-	 */
-	async #promptAutoQaConsent(): Promise<boolean | null> {
-		const pool = InteractiveMode.#AUTOQA_CONSENT_PROMPTS;
-		const [headline, body] = pool[Math.floor(Math.random() * pool.length)];
-		const choice = await this.showHookSelector(`${headline}\n${body}`, ["Yes", "No"]);
-		return choice === "Yes";
-	}
-
 	stop(): void {
 		if (this.loadingAnimation) {
 			this.#stopLoadingAnimation(false);
@@ -3819,9 +3771,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (this.#cleanupUnsubscribe) {
 			this.#cleanupUnsubscribe();
 		}
-		// Clear the process-global consent handler so it doesn't outlive this
-		// InteractiveMode instance (e.g. test harnesses, headless re-init).
-		setAutoQaConsentHandler(null, null);
 		if (this.isInitialized) {
 			this.ui.stop();
 			this.isInitialized = false;
@@ -4221,8 +4170,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.setWorkingMessage(message);
 	}
 
-	showUpdateReadyNotification(newVersion: string): void {
-		this.#uiHelpers.showUpdateReadyNotification(newVersion);
+	showUpdateReadyNotification(newVersion: string, warnings?: readonly string[]): void {
+		this.#uiHelpers.showUpdateReadyNotification(newVersion, warnings);
 	}
 
 	showUpdateFailedNotification(newVersion: string, error: string): void {

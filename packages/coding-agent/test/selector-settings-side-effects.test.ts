@@ -107,6 +107,21 @@ describe("selector setting side effects", () => {
 		expect(requestRender).toHaveBeenCalledTimes(1);
 	});
 
+	/**
+	 * The settings selector must update the live agent and journal policy, not
+	 * only persist a value that takes effect after restart.
+	 */
+	it("applies session instrumentation to the live session", () => {
+		const setInstrumentationLevel = vi.fn();
+		const controller = new SelectorController({
+			session: { setInstrumentationLevel },
+		} as unknown as InteractiveModeContext);
+
+		controller.handleSettingChange("session.instrumentation", "rich");
+
+		expect(setInstrumentationLevel).toHaveBeenCalledWith("rich");
+	});
+
 	it("/model picker sets the interactive session model", async () => {
 		const testTheme = await getThemeByName("dark");
 		if (!testTheme) throw new Error("Failed to load dark theme for model selector test");

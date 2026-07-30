@@ -354,4 +354,92 @@ describe("scroll isolation", () => {
 		tui.stop();
 		await term.flush();
 	});
+
+	/**
+	 * THE OPERATOR REPORT: the composer stays pinned only while the ability to select and copy
+	 * is gone. Holding the mouse is what pins it, and on the normal screen mouse reporting is
+	 * the same channel the terminal would use to select, so while isolation is on the grab lasts
+	 * from the first scrolled-off row until the process exits and every selection is Shift+drag.
+	 *
+	 * That grab is now PERMANENT for as long as the setting is on, and this pins it. A release
+	 * after a few seconds of quiet was built and then reverted: it unpinned the composer at
+	 * unpredictable moments, and it made whether a plain drag selected anything depend on how
+	 * recently the operator had typed, which is a worse surface than a hold that is simply
+	 * always on and documented. The answer to the copy problem is now the DEFAULT
+	 * (`tui.scrollIsolation` ships off, see the coding-agent settings suite), not a timer.
+	 *
+	 * If someone reintroduces an idle release, this test fails and they have to reckon with the
+	 * unpinning it caused rather than rediscovering it through an operator report.
+	 */
+	it("keeps the mouse for the whole session, because the idle release was reverted", async () => {
+		const term = new VirtualTerminal(40, 10, 1_000);
+		const originalWrite = term.write.bind(term);
+		let written = "";
+		term.write = (data: string) => {
+			written += data;
+			originalWrite(data);
+		};
+		const scheduler = new StressRenderScheduler();
+		const tui = new TUI(term, true, { renderScheduler: scheduler });
+		tui.setScrollbackRebuild(false); // see setup(): the default is env-derived
+		const transcript = new Transcript();
+		transcript.lines = rows("hist-", 30);
+		tui.addChild(transcript);
+		tui.setScrollIsolation(true);
+		tui.start();
+		await scheduler.drain(term);
+		// Grabbed while the session is live: history is above the window.
+		expect(written).toContain("\x1b[?1000h\x1b[?1006h");
+
+		written = "";
+		// Sit still far past any plausible idle window, and render again so a
+		// grab re-evaluation would certainly have run.
+		scheduler.advance(10_000);
+		tui.requestRender();
+		await scheduler.drain(term);
+
+		expect(written).not.toContain("\x1b[?1006l\x1b[?1000l");
+		tui.stop();
+		await term.flush();
+	});
+
+	/**
+	 * The one state that must NEVER release: a frozen transcript exists only because the engine
+	 * is driving it. Handing the wheel back mid-scroll would leave a stale frozen view on screen
+	 * with the terminal scrolling underneath it, which is worse than either model on its own.
+	 * Idle is normal while reading scrolled-back history, so this is the common case, not a
+	 * corner one.
+	 */
+	it("keeps the mouse while the transcript is scrolled away from the live tail", async () => {
+		const term = new VirtualTerminal(40, 10, 1_000);
+		const originalWrite = term.write.bind(term);
+		let written = "";
+		term.write = (data: string) => {
+			written += data;
+			originalWrite(data);
+		};
+		const scheduler = new StressRenderScheduler();
+		const tui = new TUI(term, true, { renderScheduler: scheduler });
+		tui.setScrollbackRebuild(false); // see setup(): the default is env-derived
+		const transcript = new Transcript();
+		transcript.lines = rows("hist-", 30);
+		tui.addChild(transcript);
+		tui.setScrollIsolation(true);
+		tui.start();
+		await scheduler.drain(term);
+
+		term.sendInput(WHEEL_UP);
+		await scheduler.drain(term);
+		expect(tui.virtualScrollActive).toBe(true);
+
+		written = "";
+		scheduler.advance(10_000);
+		tui.requestRender();
+		await scheduler.drain(term);
+
+		expect(written).not.toContain("\x1b[?1006l\x1b[?1000l");
+		expect(tui.virtualScrollActive).toBe(true);
+		tui.stop();
+		await term.flush();
+	});
 });

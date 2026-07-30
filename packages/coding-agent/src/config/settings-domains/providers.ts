@@ -307,6 +307,7 @@ export const PROVIDERS_SETTINGS = {
 				{ value: "assistant", label: "Assistant messages" },
 				{ value: "yield", label: "Final message only" },
 			],
+			condition: "speechEnabled",
 		},
 	},
 	"speech.enhanced": {
@@ -318,6 +319,7 @@ export const PROVIDERS_SETTINGS = {
 			label: "Enhanced Speech Rewriting",
 			description:
 				"Rewrite assistant output into natural spoken prose with the tiny/smol model before synthesis (describes code, drops links and markdown). Falls back to mechanical cleanup on failure",
+			condition: "speechEnabled",
 		},
 	},
 	"speech.voice": {
@@ -330,6 +332,7 @@ export const PROVIDERS_SETTINGS = {
 			label: "Speech Vocalization Voice",
 			description: "Kokoro voice used when speaking the assistant's output aloud",
 			options: TTS_LOCAL_VOICE_OPTIONS,
+			condition: "speechEnabled",
 		},
 	},
 	"providers.tinyModel": {
@@ -711,46 +714,38 @@ export const PROVIDERS_SETTINGS = {
 			tab: "tools",
 			group: "Developer",
 			label: "Auto QA",
-			description: "Enable automated tool issue reporting (report_tool_issue) for all agents",
+			description: "Record unexpected built-in tool behavior in this profile's local grievance database",
 		},
 	},
 
-	// No bundled Veyyon QA-push endpoint exists yet. Default is unset so the
-	// feature fails closed (see report-tool-issue.ts's `resolvePushConfig` —
-	// an empty/missing endpoint short-circuits to no-op) instead of guessing
-	// an upstream `qa.omp.sh`-style URL or an unowned Veyyon domain. Set this
-	// or `VEYYON_AUTO_QA_PUSH_URL` explicitly to opt in.
-	"dev.autoqaPush.endpoint": {
-		type: "string",
-		default: undefined,
+	"dev.autoqaPush.enabled": {
+		type: "boolean",
+		default: false,
 		ui: {
 			tab: "tools",
 			group: "Developer",
-			label: "Auto QA Push Endpoint",
-			description: "Full URL receiving Auto QA JSON reports (unset by default; no bundled endpoint)",
+			condition: "autoQaEnabled",
+			label: "Auto-upload Grievances",
+			description:
+				"Send new and queued grievances to veyyon.dev after recording them. Off keeps reports local until you run veyyon grievances push.",
+		},
+	},
+
+	"dev.autoqaPush.endpoint": {
+		type: "string",
+		default: "https://veyyon.dev/api/grievances",
+		ui: {
+			tab: "tools",
+			group: "Developer",
+			condition: "autoQaEnabled",
+			label: "Grievance Upload Endpoint",
+			description: "Destination for automatic and manual grievance uploads",
 		},
 	},
 
 	"dev.autoqaPush.token": {
 		type: "string",
 		default: undefined,
-	},
-
-	/**
-	 * User decision on sharing automatic `report_tool_issue` grievances.
-	 *
-	 *   - `"unset"`  — never asked; the first `report_tool_issue` invocation
-	 *                  pops a consent dialog and persists the answer here.
-	 *   - `"granted"` — record and (when push is configured) ship grievances.
-	 *   - `"denied"`  — silently no-op every `report_tool_issue` call.
-	 *
-	 * Owned by `packages/coding-agent/src/tools/report-tool-issue.ts` via the
-	 * process-global consent handler registered by `InteractiveMode`.
-	 */
-	"dev.autoqa.consent": {
-		type: "enum",
-		values: ["unset", "granted", "denied"] as const,
-		default: "unset" as const,
 	},
 
 	"gc.blobs": { type: "boolean", default: true },

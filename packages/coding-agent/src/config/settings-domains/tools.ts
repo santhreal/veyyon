@@ -580,6 +580,7 @@ export const TOOLS_SETTINGS = {
 				{ value: "120000", label: "2 minutes" },
 				{ value: "300000", label: "5 minutes" },
 			],
+			condition: "bashAutoBackgroundEnabled",
 		},
 	},
 
@@ -598,6 +599,7 @@ export const TOOLS_SETTINGS = {
 				{ value: "60000", label: "1 minute" },
 				{ value: "120000", label: "2 minutes" },
 			],
+			condition: "bashStallDetectionEnabled",
 		},
 	},
 
@@ -611,7 +613,7 @@ export const TOOLS_SETTINGS = {
 			group: "Discovery & MCP",
 			label: "Tool Discovery",
 			description:
-				"Hide tools behind a search tool to save tokens. 'auto' hides MCP tools once the tool set has more than 40 tools; 'mcp-only' always hides MCP tools; 'all' hides all non-essential built-ins too.",
+				"Hide tools behind a search tool to save tokens. 'auto' hides MCP tools once the tool set has more than 40 tools; 'mcp-only' always hides MCP tools; 'all' also hides non-essential built-ins and first-party heavyweight tools such as generate_image.",
 		},
 	},
 

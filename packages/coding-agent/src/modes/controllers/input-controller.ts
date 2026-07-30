@@ -22,6 +22,7 @@ import { parseQueueShorthand, splitQueuedMessages } from "../../modes/queue-inpu
 import { invokeSkillCommandFromText, isKnownSkillCommand } from "../../modes/skill-command";
 import type { InteractiveModeContext } from "../../modes/types";
 import { turnControlPrompts } from "../../prompts/turn-control/rows";
+import { abortDetached } from "../../session/detached-abort";
 import { USER_INTERRUPT_LABEL } from "../../session/messages";
 import { executeBuiltinSlashCommand } from "../../slash-commands/builtin-registry";
 import { isSensitiveSlashCommand, normalizeSubmittedPrompt } from "../../slash-commands/helpers/parse";
@@ -278,7 +279,7 @@ export class InputController {
 	}
 
 	#abortStreamingTurn(): void {
-		void this.ctx.session.abort({ reason: USER_INTERRUPT_LABEL });
+		abortDetached(this.ctx.session, "input-controller.abortStreamingTurn", USER_INTERRUPT_LABEL);
 	}
 
 	setupKeyHandlers(): void {
@@ -1435,7 +1436,11 @@ export class InputController {
 		if (allQueued.length === 0) {
 			this.ctx.updatePendingMessagesDisplay();
 			if (options?.abort) {
-				void this.ctx.session.abort({ reason: USER_INTERRUPT_LABEL });
+				abortDetached(
+					this.ctx.session,
+					"input-controller.restoreQueuedMessagesToEditor.empty",
+					USER_INTERRUPT_LABEL,
+				);
 			}
 			return 0;
 		}
@@ -1474,7 +1479,11 @@ export class InputController {
 		}
 		this.ctx.updatePendingMessagesDisplay();
 		if (options?.abort) {
-			void this.ctx.session.abort({ reason: USER_INTERRUPT_LABEL });
+			abortDetached(
+				this.ctx.session,
+				"input-controller.restoreQueuedMessagesToEditor.restored",
+				USER_INTERRUPT_LABEL,
+			);
 		}
 		return allQueued.length;
 	}

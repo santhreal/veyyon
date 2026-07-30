@@ -7,11 +7,17 @@
 - Added `TUI#onSelectionAttempt`, called when a left press and a release land in different cells outside the pinned footer while the engine holds the mouse. Capturing the mouse is what lets the wheel scroll the transcript, and it also takes plain drag-select away from the terminal, so hosts can now explain a drag that selected nothing instead of leaving it silent.
 - Added the scroll position to the right edge of a frozen transcript region: a dim one-column groove with a bright thumb, composited through the same cell-accurate path overlays use. It sits in the region that scrolled, so a host's pinned footer renders byte-identically whether the view is frozen or following.
 - Added `rankSettingItems`/`filterSettingItems`: field-weighted ranking for settings search. Label, declared synonyms, config path, group and description are scored separately with the best field winning, so a setting NAMED for your query outranks every setting whose description merely mentions it. A setting's current value and its enum values are no longer searchable (typing `high` used to match everything set to high, and results shifted as values changed), a punctuation-only query returns nothing instead of matching everything, and heading rows are excluded. `SettingItem` gained `group` and `keywords` for this.
-- Added `TUI#onSelectionAttempt`, called when a left press and a release land in different cells outside the pinned footer while the engine holds the mouse. Capturing the mouse is what lets the wheel scroll the transcript, and it also takes plain drag-select away from the terminal, so hosts can now explain a drag that selected nothing instead of leaving it silent.
-- Added the scroll position to the right edge of a frozen transcript region: a dim one-column groove with a bright thumb, composited through the same cell-accurate path overlays use. It sits in the region that scrolled, so a host's pinned footer renders byte-identically whether the view is frozen or following.
 
 ### Changed
 
+- The mouse grab that gives the wheel to the transcript now expires after 3s of no interaction,
+  instead of being held from the first scrolled-off row until the process exited. On the normal
+  screen, mouse reporting is the same channel the terminal uses to select text, so holding it
+  permanently meant every copy in a pinned-composer session needed Shift+drag. The grab is taken
+  at startup and re-taken on any keystroke or wheel event, and it is never released while the
+  transcript is frozen away from the live tail, where the engine is the only thing that can
+  scroll it. Release lands on the next render, with an idle timer as the backstop for a screen
+  static enough to produce no renders at all.
 - `tui.input.copy` is removed from the keybinding table. The editor returns early on `ctrl+c` so the
   app-level interrupt keeps working, and its own comment says it has no copy implementation, so the
   binding only ever advertised a key that copies nothing and a remap that does nothing. The composer
@@ -53,6 +59,8 @@
 
 ### Fixed
 
+- `SettingItem` can mark a row read-only. `SettingsList` suppresses value
+  cycling and submenu activation, and hosts can replace mutating footer shortcuts.
 - Transcript Markdown now treats `<summary>...</summary>` as a presentation wrapper and renders
   only its body. Context summaries no longer expose their internal boundary tags after streaming
   updates or transcript redraws; fenced code still shows literal tags.

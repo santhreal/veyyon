@@ -45,6 +45,59 @@ describe("SettingsList", () => {
 		expect(changes).toEqual([["mode", "on"]]);
 	});
 
+	/**
+	 * Read-only is a list-level invariant. A host must not have to erase values
+	 * and submenu callbacks to prevent Enter or Space from mutating a shadowed row.
+	 */
+	it("never activates a read-only item", () => {
+		const changes: Array<[string, string]> = [];
+		const valuesList = new SettingsList(
+			[
+				{
+					id: "shadowed-values",
+					label: "Shadowed",
+					currentValue: "off",
+					values: ["off", "on"],
+					readOnly: true,
+				},
+			],
+			5,
+			testTheme,
+			(id, value) => changes.push([id, value]),
+			() => {},
+		);
+
+		expect(valuesList.render(60).join("\n")).not.toContain("‹");
+		valuesList.handleInput("\n");
+		valuesList.handleInput(" ");
+
+		let submenuOpens = 0;
+		const submenuList = new SettingsList(
+			[
+				{
+					id: "shadowed-submenu",
+					label: "Shadowed",
+					currentValue: "off",
+					readOnly: true,
+					submenu: () => {
+						submenuOpens++;
+						return { render: () => ["must not open"] };
+					},
+				},
+			],
+			5,
+			testTheme,
+			(id, value) => changes.push([id, value]),
+			() => {},
+		);
+		submenuList.handleInput("\n");
+
+		expect(changes).toEqual([]);
+		expect(valuesList.getSelectedItem()?.currentValue).toBe("off");
+		expect(submenuOpens).toBe(0);
+		expect(submenuList.hasOpenSubmenu()).toBe(false);
+	});
+
 	it("passes changed state to item label and value renderers", () => {
 		const themed: SettingsListTheme = {
 			label: (text: string, _selected: boolean, changed: boolean) => (changed ? `[changed-label]${text}` : text),

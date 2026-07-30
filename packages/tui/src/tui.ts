@@ -95,8 +95,10 @@ const MOUSE_TRACKING_OFF = "\x1b[?1006l\x1b[?1003l\x1b[?1000l";
 // Wheel/button-only tracking for scroll isolation: 1000h reports button
 // presses (the wheel arrives as buttons 64/65) and 1006h SGR coordinates,
 // skipping 1003h any-motion so idle pointer moves never flood the input
-// queue. Tradeoff against native scroll: drag-select becomes Shift+drag,
-// the standard convention in mouse-capturing TUIs.
+// queue. Tradeoff against native scroll: while the grab is held, drag-select
+// becomes Shift+drag -- the standard convention in mouse-capturing TUIs, and
+// held for as long as the transcript is scrollable rather than coming and
+// going, so the gesture never depends on timing.
 const MOUSE_WHEEL_TRACKING_ON = "\x1b[?1000h\x1b[?1006h";
 // Scroll position, drawn on the right edge of a frozen transcript region. The
 // groove is dimmed rather than coloured: the engine owns no palette (themes
@@ -1084,8 +1086,9 @@ export class TUI extends Container {
 	// frame, so the gate closed, the mouse was released, and the wheel scrolled
 	// the terminal and took the prompt with it. Tracking still releases while
 	// the screen has no history at all, so a fresh session keeps full native
-	// drag-select; once there is history it is Shift+drag (documented in
-	// `tui.scrollIsolation`, which turns the whole model off).
+	// drag-select. Once there is history this gate opens and the grab is held for
+	// as long as it stays open. `tui.scrollIsolation` turns the whole model off
+	// for anyone who would rather have native scrollback.
 	#frameScrollable = false;
 	// Pinned footer = the last #pinnedFooterChildCount root children (the
 	// composer zone). The row count is derived from the segment ledger after
@@ -1105,6 +1108,26 @@ export class TUI extends Container {
 	#lastWheelDirection: -1 | 1 | null = null;
 	#lastWheelAtMs = 0;
 	#wheelStreak = 0;
+	// Idle release of the mouse grab.
+	//
+	// Holding the mouse is what pins the composer, and it is also what takes native
+	// drag-select away: on the normal screen the wheel reaches an application ONLY through
+	// mouse reporting, and that is the same reporting the terminal would otherwise use to
+	// select. There is no mode that reports the wheel without the buttons, so the two cannot
+	// both be live. The grab was therefore held from the moment anything scrolled off until
+	// the session ended, and selecting became Shift+drag for the rest of the run.
+	//
+	// The answer is NOT to time-box the grab. That was tried: the grab was held only within
+	// three seconds of a keystroke and released on the quiet after it. The quiet is when you
+	// READ, and once released the engine cannot see a wheel tick at all, so the wheel fell
+	// through to native scrollback and took the pinned composer off the bottom of the screen
+	// with it. It also made drag-select depend on how recently you had typed, so the same
+	// gesture selected or did not depending on the clock. A pinned composer that unpins itself
+	// whenever you stop typing is not the feature, and nondeterministic selection is worse than
+	// consistently reaching for Shift.
+	//
+	// So the grab is held whenever the transcript is scrollable, Shift+drag selects, and
+	// `/copy` lifts text out without the mouse at all.
 	// Exactly what is painted on the screen rows (post-composite, prepared).
 	#previousWindow: string[] = [];
 	#nativeScrollbackLiveRegionStart: number | undefined;

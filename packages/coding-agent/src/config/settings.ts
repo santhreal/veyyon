@@ -127,6 +127,9 @@ export interface InvalidSettingValue {
 	reason: string;
 }
 
+/** Layer that currently supplies a setting's effective value. */
+export type SettingSource = "default" | "profile" | "project" | "config-file" | "runtime" | "global";
+
 export interface SettingsOptions {
 	/** Current working directory for project settings discovery */
 	cwd?: string;
@@ -681,6 +684,24 @@ export class Settings {
 	}
 
 	/**
+	 * Identify the highest-precedence layer that supplies `path`.
+	 *
+	 * `/settings` writes profile values. Callers use this provenance to avoid
+	 * presenting a shadowed profile row as though an accepted edit took effect.
+	 */
+	getSource(path: string): SettingSource {
+		const segments = SETTING_PATH_SEGMENTS[path as SettingPath] ?? path.split(".");
+		if (getByPath(this.#overrides, segments) !== undefined) return "runtime";
+		if (GLOBAL_SETTING_BINDINGS[path]) {
+			return this.isConfigured(path as SettingPath) ? "global" : "default";
+		}
+		if (getByPath(this.#configOverlay, segments) !== undefined) return "config-file";
+		if (getByPath(this.#project, segments) !== undefined) return "project";
+		if (getByPath(this.#global, segments) !== undefined) return "profile";
+		return "default";
+	}
+
+	/**
 	 * Set a setting value (sync).
 	 * Updates global settings and queues a background save.
 	 * Triggers hooks for settings that have side effects.
@@ -1044,6 +1065,12 @@ export class Settings {
 		return this.get("bashInterceptor.patterns");
 	}
 
+	#modelRoleFromLayer(layer: RawSettings, role: ModelRole | string): string | undefined {
+		const value = getByPath(layer, ["modelRoles"]);
+		if (!isRecord(value)) return undefined;
+		return modelRoleValueFromUnknown(value[role]);
+	}
+
 	#modelRolesFromLayer(layer: RawSettings): Record<string, string> {
 		const value = getByPath(layer, ["modelRoles"]);
 		if (!isRecord(value)) return {};
@@ -1057,6 +1084,33 @@ export class Settings {
 			}
 		}
 		return roles;
+	}
+
+	/** Return one role from the profile layer, excluding project and runtime overrides. */
+	getPersistedModelRole(role: ModelRole | string): string | undefined {
+		return this.#modelRoleFromLayer(this.#global, role);
+	}
+
+	/** Identify the layer that supplies one effective model-role slot. */
+	getModelRoleSource(role: ModelRole | string): SettingSource {
+		if (this.#modelRoleFromLayer(this.#overrides, role) !== undefined) return "runtime";
+		if (this.#modelRoleFromLayer(this.#configOverlay, role) !== undefined) return "config-file";
+		if (this.#modelRoleFromLayer(this.#project, role) !== undefined) return "project";
+		if (this.#modelRoleFromLayer(this.#global, role) !== undefined) return "profile";
+		return "default";
+	}
+
+	/**
+	 * Persist one profile role without rewriting a higher-precedence override.
+	 *
+	 * This is the storage contract for profile-default controls. Interactive
+	 * session model switches continue to use {@link setModelRole}.
+	 */
+	setPersistedModelRole(role: ModelRole | string, modelId: string | undefined): void {
+		const current = this.#modelRolesFromLayer(this.#global);
+		if (modelId === undefined) delete current[role];
+		else current[role] = modelId;
+		this.set("modelRoles", current);
 	}
 
 	/**
@@ -1617,7 +1671,6 @@ export class Settings {
 			["batch", "batch"],
 			["maxConcurrency", "maxConcurrency"],
 			["enableLsp", "enableLsp"],
-			["maxRecursionDepth", "maxRecursionDepth"],
 			["maxRuntimeMs", "maxRuntimeMs"],
 			["agentIdleTtlMs", "idleTtlMs"],
 			["softRequestBudget", "softRequestBudget"],
@@ -1625,6 +1678,25 @@ export class Settings {
 			["showResolvedModelBadge", "showResolvedModelBadge"],
 		] as const) {
 			setNew([next], take(["task", legacy]));
+		}
+
+		// The old depth counted the root as level 1. The replacement counts only
+		// nested subagent levels, so old 1 becomes new 0. Old 0 disabled even the
+		// root task tool; preserve that behavior through the dedicated master
+		// switch. Both legacy paths are consumed, with the newer subagent path
+		// winning when a file somehow contains both.
+		const legacyTaskDepth = take(["task", "maxRecursionDepth"]);
+		const legacySubagentDepth = take(["subagent", "maxRecursionDepth"]);
+		const legacyDepth = legacySubagentDepth ?? legacyTaskDepth;
+		if (legacyDepth !== undefined) {
+			if (legacyDepth === 0) setByPath(raw, ["subagent", "enabled"], false);
+			const nestedDepth =
+				typeof legacyDepth === "number" && Number.isInteger(legacyDepth)
+					? legacyDepth < 0
+						? -1
+						: Math.max(0, legacyDepth - 1)
+					: legacyDepth;
+			setNew(["maxNestedSpawnDepth"], nestedDepth);
 		}
 
 		// task.isolation.* -> subagent.isolation.*

@@ -2,6 +2,7 @@
 // This is a settings DOMAIN, reached from `config/settings-schema.ts`, so the barrel arrived on the graph of
 // the most imported module in this package.
 import { AUTO_COMPACTION_THRESHOLD } from "@veyyon/agent-core/compaction/threshold";
+import { INSTRUMENTATION_LEVELS } from "@veyyon/ai/instrumentation";
 import { DEFAULT_TOKEN_BUDGET } from "argot";
 import { unsetNumberOption } from "../optional-number";
 import { EMPTY_STRING_ARRAY, HINDSIGHT_RECALL_TYPES_DEFAULT } from "./shared";
@@ -520,41 +521,43 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// Session instrumentation: how densely a run records a study record on each
-	// tool result (timing, output weight, args fingerprint) AND each model turn
-	// (request-start, ttft, throughput, and the exact sampling/reasoning/tool-choice
-	// params sent). `off` changes nothing; higher levels add strictly more fields
-	// and cost. The `dev` profile preset turns this to `ultra`. See
-	// captureToolCallMetrics, captureAssistantTurnMetrics, captureAssistantTurnRequest.
+	// Session telemetry uses the closed category policy in @veyyon/ai/instrumentation.
+	// `off` preserves the historical record unchanged; higher levels permit
+	// progressively richer structured, redacted records. Raw secrets and
+	// unredacted tool arguments are forbidden at every level.
 	"session.instrumentation": {
 		type: "enum",
-		values: ["off", "basic", "rich", "ultra"] as const,
+		values: INSTRUMENTATION_LEVELS,
 		default: "off",
 		ui: {
 			tab: "context",
 			group: "Session instrumentation",
 			label: "Session instrumentation",
 			description:
-				"Record study data on each tool result and each model turn: how long a tool ran and how much its output weighed, plus when a turn started, its time to first token, and its throughput. Off stores nothing extra. Each level adds more detail (and a little more cost) for studying where a session spent time.",
+				"Record structured, redacted study data in the session file. Higher levels add lifecycle, task-state, tool, model-turn, context, and agent-communication detail for `veyyon session stats`. Off still stores the normal resumable conversation and tool history, but adds no study fields.",
 			options: [
-				{ value: "off", label: "Off", description: "No study data recorded (default)." },
+				{
+					value: "off",
+					label: "Off",
+					description: "Store normal resumable session history without extra study data (default).",
+				},
 				{
 					value: "basic",
 					label: "Basic",
 					description:
-						"Wall-clock only: start, end, and duration per tool call, and request-start, ttft, duration, and the exact params sent per model turn. Free.",
+						"Adds session lifecycle and checkpoints, task-state transitions, tool wall-clock/status, and model request timing.",
 				},
 				{
 					value: "rich",
 					label: "Rich",
 					description:
-						"Adds a tool call's queue wait, scheduling mode, and result byte/token weight (one tokenizer pass), and a turn's token counts and output tokens/sec.",
+						"Adds context attribution, agent-message delivery facts, tool scheduling/result weight, model token throughput, and richer session-stat rollups.",
 				},
 				{
 					value: "ultra",
 					label: "Ultra",
 					description:
-						"Everything: also a tool call's arguments fingerprint/size, interruptibility, and abort state, and a turn's cache/reasoning token detail and upstream provider. For studying sessions in depth.",
+						"Adds full provenance: tool argument fingerprints, abort state, context-to-compaction links, directional agent routes, per-task transitions, cache/reasoning detail, and upstream provider.",
 				},
 			],
 		},

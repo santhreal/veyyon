@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import { parseArgs } from "../src/cli/args";
-import { CLI_THINKING_LEVELS } from "../src/thinking";
 import {
 	flagConsumesValue,
 	isUnknownLongValueCandidate,
@@ -9,6 +8,7 @@ import {
 	STRING_VALUE_FLAGS,
 } from "../src/cli/flag-tables";
 import { CliUsageError } from "../src/cli/usage-error";
+import { CLI_THINKING_LEVELS } from "../src/thinking";
 import { APPROVAL_MODE_VALUES } from "../src/tools/approval-modes";
 import { BUILTIN_TOOL_NAMES } from "../src/tools/builtin-names";
 

@@ -49,7 +49,8 @@ const DEMOTED_APPEARANCE_PATHS = [
 // Keys added to the Advanced fold AFTER the spec: new toggles that default
 // into Advanced (advanced: true) so the simplified 13-row appearance view
 // stays stable as the product grows. `tui.scrollIsolation` pins the prompt
-// while the wheel scrolls the transcript, on by default.
+// while the wheel scrolls the transcript, off by default because holding the
+// mouse costs the terminal's own drag-to-select.
 // `display.toolOutputExpanded` remembers the in-session expand-tool-output
 // toggle across sessions; it lands here rather than in the visible set because
 // the toggle is already how people reach it, and this row only persists the
@@ -204,6 +205,25 @@ describe("appearance advanced fold — panel rendering", () => {
 		// out of view — costs one row of the visible window.)
 		expect(rendered).toContain(`▾ Advanced (${ADVANCED_COUNT})`);
 		expect(rendered).toContain("Theme");
+	});
+
+	/**
+	 * Advanced rows keep their schema group in the visible heading, otherwise
+	 * scrolling made Status Line settings look like members of Display.
+	 */
+	it("labels expanded advanced rows with their original group", () => {
+		const comp = createSelector();
+		for (let i = 0; i < KEPT_APPEARANCE_PATHS.length; i++) comp.handleInput("\x1b[B");
+		comp.handleInput("\n");
+		expect(comp.selectSetting("statusLine.sessionAccent")).toBe(true);
+
+		const lines = comp.render(FLAT_WIDTH);
+		const heading = lines.findIndex(line => line.includes("Advanced · Status Line"));
+		const selected = lines.findIndex(line => line.includes("Session Accent"));
+
+		expect(heading).toBeGreaterThanOrEqual(0);
+		expect(selected).toBeGreaterThan(heading);
+		expect(lines.slice(heading, selected + 1).join("\n")).not.toContain("◆ Display");
 	});
 
 	it("surfaces a non-default advanced value even while the fold stays collapsed, without inflating the heading count", () => {

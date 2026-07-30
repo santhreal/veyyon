@@ -65,6 +65,7 @@ import { type PlanApprovalDetails, resolveApprovedPlan } from "../../plan-mode/a
 import { DEFAULT_PLAN_FILE_URL } from "../../plan-mode/plan-file-url";
 import type { AgentSession, AgentSessionEvent } from "../../session/agent-session";
 import { BlobStore, resolveImageDataSync } from "../../session/blob-store";
+import { abortDetached } from "../../session/detached-abort";
 import { isSilentAbort, SKILL_PROMPT_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "../../session/messages";
 import type { UsageStatistics } from "../../session/session-entries";
 import type { SessionInfo as StoredSessionInfo } from "../../session/session-listing";
@@ -2300,7 +2301,7 @@ export class AcpAgent implements Agent {
 				getModel: () => record.session.model,
 				isIdle: () => !record.session.isStreaming,
 				abort: () => {
-					void record.session.abort({ reason: USER_INTERRUPT_LABEL });
+					abortDetached(record.session, "acp-agent.session.abort", USER_INTERRUPT_LABEL);
 				},
 				hasPendingMessages: () => record.session.queuedMessageCount > 0,
 				shutdown: () => {},

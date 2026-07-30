@@ -484,6 +484,7 @@ export const INTERACTION_SETTINGS = {
 			description:
 				"Local on-device speech model. Parakeet TDT v3 (sherpa-onnx) is the SoTA default; Whisper base/small/large-v3-turbo tiers (transformers.js) trade size for multilingual coverage. Downloaded on first use.",
 			options: STT_MODEL_OPTIONS,
+			condition: "sttEnabled",
 		},
 	},
 	"stt.submitTrigger": {
@@ -497,6 +498,7 @@ export const INTERACTION_SETTINGS = {
 			description:
 				"Choose when speech dictation automatically submits: Never, Release (2+ words), Release with complete sentence, or When I Say Submit.",
 			options: STT_SUBMIT_TRIGGER_OPTIONS,
+			condition: "sttEnabled",
 		},
 	},
 } as const;

@@ -8,6 +8,8 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent } from "@veyyon/ai";
 import { logger, sanitizeText } from "@veyyon/utils";
+import { transformProviderPayload } from "../provider-boundary";
+import { SECRET_SPEND_NOTICE_SOURCE } from "../secrets/notices";
 import type { AgentSession, AgentSessionEvent } from "../session/agent-session";
 import { isSilentAbort } from "../session/messages";
 import { executeAcpBuiltinSlashCommand } from "../slash-commands/acp-builtins";
@@ -42,6 +44,9 @@ function stripProviderPayload<T extends AgentMessage>(message: T): T {
 	const { providerPayload: _providerPayload, ...rest } = message;
 	return rest as T;
 }
+
+/** Named so a failed redaction says which sink refused to emit. */
+const JSON_OUTPUT_BOUNDARY = "print mode --mode json output";
 
 /**
  * Shape an event for `--mode json` output.
@@ -103,7 +108,7 @@ export function printableEvent(event: AgentSessionEvent): unknown {
  */
 export type PrintModeSession =
 	| AgentSession
-	| (Pick<AgentSession, "subscribe" | "prompt" | "dispose" | "displayAssistantContent"> & {
+	| (Pick<AgentSession, "subscribe" | "prompt" | "dispose" | "displayAssistantContent" | "obfuscateProviderText"> & {
 			// Only the two members print mode reads, not the whole state object and
 			// the whole SessionManager class. A caller that has just these can drive
 			// print mode, and that is worth being able to say.
@@ -119,11 +124,44 @@ export type PrintModeSession =
 export async function runPrintMode(session: PrintModeSession, options: PrintModeOptions): Promise<void> {
 	const { mode, messages = [], initialMessage, initialImages, printThoughts, commandRuntime } = options;
 
+	// Every byte `--mode json` writes to stdout goes through here, and there is
+	// exactly one of these so a later event type cannot be added past it.
+	//
+	// JSON mode is consumed by CI, wrappers, and anything piping stdout into a file,
+	// so it is held to the PROVIDER standard rather than the display standard: the
+	// placeholder, never the credential. The events this mode subscribes to are built
+	// for a human at a terminal. `tool_execution_start` carries the arguments a tool was
+	// actually handed, which are expanded by definition, and `displayAssistantContent`
+	// restores placeholders in the text it is given. Restoration there is NOT a blanket
+	// "the operator sees their own value", and this comment used to say it was: it is
+	// governed by the display policy keyed on `SecretEntry.origin`, which withholds vault,
+	// environment, and plain file secrets and restores only a `secrets.yml` regex match,
+	// whose value is local text a rule recognised rather than a stored credential.
+	// None of that helps this sink, because a stream somebody archives is not a screen.
+	// Before this, a spend
+	// under `--mode json` wrote the expanded credential to stdout in four places
+	// (`tool_execution_start.args`, `message_start`/`message_end`, and the `agent_end`
+	// message repeat) while the session file, the audit log, and the provider request
+	// for the same turn were all clean.
+	//
+	// `transformProviderPayload` is the walker the outbound provider seam already uses,
+	// so this is that seam applied to one more sink rather than a second scrubber that
+	// can drift from it — and it fails closed: a transform that throws takes the write
+	// with it instead of emitting unredacted bytes.
+	const writeJsonLine = (payload: unknown): void => {
+		const redacted = transformProviderPayload(
+			payload,
+			text => session.obfuscateProviderText(text),
+			JSON_OUTPUT_BOUNDARY,
+		);
+		process.stdout.write(`${JSON.stringify(redacted)}\n`);
+	};
+
 	// Emit session header for JSON mode
 	if (mode === "json") {
 		const header = session.sessionManager.getHeader();
 		if (header) {
-			process.stdout.write(`${JSON.stringify(header)}\n`);
+			writeJsonLine(header);
 		}
 	}
 	// Set up extensions for print mode (no UI, no command context). The guard is
@@ -146,7 +184,16 @@ export async function runPrintMode(session: PrintModeSession, options: PrintMode
 	session.subscribe(event => {
 		// In JSON mode, output all events
 		if (mode === "json") {
-			process.stdout.write(`${JSON.stringify(printableEvent(event))}\n`);
+			writeJsonLine(printableEvent(event));
+			return;
+		}
+		// Text mode's stdout is the final answer and nothing else, because a caller pipes it
+		// somewhere. A spend therefore goes to stderr, where `Working...` and error lines already
+		// live. Without this, headless `-p` under yolo was the one surface left where a stored
+		// credential could reach a live command with no signal at all: the approval boundary is
+		// skipped in yolo by design, and text mode prints no events.
+		if (event.type === "notice" && event.source === SECRET_SPEND_NOTICE_SOURCE) {
+			process.stderr.write(`${sanitizeText(event.message)}\n`);
 		}
 	});
 
@@ -160,7 +207,7 @@ export async function runPrintMode(session: PrintModeSession, options: PrintMode
 	let promptedModel = false;
 	const emitCommandOutput = (text: string): void => {
 		if (mode === "json") {
-			process.stdout.write(`${JSON.stringify({ type: "command_output", text })}\n`);
+			writeJsonLine({ type: "command_output", text });
 		} else {
 			process.stdout.write(`${sanitizeText(text)}\n`);
 		}

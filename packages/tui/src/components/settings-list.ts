@@ -30,6 +30,8 @@ export interface SettingItem {
 	submenu?: (currentValue: string, done: (selectedValue?: string) => void) => Component;
 	/** True when the displayed setting differs from its default value. */
 	changed?: boolean;
+	/** The value comes from a layer this surface does not own; activation is disabled. */
+	readOnly?: boolean;
 	/** Render as a non-interactive section heading. Skipped by navigation and search. */
 	heading?: boolean;
 	/** The group this setting sits under, searchable at low weight so "thinking"
@@ -551,7 +553,8 @@ export class SettingsList implements Component {
 		const valueMaxWidth = rowWidth - prefixWidth - maxLabelWidth - visibleWidth(separator) - 2;
 		// The selected boolean/enum row shows ‹ value › so the Left/Right
 		// cycling gesture is discoverable, not a hidden power feature.
-		const cyclable = isSelected && !item.submenu && item.values !== undefined && item.values.length > 0;
+		const cyclable =
+			isSelected && !item.readOnly && !item.submenu && item.values !== undefined && item.values.length > 0;
 		const rawValue = cyclable ? `‹ ${item.currentValue} ›` : String(item.currentValue ?? "");
 		const valuePlain = truncateToWidth(rawValue, valueMaxWidth, Ellipsis.Omit);
 		const hovered = !isSelected && this.#theme.hovered !== undefined && item.id === this.#hoveredItemId;
@@ -871,7 +874,7 @@ export class SettingsList implements Component {
 
 	#activateItem(): void {
 		const item = this.#filteredItems[this.#selectedIndex];
-		if (!item || item.heading) return;
+		if (!item || item.heading || item.readOnly) return;
 
 		if (item.submenu) {
 			// Open submenu, passing current value so it can pre-select correctly
