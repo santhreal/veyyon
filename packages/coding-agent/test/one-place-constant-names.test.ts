@@ -159,6 +159,6 @@ describe("the eval kernel startup timeout has one owner", () => {
 		// Julia legitimately needs longer (it compiles its runner on first load).
 		// Expressed as base-plus-margin so raising the shared floor raises Julia's
 		// too, which is the whole point of having one owner.
-		expect(sourceOf("eval/jl/kernel.ts")).toContain("DEFAULT_KERNEL_STARTUP_TIMEOUT_MS + 5_000");
+		expect(sourceOf("eval/jl/kernel.ts")).toContain("DEFAULT_KERNEL_STARTUP_TIMEOUT_MS + 20_000");
 	});
 });
