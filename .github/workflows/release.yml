@@ -43,6 +43,10 @@ on:
             required: true
             default: "patch"
             type: string
+         expected_sha:
+            description: "Exact origin/main SHA validated by the release operator"
+            required: true
+            type: string
 
 # Never run two releases at once, and never cancel one in flight: a half-pushed
 # release (commit without tag, or a tag with no lockfile bump) is far worse than
@@ -81,6 +85,7 @@ jobs:
            env:
               EVENT_NAME: ${{ github.event_name }}
               DISPATCH_VERSION: ${{ inputs.version }}
+              EXPECTED_SHA: ${{ inputs.expected_sha }}
               # Only defined for workflow_run events; empty on dispatch.
               HEAD_COMMIT_MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
               TRIGGER_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -95,12 +100,21 @@ jobs:
                 exit 0
               fi
 
-              # Manual dispatch chooses the version, not the evidence standard.
-              # It fails rather than returning a green no-op when any exact-SHA
-              # source workflow or GitHub publication state cannot be proved.
+              # Manual dispatch chooses the version, not the source commit or
+              # evidence standard. The operator passes the origin/main SHA it
+              # validated locally; fail closed if main advanced while this run
+              # was queued instead of silently retargeting the requested version.
               if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+                if [ -z "$EXPECTED_SHA" ]; then
+                  echo "::error::manual release requires the exact validated main SHA"
+                  exit 1
+                fi
+                if [ "$EXPECTED_SHA" != "$main_head" ]; then
+                  echo "::error::main is at $main_head, but the operator validated $EXPECTED_SHA; dispatch a new release only after validating the new main HEAD"
+                  exit 1
+                fi
                 bun scripts/release-gate-decision.ts --green-only >/dev/null
-                echo "manual dispatch: exact-SHA CI, Checks, and Security are green; releasing '${DISPATCH_VERSION}'"
+                echo "manual dispatch: exact-SHA CI, Checks, and Security are green for $EXPECTED_SHA; releasing '${DISPATCH_VERSION}'"
                 echo "should-release=true" >> "$GITHUB_OUTPUT"
                 echo "version=${DISPATCH_VERSION}" >> "$GITHUB_OUTPUT"
                 exit 0
