@@ -80,6 +80,22 @@
 
 ### Fixed
 
+- `cli.ts` owns the help layout, and it now fits the terminal it prints into. Help was laid out for
+  an infinite screen: it padded to the widest entry and never wrapped, so `veyyon --help` emitted 85
+  lines past 80 columns with a 221-character worst case, and the terminal re-broke every one of them
+  at an arbitrary column with no indent. `renderHelpTable(rows)` and `renderHelpParagraph(text)`
+  measure with `Bun.stringWidth` rather than `.length`, so a styled entry is not charged for its
+  escape bytes, and wrap with `Bun.wrapAnsi(..., { trim: true })`. The gutter is capped at a third of
+  the width, because a single long flag was setting the description column for the seventy short ones
+  around it and leaving them fifteen usable columns; entries wider than the cap put their description
+  on the next line instead of dragging everything right. Width comes from `process.stdout.columns`,
+  then the exported `COLUMNS`, then 80, clamped to [60, 100]. Consulting stdout alone was not enough:
+  piping help into a pager is how a long one gets read, and that is exactly when stdout reports no
+  width, so a 60-column pane was laid out for 80 and put 113 lines past the edge. A line may still
+  exceed the width when it is a single token with nowhere to break, such as
+  `--approval-mode=<plan|ask|auto-edit|yolo|always-ask|write>` or a session path; force-breaking those
+  would leave a flag or a path that cannot be copied. Overflowing a line that has a space in it is the
+  defect, and that is what the suite asserts.
 - `TempDir` puts its directory in the system temp directory when you give it a bare name. It used to
   hand the prefix straight to `mkdtemp`, which resolves a relative path against `process.cwd()`, so
   `TempDir.createSync("secret-runtime-lifecycle-")` created its scratch directory inside the
