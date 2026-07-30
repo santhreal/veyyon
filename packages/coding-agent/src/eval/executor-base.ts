@@ -505,6 +505,10 @@ export async function executeWithKernelBase<
 			onDisplay: output => collectDisplay(output),
 		});
 
+		if (result.cancelled && result.kernelKilled && !result.timedOut && !abortShield.abortRequested) {
+			throw new Error(`${errorLogLabel} kernel exited during execution`);
+		}
+
 		if (result.cancelled || abortShield.abortRequested) {
 			const timedOut = result.timedOut || abortShield.timedOut;
 			const annotation = timedOut
