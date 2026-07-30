@@ -108,7 +108,9 @@ describe("searchSmitheryRegistry", () => {
 		}
 
 		expect(fetchCalls).toBe(0);
-		expect(String(failure)).toBe("ProviderTransformError: Smithery registry search confidentiality transform failed.");
+		expect(String(failure)).toBe(
+			"ProviderTransformError: Smithery registry search confidentiality transform failed.",
+		);
 		expect(String(failure)).not.toContain(rawKeyword);
 	});
 	/**
