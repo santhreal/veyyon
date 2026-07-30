@@ -33,10 +33,11 @@ import {
 	VERSION,
 } from "@veyyon/utils/dirs";
 import { declareWorkerHostEntry, installWorkerInbox } from "@veyyon/utils/worker-host";
-import { EXIT_FAILURE } from "./cli/exit-codes";
+import { EXIT_FAILURE, EXIT_USAGE } from "./cli/exit-codes";
 import { installProfileAlias, resolveProfileAliasCommandFromProcess } from "./cli/profile-alias";
 import { extractProfileFlags } from "./cli/profile-bootstrap";
 import { DAEMON_BROKER_WORKER_ARG } from "./launch/protocol";
+import { CliUsageError } from "./cli/usage-error";
 import {
 	JS_EVAL_PROCESS_ARG,
 	JS_EVAL_WORKER_ARG,
@@ -346,7 +347,7 @@ export async function runCli(argv: string[]): Promise<void> {
 		if (extracted.aliasName !== undefined) {
 			const profile = extracted.profile ?? getActiveProfile();
 			if (!profile) {
-				throw new Error("--alias requires --profile <name> or VEYYON_PROFILE");
+				throw new CliUsageError("--alias requires --profile <name> or VEYYON_PROFILE");
 			}
 			const result = await installProfileAlias({
 				profile,
@@ -361,9 +362,15 @@ export async function runCli(argv: string[]): Promise<void> {
 			return;
 		}
 	} catch (error) {
+		// A bootstrap flag with no value (`--profile`, `--alias=`) is a bad command
+		// line, not a run that failed, so it owes the caller EXIT_USAGE like every
+		// other usage error. Discriminating here rather than routing through
+		// `reportCliUsageError` keeps `cli/args.ts` out of this file's static graph:
+		// this catch runs before the profile is resolved, and args.ts pulls runtime
+		// `@veyyon/utils` modules that must not load until `setProfile` has.
 		const message = errorMessage(error);
 		process.stderr.write(`Error: ${message}\n`);
-		process.exitCode = EXIT_FAILURE;
+		process.exitCode = error instanceof CliUsageError ? EXIT_USAGE : EXIT_FAILURE;
 		return;
 	}
 
@@ -400,8 +407,11 @@ export async function runCli(argv: string[]): Promise<void> {
 	// Everything else that isn't a known subcommand routes to "launch".
 	const resolved = resolveCliArgv(resolvedArgv);
 	if ("error" in resolved) {
+		// A mistyped subcommand is a bad command line, not a run that failed:
+		// `veyyon confg` cannot succeed on a retry, so it owes the caller the same
+		// EXIT_USAGE that an unrecognized flag returns (see cli/exit-codes.ts).
 		process.stderr.write(`Error: ${resolved.error}\n`);
-		process.exitCode = EXIT_FAILURE;
+		process.exitCode = EXIT_USAGE;
 		return;
 	}
 	return run({ bin: APP_NAME, version: VERSION, argv: resolved.argv, commands, help: showHelp });

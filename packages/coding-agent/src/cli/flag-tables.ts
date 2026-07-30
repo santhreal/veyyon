@@ -34,20 +34,24 @@ import type { ConfiguredThinkingLevel } from "../thinking";
 // approval-modes.ts is intentionally free of runtime deps (no @veyyon/utils), so
 // importing it here does not violate the bootstrap-race IMPORT RULE above.
 import { APPROVAL_MODE_VALUES, isKnownApprovalMode } from "../tools/approval-modes";
-import type { Args } from "./args";
+import type { Args, Mode } from "./args";
 import { CliUsageError } from "./usage-error";
 
 /**
- * Runtime dependencies injected into setters that need to validate input or
- * warn about bad values. `args.ts` constructs one object at module load and
- * passes it to each {@link STRING_SETTERS} call.
+ * Runtime dependencies injected into setters that need to validate input.
+ * `args.ts` constructs one object at module load and passes it to each
+ * {@link STRING_SETTERS} call.
  *
  * Keeping these out of the setter closures means this module stays free of
  * runtime imports from `@veyyon/utils`, which is the whole reason it can
  * be safely imported by `profile-bootstrap.ts` before `setProfile` runs.
+ *
+ * There is deliberately no logger here: a value this table cannot honour is
+ * rejected with a {@link CliUsageError}, never logged and dropped. A warning
+ * emitted below the default log level is invisible in a terminal, so the run
+ * continued with a setting the user did not ask for.
  */
 export interface ParseDeps {
-	logger: { warn: (message: string, meta?: Record<string, unknown>) => void };
 	parseThinking: (value: string | null | undefined) => ConfiguredThinkingLevel | undefined;
 	builtinToolNames: readonly string[];
 	normalizeToolNames: (values: Iterable<string>) => string[];
@@ -108,6 +112,38 @@ function parseMaxTimeSeconds(value: string): number {
 }
 
 /**
+ * Accepted `--mode` values, with the guard that gates them. Mirrors the
+ * `isKnownApprovalMode` shape in `../tools/approval-modes` so both enum-valued
+ * flags reject a bad value the same way.
+ *
+ * Keyed by `Mode` rather than written as a bare array so the compiler forces
+ * this table to stay exhaustive. A hand-listed array would still typecheck
+ * while missing a newly added mode, and then the rejection message would
+ * confidently name a set of accepted values that is out of date -- with the
+ * parser refusing a mode the rest of the CLI supports.
+ */
+const MODE_ACCEPTED: Record<Mode, true> = { text: true, json: true, rpc: true, acp: true, "rpc-ui": true };
+
+export const MODE_VALUES: readonly Mode[] = Object.keys(MODE_ACCEPTED) as Mode[];
+
+function isKnownMode(value: string): value is Mode {
+	return Object.hasOwn(MODE_ACCEPTED, value);
+}
+
+/**
+ * A rejected flag value, phrased so the terminal output names the fix.
+ *
+ * Every enum-valued flag routes its failure through here for one reason: a
+ * value the parser cannot honour must never be dropped in favour of a default.
+ * Silently falling back means `--approval-mode=asky` runs with a DIFFERENT
+ * approval policy than the one written on the command line, and the run looks
+ * successful, which is a safety problem rather than a cosmetic one.
+ */
+function invalidFlagValue(flag: string, value: string, accepted: readonly string[]): CliUsageError {
+	return new CliUsageError(`Invalid ${flag} value: ${JSON.stringify(value)}. Expected one of: ${accepted.join(", ")}.`);
+}
+
+/**
  * Setters for flags with string values. Most built-ins consume the next argv
  * token even when it starts with `-`; flags listed in
  * {@link EXTENSION_SHADOWABLE_STRING_FLAGS} use extension-style consumption so
@@ -121,9 +157,8 @@ export const STRING_SETTERS: Record<string, StringSetter> = {
 		result.config = [...(result.config ?? []), value];
 	},
 	"--mode": (result, value) => {
-		if (value === "text" || value === "json" || value === "rpc" || value === "acp" || value === "rpc-ui") {
-			result.mode = value;
-		}
+		if (!isKnownMode(value)) throw invalidFlagValue("--mode", value, MODE_VALUES);
+		result.mode = value;
 	},
 	"--fork": (result, value) => {
 		result.fork = value;
@@ -186,29 +221,22 @@ export const STRING_SETTERS: Record<string, StringSetter> = {
 				.map(s => s.trim())
 				.filter(Boolean),
 		);
-		const valid: string[] = [];
-		for (const name of names) {
-			if (deps.builtinToolNames.includes(name)) {
-				valid.push(name);
-			} else {
-				deps.logger.warn("Unknown tool passed to --tools", {
-					tool: name,
-					validTools: deps.builtinToolNames,
-				});
-			}
+		// A typo here used to be dropped with a log line nobody sees, and because
+		// every name was dropped the session started with an EMPTY toolset: the
+		// agent then answered "I have no tools available" mid-run. Refuse instead,
+		// so `--tools=raed` never masquerades as a deliberate `--no-tools`.
+		const unknown = names.filter(name => !deps.builtinToolNames.includes(name));
+		if (unknown.length > 0) {
+			throw new CliUsageError(
+				`Unknown ${unknown.length === 1 ? "tool" : "tools"} passed to --tools: ${unknown.map(name => JSON.stringify(name)).join(", ")}. Expected one of: ${deps.builtinToolNames.join(", ")}.`,
+			);
 		}
-		result.tools = valid;
+		result.tools = names;
 	},
 	"--thinking": (result, value, deps) => {
 		const thinking = deps.parseThinking(value);
-		if (thinking !== undefined) {
-			result.thinking = thinking;
-		} else {
-			deps.logger.warn("Invalid thinking level passed to --thinking", {
-				level: value,
-				validThinkingLevels: deps.thinkingEfforts,
-			});
-		}
+		if (thinking === undefined) throw invalidFlagValue("--thinking", value, deps.thinkingEfforts);
+		result.thinking = thinking;
 	},
 	"--export": (result, value) => {
 		result.export = value;
@@ -226,15 +254,12 @@ export const STRING_SETTERS: Record<string, StringSetter> = {
 	"--skills": (result, value) => {
 		result.skills = value.split(",").map(s => s.trim());
 	},
-	"--approval-mode": (result, value, deps) => {
-		if (isKnownApprovalMode(value)) {
-			result.approvalMode = value;
-		} else {
-			deps.logger.warn("Invalid value passed to --approval-mode", {
-				value,
-				validValues: [...APPROVAL_MODE_VALUES],
-			});
-		}
+	"--approval-mode": (result, value) => {
+		// Never fall back to the configured default: the whole point of writing
+		// `--approval-mode=ask` is to constrain THIS run, so honouring a typo as
+		// "whatever the config said" hands the user more autonomy than requested.
+		if (!isKnownApprovalMode(value)) throw invalidFlagValue("--approval-mode", value, APPROVAL_MODE_VALUES);
+		result.approvalMode = value;
 	},
 };
 

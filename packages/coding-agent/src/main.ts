@@ -143,7 +143,7 @@ const HOST_DEFAULTED_SETTING_PATHS: SettingPath[] = [
 	"subagent.delegation",
 	"subagent.batch",
 	"subagent.maxConcurrency",
-	"subagent.maxRecursionDepth",
+	"subagent.maxNestedSpawnDepth",
 	"subagent.agents",
 	// Memory subsystems are off-by-default for RPC/ACP hosts; embedders that want
 	// memory should opt in explicitly through their own settings layer.
@@ -624,7 +624,7 @@ async function runInteractiveMode(
 			// tell the user what to do next.
 			const outcome = await runAutoUpdate(VERSION, release);
 			if (outcome.status === "updated") {
-				mode.showUpdateReadyNotification(outcome.version);
+				mode.showUpdateReadyNotification(outcome.version, outcome.warnings);
 			} else if (outcome.status === "failed") {
 				mode.showUpdateFailedNotification(outcome.version ?? release.version, outcome.error);
 			} else if (outcome.status === "skipped") {
@@ -1393,7 +1393,12 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 					'Pipe a prompt (`echo "…" | veyyon`), pass one with `-p "…"`, or run veyyon from an interactive terminal.\n',
 			);
 		}
-		process.exit(EXIT_FAILURE);
+		// EXIT_USAGE, not EXIT_FAILURE. `exit-codes.ts` names this case verbatim as a usage error
+		// ("an interactive launch with no terminal to be interactive in"), and the test is whether
+		// retrying the identical invocation could ever help: it cannot, because nothing about the
+		// command ran. It also removes a split down the middle of one mistake, where `veyyon confg`
+		// exited 2 but `veyyon confg get foo` reached this guard and exited 1.
+		process.exit(EXIT_USAGE);
 	}
 	// Interactive mode's modes/components subtree is the largest single chunk of
 	// the boot module graph. Kick its load here so the parse overlaps with
@@ -1687,11 +1692,22 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 		// having printed nothing — a silent no-op. Fail before any session/MCP
 		// work. Resumed sessions are exempt: `veyyon -p -c` legitimately
 		// re-prints the last assistant response.
+		//
+		// "Nothing to send" includes a prompt that is present but blank. `veyyon -p ""`
+		// (or `-p "   "`) used to slip past a bare `initialMessage === undefined` check
+		// and spend a real provider round-trip, which came back as a raw upstream
+		// `400 {"type":"error",…,"messages: at least one message is required"}` plus an
+		// internal http-log path — a provider-shaped error for a plain input mistake.
+		// Images are the one blank-text case that is real: `buildInitialMessage`
+		// deliberately returns "" for an image-only prompt, so those still run.
+		const hasPromptText =
+			(initialMessage !== undefined && initialMessage.trim().length > 0) ||
+			initialArgs.messages.some(message => message.trim().length > 0);
 		if (
 			!isInteractive &&
 			!isProtocolMode &&
-			initialMessage === undefined &&
-			initialArgs.messages.length === 0 &&
+			!hasPromptText &&
+			(initialImages?.length ?? 0) === 0 &&
 			!parsedArgs.continue &&
 			!parsedArgs.resume &&
 			!parsedArgs.fork
