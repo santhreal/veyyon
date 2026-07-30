@@ -125,35 +125,52 @@ performs the release itself.
 6. Tag and atomically push `main` plus the tag (pushed by commit SHA so background
    tag pruning cannot lose it). If main advanced, the push fails without rebasing.
    The newer main SHA gets a fresh cut only after its own CI, Checks, and Security runs pass.
-7. Dispatch `checks.yml` and `security.yml` at the immutable tag and verify both runs
-   target the bump SHA. Only after both pass, dispatch `ci.yml` at the same tag for publication.
+7. Dispatch `checks.yml` and `security.yml` at the immutable tag with a unique
+   correlation token. Verify the newly created runs carry that token, target the
+   bump SHA, and pass. Only then dispatch `ci.yml` at the same tag.
 
 ## What CI does with the tag
 
-The dispatched `ci.yml` run checks out the immutable release tag, builds every
-platform binary, and publishes the binary and native-addon assets only to GitHub.
-There is no npm or Homebrew publish step. After `release_github` succeeds,
-`release_site` deploys the two Cloudflare Pages projects:
+The dispatched `ci.yml` run checks out the immutable release tag and builds every
+platform binary. There is no npm or Homebrew publish step. Publication is one
+ordered transaction:
 
-- the **GitHub release**: all `veyyon-*` binaries, native addons, and `.sha256`
-  checksums. This is what the `curl | sh` installer, source installs that fetch a
-  prebuilt native addon, and the binary self-updater resolve;
-- the **website** (`veyyon.dev`), which regenerates `website/changelog.html` from
-  `packages/coding-agent/CHANGELOG.md` (reconciled against the live GitHub Releases
-  for real dates and permalinks) and deploys it to Cloudflare Pages. This is what
-  keeps `veyyon.dev/changelog` current, and it is why the agent never prints release
-  notes into the terminal: after an update it shows one line and points at
-  `/changelog`, which opens that page;
-- the **install endpoint** (`get.veyyon.dev`), a separate built tree (`website-get/`,
-  the install scripts plus a root rewrite) deployed to a second Cloudflare Pages
-  project, so `curl | sh` and the auto-updater always serve the current install
-  script for the release that just shipped.
+1. Create or resume a **draft** GitHub release. Upload every `veyyon-*` binary,
+   native addon, and `.sha256` sidecar. Record their exact digest manifest.
+2. Download and launch the draft macOS, Linux, and Windows binaries. Verify their
+   checksums, embedded version, signatures where configured, smoke tests, and
+   native addon load.
+3. Deploy both Cloudflare Pages projects while the release is still hidden.
+   Verify `get.veyyon.dev` serves the installer bytes from this tag.
+4. Re-download every draft asset and compare its digest to the preserved
+   manifest. Resolve the Git tag ref to the bump SHA, then publish that exact
+   draft.
+5. Rebuild and redeploy `veyyon.dev` after publication. The changelog generator
+   can now replace the draft's pending card with its immutable GitHub release
+   link. Verify that link on the deployed page.
+6. Drive the POSIX and Windows installers against the newly published
+   `releases/latest` on Linux, Intel and Apple Silicon macOS, and Windows.
 
-On `main` pushes, CI also drives the POSIX and Windows installers against the
-release that is already in production. These jobs are visible monitors, not
-release gates: a broken published artifact must not block the source-built
-release that repairs it. The `install_methods` and `install_ps1_e2e` jobs exercise
-the current candidate and remain hard dependencies of `release_binary`.
+The release train is green only after all six steps pass. Any failed, cancelled,
+or skipped required job updates the pinned `release-train` issue.
+
+The resulting surfaces are:
+
+- the **GitHub release**: all platform binaries, native addons, and `.sha256`
+  checksums. The `curl | sh` installer, source installs that fetch a prebuilt
+  native addon, and the binary self-updater resolve these assets;
+- the **website** (`veyyon.dev`): `website/changelog.html`, regenerated from
+  `packages/coding-agent/CHANGELOG.md` and reconciled against the published
+  GitHub Releases for real dates and permalinks;
+- the **install endpoint** (`get.veyyon.dev`): a separate built tree
+  (`website-get/`, the install scripts plus a root rewrite) deployed to the
+  `veyyon-get` Pages project.
+
+On ordinary `main` pushes, CI also drives the POSIX and Windows installers
+against the release that is already in production. Those jobs remain advisory:
+a broken old release must not block the source-built release that repairs it.
+The tagged publication run has its own required post-publication installer
+round trips for the new release.
 
 ### Every published release needs a changelog entry
 
@@ -208,4 +225,4 @@ Pushes to other branches keep cancel-on-newer-push for fast feedback.
 `scripts/ci-concurrency.test.ts` locks the group and cancel expressions
 against regressions.
 
-*Verified against `4b1fb32d4bdad719822e726d672645fc1efea1b5` on 2026-07-30.*
+*Verified against `7815b71a84f7d4dffe5572f8cfc1e3172b8b8072` on 2026-07-30.*
