@@ -76,18 +76,21 @@ describe("veyyon prompt reads the real configuration", () => {
 
 		expect(result.exitCode).toBe(0);
 		expect(result.output).toContain("Delegation is the default here, not the exception.");
-		expect(result.output).toContain("you MUST fan the work out to `task` subagents");
+		expect(result.output).toContain("MUST delegate substantial work");
 		// The paragraph the default configuration renders instead. Its absence is the half of the
 		// assertion that fails if the gate silently rendered both.
 		expect(result.output).not.toContain("Delegation is preferred");
 	});
 
 	/**
-	 * The default it was masking. Without this case the one above passes against a build that
-	 * hardcodes the `required` text, which is the same class of bug in the other direction.
+	 * The weaker explicit value is the negative twin. It overrides any global profile setting,
+	 * so the suite remains deterministic while still proving both project-level branches.
 	 */
-	it("renders the preferred-delegation wording when the project says nothing", async () => {
-		const result = await runPromptCommand({ cwd: workspace(), section: "tool-policy" });
+	it("renders the preferred-delegation wording when the project asks for it", async () => {
+		const result = await runPromptCommand({
+			cwd: workspace({ subagent: { delegation: "preferred" } }),
+			section: "tool-policy",
+		});
 
 		expect(result.output).toContain("Delegation is preferred");
 		expect(result.output).not.toContain("Delegation is the default here, not the exception.");
@@ -124,7 +127,7 @@ describe("veyyon prompt reads the real configuration", () => {
 		const result = await runPromptCommand({ cwd });
 
 		expect(result.exitCode).toBe(0);
-		expect(result.output).toContain("you MUST fan the work out to `task` subagents");
+		expect(result.output).toContain("MUST delegate substantial work");
 		expect(result.output).not.toContain("<personality>");
 		// `subagent.batch: false` drops the batching instruction that `required` otherwise carries.
 		expect(result.output).not.toContain("Batch independent slices into one parallel `task` call");
@@ -140,7 +143,10 @@ describe("veyyon prompt reads the real configuration", () => {
 			cwd: workspace({ subagent: { delegation: "required" } }),
 			json: true,
 		});
-		const plain = await runPromptCommand({ cwd: workspace(), json: true });
+		const plain = await runPromptCommand({
+			cwd: workspace({ subagent: { delegation: "preferred" } }),
+			json: true,
+		});
 
 		const policyOf = (raw: string): { bytes: number; text: string } => {
 			const sections = (JSON.parse(raw) as { sections: { id: string; bytes: number; text: string }[] }).sections;
@@ -149,7 +155,7 @@ describe("veyyon prompt reads the real configuration", () => {
 			return found as { bytes: number; text: string };
 		};
 
-		expect(policyOf(configured.output).text).toContain("you MUST fan the work out to `task` subagents");
+		expect(policyOf(configured.output).text).toContain("MUST delegate substantial work");
 		expect(policyOf(plain.output).text).toContain("Delegation is preferred");
 		// The required paragraph is the longer of the two, so the configured run is strictly bigger.
 		expect(policyOf(configured.output).bytes).toBeGreaterThan(policyOf(plain.output).bytes);
@@ -216,10 +222,15 @@ describe("veyyon prompt --statements prices each rule against the real configura
 			cwd: workspace({ subagent: { delegation: "required" } }),
 			statements: true,
 		});
-		const plain = await runPromptCommand({ cwd: workspace(), statements: true });
+		const plain = await runPromptCommand({
+			cwd: workspace({ subagent: { delegation: "preferred" } }),
+			statements: true,
+		});
 
 		expect(configured.output).toContain("tool-policy/delegation-required");
-		expect(configured.output).toContain("needs tools has task and not useCodexTaskPrompt");
+		expect(configured.output).toContain(
+			"tools has task and hasSpawnableSubagent and not useCodexTaskPrompt and eagerTasks and eagerTasksAlways",
+		);
 		expect(plain.output).toContain("tool-policy/delegation-preferred");
 	});
 
