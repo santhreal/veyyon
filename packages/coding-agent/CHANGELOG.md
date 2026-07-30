@@ -111,6 +111,10 @@
   every command rather than an allowlist of command-and-verb pairs, so a credential passed to a
   command nobody thought of is still caught. `--url` is judged on its content rather than its name,
   which keeps an ordinary `/mcp add srv --url http://x` recallable.
+- `/mcp add` with no arguments answered with a single 174-character line, the widest usage string in
+  the product, which at 80 columns broke `[-- <command...>]` across lines and left a dangling `[--`
+  that reads as a broken flag. It also restated the usage as a second literal, free to drift from the
+  one the command already owned.
 - Tool approval prompts now use a structured permission card that separates the one-call scope,
   approval reason, and requested action. Approve and deny choices include explicit descriptions,
   radio focus, and complete navigation help instead of presenting one flat accent-colored text block.

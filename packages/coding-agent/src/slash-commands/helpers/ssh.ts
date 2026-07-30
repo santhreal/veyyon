@@ -83,7 +83,7 @@ function parseSshAddArgs(rest: string): ParsedSshAddArgs {
 	while (index < tokens.length) {
 		const arg = tokens[index]!;
 		const parser = SSH_ADD_OPTION_PARSERS.get(arg);
-		if (!parser) return { ...parsed, error: `Unknown option: ${arg}` };
+		if (!parser) return { ...parsed, error: `Unknown option: ${arg}\n${SSH_ADD_USAGE}` };
 		const error = parser(parsed, tokens[index + 1]);
 		if (error) return { ...parsed, error };
 		index += 2;
@@ -96,7 +96,7 @@ const SSH_HELP_TEXT = [
 	"  /ssh add <name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>] [--scope project|user]",
 	"  /ssh list                                       List configured SSH hosts",
 	"  /ssh remove <name> [--scope project|user]       Remove an SSH host",
-	"  /ssh help                                        Show this help",
+	"  /ssh help                                       Show this help",
 ].join("\n");
 
 async function handleListCommand(runtime: SlashCommandRuntime): Promise<SlashCommandResult> {
@@ -154,8 +154,8 @@ async function handleAddCommand(rest: string, runtime: SlashCommandRuntime): Pro
 	if (!rest) return usage(SSH_ADD_USAGE, runtime);
 	const parsed = parseSshAddArgs(rest);
 	if (parsed.error) return usage(parsed.error, runtime);
-	if (!parsed.name) return usage("Host name required. Usage: /ssh add <name> --host <host> ...", runtime);
-	if (!parsed.host) return usage("--host is required. Usage: /ssh add <name> --host <host> ...", runtime);
+	if (!parsed.name) return usage(`Host name required.\n${SSH_ADD_USAGE}`, runtime);
+	if (!parsed.host) return usage(`--host is required.\n${SSH_ADD_USAGE}`, runtime);
 	const hostConfig: SSHHostConfig = { host: parsed.host };
 	if (parsed.username) hostConfig.username = parsed.username;
 	if (parsed.port) hostConfig.port = parsed.port;

@@ -33,7 +33,7 @@ describe("parseStatsDashboardArgs", () => {
 
 	it("reports a missing port value after --port", () => {
 		expect(parseStatsDashboardArgs("--port")).toEqual({
-			error: "Missing port. Usage: /stats [--port <port>]",
+			error: "Missing port. Usage: /stats [--port <port>|-p <port>]",
 		});
 	});
 
@@ -57,10 +57,27 @@ describe("parseStatsDashboardArgs", () => {
 
 	it("reports any other token as an unknown option", () => {
 		expect(parseStatsDashboardArgs("--bogus")).toEqual({
-			error: "Unknown option: --bogus. Usage: /stats [--port <port>]",
+			error: "Unknown option: --bogus. Usage: /stats [--port <port>|-p <port>]",
 		});
 		expect(parseStatsDashboardArgs("extra")).toEqual({
-			error: "Unknown option: extra. Usage: /stats [--port <port>]",
+			error: "Unknown option: extra. Usage: /stats [--port <port>|-p <port>]",
 		});
+	});
+
+	/**
+	 * Locks out the disagreement where STATS_DASHBOARD_USAGE advertised only
+	 * `--port` while the parser also accepted `-p` and `--port=`: a user who typed
+	 * `/stats -p` was answered with a usage line naming a flag they had not used.
+	 * Every accepted spelling must appear in the usage text the errors carry.
+	 */
+	it("names every accepted flag spelling in the usage text carried by its errors", () => {
+		const usageText = "Usage: /stats [--port <port>|-p <port>]";
+		for (const spelling of ["--port", "-p"]) {
+			expect(parseStatsDashboardArgs(spelling)).toEqual({ error: `Missing port. ${usageText}` });
+			expect(usageText).toContain(spelling);
+		}
+		// `--port=` is the same flag as `--port`, so the usage covers it by spelling.
+		expect(parseStatsDashboardArgs("--port=")).toEqual({ error: `Missing port. ${usageText}` });
+		expect(parseStatsDashboardArgs("--bogus")).toEqual({ error: `Unknown option: --bogus. ${usageText}` });
 	});
 });

@@ -73,6 +73,7 @@ const TODO_HELP_TEXT = [
 	"  /todo done   [<task|phase>]        Mark task/phase/all completed",
 	"  /todo drop   [<task|phase>]        Mark task/phase/all abandoned",
 	"  /todo rm     [<task|phase>]        Remove task/phase/all",
+	"  /todo help                         Show this help",
 ].join("\n");
 
 async function handleTodoCopyCommand(runtime: SlashCommandRuntime): Promise<SlashCommandResult> {
@@ -241,6 +242,9 @@ export async function handleTodoAcp(
 			await runtime.output(TODO_HELP_TEXT);
 			return commandConsumed();
 		default:
-			return usage("Unknown /todo subcommand. Use append, start, done, drop, rm, copy, export, import.", runtime);
+			return usage(
+				"Unknown /todo subcommand.\nUse append, start, done, drop, rm, copy, export, import, edit, or help.",
+				runtime,
+			);
 	}
 }

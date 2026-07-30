@@ -1927,6 +1927,78 @@ function buildProfileArgumentCompletions(): (prefix: string) => Promise<Autocomp
 }
 
 /**
+ * Subcommands whose first argument is the name of an already stored secret.
+ * `add` is absent on purpose: its name is one the operator is inventing, so
+ * offering existing names there would suggest overwriting rather than storing.
+ */
+const SECRET_NAME_SUBCOMMANDS: Record<string, true> = { rm: true, extend: true };
+
+/**
+ * Build getArgumentCompletions for /secret: the verb list first, then the names
+ * of stored secrets once the verb is `rm` or `extend`.
+ *
+ * Without this the operator has to recall an exact name from memory, which is
+ * worse here than for any other command: a secret's whole point is that its
+ * value is never displayed, so there is nothing on screen to recognise it by,
+ * and a mistyped name is a no-op error rather than something the surface can
+ * correct. `/secret list` was the only way to recover a name.
+ *
+ * Names come from the RUNNING obfuscator rather than from the vault on disk.
+ * The vault is the authoritative store, but reading it means file I/O plus a
+ * decrypt on every keystroke, and `load()` throws on a malformed or
+ * key-missing vault, which would turn a bad vault into a crashing dropdown.
+ * The obfuscator already holds these names in memory, sorted, and cannot
+ * throw. The cost is that completion goes quiet when secret protection is off
+ * and no obfuscator exists; `rm` still works when typed in full, so that
+ * degrades the convenience without removing the ability to revoke.
+ *
+ * Never reads or renders a secret VALUE. Names only, which is the same thing
+ * `/secret list` already shows.
+ */
+function buildSecretArgumentCompletions(
+	subcommands: SubcommandDef[],
+	runtime: TuiSlashCommandRuntime | undefined,
+): (prefix: string) => AutocompleteItem[] | null {
+	const completeVerb = buildArgumentCompletions(subcommands);
+	return (argumentPrefix: string) => {
+		const spaceIndex = argumentPrefix.indexOf(" ");
+		if (spaceIndex === -1) return completeVerb(argumentPrefix);
+
+		const verb = argumentPrefix.slice(0, spaceIndex).toLowerCase();
+		if (SECRET_NAME_SUBCOMMANDS[verb] !== true) return null;
+
+		// No explicit "past the name, into flags" guard: a valid secret name can
+		// never contain a space, so once the operator types one the prefix filter
+		// below matches nothing and the dropdown closes on its own. A guard here
+		// was unreachable, and a negative control proved no test could tell it
+		// from its own absence.
+		const typedName = argumentPrefix.slice(spaceIndex + 1);
+
+		const names = runtime?.ctx.session.obfuscator?.namedSecretNames() ?? [];
+		if (names.length === 0) return null;
+
+		// A verb that still expects arguments after the name keeps the cursor
+		// moving, so `extend` lands on `extend NAME ` ready for `--ttl`, while
+		// `rm` completes to a finished command. Read off the declared usage
+		// rather than naming `extend` again here, so a subcommand that grows a
+		// flag does not need this function edited to match.
+		const usage = subcommands.find(s => s.name === verb)?.usage ?? "";
+		const nameToken = usage.indexOf("<name>");
+		const trailer = nameToken >= 0 && usage.slice(nameToken + "<name>".length).trim().length > 0 ? " " : "";
+
+		const wanted = typedName.toLowerCase();
+		const matches = names
+			.filter(name => name.toLowerCase().startsWith(wanted))
+			.map(name => ({
+				value: `${verb} ${name}${trailer}`,
+				label: name,
+				description: verb === "rm" ? "stop this secret being spendable" : "give this secret a fresh lifetime",
+			}));
+		return matches.length > 0 ? matches : null;
+	};
+}
+
+/**
  * Build getArgumentCompletions that suggests directories relative to the
  * current project directory. Used by /move so users can Tab-complete the
  * destination directory.
@@ -2132,7 +2204,10 @@ function materializeTuiBuiltinSlashCommand(
 	runtime?: TuiSlashCommandRuntime,
 ): TuiBuiltinSlashCommand {
 	const materialized: TuiBuiltinSlashCommand = { ...cmd };
-	if (cmd.subcommands) {
+	if (cmd.name === "secret" && cmd.subcommands) {
+		materialized.getArgumentCompletions = buildSecretArgumentCompletions(cmd.subcommands, runtime);
+		materialized.getInlineHint = buildSubcommandInlineHint(cmd.subcommands);
+	} else if (cmd.subcommands) {
 		materialized.getArgumentCompletions = buildArgumentCompletions(cmd.subcommands);
 		materialized.getInlineHint = buildSubcommandInlineHint(cmd.subcommands);
 	} else if (cmd.name === "move") {
