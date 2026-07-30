@@ -630,9 +630,20 @@ async function listSecrets(context: {
 	now: number;
 	surface?: SecretCommandSurface;
 }): Promise<SecretCommandResult> {
-	const entries = await context.vault.load();
+	// The list must survive a vault it cannot read, because it is where an operator goes to find out
+	// what is wrong. Throwing here made `-p /secret list` exit non-zero with nothing on stdout while
+	// stderr recommended a command the same throw prevented from running.
+	let entries: readonly ScopedVaultEntry[] = [];
+	let unreadable: readonly VaultScope[] = [];
+	try {
+		entries = await context.vault.load();
+		// A partially readable vault: `load` skipped a scope and kept going.
+		unreadable = context.vault.unreadableScopes();
+	} catch (error) {
+		unreadable = await context.vault.noteFailedLoad(error);
+	}
 	return {
-		message: renderSecretList(entries, { now: context.now, surface: context.surface }),
+		message: renderSecretList(entries, { now: context.now, surface: context.surface, unreadable }),
 		changed: false,
 	};
 }
@@ -659,10 +670,18 @@ async function listSecrets(context: {
  */
 export function renderSecretList(
 	entries: readonly ScopedVaultEntry[],
-	options: { now: number; surface?: SecretCommandSurface },
+	options: { now: number; surface?: SecretCommandSurface; unreadable?: readonly VaultScope[] },
 ): string {
 	const surface = options.surface ?? "tui";
-	if (entries.length === 0) return surface === "tui" ? EMPTY_VAULT_HELP : NONINTERACTIVE_EMPTY_VAULT_HELP;
+	const broken = describeUnreadableScopes(options.unreadable ?? []);
+	// "No active secrets" is FALSE when a vault exists and could not be read, and it is the specific
+	// falsehood this whole area exists to avoid: it reads as "you have nothing stored" to someone
+	// whose credentials are sitting in a file three lines away. Absent and unreadable are different
+	// answers to "what do I have", so they get different output.
+	if (entries.length === 0) {
+		if (broken !== undefined) return broken;
+		return surface === "tui" ? EMPTY_VAULT_HELP : NONINTERACTIVE_EMPTY_VAULT_HELP;
+	}
 
 	const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name));
 	const rows = sorted.map(entry => {
@@ -691,7 +710,34 @@ export function renderSecretList(
 		...cells.map(row => renderListRow(row, widths)),
 	];
 	if (nearExpiry) lines.push(LIST_EXPIRY_FOOTER);
+	// LAST, and only when a scope is broken. The table above is the answer to the question; this is
+	// the caveat that some of the answer is missing, and a caveat above the table reads as an error.
+	if (broken !== undefined) lines.push(broken);
 	return lines.join("\n");
+}
+
+/**
+ * Say which scopes could not be read, and how to repair them.
+ *
+ * `/secret list` used to say nothing at all about a skipped scope, so a vault with a broken project
+ * file and a healthy profile one printed a confident table of the profile entries and left the
+ * operator to discover the rest were missing when a placeholder refused to spend. The list is where
+ * someone goes to find out what they have; it is the wrong place to be silent about what it cannot
+ * see. Worded to match `noteFailedVaultLoad` in vault.ts, because an operator hits both within a
+ * minute and two descriptions of one repair reads as two problems.
+ */
+function describeUnreadableScopes(unreadable: readonly VaultScope[]): string | undefined {
+	if (unreadable.length === 0) return undefined;
+	const many = unreadable.length > 1;
+	const scopes = unreadable.join(" and ");
+	const commands = unreadable.map(scope => `/secret discard --scope ${scope}`).join(" and ");
+	return (
+		`${OUTPUT_INDENT}Your ${scopes} ${many ? "vaults" : "vault"} could not be read, so anything stored in ` +
+		`${many ? "them is" : "it is"} missing from this list and cannot be spent.\n${OUTPUT_INDENT}` +
+		`${many ? "They are" : "It is"} encrypted, so a hand edit cannot repair ${many ? "them" : "it"}. ` +
+		`Run ${commands} to move the unreadable ${many ? "files" : "file"} aside, then re-add the secrets ` +
+		`${many ? "they" : "it"} held.`
+	);
 }
 
 /** One table row: every cell but the last padded to its column, and no trailing blanks. */

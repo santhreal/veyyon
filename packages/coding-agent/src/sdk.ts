@@ -152,7 +152,7 @@ import { describeSecretExpiry } from "./secrets/obfuscator";
 import { isSecretPlaceholder, PLACEHOLDER_RE } from "./secrets/placeholder";
 import { expiryWarnings } from "./secrets/secret-command";
 import { secretSpendMarker } from "./secrets/spend-marker";
-import { resolveVaultLocations, SecretVault, vaultPathFor } from "./secrets/vault";
+import { resolveVaultLocations, type ScopedVaultEntry, SecretVault, vaultPathFor } from "./secrets/vault";
 import { loadOrCreateVaultKey, vaultKeyPath } from "./secrets/vault-crypto";
 import {
 	AgentSession,
@@ -600,6 +600,8 @@ export interface CreateAgentSessionOptions {
 	requireYieldTool?: boolean;
 	/** Task recursion depth (for subagent sessions). Default: 0 */
 	taskDepth?: number;
+	/** Resolved absolute spawn-depth cap for this session's agent type. */
+	maxNestedSpawnDepth?: number;
 	/** Parent Hindsight state to alias for subagent memory tools. */
 	parentHindsightSessionState?: HindsightSessionState;
 	/**
@@ -1478,7 +1480,18 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// There is one loader for startup, runtime toggles, command reconciliation, and
 		// cwd moves. Replacing the complete runtime prevents project-scoped names and
 		// values from surviving a move into another project.
-		const loadSecretRuntime = async (runtimeCwd: string, runtimeSettings: Settings = settings) => {
+		//
+		// `onUnreadableVault` is the ONE thing those callers must not share. At STARTUP a vault that
+		// will not open has to degrade, because `/secret discard` repairs it and lives inside the
+		// session this would otherwise abort. On a RELOAD it has to throw: the reload exists to prove
+		// a captured snapshot still matches the vault before a live `#NAME#` is expanded, so a
+		// swallowed failure there is a placeholder expanded against a vault nobody could read. Same
+		// loader, opposite correct answers, so the caller states which one it is asking for.
+		const loadSecretRuntime = async (
+			runtimeCwd: string,
+			runtimeSettings: Settings = settings,
+			onUnreadableVault: "degrade" | "throw" = "throw",
+		) => {
 			if (!runtimeSettings.get("secrets.enabled")) {
 				return {
 					obfuscator: undefined,
@@ -1502,7 +1515,28 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			const auditLog = runtimeSettings.get("secrets.auditLog")
 				? new SecretAuditLog(secretAuditPath(vaultLocations), operatorNotices)
 				: undefined;
-			const liveVaultEntries = await logger.time("loadVault", () => vault.load());
+			// A VAULT THAT CANNOT BE READ MUST NOT STOP THE SESSION STARTING, because the repair for
+			// one lives inside the product this throw was preventing from starting. `load()` still
+			// refuses the read (its narrow catch is a security boundary and is untouched); what
+			// changes is that the refusal no longer takes the process with it. `noteFailedLoad` marks
+			// every scope holding a file unreadable, which is what keeps this from becoming "the
+			// vault is empty": the spend seam refuses those placeholders instead of passing them
+			// through, and the operator is told, with a repair that runs on this surface.
+			//
+			// The interactive client already survived this and a `-p` run did not, so the same broken
+			// vault was a warning in one place and a fatal error in the other. One loader, one answer.
+			//
+			// ONLY at startup. A reload rethrows, because its caller is about to expand a live
+			// placeholder and needs the failure, not an empty runtime. Absorbing it here for every
+			// caller silently turned the expansion lease's fail-closed refusal into a successful
+			// expansion; the reload rows in the lease suite catch that and must stay red for it.
+			let liveVaultEntries: ScopedVaultEntry[] = [];
+			try {
+				liveVaultEntries = await logger.time("loadVault", () => vault.load());
+			} catch (error) {
+				await vault.noteFailedLoad(error);
+				if (onUnreadableVault === "throw") throw error;
+			}
 			const vaultEntries: SecretEntry[] = liveVaultEntries.map(secret => ({
 				type: "plain",
 				content: secret.value,
@@ -1536,7 +1570,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			return { obfuscator: nextObfuscator, vault, vaultRevision, auditLog };
 		};
 
-		const initialSecretRuntime = await loadSecretRuntime(cwd);
+		// "degrade": the only caller that may start without a vault. See `onUnreadableVault`.
+		const initialSecretRuntime = await loadSecretRuntime(cwd, settings, "degrade");
 		let obfuscator = initialSecretRuntime.obfuscator;
 		let redactionObfuscator = obfuscator;
 		let secretVault = initialSecretRuntime.vault;
@@ -2321,6 +2356,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			outputSchema: options.outputSchema,
 			requireYieldTool: options.requireYieldTool,
 			taskDepth: options.taskDepth ?? 0,
+			maxNestedSpawnDepth: options.maxNestedSpawnDepth,
 			getSessionFile: () => sessionManager.getSessionFile() ?? null,
 			getEvalKernelOwnerId: () => evalKernelOwnerId,
 			getEvalSessionId: () =>
