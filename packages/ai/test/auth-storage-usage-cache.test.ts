@@ -13,6 +13,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import {
+	AUTH_HTTP_CONCURRENCY_LIMIT,
 	type AuthCredential,
 	type AuthCredentialStore,
 	AuthStorage,
@@ -307,6 +308,82 @@ describe("AuthStorage usage cache: last-good failure fallback", () => {
 		const third = anthropicReports(await storage.fetchUsageReports());
 		expect(third).toHaveLength(1);
 		expect(calls).toBe(3);
+	});
+});
+
+describe("AuthStorage usage cache: bounded HTTP concurrency", () => {
+	/**
+	 * Usage polling previously launched every credential probe at once. A batch
+	 * far larger than the shared cap must hit that cap exactly, continue after
+	 * one probe fails, attempt every credential, and return every successful
+	 * report in credential order even when completion order differs.
+	 */
+	it("bounds adversarial usage fan-out without losing attempts or result order", async () => {
+		const credentialCount = AUTH_HTTP_CONCURRENCY_LIMIT * 3 + 5;
+		const rows = Array.from({ length: credentialCount }, (_, index) =>
+			oauthRow(index + 1, `user-${index}@example.com`),
+		);
+		const localStore = makeStore(rows);
+		const localStorage = new AuthStorage(localStore, {
+			usageProviderResolver: provider => (provider === "anthropic" ? claudeUsage.claudeUsageProvider : undefined),
+		});
+		await localStorage.reload();
+
+		const failFirst = Promise.withResolvers<void>();
+		const releaseRemaining = Promise.withResolvers<void>();
+		const firstWaveFull = Promise.withResolvers<void>();
+		const queuedAfterFailure = Promise.withResolvers<void>();
+		const attempts: string[] = [];
+		let failingAccountId: string | undefined;
+		let active = 0;
+		let peak = 0;
+		let failureSettled = false;
+		let laterRowStartedAfterFailure = false;
+
+		vi.spyOn(claudeUsage.claudeUsageProvider, "fetchUsage").mockImplementation(async params => {
+			const accountId = params.credential.accountId;
+			if (!accountId) throw new Error("expected usage account identity");
+			failingAccountId ??= accountId;
+			attempts.push(accountId);
+			if (attempts.length === AUTH_HTTP_CONCURRENCY_LIMIT + 1) queuedAfterFailure.resolve();
+			active += 1;
+			peak = Math.max(peak, active);
+			if (active === AUTH_HTTP_CONCURRENCY_LIMIT) firstWaveFull.resolve();
+			try {
+				if (accountId === failingAccountId) {
+					await failFirst.promise;
+					failureSettled = true;
+					throw new Error("HTTP 503 transient usage failure");
+				}
+				if (failureSettled) laterRowStartedAfterFailure = true;
+				await releaseRemaining.promise;
+				return makeReport(accountId);
+			} finally {
+				active -= 1;
+			}
+		});
+
+		try {
+			const pendingReports = localStorage.fetchUsageReports();
+			await firstWaveFull.promise;
+			failFirst.resolve();
+			await queuedAfterFailure.promise;
+			releaseRemaining.resolve();
+			const reports = anthropicReports(await pendingReports);
+
+			const expectedOrder = rows
+				.map(row => (row.credential.type === "oauth" ? row.credential.accountId : undefined))
+				.filter((accountId): accountId is string => accountId !== undefined && accountId !== failingAccountId);
+			expect(peak).toBe(AUTH_HTTP_CONCURRENCY_LIMIT);
+			expect(attempts).toHaveLength(credentialCount);
+			expect(new Set(attempts).size).toBe(credentialCount);
+			expect(laterRowStartedAfterFailure).toBe(true);
+			expect(reports).toHaveLength(credentialCount - 1);
+			expect(reports.map(report => report.metadata?.email)).toEqual(expectedOrder);
+		} finally {
+			localStorage.close();
+			vi.restoreAllMocks();
+		}
 	});
 });
 

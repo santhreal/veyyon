@@ -120,6 +120,9 @@ export function createPersistedSubagentReviverFactory(
 				parentTaskPrefix: ref.id,
 				parentAgentId: ref.parentId,
 				taskDepth,
+				// Older files did not persist the resolved per-agent cap. Revive
+				// them as leaves rather than silently granting new spawn capacity.
+				maxNestedSpawnDepth: init.maxNestedSpawnDepth ?? Math.max(0, taskDepth - 1),
 				toolNames: init.tools,
 				outputSchema: init.outputSchema,
 				requireYieldTool: true,

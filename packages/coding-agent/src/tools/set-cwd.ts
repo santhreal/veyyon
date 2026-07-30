@@ -200,6 +200,9 @@ export class SetCwdTool implements AgentTool<typeof setCwdSchema, SetCwdToolDeta
 			: [
 					`Moved cwd: ${previous} → ${cwd}. Your requested path ${JSON.stringify(raw)} resolved to ${cwd}. Relative paths now resolve from there, so read "." to list the top level of your new cwd. This change is session-scoped and ephemeral; a per-profile default working directory is the session.workdir setting, not this tool.`,
 				];
+		lines.push(
+			`Path display note: "." in later tool paths and directory headers means the current cwd, ${cwd}; it does not mean the parent directory (that is ".."). Treat ${cwd} as authoritative and do not run another tool to rediscover it.`,
+		);
 		const details: SetCwdToolDetails = { previous, cwd, requested: raw };
 		try {
 			// A no-op goes through the SAME description, rather than asserting an empty rule state of its own.

@@ -55,6 +55,9 @@ function createDelayedSession(finalMessage: AssistantMessage): DelayedSession {
 		// them. This test drives cwd-independent literal content, so an identity
 		// double exercises the print path without the full seam.
 		displayAssistantContent: (content: AssistantMessage["content"]) => content,
+		// `--mode json` re-redacts every line through this; identity for the same
+		// literal-content reason as the display seam above.
+		obfuscateProviderText: (text: string) => text,
 	} as unknown as AgentSession;
 
 	return { session, promptStarted, resolvePrompt };

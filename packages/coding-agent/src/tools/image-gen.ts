@@ -1107,11 +1107,14 @@ async function parseAntigravitySseForImage(response: Response, signal?: AbortSig
 	return { images, text: textParts, usage };
 }
 
-export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails> = {
+export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails> & {
+	readonly loadMode: "discoverable";
+} = {
 	name: "generate_image",
 	label: "GenerateImage",
 	strict: false,
 	approval: "write",
+	loadMode: "discoverable",
 	description: prompt.render(toolsPrompts["tools/image-gen"].text),
 	parameters: imageGenSchema,
 	async execute(_toolCallId, params, _onUpdate, ctx, signal) {

@@ -5,9 +5,9 @@
  * to six places (see `system-prompt-builder/gate-registry.ts` for the list). The one that
  * failed quietly was the last: `modes/controllers/selector-controller.ts` carried a
  * hand-written `case` per setting deciding which flips rebuild the prompt, and it had exactly
- * two of the nine. Flipping `subagent.batch`, `subagent.delegation`, `subagent.maxConcurrency`,
- * `subagent.maxRecursionDepth`, `subagent.agents`, `includeModelInPrompt` or `tools.format`
- * changed the setting and left the prompt describing the previous configuration, with nothing
+ * two of the settings. Flipping `subagent.batch`, `subagent.delegation`, `subagent.maxConcurrency`,
+ * `subagent.agents`, `includeModelInPrompt` or `tools.format` changed the setting and left the
+ * prompt describing the previous configuration, with nothing
  * logged, until an unrelated rebuild happened to fire.
  *
  * Every check here exists to keep a specific way of getting that wrong from coming back:
@@ -90,7 +90,7 @@ const NON_SETTINGS_GATES: Readonly<Record<string, string>> = {
 	eagerTasks: "delegation strength, gated by subagent.delegation",
 	eagerTasksAlways: "delegation strength, gated by subagent.delegation",
 	taskBatch: "registered under subagent.batch",
-	taskIrcEnabled: "registered under subagent.maxRecursionDepth",
+	taskIrcEnabled: "derived from whether IRC coordination is available to this session",
 	intentTracing: "registered under tools.intentTracing",
 	personality: "registered under personality",
 	renderMermaid: "registered under tui.renderMermaid",
@@ -162,7 +162,7 @@ function statementVariables(): Set<string> {
 }
 
 describe("the prompt gate registry", () => {
-	it("registers at least the nine settings that were live-capable and the three that were not", () => {
+	it("registers at least twelve settings whose prompt effects must be classified", () => {
 		// A floor, not the list, so adding a gate does not fail here. The exact membership is
 		// pinned by the live/frozen tests below, which is where a change should have to be
 		// argued.
@@ -252,7 +252,6 @@ describe("which flips reach the model", () => {
 			"subagent.delegation",
 			"subagent.enabled",
 			"subagent.maxConcurrency",
-			"subagent.maxRecursionDepth",
 			"tools.format",
 			// Joined 2026-07-26. See "keeps tools.intentTracing registered, and live" below for what
 			// had to change: the schema injection follows the setting now, not just the prompt text.
@@ -264,14 +263,13 @@ describe("which flips reach the model", () => {
 		}
 	});
 
-	it("covers the seven settings the hand-written switch missed", () => {
-		// The switch had `personality` and `tui.renderMermaid`. These seven changed the setting
+	it("covers the six settings the hand-written switch missed", () => {
+		// The switch had `personality` and `tui.renderMermaid`. These six changed the setting
 		// and left the prompt behind, which is the failure this registry exists to end.
 		for (const setting of [
 			"subagent.batch",
 			"subagent.delegation",
 			"subagent.maxConcurrency",
-			"subagent.maxRecursionDepth",
 			"subagent.agents",
 			"includeModelInPrompt",
 			"tools.format",

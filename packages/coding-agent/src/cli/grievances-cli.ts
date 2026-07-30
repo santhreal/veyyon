@@ -215,9 +215,8 @@ function makeProgressBar(total: number, width = 30): ProgressBar {
  * ignoring the user-facing consent gate (manual push is the user's
  * explicit "yes ship these now" intent).
  *
- * Requires endpoint configuration — `dev.autoqaPush.endpoint` (or
- * `VEYYON_AUTO_QA_PUSH_URL`) is unset by default, so push is a no-op until
- * explicitly configured.
+ * The bundled endpoint is veyyon.dev. An explicit profile setting or
+ * environment override may direct the upload elsewhere.
  */
 export async function pushGrievances(options: PushGrievancesOptions): Promise<void> {
 	const db = openAutoQaDb();
@@ -235,7 +234,7 @@ export async function pushGrievances(options: PushGrievancesOptions): Promise<vo
 
 	try {
 		const result = await flushGrievances(db, settings, {
-			bypassConsent: true,
+			forceUpload: true,
 			onStart: t => {
 				total = t;
 				if (!options.json) bar = makeProgressBar(t);

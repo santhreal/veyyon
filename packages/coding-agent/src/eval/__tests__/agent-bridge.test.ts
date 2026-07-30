@@ -59,6 +59,7 @@ interface SessionOptions {
 	artifactsDir?: string | null;
 	spawns?: string | null;
 	depth?: number;
+	maxNestedSpawnDepth?: number;
 	activeModel?: string;
 	modelString?: string;
 	enableLsp?: boolean;
@@ -99,6 +100,7 @@ function makeSession(options: SessionOptions = {}): ToolSession {
 		hasUI: false,
 		settings,
 		taskDepth: options.depth ?? 0,
+		maxNestedSpawnDepth: options.maxNestedSpawnDepth,
 		enableLsp: options.enableLsp ?? true,
 		agentOutputManager: options.outputManager,
 		getSessionFile: () => options.sessionFile ?? null,
@@ -224,7 +226,7 @@ describe("runEvalAgent", () => {
 		);
 	});
 
-	it("enforces spawn restrictions and the eval recursion cap", async () => {
+	it("enforces spawn restrictions and the eval hard nested-spawn ceiling", async () => {
 		mockAgents();
 		const runSpy = vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options => singleResult(options));
 
@@ -235,8 +237,11 @@ describe("runEvalAgent", () => {
 			runEvalAgent({ prompt: "hello", agent: "task" }, { session: makeSession({ spawns: "reviewer" }) }),
 		).rejects.toThrow("Allowed: reviewer");
 		await expect(
-			runEvalAgent({ prompt: "hello" }, { session: makeSession({ depth: EVAL_AGENT_MAX_DEPTH }) }),
-		).rejects.toThrow("maximum depth");
+			runEvalAgent(
+				{ prompt: "hello" },
+				{ session: makeSession({ depth: EVAL_AGENT_MAX_DEPTH + 1, maxNestedSpawnDepth: -1 }) },
+			),
+		).rejects.toThrow(`hard ceiling=${EVAL_AGENT_MAX_DEPTH}`);
 		expect(runSpy).not.toHaveBeenCalled();
 	});
 
@@ -254,46 +259,61 @@ describe("runEvalAgent", () => {
 		expect(runSpy.mock.calls[0]?.[0].agent.name).toBe("reviewer");
 	});
 
-	it("honors task.maxRecursionDepth on top of the hard eval ceiling", async () => {
+	/**
+	 * A nested-spawn cap names the deepest parent that may spawn, so cap 0 includes the root
+	 * while making its depth-1 child a leaf.
+	 */
+	it("treats maxNestedSpawnDepth as an inclusive parent-depth cap", async () => {
 		mockAgents();
 		const runSpy = vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options => singleResult(options));
+		const settings = Settings.isolated({
+			"async.enabled": false,
+			"subagent.isolation.mode": "none",
+			"subagent.maxNestedSpawnDepth": 0,
+		});
 
-		// task.maxRecursionDepth=0 means "no spawning at all" — even depth 0 (the
-		// top-level agent) must be blocked, matching canSpawnAtDepth().
+		await expect(
+			runEvalAgent({ prompt: "root spawn" }, { session: makeSession({ settings }) }),
+		).resolves.toBeDefined();
+		await expect(
+			runEvalAgent({ prompt: "child spawn" }, { session: makeSession({ depth: 1, settings }) }),
+		).rejects.toThrow("maximum nested spawn depth is 0");
+
+		expect(runSpy).toHaveBeenCalledTimes(1);
+	});
+
+	/**
+	 * Agent definitions may narrow or widen the blanket setting for their own session; that
+	 * session-scoped value is authoritative before the eval bridge applies its hard ceiling.
+	 */
+	it("honors per-session maxNestedSpawnDepth overrides", async () => {
+		mockAgents();
+		const runSpy = vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options => singleResult(options));
+		const blanketLeaf = Settings.isolated({
+			"async.enabled": false,
+			"subagent.isolation.mode": "none",
+			"subagent.maxNestedSpawnDepth": 0,
+		});
+		const blanketUnlimited = Settings.isolated({
+			"async.enabled": false,
+			"subagent.isolation.mode": "none",
+			"subagent.maxNestedSpawnDepth": -1,
+		});
+
 		await expect(
 			runEvalAgent(
-				{ prompt: "hello" },
-				{
-					session: makeSession({
-						settings: Settings.isolated({
-							"async.enabled": false,
-							"subagent.isolation.mode": "none",
-							"subagent.maxRecursionDepth": 0,
-						}),
-					}),
-				},
+				{ prompt: "widened child spawn" },
+				{ session: makeSession({ depth: 1, maxNestedSpawnDepth: 1, settings: blanketLeaf }) },
 			),
-		).rejects.toThrow("maximum depth is 0");
-
-		// task.maxRecursionDepth=1 ("Single") lets the top spawn but a depth-1
-		// subagent cannot spawn further — even though the hard ceiling is 3.
+		).resolves.toBeDefined();
 		await expect(
 			runEvalAgent(
-				{ prompt: "hello" },
-				{
-					session: makeSession({
-						depth: 1,
-						settings: Settings.isolated({
-							"async.enabled": false,
-							"subagent.isolation.mode": "none",
-							"subagent.maxRecursionDepth": 1,
-						}),
-					}),
-				},
+				{ prompt: "narrowed child spawn" },
+				{ session: makeSession({ depth: 1, maxNestedSpawnDepth: 0, settings: blanketUnlimited }) },
 			),
-		).rejects.toThrow("maximum depth is 1");
+		).rejects.toThrow("session limit=0");
 
-		expect(runSpy).not.toHaveBeenCalled();
+		expect(runSpy).toHaveBeenCalledTimes(1);
 	});
 
 	it("throws instead of spawning from plan mode", async () => {
@@ -319,9 +339,9 @@ describe("runEvalAgent", () => {
 				"async.enabled": false,
 				"subagent.isolation.mode": "none",
 				"subagent.enableLsp": true,
-				// Default task.maxRecursionDepth is 2, which would now (correctly)
-				// block depth=2 — widen it so the test still exercises depth=2.
-				"subagent.maxRecursionDepth": -1,
+				// Depth 2 is outside the default cap of 0; unlimited keeps this test focused on
+				// forwarding the parent execution metadata while the eval hard ceiling still applies.
+				"subagent.maxNestedSpawnDepth": -1,
 			}),
 		});
 

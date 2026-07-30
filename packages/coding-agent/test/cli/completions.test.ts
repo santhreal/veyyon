@@ -301,7 +301,7 @@ describe("veyyon completions (integration / drift)", () => {
 		}
 		expect(stdout).toContain("{-r,--resume}");
 		// Real enum option sets flow through unchanged.
-		expect(stdout).toContain(":value:(off minimal low medium high xhigh max auto)");
+		expect(stdout).toContain(":value:(off auto minimal low medium high xhigh max)");
 		expect(stdout).toContain(":value:(plan ask auto-edit yolo always-ask write)");
 		// Real subcommands present; dynamic callbacks wired.
 		expect(stdout).toContain("_veyyon_cmd_commit");

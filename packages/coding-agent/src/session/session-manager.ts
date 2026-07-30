@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ImageContent, Message, MessageAttribution, ServiceTierByFamily, TextContent, Usage } from "@veyyon/ai";
+import { allowsSessionTelemetry, type InstrumentationLevel } from "@veyyon/ai/instrumentation";
 import {
 	directoryExists,
 	errorMessage,
@@ -41,9 +42,14 @@ import {
 	type ModelChangeEntry,
 	type NewSessionOptions,
 	type ServiceTierChangeEntry,
+	type SessionCheckpoint,
+	type SessionCheckpointEntry,
 	type SessionEntry,
 	type SessionHeader,
 	type SessionInitEntry,
+	type SessionLifecycleEntry,
+	type SessionLifecycleReason,
+	type SessionLifecycleState,
 	type SessionMessageEntry,
 	type SessionTitleSource,
 	type SessionTreeNode,
@@ -166,22 +172,28 @@ function isAssistantEntry(entry: SessionEntry): boolean {
 }
 
 function isDraftOnlyMetadataEntry(entry: SessionEntry): boolean {
-	// Startup-recorded selector state that does not survive as user intent
-	// once the draft is cleared. `mode_change` covers the `plan.defaultOnStartup`
-	// path (interactive-mode.ts enters plan mode before draft restoration) and
-	// `/plan` toggles that leave the session otherwise empty; entries carrying
-	// real conversation state — messages, compactions, branch summaries,
-	// custom/custom_message, session_init, labels, title/tool selection — never
-	// reach this branch and always keep the file resumable.
+	// Startup-recorded selector state and additive lifecycle telemetry do not
+	// survive as user intent once the draft is cleared. `mode_change` covers
+	// the `plan.defaultOnStartup` path (interactive-mode.ts enters plan mode
+	// before draft restoration) and `/plan` toggles that leave the session
+	// otherwise empty. Entries carrying real conversation state, such as
+	// messages, compactions, branch summaries, custom/custom_message,
+	// session_init, labels, and title/tool selection, always keep the file
+	// resumable.
 	switch (entry.type) {
 		case "model_change":
 		case "thinking_level_change":
 		case "service_tier_change":
 		case "mode_change":
+		case "session_lifecycle":
 			return true;
 		default:
 			return false;
 	}
+}
+
+function isSessionIncarnationTelemetry(entry: SessionEntry): boolean {
+	return entry.type === "session_lifecycle" || entry.type === "session_checkpoint";
 }
 
 function orderedByTimestamp(a: SessionTreeNode, b: SessionTreeNode): number {
@@ -339,6 +351,8 @@ export type ReadonlySessionManager = Pick<
 	| "getBranch"
 	| "getHeader"
 	| "getEntries"
+	| "getLifecycleState"
+	| "getEntriesThroughCheckpoint"
 	| "getTree"
 	| "getUsageStatistics"
 	| "putBlob"
@@ -348,6 +362,8 @@ export type ReadonlySessionManager = Pick<
 export interface SessionManagerNoticeOptions {
 	/** Operator-visible channel for non-fatal session-load data loss. */
 	operatorNotices?: OperatorNotices;
+	/** Canonical granularity controlling additive session telemetry. */
+	instrumentation?: InstrumentationLevel;
 }
 
 interface SessionManagerStateSnapshot {
@@ -362,6 +378,9 @@ interface SessionManagerStateSnapshot {
 	onDisk: boolean;
 	needsRewrite: boolean;
 	draftOnlySessionCleanupArmed: boolean;
+	nextSequence: number;
+	lifecycleStarted: boolean;
+	lifecycleEnded: boolean;
 	header: SessionHeader;
 	entries: SessionEntry[];
 }
@@ -370,6 +389,25 @@ interface DiskQueueOptions {
 	ignorePriorError?: boolean;
 	ignoreEpoch?: boolean;
 	epoch?: number;
+}
+
+function assertSessionSequence(sequence: unknown): asserts sequence is number {
+	if (!Number.isSafeInteger(sequence) || (sequence as number) < 0 || (sequence as number) >= Number.MAX_SAFE_INTEGER) {
+		throw new Error(
+			`Session sequence must be a non-negative safe integer below ${Number.MAX_SAFE_INTEGER}; repair or remove the invalid telemetry entry before resuming`,
+		);
+	}
+}
+
+function nextSessionSequence(entries: readonly SessionEntry[]): number {
+	let highest = entries.length;
+	for (const entry of entries) {
+		if (entry.sequence === undefined) continue;
+		assertSessionSequence(entry.sequence);
+		if (entry.sequence > highest) highest = entry.sequence;
+	}
+	assertSessionSequence(highest);
+	return highest + 1;
 }
 
 /**
@@ -402,6 +440,10 @@ export class SessionManager {
 	#hasTitleSlot = true;
 	#entries: SessionEntry[] = [];
 	#index = new SessionEntryIndex();
+	#instrumentation: InstrumentationLevel | undefined;
+	#nextSequence = 1;
+	#lifecycleStarted = false;
+	#lifecycleEnded = false;
 
 	/** File reflects all current entries; appends can go incrementally. */
 	#fileIsCurrent = false;
@@ -479,6 +521,7 @@ export class SessionManager {
 		storage: SessionStorage,
 		sessionDirPinned = false,
 		operatorNotices?: OperatorNotices,
+		instrumentation?: InstrumentationLevel,
 	) {
 		// The session cwd is the single authority every tool resolves against, so it
 		// must be absolute from the start; a relative seed would make later
@@ -489,6 +532,7 @@ export class SessionManager {
 		this.#persist = persist;
 		this.#storage = storage;
 		this.#operatorNotices = operatorNotices;
+		this.#instrumentation = instrumentation;
 		this.#blobs = new BlobStore(getBlobsDir());
 
 		if (persist && sessionDir) this.#storage.ensureDirSync(sessionDir);
@@ -826,6 +870,9 @@ export class SessionManager {
 
 		this.#entries = [];
 		this.#index.clear();
+		this.#nextSequence = 1;
+		this.#lifecycleStarted = false;
+		this.#lifecycleEnded = false;
 		this.#fileIsCurrent = false;
 		this.#rewriteRequired = false;
 		this.#forceFileCreation = false;
@@ -860,21 +907,84 @@ export class SessionManager {
 		this.#titleSource = header.titleSource;
 		this.#titleUpdatedAt = header.timestamp;
 		this.#index.rebuild(entries);
+		this.#nextSequence = nextSessionSequence(entries);
+		this.#lifecycleStarted = false;
+		this.#lifecycleEnded = false;
 	}
 
-	#freshEntryFields(): { id: string; parentId: string | null; timestamp: string } {
+	#allocateSequence(): number {
+		assertSessionSequence(this.#nextSequence);
+		return this.#nextSequence++;
+	}
+
+	#freshEntryFields(): { id: string; parentId: string | null; timestamp: string; sequence?: number } {
+		const sequence = allowsSessionTelemetry(this.#instrumentation, "lifecycle")
+			? this.#allocateSequence()
+			: undefined;
 		return {
 			id: generateId(this.#index),
 			parentId: this.#index.leafId(),
 			timestamp: nowIso(),
+			sequence,
 		};
 	}
 
 	#recordEntry(entry: SessionEntry): void {
+		if (allowsSessionTelemetry(this.#instrumentation, "lifecycle")) {
+			if (entry.sequence === undefined) {
+				entry.sequence = this.#allocateSequence();
+			} else {
+				assertSessionSequence(entry.sequence);
+				this.#nextSequence = Math.max(this.#nextSequence, entry.sequence + 1);
+			}
+		}
 		this.#entries.push(entry);
 		this.#index.insert(entry);
 		this.#appendToSessionFile(entry);
 		this.#notifyEntryAppended(entry);
+	}
+
+	#startLifecycle(reason: Extract<SessionLifecycleReason, "created" | "resumed">): void {
+		const instrumentationLevel = this.#instrumentation;
+		if (
+			!allowsSessionTelemetry(instrumentationLevel, "lifecycle") ||
+			instrumentationLevel === undefined ||
+			instrumentationLevel === "off" ||
+			this.#lifecycleStarted
+		)
+			return;
+		const entry: SessionLifecycleEntry = {
+			type: "session_lifecycle",
+			...this.#freshEntryFields(),
+			state: "running",
+			reason,
+			instrumentationLevel,
+		};
+		this.#recordEntry(entry);
+		this.#lifecycleStarted = true;
+		this.#lifecycleEnded = false;
+	}
+
+	#endLifecycle(
+		reason: Extract<
+			SessionLifecycleReason,
+			"closed" | "new_session" | "session_switched" | "instrumentation_disabled" | "instrumentation_changed"
+		>,
+	): void {
+		if (
+			!allowsSessionTelemetry(this.#instrumentation, "lifecycle") ||
+			!this.#lifecycleStarted ||
+			this.#lifecycleEnded
+		)
+			return;
+		const entry: SessionLifecycleEntry = {
+			type: "session_lifecycle",
+			...this.#freshEntryFields(),
+			state: "ended",
+			reason,
+		};
+		this.#recordEntry(entry);
+		this.#lifecycleEnded = true;
 	}
 
 	#draftPath(): string | null {
@@ -980,6 +1090,9 @@ export class SessionManager {
 			onDisk: this.#fileIsCurrent,
 			needsRewrite: this.#rewriteRequired,
 			draftOnlySessionCleanupArmed: this.#draftOnlySessionCleanupArmed,
+			nextSequence: this.#nextSequence,
+			lifecycleStarted: this.#lifecycleStarted,
+			lifecycleEnded: this.#lifecycleEnded,
 			// Snapshot header + entries by reference: switch/reload replaces the
 			// active header/array wholesale, so rollback needs no deep clone.
 			header: this.#header,
@@ -1003,6 +1116,9 @@ export class SessionManager {
 		this.#forceFileCreation = snapshot.onDisk;
 		this.#draftOnlySessionCleanupArmed = snapshot.draftOnlySessionCleanupArmed;
 		this.#applyEntries(snapshot.header, [...snapshot.entries]);
+		this.#nextSequence = snapshot.nextSequence;
+		this.#lifecycleStarted = snapshot.lifecycleStarted;
+		this.#lifecycleEnded = snapshot.lifecycleEnded;
 		this.#sessionName = snapshot.sessionName;
 		this.#titleSource = snapshot.titleSource;
 		this.#titleUpdatedAt = snapshot.titleUpdatedAt;
@@ -1016,44 +1132,49 @@ export class SessionManager {
 
 	/** Switch to a different session file (resume / branch). */
 	async setSessionFile(sessionFile: string): Promise<void> {
-		await this.#drainAndCloseWriter();
-		this.#clearDiskError();
-		this.#draftOnlySessionCleanupArmed = false;
-
 		const resolvedSessionFile = path.resolve(sessionFile);
-		this.#sessionFile = resolvedSessionFile;
-		this.#rememberBreadcrumb(this.#cwd, resolvedSessionFile);
-
 		const titleSlot = await readTitleSlotFromFile(resolvedSessionFile, this.#storage);
 		const fileEntries = await loadEntriesFromFile(resolvedSessionFile, this.#storage, {
 			operatorNotices: this.#operatorNotices,
 		});
-		if (fileEntries.length === 0) {
+		let migrated = false;
+		let header: SessionHeader | undefined;
+		let adoptedCwd: string | undefined;
+		if (fileEntries.length > 0) {
+			migrated = migrateToCurrentVersion(fileEntries);
+			await resolveBlobRefsInEntries(fileEntries, this.#blobs);
+			// loadEntriesFromFile guarantees entries[0] is a valid session header.
+			header = fileEntries[0] as SessionHeader;
+			const headerCwd = header.cwd ? path.resolve(header.cwd) : undefined;
+			if (headerCwd && headerCwd !== path.resolve(this.#cwd) && (await directoryExists(headerCwd))) {
+				adoptedCwd = headerCwd;
+			}
+		}
+
+		// Everything above is read-only preparation. Commit the identity switch
+		// only after the target has loaded and validated successfully, so a failed
+		// switch cannot append a terminal lifecycle record to the current file.
+		this.#endLifecycle("session_switched");
+		await this.#drainAndCloseWriter();
+		this.#clearDiskError();
+		this.#draftOnlySessionCleanupArmed = false;
+		this.#sessionFile = resolvedSessionFile;
+		this.#rememberBreadcrumb(this.#cwd, resolvedSessionFile);
+
+		if (!header) {
 			// Explicit but empty/missing path (e.g. --session flag): start fresh but
 			// keep the requested path and materialize the header immediately.
 			this.#resetToNewSession(undefined, resolvedSessionFile);
+			this.#startLifecycle("created");
 			this.#forceFileCreation = true;
 			await this.#rewriteAtomically();
 			this.#fileIsCurrent = true;
 			return;
 		}
 
-		const migrated = migrateToCurrentVersion(fileEntries);
-		await resolveBlobRefsInEntries(fileEntries, this.#blobs);
-		// loadEntriesFromFile guarantees entries[0] is a valid session header.
-		const header = fileEntries[0] as SessionHeader;
-
-		// Adopt the loaded session's working directory. Sessions live in a dir
-		// keyed by their cwd, so resuming a session from another project must
-		// re-point cwd/sessionDir at that project — unless that project directory
-		// no longer exists on disk, in which case adopting it (and the process
-		// chdir interactive mode then performs) would fail with ENOENT. Keep the
-		// current cwd so the resumed session stays where the user already is.
-		const headerCwd = header.cwd ? path.resolve(header.cwd) : undefined;
-		if (headerCwd && headerCwd !== path.resolve(this.#cwd) && (await directoryExists(headerCwd))) {
-			this.#cwd = headerCwd;
-			// The directory now follows the file rather than whatever was pinned at
-			// construction: the two have diverged, and the file is the truth.
+		// Adopt the loaded session's working directory only when it still exists.
+		if (adoptedCwd) {
+			this.#cwd = adoptedCwd;
 			this.#sessionDir = path.dirname(resolvedSessionFile);
 			this.#sessionDirPinned = false;
 			this.#rememberBreadcrumb(this.#cwd, resolvedSessionFile);
@@ -1069,12 +1190,16 @@ export class SessionManager {
 		this.#artifactManagerSessionFile = null;
 
 		if (this.sanitizeLoadedOpenAIResponsesReplayMetadata()) this.#rewriteRequired = true;
+		this.#startLifecycle("resumed");
 	}
 
 	/** Start a new session. Drains and closes any existing writer first. */
 	async newSession(options?: NewSessionOptions): Promise<string | undefined> {
+		this.#endLifecycle("new_session");
 		await this.#drainAndCloseWriter();
-		return this.#resetToNewSession(options);
+		const sessionFile = this.#resetToNewSession(options);
+		this.#startLifecycle("created");
+		return sessionFile;
 	}
 
 	/** Delete a session file and its artifact directory. ENOENT is treated as success. */
@@ -1088,7 +1213,7 @@ export class SessionManager {
 	}
 
 	/**
-	 * Fork the current session into a new file with the same entries.
+	 * Fork the current conversation into a new file with fresh lifecycle metadata.
 	 * @returns the old and new session file paths, or undefined when not persisting.
 	 */
 	async fork(): Promise<{ oldSessionFile: string; newSessionFile: string } | undefined> {
@@ -1096,8 +1221,11 @@ export class SessionManager {
 
 		const oldSessionFile = this.#sessionFile;
 		const parentSessionId = this.#sessionId;
+		this.#endLifecycle("session_switched");
 		await this.#drainAndCloseWriter();
 		this.#clearDiskError();
+		this.#entries = this.#entries.filter(entry => !isSessionIncarnationTelemetry(entry));
+		this.#index.rebuild(this.#entries);
 
 		const timestamp = nowIso();
 		this.#sessionId = mintSessionId();
@@ -1124,6 +1252,10 @@ export class SessionManager {
 		this.#rewriteRequired = false;
 		this.#forceFileCreation = true;
 		this.#draftOnlySessionCleanupArmed = false;
+		this.#nextSequence = nextSessionSequence(this.#entries);
+		this.#lifecycleStarted = false;
+		this.#lifecycleEnded = false;
+		this.#startLifecycle("created");
 		this.#artifactManager = null;
 		this.#artifactManagerSessionFile = null;
 		this.#rememberBreadcrumb(this.#cwd, this.#sessionFile);
@@ -1342,6 +1474,7 @@ export class SessionManager {
 
 	/** Flush, then close the append writer. */
 	async close(): Promise<void> {
+		this.#endLifecycle("closed");
 		if (!this.#persist) return;
 		await this.#scheduleDiskWork(async () => {
 			const hadWriter = this.#writer !== undefined;
@@ -1388,6 +1521,27 @@ export class SessionManager {
 	 */
 	setOperatorNotices(operatorNotices?: OperatorNotices): void {
 		this.#operatorNotices = operatorNotices;
+	}
+
+	/**
+	 * Apply the canonical session telemetry granularity. Every level change
+	 * closes the current measured interval before the new policy takes effect,
+	 * then starts a fresh interval when telemetry remains enabled.
+	 */
+	setInstrumentationLevel(level: InstrumentationLevel | undefined): void {
+		const previous = this.#instrumentation;
+		if (previous === level) return;
+		const wasEnabled = allowsSessionTelemetry(previous, "lifecycle");
+		const isEnabled = allowsSessionTelemetry(level, "lifecycle");
+		if (wasEnabled) {
+			this.#endLifecycle(isEnabled ? "instrumentation_changed" : "instrumentation_disabled");
+		}
+		this.#instrumentation = level;
+		if (!isEnabled) return;
+		this.#nextSequence = nextSessionSequence(this.#entries);
+		this.#lifecycleStarted = false;
+		this.#lifecycleEnded = false;
+		this.#startLifecycle(this.#entries.length === 0 ? "created" : "resumed");
 	}
 
 	/**
@@ -1734,6 +1888,7 @@ export class SessionManager {
 		outputSchema?: unknown;
 		spawns?: string;
 		readSummarize?: boolean;
+		maxNestedSpawnDepth?: number;
 	}): string {
 		const entry: SessionInitEntry = { type: "session_init", ...this.#freshEntryFields(), ...init };
 		this.#recordEntry(entry);
@@ -1956,6 +2111,48 @@ export class SessionManager {
 		return [...this.#entries];
 	}
 
+	/** Latest persisted lifecycle state, or `unknown` for old/off files. */
+	getLifecycleState(): SessionLifecycleState | "unknown" {
+		for (let index = this.#entries.length - 1; index >= 0; index--) {
+			const entry = this.#entries[index];
+			if (entry?.type === "session_lifecycle") return entry.state;
+		}
+		return "unknown";
+	}
+
+	/**
+	 * Append an immutable marker naming the exact entry prefix that exists now.
+	 * Later appends cannot move the marker or change its frozen prefix.
+	 */
+	createCheckpoint(): SessionCheckpoint | null {
+		if (!allowsSessionTelemetry(this.#instrumentation, "lifecycle") || this.#lifecycleEnded) return null;
+		const prefixSequence = this.#nextSequence - 1;
+		const entry: SessionCheckpointEntry = {
+			type: "session_checkpoint",
+			...this.#freshEntryFields(),
+			prefixSequence,
+		};
+		this.#recordEntry(entry);
+		return { id: entry.id, prefixSequence };
+	}
+
+	/**
+	 * Resolve a checkpoint to the immutable prefix preceding its marker.
+	 * The marker id, rather than the current tail, is the boundary.
+	 */
+	getEntriesThroughCheckpoint(checkpoint: SessionCheckpoint | string): SessionEntry[] {
+		const checkpointId = typeof checkpoint === "string" ? checkpoint : checkpoint.id;
+		const index = this.#entries.findIndex(
+			(entry): entry is SessionCheckpointEntry => entry.type === "session_checkpoint" && entry.id === checkpointId,
+		);
+		if (index < 0) throw new Error(`Session checkpoint ${checkpointId} not found`);
+		const entry = this.#entries[index] as SessionCheckpointEntry;
+		if (typeof checkpoint !== "string" && entry.prefixSequence !== checkpoint.prefixSequence) {
+			throw new Error(`Session checkpoint ${checkpointId} identity does not match`);
+		}
+		return this.#entries.slice(0, index);
+	}
+
 	/**
 	 * The session as a tree. A well-formed session has exactly one root; orphaned
 	 * entries (broken parent chain) are returned as roots too.
@@ -2003,11 +2200,13 @@ export class SessionManager {
 	 */
 	createBranchedSession(leafId: string): string | undefined {
 		const sourceSessionFile = this.#sessionFile;
+		if (!this.#index.has(leafId)) throw new Error(`Entry ${leafId} not found`);
+		this.#endLifecycle("session_switched");
 		const branchPath = this.getBranch(leafId);
-		if (branchPath.length === 0) throw new Error(`Entry ${leafId} not found`);
 
-		// Drop label entries from the path; recreate them fresh from the resolved map.
-		const entriesToKeep = branchPath.filter(entry => entry.type !== "label");
+		// Labels are resolved afresh, and lifecycle/checkpoint entries belong to
+		// the source session identity rather than the child.
+		const entriesToKeep = branchPath.filter(entry => entry.type !== "label" && !isSessionIncarnationTelemetry(entry));
 		const keptIds = new Set(entriesToKeep.map(entry => entry.id));
 		const labelsToCarry: Array<{ targetId: string; label: string }> = [];
 		for (const [targetId, label] of this.#index.labelsInEffect()) {
@@ -2052,6 +2251,9 @@ export class SessionManager {
 		this.#titleUpdatedAt = timestamp;
 		this.#hasTitleSlot = true;
 		this.#index.rebuild(this.#entries);
+		this.#nextSequence = nextSessionSequence(this.#entries);
+		this.#lifecycleStarted = false;
+		this.#lifecycleEnded = false;
 		this.#artifactManager = null;
 		this.#artifactManagerSessionFile = null;
 		this.#forceFileCreation = this.#persist;
@@ -2060,11 +2262,15 @@ export class SessionManager {
 			this.#sessionFile = undefined;
 			this.#fileIsCurrent = false;
 			this.#rewriteRequired = false;
+			this.#startLifecycle("created");
 			return undefined;
 		}
 
 		this.#sessionFile = newSessionFile;
-		this.#rewriteSynchronously();
+		this.#fileIsCurrent = false;
+		this.#rewriteRequired = true;
+		this.#startLifecycle("created");
+		if (!this.#lifecycleStarted) this.#rewriteSynchronously();
 		this.#rememberBreadcrumb(this.#cwd, newSessionFile);
 		return newSessionFile;
 	}
@@ -2099,8 +2305,17 @@ export class SessionManager {
 		options?: SessionManagerNoticeOptions,
 	): SessionManager {
 		const dir = sessionDir ?? SessionManager.getDefaultSessionDir(cwd, undefined, storage);
-		const manager = new SessionManager(cwd, dir, true, storage, sessionDir !== undefined, options?.operatorNotices);
+		const manager = new SessionManager(
+			cwd,
+			dir,
+			true,
+			storage,
+			sessionDir !== undefined,
+			options?.operatorNotices,
+			options?.instrumentation,
+		);
 		manager.#resetToNewSession();
+		manager.#startLifecycle("created");
 		return manager;
 	}
 
@@ -2140,10 +2355,23 @@ export class SessionManager {
 		cwd: string,
 		sessionDir?: string,
 		storage: SessionStorage = new FileSessionStorage(),
-		options?: { suppressBreadcrumb?: boolean; sessionFile?: string; operatorNotices?: OperatorNotices },
+		options?: {
+			suppressBreadcrumb?: boolean;
+			sessionFile?: string;
+			operatorNotices?: OperatorNotices;
+			instrumentation?: InstrumentationLevel;
+		},
 	): Promise<SessionManager> {
 		const dir = sessionDir ?? SessionManager.getDefaultSessionDir(cwd, undefined, storage);
-		const manager = new SessionManager(cwd, dir, true, storage, sessionDir !== undefined, options?.operatorNotices);
+		const manager = new SessionManager(
+			cwd,
+			dir,
+			true,
+			storage,
+			sessionDir !== undefined,
+			options?.operatorNotices,
+			options?.instrumentation,
+		);
 		manager.#suppressBreadcrumb = options?.suppressBreadcrumb === true;
 
 		const sourceEntries = structuredClone(
@@ -2153,7 +2381,10 @@ export class SessionManager {
 		await resolveBlobRefsInEntries(sourceEntries, manager.#blobs);
 
 		const sourceHeader = sourceEntries.find(entry => entry.type === "session") as SessionHeader | undefined;
-		const history = sourceEntries.filter(entry => entry.type !== "session") as SessionEntry[];
+		const history = sourceEntries.filter((entry): entry is SessionEntry => {
+			if (!("parentId" in entry)) return false;
+			return !isSessionIncarnationTelemetry(entry);
+		});
 		manager.#resetToNewSession(
 			{
 				parentSession: sourceHeader?.id,
@@ -2167,9 +2398,9 @@ export class SessionManager {
 		manager.#titleSource = manager.#header.titleSource;
 		manager.#titleUpdatedAt = nowIso();
 		manager.#hasTitleSlot = true;
-		manager.#entries = history;
-		manager.#index.rebuild(history);
+		manager.#applyEntries(manager.#header, history);
 		manager.sanitizeLoadedOpenAIResponsesReplayMetadata();
+		manager.#startLifecycle("created");
 		manager.#forceFileCreation = true;
 		await manager.#rewriteAtomically();
 		return manager;
@@ -2184,7 +2415,12 @@ export class SessionManager {
 		filePath: string,
 		sessionDir?: string,
 		storage: SessionStorage = new FileSessionStorage(),
-		options?: { initialCwd?: string; suppressBreadcrumb?: boolean; operatorNotices?: OperatorNotices },
+		options?: {
+			initialCwd?: string;
+			suppressBreadcrumb?: boolean;
+			operatorNotices?: OperatorNotices;
+			instrumentation?: InstrumentationLevel;
+		},
 	): Promise<SessionManager> {
 		const loaded = await loadEntriesFromFile(filePath, storage, { operatorNotices: options?.operatorNotices });
 		const header = loaded.find(entry => entry.type === "session") as SessionHeader | undefined;
@@ -2201,7 +2437,15 @@ export class SessionManager {
 			(recordedCwd && !recordedCwdUsable
 				? SessionManager.getDefaultSessionDir(cwd, undefined, storage)
 				: path.dirname(path.resolve(filePath)));
-		const manager = new SessionManager(cwd, dir, true, storage, sessionDir !== undefined, options?.operatorNotices);
+		const manager = new SessionManager(
+			cwd,
+			dir,
+			true,
+			storage,
+			sessionDir !== undefined,
+			options?.operatorNotices,
+			options?.instrumentation,
+		);
 		manager.#suppressBreadcrumb = options?.suppressBreadcrumb === true;
 		await manager.setSessionFile(filePath);
 		return manager;
@@ -2229,6 +2473,7 @@ export class SessionManager {
 			outputSchema?: unknown;
 			spawns?: string;
 			readSummarize?: boolean;
+			maxNestedSpawnDepth?: number;
 		} | null;
 	} | null> {
 		let loaded: FileEntry[];
@@ -2256,6 +2501,7 @@ export class SessionManager {
 			outputSchema?: unknown;
 			spawns?: string;
 			readSummarize?: boolean;
+			maxNestedSpawnDepth?: number;
 		} | null = null;
 		for (let index = loaded.length - 1; index >= 0; index--) {
 			const entry = loaded[index];
@@ -2267,6 +2513,7 @@ export class SessionManager {
 					outputSchema: entry.outputSchema,
 					readSummarize: entry.readSummarize,
 					spawns: entry.spawns,
+					maxNestedSpawnDepth: entry.maxNestedSpawnDepth,
 				};
 				break;
 			}
@@ -2335,6 +2582,7 @@ export class SessionManager {
 					const manager = await SessionManager.open(breadcrumb.sessionFile, undefined, storage, {
 						initialCwd: breadcrumbCwd,
 						operatorNotices: options?.operatorNotices,
+						instrumentation: options?.instrumentation,
 					});
 					await manager.moveTo(cwd, sessionDir);
 					return manager;
@@ -2346,9 +2594,20 @@ export class SessionManager {
 
 		if (chosenSession === undefined) chosenSession = await findMostRecentSession(dir, storage);
 
-		const manager = new SessionManager(cwd, dir, true, storage, sessionDir !== undefined, options?.operatorNotices);
+		const manager = new SessionManager(
+			cwd,
+			dir,
+			true,
+			storage,
+			sessionDir !== undefined,
+			options?.operatorNotices,
+			options?.instrumentation,
+		);
 		if (chosenSession) await manager.setSessionFile(chosenSession);
-		else manager.#resetToNewSession();
+		else {
+			manager.#resetToNewSession();
+			manager.#startLifecycle("created");
+		}
 		return manager;
 	}
 

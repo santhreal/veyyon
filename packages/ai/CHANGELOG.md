@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added one canonical session-telemetry policy for `off`, `basic`, `rich`, and `ultra`, plus additive context-snapshot and tool-span types. Hosts can now gate lifecycle, task, context, agent-communication, tool, and analytics data through one fail-closed contract without persisting raw arguments or message bodies.
+
 ### Changed
 
 - Every file in `src/` imports the `@veyyon/utils` names it uses from the module that declares them.
@@ -92,6 +96,10 @@
 - The cancelled-request error is `RequestAbortError`, not `AbortError`. It shared the name with two unrelated classes in `@veyyon/utils` (a cancelled operation and a killed child process), which made an `instanceof` check read as a question about cancellation when it was really a question about which layer raised it. `name` is still `"AbortError"` and the default message is still `"Request was aborted"`, so name-based and text-based matchers, and the auth gateway's 499 classification, are unchanged.
 
 ### Fixed
+- Background OAuth refreshes and usage-report reads now cap aggregate credential concurrency instead
+  of opening one simultaneous provider request for every stored account. Large credential fleets
+  still attempt every eligible row, preserve report ordering, and retain per-credential
+  single-flight behavior.
 
 - OpenAI Responses and Chat Completions now preserve `developer` for agent-owned text-block context
   instead of silently rewriting the array form as `user`. Responses and Codex split image-bearing

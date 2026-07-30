@@ -1416,10 +1416,17 @@ describe("ExtensionRunner", () => {
 				{ type: "ui_select" },
 				{ type: "tool_approval_resolved", approved: true },
 			]);
-			expect(select).toHaveBeenCalledWith(expect.stringContaining("Allow tool: dangerous_tool"), [
-				"Approve",
-				"Deny",
-			]);
+			expect(select).toHaveBeenCalledWith(
+				expect.stringContaining("## Permission required\n**Tool:** `dangerous_tool`\n**Scope:** This call only"),
+				[
+					{ label: "Approve", description: "Run this call once. No policy is saved." },
+					{ label: "Deny", description: "Do not run this call." },
+				],
+				{
+					selectionMarker: "radio",
+					helpText: "↑/↓ navigate  enter confirm  esc cancel",
+				},
+			);
 			delete globalState.__approvalEvents;
 		});
 

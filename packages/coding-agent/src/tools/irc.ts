@@ -121,7 +121,7 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 	}
 
 	static createIf(session: ToolSession): IrcTool | null {
-		if (!isIrcEnabled(session.settings, session.taskDepth ?? 0)) return null;
+		if (!isIrcEnabled(session.settings, session.taskDepth ?? 0, session.maxNestedSpawnDepth)) return null;
 		if (!session.agentRegistry || !session.getAgentId) return null;
 		return new IrcTool(session);
 	}

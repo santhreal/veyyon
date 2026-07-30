@@ -214,7 +214,8 @@ export function resolveGateInputs(settings: Settings, context: GateInputContext)
 		renderMermaid: settings.get("tui.renderMermaid"),
 		taskBatch: settings.get("subagent.batch"),
 		taskMaxConcurrency: settings.get("subagent.maxConcurrency"),
-		taskIrcEnabled: isIrcEnabled(settings, context.taskDepth ?? 0),
+		taskIrcEnabled:
+			(context.taskDepth ?? 0) > 0 || (delegation.possible && isIrcEnabled(settings, context.taskDepth ?? 0)),
 		eagerTasks: delegation.preferred,
 		eagerTasksAlways: delegation.required,
 		subagentNames,

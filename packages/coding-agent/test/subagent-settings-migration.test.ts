@@ -78,14 +78,13 @@ describe("subagent settings migration", () => {
 		}
 	});
 
-	/** The operational knobs keep their names and their values, just under the new prefix. */
-	test("carries every task.* operational knob across unchanged", async () => {
+	/** The operational knobs that did not change meaning keep their values under the new prefix. */
+	test("carries every unchanged task.* operational knob across", async () => {
 		writeConfig({
 			task: {
 				batch: false,
 				maxConcurrency: 12,
 				enableLsp: true,
-				maxRecursionDepth: 3,
 				maxRuntimeMs: 60_000,
 				softRequestBudget: 42,
 				softRequestBudgetNotice: false,
@@ -98,11 +97,58 @@ describe("subagent settings migration", () => {
 		expect(settings.get("subagent.batch")).toBe(false);
 		expect(settings.get("subagent.maxConcurrency")).toBe(12);
 		expect(settings.get("subagent.enableLsp")).toBe(true);
-		expect(settings.get("subagent.maxRecursionDepth")).toBe(3);
 		expect(settings.get("subagent.maxRuntimeMs")).toBe(60_000);
 		expect(settings.get("subagent.softRequestBudget")).toBe(42);
 		expect(settings.get("subagent.softRequestBudgetNotice")).toBe(false);
 		expect(settings.get("subagent.showResolvedModelBadge")).toBe(false);
+	});
+
+	/**
+	 * The retired recursion depth counted the root as level one. The replacement
+	 * counts nested spawn levels, so every finite positive value moves down by one;
+	 * `-1` remains unlimited. Both historical paths must make the same transition.
+	 */
+	test("translates both legacy recursion-depth paths to nested spawn depth", async () => {
+		for (const legacyPath of ["task", "subagent"] as const) {
+			for (const [legacy, expected] of [
+				[3, 2],
+				[1, 0],
+				[-1, -1],
+			] as const) {
+				writeConfig({ [legacyPath]: { maxRecursionDepth: legacy } });
+				const settings = await load();
+				expect(settings.get("subagent.maxNestedSpawnDepth"), `${legacyPath}.maxRecursionDepth: ${legacy}`).toBe(
+					expected,
+				);
+			}
+		}
+	});
+
+	/**
+	 * Legacy zero meant even the root could not spawn. New zero deliberately lets
+	 * the root spawn direct children, so preserving the old behavior also requires
+	 * turning off the subagent master switch.
+	 */
+	test("preserves legacy recursion depth zero through the master switch", async () => {
+		for (const legacyPath of ["task", "subagent"] as const) {
+			writeConfig({ [legacyPath]: { maxRecursionDepth: 0 } });
+			const settings = await load();
+			expect(settings.get("subagent.maxNestedSpawnDepth"), legacyPath).toBe(0);
+			expect(settings.get("subagent.enabled"), legacyPath).toBe(false);
+		}
+	});
+
+	/**
+	 * A cap already written under the replacement key is the operator's current
+	 * choice. Consuming stale legacy paths must never overwrite that explicit value.
+	 */
+	test("keeps an explicit nested spawn depth over both legacy paths", async () => {
+		writeConfig({
+			task: { maxRecursionDepth: 1 },
+			subagent: { maxRecursionDepth: 3, maxNestedSpawnDepth: 7 },
+		});
+
+		expect((await load()).get("subagent.maxNestedSpawnDepth")).toBe(7);
 	});
 
 	/**
@@ -295,7 +341,11 @@ describe("subagent settings migration", () => {
 	 * one is current.
 	 */
 	test("removes the legacy keys from the file it writes back", async () => {
-		writeConfig({ task: { eager: "always", maxConcurrency: 4 }, modelRoles: { task: "openai/gpt-5" } });
+		writeConfig({
+			task: { eager: "always", maxConcurrency: 4, maxRecursionDepth: 1 },
+			subagent: { maxRecursionDepth: 3 },
+			modelRoles: { task: "openai/gpt-5" },
+		});
 
 		const settings = await load();
 		await settings.set("ask.notify" as never, "on" as never);
@@ -303,6 +353,8 @@ describe("subagent settings migration", () => {
 
 		const onDisk = YAML.parse(fs.readFileSync(path.join(agentDir, "config.yml"), "utf8")) as Record<string, unknown>;
 		expect(onDisk.task).toBeUndefined();
+		expect((onDisk.task as Record<string, unknown> | undefined)?.maxRecursionDepth).toBeUndefined();
+		expect((onDisk.subagent as Record<string, unknown> | undefined)?.maxRecursionDepth).toBeUndefined();
 		expect((onDisk.modelRoles as Record<string, unknown> | undefined)?.task).toBeUndefined();
 	});
 });

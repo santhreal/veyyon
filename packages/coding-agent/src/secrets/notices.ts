@@ -18,6 +18,18 @@
  * would end up in whatever surface the host wired the sink to.
  */
 
+/**
+ * Notice `source` a secret-spend line carries.
+ *
+ * A spend is not a machine condition like the two above, so it does not go through
+ * {@link noteSecretsCondition}: it is raised per tool call on the session's notice event, where the
+ * interactive transcript can give it its own line instead of the generic `source: text` shape. The
+ * constant lives here so the producer (`sdk.ts`, at the one expansion call site) and the renderer
+ * (`modes/controllers/event-controller.ts`) agree on one string, and so an SDK consumer can filter
+ * for spends without matching the vault's own warnings, which keep `secrets`.
+ */
+export const SECRET_SPEND_NOTICE_SOURCE = "secret-spend";
+
 export type SecretsNoticeSink = (message: string) => void;
 
 /** Removes exactly one attached sink. Safe to call more than once. */

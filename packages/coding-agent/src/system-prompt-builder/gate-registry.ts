@@ -141,12 +141,6 @@ export const PROMPT_GATES = [
 		liveness: { kind: "live" },
 	},
 	{
-		setting: "subagent.maxRecursionDepth",
-		variables: ["taskIrcEnabled"],
-		renders: "the IRC-backed parallel coordination clause, which is present only when this session can still spawn",
-		liveness: { kind: "live" },
-	},
-	{
 		setting: "subagent.agents",
 		variables: [
 			"subagentNames",

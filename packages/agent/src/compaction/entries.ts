@@ -25,6 +25,11 @@ export interface SessionEntryBase {
 	id: string;
 	parentId: string | null;
 	timestamp: string;
+	/**
+	 * Monotonic logical position assigned when lifecycle telemetry is enabled.
+	 * Absent in older files and when session instrumentation is off.
+	 */
+	sequence?: number;
 }
 
 export interface SessionMessageEntry extends SessionEntryBase {
@@ -142,6 +147,8 @@ export interface SessionInitEntry extends SessionEntryBase {
 	spawns?: string;
 	/** The agent's `readSummarize` setting (`false` = read summarization disabled); absent uses the session default. */
 	readSummarize?: boolean;
+	/** Resolved nested spawn limit for this agent; absent on older session files. */
+	maxNestedSpawnDepth?: number;
 }
 
 export interface ModeChangeEntry extends SessionEntryBase {

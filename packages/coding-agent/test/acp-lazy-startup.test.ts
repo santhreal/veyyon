@@ -273,7 +273,7 @@ describe("ACP lazy startup", () => {
 			"subagent.delegation": "required",
 			"subagent.batch": false,
 			"subagent.maxConcurrency": 4,
-			"subagent.maxRecursionDepth": 5,
+			"subagent.maxNestedSpawnDepth": 5,
 			"subagent.agents": { scout: { enabled: true } },
 			"memory.backend": "local",
 			"memories.enabled": true,

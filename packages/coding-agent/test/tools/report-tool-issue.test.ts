@@ -53,9 +53,7 @@ function selectPushedIds(db: Database): number[] {
 function pushSettings(overrides: Record<string, unknown> = {}): Settings {
 	return Settings.isolated({
 		"dev.autoqa": true,
-		// Consent is the push opt-in; `granted` is what `resolvePushConfig`
-		// gates on (or `VEYYON_AUTO_QA_PUSH=1` for headless overrides).
-		"dev.autoqa.consent": "granted",
+		"dev.autoqaPush.enabled": true,
 		"dev.autoqaPush.endpoint": "https://qa.example.com/grievances",
 		...overrides,
 	});
@@ -101,18 +99,45 @@ describe("flushGrievances", () => {
 		expect(isAutoQaEnabled(Settings.isolated({ "dev.autoqa": false }))).toBe(true);
 	});
 
-	it("skips network when consent is missing and leaves rows intact", async () => {
+	/** Every profile starts local-only while still carrying the owned veyyon.dev collector endpoint. */
+	it("defaults automatic upload off and the endpoint to veyyon.dev", () => {
+		const settings = Settings.isolated({ "dev.autoqa": true });
+
+		expect(settings.get("dev.autoqaPush.enabled")).toBe(false);
+		expect(settings.get("dev.autoqaPush.endpoint")).toBe("https://veyyon.dev/api/grievances");
+	});
+
+	/** The default-off profile toggle is a hard network boundary and never consumes the local queue. */
+	it("skips network when automatic upload is off and leaves rows intact", async () => {
 		insertGrievance(db, "glob", "weird ordering");
 		const fetchSpy = vi.fn(async () => new Response("unexpected", { status: 200 }));
 
-		// `denied` is the user-facing kill switch for push.
-		const result = await flushGrievances(db, pushSettings({ "dev.autoqa.consent": "denied" }), {
+		const result = await flushGrievances(db, pushSettings({ "dev.autoqaPush.enabled": false }), {
 			fetch: mockFetch(fetchSpy),
 		});
 
 		expect(result).toEqual({ pushed: 0, ok: false, skipped: true });
 		expect(fetchSpy).not.toHaveBeenCalled();
 		expect(selectIds(db)).toEqual([1]);
+	});
+
+	/** The explicit CLI push intent bypasses both the profile toggle and the disabled recording master. */
+	it("force uploads to the bundled endpoint while automatic upload is off", async () => {
+		insertGrievance(db, "set_cwd", "reported relative endpoints");
+		let capturedInput: string | URL | Request | undefined;
+		const fetchSpy = vi.fn(async (input: string | URL | Request) => {
+			capturedInput = input;
+			return new Response("", { status: 202 });
+		});
+
+		const result = await flushGrievances(db, Settings.isolated(), {
+			forceUpload: true,
+			fetch: mockFetch(fetchSpy),
+		});
+
+		expect(result).toEqual({ pushed: 1, ok: true });
+		expect(String(capturedInput)).toBe("https://veyyon.dev/api/grievances");
+		expect(selectPushedIds(db)).toEqual([1]);
 	});
 
 	it("skips network when endpoint is missing", async () => {

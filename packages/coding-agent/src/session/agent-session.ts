@@ -93,6 +93,7 @@ import type {
 	CodexCompactionContext,
 	Context,
 	ImageContent,
+	InstrumentationLevel,
 	Message,
 	MessageAttribution,
 	Model,
@@ -123,6 +124,14 @@ import {
 	streamSimple,
 } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
+import {
+	assistantTurnMetricsForPersistence,
+	assistantTurnRequestForPersistence,
+	instrumentationRank,
+	type SessionTelemetryDetail,
+	sessionTelemetryDetail,
+	toolCallMetricsForPersistence,
+} from "@veyyon/ai/instrumentation";
 import { elidedSignatureBytes, signaturePolicy } from "@veyyon/ai/providers/google-shared";
 import { resetOpenAICodexHistoryAfterCompaction } from "@veyyon/ai/providers/openai-codex-responses";
 import { assistantText } from "@veyyon/ai/utils/message-text";
@@ -293,7 +302,13 @@ import {
 	listLocalPlanFileUrls,
 	resolveLocalUrlToPath,
 } from "../internal-urls/local-protocol";
-import { IrcBus, type IrcMessage } from "../irc/bus";
+import {
+	IrcBus,
+	type IrcMessage,
+	type IrcPersistedDeliveryFacts,
+	type IrcPersistedDeliveryTelemetry,
+	projectIrcDeliveryTelemetry,
+} from "../irc/bus";
 import { resolveMemoryBackend } from "../memory-backend";
 import { shutdownMnemopiEmbedClient } from "../mnemopi/embed-client";
 import { getMnemopiSessionState, type MnemopiSessionState, setMnemopiSessionState } from "../mnemopi/state";
@@ -392,7 +407,13 @@ import { findCompactMode } from "./compact-modes";
 import { type ContentBlockLike, contentText } from "./content-text";
 // The accounting, not the drawing. Both of these used to be imported from `modes/`, which put the
 // terminal UI on the session engine's graph and cost the layering gate a standing exception each.
-import { computeNonMessageBreakdown, computeNonMessageTokens, computeStoredMessagesTokens } from "./context-usage";
+import {
+	buildContextSnapshot,
+	computeNonMessageBreakdown,
+	computeNonMessageTokens,
+	computeStoredMessagesTokens,
+	estimateContextSnapshotAttribution,
+} from "./context-usage";
 import { abortDetached } from "./detached-abort";
 import {
 	collectPendingToolCalls,
@@ -484,6 +505,16 @@ const USER_RESPONSE_CUE_RE =
 interface PromptLine {
 	text: string;
 	hadPromptLabel: boolean;
+}
+
+interface PendingContextSnapshot {
+	promptTokens: number;
+	nonMessageTokens: number;
+	cutoffCount: number;
+	detail: SessionTelemetryDetail;
+	storedMessagesTokens?: number;
+	tailTokens?: number;
+	compactionEntryId?: string;
 }
 
 function promptLine(line: string): PromptLine {
@@ -1253,6 +1284,7 @@ export interface ContextUsageBreakdown {
 	systemContextTokens: number;
 	skillsTokens: number;
 	messagesTokens: number;
+	pendingMessagesTokens: number;
 }
 
 /** Session statistics for /session command */
@@ -2257,13 +2289,7 @@ export class AgentSession {
 	#acceptTerminalEmptyStopForPrompt = false;
 	#promptGeneration = 0;
 	#pendingAgentEndEmit: AgentSessionEvent | undefined;
-	#pendingContextSnapshot:
-		| {
-				promptTokens: number;
-				nonMessageTokens: number;
-				cutoffCount: number;
-		  }
-		| undefined = undefined;
+	#pendingContextSnapshot: PendingContextSnapshot | undefined = undefined;
 	#sessionStopContinuationCount = 0;
 	#sessionStopHookActive = false;
 	// Bumped whenever the pending in-flight snapshot is set/cleared. The
@@ -4567,16 +4593,73 @@ export class AgentSession {
 		) {
 			return;
 		}
-		if (this.#sessionMessageAlreadyPersisted(message)) return;
+		let persistenceMessage = message;
+		if (message.role === "toolResult" && message.metrics !== undefined) {
+			const metrics = toolCallMetricsForPersistence(message.metrics, this.settings.get("session.instrumentation"));
+			if (metrics === undefined) {
+				const { metrics: _discardedMetrics, ...withoutMetrics } = message;
+				persistenceMessage = withoutMetrics;
+			} else {
+				persistenceMessage = { ...message, metrics };
+			}
+		}
 		if (message.role === "assistant") {
-			const assistantMsg = message as AssistantMessage;
+			const level = this.settings.get("session.instrumentation");
+			const turnMetrics = assistantTurnMetricsForPersistence(message.turnMetrics, level);
+			const request = assistantTurnRequestForPersistence(message.request, level);
+			const { turnMetrics: _discardedTurnMetrics, request: _discardedRequest, ...withoutStudyTelemetry } = message;
+			persistenceMessage = {
+				...withoutStudyTelemetry,
+				...(turnMetrics === undefined ? {} : { turnMetrics }),
+				...(request === undefined ? {} : { request }),
+			};
+		}
+		if (this.#sessionMessageAlreadyPersisted(persistenceMessage)) return;
+		if (message.role === "assistant") {
+			const assistantMsg = persistenceMessage as AssistantMessage;
 			if (this.#isClassifierRefusal(assistantMsg)) return;
 			if (isEmptyErrorTurn(assistantMsg)) return;
 			if (assistantMsg.stopReason !== "aborted" && assistantMsg.stopReason !== "error" && assistantMsg.usage) {
-				assistantMsg.contextSnapshot = {
-					promptTokens: calculatePromptTokens(assistantMsg.usage),
-					nonMessageTokens: this.#pendingContextSnapshot?.nonMessageTokens ?? computeNonMessageTokens(this),
-				};
+				const pending = this.#pendingContextSnapshot;
+				const nonMessageTokens = pending?.nonMessageTokens ?? computeNonMessageTokens(this);
+				const currentDetail = sessionTelemetryDetail(
+					this.settings.get("session.instrumentation"),
+					"context-breakdown",
+				);
+				const detail =
+					!pending || pending.detail === "none" || currentDetail === "none"
+						? "none"
+						: instrumentationRank(pending.detail) < instrumentationRank(currentDetail)
+							? pending.detail
+							: currentDetail;
+				if (detail === "rich" || detail === "ultra") {
+					const providerPromptTokens =
+						assistantMsg.usage.input + assistantMsg.usage.cacheRead + assistantMsg.usage.cacheWrite;
+					const promptTokens =
+						providerPromptTokens > 0 ? calculatePromptTokens(assistantMsg.usage) : pending?.promptTokens;
+					if (promptTokens !== undefined) {
+						const compactionEntryId =
+							pending?.compactionEntryId ??
+							(detail === "ultra" ? getLatestCompactionEntry(this.sessionManager.getBranch())?.id : undefined);
+						assistantMsg.contextSnapshot = buildContextSnapshot(
+							promptTokens,
+							nonMessageTokens,
+							detail,
+							estimateContextSnapshotAttribution(
+								promptTokens,
+								nonMessageTokens,
+								pending?.tailTokens ?? 0,
+								providerPromptTokens > 0 ? "provider" : "estimate",
+								compactionEntryId,
+							),
+						);
+					}
+				} else {
+					assistantMsg.contextSnapshot = {
+						promptTokens: calculatePromptTokens(assistantMsg.usage),
+						nonMessageTokens,
+					};
+				}
 			}
 		}
 		const skipPersistedRewindResult =
@@ -4584,7 +4667,7 @@ export class AgentSession {
 			message.toolName === TOOL.rewind &&
 			this.#rewoundToolResultIds.delete(message.toolCallId);
 		if (!skipPersistedRewindResult) {
-			this.#appendSessionMessage(message);
+			this.#appendSessionMessage(persistenceMessage);
 		}
 	}
 
@@ -8110,27 +8193,27 @@ export class AgentSession {
 	}
 
 	getDiscoverableTools(filter?: { source?: DiscoverableTool["source"] }): DiscoverableTool[] {
-		// For "all" mode we combine built-in registry entries + MCP tools.
+		// For "all" mode we combine local registry entries with MCP tools.
 		// For "mcp-only" mode we only return MCP tools.
 		const mode = this.#resolveEffectiveDiscoveryMode();
 		const activeNames = new Set(this.getActiveToolNames());
 		const mcpTools = Array.from(this.#discoverableMCPTools.values()).filter(t => !activeNames.has(t.name));
-		const builtinTools: DiscoverableTool[] = mode === "all" ? this.#collectDiscoverableBuiltinTools() : [];
-		const allTools = [...builtinTools, ...mcpTools];
+		const localTools: DiscoverableTool[] = mode === "all" ? this.#collectDiscoverableLocalTools() : [];
+		const allTools = [...localTools, ...mcpTools];
 		return filter?.source ? allTools.filter(t => t.source === filter.source) : allTools;
 	}
 
-	/** Collect built-in tools the model can discover via search_tool_bm25. Restricted to tool
-	 *  definitions whose `loadMode === "discoverable"`. This keeps hidden/internal tools
-	 *  (resolve, yield, report_finding, report_tool_issue) out of the index
-	 *  and avoids mislabeling extension/custom default-inactive tools as built-ins. */
-	#collectDiscoverableBuiltinTools(): DiscoverableTool[] {
+	/** Collect local tools the model can discover via search_tool_bm25. Restricted to definitions
+	 *  whose `loadMode === "discoverable"`. Hidden/internal tools remain out of the index. Registry
+	 *  source ownership distinguishes built-ins from first-party custom tools such as generate_image. */
+	#collectDiscoverableLocalTools(): DiscoverableTool[] {
 		const activeNames = new Set(this.getActiveToolNames());
 		const result: DiscoverableTool[] = [];
 		for (const tool of this.#toolRegistry.values()) {
 			if (tool.loadMode !== "discoverable") continue;
 			if (activeNames.has(tool.name)) continue;
-			const collected = collectDiscoverableTools([tool], { source: "builtin" });
+			const source = this.#builtInToolNames.has(tool.name) ? "builtin" : "custom";
+			const collected = collectDiscoverableTools([tool], { source });
 			result.push(...collected);
 		}
 		return result;
@@ -10080,11 +10163,31 @@ export class AgentSession {
 				nonMessageTokens +
 					this.messages.reduce((sum, msg) => sum + estimateTokens(msg), 0) +
 					messages.reduce((sum, msg) => sum + estimateTokens(msg), 0);
-			this.#setPendingContextSnapshot({
+			const contextDetail = sessionTelemetryDetail(
+				this.settings.get("session.instrumentation"),
+				"context-breakdown",
+			);
+			const pendingContextSnapshot: PendingContextSnapshot = {
 				promptTokens,
 				nonMessageTokens,
 				cutoffCount: this.messages.length + messages.length,
-			});
+				detail: contextDetail,
+			};
+			if (contextDetail === "rich" || contextDetail === "ultra") {
+				const tailTokens =
+					breakdown?.pendingMessagesTokens ?? messages.reduce((sum, msg) => sum + estimateTokens(msg), 0);
+				const attribution = estimateContextSnapshotAttribution(
+					promptTokens,
+					nonMessageTokens,
+					tailTokens,
+					"estimate",
+					contextDetail === "ultra" ? getLatestCompactionEntry(this.sessionManager.getBranch())?.id : undefined,
+				);
+				pendingContextSnapshot.storedMessagesTokens = attribution.storedMessagesTokens;
+				pendingContextSnapshot.tailTokens = attribution.tailTokens;
+				pendingContextSnapshot.compactionEntryId = attribution.compactionEntryId;
+			}
+			this.#setPendingContextSnapshot(pendingContextSnapshot);
 			try {
 				await this.#promptAgentWithIdleRetry(messages, agentPromptOptions);
 			} finally {
@@ -11746,6 +11849,16 @@ export class AgentSession {
 	// =========================================================================
 	// Message Queue Mode Management
 	// =========================================================================
+
+	/**
+	 * Apply a live instrumentation change to settings, future model loops, and
+	 * the session journal's lifecycle interval as one transition.
+	 */
+	setInstrumentationLevel(level: InstrumentationLevel): void {
+		this.settings.set("session.instrumentation", level);
+		this.agent.instrumentation = level;
+		this.sessionManager.setInstrumentationLevel(level);
+	}
 
 	/**
 	 * Set steering mode.
@@ -16895,6 +17008,21 @@ export class AgentSession {
 			logger.warn("IRC auto-reply turn failed", { from: msg.from, error: String(error) });
 		}
 	}
+	/**
+	 * Persist one directional, content-free IRC delivery event as session
+	 * metadata. Custom metadata survives JSONL reload but never enters context.
+	 * Called only by the bus's exactly-once record boundary.
+	 */
+	recordIrcDeliveryTelemetry(facts: IrcPersistedDeliveryFacts): void {
+		const detail = sessionTelemetryDetail(this.settings.get("session.instrumentation"), "agent-communication");
+		if (detail !== "rich" && detail !== "ultra") return;
+		const telemetry: IrcPersistedDeliveryTelemetry = {
+			...projectIrcDeliveryTelemetry(detail, facts),
+			messageId: facts.messageId,
+			direction: facts.direction,
+		};
+		this.sessionManager.appendCustomEntry("irc:delivery-telemetry", telemetry);
+	}
 
 	/**
 	 * Emit an IRC relay observation event on this session for UI rendering only.
@@ -17932,6 +18060,8 @@ export class AgentSession {
 		let anchored = false;
 
 		const pendingMessages = options?.pendingMessages ?? [];
+		let pendingMessagesTokens = 0;
+		for (const message of pendingMessages) pendingMessagesTokens += estimateTokens(message);
 
 		const pending = this.#pendingContextSnapshot;
 
@@ -17986,10 +18116,7 @@ export class AgentSession {
 				tailTokens += estimateTokens(resolvedActiveMessages[i]);
 			}
 			usedTokens =
-				promptTokens +
-				Math.max(0, currentNonMessageTokens - nonMessageTokens) +
-				tailTokens +
-				pendingMessages.reduce((sum, msg) => sum + estimateTokens(msg), 0);
+				promptTokens + Math.max(0, currentNonMessageTokens - nonMessageTokens) + tailTokens + pendingMessagesTokens;
 		} else if (pending) {
 			anchored = true;
 			let tailTokens = 0;
@@ -18002,7 +18129,7 @@ export class AgentSession {
 				pending.promptTokens +
 				Math.max(0, currentNonMessageTokens - pending.nonMessageTokens) +
 				tailTokens +
-				pendingMessages.reduce((sum, msg) => sum + estimateTokens(msg), 0);
+				pendingMessagesTokens;
 		}
 
 		if (!anchored && !pending && branchEntries.length === 0) {
@@ -18022,7 +18149,7 @@ export class AgentSession {
 						promptTokens +
 						Math.max(0, currentNonMessageTokens - nonMessageTokens) +
 						tailTokens +
-						pendingMessages.reduce((sum, msg) => sum + estimateTokens(msg), 0);
+						pendingMessagesTokens;
 					anchored = true;
 					break;
 				}
@@ -18033,10 +18160,7 @@ export class AgentSession {
 			for (const msg of resolvedActiveMessages) {
 				messagesTokens += estimateTokens(msg);
 			}
-			usedTokens =
-				currentNonMessageTokens +
-				messagesTokens +
-				pendingMessages.reduce((sum, msg) => sum + estimateTokens(msg), 0);
+			usedTokens = currentNonMessageTokens + messagesTokens + pendingMessagesTokens;
 		}
 
 		const messagesTokens = Math.max(0, usedTokens - categoryNonMessageTokens);
@@ -18050,6 +18174,7 @@ export class AgentSession {
 			systemContextTokens,
 			skillsTokens,
 			messagesTokens,
+			pendingMessagesTokens,
 		};
 	}
 
@@ -18072,9 +18197,7 @@ export class AgentSession {
 		return this.#contextUsageRevision;
 	}
 
-	#setPendingContextSnapshot(
-		snapshot: { promptTokens: number; nonMessageTokens: number; cutoffCount: number } | undefined,
-	): void {
+	#setPendingContextSnapshot(snapshot: PendingContextSnapshot | undefined): void {
 		this.#pendingContextSnapshot = snapshot;
 		this.#contextUsageRevision++;
 	}
@@ -18094,11 +18217,28 @@ export class AgentSession {
 	#rebasePendingContextSnapshotAfterCompaction(): void {
 		if (!this.#pendingContextSnapshot) return;
 		const nonMessageTokens = computeNonMessageTokens(this);
-		this.#setPendingContextSnapshot({
-			promptTokens: nonMessageTokens + this.messages.reduce((sum, msg) => sum + estimateTokens(msg), 0),
+		const promptTokens = nonMessageTokens + this.messages.reduce((sum, msg) => sum + estimateTokens(msg), 0);
+		const rebased: PendingContextSnapshot = {
+			promptTokens,
 			nonMessageTokens,
 			cutoffCount: this.messages.length,
-		});
+			detail: this.#pendingContextSnapshot.detail,
+		};
+		if (this.#pendingContextSnapshot.detail === "rich" || this.#pendingContextSnapshot.detail === "ultra") {
+			const attribution = estimateContextSnapshotAttribution(
+				promptTokens,
+				nonMessageTokens,
+				0,
+				"estimate",
+				this.#pendingContextSnapshot.detail === "ultra"
+					? getLatestCompactionEntry(this.sessionManager.getBranch())?.id
+					: undefined,
+			);
+			rebased.storedMessagesTokens = attribution.storedMessagesTokens;
+			rebased.tailTokens = attribution.tailTokens;
+			rebased.compactionEntryId = attribution.compactionEntryId;
+		}
+		this.#setPendingContextSnapshot(rebased);
 	}
 
 	#ingestProviderUsageHeaders(response: ProviderResponseMetadata, model?: Model): void {

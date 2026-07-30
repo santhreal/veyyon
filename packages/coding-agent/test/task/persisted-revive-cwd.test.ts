@@ -61,8 +61,9 @@ it("reopens a reusable persisted reviver at the child's latest cwd and project p
 		childManager.appendSessionInit({
 			systemPrompt: "Persisted child",
 			task: "Check destination scope",
-			tools: ["yield"],
-			spawns: "",
+			tools: ["task", "yield"],
+			spawns: "*",
+			maxNestedSpawnDepth: 1,
 		});
 		childManager.appendMessage({ role: "user", content: "ready", timestamp: Date.now() });
 		await childManager.ensureOnDisk();
@@ -96,6 +97,9 @@ it("reopens a reusable persisted reviver at the child's latest cwd and project p
 		revived = await revive!();
 		expect(revived.sessionManager.getCwd()).toBe(projectA);
 		expect(revived.secretsEnabled).toBe(true);
+		// The persisted per-agent cap must survive a cold revive. At depth one,
+		// cap one retains task; dropping the persisted value would revive as a leaf.
+		expect(revived.getToolByName("task")).toBeDefined();
 		expect(parent.sessionManager.getCwd()).toBe(projectB);
 		expect(parent.secretsEnabled).toBe(false);
 

@@ -529,6 +529,15 @@ export class Agent {
 	}
 
 	/**
+	 * Set the telemetry level used when the next model loop starts. An in-flight
+	 * loop keeps its capture level; the host persistence boundary re-applies the
+	 * live policy when that turn finishes.
+	 */
+	set instrumentation(value: InstrumentationLevel) {
+		this.#instrumentation = value;
+	}
+
+	/**
 	 * Get the prompt cache key forwarded to providers.
 	 */
 	get promptCacheKey(): string | undefined {

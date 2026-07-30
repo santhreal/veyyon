@@ -218,3 +218,104 @@ describe("formatSessionStats non-silent truncation (Law 10)", () => {
 		expect(line(text, "Per-turn")).toBe("Per-turn");
 	});
 });
+
+describe("formatSessionStats persisted telemetry", () => {
+	it("renders each optional session-level rollup when it exists", () => {
+		const text = formatSessionStats(
+			report({
+				lifecycle: {
+					transitions: 2,
+					checkpoints: 1,
+					sequence: { entries: 5, first: 1, last: 5, highest: 5 },
+					latestState: { state: "ended", reason: "closed", sequence: 5 },
+					latestCheckpoint: { id: "cp-4", prefixSequence: 3, sequence: 4 },
+				},
+				context: {
+					snapshots: 1,
+					promptTokens: { observations: 1, total: 100, max: 100 },
+					nonMessageTokens: { observations: 1, total: 20, max: 20 },
+					storedMessagesTokens: { observations: 1, total: 70, max: 70 },
+					tailTokens: { observations: 1, total: 10, max: 10 },
+					compactionEntries: 1,
+					compactionEntryIds: ["compact-1"],
+				},
+				toolSpans: {
+					calls: 1,
+					statuses: { ok: 1, error: 0, aborted: 0, blocked: 0, skipped: 0 },
+					useless: 0,
+					rich: {
+						queuedMs: 3,
+						shared: 1,
+						exclusive: 0,
+						batches: 1,
+						maxBatchSize: 1,
+						resultBlocks: 2,
+						resultImages: 1,
+					},
+					ultra: {
+						argsBytes: 64,
+						uniqueArgs: 1,
+						interruptible: { true: 1, false: 0 },
+						signalAborted: { true: 0, false: 1 },
+					},
+				},
+				ircDelivery: {
+					sent: {
+						count: 1,
+						payloadBytes: 128,
+						outcomes: { injected: 1, woken: 0, revived: 0, failed: 0 },
+						routes: { injected: 1 },
+					},
+					received: {
+						count: 0,
+						payloadBytes: 0,
+						outcomes: { injected: 0, woken: 0, revived: 0, failed: 0 },
+					},
+				},
+				taskState: {
+					operations: 1,
+					byOperation: { done: 1 },
+					latest: { total: 2, open: 1, inProgress: 1, dropped: 0, completed: 1 },
+					transitions: {
+						total: 1,
+						added: 0,
+						removed: 0,
+						toPending: 0,
+						toInProgress: 0,
+						toDropped: 0,
+						toCompleted: 1,
+					},
+				},
+			}),
+		);
+
+		for (const heading of ["Lifecycle", "Context attribution", "Tool spans", "IRC delivery", "Task state"]) {
+			expect(text).toContain(heading);
+		}
+		expect(text).toContain("ended (closed)");
+		expect(text).toContain("compact-1");
+		expect(text).toContain("injected 1");
+		expect(text).toContain("1 completed");
+	});
+
+	/**
+	 * Text output must summarize high-cardinality compaction telemetry in one
+	 * bounded line instead of joining every retained identifier.
+	 */
+	it("renders only the latest sampled compaction id", () => {
+		const text = formatSessionStats(
+			report({
+				context: {
+					snapshots: 10_000,
+					promptTokens: { observations: 10_000, total: 100_000, max: 10 },
+					nonMessageTokens: { observations: 10_000, total: 20_000, max: 2 },
+					compactionEntries: 10_000,
+					compactionEntryIds: Array.from({ length: 16 }, (_, index) => `compact-${9984 + index}`),
+				},
+			}),
+		);
+
+		expect(text).toContain("10,000 unique · latest compact-9999");
+		expect(text).not.toContain("compact-9984");
+	});
+});

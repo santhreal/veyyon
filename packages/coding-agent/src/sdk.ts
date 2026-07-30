@@ -136,7 +136,6 @@ import { AgentRegistry, MAIN_AGENT_ID } from "./registry/agent-registry";
 import { createRepairToolCallArgumentsHook } from "./repair/agent-hook";
 import {
 	collectEnvSecrets,
-	deobfuscateSessionContext,
 	deobfuscateToolArguments,
 	describeSecretRejection,
 	loadSecrets,
@@ -224,7 +223,12 @@ import {
 } from "./tools";
 import { normalizeToolName, normalizeToolNames, TOOL } from "./tools/builtin-names";
 import { ToolContextStore } from "./tools/context";
-import { getImageGenTools, isImageProviderPreference, setPreferredImageProvider } from "./tools/image-gen";
+import {
+	getImageGenTools,
+	imageGenTool,
+	isImageProviderPreference,
+	setPreferredImageProvider,
+} from "./tools/image-gen";
 import { wrapToolWithMetaNotice } from "./tools/output-meta";
 import { queueResolveHandler } from "./tools/resolve";
 import { renderSearchToolBm25Description, SearchToolBm25Tool } from "./tools/search-tool-bm25";
@@ -1094,6 +1098,9 @@ function customToolToDefinition(tool: CustomTool, obfuscateProviderText?: (text:
 			: undefined,
 		[TOOL_DEFINITION_MARKER]: true,
 	};
+	if (tool === imageGenTool) {
+		(definition as typeof definition & Pick<AgentTool, "loadMode">).loadMode = imageGenTool.loadMode;
+	}
 	return definition;
 }
 
@@ -1423,11 +1430,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			logger.time("sessionManager", () =>
 				SessionManager.create(cwd, SessionManager.getDefaultSessionDir(cwd, agentDir), undefined, {
 					operatorNotices,
+					instrumentation: settings.get("session.instrumentation"),
 				}),
 			);
 		// A caller-supplied manager was constructed before this SDK surface existed. Attach the
 		// selected session's channel now so later setSessionFile/load recovery is still visible.
 		sessionManager.setOperatorNotices(operatorNotices);
+		sessionManager.setInstrumentationLevel(settings.get("session.instrumentation"));
 		const providerSessionId = options.providerSessionId ?? sessionManager.getSessionId();
 		const forkCacheShapeChanged =
 			options.model !== undefined ||
@@ -1913,9 +1922,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			sessionManager.appendMessage(interruptedTurnAbort);
 			existingBranch = logger.time("getRecoveredSessionBranch", () => sessionManager.getBranch());
 		}
-		let existingSession = logger.time("loadSessionContext", () =>
-			deobfuscateSessionContext(sessionManager.buildSessionContext(), obfuscator),
-		);
+		let existingSession = logger.time("loadSessionContext", () => sessionManager.buildSessionContext());
 		// Decode-only re-arm on resume. Persisted history keeps cheap handles (the
 		// token win), so a resumed branch can hold `§handle` tokens from argot_load
 		// calls in earlier sessions; the display/export seams can only expand them
@@ -3050,9 +3057,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			if (selectedModelAbort) {
 				sessionManager.appendMessage(selectedModelAbort);
 				existingBranch = logger.time("getRecoveredUserTailBranch", () => sessionManager.getBranch());
-				existingSession = logger.time("loadRecoveredUserTailContext", () =>
-					deobfuscateSessionContext(sessionManager.buildSessionContext(), obfuscator),
-				);
+				existingSession = logger.time("loadRecoveredUserTailContext", () => sessionManager.buildSessionContext());
 			}
 		}
 
@@ -3415,16 +3420,16 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				? filterBySource(collectDiscoverableTools(tools.values()), "mcp")
 				: [];
 			const activeToolNames = new Set(toolNames);
-			const discoverableBuiltinTools: DiscoverableTool[] =
+			const discoverableLocalTools: DiscoverableTool[] =
 				effectiveDiscoveryMode === "all"
-					? collectDiscoverableTools(
-							Array.from(tools.values()).filter(
-								tool => tool.loadMode === "discoverable" && !activeToolNames.has(tool.name),
-							),
-							{ source: "builtin" },
-						)
+					? Array.from(tools.values()).flatMap(tool => {
+							if (tool.loadMode !== "discoverable" || activeToolNames.has(tool.name)) return [];
+							return collectDiscoverableTools([tool], {
+								source: builtInRegistryToolNames.has(tool.name) ? "builtin" : "custom",
+							});
+						})
 					: [];
-			const discoverableToolsForDesc: DiscoverableTool[] = [...discoverableBuiltinTools, ...discoverableMCPTools];
+			const discoverableToolsForDesc: DiscoverableTool[] = [...discoverableLocalTools, ...discoverableMCPTools];
 			const discoverableToolSummary = summarizeDiscoverableTools(discoverableToolsForDesc);
 			const hasDiscoverableTools =
 				mcpDiscoveryEnabled && toolNames.includes(TOOL.search_tool_bm25) && discoverableToolsForDesc.length > 0;
@@ -3649,8 +3654,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			}
 		}
 
-		// When tools.discoveryMode === "all", hide non-essential built-in discoverable tools
-		// from the initial set unless they were explicitly requested or restored from persistence.
+		// When tools.discoveryMode === "all", hide non-essential discoverable tools
+		// from the initial set unless they were explicitly requested or restored.
 		// The model finds them via search_tool_bm25 and activates them on demand.
 		if (effectiveDiscoveryMode === "all") {
 			// Tools a forced tool_choice will target must stay active, or the named
@@ -3684,10 +3689,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 		initialToolNames = filterToolsByHarnessProfile(initialToolNames, settings, model);
 
-		// Pre-register in the global agent registry BEFORE building the system prompt,
-		// so that subagents launched in the same parallel batch can see each other in
-		// their initial `# IRC Peers` block (rendered inside `rebuildSystemPrompt`).
-		// The session reference is attached after construction below.
+		// Pre-register in the global agent registry before session construction so
+		// tool routing and IRC discovery can resolve this agent immediately. The
+		// session reference is attached after construction below.
 		agentRegistry.register({
 			id: resolvedAgentId,
 			displayName: resolvedAgentDisplayName,

@@ -1,9 +1,8 @@
 import type { SessionEntry, SessionEntryBase } from "@veyyon/agent-core/compaction/entries";
 import type { Usage } from "@veyyon/ai";
+import type { InstrumentationLevel } from "@veyyon/ai/instrumentation";
 
 /**
- * The session-entry vocabulary this package uses, and the two kinds it adds.
- *
  * Every shared shape is DECLARED in `@veyyon/agent-core/compaction/entries` and re-exported
  * here, so `import type { CompactionEntry } from "./session-entries"` keeps working exactly as
  * it did while there is one definition to read and one place to add a field. This file used to
@@ -12,10 +11,10 @@ import type { Usage } from "@veyyon/ai";
  * saw `SessionInitEntry` without the `spawns`/`readSummarize` the coding agent actually writes,
  * and `ThinkingLevelChangeEntry` without `configured`.
  *
- * The two entry kinds only this package persists reach the shared union through the
- * `CustomCompactionSessionEntries` declaration-merging hook below, which is what that hook is
- * for, so `SessionEntry` stays one union over one vocabulary rather than two lists somebody has
- * to keep level by hand.
+ * Entry kinds only this package persists reach the shared union through the
+ * `CustomCompactionSessionEntries` declaration-merging hook below, so `SessionEntry`
+ * stays one union over one vocabulary rather than two lists somebody has to keep
+ * in sync by hand.
  */
 export type {
 	BranchSummaryEntry,
@@ -40,6 +39,8 @@ declare module "@veyyon/agent-core/compaction/entries" {
 	interface CustomCompactionSessionEntries {
 		subagentSpawn: SubagentSpawnEntry;
 		settingsSnapshot: SettingsSnapshotEntry;
+		sessionLifecycle: SessionLifecycleEntry;
+		sessionCheckpoint: SessionCheckpointEntry;
 	}
 }
 
@@ -147,6 +148,45 @@ export interface SettingsSnapshotEntry extends SessionEntryBase {
 	kind: "full" | "diff";
 	/** Resolved setting values keyed by dotted setting path (for "diff", only the changed keys). */
 	values: Record<string, unknown>;
+}
+
+export type SessionLifecycleState = "running" | "ended";
+
+export type SessionLifecycleReason =
+	| "created"
+	| "resumed"
+	| "closed"
+	| "new_session"
+	| "session_switched"
+	| "instrumentation_disabled"
+	| "instrumentation_changed";
+
+/**
+ * Append-only state transition for one live manager incarnation. A graceful
+ * close emits `ended`; absence of that terminal transition means the session
+ * was still running when the journal was last observed.
+ */
+export interface SessionLifecycleEntry extends SessionEntryBase {
+	type: "session_lifecycle";
+	state: SessionLifecycleState;
+	reason: SessionLifecycleReason;
+	/** Actual configured level for this live run; absent on older lifecycle records. */
+	instrumentationLevel?: Exclude<InstrumentationLevel, "off">;
+}
+
+/**
+ * Immutable marker whose own id names the exact JSONL prefix preceding it.
+ * `prefixSequence` is the last included logical entry position (zero when the
+ * checkpoint freezes an empty entry prefix).
+ */
+export interface SessionCheckpointEntry extends SessionEntryBase {
+	type: "session_checkpoint";
+	prefixSequence: number;
+}
+
+export interface SessionCheckpoint {
+	id: string;
+	prefixSequence: number;
 }
 
 /** Raw logical file entry after loaders strip any fixed-width title slot. */

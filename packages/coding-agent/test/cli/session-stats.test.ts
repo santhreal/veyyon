@@ -51,6 +51,36 @@ const developer = (ts: number): FileEntry => message({ role: "developer", timest
 const toolResult = (toolName: string, ts: number, isError: boolean, metrics: unknown): FileEntry =>
 	message({ role: "toolResult", toolName, timestamp: ts, isError, metrics, content: [] }, ts);
 
+const sequenced = (entry: FileEntry, sequence: number): FileEntry =>
+	({ ...(entry as unknown as Record<string, unknown>), sequence }) as unknown as FileEntry;
+
+const assistantWithContext = (ts: number, contextSnapshot: Record<string, unknown>): FileEntry =>
+	message(
+		{
+			role: "assistant",
+			model: "m",
+			timestamp: ts,
+			usage: usage(10, 2, 0, 0, 12),
+			content: [],
+			contextSnapshot,
+		},
+		ts,
+	);
+
+const toolResultWithDetails = (toolName: string, ts: number, metrics: unknown, details: unknown): FileEntry =>
+	message({ role: "toolResult", toolName, timestamp: ts, isError: false, metrics, details, content: [] }, ts);
+
+const metadata = (customType: string, data: unknown, sequence?: number): FileEntry =>
+	({
+		type: "custom",
+		customType,
+		data,
+		id: `custom-${sequence ?? 0}`,
+		parentId: null,
+		timestamp: String(sequence ?? 0),
+		...(sequence === undefined ? {} : { sequence }),
+	}) as unknown as FileEntry;
+
 describe("percentile (nearest-rank)", () => {
 	it("returns 0 for an empty array", () => {
 		expect(percentile([], 50)).toBe(0);
@@ -221,6 +251,26 @@ describe("computeSessionStats", () => {
 				// Only h1 repeated (count 2); h2 seen once is excluded.
 				{ tool: "read", argsHash: "h1", count: 2, totalDurationMs: 40, totalResultTokens: 90 },
 			],
+			toolSpans: {
+				calls: 4,
+				statuses: { ok: 3, error: 1, aborted: 0, blocked: 0, skipped: 0 },
+				useless: 0,
+				rich: {
+					queuedMs: 8,
+					shared: 0,
+					exclusive: 0,
+					batches: 0,
+					maxBatchSize: 0,
+					resultBlocks: 0,
+					resultImages: 0,
+				},
+				ultra: {
+					argsBytes: 0,
+					uniqueArgs: 2,
+					interruptible: { true: 0, false: 0 },
+					signalAborted: { true: 0, false: 0 },
+				},
+			},
 		});
 	});
 
@@ -300,6 +350,31 @@ describe("computeSessionStats", () => {
 		expect(report.totals.toolDurationMs).toBe(0);
 		expect(report.toolLatency[0]).toMatchObject({ tool: "read", calls: 1, timed: 0, totalDurationMs: 0 });
 		expect(report.repeatedCalls).toEqual([]);
+		expect(report.lifecycle).toBeUndefined();
+		expect(report.context).toBeUndefined();
+		expect(report.toolSpans).toBeUndefined();
+		expect(report.ircDelivery).toBeUndefined();
+		expect(report.taskState).toBeUndefined();
+	});
+
+	it("keeps instrumentation off while reporting context categories that an off session persisted", () => {
+		const report = computeSessionStats([
+			header("off", "/repo"),
+			assistantWithContext(1, { promptTokens: 90, nonMessageTokens: 25 }),
+			toolResult("read", 2, false, undefined),
+		]);
+
+		expect(report.instrumentationLevel).toBe("off");
+		expect(report.context).toEqual({
+			snapshots: 1,
+			promptTokens: { observations: 1, total: 90, max: 90 },
+			nonMessageTokens: { observations: 1, total: 25, max: 25 },
+		});
+		expect(report.context).not.toHaveProperty("storedMessagesTokens");
+		expect(report.lifecycle).toBeUndefined();
+		expect(report.toolSpans).toBeUndefined();
+		expect(report.ircDelivery).toBeUndefined();
+		expect(report.taskState).toBeUndefined();
 	});
 
 	it("ignores non-message entries but still reads the session header", () => {
@@ -314,5 +389,439 @@ describe("computeSessionStats", () => {
 		expect(report.turns).toHaveLength(1);
 		expect(report.sessionId).toBe("S");
 		expect(report.cwd).toBe("/c");
+	});
+
+	it("reports configured ultra instrumentation from a lifecycle-only session", () => {
+		const report = computeSessionStats([
+			header("lifecycle-ultra", "/repo"),
+			{
+				type: "session_lifecycle",
+				id: "life-ultra",
+				parentId: null,
+				timestamp: "1",
+				sequence: 1,
+				state: "running",
+				reason: "resumed",
+				instrumentationLevel: "ultra",
+			} as unknown as FileEntry,
+		]);
+
+		expect(report.instrumentationLevel).toBe("ultra");
+		expect(report.lifecycle).toEqual({
+			transitions: 1,
+			checkpoints: 0,
+			sequence: { entries: 1, first: 1, last: 1, highest: 1 },
+			latestState: { state: "running", reason: "resumed", sequence: 1 },
+		});
+	});
+
+	it("rolls up only basic lifecycle, context, tool-span, and task-state facts", () => {
+		const taskTelemetry = {
+			operation: "init",
+			counts: { total: 2, open: 2, inProgress: 1, dropped: 0, completed: 0 },
+			transitions: {
+				total: 2,
+				added: 2,
+				removed: 0,
+				toPending: 1,
+				toInProgress: 1,
+				toDropped: 0,
+				toCompleted: 0,
+			},
+		};
+		const entries: FileEntry[] = [
+			header("basic", "/repo"),
+			{
+				type: "session_lifecycle",
+				id: "life-1",
+				parentId: null,
+				timestamp: "1",
+				sequence: 1,
+				state: "running",
+				reason: "created",
+			} as FileEntry,
+			sequenced(assistantWithContext(2, { promptTokens: 100, nonMessageTokens: 20 }), 2),
+			sequenced(
+				toolResultWithDetails(
+					"todo",
+					3,
+					{
+						level: "basic",
+						startedAt: 1,
+						endedAt: 3,
+						durationMs: 2,
+						status: "blocked",
+					},
+					{ telemetry: taskTelemetry },
+				),
+				3,
+			),
+			{
+				type: "session_checkpoint",
+				id: "checkpoint-4",
+				parentId: null,
+				timestamp: "4",
+				sequence: 4,
+				prefixSequence: 3,
+			} as FileEntry,
+			{
+				type: "session_lifecycle",
+				id: "life-5",
+				parentId: null,
+				timestamp: "5",
+				sequence: 5,
+				state: "ended",
+				reason: "closed",
+			} as FileEntry,
+		];
+
+		const report = computeSessionStats(entries);
+		expect(report.instrumentationLevel).toBe("basic");
+		expect(report.lifecycle).toEqual({
+			transitions: 2,
+			checkpoints: 1,
+			sequence: { entries: 5, first: 1, last: 5, highest: 5 },
+			latestCheckpoint: { id: "checkpoint-4", prefixSequence: 3, sequence: 4 },
+			latestState: { state: "ended", reason: "closed", sequence: 5 },
+		});
+		expect(report.context).toEqual({
+			snapshots: 1,
+			promptTokens: { observations: 1, total: 100, max: 100 },
+			nonMessageTokens: { observations: 1, total: 20, max: 20 },
+		});
+		expect(report.toolSpans).toEqual({
+			calls: 1,
+			statuses: { ok: 0, error: 0, aborted: 0, blocked: 1, skipped: 0 },
+			useless: 0,
+		});
+		expect(report.taskState).toEqual({
+			operations: 1,
+			byOperation: { init: 1 },
+			latest: { total: 2, open: 2, inProgress: 1, dropped: 0, completed: 0 },
+			transitions: taskTelemetry.transitions,
+		});
+		expect(report.ircDelivery).toBeUndefined();
+		expect(report.context).not.toHaveProperty("storedMessagesTokens");
+		expect(report.toolSpans).not.toHaveProperty("rich");
+	});
+
+	it("adds rich attribution, scheduling, and IRC delivery rollups without ultra fields", () => {
+		const report = computeSessionStats([
+			header("rich", "/repo"),
+			assistantWithContext(10, {
+				promptTokens: 80,
+				nonMessageTokens: 20,
+				storedMessagesTokens: 50,
+				tailTokens: 10,
+				promptTokensSource: "provider",
+				nonMessageTokensEstimated: true,
+				storedMessagesTokensEstimated: true,
+				tailTokensEstimated: true,
+			}),
+			toolResultWithDetails(
+				"todo",
+				12,
+				{
+					level: "rich",
+					startedAt: 10,
+					endedAt: 12,
+					durationMs: 2,
+					status: "ok",
+					queuedMs: 3,
+					concurrency: "shared",
+					batchId: "b1",
+					batchIndex: 0,
+					batchSize: 2,
+					resultBytes: 40,
+					resultBlocks: 3,
+					resultImages: 1,
+					resultTokens: 10,
+				},
+				{
+					telemetry: {
+						operation: "done",
+						counts: { total: 2, open: 1, inProgress: 1, dropped: 0, completed: 1 },
+						transitions: {
+							total: 1,
+							added: 0,
+							removed: 0,
+							toPending: 0,
+							toInProgress: 0,
+							toDropped: 0,
+							toCompleted: 1,
+						},
+						before: { total: 2, open: 2, inProgress: 1, dropped: 0, completed: 0 },
+						affectedTasks: [{ phase: "work", task: "one" }],
+					},
+				},
+			),
+			metadata("irc:delivery-telemetry", {
+				level: "rich",
+				messageId: "msg-rich",
+				direction: "sent",
+				outcome: "woken",
+				payloadBytes: 32,
+			}),
+		]);
+
+		expect(report.instrumentationLevel).toBe("rich");
+		expect(report.context).toMatchObject({
+			storedMessagesTokens: { observations: 1, total: 50, max: 50 },
+			tailTokens: { observations: 1, total: 10, max: 10 },
+			promptTokenSources: { provider: 1, estimate: 0 },
+			estimated: {
+				nonMessageTokens: { true: 1, false: 0 },
+				storedMessagesTokens: { true: 1, false: 0 },
+				tailTokens: { true: 1, false: 0 },
+			},
+		});
+		expect(report.context).not.toHaveProperty("compactionEntryIds");
+		expect(report.toolSpans?.rich).toEqual({
+			queuedMs: 3,
+			shared: 1,
+			exclusive: 0,
+			batches: 1,
+			maxBatchSize: 2,
+			resultBlocks: 3,
+			resultImages: 1,
+		});
+		expect(report.toolSpans).not.toHaveProperty("ultra");
+		expect(report.ircDelivery).toEqual({
+			sent: {
+				count: 1,
+				payloadBytes: 32,
+				outcomes: { injected: 0, woken: 1, revived: 0, failed: 0 },
+			},
+			received: {
+				count: 0,
+				payloadBytes: 0,
+				outcomes: { injected: 0, woken: 0, revived: 0, failed: 0 },
+			},
+		});
+		expect(report.ircDelivery?.sent).not.toHaveProperty("routes");
+		expect(report.taskState?.latest?.completed).toBe(1);
+	});
+
+	it("adds only persisted ultra route, compaction, argument, and transition detail", () => {
+		const report = computeSessionStats([
+			header("ultra", "/repo"),
+			assistantWithContext(20, {
+				promptTokens: 120,
+				nonMessageTokens: 30,
+				storedMessagesTokens: 70,
+				tailTokens: 20,
+				promptTokensSource: "estimate",
+				compactionEntryId: "compact-1",
+			}),
+			toolResultWithDetails(
+				"todo",
+				25,
+				{
+					level: "ultra",
+					startedAt: 20,
+					endedAt: 25,
+					durationMs: 5,
+					status: "aborted",
+					queuedMs: 1,
+					concurrency: "exclusive",
+					batchId: "b2",
+					batchIndex: 0,
+					batchSize: 1,
+					resultBytes: 5,
+					resultBlocks: 1,
+					resultImages: 0,
+					resultTokens: 2,
+					argsBytes: 18,
+					argsHash: "args-1",
+					interruptible: true,
+					signalAborted: true,
+				},
+				{
+					telemetry: {
+						operation: "drop",
+						counts: { total: 1, open: 0, inProgress: 0, dropped: 1, completed: 0 },
+						transitions: {
+							total: 1,
+							added: 0,
+							removed: 0,
+							toPending: 0,
+							toInProgress: 0,
+							toDropped: 1,
+							toCompleted: 0,
+						},
+						taskTransitions: [{ ref: { phase: "work", task: "one" }, from: "in_progress", to: "abandoned" }],
+					},
+				},
+			),
+			metadata("irc:delivery-telemetry", {
+				level: "ultra",
+				messageId: "msg-ultra",
+				direction: "received",
+				outcome: "revived",
+				payloadBytes: 64,
+				sender: "Main",
+				recipientClass: "parked",
+				route: "revival",
+				revived: true,
+				deliveryLatencyMs: 7,
+				messageKind: "send",
+			}),
+			// A duplicate journal record for the same direction/message is not a second delivery.
+			metadata("irc:delivery-telemetry", {
+				level: "ultra",
+				messageId: "msg-ultra",
+				direction: "received",
+				outcome: "revived",
+				payloadBytes: 64,
+				sender: "Main",
+				recipientClass: "parked",
+				route: "revival",
+				revived: true,
+				deliveryLatencyMs: 7,
+				messageKind: "send",
+			}),
+		]);
+
+		expect(report.instrumentationLevel).toBe("ultra");
+		expect(report.context?.compactionEntryIds).toEqual(["compact-1"]);
+		expect(report.context?.compactionEntries).toBe(1);
+		expect(report.toolSpans?.ultra).toEqual({
+			argsBytes: 18,
+			uniqueArgs: 1,
+			interruptible: { true: 1, false: 0 },
+			signalAborted: { true: 1, false: 0 },
+		});
+		expect(report.ircDelivery).toMatchObject({
+			sent: {
+				count: 0,
+				payloadBytes: 0,
+				outcomes: { injected: 0, woken: 0, revived: 0, failed: 0 },
+			},
+			received: {
+				count: 1,
+				payloadBytes: 64,
+				outcomes: { injected: 0, woken: 0, revived: 1, failed: 0 },
+				routes: { revival: 1 },
+				revived: { true: 1, false: 0 },
+				deliveryLatencyMs: { observations: 1, total: 7, max: 7 },
+				recipientClasses: { parked: 1 },
+				messageKinds: { send: 1 },
+			},
+		});
+		expect(report.taskState?.transitions.toDropped).toBe(1);
+		expect(report.taskState).not.toHaveProperty("blocked");
+		expect(report.taskState).not.toHaveProperty("verification");
+		expect(report.taskState).not.toHaveProperty("retries");
+	});
+
+	/**
+	 * High-cardinality compaction history must stay linear to reduce and bounded
+	 * in the JSON report rather than retaining an unbounded terminal payload.
+	 */
+	it("bounds compaction id samples while counting every unique entry", () => {
+		const entries: FileEntry[] = [header("many-compactions", "/repo")];
+		for (let index = 0; index < 10_000; index++) {
+			entries.push(
+				assistantWithContext(index, {
+					promptTokens: 10,
+					nonMessageTokens: 2,
+					compactionEntryId: `compact-${index}`,
+				}),
+			);
+		}
+
+		const report = computeSessionStats(entries);
+
+		expect(report.context?.compactionEntries).toBe(10_000);
+		expect(report.context?.compactionEntryIds).toHaveLength(16);
+		expect(report.context?.compactionEntryIds?.[0]).toBe("compact-9984");
+		expect(report.context?.compactionEntryIds?.at(-1)).toBe("compact-9999");
+	});
+
+	/**
+	 * All-session task transition totals include abandoned branches, but the
+	 * latest task state must describe only the active leaf ancestry.
+	 */
+	it("does not report abandoned-branch task state as the active latest state", () => {
+		const transitions = {
+			total: 1,
+			added: 1,
+			removed: 0,
+			toPending: 1,
+			toInProgress: 0,
+			toDropped: 0,
+			toCompleted: 0,
+		};
+		const entries = [
+			header("branched-tasks", "/repo"),
+			{
+				type: "message",
+				id: "root",
+				parentId: null,
+				timestamp: "1",
+				message: { role: "user", timestamp: 1, content: "root" },
+			},
+			{
+				type: "message",
+				id: "abandoned-todo",
+				parentId: "root",
+				timestamp: "2",
+				message: {
+					role: "toolResult",
+					toolName: "todo",
+					timestamp: 2,
+					content: [],
+					details: {
+						telemetry: {
+							operation: "init",
+							counts: { total: 9, open: 9, inProgress: 1, dropped: 0, completed: 0 },
+							transitions,
+						},
+					},
+				},
+			},
+			{
+				type: "message",
+				id: "active-leaf",
+				parentId: "root",
+				timestamp: "3",
+				message: { role: "user", timestamp: 3, content: "new branch" },
+			},
+		] as unknown as FileEntry[];
+
+		const report = computeSessionStats(entries);
+
+		expect(report.taskState?.operations).toBe(1);
+		expect(report.taskState?.transitions).toEqual(transitions);
+		expect(report.taskState?.latest).toBeUndefined();
+	});
+
+	/**
+	 * Legacy 32-bit hashes cannot be upgraded without raw arguments. Mixed
+	 * sessions keep their legacy and strong digest namespaces separate rather
+	 * than claiming cross-version calls are byte-identical.
+	 */
+	it("does not merge legacy and strong argument fingerprints", () => {
+		const common = {
+			level: "ultra",
+			timeUnit: "ms",
+			startedAt: 1,
+			endedAt: 2,
+			durationMs: 1,
+			status: "ok",
+			argsHash: "deadbeef",
+		};
+		const report = computeSessionStats([
+			header("mixed-fingerprints", "/repo"),
+			toolResult("read", 1, false, common),
+			toolResult("read", 2, false, {
+				...common,
+				argsDigest: "0123456789abcdef0123456789abcdef",
+				argsDigestAlgorithm: "sha256-128",
+			}),
+		]);
+
+		expect(report.toolSpans?.ultra?.uniqueArgs).toBe(2);
+		expect(report.repeatedCalls).toEqual([]);
 	});
 });

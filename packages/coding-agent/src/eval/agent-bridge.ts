@@ -31,6 +31,7 @@ import { resolveSpawnPolicy } from "../task/spawn-policy";
 import {
 	filterEnabledAgents,
 	isSubagentEnabled,
+	resolveSessionMaxNestedSpawnDepth,
 	resolveSubagentModel,
 	resolveSubagentThinkingLevel,
 	subagentModelSourceLabel,
@@ -51,9 +52,8 @@ import "../tools/review";
 export { EVAL_AGENT_BRIDGE_NAME } from "./agent-bridge-name";
 
 /**
- * Hard recursion ceiling for eval-driven subagents. The user setting
- * `task.maxRecursionDepth` is honored on top of this — whichever is tighter
- * wins, so a maintainer-friendly cap can't get raised by a user setting.
+ * Hard recursion ceiling for eval-driven subagents. The resolved session limit
+ * is honored on top of this, and whichever is tighter wins.
  */
 export const EVAL_AGENT_MAX_DEPTH = 3;
 
@@ -148,15 +148,11 @@ function parseAgentArgs(args: unknown): EvalAgentArgs {
 
 function assertDepthAllowed(session: ToolSession): void {
 	const taskDepth = session.taskDepth ?? 0;
-	// Honor the user's `task.maxRecursionDepth` (mirroring the task tool's gate
-	// in tools/index.ts) but never above the hard ceiling. `< 0` means
-	// "Unlimited" in the same schema `canSpawnAtDepth` reads, so it falls back
-	// to the hard ceiling instead of going past it.
-	const settingMax = session.settings.get("subagent.maxRecursionDepth") ?? 2;
-	const effectiveMax = settingMax < 0 ? EVAL_AGENT_MAX_DEPTH : Math.min(settingMax, EVAL_AGENT_MAX_DEPTH);
+	const configuredMax = resolveSessionMaxNestedSpawnDepth(session.settings, session.maxNestedSpawnDepth);
+	const effectiveMax = configuredMax < 0 ? EVAL_AGENT_MAX_DEPTH : Math.min(configuredMax, EVAL_AGENT_MAX_DEPTH);
 	if (!canSpawnAtDepth(effectiveMax, taskDepth)) {
 		throw new ToolError(
-			`agent() cannot spawn another agent at task depth ${taskDepth}; maximum depth is ${effectiveMax} (task.maxRecursionDepth=${settingMax}, hard ceiling=${EVAL_AGENT_MAX_DEPTH}).`,
+			`agent() cannot spawn another agent at task depth ${taskDepth}; maximum nested spawn depth is ${effectiveMax} (session limit=${configuredMax}, hard ceiling=${EVAL_AGENT_MAX_DEPTH}).`,
 		);
 	}
 }

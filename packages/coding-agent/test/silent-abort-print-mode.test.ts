@@ -61,6 +61,10 @@ function createMockSession(messages: AssistantMessage[]): PrintModeSession {
 		// covered by print-mode-argot-display.test.ts; here it is identity so the
 		// tests observe exactly the content they supplied.
 		displayAssistantContent: content => content,
+		// `--mode json` re-redacts everything it writes through this. Identity here:
+		// these tests are about text mode, and the redaction contract is asserted on
+		// real emitted bytes in json-mode-never-prints-a-credential.test.ts.
+		obfuscateProviderText: text => text,
 	};
 }
 

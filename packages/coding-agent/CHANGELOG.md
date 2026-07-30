@@ -98,6 +98,17 @@
 - `release`: derive commit-history notes + gate the generator on CI.
 
 ### Fixed
+- Session listing now reports a failure to enumerate recovery backups instead of silently continuing
+  with primary files only. A backup remains intact and visible in the unreadable-session report until
+  the directory or storage backend can be read again.
+- With `tools.discoveryMode=all`, `generate_image` starts in the searchable tool inventory instead of
+  sending its schema on every provider request. Explicit tool whitelists still keep it active, and
+  selecting it through tool discovery persists activation for subsequent turns.
+
+- Subagents no longer embed their launch-specific id and a live peer roster in the system prompt.
+  Agents discover the current roster through `irc list` only when coordination needs it. Sibling
+  launches now share the same cacheable system-prompt prefix instead of invalidating it whenever an
+  agent id, activity, or peer status changes.
 
 - A credential passed with `=` no longer reaches editor history or the on-disk draft. The predicate
   that decides whether a submitted slash command may be recalled and resumed tested for `--token`
@@ -150,6 +161,24 @@
   and the visible symptom was one mistake split down the middle: `veyyon confg` exited 2 while
   `veyyon confg get foo` reached the no-TTY guard and exited 1. A wrapping script branching on the
   code to decide whether retrying could help got opposite answers for the same typo.
+- Seven settings rows no longer sit on the settings screen offering a choice that changes nothing.
+  `Speech Vocalization Mode`, `Enhanced Speech Rewriting` and `Speech Vocalization Voice` render while
+  `Speech Vocalization` is off; `Speech Model` and `Speech-to-Text Submit Trigger` while
+  `Speech-to-Text` is off; `Auto-Background After` and `Stall After` while `Bash Auto-Background` and
+  `Bash Stall Detection` are off. All four master toggles ship off, and every read of the dependent
+  values is behind its master, so with stock settings you could open `/settings`, pick "Final message
+  only" or "Stall After: 15 seconds", watch the row take the value, and get no change in behaviour at
+  all. That is the same failure as a dead flag and worse than an absent feature, because the screen
+  confirms the choice. The two bash values did not even reach the model: the bash tool description
+  renders them only inside the `{{#if autoBackgroundEnabled}}` and `{{#if stallDetectionEnabled}}`
+  guards.
+  This adds no new mechanism. `ui.condition` and the selector's visibility check already existed and
+  are what hides 26 of the memory tab's 27 rows behind the chosen memory backend and three Advisor
+  rows behind `advisor.enabled`; these seven had simply missed it. Four predicates were added beside
+  the existing nine, no default moved, and the rows are unchanged when the feature is on. Row counts
+  with stock settings: Interaction 43 to 41, Shell 18 to 16, Providers 36 to 33. `Secret Lifetime` and
+  `Record Secret Use` are deliberately left visible while `Hide Secrets` is off, because `/secret add`
+  reads both on the pre-enable run that turns protection on.
 - A vault that cannot be read no longer stops a session from starting, which had made the command
   that repairs one unreachable on every surface except the full-screen interface. `/secret discard`
   moves a broken vault file aside, but the vault was read while the session was being assembled, so

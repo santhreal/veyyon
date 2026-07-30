@@ -57,7 +57,6 @@ const FLIPS: Readonly<Record<string, unknown>> = {
 	"subagent.delegation": "required",
 	"subagent.batch": false,
 	"subagent.maxConcurrency": 1,
-	"subagent.maxRecursionDepth": 0,
 	"subagent.agents": {},
 	includeModelInPrompt: false,
 	"tools.format": "hermes",
@@ -104,8 +103,8 @@ async function renderUnder(overrides: Record<string, unknown>, tools: Map<string
  * `expect(flipped).not.toBe(baseline)` over roughly 76KB of prompt. That proved the flip reached
  * the assembler, which was the bug under repair, and nothing more: it passes just as well if the
  * flip changes the WRONG text, changes text in the wrong section, or changes one byte of
- * whitespace. It also could not be read. Nobody could tell from the suite what
- * `subagent.maxRecursionDepth` is supposed to do to the prompt.
+ * whitespace. It also could not be read. Nobody could tell from the suite what a prompt gate was
+ * supposed to do.
  *
  * A statement has a name, so the claim can be specific. Two kinds of claim, because gates work in
  * two ways and flattening them would mean asserting something weaker than the truth for one of
@@ -169,12 +168,6 @@ const CLAIMS: Readonly<Record<string, GateClaim>> = {
 		statement: "tool-policy/delegation-gates",
 		inTheBaseline: ", in one `tasks[]` batch",
 		underTheFlip: ", in parallel calls",
-	},
-	"subagent.maxRecursionDepth": {
-		kind: "wording",
-		statement: "tool-policy/delegation-gates",
-		inTheBaseline: "have B ask A via `irc`",
-		underTheFlip: null,
 	},
 	"subagent.maxConcurrency": {
 		kind: "wording",
@@ -346,7 +339,7 @@ describe("every live gate reaches the rendered prompt", () => {
 			const covered = Object.hasOwn(FLIPS, setting) || REACHES_THE_PROMPT_VIA_THE_TOOL.has(setting);
 			expect(covered, `${setting} is a live gate with no coverage here`).toBe(true);
 		}
-		expect(settingsDriven.length).toBe(10);
+		expect(settingsDriven.length).toBe(9);
 	});
 
 	it("renders a real prompt, so the comparisons are not between two empty strings", () => {
@@ -698,7 +691,7 @@ describe("the builder's omitted-option defaults against a default-configured ses
 		expect(occurrences(omitted, preferred)).toBe(0);
 
 		// The IRC coordination clause, gated on `taskIrcEnabled`, whose fallback is also `false` while
-		// the default recursion limit allows spawning.
+		// the resolved root session has a task tool and therefore a peer it can spawn.
 		expect(occurrences(resolved, "have B ask A via `irc`")).toBe(1);
 		expect(occurrences(omitted, "have B ask A via `irc`")).toBe(0);
 	});
@@ -729,24 +722,31 @@ describe("the gate slice itself", () => {
 		expect(gates.personality === undefined || gates.personality === "default").toBe(true);
 	});
 
-	it("reads IRC coordination off the recursion limit, not off a hardcoded default", () => {
-		const canSpawn = resolveGateInputs(Settings.isolated({ "subagent.maxRecursionDepth": 2 } as never), {
+	/**
+	 * Root IRC follows the resolved task surface rather than independently reinterpreting the
+	 * nested-spawn setting. Cap 0 still permits this root to spawn a direct child.
+	 */
+	it("enables root IRC exactly when the resolved session can spawn through task", () => {
+		const canSpawn = resolveGateInputs(Settings.isolated({ "subagent.maxNestedSpawnDepth": 0 } as never), {
 			tools: TOOLS as never,
 			model: MODEL,
 		});
-		const cannot = resolveGateInputs(Settings.isolated({ "subagent.maxRecursionDepth": 0 } as never), {
-			tools: TOOLS as never,
+		const cannotSpawn = resolveGateInputs(Settings.isolated({ "subagent.maxNestedSpawnDepth": 0 } as never), {
+			tools: new Map() as never,
 			model: MODEL,
 		});
 
 		expect(canSpawn.taskIrcEnabled).toBe(true);
-		expect(cannot.taskIrcEnabled).toBe(false);
+		expect(cannotSpawn.taskIrcEnabled).toBe(false);
 	});
 
-	it("treats a subagent as always having peers, whatever the recursion limit says", () => {
-		// A session already at depth has siblings by definition, so the limit is irrelevant to it.
-		const nested = resolveGateInputs(Settings.isolated({ "subagent.maxRecursionDepth": 0 } as never), {
-			tools: TOOLS as never,
+	/**
+	 * A subagent already has its parent as a peer, so IRC remains available even when that
+	 * depth-1 session is a leaf and has no task tool of its own.
+	 */
+	it("keeps IRC enabled for a depth-1 leaf because it still has peers", () => {
+		const nested = resolveGateInputs(Settings.isolated({ "subagent.maxNestedSpawnDepth": 0 } as never), {
+			tools: new Map() as never,
 			model: MODEL,
 			taskDepth: 1,
 		});

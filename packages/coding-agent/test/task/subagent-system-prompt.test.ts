@@ -31,12 +31,11 @@ describe("subagent system prompt", () => {
 });
 
 /**
- * Gate-parity for the subagent template. Same failure class as the default
+ * Gate parity for the subagent template. Same failure class as the default
  * system prompt: a `{{#if <field>}}` branch dropped by a hand edit renders the
- * field dead with no other test failure. The `ircPeers` gate is the subagent
- * analogue of the delegation-coordination bug that motivated this whole effort
- * (cross-agent coordination silently rendered useless), so it is covered here
- * with the same rigor: toggle asserts a real anchor plus the interpolated value.
+ * field dead with no other test failure. The `ircEnabled` gate is the subagent
+ * analogue of the delegation-coordination bug that motivated this whole effort,
+ * so it is covered here with the same rigor.
  */
 describe("subagent system prompt: gate parity", () => {
 	it("context gate toggles the CONTEXT section and renders the context body", () => {
@@ -61,12 +60,32 @@ describe("subagent system prompt: gate parity", () => {
 		expect(renderSubagent({})).not.toContain("# Working Tree");
 	});
 
-	it("ircPeers gate toggles the IRC Peers section and renders self id and roster", () => {
-		const on = renderSubagent({ ircPeers: "- agent-b: refactoring auth", ircSelfId: "agent-a" });
-		expect(on).toContain("# IRC Peers");
-		expect(on).toContain("Your id is `agent-a`");
-		expect(on).toContain("- agent-b: refactoring auth");
-		expect(renderSubagent({})).not.toContain("# IRC Peers");
+	/** IRC capability remains visible without embedding a launch-specific roster in the cacheable prefix. */
+	it("ircEnabled gate renders static discovery instructions without launch identity", () => {
+		const on = renderSubagent({
+			ircEnabled: true,
+			ircPeers: "- agent-b: refactoring auth",
+			ircSelfId: "agent-a",
+		});
+		expect(on).toContain("# IRC Coordination");
+		expect(on).toContain('call `irc` with `op:"list"`');
+		expect(on).not.toContain("agent-a");
+		expect(on).not.toContain("agent-b");
+		expect(renderSubagent({ ircEnabled: false })).not.toContain("# IRC Coordination");
+	});
+	/** Sibling ids and live status changes must not invalidate the shared subagent system-prompt prefix. */
+	it("keeps IRC system prompt bytes stable across sibling launch identities", () => {
+		const first = renderSubagent({
+			ircEnabled: true,
+			ircPeers: "- sibling-one: running",
+			ircSelfId: "worker-one",
+		});
+		const second = renderSubagent({
+			ircEnabled: true,
+			ircPeers: "- sibling-two: idle",
+			ircSelfId: "worker-two",
+		});
+		expect(first).toBe(second);
 	});
 
 	it("outputSchema gate toggles the terminal-yield schema block", () => {
@@ -91,7 +110,7 @@ describe("subagent system prompt: gate parity", () => {
 			"context",
 			"planReference",
 			"worktree",
-			"ircPeers",
+			"ircEnabled",
 			"outputSchema",
 			"outputSchemaOverridesAgent",
 		]);

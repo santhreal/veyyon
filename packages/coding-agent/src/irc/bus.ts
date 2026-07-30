@@ -15,9 +15,11 @@
  * generates an ephemeral side-channel auto-reply.
  */
 
+import { type InstrumentationLevel, sessionTelemetryDetail } from "@veyyon/ai/instrumentation";
 import { errorMessage, logger, Snowflake } from "@veyyon/utils";
+import { settingsOrNull } from "../config/settings-instance";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
-import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
+import { type AgentKind, AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 import type { CustomMessage } from "../session/messages";
 
 export interface IrcMessage {
@@ -38,6 +40,88 @@ export interface IrcDeliveryReceipt {
 	error?: string;
 }
 
+/** The delivery path taken inside the bus. */
+export type IrcDeliveryRoute = "refused" | "waiter" | "injected" | "wake" | "revival" | "buffered" | "unavailable";
+
+/** Recipient classification without persisting its agent id. */
+export type IrcRecipientClass = AgentKind | "unknown";
+
+/**
+ * Structured, content-free facts about one exactly-once IRC delivery attempt.
+ *
+ * `rich` is deliberately small: the canonical agent-communication policy
+ * admits the category at rich, but identifiers, routes, and timings are kept
+ * for ultra. Optional ultra fields also keep old JSONL readers compatible.
+ */
+export interface IrcDeliveryTelemetry {
+	level: "rich" | "ultra";
+	outcome: IrcDeliveryReceipt["outcome"];
+	/** UTF-8 byte count of the message payload; never the payload itself. */
+	payloadBytes: number;
+	/** Ultra: sender agent id. */
+	sender?: string;
+	/** Ultra: coarse recipient kind, not its id. */
+	recipientClass?: IrcRecipientClass;
+	/** Ultra: hand-off path through refusal, wait, wake, live injection, revival, or buffering. */
+	route?: IrcDeliveryRoute;
+	/** Ultra: whether a parked recipient was revived before hand-off. */
+	revived?: boolean;
+	/** Ultra: end-to-end send-to-record latency, in milliseconds. */
+	deliveryLatencyMs?: number;
+	/** Ultra: derived only from the already-represented reply relationship. */
+	messageKind?: "message" | "reply";
+}
+
+/** Complete content-free facts before a participant's policy projects rich or ultra fields. */
+export interface IrcDeliveryFacts {
+	outcome: IrcDeliveryReceipt["outcome"];
+	payloadBytes: number;
+	sender: string;
+	recipientClass: IrcRecipientClass;
+	route: IrcDeliveryRoute;
+	revived: boolean;
+	deliveryLatencyMs: number;
+	messageKind: "message" | "reply";
+}
+
+/** Complete directional facts offered to one participant for policy-gated persistence. */
+export interface IrcPersistedDeliveryFacts extends IrcDeliveryFacts {
+	messageId: string;
+	direction: "sent" | "received";
+}
+
+/** Directional JSONL record written to one participating agent session. */
+export interface IrcPersistedDeliveryTelemetry extends IrcDeliveryTelemetry {
+	/** Shared across sent/received records for cross-session deduplication. */
+	messageId: string;
+	/** This session's role in the delivery. */
+	direction: "sent" | "received";
+}
+
+interface IrcDeliveryAttempt extends IrcDeliveryReceipt {
+	recipientClass: IrcRecipientClass;
+	route: IrcDeliveryRoute;
+	revived: boolean;
+}
+
+/** Project complete facts to the fields admitted by one instrumentation level. */
+export function projectIrcDeliveryTelemetry(level: "rich" | "ultra", facts: IrcDeliveryFacts): IrcDeliveryTelemetry {
+	const telemetry: IrcDeliveryTelemetry = {
+		level,
+		outcome: facts.outcome,
+		payloadBytes: facts.payloadBytes,
+	};
+	if (level === "ultra") {
+		telemetry.sender = facts.sender;
+		telemetry.recipientClass = facts.recipientClass;
+		telemetry.route = facts.route;
+		telemetry.revived = facts.revived;
+		telemetry.deliveryLatencyMs = facts.deliveryLatencyMs;
+		telemetry.messageKind = facts.messageKind;
+	}
+	return telemetry;
+}
+
 /**
  * One line of the bus's own record of the traffic: the message and how it
  * landed.
@@ -55,6 +139,8 @@ export interface IrcLogEntry {
 	outcome: IrcDeliveryReceipt["outcome"];
 	/** Present only on `failed`: why it did not reach the recipient. */
 	error?: string;
+	/** Content-free structured delivery facts, gated by session instrumentation. */
+	telemetry?: IrcDeliveryTelemetry;
 }
 
 interface IrcWaiter {
@@ -94,12 +180,19 @@ export class IrcBus {
 	readonly #waiters = new Map<string, IrcWaiter[]>();
 	readonly #log: IrcLogEntry[] = [];
 	readonly #logListeners = new Set<(entry: IrcLogEntry) => void>();
+	readonly #instrumentationLevel: () => InstrumentationLevel;
 
-	constructor(registry: AgentRegistry = AgentRegistry.global(), lifecycle?: AgentLifecycleManager) {
+	constructor(
+		registry: AgentRegistry = AgentRegistry.global(),
+		lifecycle?: AgentLifecycleManager,
+		instrumentationLevel: () => InstrumentationLevel = () =>
+			settingsOrNull()?.get("session.instrumentation") ?? "off",
+	) {
 		this.#registry = registry;
 		// Lazy: the lifecycle global self-constructs against the global registry,
 		// so only touch it when a parked recipient actually needs reviving.
 		this.#lifecycle = () => lifecycle ?? AgentLifecycleManager.global();
+		this.#instrumentationLevel = instrumentationLevel;
 	}
 
 	/**
@@ -135,9 +228,9 @@ export class IrcBus {
 		// hand-off, the live delivery, and two failure paths -- and recording at
 		// each of them is how a log silently loses the cases nobody tested.
 		const message: IrcMessage = { ...msg, id: Snowflake.next(), ts: Date.now() };
-		let receipt: IrcDeliveryReceipt;
+		let attempt: IrcDeliveryAttempt;
 		try {
-			receipt = await this.#send(message, opts);
+			attempt = await this.#send(message, opts);
 		} catch (error) {
 			// `#send` reports its known failures as receipts, but the relay, the
 			// waiter hand-off and the mailbox enqueue all sit outside its try
@@ -145,10 +238,17 @@ export class IrcBus {
 			// attempted absent from the log, which reads as a message nobody sent.
 			// Recorded as the failure it is, then rethrown unchanged: the log is a
 			// display feed and must not change what the caller sees.
-			this.#record({ message, outcome: "failed", error: errorMessage(error) });
+			this.#record(
+				{ message, outcome: "failed", error: errorMessage(error) },
+				{ to: message.to, outcome: "failed", recipientClass: "unknown", route: "unavailable", revived: false },
+			);
 			throw error;
 		}
-		this.#record({ message, outcome: receipt.outcome, error: receipt.error });
+		const receipt: IrcDeliveryReceipt =
+			attempt.error === undefined
+				? { to: attempt.to, outcome: attempt.outcome }
+				: { to: attempt.to, outcome: attempt.outcome, error: attempt.error };
+		this.#record({ message, outcome: receipt.outcome, error: receipt.error }, attempt);
 		return receipt;
 	}
 
@@ -175,7 +275,34 @@ export class IrcBus {
 		return () => this.#logListeners.delete(listener);
 	}
 
-	#record(entry: IrcLogEntry): void {
+	#record(entry: IrcLogEntry, attempt: IrcDeliveryAttempt): void {
+		const facts: IrcDeliveryFacts = {
+			outcome: attempt.outcome,
+			payloadBytes: Buffer.byteLength(entry.message.body, "utf8"),
+			sender: entry.message.from,
+			recipientClass: attempt.recipientClass,
+			route: attempt.route,
+			revived: attempt.revived,
+			deliveryLatencyMs: Math.max(0, Date.now() - entry.message.ts),
+			messageKind: entry.message.replyTo === undefined ? "message" : "reply",
+		};
+		const detail = sessionTelemetryDetail(this.#instrumentationLevel(), "agent-communication");
+		if (detail === "rich" || detail === "ultra") {
+			entry.telemetry = projectIrcDeliveryTelemetry(detail, facts);
+		}
+		this.#persistTelemetry(entry.message.from, {
+			...facts,
+			messageId: entry.message.id,
+			direction: "sent",
+		});
+		if (entry.message.to !== entry.message.from) {
+			this.#persistTelemetry(entry.message.to, {
+				...facts,
+				messageId: entry.message.id,
+				direction: "received",
+			});
+		}
+
 		this.#log.push(entry);
 		if (this.#log.length > LOG_CAP) this.#log.splice(0, this.#log.length - LOG_CAP);
 		for (const listener of this.#logListeners) {
@@ -191,16 +318,36 @@ export class IrcBus {
 		}
 	}
 
+	#persistTelemetry(agentId: string, facts: IrcPersistedDeliveryFacts): void {
+		try {
+			const session = this.#registry.get(agentId)?.session;
+			const persist = session?.recordIrcDeliveryTelemetry;
+			if (typeof persist === "function") {
+				persist.call(session, facts);
+			}
+		} catch (error) {
+			// Session persistence is observability-only. A closed or mirrored
+			// session must not turn successful message delivery into failure.
+			logger.warn("IrcBus: session telemetry persistence failed; delivery was unaffected", {
+				agentId,
+				error: String(error),
+			});
+		}
+	}
+
 	async #send(
 		message: IrcMessage,
 		opts?: { expectsReply?: boolean; suppressRelay?: boolean },
-	): Promise<IrcDeliveryReceipt> {
+	): Promise<IrcDeliveryAttempt> {
 		const ref = this.#registry.get(message.to);
 		if (!ref) {
 			return {
 				to: message.to,
 				outcome: "failed",
 				error: `Unknown agent "${message.to}" — check \`irc list\` for live peers.`,
+				recipientClass: "unknown",
+				route: "refused",
+				revived: false,
 			};
 		}
 		if (ref.status === "aborted") {
@@ -208,6 +355,9 @@ export class IrcBus {
 				to: message.to,
 				outcome: "failed",
 				error: `Agent "${message.to}" was hard-aborted and cannot be messaged or revived. Its transcript remains readable at history://${message.to}.`,
+				recipientClass: ref.kind,
+				route: "refused",
+				revived: false,
 			};
 		}
 		// Advisor refs are observability-only transcripts, never messageable peers.
@@ -216,6 +366,9 @@ export class IrcBus {
 				to: message.to,
 				outcome: "failed",
 				error: `Agent "${message.to}" is a read-only advisor transcript and cannot be messaged.`,
+				recipientClass: ref.kind,
+				route: "refused",
+				revived: false,
 			};
 		}
 
@@ -229,6 +382,9 @@ export class IrcBus {
 					to: message.to,
 					outcome: "failed",
 					error: errorMessage(error),
+					recipientClass: ref.kind,
+					route: "revival",
+					revived: false,
 				};
 			}
 		}
@@ -240,18 +396,37 @@ export class IrcBus {
 		if (waiter) {
 			waiter.resolve(message);
 			if (!opts?.suppressRelay) this.#relayToMainUi(message);
-			return { to: message.to, outcome: revived ? "revived" : "injected" };
+			return {
+				to: message.to,
+				outcome: revived ? "revived" : "injected",
+				recipientClass: ref.kind,
+				route: "waiter",
+				revived,
+			};
 		}
 
 		const session = this.#registry.get(message.to)?.session;
 		if (!session) {
-			return { to: message.to, outcome: "failed", error: `Agent "${message.to}" has no live session.` };
+			return {
+				to: message.to,
+				outcome: "failed",
+				error: `Agent "${message.to}" has no live session.`,
+				recipientClass: ref.kind,
+				route: "unavailable",
+				revived,
+			};
 		}
 
 		try {
 			const delivery = await session.deliverIrcMessage(message, opts);
 			if (!opts?.suppressRelay) this.#relayToMainUi(message);
-			return { to: message.to, outcome: revived ? "revived" : delivery };
+			return {
+				to: message.to,
+				outcome: revived ? "revived" : delivery,
+				recipientClass: ref.kind,
+				route: delivery === "woken" ? "wake" : "injected",
+				revived,
+			};
 		} catch (error) {
 			// Live hand-off failed (e.g. recipient disposed mid-shutdown): buffer
 			// the message so a later `wait`/`inbox` from the recipient can still
@@ -262,6 +437,9 @@ export class IrcBus {
 				to: message.to,
 				outcome: "failed",
 				error: errorMessage(error),
+				recipientClass: ref.kind,
+				route: "buffered",
+				revived,
 			};
 		}
 	}

@@ -48,6 +48,7 @@ import {
 	type EnabledSubagentSource,
 	filterEnabledAgents,
 	isSubagentEnabled,
+	resolveSessionMaxNestedSpawnDepth,
 	resolveSubagentModel,
 	resolveSubagentThinkingLevel,
 	subagentModelSourceLabel,
@@ -663,7 +664,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			isolationMode !== "none",
 			this.#isBatchEnabled(),
 			this.session.settings.get("async.enabled"),
-			isIrcEnabled(this.session.settings, this.session.taskDepth ?? 0),
+			isIrcEnabled(this.session.settings, this.session.taskDepth ?? 0, this.session.maxNestedSpawnDepth),
 			this.session.getSessionSpawns() ?? "*",
 		);
 	}
@@ -731,10 +732,14 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		const manager = asyncEnabled ? this.session.asyncJobManager : undefined;
 		const asyncItems = manager ? spawnItems.filter((_, index) => !itemBlocking[index]) : [];
 		const depthCapacity = canSpawnAtDepth(
-			this.session.settings.get("subagent.maxRecursionDepth") ?? 2,
+			resolveSessionMaxNestedSpawnDepth(this.session.settings, this.session.maxNestedSpawnDepth),
 			this.session.taskDepth ?? 0,
 		);
-		const ircEnabled = isIrcEnabled(this.session.settings, this.session.taskDepth ?? 0);
+		const ircEnabled = isIrcEnabled(
+			this.session.settings,
+			this.session.taskDepth ?? 0,
+			this.session.maxNestedSpawnDepth,
+		);
 		// Coordination only makes sense for spawns that keep running after this
 		// call returns (the async subset). Blocking items have already completed
 		// by then, so a "coordinate while they run" hint would misfire.

@@ -1,4 +1,5 @@
 import type { Settings } from "../config/settings";
+import { delegationEnabled, resolveSessionMaxNestedSpawnDepth } from "../task/subagent-settings";
 import { canSpawnAtDepth } from "../task/types";
 
 /**
@@ -10,10 +11,10 @@ import { canSpawnAtDepth } from "../task/types";
  * Lives outside `./irc` so the tool registry and sdk can gate the tool
  * without loading the full IRC implementation at boot.
  */
-export function isIrcEnabled(settings: Settings, taskDepth: number): boolean {
+export function isIrcEnabled(settings: Settings, taskDepth: number, maxNestedSpawnDepth?: number): boolean {
 	if (taskDepth > 0) return true;
-	// Top-level session: peers exist only if it can still spawn subagents — the
-	// same capacity gate the task tool uses, reused here to avoid drift.
-	const maxDepth = settings.get("subagent.maxRecursionDepth") ?? 2;
-	return canSpawnAtDepth(maxDepth, taskDepth);
+	if (!delegationEnabled(settings)) return false;
+	// Top-level session: peers exist only if it can still spawn subagents. This
+	// reuses the task tool's capacity gate so zero still permits direct children.
+	return canSpawnAtDepth(resolveSessionMaxNestedSpawnDepth(settings, maxNestedSpawnDepth), taskDepth);
 }

@@ -373,7 +373,7 @@ describe("IRC", () => {
 	});
 
 	describe("IrcTool", () => {
-		it("createIf returns null for a top-level session that cannot spawn tasks", () => {
+		it("createIf returns null for a top-level session when delegation is disabled", () => {
 			const session: ToolSession = {
 				cwd: "/tmp",
 				hasUI: false,
@@ -383,12 +383,12 @@ describe("IRC", () => {
 				agentRegistry: registry,
 				getAgentId: () => "0-Main",
 			};
-			// Depth 0 with spawning gated off: no peers exist or can be created.
-			session.settings.set("subagent.maxRecursionDepth", 0);
+			// Without delegation the root cannot create a peer, regardless of capacity.
+			session.settings.set("subagent.enabled", false);
 			expect(IrcTool.createIf(session)).toBeNull();
 		});
 
-		it("createIf enables interruptible irc while the task tool is available", () => {
+		it("createIf enables interruptible irc at the root's inclusive zero cap", () => {
 			const session: ToolSession = {
 				cwd: "/tmp",
 				hasUI: false,
@@ -398,14 +398,14 @@ describe("IRC", () => {
 				agentRegistry: registry,
 				getAgentId: () => "0-Main",
 			};
-			// Default task.maxRecursionDepth (2) at depth 0: task can spawn, and a
-			// finished subagent must stay reachable.
+			// Cap zero lets the depth-zero root spawn direct children, which become peers.
+			session.settings.set("subagent.maxNestedSpawnDepth", 0);
 			const tool = IrcTool.createIf(session);
 			expect(tool).toBeInstanceOf(IrcTool);
 			expect(tool?.interruptible).toBe(true);
 		});
 
-		it("createIf enables irc for a subagent even at the recursion-depth cap", () => {
+		it("createIf enables irc for a depth-one leaf subagent", () => {
 			const session: ToolSession = {
 				cwd: "/tmp",
 				hasUI: false,
@@ -414,10 +414,10 @@ describe("IRC", () => {
 				settings: Settings.isolated(),
 				agentRegistry: registry,
 				getAgentId: () => "0-Leaf",
-				taskDepth: 2,
+				taskDepth: 1,
 			};
-			// A leaf subagent cannot spawn, but its parent (and siblings) exist.
-			session.settings.set("subagent.maxRecursionDepth", 2);
+			// Cap zero makes this child a leaf, but its parent and siblings remain peers.
+			session.settings.set("subagent.maxNestedSpawnDepth", 0);
 			expect(IrcTool.createIf(session)).toBeInstanceOf(IrcTool);
 		});
 

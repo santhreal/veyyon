@@ -1972,6 +1972,7 @@ async function executeToolCalls(
 			result: undefined as AgentToolResult<any> | undefined,
 			isError: false,
 			skipped: false,
+			terminalStatus: undefined as ToolCallStatus | undefined,
 			toolResultMessage: undefined as ToolResultMessage | undefined,
 			resultEmitted: false,
 		};
@@ -2044,7 +2045,11 @@ async function executeToolCalls(
 		});
 
 		const endedAt = Date.now();
-		const status: ToolCallStatus = record.skipped ? "skipped" : isError ? "error" : "ok";
+		const status: ToolCallStatus = record.terminalStatus ?? (record.skipped ? "skipped" : isError ? "error" : "ok");
+		// Last line of defence on request size. Measure the content that is
+		// actually persisted and replayed, not an uncapped payload the model
+		// never sees.
+		const cappedContent = capToolResultContent(result.content, toolCall.name).content;
 		const metrics =
 			instrumentationLevel === "off"
 				? undefined
@@ -2063,15 +2068,11 @@ async function executeToolCalls(
 						status,
 						interruptible: record.tool?.interruptible === true,
 						signalAborted: record.signal.aborted,
-						resultContent: result.content,
+						resultContent: cappedContent,
+						useless: result.useless === true,
 						args: record.args,
 						countTokens: estimateTokensFromText,
 					});
-		// Last line of defence on request size. Built-in tools apply their own,
-		// much tighter budgets; a tool registered from outside the codebase (an
-		// MCP server, say) applies none, and an oversized result would fail the
-		// request rather than the tool, on every retry, with no way back.
-		const cappedContent = capToolResultContent(result.content, toolCall.name).content;
 		const toolResultMessage: ToolResultMessage = {
 			role: "toolResult",
 			toolCallId: toolCall.id,
@@ -2243,6 +2244,7 @@ async function executeToolCalls(
 		record.args = displayArgs;
 		if (record.signal.aborted) {
 			record.skipped = true;
+			record.terminalStatus = "aborted";
 			recordSkippedTool(telemetry, {
 				toolCallId: toolCall.id,
 				toolName: toolCall.name,
@@ -2385,6 +2387,14 @@ async function executeToolCalls(
 		const interrupted = interruptState.triggered;
 		const perToolAborted = record.signal.aborted;
 		const abortedDuringExecution = perToolAborted && isError && !completedToolExecution;
+		const status: ToolCallStatus = abortedDuringExecution
+			? "aborted"
+			: caughtError instanceof ToolCallBlockedError
+				? "blocked"
+				: isError
+					? "error"
+					: "ok";
+		record.terminalStatus = status;
 		if (interrupted && perToolAborted && isError && !completedToolExecution) {
 			// This tool's own signal fired AND it failed to produce a result: `tool.execute()`
 			// never returned (it threw on the abort), so it was genuinely cut off before
@@ -2405,13 +2415,6 @@ async function executeToolCalls(
 		const firstTextBlock = result.content?.[0];
 		const errorMessageForSpan =
 			caughtError === undefined && isError && firstTextBlock?.type === "text" ? firstTextBlock.text : undefined;
-		const status = abortedDuringExecution
-			? "aborted"
-			: caughtError instanceof ToolCallBlockedError
-				? "blocked"
-				: isError
-					? "error"
-					: "ok";
 		finishExecuteToolSpan(telemetry, toolSpan, {
 			result,
 			isError,
@@ -2485,6 +2488,7 @@ async function executeToolCalls(
 	for (const record of records) {
 		if (!record.toolResultMessage) {
 			record.skipped = true;
+			record.terminalStatus = "skipped";
 			recordSkippedTool(telemetry, {
 				toolCallId: record.toolCall.id,
 				toolName: record.toolCall.name,
