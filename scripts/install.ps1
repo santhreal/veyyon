@@ -206,6 +206,30 @@ function Install-Bun {
     Invoke-Expression $script
 }
 
+# A just-executed staged binary can remain image-locked briefly while Windows
+# tears down its last worker process or an antivirus scan releases the file.
+# Retry the rename transaction for a bounded interval instead of turning that
+# normal handoff into a failed reinstall. Permanent errors still surface with
+# their original exception after the final attempt.
+function Move-InstallItemWithRetry {
+    param(
+        [string]$SourcePath,
+        [string]$DestinationPath,
+        [int]$MaxAttempts = 8
+    )
+    $delayMs = 50
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        try {
+            Microsoft.PowerShell.Management\Move-Item -LiteralPath $SourcePath -Destination $DestinationPath -Force -ErrorAction Stop
+            return
+        } catch {
+            if ($attempt -eq $MaxAttempts) { throw }
+            Start-Sleep -Milliseconds $delayMs
+            $delayMs = [Math]::Min($delayMs * 2, 500)
+        }
+    }
+}
+
 # Put a verified download in place of the installed binary, without ever leaving
 # the user with neither.
 #
@@ -229,18 +253,18 @@ function Move-StagedBinaryIntoPlace {
         throw "the binary staged at $StagingPath is empty - refusing to install; the download did not complete, retry or use -Source"
     }
     if (-not (Test-Path $TargetPath)) {
-        Move-Item -Path $StagingPath -Destination $TargetPath -Force
+        Move-InstallItemWithRetry -SourcePath $StagingPath -DestinationPath $TargetPath
         return
     }
     $asideName = "$([System.IO.Path]::GetFileName($TargetPath)).$PID.old"
     $aside = Join-Path ([System.IO.Path]::GetDirectoryName($TargetPath)) $asideName
-    Move-Item -Path $TargetPath -Destination $aside -Force
+    Move-InstallItemWithRetry -SourcePath $TargetPath -DestinationPath $aside
     try {
-        Move-Item -Path $StagingPath -Destination $TargetPath -Force
+        Move-InstallItemWithRetry -SourcePath $StagingPath -DestinationPath $TargetPath
     } catch {
         # Put the working binary back before reporting; a failed install must
         # not be an uninstall.
-        Move-Item -Path $aside -Destination $TargetPath -Force
+        Move-InstallItemWithRetry -SourcePath $aside -DestinationPath $TargetPath
         Remove-Item $StagingPath -ErrorAction SilentlyContinue
         throw "could not replace $TargetPath ($($_.Exception.Message)); your previous $BinName is untouched"
     }

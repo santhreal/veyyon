@@ -704,6 +704,46 @@ try {
     Move-StagedBinaryIntoPlace -StagingPath $staging -TargetPath $target
     Check "a non-empty staged file replaces the target" (Get-Content -Raw $target).Trim() "new binary"
     Check "the staged file is gone after a successful move" (Test-Path $staging) "False"
+
+    # A staged executable can remain locked for a fraction of a second after its
+    # preflight process exits. Hold the source with FileShare.None in another
+    # process, then prove the installer waits for release and completes the
+    # transaction instead of abandoning a healthy reinstall.
+    Set-Content -LiteralPath $staging -Value "retry binary"
+    $ready = Join-Path $stageSandbox "lock-ready"
+    $lockJob = Start-Job -ArgumentList $staging, $ready -ScriptBlock {
+        param($lockedPath, $readyPath)
+        $stream = [System.IO.File]::Open(
+            $lockedPath,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read,
+            [System.IO.FileShare]::None
+        )
+        try {
+            Set-Content -LiteralPath $readyPath -Value "ready"
+            Start-Sleep -Milliseconds 700
+        } finally {
+            $stream.Dispose()
+        }
+    }
+    $readyDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    while (-not (Test-Path $ready) -and [DateTime]::UtcNow -lt $readyDeadline) {
+        Start-Sleep -Milliseconds 25
+    }
+    if (-not (Test-Path $ready)) {
+        Stop-Job $lockJob -ErrorAction SilentlyContinue
+        Remove-Job $lockJob -Force -ErrorAction SilentlyContinue
+        throw "the lock-holder job did not start"
+    }
+    try {
+        Move-StagedBinaryIntoPlace -StagingPath $staging -TargetPath $target
+    } finally {
+        Wait-Job $lockJob | Out-Null
+        Receive-Job $lockJob | Out-Null
+        Remove-Job $lockJob -Force
+    }
+    Check "a transient staging lock is retried until replacement succeeds" (Get-Content -Raw $target).Trim() "retry binary"
+    Check "the retried staging file is gone after replacement" (Test-Path $staging) "False"
 } finally {
     Remove-Item -Recurse -Force $stageSandbox -ErrorAction SilentlyContinue
 }
