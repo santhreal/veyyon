@@ -111,6 +111,20 @@
   terminating `NativeCommandError`, so a bytecode-free Windows build passed `--version` and
   `--smoke-test` but was rejected before installation. Exit status and the expected search match now
   decide the preflight while stderr remains available when the command actually fails.
+- Provider payload confidentiality failures now identify a safe structural cause such as a cycle,
+  non-JSON value, size bound, accessor, or protected-key collision. The request still fails before
+  network I/O, and neither the payload, key names, secret values, placeholders, nor transform
+  exception text reaches the operator message.
+- Concurrent explicit binary updates now use unique same-directory staging and rollback files, then
+  serialize the installed-path mutation. One failed update can no longer truncate or delete another
+  update's live download, and stale cleanup cannot sweep an active rollback copy.
+- Task spawn-policy and self-recursion refusals now return explicit error results. A requested
+  background task also fails loud when no async job manager exists instead of silently running
+  synchronously and changing the parent turn's blocking behavior.
+- `install.sh --uninstall` now preserves a user-managed executable at the legacy
+  `~/.bun/bin/veyyon` path. It removes only the exact Bun-global Veyyon package symlink that older
+  installs created, while canonical binaries, aliases, completions, and installer-owned PATH entries
+  retain their existing cleanup behavior.
 - Session listing now reports a failure to enumerate recovery backups instead of silently continuing
   with primary files only. A backup remains intact and visible in the unreadable-session report until
   the directory or storage backend can be read again.
