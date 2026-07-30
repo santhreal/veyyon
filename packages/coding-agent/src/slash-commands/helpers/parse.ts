@@ -74,21 +74,112 @@ export function unknownSlashCommandMessage(name: string): string {
 }
 
 /**
+ * Long option names whose value is, or can carry, a credential.
+ *
+ * Deliberately over-broad. This list gates whether a submitted slash command may
+ * become recallable editor history or a resumable draft on disk, so an option
+ * that MIGHT carry a secret belongs here: a false positive costs one line of
+ * arrow-up recall, a false negative writes a live credential to durable storage.
+ *
+ * `key` covers `/ssh add --key <path>`. `url` is deliberately absent: an endpoint
+ * carries a credential in its userinfo or query string rather than by virtue of
+ * being a URL, so it is matched structurally below instead — that keeps the plain
+ * `/mcp add srv --url http://x` recallable while still catching a real secret.
+ */
+const CREDENTIAL_OPTION_NAMES = [
+	"access-token",
+	"api-key",
+	"apikey",
+	"auth",
+	"auth-token",
+	"authorization",
+	"authtoken",
+	"bearer",
+	"client-secret",
+	"credential",
+	"credentials",
+	"header",
+	"headers",
+	"key",
+	"key-file",
+	"keyfile",
+	"pass",
+	"passwd",
+	"password",
+	"private-key",
+	"refresh-token",
+	"secret",
+	"session-token",
+	"token",
+] as const;
+
+/**
+ * Single-letter spellings that conventionally carry a credential (`-t` token,
+ * `-H` header). Matched case-sensitively and kept deliberately short: `-h` is
+ * help and `-p` is the port of `/stats -p <port>`, so neither may join this set
+ * without silently making a common command unrecallable.
+ */
+const CREDENTIAL_SHORT_OPTION_NAMES = ["t", "H"] as const;
+
+/**
+ * Matches a credential-bearing option in either spelling: `--token VALUE`,
+ * `--token=VALUE`, `--token="VALUE"`, or a bare trailing `--token`. The trailing
+ * `[\s=]|$` guard is what keeps `--tokenizer` out, and the leading `^|\s` guard
+ * is what keeps `--key` from matching inside `--api-key`.
+ *
+ * Long names are case-insensitive so `--Token` cannot slip past; short names are
+ * matched case-sensitively in a separate alternation so `-t` does not drag `-T`
+ * and, more importantly, `-H` does not drag `-h`.
+ */
+const CREDENTIAL_LONG_OPTION_RE = new RegExp(`(?:^|\\s)--(?:${CREDENTIAL_OPTION_NAMES.join("|")})(?:[\\s=]|$)`, "i");
+
+const CREDENTIAL_SHORT_OPTION_RE = new RegExp(`(?:^|\\s)-(?:${CREDENTIAL_SHORT_OPTION_NAMES.join("|")})(?:[\\s=]|$)`);
+
+/**
+ * A URL carrying userinfo — `scheme://user:pass@host` — anywhere in the argument
+ * string. Not tied to an option name, so it also catches a credential inside a
+ * stdio server's `-- <command...>` tail.
+ */
+const CREDENTIAL_URL_USERINFO_RE = /\/\/[^/?#\s@]+@/;
+
+/**
+ * A query parameter whose NAME looks like a credential (`?api_key=`, `&token=`).
+ * The name pattern is the one `redactUrlForLog` already uses to keep MCP secrets
+ * out of the log file, so the durable-history gate and the logger agree on what a
+ * secret-bearing URL is.
+ */
+const CREDENTIAL_QUERY_PARAM_RE = /[?&;][^=&;\s]*(?:key|token|secret|auth|password|credential)[^=&;\s]*=/i;
+
+/**
  * Whether a submitted slash command can carry a credential or bearer token.
  *
  * All callers share the canonical slash parser above, including its colon
  * separator. This deliberately classifies every `/secret` shape — help,
  * management, malformed and future syntax — because a parser failure must not
  * turn candidate credential bytes into durable history or a teardown draft.
+ *
+ * Beyond those whole-command cases, the arguments of ANY slash command are
+ * scanned for a credential-bearing option, in both the space and the equals
+ * spelling, plus credential material that sits in no named option at all (URL
+ * userinfo, a secret-shaped query parameter). Scanning every command rather than
+ * an allowlist of `(command, verb)` pairs is deliberate: the previous version only
+ * knew about `/mcp add --token`, so `/mcp add x --url u --token=sk-live-...` wrote
+ * the live token straight to history, and every future command taking
+ * `--password` would have repeated the mistake.
  */
 export function isSensitiveSlashCommand(text: string): boolean {
 	const parsed = parseSlashCommand(text.trimStart());
 	if (!parsed) return false;
 	if (parsed.name === "secret") return true;
 	if (parsed.name === "login" || parsed.name === "join") return parsed.text.length > parsed.name.length + 1;
-	if (parsed.name !== "mcp") return false;
-	const { verb, rest } = parseSubcommand(parsed.args);
-	return verb === "add" && /(?:^|\s)--token(?:\s|$)/.test(rest);
+	const { args } = parsed;
+	if (!args) return false;
+	return (
+		CREDENTIAL_LONG_OPTION_RE.test(args) ||
+		CREDENTIAL_SHORT_OPTION_RE.test(args) ||
+		CREDENTIAL_URL_USERINFO_RE.test(args) ||
+		CREDENTIAL_QUERY_PARAM_RE.test(args)
+	);
 }
 
 /**
