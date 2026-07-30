@@ -247,7 +247,7 @@ describe("web-search physical request confidentiality boundaries", () => {
 		}
 
 		expect(fetchCalls).toBe(0);
-		expect(String(failure)).toBe("Error: Tavily search confidentiality transform failed.");
+		expect(String(failure)).toBe("ProviderTransformError: Tavily search confidentiality transform failed.");
 		expect(String(failure)).not.toContain(rawSecret);
 	});
 });

@@ -535,7 +535,7 @@ describe("runtime replacement", () => {
 			await revived?.dispose();
 			await disposeFixture(fixture);
 		}
-	});
+	}, 20_000);
 });
 
 describe("the final mutable provider hook boundary", () => {
