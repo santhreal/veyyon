@@ -394,158 +394,62 @@ describe("delegation is resolved against the agents that can actually be spawned
 		expect(gates.eagerTasksAlways).toBe(true);
 	});
 
-	it("names a read-only agent only when one can be spawned", async () => {
-		// The tool-borne half of `subagent.agents`, asserted on the actual clause rather than on a
-		// byte difference: the aside in "Spawn-one-then-wait is a bug" that permits a lone spawn when
-		// it is read-only. Naming an agent to a session that cannot spawn one is an instruction it can
-		// only fail.
-		//
-		// GATED ON THE ROLE, NOT ON THE NAME `scout`. The clause used to be `{{#has subagentNames
-		// "scout"}}`, which named one bundled agent as the yardstick and so could never be satisfied by
-		// a user-authored read-only agent, however obviously read-only its `tools:` line was. The
-		// stubs therefore carry `investigativeAgentNames`, which the task tool derives from each
-		// enabled agent's tool grant (`task/agent-role.ts`).
-		const withReadOnly = new Map<string, unknown>([
+	it("carries exact enabled role names without deriving capability categories", async () => {
+		const roles = new Map<string, unknown>([
 			[
 				"task",
 				{
 					name: "task",
-					enabledAgentNames: ["scout", "worker"],
-					investigativeAgentNames: ["scout"],
-					description: "delegate work",
-				},
-			],
-		]);
-		const withoutReadOnly = new Map<string, unknown>([
-			[
-				"task",
-				{
-					name: "task",
-					enabledAgentNames: ["worker"],
-					investigativeAgentNames: [],
+					enabledAgentNames: ["designer", "reviewer"],
 					description: "delegate work",
 				},
 			],
 		]);
 
-		const named = await renderUnder({}, withReadOnly);
-		const notNamed = await renderUnder({}, withoutReadOnly);
+		const rendered = await renderUnder({}, roles);
 
-		expect(named).toContain("read-only agent (`scout`)");
-		expect(notNamed).not.toContain("read-only agent");
+		expect(rendered).toContain("Enabled roles (`designer, reviewer`)");
+		expect(rendered).toContain("Spawn one only when its description matches the assignment");
+		expect(rendered).not.toContain("Executing agents");
+		expect(rendered).not.toContain("Investigative agents");
 	});
 
-	/**
-	 * AUDIT WORK IS NOT DELEGATED WHEN NOTHING IS TYPED FOR IT.
-	 *
-	 * The bug this pins: the delegation prose instructed the model to delegate exploration and review
-	 * regardless of which agents were enabled. It shipped "Use `{{toolRefs.task}}` to map unknown code
-	 * instead of reading file after file yourself" and "multi-subsystem investigation" with no gate at
-	 * all, and on a stock install the only enabled bundled agent is `task`, whose own description is
-	 * "General-purpose subagent with full capabilities for delegated multi-step tasks". So the prompt
-	 * actively routed audits into a WORKER. A task is real work: running code, reads and writes,
-	 * changes. An audit is a different kind of work, and with no agent set up for it the honest
-	 * instruction is to do it inline.
-	 *
-	 * Asserted on the rendered prose in both directions, because a gate that is present but always
-	 * true reads identically in the source and fixes nothing.
-	 */
-	it("keeps audits inline when no read-only agent is enabled", async () => {
-		const executorsOnly = new Map<string, unknown>([
+	it("uses the concrete task role as the general fallback", async () => {
+		const roles = new Map<string, unknown>([
 			[
 				"task",
 				{
 					name: "task",
-					enabledAgentNames: ["worker", "sonic"],
-					investigativeAgentNames: [],
+					enabledAgentNames: ["task", "designer"],
 					description: "delegate work",
 				},
 			],
 		]);
 
-		const rendered = await renderUnder({}, executorsOnly);
+		const rendered = await renderUnder({}, roles);
 
-		expect(rendered).toContain("audits inline");
-		// The clause that pointed audits at a worker is gone, not merely softened: it named the agent,
-		// so its absence is asserted on the naming rather than on a sentence that can be reworded.
-		expect(rendered).not.toContain("read-only agent");
-		expect(rendered).not.toContain("`scout`");
+		expect(rendered).toContain("Enabled roles (`task, designer`)");
+		expect(rendered).toContain("use `task` as the general-purpose fallback");
+		expect(rendered).not.toContain("Specialists only");
 	});
 
-	/** And restores them when an investigative agent IS enabled, so the gate is not just an off switch. */
-	it("delegates audits when a read-only agent is enabled", async () => {
-		const withReadOnly = new Map<string, unknown>([
+	it("keeps unmatched work inline when only specialist roles are enabled", async () => {
+		const roles = new Map<string, unknown>([
 			[
 				"task",
 				{
 					name: "task",
-					enabledAgentNames: ["worker", "scout"],
-					investigativeAgentNames: ["scout"],
+					enabledAgentNames: ["reviewer"],
 					description: "delegate work",
 				},
 			],
 		]);
 
-		const rendered = await renderUnder({}, withReadOnly);
+		const rendered = await renderUnder({}, roles);
 
-		expect(rendered).toContain("read-only agent (`scout`)");
-		expect(rendered).not.toContain("audits inline");
-	});
-
-	/**
-	 * A SECOND EXECUTOR IS NOT A REASON TO DELEGATE AUDITS.
-	 *
-	 * `sonic` is "Low-reasoning agent for strictly mechanical updates or data collection only", another
-	 * executor, and `hasSubagentSpecialists` used to be `some(name => name !== "task")`, so enabling it
-	 * made the prompt claim a kind-of-work specialist existed. The two questions are genuinely
-	 * different and this pins the divergence: `sonic` DOES give the model a second type to match a
-	 * slice against, and does NOT make handing off an audit sensible.
-	 */
-	it("offers type-matching for a second executor while still keeping audits inline", async () => {
-		const twoExecutors = new Map<string, unknown>([
-			[
-				"task",
-				{
-					name: "task",
-					enabledAgentNames: ["worker", "sonic"],
-					investigativeAgentNames: [],
-					description: "delegate work",
-				},
-			],
-		]);
-
-		const rendered = await renderUnder({}, twoExecutors);
-
-		expect(rendered).toContain("Match agent types");
-		expect(rendered).toContain("audits inline");
-	});
-
-	/**
-	 * With exactly one agent enabled, the prompt says so by name rather than calling it "the general
-	 * worker".
-	 *
-	 * The else branch used to read "Only the general worker exists here", which is a guess about WHICH
-	 * agent is enabled rather than a statement of the fact the gate actually knows. A session with only
-	 * `scout` enabled and `task` off has no general worker at all, and was told it did.
-	 */
-	it("names the single enabled agent instead of assuming it is the worker", async () => {
-		const scoutOnly = new Map<string, unknown>([
-			[
-				"task",
-				{
-					name: "task",
-					enabledAgentNames: ["scout"],
-					investigativeAgentNames: ["scout"],
-					description: "delegate work",
-				},
-			],
-		]);
-
-		const rendered = await renderUnder({}, scoutOnly);
-
-		expect(rendered).toContain("One agent type is enabled");
-		expect(rendered).toContain("(`scout`)");
-		expect(rendered).not.toContain("general worker exists here");
+		expect(rendered).toContain("Specialists only");
+		expect(rendered).toContain("keep unmatched work inline");
+		expect(rendered).not.toContain("general-purpose fallback");
 	});
 
 	/**
@@ -633,11 +537,9 @@ describe("the builder's omitted-option defaults against a default-configured ses
 		const omitted = await renderWithNoGateOptions();
 		const explicit = await inspectSystemPrompt({
 			...OMITTED_GATE_DEFAULTS,
-			// Both name lists are `readonly` in the table and mutable in the options, so each is copied
-			// rather than spread. The table is deliberately readonly: it is shared, and a caller that
-			// pushed onto a default would change what every later omitting caller renders.
+			// The name list is `readonly` in the table and mutable in the options, so it is copied
+			// rather than shared with the builder.
 			subagentNames: [...OMITTED_GATE_DEFAULTS.subagentNames],
-			investigativeSubagentNames: [...OMITTED_GATE_DEFAULTS.investigativeSubagentNames],
 			tools: TOOLS as never,
 			toolNames: [...TOOLS.keys()],
 			model: MODEL.id,
@@ -657,7 +559,7 @@ describe("the builder's omitted-option defaults against a default-configured ses
 	 * from the comparison rather than listed: the resolver returns `undefined` for "unset" and the
 	 * builder maps that to the table's `"default"`, so the two agree by construction.
 	 */
-	it("disagrees with a default session on exactly four gates, and on those four by these values", () => {
+	it("disagrees with a default session only where the configured defaults are live", () => {
 		const session = resolveGateInputs(Settings.isolated({} as never), { tools: TOOLS as never, model: MODEL });
 		const disagreeing = Object.keys(OMITTED_GATE_DEFAULTS)
 			.filter(key => key !== "personality")
@@ -669,9 +571,6 @@ describe("the builder's omitted-option defaults against a default-configured ses
 
 		expect(disagreeing.sort()).toEqual(["eagerTasks", "subagentNames", "taskIrcEnabled", "taskMaxConcurrency"]);
 
-		// The four pairs by value, so the list above cannot go on passing while a value flips under it.
-		// `taskMaxConcurrency` is the one whose fallback is not simply the off state: 0 means unlimited,
-		// which is the honest answer when the caller offers no cap, against the shipped cap of 32.
 		expect([OMITTED_GATE_DEFAULTS.eagerTasks, session.eagerTasks]).toEqual([false, true]);
 		expect([OMITTED_GATE_DEFAULTS.taskIrcEnabled, session.taskIrcEnabled]).toEqual([false, true]);
 		expect([OMITTED_GATE_DEFAULTS.taskMaxConcurrency, session.taskMaxConcurrency]).toEqual([0, 32]);

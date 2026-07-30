@@ -489,6 +489,11 @@ export interface TaskToolDetails {
 	usage?: Usage;
 	outputPaths?: string[];
 	progress?: AgentProgress[];
+	/** Operator-facing warning for a spawn refused before any agent started. */
+	warning?: {
+		kind: "homogeneous-triage";
+		message: string;
+	};
 	async?: {
 		state: "running" | "completed" | "failed";
 		jobId: string;

@@ -68,20 +68,18 @@ describe("a disabled agent is disabled on every model-driven path", () => {
 		const offered = filterEnabledAgents(settings, agents).map(agent => agent.name);
 		const spawnable = agents.filter(agent => isSubagentEnabled(settings, agent)).map(agent => agent.name);
 
-		expect(offered).toEqual(["task", "mine"]);
+		expect(offered).toEqual(["task"]);
 		expect(spawnable).toEqual(offered);
 	});
 
 	/**
-	 * Writing an agent file IS the opt-in, and that has to survive the collapse:
-	 * requiring a second gesture in settings would make every new agent look broken
-	 * on first use. Both non-bundled sources are asserted because they take
-	 * different branches of the default.
+	 * Adding an agent definition makes the role available to configure, but it
+	 * does not let the model start that role without an explicit grant.
 	 */
-	it("keeps a user-authored or project agent enabled with no settings row", () => {
+	it("keeps user-authored and project agents disabled with no settings row", () => {
 		const settings = Settings.isolated();
-		expect(isSubagentEnabled(settings, userAgent("mine"))).toBe(true);
-		expect(isSubagentEnabled(settings, { ...userAgent("proj"), source: "project" })).toBe(true);
+		expect(isSubagentEnabled(settings, userAgent("mine"))).toBe(false);
+		expect(isSubagentEnabled(settings, { ...userAgent("proj"), source: "project" })).toBe(false);
 	});
 
 	/**

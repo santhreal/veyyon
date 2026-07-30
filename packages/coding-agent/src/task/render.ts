@@ -1573,8 +1573,17 @@ export function renderResult(
 	const failed = failCount > 0;
 	const mergeFailed = mergeFailedCount > 0;
 	const isError = aborted || failed;
+	const refusalWarning = details.warning;
 	const agentCount = hasResults ? details.results.length : (details.progress?.length ?? 0);
-	const icon: ToolUIStatus = options.isPartial ? "running" : isError ? "error" : mergeFailed ? "warning" : "success";
+	const icon: ToolUIStatus = options.isPartial
+		? "running"
+		: refusalWarning
+			? "warning"
+			: isError
+				? "error"
+				: mergeFailed
+					? "warning"
+					: "success";
 	// Header meta is the spawn count only; each row carries its own ⟨agent⟩
 	// badge, so a joined type list here would repeat them. Before anything
 	// spawns, fall back to the flat form's agent type from the call args.
@@ -1663,8 +1672,16 @@ export function renderResult(
 			);
 		}
 
-		const state = isPartial ? "running" : isError ? "error" : mergeFailed ? "warning" : "success";
-		const borderColor = isError ? "error" : "borderMuted";
+		const state = isPartial
+			? "running"
+			: refusalWarning
+				? "warning"
+				: isError
+					? "error"
+					: mergeFailed
+						? "warning"
+						: "success";
+		const borderColor = refusalWarning ? "warning" : isError ? "error" : "borderMuted";
 
 		if (lines.length === 0) {
 			const text = fallbackText.trim() ? fallbackText : "No results";
@@ -1673,7 +1690,7 @@ export function renderResult(
 				sections: [
 					...(contextSection ? [contextSection(width)] : []),
 					...(assignmentSection ? [assignmentSection(width)] : []),
-					{ separator: true, lines: [theme.fg("dim", truncateToWidth(text, width))] },
+					{ separator: true, lines: [theme.fg(refusalWarning ? "warning" : "dim", truncateToWidth(text, width))] },
 				],
 				state,
 				borderColor,

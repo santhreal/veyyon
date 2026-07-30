@@ -100,13 +100,12 @@ describe("subagent defaults: only the general worker ships offered", () => {
 	});
 
 	/**
-	 * Writing an agent file IS the opt-in, so a user- or project-authored agent
-	 * needs no second gesture in settings. Requiring one would make every new
-	 * agent look broken on first use.
+	 * Agent files define available roles but do not silently grant spawn
+	 * permission. Onboarding and the Agents table are the opt-in.
 	 */
-	it("offers a user-authored agent without any settings row", () => {
-		expect(subagentEnabledByDefault(userAgent("my-refactorer"))).toBe(true);
-		expect(subagentEnabledByDefault({ ...userAgent("proj"), source: "project" })).toBe(true);
+	it("keeps user-authored and project agents disabled without a settings row", () => {
+		expect(subagentEnabledByDefault(userAgent("my-refactorer"))).toBe(false);
+		expect(subagentEnabledByDefault({ ...userAgent("proj"), source: "project" })).toBe(false);
 	});
 
 	/** The tool description and the delegation prompt list exactly the offered set. */
@@ -114,7 +113,7 @@ describe("subagent defaults: only the general worker ships offered", () => {
 		const settings = Settings.isolated();
 		const agents = [bundled("task"), bundled("scout"), bundled("reviewer"), userAgent("mine")];
 
-		expect(filterEnabledAgents(settings, agents).map(agent => agent.name)).toEqual(["task", "mine"]);
+		expect(filterEnabledAgents(settings, agents).map(agent => agent.name)).toEqual(["task"]);
 	});
 
 	/** An explicit row turns a specialist on, and it then appears in the offered set. */
@@ -186,13 +185,14 @@ describe("subagent enable states: on, off, and nothing in between", () => {
 		expect(subagentEnableState(mine, subagentSettingsFor(settings, "mine").enabled)).toBe("off");
 	});
 
-	/** An untouched agent follows the shipped default, and reports that it is untouched. */
-	it("follows the shipped default when the agent has no row", () => {
+	/** Untouched agents follow their shipped source-specific defaults. */
+	it("defaults task on and every other agent off when no row exists", () => {
 		const settings = Settings.isolated();
 
 		expect(subagentEnableState(bundled("task"), subagentSettingsFor(settings, "task").enabled)).toBe("on");
-		expect(subagentEnableState(userAgent("mine"), subagentSettingsFor(settings, "mine").enabled)).toBe("on");
+		expect(subagentEnableState(userAgent("mine"), subagentSettingsFor(settings, "mine").enabled)).toBe("off");
 		expect(isSubagentEnableDefaulted(subagentSettingsFor(settings, "task").enabled)).toBe(true);
+		expect(isSubagentEnableDefaulted(subagentSettingsFor(settings, "mine").enabled)).toBe(true);
 	});
 
 	/**

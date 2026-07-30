@@ -567,7 +567,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		taskMaxConcurrency = OMITTED_GATE_DEFAULTS.taskMaxConcurrency,
 		taskIrcEnabled = OMITTED_GATE_DEFAULTS.taskIrcEnabled,
 		subagentNames = OMITTED_GATE_DEFAULTS.subagentNames,
-		investigativeSubagentNames = OMITTED_GATE_DEFAULTS.investigativeSubagentNames,
 		secretsEnabled = false,
 		// `argotPreamble`, `argotHandles` and `secretInventory` are deliberately NOT
 		// destructured here. They are option-backed runtime sections, so the assembler
@@ -843,18 +842,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		MAX_CONCURRENCY: normalizeConcurrencyLimit(taskMaxConcurrency),
 		taskIrcEnabled,
 		subagentNames,
-		investigativeSubagentNames,
-		// True when there is MORE THAN ONE kind of agent to choose between. The gates
-		// this opens are about picking an agent TYPE ("match the slice to the closest
-		// listed type"), which means nothing when there is only one.
-		//
-		// Counted rather than compared against the default agent's name. It used to be
-		// `some(name => name !== DEFAULT_ENABLED_BUNDLED_AGENT)`, which asked "is
-		// anything other than `task` enabled" and answered a question nobody had:
-		// every user-authored agent trivially satisfied it, and so did `sonic`. Length
-		// says what the gate means and stops naming one agent as the yardstick for all
-		// the others.
-		hasSubagentSpecialists: subagentNames.length > 1,
 		// Whether ANYTHING can be spawned, which gates the delegation guidance as a whole.
 		//
 		// The task tool is built whenever `subagent.enabled` is on, and it stays built with every agent
@@ -865,11 +852,9 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		// (``)" while telling the model to delegate for parallelism. `resolveDelegation` has always
 		// computed this state and named it `blockedBy: "no-enabled-agents"`; nothing consumed it.
 		hasSpawnableSubagent: subagentNames.length > 0,
-		// Whether AUDIT work may be delegated, which is NOT the question above.
-		// `sonic` gives the model a second type to match a slice to and is still an
-		// executor, so it must not switch on advice about handing off exploration and
-		// review. Only an agent that grants no workspace-editing tool does that.
-		hasInvestigativeSubagent: investigativeSubagentNames.length > 0,
+		// `task` is the bundled general-purpose role. When it is absent, every
+		// enabled name is a specialist and unmatched work must remain inline.
+		hasGeneralSubagent: subagentNames.includes("task"),
 		secretsEnabled,
 		hasMemoryRoot: memoryRootEnabled,
 		hasObsidian: hasObsidian(),

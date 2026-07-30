@@ -34,7 +34,7 @@ import { INTENT_FIELD } from "@veyyon/wire";
 import { resolveDialect } from "../config/dialect-format";
 import { shouldInlineToolDescriptors } from "../config/inline-tool-descriptors-mode";
 import type { Settings } from "../config/settings";
-import { enabledSubagentNames, investigativeSubagentNames, resolveDelegation } from "../task/subagent-settings";
+import { enabledSubagentNames, resolveDelegation } from "../task/subagent-settings";
 import { isIrcEnabled } from "../tools/irc-enabled";
 
 /**
@@ -88,18 +88,6 @@ export interface GateInputs {
 	 * can only fail.
 	 */
 	readonly subagentNames: string[];
-	/**
-	 * The subset of {@link subagentNames} set up to INVESTIGATE rather than to change things, derived
-	 * from each agent's tool grant (`task/agent-role.ts`).
-	 *
-	 * A SEPARATE LIST BECAUSE IT ANSWERS A SEPARATE QUESTION. Whether delegation is possible is one
-	 * thing; whether AUDIT work may be delegated is another, and the delegation prose used to answer
-	 * the second with the first. It shipped "use `task` to map unknown code instead of reading file
-	 * after file yourself" to every session, and on a stock install the only enabled agent is `task`,
-	 * a worker set up to edit code. Exploration and review are not that kind of work, so with no
-	 * investigative agent enabled the honest instruction is to do them inline.
-	 */
-	readonly investigativeSubagentNames: string[];
 	/** Whether the active model is surfaced in the workstation block. Prompt policy still uses it. */
 	readonly includeModelInPrompt: boolean;
 	/** Whether the workspace directory tree is included in the PROJECT section. */
@@ -163,9 +151,6 @@ export const OMITTED_GATE_DEFAULTS = {
 	eagerTasksAlways: false,
 	/** No spawnable agent, so delegation prose names none: it cannot route work to an unknown agent. */
 	subagentNames: [] as readonly string[],
-	/** And none typed to investigate, so audits stay inline. The safe default: it suppresses advice
-	 *  rather than inventing an agent to send audits to. */
-	investigativeSubagentNames: [] as readonly string[],
 	includeModelInPrompt: true,
 	includeWorkspaceTree: false,
 	inlineToolDescriptors: false,
@@ -206,8 +191,6 @@ export function resolveGateInputs(settings: Settings, context: GateInputContext)
 	const taskTool = context.tools.get("task");
 	const subagentNames = enabledSubagentNames(taskTool);
 	const delegation = resolveDelegation(settings, subagentNames);
-	// Asked of the same tool in the same breath, so the two lists cannot describe different sessions.
-	const investigativeNames = investigativeSubagentNames(taskTool);
 
 	return {
 		personality: settings.get("personality"),
@@ -219,7 +202,6 @@ export function resolveGateInputs(settings: Settings, context: GateInputContext)
 		eagerTasks: delegation.preferred,
 		eagerTasksAlways: delegation.required,
 		subagentNames,
-		investigativeSubagentNames: investigativeNames,
 		includeModelInPrompt: settings.get("includeModelInPrompt"),
 		includeWorkspaceTree: settings.get("includeWorkspaceTree") ?? false,
 		// `auto` enforces the per-model policy (inline for Gemini, off otherwise).

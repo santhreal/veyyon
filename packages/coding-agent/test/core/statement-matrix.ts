@@ -182,7 +182,6 @@ export const MATRIX: readonly { readonly label: string; readonly context: Record
 			taskIrcEnabled: true,
 			MAX_CONCURRENCY: 4,
 			subagentNames: ["scout"],
-			hasInvestigativeSubagent: true,
 			hasSpawnableSubagent: true,
 			hasSubagentSpecialists: true,
 			useCodexTaskPrompt: false,

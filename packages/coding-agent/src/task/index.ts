@@ -41,7 +41,7 @@ import { toolsPrompts } from "../prompts/tools/rows";
 import { truncateForPrompt } from "../tools/approval";
 import { isIrcEnabled } from "../tools/irc";
 import { formatBytes, formatDuration } from "../tools/render-utils";
-import { investigativeAgentNames } from "./agent-role";
+import { homogeneousTriageRefusal, isHomogeneousTriageFanout } from "./delegation-policy";
 import { classifySubagentOutcome, describeSubagentBatch, summarizeSubagentBatch } from "./outcome";
 import { resolveSpawnPolicy } from "./spawn-policy";
 import {
@@ -224,13 +224,13 @@ function renderDescription(
 	});
 }
 
-function createTaskModeError(text: string): AgentToolResult<TaskToolDetails> {
+function createTaskModeError(text: string, warning?: TaskToolDetails["warning"]): AgentToolResult<TaskToolDetails> {
 	return {
 		content: [{ type: "text", text }],
 		// This helper exists only for refusals (wrong mode, bad params, unknown
 		// agent). Every one of them is a failure and must reach the wire as one.
 		isError: true,
-		details: { projectAgentsDir: null, results: [], totalDurationMs: 0 },
+		details: { projectAgentsDir: null, results: [], totalDurationMs: 0, warning },
 	};
 }
 
@@ -640,22 +640,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		return filterEnabledAgents(this.session.settings, this.#discoveredAgents).map(agent => agent.name);
 	}
 
-	/**
-	 * The enabled agents that are set up to INVESTIGATE rather than to change things.
-	 *
-	 * Read by the system prompt to decide whether audit work may be delegated at all.
-	 * Delegating exploration or review needs an agent typed for it, and on a stock
-	 * install there is none: the only enabled bundled agent is the general worker. The
-	 * prompt used to instruct the model to send investigation to it anyway, which is
-	 * how an audit ended up being run by an agent set up to edit code.
-	 *
-	 * Derived from the same filtered set as `enabledAgentNames`, so the two can never
-	 * disagree about what is spawnable here.
-	 */
-	get investigativeAgentNames(): string[] {
-		return investigativeAgentNames(filterEnabledAgents(this.session.settings, this.#discoveredAgents));
-	}
-
 	/** Dynamic description listing exactly the agents this session may spawn. */
 	get description(): string {
 		const isolationMode = this.session.settings.get("subagent.isolation.mode");
@@ -721,6 +705,10 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 
 		const spawnItems = resolveSpawnItems(params);
 		const resolvedAgents = spawnItems.map(item => item.agent?.trim() || defaultAgent);
+		if (isHomogeneousTriageFanout(spawnItems)) {
+			const text = homogeneousTriageRefusal(spawnItems.length);
+			return createTaskModeError(text, { kind: "homogeneous-triage", message: text });
+		}
 		// Execution mode is per item: an item whose agent type declares
 		// `blocking: true` runs inline on this turn (the parent waits on its
 		// result); every other item becomes a background job when async

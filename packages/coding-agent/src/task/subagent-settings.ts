@@ -180,14 +180,12 @@ export function resolveSessionMaxNestedSpawnDepth(settings: Settings, override?:
 /**
  * Whether an agent is spawnable with no row of its own.
  *
- * Only the general-purpose delegate ships enabled: most sessions want to hand
- * work to a worker and nothing else, and every extra agent type costs tokens in
- * the tool description and invites spawns nobody asked for. A user-authored
- * agent (project or user `agents/` directory, an extension, a plugin) is on by
- * default — writing the file IS the opt-in.
+ * Only the general-purpose delegate ships enabled. Bundled specialists and
+ * user-authored agents are opt-in through onboarding or Settings → Subagents →
+ * Agents. Creating an agent definition makes it available to enable; it does
+ * not grant the model permission to start it on its own.
  */
 export function subagentEnabledByDefault(agent: AgentDefinition): boolean {
-	if (agent.source !== "bundled") return true;
 	return agent.name === DEFAULT_ENABLED_BUNDLED_AGENT;
 }
 
@@ -292,8 +290,6 @@ export function nextSubagentEnableValue(agent: AgentDefinition, configured: bool
  */
 export interface EnabledSubagentSource {
 	readonly enabledAgentNames: string[];
-	/** The subset set up to investigate rather than to change things. See `task/agent-role.ts`. */
-	readonly investigativeAgentNames: string[];
 }
 
 /**
@@ -307,19 +303,6 @@ export interface EnabledSubagentSource {
  */
 export function enabledSubagentNames(spawner: unknown): string[] {
 	return readNameList(spawner, "enabledAgentNames");
-}
-
-/**
- * The enabled agent types set up to INVESTIGATE rather than to change things, or `[]` when there is
- * no task tool.
- *
- * Asked separately from {@link enabledSubagentNames} because the prompt needs a different answer from
- * it: whether delegation is possible at all is one question, and whether AUDIT work may be delegated
- * is another. Conflating them is what shipped "use `task` to map unknown code" to sessions whose only
- * enabled agent was a worker set up to edit files.
- */
-export function investigativeSubagentNames(spawner: unknown): string[] {
-	return readNameList(spawner, "investigativeAgentNames");
 }
 
 /**
